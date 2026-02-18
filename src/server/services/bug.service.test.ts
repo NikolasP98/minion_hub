@@ -1,6 +1,10 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createBug, listBugs } from './bug.service';
 import { createMockDb } from '$server/test-utils/mock-db';
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 vi.mock('$server/db/utils', () => ({
   newId: () => 'mock-bug-id-0000000001',

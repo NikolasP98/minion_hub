@@ -2,35 +2,85 @@ import { vi } from 'vitest';
 import type { Db } from '$server/db/client';
 
 /**
- * Creates a chainable mock that records the last method call arguments
- * and resolves queries with configurable return values.
+ * Creates a chainable Drizzle mock with configurable return values.
  *
- * The chain is thenable — awaiting any point in the chain resolves to
- * the configured value. Methods like `$dynamic()` return a new chain
- * that is also chainable and thenable.
+ * ## How it works
  *
- * Usage:
+ * Drizzle queries are method chains that are thenable (awaitable):
+ *   `await db.select().from(table).where(...)`
+ *
+ * This mock creates Proxy chains where every method returns another chain,
+ * and `await`-ing any point resolves to the configured result. Top-level
+ * methods (db.select, db.insert, db.delete, db.update) are cached `vi.fn()`
+ * spies so you can assert on them.
+ *
+ * ## API
+ *
+ * - `resolve(value)` — set a single return value for all awaited chains
+ * - `resolveSequence([v1, v2, ...])` — return v1 for the 1st await, v2 for
+ *   the 2nd, etc. Useful for functions that make multiple DB calls (e.g.
+ *   `validateSession` does two selects). After exhausting the sequence,
+ *   subsequent awaits return `[]`.
+ *
+ * ## TS strictness note
+ *
+ * When wrapping mock fns in `vi.mock()` factories, use explicit typed
+ * signatures instead of `(...args: unknown[]) => mock(...args)` — the
+ * latter passes vitest but fails `svelte-check` ("spread argument must
+ * have a tuple type"). Example:
+ * ```ts
+ * const mockFn = vi.fn<(k: string) => Promise<void>>();
+ * vi.mock('module', () => ({ fn: (k: string) => mockFn(k) }));
+ * ```
+ *
+ * @example
+ *   // Single result
  *   const { db, resolve } = createMockDb();
- *   resolve([{ id: '1' }]);            // next query returns this
- *   await someService({ db, tenantId: 't1' }, ...);
- *   expect(db.insert).toHaveBeenCalled();
+ *   resolve([{ id: '1' }]);
+ *   const rows = await listServers({ db, tenantId: 't1' });
+ *
+ * @example
+ *   // Sequential results (multiple DB calls)
+ *   const { db, resolveSequence } = createMockDb();
+ *   resolveSequence([
+ *     [{ userId: 'u1', email: 'a@b.com' }],  // 1st select
+ *     [{ tenantId: 't1', role: 'admin' }],    // 2nd select
+ *   ]);
+ *   const result = await validateSession(db, token);
  */
 export function createMockDb() {
-  let _result: unknown = [];
+  let _results: unknown[] = [];
+  let _cursor = 0;
+  let _sequential = false;
 
   function resolve(value: unknown) {
-    _result = value;
+    _results = [value];
+    _cursor = 0;
+    _sequential = false;
+  }
+
+  function resolveSequence(values: unknown[]) {
+    _results = values;
+    _cursor = 0;
+    _sequential = true;
+  }
+
+  function nextResult(): unknown {
+    if (!_sequential) return _results[0] ?? [];
+    const val = _cursor < _results.length ? _results[_cursor] : [];
+    _cursor++;
+    return val;
   }
 
   /** Creates a thenable chain proxy — every method returns another chain,
-   *  and awaiting it resolves to _result. */
+   *  and awaiting it resolves to the next result. */
   function createChain(): Record<string, unknown> {
-    const cache: Record<string, unknown> = {};
-    return new Proxy(cache, {
+    return new Proxy({} as Record<string, unknown>, {
       get(_target, prop) {
-        // Make the chain thenable so `await chain` resolves to _result
+        // Make the chain thenable so `await chain` resolves to a result
         if (prop === 'then') {
-          return (resolve: (v: unknown) => void) => resolve(_result);
+          const result = nextResult();
+          return (onFulfilled: (v: unknown) => void) => onFulfilled(result);
         }
         if (typeof prop === 'symbol') return undefined;
 
@@ -55,5 +105,5 @@ export function createMockDb() {
     },
   }) as unknown as Db;
 
-  return { db, resolve };
+  return { db, resolve, resolveSequence };
 }

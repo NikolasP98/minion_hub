@@ -1,6 +1,10 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { listUsers, createContactUser } from './user.service';
 import { createMockDb } from '$server/test-utils/mock-db';
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 vi.mock('$server/db/utils', () => ({
   newId: () => 'mock-user-id-000000001',

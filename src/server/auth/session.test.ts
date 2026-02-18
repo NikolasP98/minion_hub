@@ -2,11 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createSession, validateSession, deleteSession } from './session';
 import { createMockDb } from '$server/test-utils/mock-db';
 
-// Mock db/utils to control IDs and timestamps
 vi.mock('$server/db/utils', () => ({
   newId: () => 'mock-session-id-000000001',
   nowMs: () => 1_700_000_000_000,
 }));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 describe('createSession', () => {
   it('returns a 64-char hex token', async () => {
@@ -32,43 +35,27 @@ describe('createSession', () => {
 describe('validateSession', () => {
   it('returns null when no matching session', async () => {
     const { db, resolve } = createMockDb();
-    resolve([]); // no rows
+    resolve([]);
     const result = await validateSession(db, 'bad-token');
     expect(result).toBe(null);
   });
 
   it('returns user and tenant for valid session', async () => {
-    const { db } = createMockDb();
-
-    // Override the proxy to return proper data for the two select calls
-    let callCount = 0;
-    const selectMock = vi.fn(() => {
-      callCount++;
-      const fromMock = vi.fn(() => {
-        const joinMock = vi.fn(() => {
-          const whereMock = vi.fn(() => {
-            if (callCount === 1) {
-              return Promise.resolve([
-                {
-                  sessionId: 's1',
-                  userId: 'u1',
-                  expiresAt: Date.now() + 86_400_000,
-                  email: 'a@b.com',
-                  displayName: 'Alice',
-                },
-              ]);
-            }
-            // second call: memberships
-            return Promise.resolve([{ tenantId: 't1', role: 'admin' }]);
-          });
-          return { where: whereMock };
-        });
-        return { innerJoin: joinMock, where: joinMock().where };
-      });
-      return { from: fromMock };
-    });
-
-    (db as any).select = selectMock;
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      // 1st select: session + user join
+      [
+        {
+          sessionId: 's1',
+          userId: 'u1',
+          expiresAt: Date.now() + 86_400_000,
+          email: 'a@b.com',
+          displayName: 'Alice',
+        },
+      ],
+      // 2nd select: tenant membership
+      [{ tenantId: 't1', role: 'admin' }],
+    ]);
 
     const result = await validateSession(db, 'valid-token');
     expect(result).not.toBe(null);

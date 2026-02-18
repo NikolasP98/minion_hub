@@ -1,6 +1,10 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { uploadFile, getFileUrl, deleteFile } from './file.service';
 import { createMockDb } from '$server/test-utils/mock-db';
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 vi.mock('$server/db/utils', () => ({
   newId: () => 'mock-file-id-0000000001',
@@ -70,7 +74,6 @@ describe('deleteFile', () => {
   it('does nothing when file not found', async () => {
     const { db, resolve } = createMockDb();
     resolve([]); // no rows
-    mockDeleteFromB2.mockClear();
     await deleteFile({ db, tenantId: 't1' }, 'no-such-id');
     expect(mockDeleteFromB2).not.toHaveBeenCalled();
   });

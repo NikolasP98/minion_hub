@@ -6,6 +6,7 @@ export default defineConfig({
   plugins: [sveltekit()],
   test: {
     include: ['src/**/*.test.ts'],
+    setupFiles: ['src/server/test-utils/setup.ts'],
     alias: {
       '$server': path.resolve('src/server'),
     },
