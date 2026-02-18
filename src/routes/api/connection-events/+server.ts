@@ -15,10 +15,11 @@ export const POST: RequestHandler = async ({ request }) => {
     const db = await getDb();
     if (!db) return json({ ok: true });
 
-    db.prepare(
-      `INSERT INTO connection_events (event_type, host_name, host_url, duration_ms, reason)
-       VALUES (?, ?, ?, ?, ?)`,
-    ).run(body.event_type, body.host_name ?? null, body.host_url ?? null, body.duration_ms ?? null, body.reason ?? null);
+    await db.execute({
+      sql: `INSERT INTO connection_events (event_type, host_name, host_url, duration_ms, reason)
+            VALUES (?, ?, ?, ?, ?)`,
+      args: [body.event_type, body.host_name ?? null, body.host_url ?? null, body.duration_ms ?? null, body.reason ?? null],
+    });
 
     return json({ ok: true });
   } catch {

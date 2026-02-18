@@ -11,13 +11,12 @@ export const GET: RequestHandler = async ({ url }) => {
   try {
     const db = await getDb();
     if (!db) return json({ messages: [] });
-    const rows = db
-      .prepare(
-        `SELECT role, content, run_id, timestamp FROM chat_messages
-         WHERE agent_id = ? ORDER BY timestamp ASC LIMIT ?`,
-      )
-      .all(agentId, limit);
-    return json({ messages: rows });
+    const result = await db.execute({
+      sql: `SELECT role, content, run_id, timestamp FROM chat_messages
+            WHERE agent_id = ? ORDER BY timestamp ASC LIMIT ?`,
+      args: [agentId, limit],
+    });
+    return json({ messages: result.rows });
   } catch {
     return json({ messages: [] });
   }
