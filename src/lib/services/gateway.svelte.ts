@@ -135,7 +135,7 @@ function sendConnect() {
   sendRequest('connect', {
     minProtocol: 3,
     maxProtocol: 3,
-    client: { id: 'minion-control-ui', version: '1.0', platform: 'web', mode: 'webchat' },
+    client: { id: 'minion-hub', version: '1.0', platform: 'web', mode: 'webchat' },
     role: 'operator',
     scopes: ['operator.admin', 'operator.read', 'operator.write', 'operator.approvals', 'operator.pairing'],
     caps: [],
