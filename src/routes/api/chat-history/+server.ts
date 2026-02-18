@@ -1,22 +1,17 @@
 import type { RequestHandler } from '@sveltejs/kit';
-import { json } from '@sveltejs/kit';
-import { getDb } from '$lib/../server/db';
+import { json, error } from '@sveltejs/kit';
+import { listChatMessages } from '$server/services/chat.service';
 
-export const GET: RequestHandler = async ({ url }) => {
+export const GET: RequestHandler = async ({ locals, url }) => {
+  if (!locals.tenantCtx) throw error(401);
   const agentId = url.searchParams.get('agentId');
   const limit = parseInt(url.searchParams.get('limit') ?? '200', 10);
 
   if (!agentId) return json({ messages: [] });
 
   try {
-    const db = await getDb();
-    if (!db) return json({ messages: [] });
-    const result = await db.execute({
-      sql: `SELECT role, content, run_id, timestamp FROM chat_messages
-            WHERE agent_id = ? ORDER BY timestamp ASC LIMIT ?`,
-      args: [agentId, limit],
-    });
-    return json({ messages: result.rows });
+    const messages = await listChatMessages(locals.tenantCtx, agentId, limit);
+    return json({ messages });
   } catch {
     return json({ messages: [] });
   }

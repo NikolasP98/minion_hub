@@ -7,7 +7,11 @@ const config = {
   kit: {
     adapter: adapter({
       runtime: 'nodejs22.x'
-    })
+    }),
+    alias: {
+      '$server': 'src/server',
+      '$server/*': 'src/server/*'
+    }
   }
 };
 

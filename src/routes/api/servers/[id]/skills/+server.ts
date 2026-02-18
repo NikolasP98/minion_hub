@@ -1,21 +1,22 @@
 import type { RequestHandler } from '@sveltejs/kit';
-import { json } from '@sveltejs/kit';
-import { listSkills, upsertSkills } from '$lib/../server/db';
-import type { SkillRow } from '$lib/../server/db';
+import { json, error } from '@sveltejs/kit';
+import { listSkills, upsertSkills } from '$server/services/skill.service';
 
-export const GET: RequestHandler = async ({ params }) => {
+export const GET: RequestHandler = async ({ locals, params }) => {
+  if (!locals.tenantCtx) throw error(401);
   try {
-    const skills = await listSkills(params.id!);
+    const skills = await listSkills(locals.tenantCtx, params.id!);
     return json({ skills });
   } catch {
     return json({ skills: [] });
   }
 };
 
-export const POST: RequestHandler = async ({ params, request }) => {
+export const POST: RequestHandler = async ({ locals, params, request }) => {
+  if (!locals.tenantCtx) throw error(401);
   try {
-    const body = (await request.json()) as { skills: SkillRow[] };
-    await upsertSkills(params.id!, body.skills ?? []);
+    const body = await request.json();
+    await upsertSkills(locals.tenantCtx, params.id!, body.skills ?? []);
     return json({ ok: true });
   } catch {
     return json({ ok: true });

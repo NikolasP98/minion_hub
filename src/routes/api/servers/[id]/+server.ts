@@ -1,22 +1,23 @@
 import type { RequestHandler } from '@sveltejs/kit';
-import { json } from '@sveltejs/kit';
-import { upsertServer, deleteServer } from '$lib/../server/db';
-import type { Host } from '$lib/types/host';
+import { json, error } from '@sveltejs/kit';
+import { upsertServer, deleteServer } from '$server/services/server.service';
 
-export const PUT: RequestHandler = async ({ params, request }) => {
+export const PUT: RequestHandler = async ({ locals, params, request }) => {
+  if (!locals.tenantCtx) throw error(401);
   try {
-    const body = (await request.json()) as Partial<Host>;
+    const body = await request.json();
     const id = params.id!;
-    await upsertServer({ id, name: '', url: '', token: '', lastConnectedAt: null, ...body });
+    await upsertServer(locals.tenantCtx, { id, name: '', url: '', token: '', ...body });
     return json({ ok: true });
   } catch {
     return json({ ok: true });
   }
 };
 
-export const DELETE: RequestHandler = async ({ params }) => {
+export const DELETE: RequestHandler = async ({ locals, params }) => {
+  if (!locals.tenantCtx) throw error(401);
   try {
-    await deleteServer(params.id!);
+    await deleteServer(locals.tenantCtx, params.id!);
     return json({ ok: true });
   } catch {
     return json({ ok: true });
