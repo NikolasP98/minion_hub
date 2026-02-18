@@ -1,5 +1,8 @@
 export const ui = $state({
   selectedAgentId: null as string | null,
+  selectedSessionKey: null as string | null,
+  selectedMissionId: null as string | null,
+  selectedServerId: null as string | null,
   sessionStatus: {} as Record<string, 'running' | 'thinking' | 'idle' | 'aborted'>,
   sessionStatusTimers: {} as Record<string, ReturnType<typeof setTimeout>>,
   shutdownReason: null as string | null,

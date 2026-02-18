@@ -10,3 +10,5 @@ export { connectionEvents } from './connection-events';
 export { settings } from './settings';
 export { files } from './files';
 export { authSessions } from './auth-sessions';
+export { missions } from './missions';
+export { tasks } from './tasks';

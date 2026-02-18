@@ -13,6 +13,8 @@ import {
   settings,
   files,
   authSessions,
+  missions,
+  tasks,
 } from './schema';
 
 // ── Tenants ──────────────────────────────────────────────────────────────────
@@ -65,9 +67,10 @@ export const skillsRelations = relations(skills, ({ one }) => ({
 
 // ── Sessions ─────────────────────────────────────────────────────────────────
 
-export const sessionsRelations = relations(sessions, ({ one }) => ({
+export const sessionsRelations = relations(sessions, ({ one, many }) => ({
   server: one(servers, { fields: [sessions.serverId], references: [servers.id] }),
   tenant: one(tenants, { fields: [sessions.tenantId], references: [tenants.id] }),
+  missions: many(missions),
 }));
 
 // ── Chat Messages ────────────────────────────────────────────────────────────
@@ -109,4 +112,20 @@ export const filesRelations = relations(files, ({ one }) => ({
 
 export const authSessionsRelations = relations(authSessions, ({ one }) => ({
   user: one(users, { fields: [authSessions.userId], references: [users.id] }),
+}));
+
+// ── Missions ──────────────────────────────────────────────────────────────────
+
+export const missionsRelations = relations(missions, ({ one, many }) => ({
+  tenant: one(tenants, { fields: [missions.tenantId], references: [tenants.id] }),
+  server: one(servers, { fields: [missions.serverId], references: [servers.id] }),
+  session: one(sessions, { fields: [missions.sessionId], references: [sessions.id] }),
+  tasks: many(tasks),
+}));
+
+// ── Tasks ─────────────────────────────────────────────────────────────────────
+
+export const tasksRelations = relations(tasks, ({ one }) => ({
+  tenant: one(tenants, { fields: [tasks.tenantId], references: [tenants.id] }),
+  mission: one(missions, { fields: [tasks.missionId], references: [missions.id] }),
 }));

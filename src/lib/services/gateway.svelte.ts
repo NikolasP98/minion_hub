@@ -163,11 +163,33 @@ function sendConnect() {
         }
       }
       onHelloOk(hello as HelloOk);
+
+      // Resolve DB server ID from active host URL
+      resolveServerId();
     })
     .catch((err) => {
       console.error('[hub] connect failed:', err);
       ws?.close(4008, 'connect failed');
     });
+}
+
+async function resolveServerId() {
+  try {
+    const res = await fetch('/api/servers');
+    if (!res.ok) return;
+    const { servers } = await res.json();
+    const activeHost = getActiveHost();
+    if (!activeHost || !Array.isArray(servers)) return;
+
+    const hostUrl = activeHost.url.replace(/\/+$/, '');
+    const match = servers.find((s: { url?: string }) => {
+      if (!s.url) return false;
+      return s.url.replace(/\/+$/, '') === hostUrl;
+    });
+    if (match) ui.selectedServerId = match.id;
+  } catch {
+    // non-critical — UI will work without server ID, just can't fetch missions
+  }
 }
 
 function handleMessage(raw: string) {
@@ -235,12 +257,15 @@ function onAgentEvent(payload: Record<string, unknown>) {
 
   if (payload.sessionKey) {
     const sk = payload.sessionKey as string;
-    ui.sessionStatus[sk] = 'running';
-    if (ui.sessionStatusTimers[sk]) clearTimeout(ui.sessionStatusTimers[sk]);
-    ui.sessionStatusTimers[sk] = setTimeout(() => {
-      if (ui.sessionStatus[sk] === 'running') ui.sessionStatus[sk] = 'idle';
-      delete ui.sessionStatusTimers[sk];
-    }, 30000);
+    // Don't downgrade 'thinking' to 'running' — thinking is more specific
+    if (ui.sessionStatus[sk] !== 'thinking') {
+      ui.sessionStatus[sk] = 'running';
+      if (ui.sessionStatusTimers[sk]) clearTimeout(ui.sessionStatusTimers[sk]);
+      ui.sessionStatusTimers[sk] = setTimeout(() => {
+        if (ui.sessionStatus[sk] === 'running') ui.sessionStatus[sk] = 'idle';
+        delete ui.sessionStatusTimers[sk];
+      }, 30000);
+    }
   }
 }
 
