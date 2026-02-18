@@ -15,6 +15,13 @@
       "when": 1771442274512,
       "tag": "0001_natural_demogoblin",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1771443369235,
+      "tag": "0002_yielding_loki",
+      "breakpoints": true
     }
   ]
 }

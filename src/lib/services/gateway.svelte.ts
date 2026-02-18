@@ -3,6 +3,7 @@ import { gw } from '$lib/state/gateway-data.svelte';
 import { agentChat, agentActivity, ensureAgentChat, ensureAgentActivity } from '$lib/state/chat.svelte';
 import { hostsState, getActiveHost, saveHosts } from '$lib/state/hosts.svelte';
 import { ui } from '$lib/state/ui.svelte';
+import { pushReliabilityEvent, setReliabilityServerId, type ReliabilityEvent } from '$lib/state/reliability.svelte';
 import { uuid } from '$lib/utils/uuid';
 import { extractText } from '$lib/utils/text';
 import type { HelloOk, ChatEvent } from '$lib/types/gateway';
@@ -186,7 +187,10 @@ async function resolveServerId() {
       if (!s.url) return false;
       return s.url.replace(/\/+$/, '') === hostUrl;
     });
-    if (match) ui.selectedServerId = match.id;
+    if (match) {
+      ui.selectedServerId = match.id;
+      setReliabilityServerId(match.id);
+    }
   } catch {
     // non-critical — UI will work without server ID, just can't fetch missions
   }
@@ -234,6 +238,11 @@ function handleEvent(evt: Record<string, unknown>) {
     case 'tick':    ui.lastTickAt = Date.now(); break;
     case 'shutdown':
       ui.shutdownReason = ((evt.payload as { reason?: string })?.reason) ?? 'Gateway shutting down';
+      break;
+    case 'reliability':
+      if (evt.payload && typeof evt.payload === 'object') {
+        pushReliabilityEvent(evt.payload as ReliabilityEvent);
+      }
       break;
   }
 }

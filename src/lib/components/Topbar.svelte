@@ -14,6 +14,8 @@
     <span class="logo-pill">MINION</span><span class="logo-hub">hub</span>
   </div>
 
+  <a href="/reliability" class="nav-link">Reliability</a>
+
   <GatewayInfo />
 </header>
 
@@ -83,5 +85,19 @@
     padding: 3px 8px;
     background: transparent;
     letter-spacing: 0;
+  }
+
+  .nav-link {
+    font-size: 12px;
+    color: var(--text2);
+    text-decoration: none;
+    padding: 4px 12px;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    transition: background 0.15s, color 0.15s;
+  }
+  .nav-link:hover {
+    background: var(--bg3);
+    color: var(--text);
   }
 </style>

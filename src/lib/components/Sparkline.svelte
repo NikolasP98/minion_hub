@@ -1,37 +1,111 @@
 <script lang="ts">
-  let { bins, color = '#3b82f6' }: { bins: number[]; color?: string } = $props();
+	import { onMount } from 'svelte';
+	import type { ECharts } from 'echarts';
 
-  const W = 232;
-  const H = 28;
+	let { bins, color = '#3b82f6' }: { bins: number[]; color?: string } = $props();
 
-  const path = $derived.by(() => {
-    const max = Math.max(...bins, 1);
-    const step = W / (bins.length - 1);
-    const pts = bins.map((v, i) => [i * step, H - (v / max) * H * 0.9]);
+	let container: HTMLDivElement;
+	let chart: ECharts | undefined;
+	let resizeObserver: ResizeObserver | undefined;
 
-    let d = `M ${pts[0][0]} ${pts[0][1]}`;
-    for (let i = 1; i < pts.length; i++) {
-      const prev = pts[i - 1];
-      const cur = pts[i];
-      const mx = (prev[0] + cur[0]) / 2;
-      d += ` C ${mx} ${prev[1]} ${mx} ${cur[1]} ${cur[0]} ${cur[1]}`;
-    }
-    // close area
-    d += ` L ${pts[pts.length - 1][0]} ${H} L ${pts[0][0]} ${H} Z`;
-    return d;
-  });
+	/**
+	 * Convert a hex color string to an rgba string with the given alpha.
+	 */
+	function hexToRgba(hex: string, alpha: number): string {
+		const cleaned = hex.replace('#', '');
+		const r = parseInt(cleaned.substring(0, 2), 16);
+		const g = parseInt(cleaned.substring(2, 4), 16);
+		const b = parseInt(cleaned.substring(4, 6), 16);
+		return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+	}
+
+	function buildOption(data: number[], barColor: string) {
+		return {
+			animation: false,
+			backgroundColor: 'transparent',
+			grid: {
+				left: 0,
+				right: 0,
+				top: 0,
+				bottom: 0
+			},
+			xAxis: {
+				type: 'category' as const,
+				show: false,
+				data: data.map((_, i) => i)
+			},
+			yAxis: {
+				type: 'value' as const,
+				show: false,
+				min: 0
+			},
+			tooltip: {
+				show: false
+			},
+			series: [
+				{
+					type: 'bar' as const,
+					data: data,
+					barWidth: '90%',
+					barCategoryGap: '10%',
+					itemStyle: {
+						color: hexToRgba(barColor, 0.6),
+						borderRadius: [1, 1, 0, 0]
+					},
+					emphasis: {
+						itemStyle: {
+							color: hexToRgba(barColor, 1.0)
+						}
+					},
+					silent: false
+				}
+			]
+		};
+	}
+
+	onMount(() => {
+		let destroyed = false;
+
+		import('echarts').then((echarts) => {
+			if (destroyed) return;
+
+			chart = echarts.init(container, undefined, {
+				renderer: 'canvas',
+				width: container.clientWidth || undefined,
+				height: 28
+			});
+
+			chart.setOption(buildOption(bins, color));
+
+			resizeObserver = new ResizeObserver(() => {
+				if (chart && !chart.isDisposed()) {
+					chart.resize();
+				}
+			});
+			resizeObserver.observe(container);
+		});
+
+		return () => {
+			destroyed = true;
+			resizeObserver?.disconnect();
+			if (chart && !chart.isDisposed()) {
+				chart.dispose();
+			}
+		};
+	});
+
+	$effect(() => {
+		if (chart && !chart.isDisposed()) {
+			chart.setOption(buildOption(bins, color));
+		}
+	});
 </script>
 
-<svg viewBox="0 0 {W} {H}" width="100%" height="{H}" preserveAspectRatio="none">
-  <defs>
-    <linearGradient id="spark-fill-{color.replace('#', '')}" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="{color}" stop-opacity="0.4" />
-      <stop offset="100%" stop-color="{color}" stop-opacity="0" />
-    </linearGradient>
-  </defs>
-  <path d={path} fill="url(#spark-fill-{color.replace('#', '')})" />
-</svg>
+<div bind:this={container} class="sparkline"></div>
 
 <style>
-  svg { display: block; }
+	.sparkline {
+		width: 100%;
+		height: 28px;
+	}
 </style>

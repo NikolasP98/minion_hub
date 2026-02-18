@@ -12,3 +12,4 @@ export { files } from './files';
 export { authSessions } from './auth-sessions';
 export { missions } from './missions';
 export { tasks } from './tasks';
+export { reliabilityEvents } from './reliability-events';
