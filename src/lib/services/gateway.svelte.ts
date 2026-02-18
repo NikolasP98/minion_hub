@@ -27,6 +27,7 @@ export function wsConnect() {
   conn.particleHue = 'amber';
   conn.statusText = 'Connecting…';
   connectSent = false;
+  gw.lastSeq = null;
 
   try {
     const gen = ++wsGeneration;
