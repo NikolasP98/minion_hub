@@ -207,12 +207,12 @@
 
             <input
               id="agent-name"
+              class="name-input"
               type="text"
               bind:value={name}
               placeholder="my-agent"
               disabled={saving}
               class:field-invalid={!!nameError}
-              style="flex:1"
             />
           </div>
           {#if nameError}
@@ -356,6 +356,24 @@
     display: flex; gap: 8px; align-items: center;
     position: relative;
   }
+
+  /* ── Name input ─────────────────────────────────────────────────── */
+  .name-input {
+    flex: 1;
+    height: 34px; box-sizing: border-box;
+    background: var(--bg3); border: 1px solid var(--border); border-radius: 5px;
+    color: var(--text); padding: 0 12px;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 15px; font-weight: 500;
+    outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .name-input::placeholder { color: var(--text3); font-weight: 400; }
+  .name-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+  }
+  .name-input:disabled { opacity: 0.5; cursor: not-allowed; }
+  .name-input.field-invalid { border-color: var(--red, #ef4444); }
 
   /* ── Emoji button ──────────────────────────────────────────────── */
   .emoji-btn {
