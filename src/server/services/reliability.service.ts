@@ -6,7 +6,7 @@ import type { TenantContext } from './base';
 export interface ReliabilityEventInput {
   serverId: string;
   agentId?: string;
-  category: 'cron' | 'browser' | 'timezone' | 'general';
+  category: 'cron' | 'browser' | 'timezone' | 'general' | 'auth' | 'skill' | 'agent' | 'gateway';
   severity: 'critical' | 'high' | 'medium' | 'low';
   event: string;
   message: string;
@@ -52,7 +52,7 @@ export async function listReliabilityEvents(
 
   if (filters.serverId) conditions.push(eq(reliabilityEvents.serverId, filters.serverId));
   if (filters.category)
-    conditions.push(eq(reliabilityEvents.category, filters.category as 'cron' | 'browser' | 'timezone' | 'general'));
+    conditions.push(eq(reliabilityEvents.category, filters.category as 'cron' | 'browser' | 'timezone' | 'general' | 'auth' | 'skill' | 'agent' | 'gateway'));
   if (filters.severity)
     conditions.push(eq(reliabilityEvents.severity, filters.severity as 'critical' | 'high' | 'medium' | 'low'));
   if (filters.from) conditions.push(gte(reliabilityEvents.occurredAt, filters.from));

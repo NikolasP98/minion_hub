@@ -13,3 +13,8 @@ export { authSessions } from './auth-sessions';
 export { missions } from './missions';
 export { tasks } from './tasks';
 export { reliabilityEvents } from './reliability-events';
+export { credentialHealthSnapshots } from './credential-health';
+export { skillExecutionStats } from './skill-execution-stats';
+export { gatewayHeartbeats } from './gateway-heartbeats';
+export { activityBins } from './activity-bins';
+export { configSnapshots } from './config-snapshots';
