@@ -164,14 +164,24 @@
       if (selectedModel) params.model = selectedModel;
       if (emoji.trim()) params.emoji = emoji.trim();
 
-      const res = await sendRequest('agents.create', params) as { agentId?: string; agent?: Agent; id?: string } | null;
+      const res = await sendRequest('agents.create', params) as { agentId?: string; name?: string; workspace?: string } | null;
 
+      // Verify agents.create returned a valid agent ID — do NOT close on ambiguous success
+      const newId = res?.agentId ?? null;
+      if (!newId) {
+        throw new Error('Agent creation failed: server returned no agent ID');
+      }
+
+      // Refresh agents list and confirm the new agent is actually present
       const listRes = await sendRequest('agents.list', {}) as { agents?: Agent[] } | null;
-      if (listRes?.agents) gw.agents = listRes.agents;
+      if (listRes?.agents) {
+        gw.agents = listRes.agents;
+        if (!listRes.agents.some((a) => (a as { id: string }).id === newId)) {
+          throw new Error(`Agent "${name.trim()}" was not found after creation — please refresh`);
+        }
+      }
 
-      const newId = res?.agentId ?? res?.agent?.id ?? res?.id ?? null;
-      if (newId) ui.selectedAgentId = newId;
-
+      ui.selectedAgentId = newId;
       close();
     } catch (e) {
       errorMsg = (e as Error).message ?? 'Failed to create agent';
