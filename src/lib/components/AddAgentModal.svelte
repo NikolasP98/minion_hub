@@ -5,7 +5,6 @@
   import { sendRequest } from '$lib/services/gateway.svelte';
   import type { Agent } from '$lib/types/gateway';
   import * as popover from '@zag-js/popover';
-  import * as select from '@zag-js/select';
   import { useMachine, normalizeProps } from '@zag-js/svelte';
 
   // ── Emoji categories ──────────────────────────────────────────────────────
@@ -47,24 +46,57 @@
   }));
   const popoverApi = $derived(popover.connect(popoverService, normalizeProps));
 
-  // ── Zag: select (model dropdown) ─────────────────────────────────────────
-  const modelCollection = $derived(
-    select.collection({
-      items: modelItems,
-      itemToValue: (item: ModelItem) => item.id,
-      itemToString: (item: ModelItem) => `${item.name} [${item.id}]`,
-    })
+  // ── Model combobox (fuzzy search) ─────────────────────────────────────────
+  let modelQuery = $state('');
+  let modelOpen = $state(false);
+  let modelHighlight = $state(0);
+
+  function fuzzyScore(query: string, text: string): number {
+    if (!query) return 1;
+    const q = query.toLowerCase();
+    const t = text.toLowerCase();
+    if (t.includes(q)) return 100 + (q.length / t.length) * 50;
+    let score = 0, qi = 0, lastMatch = -1;
+    for (let ti = 0; ti < t.length && qi < q.length; ti++) {
+      if (t[ti] === q[qi]) { score += ti === lastMatch + 1 ? 10 : 1; lastMatch = ti; qi++; }
+    }
+    return qi === q.length ? score : 0;
+  }
+
+  const filteredModels = $derived(
+    modelQuery.trim()
+      ? modelItems
+          .map(m => ({ m, score: Math.max(fuzzyScore(modelQuery, m.id), fuzzyScore(modelQuery, m.name)) }))
+          .filter(x => x.score > 0)
+          .sort((a, b) => b.score - a.score)
+          .map(x => x.m)
+      : modelItems
   );
 
-  const selectService = useMachine(select.machine, () => ({
-    id: 'model-select',
-    collection: modelCollection,
-    value: selectedModel ? [selectedModel] : [],
-    onValueChange(details: { value: string[] }) {
-      selectedModel = details.value[0] ?? '';
-    },
-  }));
-  const selectApi = $derived(select.connect(selectService, normalizeProps));
+  const selectedModelItem = $derived(modelItems.find(m => m.id === selectedModel) ?? null);
+
+  function selectModelItem(item: ModelItem) {
+    selectedModel = item.id;
+    modelQuery = '';
+    modelOpen = false;
+  }
+
+  function modelInputKeydown(e: KeyboardEvent) {
+    if (!modelOpen) { if (e.key === 'ArrowDown' || e.key === 'Enter') { modelOpen = true; modelHighlight = 0; } return; }
+    if (e.key === 'ArrowDown') { e.preventDefault(); modelHighlight = Math.min(modelHighlight + 1, filteredModels.length - 1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); modelHighlight = Math.max(modelHighlight - 1, 0); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (filteredModels[modelHighlight]) selectModelItem(filteredModels[modelHighlight]); }
+    else if (e.key === 'Escape') { modelOpen = false; modelQuery = ''; }
+  }
+
+  // ── Click-outside action ──────────────────────────────────────────────────
+  function clickOutside(node: HTMLElement, handler: () => void) {
+    function onPointerDown(e: PointerEvent) {
+      if (!node.contains(e.target as Node)) handler();
+    }
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return { destroy() { document.removeEventListener('pointerdown', onPointerDown, true); } };
+  }
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
   onMount(async () => {
@@ -94,6 +126,8 @@
     name = '';
     emoji = '';
     selectedModel = '';
+    modelQuery = '';
+    modelOpen = false;
     hostUser = 'minion';
     configDir = '.minion';
     saving = false;
@@ -248,44 +282,66 @@
           <div class="workspace-preview">{workspacePath}</div>
         </div>
 
-        <!-- Model select (zag) -->
-        <div class="form-field full-width">
-          <div {...selectApi.getRootProps()}>
-            <label {...selectApi.getLabelProps()}>Model</label>
-            <div class="select-control" {...selectApi.getControlProps()}>
-              <button
-                class="select-trigger"
+        <!-- Model combobox (fuzzy search) -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div
+          class="form-field full-width"
+          onmouseleave={() => { if (!modelOpen) modelHighlight = 0; }}
+        >
+          <label for="model-input">Model</label>
+          <div class="combobox-wrap" use:clickOutside={() => { modelOpen = false; modelQuery = ''; }}>
+            <div class="combobox-field" class:combobox-open={modelOpen}>
+              <input
+                id="model-input"
+                class="combobox-input"
+                type="text"
+                autocomplete="off"
+                placeholder={selectedModelItem
+                  ? selectedModelItem.id === defaultModel
+                    ? `${selectedModelItem.name} (default)`
+                    : selectedModelItem.name
+                  : 'Search models…'}
+                bind:value={modelQuery}
                 disabled={saving}
-                {...selectApi.getTriggerProps()}
-              >
-                <span {...selectApi.getValueTextProps()}>
-                  {selectApi.hasSelectedItems
-                    ? selectApi.selectedItems.map((i: ModelItem) => i.id === defaultModel ? `${i.name} (default)` : `${i.name} [${i.id}]`).join(', ')
-                    : 'Default (from config)'}
-                </span>
-                <span class="select-indicator" {...selectApi.getIndicatorProps()}>▾</span>
-              </button>
+                onfocus={() => { modelOpen = true; modelHighlight = 0; }}
+                oninput={() => { modelOpen = true; modelHighlight = 0; }}
+                onkeydown={modelInputKeydown}
+              />
+              {#if selectedModel && !modelQuery}
+                <button
+                  class="combobox-clear"
+                  aria-label="Clear model"
+                  onclick={() => { selectedModel = ''; modelQuery = ''; }}
+                  tabindex="-1"
+                >×</button>
+              {/if}
+              <span class="combobox-chevron" aria-hidden="true">▾</span>
             </div>
-            <!-- Always rendered — Zag controls visibility via data-state -->
-            <div class="select-positioner" {...selectApi.getPositionerProps()}>
-              <ul class="select-content" {...selectApi.getContentProps()}>
-                {#each modelItems as item (item.id)}
+            {#if modelOpen}
+              <ul class="combobox-list" role="listbox">
+                {#each filteredModels as item, i (item.id)}
+                  <!-- svelte-ignore a11y_click_events_have_key_events -->
                   <li
-                    class="select-item"
-                    {...selectApi.getItemProps({ item })}
+                    class="combobox-item"
+                    class:combobox-highlighted={i === modelHighlight}
+                    class:combobox-selected={item.id === selectedModel}
+                    role="option"
+                    aria-selected={item.id === selectedModel}
+                    onmousedown={() => selectModelItem(item)}
+                    onmouseenter={() => (modelHighlight = i)}
                   >
-                    {item.name}
+                    <span class="combobox-item-name">{item.name}</span>
                     {#if item.id === defaultModel}
-                      <span class="select-item-default">default</span>
+                      <span class="combobox-item-default">default</span>
                     {/if}
-                    <span class="select-item-id">[{item.id}]</span>
+                    <span class="combobox-item-id">{item.id}</span>
                   </li>
                 {/each}
-                {#if modelItems.length === 0}
-                  <li class="select-item select-empty">No models available</li>
+                {#if filteredModels.length === 0}
+                  <li class="combobox-empty">No matches</li>
                 {/if}
               </ul>
-            </div>
+            {/if}
           </div>
         </div>
 
@@ -437,38 +493,54 @@
   .ws-part input:focus { border-color: var(--accent); }
   .ws-part input:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  /* ── Model select ──────────────────────────────────────────────── */
-  .select-control { position: relative; }
-  .select-trigger {
-    width: 100%;
+  /* ── Model combobox ────────────────────────────────────────────── */
+  .combobox-wrap { position: relative; }
+  .combobox-field {
+    display: flex; align-items: center;
     background: var(--bg3); border: 1px solid var(--border); border-radius: 5px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .combobox-field:focus-within,
+  .combobox-field.combobox-open {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+  }
+  .combobox-input {
+    flex: 1; min-width: 0;
+    background: none; border: none; outline: none;
     color: var(--text); padding: 5px 9px; font-family: inherit; font-size: 13px;
-    cursor: pointer; display: flex; align-items: center; justify-content: space-between;
-    outline: none; transition: border-color 0.2s; text-align: left;
   }
-  .select-trigger:focus { border-color: var(--accent); }
-  .select-trigger:disabled { opacity: 0.5; cursor: not-allowed; }
-  .select-indicator { font-size: 10px; color: var(--text3); margin-left: 6px; }
-  .select-positioner { position: absolute; z-index: 2000; width: 100%; }
-  .select-positioner[data-state="closed"] { display: none; }
-  .select-content {
-    list-style: none; margin: 2px 0 0; padding: 4px;
+  .combobox-input::placeholder { color: var(--text3); }
+  .combobox-input:disabled { opacity: 0.5; cursor: not-allowed; }
+  .combobox-clear {
+    background: none; border: none; color: var(--text3); cursor: pointer;
+    font-size: 14px; padding: 0 4px; line-height: 1; flex-shrink: 0;
+  }
+  .combobox-clear:hover { color: var(--text); }
+  .combobox-chevron { font-size: 10px; color: var(--text3); padding-right: 9px; flex-shrink: 0; }
+  .combobox-list {
+    position: absolute; top: calc(100% + 3px); left: 0; right: 0; z-index: 2000;
+    list-style: none; margin: 0; padding: 4px;
     background: var(--bg2); border: 1px solid var(--border);
-    border-radius: 6px; box-shadow: var(--shadow); max-height: 200px; overflow-y: auto;
+    border-radius: 6px; box-shadow: var(--shadow);
+    max-height: 200px; overflow-y: auto;
   }
-  .select-item {
+  .combobox-item {
+    display: flex; align-items: center; gap: 6px;
     padding: 5px 8px; border-radius: 4px; font-size: 12px;
-    cursor: pointer; transition: background 0.12s;
+    cursor: pointer; transition: background 0.1s;
   }
-  .select-item:hover { background: var(--bg3); }
-  .select-item[data-highlighted] { background: var(--bg3); }
-  .select-item[data-selected] { color: var(--accent); }
-  .select-item-id { color: var(--text3); font-size: 11px; }
-  .select-item-default {
-    font-size: 10px; color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent);
-    border-radius: 3px; padding: 1px 5px; margin: 0 4px;
+  .combobox-item:hover,
+  .combobox-highlighted { background: var(--bg3); }
+  .combobox-selected .combobox-item-name { color: var(--accent); }
+  .combobox-item-name { flex: 1; min-width: 0; truncate: ellipsis; }
+  .combobox-item-id { color: var(--text3); font-size: 11px; font-family: monospace; flex-shrink: 0; }
+  .combobox-item-default {
+    font-size: 10px; color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    border-radius: 3px; padding: 1px 5px; flex-shrink: 0;
   }
-  .select-empty { color: var(--text3); font-style: italic; cursor: default; }
+  .combobox-empty { padding: 8px; color: var(--text3); font-size: 12px; font-style: italic; }
 
   /* ── Actions ───────────────────────────────────────────────────── */
   .submit-error {
