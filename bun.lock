@@ -10,6 +10,7 @@
         "@libsql/client": "^0.17.0",
         "@node-rs/argon2": "^2.0.2",
         "@paralleldrive/cuid2": "^3.3.0",
+        "@zag-js/combobox": "^1.33.1",
         "@zag-js/popover": "^1.33.1",
         "@zag-js/select": "^1.33.1",
         "@zag-js/svelte": "^1.33.1",
@@ -473,6 +474,8 @@
     "@zag-js/aria-hidden": ["@zag-js/aria-hidden@1.33.1", "", { "dependencies": { "@zag-js/dom-query": "1.33.1" } }, "sha512-TpRAtssDHVfra5qxigk7w1NMf/crKu615INu6GAbNNMUBWD1rPZAfxdg/xe/BAcxLy+XM5/q62dVSNvpjXzN3g=="],
 
     "@zag-js/collection": ["@zag-js/collection@1.33.1", "", { "dependencies": { "@zag-js/utils": "1.33.1" } }, "sha512-4Js8oWS0C1zETlQzqJRny63uV/e54R6OerHfJfH9qAzkZuQnhMqZOAA4q6N+5GG6vb8WGB3927jS1A+Zn/pZuQ=="],
+
+    "@zag-js/combobox": ["@zag-js/combobox@1.33.1", "", { "dependencies": { "@zag-js/anatomy": "1.33.1", "@zag-js/aria-hidden": "1.33.1", "@zag-js/collection": "1.33.1", "@zag-js/core": "1.33.1", "@zag-js/dismissable": "1.33.1", "@zag-js/dom-query": "1.33.1", "@zag-js/popper": "1.33.1", "@zag-js/types": "1.33.1", "@zag-js/utils": "1.33.1" } }, "sha512-9K2i5P+zf6T9Cqa9idzYXvEC/If5gDDbQWYgqflO18ptB0dTvfKkihBsA4/PEig3Ayvj/UGFTlFlbC17M5aACQ=="],
 
     "@zag-js/core": ["@zag-js/core@1.33.1", "", { "dependencies": { "@zag-js/dom-query": "1.33.1", "@zag-js/utils": "1.33.1" } }, "sha512-8hnw0/CFTytcYiIRij4Orpni2a79NSiH6Em+58A9AqMJGX8UE1zh6GsLWgrKQPiEiC8Cf3WgNXgCddJKpm8/Yw=="],
 
