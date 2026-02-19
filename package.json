@@ -7,6 +7,9 @@
     "@libsql/client": "^0.17.0",
     "@node-rs/argon2": "^2.0.2",
     "@paralleldrive/cuid2": "^3.3.0",
+    "@zag-js/popover": "^1.33.1",
+    "@zag-js/select": "^1.33.1",
+    "@zag-js/svelte": "^1.33.1",
     "drizzle-orm": "^0.45.1",
     "echarts": "^6.0.0"
   },

@@ -11,4 +11,5 @@ export const ui = $state({
   overlayOpen: false,
   overlayEditId: null as string | null,
   overlayConfirmDeleteId: null as string | null,
+  agentAddOpen: false,
 });
