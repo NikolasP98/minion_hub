@@ -70,7 +70,11 @@
   onMount(async () => {
     try {
       const res = await sendRequest('models.list', {}) as { models?: ModelItem[]; defaultModel?: string } | null;
-      if (res?.models) modelItems = res.models;
+      if (res?.models) {
+        // Deduplicate by id — guard against both old and new backend responses
+        const seen = new Set<string>();
+        modelItems = res.models.filter(m => seen.has(m.id) ? false : (seen.add(m.id), true));
+      }
       if (res?.defaultModel) {
         defaultModel = res.defaultModel;
         selectedModel = res.defaultModel;
