@@ -3,99 +3,27 @@
   import { conn } from '$lib/state/connection.svelte';
 </script>
 
-<header class="topbar">
+<header class="shrink-0 relative z-100 bg-bg/95 backdrop-blur-sm border-b border-border px-4.5 py-2.5 flex items-center gap-2.5">
   <HostPill />
 
-  <div class="conn-led {conn.connected ? 'on' : conn.connecting ? 'connecting' : 'off'}"></div>
-  <span class="conn-status">{conn.statusText}</span>
+  <div
+    class="w-2.5 h-2.5 rounded-full shrink-0 transition-all duration-300"
+    class:bg-success={conn.connected}
+    class:shadow-[0_0_8px_var(--color-success)]={conn.connected}
+    class:bg-warning={conn.connecting}
+    class:shadow-[0_0_8px_var(--color-warning)]={conn.connecting}
+    class:animate-[led-pulse_1s_infinite]={conn.connecting}
+    class:bg-muted-foreground={!conn.connected && !conn.connecting}
+    class:shadow-[0_0_4px_var(--color-muted-foreground)]={!conn.connected && !conn.connecting}
+  ></div>
+  <span class="text-xs text-muted whitespace-nowrap">{conn.statusText}</span>
 
-  <div class="logo" aria-label="Minion Hub">
-    <span class="logo-pill">MINION</span><span class="logo-hub">hub</span>
+  <div class="ml-auto mr-auto flex items-center select-none leading-none" aria-label="Minion Hub">
+    <span class="bg-brand-pink text-black font-black text-[15px] tracking-wide px-2.5 py-0.5 rounded-l-md uppercase">MINION</span>
+    <span class="text-white font-bold text-[15px] px-2 py-0.5">hub</span>
   </div>
 
-  <a href="/reliability" class="nav-link">Reliability</a>
-  <a href="/sessions" class="nav-link">Sessions</a>
+  <a href="/reliability" class="text-xs text-muted no-underline px-3 py-1 rounded-full border border-border transition-all duration-150 hover:bg-bg3 hover:text-foreground">Reliability</a>
+  <a href="/sessions" class="text-xs text-muted no-underline px-3 py-1 rounded-full border border-border transition-all duration-150 hover:bg-bg3 hover:text-foreground">Sessions</a>
+  <a href="/settings" class="text-xs text-muted no-underline px-3 py-1 rounded-full border border-border transition-all duration-150 hover:bg-bg3 hover:text-foreground">Settings</a>
 </header>
-
-<style>
-  .topbar {
-    flex-shrink: 0;
-    position: relative;
-    z-index: 100;
-    background: rgba(10, 14, 23, 0.95);
-    backdrop-filter: blur(12px);
-    border-bottom: 1px solid var(--border);
-    padding: 9px 18px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-
-  .conn-led {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    flex-shrink: 0;
-    transition: background 0.3s, box-shadow 0.3s;
-  }
-  .conn-led.off       { background: #475569; box-shadow: 0 0 4px #475569; }
-  .conn-led.on        { background: var(--green); box-shadow: 0 0 8px var(--green); }
-  .conn-led.connecting {
-    background: var(--amber);
-    box-shadow: 0 0 8px var(--amber);
-    animation: led-pulse 1s infinite;
-  }
-  @keyframes led-pulse {
-    0%, 100% { opacity: 1; }
-    50%       { opacity: 0.4; }
-  }
-
-  .conn-status {
-    font-size: 12px;
-    color: var(--text2);
-    white-space: nowrap;
-  }
-
-  /* ── Logo ── */
-  .logo {
-    margin-left: auto;
-    margin-right: auto;
-    display: flex;
-    align-items: center;
-    gap: 0;
-    user-select: none;
-    line-height: 1;
-  }
-  .logo-pill {
-    background: var(--brand-pink);
-    color: #000;
-    font-weight: 900;
-    font-size: 15px;
-    letter-spacing: 0.5px;
-    padding: 3px 10px 3px 10px;
-    border-radius: 6px 0 0 6px;
-    text-transform: uppercase;
-  }
-  .logo-hub {
-    color: #fff;
-    font-weight: 700;
-    font-size: 15px;
-    padding: 3px 8px;
-    background: transparent;
-    letter-spacing: 0;
-  }
-
-  .nav-link {
-    font-size: 12px;
-    color: var(--text2);
-    text-decoration: none;
-    padding: 4px 12px;
-    border-radius: 14px;
-    border: 1px solid var(--border);
-    transition: background 0.15s, color 0.15s;
-  }
-  .nav-link:hover {
-    background: var(--bg3);
-    color: var(--text);
-  }
-</style>

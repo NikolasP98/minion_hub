@@ -12,25 +12,10 @@
   });
 </script>
 
-<div class="page">
+<div class="flex flex-col h-screen overflow-hidden">
   <Topbar />
-  <div class="app">
+  <div class="flex flex-1 min-h-0 overflow-hidden">
     <AgentSidebar />
     <DetailPanel />
   </div>
 </div>
-
-<style>
-  .page {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    overflow: hidden;
-  }
-  .app {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    overflow: hidden;
-  }
-</style>
