@@ -7,7 +7,7 @@
   } = $props();
 </script>
 
-<svg class="absolute inset-0 w-full h-full pointer-events-none" style:opacity>
+<svg class="absolute inset-0 w-full h-full pointer-events-none -z-10" style:opacity>
   <defs>
     <pattern id="dot-grid-{gap}-{dotSize}" x="0" y="0" width={gap} height={gap} patternUnits="userSpaceOnUse">
       <circle cx={gap / 2} cy={gap / 2} r={dotSize} fill={color} />
