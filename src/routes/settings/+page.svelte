@@ -23,7 +23,7 @@
       <!-- Theme Presets -->
       <section>
         <h2 class="text-sm font-semibold text-foreground uppercase tracking-wider mb-4">Theme</h2>
-        <div class="grid grid-cols-2 gap-4">
+        <div class="grid grid-cols-3 gap-4">
           {#each theme.presets as preset (preset.id)}
             <button
               type="button"
@@ -34,6 +34,9 @@
               onclick={() => theme.setPreset(preset.id)}
             >
               <span class="text-sm font-medium text-card-foreground">{preset.name}</span>
+              {#if preset.style}
+                <span class="text-[10px] text-muted-foreground block mt-0.5">Custom typography</span>
+              {/if}
               <div class="flex gap-1.5 mt-3">
                 <div class="w-6 h-6 rounded" style="background:{preset.colors.bg}; border:1px solid {preset.colors.border}"></div>
                 <div class="w-6 h-6 rounded" style="background:{preset.colors.bg2}; border:1px solid {preset.colors.border}"></div>

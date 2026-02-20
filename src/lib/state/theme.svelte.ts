@@ -1,4 +1,4 @@
-import { PRESETS, ACCENT_OPTIONS, type ThemePreset } from '$lib/themes/presets';
+import { PRESETS, ACCENT_OPTIONS, DEFAULT_STYLE, type ThemePreset } from '$lib/themes/presets';
 
 const STORAGE_KEY = 'minion-hub-theme';
 
@@ -49,6 +49,8 @@ export const theme = {
 /** Apply theme CSS variables to :root — call in root layout $effect */
 export function applyTheme(p: ThemePreset, accentValue: string) {
   const root = document.documentElement;
+
+  // Colors
   root.style.setProperty('--color-bg', p.colors.bg);
   root.style.setProperty('--color-bg2', p.colors.bg2);
   root.style.setProperty('--color-bg3', p.colors.bg3);
@@ -61,4 +63,12 @@ export function applyTheme(p: ThemePreset, accentValue: string) {
   root.style.setProperty('--color-accent', accentValue);
   root.style.setProperty('--color-accent-foreground', p.colors.accentForeground);
   root.style.setProperty('--color-brand-pink', p.colors.brandPink);
+
+  // Style overrides (typography, spacing)
+  const s = { ...DEFAULT_STYLE, ...p.style };
+  root.style.setProperty('--theme-letter-spacing', s.letterSpacing);
+  root.style.setProperty('--theme-line-height', s.lineHeight);
+  root.style.setProperty('--theme-radius', s.radius);
+  root.style.setProperty('--theme-font-weight', s.fontWeight);
+  root.style.setProperty('--theme-border-alpha', s.borderAlpha);
 }

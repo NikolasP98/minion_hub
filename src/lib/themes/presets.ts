@@ -1,3 +1,26 @@
+export interface ThemeStyle {
+  /** Base letter-spacing for body text */
+  letterSpacing: string;
+  /** Line height multiplier */
+  lineHeight: string;
+  /** Border radius scale */
+  radius: string;
+  /** Base font weight for body text (300-400) */
+  fontWeight: string;
+  /** Border opacity (0-1 range, applied via alpha) */
+  borderAlpha: string;
+}
+
+const DEFAULT_STYLE: ThemeStyle = {
+  letterSpacing: '0em',
+  lineHeight: '1.5',
+  radius: '6px',
+  fontWeight: '400',
+  borderAlpha: '1',
+};
+
+export { DEFAULT_STYLE };
+
 export interface ThemePreset {
   id: string;
   name: string;
@@ -15,6 +38,7 @@ export interface ThemePreset {
     accentForeground: string;
     brandPink: string;
   };
+  style?: Partial<ThemeStyle>;
 }
 
 export const ACCENT_OPTIONS = [
@@ -101,6 +125,31 @@ export const PRESETS: ThemePreset[] = [
       accent: '#38bdf8',
       accentForeground: '#0a1628',
       brandPink: '#f472b6',
+    },
+  },
+  {
+    id: 'void',
+    name: 'Void',
+    colors: {
+      bg: '#000000',
+      bg2: '#050507',
+      bg3: '#0c0c0f',
+      card: '#030304',
+      cardForeground: '#b8b8c0',
+      border: '#161619',
+      foreground: '#c0c0c8',
+      muted: '#707078',
+      mutedForeground: '#505058',
+      accent: '#6366f1',
+      accentForeground: '#e0e0e8',
+      brandPink: '#c44d6c',
+    },
+    style: {
+      letterSpacing: '0.025em',
+      lineHeight: '1.65',
+      radius: '8px',
+      fontWeight: '350',
+      borderAlpha: '0.6',
     },
   },
 ];
