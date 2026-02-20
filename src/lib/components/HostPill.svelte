@@ -1,6 +1,5 @@
 <script lang="ts">
   import HostDropdown from './HostDropdown.svelte';
-  import HostsOverlay from './HostsOverlay.svelte';
   import { getActiveHost } from '$lib/state/hosts.svelte';
   import { ui } from '$lib/state/ui.svelte';
 
@@ -38,6 +37,3 @@
   {/if}
 </div>
 
-{#if ui.overlayOpen}
-  <HostsOverlay />
-{/if}
