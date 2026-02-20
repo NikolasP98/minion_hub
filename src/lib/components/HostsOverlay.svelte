@@ -58,159 +58,62 @@
   }
 </script>
 
-<div class="overlay" role="dialog" aria-modal="true" onclick={close}>
-  <div class="panel" onclick={(e) => e.stopPropagation()}>
-    <div class="panel-header">
-      <span class="panel-title">Manage Hosts</span>
-      <button class="close-btn" onclick={close} aria-label="Close">×</button>
+<div class="fixed inset-0 z-1000 bg-black/60 flex items-center justify-center" role="dialog" aria-modal="true" onclick={close}>
+  <div class="bg-bg2 border border-border rounded-xl w-[520px] max-w-[calc(100vw-40px)] max-h-[80vh] flex flex-col shadow-md" onclick={(e) => e.stopPropagation()}>
+    <div class="flex items-center justify-between px-5 pt-4 pb-[14px] border-b border-border shrink-0">
+      <span class="text-base font-bold">Manage Hosts</span>
+      <button class="bg-transparent border-none text-muted-foreground cursor-pointer text-xl leading-none px-[6px] py-[2px] rounded-sm transition-colors hover:text-foreground" onclick={close} aria-label="Close">×</button>
     </div>
-    <div class="panel-body">
+    <div class="flex-1 overflow-y-auto py-3 px-4">
       {#each hostsState.hosts as host (host.id)}
-        <div class="host-card {editingId === host.id ? 'editing' : ''}">
-          <div class="card-info">
-            <div class="card-name">
+        <div class="bg-bg3 border rounded-lg py-3 px-[14px] mb-2 flex items-start gap-3 {editingId === host.id ? 'border-accent' : 'border-border'}">
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-semibold flex items-center gap-2">
               {host.name}
               {#if host.id === hostsState.activeHostId && conn.connected}
-                <span class="badge-connected">connected</span>
+                <span class="text-[10px] font-semibold bg-success/[0.12] text-success border border-success/25 rounded-full py-[1px] px-[7px]">connected</span>
               {/if}
             </div>
-            <div class="card-url">{host.url}</div>
-            <div class="card-last">Last: {fmtTimeAgo(host.lastConnectedAt)}</div>
+            <div class="text-[11px] text-muted-foreground font-mono mt-[2px] whitespace-nowrap overflow-hidden text-ellipsis">{host.url}</div>
+            <div class="text-[10px] text-muted-foreground mt-1">Last: {fmtTimeAgo(host.lastConnectedAt)}</div>
             {#if confirmDeleteId === host.id}
-              <div class="confirm-row">
+              <div class="flex items-center gap-2 pt-[6px] text-xs text-warning">
                 Delete this host?
-                <button onclick={() => deleteHost(host.id)}>Delete</button>
-                <button class="cancel-btn" onclick={() => confirmDeleteId = null}>Cancel</button>
+                <button class="bg-destructive border-none rounded-sm text-white cursor-pointer text-[11px] font-semibold py-[3px] px-[10px]" onclick={() => deleteHost(host.id)}>Delete</button>
+                <button class="bg-transparent border border-border rounded-[5px] text-muted-foreground cursor-pointer font-[inherit] text-xs py-[6px] px-3 transition-colors hover:text-muted" onclick={() => confirmDeleteId = null}>Cancel</button>
               </div>
             {/if}
           </div>
-          <div class="card-actions">
-            <button class="card-btn" onclick={() => connectTo(host.id)}>Connect</button>
-            <button class="card-btn" onclick={() => startEdit(host)}>Edit</button>
-            <button class="card-btn danger" onclick={() => confirmDeleteId = host.id}>Delete</button>
+          <div class="flex gap-[6px] shrink-0">
+            <button class="bg-transparent border border-border rounded-[5px] text-muted-foreground cursor-pointer text-[13px] py-1 px-2 transition-all hover:border-muted hover:text-foreground" onclick={() => connectTo(host.id)}>Connect</button>
+            <button class="bg-transparent border border-border rounded-[5px] text-muted-foreground cursor-pointer text-[13px] py-1 px-2 transition-all hover:border-muted hover:text-foreground" onclick={() => startEdit(host)}>Edit</button>
+            <button class="bg-transparent border border-border rounded-[5px] text-muted-foreground cursor-pointer text-[13px] py-1 px-2 transition-all hover:border-destructive hover:text-destructive" onclick={() => confirmDeleteId = host.id}>Delete</button>
           </div>
         </div>
       {/each}
     </div>
-    <div class="hosts-form">
-      <div class="form-title">{editingId ? 'Edit Host' : 'Add Host'}</div>
-      <div class="form-fields">
-        <div class="form-field">
-          <label>Name</label>
-          <input type="text" bind:value={formName} placeholder="protopi" />
+    <div class="border-t border-border py-[14px] px-4 shrink-0">
+      <div class="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-[10px]">{editingId ? 'Edit Host' : 'Add Host'}</div>
+      <div class="grid grid-cols-2 gap-2 mb-[10px]">
+        <div class="flex flex-col gap-1">
+          <label class="text-[11px] text-muted-foreground">Name</label>
+          <input class="bg-bg3 border border-border rounded-[5px] text-foreground py-[5px] px-[9px] font-[inherit] text-xs outline-none transition-colors focus:border-accent" type="text" bind:value={formName} placeholder="protopi" />
         </div>
-        <div class="form-field">
-          <label>Token</label>
-          <input type="password" bind:value={formToken} placeholder="••••••" />
+        <div class="flex flex-col gap-1">
+          <label class="text-[11px] text-muted-foreground">Token</label>
+          <input class="bg-bg3 border border-border rounded-[5px] text-foreground py-[5px] px-[9px] font-[inherit] text-xs outline-none transition-colors focus:border-accent" type="password" bind:value={formToken} placeholder="••••••" />
         </div>
-        <div class="form-field full-width">
-          <label>WebSocket URL</label>
-          <input type="text" bind:value={formUrl} placeholder="wss://host.ts.net" />
+        <div class="flex flex-col gap-1 col-span-2">
+          <label class="text-[11px] text-muted-foreground">WebSocket URL</label>
+          <input class="bg-bg3 border border-border rounded-[5px] text-foreground py-[5px] px-[9px] font-[inherit] text-xs outline-none transition-colors focus:border-accent" type="text" bind:value={formUrl} placeholder="wss://host.ts.net" />
         </div>
       </div>
-      <div class="form-actions">
+      <div class="flex gap-2 justify-end">
         {#if editingId}
-          <button class="cancel-btn" onclick={cancelEdit}>Cancel</button>
+          <button class="bg-transparent border border-border rounded-[5px] text-muted-foreground cursor-pointer font-[inherit] text-xs py-[6px] px-3 transition-colors hover:text-muted" onclick={cancelEdit}>Cancel</button>
         {/if}
-        <button class="save-btn" onclick={saveHost}>{editingId ? 'Save' : 'Add & Connect'}</button>
+        <button class="bg-accent border-none rounded-[5px] text-white cursor-pointer font-[inherit] text-xs font-semibold py-[6px] px-4 transition-[filter] hover:brightness-115" onclick={saveHost}>{editingId ? 'Save' : 'Add & Connect'}</button>
       </div>
     </div>
   </div>
 </div>
-
-<style>
-  .overlay {
-    position: fixed; inset: 0; z-index: 1000;
-    background: rgba(0,0,0,0.6);
-    display: flex; align-items: center; justify-content: center;
-  }
-  .panel {
-    background: var(--bg2); border: 1px solid var(--border);
-    border-radius: 12px; width: 520px;
-    max-width: calc(100vw - 40px); max-height: 80vh;
-    display: flex; flex-direction: column; box-shadow: var(--shadow);
-  }
-  .panel-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 16px 20px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0;
-  }
-  .panel-title { font-size: 16px; font-weight: 700; }
-  .close-btn {
-    background: none; border: none; color: var(--text3);
-    cursor: pointer; font-size: 20px; line-height: 1;
-    padding: 2px 6px; border-radius: 4px; transition: color 0.2s;
-  }
-  .close-btn:hover { color: var(--text); }
-  .panel-body { flex: 1; overflow-y: auto; padding: 12px 16px; }
-  .host-card {
-    background: var(--bg3); border: 1px solid var(--border);
-    border-radius: 8px; padding: 12px 14px; margin-bottom: 8px;
-    display: flex; align-items: flex-start; gap: 12px;
-  }
-  .host-card.editing { border-color: var(--accent); }
-  .card-info { flex: 1; min-width: 0; }
-  .card-name {
-    font-size: 14px; font-weight: 600;
-    display: flex; align-items: center; gap: 8px;
-  }
-  .card-url {
-    font-size: 11px; color: var(--text3); font-family: monospace;
-    margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-  .card-last { font-size: 10px; color: var(--text3); margin-top: 4px; }
-  .card-actions { display: flex; gap: 6px; flex-shrink: 0; }
-  .card-btn {
-    background: none; border: 1px solid var(--border); border-radius: 5px;
-    color: var(--text3); cursor: pointer; font-size: 13px;
-    padding: 4px 8px; transition: all 0.15s;
-  }
-  .card-btn:hover { border-color: var(--text2); color: var(--text); }
-  .card-btn.danger:hover { border-color: var(--red); color: var(--red); }
-  .confirm-row {
-    display: flex; align-items: center; gap: 8px;
-    padding: 6px 0 0; font-size: 12px; color: var(--amber);
-  }
-  .confirm-row button {
-    background: var(--red); border: none; border-radius: 4px;
-    color: #fff; cursor: pointer; font-size: 11px; font-weight: 600; padding: 3px 10px;
-  }
-  .badge-connected {
-    font-size: 10px; font-weight: 600;
-    background: rgba(34,197,94,0.12); color: var(--green);
-    border: 1px solid rgba(34,197,94,0.25); border-radius: 8px; padding: 1px 7px;
-  }
-  .hosts-form {
-    border-top: 1px solid var(--border);
-    padding: 14px 16px; flex-shrink: 0;
-  }
-  .form-title {
-    font-size: 12px; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 0.6px; color: var(--text3); margin-bottom: 10px;
-  }
-  .form-fields {
-    display: grid; grid-template-columns: 1fr 1fr;
-    gap: 8px; margin-bottom: 10px;
-  }
-  .form-field { display: flex; flex-direction: column; gap: 4px; }
-  .form-field.full-width { grid-column: 1 / -1; }
-  .form-field label { font-size: 11px; color: var(--text3); }
-  .form-field input {
-    background: var(--bg3); border: 1px solid var(--border); border-radius: 5px;
-    color: var(--text); padding: 5px 9px; font-family: inherit; font-size: 12px;
-    outline: none; transition: border-color 0.2s;
-  }
-  .form-field input:focus { border-color: var(--accent); }
-  .form-actions { display: flex; gap: 8px; justify-content: flex-end; }
-  .save-btn {
-    background: var(--accent); border: none; border-radius: 5px;
-    color: #fff; cursor: pointer; font-family: inherit; font-size: 12px;
-    font-weight: 600; padding: 6px 16px; transition: filter 0.2s;
-  }
-  .save-btn:hover { filter: brightness(1.15); }
-  .cancel-btn {
-    background: none; border: 1px solid var(--border); border-radius: 5px;
-    color: var(--text3); cursor: pointer; font-family: inherit;
-    font-size: 12px; padding: 6px 12px; transition: color 0.2s;
-  }
-  .cancel-btn:hover { color: var(--text2); }
-</style>

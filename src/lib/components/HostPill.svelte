@@ -19,16 +19,16 @@
 <svelte:document onclick={() => { ui.dropdownOpen = false; }} />
 
 <div
-  class="host-pill {!activeHost ? 'add-host' : ''}"
+  class="relative bg-bg3 border border-border rounded-md text-foreground py-[5px] px-3 text-[13px] font-semibold cursor-pointer flex items-center gap-[7px] transition-colors whitespace-nowrap select-none hover:border-accent {!activeHost ? 'border-accent text-accent' : ''}"
   role="button"
   tabindex="0"
   onclick={handlePillClick}
   onkeydown={(e) => e.key === 'Enter' && handlePillClick(e as unknown as MouseEvent)}
 >
   {#if activeHost}
-    <span class="pill-dot active"></span>
+    <span class="w-[7px] h-[7px] rounded-full shrink-0 bg-success shadow-[0_0_5px_var(--color-success)]"></span>
     {activeHost.name}
-    <span class="pill-chevron">▾</span>
+    <span class="opacity-50 text-[10px]">▾</span>
   {:else}
     Add host +
   {/if}
@@ -41,32 +41,3 @@
 {#if ui.overlayOpen}
   <HostsOverlay />
 {/if}
-
-<style>
-  .host-pill {
-    position: relative;
-    background: var(--bg3);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    color: var(--text);
-    padding: 5px 12px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    transition: border-color 0.2s;
-    white-space: nowrap;
-    user-select: none;
-  }
-  .host-pill:hover { border-color: var(--accent); }
-  .host-pill.add-host { border-color: var(--accent); color: var(--accent); }
-  .pill-dot {
-    width: 7px; height: 7px;
-    border-radius: 50%; flex-shrink: 0;
-    background: var(--text3);
-  }
-  .pill-dot.active { background: var(--green); box-shadow: 0 0 5px var(--green); }
-  .pill-chevron { opacity: 0.5; font-size: 10px; }
-</style>

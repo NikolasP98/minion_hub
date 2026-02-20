@@ -22,40 +22,21 @@
 </script>
 
 {#if conn.connected && gw.hello}
-  <div class="gw-info">
+  <div class="flex items-center gap-[6px] text-xs text-muted">
     {#if gw.hello.server.version}
-      <span class="gw-tag">{gw.hello.server.version}</span>
+      <span class="bg-bg3 border border-border rounded-sm py-[2px] px-2 text-[11px] whitespace-nowrap">{gw.hello.server.version}</span>
     {/if}
     {#if uptimeMs !== null}
-      <span class="gw-tag ok">{fmtUptime(uptimeMs)}</span>
+      <span class="bg-bg3 border border-success rounded-sm py-[2px] px-2 text-[11px] whitespace-nowrap text-success">{fmtUptime(uptimeMs)}</span>
     {/if}
     {#if deviceCount > 0}
-      <span class="gw-tag">{deviceCount} device{deviceCount !== 1 ? 's' : ''}</span>
+      <span class="bg-bg3 border border-border rounded-sm py-[2px] px-2 text-[11px] whitespace-nowrap">{deviceCount} device{deviceCount !== 1 ? 's' : ''}</span>
     {/if}
     {#if channels?.active}
-      <span class="gw-tag">{channels.active} ch</span>
+      <span class="bg-bg3 border border-border rounded-sm py-[2px] px-2 text-[11px] whitespace-nowrap">{channels.active} ch</span>
     {/if}
     {#if cronJobs?.length}
-      <span class="gw-tag">{cronJobs.length} cron</span>
+      <span class="bg-bg3 border border-border rounded-sm py-[2px] px-2 text-[11px] whitespace-nowrap">{cronJobs.length} cron</span>
     {/if}
   </div>
 {/if}
-
-<style>
-  .gw-info {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12px;
-    color: var(--text2);
-  }
-  .gw-tag {
-    background: var(--bg3);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 2px 8px;
-    font-size: 11px;
-    white-space: nowrap;
-  }
-  .gw-tag.ok { border-color: var(--green); color: var(--green); }
-</style>
