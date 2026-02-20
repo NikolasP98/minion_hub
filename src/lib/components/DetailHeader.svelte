@@ -27,48 +27,23 @@
   );
 </script>
 
-<div class="detail-header">
-  <span class="agent-name">{agent.emoji ?? '🤖'} {agent.name ?? agentId}</span>
-  <div class="status-summary">
+<div class="shrink-0 px-5 py-3.5 border-b border-border bg-bg2 flex items-center gap-3 flex-wrap">
+  <span class="text-[17px] font-bold text-foreground">{agent.emoji ?? '🤖'} {agent.name ?? agentId}</span>
+  <div class="flex gap-1.5 items-center ml-auto">
     {#if runningCount > 0}
-      <span class="badge badge-running">{runningCount} running</span>
+      <span class="px-2.5 py-0.5 rounded-xl text-[11px] font-semibold bg-success/12 text-status-running border border-success/25">
+        {runningCount} running
+      </span>
     {/if}
     {#if thinkingCount > 0}
-      <span class="badge badge-thinking">{thinkingCount} thinking</span>
+      <span class="px-2.5 py-0.5 rounded-xl text-[11px] font-semibold bg-purple/12 text-status-thinking border border-purple/25">
+        {thinkingCount} thinking
+      </span>
     {/if}
     {#if runningCount === 0 && thinkingCount === 0}
-      <span class="badge badge-idle">idle</span>
+      <span class="px-2.5 py-0.5 rounded-xl text-[11px] font-semibold bg-bg3 text-muted-foreground border border-border">
+        idle
+      </span>
     {/if}
   </div>
 </div>
-
-<style>
-  .detail-header {
-    flex-shrink: 0;
-    padding: 13px 20px;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg2);
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-  .agent-name { font-size: 17px; font-weight: 700; color: var(--text); }
-  .status-summary { display: flex; gap: 6px; align-items: center; margin-left: auto; }
-  .badge {
-    padding: 2px 9px; border-radius: 12px;
-    font-size: 11px; font-weight: 600;
-  }
-  .badge-running {
-    background: rgba(34,197,94,0.12); color: var(--status-running);
-    border: 1px solid rgba(34,197,94,0.25);
-  }
-  .badge-thinking {
-    background: rgba(168,85,247,0.12); color: var(--status-thinking);
-    border: 1px solid rgba(168,85,247,0.25);
-  }
-  .badge-idle {
-    background: var(--bg3); color: var(--text3);
-    border: 1px solid var(--border);
-  }
-</style>

@@ -10,7 +10,7 @@
   let { agentId, agent }: { agentId: string; agent: Agent } = $props();
 </script>
 
-<div class="agent-detail">
+<div class="flex-1 min-h-0 flex flex-col overflow-hidden">
   <DetailHeader {agentId} {agent} />
   <SessionDropdown {agentId} serverId={ui.selectedServerId} />
   {#if ui.selectedSessionKey}
@@ -21,13 +21,3 @@
   {/if}
   <ChatPanel {agentId} />
 </div>
-
-<style>
-  .agent-detail {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-</style>

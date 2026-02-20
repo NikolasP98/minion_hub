@@ -24,54 +24,30 @@
   );
 
   const statusText = $derived.by(() => {
-    if (act?.working) return 'Working…';
+    if (act?.working) return 'Working...';
     if (activeSessions.length > 0) return `${activeSessions.length} active`;
-    if (chat?.loading) return 'Loading…';
+    if (chat?.loading) return 'Loading...';
     return 'Idle';
   });
+
+  const hasActive = $derived(act?.working || activeSessions.length > 0);
 </script>
 
 <div
-  class="agent-row {selected ? 'selected' : ''}"
-  style="--row-accent: {accentColor}"
+  class="flex flex-col px-3.5 py-2.5 border-l-3 border-b border-b-[rgba(42,53,72,0.5)] cursor-pointer transition-[background] duration-[120ms] hover:bg-white/[0.03] {selected ? 'bg-bg3' : 'border-l-transparent'}"
+  style:border-left-color={selected ? accentColor : undefined}
   role="button"
   tabindex="0"
   {onclick}
   onkeydown={(e) => e.key === 'Enter' && onclick()}
 >
-  <div class="row-top">
-    <span class="agent-name">{agent.emoji ?? '🤖'} {agent.name ?? agent.id}</span>
+  <div class="flex items-center gap-1.5">
+    <span class="text-[13px] font-semibold text-foreground">{agent.emoji ?? '🤖'} {agent.name ?? agent.id}</span>
   </div>
-  <div class="row-status {act?.working || activeSessions.length > 0 ? 'has-active' : ''}">
+  <div class="text-[11px] mt-0.5 {hasActive ? 'text-status-running' : 'text-muted-foreground'}">
     {statusText}
   </div>
-  <div class="row-spark">
+  <div class="mt-1.5 h-7">
     <Sparkline bins={act?.sparkBins ?? new Array(30).fill(0)} color={accentColor} />
   </div>
 </div>
-
-<style>
-  .agent-row {
-    display: flex;
-    flex-direction: column;
-    padding: 10px 14px;
-    border-left: 3px solid transparent;
-    border-bottom: 1px solid rgba(42, 53, 72, 0.5);
-    cursor: pointer;
-    transition: background 0.12s;
-  }
-  .agent-row:hover { background: rgba(255, 255, 255, 0.03); }
-  .agent-row.selected {
-    background: var(--bg3);
-    border-left-color: var(--row-accent, var(--accent));
-  }
-  .row-top { display: flex; align-items: center; gap: 6px; }
-  .agent-name { font-size: 13px; font-weight: 600; color: var(--text); }
-  .row-status {
-    font-size: 11px;
-    color: var(--text3);
-    margin-top: 2px;
-  }
-  .row-status.has-active { color: var(--status-running); }
-  .row-spark { margin-top: 5px; height: 28px; }
-</style>
