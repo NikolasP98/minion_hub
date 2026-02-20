@@ -9,8 +9,10 @@
   );
 </script>
 
-<header class="shrink-0 relative z-100 bg-bg/95 backdrop-blur-sm border-b border-border px-4.5 py-2.5 flex items-center gap-2.5 overflow-hidden">
-  <ScanLine speed={12} opacity={0.02} />
+<header class="shrink-0 relative z-100 bg-bg/95 backdrop-blur-sm border-b border-border px-4.5 py-2.5 flex items-center gap-2.5">
+  <div class="absolute inset-0 overflow-hidden pointer-events-none">
+    <ScanLine speed={12} opacity={0.02} />
+  </div>
   <HostPill />
 
   <StatusDot status={dotStatus} size="md" />
@@ -23,5 +25,6 @@
 
   <a href="/reliability" class="text-xs text-muted no-underline px-3 py-1 rounded-full border border-border transition-all duration-150 hover:bg-bg3 hover:text-foreground">Reliability</a>
   <a href="/sessions" class="text-xs text-muted no-underline px-3 py-1 rounded-full border border-border transition-all duration-150 hover:bg-bg3 hover:text-foreground">Sessions</a>
+  <a href="/config" class="text-xs text-muted no-underline px-3 py-1 rounded-full border border-border transition-all duration-150 hover:bg-bg3 hover:text-foreground">Config</a>
   <a href="/settings" class="text-xs text-muted no-underline px-3 py-1 rounded-full border border-border transition-all duration-150 hover:bg-bg3 hover:text-foreground">Settings</a>
 </header>

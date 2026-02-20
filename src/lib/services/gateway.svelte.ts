@@ -100,13 +100,20 @@ export function wsDisconnect() {
   conn.backoffMs = 800;
 }
 
-export function sendRequest(method: string, params?: unknown): Promise<unknown> {
+export function sendRequest(method: string, params?: unknown, timeoutMs = 15000): Promise<unknown> {
   return new Promise((resolve, reject) => {
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       return reject(new Error('not connected'));
     }
     const id = uuid();
-    pending.set(id, { resolve, reject });
+    const timer = setTimeout(() => {
+      pending.delete(id);
+      reject(new Error(`request '${method}' timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+    pending.set(id, {
+      resolve: (v) => { clearTimeout(timer); resolve(v); },
+      reject: (e) => { clearTimeout(timer); reject(e); },
+    });
     ws.send(JSON.stringify({ type: 'req', id, method, params }));
   });
 }
