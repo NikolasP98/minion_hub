@@ -29,58 +29,21 @@
   });
 </script>
 
-<div class="mission-bar">
+<div class="shrink-0 px-5 py-1.5 border-b border-border flex items-center gap-2">
   {#if missions.length === 0}
-    <span class="no-missions">No missions</span>
+    <span class="text-[11px] text-muted-foreground opacity-60">No missions</span>
   {:else}
-    <label class="mission-label" for="mission-select">Mission</label>
-    <select id="mission-select" class="mission-select" value={ui.selectedMissionId ?? ''} onchange={onSelect}>
+    <label class="text-[10px] font-bold uppercase tracking-wide text-muted-foreground" for="mission-select">Mission</label>
+    <select
+      id="mission-select"
+      class="flex-1 min-w-0 bg-bg3 border border-border rounded-sm text-foreground text-[11px] font-mono px-1.5 py-[3px] outline-none focus:border-accent"
+      value={ui.selectedMissionId ?? ''}
+      onchange={onSelect}
+    >
       {#each missions as m (m.id)}
         <option value={m.id}>{m.title}</option>
       {/each}
     </select>
-    <span class="mission-status">{missions.find(m => m.id === ui.selectedMissionId)?.status ?? ''}</span>
+    <span class="text-[10px] text-accent uppercase tracking-normal">{missions.find(m => m.id === ui.selectedMissionId)?.status ?? ''}</span>
   {/if}
 </div>
-
-<style>
-  .mission-bar {
-    flex-shrink: 0;
-    padding: 6px 20px;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .mission-label {
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-    color: var(--text3);
-  }
-  .mission-select {
-    flex: 1;
-    min-width: 0;
-    background: var(--bg3);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    color: var(--text);
-    font-size: 11px;
-    font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
-    padding: 3px 6px;
-    outline: none;
-  }
-  .mission-select:focus { border-color: var(--accent); }
-  .mission-status {
-    font-size: 10px;
-    color: var(--accent);
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-  }
-  .no-missions {
-    font-size: 11px;
-    color: var(--text3);
-    opacity: 0.6;
-  }
-</style>

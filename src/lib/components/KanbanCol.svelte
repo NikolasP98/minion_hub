@@ -19,17 +19,24 @@
     const taskId = e.dataTransfer?.getData('text/plain');
     if (taskId) onDropTask(taskId);
   }
+
+  const headerStyle: Record<string, string> = {
+    backlog: 'text-muted-foreground bg-[rgba(100,116,139,0.04)]',
+    todo: 'text-[#3b82f6] bg-[rgba(59,130,246,0.04)]',
+    in_progress: 'text-status-thinking bg-[rgba(168,85,247,0.04)]',
+    done: 'text-status-running bg-[rgba(34,197,94,0.04)]',
+  };
 </script>
 
-<div class="kanban-col">
-  <div class="col-header {status}">
+<div class="border-r border-border last:border-r-0">
+  <div class="px-[10px] py-1.5 text-[10px] font-bold uppercase tracking-wide border-b border-border flex justify-between items-center {headerStyle[status]}">
     <span>{label}</span>
-    <span class="kcount">{tasks.length}</span>
+    <span class="text-[10px] font-normal opacity-65">{tasks.length}</span>
   </div>
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="col-body" ondragover={handleDragOver} ondrop={handleDrop}>
+  <div class="p-1.5 min-h-[50px] max-h-[190px] overflow-y-auto [scrollbar-width:thin] [scrollbar-color:var(--color-border)_transparent]" ondragover={handleDragOver} ondrop={handleDrop}>
     {#if tasks.length === 0}
-      <div class="col-empty">—</div>
+      <div class="text-muted-foreground text-[10px] text-center px-1 py-[10px] opacity-50">—</div>
     {:else}
       {#each tasks as task (task.id)}
         <TaskCard {task} />
@@ -37,28 +44,3 @@
     {/if}
   </div>
 </div>
-
-<style>
-  .kanban-col {
-    border-right: 1px solid var(--border);
-  }
-  .kanban-col:last-child { border-right: none; }
-  .col-header {
-    padding: 6px 10px;
-    font-size: 10px; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.6px;
-    border-bottom: 1px solid var(--border);
-    display: flex; justify-content: space-between; align-items: center;
-  }
-  .col-header.backlog     { color: var(--text3);            background: rgba(100,116,139,0.04); }
-  .col-header.todo        { color: #3b82f6;                 background: rgba(59,130,246,0.04); }
-  .col-header.in_progress { color: var(--status-thinking);  background: rgba(168,85,247,0.04); }
-  .col-header.done        { color: var(--status-running);   background: rgba(34,197,94,0.04); }
-  .kcount { font-size: 10px; font-weight: 400; opacity: 0.65; }
-  .col-body {
-    padding: 6px; min-height: 50px; max-height: 190px;
-    overflow-y: auto; scrollbar-width: thin;
-    scrollbar-color: var(--border) transparent;
-  }
-  .col-empty { color: var(--text3); font-size: 10px; text-align: center; padding: 10px 4px; opacity: 0.5; }
-</style>

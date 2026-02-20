@@ -38,7 +38,7 @@
   ];
 </script>
 
-<div class="kanban">
+<div class="shrink-0 grid grid-cols-4 border-b border-border">
   {#each cols as col (col.key)}
     <KanbanCol
       status={col.key}
@@ -48,12 +48,3 @@
     />
   {/each}
 </div>
-
-<style>
-  .kanban {
-    flex-shrink: 0;
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    border-bottom: 1px solid var(--border);
-  }
-</style>

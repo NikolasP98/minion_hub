@@ -7,63 +7,26 @@
     e.dataTransfer?.setData('text/plain', task.id);
     e.dataTransfer!.effectAllowed = 'move';
   }
+
+  const dotColor: Record<TaskData['status'], string> = {
+    backlog: 'bg-muted-foreground',
+    todo: 'bg-[#3b82f6]',
+    in_progress: 'bg-status-thinking animate-[dot-pulse_0.8s_ease_infinite]',
+    done: 'bg-status-running',
+  };
 </script>
 
 <div
-  class="task-card"
+  class="bg-bg3 border border-border rounded-[5px] px-2 py-[7px] mb-[5px] text-[11px] cursor-grab transition-[border-color,opacity] duration-200 hover:border-accent active:cursor-grabbing active:opacity-70"
   draggable="true"
   ondragstart={onDragStart}
   role="listitem"
 >
-  <div class="task-title-row">
-    <span class="task-dot {task.status}"></span>
-    <span class="task-title">{task.title}</span>
+  <div class="flex items-center gap-[5px]">
+    <span class="w-1.5 h-1.5 rounded-full shrink-0 {dotColor[task.status]}"></span>
+    <span class="text-foreground font-medium whitespace-nowrap overflow-hidden text-ellipsis flex-1 min-w-0">{task.title}</span>
   </div>
   {#if task.description}
-    <div class="task-desc">{task.description}</div>
+    <div class="text-muted text-[10px] mt-[2px] whitespace-nowrap overflow-hidden text-ellipsis">{task.description}</div>
   {/if}
 </div>
-
-<style>
-  .task-card {
-    background: var(--bg3);
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    padding: 7px 8px;
-    margin-bottom: 5px;
-    font-size: 11px;
-    cursor: grab;
-    transition: border-color 0.2s, opacity 0.2s;
-  }
-  .task-card:hover { border-color: var(--accent); }
-  .task-card:active { cursor: grabbing; opacity: 0.7; }
-  .task-title-row { display: flex; align-items: center; gap: 5px; }
-  .task-dot {
-    width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
-  }
-  .task-dot.backlog     { background: var(--text3); }
-  .task-dot.todo        { background: #3b82f6; }
-  .task-dot.in_progress { background: var(--status-thinking); animation: dot-pulse 0.8s ease infinite; }
-  .task-dot.done        { background: var(--status-running); }
-  @keyframes dot-pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.25; }
-  }
-  .task-title {
-    color: var(--text);
-    font-weight: 500;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    flex: 1;
-    min-width: 0;
-  }
-  .task-desc {
-    color: var(--text2);
-    font-size: 10px;
-    margin-top: 2px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-</style>
