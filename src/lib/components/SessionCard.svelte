@@ -12,52 +12,24 @@
   });
 </script>
 
-<div class="sess-card">
-  <div class="sess-key-row">
-    <span class="sess-dot {status}"></span>
-    <span class="sess-key">{truncKey(s.sessionKey)}</span>
+<div class="bg-bg3 border border-border rounded-[5px] px-2 py-[7px] mb-[5px] text-[11px] font-mono transition-colors hover:border-accent">
+  <div class="flex items-center gap-[5px]">
+    <span
+      class="w-1.5 h-1.5 rounded-full shrink-0
+        {status === 'running'  ? 'bg-status-running shadow-[0_0_5px_var(--color-status-running)]' : ''}
+        {status === 'thinking' ? 'bg-status-thinking animate-dot-pulse' : ''}
+        {status === 'idle'     ? 'bg-status-idle' : ''}
+        {status === 'aborted'  ? 'bg-status-aborted' : ''}"
+    ></span>
+    <span class="text-foreground font-medium whitespace-nowrap overflow-hidden text-ellipsis flex-1 min-w-0">{truncKey(s.sessionKey)}</span>
   </div>
   {#if s.label}
-    <div class="sess-label">{s.label}</div>
+    <div class="text-muted text-[10px] mt-[2px] whitespace-nowrap overflow-hidden text-ellipsis">{s.label}</div>
   {/if}
-  <div class="sess-meta">
+  <div class="text-muted-foreground mt-[3px] flex gap-1.5 items-center">
     {#if s.model}
-      <span class="sess-model">{s.model}</span>
+      <span class="text-accent text-[10px]">{s.model}</span>
     {/if}
-    <span class="sess-time">{fmtTimeAgo(s.lastActiveAt ?? s.createdAt)}</span>
+    <span class="text-[10px]">{fmtTimeAgo(s.lastActiveAt ?? s.createdAt)}</span>
   </div>
 </div>
-
-<style>
-  .sess-card {
-    background: var(--bg3); border: 1px solid var(--border);
-    border-radius: 5px; padding: 7px 8px; margin-bottom: 5px;
-    font-size: 11px;
-    font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
-    transition: border-color 0.2s;
-  }
-  .sess-card:hover { border-color: var(--accent); }
-  .sess-key-row { display: flex; align-items: center; gap: 5px; }
-  .sess-dot {
-    width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
-  }
-  .sess-dot.running  { background: var(--status-running); box-shadow: 0 0 5px var(--status-running); }
-  .sess-dot.thinking { background: var(--status-thinking); animation: dot-pulse 0.8s ease infinite; }
-  .sess-dot.idle     { background: var(--status-idle); }
-  .sess-dot.aborted  { background: var(--status-aborted); }
-  @keyframes dot-pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.25; }
-  }
-  .sess-key {
-    color: var(--text); font-weight: 500;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0;
-  }
-  .sess-label {
-    color: var(--text2); font-size: 10px; margin-top: 2px;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-  .sess-meta { color: var(--text3); margin-top: 3px; display: flex; gap: 6px; align-items: center; }
-  .sess-model { color: var(--accent); font-size: 10px; }
-  .sess-time  { font-size: 10px; }
-</style>

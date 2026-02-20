@@ -69,14 +69,14 @@
   );
 </script>
 
-<div class="page">
+<div class="flex flex-col h-screen overflow-hidden">
   <Topbar />
-  <div class="sessions-app" style="--sessions-left: 300px">
+  <div class="flex-1 min-h-0 flex overflow-hidden">
     <!-- Left panel: session list -->
-    <div class="left-panel">
+    <div class="w-[300px] shrink-0 border-r border-border flex flex-col overflow-hidden relative">
       {#if loadingSessions}
-        <div class="loading-bar">
-          <div class="loading-bar-inner"></div>
+        <div class="absolute top-0 left-0 right-0 h-[2px] bg-border z-10 overflow-hidden">
+          <div class="h-full w-[40%] bg-accent rounded-sm animate-loading-slide"></div>
         </div>
       {/if}
       <SessionsList
@@ -87,7 +87,7 @@
     </div>
 
     <!-- Right panel: session viewer -->
-    <div class="right-panel">
+    <div class="flex-1 min-w-0 flex flex-col overflow-hidden">
       <SessionViewer
         serverId={hostsState.activeHostId}
         sessionKey={selectedKey}
@@ -96,59 +96,3 @@
     </div>
   </div>
 </div>
-
-<style>
-  .page {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    overflow: hidden;
-  }
-
-  .sessions-app {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    overflow: hidden;
-  }
-
-  .left-panel {
-    width: var(--sessions-left, 300px);
-    flex-shrink: 0;
-    border-right: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    position: relative;
-  }
-
-  .right-panel {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-
-  .loading-bar {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: var(--border);
-    z-index: 10;
-    overflow: hidden;
-  }
-  .loading-bar-inner {
-    height: 100%;
-    width: 40%;
-    background: var(--accent);
-    border-radius: 2px;
-    animation: loading-slide 1.2s ease-in-out infinite;
-  }
-  @keyframes loading-slide {
-    0%   { transform: translateX(-100%); }
-    100% { transform: translateX(350%); }
-  }
-</style>

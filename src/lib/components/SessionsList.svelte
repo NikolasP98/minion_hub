@@ -84,16 +84,16 @@
   });
 </script>
 
-<div class="sessions-list">
-  <div class="list-header">
+<div class="flex flex-col h-full overflow-hidden bg-bg">
+  <div class="shrink-0 flex flex-col gap-1.5 p-2.5 px-3 border-b border-border">
     <input
-      class="search-input"
+      class="w-full box-border bg-bg2 border border-border rounded-md text-foreground px-2.5 py-1.5 font-inherit text-xs outline-none focus:border-accent placeholder:text-muted"
       type="search"
-      placeholder="Search sessions…"
+      placeholder="Search sessions..."
       bind:value={search}
     />
     {#if uniqueAgents.length > 1}
-      <select class="agent-select" bind:value={agentFilter}>
+      <select class="w-full box-border bg-bg2 border border-border rounded-md text-foreground px-2 py-[5px] font-inherit text-[11px] outline-none cursor-pointer focus:border-accent" bind:value={agentFilter}>
         <option value="">All agents</option>
         {#each uniqueAgents as aid (aid)}
           <option value={aid}>{aid}</option>
@@ -102,26 +102,31 @@
     {/if}
   </div>
 
-  <div class="list-body">
+  <div class="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-color-border">
     {#if filtered.length === 0}
-      <div class="empty">No sessions found.</div>
+      <div class="text-muted text-xs text-center py-6 px-4">No sessions found.</div>
     {:else if multiAgent}
       {#each [...grouped.entries()] as [agentId, rows] (agentId)}
-        <div class="agent-group">
-          <div class="group-header">{agentId}</div>
+        <div class="flex flex-col">
+          <div class="text-[10px] font-bold tracking-[0.08em] uppercase text-muted py-2 px-3 pb-1 border-b border-border bg-bg2 sticky top-0 z-[1]">{agentId}</div>
           {#each rows as s (s.sessionKey)}
             {@const color = statusColor(s.status)}
             <button
-              class="session-row {selectedKey === s.sessionKey ? 'selected' : ''}"
+              class="flex flex-col gap-[3px] w-full py-[9px] px-3 bg-transparent border-0 border-b border-b-white/[0.04] border-l-3 border-l-transparent text-foreground cursor-pointer text-left transition-colors duration-100 hover:bg-white/[0.03] {selectedKey === s.sessionKey ? '!bg-bg3 !border-l-accent' : ''}"
               onclick={() => onSelect(s.sessionKey)}
             >
-              <div class="row-main">
-                <span class="session-name">{getDisplayName(s)}</span>
-                <span class="status-badge {color}"></span>
+              <div class="flex items-center justify-between gap-1.5">
+                <span class="text-xs font-semibold text-foreground overflow-hidden text-ellipsis whitespace-nowrap flex-1 min-w-0">{getDisplayName(s)}</span>
+                <span
+                  class="shrink-0 w-2 h-2 rounded-full
+                    {color === 'green' ? 'bg-success shadow-[0_0_5px_var(--color-success)]' : ''}
+                    {color === 'amber' ? 'bg-warning' : ''}
+                    {color === 'grey'  ? 'bg-[#475569]' : ''}"
+                ></span>
               </div>
-              <div class="row-meta">
-                <span class="session-key">{s.sessionKey}</span>
-                <span class="rel-time">{relTime(s.updatedAt)}</span>
+              <div class="flex items-center justify-between gap-1.5">
+                <span class="font-mono text-[10px] text-muted overflow-hidden text-ellipsis whitespace-nowrap flex-1 min-w-0">{s.sessionKey}</span>
+                <span class="text-[10px] text-muted whitespace-nowrap shrink-0">{relTime(s.updatedAt)}</span>
               </div>
             </button>
           {/each}
@@ -131,187 +136,24 @@
       {#each filtered as s (s.sessionKey)}
         {@const color = statusColor(s.status)}
         <button
-          class="session-row {selectedKey === s.sessionKey ? 'selected' : ''}"
+          class="flex flex-col gap-[3px] w-full py-[9px] px-3 bg-transparent border-0 border-b border-b-white/[0.04] border-l-3 border-l-transparent text-foreground cursor-pointer text-left transition-colors duration-100 hover:bg-white/[0.03] {selectedKey === s.sessionKey ? '!bg-bg3 !border-l-accent' : ''}"
           onclick={() => onSelect(s.sessionKey)}
         >
-          <div class="row-main">
-            <span class="session-name">{getDisplayName(s)}</span>
-            <span class="status-badge {color}"></span>
+          <div class="flex items-center justify-between gap-1.5">
+            <span class="text-xs font-semibold text-foreground overflow-hidden text-ellipsis whitespace-nowrap flex-1 min-w-0">{getDisplayName(s)}</span>
+            <span
+              class="shrink-0 w-2 h-2 rounded-full
+                {color === 'green' ? 'bg-success shadow-[0_0_5px_var(--color-success)]' : ''}
+                {color === 'amber' ? 'bg-warning' : ''}
+                {color === 'grey'  ? 'bg-[#475569]' : ''}"
+            ></span>
           </div>
-          <div class="row-meta">
-            <span class="agent-chip">{s.agentId}</span>
-            <span class="rel-time">{relTime(s.updatedAt)}</span>
+          <div class="flex items-center justify-between gap-1.5">
+            <span class="text-[10px] font-semibold text-accent bg-accent/12 rounded-[10px] px-[7px] py-[1px] whitespace-nowrap shrink-0">{s.agentId}</span>
+            <span class="text-[10px] text-muted whitespace-nowrap shrink-0">{relTime(s.updatedAt)}</span>
           </div>
         </button>
       {/each}
     {/if}
   </div>
 </div>
-
-<style>
-  .sessions-list {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    overflow: hidden;
-    background: var(--bg);
-  }
-
-  .list-header {
-    flex-shrink: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: 10px 12px;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .search-input {
-    width: 100%;
-    box-sizing: border-box;
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    color: var(--text);
-    padding: 6px 10px;
-    font-family: inherit;
-    font-size: 12px;
-    outline: none;
-  }
-  .search-input:focus { border-color: var(--accent); }
-  .search-input::placeholder { color: var(--text2); }
-
-  .agent-select {
-    width: 100%;
-    box-sizing: border-box;
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    color: var(--text);
-    padding: 5px 8px;
-    font-family: inherit;
-    font-size: 11px;
-    outline: none;
-    cursor: pointer;
-  }
-  .agent-select:focus { border-color: var(--accent); }
-
-  .list-body {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    scrollbar-width: thin;
-    scrollbar-color: var(--border) transparent;
-  }
-
-  .empty {
-    color: var(--text2);
-    font-size: 12px;
-    text-align: center;
-    padding: 24px 16px;
-  }
-
-  .agent-group {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .group-header {
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--text2);
-    padding: 8px 12px 4px;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg2);
-    position: sticky;
-    top: 0;
-    z-index: 1;
-  }
-
-  .session-row {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    width: 100%;
-    padding: 9px 12px;
-    background: none;
-    border: none;
-    border-bottom: 1px solid rgba(42, 53, 72, 0.4);
-    border-left: 3px solid transparent;
-    color: var(--text);
-    cursor: pointer;
-    text-align: left;
-    transition: background 0.1s;
-  }
-  .session-row:hover { background: rgba(255, 255, 255, 0.03); }
-  .session-row.selected {
-    background: var(--bg3);
-    border-left-color: var(--accent);
-  }
-
-  .row-main {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 6px;
-  }
-
-  .session-name {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    flex: 1;
-    min-width: 0;
-  }
-
-  .status-badge {
-    flex-shrink: 0;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-  }
-  .status-badge.green  { background: var(--green); box-shadow: 0 0 5px var(--green); }
-  .status-badge.amber  { background: var(--amber); }
-  .status-badge.grey   { background: #475569; }
-
-  .row-meta {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 6px;
-  }
-
-  .session-key {
-    font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
-    font-size: 10px;
-    color: var(--text2);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    flex: 1;
-    min-width: 0;
-  }
-
-  .agent-chip {
-    font-size: 10px;
-    font-weight: 600;
-    color: var(--accent);
-    background: rgba(99, 102, 241, 0.12);
-    border-radius: 10px;
-    padding: 1px 7px;
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-
-  .rel-time {
-    font-size: 10px;
-    color: var(--text2);
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-</style>

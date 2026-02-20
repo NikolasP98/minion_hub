@@ -172,53 +172,63 @@
   }
 </script>
 
-<div class="viewer">
+<div class="flex flex-col h-full overflow-hidden bg-bg">
   {#if !sessionKey}
-    <div class="empty-state">
-      <span class="empty-icon">⬅</span>
+    <div class="flex-1 flex flex-col items-center justify-center gap-2.5 text-muted text-[13px]">
+      <span class="text-[28px] opacity-40">{'\u2B05'}</span>
       <span>Select a session to view transcript</span>
     </div>
   {:else}
     <!-- Session header -->
-    <div class="viewer-header">
-      <div class="header-top">
-        <span class="header-name">{displayName}</span>
-        <span class="status-badge {statusColor(session?.status)}">
+    <div class="shrink-0 px-4 py-2.5 border-b border-border bg-bg2 flex flex-col gap-[5px]">
+      <div class="flex items-center gap-2">
+        <span class="text-sm font-semibold text-foreground overflow-hidden text-ellipsis whitespace-nowrap flex-1 min-w-0">{displayName}</span>
+        <span
+          class="text-[10px] font-bold uppercase tracking-[0.06em] px-2 py-[2px] rounded-[10px] shrink-0
+            {statusColor(session?.status) === 'green' ? 'bg-success/15 text-success' : ''}
+            {statusColor(session?.status) === 'amber' ? 'bg-warning/15 text-warning' : ''}
+            {statusColor(session?.status) === 'grey'  ? 'bg-[rgba(71,85,105,0.2)] text-[#94a3b8]' : ''}"
+        >
           {statusLabel(session?.status)}
         </span>
       </div>
-      <div class="header-meta">
+      <div class="flex items-center gap-2 flex-wrap">
         {#if session?.agentId}
-          <span class="agent-chip">{session.agentId}</span>
+          <span class="text-[10px] font-semibold text-accent bg-accent/12 rounded-[10px] px-[7px] py-[1px] whitespace-nowrap">{session.agentId}</span>
         {/if}
-        <span class="sk-mono">{sessionKey}</span>
+        <span class="font-mono text-[10px] text-muted overflow-hidden text-ellipsis whitespace-nowrap flex-1 min-w-0">{sessionKey}</span>
         {#if session?.updatedAt}
-          <span class="rel-time">{relTime(session.updatedAt)}</span>
+          <span class="text-[10px] text-muted whitespace-nowrap">{relTime(session.updatedAt)}</span>
         {/if}
         {#if totalTokens !== null}
-          <span class="tokens">{totalTokens.toLocaleString()} tokens</span>
+          <span class="text-[10px] text-muted whitespace-nowrap px-1.5 py-[1px] bg-bg3 rounded-lg border border-border">{totalTokens.toLocaleString()} tokens</span>
         {/if}
       </div>
     </div>
 
     <!-- Messages scroll area -->
-    <div class="messages" bind:this={scrollEl}>
+    <div class="flex-1 min-h-0 overflow-y-auto p-3 px-4 flex flex-col gap-2 scrollbar-thin scrollbar-color-border" bind:this={scrollEl}>
       {#if loading}
-        <div class="center-state">
-          <div class="spinner"></div>
-          <span>Loading transcript…</span>
+        <div class="flex-1 flex flex-col items-center justify-center gap-2.5 text-muted text-xs">
+          <div class="w-[22px] h-[22px] border-2 border-border border-t-accent rounded-full animate-spin"></div>
+          <span>Loading transcript...</span>
         </div>
       {:else if error}
-        <div class="center-state error-state">
+        <div class="flex-1 flex flex-col items-center justify-center gap-2.5 text-destructive text-xs">
           <span>Error: {error}</span>
         </div>
       {:else if messages.length === 0}
-        <div class="center-state">
+        <div class="flex-1 flex flex-col items-center justify-center gap-2.5 text-muted text-xs">
           <span>No messages in this session.</span>
         </div>
       {:else}
         {#each messages as msg (msg.id)}
-          <div class="message {msg.role === 'user' ? 'user' : 'assistant'}">
+          <div
+            class="max-w-[82%] px-3 py-2 rounded-lg font-mono text-xs leading-[1.55] break-words whitespace-pre-wrap
+              {msg.role === 'user'
+                ? 'self-end bg-brand-pink text-white rounded-br-[3px]'
+                : 'self-start bg-bg3 text-foreground rounded-bl-[3px] border border-border'}"
+          >
             {msg.content}
           </div>
         {/each}
@@ -226,177 +236,3 @@
     </div>
   {/if}
 </div>
-
-<style>
-  .viewer {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    overflow: hidden;
-    background: var(--bg);
-  }
-
-  /* ── Empty state (no session selected) ── */
-  .empty-state {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    color: var(--text2);
-    font-size: 13px;
-  }
-  .empty-icon {
-    font-size: 28px;
-    opacity: 0.4;
-  }
-
-  /* ── Header ── */
-  .viewer-header {
-    flex-shrink: 0;
-    padding: 10px 16px;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg2);
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-  }
-
-  .header-top {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .header-name {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    flex: 1;
-    min-width: 0;
-  }
-
-  .status-badge {
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    padding: 2px 8px;
-    border-radius: 10px;
-    flex-shrink: 0;
-  }
-  .status-badge.green { background: rgba(34,197,94,0.15); color: var(--green); }
-  .status-badge.amber { background: rgba(251,191,36,0.15); color: var(--amber); }
-  .status-badge.grey  { background: rgba(71,85,105,0.2);  color: #94a3b8; }
-
-  .header-meta {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-
-  .agent-chip {
-    font-size: 10px;
-    font-weight: 600;
-    color: var(--accent);
-    background: rgba(99,102,241,0.12);
-    border-radius: 10px;
-    padding: 1px 7px;
-    white-space: nowrap;
-  }
-
-  .sk-mono {
-    font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
-    font-size: 10px;
-    color: var(--text2);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    flex: 1;
-    min-width: 0;
-  }
-
-  .rel-time {
-    font-size: 10px;
-    color: var(--text2);
-    white-space: nowrap;
-  }
-
-  .tokens {
-    font-size: 10px;
-    color: var(--text2);
-    white-space: nowrap;
-    padding: 1px 6px;
-    background: var(--bg3);
-    border-radius: 8px;
-    border: 1px solid var(--border);
-  }
-
-  /* ── Messages ── */
-  .messages {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    padding: 12px 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    scrollbar-width: thin;
-    scrollbar-color: var(--border) transparent;
-  }
-
-  .center-state {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    color: var(--text2);
-    font-size: 12px;
-  }
-  .error-state { color: var(--red); }
-
-  .spinner {
-    width: 22px;
-    height: 22px;
-    border: 2px solid var(--border);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-  }
-  @keyframes spin {
-    to { transform: rotate(360deg); }
-  }
-
-  .message {
-    max-width: 82%;
-    padding: 8px 12px;
-    border-radius: 8px;
-    font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
-    font-size: 12px;
-    line-height: 1.55;
-    word-wrap: break-word;
-    white-space: pre-wrap;
-  }
-
-  .message.user {
-    align-self: flex-end;
-    background: var(--brand-pink);
-    color: #fff;
-    border-bottom-right-radius: 3px;
-  }
-
-  .message.assistant {
-    align-self: flex-start;
-    background: var(--bg3);
-    color: var(--text);
-    border-bottom-left-radius: 3px;
-    border: 1px solid var(--border);
-  }
-</style>

@@ -13,7 +13,7 @@
   );
 
   function truncKey(sk?: string) {
-    if (!sk) return '—';
+    if (!sk) return '\u2014';
     const parts = sk.split(':');
     return parts.length > 2 ? parts.slice(2).join(':').slice(0, 16) : sk.slice(0, 16);
   }
@@ -51,50 +51,18 @@
   });
 </script>
 
-<div class="session-bar">
-  <label class="session-label" for="session-select">Session</label>
-  <select id="session-select" class="session-select" value={ui.selectedSessionKey ?? ''} onchange={onSelect}>
+<div class="shrink-0 px-5 py-1.5 border-b border-border bg-bg2 flex items-center gap-2">
+  <label class="text-[10px] font-bold uppercase tracking-[0.6px] text-muted-foreground" for="session-select">Session</label>
+  <select
+    id="session-select"
+    class="flex-1 min-w-0 bg-bg3 border border-border rounded-[4px] text-foreground text-[11px] font-mono px-1.5 py-[3px] outline-none focus:border-accent"
+    value={ui.selectedSessionKey ?? ''}
+    onchange={onSelect}
+  >
     {#each agentSessions as sess ((sess as { sessionKey?: string }).sessionKey)}
       {@const sk = (sess as { sessionKey?: string }).sessionKey ?? ''}
       <option value={sk}>{(sess as { label?: string }).label || truncKey(sk)}</option>
     {/each}
   </select>
-  <span class="session-count">{agentSessions.length}</span>
+  <span class="text-[10px] text-muted-foreground opacity-65">{agentSessions.length}</span>
 </div>
-
-<style>
-  .session-bar {
-    flex-shrink: 0;
-    padding: 6px 20px;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg2);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .session-label {
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-    color: var(--text3);
-  }
-  .session-select {
-    flex: 1;
-    min-width: 0;
-    background: var(--bg3);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    color: var(--text);
-    font-size: 11px;
-    font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
-    padding: 3px 6px;
-    outline: none;
-  }
-  .session-select:focus { border-color: var(--accent); }
-  .session-count {
-    font-size: 10px;
-    color: var(--text3);
-    opacity: 0.65;
-  }
-</style>

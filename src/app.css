@@ -55,6 +55,9 @@
 
   /* Animations */
   --animate-typing-bounce: typing-bounce 0.6s ease infinite;
+  --animate-spin: spin 0.7s linear infinite;
+  --animate-loading-slide: loading-slide 1.2s ease-in-out infinite;
+  --animate-dot-pulse: dot-pulse 0.8s ease infinite;
 }
 
 /* ── Base layer ── */
@@ -134,5 +137,14 @@
   @keyframes typing-bounce {
     0%, 100% { transform: translateY(0); opacity: 0.4; }
     50% { transform: translateY(-5px); opacity: 1; }
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  @keyframes loading-slide {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(350%); }
   }
 }
