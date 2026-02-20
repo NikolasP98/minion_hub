@@ -16,6 +16,7 @@ import {
   missions,
   tasks,
   reliabilityEvents,
+  sessionTasks,
 } from './schema';
 
 // ── Tenants ──────────────────────────────────────────────────────────────────
@@ -136,4 +137,11 @@ export const tasksRelations = relations(tasks, ({ one }) => ({
 export const reliabilityEventsRelations = relations(reliabilityEvents, ({ one }) => ({
   server: one(servers, { fields: [reliabilityEvents.serverId], references: [servers.id] }),
   tenant: one(tenants, { fields: [reliabilityEvents.tenantId], references: [tenants.id] }),
+}));
+
+// ── Session Tasks ────────────────────────────────────────────────────────
+
+export const sessionTasksRelations = relations(sessionTasks, ({ one }) => ({
+  tenant: one(tenants, { fields: [sessionTasks.tenantId], references: [tenants.id] }),
+  server: one(servers, { fields: [sessionTasks.serverId], references: [servers.id] }),
 }));

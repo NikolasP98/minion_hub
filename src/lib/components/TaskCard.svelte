@@ -1,14 +1,19 @@
 <script lang="ts">
-  import type { TaskData } from '$lib/state/missions.svelte';
+  export type KanbanTask = {
+    id: string;
+    title: string;
+    description: string | null;
+    status: 'backlog' | 'todo' | 'in_progress' | 'done';
+  };
 
-  let { task }: { task: TaskData } = $props();
+  let { task }: { task: KanbanTask } = $props();
 
   function onDragStart(e: DragEvent) {
     e.dataTransfer?.setData('text/plain', task.id);
     e.dataTransfer!.effectAllowed = 'move';
   }
 
-  const dotColor: Record<TaskData['status'], string> = {
+  const dotColor: Record<KanbanTask['status'], string> = {
     backlog: 'bg-muted-foreground',
     todo: 'bg-[#3b82f6]',
     in_progress: 'bg-status-thinking animate-[dot-pulse_0.8s_ease_infinite]',

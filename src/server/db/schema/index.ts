@@ -18,3 +18,4 @@ export { skillExecutionStats } from './skill-execution-stats';
 export { gatewayHeartbeats } from './gateway-heartbeats';
 export { activityBins } from './activity-bins';
 export { configSnapshots } from './config-snapshots';
+export { sessionTasks } from './session-tasks';

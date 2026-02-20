@@ -1,11 +1,11 @@
 <script lang="ts">
   import TaskCard from './TaskCard.svelte';
-  import type { TaskData } from '$lib/state/missions.svelte';
+  import type { KanbanTask } from './TaskCard.svelte';
 
   let { status, label, tasks, onDropTask }: {
     status: 'backlog' | 'todo' | 'in_progress' | 'done';
     label: string;
-    tasks: TaskData[];
+    tasks: KanbanTask[];
     onDropTask: (taskId: string) => void;
   } = $props();
 

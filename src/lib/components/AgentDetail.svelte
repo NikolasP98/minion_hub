@@ -1,23 +1,57 @@
 <script lang="ts">
   import DetailHeader from './DetailHeader.svelte';
   import SessionDropdown from './SessionDropdown.svelte';
-  import MissionContext from './MissionContext.svelte';
-  import KanbanBoard from './KanbanBoard.svelte';
+  import SessionViewer from './SessionViewer.svelte';
+  import SessionKanban from './SessionKanban.svelte';
   import ChatPanel from './ChatPanel.svelte';
+  import AgentSettingsPanel from './AgentSettingsPanel.svelte';
   import { ui } from '$lib/state/ui.svelte';
+  import { gw } from '$lib/state/gateway-data.svelte';
   import type { Agent } from '$lib/types/gateway';
+  import type { SessionRow } from './SessionsList.svelte';
 
   let { agentId, agent }: { agentId: string; agent: Agent } = $props();
+
+  const mainSessionKey = $derived(`agent:${agentId}:main`);
+  const isMainSession = $derived(ui.selectedSessionKey === mainSessionKey);
+
+  const selectedSessionRow: SessionRow | null = $derived.by(() => {
+    const key = ui.selectedSessionKey;
+    if (!key) return null;
+    const s = gw.sessions.find((sess) => sess.sessionKey === key);
+    if (!s) return null;
+    const now = Date.now();
+    return {
+      id: s.sessionKey,
+      serverId: ui.selectedServerId ?? '',
+      agentId: s.agentId ?? agentId,
+      sessionKey: s.sessionKey,
+      status: s.status ?? 'unknown',
+      metadata: s.label || s.model ? JSON.stringify({ label: s.label, model: s.model }) : null,
+      createdAt: s.createdAt ?? now,
+      updatedAt: s.lastActiveAt ?? s.createdAt ?? now,
+    };
+  });
 </script>
 
 <div class="flex-1 min-h-0 flex flex-col overflow-hidden">
   <DetailHeader {agentId} {agent} />
   <SessionDropdown {agentId} serverId={ui.selectedServerId} />
   {#if ui.selectedSessionKey}
-    <MissionContext sessionKey={ui.selectedSessionKey} serverId={ui.selectedServerId} />
-    {#if ui.selectedMissionId}
-      <KanbanBoard missionId={ui.selectedMissionId} serverId={ui.selectedServerId} />
+    <SessionKanban sessionKey={ui.selectedSessionKey} serverId={ui.selectedServerId} />
+    {#if !isMainSession}
+      <div class="flex-1 min-h-0 flex flex-col overflow-hidden">
+        <SessionViewer
+          serverId={ui.selectedServerId}
+          sessionKey={ui.selectedSessionKey}
+          session={selectedSessionRow}
+        />
+      </div>
     {/if}
   {/if}
-  <ChatPanel {agentId} />
+  <ChatPanel {agentId} readonly={!isMainSession} />
 </div>
+
+{#if ui.agentSettingsOpen}
+  <AgentSettingsPanel {agentId} />
+{/if}
