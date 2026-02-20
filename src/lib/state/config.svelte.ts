@@ -49,6 +49,60 @@ export const dirtyPaths = { get value() { return _dirtyPaths; } };
 export const isDirty = { get value() { return _isDirty; } };
 export const groups = { get value() { return _groups; } };
 
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+/** JSON round-trip clone — avoids structuredClone failure on Svelte $state Proxies */
+function deepClone<T>(obj: T): T {
+  return JSON.parse(JSON.stringify(obj));
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`timeout after ${ms}ms`)), ms);
+    promise.then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); reject(e); },
+    );
+  });
+}
+
+/** Build a minimal schema from the config object keys so we can still render fields */
+function inferSchemaFromConfig(config: Record<string, unknown>): JsonSchemaNode {
+  const properties: Record<string, JsonSchemaNode> = {};
+  for (const [key, val] of Object.entries(config)) {
+    if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
+      properties[key] = { type: 'object', title: key, properties: inferProperties(val as Record<string, unknown>) };
+    } else if (Array.isArray(val)) {
+      properties[key] = { type: 'array', title: key };
+    } else if (typeof val === 'boolean') {
+      properties[key] = { type: 'boolean', title: key };
+    } else if (typeof val === 'number') {
+      properties[key] = { type: 'number', title: key };
+    } else {
+      properties[key] = { type: 'string', title: key };
+    }
+  }
+  return { type: 'object', properties };
+}
+
+function inferProperties(obj: Record<string, unknown>): Record<string, JsonSchemaNode> {
+  const props: Record<string, JsonSchemaNode> = {};
+  for (const [key, val] of Object.entries(obj)) {
+    if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
+      props[key] = { type: 'object', title: key, properties: inferProperties(val as Record<string, unknown>) };
+    } else if (Array.isArray(val)) {
+      props[key] = { type: 'array', title: key };
+    } else if (typeof val === 'boolean') {
+      props[key] = { type: 'boolean', title: key };
+    } else if (typeof val === 'number') {
+      props[key] = { type: 'number', title: key };
+    } else {
+      props[key] = { type: 'string', title: key };
+    }
+  }
+  return props;
+}
+
 // ─── Actions ────────────────────────────────────────────────────────────────
 
 export async function loadConfig(): Promise<void> {
@@ -56,17 +110,32 @@ export async function loadConfig(): Promise<void> {
   configState.loadError = null;
 
   try {
-    const [snapshot, schemaRes] = await Promise.all([
+    // config.get is required; config.schema is optional (older gateways may not support it)
+    const snapshotP = withTimeout(
       sendRequest('config.get', {}) as Promise<ConfigFileSnapshot>,
+      10000,
+    );
+    const schemaP = withTimeout(
       sendRequest('config.schema', {}) as Promise<ConfigSchemaResponse>,
-    ]);
+      8000,
+    ).catch(() => null); // gracefully degrade if unavailable
 
-    configState.schema = schemaRes.schema;
-    configState.uiHints = schemaRes.uiHints ?? {};
-    configState.version = schemaRes.version;
+    const [snapshot, schemaRes] = await Promise.all([snapshotP, schemaP]);
+
+    if (schemaRes) {
+      configState.schema = schemaRes.schema;
+      configState.uiHints = schemaRes.uiHints ?? {};
+      configState.version = schemaRes.version;
+    } else {
+      // Fallback: infer a minimal schema from the config object
+      const config = (snapshot.config ?? {}) as Record<string, unknown>;
+      configState.schema = inferSchemaFromConfig(config);
+      configState.uiHints = {};
+      configState.version = null;
+    }
 
     configState.original = (snapshot.config ?? {}) as Record<string, unknown>;
-    configState.current = structuredClone(configState.original);
+    configState.current = deepClone(configState.original);
     configState.baseHash = snapshot.hash ?? null;
     configState.configPath = snapshot.path;
     configState.issues = snapshot.issues ?? [];
@@ -126,6 +195,6 @@ export async function save(): Promise<boolean> {
 }
 
 export function discard(): void {
-  configState.current = structuredClone(configState.original);
+  configState.current = deepClone(configState.original);
   configState.saveError = null;
 }
