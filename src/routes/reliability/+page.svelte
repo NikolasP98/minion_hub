@@ -277,10 +277,10 @@
 	});
 </script>
 
-<div class="page">
-	<header class="header">
-		<div class="header-left">
-			<a href="/" class="back-link" aria-label="Back to home">
+<div class="flex flex-col h-screen bg-bg text-foreground">
+	<header class="sticky top-0 z-10 flex items-center justify-between py-3 px-6 bg-bg2 border-b border-border shrink-0 max-sm:flex-col max-sm:gap-3 max-sm:items-start">
+		<div class="flex items-center gap-3">
+			<a href="/" class="flex items-center justify-center w-8 h-8 rounded-lg text-muted no-underline transition-colors duration-150 hover:bg-bg3 hover:text-foreground" aria-label="Back to home">
 				<svg width="20" height="20" viewBox="0 0 20 20" fill="none">
 					<path
 						d="M12.5 15L7.5 10L12.5 5"
@@ -291,9 +291,9 @@
 					/>
 				</svg>
 			</a>
-			<h1>Reliability Dashboard</h1>
+			<h1 class="text-base font-semibold tracking-tight">Reliability Dashboard</h1>
 		</div>
-		<div class="header-right">
+		<div class="flex items-center">
 			<DateRangePicker
 				from={reliability.dateRange.from}
 				to={reliability.dateRange.to}
@@ -302,18 +302,18 @@
 		</div>
 	</header>
 
-	<main class="content">
+	<main class="flex-1 overflow-y-auto p-6 flex flex-col gap-5">
 		{#if !serverId}
-			<div class="empty-state">
-				<p>Connect to a gateway to view reliability data</p>
+			<div class="flex-1 flex items-center justify-center">
+				<p class="text-muted-foreground text-sm">Connect to a gateway to view reliability data</p>
 			</div>
 		{:else if loading && !summary}
-			<div class="loading-state">
-				<p>Loading...</p>
+			<div class="flex-1 flex items-center justify-center">
+				<p class="text-muted-foreground text-sm">Loading...</p>
 			</div>
 		{:else}
 			<!-- KPI Cards -->
-			<section class="kpi-row">
+			<section class="grid grid-cols-3 gap-4 max-[900px]:grid-cols-2 max-sm:grid-cols-1">
 				<KpiCard
 					label="Total Events"
 					value={String(summary?.total ?? 0)}
@@ -353,24 +353,24 @@
 			</section>
 
 			<!-- Timeline Chart -->
-			<section class="chart-card">
+			<section class="bg-card border border-border rounded-lg p-2 overflow-hidden">
 				<Chart options={timelineOptions} height="300px" />
 			</section>
 
 			<!-- Two column: Top Events + Severity Distribution -->
-			<section class="two-col">
-				<div class="chart-card">
+			<section class="grid grid-cols-2 gap-4 max-[900px]:grid-cols-1">
+				<div class="bg-card border border-border rounded-lg p-2 overflow-hidden">
 					<Chart options={topEventsOptions} height="300px" />
 				</div>
-				<div class="chart-card">
+				<div class="bg-card border border-border rounded-lg p-2 overflow-hidden">
 					<Chart options={severityOptions} height="300px" />
 				</div>
 			</section>
 
 			<!-- Health Metrics -->
-			<section class="health-metrics">
-				<h2 class="section-title">Health Metrics</h2>
-				<div class="three-col">
+			<section class="flex flex-col gap-4">
+				<h2 class="m-0 text-sm font-semibold text-muted tracking-tight">Health Metrics</h2>
+				<div class="grid grid-cols-3 gap-4 max-[900px]:grid-cols-1">
 					<CredentialHealthPanel {serverId} />
 					<SkillStatsPanel {serverId} />
 					<GatewayHealthPanel {serverId} />
@@ -378,158 +378,9 @@
 			</section>
 
 			<!-- Incident Table -->
-			<section class="table-section">
+			<section class="min-w-0">
 				<IncidentTable events={reliability.events} title="Recent Incidents" />
 			</section>
 		{/if}
 	</main>
 </div>
-
-<style>
-	.page {
-		display: flex;
-		flex-direction: column;
-		height: 100vh;
-		background: var(--bg, #0a0e17);
-		color: var(--text, #e2e8f0);
-	}
-
-	.header {
-		position: sticky;
-		top: 0;
-		z-index: 10;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 12px 24px;
-		background: var(--bg2, #111827);
-		border-bottom: 1px solid var(--border, #2a3548);
-		flex-shrink: 0;
-	}
-
-	.header-left {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-	}
-
-	.back-link {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 32px;
-		height: 32px;
-		border-radius: 8px;
-		color: var(--text2, #94a3b8);
-		text-decoration: none;
-		transition: background 0.15s, color 0.15s;
-	}
-
-	.back-link:hover {
-		background: var(--bg3, #1e293b);
-		color: var(--text, #e2e8f0);
-	}
-
-	h1 {
-		margin: 0;
-		font-size: 16px;
-		font-weight: 600;
-		letter-spacing: -0.01em;
-	}
-
-	.header-right {
-		display: flex;
-		align-items: center;
-	}
-
-	.content {
-		flex: 1;
-		overflow-y: auto;
-		padding: 24px;
-		display: flex;
-		flex-direction: column;
-		gap: 20px;
-	}
-
-	.empty-state,
-	.loading-state {
-		flex: 1;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	.empty-state p,
-	.loading-state p {
-		color: var(--text3, #64748b);
-		font-size: 14px;
-	}
-
-	.kpi-row {
-		display: grid;
-		grid-template-columns: repeat(3, 1fr);
-		gap: 16px;
-	}
-
-	.chart-card {
-		background: var(--card, #151d2e);
-		border: 1px solid var(--border, #2a3548);
-		border-radius: var(--radius, 10px);
-		padding: 8px;
-		overflow: hidden;
-	}
-
-	.two-col {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 16px;
-	}
-
-	.health-metrics {
-		display: flex;
-		flex-direction: column;
-		gap: 16px;
-	}
-
-	.section-title {
-		margin: 0;
-		font-size: 14px;
-		font-weight: 600;
-		color: var(--text2, #94a3b8);
-		letter-spacing: -0.01em;
-	}
-
-	.three-col {
-		display: grid;
-		grid-template-columns: repeat(3, 1fr);
-		gap: 16px;
-	}
-
-	.table-section {
-		min-width: 0;
-	}
-
-	/* Responsive: stack on narrow screens */
-	@media (max-width: 900px) {
-		.kpi-row {
-			grid-template-columns: repeat(2, 1fr);
-		}
-		.two-col {
-			grid-template-columns: 1fr;
-		}
-		.three-col {
-			grid-template-columns: 1fr;
-		}
-	}
-
-	@media (max-width: 560px) {
-		.kpi-row {
-			grid-template-columns: 1fr;
-		}
-		.header {
-			flex-direction: column;
-			gap: 12px;
-			align-items: flex-start;
-		}
-	}
-</style>

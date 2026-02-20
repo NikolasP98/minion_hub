@@ -89,50 +89,64 @@
 		if (sortColumn !== column) return '';
 		return sortDirection === 'asc' ? ' \u25B2' : ' \u25BC';
 	}
+
+	const severityClasses: Record<string, string> = {
+		critical: 'bg-destructive text-white',
+		high: 'bg-warning text-black',
+		medium: 'bg-purple text-white',
+		low: 'bg-muted-foreground text-white'
+	};
+
+	const categoryClasses: Record<string, string> = {
+		cron: 'bg-accent/15 text-accent border border-accent/30',
+		browser: 'bg-warning/15 text-warning border border-warning/30',
+		timezone: 'bg-purple/15 text-purple border border-purple/30',
+		general: 'bg-muted-foreground/20 text-muted-foreground border border-muted-foreground/30'
+	};
 </script>
 
-<div class="incident-table-wrapper">
-	<h3 class="table-title">{title}</h3>
+<div class="w-full rounded-lg overflow-hidden bg-card border border-border">
+	<h3 class="m-0 py-3 px-4 text-[13px] font-semibold text-foreground border-b border-border">{title}</h3>
 
 	{#if events.length === 0}
-		<div class="empty-state">No incidents</div>
+		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">No incidents</div>
 	{:else}
-		<div class="table-scroll">
-			<table>
+		<div class="overflow-x-auto">
+			<table class="w-full border-collapse table-fixed">
 				<thead>
-					<tr>
-						<th class="col-time" onclick={() => toggleSort('timestamp')}>
+					<tr class="bg-bg3 sticky top-0 z-[1]">
+						<th class="w-[90px] py-2 px-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground text-left whitespace-nowrap cursor-pointer select-none border-b border-border hover:text-muted" onclick={() => toggleSort('timestamp')}>
 							Time{getSortIndicator('timestamp')}
 						</th>
-						<th class="col-severity" onclick={() => toggleSort('severity')}>
+						<th class="w-[90px] py-2 px-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground text-left whitespace-nowrap cursor-pointer select-none border-b border-border hover:text-muted" onclick={() => toggleSort('severity')}>
 							Severity{getSortIndicator('severity')}
 						</th>
-						<th class="col-category" onclick={() => toggleSort('category')}>
+						<th class="w-[100px] py-2 px-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground text-left whitespace-nowrap cursor-pointer select-none border-b border-border hover:text-muted" onclick={() => toggleSort('category')}>
 							Category{getSortIndicator('category')}
 						</th>
-						<th class="col-event" onclick={() => toggleSort('event')}>
+						<th class="w-40 py-2 px-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground text-left whitespace-nowrap cursor-pointer select-none border-b border-border hover:text-muted" onclick={() => toggleSort('event')}>
 							Event{getSortIndicator('event')}
 						</th>
-						<th class="col-message" onclick={() => toggleSort('message')}>
+						<th class="w-auto py-2 px-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground text-left whitespace-nowrap cursor-pointer select-none border-b border-border hover:text-muted" onclick={() => toggleSort('message')}>
 							Message{getSortIndicator('message')}
 						</th>
 					</tr>
 				</thead>
 				<tbody>
 					{#each sortedEvents as evt (evt.timestamp + evt.event + evt.message)}
-						<tr>
-							<td class="col-time" title={formatFullDate(evt.timestamp)}>
+						<tr class="border-b border-border/50 hover:bg-white/[0.02]">
+							<td class="w-[90px] py-2 px-3 text-xs text-muted tabular-nums cursor-default align-middle" title={formatFullDate(evt.timestamp)}>
 								{formatRelativeTime(evt.timestamp)}
 							</td>
-							<td class="col-severity">
-								<span class="badge severity-{evt.severity}">{evt.severity}</span>
+							<td class="w-[90px] py-2 px-3 text-xs text-foreground align-middle">
+								<span class="inline-block text-[10px] font-semibold py-0.5 px-2 rounded-lg leading-snug whitespace-nowrap {severityClasses[evt.severity] ?? ''}">{evt.severity}</span>
 							</td>
-							<td class="col-category">
-								<span class="badge category-{evt.category}">{evt.category}</span>
+							<td class="w-[100px] py-2 px-3 text-xs text-foreground align-middle">
+								<span class="inline-block text-[10px] font-semibold py-0.5 px-2 rounded-lg leading-snug whitespace-nowrap {categoryClasses[evt.category] ?? ''}">{evt.category}</span>
 							</td>
-							<td class="col-event">{evt.event}</td>
-							<td class="col-message">
-								<span class="message-text" title={evt.message}>{evt.message}</span>
+							<td class="w-40 py-2 px-3 text-xs text-foreground align-middle">{evt.event}</td>
+							<td class="w-auto py-2 px-3 text-xs text-foreground align-middle">
+								<span class="inline-block max-w-[300px] overflow-hidden text-ellipsis whitespace-nowrap align-middle" title={evt.message}>{evt.message}</span>
 							</td>
 						</tr>
 					{/each}
@@ -141,171 +155,3 @@
 		</div>
 	{/if}
 </div>
-
-<style>
-	.incident-table-wrapper {
-		width: 100%;
-		border-radius: var(--radius, 10px);
-		overflow: hidden;
-		background: var(--card, #151d2e);
-		border: 1px solid var(--border, #2a3548);
-	}
-
-	.table-title {
-		margin: 0;
-		padding: 12px 16px;
-		font-size: 13px;
-		font-weight: 600;
-		color: var(--text, #e2e8f0);
-		border-bottom: 1px solid var(--border, #2a3548);
-	}
-
-	.empty-state {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: 48px 16px;
-		color: var(--text3, #64748b);
-		font-size: 13px;
-	}
-
-	.table-scroll {
-		overflow-x: auto;
-	}
-
-	table {
-		width: 100%;
-		border-collapse: collapse;
-		table-layout: fixed;
-	}
-
-	thead tr {
-		background: var(--bg3, #1e293b);
-		position: sticky;
-		top: 0;
-		z-index: 1;
-	}
-
-	th {
-		padding: 8px 12px;
-		font-size: 11px;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.5px;
-		color: var(--text3, #64748b);
-		text-align: left;
-		white-space: nowrap;
-		cursor: pointer;
-		user-select: none;
-		border-bottom: 1px solid var(--border, #2a3548);
-	}
-
-	th:hover {
-		color: var(--text2, #94a3b8);
-	}
-
-	tbody tr {
-		background: transparent;
-		border-bottom: 1px solid rgba(42, 53, 72, 0.5);
-	}
-
-	tbody tr:hover {
-		background: rgba(255, 255, 255, 0.02);
-	}
-
-	td {
-		padding: 8px 12px;
-		font-size: 12px;
-		color: var(--text, #e2e8f0);
-		vertical-align: middle;
-	}
-
-	.col-time {
-		width: 90px;
-	}
-
-	.col-severity {
-		width: 90px;
-	}
-
-	.col-category {
-		width: 100px;
-	}
-
-	.col-event {
-		width: 160px;
-	}
-
-	.col-message {
-		width: auto;
-	}
-
-	td.col-time {
-		color: var(--text2, #94a3b8);
-		font-variant-numeric: tabular-nums;
-		cursor: default;
-	}
-
-	.badge {
-		display: inline-block;
-		font-size: 10px;
-		font-weight: 600;
-		padding: 2px 8px;
-		border-radius: 10px;
-		line-height: 1.4;
-		white-space: nowrap;
-	}
-
-	.severity-critical {
-		background: var(--red, #ef4444);
-		color: #fff;
-	}
-
-	.severity-high {
-		background: var(--amber, #f59e0b);
-		color: #000;
-	}
-
-	.severity-medium {
-		background: var(--purple, #a855f7);
-		color: #fff;
-	}
-
-	.severity-low {
-		background: var(--text3, #64748b);
-		color: #fff;
-	}
-
-	.category-cron {
-		background: rgba(99, 102, 241, 0.2);
-		color: var(--accent, #6366f1);
-		border: 1px solid rgba(99, 102, 241, 0.3);
-	}
-
-	.category-browser {
-		background: rgba(245, 158, 11, 0.15);
-		color: var(--amber, #f59e0b);
-		border: 1px solid rgba(245, 158, 11, 0.3);
-	}
-
-	.category-timezone {
-		background: rgba(168, 85, 247, 0.15);
-		color: var(--purple, #a855f7);
-		border: 1px solid rgba(168, 85, 247, 0.3);
-	}
-
-	.category-general {
-		background: rgba(100, 116, 139, 0.2);
-		color: var(--text3, #64748b);
-		border: 1px solid rgba(100, 116, 139, 0.3);
-	}
-
-	.message-text {
-		display: inline-block;
-		max-width: 300px;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		vertical-align: middle;
-	}
-</style>

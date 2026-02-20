@@ -58,12 +58,14 @@
 	let toDateStr = $derived(epochToDateString(to));
 </script>
 
-<div class="date-range-picker">
-	<div class="presets">
+<div class="flex flex-row items-center gap-2">
+	<div class="flex flex-row items-center gap-1.5">
 		{#each presets as preset (preset.label)}
 			<button
-				class="preset-btn"
-				class:active={activePreset === preset.label}
+				class="text-xs py-1 px-3 rounded-full border cursor-pointer whitespace-nowrap leading-snug font-[inherit] transition-colors duration-150
+					{activePreset === preset.label
+						? 'bg-accent text-white border-accent'
+						: 'bg-bg3 text-muted border-border hover:bg-border hover:text-foreground'}"
 				onclick={() => applyPreset(preset.ms, preset.label)}
 			>
 				{preset.label}
@@ -71,93 +73,25 @@
 		{/each}
 	</div>
 
-	<div class="date-field">
-		<label for="date-from">From</label>
+	<div class="flex flex-col gap-0.5">
+		<label for="date-from" class="text-[11px] text-muted-foreground leading-none">From</label>
 		<input
 			id="date-from"
 			type="date"
 			value={fromDateStr}
 			onchange={handleFromChange}
+			class="text-xs py-1 px-2 bg-bg3 text-foreground border border-border rounded-md font-[inherit] leading-snug outline-none [color-scheme:dark] focus:border-accent"
 		/>
 	</div>
 
-	<div class="date-field">
-		<label for="date-to">To</label>
+	<div class="flex flex-col gap-0.5">
+		<label for="date-to" class="text-[11px] text-muted-foreground leading-none">To</label>
 		<input
 			id="date-to"
 			type="date"
 			value={toDateStr}
 			onchange={handleToChange}
+			class="text-xs py-1 px-2 bg-bg3 text-foreground border border-border rounded-md font-[inherit] leading-snug outline-none [color-scheme:dark] focus:border-accent"
 		/>
 	</div>
 </div>
-
-<style>
-	.date-range-picker {
-		display: flex;
-		flex-direction: row;
-		align-items: center;
-		gap: 8px;
-	}
-
-	.presets {
-		display: flex;
-		flex-direction: row;
-		align-items: center;
-		gap: 6px;
-	}
-
-	.preset-btn {
-		font-size: 12px;
-		padding: 4px 12px;
-		border-radius: 14px;
-		background: var(--bg3, #1e293b);
-		color: var(--text2, #94a3b8);
-		border: 1px solid var(--border, #2a3548);
-		cursor: pointer;
-		transition: background 0.15s, color 0.15s;
-		white-space: nowrap;
-		line-height: 1.4;
-		font-family: inherit;
-	}
-
-	.preset-btn:hover {
-		background: var(--border, #2a3548);
-		color: var(--text, #e2e8f0);
-	}
-
-	.preset-btn.active {
-		background: var(--accent, #3b82f6);
-		color: white;
-		border-color: var(--accent, #3b82f6);
-	}
-
-	.date-field {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-	}
-
-	.date-field label {
-		font-size: 11px;
-		color: var(--text3, #64748b);
-		line-height: 1;
-	}
-
-	.date-field input[type='date'] {
-		font-size: 12px;
-		padding: 4px 8px;
-		background: var(--bg3, #1e293b);
-		color: var(--text, #e2e8f0);
-		border: 1px solid var(--border, #2a3548);
-		border-radius: 6px;
-		font-family: inherit;
-		line-height: 1.4;
-		outline: none;
-		color-scheme: dark;
-	}
-
-	.date-field input[type='date']:focus {
-		border-color: var(--accent, #3b82f6);
-	}
-</style>

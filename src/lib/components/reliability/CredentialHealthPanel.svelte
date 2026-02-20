@@ -54,15 +54,15 @@
 	function statusColor(status: string): string {
 		switch (status) {
 			case 'ok':
-				return 'var(--green)';
+				return 'var(--color-success)';
 			case 'expiring':
-				return 'var(--amber)';
+				return 'var(--color-warning)';
 			case 'expired':
-				return 'var(--red)';
+				return 'var(--color-destructive)';
 			case 'static':
 			case 'missing':
 			default:
-				return 'var(--text3)';
+				return 'var(--color-muted-foreground)';
 		}
 	}
 
@@ -88,26 +88,26 @@
 	});
 </script>
 
-<div class="panel">
-	<div class="panel-header">
-		<h3 class="panel-title">Credential Health</h3>
+<div class="bg-card border border-border rounded-lg overflow-hidden">
+	<div class="flex items-center justify-between py-3 px-4 border-b border-border">
+		<h3 class="text-[13px] font-semibold text-foreground m-0">Credential Health</h3>
 		{#if capturedAgo}
-			<span class="panel-meta">{capturedAgo}</span>
+			<span class="text-[11px] text-muted-foreground">{capturedAgo}</span>
 		{/if}
 	</div>
 
 	{#if state.loading && !parsed}
-		<div class="panel-empty">Loading...</div>
+		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">Loading...</div>
 	{:else if state.error}
-		<div class="panel-empty panel-error">{state.error}</div>
+		<div class="flex items-center justify-center py-12 px-4 text-destructive text-[13px]">{state.error}</div>
 	{:else if !parsed || parsed.providers.length === 0}
-		<div class="panel-empty">No credential data</div>
+		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">No credential data</div>
 	{:else}
-		<div class="status-summary">
+		<div class="flex flex-wrap gap-2 py-3 px-4 border-b border-border">
 			{#each Object.entries(statusCounts) as [status, count] (status)}
 				{#if count > 0}
 					<span
-						class="status-pill"
+						class="text-[11px] font-semibold py-0.5 px-2.5 rounded-xl border whitespace-nowrap"
 						style:color={statusColor(status)}
 						style:background={statusBg(status)}
 						style:border-color={statusColor(status)}
@@ -118,21 +118,21 @@
 			{/each}
 		</div>
 
-		<div class="provider-list">
+		<div class="py-3 px-4 flex flex-col gap-3">
 			{#each byProvider as group (group.provider)}
-				<div class="provider-group">
-					<div class="provider-name">{group.provider}</div>
-					<div class="profile-cards">
+				<div class="flex flex-col gap-1.5">
+					<div class="text-xs font-semibold text-muted uppercase tracking-wider">{group.provider}</div>
+					<div class="flex flex-wrap gap-1.5">
 						{#each group.profiles as profile (profile.profileId)}
 							<div
-								class="profile-card"
+								class="flex items-center gap-2 py-1.5 px-2.5 bg-bg3 border border-border border-l-[3px] rounded-md text-xs min-w-0"
 								style:border-left-color={statusColor(profile.status)}
 							>
-								<span class="profile-id" title={profile.profileId}>
+								<span class="text-foreground max-w-[140px] overflow-hidden text-ellipsis whitespace-nowrap" title={profile.profileId}>
 									{profile.profileId}
 								</span>
 								<span
-									class="profile-status"
+									class="font-semibold text-[11px] whitespace-nowrap"
 									style:color={statusColor(profile.status)}
 								>
 									{profile.status}
@@ -145,116 +145,3 @@
 		</div>
 	{/if}
 </div>
-
-<style>
-	.panel {
-		background: var(--card);
-		border: 1px solid var(--border);
-		border-radius: var(--radius);
-		overflow: hidden;
-	}
-
-	.panel-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 12px 16px;
-		border-bottom: 1px solid var(--border);
-	}
-
-	.panel-title {
-		font-size: 13px;
-		font-weight: 600;
-		color: var(--text);
-		margin: 0;
-	}
-
-	.panel-meta {
-		font-size: 11px;
-		color: var(--text3);
-	}
-
-	.panel-empty {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: 48px 16px;
-		color: var(--text3);
-		font-size: 13px;
-	}
-
-	.panel-error {
-		color: var(--red);
-	}
-
-	.status-summary {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 8px;
-		padding: 12px 16px;
-		border-bottom: 1px solid var(--border);
-	}
-
-	.status-pill {
-		font-size: 11px;
-		font-weight: 600;
-		padding: 3px 10px;
-		border-radius: 12px;
-		border: 1px solid;
-		white-space: nowrap;
-	}
-
-	.provider-list {
-		padding: 12px 16px;
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
-	}
-
-	.provider-group {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-
-	.provider-name {
-		font-size: 12px;
-		font-weight: 600;
-		color: var(--text2);
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
-	}
-
-	.profile-cards {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 6px;
-	}
-
-	.profile-card {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: 6px 10px;
-		background: var(--bg3);
-		border: 1px solid var(--border);
-		border-left-width: 3px;
-		border-radius: 6px;
-		font-size: 12px;
-		min-width: 0;
-	}
-
-	.profile-id {
-		color: var(--text);
-		max-width: 140px;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.profile-status {
-		font-weight: 600;
-		font-size: 11px;
-		white-space: nowrap;
-	}
-</style>

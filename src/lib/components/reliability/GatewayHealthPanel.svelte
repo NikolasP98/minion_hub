@@ -121,62 +121,61 @@
 	});
 </script>
 
-<div class="panel">
-	<div class="panel-header">
-		<h3 class="panel-title">Gateway Health</h3>
+<div class="bg-card border border-border rounded-lg overflow-hidden">
+	<div class="flex items-center justify-between py-3 px-4 border-b border-border">
+		<h3 class="text-[13px] font-semibold text-foreground m-0">Gateway Health</h3>
 		{#if latest}
-			<span class="panel-meta">{formatAgo(latest.capturedAt)}</span>
+			<span class="text-[11px] text-muted-foreground">{formatAgo(latest.capturedAt)}</span>
 		{/if}
 	</div>
 
 	{#if loading && !latest}
-		<div class="panel-empty">Loading...</div>
+		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">Loading...</div>
 	{:else if error}
-		<div class="panel-empty panel-error">{error}</div>
+		<div class="flex items-center justify-center py-12 px-4 text-destructive text-[13px]">{error}</div>
 	{:else if !latest}
-		<div class="panel-empty">No heartbeat data</div>
+		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">No heartbeat data</div>
 	{:else}
-		<div class="stats-grid">
-			<div class="stat-card">
-				<span class="stat-label">Uptime</span>
-				<span class="stat-value ok">{formatUptime(latest.uptimeMs)}</span>
+		<div class="grid grid-cols-4 gap-px bg-border border-b border-border">
+			<div class="flex flex-col items-center gap-1 py-3.5 px-2 bg-card">
+				<span class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">Uptime</span>
+				<span class="text-lg font-bold text-success tabular-nums">{formatUptime(latest.uptimeMs)}</span>
 			</div>
-			<div class="stat-card">
-				<span class="stat-label">Sessions</span>
-				<span class="stat-value">{latest.activeSessions}</span>
+			<div class="flex flex-col items-center gap-1 py-3.5 px-2 bg-card">
+				<span class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">Sessions</span>
+				<span class="text-lg font-bold text-foreground tabular-nums">{latest.activeSessions}</span>
 			</div>
-			<div class="stat-card">
-				<span class="stat-label">Agents</span>
-				<span class="stat-value">{latest.activeAgents}</span>
+			<div class="flex flex-col items-center gap-1 py-3.5 px-2 bg-card">
+				<span class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">Agents</span>
+				<span class="text-lg font-bold text-foreground tabular-nums">{latest.activeAgents}</span>
 			</div>
-			<div class="stat-card">
-				<span class="stat-label">Memory</span>
-				<span class="stat-value">
+			<div class="flex flex-col items-center gap-1 py-3.5 px-2 bg-card">
+				<span class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">Memory</span>
+				<span class="text-lg font-bold text-foreground tabular-nums">
 					{latest.memoryRssMb != null ? `${latest.memoryRssMb.toFixed(0)} MB` : '-'}
 				</span>
 			</div>
 		</div>
 
 		{#if memoryPoints.length >= 2}
-			<div class="sparkline-section">
-				<div class="sparkline-header">
-					<span class="sparkline-label">Memory trend</span>
-					<span class="sparkline-range">
+			<div class="py-3 px-4">
+				<div class="flex items-center justify-between mb-1.5">
+					<span class="text-[11px] text-muted-foreground font-medium">Memory trend</span>
+					<span class="text-[11px] text-muted-foreground tabular-nums">
 						{memoryMin.toFixed(0)}&ndash;{memoryMax.toFixed(0)} MB
 					</span>
 				</div>
 				<svg
-					class="sparkline-svg"
+					class="w-full h-8 block"
 					viewBox="0 0 240 32"
-					width="100%"
-				preserveAspectRatio="xMidYMid meet"
+					preserveAspectRatio="xMidYMid meet"
 					xmlns="http://www.w3.org/2000/svg"
 				>
 					<path d={sparklineArea} fill="rgba(59, 130, 246, 0.1)" />
 					<polyline
 						points={sparklinePath}
 						fill="none"
-						stroke="var(--accent)"
+						stroke="var(--color-accent)"
 						stroke-width="2"
 						stroke-linejoin="round"
 						stroke-linecap="round"
@@ -187,110 +186,3 @@
 		{/if}
 	{/if}
 </div>
-
-<style>
-	.panel {
-		background: var(--card);
-		border: 1px solid var(--border);
-		border-radius: var(--radius);
-		overflow: hidden;
-	}
-
-	.panel-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 12px 16px;
-		border-bottom: 1px solid var(--border);
-	}
-
-	.panel-title {
-		font-size: 13px;
-		font-weight: 600;
-		color: var(--text);
-		margin: 0;
-	}
-
-	.panel-meta {
-		font-size: 11px;
-		color: var(--text3);
-	}
-
-	.panel-empty {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: 48px 16px;
-		color: var(--text3);
-		font-size: 13px;
-	}
-
-	.panel-error {
-		color: var(--red);
-	}
-
-	.stats-grid {
-		display: grid;
-		grid-template-columns: repeat(4, 1fr);
-		gap: 1px;
-		background: var(--border);
-		border-bottom: 1px solid var(--border);
-	}
-
-	.stat-card {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 4px;
-		padding: 14px 8px;
-		background: var(--card);
-	}
-
-	.stat-label {
-		font-size: 11px;
-		color: var(--text3);
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
-		font-weight: 500;
-	}
-
-	.stat-value {
-		font-size: 18px;
-		font-weight: 700;
-		color: var(--text);
-		font-variant-numeric: tabular-nums;
-	}
-
-	.stat-value.ok {
-		color: var(--green);
-	}
-
-	.sparkline-section {
-		padding: 12px 16px;
-	}
-
-	.sparkline-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		margin-bottom: 6px;
-	}
-
-	.sparkline-label {
-		font-size: 11px;
-		color: var(--text3);
-		font-weight: 500;
-	}
-
-	.sparkline-range {
-		font-size: 11px;
-		color: var(--text3);
-		font-variant-numeric: tabular-nums;
-	}
-
-	.sparkline-svg {
-		width: 100%;
-		height: 32px;
-		display: block;
-	}
-</style>

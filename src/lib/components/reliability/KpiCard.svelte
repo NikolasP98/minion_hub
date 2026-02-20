@@ -37,93 +37,23 @@
 	});
 </script>
 
-<div class="kpi-card" style:--kpi-color="var({color})">
-	<div class="accent-bar"></div>
-	<div class="content">
-		<div class="header">
+<div class="relative bg-card border border-border rounded-lg min-w-40 p-0 overflow-hidden flex" style:--kpi-color="var({color})">
+	<div class="w-1 shrink-0 border-l-4 rounded-l-lg" style:border-left-color="var({color})"></div>
+	<div class="p-4 flex flex-col gap-2 flex-1 min-w-0">
+		<div class="flex items-center gap-1.5">
 			{#if icon}
-				<span class="icon">{icon}</span>
+				<span class="text-sm leading-none">{icon}</span>
 			{/if}
-			<span class="label">{label}</span>
+			<span class="text-xs text-muted font-medium tracking-wide uppercase whitespace-nowrap overflow-hidden text-ellipsis">{label}</span>
 		</div>
-		<div class="value">{value}</div>
+		<div class="text-2xl font-bold text-foreground leading-tight">{value}</div>
 		{#if trend !== null}
-			<div class="trend" style:color={trendColor}>
+			<div class="flex items-center gap-1 text-[13px] font-medium" style:color={trendColor}>
 				{#if trendArrow}
-					<span class="trend-arrow">{trendArrow}</span>
+					<span class="font-bold">{trendArrow}</span>
 				{/if}
-				<span class="trend-value">{trendLabel}</span>
+				<span>{trendLabel}</span>
 			</div>
 		{/if}
 	</div>
 </div>
-
-<style>
-	.kpi-card {
-		position: relative;
-		background: var(--card);
-		border: 1px solid var(--border);
-		border-radius: var(--radius);
-		min-width: 160px;
-		padding: 0;
-		overflow: hidden;
-		display: flex;
-	}
-
-	.accent-bar {
-		width: 4px;
-		flex-shrink: 0;
-		background: var(--kpi-color);
-		border-radius: var(--radius) 0 0 var(--radius);
-	}
-
-	.content {
-		padding: 16px;
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		flex: 1;
-		min-width: 0;
-	}
-
-	.header {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-	}
-
-	.icon {
-		font-size: 14px;
-		line-height: 1;
-	}
-
-	.label {
-		font-size: 12px;
-		color: var(--text2);
-		font-weight: 500;
-		letter-spacing: 0.02em;
-		text-transform: uppercase;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
-	.value {
-		font-size: 24px;
-		font-weight: 700;
-		color: var(--text);
-		line-height: 1.1;
-	}
-
-	.trend {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		font-size: 13px;
-		font-weight: 500;
-	}
-
-	.trend-arrow {
-		font-weight: 700;
-	}
-</style>

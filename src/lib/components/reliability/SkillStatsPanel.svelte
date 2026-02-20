@@ -15,10 +15,10 @@
 	const STATUS_ORDER: SkillStatus[] = ['ok', 'error', 'auth_error', 'timeout'];
 
 	const STATUS_COLORS: Record<SkillStatus, string> = {
-		ok: 'var(--green)',
-		error: 'var(--red)',
-		auth_error: 'var(--amber)',
-		timeout: 'var(--purple)',
+		ok: 'var(--color-success)',
+		error: 'var(--color-destructive)',
+		auth_error: 'var(--color-warning)',
+		timeout: 'var(--color-purple)',
 	};
 
 	const STATUS_LABELS: Record<SkillStatus, string> = {
@@ -56,39 +56,39 @@
 	});
 </script>
 
-<div class="panel">
-	<div class="panel-header">
-		<h3 class="panel-title">Skill Execution Stats</h3>
+<div class="bg-card border border-border rounded-lg overflow-hidden">
+	<div class="flex items-center justify-between py-3 px-4 border-b border-border">
+		<h3 class="text-[13px] font-semibold text-foreground m-0">Skill Execution Stats</h3>
 	</div>
 
 	{#if state.loading && skills.length === 0}
-		<div class="panel-empty">Loading...</div>
+		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">Loading...</div>
 	{:else if state.error}
-		<div class="panel-empty panel-error">{state.error}</div>
+		<div class="flex items-center justify-center py-12 px-4 text-destructive text-[13px]">{state.error}</div>
 	{:else if skills.length === 0}
-		<div class="panel-empty">No skill data</div>
+		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">No skill data</div>
 	{:else}
-		<div class="legend">
+		<div class="flex flex-wrap gap-3 py-2.5 px-4 border-b border-border">
 			{#each STATUS_ORDER as s (s)}
-				<span class="legend-item">
-					<span class="legend-dot" style:background={STATUS_COLORS[s]}></span>
+				<span class="flex items-center gap-1.5 text-[11px] text-muted">
+					<span class="w-2 h-2 rounded-full shrink-0" style:background={STATUS_COLORS[s]}></span>
 					{STATUS_LABELS[s]}
 				</span>
 			{/each}
 		</div>
 
-		<div class="skill-list">
+		<div class="py-3 px-4 flex flex-col gap-2.5">
 			{#each skills as skill (skill.skillName)}
-				<div class="skill-row">
-					<div class="skill-meta">
-						<span class="skill-name" title={skill.skillName}>{skill.skillName}</span>
-						<span class="skill-count">{skill.total} exec</span>
-						<span class="skill-duration">{formatDuration(skill.avgDurationMs)}</span>
+				<div class="flex flex-col gap-1">
+					<div class="flex items-baseline gap-2">
+						<span class="text-xs font-semibold text-foreground max-w-[200px] overflow-hidden text-ellipsis whitespace-nowrap" title={skill.skillName}>{skill.skillName}</span>
+						<span class="text-[11px] text-muted-foreground tabular-nums">{skill.total} exec</span>
+						<span class="text-[11px] text-muted-foreground tabular-nums ml-auto">{formatDuration(skill.avgDurationMs)}</span>
 					</div>
-					<div class="bar-track">
+					<div class="flex h-2 rounded overflow-hidden bg-bg3 gap-px">
 						{#each barSegments(skill) as seg (seg.status)}
 							<div
-								class="bar-segment"
+								class="h-full min-w-0.5 rounded-sm transition-[width] duration-300 ease-in-out"
 								style:width="{seg.width}%"
 								style:background={STATUS_COLORS[seg.status]}
 								title="{STATUS_LABELS[seg.status]}: {seg.count}"
@@ -100,121 +100,3 @@
 		</div>
 	{/if}
 </div>
-
-<style>
-	.panel {
-		background: var(--card);
-		border: 1px solid var(--border);
-		border-radius: var(--radius);
-		overflow: hidden;
-	}
-
-	.panel-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 12px 16px;
-		border-bottom: 1px solid var(--border);
-	}
-
-	.panel-title {
-		font-size: 13px;
-		font-weight: 600;
-		color: var(--text);
-		margin: 0;
-	}
-
-	.panel-empty {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: 48px 16px;
-		color: var(--text3);
-		font-size: 13px;
-	}
-
-	.panel-error {
-		color: var(--red);
-	}
-
-	.legend {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 12px;
-		padding: 10px 16px;
-		border-bottom: 1px solid var(--border);
-	}
-
-	.legend-item {
-		display: flex;
-		align-items: center;
-		gap: 5px;
-		font-size: 11px;
-		color: var(--text2);
-	}
-
-	.legend-dot {
-		width: 8px;
-		height: 8px;
-		border-radius: 50%;
-		flex-shrink: 0;
-	}
-
-	.skill-list {
-		padding: 12px 16px;
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-	}
-
-	.skill-row {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-	}
-
-	.skill-meta {
-		display: flex;
-		align-items: baseline;
-		gap: 8px;
-	}
-
-	.skill-name {
-		font-size: 12px;
-		font-weight: 600;
-		color: var(--text);
-		max-width: 200px;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.skill-count {
-		font-size: 11px;
-		color: var(--text3);
-		font-variant-numeric: tabular-nums;
-	}
-
-	.skill-duration {
-		font-size: 11px;
-		color: var(--text3);
-		font-variant-numeric: tabular-nums;
-		margin-left: auto;
-	}
-
-	.bar-track {
-		display: flex;
-		height: 8px;
-		border-radius: 4px;
-		overflow: hidden;
-		background: var(--bg3);
-		gap: 1px;
-	}
-
-	.bar-segment {
-		height: 100%;
-		min-width: 2px;
-		border-radius: 1px;
-		transition: width 0.3s ease;
-	}
-</style>
