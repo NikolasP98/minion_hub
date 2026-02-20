@@ -101,11 +101,4 @@
 	});
 </script>
 
-<div bind:this={container} class="sparkline"></div>
-
-<style>
-	.sparkline {
-		width: 100%;
-		height: 28px;
-	}
-</style>
+<div bind:this={container} class="w-full h-[28px]"></div>

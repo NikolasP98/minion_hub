@@ -68,12 +68,4 @@
   });
 </script>
 
-<canvas bind:this={canvas} class="particles"></canvas>
-
-<style>
-  .particles {
-    position: fixed; top: 0; left: 0;
-    width: 100%; height: 100%;
-    z-index: -1; pointer-events: none; opacity: 0.7;
-  }
-</style>
+<canvas bind:this={canvas} class="fixed top-0 left-0 w-full h-full -z-1 pointer-events-none opacity-70"></canvas>

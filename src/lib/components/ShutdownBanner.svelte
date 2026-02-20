@@ -3,16 +3,7 @@
 </script>
 
 {#if ui.shutdownReason}
-  <div class="shutdown-banner">
+  <div class="fixed top-0 left-0 right-0 z-200 bg-destructive/95 text-white text-center py-3 px-5 text-sm font-semibold">
     Gateway shutdown: {ui.shutdownReason}
   </div>
 {/if}
-
-<style>
-  .shutdown-banner {
-    position: fixed; top: 0; left: 0; right: 0; z-index: 200;
-    background: rgba(239, 68, 68, 0.95);
-    color: #fff; text-align: center;
-    padding: 12px 20px; font-size: 14px; font-weight: 600;
-  }
-</style>
