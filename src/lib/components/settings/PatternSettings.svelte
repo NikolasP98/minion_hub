@@ -1,39 +1,35 @@
 <script lang="ts">
   import * as slider from '@zag-js/slider';
   import { normalizeProps, useMachine } from '@zag-js/svelte';
-  import { bgPattern, PATTERN_OPTIONS, type PatternType } from '$lib/state/bg-pattern.svelte';
+  import { bgPattern, PATTERN_OPTIONS } from '$lib/state/bg-pattern.svelte';
 
-  // ─── Opacity slider (0–100) ───
-  const [opState, opSend] = useMachine(
-    slider.machine({
-      id: 'opacity-slider',
-      name: 'opacity',
-      min: 0,
-      max: 40,
-      step: 1,
-      value: [bgPattern.opacity],
-      onValueChange(detail) {
-        bgPattern.setOpacity(detail.value[0]);
-      },
-    }),
-  );
-  const opApi = $derived(slider.connect(opState, opSend, normalizeProps));
+  // ─── Opacity slider (0–40) ───
+  const opService = useMachine(slider.machine, () => ({
+    id: 'opacity-slider',
+    name: 'opacity',
+    min: 0,
+    max: 40,
+    step: 1,
+    value: [bgPattern.opacity],
+    onValueChange(detail: slider.ValueChangeDetails) {
+      bgPattern.setOpacity(detail.value[0]);
+    },
+  }));
+  const opApi = $derived(slider.connect(opService, normalizeProps));
 
-  // ─── Size slider (8–48) ───
-  const [szState, szSend] = useMachine(
-    slider.machine({
-      id: 'size-slider',
-      name: 'size',
-      min: 6,
-      max: 48,
-      step: 1,
-      value: [bgPattern.size],
-      onValueChange(detail) {
-        bgPattern.setSize(detail.value[0]);
-      },
-    }),
-  );
-  const szApi = $derived(slider.connect(szState, szSend, normalizeProps));
+  // ─── Size slider (6–48) ───
+  const szService = useMachine(slider.machine, () => ({
+    id: 'size-slider',
+    name: 'size',
+    min: 6,
+    max: 48,
+    step: 1,
+    value: [bgPattern.size],
+    onValueChange(detail: slider.ValueChangeDetails) {
+      bgPattern.setSize(detail.value[0]);
+    },
+  }));
+  const szApi = $derived(slider.connect(szService, normalizeProps));
 </script>
 
 <section class="space-y-6">
@@ -60,7 +56,7 @@
   {#if bgPattern.pattern !== 'none'}
     <div class="grid grid-cols-2 gap-8">
 
-      <!-- Opacity knob -->
+      <!-- Opacity slider -->
       <div class="space-y-3">
         <div class="flex items-baseline justify-between">
           <span class="text-xs text-muted-foreground font-medium">Opacity</span>
@@ -89,7 +85,7 @@
         </div>
       </div>
 
-      <!-- Size knob -->
+      <!-- Size slider -->
       <div class="space-y-3">
         <div class="flex items-baseline justify-between">
           <span class="text-xs text-muted-foreground font-medium">Size</span>

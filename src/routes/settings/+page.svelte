@@ -3,7 +3,7 @@
   import PatternSettings from '$lib/components/settings/PatternSettings.svelte';
 </script>
 
-<div class="flex flex-col h-screen overflow-hidden bg-bg text-foreground">
+<div class="relative z-10 flex flex-col h-screen overflow-hidden text-foreground">
   <!-- Header -->
   <header class="shrink-0 bg-bg/95 backdrop-blur-sm border-b border-border px-4.5 py-2.5 flex items-center">
     <a

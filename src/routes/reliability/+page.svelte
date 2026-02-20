@@ -288,7 +288,7 @@
 	});
 </script>
 
-<div class="flex flex-col h-screen bg-bg text-foreground">
+<div class="relative z-10 flex flex-col h-screen text-foreground">
 	<header class="sticky top-0 z-10 flex items-center justify-between py-3 px-6 bg-bg2 border-b border-border shrink-0 max-sm:flex-col max-sm:gap-3 max-sm:items-start">
 		<div class="flex items-center gap-3">
 			<a href="/" class="flex items-center justify-center w-8 h-8 rounded-lg text-muted no-underline transition-colors duration-150 hover:bg-bg3 hover:text-foreground" aria-label="Back to home">

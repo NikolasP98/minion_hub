@@ -9,8 +9,8 @@
 
 {#if bgPattern.pattern !== 'none'}
   <svg
-    class="fixed inset-0 w-full h-full pointer-events-none"
-    style="opacity:{bgPattern.opacity / 100}; z-index:-20"
+    class="fixed inset-0 w-full h-full pointer-events-none z-0"
+    style="opacity:{bgPattern.opacity / 100}"
     aria-hidden="true"
   >
     <defs>

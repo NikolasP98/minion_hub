@@ -5,7 +5,6 @@
   import DetailPanel from '$lib/components/DetailPanel.svelte';
   import { loadHosts, hostsState } from '$lib/state/hosts.svelte';
   import { wsConnect } from '$lib/services/gateway.svelte';
-  import DotGrid from '$lib/components/decorations/DotGrid.svelte';
 
   onMount(() => {
     loadHosts();
@@ -13,10 +12,9 @@
   });
 </script>
 
-<div class="flex flex-col h-screen overflow-hidden">
+<div class="relative z-10 flex flex-col h-screen overflow-hidden">
   <Topbar />
-  <div class="relative flex flex-1 min-h-0 overflow-hidden">
-    <DotGrid opacity={0.08} />
+  <div class="flex flex-1 min-h-0 overflow-hidden">
     <AgentSidebar />
     <DetailPanel />
   </div>

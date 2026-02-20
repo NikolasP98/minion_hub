@@ -164,6 +164,8 @@
 
 {#if fieldType === 'object'}
   <!-- Nested object: render each property recursively -->
+  {@const hasEnabledToggle = schema.properties?.enabled && resolveFieldType(schema.properties.enabled) === 'boolean'}
+  {@const enabledValue = hasEnabledToggle && value != null && typeof value === 'object' ? (value as Record<string, unknown>).enabled : true}
   <fieldset class="border-none p-0 m-0 space-y-3 {depth > 0 ? 'pl-3 border-l border-border' : ''}">
     {#if depth > 0}
       <legend class="text-xs font-semibold text-foreground">{label}</legend>
@@ -172,18 +174,37 @@
       <p class="text-[10px] text-muted-foreground -mt-1">{helpText}</p>
     {/if}
     {#if schema.properties}
-      {#each Object.entries(schema.properties) as [key, propSchema] (key)}
-        {@const childPath = `${path}.${key}`}
-        {@const childHint = configState.uiHints[childPath] ?? {}}
-        {@const childValue = value != null && typeof value === 'object' ? (value as Record<string, unknown>)[key] : undefined}
+      <!-- If object has an 'enabled' toggle, render it first -->
+      {#if hasEnabledToggle}
+        {@const enabledPath = `${path}.enabled`}
+        {@const enabledHint = configState.uiHints[enabledPath] ?? {}}
+        {@const enabledVal = value != null && typeof value === 'object' ? (value as Record<string, unknown>).enabled : undefined}
         <ConfigField
-          path={childPath}
-          schema={propSchema}
-          hint={childHint}
-          value={childValue}
+          path={enabledPath}
+          schema={schema.properties.enabled}
+          hint={enabledHint}
+          value={enabledVal}
           depth={depth + 1}
         />
-      {/each}
+      {/if}
+
+      <!-- Remaining properties: hidden when enabled=false -->
+      {#if enabledValue || !hasEnabledToggle}
+        {#each Object.entries(schema.properties) as [key, propSchema] (key)}
+          {#if !(hasEnabledToggle && key === 'enabled')}
+            {@const childPath = `${path}.${key}`}
+            {@const childHint = configState.uiHints[childPath] ?? {}}
+            {@const childValue = value != null && typeof value === 'object' ? (value as Record<string, unknown>)[key] : undefined}
+            <ConfigField
+              path={childPath}
+              schema={propSchema}
+              hint={childHint}
+              value={childValue}
+              depth={depth + 1}
+            />
+          {/if}
+        {/each}
+      {/if}
     {/if}
   </fieldset>
 

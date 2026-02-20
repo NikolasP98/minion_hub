@@ -282,6 +282,27 @@ function stripRedactedSentinels(obj: Record<string, unknown>): void {
   }
 }
 
+// ─── Value inspection ───────────────────────────────────────────────────────
+
+/** Returns true if value has meaningful content (non-null, non-empty object/array) */
+export function hasConfiguredValues(value: unknown): boolean {
+  if (value == null) return false;
+  if (typeof value === 'boolean') return true;
+  if (typeof value === 'number') return true;
+  if (typeof value === 'string') return value.length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') {
+    return Object.values(value as Record<string, unknown>).some((v) => hasConfiguredValues(v));
+  }
+  return false;
+}
+
+/** Count how many top-level properties in an object have configured values */
+export function countConfiguredKeys(value: unknown): number {
+  if (value == null || typeof value !== 'object' || Array.isArray(value)) return 0;
+  return Object.values(value as Record<string, unknown>).filter((v) => hasConfiguredValues(v)).length;
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function isPlainObject(val: unknown): val is Record<string, unknown> {
