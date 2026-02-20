@@ -38,16 +38,16 @@
   }
 </script>
 
-<div class="chat-section">
+<div class="flex-1 min-h-0 flex flex-col overflow-hidden">
   <div
-    class="chat-messages"
+    class="flex-1 min-h-0 overflow-y-auto px-4 py-2.5 flex flex-col gap-1.5 [scrollbar-width:thin] [scrollbar-color:var(--color-border)_transparent]"
     bind:this={messagesEl}
     onscroll={handleScroll}
   >
     {#if !chat || (chat.messages.length === 0 && !chat.stream && !chat.loading)}
-      <div class="chat-empty">No messages yet. Say hello!</div>
+      <div class="text-muted-foreground text-[11px] text-center p-5">No messages yet. Say hello!</div>
     {:else if chat.loading}
-      <div class="chat-empty">Loading history…</div>
+      <div class="text-muted-foreground text-[11px] text-center p-5">Loading history…</div>
     {:else}
       {#each chat.messages as msg, i (i)}
         <ChatMessage message={msg} />
@@ -55,8 +55,10 @@
 
       {#if chat.stream !== null}
         {#if chat.stream === ''}
-          <div class="typing">
-            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          <div class="flex gap-1 px-2 py-1 items-center self-start">
+            <span class="size-1.5 rounded-full bg-muted-foreground animate-typing-bounce"></span>
+            <span class="size-1.5 rounded-full bg-muted-foreground animate-typing-bounce [animation-delay:0.15s]"></span>
+            <span class="size-1.5 rounded-full bg-muted-foreground animate-typing-bounce [animation-delay:0.3s]"></span>
           </div>
         {:else}
           <ChatMessage message={{ role: 'assistant', content: chat.stream }} streaming={true} />
@@ -69,9 +71,9 @@
     {/if}
   </div>
 
-  <div class="chat-input-row">
+  <div class="shrink-0 flex gap-2 px-4 py-2.5 border-t border-border">
     <textarea
-      class="chat-input"
+      class="flex-1 bg-bg3 border border-border rounded-md text-foreground px-3 py-[7px] font-mono text-xs outline-none resize-none min-h-8 max-h-20 [field-sizing:content] focus:border-accent"
       placeholder={conn.connected ? 'Type a message… (Enter to send)' : 'Not connected'}
       disabled={!conn.connected || (chat?.sending ?? false)}
       value={chat?.inputText ?? ''}
@@ -80,62 +82,9 @@
       rows="1"
     ></textarea>
     <button
-      class="chat-send"
+      class="bg-accent text-white border-0 rounded-md px-3.5 text-xs font-semibold cursor-pointer transition-all duration-200 shrink-0 hover:brightness-[1.15] disabled:opacity-40 disabled:cursor-default"
       disabled={!conn.connected || (chat?.sending ?? false) || !(chat?.inputText?.trim())}
       onclick={() => sendChatMsg(agentId)}
     >Send</button>
   </div>
 </div>
-
-<style>
-  .chat-section {
-    flex: 1; min-height: 0;
-    display: flex; flex-direction: column; overflow: hidden;
-  }
-  .chat-messages {
-    flex: 1; min-height: 0;
-    overflow-y: auto; padding: 10px 16px;
-    display: flex; flex-direction: column; gap: 6px;
-    scrollbar-width: thin; scrollbar-color: var(--border) transparent;
-  }
-  .chat-empty {
-    color: var(--text3); font-size: 11px;
-    text-align: center; padding: 20px; font-family: inherit;
-  }
-  .typing {
-    display: flex; gap: 4px; padding: 4px 8px;
-    align-items: center; align-self: flex-start;
-  }
-  .dot {
-    width: 6px; height: 6px; border-radius: 50%;
-    background: var(--text3);
-    animation: typing-bounce 0.6s ease infinite;
-  }
-  .dot:nth-child(2) { animation-delay: 0.15s; }
-  .dot:nth-child(3) { animation-delay: 0.3s; }
-  @keyframes typing-bounce {
-    0%, 100% { transform: translateY(0); opacity: 0.4; }
-    50% { transform: translateY(-5px); opacity: 1; }
-  }
-  .chat-input-row {
-    flex-shrink: 0; display: flex; gap: 8px;
-    padding: 10px 16px; border-top: 1px solid var(--border);
-  }
-  .chat-input {
-    flex: 1; background: var(--bg3); border: 1px solid var(--border);
-    border-radius: 6px; color: var(--text); padding: 7px 12px;
-    font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
-    font-size: 12px; outline: none; resize: none;
-    min-height: 32px; max-height: 80px;
-    field-sizing: content;
-  }
-  .chat-input:focus { border-color: var(--accent); }
-  .chat-send {
-    background: var(--accent); color: #fff; border: none;
-    border-radius: 6px; padding: 0 14px;
-    font-family: inherit; font-size: 12px; font-weight: 600;
-    cursor: pointer; transition: all 0.2s; flex-shrink: 0;
-  }
-  .chat-send:hover { filter: brightness(1.15); }
-  .chat-send:disabled { opacity: 0.4; cursor: default; }
-</style>

@@ -12,34 +12,14 @@
   const role = $derived(m.role === 'user' ? 'user' : 'assistant');
 </script>
 
-<div class="chat-msg {error ? 'error' : role} {streaming ? 'stream' : ''}">
+<div
+  class="max-w-[85%] px-[11px] py-[7px] rounded-lg text-xs font-mono leading-relaxed break-words whitespace-pre-wrap
+    {error
+      ? 'self-center bg-destructive/15 text-destructive text-[11px] rounded-md !max-w-[95%]'
+      : role === 'user'
+        ? 'self-end bg-accent text-white rounded-br-[3px]'
+        : 'self-start bg-bg3 text-foreground rounded-bl-[3px]'}
+    {streaming ? 'opacity-80 border border-dashed border-border' : ''}"
+>
   {text}
 </div>
-
-<style>
-  .chat-msg {
-    max-width: 85%; padding: 7px 11px; border-radius: 8px;
-    font-size: 12px;
-    font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
-    line-height: 1.5; word-wrap: break-word; white-space: pre-wrap;
-  }
-  .chat-msg.user {
-    align-self: flex-end;
-    background: var(--accent); color: #fff;
-    border-bottom-right-radius: 3px;
-  }
-  .chat-msg.assistant {
-    align-self: flex-start;
-    background: var(--bg3); color: var(--text);
-    border-bottom-left-radius: 3px;
-  }
-  .chat-msg.error {
-    align-self: center;
-    background: rgba(239,68,68,0.15); color: var(--red);
-    font-size: 11px; border-radius: 6px; max-width: 95%;
-  }
-  .chat-msg.stream {
-    opacity: 0.8;
-    border: 1px dashed var(--border);
-  }
-</style>
