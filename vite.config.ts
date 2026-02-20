@@ -5,9 +5,9 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   plugins: [tailwindcss(), sveltekit()],
   optimizeDeps: {
-    include: ['@zag-js/popover', '@zag-js/combobox'],
+    include: ['@zag-js/popover', '@zag-js/combobox', '@zag-js/slider'],
   },
   ssr: {
-    noExternal: ['@zag-js/popover', '@zag-js/combobox', '@zag-js/svelte'],
+    noExternal: ['@zag-js/popover', '@zag-js/combobox', '@zag-js/slider', '@zag-js/svelte'],
   },
 });

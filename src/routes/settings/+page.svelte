@@ -1,5 +1,6 @@
 <script lang="ts">
   import { theme } from '$lib/state/theme.svelte';
+  import PatternSettings from '$lib/components/settings/PatternSettings.svelte';
 </script>
 
 <div class="flex flex-col h-screen overflow-hidden bg-bg text-foreground">
@@ -77,6 +78,9 @@
           {/each}
         </div>
       </section>
+
+      <!-- Background Pattern -->
+      <PatternSettings />
 
     </div>
   </div>

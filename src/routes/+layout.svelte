@@ -1,6 +1,7 @@
 <script lang="ts">
   import '../app.css';
   import ParticleCanvas from '$lib/components/ParticleCanvas.svelte';
+  import BgPattern from '$lib/components/decorations/BgPattern.svelte';
   import ShutdownBanner from '$lib/components/ShutdownBanner.svelte';
   import HostsOverlay from '$lib/components/HostsOverlay.svelte';
   import { theme, applyTheme } from '$lib/state/theme.svelte';
@@ -15,6 +16,7 @@
 </script>
 
 <ParticleCanvas />
+<BgPattern />
 <ShutdownBanner />
 {@render children()}
 
