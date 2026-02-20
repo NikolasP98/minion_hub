@@ -1,65 +1,130 @@
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+@import 'tailwindcss';
+
+/* ── Theme tokens ── */
+@theme {
+  /* Backgrounds */
+  --color-bg: #09090b;
+  --color-bg2: #18181b;
+  --color-bg3: #27272a;
+
+  /* Card / surface */
+  --color-card: #0c0c0e;
+  --color-card-foreground: #fafafa;
+
+  /* Borders */
+  --color-border: #27272a;
+
+  /* Text hierarchy */
+  --color-foreground: #fafafa;
+  --color-muted: #a1a1aa;
+  --color-muted-foreground: #71717a;
+
+  /* Accent — overridden by theme presets */
+  --color-accent: #3b82f6;
+  --color-accent-foreground: #fafafa;
+
+  /* Semantic status colors */
+  --color-success: #22c55e;
+  --color-destructive: #ef4444;
+  --color-warning: #f59e0b;
+  --color-purple: #a855f7;
+  --color-pink: #ec4899;
+  --color-cyan: #06b6d4;
+  --color-emerald: #10b981;
+
+  /* Agent status */
+  --color-status-running: #22c55e;
+  --color-status-thinking: #a855f7;
+  --color-status-idle: #71717a;
+  --color-status-aborted: #f59e0b;
+
+  /* Brand */
+  --color-brand-pink: #e8547a;
+
+  /* Radius — shadcn NY uses tight radius */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
 }
 
-:root {
-  --bg: #0a0e17;
-  --bg2: #111827;
-  --bg3: #1e293b;
-  --card: #151d2e;
-  --border: #2a3548;
-  --text: #e2e8f0;
-  --text2: #94a3b8;
-  --text3: #64748b;
-  --accent: #3b82f6;
-  --green: #22c55e;
-  --red: #ef4444;
-  --amber: #f59e0b;
-  --purple: #a855f7;
-  --pink: #ec4899;
-  --cyan: #06b6d4;
-  --emerald: #10b981;
-  --status-running: #22c55e;
-  --status-thinking: #a855f7;
-  --status-idle: #64748b;
-  --status-aborted: #f59e0b;
-  --radius: 10px;
-  --shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
-  /* Logo brand color */
-  --brand-pink: #e8547a;
+/* ── Base layer ── */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html,
+  body {
+    height: 100%;
+    background: var(--color-bg);
+    color: var(--color-foreground);
+    overflow: hidden;
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  a {
+    color: var(--color-accent);
+    text-decoration: none;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 3px;
+  }
 }
 
-html,
-body {
-  height: 100%;
-  background: var(--bg);
-  color: var(--text);
-  overflow: hidden;
-}
+/* ── Utility layer for custom animations ── */
+@layer utilities {
+  @keyframes led-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
 
-body {
-  display: flex;
-  flex-direction: column;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-}
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
 
-a {
-  color: var(--accent);
-  text-decoration: none;
-}
+  @keyframes slide-up {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
 
-/* Scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 3px;
+  @keyframes dot-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.85); }
+  }
+
+  @keyframes glow-pulse {
+    0%, 100% { box-shadow: 0 0 4px currentColor; }
+    50% { box-shadow: 0 0 12px currentColor; }
+  }
+
+  @keyframes scan-line {
+    0% { transform: translateY(-100%); }
+    100% { transform: translateY(100vh); }
+  }
 }
