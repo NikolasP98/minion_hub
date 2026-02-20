@@ -1,7 +1,40 @@
 @import 'tailwindcss';
 
+/* ── JetBrains Mono Nerd Font ── */
+@font-face {
+  font-family: 'JetBrains Mono NF';
+  src: url('/fonts/JetBrainsMonoNerdFontMono-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'JetBrains Mono NF';
+  src: url('/fonts/JetBrainsMonoNerdFontMono-Italic.woff2') format('woff2');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'JetBrains Mono NF';
+  src: url('/fonts/JetBrainsMonoNerdFontMono-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'JetBrains Mono NF';
+  src: url('/fonts/JetBrainsMonoNerdFontMono-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* ── Theme tokens ── */
 @theme {
+  /* Font families */
+  --font-mono: 'JetBrains Mono NF', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+
   /* Backgrounds */
   --color-bg: #09090b;
   --color-bg2: #18181b;
