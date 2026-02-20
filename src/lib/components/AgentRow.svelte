@@ -1,5 +1,6 @@
 <script lang="ts">
   import Sparkline from './Sparkline.svelte';
+  import StatusDot from '$lib/components/decorations/StatusDot.svelte';
   import { agentActivity, agentChat } from '$lib/state/chat.svelte';
   import { ui } from '$lib/state/ui.svelte';
   import { gw } from '$lib/state/gateway-data.svelte';
@@ -42,6 +43,7 @@
   onkeydown={(e) => e.key === 'Enter' && onclick()}
 >
   <div class="flex items-center gap-1.5">
+    <StatusDot status={hasActive ? 'running' : 'idle'} size="sm" />
     <span class="text-[13px] font-semibold text-foreground">{agent.emoji ?? '🤖'} {agent.name ?? agent.id}</span>
   </div>
   <div class="text-[11px] mt-0.5 {hasActive ? 'text-status-running' : 'text-muted-foreground'}">

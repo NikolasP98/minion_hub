@@ -1,21 +1,19 @@
 <script lang="ts">
   import HostPill from './HostPill.svelte';
   import { conn } from '$lib/state/connection.svelte';
+  import StatusDot from '$lib/components/decorations/StatusDot.svelte';
+  import ScanLine from '$lib/components/decorations/ScanLine.svelte';
+
+  const dotStatus = $derived<'running' | 'thinking' | 'idle'>(
+    conn.connected ? 'running' : conn.connecting ? 'thinking' : 'idle'
+  );
 </script>
 
-<header class="shrink-0 relative z-100 bg-bg/95 backdrop-blur-sm border-b border-border px-4.5 py-2.5 flex items-center gap-2.5">
+<header class="shrink-0 relative z-100 bg-bg/95 backdrop-blur-sm border-b border-border px-4.5 py-2.5 flex items-center gap-2.5 overflow-hidden">
+  <ScanLine speed={12} opacity={0.02} />
   <HostPill />
 
-  <div
-    class="w-2.5 h-2.5 rounded-full shrink-0 transition-all duration-300"
-    class:bg-success={conn.connected}
-    class:shadow-[0_0_8px_var(--color-success)]={conn.connected}
-    class:bg-warning={conn.connecting}
-    class:shadow-[0_0_8px_var(--color-warning)]={conn.connecting}
-    class:animate-[led-pulse_1s_infinite]={conn.connecting}
-    class:bg-muted-foreground={!conn.connected && !conn.connecting}
-    class:shadow-[0_0_4px_var(--color-muted-foreground)]={!conn.connected && !conn.connecting}
-  ></div>
+  <StatusDot status={dotStatus} size="md" />
   <span class="text-xs text-muted whitespace-nowrap">{conn.statusText}</span>
 
   <div class="ml-auto mr-auto flex items-center select-none leading-none" aria-label="Minion Hub">

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import CornerAccent from '$lib/components/decorations/CornerAccent.svelte';
+
 	interface Props {
 		label: string;
 		value: string;
@@ -37,7 +39,8 @@
 	});
 </script>
 
-<div class="relative bg-card border border-border rounded-lg min-w-40 p-0 overflow-hidden flex" style:--kpi-color="var({color})">
+<div class="relative bg-card border border-border rounded-lg min-w-40 p-0 overflow-hidden flex transition-shadow duration-300 hover:shadow-[0_0_12px_var(--color-accent)]/10" style:--kpi-color="var({color})">
+	<CornerAccent position="top-right" />
 	<div class="w-1 shrink-0 border-l-4 rounded-l-lg" style:border-left-color="var({color})"></div>
 	<div class="p-4 flex flex-col gap-2 flex-1 min-w-0">
 		<div class="flex items-center gap-1.5">

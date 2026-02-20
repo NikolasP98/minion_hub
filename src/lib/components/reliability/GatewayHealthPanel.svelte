@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import StatusDot from '$lib/components/decorations/StatusDot.svelte';
 
 	interface Props {
 		serverId: string;
@@ -123,7 +124,10 @@
 
 <div class="bg-card border border-border rounded-lg overflow-hidden">
 	<div class="flex items-center justify-between py-3 px-4 border-b border-border">
-		<h3 class="text-[13px] font-semibold text-foreground m-0">Gateway Health</h3>
+		<div class="flex items-center gap-1.5">
+			<StatusDot status={latest ? 'running' : 'idle'} size="sm" />
+			<h3 class="text-[13px] font-semibold text-foreground m-0">Gateway Health</h3>
+		</div>
 		{#if latest}
 			<span class="text-[11px] text-muted-foreground">{formatAgo(latest.capturedAt)}</span>
 		{/if}

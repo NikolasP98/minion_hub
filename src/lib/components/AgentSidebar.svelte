@@ -1,6 +1,8 @@
 <script lang="ts">
   import AgentRow from './AgentRow.svelte';
   import GatewayInfo from './GatewayInfo.svelte';
+  import HudBorder from '$lib/components/decorations/HudBorder.svelte';
+  import DotMatrix from '$lib/components/decorations/DotMatrix.svelte';
   import { gw } from '$lib/state/gateway-data.svelte';
   import { conn } from '$lib/state/connection.svelte';
   import { ui } from '$lib/state/ui.svelte';
@@ -10,9 +12,15 @@
     '#3b82f6', '#22c55e', '#a855f7', '#ec4899',
     '#06b6d4', '#f59e0b', '#10b981', '#ef4444',
   ];
+
+  const activityData = $derived(
+    conn.connected
+      ? Array.from({ length: 16 }, () => Math.random() * 0.8 + 0.2)
+      : new Array(16).fill(0)
+  );
 </script>
 
-<aside class="w-[260px] shrink-0 overflow-hidden border-r border-border bg-bg2 flex flex-col">
+<HudBorder class="w-[260px] shrink-0 overflow-hidden border-r border-border bg-bg2 flex flex-col">
   <div class="hidden items-center justify-center px-3 py-3.5 border-b border-border select-none leading-none">
     <span class="bg-brand-pink text-black font-black text-sm tracking-wide px-2 py-0.5 rounded-l-[5px] uppercase">MINION</span>
     <span class="text-white font-bold text-sm px-1.5 py-0.5">hub</span>
@@ -46,10 +54,13 @@
     {/if}
   </div>
 
-  <div class="shrink-0 px-2.5 py-2 border-t border-border">
+  <div class="shrink-0 px-2.5 py-2 border-t border-border flex flex-col gap-2">
     <GatewayInfo />
+    <div class="flex items-center justify-center py-1">
+      <DotMatrix data={activityData} cols={8} />
+    </div>
   </div>
-</aside>
+</HudBorder>
 
 {#if ui.agentAddOpen}
   <AddAgentModal />

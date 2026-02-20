@@ -1,6 +1,7 @@
 <script lang="ts">
   import { gw } from '$lib/state/gateway-data.svelte';
   import { ui } from '$lib/state/ui.svelte';
+  import HudBorder from '$lib/components/decorations/HudBorder.svelte';
   import type { Agent } from '$lib/types/gateway';
 
   let { agentId, agent }: { agentId: string; agent: Agent } = $props();
@@ -27,7 +28,7 @@
   );
 </script>
 
-<div class="shrink-0 px-5 py-3.5 border-b border-border bg-bg2 flex items-center gap-3 flex-wrap">
+<HudBorder class="shrink-0 px-5 py-3.5 border-b border-border bg-bg2 flex items-center gap-3 flex-wrap">
   <span class="text-[17px] font-bold text-foreground">{agent.emoji ?? '🤖'} {agent.name ?? agentId}</span>
   <div class="flex gap-1.5 items-center ml-auto">
     {#if runningCount > 0}
@@ -46,4 +47,4 @@
       </span>
     {/if}
   </div>
-</div>
+</HudBorder>

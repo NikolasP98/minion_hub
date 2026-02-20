@@ -6,6 +6,8 @@
 	import CredentialHealthPanel from '$lib/components/reliability/CredentialHealthPanel.svelte';
 	import SkillStatsPanel from '$lib/components/reliability/SkillStatsPanel.svelte';
 	import GatewayHealthPanel from '$lib/components/reliability/GatewayHealthPanel.svelte';
+	import ScanLine from '$lib/components/decorations/ScanLine.svelte';
+	import DotMatrix from '$lib/components/decorations/DotMatrix.svelte';
 	import {
 		reliability,
 		loadReliabilitySummary,
@@ -14,6 +16,15 @@
 	import { hostsState } from '$lib/state/hosts.svelte';
 	import { onMount, untrack } from 'svelte';
 	import type { EChartsOption } from 'echarts';
+
+	/** Generate a small 8-value DotMatrix data array from a numeric KPI value (0–100+ range). */
+	function kpiToMatrix(val: number, max = 100): number[] {
+		const norm = Math.min(val / max, 1);
+		return Array.from({ length: 8 }, (_, i) => {
+			const threshold = (i + 1) / 8;
+			return norm >= threshold ? 0.8 : 0.15;
+		});
+	}
 
 	const CATEGORY_COLORS: Record<string, string> = {
 		cron: '#3b82f6',
@@ -314,55 +325,88 @@
 		{:else}
 			<!-- KPI Cards -->
 			<section class="grid grid-cols-3 gap-4 max-[900px]:grid-cols-2 max-sm:grid-cols-1">
-				<KpiCard
-					label="Total Events"
-					value={String(summary?.total ?? 0)}
-					icon="⚡"
-					color="--accent"
-				/>
-				<KpiCard
-					label="Critical"
-					value={String(summary?.bySeverity?.critical ?? 0)}
-					icon="🔴"
-					color="--red"
-				/>
-				<KpiCard
-					label="Cron Issues"
-					value={String(summary?.byCategory?.cron ?? 0)}
-					icon="⏱"
-					color="--amber"
-				/>
-				<KpiCard
-					label="Browser Issues"
-					value={String(summary?.byCategory?.browser ?? 0)}
-					icon="🌐"
-					color="--purple"
-				/>
-				<KpiCard
-					label="Auth Issues"
-					value={String(summary?.byCategory?.auth ?? 0)}
-					icon="🔑"
-					color="--green"
-				/>
-				<KpiCard
-					label="Gateway"
-					value={String(summary?.byCategory?.gateway ?? 0)}
-					icon="📡"
-					color="--teal"
-				/>
+				<div class="flex flex-col gap-1">
+					<KpiCard
+						label="Total Events"
+						value={String(summary?.total ?? 0)}
+						icon="⚡"
+						color="--accent"
+					/>
+					<div class="flex justify-end px-2">
+						<DotMatrix data={kpiToMatrix(summary?.total ?? 0, 200)} cols={8} />
+					</div>
+				</div>
+				<div class="flex flex-col gap-1">
+					<KpiCard
+						label="Critical"
+						value={String(summary?.bySeverity?.critical ?? 0)}
+						icon="🔴"
+						color="--red"
+					/>
+					<div class="flex justify-end px-2">
+						<DotMatrix data={kpiToMatrix(summary?.bySeverity?.critical ?? 0, 50)} cols={8} color="var(--color-destructive)" />
+					</div>
+				</div>
+				<div class="flex flex-col gap-1">
+					<KpiCard
+						label="Cron Issues"
+						value={String(summary?.byCategory?.cron ?? 0)}
+						icon="⏱"
+						color="--amber"
+					/>
+					<div class="flex justify-end px-2">
+						<DotMatrix data={kpiToMatrix(summary?.byCategory?.cron ?? 0, 50)} cols={8} color="var(--color-warning)" />
+					</div>
+				</div>
+				<div class="flex flex-col gap-1">
+					<KpiCard
+						label="Browser Issues"
+						value={String(summary?.byCategory?.browser ?? 0)}
+						icon="🌐"
+						color="--purple"
+					/>
+					<div class="flex justify-end px-2">
+						<DotMatrix data={kpiToMatrix(summary?.byCategory?.browser ?? 0, 50)} cols={8} color="var(--color-purple)" />
+					</div>
+				</div>
+				<div class="flex flex-col gap-1">
+					<KpiCard
+						label="Auth Issues"
+						value={String(summary?.byCategory?.auth ?? 0)}
+						icon="🔑"
+						color="--green"
+					/>
+					<div class="flex justify-end px-2">
+						<DotMatrix data={kpiToMatrix(summary?.byCategory?.auth ?? 0, 50)} cols={8} color="var(--color-success)" />
+					</div>
+				</div>
+				<div class="flex flex-col gap-1">
+					<KpiCard
+						label="Gateway"
+						value={String(summary?.byCategory?.gateway ?? 0)}
+						icon="📡"
+						color="--teal"
+					/>
+					<div class="flex justify-end px-2">
+						<DotMatrix data={kpiToMatrix(summary?.byCategory?.gateway ?? 0, 50)} cols={8} />
+					</div>
+				</div>
 			</section>
 
 			<!-- Timeline Chart -->
-			<section class="bg-card border border-border rounded-lg p-2 overflow-hidden">
+			<section class="relative bg-card border border-border rounded-lg p-2 overflow-hidden">
+				<ScanLine speed={10} opacity={0.02} />
 				<Chart options={timelineOptions} height="300px" />
 			</section>
 
 			<!-- Two column: Top Events + Severity Distribution -->
 			<section class="grid grid-cols-2 gap-4 max-[900px]:grid-cols-1">
-				<div class="bg-card border border-border rounded-lg p-2 overflow-hidden">
+				<div class="relative bg-card border border-border rounded-lg p-2 overflow-hidden">
+					<ScanLine speed={10} opacity={0.02} />
 					<Chart options={topEventsOptions} height="300px" />
 				</div>
-				<div class="bg-card border border-border rounded-lg p-2 overflow-hidden">
+				<div class="relative bg-card border border-border rounded-lg p-2 overflow-hidden">
+					<ScanLine speed={10} opacity={0.02} />
 					<Chart options={severityOptions} height="300px" />
 				</div>
 			</section>
