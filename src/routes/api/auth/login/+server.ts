@@ -6,7 +6,7 @@ import { users } from '$server/db/schema';
 import { verifyPassword } from '$server/auth/password';
 import { createSession, SESSION_COOKIE } from '$server/auth/session';
 
-export const POST: RequestHandler = async ({ request, cookies }) => {
+export const POST: RequestHandler = async ({ request, cookies, url }) => {
   const { email, password } = await request.json();
 
   if (!email || !password) {
@@ -31,7 +31,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
   cookies.set(SESSION_COOKIE, session.token, {
     path: '/',
     httpOnly: true,
-    secure: true,
+    secure: event.url.protocol === 'https:',
     sameSite: 'lax',
     expires: session.expiresAt,
   });

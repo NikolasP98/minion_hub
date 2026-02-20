@@ -34,7 +34,7 @@ export async function upsertSession(ctx: TenantContext, input: SessionInput) {
       updatedAt: now,
     })
     .onConflictDoUpdate({
-      target: sessions.id,
+      target: [sessions.tenantId, sessions.serverId, sessions.sessionKey],
       set: {
         status: input.status ?? 'idle',
         metadata: input.metadata ?? null,
@@ -51,6 +51,23 @@ export async function listSessions(ctx: TenantContext, serverId: string) {
     .select()
     .from(sessions)
     .where(and(eq(sessions.serverId, serverId), eq(sessions.tenantId, ctx.tenantId)))
+    .orderBy(desc(sessions.updatedAt));
+}
+
+export async function listSessionsByServer(
+  ctx: TenantContext,
+  serverId: string,
+  agentId?: string,
+) {
+  const conditions = [
+    eq(sessions.serverId, serverId),
+    eq(sessions.tenantId, ctx.tenantId),
+    ...(agentId ? [eq(sessions.agentId, agentId)] : []),
+  ];
+  return ctx.db
+    .select()
+    .from(sessions)
+    .where(and(...conditions))
     .orderBy(desc(sessions.updatedAt));
 }
 

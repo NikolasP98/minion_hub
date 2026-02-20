@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, index } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
 import { tenants } from './tenants';
 import { servers } from './servers';
 
@@ -26,5 +26,6 @@ export const sessions = sqliteTable(
   (t) => [
     index('idx_sessions_tenant').on(t.tenantId),
     index('idx_sessions_server').on(t.serverId),
+    uniqueIndex('sessions_uniq_key').on(t.tenantId, t.serverId, t.sessionKey),
   ],
 );

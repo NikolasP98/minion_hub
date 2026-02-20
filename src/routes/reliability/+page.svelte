@@ -3,6 +3,9 @@
 	import KpiCard from '$lib/components/reliability/KpiCard.svelte';
 	import DateRangePicker from '$lib/components/reliability/DateRangePicker.svelte';
 	import IncidentTable from '$lib/components/reliability/IncidentTable.svelte';
+	import CredentialHealthPanel from '$lib/components/reliability/CredentialHealthPanel.svelte';
+	import SkillStatsPanel from '$lib/components/reliability/SkillStatsPanel.svelte';
+	import GatewayHealthPanel from '$lib/components/reliability/GatewayHealthPanel.svelte';
 	import {
 		reliability,
 		loadReliabilitySummary,
@@ -16,7 +19,11 @@
 		cron: '#3b82f6',
 		browser: '#f59e0b',
 		timezone: '#a855f7',
-		general: '#64748b'
+		general: '#64748b',
+		auth: '#22c55e',
+		skill: '#06b6d4',
+		agent: '#ec4899',
+		gateway: '#10b981'
 	};
 
 	const SEVERITY_COLORS: Record<string, string> = {
@@ -26,7 +33,7 @@
 		low: '#64748b'
 	};
 
-	const CATEGORIES = ['cron', 'browser', 'timezone', 'general'] as const;
+	const CATEGORIES = ['cron', 'browser', 'timezone', 'general', 'auth', 'skill', 'agent', 'gateway'] as const;
 
 	let summary = $derived(reliability.summary);
 	let loading = $derived(reliability.loading);
@@ -331,6 +338,18 @@
 					icon="🌐"
 					color="--purple"
 				/>
+				<KpiCard
+					label="Auth Issues"
+					value={String(summary?.byCategory?.auth ?? 0)}
+					icon="🔑"
+					color="--green"
+				/>
+				<KpiCard
+					label="Gateway"
+					value={String(summary?.byCategory?.gateway ?? 0)}
+					icon="📡"
+					color="--teal"
+				/>
 			</section>
 
 			<!-- Timeline Chart -->
@@ -345,6 +364,16 @@
 				</div>
 				<div class="chart-card">
 					<Chart options={severityOptions} height="300px" />
+				</div>
+			</section>
+
+			<!-- Health Metrics -->
+			<section class="health-metrics">
+				<h2 class="section-title">Health Metrics</h2>
+				<div class="three-col">
+					<CredentialHealthPanel {serverId} />
+					<SkillStatsPanel {serverId} />
+					<GatewayHealthPanel {serverId} />
 				</div>
 			</section>
 
@@ -438,7 +467,7 @@
 
 	.kpi-row {
 		display: grid;
-		grid-template-columns: repeat(4, 1fr);
+		grid-template-columns: repeat(3, 1fr);
 		gap: 16px;
 	}
 
@@ -456,6 +485,26 @@
 		gap: 16px;
 	}
 
+	.health-metrics {
+		display: flex;
+		flex-direction: column;
+		gap: 16px;
+	}
+
+	.section-title {
+		margin: 0;
+		font-size: 14px;
+		font-weight: 600;
+		color: var(--text2, #94a3b8);
+		letter-spacing: -0.01em;
+	}
+
+	.three-col {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 16px;
+	}
+
 	.table-section {
 		min-width: 0;
 	}
@@ -466,6 +515,9 @@
 			grid-template-columns: repeat(2, 1fr);
 		}
 		.two-col {
+			grid-template-columns: 1fr;
+		}
+		.three-col {
 			grid-template-columns: 1fr;
 		}
 	}

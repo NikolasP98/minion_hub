@@ -44,3 +44,47 @@ export async function listChatMessages(
     .orderBy(asc(chatMessages.timestamp))
     .limit(limit);
 }
+
+export async function listChatMessagesBySessionKey(
+  ctx: TenantContext,
+  serverId: string,
+  sessionKey: string,
+  limit = 2000,
+) {
+  return ctx.db
+    .select()
+    .from(chatMessages)
+    .where(
+      and(
+        eq(chatMessages.serverId, serverId),
+        eq(chatMessages.sessionKey, sessionKey),
+        eq(chatMessages.tenantId, ctx.tenantId),
+      ),
+    )
+    .orderBy(asc(chatMessages.timestamp))
+    .limit(limit);
+}
+
+export async function bulkInsertChatMessages(
+  ctx: TenantContext,
+  messages: ChatMessageInput[],
+) {
+  if (messages.length === 0) return;
+  const now = nowMs();
+  for (const msg of messages) {
+    await ctx.db
+      .insert(chatMessages)
+      .values({
+        tenantId: ctx.tenantId,
+        serverId: msg.serverId,
+        agentId: msg.agentId,
+        sessionKey: msg.sessionKey,
+        role: msg.role,
+        content: msg.content,
+        runId: msg.runId ?? null,
+        timestamp: msg.timestamp,
+        createdAt: now,
+      })
+      .onConflictDoNothing();
+  }
+}

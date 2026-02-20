@@ -112,7 +112,10 @@ export async function loadReliabilityEvents(
     const res = await fetch(`/api/reliability/events?${params}`);
     if (res.ok) {
       const data = await res.json();
-      reliability.events = data.events ?? [];
+      reliability.events = (data.events ?? []).map((ev: Record<string, unknown>) => ({
+        ...ev,
+        timestamp: ev.occurredAt ?? ev.timestamp,
+      }));
     }
   } catch {
     // non-critical

@@ -1,6 +1,5 @@
 <script lang="ts">
   import HostPill from './HostPill.svelte';
-  import GatewayInfo from './GatewayInfo.svelte';
   import { conn } from '$lib/state/connection.svelte';
 </script>
 
@@ -15,8 +14,7 @@
   </div>
 
   <a href="/reliability" class="nav-link">Reliability</a>
-
-  <GatewayInfo />
+  <a href="/sessions" class="nav-link">Sessions</a>
 </header>
 
 <style>

@@ -41,8 +41,9 @@ export const handle: Handle = async ({ event, resolve }) => {
       event.locals.tenantCtx = { db, tenantId: serverAuth.tenantId };
       // Store serverId for metrics endpoints
       (event.locals as Record<string, unknown>).serverId = serverAuth.serverId;
+      return resolve(event);
     }
-    return resolve(event);
+    // Fall through to cookie auth for browser-originated metric reads
   }
 
   const token = event.cookies.get(SESSION_COOKIE);

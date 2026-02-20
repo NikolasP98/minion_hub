@@ -168,7 +168,8 @@
 				<svg
 					class="sparkline-svg"
 					viewBox="0 0 240 32"
-					preserveAspectRatio="none"
+					width="100%"
+				preserveAspectRatio="xMidYMid meet"
 					xmlns="http://www.w3.org/2000/svg"
 				>
 					<path d={sparklineArea} fill="rgba(59, 130, 246, 0.1)" />
@@ -176,9 +177,10 @@
 						points={sparklinePath}
 						fill="none"
 						stroke="var(--accent)"
-						stroke-width="1.5"
+						stroke-width="2"
 						stroke-linejoin="round"
 						stroke-linecap="round"
+						vector-effect="non-scaling-stroke"
 					/>
 				</svg>
 			</div>

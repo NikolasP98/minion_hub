@@ -1,6 +1,7 @@
 import { insertReliabilityEvents, type ReliabilityEventInput } from './reliability.service';
 import { insertCredentialHealthSnapshot, type CredentialHealthInput } from './credential-health.service';
 import { insertSkillStats, type SkillStatInput } from './skill-stats.service';
+import { upsertSession } from './session.service';
 import { gatewayHeartbeats } from '$server/db/schema';
 import { nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
@@ -16,6 +17,16 @@ export interface HeartbeatInput {
   capturedAt: number;
 }
 
+export interface SessionPushInput {
+  sessionKey: string;
+  agentId: string;
+  status?: 'running' | 'thinking' | 'idle' | 'aborted' | 'completed';
+  label?: string;
+  displayName?: string;
+  totalTokens?: number;
+  updatedAt?: number;
+}
+
 export interface MetricsBatchInput {
   reliabilityEvents?: ReliabilityEventInput[];
   credentialHealth?: {
@@ -25,6 +36,7 @@ export interface MetricsBatchInput {
   };
   skillStats?: SkillStatInput[];
   heartbeat?: HeartbeatInput;
+  sessions?: SessionPushInput[];
 }
 
 export async function processMetricsBatch(
@@ -69,5 +81,22 @@ export async function processMetricsBatch(
       channelStatusJson: batch.heartbeat.channelStatusJson ?? null,
       capturedAt: batch.heartbeat.capturedAt,
     });
+  }
+
+  if (batch.sessions?.length) {
+    for (const s of batch.sessions) {
+      await upsertSession(ctx, {
+        serverId,
+        agentId: s.agentId,
+        sessionKey: s.sessionKey,
+        status: s.status ?? 'idle',
+        metadata: JSON.stringify({
+          label: s.label,
+          displayName: s.displayName,
+          totalTokens: s.totalTokens,
+          updatedAt: s.updatedAt,
+        }),
+      });
+    }
   }
 }

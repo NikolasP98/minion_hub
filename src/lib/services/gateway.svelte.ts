@@ -1,5 +1,5 @@
 import { conn } from '$lib/state/connection.svelte';
-import { gw } from '$lib/state/gateway-data.svelte';
+import { gw, upsertSession, mergeSessions } from '$lib/state/gateway-data.svelte';
 import { agentChat, agentActivity, ensureAgentChat, ensureAgentActivity } from '$lib/state/chat.svelte';
 import { hostsState, getActiveHost, saveHosts } from '$lib/state/hosts.svelte';
 import { ui } from '$lib/state/ui.svelte';
@@ -267,6 +267,7 @@ function onAgentEvent(payload: Record<string, unknown>) {
 
   if (payload.sessionKey) {
     const sk = payload.sessionKey as string;
+    upsertSession({ sessionKey: sk, agentId: agentId, lastActiveAt: Date.now() });
     // Don't downgrade 'thinking' to 'running' — thinking is more specific
     if (ui.sessionStatus[sk] !== 'thinking') {
       ui.sessionStatus[sk] = 'running';
@@ -286,6 +287,7 @@ function onChatEvent(payload: ChatEvent) {
 
   const chat = ensureAgentChat(agentId);
   const sk = payload.sessionKey;
+  upsertSession({ sessionKey: sk, agentId, lastActiveAt: Date.now() });
 
   // Cross-run: a different run finished
   if (payload.runId && chat.runId && payload.runId !== chat.runId) {
@@ -357,13 +359,14 @@ function onHelloOk(hello: HelloOk) {
         const a = agent as { id: string };
         ensureAgentChat(a.id);
         ensureAgentActivity(a.id);
+        upsertSession({ sessionKey: `agent:${a.id}:main`, agentId: a.id, label: 'main', status: 'idle' });
       }
       for (const agent of gw.agents) loadChatHistory((agent as { id: string }).id);
     })
     .catch((e) => console.error('[hub] agents.list error:', e));
 
   sendRequest('sessions.list', {})
-    .then((r) => { gw.sessions = ((r as { sessions?: never[] })?.sessions) ?? []; })
+    .then((r) => { mergeSessions(((r as { sessions?: never[] })?.sessions) ?? []); })
     .catch(() => {});
 
   sendRequest('health', {}).then((r) => { gw.health = r; }).catch(() => {});
@@ -409,7 +412,6 @@ export function sendChatMsg(agentId: string) {
       chat.stream = null;
       chat.sending = false;
       chat.lastError = String(e);
-      chat.messages = [...chat.messages, { role: 'assistant', content: [{ type: 'text', text: `Error: ${String(e)}` }], timestamp: Date.now() }];
     });
 }
 
@@ -425,7 +427,7 @@ function startPolling() {
           gw.defaultAgentId = r.defaultId ?? gw.defaultAgentId;
         }
         if (results[1].status === 'fulfilled' && results[1].value) {
-          gw.sessions = ((results[1].value as { sessions?: never[] })?.sessions) ?? [];
+          mergeSessions(((results[1].value as { sessions?: never[] })?.sessions) ?? []);
         }
       })
       .catch(() => {});
