@@ -4,7 +4,7 @@ import { getDb } from '$server/db/client';
 import { listMarketplaceAgents } from '$server/services/marketplace.service';
 
 export const GET: RequestHandler = async ({ locals, url }) => {
-  if (!locals.tenantCtx) throw error(401);
+  if (!locals.user) throw error(401);
 
   const category = url.searchParams.get('category') ?? undefined;
   const search = url.searchParams.get('search') ?? undefined;

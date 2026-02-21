@@ -4,7 +4,7 @@ import { getDb } from '$server/db/client';
 import { getMarketplaceAgent } from '$server/services/marketplace.service';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
-  if (!locals.tenantCtx) throw error(401);
+  if (!locals.user) throw error(401);
 
   const db = getDb();
   const agent = await getMarketplaceAgent(db, params.id!);

@@ -7,7 +7,7 @@ import { hashPassword } from '$server/auth/password';
 import { createSession, SESSION_COOKIE } from '$server/auth/session';
 import { newId, nowMs } from '$server/db/utils';
 
-export const POST: RequestHandler = async ({ request, cookies }) => {
+export const POST: RequestHandler = async ({ request, cookies, url }) => {
   const { email, password, name, tenantName } = await request.json();
 
   if (!email || !password || !tenantName) {
@@ -58,7 +58,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
   cookies.set(SESSION_COOKIE, session.token, {
     path: '/',
     httpOnly: true,
-    secure: true,
+    secure: url.protocol === 'https:',
     sameSite: 'lax',
     expires: session.expiresAt,
   });

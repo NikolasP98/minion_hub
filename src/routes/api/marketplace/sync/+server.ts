@@ -1,30 +1,36 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
+import { env } from '$env/dynamic/private';
 import { getDb } from '$server/db/client';
 import { upsertMarketplaceAgents, type MarketplaceAgentUpsert } from '$server/services/marketplace.service';
 
-const GITHUB_REPO = 'nikolasp98/minions';
+const GITHUB_REPO = 'NikolasP98/minions';
 const GITHUB_API = 'https://api.github.com';
 
 async function fetchGitHubJson(path: string): Promise<unknown> {
-  const res = await fetch(`${GITHUB_API}/${path}`, {
-    headers: {
-      Accept: 'application/vnd.github.v3+json',
-      'User-Agent': 'minion-hub',
-    },
-  });
-  if (!res.ok) throw new Error(`GitHub API ${path}: ${res.status}`);
+  const headers: Record<string, string> = {
+    Accept: 'application/vnd.github.v3+json',
+    'User-Agent': 'minion-hub',
+  };
+  if (env.GITHUB_TOKEN) {
+    headers['Authorization'] = `Bearer ${env.GITHUB_TOKEN}`;
+  }
+  const res = await fetch(`${GITHUB_API}/${path}`, { headers });
+  if (!res.ok) throw new Error(`${res.status}`);
   return res.json();
 }
 
 function decodeBase64(encoded: string): string {
-  // Remove newlines from base64 content
+  // Remove newlines from base64 content, then decode as UTF-8
   const clean = encoded.replace(/\n/g, '');
-  return atob(clean);
+  const binary = atob(clean);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new TextDecoder('utf-8').decode(bytes);
 }
 
 export const POST: RequestHandler = async ({ locals }) => {
-  if (!locals.tenantCtx) throw error(401);
+  if (!locals.user) throw error(401);
 
   const errors: string[] = [];
   const agents: MarketplaceAgentUpsert[] = [];

@@ -31,7 +31,7 @@ export const POST: RequestHandler = async ({ request, cookies, url }) => {
   cookies.set(SESSION_COOKIE, session.token, {
     path: '/',
     httpOnly: true,
-    secure: event.url.protocol === 'https:',
+    secure: url.protocol === 'https:',
     sameSite: 'lax',
     expires: session.expiresAt,
   });
