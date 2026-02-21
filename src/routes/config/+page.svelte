@@ -130,7 +130,7 @@
       <!-- Content -->
       <div class="flex-1 flex flex-col min-h-0">
         <div bind:this={contentEl} class="flex-1 overflow-y-auto px-6 py-5">
-          <div class="max-w-3xl mx-auto space-y-2">
+          <div class="max-w-3xl mx-auto space-y-2.5">
             {#if configState.version}
               <p class="text-[10px] text-muted-foreground mb-2">
                 Gateway v{configState.version} &middot; {configState.configPath}
