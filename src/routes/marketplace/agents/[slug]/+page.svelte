@@ -77,7 +77,8 @@
     installError = null;
     installSuccess = false;
 
-    const ok = await installAgent(agent.id, selectedServerId);
+    const host = hostsState.hosts.find((h) => h.id === selectedServerId);
+    const ok = await installAgent(agent.id, selectedServerId, host?.name, host?.url);
     if (ok) {
       installSuccess = true;
     } else {

@@ -3,9 +3,7 @@ import { json, error } from '@sveltejs/kit';
 import { getDb } from '$server/db/client';
 import { getMarketplaceAgent } from '$server/services/marketplace.service';
 
-export const GET: RequestHandler = async ({ locals, params }) => {
-  if (!locals.user) throw error(401);
-
+export const GET: RequestHandler = async ({ params }) => {
   const db = getDb();
   const agent = await getMarketplaceAgent(db, params.id!);
 

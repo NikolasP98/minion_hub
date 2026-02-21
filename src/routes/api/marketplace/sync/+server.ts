@@ -29,9 +29,7 @@ function decodeBase64(encoded: string): string {
   return new TextDecoder('utf-8').decode(bytes);
 }
 
-export const POST: RequestHandler = async ({ locals }) => {
-  if (!locals.user) throw error(401);
-
+export const POST: RequestHandler = async () => {
   const errors: string[] = [];
   const agents: MarketplaceAgentUpsert[] = [];
 

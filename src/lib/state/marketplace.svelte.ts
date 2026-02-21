@@ -93,14 +93,14 @@ export async function syncFromGitHub(): Promise<{ synced: number; errors: string
   }
 }
 
-export async function installAgent(agentId: string, serverId: string): Promise<boolean> {
+export async function installAgent(agentId: string, serverId: string, serverName?: string, serverUrl?: string): Promise<boolean> {
   marketplaceState.installing = true;
   marketplaceState.installError = null;
   try {
     const res = await fetch('/api/marketplace/install', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agentId, serverId }),
+      body: JSON.stringify({ agentId, serverId, serverName, serverUrl }),
     });
     if (!res.ok) {
       const text = await res.text();
