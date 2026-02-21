@@ -1,6 +1,6 @@
 import { conn } from '$lib/state/connection.svelte';
 import { gw, upsertSession, mergeSessions } from '$lib/state/gateway-data.svelte';
-import { agentChat, agentActivity, ensureAgentChat, ensureAgentActivity } from '$lib/state/chat.svelte';
+import { agentChat, agentActivity, ensureAgentChat, ensureAgentActivity, saveSparkBins } from '$lib/state/chat.svelte';
 import { hostsState, getActiveHost, saveHosts } from '$lib/state/hosts.svelte';
 import { ui } from '$lib/state/ui.svelte';
 import { pushReliabilityEvent, setReliabilityServerId, type ReliabilityEvent } from '$lib/state/reliability.svelte';
@@ -268,6 +268,7 @@ function onAgentEvent(payload: Record<string, unknown>) {
 
   const binIdx = Math.floor((Date.now() / 10000) % 30);
   act.sparkBins[binIdx] = (act.sparkBins[binIdx] ?? 0) + 1;
+  saveSparkBins(agentId, act.sparkBins);
 
   if (act._workingTimer) clearTimeout(act._workingTimer);
   const aid = agentId;
