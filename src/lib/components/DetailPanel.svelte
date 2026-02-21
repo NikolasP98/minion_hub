@@ -4,6 +4,7 @@
   import { ui } from '$lib/state/ui.svelte';
   import { gw } from '$lib/state/gateway-data.svelte';
   import { conn } from '$lib/state/connection.svelte';
+  import { bgPattern } from '$lib/state/bg-pattern.svelte';
 
   const agent = $derived(gw.agents.find((a) => (a as { id: string }).id === ui.selectedAgentId) ?? null);
 </script>
@@ -13,7 +14,7 @@
     <AgentDetail agentId={ui.selectedAgentId} {agent} />
   {:else}
     <div class="relative flex-1 flex flex-col items-center justify-center text-muted-foreground text-sm gap-3">
-      <DotGrid opacity={0.06} />
+      {#if bgPattern.pattern === 'none'}<DotGrid opacity={0.06} />{/if}
       {#if !conn.connected}
         <span class="text-2xl opacity-30 animate-pulse">&#x1F50C;</span>
         <span>Connect to a gateway to get started</span>
