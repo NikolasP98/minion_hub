@@ -300,7 +300,7 @@ function onChatEvent(payload: ChatEvent) {
 
   // Cross-run: a different run finished
   if (payload.runId && chat.runId && payload.runId !== chat.runId) {
-    if (payload.state === 'final') loadChatHistory(agentId);
+    if (payload.state === 'final' && sk === `agent:${agentId}:main`) loadChatHistory(agentId);
     return;
   }
 
@@ -319,7 +319,8 @@ function onChatEvent(payload: ChatEvent) {
   } else if (payload.state === 'final') {
     chat.stream = null;
     chat.runId = null;
-    loadChatHistory(agentId);
+    // Only refresh main chat history — workshop sessions are handled by the bridge
+    if (sk === `agent:${agentId}:main`) loadChatHistory(agentId);
     ui.sessionStatus[sk] = 'idle';
     if (ui.sessionStatusTimers[sk]) { clearTimeout(ui.sessionStatusTimers[sk]); delete ui.sessionStatusTimers[sk]; }
   } else if (payload.state === 'aborted') {

@@ -407,7 +407,7 @@ async function sendAndWaitForResponse(
 				for (let i = messages.length - 1; i >= 0; i--) {
 					const msg = messages[i];
 					if (msg.role === 'assistant') {
-						const text = extractText(msg.content);
+						const text = extractText(msg);
 						if (typeof text === 'string' && text.trim()) {
 							resolved = true;
 							resolve(text);
