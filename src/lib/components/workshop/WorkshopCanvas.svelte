@@ -579,6 +579,8 @@
         backgroundAlpha: 0,
         resizeTo: node,
         antialias: true,
+        preferWebGLVersion: 2,
+        powerPreference: 'default',
       });
 
       if (destroyed) {
@@ -597,6 +599,17 @@
       canvas.style.display = 'block';
       canvas.style.width = '100%';
       canvas.style.height = '100%';
+
+      // Handle WebGL context loss/restore (e.g. during HMR or GPU pressure)
+      canvas.addEventListener('webglcontextlost', (e) => {
+        e.preventDefault();
+        console.warn('[Workshop] WebGL context lost — pausing simulation');
+        stopSimulation();
+      });
+      canvas.addEventListener('webglcontextrestored', () => {
+        console.info('[Workshop] WebGL context restored — resuming');
+        startSimulation();
+      });
 
       worldContainer = new PIXI.Container();
       app.stage.addChild(worldContainer);

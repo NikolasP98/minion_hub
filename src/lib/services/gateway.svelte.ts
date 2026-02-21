@@ -1,7 +1,7 @@
 import { conn } from '$lib/state/connection.svelte';
 import { gw, upsertSession, mergeSessions } from '$lib/state/gateway-data.svelte';
 import { agentChat, agentActivity, ensureAgentChat, ensureAgentActivity } from '$lib/state/chat.svelte';
-import { hostsState, getActiveHost, saveHosts } from '$lib/state/hosts.svelte';
+import { hostsState, getActiveHost, saveHosts, persistHost } from '$lib/state/hosts.svelte';
 import { ui } from '$lib/state/ui.svelte';
 import { pushReliabilityEvent, setReliabilityServerId, type ReliabilityEvent } from '$lib/state/reliability.svelte';
 import { configState, loadConfig } from '$lib/state/config.svelte';
@@ -169,6 +169,7 @@ function sendConnect() {
         if (h) {
           h.lastConnectedAt = conn.connectedAt;
           saveHosts();
+          persistHost(h);
           localStorage.setItem('minion-dash-last-host', capturedHostId);
         }
       }

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { hostsState, getActiveHost, loadHosts, saveHosts } from '$lib/state/hosts.svelte';
+  import { hostsState, saveHosts, persistHost, removeHost } from '$lib/state/hosts.svelte';
   import { ui } from '$lib/state/ui.svelte';
   import { wsConnect, wsDisconnect } from '$lib/services/gateway.svelte';
   import { conn } from '$lib/state/connection.svelte';
@@ -27,23 +27,29 @@
   function saveHost() {
     if (!formUrl.trim()) return;
     const name = formName.trim() || (() => { try { return new URL(formUrl).hostname; } catch { return 'host'; } })();
+    const isNew = !editingId;
+    let host: Host;
     if (editingId) {
       const h = hostsState.hosts.find((x) => x.id === editingId);
-      if (h) { h.name = name; h.url = formUrl.trim(); h.token = formToken.trim(); }
+      if (h) { h.name = name; h.url = formUrl.trim(); h.token = formToken.trim(); host = h; }
+      else return;
     } else {
-      hostsState.hosts.push({ id: uuid(), name, url: formUrl.trim(), token: formToken.trim(), lastConnectedAt: null });
-      hostsState.activeHostId = hostsState.hosts[hostsState.hosts.length - 1].id;
+      host = { id: uuid(), name, url: formUrl.trim(), token: formToken.trim(), lastConnectedAt: null };
+      hostsState.hosts.push(host);
+      hostsState.activeHostId = host.id;
     }
     saveHosts();
+    persistHost(host);
     cancelEdit();
-    if (!editingId) { close(); wsConnect(); }
+    if (isNew) { close(); wsConnect(); }
   }
 
   function deleteHost(id: string) {
-    hostsState.hosts = hostsState.hosts.filter((h) => h.id !== id);
-    saveHosts();
     if (hostsState.activeHostId === id) {
       wsDisconnect();
+    }
+    removeHost(id);
+    if (hostsState.activeHostId === id) {
       hostsState.activeHostId = hostsState.hosts[0]?.id ?? null;
     }
     confirmDeleteId = null;

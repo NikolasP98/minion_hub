@@ -44,10 +44,28 @@ async function getAvatarTexture(avatarSeed: string): Promise<PIXI.Texture | null
 		const res = await fetch(url);
 		if (!res.ok) throw new Error(`DiceBear fetch failed: ${res.status}`);
 
-		const svgBlob = await res.blob();
-		const blobUrl = URL.createObjectURL(svgBlob);
+		const svgText = await res.text();
 
-		const texture = await PIXI.Assets.load<PIXI.Texture>(blobUrl);
+		// Render SVG to an offscreen canvas via Image element for reliable PixiJS 8 texture
+		const texture = await new Promise<PIXI.Texture>((resolve, reject) => {
+			const img = new Image();
+			img.onload = () => {
+				const canvas = document.createElement('canvas');
+				canvas.width = SPRITE_SIZE * 2;
+				canvas.height = SPRITE_SIZE * 2;
+				const ctx = canvas.getContext('2d')!;
+				ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+				URL.revokeObjectURL(img.src);
+				resolve(PIXI.Texture.from(canvas));
+			};
+			img.onerror = () => {
+				URL.revokeObjectURL(img.src);
+				reject(new Error('Failed to load SVG as image'));
+			};
+			const blob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
+			img.src = URL.createObjectURL(blob);
+		});
+
 		textureCache.set(avatarSeed, texture);
 		return texture;
 	} catch {
@@ -108,10 +126,18 @@ export async function createAgentSprite(
 	glow.stroke({ color: 0x6366f1, width: 3, alpha: 0.5 });
 	container.addChild(glow);
 
-	// --- Avatar ---
+	// --- Background circle (always visible as a base) ---
+	const bgCircle = new PIXI.Graphics();
+	bgCircle.label = 'bg';
+	bgCircle.circle(0, 0, SPRITE_SIZE / 2);
+	bgCircle.fill({ color: seedToColor(info.avatarSeed) });
+	container.addChild(bgCircle);
+
+	// --- Avatar (loaded async, rendered on top of background) ---
 	const texture = await getAvatarTexture(info.avatarSeed);
 
-	let avatarDisplay: PIXI.Container;
+	const avatarContainer = new PIXI.Container();
+	avatarContainer.label = 'avatar';
 
 	if (texture) {
 		const avatar = new PIXI.Sprite(texture);
@@ -123,20 +149,13 @@ export async function createAgentSprite(
 		const mask = new PIXI.Graphics();
 		mask.circle(0, 0, SPRITE_SIZE / 2);
 		mask.fill({ color: 0xffffff });
-		container.addChild(mask);
+		avatarContainer.addChild(mask);
 		avatar.mask = mask;
 
-		avatarDisplay = avatar;
-	} else {
-		// Fallback: coloured circle
-		const circle = new PIXI.Graphics();
-		circle.circle(0, 0, SPRITE_SIZE / 2);
-		circle.fill({ color: seedToColor(info.avatarSeed) });
-		avatarDisplay = circle;
+		avatarContainer.addChild(avatar);
 	}
 
-	avatarDisplay.label = 'avatar';
-	container.addChild(avatarDisplay);
+	container.addChild(avatarContainer);
 
 	// --- Name label ---
 	const label = new PIXI.Text({
