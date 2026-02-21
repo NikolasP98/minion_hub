@@ -32,14 +32,14 @@
   );
 
   let messages = $derived(
-    selectedConversationId
-      ? (conversationMessages[selectedConversationId] ?? [])
+    selectedConversation
+      ? (conversationMessages[selectedConversation.sessionKey] ?? [])
       : [],
   );
 
   let isLoading = $derived(
-    selectedConversationId
-      ? (conversationLoading[selectedConversationId] ?? false)
+    selectedConversation
+      ? (conversationLoading[selectedConversation.sessionKey] ?? false)
       : false,
   );
 

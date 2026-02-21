@@ -26,7 +26,7 @@ import { conn } from '$lib/state/connection.svelte';
 import { workshopState } from '$lib/state/workshop.svelte';
 import { gw } from '$lib/state/gateway-data.svelte';
 import { startConversation, endConversation } from './conversation-manager';
-import { appendMessage } from '$lib/state/workshop-conversations.svelte';
+import { appendMessage, setAgentThinking } from '$lib/state/workshop-conversations.svelte';
 import { configState } from '$lib/state/config.svelte';
 import { uuid } from '$lib/utils/uuid';
 import { extractText } from '$lib/utils/text';
@@ -39,10 +39,15 @@ import { extractText } from '$lib/utils/text';
  * Build a deterministic conversation key from sorted participant agent IDs.
  * Same pair of agents always gets the same key, so conversation history
  * accumulates across sessions on the gateway.
+ *
+ * This key is used BOTH as:
+ *   - The conversation record's `sessionKey` in workshopState.conversations
+ *   - The suffix passed to `buildWorkshopSessionKey(agentId, key)` to produce
+ *     per-agent gateway session keys like `agent:alice:workshop:conv:alice:bob`
  */
 function buildConversationKey(participantAgentIds: string[]): string {
 	const sorted = [...participantAgentIds].sort().join(':');
-	return `workshop:conv:${sorted}`;
+	return `conv:${sorted}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -153,7 +158,7 @@ export function startWorkshopConversation(
 	activeLoops.set(conversationId, loopState);
 
 	// Kick off the orchestration loop asynchronously
-	runOrchestrationLoop(conversationId, participants, taskPrompt, loopState).catch((err) => {
+	runOrchestrationLoop(conversationId, convSessionKey, participants, taskPrompt, loopState).catch((err) => {
 		console.error('[workshop-bridge] Orchestration loop error:', err);
 		endConversation(conversationId);
 		activeLoops.delete(conversationId);
@@ -185,7 +190,9 @@ export async function sendAgentMessage(
 	if (!inst) return null;
 
 	const agentId = inst.agentId;
-	const sessionKey = buildWorkshopSessionKey(agentId, conversationId);
+	const conv = workshopState.conversations[conversationId];
+	const convKey = conv?.sessionKey ?? conversationId;
+	const sessionKey = buildWorkshopSessionKey(agentId, convKey);
 
 	try {
 		const responseText = await sendAndWaitForResponse(agentId, sessionKey, message);
@@ -222,7 +229,7 @@ export function assignTask(
 	const inst = workshopState.agents[instanceId];
 	if (!inst) return null;
 
-	const convSessionKey = `workshop:task:${inst.agentId}`;
+	const convSessionKey = `task:${inst.agentId}`;
 	const conversationId = startConversation('task', [instanceId], [inst.agentId], convSessionKey);
 	if (!conversationId) return null;
 
@@ -233,9 +240,11 @@ export function assignTask(
 	(async () => {
 		try {
 			const agentId = inst.agentId;
-			const sessionKey = buildWorkshopSessionKey(agentId, conversationId);
+			const sessionKey = buildWorkshopSessionKey(agentId, convSessionKey);
 
+			setAgentThinking(instanceId, true);
 			const responseText = await sendAndWaitForResponse(agentId, sessionKey, taskPrompt);
+			setAgentThinking(instanceId, false);
 			if (responseText && !loopState.aborted) {
 				emitMessage({
 					conversationId,
@@ -248,6 +257,7 @@ export function assignTask(
 		} catch (err) {
 			console.error('[workshop-bridge] assignTask error:', err);
 		} finally {
+			setAgentThinking(instanceId, false);
 			endConversation(conversationId);
 			activeLoops.delete(conversationId);
 		}
@@ -276,6 +286,7 @@ export function isConversationActive(conversationId: string): boolean {
 
 async function runOrchestrationLoop(
 	conversationId: string,
+	convSessionKey: string,
 	participants: Array<{ instanceId: string; agentId: string }>,
 	taskPrompt: string,
 	loopState: { aborted: boolean; turnCount: number; maxTurns: number },
@@ -302,12 +313,14 @@ async function runOrchestrationLoop(
 	const initialPrompt = formatInitialPrompt(taskPrompt, otherNames, participants.length);
 
 	try {
-		const sessionKey = buildWorkshopSessionKey(firstParticipant.agentId, conversationId);
+		const sessionKey = buildWorkshopSessionKey(firstParticipant.agentId, convSessionKey);
+		setAgentThinking(firstParticipant.instanceId, true);
 		const response = await sendAndWaitForResponse(
 			firstParticipant.agentId,
 			sessionKey,
 			initialPrompt,
 		);
+		setAgentThinking(firstParticipant.instanceId, false);
 
 		if (loopState.aborted || !response) return;
 
@@ -328,7 +341,7 @@ async function runOrchestrationLoop(
 		while (loopState.turnCount < loopState.maxTurns && !loopState.aborted) {
 			currentTurnIdx = (currentTurnIdx + 1) % participants.length;
 			const participant = participants[currentTurnIdx];
-			const agentSessionKey = buildWorkshopSessionKey(participant.agentId, conversationId);
+			const agentSessionKey = buildWorkshopSessionKey(participant.agentId, convSessionKey);
 
 			const turnPrompt = formatTurnPrompt(
 				taskPrompt,
@@ -338,11 +351,13 @@ async function runOrchestrationLoop(
 				loopState.maxTurns,
 			);
 
+			setAgentThinking(participant.instanceId, true);
 			const turnResponse = await sendAndWaitForResponse(
 				participant.agentId,
 				agentSessionKey,
 				turnPrompt,
 			);
+			setAgentThinking(participant.instanceId, false);
 
 			if (loopState.aborted || !turnResponse) break;
 
@@ -360,6 +375,11 @@ async function runOrchestrationLoop(
 			});
 		}
 	} finally {
+		// Clear thinking state for all participants
+		for (const p of participants) {
+			setAgentThinking(p.instanceId, false);
+		}
+
 		if (!loopState.aborted) {
 			endConversation(conversationId);
 

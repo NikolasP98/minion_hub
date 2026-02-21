@@ -40,3 +40,18 @@ export function clearAllMessages(): void {
 		delete conversationMessages[key];
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Thinking/typing indicator state
+// ---------------------------------------------------------------------------
+
+/** Tracks which agent instances are currently generating a response */
+export const thinkingAgents: Record<string, boolean> = $state({});
+
+export function setAgentThinking(instanceId: string, thinking: boolean): void {
+	if (thinking) {
+		thinkingAgents[instanceId] = true;
+	} else {
+		delete thinkingAgents[instanceId];
+	}
+}

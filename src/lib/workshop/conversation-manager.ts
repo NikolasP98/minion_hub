@@ -9,6 +9,10 @@ let banterBudgetResetTime = Date.now() + 3600000;
 
 let conversationCounter = 0;
 
+/** Tracks when the last banter ended for each sessionKey (pair cooldown) */
+const lastBanterEnd = new Map<string, number>();
+const BANTER_COOLDOWN_MS = 120_000; // 2 minutes between banters for same pair
+
 function generateConversationId(): string {
 	return `conv_${Date.now()}_${conversationCounter++}`;
 }
@@ -64,6 +68,18 @@ export function startConversation(
 ): string | null {
 	if (!canStartConversation(type)) return null;
 
+	// Dedup: if there's already an active conversation with this sessionKey, return it
+	const existing = Object.values(workshopState.conversations).find(
+		(c) => c.sessionKey === sessionKey && c.status === 'active',
+	);
+	if (existing) return existing.id;
+
+	// Banter cooldown: don't re-banter the same pair too quickly
+	if (type === 'banter') {
+		const lastEnd = lastBanterEnd.get(sessionKey);
+		if (lastEnd && Date.now() - lastEnd < BANTER_COOLDOWN_MS) return null;
+	}
+
 	const id = generateConversationId();
 
 	workshopState.conversations[id] = {
@@ -94,6 +110,11 @@ export function endConversation(conversationId: string): void {
 	if (conv) {
 		conv.status = 'completed';
 		conv.endedAt = Date.now();
+
+		// Track banter cooldown per pair
+		if (conv.type === 'banter') {
+			lastBanterEnd.set(conv.sessionKey, Date.now());
+		}
 
 		// Transition all participants out of 'conversing' state
 		for (const iid of conv.participantInstanceIds) {

@@ -29,6 +29,7 @@
   import RelationshipPrompt from './RelationshipPrompt.svelte';
   import ConversationSidebar from './ConversationSidebar.svelte';
   import ConversationIndicator from './ConversationIndicator.svelte';
+  import { thinkingAgents } from '$lib/state/workshop-conversations.svelte';
 
   // ---------------------------------------------------------------------------
   // PixiJS state (not reactive - managed imperatively within onMount)
@@ -73,7 +74,7 @@
   let selectedConversationId = $state<string | null>(null);
 
   let speechBubbles = $state<
-    Array<{ id: string; message: string; agentName: string; screenX: number; screenY: number }>
+    Array<{ id: string; message: string; agentName: string; instanceId: string }>
   >([]);
 
   // Task prompt dialog state
@@ -597,25 +598,17 @@
       // Show a speech bubble for this message
       const inst = workshopState.agents[msg.instanceId];
       if (inst) {
-        const sprite = agentSprites.getSprite(msg.instanceId);
-        if (sprite && canvasContainer) {
-          const rect = canvasContainer.getBoundingClientRect();
-          const screenX = sprite.x * workshopState.camera.zoom + workshopState.camera.x;
-          const screenY = sprite.y * workshopState.camera.zoom + workshopState.camera.y;
+        // Truncate long messages for speech bubble display
+        const bubbleText = msg.message.length > 120
+          ? msg.message.slice(0, 117) + '...'
+          : msg.message;
 
-          // Truncate long messages for speech bubble display
-          const bubbleText = msg.message.length > 120
-            ? msg.message.slice(0, 117) + '...'
-            : msg.message;
-
-          speechBubbles = [...speechBubbles, {
-            id: `ws_${Date.now()}_${msg.instanceId}`,
-            message: bubbleText,
-            agentName: resolveAgentName(inst.agentId),
-            screenX,
-            screenY,
-          }];
-        }
+        speechBubbles = [...speechBubbles, {
+          id: `ws_${Date.now()}_${msg.instanceId}`,
+          message: bubbleText,
+          agentName: resolveAgentName(inst.agentId),
+          instanceId: msg.instanceId,
+        }];
       }
     });
 
@@ -729,13 +722,17 @@
   <!-- HTML Overlay: speech bubbles + conversation indicators -->
   <div class="absolute inset-0 pointer-events-none overflow-hidden">
     {#each speechBubbles as bubble (bubble.id)}
-      <SpeechBubble
-        message={bubble.message}
-        agentName={bubble.agentName}
-        screenX={bubble.screenX}
-        screenY={bubble.screenY}
-        onFaded={() => removeBubble(bubble.id)}
-      />
+      {@const agent = workshopState.agents[bubble.instanceId]}
+      {#if agent}
+        {@const screenPos = worldToScreen(agent.position.x, agent.position.y, workshopState.camera)}
+        <SpeechBubble
+          message={bubble.message}
+          agentName={bubble.agentName}
+          screenX={screenPos.x}
+          screenY={screenPos.y}
+          onFaded={() => removeBubble(bubble.id)}
+        />
+      {/if}
     {/each}
 
     <!-- Conversation indicators between agent pairs -->
@@ -754,6 +751,24 @@
             onclick={() => { sidebarOpen = true; selectedConversationId = conv.id; }}
           />
         {/if}
+      {/if}
+    {/each}
+
+    <!-- Thinking/typing indicators -->
+    {#each Object.keys(thinkingAgents) as instanceId (instanceId)}
+      {@const agent = workshopState.agents[instanceId]}
+      {#if agent}
+        {@const pos = worldToScreen(agent.position.x, agent.position.y, workshopState.camera)}
+        <div
+          class="absolute pointer-events-none z-20 thinking-indicator"
+          style="left: {pos.x}px; top: {pos.y - 55}px; transform: translateX(-50%);"
+        >
+          <div class="flex items-center gap-0.5 px-2 py-1 rounded-full bg-bg2/80 backdrop-blur border border-border/50">
+            <span class="thinking-dot w-1.5 h-1.5 rounded-full bg-accent"></span>
+            <span class="thinking-dot w-1.5 h-1.5 rounded-full bg-accent" style="animation-delay: 0.2s"></span>
+            <span class="thinking-dot w-1.5 h-1.5 rounded-full bg-accent" style="animation-delay: 0.4s"></span>
+          </div>
+        </div>
       {/if}
     {/each}
   </div>
@@ -850,3 +865,14 @@
     </div>
   {/if}
 </div>
+
+<style>
+  .thinking-dot {
+    animation: thinking-bounce 1.4s infinite ease-in-out;
+  }
+
+  @keyframes thinking-bounce {
+    0%, 80%, 100% { opacity: 0.25; transform: scale(0.8); }
+    40% { opacity: 1; transform: scale(1.2); }
+  }
+</style>
