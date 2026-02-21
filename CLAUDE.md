@@ -16,9 +16,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    ```
 2. Develop and commit inside the worktree.
 3. Merge (or PR) the feature branch into `dev`.
-4. When `dev` is stable and ready for release, merge `dev` into `main` and push.
+4. When `dev` is stable and ready for release, merge `dev` into `master` and push.
 
-Never commit directly to `main`. Use `dev` as the integration branch.
+Never commit directly to `master`. Use `dev` as the integration branch.
 
 ## Commands
 
