@@ -2,9 +2,12 @@
   import type { JsonSchemaNode, ConfigUiHint } from '$lib/types/config';
   import { REDACTED_SENTINEL } from '$lib/types/config';
   import { resolveFieldType } from '$lib/utils/config-schema';
+  import { hasConfiguredValues } from '$lib/utils/config-schema';
   import { setField, getOriginalField, configState } from '$lib/state/config.svelte';
   import ConfigJsonEditor from './ConfigJsonEditor.svelte';
   import ConfigField from './ConfigField.svelte';
+  import ConfigTooltip from './ConfigTooltip.svelte';
+  import ToggleSwitch from './ToggleSwitch.svelte';
 
   let { path, schema, hint = {}, value, depth = 0 }: {
     path: string;
@@ -20,6 +23,10 @@
   const isRedacted = $derived(value === REDACTED_SENTINEL);
   const placeholder = $derived(hint.placeholder ?? schema.default?.toString() ?? '');
 
+  // Sub-group collapse state (for nested objects at depth > 0)
+  let subGroupOpen = $state<boolean | null>(null);
+  const subGroupExpanded = $derived(subGroupOpen ?? hasConfiguredValues(value));
+
   // For sensitive fields
   let showSensitive = $state(false);
 
@@ -28,6 +35,33 @@
 
   // For array-string fields
   let newArrayItem = $state('');
+
+  // ─── Tooltip content builder ──────────────────────────────────────────────
+
+  function buildTooltip(): string {
+    const parts: string[] = [];
+    if (helpText) parts.push(helpText);
+
+    // Enrich with enum option descriptions for select/enum fields
+    if (fieldType === 'enum' && schema.enum) {
+      const opts = schema.enum.map((o) => String(o)).join(', ');
+      parts.push(`Options: ${opts}`);
+    } else if (fieldType === 'select') {
+      const variants = schema.anyOf ?? schema.oneOf ?? [];
+      const opts = variants
+        .map((v) => {
+          const val = v.const ?? v.enum?.[0];
+          const lbl = v.title ?? String(val);
+          return v.description ? `${lbl} — ${v.description}` : lbl;
+        })
+        .join('; ');
+      if (opts) parts.push(`Options: ${opts}`);
+    }
+
+    return parts.join('\n');
+  }
+
+  const tooltipContent = $derived(buildTooltip());
 
   // ─── Event handlers ─────────────────────────────────────────────────────
 
@@ -45,8 +79,8 @@
     }
   }
 
-  function onBooleanToggle() {
-    setField(path, !value);
+  function onBooleanToggle(checked: boolean) {
+    setField(path, checked);
   }
 
   function onEnumSelect(e: Event) {
@@ -156,9 +190,25 @@
     });
   }
 
+  // Count child properties for sub-group header
+  function countProperties(s: JsonSchemaNode): number {
+    return s.properties ? Object.keys(s.properties).length : 0;
+  }
+
   const inputClass = 'bg-bg3 border border-border rounded-[5px] text-foreground py-[5px] px-[9px] font-[inherit] text-xs outline-none transition-colors focus:border-accent w-full';
   const labelClass = 'text-[11px] text-muted-foreground';
 </script>
+
+{#snippet fieldLabel(text: string, tip: string)}
+  <span class="inline-flex items-center gap-1.5">
+    <span class={labelClass}>{text}</span>
+    {#if tip}
+      <ConfigTooltip content={tip}>
+        <span class="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-border text-[9px] text-muted-foreground cursor-help leading-none hover:text-foreground hover:border-muted transition-colors">?</span>
+      </ConfigTooltip>
+    {/if}
+  </span>
+{/snippet}
 
 <!-- ─── Render based on field type ──────────────────────────────────── -->
 
@@ -166,51 +216,102 @@
   <!-- Nested object: render each property recursively -->
   {@const hasEnabledToggle = schema.properties?.enabled && resolveFieldType(schema.properties.enabled) === 'boolean'}
   {@const enabledValue = hasEnabledToggle && value != null && typeof value === 'object' ? (value as Record<string, unknown>).enabled : true}
-  <fieldset class="border-none p-0 m-0 space-y-3 {depth > 0 ? 'pl-3 border-l border-border' : ''}">
-    {#if depth > 0}
-      <legend class="text-xs font-semibold text-foreground">{label}</legend>
-    {/if}
-    {#if helpText}
-      <p class="text-[10px] text-muted-foreground -mt-1">{helpText}</p>
-    {/if}
-    {#if schema.properties}
-      <!-- If object has an 'enabled' toggle, render it first -->
-      {#if hasEnabledToggle}
-        {@const enabledPath = `${path}.enabled`}
-        {@const enabledHint = configState.uiHints[enabledPath] ?? {}}
-        {@const enabledVal = value != null && typeof value === 'object' ? (value as Record<string, unknown>).enabled : undefined}
-        <ConfigField
-          path={enabledPath}
-          schema={schema.properties.enabled}
-          hint={enabledHint}
-          value={enabledVal}
-          depth={depth + 1}
-        />
-      {/if}
 
-      <!-- Remaining properties: hidden when enabled=false -->
-      {#if enabledValue || !hasEnabledToggle}
-        {#each Object.entries(schema.properties) as [key, propSchema] (key)}
-          {#if !(hasEnabledToggle && key === 'enabled')}
-            {@const childPath = `${path}.${key}`}
-            {@const childHint = configState.uiHints[childPath] ?? {}}
-            {@const childValue = value != null && typeof value === 'object' ? (value as Record<string, unknown>)[key] : undefined}
-            <ConfigField
-              path={childPath}
-              schema={propSchema}
-              hint={childHint}
-              value={childValue}
-              depth={depth + 1}
-            />
+  {#if depth > 0}
+    <!-- Sub-group collapsible -->
+    <div class="pl-3 border-l border-border">
+      <button
+        type="button"
+        class="w-full flex items-center gap-2 py-1.5 bg-transparent border-none cursor-pointer text-left group"
+        onclick={() => subGroupOpen = !subGroupExpanded}
+      >
+        <span class="text-muted-foreground text-[9px] transition-transform {subGroupExpanded ? 'rotate-90' : ''}"
+          >&#9654;</span>
+        <span class="text-[11px] font-semibold text-foreground">{label}</span>
+        <span class="text-[10px] text-muted-foreground">{countProperties(schema)} field{countProperties(schema) === 1 ? '' : 's'}</span>
+        {#if tooltipContent}
+          <ConfigTooltip content={tooltipContent}>
+            <span class="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-border text-[9px] text-muted-foreground cursor-help leading-none hover:text-foreground hover:border-muted transition-colors">?</span>
+          </ConfigTooltip>
+        {/if}
+      </button>
+
+      {#if subGroupExpanded}
+        <div class="space-y-3 pt-1.5">
+          {#if schema.properties}
+            {#if hasEnabledToggle}
+              {@const enabledPath = `${path}.enabled`}
+              {@const enabledHint = configState.uiHints[enabledPath] ?? {}}
+              {@const enabledVal = value != null && typeof value === 'object' ? (value as Record<string, unknown>).enabled : undefined}
+              <ConfigField
+                path={enabledPath}
+                schema={schema.properties.enabled}
+                hint={enabledHint}
+                value={enabledVal}
+                depth={depth + 1}
+              />
+            {/if}
+
+            {#if enabledValue || !hasEnabledToggle}
+              {#each Object.entries(schema.properties) as [key, propSchema] (key)}
+                {#if !(hasEnabledToggle && key === 'enabled')}
+                  {@const childPath = `${path}.${key}`}
+                  {@const childHint = configState.uiHints[childPath] ?? {}}
+                  {@const childValue = value != null && typeof value === 'object' ? (value as Record<string, unknown>)[key] : undefined}
+                  <ConfigField
+                    path={childPath}
+                    schema={propSchema}
+                    hint={childHint}
+                    value={childValue}
+                    depth={depth + 1}
+                  />
+                {/if}
+              {/each}
+            {/if}
           {/if}
-        {/each}
+        </div>
       {/if}
-    {/if}
-  </fieldset>
+    </div>
+  {:else}
+    <!-- Top-level object (depth 0): render children directly -->
+    <fieldset class="border-none p-0 m-0 space-y-3">
+      {#if schema.properties}
+        {#if hasEnabledToggle}
+          {@const enabledPath = `${path}.enabled`}
+          {@const enabledHint = configState.uiHints[enabledPath] ?? {}}
+          {@const enabledVal = value != null && typeof value === 'object' ? (value as Record<string, unknown>).enabled : undefined}
+          <ConfigField
+            path={enabledPath}
+            schema={schema.properties.enabled}
+            hint={enabledHint}
+            value={enabledVal}
+            depth={depth + 1}
+          />
+        {/if}
+
+        {#if enabledValue || !hasEnabledToggle}
+          {#each Object.entries(schema.properties) as [key, propSchema] (key)}
+            {#if !(hasEnabledToggle && key === 'enabled')}
+              {@const childPath = `${path}.${key}`}
+              {@const childHint = configState.uiHints[childPath] ?? {}}
+              {@const childValue = value != null && typeof value === 'object' ? (value as Record<string, unknown>)[key] : undefined}
+              <ConfigField
+                path={childPath}
+                schema={propSchema}
+                hint={childHint}
+                value={childValue}
+                depth={depth + 1}
+              />
+            {/if}
+          {/each}
+        {/if}
+      {/if}
+    </fieldset>
+  {/if}
 
 {:else if fieldType === 'sensitive'}
-  <div class="flex flex-col gap-1">
-    <label class={labelClass}>{label}</label>
+  <div class="flex flex-col gap-1.5 py-1">
+    {@render fieldLabel(label, tooltipContent)}
     <div class="flex gap-2 items-center">
       <input
         class={inputClass}
@@ -237,55 +338,43 @@
         </button>
       {/if}
     </div>
-    {#if helpText}<p class="text-[10px] text-muted-foreground">{helpText}</p>{/if}
   </div>
 
 {:else if fieldType === 'boolean'}
-  <div class="flex items-center gap-3">
-    <button
-      type="button"
-      class="relative w-8 h-[18px] rounded-full border transition-colors cursor-pointer shrink-0
-        {value ? 'bg-accent border-accent' : 'bg-bg3 border-border'}"
-      onclick={onBooleanToggle}
-      role="switch"
-      aria-checked={!!value}
-    >
-      <span
-        class="absolute top-[2px] w-3 h-3 rounded-full bg-white transition-transform shadow-sm
-          {value ? 'translate-x-[16px]' : 'translate-x-[2px]'}"
-      ></span>
-    </button>
-    <span class={labelClass}>{label}</span>
-    {#if helpText}<span class="text-[10px] text-muted-foreground ml-2">{helpText}</span>{/if}
+  <div class="flex items-center gap-3 py-1">
+    <ToggleSwitch
+      id={path}
+      checked={!!value}
+      onchange={onBooleanToggle}
+    />
+    {@render fieldLabel(label, tooltipContent)}
   </div>
 
 {:else if fieldType === 'enum'}
-  <div class="flex flex-col gap-1">
-    <label class={labelClass}>{label}</label>
+  <div class="flex flex-col gap-1.5 py-1">
+    {@render fieldLabel(label, tooltipContent)}
     <select class={inputClass} value={value ?? '__NONE__'} onchange={onEnumSelect}>
       <option value="__NONE__">— none —</option>
       {#each (schema.enum ?? []) as option}
         <option value={String(option)}>{String(option)}</option>
       {/each}
     </select>
-    {#if helpText}<p class="text-[10px] text-muted-foreground">{helpText}</p>{/if}
   </div>
 
 {:else if fieldType === 'select'}
-  <div class="flex flex-col gap-1">
-    <label class={labelClass}>{label}</label>
+  <div class="flex flex-col gap-1.5 py-1">
+    {@render fieldLabel(label, tooltipContent)}
     <select class={inputClass} value={value !== undefined ? JSON.stringify(value) : '__NONE__'} onchange={onSelectChange}>
       <option value="__NONE__">— none —</option>
       {#each getSelectOptions(schema) as opt}
         <option value={opt.value}>{opt.label}</option>
       {/each}
     </select>
-    {#if helpText}<p class="text-[10px] text-muted-foreground">{helpText}</p>{/if}
   </div>
 
 {:else if fieldType === 'number'}
-  <div class="flex flex-col gap-1">
-    <label class={labelClass}>{label}</label>
+  <div class="flex flex-col gap-1.5 py-1">
+    {@render fieldLabel(label, tooltipContent)}
     <input
       class={inputClass}
       type="number"
@@ -295,12 +384,11 @@
       placeholder={placeholder}
       oninput={onNumberInput}
     />
-    {#if helpText}<p class="text-[10px] text-muted-foreground">{helpText}</p>{/if}
   </div>
 
 {:else if fieldType === 'string'}
-  <div class="flex flex-col gap-1">
-    <label class={labelClass}>{label}</label>
+  <div class="flex flex-col gap-1.5 py-1">
+    {@render fieldLabel(label, tooltipContent)}
     <input
       class={inputClass}
       type="text"
@@ -308,12 +396,11 @@
       placeholder={placeholder}
       oninput={onStringInput}
     />
-    {#if helpText}<p class="text-[10px] text-muted-foreground">{helpText}</p>{/if}
   </div>
 
 {:else if fieldType === 'array-string'}
-  <div class="flex flex-col gap-1">
-    <label class={labelClass}>{label}</label>
+  <div class="flex flex-col gap-1.5 py-1">
+    {@render fieldLabel(label, tooltipContent)}
     <div class="flex flex-wrap gap-1.5 mb-1.5">
       {#each (Array.isArray(value) ? value as string[] : []) as item, i}
         <span class="inline-flex items-center gap-1 bg-bg3 border border-border rounded-full py-[2px] pl-2.5 pr-1 text-xs text-foreground">
@@ -340,13 +427,12 @@
         onclick={addArrayItem}
       >Add</button>
     </div>
-    {#if helpText}<p class="text-[10px] text-muted-foreground">{helpText}</p>{/if}
   </div>
 
 {:else if fieldType === 'array-enum'}
   {@const items = Array.isArray(schema.items) ? schema.items[0] : schema.items}
-  <div class="flex flex-col gap-1">
-    <label class={labelClass}>{label}</label>
+  <div class="flex flex-col gap-1.5 py-1">
+    {@render fieldLabel(label, tooltipContent)}
     {#if items?.enum}
       <div class="flex flex-wrap gap-2">
         {#each items.enum as option}
@@ -362,13 +448,12 @@
         {/each}
       </div>
     {/if}
-    {#if helpText}<p class="text-[10px] text-muted-foreground">{helpText}</p>{/if}
   </div>
 
 {:else if fieldType === 'record'}
   {@const entries = value && typeof value === 'object' && !Array.isArray(value) ? Object.entries(value as Record<string, unknown>) : []}
-  <div class="flex flex-col gap-1">
-    <label class={labelClass}>{label}</label>
+  <div class="flex flex-col gap-1.5 py-1">
+    {@render fieldLabel(label, tooltipContent)}
     <div class="space-y-1.5">
       {#each entries as [key, val]}
         <div class="flex gap-1.5 items-center">
@@ -401,13 +486,12 @@
         onclick={addRecordEntry}
       >Add</button>
     </div>
-    {#if helpText}<p class="text-[10px] text-muted-foreground">{helpText}</p>{/if}
   </div>
 
 {:else if fieldType === 'array-object'}
   {@const items = Array.isArray(schema.items) ? schema.items[0] : schema.items}
-  <div class="flex flex-col gap-1">
-    <label class={labelClass}>{label} ({Array.isArray(value) ? (value as unknown[]).length : 0} items)</label>
+  <div class="flex flex-col gap-1.5 py-1">
+    {@render fieldLabel(label, tooltipContent)}
     {#each (Array.isArray(value) ? value as unknown[] : []) as item, i}
       <div class="border border-border rounded-lg p-3 space-y-3 relative">
         <div class="flex items-center justify-between mb-1">
@@ -441,14 +525,12 @@
       class="bg-transparent border border-dashed border-border rounded-[5px] text-muted-foreground cursor-pointer text-xs py-[6px] px-3 transition-colors hover:border-accent hover:text-foreground w-full"
       onclick={addArrayObject}
     >+ Add Item</button>
-    {#if helpText}<p class="text-[10px] text-muted-foreground">{helpText}</p>{/if}
   </div>
 
 {:else}
   <!-- json fallback -->
-  <div class="flex flex-col gap-1">
-    <label class={labelClass}>{label}</label>
+  <div class="flex flex-col gap-1.5 py-1">
+    {@render fieldLabel(label, tooltipContent)}
     <ConfigJsonEditor {path} {value} />
-    {#if helpText}<p class="text-[10px] text-muted-foreground">{helpText}</p>{/if}
   </div>
 {/if}
