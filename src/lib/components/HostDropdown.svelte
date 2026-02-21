@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { hostsState, getActiveHost, saveHosts } from '$lib/state/hosts.svelte';
+  import { hostsState } from '$lib/state/hosts.svelte';
   import { ui } from '$lib/state/ui.svelte';
   import { wsConnect, wsDisconnect } from '$lib/services/gateway.svelte';
   import { conn } from '$lib/state/connection.svelte';

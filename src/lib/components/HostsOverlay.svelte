@@ -1,10 +1,9 @@
 <script lang="ts">
-  import { hostsState, getActiveHost, loadHosts, saveHosts } from '$lib/state/hosts.svelte';
+  import { hostsState, addHost, updateHost, removeHost } from '$lib/state/hosts.svelte';
   import { ui } from '$lib/state/ui.svelte';
   import { wsConnect, wsDisconnect } from '$lib/services/gateway.svelte';
   import { conn } from '$lib/state/connection.svelte';
   import { fmtTimeAgo } from '$lib/utils/format';
-  import { uuid } from '$lib/utils/uuid';
   import type { Host } from '$lib/types/host';
 
   let formName = $state('');
@@ -24,26 +23,25 @@
 
   function cancelEdit() { editingId = null; formName = ''; formUrl = ''; formToken = ''; }
 
-  function saveHost() {
+  async function saveHost() {
     if (!formUrl.trim()) return;
     const name = formName.trim() || (() => { try { return new URL(formUrl).hostname; } catch { return 'host'; } })();
+    const wasEditing = editingId;
     if (editingId) {
-      const h = hostsState.hosts.find((x) => x.id === editingId);
-      if (h) { h.name = name; h.url = formUrl.trim(); h.token = formToken.trim(); }
+      await updateHost(editingId, { name, url: formUrl.trim(), token: formToken.trim() });
     } else {
-      hostsState.hosts.push({ id: uuid(), name, url: formUrl.trim(), token: formToken.trim(), lastConnectedAt: null });
-      hostsState.activeHostId = hostsState.hosts[hostsState.hosts.length - 1].id;
+      await addHost({ name, url: formUrl.trim(), token: formToken.trim() });
     }
-    saveHosts();
     cancelEdit();
-    if (!editingId) { close(); wsConnect(); }
+    if (!wasEditing) { close(); wsConnect(); }
   }
 
-  function deleteHost(id: string) {
-    hostsState.hosts = hostsState.hosts.filter((h) => h.id !== id);
-    saveHosts();
+  async function deleteHost(id: string) {
     if (hostsState.activeHostId === id) {
       wsDisconnect();
+    }
+    await removeHost(id);
+    if (hostsState.activeHostId === id) {
       hostsState.activeHostId = hostsState.hosts[0]?.id ?? null;
     }
     confirmDeleteId = null;

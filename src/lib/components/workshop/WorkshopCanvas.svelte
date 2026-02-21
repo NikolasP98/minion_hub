@@ -89,6 +89,19 @@
   let activeHandles = $state<Map<string, { abort: () => void }>>(new Map());
 
   // ---------------------------------------------------------------------------
+  // Hide/show agents based on connection state
+  // ---------------------------------------------------------------------------
+
+  $effect(() => {
+    if (!conn.connected) {
+      agentSprites.clearAllSprites();
+      ropeRenderer.clearAllRopes();
+    } else {
+      rebuildScene();
+    }
+  });
+
+  // ---------------------------------------------------------------------------
   // Pan tracking
   // ---------------------------------------------------------------------------
 

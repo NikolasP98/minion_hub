@@ -6,8 +6,8 @@
   import { loadHosts, hostsState } from '$lib/state/hosts.svelte';
   import { wsConnect } from '$lib/services/gateway.svelte';
 
-  onMount(() => {
-    loadHosts();
+  onMount(async () => {
+    await loadHosts();
     if (hostsState.activeHostId) wsConnect();
   });
 </script>
