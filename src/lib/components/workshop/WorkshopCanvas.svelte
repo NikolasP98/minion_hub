@@ -180,10 +180,8 @@
         worldContainer,
       );
 
-      if (inst.behavior === 'wander') {
-        physics.makeAgentDynamic(instanceId);
-      }
-      // patrol uses kinematic — simulation.ts drives position via setAgentPosition
+      // wander and patrol both use kinematic position-based movement;
+      // simulation.ts drives positions via setAgentPosition every tick
     }
 
     for (const [relId, rel] of Object.entries(workshopState.relationships)) {
@@ -458,13 +456,9 @@
       const behavior = data as 'stationary' | 'wander' | 'patrol';
       setAgentBehavior(instanceId, behavior);
 
-      if (behavior === 'wander') {
-        physics.makeAgentDynamic(instanceId);
-      } else {
-        // stationary and patrol both use kinematic;
-        // patrol moves via setAgentPosition in the simulation tick
-        physics.makeAgentKinematic(instanceId);
-      }
+      // All behaviors use kinematic bodies; simulation.ts drives wander/patrol
+      // positions via setAgentPosition each tick. Ensure body is kinematic.
+      physics.makeAgentKinematic(instanceId);
 
       autoSave();
     } else if (action === 'assignTask') {
