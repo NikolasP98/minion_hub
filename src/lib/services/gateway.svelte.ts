@@ -4,6 +4,7 @@ import { agentChat, agentActivity, ensureAgentChat, ensureAgentActivity } from '
 import { hostsState, getActiveHost, saveHosts } from '$lib/state/hosts.svelte';
 import { ui } from '$lib/state/ui.svelte';
 import { pushReliabilityEvent, setReliabilityServerId, type ReliabilityEvent } from '$lib/state/reliability.svelte';
+import { configState, loadConfig } from '$lib/state/config.svelte';
 import { uuid } from '$lib/utils/uuid';
 import { extractText } from '$lib/utils/text';
 import type { HelloOk, ChatEvent } from '$lib/types/gateway';
@@ -380,6 +381,11 @@ function onHelloOk(hello: HelloOk) {
   sendRequest('system-presence', {}).then((r) => { if (Array.isArray(r)) gw.presence = r; }).catch(() => {});
   sendRequest('channels.status', {}).then((r) => { if (r) gw.channels = r; }).catch(() => {});
   sendRequest('cron.list', {}).then((r) => { if (r) gw.cronJobs = (r as { jobs?: never[] })?.jobs ?? []; }).catch(() => {});
+
+  // Reload config if it was loaded before disconnect (e.g. after a save that restarted the gateway)
+  if (configState.loaded || configState.loading) {
+    loadConfig().catch(() => {});
+  }
 
   setTimeout(startPolling, 3000);
 }

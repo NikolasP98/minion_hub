@@ -39,6 +39,25 @@
   const structure: AgentStructure | null = $derived(resolved?.structure ?? null);
   const isListStructure = $derived(structure?.type === 'list');
 
+  // ─── When this agent's `default` becomes true, clear all other agents' defaults
+  $effect(() => {
+    if (!structure || structure.type !== 'list') return;
+    const myDefault = deepGet(configState.current, `${structure.pathPrefix}.default`);
+    if (myDefault !== true) return;
+
+    const list = (configState.current?.agents as Record<string, unknown>)?.list;
+    if (!Array.isArray(list)) return;
+
+    const myIndex = (structure as { listIndex: number }).listIndex;
+    list.forEach((_agent: unknown, idx: number) => {
+      if (idx === myIndex) return;
+      const path = `agents.list.${idx}.default`;
+      if (deepGet(configState.current, path) === true) {
+        setField(path, false);
+      }
+    });
+  });
+
   // ─── Visibility: always show identity + model; show others if they have values
   const visibleGroups = $derived(
     resolvedGroups.filter(

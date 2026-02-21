@@ -182,12 +182,19 @@ export async function save(): Promise<boolean> {
 
     configState.lastSavedAt = Date.now();
 
-    // Reload to get fresh hash + canonical state
-    await loadConfig();
+    // Reload config asynchronously — don't fail the save if this fails.
+    // The gateway may restart to apply agent changes; config will auto-reload
+    // on reconnect via onHelloOk.
+    loadConfig().catch(() => {});
     return true;
   } catch (e) {
     const msg = (e as Error).message ?? 'Save failed';
-    configState.saveError = msg;
+    // WS closure = gateway restarted to apply changes; settings were saved.
+    if (msg.includes('closed') || msg.includes('not connected')) {
+      configState.saveError = 'Gateway restarted to apply changes. Settings will reload on reconnect.';
+    } else {
+      configState.saveError = msg;
+    }
     return false;
   } finally {
     configState.saving = false;
