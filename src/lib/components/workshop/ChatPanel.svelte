@@ -2,9 +2,11 @@
   import { workshopState } from '$lib/state/workshop.svelte';
   import { gw } from '$lib/state/gateway-data.svelte';
   import { slide } from 'svelte/transition';
+  import type { WorkshopMessage } from '$lib/workshop/gateway-bridge';
 
-  let { conversationId, onClose }: {
+  let { conversationId, messages: workshopMessages = [], onClose }: {
     conversationId: string;
+    messages?: WorkshopMessage[];
     onClose: () => void;
   } = $props();
 
@@ -21,7 +23,7 @@
       return {
         instanceId,
         name: agent?.name ?? instance?.agentId ?? 'Unknown',
-        emoji: agent?.emoji ?? '🤖',
+        emoji: agent?.emoji,
       };
     })
   );
@@ -34,10 +36,25 @@
       : 'bg-purple-500/10 text-purple-400'
   );
 
-  // Placeholder messages — will be wired to chat state in Task 20
-  let messages: { id: string; agentName: string; emoji: string; text: string; timestamp: number }[] = $state([]);
+  // Map workshop messages to display format
+  let messages = $derived(
+    workshopMessages.map((wm, idx) => {
+      const inst = workshopState.agents[wm.instanceId];
+      const agent = inst ? gw.agents.find((a: { id: string }) => a.id === inst.agentId) : undefined;
+      return {
+        id: `${wm.conversationId}_${idx}`,
+        agentName: agent?.name ?? wm.agentId,
+        emoji: agent?.emoji ?? '',
+        text: wm.message,
+        timestamp: wm.timestamp,
+      };
+    })
+  );
 
+  // Auto-scroll when messages change
   $effect(() => {
+    // Access messages.length to create a dependency
+    const _ = messages.length;
     if (messagesEnd) {
       messagesEnd.scrollIntoView({ behavior: 'smooth' });
     }
@@ -83,13 +100,17 @@
   <!-- Messages -->
   <div class="flex-1 px-3 py-2 space-y-3 overflow-y-auto">
     {#if messages.length === 0}
-      <div class="flex items-center justify-center h-full">
-        <span class="text-[11px] text-muted">No messages yet</span>
+      <div class="flex flex-col items-center justify-center h-full gap-2">
+        {#if conversation?.status === 'active'}
+          <span class="text-[11px] text-muted animate-pulse">Waiting for response...</span>
+        {:else}
+          <span class="text-[11px] text-muted">No messages yet</span>
+        {/if}
       </div>
     {:else}
       {#each messages as msg (msg.id)}
         <div class="flex gap-2">
-          <span class="text-base leading-none shrink-0 w-6 h-6 flex items-center justify-center">{msg.emoji}</span>
+          <span class="text-base leading-none shrink-0 w-6 h-6 flex items-center justify-center">{msg.emoji || '•'}</span>
           <div class="min-w-0">
             <div class="flex items-baseline gap-1.5">
               <span class="text-[10px] font-mono text-muted">{msg.agentName}</span>

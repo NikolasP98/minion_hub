@@ -16,6 +16,13 @@
   } from '$lib/state/workshop.svelte';
   import { findNearbyAgents } from '$lib/workshop/proximity';
   import { gw } from '$lib/state/gateway-data.svelte';
+  import { conn } from '$lib/state/connection.svelte';
+  import {
+    startWorkshopConversation,
+    assignTask,
+    onWorkshopMessage,
+    type WorkshopMessage,
+  } from '$lib/workshop/gateway-bridge';
   import SpeechBubble from './SpeechBubble.svelte';
   import ContextMenu from './ContextMenu.svelte';
   import RelationshipPrompt from './RelationshipPrompt.svelte';
@@ -65,6 +72,21 @@
   let speechBubbles = $state<
     Array<{ id: string; message: string; agentName: string; screenX: number; screenY: number }>
   >([]);
+
+  // Task prompt dialog state
+  let taskPromptDialog = $state<{
+    instanceId: string;
+    targetInstanceId?: string; // set for "Start conversation with..."
+    agentName: string;
+    mode: 'assign' | 'conversation';
+  } | null>(null);
+  let taskPromptInput = $state('');
+
+  // Workshop conversation messages (for ChatPanel)
+  let workshopMessages = $state<WorkshopMessage[]>([]);
+
+  // Active conversation handles for abort
+  let activeHandles = $state<Map<string, { abort: () => void }>>(new Map());
 
   // ---------------------------------------------------------------------------
   // Pan tracking
@@ -427,7 +449,7 @@
 
   function handleContextAction(action: string, data?: unknown) {
     if (!contextMenu) return;
-    const { instanceId } = contextMenu;
+    const { instanceId, agentName } = contextMenu;
 
     if (action === 'remove') {
       removeAgentFromCanvas(instanceId);
@@ -443,12 +465,52 @@
 
       autoSave();
     } else if (action === 'assignTask') {
-      // TODO: Task 20 - gateway integration
+      if (!conn.connected) return;
+      taskPromptDialog = { instanceId, agentName, mode: 'assign' };
+      taskPromptInput = '';
     } else if (action === 'startConversation') {
-      // TODO: Task 20 - gateway integration
+      if (!conn.connected) return;
+      const payload = data as { targetInstanceId: string } | undefined;
+      if (!payload?.targetInstanceId) return;
+      const targetInst = workshopState.agents[payload.targetInstanceId];
+      const targetName = targetInst ? resolveAgentName(targetInst.agentId) : 'agent';
+      taskPromptDialog = {
+        instanceId,
+        targetInstanceId: payload.targetInstanceId,
+        agentName: `${agentName} & ${targetName}`,
+        mode: 'conversation',
+      };
+      taskPromptInput = '';
     }
 
     contextMenu = null;
+  }
+
+  function handleTaskPromptSubmit() {
+    if (!taskPromptDialog || !taskPromptInput.trim()) return;
+
+    const { instanceId, targetInstanceId, mode } = taskPromptDialog;
+    const prompt = taskPromptInput.trim();
+
+    if (mode === 'assign') {
+      const handle = assignTask(instanceId, prompt);
+      if (handle) {
+        activeHandles.set(handle.conversationId, handle);
+        activeChatPanel = handle.conversationId;
+      }
+    } else if (mode === 'conversation' && targetInstanceId) {
+      const handle = startWorkshopConversation(
+        [instanceId, targetInstanceId],
+        prompt,
+      );
+      if (handle) {
+        activeHandles.set(handle.conversationId, handle);
+        activeChatPanel = handle.conversationId;
+      }
+    }
+
+    taskPromptDialog = null;
+    taskPromptInput = '';
   }
 
   // ---------------------------------------------------------------------------
@@ -480,6 +542,35 @@
   function pixiCanvas(node: HTMLDivElement) {
     canvasContainer = node;
     let destroyed = false;
+
+    // Subscribe to workshop bridge messages
+    const unsubWorkshop = onWorkshopMessage((msg: WorkshopMessage) => {
+      workshopMessages = [...workshopMessages, msg];
+
+      // Also show a speech bubble for this message
+      const inst = workshopState.agents[msg.instanceId];
+      if (inst) {
+        const sprite = agentSprites.getSprite(msg.instanceId);
+        if (sprite && canvasContainer) {
+          const rect = canvasContainer.getBoundingClientRect();
+          const screenX = sprite.x * workshopState.camera.zoom + workshopState.camera.x;
+          const screenY = sprite.y * workshopState.camera.zoom + workshopState.camera.y;
+
+          // Truncate long messages for speech bubble display
+          const bubbleText = msg.message.length > 120
+            ? msg.message.slice(0, 117) + '...'
+            : msg.message;
+
+          speechBubbles = [...speechBubbles, {
+            id: `ws_${Date.now()}_${msg.instanceId}`,
+            message: bubbleText,
+            agentName: resolveAgentName(inst.agentId),
+            screenX,
+            screenY,
+          }];
+        }
+      }
+    });
 
     async function init() {
       const pixiApp = new PIXI.Application();
@@ -530,11 +621,18 @@
     return {
       destroy() {
         destroyed = true;
+        unsubWorkshop();
         window.removeEventListener('workshop:reload', handleReload);
         stopSimulation();
         physics.destroyPhysics();
         agentSprites.clearAllSprites();
         ropeRenderer.clearAllRopes();
+
+        // Abort any active workshop conversations
+        for (const handle of activeHandles.values()) {
+          handle.abort();
+        }
+        activeHandles.clear();
 
         if (app) {
           app.destroy(true);
@@ -606,7 +704,46 @@
   {#if activeChatPanel}
     <ChatPanel
       conversationId={activeChatPanel}
+      messages={workshopMessages.filter((m) => m.conversationId === activeChatPanel)}
       onClose={() => (activeChatPanel = null)}
     />
+  {/if}
+
+  <!-- Task Prompt Dialog -->
+  {#if taskPromptDialog}
+    <div class="fixed inset-0 z-[1100] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div class="bg-bg2 border border-border rounded-lg shadow-xl w-96 max-w-[90vw] p-4">
+        <h3 class="text-xs font-mono text-foreground mb-1">
+          {taskPromptDialog.mode === 'assign' ? 'Assign Task' : 'Start Conversation'}
+        </h3>
+        <p class="text-[10px] text-muted mb-3">{taskPromptDialog.agentName}</p>
+        <textarea
+          class="w-full h-24 bg-bg1 border border-border rounded px-2 py-1.5 text-[11px] text-foreground font-mono resize-none focus:outline-none focus:ring-1 focus:ring-accent"
+          placeholder={taskPromptDialog.mode === 'assign' ? 'Describe the task...' : 'What should they discuss?'}
+          bind:value={taskPromptInput}
+          onkeydown={(e) => {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+              handleTaskPromptSubmit();
+            }
+          }}
+        ></textarea>
+        <div class="flex justify-end gap-2 mt-3">
+          <button
+            class="px-3 py-1 text-[10px] font-mono text-muted hover:text-foreground border border-border rounded transition-colors"
+            onclick={() => { taskPromptDialog = null; taskPromptInput = ''; }}
+          >
+            Cancel
+          </button>
+          <button
+            class="px-3 py-1 text-[10px] font-mono text-accent-foreground bg-accent hover:bg-accent/90 rounded transition-colors disabled:opacity-40"
+            disabled={!taskPromptInput.trim()}
+            onclick={handleTaskPromptSubmit}
+          >
+            {taskPromptDialog.mode === 'assign' ? 'Send' : 'Start'}
+          </button>
+        </div>
+        <p class="text-[9px] text-muted mt-2">Press Cmd/Ctrl+Enter to submit</p>
+      </div>
+    </div>
   {/if}
 </div>
