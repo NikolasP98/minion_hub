@@ -3,10 +3,14 @@ import { eq } from 'drizzle-orm';
 import { getDb } from '$server/db/client';
 import { servers } from '$server/db/schema';
 import { validateSession, SESSION_COOKIE } from '$server/auth/session';
+import { decryptToken } from '$server/auth/crypto';
 
 /**
  * Resolve tenantCtx from a Bearer server token.
  * Used by gateway-to-hub metrics push endpoints.
+ *
+ * Since tokens are encrypted at rest, we fetch all servers and
+ * decrypt-then-compare. Server count per tenant is small (<10).
  */
 async function resolveServerTokenAuth(
   authorization: string | null,
@@ -17,13 +21,22 @@ async function resolveServerTokenAuth(
 
   const db = getDb();
   const rows = await db
-    .select({ id: servers.id, tenantId: servers.tenantId })
-    .from(servers)
-    .where(eq(servers.token, token))
-    .limit(1);
+    .select({
+      id: servers.id,
+      tenantId: servers.tenantId,
+      token: servers.token,
+      tokenIv: servers.tokenIv,
+    })
+    .from(servers);
 
-  if (rows.length === 0) return null;
-  return { tenantId: rows[0].tenantId, serverId: rows[0].id };
+  for (const row of rows) {
+    const stored = row.tokenIv ? decryptToken(row.token, row.tokenIv) : row.token;
+    if (stored === token) {
+      return { tenantId: row.tenantId, serverId: row.id };
+    }
+  }
+
+  return null;
 }
 
 export const handle: Handle = async ({ event, resolve }) => {

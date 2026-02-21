@@ -1,6 +1,7 @@
 import { eq, and } from 'drizzle-orm';
 import { servers } from '$server/db/schema';
 import { newId, nowMs } from '$server/db/utils';
+import { encryptToken, decryptToken } from '$server/auth/crypto';
 import type { TenantContext } from './base';
 
 export interface ServerInput {
@@ -15,6 +16,8 @@ export async function upsertServer(ctx: TenantContext, s: ServerInput) {
   const now = nowMs();
   const id = s.id ?? newId();
 
+  const { encrypted, iv } = encryptToken(s.token);
+
   await ctx.db
     .insert(servers)
     .values({
@@ -22,7 +25,8 @@ export async function upsertServer(ctx: TenantContext, s: ServerInput) {
       tenantId: ctx.tenantId,
       name: s.name,
       url: s.url,
-      token: s.token,
+      token: encrypted,
+      tokenIv: iv,
       lastConnectedAt: s.lastConnectedAt ?? null,
       createdAt: now,
       updatedAt: now,
@@ -32,7 +36,8 @@ export async function upsertServer(ctx: TenantContext, s: ServerInput) {
       set: {
         name: s.name,
         url: s.url,
-        token: s.token,
+        token: encrypted,
+        tokenIv: iv,
         lastConnectedAt: s.lastConnectedAt ?? null,
         updatedAt: now,
       },
@@ -42,17 +47,26 @@ export async function upsertServer(ctx: TenantContext, s: ServerInput) {
 }
 
 export async function listServers(ctx: TenantContext) {
-  return ctx.db
+  const rows = await ctx.db
     .select({
       id: servers.id,
       name: servers.name,
       url: servers.url,
       token: servers.token,
+      tokenIv: servers.tokenIv,
       lastConnectedAt: servers.lastConnectedAt,
     })
     .from(servers)
     .where(eq(servers.tenantId, ctx.tenantId))
     .orderBy(servers.createdAt);
+
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    url: row.url,
+    token: row.tokenIv ? decryptToken(row.token, row.tokenIv) : row.token,
+    lastConnectedAt: row.lastConnectedAt,
+  }));
 }
 
 export async function deleteServer(ctx: TenantContext, id: string) {

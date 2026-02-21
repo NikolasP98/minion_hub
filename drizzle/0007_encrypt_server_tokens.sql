@@ -1,0 +1,1 @@
+ALTER TABLE `servers` ADD `token_iv` text DEFAULT '' NOT NULL;
