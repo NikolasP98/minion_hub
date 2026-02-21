@@ -172,7 +172,7 @@
   }
 </script>
 
-<div class="flex flex-col h-full overflow-hidden bg-bg">
+<div class="flex-1 min-h-0 flex flex-col overflow-hidden bg-bg">
   {#if !sessionKey}
     <div class="flex-1 flex flex-col items-center justify-center gap-2.5 text-muted text-[13px]">
       <span class="text-[28px] opacity-40">{'\u2B05'}</span>

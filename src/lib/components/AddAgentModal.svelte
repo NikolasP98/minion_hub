@@ -182,6 +182,7 @@
       }
 
       ui.selectedAgentId = newId;
+      ui.selectedSessionKey = `agent:${newId}:main`;
       close();
     } catch (e) {
       errorMsg = (e as Error).message ?? 'Failed to create agent';

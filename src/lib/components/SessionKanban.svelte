@@ -3,7 +3,7 @@
   import type { KanbanTask } from './TaskCard.svelte';
   import { sessionTasksState, loadSessionTasks } from '$lib/state/session-tasks.svelte';
 
-  let { sessionKey, serverId }: { sessionKey: string; serverId: string | null } = $props();
+  let { sessionKey, serverId }: { sessionKey: string | null; serverId: string | null } = $props();
 
   const cols = [
     { key: 'backlog' as const, label: 'Backlog', short: 'B' },
@@ -29,7 +29,7 @@
   });
 
   const allTasks = $derived(
-    (sessionTasksState.tasksBySession[sessionKey] ?? []) as KanbanTask[],
+    (sessionKey ? (sessionTasksState.tasksBySession[sessionKey] ?? []) : []) as KanbanTask[],
   );
 
   function tasksForStatus(status: KanbanTask['status']) {
@@ -45,10 +45,11 @@
   );
 
   async function moveTask(taskId: string, newStatus: KanbanTask['status']) {
+    if (!sessionKey) return;
     // Optimistic update
     const tasks = sessionTasksState.tasksBySession[sessionKey];
     if (tasks) {
-      const task = tasks.find((t) => t.id === taskId);
+      const task = (tasks as KanbanTask[]).find((t) => t.id === taskId);
       if (task) task.status = newStatus;
     }
 
@@ -70,25 +71,23 @@
   }
 </script>
 
-{#if total > 0}
-  <div class="shrink-0 border-b border-border">
-    <!-- Collapsed header row -->
-    <button
-      class="w-full flex items-center gap-2 px-2.5 py-1.5 text-left hover:bg-bg2 transition-colors"
-      onclick={toggleCollapsed}
+<div class="shrink-0 border-b border-border">
+  <!-- Collapsed header row -->
+  <button
+    class="w-full flex items-center gap-2 px-2.5 py-1.5 text-left hover:bg-bg2 transition-colors"
+    onclick={toggleCollapsed}
+  >
+    <!-- Chevron -->
+    <span
+      class="text-muted-foreground text-[10px] transition-transform {collapsed ? '' : 'rotate-90'}"
+      >&#9654;</span
     >
-      <!-- Chevron -->
-      <span
-        class="text-muted-foreground text-[10px] transition-transform {collapsed
-          ? ''
-          : 'rotate-90'}"
-        >&#9654;</span
-      >
 
-      <span class="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
-        >Tasks</span
-      >
+    <span class="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
+      >Tasks</span
+    >
 
+    {#if total > 0}
       <!-- Mini progress bar -->
       <div class="flex-1 h-[3px] bg-border rounded-full overflow-hidden mx-1">
         <div
@@ -103,10 +102,15 @@
           <span>{cc.short}({cc.count})</span>
         {/each}
       </div>
-    </button>
+    {:else}
+      <span class="text-[10px] text-muted-foreground/40 ml-1">— no tasks</span>
+      <span class="flex-1"></span>
+    {/if}
+  </button>
 
-    <!-- Expanded kanban grid -->
-    {#if !collapsed}
+  <!-- Expanded body -->
+  {#if !collapsed}
+    {#if total > 0}
       <div class="grid grid-cols-4">
         {#each cols as col (col.key)}
           <KanbanCol
@@ -117,6 +121,10 @@
           />
         {/each}
       </div>
+    {:else}
+      <div class="px-3 py-3 text-[11px] text-muted-foreground/40 text-center">
+        No tasks for this session.
+      </div>
     {/if}
-  </div>
-{/if}
+  {/if}
+</div>

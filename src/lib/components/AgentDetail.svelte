@@ -37,19 +37,19 @@
 <div class="flex-1 min-h-0 flex flex-col overflow-hidden">
   <DetailHeader {agentId} {agent} />
   <SessionDropdown {agentId} serverId={ui.selectedServerId} />
-  {#if ui.selectedSessionKey}
-    <SessionKanban sessionKey={ui.selectedSessionKey} serverId={ui.selectedServerId} />
-    {#if !isMainSession}
-      <div class="flex-1 min-h-0 flex flex-col overflow-hidden">
-        <SessionViewer
-          serverId={ui.selectedServerId}
-          sessionKey={ui.selectedSessionKey}
-          session={selectedSessionRow}
-        />
-      </div>
+  <SessionKanban sessionKey={ui.selectedSessionKey} serverId={ui.selectedServerId} />
+
+  <!-- Main content: viewer (non-main) or chat (main), with input always at bottom -->
+  <div class="flex-1 min-h-0 flex flex-col overflow-hidden">
+    {#if !isMainSession && ui.selectedSessionKey}
+      <SessionViewer
+        serverId={ui.selectedServerId}
+        sessionKey={ui.selectedSessionKey}
+        session={selectedSessionRow}
+      />
     {/if}
-  {/if}
-  <ChatPanel {agentId} readonly={!isMainSession} />
+    <ChatPanel {agentId} readonly={!isMainSession} />
+  </div>
 </div>
 
 {#if ui.agentSettingsOpen}

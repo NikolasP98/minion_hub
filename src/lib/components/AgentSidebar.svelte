@@ -48,7 +48,10 @@
           {agent}
           selected={ui.selectedAgentId === agent.id}
           accentColor={ACCENT_COLORS[i % ACCENT_COLORS.length]}
-          onclick={() => { ui.selectedAgentId = agent.id; }}
+          onclick={() => {
+            ui.selectedAgentId = agent.id;
+            ui.selectedSessionKey = `agent:${agent.id}:main`;
+          }}
         />
       {/each}
     {/if}
