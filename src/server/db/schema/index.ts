@@ -19,3 +19,5 @@ export { gatewayHeartbeats } from './gateway-heartbeats';
 export { activityBins } from './activity-bins';
 export { configSnapshots } from './config-snapshots';
 export { sessionTasks } from './session-tasks';
+export { marketplaceAgents } from './marketplace-agents';
+export { marketplaceInstalls } from './marketplace-installs';
