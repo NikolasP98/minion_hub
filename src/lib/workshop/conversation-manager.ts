@@ -1,0 +1,144 @@
+import { workshopState } from '$lib/state/workshop.svelte';
+import { findNearbyAgents } from './proximity';
+
+// --- Module State ---
+
+let banterMessageCount = 0;
+let banterBudgetResetTime = Date.now() + 3600000;
+
+let conversationCounter = 0;
+
+function generateConversationId(): string {
+	return `conv_${Date.now()}_${conversationCounter++}`;
+}
+
+// --- Budget helpers ---
+
+export function resetBanterBudget(): void {
+	banterMessageCount = 0;
+	banterBudgetResetTime = Date.now() + 3600000;
+}
+
+function checkBanterBudget(): boolean {
+	if (Date.now() > banterBudgetResetTime) {
+		resetBanterBudget();
+	}
+	return banterMessageCount < workshopState.settings.idleBanterBudgetPerHour;
+}
+
+// --- Conversation counts ---
+
+function getActiveConversationCount(): number {
+	let count = 0;
+	for (const conv of Object.values(workshopState.conversations)) {
+		if (conv.status === 'active') count++;
+	}
+	return count;
+}
+
+// --- Public API ---
+
+export function canStartConversation(type: 'task' | 'banter'): boolean {
+	const activeCount = getActiveConversationCount();
+	const max = workshopState.settings.maxConcurrentConversations;
+
+	if (type === 'task') {
+		return activeCount < max;
+	}
+
+	// banter
+	return (
+		workshopState.settings.idleBanterEnabled &&
+		checkBanterBudget() &&
+		activeCount < max
+	);
+}
+
+export function startConversation(
+	type: 'task' | 'banter',
+	participantInstanceIds: string[],
+	sessionKey: string
+): string | null {
+	if (!canStartConversation(type)) return null;
+
+	const id = generateConversationId();
+
+	workshopState.conversations[id] = {
+		id,
+		type,
+		participantInstanceIds,
+		sessionKey,
+		status: 'active',
+	};
+
+	if (type === 'banter') {
+		banterMessageCount++;
+	}
+
+	return id;
+}
+
+export function endConversation(conversationId: string): void {
+	const conv = workshopState.conversations[conversationId];
+	if (conv) {
+		conv.status = 'completed';
+	}
+}
+
+export function checkProximityGates(): void {
+	for (const conv of Object.values(workshopState.conversations)) {
+		if (conv.status !== 'active') continue;
+
+		// Keep only participants who are within proximity of at least one other participant
+		const remaining = conv.participantInstanceIds.filter((id) => {
+			const nearby = findNearbyAgents(id);
+			return conv.participantInstanceIds.some(
+				(otherId) => otherId !== id && nearby.includes(otherId)
+			);
+		});
+
+		conv.participantInstanceIds = remaining;
+
+		if (remaining.length < 2) {
+			conv.status = 'completed';
+		}
+	}
+}
+
+export function getConversationsForAgent(instanceId: string): string[] {
+	const ids: string[] = [];
+	for (const conv of Object.values(workshopState.conversations)) {
+		if (conv.status === 'active' && conv.participantInstanceIds.includes(instanceId)) {
+			ids.push(conv.id);
+		}
+	}
+	return ids;
+}
+
+export function isAgentInConversation(instanceId: string): boolean {
+	return getConversationsForAgent(instanceId).length > 0;
+}
+
+export function findBanterCandidates(): Array<[string, string]> {
+	if (!workshopState.settings.idleBanterEnabled || !checkBanterBudget()) {
+		return [];
+	}
+
+	const candidates: Array<[string, string]> = [];
+
+	for (const rel of Object.values(workshopState.relationships)) {
+		const a = rel.fromInstanceId;
+		const b = rel.toInstanceId;
+
+		// Both agents must be idle (not in any active conversation)
+		if (isAgentInConversation(a) || isAgentInConversation(b)) continue;
+
+		// Both agents must be within proximity of each other
+		const nearbyA = findNearbyAgents(a);
+		if (!nearbyA.includes(b)) continue;
+
+		candidates.push([a, b]);
+	}
+
+	return candidates;
+}
