@@ -7,6 +7,7 @@
     syncFromGitHub,
   } from '$lib/state/marketplace.svelte';
   import AgentCreatorWizard from '$lib/components/marketplace/AgentCreatorWizard.svelte';
+  import BgPattern from '$lib/components/decorations/BgPattern.svelte';
   import { type Snippet } from 'svelte';
 
   let { children }: { children: Snippet } = $props();
@@ -45,11 +46,11 @@
   }
 </script>
 
-<div class="flex flex-col h-screen overflow-hidden">
+<div class="relative z-10 flex flex-col h-screen overflow-hidden">
   <Topbar />
   <div class="flex flex-1 overflow-hidden">
     <!-- Sidebar -->
-    <aside class="w-[200px] shrink-0 border-r border-border flex flex-col overflow-y-auto bg-bg/50">
+    <aside class="w-[200px] shrink-0 border-r border-border flex flex-col overflow-y-auto bg-bg">
       <div class="px-4 pt-5 pb-2">
         <p class="text-[10px] font-semibold tracking-widest uppercase text-muted mb-2">Browse</p>
         <nav class="flex flex-col gap-0.5">
@@ -113,8 +114,10 @@
       </div>
     </aside>
 
-    <!-- Main content -->
-    <main class="flex-1 overflow-y-auto">
+    <!-- Main content: relative z-0 creates a stacking context so the canvas
+         BgPattern (absolute -z-10 inside) sits behind cards but above the body bg -->
+    <main class="flex-1 overflow-y-auto relative z-0">
+      <BgPattern mode="canvas" />
       {@render children()}
     </main>
   </div>
