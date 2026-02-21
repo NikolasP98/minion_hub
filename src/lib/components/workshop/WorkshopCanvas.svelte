@@ -4,7 +4,8 @@
   import * as agentSprites from '$lib/workshop/agent-sprite';
   import * as ropeRenderer from '$lib/workshop/rope-renderer';
   import { startSimulation, stopSimulation, setBanterCallback } from '$lib/workshop/simulation';
-  import { screenToWorld, applyZoom, applyPan } from '$lib/workshop/camera';
+  import { screenToWorld, worldToScreen, applyZoom, applyPan } from '$lib/workshop/camera';
+  import { createAgentFsm, destroyAgentFsm, sendFsmEvent, clearAllFsms } from '$lib/workshop/agent-fsm';
   import {
     workshopState,
     autoLoad,
@@ -26,7 +27,8 @@
   import SpeechBubble from './SpeechBubble.svelte';
   import ContextMenu from './ContextMenu.svelte';
   import RelationshipPrompt from './RelationshipPrompt.svelte';
-  import ChatPanel from './ChatPanel.svelte';
+  import ConversationSidebar from './ConversationSidebar.svelte';
+  import ConversationIndicator from './ConversationIndicator.svelte';
 
   // ---------------------------------------------------------------------------
   // PixiJS state (not reactive - managed imperatively within onMount)
@@ -67,7 +69,8 @@
     y: number;
   } | null>(null);
 
-  let activeChatPanel = $state<string | null>(null);
+  let sidebarOpen = $state(false);
+  let selectedConversationId = $state<string | null>(null);
 
   let speechBubbles = $state<
     Array<{ id: string; message: string; agentName: string; screenX: number; screenY: number }>
@@ -82,8 +85,7 @@
   } | null>(null);
   let taskPromptInput = $state('');
 
-  // Workshop conversation messages (for ChatPanel)
-  let workshopMessages = $state<WorkshopMessage[]>([]);
+  // (messages now stored in conversationMessages state module)
 
   // Active conversation handles for abort
   let activeHandles = $state<Map<string, { abort: () => void }>>(new Map());
@@ -176,6 +178,7 @@
 
     agentSprites.clearAllSprites();
     ropeRenderer.clearAllRopes();
+    clearAllFsms();
 
     for (const [instanceId, inst] of Object.entries(workshopState.agents)) {
       physics.addAgentBody(instanceId, inst.position.x, inst.position.y);
@@ -193,8 +196,8 @@
         worldContainer,
       );
 
-      // wander and patrol both use kinematic position-based movement;
-      // simulation.ts drives positions via setAgentPosition every tick
+      // Create FSM for this agent instance
+      createAgentFsm(instanceId, inst.behavior);
     }
 
     for (const [relId, rel] of Object.entries(workshopState.relationships)) {
@@ -219,6 +222,7 @@
 
     physics.removeAgentBody(instanceId);
     agentSprites.removeAgentSprite(instanceId);
+    destroyAgentFsm(instanceId);
     removeAgentInstance(instanceId);
     autoSave();
   }
@@ -436,6 +440,7 @@
     const instanceId = addAgentInstance(agentData.id, worldPos.x, worldPos.y);
 
     physics.addAgentBody(instanceId, worldPos.x, worldPos.y);
+    createAgentFsm(instanceId, 'stationary');
 
     if (worldContainer) {
       await agentSprites.createAgentSprite(
@@ -468,6 +473,10 @@
     } else if (action === 'setBehavior') {
       const behavior = data as 'stationary' | 'wander' | 'patrol';
       setAgentBehavior(instanceId, behavior);
+
+      // Sync FSM state with the behavior change
+      const fsmEvent = behavior === 'wander' ? 'wander' : behavior === 'patrol' ? 'patrol' : 'stop';
+      sendFsmEvent(instanceId, fsmEvent as 'wander' | 'patrol' | 'stop');
 
       // All behaviors use kinematic bodies; simulation.ts drives wander/patrol
       // positions via setAgentPosition each tick. Ensure body is kinematic.
@@ -517,7 +526,8 @@
     const handle = startWorkshopConversation([instanceIdA, instanceIdB], DEFAULT_BANTER_PROMPT, 4);
     if (handle) {
       activeHandles.set(handle.conversationId, handle);
-      activeChatPanel = handle.conversationId;
+      sidebarOpen = true;
+      selectedConversationId = handle.conversationId;
     }
   }
 
@@ -533,7 +543,8 @@
       const handle = assignTask(instanceId, prompt);
       if (handle) {
         activeHandles.set(handle.conversationId, handle);
-        activeChatPanel = handle.conversationId;
+        sidebarOpen = true;
+      selectedConversationId = handle.conversationId;
       }
     } else if (mode === 'conversation' && targetInstanceId) {
       const handle = startWorkshopConversation(
@@ -542,7 +553,8 @@
       );
       if (handle) {
         activeHandles.set(handle.conversationId, handle);
-        activeChatPanel = handle.conversationId;
+        sidebarOpen = true;
+      selectedConversationId = handle.conversationId;
       }
     }
 
@@ -582,9 +594,7 @@
 
     // Subscribe to workshop bridge messages
     const unsubWorkshop = onWorkshopMessage((msg: WorkshopMessage) => {
-      workshopMessages = [...workshopMessages, msg];
-
-      // Also show a speech bubble for this message
+      // Show a speech bubble for this message
       const inst = workshopState.agents[msg.instanceId];
       if (inst) {
         const sprite = agentSprites.getSprite(msg.instanceId);
@@ -716,7 +726,7 @@
     oncontextmenu={handleContextMenu}
   ></div>
 
-  <!-- HTML Overlay: speech bubbles -->
+  <!-- HTML Overlay: speech bubbles + conversation indicators -->
   <div class="absolute inset-0 pointer-events-none overflow-hidden">
     {#each speechBubbles as bubble (bubble.id)}
       <SpeechBubble
@@ -727,7 +737,45 @@
         onFaded={() => removeBubble(bubble.id)}
       />
     {/each}
+
+    <!-- Conversation indicators between agent pairs -->
+    {#each Object.values(workshopState.conversations).filter(c => c.status === 'active') as conv (conv.id)}
+      {#if conv.participantInstanceIds.length >= 2}
+        {@const instA = workshopState.agents[conv.participantInstanceIds[0]]}
+        {@const instB = workshopState.agents[conv.participantInstanceIds[1]]}
+        {#if instA && instB}
+          {@const midWorldX = (instA.position.x + instB.position.x) / 2}
+          {@const midWorldY = Math.min(instA.position.y, instB.position.y) - 30}
+          {@const screenPos = worldToScreen(midWorldX, midWorldY, workshopState.camera)}
+          <ConversationIndicator
+            x={screenPos.x}
+            y={screenPos.y}
+            type={conv.type}
+            onclick={() => { sidebarOpen = true; selectedConversationId = conv.id; }}
+          />
+        {/if}
+      {/if}
+    {/each}
   </div>
+
+  <!-- Conversations toggle button -->
+  {#if Object.keys(workshopState.conversations).length > 0}
+    {@const activeCount = Object.values(workshopState.conversations).filter(c => c.status === 'active').length}
+    <button
+      class="absolute top-3 right-3 z-40 flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-bg2/90 backdrop-blur border border-border text-[10px] font-mono text-foreground hover:bg-accent/10 hover:border-accent/30 transition-all"
+      onclick={() => { sidebarOpen = !sidebarOpen; }}
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+      </svg>
+      Chats
+      {#if activeCount > 0}
+        <span class="flex items-center justify-center w-4 h-4 rounded-full bg-green-500/20 text-green-400 text-[9px]">
+          {activeCount}
+        </span>
+      {/if}
+    </button>
+  {/if}
 
   <!-- Context Menu -->
   {#if contextMenu}
@@ -756,12 +804,12 @@
     />
   {/if}
 
-  <!-- Chat Panel -->
-  {#if activeChatPanel}
-    <ChatPanel
-      conversationId={activeChatPanel}
-      messages={workshopMessages.filter((m) => m.conversationId === activeChatPanel)}
-      onClose={() => (activeChatPanel = null)}
+  <!-- Conversation Sidebar -->
+  {#if sidebarOpen}
+    <ConversationSidebar
+      {selectedConversationId}
+      onSelectConversation={(id) => { selectedConversationId = id; }}
+      onClose={() => { sidebarOpen = false; }}
     />
   {/if}
 

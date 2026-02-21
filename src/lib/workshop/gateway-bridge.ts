@@ -26,8 +26,24 @@ import { conn } from '$lib/state/connection.svelte';
 import { workshopState } from '$lib/state/workshop.svelte';
 import { gw } from '$lib/state/gateway-data.svelte';
 import { startConversation, endConversation } from './conversation-manager';
+import { appendMessage } from '$lib/state/workshop-conversations.svelte';
+import { configState } from '$lib/state/config.svelte';
 import { uuid } from '$lib/utils/uuid';
 import { extractText } from '$lib/utils/text';
+
+// ---------------------------------------------------------------------------
+// Deterministic session key builders
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a deterministic conversation key from sorted participant agent IDs.
+ * Same pair of agents always gets the same key, so conversation history
+ * accumulates across sessions on the gateway.
+ */
+function buildConversationKey(participantAgentIds: string[]): string {
+	const sorted = [...participantAgentIds].sort().join(':');
+	return `workshop:conv:${sorted}`;
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -114,11 +130,20 @@ export function startWorkshopConversation(
 		return null;
 	}
 
-	// Create a session key for this workshop conversation
-	const convSessionKey = `workshop:${uuid()}`;
+	const agentIds = participants.map((p) => p.agentId);
+
+	// Create a deterministic session key for this conversation
+	const convSessionKey = buildConversationKey(agentIds);
+
+	// Build a human-readable title from agent names
+	const nameOf = (agentId: string): string => {
+		const gwAgent = gw.agents.find((a: { id: string }) => a.id === agentId);
+		return gwAgent?.name ?? agentId;
+	};
+	const title = agentIds.map(nameOf).join(' & ');
 
 	// Register with the conversation manager
-	const conversationId = startConversation('task', participantInstanceIds, convSessionKey);
+	const conversationId = startConversation('task', participantInstanceIds, agentIds, convSessionKey, title);
 	if (!conversationId) {
 		console.warn('[workshop-bridge] Conversation manager rejected the conversation');
 		return null;
@@ -197,8 +222,8 @@ export function assignTask(
 	const inst = workshopState.agents[instanceId];
 	if (!inst) return null;
 
-	const convSessionKey = `workshop:${uuid()}`;
-	const conversationId = startConversation('task', [instanceId], convSessionKey);
+	const convSessionKey = `workshop:task:${inst.agentId}`;
+	const conversationId = startConversation('task', [instanceId], [inst.agentId], convSessionKey);
 	if (!conversationId) return null;
 
 	const loopState = { aborted: false, turnCount: 0, maxTurns: 1 };
@@ -265,6 +290,7 @@ async function runOrchestrationLoop(
 	let currentTurnIdx = 0;
 	let previousResponse = '';
 	let previousAgentName = '';
+	const collectedMessages: string[] = [];
 
 	// Initial prompt to first agent
 	const firstParticipant = participants[0];
@@ -288,6 +314,7 @@ async function runOrchestrationLoop(
 		previousResponse = response;
 		previousAgentName = nameOf(firstParticipant.agentId);
 		loopState.turnCount++;
+		collectedMessages.push(`${previousAgentName}: ${response}`);
 
 		emitMessage({
 			conversationId,
@@ -322,6 +349,7 @@ async function runOrchestrationLoop(
 			previousResponse = turnResponse;
 			previousAgentName = nameOf(participant.agentId);
 			loopState.turnCount++;
+			collectedMessages.push(`${previousAgentName}: ${turnResponse}`);
 
 			emitMessage({
 				conversationId,
@@ -334,6 +362,10 @@ async function runOrchestrationLoop(
 	} finally {
 		if (!loopState.aborted) {
 			endConversation(conversationId);
+
+			// Best-effort owner notification for personal agents
+			const recentMessages = collectedMessages.slice(-4);
+			tryOwnerNotification(participants, conversationId, recentMessages).catch(() => {});
 		}
 		activeLoops.delete(conversationId);
 	}
@@ -491,11 +523,130 @@ function formatTurnPrompt(
 // ---------------------------------------------------------------------------
 
 function emitMessage(msg: WorkshopMessage): void {
+	// Persist message in the conversation state cache
+	const conv = Object.values(workshopState.conversations).find(
+		(c) => c.id === msg.conversationId,
+	);
+	if (conv) {
+		appendMessage(conv.sessionKey, {
+			role: 'assistant',
+			agentId: msg.agentId,
+			instanceId: msg.instanceId,
+			content: msg.message,
+			timestamp: msg.timestamp,
+		});
+	}
+
+	// Fire callbacks for speech bubbles / other listeners
 	for (const cb of messageCallbacks) {
 		try {
 			cb(msg);
 		} catch (err) {
 			console.error('[workshop-bridge] Callback error:', err);
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Owner notification
+// ---------------------------------------------------------------------------
+
+/**
+ * Check if an agent is "personal" (bound to a single channel, implying it
+ * belongs to a specific user rather than being a shared/default agent).
+ */
+function isPersonalAgent(agentId: string): boolean {
+	const bindings = configState.current?.bindings as
+		| Array<{ agentId: string }>
+		| undefined;
+	if (!bindings || !Array.isArray(bindings)) return false;
+	return bindings.filter((b) => b.agentId === agentId).length === 1;
+}
+
+/**
+ * After a conversation ends, if any participant is a personal agent, prompt
+ * them to notify their owner about the conversation (best-effort).
+ */
+async function tryOwnerNotification(
+	participants: Array<{ instanceId: string; agentId: string }>,
+	conversationId: string,
+	lastMessages: string[],
+): Promise<void> {
+	for (const p of participants) {
+		if (!isPersonalAgent(p.agentId)) continue;
+
+		const sessionKey = buildWorkshopSessionKey(p.agentId, conversationId);
+		const summary = lastMessages.slice(-4).join('\n---\n');
+
+		const prompt = [
+			'A workshop conversation you participated in just ended. Here is a brief summary of the recent exchange:',
+			'',
+			summary,
+			'',
+			'If anything in this conversation is relevant to your owner, please notify them using your available communication tools.',
+			'Keep it brief and only notify if truly important. If nothing warrants notification, simply respond with "No notification needed."',
+		].join('\n');
+
+		try {
+			await sendAndWaitForResponse(p.agentId, sessionKey, prompt, 60_000);
+		} catch {
+			// non-critical — best effort notification
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Conversation history loading
+// ---------------------------------------------------------------------------
+
+/**
+ * Load combined conversation history from the gateway by fetching each
+ * participant's session transcript and interleaving by timestamp.
+ */
+export async function loadConversationHistory(
+	conv: import('$lib/state/workshop.svelte').WorkshopConversation,
+): Promise<import('$lib/state/workshop-conversations.svelte').ConversationMessage[]> {
+	const { setMessages, conversationLoading } = await import(
+		'$lib/state/workshop-conversations.svelte'
+	);
+
+	conversationLoading[conv.sessionKey] = true;
+
+	try {
+		const allMessages: import('$lib/state/workshop-conversations.svelte').ConversationMessage[] =
+			[];
+
+		for (const agentId of conv.participantAgentIds) {
+			const sessionKey = buildWorkshopSessionKey(agentId, conv.sessionKey);
+
+			try {
+				const res = (await sendRequest('chat.history', {
+					sessionKey,
+					limit: 200,
+				})) as { messages?: Array<{ role: string; content: unknown; timestamp?: number }> } | null;
+
+				const messages = res?.messages ?? [];
+				for (const msg of messages) {
+					const text = extractText(msg);
+					if (typeof text === 'string' && text.trim()) {
+						allMessages.push({
+							role: msg.role as 'user' | 'assistant',
+							agentId,
+							content: text,
+							timestamp: msg.timestamp ?? 0,
+						});
+					}
+				}
+			} catch {
+				// Skip this agent's history on error
+			}
+		}
+
+		// Sort by timestamp to interleave messages from different agents
+		allMessages.sort((a, b) => a.timestamp - b.timestamp);
+		setMessages(conv.sessionKey, allMessages);
+		return allMessages;
+	} finally {
+		conversationLoading[conv.sessionKey] = false;
 	}
 }

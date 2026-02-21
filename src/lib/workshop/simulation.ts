@@ -4,6 +4,7 @@ import * as physics from './physics';
 import * as sprites from './agent-sprite';
 import * as ropeRenderer from './rope-renderer';
 import { workshopState, updateAgentPosition } from '$lib/state/workshop.svelte';
+import { getAgentFsm, isAgentConversing } from './agent-fsm';
 
 // ---------------------------------------------------------------------------
 // Module state
@@ -78,7 +79,8 @@ function tick(now: number): void {
 	if (wanderTimer >= WANDER_INTERVAL) {
 		wanderTimer -= WANDER_INTERVAL;
 		for (const agent of Object.values(workshopState.agents)) {
-			if (agent.behavior !== 'wander') continue;
+			const fsm = getAgentFsm(agent.instanceId);
+			if (fsm ? fsm.current !== 'wandering' : agent.behavior !== 'wander') continue;
 			const angle = Math.random() * Math.PI * 2;
 			const r = 30 + Math.random() * WANDER_RADIUS;
 			wanderTargets.set(agent.instanceId, {
@@ -90,7 +92,8 @@ function tick(now: number): void {
 
 	// --- Move wander agents toward their targets (kinematic lerp) ---
 	for (const agent of Object.values(workshopState.agents)) {
-		if (agent.behavior !== 'wander') continue;
+		const fsmW = getAgentFsm(agent.instanceId);
+		if (fsmW ? fsmW.current !== 'wandering' : agent.behavior !== 'wander') continue;
 		let target = wanderTargets.get(agent.instanceId);
 		if (!target) {
 			// Initialize a target on first tick
@@ -118,7 +121,8 @@ function tick(now: number): void {
 
 	// --- Patrol: smooth kinematic orbit around homePosition ---
 	for (const agent of Object.values(workshopState.agents)) {
-		if (agent.behavior !== 'patrol') continue;
+		const fsmP = getAgentFsm(agent.instanceId);
+		if (fsmP ? fsmP.current !== 'patrolling' : agent.behavior !== 'patrol') continue;
 		const angle = (patrolAngles.get(agent.instanceId) ?? Math.random() * Math.PI * 2) + dt * PATROL_SPEED;
 		patrolAngles.set(agent.instanceId, angle);
 		physics.setAgentPosition(
@@ -183,7 +187,7 @@ function tryIdleBanter(activeParticipants: Set<string>): void {
 
 	const r = workshopState.settings.proximityRadius;
 	const idle = Object.values(workshopState.agents).filter(
-		(a) => !activeParticipants.has(a.instanceId)
+		(a) => !isAgentConversing(a.instanceId) && !activeParticipants.has(a.instanceId)
 	);
 
 	for (let i = 0; i < idle.length; i++) {

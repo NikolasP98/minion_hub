@@ -1,5 +1,6 @@
 import { workshopState } from '$lib/state/workshop.svelte';
 import { findNearbyAgents } from './proximity';
+import { sendFsmEvent } from './agent-fsm';
 
 // --- Module State ---
 
@@ -57,7 +58,9 @@ export function canStartConversation(type: 'task' | 'banter'): boolean {
 export function startConversation(
 	type: 'task' | 'banter',
 	participantInstanceIds: string[],
-	sessionKey: string
+	participantAgentIds: string[],
+	sessionKey: string,
+	title?: string,
 ): string | null {
 	if (!canStartConversation(type)) return null;
 
@@ -67,9 +70,17 @@ export function startConversation(
 		id,
 		type,
 		participantInstanceIds,
+		participantAgentIds,
 		sessionKey,
 		status: 'active',
+		startedAt: Date.now(),
+		title,
 	};
+
+	// Transition all participants to 'conversing' state
+	for (const iid of participantInstanceIds) {
+		sendFsmEvent(iid, 'conversationStart');
+	}
 
 	if (type === 'banter') {
 		banterMessageCount++;
@@ -82,6 +93,12 @@ export function endConversation(conversationId: string): void {
 	const conv = workshopState.conversations[conversationId];
 	if (conv) {
 		conv.status = 'completed';
+		conv.endedAt = Date.now();
+
+		// Transition all participants out of 'conversing' state
+		for (const iid of conv.participantInstanceIds) {
+			sendFsmEvent(iid, 'conversationEnd');
+		}
 	}
 }
 

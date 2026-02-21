@@ -17,8 +17,12 @@ export interface WorkshopConversation {
   id: string;
   type: 'task' | 'banter';
   participantInstanceIds: string[];
+  participantAgentIds: string[];
   sessionKey: string;
   status: 'active' | 'completed' | 'queued';
+  startedAt: number;
+  endedAt?: number;
+  title?: string;
 }
 
 export interface WorkshopSettings {
@@ -59,9 +63,8 @@ export function autoSave() {
   if (autoSaveTimer) clearTimeout(autoSaveTimer);
   autoSaveTimer = setTimeout(() => {
     try {
-      // Exclude conversations from the persisted snapshot
-      const { conversations: _, ...rest } = $state.snapshot(workshopState);
-      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(rest));
+      const snapshot = $state.snapshot(workshopState);
+      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(snapshot));
     } catch {
       // non-critical
     }
@@ -72,11 +75,21 @@ export function autoLoad() {
   try {
     const raw = localStorage.getItem(AUTOSAVE_KEY);
     if (!raw) return;
-    const saved = JSON.parse(raw) as Omit<WorkshopState, 'conversations'>;
-    workshopState.camera = saved.camera;
-    workshopState.agents = saved.agents;
-    workshopState.relationships = saved.relationships;
+    const saved = JSON.parse(raw) as Partial<WorkshopState>;
+    workshopState.camera = saved.camera ?? workshopState.camera;
+    workshopState.agents = saved.agents ?? workshopState.agents;
+    workshopState.relationships = saved.relationships ?? workshopState.relationships;
     workshopState.settings = { ...workshopState.settings, ...saved.settings };
+    // Restore conversations — mark any previously-active as completed (stale from prior session)
+    if (saved.conversations) {
+      for (const conv of Object.values(saved.conversations)) {
+        if (conv.status === 'active') {
+          conv.status = 'completed';
+          conv.endedAt = conv.endedAt ?? Date.now();
+        }
+      }
+      workshopState.conversations = saved.conversations;
+    }
   } catch {
     // non-critical
   }
@@ -168,11 +181,10 @@ export function updateRelationshipLabel(id: string, label: string) {
 
 export async function saveWorkspace(name: string) {
   const snapshot = $state.snapshot(workshopState);
-  const { conversations: _, ...payload } = snapshot;
   const res = await fetch('/api/workshop/saves', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, state: payload }),
+    body: JSON.stringify({ name, state: snapshot }),
   });
   if (!res.ok) throw new Error('Failed to save workspace');
   return await res.json();
@@ -186,7 +198,7 @@ export async function loadWorkspace(id: string) {
   workshopState.agents = saved.agents;
   workshopState.relationships = saved.relationships;
   workshopState.settings = { ...workshopState.settings, ...saved.settings };
-  workshopState.conversations = {};
+  workshopState.conversations = saved.conversations ?? {};
   autoSave();
 }
 

@@ -19,6 +19,7 @@
     "drizzle-orm": "^0.45.1",
     "echarts": "^6.0.0",
     "pixi.js": "^8.16.0",
+    "runed": "^0.37.1",
     "tailwindcss": "^4.2.0"
   },
   "devDependencies": {
