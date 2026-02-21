@@ -92,7 +92,7 @@
 </script>
 
 <div
-  class="conversation-sidebar fixed right-0 top-0 h-full w-[420px] z-50 flex bg-bg2/95 backdrop-blur border-l border-border"
+  class="conversation-sidebar absolute right-0 top-0 h-full w-[420px] z-50 flex bg-bg2/95 backdrop-blur border-l border-border"
   transition:slide={{ axis: 'x', duration: 200 }}
 >
   <!-- Conversation list (left section) -->

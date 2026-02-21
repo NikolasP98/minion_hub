@@ -81,14 +81,19 @@ export function autoLoad() {
     workshopState.relationships = saved.relationships ?? workshopState.relationships;
     workshopState.settings = { ...workshopState.settings, ...saved.settings };
     // Restore conversations — mark any previously-active as completed (stale from prior session)
+    // Also purge any conversations missing required fields (from pre-migration format)
     if (saved.conversations) {
-      for (const conv of Object.values(saved.conversations)) {
+      const cleaned: Record<string, WorkshopConversation> = {};
+      for (const [id, conv] of Object.entries(saved.conversations)) {
+        // Skip conversations without the new required fields
+        if (!conv.participantAgentIds || !conv.startedAt) continue;
         if (conv.status === 'active') {
           conv.status = 'completed';
           conv.endedAt = conv.endedAt ?? Date.now();
         }
+        cleaned[id] = conv;
       }
-      workshopState.conversations = saved.conversations;
+      workshopState.conversations = cleaned;
     }
   } catch {
     // non-critical
