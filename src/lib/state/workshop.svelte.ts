@@ -118,7 +118,8 @@ export function updateAgentPosition(instanceId: string, x: number, y: number) {
   const agent = workshopState.agents[instanceId];
   if (agent) {
     agent.position = { x, y };
-    autoSave();
+    // Note: no autoSave here — this is called every frame from the simulation loop.
+    // Position is saved as part of the debounced autoSave triggered by other mutations.
   }
 }
 

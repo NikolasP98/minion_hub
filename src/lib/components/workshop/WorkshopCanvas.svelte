@@ -3,7 +3,7 @@
   import * as physics from '$lib/workshop/physics';
   import * as agentSprites from '$lib/workshop/agent-sprite';
   import * as ropeRenderer from '$lib/workshop/rope-renderer';
-  import { startSimulation, stopSimulation } from '$lib/workshop/simulation';
+  import { startSimulation, stopSimulation, setBanterCallback } from '$lib/workshop/simulation';
   import { screenToWorld, applyZoom, applyPan } from '$lib/workshop/camera';
   import {
     workshopState,
@@ -193,9 +193,8 @@
         worldContainer,
       );
 
-      if (inst.behavior === 'wander' || inst.behavior === 'patrol') {
-        physics.makeAgentDynamic(instanceId);
-      }
+      // wander and patrol both use kinematic position-based movement;
+      // simulation.ts drives positions via setAgentPosition every tick
     }
 
     for (const [relId, rel] of Object.entries(workshopState.relationships)) {
@@ -470,11 +469,9 @@
       const behavior = data as 'stationary' | 'wander' | 'patrol';
       setAgentBehavior(instanceId, behavior);
 
-      if (behavior === 'wander' || behavior === 'patrol') {
-        physics.makeAgentDynamic(instanceId);
-      } else {
-        physics.makeAgentKinematic(instanceId);
-      }
+      // All behaviors use kinematic bodies; simulation.ts drives wander/patrol
+      // positions via setAgentPosition each tick. Ensure body is kinematic.
+      physics.makeAgentKinematic(instanceId);
 
       autoSave();
     } else if (action === 'assignTask') {
@@ -494,16 +491,43 @@
         mode: 'conversation',
       };
       taskPromptInput = '';
+    } else if (action === 'quickBanter') {
+      const payload = data as { targetInstanceId: string } | undefined;
+      if (!payload?.targetInstanceId) return;
+      launchQuickBanter(instanceId, payload.targetInstanceId);
     }
 
     contextMenu = null;
   }
 
+  const DEFAULT_BANTER_PROMPT =
+    "Have a spontaneous, in-character conversation. Discuss what you're currently working on, " +
+    "share observations about the workspace, or just chat. Keep it natural and brief.";
+
+  const DEFAULT_TASK_PROMPT =
+    "Reflect on your current state and describe what you'd work on next.";
+
+  /** Start a banter conversation immediately without a dialog prompt. */
+  function launchQuickBanter(instanceIdA: string, instanceIdB: string) {
+    if (!conn.connected) return;
+    const activeCount = Object.values(workshopState.conversations).filter(
+      (c) => c.status === 'active'
+    ).length;
+    if (activeCount >= workshopState.settings.maxConcurrentConversations) return;
+    const handle = startWorkshopConversation([instanceIdA, instanceIdB], DEFAULT_BANTER_PROMPT, 4);
+    if (handle) {
+      activeHandles.set(handle.conversationId, handle);
+      activeChatPanel = handle.conversationId;
+    }
+  }
+
   function handleTaskPromptSubmit() {
-    if (!taskPromptDialog || !taskPromptInput.trim()) return;
+    if (!taskPromptDialog) return;
 
     const { instanceId, targetInstanceId, mode } = taskPromptDialog;
-    const prompt = taskPromptInput.trim();
+    const prompt =
+      taskPromptInput.trim() ||
+      (mode === 'assign' ? DEFAULT_TASK_PROMPT : DEFAULT_BANTER_PROMPT);
 
     if (mode === 'assign') {
       const handle = assignTask(instanceId, prompt);
@@ -592,6 +616,8 @@
         backgroundAlpha: 0,
         resizeTo: node,
         antialias: true,
+        preferWebGLVersion: 2,
+        powerPreference: 'default',
       });
 
       if (destroyed) {
@@ -611,6 +637,17 @@
       canvas.style.width = '100%';
       canvas.style.height = '100%';
 
+      // Handle WebGL context loss/restore (e.g. during HMR or GPU pressure)
+      canvas.addEventListener('webglcontextlost', (e) => {
+        e.preventDefault();
+        console.warn('[Workshop] WebGL context lost — pausing simulation');
+        stopSimulation();
+      });
+      canvas.addEventListener('webglcontextrestored', () => {
+        console.info('[Workshop] WebGL context restored — resuming');
+        startSimulation();
+      });
+
       worldContainer = new PIXI.Container();
       app.stage.addChild(worldContainer);
 
@@ -619,6 +656,9 @@
       autoLoad();
 
       await rebuildScene();
+
+      // Wire idle-banter: simulation fires this when nearby agents are idle
+      setBanterCallback((a, b) => launchQuickBanter(a, b));
 
       startSimulation();
 
@@ -635,6 +675,7 @@
       destroy() {
         destroyed = true;
         unsubWorkshop();
+        setBanterCallback(null);
         window.removeEventListener('workshop:reload', handleReload);
         stopSimulation();
         physics.destroyPhysics();
@@ -696,6 +737,8 @@
       x={contextMenu.x}
       y={contextMenu.y}
       nearbyAgents={getNearbyAgentsList(contextMenu.instanceId)}
+      currentBehavior={workshopState.agents[contextMenu.instanceId]?.behavior ?? 'stationary'}
+      isConnected={conn.connected}
       onClose={() => (contextMenu = null)}
       onAction={handleContextAction}
     />
@@ -749,13 +792,12 @@
           </button>
           <button
             class="px-3 py-1 text-[10px] font-mono text-accent-foreground bg-accent hover:bg-accent/90 rounded transition-colors disabled:opacity-40"
-            disabled={!taskPromptInput.trim()}
             onclick={handleTaskPromptSubmit}
           >
             {taskPromptDialog.mode === 'assign' ? 'Send' : 'Start'}
           </button>
         </div>
-        <p class="text-[9px] text-muted mt-2">Press Cmd/Ctrl+Enter to submit</p>
+        <p class="text-[9px] text-muted mt-2">Leave blank to use a default prompt · Cmd/Ctrl+Enter</p>
       </div>
     </div>
   {/if}

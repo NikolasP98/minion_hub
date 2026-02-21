@@ -11,6 +11,7 @@ export const servers = sqliteTable(
     name: text('name').notNull(),
     url: text('url').notNull(),
     token: text('token').notNull().default(''),
+    tokenIv: text('token_iv').notNull().default(''),
     authMode: text('auth_mode', { enum: ['token', 'none'] })
       .notNull()
       .default('token'),

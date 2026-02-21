@@ -13,7 +13,7 @@ const joints = new Map<string, RAPIER.ImpulseJoint>();
  */
 export async function initPhysics(): Promise<void> {
 	if (initialized) return;
-	await RAPIER.init();
+	await (RAPIER.init as (opts?: Record<string, unknown>) => Promise<void>)({});
 	world = new RAPIER.World({ x: 0.0, y: 0.0 });
 	initialized = true;
 }

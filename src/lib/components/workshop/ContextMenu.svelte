@@ -5,6 +5,8 @@
     x,
     y,
     nearbyAgents,
+    currentBehavior,
+    isConnected,
     onClose,
     onAction,
   }: {
@@ -13,6 +15,8 @@
     x: number;
     y: number;
     nearbyAgents: Array<{ instanceId: string; name: string }>;
+    currentBehavior: 'stationary' | 'wander' | 'patrol';
+    isConnected: boolean;
     onClose: () => void;
     onAction: (action: string, data?: unknown) => void;
   } = $props();
@@ -57,7 +61,7 @@
   </div>
 
   <!-- Start conversation with... -->
-  <div class="relative">
+  <div class="relative" class:opacity-40={!isConnected} class:pointer-events-none={!isConnected}>
     <div
       class="px-3 py-1.5 text-[11px] font-mono text-foreground hover:bg-bg3 cursor-pointer flex items-center justify-between"
       role="menuitem"
@@ -66,38 +70,65 @@
       onkeydown={(e) => e.key === 'Enter' && (conversationOpen = !conversationOpen)}
     >
       <span>Start conversation with…</span>
-      <span class="text-muted-foreground text-[9px]">{conversationOpen ? '▾' : '▸'}</span>
+      <span class="text-muted text-[9px]">{conversationOpen ? '▾' : '▸'}</span>
     </div>
     {#if conversationOpen}
       {#if nearbyAgents.length === 0}
-        <div class="pl-6 pr-3 py-1.5 text-[11px] font-mono text-muted-foreground italic">
+        <div class="pl-6 pr-3 py-1.5 text-[11px] font-mono text-muted italic">
           No nearby agents
         </div>
       {:else}
         {#each nearbyAgents as agent (agent.instanceId)}
+          <!-- Agent name label -->
+          <div class="pl-6 pr-3 pt-1.5 pb-0.5 text-[10px] font-mono text-muted select-none">
+            {agent.name}
+          </div>
+          <!-- Chat now sub-option -->
           <div
-            class="pl-6 pr-3 py-1.5 text-[11px] font-mono text-foreground hover:bg-bg3 cursor-pointer"
+            class="pl-9 pr-3 py-1 text-[11px] font-mono text-foreground hover:bg-bg3 cursor-pointer"
+            role="menuitem"
+            tabindex="0"
+            onclick={() => handleAction('quickBanter', { targetInstanceId: agent.instanceId })}
+            onkeydown={(e) => e.key === 'Enter' && handleAction('quickBanter', { targetInstanceId: agent.instanceId })}
+          >
+            Chat now
+          </div>
+          <!-- Custom topic sub-option -->
+          <div
+            class="pl-9 pr-3 py-1 text-[11px] font-mono text-foreground hover:bg-bg3 cursor-pointer"
             role="menuitem"
             tabindex="0"
             onclick={() => handleAction('startConversation', { targetInstanceId: agent.instanceId })}
             onkeydown={(e) => e.key === 'Enter' && handleAction('startConversation', { targetInstanceId: agent.instanceId })}
           >
-            {agent.name}
+            Custom topic…
           </div>
         {/each}
       {/if}
+    {/if}
+    {#if !isConnected}
+      <div class="px-3 pb-1 text-[9px] font-mono text-muted italic">not connected</div>
     {/if}
   </div>
 
   <!-- Assign task -->
   <div
-    class="px-3 py-1.5 text-[11px] font-mono text-foreground hover:bg-bg3 cursor-pointer"
-    role="menuitem"
-    tabindex="0"
-    onclick={() => handleAction('assignTask')}
-    onkeydown={(e) => e.key === 'Enter' && handleAction('assignTask')}
+    class="relative"
+    class:opacity-40={!isConnected}
+    class:pointer-events-none={!isConnected}
   >
-    Assign task
+    <div
+      class="px-3 py-1.5 text-[11px] font-mono text-foreground hover:bg-bg3 cursor-pointer"
+      role="menuitem"
+      tabindex="0"
+      onclick={() => handleAction('assignTask')}
+      onkeydown={(e) => e.key === 'Enter' && handleAction('assignTask')}
+    >
+      Assign task
+    </div>
+    {#if !isConnected}
+      <div class="px-3 pb-1 text-[9px] font-mono text-muted italic">not connected</div>
+    {/if}
   </div>
 
   <!-- Separator -->
@@ -113,18 +144,20 @@
       onkeydown={(e) => e.key === 'Enter' && (behaviorOpen = !behaviorOpen)}
     >
       <span>Behavior</span>
-      <span class="text-muted-foreground text-[9px]">{behaviorOpen ? '▾' : '▸'}</span>
+      <span class="text-muted text-[9px]">{behaviorOpen ? '▾' : '▸'}</span>
     </div>
     {#if behaviorOpen}
       {#each ['Stationary', 'Wander', 'Patrol'] as mode (mode)}
+        {@const isActive = currentBehavior === mode.toLowerCase()}
         <div
-          class="pl-6 pr-3 py-1.5 text-[11px] font-mono text-foreground hover:bg-bg3 cursor-pointer"
+          class="pl-6 pr-3 py-1.5 text-[11px] font-mono text-foreground hover:bg-bg3 cursor-pointer flex items-center gap-1.5"
           role="menuitem"
           tabindex="0"
           onclick={() => handleAction('setBehavior', mode.toLowerCase())}
           onkeydown={(e) => e.key === 'Enter' && handleAction('setBehavior', mode.toLowerCase())}
         >
-          {mode}
+          <span class="text-[8px] w-3 text-center {isActive ? 'text-foreground' : 'text-transparent'}">●</span>
+          <span>{mode}</span>
         </div>
       {/each}
     {/if}
