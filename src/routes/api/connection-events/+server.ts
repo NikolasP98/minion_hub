@@ -8,7 +8,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     const body = await request.json();
     await insertConnectionEvent(locals.tenantCtx, body);
     return json({ ok: true });
-  } catch {
-    return json({ ok: true });
+  } catch (e) {
+    console.error('[POST /api/connection-events]', e);
+    return json({ ok: false, error: e instanceof Error ? e.message : 'Unknown error' }, { status: 500 });
   }
 };

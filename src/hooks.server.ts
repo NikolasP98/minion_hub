@@ -1,7 +1,7 @@
 import type { Handle } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
 import { getDb } from '$server/db/client';
-import { servers } from '$server/db/schema';
+import { servers, tenants } from '$server/db/schema';
 import { validateSession, SESSION_COOKIE } from '$server/auth/session';
 import { decryptToken } from '$server/auth/crypto';
 
@@ -75,6 +75,15 @@ export const handle: Handle = async ({ event, resolve }) => {
           tenantId: session.tenantId,
         };
       }
+    }
+  }
+
+  // Unauthenticated fallback: resolve first tenant in DB for local usage
+  if (!event.locals.tenantCtx) {
+    const db = getDb();
+    const rows = await db.select({ id: tenants.id }).from(tenants).limit(1);
+    if (rows.length > 0) {
+      event.locals.tenantCtx = { db, tenantId: rows[0].id };
     }
   }
 

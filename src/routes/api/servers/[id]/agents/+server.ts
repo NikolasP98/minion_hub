@@ -18,7 +18,8 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
     const body = await request.json();
     await upsertAgents(locals.tenantCtx, params.id!, body.agents ?? []);
     return json({ ok: true });
-  } catch {
-    return json({ ok: true });
+  } catch (e) {
+    console.error(`[POST /api/servers/${params.id}/agents]`, e);
+    return json({ ok: false, error: e instanceof Error ? e.message : 'Unknown error' }, { status: 500 });
   }
 };

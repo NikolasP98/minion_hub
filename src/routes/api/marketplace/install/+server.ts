@@ -1,22 +1,14 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { getDb } from '$server/db/client';
-import { tenants, servers } from '$server/db/schema';
+import { servers } from '$server/db/schema';
 import { nowMs } from '$server/db/utils';
 import { getMarketplaceAgent, recordInstall } from '$server/services/marketplace.service';
 import { upsertAgents } from '$server/services/agent.service';
-import type { TenantContext } from '$server/services/base';
+import { getTenantCtx } from '$server/auth/tenant-ctx';
 
 export const POST: RequestHandler = async ({ locals, request }) => {
-  let tenantCtx = locals.tenantCtx;
-
-  if (!tenantCtx) {
-    // Fall back to first tenant for unauthenticated local usage
-    const db = getDb();
-    const rows = await db.select({ id: tenants.id }).from(tenants).limit(1);
-    if (rows.length === 0) throw error(401, 'No tenant configured');
-    tenantCtx = { db, tenantId: rows[0].id } satisfies TenantContext;
-  }
+  const tenantCtx = await getTenantCtx(locals);
+  if (!tenantCtx) throw error(401, 'No tenant configured');
 
   const body = await request.json();
   const { agentId, serverId, serverName, serverUrl } = body as {
