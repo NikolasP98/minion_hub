@@ -510,13 +510,6 @@
     contextMenu = null;
   }
 
-  const DEFAULT_BANTER_PROMPT =
-    "Have a spontaneous, in-character conversation. Discuss what you're currently working on, " +
-    "share observations about the workspace, or just chat. Keep it natural and brief.";
-
-  const DEFAULT_TASK_PROMPT =
-    "Reflect on your current state and describe what you'd work on next.";
-
   /** Start a banter conversation immediately without a dialog prompt. */
   function launchQuickBanter(instanceIdA: string, instanceIdB: string) {
     if (!conn.connected) return;
@@ -524,7 +517,11 @@
       (c) => c.status === 'active'
     ).length;
     if (activeCount >= workshopState.settings.maxConcurrentConversations) return;
-    const handle = startWorkshopConversation([instanceIdA, instanceIdB], DEFAULT_BANTER_PROMPT, 4);
+    const handle = startWorkshopConversation(
+      [instanceIdA, instanceIdB],
+      workshopState.settings.banterPrompt,
+      workshopState.settings.banterMaxTurns,
+    );
     if (handle) {
       activeHandles.set(handle.conversationId, handle);
       sidebarOpen = true;
@@ -538,7 +535,7 @@
     const { instanceId, targetInstanceId, mode } = taskPromptDialog;
     const prompt =
       taskPromptInput.trim() ||
-      (mode === 'assign' ? DEFAULT_TASK_PROMPT : DEFAULT_BANTER_PROMPT);
+      (mode === 'assign' ? workshopState.settings.taskPrompt : workshopState.settings.banterPrompt);
 
     if (mode === 'assign') {
       const handle = assignTask(instanceId, prompt);

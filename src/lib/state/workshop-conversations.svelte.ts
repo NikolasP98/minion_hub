@@ -24,7 +24,15 @@ export function appendMessage(sessionKey: string, msg: ConversationMessage): voi
 	if (!conversationMessages[sessionKey]) {
 		conversationMessages[sessionKey] = [];
 	}
-	conversationMessages[sessionKey] = [...conversationMessages[sessionKey], msg];
+	// Dedup safety net: skip if the last message has the same agentId + content
+	const msgs = conversationMessages[sessionKey];
+	if (msgs.length > 0) {
+		const last = msgs[msgs.length - 1];
+		if (last.agentId === msg.agentId && last.content === msg.content) {
+			return;
+		}
+	}
+	conversationMessages[sessionKey] = [...msgs, msg];
 }
 
 export function setMessages(sessionKey: string, msgs: ConversationMessage[]): void {

@@ -112,8 +112,10 @@ export function onWorkshopMessage(callback: MessageCallback): () => void {
 export function startWorkshopConversation(
 	participantInstanceIds: string[],
 	taskPrompt: string,
-	maxTurns = 6,
+	maxTurns?: number,
 ): WorkshopConversationHandle | null {
+	const effectiveMaxTurns = maxTurns ?? workshopState.settings.taskMaxTurns;
+
 	if (!conn.connected) {
 		console.warn('[workshop-bridge] Cannot start conversation: not connected to gateway');
 		return null;
@@ -154,7 +156,14 @@ export function startWorkshopConversation(
 		return null;
 	}
 
-	const loopState = { aborted: false, turnCount: 0, maxTurns };
+	// Guard: if an orchestration loop is already running for this conversation,
+	// don't start a second one (prevents duplicate messages from parallel loops)
+	if (activeLoops.has(conversationId)) {
+		console.warn('[workshop-bridge] Orchestration loop already running for', conversationId);
+		return { conversationId, abort: () => activeLoops.get(conversationId)!.aborted = true };
+	}
+
+	const loopState = { aborted: false, turnCount: 0, maxTurns: effectiveMaxTurns };
 	activeLoops.set(conversationId, loopState);
 
 	// Kick off the orchestration loop asynchronously
@@ -414,8 +423,9 @@ async function sendAndWaitForResponse(
 	agentId: string,
 	sessionKey: string,
 	message: string,
-	timeoutMs = 120_000,
+	timeoutMs?: number,
 ): Promise<string | null> {
+	const effectiveTimeout = timeoutMs ?? workshopState.settings.responseTimeout;
 	const runId = uuid();
 
 	try {
@@ -442,7 +452,7 @@ async function sendAndWaitForResponse(
 
 		const poll = async () => {
 			if (resolved) return;
-			if (Date.now() - startTime > timeoutMs) {
+			if (Date.now() - startTime > effectiveTimeout) {
 				resolved = true;
 				resolve(null);
 				return;

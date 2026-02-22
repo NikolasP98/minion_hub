@@ -30,6 +30,20 @@ export interface WorkshopSettings {
   idleBanterEnabled: boolean;
   idleBanterBudgetPerHour: number;
   proximityRadius: number;
+  /** ms between idle-banter attempt checks */
+  banterCheckInterval: number;
+  /** ms cooldown between same-pair banters */
+  banterCooldown: number;
+  /** Max turns for banter conversations */
+  banterMaxTurns: number;
+  /** Max turns for task conversations */
+  taskMaxTurns: number;
+  /** ms to wait for agent response */
+  responseTimeout: number;
+  /** Default prompt for banter conversations */
+  banterPrompt: string;
+  /** Default prompt for solo tasks */
+  taskPrompt: string;
 }
 
 export interface WorkshopState {
@@ -52,6 +66,13 @@ export const workshopState: WorkshopState = $state({
     idleBanterEnabled: true,
     idleBanterBudgetPerHour: 20,
     proximityRadius: 200,
+    banterCheckInterval: 28_000,
+    banterCooldown: 120_000,
+    banterMaxTurns: 4,
+    taskMaxTurns: 6,
+    responseTimeout: 120_000,
+    banterPrompt: "Have a spontaneous, in-character conversation. Discuss what you're currently working on, share observations about the workspace, or just chat. Keep it natural and brief.",
+    taskPrompt: "Reflect on your current state and describe what you'd work on next.",
   },
 });
 
@@ -230,6 +251,13 @@ export function resetWorkshop() {
     idleBanterEnabled: true,
     idleBanterBudgetPerHour: 20,
     proximityRadius: 200,
+    banterCheckInterval: 28_000,
+    banterCooldown: 120_000,
+    banterMaxTurns: 4,
+    taskMaxTurns: 6,
+    responseTimeout: 120_000,
+    banterPrompt: "Have a spontaneous, in-character conversation. Discuss what you're currently working on, share observations about the workspace, or just chat. Keep it natural and brief.",
+    taskPrompt: "Reflect on your current state and describe what you'd work on next.",
   };
   autoSave();
 }

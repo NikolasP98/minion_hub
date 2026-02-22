@@ -30,7 +30,7 @@ const WANDER_SPEED = 80; // px per second toward target
 const PATROL_RADIUS = 100; // orbital radius
 const PATROL_SPEED = 0.0006; // radians per ms (~10.5s per full orbit)
 
-const BANTER_INTERVAL = 28_000; // ms between idle-banter attempts
+// Banter interval is now read from workshopState.settings.banterCheckInterval
 
 // Callback registered by WorkshopCanvas to start a banter conversation
 let banterCallback: ((instanceIdA: string, instanceIdB: string) => void) | null = null;
@@ -168,8 +168,9 @@ function tick(now: number): void {
 	sprites.applyBobbingAnimation(elapsed);
 
 	// --- Idle banter ---
-	if (banterTimer >= BANTER_INTERVAL) {
-		banterTimer -= BANTER_INTERVAL;
+	const banterInterval = workshopState.settings.banterCheckInterval;
+	if (banterTimer >= banterInterval) {
+		banterTimer -= banterInterval;
 		tryIdleBanter(activeParticipants);
 	}
 

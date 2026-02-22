@@ -11,7 +11,7 @@ let conversationCounter = 0;
 
 /** Tracks when the last banter ended for each sessionKey (pair cooldown) */
 const lastBanterEnd = new Map<string, number>();
-const BANTER_COOLDOWN_MS = 120_000; // 2 minutes between banters for same pair
+// Banter cooldown is now read from workshopState.settings.banterCooldown
 
 function generateConversationId(): string {
 	return `conv_${Date.now()}_${conversationCounter++}`;
@@ -77,7 +77,7 @@ export function startConversation(
 	// Banter cooldown: don't re-banter the same pair too quickly
 	if (type === 'banter') {
 		const lastEnd = lastBanterEnd.get(sessionKey);
-		if (lastEnd && Date.now() - lastEnd < BANTER_COOLDOWN_MS) return null;
+		if (lastEnd && Date.now() - lastEnd < workshopState.settings.banterCooldown) return null;
 	}
 
 	const id = generateConversationId();
