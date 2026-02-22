@@ -48,6 +48,8 @@
   $effect(() => {
     const sk = sessionKey;
     const sid = serverId;
+    _selectedRunIdx = 0; // always reset on session change
+    selectedRunSession = null; // clear session tracking too
     if (!sk || isMainSession) {
       nonMainMessages = [];
       return;
@@ -66,19 +68,21 @@
         );
         if (res.ok) {
           const data = (await res.json()) as { messages?: ChatMessage[] };
+          if (sk !== sessionKey) return; // stale — session changed during fetch
           nonMainMessages = data.messages ?? [];
-          loading = false;
           return;
         }
       }
       const wsRes = (await sendRequest('chat.history', { sessionKey: sk, limit: 9999 })) as {
         messages?: ChatMessage[];
       } | null;
+      if (sk !== sessionKey) return; // stale
       nonMainMessages = wsRes?.messages ?? [];
     } catch (e) {
+      if (sk !== sessionKey) return; // stale
       error = (e as Error).message ?? 'Failed to load';
     } finally {
-      loading = false;
+      if (sk === sessionKey) loading = false;
     }
   }
 
@@ -113,7 +117,7 @@
   function leftPct(tc: ToolCall, run: Run): number {
     const span = run.endTs - run.startTs;
     if (span <= 0) return 0;
-    return ((tc.startTs - run.startTs) / span) * 100;
+    return Math.max(0, Math.min(((tc.startTs - run.startTs) / span) * 100, 100));
   }
 
   function widthPct(tc: ToolCall, run: Run): number {
@@ -200,7 +204,7 @@
             </span>
 
             <!-- Timeline bar -->
-            <div class="relative flex-1 min-w-0 h-5 mx-2">
+            <div class="relative flex-1 min-w-0 h-5 mx-2 overflow-hidden">
               <div
                 class="absolute top-1/2 -translate-y-1/2 h-3 rounded-[2px] opacity-75 group-hover:opacity-100 transition-opacity"
                 style:left="{leftPct(tc, selectedRun)}%"
