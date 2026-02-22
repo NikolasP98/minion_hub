@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import StatusDot from '$lib/components/decorations/StatusDot.svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	interface Props {
 		serverId: string;
@@ -126,7 +127,7 @@
 	<div class="flex items-center justify-between py-3 px-4 border-b border-border">
 		<div class="flex items-center gap-1.5">
 			<StatusDot status={latest ? 'running' : 'idle'} size="sm" />
-			<h3 class="text-[13px] font-semibold text-foreground m-0">Gateway Health</h3>
+			<h3 class="text-[13px] font-semibold text-foreground m-0">{m.reliability_gatewayTitle()}</h3>
 		</div>
 		{#if latest}
 			<span class="text-[11px] text-muted-foreground">{formatAgo(latest.capturedAt)}</span>
@@ -134,11 +135,11 @@
 	</div>
 
 	{#if loading && !latest}
-		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">Loading...</div>
+		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">{m.common_loading()}</div>
 	{:else if error}
 		<div class="flex items-center justify-center py-12 px-4 text-destructive text-[13px]">{error}</div>
 	{:else if !latest}
-		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">No heartbeat data</div>
+		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">{m.reliability_noHeartbeat()}</div>
 	{:else}
 		<div class="grid grid-cols-4 gap-px bg-border border-b border-border">
 			<div class="flex flex-col items-center gap-1 py-3.5 px-2 bg-card">
@@ -164,7 +165,7 @@
 		{#if memoryPoints.length >= 2}
 			<div class="py-3 px-4">
 				<div class="flex items-center justify-between mb-1.5">
-					<span class="text-[11px] text-muted-foreground font-medium">Memory trend</span>
+					<span class="text-[11px] text-muted-foreground font-medium">{m.reliability_memoryTrend()}</span>
 					<span class="text-[11px] text-muted-foreground tabular-nums">
 						{memoryMin.toFixed(0)}&ndash;{memoryMax.toFixed(0)} MB
 					</span>

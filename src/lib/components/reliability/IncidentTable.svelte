@@ -1,4 +1,6 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages';
+
 	interface ReliabilityEvent {
 		category: 'cron' | 'browser' | 'timezone' | 'general';
 		severity: 'critical' | 'high' | 'medium' | 'low';
@@ -23,7 +25,7 @@
 	let {
 		events = [],
 		maxRows = 50,
-		title = 'Recent Incidents'
+		title = ''
 	}: {
 		events: ReliabilityEvent[];
 		maxRows?: number;
@@ -109,26 +111,26 @@
 	<h3 class="m-0 py-3 px-4 text-[13px] font-semibold text-foreground border-b border-border">{title}</h3>
 
 	{#if events.length === 0}
-		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">No incidents</div>
+		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">{m.reliability_noIncidents()}</div>
 	{:else}
 		<div class="overflow-x-auto">
 			<table class="w-full border-collapse table-fixed">
 				<thead>
 					<tr class="bg-bg3 sticky top-0 z-[1]">
 						<th class="w-[90px] py-2 px-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground text-left whitespace-nowrap cursor-pointer select-none border-b border-border hover:text-muted" onclick={() => toggleSort('timestamp')}>
-							Time{getSortIndicator('timestamp')}
+							{m.reliability_time()}{getSortIndicator('timestamp')}
 						</th>
 						<th class="w-[90px] py-2 px-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground text-left whitespace-nowrap cursor-pointer select-none border-b border-border hover:text-muted" onclick={() => toggleSort('severity')}>
-							Severity{getSortIndicator('severity')}
+							{m.reliability_severity()}{getSortIndicator('severity')}
 						</th>
 						<th class="w-[100px] py-2 px-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground text-left whitespace-nowrap cursor-pointer select-none border-b border-border hover:text-muted" onclick={() => toggleSort('category')}>
-							Category{getSortIndicator('category')}
+							{m.reliability_category()}{getSortIndicator('category')}
 						</th>
 						<th class="w-40 py-2 px-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground text-left whitespace-nowrap cursor-pointer select-none border-b border-border hover:text-muted" onclick={() => toggleSort('event')}>
-							Event{getSortIndicator('event')}
+							{m.reliability_event()}{getSortIndicator('event')}
 						</th>
 						<th class="w-auto py-2 px-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground text-left whitespace-nowrap cursor-pointer select-none border-b border-border hover:text-muted" onclick={() => toggleSort('message')}>
-							Message{getSortIndicator('message')}
+							{m.reliability_message()}{getSortIndicator('message')}
 						</th>
 					</tr>
 				</thead>

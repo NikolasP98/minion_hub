@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import * as m from '$lib/paraglide/messages';
 
   type UserRow = {
     id: string;
@@ -49,24 +50,24 @@
       if (res.ok) {
         users = users.map((u) => (u.id === userId ? { ...u, role } : u));
       } else {
-        error = `Failed to update role: HTTP ${res.status}`;
+        error = m.users_errorUpdateRole({ status: res.status });
       }
     } catch {
-      error = 'Network error updating role';
+      error = m.users_errorRemove();
     }
   }
 
   async function remove(userId: string) {
-    if (!confirm('Remove this user from the tenant?')) return;
+    if (!confirm(m.users_confirmRemove())) return;
     try {
       const res = await fetch(`/api/users/${userId}`, { method: 'DELETE' });
       if (res.ok) {
         users = users.filter((u) => u.id !== userId);
       } else {
-        error = `Failed to remove user: HTTP ${res.status}`;
+        error = m.users_errorRemove();
       }
     } catch {
-      error = 'Network error removing user';
+      error = m.users_errorRemove();
     }
   }
 
@@ -110,19 +111,19 @@
 
     <!-- Header row -->
     <div class="flex items-center justify-between mb-5">
-      <h2 class="text-sm font-semibold text-foreground uppercase tracking-wider">Team</h2>
+      <h2 class="text-sm font-semibold text-foreground uppercase tracking-wider">{m.users_team()}</h2>
       <button
         class="text-xs px-3 py-1.5 rounded-md bg-accent text-white border-none cursor-pointer font-[inherit] font-semibold hover:opacity-90 transition-opacity"
         onclick={() => (showInvite = !showInvite)}
       >
-        {showInvite ? 'Cancel' : '+ Invite'}
+        {showInvite ? m.users_inviteCancelBtn() : m.users_inviteOpen()}
       </button>
     </div>
 
     <!-- Invite form -->
     {#if showInvite}
       <div class="bg-card border border-border rounded-lg p-4 mb-5 space-y-3">
-        <p class="text-xs font-semibold text-foreground">New user</p>
+        <p class="text-xs font-semibold text-foreground">{m.users_newUser()}</p>
         <div class="grid grid-cols-2 gap-3">
           <input
             class="bg-bg2 border border-border rounded-md text-foreground px-2.5 py-1.5 text-xs font-[inherit] outline-none focus:border-accent placeholder:text-muted"
@@ -159,27 +160,27 @@
           disabled={inviting || !inviteEmail || !invitePassword}
           onclick={invite}
         >
-          {inviting ? 'Creating…' : 'Create user'}
+          {inviting ? m.users_creating() : m.users_createUser()}
         </button>
       </div>
     {/if}
 
     <!-- Error / loading -->
     {#if loading}
-      <div class="text-muted text-xs py-8 text-center">Loading…</div>
+      <div class="text-muted text-xs py-8 text-center">{m.common_loading()}</div>
     {:else if error}
       <div class="text-destructive text-xs py-4">{error}</div>
     {:else if users.length === 0}
-      <div class="text-muted text-xs py-8 text-center">No users yet.</div>
+      <div class="text-muted text-xs py-8 text-center">{m.users_noUsers()}</div>
     {:else}
       <!-- Table -->
       <div class="bg-card border border-border rounded-lg overflow-hidden">
         <table class="w-full text-xs border-collapse">
           <thead>
             <tr class="border-b border-border bg-bg2">
-              <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[10px]">User</th>
-              <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[10px]">Kind</th>
-              <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[10px]">Role</th>
+              <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[10px]">{m.users_name()}</th>
+              <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[10px]">{m.users_kind()}</th>
+              <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[10px]">{m.users_role()}</th>
               <th class="px-4 py-2.5"></th>
             </tr>
           </thead>

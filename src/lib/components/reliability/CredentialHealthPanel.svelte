@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import * as m from '$lib/paraglide/messages';
 	import { SvelteMap } from 'svelte/reactivity';
 	import {
 		createCredentialHealthState,
@@ -90,18 +91,18 @@
 
 <div class="bg-card border border-border rounded-lg overflow-hidden">
 	<div class="flex items-center justify-between py-3 px-4 border-b border-border">
-		<h3 class="text-[13px] font-semibold text-foreground m-0">Credential Health</h3>
+		<h3 class="text-[13px] font-semibold text-foreground m-0">{m.reliability_credentialTitle()}</h3>
 		{#if capturedAgo}
 			<span class="text-[11px] text-muted-foreground">{capturedAgo}</span>
 		{/if}
 	</div>
 
 	{#if state.loading && !parsed}
-		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">Loading...</div>
+		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">{m.common_loading()}</div>
 	{:else if state.error}
 		<div class="flex items-center justify-center py-12 px-4 text-destructive text-[13px]">{state.error}</div>
 	{:else if !parsed || parsed.providers.length === 0}
-		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">No credential data</div>
+		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">{m.reliability_noCredentials()}</div>
 	{:else}
 		<div class="flex flex-wrap gap-2 py-3 px-4 border-b border-border">
 			{#each Object.entries(statusCounts) as [status, count] (status)}

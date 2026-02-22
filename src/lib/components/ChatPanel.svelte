@@ -5,6 +5,7 @@
   import { conn } from '$lib/state/connection.svelte';
   import { extractText } from '$lib/utils/text';
   import { tick } from 'svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let { agentId, readonly = false }: { agentId: string; readonly?: boolean } = $props();
 
@@ -46,9 +47,9 @@
       onscroll={handleScroll}
     >
       {#if !chat || (chat.messages.length === 0 && !chat.stream && !chat.loading)}
-        <div class="text-muted-foreground text-[11px] text-center p-5">No messages yet. Say hello!</div>
+        <div class="text-muted-foreground text-[11px] text-center p-5">{m.chat_noMessages()}</div>
       {:else if chat.loading}
-        <div class="text-muted-foreground text-[11px] text-center p-5">Loading history…</div>
+        <div class="text-muted-foreground text-[11px] text-center p-5">{m.chat_loadingHistory()}</div>
       {:else}
         {#each chat.messages as msg, i (i)}
           <ChatMessage message={msg} />
@@ -79,8 +80,8 @@
       placeholder={readonly
         ? 'Viewing session \u2014 switch to main to chat'
         : conn.connected
-          ? 'Type a message\u2026 (Enter to send)'
-          : 'Not connected'}
+          ? m.chat_placeholderGeneric()
+          : m.conn_notConnected()}
       disabled={readonly || !conn.connected || (chat?.sending ?? false)}
       value={chat?.inputText ?? ''}
       oninput={(e) => { if (chat) chat.inputText = (e.target as HTMLTextAreaElement).value; }}
@@ -91,6 +92,6 @@
       class="bg-accent text-white border-0 rounded-md px-3.5 text-xs font-semibold cursor-pointer transition-all duration-200 shrink-0 hover:brightness-[1.15] disabled:opacity-40 disabled:cursor-default"
       disabled={readonly || !conn.connected || (chat?.sending ?? false) || !(chat?.inputText?.trim())}
       onclick={() => sendChatMsg(agentId)}
-    >Send</button>
+    >{m.chat_send()}</button>
   </div>
 </div>

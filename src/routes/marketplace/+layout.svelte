@@ -7,6 +7,7 @@
     syncFromGitHub,
   } from '$lib/state/marketplace.svelte';
   import AgentCreatorWizard from '$lib/components/marketplace/AgentCreatorWizard.svelte';
+  import * as m from '$lib/paraglide/messages';
 
   import { type Snippet } from 'svelte';
 
@@ -52,7 +53,7 @@
     <!-- Sidebar -->
     <aside class="w-[200px] shrink-0 border-r border-border flex flex-col overflow-y-auto bg-bg">
       <div class="px-4 pt-5 pb-2">
-        <p class="text-[10px] font-semibold tracking-widest uppercase text-muted mb-2">Browse</p>
+        <p class="text-[10px] font-semibold tracking-widest uppercase text-muted mb-2">{m.marketplace_browse()}</p>
         <nav class="flex flex-col gap-0.5">
           {#each sections as section (section.href)}
             <a
@@ -74,7 +75,7 @@
       </div>
 
       <div class="px-4 pt-4 pb-2">
-        <p class="text-[10px] font-semibold tracking-widest uppercase text-muted mb-2">Filter By</p>
+        <p class="text-[10px] font-semibold tracking-widest uppercase text-muted mb-2">{m.marketplace_filterBy()}</p>
         <nav class="flex flex-col gap-0.5">
           {#each categories as cat (cat.id ?? 'all')}
             <button
@@ -94,7 +95,7 @@
           onclick={() => { showCreatorWizard = true; }}
           class="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md border border-brand-pink/30 bg-brand-pink/5 text-xs text-brand-pink hover:bg-brand-pink/10 transition-all duration-150"
         >
-          + Create Agent
+          {m.marketplace_createAgentBtn()}
         </button>
       </div>
 
@@ -106,7 +107,7 @@
           class="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs text-muted hover:bg-bg3 hover:text-foreground transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <span class="text-sm {marketplaceState.syncing ? 'animate-spin' : ''}">↻</span>
-          {marketplaceState.syncing ? 'Syncing…' : 'Sync GitHub'}
+          {marketplaceState.syncing ? m.marketplace_syncing() : m.marketplace_syncBtn()}
         </button>
         {#if marketplaceState.syncError}
           <p class="text-[10px] text-red-400 mt-1.5 text-center">{marketplaceState.syncError}</p>

@@ -6,6 +6,7 @@
   import { ui } from '$lib/state/ui.svelte';
   import { gw } from '$lib/state/gateway-data.svelte';
   import type { Agent } from '$lib/types/gateway';
+  import * as m from '$lib/paraglide/messages';
 
   let { agent, selected, accentColor, onclick }: {
     agent: Agent;
@@ -26,10 +27,10 @@
   );
 
   const statusText = $derived.by(() => {
-    if (act?.working) return 'Working...';
-    if (activeSessions.length > 0) return `${activeSessions.length} active`;
-    if (chat?.loading) return 'Loading...';
-    return 'Idle';
+    if (act?.working) return m.agent_statusWorking();
+    if (activeSessions.length > 0) return m.agent_statusActive({ count: activeSessions.length });
+    if (chat?.loading) return m.agent_statusLoading();
+    return m.agent_statusIdle();
   });
 
   const hasActive = $derived(act?.working || activeSessions.length > 0);

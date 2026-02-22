@@ -5,6 +5,7 @@
   import ConfigSidebar from '$lib/components/config/ConfigSidebar.svelte';
   import ConfigSection from '$lib/components/config/ConfigSection.svelte';
   import ConfigSaveBar from '$lib/components/config/ConfigSaveBar.svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let contentEl = $state<HTMLElement | null>(null);
   let activeGroupId = $state<string | null>(null);
@@ -88,37 +89,37 @@
       href="/"
       class="text-xs text-muted no-underline px-3 py-1 rounded-full border border-border transition-all duration-150 hover:bg-bg3 hover:text-foreground"
     >
-      &larr; Back
+      {m.common_back()}
     </a>
-    <span class="ml-auto mr-auto font-bold text-sm text-foreground tracking-wide uppercase">Configuration</span>
-    <div class="invisible text-xs px-3 py-1">&larr; Back</div>
+    <span class="ml-auto mr-auto font-bold text-sm text-foreground tracking-wide uppercase">{m.config_fullTitle()}</span>
+    <div class="invisible text-xs px-3 py-1">{m.common_back()}</div>
   </header>
 
   <!-- Body -->
   {#if !conn.connected}
     <div class="flex-1 flex items-center justify-center">
       <div class="text-center">
-        <p class="text-muted-foreground text-sm mb-3">Not connected to a gateway</p>
-        <a href="/" class="text-xs text-accent no-underline hover:underline">Go to dashboard</a>
+        <p class="text-muted-foreground text-sm mb-3">{m.config_noServer()}</p>
+        <a href="/" class="text-xs text-accent no-underline hover:underline">{m.config_goToDashboard()}</a>
       </div>
     </div>
   {:else if configState.loading && !configState.loaded}
     <div class="flex-1 flex items-center justify-center">
       <div class="text-center">
         <div class="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-        <p class="text-muted-foreground text-xs">Loading configuration…</p>
+        <p class="text-muted-foreground text-xs">{m.config_loading()}</p>
       </div>
     </div>
   {:else if configState.loadError}
     <div class="flex-1 flex items-center justify-center">
       <div class="text-center max-w-sm">
-        <p class="text-destructive text-sm mb-2">Failed to load config</p>
+        <p class="text-destructive text-sm mb-2">{m.config_error()}</p>
         <p class="text-muted-foreground text-xs mb-4">{configState.loadError}</p>
         <button
           class="bg-accent border-none rounded-[5px] text-white cursor-pointer font-[inherit] text-xs font-semibold py-[6px] px-4"
           onclick={() => loadConfig()}
         >
-          Retry
+          {m.common_retry()}
         </button>
       </div>
     </div>
@@ -147,7 +148,7 @@
             {/each}
 
             {#if sortedGroups.length === 0}
-              <p class="text-muted-foreground text-sm">No configuration sections found.</p>
+              <p class="text-muted-foreground text-sm">{m.config_noSections()}</p>
             {/if}
           </div>
         </div>
