@@ -71,3 +71,20 @@ export async function updateUser(
     .set({ ...data, updatedAt: nowMs() })
     .where(eq(users.id, userId));
 }
+
+export async function updateUserRole(
+  ctx: TenantContext,
+  userId: string,
+  role: 'owner' | 'admin' | 'member' | 'viewer',
+) {
+  await ctx.db
+    .update(userTenants)
+    .set({ role })
+    .where(and(eq(userTenants.userId, userId), eq(userTenants.tenantId, ctx.tenantId)));
+}
+
+export async function removeUserFromTenant(ctx: TenantContext, userId: string) {
+  await ctx.db
+    .delete(userTenants)
+    .where(and(eq(userTenants.userId, userId), eq(userTenants.tenantId, ctx.tenantId)));
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { listUsers, createContactUser } from './user.service';
+import { listUsers, createContactUser, updateUserRole, removeUserFromTenant } from './user.service';
 import { createMockDb } from '$server/test-utils/mock-db';
 
 beforeEach(() => {
@@ -46,5 +46,21 @@ describe('createContactUser', () => {
     );
     expect(typeof id).toBe('string');
     expect(id).toBe('mock-user-id-000000001');
+  });
+});
+
+describe('updateUserRole', () => {
+  it('calls db.update on userTenants', async () => {
+    const { db } = createMockDb();
+    await updateUserRole({ db, tenantId: 't1' }, 'u1', 'admin');
+    expect(db.update).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('removeUserFromTenant', () => {
+  it('calls db.delete on userTenants', async () => {
+    const { db } = createMockDb();
+    await removeUserFromTenant({ db, tenantId: 't1' }, 'u1');
+    expect(db.delete).toHaveBeenCalledTimes(1);
   });
 });
