@@ -21,12 +21,13 @@
     ((configState.current?.bindings ?? []) as BindingEntry[])
   );
 
-  // Group by agentId
+  // Group by agentId, preserving global index to avoid proxy identity issues
   const grouped = $derived.by(() => {
-    const map = new SvelteMap<string, BindingEntry[]>();
-    for (const b of bindings) {
+    const map = new SvelteMap<string, { entry: BindingEntry; globalIdx: number }[]>();
+    for (let i = 0; i < bindings.length; i++) {
+      const b = bindings[i];
       const list = map.get(b.agentId) ?? [];
-      list.push(b);
+      list.push({ entry: b, globalIdx: i });
       map.set(b.agentId, list);
     }
     return map;
@@ -61,8 +62,8 @@
     addPeerId = '';
   }
 
-  let saving = $derived(configState.saving);
-  let saveError = $derived(configState.saveError);
+  const saving = $derived(configState.saving);
+  const saveError = $derived(configState.saveError);
 </script>
 
 {#if !conn.connected}
@@ -93,8 +94,7 @@
               <span class="text-xs font-bold text-foreground uppercase tracking-wide">{agentId}</span>
             </div>
             <div class="divide-y divide-border/50">
-              {#each entries as b, i (i)}
-                {@const globalIdx = bindings.indexOf(b)}
+              {#each entries as { entry: b, globalIdx } (globalIdx)}
                 <div class="flex items-center gap-3 px-4 py-2.5 hover:bg-bg2/50 transition-colors group">
                   <span class="text-base leading-none" title={b.match.channel}>
                     {CHANNEL_ICONS[b.match.channel as Channel] ?? '🔗'}
