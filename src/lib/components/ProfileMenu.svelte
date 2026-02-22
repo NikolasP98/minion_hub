@@ -1,6 +1,8 @@
 <script lang="ts">
   import { userState, logout, getUserInitials } from '$lib/state/user.svelte';
-  import { LogOut, Settings } from 'lucide-svelte';
+  import { locale } from '$lib/state/locale.svelte';
+  import * as m from '$lib/paraglide/messages';
+  import { LogOut, Settings, Globe } from 'lucide-svelte';
 
   let open = $state(false);
 
@@ -61,6 +63,14 @@
           <Settings size={14} />
           Profile settings
         </a>
+        <button
+          onclick={locale.toggle}
+          class="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-muted hover:text-foreground hover:bg-bg3 transition-colors duration-100"
+        >
+          <Globe size={14} />
+          <span class="flex-1 text-left">{m.settings_language()}</span>
+          <span class="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-bg3 border border-border">{locale.current.toUpperCase()}</span>
+        </button>
         <button
           onclick={logout}
           class="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-muted hover:text-red-400 hover:bg-bg3 transition-colors duration-100"

@@ -2,7 +2,6 @@
   import HostPill from './HostPill.svelte';
   import ProfileMenu from './ProfileMenu.svelte';
   import ScanLine from '$lib/components/decorations/ScanLine.svelte';
-  import { locale } from '$lib/state/locale.svelte';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
   import {
@@ -64,13 +63,6 @@
     <a href="/settings" class="flex items-center gap-1.5 text-xs no-underline px-2.5 py-1 rounded-full border transition-all duration-150 {isSettings ? 'bg-accent/10 text-accent border-accent/30' : 'text-muted border-border hover:bg-bg3 hover:text-foreground'}">
       <Settings size={12} /><span>{m.nav_settings()}</span>
     </a>
-    <button
-      onclick={locale.toggle}
-      class="text-xs text-muted px-2.5 py-1 rounded-full border border-border transition-all duration-150 hover:bg-bg3 hover:text-foreground font-mono"
-      aria-label={m.settings_language()}
-    >
-      {locale.current.toUpperCase()}
-    </button>
     <ProfileMenu />
   </div>
 </header>
