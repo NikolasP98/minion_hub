@@ -12,7 +12,6 @@
     id?: string;
   } = $props();
 
-  // @ts-expect-error — zag-js useMachine generics don't unify across machine types
   const service = useMachine(zagSwitch.machine, () => ({
     id: id ?? 'toggle',
     checked,
@@ -21,7 +20,6 @@
     },
   }));
 
-  // @ts-expect-error — same type unification issue
   const api = $derived(zagSwitch.connect(service, normalizeProps));
 </script>
 

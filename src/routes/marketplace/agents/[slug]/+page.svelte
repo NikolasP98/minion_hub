@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
-  import { hostsState, loadHosts } from '$lib/state/hosts.svelte';
+  import { hostsState } from '$lib/state/hosts.svelte';
   import {
     loadAgent,
     installAgent,
@@ -42,12 +42,11 @@
 
   onMount(async () => {
     activeTab = initialTab;
-    loadHosts();
     if (hostsState.hosts.length > 0) {
       selectedServerId = hostsState.hosts[0].id;
     }
 
-    const data = await loadAgent(slug);
+    const data = await loadAgent(slug as string);
     agent = data;
     loading = false;
   });

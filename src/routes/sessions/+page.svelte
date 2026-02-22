@@ -3,7 +3,7 @@
   import Topbar from '$lib/components/Topbar.svelte';
   import SessionsList from '$lib/components/SessionsList.svelte';
   import SessionViewer from '$lib/components/SessionViewer.svelte';
-  import { hostsState, loadHosts } from '$lib/state/hosts.svelte';
+  import { hostsState } from '$lib/state/hosts.svelte';
   import { gw } from '$lib/state/gateway-data.svelte';
   import type { SessionRow } from '$lib/components/SessionsList.svelte';
 
@@ -26,7 +26,6 @@
   }
 
   onMount(() => {
-    loadHosts();
     if (hostsState.activeHostId) {
       loadSessions(hostsState.activeHostId);
     }
@@ -48,7 +47,7 @@
     for (const gwSession of gw.sessions) {
       const sk = gwSession.sessionKey;
       if (sk && !map.has(sk)) {
-        const gs = gwSession as Record<string, unknown>;
+        const gs = gwSession as unknown as Record<string, unknown>;
         map.set(sk, {
           id: sk,
           serverId: hostsState.activeHostId ?? '',

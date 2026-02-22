@@ -26,6 +26,9 @@ export interface AgentSpriteInfo {
 const sprites = new Map<string, PIXI.Container>();
 const textureCache = new Map<string, PIXI.Texture>();
 
+/** Incremented on every clearAllSprites(). Used to detect stale async work. */
+let generation = 0;
+
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
@@ -114,6 +117,9 @@ export async function createAgentSprite(
 		return sprites.get(instanceId)!;
 	}
 
+	// Capture generation before async work so we can detect stale calls
+	const gen = generation;
+
 	const container = new PIXI.Container();
 	container.label = instanceId;
 	container.x = x;
@@ -135,6 +141,19 @@ export async function createAgentSprite(
 
 	// --- Avatar (loaded async, rendered on top of background) ---
 	const texture = await getAvatarTexture(info.avatarSeed);
+
+	// If sprites were cleared while we were loading the texture, discard this container
+	if (gen !== generation) {
+		container.destroy({ children: true });
+		// Return a new sprite if one was created by a newer rebuildScene call
+		return sprites.get(instanceId) ?? container;
+	}
+
+	// Another createAgentSprite for the same instanceId finished first
+	if (sprites.has(instanceId)) {
+		container.destroy({ children: true });
+		return sprites.get(instanceId)!;
+	}
 
 	const avatarContainer = new PIXI.Container();
 	avatarContainer.label = 'avatar';
@@ -257,6 +276,7 @@ export function getAllSprites(): Map<string, PIXI.Container> {
  * Destroy all sprites, clear the sprites map, and revoke cached blob URLs.
  */
 export function clearAllSprites(): void {
+	generation++;
 	for (const [, container] of sprites) {
 		container.removeFromParent();
 		container.destroy({ children: true });

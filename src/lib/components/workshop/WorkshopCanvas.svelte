@@ -174,14 +174,21 @@
   // Scene rebuild
   // ---------------------------------------------------------------------------
 
+  let rebuildVersion = 0;
+
   async function rebuildScene() {
     if (!worldContainer) return;
+
+    const thisVersion = ++rebuildVersion;
 
     agentSprites.clearAllSprites();
     ropeRenderer.clearAllRopes();
     clearAllFsms();
 
     for (const [instanceId, inst] of Object.entries(workshopState.agents)) {
+      // Bail out if a newer rebuildScene started while we were awaiting
+      if (thisVersion !== rebuildVersion) return;
+
       physics.addAgentBody(instanceId, inst.position.x, inst.position.y);
 
       await agentSprites.createAgentSprite(
@@ -617,7 +624,7 @@
         resizeTo: node,
         antialias: true,
         preferWebGLVersion: 2,
-        powerPreference: 'default',
+        powerPreference: 'default' as GPUPowerPreference,
       });
 
       if (destroyed) {

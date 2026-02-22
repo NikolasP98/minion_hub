@@ -21,7 +21,7 @@
 </script>
 
 {#if content}
-  <span {...api.getTriggerProps()}>
+  <span {...api.getTriggerProps() as Record<string, unknown>}>
     {@render children()}
   </span>
 
