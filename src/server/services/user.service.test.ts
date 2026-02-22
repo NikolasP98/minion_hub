@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { listUsers, createContactUser, updateUserRole, removeUserFromTenant } from './user.service';
 import { createMockDb } from '$server/test-utils/mock-db';
+import { userTenants } from '$server/db/schema';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -50,17 +51,19 @@ describe('createContactUser', () => {
 });
 
 describe('updateUserRole', () => {
-  it('calls db.update on userTenants', async () => {
+  it('calls db.update on userTenants table', async () => {
     const { db } = createMockDb();
     await updateUserRole({ db, tenantId: 't1' }, 'u1', 'admin');
     expect(db.update).toHaveBeenCalledTimes(1);
+    expect(db.update).toHaveBeenCalledWith(userTenants);
   });
 });
 
 describe('removeUserFromTenant', () => {
-  it('calls db.delete on userTenants', async () => {
+  it('calls db.delete on userTenants table', async () => {
     const { db } = createMockDb();
     await removeUserFromTenant({ db, tenantId: 't1' }, 'u1');
     expect(db.delete).toHaveBeenCalledTimes(1);
+    expect(db.delete).toHaveBeenCalledWith(userTenants);
   });
 });
