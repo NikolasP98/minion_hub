@@ -66,11 +66,9 @@
         );
         if (res.ok) {
           const data = (await res.json()) as { messages?: ChatMessage[] };
-          if (data.messages && data.messages.length > 0) {
-            nonMainMessages = data.messages;
-            loading = false;
-            return;
-          }
+          nonMainMessages = data.messages ?? [];
+          loading = false;
+          return;
         }
       }
       const wsRes = (await sendRequest('chat.history', { sessionKey: sk, limit: 9999 })) as {
