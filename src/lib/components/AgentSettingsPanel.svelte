@@ -17,6 +17,7 @@
   } from '$lib/utils/agent-settings-schema';
   import ConfigField from './config/ConfigField.svelte';
   import ConfigTooltip from './config/ConfigTooltip.svelte';
+  import AgentSkillsPanel from './AgentSkillsPanel.svelte';
   import { SvelteSet } from 'svelte/reactivity';
 
   let { agentId }: { agentId: string } = $props();
@@ -202,6 +203,11 @@
             </p>
           </div>
         {/if}
+
+        <!-- Skills management -->
+        <div class="px-4 pt-3">
+          <AgentSkillsPanel {agentId} />
+        </div>
 
         <!-- Grouped settings sections -->
         <div class="px-4 py-3 space-y-2">
