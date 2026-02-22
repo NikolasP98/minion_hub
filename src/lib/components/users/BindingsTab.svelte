@@ -1,6 +1,6 @@
 <script lang="ts">
   import { conn } from '$lib/state/connection.svelte';
-  import { configState, setField, isDirty, save, discard, loadConfig } from '$lib/state/config.svelte';
+  import { configState, setField, isDirty, save, discard } from '$lib/state/config.svelte';
   import { SvelteMap } from 'svelte/reactivity';
 
   type BindingPeer = { kind: 'dm' | 'group'; id: string };
