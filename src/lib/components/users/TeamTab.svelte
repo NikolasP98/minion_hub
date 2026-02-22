@@ -40,21 +40,33 @@
   }
 
   async function changeRole(userId: string, role: UserRow['role']) {
-    const res = await fetch(`/api/users/${userId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role }),
-    });
-    if (res.ok) {
-      users = users.map((u) => (u.id === userId ? { ...u, role } : u));
+    try {
+      const res = await fetch(`/api/users/${userId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role }),
+      });
+      if (res.ok) {
+        users = users.map((u) => (u.id === userId ? { ...u, role } : u));
+      } else {
+        error = `Failed to update role: HTTP ${res.status}`;
+      }
+    } catch {
+      error = 'Network error updating role';
     }
   }
 
   async function remove(userId: string) {
     if (!confirm('Remove this user from the tenant?')) return;
-    const res = await fetch(`/api/users/${userId}`, { method: 'DELETE' });
-    if (res.ok) {
-      users = users.filter((u) => u.id !== userId);
+    try {
+      const res = await fetch(`/api/users/${userId}`, { method: 'DELETE' });
+      if (res.ok) {
+        users = users.filter((u) => u.id !== userId);
+      } else {
+        error = `Failed to remove user: HTTP ${res.status}`;
+      }
+    } catch {
+      error = 'Network error removing user';
     }
   }
 
@@ -182,7 +194,7 @@
                 </td>
                 <td class="px-4 py-3">
                   <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full
-                    {u.kind === 'operator' ? 'bg-accent/15 text-accent' : 'bg-muted/20 text-muted-foreground'}">
+                    {u.kind === 'operator' ? 'bg-accent/15 text-accent' : 'bg-muted-foreground/20 text-muted-foreground'}">
                     {u.kind}
                   </span>
                 </td>
