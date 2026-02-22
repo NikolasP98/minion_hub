@@ -32,10 +32,9 @@ export async function upsertServer(ctx: TenantContext, s: ServerInput) {
       updatedAt: now,
     })
     .onConflictDoUpdate({
-      target: servers.id,
+      target: [servers.tenantId, servers.url],
       set: {
         name: s.name,
-        url: s.url,
         token: encrypted,
         tokenIv: iv,
         lastConnectedAt: s.lastConnectedAt ?? null,

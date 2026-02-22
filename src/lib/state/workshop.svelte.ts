@@ -105,6 +105,9 @@ export function autoLoad() {
     // Also purge any conversations missing required fields (from pre-migration format)
     if (saved.conversations) {
       const cleaned: Record<string, WorkshopConversation> = {};
+      // Track best (most recent) conversation per unique agent pair
+      const bestByPair = new Map<string, { id: string; startedAt: number }>();
+
       for (const [id, conv] of Object.entries(saved.conversations)) {
         // Skip conversations without the new required fields
         if (!conv.participantAgentIds || !conv.startedAt) continue;
@@ -112,7 +115,17 @@ export function autoLoad() {
           conv.status = 'completed';
           conv.endedAt = conv.endedAt ?? Date.now();
         }
-        cleaned[id] = conv;
+
+        // Deduplicate by agent pair — keep only the most recent conversation per pair
+        const pairKey = [...conv.participantAgentIds].sort().join(':');
+        const existing = bestByPair.get(pairKey);
+        if (!existing || conv.startedAt > existing.startedAt) {
+          // Remove the older duplicate if one existed
+          if (existing) delete cleaned[existing.id];
+          bestByPair.set(pairKey, { id, startedAt: conv.startedAt });
+          cleaned[id] = conv;
+        }
+        // else: skip this older duplicate
       }
       workshopState.conversations = cleaned;
     }

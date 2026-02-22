@@ -80,6 +80,17 @@ export function startConversation(
 		if (lastEnd && Date.now() - lastEnd < workshopState.settings.banterCooldown) return null;
 	}
 
+	// Remove older completed conversations for the same agent pair to prevent duplicates
+	const pairKey = [...participantAgentIds].sort().join(':');
+	for (const [oldId, oldConv] of Object.entries(workshopState.conversations)) {
+		if (oldConv.status !== 'active') {
+			const oldPairKey = [...oldConv.participantAgentIds].sort().join(':');
+			if (oldPairKey === pairKey) {
+				delete workshopState.conversations[oldId];
+			}
+		}
+	}
+
 	const id = generateConversationId();
 
 	workshopState.conversations[id] = {
