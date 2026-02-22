@@ -5,7 +5,7 @@
   let open = $state(false);
 
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') open = false;
+    if (open && e.key === 'Escape') open = false;
   }
 
   const initials = $derived(
@@ -24,6 +24,7 @@
     class="w-7 h-7 rounded-full bg-accent/20 border border-accent/30 text-accent text-[11px] font-bold flex items-center justify-center hover:bg-accent/30 transition-colors duration-150 select-none"
     aria-label="Profile menu"
     aria-expanded={open}
+    aria-haspopup="menu"
   >
     {initials}
   </button>
@@ -36,7 +37,7 @@
       tabindex="-1"
     ></button>
 
-    <div class="absolute right-0 top-full mt-1.5 z-50 w-56 bg-bg2 border border-border rounded-lg shadow-lg overflow-hidden">
+    <div id="profile-dropdown" role="menu" class="absolute right-0 top-full mt-1.5 z-50 w-56 bg-bg2 border border-border rounded-lg shadow-lg overflow-hidden">
       <div class="px-3.5 py-3 border-b border-border">
         <div class="flex items-center justify-between gap-2">
           <div class="min-w-0">

@@ -3,7 +3,7 @@
   import ProfileMenu from './ProfileMenu.svelte';
   import ScanLine from '$lib/components/decorations/ScanLine.svelte';
   import { locale } from '$lib/state/locale.svelte';
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
   import {
     Wrench,
@@ -14,13 +14,13 @@
     Settings,
   } from 'lucide-svelte';
 
-  const isHome = $derived($page.url.pathname === '/');
-  const isMarketplace = $derived($page.url.pathname.startsWith('/marketplace'));
-  const isWorkshop = $derived($page.url.pathname.startsWith('/workshop'));
-  const isUsers = $derived($page.url.pathname.startsWith('/users'));
-  const isReliability = $derived($page.url.pathname.startsWith('/reliability'));
-  const isConfig = $derived($page.url.pathname.startsWith('/config'));
-  const isSettings = $derived($page.url.pathname.startsWith('/settings'));
+  const isHome = $derived(page.url.pathname === '/');
+  const isMarketplace = $derived(page.url.pathname.startsWith('/marketplace'));
+  const isWorkshop = $derived(page.url.pathname.startsWith('/workshop'));
+  const isUsers = $derived(page.url.pathname.startsWith('/users'));
+  const isReliability = $derived(page.url.pathname.startsWith('/reliability'));
+  const isConfig = $derived(page.url.pathname.startsWith('/config'));
+  const isSettings = $derived(page.url.pathname.startsWith('/settings'));
 
   const subtitle = $derived(
     isMarketplace ? m.nav_marketplace() : isWorkshop ? m.nav_workshop() : 'hub'

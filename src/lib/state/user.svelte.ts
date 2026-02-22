@@ -1,5 +1,7 @@
 import { goto } from '$app/navigation';
 
+type UserRole = 'owner' | 'admin' | 'member' | 'viewer';
+
 interface CurrentUser {
   id: string;
   email: string;
@@ -8,9 +10,10 @@ interface CurrentUser {
 
 interface UserState {
   user: CurrentUser | null;
-  role: string | null;
+  role: UserRole | null;
   tenantId: string | null;
   loading: boolean;
+  error: string | null;
 }
 
 const state = $state<UserState>({
@@ -18,12 +21,14 @@ const state = $state<UserState>({
   role: null,
   tenantId: null,
   loading: false,
+  error: null,
 });
 
 export const userState = state;
 
 export async function loadUser() {
   state.loading = true;
+  state.error = null;
   try {
     const res = await fetch('/api/auth/me');
     if (res.ok) {
@@ -32,13 +37,18 @@ export async function loadUser() {
       state.role = data.role;
       state.tenantId = data.tenantId;
     }
+  } catch (err) {
+    state.error = err instanceof Error ? err.message : 'Failed to load user';
   } finally {
     state.loading = false;
   }
 }
 
 export async function logout() {
-  await fetch('/api/auth/logout', { method: 'POST' });
+  const res = await fetch('/api/auth/logout', { method: 'POST' });
+  if (!res.ok) {
+    console.error('Logout request failed, session may still be active server-side');
+  }
   state.user = null;
   state.role = null;
   state.tenantId = null;
