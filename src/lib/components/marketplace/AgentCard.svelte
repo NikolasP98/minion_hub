@@ -48,27 +48,30 @@
     </div>
 
     <!-- Name + Role -->
-    <div class="text-center">
-      <h3 class="text-sm font-bold text-foreground leading-tight">{agent.name}</h3>
-      <p class="text-xs text-muted mt-0.5">{agent.role}</p>
+    <div class="text-center min-h-[2.75rem]">
+      <h3 class="text-sm font-bold text-foreground leading-tight line-clamp-1">{agent.name}</h3>
+      <p class="text-xs text-muted mt-0.5 line-clamp-1">{agent.role}</p>
     </div>
   </a>
 
-  <!-- Catchphrase -->
-  {#if agent.catchphrase}
-    <div class="border-t border-border/50 pt-2">
-      <p class="text-xs text-muted italic text-center leading-relaxed line-clamp-2">"{agent.catchphrase}"</p>
-    </div>
-  {/if}
+  <!-- Variable middle content: grows to fill space so stats/actions stay aligned at bottom -->
+  <div class="flex-1 flex flex-col gap-3">
+    <!-- Catchphrase -->
+    {#if agent.catchphrase}
+      <div class="border-t border-border/50 pt-2">
+        <p class="text-xs text-muted italic text-center leading-relaxed line-clamp-2 h-[2.5rem]">"{agent.catchphrase}"</p>
+      </div>
+    {/if}
 
-  <!-- Tags -->
-  {#if tags.length > 0}
-    <div class="border-t border-border/50 pt-2 flex flex-wrap gap-1 justify-center">
-      {#each tags.slice(0, 4) as tag (tag)}
-        <span class="px-1.5 py-0.5 rounded text-[10px] bg-bg3 text-muted border border-border/50 leading-none">{tag}</span>
-      {/each}
-    </div>
-  {/if}
+    <!-- Tags -->
+    {#if tags.length > 0}
+      <div class="border-t border-border/50 pt-2 flex flex-wrap gap-1 justify-center">
+        {#each tags.slice(0, 4) as tag (tag)}
+          <span class="px-1.5 py-0.5 rounded text-[10px] bg-bg3 text-muted border border-border/50 leading-none">{tag}</span>
+        {/each}
+      </div>
+    {/if}
+  </div>
 
   <!-- Stats row -->
   <div class="border-t border-border/50 pt-2 flex items-center justify-between text-[10px] text-muted">
@@ -80,7 +83,7 @@
   </div>
 
   <!-- Actions -->
-  <div class="flex gap-2 mt-auto">
+  <div class="flex gap-2">
     <a
       href="/marketplace/agents/{agent.id}"
       class="flex-1 text-xs py-1.5 px-2 rounded-lg border border-border text-muted hover:text-foreground hover:bg-bg3 transition-colors duration-100 text-center no-underline"
