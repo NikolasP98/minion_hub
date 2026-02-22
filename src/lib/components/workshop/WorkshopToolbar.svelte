@@ -1,5 +1,6 @@
 <script lang="ts">
   import { gw } from '$lib/state/gateway-data.svelte';
+  import * as m from '$lib/paraglide/messages';
   import {
     saveWorkspace,
     listWorkspaceSaves,
@@ -67,7 +68,7 @@
 >
   <!-- Left label -->
   <span class="font-mono text-[10px] uppercase tracking-widest text-muted shrink-0 select-none">
-    Workshop
+    {m.workshop_title()}
   </span>
 
   <div class="w-px h-6 bg-border shrink-0"></div>
@@ -94,7 +95,7 @@
         {/if}
       </button>
     {:else}
-      <span class="text-[10px] font-mono text-muted italic">No agents connected</span>
+      <span class="text-[10px] font-mono text-muted italic">{m.workshop_noAgents()}</span>
     {/each}
   </div>
 
@@ -105,7 +106,7 @@
     <input
       type="text"
       bind:value={saveName}
-      placeholder="Save name..."
+      placeholder={m.workshop_saveName()}
       onkeydown={handleSaveKeydown}
       class="h-7 w-28 px-2 text-[10px] font-mono bg-bg3 border border-border rounded text-foreground placeholder:text-muted/50 focus:outline-none focus:border-accent"
     />
@@ -115,7 +116,7 @@
       disabled={saving || !saveName.trim()}
       class="h-7 px-2.5 text-[10px] font-mono uppercase tracking-wider rounded border border-border bg-accent/10 text-accent hover:bg-accent/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
     >
-      {saving ? '...' : 'Save'}
+      {saving ? '...' : m.workshop_save()}
     </button>
 
     <div class="relative">
@@ -126,7 +127,7 @@
           ? 'border-accent bg-accent/10 text-accent'
           : 'border-border text-muted hover:bg-bg3 hover:text-foreground'}"
       >
-        Load
+        {m.workshop_load()}
       </button>
 
       {#if showSaves}
@@ -137,7 +138,7 @@
           onclick={(e) => e.stopPropagation()}
         >
           {#if saves.length === 0}
-            <div class="px-3 py-2 text-[10px] font-mono text-muted italic">No saved workspaces</div>
+            <div class="px-3 py-2 text-[10px] font-mono text-muted italic">{m.workshop_noSaves()}</div>
           {:else}
             {#each saves as save (save.id)}
               <div

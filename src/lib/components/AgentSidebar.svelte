@@ -7,6 +7,7 @@
   import { conn } from '$lib/state/connection.svelte';
   import { ui } from '$lib/state/ui.svelte';
   import AddAgentModal from './AddAgentModal.svelte';
+  import * as m from '$lib/paraglide/messages';
 
   const ACCENT_COLORS = [
     '#3b82f6', '#22c55e', '#a855f7', '#ec4899',
@@ -27,21 +28,21 @@
   </div>
 
   <div class="px-3.5 py-2.5 text-[10px] font-bold tracking-widest uppercase text-muted-foreground border-b border-border shrink-0 flex items-center justify-between">
-    <span>Agents</span>
+    <span>{m.agent_title()}</span>
     <button
       class="flex items-center justify-center w-5 h-5 p-0 border border-border rounded-sm bg-transparent text-muted-foreground text-base leading-none cursor-pointer transition-all duration-150 hover:text-foreground hover:border-muted hover:bg-bg3"
       onclick={() => { ui.agentAddOpen = true; }}
-      aria-label="Add agent"
+      aria-label={m.agent_addLabel()}
     >+</button>
   </div>
 
   <div class="flex-1 overflow-y-auto">
     {#if !conn.connected}
       <div class="py-7 px-3.5 text-center text-muted-foreground text-xs">
-        {conn.connecting ? 'Connecting…' : 'Not connected'}
+        {conn.connecting ? m.conn_connecting() : m.conn_notConnected()}
       </div>
     {:else if gw.agents.length === 0}
-      <div class="py-7 px-3.5 text-center text-muted-foreground text-xs">No agents</div>
+      <div class="py-7 px-3.5 text-center text-muted-foreground text-xs">{m.agent_noAgents()}</div>
     {:else}
       {#each gw.agents as agent, i (agent.id)}
         <AgentRow

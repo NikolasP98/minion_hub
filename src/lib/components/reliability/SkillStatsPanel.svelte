@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import * as m from '$lib/paraglide/messages';
 	import { createSkillStatsState, type SkillAggregate, type SkillStatus } from '$lib/state/skill-stats.svelte';
 
 	interface Props {
@@ -58,15 +59,15 @@
 
 <div class="bg-card border border-border rounded-lg overflow-hidden">
 	<div class="flex items-center justify-between py-3 px-4 border-b border-border">
-		<h3 class="text-[13px] font-semibold text-foreground m-0">Skill Execution Stats</h3>
+		<h3 class="text-[13px] font-semibold text-foreground m-0">{m.reliability_skillTitle()}</h3>
 	</div>
 
 	{#if state.loading && skills.length === 0}
-		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">Loading...</div>
+		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">{m.common_loading()}</div>
 	{:else if state.error}
 		<div class="flex items-center justify-center py-12 px-4 text-destructive text-[13px]">{state.error}</div>
 	{:else if skills.length === 0}
-		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">No skill data</div>
+		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">{m.reliability_noSkills()}</div>
 	{:else}
 		<div class="flex flex-wrap gap-3 py-2.5 px-4 border-b border-border">
 			{#each STATUS_ORDER as s (s)}

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { conn } from '$lib/state/connection.svelte';
+  import * as m from '$lib/paraglide/messages';
   import { configState, setField, isDirty, save, discard } from '$lib/state/config.svelte';
   import { SvelteMap } from 'svelte/reactivity';
 
@@ -69,24 +70,24 @@
 {#if !conn.connected}
   <div class="flex-1 flex items-center justify-center">
     <div class="text-center">
-      <p class="text-muted-foreground text-sm mb-3">Not connected to a gateway</p>
-      <a href="/" class="text-xs text-accent no-underline hover:underline">Go to dashboard</a>
+      <p class="text-muted-foreground text-sm mb-3">{m.config_noServer()}</p>
+      <a href="/" class="text-xs text-accent no-underline hover:underline">{m.config_goToDashboard()}</a>
     </div>
   </div>
 {:else if configState.loading && !configState.loaded}
   <div class="flex-1 flex items-center justify-center">
-    <div class="text-xs text-muted-foreground">Loading config…</div>
+    <div class="text-xs text-muted-foreground">{m.common_loading()}</div>
   </div>
 {:else}
   <div class="flex-1 overflow-y-auto p-6">
     <div class="max-w-3xl mx-auto space-y-6">
 
-      <h2 class="text-sm font-semibold text-foreground uppercase tracking-wider">Bindings</h2>
-      <p class="text-xs text-muted-foreground -mt-4">Maps messaging peers to agents. Writes directly to gateway config.</p>
+      <h2 class="text-sm font-semibold text-foreground uppercase tracking-wider">{m.bindings_title()}</h2>
+      <p class="text-xs text-muted-foreground -mt-4">{m.bindings_subtitle()}</p>
 
       <!-- Grouped binding cards -->
       {#if grouped.size === 0}
-        <div class="text-muted text-xs py-8 text-center">No bindings configured.</div>
+        <div class="text-muted text-xs py-8 text-center">{m.bindings_noBindings()}</div>
       {:else}
         {#each [...grouped.entries()] as [agentId, entries] (agentId)}
           <div class="bg-card border border-border rounded-lg overflow-hidden">
@@ -121,7 +122,7 @@
 
       <!-- Add binding form -->
       <div class="bg-card border border-border rounded-lg p-4 space-y-3">
-        <p class="text-xs font-semibold text-foreground">Add binding</p>
+        <p class="text-xs font-semibold text-foreground">{m.bindings_add()}</p>
         <div class="grid grid-cols-2 gap-3">
           <input
             class="bg-bg2 border border-border rounded-md text-foreground px-2.5 py-1.5 text-xs font-[inherit] outline-none focus:border-accent placeholder:text-muted"
@@ -158,7 +159,7 @@
           class="text-xs px-3 py-1.5 rounded-md bg-accent text-white border-none cursor-pointer font-[inherit] font-semibold hover:opacity-90 transition-opacity"
           onclick={addBinding}
         >
-          Add
+          {m.common_add()}
         </button>
       </div>
 
@@ -172,9 +173,9 @@
         {#if saveError}
           <span class="text-destructive">{saveError}</span>
         {:else if saving}
-          Saving…
+          {m.common_loading()}
         {:else}
-          Unsaved changes
+          {m.saveBar_unsaved()}
         {/if}
       </span>
       <button
@@ -182,14 +183,14 @@
         onclick={discard}
         disabled={saving}
       >
-        Discard
+        {m.saveBar_discard()}
       </button>
       <button
         class="text-xs px-3 py-1.5 rounded-md bg-accent text-white border-none cursor-pointer font-[inherit] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
         onclick={save}
         disabled={saving}
       >
-        {saving ? 'Saving…' : 'Save'}
+        {saving ? m.common_loading() : m.saveBar_save()}
       </button>
     </div>
   {/if}

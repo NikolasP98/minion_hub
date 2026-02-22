@@ -5,6 +5,7 @@
     "@aws-sdk/client-s3": "^3.992.0",
     "@aws-sdk/s3-request-presigner": "^3.992.0",
     "@dimforge/rapier2d-compat": "^0.19.3",
+    "@inlang/paraglide-sveltekit": "^0.16.1",
     "@libsql/client": "^0.17.0",
     "@node-rs/argon2": "^2.0.2",
     "@paralleldrive/cuid2": "^3.3.0",
@@ -36,6 +37,7 @@
   },
   "private": true,
   "scripts": {
+    "i18n:compile": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide",
     "dev": "vite dev",
     "build": "vite build",
     "preview": "vite preview",

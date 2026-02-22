@@ -26,7 +26,7 @@ export function wsConnect() {
   conn.closed = false;
   conn.connecting = true;
   conn.particleHue = 'amber';
-  conn.statusText = 'Connecting…';
+
   connectSent = false;
   gw.lastSeq = null;
 
@@ -59,7 +59,7 @@ export function wsConnect() {
   } catch (e) {
     conn.connecting = false;
     conn.particleHue = 'red';
-    conn.statusText = `Error: ${(e as Error).message}`;
+  
     ws = null;
   }
 }
@@ -68,7 +68,7 @@ export function wsDisconnect() {
   conn.closed = true;
   conn.connected = false;
   conn.connecting = false;
-  conn.statusText = 'Disconnected';
+
   conn.particleHue = 'red';
 
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
@@ -125,7 +125,7 @@ function scheduleReconnect() {
   if (conn.closed) return;
   const delay = conn.backoffMs;
   conn.backoffMs = Math.min(conn.backoffMs * 1.7, 15000);
-  conn.statusText = `Reconnecting in ${(delay / 1000).toFixed(1)}s…`;
+
   reconnectTimer = setTimeout(() => { reconnectTimer = null; wsConnect(); }, delay);
 }
 
@@ -159,7 +159,7 @@ function sendConnect() {
       conn.connecting = false;
       conn.particleHue = 'blue';
       conn.connectedAt = Date.now();
-      conn.statusText = 'Connected';
+
 
       gw.hello = hello as HelloOk;
       gw.presence = (hello as HelloOk).snapshot?.presence ?? [];

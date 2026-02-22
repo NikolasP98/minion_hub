@@ -1,4 +1,6 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
+
   interface GeneratedAgent {
     soulMd: string;
     identityMd: string;
@@ -134,7 +136,7 @@
     <!-- Header -->
     <div class="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
       <div>
-        <h2 class="text-sm font-bold text-foreground">Create Agent</h2>
+        <h2 class="text-sm font-bold text-foreground">{m.marketplace_wizardTitle()}</h2>
         <p class="text-[10px] text-muted mt-0.5">Step {step} of 5</p>
       </div>
       <!-- Progress dots -->
@@ -147,7 +149,7 @@
         type="button"
         onclick={onClose}
         class="text-muted hover:text-foreground transition-colors text-lg leading-none"
-        aria-label="Close"
+        aria-label={m.common_close()}
       >
         ×
       </button>
@@ -373,7 +375,7 @@
         disabled={step === 1}
         class="text-xs text-muted hover:text-foreground transition-colors disabled:opacity-30 disabled:pointer-events-none"
       >
-        ← Back
+        {m.marketplace_wizardBack()}
       </button>
 
       {#if step < 3}
@@ -383,7 +385,7 @@
           disabled={(step === 1 && !role) || (step === 2 && !agentName)}
           class="px-4 py-1.5 rounded-lg bg-brand-pink text-black text-xs font-semibold hover:bg-brand-pink/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          Next →
+          {m.marketplace_wizardNext()}
         </button>
       {:else if step === 3}
         <!-- Generate button already in body -->
@@ -394,7 +396,7 @@
           onclick={() => { step = 5; }}
           class="px-4 py-1.5 rounded-lg bg-brand-pink text-black text-xs font-semibold hover:bg-brand-pink/90 transition-colors"
         >
-          Export →
+          {m.marketplace_wizardExport()}
         </button>
       {:else}
         <button
@@ -402,7 +404,7 @@
           onclick={onClose}
           class="px-4 py-1.5 rounded-lg bg-brand-pink text-black text-xs font-semibold hover:bg-brand-pink/90 transition-colors"
         >
-          Done
+          {m.marketplace_wizardDone()}
         </button>
       {/if}
     </div>

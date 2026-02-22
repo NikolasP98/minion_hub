@@ -2,6 +2,7 @@
   import HostDropdown from './HostDropdown.svelte';
   import { getActiveHost } from '$lib/state/hosts.svelte';
   import { ui } from '$lib/state/ui.svelte';
+  import * as m from '$lib/paraglide/messages';
 
   const activeHost = $derived(getActiveHost());
 
@@ -29,7 +30,7 @@
     {activeHost.name}
     <span class="opacity-50 text-[10px]">▾</span>
   {:else}
-    Add host +
+    {m.hosts_addHost()}
   {/if}
 
   {#if ui.dropdownOpen && activeHost}

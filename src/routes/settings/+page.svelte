@@ -1,6 +1,7 @@
 <script lang="ts">
   import { theme } from '$lib/state/theme.svelte';
   import PatternSettings from '$lib/components/settings/PatternSettings.svelte';
+  import * as m from '$lib/paraglide/messages';
 </script>
 
 <div class="relative z-10 flex flex-col h-screen overflow-hidden text-foreground">
@@ -10,11 +11,11 @@
       href="/"
       class="text-xs text-muted no-underline px-3 py-1 rounded-full border border-border transition-all duration-150 hover:bg-bg3 hover:text-foreground"
     >
-      &larr; Back to Dashboard
+      {m.settings_back()}
     </a>
-    <span class="ml-auto mr-auto font-bold text-sm text-foreground tracking-wide uppercase">Settings</span>
+    <span class="ml-auto mr-auto font-bold text-sm text-foreground tracking-wide uppercase">{m.settings_title()}</span>
     <!-- Right spacer to keep title centered -->
-    <div class="invisible text-xs px-3 py-1">&larr; Back to Dashboard</div>
+    <div class="invisible text-xs px-3 py-1">{m.settings_back()}</div>
   </header>
 
   <!-- Content -->
@@ -23,7 +24,7 @@
 
       <!-- Theme Presets -->
       <section>
-        <h2 class="text-sm font-semibold text-foreground uppercase tracking-wider mb-4">Theme</h2>
+        <h2 class="text-sm font-semibold text-foreground uppercase tracking-wider mb-4">{m.settings_theme()}</h2>
         <div class="grid grid-cols-3 gap-4">
           {#each theme.presets as preset (preset.id)}
             <button
@@ -50,7 +51,7 @@
                   <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
                     <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
                   </svg>
-                  Active
+                  {m.settings_active()}
                 </div>
               {/if}
             </button>
@@ -60,7 +61,7 @@
 
       <!-- Accent Color -->
       <section>
-        <h2 class="text-sm font-semibold text-foreground uppercase tracking-wider mb-4">Accent Color</h2>
+        <h2 class="text-sm font-semibold text-foreground uppercase tracking-wider mb-4">{m.settings_accentColor()}</h2>
         <div class="flex flex-wrap gap-3">
           {#each theme.accents as acc (acc.id)}
             <button

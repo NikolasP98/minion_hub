@@ -4,6 +4,7 @@
   import BindingsTab from '$lib/components/users/BindingsTab.svelte';
   import { conn } from '$lib/state/connection.svelte';
   import { configState, loadConfig } from '$lib/state/config.svelte';
+  import * as m from '$lib/paraglide/messages';
 
   type Tab = 'team' | 'bindings';
   let activeTab = $state<Tab>('team');
@@ -29,7 +30,7 @@
             : 'border-b-transparent text-muted hover:text-foreground'}"
         onclick={() => (activeTab = tab)}
       >
-        {tab}
+        {tab === 'team' ? m.users_team() : m.users_bindings()}
       </button>
     {/each}
   </div>

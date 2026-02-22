@@ -16,6 +16,7 @@
 	import { hostsState } from '$lib/state/hosts.svelte';
 	import { onMount, untrack } from 'svelte';
 	import type { EChartsOption } from 'echarts';
+	import * as m from '$lib/paraglide/messages';
 
 	/** Generate a small 8-value DotMatrix data array from a numeric KPI value (0–100+ range). */
 	function kpiToMatrix(val: number, max = 100): number[] {
@@ -302,7 +303,7 @@
 					/>
 				</svg>
 			</a>
-			<h1 class="text-base font-semibold tracking-tight">Reliability Dashboard</h1>
+			<h1 class="text-base font-semibold tracking-tight">{m.reliability_title()}</h1>
 		</div>
 		<div class="flex items-center">
 			<DateRangePicker
@@ -316,18 +317,18 @@
 	<main class="flex-1 overflow-y-auto p-6 flex flex-col gap-5">
 		{#if !serverId}
 			<div class="flex-1 flex items-center justify-center">
-				<p class="text-muted-foreground text-sm">Connect to a gateway to view reliability data</p>
+				<p class="text-muted-foreground text-sm">{m.reliability_connectToView()}</p>
 			</div>
 		{:else if loading && !summary}
 			<div class="flex-1 flex items-center justify-center">
-				<p class="text-muted-foreground text-sm">Loading...</p>
+				<p class="text-muted-foreground text-sm">{m.common_loading()}</p>
 			</div>
 		{:else}
 			<!-- KPI Cards -->
 			<section class="grid grid-cols-3 gap-4 max-[900px]:grid-cols-2 max-sm:grid-cols-1">
 				<div class="flex flex-col gap-1">
 					<KpiCard
-						label="Total Events"
+						label={m.reliability_totalEvents()}
 						value={String(summary?.total ?? 0)}
 						icon="⚡"
 						color="--accent"
@@ -338,7 +339,7 @@
 				</div>
 				<div class="flex flex-col gap-1">
 					<KpiCard
-						label="Critical"
+						label={m.reliability_criticalEvents()}
 						value={String(summary?.bySeverity?.critical ?? 0)}
 						icon="🔴"
 						color="--red"
@@ -349,7 +350,7 @@
 				</div>
 				<div class="flex flex-col gap-1">
 					<KpiCard
-						label="Cron Issues"
+						label={m.reliability_cronIssues()}
 						value={String(summary?.byCategory?.cron ?? 0)}
 						icon="⏱"
 						color="--amber"
@@ -360,7 +361,7 @@
 				</div>
 				<div class="flex flex-col gap-1">
 					<KpiCard
-						label="Browser Issues"
+						label={m.reliability_browserIssues()}
 						value={String(summary?.byCategory?.browser ?? 0)}
 						icon="🌐"
 						color="--purple"
@@ -371,7 +372,7 @@
 				</div>
 				<div class="flex flex-col gap-1">
 					<KpiCard
-						label="Auth Issues"
+						label={m.reliability_authIssues()}
 						value={String(summary?.byCategory?.auth ?? 0)}
 						icon="🔑"
 						color="--green"
@@ -382,7 +383,7 @@
 				</div>
 				<div class="flex flex-col gap-1">
 					<KpiCard
-						label="Gateway"
+						label={m.reliability_gatewayIssues()}
 						value={String(summary?.byCategory?.gateway ?? 0)}
 						icon="📡"
 						color="--teal"
@@ -413,7 +414,7 @@
 
 			<!-- Health Metrics -->
 			<section class="flex flex-col gap-4">
-				<h2 class="m-0 text-sm font-semibold text-muted tracking-tight">Health Metrics</h2>
+				<h2 class="m-0 text-sm font-semibold text-muted tracking-tight">{m.reliability_healthMetrics()}</h2>
 				<div class="grid grid-cols-3 gap-4 max-[900px]:grid-cols-1">
 					<CredentialHealthPanel {serverId} />
 					<SkillStatsPanel {serverId} />
@@ -423,7 +424,7 @@
 
 			<!-- Incident Table -->
 			<section class="min-w-0">
-				<IncidentTable events={reliability.events} title="Recent Incidents" />
+				<IncidentTable events={reliability.events} title={m.reliability_recentIncidents()} />
 			</section>
 		{/if}
 	</main>

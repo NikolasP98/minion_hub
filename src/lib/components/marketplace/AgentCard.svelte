@@ -2,6 +2,7 @@
   import { goto } from '$app/navigation';
   import type { MarketplaceAgent } from '$lib/state/marketplace.svelte';
   import { parseTags, installAgent, marketplaceState } from '$lib/state/marketplace.svelte';
+  import * as m from '$lib/paraglide/messages';
 
   interface Props {
     agent: MarketplaceAgent;
@@ -88,14 +89,14 @@
       href="/marketplace/agents/{agent.id}"
       class="flex-1 text-xs py-1.5 px-2 rounded-lg border border-border text-muted hover:text-foreground hover:bg-bg3 transition-colors duration-100 text-center no-underline"
     >
-      View
+      {m.marketplace_view()}
     </a>
     <button
       type="button"
       onclick={handleInstall}
       class="flex-1 text-xs py-1.5 px-2 rounded-lg bg-brand-pink/10 border border-brand-pink/30 text-brand-pink hover:bg-brand-pink/20 transition-colors duration-100"
     >
-      Install
+      {m.marketplace_install()}
     </button>
   </div>
 </div>

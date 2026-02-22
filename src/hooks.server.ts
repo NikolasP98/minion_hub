@@ -1,5 +1,7 @@
+import { sequence } from '@sveltejs/kit/hooks';
 import type { Handle } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
+import { i18n } from '$lib/i18n';
 import { getDb } from '$server/db/client';
 import { servers, tenants } from '$server/db/schema';
 import { validateSession, SESSION_COOKIE } from '$server/auth/session';
@@ -39,7 +41,7 @@ async function resolveServerTokenAuth(
   return null;
 }
 
-export const handle: Handle = async ({ event, resolve }) => {
+const appHandle: Handle = async ({ event, resolve }) => {
   // Skip auth for auth routes and public assets
   if (event.url.pathname.startsWith('/api/auth/')) {
     return resolve(event);
@@ -89,3 +91,5 @@ export const handle: Handle = async ({ event, resolve }) => {
 
   return resolve(event);
 };
+
+export const handle = sequence(i18n.handle(), appHandle);

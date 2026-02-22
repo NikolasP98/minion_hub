@@ -4,6 +4,7 @@
   import { gw } from '$lib/state/gateway-data.svelte';
   import { sendRequest } from '$lib/services/gateway.svelte';
   import type { Agent } from '$lib/types/gateway';
+  import * as m from '$lib/paraglide/messages';
   import * as popover from '@zag-js/popover';
   import * as combobox from '@zag-js/combobox';
   import { useMachine, normalizeProps } from '@zag-js/svelte';
@@ -207,8 +208,8 @@
     onkeydown={(e) => e.stopPropagation()}
   >
     <div class="flex items-center justify-between px-5 pt-4 pb-[14px] border-b border-border shrink-0">
-      <span class="text-base font-bold">Add Agent</span>
-      <button class="bg-transparent border-none text-muted-foreground cursor-pointer text-xl leading-none px-[6px] py-[2px] rounded-sm transition-colors hover:text-foreground" onclick={close} aria-label="Close">×</button>
+      <span class="text-base font-bold">{m.agent_add()}</span>
+      <button class="bg-transparent border-none text-muted-foreground cursor-pointer text-xl leading-none px-[6px] py-[2px] rounded-sm transition-colors hover:text-foreground" onclick={close} aria-label={m.common_close()}>×</button>
     </div>
 
     <div class="px-5 pt-4 pb-5">
@@ -346,9 +347,9 @@
       {/if}
 
       <div class="flex gap-2 justify-end">
-        <button class="bg-transparent border border-border rounded-[5px] text-muted-foreground cursor-pointer font-[inherit] text-xs py-[6px] px-3 transition-colors hover:not-disabled:text-muted disabled:opacity-50 disabled:cursor-not-allowed" onclick={close} disabled={saving}>Cancel</button>
+        <button class="bg-transparent border border-border rounded-[5px] text-muted-foreground cursor-pointer font-[inherit] text-xs py-[6px] px-3 transition-colors hover:not-disabled:text-muted disabled:opacity-50 disabled:cursor-not-allowed" onclick={close} disabled={saving}>{m.agent_addCancel()}</button>
         <button class="bg-accent border-none rounded-[5px] text-white cursor-pointer font-[inherit] text-xs font-semibold py-[6px] px-4 transition-[filter] hover:not-disabled:brightness-115 disabled:opacity-50 disabled:cursor-not-allowed" onclick={submit} disabled={saving}>
-          {saving ? 'Creating…' : 'Create Agent'}
+          {saving ? m.agent_creating() : m.agent_addSubmit()}
         </button>
       </div>
     </div>

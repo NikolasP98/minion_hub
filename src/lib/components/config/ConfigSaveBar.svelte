@@ -1,15 +1,16 @@
 <script lang="ts">
   import { configState, isDirty, dirtyPaths, save, discard } from '$lib/state/config.svelte';
+  import * as m from '$lib/paraglide/messages';
 </script>
 
 <div class="shrink-0 border-t border-border bg-bg2/80 backdrop-blur-sm px-6 py-3 flex items-center gap-3">
   {#if configState.saveError}
     <span class="text-destructive text-[11px] flex-1 truncate">{configState.saveError}</span>
   {:else if configState.lastSavedAt && !isDirty.value}
-    <span class="text-success text-[11px] flex-1">Saved successfully</span>
+    <span class="text-success text-[11px] flex-1">{m.saveBar_saved()}</span>
   {:else}
     <span class="text-muted-foreground text-[11px] flex-1">
-      {dirtyPaths.value.size} section{dirtyPaths.value.size === 1 ? '' : 's'} modified
+      {dirtyPaths.value.size === 1 ? m.saveBar_sectionsModified({ count: dirtyPaths.value.size }) : m.saveBar_sectionsModifiedPlural({ count: dirtyPaths.value.size })}
     </span>
   {/if}
 
@@ -19,7 +20,7 @@
     disabled={!isDirty.value || configState.saving}
     onclick={() => discard()}
   >
-    Discard
+    {m.saveBar_discard()}
   </button>
 
   <button
@@ -31,6 +32,6 @@
     {#if configState.saving}
       <span class="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
     {/if}
-    Save Changes
+    {m.saveBar_saveChanges()}
   </button>
 </div>

@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import AgentCard from '$lib/components/marketplace/AgentCard.svelte';
   import { marketplaceState, loadAgents, syncFromGitHub } from '$lib/state/marketplace.svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let searchInput = $state('');
   let searchTimer: ReturnType<typeof setTimeout> | null = null;
@@ -29,8 +30,8 @@
   <!-- Header -->
   <div class="flex items-center justify-between gap-4">
     <div>
-      <h1 class="text-lg font-bold text-foreground">Agents</h1>
-      <p class="text-xs text-muted mt-0.5">Browse and install pre-built AI agents</p>
+      <h1 class="text-lg font-bold text-foreground">{m.marketplace_agents()}</h1>
+      <p class="text-xs text-muted mt-0.5">{m.marketplace_agentsSubtitle()}</p>
     </div>
 
     <!-- Search -->
@@ -38,7 +39,7 @@
       <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted text-xs pointer-events-none">⌕</span>
       <input
         type="text"
-        placeholder="Search agents…"
+        placeholder={m.marketplace_search()}
         value={searchInput}
         oninput={onSearchInput}
         class="w-full pl-7 pr-3 py-1.5 rounded-lg border border-border bg-bg2 text-xs text-foreground placeholder:text-muted focus:outline-none focus:border-brand-pink/40 transition-colors"
@@ -50,7 +51,7 @@
   {#if marketplaceState.loading}
     <div class="flex items-center justify-center py-16 text-muted text-sm">
       <span class="animate-spin mr-2">↻</span>
-      Loading agents…
+      {m.marketplace_loadingAgents()}
     </div>
 
   <!-- Empty state -->
@@ -60,12 +61,12 @@
         🤖
       </div>
       <div>
-        <p class="text-sm font-medium text-foreground">No agents yet</p>
+        <p class="text-sm font-medium text-foreground">{m.marketplace_noAgentsYet()}</p>
         <p class="text-xs text-muted mt-1">
           {#if marketplaceState.searchQuery || marketplaceState.selectedCategory}
-            Try adjusting your filters
+            {m.marketplace_adjustFilters()}
           {:else}
-            Sync from GitHub to populate the marketplace
+            {m.marketplace_syncPrompt()}
           {/if}
         </p>
       </div>
@@ -77,7 +78,7 @@
           class="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand-pink/10 border border-brand-pink/30 text-brand-pink text-xs hover:bg-brand-pink/20 transition-colors disabled:opacity-50"
         >
           <span class={marketplaceState.syncing ? 'animate-spin' : ''}>↻</span>
-          {marketplaceState.syncing ? 'Syncing…' : 'Sync from GitHub'}
+          {marketplaceState.syncing ? m.marketplace_syncing() : m.marketplace_syncGitHub()}
         </button>
       {/if}
     </div>
