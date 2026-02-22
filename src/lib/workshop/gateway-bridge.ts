@@ -358,6 +358,7 @@ async function runOrchestrationLoop(
 				previousResponse,
 				loopState.turnCount,
 				loopState.maxTurns,
+				collectedMessages,
 			);
 
 			setAgentThinking(participant.instanceId, true);
@@ -428,6 +429,32 @@ async function sendAndWaitForResponse(
 	const effectiveTimeout = timeoutMs ?? workshopState.settings.responseTimeout;
 	const runId = uuid();
 
+	// --- Baseline snapshot BEFORE sending the prompt ---
+	// Count existing assistant messages and capture the last one's content so
+	// the polling loop can distinguish a genuinely new response from a stale
+	// one that was already in the session history.
+	let baselineAssistantCount = 0;
+	let baselineLastContent = '';
+
+	try {
+		const baselineRes = (await sendRequest('chat.history', {
+			sessionKey,
+			limit: 50,
+		})) as { messages?: Array<{ role: string; content: unknown }> } | null;
+
+		const baselineMsgs = baselineRes?.messages ?? [];
+		for (const msg of baselineMsgs) {
+			if (msg.role === 'assistant') {
+				baselineAssistantCount++;
+				const text = extractText(msg);
+				if (typeof text === 'string') baselineLastContent = text;
+			}
+		}
+	} catch {
+		// If baseline fetch fails, proceed with zero baseline — worst case we
+		// might pick up a stale message, but that's the same as the old behavior.
+	}
+
 	try {
 		await sendRequest(
 			'chat.send',
@@ -446,6 +473,8 @@ async function sendAndWaitForResponse(
 	// captured by the default handler (it parses agent:{id}:main pattern).
 	//
 	// Instead, we poll chat.history on our workshop session key.
+	// We only resolve when the assistant message count has increased AND the
+	// content differs from the baseline — this prevents stale response pickup.
 	return new Promise<string | null>((resolve) => {
 		const startTime = Date.now();
 		let resolved = false;
@@ -461,21 +490,34 @@ async function sendAndWaitForResponse(
 			try {
 				const res = (await sendRequest('chat.history', {
 					sessionKey,
-					limit: 10,
+					limit: 50,
 				})) as { messages?: Array<{ role: string; content: unknown }> } | null;
 
 				const messages = res?.messages ?? [];
-				// Find the last assistant message
-				for (let i = messages.length - 1; i >= 0; i--) {
-					const msg = messages[i];
+
+				// Count current assistant messages and find the last one
+				let currentAssistantCount = 0;
+				let lastAssistantText = '';
+				for (const msg of messages) {
 					if (msg.role === 'assistant') {
+						currentAssistantCount++;
 						const text = extractText(msg);
 						if (typeof text === 'string' && text.trim()) {
-							resolved = true;
-							resolve(text);
-							return;
+							lastAssistantText = text;
 						}
 					}
+				}
+
+				// Only resolve if there's a NEW assistant message (count increased)
+				// AND its content differs from the baseline last message
+				if (
+					currentAssistantCount > baselineAssistantCount &&
+					lastAssistantText &&
+					lastAssistantText !== baselineLastContent
+				) {
+					resolved = true;
+					resolve(lastAssistantText);
+					return;
 				}
 			} catch {
 				// Ignore polling errors, retry
@@ -506,12 +548,12 @@ function formatInitialPrompt(
 	}
 
 	return [
-		`You are participating in a workshop conversation with ${otherAgentNames}.`,
+		`You are in a workshop conversation with ${otherAgentNames}.`,
 		``,
 		`Task: ${taskPrompt}`,
 		``,
-		`Please share your initial thoughts and approach. Your response will be shared with the other participant(s) for discussion.`,
-		`Keep your response focused and concise.`,
+		`Share a specific perspective or position on this task. Be concrete — propose ideas, take a stance, or raise a question for discussion.`,
+		`Your response will be shared with the other participant(s). Keep it focused and concise.`,
 	].join('\n');
 }
 
@@ -521,27 +563,44 @@ function formatTurnPrompt(
 	previousResponse: string,
 	turnNumber: number,
 	maxTurns: number,
+	conversationHistory: string[] = [],
 ): string {
 	const remaining = maxTurns - turnNumber;
 	const isLastTurn = remaining <= 1;
 
 	const lines = [
-		`You are participating in a workshop conversation.`,
+		`You are in a workshop conversation.`,
 		``,
 		`Original task: ${taskPrompt}`,
 		``,
-		`${previousAgentName} said:`,
+	];
+
+	// Include condensed history of recent exchanges for context
+	const recentHistory = conversationHistory.slice(-4);
+	if (recentHistory.length > 1) {
+		lines.push(`Recent discussion:`);
+		for (const entry of recentHistory) {
+			// Truncate each entry to keep the prompt manageable
+			const truncated = entry.length > 200 ? entry.slice(0, 200) + '...' : entry;
+			lines.push(`- ${truncated}`);
+		}
+		lines.push(``);
+	}
+
+	lines.push(
+		`${previousAgentName} just said:`,
 		`> ${previousResponse.split('\n').join('\n> ')}`,
 		``,
-	];
+	);
 
 	if (isLastTurn) {
 		lines.push(
-			`This is the final turn. Please summarize any conclusions or action items.`,
+			`This is the final turn. Summarize conclusions or action items.`,
 		);
 	} else {
 		lines.push(
-			`Please respond with your thoughts. ${remaining} turns remaining in this conversation.`,
+			`Respond with your thoughts. ${remaining} turns remaining.`,
+			`IMPORTANT: Do not restate what has already been said. Build on the discussion — advance with new ideas, counterpoints, or concrete next steps.`,
 		);
 	}
 
@@ -672,10 +731,25 @@ export async function loadConversationHistory(
 			}
 		}
 
+		// Filter out 'user' role messages — these are orchestration prompts, not
+		// actual conversation content shown to the user.
+		const assistantMessages = allMessages.filter((m) => m.role === 'assistant');
+
+		// Deduplicate by (role, agentId, content) — cross-session merges can
+		// produce identical entries when the same message exists in multiple
+		// agent session histories.
+		const seen = new Set<string>();
+		const deduped = assistantMessages.filter((m) => {
+			const key = `${m.role}:${m.agentId ?? ''}:${m.content}`;
+			if (seen.has(key)) return false;
+			seen.add(key);
+			return true;
+		});
+
 		// Sort by timestamp to interleave messages from different agents
-		allMessages.sort((a, b) => a.timestamp - b.timestamp);
-		setMessages(conv.sessionKey, allMessages);
-		return allMessages;
+		deduped.sort((a, b) => a.timestamp - b.timestamp);
+		setMessages(conv.sessionKey, deduped);
+		return deduped;
 	} finally {
 		conversationLoading[conv.sessionKey] = false;
 	}

@@ -24,11 +24,13 @@ export function appendMessage(sessionKey: string, msg: ConversationMessage): voi
 	if (!conversationMessages[sessionKey]) {
 		conversationMessages[sessionKey] = [];
 	}
-	// Dedup safety net: skip if the last message has the same agentId + content
+	// Dedup safety net: skip if any of the last 10 messages has the same agentId + content.
+	// Checking only the last message missed duplicates when another agent's message
+	// was interleaved between two identical messages from the same agent.
 	const msgs = conversationMessages[sessionKey];
-	if (msgs.length > 0) {
-		const last = msgs[msgs.length - 1];
-		if (last.agentId === msg.agentId && last.content === msg.content) {
+	const lookback = Math.max(0, msgs.length - 10);
+	for (let i = msgs.length - 1; i >= lookback; i--) {
+		if (msgs[i].agentId === msg.agentId && msgs[i].content === msg.content) {
 			return;
 		}
 	}
