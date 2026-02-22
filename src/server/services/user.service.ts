@@ -36,7 +36,7 @@ export async function getUser(ctx: TenantContext, userId: string) {
 
 export async function createContactUser(
   ctx: TenantContext,
-  data: { email: string; displayName?: string; password: string },
+  data: { email: string; displayName?: string; password: string; role?: 'owner' | 'admin' | 'member' | 'viewer' },
 ) {
   const now = nowMs();
   const userId = newId();
@@ -54,7 +54,7 @@ export async function createContactUser(
   await ctx.db.insert(userTenants).values({
     userId,
     tenantId: ctx.tenantId,
-    role: 'viewer',
+    role: data.role ?? 'viewer',
     joinedAt: now,
   });
 
