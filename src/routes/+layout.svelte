@@ -13,8 +13,7 @@
   import { wsConnect } from '$lib/services/gateway.svelte';
   import { loadUser } from '$lib/state/user.svelte';
   import { type Snippet } from 'svelte';
-  // Initialize locale state (reads localStorage, sets paraglide languageTag)
-  import '$lib/state/locale.svelte';
+  import { locale } from '$lib/state/locale.svelte';
 
   let { children }: { children: Snippet } = $props();
 
@@ -29,7 +28,7 @@
   });
 </script>
 
-<ParaglideJS {i18n}>
+<ParaglideJS {i18n} languageTag={locale.current}>
   <ParticleCanvas />
   <BgPattern />
   <ShutdownBanner />
