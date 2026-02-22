@@ -11,6 +11,7 @@
 
   const isMarketplace = $derived($page.url.pathname.startsWith('/marketplace'));
   const isWorkshop = $derived($page.url.pathname.startsWith('/workshop'));
+  const isUsers = $derived($page.url.pathname.startsWith('/users'));
 </script>
 
 <header class="shrink-0 relative z-100 bg-bg/95 backdrop-blur-sm border-b border-border px-4.5 py-2.5 flex items-center gap-2.5">
@@ -29,6 +30,7 @@
 
   <a href="/marketplace" class="text-xs no-underline px-3 py-1 rounded-full border transition-all duration-150 {isMarketplace ? 'bg-brand-pink/10 text-brand-pink border-brand-pink/30' : 'text-muted border-border hover:bg-bg3 hover:text-foreground'}">Marketplace</a>
   <a href="/workshop" class="text-xs no-underline px-3 py-1 rounded-full border transition-all duration-150 {isWorkshop ? 'bg-accent/10 text-accent border-accent/30' : 'text-muted border-border hover:bg-bg3 hover:text-foreground'}">Workshop</a>
+  <a href="/users" class="text-xs no-underline px-3 py-1 rounded-full border transition-all duration-150 {isUsers ? 'bg-accent/10 text-accent border-accent/30' : 'text-muted border-border hover:bg-bg3 hover:text-foreground'}">Users</a>
   <a href="/reliability" class="text-xs text-muted no-underline px-3 py-1 rounded-full border border-border transition-all duration-150 hover:bg-bg3 hover:text-foreground">Reliability</a>
   <a href="/config" class="text-xs text-muted no-underline px-3 py-1 rounded-full border border-border transition-all duration-150 hover:bg-bg3 hover:text-foreground">Config</a>
   <a href="/settings" class="text-xs text-muted no-underline px-3 py-1 rounded-full border border-border transition-all duration-150 hover:bg-bg3 hover:text-foreground">Settings</a>
