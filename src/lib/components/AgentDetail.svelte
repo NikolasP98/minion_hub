@@ -6,6 +6,7 @@
   import ChatPanel from './ChatPanel.svelte';
   import AgentSettingsPanel from './AgentSettingsPanel.svelte';
   import SessionMonitor from './SessionMonitor.svelte';
+  import AgentFiles from './AgentFiles.svelte';
   import { ui } from '$lib/state/ui.svelte';
   import { gw } from '$lib/state/gateway-data.svelte';
   import type { Agent } from '$lib/types/gateway';
@@ -13,7 +14,7 @@
 
   let { agentId, agent }: { agentId: string; agent: Agent } = $props();
 
-  let activeTab = $state<'chat' | 'monitor'>('chat');
+  let activeTab = $state<'chat' | 'monitor' | 'files'>('chat');
 
   $effect(() => {
     agentId; // track agentId changes
@@ -68,6 +69,16 @@
     >
       Monitor
     </button>
+    <button
+      type="button"
+      class="px-4 py-2 text-[11px] font-semibold border-b-2 transition-colors cursor-pointer
+        {activeTab === 'files'
+        ? 'border-accent text-accent'
+        : 'border-transparent text-muted hover:text-foreground'}"
+      onclick={() => (activeTab = 'files')}
+    >
+      Files
+    </button>
   </div>
 
   <!-- Main content: chat or monitor -->
@@ -78,6 +89,8 @@
         sessionKey={ui.selectedSessionKey}
         serverId={ui.selectedServerId}
       />
+    {:else if activeTab === 'files'}
+      <AgentFiles {agentId} />
     {:else}
       {#if !isMainSession && ui.selectedSessionKey}
         <SessionViewer
