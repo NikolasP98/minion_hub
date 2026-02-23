@@ -68,8 +68,8 @@
   const sessionItems = $derived<SessionItem[]>(
     agentSessions.map((s: Session) => ({
       sessionKey: s.sessionKey,
-      displayName: s.label || truncKey(s.sessionKey),
-      relTime: relativeTime(s.lastActiveAt ?? s.createdAt),
+      displayName: s.displayName || s.label || truncKey(s.sessionKey),
+      relTime: relativeTime(s.updatedAt ?? s.lastActiveAt ?? s.createdAt),
       statusColor: statusColor(s.sessionKey),
     }))
   );

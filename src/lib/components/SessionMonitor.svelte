@@ -73,7 +73,7 @@
           return;
         }
       }
-      const wsRes = (await sendRequest('chat.history', { sessionKey: sk, limit: 9999 })) as {
+      const wsRes = (await sendRequest('chat.history', { sessionKey: sk, limit: 1000 })) as {
         messages?: ChatMessage[];
       } | null;
       if (sk !== sessionKey) return; // stale

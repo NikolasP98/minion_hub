@@ -81,7 +81,7 @@
       }
 
       // 2. Fall back to WS gateway
-      const wsRes = await sendRequest('chat.history', { sessionKey: sk, limit: 9999 }) as {
+      const wsRes = await sendRequest('chat.history', { sessionKey: sk, limit: 1000 }) as {
         messages: WsMessage[];
       } | null;
 

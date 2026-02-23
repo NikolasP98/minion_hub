@@ -107,10 +107,14 @@ export interface Agent {
 export interface Session {
   sessionKey: string;
   agentId?: string;
+  kind?: 'direct' | 'group' | 'global' | 'unknown';
   label?: string;
+  displayName?: string;
+  channel?: string;
   model?: string;
   status?: string;
   lastActiveAt?: number;
+  updatedAt?: number;
   createdAt?: number;
 }
 

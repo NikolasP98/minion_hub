@@ -2,18 +2,42 @@ import { conn } from '$lib/state/connection.svelte';
 import { gw, upsertSession, mergeSessions } from '$lib/state/gateway-data.svelte';
 import { agentChat, agentActivity, ensureAgentChat, ensureAgentActivity, saveSparkBins } from '$lib/state/chat.svelte';
 import { hostsState, getActiveHost, updateHost, saveLastActiveHost } from '$lib/state/hosts.svelte';
+import { autoSave, resetWorkshop } from '$lib/state/workshop.svelte';
 import { ui } from '$lib/state/ui.svelte';
 import { pushReliabilityEvent, setReliabilityServerId, type ReliabilityEvent } from '$lib/state/reliability.svelte';
 import { configState, loadConfig } from '$lib/state/config.svelte';
 import { uuid } from '$lib/utils/uuid';
 import { extractText } from '$lib/utils/text';
-import type { HelloOk, ChatEvent } from '$lib/types/gateway';
+import type { HelloOk, ChatEvent, Session } from '$lib/types/gateway';
+import { parseAgentSessionKey } from '$lib/utils/session-key';
+
+/** Map gateway's GatewaySessionRow (key field) to hub's Session (sessionKey field). */
+function mapGatewaySessionRows(raw: unknown[]): Session[] {
+  return raw
+    .filter((r): r is Record<string, unknown> => r != null && typeof r === 'object')
+    .map((r) => {
+      const key = String(r.key ?? '');
+      const parsed = parseAgentSessionKey(key);
+      return {
+        sessionKey: key,
+        agentId: parsed?.agentId,
+        kind: r.kind as Session['kind'],
+        label: r.label as string | undefined,
+        displayName: r.displayName as string | undefined,
+        channel: r.channel as string | undefined,
+        model: r.model as string | undefined,
+        updatedAt: r.updatedAt as number | undefined,
+      };
+    })
+    .filter((s) => s.sessionKey);
+}
 
 // Internal WS state — plain vars, not $state
 let ws: WebSocket | null = null;
 let wsGeneration = 0;
 let pending = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
 let connectSent = false;
+let connectNonce: string | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let pollPresenceTimer: ReturnType<typeof setInterval> | null = null;
@@ -28,6 +52,7 @@ export function wsConnect() {
   conn.particleHue = 'amber';
 
   connectSent = false;
+  connectNonce = null;
   gw.lastSeq = null;
 
   try {
@@ -77,6 +102,10 @@ export function wsDisconnect() {
   flushPending(new Error('disconnected'));
   stopPolling();
 
+  // Save current host's workshop layout before clearing state
+  autoSave(hostsState.activeHostId);
+  resetWorkshop();
+
   // Clear session status timers
   for (const tid of Object.values(ui.sessionStatusTimers)) clearTimeout(tid);
   ui.sessionStatusTimers = {};
@@ -98,6 +127,7 @@ export function wsDisconnect() {
   for (const k of Object.keys(agentActivity)) delete (agentActivity as Record<string, unknown>)[k];
 
   ui.shutdownReason = null;
+  conn.connectError = null;
   conn.backoffMs = 800;
 }
 
@@ -134,22 +164,50 @@ function flushPending(err: Error) {
   pending.clear();
 }
 
-function sendConnect() {
+async function sendConnect() {
   if (connectSent) return;
   connectSent = true;
 
   const activeHost = getActiveHost();
   const token = activeHost ? activeHost.token.trim() : '';
   const capturedHostId = hostsState.activeHostId;
+  const role = 'operator';
+  const scopes = ['operator.admin', 'operator.read', 'operator.write', 'operator.approvals', 'operator.pairing'];
+
+  // Fetch device identity + signature from server
+  let device: { id: string; publicKey: string; signature: string; signedAt: number; nonce?: string } | undefined;
+  try {
+    const signRes = await fetch('/api/device-identity/sign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        nonce: connectNonce,
+        token: token || undefined,
+        role,
+        scopes,
+        clientId: 'minion-control-ui',
+        clientMode: 'ui',
+      }),
+    });
+    if (signRes.ok) {
+      const data = await signRes.json();
+      device = data.device;
+    } else {
+      console.warn('[hub] device-identity sign failed:', signRes.status);
+    }
+  } catch (e) {
+    console.warn('[hub] device-identity sign error:', e);
+  }
 
   sendRequest('connect', {
     minProtocol: 3,
     maxProtocol: 3,
     client: { id: 'minion-control-ui', version: '1.0', platform: 'web', mode: 'ui' },
-    role: 'operator',
-    scopes: ['operator.admin', 'operator.read', 'operator.write', 'operator.approvals', 'operator.pairing'],
+    role,
+    scopes,
     caps: [],
     auth: token ? { token } : undefined,
+    device,
     userAgent: navigator.userAgent,
     locale: navigator.language,
   })
@@ -159,6 +217,7 @@ function sendConnect() {
       conn.connecting = false;
       conn.particleHue = 'blue';
       conn.connectedAt = Date.now();
+      conn.connectError = null;
 
 
       gw.hello = hello as HelloOk;
@@ -179,6 +238,7 @@ function sendConnect() {
     })
     .catch((err) => {
       console.error('[hub] connect failed:', err);
+      conn.connectError = String(err?.message ?? err);
       ws?.close(4008, 'connect failed');
     });
 }
@@ -211,7 +271,9 @@ function handleMessage(raw: string) {
 
   if (frame.type === 'event') {
     if (frame.event === 'connect.challenge') {
-      setTimeout(sendConnect, 200);
+      const payload = frame.payload as { nonce?: unknown } | undefined;
+      connectNonce = payload && typeof payload.nonce === 'string' ? payload.nonce : null;
+      sendConnect();
       return;
     }
     const seq = typeof frame.seq === 'number' ? frame.seq : null;
@@ -376,7 +438,10 @@ function onHelloOk(hello: HelloOk) {
     .catch((e) => console.error('[hub] agents.list error:', e));
 
   sendRequest('sessions.list', {})
-    .then((r) => { mergeSessions(((r as { sessions?: never[] })?.sessions) ?? []); })
+    .then((r) => {
+      const raw = ((r as { sessions?: unknown[] })?.sessions) ?? [];
+      mergeSessions(mapGatewaySessionRows(raw));
+    })
     .catch(() => {});
 
   sendRequest('health', {}).then((r) => { gw.health = r; }).catch(() => {});
@@ -442,7 +507,8 @@ function startPolling() {
           gw.defaultAgentId = r.defaultId ?? gw.defaultAgentId;
         }
         if (results[1].status === 'fulfilled' && results[1].value) {
-          mergeSessions(((results[1].value as { sessions?: never[] })?.sessions) ?? []);
+          const raw = ((results[1].value as { sessions?: unknown[] })?.sessions) ?? [];
+          mergeSessions(mapGatewaySessionRows(raw));
         }
       })
       .catch(() => {});
