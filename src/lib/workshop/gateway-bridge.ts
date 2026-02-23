@@ -657,11 +657,6 @@ function formatInitialPrompt(
 		if (workshopCtx) {
 			lines.push('', '--- Workshop Context ---', workshopCtx);
 		}
-		lines.push(
-			'',
-			'To pin an idea to the shared Pinboard, include `[PIN: your idea]` in your response.',
-			'To send a message to another agent\'s inbox, include `[SEND to AgentName: message]` in your response.',
-		);
 		return lines.join('\n');
 	}
 
@@ -679,9 +674,6 @@ function formatInitialPrompt(
 		``,
 		`Share a specific perspective or position on this task. Be concrete — propose ideas, take a stance, or raise a question for discussion.`,
 		`Your response will be shared with the other participant(s). Keep it focused and concise.`,
-		``,
-		`To pin an idea to the shared Pinboard, include \`[PIN: your idea]\` in your response.`,
-		`To send a message to another agent's inbox, include \`[SEND to AgentName: message]\` in your response.`,
 	);
 
 	return lines.join('\n');
