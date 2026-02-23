@@ -217,12 +217,12 @@
         <div class="flex-1 flex flex-col items-center justify-center gap-2.5 text-destructive text-xs">
           <span>Error: {error}</span>
         </div>
-      {:else if messages.length === 0}
+      {:else if messages.filter((m) => m.content.trim()).length === 0}
         <div class="flex-1 flex flex-col items-center justify-center gap-2.5 text-muted text-xs">
           <span>No messages in this session.</span>
         </div>
       {:else}
-        {#each messages as msg (msg.id)}
+        {#each messages.filter((m) => m.content.trim()) as msg (msg.id)}
           <div
             class="max-w-[82%] px-3 py-2 rounded-lg font-mono text-xs leading-[1.55] break-words whitespace-pre-wrap
               {msg.role === 'user'
