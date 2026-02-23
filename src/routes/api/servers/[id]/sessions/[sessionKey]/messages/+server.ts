@@ -26,16 +26,29 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 
   const messages: ChatMessageInput[] = incoming
     .filter((m): m is Record<string, unknown> => m !== null && typeof m === 'object')
-    .filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
-    .map((m) => ({
-      serverId,
-      agentId: typeof m.agentId === 'string' ? m.agentId : 'default',
-      sessionKey,
-      role: m.role as 'user' | 'assistant',
-      content: m.content as string,
-      runId: typeof m.runId === 'string' ? m.runId : undefined,
-      timestamp: typeof m.timestamp === 'number' ? m.timestamp : Date.now(),
-    }));
+    .filter(
+      (m) =>
+        (m.role === 'user' || m.role === 'assistant') &&
+        (typeof m.content === 'string' || Array.isArray(m.content)),
+    )
+    .map((m) => {
+      const content = typeof m.content === 'string'
+        ? m.content
+        : (m.content as Array<{ type?: string; text?: string }>)
+            .filter((b) => b.type === 'text')
+            .map((b) => b.text ?? '')
+            .join('');
+      return {
+        serverId,
+        agentId: typeof m.agentId === 'string' ? m.agentId : 'default',
+        sessionKey,
+        role: m.role as 'user' | 'assistant',
+        content,
+        runId: typeof m.runId === 'string' ? m.runId : undefined,
+        timestamp: typeof m.timestamp === 'number' ? m.timestamp : Date.now(),
+      };
+    })
+    .filter((m) => m.content.length > 0);
 
   await bulkInsertChatMessages(locals.tenantCtx, messages);
   return json({ ok: true, count: messages.length });
