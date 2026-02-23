@@ -19,7 +19,7 @@
         <span class="text-2xl opacity-30 animate-pulse">&#x1F50C;</span>
         <span>Connect to a gateway to get started</span>
       {:else if gw.agents.length === 0}
-        <span class="text-2xl opacity-30">&#x1F916;</span>
+        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="opacity-30"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
         <span>No agents found</span>
         <span class="text-xs text-muted-foreground/60">Add an agent using the + button in the sidebar</span>
       {:else}

@@ -6,6 +6,7 @@
   import { ui } from '$lib/state/ui.svelte';
   import { gw } from '$lib/state/gateway-data.svelte';
   import type { Agent } from '$lib/types/gateway';
+  import { diceBearAvatarUrl } from '$lib/utils/avatar';
   import * as m from '$lib/paraglide/messages';
   import * as tooltip from '@zag-js/tooltip';
   import { normalizeProps, useMachine } from '@zag-js/svelte';
@@ -93,7 +94,15 @@
       {onclick}
       onkeydown={(e) => e.key === 'Enter' && onclick()}
     >
-      <span class="text-base leading-none">{agent.emoji ?? '🤖'}</span>
+      {#if agent.emoji}
+        <span class="text-base leading-none">{agent.emoji}</span>
+      {:else}
+        <img
+          src={diceBearAvatarUrl(agent.name ?? agent.id)}
+          alt=""
+          class="w-6 h-6 rounded-full"
+        />
+      {/if}
       <div class="mt-1">
         {#if hasActive}
           <span
@@ -143,8 +152,19 @@
         <StatusDot status="idle" size="sm" />
       {/if}
 
-      <!-- Agent name -->
-      <span class="text-[13px] font-semibold text-foreground whitespace-nowrap shrink-0">{agent.emoji ?? '🤖'} {agent.name ?? agent.id}</span>
+      <!-- Agent avatar + name -->
+      <span class="text-[13px] font-semibold text-foreground whitespace-nowrap shrink-0 flex items-center gap-1.5">
+        {#if agent.emoji}
+          <span class="leading-none">{agent.emoji}</span>
+        {:else}
+          <img
+            src={diceBearAvatarUrl(agent.name ?? agent.id)}
+            alt=""
+            class="w-5 h-5 rounded-full inline-block shrink-0"
+          />
+        {/if}
+        {agent.name ?? agent.id}
+      </span>
     </div>
 
     <!-- Row 2: sparkline full width -->

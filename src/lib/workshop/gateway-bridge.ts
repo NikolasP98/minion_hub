@@ -319,7 +319,7 @@ async function runOrchestrationLoop(
 		.map((p) => nameOf(p.agentId))
 		.join(', ');
 
-	const initialPrompt = formatInitialPrompt(taskPrompt, otherNames, participants.length);
+	const initialPrompt = formatInitialPrompt(taskPrompt, otherNames, participants.length, firstParticipant.agentId);
 
 	try {
 		const sessionKey = buildWorkshopSessionKey(firstParticipant.agentId, convSessionKey);
@@ -359,6 +359,7 @@ async function runOrchestrationLoop(
 				loopState.turnCount,
 				loopState.maxTurns,
 				collectedMessages,
+				participant.agentId,
 			);
 
 			setAgentThinking(participant.instanceId, true);
@@ -535,6 +536,111 @@ async function sendAndWaitForResponse(
 }
 
 // ---------------------------------------------------------------------------
+// Workshop context for prompts
+// ---------------------------------------------------------------------------
+
+/**
+ * Collect contextual information from workshop elements (pinboards, message
+ * boards, inboxes) to inject into agent prompts.
+ */
+export function getWorkshopContext(agentId?: string): string {
+	const lines: string[] = [];
+
+	for (const el of Object.values(workshopState.elements)) {
+		if (el.type === 'messageboard' && el.messageBoardContent?.trim()) {
+			lines.push(`[Message Board "${el.label}"]: ${el.messageBoardContent.trim()}`);
+		}
+
+		if (el.type === 'pinboard' && el.pinboardItems && el.pinboardItems.length > 0) {
+			lines.push(`[Pinboard "${el.label}"]:`);
+			for (const pin of el.pinboardItems) {
+				lines.push(`  - ${pin.content} (by ${pin.pinnedBy})`);
+			}
+		}
+
+		if (el.type === 'inbox' && agentId && el.inboxAgentId === agentId) {
+			const unread = (el.inboxItems ?? []).filter((m) => !m.read);
+			if (unread.length > 0) {
+				lines.push(`[Your Inbox]:`);
+				for (const msg of unread) {
+					lines.push(`  - From ${msg.fromId}: ${msg.content}`);
+				}
+			}
+		}
+	}
+
+	return lines.join('\n');
+}
+
+/**
+ * Scan an agent response for [PIN: ...] markers and auto-add to the nearest
+ * pinboard element.
+ */
+function extractAndApplyPins(responseText: string, agentId: string): void {
+	const pinRegex = /\[PIN:\s*(.+?)\]/gi;
+	let match: RegExpExecArray | null;
+	const pins: string[] = [];
+
+	while ((match = pinRegex.exec(responseText)) !== null) {
+		pins.push(match[1].trim());
+	}
+
+	if (pins.length === 0) return;
+
+	// Find the first pinboard element
+	const pinboardEl = Object.values(workshopState.elements).find(
+		(el) => el.type === 'pinboard',
+	);
+	if (!pinboardEl) return;
+
+	// Dynamically import to add pins
+	for (const content of pins) {
+		if (!pinboardEl.pinboardItems) pinboardEl.pinboardItems = [];
+		pinboardEl.pinboardItems.push({
+			id: `pin_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+			content,
+			pinnedBy: agentId,
+			pinnedAt: Date.now(),
+		});
+	}
+}
+
+/**
+ * Scan an agent response for [SEND to AgentName: message] markers and
+ * route to inbox elements.
+ */
+function extractAndRouteSends(responseText: string, fromAgentId: string): void {
+	const sendRegex = /\[SEND to (\S+?):\s*(.+?)\]/gi;
+	let match: RegExpExecArray | null;
+
+	while ((match = sendRegex.exec(responseText)) !== null) {
+		const targetName = match[1].trim();
+		const content = match[2].trim();
+
+		// Find inbox element for target agent
+		const targetAgent = gw.agents.find(
+			(a: { id: string; name?: string }) => a.name === targetName || a.id === targetName,
+		);
+		if (!targetAgent) continue;
+
+		const inboxEl = Object.values(workshopState.elements).find(
+			(el) => el.type === 'inbox' && el.inboxAgentId === targetAgent.id,
+		);
+		if (!inboxEl) continue;
+
+		if (!inboxEl.inboxItems) inboxEl.inboxItems = [];
+		inboxEl.inboxItems.push({
+			id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+			fromId: fromAgentId,
+			toId: targetAgent.id,
+			content,
+			sentAt: Date.now(),
+			read: false,
+		});
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Prompt formatting
 // ---------------------------------------------------------------------------
 
@@ -542,19 +648,43 @@ function formatInitialPrompt(
 	taskPrompt: string,
 	otherAgentNames: string,
 	totalParticipants: number,
+	agentId?: string,
 ): string {
+	const workshopCtx = getWorkshopContext(agentId);
+
 	if (totalParticipants <= 1) {
-		return taskPrompt;
+		const lines = [taskPrompt];
+		if (workshopCtx) {
+			lines.push('', '--- Workshop Context ---', workshopCtx);
+		}
+		lines.push(
+			'',
+			'To pin an idea to the shared Pinboard, include `[PIN: your idea]` in your response.',
+			'To send a message to another agent\'s inbox, include `[SEND to AgentName: message]` in your response.',
+		);
+		return lines.join('\n');
 	}
 
-	return [
+	const lines = [
 		`You are in a workshop conversation with ${otherAgentNames}.`,
 		``,
 		`Task: ${taskPrompt}`,
+	];
+
+	if (workshopCtx) {
+		lines.push('', '--- Workshop Context ---', workshopCtx);
+	}
+
+	lines.push(
 		``,
 		`Share a specific perspective or position on this task. Be concrete — propose ideas, take a stance, or raise a question for discussion.`,
 		`Your response will be shared with the other participant(s). Keep it focused and concise.`,
-	].join('\n');
+		``,
+		`To pin an idea to the shared Pinboard, include \`[PIN: your idea]\` in your response.`,
+		`To send a message to another agent's inbox, include \`[SEND to AgentName: message]\` in your response.`,
+	);
+
+	return lines.join('\n');
 }
 
 function formatTurnPrompt(
@@ -564,9 +694,11 @@ function formatTurnPrompt(
 	turnNumber: number,
 	maxTurns: number,
 	conversationHistory: string[] = [],
+	agentId?: string,
 ): string {
 	const remaining = maxTurns - turnNumber;
 	const isLastTurn = remaining <= 1;
+	const workshopCtx = getWorkshopContext(agentId);
 
 	const lines = [
 		`You are in a workshop conversation.`,
@@ -574,6 +706,10 @@ function formatTurnPrompt(
 		`Original task: ${taskPrompt}`,
 		``,
 	];
+
+	if (workshopCtx) {
+		lines.push('--- Workshop Context ---', workshopCtx, '');
+	}
 
 	// Include condensed history of recent exchanges for context
 	const recentHistory = conversationHistory.slice(-4);
@@ -624,6 +760,14 @@ function emitMessage(msg: WorkshopMessage): void {
 			content: msg.message,
 			timestamp: msg.timestamp,
 		});
+	}
+
+	// Extract [PIN: ...] and [SEND to ...: ...] markers from agent responses
+	try {
+		extractAndApplyPins(msg.message, msg.agentId);
+		extractAndRouteSends(msg.message, msg.agentId);
+	} catch {
+		// non-critical
 	}
 
 	// Fire callbacks for speech bubbles / other listeners

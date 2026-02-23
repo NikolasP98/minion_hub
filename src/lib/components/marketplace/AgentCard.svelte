@@ -2,6 +2,7 @@
   import { goto } from '$app/navigation';
   import type { MarketplaceAgent } from '$lib/state/marketplace.svelte';
   import { parseTags, installAgent, marketplaceState } from '$lib/state/marketplace.svelte';
+  import { diceBearAvatarUrl } from '$lib/utils/avatar';
   import * as m from '$lib/paraglide/messages';
 
   interface Props {
@@ -14,9 +15,7 @@
   const tags = $derived(parseTags(agent.tags));
   const installCount = $derived(agent.installCount ?? 0);
 
-  const avatarUrl = $derived(
-    `https://api.dicebear.com/9.x/notionists/svg?seed=${encodeURIComponent(agent.avatarSeed)}&backgroundColor=transparent`
-  );
+  const avatarUrl = $derived(diceBearAvatarUrl(agent.avatarSeed));
 
   function formatInstallCount(n: number): string {
     if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;

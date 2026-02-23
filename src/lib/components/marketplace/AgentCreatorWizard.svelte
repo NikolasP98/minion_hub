@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { diceBearAvatarUrl } from '$lib/utils/avatar';
   import * as m from '$lib/paraglide/messages';
 
   interface GeneratedAgent {
@@ -49,9 +50,7 @@
   const categories = ['engineering', 'product', 'data', 'creative', 'security'];
 
   const avatarUrl = $derived(
-    generated
-      ? `https://api.dicebear.com/9.x/notionists/svg?seed=${encodeURIComponent(generated.agentJson.avatarSeed)}&backgroundColor=transparent`
-      : ''
+    generated ? diceBearAvatarUrl(generated.agentJson.avatarSeed) : ''
   );
 
   async function generate() {

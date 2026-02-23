@@ -10,6 +10,7 @@
     parseTags,
     type MarketplaceAgent,
   } from '$lib/state/marketplace.svelte';
+  import { diceBearAvatarUrl } from '$lib/utils/avatar';
 
   const slug = $derived($page.params.slug);
   const initialTab = $derived(($page.url.searchParams.get('tab') ?? 'overview') as Tab);
@@ -26,11 +27,7 @@
   let installError = $state<string | null>(null);
 
   const tags = $derived(agent ? parseTags(agent.tags) : []);
-  const avatarUrl = $derived(
-    agent
-      ? `https://api.dicebear.com/9.x/notionists/svg?seed=${encodeURIComponent(agent.avatarSeed)}&backgroundColor=transparent`
-      : ''
-  );
+  const avatarUrl = $derived(agent ? diceBearAvatarUrl(agent.avatarSeed) : '');
 
   const docTabs: { id: DocTab; label: string; field: keyof MarketplaceAgent }[] = [
     { id: 'soul', label: 'SOUL', field: 'soulMd' },

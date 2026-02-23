@@ -3,6 +3,8 @@
   import * as PIXI from 'pixi.js';
   import * as physics from '$lib/workshop/physics';
   import * as agentSprites from '$lib/workshop/agent-sprite';
+  import * as elementSprites from '$lib/workshop/element-sprite';
+  import { ELEMENT_WIDTH, ELEMENT_HEIGHT } from '$lib/workshop/element-sprite';
   import * as ropeRenderer from '$lib/workshop/rope-renderer';
   import { startSimulation, stopSimulation, setBanterCallback } from '$lib/workshop/simulation';
   import { screenToWorld, worldToScreen, applyZoom, applyPan } from '$lib/workshop/camera';
@@ -15,7 +17,11 @@
     removeAgentInstance,
     addRelationship,
     setAgentBehavior,
+    addElement,
+    removeElement,
+    updateElementPosition,
   } from '$lib/state/workshop.svelte';
+  import type { ElementType } from '$lib/state/workshop.svelte';
   import { findNearbyAgents } from '$lib/workshop/proximity';
   import { gw } from '$lib/state/gateway-data.svelte';
   import { conn } from '$lib/state/connection.svelte';
@@ -31,6 +37,10 @@
   import RelationshipPrompt from './RelationshipPrompt.svelte';
   import ConversationSidebar from './ConversationSidebar.svelte';
   import ConversationIndicator from './ConversationIndicator.svelte';
+  import ElementContextMenu from './ElementContextMenu.svelte';
+  import PinboardOverlay from './PinboardOverlay.svelte';
+  import MessageBoardOverlay from './MessageBoardOverlay.svelte';
+  import InboxOverlay from './InboxOverlay.svelte';
   import { thinkingAgents } from '$lib/state/workshop-conversations.svelte';
 
   // ---------------------------------------------------------------------------
@@ -47,6 +57,7 @@
 
   let isPanning = $state(false);
   let isDraggingAgent = $state(false);
+  let isDraggingElement = $state(false);
   let draggedInstanceId = $state<string | null>(null);
   let isLinking = $state(false);
   let linkFromInstanceId = $state<string | null>(null);
@@ -90,6 +101,19 @@
 
   // (messages now stored in conversationMessages state module)
 
+  // Element overlay state
+  let activeOverlay = $state<{
+    elementId: string;
+    type: ElementType;
+  } | null>(null);
+
+  let elementContextMenu = $state<{
+    instanceId: string;
+    label: string;
+    x: number;
+    y: number;
+  } | null>(null);
+
   // Active conversation handles for abort
   let activeHandles = $state<Map<string, { abort: () => void }>>(new Map());
 
@@ -100,6 +124,7 @@
   $effect(() => {
     if (!conn.connected) {
       agentSprites.clearAllSprites();
+      elementSprites.clearAllElementSprites();
       ropeRenderer.clearAllRopes();
     } else {
       untrack(() => {
@@ -115,6 +140,8 @@
 
   let lastPointerX = 0;
   let lastPointerY = 0;
+  let pointerDownX = 0;
+  let pointerDownY = 0;
 
   // ---------------------------------------------------------------------------
   // Constants
@@ -147,6 +174,21 @@
       const dx = container.x - worldX;
       const dy = container.y - worldY;
       if (Math.sqrt(dx * dx + dy * dy) <= SPRITE_HIT_RADIUS) {
+        return instanceId;
+      }
+    }
+    return null;
+  }
+
+  function hitTestElementAtWorld(worldX: number, worldY: number): string | null {
+    const allSprites = elementSprites.getAllElementSprites();
+    const halfW = ELEMENT_WIDTH / 2;
+    const halfH = ELEMENT_HEIGHT / 2;
+    for (const [instanceId, container] of allSprites) {
+      if (
+        worldX >= container.x - halfW && worldX <= container.x + halfW &&
+        worldY >= container.y - halfH && worldY <= container.y + halfH
+      ) {
         return instanceId;
       }
     }
@@ -187,6 +229,7 @@
     const thisVersion = ++rebuildVersion;
 
     agentSprites.clearAllSprites();
+    elementSprites.clearAllElementSprites();
     ropeRenderer.clearAllRopes();
     clearAllFsms();
 
@@ -218,6 +261,24 @@
       ropeRenderer.createRope(relId, rel.label, worldContainer);
     }
 
+    // Rebuild element sprites
+    for (const [instanceId, el] of Object.entries(workshopState.elements)) {
+      if (thisVersion !== rebuildVersion) return;
+      physics.addElementBody(instanceId, el.position.x, el.position.y);
+      const itemCount =
+        el.type === 'pinboard' ? (el.pinboardItems?.length ?? 0) :
+        el.type === 'inbox' ? (el.inboxItems?.filter((i) => !i.read).length ?? 0) : 0;
+      elementSprites.createElementSprite(
+        instanceId,
+        el.type,
+        el.label,
+        el.position.x,
+        el.position.y,
+        worldContainer,
+        itemCount,
+      );
+    }
+
     syncCamera();
   }
 
@@ -247,8 +308,9 @@
   function handlePointerDown(e: PointerEvent) {
     if (!canvasContainer) return;
 
-    if (contextMenu) {
+    if (contextMenu || elementContextMenu) {
       contextMenu = null;
+      elementContextMenu = null;
       return;
     }
 
@@ -258,6 +320,7 @@
     const worldPos = screenToWorld(screenX, screenY, workshopState.camera);
 
     const hitId = hitTestAgentAtWorld(worldPos.x, worldPos.y);
+    const hitElementId = hitId ? null : hitTestElementAtWorld(worldPos.x, worldPos.y);
 
     if (hitId) {
       if (e.shiftKey) {
@@ -274,6 +337,10 @@
         physics.makeAgentKinematic(hitId);
         canvasContainer.style.cursor = 'grabbing';
       }
+    } else if (hitElementId) {
+      isDraggingElement = true;
+      draggedInstanceId = hitElementId;
+      canvasContainer.style.cursor = 'grabbing';
     } else {
       isPanning = true;
       canvasContainer.style.cursor = 'move';
@@ -281,6 +348,8 @@
 
     lastPointerX = e.clientX;
     lastPointerY = e.clientY;
+    pointerDownX = e.clientX;
+    pointerDownY = e.clientY;
 
     canvasContainer.setPointerCapture(e.pointerId);
   }
@@ -302,6 +371,15 @@
 
       physics.setAgentPosition(draggedInstanceId, worldPos.x, worldPos.y);
       agentSprites.updateSpritePosition(draggedInstanceId, worldPos.x, worldPos.y);
+    } else if (isDraggingElement && draggedInstanceId) {
+      const rect = canvasContainer.getBoundingClientRect();
+      const screenX = e.clientX - rect.left;
+      const screenY = e.clientY - rect.top;
+      const worldPos = screenToWorld(screenX, screenY, workshopState.camera);
+
+      physics.setElementPosition(draggedInstanceId, worldPos.x, worldPos.y);
+      elementSprites.updateElementSpritePosition(draggedInstanceId, worldPos.x, worldPos.y);
+      updateElementPosition(draggedInstanceId, worldPos.x, worldPos.y);
     } else if (isLinking && linkFromInstanceId && linkLineGraphics) {
       const rect = canvasContainer.getBoundingClientRect();
       const screenX = e.clientX - rect.left;
@@ -344,6 +422,16 @@
       }
 
       autoSave();
+    } else if (isDraggingElement && draggedInstanceId) {
+      // Check if it was just a click (no significant movement) — open overlay
+      const moved = Math.abs(e.clientX - pointerDownX) + Math.abs(e.clientY - pointerDownY);
+      if (moved < 5) {
+        const el = workshopState.elements[draggedInstanceId];
+        if (el) {
+          activeOverlay = { elementId: draggedInstanceId, type: el.type };
+        }
+      }
+      autoSave();
     } else if (isLinking && linkFromInstanceId) {
       const rect = canvasContainer.getBoundingClientRect();
       const screenX = e.clientX - rect.left;
@@ -378,6 +466,7 @@
 
     isPanning = false;
     isDraggingAgent = false;
+    isDraggingElement = false;
     draggedInstanceId = null;
     isLinking = false;
     linkFromInstanceId = null;
@@ -417,6 +506,19 @@
           y: e.clientY,
         };
       }
+    } else {
+      const hitElementId = hitTestElementAtWorld(worldPos.x, worldPos.y);
+      if (hitElementId) {
+        const el = workshopState.elements[hitElementId];
+        if (el) {
+          elementContextMenu = {
+            instanceId: hitElementId,
+            label: el.label,
+            x: e.clientX,
+            y: e.clientY,
+          };
+        }
+      }
     }
   }
 
@@ -425,7 +527,10 @@
   // ---------------------------------------------------------------------------
 
   function handleDragOver(e: DragEvent) {
-    if (e.dataTransfer?.types.includes('application/workshop-agent')) {
+    if (
+      e.dataTransfer?.types.includes('application/workshop-agent') ||
+      e.dataTransfer?.types.includes('application/workshop-element')
+    ) {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'copy';
     }
@@ -434,6 +539,31 @@
   async function handleDrop(e: DragEvent) {
     if (!canvasContainer) return;
     e.preventDefault();
+
+    // Handle element drops
+    const elementRaw = e.dataTransfer?.getData('application/workshop-element');
+    if (elementRaw) {
+      let data: { type: ElementType; label: string };
+      try {
+        data = JSON.parse(elementRaw);
+      } catch { return; }
+
+      const rect = canvasContainer.getBoundingClientRect();
+      const screenX = e.clientX - rect.left;
+      const screenY = e.clientY - rect.top;
+      const worldPos = screenToWorld(screenX, screenY, workshopState.camera);
+
+      const instanceId = addElement(data.type, worldPos.x, worldPos.y, data.label);
+      physics.addElementBody(instanceId, worldPos.x, worldPos.y);
+      if (worldContainer) {
+        elementSprites.createElementSprite(
+          instanceId, data.type, data.label,
+          worldPos.x, worldPos.y, worldContainer,
+        );
+      }
+      autoSave();
+      return;
+    }
 
     const raw = e.dataTransfer?.getData('application/workshop-agent');
     if (!raw) return;
@@ -520,6 +650,29 @@
     }
 
     contextMenu = null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Element context menu action handler
+  // ---------------------------------------------------------------------------
+
+  function handleElementContextAction(action: string) {
+    if (!elementContextMenu) return;
+    const { instanceId } = elementContextMenu;
+
+    if (action === 'open') {
+      const el = workshopState.elements[instanceId];
+      if (el) {
+        activeOverlay = { elementId: instanceId, type: el.type };
+      }
+    } else if (action === 'remove') {
+      elementSprites.removeElementSprite(instanceId);
+      physics.removeElementBody(instanceId);
+      removeElement(instanceId);
+      autoSave();
+    }
+
+    elementContextMenu = null;
   }
 
   /** Start a banter conversation immediately without a dialog prompt. */
@@ -690,6 +843,7 @@
         stopSimulation();
         physics.destroyPhysics();
         agentSprites.clearAllSprites();
+        elementSprites.clearAllElementSprites();
         ropeRenderer.clearAllRopes();
 
         // Abort any active workshop conversations
@@ -833,6 +987,37 @@
       onSelectConversation={(id) => { selectedConversationId = id; }}
       onClose={() => { sidebarOpen = false; }}
     />
+  {/if}
+
+  <!-- Element Context Menu -->
+  {#if elementContextMenu}
+    <ElementContextMenu
+      label={elementContextMenu.label}
+      x={elementContextMenu.x}
+      y={elementContextMenu.y}
+      onClose={() => (elementContextMenu = null)}
+      onAction={handleElementContextAction}
+    />
+  {/if}
+
+  <!-- Element Overlays -->
+  {#if activeOverlay}
+    {#if activeOverlay.type === 'pinboard'}
+      <PinboardOverlay
+        elementId={activeOverlay.elementId}
+        onClose={() => (activeOverlay = null)}
+      />
+    {:else if activeOverlay.type === 'messageboard'}
+      <MessageBoardOverlay
+        elementId={activeOverlay.elementId}
+        onClose={() => (activeOverlay = null)}
+      />
+    {:else if activeOverlay.type === 'inbox'}
+      <InboxOverlay
+        elementId={activeOverlay.elementId}
+        onClose={() => (activeOverlay = null)}
+      />
+    {/if}
   {/if}
 
   <!-- Task Prompt Dialog -->

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { gw } from '$lib/state/gateway-data.svelte';
+  import WorkshopAgentPill from './WorkshopAgentPill.svelte';
   import * as m from '$lib/paraglide/messages';
   import {
     saveWorkspace,
@@ -17,11 +18,24 @@
     saves = await listWorkspaceSaves();
   }
 
+  import type { ElementType } from '$lib/state/workshop.svelte';
+
+  const elementTypes: Array<{ type: ElementType; icon: string; label: string }> = [
+    { type: 'pinboard', icon: '\u{1F4CC}', label: 'Pinboard' },
+    { type: 'messageboard', icon: '\u{1F4CB}', label: 'Message Board' },
+    { type: 'inbox', icon: '\u{1F4EC}', label: 'Inbox' },
+  ];
+
   function onDragStart(
     e: DragEvent,
     agent: { id: string; name?: string; emoji?: string; description?: string },
   ) {
     e.dataTransfer?.setData('application/workshop-agent', JSON.stringify(agent));
+    e.dataTransfer!.effectAllowed = 'copy';
+  }
+
+  function onElementDragStart(e: DragEvent, type: ElementType, label: string) {
+    e.dataTransfer?.setData('application/workshop-element', JSON.stringify({ type, label }));
     e.dataTransfer!.effectAllowed = 'copy';
   }
 
@@ -53,11 +67,6 @@
     if (showSaves) refreshSaves();
   }
 
-  function avatarUrl(agent: { id: string; avatarSeed?: string }): string {
-    const seed = (agent as Record<string, unknown>).avatarSeed ?? agent.id;
-    return `https://api.dicebear.com/9.x/notionists/svg?seed=${seed}&backgroundColor=transparent`;
-  }
-
   function handleSaveKeydown(e: KeyboardEvent) {
     if (e.key === 'Enter') handleSave();
   }
@@ -76,26 +85,27 @@
   <!-- Agent list (scrollable) -->
   <div class="flex-1 overflow-x-auto flex items-center gap-2 min-w-0 scrollbar-thin">
     {#each gw.agents as agent (agent.id)}
-      <button
-        type="button"
-        class="w-9 h-9 rounded-full border border-border bg-bg3 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing hover:border-accent transition-colors overflow-hidden"
-        draggable="true"
-        ondragstart={(e) => onDragStart(e, agent)}
-        title="{agent.name ?? agent.id}{agent.description ? ` — ${agent.description}` : ''}"
-      >
-        {#if agent.emoji}
-          <span class="text-lg leading-none">{agent.emoji}</span>
-        {:else}
-          <img
-            src={avatarUrl(agent)}
-            alt={agent.name ?? agent.id}
-            class="w-full h-full object-cover rounded-full"
-            draggable="false"
-          />
-        {/if}
-      </button>
+      <WorkshopAgentPill {agent} onDragStart={(e) => onDragStart(e, agent)} />
     {:else}
       <span class="text-[10px] font-mono text-muted italic">{m.workshop_noAgents()}</span>
+    {/each}
+  </div>
+
+  <div class="w-px h-6 bg-border shrink-0"></div>
+
+  <!-- Element buttons -->
+  <div class="flex items-center gap-1 shrink-0">
+    <span class="font-mono text-[9px] uppercase tracking-widest text-muted/60 mr-0.5 select-none">Elem</span>
+    {#each elementTypes as et (et.type)}
+      <button
+        type="button"
+        class="w-8 h-8 rounded border border-border bg-bg3 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing hover:border-accent transition-colors text-sm"
+        draggable="true"
+        ondragstart={(e) => onElementDragStart(e, et.type, et.label)}
+        title={et.label}
+      >
+        {et.icon}
+      </button>
     {/each}
   </div>
 

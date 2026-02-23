@@ -1,4 +1,5 @@
 import * as PIXI from 'pixi.js';
+import { diceBearAvatarUrl } from '$lib/utils/avatar';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -43,7 +44,7 @@ async function getAvatarTexture(avatarSeed: string): Promise<PIXI.Texture | null
 	if (cached) return cached;
 
 	try {
-		const url = `https://api.dicebear.com/9.x/notionists/svg?seed=${encodeURIComponent(avatarSeed)}&backgroundColor=transparent`;
+		const url = diceBearAvatarUrl(avatarSeed);
 		const res = await fetch(url);
 		if (!res.ok) throw new Error(`DiceBear fetch failed: ${res.status}`);
 
