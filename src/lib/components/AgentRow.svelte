@@ -6,6 +6,7 @@
   import { ui } from '$lib/state/ui.svelte';
   import { gw } from '$lib/state/gateway-data.svelte';
   import type { Agent } from '$lib/types/gateway';
+  import { diceBearAvatarUrl } from '$lib/utils/avatar';
   import * as m from '$lib/paraglide/messages';
 
   let { agent, selected, accentColor, onclick }: {
@@ -92,8 +93,19 @@
       <StatusDot status="idle" size="sm" />
     {/if}
 
-    <!-- Agent name -->
-    <span class="text-[13px] font-semibold text-foreground whitespace-nowrap shrink-0">{agent.emoji ?? '🤖'} {agent.name ?? agent.id}</span>
+    <!-- Agent avatar + name -->
+    <span class="text-[13px] font-semibold text-foreground whitespace-nowrap shrink-0 flex items-center gap-1.5">
+      {#if agent.emoji}
+        <span class="leading-none">{agent.emoji}</span>
+      {:else}
+        <img
+          src={diceBearAvatarUrl(agent.name ?? agent.id)}
+          alt=""
+          class="w-5 h-5 rounded-full inline-block shrink-0"
+        />
+      {/if}
+      {agent.name ?? agent.id}
+    </span>
   </div>
 
   <!-- Row 2: sparkline full width -->

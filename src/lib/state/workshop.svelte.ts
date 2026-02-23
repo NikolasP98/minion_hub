@@ -25,6 +25,38 @@ export interface WorkshopConversation {
   title?: string;
 }
 
+// --- Workshop interactive elements ---
+
+export type ElementType = 'pinboard' | 'messageboard' | 'inbox';
+
+export interface PinboardItem {
+  id: string;
+  content: string;
+  pinnedBy: string; // agentId or 'user'
+  pinnedAt: number;
+}
+
+export interface InboxItem {
+  id: string;
+  fromId: string;    // agentId or 'user'
+  toId: string;      // agentId or 'user'
+  content: string;
+  sentAt: number;
+  read: boolean;
+}
+
+export interface WorkshopElement {
+  instanceId: string;
+  type: ElementType;
+  position: { x: number; y: number };
+  label: string;
+  pinboardItems?: PinboardItem[];
+  messageBoardContent?: string;
+  inboxAgentId?: string;
+  inboxItems?: InboxItem[];
+  outboxItems?: InboxItem[];
+}
+
 export interface WorkshopSettings {
   maxConcurrentConversations: number;
   idleBanterEnabled: boolean;
@@ -51,6 +83,7 @@ export interface WorkshopState {
   agents: Record<string, AgentInstance>;
   relationships: Record<string, Relationship>;
   conversations: Record<string, WorkshopConversation>;
+  elements: Record<string, WorkshopElement>;
   settings: WorkshopSettings;
 }
 
@@ -61,6 +94,7 @@ export const workshopState: WorkshopState = $state({
   agents: {} as Record<string, AgentInstance>,
   relationships: {} as Record<string, Relationship>,
   conversations: {} as Record<string, WorkshopConversation>,
+  elements: {} as Record<string, WorkshopElement>,
   settings: {
     maxConcurrentConversations: 3,
     idleBanterEnabled: true,
@@ -101,6 +135,7 @@ export function autoLoad() {
     workshopState.agents = saved.agents ?? workshopState.agents;
     workshopState.relationships = saved.relationships ?? workshopState.relationships;
     workshopState.settings = { ...workshopState.settings, ...saved.settings };
+    workshopState.elements = saved.elements ?? {};
     // Restore conversations — mark any previously-active as completed (stale from prior session)
     // Also purge any conversations missing required fields (from pre-migration format)
     if (saved.conversations) {
@@ -238,6 +273,7 @@ export async function loadWorkspace(id: string) {
   workshopState.relationships = saved.relationships;
   workshopState.settings = { ...workshopState.settings, ...saved.settings };
   workshopState.conversations = saved.conversations ?? {};
+  workshopState.elements = saved.elements ?? {};
   autoSave();
 }
 
@@ -259,6 +295,7 @@ export function resetWorkshop() {
   workshopState.agents = {};
   workshopState.relationships = {};
   workshopState.conversations = {};
+  workshopState.elements = {};
   workshopState.settings = {
     maxConcurrentConversations: 3,
     idleBanterEnabled: true,
@@ -273,4 +310,105 @@ export function resetWorkshop() {
     taskPrompt: "Reflect on your current state and describe what you'd work on next.",
   };
   autoSave();
+}
+
+// --- Workshop elements ---
+
+let elementCounter = 0;
+
+function generateElementId(): string {
+  return `elem_${Date.now()}_${elementCounter++}`;
+}
+
+export function addElement(type: ElementType, x: number, y: number, label: string, inboxAgentId?: string): string {
+  const instanceId = generateElementId();
+  const element: WorkshopElement = {
+    instanceId,
+    type,
+    position: { x, y },
+    label,
+  };
+
+  if (type === 'pinboard') element.pinboardItems = [];
+  if (type === 'messageboard') element.messageBoardContent = '';
+  if (type === 'inbox') {
+    element.inboxAgentId = inboxAgentId;
+    element.inboxItems = [];
+    element.outboxItems = [];
+  }
+
+  workshopState.elements[instanceId] = element;
+  autoSave();
+  return instanceId;
+}
+
+export function removeElement(instanceId: string) {
+  delete workshopState.elements[instanceId];
+  autoSave();
+}
+
+export function updateElementPosition(instanceId: string, x: number, y: number) {
+  const el = workshopState.elements[instanceId];
+  if (el) {
+    el.position = { x, y };
+  }
+}
+
+export function addPinboardItem(elementId: string, content: string, pinnedBy: string) {
+  const el = workshopState.elements[elementId];
+  if (!el || el.type !== 'pinboard') return;
+  if (!el.pinboardItems) el.pinboardItems = [];
+  el.pinboardItems.push({
+    id: `pin_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    content,
+    pinnedBy,
+    pinnedAt: Date.now(),
+  });
+  autoSave();
+}
+
+export function removePinboardItem(elementId: string, itemId: string) {
+  const el = workshopState.elements[elementId];
+  if (!el || !el.pinboardItems) return;
+  el.pinboardItems = el.pinboardItems.filter((p) => p.id !== itemId);
+  autoSave();
+}
+
+export function setMessageBoardContent(elementId: string, content: string) {
+  const el = workshopState.elements[elementId];
+  if (!el || el.type !== 'messageboard') return;
+  el.messageBoardContent = content;
+  autoSave();
+}
+
+export function addInboxItem(elementId: string, item: Omit<InboxItem, 'id'>) {
+  const el = workshopState.elements[elementId];
+  if (!el || el.type !== 'inbox') return;
+  if (!el.inboxItems) el.inboxItems = [];
+  el.inboxItems.push({
+    ...item,
+    id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+  });
+  autoSave();
+}
+
+export function addOutboxItem(elementId: string, item: Omit<InboxItem, 'id'>) {
+  const el = workshopState.elements[elementId];
+  if (!el || el.type !== 'inbox') return;
+  if (!el.outboxItems) el.outboxItems = [];
+  el.outboxItems.push({
+    ...item,
+    id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+  });
+  autoSave();
+}
+
+export function markInboxItemRead(elementId: string, itemId: string) {
+  const el = workshopState.elements[elementId];
+  if (!el || !el.inboxItems) return;
+  const item = el.inboxItems.find((m) => m.id === itemId);
+  if (item) {
+    item.read = true;
+    autoSave();
+  }
 }

@@ -107,6 +107,39 @@ export function getAgentPosition(instanceId: string): { x: number; y: number } |
 }
 
 // ---------------------------------------------------------------------------
+// Element body operations
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a kinematic position-based rigid body with a cuboid collider
+ * for a workshop element (pinboard, message board, inbox).
+ */
+export function addElementBody(instanceId: string, x: number, y: number, halfW = 50, halfH = 40): void {
+	const w = ensureWorld();
+
+	if (bodies.has(instanceId)) return;
+
+	const bodyDesc = RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(x, y);
+	const body = w.createRigidBody(bodyDesc);
+
+	const colliderDesc = RAPIER.ColliderDesc.cuboid(halfW, halfH).setRestitution(0.1);
+	const collider = w.createCollider(colliderDesc, body);
+
+	bodies.set(instanceId, body);
+	colliders.set(instanceId, collider);
+}
+
+/**
+ * Remove an element body (reuses removeAgentBody — same maps).
+ */
+export const removeElementBody = removeAgentBody;
+
+/**
+ * Set position of an element body (reuses setAgentPosition — same maps).
+ */
+export const setElementPosition = setAgentPosition;
+
+// ---------------------------------------------------------------------------
 // Spring joints
 // ---------------------------------------------------------------------------
 
