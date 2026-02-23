@@ -1,3 +1,5 @@
+import { hostsState } from '$lib/state/hosts.svelte';
+
 export interface AgentInstance {
   instanceId: string;
   agentId: string;
@@ -54,7 +56,9 @@ export interface WorkshopState {
   settings: WorkshopSettings;
 }
 
-const AUTOSAVE_KEY = 'workshop:autosave';
+function autosaveKey(hostId: string): string {
+  return `workshop:autosave:${hostId}`;
+}
 
 export const workshopState: WorkshopState = $state({
   camera: { x: 0, y: 0, zoom: 1 },
@@ -80,21 +84,23 @@ export const workshopState: WorkshopState = $state({
 
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
-export function autoSave() {
+export function autoSave(hostId: string | null = hostsState.activeHostId) {
+  if (!hostId) return;
   if (autoSaveTimer) clearTimeout(autoSaveTimer);
   autoSaveTimer = setTimeout(() => {
     try {
       const snapshot = $state.snapshot(workshopState);
-      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(snapshot));
+      localStorage.setItem(autosaveKey(hostId), JSON.stringify(snapshot));
     } catch {
       // non-critical
     }
   }, 300);
 }
 
-export function autoLoad() {
+export function autoLoad(hostId: string | null = hostsState.activeHostId) {
+  if (!hostId) return;
   try {
-    const raw = localStorage.getItem(AUTOSAVE_KEY);
+    const raw = localStorage.getItem(autosaveKey(hostId));
     if (!raw) return;
     const saved = JSON.parse(raw) as Partial<WorkshopState>;
     workshopState.camera = saved.camera ?? workshopState.camera;
@@ -223,7 +229,7 @@ export async function saveWorkspace(name: string) {
   const res = await fetch('/api/workshop/saves', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, state: snapshot }),
+    body: JSON.stringify({ name, state: JSON.stringify(snapshot) }),
   });
   if (!res.ok) throw new Error('Failed to save workspace');
   return await res.json();
@@ -272,5 +278,4 @@ export function resetWorkshop() {
     banterPrompt: "Have a spontaneous, in-character conversation. Discuss what you're currently working on, share observations about the workspace, or just chat. Keep it natural and brief.",
     taskPrompt: "Reflect on your current state and describe what you'd work on next.",
   };
-  autoSave();
 }

@@ -74,7 +74,13 @@
               {/if}
             </div>
             <div class="text-[11px] text-muted-foreground font-mono mt-[2px] whitespace-nowrap overflow-hidden text-ellipsis">{host.url}</div>
-            <div class="text-[10px] text-muted-foreground mt-1">Last: {fmtTimeAgo(host.lastConnectedAt)}</div>
+            {#if host.id === hostsState.activeHostId && conn.connectError}
+              <div class="text-[11px] text-destructive mt-1 leading-snug">
+                {conn.connectError}
+              </div>
+            {:else}
+              <div class="text-[10px] text-muted-foreground mt-1">Last: {fmtTimeAgo(host.lastConnectedAt)}</div>
+            {/if}
             {#if confirmDeleteId === host.id}
               <div class="flex items-center gap-2 pt-[6px] text-xs text-warning">
                 {m.hosts_delete()} {m.hosts_title()}?

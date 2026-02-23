@@ -77,41 +77,42 @@
     id: `tip-${agent.id}`,
     openDelay: 0,
     closeDelay: 0,
-    positioning: { placement: 'right' as const },
+    positioning: { placement: 'right' as const, strategy: 'fixed' as const },
   }));
   const tip = $derived(tooltip.connect(tipService, normalizeProps));
 </script>
 
 {#if compact}
-  <!-- Compact row: emoji + status + instant tooltip -->
-  <div
-    {...tip.getTriggerProps() as Record<string, unknown>}
-    class="flex flex-col items-center justify-center py-2 px-1 border-l-3 border-b border-b-[rgba(42,53,72,0.5)] cursor-pointer transition-[background] duration-[120ms] hover:bg-white/[0.03] {selected ? 'bg-bg3' : 'border-l-transparent'}"
-    style:border-left-color={selected ? accentColor : undefined}
-    role="button"
-    tabindex="0"
-    {onclick}
-    onkeydown={(e) => e.key === 'Enter' && onclick()}
-  >
-    <span class="text-base leading-none">{agent.emoji ?? '🤖'}</span>
-    <div class="mt-1">
-      {#if hasActive}
-        <span
-          class="text-[9px] leading-none inline-block"
-          style:transform="scale({hammerScale.current}) rotate({$rot}deg)"
-          style:transform-origin="bottom right"
-        >🔨</span>
-      {:else}
-        <StatusDot status="idle" size="sm" />
-      {/if}
+  <!-- Tooltip trigger wraps the compact row -->
+  <span {...tip.getTriggerProps() as Record<string, unknown>} class="contents">
+    <div
+      class="flex flex-col items-center justify-center py-2 px-1 border-l-3 border-b border-b-[rgba(42,53,72,0.5)] cursor-pointer transition-[background] duration-[120ms] hover:bg-white/[0.03] {selected ? 'bg-bg3' : 'border-l-transparent'}"
+      style:border-left-color={selected ? accentColor : undefined}
+      role="button"
+      tabindex="0"
+      {onclick}
+      onkeydown={(e) => e.key === 'Enter' && onclick()}
+    >
+      <span class="text-base leading-none">{agent.emoji ?? '🤖'}</span>
+      <div class="mt-1">
+        {#if hasActive}
+          <span
+            class="text-[9px] leading-none inline-block"
+            style:transform="scale({hammerScale.current}) rotate({$rot}deg)"
+            style:transform-origin="bottom right"
+          >🔨</span>
+        {:else}
+          <StatusDot status="idle" size="sm" />
+        {/if}
+      </div>
     </div>
-  </div>
+  </span>
 
   {#if tip.open}
-    <div {...tip.getPositionerProps()}>
+    <div {...tip.getPositionerProps()} style="position:fixed;z-index:9999;">
       <div
         {...tip.getContentProps()}
-        class="bg-bg2 border border-border rounded px-2.5 py-1.5 shadow-lg z-50 whitespace-nowrap"
+        class="bg-bg2 border border-border rounded px-2.5 py-1.5 shadow-lg whitespace-nowrap"
       >
         <div class="text-xs font-semibold text-foreground">{agent.name ?? agent.id}</div>
         <div class="text-[10px] text-muted mt-0.5">{statusText}</div>

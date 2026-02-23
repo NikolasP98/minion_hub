@@ -43,6 +43,16 @@
       : false,
   );
 
+  // Auto-load history when a completed conversation is selected and has no messages
+  $effect(() => {
+    const conv = selectedConversation;
+    if (!conv || conv.status === 'active') return;
+    if (conversationMessages[conv.sessionKey]?.length) return;
+    if (conversationLoading[conv.sessionKey]) return;
+    if (!conn.connected) return;
+    loadConversationHistory(conv);
+  });
+
   // Auto-scroll when messages change
   $effect(() => {
     const _ = messages.length;

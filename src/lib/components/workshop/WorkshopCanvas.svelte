@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import * as PIXI from 'pixi.js';
   import * as physics from '$lib/workshop/physics';
   import * as agentSprites from '$lib/workshop/agent-sprite';
@@ -18,6 +19,7 @@
   import { findNearbyAgents } from '$lib/workshop/proximity';
   import { gw } from '$lib/state/gateway-data.svelte';
   import { conn } from '$lib/state/connection.svelte';
+  import { hostsState } from '$lib/state/hosts.svelte';
   import {
     startWorkshopConversation,
     assignTask,
@@ -100,7 +102,10 @@
       agentSprites.clearAllSprites();
       ropeRenderer.clearAllRopes();
     } else {
-      rebuildScene();
+      untrack(() => {
+        autoLoad(hostsState.activeHostId);
+        rebuildScene();
+      });
     }
   });
 
@@ -659,8 +664,6 @@
       app.stage.addChild(worldContainer);
 
       await physics.initPhysics();
-
-      autoLoad();
 
       await rebuildScene();
 

@@ -5,4 +5,5 @@ export const conn = $state({
   connectedAt: null as number | null,
   backoffMs: 800,
   particleHue: 'red' as 'blue' | 'amber' | 'red',
+  connectError: null as string | null,
 });
