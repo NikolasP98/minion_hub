@@ -8,7 +8,7 @@
   const carta = new Carta({ sanitizer: false });
 
   // ─── List state ──────────────────────────────────────────────────────────
-  let files = $state<Array<{ name: string; size: number; modified: string }>>([]);
+  let files = $state<Array<{ name: string; path: string; missing: boolean; size?: number; updatedAtMs?: number }>>([]);
   let loading = $state(false);
   let error = $state<string | null>(null);
 
@@ -33,9 +33,9 @@
     error = null;
     try {
       const res = (await sendRequest('agents.files.list', { agentId: id })) as {
-        files: Array<{ name: string; size: number; modified: string }>;
+        files: Array<{ name: string; path: string; missing: boolean; size?: number; updatedAtMs?: number }>;
       };
-      files = res.files;
+      files = res.files ?? [];
     } catch (e: unknown) {
       error = e instanceof Error ? e.message : 'Failed to load files';
     } finally {
@@ -49,9 +49,9 @@
     editing = false;
     try {
       const res = (await sendRequest('agents.files.get', { agentId, name })) as {
-        content: string;
+        file: { name: string; missing: boolean; content?: string };
       };
-      fileContent = res.content;
+      fileContent = res.file?.content ?? '';
     } catch {
       fileContent = 'Error loading file content.';
     } finally {
@@ -66,7 +66,7 @@
   }
 
   function startEdit() {
-    editContent = fileContent;
+    editContent = fileContent || '';
     editing = true;
   }
 
@@ -99,11 +99,12 @@
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
-  function formatDate(iso: string): string {
+  function formatDate(ms?: number): string {
+    if (!ms) return '';
     try {
-      return new Date(iso).toLocaleString();
+      return new Date(ms).toLocaleString();
     } catch {
-      return iso;
+      return '';
     }
   }
 </script>
@@ -159,18 +160,20 @@
         <p class="text-muted text-xs text-center mt-8">Loading...</p>
       {:else if editing}
         <div class="flex-1 min-h-0 carta-wrapper">
-          <MarkdownEditor
-            {carta}
-            bind:value={editContent}
-            mode="tabs"
-            theme="dark"
-            placeholder="Write markdown..."
-          />
+          {#key selectedFile}
+            <MarkdownEditor
+              {carta}
+              bind:value={editContent}
+              mode="tabs"
+              theme="dark"
+              placeholder="Write markdown..."
+            />
+          {/key}
         </div>
       {:else}
         <div class="flex-1 overflow-auto p-3 markdown-view">
           {#key fileContent}
-            <Markdown {carta} value={fileContent} theme="dark" />
+            <Markdown {carta} value={fileContent || ''} theme="dark" />
           {/key}
         </div>
       {/if}
@@ -187,12 +190,18 @@
       {:else}
         {#each files as file (file.name)}
           <button
-            class="w-full text-left px-3 py-2 hover:bg-bg2 cursor-pointer border-b border-border/50 flex items-center justify-between"
-            onclick={() => openFile(file.name)}
+            class="w-full text-left px-3 py-2 hover:bg-bg2 cursor-pointer border-b border-border/50 flex items-center justify-between
+              {file.missing ? 'opacity-40' : ''}"
+            onclick={() => !file.missing && openFile(file.name)}
+            disabled={file.missing}
           >
             <span class="text-xs text-foreground truncate">{file.name}</span>
             <span class="text-[11px] text-muted shrink-0 ml-2">
-              {formatSize(file.size)} &middot; {formatDate(file.modified)}
+              {#if file.missing}
+                missing
+              {:else}
+                {formatSize(file.size ?? 0)} &middot; {formatDate(file.updatedAtMs)}
+              {/if}
             </span>
           </button>
         {/each}
@@ -279,7 +288,26 @@
 
   .agent-files :global(.carta-theme__dark .carta-input) {
     caret-color: var(--color-foreground);
+    color: var(--color-foreground);
     background: var(--color-bg1);
+  }
+
+  .agent-files :global(.carta-theme__dark .carta-input textarea) {
+    color: var(--color-foreground);
+  }
+
+  /* Shiki highlight overlay — force light text for unhighlighted spans */
+  .agent-files :global(.carta-theme__dark .carta-input pre),
+  .agent-files :global(.carta-theme__dark .carta-input pre code),
+  .agent-files :global(.carta-theme__dark .carta-input pre code .line) {
+    color: var(--color-foreground) !important;
+  }
+
+  /* Let Shiki's colored tokens keep their colors, but fix the base/fallback */
+  .agent-files :global(.carta-theme__dark .shiki),
+  .agent-files :global(.carta-theme__dark .shiki code) {
+    color: var(--color-foreground) !important;
+    background: transparent !important;
   }
 
   .agent-files :global(.carta-theme__dark .carta-renderer) {
