@@ -410,6 +410,7 @@ function tick(now: number): void {
 		for (const agent of Object.values(workshopState.agents)) {
 			const fsm = getAgentFsm(agent.instanceId);
 			if (fsm ? fsm.current !== 'wandering' : agent.behavior !== 'wander') continue;
+			if (walkToReadQueue.has(agent.instanceId)) continue; // en route to element, don't override target
 
 			let target: { x: number; y: number } | null = null;
 
