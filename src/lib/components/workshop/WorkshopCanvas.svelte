@@ -9,6 +9,8 @@
   import { startSimulation, stopSimulation, setBanterCallback, removeAgentFromSimulation } from '$lib/workshop/simulation';
   import { screenToWorld, worldToScreen, applyZoom, applyPan } from '$lib/workshop/camera';
   import { createAgentFsm, destroyAgentFsm, sendFsmEvent, clearAllFsms } from '$lib/workshop/agent-fsm';
+  import { checkElementChanges, resetWatcher } from '$lib/workshop/element-watcher';
+  import { clearAllQueues } from '$lib/workshop/agent-queue';
   import {
     workshopState,
     autoLoad,
@@ -135,6 +137,13 @@
     }
   });
 
+  // Watch for element content changes and enqueue agent actions
+  $effect(() => {
+    // Reading workshopState.elements triggers re-run on any element change
+    void workshopState.elements;
+    checkElementChanges();
+  });
+
   // ---------------------------------------------------------------------------
   // Pan tracking
   // ---------------------------------------------------------------------------
@@ -233,6 +242,8 @@
     elementSprites.clearAllElementSprites();
     ropeRenderer.clearAllRopes();
     clearAllFsms();
+    resetWatcher();
+    clearAllQueues();
 
     for (const [instanceId, inst] of Object.entries(workshopState.agents)) {
       // Bail out if a newer rebuildScene started while we were awaiting
