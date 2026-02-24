@@ -4,6 +4,7 @@ import * as physics from './physics';
 import * as sprites from './agent-sprite';
 import * as ropeRenderer from './rope-renderer';
 import { workshopState, updateAgentPosition, markAllInboxItemsRead } from '$lib/state/workshop.svelte';
+import { agentMemory } from '$lib/state/workshop.svelte';
 import type { AgentInstance } from '$lib/state/workshop.svelte';
 import {
 	getAgentFsm,
@@ -14,6 +15,14 @@ import {
 } from './agent-fsm';
 import { findNearbyAgents, findNearbyElements } from './proximity';
 import { showReactionEmoji } from './agent-sprite';
+import { peek, dequeue, enqueue, clearAllQueues } from './agent-queue';
+import {
+	getSessionTurnCount,
+	resetSessionTurnCount,
+	compactAgentContext,
+	readElementForAgent,
+	buildWorkshopSessionKey_public,
+} from './gateway-bridge';
 
 // ---------------------------------------------------------------------------
 // Module state
@@ -37,6 +46,16 @@ const heartbeatTimers = new Map<string, number>();
 
 // Element reaction cooldowns: `${agentId}:${elementId}` → ms remaining
 const elementReactionCooldowns = new Map<string, number>();
+
+// Seek-info timers: ms until next periodic element re-read per agent
+const seekInfoTimers = new Map<string, number>();
+const SEEK_INFO_INTERVAL = 90_000; // ms
+const SEEK_INFO_RADIUS  = 400;     // px
+const ELEMENT_STALE_MS  = 5 * 60_000; // 5 min
+
+// Compaction thresholds
+const COMPACT_TURN_THRESHOLD  = 8;
+const COMPACT_TOKEN_THRESHOLD = 6000;
 
 const WANDER_INTERVAL = 3000; // ms between picking a new wander target
 const WANDER_RADIUS = 120; // px from homePosition
@@ -229,6 +248,106 @@ function tick(now: number): void {
 		}
 	}
 
+	// --- Seek-info timers ---
+	for (const agent of Object.values(workshopState.agents)) {
+		const id = agent.instanceId;
+		const state = getAgentState(id);
+		if (state === 'dragged' || state === 'conversing' || state === 'reading') continue;
+
+		if (!seekInfoTimers.has(id)) {
+			seekInfoTimers.set(id, SEEK_INFO_INTERVAL);
+			continue;
+		}
+
+		const remaining = seekInfoTimers.get(id)! - dt;
+		if (remaining <= 0) {
+			seekInfoTimers.set(id, SEEK_INFO_INTERVAL);
+			// Enqueue seekInfo for nearest stale element
+			const nearbyEls = findNearbyElements(agent.position, SEEK_INFO_RADIUS);
+			for (const { elementId } of nearbyEls) {
+				const mem = agentMemory[id];
+				const lastRead = mem?.environmentState[elementId]?.lastReadAt ?? 0;
+				if (Date.now() - lastRead > ELEMENT_STALE_MS) {
+					enqueue(id, { type: 'seekInfo', elementId });
+					break;
+				}
+			}
+		} else {
+			seekInfoTimers.set(id, remaining);
+		}
+	}
+
+	// --- Compaction check ---
+	for (const agent of Object.values(workshopState.agents)) {
+		const id = agent.instanceId;
+		const state = getAgentState(id);
+		if (state === 'dragged' || state === 'conversing' || state === 'reading') continue;
+
+		// Find the most recent conversation session key for this agent
+		const agentConvs = Object.values(workshopState.conversations)
+			.filter((c) => c.participantInstanceIds.includes(id) && c.sessionKey);
+		if (agentConvs.length === 0) continue;
+
+		const latestConv = agentConvs.sort((a, b) => b.startedAt - a.startedAt)[0];
+		const sessionKey = latestConv.sessionKey;
+
+		const turns = getSessionTurnCount(buildWorkshopSessionKey_public(agent.agentId, sessionKey));
+		if (turns >= COMPACT_TURN_THRESHOLD) {
+			enqueue(id, { type: 'compactContext' });
+		}
+	}
+
+	// --- Drain action queue for idle agents ---
+	for (const agent of Object.values(workshopState.agents)) {
+		const id = agent.instanceId;
+		const state = getAgentState(id);
+
+		// Only drain when agent is idle
+		if (state !== 'idle') continue;
+
+		const action = peek(id);
+		if (!action) continue;
+
+		const agentConvs = Object.values(workshopState.conversations)
+			.filter((c) => c.participantInstanceIds.includes(id));
+		const sessionKey = agentConvs.length > 0
+			? agentConvs.sort((a, b) => b.startedAt - a.startedAt)[0].sessionKey
+			: `solo:${agent.agentId}`;
+
+		if (action.type === 'readElement' || action.type === 'seekInfo') {
+			const elementId = action.elementId;
+			dequeue(id);
+			sendFsmEvent(id, 'startReading');
+			// Run async, then stop reading when done
+			readElementForAgent(id, elementId, sessionKey).then(() => {
+				sendFsmEvent(id, 'stopReading');
+			}).catch(() => {
+				sendFsmEvent(id, 'stopReading');
+			});
+		} else if (action.type === 'compactContext') {
+			dequeue(id);
+			sendFsmEvent(id, 'startReading');
+			const fullSessionKey = buildWorkshopSessionKey_public(agent.agentId, sessionKey);
+			compactAgentContext(id, sessionKey).then(() => {
+				resetSessionTurnCount(fullSessionKey);
+				sendFsmEvent(id, 'stopReading');
+			}).catch(() => {
+				sendFsmEvent(id, 'stopReading');
+			});
+		} else if (action.type === 'approachAgent') {
+			dequeue(id);
+			// Set wander target toward the target agent
+			const targetInst = workshopState.agents[action.targetInstanceId];
+			if (targetInst) {
+				wanderTargets.set(id, {
+					x: targetInst.position.x + (Math.random() - 0.5) * 40,
+					y: targetInst.position.y + (Math.random() - 0.5) * 40,
+				});
+				sendFsmEvent(id, 'wander');
+			}
+		}
+	}
+
 	// --- Pick new wander targets every WANDER_INTERVAL (biased 60/40) ---
 	if (wanderTimer >= WANDER_INTERVAL) {
 		wanderTimer -= WANDER_INTERVAL;
@@ -380,6 +499,17 @@ function tick(now: number): void {
 	}
 
 	animFrameId = requestAnimationFrame(tick);
+}
+
+/**
+ * Compute the spawn Y for a new agent so it appears above existing elements.
+ * @param dropY — The Y from the drop event (world coordinates)
+ */
+export function computeSpawnY(dropY: number): number {
+	const elementYs = Object.values(workshopState.elements).map((e) => e.position.y);
+	if (elementYs.length === 0) return dropY;
+	const minY = Math.min(...elementYs);
+	return Math.min(dropY, minY - 120);
 }
 
 function tryIdleBanter(activeParticipants: Set<string>): void {
