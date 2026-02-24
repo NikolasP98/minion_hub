@@ -32,6 +32,7 @@
     startWorkshopConversation,
     assignTask,
     onWorkshopMessage,
+    resumeInterruptedConversations,
     type WorkshopMessage,
   } from '$lib/workshop/gateway-bridge';
   import SpeechBubble from './SpeechBubble.svelte';
@@ -842,6 +843,16 @@
       await physics.initPhysics();
 
       await rebuildScene();
+
+      // Resume any conversations that were active before the last page close
+      const resumedHandles = await resumeInterruptedConversations();
+      for (const handle of resumedHandles) {
+        activeHandles.set(handle.conversationId, handle);
+      }
+      if (resumedHandles.length > 0) {
+        sidebarOpen = true;
+        selectedConversationId = resumedHandles[0].conversationId;
+      }
 
       // Wire idle-banter: simulation fires this when nearby agents are idle
       setBanterCallback((a, b) => launchQuickBanter(a, b));
