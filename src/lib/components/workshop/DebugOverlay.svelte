@@ -34,9 +34,105 @@
     if (a.type === 'approachAgent') return `→agent:${a.targetInstanceId.slice(-4)}`;
     return a.type;
   }
+
+  // ---------------------------------------------------------------------------
+  // Performance metrics
+  // ---------------------------------------------------------------------------
+
+  let fps = $state(0);
+  let frameMs = $state(0);
+  let heapMB = $state<number | null>(null);
+
+  $effect(() => {
+    let rafId: number;
+    let frameCount = 0;
+    let lastSecond = performance.now();
+    let lastFrame = performance.now();
+
+    function tick() {
+      const now = performance.now();
+      frameMs = Math.round(now - lastFrame);
+      lastFrame = now;
+      frameCount++;
+
+      if (now - lastSecond >= 1000) {
+        fps = Math.round((frameCount * 1000) / (now - lastSecond));
+        frameCount = 0;
+        lastSecond = now;
+
+        // JS heap (Chrome only)
+        const perf = performance as Performance & { memory?: { usedJSHeapSize: number } };
+        if (perf.memory) {
+          heapMB = Math.round(perf.memory.usedJSHeapSize / 1_048_576);
+        }
+      }
+
+      rafId = requestAnimationFrame(tick);
+    }
+
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  });
+
+  function fpsColor(f: number): string {
+    if (f >= 50) return 'text-green-400';
+    if (f >= 30) return 'text-yellow-400';
+    return 'text-red-400';
+  }
+
+  let agentCount = $derived(Object.keys(workshopState.agents).length);
+  let elementCount = $derived(Object.keys(workshopState.elements).length);
+  let activeConvCount = $derived(
+    Object.values(workshopState.conversations).filter((c) => c.status === 'active').length
+  );
+  let totalConvCount = $derived(Object.keys(workshopState.conversations).length);
 </script>
 
 <div class="absolute inset-0 pointer-events-none overflow-hidden z-[45]">
+
+  <!-- Performance stats panel (top-right) -->
+  <div class="absolute top-10 right-3 pointer-events-none">
+    <div class="bg-bg2/90 border border-border/60 rounded text-[8px] font-mono p-1.5 space-y-0.5 backdrop-blur min-w-[110px]">
+      <div class="text-[7px] text-muted/60 uppercase tracking-wider mb-1">perf</div>
+
+      <div class="flex justify-between gap-3">
+        <span class="text-muted/70">fps</span>
+        <span class="{fpsColor(fps)} font-semibold tabular-nums">{fps}</span>
+      </div>
+
+      <div class="flex justify-between gap-3">
+        <span class="text-muted/70">frame</span>
+        <span class="text-foreground/80 tabular-nums">{frameMs}ms</span>
+      </div>
+
+      {#if heapMB !== null}
+        <div class="flex justify-between gap-3">
+          <span class="text-muted/70">heap</span>
+          <span class="text-foreground/80 tabular-nums">{heapMB} MB</span>
+        </div>
+      {/if}
+
+      <div class="border-t border-border/30 mt-1 pt-1 space-y-0.5">
+        <div class="text-[7px] text-muted/60 uppercase tracking-wider mb-0.5">scene</div>
+        <div class="flex justify-between gap-3">
+          <span class="text-muted/70">agents</span>
+          <span class="text-foreground/80 tabular-nums">{agentCount}</span>
+        </div>
+        <div class="flex justify-between gap-3">
+          <span class="text-muted/70">elements</span>
+          <span class="text-foreground/80 tabular-nums">{elementCount}</span>
+        </div>
+        <div class="flex justify-between gap-3">
+          <span class="text-muted/70">convs</span>
+          <span class="text-foreground/80 tabular-nums">
+            <span class="text-green-400">{activeConvCount}</span>/{totalConvCount}
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Per-agent debug tags -->
   {#each Object.values(workshopState.agents) as agent (agent.instanceId)}
     {@const pos = worldToScreen(agent.position.x, agent.position.y, workshopState.camera)}
     {@const state = getAgentState(agent.instanceId) ?? 'idle'}
