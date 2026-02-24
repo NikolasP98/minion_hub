@@ -23,13 +23,21 @@
 
 import { sendRequest } from '$lib/services/gateway.svelte';
 import { conn } from '$lib/state/connection.svelte';
-import { workshopState } from '$lib/state/workshop.svelte';
+import {
+	workshopState,
+	agentMemory,
+	addWorkspaceNote,
+	updateContextSummary,
+	recordElementRead,
+} from '$lib/state/workshop.svelte';
 import { gw } from '$lib/state/gateway-data.svelte';
 import { startConversation, endConversation } from './conversation-manager';
 import { appendMessage, setAgentThinking } from '$lib/state/workshop-conversations.svelte';
 import { configState } from '$lib/state/config.svelte';
 import { uuid } from '$lib/utils/uuid';
 import { extractText } from '$lib/utils/text';
+import { sendFsmEvent } from '$lib/workshop/agent-fsm';
+import { showReactionEmoji } from '$lib/workshop/agent-sprite';
 
 // ---------------------------------------------------------------------------
 // Deterministic session key builders
@@ -82,6 +90,9 @@ const activeLoops = new Map<
 	string,
 	{ aborted: boolean; turnCount: number; maxTurns: number }
 >();
+
+/** Track gateway turn counts per session key for compaction trigger */
+const sessionTurnCounts = new Map<string, number>();
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -289,6 +300,120 @@ export function isConversationActive(conversationId: string): boolean {
 	return activeLoops.has(conversationId);
 }
 
+export function getSessionTurnCount(sessionKey: string): number {
+	return sessionTurnCounts.get(sessionKey) ?? 0;
+}
+
+export function resetSessionTurnCount(sessionKey: string): void {
+	sessionTurnCounts.set(sessionKey, 0);
+}
+
+/**
+ * Ask an agent to summarise its recent context and save the result
+ * to its memory. Prunes the in-memory message cache to the last 2 messages.
+ * Called by simulation.ts when draining a compactContext queue action.
+ */
+export async function compactAgentContext(
+	instanceId: string,
+	sessionKey: string,
+): Promise<void> {
+	const inst = workshopState.agents[instanceId];
+	if (!inst) return;
+
+	const agentId = inst.agentId;
+	const gateSessionKey = buildWorkshopSessionKey(agentId, sessionKey);
+
+	const prompt = [
+		'Summarise your recent activity and key learnings in ≤400 tokens.',
+		'Retain: workspace rules, unresolved tasks, agent relationships, important decisions.',
+		'Discard: pleasantries, resolved topics, repeated information.',
+		'Respond with ONLY the summary — no commentary.',
+	].join('\n');
+
+	try {
+		setAgentThinking(instanceId, true);
+		const summary = await sendAndWaitForResponse(agentId, gateSessionKey, prompt, 45_000);
+		if (summary) {
+			updateContextSummary(instanceId, summary);
+			// Prune local cache to last 2 messages
+			const { conversationMessages } = await import('$lib/state/workshop-conversations.svelte');
+			const msgs = conversationMessages[sessionKey];
+			if (msgs && msgs.length > 2) {
+				const { setMessages } = await import('$lib/state/workshop-conversations.svelte');
+				setMessages(sessionKey, msgs.slice(-2));
+			}
+		}
+	} finally {
+		setAgentThinking(instanceId, false);
+	}
+}
+
+/**
+ * Ask an agent to process the content of a workshop element.
+ * Shows a reaction emoji on the sprite, records the read in memory.
+ * Called by simulation.ts when draining readElement / seekInfo actions.
+ */
+export async function readElementForAgent(
+	instanceId: string,
+	elementId: string,
+	sessionKey: string,
+): Promise<void> {
+	const inst = workshopState.agents[instanceId];
+	const el = workshopState.elements[elementId];
+	if (!inst || !el) return;
+
+	const agentId = inst.agentId;
+	const gateSessionKey = buildWorkshopSessionKey(agentId, sessionKey);
+
+	// Build element content summary
+	let contentDesc = '';
+	if (el.type === 'rulebook') contentDesc = el.rulebookContent?.trim() ?? '';
+	else if (el.type === 'messageboard') contentDesc = el.messageBoardContent?.trim() ?? '';
+	else if (el.type === 'pinboard') {
+		contentDesc = (el.pinboardItems ?? []).map((p) => `- ${p.content}`).join('\n');
+	} else if (el.type === 'inbox') {
+		const unread = (el.inboxItems ?? []).filter((m) => !m.read);
+		contentDesc = unread.map((m) => `From ${m.fromId}: ${m.content}`).join('\n');
+	}
+
+	if (!contentDesc) {
+		// Nothing to read — just show emoji and mark as read
+		showReactionEmoji(instanceId, '👀');
+		recordElementRead(instanceId, elementId, '(empty)');
+		return;
+	}
+
+	const prompt = [
+		`New content on ${el.type} "${el.label}":`,
+		'',
+		contentDesc,
+		'',
+		'Process this information and update your understanding.',
+		'Use [REMEMBER: your note] to record anything important for later.',
+		'Respond briefly — one or two sentences is fine.',
+	].join('\n');
+
+	// Show reading indicator emoji while processing
+	showReactionEmoji(instanceId, '🔍');
+
+	try {
+		setAgentThinking(instanceId, true);
+		const response = await sendAndWaitForResponse(agentId, gateSessionKey, prompt, 45_000);
+		if (response) {
+			extractAndApplyRemembers(response, instanceId);
+			recordElementRead(instanceId, elementId, contentDesc.slice(0, 200));
+			// Show a confirmation emoji
+			const emoji = el.type === 'rulebook' ? '📖'
+				: el.type === 'messageboard' ? '📋'
+				: el.type === 'pinboard' ? '📌'
+				: '📬';
+			showReactionEmoji(instanceId, emoji);
+		}
+	} finally {
+		setAgentThinking(instanceId, false);
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Orchestration loop
 // ---------------------------------------------------------------------------
@@ -319,7 +444,7 @@ async function runOrchestrationLoop(
 		.map((p) => nameOf(p.agentId))
 		.join(', ');
 
-	const initialPrompt = formatInitialPrompt(taskPrompt, otherNames, participants.length, firstParticipant.agentId);
+	const initialPrompt = formatInitialPrompt(taskPrompt, otherNames, participants.length, firstParticipant.agentId, firstParticipant.instanceId);
 
 	try {
 		const sessionKey = buildWorkshopSessionKey(firstParticipant.agentId, convSessionKey);
@@ -360,6 +485,7 @@ async function runOrchestrationLoop(
 				loopState.maxTurns,
 				collectedMessages,
 				participant.agentId,
+				participant.instanceId,
 			);
 
 			setAgentThinking(participant.instanceId, true);
@@ -411,6 +537,11 @@ async function runOrchestrationLoop(
  * main chat session for the same agent.
  */
 function buildWorkshopSessionKey(agentId: string, conversationId: string): string {
+	return `agent:${agentId}:workshop:${conversationId}`;
+}
+
+/** Public wrapper for the workshop session key builder. Used by simulation.ts. */
+export function buildWorkshopSessionKey_public(agentId: string, conversationId: string): string {
 	return `agent:${agentId}:workshop:${conversationId}`;
 }
 
@@ -517,6 +648,7 @@ async function sendAndWaitForResponse(
 					lastAssistantText !== baselineLastContent
 				) {
 					resolved = true;
+					sessionTurnCounts.set(sessionKey, (sessionTurnCounts.get(sessionKey) ?? 0) + 1);
 					resolve(lastAssistantText);
 					return;
 				}
@@ -541,35 +673,62 @@ async function sendAndWaitForResponse(
 
 /**
  * Collect contextual information from workshop elements (pinboards, message
- * boards, inboxes) to inject into agent prompts.
+ * boards, inboxes) to inject into agent prompts. Also injects rulebook
+ * standing instructions and per-agent memory context.
  */
-export function getWorkshopContext(agentId?: string): string {
-	const lines: string[] = [];
+export function getWorkshopContext(agentId?: string, instanceId?: string): string {
+	const parts: string[] = [];
 
-	for (const el of Object.values(workshopState.elements)) {
-		if (el.type === 'messageboard' && el.messageBoardContent?.trim()) {
-			lines.push(`[Message Board "${el.label}"]: ${el.messageBoardContent.trim()}`);
+	// 1. Rulebook (always first — standing instructions)
+	const rulebooks = Object.values(workshopState.elements).filter(
+		(el) => el.type === 'rulebook' && el.rulebookContent?.trim(),
+	);
+	for (const rb of rulebooks) {
+		parts.push(`=== Standing Instructions ===\n${rb.rulebookContent!.trim()}\n=== End Standing Instructions ===`);
+	}
+
+	// 2. Agent memory context summary
+	if (instanceId) {
+		const mem = agentMemory[instanceId];
+		if (mem?.contextSummary) {
+			parts.push(`--- Your Memory Summary ---\n${mem.contextSummary}`);
 		}
+		if (mem?.workspaceNotes?.length) {
+			parts.push(`--- Your Notes ---\n${mem.workspaceNotes.map((n) => `- ${n}`).join('\n')}`);
+		}
+		if (mem?.recentInteractions?.length) {
+			parts.push(`--- Recent Interactions ---\n${mem.recentInteractions.map((i) => `- ${i}`).join('\n')}`);
+		}
+	}
 
-		if (el.type === 'pinboard' && el.pinboardItems && el.pinboardItems.length > 0) {
-			lines.push(`[Pinboard "${el.label}"]:`);
-			for (const pin of el.pinboardItems) {
-				lines.push(`  - ${pin.content} (by ${pin.pinnedBy})`);
+	// 3. Per-agent config flags
+	const gwAgent = agentId
+		? (gw.agents.find((a: { id: string }) => a.id === agentId) as { id: string; shareWorkspaceInfo?: boolean; shareUserInfo?: boolean } | undefined)
+		: undefined;
+	const shareWorkspace = gwAgent?.shareWorkspaceInfo !== false; // default true
+
+	if (shareWorkspace) {
+		for (const el of Object.values(workshopState.elements)) {
+			if (el.type === 'messageboard' && el.messageBoardContent?.trim()) {
+				parts.push(`[Message Board "${el.label}"]: ${el.messageBoardContent.trim()}`);
 			}
-		}
-
-		if (el.type === 'inbox' && agentId && el.inboxAgentId === agentId) {
-			const unread = (el.inboxItems ?? []).filter((m) => !m.read);
-			if (unread.length > 0) {
-				lines.push(`[Your Inbox]:`);
-				for (const msg of unread) {
-					lines.push(`  - From ${msg.fromId}: ${msg.content}`);
+			if (el.type === 'pinboard' && el.pinboardItems?.length) {
+				const lines = [`[Pinboard "${el.label}"]:`];
+				for (const pin of el.pinboardItems) lines.push(`  - ${pin.content} (by ${pin.pinnedBy})`);
+				parts.push(lines.join('\n'));
+			}
+			if (el.type === 'inbox' && agentId && el.inboxAgentId === agentId) {
+				const unread = (el.inboxItems ?? []).filter((m) => !m.read);
+				if (unread.length > 0) {
+					const lines = [`[Your Inbox]:`];
+					for (const msg of unread) lines.push(`  - From ${msg.fromId}: ${msg.content}`);
+					parts.push(lines.join('\n'));
 				}
 			}
 		}
 	}
 
-	return lines.join('\n');
+	return parts.join('\n\n');
 }
 
 /**
@@ -640,6 +799,14 @@ function extractAndRouteSends(responseText: string, fromAgentId: string): void {
 	}
 }
 
+function extractAndApplyRemembers(responseText: string, instanceId: string): void {
+	const rememberRegex = /\[REMEMBER:\s*(.+?)\]/gi;
+	let match: RegExpExecArray | null;
+	while ((match = rememberRegex.exec(responseText)) !== null) {
+		addWorkspaceNote(instanceId, match[1].trim());
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Prompt formatting
 // ---------------------------------------------------------------------------
@@ -649,8 +816,9 @@ function formatInitialPrompt(
 	otherAgentNames: string,
 	totalParticipants: number,
 	agentId?: string,
+	instanceId?: string,
 ): string {
-	const workshopCtx = getWorkshopContext(agentId);
+	const workshopCtx = getWorkshopContext(agentId, instanceId);
 
 	if (totalParticipants <= 1) {
 		const lines = [taskPrompt];
@@ -687,10 +855,11 @@ function formatTurnPrompt(
 	maxTurns: number,
 	conversationHistory: string[] = [],
 	agentId?: string,
+	instanceId?: string,
 ): string {
 	const remaining = maxTurns - turnNumber;
 	const isLastTurn = remaining <= 1;
-	const workshopCtx = getWorkshopContext(agentId);
+	const workshopCtx = getWorkshopContext(agentId, instanceId);
 
 	const lines = [
 		`You are in a workshop conversation.`,
@@ -754,10 +923,13 @@ function emitMessage(msg: WorkshopMessage): void {
 		});
 	}
 
-	// Extract [PIN: ...] and [SEND to ...: ...] markers from agent responses
+	// Extract [PIN: ...], [SEND to ...: ...], and [REMEMBER: ...] markers from agent responses
 	try {
 		extractAndApplyPins(msg.message, msg.agentId);
 		extractAndRouteSends(msg.message, msg.agentId);
+		if (msg.instanceId) {
+			extractAndApplyRemembers(msg.message, msg.instanceId);
+		}
 	} catch {
 		// non-critical
 	}
