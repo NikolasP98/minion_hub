@@ -6,7 +6,7 @@
   import * as elementSprites from '$lib/workshop/element-sprite';
   import { ELEMENT_WIDTH, ELEMENT_HEIGHT } from '$lib/workshop/element-sprite';
   import * as ropeRenderer from '$lib/workshop/rope-renderer';
-  import { startSimulation, stopSimulation, setBanterCallback, removeAgentFromSimulation, computeSpawnY } from '$lib/workshop/simulation';
+  import { startSimulation, stopSimulation, setBanterCallback, removeAgentFromSimulation, computeSpawnY, setRopeContainer, clearConversationRopes } from '$lib/workshop/simulation';
   import { screenToWorld, worldToScreen, applyZoom, applyPan } from '$lib/workshop/camera';
   import { createAgentFsm, destroyAgentFsm, sendFsmEvent, clearAllFsms } from '$lib/workshop/agent-fsm';
   import { checkElementChanges, resetWatcher } from '$lib/workshop/element-watcher';
@@ -286,6 +286,7 @@
     agentSprites.clearAllSprites();
     elementSprites.clearAllElementSprites();
     ropeRenderer.clearAllRopes();
+    clearConversationRopes();
     clearAllFsms();
     resetWatcher();
     clearAllQueues();
@@ -876,6 +877,7 @@
 
       worldContainer = new PIXI.Container();
       app.stage.addChild(worldContainer);
+      setRopeContainer(worldContainer);
 
       await physics.initPhysics();
 
@@ -910,8 +912,10 @@
         destroyed = true;
         unsubWorkshop();
         setBanterCallback(null);
+        setRopeContainer(null);
         window.removeEventListener('workshop:reload', handleReload);
         stopSimulation();
+        clearConversationRopes();
         physics.destroyPhysics();
         agentSprites.clearAllSprites();
         elementSprites.clearAllElementSprites();

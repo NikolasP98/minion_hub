@@ -23,6 +23,8 @@ import {
 	readElementForAgent,
 	buildWorkshopSessionKey_public,
 } from './gateway-bridge';
+import { thinkingAgents } from '$lib/state/workshop-conversations.svelte';
+import type { Container } from 'pixi.js';
 
 // ---------------------------------------------------------------------------
 // Module state
@@ -34,6 +36,13 @@ let lastTime = 0;
 let elapsed = 0;
 let wanderTimer = 0;
 let banterTimer = 0;
+
+// Conversation rope lifecycle
+let ropeContainerRef: Container | null = null;
+/** IDs of conversation ropes currently in the renderer (keyed as `conv:{convoId}`) */
+const activeConvRopeIds = new Set<string>();
+/** Last known flow direction per conversation (1 = from[0]→[1], -1 = from[1]→[0]) */
+const convFlowDirs = new Map<string, 1 | -1>();
 
 // Patrol: per-agent orbital angle (radians)
 const patrolAngles = new Map<string, number>();
@@ -195,6 +204,26 @@ export function stopSimulation(): void {
 
 export function isRunning(): boolean {
 	return running;
+}
+
+/**
+ * Register the PixiJS container that conversation ropes will be added to.
+ * Must be called after worldContainer is created in WorkshopCanvas.
+ */
+export function setRopeContainer(container: Container | null): void {
+	ropeContainerRef = container;
+}
+
+/**
+ * Remove all dynamically created conversation ropes from the renderer
+ * and reset tracking state. Called at the start of rebuildScene.
+ */
+export function clearConversationRopes(): void {
+	for (const ropeId of activeConvRopeIds) {
+		ropeRenderer.removeRope(ropeId);
+	}
+	activeConvRopeIds.clear();
+	convFlowDirs.clear();
 }
 
 export function setBanterCallback(fn: ((a: string, b: string) => void) | null): void {
@@ -506,6 +535,8 @@ function tick(now: number): void {
 	}
 
 	// --- Update rope visuals ---
+
+	// Build set of active conversation participants
 	const activeParticipants = new Set<string>();
 	for (const convo of Object.values(workshopState.conversations)) {
 		if (convo.status === 'active') {
@@ -515,6 +546,7 @@ function tick(now: number): void {
 		}
 	}
 
+	// Relationship ropes (user-created persistent connections)
 	for (const [relId, rel] of Object.entries(workshopState.relationships)) {
 		const fromPos = positions.get(rel.fromInstanceId);
 		const toPos = positions.get(rel.toInstanceId);
@@ -524,7 +556,54 @@ function tick(now: number): void {
 			activeParticipants.has(rel.fromInstanceId) &&
 			activeParticipants.has(rel.toInstanceId);
 
-		ropeRenderer.updateRope(relId, fromPos.x, fromPos.y, toPos.x, toPos.y, rel.label, isActive);
+		// Derive direction from who is currently generating
+		let flowDir: 1 | -1 = 1;
+		if (thinkingAgents[rel.toInstanceId]) flowDir = -1;
+		if (thinkingAgents[rel.fromInstanceId]) flowDir = 1;
+
+		ropeRenderer.updateRope(relId, fromPos.x, fromPos.y, toPos.x, toPos.y, rel.label, isActive, dt, flowDir);
+	}
+
+	// Conversation ropes (dynamic — one per active conversation pair)
+	if (ropeContainerRef) {
+		const currentConvoIds = new Set<string>();
+
+		for (const [convoId, convo] of Object.entries(workshopState.conversations)) {
+			if (convo.status !== 'active') continue;
+			if (convo.participantInstanceIds.length < 2) continue;
+
+			currentConvoIds.add(convoId);
+			const ropeId = `conv:${convoId}`;
+
+			// Create rope if it doesn't exist yet
+			if (!activeConvRopeIds.has(convoId)) {
+				ropeRenderer.createRope(ropeId, '', ropeContainerRef);
+				activeConvRopeIds.add(convoId);
+			}
+
+			const [aId, bId] = convo.participantInstanceIds;
+			const fromPos = positions.get(aId);
+			const toPos = positions.get(bId);
+			if (!fromPos || !toPos) continue;
+
+			// Update flow direction when we know who is thinking
+			if (thinkingAgents[aId]) convFlowDirs.set(convoId, 1);
+			else if (thinkingAgents[bId]) convFlowDirs.set(convoId, -1);
+
+			const flowDir = convFlowDirs.get(convoId) ?? 1;
+			// Use conversation type as color key for distinct visuals
+			const colorKey = `conv:${convo.type}`;
+			ropeRenderer.updateRope(ropeId, fromPos.x, fromPos.y, toPos.x, toPos.y, colorKey, true, dt, flowDir);
+		}
+
+		// Remove ropes for conversations that are no longer active
+		for (const convoId of activeConvRopeIds) {
+			if (!currentConvoIds.has(convoId)) {
+				ropeRenderer.removeRope(`conv:${convoId}`);
+				activeConvRopeIds.delete(convoId);
+				convFlowDirs.delete(convoId);
+			}
+		}
 	}
 
 	// --- Bobbing animation ---
