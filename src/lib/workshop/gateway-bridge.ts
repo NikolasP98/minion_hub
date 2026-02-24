@@ -26,7 +26,9 @@ import { conn } from '$lib/state/connection.svelte';
 import {
 	workshopState,
 	agentMemory,
+	getOrCreateMemory,
 	addWorkspaceNote,
+	addRecentInteraction,
 	updateContextSummary,
 	recordElementRead,
 } from '$lib/state/workshop.svelte';
