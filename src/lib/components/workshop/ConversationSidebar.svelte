@@ -8,7 +8,7 @@
   import { Carta, Markdown } from 'carta-md';
   import 'carta-md/default.css';
 
-  const carta = new Carta({ sanitizer: false });
+  const carta = new Carta({ sanitizer: (html) => html });
 
   let {
     selectedConversationId = null,
