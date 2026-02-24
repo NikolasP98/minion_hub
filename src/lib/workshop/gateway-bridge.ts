@@ -166,6 +166,12 @@ export function startWorkshopConversation(
 		return null;
 	}
 
+	// Persist taskPrompt and maxTurns so this conversation can be resumed after refresh
+	const convRecord = workshopState.conversations[conversationId];
+	if (convRecord) {
+		convRecord.taskPrompt = taskPrompt;
+		convRecord.maxTurns = effectiveMaxTurns;
+	}
 	// Guard: if an orchestration loop is already running for this conversation,
 	// don't start a second one (prevents duplicate messages from parallel loops)
 	if (activeLoops.has(conversationId)) {
@@ -251,6 +257,13 @@ export function assignTask(
 	const convSessionKey = `task:${inst.agentId}`;
 	const conversationId = startConversation('task', [instanceId], [inst.agentId], convSessionKey);
 	if (!conversationId) return null;
+
+	// Persist taskPrompt and maxTurns for resume support
+	const assignConvRecord = workshopState.conversations[conversationId];
+	if (assignConvRecord) {
+		assignConvRecord.taskPrompt = taskPrompt;
+		assignConvRecord.maxTurns = 1;
+	}
 
 	const loopState = { aborted: false, turnCount: 0, maxTurns: 1 };
 	activeLoops.set(conversationId, loopState);
