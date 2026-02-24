@@ -260,6 +260,76 @@ export function setSpriteGlowColor(instanceId: string, color: number): void {
 }
 
 /**
+ * Animate a brief scale + glow pulse on the agent sprite (used for heartbeat).
+ * Scale: 1.0 → 1.25 → 1.0 over 600 ms. Glow alpha: 0.5 → 1.0 → 0.5.
+ */
+export function triggerHeartbeatPulse(instanceId: string): void {
+	const container = sprites.get(instanceId);
+	if (!container) return;
+
+	const glow = container.getChildByLabel('glow') as PIXI.Graphics | null;
+	const DURATION = 600;
+	let elapsed = 0;
+
+	const onTick = (ticker: PIXI.Ticker) => {
+		if (container.destroyed) {
+			PIXI.Ticker.shared.remove(onTick);
+			return;
+		}
+		elapsed += ticker.deltaMS;
+		const t = Math.min(elapsed / DURATION, 1);
+		const scale = 1 + 0.25 * Math.sin(t * Math.PI);
+		container.scale.set(scale);
+		if (glow) glow.alpha = 0.5 + 0.5 * Math.sin(t * Math.PI);
+		if (t >= 1) {
+			container.scale.set(1);
+			if (glow) glow.alpha = 0.5;
+			PIXI.Ticker.shared.remove(onTick);
+		}
+	};
+	PIXI.Ticker.shared.add(onTick);
+}
+
+/**
+ * Show a floating emoji reaction above an agent sprite that fades out upward over 1.2 s.
+ */
+export function showReactionEmoji(instanceId: string, emoji: string): void {
+	const container = sprites.get(instanceId);
+	if (!container) return;
+
+	const text = new PIXI.Text({
+		text: emoji,
+		style: {
+			fontSize: 20,
+			align: 'center',
+		},
+	});
+	text.anchor.set(0.5, 1);
+	text.x = 0;
+	text.y = -SPRITE_SIZE / 2;
+	container.addChild(text);
+
+	const DURATION = 1200;
+	let elapsed = 0;
+
+	const onTick = (ticker: PIXI.Ticker) => {
+		if (container.destroyed || text.destroyed) {
+			PIXI.Ticker.shared.remove(onTick);
+			return;
+		}
+		elapsed += ticker.deltaMS;
+		const t = Math.min(elapsed / DURATION, 1);
+		text.y = -SPRITE_SIZE / 2 - t * 40;
+		text.alpha = 1 - t;
+		if (t >= 1) {
+			text.destroy();
+			PIXI.Ticker.shared.remove(onTick);
+		}
+	};
+	PIXI.Ticker.shared.add(onTick);
+}
+
+/**
  * Return the container for an agent instance, or undefined.
  */
 export function getSprite(instanceId: string): PIXI.Container | undefined {

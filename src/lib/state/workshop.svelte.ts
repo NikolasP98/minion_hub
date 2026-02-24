@@ -417,3 +417,12 @@ export function markInboxItemRead(elementId: string, itemId: string) {
     autoSave();
   }
 }
+
+export function markAllInboxItemsRead(elementId: string) {
+  const el = workshopState.elements[elementId];
+  if (!el || !el.inboxItems) return;
+  for (const item of el.inboxItems) {
+    item.read = true;
+  }
+  autoSave();
+}

@@ -3,8 +3,17 @@
 import * as physics from './physics';
 import * as sprites from './agent-sprite';
 import * as ropeRenderer from './rope-renderer';
-import { workshopState, updateAgentPosition } from '$lib/state/workshop.svelte';
-import { getAgentFsm, isAgentConversing } from './agent-fsm';
+import { workshopState, updateAgentPosition, markAllInboxItemsRead } from '$lib/state/workshop.svelte';
+import type { AgentInstance } from '$lib/state/workshop.svelte';
+import {
+	getAgentFsm,
+	getAgentState,
+	isAgentConversing,
+	sendFsmEvent,
+	setHeartbeatEnterCallback,
+} from './agent-fsm';
+import { findNearbyAgents, findNearbyElements } from './proximity';
+import { showReactionEmoji } from './agent-sprite';
 
 // ---------------------------------------------------------------------------
 // Module state
@@ -23,6 +32,12 @@ const patrolAngles = new Map<string, number>();
 // Wander: per-agent current target position
 const wanderTargets = new Map<string, { x: number; y: number }>();
 
+// Heartbeat: ms remaining until next heartbeat per idle agent
+const heartbeatTimers = new Map<string, number>();
+
+// Element reaction cooldowns: `${agentId}:${elementId}` → ms remaining
+const elementReactionCooldowns = new Map<string, number>();
+
 const WANDER_INTERVAL = 3000; // ms between picking a new wander target
 const WANDER_RADIUS = 120; // px from homePosition
 const WANDER_SPEED = 80; // px per second toward target
@@ -30,10 +45,106 @@ const WANDER_SPEED = 80; // px per second toward target
 const PATROL_RADIUS = 100; // orbital radius
 const PATROL_SPEED = 0.0006; // radians per ms (~10.5s per full orbit)
 
+const HEARTBEAT_MIN = 10_000; // ms
+const HEARTBEAT_MAX = 15_000; // ms
+const HEARTBEAT_SCAN_RADIUS = 280; // px
+
+const INTERACTION_RADIUS = 70; // px — element proximity reaction range
+const WANDER_BIAS_RADIUS = 300; // px — range for biased wander targeting
+const ELEMENT_COOLDOWN_MS = 30_000; // ms between element reactions per agent/element pair
+
 // Banter interval is now read from workshopState.settings.banterCheckInterval
 
 // Callback registered by WorkshopCanvas to start a banter conversation
 let banterCallback: ((instanceIdA: string, instanceIdB: string) => void) | null = null;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function randomBetween(min: number, max: number): number {
+	return min + Math.random() * (max - min);
+}
+
+/**
+ * Find the closest interesting object (agent or element) within biasRadius
+ * and return a target position near it, or null if nothing is nearby.
+ */
+function findBiasedWanderTarget(agent: AgentInstance): { x: number; y: number } | null {
+	let closestDist = Infinity;
+	let targetPos: { x: number; y: number } | null = null;
+
+	// Check nearby agents
+	for (const [id, other] of Object.entries(workshopState.agents)) {
+		if (id === agent.instanceId) continue;
+		const dx = other.position.x - agent.position.x;
+		const dy = other.position.y - agent.position.y;
+		const dist = Math.sqrt(dx * dx + dy * dy);
+		if (dist <= WANDER_BIAS_RADIUS && dist < closestDist) {
+			closestDist = dist;
+			targetPos = other.position;
+		}
+	}
+
+	// Check nearby elements
+	const nearbyEls = findNearbyElements(agent.position, WANDER_BIAS_RADIUS);
+	for (const { element, distance } of nearbyEls) {
+		if (distance < closestDist) {
+			closestDist = distance;
+			targetPos = element.position;
+		}
+	}
+
+	if (!targetPos) return null;
+
+	return {
+		x: targetPos.x + (Math.random() - 0.5) * 60,
+		y: targetPos.y + (Math.random() - 0.5) * 60,
+	};
+}
+
+/**
+ * Awareness scan triggered when an agent enters heartbeat state.
+ * If interesting objects are nearby, sets a wander target and transitions to wandering.
+ */
+function doHeartbeatAwarenessScan(instanceId: string): void {
+	const agent = workshopState.agents[instanceId];
+	if (!agent) return;
+
+	let closestDist = Infinity;
+	let targetPos: { x: number; y: number } | null = null;
+
+	// Check nearby agents
+	const nearbyAgentIds = findNearbyAgents(instanceId, HEARTBEAT_SCAN_RADIUS);
+	for (const otherId of nearbyAgentIds) {
+		const other = workshopState.agents[otherId];
+		if (!other) continue;
+		const dx = other.position.x - agent.position.x;
+		const dy = other.position.y - agent.position.y;
+		const dist = Math.sqrt(dx * dx + dy * dy);
+		if (dist < closestDist) {
+			closestDist = dist;
+			targetPos = other.position;
+		}
+	}
+
+	// Check nearby elements
+	const nearbyEls = findNearbyElements(agent.position, HEARTBEAT_SCAN_RADIUS);
+	for (const { element, distance } of nearbyEls) {
+		if (distance < closestDist) {
+			closestDist = distance;
+			targetPos = element.position;
+		}
+	}
+
+	if (targetPos) {
+		wanderTargets.set(instanceId, {
+			x: targetPos.x + (Math.random() - 0.5) * 60,
+			y: targetPos.y + (Math.random() - 0.5) * 60,
+		});
+		sendFsmEvent(instanceId, 'wander');
+	}
+}
 
 // ---------------------------------------------------------------------------
 // Exported functions
@@ -41,6 +152,7 @@ let banterCallback: ((instanceIdA: string, instanceIdB: string) => void) | null 
 
 export function startSimulation(): void {
 	if (running) return;
+	setHeartbeatEnterCallback(doHeartbeatAwarenessScan);
 	running = true;
 	lastTime = performance.now();
 	animFrameId = requestAnimationFrame(tick);
@@ -48,6 +160,7 @@ export function startSimulation(): void {
 
 export function stopSimulation(): void {
 	running = false;
+	setHeartbeatEnterCallback(null);
 	if (animFrameId !== null) {
 		cancelAnimationFrame(animFrameId);
 		animFrameId = null;
@@ -60,6 +173,21 @@ export function isRunning(): boolean {
 
 export function setBanterCallback(fn: ((a: string, b: string) => void) | null): void {
 	banterCallback = fn;
+}
+
+/**
+ * Remove all per-agent simulation state for an agent instance.
+ * Call when an agent is removed from the canvas.
+ */
+export function removeAgentFromSimulation(instanceId: string): void {
+	wanderTargets.delete(instanceId);
+	patrolAngles.delete(instanceId);
+	heartbeatTimers.delete(instanceId);
+	for (const key of elementReactionCooldowns.keys()) {
+		if (key.startsWith(`${instanceId}:`)) {
+			elementReactionCooldowns.delete(key);
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -75,18 +203,57 @@ function tick(now: number): void {
 	wanderTimer += dt;
 	banterTimer += dt;
 
-	// --- Pick new wander targets every WANDER_INTERVAL ---
+	// --- Heartbeat timers (idle agents only) ---
+	for (const agent of Object.values(workshopState.agents)) {
+		const id = agent.instanceId;
+		const state = getAgentState(id);
+
+		if (state !== 'idle') {
+			// Any non-idle state resets the heartbeat timer
+			heartbeatTimers.delete(id);
+			continue;
+		}
+
+		// Initialize timer on first idle tick
+		if (!heartbeatTimers.has(id)) {
+			heartbeatTimers.set(id, randomBetween(HEARTBEAT_MIN, HEARTBEAT_MAX));
+			continue;
+		}
+
+		const remaining = heartbeatTimers.get(id)! - dt;
+		if (remaining <= 0) {
+			heartbeatTimers.set(id, randomBetween(HEARTBEAT_MIN, HEARTBEAT_MAX));
+			sendFsmEvent(id, 'heartbeatTrigger');
+		} else {
+			heartbeatTimers.set(id, remaining);
+		}
+	}
+
+	// --- Pick new wander targets every WANDER_INTERVAL (biased 60/40) ---
 	if (wanderTimer >= WANDER_INTERVAL) {
 		wanderTimer -= WANDER_INTERVAL;
 		for (const agent of Object.values(workshopState.agents)) {
 			const fsm = getAgentFsm(agent.instanceId);
 			if (fsm ? fsm.current !== 'wandering' : agent.behavior !== 'wander') continue;
-			const angle = Math.random() * Math.PI * 2;
-			const r = 30 + Math.random() * WANDER_RADIUS;
-			wanderTargets.set(agent.instanceId, {
-				x: agent.homePosition.x + Math.cos(angle) * r,
-				y: agent.homePosition.y + Math.sin(angle) * r,
-			});
+
+			let target: { x: number; y: number } | null = null;
+
+			// 60% chance: pick target biased toward interesting nearby object
+			if (Math.random() < 0.6) {
+				target = findBiasedWanderTarget(agent);
+			}
+
+			// 40% (or fallback): random wander
+			if (!target) {
+				const angle = Math.random() * Math.PI * 2;
+				const r = 30 + Math.random() * WANDER_RADIUS;
+				target = {
+					x: agent.homePosition.x + Math.cos(angle) * r,
+					y: agent.homePosition.y + Math.sin(angle) * r,
+				};
+			}
+
+			wanderTargets.set(agent.instanceId, target);
 		}
 	}
 
@@ -172,6 +339,44 @@ function tick(now: number): void {
 	if (banterTimer >= banterInterval) {
 		banterTimer -= banterInterval;
 		tryIdleBanter(activeParticipants);
+	}
+
+	// --- Element reaction cooldowns tick ---
+	for (const [key, remaining] of elementReactionCooldowns) {
+		const next = remaining - dt;
+		if (next <= 0) {
+			elementReactionCooldowns.delete(key);
+		} else {
+			elementReactionCooldowns.set(key, next);
+		}
+	}
+
+	// --- Element proximity reactions (moving agents) ---
+	for (const agent of Object.values(workshopState.agents)) {
+		const state = getAgentState(agent.instanceId);
+		if (state !== 'wandering' && state !== 'patrolling' && state !== 'heartbeat') continue;
+
+		const nearbyEls = findNearbyElements(agent.position, INTERACTION_RADIUS);
+		for (const { elementId, element } of nearbyEls) {
+			const cooldownKey = `${agent.instanceId}:${elementId}`;
+			if (elementReactionCooldowns.has(cooldownKey)) continue;
+
+			let emoji: string;
+			if (element.type === 'inbox') {
+				const hasUnread = element.inboxItems?.some((i) => !i.read);
+				emoji = hasUnread ? '📬' : '📭';
+				if (element.inboxAgentId === agent.agentId && hasUnread) {
+					markAllInboxItemsRead(elementId);
+				}
+			} else if (element.type === 'pinboard') {
+				emoji = '📌';
+			} else {
+				emoji = '📋';
+			}
+
+			showReactionEmoji(agent.instanceId, emoji);
+			elementReactionCooldowns.set(cooldownKey, ELEMENT_COOLDOWN_MS);
+		}
 	}
 
 	animFrameId = requestAnimationFrame(tick);

@@ -6,7 +6,7 @@
   import * as elementSprites from '$lib/workshop/element-sprite';
   import { ELEMENT_WIDTH, ELEMENT_HEIGHT } from '$lib/workshop/element-sprite';
   import * as ropeRenderer from '$lib/workshop/rope-renderer';
-  import { startSimulation, stopSimulation, setBanterCallback } from '$lib/workshop/simulation';
+  import { startSimulation, stopSimulation, setBanterCallback, removeAgentFromSimulation } from '$lib/workshop/simulation';
   import { screenToWorld, worldToScreen, applyZoom, applyPan } from '$lib/workshop/camera';
   import { createAgentFsm, destroyAgentFsm, sendFsmEvent, clearAllFsms } from '$lib/workshop/agent-fsm';
   import {
@@ -297,6 +297,7 @@
     physics.removeAgentBody(instanceId);
     agentSprites.removeAgentSprite(instanceId);
     destroyAgentFsm(instanceId);
+    removeAgentFromSimulation(instanceId);
     removeAgentInstance(instanceId);
     autoSave();
   }
@@ -334,6 +335,7 @@
       } else {
         isDraggingAgent = true;
         draggedInstanceId = hitId;
+        sendFsmEvent(hitId, 'pickUp');
         physics.makeAgentKinematic(hitId);
         canvasContainer.style.cursor = 'grabbing';
       }
@@ -421,6 +423,7 @@
         physics.makeAgentDynamic(draggedInstanceId);
       }
 
+      sendFsmEvent(draggedInstanceId, 'putDown');
       autoSave();
     } else if (isDraggingElement && draggedInstanceId) {
       // Check if it was just a click (no significant movement) — open overlay

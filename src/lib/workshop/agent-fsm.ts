@@ -10,7 +10,7 @@
  */
 
 import { FiniteStateMachine } from 'runed';
-import { setSpriteGlowColor } from './agent-sprite';
+import { setSpriteGlowColor, triggerHeartbeatPulse } from './agent-sprite';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -21,7 +21,9 @@ export type AgentFsmState =
 	| 'wandering'
 	| 'patrolling'
 	| 'conversing'
-	| 'cooldown';
+	| 'cooldown'
+	| 'dragged'    // user is holding this agent
+	| 'heartbeat'; // brief awareness pulse when idle too long
 
 export type AgentFsmEvent =
 	| 'wander'
@@ -29,7 +31,11 @@ export type AgentFsmEvent =
 	| 'stop'
 	| 'conversationStart'
 	| 'conversationEnd'
-	| 'cooldownExpired';
+	| 'cooldownExpired'
+	| 'pickUp'           // user grabbed the agent
+	| 'putDown'          // user released the agent
+	| 'heartbeatTrigger' // fired by simulation timer
+	| 'heartbeatEnd';    // fired after heartbeat duration expires
 
 // ---------------------------------------------------------------------------
 // Module state
@@ -41,19 +47,28 @@ const fsmMap = new Map<string, FiniteStateMachine<AgentFsmState, AgentFsmEvent>>
 /** Prior movement state before entering conversation, for restoration */
 const priorMovement = new Map<string, 'idle' | 'wandering' | 'patrolling'>();
 
+/** Prior state before drag, for restoration on putDown */
+const priorDragState = new Map<string, AgentFsmState>();
+
+/** Callback invoked when an agent enters heartbeat state (registered by simulation) */
+let heartbeatEnterCallback: ((instanceId: string) => void) | null = null;
+
 // ---------------------------------------------------------------------------
 // Glow color palette
 // ---------------------------------------------------------------------------
 
 const GLOW_COLORS: Record<AgentFsmState, number> = {
-	idle: 0x6366f1, // indigo (default)
+	idle: 0x6366f1,      // indigo (default)
 	wandering: 0x3b82f6, // blue
 	patrolling: 0x8b5cf6, // purple
 	conversing: 0x22c55e, // green
-	cooldown: 0xf97316, // orange
+	cooldown: 0xf97316,  // orange
+	dragged: 0xfbbf24,   // gold
+	heartbeat: 0x67e8f9, // bright cyan
 };
 
 const COOLDOWN_MS = 4000;
+const HEARTBEAT_DURATION_MS = 2000;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -87,6 +102,14 @@ export function stateToLegacyBehavior(state: AgentFsmState): 'stationary' | 'wan
 // ---------------------------------------------------------------------------
 
 /**
+ * Register a callback invoked whenever any agent enters the `heartbeat` state.
+ * Call from simulation to trigger awareness scans.
+ */
+export function setHeartbeatEnterCallback(fn: ((instanceId: string) => void) | null): void {
+	heartbeatEnterCallback = fn;
+}
+
+/**
  * Create an FSM for an agent instance. Call when adding an agent to the canvas.
  */
 export function createAgentFsm(
@@ -99,6 +122,7 @@ export function createAgentFsm(
 		idle: {
 			wander: 'wandering',
 			patrol: 'patrolling',
+			heartbeatTrigger: 'heartbeat',
 			conversationStart: () => {
 				priorMovement.set(instanceId, 'idle');
 				return 'conversing';
@@ -155,8 +179,41 @@ export function createAgentFsm(
 			},
 		},
 
+		dragged: {
+			putDown: () => {
+				const prior = priorDragState.get(instanceId) ?? 'idle';
+				priorDragState.delete(instanceId);
+				return prior;
+			},
+			_enter() {
+				setSpriteGlowColor(instanceId, GLOW_COLORS.dragged);
+			},
+		},
+
+		heartbeat: {
+			heartbeatEnd: 'idle',
+			wander: 'wandering', // awareness scan may set a wander target and transition here
+			conversationStart: () => {
+				priorMovement.set(instanceId, 'idle');
+				return 'conversing';
+			},
+			_enter() {
+				setSpriteGlowColor(instanceId, GLOW_COLORS.heartbeat);
+				triggerHeartbeatPulse(instanceId);
+				heartbeatEnterCallback?.(instanceId);
+				fsm.debounce(HEARTBEAT_DURATION_MS, 'heartbeatEnd');
+			},
+		},
+
 		'*': {
 			stop: 'idle',
+			pickUp: () => {
+				const cur = fsm.current;
+				if (cur !== 'dragged' && cur !== 'heartbeat') {
+					priorDragState.set(instanceId, cur);
+				}
+				return 'dragged';
+			},
 		},
 	});
 
@@ -170,6 +227,7 @@ export function createAgentFsm(
 export function destroyAgentFsm(instanceId: string): void {
 	fsmMap.delete(instanceId);
 	priorMovement.delete(instanceId);
+	priorDragState.delete(instanceId);
 }
 
 /**
@@ -189,11 +247,11 @@ export function sendFsmEvent(instanceId: string, event: AgentFsmEvent): void {
 }
 
 /**
- * Check if an agent is currently in a conversation or cooling down.
+ * Check if an agent is currently in a conversation, cooling down, or being dragged.
  */
 export function isAgentConversing(instanceId: string): boolean {
-	const fsm = fsmMap.get(instanceId);
-	return fsm?.current === 'conversing' || fsm?.current === 'cooldown';
+	const state = fsmMap.get(instanceId)?.current;
+	return state === 'conversing' || state === 'cooldown' || state === 'dragged';
 }
 
 /**
@@ -209,4 +267,5 @@ export function getAgentState(instanceId: string): AgentFsmState | null {
 export function clearAllFsms(): void {
 	fsmMap.clear();
 	priorMovement.clear();
+	priorDragState.clear();
 }
