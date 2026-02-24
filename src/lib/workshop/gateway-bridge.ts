@@ -402,6 +402,9 @@ export async function resumeInterruptedConversations(): Promise<WorkshopConversa
 			collectedMessages: history.map((m) => `${nameOf(m.agentId ?? '')}: ${m.content}`),
 		};
 
+		// Guard against duplicate loops (before any mutations or FSM events)
+		if (activeLoops.has(conv.id)) continue;
+
 		// Re-activate the conversation with current instance IDs
 		conv.status = 'active';
 		conv.participantInstanceIds = remappedInstanceIds;
@@ -415,9 +418,6 @@ export async function resumeInterruptedConversations(): Promise<WorkshopConversa
 		for (const instanceId of remappedInstanceIds) {
 			sendFsmEvent(instanceId, 'conversationStart');
 		}
-
-		// Guard against duplicate loops
-		if (activeLoops.has(conv.id)) continue;
 
 		const loopState = { aborted: false, turnCount, maxTurns: effectiveMaxTurns };
 		activeLoops.set(conv.id, loopState);
