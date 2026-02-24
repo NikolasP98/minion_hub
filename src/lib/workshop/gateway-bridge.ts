@@ -437,12 +437,21 @@ export async function readElementForAgent(
 // Orchestration loop
 // ---------------------------------------------------------------------------
 
+interface ResumeState {
+	turnCount: number;
+	currentTurnIdx: number;
+	lastResponse: string;
+	lastAgentName: string;
+	collectedMessages: string[];
+}
+
 async function runOrchestrationLoop(
 	conversationId: string,
 	convSessionKey: string,
 	participants: Array<{ instanceId: string; agentId: string }>,
 	taskPrompt: string,
 	loopState: { aborted: boolean; turnCount: number; maxTurns: number },
+	resumeState?: ResumeState,
 ): Promise<void> {
 	// Build agent name map for context formatting
 	const nameOf = (agentId: string): string => {
@@ -450,45 +459,52 @@ async function runOrchestrationLoop(
 		return gwAgent?.name ?? agentId;
 	};
 
-	// The first participant gets the original task prompt
-	let currentTurnIdx = 0;
-	let previousResponse = '';
-	let previousAgentName = '';
-	const collectedMessages: string[] = [];
+	// Initialise from resumeState (resume path) or defaults (fresh path)
+	let currentTurnIdx = resumeState?.currentTurnIdx ?? 0;
+	let previousResponse = resumeState?.lastResponse ?? '';
+	let previousAgentName = resumeState?.lastAgentName ?? '';
+	const collectedMessages: string[] = resumeState?.collectedMessages ? [...resumeState.collectedMessages] : [];
 
-	// Initial prompt to first agent
-	const firstParticipant = participants[0];
-	const otherNames = participants
-		.slice(1)
-		.map((p) => nameOf(p.agentId))
-		.join(', ');
-
-	const initialPrompt = formatInitialPrompt(taskPrompt, otherNames, participants.length, firstParticipant.agentId, firstParticipant.instanceId);
+	// Sync loopState turn count from resume (gateway is source of truth)
+	if (resumeState) {
+		loopState.turnCount = resumeState.turnCount;
+	}
 
 	try {
-		const sessionKey = buildWorkshopSessionKey(firstParticipant.agentId, convSessionKey);
-		setAgentThinking(firstParticipant.instanceId, true);
-		const response = await sendAndWaitForResponse(
-			firstParticipant.agentId,
-			sessionKey,
-			initialPrompt,
-		);
-		setAgentThinking(firstParticipant.instanceId, false);
+		if (!resumeState) {
+			// Fresh conversation: send initial prompt to first participant
+			const firstParticipant = participants[0];
+			const otherNames = participants
+				.slice(1)
+				.map((p) => nameOf(p.agentId))
+				.join(', ');
 
-		if (loopState.aborted || !response) return;
+			const initialPrompt = formatInitialPrompt(taskPrompt, otherNames, participants.length, firstParticipant.agentId, firstParticipant.instanceId);
 
-		previousResponse = response;
-		previousAgentName = nameOf(firstParticipant.agentId);
-		loopState.turnCount++;
-		collectedMessages.push(`${previousAgentName}: ${response}`);
+			const sessionKey = buildWorkshopSessionKey(firstParticipant.agentId, convSessionKey);
+			setAgentThinking(firstParticipant.instanceId, true);
+			const response = await sendAndWaitForResponse(
+				firstParticipant.agentId,
+				sessionKey,
+				initialPrompt,
+			);
+			setAgentThinking(firstParticipant.instanceId, false);
 
-		emitMessage({
-			conversationId,
-			agentId: firstParticipant.agentId,
-			instanceId: firstParticipant.instanceId,
-			message: response,
-			timestamp: Date.now(),
-		});
+			if (loopState.aborted || !response) return;
+
+			previousResponse = response;
+			previousAgentName = nameOf(firstParticipant.agentId);
+			loopState.turnCount++;
+			collectedMessages.push(`${previousAgentName}: ${response}`);
+
+			emitMessage({
+				conversationId,
+				agentId: firstParticipant.agentId,
+				instanceId: firstParticipant.instanceId,
+				message: response,
+				timestamp: Date.now(),
+			});
+		}
 
 		// Continue the loop: alternate between participants
 		while (loopState.turnCount < loopState.maxTurns && !loopState.aborted) {
