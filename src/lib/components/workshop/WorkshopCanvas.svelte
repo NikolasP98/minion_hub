@@ -128,6 +128,36 @@
       : false
   );
 
+  // Performance metrics (only runs while debugMode is on)
+  let perfFps = $state(0);
+  let perfFrameMs = $state(0);
+  let perfHeapMB = $state<number | null>(null);
+
+  $effect(() => {
+    if (!debugMode) return;
+    let rafId: number;
+    let frameCount = 0;
+    let lastSecond = performance.now();
+    let lastFrame = performance.now();
+
+    function tick() {
+      const now = performance.now();
+      perfFrameMs = Math.round(now - lastFrame);
+      lastFrame = now;
+      frameCount++;
+      if (now - lastSecond >= 1000) {
+        perfFps = Math.round((frameCount * 1000) / (now - lastSecond));
+        frameCount = 0;
+        lastSecond = now;
+        const p = performance as Performance & { memory?: { usedJSHeapSize: number } };
+        if (p.memory) perfHeapMB = Math.round(p.memory.usedJSHeapSize / 1_048_576);
+      }
+      rafId = requestAnimationFrame(tick);
+    }
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  });
+
   // ---------------------------------------------------------------------------
   // Hide/show agents based on connection state
   // ---------------------------------------------------------------------------
@@ -994,16 +1024,58 @@
     </button>
   {/if}
 
-  <!-- Debug mode toggle -->
-  <button
-    class="absolute bottom-3 left-3 z-40 flex items-center gap-1.5 px-2 py-1 rounded bg-bg2/80 backdrop-blur border border-border text-[9px] font-mono text-muted hover:text-foreground transition-colors"
-    onclick={() => {
-      debugMode = !debugMode;
-      localStorage.setItem('workshop:debugMode', String(debugMode));
-    }}
-  >
-    {debugMode ? '🐛 debug on' : '🐛'}
-  </button>
+  <!-- Debug widget (expandable) -->
+  <div class="absolute bottom-3 left-3 z-40 flex flex-col items-start gap-0">
+    {#if debugMode}
+      {@const agentCount = Object.keys(workshopState.agents).length}
+      {@const elementCount = Object.keys(workshopState.elements).length}
+      {@const activeConvs = Object.values(workshopState.conversations).filter(c => c.status === 'active').length}
+      {@const totalConvs = Object.keys(workshopState.conversations).length}
+      <div class="mb-0 rounded-t bg-bg2/90 backdrop-blur border border-b-0 border-border text-[8px] font-mono p-1.5 min-w-[110px] space-y-0.5">
+        <div class="text-[7px] text-muted/60 uppercase tracking-wider mb-1">perf</div>
+        <div class="flex justify-between gap-3">
+          <span class="text-muted/70">fps</span>
+          <span class="tabular-nums font-semibold {perfFps >= 50 ? 'text-green-400' : perfFps >= 30 ? 'text-yellow-400' : 'text-red-400'}">{perfFps}</span>
+        </div>
+        <div class="flex justify-between gap-3">
+          <span class="text-muted/70">frame</span>
+          <span class="text-foreground/80 tabular-nums">{perfFrameMs}ms</span>
+        </div>
+        {#if perfHeapMB !== null}
+          <div class="flex justify-between gap-3">
+            <span class="text-muted/70">heap</span>
+            <span class="text-foreground/80 tabular-nums">{perfHeapMB} MB</span>
+          </div>
+        {/if}
+        <div class="border-t border-border/30 mt-1 pt-1 space-y-0.5">
+          <div class="text-[7px] text-muted/60 uppercase tracking-wider mb-0.5">scene</div>
+          <div class="flex justify-between gap-3">
+            <span class="text-muted/70">agents</span>
+            <span class="text-foreground/80 tabular-nums">{agentCount}</span>
+          </div>
+          <div class="flex justify-between gap-3">
+            <span class="text-muted/70">elements</span>
+            <span class="text-foreground/80 tabular-nums">{elementCount}</span>
+          </div>
+          <div class="flex justify-between gap-3">
+            <span class="text-muted/70">convs</span>
+            <span class="text-foreground/80 tabular-nums">
+              <span class="text-green-400">{activeConvs}</span>/{totalConvs}
+            </span>
+          </div>
+        </div>
+      </div>
+    {/if}
+    <button
+      class="flex items-center gap-1.5 px-2 py-1 text-[9px] font-mono text-muted hover:text-foreground transition-colors backdrop-blur border border-border bg-bg2/80 {debugMode ? 'rounded-b rounded-t-none w-full justify-center' : 'rounded'}"
+      onclick={() => {
+        debugMode = !debugMode;
+        localStorage.setItem('workshop:debugMode', String(debugMode));
+      }}
+    >
+      {debugMode ? '🐛 debug on' : '🐛'}
+    </button>
+  </div>
 
   {#if debugMode}
     <DebugOverlay />
