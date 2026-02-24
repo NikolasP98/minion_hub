@@ -326,6 +326,10 @@ export function isConversationActive(conversationId: string): boolean {
  * Resume any conversations that were active when the page was last closed.
  * Call after canvas rebuild (agents and FSMs must be on canvas).
  *
+ * Note: intentionally bypasses canStartConversation() / maxConcurrentConversations.
+ * The resumed conversations were within the limit before the refresh; restoring them
+ * to their prior state is correct even if the limit was lowered in the interim.
+ *
  * Returns handles for all successfully resumed conversations.
  */
 export async function resumeInterruptedConversations(): Promise<WorkshopConversationHandle[]> {
