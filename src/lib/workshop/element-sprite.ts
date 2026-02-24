@@ -13,12 +13,14 @@ const TYPE_COLORS: Record<ElementType, number> = {
 	pinboard: 0x8b6914,   // cork
 	messageboard: 0x2563eb, // blue
 	inbox: 0x475569,       // steel
+	rulebook: 0x1a472a,   // deep green
 };
 
 const TYPE_ICONS: Record<ElementType, string> = {
 	pinboard: '\u{1F4CC}',      // 📌
 	messageboard: '\u{1F4CB}', // 📋
 	inbox: '\u{1F4EC}',        // 📬
+	rulebook: '\u{1F4D6}',     // 📖
 };
 
 // ---------------------------------------------------------------------------

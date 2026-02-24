@@ -29,7 +29,7 @@ export interface WorkshopConversation {
 
 // --- Workshop interactive elements ---
 
-export type ElementType = 'pinboard' | 'messageboard' | 'inbox';
+export type ElementType = 'pinboard' | 'messageboard' | 'inbox' | 'rulebook';
 
 export interface PinboardItem {
   id: string;
@@ -67,6 +67,7 @@ export interface WorkshopElement {
   inboxAgentId?: string;
   inboxItems?: InboxItem[];
   outboxItems?: InboxItem[];
+  rulebookContent?: string;
 }
 
 export interface WorkshopSettings {
@@ -352,6 +353,7 @@ export function addElement(type: ElementType, x: number, y: number, label: strin
     element.inboxItems = [];
     element.outboxItems = [];
   }
+  if (type === 'rulebook') element.rulebookContent = '';
 
   workshopState.elements[instanceId] = element;
   autoSave();
@@ -394,6 +396,13 @@ export function setMessageBoardContent(elementId: string, content: string) {
   const el = workshopState.elements[elementId];
   if (!el || el.type !== 'messageboard') return;
   el.messageBoardContent = content;
+  autoSave();
+}
+
+export function setRulebookContent(elementId: string, content: string) {
+  const el = workshopState.elements[elementId];
+  if (!el || el.type !== 'rulebook') return;
+  el.rulebookContent = content;
   autoSave();
 }
 

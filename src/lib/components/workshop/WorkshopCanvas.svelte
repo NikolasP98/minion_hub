@@ -41,6 +41,7 @@
   import PinboardOverlay from './PinboardOverlay.svelte';
   import MessageBoardOverlay from './MessageBoardOverlay.svelte';
   import InboxOverlay from './InboxOverlay.svelte';
+  import RulebookOverlay from './RulebookOverlay.svelte';
   import { thinkingAgents } from '$lib/state/workshop-conversations.svelte';
 
   // ---------------------------------------------------------------------------
@@ -1017,6 +1018,11 @@
       />
     {:else if activeOverlay.type === 'inbox'}
       <InboxOverlay
+        elementId={activeOverlay.elementId}
+        onClose={() => (activeOverlay = null)}
+      />
+    {:else if activeOverlay.type === 'rulebook'}
+      <RulebookOverlay
         elementId={activeOverlay.elementId}
         onClose={() => (activeOverlay = null)}
       />
