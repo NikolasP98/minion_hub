@@ -26,6 +26,8 @@ export interface AgentSpriteInfo {
 
 const sprites = new Map<string, PIXI.Container>();
 const textureCache = new Map<string, PIXI.Texture>();
+/** Maps instanceId → avatarSeed so we can evict textures on removal. */
+const spriteSeeds = new Map<string, string>();
 
 /** Incremented on every clearAllSprites(). Used to detect stale async work. */
 let generation = 0;
@@ -199,12 +201,14 @@ export async function createAgentSprite(
 	// Add to stage and track
 	stage.addChild(container);
 	sprites.set(instanceId, container);
+	spriteSeeds.set(instanceId, info.avatarSeed);
 
 	return container;
 }
 
 /**
  * Remove an agent sprite from its parent, destroy it, and delete from map.
+ * Evicts the cached texture if no remaining sprite uses the same avatarSeed.
  */
 export function removeAgentSprite(instanceId: string): void {
 	const container = sprites.get(instanceId);
@@ -212,7 +216,19 @@ export function removeAgentSprite(instanceId: string): void {
 
 	container.removeFromParent();
 	container.destroy({ children: true });
+
+	const seed = spriteSeeds.get(instanceId);
 	sprites.delete(instanceId);
+	spriteSeeds.delete(instanceId);
+
+	// Evict texture if no other sprite still uses this seed
+	if (seed && !Array.from(spriteSeeds.values()).includes(seed)) {
+		const tex = textureCache.get(seed);
+		if (tex) {
+			tex.destroy(true);
+			textureCache.delete(seed);
+		}
+	}
 }
 
 /**
@@ -344,7 +360,7 @@ export function getAllSprites(): Map<string, PIXI.Container> {
 }
 
 /**
- * Destroy all sprites, clear the sprites map, and revoke cached blob URLs.
+ * Destroy all sprites and their cached textures, clear both maps.
  */
 export function clearAllSprites(): void {
 	generation++;
@@ -353,4 +369,10 @@ export function clearAllSprites(): void {
 		container.destroy({ children: true });
 	}
 	sprites.clear();
+	spriteSeeds.clear();
+	// Destroy all cached textures to free VRAM
+	for (const [, tex] of textureCache) {
+		tex.destroy(true);
+	}
+	textureCache.clear();
 }

@@ -6,7 +6,19 @@ import * as PIXI from 'pixi.js';
 // Module state
 // ---------------------------------------------------------------------------
 
-const ropes = new Map<string, { graphics: PIXI.Graphics; label: PIXI.Text }>();
+interface RopeEntry {
+	graphics: PIXI.Graphics;
+	label: PIXI.Text;
+	/** Last-rendered endpoints and active state — used to skip redundant redraws. */
+	lastFromX: number;
+	lastFromY: number;
+	lastToX: number;
+	lastToY: number;
+	lastIsActive: boolean;
+}
+
+const ropes = new Map<string, RopeEntry>();
+const ROPE_MOVE_THRESHOLD = 0.5;
 
 // ---------------------------------------------------------------------------
 // Helper functions
@@ -104,7 +116,15 @@ export function createRope(
 	stage.addChildAt(graphics, 0);
 	stage.addChild(text);
 
-	ropes.set(relationshipId, { graphics, label: text });
+	ropes.set(relationshipId, {
+		graphics,
+		label: text,
+		lastFromX: NaN,
+		lastFromY: NaN,
+		lastToX: NaN,
+		lastToY: NaN,
+		lastIsActive: false,
+	});
 }
 
 /**
@@ -121,6 +141,23 @@ export function updateRope(
 ): void {
 	const entry = ropes.get(relationshipId);
 	if (!entry) return;
+
+	// Skip redraw if endpoints haven't moved beyond threshold and active state is unchanged
+	if (
+		Math.abs(fromX - entry.lastFromX) <= ROPE_MOVE_THRESHOLD &&
+		Math.abs(fromY - entry.lastFromY) <= ROPE_MOVE_THRESHOLD &&
+		Math.abs(toX - entry.lastToX) <= ROPE_MOVE_THRESHOLD &&
+		Math.abs(toY - entry.lastToY) <= ROPE_MOVE_THRESHOLD &&
+		isActive === entry.lastIsActive
+	) {
+		return;
+	}
+
+	entry.lastFromX = fromX;
+	entry.lastFromY = fromY;
+	entry.lastToX = toX;
+	entry.lastToY = toY;
+	entry.lastIsActive = isActive;
 
 	const { graphics, label: text } = entry;
 

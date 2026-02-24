@@ -1,6 +1,6 @@
 import { conn } from '$lib/state/connection.svelte';
-import { gw, upsertSession, mergeSessions } from '$lib/state/gateway-data.svelte';
-import { agentChat, agentActivity, ensureAgentChat, ensureAgentActivity, saveSparkBins } from '$lib/state/chat.svelte';
+import { gw, upsertSession, mergeSessions, clearSessions } from '$lib/state/gateway-data.svelte';
+import { agentChat, agentActivity, ensureAgentChat, ensureAgentActivity, saveSparkBins, pushChatMessage } from '$lib/state/chat.svelte';
 import { hostsState, getActiveHost, updateHost, saveLastActiveHost } from '$lib/state/hosts.svelte';
 import { autoSave, resetWorkshop } from '$lib/state/workshop.svelte';
 import { ui } from '$lib/state/ui.svelte';
@@ -106,8 +106,10 @@ export function wsDisconnect() {
   autoSave(hostsState.activeHostId);
   resetWorkshop();
 
-  // Clear session status timers
+  // Clear session status timers and eviction timers
   for (const tid of Object.values(ui.sessionStatusTimers)) clearTimeout(tid);
+  for (const tid of sessionEvictTimers.values()) clearTimeout(tid);
+  sessionEvictTimers.clear();
   ui.sessionStatusTimers = {};
   ui.sessionStatus = {};
   ui.selectedAgentId = null;
@@ -115,7 +117,7 @@ export function wsDisconnect() {
   // Reset data
   gw.hello = null;
   gw.agents = [];
-  gw.sessions = [];
+  clearSessions();
   gw.presence = [];
   gw.health = null;
   gw.channels = null;
@@ -344,7 +346,7 @@ function onAgentEvent(payload: Record<string, unknown>) {
       ui.sessionStatus[sk] = 'running';
       if (ui.sessionStatusTimers[sk]) clearTimeout(ui.sessionStatusTimers[sk]);
       ui.sessionStatusTimers[sk] = setTimeout(() => {
-        if (ui.sessionStatus[sk] === 'running') ui.sessionStatus[sk] = 'idle';
+        if (ui.sessionStatus[sk] === 'running') setSessionIdle(sk);
         delete ui.sessionStatusTimers[sk];
       }, 30000);
     }
@@ -375,7 +377,7 @@ function onChatEvent(payload: ChatEvent) {
     ui.sessionStatus[sk] = 'thinking';
     if (ui.sessionStatusTimers[sk]) clearTimeout(ui.sessionStatusTimers[sk]);
     ui.sessionStatusTimers[sk] = setTimeout(() => {
-      if (ui.sessionStatus[sk] === 'thinking') ui.sessionStatus[sk] = 'idle';
+      if (ui.sessionStatus[sk] === 'thinking') setSessionIdle(sk);
       delete ui.sessionStatusTimers[sk];
     }, 60000);
   } else if (payload.state === 'final') {
@@ -383,22 +385,22 @@ function onChatEvent(payload: ChatEvent) {
     chat.runId = null;
     // Only refresh main chat history — workshop sessions are handled by the bridge
     if (sk === `agent:${agentId}:main`) loadChatHistory(agentId);
-    ui.sessionStatus[sk] = 'idle';
+    setSessionIdle(sk);
     if (ui.sessionStatusTimers[sk]) { clearTimeout(ui.sessionStatusTimers[sk]); delete ui.sessionStatusTimers[sk]; }
   } else if (payload.state === 'aborted') {
     const msg = payload.message as { role?: string; content?: unknown } | null;
     if (msg?.role === 'assistant' && Array.isArray(msg.content)) {
-      chat.messages = [...chat.messages, msg as never];
+      pushChatMessage(chat, msg as never);
     } else if (chat.stream?.trim()) {
-      chat.messages = [...chat.messages, { role: 'assistant', content: [{ type: 'text', text: chat.stream }], timestamp: Date.now() }];
+      pushChatMessage(chat, { role: 'assistant', content: [{ type: 'text', text: chat.stream }], timestamp: Date.now() } as never);
     }
     chat.stream = null; chat.runId = null;
-    ui.sessionStatus[sk] = 'idle';
+    setSessionIdle(sk);
     if (ui.sessionStatusTimers[sk]) { clearTimeout(ui.sessionStatusTimers[sk]); delete ui.sessionStatusTimers[sk]; }
   } else if (payload.state === 'error') {
     chat.stream = null; chat.runId = null;
     chat.lastError = payload.errorMessage ?? 'chat error';
-    ui.sessionStatus[sk] = 'idle';
+    setSessionIdle(sk);
     if (ui.sessionStatusTimers[sk]) { clearTimeout(ui.sessionStatusTimers[sk]); delete ui.sessionStatusTimers[sk]; }
   }
 }
@@ -412,6 +414,24 @@ function onPresenceEvent(payload: unknown) {
     if (idx >= 0) gw.presence[idx] = payload as never;
     else gw.presence.push(payload as never);
   }
+}
+
+/** 10-minute eviction timers for idle session status entries. */
+const sessionEvictTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/**
+ * Mark a session as idle and schedule eviction of its status entry after 10 minutes.
+ * Cancels any existing eviction timer for this key (reset on re-activity).
+ */
+function setSessionIdle(sk: string) {
+  ui.sessionStatus[sk] = 'idle';
+  const existing = sessionEvictTimers.get(sk);
+  if (existing) clearTimeout(existing);
+  sessionEvictTimers.set(sk, setTimeout(() => {
+    sessionEvictTimers.delete(sk);
+    delete ui.sessionStatus[sk];
+    delete ui.sessionStatusTimers[sk];
+  }, 10 * 60 * 1000));
 }
 
 function parseAgentId(sessionKey: string): string | null {
@@ -478,7 +498,7 @@ export function sendChatMsg(agentId: string) {
   const sessionKey = `agent:${agentId}:main`;
   const runId = uuid();
 
-  chat.messages = [...chat.messages, { role: 'user', content: [{ type: 'text', text: msg }], timestamp: Date.now() }];
+  pushChatMessage(chat, { role: 'user', content: [{ type: 'text', text: msg }], timestamp: Date.now() } as never);
   chat.inputText = '';
   chat.sending = true;
   chat.runId = runId;

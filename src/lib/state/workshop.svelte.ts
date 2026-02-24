@@ -108,7 +108,15 @@ export interface WorkshopState {
   settings: WorkshopSettings;
 }
 
-function autosaveKey(hostId: string): string {
+type WorkshopSlice = 'camera' | 'agents' | 'relationships' | 'conversations' | 'elements' | 'settings';
+const ALL_SLICES: WorkshopSlice[] = ['camera', 'agents', 'relationships', 'conversations', 'elements', 'settings'];
+
+function autosaveKey(hostId: string, slice: WorkshopSlice): string {
+  return `workshop:autosave:${hostId}:${slice}`;
+}
+
+/** Legacy single-key used before incremental save — kept for migration read. */
+function legacyAutosaveKey(hostId: string): string {
   return `workshop:autosave:${hostId}`;
 }
 
@@ -134,70 +142,104 @@ export const workshopState: WorkshopState = $state({
   },
 });
 
-// --- Auto-save / auto-load (localStorage) ---
+// --- Auto-save / auto-load (localStorage, incremental per-slice) ---
 
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
+const dirtySlices = new Set<WorkshopSlice>();
 
-export function autoSave(hostId: string | null = hostsState.activeHostId) {
+/**
+ * Schedule an incremental autosave. Pass the slices that changed; if none are
+ * passed, all slices are marked dirty (full save — used by external callers).
+ */
+export function autoSave(hostId: string | null = hostsState.activeHostId, ...slices: WorkshopSlice[]) {
   if (!hostId) return;
+  const toMark = slices.length > 0 ? slices : ALL_SLICES;
+  for (const s of toMark) dirtySlices.add(s);
   if (autoSaveTimer) clearTimeout(autoSaveTimer);
+  const hid = hostId;
   autoSaveTimer = setTimeout(() => {
-    try {
-      const snapshot = $state.snapshot(workshopState);
-      localStorage.setItem(autosaveKey(hostId), JSON.stringify(snapshot));
-    } catch {
-      // non-critical
+    autoSaveTimer = null;
+    const snapshot = $state.snapshot(workshopState);
+    for (const slice of dirtySlices) {
+      try {
+        localStorage.setItem(autosaveKey(hid, slice), JSON.stringify(snapshot[slice]));
+      } catch {
+        // non-critical (quota errors, etc.)
+      }
     }
+    dirtySlices.clear();
   }, 300);
+}
+
+function restoreConversations(saved: Partial<WorkshopState>) {
+  if (!saved.conversations) return;
+  const cleaned: Record<string, WorkshopConversation> = {};
+  const bestByPair = new Map<string, { id: string; startedAt: number }>();
+  for (const [id, conv] of Object.entries(saved.conversations)) {
+    if (!conv.participantAgentIds || !conv.startedAt) continue;
+    if (conv.status === 'active') conv.status = 'interrupted';
+    const pairKey = [...conv.participantAgentIds].sort().join(':');
+    const existing = bestByPair.get(pairKey);
+    if (!existing || conv.startedAt > existing.startedAt) {
+      if (existing) delete cleaned[existing.id];
+      bestByPair.set(pairKey, { id, startedAt: conv.startedAt });
+      cleaned[id] = conv;
+    }
+  }
+  workshopState.conversations = cleaned;
+}
+
+/** Migrate pinboard items that pre-date voting fields (upvotes/downvotes/comments). */
+function migratePinboardVoting() {
+  for (const el of Object.values(workshopState.elements)) {
+    if (el.type === 'pinboard' && el.pinboardItems) {
+      for (const pin of el.pinboardItems) {
+        if (!pin.upvotes) pin.upvotes = [];
+        if (!pin.downvotes) pin.downvotes = [];
+        if (!pin.comments) pin.comments = [];
+      }
+    }
+  }
 }
 
 export function autoLoad(hostId: string | null = hostsState.activeHostId) {
   if (!hostId) return;
   try {
-    const raw = localStorage.getItem(autosaveKey(hostId));
-    if (!raw) return;
-    const saved = JSON.parse(raw) as Partial<WorkshopState>;
-    workshopState.camera = saved.camera ?? workshopState.camera;
-    workshopState.agents = saved.agents ?? workshopState.agents;
-    workshopState.relationships = saved.relationships ?? workshopState.relationships;
-    workshopState.settings = { ...workshopState.settings, ...saved.settings };
-    workshopState.elements = saved.elements ?? {};
-    // Migrate pinboard items that pre-date voting fields
-    for (const el of Object.values(workshopState.elements)) {
-      if (el.type === 'pinboard' && el.pinboardItems) {
-        for (const pin of el.pinboardItems) {
-          if (!pin.upvotes) pin.upvotes = [];
-          if (!pin.downvotes) pin.downvotes = [];
-          if (!pin.comments) pin.comments = [];
-        }
-      }
-    }
-    // Restore conversations — mark any previously-active as completed (stale from prior session)
-    // Also purge any conversations missing required fields (from pre-migration format)
-    if (saved.conversations) {
-      const cleaned: Record<string, WorkshopConversation> = {};
-      // Track best (most recent) conversation per unique agent pair
-      const bestByPair = new Map<string, { id: string; startedAt: number }>();
+    // Try incremental per-slice keys first
+    const hasSliceKeys = ALL_SLICES.some((s) => localStorage.getItem(autosaveKey(hostId, s)) !== null);
 
-      for (const [id, conv] of Object.entries(saved.conversations)) {
-        // Skip conversations without the new required fields
-        if (!conv.participantAgentIds || !conv.startedAt) continue;
-        if (conv.status === 'active') {
-          conv.status = 'interrupted';
-        }
-
-        // Deduplicate by agent pair — keep only the most recent conversation per pair
-        const pairKey = [...conv.participantAgentIds].sort().join(':');
-        const existing = bestByPair.get(pairKey);
-        if (!existing || conv.startedAt > existing.startedAt) {
-          // Remove the older duplicate if one existed
-          if (existing) delete cleaned[existing.id];
-          bestByPair.set(pairKey, { id, startedAt: conv.startedAt });
-          cleaned[id] = conv;
-        }
-        // else: skip this older duplicate
-      }
-      workshopState.conversations = cleaned;
+    if (hasSliceKeys) {
+      const load = <T>(slice: WorkshopSlice): T | null => {
+        const raw = localStorage.getItem(autosaveKey(hostId, slice));
+        return raw ? (JSON.parse(raw) as T) : null;
+      };
+      const camera = load<WorkshopState['camera']>('camera');
+      const agents = load<WorkshopState['agents']>('agents');
+      const relationships = load<WorkshopState['relationships']>('relationships');
+      const settings = load<WorkshopState['settings']>('settings');
+      const elements = load<WorkshopState['elements']>('elements');
+      const conversations = load<WorkshopState['conversations']>('conversations');
+      if (camera) workshopState.camera = camera;
+      if (agents) workshopState.agents = agents;
+      if (relationships) workshopState.relationships = relationships;
+      if (settings) workshopState.settings = { ...workshopState.settings, ...settings };
+      if (elements) workshopState.elements = elements;
+      migratePinboardVoting();
+      restoreConversations({ conversations: conversations ?? undefined });
+    } else {
+      // Fallback: read legacy single-key format
+      const raw = localStorage.getItem(legacyAutosaveKey(hostId));
+      if (!raw) return;
+      const saved = JSON.parse(raw) as Partial<WorkshopState>;
+      workshopState.camera = saved.camera ?? workshopState.camera;
+      workshopState.agents = saved.agents ?? workshopState.agents;
+      workshopState.relationships = saved.relationships ?? workshopState.relationships;
+      workshopState.settings = { ...workshopState.settings, ...saved.settings };
+      workshopState.elements = saved.elements ?? {};
+      migratePinboardVoting();
+      restoreConversations(saved);
+      // Migrate to per-slice keys immediately
+      autoSave(hostId, ...ALL_SLICES);
     }
   } catch {
     // non-critical
@@ -222,7 +264,7 @@ export function addAgentInstance(agentId: string, x: number, y: number): string 
     behavior: 'stationary',
     homePosition: { x, y },
   };
-  autoSave();
+  autoSave(undefined, 'agents');
   return instanceId;
 }
 
@@ -234,7 +276,7 @@ export function removeAgentInstance(instanceId: string) {
       delete workshopState.relationships[id];
     }
   }
-  autoSave();
+  autoSave(undefined, 'agents', 'relationships');
 }
 
 export function updateAgentPosition(instanceId: string, x: number, y: number) {
@@ -250,7 +292,7 @@ export function setAgentBehavior(instanceId: string, behavior: AgentInstance['be
   const agent = workshopState.agents[instanceId];
   if (agent) {
     agent.behavior = behavior;
-    autoSave();
+    autoSave(undefined, 'agents');
   }
 }
 
@@ -270,20 +312,20 @@ export function addRelationship(from: string, to: string, label: string): string
     toInstanceId: to,
     label,
   };
-  autoSave();
+  autoSave(undefined, 'relationships');
   return id;
 }
 
 export function removeRelationship(id: string) {
   delete workshopState.relationships[id];
-  autoSave();
+  autoSave(undefined, 'relationships');
 }
 
 export function updateRelationshipLabel(id: string, label: string) {
   const rel = workshopState.relationships[id];
   if (rel) {
     rel.label = label;
-    autoSave();
+    autoSave(undefined, 'relationships');
   }
 }
 
@@ -310,7 +352,7 @@ export async function loadWorkspace(id: string) {
   workshopState.settings = { ...workshopState.settings, ...saved.settings };
   workshopState.conversations = saved.conversations ?? {};
   workshopState.elements = saved.elements ?? {};
-  autoSave();
+  autoSave(undefined, ...ALL_SLICES);
 }
 
 export async function listWorkspaceSaves() {
@@ -375,13 +417,13 @@ export function addElement(type: ElementType, x: number, y: number, label: strin
   if (type === 'rulebook') element.rulebookContent = '';
 
   workshopState.elements[instanceId] = element;
-  autoSave();
+  autoSave(undefined, 'elements');
   return instanceId;
 }
 
 export function removeElement(instanceId: string) {
   delete workshopState.elements[instanceId];
-  autoSave();
+  autoSave(undefined, 'elements');
 }
 
 export function updateElementPosition(instanceId: string, x: number, y: number) {
@@ -390,6 +432,9 @@ export function updateElementPosition(instanceId: string, x: number, y: number) 
     el.position = { x, y };
   }
 }
+
+const MAX_PINBOARD_ITEMS = 50;
+const MAX_INBOX_ITEMS = 100;
 
 export function addPinboardItem(elementId: string, content: string, pinnedBy: string) {
   const el = workshopState.elements[elementId];
@@ -404,14 +449,19 @@ export function addPinboardItem(elementId: string, content: string, pinnedBy: st
     downvotes: [],
     comments: [],
   });
-  autoSave();
+  // Cap at MAX_PINBOARD_ITEMS — remove oldest (lowest pinnedAt) on overflow
+  if (el.pinboardItems.length > MAX_PINBOARD_ITEMS) {
+    el.pinboardItems.sort((a, b) => a.pinnedAt - b.pinnedAt);
+    el.pinboardItems.splice(0, el.pinboardItems.length - MAX_PINBOARD_ITEMS);
+  }
+  autoSave(undefined, 'elements');
 }
 
 export function removePinboardItem(elementId: string, itemId: string) {
   const el = workshopState.elements[elementId];
   if (!el || !el.pinboardItems) return;
   el.pinboardItems = el.pinboardItems.filter((p) => p.id !== itemId);
-  autoSave();
+  autoSave(undefined, 'elements');
 }
 
 /** Vote on a pinboard item. Removes opposite vote if it exists; auto-removes item if net score ≤ −3. */
@@ -440,7 +490,7 @@ export function votePinboardItem(
     el.pinboardItems = el.pinboardItems.filter((p) => p.id !== pinId);
   }
 
-  autoSave();
+  autoSave(undefined, 'elements');
 }
 
 /** Add a comment to a pinboard item. */
@@ -455,7 +505,7 @@ export function addPinboardComment(
   const pin = el.pinboardItems.find((p) => p.id === pinId);
   if (!pin) return;
   pin.comments.push({ authorId, text, at: Date.now() });
-  autoSave();
+  autoSave(undefined, 'elements');
 }
 
 /** Count pins by a given agent on a board. */
@@ -487,14 +537,14 @@ export function setMessageBoardContent(elementId: string, content: string) {
   const el = workshopState.elements[elementId];
   if (!el || el.type !== 'messageboard') return;
   el.messageBoardContent = content;
-  autoSave();
+  autoSave(undefined, 'elements');
 }
 
 export function setRulebookContent(elementId: string, content: string) {
   const el = workshopState.elements[elementId];
   if (!el || el.type !== 'rulebook') return;
   el.rulebookContent = content;
-  autoSave();
+  autoSave(undefined, 'elements');
 }
 
 export function addInboxItem(elementId: string, item: Omit<InboxItem, 'id'>) {
@@ -505,7 +555,12 @@ export function addInboxItem(elementId: string, item: Omit<InboxItem, 'id'>) {
     ...item,
     id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
   });
-  autoSave();
+  // Cap at MAX_INBOX_ITEMS — remove oldest (lowest sentAt) on overflow
+  if (el.inboxItems.length > MAX_INBOX_ITEMS) {
+    el.inboxItems.sort((a, b) => a.sentAt - b.sentAt);
+    el.inboxItems.splice(0, el.inboxItems.length - MAX_INBOX_ITEMS);
+  }
+  autoSave(undefined, 'elements');
 }
 
 export function addOutboxItem(elementId: string, item: Omit<InboxItem, 'id'>) {
@@ -516,7 +571,12 @@ export function addOutboxItem(elementId: string, item: Omit<InboxItem, 'id'>) {
     ...item,
     id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
   });
-  autoSave();
+  // Cap at MAX_INBOX_ITEMS — remove oldest on overflow
+  if (el.outboxItems.length > MAX_INBOX_ITEMS) {
+    el.outboxItems.sort((a, b) => a.sentAt - b.sentAt);
+    el.outboxItems.splice(0, el.outboxItems.length - MAX_INBOX_ITEMS);
+  }
+  autoSave(undefined, 'elements');
 }
 
 export function markInboxItemRead(elementId: string, itemId: string) {
@@ -525,7 +585,7 @@ export function markInboxItemRead(elementId: string, itemId: string) {
   const item = el.inboxItems.find((m) => m.id === itemId);
   if (item) {
     item.read = true;
-    autoSave();
+    autoSave(undefined, 'elements');
   }
 }
 
@@ -535,7 +595,7 @@ export function markAllInboxItemsRead(elementId: string) {
   for (const item of el.inboxItems) {
     item.read = true;
   }
-  autoSave();
+  autoSave(undefined, 'elements');
 }
 
 // --- Agent memory ---
