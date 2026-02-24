@@ -3,8 +3,7 @@
 // Detects changes to workshop element content and enqueues agent actions.
 // Designed to run as a Svelte $effect inside WorkshopCanvas.
 
-import { workshopState } from '$lib/state/workshop.svelte';
-import { agentMemory } from '$lib/state/workshop.svelte';
+import { workshopState, agentMemory } from '$lib/state/workshop.svelte';
 import { enqueue } from './agent-queue';
 
 interface ElementSnapshot {
