@@ -47,6 +47,13 @@ const heartbeatTimers = new Map<string, number>();
 // Element reaction cooldowns: `${agentId}:${elementId}` → ms remaining
 const elementReactionCooldowns = new Map<string, number>();
 
+// Walk-to-read: agents en route to an element before reading it
+const walkToReadQueue = new Map<string, {
+	elementId: string;
+	sessionKey: string;
+	position: { x: number; y: number };
+}>();
+
 // Seek-info timers: ms until next periodic element re-read per agent
 const seekInfoTimers = new Map<string, number>();
 const SEEK_INFO_INTERVAL = 90_000; // ms
@@ -203,6 +210,7 @@ export function removeAgentFromSimulation(instanceId: string): void {
 	patrolAngles.delete(instanceId);
 	heartbeatTimers.delete(instanceId);
 	seekInfoTimers.delete(instanceId);
+	walkToReadQueue.delete(instanceId);
 	for (const key of elementReactionCooldowns.keys()) {
 		if (key.startsWith(`${instanceId}:`)) {
 			elementReactionCooldowns.delete(key);
@@ -349,6 +357,53 @@ function tick(now: number): void {
 		}
 	}
 
+	// --- Drain action queue for wandering/patrolling agents (walk to element first) ---
+	for (const agent of Object.values(workshopState.agents)) {
+		const id = agent.instanceId;
+		const state = getAgentState(id);
+
+		if (state !== 'wandering' && state !== 'patrolling') continue;
+		if (walkToReadQueue.has(id)) continue; // already en route
+
+		const action = peek(id);
+		if (!action) continue;
+
+		const agentConvs = Object.values(workshopState.conversations)
+			.filter((c) => c.participantInstanceIds.includes(id));
+		const sessionKey = agentConvs.length > 0
+			? agentConvs.sort((a, b) => b.startedAt - a.startedAt)[0].sessionKey
+			: `solo:${agent.agentId}`;
+
+		if (action.type === 'readElement' || action.type === 'seekInfo') {
+			const element = workshopState.elements[action.elementId];
+			if (element) {
+				dequeue(id);
+				walkToReadQueue.set(id, {
+					elementId: action.elementId,
+					sessionKey,
+					position: element.position,
+				});
+				// Override wander target to walk toward element
+				wanderTargets.set(id, {
+					x: element.position.x + (Math.random() - 0.5) * 40,
+					y: element.position.y + (Math.random() - 0.5) * 40,
+				});
+			}
+		} else if (action.type === 'compactContext') {
+			// compactContext executes in-place even while wandering/patrolling
+			dequeue(id);
+			sendFsmEvent(id, 'startReading');
+			const fullSessionKey = buildWorkshopSessionKey_public(agent.agentId, sessionKey);
+			compactAgentContext(id, sessionKey).then(() => {
+				resetSessionTurnCount(fullSessionKey);
+				sendFsmEvent(id, 'stopReading');
+			}).catch(() => {
+				sendFsmEvent(id, 'stopReading');
+			});
+		}
+		// approachAgent: no change needed, already works while wandering
+	}
+
 	// --- Pick new wander targets every WANDER_INTERVAL (biased 60/40) ---
 	if (wanderTimer >= WANDER_INTERVAL) {
 		wanderTimer -= WANDER_INTERVAL;
@@ -404,6 +459,26 @@ function tick(now: number): void {
 			agent.position.x + (dx / dist) * step,
 			agent.position.y + (dy / dist) * step,
 		);
+
+		// Check if arrived near walk-to-read target
+		const walkTarget = walkToReadQueue.get(agent.instanceId);
+		if (walkTarget) {
+			const ex = walkTarget.position.x - agent.position.x;
+			const ey = walkTarget.position.y - agent.position.y;
+			if (Math.sqrt(ex * ex + ey * ey) < INTERACTION_RADIUS) {
+				const wt = walkToReadQueue.get(agent.instanceId)!;
+				walkToReadQueue.delete(agent.instanceId);
+				// Verify element still exists
+				if (workshopState.elements[wt.elementId]) {
+					sendFsmEvent(agent.instanceId, 'startReading');
+					readElementForAgent(agent.instanceId, wt.elementId, wt.sessionKey).then(() => {
+						sendFsmEvent(agent.instanceId, 'stopReading');
+					}).catch(() => {
+						sendFsmEvent(agent.instanceId, 'stopReading');
+					});
+				}
+			}
+		}
 	}
 
 	// --- Patrol: smooth kinematic orbit around homePosition ---
