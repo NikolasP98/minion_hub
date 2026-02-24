@@ -38,6 +38,9 @@ export interface PinboardItem {
   content: string;
   pinnedBy: string; // agentId or 'user'
   pinnedAt: number;
+  upvotes: string[];   // voter IDs (agentId or 'user')
+  downvotes: string[]; // voter IDs
+  comments: Array<{ authorId: string; text: string; at: number }>;
 }
 
 export interface InboxItem {
@@ -57,6 +60,7 @@ export interface AgentMemory {
     summary: string;
     lastReadAt: number;
   }>;
+  activePinboardItems: string[];      // pin IDs agent has chosen to keep in active context (max 5)
 }
 
 export interface WorkshopElement {
@@ -155,6 +159,16 @@ export function autoLoad(hostId: string | null = hostsState.activeHostId) {
     workshopState.relationships = saved.relationships ?? workshopState.relationships;
     workshopState.settings = { ...workshopState.settings, ...saved.settings };
     workshopState.elements = saved.elements ?? {};
+    // Migrate pinboard items that pre-date voting fields
+    for (const el of Object.values(workshopState.elements)) {
+      if (el.type === 'pinboard' && el.pinboardItems) {
+        for (const pin of el.pinboardItems) {
+          if (!pin.upvotes) pin.upvotes = [];
+          if (!pin.downvotes) pin.downvotes = [];
+          if (!pin.comments) pin.comments = [];
+        }
+      }
+    }
     // Restore conversations — mark any previously-active as completed (stale from prior session)
     // Also purge any conversations missing required fields (from pre-migration format)
     if (saved.conversations) {
@@ -382,6 +396,9 @@ export function addPinboardItem(elementId: string, content: string, pinnedBy: st
     content,
     pinnedBy,
     pinnedAt: Date.now(),
+    upvotes: [],
+    downvotes: [],
+    comments: [],
   });
   autoSave();
 }
@@ -391,6 +408,75 @@ export function removePinboardItem(elementId: string, itemId: string) {
   if (!el || !el.pinboardItems) return;
   el.pinboardItems = el.pinboardItems.filter((p) => p.id !== itemId);
   autoSave();
+}
+
+/** Vote on a pinboard item. Removes opposite vote if it exists; auto-removes item if net score ≤ −3. */
+export function votePinboardItem(
+  elementId: string,
+  pinId: string,
+  voterId: string,
+  direction: 'up' | 'down',
+): void {
+  const el = workshopState.elements[elementId];
+  if (!el || !el.pinboardItems) return;
+  const pin = el.pinboardItems.find((p) => p.id === pinId);
+  if (!pin) return;
+
+  if (direction === 'up') {
+    pin.downvotes = pin.downvotes.filter((v) => v !== voterId);
+    if (!pin.upvotes.includes(voterId)) pin.upvotes.push(voterId);
+  } else {
+    pin.upvotes = pin.upvotes.filter((v) => v !== voterId);
+    if (!pin.downvotes.includes(voterId)) pin.downvotes.push(voterId);
+  }
+
+  // Auto-remove if net score ≤ −3
+  const netScore = pin.upvotes.length - pin.downvotes.length;
+  if (netScore <= -3) {
+    el.pinboardItems = el.pinboardItems.filter((p) => p.id !== pinId);
+  }
+
+  autoSave();
+}
+
+/** Add a comment to a pinboard item. */
+export function addPinboardComment(
+  elementId: string,
+  pinId: string,
+  authorId: string,
+  text: string,
+): void {
+  const el = workshopState.elements[elementId];
+  if (!el || !el.pinboardItems) return;
+  const pin = el.pinboardItems.find((p) => p.id === pinId);
+  if (!pin) return;
+  pin.comments.push({ authorId, text, at: Date.now() });
+  autoSave();
+}
+
+/** Count pins by a given agent on a board. */
+export function getAgentPinCount(elementId: string, agentId: string): number {
+  const el = workshopState.elements[elementId];
+  if (!el || !el.pinboardItems) return 0;
+  return el.pinboardItems.filter((p) => p.pinnedBy === agentId).length;
+}
+
+/** Add a pin ID to an agent's active pinboard context (max 5; drops oldest if at limit). */
+export function addActivePinboardItem(instanceId: string, pinId: string): void {
+  const mem = getOrCreateMemory(instanceId);
+  if (mem.activePinboardItems.includes(pinId)) return;
+  if (mem.activePinboardItems.length >= 5) {
+    mem.activePinboardItems = mem.activePinboardItems.slice(1); // drop oldest
+  }
+  mem.activePinboardItems.push(pinId);
+  saveMemory();
+}
+
+/** Remove a pin ID from an agent's active pinboard context. */
+export function removeActivePinboardItem(instanceId: string, pinId: string): void {
+  const mem = getOrCreateMemory(instanceId);
+  mem.activePinboardItems = mem.activePinboardItems.filter((id) => id !== pinId);
+  saveMemory();
 }
 
 export function setMessageBoardContent(elementId: string, content: string) {
@@ -458,6 +544,7 @@ function emptyMemory(): AgentMemory {
     workspaceNotes: [],
     recentInteractions: [],
     environmentState: {},
+    activePinboardItems: [],
   };
 }
 
@@ -511,6 +598,8 @@ export function loadMemory(): void {
     if (!raw) return;
     const saved = JSON.parse(raw) as Record<string, AgentMemory>;
     for (const [id, mem] of Object.entries(saved)) {
+      // Migrate memory records that pre-date activePinboardItems
+      if (!mem.activePinboardItems) mem.activePinboardItems = [];
       agentMemory[id] = mem;
     }
   } catch { /* non-critical */ }

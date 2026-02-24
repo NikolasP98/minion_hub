@@ -29,6 +29,13 @@ import {
 	addWorkspaceNote,
 	updateContextSummary,
 	recordElementRead,
+	getOrCreateMemory,
+	votePinboardItem,
+	addActivePinboardItem,
+	removeActivePinboardItem,
+	removePinboardItem,
+	addPinboardItem,
+	getAgentPinCount,
 } from '$lib/state/workshop.svelte';
 import { gw } from '$lib/state/gateway-data.svelte';
 import { startConversation, endConversation } from './conversation-manager';
@@ -503,6 +510,7 @@ export async function compactAgentContext(
 /**
  * Ask an agent to process the content of a workshop element.
  * Shows a reaction emoji on the sprite, records the read in memory.
+ * For pinboards: injects a full view with IDs and scores so the agent can KEEP_PIN/VOTE.
  * Called by simulation.ts when draining readElement / seekInfo actions.
  */
 export async function readElementForAgent(
@@ -519,13 +527,56 @@ export async function readElementForAgent(
 
 	// Build element content summary
 	let contentDesc = '';
-	if (el.type === 'rulebook') contentDesc = el.rulebookContent?.trim() ?? '';
-	else if (el.type === 'messageboard') contentDesc = el.messageBoardContent?.trim() ?? '';
-	else if (el.type === 'pinboard') {
-		contentDesc = (el.pinboardItems ?? []).map((p) => `- ${p.content}`).join('\n');
+	let promptLines: string[] = [];
+
+	if (el.type === 'rulebook') {
+		contentDesc = el.rulebookContent?.trim() ?? '';
+		promptLines = [
+			`--- RULEBOOK: "${el.label}" ---`,
+			'Purpose: Strict rules that must be followed throughout this session.',
+			'',
+			contentDesc,
+			'',
+			'Acknowledge these rules. Use [REMEMBER: note] to record key points.',
+			'Respond briefly.',
+		];
+	} else if (el.type === 'messageboard') {
+		contentDesc = el.messageBoardContent?.trim() ?? '';
+		promptLines = [
+			`--- MESSAGE BOARD: "${el.label}" ---`,
+			contentDesc,
+			'',
+			'Process this information. Use [REMEMBER: note] to record anything important.',
+			'Respond briefly.',
+		];
+	} else if (el.type === 'pinboard') {
+		const fullView = buildPinboardFullView(el, instanceId);
+		contentDesc = fullView || '(empty)';
+		if (!fullView) {
+			showReactionEmoji(instanceId, '👀');
+			recordElementRead(instanceId, elementId, '(empty)');
+			return;
+		}
+		promptLines = [
+			fullView,
+			'',
+			'Review each item. Use [KEEP_PIN: id] to save items to your active memory.',
+			'Use [VOTE_UP: id] or [VOTE_DOWN: id] to signal your assessment.',
+			'Use [REMEMBER: note] to record anything important.',
+			'Respond briefly.',
+		];
 	} else if (el.type === 'inbox') {
 		const unread = (el.inboxItems ?? []).filter((m) => !m.read);
 		contentDesc = unread.map((m) => `From ${m.fromId}: ${m.content}`).join('\n');
+		promptLines = [
+			'--- INBOX ---',
+			'Purpose: Tasks and messages addressed directly to you.',
+			'',
+			contentDesc,
+			'',
+			'Process these messages. Use [REMEMBER: note] to record action items.',
+			'Respond briefly.',
+		];
 	}
 
 	if (!contentDesc) {
@@ -535,15 +586,7 @@ export async function readElementForAgent(
 		return;
 	}
 
-	const prompt = [
-		`New content on ${el.type} "${el.label}":`,
-		'',
-		contentDesc,
-		'',
-		'Process this information and update your understanding.',
-		'Use [REMEMBER: your note] to record anything important for later.',
-		'Respond briefly — one or two sentences is fine.',
-	].join('\n');
+	const prompt = promptLines.join('\n');
 
 	// Show reading indicator emoji while processing
 	showReactionEmoji(instanceId, '🔍');
@@ -553,6 +596,11 @@ export async function readElementForAgent(
 		const response = await sendAndWaitForResponse(agentId, gateSessionKey, prompt, 45_000);
 		if (response) {
 			extractAndApplyRemembers(response, instanceId);
+			// For pinboards: also extract KEEP_PIN/RELEASE_PIN and VOTE markers
+			if (el.type === 'pinboard') {
+				extractAndApplyKeepPins(response, instanceId);
+				extractAndApplyVotes(response, agentId);
+			}
 			recordElementRead(instanceId, elementId, contentDesc.slice(0, 200));
 			// Show a confirmation emoji
 			const emoji = el.type === 'rulebook' ? '📖'
@@ -845,59 +893,166 @@ async function sendAndWaitForResponse(
 // ---------------------------------------------------------------------------
 
 /**
- * Collect contextual information from workshop elements (pinboards, message
- * boards, inboxes) to inject into agent prompts. Also injects rulebook
- * standing instructions and per-agent memory context.
+ * Format a relative time string from a timestamp.
+ */
+function relativeTime(ts: number): string {
+	const diff = Date.now() - ts;
+	const seconds = Math.floor(diff / 1000);
+	if (seconds < 60) return 'just now';
+	const minutes = Math.floor(seconds / 60);
+	if (minutes < 60) return `${minutes}m ago`;
+	const hours = Math.floor(minutes / 60);
+	if (hours < 24) return `${hours}h ago`;
+	return `${Math.floor(hours / 24)}d ago`;
+}
+
+/**
+ * Produce structured, metadata-rich prompt injection for workshop context.
+ * Includes: WORKSHOP clause, rulebooks, message boards, inbox, active pinboard memory, agent memory.
  */
 export function getWorkshopContext(agentId?: string, instanceId?: string): string {
 	const parts: string[] = [];
 
-	// 1. Rulebook (always first — standing instructions)
+	const gwAgent = agentId
+		? (gw.agents.find((a: { id: string }) => a.id === agentId) as { id: string; name?: string; shareWorkspaceInfo?: boolean } | undefined)
+		: undefined;
+	const shareWorkspace = gwAgent?.shareWorkspaceInfo !== false; // default true
+
+	// A. WORKSHOP clause — always first
+	const agentsOnCanvas = Object.values(workshopState.agents).map((inst) => {
+		const ag = gw.agents.find((a: { id: string; name?: string }) => a.id === inst.agentId) as { id: string; name?: string } | undefined;
+		const name = ag?.name ?? inst.agentId;
+		return `${name} (${inst.agentId})`;
+	});
+
+	const mem = instanceId ? agentMemory[instanceId] : undefined;
+	const activePins = mem?.activePinboardItems ?? [];
+	const activePinsCount = activePins.length;
+
+	const workshopClause = [
+		'=== WORKSHOP ENVIRONMENT ===',
+		'You are operating on a multi-agent workshop canvas — a shared interactive space where',
+		'agents read and write to shared environment elements, exchange messages, and collaborate.',
+		'',
+		agentsOnCanvas.length > 0
+			? `Agents on canvas: ${agentsOnCanvas.join(', ')}`
+			: 'No other agents on canvas.',
+		'',
+		'Available markers (use in your responses to interact with the environment):',
+		'  [PIN: your note]           — Add to the shared pinboard (max 5 pins per agent)',
+		'  [REMOVE_PIN: pin-id]       — Remove one of your existing pins',
+		'  [VOTE_UP: pin-id]          — Upvote a pinboard item you find valuable',
+		'  [VOTE_DOWN: pin-id]        — Downvote an item you find outdated or incorrect',
+		'  [KEEP_PIN: pin-id]         — Add a pinboard item to your active memory (max 5 slots)',
+		'  [RELEASE_PIN: pin-id]      — Remove a pinboard item from your active memory',
+		'  [SEND to AgentName: msg]   — Send a message to another agent\'s inbox',
+		'  [REMEMBER: note]           — Save a note to your personal workspace memory',
+		'',
+		`Active pinboard memory: ${activePinsCount}/5 slots used`,
+		'=== END WORKSHOP ENVIRONMENT ===',
+	].join('\n');
+	parts.push(workshopClause);
+
+	if (!shareWorkspace) return parts.join('\n\n');
+
+	// B. Rulebook — always, if present
 	const rulebooks = Object.values(workshopState.elements).filter(
 		(el) => el.type === 'rulebook' && el.rulebookContent?.trim(),
 	);
 	for (const rb of rulebooks) {
-		parts.push(`=== Standing Instructions ===\n${rb.rulebookContent!.trim()}\n=== End Standing Instructions ===`);
+		parts.push([
+			'--- RULEBOOK START ---',
+			'Purpose: Strict rules that must be followed throughout this workshop session.',
+			'Injected: always',
+			'',
+			rb.rulebookContent!.trim(),
+			'--- RULEBOOK END ---',
+		].join('\n'));
 	}
 
-	// 2. Agent memory context summary
-	if (instanceId) {
-		const mem = agentMemory[instanceId];
-		if (mem?.contextSummary) {
-			parts.push(`--- Your Memory Summary ---\n${mem.contextSummary}`);
-		}
-		if (mem?.workspaceNotes?.length) {
-			parts.push(`--- Your Notes ---\n${mem.workspaceNotes.map((n) => `- ${n}`).join('\n')}`);
-		}
-		if (mem?.recentInteractions?.length) {
-			parts.push(`--- Recent Interactions ---\n${mem.recentInteractions.map((i) => `- ${i}`).join('\n')}`);
+	// C. Message boards — always, if present
+	for (const el of Object.values(workshopState.elements)) {
+		if (el.type === 'messageboard' && el.messageBoardContent?.trim()) {
+			parts.push([
+				`--- MESSAGE BOARD START: "${el.label}" ---`,
+				'Purpose: Guidelines and announcements for this workshop session.',
+				'Injected: always',
+				'',
+				el.messageBoardContent.trim(),
+				'--- MESSAGE BOARD END ---',
+			].join('\n'));
 		}
 	}
 
-	// 3. Per-agent config flags
-	const gwAgent = agentId
-		? (gw.agents.find((a: { id: string }) => a.id === agentId) as { id: string; shareWorkspaceInfo?: boolean; shareUserInfo?: boolean } | undefined)
-		: undefined;
-	const shareWorkspace = gwAgent?.shareWorkspaceInfo !== false; // default true
-
-	if (shareWorkspace) {
+	// D. Inbox — always if agent has unread messages
+	if (agentId) {
 		for (const el of Object.values(workshopState.elements)) {
-			if (el.type === 'messageboard' && el.messageBoardContent?.trim()) {
-				parts.push(`[Message Board "${el.label}"]: ${el.messageBoardContent.trim()}`);
-			}
-			if (el.type === 'pinboard' && el.pinboardItems?.length) {
-				const lines = [`[Pinboard "${el.label}"]:`];
-				for (const pin of el.pinboardItems) lines.push(`  - ${pin.content} (by ${pin.pinnedBy})`);
-				parts.push(lines.join('\n'));
-			}
-			if (el.type === 'inbox' && agentId && el.inboxAgentId === agentId) {
+			if (el.type === 'inbox' && el.inboxAgentId === agentId) {
 				const unread = (el.inboxItems ?? []).filter((m) => !m.read);
 				if (unread.length > 0) {
-					const lines = [`[Your Inbox]:`];
-					for (const msg of unread) lines.push(`  - From ${msg.fromId}: ${msg.content}`);
+					const lines = [
+						'--- INBOX START ---',
+						'Purpose: Tasks and messages addressed directly to you from humans or other agents.',
+						'Injected: always when unread messages exist.',
+						'',
+					];
+					for (const msg of unread) {
+						const fromAgent = gw.agents.find((a: { id: string; name?: string }) => a.id === msg.fromId) as { id: string; name?: string } | undefined;
+						const fromName = fromAgent?.name ?? msg.fromId;
+						lines.push(`[From ${msg.fromId} (${fromName})]: ${msg.content}`);
+					}
+					lines.push('--- INBOX END ---');
 					parts.push(lines.join('\n'));
 				}
 			}
+		}
+	}
+
+	// E. Active pinboard memory — only items agent has kept via KEEP_PIN
+	if (instanceId && activePins.length > 0) {
+		// Collect all pinboard items across all boards indexed by pin ID
+		const allPins = new Map<string, { pin: import('$lib/state/workshop.svelte').PinboardItem; boardLabel: string }>();
+		for (const el of Object.values(workshopState.elements)) {
+			if (el.type === 'pinboard') {
+				for (const pin of el.pinboardItems ?? []) {
+					allPins.set(pin.id, { pin, boardLabel: el.label });
+				}
+			}
+		}
+
+		const activeLines = [
+			'--- ACTIVE PINBOARD MEMORY START ---',
+			'Purpose: Pinboard items you have chosen to keep in active context.',
+			`Slots used: ${activePinsCount}/5  (use [RELEASE_PIN: id] to free a slot, [KEEP_PIN: id] to add one)`,
+			'',
+		];
+
+		let hasAny = false;
+		for (const pinId of activePins) {
+			const entry = allPins.get(pinId);
+			if (!entry) continue; // pin was removed
+			const { pin } = entry;
+			const net = pin.upvotes.length - pin.downvotes.length;
+			activeLines.push(`[${pin.id}] ▲${pin.upvotes.length} ▼${pin.downvotes.length} (net ${net > 0 ? '+' : ''}${net})  ${pin.content}`);
+			hasAny = true;
+		}
+
+		if (hasAny) {
+			activeLines.push('--- ACTIVE PINBOARD MEMORY END ---');
+			parts.push(activeLines.join('\n'));
+		}
+	}
+
+	// F. Agent memory
+	if (mem) {
+		if (mem.contextSummary) {
+			parts.push(`--- YOUR MEMORY SUMMARY ---\n${mem.contextSummary}`);
+		}
+		if (mem.workspaceNotes?.length) {
+			parts.push(`--- YOUR NOTES ---\n${mem.workspaceNotes.map((n) => `- ${n}`).join('\n')}`);
+		}
+		if (mem.recentInteractions?.length) {
+			parts.push(`--- RECENT INTERACTIONS ---\n${mem.recentInteractions.map((i) => `- ${i}`).join('\n')}`);
 		}
 	}
 
@@ -905,8 +1060,48 @@ export function getWorkshopContext(agentId?: string, instanceId?: string): strin
 }
 
 /**
+ * Build a full pinboard view for injection during element-read.
+ * Shows ALL items with IDs and scores so the agent can evaluate and KEEP_PIN/VOTE.
+ */
+function buildPinboardFullView(
+	el: import('$lib/state/workshop.svelte').WorkshopElement,
+	instanceId: string,
+): string {
+	const pins = el.pinboardItems ?? [];
+	if (pins.length === 0) return '';
+
+	const mem = agentMemory[instanceId];
+	const activePins = mem?.activePinboardItems ?? [];
+	const slotsRemaining = 5 - activePins.length;
+
+	const sorted = [...pins].sort((a, b) => {
+		const na = a.upvotes.length - a.downvotes.length;
+		const nb = b.upvotes.length - b.downvotes.length;
+		return nb - na;
+	});
+
+	const lines = [
+		`--- PINBOARD FULL VIEW: "${el.label}" ---`,
+		`Review these items. Use [KEEP_PIN: id] to add to your active memory (${slotsRemaining} slots remaining).`,
+		'Use [VOTE_UP: id] or [VOTE_DOWN: id] to signal your assessment.',
+		'',
+	];
+
+	for (const pin of sorted) {
+		const net = pin.upvotes.length - pin.downvotes.length;
+		const flag = net <= -2 ? ' ⚠️ flagged' : '';
+		const fromAgent = gw.agents.find((a: { id: string; name?: string }) => a.id === pin.pinnedBy) as { id: string; name?: string } | undefined;
+		const byName = fromAgent?.name ?? pin.pinnedBy;
+		lines.push(`[${pin.id}] ▲${pin.upvotes.length} ▼${pin.downvotes.length}  ${pin.content}  (by ${byName}, ${relativeTime(pin.pinnedAt)})${flag}`);
+	}
+
+	lines.push('--- PINBOARD FULL VIEW END ---');
+	return lines.join('\n');
+}
+
+/**
  * Scan an agent response for [PIN: ...] markers and auto-add to the nearest
- * pinboard element.
+ * pinboard element. Enforces a max of 5 pins per agent (auto-removes oldest).
  */
 function extractAndApplyPins(responseText: string, agentId: string): void {
 	const pinRegex = /\[PIN:\s*(.+?)\]/gi;
@@ -925,15 +1120,87 @@ function extractAndApplyPins(responseText: string, agentId: string): void {
 	);
 	if (!pinboardEl) return;
 
-	// Dynamically import to add pins
 	for (const content of pins) {
-		if (!pinboardEl.pinboardItems) pinboardEl.pinboardItems = [];
-		pinboardEl.pinboardItems.push({
-			id: `pin_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-			content,
-			pinnedBy: agentId,
-			pinnedAt: Date.now(),
-		});
+		// Enforce per-agent 5-pin limit: auto-remove oldest if at limit
+		const MAX_PINS_PER_AGENT = 5;
+		const currentCount = getAgentPinCount(pinboardEl.instanceId, agentId);
+		if (currentCount >= MAX_PINS_PER_AGENT) {
+			// Find and remove oldest pin by this agent
+			const agentPins = (pinboardEl.pinboardItems ?? [])
+				.filter((p) => p.pinnedBy === agentId)
+				.sort((a, b) => a.pinnedAt - b.pinnedAt);
+			if (agentPins.length > 0) {
+				removePinboardItem(pinboardEl.instanceId, agentPins[0].id);
+			}
+		}
+		addPinboardItem(pinboardEl.instanceId, content, agentId);
+	}
+}
+
+/**
+ * Scan agent response for [REMOVE_PIN: id] markers.
+ */
+function extractAndApplyRemovePins(responseText: string, agentId: string): void {
+	const removeRegex = /\[REMOVE_PIN:\s*([\w_]+)\]/gi;
+	let match: RegExpExecArray | null;
+
+	while ((match = removeRegex.exec(responseText)) !== null) {
+		const pinId = match[1].trim();
+		// Find the pinboard containing this pin and verify ownership
+		for (const el of Object.values(workshopState.elements)) {
+			if (el.type !== 'pinboard' || !el.pinboardItems) continue;
+			const pin = el.pinboardItems.find((p) => p.id === pinId);
+			if (pin && pin.pinnedBy === agentId) {
+				removePinboardItem(el.instanceId, pinId);
+				break;
+			}
+		}
+	}
+}
+
+/**
+ * Scan agent response for [VOTE_UP: id] / [VOTE_DOWN: id] markers.
+ */
+function extractAndApplyVotes(responseText: string, agentId: string): void {
+	const voteUpRegex = /\[VOTE_UP:\s*([\w_]+)\]/gi;
+	const voteDownRegex = /\[VOTE_DOWN:\s*([\w_]+)\]/gi;
+	let match: RegExpExecArray | null;
+
+	while ((match = voteUpRegex.exec(responseText)) !== null) {
+		const pinId = match[1].trim();
+		for (const el of Object.values(workshopState.elements)) {
+			if (el.type === 'pinboard' && el.pinboardItems?.some((p) => p.id === pinId)) {
+				votePinboardItem(el.instanceId, pinId, agentId, 'up');
+				break;
+			}
+		}
+	}
+
+	while ((match = voteDownRegex.exec(responseText)) !== null) {
+		const pinId = match[1].trim();
+		for (const el of Object.values(workshopState.elements)) {
+			if (el.type === 'pinboard' && el.pinboardItems?.some((p) => p.id === pinId)) {
+				votePinboardItem(el.instanceId, pinId, agentId, 'down');
+				break;
+			}
+		}
+	}
+}
+
+/**
+ * Scan agent response for [KEEP_PIN: id] / [RELEASE_PIN: id] markers.
+ */
+function extractAndApplyKeepPins(responseText: string, instanceId: string): void {
+	const keepRegex = /\[KEEP_PIN:\s*([\w_]+)\]/gi;
+	const releaseRegex = /\[RELEASE_PIN:\s*([\w_]+)\]/gi;
+	let match: RegExpExecArray | null;
+
+	while ((match = keepRegex.exec(responseText)) !== null) {
+		addActivePinboardItem(instanceId, match[1].trim());
+	}
+
+	while ((match = releaseRegex.exec(responseText)) !== null) {
+		removeActivePinboardItem(instanceId, match[1].trim());
 	}
 }
 
@@ -994,22 +1261,20 @@ function formatInitialPrompt(
 	const workshopCtx = getWorkshopContext(agentId, instanceId);
 
 	if (totalParticipants <= 1) {
-		const lines = [taskPrompt];
-		if (workshopCtx) {
-			lines.push('', '--- Workshop Context ---', workshopCtx);
-		}
+		const lines: string[] = [];
+		if (workshopCtx) lines.push(workshopCtx, '');
+		lines.push(taskPrompt);
 		return lines.join('\n');
 	}
 
-	const lines = [
+	const lines: string[] = [];
+	if (workshopCtx) lines.push(workshopCtx, '');
+
+	lines.push(
 		`You are in a workshop conversation with ${otherAgentNames}.`,
 		``,
 		`Task: ${taskPrompt}`,
-	];
-
-	if (workshopCtx) {
-		lines.push('', '--- Workshop Context ---', workshopCtx);
-	}
+	);
 
 	lines.push(
 		``,
@@ -1034,16 +1299,15 @@ function formatTurnPrompt(
 	const isLastTurn = remaining <= 1;
 	const workshopCtx = getWorkshopContext(agentId, instanceId);
 
-	const lines = [
+	const lines: string[] = [];
+	if (workshopCtx) lines.push(workshopCtx, '');
+
+	lines.push(
 		`You are in a workshop conversation.`,
 		``,
 		`Original task: ${taskPrompt}`,
 		``,
-	];
-
-	if (workshopCtx) {
-		lines.push('--- Workshop Context ---', workshopCtx, '');
-	}
+	);
 
 	// Include condensed history of recent exchanges for context
 	const recentHistory = conversationHistory.slice(-4);
@@ -1096,12 +1360,15 @@ function emitMessage(msg: WorkshopMessage): void {
 		});
 	}
 
-	// Extract [PIN: ...], [SEND to ...: ...], and [REMEMBER: ...] markers from agent responses
+	// Extract markers from agent responses
 	try {
 		extractAndApplyPins(msg.message, msg.agentId);
+		extractAndApplyRemovePins(msg.message, msg.agentId);
+		extractAndApplyVotes(msg.message, msg.agentId);
 		extractAndRouteSends(msg.message, msg.agentId);
 		if (msg.instanceId) {
 			extractAndApplyRemembers(msg.message, msg.instanceId);
+			extractAndApplyKeepPins(msg.message, msg.instanceId);
 		}
 	} catch {
 		// non-critical
