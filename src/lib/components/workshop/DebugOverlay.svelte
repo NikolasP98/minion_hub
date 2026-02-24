@@ -36,7 +36,7 @@
   }
 </script>
 
-<div class="absolute inset-0 pointer-events-none overflow-hidden z-[200]">
+<div class="absolute inset-0 pointer-events-none overflow-hidden z-[45]">
   {#each Object.values(workshopState.agents) as agent (agent.instanceId)}
     {@const pos = worldToScreen(agent.position.x, agent.position.y, workshopState.camera)}
     {@const state = getAgentState(agent.instanceId) ?? 'idle'}
