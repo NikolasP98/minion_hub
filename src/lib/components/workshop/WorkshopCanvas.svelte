@@ -145,10 +145,17 @@
     }
   });
 
-  // Watch for element content changes and enqueue agent actions
+  // Watch for element content changes and enqueue agent actions.
+  // Explicitly access each tracked field so Svelte 5 creates reactive
+  // dependencies on nested properties — `void workshopState.elements` alone
+  // only subscribes to the parent source and misses in-place mutations.
   $effect(() => {
-    // Reading workshopState.elements triggers re-run on any element change
-    void workshopState.elements;
+    for (const el of Object.values(workshopState.elements)) {
+      void el.messageBoardContent;
+      void el.rulebookContent;
+      void el.pinboardItems?.length;
+      void el.inboxItems?.length;
+    }
     checkElementChanges();
   });
 

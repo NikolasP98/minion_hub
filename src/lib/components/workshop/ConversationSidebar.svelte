@@ -7,8 +7,9 @@
   import { conn } from '$lib/state/connection.svelte';
   import { Carta, Markdown } from 'carta-md';
   import 'carta-md/default.css';
+  import DOMPurify from 'dompurify';
 
-  const carta = new Carta({ sanitizer: (html) => html });
+  const carta = new Carta({ sanitizer: (html) => DOMPurify.sanitize(html) });
 
   let {
     selectedConversationId = null,

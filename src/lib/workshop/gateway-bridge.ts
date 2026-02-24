@@ -710,14 +710,13 @@ async function runOrchestrationLoop(
  * Build a workshop-specific session key that won't collide with the user's
  * main chat session for the same agent.
  */
-function buildWorkshopSessionKey(agentId: string, conversationId: string): string {
+/** Build a workshop-specific session key. Exported for use by simulation.ts. */
+export function buildWorkshopSessionKey(agentId: string, conversationId: string): string {
 	return `agent:${agentId}:workshop:${conversationId}`;
 }
 
-/** Public wrapper for the workshop session key builder. Used by simulation.ts. */
-export function buildWorkshopSessionKey_public(agentId: string, conversationId: string): string {
-	return `agent:${agentId}:workshop:${conversationId}`;
-}
+/** @deprecated Use `buildWorkshopSessionKey` directly. */
+export const buildWorkshopSessionKey_public = buildWorkshopSessionKey;
 
 /**
  * Send a chat message to a specific agent session and wait for the final
