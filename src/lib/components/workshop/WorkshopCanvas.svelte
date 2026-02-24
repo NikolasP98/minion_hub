@@ -6,7 +6,7 @@
   import * as elementSprites from '$lib/workshop/element-sprite';
   import { ELEMENT_WIDTH, ELEMENT_HEIGHT } from '$lib/workshop/element-sprite';
   import * as ropeRenderer from '$lib/workshop/rope-renderer';
-  import { startSimulation, stopSimulation, setBanterCallback, removeAgentFromSimulation } from '$lib/workshop/simulation';
+  import { startSimulation, stopSimulation, setBanterCallback, removeAgentFromSimulation, computeSpawnY } from '$lib/workshop/simulation';
   import { screenToWorld, worldToScreen, applyZoom, applyPan } from '$lib/workshop/camera';
   import { createAgentFsm, destroyAgentFsm, sendFsmEvent, clearAllFsms } from '$lib/workshop/agent-fsm';
   import { checkElementChanges, resetWatcher } from '$lib/workshop/element-watcher';
@@ -45,6 +45,7 @@
   import InboxOverlay from './InboxOverlay.svelte';
   import RulebookOverlay from './RulebookOverlay.svelte';
   import { thinkingAgents } from '$lib/state/workshop-conversations.svelte';
+  import DebugOverlay from './DebugOverlay.svelte';
 
   // ---------------------------------------------------------------------------
   // PixiJS state (not reactive - managed imperatively within onMount)
@@ -119,6 +120,12 @@
 
   // Active conversation handles for abort
   let activeHandles = $state<Map<string, { abort: () => void }>>(new Map());
+
+  let debugMode = $state(
+    typeof localStorage !== 'undefined'
+      ? localStorage.getItem('workshop:debugMode') === 'true'
+      : false
+  );
 
   // ---------------------------------------------------------------------------
   // Hide/show agents based on connection state
@@ -595,9 +602,10 @@
     const screenY = e.clientY - rect.top;
     const worldPos = screenToWorld(screenX, screenY, workshopState.camera);
 
-    const instanceId = addAgentInstance(agentData.id, worldPos.x, worldPos.y);
+    const spawnY = computeSpawnY(worldPos.y);
+    const instanceId = addAgentInstance(agentData.id, worldPos.x, spawnY);
 
-    physics.addAgentBody(instanceId, worldPos.x, worldPos.y);
+    physics.addAgentBody(instanceId, worldPos.x, spawnY);
     createAgentFsm(instanceId, 'stationary');
 
     if (worldContainer) {
@@ -610,7 +618,7 @@
           emoji: agentData.emoji,
         },
         worldPos.x,
-        worldPos.y,
+        spawnY,
         worldContainer,
       );
     }
@@ -966,6 +974,21 @@
         </span>
       {/if}
     </button>
+  {/if}
+
+  <!-- Debug mode toggle -->
+  <button
+    class="absolute bottom-3 left-3 z-40 flex items-center gap-1.5 px-2 py-1 rounded bg-bg2/80 backdrop-blur border border-border text-[9px] font-mono text-muted hover:text-foreground transition-colors"
+    onclick={() => {
+      debugMode = !debugMode;
+      localStorage.setItem('workshop:debugMode', String(debugMode));
+    }}
+  >
+    {debugMode ? '🐛 debug on' : '🐛'}
+  </button>
+
+  {#if debugMode}
+    <DebugOverlay />
   {/if}
 
   <!-- Context Menu -->
