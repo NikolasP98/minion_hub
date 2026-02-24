@@ -5,6 +5,10 @@
   import { loadConversationHistory } from '$lib/workshop/gateway-bridge';
   import { slide } from 'svelte/transition';
   import { conn } from '$lib/state/connection.svelte';
+  import { Carta, Markdown } from 'carta-md';
+  import 'carta-md/default.css';
+
+  const carta = new Carta({ sanitizer: false });
 
   let {
     selectedConversationId = null,
@@ -218,7 +222,9 @@
                 <span class="text-[10px] font-mono text-muted">{agent.name}</span>
                 <span class="text-[9px] text-muted/60">{formatRelativeTime(msg.timestamp)}</span>
               </div>
-              <p class="text-[11px] text-foreground leading-snug mt-0.5 whitespace-pre-wrap break-words">{msg.content}</p>
+              <div class="ws-message-md text-[11px] text-foreground leading-snug mt-0.5">
+                <Markdown {carta} value={msg.content} />
+              </div>
             </div>
           </div>
         {/each}
@@ -227,3 +233,40 @@
     </div>
   </div>
 </div>
+
+<style>
+  :global(.ws-message-md) {
+    /* Inline code */
+    :global(code) {
+      font-family: 'JetBrains Mono NF', monospace;
+      font-size: 0.9em;
+      background: var(--color-bg1, #1a1a1a);
+      border-radius: 3px;
+      padding: 0.1em 0.3em;
+    }
+    /* Code blocks */
+    :global(pre) {
+      background: var(--color-bg1, #1a1a1a);
+      border-radius: 4px;
+      padding: 0.5em 0.75em;
+      overflow-x: auto;
+      font-size: 0.85em;
+    }
+    /* Headings scale down */
+    :global(h1) { font-size: 1.1em; font-weight: 600; margin: 0.3em 0; }
+    :global(h2) { font-size: 1.05em; font-weight: 600; margin: 0.3em 0; }
+    :global(h3) { font-size: 1em; font-weight: 600; margin: 0.2em 0; }
+    /* Lists */
+    :global(ul), :global(ol) { padding-left: 1.2em; margin: 0.2em 0; }
+    :global(li) { margin: 0.1em 0; }
+    /* Paragraphs */
+    :global(p) { margin: 0.2em 0; }
+    /* Blockquote */
+    :global(blockquote) {
+      border-left: 2px solid var(--color-border, #333);
+      margin: 0.2em 0 0.2em 0.2em;
+      padding-left: 0.5em;
+      color: var(--color-muted, #888);
+    }
+  }
+</style>
