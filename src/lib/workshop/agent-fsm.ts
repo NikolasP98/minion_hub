@@ -23,7 +23,8 @@ export type AgentFsmState =
 	| 'conversing'
 	| 'cooldown'
 	| 'dragged'    // user is holding this agent
-	| 'heartbeat'; // brief awareness pulse when idle too long
+	| 'heartbeat'  // brief awareness pulse when idle too long
+	| 'reading';   // agent is processing an environment element
 
 export type AgentFsmEvent =
 	| 'wander'
@@ -35,7 +36,9 @@ export type AgentFsmEvent =
 	| 'pickUp'           // user grabbed the agent
 	| 'putDown'          // user released the agent
 	| 'heartbeatTrigger' // fired by simulation timer
-	| 'heartbeatEnd';    // fired after heartbeat duration expires
+	| 'heartbeatEnd'     // fired after heartbeat duration expires
+	| 'startReading'     // agent begins processing an environment element
+	| 'stopReading';     // agent finishes processing an environment element
 
 // ---------------------------------------------------------------------------
 // Module state
@@ -49,6 +52,9 @@ const priorMovement = new Map<string, 'idle' | 'wandering' | 'patrolling'>();
 
 /** Prior state before drag, for restoration on putDown */
 const priorDragState = new Map<string, AgentFsmState>();
+
+/** Prior state before reading, for restoration on stopReading */
+const priorReadingState = new Map<string, AgentFsmState>();
 
 /** Callback invoked when an agent enters heartbeat state (registered by simulation) */
 let heartbeatEnterCallback: ((instanceId: string) => void) | null = null;
@@ -65,6 +71,7 @@ const GLOW_COLORS: Record<AgentFsmState, number> = {
 	cooldown: 0xf97316,  // orange
 	dragged: 0xfbbf24,   // gold
 	heartbeat: 0x67e8f9, // bright cyan
+	reading: 0xf59e0b,   // amber
 };
 
 const COOLDOWN_MS = 4000;
@@ -205,6 +212,17 @@ export function createAgentFsm(
 			},
 		},
 
+		reading: {
+			stopReading: () => {
+				const prior = priorReadingState.get(instanceId) ?? 'idle';
+				priorReadingState.delete(instanceId);
+				return prior;
+			},
+			_enter() {
+				setSpriteGlowColor(instanceId, GLOW_COLORS.reading);
+			},
+		},
+
 		'*': {
 			stop: 'idle',
 			pickUp: () => {
@@ -213,6 +231,13 @@ export function createAgentFsm(
 					priorDragState.set(instanceId, cur);
 				}
 				return 'dragged';
+			},
+			startReading: () => {
+				const cur = fsm.current;
+				if (cur !== 'reading' && cur !== 'dragged') {
+					priorReadingState.set(instanceId, cur);
+				}
+				return 'reading';
 			},
 		},
 	});
@@ -228,6 +253,7 @@ export function destroyAgentFsm(instanceId: string): void {
 	fsmMap.delete(instanceId);
 	priorMovement.delete(instanceId);
 	priorDragState.delete(instanceId);
+	priorReadingState.delete(instanceId);
 }
 
 /**
@@ -268,4 +294,5 @@ export function clearAllFsms(): void {
 	fsmMap.clear();
 	priorMovement.clear();
 	priorDragState.clear();
+	priorReadingState.clear();
 }
