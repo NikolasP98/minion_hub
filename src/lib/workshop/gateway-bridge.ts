@@ -439,6 +439,12 @@ export async function readElementForAgent(
 
 interface ResumeState {
 	turnCount: number;
+	/**
+	 * Index of the LAST COMPLETED participant in the participants array.
+	 * The while loop pre-advances this by 1 (mod n) before the next turn.
+	 * Compute as `(turnCount - 1 + n) % n` where n = participants.length.
+	 * Only used when turnCount > 0; ignored on the turnCount===0 fresh path.
+	 */
 	currentTurnIdx: number;
 	lastResponse: string;
 	lastAgentName: string;
@@ -471,8 +477,8 @@ async function runOrchestrationLoop(
 	}
 
 	try {
-		if (!resumeState) {
-			// Fresh conversation: send initial prompt to first participant
+		if (!resumeState || resumeState.turnCount === 0) {
+			// Fresh conversation (or resume before any turn completed): send initial prompt to first participant
 			const firstParticipant = participants[0];
 			const otherNames = participants
 				.slice(1)
