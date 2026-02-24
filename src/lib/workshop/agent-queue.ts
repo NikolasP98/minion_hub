@@ -1,5 +1,16 @@
 // src/lib/workshop/agent-queue.ts
 
+/**
+ * Agent Action Queue
+ *
+ * Per-agent priority action queues for the workshop canvas.
+ * Agents accumulate typed actions (read element, approach agent, compact context,
+ * seek info) that are drained by simulation.ts on idle windows.
+ *
+ * Priority: compactContext > readElement(high) > readElement(normal) > seekInfo > approachAgent
+ * Cap: 5 non-compact actions per agent (compactContext always fits).
+ */
+
 export type AgentAction =
   | { type: 'readElement';   elementId: string; priority: 'high' | 'normal' }
   | { type: 'approachAgent'; targetInstanceId: string }
@@ -34,7 +45,7 @@ function getQueue(instanceId: string): AgentAction[] {
  * Enqueue an action for an agent.
  * - `compactContext` always fits (bypasses cap).
  * - Deduplicates: won't add two identical { type, elementId/targetInstanceId } entries.
- * - Drops the oldest non-compactContext action when at cap.
+ * - Drops the lowest-priority non-compactContext action when at cap.
  */
 export function enqueue(instanceId: string, action: AgentAction): void {
   const q = getQueue(instanceId);
@@ -82,7 +93,7 @@ export function dequeue(instanceId: string): AgentAction | undefined {
 
 /** Get a snapshot of all queued actions (read-only). */
 export function getQueue_readonly(instanceId: string): readonly AgentAction[] {
-  return getQueue(instanceId);
+  return [...getQueue(instanceId)];
 }
 
 /** Clear all actions for an agent (e.g. on scene reset). */
