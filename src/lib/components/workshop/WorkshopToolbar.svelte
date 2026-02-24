@@ -24,6 +24,7 @@
     { type: 'pinboard', icon: '\u{1F4CC}', label: 'Pinboard' },
     { type: 'messageboard', icon: '\u{1F4CB}', label: 'Message Board' },
     { type: 'inbox', icon: '\u{1F4EC}', label: 'Inbox' },
+    { type: 'rulebook', icon: '\u{1F4D6}', label: 'Rulebook' },
   ];
 
   function onDragStart(
