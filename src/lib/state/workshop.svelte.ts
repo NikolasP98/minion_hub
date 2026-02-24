@@ -21,10 +21,12 @@ export interface WorkshopConversation {
   participantInstanceIds: string[];
   participantAgentIds: string[];
   sessionKey: string;
-  status: 'active' | 'completed' | 'queued';
+  status: 'active' | 'interrupted' | 'completed' | 'queued';
   startedAt: number;
   endedAt?: number;
   title?: string;
+  taskPrompt?: string;
+  maxTurns?: number;
 }
 
 // --- Workshop interactive elements ---
@@ -164,8 +166,7 @@ export function autoLoad(hostId: string | null = hostsState.activeHostId) {
         // Skip conversations without the new required fields
         if (!conv.participantAgentIds || !conv.startedAt) continue;
         if (conv.status === 'active') {
-          conv.status = 'completed';
-          conv.endedAt = conv.endedAt ?? Date.now();
+          conv.status = 'interrupted';
         }
 
         // Deduplicate by agent pair — keep only the most recent conversation per pair
