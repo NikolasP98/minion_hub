@@ -37,6 +37,8 @@ import { configState } from '$lib/state/config.svelte';
 import { uuid } from '$lib/utils/uuid';
 import { extractText } from '$lib/utils/text';
 import { showReactionEmoji } from '$lib/workshop/agent-sprite';
+import { sendFsmEvent } from './agent-fsm';
+import type { ConversationMessage } from '$lib/state/workshop-conversations.svelte';
 
 // ---------------------------------------------------------------------------
 // Deterministic session key builders
@@ -318,6 +320,133 @@ export function assignTask(
  */
 export function isConversationActive(conversationId: string): boolean {
 	return activeLoops.has(conversationId);
+}
+
+/**
+ * Resume any conversations that were active when the page was last closed.
+ * Call after canvas rebuild (agents and FSMs must be on canvas).
+ *
+ * Returns handles for all successfully resumed conversations.
+ */
+export async function resumeInterruptedConversations(): Promise<WorkshopConversationHandle[]> {
+	if (!conn.connected) return [];
+
+	const interrupted = Object.values(workshopState.conversations).filter(
+		(c) => c.status === 'interrupted',
+	);
+
+	if (interrupted.length === 0) return [];
+
+	const handles: WorkshopConversationHandle[] = [];
+
+	for (const conv of interrupted) {
+		// taskPrompt is required to reconstruct turn prompts
+		if (!conv.taskPrompt) {
+			conv.status = 'completed';
+			conv.endedAt = Date.now();
+			continue;
+		}
+
+		// Remap participantAgentIds → current instanceIds (instance IDs change on every load)
+		const remappedInstanceIds: string[] = [];
+		let canResume = true;
+		for (const agentId of conv.participantAgentIds) {
+			const inst = Object.values(workshopState.agents).find((a) => a.agentId === agentId);
+			if (!inst) {
+				canResume = false;
+				break;
+			}
+			remappedInstanceIds.push(inst.instanceId);
+		}
+
+		if (!canResume) {
+			conv.status = 'completed';
+			conv.endedAt = Date.now();
+			continue;
+		}
+
+		// Load history from gateway to reconstruct turn state
+		let history: ConversationMessage[] = [];
+		try {
+			history = await loadConversationHistory(conv);
+		} catch {
+			conv.status = 'completed';
+			conv.endedAt = Date.now();
+			continue;
+		}
+
+		const effectiveMaxTurns = conv.maxTurns ?? workshopState.settings.taskMaxTurns;
+		const turnCount = history.length;
+
+		// If already at or past maxTurns, the conversation completed normally
+		if (turnCount >= effectiveMaxTurns) {
+			conv.status = 'completed';
+			conv.endedAt = conv.endedAt ?? Date.now();
+			continue;
+		}
+
+		// Reconstruct loop state from history
+		const nameOf = (agentId: string): string => {
+			const gwAgent = gw.agents.find((a: { id: string }) => a.id === agentId);
+			return gwAgent?.name ?? agentId;
+		};
+
+		const n = conv.participantAgentIds.length;
+		const lastMsg = history[history.length - 1];
+		const resumeState: ResumeState = {
+			turnCount,
+			// last-completed index: (turnCount - 1 + n) % n; only meaningful when turnCount > 0
+			currentTurnIdx: turnCount > 0 ? (turnCount - 1 + n) % n : 0,
+			lastResponse: lastMsg?.content ?? '',
+			lastAgentName: lastMsg?.agentId ? nameOf(lastMsg.agentId) : '',
+			collectedMessages: history.map((m) => `${nameOf(m.agentId ?? '')}: ${m.content}`),
+		};
+
+		// Re-activate the conversation with current instance IDs
+		conv.status = 'active';
+		conv.participantInstanceIds = remappedInstanceIds;
+
+		const participants = conv.participantAgentIds.map((agentId, i) => ({
+			agentId,
+			instanceId: remappedInstanceIds[i],
+		}));
+
+		// Fire FSM conversationStart for all participants
+		for (const instanceId of remappedInstanceIds) {
+			sendFsmEvent(instanceId, 'conversationStart');
+		}
+
+		// Guard against duplicate loops
+		if (activeLoops.has(conv.id)) continue;
+
+		const loopState = { aborted: false, turnCount, maxTurns: effectiveMaxTurns };
+		activeLoops.set(conv.id, loopState);
+
+		// Resume the orchestration loop asynchronously
+		runOrchestrationLoop(
+			conv.id,
+			conv.sessionKey,
+			participants,
+			conv.taskPrompt,
+			loopState,
+			resumeState,
+		).catch((err) => {
+			console.error('[workshop-bridge] Resume loop error:', err);
+			endConversation(conv.id);
+			activeLoops.delete(conv.id);
+		});
+
+		handles.push({
+			conversationId: conv.id,
+			abort: () => {
+				loopState.aborted = true;
+				endConversation(conv.id);
+				activeLoops.delete(conv.id);
+			},
+		});
+	}
+
+	return handles;
 }
 
 export function getSessionTurnCount(sessionKey: string): number {
