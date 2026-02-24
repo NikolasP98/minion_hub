@@ -26,9 +26,7 @@ import { conn } from '$lib/state/connection.svelte';
 import {
 	workshopState,
 	agentMemory,
-	getOrCreateMemory,
 	addWorkspaceNote,
-	addRecentInteraction,
 	updateContextSummary,
 	recordElementRead,
 } from '$lib/state/workshop.svelte';
@@ -38,7 +36,6 @@ import { appendMessage, setAgentThinking } from '$lib/state/workshop-conversatio
 import { configState } from '$lib/state/config.svelte';
 import { uuid } from '$lib/utils/uuid';
 import { extractText } from '$lib/utils/text';
-import { sendFsmEvent } from '$lib/workshop/agent-fsm';
 import { showReactionEmoji } from '$lib/workshop/agent-sprite';
 
 // ---------------------------------------------------------------------------
@@ -338,10 +335,9 @@ export async function compactAgentContext(
 		if (summary) {
 			updateContextSummary(instanceId, summary);
 			// Prune local cache to last 2 messages
-			const { conversationMessages } = await import('$lib/state/workshop-conversations.svelte');
+			const { conversationMessages, setMessages } = await import('$lib/state/workshop-conversations.svelte');
 			const msgs = conversationMessages[sessionKey];
 			if (msgs && msgs.length > 2) {
-				const { setMessages } = await import('$lib/state/workshop-conversations.svelte');
 				setMessages(sessionKey, msgs.slice(-2));
 			}
 		}
