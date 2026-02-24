@@ -273,11 +273,12 @@ export function sendFsmEvent(instanceId: string, event: AgentFsmEvent): void {
 }
 
 /**
- * Check if an agent is currently in a conversation, cooling down, or being dragged.
+ * Check if an agent is currently busy (conversation, cooldown, dragged, or reading).
+ * Used by simulation to exclude agents from idle banter selection.
  */
 export function isAgentConversing(instanceId: string): boolean {
 	const state = fsmMap.get(instanceId)?.current;
-	return state === 'conversing' || state === 'cooldown' || state === 'dragged';
+	return state === 'conversing' || state === 'cooldown' || state === 'dragged' || state === 'reading';
 }
 
 /**
