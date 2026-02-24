@@ -194,7 +194,7 @@
         <div class="flex flex-col items-center justify-center h-full gap-2">
           {#if selectedConversation.status === 'active'}
             <span class="text-[11px] text-muted animate-pulse">Waiting for response...</span>
-          {:else if selectedConversation.status === 'completed' && conn.connected}
+          {:else if (selectedConversation.status === 'completed' || selectedConversation.status === 'interrupted') && conn.connected}
             <span class="text-[11px] text-muted mb-2">No cached messages</span>
             <button
               class="text-[10px] font-mono px-2 py-1 rounded bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
