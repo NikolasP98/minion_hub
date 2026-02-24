@@ -55,7 +55,7 @@ const ELEMENT_STALE_MS  = 5 * 60_000; // 5 min
 
 // Compaction thresholds
 const COMPACT_TURN_THRESHOLD  = 8;
-const COMPACT_TOKEN_THRESHOLD = 6000;
+const COMPACT_TOKEN_THRESHOLD = 6000; // reserved for future token-count-based compaction trigger
 
 const WANDER_INTERVAL = 3000; // ms between picking a new wander target
 const WANDER_RADIUS = 120; // px from homePosition
@@ -202,6 +202,7 @@ export function removeAgentFromSimulation(instanceId: string): void {
 	wanderTargets.delete(instanceId);
 	patrolAngles.delete(instanceId);
 	heartbeatTimers.delete(instanceId);
+	seekInfoTimers.delete(instanceId);
 	for (const key of elementReactionCooldowns.keys()) {
 		if (key.startsWith(`${instanceId}:`)) {
 			elementReactionCooldowns.delete(key);
