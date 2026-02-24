@@ -25,6 +25,10 @@
   function handleBackdropClick(e: MouseEvent) {
     if (e.target === e.currentTarget) { flush(); onClose(); }
   }
+
+  function toggleAgentChats() {
+    workshopState.settings.agentChatsEnabled = !workshopState.settings.agentChatsEnabled;
+  }
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -44,6 +48,29 @@
         <button class="text-[10px] font-mono text-muted hover:text-foreground" onclick={() => { flush(); onClose(); }}>x</button>
       </div>
     </div>
+
+    <!-- Agent-agent chat killswitch -->
+    <div class="flex items-center justify-between border-b border-border px-3 py-2">
+      <div class="flex flex-col gap-0.5">
+        <span class="text-[10px] font-mono text-foreground font-medium">Agent-Agent Chats</span>
+        <span class="text-[9px] font-mono text-muted">Allow agents to converse with each other</span>
+      </div>
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
+        class="relative h-5 w-9 cursor-pointer rounded-full transition-colors duration-150 {workshopState.settings.agentChatsEnabled ? 'bg-accent' : 'bg-border'}"
+        onclick={toggleAgentChats}
+        role="switch"
+        aria-checked={workshopState.settings.agentChatsEnabled}
+        tabindex="0"
+        onkeydown={(e) => e.key === 'Enter' || e.key === ' ' ? toggleAgentChats() : null}
+      >
+        <span
+          class="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform duration-150 {workshopState.settings.agentChatsEnabled ? 'translate-x-4' : 'translate-x-0.5'}"
+        ></span>
+      </div>
+    </div>
+
     <div class="p-3">
       <textarea
         class="w-full min-h-[200px] resize-y rounded border border-border bg-bg3 p-2 text-[10px] font-mono text-foreground placeholder:text-muted outline-none focus:border-accent"

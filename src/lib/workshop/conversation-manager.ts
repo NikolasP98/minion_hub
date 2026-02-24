@@ -51,8 +51,9 @@ export function canStartConversation(type: 'task' | 'banter'): boolean {
 		return activeCount < max;
 	}
 
-	// banter
+	// banter — also blocked by the master agentChatsEnabled switch
 	return (
+		workshopState.settings.agentChatsEnabled &&
 		workshopState.settings.idleBanterEnabled &&
 		checkBanterBudget() &&
 		activeCount < max

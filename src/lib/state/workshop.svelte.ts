@@ -78,6 +78,8 @@ export interface WorkshopElement {
 
 export interface WorkshopSettings {
   maxConcurrentConversations: number;
+  /** Master killswitch — disables all agent-to-agent conversations when false */
+  agentChatsEnabled: boolean;
   idleBanterEnabled: boolean;
   idleBanterBudgetPerHour: number;
   proximityRadius: number;
@@ -118,6 +120,7 @@ export const workshopState: WorkshopState = $state({
   elements: {} as Record<string, WorkshopElement>,
   settings: {
     maxConcurrentConversations: 3,
+    agentChatsEnabled: true,
     idleBanterEnabled: true,
     idleBanterBudgetPerHour: 20,
     proximityRadius: 200,
@@ -331,6 +334,7 @@ export function resetWorkshop() {
   workshopState.elements = {};
   workshopState.settings = {
     maxConcurrentConversations: 3,
+    agentChatsEnabled: true,
     idleBanterEnabled: true,
     idleBanterBudgetPerHour: 20,
     proximityRadius: 200,

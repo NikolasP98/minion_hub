@@ -140,6 +140,11 @@ export function startWorkshopConversation(
 		return null;
 	}
 
+	if (!workshopState.settings.agentChatsEnabled) {
+		console.warn('[workshop-bridge] Agent-agent chats are disabled');
+		return null;
+	}
+
 	if (participantInstanceIds.length < 2) {
 		console.warn('[workshop-bridge] Need at least 2 participants');
 		return null;
