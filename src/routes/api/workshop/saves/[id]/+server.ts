@@ -33,7 +33,7 @@ export const PUT: RequestHandler = async ({ params, request }) => {
   if (!existing) throw error(404, 'Save not found');
 
   const body = await request.json();
-  const { name, state } = body as { name?: string; state?: string };
+  const { name, state, thumbnail } = body as { name?: string; state?: string; thumbnail?: string };
 
   const updates: Record<string, unknown> = { updatedAt: Date.now() };
 
@@ -50,6 +50,10 @@ export const PUT: RequestHandler = async ({ params, request }) => {
       throw error(400, 'state must be valid JSON');
     }
     updates.state = state;
+  }
+
+  if (thumbnail !== undefined) {
+    updates.thumbnail = typeof thumbnail === 'string' ? thumbnail : null;
   }
 
   await db

@@ -2,21 +2,7 @@
   import { gw } from '$lib/state/gateway-data.svelte';
   import WorkshopAgentPill from './WorkshopAgentPill.svelte';
   import * as m from '$lib/paraglide/messages';
-  import {
-    saveWorkspace,
-    listWorkspaceSaves,
-    loadWorkspace,
-    deleteWorkspaceSave,
-  } from '$lib/state/workshop.svelte';
-
-  let saves = $state<Array<{ id: string; name: string; updatedAt: number }>>([]);
-  let saveName = $state('');
-  let showSaves = $state(false);
-  let saving = $state(false);
-
-  async function refreshSaves() {
-    saves = await listWorkspaceSaves();
-  }
+  import { isSyncing } from '$lib/state/workshop.svelte';
 
   import type { ElementType } from '$lib/state/workshop.svelte';
 
@@ -38,38 +24,6 @@
   function onElementDragStart(e: DragEvent, type: ElementType, label: string) {
     e.dataTransfer?.setData('application/workshop-element', JSON.stringify({ type, label }));
     e.dataTransfer!.effectAllowed = 'copy';
-  }
-
-  async function handleSave() {
-    if (!saveName.trim()) return;
-    saving = true;
-    try {
-      await saveWorkspace(saveName.trim());
-      saveName = '';
-      await refreshSaves();
-    } finally {
-      saving = false;
-    }
-  }
-
-  async function handleLoad(id: string) {
-    await loadWorkspace(id);
-    showSaves = false;
-    window.dispatchEvent(new CustomEvent('workshop:reload'));
-  }
-
-  async function handleDelete(id: string) {
-    await deleteWorkspaceSave(id);
-    await refreshSaves();
-  }
-
-  function toggleSaves() {
-    showSaves = !showSaves;
-    if (showSaves) refreshSaves();
-  }
-
-  function handleSaveKeydown(e: KeyboardEvent) {
-    if (e.key === 'Enter') handleSave();
   }
 </script>
 
@@ -112,69 +66,16 @@
 
   <div class="w-px h-6 bg-border shrink-0"></div>
 
-  <!-- Save / Load section -->
-  <div class="flex items-center gap-1.5 shrink-0">
-    <input
-      type="text"
-      bind:value={saveName}
-      placeholder={m.workshop_saveName()}
-      onkeydown={handleSaveKeydown}
-      class="h-7 w-28 px-2 text-[10px] font-mono bg-bg3 border border-border rounded text-foreground placeholder:text-muted/50 focus:outline-none focus:border-accent"
-    />
-    <button
-      type="button"
-      onclick={handleSave}
-      disabled={saving || !saveName.trim()}
-      class="h-7 px-2.5 text-[10px] font-mono uppercase tracking-wider rounded border border-border bg-accent/10 text-accent hover:bg-accent/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+  <!-- Syncing indicator + Gallery link -->
+  <div class="flex items-center gap-2 shrink-0">
+    {#if isSyncing}
+      <span class="text-[9px] font-mono text-muted/60 animate-pulse">syncing…</span>
+    {/if}
+    <a
+      href="/workshop"
+      class="h-7 px-2.5 text-[10px] font-mono uppercase tracking-wider rounded border border-border text-muted hover:bg-bg3 hover:text-foreground transition-colors flex items-center gap-1"
     >
-      {saving ? '...' : m.workshop_save()}
-    </button>
-
-    <div class="relative">
-      <button
-        type="button"
-        onclick={toggleSaves}
-        class="h-7 px-2.5 text-[10px] font-mono uppercase tracking-wider rounded border transition-colors {showSaves
-          ? 'border-accent bg-accent/10 text-accent'
-          : 'border-border text-muted hover:bg-bg3 hover:text-foreground'}"
-      >
-        {m.workshop_load()}
-      </button>
-
-      {#if showSaves}
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <div
-          class="absolute right-0 top-full mt-1 w-56 max-h-60 overflow-y-auto rounded border border-border bg-bg2/95 backdrop-blur shadow-lg z-50"
-          onclick={(e) => e.stopPropagation()}
-        >
-          {#if saves.length === 0}
-            <div class="px-3 py-2 text-[10px] font-mono text-muted italic">{m.workshop_noSaves()}</div>
-          {:else}
-            {#each saves as save (save.id)}
-              <div
-                class="flex items-center gap-1 px-2 py-1.5 hover:bg-bg3 transition-colors group"
-              >
-                <button
-                  type="button"
-                  onclick={() => handleLoad(save.id)}
-                  class="flex-1 text-left text-[10px] font-mono text-foreground truncate hover:text-accent transition-colors"
-                >
-                  {save.name}
-                </button>
-                <button
-                  type="button"
-                  onclick={() => handleDelete(save.id)}
-                  class="text-[10px] text-muted hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all shrink-0"
-                  title="Delete save"
-                >
-                  x
-                </button>
-              </div>
-            {/each}
-          {/if}
-        </div>
-      {/if}
-    </div>
+      ↩ Gallery
+    </a>
   </div>
 </div>

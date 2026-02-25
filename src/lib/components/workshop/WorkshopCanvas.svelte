@@ -22,6 +22,8 @@
     addElement,
     removeElement,
     updateElementPosition,
+    registerThumbnailProvider,
+    unregisterThumbnailProvider,
   } from '$lib/state/workshop.svelte';
   import type { ElementType } from '$lib/state/workshop.svelte';
   import { findNearbyAgents } from '$lib/workshop/proximity';
@@ -879,6 +881,15 @@
       app.stage.addChild(worldContainer);
       setRopeContainer(worldContainer);
 
+      registerThumbnailProvider(async () => {
+        if (!app || !worldContainer) return null;
+        try {
+          return await app.renderer.extract.base64(worldContainer);
+        } catch {
+          return null;
+        }
+      });
+
       await physics.initPhysics();
 
       await rebuildScene();
@@ -911,6 +922,7 @@
       destroy() {
         destroyed = true;
         unsubWorkshop();
+        unregisterThumbnailProvider();
         setBanterCallback(null);
         setRopeContainer(null);
         window.removeEventListener('workshop:reload', handleReload);

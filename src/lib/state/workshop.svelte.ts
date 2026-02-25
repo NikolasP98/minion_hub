@@ -168,6 +168,7 @@ export function autoSave(hostId: string | null = hostsState.activeHostId, ...sli
       }
     }
     dirtySlices.clear();
+    scheduleDbSave();
   }, 300);
 }
 
@@ -331,34 +332,121 @@ export function updateRelationshipLabel(id: string, label: string) {
 
 // --- Server-side workspace saves ---
 
-export async function saveWorkspace(name: string) {
-  const snapshot = $state.snapshot(workshopState);
-  const res = await fetch('/api/workshop/saves', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, state: JSON.stringify(snapshot) }),
-  });
-  if (!res.ok) throw new Error('Failed to save workspace');
-  return await res.json();
+export let activeSaveId = $state<string | null>(null);
+export let isSyncing = $state(false);
+
+let thumbnailProvider: (() => Promise<string | null>) | null = null;
+
+export function registerThumbnailProvider(fn: () => Promise<string | null>) {
+  thumbnailProvider = fn;
 }
 
-export async function loadWorkspace(id: string) {
+export function unregisterThumbnailProvider() {
+  thumbnailProvider = null;
+}
+
+let dbSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+export function scheduleDbSave() {
+  if (!activeSaveId) return;
+  if (dbSaveTimer) clearTimeout(dbSaveTimer);
+  const id = activeSaveId;
+  dbSaveTimer = setTimeout(async () => {
+    dbSaveTimer = null;
+    if (!activeSaveId || activeSaveId !== id) return;
+    isSyncing = true;
+    try {
+      const snapshot = $state.snapshot(workshopState);
+      const thumbnail = thumbnailProvider ? await thumbnailProvider() : null;
+      await fetch(`/api/workshop/saves/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          state: JSON.stringify(snapshot),
+          ...(thumbnail ? { thumbnail } : {}),
+        }),
+      });
+    } catch {
+      // non-critical
+    } finally {
+      isSyncing = false;
+    }
+  }, 2000);
+}
+
+export function cancelDbSave() {
+  if (dbSaveTimer) {
+    clearTimeout(dbSaveTimer);
+    dbSaveTimer = null;
+  }
+}
+
+export async function openSave(id: string) {
   const res = await fetch(`/api/workshop/saves/${id}`);
   if (!res.ok) throw new Error('Failed to load workspace');
-  const { state: saved } = await res.json();
+  const { save } = await res.json();
+  const saved: WorkshopState = typeof save.state === 'string'
+    ? JSON.parse(save.state)
+    : save.state;
   workshopState.camera = saved.camera;
   workshopState.agents = saved.agents;
   workshopState.relationships = saved.relationships;
   workshopState.settings = { ...workshopState.settings, ...saved.settings };
   workshopState.conversations = saved.conversations ?? {};
   workshopState.elements = saved.elements ?? {};
+  migratePinboardVoting();
+  restoreConversations({ conversations: saved.conversations });
+  activeSaveId = id;
   autoSave(undefined, ...ALL_SLICES);
 }
 
-export async function listWorkspaceSaves() {
+export async function createBlankSave(name: string): Promise<string> {
+  resetWorkshop();
+  const snapshot = $state.snapshot(workshopState);
+  const res = await fetch('/api/workshop/saves', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, state: JSON.stringify(snapshot) }),
+  });
+  if (!res.ok) throw new Error('Failed to create workspace');
+  const { id } = await res.json();
+  activeSaveId = id;
+  autoSave(undefined, ...ALL_SLICES);
+  return id;
+}
+
+const ACTIVE_SAVE_KEY = 'workshop:activeSaveId';
+
+export function persistActiveSaveId(id: string | null) {
+  try {
+    if (id) localStorage.setItem(ACTIVE_SAVE_KEY, id);
+    else localStorage.removeItem(ACTIVE_SAVE_KEY);
+  } catch {
+    // non-critical
+  }
+}
+
+export function loadPersistedActiveSaveId(): string | null {
+  try {
+    return localStorage.getItem(ACTIVE_SAVE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export async function listWorkspaceSaves(): Promise<Array<{
+  id: string;
+  name: string;
+  updatedAt: number;
+  createdAt: number;
+  thumbnail: string | null;
+  agentCount: number;
+  elementCount: number;
+}>> {
   const res = await fetch('/api/workshop/saves');
   if (!res.ok) throw new Error('Failed to list workspace saves');
-  return await res.json();
+  const { saves } = await res.json();
+  return saves;
 }
 
 export async function deleteWorkspaceSave(id: string) {
