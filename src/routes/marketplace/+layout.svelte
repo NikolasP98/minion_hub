@@ -67,7 +67,7 @@
               {/if}
               {section.label}
               {#if !section.active}
-                <span class="ml-auto text-[9px] text-muted/40 font-normal">soon</span>
+                <span class="ml-auto text-[9px] text-muted/40 font-normal">{m.marketplace_comingSoon()}</span>
               {/if}
             </a>
           {/each}
