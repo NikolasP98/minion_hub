@@ -128,7 +128,7 @@
         files: Array<{ name: string; path: string; isDir?: boolean; missing: boolean; size?: number; updatedAtMs?: number }>;
       };
       node.children = (res.files ?? []).map((f) => ({
-        id: f.name,
+        id: f.path ?? `${id}/${f.name}`,
         name: f.name,
         isDir: f.isDir ?? false,
         children: f.isDir ? [] : undefined,
@@ -229,9 +229,9 @@
 </script>
 
 <div class="flex flex-col h-full overflow-hidden agent-files">
-  <!-- Header -->
-  <div class="shrink-0 flex items-center gap-2 px-3 py-2 border-b border-border bg-bg2">
-    {#if selectedFile}
+  <!-- Header (only when a file is open) -->
+  {#if selectedFile}
+    <div class="shrink-0 flex items-center gap-2 px-3 py-2 border-b border-border bg-bg2">
       <button
         class="text-muted hover:text-foreground transition-colors"
         onclick={backToList}
@@ -266,8 +266,8 @@
           </button>
         {/if}
       </div>
-    {/if}
-  </div>
+    </div>
+  {/if}
 
   <!-- Body -->
   {#if selectedFile}

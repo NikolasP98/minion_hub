@@ -45,7 +45,6 @@
 <div class="flex-1 min-h-0 flex flex-col overflow-hidden">
   <DetailHeader {agentId} {agent} />
   <SessionDropdown {agentId} serverId={ui.selectedServerId} />
-  <SessionKanban sessionKey={ui.selectedSessionKey} serverId={ui.selectedServerId} />
 
   <!-- Tab bar -->
   <div class="shrink-0 flex items-center border-b border-border bg-bg2">
@@ -84,6 +83,7 @@
   <!-- Main content: chat or monitor -->
   <div class="flex-1 min-h-0 flex flex-col overflow-hidden">
     {#if activeTab === 'monitor'}
+      <SessionKanban sessionKey={ui.selectedSessionKey} serverId={ui.selectedServerId} />
       <SessionMonitor
         {agentId}
         sessionKey={ui.selectedSessionKey}
