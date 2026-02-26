@@ -49,6 +49,14 @@
 
   const categories = ['engineering', 'product', 'data', 'creative', 'security'];
 
+  const categoryLabels: Record<string, () => string> = {
+    engineering: () => m.marketplace_agentsListCategoryEngineering(),
+    product: () => m.marketplace_agentsListCategoryProduct(),
+    data: () => m.marketplace_agentsListCategoryData(),
+    creative: () => m.marketplace_agentsListCategoryCreative(),
+    security: () => m.marketplace_agentsListCategorySecurity(),
+  };
+
   const avatarUrl = $derived(
     generated ? diceBearAvatarUrl(generated.agentJson.avatarSeed) : ''
   );
@@ -182,7 +190,7 @@
               class="w-full px-3 py-2 rounded-lg border border-border bg-bg3 text-sm text-foreground focus:outline-none focus:border-brand-pink/40 transition-colors capitalize"
             >
               {#each categories as cat (cat)}
-                <option value={cat} class="capitalize">{cat}</option>
+                <option value={cat}>{categoryLabels[cat]?.() ?? cat}</option>
               {/each}
             </select>
           </div>
