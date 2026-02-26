@@ -39,11 +39,17 @@ import {
 } from '$lib/state/workshop.svelte';
 import { gw } from '$lib/state/gateway-data.svelte';
 import { startConversation, endConversation } from './conversation-manager';
-import { appendMessage, setAgentThinking } from '$lib/state/workshop-conversations.svelte';
+import {
+	appendMessage,
+	setAgentThinking,
+	conversationMessages,
+	conversationLoading,
+	setMessages,
+} from '$lib/state/workshop-conversations.svelte';
 import { configState } from '$lib/state/config.svelte';
 import { uuid } from '$lib/utils/uuid';
 import { extractText } from '$lib/utils/text';
-import { showReactionEmoji } from '$lib/workshop/agent-sprite';
+import { showReactionEmoji } from '$lib/workshop/renderer-adapter';
 import { sendFsmEvent } from './agent-fsm';
 import type { ConversationMessage } from '$lib/state/workshop-conversations.svelte';
 
@@ -501,7 +507,6 @@ export async function compactAgentContext(
 		if (summary) {
 			updateContextSummary(instanceId, summary);
 			// Prune local cache to last 2 messages
-			const { conversationMessages, setMessages } = await import('$lib/state/workshop-conversations.svelte');
 			const msgs = conversationMessages[sessionKey];
 			if (msgs && msgs.length > 2) {
 				setMessages(sessionKey, msgs.slice(-2));
@@ -1447,16 +1452,11 @@ async function tryOwnerNotification(
  */
 export async function loadConversationHistory(
 	conv: import('$lib/state/workshop.svelte').WorkshopConversation,
-): Promise<import('$lib/state/workshop-conversations.svelte').ConversationMessage[]> {
-	const { setMessages, conversationLoading } = await import(
-		'$lib/state/workshop-conversations.svelte'
-	);
-
+): Promise<ConversationMessage[]> {
 	conversationLoading[conv.sessionKey] = true;
 
 	try {
-		const allMessages: import('$lib/state/workshop-conversations.svelte').ConversationMessage[] =
-			[];
+		const allMessages: ConversationMessage[] = [];
 
 		for (const agentId of conv.participantAgentIds) {
 			const sessionKey = buildWorkshopSessionKey(agentId, conv.sessionKey);

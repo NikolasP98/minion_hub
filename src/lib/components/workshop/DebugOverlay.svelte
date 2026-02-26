@@ -3,6 +3,7 @@
   import { agentMemory } from '$lib/state/workshop.svelte';
   import { gw } from '$lib/state/gateway-data.svelte';
   import { worldToScreen } from '$lib/workshop/camera';
+  import { worldToScreenForMode } from '$lib/workshop/renderer-adapter';
   import { getAgentState } from '$lib/workshop/agent-fsm';
   import { getQueue_readonly } from '$lib/workshop/agent-queue';
 
@@ -38,7 +39,8 @@
 
 <div class="absolute inset-0 pointer-events-none overflow-hidden z-[45]">
   {#each Object.values(workshopState.agents) as agent (agent.instanceId)}
-    {@const pos = worldToScreen(agent.position.x, agent.position.y, workshopState.camera)}
+    {@const inWorld = worldToScreenForMode(agent.position.x, agent.position.y)}
+    {@const pos = worldToScreen(inWorld.x, inWorld.y, workshopState.camera)}
     {@const state = getAgentState(agent.instanceId) ?? 'idle'}
     {@const queue = getQueue_readonly(agent.instanceId)}
     {@const mem = agentMemory[agent.instanceId]}

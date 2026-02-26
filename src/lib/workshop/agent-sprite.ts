@@ -1,5 +1,11 @@
 import * as PIXI from 'pixi.js';
-import { diceBearAvatarUrl } from '$lib/utils/avatar';
+import {
+	getAvatarTexture,
+	seedToColor,
+	clearTextureCache,
+	getGeneration,
+	CLASSIC_TEXTURE_SIZE,
+} from './texture-cache';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -25,76 +31,6 @@ export interface AgentSpriteInfo {
 // ---------------------------------------------------------------------------
 
 const sprites = new Map<string, PIXI.Container>();
-const textureCache = new Map<string, PIXI.Texture>();
-/** Maps instanceId → avatarSeed so we can evict textures on removal. */
-const spriteSeeds = new Map<string, string>();
-
-/** Incremented on every clearAllSprites(). Used to detect stale async work. */
-let generation = 0;
-
-// ---------------------------------------------------------------------------
-// Private helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Fetch a DiceBear Notionists SVG, convert to a blob URL, and load as a
- * PIXI.Texture. Results are cached by avatarSeed. On failure a coloured
- * circle texture is generated as a fallback.
- */
-async function getAvatarTexture(avatarSeed: string): Promise<PIXI.Texture | null> {
-	const cached = textureCache.get(avatarSeed);
-	if (cached) return cached;
-
-	try {
-		const url = diceBearAvatarUrl(avatarSeed);
-		const res = await fetch(url);
-		if (!res.ok) throw new Error(`DiceBear fetch failed: ${res.status}`);
-
-		const svgText = await res.text();
-
-		// Render SVG to an offscreen canvas via Image element for reliable PixiJS 8 texture
-		const texture = await new Promise<PIXI.Texture>((resolve, reject) => {
-			const img = new Image();
-			img.onload = () => {
-				const canvas = document.createElement('canvas');
-				canvas.width = SPRITE_SIZE * 2;
-				canvas.height = SPRITE_SIZE * 2;
-				const ctx = canvas.getContext('2d')!;
-				ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-				URL.revokeObjectURL(img.src);
-				resolve(PIXI.Texture.from(canvas));
-			};
-			img.onerror = () => {
-				URL.revokeObjectURL(img.src);
-				reject(new Error('Failed to load SVG as image'));
-			};
-			const blob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
-			img.src = URL.createObjectURL(blob);
-		});
-
-		textureCache.set(avatarSeed, texture);
-		return texture;
-	} catch {
-		// Fallback handled in createAgentSprite by drawing a colored circle
-		return null;
-	}
-}
-
-/**
- * Deterministically pick a colour from the seed string.
- * Returns a hex colour number used to draw a fallback circle inline.
- */
-function seedToColor(seed: string): number {
-	let hash = 0;
-	for (let i = 0; i < seed.length; i++) {
-		hash = seed.charCodeAt(i) + ((hash << 5) - hash);
-	}
-	// Use the hash to produce an RGB value directly
-	const r = (Math.abs(hash) >> 16) & 0xff;
-	const g = (Math.abs(hash) >> 8) & 0xff;
-	const b = Math.abs(hash) & 0xff;
-	return (r << 16) | (g << 8) | b;
-}
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -121,7 +57,7 @@ export async function createAgentSprite(
 	}
 
 	// Capture generation before async work so we can detect stale calls
-	const gen = generation;
+	const gen = getGeneration();
 
 	const container = new PIXI.Container();
 	container.label = instanceId;
@@ -143,10 +79,10 @@ export async function createAgentSprite(
 	container.addChild(bgCircle);
 
 	// --- Avatar (loaded async, rendered on top of background) ---
-	const texture = await getAvatarTexture(info.avatarSeed);
+	const texture = await getAvatarTexture(info.avatarSeed, CLASSIC_TEXTURE_SIZE);
 
 	// If sprites were cleared while we were loading the texture, discard this container
-	if (gen !== generation) {
+	if (gen !== getGeneration()) {
 		container.destroy({ children: true });
 		// Return a new sprite if one was created by a newer rebuildScene call
 		return sprites.get(instanceId) ?? container;
@@ -201,7 +137,6 @@ export async function createAgentSprite(
 	// Add to stage and track
 	stage.addChild(container);
 	sprites.set(instanceId, container);
-	spriteSeeds.set(instanceId, info.avatarSeed);
 
 	return container;
 }
@@ -216,19 +151,7 @@ export function removeAgentSprite(instanceId: string): void {
 
 	container.removeFromParent();
 	container.destroy({ children: true });
-
-	const seed = spriteSeeds.get(instanceId);
 	sprites.delete(instanceId);
-	spriteSeeds.delete(instanceId);
-
-	// Evict texture if no other sprite still uses this seed
-	if (seed && !Array.from(spriteSeeds.values()).includes(seed)) {
-		const tex = textureCache.get(seed);
-		if (tex) {
-			tex.destroy(true);
-			textureCache.delete(seed);
-		}
-	}
 }
 
 /**
@@ -363,16 +286,10 @@ export function getAllSprites(): Map<string, PIXI.Container> {
  * Destroy all sprites and their cached textures, clear both maps.
  */
 export function clearAllSprites(): void {
-	generation++;
+	clearTextureCache(); // bumps generation & frees VRAM
 	for (const [, container] of sprites) {
 		container.removeFromParent();
 		container.destroy({ children: true });
 	}
 	sprites.clear();
-	spriteSeeds.clear();
-	// Destroy all cached textures to free VRAM
-	for (const [, tex] of textureCache) {
-		tex.destroy(true);
-	}
-	textureCache.clear();
 }

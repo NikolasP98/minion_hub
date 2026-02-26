@@ -10,7 +10,7 @@
  */
 
 import { FiniteStateMachine } from 'runed';
-import { setSpriteGlowColor, triggerHeartbeatPulse } from './agent-sprite';
+import { setSpriteGlowColor, triggerHeartbeatPulse } from './renderer-adapter';
 
 // ---------------------------------------------------------------------------
 // Types

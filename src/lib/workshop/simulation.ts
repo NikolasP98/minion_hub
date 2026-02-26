@@ -1,8 +1,8 @@
 // src/lib/workshop/simulation.ts
 
 import * as physics from './physics';
-import * as sprites from './agent-sprite';
-import * as ropeRenderer from './rope-renderer';
+import * as sprites from './renderer-adapter';
+import * as ropeRenderer from './renderer-adapter';
 import { workshopState, updateAgentPosition, markAllInboxItemsRead } from '$lib/state/workshop.svelte';
 import { agentMemory } from '$lib/state/workshop.svelte';
 import type { AgentInstance } from '$lib/state/workshop.svelte';
@@ -14,7 +14,7 @@ import {
 	setHeartbeatEnterCallback,
 } from './agent-fsm';
 import { findNearbyAgents, findNearbyElements } from './proximity';
-import { showReactionEmoji } from './agent-sprite';
+import { showReactionEmoji } from './renderer-adapter';
 import { peek, dequeue, enqueue, clearAllQueues } from './agent-queue';
 import {
 	getSessionTurnCount,
