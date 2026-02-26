@@ -121,7 +121,7 @@ export async function createAgentSprite(
 		text: info.name,
 		style: {
 			fontFamily: 'JetBrains Mono NF, monospace',
-			fontSize: 10,
+			fontSize: 5,
 			fill: 0xaaaaaa,
 			align: 'center'
 		},
@@ -129,7 +129,7 @@ export async function createAgentSprite(
 	});
 	label.label = 'name';
 	label.anchor.set(0.5, 0);
-	label.y = SPRITE_SIZE / 2 + 6;
+	label.y = SPRITE_SIZE / 2 + 2;
 	container.addChild(label);
 
 	// --- Interaction ---

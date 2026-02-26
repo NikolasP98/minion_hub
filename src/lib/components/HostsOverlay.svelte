@@ -94,7 +94,7 @@
 </script>
 
 <div
-    class="fixed inset-0 z-1000 bg-black/60 flex items-center justify-center"
+    class="fixed inset-0 z-1000 bg-black/60 flex items-center justify-center cursor-pointer"
     role="button"
     tabindex="-1"
     aria-label={m.common_close()}
@@ -194,7 +194,13 @@
                 </div>
             {/each}
         </div>
-        <div class="border-t border-border py-3.5 px-4 shrink-0">
+        <form
+            class="border-t border-border py-3.5 px-4 shrink-0"
+            onsubmit={(e) => {
+                e.preventDefault();
+                saveHost();
+            }}
+        >
             <div
                 class="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2.5"
             >
@@ -247,16 +253,17 @@
             <div class="flex gap-2 justify-end">
                 {#if editingId}
                     <button
+                        type="button"
                         class="bg-transparent border border-border rounded-[5px] text-muted-foreground cursor-pointer font-[inherit] text-xs py-1.5 px-3 transition-colors hover:text-muted"
                         onclick={cancelEdit}>{m.hosts_cancel()}</button
                     >
                 {/if}
                 <button
+                    type="submit"
                     class="bg-accent border-none rounded-[5px] text-white cursor-pointer font-[inherit] text-xs font-semibold py-1.5 px-4 transition-[filter] hover:brightness-115"
-                    onclick={saveHost}
                     >{editingId ? m.hosts_save() : m.hosts_addTitle()}</button
                 >
             </div>
-        </div>
+        </form>
     </div>
 </div>

@@ -30,6 +30,16 @@ import type { Container } from 'pixi.js';
 // Module state
 // ---------------------------------------------------------------------------
 
+/** Config flags set by WorkshopCanvas — checked every tick. */
+export const simConfig = {
+	showChatRopes: true,
+	showRelationshipRopes: true,
+};
+
+// Previous-frame toggle state for edge detection
+let prevShowRelationshipRopes = true;
+let prevShowChatRopes = true;
+
 let running = false;
 let animFrameId: number | null = null;
 let lastTime = 0;
@@ -547,25 +557,39 @@ function tick(now: number): void {
 	}
 
 	// Relationship ropes (user-created persistent connections)
-	for (const [relId, rel] of Object.entries(workshopState.relationships)) {
-		const fromPos = positions.get(rel.fromInstanceId);
-		const toPos = positions.get(rel.toInstanceId);
-		if (!fromPos || !toPos) continue;
+	if (simConfig.showRelationshipRopes) {
+		// Re-create ropes on toggle-on transition
+		if (!prevShowRelationshipRopes && ropeContainerRef) {
+			for (const [relId, rel] of Object.entries(workshopState.relationships)) {
+				ropeRenderer.createRope(relId, rel.label, ropeContainerRef);
+			}
+		}
+		for (const [relId, rel] of Object.entries(workshopState.relationships)) {
+			const fromPos = positions.get(rel.fromInstanceId);
+			const toPos = positions.get(rel.toInstanceId);
+			if (!fromPos || !toPos) continue;
 
-		const isActive =
-			activeParticipants.has(rel.fromInstanceId) &&
-			activeParticipants.has(rel.toInstanceId);
+			const isActive =
+				activeParticipants.has(rel.fromInstanceId) &&
+				activeParticipants.has(rel.toInstanceId);
 
-		// Derive direction from who is currently generating
-		let flowDir: 1 | -1 = 1;
-		if (thinkingAgents[rel.toInstanceId]) flowDir = -1;
-		if (thinkingAgents[rel.fromInstanceId]) flowDir = 1;
+			// Derive direction from who is currently generating
+			let flowDir: 1 | -1 = 1;
+			if (thinkingAgents[rel.toInstanceId]) flowDir = -1;
+			if (thinkingAgents[rel.fromInstanceId]) flowDir = 1;
 
-		ropeRenderer.updateRope(relId, fromPos.x, fromPos.y, toPos.x, toPos.y, rel.label, isActive, dt, flowDir);
+			ropeRenderer.updateRope(relId, fromPos.x, fromPos.y, toPos.x, toPos.y, rel.label, isActive, dt, flowDir);
+		}
+	} else if (prevShowRelationshipRopes) {
+		// Toggle-off transition: remove relationship ropes
+		for (const relId of Object.keys(workshopState.relationships)) {
+			ropeRenderer.removeRope(relId);
+		}
 	}
+	prevShowRelationshipRopes = simConfig.showRelationshipRopes;
 
 	// Conversation ropes (dynamic — one per active conversation pair)
-	if (ropeContainerRef) {
+	if (ropeContainerRef && simConfig.showChatRopes) {
 		const currentConvoIds = new Set<string>();
 
 		for (const [convoId, convo] of Object.entries(workshopState.conversations)) {
@@ -604,7 +628,11 @@ function tick(now: number): void {
 				convFlowDirs.delete(convoId);
 			}
 		}
+	} else if (prevShowChatRopes && !simConfig.showChatRopes) {
+		// Toggle-off transition: remove all conversation ropes
+		clearConversationRopes();
 	}
+	prevShowChatRopes = simConfig.showChatRopes;
 
 	// --- Bobbing animation ---
 	sprites.applyBobbingAnimation(elapsed);

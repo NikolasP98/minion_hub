@@ -151,7 +151,7 @@ export async function createHabboAvatarSprite(
     text: info.name,
     style: {
       fontFamily: "Inter, sans-serif",
-      fontSize: 9,
+      fontSize: 5,
       fill: 0xffffff,
       align: "center",
       fontWeight: "bold",
@@ -159,13 +159,13 @@ export async function createHabboAvatarSprite(
     resolution: TEXT_RESOLUTION,
   });
   nameText.anchor.set(0.5, 0.5);
-  nameText.y = -28;
+  nameText.y = 24;
 
   const pad = 6;
   const bgW = nameText.width + pad * 2;
-  const bgH = 14;
+  const bgH = 10;
   const nameBg = new PIXI.Graphics();
-  nameBg.roundRect(-bgW / 2, -35, bgW, bgH, 3);
+  nameBg.roundRect(-bgW / 2, 19, bgW, bgH, 3);
   nameBg.fill({ color: 0x000000, alpha: 0.6 });
   spriteContainer.addChild(nameBg);
   spriteContainer.addChild(nameText);

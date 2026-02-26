@@ -129,7 +129,7 @@ export function createRope(
 		text: label,
 		style: {
 			fontFamily: 'JetBrains Mono NF',
-			fontSize: 9,
+			fontSize: 5,
 			fill: 0x888888
 		},
 		resolution: TEXT_RESOLUTION,
