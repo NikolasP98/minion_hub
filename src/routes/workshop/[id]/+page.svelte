@@ -6,7 +6,7 @@
   import WorkshopToolbar from '$lib/components/workshop/WorkshopToolbar.svelte';
   import WorkshopCanvas from '$lib/components/workshop/WorkshopCanvas.svelte';
   import {
-    activeSaveId,
+    saveSync,
     openSave,
     cancelDbSave,
     persistActiveSaveId,
@@ -16,7 +16,7 @@
 
   onMount(async () => {
     if (!saveId) { goto('/workshop'); return; }
-    if (activeSaveId !== saveId) {
+    if (saveSync.activeSaveId !== saveId) {
       try {
         await openSave(saveId);
         persistActiveSaveId(saveId);
@@ -27,7 +27,7 @@
   });
 
   $effect(() => {
-    if (activeSaveId) persistActiveSaveId(activeSaveId);
+    if (saveSync.activeSaveId) persistActiveSaveId(saveSync.activeSaveId);
   });
 
   onDestroy(() => {

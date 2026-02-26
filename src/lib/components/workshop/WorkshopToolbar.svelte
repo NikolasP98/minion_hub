@@ -2,7 +2,7 @@
   import { gw } from '$lib/state/gateway-data.svelte';
   import WorkshopAgentPill from './WorkshopAgentPill.svelte';
   import * as m from '$lib/paraglide/messages';
-  import { isSyncing } from '$lib/state/workshop.svelte';
+  import { saveSync } from '$lib/state/workshop.svelte';
 
   import type { ElementType } from '$lib/state/workshop.svelte';
 
@@ -68,7 +68,7 @@
 
   <!-- Syncing indicator + Gallery link -->
   <div class="flex items-center gap-2 shrink-0">
-    {#if isSyncing}
+    {#if saveSync.isSyncing}
       <span class="text-[9px] font-mono text-muted/60 animate-pulse">syncing…</span>
     {/if}
     <a

@@ -332,8 +332,10 @@ export function updateRelationshipLabel(id: string, label: string) {
 
 // --- Server-side workspace saves ---
 
-export let activeSaveId = $state<string | null>(null);
-export let isSyncing = $state(false);
+export const saveSync = $state<{ activeSaveId: string | null; isSyncing: boolean }>({
+  activeSaveId: null,
+  isSyncing: false,
+});
 
 let thumbnailProvider: (() => Promise<string | null>) | null = null;
 
@@ -348,13 +350,13 @@ export function unregisterThumbnailProvider() {
 let dbSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function scheduleDbSave() {
-  if (!activeSaveId) return;
+  if (!saveSync.activeSaveId) return;
   if (dbSaveTimer) clearTimeout(dbSaveTimer);
-  const id = activeSaveId;
+  const id = saveSync.activeSaveId;
   dbSaveTimer = setTimeout(async () => {
     dbSaveTimer = null;
-    if (!activeSaveId || activeSaveId !== id) return;
-    isSyncing = true;
+    if (!saveSync.activeSaveId || saveSync.activeSaveId !== id) return;
+    saveSync.isSyncing = true;
     try {
       const snapshot = $state.snapshot(workshopState);
       const thumbnail = thumbnailProvider ? await thumbnailProvider() : null;
@@ -369,7 +371,7 @@ export function scheduleDbSave() {
     } catch {
       // non-critical
     } finally {
-      isSyncing = false;
+      saveSync.isSyncing = false;
     }
   }, 2000);
 }
@@ -396,7 +398,7 @@ export async function openSave(id: string) {
   workshopState.elements = saved.elements ?? {};
   migratePinboardVoting();
   restoreConversations({ conversations: saved.conversations });
-  activeSaveId = id;
+  saveSync.activeSaveId = id;
   autoSave(undefined, ...ALL_SLICES);
 }
 
@@ -410,7 +412,7 @@ export async function createBlankSave(name: string): Promise<string> {
   });
   if (!res.ok) throw new Error('Failed to create workspace');
   const { id } = await res.json();
-  activeSaveId = id;
+  saveSync.activeSaveId = id;
   autoSave(undefined, ...ALL_SLICES);
   return id;
 }
