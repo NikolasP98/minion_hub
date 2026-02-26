@@ -36,11 +36,18 @@
   }
 </script>
 
-<!-- svelte-ignore a11y_click_events_have_key_events -->
-<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
   class="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40"
+  role="button"
+  tabindex="-1"
+  aria-label="Close"
   onclick={handleBackdropClick}
+  onkeydown={(e) => {
+    if (e.key === 'Escape') {
+      if (saveTimer) { clearTimeout(saveTimer); setMessageBoardContent(elementId, content); }
+      onClose();
+    }
+  }}
 >
   <div class="w-full max-w-md rounded-lg border border-border bg-bg2 shadow-xl">
     <!-- Header -->

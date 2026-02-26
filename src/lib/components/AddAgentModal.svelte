@@ -198,14 +198,11 @@
   role="dialog"
   aria-modal="true"
   tabindex="-1"
-  onclick={close}
+  onclick={(e) => e.target === e.currentTarget && close()}
   onkeydown={handleOverlayKeydown}
 >
   <div
     class="bg-bg2 border border-border rounded-xl w-[480px] max-w-[calc(100vw-40px)] flex flex-col shadow-md"
-    role="presentation"
-    onclick={(e) => e.stopPropagation()}
-    onkeydown={(e) => e.stopPropagation()}
   >
     <div class="flex items-center justify-between px-5 pt-4 pb-[14px] border-b border-border shrink-0">
       <span class="text-base font-bold">{m.agent_add()}</span>

@@ -211,7 +211,6 @@
         {#each docTabs as dt}
           {#if activeDocTab === dt.id}
             <div class="prose-custom">
-              <!-- eslint-disable-next-line svelte/no-at-html-tags -->
               {@html renderMd(agent[dt.field] as string | null)}
             </div>
           {/if}

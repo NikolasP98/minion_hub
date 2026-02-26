@@ -68,10 +68,11 @@
     {:else}
       <div class="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-4">
         {#each saves as save (save.id)}
-          <!-- svelte-ignore a11y_click_events_have_key_events -->
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div
+            role="button"
+            tabindex="0"
             onclick={() => handleOpen(save.id)}
+            onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && handleOpen(save.id)}
             class="group rounded border border-border bg-bg2 overflow-hidden cursor-pointer hover:border-accent/50 transition-colors"
           >
             <!-- Thumbnail / placeholder -->

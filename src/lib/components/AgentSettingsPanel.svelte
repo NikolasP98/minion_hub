@@ -137,9 +137,11 @@
 <!-- Backdrop -->
 <div
   class="fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px]"
-  role="presentation"
+  role="button"
+  tabindex="-1"
+  aria-label="Close"
   onclick={handleBackdropClick}
-  onkeydown={() => {}}
+  onkeydown={(e) => e.key === 'Escape' && close()}
 >
   <!-- Panel -->
   <div

@@ -31,16 +31,20 @@
 </script>
 
 <!-- Transparent backdrop -->
-<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
   class="fixed inset-0 z-50"
+  role="button"
+  tabindex="-1"
+  aria-label="Cancel"
   onmousedown={onCancel}
 ></div>
 
 <!-- Floating dialog -->
-<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
   class="fixed z-50 w-[240px] rounded-lg border border-border bg-bg2 p-3 shadow-xl"
+  role="dialog"
+  aria-modal="true"
+  tabindex="-1"
   style="left: {x}px; top: {y}px; transform: translate(-50%, -50%);"
   onmousedown={(e) => e.stopPropagation()}
 >

@@ -43,8 +43,8 @@
 
 <HudBorder
     class="{collapsed
-        ? 'w-[60px]'
-        : 'w-[280px]'} shrink-0 overflow-hidden border-r border-border bg-bg2 flex flex-col transition-[width] duration-200 ease-out"
+        ? 'w-15'
+        : 'w-70'} shrink-0 overflow-hidden border-r border-border bg-bg2 flex flex-col transition-[width] duration-200 ease-out"
 >
     <!-- Header -->
     {#if collapsed}
@@ -110,13 +110,19 @@
                     <div class="flex items-center gap-1.5">
                         <span class="w-1.5 h-1.5 rounded-full bg-success"
                         ></span>
-                        <span>{m.agent_statusActive({ count: activeAgentCount })}</span>
+                        <span
+                            >{m.agent_statusActive({
+                                count: activeAgentCount,
+                            })}</span
+                        >
                     </div>
                     <div class="flex items-center gap-1.5">
                         <span
                             class="w-1.5 h-1.5 rounded-full bg-muted-foreground/50"
                         ></span>
-                        <span>{m.sidebar_totalCount({ count: agentCount })}</span>
+                        <span
+                            >{m.sidebar_totalCount({ count: agentCount })}</span
+                        >
                     </div>
                 </div>
             {/if}
