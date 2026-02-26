@@ -133,13 +133,12 @@ export async function createHabboAvatarSprite(
     faceContainer.label = "avatar";
     const face = new PIXI.Sprite(texture);
     face.anchor.set(0.5, 0.5);
-    face.width = 32;
-    face.height = 32;
-    face.y = -2;
+    face.width = 36;
+    face.height = 36;
 
-    // Circular mask for face
+    // Circular mask matching the body circle exactly
     const mask = new PIXI.Graphics();
-    mask.circle(0, -2, 15);
+    mask.circle(0, 0, 18);
     mask.fill({ color: 0xffffff });
     faceContainer.addChild(mask);
     face.mask = mask;

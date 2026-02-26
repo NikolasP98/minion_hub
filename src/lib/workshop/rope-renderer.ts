@@ -135,8 +135,10 @@ export function createRope(
 		resolution: TEXT_RESOLUTION,
 	});
 
-	// Graphics behind everything, text on top
-	stage.addChildAt(graphics, 0);
+	// Insert rope graphics behind sprites but above the habbo floor (if present).
+	// The habbo floor tile container sits at index 0 with label "isoRoom".
+	const floorIdx = stage.children.findIndex((c) => c.label === 'isoRoom');
+	stage.addChildAt(graphics, floorIdx >= 0 ? floorIdx + 1 : 0);
 	stage.addChild(text);
 
 	ropes.set(relationshipId, { graphics, label: text, flowPhase: 0 });

@@ -131,15 +131,8 @@ export function updateSpritePosition(instanceId: string, x: number, y: number): 
 	classicAgentSprite.updateSpritePosition(instanceId, x, y);
 }
 
-export function applyBobbingAnimation(elapsed: number): void {
-	if (isHabbo()) {
-		// Walk bounce instead of sine bobbing
-		for (const [instanceId] of habboRenderer.getAllSprites()) {
-			habboRenderer.animateAvatarWalk(instanceId, elapsed);
-		}
-		return;
-	}
-	classicAgentSprite.applyBobbingAnimation(elapsed);
+export function applyBobbingAnimation(_elapsed: number): void {
+	// Avatar bobbing disabled — kept as no-op to avoid breaking the simulation call site.
 }
 
 export function setSpriteGlowColor(instanceId: string, color: number): void {

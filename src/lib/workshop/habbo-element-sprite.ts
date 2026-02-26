@@ -51,6 +51,42 @@ function darken(color: number, factor: number): number {
 }
 
 // ---------------------------------------------------------------------------
+// Icon hover animation
+// ---------------------------------------------------------------------------
+
+const HOVER_AMPLITUDE = 3;   // pixels up/down
+const HOVER_SPEED = 0.0015;  // radians per ms
+
+/** Per-sprite phase offsets so icons don't bob in sync. */
+const iconPhases = new Map<string, number>();
+
+/** Shared ticker that drives all icon hover animations. */
+let hoverTicker: PIXI.Ticker | null = null;
+
+function ensureHoverTicker(): void {
+	if (hoverTicker) return;
+	hoverTicker = new PIXI.Ticker();
+	hoverTicker.add(() => {
+		const now = performance.now();
+		for (const [id, container] of sprites) {
+			const icon = container.getChildByLabel('icon') as PIXI.Text | null;
+			if (!icon) continue;
+			const phase = iconPhases.get(id) ?? 0;
+			icon.y = -Math.abs(Math.sin(now * HOVER_SPEED + phase)) * HOVER_AMPLITUDE;
+		}
+	});
+	hoverTicker.start();
+}
+
+function stopHoverTicker(): void {
+	if (hoverTicker) {
+		hoverTicker.stop();
+		hoverTicker.destroy();
+		hoverTicker = null;
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Module-level state
 // ---------------------------------------------------------------------------
 
@@ -163,8 +199,8 @@ export function createHabboElementSprite(
 		resolution: TEXT_RESOLUTION,
 	});
 	icon.label = 'icon';
-	icon.anchor.set(0.5);
-	icon.y = 0; // center of the top face diamond
+	icon.anchor.set(0.5, 1); // bottom-center, so icon sits on top of the cube center
+	icon.y = 0;
 	container.addChild(icon);
 
 	// --- Label below cuboid ---
@@ -194,6 +230,8 @@ export function createHabboElementSprite(
 
 	stage.addChild(container);
 	sprites.set(instanceId, container);
+	iconPhases.set(instanceId, Math.random() * Math.PI * 2);
+	ensureHoverTicker();
 
 	return container;
 }
@@ -203,6 +241,7 @@ export function removeHabboElementSprite(instanceId: string): void {
 	if (!container) return;
 	container.removeFromParent();
 	container.destroy({ children: true });
+	iconPhases.delete(instanceId);
 	sprites.delete(instanceId);
 }
 
@@ -243,9 +282,11 @@ export function getAllHabboElementSprites(): Map<string, PIXI.Container> {
 }
 
 export function clearAllHabboElementSprites(): void {
+	stopHoverTicker();
 	for (const [, container] of sprites) {
 		container.removeFromParent();
 		container.destroy({ children: true });
 	}
 	sprites.clear();
+	iconPhases.clear();
 }
