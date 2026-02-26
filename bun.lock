@@ -20,6 +20,7 @@
         "@zag-js/svelte": "^1.34.0",
         "@zag-js/switch": "^1.34.1",
         "@zag-js/tooltip": "^1.34.0",
+        "@zag-js/tree-view": "^1.34.0",
         "carta-md": "^4.11.1",
         "dompurify": "^3.3.1",
         "drizzle-orm": "^0.45.1",
@@ -683,6 +684,8 @@
     "@zag-js/switch": ["@zag-js/switch@1.34.1", "", { "dependencies": { "@zag-js/anatomy": "1.34.1", "@zag-js/core": "1.34.1", "@zag-js/dom-query": "1.34.1", "@zag-js/focus-visible": "1.34.1", "@zag-js/types": "1.34.1", "@zag-js/utils": "1.34.1" } }, "sha512-yOibKwJ+/WZBxVBpiK7mFEFjz88rLCzAhYEr5Om52fsWPc7BbxZKBZw058e0yx5mEBXJUTXNebgp1fkmth7U9g=="],
 
     "@zag-js/tooltip": ["@zag-js/tooltip@1.34.1", "", { "dependencies": { "@zag-js/anatomy": "1.34.1", "@zag-js/core": "1.34.1", "@zag-js/dom-query": "1.34.1", "@zag-js/focus-visible": "1.34.1", "@zag-js/popper": "1.34.1", "@zag-js/types": "1.34.1", "@zag-js/utils": "1.34.1" } }, "sha512-3IsEixpaOqZ6ZRSqEabZOp97yHx2uQFFA6Ge9FbJC+gK7clqwoqPJrg79PkBYTBvi0H7JoyRPhImWRSQES2YSA=="],
+
+    "@zag-js/tree-view": ["@zag-js/tree-view@1.34.1", "", { "dependencies": { "@zag-js/anatomy": "1.34.1", "@zag-js/collection": "1.34.1", "@zag-js/core": "1.34.1", "@zag-js/dom-query": "1.34.1", "@zag-js/types": "1.34.1", "@zag-js/utils": "1.34.1" } }, "sha512-ExoUFplWtTyVEGITgAFR2kIaJax/zznPuWVBiWL+Avf7qn0+CCs1b1JOPeGQtqUXk9Fso67uw9BwNQFOxbQelA=="],
 
     "@zag-js/types": ["@zag-js/types@1.34.1", "", { "dependencies": { "csstype": "3.2.3" } }, "sha512-DAg2cD5g0PvYGIC08GWa71aSyO2IEGlQCIIdOtmUSN2PdLyRi3IllNHlnDYFCkTGbb0GUunCro8FLvE9Aj2BOA=="],
 
