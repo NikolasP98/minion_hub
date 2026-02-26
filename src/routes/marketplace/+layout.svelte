@@ -14,12 +14,12 @@
   let { children }: { children: Snippet } = $props();
 
   const categories = [
-    { id: null, label: 'All Categories' },
-    { id: 'engineering', label: 'Engineering' },
-    { id: 'product', label: 'Product' },
-    { id: 'data', label: 'Data' },
-    { id: 'creative', label: 'Creative' },
-    { id: 'security', label: 'Security' },
+    { id: null, label: () => m.marketplace_agentsListCategoryAll() },
+    { id: 'engineering', label: () => m.marketplace_agentsListCategoryEngineering() },
+    { id: 'product', label: () => m.marketplace_agentsListCategoryProduct() },
+    { id: 'data', label: () => m.marketplace_agentsListCategoryData() },
+    { id: 'creative', label: () => m.marketplace_agentsListCategoryCreative() },
+    { id: 'security', label: () => m.marketplace_agentsListCategorySecurity() },
   ];
 
   const sections = [
@@ -83,7 +83,7 @@
               onclick={() => selectCategory(cat.id)}
               class="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs transition-colors duration-100 text-left w-full {marketplaceState.selectedCategory === cat.id ? 'bg-brand-pink/10 text-brand-pink font-medium' : 'text-foreground hover:bg-bg3'}"
             >
-              {cat.label}
+              {cat.label()}
             </button>
           {/each}
         </nav>
