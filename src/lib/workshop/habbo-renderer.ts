@@ -146,12 +146,7 @@ export async function createHabboAvatarSprite(
     spriteContainer.addChild(faceContainer);
   }
 
-  // Name tag (Habbo style - floating above)
-  const nameBg = new PIXI.Graphics();
-  nameBg.roundRect(-40, -35, 80, 14, 3);
-  nameBg.fill({ color: 0x000000, alpha: 0.6 });
-  spriteContainer.addChild(nameBg);
-
+  // Name tag (Habbo style - floating above, sized to text)
   const nameText = new PIXI.Text({
     text: info.name,
     style: {
@@ -164,6 +159,14 @@ export async function createHabboAvatarSprite(
   });
   nameText.anchor.set(0.5, 0.5);
   nameText.y = -28;
+
+  const pad = 6;
+  const bgW = nameText.width + pad * 2;
+  const bgH = 14;
+  const nameBg = new PIXI.Graphics();
+  nameBg.roundRect(-bgW / 2, -35, bgW, bgH, 3);
+  nameBg.fill({ color: 0x000000, alpha: 0.6 });
+  spriteContainer.addChild(nameBg);
   spriteContainer.addChild(nameText);
 
   // Interaction
