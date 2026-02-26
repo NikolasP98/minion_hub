@@ -128,7 +128,7 @@
         files: Array<{ name: string; path: string; isDir?: boolean; missing: boolean; size?: number; updatedAtMs?: number }>;
       };
       node.children = (res.files ?? []).map((f) => ({
-        id: `${id}/${f.name}`,
+        id: f.name,
         name: f.name,
         isDir: f.isDir ?? false,
         children: f.isDir ? [] : undefined,
