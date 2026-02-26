@@ -7,6 +7,7 @@ import {
   clearTextureCache,
   getGeneration,
   HABBO_TEXTURE_SIZE,
+  TEXT_RESOLUTION,
 } from "./texture-cache";
 
 // Constants for isometric rendering
@@ -156,6 +157,7 @@ export async function createHabboAvatarSprite(
       align: "center",
       fontWeight: "bold",
     },
+    resolution: TEXT_RESOLUTION,
   });
   nameText.anchor.set(0.5, 0.5);
   nameText.y = -28;
@@ -346,7 +348,7 @@ export function showSpeechBubble(
     wordWrap: true,
     wordWrapWidth: maxWidth,
   });
-  const textObj = new PIXI.Text({ text, style });
+  const textObj = new PIXI.Text({ text, style, resolution: TEXT_RESOLUTION });
   const w = Math.min(textObj.width, maxWidth) + padding * 2;
   const h = textObj.height + padding * 2;
 
@@ -488,6 +490,7 @@ export function showReactionEmoji(instanceId: string, emoji: string): void {
   const text = new PIXI.Text({
     text: emoji,
     style: { fontSize: 20, align: "center" },
+    resolution: TEXT_RESOLUTION,
   });
   text.anchor.set(0.5, 1);
   text.x = 0;

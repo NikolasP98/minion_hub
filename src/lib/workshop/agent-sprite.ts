@@ -5,6 +5,7 @@ import {
 	clearTextureCache,
 	getGeneration,
 	CLASSIC_TEXTURE_SIZE,
+	TEXT_RESOLUTION,
 } from './texture-cache';
 
 // ---------------------------------------------------------------------------
@@ -123,7 +124,8 @@ export async function createAgentSprite(
 			fontSize: 10,
 			fill: 0xaaaaaa,
 			align: 'center'
-		}
+		},
+		resolution: TEXT_RESOLUTION,
 	});
 	label.label = 'name';
 	label.anchor.set(0.5, 0);
@@ -242,6 +244,7 @@ export function showReactionEmoji(instanceId: string, emoji: string): void {
 			fontSize: 20,
 			align: 'center',
 		},
+		resolution: TEXT_RESOLUTION,
 	});
 	text.anchor.set(0.5, 1);
 	text.x = 0;

@@ -13,7 +13,19 @@ const joints = new Map<string, RAPIER.ImpulseJoint>();
  */
 export async function initPhysics(): Promise<void> {
 	if (initialized) return;
-	await (RAPIER.init as (opts?: Record<string, unknown>) => Promise<void>)({});
+	// Suppress internal rapier2d-compat warning: its init wrapper passes decoded
+	// WASM bytes directly to __wbg_init which triggers its own deprecation warning.
+	// This is a known issue in @dimforge/rapier2d-compat@0.19.x with no upstream fix.
+	const origWarn = console.warn;
+	console.warn = (...args: unknown[]) => {
+		if (typeof args[0] === 'string' && args[0].includes('deprecated parameters')) return;
+		origWarn.apply(console, args);
+	};
+	try {
+		await RAPIER.init();
+	} finally {
+		console.warn = origWarn;
+	}
 	world = new RAPIER.World({ x: 0.0, y: 0.0 });
 	initialized = true;
 }

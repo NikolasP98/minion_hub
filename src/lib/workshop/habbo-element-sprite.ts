@@ -11,6 +11,7 @@
 
 import * as PIXI from 'pixi.js';
 import type { ElementType } from '$lib/state/workshop.svelte';
+import { TEXT_RESOLUTION } from './texture-cache';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -119,6 +120,7 @@ function addBadge(container: PIXI.Container, count: number): void {
 			fill: 0xffffff,
 			align: 'center',
 		},
+		resolution: TEXT_RESOLUTION,
 	});
 	text.anchor.set(0.5);
 	badgeContainer.addChild(text);
@@ -158,6 +160,7 @@ export function createHabboElementSprite(
 	const icon = new PIXI.Text({
 		text: TYPE_ICONS[type],
 		style: { fontSize: 14, align: 'center' },
+		resolution: TEXT_RESOLUTION,
 	});
 	icon.label = 'icon';
 	icon.anchor.set(0.5);
@@ -173,6 +176,7 @@ export function createHabboElementSprite(
 			fill: 0xaaaaaa,
 			align: 'center',
 		},
+		resolution: TEXT_RESOLUTION,
 	});
 	labelText.label = 'label';
 	labelText.anchor.set(0.5, 0);

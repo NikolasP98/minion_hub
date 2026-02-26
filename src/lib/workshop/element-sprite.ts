@@ -1,5 +1,6 @@
 import * as PIXI from 'pixi.js';
 import type { ElementType } from '$lib/state/workshop.svelte';
+import { TEXT_RESOLUTION } from './texture-cache';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -72,6 +73,7 @@ export function createElementSprite(
 	const icon = new PIXI.Text({
 		text: TYPE_ICONS[type],
 		style: { fontSize: 22, align: 'center' },
+		resolution: TEXT_RESOLUTION,
 	});
 	icon.label = 'icon';
 	icon.anchor.set(0.5);
@@ -87,6 +89,7 @@ export function createElementSprite(
 			fill: 0xdddddd,
 			align: 'center',
 		},
+		resolution: TEXT_RESOLUTION,
 	});
 	labelText.label = 'label';
 	labelText.anchor.set(0.5, 0);
@@ -179,6 +182,7 @@ function addBadge(container: PIXI.Container, count: number): void {
 			fill: 0xffffff,
 			align: 'center',
 		},
+		resolution: TEXT_RESOLUTION,
 	});
 	badgeText.anchor.set(0.5);
 	badgeContainer.addChild(badgeText);

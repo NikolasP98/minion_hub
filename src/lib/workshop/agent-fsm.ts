@@ -130,6 +130,8 @@ export function createAgentFsm(
 			wander: 'wandering',
 			patrol: 'patrolling',
 			heartbeatTrigger: 'heartbeat',
+			stopReading: 'idle',     // stale event from debounced reading timer — no-op
+			heartbeatEnd: 'idle',    // stale event from debounced heartbeat timer — no-op
 			conversationStart: () => {
 				priorMovement.set(instanceId, 'idle');
 				return 'conversing';
@@ -142,6 +144,8 @@ export function createAgentFsm(
 		wandering: {
 			stop: 'idle',
 			patrol: 'patrolling',
+			heartbeatEnd: 'wandering',  // stale event from debounced heartbeat timer — no-op
+			stopReading: 'wandering',   // stale event from debounced reading timer — no-op
 			conversationStart: () => {
 				priorMovement.set(instanceId, 'wandering');
 				return 'conversing';
@@ -154,6 +158,8 @@ export function createAgentFsm(
 		patrolling: {
 			stop: 'idle',
 			wander: 'wandering',
+			heartbeatEnd: 'patrolling',  // stale debounced event — no-op
+			stopReading: 'patrolling',   // stale debounced event — no-op
 			conversationStart: () => {
 				priorMovement.set(instanceId, 'patrolling');
 				return 'conversing';

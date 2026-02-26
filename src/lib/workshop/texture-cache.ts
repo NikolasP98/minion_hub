@@ -67,7 +67,8 @@ export async function getAvatarTexture(
 				const ctx = canvas.getContext('2d')!;
 				ctx.drawImage(img, 0, 0, size, size);
 				URL.revokeObjectURL(img.src);
-				resolve(PIXI.Texture.from(canvas));
+				const source = new PIXI.ImageSource({ resource: canvas, alphaMode: 'no-premultiply-alpha' });
+				resolve(new PIXI.Texture({ source }));
 			};
 			img.onerror = () => {
 				URL.revokeObjectURL(img.src);
@@ -116,3 +117,6 @@ export const CLASSIC_TEXTURE_SIZE = CLASSIC_TEX_SIZE;
 
 /** Size constant for habbo renderer textures. */
 export const HABBO_TEXTURE_SIZE = HABBO_TEX_SIZE;
+
+/** Text resolution multiplier for crisp rendering on HiDPI screens. */
+export const TEXT_RESOLUTION = 2;

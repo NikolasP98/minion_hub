@@ -1,6 +1,7 @@
 // src/lib/workshop/rope-renderer.ts
 
 import * as PIXI from 'pixi.js';
+import { TEXT_RESOLUTION } from './texture-cache';
 
 // ---------------------------------------------------------------------------
 // Module state
@@ -130,7 +131,8 @@ export function createRope(
 			fontFamily: 'JetBrains Mono NF',
 			fontSize: 9,
 			fill: 0x888888
-		}
+		},
+		resolution: TEXT_RESOLUTION,
 	});
 
 	// Graphics behind everything, text on top
