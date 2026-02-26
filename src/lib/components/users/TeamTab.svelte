@@ -161,7 +161,7 @@
                         bind:value={inviteName}
                     />
                     <select
-                        class="bg-bg2 border border-border rounded-md text-foreground px-2.5 py-[7px] text-xs font-[inherit] outline-none cursor-pointer focus:border-accent"
+                        class="bg-bg2 border border-border rounded-md text-foreground px-2.5 py-1.75 text-xs font-[inherit] outline-none cursor-pointer focus:border-accent"
                         bind:value={inviteRole}
                     >
                         {#each ROLES as r (r)}
