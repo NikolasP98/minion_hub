@@ -3,9 +3,10 @@
   import { normalizeProps, useMachine } from '@zag-js/svelte';
   import { diceBearAvatarUrl } from '$lib/utils/avatar';
 
-  let { agent, onDragStart }: {
+  let { agent, onDragStart, count }: {
     agent: { id: string; name?: string; emoji?: string; description?: string };
     onDragStart: (e: DragEvent) => void;
+    count?: number;
   } = $props();
 
   const service = useMachine(tooltip.machine, () => ({
@@ -18,8 +19,9 @@
   const tip = $derived(tooltip.connect(service, normalizeProps));
 </script>
 
-<span {...tip.getTriggerProps() as Record<string, unknown>} class="contents">
+<div class="relative shrink-0">
   <button
+    {...tip.getTriggerProps() as Record<string, unknown>}
     type="button"
     class="w-9 h-9 rounded-full border border-border bg-bg3 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing hover:border-accent transition-colors overflow-hidden"
     draggable="true"
@@ -36,10 +38,13 @@
       />
     {/if}
   </button>
-</span>
+  {#if count && count > 1}
+    <span class="absolute -top-1 -right-1 min-w-[16px] h-4 rounded-full bg-accent text-background text-[9px] font-bold flex items-center justify-center px-0.5 pointer-events-none leading-none">{count}</span>
+  {/if}
+</div>
 
 {#if tip.open}
-  <div {...tip.getPositionerProps()} style="position:fixed;z-index:9999;">
+  <div {...tip.getPositionerProps()} class="!z-[9999]">
     <div
       {...tip.getContentProps()}
       class="bg-bg2 border border-border rounded px-2.5 py-1.5 shadow-lg whitespace-nowrap"

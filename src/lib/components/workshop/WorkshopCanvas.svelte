@@ -12,9 +12,9 @@
         stopSimulation,
         setBanterCallback,
         removeAgentFromSimulation,
-        computeSpawnY,
         setRopeContainer,
         clearConversationRopes,
+        simConfig,
     } from "$lib/workshop/simulation";
     import {
         screenToWorld,
@@ -46,6 +46,7 @@
         updateElementPosition,
         registerThumbnailProvider,
         unregisterThumbnailProvider,
+        setViewMode,
     } from "$lib/state/workshop.svelte";
     import type { ElementType } from "$lib/state/workshop.svelte";
     import { findNearbyAgents } from "$lib/workshop/proximity";
@@ -72,6 +73,7 @@
     import PortalOverlay from "./PortalOverlay.svelte";
     import { thinkingAgents } from "$lib/state/workshop-conversations.svelte";
     import DebugOverlay from "./DebugOverlay.svelte";
+    import ToggleSwitch from "$lib/components/config/ToggleSwitch.svelte";
 
     // ---------------------------------------------------------------------------
     // PixiJS state (not reactive - managed imperatively within onMount)
@@ -158,13 +160,31 @@
             : false,
     );
 
+    let showChatRopes = $state(
+        typeof localStorage !== "undefined"
+            ? localStorage.getItem("workshop:showChatRopes") !== "false"
+            : true,
+    );
+    let showRelationshipRopes = $state(
+        typeof localStorage !== "undefined"
+            ? localStorage.getItem("workshop:showRelationshipRopes") !== "false"
+            : true,
+    );
+    let configOpen = $state(false);
+
+    // Keep simConfig in sync with local state
+    $effect(() => {
+        simConfig.showChatRopes = showChatRopes;
+        simConfig.showRelationshipRopes = showRelationshipRopes;
+    });
+
     // Performance metrics (only runs while debugMode is on)
     let perfFps = $state(0);
     let perfFrameMs = $state(0);
     let perfHeapMB = $state<number | null>(null);
 
     $effect(() => {
-        if (!debugMode) return;
+        if (!configOpen) return;
         let rafId: number;
         let frameCount = 0;
         let lastSecond = performance.now();
@@ -777,10 +797,9 @@
         const screenY = e.clientY - rect.top;
         const worldPos = screenToWorldAware(screenX, screenY);
 
-        const spawnY = computeSpawnY(worldPos.y);
-        const instanceId = addAgentInstance(agentData.id, worldPos.x, spawnY);
+        const instanceId = addAgentInstance(agentData.id, worldPos.x, worldPos.y);
 
-        physics.addAgentBody(instanceId, worldPos.x, spawnY);
+        physics.addAgentBody(instanceId, worldPos.x, worldPos.y);
         createAgentFsm(instanceId, "stationary");
 
         if (worldContainer) {
@@ -793,7 +812,7 @@
                     emoji: agentData.emoji,
                 },
                 worldPos.x,
-                spawnY,
+                worldPos.y,
                 worldContainer,
             );
         }
@@ -1234,9 +1253,9 @@
         </button>
     {/if}
 
-    <!-- Debug widget (expandable) -->
+    <!-- Config panel (bottom-left) -->
     <div class="absolute bottom-3 left-3 z-40 flex flex-col items-start gap-0">
-        {#if debugMode}
+        {#if configOpen}
             {@const agentCount = Object.keys(workshopState.agents).length}
             {@const elementCount = Object.keys(workshopState.elements).length}
             {@const activeConvs = Object.values(
@@ -1246,8 +1265,9 @@
                 workshopState.conversations,
             ).length}
             <div
-                class="mb-0 rounded-t bg-bg2/90 backdrop-blur border border-b-0 border-border text-[8px] font-mono p-1.5 min-w-27.5 space-y-0.5"
+                class="mb-0 rounded-t bg-bg2/90 backdrop-blur border border-b-0 border-border text-[8px] font-mono p-1.5 min-w-[130px] space-y-0.5"
             >
+                <!-- Stats: perf -->
                 <div
                     class="text-[7px] text-muted/60 uppercase tracking-wider mb-1"
                 >
@@ -1277,6 +1297,8 @@
                         >
                     </div>
                 {/if}
+
+                <!-- Stats: scene -->
                 <div class="border-t border-border/30 mt-1 pt-1 space-y-0.5">
                     <div
                         class="text-[7px] text-muted/60 uppercase tracking-wider mb-0.5"
@@ -1303,18 +1325,105 @@
                         </span>
                     </div>
                 </div>
+
+                <!-- View Mode -->
+                <div class="border-t border-border/30 mt-1 pt-1">
+                    <div
+                        class="text-[7px] text-muted/60 uppercase tracking-wider mb-1"
+                    >
+                        view mode
+                    </div>
+                    <div class="flex rounded border border-border overflow-hidden">
+                        <button
+                            class="flex-1 px-2 py-0.5 text-[8px] transition-colors {workshopState
+                                .settings.viewMode === 'classic'
+                                ? 'bg-accent text-white'
+                                : 'bg-bg3 text-muted hover:text-foreground'}"
+                            onclick={() => setViewMode("classic")}
+                        >
+                            Classic
+                        </button>
+                        <button
+                            class="flex-1 px-2 py-0.5 text-[8px] transition-colors {workshopState
+                                .settings.viewMode === 'habbo'
+                                ? 'bg-accent text-white'
+                                : 'bg-bg3 text-muted hover:text-foreground'}"
+                            onclick={() => setViewMode("habbo")}
+                        >
+                            Habbo
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Ropes -->
+                <div class="border-t border-border/30 mt-1 pt-1">
+                    <div
+                        class="text-[7px] text-muted/60 uppercase tracking-wider mb-1"
+                    >
+                        ropes
+                    </div>
+                    <div class="flex rounded border border-border overflow-hidden">
+                        <button
+                            class="flex-1 px-2 py-0.5 text-[8px] transition-colors {showChatRopes
+                                ? 'bg-accent/80 text-white'
+                                : 'bg-bg3 text-muted hover:text-foreground'}"
+                            onclick={() => {
+                                showChatRopes = !showChatRopes;
+                                localStorage.setItem(
+                                    "workshop:showChatRopes",
+                                    String(showChatRopes),
+                                );
+                            }}
+                        >
+                            Chat
+                        </button>
+                        <button
+                            class="flex-1 px-2 py-0.5 text-[8px] transition-colors {showRelationshipRopes
+                                ? 'bg-accent/80 text-white'
+                                : 'bg-bg3 text-muted hover:text-foreground'}"
+                            onclick={() => {
+                                showRelationshipRopes = !showRelationshipRopes;
+                                localStorage.setItem(
+                                    "workshop:showRelationshipRopes",
+                                    String(showRelationshipRopes),
+                                );
+                            }}
+                        >
+                            Relations
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Debug -->
+                <div class="border-t border-border/30 mt-1 pt-1">
+                    <div class="flex items-center justify-between">
+                        <span class="text-[7px] text-muted/60 uppercase tracking-wider"
+                            >agent debug</span
+                        >
+                        <ToggleSwitch
+                            id="workshop-debug"
+                            checked={debugMode}
+                            onchange={(v) => {
+                                debugMode = v;
+                                localStorage.setItem(
+                                    "workshop:debugMode",
+                                    String(debugMode),
+                                );
+                            }}
+                        />
+                    </div>
+                </div>
             </div>
         {/if}
         <button
-            class="flex items-center gap-1.5 px-2 py-1 text-[9px] font-mono text-muted hover:text-foreground transition-colors backdrop-blur border border-border bg-bg2/80 {debugMode
+            class="flex items-center gap-1.5 px-2 py-1 text-[9px] font-mono text-muted hover:text-foreground transition-colors backdrop-blur border border-border bg-bg2/80 {configOpen
                 ? 'rounded-b rounded-t-none w-full justify-center'
                 : 'rounded'}"
             onclick={() => {
-                debugMode = !debugMode;
-                localStorage.setItem("workshop:debugMode", String(debugMode));
+                configOpen = !configOpen;
             }}
         >
-            {debugMode ? "🐛 debug on" : "🐛"}
+            {configOpen ? "⚙ config" : "⚙"}
         </button>
     </div>
 
