@@ -97,19 +97,15 @@
 </script>
 
 {#if compact}
-    <!-- Tooltip trigger wraps the compact row -->
-    <span
+    <button
         {...tip.getTriggerProps() as Record<string, unknown>}
-        class="contents"
+        type="button"
+        class="w-full flex flex-col items-center justify-center py-2 px-1 border-l-3 border-b border-b-[rgba(42,53,72,0.5)] cursor-pointer transition-[background] duration-120 hover:bg-white/3 bg-transparent text-inherit {selected
+            ? 'bg-bg3'
+            : 'border-l-transparent'}"
+        style:border-left-color={selected ? accentColor : undefined}
+        {onclick}
     >
-        <button
-            type="button"
-            class="w-full flex flex-col items-center justify-center py-2 px-1 border-l-3 border-b border-b-[rgba(42,53,72,0.5)] cursor-pointer transition-[background] duration-120 hover:bg-white/3 bg-transparent text-inherit {selected
-                ? 'bg-bg3'
-                : 'border-l-transparent'}"
-            style:border-left-color={selected ? accentColor : undefined}
-            {onclick}
-        >
             {#if agent.emoji}
                 <span class="text-base leading-none">{agent.emoji}</span>
             {:else}
@@ -131,10 +127,9 @@
                 {/if}
             </div>
         </button>
-    </span>
 
     {#if tip.open}
-        <div {...tip.getPositionerProps()} style="position:fixed;z-index:9999;">
+        <div {...tip.getPositionerProps()} class="!z-[9999]">
             <div
                 {...tip.getContentProps()}
                 class="bg-bg2 border border-border rounded px-2.5 py-1.5 shadow-lg whitespace-nowrap"

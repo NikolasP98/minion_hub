@@ -2,6 +2,7 @@
     import HostPill from "./HostPill.svelte";
     import ProfileMenu from "./ProfileMenu.svelte";
     import MinionLogo from "./MinionLogo.svelte";
+    import Tooltip from "./Tooltip.svelte";
     import ScanLine from "$lib/components/decorations/ScanLine.svelte";
     import { page } from "$app/state";
     import * as m from "$lib/paraglide/messages";
@@ -135,87 +136,87 @@
             <div
                 class="flex items-center gap-0.5 px-1.5 py-1 rounded-lg bg-bg2/50 border border-border/50"
             >
-                <a
-                    href="/workshop"
-                    class="nav-pill {isWorkshop ? 'active' : ''}"
-                    title="Workshop"
-                >
-                    <Wrench size={16} />
-                </a>
-                <a
-                    href="/users"
-                    class="nav-pill {isUsers ? 'active' : ''}"
-                    title="Users"
-                >
-                    <Users size={16} />
-                </a>
-                <a
-                    href="/reliability"
-                    class="nav-pill {isReliability ? 'active' : ''}"
-                    title="Reliability"
-                >
-                    <Activity size={16} />
-                </a>
-                <a
-                    href="/config"
-                    class="nav-pill {isConfig ? 'active' : ''}"
-                    title="Config"
-                >
-                    <SlidersHorizontal size={16} />
-                </a>
+                <Tooltip label={m.nav_workshop()} id="nav-lg-workshop">
+                    {#snippet children(triggerProps)}
+                        <a href="/workshop" class="nav-pill {isWorkshop ? 'active' : ''}" {...triggerProps}>
+                            <Wrench size={16} />
+                        </a>
+                    {/snippet}
+                </Tooltip>
+                <Tooltip label={m.nav_users()} id="nav-lg-users">
+                    {#snippet children(triggerProps)}
+                        <a href="/users" class="nav-pill {isUsers ? 'active' : ''}" {...triggerProps}>
+                            <Users size={16} />
+                        </a>
+                    {/snippet}
+                </Tooltip>
+                <Tooltip label={m.nav_reliability()} id="nav-lg-reliability">
+                    {#snippet children(triggerProps)}
+                        <a href="/reliability" class="nav-pill {isReliability ? 'active' : ''}" {...triggerProps}>
+                            <Activity size={16} />
+                        </a>
+                    {/snippet}
+                </Tooltip>
+                <Tooltip label={m.nav_config()} id="nav-lg-config">
+                    {#snippet children(triggerProps)}
+                        <a href="/config" class="nav-pill {isConfig ? 'active' : ''}" {...triggerProps}>
+                            <SlidersHorizontal size={16} />
+                        </a>
+                    {/snippet}
+                </Tooltip>
             </div>
 
             <div class="w-px h-4 bg-border/60 mx-1"></div>
 
-            <a
-                href="/marketplace"
-                class="nav-pill brand {isMarketplace ? 'active-brand' : ''}"
-                title="Marketplace"
-            >
-                <Store size={16} />
-            </a>
+            <Tooltip label={m.nav_marketplace()} id="nav-lg-marketplace">
+                {#snippet children(triggerProps)}
+                    <a href="/marketplace" class="nav-pill brand {isMarketplace ? 'active-brand' : ''}" {...triggerProps}>
+                        <Store size={16} />
+                    </a>
+                {/snippet}
+            </Tooltip>
         </nav>
 
         <!-- Small Tablet Navigation - Icons only, no bg (md to lg) -->
         <nav class="hidden md:flex lg:hidden items-center gap-0.5 flex-1">
-            <a
-                href="/workshop"
-                class="nav-pill-sm {isWorkshop ? 'active' : ''}"
-                title="Workshop"
-            >
-                <Wrench size={18} />
-            </a>
-            <a
-                href="/users"
-                class="nav-pill-sm {isUsers ? 'active' : ''}"
-                title="Users"
-            >
-                <Users size={18} />
-            </a>
-            <a
-                href="/reliability"
-                class="nav-pill-sm {isReliability ? 'active' : ''}"
-                title="Reliability"
-            >
-                <Activity size={18} />
-            </a>
-            <a
-                href="/config"
-                class="nav-pill-sm {isConfig ? 'active' : ''}"
-                title="Config"
-            >
-                <SlidersHorizontal size={18} />
-            </a>
+            <Tooltip label={m.nav_workshop()} id="nav-md-workshop">
+                {#snippet children(triggerProps)}
+                    <a href="/workshop" class="nav-pill-sm {isWorkshop ? 'active' : ''}" {...triggerProps}>
+                        <Wrench size={18} />
+                    </a>
+                {/snippet}
+            </Tooltip>
+            <Tooltip label={m.nav_users()} id="nav-md-users">
+                {#snippet children(triggerProps)}
+                    <a href="/users" class="nav-pill-sm {isUsers ? 'active' : ''}" {...triggerProps}>
+                        <Users size={18} />
+                    </a>
+                {/snippet}
+            </Tooltip>
+            <Tooltip label={m.nav_reliability()} id="nav-md-reliability">
+                {#snippet children(triggerProps)}
+                    <a href="/reliability" class="nav-pill-sm {isReliability ? 'active' : ''}" {...triggerProps}>
+                        <Activity size={18} />
+                    </a>
+                {/snippet}
+            </Tooltip>
+            <Tooltip label={m.nav_config()} id="nav-md-config">
+                {#snippet children(triggerProps)}
+                    <a href="/config" class="nav-pill-sm {isConfig ? 'active' : ''}" {...triggerProps}>
+                        <SlidersHorizontal size={18} />
+                    </a>
+                {/snippet}
+            </Tooltip>
 
             <div class="w-px h-4 bg-border/60 mx-1"></div>
 
-            <a
-                href="/marketplace"
-                class="nav-pill-sm brand {isMarketplace ? 'active-brand' : ''}"
-                title="Marketplace"
-            >
-                <Store size={18} />
-            </a>
+            <Tooltip label={m.nav_marketplace()} id="nav-md-marketplace">
+                {#snippet children(triggerProps)}
+                    <a href="/marketplace" class="nav-pill-sm brand {isMarketplace ? 'active-brand' : ''}" {...triggerProps}>
+                        <Store size={18} />
+                    </a>
+                {/snippet}
+            </Tooltip>
         </nav>
 
         <!-- Spacer for mobile -->
