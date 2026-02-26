@@ -39,7 +39,7 @@
       <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted text-xs pointer-events-none">⌕</span>
       <input
         type="text"
-        placeholder={m.marketplace_search()}
+        placeholder={m.marketplace_agentsListSearchPlaceholder()}
         value={searchInput}
         oninput={onSearchInput}
         class="w-full pl-7 pr-3 py-1.5 rounded-lg border border-border bg-bg2 text-xs text-foreground placeholder:text-muted focus:outline-none focus:border-brand-pink/40 transition-colors"
@@ -51,7 +51,7 @@
   {#if marketplaceState.loading}
     <div class="flex items-center justify-center py-16 text-muted text-sm">
       <span class="animate-spin mr-2">↻</span>
-      {m.marketplace_loadingAgents()}
+      {m.marketplace_agentsListLoading()}
     </div>
 
   <!-- Empty state -->
@@ -61,12 +61,12 @@
         🤖
       </div>
       <div>
-        <p class="text-sm font-medium text-foreground">{m.marketplace_noAgentsYet()}</p>
+        <p class="text-sm font-medium text-foreground">{m.marketplace_agentsListEmpty()}</p>
         <p class="text-xs text-muted mt-1">
           {#if marketplaceState.searchQuery || marketplaceState.selectedCategory}
-            {m.marketplace_adjustFilters()}
+            {m.marketplace_agentsListEmptyHint()}
           {:else}
-            {m.marketplace_syncPrompt()}
+            {m.marketplace_agentsListEmptySync()}
           {/if}
         </p>
       </div>

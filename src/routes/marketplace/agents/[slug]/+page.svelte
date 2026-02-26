@@ -11,6 +11,7 @@
     type MarketplaceAgent,
   } from '$lib/state/marketplace.svelte';
   import { diceBearAvatarUrl } from '$lib/utils/avatar';
+  import * as m from '$lib/paraglide/messages';
 
   const slug = $derived($page.params.slug);
   const initialTab = $derived(($page.url.searchParams.get('tab') ?? 'overview') as Tab);
@@ -50,7 +51,7 @@
 
   // Simple markdown renderer — handles headings, bold, italic, code, lists
   function renderMd(md: string | null | undefined): string {
-    if (!md) return '<p class="text-muted text-xs italic">No content available.</p>';
+    if (!md) return `<p class="text-muted text-xs italic">${m.marketplace_agentDetailNoContent()}</p>`;
     return md
       .replace(/^#{3}\s+(.+)$/gm, '<h3 class="text-sm font-semibold text-foreground mt-4 mb-1">$1</h3>')
       .replace(/^#{2}\s+(.+)$/gm, '<h2 class="text-base font-bold text-foreground mt-5 mb-2">$1</h2>')
@@ -87,23 +88,30 @@
     if (count >= 1000) return `${(count / 1000).toFixed(1)}k`;
     return String(count);
   }
+
+  const tabLabels: Record<Tab, () => string> = {
+    overview: () => m.marketplace_agentDetailTabOverview(),
+    documents: () => m.marketplace_agentDetailTabDocuments(),
+    install: () => m.marketplace_agentDetailHiringOptions(),
+  };
 </script>
 
 {#if loading}
   <div class="flex items-center justify-center h-full py-20 text-muted text-sm gap-2">
     <span class="animate-spin">↻</span>
-    Loading…
+    {m.marketplace_agentDetailLoading()}
   </div>
 
 {:else if !agent}
   <div class="flex flex-col items-center justify-center h-full py-20 gap-3">
-    <p class="text-sm text-foreground">Agent not found</p>
+    <p class="text-sm text-foreground">{m.marketplace_agentDetailNotFound()}</p>
+    <p class="text-xs text-muted">{m.marketplace_agentDetailNotFoundHint()}</p>
     <button
       type="button"
       onclick={() => goto('/marketplace/agents')}
       class="text-xs text-brand-pink hover:underline"
     >
-      ← Back to agents
+      {m.marketplace_agentDetailBack()}
     </button>
   </div>
 
@@ -115,7 +123,7 @@
       onclick={() => goto('/marketplace/agents')}
       class="self-start text-xs text-muted hover:text-foreground transition-colors flex items-center gap-1"
     >
-      ← All agents
+      {m.marketplace_agentDetailBack()}
     </button>
 
     <!-- Header card -->
@@ -139,26 +147,29 @@
           <p class="text-sm italic text-brand-pink mt-2">"{agent.catchphrase}"</p>
         {/if}
         <div class="flex flex-wrap gap-1.5 mt-3">
-          {#each tags as tag}
+          {#each tags as tag (tag)}
             <span class="px-2 py-0.5 rounded text-[10px] bg-bg3 text-muted border border-border/50">{tag}</span>
           {/each}
         </div>
         <div class="flex items-center gap-4 mt-3 text-[11px] text-muted">
-          <span>📥 {formatInstallCount(agent.installCount)} installs</span>
+          <span>📥 {formatInstallCount(agent.installCount)} {m.marketplace_agentDetailInstalls()}</span>
           <span class="capitalize">★ {agent.category}</span>
+        </div>
+        <div class="mt-2">
+          <span class="px-2 py-0.5 rounded-full text-[10px] border border-green-500/30 text-green-400 bg-green-500/5">{m.marketplace_agentDetailAvailable()}</span>
         </div>
       </div>
     </div>
 
     <!-- Tab bar -->
     <div class="flex gap-0 border-b border-border">
-      {#each (['overview', 'documents', 'install'] as const) as tab}
+      {#each (['overview', 'documents', 'install'] as const) as tab (tab)}
         <button
           type="button"
           onclick={() => { activeTab = tab; }}
-          class="px-4 py-2 text-xs font-medium border-b-2 transition-colors duration-100 capitalize -mb-px {activeTab === tab ? 'border-brand-pink text-brand-pink' : 'border-transparent text-muted hover:text-foreground'}"
+          class="px-4 py-2 text-xs font-medium border-b-2 transition-colors duration-100 -mb-px {activeTab === tab ? 'border-brand-pink text-brand-pink' : 'border-transparent text-muted hover:text-foreground'}"
         >
-          {tab}
+          {tabLabels[tab]()}
         </button>
       {/each}
     </div>
@@ -167,26 +178,26 @@
     {#if activeTab === 'overview'}
       <div class="flex flex-col gap-4">
         <div class="bg-bg2 border border-border rounded-xl p-5">
-          <h2 class="text-xs font-semibold uppercase tracking-wider text-muted mb-3">About</h2>
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-muted mb-3">{m.marketplace_agentDetailAbout()}</h2>
           <p class="text-sm text-foreground/80 leading-relaxed">{agent.description}</p>
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div class="bg-bg2 border border-border rounded-xl p-4">
-            <p class="text-[10px] uppercase tracking-wider text-muted mb-1">Category</p>
+            <p class="text-[10px] uppercase tracking-wider text-muted mb-1">{m.marketplace_agentDetailCategory()}</p>
             <p class="text-sm text-foreground capitalize">{agent.category}</p>
           </div>
           <div class="bg-bg2 border border-border rounded-xl p-4">
-            <p class="text-[10px] uppercase tracking-wider text-muted mb-1">Version</p>
+            <p class="text-[10px] uppercase tracking-wider text-muted mb-1">{m.marketplace_agentDetailVersion()}</p>
             <p class="text-sm text-foreground">{agent.version}</p>
           </div>
           {#if agent.model}
             <div class="bg-bg2 border border-border rounded-xl p-4">
-              <p class="text-[10px] uppercase tracking-wider text-muted mb-1">Model</p>
+              <p class="text-[10px] uppercase tracking-wider text-muted mb-1">{m.marketplace_agentDetailModel()}</p>
               <p class="text-sm text-foreground">{agent.model}</p>
             </div>
           {/if}
           <div class="bg-bg2 border border-border rounded-xl p-4">
-            <p class="text-[10px] uppercase tracking-wider text-muted mb-1">Source</p>
+            <p class="text-[10px] uppercase tracking-wider text-muted mb-1">{m.marketplace_agentDetailSource()}</p>
             <p class="text-sm text-foreground font-mono truncate">{agent.githubPath}</p>
           </div>
         </div>
@@ -195,7 +206,7 @@
     {:else if activeTab === 'documents'}
       <!-- Doc sub-tabs -->
       <div class="flex gap-1 bg-bg2 border border-border rounded-lg p-1">
-        {#each docTabs as dt}
+        {#each docTabs as dt (dt.id)}
           <button
             type="button"
             onclick={() => { activeDocTab = dt.id; }}
@@ -208,7 +219,7 @@
 
       <!-- Doc content -->
       <div class="bg-bg2 border border-border rounded-xl p-5 min-h-[300px]">
-        {#each docTabs as dt}
+        {#each docTabs as dt (dt.id)}
           {#if activeDocTab === dt.id}
             <div class="prose-custom">
               {@html renderMd(agent[dt.field] as string | null)}
@@ -220,23 +231,25 @@
     {:else if activeTab === 'install'}
       <div class="bg-bg2 border border-border rounded-xl p-5 flex flex-col gap-4">
         <div>
-          <h2 class="text-sm font-semibold text-foreground mb-1">Provision Agent</h2>
-          <p class="text-xs text-muted">Choose a connected server to install {agent.name} onto.</p>
+          <h2 class="text-sm font-semibold text-foreground mb-1">{m.marketplace_agentDetailHiringOptions()}</h2>
+          <p class="text-xs text-muted">{m.marketplace_agentDetailDeployTo()}</p>
         </div>
 
         {#if hostsState.hosts.length === 0}
           <div class="rounded-lg border border-border/50 bg-bg3 p-4 text-xs text-muted text-center">
-            No servers connected. Add a server in the main Hub to install agents.
+            {m.marketplace_agentDetailNoServers()}
+            <br />
+            <span class="mt-1 inline-block">{m.marketplace_agentDetailConnectFirst()}</span>
           </div>
         {:else}
           <div class="flex flex-col gap-2">
-            <label class="text-xs text-muted" for="server-select">Select server</label>
+            <label class="text-xs text-muted" for="server-select">{m.marketplace_agentDetailSelectServer()}</label>
             <select
               id="server-select"
               bind:value={selectedServerId}
               class="w-full px-3 py-2 rounded-lg border border-border bg-bg3 text-sm text-foreground focus:outline-none focus:border-brand-pink/40 transition-colors"
             >
-              {#each hostsState.hosts as host}
+              {#each hostsState.hosts as host (host.id)}
                 <option value={host.id}>{host.name} — {host.url}</option>
               {/each}
             </select>
@@ -245,7 +258,10 @@
           {#if installSuccess}
             <div class="rounded-lg border border-green-500/20 bg-green-500/5 p-3 text-xs text-green-400 flex items-center gap-2">
               <span>✓</span>
-              {agent.name} installed successfully!
+              <div>
+                <p class="font-semibold">{m.marketplace_agentDetailHiredSuccess()}</p>
+                <p>{m.marketplace_agentDetailHiredSuccessHint({ name: agent.name })}</p>
+              </div>
             </div>
           {/if}
 
@@ -263,9 +279,11 @@
           >
             {#if marketplaceState.installing}
               <span class="animate-spin text-base">↻</span>
-              Provisioning…
+              {m.marketplace_agentDetailHiring()}
+            {:else if installSuccess}
+              {m.marketplace_agentDetailHired()}
             {:else}
-              Provision Agent
+              {m.marketplace_agentDetailHireBtn({ name: agent.name })}
             {/if}
           </button>
         {/if}

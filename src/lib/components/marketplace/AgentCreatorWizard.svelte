@@ -49,6 +49,14 @@
 
   const categories = ['engineering', 'product', 'data', 'creative', 'security'];
 
+  const categoryLabels: Record<string, () => string> = {
+    engineering: () => m.marketplace_agentsListCategoryEngineering(),
+    product: () => m.marketplace_agentsListCategoryProduct(),
+    data: () => m.marketplace_agentsListCategoryData(),
+    creative: () => m.marketplace_agentsListCategoryCreative(),
+    security: () => m.marketplace_agentsListCategorySecurity(),
+  };
+
   const avatarUrl = $derived(
     generated ? diceBearAvatarUrl(generated.agentJson.avatarSeed) : ''
   );
@@ -120,7 +128,7 @@
   function sliderLabel(val: number, low: string, high: string): string {
     if (val < 30) return low;
     if (val > 70) return high;
-    return 'Balanced';
+    return m.marketplace_wizardStep2Balanced();
   }
 </script>
 
@@ -136,7 +144,7 @@
     <div class="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
       <div>
         <h2 class="text-sm font-bold text-foreground">{m.marketplace_wizardTitle()}</h2>
-        <p class="text-[10px] text-muted mt-0.5">Step {step} of 5</p>
+        <p class="text-[10px] text-muted mt-0.5">{m.marketplace_wizardStepOf({ step: step, total: 5 })}</p>
       </div>
       <!-- Progress dots -->
       <div class="flex items-center gap-1.5 mx-auto">
@@ -161,28 +169,28 @@
       {#if step === 1}
         <div class="flex flex-col gap-4">
           <div>
-            <h3 class="text-sm font-semibold text-foreground mb-1">What does this agent do?</h3>
-            <p class="text-xs text-muted">Define their professional role and domain.</p>
+            <h3 class="text-sm font-semibold text-foreground mb-1">{m.marketplace_wizardStep1Heading()}</h3>
+            <p class="text-xs text-muted">{m.marketplace_wizardStep1Subtitle()}</p>
           </div>
           <div class="flex flex-col gap-1.5">
-            <label class="text-xs text-muted" for="role-input">Role Title</label>
+            <label class="text-xs text-muted" for="role-input">{m.marketplace_wizardStep1RoleLabel()}</label>
             <input
               id="role-input"
               type="text"
-              placeholder="e.g. DevOps Engineer, UX Designer, Growth Marketer"
+              placeholder={m.marketplace_wizardStep1RolePlaceholder()}
               bind:value={role}
               class="w-full px-3 py-2 rounded-lg border border-border bg-bg3 text-sm text-foreground placeholder:text-muted/50 focus:outline-none focus:border-brand-pink/40 transition-colors"
             />
           </div>
           <div class="flex flex-col gap-1.5">
-            <label class="text-xs text-muted" for="category-select">Category</label>
+            <label class="text-xs text-muted" for="category-select">{m.marketplace_wizardStep1CategoryLabel()}</label>
             <select
               id="category-select"
               bind:value={category}
               class="w-full px-3 py-2 rounded-lg border border-border bg-bg3 text-sm text-foreground focus:outline-none focus:border-brand-pink/40 transition-colors capitalize"
             >
               {#each categories as cat (cat)}
-                <option value={cat} class="capitalize">{cat}</option>
+                <option value={cat}>{categoryLabels[cat]?.() ?? cat}</option>
               {/each}
             </select>
           </div>
@@ -192,25 +200,25 @@
       {:else if step === 2}
         <div class="flex flex-col gap-4">
           <div>
-            <h3 class="text-sm font-semibold text-foreground mb-1">Who are they?</h3>
-            <p class="text-xs text-muted">Give them a name and shape their personality.</p>
+            <h3 class="text-sm font-semibold text-foreground mb-1">{m.marketplace_wizardStep2Heading()}</h3>
+            <p class="text-xs text-muted">{m.marketplace_wizardStep2Subtitle()}</p>
           </div>
           <div class="flex flex-col gap-1.5">
-            <label class="text-xs text-muted" for="name-input">Full Name</label>
+            <label class="text-xs text-muted" for="name-input">{m.marketplace_wizardStep2NameLabel()}</label>
             <input
               id="name-input"
               type="text"
-              placeholder="e.g. Alex Rivera"
+              placeholder={m.marketplace_wizardStep2NamePlaceholder()}
               bind:value={agentName}
               class="w-full px-3 py-2 rounded-lg border border-border bg-bg3 text-sm text-foreground placeholder:text-muted/50 focus:outline-none focus:border-brand-pink/40 transition-colors"
             />
           </div>
           <div class="flex flex-col gap-1.5">
-            <label class="text-xs text-muted" for="catchphrase-input">Catchphrase (optional)</label>
+            <label class="text-xs text-muted" for="catchphrase-input">{m.marketplace_wizardStep2CatchphraseLabel()}</label>
             <input
               id="catchphrase-input"
               type="text"
-              placeholder="Their signature sentence"
+              placeholder={m.marketplace_wizardStep2CatchphrasePlaceholder()}
               bind:value={catchphrase}
               class="w-full px-3 py-2 rounded-lg border border-border bg-bg3 text-sm text-foreground placeholder:text-muted/50 focus:outline-none focus:border-brand-pink/40 transition-colors"
             />
@@ -218,9 +226,9 @@
 
           <!-- Sliders -->
           {#each [
-            { label: 'Tone', low: 'Formal', high: 'Casual', bind: 'formalCasual' },
-            { label: 'Risk', low: 'Cautious', high: 'Bold', bind: 'cautiousBold' },
-            { label: 'Thinking', low: 'Technical', high: 'Strategic', bind: 'technicalStrategic' },
+            { label: m.marketplace_wizardStep2ToneLabel(), low: m.marketplace_wizardStep2ToneFormal(), high: m.marketplace_wizardStep2ToneCasual(), bind: 'formalCasual' },
+            { label: m.marketplace_wizardStep2RiskLabel(), low: m.marketplace_wizardStep2RiskCautious(), high: m.marketplace_wizardStep2RiskBold(), bind: 'cautiousBold' },
+            { label: m.marketplace_wizardStep2ThinkingLabel(), low: m.marketplace_wizardStep2ThinkingTechnical(), high: m.marketplace_wizardStep2ThinkingStrategic(), bind: 'technicalStrategic' },
           ] as slider (slider.bind)}
             <div class="flex flex-col gap-1.5">
               <div class="flex items-center justify-between">
@@ -257,16 +265,16 @@
             ✨
           </div>
           <div>
-            <h3 class="text-sm font-semibold text-foreground">Ready to generate</h3>
+            <h3 class="text-sm font-semibold text-foreground">{m.marketplace_wizardStep3Heading()}</h3>
             <p class="text-xs text-muted mt-1">
-              Claude will write {agentName}'s full identity — SOUL, IDENTITY, USER, CONTEXT, and SKILLS documents.
+              {m.marketplace_wizardStep3Body({ name: agentName })}
             </p>
           </div>
           <div class="w-full bg-bg3 border border-border rounded-lg p-3 text-left text-xs text-muted space-y-1">
-            <div><span class="text-foreground font-medium">Name:</span> {agentName}</div>
-            <div><span class="text-foreground font-medium">Role:</span> {role}</div>
-            <div><span class="text-foreground font-medium">Category:</span> {category}</div>
-            {#if catchphrase}<div><span class="text-foreground font-medium">Catchphrase:</span> "{catchphrase}"</div>{/if}
+            <div><span class="text-foreground font-medium">{m.marketplace_wizardStep3NameLabel()}</span> {agentName}</div>
+            <div><span class="text-foreground font-medium">{m.marketplace_wizardStep3RoleLabel()}</span> {role}</div>
+            <div><span class="text-foreground font-medium">{m.marketplace_wizardStep3CategoryLabel()}</span> {category}</div>
+            {#if catchphrase}<div><span class="text-foreground font-medium">{m.marketplace_wizardStep3CatchphraseLabel()}</span> "{catchphrase}"</div>{/if}
           </div>
           {#if generateError}
             <div class="w-full rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-xs text-red-400 text-left">
@@ -281,9 +289,9 @@
           >
             {#if generating}
               <span class="animate-spin">↻</span>
-              Generating identity…
+              {m.marketplace_wizardStep3Generating()}
             {:else}
-              Generate Agent
+              {m.marketplace_wizardStep3Generate()}
             {/if}
           </button>
         </div>
@@ -328,7 +336,7 @@
           </div>
 
           <p class="text-xs text-muted text-center">
-            Looks good? Continue to export and push to GitHub.
+            {m.marketplace_wizardStep4Hint()}
           </p>
         </div>
 
@@ -336,8 +344,8 @@
       {:else if step === 5 && generated}
         <div class="flex flex-col gap-4">
           <div>
-            <h3 class="text-sm font-semibold text-foreground mb-1">Export & Publish</h3>
-            <p class="text-xs text-muted">Download the agent files, add them to the minions repo, then sync.</p>
+            <h3 class="text-sm font-semibold text-foreground mb-1">{m.marketplace_wizardStep5Heading()}</h3>
+            <p class="text-xs text-muted">{m.marketplace_wizardStep5Subtitle()}</p>
           </div>
 
           <button
@@ -345,7 +353,7 @@
             onclick={downloadFiles}
             class="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-brand-pink/10 border border-brand-pink/30 text-brand-pink text-sm font-medium hover:bg-brand-pink/20 transition-colors"
           >
-            📥 Download Agent Files
+            {m.marketplace_wizardStep5DownloadBtn()}
           </button>
 
           <div class="bg-bg3 border border-border rounded-lg p-3 text-xs text-muted font-mono leading-relaxed">
@@ -359,8 +367,8 @@
           </div>
 
           <div class="bg-bg3 border border-border rounded-lg p-3 text-xs text-muted leading-relaxed">
-            <p class="text-foreground font-semibold mb-1">Then sync in Minion Hub:</p>
-            <p>Marketplace sidebar → <span class="text-brand-pink">↻ Sync GitHub</span></p>
+            <p class="text-foreground font-semibold mb-1">{m.marketplace_wizardStep5SyncHeading()}</p>
+            <p>{m.marketplace_wizardStep5SyncHint()}</p>
           </div>
         </div>
       {/if}
