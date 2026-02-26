@@ -16,6 +16,7 @@
         { type: "messageboard" as ElementType, icon: "\u{1F4CB}", label: m.workshop_messageboard() },
         { type: "inbox" as ElementType, icon: "\u{1F4EC}", label: m.workshop_inbox() },
         { type: "rulebook" as ElementType, icon: "\u{1F4D6}", label: m.workshop_rulebook() },
+        { type: "portal" as ElementType, icon: "\u{1F300}", label: m.workshop_portal() },
     ]);
 
     function onDragStart(

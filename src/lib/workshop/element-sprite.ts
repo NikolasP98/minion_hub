@@ -14,6 +14,7 @@ const TYPE_COLORS: Record<ElementType, number> = {
 	messageboard: 0x2563eb, // blue
 	inbox: 0x475569,       // steel
 	rulebook: 0x1a472a,   // deep green
+	portal: 0x7c3aed,     // purple/violet
 };
 
 const TYPE_ICONS: Record<ElementType, string> = {
@@ -21,6 +22,7 @@ const TYPE_ICONS: Record<ElementType, string> = {
 	messageboard: '\u{1F4CB}', // 📋
 	inbox: '\u{1F4EC}',        // 📬
 	rulebook: '\u{1F4D6}',     // 📖
+	portal: '\u{1F300}',       // 🌀
 };
 
 // ---------------------------------------------------------------------------

@@ -963,6 +963,15 @@ export function getWorkshopContext(agentId?: string, instanceId?: string): strin
 	].join('\n');
 	parts.push(workshopClause);
 
+	if (!workshopState.settings.crossWorkspaceChats) {
+		parts.push([
+			'--- WORKSPACE ISOLATION NOTICE ---',
+			'Cross-workspace chats are DISABLED. All conversations are fully isolated to this workspace.',
+			'Do not reference, mention, or continue conversations from other workspaces.',
+			'--- END ISOLATION NOTICE ---',
+		].join('\n'));
+	}
+
 	if (!shareWorkspace) return parts.join('\n\n');
 
 	// B. Rulebook — always, if present
@@ -998,7 +1007,7 @@ export function getWorkshopContext(agentId?: string, instanceId?: string): strin
 	if (agentId) {
 		for (const el of Object.values(workshopState.elements)) {
 			if (el.type === 'inbox' && el.inboxAgentId === agentId) {
-				const unread = (el.inboxItems ?? []).filter((m) => !m.read);
+				const unread = (el.inboxItems ?? []).filter((m) => !m.read && m.status !== 'closed');
 				if (unread.length > 0) {
 					const lines = [
 						'--- INBOX START ---',
@@ -1243,6 +1252,8 @@ function extractAndRouteSends(responseText: string, fromAgentId: string): void {
 			fromId: fromAgentId,
 			toId: targetAgent.id,
 			content,
+			subject: '',
+			status: 'open',
 			sentAt: Date.now(),
 			read: false,
 		});

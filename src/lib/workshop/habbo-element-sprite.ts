@@ -30,6 +30,7 @@ const TYPE_COLORS: Record<ElementType, number> = {
 	messageboard: 0x2563eb,
 	inbox: 0x475569,
 	rulebook: 0x1a472a,
+	portal: 0x7c3aed,
 };
 
 const TYPE_ICONS: Record<ElementType, string> = {
@@ -37,6 +38,7 @@ const TYPE_ICONS: Record<ElementType, string> = {
 	messageboard: '\u{1F4CB}',
 	inbox: '\u{1F4EC}',
 	rulebook: '\u{1F4D6}',
+	portal: '\u{1F300}',
 };
 
 /** Darken a colour by a factor (0–1 where 0 = black). */

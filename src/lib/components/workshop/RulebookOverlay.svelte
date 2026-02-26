@@ -29,13 +29,19 @@
   function toggleAgentChats() {
     workshopState.settings.agentChatsEnabled = !workshopState.settings.agentChatsEnabled;
   }
+
+  function toggleCrossWorkspaceChats() {
+    workshopState.settings.crossWorkspaceChats = !workshopState.settings.crossWorkspaceChats;
+  }
 </script>
 
-<!-- svelte-ignore a11y_click_events_have_key_events -->
-<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
   class="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40"
+  role="button"
+  tabindex="-1"
+  aria-label="Close"
   onclick={handleBackdropClick}
+  onkeydown={(e) => e.key === 'Escape' && (flush(), onClose())}
 >
   <div class="w-full max-w-md rounded-lg border border-border bg-bg2 shadow-xl">
     <div class="flex items-center justify-between border-b border-border px-4 py-2">
@@ -55,8 +61,6 @@
         <span class="text-[10px] font-mono text-foreground font-medium">Agent-Agent Chats</span>
         <span class="text-[9px] font-mono text-muted">Allow agents to converse with each other</span>
       </div>
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div
         class="relative h-5 w-9 cursor-pointer rounded-full transition-colors duration-150 {workshopState.settings.agentChatsEnabled ? 'bg-accent' : 'bg-border'}"
         onclick={toggleAgentChats}
@@ -67,6 +71,26 @@
       >
         <span
           class="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform duration-150 {workshopState.settings.agentChatsEnabled ? 'translate-x-4' : 'translate-x-0.5'}"
+        ></span>
+      </div>
+    </div>
+
+    <!-- Cross-workspace chats toggle -->
+    <div class="flex items-center justify-between border-b border-border px-3 py-2">
+      <div class="flex flex-col gap-0.5">
+        <span class="text-[10px] font-mono text-foreground font-medium">Cross-Workspace Chats</span>
+        <span class="text-[9px] font-mono text-muted">When off, conversations are fully isolated to this workspace</span>
+      </div>
+      <div
+        class="relative h-5 w-9 cursor-pointer rounded-full transition-colors duration-150 {workshopState.settings.crossWorkspaceChats ? 'bg-accent' : 'bg-border'}"
+        onclick={toggleCrossWorkspaceChats}
+        role="switch"
+        aria-checked={workshopState.settings.crossWorkspaceChats}
+        tabindex="0"
+        onkeydown={(e) => e.key === 'Enter' || e.key === ' ' ? toggleCrossWorkspaceChats() : null}
+      >
+        <span
+          class="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform duration-150 {workshopState.settings.crossWorkspaceChats ? 'translate-x-4' : 'translate-x-0.5'}"
         ></span>
       </div>
     </div>

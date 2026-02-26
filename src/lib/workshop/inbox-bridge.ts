@@ -12,6 +12,7 @@ import {
 	addOutboxItem,
 	autoSave,
 	type InboxItem,
+	type InboxAttachment,
 } from '$lib/state/workshop.svelte';
 
 /**
@@ -29,6 +30,8 @@ export function sendInboxMessage(
 	fromId: string,
 	toId: string,
 	content: string,
+	subject: string = '',
+	attachments: InboxAttachment[] = [],
 ): string | null {
 	// Find inbox element for the target agent
 	const targetInbox = Object.values(workshopState.elements).find(
@@ -46,8 +49,11 @@ export function sendInboxMessage(
 		fromId,
 		toId,
 		content,
+		subject,
+		status: 'open',
 		sentAt: Date.now(),
 		read: false,
+		...(attachments.length > 0 ? { attachments } : {}),
 	};
 
 	// Add to target's inbox
@@ -72,5 +78,5 @@ export function getUnreadInboxItems(agentId: string): InboxItem[] {
 		(el) => el.type === 'inbox' && el.inboxAgentId === agentId,
 	);
 	if (!inboxEl || !inboxEl.inboxItems) return [];
-	return inboxEl.inboxItems.filter((m) => !m.read);
+	return inboxEl.inboxItems.filter((m) => !m.read && m.status !== 'closed');
 }

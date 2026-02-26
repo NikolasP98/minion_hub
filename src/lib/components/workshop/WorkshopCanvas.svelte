@@ -69,6 +69,7 @@
     import MessageBoardOverlay from "./MessageBoardOverlay.svelte";
     import InboxOverlay from "./InboxOverlay.svelte";
     import RulebookOverlay from "./RulebookOverlay.svelte";
+    import PortalOverlay from "./PortalOverlay.svelte";
     import { thinkingAgents } from "$lib/state/workshop-conversations.svelte";
     import DebugOverlay from "./DebugOverlay.svelte";
 
@@ -1392,6 +1393,11 @@
             />
         {:else if activeOverlay.type === "rulebook"}
             <RulebookOverlay
+                elementId={activeOverlay.elementId}
+                onClose={() => (activeOverlay = null)}
+            />
+        {:else if activeOverlay.type === "portal"}
+            <PortalOverlay
                 elementId={activeOverlay.elementId}
                 onClose={() => (activeOverlay = null)}
             />
