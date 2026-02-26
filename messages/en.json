@@ -337,5 +337,8 @@
   "marketplace_wizardStep5Subtitle": "Download the agent files, add them to the minions repo, then sync.",
   "marketplace_wizardStep5DownloadBtn": "📥 Download Agent Files",
   "marketplace_wizardStep5SyncHeading": "Then sync in Minion Hub:",
-  "marketplace_wizardStep5SyncHint": "Marketplace sidebar → ↻ Sync GitHub"
+  "marketplace_wizardStep5SyncHint": "Marketplace sidebar → ↻ Sync GitHub",
+  "marketplace_agentDetailNoContent": "No content available.",
+  "marketplace_agentDetailInstalls": "installs",
+  "marketplace_agentDetailSelectServer": "Select server"
 }

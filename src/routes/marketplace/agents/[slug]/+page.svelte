@@ -51,7 +51,7 @@
 
   // Simple markdown renderer — handles headings, bold, italic, code, lists
   function renderMd(md: string | null | undefined): string {
-    if (!md) return '<p class="text-muted text-xs italic">No content available.</p>';
+    if (!md) return `<p class="text-muted text-xs italic">${m.marketplace_agentDetailNoContent()}</p>`;
     return md
       .replace(/^#{3}\s+(.+)$/gm, '<h3 class="text-sm font-semibold text-foreground mt-4 mb-1">$1</h3>')
       .replace(/^#{2}\s+(.+)$/gm, '<h2 class="text-base font-bold text-foreground mt-5 mb-2">$1</h2>')
@@ -152,7 +152,7 @@
           {/each}
         </div>
         <div class="flex items-center gap-4 mt-3 text-[11px] text-muted">
-          <span>📥 {formatInstallCount(agent.installCount)} installs</span>
+          <span>📥 {formatInstallCount(agent.installCount)} {m.marketplace_agentDetailInstalls()}</span>
           <span class="capitalize">★ {agent.category}</span>
         </div>
         <div class="mt-2">
@@ -243,7 +243,7 @@
           </div>
         {:else}
           <div class="flex flex-col gap-2">
-            <label class="text-xs text-muted" for="server-select">Select server</label>
+            <label class="text-xs text-muted" for="server-select">{m.marketplace_agentDetailSelectServer()}</label>
             <select
               id="server-select"
               bind:value={selectedServerId}
