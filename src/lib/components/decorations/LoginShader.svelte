@@ -195,7 +195,11 @@
 
         float v = pattern(finalPx);
 
-        gl_FragColor = vec4(u_accent, v * u_opacity);
+        // Opacity: dim at rest, brightens near cursor
+        float mouseProx = smoothstep(320.0, 0.0, length(px - mousePx));
+        float opacityScale = mix(0.25, 1.2, mouseProx);
+
+        gl_FragColor = vec4(u_accent, v * u_opacity * opacityScale);
       }
     `;
 
