@@ -1,7 +1,7 @@
 import { sequence } from '@sveltejs/kit/hooks';
 import type { Handle } from '@sveltejs/kit';
 import { i18n } from '$lib/i18n';
-import { auth } from '$lib/auth';
+import { getAuth } from '$lib/auth';
 import { getDb } from '$server/db/client';
 import { servers, organization } from '$server/db/schema';
 import { decryptToken } from '$server/auth/crypto';
@@ -70,7 +70,7 @@ const appHandle: Handle = async ({ event, resolve }) => {
   }
 
   // Session auth via Better Auth
-  const betterAuthSession = await auth.api.getSession({ headers: event.request.headers });
+  const betterAuthSession = await getAuth().api.getSession({ headers: event.request.headers });
   if (betterAuthSession) {
     event.locals.user = {
       id: betterAuthSession.user.id,
@@ -78,7 +78,7 @@ const appHandle: Handle = async ({ event, resolve }) => {
       displayName: betterAuthSession.user.name ?? null,
     };
     event.locals.session = betterAuthSession.session;
-    const orgId = betterAuthSession.session.activeOrganizationId ?? undefined;
+    const orgId = (betterAuthSession.session as { activeOrganizationId?: string | null }).activeOrganizationId ?? undefined;
     event.locals.orgId = orgId;
     if (orgId) {
       const db = getDb();

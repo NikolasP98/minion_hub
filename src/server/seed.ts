@@ -1,6 +1,17 @@
-import { auth } from '../lib/auth';
+import { betterAuth } from 'better-auth';
+import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { organization as orgPlugin } from 'better-auth/plugins';
 import { getDb } from './db/client';
 import { organization, member } from './db/schema';
+
+// Seed-time auth instance using process.env directly (no SvelteKit virtual modules)
+const auth = betterAuth({
+  database: drizzleAdapter(getDb(), { provider: 'sqlite' }),
+  secret: process.env.BETTER_AUTH_SECRET ?? 'seed-secret-not-used-in-prod',
+  baseURL: process.env.BETTER_AUTH_URL ?? 'http://localhost:5173',
+  emailAndPassword: { enabled: true },
+  plugins: [orgPlugin()],
+});
 
 async function seed() {
   const email = process.env.SEED_ADMIN_EMAIL ?? 'admin@minion.hub';
