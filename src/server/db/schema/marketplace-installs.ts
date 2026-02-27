@@ -1,5 +1,5 @@
 import { sqliteTable, text, integer, index } from 'drizzle-orm/sqlite-core';
-import { tenants } from './tenants';
+import { organization } from './auth';
 import { servers } from './servers';
 import { marketplaceAgents } from './marketplace-agents';
 
@@ -9,7 +9,7 @@ export const marketplaceInstalls = sqliteTable(
     id: text('id').primaryKey(),
     tenantId: text('tenant_id')
       .notNull()
-      .references(() => tenants.id, { onDelete: 'cascade' }),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     agentId: text('agent_id')
       .notNull()
       .references(() => marketplaceAgents.id, { onDelete: 'cascade' }),

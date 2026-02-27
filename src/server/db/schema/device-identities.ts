@@ -1,11 +1,11 @@
 import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
-import { tenants } from './tenants';
+import { organization } from './auth';
 
 export const deviceIdentities = sqliteTable('device_identities', {
 	id: text('id').primaryKey(),
 	tenantId: text('tenant_id')
 		.notNull()
-		.references(() => tenants.id, { onDelete: 'cascade' })
+		.references(() => organization.id, { onDelete: 'cascade' })
 		.unique(),
 	deviceId: text('device_id').notNull(),
 	publicKeyPem: text('public_key_pem').notNull(),

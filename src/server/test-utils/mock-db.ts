@@ -19,7 +19,7 @@ import type { Db } from '$server/db/client';
  * - `resolve(value)` — set a single return value for all awaited chains
  * - `resolveSequence([v1, v2, ...])` — return v1 for the 1st await, v2 for
  *   the 2nd, etc. Useful for functions that make multiple DB calls (e.g.
- *   `validateSession` does two selects). After exhausting the sequence,
+ *   a join query followed by a lookup). After exhausting the sequence,
  *   subsequent awaits return `[]`.
  *
  * ## TS strictness note

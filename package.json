@@ -22,6 +22,7 @@
     "@zag-js/toggle-group": "^1.34.0",
     "@zag-js/tooltip": "^1.34.0",
     "@zag-js/tree-view": "^1.34.0",
+    "better-auth": "^1.4.18",
     "carta-md": "^4.11.1",
     "dompurify": "^3.3.1",
     "drizzle-orm": "^0.45.1",

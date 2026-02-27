@@ -1,11 +1,11 @@
 import { sequence } from '@sveltejs/kit/hooks';
 import type { Handle } from '@sveltejs/kit';
-import { eq } from 'drizzle-orm';
 import { i18n } from '$lib/i18n';
+import { auth } from '$lib/auth';
 import { getDb } from '$server/db/client';
-import { servers, tenants } from '$server/db/schema';
-import { validateSession, SESSION_COOKIE } from '$server/auth/session';
+import { servers, organization } from '$server/db/schema';
 import { decryptToken } from '$server/auth/crypto';
+import { env } from '$env/dynamic/private';
 
 /**
  * Resolve tenantCtx from a Bearer server token.
@@ -41,52 +41,72 @@ async function resolveServerTokenAuth(
   return null;
 }
 
+const UNPROTECTED_PREFIXES = ['/login', '/api/'];
+
 const appHandle: Handle = async ({ event, resolve }) => {
-  // Skip auth for auth routes and public assets
-  if (event.url.pathname.startsWith('/api/auth/')) {
+  const path = event.url.pathname;
+
+  // Better Auth owns /api/auth/*
+  if (path.startsWith('/api/auth/')) return resolve(event);
+
+  // AUTH_DISABLED: skip all auth, resolve first org for API routes to work
+  if (env.AUTH_DISABLED === 'true') {
+    const db = getDb();
+    const rows = await db.select({ id: organization.id }).from(organization).limit(1);
+    if (rows.length > 0) event.locals.tenantCtx = { db, tenantId: rows[0].id };
     return resolve(event);
   }
 
-  // Server token auth for metrics push endpoints (Bearer token)
-  if (event.url.pathname.startsWith('/api/metrics/')) {
-    const auth = event.request.headers.get('authorization');
-    const serverAuth = await resolveServerTokenAuth(auth);
+  // Bearer token auth for /api/metrics/*
+  if (path.startsWith('/api/metrics/')) {
+    const authHeader = event.request.headers.get('authorization');
+    const serverAuth = await resolveServerTokenAuth(authHeader);
     if (serverAuth) {
       const db = getDb();
       event.locals.tenantCtx = { db, tenantId: serverAuth.tenantId };
-      // Store serverId for metrics endpoints
       (event.locals as Record<string, unknown>).serverId = serverAuth.serverId;
       return resolve(event);
     }
-    // Fall through to cookie auth for browser-originated metric reads
   }
 
-  const token = event.cookies.get(SESSION_COOKIE);
-
-  if (token) {
-    const db = getDb();
-    const session = await validateSession(db, token);
-
-    if (session) {
-      event.locals.user = session.user;
-      event.locals.role = session.role as App.Locals['role'];
-
-      if (session.tenantId) {
-        event.locals.tenantCtx = {
-          db,
-          tenantId: session.tenantId,
-        };
-      }
+  // Session auth via Better Auth
+  const betterAuthSession = await auth.api.getSession({ headers: event.request.headers });
+  if (betterAuthSession) {
+    event.locals.user = {
+      id: betterAuthSession.user.id,
+      email: betterAuthSession.user.email,
+      displayName: betterAuthSession.user.name ?? null,
+    };
+    event.locals.session = betterAuthSession.session;
+    const orgId = betterAuthSession.session.activeOrganizationId ?? undefined;
+    event.locals.orgId = orgId;
+    if (orgId) {
+      const db = getDb();
+      event.locals.tenantCtx = { db, tenantId: orgId };
     }
   }
 
-  // Unauthenticated fallback: resolve first tenant in DB for local usage
-  if (!event.locals.tenantCtx) {
+  // For API routes: unauthenticated fallback to first org (preserve existing behaviour)
+  if (!event.locals.tenantCtx && path.startsWith('/api/')) {
     const db = getDb();
-    const rows = await db.select({ id: tenants.id }).from(tenants).limit(1);
-    if (rows.length > 0) {
-      event.locals.tenantCtx = { db, tenantId: rows[0].id };
-    }
+    const rows = await db.select({ id: organization.id }).from(organization).limit(1);
+    if (rows.length > 0) event.locals.tenantCtx = { db, tenantId: rows[0].id };
+    return resolve(event);
+  }
+
+  // Redirect unauthenticated browser requests to /login
+  const isUnprotected = UNPROTECTED_PREFIXES.some((p) => path.startsWith(p));
+  if (!event.locals.user && !isUnprotected) {
+    const redirectTo = path !== '/' ? `?redirectTo=${encodeURIComponent(path)}` : '';
+    return new Response(null, {
+      status: 302,
+      headers: { location: `/login${redirectTo}` },
+    });
+  }
+
+  // Redirect authenticated users away from /login
+  if (event.locals.user && path === '/login') {
+    return new Response(null, { status: 302, headers: { location: '/' } });
   }
 
   return resolve(event);

@@ -1,5 +1,5 @@
-export { tenants } from './tenants';
-export { users, userTenants } from './users';
+// Better Auth tables (replaces tenants, users, userTenants, authSessions)
+export { user, session, account, verification, organization, member, invitation } from './auth';
 export { servers } from './servers';
 export { agents } from './agents';
 export { skills } from './skills';
@@ -9,7 +9,6 @@ export { bugs } from './bugs';
 export { connectionEvents } from './connection-events';
 export { settings } from './settings';
 export { files } from './files';
-export { authSessions } from './auth-sessions';
 export { missions } from './missions';
 export { tasks } from './tasks';
 export { reliabilityEvents } from './reliability-events';

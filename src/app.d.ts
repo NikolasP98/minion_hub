@@ -1,3 +1,4 @@
+import type { auth } from '$lib/auth';
 import type { TenantContext } from '$server/services/base';
 
 declare global {
@@ -8,8 +9,11 @@ declare global {
         email: string;
         displayName: string | null;
       };
+      session?: typeof auth.$Infer.Session.session;
+      orgId?: string;
       tenantCtx?: TenantContext;
-      role?: 'owner' | 'admin' | 'member' | 'viewer';
+      // serverId is set for metrics Bearer-token auth
+      serverId?: string;
     }
   }
 }

@@ -1,4 +1,5 @@
 import { goto } from '$app/navigation';
+import { authClient } from '$lib/auth-client';
 
 type UserRole = 'owner' | 'admin' | 'member' | 'viewer';
 
@@ -11,7 +12,7 @@ interface CurrentUser {
 interface UserState {
   user: CurrentUser | null;
   role: UserRole | null;
-  tenantId: string | null;
+  orgId: string | null;
   loading: boolean;
   error: string | null;
 }
@@ -19,7 +20,7 @@ interface UserState {
 const state = $state<UserState>({
   user: null,
   role: null,
-  tenantId: null,
+  orgId: null,
   loading: false,
   error: null,
 });
@@ -30,12 +31,30 @@ export async function loadUser() {
   state.loading = true;
   state.error = null;
   try {
-    const res = await fetch('/api/auth/me');
-    if (res.ok) {
-      const data = await res.json();
-      state.user = data.user;
-      state.role = data.role;
-      state.tenantId = data.tenantId;
+    const session = await authClient.getSession();
+    if (session.data?.user) {
+      const u = session.data.user;
+      state.user = {
+        id: u.id,
+        email: u.email,
+        displayName: u.name ?? null,
+      };
+      state.orgId = (session.data.session as { activeOrganizationId?: string | null }).activeOrganizationId ?? null;
+
+      // Auto-activate first org if session exists but no activeOrganizationId
+      if (!state.orgId) {
+        try {
+          const orgs = await authClient.organization.list();
+          const firstOrg = orgs.data?.[0];
+          if (firstOrg) {
+            await authClient.organization.setActive({ organizationId: firstOrg.id });
+            state.orgId = firstOrg.id;
+          }
+        } catch { /* non-fatal */ }
+      }
+    } else {
+      state.user = null;
+      state.orgId = null;
     }
   } catch (err) {
     state.error = err instanceof Error ? err.message : 'Failed to load user';
@@ -45,14 +64,11 @@ export async function loadUser() {
 }
 
 export async function logout() {
-  const res = await fetch('/api/auth/logout', { method: 'POST' });
-  if (!res.ok) {
-    console.error('Logout request failed, session may still be active server-side');
-  }
+  await authClient.signOut();
   state.user = null;
   state.role = null;
-  state.tenantId = null;
-  goto('/login');
+  state.orgId = null;
+  goto('/');
 }
 
 export function getUserInitials(user: CurrentUser): string {

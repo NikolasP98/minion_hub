@@ -1,6 +1,5 @@
 import { sqliteTable, text, integer, index } from 'drizzle-orm/sqlite-core';
-import { tenants } from './tenants';
-import { users } from './users';
+import { organization, user } from './auth';
 
 export const files = sqliteTable(
   'files',
@@ -8,8 +7,8 @@ export const files = sqliteTable(
     id: text('id').primaryKey(),
     tenantId: text('tenant_id')
       .notNull()
-      .references(() => tenants.id, { onDelete: 'cascade' }),
-    uploadedBy: text('uploaded_by').references(() => users.id, { onDelete: 'set null' }),
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    uploadedBy: text('uploaded_by').references(() => user.id, { onDelete: 'set null' }),
     b2FileKey: text('b2_file_key').notNull(),
     fileName: text('file_name').notNull(),
     contentType: text('content_type').notNull(),

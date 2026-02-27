@@ -1,35 +1,33 @@
 import { eq, and } from 'drizzle-orm';
-import { users, userTenants } from '$server/db/schema';
-import { hashPassword } from '$server/auth/password';
-import { newId, nowMs } from '$server/db/utils';
+import { user, member } from '$server/db/schema';
+import { newId } from '$server/db/utils';
 import type { TenantContext } from './base';
+import { auth } from '$lib/auth';
 
 export async function listUsers(ctx: TenantContext) {
   return ctx.db
     .select({
-      id: users.id,
-      email: users.email,
-      displayName: users.displayName,
-      kind: users.kind,
-      role: userTenants.role,
+      id: user.id,
+      email: user.email,
+      displayName: user.name,
+      role: member.role,
     })
-    .from(userTenants)
-    .innerJoin(users, eq(userTenants.userId, users.id))
-    .where(eq(userTenants.tenantId, ctx.tenantId));
+    .from(member)
+    .innerJoin(user, eq(member.userId, user.id))
+    .where(eq(member.organizationId, ctx.tenantId));
 }
 
 export async function getUser(ctx: TenantContext, userId: string) {
   const rows = await ctx.db
     .select({
-      id: users.id,
-      email: users.email,
-      displayName: users.displayName,
-      kind: users.kind,
-      role: userTenants.role,
+      id: user.id,
+      email: user.email,
+      displayName: user.name,
+      role: member.role,
     })
-    .from(userTenants)
-    .innerJoin(users, eq(userTenants.userId, users.id))
-    .where(and(eq(userTenants.tenantId, ctx.tenantId), eq(users.id, userId)));
+    .from(member)
+    .innerJoin(user, eq(member.userId, user.id))
+    .where(and(eq(member.organizationId, ctx.tenantId), eq(user.id, userId)));
 
   return rows[0] ?? null;
 }
@@ -38,24 +36,24 @@ export async function createContactUser(
   ctx: TenantContext,
   data: { email: string; displayName?: string; password: string; role?: 'owner' | 'admin' | 'member' | 'viewer' },
 ) {
-  const now = nowMs();
-  const userId = newId();
-
-  await ctx.db.insert(users).values({
-    id: userId,
-    email: data.email,
-    passwordHash: await hashPassword(data.password),
-    displayName: data.displayName ?? null,
-    kind: 'contact',
-    createdAt: now,
-    updatedAt: now,
+  // Use Better Auth API so password is properly hashed into the account table
+  const result = await auth.api.signUpEmail({
+    body: {
+      email: data.email,
+      password: data.password,
+      name: data.displayName ?? data.email.split('@')[0],
+    },
   });
 
-  await ctx.db.insert(userTenants).values({
+  const userId = result.user.id;
+  const now = new Date();
+
+  await ctx.db.insert(member).values({
+    id: newId(),
     userId,
-    tenantId: ctx.tenantId,
+    organizationId: ctx.tenantId,
     role: data.role ?? 'viewer',
-    joinedAt: now,
+    createdAt: now,
   });
 
   return userId;
@@ -64,12 +62,14 @@ export async function createContactUser(
 export async function updateUser(
   ctx: TenantContext,
   userId: string,
-  data: { displayName?: string; kind?: 'operator' | 'contact' },
+  data: { displayName?: string },
 ) {
-  await ctx.db
-    .update(users)
-    .set({ ...data, updatedAt: nowMs() })
-    .where(eq(users.id, userId));
+  if (data.displayName !== undefined) {
+    await ctx.db
+      .update(user)
+      .set({ name: data.displayName, updatedAt: new Date() })
+      .where(eq(user.id, userId));
+  }
 }
 
 export async function updateUserRole(
@@ -78,13 +78,13 @@ export async function updateUserRole(
   role: 'owner' | 'admin' | 'member' | 'viewer',
 ) {
   await ctx.db
-    .update(userTenants)
+    .update(member)
     .set({ role })
-    .where(and(eq(userTenants.userId, userId), eq(userTenants.tenantId, ctx.tenantId)));
+    .where(and(eq(member.userId, userId), eq(member.organizationId, ctx.tenantId)));
 }
 
 export async function removeUserFromTenant(ctx: TenantContext, userId: string) {
   await ctx.db
-    .delete(userTenants)
-    .where(and(eq(userTenants.userId, userId), eq(userTenants.tenantId, ctx.tenantId)));
+    .delete(member)
+    .where(and(eq(member.userId, userId), eq(member.organizationId, ctx.tenantId)));
 }
