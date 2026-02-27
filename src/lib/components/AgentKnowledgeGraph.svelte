@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
   import { fetchKGSnapshot } from '$lib/services/gateway.svelte';
   import * as echarts from 'echarts';
@@ -173,8 +173,8 @@
 
   // ── Re-fetch when agentId changes ─────────────────────────────────────────
   $effect(() => {
-    agentId; // reactive dependency
-    refresh();
+    agentId; // only track agentId — untrack prevents refresh()'s internal state reads from becoming dependencies
+    untrack(() => refresh());
   });
 
   // ── Reactive chart update ──────────────────────────────────────────────────
