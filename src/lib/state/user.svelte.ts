@@ -1,5 +1,6 @@
 import { goto } from '$app/navigation';
 import { authClient } from '$lib/auth-client';
+import { env } from '$env/dynamic/public';
 
 type UserRole = 'owner' | 'admin' | 'member' | 'viewer';
 
@@ -28,6 +29,12 @@ const state = $state<UserState>({
 export const userState = state;
 
 export async function loadUser() {
+  if (env.PUBLIC_AUTH_DISABLED === 'true') {
+    state.user = { id: 'local', email: 'local@dev', displayName: 'Local Dev' };
+    state.orgId = 'local';
+    state.loading = false;
+    return;
+  }
   state.loading = true;
   state.error = null;
   try {
