@@ -16,10 +16,24 @@
   };
 
   // ── Helpers ─────────────────────────────────────────────────────────────
-  function truncKey(sk?: string) {
-    if (!sk) return '\u2014';
+  function formatSessionKey(sk?: string): string {
+    if (!sk) return '—';
+    // whatsapp:g-agent-X-whatsapp-direct-+Y  →  "WA DM (X): +Y"
+    const waDirect = sk.match(/^whatsapp:g-agent-([^-]+(?:-[^-]+)*?)-whatsapp-direct-(\+?\d+)$/);
+    if (waDirect) return `WA DM (${waDirect[1]}): ${waDirect[2]}`;
+    // whatsapp:g-*  →  "WA: {rest}"
+    if (sk.startsWith('whatsapp:g-')) return `WA: ${sk.slice('whatsapp:g-'.length)}`;
+    if (sk.startsWith('whatsapp:')) return `WA: ${sk.slice('whatsapp:'.length)}`;
+    // workshop:conv:X  →  "Workshop: X"
+    const wconv = sk.match(/^workshop:conv:(.+)$/);
+    if (wconv) return `Workshop: ${wconv[1]}`;
+    // agent:X:main  →  "main"
+    const agentMain = sk.match(/^agent:[^:]+:(.+)$/);
+    if (agentMain) return agentMain[1];
+    // Fallback: drop first segment if 3+ parts, else truncate
     const parts = sk.split(':');
-    return parts.length > 2 ? parts.slice(2).join(':').slice(0, 16) : sk.slice(0, 16);
+    const tail = parts.length > 2 ? parts.slice(2).join(':') : (parts.length === 2 ? parts[1] : sk);
+    return tail.length > 28 ? tail.slice(0, 28) + '…' : tail;
   }
 
   function relativeTime(ts?: number): string {
@@ -68,7 +82,7 @@
   const sessionItems = $derived<SessionItem[]>(
     agentSessions.map((s: Session) => ({
       sessionKey: s.sessionKey,
-      displayName: s.displayName || s.label || truncKey(s.sessionKey),
+      displayName: s.displayName || s.label || formatSessionKey(s.sessionKey),
       relTime: relativeTime(s.updatedAt ?? s.lastActiveAt ?? s.createdAt),
       statusColor: statusColor(s.sessionKey),
     }))

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { extractText } from '$lib/utils/text';
+  import { extractText, extractMessageTimestamp } from '$lib/utils/text';
 
   let { message, streaming = false, error = false }: {
     message: unknown;
@@ -10,6 +10,7 @@
   const m = $derived(message as { role?: string; content?: unknown });
   const text = $derived(extractText(message) ?? String((message as { content?: unknown })?.content ?? ''));
   const role = $derived(m.role === 'user' ? 'user' : 'assistant');
+  const timestamp = $derived(extractMessageTimestamp(message));
 </script>
 
 <div
@@ -22,4 +23,7 @@
     {streaming ? 'opacity-80 border border-dashed border-border' : ''}"
 >
   {text}
+  {#if timestamp}
+    <span class="block text-[9px] opacity-70 mt-0.5 text-right">{timestamp}</span>
+  {/if}
 </div>

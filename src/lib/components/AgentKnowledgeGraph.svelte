@@ -58,6 +58,18 @@
   let selectedNode = $state<MemoryObject | null>(null);
   let jsonExpanded = $state(false);
 
+  // ── Sidebar state ──────────────────────────────────────────────────────────
+  let sidebarOpen = $state(true);
+  let sidebarTab = $state<'layout' | 'node'>('layout');
+
+  // Auto-switch to node tab when a node is selected
+  $effect(() => {
+    if (selectedNode) {
+      sidebarTab = 'node';
+      sidebarOpen = true;
+    }
+  });
+
   // ── Chart refs ─────────────────────────────────────────────────────────────
   let canvasEl: HTMLDivElement | undefined = $state();
   let chart: echarts.ECharts | null = null;
@@ -239,106 +251,158 @@
       </div>
     {/if}
     <div bind:this={canvasEl} class="w-full h-full"></div>
+
+    <!-- Sidebar open toggle (shown when sidebar is collapsed) -->
+    {#if !sidebarOpen}
+      <button
+        type="button"
+        aria-label="Open sidebar"
+        class="absolute top-1/2 right-0 -translate-y-1/2 w-5 h-10 flex items-center justify-center
+               bg-bg2 border border-border border-r-0 rounded-l-md text-muted hover:text-foreground
+               cursor-pointer transition-colors text-[11px]"
+        onclick={() => (sidebarOpen = true)}
+      >›</button>
+    {/if}
   </div>
 
   <!-- Config sidebar -->
-  <div class="w-[220px] shrink-0 border-l border-border bg-bg2 overflow-y-auto flex flex-col text-[11px]">
+  {#if sidebarOpen}
+    <div class="w-[220px] shrink-0 border-l border-border bg-bg2 overflow-y-auto flex flex-col text-[11px]">
 
-    <!-- Layout toggle -->
-    <div class="px-3 pt-3 pb-2">
-      <div class="text-muted mb-1.5 font-semibold uppercase tracking-wide text-[10px]">Layout</div>
-      <div class="flex rounded overflow-hidden border border-border">
+      <!-- Tab bar -->
+      <div class="shrink-0 flex items-center border-b border-border">
         <button
           type="button"
-          class="flex-1 py-1 text-center cursor-pointer transition-colors
-            {layout === 'force' ? 'bg-accent text-white' : 'bg-bg1 text-muted hover:text-foreground'}"
-          onclick={() => (layout = 'force')}
-        >Force</button>
+          class="flex-1 py-1.5 text-center text-[10px] font-semibold uppercase tracking-wide cursor-pointer transition-colors
+            {sidebarTab === 'layout' ? 'text-foreground border-b-2 border-accent -mb-px' : 'text-muted hover:text-foreground'}"
+          onclick={() => (sidebarTab = 'layout')}
+        >Layout</button>
         <button
           type="button"
-          class="flex-1 py-1 text-center cursor-pointer transition-colors border-l border-border
-            {layout === 'circular' ? 'bg-accent text-white' : 'bg-bg1 text-muted hover:text-foreground'}"
-          onclick={() => (layout = 'circular')}
-        >Circular</button>
+          class="flex-1 py-1.5 text-center text-[10px] font-semibold uppercase tracking-wide cursor-pointer transition-colors relative
+            {sidebarTab === 'node' ? 'text-foreground border-b-2 border-accent -mb-px' : 'text-muted hover:text-foreground'}"
+          onclick={() => (sidebarTab = 'node')}
+        >
+          Node
+          {#if selectedNode}
+            <span class="absolute top-1 right-3 w-1.5 h-1.5 rounded-full bg-accent"></span>
+          {/if}
+        </button>
+        <!-- Collapse button -->
+        <button
+          type="button"
+          aria-label="Collapse sidebar"
+          class="px-2 py-1.5 text-muted hover:text-foreground cursor-pointer transition-colors text-[11px]"
+          onclick={() => (sidebarOpen = false)}
+        >‹</button>
       </div>
-    </div>
 
-    <!-- Label toggles -->
-    <div class="px-3 pb-2 border-b border-border">
-      <label class="flex items-center gap-2 cursor-pointer py-0.5">
-        <input type="checkbox" bind:checked={showNodeLabels} class="accent-accent" />
-        <span class="text-foreground">Node labels</span>
-      </label>
-      <label class="flex items-center gap-2 cursor-pointer py-0.5">
-        <input type="checkbox" bind:checked={showEdgeLabels} class="accent-accent" />
-        <span class="text-foreground">Edge labels</span>
-      </label>
-    </div>
+      <!-- Layout tab -->
+      {#if sidebarTab === 'layout'}
+        <!-- Layout toggle -->
+        <div class="px-3 pt-3 pb-2">
+          <div class="text-muted mb-1.5 font-semibold uppercase tracking-wide text-[10px]">Layout</div>
+          <div class="flex rounded overflow-hidden border border-border">
+            <button
+              type="button"
+              class="flex-1 py-1 text-center cursor-pointer transition-colors
+                {layout === 'force' ? 'bg-accent text-white' : 'bg-bg1 text-muted hover:text-foreground'}"
+              onclick={() => (layout = 'force')}
+            >Force</button>
+            <button
+              type="button"
+              class="flex-1 py-1 text-center cursor-pointer transition-colors border-l border-border
+                {layout === 'circular' ? 'bg-accent text-white' : 'bg-bg1 text-muted hover:text-foreground'}"
+              onclick={() => (layout = 'circular')}
+            >Circular</button>
+          </div>
+        </div>
 
-    <!-- Type filters -->
-    <div class="px-3 pt-2 pb-2 border-b border-border">
-      <div class="text-muted mb-1.5 font-semibold uppercase tracking-wide text-[10px]">Filter by type</div>
-      {#each OBJECT_TYPES as type (type)}
-        {@const count = typeCounts[type] ?? 0}
-        {@const active = activeTypes.has(type)}
-        <label class="flex items-center gap-2 cursor-pointer py-0.5 {count === 0 ? 'opacity-40' : ''}">
-          <input
-            type="checkbox"
-            checked={active}
-            disabled={count === 0}
-            onchange={() => toggleType(type)}
-            class="accent-accent"
-          />
-          <span
-            class="w-2 h-2 rounded-full shrink-0"
-            style="background-color: {TYPE_COLORS[type]}"
-          ></span>
-          <span class="text-foreground flex-1">{type}</span>
-          <span class="text-muted">{count}</span>
-        </label>
-      {/each}
-    </div>
+        <!-- Label toggles -->
+        <div class="px-3 pb-2 border-b border-border">
+          <label class="flex items-center gap-2 cursor-pointer py-0.5">
+            <input type="checkbox" bind:checked={showNodeLabels} class="accent-accent" />
+            <span class="text-foreground">Node labels</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer py-0.5">
+            <input type="checkbox" bind:checked={showEdgeLabels} class="accent-accent" />
+            <span class="text-foreground">Edge labels</span>
+          </label>
+        </div>
 
-    <!-- Selected node panel -->
-    {#if selectedNode}
-      <div class="px-3 pt-2 pb-3">
-        <div class="text-muted mb-1.5 font-semibold uppercase tracking-wide text-[10px]">Selected node</div>
-        <div class="space-y-1">
-          <div>
-            <span class="text-muted">label: </span>
-            <span class="text-foreground break-words">{selectedNode.label}</span>
-          </div>
-          <div>
-            <span class="text-muted">type: </span>
-            <span style="color: {TYPE_COLORS[selectedNode.type]}">{selectedNode.type}</span>
-          </div>
-          <div>
-            <span class="text-muted">created: </span>
-            <span class="text-foreground">{formatDate(selectedNode.createdAt)}</span>
-          </div>
-          {#if Object.keys(selectedNode.data).length > 0}
-            <div>
-              <button
-                type="button"
-                class="text-muted hover:text-foreground cursor-pointer"
-                onclick={() => (jsonExpanded = !jsonExpanded)}
-              >
-                data {jsonExpanded ? '▾' : '▸'}
-              </button>
-              {#if jsonExpanded}
-                <pre class="mt-1 text-[10px] bg-bg1 rounded p-1.5 overflow-x-auto text-foreground whitespace-pre-wrap break-all">{JSON.stringify(selectedNode.data, null, 2)}</pre>
+        <!-- Type filters -->
+        <div class="px-3 pt-2 pb-2">
+          <div class="text-muted mb-1.5 font-semibold uppercase tracking-wide text-[10px]">Filter by type</div>
+          {#each OBJECT_TYPES as type (type)}
+            {@const count = typeCounts[type] ?? 0}
+            {@const active = activeTypes.has(type)}
+            <label class="flex items-center gap-2 cursor-pointer py-0.5 {count === 0 ? 'opacity-40' : ''}">
+              <input
+                type="checkbox"
+                checked={active}
+                disabled={count === 0}
+                onchange={() => toggleType(type)}
+                class="accent-accent"
+              />
+              <span
+                class="w-2 h-2 rounded-full shrink-0"
+                style="background-color: {TYPE_COLORS[type]}"
+              ></span>
+              <span class="text-foreground flex-1">{type}</span>
+              <span class="text-muted">{count}</span>
+            </label>
+          {/each}
+        </div>
+      {/if}
+
+      <!-- Node tab -->
+      {#if sidebarTab === 'node'}
+        {#if selectedNode}
+          <div class="px-3 pt-3 pb-3">
+            <div class="text-muted mb-1.5 font-semibold uppercase tracking-wide text-[10px]">Selected node</div>
+            <div class="space-y-1">
+              <div>
+                <span class="text-muted">label: </span>
+                <span class="text-foreground break-words">{selectedNode.label}</span>
+              </div>
+              <div>
+                <span class="text-muted">type: </span>
+                <span style="color: {TYPE_COLORS[selectedNode.type]}">{selectedNode.type}</span>
+              </div>
+              <div>
+                <span class="text-muted">created: </span>
+                <span class="text-foreground">{formatDate(selectedNode.createdAt)}</span>
+              </div>
+              {#if Object.keys(selectedNode.data).length > 0}
+                <div>
+                  <button
+                    type="button"
+                    class="text-muted hover:text-foreground cursor-pointer"
+                    onclick={() => (jsonExpanded = !jsonExpanded)}
+                  >
+                    data {jsonExpanded ? '▾' : '▸'}
+                  </button>
+                  {#if jsonExpanded}
+                    <pre class="mt-1 text-[10px] bg-bg1 rounded p-1.5 overflow-x-auto text-foreground whitespace-pre-wrap break-all">{JSON.stringify(selectedNode.data, null, 2)}</pre>
+                  {/if}
+                </div>
+              {:else}
+                <div><span class="text-muted">data: </span><span class="text-muted/60">empty</span></div>
               {/if}
             </div>
-          {:else}
-            <div><span class="text-muted">data: </span><span class="text-muted/60">empty</span></div>
-          {/if}
-        </div>
-        <button
-          type="button"
-          class="mt-2 text-muted hover:text-foreground cursor-pointer"
-          onclick={() => { selectedNode = null; jsonExpanded = false; }}
-        >✕ clear</button>
-      </div>
-    {/if}
-  </div>
+            <button
+              type="button"
+              class="mt-2 text-muted hover:text-foreground cursor-pointer"
+              onclick={() => { selectedNode = null; jsonExpanded = false; }}
+            >✕ clear</button>
+          </div>
+        {:else}
+          <div class="flex-1 flex items-center justify-center text-muted text-[11px] py-8 px-4 text-center">
+            Click a node in the graph to inspect it
+          </div>
+        {/if}
+      {/if}
+
+    </div>
+  {/if}
 </div>

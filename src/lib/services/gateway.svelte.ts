@@ -524,6 +524,8 @@ export function sendChatMsg(agentId: string) {
       chat.stream = null;
       chat.sending = false;
       chat.lastError = String(e);
+      // Sync in case the message was processed despite the error
+      loadChatHistory(agentId);
     });
 }
 
