@@ -485,6 +485,10 @@ export async function fetchSessionPromptReport(sessionKey: string) {
   });
 }
 
+export async function fetchKGSnapshot(agentId: string) {
+  return sendRequest('memory.snapshot', { agentId });
+}
+
 export function loadChatHistory(agentId: string) {
   const chat = ensureAgentChat(agentId);
   chat.loading = true;
