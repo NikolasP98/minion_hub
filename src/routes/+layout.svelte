@@ -43,7 +43,9 @@
 
 <ParaglideJS {i18n} languageTag={locale.current}>
   <ParticleCanvas />
-  <BgPattern />
+  {#if page.url.pathname !== '/login'}
+    <BgPattern />
+  {/if}
   <ShutdownBanner />
   {@render children()}
 
