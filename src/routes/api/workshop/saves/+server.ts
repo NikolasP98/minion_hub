@@ -54,14 +54,19 @@ export const POST: RequestHandler = async ({ request }) => {
   const id = randomUUID();
   const now = Date.now();
 
-  await db.insert(workshopSaves).values({
-    id,
-    name,
-    state,
-    thumbnail: typeof thumbnail === 'string' ? thumbnail : null,
-    createdAt: now,
-    updatedAt: now,
-  });
+  try {
+    await db.insert(workshopSaves).values({
+      id,
+      name,
+      state,
+      thumbnail: typeof thumbnail === 'string' ? thumbnail : null,
+      createdAt: now,
+      updatedAt: now,
+    });
+  } catch (err) {
+    console.error('[workshop saves POST] db insert failed:', err);
+    throw error(500, `Failed to save workspace: ${err instanceof Error ? err.message : String(err)}`);
+  }
 
   return json({ id, ok: true });
 };
