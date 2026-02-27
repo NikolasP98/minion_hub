@@ -1,23 +1,23 @@
 import { eq } from 'drizzle-orm';
-import { tenants } from '$server/db/schema';
+import { organization } from '$server/db/schema';
 import { nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
 
 export async function getTenant(ctx: TenantContext) {
   const rows = await ctx.db
     .select()
-    .from(tenants)
-    .where(eq(tenants.id, ctx.tenantId));
+    .from(organization)
+    .where(eq(organization.id, ctx.tenantId));
 
   return rows[0] ?? null;
 }
 
 export async function updateTenant(
   ctx: TenantContext,
-  data: { name?: string; plan?: string },
+  data: { name?: string; slug?: string; logo?: string; metadata?: string },
 ) {
   await ctx.db
-    .update(tenants)
-    .set({ ...data, updatedAt: nowMs() })
-    .where(eq(tenants.id, ctx.tenantId));
+    .update(organization)
+    .set(data)
+    .where(eq(organization.id, ctx.tenantId));
 }

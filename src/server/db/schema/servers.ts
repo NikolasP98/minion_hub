@@ -1,5 +1,5 @@
 import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
-import { tenants } from './tenants';
+import { organization } from './auth';
 
 export const servers = sqliteTable(
   'servers',
@@ -7,7 +7,7 @@ export const servers = sqliteTable(
     id: text('id').primaryKey(),
     tenantId: text('tenant_id')
       .notNull()
-      .references(() => tenants.id, { onDelete: 'cascade' }),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     url: text('url').notNull(),
     token: text('token').notNull().default(''),

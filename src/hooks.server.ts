@@ -2,9 +2,9 @@ import { sequence } from '@sveltejs/kit/hooks';
 import type { Handle } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
 import { i18n } from '$lib/i18n';
+import { auth } from '$lib/auth';
 import { getDb } from '$server/db/client';
-import { servers, tenants } from '$server/db/schema';
-import { validateSession, SESSION_COOKIE } from '$server/auth/session';
+import { servers, organization } from '$server/db/schema';
 import { decryptToken } from '$server/auth/crypto';
 
 /**
@@ -42,48 +42,47 @@ async function resolveServerTokenAuth(
 }
 
 const appHandle: Handle = async ({ event, resolve }) => {
-  // Skip auth for auth routes and public assets
+  // /api/auth/* — Better Auth handles via its catch-all route, no hook action needed
   if (event.url.pathname.startsWith('/api/auth/')) {
     return resolve(event);
   }
 
   // Server token auth for metrics push endpoints (Bearer token)
   if (event.url.pathname.startsWith('/api/metrics/')) {
-    const auth = event.request.headers.get('authorization');
-    const serverAuth = await resolveServerTokenAuth(auth);
+    const authHeader = event.request.headers.get('authorization');
+    const serverAuth = await resolveServerTokenAuth(authHeader);
     if (serverAuth) {
       const db = getDb();
       event.locals.tenantCtx = { db, tenantId: serverAuth.tenantId };
-      // Store serverId for metrics endpoints
       (event.locals as Record<string, unknown>).serverId = serverAuth.serverId;
       return resolve(event);
     }
-    // Fall through to cookie auth for browser-originated metric reads
+    // Fall through to cookie/session auth for browser-originated metric reads
   }
 
-  const token = event.cookies.get(SESSION_COOKIE);
+  // Session auth via Better Auth
+  const betterAuthSession = await auth.api.getSession({ headers: event.request.headers });
+  if (betterAuthSession) {
+    event.locals.user = {
+      id: betterAuthSession.user.id,
+      email: betterAuthSession.user.email,
+      displayName: betterAuthSession.user.name ?? null,
+    };
+    event.locals.session = betterAuthSession.session;
 
-  if (token) {
-    const db = getDb();
-    const session = await validateSession(db, token);
+    const orgId = betterAuthSession.session.activeOrganizationId ?? undefined;
+    event.locals.orgId = orgId;
 
-    if (session) {
-      event.locals.user = session.user;
-      event.locals.role = session.role as App.Locals['role'];
-
-      if (session.tenantId) {
-        event.locals.tenantCtx = {
-          db,
-          tenantId: session.tenantId,
-        };
-      }
+    if (orgId) {
+      const db = getDb();
+      event.locals.tenantCtx = { db, tenantId: orgId };
     }
   }
 
-  // Unauthenticated fallback: resolve first tenant in DB for local usage
+  // Unauthenticated fallback: resolve first organization in DB for local usage
   if (!event.locals.tenantCtx) {
     const db = getDb();
-    const rows = await db.select({ id: tenants.id }).from(tenants).limit(1);
+    const rows = await db.select({ id: organization.id }).from(organization).limit(1);
     if (rows.length > 0) {
       event.locals.tenantCtx = { db, tenantId: rows[0].id };
     }
