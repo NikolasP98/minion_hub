@@ -101,6 +101,19 @@
         return v;
       }
 
+      // ── Domain warp (two-level, Inigo Quilez) ──────────────────────────
+      vec2 domainWarp(vec2 p, float t) {
+        vec2 q = vec2(
+          fbm(p + vec2(0.0, 0.0) + 0.10 * t),
+          fbm(p + vec2(5.2, 1.3) + 0.10 * t)
+        );
+        vec2 r = vec2(
+          fbm(p + 1.5 * q + vec2(1.7, 9.2) + 0.13 * t),
+          fbm(p + 1.5 * q + vec2(8.3, 2.8) + 0.13 * t)
+        );
+        return p + 2.2 * r;
+      }
+
       // ── Mouse vortex (animated) ────────────────────────────────────────
       vec2 mouseVortex(vec2 px, vec2 mousePx, float t) {
         vec2 delta = px - mousePx;
@@ -171,22 +184,14 @@
       void main() {
         vec2 px = v_uv * u_resolution;
 
-        // ── Sparse random pop-distortions ──────────────────────────────
-        // Slow noise mask selects ~20% of the grid to distort at any time
-        vec2 normP = px / max(u_resolution.x, u_resolution.y) * 3.0;
-        float mask = fbm(normP * 0.8 + vec2(u_time * 0.04, u_time * 0.03));
-        float popMask = smoothstep(0.52, 0.72, mask);
+        // ── Global domain warp ─────────────────────────────────────────
+        vec2 normP = px / max(u_resolution.x, u_resolution.y) * 4.0;
+        vec2 warpedNorm = domainWarp(normP, u_time);
+        vec2 warpedPx = warpedNorm / 4.0 * max(u_resolution.x, u_resolution.y);
 
-        // Small per-location warp direction (stays within ~0.6 tiles)
-        vec2 warpDir = vec2(
-          noise(normP + vec2(0.0, u_time * 0.07)) * 2.0 - 1.0,
-          noise(normP + vec2(4.1, u_time * 0.07)) * 2.0 - 1.0
-        );
-        vec2 samplePx = px + warpDir * u_tile_size * 0.6 * popMask;
-
-        // ── Mouse vortex (primary interaction) ─────────────────────────
+        // ── Mouse vortex on top ────────────────────────────────────────
         vec2 mousePx = u_mouse * u_resolution;
-        vec2 finalPx = mouseVortex(samplePx, mousePx, u_time);
+        vec2 finalPx = mouseVortex(warpedPx, mousePx, u_time);
 
         float v = pattern(finalPx);
 
