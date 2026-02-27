@@ -340,5 +340,14 @@
   "marketplace_wizardStep5SyncHint": "Barra lateral del Marketplace → ↻ Sync GitHub",
   "marketplace_agentDetailNoContent": "Sin contenido disponible.",
   "marketplace_agentDetailInstalls": "instalaciones",
-  "marketplace_agentDetailSelectServer": "Seleccionar servidor"
+  "marketplace_agentDetailSelectServer": "Seleccionar servidor",
+
+  "chat_viewingSession": "Viendo sesión — cambia a principal para chatear",
+
+  "bindings_agentIdRequired": "El ID del agente es obligatorio",
+  "bindings_peerIdRequired": "El ID del contacto es obligatorio",
+  "bindings_agentIdPlaceholder": "ID del agente *",
+  "bindings_peerIdPlaceholder": "ID de contacto (teléfono / grupo) *",
+
+  "users_removeFromTenant": "Eliminar del equipo"
 }

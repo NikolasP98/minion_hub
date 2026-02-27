@@ -340,5 +340,14 @@
   "marketplace_wizardStep5SyncHint": "Marketplace sidebar → ↻ Sync GitHub",
   "marketplace_agentDetailNoContent": "No content available.",
   "marketplace_agentDetailInstalls": "installs",
-  "marketplace_agentDetailSelectServer": "Select server"
+  "marketplace_agentDetailSelectServer": "Select server",
+
+  "chat_viewingSession": "Viewing session — switch to main to chat",
+
+  "bindings_agentIdRequired": "Agent ID is required",
+  "bindings_peerIdRequired": "Peer ID is required",
+  "bindings_agentIdPlaceholder": "Agent ID *",
+  "bindings_peerIdPlaceholder": "Peer ID (phone / group ID) *",
+
+  "users_removeFromTenant": "Remove from tenant"
 }

@@ -55,7 +55,7 @@
                 error = m.users_errorUpdateRole({ status: res.status });
             }
         } catch {
-            error = m.users_errorRemove();
+            error = m.users_errorUpdateRole({ status: 'unknown' });
         }
     }
 
@@ -264,7 +264,7 @@
                                     <button
                                         class="text-muted hover:text-destructive transition-colors bg-transparent border-none cursor-pointer text-xs font-[inherit]"
                                         onclick={() => remove(u.id)}
-                                        title="Remove from tenant"
+                                        title={m.users_removeFromTenant()}
                                     >
                                         ✕
                                     </button>
