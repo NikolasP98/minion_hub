@@ -107,7 +107,9 @@
       }
     `;
 
-    const prog = link(compile(ctx.VERTEX_SHADER, VS), compile(ctx.FRAGMENT_SHADER, FS));
+    const vs = compile(ctx.VERTEX_SHADER, VS);
+    const fs = compile(ctx.FRAGMENT_SHADER, FS);
+    const prog = link(vs, fs);
     ctx.useProgram(prog);
 
     // Fullscreen quad: two triangles covering NDC [-1,1]
@@ -145,6 +147,8 @@
       return [r / 255, g / 255, b / 255];
     }
 
+    let accent = accentRGB();
+
     const PATTERN_MAP: Record<string, number> = {
       dots: 0, grid: 1, crosses: 2, diagonal: 3, hexagons: 4
     };
@@ -170,7 +174,6 @@
       my += (mouseY - my) * 0.06;
 
       const t = performance.now() / 1000;
-      const accent = accentRGB();
 
       ctx.clearColor(0, 0, 0, 0);
       ctx.clear(ctx.COLOR_BUFFER_BIT);
@@ -196,6 +199,10 @@
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', resize);
       window.removeEventListener('mousemove', onMouseMove);
+      ctx.deleteBuffer(buf);
+      ctx.deleteProgram(prog);
+      ctx.deleteShader(vs);
+      ctx.deleteShader(fs);
     };
   });
 </script>
