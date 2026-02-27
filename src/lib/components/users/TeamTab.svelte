@@ -145,19 +145,19 @@
                     <input
                         class="bg-bg2 border border-border rounded-md text-foreground px-2.5 py-1.5 text-xs font-[inherit] outline-none focus:border-accent placeholder:text-muted"
                         type="email"
-                        placeholder="Email *"
+                        placeholder={m.users_emailRequired()}
                         bind:value={inviteEmail}
                     />
                     <input
                         class="bg-bg2 border border-border rounded-md text-foreground px-2.5 py-1.5 text-xs font-[inherit] outline-none focus:border-accent placeholder:text-muted"
                         type="password"
-                        placeholder="Password *"
+                        placeholder={m.users_passwordRequired()}
                         bind:value={invitePassword}
                     />
                     <input
                         class="bg-bg2 border border-border rounded-md text-foreground px-2.5 py-1.5 text-xs font-[inherit] outline-none focus:border-accent placeholder:text-muted"
                         type="text"
-                        placeholder="Display name"
+                        placeholder={m.users_displayName()}
                         bind:value={inviteName}
                     />
                     <select

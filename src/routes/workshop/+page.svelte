@@ -2,6 +2,7 @@
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
   import Topbar from '$lib/components/Topbar.svelte';
+  import * as m from '$lib/paraglide/messages';
   import {
     listWorkspaceSaves,
     createBlankSave,
@@ -51,20 +52,20 @@
   <div class="flex-1 overflow-y-auto p-6">
     <!-- Header -->
     <div class="flex items-center justify-between mb-6">
-      <h1 class="font-mono text-sm uppercase tracking-widest text-muted">Workshop</h1>
+      <h1 class="font-mono text-sm uppercase tracking-widest text-muted">{m.nav_workshop()}</h1>
       <button
         onclick={handleCreateBlank}
         class="h-7 px-3 text-[10px] font-mono uppercase tracking-wider rounded border border-border text-muted hover:bg-bg3 hover:text-foreground transition-colors"
       >
-        + Create Blank
+        {m.workshop_createBlank()}
       </button>
     </div>
 
     <!-- Card grid -->
     {#if loading}
-      <p class="text-muted text-xs font-mono">Loading…</p>
+      <p class="text-muted text-xs font-mono">{m.common_loading()}</p>
     {:else if saves.length === 0}
-      <p class="text-muted text-xs font-mono italic">No saved workspaces yet.</p>
+      <p class="text-muted text-xs font-mono italic">{m.workshop_noSaves()}</p>
     {:else}
       <div class="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-4">
         {#each saves as save (save.id)}
@@ -90,7 +91,7 @@
               <div class="min-w-0">
                 <p class="font-mono text-xs text-foreground truncate">{save.name}</p>
                 <p class="font-mono text-[10px] text-muted mt-0.5">
-                  {save.agentCount} agents · {save.elementCount} elements
+                  {m.workshop_agentElementCount({ agents: save.agentCount, elements: save.elementCount })}
                 </p>
                 <p class="font-mono text-[9px] text-muted/60 mt-0.5">
                   {new Date(save.updatedAt).toLocaleDateString()}
@@ -99,7 +100,7 @@
               <button
                 onclick={(e) => handleDelete(e, save.id)}
                 class="opacity-0 group-hover:opacity-100 text-muted hover:text-red-400 text-xs transition-all shrink-0 mt-0.5"
-                title="Delete"
+                title={m.common_delete()}
               >×</button>
             </div>
           </div>

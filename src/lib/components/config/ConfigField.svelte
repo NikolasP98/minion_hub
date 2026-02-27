@@ -12,6 +12,7 @@
     import ConfigField from "./ConfigField.svelte";
     import ConfigTooltip from "./ConfigTooltip.svelte";
     import ToggleSwitch from "./ToggleSwitch.svelte";
+    import * as m from "$lib/paraglide/messages";
 
     let {
         path,
@@ -271,10 +272,7 @@
                     >{label}</span
                 >
                 <span class="text-[10px] text-muted-foreground"
-                    >{countProperties(schema)} field{countProperties(schema) ===
-                    1
-                        ? ""
-                        : "s"}</span
+                    >{countProperties(schema) === 1 ? m.config_fieldCount({ count: countProperties(schema) }) : m.config_fieldCountPlural({ count: countProperties(schema) })}</span
                 >
                 {#if tooltipContent}
                     <ConfigTooltip content={tooltipContent}>
@@ -389,7 +387,7 @@
                 type={showSensitive ? "text" : "password"}
                 value={isRedacted ? "" : ((value as string) ?? "")}
                 placeholder={isRedacted
-                    ? "Redacted — type to replace"
+                    ? m.config_redactedPlaceholder()
                     : placeholder}
                 oninput={onSensitiveInput}
             />
@@ -397,9 +395,9 @@
                 type="button"
                 class="bg-transparent border border-border rounded-[5px] text-muted-foreground cursor-pointer text-[11px] py-1.25 px-2 shrink-0 transition-colors hover:text-foreground"
                 onclick={() => (showSensitive = !showSensitive)}
-                title={showSensitive ? "Hide" : "Show"}
+                title={showSensitive ? m.config_hide() : m.config_show()}
             >
-                {showSensitive ? "Hide" : "Show"}
+                {showSensitive ? m.config_hide() : m.config_show()}
             </button>
             {#if !isRedacted && value !== getOriginalField(path)}
                 <button
@@ -407,7 +405,7 @@
                     class="bg-transparent border border-border rounded-[5px] text-muted-foreground cursor-pointer text-[11px] py-1.25 px-2 shrink-0 transition-colors hover:text-foreground"
                     onclick={resetSensitive}
                 >
-                    Reset
+                    {m.common_reset()}
                 </button>
             {/if}
         </div>
@@ -425,7 +423,7 @@
             value={value ?? "__NONE__"}
             onchange={onEnumSelect}
         >
-            <option value="__NONE__">— none —</option>
+            <option value="__NONE__">{m.config_noneOption()}</option>
             {#each schema.enum ?? [] as option}
                 <option value={String(option)}>{String(option)}</option>
             {/each}
@@ -439,7 +437,7 @@
             value={value !== undefined ? JSON.stringify(value) : "__NONE__"}
             onchange={onSelectChange}
         >
-            <option value="__NONE__">— none —</option>
+            <option value="__NONE__">{m.config_noneOption()}</option>
             {#each getSelectOptions(schema) as opt}
                 <option value={opt.value}>{opt.label}</option>
             {/each}
@@ -491,7 +489,7 @@
                 class={inputClass}
                 type="text"
                 bind:value={newArrayItem}
-                placeholder="Add item…"
+                placeholder={m.config_addItemPlaceholder()}
                 onkeydown={(e) => {
                     if (e.key === "Enter") {
                         e.preventDefault();
@@ -502,7 +500,7 @@
             <button
                 type="button"
                 class="bg-transparent border border-border rounded-[5px] text-muted-foreground cursor-pointer text-xs py-1.25 px-2 shrink-0 transition-colors hover:text-foreground"
-                onclick={addArrayItem}>Add</button
+                onclick={addArrayItem}>{m.common_add()}</button
             >
         </div>
     </div>
@@ -563,7 +561,7 @@
                 class={inputClass}
                 type="text"
                 bind:value={newRecordKey}
-                placeholder="New key…"
+                placeholder={m.config_newKeyPlaceholder()}
                 onkeydown={(e) => {
                     if (e.key === "Enter") {
                         e.preventDefault();
@@ -574,7 +572,7 @@
             <button
                 type="button"
                 class="bg-transparent border border-border rounded-[5px] text-muted-foreground cursor-pointer text-xs py-1.25 px-2 shrink-0 transition-colors hover:text-foreground"
-                onclick={addRecordEntry}>Add</button
+                onclick={addRecordEntry}>{m.common_add()}</button
             >
         </div>
     </div>
@@ -593,7 +591,7 @@
                     <button
                         type="button"
                         class="bg-transparent border-none text-muted-foreground cursor-pointer text-xs hover:text-destructive"
-                        onclick={() => removeArrayObject(i)}>Remove</button
+                        onclick={() => removeArrayObject(i)}>{m.common_remove()}</button
                     >
                 </div>
                 {#if items?.properties}
@@ -624,7 +622,7 @@
         <button
             type="button"
             class="bg-transparent border border-dashed border-border rounded-[5px] text-muted-foreground cursor-pointer text-xs py-1.5 px-3 transition-colors hover:border-accent hover:text-foreground w-full"
-            onclick={addArrayObject}>+ Add Item</button
+            onclick={addArrayObject}>{m.config_addItemBtn()}</button
         >
     </div>
 {:else}

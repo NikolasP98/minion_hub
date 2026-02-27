@@ -1,5 +1,6 @@
 <script lang="ts">
   import { SvelteMap } from 'svelte/reactivity';
+  import * as m from '$lib/paraglide/messages';
 
   export type SessionRow = {
     id: string;
@@ -89,12 +90,12 @@
     <input
       class="w-full box-border bg-bg2 border border-border rounded-md text-foreground px-2.5 py-1.5 font-inherit text-xs outline-none focus:border-accent placeholder:text-muted"
       type="search"
-      placeholder="Search sessions..."
+      placeholder={m.sessions_searchPlaceholder()}
       bind:value={search}
     />
     {#if uniqueAgents.length > 1}
       <select class="w-full box-border bg-bg2 border border-border rounded-md text-foreground px-2 py-[5px] font-inherit text-[11px] outline-none cursor-pointer focus:border-accent" bind:value={agentFilter}>
-        <option value="">All agents</option>
+        <option value="">{m.sessions_allAgents()}</option>
         {#each uniqueAgents as aid (aid)}
           <option value={aid}>{aid}</option>
         {/each}
@@ -104,7 +105,7 @@
 
   <div class="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-color-border">
     {#if filtered.length === 0}
-      <div class="text-muted text-xs text-center py-6 px-4">No sessions found.</div>
+      <div class="text-muted text-xs text-center py-6 px-4">{m.sessions_noSessions()}</div>
     {:else if multiAgent}
       {#each [...grouped.entries()] as [agentId, rows] (agentId)}
         <div class="flex flex-col">

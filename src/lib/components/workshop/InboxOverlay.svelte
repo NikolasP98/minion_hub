@@ -9,6 +9,7 @@
     } from "$lib/state/workshop.svelte";
     import { sendInboxMessage } from "$lib/workshop/inbox-bridge";
     import { gw } from "$lib/state/gateway-data.svelte";
+    import * as m from "$lib/paraglide/messages";
 
     let {
         elementId,
@@ -206,14 +207,14 @@
             class="flex items-center justify-between border-b border-border px-4 py-2"
         >
             <span class="text-[10px] text-foreground font-semibold"
-                >Inbox / Outbox</span
+                >{m.inbox_title()}</span
             >
             <div class="flex items-center gap-2">
                 <button
                     class="rounded bg-accent/10 px-2 py-0.5 text-[9px] text-accent hover:bg-accent/20 transition-colors"
                     onclick={() => (composeOpen = !composeOpen)}
                 >
-                    {composeOpen ? "Cancel" : "New Message"}
+                    {composeOpen ? m.common_cancel() : m.inbox_newMessage()}
                 </button>
                 <button
                     class="text-[10px] text-muted hover:text-foreground"
@@ -230,7 +231,7 @@
                 class="w-full rounded border border-border bg-bg3 px-2 py-1 text-[10px] text-foreground outline-none focus:border-accent"
                 bind:value={filterAgentId}
             >
-                <option value="">All Agents</option>
+                <option value="">{m.inbox_allAgents()}</option>
                 {#each gw.agents as agent (agent.id)}
                     <option value={agent.id}>{agent.name ?? agent.id}</option>
                 {/each}
@@ -246,7 +247,7 @@
                     : 'text-muted hover:text-foreground'}"
                 onclick={() => (activeTab = "inbox")}
             >
-                Inbox {#if unreadCount > 0}<span class="ml-1 text-accent"
+                {m.inbox_inboxTab()} {#if unreadCount > 0}<span class="ml-1 text-accent"
                         >({unreadCount})</span
                     >{/if}
             </button>
@@ -257,7 +258,7 @@
                     : 'text-muted hover:text-foreground'}"
                 onclick={() => (activeTab = "outbox")}
             >
-                Outbox
+                {m.inbox_outboxTab()}
             </button>
         </div>
 
@@ -265,7 +266,7 @@
         <div class="max-h-75 overflow-y-auto">
             {#if filteredItems.length === 0}
                 <div class="text-center text-[10px] text-muted py-6">
-                    {activeTab === "inbox" ? "No messages" : "No sent messages"}
+                    {activeTab === "inbox" ? m.inbox_noMessages() : m.inbox_noSentMessages()}
                 </div>
             {:else}
                 <!-- Table header -->
@@ -273,10 +274,10 @@
                     class="sticky top-0 flex items-center gap-2 bg-bg2 border-b border-border px-3 py-1 text-[9px] text-muted"
                 >
                     <span class="w-3 shrink-0"></span>
-                    <span class="w-18 shrink-0">From</span>
-                    <span class="w-18 shrink-0">To</span>
-                    <span class="flex-1 min-w-0">Subject</span>
-                    <span class="w-13 shrink-0 text-right">Date</span>
+                    <span class="w-18 shrink-0">{m.inbox_colFrom()}</span>
+                    <span class="w-18 shrink-0">{m.inbox_colTo()}</span>
+                    <span class="flex-1 min-w-0">{m.inbox_colSubject()}</span>
+                    <span class="w-13 shrink-0 text-right">{m.inbox_colDate()}</span>
                 </div>
 
                 {#each filteredItems as item (item.id)}
@@ -310,7 +311,7 @@
                             activeTab === 'inbox'
                                 ? 'text-foreground font-semibold'
                                 : 'text-muted'}"
-                            >{item.subject || "(no subject)"}</span
+                            >{item.subject || m.inbox_noSubject()}</span
                         >
                         <span
                             class="w-13 shrink-0 text-[9px] text-muted text-right"
@@ -332,7 +333,7 @@
                             {#if item.attachments && item.attachments.length > 0}
                                 <div class="space-y-0.5">
                                     <span class="text-[9px] text-muted"
-                                        >Attachments:</span
+                                        >{m.inbox_attachments()}</span
                                     >
                                     {#each item.attachments as att (att.id)}
                                         <a
@@ -351,7 +352,7 @@
 
                             <div class="flex items-center gap-2">
                                 <span class="text-[9px] text-muted"
-                                    >Status:</span
+                                    >{m.inbox_status()}</span
                                 >
                                 <select
                                     class="rounded border border-border bg-bg3 px-1.5 py-0.5 text-[9px] text-foreground outline-none focus:border-accent"
@@ -363,9 +364,9 @@
                                                 .value,
                                         )}
                                 >
-                                    <option value="open">Open</option>
-                                    <option value="pending">Pending</option>
-                                    <option value="closed">Closed</option>
+                                    <option value="open">{m.inbox_statusOpen()}</option>
+                                    <option value="pending">{m.inbox_statusPending()}</option>
+                                    <option value="closed">{m.inbox_statusClosed()}</option>
                                 </select>
                             </div>
                         </div>
@@ -380,14 +381,14 @@
                 <div class="flex items-center gap-2">
                     <label
                         class="text-[9px] text-muted shrink-0"
-                        for="compose-to">To:</label
+                        for="compose-to">{m.inbox_composeTo()}</label
                     >
                     <select
                         id="compose-to"
                         class="flex-1 rounded border border-border bg-bg3 px-2 py-1 text-[10px] text-foreground outline-none focus:border-accent"
                         bind:value={composeToId}
                     >
-                        <option value="" disabled>Select agent</option>
+                        <option value="" disabled>{m.inbox_selectAgent()}</option>
                         {#each gw.agents as agent (agent.id)}
                             <option value={agent.id}
                                 >{agent.name ?? agent.id}</option
@@ -399,13 +400,13 @@
                 <div class="flex items-center gap-2">
                     <label
                         class="text-[9px] text-muted shrink-0"
-                        for="compose-subject">Subj:</label
+                        for="compose-subject">{m.inbox_composeSubject()}</label
                     >
                     <input
                         id="compose-subject"
                         type="text"
                         class="flex-1 rounded border border-border bg-bg3 px-2 py-1 text-[10px] text-foreground placeholder:text-muted outline-none focus:border-accent"
-                        placeholder="Subject"
+                        placeholder={m.inbox_colSubject()}
                         bind:value={composeSubject}
                     />
                 </div>
@@ -413,7 +414,7 @@
                 <textarea
                     class="w-full resize-none rounded border border-border bg-bg3 px-2 py-1 text-[10px] text-foreground placeholder:text-muted outline-none focus:border-accent"
                     rows="2"
-                    placeholder="Write a message..."
+                    placeholder={m.inbox_composePlaceholder()}
                     bind:value={composeContent}
                 ></textarea>
 
@@ -436,7 +437,7 @@
                                 ?.click();
                     }}
                 >
-                    Drop files here or click to browse
+                    {m.inbox_dropFiles()}
                     <input
                         id="compose-file-input"
                         type="file"
@@ -476,7 +477,7 @@
                             !composeToId ||
                             sending}
                     >
-                        {sending ? "Sending..." : "Send"}
+                        {sending ? m.inbox_sending() : m.chat_send()}
                     </button>
                 </div>
             </div>

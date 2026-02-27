@@ -1,6 +1,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { workshopState, setRulebookContent } from '$lib/state/workshop.svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let {
     elementId,
@@ -39,7 +40,7 @@
   class="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40"
   role="button"
   tabindex="-1"
-  aria-label="Close"
+  aria-label={m.common_close()}
   onclick={handleBackdropClick}
   onkeydown={(e) => e.key === 'Escape' && (flush(), onClose())}
 >
@@ -47,10 +48,10 @@
     <div class="flex items-center justify-between border-b border-border px-4 py-2">
       <div class="flex items-center gap-2">
         <span class="text-base">📖</span>
-        <span class="text-[10px] font-mono text-foreground font-semibold">Rulebook</span>
+        <span class="text-[10px] font-mono text-foreground font-semibold">{m.workshop_rulebook()}</span>
       </div>
       <div class="flex items-center gap-2">
-        <span class="text-[9px] text-muted font-mono">Standing instructions injected into all agent prompts</span>
+        <span class="text-[9px] text-muted font-mono">{m.rulebook_subtitle()}</span>
         <button class="text-[10px] font-mono text-muted hover:text-foreground" onclick={() => { flush(); onClose(); }}>x</button>
       </div>
     </div>
@@ -58,8 +59,8 @@
     <!-- Agent-agent chat killswitch -->
     <div class="flex items-center justify-between border-b border-border px-3 py-2">
       <div class="flex flex-col gap-0.5">
-        <span class="text-[10px] font-mono text-foreground font-medium">Agent-Agent Chats</span>
-        <span class="text-[9px] font-mono text-muted">Allow agents to converse with each other</span>
+        <span class="text-[10px] font-mono text-foreground font-medium">{m.rulebook_agentChats()}</span>
+        <span class="text-[9px] font-mono text-muted">{m.rulebook_agentChatsDesc()}</span>
       </div>
       <div
         class="relative h-5 w-9 cursor-pointer rounded-full transition-colors duration-150 {workshopState.settings.agentChatsEnabled ? 'bg-accent' : 'bg-border'}"
@@ -78,8 +79,8 @@
     <!-- Cross-workspace chats toggle -->
     <div class="flex items-center justify-between border-b border-border px-3 py-2">
       <div class="flex flex-col gap-0.5">
-        <span class="text-[10px] font-mono text-foreground font-medium">Cross-Workspace Chats</span>
-        <span class="text-[9px] font-mono text-muted">When off, conversations are fully isolated to this workspace</span>
+        <span class="text-[10px] font-mono text-foreground font-medium">{m.rulebook_crossWorkspaceChats()}</span>
+        <span class="text-[9px] font-mono text-muted">{m.rulebook_crossWorkspaceChatsDesc()}</span>
       </div>
       <div
         class="relative h-5 w-9 cursor-pointer rounded-full transition-colors duration-150 {workshopState.settings.crossWorkspaceChats ? 'bg-accent' : 'bg-border'}"
@@ -98,7 +99,7 @@
     <div class="p-3">
       <textarea
         class="w-full min-h-[200px] resize-y rounded border border-border bg-bg3 p-2 text-[10px] font-mono text-foreground placeholder:text-muted outline-none focus:border-accent"
-        placeholder="Write standing instructions for all agents...&#10;&#10;Example:&#10;- Always respond in English&#10;- Never reveal API keys or secrets&#10;- Format code in markdown blocks"
+        placeholder={m.rulebook_placeholder()}
         bind:value={content}
         oninput={handleInput}
       ></textarea>

@@ -1,4 +1,6 @@
 <script lang="ts">
+    import * as m from "$lib/paraglide/messages";
+
     let {
         fromName,
         toName,
@@ -56,14 +58,14 @@
     onmousedown={(e) => e.stopPropagation()}
 >
     <div class="mb-2 font-mono text-[11px] text-muted">
-        Link: {fromName} &#x2194; {toName}
+        {m.workshop_linkTitle({ fromName, toName })}
     </div>
 
     <input
         bind:this={inputEl}
         bind:value={label}
         type="text"
-        placeholder="e.g. Manager, Mentor, Collaborator..."
+        placeholder={m.workshop_linkPlaceholder()}
         class="mb-2 w-full rounded border border-border bg-bg3 px-2 py-1 font-mono text-[11px] text-foreground outline-none focus:border-accent"
         onkeydown={handleKeydown}
     />
@@ -74,7 +76,7 @@
             class="rounded px-2 py-1 font-mono text-[10px] text-muted hover:text-foreground"
             onclick={onCancel}
         >
-            Cancel
+            {m.common_cancel()}
         </button>
         <button
             type="button"
@@ -82,7 +84,7 @@
             onclick={handleSubmit}
             disabled={!label.trim()}
         >
-            Link
+            {m.workshop_link()}
         </button>
     </div>
 </div>
