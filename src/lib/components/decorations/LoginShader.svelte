@@ -52,6 +52,56 @@
       uniform vec3  u_accent;
       uniform int   u_pattern;
 
+      // ── Noise / fbm ────────────────────────────────────────────────────
+      vec2 hash2(vec2 p) {
+        p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+        return fract(sin(p) * 43758.5453);
+      }
+
+      float noise(vec2 p) {
+        vec2 i = floor(p), f = fract(p);
+        vec2 u = f * f * (3.0 - 2.0 * f);
+        float a = dot(hash2(i + vec2(0.0, 0.0)), f - vec2(0.0, 0.0));
+        float b = dot(hash2(i + vec2(1.0, 0.0)), f - vec2(1.0, 0.0));
+        float c = dot(hash2(i + vec2(0.0, 1.0)), f - vec2(0.0, 1.0));
+        float d = dot(hash2(i + vec2(1.0, 1.0)), f - vec2(1.0, 1.0));
+        return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+      }
+
+      float fbm(vec2 p) {
+        float v = 0.0, a = 0.5;
+        mat2 rot = mat2(1.6, 1.2, -1.2, 1.6);
+        for (int i = 0; i < 5; i++) {
+          v += a * noise(p);
+          p = rot * p;
+          a *= 0.5;
+        }
+        return v;
+      }
+
+      // ── Domain warp (two-level, Inigo Quilez) ──────────────────────────
+      vec2 domainWarp(vec2 p, float t) {
+        vec2 q = vec2(
+          fbm(p + vec2(0.0, 0.0) + 0.10 * t),
+          fbm(p + vec2(5.2, 1.3) + 0.10 * t)
+        );
+        vec2 r = vec2(
+          fbm(p + 1.5 * q + vec2(1.7, 9.2) + 0.13 * t),
+          fbm(p + 1.5 * q + vec2(8.3, 2.8) + 0.13 * t)
+        );
+        return p + 2.2 * r;
+      }
+
+      // ── Mouse vortex ───────────────────────────────────────────────────
+      vec2 mouseVortex(vec2 px, vec2 mousePx) {
+        vec2 delta = px - mousePx;
+        float dist = length(delta);
+        float radius = 280.0;
+        float strength = 0.4 * smoothstep(radius, 0.0, dist);
+        float s = sin(strength), c = cos(strength);
+        return vec2(c * delta.x - s * delta.y, s * delta.x + c * delta.y) + mousePx;
+      }
+
       float pat_dots(vec2 p, float size) {
         vec2 cell = fract(p / size) - 0.5;
         float r = max(0.8, size / 12.0) / size;
@@ -102,8 +152,26 @@
 
       void main() {
         vec2 px = v_uv * u_resolution;
-        float v = pattern(px);
-        gl_FragColor = vec4(u_accent, v * u_opacity);
+
+        // Mouse vortex in pixel space
+        vec2 mousePx = u_mouse * u_resolution;
+        vec2 vortexPx = mouseVortex(px, mousePx);
+
+        // Domain warp in normalised space (resolution-independent)
+        vec2 normP = vortexPx / max(u_resolution.x, u_resolution.y) * 4.0;
+        vec2 warpedNorm = domainWarp(normP, u_time);
+
+        // Map back to pixel space for pattern sampling
+        vec2 warpedPx = warpedNorm / 4.0 * max(u_resolution.x, u_resolution.y);
+
+        float v = pattern(warpedPx);
+
+        // Subtle hue drift over time
+        float hShift = sin(u_time * 0.15) * 0.15;
+        vec3 col = u_accent + vec3(hShift, -hShift * 0.5, hShift * 0.3);
+        col = clamp(col, 0.0, 1.0);
+
+        gl_FragColor = vec4(col, v * u_opacity * 2.5);
       }
     `;
 
