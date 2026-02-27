@@ -4,6 +4,7 @@
   import { i18n } from '$lib/i18n';
   import ParticleCanvas from '$lib/components/ParticleCanvas.svelte';
   import BgPattern from '$lib/components/decorations/BgPattern.svelte';
+  import LoginShader from '$lib/components/decorations/LoginShader.svelte';
   import { theme, applyTheme } from '$lib/state/theme.svelte';
   import { locale } from '$lib/state/locale.svelte';
   import { type Snippet } from 'svelte';
@@ -15,5 +16,6 @@
 <ParaglideJS {i18n} languageTag={locale.current}>
   <ParticleCanvas />
   <BgPattern />
+  <LoginShader />
   {@render children()}
 </ParaglideJS>
