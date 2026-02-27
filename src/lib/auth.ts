@@ -15,7 +15,14 @@ export function getAuth() {
 			database: drizzleAdapter(getDb(), { provider: 'sqlite', schema }),
 			secret: env.BETTER_AUTH_SECRET,
 			baseURL: env.BETTER_AUTH_URL ?? 'http://localhost:5173',
-			trustedOrigins: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:4173'],
+			trustedOrigins: [
+				'http://localhost:5173',
+				'http://localhost:5174',
+				'http://localhost:4173',
+				...(env.BETTER_AUTH_URL && env.BETTER_AUTH_URL !== 'http://localhost:5173'
+					? [env.BETTER_AUTH_URL]
+					: []),
+			],
 			emailAndPassword: { enabled: true },
 			socialProviders: {
 				google: {

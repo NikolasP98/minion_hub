@@ -18,6 +18,14 @@
     let editingId = $state<string | null>(null);
     let confirmDeleteId = $state<string | null>(null);
 
+    function handleUrlPaste(e: ClipboardEvent) {
+        const text = e.clipboardData?.getData("text") ?? "";
+        if (text && !/^wss?:\/\/|^https?:\/\//.test(text)) {
+            e.preventDefault();
+            formUrl = "wss://" + text.trim();
+        }
+    }
+
     function close() {
         ui.overlayOpen = false;
         editingId = null;
@@ -247,6 +255,7 @@
                         type="text"
                         bind:value={formUrl}
                         placeholder="wss://host.ts.net"
+                        onpaste={handleUrlPaste}
                     />
                 </div>
             </div>
