@@ -1,19 +1,43 @@
 import { conn } from '$lib/state/connection.svelte';
-import { gw, upsertSession, mergeSessions } from '$lib/state/gateway-data.svelte';
-import { agentChat, agentActivity, ensureAgentChat, ensureAgentActivity, saveSparkBins } from '$lib/state/chat.svelte';
+import { gw, upsertSession, mergeSessions, clearSessions } from '$lib/state/gateway-data.svelte';
+import { agentChat, agentActivity, ensureAgentChat, ensureAgentActivity, saveSparkBins, pushChatMessage } from '$lib/state/chat.svelte';
 import { hostsState, getActiveHost, updateHost, saveLastActiveHost } from '$lib/state/hosts.svelte';
+import { autoSave, resetWorkshop } from '$lib/state/workshop.svelte';
 import { ui } from '$lib/state/ui.svelte';
 import { pushReliabilityEvent, setReliabilityServerId, type ReliabilityEvent } from '$lib/state/reliability.svelte';
 import { configState, loadConfig } from '$lib/state/config.svelte';
 import { uuid } from '$lib/utils/uuid';
 import { extractText } from '$lib/utils/text';
-import type { HelloOk, ChatEvent } from '$lib/types/gateway';
+import type { HelloOk, ChatEvent, Session } from '$lib/types/gateway';
+import { parseAgentSessionKey } from '$lib/utils/session-key';
+
+/** Map gateway's GatewaySessionRow (key field) to hub's Session (sessionKey field). */
+function mapGatewaySessionRows(raw: unknown[]): Session[] {
+  return raw
+    .filter((r): r is Record<string, unknown> => r != null && typeof r === 'object')
+    .map((r) => {
+      const key = String(r.key ?? '');
+      const parsed = parseAgentSessionKey(key);
+      return {
+        sessionKey: key,
+        agentId: parsed?.agentId,
+        kind: r.kind as Session['kind'],
+        label: r.label as string | undefined,
+        displayName: r.displayName as string | undefined,
+        channel: r.channel as string | undefined,
+        model: r.model as string | undefined,
+        updatedAt: r.updatedAt as number | undefined,
+      };
+    })
+    .filter((s) => s.sessionKey);
+}
 
 // Internal WS state — plain vars, not $state
 let ws: WebSocket | null = null;
 let wsGeneration = 0;
 let pending = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
 let connectSent = false;
+let connectNonce: string | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let pollPresenceTimer: ReturnType<typeof setInterval> | null = null;
@@ -28,6 +52,7 @@ export function wsConnect() {
   conn.particleHue = 'amber';
 
   connectSent = false;
+  connectNonce = null;
   gw.lastSeq = null;
 
   try {
@@ -77,8 +102,14 @@ export function wsDisconnect() {
   flushPending(new Error('disconnected'));
   stopPolling();
 
-  // Clear session status timers
+  // Save current host's workshop layout before clearing state
+  autoSave(hostsState.activeHostId);
+  resetWorkshop();
+
+  // Clear session status timers and eviction timers
   for (const tid of Object.values(ui.sessionStatusTimers)) clearTimeout(tid);
+  for (const tid of sessionEvictTimers.values()) clearTimeout(tid);
+  sessionEvictTimers.clear();
   ui.sessionStatusTimers = {};
   ui.sessionStatus = {};
   ui.selectedAgentId = null;
@@ -86,7 +117,7 @@ export function wsDisconnect() {
   // Reset data
   gw.hello = null;
   gw.agents = [];
-  gw.sessions = [];
+  clearSessions();
   gw.presence = [];
   gw.health = null;
   gw.channels = null;
@@ -98,6 +129,7 @@ export function wsDisconnect() {
   for (const k of Object.keys(agentActivity)) delete (agentActivity as Record<string, unknown>)[k];
 
   ui.shutdownReason = null;
+  conn.connectError = null;
   conn.backoffMs = 800;
 }
 
@@ -134,22 +166,50 @@ function flushPending(err: Error) {
   pending.clear();
 }
 
-function sendConnect() {
+async function sendConnect() {
   if (connectSent) return;
   connectSent = true;
 
   const activeHost = getActiveHost();
   const token = activeHost ? activeHost.token.trim() : '';
   const capturedHostId = hostsState.activeHostId;
+  const role = 'operator';
+  const scopes = ['operator.admin', 'operator.read', 'operator.write', 'operator.approvals', 'operator.pairing'];
+
+  // Fetch device identity + signature from server
+  let device: { id: string; publicKey: string; signature: string; signedAt: number; nonce?: string } | undefined;
+  try {
+    const signRes = await fetch('/api/device-identity/sign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        nonce: connectNonce,
+        token: token || undefined,
+        role,
+        scopes,
+        clientId: 'minion-control-ui',
+        clientMode: 'ui',
+      }),
+    });
+    if (signRes.ok) {
+      const data = await signRes.json();
+      device = data.device;
+    } else {
+      console.warn('[hub] device-identity sign failed:', signRes.status);
+    }
+  } catch (e) {
+    console.warn('[hub] device-identity sign error:', e);
+  }
 
   sendRequest('connect', {
     minProtocol: 3,
     maxProtocol: 3,
     client: { id: 'minion-control-ui', version: '1.0', platform: 'web', mode: 'ui' },
-    role: 'operator',
-    scopes: ['operator.admin', 'operator.read', 'operator.write', 'operator.approvals', 'operator.pairing'],
+    role,
+    scopes,
     caps: [],
     auth: token ? { token } : undefined,
+    device,
     userAgent: navigator.userAgent,
     locale: navigator.language,
   })
@@ -159,6 +219,7 @@ function sendConnect() {
       conn.connecting = false;
       conn.particleHue = 'blue';
       conn.connectedAt = Date.now();
+      conn.connectError = null;
 
 
       gw.hello = hello as HelloOk;
@@ -179,6 +240,7 @@ function sendConnect() {
     })
     .catch((err) => {
       console.error('[hub] connect failed:', err);
+      conn.connectError = String(err?.message ?? err);
       ws?.close(4008, 'connect failed');
     });
 }
@@ -211,7 +273,9 @@ function handleMessage(raw: string) {
 
   if (frame.type === 'event') {
     if (frame.event === 'connect.challenge') {
-      setTimeout(sendConnect, 200);
+      const payload = frame.payload as { nonce?: unknown } | undefined;
+      connectNonce = payload && typeof payload.nonce === 'string' ? payload.nonce : null;
+      sendConnect();
       return;
     }
     const seq = typeof frame.seq === 'number' ? frame.seq : null;
@@ -282,7 +346,7 @@ function onAgentEvent(payload: Record<string, unknown>) {
       ui.sessionStatus[sk] = 'running';
       if (ui.sessionStatusTimers[sk]) clearTimeout(ui.sessionStatusTimers[sk]);
       ui.sessionStatusTimers[sk] = setTimeout(() => {
-        if (ui.sessionStatus[sk] === 'running') ui.sessionStatus[sk] = 'idle';
+        if (ui.sessionStatus[sk] === 'running') setSessionIdle(sk);
         delete ui.sessionStatusTimers[sk];
       }, 30000);
     }
@@ -313,7 +377,7 @@ function onChatEvent(payload: ChatEvent) {
     ui.sessionStatus[sk] = 'thinking';
     if (ui.sessionStatusTimers[sk]) clearTimeout(ui.sessionStatusTimers[sk]);
     ui.sessionStatusTimers[sk] = setTimeout(() => {
-      if (ui.sessionStatus[sk] === 'thinking') ui.sessionStatus[sk] = 'idle';
+      if (ui.sessionStatus[sk] === 'thinking') setSessionIdle(sk);
       delete ui.sessionStatusTimers[sk];
     }, 60000);
   } else if (payload.state === 'final') {
@@ -321,22 +385,22 @@ function onChatEvent(payload: ChatEvent) {
     chat.runId = null;
     // Only refresh main chat history — workshop sessions are handled by the bridge
     if (sk === `agent:${agentId}:main`) loadChatHistory(agentId);
-    ui.sessionStatus[sk] = 'idle';
+    setSessionIdle(sk);
     if (ui.sessionStatusTimers[sk]) { clearTimeout(ui.sessionStatusTimers[sk]); delete ui.sessionStatusTimers[sk]; }
   } else if (payload.state === 'aborted') {
     const msg = payload.message as { role?: string; content?: unknown } | null;
     if (msg?.role === 'assistant' && Array.isArray(msg.content)) {
-      chat.messages = [...chat.messages, msg as never];
+      pushChatMessage(chat, msg as never);
     } else if (chat.stream?.trim()) {
-      chat.messages = [...chat.messages, { role: 'assistant', content: [{ type: 'text', text: chat.stream }], timestamp: Date.now() }];
+      pushChatMessage(chat, { role: 'assistant', content: [{ type: 'text', text: chat.stream }], timestamp: Date.now() } as never);
     }
     chat.stream = null; chat.runId = null;
-    ui.sessionStatus[sk] = 'idle';
+    setSessionIdle(sk);
     if (ui.sessionStatusTimers[sk]) { clearTimeout(ui.sessionStatusTimers[sk]); delete ui.sessionStatusTimers[sk]; }
   } else if (payload.state === 'error') {
     chat.stream = null; chat.runId = null;
     chat.lastError = payload.errorMessage ?? 'chat error';
-    ui.sessionStatus[sk] = 'idle';
+    setSessionIdle(sk);
     if (ui.sessionStatusTimers[sk]) { clearTimeout(ui.sessionStatusTimers[sk]); delete ui.sessionStatusTimers[sk]; }
   }
 }
@@ -350,6 +414,24 @@ function onPresenceEvent(payload: unknown) {
     if (idx >= 0) gw.presence[idx] = payload as never;
     else gw.presence.push(payload as never);
   }
+}
+
+/** 10-minute eviction timers for idle session status entries. */
+const sessionEvictTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/**
+ * Mark a session as idle and schedule eviction of its status entry after 10 minutes.
+ * Cancels any existing eviction timer for this key (reset on re-activity).
+ */
+function setSessionIdle(sk: string) {
+  ui.sessionStatus[sk] = 'idle';
+  const existing = sessionEvictTimers.get(sk);
+  if (existing) clearTimeout(existing);
+  sessionEvictTimers.set(sk, setTimeout(() => {
+    sessionEvictTimers.delete(sk);
+    delete ui.sessionStatus[sk];
+    delete ui.sessionStatusTimers[sk];
+  }, 10 * 60 * 1000));
 }
 
 function parseAgentId(sessionKey: string): string | null {
@@ -376,7 +458,10 @@ function onHelloOk(hello: HelloOk) {
     .catch((e) => console.error('[hub] agents.list error:', e));
 
   sendRequest('sessions.list', {})
-    .then((r) => { mergeSessions(((r as { sessions?: never[] })?.sessions) ?? []); })
+    .then((r) => {
+      const raw = ((r as { sessions?: unknown[] })?.sessions) ?? [];
+      mergeSessions(mapGatewaySessionRows(raw));
+    })
     .catch(() => {});
 
   sendRequest('health', {}).then((r) => { gw.health = r; }).catch(() => {});
@@ -413,7 +498,7 @@ export function sendChatMsg(agentId: string) {
   const sessionKey = `agent:${agentId}:main`;
   const runId = uuid();
 
-  chat.messages = [...chat.messages, { role: 'user', content: [{ type: 'text', text: msg }], timestamp: Date.now() }];
+  pushChatMessage(chat, { role: 'user', content: [{ type: 'text', text: msg }], timestamp: Date.now() } as never);
   chat.inputText = '';
   chat.sending = true;
   chat.runId = runId;
@@ -442,7 +527,8 @@ function startPolling() {
           gw.defaultAgentId = r.defaultId ?? gw.defaultAgentId;
         }
         if (results[1].status === 'fulfilled' && results[1].value) {
-          mergeSessions(((results[1].value as { sessions?: never[] })?.sessions) ?? []);
+          const raw = ((results[1].value as { sessions?: unknown[] })?.sessions) ?? [];
+          mergeSessions(mapGatewaySessionRows(raw));
         }
       })
       .catch(() => {});

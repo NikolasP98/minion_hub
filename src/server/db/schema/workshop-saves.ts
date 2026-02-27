@@ -4,6 +4,7 @@ export const workshopSaves = sqliteTable('workshop_saves', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   state: text('state').notNull(), // JSON string of WorkshopState
+  thumbnail: text('thumbnail'), // base64 PNG data-URI, nullable
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
 });

@@ -6,6 +6,8 @@
  * messages are large and should not be autosaved to localStorage.
  */
 
+const MAX_CONVERSATION_MESSAGES = 500;
+
 export interface ConversationMessage {
 	role: 'user' | 'assistant';
 	agentId?: string;
@@ -34,7 +36,10 @@ export function appendMessage(sessionKey: string, msg: ConversationMessage): voi
 			return;
 		}
 	}
-	conversationMessages[sessionKey] = [...msgs, msg];
+	msgs.push(msg);
+	if (msgs.length > MAX_CONVERSATION_MESSAGES) {
+		msgs.splice(0, msgs.length - MAX_CONVERSATION_MESSAGES);
+	}
 }
 
 export function setMessages(sessionKey: string, msgs: ConversationMessage[]): void {

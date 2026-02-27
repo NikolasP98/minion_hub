@@ -71,7 +71,7 @@
   }
 </script>
 
-<div class="shrink-0 border-b border-border">
+<div class="shrink-0 border-b border-border bg-bg2">
   <!-- Collapsed header row -->
   <button
     class="w-full flex items-center gap-2 px-2.5 py-1.5 text-left hover:bg-bg2 transition-colors"

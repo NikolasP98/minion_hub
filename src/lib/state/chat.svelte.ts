@@ -1,9 +1,41 @@
-import type { AgentChatState, AgentActivityState } from '$lib/types/chat';
+import type { AgentChatState, AgentActivityState, ChatMessage } from '$lib/types/chat';
+
+const MAX_CHAT_MESSAGES = 500;
+
+/**
+ * Append a message to chat.messages using mutation (avoids full array copy).
+ * Trims to MAX_CHAT_MESSAGES if needed.
+ */
+export function pushChatMessage(chat: AgentChatState, msg: ChatMessage): void {
+  chat.messages.push(msg);
+  if (chat.messages.length > MAX_CHAT_MESSAGES) {
+    chat.messages.splice(0, chat.messages.length - MAX_CHAT_MESSAGES);
+  }
+}
 
 export const agentChat = $state({} as Record<string, AgentChatState>);
 export const agentActivity = $state({} as Record<string, AgentActivityState>);
 
 const SPARK_STORAGE_KEY = 'minion-spark-data';
+
+// Debounce spark bin saves: accumulate dirty agents and write every 3 seconds.
+const sparkDirtyAgents = new Set<string>();
+let sparkSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+function flushSparkSave() {
+  sparkSaveTimer = null;
+  if (sparkDirtyAgents.size === 0) return;
+  try {
+    const stored = localStorage.getItem(SPARK_STORAGE_KEY);
+    const data = stored ? JSON.parse(stored) : {};
+    for (const agentId of sparkDirtyAgents) {
+      const bins = agentActivity[agentId]?.sparkBins;
+      if (bins) data[agentId] = { bins: [...bins], savedAt: Date.now() };
+    }
+    localStorage.setItem(SPARK_STORAGE_KEY, JSON.stringify(data));
+  } catch { /* ignore quota errors */ }
+  sparkDirtyAgents.clear();
+}
 
 function loadSparkBins(agentId: string): number[] {
   try {
@@ -28,13 +60,12 @@ function loadSparkBins(agentId: string): number[] {
   }
 }
 
-export function saveSparkBins(agentId: string, bins: number[]): void {
-  try {
-    const stored = localStorage.getItem(SPARK_STORAGE_KEY);
-    const data = stored ? JSON.parse(stored) : {};
-    data[agentId] = { bins: [...bins], savedAt: Date.now() };
-    localStorage.setItem(SPARK_STORAGE_KEY, JSON.stringify(data));
-  } catch { /* ignore quota errors */ }
+/** Schedule a debounced write of spark bins for agentId (3-second delay). */
+export function saveSparkBins(agentId: string, _bins?: number[]): void {
+  sparkDirtyAgents.add(agentId);
+  if (!sparkSaveTimer) {
+    sparkSaveTimer = setTimeout(flushSparkSave, 3000);
+  }
 }
 
 export function ensureAgentChat(agentId: string): AgentChatState {

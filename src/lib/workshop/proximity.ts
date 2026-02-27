@@ -1,4 +1,5 @@
 import { workshopState } from '$lib/state/workshop.svelte';
+import type { WorkshopElement } from '$lib/state/workshop.svelte';
 
 export interface ProximityPair {
   instanceIdA: string;
@@ -40,6 +41,28 @@ export function findNearbyAgents(instanceId: string, radius?: number): string[] 
   }
 
   return nearby;
+}
+
+/**
+ * Returns workshop elements within the given radius of a position,
+ * sorted by distance ascending.
+ */
+export function findNearbyElements(
+  position: { x: number; y: number },
+  radius: number,
+): Array<{ elementId: string; element: WorkshopElement; distance: number }> {
+  const results: Array<{ elementId: string; element: WorkshopElement; distance: number }> = [];
+
+  for (const [elementId, element] of Object.entries(workshopState.elements)) {
+    const dx = element.position.x - position.x;
+    const dy = element.position.y - position.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    if (distance <= radius) {
+      results.push({ elementId, element, distance });
+    }
+  }
+
+  return results.sort((a, b) => a.distance - b.distance);
 }
 
 /**

@@ -1,4 +1,12 @@
 import * as PIXI from 'pixi.js';
+import {
+	getAvatarTexture,
+	seedToColor,
+	clearTextureCache,
+	getGeneration,
+	CLASSIC_TEXTURE_SIZE,
+	TEXT_RESOLUTION,
+} from './texture-cache';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -24,74 +32,6 @@ export interface AgentSpriteInfo {
 // ---------------------------------------------------------------------------
 
 const sprites = new Map<string, PIXI.Container>();
-const textureCache = new Map<string, PIXI.Texture>();
-
-/** Incremented on every clearAllSprites(). Used to detect stale async work. */
-let generation = 0;
-
-// ---------------------------------------------------------------------------
-// Private helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Fetch a DiceBear Notionists SVG, convert to a blob URL, and load as a
- * PIXI.Texture. Results are cached by avatarSeed. On failure a coloured
- * circle texture is generated as a fallback.
- */
-async function getAvatarTexture(avatarSeed: string): Promise<PIXI.Texture | null> {
-	const cached = textureCache.get(avatarSeed);
-	if (cached) return cached;
-
-	try {
-		const url = `https://api.dicebear.com/9.x/notionists/svg?seed=${encodeURIComponent(avatarSeed)}&backgroundColor=transparent`;
-		const res = await fetch(url);
-		if (!res.ok) throw new Error(`DiceBear fetch failed: ${res.status}`);
-
-		const svgText = await res.text();
-
-		// Render SVG to an offscreen canvas via Image element for reliable PixiJS 8 texture
-		const texture = await new Promise<PIXI.Texture>((resolve, reject) => {
-			const img = new Image();
-			img.onload = () => {
-				const canvas = document.createElement('canvas');
-				canvas.width = SPRITE_SIZE * 2;
-				canvas.height = SPRITE_SIZE * 2;
-				const ctx = canvas.getContext('2d')!;
-				ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-				URL.revokeObjectURL(img.src);
-				resolve(PIXI.Texture.from(canvas));
-			};
-			img.onerror = () => {
-				URL.revokeObjectURL(img.src);
-				reject(new Error('Failed to load SVG as image'));
-			};
-			const blob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
-			img.src = URL.createObjectURL(blob);
-		});
-
-		textureCache.set(avatarSeed, texture);
-		return texture;
-	} catch {
-		// Fallback handled in createAgentSprite by drawing a colored circle
-		return null;
-	}
-}
-
-/**
- * Deterministically pick a colour from the seed string.
- * Returns a hex colour number used to draw a fallback circle inline.
- */
-function seedToColor(seed: string): number {
-	let hash = 0;
-	for (let i = 0; i < seed.length; i++) {
-		hash = seed.charCodeAt(i) + ((hash << 5) - hash);
-	}
-	// Use the hash to produce an RGB value directly
-	const r = (Math.abs(hash) >> 16) & 0xff;
-	const g = (Math.abs(hash) >> 8) & 0xff;
-	const b = Math.abs(hash) & 0xff;
-	return (r << 16) | (g << 8) | b;
-}
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -118,7 +58,7 @@ export async function createAgentSprite(
 	}
 
 	// Capture generation before async work so we can detect stale calls
-	const gen = generation;
+	const gen = getGeneration();
 
 	const container = new PIXI.Container();
 	container.label = instanceId;
@@ -140,10 +80,10 @@ export async function createAgentSprite(
 	container.addChild(bgCircle);
 
 	// --- Avatar (loaded async, rendered on top of background) ---
-	const texture = await getAvatarTexture(info.avatarSeed);
+	const texture = await getAvatarTexture(info.avatarSeed, CLASSIC_TEXTURE_SIZE);
 
 	// If sprites were cleared while we were loading the texture, discard this container
-	if (gen !== generation) {
+	if (gen !== getGeneration()) {
 		container.destroy({ children: true });
 		// Return a new sprite if one was created by a newer rebuildScene call
 		return sprites.get(instanceId) ?? container;
@@ -181,14 +121,15 @@ export async function createAgentSprite(
 		text: info.name,
 		style: {
 			fontFamily: 'JetBrains Mono NF, monospace',
-			fontSize: 10,
+			fontSize: 5,
 			fill: 0xaaaaaa,
 			align: 'center'
-		}
+		},
+		resolution: TEXT_RESOLUTION,
 	});
 	label.label = 'name';
 	label.anchor.set(0.5, 0);
-	label.y = SPRITE_SIZE / 2 + 6;
+	label.y = SPRITE_SIZE / 2 + 2;
 	container.addChild(label);
 
 	// --- Interaction ---
@@ -204,6 +145,7 @@ export async function createAgentSprite(
 
 /**
  * Remove an agent sprite from its parent, destroy it, and delete from map.
+ * Evicts the cached texture if no remaining sprite uses the same avatarSeed.
  */
 export function removeAgentSprite(instanceId: string): void {
 	const container = sprites.get(instanceId);
@@ -259,6 +201,77 @@ export function setSpriteGlowColor(instanceId: string, color: number): void {
 }
 
 /**
+ * Animate a brief scale + glow pulse on the agent sprite (used for heartbeat).
+ * Scale: 1.0 → 1.25 → 1.0 over 600 ms. Glow alpha: 0.5 → 1.0 → 0.5.
+ */
+export function triggerHeartbeatPulse(instanceId: string): void {
+	const container = sprites.get(instanceId);
+	if (!container) return;
+
+	const glow = container.getChildByLabel('glow') as PIXI.Graphics | null;
+	const DURATION = 600;
+	let elapsed = 0;
+
+	const onTick = (ticker: PIXI.Ticker) => {
+		if (container.destroyed) {
+			PIXI.Ticker.shared.remove(onTick);
+			return;
+		}
+		elapsed += ticker.deltaMS;
+		const t = Math.min(elapsed / DURATION, 1);
+		const scale = 1 + 0.25 * Math.sin(t * Math.PI);
+		container.scale.set(scale);
+		if (glow) glow.alpha = 0.5 + 0.5 * Math.sin(t * Math.PI);
+		if (t >= 1) {
+			container.scale.set(1);
+			if (glow) glow.alpha = 0.5;
+			PIXI.Ticker.shared.remove(onTick);
+		}
+	};
+	PIXI.Ticker.shared.add(onTick);
+}
+
+/**
+ * Show a floating emoji reaction above an agent sprite that fades out upward over 1.2 s.
+ */
+export function showReactionEmoji(instanceId: string, emoji: string): void {
+	const container = sprites.get(instanceId);
+	if (!container) return;
+
+	const text = new PIXI.Text({
+		text: emoji,
+		style: {
+			fontSize: 20,
+			align: 'center',
+		},
+		resolution: TEXT_RESOLUTION,
+	});
+	text.anchor.set(0.5, 1);
+	text.x = 0;
+	text.y = -SPRITE_SIZE / 2;
+	container.addChild(text);
+
+	const DURATION = 1200;
+	let elapsed = 0;
+
+	const onTick = (ticker: PIXI.Ticker) => {
+		if (container.destroyed || text.destroyed) {
+			PIXI.Ticker.shared.remove(onTick);
+			return;
+		}
+		elapsed += ticker.deltaMS;
+		const t = Math.min(elapsed / DURATION, 1);
+		text.y = -SPRITE_SIZE / 2 - t * 40;
+		text.alpha = 1 - t;
+		if (t >= 1) {
+			text.destroy();
+			PIXI.Ticker.shared.remove(onTick);
+		}
+	};
+	PIXI.Ticker.shared.add(onTick);
+}
+
+/**
  * Return the container for an agent instance, or undefined.
  */
 export function getSprite(instanceId: string): PIXI.Container | undefined {
@@ -273,10 +286,10 @@ export function getAllSprites(): Map<string, PIXI.Container> {
 }
 
 /**
- * Destroy all sprites, clear the sprites map, and revoke cached blob URLs.
+ * Destroy all sprites and their cached textures, clear both maps.
  */
 export function clearAllSprites(): void {
-	generation++;
+	clearTextureCache(); // bumps generation & frees VRAM
 	for (const [, container] of sprites) {
 		container.removeFromParent();
 		container.destroy({ children: true });

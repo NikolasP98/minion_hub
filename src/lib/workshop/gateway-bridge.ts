@@ -23,13 +23,35 @@
 
 import { sendRequest } from '$lib/services/gateway.svelte';
 import { conn } from '$lib/state/connection.svelte';
-import { workshopState } from '$lib/state/workshop.svelte';
+import {
+	workshopState,
+	agentMemory,
+	addWorkspaceNote,
+	updateContextSummary,
+	recordElementRead,
+	getOrCreateMemory,
+	votePinboardItem,
+	addActivePinboardItem,
+	removeActivePinboardItem,
+	removePinboardItem,
+	addPinboardItem,
+	getAgentPinCount,
+} from '$lib/state/workshop.svelte';
 import { gw } from '$lib/state/gateway-data.svelte';
 import { startConversation, endConversation } from './conversation-manager';
-import { appendMessage, setAgentThinking } from '$lib/state/workshop-conversations.svelte';
+import {
+	appendMessage,
+	setAgentThinking,
+	conversationMessages,
+	conversationLoading,
+	setMessages,
+} from '$lib/state/workshop-conversations.svelte';
 import { configState } from '$lib/state/config.svelte';
 import { uuid } from '$lib/utils/uuid';
 import { extractText } from '$lib/utils/text';
+import { showReactionEmoji } from '$lib/workshop/renderer-adapter';
+import { sendFsmEvent } from './agent-fsm';
+import type { ConversationMessage } from '$lib/state/workshop-conversations.svelte';
 
 // ---------------------------------------------------------------------------
 // Deterministic session key builders
@@ -83,6 +105,9 @@ const activeLoops = new Map<
 	{ aborted: boolean; turnCount: number; maxTurns: number }
 >();
 
+/** Track gateway turn counts per session key for compaction trigger */
+const sessionTurnCounts = new Map<string, number>();
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -118,6 +143,11 @@ export function startWorkshopConversation(
 
 	if (!conn.connected) {
 		console.warn('[workshop-bridge] Cannot start conversation: not connected to gateway');
+		return null;
+	}
+
+	if (!workshopState.settings.agentChatsEnabled) {
+		console.warn('[workshop-bridge] Agent-agent chats are disabled');
 		return null;
 	}
 
@@ -161,6 +191,14 @@ export function startWorkshopConversation(
 	if (activeLoops.has(conversationId)) {
 		console.warn('[workshop-bridge] Orchestration loop already running for', conversationId);
 		return { conversationId, abort: () => activeLoops.get(conversationId)!.aborted = true };
+	}
+
+	// Persist taskPrompt and maxTurns so this conversation can be resumed after refresh
+	// (done after the duplicate-loop guard so we don't overwrite a live conversation's record)
+	const convRecord = workshopState.conversations[conversationId];
+	if (convRecord) {
+		convRecord.taskPrompt = taskPrompt;
+		convRecord.maxTurns = effectiveMaxTurns;
 	}
 
 	const loopState = { aborted: false, turnCount: 0, maxTurns: effectiveMaxTurns };
@@ -242,6 +280,19 @@ export function assignTask(
 	const conversationId = startConversation('task', [instanceId], [inst.agentId], convSessionKey);
 	if (!conversationId) return null;
 
+	// Guard against duplicate loops (startConversation may return an existing active id)
+	if (activeLoops.has(conversationId)) {
+		console.warn('[workshop-bridge] assignTask: loop already running for', conversationId);
+		return { conversationId, abort: () => { activeLoops.get(conversationId)!.aborted = true; } };
+	}
+
+	// Persist taskPrompt and maxTurns for resume support
+	const assignConvRecord = workshopState.conversations[conversationId];
+	if (assignConvRecord) {
+		assignConvRecord.taskPrompt = taskPrompt;
+		assignConvRecord.maxTurns = 1;
+	}
+
 	const loopState = { aborted: false, turnCount: 0, maxTurns: 1 };
 	activeLoops.set(conversationId, loopState);
 
@@ -289,9 +340,307 @@ export function isConversationActive(conversationId: string): boolean {
 	return activeLoops.has(conversationId);
 }
 
+/**
+ * Resume any conversations that were active when the page was last closed.
+ * Call after canvas rebuild (agents and FSMs must be on canvas).
+ *
+ * Note: intentionally bypasses canStartConversation() / maxConcurrentConversations.
+ * The resumed conversations were within the limit before the refresh; restoring them
+ * to their prior state is correct even if the limit was lowered in the interim.
+ *
+ * Returns handles for all successfully resumed conversations.
+ */
+export async function resumeInterruptedConversations(): Promise<WorkshopConversationHandle[]> {
+	if (!conn.connected) return [];
+
+	const interrupted = Object.values(workshopState.conversations).filter(
+		(c) => c.status === 'interrupted',
+	);
+
+	if (interrupted.length === 0) return [];
+
+	const handles: WorkshopConversationHandle[] = [];
+
+	for (const conv of interrupted) {
+		// taskPrompt is required to reconstruct turn prompts
+		if (!conv.taskPrompt) {
+			conv.status = 'completed';
+			conv.endedAt = Date.now();
+			continue;
+		}
+
+		// Remap participantAgentIds → current instanceIds (instance IDs change on every load)
+		const remappedInstanceIds: string[] = [];
+		let canResume = true;
+		for (const agentId of conv.participantAgentIds) {
+			const inst = Object.values(workshopState.agents).find((a) => a.agentId === agentId);
+			if (!inst) {
+				canResume = false;
+				break;
+			}
+			remappedInstanceIds.push(inst.instanceId);
+		}
+
+		if (!canResume) {
+			conv.status = 'completed';
+			conv.endedAt = Date.now();
+			continue;
+		}
+
+		// Load history from gateway to reconstruct turn state
+		let history: ConversationMessage[] = [];
+		try {
+			history = await loadConversationHistory(conv);
+		} catch {
+			conv.status = 'completed';
+			conv.endedAt = Date.now();
+			continue;
+		}
+
+		const effectiveMaxTurns = conv.maxTurns ?? workshopState.settings.taskMaxTurns;
+		const turnCount = history.length;
+
+		// If already at or past maxTurns, the conversation completed normally
+		if (turnCount >= effectiveMaxTurns) {
+			conv.status = 'completed';
+			conv.endedAt = conv.endedAt ?? Date.now();
+			continue;
+		}
+
+		// Reconstruct loop state from history
+		const nameOf = (agentId: string): string => {
+			const gwAgent = gw.agents.find((a: { id: string }) => a.id === agentId);
+			return gwAgent?.name ?? agentId;
+		};
+
+		const n = conv.participantAgentIds.length;
+		const lastMsg = history[history.length - 1];
+		const resumeState: ResumeState = {
+			turnCount,
+			// last-completed index: (turnCount - 1 + n) % n; only meaningful when turnCount > 0
+			currentTurnIdx: turnCount > 0 ? (turnCount - 1 + n) % n : 0,
+			lastResponse: lastMsg?.content ?? '',
+			lastAgentName: lastMsg?.agentId ? nameOf(lastMsg.agentId) : '',
+			collectedMessages: history.map((m) => `${nameOf(m.agentId ?? '')}: ${m.content}`),
+		};
+
+		// Guard against duplicate loops (before any mutations or FSM events)
+		if (activeLoops.has(conv.id)) continue;
+
+		// Re-activate the conversation with current instance IDs
+		conv.status = 'active';
+		conv.participantInstanceIds = remappedInstanceIds;
+
+		const participants = conv.participantAgentIds.map((agentId, i) => ({
+			agentId,
+			instanceId: remappedInstanceIds[i],
+		}));
+
+		// Fire FSM conversationStart for all participants
+		for (const instanceId of remappedInstanceIds) {
+			sendFsmEvent(instanceId, 'conversationStart');
+		}
+
+		const loopState = { aborted: false, turnCount, maxTurns: effectiveMaxTurns };
+		activeLoops.set(conv.id, loopState);
+
+		// Resume the orchestration loop asynchronously
+		runOrchestrationLoop(
+			conv.id,
+			conv.sessionKey,
+			participants,
+			conv.taskPrompt,
+			loopState,
+			resumeState,
+		).catch((err) => {
+			console.error('[workshop-bridge] Resume loop error:', err);
+			endConversation(conv.id);
+			activeLoops.delete(conv.id);
+		});
+
+		handles.push({
+			conversationId: conv.id,
+			abort: () => {
+				loopState.aborted = true;
+				endConversation(conv.id);
+				activeLoops.delete(conv.id);
+			},
+		});
+	}
+
+	return handles;
+}
+
+export function getSessionTurnCount(sessionKey: string): number {
+	return sessionTurnCounts.get(sessionKey) ?? 0;
+}
+
+export function resetSessionTurnCount(sessionKey: string): void {
+	sessionTurnCounts.set(sessionKey, 0);
+}
+
+/**
+ * Ask an agent to summarise its recent context and save the result
+ * to its memory. Prunes the in-memory message cache to the last 2 messages.
+ * Called by simulation.ts when draining a compactContext queue action.
+ */
+export async function compactAgentContext(
+	instanceId: string,
+	sessionKey: string,
+): Promise<void> {
+	const inst = workshopState.agents[instanceId];
+	if (!inst) return;
+
+	const agentId = inst.agentId;
+	const gateSessionKey = buildWorkshopSessionKey(agentId, sessionKey);
+
+	const prompt = [
+		'Summarise your recent activity and key learnings in ≤400 tokens.',
+		'Retain: workspace rules, unresolved tasks, agent relationships, important decisions.',
+		'Discard: pleasantries, resolved topics, repeated information.',
+		'Respond with ONLY the summary — no commentary.',
+	].join('\n');
+
+	try {
+		setAgentThinking(instanceId, true);
+		const summary = await sendAndWaitForResponse(agentId, gateSessionKey, prompt, 45_000);
+		if (summary) {
+			updateContextSummary(instanceId, summary);
+			// Prune local cache to last 2 messages
+			const msgs = conversationMessages[sessionKey];
+			if (msgs && msgs.length > 2) {
+				setMessages(sessionKey, msgs.slice(-2));
+			}
+		}
+	} finally {
+		setAgentThinking(instanceId, false);
+	}
+}
+
+/**
+ * Ask an agent to process the content of a workshop element.
+ * Shows a reaction emoji on the sprite, records the read in memory.
+ * For pinboards: injects a full view with IDs and scores so the agent can KEEP_PIN/VOTE.
+ * Called by simulation.ts when draining readElement / seekInfo actions.
+ */
+export async function readElementForAgent(
+	instanceId: string,
+	elementId: string,
+	sessionKey: string,
+): Promise<void> {
+	const inst = workshopState.agents[instanceId];
+	const el = workshopState.elements[elementId];
+	if (!inst || !el) return;
+
+	const agentId = inst.agentId;
+	const gateSessionKey = buildWorkshopSessionKey(agentId, sessionKey);
+
+	// Build element content summary
+	let contentDesc = '';
+	let promptLines: string[] = [];
+
+	if (el.type === 'rulebook') {
+		contentDesc = el.rulebookContent?.trim() ?? '';
+		promptLines = [
+			`--- RULEBOOK: "${el.label}" ---`,
+			'Purpose: Strict rules that must be followed throughout this session.',
+			'',
+			contentDesc,
+			'',
+			'Acknowledge these rules. Use [REMEMBER: note] to record key points.',
+			'Respond briefly.',
+		];
+	} else if (el.type === 'messageboard') {
+		contentDesc = el.messageBoardContent?.trim() ?? '';
+		promptLines = [
+			`--- MESSAGE BOARD: "${el.label}" ---`,
+			contentDesc,
+			'',
+			'Process this information. Use [REMEMBER: note] to record anything important.',
+			'Respond briefly.',
+		];
+	} else if (el.type === 'pinboard') {
+		const fullView = buildPinboardFullView(el, instanceId);
+		contentDesc = fullView || '(empty)';
+		if (!fullView) {
+			showReactionEmoji(instanceId, '👀');
+			recordElementRead(instanceId, elementId, '(empty)');
+			return;
+		}
+		promptLines = [
+			fullView,
+			'',
+			'Review each item. Use [KEEP_PIN: id] to save items to your active memory.',
+			'Use [VOTE_UP: id] or [VOTE_DOWN: id] to signal your assessment.',
+			'Use [REMEMBER: note] to record anything important.',
+			'Respond briefly.',
+		];
+	} else if (el.type === 'inbox') {
+		const unread = (el.inboxItems ?? []).filter((m) => !m.read);
+		contentDesc = unread.map((m) => `From ${m.fromId}: ${m.content}`).join('\n');
+		promptLines = [
+			'--- INBOX ---',
+			'Purpose: Tasks and messages addressed directly to you.',
+			'',
+			contentDesc,
+			'',
+			'Process these messages. Use [REMEMBER: note] to record action items.',
+			'Respond briefly.',
+		];
+	}
+
+	if (!contentDesc) {
+		// Nothing to read — just show emoji and mark as read
+		showReactionEmoji(instanceId, '👀');
+		recordElementRead(instanceId, elementId, '(empty)');
+		return;
+	}
+
+	const prompt = promptLines.join('\n');
+
+	// Show reading indicator emoji while processing
+	showReactionEmoji(instanceId, '🔍');
+
+	try {
+		setAgentThinking(instanceId, true);
+		const response = await sendAndWaitForResponse(agentId, gateSessionKey, prompt, 45_000);
+		if (response) {
+			extractAndApplyRemembers(response, instanceId);
+			// For pinboards: also extract KEEP_PIN/RELEASE_PIN and VOTE markers
+			if (el.type === 'pinboard') {
+				extractAndApplyKeepPins(response, instanceId);
+				extractAndApplyVotes(response, agentId);
+			}
+			recordElementRead(instanceId, elementId, contentDesc.slice(0, 200));
+			// Show a confirmation emoji
+			const emoji = el.type === 'rulebook' ? '📖'
+				: el.type === 'messageboard' ? '📋'
+				: el.type === 'pinboard' ? '📌'
+				: '📬';
+			showReactionEmoji(instanceId, emoji);
+		}
+	} finally {
+		setAgentThinking(instanceId, false);
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Orchestration loop
 // ---------------------------------------------------------------------------
+
+interface ResumeState {
+	turnCount: number;
+	/**
+	 * Index of the LAST COMPLETED participant in the participants array.
+	 * The while loop pre-advances this by 1 (mod n) before the next turn.
+	 * Compute as `(turnCount - 1 + n) % n` where n = participants.length.
+	 * Only used when turnCount > 0; ignored on the turnCount===0 fresh path.
+	 */
+	currentTurnIdx: number;
+	lastResponse: string;
+	lastAgentName: string;
+	collectedMessages: string[];
+}
 
 async function runOrchestrationLoop(
 	conversationId: string,
@@ -299,6 +648,7 @@ async function runOrchestrationLoop(
 	participants: Array<{ instanceId: string; agentId: string }>,
 	taskPrompt: string,
 	loopState: { aborted: boolean; turnCount: number; maxTurns: number },
+	resumeState?: ResumeState,
 ): Promise<void> {
 	// Build agent name map for context formatting
 	const nameOf = (agentId: string): string => {
@@ -306,45 +656,52 @@ async function runOrchestrationLoop(
 		return gwAgent?.name ?? agentId;
 	};
 
-	// The first participant gets the original task prompt
-	let currentTurnIdx = 0;
-	let previousResponse = '';
-	let previousAgentName = '';
-	const collectedMessages: string[] = [];
+	// Initialise from resumeState (resume path) or defaults (fresh path)
+	let currentTurnIdx = resumeState?.currentTurnIdx ?? 0;
+	let previousResponse = resumeState?.lastResponse ?? '';
+	let previousAgentName = resumeState?.lastAgentName ?? '';
+	const collectedMessages: string[] = resumeState?.collectedMessages ? [...resumeState.collectedMessages] : [];
 
-	// Initial prompt to first agent
-	const firstParticipant = participants[0];
-	const otherNames = participants
-		.slice(1)
-		.map((p) => nameOf(p.agentId))
-		.join(', ');
-
-	const initialPrompt = formatInitialPrompt(taskPrompt, otherNames, participants.length);
+	// Sync loopState turn count from resume (gateway is source of truth)
+	if (resumeState) {
+		loopState.turnCount = resumeState.turnCount;
+	}
 
 	try {
-		const sessionKey = buildWorkshopSessionKey(firstParticipant.agentId, convSessionKey);
-		setAgentThinking(firstParticipant.instanceId, true);
-		const response = await sendAndWaitForResponse(
-			firstParticipant.agentId,
-			sessionKey,
-			initialPrompt,
-		);
-		setAgentThinking(firstParticipant.instanceId, false);
+		if (!resumeState || resumeState.turnCount === 0) {
+			// Fresh conversation (or resume before any turn completed): send initial prompt to first participant
+			const firstParticipant = participants[0];
+			const otherNames = participants
+				.slice(1)
+				.map((p) => nameOf(p.agentId))
+				.join(', ');
 
-		if (loopState.aborted || !response) return;
+			const initialPrompt = formatInitialPrompt(taskPrompt, otherNames, participants.length, firstParticipant.agentId, firstParticipant.instanceId);
 
-		previousResponse = response;
-		previousAgentName = nameOf(firstParticipant.agentId);
-		loopState.turnCount++;
-		collectedMessages.push(`${previousAgentName}: ${response}`);
+			const sessionKey = buildWorkshopSessionKey(firstParticipant.agentId, convSessionKey);
+			setAgentThinking(firstParticipant.instanceId, true);
+			const response = await sendAndWaitForResponse(
+				firstParticipant.agentId,
+				sessionKey,
+				initialPrompt,
+			);
+			setAgentThinking(firstParticipant.instanceId, false);
 
-		emitMessage({
-			conversationId,
-			agentId: firstParticipant.agentId,
-			instanceId: firstParticipant.instanceId,
-			message: response,
-			timestamp: Date.now(),
-		});
+			if (loopState.aborted || !response) return;
+
+			previousResponse = response;
+			previousAgentName = nameOf(firstParticipant.agentId);
+			loopState.turnCount++;
+			collectedMessages.push(`${previousAgentName}: ${response}`);
+
+			emitMessage({
+				conversationId,
+				agentId: firstParticipant.agentId,
+				instanceId: firstParticipant.instanceId,
+				message: response,
+				timestamp: Date.now(),
+			});
+		}
 
 		// Continue the loop: alternate between participants
 		while (loopState.turnCount < loopState.maxTurns && !loopState.aborted) {
@@ -359,6 +716,8 @@ async function runOrchestrationLoop(
 				loopState.turnCount,
 				loopState.maxTurns,
 				collectedMessages,
+				participant.agentId,
+				participant.instanceId,
 			);
 
 			setAgentThinking(participant.instanceId, true);
@@ -409,9 +768,13 @@ async function runOrchestrationLoop(
  * Build a workshop-specific session key that won't collide with the user's
  * main chat session for the same agent.
  */
-function buildWorkshopSessionKey(agentId: string, conversationId: string): string {
+/** Build a workshop-specific session key. Exported for use by simulation.ts. */
+export function buildWorkshopSessionKey(agentId: string, conversationId: string): string {
 	return `agent:${agentId}:workshop:${conversationId}`;
 }
+
+/** @deprecated Use `buildWorkshopSessionKey` directly. */
+export const buildWorkshopSessionKey_public = buildWorkshopSessionKey;
 
 /**
  * Send a chat message to a specific agent session and wait for the final
@@ -516,6 +879,7 @@ async function sendAndWaitForResponse(
 					lastAssistantText !== baselineLastContent
 				) {
 					resolved = true;
+					sessionTurnCounts.set(sessionKey, (sessionTurnCounts.get(sessionKey) ?? 0) + 1);
 					resolve(lastAssistantText);
 					return;
 				}
@@ -535,6 +899,376 @@ async function sendAndWaitForResponse(
 }
 
 // ---------------------------------------------------------------------------
+// Workshop context for prompts
+// ---------------------------------------------------------------------------
+
+/**
+ * Format a relative time string from a timestamp.
+ */
+function relativeTime(ts: number): string {
+	const diff = Date.now() - ts;
+	const seconds = Math.floor(diff / 1000);
+	if (seconds < 60) return 'just now';
+	const minutes = Math.floor(seconds / 60);
+	if (minutes < 60) return `${minutes}m ago`;
+	const hours = Math.floor(minutes / 60);
+	if (hours < 24) return `${hours}h ago`;
+	return `${Math.floor(hours / 24)}d ago`;
+}
+
+/**
+ * Produce structured, metadata-rich prompt injection for workshop context.
+ * Includes: WORKSHOP clause, rulebooks, message boards, inbox, active pinboard memory, agent memory.
+ */
+export function getWorkshopContext(agentId?: string, instanceId?: string): string {
+	const parts: string[] = [];
+
+	const gwAgent = agentId
+		? (gw.agents.find((a: { id: string }) => a.id === agentId) as { id: string; name?: string; shareWorkspaceInfo?: boolean } | undefined)
+		: undefined;
+	const shareWorkspace = gwAgent?.shareWorkspaceInfo !== false; // default true
+
+	// A. WORKSHOP clause — always first
+	const agentsOnCanvas = Object.values(workshopState.agents).map((inst) => {
+		const ag = gw.agents.find((a: { id: string; name?: string }) => a.id === inst.agentId) as { id: string; name?: string } | undefined;
+		const name = ag?.name ?? inst.agentId;
+		return `${name} (${inst.agentId})`;
+	});
+
+	const mem = instanceId ? agentMemory[instanceId] : undefined;
+	const activePins = mem?.activePinboardItems ?? [];
+	const activePinsCount = activePins.length;
+
+	const workshopClause = [
+		'=== WORKSHOP ENVIRONMENT ===',
+		'You are operating on a multi-agent workshop canvas — a shared interactive space where',
+		'agents read and write to shared environment elements, exchange messages, and collaborate.',
+		'',
+		agentsOnCanvas.length > 0
+			? `Agents on canvas: ${agentsOnCanvas.join(', ')}`
+			: 'No other agents on canvas.',
+		'',
+		'Available markers (use in your responses to interact with the environment):',
+		'  [PIN: your note]           — Add to the shared pinboard (max 5 pins per agent)',
+		'  [REMOVE_PIN: pin-id]       — Remove one of your existing pins',
+		'  [VOTE_UP: pin-id]          — Upvote a pinboard item you find valuable',
+		'  [VOTE_DOWN: pin-id]        — Downvote an item you find outdated or incorrect',
+		'  [KEEP_PIN: pin-id]         — Add a pinboard item to your active memory (max 5 slots)',
+		'  [RELEASE_PIN: pin-id]      — Remove a pinboard item from your active memory',
+		'  [SEND to AgentName: msg]   — Send a message to another agent\'s inbox',
+		'  [REMEMBER: note]           — Save a note to your personal workspace memory',
+		'',
+		`Active pinboard memory: ${activePinsCount}/5 slots used`,
+		'=== END WORKSHOP ENVIRONMENT ===',
+	].join('\n');
+	parts.push(workshopClause);
+
+	if (!workshopState.settings.crossWorkspaceChats) {
+		parts.push([
+			'--- WORKSPACE ISOLATION NOTICE ---',
+			'Cross-workspace chats are DISABLED. All conversations are fully isolated to this workspace.',
+			'Do not reference, mention, or continue conversations from other workspaces.',
+			'--- END ISOLATION NOTICE ---',
+		].join('\n'));
+	}
+
+	if (!shareWorkspace) return parts.join('\n\n');
+
+	// B. Rulebook — always, if present
+	const rulebooks = Object.values(workshopState.elements).filter(
+		(el) => el.type === 'rulebook' && el.rulebookContent?.trim(),
+	);
+	for (const rb of rulebooks) {
+		parts.push([
+			'--- RULEBOOK START ---',
+			'Purpose: Strict rules that must be followed throughout this workshop session.',
+			'Injected: always',
+			'',
+			rb.rulebookContent!.trim(),
+			'--- RULEBOOK END ---',
+		].join('\n'));
+	}
+
+	// C. Message boards — always, if present
+	for (const el of Object.values(workshopState.elements)) {
+		if (el.type === 'messageboard' && el.messageBoardContent?.trim()) {
+			parts.push([
+				`--- MESSAGE BOARD START: "${el.label}" ---`,
+				'Purpose: Guidelines and announcements for this workshop session.',
+				'Injected: always',
+				'',
+				el.messageBoardContent.trim(),
+				'--- MESSAGE BOARD END ---',
+			].join('\n'));
+		}
+	}
+
+	// D. Inbox — always if agent has unread messages
+	if (agentId) {
+		for (const el of Object.values(workshopState.elements)) {
+			if (el.type === 'inbox' && el.inboxAgentId === agentId) {
+				const unread = (el.inboxItems ?? []).filter((m) => !m.read && m.status !== 'closed');
+				if (unread.length > 0) {
+					const lines = [
+						'--- INBOX START ---',
+						'Purpose: Tasks and messages addressed directly to you from humans or other agents.',
+						'Injected: always when unread messages exist.',
+						'',
+					];
+					for (const msg of unread) {
+						const fromAgent = gw.agents.find((a: { id: string; name?: string }) => a.id === msg.fromId) as { id: string; name?: string } | undefined;
+						const fromName = fromAgent?.name ?? msg.fromId;
+						lines.push(`[From ${msg.fromId} (${fromName})]: ${msg.content}`);
+					}
+					lines.push('--- INBOX END ---');
+					parts.push(lines.join('\n'));
+				}
+			}
+		}
+	}
+
+	// E. Active pinboard memory — only items agent has kept via KEEP_PIN
+	if (instanceId && activePins.length > 0) {
+		// Collect all pinboard items across all boards indexed by pin ID
+		const allPins = new Map<string, { pin: import('$lib/state/workshop.svelte').PinboardItem; boardLabel: string }>();
+		for (const el of Object.values(workshopState.elements)) {
+			if (el.type === 'pinboard') {
+				for (const pin of el.pinboardItems ?? []) {
+					allPins.set(pin.id, { pin, boardLabel: el.label });
+				}
+			}
+		}
+
+		const activeLines = [
+			'--- ACTIVE PINBOARD MEMORY START ---',
+			'Purpose: Pinboard items you have chosen to keep in active context.',
+			`Slots used: ${activePinsCount}/5  (use [RELEASE_PIN: id] to free a slot, [KEEP_PIN: id] to add one)`,
+			'',
+		];
+
+		let hasAny = false;
+		for (const pinId of activePins) {
+			const entry = allPins.get(pinId);
+			if (!entry) continue; // pin was removed
+			const { pin } = entry;
+			const net = pin.upvotes.length - pin.downvotes.length;
+			activeLines.push(`[${pin.id}] ▲${pin.upvotes.length} ▼${pin.downvotes.length} (net ${net > 0 ? '+' : ''}${net})  ${pin.content}`);
+			hasAny = true;
+		}
+
+		if (hasAny) {
+			activeLines.push('--- ACTIVE PINBOARD MEMORY END ---');
+			parts.push(activeLines.join('\n'));
+		}
+	}
+
+	// F. Agent memory
+	if (mem) {
+		if (mem.contextSummary) {
+			parts.push(`--- YOUR MEMORY SUMMARY ---\n${mem.contextSummary}`);
+		}
+		if (mem.workspaceNotes?.length) {
+			parts.push(`--- YOUR NOTES ---\n${mem.workspaceNotes.map((n) => `- ${n}`).join('\n')}`);
+		}
+		if (mem.recentInteractions?.length) {
+			parts.push(`--- RECENT INTERACTIONS ---\n${mem.recentInteractions.map((i) => `- ${i}`).join('\n')}`);
+		}
+	}
+
+	return parts.join('\n\n');
+}
+
+/**
+ * Build a full pinboard view for injection during element-read.
+ * Shows ALL items with IDs and scores so the agent can evaluate and KEEP_PIN/VOTE.
+ */
+function buildPinboardFullView(
+	el: import('$lib/state/workshop.svelte').WorkshopElement,
+	instanceId: string,
+): string {
+	const pins = el.pinboardItems ?? [];
+	if (pins.length === 0) return '';
+
+	const mem = agentMemory[instanceId];
+	const activePins = mem?.activePinboardItems ?? [];
+	const slotsRemaining = 5 - activePins.length;
+
+	const sorted = [...pins].sort((a, b) => {
+		const na = a.upvotes.length - a.downvotes.length;
+		const nb = b.upvotes.length - b.downvotes.length;
+		return nb - na;
+	});
+
+	const lines = [
+		`--- PINBOARD FULL VIEW: "${el.label}" ---`,
+		`Review these items. Use [KEEP_PIN: id] to add to your active memory (${slotsRemaining} slots remaining).`,
+		'Use [VOTE_UP: id] or [VOTE_DOWN: id] to signal your assessment.',
+		'',
+	];
+
+	for (const pin of sorted) {
+		const net = pin.upvotes.length - pin.downvotes.length;
+		const flag = net <= -2 ? ' ⚠️ flagged' : '';
+		const fromAgent = gw.agents.find((a: { id: string; name?: string }) => a.id === pin.pinnedBy) as { id: string; name?: string } | undefined;
+		const byName = fromAgent?.name ?? pin.pinnedBy;
+		lines.push(`[${pin.id}] ▲${pin.upvotes.length} ▼${pin.downvotes.length}  ${pin.content}  (by ${byName}, ${relativeTime(pin.pinnedAt)})${flag}`);
+	}
+
+	lines.push('--- PINBOARD FULL VIEW END ---');
+	return lines.join('\n');
+}
+
+/**
+ * Scan an agent response for [PIN: ...] markers and auto-add to the nearest
+ * pinboard element. Enforces a max of 5 pins per agent (auto-removes oldest).
+ */
+function extractAndApplyPins(responseText: string, agentId: string): void {
+	const pinRegex = /\[PIN:\s*(.+?)\]/gi;
+	let match: RegExpExecArray | null;
+	const pins: string[] = [];
+
+	while ((match = pinRegex.exec(responseText)) !== null) {
+		pins.push(match[1].trim());
+	}
+
+	if (pins.length === 0) return;
+
+	// Find the first pinboard element
+	const pinboardEl = Object.values(workshopState.elements).find(
+		(el) => el.type === 'pinboard',
+	);
+	if (!pinboardEl) return;
+
+	for (const content of pins) {
+		// Enforce per-agent 5-pin limit: auto-remove oldest if at limit
+		const MAX_PINS_PER_AGENT = 5;
+		const currentCount = getAgentPinCount(pinboardEl.instanceId, agentId);
+		if (currentCount >= MAX_PINS_PER_AGENT) {
+			// Find and remove oldest pin by this agent
+			const agentPins = (pinboardEl.pinboardItems ?? [])
+				.filter((p) => p.pinnedBy === agentId)
+				.sort((a, b) => a.pinnedAt - b.pinnedAt);
+			if (agentPins.length > 0) {
+				removePinboardItem(pinboardEl.instanceId, agentPins[0].id);
+			}
+		}
+		addPinboardItem(pinboardEl.instanceId, content, agentId);
+	}
+}
+
+/**
+ * Scan agent response for [REMOVE_PIN: id] markers.
+ */
+function extractAndApplyRemovePins(responseText: string, agentId: string): void {
+	const removeRegex = /\[REMOVE_PIN:\s*([\w_]+)\]/gi;
+	let match: RegExpExecArray | null;
+
+	while ((match = removeRegex.exec(responseText)) !== null) {
+		const pinId = match[1].trim();
+		// Find the pinboard containing this pin and verify ownership
+		for (const el of Object.values(workshopState.elements)) {
+			if (el.type !== 'pinboard' || !el.pinboardItems) continue;
+			const pin = el.pinboardItems.find((p) => p.id === pinId);
+			if (pin && pin.pinnedBy === agentId) {
+				removePinboardItem(el.instanceId, pinId);
+				break;
+			}
+		}
+	}
+}
+
+/**
+ * Scan agent response for [VOTE_UP: id] / [VOTE_DOWN: id] markers.
+ */
+function extractAndApplyVotes(responseText: string, agentId: string): void {
+	const voteUpRegex = /\[VOTE_UP:\s*([\w_]+)\]/gi;
+	const voteDownRegex = /\[VOTE_DOWN:\s*([\w_]+)\]/gi;
+	let match: RegExpExecArray | null;
+
+	while ((match = voteUpRegex.exec(responseText)) !== null) {
+		const pinId = match[1].trim();
+		for (const el of Object.values(workshopState.elements)) {
+			if (el.type === 'pinboard' && el.pinboardItems?.some((p) => p.id === pinId)) {
+				votePinboardItem(el.instanceId, pinId, agentId, 'up');
+				break;
+			}
+		}
+	}
+
+	while ((match = voteDownRegex.exec(responseText)) !== null) {
+		const pinId = match[1].trim();
+		for (const el of Object.values(workshopState.elements)) {
+			if (el.type === 'pinboard' && el.pinboardItems?.some((p) => p.id === pinId)) {
+				votePinboardItem(el.instanceId, pinId, agentId, 'down');
+				break;
+			}
+		}
+	}
+}
+
+/**
+ * Scan agent response for [KEEP_PIN: id] / [RELEASE_PIN: id] markers.
+ */
+function extractAndApplyKeepPins(responseText: string, instanceId: string): void {
+	const keepRegex = /\[KEEP_PIN:\s*([\w_]+)\]/gi;
+	const releaseRegex = /\[RELEASE_PIN:\s*([\w_]+)\]/gi;
+	let match: RegExpExecArray | null;
+
+	while ((match = keepRegex.exec(responseText)) !== null) {
+		addActivePinboardItem(instanceId, match[1].trim());
+	}
+
+	while ((match = releaseRegex.exec(responseText)) !== null) {
+		removeActivePinboardItem(instanceId, match[1].trim());
+	}
+}
+
+/**
+ * Scan an agent response for [SEND to AgentName: message] markers and
+ * route to inbox elements.
+ */
+function extractAndRouteSends(responseText: string, fromAgentId: string): void {
+	const sendRegex = /\[SEND to (\S+?):\s*(.+?)\]/gi;
+	let match: RegExpExecArray | null;
+
+	while ((match = sendRegex.exec(responseText)) !== null) {
+		const targetName = match[1].trim();
+		const content = match[2].trim();
+
+		// Find inbox element for target agent
+		const targetAgent = gw.agents.find(
+			(a: { id: string; name?: string }) => a.name === targetName || a.id === targetName,
+		);
+		if (!targetAgent) continue;
+
+		const inboxEl = Object.values(workshopState.elements).find(
+			(el) => el.type === 'inbox' && el.inboxAgentId === targetAgent.id,
+		);
+		if (!inboxEl) continue;
+
+		if (!inboxEl.inboxItems) inboxEl.inboxItems = [];
+		inboxEl.inboxItems.push({
+			id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+			fromId: fromAgentId,
+			toId: targetAgent.id,
+			content,
+			subject: '',
+			status: 'open',
+			sentAt: Date.now(),
+			read: false,
+		});
+	}
+}
+
+function extractAndApplyRemembers(responseText: string, instanceId: string): void {
+	const rememberRegex = /\[REMEMBER:\s*(.+?)\]/gi;
+	let match: RegExpExecArray | null;
+	while ((match = rememberRegex.exec(responseText)) !== null) {
+		addWorkspaceNote(instanceId, match[1].trim());
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Prompt formatting
 // ---------------------------------------------------------------------------
 
@@ -542,19 +1276,34 @@ function formatInitialPrompt(
 	taskPrompt: string,
 	otherAgentNames: string,
 	totalParticipants: number,
+	agentId?: string,
+	instanceId?: string,
 ): string {
+	const workshopCtx = getWorkshopContext(agentId, instanceId);
+
 	if (totalParticipants <= 1) {
-		return taskPrompt;
+		const lines: string[] = [];
+		if (workshopCtx) lines.push(workshopCtx, '');
+		lines.push(taskPrompt);
+		return lines.join('\n');
 	}
 
-	return [
+	const lines: string[] = [];
+	if (workshopCtx) lines.push(workshopCtx, '');
+
+	lines.push(
 		`You are in a workshop conversation with ${otherAgentNames}.`,
 		``,
 		`Task: ${taskPrompt}`,
+	);
+
+	lines.push(
 		``,
 		`Share a specific perspective or position on this task. Be concrete — propose ideas, take a stance, or raise a question for discussion.`,
 		`Your response will be shared with the other participant(s). Keep it focused and concise.`,
-	].join('\n');
+	);
+
+	return lines.join('\n');
 }
 
 function formatTurnPrompt(
@@ -564,16 +1313,22 @@ function formatTurnPrompt(
 	turnNumber: number,
 	maxTurns: number,
 	conversationHistory: string[] = [],
+	agentId?: string,
+	instanceId?: string,
 ): string {
 	const remaining = maxTurns - turnNumber;
 	const isLastTurn = remaining <= 1;
+	const workshopCtx = getWorkshopContext(agentId, instanceId);
 
-	const lines = [
+	const lines: string[] = [];
+	if (workshopCtx) lines.push(workshopCtx, '');
+
+	lines.push(
 		`You are in a workshop conversation.`,
 		``,
 		`Original task: ${taskPrompt}`,
 		``,
-	];
+	);
 
 	// Include condensed history of recent exchanges for context
 	const recentHistory = conversationHistory.slice(-4);
@@ -624,6 +1379,20 @@ function emitMessage(msg: WorkshopMessage): void {
 			content: msg.message,
 			timestamp: msg.timestamp,
 		});
+	}
+
+	// Extract markers from agent responses
+	try {
+		extractAndApplyPins(msg.message, msg.agentId);
+		extractAndApplyRemovePins(msg.message, msg.agentId);
+		extractAndApplyVotes(msg.message, msg.agentId);
+		extractAndRouteSends(msg.message, msg.agentId);
+		if (msg.instanceId) {
+			extractAndApplyRemembers(msg.message, msg.instanceId);
+			extractAndApplyKeepPins(msg.message, msg.instanceId);
+		}
+	} catch {
+		// non-critical
 	}
 
 	// Fire callbacks for speech bubbles / other listeners
@@ -694,16 +1463,11 @@ async function tryOwnerNotification(
  */
 export async function loadConversationHistory(
 	conv: import('$lib/state/workshop.svelte').WorkshopConversation,
-): Promise<import('$lib/state/workshop-conversations.svelte').ConversationMessage[]> {
-	const { setMessages, conversationLoading } = await import(
-		'$lib/state/workshop-conversations.svelte'
-	);
-
+): Promise<ConversationMessage[]> {
 	conversationLoading[conv.sessionKey] = true;
 
 	try {
-		const allMessages: import('$lib/state/workshop-conversations.svelte').ConversationMessage[] =
-			[];
+		const allMessages: ConversationMessage[] = [];
 
 		for (const agentId of conv.participantAgentIds) {
 			const sessionKey = buildWorkshopSessionKey(agentId, conv.sessionKey);

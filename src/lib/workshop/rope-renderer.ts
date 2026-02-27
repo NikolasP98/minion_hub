@@ -1,12 +1,29 @@
 // src/lib/workshop/rope-renderer.ts
 
 import * as PIXI from 'pixi.js';
+import { TEXT_RESOLUTION } from './texture-cache';
 
 // ---------------------------------------------------------------------------
 // Module state
 // ---------------------------------------------------------------------------
 
-const ropes = new Map<string, { graphics: PIXI.Graphics; label: PIXI.Text }>();
+interface RopeEntry {
+	graphics: PIXI.Graphics;
+	label: PIXI.Text;
+	/** 0..1, advances each frame when isActive */
+	flowPhase: number;
+}
+
+const ropes = new Map<string, RopeEntry>();
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const PARTICLE_COUNT = 4;
+/** Full cable traversal in ms */
+const FLOW_PERIOD_MS = 2000;
+const FLOW_SPEED = 1 / FLOW_PERIOD_MS;
 
 // ---------------------------------------------------------------------------
 // Helper functions
@@ -75,6 +92,23 @@ function labelToColor(label: string): number {
 	return hslToHex(hue, saturation, lightness);
 }
 
+/** Sample a point on a quadratic bezier at parameter t (0..1). */
+function bezierPoint(
+	t: number,
+	fromX: number,
+	fromY: number,
+	cpX: number,
+	cpY: number,
+	toX: number,
+	toY: number
+): { x: number; y: number } {
+	const ot = 1 - t;
+	return {
+		x: ot * ot * fromX + 2 * ot * t * cpX + t * t * toX,
+		y: ot * ot * fromY + 2 * ot * t * cpY + t * t * toY,
+	};
+}
+
 // ---------------------------------------------------------------------------
 // Exported functions
 // ---------------------------------------------------------------------------
@@ -95,20 +129,26 @@ export function createRope(
 		text: label,
 		style: {
 			fontFamily: 'JetBrains Mono NF',
-			fontSize: 9,
+			fontSize: 5,
 			fill: 0x888888
-		}
+		},
+		resolution: TEXT_RESOLUTION,
 	});
 
-	// Graphics behind everything, text on top
-	stage.addChildAt(graphics, 0);
+	// Insert rope graphics behind sprites but above the habbo floor (if present).
+	// The habbo floor tile container sits at index 0 with label "isoRoom".
+	const floorIdx = stage.children.findIndex((c) => c.label === 'isoRoom');
+	stage.addChildAt(graphics, floorIdx >= 0 ? floorIdx + 1 : 0);
 	stage.addChild(text);
 
-	ropes.set(relationshipId, { graphics, label: text });
+	ropes.set(relationshipId, { graphics, label: text, flowPhase: 0 });
 }
 
 /**
- * Redraw the rope as a quadratic bezier with sag proportional to distance.
+ * Redraw the rope as a cable with animated directional flow particles.
+ *
+ * @param dt          Elapsed ms since last frame — used to advance the flow animation.
+ * @param flowDirection  1 = particles travel from→to, -1 = to→from.
  */
 export function updateRope(
 	relationshipId: string,
@@ -117,12 +157,19 @@ export function updateRope(
 	toX: number,
 	toY: number,
 	label: string,
-	isActive: boolean = false
+	isActive: boolean = false,
+	dt: number = 0,
+	flowDirection: 1 | -1 = 1
 ): void {
 	const entry = ropes.get(relationshipId);
 	if (!entry) return;
 
 	const { graphics, label: text } = entry;
+
+	// Advance flow phase when active
+	if (isActive && dt > 0) {
+		entry.flowPhase = (entry.flowPhase + dt * FLOW_SPEED) % 1;
+	}
 
 	const dx = toX - fromX;
 	const dy = toY - fromY;
@@ -131,40 +178,64 @@ export function updateRope(
 	// Sag proportional to distance
 	const sag = Math.min(dist * 0.15, 40);
 
-	// Midpoint
+	// Midpoint + control point (sag downward)
 	const midX = (fromX + toX) / 2;
 	const midY = (fromY + toY) / 2;
-
-	// Control point: midpoint offset downward by sag
 	const cpX = midX;
 	const cpY = midY + sag;
 
-	const color = labelToColor(label);
-	const alpha = isActive ? 0.9 : 0.4;
-	const width = isActive ? 3 : 1.5;
+	const color = labelToColor(label || relationshipId);
 
 	graphics.clear();
 
-	// When active, draw a wider glow stroke first
 	if (isActive) {
+		// Outer glow
 		graphics
 			.moveTo(fromX, fromY)
 			.quadraticCurveTo(cpX, cpY, toX, toY)
-			.stroke({ width: width + 4, color, alpha: 0.15 });
+			.stroke({ width: 16, color, alpha: 0.07 });
 	}
 
-	// Main stroke
+	// Cable body — dark jacket
 	graphics
 		.moveTo(fromX, fromY)
 		.quadraticCurveTo(cpX, cpY, toX, toY)
-		.stroke({ width, color, alpha });
+		.stroke({ width: 5, color: 0x0d0d1a, alpha: isActive ? 0.85 : 0.65 });
 
-	// Position label at curve midpoint (quadratic bezier at t=0.5)
-	const labelX = 0.25 * fromX + 0.5 * cpX + 0.25 * toX;
-	const labelY = 0.25 * fromY + 0.5 * cpY + 0.25 * toY;
-	text.x = labelX;
-	text.y = labelY;
-	text.text = label;
+	// Cable wire — colored core
+	graphics
+		.moveTo(fromX, fromY)
+		.quadraticCurveTo(cpX, cpY, toX, toY)
+		.stroke({ width: isActive ? 2.5 : 1.5, color, alpha: isActive ? 0.9 : 0.35 });
+
+	// Flowing particles when active
+	if (isActive) {
+		for (let i = 0; i < PARTICLE_COUNT; i++) {
+			let t = (entry.flowPhase + i / PARTICLE_COUNT) % 1;
+			if (flowDirection === -1) t = 1 - t;
+
+			// Fade: trailing particles dimmer, leading brighter
+			// For dir=1: particle i=PARTICLE_COUNT-1 is leading (largest base t before wrap)
+			// For dir=-1: particle i=0 is leading (inverted)
+			const leadIndex = flowDirection === 1 ? PARTICLE_COUNT - 1 : 0;
+			const distFromLead = Math.abs(i - leadIndex);
+			const alpha = 0.95 - distFromLead * 0.18;
+
+			const { x: px, y: py } = bezierPoint(t, fromX, fromY, cpX, cpY, toX, toY);
+			graphics.circle(px, py, 3).fill({ color: 0xffffff, alpha });
+		}
+	}
+
+	// Label text (only for named ropes)
+	if (label) {
+		const labelX = 0.25 * fromX + 0.5 * cpX + 0.25 * toX;
+		const labelY = 0.25 * fromY + 0.5 * cpY + 0.25 * toY;
+		text.x = labelX;
+		text.y = labelY;
+		text.text = label;
+	} else {
+		text.text = '';
+	}
 }
 
 /**

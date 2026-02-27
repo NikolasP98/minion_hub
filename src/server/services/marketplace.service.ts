@@ -1,4 +1,4 @@
-import { eq, and, like, sql } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { marketplaceAgents, marketplaceInstalls } from '$server/db/schema';
 import { newId, nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';

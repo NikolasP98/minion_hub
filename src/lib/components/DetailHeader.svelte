@@ -2,6 +2,7 @@
   import { gw } from '$lib/state/gateway-data.svelte';
   import { ui } from '$lib/state/ui.svelte';
   import HudBorder from '$lib/components/decorations/HudBorder.svelte';
+  import { diceBearAvatarUrl } from '$lib/utils/avatar';
   import type { Agent } from '$lib/types/gateway';
 
   let { agentId, agent }: { agentId: string; agent: Agent } = $props();
@@ -29,7 +30,18 @@
 </script>
 
 <HudBorder class="shrink-0 px-5 py-3.5 border-b border-border bg-bg2 flex items-center gap-3 flex-wrap">
-  <span class="text-[17px] font-bold text-foreground">{agent.emoji ?? '🤖'} {agent.name ?? agentId}</span>
+  <span class="text-[17px] font-bold text-foreground flex items-center gap-2">
+    {#if agent.emoji}
+      <span>{agent.emoji}</span>
+    {:else}
+      <img
+        src={diceBearAvatarUrl(agent.name ?? agentId)}
+        alt=""
+        class="w-7 h-7 rounded-full inline-block shrink-0"
+      />
+    {/if}
+    {agent.name ?? agentId}
+  </span>
   <div class="flex gap-1.5 items-center ml-auto">
     {#if runningCount > 0}
       <span class="px-2.5 py-0.5 rounded-xl text-[11px] font-semibold bg-success/12 text-status-running border border-success/25">

@@ -6,6 +6,7 @@
     toggleGlobalSkill,
   } from '$lib/state/agent-skills.svelte';
   import ToggleSwitch from './config/ToggleSwitch.svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let { agentId }: { agentId: string } = $props();
 
@@ -59,7 +60,7 @@
   <!-- Header / Filter Toggle -->
   <div class="flex items-center justify-between px-3 py-2 border-b border-border">
     <span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-      Skills
+      {m.skills_title()}
     </span>
     <div class="flex items-center gap-2">
       <button
@@ -69,7 +70,7 @@
           : 'bg-bg3 text-muted-foreground border-border hover:border-accent/50'}"
         onclick={switchToAll}
       >
-        All eligible
+        {m.skills_allEligible()}
       </button>
       <button
         class="text-[10px] px-2 py-0.5 rounded-full border transition-colors
@@ -78,7 +79,7 @@
           : 'bg-bg3 text-muted-foreground border-border hover:border-accent/50'}"
         onclick={switchToCustom}
       >
-        Custom
+        {m.skills_custom()}
       </button>
     </div>
   </div>
@@ -89,14 +90,14 @@
       <div
         class="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin"
       ></div>
-      <span class="ml-2 text-[11px] text-muted-foreground">Loading skills...</span>
+      <span class="ml-2 text-[11px] text-muted-foreground">{m.skills_loading()}</span>
     </div>
   {:else if agentSkillsState.error}
     <div class="px-3 py-4 text-[11px] text-red-400">
       {agentSkillsState.error}
     </div>
   {:else if agentSkillsState.skills.length === 0}
-    <div class="px-3 py-4 text-[11px] text-muted-foreground">No skills available.</div>
+    <div class="px-3 py-4 text-[11px] text-muted-foreground">{m.skills_noSkills()}</div>
   {:else}
     <div class="max-h-[360px] overflow-y-auto">
       {#each agentSkillsState.skills as skill (skill.skillKey)}

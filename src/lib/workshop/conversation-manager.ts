@@ -51,8 +51,9 @@ export function canStartConversation(type: 'task' | 'banter'): boolean {
 		return activeCount < max;
 	}
 
-	// banter
+	// banter — also blocked by the master agentChatsEnabled switch
 	return (
+		workshopState.settings.agentChatsEnabled &&
 		workshopState.settings.idleBanterEnabled &&
 		checkBanterBudget() &&
 		activeCount < max
@@ -80,10 +81,11 @@ export function startConversation(
 		if (lastEnd && Date.now() - lastEnd < workshopState.settings.banterCooldown) return null;
 	}
 
-	// Remove older completed conversations for the same agent pair to prevent duplicates
+	// Remove older completed conversations for the same agent pair to prevent duplicates.
+	// Exclude 'interrupted' conversations — they are pending resume and must not be deleted.
 	const pairKey = [...participantAgentIds].sort().join(':');
 	for (const [oldId, oldConv] of Object.entries(workshopState.conversations)) {
-		if (oldConv.status !== 'active') {
+		if (oldConv.status !== 'active' && oldConv.status !== 'interrupted') {
 			const oldPairKey = [...oldConv.participantAgentIds].sort().join(':');
 			if (oldPairKey === pairKey) {
 				delete workshopState.conversations[oldId];

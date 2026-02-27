@@ -13,4 +13,5 @@ export const ui = $state({
   overlayConfirmDeleteId: null as string | null,
   agentAddOpen: false,
   agentSettingsOpen: false,
+  sidebarCollapsed: false,
 });

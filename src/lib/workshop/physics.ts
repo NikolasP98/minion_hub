@@ -13,7 +13,19 @@ const joints = new Map<string, RAPIER.ImpulseJoint>();
  */
 export async function initPhysics(): Promise<void> {
 	if (initialized) return;
-	await (RAPIER.init as (opts?: Record<string, unknown>) => Promise<void>)({});
+	// Suppress internal rapier2d-compat warning: its init wrapper passes decoded
+	// WASM bytes directly to __wbg_init which triggers its own deprecation warning.
+	// This is a known issue in @dimforge/rapier2d-compat@0.19.x with no upstream fix.
+	const origWarn = console.warn;
+	console.warn = (...args: unknown[]) => {
+		if (typeof args[0] === 'string' && args[0].includes('deprecated parameters')) return;
+		origWarn.apply(console, args);
+	};
+	try {
+		await RAPIER.init();
+	} finally {
+		console.warn = origWarn;
+	}
 	world = new RAPIER.World({ x: 0.0, y: 0.0 });
 	initialized = true;
 }
@@ -105,6 +117,39 @@ export function getAgentPosition(instanceId: string): { x: number; y: number } |
 	const t = body.translation();
 	return { x: t.x, y: t.y };
 }
+
+// ---------------------------------------------------------------------------
+// Element body operations
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a kinematic position-based rigid body with a cuboid collider
+ * for a workshop element (pinboard, message board, inbox).
+ */
+export function addElementBody(instanceId: string, x: number, y: number, halfW = 50, halfH = 40): void {
+	const w = ensureWorld();
+
+	if (bodies.has(instanceId)) return;
+
+	const bodyDesc = RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(x, y);
+	const body = w.createRigidBody(bodyDesc);
+
+	const colliderDesc = RAPIER.ColliderDesc.cuboid(halfW, halfH).setRestitution(0.1);
+	const collider = w.createCollider(colliderDesc, body);
+
+	bodies.set(instanceId, body);
+	colliders.set(instanceId, collider);
+}
+
+/**
+ * Remove an element body (reuses removeAgentBody — same maps).
+ */
+export const removeElementBody = removeAgentBody;
+
+/**
+ * Set position of an element body (reuses setAgentPosition — same maps).
+ */
+export const setElementPosition = setAgentPosition;
 
 // ---------------------------------------------------------------------------
 // Spring joints

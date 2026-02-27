@@ -33,8 +33,7 @@
     <span>{label}</span>
     <span class="text-[10px] font-normal opacity-65">{tasks.length}</span>
   </div>
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="p-1.5 min-h-[50px] max-h-[190px] overflow-y-auto [scrollbar-width:thin] [scrollbar-color:var(--color-border)_transparent]" ondragover={handleDragOver} ondrop={handleDrop}>
+  <div role="list" class="p-1.5 min-h-[50px] max-h-[190px] overflow-y-auto [scrollbar-width:thin] [scrollbar-color:var(--color-border)_transparent]" ondragover={handleDragOver} ondrop={handleDrop}>
     {#if tasks.length === 0}
       <div class="text-muted-foreground text-[10px] text-center px-1 py-[10px] opacity-50">—</div>
     {:else}
