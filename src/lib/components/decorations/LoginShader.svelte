@@ -101,19 +101,6 @@
         return v;
       }
 
-      // ── Domain warp (two-level, Inigo Quilez) ──────────────────────────
-      vec2 domainWarp(vec2 p, float t) {
-        vec2 q = vec2(
-          fbm(p + vec2(0.0, 0.0) + 0.10 * t),
-          fbm(p + vec2(5.2, 1.3) + 0.10 * t)
-        );
-        vec2 r = vec2(
-          fbm(p + 1.5 * q + vec2(1.7, 9.2) + 0.13 * t),
-          fbm(p + 1.5 * q + vec2(8.3, 2.8) + 0.13 * t)
-        );
-        return p + 2.2 * r;
-      }
-
       // ── Mouse vortex ───────────────────────────────────────────────────
       vec2 mouseVortex(vec2 px, vec2 mousePx) {
         vec2 delta = px - mousePx;
@@ -175,25 +162,26 @@
       void main() {
         vec2 px = v_uv * u_resolution;
 
-        // Mouse vortex in pixel space
+        // ── Sparse random pop-distortions ──────────────────────────────
+        // Slow noise mask selects ~20% of the grid to distort at any time
+        vec2 normP = px / max(u_resolution.x, u_resolution.y) * 3.0;
+        float mask = fbm(normP * 0.8 + vec2(u_time * 0.04, u_time * 0.03));
+        float popMask = smoothstep(0.52, 0.72, mask);
+
+        // Small per-location warp direction (stays within ~0.6 tiles)
+        vec2 warpDir = vec2(
+          noise(normP + vec2(0.0, u_time * 0.07)) * 2.0 - 1.0,
+          noise(normP + vec2(4.1, u_time * 0.07)) * 2.0 - 1.0
+        );
+        vec2 samplePx = px + warpDir * u_tile_size * 0.6 * popMask;
+
+        // ── Mouse vortex (primary interaction) ─────────────────────────
         vec2 mousePx = u_mouse * u_resolution;
-        vec2 vortexPx = mouseVortex(px, mousePx);
+        vec2 finalPx = mouseVortex(samplePx, mousePx);
 
-        // Domain warp in normalised space (resolution-independent)
-        vec2 normP = vortexPx / max(u_resolution.x, u_resolution.y) * 4.0;
-        vec2 warpedNorm = domainWarp(normP, u_time);
+        float v = pattern(finalPx);
 
-        // Map back to pixel space for pattern sampling
-        vec2 warpedPx = warpedNorm / 4.0 * max(u_resolution.x, u_resolution.y);
-
-        float v = pattern(warpedPx);
-
-        // Subtle hue drift over time
-        float hShift = sin(u_time * 0.15) * 0.15;
-        vec3 col = u_accent + vec3(hShift, -hShift * 0.5, hShift * 0.3);
-        col = clamp(col, 0.0, 1.0);
-
-        gl_FragColor = vec4(col, v * u_opacity * 2.5);
+        gl_FragColor = vec4(u_accent, v * u_opacity);
       }
     `;
 
@@ -245,8 +233,8 @@
     }
 
     function draw() {
-      mx += (mouseX - mx) * 0.06;
-      my += (mouseY - my) * 0.06;
+      mx += (mouseX - mx) * 0.04;
+      my += (mouseY - my) * 0.04;
 
       const t = performance.now() / 1000;
 
@@ -257,7 +245,7 @@
       ctx.uniform1f(uTime,  t);
       ctx.uniform2f(uMouse, mx, my);
       ctx.uniform1f(uTile,  bgPattern.size);
-      ctx.uniform1f(uOpac,  (bgPattern.opacity / 100) * 2.5);
+      ctx.uniform1f(uOpac,  bgPattern.opacity / 100);
       ctx.uniform3f(uAccent, accentColor[0], accentColor[1], accentColor[2]);
       ctx.uniform1i(uPat,   PATTERN_MAP[bgPattern.pattern] ?? 0);
 
