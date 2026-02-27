@@ -12,12 +12,13 @@ vi.mock('$server/db/utils', () => ({
   nowMs: () => 1_700_000_000_000,
 }));
 
+const mockSignUpEmail = vi.fn().mockResolvedValue({ user: { id: 'auth-user-id-001' } });
 vi.mock('$lib/auth', () => ({
-  auth: {
+  getAuth: () => ({
     api: {
-      signUpEmail: vi.fn().mockResolvedValue({ user: { id: 'auth-user-id-001' } }),
+      signUpEmail: mockSignUpEmail,
     },
-  },
+  }),
 }));
 
 describe('listUsers', () => {
@@ -34,13 +35,12 @@ describe('listUsers', () => {
 
 describe('createContactUser', () => {
   it('calls auth.api.signUpEmail and inserts member', async () => {
-    const { auth } = await import('$lib/auth');
     const { db } = createMockDb();
     const id = await createContactUser(
       { db, tenantId: 't1' },
       { email: 'new@test.com', password: 'secret123' },
     );
-    expect(auth.api.signUpEmail).toHaveBeenCalledTimes(1);
+    expect(mockSignUpEmail).toHaveBeenCalledTimes(1);
     expect(id).toBe('auth-user-id-001');
     expect(db.insert).toHaveBeenCalledTimes(1);
     expect(db.insert).toHaveBeenCalledWith(member);
