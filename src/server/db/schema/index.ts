@@ -1,5 +1,5 @@
 // Better Auth tables (replaces tenants, users, userTenants, authSessions)
-export { user, session, account, verification, organization, member, invitation } from './auth';
+export { user, session, account, verification, jwks, organization, member, invitation } from './auth';
 export { servers } from './servers';
 export { agents } from './agents';
 export { skills } from './skills';
