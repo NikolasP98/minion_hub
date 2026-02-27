@@ -93,3 +93,10 @@ const appHandle: Handle = async ({ event, resolve }) => {
 };
 
 export const handle = sequence(i18n.handle(), appHandle);
+
+import type { HandleServerError } from '@sveltejs/kit';
+
+export const handleError: HandleServerError = ({ error, event }) => {
+  console.error(`[handleError] ${event.request.method} ${event.url.pathname}`, error);
+  return { message: 'Internal Error' };
+};
