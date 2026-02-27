@@ -40,6 +40,18 @@ export async function loadUser() {
         displayName: u.name ?? null,
       };
       state.orgId = (session.data.session as { activeOrganizationId?: string | null }).activeOrganizationId ?? null;
+
+      // Auto-activate first org if session exists but no activeOrganizationId
+      if (!state.orgId) {
+        try {
+          const orgs = await authClient.organization.list();
+          const firstOrg = orgs.data?.[0];
+          if (firstOrg) {
+            await authClient.organization.setActive({ organizationId: firstOrg.id });
+            state.orgId = firstOrg.id;
+          }
+        } catch { /* non-fatal */ }
+      }
     } else {
       state.user = null;
       state.orgId = null;

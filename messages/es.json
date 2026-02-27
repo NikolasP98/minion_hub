@@ -462,5 +462,15 @@
   "rulebook_agentChatsDesc": "Permitir que los agentes conversen entre sí",
   "rulebook_crossWorkspaceChats": "Chats entre espacios",
   "rulebook_crossWorkspaceChatsDesc": "Cuando está desactivado, las conversaciones están aisladas en este espacio",
-  "rulebook_placeholder": "Escribe instrucciones permanentes para todos los agentes…"
+  "rulebook_placeholder": "Escribe instrucciones permanentes para todos los agentes…",
+  "login_title": "Autenticación requerida",
+  "login_subtitle": "Inicia sesión en tu espacio de trabajo",
+  "login_emailLabel": "Correo electrónico",
+  "login_passwordLabel": "Contraseña",
+  "login_submit": "Iniciar sesión →",
+  "login_signingIn": "Iniciando sesión…",
+  "login_invalidCredentials": "Correo o contraseña incorrectos",
+  "login_footer": "Acceso restringido a usuarios autorizados",
+  "profile_settings": "Configuración de perfil",
+  "profile_logout": "Cerrar sesión"
 }

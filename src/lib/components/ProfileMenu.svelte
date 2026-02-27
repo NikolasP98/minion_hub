@@ -61,7 +61,7 @@
           class="flex items-center gap-2.5 px-3.5 py-2 text-sm text-muted hover:text-foreground hover:bg-bg3 transition-colors duration-100 no-underline"
         >
           <Settings size={14} />
-          Profile settings
+          {m.profile_settings()}
         </a>
         <button
           onclick={locale.toggle}
@@ -76,7 +76,7 @@
           class="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-muted hover:text-red-400 hover:bg-bg3 transition-colors duration-100"
         >
           <LogOut size={14} />
-          Log out
+          {m.profile_logout()}
         </button>
       </div>
     </div>

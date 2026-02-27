@@ -462,5 +462,15 @@
   "rulebook_agentChatsDesc": "Allow agents to converse with each other",
   "rulebook_crossWorkspaceChats": "Cross-Workspace Chats",
   "rulebook_crossWorkspaceChatsDesc": "When off, conversations are fully isolated to this workspace",
-  "rulebook_placeholder": "Write standing instructions for all agents…"
+  "rulebook_placeholder": "Write standing instructions for all agents…",
+  "login_title": "Authentication Required",
+  "login_subtitle": "Sign in to your workspace",
+  "login_emailLabel": "Email",
+  "login_passwordLabel": "Password",
+  "login_submit": "Sign In →",
+  "login_signingIn": "Signing in…",
+  "login_invalidCredentials": "Invalid email or password",
+  "login_footer": "Access restricted to authorized users",
+  "profile_settings": "Profile settings",
+  "profile_logout": "Log out"
 }
