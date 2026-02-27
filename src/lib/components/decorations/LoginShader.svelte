@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { bgPattern } from '$lib/state/bg-pattern.svelte';
 
   let canvas = $state<HTMLCanvasElement | null>(null);
 
@@ -249,10 +250,10 @@
       ctx.uniform2f(uRes,   W, H);
       ctx.uniform1f(uTime,  t);
       ctx.uniform2f(uMouse, mx, my);
-      ctx.uniform1f(uTile,  18);
-      ctx.uniform1f(uOpac,  0.08);
+      ctx.uniform1f(uTile,  bgPattern.size);
+      ctx.uniform1f(uOpac,  (bgPattern.opacity / 100) * 2.5);
       ctx.uniform3f(uAccent, accent[0], accent[1], accent[2]);
-      ctx.uniform1i(uPat,   PATTERN_MAP['dots'] ?? 0);
+      ctx.uniform1i(uPat,   PATTERN_MAP[bgPattern.pattern] ?? 0);
 
       ctx.drawArrays(ctx.TRIANGLES, 0, 6);
       raf = requestAnimationFrame(draw);
