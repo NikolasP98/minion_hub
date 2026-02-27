@@ -467,29 +467,6 @@
         color: var(--color-muted);
     }
 
-    .results-count strong {
-        color: var(--color-foreground);
-        font-weight: 600;
-    }
-
-    .category-tag {
-        display: inline-flex;
-        align-items: center;
-        padding: 2px 8px;
-        background: color-mix(
-            in srgb,
-            var(--color-brand-pink) 10%,
-            transparent
-        );
-        border: 1px solid
-            color-mix(in srgb, var(--color-brand-pink) 20%, transparent);
-        border-radius: 12px;
-        color: var(--color-brand-pink);
-        font-size: 11px;
-        font-weight: 600;
-        text-transform: capitalize;
-    }
-
     .toolbar-controls {
         display: flex;
         align-items: center;
