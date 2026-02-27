@@ -3,7 +3,6 @@
     import { agentChat } from "$lib/state/chat.svelte";
     import { sendChatMsg } from "$lib/services/gateway.svelte";
     import { conn } from "$lib/state/connection.svelte";
-    import { extractText } from "$lib/utils/text";
     import { tick } from "svelte";
     import * as m from "$lib/paraglide/messages";
 
@@ -111,7 +110,7 @@
         <textarea
             class="flex-1 bg-bg3 border border-border rounded-md text-foreground px-3 py-1.75 font-mono text-xs outline-none resize-none min-h-8 max-h-20 field-sizing-content focus:border-accent"
             placeholder={readonly
-                ? "Viewing session \u2014 switch to main to chat"
+                ? m.chat_viewingSession()
                 : conn.connected
                   ? m.chat_placeholderGeneric()
                   : m.conn_notConnected()}

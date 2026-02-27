@@ -59,11 +59,11 @@
     function addBinding() {
         addError = null;
         if (!addAgentId.trim()) {
-            addError = "Agent ID is required";
+            addError = m.bindings_agentIdRequired();
             return;
         }
         if (!addPeerId.trim()) {
-            addError = "Peer ID is required";
+            addError = m.bindings_peerIdRequired();
             return;
         }
         const next: BindingEntry[] = [
@@ -186,13 +186,13 @@
                     <input
                         class="bg-bg2 border border-border rounded-md text-foreground px-2.5 py-1.5 text-xs font-[inherit] outline-none focus:border-accent placeholder:text-muted"
                         type="text"
-                        placeholder="Agent ID *"
+                        placeholder={m.bindings_agentIdPlaceholder()}
                         bind:value={addAgentId}
                     />
                     <input
                         class="bg-bg2 border border-border rounded-md text-foreground px-2.5 py-1.5 text-xs font-[inherit] outline-none focus:border-accent placeholder:text-muted"
                         type="text"
-                        placeholder="Peer ID (phone / group ID) *"
+                        placeholder={m.bindings_peerIdPlaceholder()}
                         bind:value={addPeerId}
                     />
                     <select
