@@ -104,12 +104,12 @@
       // ── Domain warp (two-level, Inigo Quilez) ──────────────────────────
       vec2 domainWarp(vec2 p, float t) {
         vec2 q = vec2(
-          fbm(p + vec2(0.0, 0.0) + 0.10 * t),
-          fbm(p + vec2(5.2, 1.3) + 0.10 * t)
+          fbm(p + vec2(0.0, 0.0) + 0.02 * t),
+          fbm(p + vec2(5.2, 1.3) + 0.02 * t)
         );
         vec2 r = vec2(
-          fbm(p + 1.5 * q + vec2(1.7, 9.2) + 0.13 * t),
-          fbm(p + 1.5 * q + vec2(8.3, 2.8) + 0.13 * t)
+          fbm(p + 1.5 * q + vec2(1.7, 9.2) + 0.025 * t),
+          fbm(p + 1.5 * q + vec2(8.3, 2.8) + 0.025 * t)
         );
         return p + 2.2 * r;
       }
@@ -122,13 +122,13 @@
         float falloff = smoothstep(radius, 0.0, dist);
 
         // Rotation angle pulses over time and varies with distance
-        float angle = falloff * 0.5 * sin(t * 1.5 + dist * 0.012);
+        float angle = falloff * 0.5 * sin(t * 0.4 + dist * 0.012);
         float s = sin(angle), c = cos(angle);
         vec2 rotated = vec2(c * delta.x - s * delta.y, s * delta.x + c * delta.y);
 
         // Ripple rings expanding outward from cursor
         vec2 dir = delta / (dist + 0.001);
-        float ripple = sin(dist * 0.055 - t * 3.5) * falloff * 7.0;
+        float ripple = sin(dist * 0.055 - t * 0.8) * falloff * 7.0;
 
         return rotated + dir * ripple + mousePx;
       }
