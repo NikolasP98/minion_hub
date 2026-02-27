@@ -477,6 +477,14 @@ function onHelloOk(hello: HelloOk) {
   setTimeout(startPolling, 3000);
 }
 
+export async function fetchSessionPromptReport(sessionKey: string) {
+  return sendRequest('sessions.usage', {
+    key: sessionKey,
+    includeContextWeight: true,
+    limit: 1,
+  });
+}
+
 export function loadChatHistory(agentId: string) {
   const chat = ensureAgentChat(agentId);
   chat.loading = true;
