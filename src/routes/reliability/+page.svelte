@@ -8,6 +8,7 @@
 	import GatewayHealthPanel from '$lib/components/reliability/GatewayHealthPanel.svelte';
 	import ScanLine from '$lib/components/decorations/ScanLine.svelte';
 	import DotMatrix from '$lib/components/decorations/DotMatrix.svelte';
+	import Topbar from '$lib/components/Topbar.svelte';
 	import {
 		reliability,
 		loadReliabilitySummary,
@@ -290,21 +291,9 @@
 </script>
 
 <div class="relative z-10 flex flex-col h-screen text-foreground">
+	<Topbar />
 	<header class="sticky top-0 z-10 flex items-center justify-between py-3 px-6 bg-bg2 border-b border-border shrink-0 max-sm:flex-col max-sm:gap-3 max-sm:items-start">
-		<div class="flex items-center gap-3">
-			<a href="/" class="flex items-center justify-center w-8 h-8 rounded-lg text-muted no-underline transition-colors duration-150 hover:bg-bg3 hover:text-foreground" aria-label="Back to home">
-				<svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-					<path
-						d="M12.5 15L7.5 10L12.5 5"
-						stroke="currentColor"
-						stroke-width="1.5"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-					/>
-				</svg>
-			</a>
-			<h1 class="text-base font-semibold tracking-tight">{m.reliability_title()}</h1>
-		</div>
+		<h1 class="text-base font-semibold tracking-tight">{m.reliability_title()}</h1>
 		<div class="flex items-center">
 			<DateRangePicker
 				from={reliability.dateRange.from}

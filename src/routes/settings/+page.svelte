@@ -3,6 +3,7 @@
     import { logoState } from "$lib/state/logo.svelte";
     import PatternSettings from "$lib/components/settings/PatternSettings.svelte";
     import MinionLogo from "$lib/components/MinionLogo.svelte";
+    import Topbar from "$lib/components/Topbar.svelte";
     import { Check } from "lucide-svelte";
     import * as m from "$lib/paraglide/messages";
 </script>
@@ -10,23 +11,7 @@
 <div
     class="relative z-10 flex flex-col h-screen overflow-hidden text-foreground"
 >
-    <!-- Header -->
-    <header
-        class="shrink-0 bg-bg/95 backdrop-blur-sm border-b border-border px-4.5 py-2.5 flex items-center"
-    >
-        <a
-            href="/"
-            class="text-xs text-muted no-underline px-3 py-1 rounded-full border border-border transition-all duration-150 hover:bg-bg3 hover:text-foreground"
-        >
-            {m.settings_back()}
-        </a>
-        <span
-            class="ml-auto mr-auto font-bold text-sm text-foreground tracking-wide uppercase"
-            >{m.settings_title()}</span
-        >
-        <!-- Right spacer to keep title centered -->
-        <div class="invisible text-xs px-3 py-1">{m.settings_back()}</div>
-    </header>
+    <Topbar />
 
     <!-- Content -->
     <div class="flex-1 overflow-y-auto p-6 md:p-10">

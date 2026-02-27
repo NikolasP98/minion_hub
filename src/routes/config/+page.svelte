@@ -5,6 +5,7 @@
   import ConfigSidebar from '$lib/components/config/ConfigSidebar.svelte';
   import ConfigSection from '$lib/components/config/ConfigSection.svelte';
   import ConfigSaveBar from '$lib/components/config/ConfigSaveBar.svelte';
+  import Topbar from '$lib/components/Topbar.svelte';
   import * as m from '$lib/paraglide/messages';
 
   let contentEl = $state<HTMLElement | null>(null);
@@ -83,17 +84,7 @@
 </script>
 
 <div class="relative z-10 flex flex-col h-screen overflow-hidden text-foreground">
-  <!-- Header -->
-  <header class="shrink-0 bg-bg/95 backdrop-blur-sm border-b border-border px-4.5 py-2.5 flex items-center">
-    <a
-      href="/"
-      class="text-xs text-muted no-underline px-3 py-1 rounded-full border border-border transition-all duration-150 hover:bg-bg3 hover:text-foreground"
-    >
-      {m.common_back()}
-    </a>
-    <span class="ml-auto mr-auto font-bold text-sm text-foreground tracking-wide uppercase">{m.config_fullTitle()}</span>
-    <div class="invisible text-xs px-3 py-1">{m.common_back()}</div>
-  </header>
+  <Topbar />
 
   <!-- Body -->
   {#if !conn.connected}

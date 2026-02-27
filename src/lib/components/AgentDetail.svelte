@@ -7,6 +7,7 @@
   import AgentSettingsPanel from './AgentSettingsPanel.svelte';
   import SessionMonitor from './SessionMonitor.svelte';
   import AgentFiles from './AgentFiles.svelte';
+  import AgentKnowledgeGraph from './AgentKnowledgeGraph.svelte';
   import AgentPromptSimulator from './AgentPromptSimulator.svelte';
   import { ui } from '$lib/state/ui.svelte';
   import { gw } from '$lib/state/gateway-data.svelte';
@@ -15,12 +16,6 @@
 
   let { agentId, agent }: { agentId: string; agent: Agent } = $props();
 
-  let activeTab = $state<'chat' | 'monitor' | 'files' | 'prompt'>('chat');
-
-  $effect(() => {
-    agentId; // track agentId changes
-    activeTab = 'chat';
-  });
   const mainSessionKey = $derived(`agent:${agentId}:main`);
   const isMainSession = $derived(ui.selectedSessionKey === mainSessionKey);
 
@@ -52,58 +47,70 @@
     <button
       type="button"
       class="px-4 py-2 text-[11px] font-semibold border-b-2 transition-colors cursor-pointer
-        {activeTab === 'chat'
+        {ui.activeAgentTab === 'chat'
         ? 'border-accent text-accent'
         : 'border-transparent text-muted hover:text-foreground'}"
-      onclick={() => (activeTab = 'chat')}
+      onclick={() => (ui.activeAgentTab = 'chat')}
     >
       Chat
     </button>
     <button
       type="button"
       class="px-4 py-2 text-[11px] font-semibold border-b-2 transition-colors cursor-pointer
-        {activeTab === 'monitor'
+        {ui.activeAgentTab === 'monitor'
         ? 'border-accent text-accent'
         : 'border-transparent text-muted hover:text-foreground'}"
-      onclick={() => (activeTab = 'monitor')}
+      onclick={() => (ui.activeAgentTab = 'monitor')}
     >
       Monitor
     </button>
     <button
       type="button"
       class="px-4 py-2 text-[11px] font-semibold border-b-2 transition-colors cursor-pointer
-        {activeTab === 'files'
+        {ui.activeAgentTab === 'files'
         ? 'border-accent text-accent'
         : 'border-transparent text-muted hover:text-foreground'}"
-      onclick={() => (activeTab = 'files')}
+      onclick={() => (ui.activeAgentTab = 'files')}
     >
       Files
     </button>
     <button
       type="button"
       class="px-4 py-2 text-[11px] font-semibold border-b-2 transition-colors cursor-pointer
-        {activeTab === 'prompt'
+        {ui.activeAgentTab === 'prompt'
         ? 'border-accent text-accent'
         : 'border-transparent text-muted hover:text-foreground'}"
-      onclick={() => (activeTab = 'prompt')}
+      onclick={() => (ui.activeAgentTab = 'prompt')}
     >
       Prompt
+    </button>
+    <button
+      type="button"
+      class="px-4 py-2 text-[11px] font-semibold border-b-2 transition-colors cursor-pointer
+        {ui.activeAgentTab === 'graph'
+        ? 'border-accent text-accent'
+        : 'border-transparent text-muted hover:text-foreground'}"
+      onclick={() => (ui.activeAgentTab = 'graph')}
+    >
+      Graph
     </button>
   </div>
 
   <!-- Main content: chat or monitor -->
   <div class="flex-1 min-h-0 flex flex-col overflow-hidden">
-    {#if activeTab === 'monitor'}
+    {#if ui.activeAgentTab === 'monitor'}
       <SessionKanban sessionKey={ui.selectedSessionKey} serverId={ui.selectedServerId} />
       <SessionMonitor
         {agentId}
         sessionKey={ui.selectedSessionKey}
         serverId={ui.selectedServerId}
       />
-    {:else if activeTab === 'files'}
+    {:else if ui.activeAgentTab === 'files'}
       <AgentFiles {agentId} />
-    {:else if activeTab === 'prompt'}
+    {:else if ui.activeAgentTab === 'prompt'}
       <AgentPromptSimulator {agentId} sessionKey={mainSessionKey} />
+    {:else if ui.activeAgentTab === 'graph'}
+      <AgentKnowledgeGraph {agentId} />
     {:else}
       {#if !isMainSession && ui.selectedSessionKey}
         <SessionViewer

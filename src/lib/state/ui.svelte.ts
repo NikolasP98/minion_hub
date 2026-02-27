@@ -1,6 +1,7 @@
 export const ui = $state({
   selectedAgentId: null as string | null,
   selectedSessionKey: null as string | null,
+  activeAgentTab: 'chat' as 'chat' | 'monitor' | 'files' | 'prompt' | 'graph',
   selectedMissionId: null as string | null,
   selectedServerId: null as string | null,
   sessionStatus: {} as Record<string, 'running' | 'thinking' | 'idle' | 'aborted'>,
