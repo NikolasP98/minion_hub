@@ -26,7 +26,7 @@
 
     window.addEventListener('resize', resize);
     resize();
-    draw();
+    raf = requestAnimationFrame(draw);
 
     return () => {
       cancelAnimationFrame(raf);
