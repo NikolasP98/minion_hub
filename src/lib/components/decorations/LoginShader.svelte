@@ -101,14 +101,23 @@
         return v;
       }
 
-      // ── Mouse vortex ───────────────────────────────────────────────────
-      vec2 mouseVortex(vec2 px, vec2 mousePx) {
+      // ── Mouse vortex (animated) ────────────────────────────────────────
+      vec2 mouseVortex(vec2 px, vec2 mousePx, float t) {
         vec2 delta = px - mousePx;
         float dist = length(delta);
         float radius = 280.0;
-        float strength = 0.4 * smoothstep(radius, 0.0, dist);
-        float s = sin(strength), c = cos(strength);
-        return vec2(c * delta.x - s * delta.y, s * delta.x + c * delta.y) + mousePx;
+        float falloff = smoothstep(radius, 0.0, dist);
+
+        // Rotation angle pulses over time and varies with distance
+        float angle = falloff * 0.5 * sin(t * 1.5 + dist * 0.012);
+        float s = sin(angle), c = cos(angle);
+        vec2 rotated = vec2(c * delta.x - s * delta.y, s * delta.x + c * delta.y);
+
+        // Ripple rings expanding outward from cursor
+        vec2 dir = delta / (dist + 0.001);
+        float ripple = sin(dist * 0.055 - t * 3.5) * falloff * 7.0;
+
+        return rotated + dir * ripple + mousePx;
       }
 
       float pat_dots(vec2 p, float size) {
@@ -177,7 +186,7 @@
 
         // ── Mouse vortex (primary interaction) ─────────────────────────
         vec2 mousePx = u_mouse * u_resolution;
-        vec2 finalPx = mouseVortex(samplePx, mousePx);
+        vec2 finalPx = mouseVortex(samplePx, mousePx, u_time);
 
         float v = pattern(finalPx);
 
