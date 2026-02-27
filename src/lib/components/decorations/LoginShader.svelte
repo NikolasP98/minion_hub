@@ -191,16 +191,15 @@
         vec2 warpedPx = warpedNorm / 4.0 * max(u_resolution.x, u_resolution.y);
 
         // ── Lens / magnifying glass ────────────────────────────────────
-        float lensRadius = 160.0;
+        float lensRadius = 240.0;
         float lensDist = length(px - mousePx);
-        // Smooth circular mask with fisheye falloff
+        // Soft gradient falloff — no hard edge
         float r_norm = clamp(lensDist / lensRadius, 0.0, 1.0);
-        float lensMask = smoothstep(1.0, 0.5, r_norm);
+        float lensMask = smoothstep(1.0, 0.0, r_norm * r_norm);
         // Spherical magnification: pull sample coords toward center
-        // r' = sin(r * pi/2) maps to a bulging sphere surface
         float r_fish = sin(r_norm * 1.5707963);
         vec2 lensDir = (lensDist > 0.001) ? (px - mousePx) / lensDist : vec2(0.0);
-        vec2 lensPx = mix(warpedPx, mousePx + lensDir * r_fish * lensRadius * 0.5, lensMask);
+        vec2 lensPx = mix(warpedPx, mousePx + lensDir * r_fish * lensRadius * 0.65, lensMask);
 
         // ── Mouse vortex on top ────────────────────────────────────────
         vec2 finalPx = mouseVortex(lensPx, mousePx, u_time);
@@ -208,14 +207,10 @@
         float v = pattern(finalPx);
 
         // Opacity: dim at rest, brightens inside lens
-        float mouseProx = smoothstep(320.0, 0.0, lensDist);
-        float opacityScale = mix(0.25, 1.2, mouseProx);
+        float mouseProx = smoothstep(360.0, 0.0, lensDist);
+        float opacityScale = mix(0.25, 0.7, mouseProx);
 
-        // Lens rim — thin bright ring at glass edge
-        float rim = smoothstep(lensRadius, lensRadius - 1.5, lensDist)
-                  * smoothstep(lensRadius - 7.0, lensRadius - 2.5, lensDist);
-
-        gl_FragColor = vec4(u_accent, v * u_opacity * opacityScale + rim * 0.18);
+        gl_FragColor = vec4(u_accent, v * u_opacity * opacityScale);
       }
     `;
 

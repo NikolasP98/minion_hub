@@ -73,6 +73,14 @@ export const verification = sqliteTable(
 	(t) => [index('idx_verification_identifier').on(t.identifier)],
 );
 
+// ── JWT plugin: jwks ─────────────────────────────────────────────────────────
+export const jwks = sqliteTable('jwks', {
+	id: text('id').primaryKey(),
+	publicKey: text('public_key').notNull(),
+	privateKey: text('private_key').notNull(),
+	createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+});
+
 // ── Organization plugin: organization ────────────────────────────────────────
 export const organization = sqliteTable('organization', {
 	id: text('id').primaryKey(),
