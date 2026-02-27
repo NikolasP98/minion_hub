@@ -12,6 +12,14 @@ vi.mock('$server/db/utils', () => ({
   nowMs: () => 1_700_000_000_000,
 }));
 
+vi.mock('$lib/auth', () => ({
+  auth: {
+    api: {
+      signUpEmail: vi.fn().mockResolvedValue({ user: { id: 'auth-user-id-001' } }),
+    },
+  },
+}));
+
 describe('listUsers', () => {
   it('calls db.select and returns results', async () => {
     const { db, resolve } = createMockDb();
@@ -25,24 +33,27 @@ describe('listUsers', () => {
 });
 
 describe('createContactUser', () => {
-  it('calls db.insert twice (user + member)', async () => {
+  it('calls auth.api.signUpEmail and inserts member', async () => {
+    const { auth } = await import('$lib/auth');
     const { db } = createMockDb();
     const id = await createContactUser(
       { db, tenantId: 't1' },
-      { email: 'new@test.com' },
+      { email: 'new@test.com', password: 'secret123' },
     );
-    expect(id).toBe('mock-user-id-000000001');
-    expect(db.insert).toHaveBeenCalledTimes(2);
+    expect(auth.api.signUpEmail).toHaveBeenCalledTimes(1);
+    expect(id).toBe('auth-user-id-001');
+    expect(db.insert).toHaveBeenCalledTimes(1);
+    expect(db.insert).toHaveBeenCalledWith(member);
   });
 
-  it('returns the generated user id', async () => {
+  it('returns the user id from Better Auth', async () => {
     const { db } = createMockDb();
     const id = await createContactUser(
       { db, tenantId: 't1' },
-      { email: 'x@y.com', displayName: 'X' },
+      { email: 'x@y.com', password: 'secret123', displayName: 'X' },
     );
     expect(typeof id).toBe('string');
-    expect(id).toBe('mock-user-id-000000001');
+    expect(id).toBe('auth-user-id-001');
   });
 });
 

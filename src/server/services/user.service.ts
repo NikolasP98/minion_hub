@@ -2,6 +2,7 @@ import { eq, and } from 'drizzle-orm';
 import { user, member } from '$server/db/schema';
 import { newId } from '$server/db/utils';
 import type { TenantContext } from './base';
+import { auth } from '$lib/auth';
 
 export async function listUsers(ctx: TenantContext) {
   return ctx.db
@@ -33,19 +34,19 @@ export async function getUser(ctx: TenantContext, userId: string) {
 
 export async function createContactUser(
   ctx: TenantContext,
-  data: { email: string; displayName?: string; password?: string; role?: 'owner' | 'admin' | 'member' | 'viewer' },
+  data: { email: string; displayName?: string; password: string; role?: 'owner' | 'admin' | 'member' | 'viewer' },
 ) {
-  const userId = newId();
-  const now = new Date();
-
-  await ctx.db.insert(user).values({
-    id: userId,
-    email: data.email,
-    name: data.displayName ?? data.email.split('@')[0],
-    emailVerified: false,
-    createdAt: now,
-    updatedAt: now,
+  // Use Better Auth API so password is properly hashed into the account table
+  const result = await auth.api.signUpEmail({
+    body: {
+      email: data.email,
+      password: data.password,
+      name: data.displayName ?? data.email.split('@')[0],
+    },
   });
+
+  const userId = result.user.id;
+  const now = new Date();
 
   await ctx.db.insert(member).values({
     id: newId(),
