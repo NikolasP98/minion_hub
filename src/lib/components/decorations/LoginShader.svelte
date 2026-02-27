@@ -183,23 +183,39 @@
 
       void main() {
         vec2 px = v_uv * u_resolution;
+        vec2 mousePx = u_mouse * u_resolution;
 
         // ── Global domain warp ─────────────────────────────────────────
         vec2 normP = px / max(u_resolution.x, u_resolution.y) * 4.0;
         vec2 warpedNorm = domainWarp(normP, u_time);
         vec2 warpedPx = warpedNorm / 4.0 * max(u_resolution.x, u_resolution.y);
 
+        // ── Lens / magnifying glass ────────────────────────────────────
+        float lensRadius = 160.0;
+        float lensDist = length(px - mousePx);
+        // Smooth circular mask with fisheye falloff
+        float r_norm = clamp(lensDist / lensRadius, 0.0, 1.0);
+        float lensMask = smoothstep(1.0, 0.5, r_norm);
+        // Spherical magnification: pull sample coords toward center
+        // r' = sin(r * pi/2) maps to a bulging sphere surface
+        float r_fish = sin(r_norm * 1.5707963);
+        vec2 lensDir = (lensDist > 0.001) ? (px - mousePx) / lensDist : vec2(0.0);
+        vec2 lensPx = mix(warpedPx, mousePx + lensDir * r_fish * lensRadius * 0.5, lensMask);
+
         // ── Mouse vortex on top ────────────────────────────────────────
-        vec2 mousePx = u_mouse * u_resolution;
-        vec2 finalPx = mouseVortex(warpedPx, mousePx, u_time);
+        vec2 finalPx = mouseVortex(lensPx, mousePx, u_time);
 
         float v = pattern(finalPx);
 
-        // Opacity: dim at rest, brightens near cursor
-        float mouseProx = smoothstep(320.0, 0.0, length(px - mousePx));
+        // Opacity: dim at rest, brightens inside lens
+        float mouseProx = smoothstep(320.0, 0.0, lensDist);
         float opacityScale = mix(0.25, 1.2, mouseProx);
 
-        gl_FragColor = vec4(u_accent, v * u_opacity * opacityScale);
+        // Lens rim — thin bright ring at glass edge
+        float rim = smoothstep(lensRadius, lensRadius - 1.5, lensDist)
+                  * smoothstep(lensRadius - 7.0, lensRadius - 2.5, lensDist);
+
+        gl_FragColor = vec4(u_accent, v * u_opacity * opacityScale + rim * 0.18);
       }
     `;
 
