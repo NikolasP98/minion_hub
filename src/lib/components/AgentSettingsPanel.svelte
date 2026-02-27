@@ -19,6 +19,7 @@
     import ConfigTooltip from "./config/ConfigTooltip.svelte";
     import AgentSkillsPanel from "./AgentSkillsPanel.svelte";
     import { SvelteSet } from "svelte/reactivity";
+    import * as m from "$lib/paraglide/messages";
 
     let { agentId }: { agentId: string } = $props();
 
@@ -155,7 +156,7 @@
     class="fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px] cursor-pointer"
     role="button"
     tabindex="-1"
-    aria-label="Close"
+    aria-label={m.common_close()}
     onclick={handleBackdropClick}
     onkeydown={(e) => e.key === "Escape" && close()}
 >
@@ -170,13 +171,13 @@
             class="shrink-0 flex items-center gap-3 px-4 py-3.5 border-b border-border"
         >
             <span class="text-sm font-bold text-foreground truncate flex-1">
-                Settings: {agentId}
+                {m.agent_settingsTitle({ agentId })}
             </span>
             <button
                 type="button"
                 class="bg-transparent border-none text-muted-foreground cursor-pointer text-lg leading-none p-1 transition-colors hover:text-foreground"
                 onclick={close}
-                aria-label="Close"
+                aria-label={m.common_close()}
             >
                 &times;
             </button>
@@ -190,7 +191,7 @@
                         class="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-3"
                     ></div>
                     <p class="text-muted-foreground text-xs">
-                        Loading configuration...
+                        {m.config_loading()}
                     </p>
                 </div>
             </div>
@@ -198,7 +199,7 @@
             <div class="flex-1 flex items-center justify-center px-4">
                 <div class="text-center">
                     <p class="text-destructive text-xs mb-2">
-                        Failed to load config
+                        {m.config_error()}
                     </p>
                     <p class="text-muted-foreground text-[11px] mb-3">
                         {configState.loadError}
@@ -208,16 +209,14 @@
                         class="bg-accent border-none rounded-[5px] text-white cursor-pointer font-[inherit] text-xs font-semibold py-1.25 px-3"
                         onclick={() => loadConfig()}
                     >
-                        Retry
+                        {m.common_retry()}
                     </button>
                 </div>
             </div>
         {:else if !hasContent}
             <div class="flex-1 flex items-center justify-center px-4">
                 <p class="text-muted-foreground text-xs text-center">
-                    No configuration loaded for <strong class="text-foreground"
-                        >{agentId}</strong
-                    >.
+                    {m.config_noConfigForAgent({ agentId })}
                 </p>
             </div>
         {:else}
@@ -230,9 +229,7 @@
                         <p
                             class="text-[11px] text-muted-foreground leading-relaxed m-0"
                         >
-                            Fields inherit from <strong class="text-foreground"
-                                >agents.defaults</strong
-                            > unless overridden here.
+                            {m.config_inheritsDefaults()}
                         </p>
                     </div>
                 {/if}
@@ -272,15 +269,12 @@
                                         >
                                         <span
                                             class="text-[10px] text-muted-foreground"
-                                            >{fields.length} field{fields.length ===
-                                            1
-                                                ? ""
-                                                : "s"}</span
+                                            >{fields.length === 1 ? m.config_fieldCount({ count: fields.length }) : m.config_fieldCountPlural({ count: fields.length })}</span
                                         >
                                         {#if overrideCount > 0}
                                             <span
                                                 class="text-[10px] text-accent"
-                                                >{overrideCount} set</span
+                                                >{m.config_overridesSet({ count: overrideCount })}</span
                                             >
                                         {/if}
                                     </span>
@@ -326,7 +320,7 @@
                                                         field.defaultValue,
                                                     )}"
                                                 >
-                                                    reset
+                                                    {m.common_reset()}
                                                 </button>
                                             {/if}
                                         </div>
@@ -345,7 +339,7 @@
                         <h3
                             class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider m-0"
                         >
-                            Bindings
+                            {m.config_bindingsSection()}
                         </h3>
                         {#each bindingEntries as [bindKey, bindVal] (bindKey)}
                             {@const bindPath = `bindings.${bindKey}`}
@@ -382,7 +376,7 @@
                         </span>
                     {:else if configState.lastSavedAt && !isDirty.value}
                         <span class="text-success text-[11px] flex-1"
-                            >Saved</span
+                            >{m.config_saved()}</span
                         >
                     {:else}
                         <span class="flex-1"></span>
@@ -394,7 +388,7 @@
                         disabled={!isDirty.value || configState.saving}
                         onclick={() => discard()}
                     >
-                        Discard
+                        {m.saveBar_discard()}
                     </button>
 
                     <button
@@ -408,7 +402,7 @@
                                 class="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"
                             ></span>
                         {/if}
-                        Save
+                        {m.common_save()}
                     </button>
                 </div>
             {/if}

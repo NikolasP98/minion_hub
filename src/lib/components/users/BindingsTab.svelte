@@ -160,7 +160,7 @@
                                     <button
                                         class="opacity-0 group-hover:opacity-100 transition-opacity text-muted hover:text-destructive bg-transparent border-none cursor-pointer text-xs font-[inherit]"
                                         onclick={() => removeBinding(globalIdx)}
-                                        title="Remove binding"
+                                        title={m.bindings_removeBinding()}
                                     >
                                         ✕
                                     </button>

@@ -1,5 +1,6 @@
 <script lang="ts">
   import * as slider from '@zag-js/slider';
+  import * as m from '$lib/paraglide/messages';
   import { normalizeProps, useMachine } from '@zag-js/svelte';
   import { bgPattern, PATTERN_OPTIONS } from '$lib/state/bg-pattern.svelte';
 
@@ -33,7 +34,7 @@
 </script>
 
 <section class="space-y-6">
-  <h2 class="text-sm font-semibold text-foreground uppercase tracking-wider">Background Pattern</h2>
+  <h2 class="text-sm font-semibold text-foreground uppercase tracking-wider">{m.settings_backgroundPattern()}</h2>
 
   <!-- Pattern type selector -->
   <div class="flex gap-2">
@@ -59,7 +60,7 @@
       <!-- Opacity slider -->
       <div class="space-y-3">
         <div class="flex items-baseline justify-between">
-          <span class="text-xs text-muted-foreground font-medium">Opacity</span>
+          <span class="text-xs text-muted-foreground font-medium">{m.settings_opacity()}</span>
           <span class="text-xs font-mono text-accent tabular-nums">{bgPattern.opacity}%</span>
         </div>
         <div {...opApi.getRootProps()} class="relative group">
@@ -88,7 +89,7 @@
       <!-- Size slider -->
       <div class="space-y-3">
         <div class="flex items-baseline justify-between">
-          <span class="text-xs text-muted-foreground font-medium">Size</span>
+          <span class="text-xs text-muted-foreground font-medium">{m.settings_size()}</span>
           <span class="text-xs font-mono text-accent tabular-nums">{bgPattern.size}px</span>
         </div>
         <div {...szApi.getRootProps()} class="relative group">
@@ -157,7 +158,7 @@
         </defs>
         <rect width="100%" height="100%" fill="url(#preview-pat)" />
       </svg>
-      <span class="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground/60 uppercase tracking-widest font-medium">Preview</span>
+      <span class="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground/60 uppercase tracking-widest font-medium">{m.settings_preview()}</span>
     </div>
   {/if}
 </section>

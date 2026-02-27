@@ -1,6 +1,7 @@
 <script lang="ts">
   import { sendRequest } from '$lib/services/gateway.svelte';
   import { Carta, Markdown, MarkdownEditor } from 'carta-md';
+  import * as m from '$lib/paraglide/messages';
   import 'carta-md/default.css';
   import * as tree from '@zag-js/tree-view';
   import { useMachine, normalizeProps } from '@zag-js/svelte';
@@ -172,7 +173,7 @@
       };
       fileContent = res.file?.content ?? '';
     } catch {
-      fileContent = 'Error loading file content.';
+      fileContent = m.files_errorLoading();
     } finally {
       fileLoading = false;
     }
@@ -235,7 +236,7 @@
       <button
         class="text-muted hover:text-foreground transition-colors"
         onclick={backToList}
-        aria-label="Back to file list"
+        aria-label={m.files_backToList()}
       >
         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
@@ -249,20 +250,20 @@
             onclick={saveFile}
             disabled={saving}
           >
-            {saving ? 'Saving...' : 'Save'}
+            {saving ? m.files_saving() : m.common_save()}
           </button>
           <button
             class="text-[11px] font-semibold px-2 py-1 rounded bg-bg1 text-muted hover:text-foreground border border-border"
             onclick={cancelEdit}
           >
-            Cancel
+            {m.common_cancel()}
           </button>
         {:else}
           <button
             class="text-[11px] font-semibold px-2 py-1 rounded bg-bg1 text-muted hover:text-foreground border border-border"
             onclick={startEdit}
           >
-            Edit
+            {m.common_edit()}
           </button>
         {/if}
       </div>
@@ -274,7 +275,7 @@
     <!-- File content view -->
     <div class="flex-1 min-h-0 overflow-hidden flex flex-col">
       {#if fileLoading}
-        <p class="text-muted text-xs text-center mt-8">Loading...</p>
+        <p class="text-muted text-xs text-center mt-8">{m.common_loading()}</p>
       {:else if editing}
         <div class="flex-1 min-h-0 carta-wrapper">
           {#key selectedFile}
@@ -283,7 +284,7 @@
               bind:value={editContent}
               mode="tabs"
               theme="dark"
-              placeholder="Write markdown..."
+              placeholder={m.files_writePlaceholder()}
             />
           {/key}
         </div>
@@ -299,11 +300,11 @@
     <!-- File tree view -->
     <div class="flex-1 overflow-auto">
       {#if treeRootNode.loading}
-        <p class="text-muted text-xs text-center mt-8">Loading files...</p>
+        <p class="text-muted text-xs text-center mt-8">{m.files_loading()}</p>
       {:else if error}
         <p class="text-red-400 text-xs text-center mt-8">{error}</p>
       {:else if (treeRootNode.children?.length ?? 0) === 0}
-        <p class="text-muted text-xs text-center mt-8">No files found.</p>
+        <p class="text-muted text-xs text-center mt-8">{m.files_noFiles()}</p>
       {:else}
         <div {...api.getRootProps()}>
           <div {...api.getTreeProps()}>
@@ -349,7 +350,7 @@
                         {@render renderNodes(node.children, indexPath, depth + 1)}
                       {:else if node.loaded && node.children?.length === 0}
                         <div class="text-[11px] text-muted py-1" style:padding-left="{8 + (depth + 1) * 14}px">
-                          Empty directory
+                          {m.files_emptyDirectory()}
                         </div>
                       {/if}
                     </div>
@@ -370,11 +371,11 @@
                     <span class="text-xs text-foreground truncate flex-1" {...api.getItemTextProps(nodeProps)}>{node.name.split('/').pop()}</span>
                     <!-- Metadata or missing + Add button -->
                     {#if node.missing}
-                      <span class="text-[11px] text-muted shrink-0">missing</span>
+                      <span class="text-[11px] text-muted shrink-0">{m.files_missing()}</span>
                       <button
                         onclick={(e) => { e.stopPropagation(); addFile(node.id); }}
                         class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-accent/20 text-accent hover:bg-accent hover:text-white transition-colors shrink-0"
-                      >Add</button>
+                      >{m.common_add()}</button>
                     {:else}
                       <span class="text-[11px] text-muted min-w-0 truncate ml-1">
                         {formatSize(node.size ?? 0)} &middot; {formatDate(node.updatedAtMs)}

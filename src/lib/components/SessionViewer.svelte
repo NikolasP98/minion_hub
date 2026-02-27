@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { sendRequest } from '$lib/services/gateway.svelte';
   import type { SessionRow } from './SessionsList.svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let {
     serverId,
@@ -176,7 +177,7 @@
   {#if !sessionKey}
     <div class="flex-1 flex flex-col items-center justify-center gap-2.5 text-muted text-[13px]">
       <span class="text-[28px] opacity-40">{'\u2B05'}</span>
-      <span>Select a session to view transcript</span>
+      <span>{m.sessions_selectToView()}</span>
     </div>
   {:else}
     <!-- Session header -->
@@ -201,7 +202,7 @@
           <span class="text-[10px] text-muted whitespace-nowrap">{relTime(session.updatedAt)}</span>
         {/if}
         {#if totalTokens !== null}
-          <span class="text-[10px] text-muted whitespace-nowrap px-1.5 py-[1px] bg-bg3 rounded-lg border border-border">{totalTokens.toLocaleString()} tokens</span>
+          <span class="text-[10px] text-muted whitespace-nowrap px-1.5 py-[1px] bg-bg3 rounded-lg border border-border">{totalTokens.toLocaleString()} {m.sessions_tokensUnit()}</span>
         {/if}
       </div>
     </div>
@@ -211,7 +212,7 @@
       {#if loading}
         <div class="flex-1 flex flex-col items-center justify-center gap-2.5 text-muted text-xs">
           <div class="w-[22px] h-[22px] border-2 border-border border-t-accent rounded-full animate-spin"></div>
-          <span>Loading transcript...</span>
+          <span>{m.sessions_loadingTranscript()}</span>
         </div>
       {:else if error}
         <div class="flex-1 flex flex-col items-center justify-center gap-2.5 text-destructive text-xs">
@@ -219,7 +220,7 @@
         </div>
       {:else if messages.filter((m) => m.content.trim()).length === 0}
         <div class="flex-1 flex flex-col items-center justify-center gap-2.5 text-muted text-xs">
-          <span>No messages in this session.</span>
+          <span>{m.sessions_noMessages()}</span>
         </div>
       {:else}
         {#each messages.filter((m) => m.content.trim()) as msg (msg.id)}

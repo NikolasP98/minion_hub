@@ -4,6 +4,7 @@
   import { wsConnect, wsDisconnect } from '$lib/services/gateway.svelte';
   import { conn } from '$lib/state/connection.svelte';
   import { fmtTimeAgo } from '$lib/utils/format';
+  import * as m from '$lib/paraglide/messages';
 
   function selectHost(id: string) {
     if (hostsState.activeHostId === id) { ui.dropdownOpen = false; return; }
@@ -43,10 +44,10 @@
   <div class="h-px bg-border"></div>
   {#if conn.connected || conn.connecting}
     <div class="py-2 px-[14px] text-xs text-destructive cursor-pointer transition-colors hover:bg-destructive/[0.08]" role="menuitem" tabindex="0" onclick={disconnect} onkeydown={(e) => e.key === 'Enter' && disconnect()}>
-      Disconnect
+      {m.hosts_disconnect()}
     </div>
   {/if}
   <div class="py-2 px-[14px] text-xs text-muted-foreground cursor-pointer transition-colors hover:bg-bg3 hover:text-muted" role="menuitem" tabindex="0" onclick={openManage} onkeydown={(e) => e.key === 'Enter' && openManage(e as unknown as MouseEvent)}>
-    Manage hosts…
+    {m.hosts_manage()}
   </div>
 </div>
