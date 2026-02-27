@@ -1,8 +1,29 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { bgPattern } from '$lib/state/bg-pattern.svelte';
+  import { theme } from '$lib/state/theme.svelte';
 
   let canvas = $state<HTMLCanvasElement | null>(null);
+
+  let accentColor = $state<[number, number, number]>([0.5, 0.5, 0.5]);
+
+  $effect(() => {
+    // Depend on theme so this re-runs on theme changes
+    void theme.preset;
+    void theme.accent.value;
+    // Defer one tick so CSS vars are applied before we read them
+    requestAnimationFrame(() => {
+      const raw = getComputedStyle(document.documentElement)
+        .getPropertyValue('--color-accent').trim();
+      const c = document.createElement('canvas');
+      c.width = c.height = 1;
+      const ctx2d = c.getContext('2d')!;
+      ctx2d.fillStyle = raw;
+      ctx2d.fillRect(0, 0, 1, 1);
+      const [r, g, b] = ctx2d.getImageData(0, 0, 1, 1).data;
+      accentColor = [r / 255, g / 255, b / 255];
+    });
+  });
 
   onMount(() => {
     if (!canvas) return;
@@ -203,21 +224,6 @@
     const uAccent = ctx.getUniformLocation(prog, 'u_accent');
     const uPat    = ctx.getUniformLocation(prog, 'u_pattern');
 
-    // Parse --color-accent CSS var → RGB 0..1
-    function accentRGB(): [number, number, number] {
-      const raw = getComputedStyle(document.documentElement)
-        .getPropertyValue('--color-accent').trim();
-      const c = document.createElement('canvas');
-      c.width = c.height = 1;
-      const ctx2d = c.getContext('2d')!;
-      ctx2d.fillStyle = raw;
-      ctx2d.fillRect(0, 0, 1, 1);
-      const [r, g, b] = ctx2d.getImageData(0, 0, 1, 1).data;
-      return [r / 255, g / 255, b / 255];
-    }
-
-    let accent = accentRGB();
-
     const PATTERN_MAP: Record<string, number> = {
       dots: 0, grid: 1, crosses: 2, diagonal: 3, hexagons: 4
     };
@@ -252,7 +258,7 @@
       ctx.uniform2f(uMouse, mx, my);
       ctx.uniform1f(uTile,  bgPattern.size);
       ctx.uniform1f(uOpac,  (bgPattern.opacity / 100) * 2.5);
-      ctx.uniform3f(uAccent, accent[0], accent[1], accent[2]);
+      ctx.uniform3f(uAccent, accentColor[0], accentColor[1], accentColor[2]);
       ctx.uniform1i(uPat,   PATTERN_MAP[bgPattern.pattern] ?? 0);
 
       ctx.drawArrays(ctx.TRIANGLES, 0, 6);
