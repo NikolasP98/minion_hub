@@ -11,6 +11,18 @@ import type {
 } from '$lib/types/config';
 import { REDACTED_SENTINEL } from '$lib/types/config';
 
+// ─── Meta-groups (logical groupings for the UI sidebar) ─────────────────────
+
+export const META_GROUPS: { id: string; label: string; groupIds: string[] }[] = [
+  { id: 'setup',        label: 'Setup',         groupIds: ['wizard', 'update', 'gateway', 'nodeHost', 'diagnostics'] },
+  { id: 'ai',           label: 'AI',            groupIds: ['models', 'agents', 'tools'] },
+  { id: 'automation',   label: 'Automation',    groupIds: ['commands', 'cron', 'hooks', 'skills', 'plugins'] },
+  { id: 'data',         label: 'Data',          groupIds: ['session', 'messages', 'bindings'] },
+  { id: 'comms',        label: 'Communication', groupIds: ['channels', 'audio', 'talk', 'voicewake'] },
+  { id: 'integrations', label: 'Integrations',  groupIds: ['browser', 'discovery', 'presence'] },
+  { id: 'system',       label: 'System',        groupIds: ['ui', 'logging'] },
+];
+
 // ─── Group order (mirrors gateway's GROUP_ORDER) ────────────────────────────
 
 const GROUP_ORDER: Record<string, number> = {

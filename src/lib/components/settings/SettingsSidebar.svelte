@@ -1,8 +1,15 @@
 <script lang="ts">
     import { conn } from "$lib/state/connection.svelte";
+    import { META_GROUPS } from "$lib/utils/config-schema";
     import {
         Palette,
         SlidersHorizontal,
+        Brain,
+        Zap,
+        Database,
+        Radio,
+        Plug,
+        Monitor,
         Users,
         Link2,
         Server,
@@ -10,7 +17,13 @@
 
     type Section =
         | "appearance"
-        | "config"
+        | "config-setup"
+        | "config-ai"
+        | "config-automation"
+        | "config-data"
+        | "config-comms"
+        | "config-integrations"
+        | "config-system"
         | "team"
         | "bindings"
         | "gateways";
@@ -22,18 +35,23 @@
 
     let { activeSection, onselect }: Props = $props();
 
+    const META_ICONS: Record<string, typeof Palette> = {
+        setup:        SlidersHorizontal,
+        ai:           Brain,
+        automation:   Zap,
+        data:         Database,
+        comms:        Radio,
+        integrations: Plug,
+        system:       Monitor,
+    };
+
     const USER_SECTIONS = [
         { id: "appearance" as Section, label: "Appearance", icon: Palette },
     ];
 
-    const GATEWAY_SECTIONS = [
-        {
-            id: "config" as Section,
-            label: "Config",
-            icon: SlidersHorizontal,
-        },
-        { id: "team" as Section, label: "Team", icon: Users },
-        { id: "bindings" as Section, label: "Bindings", icon: Link2 },
+    const GATEWAY_BOTTOM = [
+        { id: "team"     as Section, label: "Team",     icon: Users  },
+        { id: "bindings" as Section, label: "Bindings", icon: Link2  },
         { id: "gateways" as Section, label: "Gateways", icon: Server },
     ];
 </script>
@@ -72,23 +90,56 @@
     <div class="h-px bg-border/60 mx-4 mb-4"></div>
 
     <!-- GATEWAY group -->
-    <div>
+    <div class="flex-1">
         <div
             class="px-4 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60"
         >
             Gateway
         </div>
-        {#each GATEWAY_SECTIONS as section (section.id)}
+
+        <!-- Config meta-groups -->
+        {#each META_GROUPS as meta (meta.id)}
+            {@const sectionId = `config-${meta.id}` as Section}
+            {@const Icon = META_ICONS[meta.id]}
+            <button
+                type="button"
+                class="w-full flex items-center gap-2.5 px-4 py-2 text-sm transition-colors duration-100 cursor-pointer bg-transparent border-none font-[inherit] text-left
+                    {activeSection === sectionId
+                    ? 'text-accent bg-accent/8 font-medium'
+                    : conn.connected
+                      ? 'text-muted-foreground hover:text-foreground hover:bg-bg3'
+                      : 'text-muted-foreground/40 cursor-not-allowed'}"
+                onclick={() => conn.connected && onselect(sectionId)}
+                title={!conn.connected ? "Connect to a gateway first" : undefined}
+            >
+                <Icon
+                    size={15}
+                    class={activeSection === sectionId
+                        ? "text-accent"
+                        : conn.connected
+                          ? "text-muted-foreground/70"
+                          : "text-muted-foreground/30"}
+                />
+                {meta.label}
+            </button>
+        {/each}
+
+        <!-- Spacer before Team/Bindings/Gateways -->
+        <div class="h-px bg-border/40 mx-4 my-3"></div>
+
+        {#each GATEWAY_BOTTOM as section (section.id)}
             <button
                 type="button"
                 class="w-full flex items-center gap-2.5 px-4 py-2 text-sm transition-colors duration-100 cursor-pointer bg-transparent border-none font-[inherit] text-left
                     {activeSection === section.id
                     ? 'text-accent bg-accent/8 font-medium'
-                    : conn.connected
+                    : conn.connected || section.id === 'gateways'
                       ? 'text-muted-foreground hover:text-foreground hover:bg-bg3'
                       : 'text-muted-foreground/40 cursor-not-allowed'}"
-                onclick={() => conn.connected && onselect(section.id)}
-                title={!conn.connected
+                onclick={() => {
+                    if (section.id === 'gateways' || conn.connected) onselect(section.id);
+                }}
+                title={!conn.connected && section.id !== 'gateways'
                     ? "Connect to a gateway first"
                     : undefined}
             >
@@ -96,17 +147,11 @@
                     size={15}
                     class={activeSection === section.id
                         ? "text-accent"
-                        : conn.connected
+                        : conn.connected || section.id === 'gateways'
                           ? "text-muted-foreground/70"
                           : "text-muted-foreground/30"}
                 />
                 {section.label}
-                {#if !conn.connected}
-                    <span
-                        class="ml-auto text-[9px] text-muted-foreground/40"
-                        >—</span
-                    >
-                {/if}
             </button>
         {/each}
     </div>

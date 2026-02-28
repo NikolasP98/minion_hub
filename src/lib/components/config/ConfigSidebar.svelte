@@ -1,20 +1,9 @@
 <script lang="ts">
   import { groups, configState, dirtyPaths } from '$lib/state/config.svelte';
   import { SvelteSet } from 'svelte/reactivity';
-  import { hasConfiguredValues } from '$lib/utils/config-schema';
+  import { hasConfiguredValues, META_GROUPS } from '$lib/utils/config-schema';
 
   let { activeGroupId, onselect }: { activeGroupId: string | null; onselect: (id: string) => void } = $props();
-
-  // ── Meta-group definitions ───────────────────────────────────────────────
-  const META_GROUPS = [
-    { id: 'setup',        label: 'Setup',          groupIds: ['wizard', 'update', 'gateway', 'nodeHost', 'diagnostics'] },
-    { id: 'ai',           label: 'AI',             groupIds: ['models', 'agents', 'tools'] },
-    { id: 'automation',   label: 'Automation',     groupIds: ['commands', 'cron', 'hooks', 'skills', 'plugins'] },
-    { id: 'data',         label: 'Data',           groupIds: ['session', 'messages', 'bindings'] },
-    { id: 'comms',        label: 'Communication',  groupIds: ['channels', 'audio', 'talk', 'voicewake'] },
-    { id: 'integrations', label: 'Integrations',   groupIds: ['browser', 'discovery', 'presence'] },
-    { id: 'system',       label: 'System',         groupIds: ['ui', 'logging'] },
-  ];
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 

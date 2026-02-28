@@ -6,7 +6,7 @@
         isDirty,
         groups,
     } from "$lib/state/config.svelte";
-    import { hasConfiguredValues, countConfiguredKeys } from "$lib/utils/config-schema";
+    import { hasConfiguredValues, countConfiguredKeys, META_GROUPS } from "$lib/utils/config-schema";
     import { theme } from "$lib/state/theme.svelte";
     import { logoState } from "$lib/state/logo.svelte";
     import { locale } from "$lib/state/locale.svelte";
@@ -15,7 +15,6 @@
     import PatternSettings from "$lib/components/settings/PatternSettings.svelte";
     import GatewaySettings from "$lib/components/settings/GatewaySettings.svelte";
     import MinionLogo from "$lib/components/MinionLogo.svelte";
-    import ConfigSidebar from "$lib/components/config/ConfigSidebar.svelte";
     import ConfigSection from "$lib/components/config/ConfigSection.svelte";
     import ConfigSaveBar from "$lib/components/config/ConfigSaveBar.svelte";
     import TeamTab from "$lib/components/users/TeamTab.svelte";
@@ -26,17 +25,28 @@
 
     type Section =
         | "appearance"
-        | "config"
+        | "config-setup"
+        | "config-ai"
+        | "config-automation"
+        | "config-data"
+        | "config-comms"
+        | "config-integrations"
+        | "config-system"
         | "team"
         | "bindings"
         | "gateways";
 
     let activeSection = $state<Section>("appearance");
 
-    // Load config when entering Config or Bindings section
+    const isConfigSection = $derived(activeSection.startsWith("config-"));
+    const activeMetaId = $derived(
+        isConfigSection ? activeSection.slice("config-".length) : null,
+    );
+
+    // Load config when entering any config section or bindings
     $effect(() => {
         if (
-            (activeSection === "config" || activeSection === "bindings") &&
+            (isConfigSection || activeSection === "bindings") &&
             conn.connected &&
             !configState.loaded &&
             !configState.loading
@@ -48,12 +58,9 @@
         }
     });
 
-    // Config inner sidebar state (mirrors /config page logic)
-    let contentEl = $state<HTMLElement | null>(null);
     let expandedIds = new SvelteSet<string>();
-    let activeGroupId = $state<string | null>(null);
 
-    // Auto-expand configured groups on initial config load
+    // Auto-expand configured groups on initial load
     $effect(() => {
         if (configState.loaded && expandedIds.size === 0) {
             for (const g of groups.value) {
@@ -67,11 +74,15 @@
         }
     });
 
-    const sortedGroups = $derived.by(() => {
-        const all = groups.value;
-        const configured: typeof all = [];
-        const empty: typeof all = [];
-        for (const g of all) {
+    // Groups visible in the active meta-group section, configured-first
+    const activeGroups = $derived.by(() => {
+        if (!activeMetaId) return [];
+        const meta = META_GROUPS.find((m) => m.id === activeMetaId);
+        if (!meta) return [];
+        const inMeta = groups.value.filter((g) => meta.groupIds.includes(g.id));
+        const configured: typeof inMeta = [];
+        const empty: typeof inMeta = [];
+        for (const g of inMeta) {
             const val = configState.current[g.fields[0]?.key];
             if (hasConfiguredValues(val)) configured.push(g);
             else empty.push(g);
@@ -82,22 +93,6 @@
     function toggleGroup(groupId: string) {
         if (expandedIds.has(groupId)) expandedIds.delete(groupId);
         else expandedIds.add(groupId);
-    }
-
-    function scrollToGroup(groupId: string) {
-        if (!expandedIds.has(groupId)) {
-            expandedIds.add(groupId);
-        }
-        activeGroupId = groupId;
-        requestAnimationFrame(() => {
-            const el = document.getElementById(`config-group-${groupId}`);
-            if (el && contentEl) {
-                contentEl.scrollTo({
-                    top: el.offsetTop - contentEl.offsetTop - 16,
-                    behavior: "smooth",
-                });
-            }
-        });
     }
 
     function configuredCountForGroup(groupId: string): number {
@@ -339,8 +334,8 @@
                     </div>
                 </div>
 
-            {:else if activeSection === "config"}
-                <!-- Config: 2-panel layout -->
+            {:else if isConfigSection}
+                <!-- Config meta-group section -->
                 {#if !conn.connected}
                     <div class="flex-1 flex items-center justify-center">
                         <p class="text-sm text-muted-foreground">
@@ -364,9 +359,7 @@
                             <p class="text-destructive text-sm mb-2">
                                 {m.config_error()}
                             </p>
-                            <p
-                                class="text-muted-foreground text-xs mb-4"
-                            >
+                            <p class="text-muted-foreground text-xs mb-4">
                                 {configState.loadError}
                             </p>
                             <button
@@ -378,53 +371,33 @@
                         </div>
                     </div>
                 {:else}
-                    <div class="flex flex-1 min-h-0">
-                        <ConfigSidebar
-                            {activeGroupId}
-                            onselect={scrollToGroup}
-                        />
-                        <div class="flex-1 flex flex-col min-h-0">
-                            <div
-                                bind:this={contentEl}
-                                class="flex-1 overflow-y-auto px-6 py-5"
-                            >
-                                <div
-                                    class="max-w-3xl mx-auto space-y-2.5"
-                                >
-                                    {#if configState.version}
-                                        <p
-                                            class="text-[10px] text-muted-foreground mb-2"
-                                        >
-                                            Gateway v{configState.version} &middot;
-                                            {configState.configPath}
-                                        </p>
-                                    {/if}
-                                    {#each sortedGroups as group (group.id)}
-                                        <ConfigSection
-                                            {group}
-                                            expanded={expandedIds.has(
-                                                group.id,
-                                            )}
-                                            ontoggle={() =>
-                                                toggleGroup(group.id)}
-                                            configuredCount={configuredCountForGroup(
-                                                group.id,
-                                            )}
-                                        />
-                                    {/each}
-                                    {#if sortedGroups.length === 0}
-                                        <p
-                                            class="text-muted-foreground text-sm"
-                                        >
-                                            {m.config_noSections()}
-                                        </p>
-                                    {/if}
-                                </div>
+                    <div class="flex-1 flex flex-col min-h-0">
+                        <div class="flex-1 overflow-y-auto px-6 py-5">
+                            <div class="max-w-3xl mx-auto space-y-2.5">
+                                {#if configState.version}
+                                    <p class="text-[10px] text-muted-foreground mb-2">
+                                        Gateway v{configState.version} &middot;
+                                        {configState.configPath}
+                                    </p>
+                                {/if}
+                                {#each activeGroups as group (group.id)}
+                                    <ConfigSection
+                                        {group}
+                                        expanded={expandedIds.has(group.id)}
+                                        ontoggle={() => toggleGroup(group.id)}
+                                        configuredCount={configuredCountForGroup(group.id)}
+                                    />
+                                {/each}
+                                {#if activeGroups.length === 0}
+                                    <p class="text-muted-foreground text-sm">
+                                        {m.config_noSections()}
+                                    </p>
+                                {/if}
                             </div>
-                            {#if isDirty.value || configState.saving || configState.saveError}
-                                <ConfigSaveBar />
-                            {/if}
                         </div>
+                        {#if isDirty.value || configState.saving || configState.saveError}
+                            <ConfigSaveBar />
+                        {/if}
                     </div>
                 {/if}
 
