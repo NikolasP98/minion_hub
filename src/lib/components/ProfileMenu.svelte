@@ -2,7 +2,7 @@
   import { userState, logout, getUserInitials } from '$lib/state/user.svelte';
   import { locale } from '$lib/state/locale.svelte';
   import * as m from '$lib/paraglide/messages';
-  import { LogOut, Settings, Globe } from 'lucide-svelte';
+  import { LogOut, Globe } from 'lucide-svelte';
 
   let open = $state(false);
 
@@ -55,14 +55,6 @@
       </div>
 
       <div class="py-1">
-        <a
-          href="/settings"
-          onclick={() => (open = false)}
-          class="flex items-center gap-2.5 px-3.5 py-2 text-sm text-muted hover:text-foreground hover:bg-bg3 transition-colors duration-100 no-underline"
-        >
-          <Settings size={14} />
-          {m.profile_settings()}
-        </a>
         <button
           onclick={locale.toggle}
           class="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-muted hover:text-foreground hover:bg-bg3 transition-colors duration-100"

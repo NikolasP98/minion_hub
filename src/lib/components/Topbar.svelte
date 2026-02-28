@@ -8,9 +8,7 @@
     import * as m from "$lib/paraglide/messages";
     import {
         Wrench,
-        Users,
         Activity,
-        SlidersHorizontal,
         Store,
         Settings,
         Menu,
@@ -23,11 +21,9 @@
         page.url.pathname.startsWith("/marketplace"),
     );
     const isWorkshop = $derived(page.url.pathname.startsWith("/workshop"));
-    const isUsers = $derived(page.url.pathname.startsWith("/users"));
     const isReliability = $derived(
         page.url.pathname.startsWith("/reliability"),
     );
-    const isConfig = $derived(page.url.pathname.startsWith("/config"));
     const isSettings = $derived(page.url.pathname.startsWith("/settings"));
 
     // Mobile menu state
@@ -94,28 +90,12 @@
                     <span>{m.nav_workshop()}</span>
                 </a>
                 <a
-                    href="/users"
-                    class="nav-pill {isUsers ? 'active' : ''}"
-                    title="Users"
-                >
-                    <Users size={14} />
-                    <span>{m.nav_users()}</span>
-                </a>
-                <a
                     href="/reliability"
                     class="nav-pill {isReliability ? 'active' : ''}"
                     title="Reliability"
                 >
                     <Activity size={14} />
                     <span>{m.nav_reliability()}</span>
-                </a>
-                <a
-                    href="/config"
-                    class="nav-pill {isConfig ? 'active' : ''}"
-                    title="Config"
-                >
-                    <SlidersHorizontal size={14} />
-                    <span>{m.nav_config()}</span>
                 </a>
             </div>
 
@@ -143,24 +123,10 @@
                         </a>
                     {/snippet}
                 </Tooltip>
-                <Tooltip label={m.nav_users()} id="nav-lg-users">
-                    {#snippet children(triggerProps)}
-                        <a href="/users" class="nav-pill {isUsers ? 'active' : ''}" {...triggerProps}>
-                            <Users size={16} />
-                        </a>
-                    {/snippet}
-                </Tooltip>
                 <Tooltip label={m.nav_reliability()} id="nav-lg-reliability">
                     {#snippet children(triggerProps)}
                         <a href="/reliability" class="nav-pill {isReliability ? 'active' : ''}" {...triggerProps}>
                             <Activity size={16} />
-                        </a>
-                    {/snippet}
-                </Tooltip>
-                <Tooltip label={m.nav_config()} id="nav-lg-config">
-                    {#snippet children(triggerProps)}
-                        <a href="/config" class="nav-pill {isConfig ? 'active' : ''}" {...triggerProps}>
-                            <SlidersHorizontal size={16} />
                         </a>
                     {/snippet}
                 </Tooltip>
@@ -186,24 +152,10 @@
                     </a>
                 {/snippet}
             </Tooltip>
-            <Tooltip label={m.nav_users()} id="nav-md-users">
-                {#snippet children(triggerProps)}
-                    <a href="/users" class="nav-pill-sm {isUsers ? 'active' : ''}" {...triggerProps}>
-                        <Users size={18} />
-                    </a>
-                {/snippet}
-            </Tooltip>
             <Tooltip label={m.nav_reliability()} id="nav-md-reliability">
                 {#snippet children(triggerProps)}
                     <a href="/reliability" class="nav-pill-sm {isReliability ? 'active' : ''}" {...triggerProps}>
                         <Activity size={18} />
-                    </a>
-                {/snippet}
-            </Tooltip>
-            <Tooltip label={m.nav_config()} id="nav-md-config">
-                {#snippet children(triggerProps)}
-                    <a href="/config" class="nav-pill-sm {isConfig ? 'active' : ''}" {...triggerProps}>
-                        <SlidersHorizontal size={18} />
                     </a>
                 {/snippet}
             </Tooltip>
@@ -274,28 +226,12 @@
                     <span>{m.nav_workshop()}</span>
                 </a>
                 <a
-                    href="/users"
-                    class="mobile-nav-link {isUsers ? 'active' : ''}"
-                    onclick={closeMobileMenu}
-                >
-                    <Users size={18} />
-                    <span>{m.nav_users()}</span>
-                </a>
-                <a
                     href="/reliability"
                     class="mobile-nav-link {isReliability ? 'active' : ''}"
                     onclick={closeMobileMenu}
                 >
                     <Activity size={18} />
                     <span>{m.nav_reliability()}</span>
-                </a>
-                <a
-                    href="/config"
-                    class="mobile-nav-link {isConfig ? 'active' : ''}"
-                    onclick={closeMobileMenu}
-                >
-                    <SlidersHorizontal size={18} />
-                    <span>{m.nav_config()}</span>
                 </a>
                 <div class="h-px bg-border/60 my-1"></div>
                 <a
