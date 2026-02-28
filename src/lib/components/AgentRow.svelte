@@ -1,6 +1,6 @@
 <script lang="ts">
     import { Spring, spring } from "svelte/motion";
-    import Sparkline from "./Sparkline.svelte";
+    import ActivityBars from "./ActivityBars.svelte";
     import StatusDot from "$lib/components/decorations/StatusDot.svelte";
     import { agentActivity, agentChat } from "$lib/state/chat.svelte";
     import { ui } from "$lib/state/ui.svelte";
@@ -39,6 +39,15 @@
         }),
     );
 
+    const hasActive = $derived(act?.working || activeSessions.length > 0);
+
+    const statusLabel = $derived.by(() => {
+        if (act?.working) return "Working";
+        if (activeSessions.length > 0) return "Active";
+        if (chat?.loading) return "Loading";
+        return "Idle";
+    });
+
     const statusText = $derived.by(() => {
         if (act?.working) return m.agent_statusWorking();
         if (activeSessions.length > 0)
@@ -47,7 +56,25 @@
         return m.agent_statusIdle();
     });
 
-    const hasActive = $derived(act?.working || activeSessions.length > 0);
+    // Monotone chart color based on activity status
+    const chartColor = $derived.by(() => {
+        if (hasActive) return "var(--color-success)";
+        if (chat?.loading) return "var(--color-accent)";
+        return "var(--color-border)";
+    });
+
+    /**
+     * Rotate the circular spark-bin buffer so the oldest bin is at index 0
+     * (left) and the most-recent bin is at index 29 (right). This fixes
+     * the visual persistence: after a page reload the stored bins are displayed
+     * in correct chronological order rather than at their raw circular indices.
+     */
+    const rotatedBins = $derived.by(() => {
+        const raw = act?.sparkBins ?? new Array(30).fill(0);
+        const currentBin = Math.floor(Date.now() / 10000) % 30;
+        const start = (currentBin + 1) % 30; // oldest bin is one past current
+        return [...raw.slice(start), ...raw.slice(0, start)];
+    });
 
     // Spring for scale pop-in/out when hasActive changes
     const hammerScale = new Spring(0, { stiffness: 0.6, damping: 0.4 });
@@ -56,7 +83,6 @@
     });
 
     // Store-based spring for looping rotation — .set() returns a Promise
-    // so we can await settle then reverse direction indefinitely
     const rot = spring(0, { stiffness: 0.06, damping: 0.3 });
 
     $effect(() => {
@@ -145,7 +171,7 @@
     <!-- Full row -->
     <button
         type="button"
-        class="w-full flex flex-col px-2.5 py-1.5 gap-1 border-l-3 border-b border-b-[rgba(42,53,72,0.5)] cursor-pointer transition-[background] duration-120 hover:bg-white/3 bg-transparent text-inherit {selected
+        class="w-full flex flex-col px-2.5 py-1.5 gap-1.5 border-l-3 border-b border-b-[rgba(42,53,72,0.5)] cursor-pointer transition-[background] duration-120 hover:bg-white/3 bg-transparent text-inherit {selected
             ? 'bg-bg3'
             : 'border-l-transparent'}"
         style:border-left-color={selected ? accentColor : undefined}
@@ -155,7 +181,6 @@
         <!-- Row 1: status indicator + agent name -->
         <div class="flex items-center gap-2">
             {#if hasActive}
-                <!-- Single span: scale from hammerScale spring, rotate from rot spring -->
                 <span
                     class="text-[11px] leading-none shrink-0 inline-block"
                     style:transform="scale({hammerScale.current}) rotate({$rot}deg)"
@@ -165,7 +190,6 @@
                 <StatusDot status="idle" size="sm" />
             {/if}
 
-            <!-- Agent avatar + name -->
             <span
                 class="text-[13px] font-semibold text-foreground whitespace-nowrap shrink-0 flex items-center gap-1.5"
             >
@@ -182,13 +206,53 @@
             </span>
         </div>
 
-        <!-- Row 2: sparkline full width -->
-        <div class="w-full h-5">
-            <Sparkline
-                bins={act?.sparkBins ?? new Array(30).fill(0)}
-                color={accentColor}
-                glow={hasActive}
-            />
+        <!-- Row 2: 2-column — left KPIs + right activity chart -->
+        <div class="flex items-end gap-2">
+
+            <!-- Left: textual status KPIs (~56px) -->
+            <div class="flex flex-col gap-0.5 w-14 shrink-0">
+                <!-- Status dot + label -->
+                <div class="flex items-center gap-1">
+                    <div
+                        class="w-1.5 h-1.5 rounded-full shrink-0 transition-colors duration-200"
+                        style:background-color={hasActive
+                            ? "var(--color-success)"
+                            : chat?.loading
+                              ? "var(--color-accent)"
+                              : "var(--color-border)"}
+                    ></div>
+                    <span
+                        class="text-[10px] font-medium leading-none truncate transition-colors duration-200"
+                        style:color={hasActive
+                            ? "var(--color-success)"
+                            : chat?.loading
+                              ? "var(--color-accent)"
+                              : "var(--color-muted-foreground)"}
+                    >
+                        {statusLabel}
+                    </span>
+                </div>
+
+                <!-- Sub-label: session count or gateway status -->
+                {#if activeSessions.length > 0}
+                    <span class="text-[9px] text-muted-foreground/50 pl-2.5 leading-none">
+                        {activeSessions.length}
+                        {activeSessions.length === 1 ? "session" : "sessions"}
+                    </span>
+                {:else if agent.status}
+                    <span class="text-[9px] text-muted-foreground/50 pl-2.5 leading-none truncate" title={agent.status}>
+                        {agent.status}
+                    </span>
+                {/if}
+            </div>
+
+            <!-- Right: activity bar chart (flex-1) -->
+            <div
+                class="flex-1 h-5 transition-colors duration-300"
+                style:color={chartColor}
+            >
+                <ActivityBars bins={rotatedBins} highlightLast={hasActive} />
+            </div>
         </div>
     </button>
 {/if}
