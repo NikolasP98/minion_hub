@@ -7,7 +7,7 @@
     } from "$lib/state/marketplace.svelte";
     import AgentCreatorWizard from "$lib/components/marketplace/AgentCreatorWizard.svelte";
     import * as m from "$lib/paraglide/messages";
-    import { Store, Wrench, Link2, Puzzle, Settings } from "lucide-svelte";
+    import { Store, Wrench, Link2, Puzzle, Settings, Plus } from "lucide-svelte";
 
     import { type Snippet } from "svelte";
 
@@ -46,8 +46,8 @@
             href: "/marketplace/plugins",
             label: "Plugins",
             icon: Puzzle,
-            active: false,
-            soon: true,
+            active: true,
+            soon: false,
         },
     ];
 
@@ -111,6 +111,7 @@
                     }}
                     class="create-btn"
                 >
+                    <Plus size={14} />
                     <span>{m.marketplace_createAgentBtn()}</span>
                 </button>
             </div>
@@ -148,9 +149,8 @@
         display: flex;
         align-items: center;
         gap: 12px;
-        padding: 0 16px 16px;
-        margin-bottom: 8px;
-        border-bottom: 1px solid var(--color-border);
+        padding: 0 16px 12px;
+        margin-bottom: 4px;
     }
 
     .brand-icon {
@@ -267,6 +267,7 @@
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.05em;
+        white-space: nowrap;
     }
 
     .active-indicator {

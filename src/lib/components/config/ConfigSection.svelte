@@ -2,6 +2,7 @@
   import type { ConfigGroup } from '$lib/types/config';
   import { configState, dirtyPaths } from '$lib/state/config.svelte';
   import ConfigField from './ConfigField.svelte';
+  import { ChevronRight, ChevronsDown, ChevronsUp } from 'lucide-svelte';
 
   let { group, expanded = false, ontoggle, configuredCount = 0 }: {
     group: ConfigGroup;
@@ -36,16 +37,19 @@
     onclick={() => ontoggle?.()}
   >
     <!-- Chevron -->
-    <span class="text-muted-foreground text-[10px] transition-transform {expanded ? 'rotate-90' : ''}"
-      >&#9654;</span>
+    <ChevronRight
+      size={13}
+      class="text-muted-foreground transition-transform duration-150 shrink-0 {expanded ? 'rotate-90' : ''}"
+    />
 
     <!-- Label + description -->
     <span class="flex flex-col items-start gap-0.5 min-w-0">
       <span class="flex items-center gap-2">
         <span class="text-xs font-semibold text-foreground uppercase tracking-wider">{group.label}</span>
-        <span class="text-[10px] text-muted-foreground">{group.fields.length} field{group.fields.length === 1 ? '' : 's'}</span>
         {#if configuredCount > 0}
-          <span class="text-[10px] text-accent">{configuredCount} configured</span>
+          <span class="px-1.5 py-0.5 rounded-full bg-accent/15 text-accent text-[9px] font-medium leading-none">
+            {configuredCount}
+          </span>
         {/if}
       </span>
       {#if groupDescription}
@@ -77,10 +81,16 @@
       {#if advancedFields.length > 0}
         <button
           type="button"
-          class="bg-transparent border-none text-[11px] text-muted-foreground cursor-pointer p-0 transition-colors hover:text-foreground"
+          class="flex items-center gap-1.5 bg-transparent border-none text-[11px] text-muted-foreground cursor-pointer p-0 transition-colors hover:text-foreground"
           onclick={() => showAdvanced = !showAdvanced}
         >
-          {showAdvanced ? 'Hide' : 'Show'} {advancedFields.length} advanced field{advancedFields.length === 1 ? '' : 's'}
+          {#if showAdvanced}
+            <ChevronsUp size={11} class="shrink-0" />
+            Hide {advancedFields.length} advanced field{advancedFields.length === 1 ? '' : 's'}
+          {:else}
+            <ChevronsDown size={11} class="shrink-0" />
+            Show {advancedFields.length} advanced field{advancedFields.length === 1 ? '' : 's'}
+          {/if}
         </button>
 
         {#if showAdvanced}

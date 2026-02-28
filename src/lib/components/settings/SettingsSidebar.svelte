@@ -14,6 +14,7 @@
         Users,
         Link2,
         Server,
+        Lock,
     } from "lucide-svelte";
 
     type Section =
@@ -82,7 +83,7 @@
     <!-- USER group -->
     <div class="mb-4">
         <div
-            class="px-4 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60"
+            class="px-4 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/80"
         >
             User
         </div>
@@ -112,7 +113,7 @@
     <!-- GATEWAY group -->
     <div class="flex-1">
         <div
-            class="px-4 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60"
+            class="px-4 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/80"
         >
             Gateway
         </div>
@@ -121,26 +122,30 @@
         {#each visibleMeta as meta (meta.id)}
             {@const sectionId = `config-${meta.id}` as Section}
             {@const Icon = META_ICONS[meta.id]}
+            {@const disabled = !conn.connected}
             <button
                 type="button"
-                class="w-full flex items-center gap-2.5 px-4 py-2 text-sm transition-colors duration-100 cursor-pointer bg-transparent border-none font-[inherit] text-left
+                class="w-full flex items-center gap-2.5 px-4 py-2 text-sm transition-colors duration-100 bg-transparent border-none font-[inherit] text-left
                     {activeSection === sectionId
-                    ? 'text-accent bg-accent/8 font-medium'
-                    : conn.connected
-                      ? 'text-muted-foreground hover:text-foreground hover:bg-bg3'
-                      : 'text-muted-foreground/40 cursor-not-allowed'}"
+                    ? 'text-accent bg-accent/8 font-medium cursor-pointer'
+                    : disabled
+                      ? 'text-muted-foreground/40 cursor-not-allowed'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-bg3 cursor-pointer'}"
                 onclick={() => conn.connected && onselect(sectionId)}
-                title={!conn.connected ? "Connect to a gateway first" : undefined}
+                title={disabled ? "Connect to a gateway first" : undefined}
             >
                 <Icon
                     size={15}
                     class={activeSection === sectionId
                         ? "text-accent"
-                        : conn.connected
-                          ? "text-muted-foreground/70"
-                          : "text-muted-foreground/30"}
+                        : disabled
+                          ? "text-muted-foreground/30"
+                          : "text-muted-foreground/70"}
                 />
-                {meta.label}
+                <span class="flex-1">{meta.label}</span>
+                {#if disabled}
+                    <Lock size={10} class="text-muted-foreground/30 shrink-0" />
+                {/if}
             </button>
         {/each}
 
@@ -148,30 +153,32 @@
         <div class="h-px bg-border/40 mx-4 my-3"></div>
 
         {#each GATEWAY_BOTTOM as section (section.id)}
+            {@const disabled = !conn.connected && section.id !== 'gateways'}
             <button
                 type="button"
-                class="w-full flex items-center gap-2.5 px-4 py-2 text-sm transition-colors duration-100 cursor-pointer bg-transparent border-none font-[inherit] text-left
+                class="w-full flex items-center gap-2.5 px-4 py-2 text-sm transition-colors duration-100 bg-transparent border-none font-[inherit] text-left
                     {activeSection === section.id
-                    ? 'text-accent bg-accent/8 font-medium'
-                    : conn.connected || section.id === 'gateways'
-                      ? 'text-muted-foreground hover:text-foreground hover:bg-bg3'
-                      : 'text-muted-foreground/40 cursor-not-allowed'}"
+                    ? 'text-accent bg-accent/8 font-medium cursor-pointer'
+                    : disabled
+                      ? 'text-muted-foreground/40 cursor-not-allowed'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-bg3 cursor-pointer'}"
                 onclick={() => {
                     if (section.id === 'gateways' || conn.connected) onselect(section.id);
                 }}
-                title={!conn.connected && section.id !== 'gateways'
-                    ? "Connect to a gateway first"
-                    : undefined}
+                title={disabled ? "Connect to a gateway first" : undefined}
             >
                 <section.icon
                     size={15}
                     class={activeSection === section.id
                         ? "text-accent"
-                        : conn.connected || section.id === 'gateways'
-                          ? "text-muted-foreground/70"
-                          : "text-muted-foreground/30"}
+                        : disabled
+                          ? "text-muted-foreground/30"
+                          : "text-muted-foreground/70"}
                 />
-                {section.label}
+                <span class="flex-1">{section.label}</span>
+                {#if disabled}
+                    <Lock size={10} class="text-muted-foreground/30 shrink-0" />
+                {/if}
             </button>
         {/each}
     </div>

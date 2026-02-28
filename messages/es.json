@@ -67,7 +67,7 @@
   "marketplace_view": "Ver",
   "marketplace_by": "por {author}",
   "marketplace_createAgent": "Crear Agente",
-  "marketplace_createAgentBtn": "+ Crear Agente",
+  "marketplace_createAgentBtn": "Crear Agente",
   "marketplace_browse": "Explorar",
   "marketplace_filterBy": "Filtrar por",
   "marketplace_wizardTitle": "Crear Nuevo Agente",

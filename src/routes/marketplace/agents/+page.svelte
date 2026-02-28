@@ -7,7 +7,7 @@
         type MarketplaceAgent,
     } from "$lib/state/marketplace.svelte";
     import * as m from "$lib/paraglide/messages";
-    import { Search, Grid3X3, List, X } from "lucide-svelte";
+    import { Search, Grid3X3, List, X, Store, Bot, Star } from "lucide-svelte";
     import { diceBearAvatarUrl } from "$lib/utils/avatar";
     import { parseTags } from "$lib/state/marketplace.svelte";
 
@@ -15,6 +15,8 @@
     let searchInput = $state("");
     let searchTimer: ReturnType<typeof setTimeout> | null = null;
     let sortBy = $state<"popular" | "newest" | "name">("popular");
+    let featuredOnly = $state(false);
+    let modelFilter = $state('');
 
     const sortOptions = [
         { value: "popular" as const, label: () => m.marketplace_agentsListSortPopular() },
@@ -55,9 +57,17 @@
         loadAgents(id ?? undefined, searchInput || undefined);
     }
 
+    function clearSearch() {
+        searchInput = "";
+        marketplaceState.searchQuery = "";
+        loadAgents(marketplaceState.selectedCategory ?? undefined);
+    }
+
     // Sorted agents
     const sortedAgents = $derived.by(() => {
-        const agents = [...marketplaceState.agents];
+        let agents = [...marketplaceState.agents];
+        if (featuredOnly) agents = agents.filter(a => (a.installCount ?? 0) >= 100);
+        if (modelFilter) agents = agents.filter(a => a.model?.toLowerCase().includes(modelFilter));
         switch (sortBy) {
             case "popular":
                 return agents.sort(
@@ -84,121 +94,145 @@
     }
 </script>
 
-<div class="marketplace-page">
-    <!-- Header -->
-    <div class="page-header">
-        <div class="header-content">
-            <h1 class="page-title">{m.marketplace_agents()}</h1>
-            <p class="page-subtitle">{m.marketplace_agentsSubtitle()}</p>
-        </div>
-    </div>
-
-    <!-- Filters Section -->
-    <div class="filters-section">
-        <!-- Search -->
-        <div class="search-box">
-            <Search size={16} class="search-icon" />
-            <input
-                type="text"
-                placeholder={m.marketplace_agentsListSearchPlaceholder()}
-                value={searchInput}
-                oninput={onSearchInput}
-                class="search-input"
-            />
-            {#if searchInput}
-                <button
-                    type="button"
-                    class="clear-btn"
-                    onclick={() => {
-                        searchInput = "";
-                        marketplaceState.searchQuery = "";
-                        loadAgents(
-                            marketplaceState.selectedCategory ?? undefined,
-                        );
-                    }}
-                >
-                    <X size={14} />
-                </button>
+<div class="flex flex-col min-h-full">
+    <!-- Compact sticky toolbar header -->
+    <header class="sticky top-0 z-10 shrink-0 flex flex-col border-b border-border bg-bg2/80 backdrop-blur-sm">
+        <!-- Primary row: title + controls -->
+        <div class="flex items-center gap-3 px-4 py-2.5">
+            <Store size={13} class="text-[var(--color-brand-pink)] shrink-0" />
+            <h1 class="text-sm font-semibold tracking-tight">{m.marketplace_agents()}</h1>
+            {#if sortedAgents.length > 0}
+                <span class="text-[10px] bg-bg3 text-muted-foreground border border-border rounded-full px-1.5 leading-5 tabular-nums">{sortedAgents.length}</span>
             {/if}
-        </div>
+            <span class="text-[11px] text-muted-foreground/70 hidden md:block truncate">{m.marketplace_agentsSubtitle()}</span>
+            <div class="flex-1"></div>
 
-        <!-- Category Pills -->
-        <div class="category-pills">
-            {#each categories as cat (cat.id ?? "all")}
-                <button
-                    type="button"
-                    class="category-pill"
-                    class:active={marketplaceState.selectedCategory === cat.id}
-                    onclick={() => selectCategory(cat.id)}
-                >
-                    {cat.label}
-                </button>
-            {/each}
-        </div>
-
-        <!-- Toolbar -->
-        <div class="toolbar">
-            <div class="results-count">
-                {m.marketplace_agentsListShowing({ count: marketplaceState.agents.length })}
-                {#if currentCategory.id}
-                    {m.marketplace_agentsListShowingIn({ category: currentCategory.label })}
+            <!-- Search -->
+            <div class="relative flex items-center">
+                <Search size={12} class="absolute left-2.5 text-muted-foreground pointer-events-none shrink-0" />
+                <input
+                    type="text"
+                    placeholder={m.marketplace_agentsListSearchPlaceholder()}
+                    value={searchInput}
+                    oninput={onSearchInput}
+                    class="text-[11px] pl-7 pr-6 py-1 h-7 w-44 bg-bg3 text-foreground border border-border rounded-md placeholder:text-muted-foreground focus:outline-none focus:border-[var(--color-brand-pink)] [color-scheme:dark] transition-colors"
+                />
+                {#if searchInput}
+                    <button
+                        type="button"
+                        class="absolute right-2 text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+                        onclick={clearSearch}
+                    >
+                        <X size={11} />
+                    </button>
                 {/if}
             </div>
 
-            <div class="toolbar-controls">
-                <select bind:value={sortBy} class="sort-select">
-                    {#each sortOptions as opt (opt.value)}
-                        <option value={opt.value}>{opt.label()}</option>
-                    {/each}
-                </select>
+            <!-- Sort -->
+            <select
+                bind:value={sortBy}
+                class="text-[11px] h-7 py-0 px-2 bg-bg3 text-foreground border border-border rounded-md focus:outline-none focus:border-[var(--color-brand-pink)] [color-scheme:dark] cursor-pointer transition-colors"
+            >
+                {#each sortOptions as opt (opt.value)}
+                    <option value={opt.value}>{opt.label()}</option>
+                {/each}
+            </select>
 
-                <div class="view-toggle">
-                    <button
-                        type="button"
-                        class="view-btn"
-                        class:active={viewMode === "grid"}
-                        onclick={() => (viewMode = "grid")}
-                        aria-label={m.marketplace_agentsListGridView()}
-                    >
-                        <Grid3X3 size={16} />
-                    </button>
-                    <button
-                        type="button"
-                        class="view-btn"
-                        class:active={viewMode === "list"}
-                        onclick={() => (viewMode = "list")}
-                        aria-label={m.marketplace_agentsListListView()}
-                    >
-                        <List size={16} />
-                    </button>
-                </div>
+            <!-- View toggle -->
+            <div class="flex gap-0.5 p-0.5 bg-bg3 border border-border rounded-md">
+                <button
+                    type="button"
+                    onclick={() => (viewMode = "grid")}
+                    aria-label={m.marketplace_agentsListGridView()}
+                    class="w-6 h-6 flex items-center justify-center rounded cursor-pointer transition-colors
+                        {viewMode === 'grid'
+                            ? 'bg-[color-mix(in_srgb,var(--color-brand-pink)_15%,transparent)] text-[var(--color-brand-pink)]'
+                            : 'text-muted-foreground hover:text-foreground'}"
+                >
+                    <Grid3X3 size={12} />
+                </button>
+                <button
+                    type="button"
+                    onclick={() => (viewMode = "list")}
+                    aria-label={m.marketplace_agentsListListView()}
+                    class="w-6 h-6 flex items-center justify-center rounded cursor-pointer transition-colors
+                        {viewMode === 'list'
+                            ? 'bg-[color-mix(in_srgb,var(--color-brand-pink)_15%,transparent)] text-[var(--color-brand-pink)]'
+                            : 'text-muted-foreground hover:text-foreground'}"
+                >
+                    <List size={12} />
+                </button>
             </div>
         </div>
-    </div>
 
-    <!-- Content -->
-    <div class="content-area">
+        <!-- Filter row: new controls left, pills right -->
+        <div class="flex items-center gap-2 px-4 pb-2.5">
+            <!-- Featured toggle -->
+            <button
+                type="button"
+                onclick={() => (featuredOnly = !featuredOnly)}
+                class="text-[11px] py-0.5 px-2.5 rounded-md border whitespace-nowrap cursor-pointer transition-colors flex items-center gap-1.5
+                    {featuredOnly
+                        ? 'bg-[color-mix(in_srgb,var(--color-warning)_15%,transparent)] border-[color-mix(in_srgb,var(--color-warning)_30%,transparent)] text-[var(--color-warning)]'
+                        : 'bg-bg3 border-border text-muted-foreground hover:text-foreground'}"
+            >
+                <Star size={10} />
+                Featured
+            </button>
+
+            <!-- Model filter -->
+            <select
+                bind:value={modelFilter}
+                class="text-[11px] h-6 py-0 px-2 bg-bg3 text-muted-foreground border border-border rounded-md focus:outline-none [color-scheme:dark] cursor-pointer transition-colors hover:text-foreground"
+            >
+                <option value="">Any Model</option>
+                <option value="claude">Claude</option>
+                <option value="gpt">GPT</option>
+                <option value="llama">Llama</option>
+            </select>
+
+            <div class="flex-1"></div>
+
+            <!-- Category pills (right-aligned) -->
+            <div class="flex gap-1.5 overflow-x-auto [scrollbar-width:none]">
+                {#each categories as cat (cat.id ?? "all")}
+                    <button
+                        type="button"
+                        onclick={() => selectCategory(cat.id)}
+                        class="text-[11px] py-0.5 px-2.5 rounded-full border whitespace-nowrap cursor-pointer transition-colors
+                            {marketplaceState.selectedCategory === cat.id
+                                ? 'bg-[color-mix(in_srgb,var(--color-brand-pink)_15%,transparent)] border-[color-mix(in_srgb,var(--color-brand-pink)_30%,transparent)] text-[var(--color-brand-pink)]'
+                                : 'bg-bg3 border-border text-muted-foreground hover:text-foreground hover:border-border/80'}"
+                    >
+                        {cat.label}
+                    </button>
+                {/each}
+            </div>
+        </div>
+    </header>
+
+    <!-- Content area -->
+    <div class="flex-1 p-4">
         {#if marketplaceState.loading}
             <!-- Loading State -->
-            <div class="loading-state">
-                <div class="loading-spinner">
-                    <div class="spinner-ring"></div>
-                    <div class="spinner-ring"></div>
-                </div>
-                <p class="loading-text">{m.marketplace_agentsListLoading()}</p>
+            <div class="flex flex-col items-center justify-center py-24 gap-3">
+                <div class="w-6 h-6 border-2 border-[var(--color-brand-pink)] border-t-transparent rounded-full animate-spin"></div>
+                <p class="text-muted-foreground text-xs">{m.marketplace_agentsListLoading()}</p>
             </div>
         {:else if marketplaceState.agents.length === 0}
             <!-- Empty State -->
-            <div class="empty-state">
-                <div class="empty-icon">🤖</div>
-                <h3 class="empty-title">{m.marketplace_agentsListEmpty()}</h3>
-                <p class="empty-message">
-                    {#if searchInput || marketplaceState.selectedCategory}
-                        {m.marketplace_agentsListEmptyHint()}
-                    {:else}
-                        {m.marketplace_agentsListEmptySync()}
-                    {/if}
-                </p>
+            <div class="flex flex-col items-center justify-center py-24 gap-3 text-center">
+                <Bot size={32} class="text-muted-foreground/30" />
+                <div>
+                    <h3 class="text-sm font-semibold text-foreground mb-1">{m.marketplace_agentsListEmpty()}</h3>
+                    <p class="text-xs text-muted-foreground">
+                        {#if searchInput || marketplaceState.selectedCategory}
+                            {m.marketplace_agentsListEmptyHint()}
+                        {:else}
+                            {m.marketplace_agentsListEmptySync()}
+                        {/if}
+                    </p>
+                </div>
                 {#if searchInput || marketplaceState.selectedCategory}
                     <button
                         type="button"
@@ -207,93 +241,73 @@
                             marketplaceState.searchQuery = "";
                             selectCategory(null);
                         }}
-                        class="clear-filters-btn"
+                        class="text-xs px-3 py-1.5 bg-bg3 border border-border rounded-md text-muted-foreground hover:text-foreground hover:bg-border cursor-pointer transition-colors"
                     >
                         {m.marketplace_agentsListClearFilters()}
                     </button>
                 {/if}
             </div>
         {:else}
+            <!-- Results count -->
+            <p class="text-[11px] text-muted-foreground mb-3">
+                {m.marketplace_agentsListShowing({ count: marketplaceState.agents.length })}
+                {#if currentCategory.id}
+                    {m.marketplace_agentsListShowingIn({ category: currentCategory.label })}
+                {/if}
+            </p>
+
             <!-- Agent Grid/List -->
             <div class="agent-container" class:list={viewMode === "list"}>
                 {#if viewMode === "grid"}
-                    <!-- Grid View -->
                     {#each sortedAgents as agent (agent.id)}
                         <AgentCard {agent} />
                     {/each}
                 {:else}
-                    <!-- List View -->
                     {#each sortedAgents as agent (agent.id)}
                         {@const tags = parseTags(agent.tags)}
                         <div class="list-item">
-                            <!-- Mini ID Card on the left -->
-                            <!-- Mini ID Card in List View -->
+                            <!-- Mini ID Card -->
                             <div class="list-card">
-                                <!-- Badge Clip -->
                                 <div class="list-badge-clip">
                                     <div class="clip-base"></div>
                                     <div class="clip-ring"></div>
                                 </div>
                                 <div class="list-card-header">
-                                    <span class="list-initials"
-                                        >{agent.name
-                                            .slice(0, 2)
-                                            .toUpperCase()}</span
-                                    >
+                                    <span class="list-initials">{agent.name.slice(0, 2).toUpperCase()}</span>
                                 </div>
                                 <div class="list-photo">
-                                    <img
-                                        src={diceBearAvatarUrl(
-                                            agent.avatarSeed,
-                                        )}
-                                        alt={agent.name}
-                                    />
+                                    <img src={diceBearAvatarUrl(agent.avatarSeed)} alt={agent.name} />
                                 </div>
                                 <div class="list-card-footer">
                                     <span class="list-brand">MINION</span>
                                 </div>
                             </div>
 
-                            <!-- Details on the right -->
+                            <!-- Details -->
                             <div class="list-details">
                                 <div class="list-main">
                                     <div class="list-info">
                                         <h3 class="list-name">{agent.name}</h3>
                                         <p class="list-role">{agent.role}</p>
                                         {#if agent.catchphrase}
-                                            <p class="list-tagline">
-                                                "{agent.catchphrase}"
-                                            </p>
+                                            <p class="list-tagline">"{agent.catchphrase}"</p>
                                         {/if}
                                         <div class="list-tags">
-                                            <span class="list-category"
-                                                >{agent.category}</span
-                                            >
+                                            <span class="list-category">{agent.category}</span>
                                             {#each tags.slice(0, 3) as tag (tag)}
-                                                <span class="list-tag"
-                                                    >{tag}</span
-                                                >
+                                                <span class="list-tag">{tag}</span>
                                             {/each}
                                         </div>
                                     </div>
 
                                     <div class="list-stats">
                                         <div class="list-stat">
-                                            <span class="stat-number"
-                                                >{formatInstallCount(
-                                                    agent.installCount,
-                                                )}</span
-                                            >
-                                            <span class="stat-label">{m.marketplace_agentsListHires()}</span
-                                            >
+                                            <span class="stat-number">{formatInstallCount(agent.installCount)}</span>
+                                            <span class="stat-label">{m.marketplace_agentsListHires()}</span>
                                         </div>
                                         <div class="list-stat">
-                                            <span class="stat-number"
-                                                >v{agent.version}</span
-                                            >
-                                            <span class="stat-label"
-                                                >{m.marketplace_agentsListVersion()}</span
-                                            >
+                                            <span class="stat-number">v{agent.version}</span>
+                                            <span class="stat-label">{m.marketplace_agentsListVersion()}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -303,14 +317,8 @@
                                 </div>
 
                                 <div class="list-actions">
-                                    <a
-                                        href="/marketplace/agents/{agent.id}"
-                                        class="btn-secondary">{m.marketplace_agentsListViewProfile()}</a
-                                    >
-                                    <a
-                                        href="/marketplace/agents/{agent.id}?tab=hire"
-                                        class="btn-primary">{m.marketplace_agentsListHireMe()}</a
-                                    >
+                                    <a href="/marketplace/agents/{agent.id}" class="btn-secondary">{m.marketplace_agentsListViewProfile()}</a>
+                                    <a href="/marketplace/agents/{agent.id}?tab=hire" class="btn-primary">{m.marketplace_agentsListHireMe()}</a>
                                 </div>
                             </div>
                         </div>
@@ -322,313 +330,6 @@
 </div>
 
 <style>
-    .marketplace-page {
-        min-height: 100%;
-        padding: 24px;
-    }
-
-    /* Header */
-    .page-header {
-        margin-bottom: 24px;
-        padding-bottom: 16px;
-        border-bottom: 1px solid var(--color-border);
-    }
-
-    .page-title {
-        font-size: 18px;
-        font-weight: 700;
-        color: var(--color-foreground);
-        margin: 0 0 4px;
-        letter-spacing: -0.01em;
-    }
-
-    .page-subtitle {
-        font-size: 13px;
-        color: var(--color-muted);
-        margin: 0;
-    }
-
-    /* Filters Section */
-    .filters-section {
-        display: flex;
-        flex-direction: column;
-        gap: 16px;
-        margin-bottom: 24px;
-    }
-
-    /* Search */
-    .search-box {
-        position: relative;
-        display: flex;
-        align-items: center;
-    }
-
-    .search-box :global(.search-icon) {
-        position: absolute;
-        left: 12px;
-        color: var(--color-muted);
-        pointer-events: none;
-    }
-
-    .search-input {
-        width: 100%;
-        max-width: 400px;
-        padding: 10px 36px;
-        background: var(--color-bg2);
-        border: 1px solid var(--color-border);
-        border-radius: 8px;
-        color: var(--color-foreground);
-        font-size: 13px;
-        transition: all 0.15s ease;
-    }
-
-    .search-input::placeholder {
-        color: var(--color-muted);
-    }
-
-    .search-input:focus {
-        outline: none;
-        border-color: var(--color-brand-pink);
-    }
-
-    .clear-btn {
-        position: absolute;
-        left: calc(12px + 360px);
-        width: 20px;
-        height: 20px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: var(--color-bg3);
-        border: none;
-        border-radius: 50%;
-        color: var(--color-muted);
-        cursor: pointer;
-        transition: all 0.15s ease;
-    }
-
-    .clear-btn:hover {
-        background: var(--color-border);
-        color: var(--color-foreground);
-    }
-
-    /* Category Pills */
-    .category-pills {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-    }
-
-    .category-pill {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        padding: 6px 14px;
-        background: var(--color-bg2);
-        border: 1px solid var(--color-border);
-        border-radius: 20px;
-        color: var(--color-muted);
-        font-size: 12px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.15s ease;
-    }
-
-    .category-pill:hover {
-        background: var(--color-bg3);
-        color: var(--color-foreground);
-    }
-
-    .category-pill.active {
-        background: color-mix(
-            in srgb,
-            var(--color-brand-pink) 15%,
-            transparent
-        );
-        border-color: color-mix(
-            in srgb,
-            var(--color-brand-pink) 30%,
-            transparent
-        );
-        color: var(--color-brand-pink);
-    }
-
-    /* Toolbar */
-    .toolbar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding-top: 16px;
-        border-top: 1px solid var(--color-border);
-    }
-
-    .results-count {
-        font-size: 13px;
-        color: var(--color-muted);
-    }
-
-    .toolbar-controls {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-    }
-
-    .sort-select {
-        padding: 8px 12px;
-        background: var(--color-bg2);
-        border: 1px solid var(--color-border);
-        border-radius: 6px;
-        color: var(--color-foreground);
-        font-size: 12px;
-        cursor: pointer;
-    }
-
-    .sort-select:focus {
-        outline: none;
-        border-color: var(--color-brand-pink);
-    }
-
-    .view-toggle {
-        display: flex;
-        gap: 2px;
-        padding: 3px;
-        background: var(--color-bg2);
-        border: 1px solid var(--color-border);
-        border-radius: 6px;
-    }
-
-    .view-btn {
-        width: 28px;
-        height: 28px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: transparent;
-        border: none;
-        border-radius: 4px;
-        color: var(--color-muted);
-        cursor: pointer;
-        transition: all 0.15s ease;
-    }
-
-    .view-btn:hover {
-        color: var(--color-foreground);
-    }
-
-    .view-btn.active {
-        color: var(--color-brand-pink);
-        background: color-mix(
-            in srgb,
-            var(--color-brand-pink) 15%,
-            transparent
-        );
-    }
-
-    /* Content Area */
-    .content-area {
-        min-height: 400px;
-    }
-
-    /* Loading State */
-    .loading-state {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        padding: 80px 20px;
-        gap: 16px;
-    }
-
-    .loading-spinner {
-        position: relative;
-        width: 48px;
-        height: 48px;
-    }
-
-    .spinner-ring {
-        position: absolute;
-        inset: 0;
-        border: 2px solid transparent;
-        border-top-color: var(--color-brand-pink);
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-    }
-
-    .spinner-ring:nth-child(2) {
-        inset: 8px;
-        border-top-color: color-mix(
-            in srgb,
-            var(--color-brand-pink) 60%,
-            transparent
-        );
-        animation-duration: 1.5s;
-        animation-direction: reverse;
-    }
-
-    @keyframes spin {
-        to {
-            transform: rotate(360deg);
-        }
-    }
-
-    .loading-text {
-        font-size: 14px;
-        color: var(--color-muted);
-    }
-
-    /* Empty State */
-    .empty-state {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        padding: 80px 20px;
-        text-align: center;
-    }
-
-    .empty-icon {
-        width: 64px;
-        height: 64px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: var(--color-bg2);
-        border: 1px solid var(--color-border);
-        border-radius: 16px;
-        font-size: 28px;
-        margin-bottom: 16px;
-    }
-
-    .empty-title {
-        font-size: 16px;
-        font-weight: 600;
-        color: var(--color-foreground);
-        margin: 0 0 4px;
-    }
-
-    .empty-message {
-        font-size: 13px;
-        color: var(--color-muted);
-        margin: 0 0 16px;
-    }
-
-    .clear-filters-btn {
-        padding: 8px 16px;
-        background: var(--color-bg2);
-        border: 1px solid var(--color-border);
-        border-radius: 6px;
-        color: var(--color-muted);
-        font-size: 12px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.15s ease;
-    }
-
-    .clear-filters-btn:hover {
-        background: var(--color-bg3);
-        color: var(--color-foreground);
-    }
-
     /* Agent Container - Grid View */
     .agent-container {
         display: grid;
@@ -651,22 +352,18 @@
         background: var(--color-bg2);
         border: 1px solid var(--color-border);
         border-radius: 12px;
-        transition: all 0.15s ease;
+        transition: border-color 0.15s ease;
     }
 
     .list-item:hover {
-        border-color: var(--color-border);
+        border-color: color-mix(in srgb, var(--color-brand-pink) 30%, transparent);
     }
 
     /* Mini ID Card in List View */
     .list-card {
         width: 140px;
         flex-shrink: 0;
-        background: linear-gradient(
-            145deg,
-            rgba(250, 250, 250, 0.98),
-            rgba(240, 240, 242, 0.95)
-        );
+        background: linear-gradient(145deg, rgba(250, 250, 250, 0.98), rgba(240, 240, 242, 0.95));
         border-radius: 10px;
         padding: 12px;
         padding-top: 18px;
@@ -677,7 +374,6 @@
         position: relative;
     }
 
-    /* Badge Clip for List View */
     .list-badge-clip {
         position: absolute;
         top: -6px;
@@ -695,9 +391,7 @@
         background: linear-gradient(145deg, #3a3a3c, #1c1c1e);
         border-radius: 3px 3px 0 0;
         border: 1px solid #48484a;
-        box-shadow:
-            inset 0 1px 0 rgba(255, 255, 255, 0.1),
-            0 2px 4px rgba(0, 0, 0, 0.4);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 2px 4px rgba(0, 0, 0, 0.4);
     }
 
     .list-badge-clip .clip-ring {
@@ -767,10 +461,7 @@
         gap: 16px;
     }
 
-    .list-info {
-        flex: 1;
-        min-width: 0;
-    }
+    .list-info { flex: 1; min-width: 0; }
 
     .list-name {
         font-size: 16px;
@@ -783,6 +474,7 @@
         font-size: 13px;
         color: var(--color-muted);
         margin: 0 0 8px;
+        font-weight: 500;
     }
 
     .list-tagline {
@@ -800,13 +492,8 @@
 
     .list-category {
         padding: 3px 10px;
-        background: color-mix(
-            in srgb,
-            var(--color-brand-pink) 15%,
-            transparent
-        );
-        border: 1px solid
-            color-mix(in srgb, var(--color-brand-pink) 25%, transparent);
+        background: color-mix(in srgb, var(--color-brand-pink) 15%, transparent);
+        border: 1px solid color-mix(in srgb, var(--color-brand-pink) 25%, transparent);
         border-radius: 12px;
         color: var(--color-brand-pink);
         font-size: 10px;
@@ -862,9 +549,7 @@
         overflow: hidden;
     }
 
-    .list-description p {
-        margin: 0;
-    }
+    .list-description p { margin: 0; }
 
     .list-actions {
         display: flex;
@@ -908,10 +593,6 @@
 
     /* Responsive */
     @media (max-width: 768px) {
-        .marketplace-page {
-            padding: 16px;
-        }
-
         .agent-container {
             grid-template-columns: 1fr;
         }
@@ -941,14 +622,6 @@
             background: transparent;
         }
 
-        .list-initials {
-            color: #18181b;
-        }
-
-        .list-brand {
-            color: #18181b;
-        }
-
         .list-main {
             flex-direction: column;
             gap: 12px;
@@ -962,15 +635,6 @@
 
         .list-stat {
             align-items: flex-start;
-        }
-
-        .clear-btn {
-            left: auto;
-            right: 12px;
-        }
-
-        .search-input {
-            max-width: 100%;
         }
     }
 </style>

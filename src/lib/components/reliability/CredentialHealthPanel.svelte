@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import * as m from '$lib/paraglide/messages';
 	import { SvelteMap } from 'svelte/reactivity';
+	import { KeyRound } from 'lucide-svelte';
 	import {
 		createCredentialHealthState,
 		type CredentialProfile
@@ -90,10 +91,11 @@
 </script>
 
 <div class="bg-card border border-border rounded-lg overflow-hidden">
-	<div class="flex items-center justify-between py-3 px-4 border-b border-border">
-		<h3 class="text-[13px] font-semibold text-foreground m-0">{m.reliability_credentialTitle()}</h3>
+	<div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20">
+		<KeyRound size={11} class="text-accent shrink-0" />
+		<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground flex-1">{m.reliability_credentialTitle()}</span>
 		{#if capturedAgo}
-			<span class="text-[11px] text-muted-foreground">{capturedAgo}</span>
+			<span class="text-[10px] text-muted-foreground/60">{capturedAgo}</span>
 		{/if}
 	</div>
 

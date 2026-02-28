@@ -4,6 +4,7 @@
     import { parseTags, installAgent } from "$lib/state/marketplace.svelte";
     import { diceBearAvatarUrl } from "$lib/utils/avatar";
     import * as m from '$lib/paraglide/messages';
+    import { Download, Check } from "lucide-svelte";
 
     interface Props {
         agent: MarketplaceAgent;
@@ -102,9 +103,9 @@
                 <div class="id-footer">
                     <div class="company-brand">MINION</div>
                     <div class="footer-actions">
-                        <span class="install-count"
-                            >📥 {formatInstallCount(installCount)}</span
-                        >
+                        <span class="install-count">
+                            <Download size={9} />{formatInstallCount(installCount)}
+                        </span>
                         <button
                             type="button"
                             class="role-desc-btn"
@@ -192,7 +193,7 @@
                     class="hire-me-btn"
                     onclick={handleHireMe}
                 >
-                    <span class="btn-icon">✓</span>
+                    <Check size={13} />
                     <span>{m.marketplace_agentCardHireMe()}</span>
                 </button>
             </div>
@@ -495,6 +496,9 @@
     }
 
     .install-count {
+        display: flex;
+        align-items: center;
+        gap: 4px;
         font-size: 10px;
         color: #a1a1aa;
         font-family: "JetBrains Mono NF", monospace;
@@ -697,9 +701,6 @@
         box-shadow: 0 6px 20px rgba(232, 84, 122, 0.5);
     }
 
-    .btn-icon {
-        font-size: 14px;
-    }
 
     /* Corner Decorations */
     .corner-decoration {

@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import * as m from '$lib/paraglide/messages';
 	import { createSkillStatsState, type SkillAggregate, type SkillStatus } from '$lib/state/skill-stats.svelte';
+	import { Zap } from 'lucide-svelte';
 
 	interface Props {
 		serverId: string;
@@ -58,8 +59,9 @@
 </script>
 
 <div class="bg-card border border-border rounded-lg overflow-hidden">
-	<div class="flex items-center justify-between py-3 px-4 border-b border-border">
-		<h3 class="text-[13px] font-semibold text-foreground m-0">{m.reliability_skillTitle()}</h3>
+	<div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20">
+		<Zap size={11} class="text-accent shrink-0" />
+		<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground flex-1">{m.reliability_skillTitle()}</span>
 	</div>
 
 	{#if state.loading && skills.length === 0}

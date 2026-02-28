@@ -8,8 +8,9 @@
 	let { from, to, onchange }: Props = $props();
 
 	const presets = [
+		{ label: '1h',  ms:       60 * 60 * 1000 },
 		{ label: '24h', ms: 24 * 60 * 60 * 1000 },
-		{ label: '7d', ms: 7 * 24 * 60 * 60 * 1000 },
+		{ label: '7d',  ms: 7 * 24 * 60 * 60 * 1000 },
 		{ label: '30d', ms: 30 * 24 * 60 * 60 * 1000 }
 	] as const;
 
@@ -58,7 +59,7 @@
 	let toDateStr = $derived(epochToDateString(to));
 </script>
 
-<div class="flex flex-row items-center gap-2">
+<div class="flex flex-row items-end gap-2">
 	<div class="flex flex-row items-center gap-1.5">
 		{#each presets as preset (preset.label)}
 			<button

@@ -12,6 +12,11 @@
     } from "$lib/state/marketplace.svelte";
     import { diceBearAvatarUrl } from "$lib/utils/avatar";
     import * as m from "$lib/paraglide/messages";
+    import {
+        ArrowLeft, Search, Check, AlertCircle,
+        UserPlus, FileText, Info, AlignLeft,
+        ClipboardList, BarChart2,
+    } from "lucide-svelte";
 
     const slug = $derived($page.params.slug);
     const initialTab = $derived(
@@ -137,21 +142,34 @@
     }
 </script>
 
-<div class="agent-detail-page">
+<div class="flex flex-col min-h-full">
+    <!-- Compact sticky toolbar -->
+    <header class="sticky top-0 z-10 shrink-0 flex items-center gap-3 px-4 py-2.5 border-b border-border bg-bg2/80 backdrop-blur-sm">
+        <button
+            type="button"
+            onclick={goBack}
+            class="flex items-center gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer transition-colors text-xs"
+        >
+            <ArrowLeft size={13} />
+            <span>{m.marketplace_agentDetailBack()}</span>
+        </button>
+        {#if agent}
+            <span class="text-border/60">·</span>
+            <span class="text-sm font-semibold tracking-tight truncate">{agent.name}</span>
+        {/if}
+    </header>
+
+    <div class="agent-detail-page">
     {#if loading}
         <!-- Loading State -->
         <div class="loading-state">
-            <div class="loading-spinner">
-                <div class="spinner-ring"></div>
-                <div class="spinner-ring"></div>
-                <div class="spinner-ring"></div>
-            </div>
+            <div class="w-6 h-6 border-2 border-[var(--color-brand-pink)] border-t-transparent rounded-full animate-spin"></div>
             <p class="loading-text">{m.marketplace_agentDetailLoading()}</p>
         </div>
     {:else if !agent}
         <!-- Not Found -->
         <div class="not-found">
-            <div class="not-found-icon">🔍</div>
+            <Search size={40} class="text-muted-foreground/30 mb-2" />
             <h2>{m.marketplace_agentDetailNotFound()}</h2>
             <p>{m.marketplace_agentDetailNotFoundHint()}</p>
             <button type="button" onclick={goBack} class="back-btn">
@@ -159,20 +177,6 @@
             </button>
         </div>
     {:else}
-        <!-- Back Navigation -->
-        <button type="button" onclick={goBack} class="back-nav">
-            <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-            >
-                <path d="M19 12H5M12 19l-7-7 7-7" />
-            </svg>
-            <span>{m.marketplace_agentDetailBack()}</span>
-        </button>
 
         <!-- Hero Section - Corporate ID Style -->
         <div class="agent-hero">
@@ -279,7 +283,7 @@
 
                 {#if hireSuccess}
                     <div class="success-message">
-                        <span class="success-icon">✓</span>
+                        <span class="success-icon"><Check size={14} /></span>
                         <div>
                             <strong>{m.marketplace_agentDetailHiredSuccess()}</strong>
                             <p>{m.marketplace_agentDetailHiredSuccessHint({ name: agent.name })}</p>
@@ -289,7 +293,7 @@
 
                 {#if hireError}
                     <div class="error-message">
-                        <span class="error-icon">!</span>
+                        <span class="error-icon"><AlertCircle size={13} /></span>
                         <p>{hireError}</p>
                     </div>
                 {/if}
@@ -308,7 +312,7 @@
                     {:else if hireSuccess}
                         <span>{m.marketplace_agentDetailHired()}</span>
                     {:else}
-                        <span class="btn-icon">💼</span>
+                        <UserPlus size={16} />
                         <span>{m.marketplace_agentDetailHireBtn({ name: agent.name })}</span>
                     {/if}
                 </button>
@@ -336,10 +340,10 @@
                     class:active={activeTab === tab}
                 >
                     {#if tab === "documents"}
-                        <span class="tab-icon">📄</span>
+                        <FileText size={13} />
                         <span>{m.marketplace_agentDetailTabDocuments()}</span>
                     {:else}
-                        <span class="tab-icon">ℹ️</span>
+                        <Info size={13} />
                         <span>{m.marketplace_agentDetailTabOverview()}</span>
                     {/if}
                 </button>
@@ -353,7 +357,7 @@
                     <!-- About Card -->
                     <div class="info-card">
                         <div class="card-header">
-                            <span class="card-icon">📝</span>
+                            <AlignLeft size={16} class="text-[var(--color-brand-pink)] shrink-0" />
                             <h3>{m.marketplace_agentDetailAbout()}</h3>
                         </div>
                         <p class="card-body">{agent.description}</p>
@@ -362,7 +366,7 @@
                     <!-- Details Card -->
                     <div class="info-card">
                         <div class="card-header">
-                            <span class="card-icon">📋</span>
+                            <ClipboardList size={16} class="text-[var(--color-brand-pink)] shrink-0" />
                             <h3>{m.marketplace_agentDetailDetails()}</h3>
                         </div>
                         <div class="details-list">
@@ -398,7 +402,7 @@
                     <!-- Quick Stats -->
                     <div class="info-card stats-card">
                         <div class="card-header">
-                            <span class="card-icon">📊</span>
+                            <BarChart2 size={16} class="text-[var(--color-brand-pink)] shrink-0" />
                             <h3>{m.marketplace_agentDetailPerformance()}</h3>
                         </div>
                         <div class="performance-stats">
@@ -461,6 +465,7 @@
             {/if}
         </div>
     {/if}
+    </div>
 </div>
 
 <style>
@@ -478,45 +483,11 @@
         align-items: center;
         justify-content: center;
         padding: 100px 20px;
-        gap: 20px;
-    }
-
-    .loading-spinner {
-        position: relative;
-        width: 60px;
-        height: 60px;
-    }
-
-    .spinner-ring {
-        position: absolute;
-        inset: 0;
-        border: 2px solid transparent;
-        border-top-color: #e8547a;
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-    }
-
-    .spinner-ring:nth-child(2) {
-        inset: 8px;
-        border-top-color: #f472b6;
-        animation-duration: 1.5s;
-        animation-direction: reverse;
-    }
-
-    .spinner-ring:nth-child(3) {
-        inset: 16px;
-        border-top-color: rgba(232, 84, 122, 0.5);
-        animation-duration: 2s;
-    }
-
-    @keyframes spin {
-        to {
-            transform: rotate(360deg);
-        }
+        gap: 12px;
     }
 
     .loading-text {
-        font-size: 14px;
+        font-size: 13px;
         color: #71717a;
     }
 
@@ -528,11 +499,7 @@
         justify-content: center;
         padding: 100px 20px;
         text-align: center;
-    }
-
-    .not-found-icon {
-        font-size: 48px;
-        margin-bottom: 16px;
+        gap: 8px;
     }
 
     .not-found h2 {
@@ -562,28 +529,6 @@
     .back-btn:hover {
         background: rgba(255, 255, 255, 0.08);
         color: #fafafa;
-    }
-
-    /* Back Navigation */
-    .back-nav {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin-bottom: 24px;
-        padding: 8px 12px;
-        background: transparent;
-        border: none;
-        color: #a1a1aa;
-        font-size: 13px;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        width: fit-content;
-        border-radius: 8px;
-    }
-
-    .back-nav:hover {
-        color: #fafafa;
-        background: rgba(255, 255, 255, 0.05);
     }
 
     /* Hero Section */
@@ -1028,10 +973,6 @@
         cursor: not-allowed;
     }
 
-    .btn-icon {
-        font-size: 18px;
-    }
-
     .spinner {
         width: 18px;
         height: 18px;
@@ -1099,10 +1040,6 @@
         color: #e8547a;
     }
 
-    .tab-icon {
-        font-size: 14px;
-    }
-
     /* Tab Content */
     .tab-content {
         min-height: 300px;
@@ -1127,10 +1064,6 @@
         align-items: center;
         gap: 10px;
         margin-bottom: 16px;
-    }
-
-    .card-icon {
-        font-size: 20px;
     }
 
     .card-header h3 {
@@ -1312,10 +1245,6 @@
         .tab-btn {
             padding: 10px 14px;
             font-size: 12px;
-        }
-
-        .tab-icon {
-            display: none;
         }
 
         .performance-stats {

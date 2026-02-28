@@ -1,5 +1,6 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages';
+	import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-svelte';
 
 	interface ReliabilityEvent {
 		category: 'cron' | 'browser' | 'timezone' | 'general';
@@ -87,10 +88,17 @@
 		return new Date(timestamp).toISOString();
 	}
 
-	function getSortIndicator(column: SortColumn): string {
-		if (sortColumn !== column) return '';
-		return sortDirection === 'asc' ? ' \u25B2' : ' \u25BC';
+	function getSortIcon(column: SortColumn): typeof ChevronUp {
+		if (sortColumn !== column) return ChevronsUpDown;
+		return sortDirection === 'asc' ? ChevronUp : ChevronDown;
 	}
+
+	const severityRowBorder: Record<string, string> = {
+		critical: 'border-l-2 border-l-destructive',
+		high:     'border-l-2 border-l-warning',
+		medium:   'border-l-2 border-l-purple',
+		low:      'border-l-2 border-l-muted-foreground/30'
+	};
 
 	const severityClasses: Record<string, string> = {
 		critical: 'bg-destructive text-white',
@@ -108,7 +116,13 @@
 </script>
 
 <div class="w-full rounded-lg overflow-hidden bg-card border border-border">
-	<h3 class="m-0 py-3 px-4 text-[13px] font-semibold text-foreground border-b border-border">{title}</h3>
+	<!-- Widget-style header -->
+	<div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20">
+		<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground flex-1">{title || m.reliability_recentIncidents()}</span>
+		{#if events.length > 0}
+			<span class="text-[10px] text-muted-foreground/60 tabular-nums">{sortedEvents.length} / {events.length}</span>
+		{/if}
+	</div>
 
 	{#if events.length === 0}
 		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">{m.reliability_noIncidents()}</div>
@@ -116,38 +130,41 @@
 		<div class="overflow-x-auto">
 			<table class="w-full border-collapse table-fixed">
 				<thead>
-					<tr class="bg-bg3 sticky top-0 z-[1]">
-						<th class="w-[90px] py-2 px-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground text-left whitespace-nowrap cursor-pointer select-none border-b border-border hover:text-muted" onclick={() => toggleSort('timestamp')}>
-							{m.reliability_time()}{getSortIndicator('timestamp')}
-						</th>
-						<th class="w-[90px] py-2 px-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground text-left whitespace-nowrap cursor-pointer select-none border-b border-border hover:text-muted" onclick={() => toggleSort('severity')}>
-							{m.reliability_severity()}{getSortIndicator('severity')}
-						</th>
-						<th class="w-[100px] py-2 px-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground text-left whitespace-nowrap cursor-pointer select-none border-b border-border hover:text-muted" onclick={() => toggleSort('category')}>
-							{m.reliability_category()}{getSortIndicator('category')}
-						</th>
-						<th class="w-40 py-2 px-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground text-left whitespace-nowrap cursor-pointer select-none border-b border-border hover:text-muted" onclick={() => toggleSort('event')}>
-							{m.reliability_event()}{getSortIndicator('event')}
-						</th>
-						<th class="w-auto py-2 px-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground text-left whitespace-nowrap cursor-pointer select-none border-b border-border hover:text-muted" onclick={() => toggleSort('message')}>
-							{m.reliability_message()}{getSortIndicator('message')}
-						</th>
+					<tr class="bg-bg3/40 sticky top-0 z-[1]">
+						{#each ([
+							['timestamp', m.reliability_time(),     'w-[90px]'],
+							['severity',  m.reliability_severity(), 'w-[90px]'],
+							['category',  m.reliability_category(), 'w-[100px]'],
+							['event',     m.reliability_event(),    'w-40'],
+							['message',   m.reliability_message(),  'w-auto'],
+						] as const) as [col, label, width]}
+							{@const SortIcon = getSortIcon(col as SortColumn)}
+							<th
+								class="{width} py-2 px-3 text-left border-b border-border cursor-pointer select-none hover:text-foreground transition-colors"
+								onclick={() => toggleSort(col as SortColumn)}
+							>
+								<span class="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground whitespace-nowrap">
+									{label}
+									<SortIcon size={10} class="shrink-0 {sortColumn === col ? 'text-accent' : 'opacity-40'}" />
+								</span>
+							</th>
+						{/each}
 					</tr>
 				</thead>
 				<tbody>
-					{#each sortedEvents as evt (evt.timestamp + evt.event + evt.message)}
-						<tr class="border-b border-border/50 hover:bg-white/[0.02]">
-							<td class="w-[90px] py-2 px-3 text-xs text-muted tabular-nums cursor-default align-middle" title={formatFullDate(evt.timestamp)}>
+					{#each sortedEvents as evt (`${evt.timestamp}:${evt.event}:${evt.message}`)}
+						<tr class="border-b border-border/40 hover:bg-white/[0.025] {severityRowBorder[evt.severity] ?? ''}">
+							<td class="w-[90px] py-2 px-3 text-xs text-muted-foreground tabular-nums cursor-default align-middle font-mono" title={formatFullDate(evt.timestamp)}>
 								{formatRelativeTime(evt.timestamp)}
 							</td>
-							<td class="w-[90px] py-2 px-3 text-xs text-foreground align-middle">
-								<span class="inline-block text-[10px] font-semibold py-0.5 px-2 rounded-lg leading-snug whitespace-nowrap {severityClasses[evt.severity] ?? ''}">{evt.severity}</span>
+							<td class="w-[90px] py-2 px-3 text-xs align-middle">
+								<span class="inline-block text-[10px] font-semibold py-0.5 px-2 rounded-md leading-snug whitespace-nowrap {severityClasses[evt.severity] ?? ''}">{evt.severity}</span>
 							</td>
-							<td class="w-[100px] py-2 px-3 text-xs text-foreground align-middle">
-								<span class="inline-block text-[10px] font-semibold py-0.5 px-2 rounded-lg leading-snug whitespace-nowrap {categoryClasses[evt.category] ?? ''}">{evt.category}</span>
+							<td class="w-[100px] py-2 px-3 text-xs align-middle">
+								<span class="inline-block text-[10px] font-semibold py-0.5 px-2 rounded-md leading-snug whitespace-nowrap {categoryClasses[evt.category] ?? ''}">{evt.category}</span>
 							</td>
-							<td class="w-40 py-2 px-3 text-xs text-foreground align-middle">{evt.event}</td>
-							<td class="w-auto py-2 px-3 text-xs text-foreground align-middle">
+							<td class="w-40 py-2 px-3 text-xs text-foreground align-middle font-mono">{evt.event}</td>
+							<td class="w-auto py-2 px-3 text-xs text-muted-foreground align-middle">
 								<span class="inline-block max-w-[300px] overflow-hidden text-ellipsis whitespace-nowrap align-middle" title={evt.message}>{evt.message}</span>
 							</td>
 						</tr>

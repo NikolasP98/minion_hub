@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import StatusDot from '$lib/components/decorations/StatusDot.svelte';
+	import { Server } from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages';
 
 	interface Props {
@@ -124,13 +125,12 @@
 </script>
 
 <div class="bg-card border border-border rounded-lg overflow-hidden">
-	<div class="flex items-center justify-between py-3 px-4 border-b border-border">
-		<div class="flex items-center gap-1.5">
-			<StatusDot status={latest ? 'running' : 'idle'} size="sm" />
-			<h3 class="text-[13px] font-semibold text-foreground m-0">{m.reliability_gatewayTitle()}</h3>
-		</div>
+	<div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20">
+		<Server size={11} class="text-accent shrink-0" />
+		<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground flex-1">{m.reliability_gatewayTitle()}</span>
+		<StatusDot status={latest ? 'running' : 'idle'} size="sm" />
 		{#if latest}
-			<span class="text-[11px] text-muted-foreground">{formatAgo(latest.capturedAt)}</span>
+			<span class="text-[10px] text-muted-foreground/60 tabular-nums ml-1">{formatAgo(latest.capturedAt)}</span>
 		{/if}
 	</div>
 
@@ -176,7 +176,7 @@
 					preserveAspectRatio="xMidYMid meet"
 					xmlns="http://www.w3.org/2000/svg"
 				>
-					<path d={sparklineArea} fill="rgba(59, 130, 246, 0.1)" />
+					<path d={sparklineArea} fill="var(--color-accent)" fill-opacity="0.1" />
 					<polyline
 						points={sparklinePath}
 						fill="none"
