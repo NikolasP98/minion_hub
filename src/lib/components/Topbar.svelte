@@ -13,6 +13,7 @@
         Settings,
         Menu,
         X,
+        GitBranch,
     } from "lucide-svelte";
     import { ui } from "$lib/state/ui.svelte";
 
@@ -25,6 +26,7 @@
         page.url.pathname.startsWith("/reliability"),
     );
     const isSettings = $derived(page.url.pathname.startsWith("/settings"));
+    const isFlowEditor = $derived(page.url.pathname.startsWith("/flow-editor"));
 
     // Mobile menu state
     let mobileMenuOpen = $state(false);
@@ -90,6 +92,14 @@
                     <span>{m.nav_workshop()}</span>
                 </a>
                 <a
+                    href="/flow-editor"
+                    class="nav-pill {isFlowEditor ? 'active' : ''}"
+                    title="Flow Editor"
+                >
+                    <GitBranch size={14} />
+                    <span>Flows</span>
+                </a>
+                <a
                     href="/reliability"
                     class="nav-pill {isReliability ? 'active' : ''}"
                     title="Reliability"
@@ -123,6 +133,13 @@
                         </a>
                     {/snippet}
                 </Tooltip>
+                <Tooltip label="Flow Editor" id="nav-lg-flow-editor">
+                    {#snippet children(triggerProps)}
+                        <a href="/flow-editor" class="nav-pill {isFlowEditor ? 'active' : ''}" {...triggerProps}>
+                            <GitBranch size={16} />
+                        </a>
+                    {/snippet}
+                </Tooltip>
                 <Tooltip label={m.nav_reliability()} id="nav-lg-reliability">
                     {#snippet children(triggerProps)}
                         <a href="/reliability" class="nav-pill {isReliability ? 'active' : ''}" {...triggerProps}>
@@ -149,6 +166,13 @@
                 {#snippet children(triggerProps)}
                     <a href="/workshop" class="nav-pill-sm {isWorkshop ? 'active' : ''}" {...triggerProps}>
                         <Wrench size={18} />
+                    </a>
+                {/snippet}
+            </Tooltip>
+            <Tooltip label="Flow Editor" id="nav-md-flow-editor">
+                {#snippet children(triggerProps)}
+                    <a href="/flow-editor" class="nav-pill-sm {isFlowEditor ? 'active' : ''}" {...triggerProps}>
+                        <GitBranch size={18} />
                     </a>
                 {/snippet}
             </Tooltip>
@@ -224,6 +248,14 @@
                 >
                     <Wrench size={18} />
                     <span>{m.nav_workshop()}</span>
+                </a>
+                <a
+                    href="/flow-editor"
+                    class="mobile-nav-link {isFlowEditor ? 'active' : ''}"
+                    onclick={closeMobileMenu}
+                >
+                    <GitBranch size={18} />
+                    <span>Flows</span>
                 </a>
                 <a
                     href="/reliability"
