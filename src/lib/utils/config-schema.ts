@@ -12,16 +12,34 @@ import type {
 import { REDACTED_SENTINEL } from '$lib/types/config';
 
 // ─── Meta-groups (logical groupings for the UI sidebar) ─────────────────────
+//
+// Groups are assigned to meta-groups by their ORDER value (from GROUP_ORDER),
+// not by ID string matching. This is resilient to gateways that use different
+// config key names. Order ranges are non-overlapping and cover all values.
+//
+//   Setup        < 40   wizard, update, diagnostics, gateway, nodeHost
+//   AI          40-79   agents, tools, bindings, audio, models
+//   Automation  80-129  messages, commands, session, cron, hooks, ui
+//   Comms      130-199  browser, talk, channels
+//   Extensions 200-499  skills, plugins, discovery, presence, voicewake
+//   System      500+    logging (and any unknown high-order groups)
 
-export const META_GROUPS: { id: string; label: string; groupIds: string[] }[] = [
-  { id: 'setup',        label: 'Setup',         groupIds: ['wizard', 'update', 'gateway', 'nodeHost', 'diagnostics'] },
-  { id: 'ai',           label: 'AI',            groupIds: ['models', 'agents', 'tools'] },
-  { id: 'automation',   label: 'Automation',    groupIds: ['commands', 'cron', 'hooks', 'skills', 'plugins'] },
-  { id: 'data',         label: 'Data',          groupIds: ['session', 'messages', 'bindings'] },
-  { id: 'comms',        label: 'Communication', groupIds: ['channels', 'audio', 'talk', 'voicewake'] },
-  { id: 'integrations', label: 'Integrations',  groupIds: ['browser', 'discovery', 'presence'] },
-  { id: 'system',       label: 'System',        groupIds: ['ui', 'logging'] },
+export const META_GROUPS: { id: string; label: string; minOrder: number; maxOrder: number }[] = [
+  { id: 'setup',      label: 'Setup',         minOrder: 0,   maxOrder: 39  },
+  { id: 'ai',         label: 'AI',            minOrder: 40,  maxOrder: 79  },
+  { id: 'automation', label: 'Automation',    minOrder: 80,  maxOrder: 129 },
+  { id: 'comms',      label: 'Communication', minOrder: 130, maxOrder: 199 },
+  { id: 'extensions', label: 'Extensions',    minOrder: 200, maxOrder: 499 },
+  { id: 'system',     label: 'System',        minOrder: 500, maxOrder: Infinity },
 ];
+
+/** Returns the meta-group ID for a given group order value. */
+export function getMetaGroupId(order: number): string {
+  for (const m of META_GROUPS) {
+    if (order >= m.minOrder && order <= m.maxOrder) return m.id;
+  }
+  return 'system'; // fallback
+}
 
 // ─── Group order (mirrors gateway's GROUP_ORDER) ────────────────────────────
 

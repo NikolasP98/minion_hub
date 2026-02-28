@@ -1,6 +1,6 @@
 <script lang="ts">
     import { conn } from "$lib/state/connection.svelte";
-    import { META_GROUPS } from "$lib/utils/config-schema";
+    import { META_GROUPS, getMetaGroupId } from "$lib/utils/config-schema";
     import {
         Palette,
         SlidersHorizontal,
@@ -33,13 +33,13 @@
     interface Props {
         activeSection: Section;
         onselect: (s: Section) => void;
-        /** Group IDs present in the loaded config — used to hide empty meta-groups */
-        loadedGroupIds?: string[];
+        /** Meta-group IDs that have at least one group in the loaded config */
+        loadedMetaIds?: string[];
         /** Whether there are groups not claimed by any meta-group */
         hasOther?: boolean;
     }
 
-    let { activeSection, onselect, loadedGroupIds = [], hasOther = false }: Props = $props();
+    let { activeSection, onselect, loadedMetaIds = [], hasOther = false }: Props = $props();
 
     const META_ICONS: Record<string, typeof Palette> = {
         setup:        SlidersHorizontal,
@@ -62,18 +62,16 @@
         { id: "gateways" as Section, label: "Gateways", icon: Server },
     ];
 
-    // When config is loaded, only show meta-groups that have at least one
-    // matching group. Before load (loadedGroupIds empty), show all.
+    // When config is loaded (loadedMetaIds non-empty), show only meta-groups
+    // that have at least one group. Before load, show all.
     const visibleMeta = $derived.by(() => {
         const all = [
             ...META_GROUPS,
-            ...(hasOther ? [{ id: "other", label: "Other", groupIds: [] as string[] }] : []),
+            ...(hasOther ? [{ id: "other", label: "Other", minOrder: -1, maxOrder: -1 }] : []),
         ];
-        if (loadedGroupIds.length === 0) return all;
+        if (loadedMetaIds.length === 0) return all;
         return all.filter((m) =>
-            m.id === "other"
-                ? hasOther
-                : m.groupIds.some((id) => loadedGroupIds.includes(id)),
+            m.id === "other" ? hasOther : loadedMetaIds.includes(m.id),
         );
     });
 </script>

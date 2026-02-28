@@ -1,11 +1,8 @@
 <script lang="ts">
   import { groups, configState, dirtyPaths } from '$lib/state/config.svelte';
-  import { SvelteSet } from 'svelte/reactivity';
-  import { hasConfiguredValues, META_GROUPS } from '$lib/utils/config-schema';
+  import { hasConfiguredValues, META_GROUPS, getMetaGroupId } from '$lib/utils/config-schema';
 
   let { activeGroupId, onselect }: { activeGroupId: string | null; onselect: (id: string) => void } = $props();
-
-  // ── Helpers ──────────────────────────────────────────────────────────────
 
   function dirtyCountForGroup(groupId: string): number {
     const group = groups.value.find((g) => g.id === groupId);
@@ -24,47 +21,28 @@
     return hasConfiguredValues(val);
   }
 
-  // Build an ordered list of [metaGroup, ConfigGroup[]] pairs, only including
-  // meta-groups that have at least one group present in the loaded config.
+  // Build meta-group sections by order-range assignment; only include
+  // meta-groups that have at least one group in the loaded config.
   const visibleMeta = $derived.by(() => {
-    const groupIds = new SvelteSet(groups.value.map((g) => g.id));
-    const mapped = new SvelteSet<string>();
-    const result: { id: string; label: string; groupIds: string[] }[] = [];
-
-    for (const meta of META_GROUPS) {
-      const present = meta.groupIds.filter((id) => groupIds.has(id));
-      if (present.length > 0) {
-        result.push({ ...meta, groupIds: present });
-        for (const id of present) mapped.add(id);
-      }
+    const byMeta = new Map<string, typeof groups.value>();
+    for (const g of groups.value) {
+      const metaId = getMetaGroupId(g.order);
+      if (!byMeta.has(metaId)) byMeta.set(metaId, []);
+      byMeta.get(metaId)!.push(g);
     }
-
-    // Catch any groups not in any meta-group
-    const unmapped = groups.value.filter((g) => !mapped.has(g.id));
-    if (unmapped.length > 0) {
-      result.push({ id: '_other', label: 'Other', groupIds: unmapped.map((g) => g.id) });
-    }
-
-    return result;
+    // Return in META_GROUPS order, only populated ones
+    return META_GROUPS
+      .filter((m) => byMeta.has(m.id))
+      .map((m) => ({ ...m, items: byMeta.get(m.id)! }));
   });
-
-  // Preserve insertion order of each meta-group's groups from the loaded list
-  function metaGroupItems(metaGroupIds: string[]) {
-    return metaGroupIds
-      .map((id) => groups.value.find((g) => g.id === id))
-      .filter((g) => g !== undefined);
-  }
 </script>
 
 <nav class="w-[200px] shrink-0 border-r border-border overflow-y-auto py-3 bg-bg2/50">
   {#each visibleMeta as meta (meta.id)}
-    <!-- Meta-group header -->
     <div class="px-3 pt-3 pb-1 text-[9.5px] font-semibold uppercase tracking-widest text-muted-foreground/50 select-none">
       {meta.label}
     </div>
-
-    <!-- Groups in this meta-group -->
-    {#each metaGroupItems(meta.groupIds) as group (group.id)}
+    {#each meta.items as group (group.id)}
       {@const dirtyCount = dirtyCountForGroup(group.id)}
       {@const configured = isGroupConfigured(group.id)}
       <button

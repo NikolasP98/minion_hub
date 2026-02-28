@@ -6,7 +6,7 @@
         isDirty,
         groups,
     } from "$lib/state/config.svelte";
-    import { hasConfiguredValues, countConfiguredKeys, META_GROUPS } from "$lib/utils/config-schema";
+    import { hasConfiguredValues, countConfiguredKeys, META_GROUPS, getMetaGroupId } from "$lib/utils/config-schema";
     import { theme } from "$lib/state/theme.svelte";
     import { logoState } from "$lib/state/logo.svelte";
     import { locale } from "$lib/state/locale.svelte";
@@ -75,12 +75,16 @@
         }
     });
 
-    // IDs of all groups present in the loaded config
-    const loadedGroupIds = $derived(groups.value.map((g) => g.id));
+    // Which meta-group IDs have at least one group in the loaded config
+    const loadedMetaIds = $derived(
+        [...new Set(groups.value.map((g) => getMetaGroupId(g.order)))]
+    );
 
-    // Groups not claimed by any meta-group (for the "Other" catch-all)
-    const claimedGroupIds = new SvelteSet(META_GROUPS.flatMap((m) => m.groupIds));
-    const otherGroups = $derived(groups.value.filter((g) => !claimedGroupIds.has(g.id)));
+    // Groups whose order doesn't land in any defined meta-group range
+    // (currently impossible with the fallback, but kept for safety)
+    const otherGroups = $derived(
+        groups.value.filter((g) => !META_GROUPS.some((m) => getMetaGroupId(g.order) === m.id))
+    );
 
     // Groups visible in the active meta-group section, configured-first
     const activeGroups = $derived.by(() => {
@@ -88,9 +92,7 @@
         const candidates =
             activeMetaId === "other"
                 ? otherGroups
-                : (META_GROUPS.find((m) => m.id === activeMetaId)?.groupIds ?? [])
-                      .map((id) => groups.value.find((g) => g.id === id))
-                      .filter((g) => g !== undefined);
+                : groups.value.filter((g) => getMetaGroupId(g.order) === activeMetaId);
         const configured: typeof candidates = [];
         const empty: typeof candidates = [];
         for (const g of candidates) {
@@ -121,7 +123,7 @@
         <SettingsSidebar
             {activeSection}
             onselect={(s) => (activeSection = s)}
-            {loadedGroupIds}
+            {loadedMetaIds}
             hasOther={otherGroups.length > 0}
         />
 
