@@ -15,6 +15,7 @@
   let flows = $state<FlowMeta[]>([]);
   let loading = $state(true);
   let creating = $state(false);
+  let createError = $state<string | null>(null);
 
   onMount(async () => {
     await loadFlows();
@@ -35,6 +36,7 @@
 
   async function handleCreate() {
     creating = true;
+    createError = null;
     try {
       const name = `Flow ${new Date().toLocaleDateString()}`;
       const res = await fetch('/api/flows', {
@@ -45,7 +47,12 @@
       if (res.ok) {
         const { id } = await res.json();
         goto(`/flow-editor/${id}`);
+      } else {
+        const text = await res.text();
+        createError = `Error ${res.status}: ${text}`;
       }
+    } catch (e) {
+      createError = e instanceof Error ? e.message : 'Unknown error';
     } finally {
       creating = false;
     }
@@ -86,6 +93,12 @@
         New Flow
       </button>
     </div>
+
+    {#if createError}
+      <div class="mb-4 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-xs text-red-400 font-mono">
+        {createError}
+      </div>
+    {/if}
 
     <!-- Content -->
     {#if loading}
