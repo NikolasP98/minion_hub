@@ -1,4 +1,3 @@
-import { goto } from '$app/navigation';
 import { authClient } from '$lib/auth-client';
 import { env } from '$env/dynamic/public';
 
@@ -71,11 +70,11 @@ export async function loadUser() {
 }
 
 export async function logout() {
-  await authClient.signOut();
-  state.user = null;
-  state.role = null;
-  state.orgId = null;
-  goto('/');
+  try {
+    await authClient.signOut();
+  } finally {
+    window.location.href = '/login';
+  }
 }
 
 export function getUserInitials(user: CurrentUser): string {

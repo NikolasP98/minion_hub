@@ -3,6 +3,7 @@
   import { page } from '$app/state';
   import { authClient } from '$lib/auth-client';
   import * as m from '$lib/paraglide/messages';
+  import { loadUser } from '$lib/state/user.svelte';
   import ScanLine from '$lib/components/decorations/ScanLine.svelte';
 
   let email = $state('');
@@ -32,6 +33,7 @@
       if (firstOrg) await authClient.organization.setActive({ organizationId: firstOrg.id });
     } catch { /* non-fatal */ }
 
+    await loadUser();
     goto(redirectTo, { replaceState: true });
   }
 </script>
