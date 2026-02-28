@@ -32,6 +32,7 @@
         | "config-comms"
         | "config-integrations"
         | "config-system"
+        | "config-other"
         | "team"
         | "bindings"
         | "gateways";
@@ -74,15 +75,25 @@
         }
     });
 
+    // IDs of all groups present in the loaded config
+    const loadedGroupIds = $derived(groups.value.map((g) => g.id));
+
+    // Groups not claimed by any meta-group (for the "Other" catch-all)
+    const claimedGroupIds = new SvelteSet(META_GROUPS.flatMap((m) => m.groupIds));
+    const otherGroups = $derived(groups.value.filter((g) => !claimedGroupIds.has(g.id)));
+
     // Groups visible in the active meta-group section, configured-first
     const activeGroups = $derived.by(() => {
         if (!activeMetaId) return [];
-        const meta = META_GROUPS.find((m) => m.id === activeMetaId);
-        if (!meta) return [];
-        const inMeta = groups.value.filter((g) => meta.groupIds.includes(g.id));
-        const configured: typeof inMeta = [];
-        const empty: typeof inMeta = [];
-        for (const g of inMeta) {
+        const candidates =
+            activeMetaId === "other"
+                ? otherGroups
+                : (META_GROUPS.find((m) => m.id === activeMetaId)?.groupIds ?? [])
+                      .map((id) => groups.value.find((g) => g.id === id))
+                      .filter((g) => g !== undefined);
+        const configured: typeof candidates = [];
+        const empty: typeof candidates = [];
+        for (const g of candidates) {
             const val = configState.current[g.fields[0]?.key];
             if (hasConfiguredValues(val)) configured.push(g);
             else empty.push(g);
@@ -110,6 +121,8 @@
         <SettingsSidebar
             {activeSection}
             onselect={(s) => (activeSection = s)}
+            {loadedGroupIds}
+            hasOther={otherGroups.length > 0}
         />
 
         <main class="flex-1 min-h-0 overflow-hidden flex flex-col">

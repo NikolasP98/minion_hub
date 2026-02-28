@@ -10,6 +10,7 @@
         Radio,
         Plug,
         Monitor,
+        MoreHorizontal,
         Users,
         Link2,
         Server,
@@ -24,6 +25,7 @@
         | "config-comms"
         | "config-integrations"
         | "config-system"
+        | "config-other"
         | "team"
         | "bindings"
         | "gateways";
@@ -31,9 +33,13 @@
     interface Props {
         activeSection: Section;
         onselect: (s: Section) => void;
+        /** Group IDs present in the loaded config — used to hide empty meta-groups */
+        loadedGroupIds?: string[];
+        /** Whether there are groups not claimed by any meta-group */
+        hasOther?: boolean;
     }
 
-    let { activeSection, onselect }: Props = $props();
+    let { activeSection, onselect, loadedGroupIds = [], hasOther = false }: Props = $props();
 
     const META_ICONS: Record<string, typeof Palette> = {
         setup:        SlidersHorizontal,
@@ -43,6 +49,7 @@
         comms:        Radio,
         integrations: Plug,
         system:       Monitor,
+        other:        MoreHorizontal,
     };
 
     const USER_SECTIONS = [
@@ -54,6 +61,21 @@
         { id: "bindings" as Section, label: "Bindings", icon: Link2  },
         { id: "gateways" as Section, label: "Gateways", icon: Server },
     ];
+
+    // When config is loaded, only show meta-groups that have at least one
+    // matching group. Before load (loadedGroupIds empty), show all.
+    const visibleMeta = $derived.by(() => {
+        const all = [
+            ...META_GROUPS,
+            ...(hasOther ? [{ id: "other", label: "Other", groupIds: [] as string[] }] : []),
+        ];
+        if (loadedGroupIds.length === 0) return all;
+        return all.filter((m) =>
+            m.id === "other"
+                ? hasOther
+                : m.groupIds.some((id) => loadedGroupIds.includes(id)),
+        );
+    });
 </script>
 
 <aside
@@ -97,8 +119,8 @@
             Gateway
         </div>
 
-        <!-- Config meta-groups -->
-        {#each META_GROUPS as meta (meta.id)}
+        <!-- Config meta-groups (filtered to loaded groups when connected) -->
+        {#each visibleMeta as meta (meta.id)}
             {@const sectionId = `config-${meta.id}` as Section}
             {@const Icon = META_ICONS[meta.id]}
             <button
