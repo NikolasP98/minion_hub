@@ -8,7 +8,16 @@
   let { data, id, selected }: NodeProps & { data: AgentNodeData } = $props();
 
   let showSettings = $state(false);
-  const showHandles = $derived(flowEditorState.relationshipMode || selected);
+  let hovered = $state(false);
+  const showHandles = $derived(flowEditorState.relationshipMode || selected || hovered);
+
+  function isHandleConnected(handleId: string): boolean {
+    return flowEditorState.edges.some(
+      (e) =>
+        (e.source === id && e.sourceHandle === handleId) ||
+        (e.target === id && e.targetHandle === handleId),
+    );
+  }
 </script>
 
 <!-- Settings panel (shown above node when open) -->
@@ -40,7 +49,7 @@
     type="target"
     position={Position.Left}
     id={handle.id}
-    class="!w-3 !h-3 !border-2 !border-indigo-400 !bg-indigo-900 {showHandles ? '!opacity-100' : '!opacity-0'} transition-opacity"
+    class="!w-3 !h-3 !border-2 !border-indigo-400 !bg-indigo-900 !z-10 {showHandles || isHandleConnected(handle.id) ? '!opacity-100' : '!opacity-0'} transition-opacity"
   />
 {/each}
 {#if !data.inputHandles?.length}
@@ -48,7 +57,7 @@
     type="target"
     position={Position.Left}
     id="default-in"
-    class="!w-3 !h-3 !border-2 !border-indigo-400 !bg-indigo-900 {showHandles ? '!opacity-100' : '!opacity-60'} transition-opacity"
+    class="!w-3 !h-3 !border-2 !border-indigo-400 !bg-indigo-900 !z-10 {showHandles || isHandleConnected('default-in') ? '!opacity-100' : '!opacity-0'} transition-opacity"
   />
 {/if}
 
@@ -58,8 +67,15 @@
     {selected ? 'border-accent shadow-accent/20' : 'border-border hover:border-border/80'}"
   role="button"
   tabindex="0"
+  onmouseenter={() => (hovered = true)}
+  onmouseleave={() => (hovered = false)}
   ondblclick={() => (showSettings = !showSettings)}
   onkeydown={(e) => e.key === 'Enter' && (showSettings = !showSettings)}
+  oncontextmenu={(e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    flowEditorState.contextMenu = { open: true, x: e.clientX, y: e.clientY, nodeId: id };
+  }}
 >
   <div class="flex items-center gap-2 mb-1">
     <div class="w-6 h-6 rounded-md bg-indigo-500/20 flex items-center justify-center shrink-0">
@@ -78,7 +94,7 @@
     type="source"
     position={Position.Right}
     id={handle.id}
-    class="!w-3 !h-3 !border-2 !border-emerald-400 !bg-emerald-900 {showHandles ? '!opacity-100' : '!opacity-60'} transition-opacity"
+    class="!w-3 !h-3 !border-2 !border-emerald-400 !bg-emerald-900 {showHandles || isHandleConnected(handle.id) ? '!opacity-100' : '!opacity-0'} transition-opacity"
   />
 {/each}
 {#if !data.outputHandles?.length}
@@ -86,7 +102,7 @@
     type="source"
     position={Position.Right}
     id="default-out"
-    class="!w-3 !h-3 !border-2 !border-emerald-400 !bg-emerald-900 {showHandles ? '!opacity-100' : '!opacity-60'} transition-opacity"
+    class="!w-3 !h-3 !border-2 !border-emerald-400 !bg-emerald-900 {showHandles || isHandleConnected('default-out') ? '!opacity-100' : '!opacity-0'} transition-opacity"
   />
 {/if}
 
@@ -96,7 +112,7 @@
     type="source"
     position={Position.Bottom}
     id={handle.id}
-    class="!w-3 !h-3 !border-2 !border-amber-400 !bg-amber-900 {showHandles ? '!opacity-100' : '!opacity-0'} transition-opacity"
+    class="!w-3 !h-3 !border-2 !border-amber-400 !bg-amber-900 {showHandles || isHandleConnected(handle.id) ? '!opacity-100' : '!opacity-0'} transition-opacity"
   />
 {/each}
 {#if !data.contextHandles?.length}
@@ -104,6 +120,6 @@
     type="source"
     position={Position.Bottom}
     id="context-out"
-    class="!w-3 !h-3 !border-2 !border-amber-400 !bg-amber-900 {showHandles ? '!opacity-100' : '!opacity-0'} transition-opacity"
+    class="!w-3 !h-3 !border-2 !border-amber-400 !bg-amber-900 {showHandles || isHandleConnected('context-out') ? '!opacity-100' : '!opacity-0'} transition-opacity"
   />
 {/if}
