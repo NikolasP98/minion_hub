@@ -5,6 +5,7 @@
     Controls,
     MiniMap,
     addEdge,
+    useSvelteFlow,
     type Connection,
     type NodeTypes,
     type EdgeTypes,
@@ -24,6 +25,8 @@
     setRelationshipMode,
     type FlowNode,
     type FlowEdge,
+    type AgentNodeData,
+    type PromptBoxData,
   } from '$lib/state/flow-editor.svelte';
   import { theme } from '$lib/state/theme.svelte';
 
@@ -38,6 +41,49 @@
   };
 
   const colorMode: ColorMode = $derived(theme.preset === 'light' ? 'light' : 'dark');
+
+  const { screenToFlowPosition } = useSvelteFlow();
+
+  function makeId() {
+    return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  }
+
+  function handleDrop(e: DragEvent) {
+    e.preventDefault();
+    const raw = e.dataTransfer?.getData('application/flow-node');
+    if (!raw) return;
+
+    let payload: { type: 'agent' | 'promptBox'; agentId?: string; label?: string };
+    try { payload = JSON.parse(raw); } catch { return; }
+
+    const position = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+
+    if (payload.type === 'promptBox') {
+      const node: FlowNode = {
+        id: makeId(),
+        type: 'promptBox',
+        position,
+        data: { label: 'Prompt', value: '' } satisfies PromptBoxData,
+      };
+      setNodes([...flowEditorState.nodes, node]);
+    } else if (payload.type === 'agent' && payload.agentId) {
+      const node: FlowNode = {
+        id: makeId(),
+        type: 'agent',
+        position,
+        data: {
+          agentId: payload.agentId,
+          label: payload.label ?? payload.agentId,
+          defaultValues: {},
+          contextRules: [],
+          inputHandles: [{ id: 'in', label: 'input' }],
+          outputHandles: [{ id: 'out', label: 'output' }],
+          contextHandles: [{ id: 'ctx', label: 'context' }],
+        } satisfies AgentNodeData,
+      };
+      setNodes([...flowEditorState.nodes, node]);
+    }
+  }
 
   function handleConnect(connection: Connection) {
     // Infer edge type from target handle: bottom handle → context, others → flow
@@ -67,6 +113,10 @@
 
 <div
   class="flex-1 h-full {flowEditorState.relationshipMode ? 'cursor-crosshair' : ''}"
+  role="region"
+  aria-label="Flow canvas"
+  ondragover={(e) => e.preventDefault()}
+  ondrop={handleDrop}
 >
   <SvelteFlow
     nodes={flowEditorState.nodes}

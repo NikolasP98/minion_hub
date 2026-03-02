@@ -40,6 +40,12 @@
     };
     setNodes([...flowEditorState.nodes, node]);
   }
+
+  function handleDragStart(e: DragEvent, payload: { type: 'agent' | 'promptBox'; agentId?: string; label?: string }) {
+    if (!e.dataTransfer) return;
+    e.dataTransfer.effectAllowed = 'copy';
+    e.dataTransfer.setData('application/flow-node', JSON.stringify(payload));
+  }
 </script>
 
 <aside
@@ -71,6 +77,8 @@
       <!-- Prompt Box icon -->
       <button
         onclick={addPromptBox}
+        draggable="true"
+        ondragstart={(e) => handleDragStart(e, { type: 'promptBox', label: 'Prompt' })}
         class="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
         title="Prompt Box"
       >
@@ -82,6 +90,8 @@
         {#each gw.agents as agent (agent.id)}
           <button
             onclick={() => addAgentNode(agent.id, agent.name ?? agent.id)}
+            draggable="true"
+            ondragstart={(e) => handleDragStart(e, { type: 'agent', agentId: agent.id, label: agent.name ?? agent.id })}
             class="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-bg3 transition-colors border border-transparent hover:border-border/60 text-sm"
             title={agent.name ?? agent.id}
           >
@@ -103,6 +113,8 @@
         </p>
         <button
           onclick={addPromptBox}
+          draggable="true"
+          ondragstart={(e) => handleDragStart(e, { type: 'promptBox', label: 'Prompt' })}
           class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
         >
           <div class="w-6 h-6 rounded bg-violet-500/20 flex items-center justify-center shrink-0">
@@ -127,6 +139,8 @@
             {#each gw.agents as agent (agent.id)}
               <button
                 onclick={() => addAgentNode(agent.id, agent.name ?? agent.id)}
+                draggable="true"
+                ondragstart={(e) => handleDragStart(e, { type: 'agent', agentId: agent.id, label: agent.name ?? agent.id })}
                 class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
               >
                 <div class="w-6 h-6 rounded bg-indigo-500/20 flex items-center justify-center shrink-0 text-sm">
