@@ -13,7 +13,8 @@
     clearLogs,
   } from '$lib/state/flow-editor.svelte';
   import ConsolePanel from '$lib/components/flow-editor/ConsolePanel.svelte';
-  import { ArrowLeft, Save, GitBranch, Loader, Play } from 'lucide-svelte';
+  import { ArrowLeft, Save, GitBranch, Loader, Play, Trash2, Copy } from 'lucide-svelte';
+  import { deleteNode, duplicateNode } from '$lib/state/flow-editor.svelte';
 
   let isRunning = $state(false);
   let destroyed = $state(false);
@@ -165,6 +166,47 @@
       {#if flowEditorState.consoleOpen}
         <ConsolePanel />
       {/if}
+    </div>
+  {/if}
+
+  <!-- Node context menu — rendered outside the flow canvas to avoid transform clipping -->
+  {#if flowEditorState.contextMenu.open}
+    <!-- Backdrop to close on outside click -->
+    <div
+      class="fixed inset-0 z-40"
+      role="presentation"
+      onclick={() => (flowEditorState.contextMenu.open = false)}
+      oncontextmenu={(e) => {
+        e.preventDefault();
+        flowEditorState.contextMenu.open = false;
+      }}
+    ></div>
+    <!-- Menu -->
+    <div
+      style="left: {flowEditorState.contextMenu.x}px; top: {flowEditorState.contextMenu.y}px;"
+      class="fixed z-50 bg-bg2 border border-border rounded-lg shadow-xl py-1 min-w-36"
+    >
+      <button
+        onclick={() => {
+          if (flowEditorState.contextMenu.nodeId) duplicateNode(flowEditorState.contextMenu.nodeId);
+          flowEditorState.contextMenu.open = false;
+        }}
+        class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left text-foreground/80 hover:bg-bg3 transition-colors"
+      >
+        <Copy size={12} class="shrink-0" />
+        Duplicate
+      </button>
+      <div class="h-px bg-border/50 my-1"></div>
+      <button
+        onclick={() => {
+          if (flowEditorState.contextMenu.nodeId) deleteNode(flowEditorState.contextMenu.nodeId);
+          flowEditorState.contextMenu.open = false;
+        }}
+        class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left text-red-400 hover:bg-red-500/10 transition-colors"
+      >
+        <Trash2 size={12} class="shrink-0" />
+        Delete
+      </button>
     </div>
   {/if}
 </div>

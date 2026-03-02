@@ -110,6 +110,7 @@
 
   function handleKeyDown(e: KeyboardEvent) {
     if (e.key === 'Shift') setRelationshipMode(true);
+    if (e.key === 'Escape') flowEditorState.contextMenu.open = false;
   }
 
   function handleKeyUp(e: KeyboardEvent) {

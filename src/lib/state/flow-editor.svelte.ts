@@ -61,6 +61,7 @@ export const flowEditorState = $state({
   consoleOpen: false,
   consoleLogs: [] as LogEntry[],
   canvasViewport: { x: 0, y: 0, zoom: 1 },
+  contextMenu: { open: false, x: 0, y: 0, nodeId: null as string | null },
 });
 
 // ─── Auto-save ────────────────────────────────────────────────────────────────
@@ -190,4 +191,24 @@ export function appendLog(entry: Omit<LogEntry, 'id' | 'timestamp'>) {
 
 export function clearLogs() {
   flowEditorState.consoleLogs = [];
+}
+
+export function deleteNode(nodeId: string) {
+  flowEditorState.nodes = flowEditorState.nodes.filter((n) => n.id !== nodeId);
+  flowEditorState.edges = flowEditorState.edges.filter(
+    (e) => e.source !== nodeId && e.target !== nodeId,
+  );
+  markDirty();
+}
+
+export function duplicateNode(nodeId: string) {
+  const node = flowEditorState.nodes.find((n) => n.id === nodeId);
+  if (!node) return;
+  const newNode: FlowNode = {
+    ...node,
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    position: { x: node.position.x + 40, y: node.position.y + 40 },
+  };
+  flowEditorState.nodes = [...flowEditorState.nodes, newNode];
+  markDirty();
 }
