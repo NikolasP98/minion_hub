@@ -69,8 +69,8 @@
       {#each flowEditorState.consoleLogs as entry (entry.id)}
         <div class="flex items-start gap-2 text-[11px] leading-5">
           <span class="text-muted/40 shrink-0 select-none">{formatTime(entry.timestamp)}</span>
-          <span class="shrink-0 select-none {levelClass[entry.level] ?? 'text-foreground'} uppercase w-10">
-            [{entry.level.slice(0, 4)}]
+          <span class="shrink-0 select-none {levelClass[entry.level] ?? 'text-foreground'} uppercase w-12">
+            [{entry.level}]
           </span>
           {#if entry.nodeId}
             <span class="shrink-0 text-accent/70 bg-accent/10 px-1 rounded text-[10px]">{entry.nodeId}</span>
