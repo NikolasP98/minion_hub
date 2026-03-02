@@ -60,6 +60,7 @@ export const flowEditorState = $state({
   relationshipMode: false,
   consoleOpen: false,
   consoleLogs: [] as LogEntry[],
+  canvasViewport: { x: 0, y: 0, zoom: 1 },
 });
 
 // ─── Auto-save ────────────────────────────────────────────────────────────────

@@ -9,7 +9,6 @@
     type NodeTypes,
     type EdgeTypes,
     type ColorMode,
-    type Viewport,
   } from '@xyflow/svelte';
   import '@xyflow/svelte/dist/style.css';
 
@@ -42,14 +41,14 @@
 
   const colorMode: ColorMode = $derived(theme.preset === 'light' ? 'light' : 'dark');
 
-  let viewport = $state<Viewport>({ x: 0, y: 0, zoom: 1 });
   let containerEl: HTMLDivElement;
 
   function screenToFlowPosition(screenPos: { x: number; y: number }) {
     const rect = containerEl.getBoundingClientRect();
+    const vp = flowEditorState.canvasViewport;
     return {
-      x: (screenPos.x - rect.left - viewport.x) / viewport.zoom,
-      y: (screenPos.y - rect.top - viewport.y) / viewport.zoom,
+      x: (screenPos.x - rect.left - vp.x) / vp.zoom,
+      y: (screenPos.y - rect.top - vp.y) / vp.zoom,
     };
   }
 
@@ -134,7 +133,7 @@
     {nodeTypes}
     {edgeTypes}
     {colorMode}
-    bind:viewport
+    bind:viewport={flowEditorState.canvasViewport}
     fitView
     onnodeschange={(changes) => {
       let dirty = false;

@@ -10,11 +10,20 @@
     return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   }
 
+  /** Returns a position near the visible canvas center with a small random spread. */
+  function getDropPosition() {
+    const { x: vx, y: vy, zoom: vz } = flowEditorState.canvasViewport;
+    return {
+      x: (-vx + 600) / vz + (Math.random() - 0.5) * 160,
+      y: (-vy + 350) / vz + (Math.random() - 0.5) * 100,
+    };
+  }
+
   function addAgentNode(agentId: string, label: string) {
     const node: FlowNode = {
       id: makeId(),
       type: 'agent',
-      position: { x: 200 + Math.random() * 100, y: 100 + Math.random() * 100 },
+      position: getDropPosition(),
       data: {
         agentId,
         label,
@@ -32,7 +41,7 @@
     const node: FlowNode = {
       id: makeId(),
       type: 'promptBox',
-      position: { x: 80 + Math.random() * 60, y: 100 + Math.random() * 100 },
+      position: getDropPosition(),
       data: {
         label: 'Prompt',
         value: '',
