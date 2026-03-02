@@ -5,11 +5,11 @@
     Controls,
     MiniMap,
     addEdge,
-    useSvelteFlow,
     type Connection,
     type NodeTypes,
     type EdgeTypes,
     type ColorMode,
+    type Viewport,
   } from '@xyflow/svelte';
   import '@xyflow/svelte/dist/style.css';
 
@@ -42,7 +42,16 @@
 
   const colorMode: ColorMode = $derived(theme.preset === 'light' ? 'light' : 'dark');
 
-  const { screenToFlowPosition } = useSvelteFlow();
+  let viewport = $state<Viewport>({ x: 0, y: 0, zoom: 1 });
+  let containerEl: HTMLDivElement;
+
+  function screenToFlowPosition(screenPos: { x: number; y: number }) {
+    const rect = containerEl.getBoundingClientRect();
+    return {
+      x: (screenPos.x - rect.left - viewport.x) / viewport.zoom,
+      y: (screenPos.y - rect.top - viewport.y) / viewport.zoom,
+    };
+  }
 
   function makeId() {
     return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -112,6 +121,7 @@
 <svelte:window onkeydown={handleKeyDown} onkeyup={handleKeyUp} />
 
 <div
+  bind:this={containerEl}
   class="flex-1 h-full {flowEditorState.relationshipMode ? 'cursor-crosshair' : ''}"
   role="region"
   aria-label="Flow canvas"
@@ -124,6 +134,7 @@
     {nodeTypes}
     {edgeTypes}
     {colorMode}
+    bind:viewport
     fitView
     onnodeschange={(changes) => {
       let dirty = false;
