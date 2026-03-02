@@ -76,19 +76,26 @@
     {colorMode}
     fitView
     onnodeschange={(changes) => {
-      // Apply position changes reactively
+      let dirty = false;
       const updated = [...flowEditorState.nodes];
       for (const change of changes) {
-        if (change.type === 'position' && change.position) {
+        if (change.type === 'position' && change.dragging === false && change.position) {
+          // Only persist on drag-end, not during drag or @xyflow initialization
           const idx = updated.findIndex((n) => n.id === change.id);
-          if (idx !== -1) updated[idx] = { ...updated[idx], position: change.position };
+          if (idx !== -1) {
+            updated[idx] = { ...updated[idx], position: change.position };
+            dirty = true;
+          }
         }
         if (change.type === 'remove') {
           const idx = updated.findIndex((n) => n.id === change.id);
-          if (idx !== -1) updated.splice(idx, 1);
+          if (idx !== -1) {
+            updated.splice(idx, 1);
+            dirty = true;
+          }
         }
       }
-      setNodes(updated);
+      if (dirty) setNodes(updated);
     }}
     onedgeschange={(changes) => {
       const updated = [...flowEditorState.edges];
@@ -102,6 +109,7 @@
     }}
     onconnect={handleConnect}
     defaultEdgeOptions={{ type: 'flow' }}
+    proOptions={{ hideAttribution: true }}
   >
     <Background />
     <Controls />
