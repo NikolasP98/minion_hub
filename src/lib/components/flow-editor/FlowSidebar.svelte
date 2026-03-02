@@ -2,7 +2,9 @@
   import { gw } from '$lib/state/gateway-data.svelte';
   import { flowEditorState, setNodes } from '$lib/state/flow-editor.svelte';
   import type { FlowNode, AgentNodeData, PromptBoxData } from '$lib/state/flow-editor.svelte';
-  import { Bot, Type } from 'lucide-svelte';
+  import { Bot, Type, ChevronLeft, ChevronRight } from 'lucide-svelte';
+
+  let collapsed = $state(false);
 
   function makeId() {
     return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -40,66 +42,108 @@
   }
 </script>
 
-<aside class="w-56 shrink-0 bg-bg2 border-r border-border flex flex-col overflow-hidden">
-  <!-- Header -->
-  <div class="px-3 py-3 border-b border-border">
-    <h2 class="text-xs font-semibold text-muted uppercase tracking-wide">Palette</h2>
+<aside
+  class="shrink-0 bg-bg2 border-r border-border flex flex-col overflow-hidden transition-all duration-200 {collapsed
+    ? 'w-9'
+    : 'w-52'}"
+>
+  <!-- Header / collapse toggle -->
+  <div class="flex items-center border-b border-border {collapsed ? 'justify-center px-0 py-2' : 'justify-between px-3 py-2.5'}">
+    {#if !collapsed}
+      <h2 class="text-[10px] font-semibold text-muted uppercase tracking-wider">Palette</h2>
+    {/if}
+    <button
+      onclick={() => (collapsed = !collapsed)}
+      class="flex items-center justify-center w-5 h-5 rounded text-muted/60 hover:text-foreground hover:bg-bg3 transition-colors"
+      title={collapsed ? 'Expand palette' : 'Collapse palette'}
+    >
+      {#if collapsed}
+        <ChevronRight size={12} />
+      {:else}
+        <ChevronLeft size={12} />
+      {/if}
+    </button>
   </div>
 
-  <div class="flex-1 overflow-y-auto p-2 space-y-4">
-    <!-- Inputs section -->
-    <div>
-      <p class="text-[10px] font-semibold text-muted/60 uppercase tracking-wide px-1 mb-1">
-        Inputs
-      </p>
+  {#if collapsed}
+    <!-- Icon-only column when collapsed -->
+    <div class="flex-1 overflow-y-auto py-2 flex flex-col items-center gap-1">
+      <!-- Prompt Box icon -->
       <button
         onclick={addPromptBox}
-        class="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-bg3 transition-colors group border border-transparent hover:border-border/60"
+        class="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
+        title="Prompt Box"
       >
-        <div class="w-7 h-7 rounded-md bg-violet-500/20 flex items-center justify-center shrink-0">
-          <Type size={14} class="text-violet-400" />
-        </div>
-        <div>
-          <div class="text-xs font-medium text-foreground">Prompt Box</div>
-          <div class="text-[10px] text-muted">Text input node</div>
-        </div>
+        <Type size={13} class="text-violet-400" />
       </button>
-    </div>
 
-    <!-- Agents section -->
-    <div>
-      <p class="text-[10px] font-semibold text-muted/60 uppercase tracking-wide px-1 mb-1">
-        Agents
-      </p>
-
-      {#if gw.agents.length === 0}
-        <p class="text-xs text-muted/50 italic px-2 py-1">
-          No agents connected. Ensure a gateway host is selected.
-        </p>
-      {:else}
+      {#if gw.agents.length > 0}
+        <div class="w-4 h-px bg-border/40 my-0.5"></div>
         {#each gw.agents as agent (agent.id)}
           <button
             onclick={() => addAgentNode(agent.id, agent.name ?? agent.id)}
-            class="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-bg3 transition-colors group border border-transparent hover:border-border/60 mb-1"
+            class="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-bg3 transition-colors border border-transparent hover:border-border/60 text-sm"
+            title={agent.name ?? agent.id}
           >
-            <div
-              class="w-7 h-7 rounded-md bg-indigo-500/20 flex items-center justify-center shrink-0 text-base"
-            >
-              {#if agent.emoji}
-                {agent.emoji}
-              {:else}
-                <Bot size={14} class="text-indigo-400" />
-              {/if}
-            </div>
-            <div class="min-w-0">
-              <div class="text-xs font-medium text-foreground truncate">{agent.name ?? agent.id}</div>
-              {#if agent.description}
-                <div class="text-[10px] text-muted truncate">{agent.description}</div>
-              {/if}
-            </div>
+            {#if agent.emoji}
+              {agent.emoji}
+            {:else}
+              <Bot size={13} class="text-indigo-400" />
+            {/if}
           </button>
         {/each}
       {/if}
     </div>
-  </div>
+  {:else}
+    <div class="flex-1 overflow-y-auto py-3 px-2 space-y-5">
+      <!-- Inputs section -->
+      <div>
+        <p class="text-[9px] font-semibold text-muted/50 uppercase tracking-widest px-1 mb-1.5">
+          Inputs
+        </p>
+        <button
+          onclick={addPromptBox}
+          class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
+        >
+          <div class="w-6 h-6 rounded bg-violet-500/20 flex items-center justify-center shrink-0">
+            <Type size={12} class="text-violet-400" />
+          </div>
+          <div>
+            <div class="text-xs font-medium text-foreground">Prompt Box</div>
+            <div class="text-[10px] text-muted">Text input node</div>
+          </div>
+        </button>
+      </div>
+
+      <!-- Agents section -->
+      <div>
+        <p class="text-[9px] font-semibold text-muted/50 uppercase tracking-widest px-1 mb-1.5">
+          Agents
+        </p>
+        {#if gw.agents.length === 0}
+          <p class="text-[10px] text-muted/50 italic px-2 py-1">No agents connected.</p>
+        {:else}
+          <div class="flex flex-col gap-0.5">
+            {#each gw.agents as agent (agent.id)}
+              <button
+                onclick={() => addAgentNode(agent.id, agent.name ?? agent.id)}
+                class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
+              >
+                <div class="w-6 h-6 rounded bg-indigo-500/20 flex items-center justify-center shrink-0 text-sm">
+                  {#if agent.emoji}
+                    {agent.emoji}
+                  {:else}
+                    <Bot size={12} class="text-indigo-400" />
+                  {/if}
+                </div>
+                <div class="min-w-0">
+                  <div class="text-xs font-medium text-foreground truncate">{agent.name ?? agent.id}</div>
+                </div>
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    </div>
+  {/if}
 </aside>
