@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import Topbar from '$lib/components/Topbar.svelte';
   import FlowCanvas from '$lib/components/flow-editor/FlowCanvas.svelte';
   import FlowSidebar from '$lib/components/flow-editor/FlowSidebar.svelte';
@@ -16,28 +16,30 @@
   import { ArrowLeft, Save, GitBranch, Loader, Play } from 'lucide-svelte';
 
   let isRunning = $state(false);
+  let destroyed = $state(false);
+  onDestroy(() => { destroyed = true; });
 
   async function handleTestRun() {
     isRunning = true;
     clearLogs();
     flowEditorState.consoleOpen = true;
 
-    appendLog({ level: 'info', message: 'Starting flow test run…' });
-
-    const steps = [
-      { delay: 300, level: 'debug' as const, message: 'Resolving node execution order' },
-      { delay: 600, level: 'info' as const, message: `Processing ${flowEditorState.nodes.length} node(s)` },
-      { delay: 1000, level: 'info' as const, message: 'Executing prompt box inputs' },
-      { delay: 1400, level: 'info' as const, message: 'Dispatching to agents' },
-      { delay: 1800, level: 'info' as const, message: 'Flow run complete.' },
+    const steps: Array<{ level: 'info' | 'debug'; message: string }> = [
+      { level: 'info', message: 'Starting flow test run…' },
+      { level: 'debug', message: 'Resolving node execution order' },
+      { level: 'info', message: `Processing ${flowEditorState.nodes.length} node(s)` },
+      { level: 'info', message: 'Executing prompt box inputs' },
+      { level: 'info', message: 'Dispatching to agents' },
+      { level: 'info', message: 'Flow run complete.' },
     ];
 
     for (const step of steps) {
-      await new Promise<void>((resolve) => setTimeout(resolve, step.delay));
+      if (destroyed) break;
       appendLog({ level: step.level, message: step.message });
+      await new Promise<void>((resolve) => setTimeout(resolve, 350));
     }
 
-    isRunning = false;
+    if (!destroyed) isRunning = false;
   }
 
   const flowId = $derived(page.params.id);
