@@ -151,6 +151,15 @@ export function sendRequest(method: string, params?: unknown, timeoutMs = 15000)
   });
 }
 
+/**
+ * Push agent files to the gateway filesystem via the WebSocket connection.
+ * The gateway will write files to `.minion/marketplace/agents/<agentId>/`.
+ * Throws if the connection is not open.
+ */
+export async function sendInstall(agentId: string, files: Record<string, string>): Promise<void> {
+  await sendRequest('agent.install', { agentId, files });
+}
+
 // ─── Internal ─────────────────────────────────────────────────────────────────
 
 function scheduleReconnect() {
