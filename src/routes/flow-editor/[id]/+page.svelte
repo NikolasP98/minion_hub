@@ -9,8 +9,36 @@
     flowEditorState,
     loadFlow,
     saveFlow,
+    appendLog,
+    clearLogs,
   } from '$lib/state/flow-editor.svelte';
-  import { ArrowLeft, Save, GitBranch, Loader } from 'lucide-svelte';
+  import ConsolePanel from '$lib/components/flow-editor/ConsolePanel.svelte';
+  import { ArrowLeft, Save, GitBranch, Loader, Play } from 'lucide-svelte';
+
+  let isRunning = $state(false);
+
+  async function handleTestRun() {
+    isRunning = true;
+    clearLogs();
+    flowEditorState.consoleOpen = true;
+
+    appendLog({ level: 'info', message: 'Starting flow test run…' });
+
+    const steps = [
+      { delay: 300, level: 'debug' as const, message: 'Resolving node execution order' },
+      { delay: 600, level: 'info' as const, message: `Processing ${flowEditorState.nodes.length} node(s)` },
+      { delay: 1000, level: 'info' as const, message: 'Executing prompt box inputs' },
+      { delay: 1400, level: 'info' as const, message: 'Dispatching to agents' },
+      { delay: 1800, level: 'info' as const, message: 'Flow run complete.' },
+    ];
+
+    for (const step of steps) {
+      await new Promise<void>((resolve) => setTimeout(resolve, step.delay));
+      appendLog({ level: step.level, message: step.message });
+    }
+
+    isRunning = false;
+  }
 
   const flowId = $derived(page.params.id);
   let loadError = $state<string | null>(null);
@@ -93,6 +121,21 @@
 
       <div class="flex-1"></div>
 
+      <!-- Test Run button -->
+      <button
+        onclick={handleTestRun}
+        disabled={isRunning}
+        class="flex items-center gap-1.5 h-7 px-3 text-xs rounded border transition-colors
+          border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10 disabled:opacity-50 disabled:cursor-default"
+      >
+        {#if isRunning}
+          <Loader size={12} class="animate-spin" />
+        {:else}
+          <Play size={12} />
+        {/if}
+        Test Run
+      </button>
+
       <!-- Save button -->
       <button
         onclick={handleSave}
@@ -112,9 +155,14 @@
     </div>
 
     <!-- Editor body -->
-    <div class="flex flex-1 min-h-0 overflow-hidden">
-      <FlowSidebar />
-      <FlowCanvas />
+    <div class="flex flex-1 min-h-0 overflow-hidden flex-col">
+      <div class="flex flex-1 min-h-0 overflow-hidden">
+        <FlowSidebar />
+        <FlowCanvas />
+      </div>
+      {#if flowEditorState.consoleOpen}
+        <ConsolePanel />
+      {/if}
     </div>
   {/if}
 </div>
