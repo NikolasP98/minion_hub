@@ -39,6 +39,14 @@ export type FlowEdge = {
   label?: string;
 };
 
+export type LogEntry = {
+  id: string;
+  timestamp: number;
+  level: 'info' | 'warn' | 'error' | 'debug';
+  message: string;
+  nodeId?: string;
+};
+
 // ─── State ────────────────────────────────────────────────────────────────────
 
 export const flowEditorState = $state({
@@ -50,6 +58,8 @@ export const flowEditorState = $state({
   isDirty: false,
   isSaving: false,
   relationshipMode: false,
+  consoleOpen: false,
+  consoleLogs: [] as LogEntry[],
 });
 
 // ─── Auto-save ────────────────────────────────────────────────────────────────
@@ -167,4 +177,16 @@ export function setEdges(edges: FlowEdge[]) {
 
 export function setRelationshipMode(active: boolean) {
   flowEditorState.relationshipMode = active;
+}
+
+export function appendLog(entry: Omit<LogEntry, 'id' | 'timestamp'>) {
+  flowEditorState.consoleLogs.push({
+    ...entry,
+    id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+    timestamp: Date.now(),
+  });
+}
+
+export function clearLogs() {
+  flowEditorState.consoleLogs = [];
 }
