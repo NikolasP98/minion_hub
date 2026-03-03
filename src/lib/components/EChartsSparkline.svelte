@@ -16,7 +16,7 @@
 
   let container: HTMLDivElement;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let chart: any;
+  let chart: any = $state();
 
   function buildOption(b: number[], c: string, g: boolean, s: SparklineStyle) {
     const shadowStyle = g ? { shadowBlur: 6, shadowColor: c } : {};
@@ -84,7 +84,6 @@
       if (disposed) return;
       echarts.use([LineChart, BarChart, GridComponent, CanvasRenderer]);
       chart = echarts.init(container, null, { renderer: 'canvas' });
-      chart.setOption(buildOption(bins, color, glow, chartStyle));
     });
 
     return () => {

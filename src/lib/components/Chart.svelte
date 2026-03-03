@@ -15,7 +15,7 @@
 	} = $props();
 
 	let container: HTMLDivElement;
-	let chart: ECharts | undefined;
+	let chart: ECharts | undefined = $state();
 	let observer: ResizeObserver | undefined;
 
 	const darkTheme = {

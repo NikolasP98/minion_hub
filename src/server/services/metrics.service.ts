@@ -1,9 +1,9 @@
 import { insertReliabilityEvents, type ReliabilityEventInput } from './reliability.service';
 import { insertCredentialHealthSnapshot, type CredentialHealthInput } from './credential-health.service';
 import { insertSkillStats, type SkillStatInput } from './skill-stats.service';
-import { upsertSession } from './session.service';
-import { gatewayHeartbeats } from '$server/db/schema';
-import { nowMs } from '$server/db/utils';
+import { sessions, gatewayHeartbeats } from '$server/db/schema';
+import { newId, nowMs } from '$server/db/utils';
+import { sql } from 'drizzle-orm';
 import type { TenantContext } from './base';
 
 export interface HeartbeatInput {
@@ -84,19 +84,35 @@ export async function processMetricsBatch(
   }
 
   if (batch.sessions?.length) {
-    for (const s of batch.sessions) {
-      await upsertSession(ctx, {
-        serverId,
-        agentId: s.agentId,
-        sessionKey: s.sessionKey,
-        status: s.status ?? 'idle',
-        metadata: JSON.stringify({
-          label: s.label,
-          displayName: s.displayName,
-          totalTokens: s.totalTokens,
-          updatedAt: s.updatedAt,
-        }),
-      });
+    const now = nowMs();
+    const CHUNK = 50;
+    for (let i = 0; i < batch.sessions.length; i += CHUNK) {
+      const chunk = batch.sessions.slice(i, i + CHUNK);
+      await ctx.db
+        .insert(sessions)
+        .values(
+          chunk.map((s) => ({
+            id: newId(),
+            tenantId: ctx.tenantId,
+            serverId,
+            agentId: s.agentId,
+            sessionKey: s.sessionKey,
+            status: (s.status ?? 'idle') as 'running' | 'thinking' | 'idle' | 'aborted' | 'completed',
+            metadata: JSON.stringify({ label: s.label, displayName: s.displayName, totalTokens: s.totalTokens, updatedAt: s.updatedAt }),
+            startedAt: null,
+            endedAt: null,
+            createdAt: now,
+            updatedAt: now,
+          })),
+        )
+        .onConflictDoUpdate({
+          target: [sessions.tenantId, sessions.serverId, sessions.sessionKey],
+          set: {
+            status: sql`excluded.status`,
+            metadata: sql`excluded.metadata`,
+            updatedAt: sql`excluded.updated_at`,
+          },
+        });
     }
   }
 }

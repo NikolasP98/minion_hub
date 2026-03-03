@@ -109,7 +109,7 @@
 
 		const bucketSet = new Set<number>();
 		for (const point of ts) bucketSet.add(point.bucket);
-		const buckets = [...bucketSet].sort((a, b) => a - b);
+		const sparsebuckets = [...bucketSet].sort((a, b) => a - b);
 
 		const lookup = new Map<number, Map<string, number>>();
 		for (const point of ts) {
@@ -117,11 +117,21 @@
 			lookup.get(point.bucket)!.set(point.category, point.count);
 		}
 
+		// Fill the full time range with every bucket so gaps show as 0
+		// rather than being interpolated from adjacent values.
+		const interval = summary.bucketMs;
+		const buckets: number[] = [];
+		if (sparsebuckets.length > 0) {
+			for (let b = sparsebuckets[0]; b <= sparsebuckets[sparsebuckets.length - 1]; b += interval) {
+				buckets.push(b);
+			}
+		}
+
 		const series = CATEGORIES.map((cat) => ({
 			name: cat,
 			type: 'line' as const,
 			stack: 'events',
-			smooth: true,
+			smooth: false,
 			symbol: 'none',
 			lineStyle: { width: 1.5, color: CATEGORY_COLORS[cat] },
 			itemStyle: { color: CATEGORY_COLORS[cat] },
