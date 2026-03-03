@@ -7,7 +7,7 @@
         type MarketplaceAgent,
     } from "$lib/state/marketplace.svelte";
     import * as m from "$lib/paraglide/messages";
-    import { Search, Grid3X3, List, X, Store, Bot, Star } from "lucide-svelte";
+    import { Search, Grid3X3, List, X, Bot, Star } from "lucide-svelte";
     import { diceBearAvatarUrl } from "$lib/utils/avatar";
     import { parseTags } from "$lib/state/marketplace.svelte";
     import { holo } from '$lib/actions/holo';
@@ -100,11 +100,8 @@
     <header class="sticky top-0 z-10 shrink-0 flex flex-col border-b border-border bg-bg2/80 backdrop-blur-sm">
         <!-- Primary row: title + controls -->
         <div class="flex items-center gap-3 px-4 py-2.5">
-            <Store size={13} class="text-[var(--color-brand-pink)] shrink-0" />
+            <Bot size={13} class="text-[var(--color-brand-pink)] shrink-0" />
             <h1 class="text-sm font-semibold tracking-tight">{m.marketplace_agents()}</h1>
-            {#if sortedAgents.length > 0}
-                <span class="text-[10px] bg-bg3 text-muted-foreground border border-border rounded-full px-1.5 leading-5 tabular-nums">{sortedAgents.length}</span>
-            {/if}
             <span class="text-[11px] text-muted-foreground/70 hidden md:block truncate">{m.marketplace_agentsSubtitle()}</span>
             <div class="flex-1"></div>
 
@@ -268,14 +265,16 @@
                         {@const tags = parseTags(agent.tags)}
                         <div class="list-item" use:holo>
                             <!-- Mini ID Card -->
-                            <div class="list-card">
-                                    <!-- Holo layers -->
-                                    <div class="lc-shimmer" aria-hidden="true"></div>
-                                    <div class="lc-glare" aria-hidden="true"></div>
+                            <div class="list-card-wrap">
                                 <div class="list-badge-clip">
                                     <div class="clip-base"></div>
                                     <div class="clip-ring"></div>
                                 </div>
+                                <div class="list-card">
+                                    <!-- Holo layers -->
+                                    <div class="lc-shimmer" aria-hidden="true"></div>
+                                    <div class="lc-glare" aria-hidden="true"></div>
+                                    <div class="lc-noise" aria-hidden="true"></div>
                                 <div class="list-card-header">
                                     <span class="list-initials">{agent.name.slice(0, 2).toUpperCase()}</span>
                                 </div>
@@ -285,7 +284,8 @@
                                 <div class="list-card-footer">
                                     <span class="list-brand">MINION</span>
                                 </div>
-                            </div>
+                                </div><!-- end list-card -->
+                            </div><!-- end list-card-wrap -->
 
                             <!-- Details -->
                             <div class="list-details">
@@ -363,14 +363,19 @@
         border-color: color-mix(in srgb, var(--color-brand-pink) 30%, transparent);
     }
 
+    /* Mini ID Card wrapper — mirrors AgentCard's agent-card-front */
+    .list-card-wrap {
+        position: relative;
+        padding-top: 20px;
+        flex-shrink: 0;
+    }
+
     /* Mini ID Card in List View */
     .list-card {
         width: 140px;
-        flex-shrink: 0;
         background: linear-gradient(145deg, rgba(250, 250, 250, 0.98), rgba(240, 240, 242, 0.95));
         border-radius: 10px;
         padding: 12px;
-        padding-top: 18px;
         display: flex;
         flex-direction: column;
         gap: 8px;
@@ -380,7 +385,7 @@
 
     .list-badge-clip {
         position: absolute;
-        top: -6px;
+        top: 0;
         left: 50%;
         transform: translateX(-50%);
         z-index: 10;
@@ -606,6 +611,10 @@
             gap: 16px;
         }
 
+        .list-card-wrap {
+            width: 100%;
+        }
+
         .list-card {
             width: 100%;
             flex-direction: row;
@@ -738,13 +747,41 @@
         opacity: 0.6;
     }
 
+    /* Glitter sparkle layer — list card */
+    .lc-noise {
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        pointer-events: none;
+        z-index: 3;
+        background: linear-gradient(
+            calc(var(--mx, 0.5) * 360deg + 90deg),
+            hsl(calc(var(--mx, 0.5) * 240deg + 180deg), 85%, 78%),
+            hsl(calc(var(--mx, 0.5) * 240deg + 260deg), 85%, 82%),
+            hsl(calc(var(--mx, 0.5) * 240deg + 340deg), 85%, 78%)
+        );
+        -webkit-mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><filter id='f'><feTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 9 -4'/></filter><rect width='100%25' height='100%25' filter='url(%23f)'/></svg>");
+        mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><filter id='f'><feTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 9 -4'/></filter><rect width='100%25' height='100%25' filter='url(%23f)'/></svg>");
+        -webkit-mask-size: 120px 120px;
+        mask-size: 120px 120px;
+        -webkit-mask-repeat: repeat;
+        mask-repeat: repeat;
+        mix-blend-mode: multiply;
+        opacity: 0;
+        transition: opacity 0.4s ease;
+    }
+
+    :global(.list-item.holo-active) .lc-noise {
+        opacity: 0.70;
+    }
+
     /* Ensure list-card content sits above holo overlays */
     .list-badge-clip,
     .list-card-header,
     .list-photo,
     .list-card-footer {
         position: relative;
-        z-index: 3;
+        z-index: 4;
     }
 
     /* Iridescent list-brand text */
