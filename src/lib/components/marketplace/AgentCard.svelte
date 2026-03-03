@@ -98,18 +98,13 @@
                 <!-- Footer -->
                 <div class="id-footer">
                     <div class="company-brand">MINION</div>
-                    <div class="footer-actions">
-                        <span class="install-count">
-                            <Download size={9} />{formatInstallCount(installCount)}
-                        </span>
-                        <button
-                            type="button"
-                            class="role-desc-btn"
-                            onclick={viewDetails}
-                        >
-                            View Profile
-                        </button>
-                    </div>
+                    <button
+                        type="button"
+                        class="role-desc-btn"
+                        onclick={viewDetails}
+                    >
+                        View Profile
+                    </button>
                 </div>
             </div>
         </div>
@@ -118,26 +113,7 @@
         <div class="agent-card-back">
             <!-- Back Header -->
             <div class="back-header">
-                <button
-                    type="button"
-                    class="back-btn"
-                    onclick={(e) => { e.stopPropagation(); flipCard(); }}
-                    aria-label="Flip card back"
-                >
-                    <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                    >
-                        <path d="M19 12H5M12 19l-7-7 7-7" />
-                    </svg>
-                </button>
                 <span class="back-title">{m.marketplace_agentCardRoleDescription()}</span>
-                <div class="w-6"></div>
-                <!-- Spacer for centering -->
             </div>
 
             <!-- Content -->
@@ -178,19 +154,10 @@
 
             <!-- Back Footer -->
             <div class="back-footer">
-                <div class="version-info">
-                    <span>v{agent.version}</span>
-                    {#if agent.model}
-                        <span class="model-tag">{agent.model}</span>
-                    {/if}
-                </div>
-                <button
-                    type="button"
-                    class="view-profile-btn"
-                    onclick={(e) => { e.stopPropagation(); goto(`/marketplace/agents/${agent.id}`); }}
-                >
-                    View Profile →
-                </button>
+                <span class="back-meta">v{agent.version}</span>
+                <span class="back-meta install-back">
+                    <Download size={9} />{formatInstallCount(installCount)}
+                </span>
             </div>
 
             <!-- Decorative elements -->
@@ -486,21 +453,6 @@
         background: linear-gradient(90deg, #e8547a, transparent);
     }
 
-    .footer-actions {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-    }
-
-    .install-count {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        font-size: 10px;
-        color: #a1a1aa;
-        font-family: "JetBrains Mono NF", monospace;
-    }
-
     .role-desc-btn {
         background: #18181b;
         color: #fafafa;
@@ -522,32 +474,9 @@
     /* BACK SIDE STYLES */
 
     .back-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
         margin-bottom: 16px;
         padding-bottom: 12px;
         border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    }
-
-    .back-btn {
-        background: rgba(255, 255, 255, 0.05);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        color: #a1a1aa;
-        width: 32px;
-        height: 32px;
-        border-radius: 8px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        transition: all 0.2s ease;
-    }
-
-    .back-btn:hover {
-        background: rgba(232, 84, 122, 0.1);
-        border-color: rgba(232, 84, 122, 0.3);
-        color: #e8547a;
     }
 
     .back-title {
@@ -649,50 +578,20 @@
 
     .back-footer {
         margin-top: 16px;
-        padding-top: 16px;
-        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        padding-top: 12px;
+        border-top: 1px solid rgba(255, 255, 255, 0.07);
         display: flex;
         align-items: center;
-        justify-content: space-between;
+        gap: 16px;
     }
 
-    .version-info {
+    .back-meta {
         display: flex;
-        gap: 8px;
         align-items: center;
-    }
-
-    .version-info span {
+        gap: 4px;
         font-size: 10px;
-        color: #71717a;
+        color: #52525b;
         font-family: "JetBrains Mono NF", monospace;
-    }
-
-    .model-tag {
-        background: rgba(6, 182, 212, 0.1);
-        color: #06b6d4;
-        padding: 2px 8px;
-        border-radius: 4px;
-        border: 1px solid rgba(6, 182, 212, 0.2);
-    }
-
-    .view-profile-btn {
-        background: rgba(255, 255, 255, 0.05);
-        color: #e8547a;
-        border: 1px solid rgba(232, 84, 122, 0.3);
-        padding: 8px 16px;
-        border-radius: 8px;
-        font-size: 11px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        font-family: "JetBrains Mono NF", monospace;
-    }
-
-    .view-profile-btn:hover {
-        background: rgba(232, 84, 122, 0.1);
-        border-color: rgba(232, 84, 122, 0.5);
-        box-shadow: 0 4px 12px rgba(232, 84, 122, 0.25);
     }
 
 
