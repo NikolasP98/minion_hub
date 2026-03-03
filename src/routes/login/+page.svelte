@@ -6,6 +6,8 @@
   import { loadUser } from '$lib/state/user.svelte';
   import ScanLine from '$lib/components/decorations/ScanLine.svelte';
 
+  const { data } = $props();
+
   let email = $state('');
   let password = $state('');
   let loading = $state(false);
@@ -105,6 +107,7 @@
         </button>
       </form>
 
+      {#if data.googleEnabled}
       <div class="px-5 pb-5">
         <div class="flex items-center gap-3 mb-3">
           <div class="flex-1 h-px bg-border"></div>
@@ -132,6 +135,7 @@
           {googleLoading ? 'Connecting…' : 'Sign in with Google'}
         </button>
       </div>
+      {/if}
     </div>
     <p class="text-center text-[10px] text-muted/40 font-mono mt-4">{m.login_footer()}</p>
   </div>
