@@ -33,17 +33,14 @@
         isFlipped = !isFlipped;
     }
 
-    // Check click target at container level — more reliable than stopPropagation
-    // through preserve-3d / backface-visibility transformed subtrees.
+    // Navigate to details unless the click originated inside .id-footer
+    // (where the flip button lives). Target-check is more reliable than
+    // stopPropagation through preserve-3d / backface-visibility subtrees.
     function handleContainerClick(e: MouseEvent) {
         const target = e.target as Node;
         const container = e.currentTarget as HTMLElement;
         const idFooter = container.querySelector('.id-footer');
         if (idFooter?.contains(target)) return;
-        flipCard();
-    }
-
-    function viewDetails() {
         goto(`/marketplace/agents/${agent.id}`);
     }
 </script>
@@ -110,9 +107,9 @@
                     <button
                         type="button"
                         class="role-desc-btn"
-                        onclick={viewDetails}
+                        onclick={flipCard}
                     >
-                        View Profile
+                        Role Description
                     </button>
                 </div>
             </div>
