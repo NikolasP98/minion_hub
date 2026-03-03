@@ -33,14 +33,10 @@
         isFlipped = !isFlipped;
     }
 
-    // Navigate to details unless the click originated inside .id-footer
-    // (where the flip button lives). Target-check is more reliable than
-    // stopPropagation through preserve-3d / backface-visibility subtrees.
+    // Navigate unless the click came from inside a <button>.
+    // Buttons handle their own actions (flip, etc); everything else navigates.
     function handleContainerClick(e: MouseEvent) {
-        const target = e.target as Node;
-        const container = e.currentTarget as HTMLElement;
-        const idFooter = container.querySelector('.id-footer');
-        if (idFooter?.contains(target)) return;
+        if ((e.target as HTMLElement).closest('button')) return;
         goto(`/marketplace/agents/${agent.id}`);
     }
 </script>
@@ -101,7 +97,6 @@
                     <div class="dashed-line"></div>
                 </div>
 
-                <!-- Footer — clicks here never flip the card (handled in handleContainerClick) -->
                 <div class="id-footer">
                     <div class="company-brand">MINION</div>
                     <button
@@ -468,13 +463,20 @@
         font-size: 12px;
         font-weight: 600;
         cursor: pointer;
-        transition: box-shadow 0.2s ease;
+        transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
         font-family: inherit;
         box-shadow: 0 0 8px hsl(calc(var(--mx, 0.5) * 180deg + 280deg) 80% 60% / 0.3);
     }
 
     .role-desc-btn:hover {
-        box-shadow: 0 0 14px hsl(calc(var(--mx, 0.5) * 180deg + 280deg) 80% 60% / 0.55);
+        background: #2a2a2e;
+        box-shadow: 0 0 18px hsl(calc(var(--mx, 0.5) * 180deg + 280deg) 80% 65% / 0.65);
+        transform: translateY(-1px);
+    }
+
+    .role-desc-btn:active {
+        transform: translateY(0);
+        box-shadow: 0 0 10px hsl(calc(var(--mx, 0.5) * 180deg + 280deg) 80% 60% / 0.4);
     }
 
     /* BACK SIDE STYLES */
