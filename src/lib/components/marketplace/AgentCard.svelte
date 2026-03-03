@@ -5,6 +5,7 @@
     import { diceBearAvatarUrl } from "$lib/utils/avatar";
     import * as m from '$lib/paraglide/messages';
     import { Download, Check } from "lucide-svelte";
+    import { holo } from '$lib/actions/holo';
 
     interface Props {
         agent: MarketplaceAgent;
@@ -57,7 +58,10 @@
             </div>
 
             <!-- ID Card -->
-            <div class="id-card">
+            <div class="id-card" use:holo>
+                <!-- Holo layers (pointer-driven, CSS-only) -->
+                <div class="holo-shimmer" aria-hidden="true"></div>
+                <div class="holo-glare" aria-hidden="true"></div>
                 <!-- Header with initials -->
                 <div class="id-header">
                     <span class="initials">{getInitials(agent.name)}</span>
@@ -756,5 +760,121 @@
         .id-card {
             padding: 16px;
         }
+    }
+
+    /* ── Holographic effect ──────────────────────────────────────── */
+
+    /* Add overflow:hidden and position:relative to contain layers */
+    .id-card {
+        overflow: hidden;
+        position: relative;
+    }
+
+    /* 3D tilt driven by --mx / --my (±4° per axis) */
+    .id-card {
+        transition: transform 0.15s ease;
+        transform-style: preserve-3d;
+        transform:
+            perspective(800px)
+            rotateX(calc((0.5 - var(--my, 0.5)) * 8deg))
+            rotateY(calc((var(--mx, 0.5) - 0.5) * 8deg));
+    }
+
+    /* "MINION" repeated watermark texture */
+    .id-card::before {
+        content: 'MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  ';
+        position: absolute;
+        inset: 0;
+        font-family: 'JetBrains Mono NF', monospace;
+        font-size: 13px;
+        font-weight: 800;
+        letter-spacing: 0.25em;
+        line-height: 2;
+        color: rgba(0, 0, 0, 0.05);
+        overflow: hidden;
+        transform: rotate(-30deg) scale(1.6);
+        transform-origin: center;
+        word-break: break-all;
+        pointer-events: none;
+        z-index: 0;
+        border-radius: inherit;
+    }
+
+    /* Rainbow shimmer layer — visible only when .holo-active */
+    .holo-shimmer {
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        pointer-events: none;
+        z-index: 1;
+        background: conic-gradient(
+            from calc(var(--mx, 0.5) * 360deg) at calc(var(--mx, 0.5) * 100%) calc(var(--my, 0.5) * 100%),
+            hsl(0,   80%, 60%),
+            hsl(60,  80%, 60%),
+            hsl(120, 80%, 60%),
+            hsl(180, 80%, 60%),
+            hsl(240, 80%, 60%),
+            hsl(300, 80%, 60%),
+            hsl(360, 80%, 60%)
+        );
+        mix-blend-mode: color-dodge;
+        opacity: 0;
+        transition: opacity 0.4s ease;
+    }
+
+    :global(.id-card.holo-active) .holo-shimmer {
+        opacity: 0.12;
+    }
+
+    /* Radial glare following pointer */
+    .holo-glare {
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        pointer-events: none;
+        z-index: 2;
+        background: radial-gradient(
+            ellipse 60% 50% at calc(var(--mx, 0.5) * 100%) calc(var(--my, 0.5) * 100%),
+            rgba(255, 255, 255, 0.35),
+            transparent 70%
+        );
+        mix-blend-mode: overlay;
+        opacity: 0;
+        transition: opacity 0.4s ease;
+    }
+
+    :global(.id-card.holo-active) .holo-glare {
+        opacity: 0.6;
+    }
+
+    /* Ensure content renders above holo overlay layers */
+    .id-header,
+    .photo-container,
+    .agent-info,
+    .id-divider,
+    .id-footer {
+        position: relative;
+        z-index: 3;
+    }
+
+    /* Iridescent "MINION" brand text — gradient shifts with pointer */
+    .company-brand {
+        background: linear-gradient(
+            90deg,
+            hsl(calc(var(--mx, 0.5) * 200deg + 280deg), 75%, 35%),
+            hsl(calc(var(--mx, 0.5) * 200deg + 340deg), 80%, 45%),
+            hsl(calc(var(--mx, 0.5) * 200deg + 400deg), 75%, 35%)
+        );
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+
+    .company-brand::after {
+        background: linear-gradient(
+            90deg,
+            hsl(calc(var(--mx, 0.5) * 200deg + 280deg), 75%, 50%),
+            transparent
+        );
     }
 </style>
