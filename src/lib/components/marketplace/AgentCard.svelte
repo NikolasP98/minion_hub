@@ -824,9 +824,9 @@
     z-index: 3;
     background: linear-gradient(
         calc(var(--mx, 0.5) * 360deg + 90deg),
-        hsl(calc(var(--mx, 0.5) * 240deg + 180deg), 80%, 35%),
-        hsl(calc(var(--mx, 0.5) * 240deg + 260deg), 80%, 42%),
-        hsl(calc(var(--mx, 0.5) * 240deg + 340deg), 80%, 35%)
+        hsl(calc(var(--mx, 0.5) * 240deg + 180deg), 85%, 78%),
+        hsl(calc(var(--mx, 0.5) * 240deg + 260deg), 85%, 82%),
+        hsl(calc(var(--mx, 0.5) * 240deg + 340deg), 85%, 78%)
     );
     -webkit-mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><filter id='f'><feTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 9 -4'/></filter><rect width='100%25' height='100%25' filter='url(%23f)'/></svg>");
     mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><filter id='f'><feTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 9 -4'/></filter><rect width='100%25' height='100%25' filter='url(%23f)'/></svg>");
@@ -840,7 +840,7 @@
 }
 
 :global(.agent-card-container:not(.flipped).holo-active) .holo-noise {
-    opacity: 0.55;
+    opacity: 0.70;
 }
 
 </style>
