@@ -47,10 +47,10 @@
     }
 </script>
 
-<div class="agent-card-container" class:flipped={isFlipped}>
+<div class="agent-card-container" class:flipped={isFlipped} use:holo>
     <div class="agent-card-inner">
         <!-- FRONT SIDE - Corporate ID Badge -->
-        <div class="agent-card-front" use:holo>
+        <div class="agent-card-front">
             <!-- Badge Clip -->
             <div class="badge-clip">
                 <div class="clip-base"></div>
@@ -821,7 +821,7 @@
         transition: opacity 0.4s ease;
     }
 
-    :global(.agent-card-front.holo-active) .holo-shimmer {
+    :global(.agent-card-container.holo-active) .holo-shimmer {
         opacity: 0.12;
     }
 
@@ -842,7 +842,7 @@
         transition: opacity 0.4s ease;
     }
 
-    :global(.agent-card-front.holo-active) .holo-glare {
+    :global(.agent-card-container.holo-active) .holo-glare {
         opacity: 0.6;
     }
 

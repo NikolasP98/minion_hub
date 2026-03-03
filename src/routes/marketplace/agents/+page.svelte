@@ -266,9 +266,9 @@
                 {:else}
                     {#each sortedAgents as agent (agent.id)}
                         {@const tags = parseTags(agent.tags)}
-                        <div class="list-item">
+                        <div class="list-item" use:holo>
                             <!-- Mini ID Card -->
-                            <div class="list-card" use:holo>
+                            <div class="list-card">
                                     <!-- Holo layers -->
                                     <div class="lc-shimmer" aria-hidden="true"></div>
                                     <div class="lc-glare" aria-hidden="true"></div>
@@ -693,7 +693,7 @@
         transition: opacity 0.4s ease;
     }
 
-    :global(.list-card.holo-active) .lc-shimmer {
+    :global(.list-item.holo-active) .lc-shimmer {
         opacity: 0.12;
     }
 
@@ -713,7 +713,7 @@
         transition: opacity 0.4s ease;
     }
 
-    :global(.list-card.holo-active) .lc-glare {
+    :global(.list-item.holo-active) .lc-glare {
         opacity: 0.6;
     }
 
