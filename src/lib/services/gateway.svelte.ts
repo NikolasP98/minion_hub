@@ -1,6 +1,6 @@
 import { conn } from '$lib/state/connection.svelte';
 import { gw, upsertSession, mergeSessions, clearSessions } from '$lib/state/gateway-data.svelte';
-import { agentChat, agentActivity, ensureAgentChat, ensureAgentActivity, saveSparkBins, pushChatMessage } from '$lib/state/chat.svelte';
+import { agentChat, agentActivity, ensureAgentChat, ensureAgentActivity, markSparkBinDirty, mergeActivityBinsFromDb, startSqliteFlush, stopSqliteFlush, pushChatMessage, SPARK_BIN_MS, SPARK_BIN_COUNT } from '$lib/state/chat.svelte';
 import { hostsState, getActiveHost, updateHost, saveLastActiveHost } from '$lib/state/hosts.svelte';
 import { autoSave, resetWorkshop } from '$lib/state/workshop.svelte';
 import { ui } from '$lib/state/ui.svelte';
@@ -101,6 +101,7 @@ export function wsDisconnect() {
 
   flushPending(new Error('disconnected'));
   stopPolling();
+  stopSqliteFlush();
 
   // Save current host's workshop layout before clearing state
   autoSave(hostsState.activeHostId);
@@ -270,10 +271,22 @@ async function resolveServerId() {
     if (match) {
       ui.selectedServerId = match.id;
       setReliabilityServerId(match.id);
+      fetchActivityBinsFromDb(match.id);
+      startSqliteFlush(match.id);
     }
   } catch {
     // non-critical — UI will work without server ID, just can't fetch missions
   }
+}
+
+async function fetchActivityBinsFromDb(serverId: string): Promise<void> {
+  const since = Date.now() - 86_400_000; // 24h ago
+  try {
+    const res = await fetch(`/api/servers/${serverId}/activity-bins?since=${since}`);
+    if (!res.ok) return;
+    const { bins } = await res.json();
+    if (Array.isArray(bins)) mergeActivityBinsFromDb(bins);
+  } catch { /* non-critical */ }
 }
 
 function handleMessage(raw: string) {
@@ -339,9 +352,11 @@ function onAgentEvent(payload: Record<string, unknown>) {
   act.lastEventAt = Date.now();
   act.working = true;
 
-  const binIdx = Math.floor((Date.now() / 10000) % 30);
+  const now = Date.now();
+  const binTs = Math.floor(now / SPARK_BIN_MS) * SPARK_BIN_MS;
+  const binIdx = Math.floor(binTs / SPARK_BIN_MS) % SPARK_BIN_COUNT;
   act.sparkBins[binIdx] = (act.sparkBins[binIdx] ?? 0) + 1;
-  saveSparkBins(agentId, act.sparkBins);
+  markSparkBinDirty(agentId, binTs, act.sparkBins[binIdx]);
 
   if (act._workingTimer) clearTimeout(act._workingTimer);
   const aid = agentId;

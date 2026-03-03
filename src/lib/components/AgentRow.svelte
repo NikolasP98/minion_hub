@@ -1,6 +1,7 @@
 <script lang="ts">
     import { Spring, spring } from "svelte/motion";
-    import Sparkline from "./Sparkline.svelte";
+    import EChartsSparkline from "./EChartsSparkline.svelte";
+    import { sparklineStyle } from "$lib/state/sparkline-style.svelte";
     import StatusDot from "$lib/components/decorations/StatusDot.svelte";
     import { agentActivity, agentChat } from "$lib/state/chat.svelte";
     import { ui } from "$lib/state/ui.svelte";
@@ -184,10 +185,11 @@
 
         <!-- Row 2: sparkline full width -->
         <div class="w-full h-5">
-            <Sparkline
-                bins={act?.sparkBins ?? new Array(30).fill(0)}
+            <EChartsSparkline
+                bins={act?.sparkBins ?? new Array(144).fill(0)}
                 color={accentColor}
                 glow={hasActive}
+                chartStyle={sparklineStyle.current}
             />
         </div>
     </button>
