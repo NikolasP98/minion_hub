@@ -213,7 +213,6 @@
 
 <style>
     .agent-card-container {
-        perspective: 1200px;
         width: 100%;
         height: 380px;
         cursor: pointer;
