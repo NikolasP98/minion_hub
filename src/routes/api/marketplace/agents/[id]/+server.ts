@@ -1,11 +1,11 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { getDb } from '$server/db/client';
-import { getMarketplaceAgent } from '$server/services/marketplace.service';
+import { getAgentWithFiles } from '$server/services/marketplace.service';
 
 export const GET: RequestHandler = async ({ params }) => {
   const db = getDb();
-  const agent = await getMarketplaceAgent(db, params.id!);
+  const agent = await getAgentWithFiles(db, params.id!);
 
   if (!agent) throw error(404, 'Agent not found');
 

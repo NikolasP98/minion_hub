@@ -1,8 +1,9 @@
 <script lang="ts">
     import { Spring, spring } from "svelte/motion";
-    import ActivityBars from "./ActivityBars.svelte";
+    import EChartsSparkline from "./EChartsSparkline.svelte";
+    import { sparklineStyle } from "$lib/state/sparkline-style.svelte";
     import StatusDot from "$lib/components/decorations/StatusDot.svelte";
-    import { agentActivity, agentChat } from "$lib/state/chat.svelte";
+    import { agentActivity, agentChat, SPARK_BIN_COUNT, SPARK_BIN_MS } from "$lib/state/chat.svelte";
     import { ui } from "$lib/state/ui.svelte";
     import { gw } from "$lib/state/gateway-data.svelte";
     import type { Agent } from "$lib/types/gateway";
@@ -56,23 +57,10 @@
         return m.agent_statusIdle();
     });
 
-    // Monotone chart color based on activity status
-    const chartColor = $derived.by(() => {
-        if (hasActive) return "var(--color-success)";
-        if (chat?.loading) return "var(--color-accent)";
-        return "var(--color-border)";
-    });
-
-    /**
-     * Rotate the circular spark-bin buffer so the oldest bin is at index 0
-     * (left) and the most-recent bin is at index 29 (right). This fixes
-     * the visual persistence: after a page reload the stored bins are displayed
-     * in correct chronological order rather than at their raw circular indices.
-     */
     const rotatedBins = $derived.by(() => {
-        const raw = act?.sparkBins ?? new Array(30).fill(0);
-        const currentBin = Math.floor(Date.now() / 10000) % 30;
-        const start = (currentBin + 1) % 30; // oldest bin is one past current
+        const raw = act?.sparkBins ?? new Array(SPARK_BIN_COUNT).fill(0);
+        const currentBinIdx = Math.floor(Date.now() / SPARK_BIN_MS) % SPARK_BIN_COUNT;
+        const start = (currentBinIdx + 1) % SPARK_BIN_COUNT;
         return [...raw.slice(start), ...raw.slice(0, start)];
     });
 
@@ -246,12 +234,14 @@
                 {/if}
             </div>
 
-            <!-- Right: activity bar chart (flex-1) -->
-            <div
-                class="flex-1 h-5 transition-colors duration-300"
-                style:color={chartColor}
-            >
-                <ActivityBars bins={rotatedBins} highlightLast={hasActive} />
+            <!-- Right: ECharts sparkline (flex-1) -->
+            <div class="flex-1 h-5">
+                <EChartsSparkline
+                    bins={rotatedBins}
+                    color={accentColor}
+                    glow={hasActive}
+                    chartStyle={sparklineStyle.current}
+                />
             </div>
         </div>
     </button>

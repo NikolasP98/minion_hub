@@ -16,6 +16,7 @@
     import Topbar from "$lib/components/Topbar.svelte";
     import SettingsSidebar from "$lib/components/settings/SettingsSidebar.svelte";
     import PatternSettings from "$lib/components/settings/PatternSettings.svelte";
+    import SparklineStyleSettings from "$lib/components/settings/SparklineStyleSettings.svelte";
     import GatewaySettings from "$lib/components/settings/GatewaySettings.svelte";
     import MinionLogo from "$lib/components/MinionLogo.svelte";
     import ConfigSection from "$lib/components/config/ConfigSection.svelte";
@@ -315,6 +316,11 @@
                                 <!-- Background Pattern -->
                                 <div class="bg-card border border-border rounded-lg px-5 py-4">
                                     <PatternSettings />
+                                </div>
+
+                                <!-- Sparkline Style -->
+                                <div class="bg-card border border-border rounded-lg px-5 py-4">
+                                    <SparklineStyleSettings />
                                 </div>
 
                                 <!-- Language -->

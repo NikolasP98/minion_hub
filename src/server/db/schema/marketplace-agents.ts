@@ -19,6 +19,7 @@ export const marketplaceAgents = sqliteTable('marketplace_agents', {
   skillsMd: text('skills_md'),
   installCount: integer('install_count').default(0),
   syncedAt: integer('synced_at').notNull(),
+  filesLoadedAt: integer('files_loaded_at'),
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
 });

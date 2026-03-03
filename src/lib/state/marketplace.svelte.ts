@@ -107,6 +107,22 @@ export async function installAgent(agentId: string, serverId: string, serverName
       marketplaceState.installError = text || 'Install failed';
       return false;
     }
+
+    const data = await res.json() as { ok: boolean; files?: Record<string, string> };
+
+    // Push agent files to the gateway filesystem via the active WebSocket connection
+    if (data.files && Object.keys(data.files).length > 0) {
+      const { sendInstall } = await import('$lib/services/gateway.svelte');
+      try {
+        await sendInstall(agentId, data.files);
+      } catch (wsErr) {
+        // File delivery failed — install is still recorded in DB.
+        // Surface this as a non-fatal warning so the user knows files weren't pushed.
+        marketplaceState.installError = `Agent registered but file delivery to gateway failed: ${(wsErr as Error).message}`;
+        return false;
+      }
+    }
+
     marketplaceState.lastInstalledAgentId = agentId;
     // Optimistically bump install count
     const agent = marketplaceState.agents.find((a) => a.id === agentId);
