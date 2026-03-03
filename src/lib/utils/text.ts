@@ -23,7 +23,7 @@ export function parseGatewayMetadata(text: string): { clean: string; isoTs?: str
   const metaRe = /^Conversation info \(untrusted metadata\):\s*```(?:json)?\s[\s\S]*?```\s*\n*/;
   let clean = text.replace(metaRe, '');
   // Extract: "[Day YYYY-MM-DD HH:MM GMT±N] "
-  const tsRe = /^\[([^\]]+)\]\s*/;
+  const tsRe = /^\[([^\[\]]+)\]\s*/;
   let isoTs: string | undefined;
   const m = clean.match(tsRe);
   if (m) { isoTs = m[1]; clean = clean.slice(m[0].length); }
