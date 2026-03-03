@@ -33,13 +33,22 @@
         isFlipped = !isFlipped;
     }
 
-    function viewDetails(e: MouseEvent) {
-        e.stopPropagation();
+    // Check click target at container level — more reliable than stopPropagation
+    // through preserve-3d / backface-visibility transformed subtrees.
+    function handleContainerClick(e: MouseEvent) {
+        const target = e.target as Node;
+        const container = e.currentTarget as HTMLElement;
+        const idFooter = container.querySelector('.id-footer');
+        if (idFooter?.contains(target)) return;
+        flipCard();
+    }
+
+    function viewDetails() {
         goto(`/marketplace/agents/${agent.id}`);
     }
 </script>
 
-<div class="agent-card-container" class:flipped={isFlipped} use:holo onclick={flipCard} onkeydown={(e) => e.key === 'Enter' && flipCard()} role="button" tabindex="0">
+<div class="agent-card-container" class:flipped={isFlipped} use:holo onclick={handleContainerClick} onkeydown={(e) => e.key === 'Enter' && flipCard()} role="button" tabindex="0">
     <div class="agent-card-inner">
         <!-- FRONT SIDE - Corporate ID Badge -->
         <div class="agent-card-front">
@@ -95,8 +104,8 @@
                     <div class="dashed-line"></div>
                 </div>
 
-                <!-- Footer — clicks here never flip the card -->
-                <div class="id-footer" onclick={(e) => e.stopPropagation()} role="presentation">
+                <!-- Footer — clicks here never flip the card (handled in handleContainerClick) -->
+                <div class="id-footer">
                     <div class="company-brand">MINION</div>
                     <button
                         type="button"
