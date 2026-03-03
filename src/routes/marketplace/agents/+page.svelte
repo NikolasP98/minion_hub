@@ -644,6 +644,27 @@
 
     /* ── List-card holographic effect ───────────────────────────── */
 
+    /* Register typed CSS vars for smooth interpolation (global at-rules) */
+    @property --mx {
+        syntax: '<number>';
+        inherits: true;
+        initial-value: 0.5;
+    }
+    @property --my {
+        syntax: '<number>';
+        inherits: true;
+        initial-value: 0.5;
+    }
+
+    /* Graceful snap-back on leave (slow) */
+    .list-item {
+        transition: --mx 0.45s ease-out, --my 0.45s ease-out;
+    }
+    /* Responsive tracking on hover (fast) */
+    :global(.list-item.holo-active) {
+        transition: --mx 0.1s ease-out, --my 0.1s ease-out;
+    }
+
     .list-card {
         position: relative;
         transform:

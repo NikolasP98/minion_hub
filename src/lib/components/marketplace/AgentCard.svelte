@@ -752,9 +752,30 @@
         }
     }
 
-    /* Holo tilt on front face only — disabled when card is flipped.
-       No transition — instant tracking + instant snap-back. Avoids Svelte
-       stripping .holo-active and the transition-restart glitch. */
+    /* Register --mx / --my as typed numbers so the browser can interpolate
+       them directly. This lets us transition the vars (not the transform),
+       avoiding the "transition restarts on every pointermove" glitch. */
+    @property --mx {
+        syntax: '<number>';
+        inherits: true;
+        initial-value: 0.5;
+    }
+    @property --my {
+        syntax: '<number>';
+        inherits: true;
+        initial-value: 0.5;
+    }
+
+    /* Graceful snap-back when cursor leaves (slow ease-out) */
+    .agent-card-container:not(.flipped) {
+        transition: --mx 0.45s ease-out, --my 0.45s ease-out;
+    }
+    /* Responsive tracking when cursor is over the card (fast) */
+    :global(.agent-card-container:not(.flipped).holo-active) {
+        transition: --mx 0.1s ease-out, --my 0.1s ease-out;
+    }
+
+    /* Holo tilt on front face only — disabled when card is flipped. */
     .agent-card-container:not(.flipped) .agent-card-front {
         transform:
             perspective(800px)
