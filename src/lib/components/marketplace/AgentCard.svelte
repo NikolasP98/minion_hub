@@ -4,7 +4,7 @@
     import { parseTags, installAgent } from "$lib/state/marketplace.svelte";
     import { diceBearAvatarUrl } from "$lib/utils/avatar";
     import * as m from '$lib/paraglide/messages';
-    import { Download } from "lucide-svelte";
+    import { Download, RefreshCw } from "lucide-svelte";
     import { holo } from '$lib/actions/holo';
 
     interface Props {
@@ -15,6 +15,7 @@
     let { agent, onInstall }: Props = $props();
 
     let isFlipped = $state(false);
+    let dividerEl: HTMLElement | undefined; // plain let for bind:this — $state wraps in proxy
 
     const tags = $derived(parseTags(agent.tags));
     const installCount = $derived(agent.installCount ?? 0);
@@ -33,10 +34,14 @@
         isFlipped = !isFlipped;
     }
 
-    // Navigate unless the click came from inside a <button>.
-    // Buttons handle their own actions (flip, etc); everything else navigates.
+    // Back side: any click flips back to front.
+    // Front side: click below the divider → flip; above → navigate.
     function handleContainerClick(e: MouseEvent) {
-        if ((e.target as HTMLElement).closest('button')) return;
+        if (isFlipped) { flipCard(); return; }
+        if (dividerEl) {
+            const { bottom } = dividerEl.getBoundingClientRect();
+            if (e.clientY >= bottom) { flipCard(); return; }
+        }
         goto(`/marketplace/agents/${agent.id}`);
     }
 </script>
@@ -92,8 +97,8 @@
                     {/if}
                 </div>
 
-                <!-- Divider -->
-                <div class="id-divider">
+                <!-- Divider — spatial boundary: above = navigate, below = flip -->
+                <div class="id-divider" bind:this={dividerEl}>
                     <div class="dashed-line"></div>
                 </div>
 
@@ -104,6 +109,7 @@
                         class="role-desc-btn"
                         onclick={flipCard}
                     >
+                        <RefreshCw size={11} />
                         Role Description
                     </button>
                 </div>
@@ -466,6 +472,9 @@
         transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
         font-family: inherit;
         box-shadow: 0 0 8px hsl(calc(var(--mx, 0.5) * 180deg + 280deg) 80% 60% / 0.3);
+        display: flex;
+        align-items: center;
+        gap: 6px;
     }
 
     .role-desc-btn:hover {
