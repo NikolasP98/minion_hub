@@ -291,10 +291,7 @@
         justify-content: space-between;
         position: relative;
         overflow: hidden;
-        box-shadow:
-            0 2px 4px rgba(0, 0, 0, 0.2),
-            0 0 0 1.5px hsl(calc(var(--mx, 0.5) * 180deg + 280deg) 80% 60%),
-            0 0 10px hsl(calc(var(--mx, 0.5) * 180deg + 280deg) 80% 60% / 0.25);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
     }
 
     .initials {
@@ -313,7 +310,7 @@
         height: 40px;
         background: radial-gradient(
             circle,
-            rgba(232, 84, 122, 0.4) 0%,
+            hsl(calc(var(--mx, 0.5) * 120deg + 300deg) 75% 60% / 0.45) 0%,
             transparent 70%
         );
         filter: blur(8px);
@@ -463,7 +460,7 @@
     .role-desc-btn {
         background: #18181b;
         color: #fafafa;
-        border: 1.5px solid hsl(calc(var(--mx, 0.5) * 180deg + 280deg) 80% 60%);
+        border: 1px solid rgba(255, 255, 255, 0.12);
         padding: 9px 18px;
         border-radius: 8px;
         font-size: 12px;
@@ -471,7 +468,7 @@
         cursor: pointer;
         transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
         font-family: inherit;
-        box-shadow: 0 0 8px hsl(calc(var(--mx, 0.5) * 180deg + 280deg) 80% 60% / 0.3);
+        box-shadow: none;
         display: flex;
         align-items: center;
         gap: 6px;
@@ -479,13 +476,12 @@
 
     .role-desc-btn:hover {
         background: #2a2a2e;
-        box-shadow: 0 0 18px hsl(calc(var(--mx, 0.5) * 180deg + 280deg) 80% 65% / 0.65);
+        border-color: rgba(255, 255, 255, 0.22);
         transform: translateY(-1px);
     }
 
     .role-desc-btn:active {
         transform: translateY(0);
-        box-shadow: 0 0 10px hsl(calc(var(--mx, 0.5) * 180deg + 280deg) 80% 60% / 0.4);
     }
 
     /* BACK SIDE STYLES */
@@ -717,7 +713,14 @@
         font-weight: 800;
         letter-spacing: 0.25em;
         line-height: 2;
-        color: rgba(0, 0, 0, 0.05);
+        background: linear-gradient(
+            105deg,
+            hsl(calc(var(--mx, 0.5) * 160deg + 280deg) 60% 45% / 0.18),
+            hsl(calc(var(--mx, 0.5) * 160deg + 360deg) 60% 45% / 0.18)
+        );
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
         overflow: hidden;
         transform: rotate(-30deg) scale(1.6);
         transform-origin: center;
