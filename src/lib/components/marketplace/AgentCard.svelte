@@ -95,8 +95,8 @@
                     <div class="dashed-line"></div>
                 </div>
 
-                <!-- Footer -->
-                <div class="id-footer">
+                <!-- Footer — clicks here never flip the card -->
+                <div class="id-footer" onclick={(e) => e.stopPropagation()} role="presentation">
                     <div class="company-brand">MINION</div>
                     <button
                         type="button"
@@ -457,9 +457,9 @@
         background: #18181b;
         color: #fafafa;
         border: 1.5px solid hsl(calc(var(--mx, 0.5) * 180deg + 280deg) 80% 60%);
-        padding: 6px 12px;
-        border-radius: 6px;
-        font-size: 10px;
+        padding: 9px 18px;
+        border-radius: 8px;
+        font-size: 12px;
         font-weight: 600;
         cursor: pointer;
         transition: box-shadow 0.2s ease;
