@@ -763,11 +763,16 @@
 
     /* Holo tilt on agent-card-front so badge clip tilts too */
     .agent-card-front {
-        transition: transform 0.15s ease;
+        transition: transform 0.5s ease; /* snap-back only */
         transform:
             perspective(800px)
             rotateX(calc((0.5 - var(--my, 0.5)) * 8deg))
             rotateY(calc((var(--mx, 0.5) - 0.5) * 8deg));
+    }
+
+    /* instant tracking while hovering — no transition lag */
+    .agent-card-front.holo-active {
+        transition: none;
     }
 
     /* ── Holographic effect ──────────────────────────────────────── */

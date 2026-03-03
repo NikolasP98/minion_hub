@@ -646,11 +646,16 @@
 
     .list-card {
         position: relative;
-        transition: transform 0.15s ease;
+        transition: transform 0.5s ease; /* snap-back only */
         transform:
             perspective(600px)
             rotateX(calc((0.5 - var(--my, 0.5)) * 8deg))
             rotateY(calc((var(--mx, 0.5) - 0.5) * 8deg));
+    }
+
+    /* instant tracking while hovering — no transition lag */
+    .list-card.holo-active {
+        transition: none;
     }
 
     /* "MINION" watermark texture */
