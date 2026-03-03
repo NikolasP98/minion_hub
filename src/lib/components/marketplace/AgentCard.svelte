@@ -62,7 +62,6 @@
                 <div class="holo-shimmer" aria-hidden="true"></div>
                 <div class="holo-sheen" aria-hidden="true"></div>
                 <div class="holo-glare" aria-hidden="true"></div>
-                <div class="holo-noise" aria-hidden="true"></div>
                 <!-- Header with initials -->
                 <div class="id-header">
                     <span class="initials">{getInitials(agent.name)}</span>
@@ -181,7 +180,9 @@
 <style>
     .agent-card-container {
         width: 100%;
-        height: 380px;
+        max-width: 260px;
+        aspect-ratio: 53.98 / 85.6;
+        margin: 0 auto;
         cursor: pointer;
     }
 
@@ -312,10 +313,17 @@
         height: 40px;
         background: radial-gradient(
             circle,
-            hsl(calc(var(--mx, 0.5) * 120deg + 300deg) 75% 60% / 0.45) 0%,
+            hsl(calc(var(--mx, 0.5) * 120deg + 300deg) 75% 60% / 0.55) 0%,
             transparent 70%
         );
-        filter: blur(8px);
+        filter: blur(3px);
+        /* Turbulence noise mask — breaks smooth glow into sparkle cluster */
+        -webkit-mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><filter id='f'><feTurbulence type='fractalNoise' baseFrequency='0.55' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 7 -2.5'/></filter><rect width='100%25' height='100%25' filter='url(%23f)'/></svg>");
+        mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><filter id='f'><feTurbulence type='fractalNoise' baseFrequency='0.55' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 7 -2.5'/></filter><rect width='100%25' height='100%25' filter='url(%23f)'/></svg>");
+        -webkit-mask-size: 40px 40px;
+        mask-size: 40px 40px;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
     }
 
     /* Photo */
@@ -717,7 +725,7 @@
         position: relative;
     }
 
-    /* "MINION" repeated watermark texture */
+    /* "MINION" repeated watermark texture — top layer, over all content */
     .id-card::before {
         content: 'MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  ';
         position: absolute;
@@ -729,8 +737,8 @@
         line-height: 2;
         background: linear-gradient(
             105deg,
-            hsl(calc(var(--mx, 0.5) * 160deg + 280deg) 60% 45% / 0.18),
-            hsl(calc(var(--mx, 0.5) * 160deg + 360deg) 60% 45% / 0.18)
+            hsl(calc(var(--mx, 0.5) * 160deg + 280deg) 60% 45% / 0.22),
+            hsl(calc(var(--mx, 0.5) * 160deg + 360deg) 60% 45% / 0.22)
         );
         -webkit-background-clip: text;
         background-clip: text;
@@ -740,8 +748,15 @@
         transform-origin: center;
         word-break: break-all;
         pointer-events: none;
-        z-index: 0;
+        z-index: 10;
         border-radius: inherit;
+        /* Turbulence noise mask — gives watermark a foil-print texture */
+        -webkit-mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><filter id='f'><feTurbulence type='fractalNoise' baseFrequency='0.4' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 4 -1'/></filter><rect width='100%25' height='100%25' filter='url(%23f)'/></svg>");
+        mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><filter id='f'><feTurbulence type='fractalNoise' baseFrequency='0.4' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 4 -1'/></filter><rect width='100%25' height='100%25' filter='url(%23f)'/></svg>");
+        -webkit-mask-size: 220px 220px;
+        mask-size: 220px 220px;
+        -webkit-mask-repeat: repeat;
+        mask-repeat: repeat;
     }
 
     /* Rainbow shimmer layer — visible only when .holo-active */
@@ -824,35 +839,8 @@
     .id-divider,
     .id-footer {
         position: relative;
-        z-index: 4;
+        z-index: 3;
     }
 
-/* Glitter sparkle layer — turbulence noise mask over iridescent gradient */
-.holo-noise {
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    pointer-events: none;
-    z-index: 3;
-    background: linear-gradient(
-        calc(var(--mx, 0.5) * 360deg + 90deg),
-        hsl(calc(var(--mx, 0.5) * 240deg + 180deg), 85%, 78%),
-        hsl(calc(var(--mx, 0.5) * 240deg + 260deg), 85%, 82%),
-        hsl(calc(var(--mx, 0.5) * 240deg + 340deg), 85%, 78%)
-    );
-    -webkit-mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><filter id='f'><feTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 9 -4'/></filter><rect width='100%25' height='100%25' filter='url(%23f)'/></svg>");
-    mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><filter id='f'><feTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 9 -4'/></filter><rect width='100%25' height='100%25' filter='url(%23f)'/></svg>");
-    -webkit-mask-size: 180px 180px;
-    mask-size: 180px 180px;
-    -webkit-mask-repeat: repeat;
-    mask-repeat: repeat;
-    mix-blend-mode: multiply;
-    opacity: 0;
-    transition: opacity 0.4s ease;
-}
-
-:global(.agent-card-container:not(.flipped).holo-active) .holo-noise {
-    opacity: 0.70;
-}
 
 </style>

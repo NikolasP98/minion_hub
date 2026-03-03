@@ -274,7 +274,6 @@
                                     <!-- Holo layers -->
                                     <div class="lc-shimmer" aria-hidden="true"></div>
                                     <div class="lc-glare" aria-hidden="true"></div>
-                                    <div class="lc-noise" aria-hidden="true"></div>
                                 <div class="list-card-header">
                                     <span class="list-initials">{agent.name.slice(0, 2).toUpperCase()}</span>
                                 </div>
@@ -337,7 +336,8 @@
     /* Agent Container - Grid View */
     .agent-container {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(220px, 260px));
+        justify-content: center;
         gap: 20px;
     }
 
@@ -756,41 +756,13 @@
         opacity: 0.6;
     }
 
-    /* Glitter sparkle layer — list card */
-    .lc-noise {
-        position: absolute;
-        inset: 0;
-        border-radius: inherit;
-        pointer-events: none;
-        z-index: 3;
-        background: linear-gradient(
-            calc(var(--mx, 0.5) * 360deg + 90deg),
-            hsl(calc(var(--mx, 0.5) * 240deg + 180deg), 85%, 78%),
-            hsl(calc(var(--mx, 0.5) * 240deg + 260deg), 85%, 82%),
-            hsl(calc(var(--mx, 0.5) * 240deg + 340deg), 85%, 78%)
-        );
-        -webkit-mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><filter id='f'><feTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 9 -4'/></filter><rect width='100%25' height='100%25' filter='url(%23f)'/></svg>");
-        mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><filter id='f'><feTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 9 -4'/></filter><rect width='100%25' height='100%25' filter='url(%23f)'/></svg>");
-        -webkit-mask-size: 120px 120px;
-        mask-size: 120px 120px;
-        -webkit-mask-repeat: repeat;
-        mask-repeat: repeat;
-        mix-blend-mode: multiply;
-        opacity: 0;
-        transition: opacity 0.4s ease;
-    }
-
-    :global(.list-item.holo-active) .lc-noise {
-        opacity: 0.70;
-    }
-
     /* Ensure list-card content sits above holo overlays */
     .list-badge-clip,
     .list-card-header,
     .list-photo,
     .list-card-footer {
         position: relative;
-        z-index: 4;
+        z-index: 3;
     }
 
 </style>
