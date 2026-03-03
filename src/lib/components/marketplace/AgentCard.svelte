@@ -773,7 +773,6 @@
     /* 3D tilt driven by --mx / --my (±4° per axis) */
     .id-card {
         transition: transform 0.15s ease;
-        transform-style: preserve-3d;
         transform:
             perspective(800px)
             rotateX(calc((0.5 - var(--my, 0.5)) * 8deg))
@@ -822,7 +821,7 @@
         transition: opacity 0.4s ease;
     }
 
-    :global(.id-card.holo-active) .holo-shimmer {
+    .id-card.holo-active .holo-shimmer {
         opacity: 0.12;
     }
 
@@ -843,7 +842,7 @@
         transition: opacity 0.4s ease;
     }
 
-    :global(.id-card.holo-active) .holo-glare {
+    .id-card.holo-active .holo-glare {
         opacity: 0.6;
     }
 
