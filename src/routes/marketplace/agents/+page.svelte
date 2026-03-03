@@ -10,6 +10,7 @@
     import { Search, Grid3X3, List, X, Store, Bot, Star } from "lucide-svelte";
     import { diceBearAvatarUrl } from "$lib/utils/avatar";
     import { parseTags } from "$lib/state/marketplace.svelte";
+    import { holo } from '$lib/actions/holo';
 
     // Search and filters
     let searchInput = $state("");
@@ -267,7 +268,10 @@
                         {@const tags = parseTags(agent.tags)}
                         <div class="list-item">
                             <!-- Mini ID Card -->
-                            <div class="list-card">
+                            <div class="list-card" use:holo>
+                                    <!-- Holo layers -->
+                                    <div class="lc-shimmer" aria-hidden="true"></div>
+                                    <div class="lc-glare" aria-hidden="true"></div>
                                 <div class="list-badge-clip">
                                     <div class="clip-base"></div>
                                     <div class="clip-ring"></div>
@@ -636,5 +640,104 @@
         .list-stat {
             align-items: flex-start;
         }
+    }
+
+    /* ── List-card holographic effect ───────────────────────────── */
+
+    .list-card {
+        overflow: hidden;
+        position: relative;
+        transition: transform 0.15s ease;
+        transform:
+            perspective(600px)
+            rotateX(calc((0.5 - var(--my, 0.5)) * 8deg))
+            rotateY(calc((var(--mx, 0.5) - 0.5) * 8deg));
+    }
+
+    /* "MINION" watermark texture */
+    .list-card::before {
+        content: 'MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  ';
+        position: absolute;
+        inset: 0;
+        font-family: 'JetBrains Mono NF', monospace;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.2em;
+        line-height: 2;
+        color: rgba(0, 0, 0, 0.05);
+        overflow: hidden;
+        transform: rotate(-30deg) scale(1.8);
+        transform-origin: center;
+        word-break: break-all;
+        pointer-events: none;
+        z-index: 0;
+        border-radius: inherit;
+    }
+
+    .lc-shimmer {
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        pointer-events: none;
+        z-index: 1;
+        background: conic-gradient(
+            from calc(var(--mx, 0.5) * 360deg) at calc(var(--mx, 0.5) * 100%) calc(var(--my, 0.5) * 100%),
+            hsl(0,   80%, 60%),
+            hsl(60,  80%, 60%),
+            hsl(120, 80%, 60%),
+            hsl(180, 80%, 60%),
+            hsl(240, 80%, 60%),
+            hsl(300, 80%, 60%),
+            hsl(360, 80%, 60%)
+        );
+        mix-blend-mode: color-dodge;
+        opacity: 0;
+        transition: opacity 0.4s ease;
+    }
+
+    :global(.list-card.holo-active) .lc-shimmer {
+        opacity: 0.12;
+    }
+
+    .lc-glare {
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        pointer-events: none;
+        z-index: 2;
+        background: radial-gradient(
+            ellipse 60% 50% at calc(var(--mx, 0.5) * 100%) calc(var(--my, 0.5) * 100%),
+            rgba(255, 255, 255, 0.35),
+            transparent 70%
+        );
+        mix-blend-mode: overlay;
+        opacity: 0;
+        transition: opacity 0.4s ease;
+    }
+
+    :global(.list-card.holo-active) .lc-glare {
+        opacity: 0.6;
+    }
+
+    /* Ensure list-card content sits above holo overlays */
+    .list-badge-clip,
+    .list-card-header,
+    .list-photo,
+    .list-card-footer {
+        position: relative;
+        z-index: 3;
+    }
+
+    /* Iridescent list-brand text */
+    .list-brand {
+        background: linear-gradient(
+            90deg,
+            hsl(calc(var(--mx, 0.5) * 200deg + 280deg), 75%, 35%),
+            hsl(calc(var(--mx, 0.5) * 200deg + 340deg), 80%, 45%),
+            hsl(calc(var(--mx, 0.5) * 200deg + 400deg), 75%, 35%)
+        );
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
     }
 </style>
