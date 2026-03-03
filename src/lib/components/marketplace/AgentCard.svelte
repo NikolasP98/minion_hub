@@ -99,19 +99,16 @@
                 </div>
 
                 <!-- Divider — spatial boundary: above = navigate, below = flip -->
-                <div class="id-divider" bind:this={dividerEl}>
-                    <div class="dashed-line"></div>
-                </div>
+                <div class="id-divider" bind:this={dividerEl}></div>
 
                 <div class="id-footer">
                     <div class="company-brand">MINION</div>
                     <button
                         type="button"
                         class="role-desc-btn"
-                        onclick={flipCard}
+                        onclick={(e) => { e.stopPropagation(); flipCard(); }}
                     >
-                        <RefreshCw size={11} />
-                        Role Description
+                        <RefreshCw size={16} />
                     </button>
                 </div>
             </div>
@@ -421,31 +418,19 @@
         padding: 0 8px;
     }
 
-    /* Divider */
+    /* Divider — solid full-bleed line */
     .id-divider {
-        margin: 12px 0;
-        display: flex;
-        align-items: center;
-    }
-
-    .dashed-line {
-        flex: 1;
         height: 1px;
-        background: repeating-linear-gradient(
-            90deg,
-            rgba(0, 0, 0, 0.15) 0px,
-            rgba(0, 0, 0, 0.15) 4px,
-            transparent 4px,
-            transparent 8px
-        );
+        background: #18181b;
+        margin: 12px -20px 0;
     }
 
-    /* Footer */
+    /* Footer — stretches flush to card edges and bottom */
     .id-footer {
         display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-top: auto;
+        align-items: stretch;
+        margin: 0 -20px -20px;
+        min-height: 48px;
     }
 
     .company-brand {
@@ -453,7 +438,10 @@
         font-weight: 800;
         font-size: 16px;
         letter-spacing: 0.05em;
-        position: relative;
+        flex: 1;
+        display: flex;
+        align-items: center;
+        padding-left: 20px;
         background: linear-gradient(
             90deg,
             hsl(calc(var(--mx, 0.5) * 200deg + 240deg), 75%, 28%),
@@ -465,45 +453,23 @@
         background-clip: text;
     }
 
-    .company-brand::after {
-        content: "";
-        position: absolute;
-        bottom: -2px;
-        left: 0;
-        width: 100%;
-        height: 2px;
-        background: linear-gradient(
-            90deg,
-            hsl(calc(var(--mx, 0.5) * 200deg + 320deg), 85%, 45%),
-            transparent
-        );
-    }
-
     .role-desc-btn {
-        background: #18181b;
-        color: #fafafa;
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        padding: 9px 18px;
-        border-radius: 8px;
-        font-size: 12px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
-        font-family: inherit;
-        box-shadow: none;
         display: flex;
         align-items: center;
-        gap: 6px;
+        justify-content: center;
+        padding: 0 20px;
+        background: #18181b;
+        color: #fafafa;
+        border: none;
+        border-left: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 0;
+        cursor: pointer;
+        transition: background 0.15s ease;
+        font-family: inherit;
     }
 
     .role-desc-btn:hover {
-        background: #2a2a2e;
-        border-color: rgba(255, 255, 255, 0.22);
-        transform: translateY(-1px);
-    }
-
-    .role-desc-btn:active {
-        transform: translateY(0);
+        background: #2c2c30;
     }
 
     /* BACK SIDE STYLES */

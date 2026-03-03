@@ -265,15 +265,14 @@
                         {@const tags = parseTags(agent.tags)}
                         <div class="list-item" use:holo>
                             <!-- Mini ID Card -->
-                            <div class="list-card-wrap">
+                            <div class="list-card">
+                                <!-- Holo layers -->
+                                <div class="lc-shimmer" aria-hidden="true"></div>
+                                <div class="lc-glare" aria-hidden="true"></div>
                                 <div class="list-badge-clip">
                                     <div class="clip-base"></div>
                                     <div class="clip-ring"></div>
                                 </div>
-                                <div class="list-card">
-                                    <!-- Holo layers -->
-                                    <div class="lc-shimmer" aria-hidden="true"></div>
-                                    <div class="lc-glare" aria-hidden="true"></div>
                                 <div class="list-card-header">
                                     <span class="list-initials">{agent.name.slice(0, 2).toUpperCase()}</span>
                                 </div>
@@ -283,8 +282,7 @@
                                 <div class="list-card-footer">
                                     <span class="list-brand">MINION</span>
                                 </div>
-                                </div><!-- end list-card -->
-                            </div><!-- end list-card-wrap -->
+                            </div>
 
                             <!-- Details -->
                             <div class="list-details">
@@ -336,8 +334,7 @@
     /* Agent Container - Grid View */
     .agent-container {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(220px, 260px));
-        justify-content: center;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
         gap: 20px;
     }
 
@@ -363,31 +360,28 @@
         border-color: color-mix(in srgb, var(--color-brand-pink) 30%, transparent);
     }
 
-    /* Mini ID Card wrapper — mirrors AgentCard's agent-card-front */
-    .list-card-wrap {
-        position: relative;
-        padding-top: 12px;
-        flex-shrink: 0;
-    }
-
     /* Mini ID Card in List View */
     .list-card {
         width: 140px;
+        flex-shrink: 0;
         background: linear-gradient(145deg, rgba(250, 250, 250, 0.98), rgba(240, 240, 242, 0.95));
         border-radius: 10px;
         padding: 12px;
+        padding-top: 18px;
         display: flex;
         flex-direction: column;
         gap: 8px;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
         position: relative;
+        overflow: visible;
     }
 
     .list-badge-clip {
         position: absolute;
         top: 0;
         left: 50%;
-        transform: translateX(-50%);
+        /* center of clip aligns with card top edge → exact 50/50 overlap */
+        transform: translate(-50%, -50%);
         z-index: 10;
         display: flex;
         flex-direction: column;
