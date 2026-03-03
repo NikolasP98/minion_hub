@@ -278,7 +278,6 @@
             0 4px 6px rgba(0, 0, 0, 0.1),
             0 10px 20px rgba(0, 0, 0, 0.1),
             inset 0 1px 0 rgba(255, 255, 255, 0.8);
-        border: 1px solid rgba(0, 0, 0, 0.08);
     }
 
     /* Header */
@@ -808,5 +807,28 @@
         z-index: 3;
     }
 
+    /* Holo border — grayscale gradient that sweeps with pointer */
+    .id-card::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        pointer-events: none;
+        z-index: 10;
+        /* Gradient angle and stops shift from white→black with pointer position */
+        background: linear-gradient(
+            calc(var(--mx, 0.5) * 180deg + 30deg),
+            hsl(0deg 0% calc(98% - var(--my, 0.5) * 88%)),
+            hsl(0deg 0% calc(55% - var(--my, 0.5) * 45%)),
+            hsl(0deg 0% calc(8% + var(--my, 0.5) * 12%))
+        );
+        /* Border-only mask: paint background only where border pixels are */
+        padding: 1px;
+        -webkit-mask:
+            linear-gradient(#fff 0 0) content-box,
+            linear-gradient(#fff 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+    }
 
 </style>
