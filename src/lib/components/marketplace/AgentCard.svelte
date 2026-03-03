@@ -60,6 +60,7 @@
             <div class="id-card">
                 <!-- Holo layers (pointer-driven, CSS-only) -->
                 <div class="holo-shimmer" aria-hidden="true"></div>
+                <div class="holo-sheen" aria-hidden="true"></div>
                 <div class="holo-glare" aria-hidden="true"></div>
                 <!-- Header with initials -->
                 <div class="id-header">
@@ -777,6 +778,32 @@
         opacity: 0.6;
     }
 
+    /* Diagonal sheen — bright stripe that sweeps with pointer X */
+    .holo-sheen {
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        pointer-events: none;
+        z-index: 2;
+        background: linear-gradient(
+            calc(115deg + var(--my, 0.5) * 20deg),
+            transparent,
+            transparent calc(var(--mx, 0.5) * 100% - 18%),
+            rgba(255, 255, 255, 0.05) calc(var(--mx, 0.5) * 100% - 8%),
+            rgba(255, 255, 255, 0.22) calc(var(--mx, 0.5) * 100%),
+            rgba(255, 255, 255, 0.05) calc(var(--mx, 0.5) * 100% + 8%),
+            transparent calc(var(--mx, 0.5) * 100% + 18%),
+            transparent
+        );
+        mix-blend-mode: overlay;
+        opacity: 0;
+        transition: opacity 0.4s ease;
+    }
+
+    :global(.agent-card-container:not(.flipped).holo-active) .holo-sheen {
+        opacity: 1;
+    }
+
     /* Ensure content renders above holo overlay layers */
     .id-header,
     .photo-container,
@@ -787,24 +814,4 @@
         z-index: 3;
     }
 
-    /* Iridescent "MINION" brand text — gradient shifts with pointer */
-    .company-brand {
-        background: linear-gradient(
-            90deg,
-            hsl(calc(var(--mx, 0.5) * 200deg + 280deg), 75%, 35%),
-            hsl(calc(var(--mx, 0.5) * 200deg + 340deg), 80%, 45%),
-            hsl(calc(var(--mx, 0.5) * 200deg + 400deg), 75%, 35%)
-        );
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-    }
-
-    .company-brand::after {
-        background: linear-gradient(
-            90deg,
-            hsl(calc(var(--mx, 0.5) * 200deg + 280deg), 75%, 50%),
-            transparent
-        );
-    }
 </style>
