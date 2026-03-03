@@ -265,14 +265,15 @@
                         {@const tags = parseTags(agent.tags)}
                         <div class="list-item" use:holo>
                             <!-- Mini ID Card -->
-                            <div class="list-card">
-                                <!-- Holo layers -->
-                                <div class="lc-shimmer" aria-hidden="true"></div>
-                                <div class="lc-glare" aria-hidden="true"></div>
+                            <div class="list-card-wrap">
                                 <div class="list-badge-clip">
                                     <div class="clip-base"></div>
                                     <div class="clip-ring"></div>
                                 </div>
+                                <div class="list-card">
+                                <!-- Holo layers -->
+                                <div class="lc-glare" aria-hidden="true"></div>
+                                <div class="lc-sheen" aria-hidden="true"></div>
                                 <div class="list-card-header">
                                     <span class="list-initials">{agent.name.slice(0, 2).toUpperCase()}</span>
                                 </div>
@@ -282,7 +283,8 @@
                                 <div class="list-card-footer">
                                     <span class="list-brand">MINION</span>
                                 </div>
-                            </div>
+                                </div><!-- end list-card -->
+                            </div><!-- end list-card-wrap -->
 
                             <!-- Details -->
                             <div class="list-details">
@@ -360,29 +362,35 @@
         border-color: color-mix(in srgb, var(--color-brand-pink) 30%, transparent);
     }
 
+    /* Wrapper: flex column so clip stacks above card */
+    .list-card-wrap {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        flex-shrink: 0;
+    }
+
     /* Mini ID Card in List View */
     .list-card {
         width: 140px;
-        flex-shrink: 0;
         background: linear-gradient(145deg, rgba(250, 250, 250, 0.98), rgba(240, 240, 242, 0.95));
         border-radius: 10px;
         padding: 12px;
-        padding-top: 18px;
+        padding-top: 16px;
         display: flex;
         flex-direction: column;
         gap: 8px;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
         position: relative;
-        overflow: visible;
+        overflow: hidden;
     }
 
+    /* Clip sits above card as a flex item; negative margin pulls card up
+       so the clip's bottom half overlaps the card top edge */
     .list-badge-clip {
-        position: absolute;
-        top: 0;
-        left: 50%;
-        /* center of clip aligns with card top edge → exact 50/50 overlap */
-        transform: translate(-50%, -50%);
+        position: relative;
         z-index: 10;
+        margin-bottom: -11px; /* half of clip height (21px) → 50/50 straddle */
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -441,21 +449,26 @@
         border-top: 1px dashed rgba(0, 0, 0, 0.15);
     }
 
-    /* Iridescent list-brand text */
+    /* List-brand text — dark with pink fading underline */
     .list-brand {
         font-family: "JetBrains Mono NF", monospace;
         font-weight: 800;
         font-size: 11px;
         letter-spacing: 0.05em;
-        background: linear-gradient(
-            90deg,
-            hsl(calc(var(--mx, 0.5) * 200deg + 240deg), 75%, 28%),
-            hsl(calc(var(--mx, 0.5) * 200deg + 320deg), 85%, 38%),
-            hsl(calc(var(--mx, 0.5) * 200deg + 400deg), 75%, 28%)
-        );
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
+        color: #18181b;
+        display: inline-block;
+        position: relative;
+    }
+
+    .list-brand::after {
+        content: '';
+        position: absolute;
+        left: 0;
+        bottom: -2px;
+        width: 100%;
+        height: 2px;
+        background: linear-gradient(90deg, var(--color-brand-pink), transparent);
+        opacity: 0.85;
     }
 
     /* List Details */
@@ -677,58 +690,42 @@
         transition: --mx 0.1s ease-out, --my 0.1s ease-out;
     }
 
-    .list-card {
-        position: relative;
+    /* Transform on the wrapper so clip and card rotate together */
+    .list-card-wrap {
         transform:
             perspective(600px)
             rotateX(calc((0.5 - var(--my, 0.5)) * 8deg))
             rotateY(calc((var(--mx, 0.5) - 0.5) * 8deg));
     }
 
-    /* "MINION" watermark texture */
+    /* "MINION" watermark — behind card content, above card background */
     .list-card::before {
-        content: 'MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  ';
+        content: 'MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  ';
         position: absolute;
         inset: 0;
         font-family: 'JetBrains Mono NF', monospace;
-        font-size: 10px;
-        font-weight: 800;
-        letter-spacing: 0.2em;
-        line-height: 2;
-        color: rgba(0, 0, 0, 0.05);
-        overflow: hidden;
-        transform: rotate(-30deg) scale(1.8);
+        font-size: 8px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        word-spacing: 1.8em;
+        line-height: 5;
+        background: linear-gradient(
+            calc(110deg + var(--my, 0.5) * 60deg),
+            hsl(calc(var(--mx, 0.5) * 300deg + 160deg) 70% 48%),
+            hsl(calc(var(--mx, 0.5) * 300deg + 240deg) 72% 52%),
+            hsl(calc(var(--mx, 0.5) * 300deg + 320deg) 70% 48%)
+        );
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        opacity: calc(0.12 + abs(var(--mx, 0.5) - 0.5) * 0.55 + abs(var(--my, 0.5) - 0.5) * 0.55);
+        transform: rotate(-45deg) scale(1.8);
         transform-origin: center;
         word-break: break-all;
         pointer-events: none;
-        z-index: 0;
-        border-radius: inherit;
+        z-index: 2;
     }
 
-    .lc-shimmer {
-        position: absolute;
-        inset: 0;
-        border-radius: inherit;
-        pointer-events: none;
-        z-index: 1;
-        background: conic-gradient(
-            from calc(var(--mx, 0.5) * 360deg) at calc(var(--mx, 0.5) * 100%) calc(var(--my, 0.5) * 100%),
-            hsl(0,   80%, 60%),
-            hsl(60,  80%, 60%),
-            hsl(120, 80%, 60%),
-            hsl(180, 80%, 60%),
-            hsl(240, 80%, 60%),
-            hsl(300, 80%, 60%),
-            hsl(360, 80%, 60%)
-        );
-        mix-blend-mode: color-dodge;
-        opacity: 0;
-        transition: opacity 0.4s ease;
-    }
-
-    :global(.list-item.holo-active) .lc-shimmer {
-        opacity: 0.12;
-    }
 
     .lc-glare {
         position: absolute;
@@ -750,7 +747,32 @@
         opacity: 0.6;
     }
 
-    /* Ensure list-card content sits above holo overlays */
+    .lc-sheen {
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        pointer-events: none;
+        z-index: 15;
+        background: linear-gradient(
+            calc(115deg + var(--my, 0.5) * 20deg),
+            transparent,
+            transparent calc(var(--mx, 0.5) * 100% - 22%),
+            rgba(255, 255, 255, 0.08) calc(var(--mx, 0.5) * 100% - 10%),
+            rgba(255, 255, 255, 0.38) calc(var(--mx, 0.5) * 100%),
+            rgba(255, 255, 255, 0.08) calc(var(--mx, 0.5) * 100% + 10%),
+            transparent calc(var(--mx, 0.5) * 100% + 22%),
+            transparent
+        );
+        mix-blend-mode: overlay;
+        opacity: 0;
+        transition: opacity 0.4s ease;
+    }
+
+    :global(.list-item.holo-active) .lc-sheen {
+        opacity: 1;
+    }
+
+    /* Ensure list-card content sits above holo overlays but below sheen */
     .list-badge-clip,
     .list-card-header,
     .list-photo,

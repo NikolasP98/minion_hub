@@ -7,7 +7,7 @@
     } from "$lib/state/marketplace.svelte";
     import AgentCreatorWizard from "$lib/components/marketplace/AgentCreatorWizard.svelte";
     import * as m from "$lib/paraglide/messages";
-    import { Store, Wrench, Link2, Puzzle, Settings, Plus } from "lucide-svelte";
+    import { Store, Bot, Wrench, Plug, Puzzle, Settings, Plus } from "lucide-svelte";
 
     import { type Snippet } from "svelte";
 
@@ -17,7 +17,7 @@
         {
             href: "/marketplace/agents",
             label: "Agents",
-            icon: Store,
+            icon: Bot,
             active: true,
             soon: false,
         },
@@ -38,7 +38,7 @@
         {
             href: "/marketplace/integrations",
             label: "Integrations",
-            icon: Link2,
+            icon: Plug,
             active: false,
             soon: true,
         },
@@ -58,7 +58,7 @@
 
 <div class="relative z-10 flex flex-col h-screen overflow-hidden">
     <Topbar />
-    <div class="flex flex-1 overflow-hidden">
+    <div class="flex flex-1 overflow-hidden max-[768px]:flex-col">
         <!-- Sidebar -->
         <aside class="marketplace-sidebar">
             <!-- Brand -->
@@ -268,6 +268,7 @@
         text-transform: uppercase;
         letter-spacing: 0.05em;
         white-space: nowrap;
+        margin-left: auto;
     }
 
     .active-indicator {
@@ -343,18 +344,16 @@
         .marketplace-sidebar {
             width: 100%;
             height: auto;
-            max-height: 60px;
             flex-direction: row;
             align-items: center;
-            padding: 0 12px;
+            padding: 0 8px;
             border-right: none;
             border-bottom: 1px solid var(--color-border);
+            background: color-mix(in srgb, var(--color-bg2) 80%, var(--color-bg));
         }
 
         .sidebar-brand {
-            padding: 0;
-            margin-bottom: 0;
-            border-bottom: none;
+            display: none;
         }
 
         .brand-text,
@@ -366,7 +365,7 @@
 
         .sidebar-nav {
             flex: 1;
-            padding: 0;
+            padding: 6px 0;
             overflow: visible;
         }
 
@@ -376,11 +375,11 @@
 
         .nav-list {
             flex-direction: row;
-            gap: 4px;
+            gap: 2px;
         }
 
         .nav-item {
-            padding: 8px;
+            padding: 7px 10px;
         }
 
         .nav-text {

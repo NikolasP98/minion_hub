@@ -13,7 +13,7 @@
     import { diceBearAvatarUrl } from "$lib/utils/avatar";
     import * as m from "$lib/paraglide/messages";
     import {
-        ArrowLeft, Search, Check, AlertCircle,
+        Search, Check, AlertCircle,
         UserPlus, FileText, Info, AlignLeft,
         ClipboardList, BarChart2,
     } from "lucide-svelte";
@@ -30,6 +30,41 @@
 
     let agent = $state<MarketplaceAgent | null>(null);
     let loading = $state(true);
+    let lanyardEl = $state<HTMLElement | null>(null);
+
+    $effect(() => {
+        if (agent && lanyardEl) startLanyardAnimation();
+    });
+
+    function startLanyardAnimation() {
+        if (!lanyardEl) return;
+        const el: HTMLElement = lanyardEl;
+
+        // Damped pendulum: θ(t) = θ₀ · e^(-ζωt) · cos(ω_d · t)
+        const theta0 = 22 * (Math.PI / 180);
+        const omega  = 3.0;
+        const zeta   = 0.35;
+        const omegaD = omega * Math.sqrt(1 - zeta * zeta);
+        const startMs = performance.now();
+        let raf: number;
+
+        function tick() {
+            const t = (performance.now() - startMs) / 1000;
+            const envelope = theta0 * Math.exp(-zeta * omega * t);
+            const theta = envelope * Math.cos(omegaD * t);
+            el.style.transform = `rotateZ(${theta}rad)`;
+
+            // Stop only when the envelope (max possible displacement) is negligible,
+            // not when the instantaneous angle happens to cross zero
+            if (envelope < 0.0008) {
+                el.style.transform = 'rotateZ(0rad)';
+                return;
+            }
+            raf = requestAnimationFrame(tick);
+        }
+
+        raf = requestAnimationFrame(tick);
+    }
     let activeTab = $state<Tab>("overview");
     let activeDocTab = $state<DocTab>("soul");
     let selectedServerId = $state<string>("");
@@ -150,7 +185,6 @@
             onclick={goBack}
             class="flex items-center gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer transition-colors text-xs"
         >
-            <ArrowLeft size={13} />
             <span>{m.marketplace_agentDetailBack()}</span>
         </button>
         {#if agent}
@@ -180,7 +214,14 @@
 
         <!-- Hero Section - Corporate ID Style -->
         <div class="agent-hero">
-            <!-- ID Badge Card -->
+            <!-- ID Badge Card wrapped in lanyard mount for swing animation -->
+            <div class="lanyard-mount" bind:this={lanyardEl}>
+                <svg class="lanyard-rope" width="20" height="70" viewBox="0 0 20 70" aria-hidden="true">
+                    <line x1="10" y1="0" x2="10" y2="70"
+                        stroke="rgba(120,120,130,0.7)" stroke-width="3.5"
+                        stroke-linecap="round"
+                        stroke-dasharray="2 3" />
+                </svg>
             <div class="id-badge-card">
                 <!-- Badge Clip -->
                 <div class="badge-clip">
@@ -253,6 +294,7 @@
                 <!-- Glow Effect -->
                 <div class="badge-glow"></div>
             </div>
+            </div> <!-- /lanyard-mount -->
 
             <!-- Quick Actions Panel -->
             <div class="quick-actions-panel">
@@ -537,6 +579,21 @@
         grid-template-columns: 320px 1fr;
         gap: 32px;
         margin-bottom: 32px;
+    }
+
+    /* Lanyard mount — pivots from top center for swing animation */
+    .lanyard-mount {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        transform-origin: 50% 0;
+        will-change: transform;
+    }
+
+    .lanyard-rope {
+        display: block;
+        flex-shrink: 0;
+        margin-bottom: -4px;
     }
 
     /* ID Badge Card */

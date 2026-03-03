@@ -59,7 +59,6 @@
             <!-- ID Card -->
             <div class="id-card">
                 <!-- Holo layers (pointer-driven, CSS-only) -->
-                <div class="holo-shimmer" aria-hidden="true"></div>
                 <div class="holo-sheen" aria-hidden="true"></div>
                 <div class="holo-glare" aria-hidden="true"></div>
                 <!-- Header with initials -->
@@ -441,15 +440,19 @@
         display: flex;
         align-items: center;
         padding-left: 20px;
-        background: linear-gradient(
-            90deg,
-            hsl(calc(var(--mx, 0.5) * 200deg + 240deg), 75%, 28%),
-            hsl(calc(var(--mx, 0.5) * 200deg + 320deg), 85%, 38%),
-            hsl(calc(var(--mx, 0.5) * 200deg + 400deg), 75%, 28%)
-        );
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
+        color: #18181b;
+        position: relative;
+    }
+
+    .company-brand::after {
+        content: '';
+        position: absolute;
+        left: 20px;
+        bottom: calc(50% - 11px);
+        width: 46px;
+        height: 2px;
+        background: linear-gradient(90deg, var(--color-brand-pink), transparent);
+        opacity: 0.85;
     }
 
     .role-desc-btn {
@@ -690,65 +693,35 @@
         position: relative;
     }
 
-    /* "MINION" repeated watermark texture — top layer, over all content */
+    /* "MINION" repeated watermark — behind card content, above card background */
     .id-card::before {
-        content: 'MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  ';
+        content: 'MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  ';
         position: absolute;
         inset: 0;
         font-family: 'JetBrains Mono NF', monospace;
-        font-size: 13px;
-        font-weight: 800;
-        letter-spacing: 0.25em;
-        line-height: 2;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        word-spacing: 1.8em;
+        line-height: 5;
         background: linear-gradient(
-            105deg,
-            hsl(calc(var(--mx, 0.5) * 160deg + 280deg) 60% 45% / 0.22),
-            hsl(calc(var(--mx, 0.5) * 160deg + 360deg) 60% 45% / 0.22)
+            calc(110deg + var(--my, 0.5) * 60deg),
+            hsl(calc(var(--mx, 0.5) * 300deg + 160deg) 70% 48%),
+            hsl(calc(var(--mx, 0.5) * 300deg + 240deg) 72% 52%),
+            hsl(calc(var(--mx, 0.5) * 300deg + 320deg) 70% 48%)
         );
         -webkit-background-clip: text;
         background-clip: text;
         color: transparent;
-        overflow: hidden;
-        transform: rotate(-30deg) scale(1.6);
+        /* Edge-distance opacity: near-invisible at center, richer at card edges */
+        opacity: calc(0.12 + abs(var(--mx, 0.5) - 0.5) * 0.55 + abs(var(--my, 0.5) - 0.5) * 0.55);
+        transform: rotate(-45deg) scale(1.6);
         transform-origin: center;
         word-break: break-all;
         pointer-events: none;
-        z-index: 10;
-        border-radius: inherit;
-        /* Turbulence noise mask — gives watermark a foil-print texture */
-        -webkit-mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><filter id='f'><feTurbulence type='fractalNoise' baseFrequency='0.4' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 4 -1'/></filter><rect width='100%25' height='100%25' filter='url(%23f)'/></svg>");
-        mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><filter id='f'><feTurbulence type='fractalNoise' baseFrequency='0.4' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 4 -1'/></filter><rect width='100%25' height='100%25' filter='url(%23f)'/></svg>");
-        -webkit-mask-size: 220px 220px;
-        mask-size: 220px 220px;
-        -webkit-mask-repeat: repeat;
-        mask-repeat: repeat;
+        z-index: 2;
     }
 
-    /* Rainbow shimmer layer — visible only when .holo-active */
-    .holo-shimmer {
-        position: absolute;
-        inset: 0;
-        border-radius: inherit;
-        pointer-events: none;
-        z-index: 1;
-        background: conic-gradient(
-            from calc(var(--mx, 0.5) * 360deg) at calc(var(--mx, 0.5) * 100%) calc(var(--my, 0.5) * 100%),
-            hsl(0,   80%, 60%),
-            hsl(60,  80%, 60%),
-            hsl(120, 80%, 60%),
-            hsl(180, 80%, 60%),
-            hsl(240, 80%, 60%),
-            hsl(300, 80%, 60%),
-            hsl(360, 80%, 60%)
-        );
-        mix-blend-mode: color-dodge;
-        opacity: 0;
-        transition: opacity 0.4s ease;
-    }
-
-    :global(.agent-card-container:not(.flipped).holo-active) .holo-shimmer {
-        opacity: 0.12;
-    }
 
     /* Radial glare following pointer */
     .holo-glare {
@@ -771,21 +744,21 @@
         opacity: 0.6;
     }
 
-    /* Diagonal sheen — bright stripe that sweeps with pointer X */
+    /* Diagonal sheen — bright stripe that sweeps with pointer X; topmost layer below accessory */
     .holo-sheen {
         position: absolute;
         inset: 0;
         border-radius: inherit;
         pointer-events: none;
-        z-index: 2;
+        z-index: 15;
         background: linear-gradient(
             calc(115deg + var(--my, 0.5) * 20deg),
             transparent,
-            transparent calc(var(--mx, 0.5) * 100% - 18%),
-            rgba(255, 255, 255, 0.05) calc(var(--mx, 0.5) * 100% - 8%),
-            rgba(255, 255, 255, 0.22) calc(var(--mx, 0.5) * 100%),
-            rgba(255, 255, 255, 0.05) calc(var(--mx, 0.5) * 100% + 8%),
-            transparent calc(var(--mx, 0.5) * 100% + 18%),
+            transparent calc(var(--mx, 0.5) * 100% - 22%),
+            rgba(255, 255, 255, 0.08) calc(var(--mx, 0.5) * 100% - 10%),
+            rgba(255, 255, 255, 0.38) calc(var(--mx, 0.5) * 100%),
+            rgba(255, 255, 255, 0.08) calc(var(--mx, 0.5) * 100% + 10%),
+            transparent calc(var(--mx, 0.5) * 100% + 22%),
             transparent
         );
         mix-blend-mode: overlay;
