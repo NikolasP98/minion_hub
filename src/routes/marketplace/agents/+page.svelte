@@ -793,16 +793,4 @@
         z-index: 4;
     }
 
-    /* Iridescent list-brand text */
-    .list-brand {
-        background: linear-gradient(
-            90deg,
-            hsl(calc(var(--mx, 0.5) * 200deg + 240deg), 75%, 28%),
-            hsl(calc(var(--mx, 0.5) * 200deg + 320deg), 85%, 38%),
-            hsl(calc(var(--mx, 0.5) * 200deg + 400deg), 75%, 28%)
-        );
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-    }
 </style>
