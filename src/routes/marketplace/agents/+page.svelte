@@ -645,7 +645,6 @@
     /* ── List-card holographic effect ───────────────────────────── */
 
     .list-card {
-        overflow: hidden;
         position: relative;
         transition: transform 0.15s ease;
         transform:
