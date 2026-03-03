@@ -4,7 +4,7 @@
     import { parseTags, installAgent } from "$lib/state/marketplace.svelte";
     import { diceBearAvatarUrl } from "$lib/utils/avatar";
     import * as m from '$lib/paraglide/messages';
-    import { Download, Check } from "lucide-svelte";
+    import { Download } from "lucide-svelte";
     import { holo } from '$lib/actions/holo';
 
     interface Props {
@@ -29,14 +29,6 @@
         return name.slice(0, 2).toUpperCase();
     }
 
-    function handleHireMe() {
-        if (onInstall) {
-            onInstall(agent.id);
-        } else {
-            goto(`/marketplace/agents/${agent.id}?tab=hire`);
-        }
-    }
-
     function flipCard() {
         isFlipped = !isFlipped;
     }
@@ -47,7 +39,7 @@
     }
 </script>
 
-<div class="agent-card-container" class:flipped={isFlipped} use:holo>
+<div class="agent-card-container" class:flipped={isFlipped} use:holo onclick={flipCard} onkeydown={(e) => e.key === 'Enter' && flipCard()} role="button" tabindex="0">
     <div class="agent-card-inner">
         <!-- FRONT SIDE - Corporate ID Badge -->
         <div class="agent-card-front">
@@ -113,9 +105,9 @@
                         <button
                             type="button"
                             class="role-desc-btn"
-                            onclick={flipCard}
+                            onclick={viewDetails}
                         >
-                            {m.marketplace_agentCardRoleDescription()}
+                            View Profile
                         </button>
                     </div>
                 </div>
@@ -129,7 +121,7 @@
                 <button
                     type="button"
                     class="back-btn"
-                    onclick={flipCard}
+                    onclick={(e) => { e.stopPropagation(); flipCard(); }}
                     aria-label="Flip card back"
                 >
                     <svg
@@ -194,11 +186,10 @@
                 </div>
                 <button
                     type="button"
-                    class="hire-me-btn"
-                    onclick={handleHireMe}
+                    class="view-profile-btn"
+                    onclick={(e) => { e.stopPropagation(); goto(`/marketplace/agents/${agent.id}`); }}
                 >
-                    <Check size={13} />
-                    <span>{m.marketplace_agentCardHireMe()}</span>
+                    View Profile →
                 </button>
             </div>
 
@@ -326,7 +317,10 @@
         justify-content: space-between;
         position: relative;
         overflow: hidden;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        box-shadow:
+            0 2px 4px rgba(0, 0, 0, 0.2),
+            0 0 0 1.5px hsl(calc(var(--mx, 0.5) * 180deg + 280deg) 80% 60%),
+            0 0 10px hsl(calc(var(--mx, 0.5) * 180deg + 280deg) 80% 60% / 0.25);
     }
 
     .initials {
@@ -510,20 +504,19 @@
     .role-desc-btn {
         background: #18181b;
         color: #fafafa;
-        border: none;
+        border: 1.5px solid hsl(calc(var(--mx, 0.5) * 180deg + 280deg) 80% 60%);
         padding: 6px 12px;
         border-radius: 6px;
         font-size: 10px;
         font-weight: 600;
         cursor: pointer;
-        transition: all 0.2s ease;
+        transition: box-shadow 0.2s ease;
         font-family: inherit;
+        box-shadow: 0 0 8px hsl(calc(var(--mx, 0.5) * 180deg + 280deg) 80% 60% / 0.3);
     }
 
     .role-desc-btn:hover {
-        background: #e8547a;
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(232, 84, 122, 0.4);
+        box-shadow: 0 0 14px hsl(calc(var(--mx, 0.5) * 180deg + 280deg) 80% 60% / 0.55);
     }
 
     /* BACK SIDE STYLES */
@@ -683,25 +676,23 @@
         border: 1px solid rgba(6, 182, 212, 0.2);
     }
 
-    .hire-me-btn {
-        background: linear-gradient(135deg, #e8547a, #c44d6c);
-        color: white;
-        border: none;
-        padding: 10px 20px;
+    .view-profile-btn {
+        background: rgba(255, 255, 255, 0.05);
+        color: #e8547a;
+        border: 1px solid rgba(232, 84, 122, 0.3);
+        padding: 8px 16px;
         border-radius: 8px;
-        font-size: 12px;
-        font-weight: 700;
+        font-size: 11px;
+        font-weight: 600;
         cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 6px;
         transition: all 0.2s ease;
-        box-shadow: 0 4px 15px rgba(232, 84, 122, 0.3);
+        font-family: "JetBrains Mono NF", monospace;
     }
 
-    .hire-me-btn:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(232, 84, 122, 0.5);
+    .view-profile-btn:hover {
+        background: rgba(232, 84, 122, 0.1);
+        border-color: rgba(232, 84, 122, 0.5);
+        box-shadow: 0 4px 12px rgba(232, 84, 122, 0.25);
     }
 
 
@@ -761,10 +752,10 @@
         }
     }
 
-    /* Holo tilt on agent-card-front so badge clip tilts too.
+    /* Holo tilt on front face only — disabled when card is flipped.
        No transition — instant tracking + instant snap-back. Avoids Svelte
        stripping .holo-active and the transition-restart glitch. */
-    .agent-card-front {
+    .agent-card-container:not(.flipped) .agent-card-front {
         transform:
             perspective(800px)
             rotateX(calc((0.5 - var(--my, 0.5)) * 8deg))
@@ -821,7 +812,7 @@
         transition: opacity 0.4s ease;
     }
 
-    :global(.agent-card-container.holo-active) .holo-shimmer {
+    :global(.agent-card-container:not(.flipped).holo-active) .holo-shimmer {
         opacity: 0.12;
     }
 
@@ -842,7 +833,7 @@
         transition: opacity 0.4s ease;
     }
 
-    :global(.agent-card-container.holo-active) .holo-glare {
+    :global(.agent-card-container:not(.flipped).holo-active) .holo-glare {
         opacity: 0.6;
     }
 
