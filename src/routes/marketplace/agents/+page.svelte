@@ -366,7 +366,7 @@
     /* Mini ID Card wrapper — mirrors AgentCard's agent-card-front */
     .list-card-wrap {
         position: relative;
-        padding-top: 20px;
+        padding-top: 12px;
         flex-shrink: 0;
     }
 
@@ -447,12 +447,21 @@
         border-top: 1px dashed rgba(0, 0, 0, 0.15);
     }
 
+    /* Iridescent list-brand text */
     .list-brand {
         font-family: "JetBrains Mono NF", monospace;
         font-weight: 800;
-        font-size: 12px;
-        color: #18181b;
+        font-size: 11px;
         letter-spacing: 0.05em;
+        background: linear-gradient(
+            90deg,
+            hsl(calc(var(--mx, 0.5) * 200deg + 240deg), 75%, 28%),
+            hsl(calc(var(--mx, 0.5) * 200deg + 320deg), 85%, 38%),
+            hsl(calc(var(--mx, 0.5) * 200deg + 400deg), 75%, 28%)
+        );
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
     }
 
     /* List Details */
@@ -788,9 +797,9 @@
     .list-brand {
         background: linear-gradient(
             90deg,
-            hsl(calc(var(--mx, 0.5) * 200deg + 280deg), 75%, 35%),
-            hsl(calc(var(--mx, 0.5) * 200deg + 340deg), 80%, 45%),
-            hsl(calc(var(--mx, 0.5) * 200deg + 400deg), 75%, 35%)
+            hsl(calc(var(--mx, 0.5) * 200deg + 240deg), 75%, 28%),
+            hsl(calc(var(--mx, 0.5) * 200deg + 320deg), 85%, 38%),
+            hsl(calc(var(--mx, 0.5) * 200deg + 400deg), 75%, 28%)
         );
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
