@@ -50,7 +50,7 @@
 <div class="agent-card-container" class:flipped={isFlipped}>
     <div class="agent-card-inner">
         <!-- FRONT SIDE - Corporate ID Badge -->
-        <div class="agent-card-front">
+        <div class="agent-card-front" use:holo>
             <!-- Badge Clip -->
             <div class="badge-clip">
                 <div class="clip-base"></div>
@@ -58,7 +58,7 @@
             </div>
 
             <!-- ID Card -->
-            <div class="id-card" use:holo>
+            <div class="id-card">
                 <!-- Holo layers (pointer-driven, CSS-only) -->
                 <div class="holo-shimmer" aria-hidden="true"></div>
                 <div class="holo-glare" aria-hidden="true"></div>
@@ -762,21 +762,21 @@
         }
     }
 
+    /* Holo tilt on agent-card-front so badge clip tilts too */
+    .agent-card-front {
+        transition: transform 0.15s ease;
+        transform:
+            perspective(800px)
+            rotateX(calc((0.5 - var(--my, 0.5)) * 8deg))
+            rotateY(calc((var(--mx, 0.5) - 0.5) * 8deg));
+    }
+
     /* ── Holographic effect ──────────────────────────────────────── */
 
     /* Add overflow:hidden and position:relative to contain layers */
     .id-card {
         overflow: hidden;
         position: relative;
-    }
-
-    /* 3D tilt driven by --mx / --my (±4° per axis) */
-    .id-card {
-        transition: transform 0.15s ease;
-        transform:
-            perspective(800px)
-            rotateX(calc((0.5 - var(--my, 0.5)) * 8deg))
-            rotateY(calc((var(--mx, 0.5) - 0.5) * 8deg));
     }
 
     /* "MINION" repeated watermark texture */
@@ -821,7 +821,7 @@
         transition: opacity 0.4s ease;
     }
 
-    .id-card.holo-active .holo-shimmer {
+    .agent-card-front.holo-active .holo-shimmer {
         opacity: 0.12;
     }
 
@@ -842,7 +842,7 @@
         transition: opacity 0.4s ease;
     }
 
-    .id-card.holo-active .holo-glare {
+    .agent-card-front.holo-active .holo-glare {
         opacity: 0.6;
     }
 

@@ -19,6 +19,8 @@ export function holo(node: HTMLElement) {
 
   function onLeave() {
     node.classList.remove('holo-active');
+    node.style.setProperty('--mx', '0.5');
+    node.style.setProperty('--my', '0.5');
   }
 
   node.addEventListener('pointermove', onMove);
