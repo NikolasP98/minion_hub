@@ -7,7 +7,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 	const ctx = await getTenantCtx(locals);
 	if (!ctx) return json({ servers: [] });
 	try {
-		const servers = await listServers(ctx);
+		const servers = await listServers(ctx, locals.user?.id, locals.user?.email);
 		return json({ servers });
 	} catch (e) {
 		console.error('[GET /api/servers]', e);
@@ -19,7 +19,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	const ctx = await getOrCreateTenantCtx(locals);
 	try {
 		const body = await request.json();
-		await upsertServer(ctx, body);
+		await upsertServer(ctx, body, locals.user?.id);
 		return json({ ok: true });
 	} catch (e) {
 		console.error('[POST /api/servers]', e);

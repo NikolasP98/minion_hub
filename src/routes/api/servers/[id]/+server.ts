@@ -8,7 +8,7 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
 	try {
 		const body = await request.json();
 		const id = params.id!;
-		await upsertServer(ctx, { id, name: '', url: '', token: '', ...body });
+		await upsertServer(ctx, { id, name: '', url: '', token: '', ...body }, locals.user?.id);
 		return json({ ok: true });
 	} catch (e) {
 		console.error(`[PUT /api/servers/${params.id}]`, e);
