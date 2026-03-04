@@ -119,11 +119,12 @@
     <Splitter
         storageKey="sidebar-config"
         defaultSize={17}
-        minibarSize={10}
+        minibarSize={5}
+        maxSize={26}
         collapsedSize={0}
     >
-        {#snippet panel()}
-            <ConfigSidebar {activeGroupId} onselect={scrollToGroup} />
+        {#snippet panel({ collapseLevel })}
+            <ConfigSidebar {activeGroupId} onselect={scrollToGroup} {collapseLevel} />
         {/snippet}
         <div class="flex-1 flex flex-col min-h-0">
           <div bind:this={contentEl} class="flex-1 overflow-y-auto px-6 py-5">
