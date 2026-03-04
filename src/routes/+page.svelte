@@ -34,7 +34,6 @@
         minSize={5}
         collapsedSize={0}
         onapi={(api) => { splitterApi = api; }}
-        oncollapse={() => { ui.sidebarCollapsed = false; }}
         onexpand={() => { ui.sidebarCollapsed = false; }}
     >
         {#snippet panel({ collapsed })}
