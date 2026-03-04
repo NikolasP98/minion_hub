@@ -1,5 +1,5 @@
 import { eq, and } from 'drizzle-orm';
-import { servers } from '$server/db/schema';
+import { servers, userServers } from '$server/db/schema';
 import { newId, nowMs } from '$server/db/utils';
 import { encryptToken, decryptToken } from '$server/auth/crypto';
 import type { TenantContext } from './base';
@@ -12,10 +12,13 @@ export interface ServerInput {
   lastConnectedAt?: number | null;
 }
 
-export async function upsertServer(ctx: TenantContext, s: ServerInput) {
+export async function upsertServer(
+  ctx: TenantContext,
+  s: ServerInput,
+  userId?: string,
+) {
   const now = nowMs();
   const id = s.id ?? newId();
-
   const { encrypted, iv } = encryptToken(s.token);
 
   await ctx.db
@@ -42,10 +45,54 @@ export async function upsertServer(ctx: TenantContext, s: ServerInput) {
       },
     });
 
-  return id;
+  // Resolve actual server id (conflict may have kept an existing row with a different id)
+  const [row] = await ctx.db
+    .select({ id: servers.id })
+    .from(servers)
+    .where(and(eq(servers.tenantId, ctx.tenantId), eq(servers.url, s.url)));
+  const finalId = row?.id ?? id;
+
+  // Link user → server
+  if (userId) {
+    await ctx.db
+      .insert(userServers)
+      .values({ userId, serverId: finalId, createdAt: now })
+      .onConflictDoNothing();
+  }
+
+  return finalId;
 }
 
-export async function listServers(ctx: TenantContext) {
+export async function listServers(
+  ctx: TenantContext,
+  userId?: string,
+  userEmail?: string,
+) {
+  const isAdmin = userEmail === 'admin@minion.hub';
+
+  if (isAdmin || !userId) {
+    const rows = await ctx.db
+      .select({
+        id: servers.id,
+        name: servers.name,
+        url: servers.url,
+        token: servers.token,
+        tokenIv: servers.tokenIv,
+        lastConnectedAt: servers.lastConnectedAt,
+      })
+      .from(servers)
+      .where(eq(servers.tenantId, ctx.tenantId))
+      .orderBy(servers.createdAt);
+
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      url: row.url,
+      token: row.tokenIv ? decryptToken(row.token, row.tokenIv) : row.token,
+      lastConnectedAt: row.lastConnectedAt,
+    }));
+  }
+
   const rows = await ctx.db
     .select({
       id: servers.id,
@@ -56,7 +103,8 @@ export async function listServers(ctx: TenantContext) {
       lastConnectedAt: servers.lastConnectedAt,
     })
     .from(servers)
-    .where(eq(servers.tenantId, ctx.tenantId))
+    .innerJoin(userServers, eq(userServers.serverId, servers.id))
+    .where(and(eq(servers.tenantId, ctx.tenantId), eq(userServers.userId, userId)))
     .orderBy(servers.createdAt);
 
   return rows.map((row) => ({
