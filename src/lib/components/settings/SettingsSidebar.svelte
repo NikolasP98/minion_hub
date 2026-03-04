@@ -6,7 +6,6 @@
         SlidersHorizontal,
         Brain,
         Zap,
-        Database,
         Radio,
         Plug,
         Monitor,
@@ -22,9 +21,8 @@
         | "config-setup"
         | "config-ai"
         | "config-automation"
-        | "config-data"
         | "config-comms"
-        | "config-integrations"
+        | "config-extensions"
         | "config-system"
         | "config-other"
         | "team"
@@ -34,21 +32,18 @@
     interface Props {
         activeSection: Section;
         onselect: (s: Section) => void;
-        /** Meta-group IDs that have at least one group in the loaded config */
-        loadedMetaIds?: string[];
         /** Whether there are groups not claimed by any meta-group */
         hasOther?: boolean;
     }
 
-    let { activeSection, onselect, loadedMetaIds = [], hasOther = false }: Props = $props();
+    let { activeSection, onselect, hasOther = false }: Props = $props();
 
     const META_ICONS: Record<string, typeof Palette> = {
         setup:        SlidersHorizontal,
         ai:           Brain,
         automation:   Zap,
-        data:         Database,
         comms:        Radio,
-        integrations: Plug,
+        extensions:   Plug,
         system:       Monitor,
         other:        MoreHorizontal,
     };
@@ -63,22 +58,15 @@
         { id: "gateways" as Section, label: "Gateways", icon: Server },
     ];
 
-    // When config is loaded (loadedMetaIds non-empty), show only meta-groups
-    // that have at least one group. Before load, show all.
-    const visibleMeta = $derived.by(() => {
-        const all = [
-            ...META_GROUPS,
-            ...(hasOther ? [{ id: "other", label: "Other", minOrder: -1, maxOrder: -1 }] : []),
-        ];
-        if (loadedMetaIds.length === 0) return all;
-        return all.filter((m) =>
-            m.id === "other" ? hasOther : loadedMetaIds.includes(m.id),
-        );
-    });
+    // Always show all meta-groups; the content area handles empty states.
+    const visibleMeta = $derived([
+        ...META_GROUPS,
+        ...(hasOther ? [{ id: "other", label: "Other", minOrder: -1, maxOrder: -1 }] : []),
+    ]);
 </script>
 
 <aside
-    class="shrink-0 w-48 border-r border-border bg-bg/50 flex flex-col overflow-y-auto py-4"
+    class="shrink-0 w-full border-r border-border bg-bg/50 flex flex-col overflow-y-auto py-4"
 >
     <!-- USER group -->
     <div class="mb-4">

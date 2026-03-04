@@ -14,6 +14,7 @@
     import { logoState } from "$lib/state/logo.svelte";
     import { locale } from "$lib/state/locale.svelte";
     import Topbar from "$lib/components/Topbar.svelte";
+    import Splitter from "$lib/components/Splitter.svelte";
     import SettingsSidebar from "$lib/components/settings/SettingsSidebar.svelte";
     import PatternSettings from "$lib/components/settings/PatternSettings.svelte";
     import SparklineStyleSettings from "$lib/components/settings/SparklineStyleSettings.svelte";
@@ -29,7 +30,6 @@
         SlidersHorizontal,
         Brain,
         Zap,
-        Database,
         Radio,
         Plug,
         Monitor,
@@ -47,9 +47,8 @@
         | "config-setup"
         | "config-ai"
         | "config-automation"
-        | "config-data"
         | "config-comms"
-        | "config-integrations"
+        | "config-extensions"
         | "config-system"
         | "config-other"
         | "team"
@@ -58,18 +57,17 @@
 
     // Section metadata for the page header
     const SECTION_META: Record<Section, { title: string; description: string; Icon: typeof Palette }> = {
-        appearance:            { title: "Appearance",     description: "Themes, colors, logos, and visual preferences",          Icon: Palette           },
-        "config-setup":        { title: "Setup",          description: "Core gateway configuration and initialization",          Icon: SlidersHorizontal },
-        "config-ai":           { title: "AI",             description: "Language model and inference settings",                  Icon: Brain             },
-        "config-automation":   { title: "Automation",     description: "Workflows, triggers, and automated tasks",               Icon: Zap               },
-        "config-data":         { title: "Data",           description: "Storage, databases, and data management",                Icon: Database          },
-        "config-comms":        { title: "Communications", description: "Messaging, notifications, and channels",                 Icon: Radio             },
-        "config-integrations": { title: "Integrations",   description: "Third-party services and external connections",          Icon: Plug              },
-        "config-system":       { title: "System",         description: "System-level settings and runtime configuration",        Icon: Monitor           },
-        "config-other":        { title: "Other",          description: "Additional gateway settings",                            Icon: MoreHorizontal    },
-        team:                  { title: "Team",           description: "Manage users and access control",                        Icon: Users             },
-        bindings:              { title: "Bindings",       description: "Key bindings and action shortcuts",                      Icon: Link2             },
-        gateways:              { title: "Gateways",       description: "Connected gateway servers",                              Icon: Server            },
+        appearance:           { title: "Appearance",     description: "Themes, colors, logos, and visual preferences",         Icon: Palette           },
+        "config-setup":       { title: "Setup",          description: "Core gateway configuration and initialization",         Icon: SlidersHorizontal },
+        "config-ai":          { title: "AI",             description: "Language model and inference settings",                 Icon: Brain             },
+        "config-automation":  { title: "Automation",     description: "Workflows, triggers, and automated tasks",              Icon: Zap               },
+        "config-comms":       { title: "Communications", description: "Messaging, notifications, and channels",                Icon: Radio             },
+        "config-extensions":  { title: "Extensions",     description: "Skills, plugins, and third-party integrations",         Icon: Plug              },
+        "config-system":      { title: "System",         description: "System-level settings and runtime configuration",       Icon: Monitor           },
+        "config-other":       { title: "Other",          description: "Additional gateway settings",                           Icon: MoreHorizontal    },
+        team:                 { title: "Team",           description: "Manage users and access control",                       Icon: Users             },
+        bindings:             { title: "Bindings",       description: "Key bindings and action shortcuts",                     Icon: Link2             },
+        gateways:             { title: "Gateways",       description: "Connected gateway servers",                             Icon: Server            },
     };
 
     // URL-persisted active section
@@ -122,11 +120,6 @@
         }
     });
 
-    // Which meta-group IDs have at least one group in the loaded config
-    const loadedMetaIds = $derived(
-        [...new Set(groups.value.map((g) => getMetaGroupId(g.order)))]
-    );
-
     // Groups whose order doesn't land in any defined meta-group range
     const otherGroups = $derived(
         groups.value.filter((g) => !META_GROUPS.some((m) => getMetaGroupId(g.order) === m.id))
@@ -165,14 +158,19 @@
 <div class="relative z-10 flex flex-col h-screen overflow-hidden text-foreground">
     <Topbar />
 
-    <div class="flex flex-1 min-h-0">
-        <SettingsSidebar
-            {activeSection}
-            onselect={selectSection}
-            {loadedMetaIds}
-            hasOther={otherGroups.length > 0}
-        />
-
+    <Splitter
+        storageKey="sidebar-settings"
+        defaultSize={17}
+        minSize={10}
+        collapsedSize={0}
+    >
+        {#snippet panel()}
+            <SettingsSidebar
+                {activeSection}
+                onselect={selectSection}
+                hasOther={otherGroups.length > 0}
+            />
+        {/snippet}
         <main class="flex-1 min-h-0 overflow-hidden flex flex-col">
             <!-- Page-level section header -->
             <div class="shrink-0 px-6 md:px-10 py-4 border-b border-border flex items-center gap-3">
@@ -424,5 +422,5 @@
                 </div>
             {/key}
         </main>
-    </div>
+    </Splitter>
 </div>
