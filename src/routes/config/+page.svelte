@@ -3,6 +3,7 @@
   import { configState, loadConfig, isDirty, groups } from '$lib/state/config.svelte';
   import { hasConfiguredValues, countConfiguredKeys } from '$lib/utils/config-schema';
   import ConfigSidebar from '$lib/components/config/ConfigSidebar.svelte';
+  import Splitter from '$lib/components/Splitter.svelte';
   import ConfigSection from '$lib/components/config/ConfigSection.svelte';
   import ConfigSaveBar from '$lib/components/config/ConfigSaveBar.svelte';
   import Topbar from '$lib/components/Topbar.svelte';
@@ -115,40 +116,44 @@
       </div>
     </div>
   {:else}
-    <div class="flex-1 flex min-h-0">
-      <!-- Sidebar -->
-      <ConfigSidebar {activeGroupId} onselect={scrollToGroup} />
+    <Splitter
+        storageKey="sidebar-config"
+        defaultSize={17}
+        minSize={10}
+        collapsedSize={0}
+    >
+        {#snippet panel()}
+            <ConfigSidebar {activeGroupId} onselect={scrollToGroup} />
+        {/snippet}
+        <div class="flex-1 flex flex-col min-h-0">
+          <div bind:this={contentEl} class="flex-1 overflow-y-auto px-6 py-5">
+            <div class="max-w-3xl mx-auto space-y-2.5">
+              {#if configState.version}
+                <p class="text-[10px] text-muted-foreground mb-2">
+                  Gateway v{configState.version} &middot; {configState.configPath}
+                </p>
+              {/if}
 
-      <!-- Content -->
-      <div class="flex-1 flex flex-col min-h-0">
-        <div bind:this={contentEl} class="flex-1 overflow-y-auto px-6 py-5">
-          <div class="max-w-3xl mx-auto space-y-2.5">
-            {#if configState.version}
-              <p class="text-[10px] text-muted-foreground mb-2">
-                Gateway v{configState.version} &middot; {configState.configPath}
-              </p>
-            {/if}
+              {#each sortedGroups as group (group.id)}
+                <ConfigSection
+                  {group}
+                  expanded={expandedIds.has(group.id)}
+                  ontoggle={() => toggleGroup(group.id)}
+                  configuredCount={configuredCountForGroup(group.id)}
+                />
+              {/each}
 
-            {#each sortedGroups as group (group.id)}
-              <ConfigSection
-                {group}
-                expanded={expandedIds.has(group.id)}
-                ontoggle={() => toggleGroup(group.id)}
-                configuredCount={configuredCountForGroup(group.id)}
-              />
-            {/each}
-
-            {#if sortedGroups.length === 0}
-              <p class="text-muted-foreground text-sm">{m.config_noSections()}</p>
-            {/if}
+              {#if sortedGroups.length === 0}
+                <p class="text-muted-foreground text-sm">{m.config_noSections()}</p>
+              {/if}
+            </div>
           </div>
-        </div>
 
-        <!-- Save bar -->
-        {#if isDirty.value || configState.saving || configState.saveError}
-          <ConfigSaveBar />
-        {/if}
-      </div>
-    </div>
+          <!-- Save bar -->
+          {#if isDirty.value || configState.saving || configState.saveError}
+            <ConfigSaveBar />
+          {/if}
+        </div>
+    </Splitter>
   {/if}
 </div>

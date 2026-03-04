@@ -37,7 +37,7 @@
   });
 </script>
 
-<nav class="w-[200px] shrink-0 border-r border-border overflow-y-auto py-3 bg-bg2/50">
+<nav class="w-full shrink-0 border-r border-border overflow-y-auto py-3 bg-bg2/50">
   {#each visibleMeta as meta (meta.id)}
     <div class="px-3 pt-3 pb-1 text-[9.5px] font-semibold uppercase tracking-widest text-muted-foreground/50 select-none">
       {meta.label}
