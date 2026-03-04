@@ -9,15 +9,23 @@
     import AddAgentModal from "./AddAgentModal.svelte";
     import { Plus, ChevronLeft, ChevronRight, Bot, Radio } from "lucide-svelte";
     import * as m from "$lib/paraglide/messages";
+    import type { CollapseLevel } from '$lib/components/Splitter.svelte';
 
     interface Props {
-        /** Controlled collapsed state from the splitter parent */
-        collapsed?: boolean;
-        /** Called when the user clicks the collapse/expand chevron */
+        /** Collapse level from the parent Splitter */
+        collapseLevel?: CollapseLevel;
+        /** Called when the user clicks the collapse/expand chevron — parent handles the toggle */
         ontoggle?: () => void;
     }
 
-    let { collapsed: collapsedProp, ontoggle }: Props = $props();
+    let { collapseLevel = 'expanded', ontoggle }: Props = $props();
+
+    // Show minibar UI when in mini or collapsed state
+    const collapsed = $derived(collapseLevel !== 'expanded');
+
+    function toggleCollapse() {
+        ontoggle?.();
+    }
 
     const ACCENT_COLORS = [
         "#3b82f6",
@@ -36,16 +44,6 @@
             : new Array(16).fill(0),
     );
 
-    const collapsed = $derived(collapsedProp ?? ui.sidebarCollapsed);
-
-    function toggleCollapse() {
-        if (ontoggle) {
-            ontoggle();
-        } else {
-            ui.sidebarCollapsed = !ui.sidebarCollapsed;
-        }
-    }
-
     const agentCount = $derived(gw.agents.length);
     const activeAgentCount = $derived(
         gw.agents.filter(
@@ -55,7 +53,7 @@
 </script>
 
 <HudBorder
-    class="w-full shrink-0 overflow-hidden border-r border-border bg-bg2 flex flex-col"
+    class="w-full h-full overflow-hidden border-r border-border bg-bg2 flex flex-col"
 >
     <!-- Header -->
     {#if collapsed}

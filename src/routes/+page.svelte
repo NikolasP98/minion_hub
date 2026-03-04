@@ -25,7 +25,7 @@
     >
         {#snippet panel({ collapseLevel })}
             <AgentSidebar
-                collapsed={collapseLevel === 'collapsed'}
+                {collapseLevel}
                 ontoggle={() => splitterApi?.toggleMini()}
             />
         {/snippet}
