@@ -3,27 +3,15 @@
     import AgentSidebar from '$lib/components/AgentSidebar.svelte';
     import DetailPanel from '$lib/components/DetailPanel.svelte';
     import Splitter from '$lib/components/Splitter.svelte';
-    import { ui } from '$lib/state/ui.svelte';
+    import type { CollapseLevel } from '$lib/components/Splitter.svelte';
 
     interface SplitterApiHandle {
-        collapse: () => void;
+        toggleMini: () => void;
         expand: () => void;
-        isCollapsed: () => boolean;
+        collapseLevel: () => CollapseLevel;
     }
 
     let splitterApi = $state<SplitterApiHandle | null>(null);
-
-    function handleSidebarToggle() {
-        if (!splitterApi) {
-            ui.sidebarCollapsed = !ui.sidebarCollapsed;
-            return;
-        }
-        if (splitterApi.isCollapsed()) {
-            splitterApi.expand();
-        } else {
-            ui.sidebarCollapsed = !ui.sidebarCollapsed;
-        }
-    }
 </script>
 
 <div class="relative z-10 flex flex-col h-screen overflow-hidden">
@@ -31,15 +19,14 @@
     <Splitter
         storageKey="sidebar-main"
         defaultSize={20}
-        minSize={5}
-        collapsedSize={0}
+        minibarSize={5}
+        maxSize={28}
         onapi={(api) => { splitterApi = api; }}
-        onexpand={() => { ui.sidebarCollapsed = false; }}
     >
-        {#snippet panel({ collapsed })}
+        {#snippet panel({ collapseLevel })}
             <AgentSidebar
-                collapsed={collapsed || ui.sidebarCollapsed}
-                ontoggle={handleSidebarToggle}
+                collapsed={collapseLevel === 'collapsed'}
+                ontoggle={() => splitterApi?.toggleMini()}
             />
         {/snippet}
         <DetailPanel />

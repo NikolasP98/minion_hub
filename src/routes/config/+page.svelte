@@ -119,7 +119,7 @@
     <Splitter
         storageKey="sidebar-config"
         defaultSize={17}
-        minSize={10}
+        minibarSize={10}
         collapsedSize={0}
     >
         {#snippet panel()}

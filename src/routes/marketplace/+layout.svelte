@@ -62,7 +62,7 @@
     <Splitter
         storageKey="sidebar-marketplace"
         defaultSize={16}
-        minSize={10}
+        minibarSize={10}
         collapsedSize={0}
     >
         {#snippet panel()}
