@@ -79,6 +79,7 @@ export const serversRelations = relations(servers, ({ one, many }) => ({
   bugs: many(bugs),
   connectionEvents: many(connectionEvents),
   settings: many(settings),
+  userServers: many(userServers),
 }));
 
 // ── Agents ───────────────────────────────────────────────────────────────────
