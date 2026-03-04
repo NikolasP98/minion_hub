@@ -161,14 +161,16 @@
     <Splitter
         storageKey="sidebar-settings"
         defaultSize={17}
-        minibarSize={10}
+        minibarSize={5}
+        maxSize={26}
         collapsedSize={0}
     >
-        {#snippet panel()}
+        {#snippet panel({ collapseLevel })}
             <SettingsSidebar
                 {activeSection}
                 onselect={selectSection}
                 hasOther={otherGroups.length > 0}
+                {collapseLevel}
             />
         {/snippet}
         <main class="flex-1 min-h-0 overflow-hidden flex flex-col">

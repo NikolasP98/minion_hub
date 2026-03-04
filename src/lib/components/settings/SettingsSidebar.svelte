@@ -15,6 +15,7 @@
         Server,
         Lock,
     } from "lucide-svelte";
+    import type { CollapseLevel } from '$lib/components/Splitter.svelte';
 
     type Section =
         | "appearance"
@@ -34,9 +35,12 @@
         onselect: (s: Section) => void;
         /** Whether there are groups not claimed by any meta-group */
         hasOther?: boolean;
+        collapseLevel?: CollapseLevel;
     }
 
-    let { activeSection, onselect, hasOther = false }: Props = $props();
+    let { activeSection, onselect, hasOther = false, collapseLevel = 'expanded' }: Props = $props();
+
+    const mini = $derived(collapseLevel !== 'expanded');
 
     const META_ICONS: Record<string, typeof Palette> = {
         setup:        SlidersHorizontal,
@@ -68,106 +72,171 @@
 <aside
     class="shrink-0 w-full border-r border-border bg-bg/50 flex flex-col overflow-y-auto py-4"
 >
-    <!-- USER group -->
-    <div class="mb-4">
-        <div
-            class="px-4 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/80"
-        >
-            User
-        </div>
-        {#each USER_SECTIONS as section (section.id)}
-            <button
-                type="button"
-                class="w-full flex items-center gap-2.5 px-4 py-2 text-sm transition-colors duration-100 cursor-pointer bg-transparent border-none font-[inherit] text-left
-                    {activeSection === section.id
-                    ? 'text-accent bg-accent/8 font-medium'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-bg3'}"
-                onclick={() => onselect(section.id)}
-            >
-                <section.icon
-                    size={15}
-                    class={activeSection === section.id
-                        ? "text-accent"
-                        : "text-muted-foreground/70"}
-                />
-                {section.label}
-            </button>
-        {/each}
-    </div>
+    {#if mini}
+        <!-- Minibar: icon-only column -->
+        <div class="flex flex-col items-center gap-1 px-1">
+            {#each USER_SECTIONS as section (section.id)}
+                <button
+                    type="button"
+                    class="w-8 h-8 flex items-center justify-center rounded-md transition-colors bg-transparent border-none font-[inherit] cursor-pointer
+                        {activeSection === section.id
+                        ? 'text-accent bg-accent/10'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-bg3'}"
+                    onclick={() => onselect(section.id)}
+                    title={section.label}
+                    aria-label={section.label}
+                >
+                    <section.icon size={15} />
+                </button>
+            {/each}
 
-    <!-- Divider -->
-    <div class="h-px bg-border/60 mx-4 mb-4"></div>
+            <div class="w-4 h-px bg-border/60 my-1"></div>
 
-    <!-- GATEWAY group -->
-    <div class="flex-1">
-        <div
-            class="px-4 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/80"
-        >
-            Gateway
-        </div>
-
-        <!-- Config meta-groups (filtered to loaded groups when connected) -->
-        {#each visibleMeta as meta (meta.id)}
-            {@const sectionId = `config-${meta.id}` as Section}
-            {@const Icon = META_ICONS[meta.id]}
-            {@const disabled = !conn.connected}
-            <button
-                type="button"
-                class="w-full flex items-center gap-2.5 px-4 py-2 text-sm transition-colors duration-100 bg-transparent border-none font-[inherit] text-left
-                    {activeSection === sectionId
-                    ? 'text-accent bg-accent/8 font-medium cursor-pointer'
-                    : disabled
-                      ? 'text-muted-foreground/40 cursor-not-allowed'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-bg3 cursor-pointer'}"
-                onclick={() => conn.connected && onselect(sectionId)}
-                title={disabled ? "Connect to a gateway first" : undefined}
-            >
-                <Icon
-                    size={15}
-                    class={activeSection === sectionId
-                        ? "text-accent"
+            {#each visibleMeta as meta (meta.id)}
+                {@const sectionId = `config-${meta.id}` as Section}
+                {@const Icon = META_ICONS[meta.id]}
+                {@const disabled = !conn.connected}
+                <button
+                    type="button"
+                    class="w-8 h-8 flex items-center justify-center rounded-md transition-colors bg-transparent border-none font-[inherit]
+                        {activeSection === sectionId
+                        ? 'text-accent bg-accent/10'
                         : disabled
-                          ? "text-muted-foreground/30"
-                          : "text-muted-foreground/70"}
-                />
-                <span class="flex-1">{meta.label}</span>
-                {#if disabled}
-                    <Lock size={10} class="text-muted-foreground/30 shrink-0" />
-                {/if}
-            </button>
-        {/each}
+                          ? 'text-muted-foreground/30 cursor-not-allowed'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-bg3 cursor-pointer'}"
+                    onclick={() => conn.connected && onselect(sectionId)}
+                    title={meta.label}
+                    aria-label={meta.label}
+                >
+                    <Icon size={15} />
+                </button>
+            {/each}
 
-        <!-- Spacer before Team/Bindings/Gateways -->
-        <div class="h-px bg-border/40 mx-4 my-3"></div>
+            <div class="w-4 h-px bg-border/40 my-1"></div>
 
-        {#each GATEWAY_BOTTOM as section (section.id)}
-            {@const disabled = !conn.connected && section.id !== 'gateways'}
-            <button
-                type="button"
-                class="w-full flex items-center gap-2.5 px-4 py-2 text-sm transition-colors duration-100 bg-transparent border-none font-[inherit] text-left
-                    {activeSection === section.id
-                    ? 'text-accent bg-accent/8 font-medium cursor-pointer'
-                    : disabled
-                      ? 'text-muted-foreground/40 cursor-not-allowed'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-bg3 cursor-pointer'}"
-                onclick={() => {
-                    if (section.id === 'gateways' || conn.connected) onselect(section.id);
-                }}
-                title={disabled ? "Connect to a gateway first" : undefined}
-            >
-                <section.icon
-                    size={15}
-                    class={activeSection === section.id
-                        ? "text-accent"
+            {#each GATEWAY_BOTTOM as section (section.id)}
+                {@const disabled = !conn.connected && section.id !== 'gateways'}
+                <button
+                    type="button"
+                    class="w-8 h-8 flex items-center justify-center rounded-md transition-colors bg-transparent border-none font-[inherit]
+                        {activeSection === section.id
+                        ? 'text-accent bg-accent/10'
                         : disabled
-                          ? "text-muted-foreground/30"
-                          : "text-muted-foreground/70"}
-                />
-                <span class="flex-1">{section.label}</span>
-                {#if disabled}
-                    <Lock size={10} class="text-muted-foreground/30 shrink-0" />
-                {/if}
-            </button>
-        {/each}
-    </div>
+                          ? 'text-muted-foreground/30 cursor-not-allowed'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-bg3 cursor-pointer'}"
+                    onclick={() => {
+                        if (section.id === 'gateways' || conn.connected) onselect(section.id);
+                    }}
+                    title={section.label}
+                    aria-label={section.label}
+                >
+                    <section.icon size={15} />
+                </button>
+            {/each}
+        </div>
+    {:else}
+        <!-- Full view -->
+        <!-- USER group -->
+        <div class="mb-4">
+            <div
+                class="px-4 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/80"
+            >
+                User
+            </div>
+            {#each USER_SECTIONS as section (section.id)}
+                <button
+                    type="button"
+                    class="w-full flex items-center gap-2.5 px-4 py-2 text-sm transition-colors duration-100 cursor-pointer bg-transparent border-none font-[inherit] text-left
+                        {activeSection === section.id
+                        ? 'text-accent bg-accent/8 font-medium'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-bg3'}"
+                    onclick={() => onselect(section.id)}
+                >
+                    <section.icon
+                        size={15}
+                        class={activeSection === section.id
+                            ? "text-accent"
+                            : "text-muted-foreground/70"}
+                    />
+                    {section.label}
+                </button>
+            {/each}
+        </div>
+
+        <!-- Divider -->
+        <div class="h-px bg-border/60 mx-4 mb-4"></div>
+
+        <!-- GATEWAY group -->
+        <div class="flex-1">
+            <div
+                class="px-4 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/80"
+            >
+                Gateway
+            </div>
+
+            <!-- Config meta-groups (filtered to loaded groups when connected) -->
+            {#each visibleMeta as meta (meta.id)}
+                {@const sectionId = `config-${meta.id}` as Section}
+                {@const Icon = META_ICONS[meta.id]}
+                {@const disabled = !conn.connected}
+                <button
+                    type="button"
+                    class="w-full flex items-center gap-2.5 px-4 py-2 text-sm transition-colors duration-100 bg-transparent border-none font-[inherit] text-left
+                        {activeSection === sectionId
+                        ? 'text-accent bg-accent/8 font-medium cursor-pointer'
+                        : disabled
+                          ? 'text-muted-foreground/40 cursor-not-allowed'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-bg3 cursor-pointer'}"
+                    onclick={() => conn.connected && onselect(sectionId)}
+                    title={disabled ? "Connect to a gateway first" : undefined}
+                >
+                    <Icon
+                        size={15}
+                        class={activeSection === sectionId
+                            ? "text-accent"
+                            : disabled
+                              ? "text-muted-foreground/30"
+                              : "text-muted-foreground/70"}
+                    />
+                    <span class="flex-1">{meta.label}</span>
+                    {#if disabled}
+                        <Lock size={10} class="text-muted-foreground/30 shrink-0" />
+                    {/if}
+                </button>
+            {/each}
+
+            <!-- Spacer before Team/Bindings/Gateways -->
+            <div class="h-px bg-border/40 mx-4 my-3"></div>
+
+            {#each GATEWAY_BOTTOM as section (section.id)}
+                {@const disabled = !conn.connected && section.id !== 'gateways'}
+                <button
+                    type="button"
+                    class="w-full flex items-center gap-2.5 px-4 py-2 text-sm transition-colors duration-100 bg-transparent border-none font-[inherit] text-left
+                        {activeSection === section.id
+                        ? 'text-accent bg-accent/8 font-medium cursor-pointer'
+                        : disabled
+                          ? 'text-muted-foreground/40 cursor-not-allowed'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-bg3 cursor-pointer'}"
+                    onclick={() => {
+                        if (section.id === 'gateways' || conn.connected) onselect(section.id);
+                    }}
+                    title={disabled ? "Connect to a gateway first" : undefined}
+                >
+                    <section.icon
+                        size={15}
+                        class={activeSection === section.id
+                            ? "text-accent"
+                            : disabled
+                              ? "text-muted-foreground/30"
+                              : "text-muted-foreground/70"}
+                    />
+                    <span class="flex-1">{section.label}</span>
+                    {#if disabled}
+                        <Lock size={10} class="text-muted-foreground/30 shrink-0" />
+                    {/if}
+                </button>
+            {/each}
+        </div>
+    {/if}
 </aside>
