@@ -10,6 +10,15 @@
     import { Plus, ChevronLeft, ChevronRight, Bot, Radio } from "lucide-svelte";
     import * as m from "$lib/paraglide/messages";
 
+    interface Props {
+        /** Controlled collapsed state from the splitter parent */
+        collapsed?: boolean;
+        /** Called when the user clicks the collapse/expand chevron */
+        ontoggle?: () => void;
+    }
+
+    let { collapsed: collapsedProp, ontoggle }: Props = $props();
+
     const ACCENT_COLORS = [
         "#3b82f6",
         "#22c55e",
@@ -27,10 +36,14 @@
             : new Array(16).fill(0),
     );
 
-    const collapsed = $derived(ui.sidebarCollapsed);
+    const collapsed = $derived(collapsedProp ?? ui.sidebarCollapsed);
 
     function toggleCollapse() {
-        ui.sidebarCollapsed = !ui.sidebarCollapsed;
+        if (ontoggle) {
+            ontoggle();
+        } else {
+            ui.sidebarCollapsed = !ui.sidebarCollapsed;
+        }
     }
 
     const agentCount = $derived(gw.agents.length);
@@ -42,9 +55,7 @@
 </script>
 
 <HudBorder
-    class="{collapsed
-        ? 'w-15'
-        : 'w-70'} shrink-0 overflow-hidden border-r border-border bg-bg2 flex flex-col transition-[width] duration-200 ease-out"
+    class="w-full shrink-0 overflow-hidden border-r border-border bg-bg2 flex flex-col"
 >
     <!-- Header -->
     {#if collapsed}
