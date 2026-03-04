@@ -3,38 +3,44 @@
     import { normalizeProps, useMachine } from '@zag-js/svelte';
     import { untrack } from 'svelte';
     import type { Snippet } from 'svelte';
+    import { ChevronRight } from 'lucide-svelte';
+
+    export type CollapseLevel = 'expanded' | 'mini' | 'collapsed';
 
     interface SplitterApi {
-        collapse: () => void;
+        toggleMini: () => void;
         expand: () => void;
-        isCollapsed: () => boolean;
+        collapseLevel: () => CollapseLevel;
     }
 
     interface Props {
-        /** localStorage key to persist panel size */
+        /** localStorage key to persist expanded panel size */
         storageKey: string;
         /** Default left panel size 0–100 (percent) */
         defaultSize?: number;
-        /** Minimum left panel size before auto-collapse (percent) */
-        minSize?: number;
-        /** Size when collapsed (percent, 0 = hidden) */
+        /** Panel size when in minibar mode (percent) */
+        minibarSize?: number;
+        /** Maximum draggable panel size (percent) */
+        maxSize?: number;
+        /** Size when fully collapsed (always 0) */
         collapsedSize?: number;
-        /** Left panel snippet; receives { collapsed: boolean } */
-        panel: Snippet<[{ collapsed: boolean }]>;
+        /** Left panel snippet; receives { collapseLevel } */
+        panel: Snippet<[{ collapseLevel: CollapseLevel }]>;
         /** Right panel content */
         children: Snippet;
-        /** Fires when panel collapses */
+        /** Fires when panel collapses to zero */
         oncollapse?: () => void;
-        /** Fires when panel expands */
+        /** Fires when panel expands from zero */
         onexpand?: () => void;
-        /** Receives the API for programmatic control */
+        /** Receives the programmatic API handle once on mount */
         onapi?: (api: SplitterApi) => void;
     }
 
     let {
         storageKey,
         defaultSize = 20,
-        minSize = 5,
+        minibarSize = 5,
+        maxSize = 35,
         collapsedSize = 0,
         panel,
         children,
@@ -43,28 +49,57 @@
         onapi,
     }: Props = $props();
 
+    // Capture initial prop values once at mount time.
+    // These are intentionally one-time reads: the splitter machine is initialised
+    // once and Zag does not support hot-swapping panel configs at runtime.
+    const initMinibarSize = untrack(() => minibarSize);
+    const initDefaultSize = untrack(() => defaultSize);
+    const initMaxSize = untrack(() => maxSize);
+    const initCollapsedSize = untrack(() => collapsedSize);
+    const initStorageKey = untrack(() => storageKey);
+
+    // Dragging below minSize triggers Zag's auto-collapse to collapsedSize (0).
+    // Setting minSize = minibarSize means the drag range is [minibarSize, maxSize];
+    // anything below minibarSize collapses entirely — no squished intermediate state.
+    const minSize = initMinibarSize;
+
     function loadSize(): number {
-        if (typeof localStorage === 'undefined') return defaultSize;
-        const raw = localStorage.getItem(`splitter:${storageKey}`);
-        if (!raw) return defaultSize;
+        if (typeof localStorage === 'undefined') return initDefaultSize;
+        const raw = localStorage.getItem(`splitter:${initStorageKey}`);
+        if (!raw) return initDefaultSize;
         const n = Number(raw);
-        return Number.isFinite(n) ? n : defaultSize;
+        return Number.isFinite(n) ? n : initDefaultSize;
     }
 
     const initialSize = loadSize();
 
+    // Restore mini mode if the saved size was at/near minibarSize on last session
+    let sidebarMode = $state<'expanded' | 'mini'>(
+        initialSize <= initMinibarSize * 1.5 ? 'mini' : 'expanded',
+    );
+    let savedExpandedSize = $state(
+        initialSize > initMinibarSize * 1.5 ? initialSize : initDefaultSize,
+    );
+
     const service = useMachine(splitter.machine as any, () => ({
-        id: storageKey,
+        id: initStorageKey,
         orientation: 'horizontal' as const,
         defaultSize: [initialSize, 100 - initialSize],
         panels: [
-            { id: 'panel', minSize, collapsible: true, collapsedSize },
+            { id: 'panel', minSize, maxSize: initMaxSize, collapsible: true, collapsedSize: initCollapsedSize },
             { id: 'content', minSize: 5 },
         ],
         onResizeEnd(details: { size: number[] }) {
             const leftSize = details.size[0];
-            if (leftSize > collapsedSize) {
-                localStorage.setItem(`splitter:${storageKey}`, String(leftSize));
+            if (leftSize <= initCollapsedSize) return; // handled by onCollapse
+            // Snap to mini if the user released near the minimum drag position
+            if (leftSize <= initMinibarSize * 1.5) {
+                sidebarMode = 'mini';
+                api.resizePanel('panel', initMinibarSize);
+            } else {
+                sidebarMode = 'expanded';
+                savedExpandedSize = leftSize;
+                localStorage.setItem(`splitter:${initStorageKey}`, String(leftSize));
             }
         },
         onCollapse() {
@@ -78,37 +113,70 @@
     const api = $derived(splitter.connect(service as any, normalizeProps));
     const isCollapsed = $derived(api.isPanelCollapsed('panel'));
 
-    // Expose programmatic API to parent once per onapi prop change.
-    // untrack prevents the effect from re-running on every `api` recompute
-    // (which happens on every resize drag tick), since the callbacks close
-    // over `api` and always reflect the current machine state anyway.
+    const collapseLevel = $derived<CollapseLevel>(
+        isCollapsed ? 'collapsed' : sidebarMode === 'mini' ? 'mini' : 'expanded',
+    );
+
+    function doToggleMini() {
+        if (isCollapsed) return; // only the popout tab handles expand from fully-collapsed
+        if (sidebarMode === 'mini') {
+            sidebarMode = 'expanded';
+            api.resizePanel('panel', savedExpandedSize);
+        } else {
+            sidebarMode = 'mini';
+            api.resizePanel('panel', initMinibarSize);
+        }
+    }
+
+    function doExpand() {
+        sidebarMode = 'expanded';
+        // setSizes bypasses Zag's "restore to pre-collapse size" so we always land
+        // on the saved expanded size rather than whatever size was before collapsing.
+        api.setSizes([savedExpandedSize, 100 - savedExpandedSize]);
+    }
+
     $effect(() => {
         if (!onapi) return;
         untrack(() => {
             onapi!({
-                collapse: () => api.collapsePanel('panel'),
-                expand: () => api.expandPanel('panel'),
-                isCollapsed: () => api.isPanelCollapsed('panel'),
+                toggleMini: doToggleMini,
+                expand: doExpand,
+                collapseLevel: () => collapseLevel,
             });
         });
     });
 </script>
 
-<div {...api.getRootProps()} class="flex flex-1 min-h-0 overflow-hidden">
-    <!-- Left panel -->
-    <div {...api.getPanelProps({ id: 'panel' })} class="overflow-hidden flex flex-col min-w-0">
-        {@render panel({ collapsed: isCollapsed })}
+<!-- Outer wrapper is relative so the popout tab can be absolutely positioned -->
+<div class="flex flex-1 min-h-0 relative overflow-hidden">
+    <div {...api.getRootProps()} class="flex flex-1 min-h-0 overflow-hidden">
+        <!-- Left panel -->
+        <div {...api.getPanelProps({ id: 'panel' })} class="overflow-hidden flex flex-col min-w-0 h-full">
+            {@render panel({ collapseLevel })}
+        </div>
+
+        <!-- Resize handle -->
+        <div {...api.getResizeTriggerProps({ id: 'panel:content' })} class="splitter-handle">
+            <div class="splitter-grip"></div>
+        </div>
+
+        <!-- Right panel -->
+        <div {...api.getPanelProps({ id: 'content' })} class="min-w-0 flex flex-col overflow-hidden flex-1">
+            {@render children()}
+        </div>
     </div>
 
-    <!-- Resize handle -->
-    <div {...api.getResizeTriggerProps({ id: 'panel:content' })} class="splitter-handle group">
-        <div class="splitter-grip"></div>
-    </div>
-
-    <!-- Right panel -->
-    <div {...api.getPanelProps({ id: 'content' })} class="min-w-0 flex flex-col overflow-hidden flex-1">
-        {@render children()}
-    </div>
+    <!-- Popout tab: shown only when fully collapsed (zero width) -->
+    {#if isCollapsed}
+        <button
+            class="popout-tab"
+            onclick={doExpand}
+            aria-label="Expand sidebar"
+            title="Expand sidebar"
+        >
+            <ChevronRight size={12} />
+        </button>
+    {/if}
 </div>
 
 <style>
@@ -142,5 +210,31 @@
     .splitter-handle:hover .splitter-grip,
     .splitter-handle[data-focus] .splitter-grip {
         opacity: 0.5;
+    }
+
+    .popout-tab {
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 16px;
+        height: 48px;
+        background: var(--color-bg2);
+        border: 1px solid var(--color-border);
+        border-left: none;
+        border-radius: 0 6px 6px 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--color-muted-foreground);
+        cursor: pointer;
+        z-index: 20;
+        transition: color 0.15s, background 0.15s;
+        padding: 0;
+    }
+
+    .popout-tab:hover {
+        color: var(--color-foreground);
+        background: var(--color-bg3);
     }
 </style>
