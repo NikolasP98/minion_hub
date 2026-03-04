@@ -8,6 +8,7 @@
     import AgentCreatorWizard from "$lib/components/marketplace/AgentCreatorWizard.svelte";
     import * as m from "$lib/paraglide/messages";
     import { Store, Bot, Wrench, Plug, Puzzle, Settings, Plus } from "lucide-svelte";
+    import Splitter from "$lib/components/Splitter.svelte";
 
     import { type Snippet } from "svelte";
 
@@ -58,70 +59,74 @@
 
 <div class="relative z-10 flex flex-col h-screen overflow-hidden">
     <Topbar />
-    <div class="flex flex-1 overflow-hidden max-[768px]:flex-col">
-        <!-- Sidebar -->
-        <aside class="marketplace-sidebar">
-            <!-- Brand -->
-            <div class="sidebar-brand">
-                <div class="brand-icon">
-                    <Store size={20} />
+    <Splitter
+        storageKey="sidebar-marketplace"
+        defaultSize={16}
+        minSize={10}
+        collapsedSize={0}
+    >
+        {#snippet panel()}
+            <aside class="marketplace-sidebar">
+                <!-- Brand -->
+                <div class="sidebar-brand">
+                    <div class="brand-icon">
+                        <Store size={20} />
+                    </div>
+                    <div class="brand-text">
+                        <span class="brand-name">{m.marketplace_title()}</span>
+                        <span class="brand-tagline">{m.marketplace_hireTagline()}</span>
+                    </div>
                 </div>
-                <div class="brand-text">
-                    <span class="brand-name">{m.marketplace_title()}</span>
-                    <span class="brand-tagline">{m.marketplace_hireTagline()}</span>
-                </div>
-            </div>
 
-            <!-- Main Nav -->
-            <nav class="sidebar-nav">
-                <div class="nav-section">
-                    <span class="nav-label">{m.marketplace_browse()}</span>
-                    <ul class="nav-list">
-                        {#each sections as section (section.href)}
-                            <li>
-                                <a
-                                    href={section.href}
-                                    class="nav-item"
-                                    class:active={currentPath.startsWith(
-                                        section.href,
-                                    )}
-                                    class:disabled={section.soon}
-                                >
-                                    <section.icon size={16} />
-                                    <span class="nav-text">{section.label}</span
+                <!-- Main Nav -->
+                <nav class="sidebar-nav">
+                    <div class="nav-section">
+                        <span class="nav-label">{m.marketplace_browse()}</span>
+                        <ul class="nav-list">
+                            {#each sections as section (section.href)}
+                                <li>
+                                    <a
+                                        href={section.href}
+                                        class="nav-item"
+                                        class:active={currentPath.startsWith(
+                                            section.href,
+                                        )}
+                                        class:disabled={section.soon}
                                     >
-                                    {#if section.soon}
-                                        <span class="soon-badge">{m.marketplace_comingSoon()}</span>
-                                    {:else if currentPath.startsWith(section.href)}
-                                        <span class="active-indicator"></span>
-                                    {/if}
-                                </a>
-                            </li>
-                        {/each}
-                    </ul>
+                                        <section.icon size={16} />
+                                        <span class="nav-text">{section.label}</span
+                                        >
+                                        {#if section.soon}
+                                            <span class="soon-badge">{m.marketplace_comingSoon()}</span>
+                                        {:else if currentPath.startsWith(section.href)}
+                                            <span class="active-indicator"></span>
+                                        {/if}
+                                    </a>
+                                </li>
+                            {/each}
+                        </ul>
+                    </div>
+                </nav>
+
+                <!-- Create Button -->
+                <div class="sidebar-actions">
+                    <button
+                        type="button"
+                        onclick={() => {
+                            showCreatorWizard = true;
+                        }}
+                        class="create-btn"
+                    >
+                        <Plus size={14} />
+                        <span>{m.marketplace_createAgentBtn()}</span>
+                    </button>
                 </div>
-            </nav>
-
-            <!-- Create Button -->
-            <div class="sidebar-actions">
-                <button
-                    type="button"
-                    onclick={() => {
-                        showCreatorWizard = true;
-                    }}
-                    class="create-btn"
-                >
-                    <Plus size={14} />
-                    <span>{m.marketplace_createAgentBtn()}</span>
-                </button>
-            </div>
-        </aside>
-
-        <!-- Main Content -->
+            </aside>
+        {/snippet}
         <main class="marketplace-main">
             {@render children()}
         </main>
-    </div>
+    </Splitter>
 </div>
 
 {#if showCreatorWizard}
@@ -135,7 +140,7 @@
 <style>
     /* Sidebar */
     .marketplace-sidebar {
-        width: 220px;
+        width: 100%;
         flex-shrink: 0;
         display: flex;
         flex-direction: column;
@@ -334,24 +339,7 @@
     }
 
     /* Responsive */
-    @media (max-width: 1024px) {
-        .marketplace-sidebar {
-            width: 200px;
-        }
-    }
-
     @media (max-width: 768px) {
-        .marketplace-sidebar {
-            width: 100%;
-            height: auto;
-            flex-direction: row;
-            align-items: center;
-            padding: 0 8px;
-            border-right: none;
-            border-bottom: 1px solid var(--color-border);
-            background: color-mix(in srgb, var(--color-bg2) 80%, var(--color-bg));
-        }
-
         .sidebar-brand {
             display: none;
         }
