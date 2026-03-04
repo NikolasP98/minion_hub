@@ -62,11 +62,12 @@
     <Splitter
         storageKey="sidebar-marketplace"
         defaultSize={16}
-        minibarSize={10}
+        minibarSize={5}
+        maxSize={22}
         collapsedSize={0}
     >
-        {#snippet panel()}
-            <aside class="marketplace-sidebar">
+        {#snippet panel({ collapseLevel })}
+            <aside class="marketplace-sidebar" class:mini={collapseLevel !== 'expanded'}>
                 <!-- Brand -->
                 <div class="sidebar-brand">
                     <div class="brand-icon">
@@ -147,6 +148,34 @@
         background: var(--color-bg);
         border-right: 1px solid var(--color-border);
         padding: 16px 0;
+    }
+
+    /* Mini (icon-only) mode */
+    .marketplace-sidebar.mini {
+        padding: 8px 0;
+    }
+
+    .marketplace-sidebar.mini .brand-text,
+    .marketplace-sidebar.mini .nav-label,
+    .marketplace-sidebar.mini .nav-text,
+    .marketplace-sidebar.mini .soon-badge,
+    .marketplace-sidebar.mini .sidebar-actions {
+        display: none;
+    }
+
+    .marketplace-sidebar.mini .sidebar-brand {
+        justify-content: center;
+        padding: 4px 0 8px;
+    }
+
+    .marketplace-sidebar.mini .sidebar-nav {
+        padding: 4px 6px;
+    }
+
+    .marketplace-sidebar.mini .nav-item {
+        padding: 8px;
+        justify-content: center;
+        gap: 0;
     }
 
     /* Brand */
