@@ -4,6 +4,8 @@
   import { authClient } from '$lib/auth-client';
   import * as m from '$lib/paraglide/messages';
   import { loadUser } from '$lib/state/user.svelte';
+  import { loadHosts, hostsState } from '$lib/state/hosts.svelte';
+  import { wsConnect } from '$lib/services/gateway.svelte';
   import ScanLine from '$lib/components/decorations/ScanLine.svelte';
 
   const { data } = $props();
@@ -45,6 +47,8 @@
     } catch { /* non-fatal */ }
 
     await loadUser();
+    await loadHosts();
+    if (hostsState.activeHostId) wsConnect();
     goto(redirectTo, { replaceState: true });
   }
 </script>

@@ -3,6 +3,8 @@
   import { page } from '$app/state';
   import { authClient } from '$lib/auth-client';
   import { loadUser } from '$lib/state/user.svelte';
+  import { loadHosts, hostsState } from '$lib/state/hosts.svelte';
+  import { wsConnect } from '$lib/services/gateway.svelte';
   import { onMount } from 'svelte';
 
   const redirectTo = $derived((page.url.searchParams.get('redirectTo') ?? '/') || '/');
@@ -15,6 +17,8 @@
     } catch { /* non-fatal */ }
 
     await loadUser();
+    await loadHosts();
+    if (hostsState.activeHostId) wsConnect();
     goto(redirectTo, { replaceState: true });
   });
 </script>
