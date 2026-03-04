@@ -10,7 +10,7 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
 	try {
 		const id = params.id!;
 		const user = locals.user;
-		if (user && user.email !== 'admin@minion.hub') {
+		if (user && user.role !== 'admin') {
 			const [link] = await ctx.db
 				.select({ serverId: userServers.serverId })
 				.from(userServers)
@@ -34,7 +34,7 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
 	try {
 		const id = params.id!;
 		const user = locals.user;
-		if (user && user.email !== 'admin@minion.hub') {
+		if (user && user.role !== 'admin') {
 			const [link] = await ctx.db
 				.select({ serverId: userServers.serverId })
 				.from(userServers)

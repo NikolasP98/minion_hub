@@ -3,7 +3,8 @@ import type { Handle } from '@sveltejs/kit';
 import { i18n } from '$lib/i18n';
 import { getAuth } from '$lib/auth';
 import { getDb } from '$server/db/client';
-import { servers, organization } from '$server/db/schema';
+import { servers, organization, user as userTable } from '$server/db/schema';
+import { eq } from 'drizzle-orm';
 import { decryptToken } from '$server/auth/crypto';
 import { env } from '$env/dynamic/private';
 
@@ -70,12 +71,24 @@ const appHandle: Handle = async ({ event, resolve }) => {
   }
 
   // Session auth via Better Auth
-  const betterAuthSession = await getAuth().api.getSession({ headers: event.request.headers });
+  let betterAuthSession = null;
+  try {
+    betterAuthSession = await getAuth().api.getSession({ headers: event.request.headers });
+  } catch (err) {
+    console.error('[hooks] getSession failed, treating as unauthenticated:', err);
+  }
   if (betterAuthSession) {
+    const db = getDb();
+    const [dbUser] = await db
+      .select({ role: userTable.role })
+      .from(userTable)
+      .where(eq(userTable.id, betterAuthSession.user.id))
+      .limit(1);
     event.locals.user = {
       id: betterAuthSession.user.id,
       email: betterAuthSession.user.email,
       displayName: betterAuthSession.user.name ?? null,
+      role: (dbUser?.role ?? 'user') as 'user' | 'admin',
     };
     event.locals.session = betterAuthSession.session;
     const orgId = (betterAuthSession.session as { activeOrganizationId?: string | null }).activeOrganizationId ?? undefined;

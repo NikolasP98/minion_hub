@@ -7,7 +7,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 	const ctx = await getTenantCtx(locals);
 	if (!ctx) return json({ servers: [] });
 	try {
-		const servers = await listServers(ctx, locals.user?.id, locals.user?.email);
+		const servers = await listServers(ctx, locals.user?.id, locals.user?.role);
 		return json({ servers });
 	} catch (e) {
 		console.error('[GET /api/servers]', e);

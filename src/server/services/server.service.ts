@@ -66,9 +66,9 @@ export async function upsertServer(
 export async function listServers(
   ctx: TenantContext,
   userId?: string,
-  userEmail?: string,
+  userRole?: string,
 ) {
-  const isAdmin = userEmail === 'admin@minion.hub';
+  const isAdmin = userRole === 'admin';
 
   if (isAdmin || !userId) {
     const rows = await ctx.db

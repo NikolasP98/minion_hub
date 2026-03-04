@@ -8,6 +8,7 @@ declare global {
         id: string;
         email: string;
         displayName: string | null;
+        role: 'user' | 'admin';
       };
       session?: typeof auth.$Infer.Session.session;
       orgId?: string;
