@@ -1,6 +1,7 @@
 <script lang="ts">
     import * as splitter from '@zag-js/splitter';
     import { normalizeProps, useMachine } from '@zag-js/svelte';
+    import { untrack } from 'svelte';
     import type { Snippet } from 'svelte';
 
     interface SplitterApi {
@@ -61,7 +62,10 @@
             { id: 'content', minSize: 5 },
         ],
         onResizeEnd(details: { size: number[] }) {
-            localStorage.setItem(`splitter:${storageKey}`, String(details.size[0]));
+            const leftSize = details.size[0];
+            if (leftSize > collapsedSize) {
+                localStorage.setItem(`splitter:${storageKey}`, String(leftSize));
+            }
         },
         onCollapse() {
             oncollapse?.();
@@ -74,17 +78,19 @@
     const api = $derived(splitter.connect(service as any, normalizeProps));
     const isCollapsed = $derived(api.isPanelCollapsed('panel'));
 
-    // Expose programmatic API to parent once on mount.
-    // The callbacks close over `api` (a $derived) so they always reflect
-    // the current machine state without needing to re-run the effect.
+    // Expose programmatic API to parent once per onapi prop change.
+    // untrack prevents the effect from re-running on every `api` recompute
+    // (which happens on every resize drag tick), since the callbacks close
+    // over `api` and always reflect the current machine state anyway.
     $effect(() => {
         if (!onapi) return;
-        const handle: SplitterApi = {
-            collapse: () => api.collapsePanel('panel'),
-            expand: () => api.expandPanel('panel'),
-            isCollapsed: () => api.isPanelCollapsed('panel'),
-        };
-        onapi(handle);
+        untrack(() => {
+            onapi!({
+                collapse: () => api.collapsePanel('panel'),
+                expand: () => api.expandPanel('panel'),
+                isCollapsed: () => api.isPanelCollapsed('panel'),
+            });
+        });
     });
 </script>
 
