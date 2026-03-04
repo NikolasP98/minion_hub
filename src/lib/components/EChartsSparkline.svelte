@@ -74,6 +74,7 @@
 
   onMount(() => {
     let disposed = false;
+    let ro: ResizeObserver | null = null;
 
     Promise.all([
       import('echarts/core'),
@@ -84,11 +85,15 @@
       if (disposed) return;
       echarts.use([LineChart, BarChart, GridComponent, CanvasRenderer]);
       chart = echarts.init(container, null, { renderer: 'canvas' });
+      ro = new ResizeObserver(() => { chart?.resize(); });
+      ro.observe(container);
     });
 
     return () => {
       disposed = true;
+      ro?.disconnect();
       chart?.dispose();
+      chart = null;
     };
   });
 
