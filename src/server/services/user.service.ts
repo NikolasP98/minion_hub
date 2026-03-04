@@ -1,6 +1,5 @@
-import { eq, and } from 'drizzle-orm';
-import { user, member } from '$server/db/schema';
-import { newId } from '$server/db/utils';
+import { eq } from 'drizzle-orm';
+import { user } from '$server/db/schema';
 import type { TenantContext } from './base';
 import { getAuth } from '$lib/auth';
 
@@ -10,11 +9,11 @@ export async function listUsers(ctx: TenantContext) {
       id: user.id,
       email: user.email,
       displayName: user.name,
-      role: member.role,
+      role: user.role,
+      createdAt: user.createdAt,
     })
-    .from(member)
-    .innerJoin(user, eq(member.userId, user.id))
-    .where(eq(member.organizationId, ctx.tenantId));
+    .from(user)
+    .orderBy(user.createdAt);
 }
 
 export async function getUser(ctx: TenantContext, userId: string) {
@@ -23,20 +22,18 @@ export async function getUser(ctx: TenantContext, userId: string) {
       id: user.id,
       email: user.email,
       displayName: user.name,
-      role: member.role,
+      role: user.role,
     })
-    .from(member)
-    .innerJoin(user, eq(member.userId, user.id))
-    .where(and(eq(member.organizationId, ctx.tenantId), eq(user.id, userId)));
+    .from(user)
+    .where(eq(user.id, userId));
 
   return rows[0] ?? null;
 }
 
-export async function createContactUser(
+export async function createUser(
   ctx: TenantContext,
-  data: { email: string; displayName?: string; password: string; role?: 'owner' | 'admin' | 'member' | 'viewer' },
+  data: { email: string; displayName?: string; password: string; role?: 'user' | 'admin' },
 ) {
-  // Use Better Auth API so password is properly hashed into the account table
   const result = await getAuth().api.signUpEmail({
     body: {
       email: data.email,
@@ -46,45 +43,28 @@ export async function createContactUser(
   });
 
   const userId = result.user.id;
-  const now = new Date();
 
-  await ctx.db.insert(member).values({
-    id: newId(),
-    userId,
-    organizationId: ctx.tenantId,
-    role: data.role ?? 'viewer',
-    createdAt: now,
-  });
-
-  return userId;
-}
-
-export async function updateUser(
-  ctx: TenantContext,
-  userId: string,
-  data: { displayName?: string },
-) {
-  if (data.displayName !== undefined) {
+  if (data.role && data.role !== 'user') {
     await ctx.db
       .update(user)
-      .set({ name: data.displayName, updatedAt: new Date() })
+      .set({ role: data.role, updatedAt: new Date() })
       .where(eq(user.id, userId));
   }
+
+  return userId;
 }
 
 export async function updateUserRole(
   ctx: TenantContext,
   userId: string,
-  role: 'owner' | 'admin' | 'member' | 'viewer',
+  role: 'user' | 'admin',
 ) {
   await ctx.db
-    .update(member)
-    .set({ role })
-    .where(and(eq(member.userId, userId), eq(member.organizationId, ctx.tenantId)));
+    .update(user)
+    .set({ role, updatedAt: new Date() })
+    .where(eq(user.id, userId));
 }
 
-export async function removeUserFromTenant(ctx: TenantContext, userId: string) {
-  await ctx.db
-    .delete(member)
-    .where(and(eq(member.userId, userId), eq(member.organizationId, ctx.tenantId)));
+export async function deleteUser(ctx: TenantContext, userId: string) {
+  await ctx.db.delete(user).where(eq(user.id, userId));
 }

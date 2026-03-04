@@ -1,8 +1,8 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { updateUserRole, removeUserFromTenant, getUser } from '$server/services/user.service';
+import { updateUserRole, deleteUser, getUser } from '$server/services/user.service';
 
-const VALID_ROLES = ['owner', 'admin', 'member', 'viewer'] as const;
+const VALID_ROLES = ['user', 'admin'] as const;
 type Role = (typeof VALID_ROLES)[number];
 
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
@@ -23,7 +23,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
   }
   const b = body as Record<string, unknown>;
   if (!b.role || !VALID_ROLES.includes(b.role as Role)) {
-    throw error(400, 'role must be one of: owner, admin, member, viewer');
+    throw error(400, 'role must be one of: user, admin');
   }
 
   await updateUserRole(ctx, userId, b.role as Role);
@@ -37,9 +37,12 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
   const userId = params.id;
   if (!userId) throw error(400, 'missing id');
 
+  // Prevent self-deletion
+  if (userId === locals.user?.id) throw error(400, 'cannot delete your own account');
+
   const existing = await getUser(ctx, userId);
   if (!existing) throw error(404, 'user not found');
 
-  await removeUserFromTenant(ctx, userId);
+  await deleteUser(ctx, userId);
   return json({ ok: true });
 };
