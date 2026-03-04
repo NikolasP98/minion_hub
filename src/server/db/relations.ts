@@ -19,6 +19,7 @@ import {
   tasks,
   reliabilityEvents,
   sessionTasks,
+  userServers,
 } from './schema';
 
 // ── Better Auth: User ─────────────────────────────────────────────────────────
@@ -29,6 +30,7 @@ export const userRelations = relations(user, ({ many }) => ({
   memberships: many(member),
   invitations: many(invitation),
   files: many(files),
+  userServers: many(userServers),
 }));
 
 // ── Better Auth: Session ──────────────────────────────────────────────────────
@@ -164,4 +166,11 @@ export const reliabilityEventsRelations = relations(reliabilityEvents, ({ one })
 export const sessionTasksRelations = relations(sessionTasks, ({ one }) => ({
   organization: one(organization, { fields: [sessionTasks.tenantId], references: [organization.id] }),
   server: one(servers, { fields: [sessionTasks.serverId], references: [servers.id] }),
+}));
+
+// ── User Servers ─────────────────────────────────────────────────────────
+
+export const userServersRelations = relations(userServers, ({ one }) => ({
+  user: one(user, { fields: [userServers.userId], references: [user.id] }),
+  server: one(servers, { fields: [userServers.serverId], references: [servers.id] }),
 }));
