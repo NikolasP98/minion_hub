@@ -5,6 +5,7 @@
 	import CredentialHealthPanel from '$lib/components/reliability/CredentialHealthPanel.svelte';
 	import SkillStatsPanel from '$lib/components/reliability/SkillStatsPanel.svelte';
 	import GatewayHealthPanel from '$lib/components/reliability/GatewayHealthPanel.svelte';
+	import ConnectionEventsPanel from '$lib/components/reliability/ConnectionEventsPanel.svelte';
 	import ScanLine from '$lib/components/decorations/ScanLine.svelte';
 	import Topbar from '$lib/components/Topbar.svelte';
 	import {
@@ -364,6 +365,9 @@
 				<CredentialHealthPanel {serverId} />
 				<SkillStatsPanel {serverId} />
 			</div>
+
+			<!-- ── Connection Events (full-width) ─────────────────────────────── -->
+			<ConnectionEventsPanel {serverId} />
 
 			<!-- ── Incident Table ───────────────────────────────────────────────── -->
 			<IncidentTable events={reliability.events} title={m.reliability_recentIncidents()} />
