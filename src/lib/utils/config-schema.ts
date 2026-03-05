@@ -62,6 +62,65 @@ const GROUP_LABELS: Record<string, string> = {
   discovery: 'Discovery', presence: 'Presence', voicewake: 'Voice Wake',
 };
 
+// ─── Tab definitions ─────────────────────────────────────────────────────────
+//
+// 6 horizontal tabs for the settings page. Each tab maps to either meta-group
+// IDs or specific group IDs. Security groups are carved out from their default
+// meta-group and placed in the Security tab.
+
+/** Groups that belong to the Security tab regardless of their meta-group. */
+export const SECURITY_GROUP_IDS = new Set(['session', 'commands']);
+
+/** Tab definitions with id, label, and lucide icon name. */
+export const TABS: { id: string; label: string; icon: string }[] = [
+  { id: 'ai',         label: 'AI',         icon: 'Brain'   },
+  { id: 'agents',     label: 'Agents',     icon: 'Bot'     },
+  { id: 'comms',      label: 'Comms',      icon: 'Radio'   },
+  { id: 'security',   label: 'Security',   icon: 'Shield'  },
+  { id: 'system',     label: 'System',     icon: 'Server'  },
+  { id: 'appearance', label: 'Appearance', icon: 'Palette' },
+];
+
+/**
+ * Maps each tab ID to the meta-group IDs whose groups it contains.
+ * Security carve-outs are handled separately via SECURITY_GROUP_IDS.
+ */
+export const TAB_MAPPING: Record<string, string[]> = {
+  ai:         ['ai'],
+  agents:     ['automation'],
+  comms:      ['comms'],
+  security:   [], // populated via SECURITY_GROUP_IDS carve-out
+  system:     ['setup', 'extensions', 'system'],
+  appearance: [], // local-only, no gateway config groups
+};
+
+/**
+ * Returns the config groups belonging to a given tab.
+ * Handles the security carve-out: groups in SECURITY_GROUP_IDS go to 'security'
+ * regardless of their meta-group assignment.
+ */
+export function getGroupsForTab(tabId: string, allGroups: ConfigGroup[]): ConfigGroup[] {
+  if (tabId === 'appearance') return [];
+
+  if (tabId === 'security') {
+    return allGroups
+      .filter((g) => SECURITY_GROUP_IDS.has(g.id))
+      .sort((a, b) => a.order - b.order);
+  }
+
+  const metaGroupIds = TAB_MAPPING[tabId];
+  if (!metaGroupIds || metaGroupIds.length === 0) return [];
+
+  return allGroups
+    .filter((g) => {
+      // Skip security carve-out groups — they belong to the security tab
+      if (SECURITY_GROUP_IDS.has(g.id)) return false;
+      const metaId = getMetaGroupId(g.order);
+      return metaGroupIds.includes(metaId);
+    })
+    .sort((a, b) => a.order - b.order);
+}
+
 // ─── Field type resolution ──────────────────────────────────────────────────
 
 export function resolveFieldType(schema: JsonSchemaNode, hint?: ConfigUiHint): FieldType {
