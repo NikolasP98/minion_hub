@@ -9,6 +9,8 @@
   import AgentFiles from './AgentFiles.svelte';
   import AgentKnowledgeGraph from './AgentKnowledgeGraph.svelte';
   import AgentPromptSimulator from './AgentPromptSimulator.svelte';
+  import AgentToolsPanel from './AgentToolsPanel.svelte';
+  import AgentSkillsPanel from './AgentSkillsPanel.svelte';
   import { ui } from '$lib/state/ui.svelte';
   import { gw } from '$lib/state/gateway-data.svelte';
   import type { Agent } from '$lib/types/gateway';
@@ -94,6 +96,26 @@
     >
       Graph
     </button>
+    <button
+      type="button"
+      class="px-4 py-2 text-[11px] font-semibold border-b-2 transition-colors cursor-pointer
+        {ui.activeAgentTab === 'tools'
+        ? 'border-accent text-accent'
+        : 'border-transparent text-muted hover:text-foreground'}"
+      onclick={() => (ui.activeAgentTab = 'tools')}
+    >
+      Tools
+    </button>
+    <button
+      type="button"
+      class="px-4 py-2 text-[11px] font-semibold border-b-2 transition-colors cursor-pointer
+        {ui.activeAgentTab === 'skills'
+        ? 'border-accent text-accent'
+        : 'border-transparent text-muted hover:text-foreground'}"
+      onclick={() => (ui.activeAgentTab = 'skills')}
+    >
+      Skills
+    </button>
   </div>
 
   <!-- Main content: chat or monitor -->
@@ -111,6 +133,10 @@
       <AgentPromptSimulator {agentId} sessionKey={mainSessionKey} />
     {:else if ui.activeAgentTab === 'graph'}
       <AgentKnowledgeGraph {agentId} />
+    {:else if ui.activeAgentTab === 'tools'}
+      <AgentToolsPanel {agentId} />
+    {:else if ui.activeAgentTab === 'skills'}
+      <AgentSkillsPanel {agentId} />
     {:else}
       {#if !isMainSession && ui.selectedSessionKey}
         <SessionViewer

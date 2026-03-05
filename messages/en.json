@@ -351,11 +351,25 @@
 
   "users_removeFromTenant": "Remove from tenant",
 
-  "skills_title": "Skills",
+  "skills_title": "Skill Registry",
   "skills_allEligible": "All eligible",
   "skills_custom": "Custom",
   "skills_loading": "Loading skills…",
+  "skills_refresh": "Refresh",
   "skills_noSkills": "No skills available.",
+  "skills_enabled": "Enabled",
+  "skills_disabled": "Disabled",
+  "skills_description": "Knowledge & behavior modules — coding styles, domain expertise, workflows.",
+  "skills_tooltip": "Skills are knowledge modules that shape how the agent thinks and responds.\n\nDO: Enable skills that match the agent's domain expertise.\nDON'T: Overload with conflicting skills — quality over quantity.",
+
+  "tools_title": "Tool Registry",
+  "tools_loading": "Loading tools…",
+  "tools_refresh": "Refresh",
+  "tools_noTools": "No tools available.",
+  "tools_enabled": "Enabled",
+  "tools_disabled": "Disabled",
+  "tools_description": "Executable functions the agent can call — file I/O, search, code execution.",
+  "tools_tooltip": "Tools are executable capabilities the agent can invoke during tasks.\n\nDO: Enable tools the agent needs for its role.\nDON'T: Enable all tools — more tools = slower, noisier context.",
 
   "hosts_manage": "Manage hosts…",
 
