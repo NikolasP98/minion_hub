@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import * as m from '$lib/paraglide/messages';
-	import { createSkillStatsState, type SkillAggregate, type SkillStatus } from '$lib/state/skill-stats.svelte';
+	import { createSkillStatsState, type SkillStatus } from '$lib/state/skill-stats.svelte';
 	import { Zap } from 'lucide-svelte';
+	import Chart from '$lib/components/Chart.svelte';
+	import type { EChartsOption } from 'echarts';
 
 	interface Props {
 		serverId: string;
@@ -12,15 +14,14 @@
 
 	const state = createSkillStatsState();
 	let skills = $derived(state.aggregate());
-	let maxTotal = $derived(skills.length > 0 ? skills[0].total : 1);
 
 	const STATUS_ORDER: SkillStatus[] = ['ok', 'error', 'auth_error', 'timeout'];
 
 	const STATUS_COLORS: Record<SkillStatus, string> = {
-		ok: 'var(--color-success)',
-		error: 'var(--color-destructive)',
-		auth_error: 'var(--color-warning)',
-		timeout: 'var(--color-purple)',
+		ok: '#22c55e',
+		error: '#ef4444',
+		auth_error: '#f59e0b',
+		timeout: '#a855f7',
 	};
 
 	const STATUS_LABELS: Record<SkillStatus, string> = {
@@ -30,19 +31,11 @@
 		timeout: 'Timeout',
 	};
 
-	function barSegments(skill: SkillAggregate): Array<{ status: SkillStatus; width: number; count: number }> {
-		const segments: Array<{ status: SkillStatus; width: number; count: number }> = [];
-		for (const s of STATUS_ORDER) {
-			const count = skill.byStatus[s] ?? 0;
-			if (count > 0) {
-				segments.push({
-					status: s,
-					width: (count / maxTotal) * 100,
-					count,
-				});
-			}
+	function formatSkillName(name: string): string {
+		if (name.startsWith('builtin:')) {
+			return name.slice(8).replace(/_/g, ' ');
 		}
-		return segments;
+		return name;
 	}
 
 	function formatDuration(ms: number | null): string {
@@ -50,6 +43,69 @@
 		if (ms < 1000) return `${Math.round(ms)}ms`;
 		return `${(ms / 1000).toFixed(1)}s`;
 	}
+
+	let chartHeight = $derived(`${Math.max(200, skills.length * 32)}px`);
+
+	let chartOptions: EChartsOption = $derived.by(() => {
+		const skillNames = skills.map((s) => formatSkillName(s.skillName));
+
+		const statusSeries = STATUS_ORDER.map((status) => ({
+			name: STATUS_LABELS[status],
+			type: 'bar' as const,
+			stack: 'count',
+			barMaxWidth: 20,
+			itemStyle: { color: STATUS_COLORS[status] },
+			data: skills.map((s) => s.byStatus[status] ?? 0),
+		}));
+
+		const durationSeries = {
+			name: 'Avg Duration',
+			type: 'line' as const,
+			xAxisIndex: 1,
+			lineStyle: { type: 'dashed' as const, color: '#06b6d4', width: 2 },
+			itemStyle: { color: '#06b6d4' },
+			symbol: 'circle' as const,
+			symbolSize: 6,
+			data: skills.map((s) => s.avgDurationMs ?? 0),
+			tooltip: {
+				valueFormatter: (value: unknown) => formatDuration(Number(value)),
+			},
+		};
+
+		return {
+			backgroundColor: 'transparent',
+			tooltip: {
+				trigger: 'axis',
+				axisPointer: { type: 'shadow' },
+			},
+			legend: {
+				top: 0,
+				textStyle: { fontSize: 10 },
+			},
+			grid: { top: 30, right: 20, bottom: 10, left: 120 },
+			xAxis: [
+				{ type: 'value', name: 'Count' },
+				{
+					type: 'value',
+					name: 'Avg Duration (ms)',
+					position: 'top',
+					axisLabel: { color: '#71717a', fontSize: 10 },
+				},
+			],
+			yAxis: {
+				type: 'category',
+				data: skillNames,
+				inverse: true,
+				axisLabel: {
+					color: '#71717a',
+					fontSize: 10,
+					width: 110,
+					overflow: 'truncate',
+				},
+			},
+			series: [...statusSeries, durationSeries],
+		} satisfies EChartsOption;
+	});
 
 	onMount(() => {
 		state.load(serverId);
@@ -71,35 +127,8 @@
 	{:else if skills.length === 0}
 		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">{m.reliability_noSkills()}</div>
 	{:else}
-		<div class="flex flex-wrap gap-3 py-2.5 px-4 border-b border-border">
-			{#each STATUS_ORDER as s (s)}
-				<span class="flex items-center gap-1.5 text-[11px] text-muted">
-					<span class="w-2 h-2 rounded-full shrink-0" style:background={STATUS_COLORS[s]}></span>
-					{STATUS_LABELS[s]}
-				</span>
-			{/each}
-		</div>
-
-		<div class="py-3 px-4 flex flex-col gap-2.5">
-			{#each skills as skill (skill.skillName)}
-				<div class="flex flex-col gap-1">
-					<div class="flex items-baseline gap-2">
-						<span class="text-xs font-semibold text-foreground max-w-[200px] overflow-hidden text-ellipsis whitespace-nowrap" title={skill.skillName}>{skill.skillName}</span>
-						<span class="text-[11px] text-muted-foreground tabular-nums">{skill.total} exec</span>
-						<span class="text-[11px] text-muted-foreground tabular-nums ml-auto">{formatDuration(skill.avgDurationMs)}</span>
-					</div>
-					<div class="flex h-2 rounded overflow-hidden bg-bg3 gap-px">
-						{#each barSegments(skill) as seg (seg.status)}
-							<div
-								class="h-full min-w-0.5 rounded-sm transition-[width] duration-300 ease-in-out"
-								style:width="{seg.width}%"
-								style:background={STATUS_COLORS[seg.status]}
-								title="{STATUS_LABELS[seg.status]}: {seg.count}"
-							></div>
-						{/each}
-					</div>
-				</div>
-			{/each}
+		<div class="px-4 py-3">
+			<Chart options={chartOptions} height={chartHeight} />
 		</div>
 	{/if}
 </div>
