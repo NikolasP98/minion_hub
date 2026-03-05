@@ -28,11 +28,11 @@
   });
 </script>
 
-<section id="config-group-{group.id}" class="scroll-mt-4">
-  <!-- Clickable card header -->
+<section id="group-{group.id}" data-group-id={group.id} class="scroll-mt-4">
+  <!-- Clickable card header (sticky within scroll container) -->
   <button
     type="button"
-    class="w-full flex items-center gap-2.5 px-4 py-3.5 bg-card border border-border cursor-pointer transition-colors hover:bg-bg3
+    class="w-full flex items-center gap-2.5 px-4 py-3.5 bg-card border border-border cursor-pointer transition-colors hover:bg-bg3 sticky top-0 z-10
       {expanded ? 'rounded-t-lg border-b-0' : 'rounded-lg'}"
     onclick={() => ontoggle?.()}
   >

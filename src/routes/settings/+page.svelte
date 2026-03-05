@@ -7,6 +7,7 @@
         configState,
         loadConfig,
         isDirty,
+        dirtyPaths,
         groups,
         save,
         restartState,
@@ -24,6 +25,7 @@
     import MinionLogo from "$lib/components/MinionLogo.svelte";
     import ConfigSection from "$lib/components/config/ConfigSection.svelte";
     import ConfigSaveBar from "$lib/components/config/ConfigSaveBar.svelte";
+    import SettingsScrollspy from "$lib/components/settings/SettingsScrollspy.svelte";
     import TeamTab from "$lib/components/users/TeamTab.svelte";
     import BindingsTab from "$lib/components/users/BindingsTab.svelte";
     import {
@@ -121,6 +123,21 @@
     function getTabGroups(tabId: string) {
         return getGroupsForTab(tabId, groups.value);
     }
+
+    // Scroll container refs for each gateway tab (for scrollspy)
+    let scrollContainers: Record<string, HTMLElement | null> = $state({});
+
+    // Compute dirty group IDs: a group is dirty if any of its fields' keys are in dirtyPaths
+    const dirtyGroupIds = $derived.by(() => {
+        const dirty = dirtyPaths.value;
+        const result = new Set<string>();
+        for (const g of groups.value) {
+            if (g.fields.some((f) => dirty.has(f.key))) {
+                result.add(g.id);
+            }
+        }
+        return result;
+    });
 </script>
 
 <div class="relative z-10 flex flex-col h-screen overflow-hidden text-foreground">
@@ -333,7 +350,7 @@
                         </div>
                     </div>
                 {:else}
-                    <div class="flex-1 flex flex-col min-h-0 overflow-y-auto">
+                    <div class="flex-1 flex flex-col min-h-0 overflow-y-auto relative" bind:this={scrollContainers[tab.id]}>
                         <div class="px-6 py-5">
                             <div class="max-w-3xl mx-auto space-y-2.5">
                                 {#if configState.version && tab.id === 'system'}
@@ -376,6 +393,13 @@
                                 {/if}
                             </div>
                         </div>
+                        {#if isActive}
+                            <SettingsScrollspy
+                                groups={getTabGroups(tab.id)}
+                                {dirtyGroupIds}
+                                scrollContainer={scrollContainers[tab.id] ?? null}
+                            />
+                        {/if}
                     </div>
                 {/if}
             </div>
