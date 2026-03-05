@@ -55,6 +55,9 @@ export function wsConnect() {
   connectNonce = null;
   gw.lastSeq = null;
 
+  // Close any existing socket; its close handler will no-op due to the stale generation check.
+  if (ws) { ws.close(); ws = null; }
+
   try {
     const gen = ++wsGeneration;
     ws = new WebSocket(host.url);
@@ -64,6 +67,7 @@ export function wsConnect() {
     });
 
     ws.addEventListener('message', (ev) => {
+      if (wsGeneration !== gen) return; // stale socket
       handleMessage(String(ev.data ?? ''));
     });
 

@@ -243,7 +243,7 @@
   "common_retry": "Retry",
 
   "marketplace_hireTagline": "Hire AI Agents",
-  "marketplace_comingSoon": "Coming soon",
+  "marketplace_comingSoon": "Soon",
 
   "marketplace_agentsListSearchPlaceholder": "Search agents by name, role, or skill…",
   "marketplace_agentsListCategoryAll": "All",
@@ -370,6 +370,13 @@
   "tools_disabled": "Disabled",
   "tools_description": "Executable functions the agent can call — file I/O, search, code execution.",
   "tools_tooltip": "Tools are executable capabilities the agent can invoke during tasks.\n\nDO: Enable tools the agent needs for its role.\nDON'T: Enable all tools — more tools = slower, noisier context.",
+
+  "tools_title": "Tool Registry",
+  "tools_loading": "Loading tools…",
+  "tools_refresh": "Refresh",
+  "tools_noTools": "No tools available.",
+  "tools_enabled": "Enabled",
+  "tools_disabled": "Disabled",
 
   "hosts_manage": "Manage hosts…",
 

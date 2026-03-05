@@ -167,7 +167,7 @@
         {onclick}
     >
         <!-- Row 1: status indicator + agent name -->
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 min-w-0">
             {#if hasActive}
                 <span
                     class="text-[11px] leading-none shrink-0 inline-block"
@@ -178,11 +178,9 @@
                 <StatusDot status="idle" size="sm" />
             {/if}
 
-            <span
-                class="text-[13px] font-semibold text-foreground whitespace-nowrap shrink-0 flex items-center gap-1.5"
-            >
+            <span class="flex items-center gap-1.5 min-w-0 overflow-hidden">
                 {#if agent.emoji}
-                    <span class="leading-none">{agent.emoji}</span>
+                    <span class="leading-none shrink-0 text-[13px]">{agent.emoji}</span>
                 {:else}
                     <img
                         src={diceBearAvatarUrl(agent.name ?? agent.id)}
@@ -190,7 +188,7 @@
                         class="w-5 h-5 rounded-full inline-block shrink-0"
                     />
                 {/if}
-                {agent.name ?? agent.id}
+                <span class="text-[13px] font-semibold text-foreground truncate">{agent.name ?? agent.id}</span>
             </span>
         </div>
 

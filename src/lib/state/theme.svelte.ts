@@ -50,6 +50,13 @@ export const theme = {
 export function applyTheme(p: ThemePreset, accentValue: string) {
   const root = document.documentElement;
 
+  // data-theme attribute for themes that need CSS overrides beyond variables
+  if (p.id === 'voxelized') {
+    root.setAttribute('data-theme', 'voxelized');
+  } else {
+    root.removeAttribute('data-theme');
+  }
+
   // Colors
   root.style.setProperty('--color-bg', p.colors.bg);
   root.style.setProperty('--color-bg2', p.colors.bg2);

@@ -18,21 +18,26 @@
   // ── Helpers ─────────────────────────────────────────────────────────────
   function formatSessionKey(sk?: string): string {
     if (!sk) return '—';
-    // whatsapp:g-agent-X-whatsapp-direct-+Y  →  "WA DM (X): +Y"
-    const waDirect = sk.match(/^whatsapp:g-agent-([^-]+(?:-[^-]+)*?)-whatsapp-direct-(\+?\d+)$/);
-    if (waDirect) return `WA DM (${waDirect[1]}): ${waDirect[2]}`;
-    // whatsapp:g-*  →  "WA: {rest}"
-    if (sk.startsWith('whatsapp:g-')) return `WA: ${sk.slice('whatsapp:g-'.length)}`;
-    if (sk.startsWith('whatsapp:')) return `WA: ${sk.slice('whatsapp:'.length)}`;
-    // workshop:conv:X  →  "Workshop: X"
-    const wconv = sk.match(/^workshop:conv:(.+)$/);
-    if (wconv) return `Workshop: ${wconv[1]}`;
-    // agent:X:main  →  "main"
-    const agentMain = sk.match(/^agent:[^:]+:(.+)$/);
-    if (agentMain) return agentMain[1];
-    // Fallback: drop first segment if 3+ parts, else truncate
-    const parts = sk.split(':');
-    const tail = parts.length > 2 ? parts.slice(2).join(':') : (parts.length === 2 ? parts[1] : sk);
+    // Strip "agent:agentId:" prefix to get the meaningful tail
+    const agentMatch = sk.match(/^agent:[^:]+:(.+)$/);
+    const rest = agentMatch ? agentMatch[1] : sk;
+    // workshop:conv:agent1:agent2  →  "agent1 ↔ agent2"
+    const wconv = rest.match(/^workshop:conv:([^:]+):([^:]+)$/);
+    if (wconv) return `${wconv[1]} ↔ ${wconv[2]}`;
+    // whatsapp:direct:+N or whatsapp:dm:+N  →  "WA +N"
+    const wa = rest.match(/^whatsapp:(?:direct|dm):(.+)$/);
+    if (wa) return `WA ${wa[1]}`;
+    // cron:UUID  →  "Scheduled"
+    if (rest.startsWith('cron:')) return 'Scheduled';
+    // heartbeat, main, or any simple key — show as-is
+    if (!rest.includes(':')) return rest;
+    // Legacy non-agent whatsapp keys
+    const waLegacy = sk.match(/^whatsapp:g-agent-[^-]+-whatsapp-direct-(\+?\d+)$/);
+    if (waLegacy) return `WA ${waLegacy[1]}`;
+    if (sk.startsWith('whatsapp:')) return `WA ${sk.split(':').slice(-1)[0]}`;
+    // Fallback: last two colon-segments
+    const parts = rest.split(':');
+    const tail = parts.slice(-2).join(':');
     return tail.length > 28 ? tail.slice(0, 28) + '…' : tail;
   }
 

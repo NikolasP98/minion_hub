@@ -357,6 +357,13 @@
   "skills_loading": "Cargando habilidades…",
   "skills_noSkills": "No hay habilidades disponibles.",
 
+  "tools_title": "Registro de Herramientas",
+  "tools_loading": "Cargando herramientas…",
+  "tools_refresh": "Actualizar",
+  "tools_noTools": "No hay herramientas disponibles.",
+  "tools_enabled": "Habilitadas",
+  "tools_disabled": "Deshabilitadas",
+
   "hosts_manage": "Administrar hosts…",
 
   "sessions_searchPlaceholder": "Buscar sesiones…",

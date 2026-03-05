@@ -3,6 +3,7 @@
 	import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-svelte';
 
 	interface ReliabilityEvent {
+		id?: number;
 		category: 'cron' | 'browser' | 'timezone' | 'general';
 		severity: 'critical' | 'high' | 'medium' | 'low';
 		event: string;
@@ -152,7 +153,7 @@
 					</tr>
 				</thead>
 				<tbody>
-					{#each sortedEvents as evt (`${evt.timestamp}:${evt.event}:${evt.message}`)}
+					{#each sortedEvents as evt, i (evt.id ?? `${i}:${evt.timestamp}:${evt.event}`)}
 						<tr class="border-b border-border/40 hover:bg-white/[0.025] {severityRowBorder[evt.severity] ?? ''}">
 							<td class="w-[90px] py-2 px-3 text-xs text-muted-foreground tabular-nums cursor-default align-middle font-mono" title={formatFullDate(evt.timestamp)}>
 								{formatRelativeTime(evt.timestamp)}

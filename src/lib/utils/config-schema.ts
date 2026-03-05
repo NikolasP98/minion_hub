@@ -121,8 +121,10 @@ export function extractGroups(
     const hint = uiHints[key] ?? {};
     // Determine group: explicit hint.group, or infer from key
     const groupId = hint.group ?? key;
-    const groupLabel = GROUP_LABELS[groupId] ?? capitalize(groupId);
-    const groupOrder = GROUP_ORDER[groupId] ?? 500;
+    const groupLabel = GROUP_LABELS[groupId] ?? GROUP_LABELS[key] ?? capitalize(groupId);
+    // hint.order is authoritative when present (gateway sends numeric order directly).
+    // Fall back to GROUP_ORDER lookup by id or key, then default to 500 (System).
+    const groupOrder = hint.order ?? GROUP_ORDER[groupId] ?? GROUP_ORDER[key] ?? 500;
 
     if (!groupMap.has(groupId)) {
       groupMap.set(groupId, { id: groupId, label: groupLabel, order: groupOrder, fields: [] });

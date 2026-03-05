@@ -265,7 +265,7 @@
 	<Topbar />
 
 	<!-- Toolbar -->
-	<header class="shrink-0 flex items-end gap-3 px-4 py-2.5 border-b border-border bg-bg2/80 backdrop-blur-sm">
+	<header class="shrink-0 flex items-center gap-3 px-4 py-2.5 border-b border-border bg-bg2/80 backdrop-blur-sm">
 		<ShieldCheck size={14} class="text-accent shrink-0" />
 		<h1 class="text-sm font-semibold tracking-tight">{m.reliability_title()}</h1>
 		<div class="flex-1"></div>

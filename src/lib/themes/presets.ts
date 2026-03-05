@@ -128,6 +128,31 @@ export const PRESETS: ThemePreset[] = [
     },
   },
   {
+    id: 'voxelized',
+    name: 'VOXELIZED',
+    colors: {
+      bg:               '#070d1a',
+      bg2:              '#0c1526',
+      bg3:              '#111e38',
+      card:             '#0c1830',
+      cardForeground:   '#e2f0ff',
+      border:           '#1e3a6e',
+      foreground:       '#e8f4ff',
+      muted:            '#1a2d50',
+      mutedForeground:  '#b8d8f8',
+      accent:           '#00e5ff',
+      accentForeground: '#000000',
+      brandPink:        '#ff4b8b',
+    },
+    style: {
+      radius:        '0px',
+      letterSpacing: '0.06em',
+      lineHeight:    '1.6',
+      fontWeight:    '400',
+      borderAlpha:   '1',
+    },
+  },
+  {
     id: 'void',
     name: 'Void',
     colors: {

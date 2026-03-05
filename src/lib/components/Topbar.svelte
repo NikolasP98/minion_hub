@@ -160,8 +160,8 @@
             </Tooltip>
         </nav>
 
-        <!-- Small Tablet Navigation - Icons only, no bg (md to lg) -->
-        <nav class="hidden md:flex lg:hidden items-center gap-0.5 flex-1">
+        <!-- Small Tablet Navigation - Icons only, no bg (470px to lg) -->
+        <nav class="hidden min-[470px]:flex lg:hidden items-center gap-0.5 flex-1">
             <Tooltip label={m.nav_workshop()} id="nav-md-workshop">
                 {#snippet children(triggerProps)}
                     <a href="/workshop" class="nav-pill-sm {isWorkshop ? 'active' : ''}" {...triggerProps}>
@@ -196,7 +196,7 @@
         </nav>
 
         <!-- Spacer for mobile -->
-        <div class="flex-1 md:hidden"></div>
+        <div class="flex-1 min-[470px]:hidden"></div>
 
         <!-- Right Actions -->
         <div class="flex items-center gap-1.5 shrink-0">
@@ -218,11 +218,11 @@
                 <ProfileMenu />
             </div>
 
-            <!-- Mobile Menu Toggle (sm and below) -->
+            <!-- Mobile Menu Toggle (below 470px) -->
             <button
                 type="button"
                 onclick={toggleMobileMenu}
-                class="flex sm:hidden items-center justify-center w-9 h-9 rounded-lg text-muted hover:text-foreground hover:bg-bg3 transition-all duration-150"
+                class="flex min-[470px]:hidden items-center justify-center w-9 h-9 rounded-lg text-muted hover:text-foreground hover:bg-bg3 transition-all duration-150"
                 aria-label={m.topbar_toggleMenu()}
                 aria-expanded={mobileMenuOpen}
             >
@@ -238,7 +238,7 @@
     <!-- Mobile Navigation Menu (Dropdown) -->
     {#if mobileMenuOpen}
         <div
-            class="absolute top-full left-0 right-0 bg-bg2/95 backdrop-blur-md border-b border-border shadow-lg sm:hidden"
+            class="absolute top-full left-0 right-0 bg-bg2/95 backdrop-blur-md border-b border-border shadow-lg min-[470px]:hidden"
         >
             <nav class="flex flex-col p-2 gap-1">
                 <a

@@ -139,7 +139,7 @@
     {/if}
 
     <!-- Agent list -->
-    <div class="flex-1 overflow-y-auto min-h-0">
+    <div class="flex-1 overflow-y-auto overflow-x-hidden min-h-0">
         {#if !conn.connected}
             <div class="py-8 px-3 text-center">
                 {#if collapsed}
