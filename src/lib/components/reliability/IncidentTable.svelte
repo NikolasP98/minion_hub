@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages';
-	import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-svelte';
+	import { ChevronUp, ChevronDown, ChevronsUpDown, ChevronRight } from 'lucide-svelte';
 
 	interface ReliabilityEvent {
 		id?: number;
@@ -36,6 +36,45 @@
 
 	let sortColumn: SortColumn = $state('timestamp');
 	let sortDirection: SortDirection = $state('desc');
+	let expandedId = $state<string | null>(null);
+
+	function hasMetadata(evt: ReliabilityEvent): boolean {
+		return (evt.metadata != null && Object.keys(evt.metadata).length > 0) ||
+			!!evt.agentId || !!evt.sessionKey;
+	}
+
+	function getRowId(evt: ReliabilityEvent, i: number): string {
+		return evt.id != null ? String(evt.id) : `${i}:${evt.timestamp}:${evt.event}`;
+	}
+
+	function toggleExpand(id: string) {
+		expandedId = expandedId === id ? null : id;
+	}
+
+	function formatMetaValue(key: string, value: unknown): { text: string; style: 'plain' | 'pill' | 'code' | 'status-ok' | 'status-err' | 'duration' } {
+		if (key === 'durationMs' && typeof value === 'number') {
+			const text = value >= 1000 ? `${(value / 1000).toFixed(1)}s` : `${value}ms`;
+			return { text, style: 'duration' };
+		}
+		if (key === 'profileId' || key === 'provider') {
+			return { text: String(value), style: 'pill' };
+		}
+		if (key === 'statusCode') {
+			const code = Number(value);
+			const style = code >= 200 && code < 300 ? 'status-ok' as const : 'status-err' as const;
+			return { text: String(value), style };
+		}
+		if (key === 'error') {
+			return { text: String(value), style: 'code' };
+		}
+		if (key === 'jobId') {
+			return { text: String(value), style: 'code' };
+		}
+		if (typeof value === 'object' && value !== null) {
+			return { text: JSON.stringify(value, null, 2), style: 'code' };
+		}
+		return { text: String(value), style: 'plain' };
+	}
 
 	function toggleSort(column: SortColumn) {
 		if (sortColumn === column) {
@@ -132,13 +171,14 @@
 			<table class="w-full border-collapse table-fixed">
 				<thead>
 					<tr class="bg-bg3/40 sticky top-0 z-[1]">
+						<th class="w-7 py-2 px-0 border-b border-border"></th>
 						{#each ([
 							['timestamp', m.reliability_time(),     'w-[90px]'],
 							['severity',  m.reliability_severity(), 'w-[90px]'],
 							['category',  m.reliability_category(), 'w-[100px]'],
 							['event',     m.reliability_event(),    'w-40'],
 							['message',   m.reliability_message(),  'w-auto'],
-						] as const) as [col, label, width]}
+						] as const) as [col, label, width] (col)}
 							{@const SortIcon = getSortIcon(col as SortColumn)}
 							<th
 								class="{width} py-2 px-3 text-left border-b border-border cursor-pointer select-none hover:text-foreground transition-colors"
@@ -154,7 +194,20 @@
 				</thead>
 				<tbody>
 					{#each sortedEvents as evt, i (evt.id ?? `${i}:${evt.timestamp}:${evt.event}`)}
-						<tr class="border-b border-border/40 hover:bg-white/[0.025] {severityRowBorder[evt.severity] ?? ''}">
+						{@const rowId = getRowId(evt, i)}
+						{@const isExpanded = expandedId === rowId}
+						{@const expandable = hasMetadata(evt)}
+						<tr
+							class="border-b border-border/40 hover:bg-white/[0.025] {severityRowBorder[evt.severity] ?? ''} {expandable ? 'cursor-pointer' : ''}"
+							onclick={() => expandable && toggleExpand(rowId)}
+						>
+							<td class="w-7 py-2 px-1 align-middle text-center">
+								{#if expandable}
+									<span class="inline-flex items-center justify-center transition-transform duration-150 {isExpanded ? 'rotate-90' : ''}">
+										<ChevronRight size={12} class="text-muted-foreground" />
+									</span>
+								{/if}
+							</td>
 							<td class="w-[90px] py-2 px-3 text-xs text-muted-foreground tabular-nums cursor-default align-middle font-mono" title={formatFullDate(evt.timestamp)}>
 								{formatRelativeTime(evt.timestamp)}
 							</td>
@@ -169,6 +222,47 @@
 								<span class="inline-block max-w-[300px] overflow-hidden text-ellipsis whitespace-nowrap align-middle" title={evt.message}>{evt.message}</span>
 							</td>
 						</tr>
+						{#if isExpanded}
+							<tr class="bg-bg3/30">
+								<td colspan="6" class="py-3 px-4">
+									<div class="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
+										{#if evt.agentId}
+											<div class="flex items-center gap-2">
+												<span class="text-muted-foreground font-medium">agentId:</span>
+												<span class="text-foreground font-mono text-[11px]">{evt.agentId}</span>
+											</div>
+										{/if}
+										{#if evt.sessionKey}
+											<div class="flex items-center gap-2">
+												<span class="text-muted-foreground font-medium">sessionKey:</span>
+												<span class="text-foreground font-mono text-[11px]">{evt.sessionKey}</span>
+											</div>
+										{/if}
+										{#if evt.metadata}
+											{#each Object.entries(evt.metadata) as [key, value] (key)}
+												{@const formatted = formatMetaValue(key, value)}
+												<div class="flex items-center gap-2 {formatted.style === 'code' && String(value).length > 60 ? 'col-span-2' : ''}">
+													<span class="text-muted-foreground font-medium">{key}:</span>
+													{#if formatted.style === 'pill'}
+														<span class="inline-block text-[10px] font-semibold py-0.5 px-2 rounded-md bg-accent/15 text-accent border border-accent/30">{formatted.text}</span>
+													{:else if formatted.style === 'status-ok'}
+														<span class="text-green-400 font-mono tabular-nums">{formatted.text}</span>
+													{:else if formatted.style === 'status-err'}
+														<span class="text-destructive font-mono tabular-nums">{formatted.text}</span>
+													{:else if formatted.style === 'duration'}
+														<span class="text-foreground font-mono tabular-nums">{formatted.text}</span>
+													{:else if formatted.style === 'code'}
+														<code class="bg-bg3/60 text-foreground/80 px-1.5 py-0.5 rounded text-[11px] font-mono break-all">{formatted.text}</code>
+													{:else}
+														<span class="text-foreground">{formatted.text}</span>
+													{/if}
+												</div>
+											{/each}
+										{/if}
+									</div>
+								</td>
+							</tr>
+						{/if}
 					{/each}
 				</tbody>
 			</table>
