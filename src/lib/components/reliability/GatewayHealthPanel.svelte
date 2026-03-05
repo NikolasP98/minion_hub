@@ -3,6 +3,8 @@
 	import StatusDot from '$lib/components/decorations/StatusDot.svelte';
 	import { Server } from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages';
+	import Chart from '$lib/components/Chart.svelte';
+	import type { EChartsOption } from 'echarts';
 
 	interface Props {
 		serverId: string;
@@ -16,6 +18,24 @@
 		activeAgents: number;
 		memoryRssMb: number | null;
 		capturedAt: number;
+		credentialSummaryJson: string | null;
+		channelStatusJson: string | null;
+	}
+
+	interface ChannelAccountStatus {
+		enabled?: boolean;
+		configured?: boolean;
+		running?: boolean;
+		connected?: boolean;
+		reconnectAttempts?: number;
+	}
+
+	interface ChannelStatusData {
+		channelAccounts: {
+			[channelId: string]: {
+				[accountId: string]: ChannelAccountStatus;
+			};
+		};
 	}
 
 	let { serverId }: Props = $props();
@@ -26,59 +46,134 @@
 
 	let latest = $derived(heartbeats.length > 0 ? heartbeats[0] : null);
 
-	/** Memory data points in chronological order for the sparkline. */
-	let memoryPoints = $derived.by(() => {
-		const points: number[] = [];
-		// heartbeats come newest-first; reverse for chronological sparkline
-		for (let i = heartbeats.length - 1; i >= 0; i--) {
-			const hb = heartbeats[i];
-			if (hb.memoryRssMb != null) {
-				points.push(hb.memoryRssMb);
+	/** Heartbeats in chronological order (oldest first) for charting. */
+	let chronological = $derived([...heartbeats].reverse());
+
+	let chartOptions: EChartsOption = $derived.by(() => {
+		const timestamps = chronological.map((hb) => {
+			const d = new Date(hb.capturedAt);
+			return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+		});
+		const memoryData = chronological.map((hb) => hb.memoryRssMb ?? null);
+		const sessionsData = chronological.map((hb) => hb.activeSessions);
+		const agentsData = chronological.map((hb) => hb.activeAgents);
+
+		return {
+			backgroundColor: 'transparent',
+			tooltip: {
+				trigger: 'axis',
+				backgroundColor: '#151d2e',
+				borderColor: '#2a3548',
+				textStyle: { color: '#e2e8f0', fontSize: 12 }
+			},
+			legend: {
+				top: 0,
+				textStyle: { color: '#94a3b8', fontSize: 10 }
+			},
+			grid: { top: 30, right: 50, bottom: 24, left: 50 },
+			xAxis: {
+				type: 'category',
+				data: timestamps,
+				axisLabel: { color: '#71717a', fontSize: 10 },
+				axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } },
+				axisTick: { show: false },
+				splitLine: { show: false }
+			},
+			yAxis: [
+				{
+					type: 'value',
+					name: 'MB',
+					nameTextStyle: { color: '#71717a', fontSize: 10 },
+					axisLabel: { color: '#71717a', fontSize: 10 },
+					splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } }
+				},
+				{
+					type: 'value',
+					name: 'Count',
+					nameTextStyle: { color: '#71717a', fontSize: 10 },
+					axisLabel: { color: '#71717a', fontSize: 10 },
+					splitLine: { show: false }
+				}
+			],
+			series: [
+				{
+					name: 'Memory (MB)',
+					type: 'line',
+					yAxisIndex: 0,
+					data: memoryData,
+					smooth: true,
+					symbol: 'none',
+					lineStyle: { color: '#3b82f6', width: 2 },
+					itemStyle: { color: '#3b82f6' },
+					areaStyle: {
+						color: {
+							type: 'linear',
+							x: 0,
+							y: 0,
+							x2: 0,
+							y2: 1,
+							colorStops: [
+								{ offset: 0, color: 'rgba(59,130,246,0.25)' },
+								{ offset: 1, color: 'rgba(59,130,246,0.02)' }
+							]
+						}
+					}
+				},
+				{
+					name: 'Sessions',
+					type: 'line',
+					yAxisIndex: 1,
+					data: sessionsData,
+					smooth: true,
+					symbol: 'none',
+					lineStyle: { color: '#22c55e', width: 2 },
+					itemStyle: { color: '#22c55e' }
+				},
+				{
+					name: 'Agents',
+					type: 'line',
+					yAxisIndex: 1,
+					data: agentsData,
+					smooth: true,
+					symbol: 'none',
+					lineStyle: { color: '#f59e0b', width: 2 },
+					itemStyle: { color: '#f59e0b' }
+				}
+			]
+		} satisfies EChartsOption;
+	});
+
+	/** Parse channel status from latest heartbeat. */
+	let channelStatus = $derived.by((): { channel: string; account: string; status: ChannelAccountStatus }[] | null => {
+		if (!latest?.channelStatusJson) return null;
+		try {
+			const data: ChannelStatusData = JSON.parse(latest.channelStatusJson);
+			if (!data.channelAccounts) return null;
+			const entries: { channel: string; account: string; status: ChannelAccountStatus }[] = [];
+			for (const [channelId, accounts] of Object.entries(data.channelAccounts)) {
+				for (const [accountId, status] of Object.entries(accounts)) {
+					entries.push({ channel: channelId, account: accountId, status });
+				}
 			}
+			return entries.length > 0 ? entries : null;
+		} catch {
+			return null;
 		}
-		return points;
 	});
 
-	let memoryMin = $derived(memoryPoints.length > 0 ? Math.min(...memoryPoints) : 0);
-	let memoryMax = $derived(memoryPoints.length > 0 ? Math.max(...memoryPoints) : 1);
+	function getChannelDotColor(s: ChannelAccountStatus): string {
+		if (!s.enabled || !s.configured) return '#71717a'; // gray
+		if (s.running && s.connected) return '#22c55e'; // green
+		if (s.running && !s.connected) return '#f59e0b'; // yellow
+		return '#ef4444'; // red
+	}
 
-	/** Build the SVG polyline path for the memory sparkline. */
-	let sparklinePath = $derived.by(() => {
-		if (memoryPoints.length < 2) return '';
-		const width = 240;
-		const height = 32;
-		const padding = 2;
-		const range = memoryMax - memoryMin || 1;
-		const stepX = (width - padding * 2) / (memoryPoints.length - 1);
-
-		const coords = memoryPoints.map((val, i) => {
-			const x = padding + i * stepX;
-			const y = padding + (1 - (val - memoryMin) / range) * (height - padding * 2);
-			return `${x.toFixed(1)},${y.toFixed(1)}`;
-		});
-		return coords.join(' ');
-	});
-
-	/** Fill area path (sparkline + bottom edge). */
-	let sparklineArea = $derived.by(() => {
-		if (memoryPoints.length < 2) return '';
-		const width = 240;
-		const height = 32;
-		const padding = 2;
-		const range = memoryMax - memoryMin || 1;
-		const stepX = (width - padding * 2) / (memoryPoints.length - 1);
-
-		let d = '';
-		memoryPoints.forEach((val, i) => {
-			const x = padding + i * stepX;
-			const y = padding + (1 - (val - memoryMin) / range) * (height - padding * 2);
-			d += i === 0 ? `M ${x.toFixed(1)},${y.toFixed(1)}` : ` L ${x.toFixed(1)},${y.toFixed(1)}`;
-		});
-		// Close path along bottom
-		const lastX = padding + (memoryPoints.length - 1) * stepX;
-		d += ` L ${lastX.toFixed(1)},${height} L ${padding},${height} Z`;
-		return d;
-	});
+	function getChannelDotLabel(s: ChannelAccountStatus): string {
+		if (!s.enabled || !s.configured) return 'Disabled';
+		if (s.running && s.connected) return 'Connected';
+		if (s.running && !s.connected) return 'Disconnected';
+		return 'Stopped';
+	}
 
 	function formatUptime(ms: number): string {
 		const totalSeconds = Math.floor(ms / 1000);
@@ -164,31 +259,27 @@
 			</div>
 		</div>
 
-		{#if memoryPoints.length >= 2}
-			<div class="py-3 px-4">
-				<div class="flex items-center justify-between mb-1.5">
-					<span class="text-[11px] text-muted-foreground font-medium">{m.reliability_memoryTrend()}</span>
-					<span class="text-[11px] text-muted-foreground tabular-nums">
-						{memoryMin.toFixed(0)}&ndash;{memoryMax.toFixed(0)} MB
-					</span>
+		{#if chronological.length >= 2}
+			<div class="px-4 pt-3 pb-1">
+				<Chart options={chartOptions} height="200px" />
+			</div>
+		{/if}
+
+		{#if channelStatus}
+			<div class="px-4 py-3 border-t border-border">
+				<span class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium block mb-2">Channel Status</span>
+				<div class="flex flex-wrap gap-3">
+					{#each channelStatus as { channel, account, status } (`${channel}:${account}`)}
+						<div class="flex items-center gap-1.5" title={getChannelDotLabel(status)}>
+							<span
+								class="inline-block w-2 h-2 rounded-full shrink-0"
+								style="background-color: {getChannelDotColor(status)}"
+							></span>
+							<span class="text-[11px] text-foreground/80">{channel}</span>
+							<span class="text-[10px] text-muted-foreground/60">{account}</span>
+						</div>
+					{/each}
 				</div>
-				<svg
-					class="w-full h-8 block"
-					viewBox="0 0 240 32"
-					preserveAspectRatio="xMidYMid meet"
-					xmlns="http://www.w3.org/2000/svg"
-				>
-					<path d={sparklineArea} fill="var(--color-accent)" fill-opacity="0.1" />
-					<polyline
-						points={sparklinePath}
-						fill="none"
-						stroke="var(--color-accent)"
-						stroke-width="2"
-						stroke-linejoin="round"
-						stroke-linecap="round"
-						vector-effect="non-scaling-stroke"
-					/>
-				</svg>
 			</div>
 		{/if}
 	{/if}
