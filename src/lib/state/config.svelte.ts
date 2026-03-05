@@ -4,6 +4,16 @@
  */
 import { sendRequest } from '$lib/services/gateway.svelte';
 import { extractGroups, computeDirtyPaths, computePatch, deepGet, deepSet } from '$lib/utils/config-schema';
+import {
+  type RestartPhase,
+  type RestartStateData,
+  createRestartState,
+  applyBeginRestart,
+  applyReconnected,
+  applyReset,
+  RESTART_TIMEOUT_MS,
+  RECONNECTED_DISMISS_MS,
+} from '$lib/state/config-restart';
 import type {
   ConfigFileSnapshot,
   ConfigSchemaResponse,
@@ -11,6 +21,8 @@ import type {
   ConfigGroup,
   JsonSchemaNode,
 } from '$lib/types/config';
+
+export type { RestartPhase };
 
 // ─── State ──────────────────────────────────────────────────────────────────
 
@@ -48,6 +60,44 @@ const _groups: ConfigGroup[] = $derived(extractGroups(configState.schema, config
 export const dirtyPaths = { get value() { return _dirtyPaths; } };
 export const isDirty = { get value() { return _isDirty; } };
 export const groups = { get value() { return _groups; } };
+
+// ─── Restart state machine ──────────────────────────────────────────────────
+
+export const restartState = $state<RestartStateData>(createRestartState());
+
+let _restartTimeoutId: ReturnType<typeof setTimeout> | null = null;
+let _dismissTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
+export function beginRestart() {
+  _clearRestartTimers();
+  Object.assign(restartState, applyBeginRestart(restartState, Date.now()));
+  _restartTimeoutId = setTimeout(() => {
+    if (restartState.phase === 'restarting') {
+      restartState.phase = 'failed';
+    }
+  }, RESTART_TIMEOUT_MS);
+}
+
+export function onRestartReconnected() {
+  _clearRestartTimers();
+  const dirty = _isDirty;
+  Object.assign(restartState, applyReconnected(restartState, dirty));
+  _dismissTimeoutId = setTimeout(() => {
+    if (restartState.phase === 'reconnected') {
+      resetRestartState();
+    }
+  }, RECONNECTED_DISMISS_MS);
+}
+
+export function resetRestartState() {
+  _clearRestartTimers();
+  Object.assign(restartState, applyReset(restartState));
+}
+
+function _clearRestartTimers() {
+  if (_restartTimeoutId) { clearTimeout(_restartTimeoutId); _restartTimeoutId = null; }
+  if (_dismissTimeoutId) { clearTimeout(_dismissTimeoutId); _dismissTimeoutId = null; }
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -134,12 +184,36 @@ export async function loadConfig(): Promise<void> {
       configState.version = null;
     }
 
+    // If we're in the middle of a restart and user has dirty changes, stash them
+    const wasRestarting = restartState.phase === 'restarting';
+    const hadDirty = wasRestarting && _isDirty;
+    const stashedChanges: Record<string, unknown> = {};
+    if (hadDirty) {
+      for (const key of _dirtyPaths) {
+        stashedChanges[key] = deepClone(configState.current[key]);
+      }
+    }
+
     configState.original = (snapshot.config ?? {}) as Record<string, unknown>;
     configState.current = deepClone(configState.original);
     configState.baseHash = snapshot.hash ?? null;
     configState.configPath = snapshot.path;
     configState.issues = snapshot.issues ?? [];
     configState.warnings = snapshot.warnings ?? [];
+
+    // Re-apply stashed dirty values if user confirms
+    if (hadDirty && Object.keys(stashedChanges).length > 0) {
+      restartState.hadLocalChanges = true;
+      const keepChanges = typeof window !== 'undefined'
+        ? window.confirm('Gateway config was reloaded after restart. You had unsaved changes.\n\nClick OK to keep your changes, or Cancel to use gateway values.')
+        : false;
+      if (keepChanges) {
+        for (const [key, val] of Object.entries(stashedChanges)) {
+          configState.current[key] = val;
+        }
+        configState.current = { ...configState.current };
+      }
+    }
 
     configState.loaded = true;
     configState.saveError = null;
@@ -173,6 +247,7 @@ export async function save(): Promise<boolean> {
   configState.saving = true;
   configState.saveError = null;
 
+  let saveSucceeded = false;
   try {
     await sendRequest('config.patch', {
       raw: JSON.stringify(patch),
@@ -180,22 +255,34 @@ export async function save(): Promise<boolean> {
       note: 'Edited via Minion Hub config page',
     });
 
+    saveSucceeded = true;
     configState.lastSavedAt = Date.now();
 
-    // Reload config asynchronously — don't fail the save if this fails.
-    // The gateway may restart to apply agent changes; config will auto-reload
-    // on reconnect via onHelloOk.
-    loadConfig().catch(() => {});
+    // Reload config — if the gateway restarts to apply changes, this will fail
+    // with a 'closed'/'not connected' error which we handle below.
+    try {
+      await loadConfig();
+    } catch (reloadErr) {
+      const msg = (reloadErr as Error).message ?? '';
+      if (msg.includes('closed') || msg.includes('not connected')) {
+        // Gateway likely restarted to apply config changes
+        beginRestart();
+      }
+      // Non-WS reload errors are non-fatal (config will reload on reconnect)
+    }
     return true;
   } catch (e) {
     const msg = (e as Error).message ?? 'Save failed';
-    // WS closure = gateway restarted to apply changes; settings were saved.
-    if (msg.includes('closed') || msg.includes('not connected')) {
-      configState.saveError = 'Gateway restarted to apply changes. Settings will reload on reconnect.';
+    if (saveSucceeded && (msg.includes('closed') || msg.includes('not connected'))) {
+      // The save itself went through but something closed after
+      beginRestart();
+    } else if (msg.includes('closed') || msg.includes('not connected')) {
+      // sendRequest itself failed — save may not have reached gateway
+      configState.saveError = 'Connection lost. Your changes were not saved.';
     } else {
       configState.saveError = msg;
     }
-    return false;
+    return !saveSucceeded ? false : true;
   } finally {
     configState.saving = false;
   }
@@ -204,4 +291,5 @@ export async function save(): Promise<boolean> {
 export function discard(): void {
   configState.current = deepClone(configState.original);
   configState.saveError = null;
+  resetRestartState();
 }

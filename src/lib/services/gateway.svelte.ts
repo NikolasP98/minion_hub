@@ -5,7 +5,7 @@ import { hostsState, getActiveHost, updateHost, saveLastActiveHost } from '$lib/
 import { autoSave, resetWorkshop } from '$lib/state/workshop.svelte';
 import { ui } from '$lib/state/ui.svelte';
 import { pushReliabilityEvent, setReliabilityServerId, type ReliabilityEvent } from '$lib/state/reliability.svelte';
-import { configState, loadConfig } from '$lib/state/config.svelte';
+import { configState, loadConfig, restartState, onRestartReconnected } from '$lib/state/config.svelte';
 import { uuid } from '$lib/utils/uuid';
 import { extractText } from '$lib/utils/text';
 import type { HelloOk, ChatEvent, Session } from '$lib/types/gateway';
@@ -470,6 +470,11 @@ function parseAgentId(sessionKey: string): string | null {
 }
 
 function onHelloOk(hello: HelloOk) {
+  // If gateway was restarting after a config save, signal reconnection
+  if (restartState.phase === 'restarting') {
+    onRestartReconnected();
+  }
+
   sendRequest('agents.list', {})
     .then((r) => {
       const res = r as { agents?: never[]; defaultId?: string } | null;

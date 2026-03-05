@@ -1,12 +1,15 @@
 <script lang="ts">
     import { page } from "$app/state";
-    import { goto } from "$app/navigation";
+    import { goto, beforeNavigate } from "$app/navigation";
+    import { onMount } from "svelte";
     import { conn } from "$lib/state/connection.svelte";
     import {
         configState,
         loadConfig,
         isDirty,
         groups,
+        save,
+        restartState,
     } from "$lib/state/config.svelte";
     import { hasConfiguredValues, countConfiguredKeys, getGroupsForTab, TABS } from "$lib/utils/config-schema";
     import { theme } from "$lib/state/theme.svelte";
@@ -29,6 +32,33 @@
     } from "lucide-svelte";
     import * as m from "$lib/paraglide/messages";
     import { SvelteSet } from "svelte/reactivity";
+
+    // ─── Navigation guards & keyboard shortcut ────────────────────────────
+    beforeNavigate(({ cancel }) => {
+        if (isDirty.value) {
+            if (!confirm('You have unsaved changes. Leave anyway?')) cancel();
+        }
+    });
+
+    onMount(() => {
+        function handleBeforeUnload(e: BeforeUnloadEvent) {
+            if (isDirty.value) {
+                e.preventDefault();
+            }
+        }
+        function handleKeydown(e: KeyboardEvent) {
+            if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+                e.preventDefault();
+                if (isDirty.value) save();
+            }
+        }
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        window.addEventListener('keydown', handleKeydown);
+        return () => {
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+            window.removeEventListener('keydown', handleKeydown);
+        };
+    });
 
     // Gateway config tab IDs (all tabs except appearance)
     const GATEWAY_TAB_IDS = new Set(TABS.filter((t) => t.id !== 'appearance').map((t) => t.id));
@@ -353,7 +383,7 @@
     </div>
 
     <!-- ConfigSaveBar spans all tabs -->
-    {#if isDirty.value || configState.saving || configState.saveError}
+    {#if isDirty.value || configState.saving || configState.saveError || restartState.phase !== 'idle'}
         <ConfigSaveBar />
     {/if}
 </div>
