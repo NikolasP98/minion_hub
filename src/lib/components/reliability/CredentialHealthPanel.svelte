@@ -3,6 +3,8 @@
 	import * as m from '$lib/paraglide/messages';
 	import { SvelteMap } from 'svelte/reactivity';
 	import { KeyRound } from 'lucide-svelte';
+	import Chart from '$lib/components/Chart.svelte';
+	import type { EChartsOption } from 'echarts';
 	import {
 		createCredentialHealthState,
 		type CredentialProfile
@@ -17,6 +19,14 @@
 	const state = createCredentialHealthState();
 	let parsed = $derived(state.parseLatest());
 
+	const statusEchartsColors: Record<string, string> = {
+		ok: '#22c55e',
+		expiring: '#f59e0b',
+		expired: '#ef4444',
+		static: '#64748b',
+		missing: '#a855f7'
+	};
+
 	/** Group profiles by status for the summary row. */
 	let statusCounts = $derived.by(() => {
 		if (!parsed) return { ok: 0, expiring: 0, expired: 0, static: 0, missing: 0 };
@@ -25,6 +35,42 @@
 			counts[p.status] = (counts[p.status] ?? 0) + 1;
 		}
 		return counts;
+	});
+
+	/** Donut chart options derived from statusCounts. */
+	let donutOptions: EChartsOption = $derived.by(() => {
+		const data = Object.entries(statusCounts)
+			.filter(([, count]) => count > 0)
+			.map(([status, count]) => ({
+				name: status,
+				value: count,
+				itemStyle: { color: statusEchartsColors[status] ?? '#64748b' }
+			}));
+
+		return {
+			backgroundColor: 'transparent',
+			tooltip: {
+				trigger: 'item',
+				formatter: '{b}: {c} ({d}%)'
+			},
+			series: [
+				{
+					type: 'pie',
+					radius: ['50%', '75%'],
+					avoidLabelOverlap: false,
+					label: { show: false },
+					emphasis: {
+						label: {
+							show: true,
+							fontSize: 14,
+							fontWeight: 'bold'
+						}
+					},
+					labelLine: { show: false },
+					data
+				}
+			]
+		};
 	});
 
 	/** Group profiles by provider name. */
@@ -40,6 +86,69 @@
 			}
 		}
 		return [...map.entries()].map(([provider, profiles]) => ({ provider, profiles }));
+	});
+
+	/** Profiles that have an expiresAt timestamp. */
+	let expiringProfiles = $derived.by(() => {
+		if (!parsed) return [];
+		return parsed.providers.filter((p) => p.expiresAt != null);
+	});
+
+	/** Scatter chart options for credential expiration timeline. */
+	let timelineOptions: EChartsOption = $derived.by(() => {
+		const profiles = expiringProfiles;
+		const categories = profiles.map((p) => `${p.provider}/${p.profileId}`);
+		const data = profiles.map((p, i) => ({
+			value: [p.expiresAt!, i],
+			itemStyle: { color: statusEchartsColors[p.status] ?? '#64748b' }
+		}));
+
+		return {
+			backgroundColor: 'transparent',
+			tooltip: {
+				trigger: 'item',
+				formatter: (params: any) => {
+					const d = new Date(params.value[0]);
+					return `${categories[params.value[1]]}<br/>Expires: ${d.toLocaleDateString()} ${d.toLocaleTimeString()}`;
+				}
+			},
+			grid: {
+				left: 10,
+				right: 30,
+				top: 10,
+				bottom: 25,
+				containLabel: true
+			},
+			xAxis: {
+				type: 'time',
+				axisLabel: { color: '#71717a', fontSize: 10 },
+				splitLine: { show: false }
+			},
+			yAxis: {
+				type: 'category',
+				data: categories,
+				axisLabel: { color: '#71717a', fontSize: 10 },
+				splitLine: { show: false }
+			},
+			series: [
+				{
+					type: 'scatter',
+					symbolSize: 10,
+					data,
+					markLine: {
+						silent: true,
+						symbol: 'none',
+						lineStyle: { color: '#ef4444', type: 'dashed', width: 1 },
+						data: [{ xAxis: Date.now() }],
+						label: {
+							formatter: 'Now',
+							color: '#ef4444',
+							fontSize: 10
+						}
+					}
+				}
+			]
+		};
 	});
 
 	let capturedAgo = $derived.by(() => {
@@ -68,21 +177,6 @@
 		}
 	}
 
-	function statusBg(status: string): string {
-		switch (status) {
-			case 'ok':
-				return 'rgba(34, 197, 94, 0.15)';
-			case 'expiring':
-				return 'rgba(245, 158, 11, 0.15)';
-			case 'expired':
-				return 'rgba(239, 68, 68, 0.15)';
-			case 'static':
-			case 'missing':
-			default:
-				return 'rgba(100, 116, 139, 0.15)';
-		}
-	}
-
 	onMount(() => {
 		state.load(serverId);
 		const interval = setInterval(() => state.load(serverId), 60_000);
@@ -106,45 +200,46 @@
 	{:else if !parsed || parsed.providers.length === 0}
 		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">{m.reliability_noCredentials()}</div>
 	{:else}
-		<div class="flex flex-wrap gap-2 py-3 px-4 border-b border-border">
-			{#each Object.entries(statusCounts) as [status, count] (status)}
-				{#if count > 0}
-					<span
-						class="text-[11px] font-semibold py-0.5 px-2.5 rounded-xl border whitespace-nowrap"
-						style:color={statusColor(status)}
-						style:background={statusBg(status)}
-						style:border-color={statusColor(status)}
-					>
-						{count} {status}
-					</span>
-				{/if}
-			{/each}
+		<div class="flex gap-4 py-3 px-4">
+			<!-- Donut chart (left) -->
+			<div class="shrink-0" style="width:180px;height:180px;">
+				<Chart options={donutOptions} height="180px" />
+			</div>
+
+			<!-- Provider details (right) -->
+			<div class="flex-1 flex flex-col gap-3 min-w-0">
+				{#each byProvider as group (group.provider)}
+					<div class="flex flex-col gap-1.5">
+						<div class="text-xs font-semibold text-muted uppercase tracking-wider">{group.provider}</div>
+						<div class="flex flex-wrap gap-1.5">
+							{#each group.profiles as profile (profile.profileId)}
+								<div
+									class="flex items-center gap-2 py-1.5 px-2.5 bg-bg3 border border-border border-l-[3px] rounded-md text-xs min-w-0"
+									style:border-left-color={statusColor(profile.status)}
+								>
+									<span class="text-foreground max-w-[140px] overflow-hidden text-ellipsis whitespace-nowrap" title={profile.profileId}>
+										{profile.profileId}
+									</span>
+									<span
+										class="font-semibold text-[11px] whitespace-nowrap"
+										style:color={statusColor(profile.status)}
+									>
+										{profile.status}
+									</span>
+								</div>
+							{/each}
+						</div>
+					</div>
+				{/each}
+			</div>
 		</div>
 
-		<div class="py-3 px-4 flex flex-col gap-3">
-			{#each byProvider as group (group.provider)}
-				<div class="flex flex-col gap-1.5">
-					<div class="text-xs font-semibold text-muted uppercase tracking-wider">{group.provider}</div>
-					<div class="flex flex-wrap gap-1.5">
-						{#each group.profiles as profile (profile.profileId)}
-							<div
-								class="flex items-center gap-2 py-1.5 px-2.5 bg-bg3 border border-border border-l-[3px] rounded-md text-xs min-w-0"
-								style:border-left-color={statusColor(profile.status)}
-							>
-								<span class="text-foreground max-w-[140px] overflow-hidden text-ellipsis whitespace-nowrap" title={profile.profileId}>
-									{profile.profileId}
-								</span>
-								<span
-									class="font-semibold text-[11px] whitespace-nowrap"
-									style:color={statusColor(profile.status)}
-								>
-									{profile.status}
-								</span>
-							</div>
-						{/each}
-					</div>
-				</div>
-			{/each}
-		</div>
+		<!-- Expiration timeline (conditional) -->
+		{#if expiringProfiles.length > 0}
+			<div class="px-4 pb-3 border-t border-border pt-3">
+				<div class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Expiration Timeline</div>
+				<Chart options={timelineOptions} height="150px" />
+			</div>
+		{/if}
 	{/if}
 </div>
