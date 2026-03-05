@@ -38,8 +38,18 @@
 	let sortDirection: SortDirection = $state('desc');
 	let expandedId = $state<string | null>(null);
 
+	function parseMetadata(raw: unknown): Record<string, unknown> | null {
+		if (raw == null) return null;
+		if (typeof raw === 'string') {
+			try { return JSON.parse(raw); } catch { return null; }
+		}
+		if (typeof raw === 'object') return raw as Record<string, unknown>;
+		return null;
+	}
+
 	function hasMetadata(evt: ReliabilityEvent): boolean {
-		return (evt.metadata != null && Object.keys(evt.metadata).length > 0) ||
+		const meta = parseMetadata(evt.metadata);
+		return (meta != null && Object.keys(meta).length > 0) ||
 			!!evt.agentId || !!evt.sessionKey;
 	}
 
@@ -238,8 +248,8 @@
 												<span class="text-foreground font-mono text-[11px]">{evt.sessionKey}</span>
 											</div>
 										{/if}
-										{#if evt.metadata}
-											{#each Object.entries(evt.metadata) as [key, value] (key)}
+										{#if parseMetadata(evt.metadata)}
+											{#each Object.entries(parseMetadata(evt.metadata)!) as [key, value] (key)}
 												{@const formatted = formatMetaValue(key, value)}
 												<div class="flex items-center gap-2 {formatted.style === 'code' && String(value).length > 60 ? 'col-span-2' : ''}">
 													<span class="text-muted-foreground font-medium">{key}:</span>
