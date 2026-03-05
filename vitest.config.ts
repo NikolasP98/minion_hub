@@ -6,6 +6,7 @@ export default defineConfig({
     include: ['src/**/*.test.ts'],
     setupFiles: ['src/server/test-utils/setup.ts'],
     alias: {
+      '$lib': path.resolve('src/lib'),
       '$server': path.resolve('src/server'),
     },
   },
