@@ -49,37 +49,18 @@ const authHandle: Handle = async ({ event, resolve }) => {
   }
   try {
     const response = await getAuth().handler(event.request);
-    // Forward Set-Cookie headers through SvelteKit's cookie jar
-    const setCookie = response.headers.get('set-cookie');
-    if (setCookie) {
-      for (const cookie of setCookie.split(/,(?=\s*\w+=)/)) {
-        const [nameValue, ...parts] = cookie.trim().split(';');
-        const eqIdx = nameValue.indexOf('=');
-        if (eqIdx < 0) continue;
-        const name = nameValue.slice(0, eqIdx).trim();
-        const value = decodeURIComponent(nameValue.slice(eqIdx + 1).trim());
-        const opts: Record<string, unknown> = { path: '/' };
-        for (const part of parts) {
-          const [k, v] = part.trim().split('=');
-          const key = k.toLowerCase().trim();
-          if (key === 'path') opts.path = v;
-          else if (key === 'max-age') opts.maxAge = Number(v);
-          else if (key === 'expires') opts.expires = new Date(v);
-          else if (key === 'httponly') opts.httpOnly = true;
-          else if (key === 'secure') opts.secure = true;
-          else if (key === 'samesite') opts.sameSite = v.toLowerCase() as 'lax' | 'strict' | 'none';
-          else if (key === 'domain') opts.domain = v;
-        }
-        event.cookies.set(name, value, opts as unknown as Parameters<typeof event.cookies.set>[2]);
-      }
-      // Remove the raw Set-Cookie header — SvelteKit will add it back from event.cookies
-      response.headers.delete('set-cookie');
-    }
-    return response;
+    // Vercel serverless strips Set-Cookie from raw Response objects returned
+    // outside SvelteKit's resolve() pipeline. Re-create the response so the
+    // headers (including Set-Cookie) are preserved as a fresh Response.
+    const body = await response.arrayBuffer();
+    return new Response(body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
   } catch (err) {
-    const msg = err instanceof Error ? `${err.message}\n${err.stack}` : String(err);
-    console.error('[authHandle]', event.url.pathname, msg);
-    return new Response(JSON.stringify({ error: msg }), {
+    console.error('[authHandle]', event.url.pathname, err);
+    return new Response(JSON.stringify({ error: String(err) }), {
       status: 500,
       headers: { 'content-type': 'application/json' },
     });
