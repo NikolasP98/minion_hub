@@ -1,5 +1,5 @@
 <script lang="ts">
-	import SessionMonitor from './SessionMonitor.svelte';
+	import SessionMonitor from '../sessions/SessionMonitor.svelte';
 	import SubagentMeta from './SubagentMeta.svelte';
 	import { getSelectedSubagent, subagentState } from '$lib/state/features/subagent-data.svelte';
 	import { ui } from '$lib/state/ui/ui.svelte';
