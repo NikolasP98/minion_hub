@@ -48,12 +48,19 @@ const authHandle: Handle = async ({ event, resolve }) => {
     return resolve(event);
   }
   try {
-    const cookieHeader = event.request.headers.get('cookie');
-    console.log('[authHandle]', event.url.pathname, 'cookies:', cookieHeader ? cookieHeader.substring(0, 120) : '(none)');
     const response = await getAuth().handler(event.request);
     if (response.status >= 400) {
-      const errBody = await response.clone().text();
-      console.error('[authHandle] error response:', response.status, errBody);
+      const errClone = await response.clone().text();
+      // TEMPORARY: return debug info in error responses
+      return new Response(JSON.stringify({
+        _debug: true,
+        status: response.status,
+        body: errClone,
+        headers: Object.fromEntries(response.headers),
+      }), {
+        status: response.status,
+        headers: { 'content-type': 'application/json' },
+      });
     }
     // Re-create the response so Set-Cookie headers are preserved on Vercel.
     const body = await response.arrayBuffer();
@@ -63,8 +70,13 @@ const authHandle: Handle = async ({ event, resolve }) => {
       headers: response.headers,
     });
   } catch (err) {
-    console.error('[authHandle] THROWN:', event.url.pathname, err);
-    return new Response(JSON.stringify({ error: String(err) }), {
+    // TEMPORARY: return full error details
+    return new Response(JSON.stringify({
+      _debug: true,
+      thrown: true,
+      error: String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    }), {
       status: 500,
       headers: { 'content-type': 'application/json' },
     });
