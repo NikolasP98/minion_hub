@@ -16,6 +16,11 @@
   import { loadUser, userState } from '$lib/state/user.svelte';
   import { type Snippet } from 'svelte';
   import { locale } from '$lib/state/locale.svelte';
+  import { injectSpeedInsights } from '@vercel/speed-insights/sveltekit';
+  import { inject as injectAnalytics } from '@vercel/analytics';
+
+  injectSpeedInsights();
+  injectAnalytics();
 
   let { children }: { children: Snippet } = $props();
 

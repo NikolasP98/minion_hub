@@ -22,6 +22,7 @@ export function getAuth() {
 				...(env.BETTER_AUTH_URL && env.BETTER_AUTH_URL !== 'http://localhost:5173'
 					? [env.BETTER_AUTH_URL]
 					: []),
+				...(env.VERCEL_URL ? [`https://${env.VERCEL_URL}`] : []),
 			],
 			emailAndPassword: { enabled: true },
 			socialProviders: {

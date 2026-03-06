@@ -2,6 +2,8 @@ import { sequence } from '@sveltejs/kit/hooks';
 import type { Handle } from '@sveltejs/kit';
 import { i18n } from '$lib/i18n';
 import { getAuth } from '$lib/auth';
+import { svelteKitHandler } from 'better-auth/svelte-kit';
+import { building } from '$app/environment';
 import { getDb } from '$server/db/client';
 import { servers, organization, user as userTable } from '$server/db/schema';
 import { eq } from 'drizzle-orm';
@@ -42,13 +44,13 @@ async function resolveServerTokenAuth(
   return null;
 }
 
+const authHandle: Handle = async ({ event, resolve }) =>
+  svelteKitHandler({ event, resolve, auth: getAuth(), building });
+
 const UNPROTECTED_PREFIXES = ['/login', '/api/'];
 
 const appHandle: Handle = async ({ event, resolve }) => {
   const path = event.url.pathname;
-
-  // Better Auth owns /api/auth/*
-  if (path.startsWith('/api/auth/')) return resolve(event);
 
   // AUTH_DISABLED: skip all auth, resolve first org for API routes to work
   if (env.AUTH_DISABLED === 'true') {
@@ -125,7 +127,7 @@ const appHandle: Handle = async ({ event, resolve }) => {
   return resolve(event);
 };
 
-export const handle = sequence(i18n.handle(), appHandle);
+export const handle = sequence(i18n.handle(), authHandle, appHandle);
 
 import type { HandleServerError } from '@sveltejs/kit';
 
