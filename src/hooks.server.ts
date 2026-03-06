@@ -2,7 +2,6 @@ import { sequence } from '@sveltejs/kit/hooks';
 import type { Handle } from '@sveltejs/kit';
 import { i18n } from '$lib/i18n';
 import { getAuth } from '$lib/auth';
-import { svelteKitHandler } from 'better-auth/svelte-kit';
 import { building } from '$app/environment';
 import { getDb } from '$server/db/client';
 import { servers, organization, user as userTable } from '$server/db/schema';
@@ -45,18 +44,45 @@ async function resolveServerTokenAuth(
 }
 
 const authHandle: Handle = async ({ event, resolve }) => {
+  if (building || !event.url.pathname.startsWith('/api/auth/')) {
+    return resolve(event);
+  }
   try {
-    return await svelteKitHandler({ event, resolve, auth: getAuth(), building });
+    const response = await getAuth().handler(event.request);
+    // Forward Set-Cookie headers through SvelteKit's cookie jar
+    const setCookie = response.headers.get('set-cookie');
+    if (setCookie) {
+      for (const cookie of setCookie.split(/,(?=\s*\w+=)/)) {
+        const [nameValue, ...parts] = cookie.trim().split(';');
+        const eqIdx = nameValue.indexOf('=');
+        if (eqIdx < 0) continue;
+        const name = nameValue.slice(0, eqIdx).trim();
+        const value = decodeURIComponent(nameValue.slice(eqIdx + 1).trim());
+        const opts: Record<string, unknown> = { path: '/' };
+        for (const part of parts) {
+          const [k, v] = part.trim().split('=');
+          const key = k.toLowerCase().trim();
+          if (key === 'path') opts.path = v;
+          else if (key === 'max-age') opts.maxAge = Number(v);
+          else if (key === 'expires') opts.expires = new Date(v);
+          else if (key === 'httponly') opts.httpOnly = true;
+          else if (key === 'secure') opts.secure = true;
+          else if (key === 'samesite') opts.sameSite = v.toLowerCase() as 'lax' | 'strict' | 'none';
+          else if (key === 'domain') opts.domain = v;
+        }
+        event.cookies.set(name, value, opts as unknown as Parameters<typeof event.cookies.set>[2]);
+      }
+      // Remove the raw Set-Cookie header — SvelteKit will add it back from event.cookies
+      response.headers.delete('set-cookie');
+    }
+    return response;
   } catch (err) {
     const msg = err instanceof Error ? `${err.message}\n${err.stack}` : String(err);
     console.error('[authHandle]', event.url.pathname, msg);
-    if (event.url.pathname.startsWith('/api/auth/')) {
-      return new Response(JSON.stringify({ error: msg }), {
-        status: 500,
-        headers: { 'content-type': 'application/json' },
-      });
-    }
-    throw err;
+    return new Response(JSON.stringify({ error: msg }), {
+      status: 500,
+      headers: { 'content-type': 'application/json' },
+    });
   }
 };
 
