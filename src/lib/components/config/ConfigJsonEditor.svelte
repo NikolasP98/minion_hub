@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { setField } from '$lib/state/config.svelte';
+  import { setField } from '$lib/state/config/config.svelte';
 
   let { path, value, pathSuffix = '' }: {
     path: string;

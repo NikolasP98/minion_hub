@@ -1,8 +1,8 @@
 <script lang="ts">
   import { Handle, Position } from '@xyflow/svelte';
   import type { NodeProps } from '@xyflow/svelte';
-  import type { PromptBoxData } from '$lib/state/flow-editor.svelte';
-  import { flowEditorState, setNodes } from '$lib/state/flow-editor.svelte';
+  import type { PromptBoxData } from '$lib/state/features/flow-editor.svelte';
+  import { flowEditorState, setNodes } from '$lib/state/features/flow-editor.svelte';
   import { Type } from 'lucide-svelte';
 
   let { data, id, selected }: NodeProps & { data: PromptBoxData } = $props();

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import Chart from '$lib/components/Chart.svelte';
+	import Chart from '$lib/components/charts/Chart.svelte';
 	import DateRangePicker from '$lib/components/reliability/DateRangePicker.svelte';
 	import IncidentTable from '$lib/components/reliability/IncidentTable.svelte';
 	import CredentialHealthPanel from '$lib/components/reliability/CredentialHealthPanel.svelte';
@@ -7,13 +7,13 @@
 	import GatewayHealthPanel from '$lib/components/reliability/GatewayHealthPanel.svelte';
 	import ConnectionEventsPanel from '$lib/components/reliability/ConnectionEventsPanel.svelte';
 	import ScanLine from '$lib/components/decorations/ScanLine.svelte';
-	import Topbar from '$lib/components/Topbar.svelte';
+	import Topbar from '$lib/components/layout/Topbar.svelte';
 	import {
 		reliability,
 		loadReliabilitySummary,
 		loadReliabilityEvents
-	} from '$lib/state/reliability.svelte';
-	import { hostsState } from '$lib/state/hosts.svelte';
+	} from '$lib/state/reliability/reliability.svelte';
+	import { hostsState } from '$lib/state/features/hosts.svelte';
 	import { onMount, untrack } from 'svelte';
 	import type { EChartsOption } from 'echarts';
 	import * as m from '$lib/paraglide/messages';

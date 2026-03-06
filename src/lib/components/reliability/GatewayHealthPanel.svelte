@@ -3,7 +3,7 @@
 	import StatusDot from '$lib/components/decorations/StatusDot.svelte';
 	import { Server } from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages';
-	import Chart from '$lib/components/Chart.svelte';
+	import Chart from '$lib/components/charts/Chart.svelte';
 	import type { EChartsOption } from 'echarts';
 
 	interface Props {

@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { user } from '$server/db/schema';
 import type { TenantContext } from './base';
-import { getAuth } from '$lib/auth';
+import { getAuth } from '$lib/auth/auth';
 
 export async function listUsers(ctx: TenantContext) {
   return ctx.db

@@ -3,7 +3,7 @@
   import {
     workshopState,
     setMessageBoardContent,
-  } from '$lib/state/workshop.svelte';
+  } from '$lib/state/workshop/workshop.svelte';
   import * as m from '$lib/paraglide/messages';
 
   let {

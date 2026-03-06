@@ -2,7 +2,7 @@
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import { onDestroy, onMount } from 'svelte';
-  import Topbar from '$lib/components/Topbar.svelte';
+  import Topbar from '$lib/components/layout/Topbar.svelte';
   import WorkshopToolbar from '$lib/components/workshop/WorkshopToolbar.svelte';
   import WorkshopCanvas from '$lib/components/workshop/WorkshopCanvas.svelte';
   import {
@@ -10,7 +10,7 @@
     openSave,
     cancelDbSave,
     persistActiveSaveId,
-  } from '$lib/state/workshop.svelte';
+  } from '$lib/state/workshop/workshop.svelte';
 
   const saveId = $derived(page.params.id);
 

@@ -47,12 +47,12 @@
         registerThumbnailProvider,
         unregisterThumbnailProvider,
         setViewMode,
-    } from "$lib/state/workshop.svelte";
-    import type { ElementType } from "$lib/state/workshop.svelte";
+    } from "$lib/state/workshop/workshop.svelte";
+    import type { ElementType } from "$lib/state/workshop/workshop.svelte";
     import { findNearbyAgents } from "$lib/workshop/proximity";
-    import { gw } from "$lib/state/gateway-data.svelte";
-    import { conn } from "$lib/state/connection.svelte";
-    import { hostsState } from "$lib/state/hosts.svelte";
+    import { gw } from "$lib/state/gateway/gateway-data.svelte";
+    import { conn } from "$lib/state/gateway/connection.svelte";
+    import { hostsState } from "$lib/state/features/hosts.svelte";
     import {
         startWorkshopConversation,
         assignTask,
@@ -71,7 +71,7 @@
     import InboxOverlay from "./InboxOverlay.svelte";
     import RulebookOverlay from "./RulebookOverlay.svelte";
     import PortalOverlay from "./PortalOverlay.svelte";
-    import { thinkingAgents } from "$lib/state/workshop-conversations.svelte";
+    import { thinkingAgents } from "$lib/state/workshop/workshop-conversations.svelte";
     import DebugOverlay from "./DebugOverlay.svelte";
     import ToggleSwitch from "$lib/components/config/ToggleSwitch.svelte";
 

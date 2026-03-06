@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { conn } from "$lib/state/connection.svelte";
+    import { conn } from "$lib/state/gateway/connection.svelte";
     import * as m from "$lib/paraglide/messages";
     import {
         configState,
@@ -7,7 +7,7 @@
         isDirty,
         save,
         discard,
-    } from "$lib/state/config.svelte";
+    } from "$lib/state/config/config.svelte";
     import { SvelteMap } from "svelte/reactivity";
 
     type BindingPeer = { kind: "dm" | "group"; id: string };

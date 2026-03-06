@@ -11,8 +11,8 @@
  */
 
 import * as PIXI from 'pixi.js';
-import { workshopState } from '$lib/state/workshop.svelte';
-import type { ElementType } from '$lib/state/workshop.svelte';
+import { workshopState } from '$lib/state/workshop/workshop.svelte';
+import type { ElementType } from '$lib/state/workshop/workshop.svelte';
 
 // Classic renderers
 import * as classicAgentSprite from './agent-sprite';

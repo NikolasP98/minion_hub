@@ -13,7 +13,7 @@ import {
 	autoSave,
 	type InboxItem,
 	type InboxAttachment,
-} from '$lib/state/workshop.svelte';
+} from '$lib/state/workshop/workshop.svelte';
 
 /**
  * Send a message from one agent (or user) to another, routing through

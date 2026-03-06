@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ConfigGroup } from '$lib/types/config';
-  import { configState, dirtyPaths } from '$lib/state/config.svelte';
+  import { configState, dirtyPaths } from '$lib/state/config/config.svelte';
   import ConfigField from './ConfigField.svelte';
   import { ChevronRight, ChevronsDown, ChevronsUp } from 'lucide-svelte';
 

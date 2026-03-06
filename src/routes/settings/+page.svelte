@@ -2,7 +2,7 @@
     import { page } from "$app/state";
     import { goto, beforeNavigate } from "$app/navigation";
     import { onMount } from "svelte";
-    import { conn } from "$lib/state/connection.svelte";
+    import { conn } from "$lib/state/gateway/connection.svelte";
     import {
         configState,
         loadConfig,
@@ -11,18 +11,18 @@
         groups,
         save,
         restartState,
-    } from "$lib/state/config.svelte";
+    } from "$lib/state/config/config.svelte";
     import { hasConfiguredValues, countConfiguredKeys, getGroupsForTab, TABS } from "$lib/utils/config-schema";
-    import { theme } from "$lib/state/theme.svelte";
-    import { logoState } from "$lib/state/logo.svelte";
-    import { locale } from "$lib/state/locale.svelte";
-    import Topbar from "$lib/components/Topbar.svelte";
+    import { theme } from "$lib/state/ui/theme.svelte";
+    import { logoState } from "$lib/state/ui/logo.svelte";
+    import { locale } from "$lib/state/ui/locale.svelte";
+    import Topbar from "$lib/components/layout/Topbar.svelte";
     import SettingsTabBar from "$lib/components/settings/SettingsTabBar.svelte";
     import SettingsSkeleton from "$lib/components/settings/SettingsSkeleton.svelte";
     import PatternSettings from "$lib/components/settings/PatternSettings.svelte";
     import SparklineStyleSettings from "$lib/components/settings/SparklineStyleSettings.svelte";
     import GatewaySettings from "$lib/components/settings/GatewaySettings.svelte";
-    import MinionLogo from "$lib/components/MinionLogo.svelte";
+    import MinionLogo from "$lib/components/layout/MinionLogo.svelte";
     import ConfigSection from "$lib/components/config/ConfigSection.svelte";
     import ConfigSaveBar from "$lib/components/config/ConfigSaveBar.svelte";
     import SettingsScrollspy from "$lib/components/settings/SettingsScrollspy.svelte";

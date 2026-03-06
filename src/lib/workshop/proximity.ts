@@ -1,5 +1,5 @@
-import { workshopState } from '$lib/state/workshop.svelte';
-import type { WorkshopElement } from '$lib/state/workshop.svelte';
+import { workshopState } from '$lib/state/workshop/workshop.svelte';
+import type { WorkshopElement } from '$lib/state/workshop/workshop.svelte';
 
 export interface ProximityPair {
   instanceIdA: string;

@@ -2,7 +2,7 @@
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import { onMount, onDestroy } from 'svelte';
-  import Topbar from '$lib/components/Topbar.svelte';
+  import Topbar from '$lib/components/layout/Topbar.svelte';
   import FlowCanvas from '$lib/components/flow-editor/FlowCanvas.svelte';
   import FlowSidebar from '$lib/components/flow-editor/FlowSidebar.svelte';
   import {
@@ -11,10 +11,10 @@
     saveFlow,
     appendLog,
     clearLogs,
-  } from '$lib/state/flow-editor.svelte';
+  } from '$lib/state/features/flow-editor.svelte';
   import ConsolePanel from '$lib/components/flow-editor/ConsolePanel.svelte';
   import { ArrowLeft, Save, GitBranch, Loader, Play, Trash2, Copy } from 'lucide-svelte';
-  import { deleteNode, duplicateNode } from '$lib/state/flow-editor.svelte';
+  import { deleteNode, duplicateNode } from '$lib/state/features/flow-editor.svelte';
 
   let isRunning = $state(false);
   let destroyed = $state(false);

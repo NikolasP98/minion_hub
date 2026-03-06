@@ -22,7 +22,7 @@
  */
 
 import { sendRequest } from '$lib/services/gateway.svelte';
-import { conn } from '$lib/state/connection.svelte';
+import { conn } from '$lib/state/gateway/connection.svelte';
 import {
 	workshopState,
 	agentMemory,
@@ -36,8 +36,8 @@ import {
 	removePinboardItem,
 	addPinboardItem,
 	getAgentPinCount,
-} from '$lib/state/workshop.svelte';
-import { gw } from '$lib/state/gateway-data.svelte';
+} from '$lib/state/workshop/workshop.svelte';
+import { gw } from '$lib/state/gateway/gateway-data.svelte';
 import { startConversation, endConversation } from './conversation-manager';
 import {
 	appendMessage,
@@ -45,13 +45,13 @@ import {
 	conversationMessages,
 	conversationLoading,
 	setMessages,
-} from '$lib/state/workshop-conversations.svelte';
-import { configState } from '$lib/state/config.svelte';
+} from '$lib/state/workshop/workshop-conversations.svelte';
+import { configState } from '$lib/state/config/config.svelte';
 import { uuid } from '$lib/utils/uuid';
 import { extractText } from '$lib/utils/text';
 import { showReactionEmoji } from '$lib/workshop/renderer-adapter';
 import { sendFsmEvent } from './agent-fsm';
-import type { ConversationMessage } from '$lib/state/workshop-conversations.svelte';
+import type { ConversationMessage } from '$lib/state/workshop/workshop-conversations.svelte';
 
 // ---------------------------------------------------------------------------
 // Deterministic session key builders
@@ -1030,7 +1030,7 @@ export function getWorkshopContext(agentId?: string, instanceId?: string): strin
 	// E. Active pinboard memory — only items agent has kept via KEEP_PIN
 	if (instanceId && activePins.length > 0) {
 		// Collect all pinboard items across all boards indexed by pin ID
-		const allPins = new Map<string, { pin: import('$lib/state/workshop.svelte').PinboardItem; boardLabel: string }>();
+		const allPins = new Map<string, { pin: import('$lib/state/workshop/workshop.svelte').PinboardItem; boardLabel: string }>();
 		for (const el of Object.values(workshopState.elements)) {
 			if (el.type === 'pinboard') {
 				for (const pin of el.pinboardItems ?? []) {
@@ -1083,7 +1083,7 @@ export function getWorkshopContext(agentId?: string, instanceId?: string): strin
  * Shows ALL items with IDs and scores so the agent can evaluate and KEEP_PIN/VOTE.
  */
 function buildPinboardFullView(
-	el: import('$lib/state/workshop.svelte').WorkshopElement,
+	el: import('$lib/state/workshop/workshop.svelte').WorkshopElement,
 	instanceId: string,
 ): string {
 	const pins = el.pinboardItems ?? [];
@@ -1462,7 +1462,7 @@ async function tryOwnerNotification(
  * participant's session transcript and interleaving by timestamp.
  */
 export async function loadConversationHistory(
-	conv: import('$lib/state/workshop.svelte').WorkshopConversation,
+	conv: import('$lib/state/workshop/workshop.svelte').WorkshopConversation,
 ): Promise<ConversationMessage[]> {
 	conversationLoading[conv.sessionKey] = true;
 

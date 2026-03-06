@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { gw } from '$lib/state/gateway-data.svelte';
-  import { flowEditorState, setNodes } from '$lib/state/flow-editor.svelte';
-  import type { FlowNode, AgentNodeData, PromptBoxData } from '$lib/state/flow-editor.svelte';
+  import { gw } from '$lib/state/gateway/gateway-data.svelte';
+  import { flowEditorState, setNodes } from '$lib/state/features/flow-editor.svelte';
+  import type { FlowNode, AgentNodeData, PromptBoxData } from '$lib/state/features/flow-editor.svelte';
   import { Bot, Type, ChevronLeft, ChevronRight } from 'lucide-svelte';
 
   let collapsed = $state(false);

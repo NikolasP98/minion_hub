@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { workshopState } from '$lib/state/workshop.svelte';
-  import { agentMemory } from '$lib/state/workshop.svelte';
-  import { gw } from '$lib/state/gateway-data.svelte';
+  import { workshopState } from '$lib/state/workshop/workshop.svelte';
+  import { agentMemory } from '$lib/state/workshop/workshop.svelte';
+  import { gw } from '$lib/state/gateway/gateway-data.svelte';
   import { worldToScreen } from '$lib/workshop/camera';
   import { worldToScreenForMode } from '$lib/workshop/renderer-adapter';
   import { getAgentState } from '$lib/workshop/agent-fsm';

@@ -2,14 +2,14 @@
     import { onMount } from "svelte";
     import { page } from "$app/stores";
     import { goto } from "$app/navigation";
-    import { hostsState } from "$lib/state/hosts.svelte";
+    import { hostsState } from "$lib/state/features/hosts.svelte";
     import {
         loadAgent,
         installAgent,
         marketplaceState,
         parseTags,
         type MarketplaceAgent,
-    } from "$lib/state/marketplace.svelte";
+    } from "$lib/state/features/marketplace.svelte";
     import { diceBearAvatarUrl } from "$lib/utils/avatar";
     import * as m from "$lib/paraglide/messages";
     import {

@@ -1,7 +1,7 @@
 import { sequence } from '@sveltejs/kit/hooks';
 import type { Handle } from '@sveltejs/kit';
 import { i18n } from '$lib/i18n';
-import { getAuth } from '$lib/auth';
+import { getAuth } from '$lib/auth/auth';
 import { building } from '$app/environment';
 import { getDb } from '$server/db/client';
 import { servers, organization, user as userTable } from '$server/db/schema';

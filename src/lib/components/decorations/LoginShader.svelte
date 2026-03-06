@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { bgPattern } from '$lib/state/bg-pattern.svelte';
-  import { theme } from '$lib/state/theme.svelte';
+  import { bgPattern } from '$lib/state/ui/bg-pattern.svelte';
+  import { theme } from '$lib/state/ui/theme.svelte';
 
   let canvas = $state<HTMLCanvasElement | null>(null);
 

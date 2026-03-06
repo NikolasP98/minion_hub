@@ -6,9 +6,9 @@
         updateInboxItemStatus,
         type InboxItemStatus,
         type InboxAttachment,
-    } from "$lib/state/workshop.svelte";
+    } from "$lib/state/workshop/workshop.svelte";
     import { sendInboxMessage } from "$lib/workshop/inbox-bridge";
-    import { gw } from "$lib/state/gateway-data.svelte";
+    import { gw } from "$lib/state/gateway/gateway-data.svelte";
     import * as m from "$lib/paraglide/messages";
 
     let {

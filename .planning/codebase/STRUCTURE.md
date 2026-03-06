@@ -38,9 +38,25 @@ minion_hub/
 │   │   ├── flow-editor/         # Visual flow editor page
 │   │   └── workshop/            # Workshop canvas page
 │   ├── lib/                     # Shared frontend code ($lib alias)
-│   │   ├── state/               # Svelte 5 $state rune modules
+│   │   ├── state/               # Svelte 5 $state rune modules (domain subdirectories)
+│   │   │   ├── gateway/         # connection, gateway-data
+│   │   │   ├── features/        # hosts, flow-editor, marketplace, missions, session-tasks, user
+│   │   │   ├── ui/              # theme, ui, locale, bg-pattern, logo, sparkline-style
+│   │   │   ├── chat/            # chat
+│   │   │   ├── workshop/        # workshop, workshop-conversations
+│   │   │   ├── config/          # config, config-restart
+│   │   │   ├── reliability/     # reliability, credential-health, skill-stats
+│   │   │   ├── agents/          # agent-skills, agent-tools
+│   │   │   └── index.ts         # Root barrel re-exporting all subdirectories
 │   │   ├── services/            # Client-side services (gateway WS)
-│   │   ├── components/          # Svelte components
+│   │   ├── components/          # Svelte components (domain subdirectories, no root files)
+│   │   │   ├── agents/          # Agent list, detail, settings, skills, tools panels
+│   │   │   ├── sessions/        # Session cards, kanban, monitor, viewer
+│   │   │   ├── hosts/           # Host dropdown, pill, overlay
+│   │   │   ├── chat/            # Chat message and panel
+│   │   │   ├── tasks/           # Kanban column and task card
+│   │   │   ├── charts/          # Chart, sparkline, activity bars, ECharts
+│   │   │   ├── layout/          # Topbar, splitter, detail panel, particle canvas, etc.
 │   │   │   ├── config/          # Config editor components
 │   │   │   ├── decorations/     # Visual decoration components (BgPattern, ScanLine, etc.)
 │   │   │   ├── flow-editor/     # Flow editor components (canvas, sidebar, nodes, edges)
@@ -49,14 +65,14 @@ minion_hub/
 │   │   │   ├── settings/        # Settings page components
 │   │   │   ├── users/           # User management components
 │   │   │   └── workshop/        # Workshop canvas components + overlays
+│   │   ├── auth/                # Better Auth server config + client (barrel index.ts)
 │   │   ├── workshop/            # Workshop engine (PixiJS, Rapier2D, sprites, physics)
-│   │   ├── types/               # TypeScript type definitions
-│   │   ├── utils/               # Utility functions + tests
+│   │   ├── types/               # TypeScript type definitions (barrel index.ts)
+│   │   ├── utils/               # Utility functions + tests (barrel index.ts)
 │   │   ├── themes/              # Theme preset definitions
 │   │   ├── actions/             # Svelte actions (holo.ts)
 │   │   ├── paraglide/           # Generated i18n messages (compiled output)
-│   │   ├── i18n.ts              # i18n configuration
-│   │   └── auth.ts              # Better Auth client setup
+│   │   └── i18n.ts              # i18n configuration
 │   ├── server/                  # Server-only code ($server alias)
 │   │   ├── db/
 │   │   │   ├── client.ts        # Singleton Drizzle ORM client
@@ -101,9 +117,9 @@ minion_hub/
 - Key pattern: Each endpoint resolves tenant context, delegates to a service function
 
 **`src/lib/state/`:**
-- Purpose: All global reactive state as Svelte 5 `$state` rune modules
-- Contains: `.svelte.ts` files, one per state domain
-- Key files: `hosts.svelte.ts` (server list/selection), `gateway-data.svelte.ts` (live agent/session data), `chat.svelte.ts` (per-agent chat + activity sparklines), `connection.svelte.ts` (WS status), `workshop.svelte.ts` (canvas state), `config.svelte.ts` (gateway config editor state), `theme.svelte.ts` (theme preferences)
+- Purpose: All global reactive state as Svelte 5 `$state` rune modules, organized into domain subdirectories
+- Contains: 8 subdirectories (gateway, features, ui, chat, workshop, config, reliability, agents) each with `.svelte.ts` files and barrel `index.ts`
+- Key files: `features/hosts.svelte.ts` (server list/selection), `gateway/gateway-data.svelte.ts` (live agent/session data), `chat/chat.svelte.ts` (per-agent chat + activity sparklines), `gateway/connection.svelte.ts` (WS status), `workshop/workshop.svelte.ts` (canvas state), `config/config.svelte.ts` (gateway config editor state), `ui/theme.svelte.ts` (theme preferences)
 
 **`src/lib/services/`:**
 - Purpose: Client-side service layer (currently only gateway WebSocket)
@@ -111,9 +127,9 @@ minion_hub/
 - Key files: `gateway.svelte.ts` (600+ lines, WS lifecycle, frame handling, polling)
 
 **`src/lib/components/`:**
-- Purpose: All Svelte UI components, organized by feature
-- Contains: Top-level components for the main dashboard, plus subdirectories for feature areas
-- Key files: `Topbar.svelte`, `AgentSidebar.svelte`, `AgentDetail.svelte`, `DetailPanel.svelte`, `Splitter.svelte`, `SessionDropdown.svelte`
+- Purpose: All Svelte UI components, organized into domain subdirectories (no loose root files)
+- Contains: 15 subdirectories covering agents, sessions, hosts, chat, tasks, charts, layout, config, decorations, flow-editor, marketplace, reliability, settings, users, workshop
+- Key files: `layout/Topbar.svelte`, `agents/AgentSidebar.svelte`, `agents/AgentDetail.svelte`, `layout/DetailPanel.svelte`, `layout/Splitter.svelte`, `sessions/SessionDropdown.svelte`
 
 **`src/lib/workshop/`:**
 - Purpose: Imperative PixiJS + Rapier2D engine code (not Svelte components)
@@ -164,10 +180,10 @@ minion_hub/
 
 **Core Logic:**
 - `src/lib/services/gateway.svelte.ts`: WebSocket lifecycle + event dispatch
-- `src/lib/state/gateway-data.svelte.ts`: Live agent/session/presence state
-- `src/lib/state/chat.svelte.ts`: Chat messages + activity sparkline bins
-- `src/lib/state/hosts.svelte.ts`: Server list management + active host selection
-- `src/lib/state/workshop.svelte.ts`: Workshop canvas state (agents, relationships, camera)
+- `src/lib/state/gateway/gateway-data.svelte.ts`: Live agent/session/presence state
+- `src/lib/state/chat/chat.svelte.ts`: Chat messages + activity sparkline bins
+- `src/lib/state/features/hosts.svelte.ts`: Server list management + active host selection
+- `src/lib/state/workshop/workshop.svelte.ts`: Workshop canvas state (agents, relationships, camera)
 - `src/server/auth/tenant-ctx.ts`: Tenant context resolution for all API calls
 
 **Testing:**
@@ -195,7 +211,7 @@ minion_hub/
 **New Page/Route:**
 - Create directory: `src/routes/{page-name}/+page.svelte`
 - If data loading needed: add `+page.ts` or `+page.server.ts`
-- Add link in `src/lib/components/Topbar.svelte`
+- Add link in `src/lib/components/layout/Topbar.svelte`
 
 **New API Endpoint:**
 - Server-scoped (per gateway): `src/routes/api/servers/[id]/{resource}/+server.ts`
@@ -204,13 +220,14 @@ minion_hub/
 - Create matching schema: `src/server/db/schema/{resource}.ts` and add to `src/server/db/schema/index.ts`
 
 **New Svelte Component:**
-- Top-level dashboard component: `src/lib/components/{ComponentName}.svelte`
-- Feature-specific: `src/lib/components/{feature}/{ComponentName}.svelte`
+- Place in the appropriate domain subdirectory: `src/lib/components/{domain}/{ComponentName}.svelte`
+- Common domains: agents, sessions, hosts, chat, tasks, charts, layout, config, reliability, settings, workshop
 - Workshop overlay: `src/lib/components/workshop/{Name}Overlay.svelte`
 
 **New State Module:**
-- Create: `src/lib/state/{name}.svelte.ts`
+- Create in the appropriate domain subdirectory: `src/lib/state/{domain}/{name}.svelte.ts`
 - Export a `$state` object and mutation functions
+- Add to the subdirectory's `index.ts` barrel
 - Import in `gateway.svelte.ts` if the state is populated from WS events
 
 **New Server Service:**

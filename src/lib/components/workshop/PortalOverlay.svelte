@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { workshopState, autoSave } from '$lib/state/workshop.svelte';
+  import { workshopState, autoSave } from '$lib/state/workshop/workshop.svelte';
   import * as m from '$lib/paraglide/messages';
 
   let {

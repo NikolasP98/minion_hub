@@ -1,8 +1,8 @@
 <script lang="ts">
   import { Handle, Position } from '@xyflow/svelte';
   import type { NodeProps } from '@xyflow/svelte';
-  import type { AgentNodeData } from '$lib/state/flow-editor.svelte';
-  import { flowEditorState } from '$lib/state/flow-editor.svelte';
+  import type { AgentNodeData } from '$lib/state/features/flow-editor.svelte';
+  import { flowEditorState } from '$lib/state/features/flow-editor.svelte';
   import { Bot } from 'lucide-svelte';
 
   let { data, id, selected }: NodeProps & { data: AgentNodeData } = $props();

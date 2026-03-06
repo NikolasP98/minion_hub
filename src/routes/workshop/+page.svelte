@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
-  import Topbar from '$lib/components/Topbar.svelte';
+  import Topbar from '$lib/components/layout/Topbar.svelte';
   import * as m from '$lib/paraglide/messages';
   import {
     listWorkspaceSaves,
@@ -9,7 +9,7 @@
     openSave,
     deleteWorkspaceSave,
     persistActiveSaveId,
-  } from '$lib/state/workshop.svelte';
+  } from '$lib/state/workshop/workshop.svelte';
 
   type SaveMeta = {
     id: string;

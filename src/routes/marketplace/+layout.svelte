@@ -1,14 +1,14 @@
 <script lang="ts">
-    import Topbar from "$lib/components/Topbar.svelte";
+    import Topbar from "$lib/components/layout/Topbar.svelte";
     import { page } from "$app/stores";
     import {
         marketplaceState,
         loadAgents,
-    } from "$lib/state/marketplace.svelte";
+    } from "$lib/state/features/marketplace.svelte";
     import AgentCreatorWizard from "$lib/components/marketplace/AgentCreatorWizard.svelte";
     import * as m from "$lib/paraglide/messages";
     import { Store, Bot, Wrench, Plug, Puzzle, Settings, Plus } from "lucide-svelte";
-    import Splitter from "$lib/components/Splitter.svelte";
+    import Splitter from "$lib/components/layout/Splitter.svelte";
 
     import { type Snippet } from "svelte";
 

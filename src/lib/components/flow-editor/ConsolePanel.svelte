@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { flowEditorState, clearLogs } from '$lib/state/flow-editor.svelte';
+  import { flowEditorState, clearLogs } from '$lib/state/features/flow-editor.svelte';
   import { X, Trash2 } from 'lucide-svelte';
 
   let logContainer = $state<HTMLDivElement | null>(null);

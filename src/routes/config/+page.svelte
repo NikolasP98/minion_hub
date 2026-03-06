@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { conn } from '$lib/state/connection.svelte';
-  import { configState, loadConfig, isDirty, groups } from '$lib/state/config.svelte';
+  import { conn } from '$lib/state/gateway/connection.svelte';
+  import { configState, loadConfig, isDirty, groups } from '$lib/state/config/config.svelte';
   import { hasConfiguredValues, countConfiguredKeys } from '$lib/utils/config-schema';
   import ConfigSidebar from '$lib/components/config/ConfigSidebar.svelte';
-  import Splitter from '$lib/components/Splitter.svelte';
+  import Splitter from '$lib/components/layout/Splitter.svelte';
   import ConfigSection from '$lib/components/config/ConfigSection.svelte';
   import ConfigSaveBar from '$lib/components/config/ConfigSaveBar.svelte';
-  import Topbar from '$lib/components/Topbar.svelte';
+  import Topbar from '$lib/components/layout/Topbar.svelte';
   import * as m from '$lib/paraglide/messages';
 
   let contentEl = $state<HTMLElement | null>(null);

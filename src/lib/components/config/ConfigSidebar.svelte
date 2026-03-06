@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { groups, configState, dirtyPaths } from '$lib/state/config.svelte';
+  import { groups, configState, dirtyPaths } from '$lib/state/config/config.svelte';
   import { hasConfiguredValues, META_GROUPS, getMetaGroupId } from '$lib/utils/config-schema';
-  import type { CollapseLevel } from '$lib/components/Splitter.svelte';
+  import type { CollapseLevel } from '$lib/components/layout/Splitter.svelte';
   import {
     SlidersHorizontal,
     Brain,
