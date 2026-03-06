@@ -13,7 +13,7 @@ vi.mock('$server/db/utils', () => ({
 }));
 
 const mockSignUpEmail = vi.fn().mockResolvedValue({ user: { id: 'auth-user-id-001' } });
-vi.mock('$lib/auth', () => ({
+vi.mock('$lib/auth/auth', () => ({
   getAuth: () => ({
     api: {
       signUpEmail: mockSignUpEmail,

@@ -50,15 +50,20 @@ In production: set `TURSO_DB_URL` (libsql://…) and `TURSO_DB_AUTH_TOKEN` for T
 
 ### Frontend state (`src/lib/state/`)
 
-All global state is Svelte 5 `$state` runes in `.svelte.ts` modules. Key ones:
+All global state is Svelte 5 `$state` runes in `.svelte.ts` modules, organized into domain subdirectories:
 
-| File | Purpose |
-|---|---|
-| `hosts.svelte.ts` | List of gateway hosts; active host ID (persisted in SQLite via `/api/servers`; last-active ID in localStorage) |
-| `connection.svelte.ts` | WebSocket connection status (`connected`, `connecting`, `particleHue`, etc.) |
-| `gateway-data.svelte.ts` | Data received from the active gateway: agents, sessions, presence, config |
-| `chat.svelte.ts` | Per-agent chat messages and activity spark-bins |
-| `workshop.svelte.ts` | Workshop canvas state (agents on canvas, relationships, camera; auto-saved to localStorage) |
+| Directory | Modules | Purpose |
+|---|---|---|
+| `gateway/` | `connection`, `gateway-data` | WebSocket status, live agent/session/presence data |
+| `features/` | `hosts`, `flow-editor`, `marketplace`, `missions`, `session-tasks`, `user` | Feature-specific state |
+| `ui/` | `theme`, `ui`, `locale`, `bg-pattern`, `logo`, `sparkline-style` | UI preferences and appearance |
+| `chat/` | `chat` | Per-agent chat messages and activity spark-bins |
+| `workshop/` | `workshop`, `workshop-conversations` | Canvas state and conversation threads |
+| `config/` | `config`, `config-restart` | Gateway config editor state |
+| `reliability/` | `reliability`, `credential-health`, `skill-stats` | Health monitoring data |
+| `agents/` | `agent-skills`, `agent-tools` | Agent capability state |
+
+Each subdirectory has an `index.ts` barrel for clean imports (e.g., `import { conn } from '$lib/state/gateway'`).
 
 ### Gateway connection (`src/lib/services/gateway.svelte.ts`)
 
@@ -102,4 +107,30 @@ PixiJS 8 + Rapier2D physics. Agents are rendered as sprites and can be connected
 
 ### Theming
 
-CSS variables for the full colour palette. Theme presets in `src/lib/themes/presets.ts`, applied via `applyTheme()` in `src/lib/state/theme.svelte.ts`.
+CSS variables for the full colour palette. Theme presets in `src/lib/themes/presets.ts`, applied via `applyTheme()` in `src/lib/state/ui/theme.svelte.ts`.
+
+### Components (`src/lib/components/`)
+
+All components are organized into domain subdirectories — no loose `.svelte` files at root:
+
+| Directory | Purpose |
+|---|---|
+| `agents/` | Agent list, detail, settings, skills, tools panels |
+| `sessions/` | Session cards, kanban, monitor, viewer |
+| `hosts/` | Host dropdown, pill, overlay |
+| `chat/` | Chat message and panel |
+| `tasks/` | Kanban column and task card |
+| `charts/` | Chart, sparkline, activity bars |
+| `layout/` | Topbar, splitter, detail panel, particle canvas, etc. |
+| `config/` | Config editor components |
+| `decorations/` | Visual effects (BgPattern, ScanLine, etc.) |
+| `flow-editor/` | Flow editor canvas, sidebar, nodes |
+| `marketplace/` | Marketplace browsing components |
+| `reliability/` | Reliability dashboard panels |
+| `settings/` | Settings page components |
+| `users/` | User management components |
+| `workshop/` | Workshop canvas overlays |
+
+### Auth (`src/lib/auth/`)
+
+Better Auth configuration (`auth.ts`) and client (`auth-client.ts`) with barrel `index.ts`.

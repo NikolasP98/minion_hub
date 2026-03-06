@@ -62,10 +62,10 @@
 **Svelte Component Imports:**
 ```svelte
 <script lang="ts">
-  import EChartsSparkline from "./EChartsSparkline.svelte";
+  import EChartsSparkline from "$lib/components/charts/EChartsSparkline.svelte";
   import StatusDot from "$lib/components/decorations/StatusDot.svelte";
-  import { agentActivity, agentChat } from "$lib/state/chat.svelte";
-  import { ui } from "$lib/state/ui.svelte";
+  import { agentActivity, agentChat } from "$lib/state/chat/chat.svelte";
+  import { ui } from "$lib/state/ui/ui.svelte";
   import type { Agent } from "$lib/types/gateway";
   import * as m from "$lib/paraglide/messages";
   import * as tooltip from "@zag-js/tooltip";
@@ -155,7 +155,11 @@ export const handleError: HandleServerError = ({ error, event }) => {
 
 **Barrel Files:**
 - `src/server/db/schema/index.ts` re-exports all table definitions from individual schema files
-- No other barrel files detected -- import directly from specific modules
+- `src/lib/state/index.ts` re-exports all state domain subdirectory barrels
+- `src/lib/state/{domain}/index.ts` re-exports all modules in each state domain
+- `src/lib/types/index.ts` re-exports all type definition files
+- `src/lib/utils/index.ts` re-exports all utility modules (excluding test files)
+- `src/lib/auth/index.ts` re-exports auth server config and client
 
 ## Svelte 5 Patterns
 
@@ -177,7 +181,7 @@ let {
 } = $props();
 ```
 
-**State module pattern (`src/lib/state/*.svelte.ts`):**
+**State module pattern (`src/lib/state/{domain}/*.svelte.ts`):**
 ```typescript
 export const conn = $state({
   connected: false,
