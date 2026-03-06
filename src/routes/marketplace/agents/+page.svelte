@@ -5,11 +5,11 @@
         marketplaceState,
         loadAgents,
         type MarketplaceAgent,
-    } from "$lib/state/marketplace.svelte";
+    } from "$lib/state/features/marketplace.svelte";
     import * as m from "$lib/paraglide/messages";
     import { Search, Grid3X3, List, X, Bot, Star } from "lucide-svelte";
     import { diceBearAvatarUrl } from "$lib/utils/avatar";
-    import { parseTags } from "$lib/state/marketplace.svelte";
+    import { parseTags } from "$lib/state/features/marketplace.svelte";
     import { holo } from '$lib/actions/holo';
 
     // Search and filters

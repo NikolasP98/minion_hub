@@ -13,7 +13,7 @@ import {
   applyReset,
   RESTART_TIMEOUT_MS,
   RECONNECTED_DISMISS_MS,
-} from '$lib/state/config-restart';
+} from './config-restart';
 import type {
   ConfigFileSnapshot,
   ConfigSchemaResponse,

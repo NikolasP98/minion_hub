@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { FlowNode, AgentNodeData } from '$lib/state/flow-editor.svelte';
-  import { flowEditorState, setNodes } from '$lib/state/flow-editor.svelte';
+  import type { FlowNode, AgentNodeData } from '$lib/state/features/flow-editor.svelte';
+  import { flowEditorState, setNodes } from '$lib/state/features/flow-editor.svelte';
   import { X, Plus, Trash2 } from 'lucide-svelte';
 
   let { nodeId, onclose }: { nodeId: string; onclose: () => void } = $props();

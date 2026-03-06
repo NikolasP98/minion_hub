@@ -8,7 +8,7 @@
 	import {
 		createCredentialHealthState,
 		type CredentialProfile
-	} from '$lib/state/credential-health.svelte';
+	} from '$lib/state/reliability/credential-health.svelte';
 
 	interface Props {
 		serverId: string;

@@ -1,7 +1,7 @@
 <script lang="ts">
     import { goto } from "$app/navigation";
-    import type { MarketplaceAgent } from "$lib/state/marketplace.svelte";
-    import { parseTags, installAgent } from "$lib/state/marketplace.svelte";
+    import type { MarketplaceAgent } from "$lib/state/features/marketplace.svelte";
+    import { parseTags, installAgent } from "$lib/state/features/marketplace.svelte";
     import { diceBearAvatarUrl } from "$lib/utils/avatar";
     import * as m from '$lib/paraglide/messages';
     import { Download, RefreshCw } from "lucide-svelte";

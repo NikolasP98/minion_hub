@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { conn } from '$lib/state/connection.svelte';
-  import { configState, loadConfig, isDirty, groups } from '$lib/state/config.svelte';
+  import { conn } from '$lib/state/gateway/connection.svelte';
+  import { configState, loadConfig, isDirty, groups } from '$lib/state/config/config.svelte';
   import { hasConfiguredValues, countConfiguredKeys } from '$lib/utils/config-schema';
   import ConfigSidebar from '$lib/components/config/ConfigSidebar.svelte';
   import Splitter from '$lib/components/Splitter.svelte';

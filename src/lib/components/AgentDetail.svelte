@@ -11,8 +11,8 @@
   import AgentPromptSimulator from './AgentPromptSimulator.svelte';
   import AgentToolsPanel from './AgentToolsPanel.svelte';
   import AgentSkillsPanel from './AgentSkillsPanel.svelte';
-  import { ui } from '$lib/state/ui.svelte';
-  import { gw } from '$lib/state/gateway-data.svelte';
+  import { ui } from '$lib/state/ui/ui.svelte';
+  import { gw } from '$lib/state/gateway/gateway-data.svelte';
   import type { Agent } from '$lib/types/gateway';
   import type { SessionRow } from './SessionsList.svelte';
 

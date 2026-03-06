@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { agentSkillsState, loadAgentSkills, setAgentSkills } from '$lib/state/agent-skills.svelte';
+  import { agentSkillsState, loadAgentSkills, setAgentSkills } from '$lib/state/agents/agent-skills.svelte';
   import type { SkillStatusEntry } from '$lib/types/skills';
   import * as m from '$lib/paraglide/messages';
 

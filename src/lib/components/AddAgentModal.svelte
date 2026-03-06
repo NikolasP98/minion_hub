@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    import { ui } from "$lib/state/ui.svelte";
-    import { gw } from "$lib/state/gateway-data.svelte";
+    import { ui } from "$lib/state/ui/ui.svelte";
+    import { gw } from "$lib/state/gateway/gateway-data.svelte";
     import { sendRequest } from "$lib/services/gateway.svelte";
     import type { Agent } from "$lib/types/gateway";
     import * as m from "$lib/paraglide/messages";

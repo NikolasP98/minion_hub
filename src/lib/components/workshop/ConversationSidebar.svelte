@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { workshopState } from '$lib/state/workshop.svelte';
-  import { gw } from '$lib/state/gateway-data.svelte';
-  import { conversationMessages, conversationLoading } from '$lib/state/workshop-conversations.svelte';
+  import { workshopState } from '$lib/state/workshop/workshop.svelte';
+  import { gw } from '$lib/state/gateway/gateway-data.svelte';
+  import { conversationMessages, conversationLoading } from '$lib/state/workshop/workshop-conversations.svelte';
   import { loadConversationHistory } from '$lib/workshop/gateway-bridge';
   import { slide } from 'svelte/transition';
-  import { conn } from '$lib/state/connection.svelte';
+  import { conn } from '$lib/state/gateway/connection.svelte';
   import { Carta, Markdown } from 'carta-md';
   import 'carta-md/default.css';
   import DOMPurify from 'dompurify';

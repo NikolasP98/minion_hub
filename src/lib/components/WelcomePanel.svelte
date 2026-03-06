@@ -1,8 +1,8 @@
 <script lang="ts">
-    import { conn } from "$lib/state/connection.svelte";
-    import { gw } from "$lib/state/gateway-data.svelte";
-    import { ui } from "$lib/state/ui.svelte";
-    import { hostsState } from "$lib/state/hosts.svelte";
+    import { conn } from "$lib/state/gateway/connection.svelte";
+    import { gw } from "$lib/state/gateway/gateway-data.svelte";
+    import { ui } from "$lib/state/ui/ui.svelte";
+    import { hostsState } from "$lib/state/features/hosts.svelte";
     import MinionLogo from "./MinionLogo.svelte";
     import {
         Plus,

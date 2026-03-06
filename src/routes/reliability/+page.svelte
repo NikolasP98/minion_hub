@@ -12,8 +12,8 @@
 		reliability,
 		loadReliabilitySummary,
 		loadReliabilityEvents
-	} from '$lib/state/reliability.svelte';
-	import { hostsState } from '$lib/state/hosts.svelte';
+	} from '$lib/state/reliability/reliability.svelte';
+	import { hostsState } from '$lib/state/features/hosts.svelte';
 	import { onMount, untrack } from 'svelte';
 	import type { EChartsOption } from 'echarts';
 	import * as m from '$lib/paraglide/messages';

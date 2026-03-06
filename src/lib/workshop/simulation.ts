@@ -3,9 +3,9 @@
 import * as physics from './physics';
 import * as sprites from './renderer-adapter';
 import * as ropeRenderer from './renderer-adapter';
-import { workshopState, updateAgentPosition, markAllInboxItemsRead } from '$lib/state/workshop.svelte';
-import { agentMemory } from '$lib/state/workshop.svelte';
-import type { AgentInstance } from '$lib/state/workshop.svelte';
+import { workshopState, updateAgentPosition, markAllInboxItemsRead } from '$lib/state/workshop/workshop.svelte';
+import { agentMemory } from '$lib/state/workshop/workshop.svelte';
+import type { AgentInstance } from '$lib/state/workshop/workshop.svelte';
 import {
 	getAgentFsm,
 	getAgentState,
@@ -23,7 +23,7 @@ import {
 	readElementForAgent,
 	buildWorkshopSessionKey_public,
 } from './gateway-bridge';
-import { thinkingAgents } from '$lib/state/workshop-conversations.svelte';
+import { thinkingAgents } from '$lib/state/workshop/workshop-conversations.svelte';
 import type { Container } from 'pixi.js';
 
 // ---------------------------------------------------------------------------

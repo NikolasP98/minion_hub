@@ -1,4 +1,4 @@
-import { hostsState } from "$lib/state/hosts.svelte";
+import { hostsState } from "$lib/state/features/hosts.svelte";
 
 export interface AgentInstance {
   instanceId: string;

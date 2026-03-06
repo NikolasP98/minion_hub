@@ -9,7 +9,7 @@
     openSave,
     deleteWorkspaceSave,
     persistActiveSaveId,
-  } from '$lib/state/workshop.svelte';
+  } from '$lib/state/workshop/workshop.svelte';
 
   type SaveMeta = {
     id: string;

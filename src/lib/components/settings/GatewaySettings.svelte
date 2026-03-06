@@ -4,9 +4,9 @@
         addHost,
         updateHost,
         removeHost,
-    } from "$lib/state/hosts.svelte";
+    } from "$lib/state/features/hosts.svelte";
     import { wsConnect, wsDisconnect } from "$lib/services/gateway.svelte";
-    import { conn } from "$lib/state/connection.svelte";
+    import { conn } from "$lib/state/gateway/connection.svelte";
     import { fmtTimeAgo } from "$lib/utils/format";
     import type { Host } from "$lib/types/host";
     import * as m from "$lib/paraglide/messages";

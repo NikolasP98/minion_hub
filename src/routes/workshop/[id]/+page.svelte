@@ -10,7 +10,7 @@
     openSave,
     cancelDbSave,
     persistActiveSaveId,
-  } from '$lib/state/workshop.svelte';
+  } from '$lib/state/workshop/workshop.svelte';
 
   const saveId = $derived(page.params.id);
 

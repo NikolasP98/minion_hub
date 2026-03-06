@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import * as m from '$lib/paraglide/messages';
-	import { createSkillStatsState, type SkillStatus } from '$lib/state/skill-stats.svelte';
+	import { createSkillStatsState, type SkillStatus } from '$lib/state/reliability/skill-stats.svelte';
 	import { Zap } from 'lucide-svelte';
 	import Chart from '$lib/components/Chart.svelte';
 	import type { EChartsOption } from 'echarts';

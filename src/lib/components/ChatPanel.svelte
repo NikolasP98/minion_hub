@@ -1,8 +1,8 @@
 <script lang="ts">
     import ChatMessage from "./ChatMessage.svelte";
-    import { agentChat } from "$lib/state/chat.svelte";
+    import { agentChat } from "$lib/state/chat/chat.svelte";
     import { sendChatMsg } from "$lib/services/gateway.svelte";
-    import { conn } from "$lib/state/connection.svelte";
+    import { conn } from "$lib/state/gateway/connection.svelte";
     import { tick } from "svelte";
     import * as m from "$lib/paraglide/messages";
 

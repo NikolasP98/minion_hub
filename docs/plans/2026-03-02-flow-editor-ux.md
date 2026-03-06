@@ -135,7 +135,7 @@ git commit -m "feat(flow-editor): add log entry state and helpers for console pa
 **Step 1: Create the component**
 ```svelte
 <script lang="ts">
-  import { flowEditorState, clearLogs } from '$lib/state/flow-editor.svelte';
+  import { flowEditorState, clearLogs } from '$lib/state/features/flow-editor.svelte';
   import { X, Trash2 } from 'lucide-svelte';
 
   let logContainer = $state<HTMLDivElement | null>(null);
@@ -235,7 +235,7 @@ git commit -m "feat(flow-editor): add ConsolePanel component with structured log
 **Step 1: Add imports at the top of the `<script>` block**
 ```ts
 import ConsolePanel from '$lib/components/flow-editor/ConsolePanel.svelte';
-import { appendLog, clearLogs } from '$lib/state/flow-editor.svelte';
+import { appendLog, clearLogs } from '$lib/state/features/flow-editor.svelte';
 ```
 
 **Step 2: Replace `handleTestRun` with a version that populates the console**
@@ -504,7 +504,7 @@ function handleDrop(e: DragEvent) {
 
 Add the following imports in the script:
 ```ts
-import type { AgentNodeData, PromptBoxData } from '$lib/state/flow-editor.svelte';
+import type { AgentNodeData, PromptBoxData } from '$lib/state/features/flow-editor.svelte';
 ```
 
 Add a `makeId` helper:

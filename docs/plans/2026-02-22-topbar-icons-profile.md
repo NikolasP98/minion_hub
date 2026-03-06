@@ -134,7 +134,7 @@ The layout already has an `onMount`. Import `loadUser` and call it alongside `lo
 ```svelte
 <script lang="ts">
   // ... existing imports ...
-  import { loadUser } from '$lib/state/user.svelte';
+  import { loadUser } from '$lib/state/features/user.svelte';
 
   // ...
 
@@ -170,7 +170,7 @@ git commit -m "feat: load current user on app mount"
 
 ```svelte
 <script lang="ts">
-  import { userState, logout, getUserInitials } from '$lib/state/user.svelte';
+  import { userState, logout, getUserInitials } from '$lib/state/features/user.svelte';
   import { LogOut, Settings, User } from 'lucide-svelte';
 
   let open = $state(false);

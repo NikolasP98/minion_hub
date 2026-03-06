@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { conn } from '$lib/state/connection.svelte';
+  import { conn } from '$lib/state/gateway/connection.svelte';
 
   let canvas = $state<HTMLCanvasElement | null>(null);
   let raf: number;

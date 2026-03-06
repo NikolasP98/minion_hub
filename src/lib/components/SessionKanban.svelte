@@ -1,7 +1,7 @@
 <script lang="ts">
   import KanbanCol from './KanbanCol.svelte';
   import type { KanbanTask } from './TaskCard.svelte';
-  import { sessionTasksState, loadSessionTasks } from '$lib/state/session-tasks.svelte';
+  import { sessionTasksState, loadSessionTasks } from '$lib/state/features/session-tasks.svelte';
 
   let { sessionKey, serverId }: { sessionKey: string | null; serverId: string | null } = $props();
 

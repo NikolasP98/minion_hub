@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { logoState } from "$lib/state/logo.svelte";
+    import { logoState } from "$lib/state/ui/logo.svelte";
 
     interface Props {
         /** Show text next to the mark */

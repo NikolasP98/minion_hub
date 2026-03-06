@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { sparklineStyle, SPARKLINE_STYLE_OPTIONS } from '$lib/state/sparkline-style.svelte';
-  import { theme } from '$lib/state/theme.svelte';
+  import { sparklineStyle, SPARKLINE_STYLE_OPTIONS } from '$lib/state/ui/sparkline-style.svelte';
+  import { theme } from '$lib/state/ui/theme.svelte';
   import EChartsSparkline from '$lib/components/EChartsSparkline.svelte';
 
   // Synthetic 24h demo data

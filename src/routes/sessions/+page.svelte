@@ -3,8 +3,8 @@
   import Topbar from '$lib/components/Topbar.svelte';
   import SessionsList from '$lib/components/SessionsList.svelte';
   import SessionViewer from '$lib/components/SessionViewer.svelte';
-  import { hostsState } from '$lib/state/hosts.svelte';
-  import { gw } from '$lib/state/gateway-data.svelte';
+  import { hostsState } from '$lib/state/features/hosts.svelte';
+  import { gw } from '$lib/state/gateway/gateway-data.svelte';
   import type { SessionRow } from '$lib/components/SessionsList.svelte';
 
   let hubSessions = $state<SessionRow[]>([]);

@@ -3,9 +3,9 @@
     import GatewayInfo from "./GatewayInfo.svelte";
     import HudBorder from "$lib/components/decorations/HudBorder.svelte";
     import DotMatrix from "$lib/components/decorations/DotMatrix.svelte";
-    import { gw } from "$lib/state/gateway-data.svelte";
-    import { conn } from "$lib/state/connection.svelte";
-    import { ui } from "$lib/state/ui.svelte";
+    import { gw } from "$lib/state/gateway/gateway-data.svelte";
+    import { conn } from "$lib/state/gateway/connection.svelte";
+    import { ui } from "$lib/state/ui/ui.svelte";
     import AddAgentModal from "./AddAgentModal.svelte";
     import { Plus, ChevronLeft, ChevronRight, Bot, Radio } from "lucide-svelte";
     import * as m from "$lib/paraglide/messages";

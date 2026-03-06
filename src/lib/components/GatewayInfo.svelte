@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { gw } from '$lib/state/gateway-data.svelte';
-  import { conn } from '$lib/state/connection.svelte';
+  import { gw } from '$lib/state/gateway/gateway-data.svelte';
+  import { conn } from '$lib/state/gateway/connection.svelte';
   import { fmtUptime } from '$lib/utils/format';
   import { onMount } from 'svelte';
 

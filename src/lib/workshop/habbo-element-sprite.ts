@@ -10,7 +10,7 @@
  */
 
 import * as PIXI from 'pixi.js';
-import type { ElementType } from '$lib/state/workshop.svelte';
+import type { ElementType } from '$lib/state/workshop/workshop.svelte';
 import { TEXT_RESOLUTION } from './texture-cache';
 
 // ---------------------------------------------------------------------------

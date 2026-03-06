@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { SparklineStyle } from '$lib/state/sparkline-style.svelte';
+  import type { SparklineStyle } from '$lib/state/ui/sparkline-style.svelte';
 
   let {
     bins,

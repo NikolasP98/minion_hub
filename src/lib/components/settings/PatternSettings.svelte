@@ -2,7 +2,7 @@
   import * as slider from '@zag-js/slider';
   import * as m from '$lib/paraglide/messages';
   import { normalizeProps, useMachine } from '@zag-js/svelte';
-  import { bgPattern, PATTERN_OPTIONS } from '$lib/state/bg-pattern.svelte';
+  import { bgPattern, PATTERN_OPTIONS } from '$lib/state/ui/bg-pattern.svelte';
 
   // ─── Opacity slider (0–40) ───
   const opService = useMachine(slider.machine, () => ({

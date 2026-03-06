@@ -1,7 +1,7 @@
 <script lang="ts">
     import HostDropdown from "./HostDropdown.svelte";
-    import { getActiveHost } from "$lib/state/hosts.svelte";
-    import { ui } from "$lib/state/ui.svelte";
+    import { getActiveHost } from "$lib/state/features/hosts.svelte";
+    import { ui } from "$lib/state/ui/ui.svelte";
     import * as m from "$lib/paraglide/messages";
 
     const activeHost = $derived(getActiveHost());

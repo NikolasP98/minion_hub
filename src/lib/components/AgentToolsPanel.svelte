@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { agentToolsState, loadAgentTools, toggleTool } from '$lib/state/agent-tools.svelte';
+  import { agentToolsState, loadAgentTools, toggleTool } from '$lib/state/agents/agent-tools.svelte';
   import type { ToolStatusEntry } from '$lib/types/tools';
   import * as m from '$lib/paraglide/messages';
 

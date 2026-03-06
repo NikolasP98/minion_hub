@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { configState, isDirty, dirtyPaths, save, discard, restartState, resetRestartState } from '$lib/state/config.svelte';
+  import { configState, isDirty, dirtyPaths, save, discard, restartState, resetRestartState } from '$lib/state/config/config.svelte';
   import { wsConnect } from '$lib/services/gateway.svelte';
   import * as m from '$lib/paraglide/messages';
 </script>

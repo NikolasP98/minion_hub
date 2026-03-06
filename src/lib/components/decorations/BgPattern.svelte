@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { bgPattern } from '$lib/state/bg-pattern.svelte';
+  import { bgPattern } from '$lib/state/ui/bg-pattern.svelte';
 
   // canvas mode: absolute inset-0 -z-10 (use inside a relative z-0 container)
   // fixed mode (default): fixed inset-0 z-0 (global overlay)

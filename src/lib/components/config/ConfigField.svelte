@@ -7,7 +7,7 @@
         setField,
         getOriginalField,
         configState,
-    } from "$lib/state/config.svelte";
+    } from "$lib/state/config/config.svelte";
     import ConfigJsonEditor from "./ConfigJsonEditor.svelte";
     import ConfigField from "./ConfigField.svelte";
     import ConfigTooltip from "./ConfigTooltip.svelte";

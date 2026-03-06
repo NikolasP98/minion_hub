@@ -15,7 +15,7 @@
         X,
         GitBranch,
     } from "lucide-svelte";
-    import { ui } from "$lib/state/ui.svelte";
+    import { ui } from "$lib/state/ui/ui.svelte";
 
     const isHome = $derived(page.url.pathname === "/");
     const isMarketplace = $derived(

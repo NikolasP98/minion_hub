@@ -26,8 +26,8 @@
     type FlowEdge,
     type AgentNodeData,
     type PromptBoxData,
-  } from '$lib/state/flow-editor.svelte';
-  import { theme } from '$lib/state/theme.svelte';
+  } from '$lib/state/features/flow-editor.svelte';
+  import { theme } from '$lib/state/ui/theme.svelte';
 
   const nodeTypes: NodeTypes = {
     agent: AgentNode,

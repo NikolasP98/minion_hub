@@ -14,7 +14,7 @@ import {
   applyReset,
   RESTART_TIMEOUT_MS,
   RECONNECTED_DISMISS_MS,
-} from '$lib/state/config-restart';
+} from './config-restart';
 
 describe('Restart state machine', () => {
   beforeEach(() => {

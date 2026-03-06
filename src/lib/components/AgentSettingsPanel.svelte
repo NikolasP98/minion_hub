@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { ui } from "$lib/state/ui.svelte";
+    import { ui } from "$lib/state/ui/ui.svelte";
     import {
         configState,
         loadConfig,
@@ -7,7 +7,7 @@
         save,
         discard,
         setField,
-    } from "$lib/state/config.svelte";
+    } from "$lib/state/config/config.svelte";
     import { deepGet } from "$lib/utils/config-schema";
     import {
         buildGroupedFields,

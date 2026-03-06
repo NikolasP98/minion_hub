@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { conn } from "$lib/state/connection.svelte";
+    import { conn } from "$lib/state/gateway/connection.svelte";
     import { META_GROUPS, getMetaGroupId } from "$lib/utils/config-schema";
     import {
         Palette,

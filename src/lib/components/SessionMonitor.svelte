@@ -1,6 +1,6 @@
 <!-- src/lib/components/SessionMonitor.svelte -->
 <script lang="ts">
-  import { agentChat } from '$lib/state/chat.svelte';
+  import { agentChat } from '$lib/state/chat/chat.svelte';
   import { sendRequest } from '$lib/services/gateway.svelte';
   import { parseToolCallRuns, type Run, type ToolCall } from '$lib/utils/tool-calls';
   import type { ChatMessage } from '$lib/types/chat';

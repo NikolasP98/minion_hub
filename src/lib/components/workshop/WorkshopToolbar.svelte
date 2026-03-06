@@ -1,15 +1,15 @@
 <script lang="ts">
-    import { gw } from "$lib/state/gateway-data.svelte";
-    import { workshopState } from "$lib/state/workshop.svelte";
+    import { gw } from "$lib/state/gateway/gateway-data.svelte";
+    import { workshopState } from "$lib/state/workshop/workshop.svelte";
     import WorkshopAgentPill from "./WorkshopAgentPill.svelte";
     import * as m from "$lib/paraglide/messages";
     import {
         saveSync,
-    } from "$lib/state/workshop.svelte";
+    } from "$lib/state/workshop/workshop.svelte";
     import ChevronLeft from "lucide-svelte/icons/chevron-left";
     import ChevronRight from "lucide-svelte/icons/chevron-right";
 
-    import type { ElementType } from "$lib/state/workshop.svelte";
+    import type { ElementType } from "$lib/state/workshop/workshop.svelte";
 
     const elementTypes = $derived([
         { type: "pinboard" as ElementType, icon: "\u{1F4CC}", label: m.workshop_pinboard() },

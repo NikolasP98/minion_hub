@@ -1,11 +1,11 @@
 <script lang="ts">
     import { Spring, spring } from "svelte/motion";
     import EChartsSparkline from "./EChartsSparkline.svelte";
-    import { sparklineStyle } from "$lib/state/sparkline-style.svelte";
+    import { sparklineStyle } from "$lib/state/ui/sparkline-style.svelte";
     import StatusDot from "$lib/components/decorations/StatusDot.svelte";
-    import { agentActivity, agentChat, SPARK_BIN_COUNT, SPARK_BIN_MS } from "$lib/state/chat.svelte";
-    import { ui } from "$lib/state/ui.svelte";
-    import { gw } from "$lib/state/gateway-data.svelte";
+    import { agentActivity, agentChat, SPARK_BIN_COUNT, SPARK_BIN_MS } from "$lib/state/chat/chat.svelte";
+    import { ui } from "$lib/state/ui/ui.svelte";
+    import { gw } from "$lib/state/gateway/gateway-data.svelte";
     import type { Agent } from "$lib/types/gateway";
     import { diceBearAvatarUrl } from "$lib/utils/avatar";
     import * as m from "$lib/paraglide/messages";

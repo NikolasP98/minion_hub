@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ui } from '$lib/state/ui.svelte';
+  import { ui } from '$lib/state/ui/ui.svelte';
   import * as m from '$lib/paraglide/messages';
 </script>
 

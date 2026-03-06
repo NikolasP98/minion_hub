@@ -1,4 +1,4 @@
-import { workshopState } from '$lib/state/workshop.svelte';
+import { workshopState } from '$lib/state/workshop/workshop.svelte';
 import { findNearbyAgents } from './proximity';
 import { sendFsmEvent } from './agent-fsm';
 

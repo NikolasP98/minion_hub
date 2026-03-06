@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { gw } from '$lib/state/gateway-data.svelte';
-  import { ui } from '$lib/state/ui.svelte';
+  import { gw } from '$lib/state/gateway/gateway-data.svelte';
+  import { ui } from '$lib/state/ui/ui.svelte';
   import HudBorder from '$lib/components/decorations/HudBorder.svelte';
   import { diceBearAvatarUrl } from '$lib/utils/avatar';
   import type { Agent } from '$lib/types/gateway';

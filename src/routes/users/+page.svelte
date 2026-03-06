@@ -2,8 +2,8 @@
   import Topbar from '$lib/components/Topbar.svelte';
   import TeamTab from '$lib/components/users/TeamTab.svelte';
   import BindingsTab from '$lib/components/users/BindingsTab.svelte';
-  import { conn } from '$lib/state/connection.svelte';
-  import { configState, loadConfig } from '$lib/state/config.svelte';
+  import { conn } from '$lib/state/gateway/connection.svelte';
+  import { configState, loadConfig } from '$lib/state/config/config.svelte';
   import * as m from '$lib/paraglide/messages';
 
   type Tab = 'team' | 'bindings';

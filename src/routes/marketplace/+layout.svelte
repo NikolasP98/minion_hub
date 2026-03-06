@@ -4,7 +4,7 @@
     import {
         marketplaceState,
         loadAgents,
-    } from "$lib/state/marketplace.svelte";
+    } from "$lib/state/features/marketplace.svelte";
     import AgentCreatorWizard from "$lib/components/marketplace/AgentCreatorWizard.svelte";
     import * as m from "$lib/paraglide/messages";
     import { Store, Bot, Wrench, Plug, Puzzle, Settings, Plus } from "lucide-svelte";

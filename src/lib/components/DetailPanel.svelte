@@ -2,10 +2,10 @@
     import AgentDetail from "./AgentDetail.svelte";
     import WelcomePanel from "./WelcomePanel.svelte";
     import DotGrid from "$lib/components/decorations/DotGrid.svelte";
-    import { ui } from "$lib/state/ui.svelte";
-    import { gw } from "$lib/state/gateway-data.svelte";
-    import { conn } from "$lib/state/connection.svelte";
-    import { bgPattern } from "$lib/state/bg-pattern.svelte";
+    import { ui } from "$lib/state/ui/ui.svelte";
+    import { gw } from "$lib/state/gateway/gateway-data.svelte";
+    import { conn } from "$lib/state/gateway/connection.svelte";
+    import { bgPattern } from "$lib/state/ui/bg-pattern.svelte";
 
     const agent = $derived(
         gw.agents.find(

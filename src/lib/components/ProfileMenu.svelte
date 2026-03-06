@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { userState, logout, getUserInitials } from '$lib/state/user.svelte';
-  import { locale } from '$lib/state/locale.svelte';
+  import { userState, logout, getUserInitials } from '$lib/state/features/user.svelte';
+  import { locale } from '$lib/state/ui/locale.svelte';
   import * as m from '$lib/paraglide/messages';
   import { LogOut, Globe } from 'lucide-svelte';
 

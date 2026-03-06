@@ -456,7 +456,7 @@ Replace with:
   import Topbar from '$lib/components/Topbar.svelte';
   import AgentSidebar from '$lib/components/AgentSidebar.svelte';
   import DetailPanel from '$lib/components/DetailPanel.svelte';
-  import { loadHosts, hostsState } from '$lib/state/hosts.svelte';
+  import { loadHosts, hostsState } from '$lib/state/features/hosts.svelte';
   import { wsConnect } from '$lib/services/gateway.svelte';
 
   onMount(() => {
