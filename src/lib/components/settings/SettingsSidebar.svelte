@@ -15,7 +15,7 @@
         Server,
         Lock,
     } from "lucide-svelte";
-    import type { CollapseLevel } from '$lib/components/Splitter.svelte';
+    import type { CollapseLevel } from '$lib/components/layout/Splitter.svelte';
 
     type Section =
         | "appearance"

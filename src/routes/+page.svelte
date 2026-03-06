@@ -1,9 +1,9 @@
 <script lang="ts">
-    import Topbar from '$lib/components/Topbar.svelte';
-    import AgentSidebar from '$lib/components/AgentSidebar.svelte';
-    import DetailPanel from '$lib/components/DetailPanel.svelte';
-    import Splitter from '$lib/components/Splitter.svelte';
-    import type { CollapseLevel } from '$lib/components/Splitter.svelte';
+    import Topbar from '$lib/components/layout/Topbar.svelte';
+    import AgentSidebar from '$lib/components/agents/AgentSidebar.svelte';
+    import DetailPanel from '$lib/components/layout/DetailPanel.svelte';
+    import Splitter from '$lib/components/layout/Splitter.svelte';
+    import type { CollapseLevel } from '$lib/components/layout/Splitter.svelte';
 
     interface SplitterApiHandle {
         toggleMini: () => void;

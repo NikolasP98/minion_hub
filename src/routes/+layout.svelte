@@ -5,10 +5,10 @@
   import { page } from '$app/state';
   import { ParaglideJS } from '@inlang/paraglide-sveltekit';
   import { i18n } from '$lib/i18n';
-  import ParticleCanvas from '$lib/components/ParticleCanvas.svelte';
+  import ParticleCanvas from '$lib/components/layout/ParticleCanvas.svelte';
   import BgPattern from '$lib/components/decorations/BgPattern.svelte';
-  import ShutdownBanner from '$lib/components/ShutdownBanner.svelte';
-  import HostsOverlay from '$lib/components/HostsOverlay.svelte';
+  import ShutdownBanner from '$lib/components/layout/ShutdownBanner.svelte';
+  import HostsOverlay from '$lib/components/hosts/HostsOverlay.svelte';
   import { theme, applyTheme } from '$lib/state/ui/theme.svelte';
   import { ui } from '$lib/state/ui/ui.svelte';
   import { loadHosts, hostsState } from '$lib/state/features/hosts.svelte';

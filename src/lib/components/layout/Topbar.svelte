@@ -1,5 +1,5 @@
 <script lang="ts">
-    import HostPill from "./HostPill.svelte";
+    import HostPill from "../hosts/HostPill.svelte";
     import ProfileMenu from "./ProfileMenu.svelte";
     import MinionLogo from "./MinionLogo.svelte";
     import Tooltip from "./Tooltip.svelte";

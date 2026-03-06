@@ -1,11 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import Topbar from '$lib/components/Topbar.svelte';
-  import SessionsList from '$lib/components/SessionsList.svelte';
-  import SessionViewer from '$lib/components/SessionViewer.svelte';
+  import Topbar from '$lib/components/layout/Topbar.svelte';
+  import SessionsList from '$lib/components/sessions/SessionsList.svelte';
+  import SessionViewer from '$lib/components/sessions/SessionViewer.svelte';
   import { hostsState } from '$lib/state/features/hosts.svelte';
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
-  import type { SessionRow } from '$lib/components/SessionsList.svelte';
+  import type { SessionRow } from '$lib/components/sessions/SessionsList.svelte';
 
   let hubSessions = $state<SessionRow[]>([]);
   let selectedKey = $state<string | null>(null);

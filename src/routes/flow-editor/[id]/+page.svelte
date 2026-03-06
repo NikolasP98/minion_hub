@@ -2,7 +2,7 @@
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import { onMount, onDestroy } from 'svelte';
-  import Topbar from '$lib/components/Topbar.svelte';
+  import Topbar from '$lib/components/layout/Topbar.svelte';
   import FlowCanvas from '$lib/components/flow-editor/FlowCanvas.svelte';
   import FlowSidebar from '$lib/components/flow-editor/FlowSidebar.svelte';
   import {

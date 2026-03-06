@@ -15,8 +15,8 @@
         type ResolvedField,
         type AgentStructure,
     } from "$lib/utils/agent-settings-schema";
-    import ConfigField from "./config/ConfigField.svelte";
-    import ConfigTooltip from "./config/ConfigTooltip.svelte";
+    import ConfigField from "../config/ConfigField.svelte";
+    import ConfigTooltip from "../config/ConfigTooltip.svelte";
     import AgentSkillsPanel from "./AgentSkillsPanel.svelte";
     import { SvelteSet } from "svelte/reactivity";
     import * as m from "$lib/paraglide/messages";

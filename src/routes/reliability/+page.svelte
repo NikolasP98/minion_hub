@@ -1,5 +1,5 @@
 <script lang="ts">
-	import Chart from '$lib/components/Chart.svelte';
+	import Chart from '$lib/components/charts/Chart.svelte';
 	import DateRangePicker from '$lib/components/reliability/DateRangePicker.svelte';
 	import IncidentTable from '$lib/components/reliability/IncidentTable.svelte';
 	import CredentialHealthPanel from '$lib/components/reliability/CredentialHealthPanel.svelte';
@@ -7,7 +7,7 @@
 	import GatewayHealthPanel from '$lib/components/reliability/GatewayHealthPanel.svelte';
 	import ConnectionEventsPanel from '$lib/components/reliability/ConnectionEventsPanel.svelte';
 	import ScanLine from '$lib/components/decorations/ScanLine.svelte';
-	import Topbar from '$lib/components/Topbar.svelte';
+	import Topbar from '$lib/components/layout/Topbar.svelte';
 	import {
 		reliability,
 		loadReliabilitySummary,

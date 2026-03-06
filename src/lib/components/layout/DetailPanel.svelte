@@ -1,5 +1,5 @@
 <script lang="ts">
-    import AgentDetail from "./AgentDetail.svelte";
+    import AgentDetail from "../agents/AgentDetail.svelte";
     import WelcomePanel from "./WelcomePanel.svelte";
     import DotGrid from "$lib/components/decorations/DotGrid.svelte";
     import { ui } from "$lib/state/ui/ui.svelte";

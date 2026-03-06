@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Topbar from '$lib/components/Topbar.svelte';
+  import Topbar from '$lib/components/layout/Topbar.svelte';
   import TeamTab from '$lib/components/users/TeamTab.svelte';
   import BindingsTab from '$lib/components/users/BindingsTab.svelte';
   import { conn } from '$lib/state/gateway/connection.svelte';

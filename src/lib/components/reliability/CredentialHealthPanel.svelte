@@ -3,7 +3,7 @@
 	import * as m from '$lib/paraglide/messages';
 	import { SvelteMap } from 'svelte/reactivity';
 	import { KeyRound } from 'lucide-svelte';
-	import Chart from '$lib/components/Chart.svelte';
+	import Chart from '$lib/components/charts/Chart.svelte';
 	import type { EChartsOption } from 'echarts';
 	import {
 		createCredentialHealthState,

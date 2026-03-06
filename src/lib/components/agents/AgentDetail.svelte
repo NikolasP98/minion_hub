@@ -1,11 +1,11 @@
 <script lang="ts">
-  import DetailHeader from './DetailHeader.svelte';
-  import SessionDropdown from './SessionDropdown.svelte';
-  import SessionViewer from './SessionViewer.svelte';
-  import SessionKanban from './SessionKanban.svelte';
-  import ChatPanel from './ChatPanel.svelte';
+  import DetailHeader from '$lib/components/layout/DetailHeader.svelte';
+  import SessionDropdown from '../sessions/SessionDropdown.svelte';
+  import SessionViewer from '../sessions/SessionViewer.svelte';
+  import SessionKanban from '../sessions/SessionKanban.svelte';
+  import ChatPanel from '../chat/ChatPanel.svelte';
   import AgentSettingsPanel from './AgentSettingsPanel.svelte';
-  import SessionMonitor from './SessionMonitor.svelte';
+  import SessionMonitor from '../sessions/SessionMonitor.svelte';
   import AgentFiles from './AgentFiles.svelte';
   import AgentKnowledgeGraph from './AgentKnowledgeGraph.svelte';
   import AgentPromptSimulator from './AgentPromptSimulator.svelte';
@@ -14,7 +14,7 @@
   import { ui } from '$lib/state/ui/ui.svelte';
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
   import type { Agent } from '$lib/types/gateway';
-  import type { SessionRow } from './SessionsList.svelte';
+  import type { SessionRow } from '../sessions/SessionsList.svelte';
 
   let { agentId, agent }: { agentId: string; agent: Agent } = $props();
 

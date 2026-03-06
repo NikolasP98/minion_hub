@@ -1,6 +1,6 @@
 <script lang="ts">
     import AgentRow from "./AgentRow.svelte";
-    import GatewayInfo from "./GatewayInfo.svelte";
+    import GatewayInfo from "$lib/components/layout/GatewayInfo.svelte";
     import HudBorder from "$lib/components/decorations/HudBorder.svelte";
     import DotMatrix from "$lib/components/decorations/DotMatrix.svelte";
     import { gw } from "$lib/state/gateway/gateway-data.svelte";
@@ -9,7 +9,7 @@
     import AddAgentModal from "./AddAgentModal.svelte";
     import { Plus, ChevronLeft, ChevronRight, Bot, Radio } from "lucide-svelte";
     import * as m from "$lib/paraglide/messages";
-    import type { CollapseLevel } from '$lib/components/Splitter.svelte';
+    import type { CollapseLevel } from '$lib/components/layout/Splitter.svelte';
 
     interface Props {
         /** Collapse level from the parent Splitter */

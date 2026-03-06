@@ -1,6 +1,6 @@
 <script lang="ts">
     import { Spring, spring } from "svelte/motion";
-    import EChartsSparkline from "./EChartsSparkline.svelte";
+    import EChartsSparkline from "$lib/components/charts/EChartsSparkline.svelte";
     import { sparklineStyle } from "$lib/state/ui/sparkline-style.svelte";
     import StatusDot from "$lib/components/decorations/StatusDot.svelte";
     import { agentActivity, agentChat, SPARK_BIN_COUNT, SPARK_BIN_MS } from "$lib/state/chat/chat.svelte";
