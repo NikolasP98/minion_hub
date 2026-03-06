@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import { authClient } from '$lib/auth-client';
+  import { authClient } from '$lib/auth';
   import * as m from '$lib/paraglide/messages';
   import { loadUser } from '$lib/state/features/user.svelte';
   import { loadHosts, hostsState } from '$lib/state/features/hosts.svelte';

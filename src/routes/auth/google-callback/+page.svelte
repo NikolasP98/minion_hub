@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import { authClient } from '$lib/auth-client';
+  import { authClient } from '$lib/auth';
   import { loadUser } from '$lib/state/features/user.svelte';
   import { loadHosts, hostsState } from '$lib/state/features/hosts.svelte';
   import { wsConnect } from '$lib/services/gateway.svelte';

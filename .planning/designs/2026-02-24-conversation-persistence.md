@@ -6,7 +6,7 @@
 
 **Architecture:** Store `taskPrompt` + `maxTurns` in the conversation record (localStorage). On load, mark active conversations as `interrupted` instead of `completed`. After canvas rebuild, `resumeInterruptedConversations()` fetches gateway history to reconstruct turn state, then re-enters the orchestration loop from where it left off. Gateway history is the source of truth for how many turns have elapsed.
 
-**Design doc:** `docs/plans/2026-02-24-conversation-persistence-design.md`
+**Design doc:** `.planning/designs/2026-02-24-conversation-persistence-design.md`
 
 **Tech Stack:** Svelte 5 runes, TypeScript, existing gateway WebSocket bridge (`sendRequest`, `chat.history`), `runed` FiniteStateMachine.
 

@@ -8,7 +8,7 @@
 
 **Tech Stack:** SvelteKit 5, PixiJS 8, @dimforge/rapier2d-compat, Tailwind CSS 4, Drizzle ORM (SQLite), existing gateway WebSocket
 
-**Design doc:** `docs/plans/2026-02-21-workshop-design.md`
+**Design doc:** `.planning/designs/2026-02-21-workshop-design.md`
 
 ---
 
