@@ -48,7 +48,14 @@ const authHandle: Handle = async ({ event, resolve }) => {
   try {
     return await svelteKitHandler({ event, resolve, auth: getAuth(), building });
   } catch (err) {
-    console.error('[authHandle] error on', event.url.pathname, err);
+    const msg = err instanceof Error ? `${err.message}\n${err.stack}` : String(err);
+    console.error('[authHandle]', event.url.pathname, msg);
+    if (event.url.pathname.startsWith('/api/auth/')) {
+      return new Response(JSON.stringify({ error: msg }), {
+        status: 500,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
     throw err;
   }
 };
