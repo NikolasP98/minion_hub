@@ -48,10 +48,14 @@ const authHandle: Handle = async ({ event, resolve }) => {
     return resolve(event);
   }
   try {
+    const cookieHeader = event.request.headers.get('cookie');
+    console.log('[authHandle]', event.url.pathname, 'cookies:', cookieHeader ? cookieHeader.substring(0, 120) : '(none)');
     const response = await getAuth().handler(event.request);
-    // Vercel serverless strips Set-Cookie from raw Response objects returned
-    // outside SvelteKit's resolve() pipeline. Re-create the response so the
-    // headers (including Set-Cookie) are preserved as a fresh Response.
+    if (response.status >= 400) {
+      const errBody = await response.clone().text();
+      console.error('[authHandle] error response:', response.status, errBody);
+    }
+    // Re-create the response so Set-Cookie headers are preserved on Vercel.
     const body = await response.arrayBuffer();
     return new Response(body, {
       status: response.status,
@@ -59,7 +63,7 @@ const authHandle: Handle = async ({ event, resolve }) => {
       headers: response.headers,
     });
   } catch (err) {
-    console.error('[authHandle]', event.url.pathname, err);
+    console.error('[authHandle] THROWN:', event.url.pathname, err);
     return new Response(JSON.stringify({ error: String(err) }), {
       status: 500,
       headers: { 'content-type': 'application/json' },
@@ -97,7 +101,7 @@ const appHandle: Handle = async ({ event, resolve }) => {
   try {
     betterAuthSession = await getAuth().api.getSession({ headers: event.request.headers });
   } catch (err) {
-    console.error('[hooks] getSession failed, treating as unauthenticated:', err);
+    console.error('[hooks] getSession failed:', path, String(err), err instanceof Error ? err.stack : '');
   }
   if (betterAuthSession) {
     const db = getDb();
