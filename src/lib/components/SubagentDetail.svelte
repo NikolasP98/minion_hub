@@ -36,7 +36,7 @@
 						{activeTab === tab.id
 						? 'border-accent text-accent'
 						: 'border-transparent text-muted hover:text-foreground'}"
-					onclick={() => (activeTab = tab.id)}
+					onclick={() => (activeTab = tab.id as 'monitor' | 'meta')}
 				>
 					{tab.label}
 				</button>

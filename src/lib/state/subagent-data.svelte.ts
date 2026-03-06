@@ -102,7 +102,7 @@ export function handleSessionEvent(event: { key?: string; [k: string]: unknown }
 	if (idx >= 0) {
 		Object.assign(subagentState.sessions[idx], event);
 	} else {
-		subagentState.sessions.push(event as SubagentSession);
+		subagentState.sessions.push(event as unknown as SubagentSession);
 	}
 }
 
