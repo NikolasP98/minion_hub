@@ -44,8 +44,14 @@ async function resolveServerTokenAuth(
   return null;
 }
 
-const authHandle: Handle = async ({ event, resolve }) =>
-  svelteKitHandler({ event, resolve, auth: getAuth(), building });
+const authHandle: Handle = async ({ event, resolve }) => {
+  try {
+    return await svelteKitHandler({ event, resolve, auth: getAuth(), building });
+  } catch (err) {
+    console.error('[authHandle] error on', event.url.pathname, err);
+    throw err;
+  }
+};
 
 const UNPROTECTED_PREFIXES = ['/login', '/api/'];
 
