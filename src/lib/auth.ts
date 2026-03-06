@@ -2,6 +2,8 @@ import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { jwt } from 'better-auth/plugins';
 import { organization } from 'better-auth/plugins';
+import { sveltekitCookies } from 'better-auth/svelte-kit';
+import { getRequestEvent } from '$app/server';
 import { getDb } from '$server/db/client';
 import * as schema from '$server/db/schema';
 import { env } from '$env/dynamic/private';
@@ -30,7 +32,7 @@ export function getAuth() {
 					? { google: { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET } }
 					: {}),
 			},
-			plugins: [jwt(), organization()],
+			plugins: [jwt(), organization(), sveltekitCookies(getRequestEvent)],
 		});
 	}
 	return _auth;
