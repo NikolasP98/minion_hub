@@ -49,19 +49,6 @@ const authHandle: Handle = async ({ event, resolve }) => {
   }
   try {
     const response = await getAuth().handler(event.request);
-    if (response.status >= 400) {
-      const errClone = await response.clone().text();
-      // TEMPORARY: return debug info in error responses
-      return new Response(JSON.stringify({
-        _debug: true,
-        status: response.status,
-        body: errClone,
-        headers: Object.fromEntries(response.headers),
-      }), {
-        status: response.status,
-        headers: { 'content-type': 'application/json' },
-      });
-    }
     // Re-create the response so Set-Cookie headers are preserved on Vercel.
     const body = await response.arrayBuffer();
     return new Response(body, {
@@ -70,13 +57,8 @@ const authHandle: Handle = async ({ event, resolve }) => {
       headers: response.headers,
     });
   } catch (err) {
-    // TEMPORARY: return full error details
-    return new Response(JSON.stringify({
-      _debug: true,
-      thrown: true,
-      error: String(err),
-      stack: err instanceof Error ? err.stack : undefined,
-    }), {
+    console.error('[authHandle]', event.url.pathname, err);
+    return new Response(JSON.stringify({ error: 'Internal auth error' }), {
       status: 500,
       headers: { 'content-type': 'application/json' },
     });
@@ -113,7 +95,7 @@ const appHandle: Handle = async ({ event, resolve }) => {
   try {
     betterAuthSession = await getAuth().api.getSession({ headers: event.request.headers });
   } catch (err) {
-    console.error('[hooks] getSession failed:', path, String(err), err instanceof Error ? err.stack : '');
+    console.error('[hooks] getSession failed, treating as unauthenticated:', err);
   }
   if (betterAuthSession) {
     const db = getDb();
