@@ -17,7 +17,7 @@
   });
 
   const deviceCount = $derived(gw.presence.length);
-  const channels = $derived(gw.channels as { active?: number } | null);
+  const channels = $derived(gw.channels);
   const cronJobs = $derived(gw.cronJobs as Array<{ id?: string; status?: string }> | null);
 </script>
 

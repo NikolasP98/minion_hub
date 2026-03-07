@@ -1,7 +1,7 @@
 <script lang="ts">
     import type { Channel } from '$lib/types/channels';
     import { CHANNEL_TYPE_LABELS } from '$lib/types/channels';
-    import { MessageSquare, Smartphone, Send, Pencil, Trash2 } from 'lucide-svelte';
+    import { MessageSquare, Smartphone, Send, Pencil, Trash2, Radio } from 'lucide-svelte';
 
     interface Props {
         channel: Channel;
@@ -12,6 +12,8 @@
     }
 
     let { channel, selected = false, onclick, onedit, ondelete }: Props = $props();
+
+    const isGateway = $derived(channel.source === 'gateway');
 
     const statusColor: Record<string, string> = {
         active: 'bg-success/20 text-success',
@@ -48,23 +50,30 @@
                 <span class="text-xs text-muted-foreground/70"> &middot; {channel.credentialsMeta.username}</span>
             {/if}
         </div>
-        <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button
-                type="button"
-                class="p-1.5 rounded hover:bg-bg3 text-muted-foreground hover:text-foreground transition-colors"
-                onclick={(e) => { e.stopPropagation(); onedit?.(); }}
-                title="Edit"
-            >
-                <Pencil size={14} />
-            </button>
-            <button
-                type="button"
-                class="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
-                onclick={(e) => { e.stopPropagation(); ondelete?.(); }}
-                title="Delete"
-            >
-                <Trash2 size={14} />
-            </button>
-        </div>
+        {#if isGateway}
+            <div class="flex items-center gap-1 text-[10px] text-accent/80" title="Reported by gateway (read-only)">
+                <Radio size={12} />
+                <span>live</span>
+            </div>
+        {:else}
+            <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                    type="button"
+                    class="p-1.5 rounded hover:bg-bg3 text-muted-foreground hover:text-foreground transition-colors"
+                    onclick={(e) => { e.stopPropagation(); onedit?.(); }}
+                    title="Edit"
+                >
+                    <Pencil size={14} />
+                </button>
+                <button
+                    type="button"
+                    class="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                    onclick={(e) => { e.stopPropagation(); ondelete?.(); }}
+                    title="Delete"
+                >
+                    <Trash2 size={14} />
+                </button>
+            </div>
+        {/if}
     </div>
 </div>

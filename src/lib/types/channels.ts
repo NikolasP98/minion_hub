@@ -12,6 +12,9 @@ export interface Channel {
   status: ChannelStatus;
   createdAt: number;
   updatedAt: number;
+  source?: 'hub' | 'gateway';
+  gwConnected?: boolean;
+  gwReconnectAttempts?: number;
 }
 
 export interface ChannelAssignment {
