@@ -231,7 +231,7 @@ interface SshCheckOptions {
   gatewayPort?: number;
 }
 
-async function sshExec(
+export async function sshExec(
   host: string,
   user: string,
   port: number,
