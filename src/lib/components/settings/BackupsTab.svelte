@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { conn } from '$lib/state/gateway/connection.svelte';
+  import { hostsState } from '$lib/state/features/hosts.svelte';
   import {
     DatabaseBackup,
     Play,
@@ -110,10 +111,10 @@
 
   // ─── Load snapshots ──────────────────────────────────────────
   async function loadSnapshots() {
-    if (!conn.serverId) return;
+    if (!hostsState.activeHostId) return;
     loadingSnapshots = true;
     try {
-      const res = await fetch(`/api/servers/${conn.serverId}/backups`);
+      const res = await fetch(`/api/servers/${hostsState.activeHostId}/backups`);
       const data = await res.json();
       snapshots = data.snapshots ?? [];
     } catch (e) {
@@ -125,13 +126,13 @@
 
   // ─── Run backup (SSE) ────────────────────────────────────────
   async function startBackup() {
-    if (!conn.serverId || running) return;
+    if (!hostsState.activeHostId || running) return;
     running = true;
     runningAction = 'backup';
     logLines = [];
 
     try {
-      const res = await fetch(`/api/servers/${conn.serverId}/backups/run`, { method: 'POST' });
+      const res = await fetch(`/api/servers/${hostsState.activeHostId}/backups/run`, { method: 'POST' });
       if (!res.ok) {
         const err = await res.json();
         logLines = [`Error: ${err.error}`];
@@ -151,14 +152,14 @@
 
   // ─── Run restore (SSE) ───────────────────────────────────────
   async function startRestore(snapshot: Snapshot) {
-    if (!conn.serverId || running) return;
+    if (!hostsState.activeHostId || running) return;
     confirmRestore = null;
     running = true;
     runningAction = 'restore';
     logLines = [];
 
     try {
-      const res = await fetch(`/api/servers/${conn.serverId}/backups/restore`, {
+      const res = await fetch(`/api/servers/${hostsState.activeHostId}/backups/restore`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ snapshotPath: snapshot.snapshotPath }),
@@ -181,9 +182,9 @@
 
   // ─── Delete snapshot ──────────────────────────────────────────
   async function deleteSnapshot(snapshot: Snapshot) {
-    if (!conn.serverId) return;
+    if (!hostsState.activeHostId) return;
     try {
-      await fetch(`/api/servers/${conn.serverId}/backups/${snapshot.id}`, { method: 'DELETE' });
+      await fetch(`/api/servers/${hostsState.activeHostId}/backups/${snapshot.id}`, { method: 'DELETE' });
       snapshots = snapshots.filter((s) => s.id !== snapshot.id);
     } catch (e) {
       console.error('Failed to delete snapshot:', e);
@@ -241,7 +242,7 @@
   });
 
   $effect(() => {
-    if (conn.serverId) loadSnapshots();
+    if (hostsState.activeHostId) loadSnapshots();
   });
 </script>
 
