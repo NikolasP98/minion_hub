@@ -1,5 +1,6 @@
 <script lang="ts">
     import AgentRow from "./AgentRow.svelte";
+    import AgentGroupHeader from "./AgentGroupHeader.svelte";
     import GatewayInfo from "$lib/components/layout/GatewayInfo.svelte";
     import HudBorder from "$lib/components/decorations/HudBorder.svelte";
     import DotMatrix from "$lib/components/decorations/DotMatrix.svelte";
@@ -7,9 +8,21 @@
     import { conn } from "$lib/state/gateway/connection.svelte";
     import { ui } from "$lib/state/ui/ui.svelte";
     import AddAgentModal from "./AddAgentModal.svelte";
-    import { Plus, ChevronLeft, ChevronRight, Bot, Radio } from "lucide-svelte";
+    import { Plus, ChevronLeft, ChevronRight, Bot, Radio, LayoutList, LayoutGrid, FolderPlus } from "lucide-svelte";
     import * as m from "$lib/paraglide/messages";
     import type { CollapseLevel } from '$lib/components/layout/Splitter.svelte';
+    import {
+        agentGroupsState,
+        createAgentGroup,
+        updateAgentGroup,
+        deleteAgentGroup,
+        moveAgentToGroup,
+        toggleAgentViewMode,
+        toggleGroupCollapsed,
+    } from "$lib/state/features/agent-groups.svelte";
+    import { diceBearAvatarUrl } from "$lib/utils/avatar";
+    import * as tooltip from "@zag-js/tooltip";
+    import { normalizeProps, useMachine } from "@zag-js/svelte";
 
     interface Props {
         /** Collapse level from the parent Splitter */
@@ -51,6 +64,55 @@
             (a) => a.status === "running" || a.status === "thinking",
         ).length,
     );
+
+    // Agent grouping
+    const groups = $derived(agentGroupsState.groups);
+    const groupedAgentIds = $derived(
+        new Set(groups.flatMap((g) => g.memberAgentIds)),
+    );
+    const ungroupedAgents = $derived(
+        agents.filter((a) => !groupedAgentIds.has(a.id)),
+    );
+
+    let ungroupedDragOver = $state(false);
+    let creatingGroup = $state(false);
+    let newGroupName = $state("");
+    let newGroupInput: HTMLInputElement | undefined = $state();
+
+    function handleNewGroupSubmit() {
+        const name = newGroupName.trim();
+        if (name) createAgentGroup(name);
+        newGroupName = "";
+        creatingGroup = false;
+    }
+
+    function startCreatingGroup() {
+        creatingGroup = true;
+        requestAnimationFrame(() => newGroupInput?.focus());
+    }
+
+    function handleGroupDrop(groupId: string | null) {
+        return (e: DragEvent) => {
+            e.preventDefault();
+            const raw = e.dataTransfer?.getData("application/agent-move");
+            if (!raw) return;
+            const { agentId, fromGroupId } = JSON.parse(raw);
+            if (fromGroupId === groupId) return;
+            moveAgentToGroup(agentId, fromGroupId, groupId);
+        };
+    }
+
+    function handleGroupDragOver(e: DragEvent) {
+        if (e.dataTransfer?.types.includes("application/agent-move")) {
+            e.preventDefault();
+            if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+        }
+    }
+
+    function selectAgent(agentId: string) {
+        ui.selectedAgentId = agentId;
+        ui.selectedSessionKey = `agent:${agentId}:main`;
+    }
 </script>
 
 <HudBorder
@@ -92,22 +154,42 @@
                 </div>
                 <div class="flex items-center gap-1">
                     <button
-                        class="flex items-center justify-center w-7 h-7 rounded-md border border-border bg-transparent text-muted-foreground hover:text-accent hover:border-accent/50 transition-all duration-150"
+                        class="flex items-center justify-center w-6 h-6 rounded-md transition-all duration-150 {agentGroupsState.viewMode === 'list'
+                            ? 'bg-accent/10 text-accent'
+                            : 'text-muted-foreground hover:text-foreground'}"
+                        onclick={toggleAgentViewMode}
+                        title={agentGroupsState.viewMode === 'list' ? m.agentGroup_galleryView() : m.agentGroup_listView()}
+                    >
+                        {#if agentGroupsState.viewMode === 'list'}
+                            <LayoutList size={13} />
+                        {:else}
+                            <LayoutGrid size={13} />
+                        {/if}
+                    </button>
+                    <button
+                        class="flex items-center justify-center w-6 h-6 rounded-md text-muted-foreground hover:text-accent transition-all duration-150"
+                        onclick={startCreatingGroup}
+                        title={m.agentGroup_newGroup()}
+                    >
+                        <FolderPlus size={13} />
+                    </button>
+                    <button
+                        class="flex items-center justify-center w-6 h-6 rounded-md text-muted-foreground hover:text-accent transition-all duration-150"
                         onclick={() => {
                             ui.agentAddOpen = true;
                         }}
                         aria-label={m.agent_addLabel()}
                         title={m.agent_addLabel()}
                     >
-                        <Plus size={14} />
+                        <Plus size={13} />
                     </button>
                     <button
-                        class="flex items-center justify-center w-7 h-7 rounded-md border border-border bg-transparent text-muted-foreground hover:text-foreground hover:border-muted hover:bg-bg3 transition-all duration-150"
+                        class="flex items-center justify-center w-6 h-6 rounded-md text-muted-foreground hover:text-foreground hover:bg-bg3 transition-all duration-150"
                         onclick={toggleCollapse}
                         aria-label={m.sidebar_collapse()}
                         title={m.sidebar_collapse()}
                     >
-                        <ChevronLeft size={14} />
+                        <ChevronLeft size={13} />
                     </button>
                 </div>
             </div>
@@ -207,18 +289,157 @@
             </div>
         {:else}
             <div class="py-1">
-                {#each agents as agent, i (agent.id)}
-                    <AgentRow
-                        {agent}
-                        selected={ui.selectedAgentId === agent.id}
-                        accentColor={ACCENT_COLORS[i % ACCENT_COLORS.length]}
-                        compact={collapsed}
-                        onclick={() => {
-                            ui.selectedAgentId = agent.id;
-                            ui.selectedSessionKey = `agent:${agent.id}:main`;
-                        }}
-                    />
-                {/each}
+                <!-- New group inline input -->
+                {#if creatingGroup && !collapsed}
+                    <div class="px-2.5 py-1.5 border-b border-border/50">
+                        <input
+                            bind:this={newGroupInput}
+                            bind:value={newGroupName}
+                            class="w-full text-[11px] font-semibold uppercase tracking-wider bg-transparent border-b border-accent/50 text-foreground outline-none px-0 py-0.5"
+                            placeholder={m.agentGroup_newGroup()}
+                            onblur={handleNewGroupSubmit}
+                            onkeydown={(e) => {
+                                if (e.key === 'Enter') handleNewGroupSubmit();
+                                if (e.key === 'Escape') { creatingGroup = false; newGroupName = ''; }
+                            }}
+                        />
+                    </div>
+                {/if}
+
+                {#if agentGroupsState.viewMode === 'list' || collapsed}
+                    <!-- LIST VIEW -->
+                    {#each groups as group, gi (group.id)}
+                        {#if !collapsed}
+                            <AgentGroupHeader
+                                {group}
+                                collapsed={agentGroupsState.collapsedGroupIds.has(group.id)}
+                                onToggle={() => toggleGroupCollapsed(group.id)}
+                                onRename={(name) => updateAgentGroup(group.id, { name })}
+                                onDelete={() => deleteAgentGroup(group.id)}
+                                onDrop={handleGroupDrop(group.id)}
+                                onDragOver={handleGroupDragOver}
+                                onDragLeave={() => {}}
+                            />
+                        {/if}
+
+                        {#if !agentGroupsState.collapsedGroupIds.has(group.id)}
+                            {#each group.memberAgentIds as agentId, ai (agentId)}
+                                {@const agent = agents.find((a) => a.id === agentId)}
+                                {#if agent}
+                                    <AgentRow
+                                        {agent}
+                                        selected={ui.selectedAgentId === agent.id}
+                                        accentColor={ACCENT_COLORS[(gi * 3 + ai) % ACCENT_COLORS.length]}
+                                        compact={collapsed}
+                                        groupId={group.id}
+                                        onclick={() => selectAgent(agent.id)}
+                                    />
+                                {/if}
+                            {/each}
+                        {/if}
+                    {/each}
+
+                    <!-- Ungrouped agents -->
+                    {#if ungroupedAgents.length > 0}
+                        {#if groups.length > 0 && !collapsed}
+                            <!-- svelte-ignore a11y_no_static_element_interactions -->
+                            <div
+                                class="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 border-b border-border/50 transition-colors {ungroupedDragOver ? 'bg-accent/10' : ''}"
+                                ondragover={(e) => { handleGroupDragOver(e); ungroupedDragOver = true; }}
+                                ondragleave={() => { ungroupedDragOver = false; }}
+                                ondrop={(e) => { ungroupedDragOver = false; handleGroupDrop(null)(e); }}
+                            >
+                                {m.agentGroup_ungrouped()}
+                            </div>
+                        {/if}
+                        {#each ungroupedAgents as agent, i (agent.id)}
+                            <AgentRow
+                                {agent}
+                                selected={ui.selectedAgentId === agent.id}
+                                accentColor={ACCENT_COLORS[i % ACCENT_COLORS.length]}
+                                compact={collapsed}
+                                groupId={null}
+                                onclick={() => selectAgent(agent.id)}
+                            />
+                        {/each}
+                    {/if}
+                {:else}
+                    <!-- GALLERY VIEW -->
+                    {#each groups as group (group.id)}
+                        <div class="px-2.5 pt-2 pb-1">
+                            <div class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 mb-1.5">
+                                {group.name}
+                            </div>
+                            <div
+                                class="flex flex-wrap gap-1.5"
+                                ondragover={handleGroupDragOver}
+                                ondrop={handleGroupDrop(group.id)}
+                                role="group"
+                            >
+                                {#each group.memberAgentIds as agentId (agentId)}
+                                    {@const agent = agents.find((a) => a.id === agentId)}
+                                    {#if agent}
+                                        <button
+                                            class="w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-150 cursor-pointer border {ui.selectedAgentId === agent.id
+                                                ? 'bg-bg3 border-accent/50'
+                                                : 'bg-bg2 border-border hover:border-muted hover:bg-bg3'}"
+                                            draggable="true"
+                                            ondragstart={(e) => {
+                                                e.dataTransfer?.setData('application/agent-move', JSON.stringify({ agentId: agent.id, fromGroupId: group.id }));
+                                                if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+                                            }}
+                                            onclick={() => selectAgent(agent.id)}
+                                            title={agent.name ?? agent.id}
+                                        >
+                                            {#if agent.emoji}
+                                                <span class="text-base leading-none">{agent.emoji}</span>
+                                            {:else}
+                                                <img src={diceBearAvatarUrl(agent.name ?? agent.id)} alt="" class="w-6 h-6 rounded-full" />
+                                            {/if}
+                                        </button>
+                                    {/if}
+                                {/each}
+                            </div>
+                        </div>
+                    {/each}
+
+                    {#if ungroupedAgents.length > 0}
+                        {#if groups.length > 0}
+                            <div class="px-2.5 pt-2 pb-1">
+                                <div class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 mb-1.5">
+                                    {m.agentGroup_ungrouped()}
+                                </div>
+                            </div>
+                        {/if}
+                        <div
+                            class="px-2.5 pb-2 flex flex-wrap gap-1.5"
+                            ondragover={handleGroupDragOver}
+                            ondrop={handleGroupDrop(null)}
+                            role="group"
+                        >
+                            {#each ungroupedAgents as agent (agent.id)}
+                                <button
+                                    class="w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-150 cursor-pointer border {ui.selectedAgentId === agent.id
+                                        ? 'bg-bg3 border-accent/50'
+                                        : 'bg-bg2 border-border hover:border-muted hover:bg-bg3'}"
+                                    draggable="true"
+                                    ondragstart={(e) => {
+                                        e.dataTransfer?.setData('application/agent-move', JSON.stringify({ agentId: agent.id, fromGroupId: null }));
+                                        if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+                                    }}
+                                    onclick={() => selectAgent(agent.id)}
+                                    title={agent.name ?? agent.id}
+                                >
+                                    {#if agent.emoji}
+                                        <span class="text-base leading-none">{agent.emoji}</span>
+                                    {:else}
+                                        <img src={diceBearAvatarUrl(agent.name ?? agent.id)} alt="" class="w-6 h-6 rounded-full" />
+                                    {/if}
+                                </button>
+                            {/each}
+                        </div>
+                    {/if}
+                {/if}
             </div>
         {/if}
     </div>

@@ -479,5 +479,13 @@
   "login_invalidCredentials": "Correo o contraseña incorrectos",
   "login_footer": "Acceso restringido a usuarios autorizados",
   "profile_settings": "Configuración de perfil",
-  "profile_logout": "Cerrar sesión"
+  "profile_logout": "Cerrar sesión",
+
+  "agentGroup_newGroup": "Nuevo grupo",
+  "agentGroup_ungrouped": "Sin grupo",
+  "agentGroup_rename": "Renombrar",
+  "agentGroup_delete": "Eliminar grupo",
+  "agentGroup_deleteConfirm": "¿Eliminar este grupo? Los agentes no se eliminarán.",
+  "agentGroup_listView": "Vista de lista",
+  "agentGroup_galleryView": "Vista de galería"
 }

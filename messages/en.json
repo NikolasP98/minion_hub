@@ -493,5 +493,13 @@
   "login_invalidCredentials": "Invalid email or password",
   "login_footer": "Access restricted to authorized users",
   "profile_settings": "Profile settings",
-  "profile_logout": "Log out"
+  "profile_logout": "Log out",
+
+  "agentGroup_newGroup": "New group",
+  "agentGroup_ungrouped": "Ungrouped",
+  "agentGroup_rename": "Rename",
+  "agentGroup_delete": "Delete group",
+  "agentGroup_deleteConfirm": "Delete this group? Agents won't be removed.",
+  "agentGroup_listView": "List view",
+  "agentGroup_galleryView": "Gallery view"
 }

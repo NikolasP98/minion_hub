@@ -18,13 +18,23 @@
         accentColor,
         onclick,
         compact = false,
+        groupId = null,
     }: {
         agent: Agent;
         selected: boolean;
         accentColor: string;
         onclick: () => void;
         compact?: boolean;
+        groupId?: string | null;
     } = $props();
+
+    function handleDragStart(e: DragEvent) {
+        e.dataTransfer?.setData(
+            'application/agent-move',
+            JSON.stringify({ agentId: agent.id, fromGroupId: groupId }),
+        );
+        if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+    }
 
     const act = $derived(agentActivity[agent.id]);
     const chat = $derived(agentChat[agent.id]);
@@ -118,6 +128,8 @@
             ? 'bg-bg3'
             : 'border-l-transparent'}"
         style:border-left-color={selected ? accentColor : undefined}
+        draggable="true"
+        ondragstart={handleDragStart}
         {onclick}
     >
             {#if agent.emoji}
@@ -164,6 +176,8 @@
             : 'border-l-transparent'}"
         style:border-left-color={selected ? accentColor : undefined}
         title={statusText}
+        draggable="true"
+        ondragstart={handleDragStart}
         {onclick}
     >
         <!-- Row 1: status indicator + agent name -->

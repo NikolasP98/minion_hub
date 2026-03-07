@@ -30,3 +30,4 @@ export { channelAssignments } from './channel-assignments';
 export { serverProvisionConfigs } from './server-provision-configs';
 export { backupConfigs } from './backup-configs';
 export { serverBackups } from './server-backups';
+export { agentGroups, agentGroupMembers } from './agent-groups';

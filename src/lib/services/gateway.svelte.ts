@@ -10,6 +10,7 @@ import { uuid } from '$lib/utils/uuid';
 import { extractText } from '$lib/utils/text';
 import type { HelloOk, ChatEvent, Session } from '$lib/types/gateway';
 import { parseAgentSessionKey } from '$lib/utils/session-key';
+import { loadAgentGroups } from '$lib/state/features/agent-groups.svelte';
 
 /** Map gateway's GatewaySessionRow (key field) to hub's Session (sessionKey field). */
 function mapGatewaySessionRows(raw: unknown[]): Session[] {
@@ -285,6 +286,7 @@ async function resolveServerId() {
       setReliabilityServerId(match.id);
       fetchActivityBinsFromDb(match.id);
       startSqliteFlush(match.id);
+      loadAgentGroups(match.id);
     }
   } catch {
     // non-critical — UI will work without server ID, just can't fetch missions

@@ -5,3 +5,4 @@ export * from './missions.svelte';
 export * from './session-tasks.svelte';
 export * from './subagent-data.svelte';
 export * from './user.svelte';
+export * from './agent-groups.svelte';

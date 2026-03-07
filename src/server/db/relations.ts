@@ -23,6 +23,8 @@ import {
   userAgents,
   backupConfigs,
   serverBackups,
+  agentGroups,
+  agentGroupMembers,
 } from './schema';
 
 // ── Better Auth: User ─────────────────────────────────────────────────────────
@@ -86,6 +88,7 @@ export const serversRelations = relations(servers, ({ one, many }) => ({
   userServers: many(userServers),
   userAgents: many(userAgents),
   serverBackups: many(serverBackups),
+  agentGroups: many(agentGroups),
 }));
 
 // ── Agents ───────────────────────────────────────────────────────────────────
@@ -200,4 +203,17 @@ export const backupConfigsRelations = relations(backupConfigs, ({ one }) => ({
 export const serverBackupsRelations = relations(serverBackups, ({ one }) => ({
   server: one(servers, { fields: [serverBackups.serverId], references: [servers.id] }),
   organization: one(organization, { fields: [serverBackups.tenantId], references: [organization.id] }),
+}));
+
+// ── Agent Groups ─────────────────────────────────────────────────────
+
+export const agentGroupsRelations = relations(agentGroups, ({ one, many }) => ({
+  server: one(servers, { fields: [agentGroups.serverId], references: [servers.id] }),
+  organization: one(organization, { fields: [agentGroups.tenantId], references: [organization.id] }),
+  members: many(agentGroupMembers),
+}));
+
+export const agentGroupMembersRelations = relations(agentGroupMembers, ({ one }) => ({
+  group: one(agentGroups, { fields: [agentGroupMembers.groupId], references: [agentGroups.id] }),
+  server: one(servers, { fields: [agentGroupMembers.serverId], references: [servers.id] }),
 }));
