@@ -3,6 +3,7 @@
  * tracks edits, computes patches, and saves.
  */
 import { sendRequest } from '$lib/services/gateway.svelte';
+import { isAdmin } from '$lib/state/features/user.svelte';
 import { extractGroups, computeDirtyPaths, computePatch, deepGet, deepSet } from '$lib/utils/config-schema';
 import {
   type RestartPhase,
@@ -229,6 +230,7 @@ export async function loadConfig(): Promise<void> {
 }
 
 export function setField(path: string, value: unknown): void {
+  if (!isAdmin.value) return;
   deepSet(configState.current, path, value);
   // Force reactivity by reassigning. Svelte 5 deep $state tracking handles
   // most cases, but deep mutations on nested objects sometimes need a nudge.

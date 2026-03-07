@@ -1,7 +1,7 @@
 import { authClient } from '$lib/auth';
 import { env } from '$env/dynamic/public';
 
-type UserRole = 'owner' | 'admin' | 'member' | 'viewer';
+type UserRole = 'user' | 'admin';
 
 interface CurrentUser {
   id: string;
@@ -15,6 +15,7 @@ interface UserState {
   orgId: string | null;
   loading: boolean;
   error: string | null;
+  allowedAgentIds: Set<string> | null; // null = no filtering (admin)
 }
 
 const state = $state<UserState>({
@@ -23,13 +24,21 @@ const state = $state<UserState>({
   orgId: null,
   loading: false,
   error: null,
+  allowedAgentIds: null,
 });
 
 export const userState = state;
 
+export const isAdmin = {
+  get value() {
+    return state.role === 'admin';
+  },
+};
+
 export async function loadUser() {
   if (env.PUBLIC_AUTH_DISABLED === 'true') {
     state.user = { id: 'local', email: 'local@dev', displayName: 'Local Dev' };
+    state.role = 'admin';
     state.orgId = 'local';
     state.loading = false;
     return;
@@ -58,8 +67,22 @@ export async function loadUser() {
           }
         } catch { /* non-fatal */ }
       }
+
+      // Fetch role from /api/me
+      try {
+        const res = await fetch('/api/me');
+        if (res.ok) {
+          const data = await res.json();
+          state.role = data.role ?? 'user';
+        } else {
+          state.role = 'user';
+        }
+      } catch {
+        state.role = 'user';
+      }
     } else {
       state.user = null;
+      state.role = null;
       state.orgId = null;
     }
   } catch (err) {
@@ -67,6 +90,21 @@ export async function loadUser() {
   } finally {
     state.loading = false;
   }
+}
+
+export async function loadAllowedAgents(serverId: string) {
+  if (state.role === 'admin') {
+    state.allowedAgentIds = null; // admin sees all
+    return;
+  }
+  if (!state.user) return;
+  try {
+    const res = await fetch(`/api/users/${state.user.id}/agents?serverId=${serverId}`);
+    if (res.ok) {
+      const data = await res.json();
+      state.allowedAgentIds = new Set(data.agentIds ?? []);
+    }
+  } catch { /* non-fatal, default to showing nothing */ }
 }
 
 export async function logout() {

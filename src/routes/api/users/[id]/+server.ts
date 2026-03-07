@@ -1,11 +1,13 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { updateUserRole, deleteUser, getUser } from '$server/services/user.service';
+import { requireAdmin } from '$server/auth/authorize';
 
 const VALID_ROLES = ['user', 'admin'] as const;
 type Role = (typeof VALID_ROLES)[number];
 
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
+  requireAdmin(locals);
   if (!locals.tenantCtx) throw error(401);
   const ctx = locals.tenantCtx;
 
@@ -31,6 +33,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 };
 
 export const DELETE: RequestHandler = async ({ locals, params }) => {
+  requireAdmin(locals);
   if (!locals.tenantCtx) throw error(401);
   const ctx = locals.tenantCtx;
 

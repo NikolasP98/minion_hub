@@ -1,5 +1,5 @@
 import { eq, and } from 'drizzle-orm';
-import { agents } from '$server/db/schema';
+import { agents, userAgents } from '$server/db/schema';
 import { nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
 
@@ -48,6 +48,30 @@ export async function listAgents(ctx: TenantContext, serverId: string) {
   const rows = await ctx.db
     .select({ rawJson: agents.rawJson })
     .from(agents)
+    .where(and(eq(agents.serverId, serverId), eq(agents.tenantId, ctx.tenantId)));
+
+  return rows.map((r) => JSON.parse(r.rawJson));
+}
+
+export async function listAgentsForUser(
+  ctx: TenantContext,
+  serverId: string,
+  userId: string,
+  userRole: string,
+) {
+  if (userRole === 'admin') return listAgents(ctx, serverId);
+
+  const rows = await ctx.db
+    .select({ rawJson: agents.rawJson })
+    .from(agents)
+    .innerJoin(
+      userAgents,
+      and(
+        eq(userAgents.agentId, agents.id),
+        eq(userAgents.serverId, agents.serverId),
+        eq(userAgents.userId, userId),
+      ),
+    )
     .where(and(eq(agents.serverId, serverId), eq(agents.tenantId, ctx.tenantId)));
 
   return rows.map((r) => JSON.parse(r.rawJson));
