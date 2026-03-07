@@ -21,6 +21,8 @@ import {
   sessionTasks,
   userServers,
   userAgents,
+  backupConfigs,
+  serverBackups,
 } from './schema';
 
 // ── Better Auth: User ─────────────────────────────────────────────────────────
@@ -83,6 +85,7 @@ export const serversRelations = relations(servers, ({ one, many }) => ({
   settings: many(settings),
   userServers: many(userServers),
   userAgents: many(userAgents),
+  serverBackups: many(serverBackups),
 }));
 
 // ── Agents ───────────────────────────────────────────────────────────────────
@@ -184,4 +187,17 @@ export const userServersRelations = relations(userServers, ({ one }) => ({
 export const userAgentsRelations = relations(userAgents, ({ one }) => ({
   user: one(user, { fields: [userAgents.userId], references: [user.id] }),
   server: one(servers, { fields: [userAgents.serverId], references: [servers.id] }),
+}));
+
+// ── Backup Configs ──────────────────────────────────────────────────────
+
+export const backupConfigsRelations = relations(backupConfigs, ({ one }) => ({
+  organization: one(organization, { fields: [backupConfigs.tenantId], references: [organization.id] }),
+}));
+
+// ── Server Backups ──────────────────────────────────────────────────────
+
+export const serverBackupsRelations = relations(serverBackups, ({ one }) => ({
+  server: one(servers, { fields: [serverBackups.serverId], references: [servers.id] }),
+  organization: one(organization, { fields: [serverBackups.tenantId], references: [organization.id] }),
 }));
