@@ -3,7 +3,7 @@
     import { CHANNEL_TYPE_LABELS, CHANNEL_FIELDS } from '$lib/types/channels';
     import { MessageSquare, Smartphone, Send, Trash2, Radio, ChevronDown, Pencil, Power } from 'lucide-svelte';
     import { sendRequest } from '$lib/services/gateway.svelte';
-    import { gw } from '$lib/state/gateway';
+    import { configState, loadConfig, beginRestart } from '$lib/state/config/config.svelte';
     import ChannelAssignmentPicker from './ChannelAssignmentPicker.svelte';
     import ChannelForm from './ChannelForm.svelte';
 
@@ -67,16 +67,47 @@
         const newEnabled = !(channel.gwEnabled ?? true);
         toggling = true;
         try {
+            // Ensure we have a fresh baseHash
+            if (!configState.baseHash) {
+                await loadConfig();
+            }
+            if (!configState.baseHash) {
+                console.error('[hub] toggle channel failed: could not load config base hash');
+                return;
+            }
             const isDefault = gwAccountId === 'default';
             const patch = isDefault
                 ? { channels: { [gwChannelType]: { enabled: newEnabled } } }
                 : { channels: { [gwChannelType]: { accounts: { [gwAccountId]: { enabled: newEnabled } } } } };
-            await sendRequest('config.patch', { raw: JSON.stringify(patch) });
-            // Refresh channel status
-            const r = await sendRequest('channels.status', { probe: false });
-            if (r) gw.channels = r;
+            const result = await sendRequest('config.patch', {
+                raw: JSON.stringify(patch),
+                baseHash: configState.baseHash,
+                note: `${newEnabled ? 'Enable' : 'Disable'} ${gwChannelType}:${gwAccountId} via Hub`,
+            }) as { reloadMode?: string } | undefined;
+
+            const reloadMode = result?.reloadMode ?? 'restart';
+
+            if (reloadMode === 'hot' || reloadMode === 'noop') {
+                // Hot reload succeeded — just refresh config state, no reconnect needed
+                try { await loadConfig(); } catch { /* best effort */ }
+            } else {
+                // Full restart — wait for reconnect then refresh
+                try {
+                    await loadConfig();
+                } catch (reloadErr) {
+                    const msg = (reloadErr as Error).message ?? '';
+                    if (msg.includes('closed') || msg.includes('not connected')) {
+                        beginRestart();
+                    }
+                }
+            }
         } catch (e) {
-            console.error('[hub] toggle channel failed:', e);
+            const msg = (e as Error).message ?? '';
+            if (msg.includes('closed') || msg.includes('not connected')) {
+                beginRestart();
+            } else {
+                console.error('[hub] toggle channel failed:', e);
+            }
         } finally {
             toggling = false;
         }

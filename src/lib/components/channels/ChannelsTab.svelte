@@ -10,6 +10,7 @@
         deleteChannel,
     } from '$lib/state/channels';
     import { gw } from '$lib/state/gateway';
+    import { configState, loadConfig } from '$lib/state/config/config.svelte';
     import ChannelCard from './ChannelCard.svelte';
     import ChannelForm from './ChannelForm.svelte';
     import { Plus, MessageSquare } from 'lucide-svelte';
@@ -153,6 +154,7 @@
         if (serverId) {
             fetchChannels(serverId);
             fetchHeartbeatChannels(serverId);
+            if (!configState.baseHash) loadConfig();
         }
     });
 
