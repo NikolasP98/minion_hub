@@ -26,7 +26,6 @@
     function handleQrEvent(e: Event) {
         const detail = (e as CustomEvent<{ qrData: string; expiresIn?: number }>).detail;
         qrData = detail.qrData;
-        api.setValue(detail.qrData);
         pairingStatus = 'waiting';
     }
 
@@ -53,7 +52,11 @@
         pairingStatus = 'waiting';
         errorMsg = null;
         try {
-            await fetch(`/api/servers/${serverId}/channels/${channelId}/qr`, { method: 'POST' });
+            const res = await fetch(`/api/servers/${serverId}/channels/${channelId}/qr`, { method: 'POST' });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error ?? `QR request failed: ${res.status}`);
+            }
             await requestWhatsAppPair(channelId);
         } catch (e) {
             pairingStatus = 'error';

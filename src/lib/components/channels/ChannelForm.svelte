@@ -1,5 +1,5 @@
 <script lang="ts">
-    import type { ChannelType, ChannelStatus } from '$lib/types/channels';
+    import type { ChannelType } from '$lib/types/channels';
     import { CHANNEL_FIELDS, CHANNEL_TYPE_LABELS } from '$lib/types/channels';
     import { MessageSquare, Smartphone, Send, Eye, EyeOff } from 'lucide-svelte';
     import WhatsAppQrPairing from './WhatsAppQrPairing.svelte';
@@ -32,6 +32,15 @@
     let meta = $state<Record<string, string>>({ ...initialMeta });
     let revealedFields = $state<Set<string>>(new Set());
 
+    // Sync state when editing a different channel
+    $effect(() => {
+        type = initialType;
+        label = initialLabel;
+        credentials = { ...initialCredentials };
+        meta = { ...initialMeta };
+        revealedFields = new Set();
+    });
+
     const fields = $derived(CHANNEL_FIELDS[type]);
     const typeOptions: { value: ChannelType; label: string; icon: typeof MessageSquare }[] = [
         { value: 'discord', label: 'Discord', icon: MessageSquare },
@@ -40,11 +49,9 @@
     ];
 
     function handleSubmit() {
-        // Separate non-sensitive fields into meta
         const sensitiveKeys = new Set(
             CHANNEL_FIELDS[type].filter((f) => f.type === 'password').map((f) => f.key),
         );
-        const metaKeys = CHANNEL_FIELDS[type].filter((f) => f.type === 'text').map((f) => f.key);
         const creds: Record<string, string> = {};
         const metaOut: Record<string, string> = { ...meta };
 

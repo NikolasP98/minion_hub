@@ -150,11 +150,9 @@
     <div class="flex-1 min-h-0 relative">
         <!-- Appearance tab panel -->
         <div
-            class="tab-panel absolute inset-0 overflow-y-auto"
+            class="tab-panel absolute inset-0 flex flex-col overflow-hidden"
             style:visibility={activeTab === 'appearance' ? 'visible' : 'hidden'}
-            style:position={activeTab === 'appearance' ? 'relative' : 'absolute'}
-            style:height={activeTab === 'appearance' ? 'auto' : '0'}
-            style:overflow={activeTab === 'appearance' ? 'auto' : 'hidden'}
+            style:z-index={activeTab === 'appearance' ? 1 : 0}
             role="tabpanel"
         >
             <div class="flex-1 overflow-y-auto p-6 md:p-10">
@@ -313,11 +311,9 @@
 
         <!-- Channels tab panel (hub-managed) -->
         <div
-            class="tab-panel absolute inset-0 overflow-y-auto"
+            class="tab-panel absolute inset-0 flex flex-col overflow-hidden"
             style:visibility={activeTab === 'channels' ? 'visible' : 'hidden'}
-            style:position={activeTab === 'channels' ? 'relative' : 'absolute'}
-            style:height={activeTab === 'channels' ? 'auto' : '0'}
-            style:overflow={activeTab === 'channels' ? 'auto' : 'hidden'}
+            style:z-index={activeTab === 'channels' ? 1 : 0}
             role="tabpanel"
         >
             <div class="flex-1 overflow-y-auto p-6 md:p-10">
@@ -331,11 +327,9 @@
         {#each TABS.filter((t) => !HUB_TAB_IDS.has(t.id)) as tab (tab.id)}
             {@const isActive = activeTab === tab.id}
             <div
-                class="tab-panel absolute inset-0"
+                class="tab-panel absolute inset-0 flex flex-col overflow-hidden"
                 style:visibility={isActive ? 'visible' : 'hidden'}
-                style:position={isActive ? 'relative' : 'absolute'}
-                style:height={isActive ? 'auto' : '0'}
-                style:overflow={isActive ? 'visible' : 'hidden'}
+                style:z-index={isActive ? 1 : 0}
                 role="tabpanel"
             >
                 {#if !conn.connected}

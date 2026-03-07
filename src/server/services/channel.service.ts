@@ -7,6 +7,20 @@ import type { TenantContext } from './base';
 export type ChannelType = 'discord' | 'whatsapp' | 'telegram';
 export type ChannelStatus = 'active' | 'inactive' | 'pairing';
 
+const VALID_TYPES = new Set<string>(['discord', 'whatsapp', 'telegram']);
+const VALID_STATUSES = new Set<string>(['active', 'inactive', 'pairing']);
+const VALID_TARGET_TYPES = new Set<string>(['user', 'session']);
+
+export function isValidChannelType(v: string): v is ChannelType {
+  return VALID_TYPES.has(v);
+}
+export function isValidChannelStatus(v: string): v is ChannelStatus {
+  return VALID_STATUSES.has(v);
+}
+export function isValidTargetType(v: string): v is 'user' | 'session' {
+  return VALID_TARGET_TYPES.has(v);
+}
+
 export interface ChannelInput {
   type: ChannelType;
   label: string;
@@ -56,11 +70,14 @@ export async function listChannels(ctx: TenantContext, serverId: string) {
   }));
 }
 
-export async function getChannel(ctx: TenantContext, channelId: string) {
+export async function getChannel(ctx: TenantContext, channelId: string, serverId?: string) {
+  const conditions = [eq(channels.id, channelId), eq(channels.tenantId, ctx.tenantId)];
+  if (serverId) conditions.push(eq(channels.serverId, serverId));
+
   const [row] = await ctx.db
     .select()
     .from(channels)
-    .where(and(eq(channels.id, channelId), eq(channels.tenantId, ctx.tenantId)));
+    .where(and(...conditions));
 
   if (!row) return null;
 
@@ -102,7 +119,12 @@ export async function createChannel(ctx: TenantContext, serverId: string, input:
   return id;
 }
 
-export async function updateChannel(ctx: TenantContext, channelId: string, input: Partial<ChannelInput>) {
+export async function updateChannel(
+  ctx: TenantContext,
+  channelId: string,
+  input: Partial<ChannelInput>,
+  serverId?: string,
+) {
   const now = nowMs();
   const set: Record<string, unknown> = { updatedAt: now };
 
@@ -116,16 +138,22 @@ export async function updateChannel(ctx: TenantContext, channelId: string, input
     set.credentialsIv = iv;
   }
 
+  const conditions = [eq(channels.id, channelId), eq(channels.tenantId, ctx.tenantId)];
+  if (serverId) conditions.push(eq(channels.serverId, serverId));
+
   await ctx.db
     .update(channels)
     .set(set)
-    .where(and(eq(channels.id, channelId), eq(channels.tenantId, ctx.tenantId)));
+    .where(and(...conditions));
 }
 
-export async function deleteChannel(ctx: TenantContext, channelId: string) {
+export async function deleteChannel(ctx: TenantContext, channelId: string, serverId?: string) {
+  const conditions = [eq(channels.id, channelId), eq(channels.tenantId, ctx.tenantId)];
+  if (serverId) conditions.push(eq(channels.serverId, serverId));
+
   await ctx.db
     .delete(channels)
-    .where(and(eq(channels.id, channelId), eq(channels.tenantId, ctx.tenantId)));
+    .where(and(...conditions));
 }
 
 export async function listChannelAssignments(ctx: TenantContext, channelId: string) {
