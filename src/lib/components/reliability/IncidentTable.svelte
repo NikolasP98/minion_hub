@@ -4,7 +4,7 @@
 
 	interface ReliabilityEvent {
 		id?: number;
-		category: 'cron' | 'browser' | 'timezone' | 'general';
+		category: 'cron' | 'browser' | 'timezone' | 'general' | 'auth' | 'skill' | 'agent' | 'gateway';
 		severity: 'critical' | 'high' | 'medium' | 'low';
 		event: string;
 		message: string;
@@ -161,7 +161,11 @@
 		cron: 'bg-accent/15 text-accent border border-accent/30',
 		browser: 'bg-warning/15 text-warning border border-warning/30',
 		timezone: 'bg-purple/15 text-purple border border-purple/30',
-		general: 'bg-muted-foreground/20 text-muted-foreground border border-muted-foreground/30'
+		general: 'bg-muted-foreground/20 text-muted-foreground border border-muted-foreground/30',
+		auth: 'bg-green-500/15 text-green-400 border border-green-500/30',
+		skill: 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30',
+		agent: 'bg-pink-500/15 text-pink-400 border border-pink-500/30',
+		gateway: 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
 	};
 </script>
 

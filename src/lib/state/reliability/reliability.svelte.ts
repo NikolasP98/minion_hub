@@ -1,5 +1,5 @@
 export interface ReliabilityEvent {
-  category: 'cron' | 'browser' | 'timezone' | 'general';
+  category: 'cron' | 'browser' | 'timezone' | 'general' | 'auth' | 'skill' | 'agent' | 'gateway';
   severity: 'critical' | 'high' | 'medium' | 'low';
   event: string;
   message: string;
