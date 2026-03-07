@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { Brain, Bot, Radio, MessageSquare, Shield, Server, Palette } from "lucide-svelte";
+    import { Brain, Bot, Radio, MessageSquare, Shield, Server, Palette, HardDrive } from "lucide-svelte";
 
     interface Props {
         activeTab: string;
@@ -10,10 +10,11 @@
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const ICON_MAP: Record<string, any> = {
-        Brain, Bot, Radio, MessageSquare, Shield, Server, Palette,
+        Brain, Bot, Radio, MessageSquare, Shield, Server, Palette, HardDrive,
     };
 
     const tabs: { id: string; label: string; icon: string }[] = [
+        { id: 'hosts',      label: 'Hosts',      icon: 'HardDrive' },
         { id: 'ai',         label: 'AI',         icon: 'Brain'   },
         { id: 'agents',     label: 'Agents',     icon: 'Bot'     },
         { id: 'comms',      label: 'Comms',      icon: 'Radio'   },

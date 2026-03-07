@@ -29,6 +29,7 @@
     import TeamTab from "$lib/components/users/TeamTab.svelte";
     import BindingsTab from "$lib/components/users/BindingsTab.svelte";
     import ChannelsTab from "$lib/components/channels/ChannelsTab.svelte";
+    import HostsTab from "$lib/components/settings/HostsTab.svelte";
     import {
         Check,
         Globe,
@@ -64,7 +65,7 @@
     });
 
     // Hub-managed tabs (not gateway config)
-    const HUB_TAB_IDS = new Set(['appearance', 'channels']);
+    const HUB_TAB_IDS = new Set(['appearance', 'channels', 'hosts']);
     // Gateway config tab IDs
     const GATEWAY_TAB_IDS = new Set(TABS.filter((t) => !HUB_TAB_IDS.has(t.id)).map((t) => t.id));
 
@@ -148,6 +149,20 @@
     <SettingsTabBar {activeTab} onselect={selectTab} />
 
     <div class="flex-1 min-h-0 relative">
+        <!-- Hosts tab panel (hub-managed) -->
+        <div
+            class="tab-panel absolute inset-0 flex flex-col overflow-hidden"
+            style:visibility={activeTab === 'hosts' ? 'visible' : 'hidden'}
+            style:z-index={activeTab === 'hosts' ? 1 : 0}
+            role="tabpanel"
+        >
+            <div class="flex-1 overflow-y-auto p-6 md:p-10">
+                <div class="max-w-2xl mx-auto">
+                    <HostsTab />
+                </div>
+            </div>
+        </div>
+
         <!-- Appearance tab panel -->
         <div
             class="tab-panel absolute inset-0 flex flex-col overflow-hidden"
