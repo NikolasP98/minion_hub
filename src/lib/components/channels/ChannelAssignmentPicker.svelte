@@ -1,5 +1,4 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
     import type { ChannelAssignment } from '$lib/types/channels';
     import { fetchChannelAssignments, assignChannel, unassignChannel } from '$lib/state/channels';
     import { X, UserPlus } from 'lucide-svelte';
@@ -13,39 +12,57 @@
 
     let assignments = $state<ChannelAssignment[]>([]);
     let loading = $state(false);
+    let errorMsg = $state<string | null>(null);
     let targetType = $state<'user' | 'session'>('user');
     let targetId = $state('');
     let adding = $state(false);
 
     async function load() {
         loading = true;
+        errorMsg = null;
         try {
             assignments = await fetchChannelAssignments(serverId, channelId);
-        } catch { /* ignore */ }
+        } catch (e) {
+            errorMsg = e instanceof Error ? e.message : 'Failed to load assignments';
+        }
         loading = false;
     }
 
-    onMount(load);
+    $effect(() => {
+        channelId;
+        load();
+    });
 
     async function handleAssign() {
         if (!targetId.trim()) return;
         adding = true;
+        errorMsg = null;
         try {
             await assignChannel(serverId, channelId, targetType, targetId.trim());
             targetId = '';
             await load();
-        } catch { /* ignore */ }
+        } catch (e) {
+            errorMsg = e instanceof Error ? e.message : 'Failed to assign';
+        }
         adding = false;
     }
 
     async function handleRemove(assignmentId: string) {
-        await unassignChannel(serverId, channelId, assignmentId);
-        await load();
+        try {
+            await unassignChannel(serverId, channelId, assignmentId);
+            await load();
+        } catch (e) {
+            errorMsg = e instanceof Error ? e.message : 'Failed to remove assignment';
+        }
     }
 </script>
 
 <div class="space-y-3">
     <h3 class="text-xs font-semibold text-foreground uppercase tracking-wider">Assignments</h3>
+
+    {#if errorMsg}
+        <p class="text-xs text-destructive">{errorMsg}</p>
+    {/if}
 
     {#if loading}
         <p class="text-xs text-muted-foreground">Loading...</p>
