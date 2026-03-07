@@ -8,6 +8,7 @@ import { servers, organization, user as userTable } from '$server/db/schema';
 import { eq } from 'drizzle-orm';
 import { decryptToken } from '$server/auth/crypto';
 import { env } from '$env/dynamic/private';
+import { startBackupScheduler } from '$server/services/backup-scheduler';
 
 /**
  * Resolve tenantCtx from a Bearer server token.
@@ -154,3 +155,5 @@ export const handleError: HandleServerError = ({ error, event }) => {
   console.error(`[handleError] ${event.request.method} ${event.url.pathname}`, error);
   return { message: 'Internal Error' };
 };
+
+startBackupScheduler();
