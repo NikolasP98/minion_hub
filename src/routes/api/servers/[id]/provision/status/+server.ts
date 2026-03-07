@@ -1,6 +1,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
+import { requireAdmin } from '$server/auth/authorize';
 import {
   getProvisionConfig,
   checkPhaseStatus,
@@ -8,6 +9,7 @@ import {
 } from '$server/services/provision.service';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
+  requireAdmin(locals);
   const ctx = await getOrCreateTenantCtx(locals);
   try {
     const config = await getProvisionConfig(ctx, params.id!);

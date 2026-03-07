@@ -20,6 +20,7 @@ import {
   reliabilityEvents,
   sessionTasks,
   userServers,
+  userAgents,
 } from './schema';
 
 // ── Better Auth: User ─────────────────────────────────────────────────────────
@@ -31,6 +32,7 @@ export const userRelations = relations(user, ({ many }) => ({
   invitations: many(invitation),
   files: many(files),
   userServers: many(userServers),
+  userAgents: many(userAgents),
 }));
 
 // ── Better Auth: Session ──────────────────────────────────────────────────────
@@ -80,6 +82,7 @@ export const serversRelations = relations(servers, ({ one, many }) => ({
   connectionEvents: many(connectionEvents),
   settings: many(settings),
   userServers: many(userServers),
+  userAgents: many(userAgents),
 }));
 
 // ── Agents ───────────────────────────────────────────────────────────────────
@@ -174,4 +177,11 @@ export const sessionTasksRelations = relations(sessionTasks, ({ one }) => ({
 export const userServersRelations = relations(userServers, ({ one }) => ({
   user: one(user, { fields: [userServers.userId], references: [user.id] }),
   server: one(servers, { fields: [userServers.serverId], references: [servers.id] }),
+}));
+
+// ── User Agents ──────────────────────────────────────────────────────────
+
+export const userAgentsRelations = relations(userAgents, ({ one }) => ({
+  user: one(user, { fields: [userAgents.userId], references: [user.id] }),
+  server: one(servers, { fields: [userAgents.serverId], references: [servers.id] }),
 }));

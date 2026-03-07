@@ -75,6 +75,7 @@ const appHandle: Handle = async ({ event, resolve }) => {
     const db = getDb();
     const rows = await db.select({ id: organization.id }).from(organization).limit(1);
     if (rows.length > 0) event.locals.tenantCtx = { db, tenantId: rows[0].id };
+    event.locals.user = { id: 'local', email: 'local@dev', displayName: 'Local Dev', role: 'admin' };
     return resolve(event);
   }
 

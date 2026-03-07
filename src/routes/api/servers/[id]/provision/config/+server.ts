@@ -1,6 +1,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
+import { requireAdmin } from '$server/auth/authorize';
 import {
   getProvisionConfig,
   upsertProvisionConfig,
@@ -8,6 +9,7 @@ import {
 } from '$server/services/provision.service';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
+  requireAdmin(locals);
   const ctx = await getOrCreateTenantCtx(locals);
   try {
     const config = await getProvisionConfig(ctx, params.id!);
@@ -31,6 +33,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 };
 
 export const PUT: RequestHandler = async ({ locals, params, request }) => {
+  requireAdmin(locals);
   const ctx = await getOrCreateTenantCtx(locals);
   try {
     const body = await request.json();
@@ -46,6 +49,7 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
 };
 
 export const DELETE: RequestHandler = async ({ locals, params }) => {
+  requireAdmin(locals);
   const ctx = await getOrCreateTenantCtx(locals);
   try {
     await deleteProvisionConfig(ctx, params.id!);

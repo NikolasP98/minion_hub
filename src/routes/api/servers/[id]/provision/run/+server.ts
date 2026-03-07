@@ -3,6 +3,7 @@ import { json } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
 import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
 import { serverProvisionConfigs } from '$server/db/schema';
+import { requireAdmin } from '$server/auth/authorize';
 import {
   getProvisionConfig,
   runSetupPhase,
@@ -11,6 +12,7 @@ import {
 } from '$server/services/provision.service';
 
 export const POST: RequestHandler = async ({ locals, params, request }) => {
+  requireAdmin(locals);
   const ctx = await getOrCreateTenantCtx(locals);
   try {
     const config = await getProvisionConfig(ctx, params.id!);

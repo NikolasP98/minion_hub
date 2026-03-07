@@ -1,4 +1,5 @@
 import type { Agent, Session, PresenceEntry, HelloOk } from '$lib/types/gateway';
+import { userState } from '$lib/state/features/user.svelte';
 
 /**
  * Non-reactive index for O(1) session lookup by sessionKey.
@@ -33,6 +34,18 @@ export const gw = $state({
   cronJobs: [] as unknown[],
   lastSeq: null as number | null,
 });
+
+/**
+ * Agents filtered by user's allowed agent IDs.
+ * Admins (allowedAgentIds === null) see all agents.
+ */
+export const visibleAgents = {
+  get value(): Agent[] {
+    const allowed = userState.allowedAgentIds;
+    if (allowed === null) return gw.agents;
+    return gw.agents.filter((a) => allowed.has(a.id));
+  },
+};
 
 const MAX_SESSIONS = 1000;
 

@@ -1,5 +1,6 @@
 <script lang="ts">
     import { Brain, Bot, Radio, MessageSquare, Shield, Server, Palette, HardDrive } from "lucide-svelte";
+    import { isAdmin } from "$lib/state/features/user.svelte";
 
     interface Props {
         activeTab: string;
@@ -13,7 +14,7 @@
         Brain, Bot, Radio, MessageSquare, Shield, Server, Palette, HardDrive,
     };
 
-    const tabs: { id: string; label: string; icon: string }[] = [
+    const ALL_TABS: { id: string; label: string; icon: string }[] = [
         { id: 'hosts',      label: 'Hosts',      icon: 'HardDrive' },
         { id: 'ai',         label: 'AI',         icon: 'Brain'   },
         { id: 'agents',     label: 'Agents',     icon: 'Bot'     },
@@ -23,6 +24,12 @@
         { id: 'system',     label: 'System',     icon: 'Server'  },
         { id: 'appearance', label: 'Appearance', icon: 'Palette' },
     ];
+
+    const USER_TABS = new Set(['appearance']);
+
+    const tabs = $derived(
+        isAdmin.value ? ALL_TABS : ALL_TABS.filter((t) => USER_TABS.has(t.id))
+    );
 </script>
 
 <div class="shrink-0 border-b border-border bg-bg/80 backdrop-blur-sm" role="tablist">

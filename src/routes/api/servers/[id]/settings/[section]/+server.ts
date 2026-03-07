@@ -1,6 +1,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { getSettingsSection, upsertSettings } from '$server/services/settings.service';
+import { requireAdmin } from '$server/auth/authorize';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
   if (!locals.tenantCtx) throw error(401);
@@ -13,6 +14,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 };
 
 export const PUT: RequestHandler = async ({ locals, params, request }) => {
+  requireAdmin(locals);
   if (!locals.tenantCtx) throw error(401);
   try {
     const body: unknown = await request.json();

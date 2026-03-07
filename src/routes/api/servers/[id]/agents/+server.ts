@@ -1,11 +1,13 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { listAgents, upsertAgents } from '$server/services/agent.service';
+import { listAgentsForUser, upsertAgents } from '$server/services/agent.service';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
   if (!locals.tenantCtx) throw error(401);
   try {
-    const agents = await listAgents(locals.tenantCtx, params.id!);
+    const userId = locals.user?.id;
+    const userRole = locals.user?.role ?? 'user';
+    const agents = await listAgentsForUser(locals.tenantCtx, params.id!, userId ?? '', userRole);
     return json({ agents });
   } catch {
     return json({ agents: [] });

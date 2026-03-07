@@ -2,6 +2,7 @@
     import { page } from "$app/state";
     import { goto } from "$app/navigation";
     import { onMount, onDestroy } from "svelte";
+    import { isAdmin } from "$lib/state/features/user.svelte";
     import { hostsState, loadHosts } from "$lib/state/features/hosts.svelte";
     import {
         provisionState,
@@ -28,6 +29,10 @@
     const server = $derived(hostsState.hosts.find((h) => h.id === serverId));
 
     onMount(async () => {
+        if (!isAdmin.value) {
+            goto('/settings');
+            return;
+        }
         await loadHosts();
         if (serverId) {
             await fetchConfig(serverId);

@@ -3,7 +3,7 @@
     import GatewayInfo from "$lib/components/layout/GatewayInfo.svelte";
     import HudBorder from "$lib/components/decorations/HudBorder.svelte";
     import DotMatrix from "$lib/components/decorations/DotMatrix.svelte";
-    import { gw } from "$lib/state/gateway/gateway-data.svelte";
+    import { gw, visibleAgents } from "$lib/state/gateway/gateway-data.svelte";
     import { conn } from "$lib/state/gateway/connection.svelte";
     import { ui } from "$lib/state/ui/ui.svelte";
     import AddAgentModal from "./AddAgentModal.svelte";
@@ -44,9 +44,10 @@
             : new Array(16).fill(0),
     );
 
-    const agentCount = $derived(gw.agents.length);
+    const agents = $derived(visibleAgents.value);
+    const agentCount = $derived(agents.length);
     const activeAgentCount = $derived(
-        gw.agents.filter(
+        agents.filter(
             (a) => a.status === "running" || a.status === "thinking",
         ).length,
     );
@@ -176,7 +177,7 @@
                     </div>
                 {/if}
             </div>
-        {:else if gw.agents.length === 0}
+        {:else if agents.length === 0}
             <div class="py-8 px-3 text-center">
                 {#if collapsed}
                     <div
@@ -206,7 +207,7 @@
             </div>
         {:else}
             <div class="py-1">
-                {#each gw.agents as agent, i (agent.id)}
+                {#each agents as agent, i (agent.id)}
                     <AgentRow
                         {agent}
                         selected={ui.selectedAgentId === agent.id}
