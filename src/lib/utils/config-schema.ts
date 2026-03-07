@@ -108,7 +108,7 @@ export function getGroupsForTab(tabId: string, allGroups: ConfigGroup[]): Config
 
   if (tabId === 'security') {
     return allGroups
-      .filter((g) => SECURITY_GROUP_IDS.has(g.id))
+      .filter((g) => SECURITY_GROUP_IDS.has(g.id.toLowerCase()))
       .sort((a, b) => a.order - b.order);
   }
 
@@ -118,7 +118,7 @@ export function getGroupsForTab(tabId: string, allGroups: ConfigGroup[]): Config
   return allGroups
     .filter((g) => {
       // Skip security carve-out groups — they belong to the security tab
-      if (SECURITY_GROUP_IDS.has(g.id)) return false;
+      if (SECURITY_GROUP_IDS.has(g.id.toLowerCase())) return false;
       const metaId = getMetaGroupId(g.order);
       return metaGroupIds.includes(metaId);
     })
@@ -183,7 +183,7 @@ export function extractGroups(
   for (const [key, fieldSchema] of Object.entries(schema.properties)) {
     const hint = uiHints[key] ?? {};
     // Determine group: explicit hint.group, or infer from key
-    const groupId = hint.group ?? key;
+    const groupId = (hint.group ?? key).toLowerCase();
     const groupLabel = GROUP_LABELS[groupId] ?? GROUP_LABELS[key] ?? capitalize(groupId);
     // hint.order is authoritative when present (gateway sends numeric order directly).
     // Fall back to GROUP_ORDER lookup by id or key, then default to 500 (System).

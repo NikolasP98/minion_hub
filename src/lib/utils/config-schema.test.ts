@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { TABS, TAB_MAPPING, SECURITY_GROUP_IDS, getGroupsForTab } from './config-schema';
+import { TABS, TAB_MAPPING, SECURITY_GROUP_IDS, getGroupsForTab, extractGroups } from './config-schema';
 import type { ConfigGroup } from '$lib/types/config';
 
 // Helper to create a mock ConfigGroup with a given id and order
@@ -159,5 +159,48 @@ describe('getGroupsForTab', () => {
   it('returns empty array for unknown tab ID', () => {
     const result = getGroupsForTab('nonexistent', ALL_GROUPS);
     expect(result).toEqual([]);
+  });
+
+  it('assigns capitalized group IDs (e.g. "Session") to security tab via case-insensitive match', () => {
+    const groups = [mockGroup('Session', 90), mockGroup('Commands', 85)];
+    const result = getGroupsForTab('security', groups);
+    expect(result.map((g) => g.id)).toEqual(['Commands', 'Session']);
+  });
+
+  it('assigns lowercase group IDs to security tab', () => {
+    const groups = [mockGroup('session', 90), mockGroup('commands', 85)];
+    const result = getGroupsForTab('security', groups);
+    expect(result.map((g) => g.id)).toEqual(['commands', 'session']);
+  });
+});
+
+describe('extractGroups', () => {
+  it('normalizes capitalized hint.group to lowercase group ID', () => {
+    const schema = {
+      type: 'object' as const,
+      properties: {
+        someField: { type: 'string' as const },
+      },
+    };
+    const hints = {
+      someField: { group: 'Session', label: 'Some Field', order: 90 },
+    };
+    const groups = extractGroups(schema, hints);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].id).toBe('session');
+  });
+
+  it('preserves already-lowercase group IDs', () => {
+    const schema = {
+      type: 'object' as const,
+      properties: {
+        foo: { type: 'string' as const },
+      },
+    };
+    const hints = {
+      foo: { group: 'agents', label: 'Foo', order: 40 },
+    };
+    const groups = extractGroups(schema, hints);
+    expect(groups[0].id).toBe('agents');
   });
 });

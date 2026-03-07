@@ -398,9 +398,14 @@
                                 {/each}
 
                                 {#if getTabGroups(tab.id).length === 0 && configState.loaded}
-                                    <p class="text-muted-foreground text-sm py-4">
-                                        {m.config_noSections()}
-                                    </p>
+                                    <div class="text-center py-12">
+                                        <p class="text-muted-foreground text-sm">
+                                            No {tab.label} settings available
+                                        </p>
+                                        <p class="text-xs text-muted-foreground/60 mt-1">
+                                            This gateway may not expose settings for this category
+                                        </p>
+                                    </div>
                                 {/if}
 
                                 <!-- Integrated sections per tab -->

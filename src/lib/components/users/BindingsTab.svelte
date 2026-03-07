@@ -11,7 +11,7 @@
     import { SvelteMap } from "svelte/reactivity";
 
     type BindingPeer = { kind: "dm" | "group"; id: string };
-    type BindingMatch = { channel: string; peer: BindingPeer };
+    type BindingMatch = { channel: string; peer?: BindingPeer; chatType?: string; chatId?: string };
     type BindingEntry = { agentId: string; match: BindingMatch };
 
     const CHANNELS = ["whatsapp", "telegram", "discord"] as const;
@@ -143,15 +143,15 @@
                                     </span>
                                     <span
                                         class="text-[10px] font-semibold px-2 py-0.5 rounded-full
-                    {b.match.peer.kind === 'dm'
+                    {b.match.peer?.kind === 'dm'
                                             ? 'bg-accent/15 text-accent'
                                             : 'bg-muted-foreground/20 text-muted-foreground'}"
                                     >
-                                        {b.match.peer.kind.toUpperCase()}
+                                        {(b.match.peer?.kind ?? b.match.chatType ?? 'unknown').toUpperCase()}
                                     </span>
                                     <span
                                         class="font-mono text-xs text-foreground flex-1 min-w-0 truncate"
-                                        >{b.match.peer.id}</span
+                                        >{b.match.peer?.id ?? b.match.chatId ?? '—'}</span
                                     >
                                     <span
                                         class="text-[10px] text-muted capitalize"

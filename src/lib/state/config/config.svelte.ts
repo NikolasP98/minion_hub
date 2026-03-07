@@ -168,7 +168,10 @@ export async function loadConfig(): Promise<void> {
     const schemaP = withTimeout(
       sendRequest('config.schema', {}) as Promise<ConfigSchemaResponse>,
       8000,
-    ).catch(() => null); // gracefully degrade if unavailable
+    ).catch((err) => {
+      console.warn('[config] config.schema request failed, falling back to inferred schema:', err);
+      return null;
+    });
 
     const [snapshot, schemaRes] = await Promise.all([snapshotP, schemaP]);
 
