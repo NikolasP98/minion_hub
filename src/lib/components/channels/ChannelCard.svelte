@@ -1,7 +1,9 @@
 <script lang="ts">
     import type { Channel, ChannelType } from '$lib/types/channels';
     import { CHANNEL_TYPE_LABELS, CHANNEL_FIELDS } from '$lib/types/channels';
-    import { MessageSquare, Smartphone, Send, Trash2, Radio, ChevronDown, Pencil } from 'lucide-svelte';
+    import { MessageSquare, Smartphone, Send, Trash2, Radio, ChevronDown, Pencil, Power } from 'lucide-svelte';
+    import { sendRequest } from '$lib/services/gateway.svelte';
+    import { gw } from '$lib/state/gateway';
     import ChannelAssignmentPicker from './ChannelAssignmentPicker.svelte';
     import ChannelForm from './ChannelForm.svelte';
 
@@ -18,6 +20,7 @@
 
     const isGateway = $derived(channel.source === 'gateway');
     let showEditForm = $state(false);
+    let toggling = $state(false);
 
     const statusColor: Record<string, string> = {
         active: 'bg-success/20 text-success',
@@ -39,10 +42,45 @@
         Object.entries(channel.credentialsMeta ?? {}).filter(([, v]) => v)
     );
 
+    const GATEWAY_META_LABELS: Record<string, string> = {
+        username: 'Bot Username',
+        botId: 'Bot ID',
+        appId: 'Application ID',
+        phone: 'Phone',
+        tokenSource: 'Token Source',
+        dmPolicy: 'DM Policy',
+    };
+
     const fieldDefs = $derived(CHANNEL_FIELDS[channel.type] ?? []);
-    const metaFieldLabels = $derived(
-        Object.fromEntries(fieldDefs.map((f) => [f.key, f.label]))
-    );
+    const metaFieldLabels = $derived({
+        ...GATEWAY_META_LABELS,
+        ...Object.fromEntries(fieldDefs.map((f) => [f.key, f.label])),
+    });
+
+    /** Parse gateway channel ID (gw:<type>:<accountId>) */
+    const gwParts = $derived(channel.id.startsWith('gw:') ? channel.id.split(':') : null);
+    const gwChannelType = $derived(gwParts?.[1] ?? null);
+    const gwAccountId = $derived(gwParts?.[2] ?? null);
+
+    async function handleToggleEnabled() {
+        if (!isGateway || !gwChannelType || !gwAccountId || toggling) return;
+        const newEnabled = !(channel.gwEnabled ?? true);
+        toggling = true;
+        try {
+            const isDefault = gwAccountId === 'default';
+            const patch = isDefault
+                ? { channels: { [gwChannelType]: { enabled: newEnabled } } }
+                : { channels: { [gwChannelType]: { accounts: { [gwAccountId]: { enabled: newEnabled } } } } };
+            await sendRequest('config.patch', { raw: JSON.stringify(patch) });
+            // Refresh channel status
+            const r = await sendRequest('channels.status', { probe: false });
+            if (r) gw.channels = r;
+        } catch (e) {
+            console.error('[hub] toggle channel failed:', e);
+        } finally {
+            toggling = false;
+        }
+    }
 
     async function handleInlineSave(data: { type: ChannelType; label: string; credentials: Record<string, string>; credentialsMeta: Record<string, string> }) {
         await onsave?.(data);
@@ -200,7 +238,22 @@
                         {/if}
                     </div>
                 {:else}
-                    <p class="text-[10px] text-muted-foreground/60 italic">Managed by gateway — credentials are read-only.</p>
+                    <div class="flex items-center justify-between">
+                        <p class="text-[10px] text-muted-foreground/60 italic">Managed by gateway — credentials are read-only.</p>
+                        {#if gwChannelType && gwAccountId}
+                            <button
+                                type="button"
+                                class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md transition-colors {channel.gwEnabled === false
+                                    ? 'bg-success/10 text-success hover:bg-success/20'
+                                    : 'bg-destructive/10 text-destructive hover:bg-destructive/20'}"
+                                onclick={(e) => { e.stopPropagation(); handleToggleEnabled(); }}
+                                disabled={toggling}
+                            >
+                                <Power size={12} />
+                                {toggling ? '...' : (channel.gwEnabled === false ? 'Enable' : 'Disable')}
+                            </button>
+                        {/if}
+                    </div>
                 {/if}
             </div>
         </div>

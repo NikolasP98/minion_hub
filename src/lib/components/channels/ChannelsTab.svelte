@@ -29,13 +29,28 @@
             const type = (CHANNEL_TYPE_LABELS[channelType as ChannelType] ? channelType : 'discord') as ChannelType;
             for (const acct of accounts) {
                 const displayName = acct.name || acct.accountId;
+                // Channels with persistent connections (WhatsApp) use `connected`;
+                // channels without (Discord, Telegram) treat `running` as active.
+                const hasConnectedField = acct.connected !== undefined;
+                const isActive = hasConnectedField ? acct.connected : acct.running;
+                const isPairing = hasConnectedField && acct.running && !acct.connected;
+
+                // Build credentialsMeta from gateway snapshot data
+                const meta: Record<string, string> = {};
+                if (acct.bot?.username) meta.username = acct.bot.username;
+                if (acct.bot?.id) meta.botId = acct.bot.id;
+                if (acct.application?.id) meta.appId = acct.application.id;
+                if (acct.self?.e164) meta.phone = acct.self.e164;
+                if (acct.tokenSource && acct.tokenSource !== 'none') meta.tokenSource = acct.tokenSource;
+                if (acct.dmPolicy) meta.dmPolicy = acct.dmPolicy;
+
                 result.push({
                     id: `gw:${channelType}:${acct.accountId}`,
                     serverId: serverId ?? '',
                     type,
                     label: displayName,
-                    credentialsMeta: {},
-                    status: acct.connected ? 'active' : (acct.running ? 'pairing' : 'inactive'),
+                    credentialsMeta: meta,
+                    status: isActive ? 'active' : (isPairing ? 'pairing' : 'inactive'),
                     createdAt: 0,
                     updatedAt: 0,
                     source: 'gateway',
@@ -108,13 +123,16 @@
             for (const [channelType, accounts] of Object.entries(data.channelAccounts as Record<string, Record<string, { enabled?: boolean; configured?: boolean; running?: boolean; connected?: boolean; reconnectAttempts?: number; lastError?: string | null }>>)) {
                 const type = (CHANNEL_TYPE_LABELS[channelType as ChannelType] ? channelType : 'discord') as ChannelType;
                 for (const [accountId, status] of Object.entries(accounts)) {
+                    const hasConn = status.connected !== undefined;
+                    const active = hasConn ? status.connected : status.running;
+                    const pairing = hasConn && status.running && !status.connected;
                     result.push({
                         id: `gw:${channelType}:${accountId}`,
                         serverId: sid,
                         type,
                         label: accountId,
                         credentialsMeta: {},
-                        status: status.connected ? 'active' : (status.running ? 'pairing' : 'inactive'),
+                        status: active ? 'active' : (pairing ? 'pairing' : 'inactive'),
                         createdAt: 0,
                         updatedAt: 0,
                         source: 'gateway',

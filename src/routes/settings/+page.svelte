@@ -12,7 +12,7 @@
         save,
         restartState,
     } from "$lib/state/config/config.svelte";
-    import { hasConfiguredValues, countConfiguredKeys, getGroupsForTab, TABS } from "$lib/utils/config-schema";
+    import { countConfiguredKeys, getGroupsForTab, TABS } from "$lib/utils/config-schema";
     import { theme } from "$lib/state/ui/theme.svelte";
     import { logoState } from "$lib/state/ui/logo.svelte";
     import { locale } from "$lib/state/ui/locale.svelte";
@@ -21,8 +21,7 @@
     import SettingsSkeleton from "$lib/components/settings/SettingsSkeleton.svelte";
     import PatternSettings from "$lib/components/settings/PatternSettings.svelte";
     import SparklineStyleSettings from "$lib/components/settings/SparklineStyleSettings.svelte";
-    import GatewaySettings from "$lib/components/settings/GatewaySettings.svelte";
-    import MinionLogo from "$lib/components/layout/MinionLogo.svelte";
+import MinionLogo from "$lib/components/layout/MinionLogo.svelte";
     import ConfigSection from "$lib/components/config/ConfigSection.svelte";
     import ConfigSaveBar from "$lib/components/config/ConfigSaveBar.svelte";
     import SettingsScrollspy from "$lib/components/settings/SettingsScrollspy.svelte";
@@ -97,19 +96,6 @@
 
     let expandedIds = new SvelteSet<string>();
 
-    // Auto-expand configured groups on initial load
-    $effect(() => {
-        if (configState.loaded && expandedIds.size === 0) {
-            for (const g of groups.value) {
-                if (hasConfiguredValues(configState.current[g.fields[0]?.key])) {
-                    expandedIds.add(g.id);
-                }
-            }
-            if (expandedIds.size === 0 && groups.value.length > 0) {
-                expandedIds.add(groups.value[0].id);
-            }
-        }
-    });
 
     function toggleGroup(groupId: string) {
         if (expandedIds.has(groupId)) expandedIds.delete(groupId);
@@ -417,11 +403,6 @@
                                 {#if tab.id === 'agents'}
                                     <div class="mt-6">
                                         <BindingsTab />
-                                    </div>
-                                {/if}
-                                {#if tab.id === 'system'}
-                                    <div class="mt-6">
-                                        <GatewaySettings />
                                     </div>
                                 {/if}
                             </div>
