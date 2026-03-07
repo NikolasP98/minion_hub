@@ -48,7 +48,7 @@
 
   onMount(async () => {
     try {
-      await loadFlow(flowId);
+      await loadFlow(flowId!);
     } catch (e) {
       loadError = e instanceof Error ? e.message : 'Failed to load flow';
     }

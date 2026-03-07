@@ -39,7 +39,7 @@
     context: ContextEdgeComponent,
   };
 
-  const colorMode: ColorMode = $derived(theme.preset === 'light' ? 'light' : 'dark');
+  const colorMode: ColorMode = $derived(theme.preset.id === 'light' ? 'light' : 'dark');
 
   let containerEl: HTMLDivElement;
 
@@ -136,37 +136,22 @@
     {colorMode}
     bind:viewport={flowEditorState.canvasViewport}
     fitView
-    onnodeschange={(changes) => {
-      let dirty = false;
-      const updated = [...flowEditorState.nodes];
-      for (const change of changes) {
-        if (change.type === 'position' && change.dragging === false && change.position) {
-          // Only persist on drag-end, not during drag or @xyflow initialization
-          const idx = updated.findIndex((n) => n.id === change.id);
-          if (idx !== -1) {
-            updated[idx] = { ...updated[idx], position: change.position };
-            dirty = true;
-          }
-        }
-        if (change.type === 'remove') {
-          const idx = updated.findIndex((n) => n.id === change.id);
-          if (idx !== -1) {
-            updated.splice(idx, 1);
-            dirty = true;
-          }
-        }
-      }
-      if (dirty) setNodes(updated);
+    onnodedragstop={({ targetNode }) => {
+      if (!targetNode) return;
+      const updated = flowEditorState.nodes.map((n) =>
+        n.id === targetNode.id ? { ...n, position: targetNode.position } : n
+      );
+      setNodes(updated);
     }}
-    onedgeschange={(changes) => {
-      const updated = [...flowEditorState.edges];
-      for (const change of changes) {
-        if (change.type === 'remove') {
-          const idx = updated.findIndex((e) => e.id === change.id);
-          if (idx !== -1) updated.splice(idx, 1);
-        }
+    ondelete={({ nodes: deletedNodes, edges: deletedEdges }) => {
+      if (deletedNodes.length > 0) {
+        const ids = new Set(deletedNodes.map((n) => n.id));
+        setNodes(flowEditorState.nodes.filter((n) => !ids.has(n.id)));
       }
-      setEdges(updated);
+      if (deletedEdges.length > 0) {
+        const ids = new Set(deletedEdges.map((e) => e.id));
+        setEdges(flowEditorState.edges.filter((e) => !ids.has(e.id)));
+      }
     }}
     onconnect={handleConnect}
     defaultEdgeOptions={{ type: 'flow' }}

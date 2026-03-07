@@ -120,7 +120,7 @@
 
 		// Fill the full time range with every bucket so gaps show as 0
 		// rather than being interpolated from adjacent values.
-		const interval = summary.bucketMs;
+		const interval = summary!.bucketMs;
 		const buckets: number[] = [];
 		if (sparsebuckets.length > 0) {
 			for (let b = sparsebuckets[0]; b <= sparsebuckets[sparsebuckets.length - 1]; b += interval) {
