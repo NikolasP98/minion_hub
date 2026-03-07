@@ -8,20 +8,17 @@
         createChannel,
         updateChannel,
         deleteChannel,
-        getSelectedChannel,
     } from '$lib/state/channels';
     import { gw } from '$lib/state/gateway';
     import ChannelCard from './ChannelCard.svelte';
     import ChannelForm from './ChannelForm.svelte';
-    import ChannelAssignmentPicker from './ChannelAssignmentPicker.svelte';
     import { Plus, MessageSquare } from 'lucide-svelte';
 
-    let showForm = $state(false);
-    let editingChannel = $state<Channel | null>(null);
+    let showCreateForm = $state(false);
     let heartbeatChannels = $state<Channel[]>([]);
+    let expandedChannelId = $state<string | null>(null);
 
     const serverId = $derived(hostsState.activeHostId);
-    const selected = $derived(getSelectedChannel());
 
     /** Transform live WS channelAccounts (array-based) into Channel objects */
     const liveChannels = $derived.by((): Channel[] => {
@@ -43,6 +40,10 @@
                     updatedAt: 0,
                     source: 'gateway',
                     gwConnected: acct.connected ?? undefined,
+                    gwEnabled: acct.enabled ?? undefined,
+                    gwConfigured: acct.configured ?? undefined,
+                    gwRunning: acct.running ?? undefined,
+                    gwLastError: acct.lastError ?? undefined,
                     gwReconnectAttempts: acct.reconnectAttempts ?? undefined,
                 });
             }
@@ -56,9 +57,31 @@
     /** Merge hub DB channels with gateway-reported channels (hub takes precedence on type+label match) */
     const mergedChannels = $derived.by((): Channel[] => {
         const hubChannels = channelState.channels.map((ch) => ({ ...ch, source: 'hub' as const }));
+
+        // Build a map of gateway channels by type+label for enrichment
+        const gwMap = new Map<string, Channel>();
+        for (const gwCh of gatewayChannels) {
+            gwMap.set(`${gwCh.type}:${gwCh.label.toLowerCase()}`, gwCh);
+        }
+
+        // Enrich hub channels with live data from matching gateway channels
+        const enriched = hubChannels.map((ch) => {
+            const gwMatch = gwMap.get(`${ch.type}:${ch.label.toLowerCase()}`);
+            if (!gwMatch) return ch;
+            return {
+                ...ch,
+                gwConnected: gwMatch.gwConnected,
+                gwEnabled: gwMatch.gwEnabled,
+                gwConfigured: gwMatch.gwConfigured,
+                gwRunning: gwMatch.gwRunning,
+                gwLastError: gwMatch.gwLastError,
+                gwReconnectAttempts: gwMatch.gwReconnectAttempts,
+            };
+        });
+
         const hubKeys = new Set(hubChannels.map((ch) => `${ch.type}:${ch.label.toLowerCase()}`));
         const extras = gatewayChannels.filter((gwCh) => !hubKeys.has(`${gwCh.type}:${gwCh.label.toLowerCase()}`));
-        return [...hubChannels, ...extras];
+        return [...enriched, ...extras];
     });
 
     // Group channels by type
@@ -82,7 +105,7 @@
             const data = JSON.parse(heartbeats[0].channelStatusJson);
             if (!data?.channelAccounts) return;
             const result: Channel[] = [];
-            for (const [channelType, accounts] of Object.entries(data.channelAccounts as Record<string, Record<string, { enabled?: boolean; configured?: boolean; running?: boolean; connected?: boolean; reconnectAttempts?: number }>>)) {
+            for (const [channelType, accounts] of Object.entries(data.channelAccounts as Record<string, Record<string, { enabled?: boolean; configured?: boolean; running?: boolean; connected?: boolean; reconnectAttempts?: number; lastError?: string | null }>>)) {
                 const type = (CHANNEL_TYPE_LABELS[channelType as ChannelType] ? channelType : 'discord') as ChannelType;
                 for (const [accountId, status] of Object.entries(accounts)) {
                     result.push({
@@ -96,6 +119,10 @@
                         updatedAt: 0,
                         source: 'gateway',
                         gwConnected: status.connected,
+                        gwEnabled: status.enabled,
+                        gwConfigured: status.configured,
+                        gwRunning: status.running,
+                        gwLastError: status.lastError ?? undefined,
                         gwReconnectAttempts: status.reconnectAttempts,
                     });
                 }
@@ -111,15 +138,15 @@
         }
     });
 
-    async function handleSave(data: { type: ChannelType; label: string; credentials: Record<string, string>; credentialsMeta: Record<string, string> }) {
+    async function handleSave(channelId: string, data: { type: ChannelType; label: string; credentials: Record<string, string>; credentialsMeta: Record<string, string> }) {
         if (!serverId) return;
-        if (editingChannel) {
-            await updateChannel(serverId, editingChannel.id, data);
-        } else {
-            await createChannel(serverId, data);
-        }
-        showForm = false;
-        editingChannel = null;
+        await updateChannel(serverId, channelId, data);
+    }
+
+    async function handleCreate(data: { type: ChannelType; label: string; credentials: Record<string, string>; credentialsMeta: Record<string, string> }) {
+        if (!serverId) return;
+        await createChannel(serverId, data);
+        showCreateForm = false;
     }
 
     async function handleDelete(channel: Channel) {
@@ -128,14 +155,8 @@
         await deleteChannel(serverId, channel.id);
     }
 
-    function startEdit(channel: Channel) {
-        editingChannel = channel;
-        showForm = true;
-    }
-
-    function startCreate() {
-        editingChannel = null;
-        showForm = true;
+    function toggleExpand(id: string) {
+        expandedChannelId = expandedChannelId === id ? null : id;
     }
 </script>
 
@@ -148,11 +169,11 @@
                 Register Discord, WhatsApp, and Telegram accounts for this gateway.
             </p>
         </div>
-        {#if !showForm}
+        {#if !showCreateForm}
             <button
                 type="button"
                 class="flex items-center gap-1.5 bg-accent text-accent-foreground rounded-md px-3 py-1.5 text-xs font-medium hover:opacity-90 transition-opacity"
-                onclick={startCreate}
+                onclick={() => { showCreateForm = true; }}
             >
                 <Plus size={13} />
                 Add Channel
@@ -164,17 +185,12 @@
         <p class="text-sm text-muted-foreground text-center py-8">
             Select a server from the topbar to manage channels.
         </p>
-    {:else if showForm}
+    {:else if showCreateForm}
         <div class="bg-card border border-border rounded-lg p-5">
             <ChannelForm
                 {serverId}
-                initialType={editingChannel?.type}
-                initialLabel={editingChannel?.label ?? ''}
-                initialCredentials={editingChannel?.credentials}
-                initialMeta={editingChannel?.credentialsMeta}
-                channelId={editingChannel?.id}
-                onsave={handleSave}
-                oncancel={() => { showForm = false; editingChannel = null; }}
+                onsave={handleCreate}
+                oncancel={() => { showCreateForm = false; }}
             />
         </div>
     {:else if channelState.loading}
@@ -190,7 +206,7 @@
             <button
                 type="button"
                 class="text-xs text-accent hover:underline"
-                onclick={startCreate}
+                onclick={() => { showCreateForm = true; }}
             >
                 Add your first channel
             </button>
@@ -207,22 +223,16 @@
                         {#each channels as channel (channel.id)}
                             <ChannelCard
                                 {channel}
-                                selected={channelState.selectedChannelId === channel.id}
-                                onclick={() => { channelState.selectedChannelId = channelState.selectedChannelId === channel.id ? null : channel.id; }}
-                                onedit={() => startEdit(channel)}
+                                {serverId}
+                                expanded={expandedChannelId === channel.id}
+                                onclick={() => toggleExpand(channel.id)}
                                 ondelete={() => handleDelete(channel)}
+                                onsave={(data) => handleSave(channel.id, data)}
                             />
                         {/each}
                     </div>
                 </div>
             {/each}
         </div>
-
-        <!-- Assignment picker for selected channel -->
-        {#if selected}
-            <div class="bg-card border border-border rounded-lg p-4 mt-4">
-                <ChannelAssignmentPicker {serverId} channelId={selected.id} />
-            </div>
-        {/if}
     {/if}
 </div>

@@ -14,6 +14,10 @@ export interface Channel {
   updatedAt: number;
   source?: 'hub' | 'gateway';
   gwConnected?: boolean;
+  gwEnabled?: boolean;
+  gwConfigured?: boolean;
+  gwRunning?: boolean;
+  gwLastError?: string | null;
   gwReconnectAttempts?: number;
 }
 
