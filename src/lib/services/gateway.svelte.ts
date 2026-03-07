@@ -165,6 +165,14 @@ export async function sendInstall(agentId: string, files: Record<string, string>
   await sendRequest('agent.install', { agentId, files });
 }
 
+/**
+ * Request WhatsApp QR pairing from the gateway.
+ * The gateway will respond with `channels.whatsapp.qr` events containing QR data.
+ */
+export async function requestWhatsAppPair(channelId: string): Promise<void> {
+  await sendRequest('channels.whatsapp.pair', { channelId });
+}
+
 // ─── Internal ─────────────────────────────────────────────────────────────────
 
 function scheduleReconnect() {
@@ -341,6 +349,16 @@ function handleEvent(evt: Record<string, unknown>) {
     case 'reliability':
       if (evt.payload && typeof evt.payload === 'object') {
         pushReliabilityEvent(evt.payload as ReliabilityEvent);
+      }
+      break;
+    case 'channels.whatsapp.qr':
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('channels.whatsapp.qr', { detail: evt.payload }));
+      }
+      break;
+    case 'channels.whatsapp.paired':
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('channels.whatsapp.paired', { detail: evt.payload }));
       }
       break;
   }

@@ -24,3 +24,5 @@ export { workshopSaves } from './workshop-saves';
 export { deviceIdentities } from './device-identities';
 export { flows } from './flows';
 export { userServers } from './user-servers';
+export { channels } from './channels';
+export { channelAssignments } from './channel-assignments';

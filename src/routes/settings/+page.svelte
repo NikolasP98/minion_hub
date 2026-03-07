@@ -28,6 +28,7 @@
     import SettingsScrollspy from "$lib/components/settings/SettingsScrollspy.svelte";
     import TeamTab from "$lib/components/users/TeamTab.svelte";
     import BindingsTab from "$lib/components/users/BindingsTab.svelte";
+    import ChannelsTab from "$lib/components/channels/ChannelsTab.svelte";
     import {
         Check,
         Globe,
@@ -62,8 +63,10 @@
         };
     });
 
-    // Gateway config tab IDs (all tabs except appearance)
-    const GATEWAY_TAB_IDS = new Set(TABS.filter((t) => t.id !== 'appearance').map((t) => t.id));
+    // Hub-managed tabs (not gateway config)
+    const HUB_TAB_IDS = new Set(['appearance', 'channels']);
+    // Gateway config tab IDs
+    const GATEWAY_TAB_IDS = new Set(TABS.filter((t) => !HUB_TAB_IDS.has(t.id)).map((t) => t.id));
 
     // URL-persisted active tab
     const activeTab = $derived(
@@ -308,8 +311,24 @@
             </div>
         </div>
 
+        <!-- Channels tab panel (hub-managed) -->
+        <div
+            class="tab-panel absolute inset-0 overflow-y-auto"
+            style:visibility={activeTab === 'channels' ? 'visible' : 'hidden'}
+            style:position={activeTab === 'channels' ? 'relative' : 'absolute'}
+            style:height={activeTab === 'channels' ? 'auto' : '0'}
+            style:overflow={activeTab === 'channels' ? 'auto' : 'hidden'}
+            role="tabpanel"
+        >
+            <div class="flex-1 overflow-y-auto p-6 md:p-10">
+                <div class="max-w-2xl mx-auto">
+                    <ChannelsTab />
+                </div>
+            </div>
+        </div>
+
         <!-- Gateway config tab panels (AI, Agents, Comms, Security, System) -->
-        {#each TABS.filter((t) => t.id !== 'appearance') as tab (tab.id)}
+        {#each TABS.filter((t) => !HUB_TAB_IDS.has(t.id)) as tab (tab.id)}
             {@const isActive = activeTab === tab.id}
             <div
                 class="tab-panel absolute inset-0"
