@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { Brain, Bot, Radio, MessageSquare, Shield, Server, Palette, HardDrive } from "lucide-svelte";
+    import { Brain, Bot, Radio, MessageSquare, Shield, Server, Palette, HardDrive, DatabaseBackup } from "lucide-svelte";
     import { isAdmin } from "$lib/state/features/user.svelte";
 
     interface Props {
@@ -11,7 +11,7 @@
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const ICON_MAP: Record<string, any> = {
-        Brain, Bot, Radio, MessageSquare, Shield, Server, Palette, HardDrive,
+        Brain, Bot, Radio, MessageSquare, Shield, Server, Palette, HardDrive, DatabaseBackup,
     };
 
     const ALL_TABS: { id: string; label: string; icon: string }[] = [
@@ -22,6 +22,7 @@
         { id: 'channels',   label: 'Channels',  icon: 'MessageSquare' },
         { id: 'security',   label: 'Security',   icon: 'Shield'  },
         { id: 'system',     label: 'System',     icon: 'Server'  },
+        { id: 'backups',    label: 'Backups',    icon: 'DatabaseBackup' },
         { id: 'appearance', label: 'Appearance', icon: 'Palette' },
     ];
 

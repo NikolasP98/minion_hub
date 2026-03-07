@@ -80,6 +80,7 @@ export const TABS: { id: string; label: string; icon: string }[] = [
   { id: 'channels',   label: 'Channels',  icon: 'MessageSquare' },
   { id: 'security',   label: 'Security',   icon: 'Shield'  },
   { id: 'system',     label: 'System',     icon: 'Server'  },
+  { id: 'backups',    label: 'Backups',    icon: 'DatabaseBackup' },
   { id: 'appearance', label: 'Appearance', icon: 'Palette' },
 ];
 

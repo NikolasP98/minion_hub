@@ -29,6 +29,7 @@ import MinionLogo from "$lib/components/layout/MinionLogo.svelte";
     import BindingsTab from "$lib/components/users/BindingsTab.svelte";
     import ChannelsTab from "$lib/components/channels/ChannelsTab.svelte";
     import HostsTab from "$lib/components/settings/HostsTab.svelte";
+    import BackupsTab from "$lib/components/settings/BackupsTab.svelte";
     import {
         Check,
         Globe,
@@ -64,7 +65,7 @@ import MinionLogo from "$lib/components/layout/MinionLogo.svelte";
     });
 
     // Hub-managed tabs (not gateway config)
-    const HUB_TAB_IDS = new Set(['appearance', 'channels', 'hosts']);
+    const HUB_TAB_IDS = new Set(['appearance', 'channels', 'hosts', 'backups']);
     // Gateway config tab IDs
     const GATEWAY_TAB_IDS = new Set(TABS.filter((t) => !HUB_TAB_IDS.has(t.id)).map((t) => t.id));
 
@@ -320,6 +321,20 @@ import MinionLogo from "$lib/components/layout/MinionLogo.svelte";
             <div class="flex-1 overflow-y-auto p-6 md:p-10">
                 <div class="max-w-2xl mx-auto">
                     <ChannelsTab />
+                </div>
+            </div>
+        </div>
+
+        <!-- Backups tab panel (hub-managed) -->
+        <div
+            class="tab-panel absolute inset-0 flex flex-col overflow-hidden"
+            style:visibility={activeTab === 'backups' ? 'visible' : 'hidden'}
+            style:z-index={activeTab === 'backups' ? 1 : 0}
+            role="tabpanel"
+        >
+            <div class="flex-1 overflow-y-auto p-6 md:p-10">
+                <div class="max-w-2xl mx-auto">
+                    <BackupsTab />
                 </div>
             </div>
         </div>
