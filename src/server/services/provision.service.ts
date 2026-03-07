@@ -264,7 +264,7 @@ export async function checkPhaseStatus(
   opts: SshCheckOptions,
 ): Promise<Record<string, PhaseStatus>> {
   const { sshHost, sshUser, sshPort, agentName, gatewayPort = 18789 } = opts;
-  const minionUser = agentName ?? 'minion';
+  const minionUser = agentName ? `minion-${agentName.toLowerCase().replace(/\s+/g, '-')}` : 'minion';
   const results: Record<string, PhaseStatus> = {};
 
   // Phase 00: Preflight — user exists + node available
@@ -367,9 +367,8 @@ export function runSetupPhase(
         setupPath,
         '--non-interactive',
         '--mode=remote',
-        `--host=${config.sshHost}`,
-        `--user=${config.sshUser ?? 'root'}`,
-        `--port=${config.sshPort ?? 22}`,
+        `--vps-hostname=${config.sshHost}`,
+        `--admin-user=${config.sshUser ?? 'niko'}`,
       ];
 
       if (config.agentName) args.push(`--agent-name=${config.agentName}`);
@@ -394,15 +393,17 @@ export function runSetupPhase(
       };
       signal.addEventListener('abort', onAbort, { once: true });
 
+      const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+
       proc.stdout.on('data', (data: Buffer) => {
         try {
-          controller.enqueue(data.toString());
+          controller.enqueue(stripAnsi(data.toString()));
         } catch { /* stream closed */ }
       });
 
       proc.stderr.on('data', (data: Buffer) => {
         try {
-          controller.enqueue(data.toString());
+          controller.enqueue(stripAnsi(data.toString()));
         } catch { /* stream closed */ }
       });
 

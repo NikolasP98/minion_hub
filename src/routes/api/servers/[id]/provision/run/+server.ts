@@ -1,10 +1,13 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
+import { eq } from 'drizzle-orm';
 import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
+import { serverProvisionConfigs } from '$server/db/schema';
 import {
   getProvisionConfig,
   runSetupPhase,
   savePhaseStatuses,
+  type PhaseStatus,
 } from '$server/services/provision.service';
 
 export const POST: RequestHandler = async ({ locals, params, request }) => {
@@ -29,17 +32,33 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
     const sseStream = new ReadableStream({
       async start(sseController) {
         const reader = stream.getReader();
+        const liveStatuses: Record<string, PhaseStatus> = { ...config.phaseStatuses };
+        let currentPhase: string | null = null;
+        let exitCode: number | null = null;
+
         try {
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
 
             // Detect phase transitions from setup.sh output
-            const phaseMatch = value.match(/={3,}\s*Phase\s+(\d+)/i);
+            const phaseMatch = value.match(/[║|]\s*Phase\s+(\d+)/);
             if (phaseMatch) {
+              // Mark previous phase complete if it was running
+              if (currentPhase && liveStatuses[currentPhase] === 'running') {
+                liveStatuses[currentPhase] = 'complete';
+              }
+              currentPhase = phaseMatch[1];
+              liveStatuses[currentPhase] = 'running';
               sseController.enqueue(
-                encoder.encode(`event: phase\ndata: ${JSON.stringify({ phase: phaseMatch[1] })}\n\n`),
+                encoder.encode(`event: phase\ndata: ${JSON.stringify({ phase: currentPhase })}\n\n`),
               );
+            }
+
+            // Detect exit code from process
+            const exitMatch = value.match(/\[Process exited with code (\d+)\]/);
+            if (exitMatch) {
+              exitCode = parseInt(exitMatch[1], 10);
             }
 
             // Send log lines
@@ -53,12 +72,32 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
             }
           }
 
-          // Save final timestamp
-          await savePhaseStatuses(ctx, params.id!, config.phaseStatuses);
+          // Finalize last phase status based on exit code
+          if (currentPhase) {
+            if (exitCode === 0) {
+              liveStatuses[currentPhase] = 'complete';
+            } else if (liveStatuses[currentPhase] === 'running') {
+              liveStatuses[currentPhase] = 'failed';
+            }
+          }
+
+          // Save updated phase statuses and timestamp
+          const now = Date.now();
+          await savePhaseStatuses(ctx, params.id!, liveStatuses);
+          await ctx.db
+            .update(serverProvisionConfigs)
+            .set({ lastProvisionAt: now, updatedAt: now })
+            .where(eq(serverProvisionConfigs.serverId, params.id!));
 
           sseController.enqueue(encoder.encode(`event: done\ndata: {}\n\n`));
           sseController.close();
         } catch (err) {
+          // Mark current phase as failed on error
+          if (currentPhase && liveStatuses[currentPhase] === 'running') {
+            liveStatuses[currentPhase] = 'failed';
+          }
+          await savePhaseStatuses(ctx, params.id!, liveStatuses).catch(() => {});
+
           const msg = err instanceof Error ? err.message : 'Unknown error';
           sseController.enqueue(
             encoder.encode(`data: ${JSON.stringify({ type: 'error', line: msg })}\n\n`),
