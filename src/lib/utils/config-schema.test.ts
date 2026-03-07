@@ -48,13 +48,13 @@ const ALL_GROUPS: ConfigGroup[] = [
 ];
 
 describe('TABS constant', () => {
-  it('has exactly 6 tabs', () => {
-    expect(TABS).toHaveLength(6);
+  it('has exactly 7 tabs', () => {
+    expect(TABS).toHaveLength(7);
   });
 
   it('has correct tab IDs in order', () => {
     expect(TABS.map((t) => t.id)).toEqual([
-      'ai', 'agents', 'comms', 'security', 'system', 'appearance',
+      'ai', 'agents', 'comms', 'channels', 'security', 'system', 'appearance',
     ]);
   });
 
