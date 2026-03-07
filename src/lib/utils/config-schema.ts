@@ -73,6 +73,7 @@ export const SECURITY_GROUP_IDS = new Set(['session', 'commands']);
 
 /** Tab definitions with id, label, and lucide icon name. */
 export const TABS: { id: string; label: string; icon: string }[] = [
+  { id: 'hosts',      label: 'Hosts',      icon: 'HardDrive' },
   { id: 'ai',         label: 'AI',         icon: 'Brain'   },
   { id: 'agents',     label: 'Agents',     icon: 'Bot'     },
   { id: 'comms',      label: 'Comms',      icon: 'Radio'   },
@@ -87,6 +88,7 @@ export const TABS: { id: string; label: string; icon: string }[] = [
  * Security carve-outs are handled separately via SECURITY_GROUP_IDS.
  */
 export const TAB_MAPPING: Record<string, string[]> = {
+  hosts:      [], // hub-managed, not gateway config
   ai:         ['ai'],
   agents:     ['automation'],
   comms:      ['comms'],
