@@ -3,7 +3,9 @@
     import { CHANNEL_TYPE_LABELS, CHANNEL_FIELDS } from '$lib/types/channels';
     import { MessageSquare, Smartphone, Send, Trash2, Radio, ChevronDown, Pencil, Power } from 'lucide-svelte';
     import { sendRequest } from '$lib/services/gateway.svelte';
+    import { gw } from '$lib/state/gateway';
     import { configState, loadConfig, beginRestart } from '$lib/state/config/config.svelte';
+    import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
     import ChannelAssignmentPicker from './ChannelAssignmentPicker.svelte';
     import ChannelForm from './ChannelForm.svelte';
 
@@ -65,6 +67,7 @@
     async function handleToggleEnabled() {
         if (!isGateway || !gwChannelType || !gwAccountId || toggling) return;
         const newEnabled = !(channel.gwEnabled ?? true);
+        const label = `${gwChannelType}:${gwAccountId}`;
         toggling = true;
         try {
             // Ensure we have a fresh baseHash
@@ -72,7 +75,7 @@
                 await loadConfig();
             }
             if (!configState.baseHash) {
-                console.error('[hub] toggle channel failed: could not load config base hash');
+                toastError('Toggle failed', `Could not load config — try refreshing the page.`);
                 return;
             }
             const isDefault = gwAccountId === 'default';
@@ -82,22 +85,30 @@
             const result = await sendRequest('config.patch', {
                 raw: JSON.stringify(patch),
                 baseHash: configState.baseHash,
-                note: `${newEnabled ? 'Enable' : 'Disable'} ${gwChannelType}:${gwAccountId} via Hub`,
+                note: `${newEnabled ? 'Enable' : 'Disable'} ${label} via Hub`,
             }) as { reloadMode?: string } | undefined;
 
             const reloadMode = result?.reloadMode ?? 'restart';
 
+            // Refresh channel status so UI reflects the toggle immediately
+            const refreshChannels = () => sendRequest('channels.status', {}).then((r) => { if (r) gw.channels = r; });
+
             if (reloadMode === 'hot' || reloadMode === 'noop') {
-                // Hot reload succeeded — just refresh config state, no reconnect needed
                 try { await loadConfig(); } catch { /* best effort */ }
+                await refreshChannels();
+                toastSuccess(`${newEnabled ? 'Enabled' : 'Disabled'} ${label}`);
             } else {
                 // Full restart — wait for reconnect then refresh
                 try {
                     await loadConfig();
+                    await refreshChannels();
+                    toastSuccess(`${newEnabled ? 'Enabled' : 'Disabled'} ${label}`);
                 } catch (reloadErr) {
                     const msg = (reloadErr as Error).message ?? '';
                     if (msg.includes('closed') || msg.includes('not connected')) {
                         beginRestart();
+                    } else {
+                        toastError('Toggle failed', `Config saved but could not refresh: ${msg}`);
                     }
                 }
             }
@@ -106,7 +117,7 @@
             if (msg.includes('closed') || msg.includes('not connected')) {
                 beginRestart();
             } else {
-                console.error('[hub] toggle channel failed:', e);
+                toastError('Toggle failed', msg || 'Unknown error');
             }
         } finally {
             toggling = false;
