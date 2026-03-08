@@ -3,4 +3,5 @@ export * from './logo.svelte';
 export * from './locale.svelte';
 export * from './sparkline-style.svelte';
 export * from './theme.svelte';
+export * from './toast.svelte';
 export * from './ui.svelte';

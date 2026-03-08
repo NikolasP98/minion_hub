@@ -7,6 +7,8 @@
     import { gw, visibleAgents } from "$lib/state/gateway/gateway-data.svelte";
     import { conn } from "$lib/state/gateway/connection.svelte";
     import { ui } from "$lib/state/ui/ui.svelte";
+    import { hostsState } from "$lib/state/features/hosts.svelte";
+    import { wsConnect } from "$lib/services/gateway.svelte";
     import AddAgentModal from "./AddAgentModal.svelte";
     import { Plus, ChevronLeft, ChevronRight, Bot, Radio, LayoutList, LayoutGrid, FolderPlus } from "lucide-svelte";
     import * as m from "$lib/paraglide/messages";
@@ -103,10 +105,8 @@
     }
 
     function handleGroupDragOver(e: DragEvent) {
-        if (e.dataTransfer?.types.includes("application/agent-move")) {
-            e.preventDefault();
-            if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-        }
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
     }
 
     function selectAgent(agentId: string) {
@@ -249,12 +249,21 @@
                                 : m.conn_notConnected()}
                         </div>
                         {#if !conn.connecting}
-                            <button
-                                class="text-[10px] px-3 py-1.5 rounded-full bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors"
-                                onclick={() => (ui.overlayOpen = true)}
-                            >
-                                {m.sidebar_connectToHost()}
-                            </button>
+                            {#if hostsState.activeHostId}
+                                <button
+                                    class="text-[10px] px-3 py-1.5 rounded-full bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors"
+                                    onclick={() => wsConnect()}
+                                >
+                                    {m.sidebar_reconnect()}
+                                </button>
+                            {:else}
+                                <button
+                                    class="text-[10px] px-3 py-1.5 rounded-full bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors"
+                                    onclick={() => (ui.overlayOpen = true)}
+                                >
+                                    {m.sidebar_connectToHost()}
+                                </button>
+                            {/if}
                         {/if}
                     </div>
                 {/if}

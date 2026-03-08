@@ -3,6 +3,7 @@
  * tracks edits, computes patches, and saves.
  */
 import { sendRequest } from '$lib/services/gateway.svelte';
+import { toastError, toastSuccess, toastInfo } from '$lib/state/ui/toast.svelte';
 import { isAdmin } from '$lib/state/features/user.svelte';
 import { extractGroups, computeDirtyPaths, computePatch, deepGet, deepSet } from '$lib/utils/config-schema';
 import {
@@ -267,11 +268,13 @@ export async function save(): Promise<boolean> {
     // with a 'closed'/'not connected' error which we handle below.
     try {
       await loadConfig();
+      toastSuccess('Config saved');
     } catch (reloadErr) {
       const msg = (reloadErr as Error).message ?? '';
       if (msg.includes('closed') || msg.includes('not connected')) {
         // Gateway likely restarted to apply config changes
         beginRestart();
+        toastInfo('Gateway restarting…');
       }
       // Non-WS reload errors are non-fatal (config will reload on reconnect)
     }
@@ -281,11 +284,14 @@ export async function save(): Promise<boolean> {
     if (saveSucceeded && (msg.includes('closed') || msg.includes('not connected'))) {
       // The save itself went through but something closed after
       beginRestart();
+      toastInfo('Gateway restarting…');
     } else if (msg.includes('closed') || msg.includes('not connected')) {
       // sendRequest itself failed — save may not have reached gateway
       configState.saveError = 'Connection lost. Your changes were not saved.';
+      toastError('Config save failed', configState.saveError);
     } else {
       configState.saveError = msg;
+      toastError('Config save failed', msg);
     }
     return !saveSucceeded ? false : true;
   } finally {

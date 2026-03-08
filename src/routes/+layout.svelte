@@ -7,7 +7,7 @@
   import { i18n } from '$lib/i18n';
   import ParticleCanvas from '$lib/components/layout/ParticleCanvas.svelte';
   import BgPattern from '$lib/components/decorations/BgPattern.svelte';
-  import ShutdownBanner from '$lib/components/layout/ShutdownBanner.svelte';
+  import Toaster from '$lib/components/layout/Toaster.svelte';
   import HostsOverlay from '$lib/components/hosts/HostsOverlay.svelte';
   import { theme, applyTheme } from '$lib/state/ui/theme.svelte';
   import { ui } from '$lib/state/ui/ui.svelte';
@@ -51,7 +51,7 @@
   {#if page.url.pathname !== '/login'}
     <BgPattern />
   {/if}
-  <ShutdownBanner />
+  <Toaster />
   {@render children()}
 
   {#if ui.overlayOpen}

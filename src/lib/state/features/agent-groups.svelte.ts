@@ -71,14 +71,28 @@ export async function createAgentGroup(name: string) {
   const sid = getServerId();
   if (!sid) return;
 
-  const res = await fetch(`/api/servers/${sid}/agent-groups`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
-  });
-  if (!res.ok) return;
-  const { group } = await res.json();
-  agentGroupsState.groups = [...agentGroupsState.groups, group];
+  // Optimistic: generate temp ID, add to state immediately
+  const tempId = `temp-${Date.now()}`;
+  const optimistic: AgentGroup = { id: tempId, name, sortOrder: 0, memberAgentIds: [] };
+  agentGroupsState.groups = [...agentGroupsState.groups, optimistic];
+
+  try {
+    const res = await fetch(`/api/servers/${sid}/agent-groups`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    if (!res.ok) {
+      agentGroupsState.groups = agentGroupsState.groups.filter((g) => g.id !== tempId);
+      return;
+    }
+    const { group } = await res.json();
+    agentGroupsState.groups = agentGroupsState.groups.map((g) =>
+      g.id === tempId ? { ...g, id: group.id } : g,
+    );
+  } catch {
+    agentGroupsState.groups = agentGroupsState.groups.filter((g) => g.id !== tempId);
+  }
 }
 
 export async function updateAgentGroup(groupId: string, data: { name?: string; sortOrder?: number }) {

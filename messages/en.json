@@ -226,6 +226,7 @@
   "sidebar_totalCount": "{count} total",
   "sidebar_offline": "offline",
   "sidebar_connectToHost": "Connect to host",
+  "sidebar_reconnect": "Reconnect",
   "sidebar_createFirstAgent": "Create your first agent",
 
   "topbar_toggleMenu": "Toggle menu",

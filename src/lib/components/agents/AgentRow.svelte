@@ -28,12 +28,23 @@
         groupId?: string | null;
     } = $props();
 
+    let dragging = $state(false);
+
     function handleDragStart(e: DragEvent) {
+        dragging = true;
         e.dataTransfer?.setData(
             'application/agent-move',
             JSON.stringify({ agentId: agent.id, fromGroupId: groupId }),
         );
         if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+    }
+
+    function handleDragEnd() {
+        dragging = false;
+    }
+
+    function handleClick() {
+        if (!dragging) onclick();
     }
 
     const act = $derived(agentActivity[agent.id]);
@@ -121,6 +132,8 @@
 </script>
 
 {#if compact}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div draggable="true" ondragstart={handleDragStart} ondragend={handleDragEnd} role="listitem">
     <button
         {...tip.getTriggerProps() as Record<string, unknown>}
         type="button"
@@ -128,9 +141,7 @@
             ? 'bg-bg3'
             : 'border-l-transparent'}"
         style:border-left-color={selected ? accentColor : undefined}
-        draggable="true"
-        ondragstart={handleDragStart}
-        {onclick}
+        onclick={handleClick}
     >
             {#if agent.emoji}
                 <span class="text-base leading-none">{agent.emoji}</span>
@@ -153,6 +164,7 @@
                 {/if}
             </div>
         </button>
+    </div>
 
     {#if tip.open}
         <div {...tip.getPositionerProps()} class="!z-[9999]">
@@ -169,6 +181,8 @@
     {/if}
 {:else}
     <!-- Full row -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div draggable="true" ondragstart={handleDragStart} ondragend={handleDragEnd} role="listitem">
     <button
         type="button"
         class="w-full flex flex-col px-2.5 py-1.5 gap-1.5 border-l-3 border-b border-b-[rgba(42,53,72,0.5)] cursor-pointer transition-[background] duration-120 hover:bg-white/3 bg-transparent text-inherit {selected
@@ -176,9 +190,7 @@
             : 'border-l-transparent'}"
         style:border-left-color={selected ? accentColor : undefined}
         title={statusText}
-        draggable="true"
-        ondragstart={handleDragStart}
-        {onclick}
+        onclick={handleClick}
     >
         <!-- Row 1: status indicator + agent name -->
         <div class="flex items-center gap-2 min-w-0">
@@ -257,4 +269,5 @@
             </div>
         </div>
     </button>
+    </div>
 {/if}

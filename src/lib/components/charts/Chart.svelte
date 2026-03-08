@@ -18,6 +18,16 @@
 	let chart: ECharts | undefined = $state();
 	let observer: ResizeObserver | undefined;
 
+	function applyDefaults(opts: EChartsOption): EChartsOption {
+		return {
+			...opts,
+			tooltip: {
+				appendToBody: true,
+				...(typeof opts.tooltip === 'object' && !Array.isArray(opts.tooltip) ? opts.tooltip : {}),
+			},
+		};
+	}
+
 	const darkTheme = {
 		color: ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#ec4899'],
 		backgroundColor: 'transparent',
@@ -63,7 +73,7 @@
 
 			echarts.registerTheme('minion-dark', darkTheme);
 			chart = echarts.init(container, 'minion-dark');
-			chart.setOption(options);
+			chart.setOption(applyDefaults(options));
 
 			observer = new ResizeObserver(() => {
 				chart?.resize();
@@ -80,7 +90,7 @@
 
 	$effect(() => {
 		if (chart) {
-			chart.setOption(options, { notMerge: true });
+			chart.setOption(applyDefaults(options), { notMerge: true });
 		}
 	});
 </script>
