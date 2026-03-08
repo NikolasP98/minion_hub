@@ -112,6 +112,8 @@
   "reliability_gatewayIssues": "Gateway",
   "reliability_healthMetrics": "Métricas de Salud",
   "reliability_recentIncidents": "Incidentes Recientes",
+  "reliability_pluginTitle": "Salud de Plugins",
+  "reliability_noPlugins": "Sin datos de plugins",
 
   "settings_title": "Ajustes",
   "settings_theme": "Tema",
