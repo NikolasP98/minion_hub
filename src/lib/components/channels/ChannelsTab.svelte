@@ -151,12 +151,17 @@
         } catch { /* ignore */ }
     }
 
+    // Fetch channel data when serverId changes (separate from config to avoid re-fetching on baseHash updates)
     $effect(() => {
         if (serverId) {
             fetchChannels(serverId);
             fetchHeartbeatChannels(serverId);
-            if (conn.connected && !configState.baseHash) loadConfig();
         }
+    });
+
+    // Preload config baseHash for channel toggles (separate effect to avoid triggering channel re-fetch)
+    $effect(() => {
+        if (serverId && conn.connected && !configState.baseHash) loadConfig();
     });
 
     async function handleSave(channelId: string, data: { type: ChannelType; label: string; credentials: Record<string, string>; credentialsMeta: Record<string, string> }) {
@@ -214,7 +219,7 @@
                 oncancel={() => { showCreateForm = false; }}
             />
         </div>
-    {:else if channelState.loading}
+    {:else if channelState.loading && mergedChannels.length === 0}
         <div class="text-sm text-muted-foreground text-center py-8">Loading channels...</div>
     {:else if channelState.error}
         <div class="text-sm text-destructive text-center py-8">{channelState.error}</div>
