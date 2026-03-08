@@ -64,13 +64,38 @@
     const gwChannelType = $derived(gwParts?.[1] ?? null);
     const gwAccountId = $derived(gwParts?.[2] ?? null);
 
+    /** Wait for a server-pushed channels.status update confirming the toggle */
+    function waitForChannelState(
+        chType: string, acctId: string, expectedEnabled: boolean, timeoutMs = 10_000
+    ): Promise<boolean> {
+        return new Promise((resolve) => {
+            let done = false;
+            const check = () => {
+                const accounts = gw.channels?.channelAccounts?.[chType];
+                if (!Array.isArray(accounts)) return false;
+                const acct = accounts.find((a: { accountId: string }) => a.accountId === acctId);
+                return acct?.enabled === expectedEnabled;
+            };
+            const cleanup = () => {
+                if (done) return;
+                done = true;
+                clearTimeout(timer);
+                window.removeEventListener('channels.status.updated', onPush);
+            };
+            const onPush = () => { if (check()) { cleanup(); resolve(true); } };
+            const timer = setTimeout(() => { cleanup(); resolve(false); }, timeoutMs);
+            window.addEventListener('channels.status.updated', onPush);
+            // Already updated (broadcast arrived before response)
+            if (check()) { cleanup(); resolve(true); }
+        });
+    }
+
     async function handleToggleEnabled() {
         if (!isGateway || !gwChannelType || !gwAccountId || toggling) return;
         const newEnabled = !(channel.gwEnabled ?? true);
         const label = `${gwChannelType}:${gwAccountId}`;
         toggling = true;
         try {
-            // Ensure we have a fresh baseHash
             if (!configState.baseHash) {
                 await loadConfig();
             }
@@ -90,18 +115,29 @@
 
             const reloadMode = result?.reloadMode ?? 'restart';
 
-            // Refresh channel status so UI reflects the toggle immediately
-            const refreshChannels = () => sendRequest('channels.status', {}).then((r) => { if (r) gw.channels = r; });
-
             if (reloadMode === 'hot' || reloadMode === 'noop') {
-                try { await loadConfig(); } catch { /* best effort */ }
-                await refreshChannels();
+                try { await loadConfig(); } catch { /* refresh baseHash */ }
+                // Wait for server-pushed confirmation or timeout
+                const confirmed = await waitForChannelState(gwChannelType, gwAccountId, newEnabled);
+                if (!confirmed) {
+                    // Fallback: poll manually
+                    try {
+                        const r = await sendRequest('channels.status', {});
+                        if (r) gw.channels = r as typeof gw.channels;
+                    } catch { /* best effort */ }
+                }
                 toastSuccess(`${newEnabled ? 'Enabled' : 'Disabled'} ${label}`);
             } else {
                 // Full restart — wait for reconnect then refresh
                 try {
                     await loadConfig();
-                    await refreshChannels();
+                    const confirmed = await waitForChannelState(gwChannelType, gwAccountId, newEnabled);
+                    if (!confirmed) {
+                        try {
+                            const r = await sendRequest('channels.status', {});
+                            if (r) gw.channels = r as typeof gw.channels;
+                        } catch { /* best effort */ }
+                    }
                     toastSuccess(`${newEnabled ? 'Enabled' : 'Disabled'} ${label}`);
                 } catch (reloadErr) {
                     const msg = (reloadErr as Error).message ?? '';
@@ -291,8 +327,12 @@
                                 onclick={(e) => { e.stopPropagation(); handleToggleEnabled(); }}
                                 disabled={toggling}
                             >
-                                <Power size={12} />
-                                {toggling ? '...' : (channel.gwEnabled === false ? 'Enable' : 'Disable')}
+                                {#if toggling}
+                                    <span class="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
+                                {:else}
+                                    <Power size={12} />
+                                    {channel.gwEnabled === false ? 'Enable' : 'Disable'}
+                                {/if}
                             </button>
                         {/if}
                     </div>

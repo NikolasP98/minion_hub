@@ -4,6 +4,7 @@ import { agentChat, agentActivity, ensureAgentChat, ensureAgentActivity, markSpa
 import { hostsState, getActiveHost, updateHost, saveLastActiveHost } from '$lib/state/features/hosts.svelte';
 import { autoSave, resetWorkshop } from '$lib/state/workshop/workshop.svelte';
 import { ui } from '$lib/state/ui/ui.svelte';
+import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
 import { pushReliabilityEvent, setReliabilityServerId, type ReliabilityEvent } from '$lib/state/reliability/reliability.svelte';
 import { configState, loadConfig, restartState, onRestartReconnected } from '$lib/state/config/config.svelte';
 import { uuid } from '$lib/utils/uuid';
@@ -237,12 +238,18 @@ async function sendConnect() {
     locale: navigator.language,
   })
     .then((hello) => {
+      const wasReconnect = conn.backoffMs > 800;
       conn.backoffMs = 800;
       conn.connected = true;
       conn.connecting = false;
       conn.particleHue = 'blue';
       conn.connectedAt = Date.now();
       conn.connectError = null;
+
+      if (wasReconnect) {
+        const host = getActiveHost();
+        toastSuccess('Reconnected', host?.name ?? host?.url);
+      }
 
 
       gw.hello = hello as HelloOk;
@@ -264,6 +271,7 @@ async function sendConnect() {
     .catch((err) => {
       console.error('[hub] connect failed:', err);
       conn.connectError = String(err?.message ?? err);
+      toastError('Connection failed', conn.connectError);
       ws?.close(4008, 'connect failed');
     });
 }
@@ -345,12 +353,23 @@ function handleEvent(evt: Record<string, unknown>) {
     case 'presence': onPresenceEvent(evt.payload); break;
     case 'health':  gw.health = evt.payload; break;
     case 'tick':    ui.lastTickAt = Date.now(); break;
-    case 'shutdown':
-      ui.shutdownReason = ((evt.payload as { reason?: string })?.reason) ?? 'Gateway shutting down';
+    case 'shutdown': {
+      const reason = ((evt.payload as { reason?: string })?.reason) ?? 'Gateway shutting down';
+      ui.shutdownReason = reason;
+      toastError('Gateway shutdown', reason, { duration: Infinity });
       break;
+    }
     case 'reliability':
       if (evt.payload && typeof evt.payload === 'object') {
         pushReliabilityEvent(evt.payload as ReliabilityEvent);
+      }
+      break;
+    case 'channels.status':
+      if (evt.payload && typeof evt.payload === 'object') {
+        gw.channels = evt.payload as typeof gw.channels;
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('channels.status.updated'));
+        }
       }
       break;
     case 'channels.whatsapp.qr':
