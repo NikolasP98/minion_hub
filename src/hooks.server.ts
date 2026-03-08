@@ -66,7 +66,7 @@ const authHandle: Handle = async ({ event, resolve }) => {
   }
 };
 
-const UNPROTECTED_PREFIXES = ['/login', '/api/'];
+const UNPROTECTED_PREFIXES = ['/login', '/api/', '/invite/'];
 
 const appHandle: Handle = async ({ event, resolve }) => {
   const path = event.url.pathname;

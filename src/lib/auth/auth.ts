@@ -5,6 +5,7 @@ import { organization } from 'better-auth/plugins';
 import { getDb } from '$server/db/client';
 import * as schema from '$server/db/schema';
 import { env } from '$env/dynamic/private';
+import { sendInvitationEmail } from '$server/services/email.service';
 
 let _auth: ReturnType<typeof betterAuth> | null = null;
 
@@ -30,7 +31,22 @@ export function getAuth() {
 					? { google: { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET } }
 					: {}),
 			},
-			plugins: [jwt(), organization()],
+			plugins: [
+			jwt(),
+			organization({
+				async sendInvitationEmail(data) {
+					const baseUrl = env.BETTER_AUTH_URL ?? 'http://localhost:5173';
+					const inviteUrl = `${baseUrl}/invite/accept?id=${data.id}`;
+					await sendInvitationEmail({
+						to: data.email,
+						inviterName: data.inviter.user.name ?? data.inviter.user.email,
+						organizationName: data.organization.name,
+						role: data.role ?? 'member',
+						inviteUrl,
+					});
+				},
+			}),
+		],
 		});
 	}
 	return _auth;

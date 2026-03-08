@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
+  import { authClient } from '$lib/auth';
+  import { toastSuccess, toastError } from '$lib/state/ui/toast.svelte';
 
   type UserRow = {
     id: string;
@@ -10,20 +12,28 @@
     createdAt: string | null;
   };
 
+  type PendingInvite = {
+    id: string;
+    email: string;
+    role: string;
+    status: string;
+    expiresAt: Date | string;
+  };
+
   const ROLES: UserRow['role'][] = ['user', 'admin'];
+  const INVITE_ROLES = ['member', 'admin'];
 
   let users = $state<UserRow[]>([]);
+  let invitations = $state<PendingInvite[]>([]);
   let loading = $state(false);
   let error = $state<string | null>(null);
 
-  // Create form state
-  let showCreate = $state(false);
-  let createEmail = $state('');
-  let createPassword = $state('');
-  let createName = $state('');
-  let createRole = $state<UserRow['role']>('user');
-  let creating = $state(false);
-  let createError = $state<string | null>(null);
+  // Invite form state
+  let showInvite = $state(false);
+  let inviteEmail = $state('');
+  let inviteRole = $state('member');
+  let inviting = $state(false);
+  let inviteError = $state<string | null>(null);
 
   async function load() {
     loading = true;
@@ -37,6 +47,25 @@
       error = (e as Error).message;
     } finally {
       loading = false;
+    }
+  }
+
+  async function loadInvitations() {
+    try {
+      const result = await authClient.organization.listInvitations();
+      if (result.data) {
+        invitations = result.data
+          .filter((inv) => inv.status === 'pending')
+          .map((inv) => ({
+            id: inv.id,
+            email: inv.email,
+            role: inv.role ?? 'member',
+            status: inv.status as string,
+            expiresAt: inv.expiresAt,
+          }));
+      }
+    } catch {
+      // non-fatal — invitations just won't show
     }
   }
 
@@ -72,39 +101,45 @@
     }
   }
 
-  async function create() {
-    if (!createEmail || !createPassword) return;
-    creating = true;
-    createError = null;
+  async function sendInvite() {
+    if (!inviteEmail) return;
+    inviting = true;
+    inviteError = null;
     try {
-      const res = await fetch('/api/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: createEmail,
-          password: createPassword,
-          displayName: createName || undefined,
-          role: createRole,
-        }),
+      const result = await authClient.organization.inviteMember({
+        email: inviteEmail,
+        role: inviteRole as 'member' | 'admin',
       });
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        throw new Error((d as { message?: string }).message ?? `HTTP ${res.status}`);
+      if (result.error) {
+        throw new Error(result.error.message ?? 'Unknown error');
       }
-      showCreate = false;
-      createEmail = '';
-      createPassword = '';
-      createName = '';
-      createRole = 'user';
-      await load();
+      toastSuccess(m.invite_sent(), m.invite_sentTo({ email: inviteEmail }));
+      showInvite = false;
+      inviteEmail = '';
+      inviteRole = 'member';
+      await loadInvitations();
     } catch (e) {
-      createError = (e as Error).message;
+      inviteError = (e as Error).message;
+      toastError(m.invite_errorSending());
     } finally {
-      creating = false;
+      inviting = false;
     }
   }
 
-  onMount(load);
+  async function cancelInvite(invitationId: string) {
+    try {
+      await authClient.organization.cancelInvitation({ invitationId });
+      invitations = invitations.filter((i) => i.id !== invitationId);
+      toastSuccess(m.invite_cancelled());
+    } catch {
+      toastError(m.invite_errorCancelling());
+    }
+  }
+
+  onMount(() => {
+    load();
+    loadInvitations();
+  });
 </script>
 
 <div class="flex-1 overflow-y-auto p-6">
@@ -116,56 +151,45 @@
       </h2>
       <button
         class="text-xs px-3 py-1.5 rounded-md bg-accent text-white border-none cursor-pointer font-[inherit] font-semibold hover:opacity-90 transition-opacity"
-        onclick={() => (showCreate = !showCreate)}
+        onclick={() => (showInvite = !showInvite)}
       >
-        {showCreate ? m.users_inviteCancelBtn() : m.users_inviteOpen()}
+        {showInvite ? m.users_inviteCancelBtn() : m.users_inviteOpen()}
       </button>
     </div>
 
-    <!-- Create user form -->
-    {#if showCreate}
+    <!-- Invite form -->
+    {#if showInvite}
       <form
         class="bg-card border border-border rounded-lg p-4 mb-5 space-y-3"
-        onsubmit={(e) => { e.preventDefault(); create(); }}
+        onsubmit={(e) => { e.preventDefault(); sendInvite(); }}
       >
-        <p class="text-xs font-semibold text-foreground">{m.users_newUser()}</p>
+        <p class="text-xs font-semibold text-foreground">{m.users_invite()}</p>
         <div class="grid grid-cols-2 gap-3">
           <input
             class="bg-bg2 border border-border rounded-md text-foreground px-2.5 py-1.5 text-xs font-[inherit] outline-none focus:border-accent placeholder:text-muted"
             type="email"
-            placeholder={m.users_emailRequired()}
-            bind:value={createEmail}
-          />
-          <input
-            class="bg-bg2 border border-border rounded-md text-foreground px-2.5 py-1.5 text-xs font-[inherit] outline-none focus:border-accent placeholder:text-muted"
-            type="password"
-            placeholder={m.users_passwordRequired()}
-            bind:value={createPassword}
-          />
-          <input
-            class="bg-bg2 border border-border rounded-md text-foreground px-2.5 py-1.5 text-xs font-[inherit] outline-none focus:border-accent placeholder:text-muted"
-            type="text"
-            placeholder={m.users_displayName()}
-            bind:value={createName}
+            placeholder={m.users_inviteEmail()}
+            bind:value={inviteEmail}
+            required
           />
           <select
             class="bg-bg2 border border-border rounded-md text-foreground px-2.5 py-1.5 text-xs font-[inherit] outline-none cursor-pointer focus:border-accent"
-            bind:value={createRole}
+            bind:value={inviteRole}
           >
-            {#each ROLES as r (r)}
+            {#each INVITE_ROLES as r (r)}
               <option value={r}>{r}</option>
             {/each}
           </select>
         </div>
-        {#if createError}
-          <p class="text-xs text-destructive">{createError}</p>
+        {#if inviteError}
+          <p class="text-xs text-destructive">{inviteError}</p>
         {/if}
         <button
           type="submit"
           class="text-xs px-3 py-1.5 rounded-md bg-accent text-white border-none cursor-pointer font-[inherit] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
-          disabled={creating || !createEmail || !createPassword}
+          disabled={inviting || !inviteEmail}
         >
-          {creating ? m.users_creating() : m.users_createUser()}
+          {inviting ? m.users_creating() : m.users_inviteSubmit()}
         </button>
       </form>
     {/if}
@@ -220,6 +244,48 @@
             {/each}
           </tbody>
         </table>
+      </div>
+    {/if}
+
+    <!-- Pending Invitations -->
+    {#if invitations.length > 0}
+      <div class="mt-6">
+        <h3 class="text-xs font-semibold text-muted uppercase tracking-wider mb-3">
+          {m.invite_pendingTitle()}
+        </h3>
+        <div class="bg-card border border-border rounded-lg overflow-hidden">
+          <table class="w-full text-xs border-collapse">
+            <thead>
+              <tr class="border-b border-border bg-bg2">
+                <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[10px]">{m.users_email()}</th>
+                <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[10px]">{m.users_role()}</th>
+                <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[10px]">Status</th>
+                <th class="px-4 py-2.5"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each invitations as inv (inv.id)}
+                <tr class="border-b border-border/50 last:border-0 hover:bg-bg2/50 transition-colors">
+                  <td class="px-4 py-3 text-foreground">{inv.email}</td>
+                  <td class="px-4 py-3 text-muted">{inv.role}</td>
+                  <td class="px-4 py-3">
+                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">
+                      {m.invite_statusPending()}
+                    </span>
+                  </td>
+                  <td class="px-4 py-3 text-right">
+                    <button
+                      class="text-muted hover:text-destructive transition-colors bg-transparent border-none cursor-pointer text-xs font-[inherit]"
+                      onclick={() => cancelInvite(inv.id)}
+                    >
+                      {m.invite_cancelInvite()}
+                    </button>
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
       </div>
     {/if}
   </div>
