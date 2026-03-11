@@ -21,13 +21,13 @@
 	let steerOpen = $state(false);
 	let steerMessage = $state('');
 
-	const status = $derived(resolveStatus(node.session));
+	// Enrich with piAgentState data for accurate status and token counts
+	const piEntry = $derived(piAgentState.subagents.find((s) => s.key === node.session.key));
+	// Use pi-agent registry status (endedAt-based) when available, fall back to session heuristic
+	const status = $derived(piEntry?.status ?? resolveStatus(node.session));
 	const selected = $derived(subagentState.selectedKey === node.session.key);
 	const hasChildren = $derived(node.children.length > 0);
 	const isCompleted = $derived(status === 'completed' || status === 'failed');
-
-	// Enrich with piAgentState data for token counts
-	const piEntry = $derived(piAgentState.subagents.find((s) => s.key === node.session.key));
 	const totalTokens = $derived((piEntry?.inputTokens ?? 0) + (piEntry?.outputTokens ?? 0));
 
 	// Template badge: derive from label by splitting on ":"
