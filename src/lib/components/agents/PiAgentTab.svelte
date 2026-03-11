@@ -1,6 +1,8 @@
 <script lang="ts">
 	import PiAgentControls from './PiAgentControls.svelte';
 	import SubagentTree from './SubagentTree.svelte';
+	import PiAgentOrchestrations from './PiAgentOrchestrations.svelte';
+	import PiAgentTemplates from './PiAgentTemplates.svelte';
 	import {
 		piAgentState,
 		loadPiAgentData,
@@ -126,8 +128,8 @@
 			<span class="text-[10px] text-muted">{orchestrationsOpen ? '\u25B2' : '\u25BC'}</span>
 		</button>
 		{#if orchestrationsOpen}
-			<div class="p-3 border-t border-border">
-				<p class="text-[11px] text-muted">Orchestration history will appear here.</p>
+			<div class="border-t border-border">
+				<PiAgentOrchestrations />
 			</div>
 		{/if}
 	</div>
@@ -148,8 +150,8 @@
 			<span class="text-[10px] text-muted">{templatesOpen ? '\u25B2' : '\u25BC'}</span>
 		</button>
 		{#if templatesOpen}
-			<div class="p-3 border-t border-border">
-				<p class="text-[11px] text-muted">Template browser will appear here.</p>
+			<div class="border-t border-border">
+				<PiAgentTemplates />
 			</div>
 		{/if}
 	</div>

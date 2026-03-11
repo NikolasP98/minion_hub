@@ -4,7 +4,7 @@ import { agentChat, agentActivity, ensureAgentChat, ensureAgentActivity, markSpa
 import { hostsState, getActiveHost, updateHost, saveLastActiveHost } from '$lib/state/features/hosts.svelte';
 import { autoSave, resetWorkshop } from '$lib/state/workshop/workshop.svelte';
 import { ui } from '$lib/state/ui/ui.svelte';
-import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
+import { toastError, toastInfo, toastSuccess } from '$lib/state/ui/toast.svelte';
 import { pushReliabilityEvent, setReliabilityServerId, type ReliabilityEvent } from '$lib/state/reliability/reliability.svelte';
 import { configState, loadConfig, restartState, onRestartReconnected } from '$lib/state/config/config.svelte';
 import { uuid } from '$lib/utils/uuid';
@@ -12,6 +12,38 @@ import { extractText } from '$lib/utils/text';
 import type { HelloOk, ChatEvent, Session } from '$lib/types/gateway';
 import { parseAgentSessionKey } from '$lib/utils/session-key';
 import { loadAgentGroups } from '$lib/state/features/agent-groups.svelte';
+
+// ─── Pi-Agent Notification Preferences ────────────────────────────────────────
+
+type NotificationPrefs = {
+  orchestrationStarted: boolean;
+  orchestrationCompleted: boolean;
+  subagentFailed: boolean;
+  showOn: 'homepage' | 'all' | 'never';
+};
+
+const DEFAULT_PREFS: NotificationPrefs = {
+  orchestrationStarted: true,
+  orchestrationCompleted: true,
+  subagentFailed: true,
+  showOn: 'all',
+};
+
+function getNotificationPrefs(): NotificationPrefs {
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('minion-hub:notifications') : null;
+    if (raw) return { ...DEFAULT_PREFS, ...JSON.parse(raw) };
+  } catch { /* ignore */ }
+  return DEFAULT_PREFS;
+}
+
+function shouldShowToast(prefs: NotificationPrefs): boolean {
+  if (prefs.showOn === 'never') return false;
+  if (prefs.showOn === 'all') return true;
+  // 'homepage' — only show on root route
+  if (typeof window !== 'undefined') return window.location.pathname === '/';
+  return false;
+}
 
 /** Map gateway's GatewaySessionRow (key field) to hub's Session (sessionKey field). */
 function mapGatewaySessionRows(raw: unknown[]): Session[] {
@@ -386,12 +418,45 @@ function handleEvent(evt: Record<string, unknown>) {
     case 'pi-agent.run-end':
     case 'pi-agent.tool-call':
     case 'pi-agent.subagent-spawned':
-    case 'pi-agent.subagent-completed':
-    case 'pi-agent.orchestration-progress':
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent(evt.event as string, { detail: evt.payload }));
       }
       break;
+    case 'pi-agent.subagent-completed': {
+      const scPayload = evt.payload as { key?: string; status?: string; agentId?: string } | undefined;
+      if (scPayload?.status === 'failed') {
+        const prefs = getNotificationPrefs();
+        if (prefs.subagentFailed && shouldShowToast(prefs)) {
+          toastError('Subagent failed', scPayload?.key?.split(':').pop() ?? 'unknown');
+        }
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(evt.event as string, { detail: evt.payload }));
+      }
+      break;
+    }
+    case 'pi-agent.orchestration-progress': {
+      const opPayload = evt.payload as { type?: string; orchestrationId?: string; data?: Record<string, unknown> } | undefined;
+      const prefs = getNotificationPrefs();
+      if (opPayload?.type === 'orchestration.started') {
+        if (prefs.orchestrationStarted && shouldShowToast(prefs)) {
+          toastInfo('Orchestration started', opPayload?.orchestrationId?.slice(0, 8) ?? '');
+        }
+      } else if (opPayload?.type === 'orchestration.completed') {
+        const orchStatus = (opPayload?.data as { status?: string } | undefined)?.status;
+        if (prefs.orchestrationCompleted && shouldShowToast(prefs)) {
+          if (orchStatus === 'completed') {
+            toastSuccess('Orchestration completed', opPayload?.orchestrationId?.slice(0, 8) ?? '');
+          } else {
+            toastError('Orchestration ' + (orchStatus ?? 'ended'), opPayload?.orchestrationId?.slice(0, 8) ?? '');
+          }
+        }
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(evt.event as string, { detail: evt.payload }));
+      }
+      break;
+    }
   }
 }
 
