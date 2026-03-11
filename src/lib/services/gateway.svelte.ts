@@ -382,6 +382,16 @@ function handleEvent(evt: Record<string, unknown>) {
         window.dispatchEvent(new CustomEvent('channels.whatsapp.paired', { detail: evt.payload }));
       }
       break;
+    case 'pi-agent.run-start':
+    case 'pi-agent.run-end':
+    case 'pi-agent.tool-call':
+    case 'pi-agent.subagent-spawned':
+    case 'pi-agent.subagent-completed':
+    case 'pi-agent.orchestration-progress':
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(evt.event as string, { detail: evt.payload }));
+      }
+      break;
   }
 }
 
