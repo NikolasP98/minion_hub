@@ -8,11 +8,12 @@
   } = $props();
 
   const m = $derived(message as { role?: string; content?: unknown });
-  const text = $derived(extractText(message) ?? String((message as { content?: unknown })?.content ?? ''));
+  const text = $derived(extractText(message) ?? '');
   const role = $derived(m.role === 'user' ? 'user' : 'assistant');
   const timestamp = $derived(extractMessageTimestamp(message));
 </script>
 
+{#if text || error}
 <div
   class="max-w-[85%] px-[11px] py-[7px] rounded-lg text-xs font-mono leading-relaxed break-words whitespace-pre-wrap
     {error
@@ -27,3 +28,4 @@
     <span class="block text-[9px] opacity-70 mt-0.5 text-right">{timestamp}</span>
   {/if}
 </div>
+{/if}

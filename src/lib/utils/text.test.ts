@@ -57,7 +57,7 @@ describe('extractText', () => {
         { type: 'text', text: 'Part 2' },
       ],
     };
-    expect(extractText(msg)).toBe('Part 1\nPart 2');
+    expect(extractText(msg)).toBe('Part 1\n[Image]\nPart 2');
   });
 
   it('falls back to .text property', () => {
@@ -71,5 +71,52 @@ describe('extractText', () => {
 
   it('returns null for object with no text', () => {
     expect(extractText({ role: 'user', data: 123 })).toBe(null);
+  });
+
+  it('extracts tool_use as [Tool: name]', () => {
+    const msg = {
+      role: 'assistant',
+      content: [{ type: 'tool_use', id: 't1', name: 'read_file', input: {} }],
+    };
+    expect(extractText(msg)).toBe('[Tool: read_file]');
+  });
+
+  it('extracts tool_result string content', () => {
+    const msg = {
+      role: 'user',
+      content: [{ type: 'tool_result', tool_use_id: 't1', content: 'file contents here' }],
+    };
+    expect(extractText(msg)).toBe('file contents here');
+  });
+
+  it('extracts tool_result with nested text blocks', () => {
+    const msg = {
+      role: 'user',
+      content: [{
+        type: 'tool_result',
+        tool_use_id: 't1',
+        content: [{ type: 'text', text: 'nested result' }],
+      }],
+    };
+    expect(extractText(msg)).toBe('nested result');
+  });
+
+  it('shows [Image] for image blocks', () => {
+    const msg = {
+      role: 'assistant',
+      content: [{ type: 'image', source: { url: 'http://example.com/img.png' } }],
+    };
+    expect(extractText(msg)).toBe('[Image]');
+  });
+
+  it('combines text and tool_use blocks', () => {
+    const msg = {
+      role: 'assistant',
+      content: [
+        { type: 'text', text: 'Let me check' },
+        { type: 'tool_use', id: 't1', name: 'search', input: {} },
+      ],
+    };
+    expect(extractText(msg)).toBe('Let me check\n[Tool: search]');
   });
 });

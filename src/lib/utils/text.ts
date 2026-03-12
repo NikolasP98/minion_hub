@@ -7,10 +7,32 @@ export function extractText(message: unknown): string | null {
   if (typeof content === 'string') return cleanText(content, role);
 
   if (Array.isArray(content)) {
-    const parts = (content as Array<Record<string, unknown>>)
-      .filter((p) => p && p.type === 'text' && typeof p.text === 'string')
-      .map((p) => p.text as string);
-    if (parts.length > 0) return cleanText(parts.join('\n'), role);
+    const blocks = content as Array<Record<string, unknown>>;
+    const textParts: string[] = [];
+    const allParts: string[] = [];
+    for (const b of blocks) {
+      if (!b) continue;
+      if (b.type === 'text' && typeof b.text === 'string') {
+        textParts.push(b.text);
+        allParts.push(cleanText(b.text, role));
+      } else if (b.type === 'tool_use' && typeof b.name === 'string') {
+        allParts.push(`[Tool: ${b.name}]`);
+      } else if (b.type === 'tool_result') {
+        const c = b.content;
+        if (typeof c === 'string' && c) allParts.push(c);
+        else if (Array.isArray(c)) {
+          const texts = (c as Array<Record<string, unknown>>)
+            .filter((p) => p?.type === 'text' && typeof p.text === 'string')
+            .map((p) => p.text as string);
+          if (texts.length) allParts.push(texts.join('\n'));
+        }
+      } else if (b.type === 'image' || b.type === 'image_url') {
+        allParts.push('[Image]');
+      }
+    }
+    if (allParts.length > 0) return allParts.join('\n').trim();
+    // Fall back: if we found text blocks but they cleaned to empty, return null
+    if (textParts.length > 0) return cleanText(textParts.join('\n'), role);
   }
 
   if (typeof m.text === 'string') return cleanText(m.text, role);

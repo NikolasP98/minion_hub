@@ -429,7 +429,7 @@
 			{#if canScrollLeft}
 				<button
 					type="button"
-					class="absolute left-0 top-0 bottom-0 z-10 flex items-center pl-1 pr-2 cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
+					class="absolute left-0 top-0 bottom-2 z-10 flex items-center pl-1 pr-2 cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
 					style="background: linear-gradient(to right, var(--color-bg2) 40%, transparent)"
 					onclick={() => scrollFilters('left')}
 				>
@@ -441,7 +441,7 @@
 			{#if canScrollRight}
 				<button
 					type="button"
-					class="absolute right-0 top-0 bottom-0 z-10 flex items-center pr-1 pl-2 cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
+					class="absolute right-0 top-0 bottom-2 z-10 flex items-center pr-1 pl-2 cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
 					style="background: linear-gradient(to left, var(--color-bg2) 40%, transparent)"
 					onclick={() => scrollFilters('right')}
 				>
