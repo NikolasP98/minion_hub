@@ -29,11 +29,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. User is warned before navigating away with unsaved changes (both browser close and in-app navigation), and can save via Ctrl/Cmd+S
   4. After saving a config change that triggers gateway restart, user sees a clear "restarting" indicator and the connection auto-recovers without manual intervention
   5. Config changes are confirmed as applied on the gateway via the config.patch WebSocket response
-**Plans:** 2 plans
+**Plans:** 3 plans
 
 Plans:
 - [x] 01-01-PLAN.md — Tab reorganization: merge Channels into Comms, 8-tab layout, dirty tab dots, default tab Hosts, test updates
 - [x] 01-02-PLAN.md — Save/restart hardening: restart toast migration, NavigationGuardModal, disconnect banner, auto-save on reconnect, ConfigSaveBar simplification
+- [ ] 01-03-PLAN.md — Gap closure: fix unreachable disconnect banner (PLSH-03 blocker), remove duplicate ALL_TABS (DRY)
 
 ### Phase 2: Cards and Field Widgets
 **Goal**: Each config domain renders as a visually distinct card with smart input widgets, inline help, validation feedback, and per-card dirty tracking
@@ -88,7 +89,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Tab Layout and Save Infrastructure | 2/2 | Complete | 2026-03-12 |
+| 1. Tab Layout and Save Infrastructure | 2/3 | Gap closure in progress | 2026-03-12 |
 | 2. Cards and Field Widgets | 0/3 | Not started | - |
 | 3. Discovery and Overrides | 0/2 | Not started | - |
 | 4. Setup Wizard | 0/1 | Not started | - |
