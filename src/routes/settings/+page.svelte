@@ -396,6 +396,16 @@ import MinionLogo from "$lib/components/layout/MinionLogo.svelte";
                 style:z-index={isActive ? 1 : 0}
                 role="tabpanel"
             >
+                <!-- Disconnect + dirty banner (top-level — must not be inside the :else branch) -->
+                {#if !conn.connected && isDirty.value}
+                    <div class="mx-6 mt-4 px-4 py-3 rounded-lg border border-amber-500/30 bg-amber-500/10 flex items-center gap-3 shrink-0">
+                        <span class="text-amber-400 text-xs font-medium">Disconnected</span>
+                        <span class="text-muted-foreground text-xs flex-1">
+                            Changes will be saved automatically when reconnected.
+                        </span>
+                    </div>
+                {/if}
+
                 {#if !conn.connected}
                     <div class="flex-1 flex items-center justify-center h-full min-h-[300px]">
                         <div class="text-center">
@@ -428,14 +438,6 @@ import MinionLogo from "$lib/components/layout/MinionLogo.svelte";
                     </div>
                 {:else}
                     <div class="flex-1 flex flex-col min-h-0 overflow-y-auto relative" bind:this={scrollContainers[tab.id]}>
-                        {#if !conn.connected && isDirty.value}
-                            <div class="mx-6 mt-4 px-4 py-3 rounded-lg border border-amber-500/30 bg-amber-500/10 flex items-center gap-3">
-                                <span class="text-amber-400 text-xs font-medium">Disconnected</span>
-                                <span class="text-muted-foreground text-xs flex-1">
-                                    Changes will be saved automatically when reconnected.
-                                </span>
-                            </div>
-                        {/if}
                         <div class="px-6 py-5">
                             <div class="max-w-3xl mx-auto space-y-2.5">
                                 {#if configState.version && tab.id === 'system'}
