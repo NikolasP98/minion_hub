@@ -77,7 +77,6 @@ export const TABS: { id: string; label: string; icon: string }[] = [
   { id: 'ai',         label: 'AI',         icon: 'Brain'   },
   { id: 'agents',     label: 'Agents',     icon: 'Bot'     },
   { id: 'comms',      label: 'Comms',      icon: 'Radio'   },
-  { id: 'channels',   label: 'Channels',  icon: 'MessageSquare' },
   { id: 'security',   label: 'Security',   icon: 'Shield'  },
   { id: 'system',     label: 'System',     icon: 'Server'  },
   { id: 'backups',    label: 'Backups',    icon: 'DatabaseBackup' },
@@ -95,7 +94,7 @@ export const TAB_MAPPING: Record<string, string[]> = {
   comms:      ['comms'],
   security:   [], // populated via SECURITY_GROUP_IDS carve-out
   system:     ['setup', 'extensions', 'system'],
-  channels:   [], // hub-managed, not gateway config
+  backups:    [], // hub-managed, not gateway config
   appearance: [], // local-only, no gateway config groups
 };
 
