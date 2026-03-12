@@ -10,6 +10,7 @@
         dirtyPaths,
         groups,
         save,
+        discard,
         restartState,
     } from "$lib/state/config/config.svelte";
     import { countConfiguredKeys, getGroupsForTab, TABS, SECURITY_GROUP_IDS } from "$lib/utils/config-schema";
@@ -24,6 +25,7 @@
 import MinionLogo from "$lib/components/layout/MinionLogo.svelte";
     import ConfigSection from "$lib/components/config/ConfigSection.svelte";
     import ConfigSaveBar from "$lib/components/config/ConfigSaveBar.svelte";
+    import NavigationGuardModal from "$lib/components/config/NavigationGuardModal.svelte";
     import SettingsScrollspy from "$lib/components/settings/SettingsScrollspy.svelte";
     import TeamTab from "$lib/components/users/TeamTab.svelte";
     import BindingsTab from "$lib/components/users/BindingsTab.svelte";
@@ -37,10 +39,50 @@ import MinionLogo from "$lib/components/layout/MinionLogo.svelte";
     import * as m from "$lib/paraglide/messages";
     import { SvelteSet } from "svelte/reactivity";
 
-    // ─── Navigation guards & keyboard shortcut ────────────────────────────
-    beforeNavigate(({ cancel }) => {
+    // ─── Navigation guard modal ───────────────────────────────────────────
+    let guardModalOpen = $state(false);
+    let pendingNavigation: (() => void) | null = null;
+
+    beforeNavigate(({ cancel, to }) => {
         if (isDirty.value) {
-            if (!confirm('You have unsaved changes. Leave anyway?')) cancel();
+            cancel();
+            pendingNavigation = to ? () => goto(to.url.pathname + to.url.search) : null;
+            guardModalOpen = true;
+        }
+    });
+
+    async function handleGuardSave() {
+        guardModalOpen = false;
+        await save();
+        pendingNavigation?.();
+        pendingNavigation = null;
+    }
+
+    function handleGuardDiscard() {
+        discard();
+        guardModalOpen = false;
+        pendingNavigation?.();
+        pendingNavigation = null;
+    }
+
+    function handleGuardCancel() {
+        guardModalOpen = false;
+        pendingNavigation = null;
+    }
+
+    // ─── Disconnect banner + auto-save on reconnect ───────────────────────
+    let pendingAutoSave = $state(false);
+
+    $effect(() => {
+        if (!conn.connected && isDirty.value) {
+            pendingAutoSave = true;
+        }
+        if (conn.connected && pendingAutoSave) {
+            pendingAutoSave = false;
+            // Only auto-save if not in a restart cycle (restart handles its own reload)
+            if (restartState.phase === 'idle') {
+                save();
+            }
         }
     });
 
@@ -386,6 +428,14 @@ import MinionLogo from "$lib/components/layout/MinionLogo.svelte";
                     </div>
                 {:else}
                     <div class="flex-1 flex flex-col min-h-0 overflow-y-auto relative" bind:this={scrollContainers[tab.id]}>
+                        {#if !conn.connected && isDirty.value}
+                            <div class="mx-6 mt-4 px-4 py-3 rounded-lg border border-amber-500/30 bg-amber-500/10 flex items-center gap-3">
+                                <span class="text-amber-400 text-xs font-medium">Disconnected</span>
+                                <span class="text-muted-foreground text-xs flex-1">
+                                    Changes will be saved automatically when reconnected.
+                                </span>
+                            </div>
+                        {/if}
                         <div class="px-6 py-5">
                             <div class="max-w-3xl mx-auto space-y-2.5">
                                 {#if configState.version && tab.id === 'system'}
@@ -447,7 +497,14 @@ import MinionLogo from "$lib/components/layout/MinionLogo.svelte";
     </div>
 
     <!-- ConfigSaveBar spans all tabs -->
-    {#if isDirty.value || configState.saving || configState.saveError || restartState.phase !== 'idle'}
+    {#if isDirty.value || configState.saving || configState.saveError}
         <ConfigSaveBar />
     {/if}
+
+    <NavigationGuardModal
+        bind:open={guardModalOpen}
+        onsave={handleGuardSave}
+        ondiscard={handleGuardDiscard}
+        oncancel={handleGuardCancel}
+    />
 </div>
