@@ -32,8 +32,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans:** 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Tab infrastructure: TAB_MAPPING, tab bar component, CSS visibility panels, skeleton loading, settings page rewrite
-- [ ] 01-02-PLAN.md — Save/restart hardening: restart state machine, navigation guards, Ctrl+S, scrollspy with IntersectionObserver
+- [ ] 01-01-PLAN.md — Tab reorganization: merge Channels into Comms, 8-tab layout, dirty tab dots, default tab Hosts, test updates
+- [ ] 01-02-PLAN.md — Save/restart hardening: restart toast migration, NavigationGuardModal, disconnect banner, auto-save on reconnect, ConfigSaveBar simplification
 
 ### Phase 2: Cards and Field Widgets
 **Goal**: Each config domain renders as a visually distinct card with smart input widgets, inline help, validation feedback, and per-card dirty tracking
