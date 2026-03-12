@@ -12,7 +12,7 @@ Transform the settings page from a flat JSON-dump renderer into a polished, card
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Tab Layout and Save Infrastructure** - Replace sidebar with tabbed navigation, harden save/restart UX, establish foundation for all subsequent phases
+- [x] **Phase 1: Tab Layout and Save Infrastructure** - Replace sidebar with tabbed navigation, harden save/restart UX, establish foundation for all subsequent phases
 - [ ] **Phase 2: Cards and Field Widgets** - Card-based grouping with enhanced input widgets, inline validation, dirty indicators, and hybrid schema rendering
 - [ ] **Phase 3: Discovery and Overrides** - Global search/filter, validation issues panel, config diff preview, appearance tab, and custom override components for priority sections
 - [ ] **Phase 4: Setup Wizard** - Re-runnable guided configuration wizard reusing card/field components
@@ -33,7 +33,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 Plans:
 - [x] 01-01-PLAN.md — Tab reorganization: merge Channels into Comms, 8-tab layout, dirty tab dots, default tab Hosts, test updates
-- [ ] 01-02-PLAN.md — Save/restart hardening: restart toast migration, NavigationGuardModal, disconnect banner, auto-save on reconnect, ConfigSaveBar simplification
+- [x] 01-02-PLAN.md — Save/restart hardening: restart toast migration, NavigationGuardModal, disconnect banner, auto-save on reconnect, ConfigSaveBar simplification
 
 ### Phase 2: Cards and Field Widgets
 **Goal**: Each config domain renders as a visually distinct card with smart input widgets, inline help, validation feedback, and per-card dirty tracking
@@ -88,7 +88,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Tab Layout and Save Infrastructure | 1/2 | In progress | - |
+| 1. Tab Layout and Save Infrastructure | 2/2 | Complete | 2026-03-12 |
 | 2. Cards and Field Widgets | 0/3 | Not started | - |
 | 3. Discovery and Overrides | 0/2 | Not started | - |
 | 4. Setup Wizard | 0/1 | Not started | - |
