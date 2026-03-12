@@ -1,6 +1,7 @@
 <script lang="ts">
     import { Brain, Bot, Radio, Shield, Server, Palette, HardDrive, DatabaseBackup } from "lucide-svelte";
     import { isAdmin } from "$lib/state/features/user.svelte";
+    import { TABS } from "$lib/utils/config-schema";
 
     interface Props {
         activeTab: string;
@@ -15,21 +16,10 @@
         Brain, Bot, Radio, Shield, Server, Palette, HardDrive, DatabaseBackup,
     };
 
-    const ALL_TABS: { id: string; label: string; icon: string }[] = [
-        { id: 'hosts',      label: 'Hosts',      icon: 'HardDrive' },
-        { id: 'ai',         label: 'AI',         icon: 'Brain'   },
-        { id: 'agents',     label: 'Agents',     icon: 'Bot'     },
-        { id: 'comms',      label: 'Comms',      icon: 'Radio'   },
-        { id: 'security',   label: 'Security',   icon: 'Shield'  },
-        { id: 'system',     label: 'System',     icon: 'Server'  },
-        { id: 'backups',    label: 'Backups',    icon: 'DatabaseBackup' },
-        { id: 'appearance', label: 'Appearance', icon: 'Palette' },
-    ];
-
     const USER_TABS = new Set(['appearance']);
 
     const tabs = $derived(
-        isAdmin.value ? ALL_TABS : ALL_TABS.filter((t) => USER_TABS.has(t.id))
+        isAdmin.value ? TABS : TABS.filter((t) => USER_TABS.has(t.id))
     );
 </script>
 
