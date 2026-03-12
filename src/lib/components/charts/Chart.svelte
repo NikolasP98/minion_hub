@@ -16,7 +16,7 @@
 
 	let container: HTMLDivElement;
 	let chart: ECharts | undefined = $state();
-	let observer: ResizeObserver | undefined;
+	let resizeObs: ResizeObserver | undefined;
 
 	function applyDefaults(opts: EChartsOption): EChartsOption {
 		return {
@@ -28,62 +28,94 @@
 		};
 	}
 
-	const darkTheme = {
-		color: ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#ec4899'],
-		backgroundColor: 'transparent',
-		textStyle: { color: '#e2e8f0' },
-		title: {
-			textStyle: { color: '#e2e8f0' },
-			subtextStyle: { color: '#94a3b8' }
-		},
-		legend: {
-			textStyle: { color: '#94a3b8' }
-		},
-		tooltip: {
-			backgroundColor: '#151d2e',
-			borderColor: '#2a3548',
-			textStyle: { color: '#e2e8f0' }
-		},
-		categoryAxis: {
-			axisLine: { lineStyle: { color: '#2a3548' } },
-			axisTick: { lineStyle: { color: '#2a3548' } },
-			axisLabel: { color: '#94a3b8' },
-			splitLine: { lineStyle: { color: '#1e293b' } }
-		},
-		valueAxis: {
-			axisLine: { lineStyle: { color: '#2a3548' } },
-			axisTick: { lineStyle: { color: '#2a3548' } },
-			axisLabel: { color: '#94a3b8' },
-			splitLine: { lineStyle: { color: '#1e293b' } }
-		},
-		line: {
-			symbolSize: 4,
-			smooth: false
-		},
-		grid: {
-			containLabel: true
-		}
-	};
+	function getCSSVar(name: string, fallback: string): string {
+		return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+	}
+
+	function buildTheme() {
+		const card = getCSSVar('--color-card', '#0c0c0e');
+		const border = getCSSVar('--color-border', '#27272a');
+		const fg = getCSSVar('--color-foreground', '#fafafa');
+		const muted = getCSSVar('--color-muted', '#a1a1aa');
+		const mutedFg = getCSSVar('--color-muted-foreground', '#71717a');
+		const bg2 = getCSSVar('--color-bg2', '#18181b');
+
+		return {
+			color: ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#ec4899'],
+			backgroundColor: 'transparent',
+			textStyle: { color: fg },
+			title: {
+				textStyle: { color: fg },
+				subtextStyle: { color: muted }
+			},
+			legend: {
+				textStyle: { color: muted }
+			},
+			tooltip: {
+				backgroundColor: card,
+				borderColor: border,
+				textStyle: { color: fg }
+			},
+			categoryAxis: {
+				axisLine: { lineStyle: { color: border } },
+				axisTick: { lineStyle: { color: border } },
+				axisLabel: { color: mutedFg },
+				splitLine: { lineStyle: { color: bg2 } }
+			},
+			valueAxis: {
+				axisLine: { lineStyle: { color: border } },
+				axisTick: { lineStyle: { color: border } },
+				axisLabel: { color: mutedFg },
+				splitLine: { lineStyle: { color: bg2 } }
+			},
+			line: {
+				symbolSize: 4,
+				smooth: false
+			},
+			grid: {
+				containLabel: true
+			}
+		};
+	}
 
 	onMount(() => {
 		let disposed = false;
+		let echartsLib: typeof import('echarts') | undefined;
+		let themeObserver: MutationObserver | undefined;
 
 		import('echarts').then((echarts) => {
 			if (disposed) return;
+			echartsLib = echarts;
 
-			echarts.registerTheme('minion-dark', darkTheme);
+			echarts.registerTheme('minion-dark', buildTheme());
 			chart = echarts.init(container, 'minion-dark');
 			chart.setOption(applyDefaults(options));
 
-			observer = new ResizeObserver(() => {
+			resizeObs = new ResizeObserver(() => {
 				chart?.resize();
 			});
-			observer.observe(container);
+			resizeObs.observe(container);
+
+			// Re-register theme when CSS variables change (theme switch)
+			themeObserver = new MutationObserver(() => {
+				if (!echartsLib || !chart) return;
+				echartsLib.registerTheme('minion-dark', buildTheme());
+				// Re-init with updated theme
+				const currentOpts = chart.getOption() as EChartsOption;
+				chart.dispose();
+				chart = echartsLib.init(container, 'minion-dark');
+				chart.setOption(applyDefaults(currentOpts));
+			});
+			themeObserver.observe(document.documentElement, {
+				attributes: true,
+				attributeFilter: ['data-theme', 'style']
+			});
 		});
 
 		return () => {
 			disposed = true;
-			observer?.disconnect();
+			themeObserver?.disconnect();
+			resizeObs?.disconnect();
 			chart?.dispose();
 		};
 	});

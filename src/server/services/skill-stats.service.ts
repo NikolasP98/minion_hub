@@ -90,6 +90,8 @@ export async function getSkillStatsSummary(
       status: skillExecutionStats.status,
       count: sql<number>`count(*)`.as('count'),
       avgDurationMs: sql<number>`avg(${skillExecutionStats.durationMs})`.as('avg_duration'),
+      minDurationMs: sql<number>`min(${skillExecutionStats.durationMs})`.as('min_duration'),
+      maxDurationMs: sql<number>`max(${skillExecutionStats.durationMs})`.as('max_duration'),
     })
     .from(skillExecutionStats)
     .where(where)

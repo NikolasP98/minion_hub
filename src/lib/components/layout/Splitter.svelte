@@ -8,8 +8,10 @@
     export type CollapseLevel = 'expanded' | 'mini' | 'collapsed';
 
     interface SplitterApi {
-        toggleMini: () => void;
+        toggle: () => void;
         expand: () => void;
+        hide: () => void;
+        mini: () => void;
         collapseLevel: () => CollapseLevel;
     }
 
@@ -22,8 +24,6 @@
         minibarSize?: number;
         /** Maximum draggable panel size (percent) */
         maxSize?: number;
-        /** Size when fully collapsed (always 0) */
-        collapsedSize?: number;
         /** Left panel snippet; receives { collapseLevel } */
         panel: Snippet<[{ collapseLevel: CollapseLevel }]>;
         /** Right panel content */
@@ -41,7 +41,6 @@
         defaultSize = 20,
         minibarSize = 5,
         maxSize = 35,
-        collapsedSize = 0,
         panel,
         children,
         oncollapse,
@@ -55,13 +54,7 @@
     const initMinibarSize = untrack(() => minibarSize);
     const initDefaultSize = untrack(() => defaultSize);
     const initMaxSize = untrack(() => maxSize);
-    const initCollapsedSize = untrack(() => collapsedSize);
     const initStorageKey = untrack(() => storageKey);
-
-    // Dragging below minSize triggers Zag's auto-collapse to collapsedSize (0).
-    // Setting minSize = minibarSize means the drag range is [minibarSize, maxSize];
-    // anything below minibarSize collapses entirely — no squished intermediate state.
-    const minSize = initMinibarSize;
 
     function loadSize(): number {
         if (typeof localStorage === 'undefined') return initDefaultSize;
@@ -73,74 +66,104 @@
 
     const initialSize = loadSize();
 
-    // Restore mini mode if the saved size was at/near minibarSize on last session
-    let sidebarMode = $state<'expanded' | 'mini'>(
-        initialSize <= initMinibarSize * 1.5 ? 'mini' : 'expanded',
-    );
+    function loadMode(): CollapseLevel {
+        if (typeof localStorage === 'undefined') return 'expanded';
+        const m = localStorage.getItem(`splitter:${initStorageKey}:mode`);
+        if (m === 'expanded' || m === 'mini' || m === 'collapsed') return m;
+        // Migration fallback from old format (no :mode key)
+        return initialSize <= initMinibarSize * 0.5 ? 'collapsed'
+             : initialSize <= initMinibarSize * 1.5 ? 'mini'
+             : 'expanded';
+    }
+
     let savedExpandedSize = $state(
         initialSize > initMinibarSize * 1.5 ? initialSize : initDefaultSize,
     );
+
+    let mode = $state<CollapseLevel>(loadMode());
+    const collapseLevel = $derived<CollapseLevel>(mode);
+
+    // --- Helper functions: call Zag API, then set mode (one-directional, no re-entrancy) ---
+
+    function goExpanded(size?: number) {
+        const sz = size ?? savedExpandedSize;
+        api.setSizes([sz, 100 - sz]);
+        if (mode === 'collapsed') onexpand?.();
+        mode = 'expanded';
+    }
+
+    function goMini() {
+        api.resizePanel('panel', initMinibarSize);
+        mode = 'mini';
+    }
+
+    function goCollapsed() {
+        api.resizePanel('panel', 0);
+        mode = 'collapsed';
+        oncollapse?.();
+    }
+
+    function toggle() {
+        if (mode === 'expanded') goMini();
+        else if (mode === 'mini') goCollapsed();
+        else goExpanded();
+    }
 
     const service = useMachine(splitter.machine as any, () => ({
         id: initStorageKey,
         orientation: 'horizontal' as const,
         defaultSize: [initialSize, 100 - initialSize],
         panels: [
-            { id: 'panel', minSize, maxSize: initMaxSize, collapsible: true, collapsedSize: initCollapsedSize },
+            { id: 'panel', minSize: 0, maxSize: initMaxSize, collapsible: false },
             { id: 'content', minSize: 5 },
         ],
         onResizeEnd(details: { size: number[] }) {
             const leftSize = details.size[0];
-            if (leftSize <= initCollapsedSize) return; // handled by onCollapse
-            // Snap to mini if the user released near the minimum drag position
-            if (leftSize <= initMinibarSize * 1.5) {
-                sidebarMode = 'mini';
-                api.resizePanel('panel', initMinibarSize);
-            } else {
-                sidebarMode = 'expanded';
+
+            if (leftSize > initMinibarSize * 1.5) {
+                // Expanded zone — save position
                 savedExpandedSize = leftSize;
                 localStorage.setItem(`splitter:${initStorageKey}`, String(leftSize));
+                mode = 'expanded';
+            } else if (mode === 'collapsed') {
+                // Expanding from collapsed — any size → mini
+                goMini();
+            } else if (mode === 'mini' && leftSize < initMinibarSize) {
+                // From mini, dragged below minibar → collapse
+                goCollapsed();
+            } else if (mode === 'expanded' && leftSize <= initMinibarSize * 0.5) {
+                // From expanded, dragged way past mini → collapse
+                goCollapsed();
+            } else {
+                // Mini zone — snap
+                goMini();
             }
-        },
-        onCollapse() {
-            oncollapse?.();
-        },
-        onExpand() {
-            onexpand?.();
         },
     }));
 
     const api = $derived(splitter.connect(service as any, normalizeProps));
-    const isCollapsed = $derived(api.isPanelCollapsed('panel'));
 
-    const collapseLevel = $derived<CollapseLevel>(
-        isCollapsed ? 'collapsed' : sidebarMode === 'mini' ? 'mini' : 'expanded',
-    );
-
-    function doToggleMini() {
-        if (isCollapsed) return; // only the popout tab handles expand from fully-collapsed
-        if (sidebarMode === 'mini') {
-            sidebarMode = 'expanded';
-            api.resizePanel('panel', savedExpandedSize);
-        } else {
-            sidebarMode = 'mini';
-            api.resizePanel('panel', initMinibarSize);
+    // Persist mode to localStorage
+    $effect(() => {
+        const m = mode;
+        if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(`splitter:${initStorageKey}:mode`, m);
         }
-    }
+    });
 
-    function doExpand() {
-        sidebarMode = 'expanded';
-        // setSizes bypasses Zag's "restore to pre-collapse size" so we always land
-        // on the saved expanded size rather than whatever size was before collapsing.
-        api.setSizes([savedExpandedSize, 100 - savedExpandedSize]);
+    function handleDoubleClick(e: MouseEvent) {
+        e.preventDefault();
+        toggle();
     }
 
     $effect(() => {
         if (!onapi) return;
         untrack(() => {
             onapi!({
-                toggleMini: doToggleMini,
-                expand: doExpand,
+                toggle,
+                expand: () => goExpanded(),
+                hide: () => goCollapsed(),
+                mini: () => goMini(),
                 collapseLevel: () => collapseLevel,
             });
         });
@@ -151,12 +174,13 @@
 <div class="flex flex-1 min-h-0 relative overflow-hidden">
     <div {...api.getRootProps()} class="flex flex-1 min-h-0 overflow-hidden">
         <!-- Left panel -->
-        <div {...api.getPanelProps({ id: 'panel' })} class="overflow-hidden flex flex-col min-w-0 h-full">
+        <div {...api.getPanelProps({ id: 'panel' })} class="overflow-hidden flex flex-col min-w-0 h-full" style="transition: flex-basis 200ms ease">
             {@render panel({ collapseLevel })}
         </div>
 
-        <!-- Resize handle -->
-        <div {...api.getResizeTriggerProps({ id: 'panel:content' })} class="splitter-handle">
+        <!-- Resize handle (double-click toggles expanded↔mini) -->
+        <div {...api.getResizeTriggerProps({ id: 'panel:content' })} class="splitter-handle"
+             ondblclick={handleDoubleClick}>
             <div class="splitter-grip"></div>
         </div>
 
@@ -167,10 +191,10 @@
     </div>
 
     <!-- Popout tab: shown only when fully collapsed (zero width) -->
-    {#if isCollapsed}
+    {#if mode === 'collapsed'}
         <button
             class="popout-tab"
-            onclick={doExpand}
+            onclick={() => goExpanded()}
             aria-label="Expand sidebar"
             title="Expand sidebar"
         >

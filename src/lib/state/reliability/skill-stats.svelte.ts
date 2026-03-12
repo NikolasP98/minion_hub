@@ -12,6 +12,8 @@ export interface SkillStatRow {
   status: SkillStatus;
   count: number;
   avgDurationMs: number | null;
+  minDurationMs: number | null;
+  maxDurationMs: number | null;
 }
 
 /** Aggregated view per skill across all statuses. */
@@ -20,6 +22,8 @@ export interface SkillAggregate {
   total: number;
   byStatus: Partial<Record<SkillStatus, number>>;
   avgDurationMs: number | null;
+  minDurationMs: number | null;
+  maxDurationMs: number | null;
 }
 
 export function createSkillStatsState() {
@@ -51,7 +55,7 @@ export function createSkillStatsState() {
     for (const row of bySkill) {
       let agg = map.get(row.skillName);
       if (!agg) {
-        agg = { skillName: row.skillName, total: 0, byStatus: {}, avgDurationMs: null };
+        agg = { skillName: row.skillName, total: 0, byStatus: {}, avgDurationMs: null, minDurationMs: null, maxDurationMs: null };
         map.set(row.skillName, agg);
       }
       agg.total += row.count;
@@ -61,6 +65,13 @@ export function createSkillStatsState() {
         const prevWeight = agg.avgDurationMs != null ? agg.total - row.count : 0;
         const prevAvg = agg.avgDurationMs ?? 0;
         agg.avgDurationMs = (prevAvg * prevWeight + row.avgDurationMs * row.count) / agg.total;
+      }
+      // Track overall min/max across status rows
+      if (row.minDurationMs != null) {
+        agg.minDurationMs = agg.minDurationMs != null ? Math.min(agg.minDurationMs, row.minDurationMs) : row.minDurationMs;
+      }
+      if (row.maxDurationMs != null) {
+        agg.maxDurationMs = agg.maxDurationMs != null ? Math.max(agg.maxDurationMs, row.maxDurationMs) : row.maxDurationMs;
       }
     }
 

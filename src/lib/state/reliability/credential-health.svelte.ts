@@ -46,14 +46,23 @@ export function createCredentialHealthState() {
     }
   }
 
+  function recomputeStatus(p: CredentialProfile): CredentialProfile {
+    if (p.expiresAt == null) return p;
+    const diff = p.expiresAt - Date.now();
+    if (diff < 0) return { ...p, status: 'expired' };
+    if (diff < 30 * 86_400_000) return { ...p, status: 'expiring' };
+    return { ...p, status: 'ok' };
+  }
+
   function parseLatest(): ParsedSnapshot | null {
     if (snapshots.length === 0) return null;
     const raw = snapshots[0];
     try {
       const parsed = JSON.parse(raw.snapshotJson);
+      const providers: CredentialProfile[] = Array.isArray(parsed.providers) ? parsed.providers : [];
       return {
         capturedAt: raw.capturedAt,
-        providers: Array.isArray(parsed.providers) ? parsed.providers : [],
+        providers: providers.map(recomputeStatus),
       };
     } catch {
       return null;

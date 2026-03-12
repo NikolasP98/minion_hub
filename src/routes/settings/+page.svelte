@@ -32,12 +32,16 @@ import MinionLogo from "$lib/components/layout/MinionLogo.svelte";
     import ChannelsTab from "$lib/components/channels/ChannelsTab.svelte";
     import HostsTab from "$lib/components/settings/HostsTab.svelte";
     import BackupsTab from "$lib/components/settings/BackupsTab.svelte";
+    import CRTConfigModal from "$lib/components/settings/CRTConfigModal.svelte";
     import {
         Check,
         Globe,
     } from "lucide-svelte";
     import * as m from "$lib/paraglide/messages";
     import { SvelteSet } from "svelte/reactivity";
+
+    // ─── CRT config modal ─────────────────────────────────────────────────
+    let crtModalOpen = $state(false);
 
     // ─── Navigation guard modal ───────────────────────────────────────────
     let guardModalOpen = $state(false);
@@ -305,6 +309,20 @@ import MinionLogo from "$lib/components/layout/MinionLogo.svelte";
                                         {/if}
                                     </div>
                                 </button>
+                                {#if preset.id === 'crt' && theme.presetId === 'crt'}
+                                    <button
+                                        type="button"
+                                        onclick={() => crtModalOpen = true}
+                                        class="mt-1 w-full flex items-center justify-center gap-1.5 py-1 text-[10px] font-medium uppercase tracking-widest border transition-all"
+                                        style="border-radius: 0; border-color: rgba(200,120,32,0.3); color: var(--crt-base, #c87820); background: rgba(200,120,32,0.06); font-family: 'Courier New', monospace;"
+                                    >
+                                        <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                                            <circle cx="8" cy="8" r="2.5"/>
+                                            <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41"/>
+                                        </svg>
+                                        Configure
+                                    </button>
+                                {/if}
                             {/each}
                         </div>
                     </div>
@@ -502,6 +520,8 @@ import MinionLogo from "$lib/components/layout/MinionLogo.svelte";
     {#if isDirty.value || configState.saving || configState.saveError}
         <ConfigSaveBar />
     {/if}
+
+    <CRTConfigModal bind:open={crtModalOpen} />
 
     <NavigationGuardModal
         bind:open={guardModalOpen}

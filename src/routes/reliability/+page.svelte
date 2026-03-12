@@ -31,7 +31,65 @@
 		PieChart,
 		RefreshCw,
 		Server,
+		ChevronLeft,
+		ChevronRight,
 	} from 'lucide-svelte';
+
+	// ── Persistence ───────────────────────────────────────────────────────────
+	const FILTER_STORAGE_KEY = 'minion-hub-reliability-filters';
+
+	interface PersistedFilters {
+		categories: string[];
+		severities: string[];
+		datePreset: string | null;
+		customFrom?: number;
+		customTo?: number;
+	}
+
+	const PRESET_MS: Record<string, number> = {
+		'1h': 3_600_000,
+		'24h': 86_400_000,
+		'7d': 7 * 86_400_000,
+		'30d': 30 * 86_400_000,
+	};
+
+	function loadFilters(): PersistedFilters {
+		if (typeof localStorage === 'undefined') return { categories: [], severities: [], datePreset: '24h' };
+		try {
+			const raw = localStorage.getItem(FILTER_STORAGE_KEY);
+			if (raw) return JSON.parse(raw);
+		} catch {}
+		return { categories: [], severities: [], datePreset: '24h' };
+	}
+
+	function saveFilters(f: PersistedFilters) {
+		if (typeof localStorage === 'undefined') return;
+		localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(f));
+	}
+
+	function getActivePreset(): string | null {
+		const now = Date.now();
+		const { from, to } = reliability.dateRange;
+		for (const [label, ms] of Object.entries(PRESET_MS)) {
+			if (Math.abs(from - (now - ms)) < 5000 && Math.abs(to - now) < 5000) return label;
+		}
+		return null;
+	}
+
+	function persistFilters() {
+		const preset = getActivePreset();
+		saveFilters({
+			categories: [...selectedCategories],
+			severities: [...selectedSeverities],
+			datePreset: preset,
+			customFrom: preset ? undefined : reliability.dateRange.from,
+			customTo: preset ? undefined : reliability.dateRange.to,
+		});
+	}
+
+	function getCSSVar(name: string, fallback: string): string {
+		return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+	}
 
 	const CATEGORY_COLORS: Record<string, string> = {
 		cron:     '#3b82f6',
@@ -57,6 +115,65 @@
 	let loading = $derived(reliability.loading);
 	let serverId = $derived(hostsState.activeHostId);
 
+	// ── Filter scroll indicators ──────────────────────────────────────────────
+	let filterScrollEl = $state<HTMLDivElement | null>(null);
+	let canScrollLeft = $state(false);
+	let canScrollRight = $state(false);
+
+	function updateScrollIndicators() {
+		if (!filterScrollEl) return;
+		const { scrollLeft, scrollWidth, clientWidth } = filterScrollEl;
+		canScrollLeft = scrollLeft > 2;
+		canScrollRight = scrollLeft + clientWidth < scrollWidth - 2;
+	}
+
+	function scrollFilters(direction: 'left' | 'right') {
+		if (!filterScrollEl) return;
+		const amount = filterScrollEl.clientWidth * 0.6;
+		filterScrollEl.scrollBy({ left: direction === 'left' ? -amount : amount, behavior: 'smooth' });
+	}
+
+	$effect(() => {
+		const el = filterScrollEl;
+		if (!el) return;
+		updateScrollIndicators();
+		el.addEventListener('scroll', updateScrollIndicators, { passive: true });
+		const ro = new ResizeObserver(updateScrollIndicators);
+		ro.observe(el);
+		return () => {
+			el.removeEventListener('scroll', updateScrollIndicators);
+			ro.disconnect();
+		};
+	});
+
+	// ── Filter state (restored from localStorage) ────────────────────────────
+	const _saved = loadFilters();
+	let selectedCategories = $state<Set<string>>(new Set(_saved.categories));
+	let selectedSeverities = $state<Set<string>>(new Set(_saved.severities));
+
+	function toggleCategory(cat: string) {
+		const next = new Set(selectedCategories);
+		if (next.has(cat)) next.delete(cat); else next.add(cat);
+		selectedCategories = next;
+		persistFilters();
+	}
+
+	function toggleSeverity(sev: string) {
+		const next = new Set(selectedSeverities);
+		if (next.has(sev)) next.delete(sev); else next.add(sev);
+		selectedSeverities = next;
+		persistFilters();
+	}
+
+	const SEVERITIES = ['critical', 'high', 'medium', 'low'] as const;
+
+	let filteredEvents = $derived.by(() => {
+		let evts = reliability.events;
+		if (selectedCategories.size > 0) evts = evts.filter(e => selectedCategories.has(e.category));
+		if (selectedSeverities.size > 0) evts = evts.filter(e => selectedSeverities.has(e.severity));
+		return evts;
+	});
+
 	// Overview stat cells
 	const statItems = $derived([
 		{ key: 'total',    Icon: Activity,      color: 'var(--color-accent)',       label: m.reliability_totalEvents(),    value: summary?.total ?? 0 },
@@ -79,12 +196,22 @@
 	function handleDateChange(from: number, to: number) {
 		reliability.dateRange.from = from;
 		reliability.dateRange.to = to;
+		persistFilters();
 	}
 
 	onMount(() => {
-		if (serverId) {
-			loadData();
+		const now = Date.now();
+		if (_saved.datePreset && PRESET_MS[_saved.datePreset]) {
+			reliability.dateRange.from = now - PRESET_MS[_saved.datePreset];
+			reliability.dateRange.to = now;
+		} else if (_saved.customFrom && _saved.customTo) {
+			reliability.dateRange.from = _saved.customFrom;
+			reliability.dateRange.to = _saved.customTo;
+		} else {
+			reliability.dateRange.from = now - 86_400_000;
+			reliability.dateRange.to = now;
 		}
+		// The $effect watching dateRange will trigger loadData()
 	});
 
 	$effect(() => {
@@ -96,89 +223,97 @@
 		}
 	});
 
-	// ── Timeline chart ────────────────────────────────────────────────────────
+	// ── Timeline bar chart (adaptive bucketing) ──────────────────────────────
+	function getBucketMs(rangeMs: number): number {
+		if (rangeMs <= 3_600_000)          return 5 * 60_000;      // 1h  → 5min buckets
+		if (rangeMs <= 24 * 3_600_000)     return 3_600_000;       // 24h → 1h buckets
+		if (rangeMs <= 7 * 24 * 3_600_000) return 6 * 3_600_000;   // 7d  → 6h buckets
+		return 24 * 3_600_000;                                      // 30d → 1d buckets
+	}
+
 	let timelineOptions: EChartsOption = $derived.by(() => {
-		const ts = summary?.timeseries ?? [];
-		if (ts.length === 0) {
+		const evts = filteredEvents;
+		const { from, to } = reliability.dateRange;
+		const rangeMs = to - from;
+		const bucketMs = getBucketMs(rangeMs);
+
+		if (evts.length === 0) {
 			return {
 				backgroundColor: 'transparent',
-				grid: { left: 48, right: 24, top: 24, bottom: 32 },
+				grid: { left: 48, right: 24, top: 32, bottom: 32 },
 				xAxis: { type: 'time', data: [] },
 				yAxis: { type: 'value' },
 				series: []
 			};
 		}
 
-		const bucketSet = new Set<number>();
-		for (const point of ts) bucketSet.add(point.bucket);
-		const sparsebuckets = [...bucketSet].sort((a, b) => a - b);
-
-		const lookup = new Map<number, Map<string, number>>();
-		for (const point of ts) {
-			if (!lookup.has(point.bucket)) lookup.set(point.bucket, new Map());
-			lookup.get(point.bucket)!.set(point.category, point.count);
-		}
-
-		// Fill the full time range with every bucket so gaps show as 0
-		// rather than being interpolated from adjacent values.
-		const interval = summary!.bucketMs;
+		// Build all bucket timestamps covering the range
+		const rangeStart = Math.floor(from / bucketMs) * bucketMs;
 		const buckets: number[] = [];
-		if (sparsebuckets.length > 0) {
-			for (let b = sparsebuckets[0]; b <= sparsebuckets[sparsebuckets.length - 1]; b += interval) {
-				buckets.push(b);
-			}
+		for (let b = rangeStart; b <= to; b += bucketMs) buckets.push(b);
+
+		// Tally events per bucket per category
+		const counts = new Map<string, Map<number, number>>();
+		for (const evt of evts) {
+			const cat = evt.category;
+			const bucket = Math.floor(evt.timestamp / bucketMs) * bucketMs;
+			if (!counts.has(cat)) counts.set(cat, new Map());
+			const catMap = counts.get(cat)!;
+			catMap.set(bucket, (catMap.get(bucket) ?? 0) + 1);
 		}
 
-		const series = CATEGORIES.map((cat) => ({
+		const visibleCategories = selectedCategories.size > 0
+			? CATEGORIES.filter(c => selectedCategories.has(c))
+			: CATEGORIES;
+
+		const series = visibleCategories.map(cat => ({
 			name: cat,
-			type: 'line' as const,
+			type: 'bar' as const,
 			stack: 'events',
-			smooth: false,
-			symbol: 'none',
-			lineStyle: { width: 1.5, color: CATEGORY_COLORS[cat] },
+			data: buckets.map(b => [b, counts.get(cat)?.get(b) ?? 0]),
 			itemStyle: { color: CATEGORY_COLORS[cat] },
-			areaStyle: { opacity: 0.25, color: CATEGORY_COLORS[cat] },
-			data: buckets.map((b) => [b, lookup.get(b)?.get(cat) ?? 0])
+			emphasis: { itemStyle: { opacity: 1 } },
+			barMaxWidth: 24,
 		}));
 
 		return {
 			backgroundColor: 'transparent',
 			tooltip: {
 				trigger: 'axis',
-				axisPointer: { type: 'cross' },
+				axisPointer: { type: 'shadow' },
 				formatter: (params: any) => {
 					if (!Array.isArray(params)) return '';
 					const ps = params as Array<{ value: [number, number]; marker: string; seriesName: string }>;
-					const nonZero = ps.filter((p) => p.value[1] > 0);
+					const nonZero = ps.filter(p => p.value[1] > 0);
 					if (nonZero.length === 0) return '';
 					const d = new Date(ps[0].value[0]);
-					const timeStr = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-					const rows = nonZero.map((p) => `<tr><td style="padding-right:12px">${p.marker}${p.seriesName}</td><td style="text-align:right;font-weight:600">${p.value[1]}</td></tr>`).join('');
-					return `<div style="font-size:11px"><div style="margin-bottom:4px;color:#a1a1aa">${timeStr}</div><table>${rows}</table></div>`;
+					const timeStr = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+					const total = nonZero.reduce((s, p) => s + p.value[1], 0);
+					const rows = nonZero.map(p => `<tr><td style="padding-right:12px">${p.marker}${p.seriesName}</td><td style="text-align:right;font-weight:600">${p.value[1]}</td></tr>`).join('');
+					return `<div style="font-size:11px"><div style="margin-bottom:4px;color:var(--color-muted-foreground)">${timeStr}</div><table>${rows}<tr><td style="padding-right:12px;border-top:1px solid var(--color-border);padding-top:3px">total</td><td style="text-align:right;font-weight:600;border-top:1px solid var(--color-border);padding-top:3px">${total}</td></tr></table></div>`;
 				}
 			},
 			legend: {
-				data: [...CATEGORIES],
-				top: 4,
-				right: 8,
-				textStyle: { fontSize: 10, color: '#71717a' }
+				data: visibleCategories.filter(c => counts.has(c)),
+				top: 4, right: 8,
+				textStyle: { fontSize: 10 }
 			},
 			grid: { left: 48, right: 24, top: 32, bottom: 32 },
 			xAxis: {
 				type: 'time',
 				axisLabel: {
 					fontSize: 10,
-					color: '#71717a',
 					formatter: (value: number) => {
 						const d = new Date(value);
-						return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+						return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 					}
 				}
 			},
 			yAxis: {
 				type: 'value',
 				minInterval: 1,
-				axisLabel: { fontSize: 10, color: '#71717a' }
+				axisLabel: { fontSize: 10 },
+				splitLine: { lineStyle: { type: 'dashed' } }
 			},
 			series
 		};
@@ -205,12 +340,12 @@
 			xAxis: {
 				type: 'value',
 				minInterval: 1,
-				axisLabel: { fontSize: 10, color: '#71717a' }
+				axisLabel: { fontSize: 10 }
 			},
 			yAxis: {
 				type: 'category',
 				data: reversed.map((e) => e.event),
-				axisLabel: { fontSize: 10, color: '#71717a', width: 100, overflow: 'truncate' }
+				axisLabel: { fontSize: 10, width: 100, overflow: 'truncate' }
 			},
 			series: [{
 				type: 'bar',
@@ -224,14 +359,16 @@
 	// ── Severity pie ──────────────────────────────────────────────────────────
 	let severityOptions: EChartsOption = $derived.by(() => {
 		const bySeverity = summary?.bySeverity ?? {};
-		const total = summary?.total ?? 0;
 		const data = Object.entries(bySeverity)
-			.filter(([, count]) => count > 0)
+			.filter(([name, count]) => count > 0 && (selectedSeverities.size === 0 || selectedSeverities.has(name)))
 			.map(([name, value]) => ({
 				name,
 				value,
-				itemStyle: { color: SEVERITY_COLORS[name] ?? '#64748b' }
+				itemStyle: { color: SEVERITY_COLORS[name] ?? '#64748b' },
+				label: { color: SEVERITY_COLORS[name] ?? '#64748b' }
 			}));
+
+		const filteredTotal = data.reduce((sum, d) => sum + d.value, 0);
 
 		return {
 			backgroundColor: 'transparent',
@@ -241,7 +378,7 @@
 				radius: ['40%', '65%'],
 				center: ['50%', '52%'],
 				avoidLabelOverlap: true,
-				label: { show: true, fontSize: 11, color: '#71717a' },
+				label: { show: true, fontSize: 11 },
 				emphasis: { label: { show: true, fontWeight: 'bold' } },
 				data,
 				itemStyle: { borderColor: 'transparent', borderWidth: 2 }
@@ -251,10 +388,10 @@
 				left: 'center',
 				top: '46%',
 				style: {
-					text: String(total),
+					text: String(filteredTotal),
 					fontSize: 20,
 					fontWeight: 'bold',
-					fill: '#a1a1aa',
+					fill: getCSSVar('--color-muted', '#a1a1aa'),
 					textAlign: 'center',
 					textVerticalAlign: 'middle'
 				}
@@ -267,23 +404,96 @@
 	<Topbar />
 
 	<!-- Toolbar -->
-	<header class="shrink-0 flex items-center gap-3 px-4 py-2.5 border-b border-border bg-bg2/80 backdrop-blur-sm">
-		<ShieldCheck size={14} class="text-accent shrink-0" />
-		<h1 class="text-sm font-semibold tracking-tight">{m.reliability_title()}</h1>
-		<div class="flex-1"></div>
-		<DateRangePicker
-			from={reliability.dateRange.from}
-			to={reliability.dateRange.to}
-			onchange={handleDateChange}
-		/>
-		<button
-			type="button"
-			class="flex items-center justify-center w-7 h-7 rounded border border-border bg-bg3 text-muted-foreground hover:text-foreground hover:bg-border cursor-pointer transition-colors"
-			onclick={loadData}
-			title="Refresh data"
-		>
-			<RefreshCw size={12} class={loading ? 'animate-spin' : ''} />
-		</button>
+	<header class="shrink-0 relative z-20 flex flex-col border-b border-border bg-bg2/80 backdrop-blur-sm">
+		<div class="flex items-center gap-2 sm:gap-3 px-4 py-2.5 flex-wrap gap-y-2">
+			<ShieldCheck size={14} class="text-accent shrink-0" />
+			<h1 class="text-sm font-semibold tracking-tight">{m.reliability_title()}</h1>
+			<div class="flex-1"></div>
+			<DateRangePicker
+				from={reliability.dateRange.from}
+				to={reliability.dateRange.to}
+				onchange={handleDateChange}
+			/>
+			<button
+				type="button"
+				class="flex items-center justify-center w-7 h-7 rounded border border-border bg-bg3 text-muted-foreground hover:text-foreground hover:bg-border cursor-pointer transition-colors"
+				onclick={loadData}
+				title="Refresh data"
+			>
+				<RefreshCw size={12} class={loading ? 'animate-spin' : ''} />
+			</button>
+		</div>
+		{#if summary}
+		<div class="relative">
+			<!-- Left scroll arrow + gradient -->
+			{#if canScrollLeft}
+				<button
+					type="button"
+					class="absolute left-0 top-0 bottom-0 z-10 flex items-center pl-1 pr-2 cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
+					style="background: linear-gradient(to right, var(--color-bg2) 40%, transparent)"
+					onclick={() => scrollFilters('left')}
+				>
+					<ChevronLeft size={12} />
+				</button>
+			{/if}
+
+			<!-- Right scroll arrow + gradient -->
+			{#if canScrollRight}
+				<button
+					type="button"
+					class="absolute right-0 top-0 bottom-0 z-10 flex items-center pr-1 pl-2 cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
+					style="background: linear-gradient(to left, var(--color-bg2) 40%, transparent)"
+					onclick={() => scrollFilters('right')}
+				>
+					<ChevronRight size={12} />
+				</button>
+			{/if}
+
+			<div
+				bind:this={filterScrollEl}
+				class="flex items-center gap-1.5 px-4 pb-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden flex-nowrap sm:flex-wrap"
+			>
+				<span class="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground/60 mr-0.5 shrink-0">Category</span>
+				{#each CATEGORIES as cat (cat)}
+					<button
+						type="button"
+						class="text-[10px] font-semibold py-0.5 px-2 rounded-md cursor-pointer transition-all duration-150 leading-snug whitespace-nowrap border shrink-0"
+						style={selectedCategories.has(cat) ? `background:${CATEGORY_COLORS[cat]}22;color:${CATEGORY_COLORS[cat]};border-color:${CATEGORY_COLORS[cat]}44` : ''}
+						class:bg-bg3={!selectedCategories.has(cat)}
+						class:text-muted-foreground={!selectedCategories.has(cat)}
+						class:border-border={!selectedCategories.has(cat)}
+						onclick={() => toggleCategory(cat)}
+					>
+						{cat}
+					</button>
+				{/each}
+				<span class="w-px h-4 bg-border mx-0.5 shrink-0"></span>
+				<span class="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground/60 mr-0.5 shrink-0">Severity</span>
+				{#each SEVERITIES as sev (sev)}
+					<button
+						type="button"
+						class="text-[10px] font-semibold py-0.5 px-2 rounded-md cursor-pointer transition-all duration-150 leading-snug whitespace-nowrap border shrink-0"
+						style={selectedSeverities.has(sev) ? `background:${SEVERITY_COLORS[sev]}22;color:${SEVERITY_COLORS[sev]};border-color:${SEVERITY_COLORS[sev]}44` : ''}
+						class:bg-bg3={!selectedSeverities.has(sev)}
+						class:text-muted-foreground={!selectedSeverities.has(sev)}
+						class:border-border={!selectedSeverities.has(sev)}
+						onclick={() => toggleSeverity(sev)}
+					>
+						{sev}
+					</button>
+				{/each}
+				{#if selectedCategories.size > 0 || selectedSeverities.size > 0}
+					<button
+						type="button"
+						class="text-[10px] py-0.5 px-2 rounded-md cursor-pointer text-muted-foreground hover:text-foreground transition-colors shrink-0"
+						onclick={() => { selectedCategories = new Set(); selectedSeverities = new Set(); persistFilters(); }}
+					>
+						clear
+					</button>
+				{/if}
+			</div>
+		</div>
+		{/if}
 	</header>
 
 	<main class="flex-1 min-h-0 overflow-y-auto p-4">
@@ -374,7 +584,7 @@
 			<ConnectionEventsPanel {serverId} />
 
 			<!-- ── Incident Table ───────────────────────────────────────────────── -->
-			<IncidentTable events={reliability.events} title={m.reliability_recentIncidents()} />
+			<IncidentTable events={filteredEvents} title={m.reliability_recentIncidents()} />
 		</div>
 		{/if}
 	</main>

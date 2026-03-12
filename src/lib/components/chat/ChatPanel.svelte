@@ -1,9 +1,10 @@
 <script lang="ts">
     import ChatMessage from "./ChatMessage.svelte";
+    import Skeleton from "$lib/components/ui/Skeleton.svelte";
     import { agentChat } from "$lib/state/chat/chat.svelte";
     import { sendChatMsg } from "$lib/services/gateway.svelte";
     import { conn } from "$lib/state/gateway/connection.svelte";
-    import { tick } from "svelte";
+    import { tick, untrack } from "svelte";
     import * as m from "$lib/paraglide/messages";
 
     let { agentId, readonly = false }: { agentId: string; readonly?: boolean } =
@@ -24,7 +25,7 @@
         // Touch stream/messages to subscribe
         void chat.messages.length;
         void chat.stream;
-        if (atBottom) {
+        if (untrack(() => atBottom)) {
             tick().then(() => {
                 if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
             });
@@ -55,11 +56,24 @@
                     {m.chat_noMessages()}
                 </div>
             {:else if chat.loading}
-                <div class="text-muted-foreground text-[11px] text-center p-5">
-                    {m.chat_loadingHistory()}
+                <!-- Skeleton chat bubbles -->
+                <div class="flex flex-col gap-3 py-2">
+                    <div class="self-start max-w-[70%] flex flex-col gap-1.5">
+                        <Skeleton width="180px" height="14px" rounded="rounded" />
+                        <Skeleton width="220px" height="14px" rounded="rounded" />
+                        <Skeleton width="140px" height="14px" rounded="rounded" />
+                    </div>
+                    <div class="self-end max-w-[60%] flex flex-col gap-1.5 items-end">
+                        <Skeleton width="120px" height="14px" rounded="rounded" />
+                        <Skeleton width="160px" height="14px" rounded="rounded" />
+                    </div>
+                    <div class="self-start max-w-[70%] flex flex-col gap-1.5">
+                        <Skeleton width="200px" height="14px" rounded="rounded" />
+                        <Skeleton width="100px" height="14px" rounded="rounded" />
+                    </div>
                 </div>
             {:else}
-                {#each chat.messages as msg, i (i)}
+                {#each chat.messages as msg, i (`${(msg as {timestamp?: number}).timestamp ?? ''}_${i}`)}
                     <ChatMessage message={msg} />
                 {/each}
 

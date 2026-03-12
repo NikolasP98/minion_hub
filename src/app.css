@@ -157,6 +157,10 @@
   }
 
   /* Scrollbar */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
+  }
   ::-webkit-scrollbar {
     width: 6px;
   }
@@ -214,53 +218,102 @@
     0%   { transform: translateX(-100%); }
     100% { transform: translateX(350%); }
   }
+
+  /* ── Page & panel transition keyframes ── */
+  @keyframes page-fade-in {
+    from { opacity: 0.6; }
+    to { opacity: 1; }
+  }
+
+  @keyframes panel-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes tab-slide-in {
+    from { opacity: 0; transform: translateY(3px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes indicator-in {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+  }
+}
+
+/* ── Reduced motion: suppress all animations ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* ═══════════════════════════════════════════════════
-   VOXELIZED THEME OVERRIDES
+   VOXELIZED THEME OVERRIDES  — neo 16-bit
    ═══════════════════════════════════════════════════ */
 
+/* ── New keyframes ── */
+@keyframes vx-border-pulse {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(var(--vx-glow-cyan), 0.5), 0 0 8px 0px rgba(var(--vx-glow-cyan), 0.15); }
+  50%       { box-shadow: 0 0 0 1px rgba(var(--vx-glow-cyan), 0.9), 0 0 16px 2px rgba(var(--vx-glow-cyan), 0.3); }
+}
+@keyframes vx-phosphor-flicker {
+  0%, 96%, 100% { opacity: 1; }
+  97% { opacity: 0.94; }
+  98% { opacity: 0.97; }
+}
+
+/* ── A: Font ── */
 [data-theme="voxelized"],
 [data-theme="voxelized"] * {
   font-family: 'Pixelify Sans', 'JetBrains Mono NF', monospace !important;
   image-rendering: pixelated;
 }
 
+/* ── B: Shadow tokens → bloom ── */
 [data-theme="voxelized"] {
-  --shadow-sm: 3px 3px 0px rgba(0, 229, 255, 0.15);
-  --shadow-md: 4px 4px 0px rgba(0, 229, 255, 0.2);
-  --shadow-lg: 6px 6px 0px rgba(0, 229, 255, 0.25);
+  --shadow-sm: 0 0 8px 1px rgba(var(--vx-glow-cyan), 0.12), inset 0 0 0 1px rgba(var(--vx-glow-cyan), 0.08);
+  --shadow-md: 0 0 16px 2px rgba(var(--vx-glow-cyan), 0.18), inset 0 0 0 1px rgba(var(--vx-glow-cyan), 0.12);
+  --shadow-lg: 0 0 28px 4px rgba(var(--vx-glow-cyan), 0.25), inset 0 0 0 1px rgba(var(--vx-glow-cyan), 0.18);
 }
 
-/* Pixel grid background */
+/* ── C: Vignette + CRT phosphor dot matrix ── */
 [data-theme="voxelized"] body::before {
   content: '';
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
+  position: fixed; inset: 0; z-index: -2; pointer-events: none;
   background-image:
-    linear-gradient(var(--color-border) 1px, transparent 1px),
-    linear-gradient(90deg, var(--color-border) 1px, transparent 1px);
-  background-size: 24px 24px;
-  opacity: 0.12;
+    radial-gradient(ellipse 90% 90% at 50% 50%, transparent 40%, rgba(0,0,0,0.35) 80%, rgba(0,0,0,0.65) 100%),
+    radial-gradient(circle at 1px 1px, rgba(0, 240, 255, 0.055) 1px, transparent 0),
+    radial-gradient(circle at 1px 1px, rgba(255, 45, 120, 0.025) 1px, transparent 0);
+  background-size: 100% 100%, 4px 4px, 4px 4px;
+  background-position: 0 0, 0 0, 2px 2px;
 }
 
-/* Scanline overlay */
+/* ── D: RGB phosphor scanlines (4px period) ── */
 [data-theme="voxelized"] body::after {
   content: '';
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-  pointer-events: none;
+  position: fixed; inset: 0; z-index: 9998; pointer-events: none;
   background: repeating-linear-gradient(
     0deg,
-    transparent, transparent 2px,
-    rgba(0, 0, 0, 0.08) 2px, rgba(0, 0, 0, 0.08) 4px
+    rgba(255, 0, 60,   0.015) 0px, rgba(255, 0, 60,   0.015) 1px,
+    rgba(0, 255, 160,  0.015) 1px, rgba(0, 255, 160,  0.015) 2px,
+    rgba(0, 120, 255,  0.015) 2px, rgba(0, 120, 255,  0.015) 3px,
+    rgba(0, 0, 0,      0.055) 3px, rgba(0, 0, 0,      0.055) 4px
   );
 }
 
-/* Sharp borders */
+/* ── E: Noise grain via SVG feTurbulence ── */
+[data-theme="voxelized"] html::before {
+  content: '';
+  position: fixed; inset: 0; z-index: -3; pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.035'/%3E%3C/svg%3E");
+  background-size: 200px 200px;
+  mix-blend-mode: overlay;
+}
+
+/* ── F: Border glow system ── */
 [data-theme="voxelized"] .border,
 [data-theme="voxelized"] [class*="border-"] {
   border-style: solid !important;
@@ -271,10 +324,40 @@
 [data-theme="voxelized"] .rounded-md,
 [data-theme="voxelized"] .rounded {
   border-radius: 0 !important;
-  box-shadow: 0 0 0 1px var(--color-border), 3px 3px 0 var(--color-border);
+  box-shadow: 0 0 0 1px var(--color-border), 0 0 8px 0px rgba(var(--vx-glow-cyan), 0.08);
+}
+[data-theme="voxelized"] .rounded-lg:focus-within,
+[data-theme="voxelized"] .rounded-xl:focus-within,
+[data-theme="voxelized"] .rounded-md:focus-within {
+  box-shadow: 0 0 0 1px rgba(var(--vx-glow-cyan), 0.6), 0 0 14px 2px rgba(var(--vx-glow-cyan), 0.2);
 }
 
-/* Buttons — pixel press */
+/* ── G: Card dithered gradient ── */
+/* Exclude marketplace AgentCard internals (id-card, agent-card-*) which have intentional light/custom backgrounds */
+[data-theme="voxelized"] [class*="card"]:not([class*="agent-card"]):not(.id-card),
+[data-theme="voxelized"] [class*="panel"] {
+  border-radius: 0 !important;
+  background-image: linear-gradient(
+    180deg,
+    var(--vx-dither-light) 0%,
+    var(--vx-dither-mid)   33%,
+    var(--vx-dither-dark)  66%,
+    #030c1a                100%
+  ) !important;
+}
+
+/* Restore marketplace AgentCard id-card to its original white background */
+[data-theme="voxelized"] .id-card {
+  background: linear-gradient(145deg, rgba(250, 250, 250, 0.98), rgba(240, 240, 242, 0.95)) !important;
+  border-radius: 14px !important;
+}
+
+/* Reduce holo sheen — too bright against dark voxelized backgrounds */
+[data-theme="voxelized"] .holo-active .holo-sheen {
+  opacity: 0.3 !important;
+}
+
+/* ── H: Buttons ── */
 [data-theme="voxelized"] button {
   border-radius: 0 !important;
   border: 1px solid var(--color-border) !important;
@@ -282,12 +365,18 @@
   letter-spacing: 0.08em;
 }
 
+[data-theme="voxelized"] button:not(:disabled):hover {
+  border-color: rgba(var(--vx-glow-cyan), 0.5) !important;
+  box-shadow: 0 0 6px 0px rgba(var(--vx-glow-cyan), 0.2);
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
 [data-theme="voxelized"] button:not(:disabled):active {
   transform: translate(2px, 2px);
   box-shadow: none !important;
 }
 
-/* Inputs */
+/* ── I: Inputs ── */
 [data-theme="voxelized"] input,
 [data-theme="voxelized"] select,
 [data-theme="voxelized"] textarea {
@@ -296,7 +385,10 @@
   font-family: 'Pixelify Sans', monospace !important;
 }
 
-/* Chunky scrollbars */
+/* ── J: Chunky scrollbars ── */
+[data-theme="voxelized"] * {
+  scrollbar-color: var(--color-border) var(--color-bg2);
+}
 [data-theme="voxelized"] ::-webkit-scrollbar { width: 8px; height: 8px; }
 [data-theme="voxelized"] ::-webkit-scrollbar-track { background: var(--color-bg2); }
 [data-theme="voxelized"] ::-webkit-scrollbar-thumb {
@@ -305,17 +397,22 @@
   border-radius: 0;
 }
 [data-theme="voxelized"] ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-accent);
+  background: rgba(var(--vx-glow-cyan), 0.6);
+  box-shadow: 0 0 6px 1px rgba(var(--vx-glow-cyan), 0.4);
 }
 
-/* AgentCard pixel skin */
+/* ── K: AgentCard bloom ── */
 [data-theme="voxelized"] .agent-card {
   border-radius: 0 !important;
-  box-shadow: 4px 4px 0 var(--color-border) !important;
+  box-shadow: 0 0 0 1px var(--color-border), 0 0 12px 1px rgba(var(--vx-glow-cyan), 0.12) !important;
+  transition: box-shadow 0.2s ease;
+}
+[data-theme="voxelized"] .agent-card:hover {
+  box-shadow: 0 0 0 1px rgba(var(--vx-glow-cyan), 0.7), 0 0 20px 3px rgba(var(--vx-glow-cyan), 0.25) !important;
 }
 
 [data-theme="voxelized"] .agent-card .card-front {
-  background: linear-gradient(135deg, #0c1830 0%, #071020 100%) !important;
+  background: linear-gradient(135deg, #0a1428 0%, #040c18 100%) !important;
   border: 1px solid var(--color-border) !important;
 }
 
@@ -329,18 +426,24 @@
   color: #000 !important;
 }
 
-/* text-muted class uses --color-muted which is a bg-tint color in this theme */
+/* ── L: text-muted fix ── */
 [data-theme="voxelized"] .text-muted {
   color: var(--color-muted-foreground) !important;
 }
 
-/* Topbar / nav */
-[data-theme="voxelized"] header,
-[data-theme="voxelized"] nav {
+/* ── M: Header phosphor flicker ── */
+[data-theme="voxelized"] header {
   border-radius: 0 !important;
-  border-bottom: 2px solid var(--color-border) !important;
+  border-bottom: 1px solid var(--color-border) !important;
+  box-shadow: 0 2px 0 0 rgba(var(--vx-glow-cyan), 0.08), 0 4px 12px 0 rgba(0, 0, 0, 0.5);
+  animation: vx-phosphor-flicker 8s step-start infinite;
 }
 
+[data-theme="voxelized"] nav {
+  border-radius: 0 !important;
+}
+
+/* ── N: Nav pills ── */
 [data-theme="voxelized"] .nav-pill,
 [data-theme="voxelized"] .nav-pill-sm,
 [data-theme="voxelized"] .mobile-nav-link {
@@ -357,13 +460,328 @@
   color: var(--color-foreground) !important;
 }
 
-/* Square status dots */
-[data-theme="voxelized"] .status-dot {
-  border-radius: 0 !important;
+[data-theme="voxelized"] .nav-pill.active {
+  animation: vx-border-pulse 2.4s ease-in-out infinite;
+  background: rgba(var(--vx-glow-cyan), 0.06) !important;
+  color: rgba(0, 240, 255, 1) !important;
+}
+[data-theme="voxelized"] .nav-pill.active::after { display: none; }
+
+/* ── O: Status dot + success glow ── */
+[data-theme="voxelized"] .status-dot { border-radius: 0 !important; }
+[data-theme="voxelized"] [class*="bg-success"] {
+  box-shadow: 0 0 6px 1px rgba(var(--vx-glow-green), 0.5);
 }
 
-/* KPI cards / panels */
-[data-theme="voxelized"] [class*="card"],
-[data-theme="voxelized"] [class*="panel"] {
+/* ═══════════════════════════════════════════════════
+   OBSIDIAN THEME OVERRIDES
+   ═══════════════════════════════════════════════════ */
+
+[data-theme="obsidian"] {
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.5), 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.3);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.6), 0 4px 8px rgba(0,0,0,0.3);
+}
+
+/* Active nav pills: subtle inner glow */
+[data-theme="obsidian"] .nav-pill.active,
+[data-theme="obsidian"] .nav-pill-sm.active {
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.04),
+    inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 25%, transparent);
+}
+
+/* Scrollbar: slightly wider with rounded ends and hover brightening */
+[data-theme="obsidian"] * {
+  scrollbar-color: rgba(255,255,255,0.08) transparent;
+}
+[data-theme="obsidian"] ::-webkit-scrollbar { width: 7px; }
+[data-theme="obsidian"] ::-webkit-scrollbar-track { background: transparent; }
+[data-theme="obsidian"] ::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.08);
+  border-radius: 4px;
+}
+[data-theme="obsidian"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.14);
+}
+
+/* Buttons: subtle bottom border for depth */
+[data-theme="obsidian"] button:not(:disabled) {
+  border-bottom: 1px solid rgba(0,0,0,0.3);
+}
+
+/* ═══════════════════════════════════════════════════
+   CRT THEME OVERRIDES — phosphor amber
+   ═══════════════════════════════════════════════════ */
+
+/* ── New keyframes ── */
+@keyframes crt-screen-flicker {
+  0%,   100% { opacity: 1; }
+  2%          { opacity: 0.97; }
+  4%          { opacity: 1; }
+  40%         { opacity: 1; }
+  41%         { opacity: 0.985; }
+  42%         { opacity: 1; }
+}
+@keyframes crt-cursor-blink {
+  0%,  50%  { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+@keyframes crt-led-pulse {
+  0%, 88%, 100% { opacity: 1; }
+  94%           { opacity: 0.15; }
+}
+
+/* ── A: Font + base ── */
+[data-theme="crt"],
+[data-theme="crt"] * {
+  font-family: 'Courier New', 'JetBrains Mono NF', monospace !important;
+}
+
+/* ── B: Shadow tokens → phosphor glow ── */
+[data-theme="crt"] {
+  --shadow-sm: 0 0 4px rgba(var(--crt-glow-amber), 0.5);
+  --shadow-md: 0 0 8px rgba(var(--crt-glow-amber), 0.6), 0 0 20px rgba(var(--crt-glow-amber), 0.2);
+  --shadow-lg: 0 0 12px rgba(var(--crt-glow-amber), 0.7), 0 0 30px rgba(var(--crt-glow-amber), 0.3);
+}
+
+/* ── C: Warm ambient (html::before) ── */
+html[data-theme="crt"]::before {
+  content: '';
+  position: fixed; inset: 0; z-index: -3; pointer-events: none;
+  display: none;
+}
+html[data-theme="crt"][data-crt-warm="true"]::before {
+  display: block;
+  background: radial-gradient(
+    ellipse 85% 80% at 50% 35%,
+    rgba(90, 45, 0, 0.18) 0%,
+    transparent 100%
+  );
+}
+
+/* ── D: RGB subpixel fringe (html::after) ── */
+html[data-theme="crt"]::after {
+  content: '';
+  position: fixed; inset: 0; z-index: 9999; pointer-events: none;
+  display: none;
+}
+html[data-theme="crt"][data-crt-subpixel="true"]::after {
+  display: block;
+  background-image: repeating-linear-gradient(
+    90deg,
+    rgba(255, 80,  0,   0.06) 0px, rgba(255, 80,  0,   0.06) 1px,
+    rgba(255, 200, 0,   0.04) 1px, rgba(255, 200, 0,   0.04) 2px,
+    rgba(180, 60,  0,   0.03) 2px, rgba(180, 60,  0,   0.03) 3px,
+    transparent                 3px, transparent                 4px
+  );
+}
+
+/* ── E: Vignette (body::before) ── */
+[data-theme="crt"] body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: -2; pointer-events: none;
+  display: none;
+}
+html[data-theme="crt"][data-crt-vignette="true"] body::before {
+  display: block;
+  background: radial-gradient(
+    ellipse 95% 95% at 50% 50%,
+    transparent 55%,
+    rgba(0, 0, 0, 0.50) 82%,
+    rgba(0, 0, 0, 0.80) 100%
+  );
+}
+
+/* ── F: Scanlines (body::after) — default = on ── */
+[data-theme="crt"] body::after {
+  content: '';
+  position: fixed; inset: 0; z-index: 9998; pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0px,            transparent 1px,
+    rgba(0, 0, 0, 0.38) 1px,   rgba(0, 0, 0, 0.38) 2px
+  );
+}
+html[data-theme="crt"][data-crt-scan="off"]    body::after { display: none; }
+html[data-theme="crt"][data-crt-scan="subtle"] body::after {
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0px,            transparent 1px,
+    rgba(0, 0, 0, 0.18) 1px,   rgba(0, 0, 0, 0.18) 2px
+  );
+}
+html[data-theme="crt"][data-crt-scan="heavy"] body::after {
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0px,            transparent 1px,
+    rgba(0, 0, 0, 0.55) 1px,   rgba(0, 0, 0, 0.55) 2px
+  );
+}
+html[data-theme="crt"][data-crt-scan="cinematic"] body::after {
+  background: repeating-linear-gradient(
+    0deg,
+    transparent          0px, transparent          1px,
+    rgba(0, 0, 0, 0.30)  1px, rgba(0, 0, 0, 0.30)  2px,
+    transparent          2px, transparent          3px,
+    rgba(0, 0, 0, 0.15)  3px, rgba(0, 0, 0, 0.15)  4px
+  );
+}
+
+/* ── G: Phosphor bloom (text-shadow cascade) ── */
+html[data-theme="crt"][data-crt-bloom="subtle"] body {
+  text-shadow: 0 0 4px rgba(var(--crt-glow-hot), 0.35), 0 0 12px rgba(var(--crt-glow-amber), 0.15);
+}
+html[data-theme="crt"][data-crt-bloom="deep"] body {
+  text-shadow:
+    0 0 2px rgba(255, 246, 208, 0.8),
+    0 0 5px var(--crt-bloom),
+    0 0 10px rgba(255, 224, 96, 0.95),
+    0 0 20px rgba(255, 190, 64, 0.75),
+    0 0 40px rgba(255, 160, 32, 0.40);
+}
+html[data-theme="crt"][data-crt-bloom="halation"] body {
+  text-shadow:
+    0 0 2px rgba(255, 246, 208, 0.9),
+    0 0 6px var(--crt-bloom),
+    0 0 14px rgba(255, 224, 96, 1.0),
+    0 0 28px rgba(255, 190, 64, 0.80),
+    0 0 56px rgba(255, 160, 32, 0.50),
+    0 0 100px rgba(200, 100, 20, 0.30);
+}
+
+/* ── H: Screen flicker ── */
+html[data-theme="crt"][data-crt-flicker="true"] body {
+  animation: crt-screen-flicker 5s ease-in-out infinite;
+}
+
+/* ── I: Border glow system ── */
+[data-theme="crt"] .rounded-lg,
+[data-theme="crt"] .rounded-xl,
+[data-theme="crt"] .rounded-md,
+[data-theme="crt"] .rounded {
   border-radius: 0 !important;
+  box-shadow: 0 0 0 1px var(--color-border), 2px 2px 0 rgba(4, 3, 0, 0.6);
+}
+[data-theme="crt"] .rounded-lg:focus-within,
+[data-theme="crt"] .rounded-xl:focus-within,
+[data-theme="crt"] .rounded-md:focus-within {
+  box-shadow: 0 0 0 1px rgba(var(--crt-glow-amber), 0.6), 0 0 10px 1px rgba(var(--crt-glow-amber), 0.15);
+}
+
+/* ── J: Cards ── */
+[data-theme="crt"] [class*="card"]:not([class*="agent-card"]):not(.id-card),
+[data-theme="crt"] [class*="panel"] {
+  border-radius: 0 !important;
+  background-color: var(--color-bg2) !important;
+  box-shadow: 2px 2px 0 #040300 !important;
+}
+
+/* ── K: Buttons ── */
+[data-theme="crt"] button {
+  border-radius: 0 !important;
+  border: 1px solid var(--color-border) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+[data-theme="crt"] button:not(:disabled):hover {
+  border-color: rgba(var(--crt-glow-amber), 0.5) !important;
+  box-shadow: 0 0 6px 0px rgba(var(--crt-glow-hot), 0.2);
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+[data-theme="crt"] button:not(:disabled):active {
+  transform: translate(1px, 1px);
+  box-shadow: none !important;
+}
+
+/* ── L: Inputs ── */
+[data-theme="crt"] input,
+[data-theme="crt"] select,
+[data-theme="crt"] textarea {
+  border-radius: 0 !important;
+  border: 1px solid var(--color-border) !important;
+  font-family: 'Courier New', monospace !important;
+}
+[data-theme="crt"] input:focus,
+[data-theme="crt"] select:focus,
+[data-theme="crt"] textarea:focus {
+  border-color: var(--color-accent) !important;
+  box-shadow: 0 0 8px rgba(var(--crt-glow-hot), 0.25) !important;
+  outline: none;
+}
+
+/* ── M: Scrollbars ── */
+[data-theme="crt"] * {
+  scrollbar-color: var(--color-border) var(--color-bg2);
+}
+[data-theme="crt"] ::-webkit-scrollbar { width: 8px; height: 8px; }
+[data-theme="crt"] ::-webkit-scrollbar-track { background: var(--color-bg2); }
+[data-theme="crt"] ::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border: 1px solid var(--color-bg);
+  border-radius: 0;
+}
+[data-theme="crt"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--crt-glow-amber), 0.5);
+  box-shadow: 0 0 6px 1px rgba(var(--crt-glow-amber), 0.3);
+}
+
+/* ── N: Header ── */
+[data-theme="crt"] header {
+  border-radius: 0 !important;
+  border-bottom: 2px solid var(--color-border) !important;
+  box-shadow: 0 2px 0 0 rgba(var(--crt-glow-amber), 0.12), 0 4px 16px 0 rgba(0, 0, 0, 0.6);
+}
+
+/* ── O: Nav pills ── */
+[data-theme="crt"] .nav-pill,
+[data-theme="crt"] .nav-pill-sm,
+[data-theme="crt"] .mobile-nav-link {
+  border-radius: 0 !important;
+  border: 1px solid transparent;
+  text-transform: uppercase;
+  color: var(--color-muted-foreground) !important;
+}
+[data-theme="crt"] .nav-pill.active {
+  background: rgba(var(--crt-glow-amber), 0.08) !important;
+  border-color: rgba(var(--crt-glow-amber), 0.4) !important;
+  color: var(--color-accent) !important;
+  box-shadow: 0 0 8px rgba(var(--crt-glow-hot), 0.15);
+}
+[data-theme="crt"] .nav-pill.active::after { display: none; }
+
+/* ── P: AgentCard ── */
+[data-theme="crt"] .agent-card {
+  border-radius: 0 !important;
+  box-shadow: 0 0 0 1px var(--color-border), 2px 2px 0 #040300 !important;
+  transition: box-shadow 0.2s ease;
+}
+[data-theme="crt"] .agent-card:hover {
+  box-shadow: 0 0 0 1px rgba(var(--crt-glow-amber), 0.5), 0 0 12px 2px rgba(var(--crt-glow-amber), 0.2) !important;
+}
+[data-theme="crt"] .agent-card .card-front {
+  background: var(--color-card) !important;
+  border: 1px solid var(--color-border) !important;
+}
+[data-theme="crt"] .agent-card .initials-box {
+  border-radius: 0 !important;
+  background: var(--color-accent) !important;
+  color: var(--color-bg) !important;
+}
+
+/* ── Q: Status dots ── */
+[data-theme="crt"] .status-dot { border-radius: 0 !important; }
+[data-theme="crt"] [class*="bg-success"] {
+  box-shadow: 0 0 6px 1px rgba(var(--crt-glow-green), 0.5);
+}
+
+/* ── R: text-muted fix ── */
+[data-theme="crt"] .text-muted {
+  color: var(--color-muted-foreground) !important;
+}
+
+/* ── S: ID card — preserve white background ── */
+[data-theme="crt"] .id-card {
+  background: linear-gradient(145deg, rgba(250, 250, 250, 0.98), rgba(240, 240, 242, 0.95)) !important;
+  border-radius: 14px !important;
 }

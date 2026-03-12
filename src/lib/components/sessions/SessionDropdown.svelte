@@ -13,6 +13,7 @@
     displayName: string;
     relTime: string;
     statusColor: string;
+    status: string | undefined;
   };
 
   // ── Helpers ─────────────────────────────────────────────────────────────
@@ -75,6 +76,22 @@
     api.setValue([mainSessionKey]);
   }
 
+  function handleChevronPointerDown(e: PointerEvent) {
+    if (e.pointerType === 'touch') return;
+    if (e.button !== 0) return;
+    e.preventDefault(); // keep focus on input
+  }
+
+  function handleChevronClick() {
+    if (!api.open) {
+      filterQuery = '';
+      api.setInputValue('');
+      api.setOpen(true, 'trigger-click');
+    } else {
+      api.setOpen(false, 'trigger-click');
+    }
+  }
+
   // ── Filtered sessions for this agent ────────────────────────────────────
   const agentSessions = $derived(
     gw.sessions.filter((s: Session) => {
@@ -90,6 +107,7 @@
       displayName: s.displayName || s.label || formatSessionKey(s.sessionKey),
       relTime: relativeTime(s.updatedAt ?? s.lastActiveAt ?? s.createdAt),
       statusColor: statusColor(s.sessionKey),
+      status: ui.sessionStatus[s.sessionKey],
     }))
   );
 
@@ -132,6 +150,25 @@
       const sk = value[0] ?? null;
       ui.selectedSessionKey = sk;
     },
+    onOpenChange({ open, value }: { open: boolean; value: string[] }) {
+      if (!open) {
+        const currentVal = value[0] ?? null;
+        if (currentVal) {
+          const item = sessionItems.find((i) => i.sessionKey === currentVal);
+          if (item) {
+            queueMicrotask(() => {
+              filterQuery = '';
+              api.setInputValue(item.displayName);
+            });
+          }
+        } else {
+          queueMicrotask(() => {
+            filterQuery = '';
+            api.setInputValue('');
+          });
+        }
+      }
+    },
   }));
 
   const api = $derived(combobox.connect(comboboxService, normalizeProps));
@@ -173,16 +210,16 @@
           {...api.getInputProps()}
         />
         <button
-          class="bg-transparent border-none text-muted-foreground cursor-pointer text-sm px-1 py-0 leading-none shrink-0 transition-colors hover:text-foreground data-[state=hidden]:hidden"
-          aria-label="Clear session"
-          tabindex="-1"
-          {...api.getClearTriggerProps()}
-        >&times;</button>
-        <button
-          class="bg-transparent border-none text-muted-foreground cursor-pointer text-[10px] pr-1.5 pl-[2px] py-0 leading-none shrink-0 transition-colors hover:text-muted"
-          tabindex="-1"
+          type="button"
+          id="combobox:session-combobox:toggle-btn"
+          class="bg-transparent border-none text-muted-foreground cursor-pointer text-[10px] px-1.5 self-stretch flex items-center shrink-0 transition-colors hover:text-foreground"
+          tabindex={-1}
           aria-label="Toggle session list"
-          {...api.getTriggerProps()}
+          aria-haspopup="listbox"
+          aria-expanded={api.open}
+          data-state={api.open ? 'open' : 'closed'}
+          onclick={handleChevronClick}
+          onpointerdown={handleChevronPointerDown}
         >&#9662;</button>
       </div>
 
@@ -205,7 +242,7 @@
         <ul class="list-none m-0 p-1 max-h-[220px] overflow-y-auto" {...api.getListProps()}>
           {#each filteredItems as item (item.sessionKey)}
             <li
-              class="group flex items-center gap-[6px] py-[5px] px-2 rounded-sm text-xs cursor-pointer transition-colors data-[highlighted]:bg-bg3"
+              class="group flex items-center gap-[6px] py-[5px] px-2 rounded-sm text-xs cursor-pointer transition-colors data-[highlighted]:bg-bg3 {item.status === 'running' ? 'bg-green-400/8 border-l-2 border-l-green-400' : item.status === 'thinking' ? 'bg-yellow-400/8 border-l-2 border-l-yellow-400' : ''}"
               {...api.getItemProps({ item })}
             >
               <!-- Status dot -->

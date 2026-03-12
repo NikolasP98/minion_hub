@@ -178,10 +178,10 @@
 					const d = new Date(ev.occurredAt);
 					const timeStr = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
 					let html = `<div style="font-size:11px">`;
-					html += `<div style="margin-bottom:4px;color:#a1a1aa">${timeStr}</div>`;
+					html += `<div style="margin-bottom:4px;color:var(--color-muted-foreground)">${timeStr}</div>`;
 					html += `<div><strong>${ev.event}</strong></div>`;
-					html += `<div style="color:#71717a">${ev.message}</div>`;
-					html += `<div style="margin-top:2px;font-size:10px;color:#a1a1aa">${ev.category} / ${ev.severity}</div>`;
+					html += `<div style="color:var(--color-muted-foreground)">${ev.message}</div>`;
+					html += `<div style="margin-top:2px;font-size:10px;color:var(--color-muted-foreground)">${ev.category} / ${ev.severity}</div>`;
 					html += `</div>`;
 					return html;
 				},
@@ -189,20 +189,18 @@
 			legend: {
 				top: 0,
 				right: 8,
-				textStyle: { color: '#71717a', fontSize: 10 },
+				textStyle: { fontSize: 10 },
 			},
 			grid: { left: 60, right: 24, top: 28, bottom: 32 },
 			xAxis: {
 				type: 'time',
 				axisLabel: {
-					color: '#71717a',
 					fontSize: 10,
 					formatter: (value: number) => {
 						const d = new Date(value);
 						return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 					},
 				},
-				axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } },
 				axisTick: { show: false },
 				splitLine: { show: false },
 			},
@@ -211,7 +209,6 @@
 				min: -2,
 				max: 4,
 				axisLabel: {
-					color: '#71717a',
 					fontSize: 9,
 					formatter: (value: number) => {
 						const labels: Record<number, string> = {
@@ -226,7 +223,6 @@
 				},
 				axisLine: { show: false },
 				axisTick: { show: false },
-				splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } },
 			},
 			series,
 		} satisfies EChartsOption;

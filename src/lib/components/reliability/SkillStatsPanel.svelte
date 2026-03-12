@@ -79,15 +79,57 @@
 
 		const durationSeries = {
 			name: 'Avg Duration',
-			type: 'line' as const,
+			type: 'custom' as const,
 			xAxisIndex: 1,
-			lineStyle: { type: 'dashed' as const, color: '#06b6d4', width: 2 },
-			itemStyle: { color: '#06b6d4' },
-			symbol: 'circle' as const,
-			symbolSize: 6,
-			data: skills.map((s) => s.avgDurationMs ?? 0),
+			z: 10,
+			renderItem: (_params: any, api: any) => {
+				const catIdx = api.value(0);
+				const minVal = api.value(1);
+				const avgVal = api.value(2);
+				const maxVal = api.value(3);
+				const yCenter = api.coord([0, catIdx])[1];
+				const minX = api.coord([minVal, catIdx])[0];
+				const avgX = api.coord([avgVal, catIdx])[0];
+				const maxX = api.coord([maxVal, catIdx])[0];
+				const children: any[] = [];
+				if (maxVal > minVal) {
+					children.push(
+						{
+							type: 'rect',
+							shape: { x: minX, y: yCenter - 1.5, width: Math.max(maxX - minX, 1), height: 3 },
+							style: { fill: 'rgba(255, 255, 255, 0.35)' },
+						},
+						{
+							type: 'rect',
+							shape: { x: minX - 1, y: yCenter - 5, width: 2, height: 10 },
+							style: { fill: 'rgba(255, 255, 255, 0.5)' },
+						},
+						{
+							type: 'rect',
+							shape: { x: maxX - 1, y: yCenter - 5, width: 2, height: 10 },
+							style: { fill: 'rgba(255, 255, 255, 0.5)' },
+						},
+					);
+				}
+				children.push({
+					type: 'circle',
+					shape: { cx: avgX, cy: yCenter, r: 5 },
+					style: { fill: '#ffffff', stroke: '#0f172a', lineWidth: 2 },
+				});
+				return { type: 'group' as const, children };
+			},
+			encode: { x: [1, 2, 3], y: 0 },
+			data: skills.map((s, i) => [
+				i,
+				(s.minDurationMs ?? 0) / 1000,
+				(s.avgDurationMs ?? 0) / 1000,
+				(s.maxDurationMs ?? 0) / 1000,
+			]),
 			tooltip: {
-				valueFormatter: (value: unknown) => formatDuration(Number(value)),
+				formatter: (params: any) => {
+					const [, min, avg, max] = params.value as number[];
+					return `<div style="font-size:11px"><b>Duration</b><br/>Min: ${formatDuration(min * 1000)}<br/>Avg: ${formatDuration(avg * 1000)}<br/>Max: ${formatDuration(max * 1000)}</div>`;
+				},
 			},
 		};
 
@@ -106,11 +148,11 @@
 				{ type: 'value', name: 'Count', nameGap: 6, nameTextStyle: { fontSize: 10 } },
 				{
 					type: 'value',
-					name: 'Duration (ms)',
+					name: 'Duration (s)',
 					nameGap: 6,
 					nameTextStyle: { fontSize: 10 },
 					position: 'top',
-					axisLabel: { color: '#71717a', fontSize: 10 },
+					axisLabel: { fontSize: 10 },
 				},
 			],
 			yAxis: {
@@ -118,7 +160,6 @@
 				data: skillNames,
 				inverse: true,
 				axisLabel: {
-					color: '#71717a',
 					fontSize: 10,
 					width: 110,
 					overflow: 'truncate',
@@ -135,63 +176,69 @@
 	});
 </script>
 
-<div class="bg-card border border-border rounded-lg overflow-hidden flex flex-col">
+<div class="bg-card border border-border rounded-lg overflow-hidden grid grid-rows-subgrid row-span-4">
+	<!-- Row 1: HEADER -->
 	<div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20">
 		<Zap size={11} class="text-accent shrink-0" />
 		<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground flex-1">{m.reliability_skillTitle()}</span>
 	</div>
 
 	{#if state.loading && skills.length === 0}
+		<div></div>
 		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">{m.common_loading()}</div>
+		<div></div>
 	{:else if state.error}
+		<div></div>
 		<div class="flex items-center justify-center py-12 px-4 text-destructive text-[13px]">{state.error}</div>
+		<div></div>
 	{:else if skills.length === 0}
+		<div></div>
 		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">{m.reliability_noSkills()}</div>
+		<div></div>
 	{:else}
-		<!-- Summary stats -->
+		<!-- Row 2: STATS -->
 		<div class="grid grid-cols-4 gap-px bg-border border-b border-border">
 			<div class="flex flex-col items-center gap-1 py-3 px-2 bg-card">
 				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Total</span>
-				<span class="text-lg font-bold text-foreground tabular-nums">{totalExecs}</span>
+				<span class="text-lg font-bold text-foreground tabular-nums whitespace-nowrap">{totalExecs}</span>
 			</div>
 			<div class="flex flex-col items-center gap-1 py-3 px-2 bg-card">
 				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Success</span>
-				<span class="text-lg font-bold text-success tabular-nums">{successRate}%</span>
+				<span class="text-lg font-bold text-success tabular-nums whitespace-nowrap">{successRate}%</span>
 			</div>
 			<div class="flex flex-col items-center gap-1 py-3 px-2 bg-card">
 				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Errors</span>
-				<span class="text-lg font-bold tabular-nums" class:text-destructive={totalErrors > 0} class:text-muted-foreground={totalErrors === 0}>{totalErrors}</span>
+				<span class="text-lg font-bold tabular-nums whitespace-nowrap" class:text-destructive={totalErrors > 0} class:text-muted-foreground={totalErrors === 0}>{totalErrors}</span>
 			</div>
 			<div class="flex flex-col items-center gap-1 py-3 px-2 bg-card">
 				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Avg Time</span>
-				<span class="text-lg font-bold text-foreground tabular-nums">{formatDuration(avgDuration)}</span>
+				<span class="text-lg font-bold text-foreground tabular-nums whitespace-nowrap">{formatDuration(avgDuration)}</span>
 			</div>
 		</div>
-
-		<!-- Chart -->
-		<div class="px-4 py-3 flex-1 min-h-0">
+		<!-- Row 3: MIDDLE (chart) -->
+		<div class="px-4 py-3 min-h-0">
 			<Chart options={chartOptions} height={chartHeight} />
 		</div>
-
-		<!-- Per-skill breakdown -->
-		{#if skills.length > 0}
-			<div class="border-t border-border px-4 py-3">
-				<div class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Per Skill</div>
-				<div class="flex flex-col gap-1.5">
-					{#each skills as skill (skill.skillName)}
-						{@const okPct = skill.total > 0 ? ((skill.byStatus.ok ?? 0) / skill.total) * 100 : 0}
-						<div class="flex items-center gap-2 text-[11px]">
-							<span class="text-foreground/80 truncate flex-1 min-w-0" title={skill.skillName}>{formatSkillName(skill.skillName)}</span>
-							<span class="text-muted-foreground tabular-nums shrink-0">{skill.total}×</span>
-							<!-- Mini success bar -->
-							<div class="w-16 h-1.5 rounded-full bg-border shrink-0 overflow-hidden">
-								<div class="h-full rounded-full" style="width:{okPct}%;background:{okPct === 100 ? '#22c55e' : okPct >= 80 ? '#f59e0b' : '#ef4444'}"></div>
+		<!-- Row 4: BOTTOM (per skill) -->
+		<div>
+			{#if skills.length > 0}
+				<div class="border-t border-border px-4 py-3">
+					<div class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Per Skill</div>
+					<div class="flex flex-col gap-1.5">
+						{#each skills as skill (skill.skillName)}
+							{@const okPct = skill.total > 0 ? ((skill.byStatus.ok ?? 0) / skill.total) * 100 : 0}
+							<div class="flex items-center gap-2 text-[11px]">
+								<span class="text-foreground/80 truncate flex-1 min-w-0" title={skill.skillName}>{formatSkillName(skill.skillName)}</span>
+								<span class="text-muted-foreground tabular-nums shrink-0">{skill.total}×</span>
+								<div class="w-16 h-1.5 rounded-full bg-border shrink-0 overflow-hidden">
+									<div class="h-full rounded-full" style="width:{okPct}%;background:{okPct === 100 ? '#22c55e' : okPct >= 80 ? '#f59e0b' : '#ef4444'}"></div>
+								</div>
+								<span class="text-muted-foreground/60 tabular-nums shrink-0 w-12 text-right">{formatDuration(skill.avgDurationMs)}</span>
 							</div>
-							<span class="text-muted-foreground/60 tabular-nums shrink-0 w-12 text-right">{formatDuration(skill.avgDurationMs)}</span>
-						</div>
-					{/each}
+						{/each}
+					</div>
 				</div>
-			</div>
-		{/if}
+			{/if}
+		</div>
 	{/if}
 </div>

@@ -1,5 +1,5 @@
 export interface ReliabilityEvent {
-  category: 'cron' | 'browser' | 'timezone' | 'general';
+  category: 'cron' | 'browser' | 'timezone' | 'general' | 'auth' | 'skill' | 'agent' | 'gateway';
   severity: 'critical' | 'high' | 'medium' | 'low';
   event: string;
   message: string;
@@ -27,7 +27,7 @@ export const reliability = $state({
   events: [] as ReliabilityEvent[],
   loading: false,
   dateRange: {
-    from: Date.now() - 7 * 86400000,
+    from: Date.now() - 86400000,
     to: Date.now(),
   },
 });
@@ -89,7 +89,26 @@ export async function loadReliabilitySummary(sid: string, from?: number, to?: nu
     if (to) params.set('to', String(to));
     const res = await fetch(`/api/reliability/summary?${params}`);
     if (res.ok) {
-      reliability.summary = await res.json();
+      const data = await res.json();
+      // SQLite returns computed values as strings — coerce to numbers
+      if (data.timeseries) {
+        data.timeseries = data.timeseries.map((p: any) => ({
+          ...p,
+          bucket: Number(p.bucket),
+          count: Number(p.count),
+        }));
+      }
+      if (data.topEvents) {
+        data.topEvents = data.topEvents.map((e: any) => ({
+          ...e,
+          count: Number(e.count),
+        }));
+      }
+      data.bucketMs = Number(data.bucketMs);
+      for (const key in data.byCategory) data.byCategory[key] = Number(data.byCategory[key]);
+      for (const key in data.bySeverity) data.bySeverity[key] = Number(data.bySeverity[key]);
+      data.total = Number(data.total);
+      reliability.summary = data;
     }
   } catch {
     // non-critical

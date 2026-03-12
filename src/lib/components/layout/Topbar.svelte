@@ -4,6 +4,7 @@
     import MinionLogo from "./MinionLogo.svelte";
     import Tooltip from "./Tooltip.svelte";
     import ScanLine from "$lib/components/decorations/ScanLine.svelte";
+    import { theme } from "$lib/state/ui/theme.svelte";
     import { page } from "$app/state";
     import * as m from "$lib/paraglide/messages";
     import {
@@ -41,11 +42,11 @@
 </script>
 
 <header
-    class="shrink-0 relative z-100 bg-bg/95 backdrop-blur-md border-b border-border h-14"
+    class="shrink-0 relative z-50 bg-bg/95 backdrop-blur-md border-b border-border h-14"
 >
     <!-- Subtle scan line effect -->
     <div class="absolute inset-0 overflow-hidden pointer-events-none">
-        <ScanLine speed={16} opacity={0.015} />
+        <ScanLine speed={16} opacity={0.015} dual={theme.preset.id === 'voxelized'} />
     </div>
 
     <!-- Single Row Navigation -->
@@ -239,6 +240,7 @@
     {#if mobileMenuOpen}
         <div
             class="absolute top-full left-0 right-0 bg-bg2/95 backdrop-blur-md border-b border-border shadow-lg min-[470px]:hidden"
+            style="animation: slide-up 150ms ease-out"
         >
             <nav class="flex flex-col p-2 gap-1">
                 <a
@@ -303,6 +305,7 @@
         text-decoration: none;
         transition: all 0.15s ease;
         white-space: nowrap;
+        position: relative;
     }
 
     .nav-pill:hover {
@@ -315,6 +318,18 @@
         background: color-mix(in srgb, var(--color-accent) 12%, transparent);
         box-shadow: inset 0 0 0 1px
             color-mix(in srgb, var(--color-accent) 25%, transparent);
+    }
+
+    .nav-pill.active::after {
+        content: '';
+        position: absolute;
+        bottom: -1px;
+        left: 25%;
+        right: 25%;
+        height: 2px;
+        background: var(--color-accent);
+        border-radius: 1px;
+        animation: indicator-in 200ms ease-out;
     }
 
     .nav-pill.brand {
@@ -337,6 +352,18 @@
         );
         box-shadow: inset 0 0 0 1px
             color-mix(in srgb, var(--color-brand-pink) 30%, transparent);
+    }
+
+    .nav-pill.active-brand::after {
+        content: '';
+        position: absolute;
+        bottom: -1px;
+        left: 25%;
+        right: 25%;
+        height: 2px;
+        background: var(--color-brand-pink);
+        border-radius: 1px;
+        animation: indicator-in 200ms ease-out;
     }
 
     /* Small nav pills (icon only) */

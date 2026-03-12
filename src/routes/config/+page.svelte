@@ -121,7 +121,6 @@
         defaultSize={17}
         minibarSize={5}
         maxSize={26}
-        collapsedSize={0}
     >
         {#snippet panel({ collapseLevel })}
             <ConfigSidebar {activeGroupId} onselect={scrollToGroup} {collapseLevel} />

@@ -638,12 +638,14 @@ export async function fetchKGSnapshot(agentId: string) {
 
 export function loadChatHistory(agentId: string) {
   const chat = ensureAgentChat(agentId);
-  chat.loading = true;
+  const isInitialLoad = chat.messages.length === 0;
+  if (isInitialLoad) chat.loading = true;
   sendRequest('chat.history', { sessionKey: `agent:${agentId}:main`, limit: 200 })
     .then((res) => {
-      chat.messages = Array.isArray((res as { messages?: never[] })?.messages)
+      const incoming = Array.isArray((res as { messages?: never[] })?.messages)
         ? (res as { messages: never[] }).messages
         : [];
+      chat.messages.splice(0, chat.messages.length, ...incoming);
     })
     .catch(() => {})
     .finally(() => { chat.loading = false; });

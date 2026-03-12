@@ -6,8 +6,10 @@
     import type { CollapseLevel } from '$lib/components/layout/Splitter.svelte';
 
     interface SplitterApiHandle {
-        toggleMini: () => void;
+        toggle: () => void;
         expand: () => void;
+        hide: () => void;
+        mini: () => void;
         collapseLevel: () => CollapseLevel;
     }
 
@@ -26,7 +28,7 @@
         {#snippet panel({ collapseLevel })}
             <AgentSidebar
                 {collapseLevel}
-                ontoggle={() => splitterApi?.toggleMini()}
+                ontoggle={() => splitterApi?.toggle()}
             />
         {/snippet}
         <DetailPanel />

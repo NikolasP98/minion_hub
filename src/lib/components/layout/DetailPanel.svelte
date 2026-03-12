@@ -15,10 +15,14 @@
 </script>
 
 <section class="flex-1 min-w-0 flex flex-col overflow-hidden">
-    {#if agent && ui.selectedAgentId}
-        <AgentDetail agentId={ui.selectedAgentId} {agent} />
-    {:else}
-        {#if bgPattern.pattern === "none"}<DotGrid opacity={0.06} />{/if}
-        <WelcomePanel />
-    {/if}
+    {#key ui.selectedAgentId ?? '__welcome__'}
+        <div style="animation: panel-fade-in 150ms ease-out" class="flex-1 min-w-0 flex flex-col overflow-hidden">
+            {#if agent && ui.selectedAgentId}
+                <AgentDetail agentId={ui.selectedAgentId} {agent} />
+            {:else}
+                {#if bgPattern.pattern === "none"}<DotGrid opacity={0.06} />{/if}
+                <WelcomePanel />
+            {/if}
+        </div>
+    {/key}
 </section>

@@ -23,8 +23,18 @@
 <div class="absolute pointer-events-none {positionMap[position]}" style="width: 9px; height: 9px;">
   {#each dots as dot}
     <div
-      class="absolute rounded-full"
+      class="corner-accent-dot absolute rounded-full"
       style="width: 2px; height: 2px; left: {dot.x}px; top: {dot.y}px; background: {color}; opacity: 0.5;"
     ></div>
   {/each}
 </div>
+
+<style>
+  :global([data-theme="voxelized"]) .corner-accent-dot {
+    border-radius: 0 !important;
+    width: 3px !important;
+    height: 3px !important;
+    opacity: 0.7 !important;
+    box-shadow: 0 0 2px 1px rgba(var(--vx-glow-cyan), 0.4);
+  }
+</style>

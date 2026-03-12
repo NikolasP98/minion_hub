@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import StatusDot from '$lib/components/decorations/StatusDot.svelte';
 	import { Server } from 'lucide-svelte';
+	import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import Chart from '$lib/components/charts/Chart.svelte';
 	import type { EChartsOption } from 'echarts';
@@ -62,20 +63,16 @@
 			backgroundColor: 'transparent',
 			tooltip: {
 				trigger: 'axis',
-				backgroundColor: '#151d2e',
-				borderColor: '#2a3548',
-				textStyle: { color: '#e2e8f0', fontSize: 12 }
 			},
 			legend: {
 				top: 0,
-				textStyle: { color: '#94a3b8', fontSize: 10 }
+				textStyle: { fontSize: 10 }
 			},
 			grid: { top: 30, right: 50, bottom: 24, left: 50 },
 			xAxis: {
 				type: 'category',
 				data: timestamps,
-				axisLabel: { color: '#71717a', fontSize: 10 },
-				axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } },
+				axisLabel: { fontSize: 10 },
 				axisTick: { show: false },
 				splitLine: { show: false }
 			},
@@ -83,15 +80,14 @@
 				{
 					type: 'value',
 					name: 'MB',
-					nameTextStyle: { color: '#71717a', fontSize: 10 },
-					axisLabel: { color: '#71717a', fontSize: 10 },
-					splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } }
+					nameTextStyle: { fontSize: 10 },
+					axisLabel: { fontSize: 10 },
 				},
 				{
 					type: 'value',
 					name: 'Count',
-					nameTextStyle: { color: '#71717a', fontSize: 10 },
-					axisLabel: { color: '#71717a', fontSize: 10 },
+					nameTextStyle: { fontSize: 10 },
+					axisLabel: { fontSize: 10 },
 					splitLine: { show: false }
 				}
 			],
@@ -143,19 +139,25 @@
 		} satisfies EChartsOption;
 	});
 
-	/** Parse channel status from latest heartbeat. */
-	let channelStatus = $derived.by((): { channel: string; account: string; status: ChannelAccountStatus }[] | null => {
+	/** Parse channel status from latest heartbeat, grouped by channel type then sorted by account. */
+	let channelGroups = $derived.by((): { channel: string; accounts: { account: string; status: ChannelAccountStatus }[] }[] | null => {
 		if (!latest?.channelStatusJson) return null;
 		try {
 			const data: ChannelStatusData = JSON.parse(latest.channelStatusJson);
 			if (!data.channelAccounts) return null;
-			const entries: { channel: string; account: string; status: ChannelAccountStatus }[] = [];
+			const groupMap = new Map<string, { account: string; status: ChannelAccountStatus }[]>();
 			for (const [channelId, accounts] of Object.entries(data.channelAccounts)) {
+				const list: { account: string; status: ChannelAccountStatus }[] = [];
 				for (const [accountId, status] of Object.entries(accounts)) {
-					entries.push({ channel: channelId, account: accountId, status });
+					list.push({ account: accountId, status });
 				}
+				list.sort((a, b) => a.account.localeCompare(b.account));
+				groupMap.set(channelId, list);
 			}
-			return entries.length > 0 ? entries : null;
+			const groups = [...groupMap.entries()]
+				.map(([channel, accounts]) => ({ channel, accounts }))
+				.sort((a, b) => a.channel.localeCompare(b.channel));
+			return groups.length > 0 ? groups : null;
 		} catch {
 			return null;
 		}
@@ -187,16 +189,6 @@
 		return `${seconds}s`;
 	}
 
-	function formatAgo(ts: number): string {
-		const diff = Date.now() - ts;
-		const mins = Math.floor(diff / 60000);
-		if (mins < 1) return 'just now';
-		if (mins < 60) return `${mins}m ago`;
-		const hours = Math.floor(mins / 60);
-		if (hours < 24) return `${hours}h ago`;
-		return `${Math.floor(hours / 24)}d ago`;
-	}
-
 	async function load() {
 		loading = true;
 		error = null;
@@ -221,66 +213,82 @@
 	});
 </script>
 
-<div class="bg-card border border-border rounded-lg overflow-hidden">
+<div class="bg-card border border-border rounded-lg overflow-hidden grid grid-rows-subgrid row-span-4">
+	<!-- Row 1: HEADER -->
 	<div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20">
 		<Server size={11} class="text-accent shrink-0" />
 		<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground flex-1">{m.reliability_gatewayTitle()}</span>
 		<StatusDot status={latest ? 'running' : 'idle'} size="sm" />
-		{#if latest}
-			<span class="text-[10px] text-muted-foreground/60 tabular-nums ml-1">{formatAgo(latest.capturedAt)}</span>
-		{/if}
 	</div>
 
 	{#if loading && !latest}
+		<div></div>
 		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">{m.common_loading()}</div>
+		<div></div>
 	{:else if error}
+		<div></div>
 		<div class="flex items-center justify-center py-12 px-4 text-destructive text-[13px]">{error}</div>
+		<div></div>
 	{:else if !latest}
+		<div></div>
 		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">{m.reliability_noHeartbeat()}</div>
+		<div></div>
 	{:else}
+		<!-- Row 2: STATS -->
 		<div class="grid grid-cols-4 gap-px bg-border border-b border-border">
 			<div class="flex flex-col items-center gap-1 py-3.5 px-2 bg-card">
 				<span class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">Uptime</span>
-				<span class="text-lg font-bold text-success tabular-nums">{formatUptime(latest.uptimeMs)}</span>
+				<span class="text-lg font-bold text-success tabular-nums whitespace-nowrap">{formatUptime(latest.uptimeMs)}</span>
 			</div>
 			<div class="flex flex-col items-center gap-1 py-3.5 px-2 bg-card">
 				<span class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">Sessions</span>
-				<span class="text-lg font-bold text-foreground tabular-nums">{latest.activeSessions}</span>
+				<span class="text-lg font-bold text-foreground tabular-nums whitespace-nowrap">{latest.activeSessions}</span>
 			</div>
 			<div class="flex flex-col items-center gap-1 py-3.5 px-2 bg-card">
 				<span class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">Agents</span>
-				<span class="text-lg font-bold text-foreground tabular-nums">{latest.activeAgents}</span>
+				<span class="text-lg font-bold text-foreground tabular-nums whitespace-nowrap">{latest.activeAgents}</span>
 			</div>
 			<div class="flex flex-col items-center gap-1 py-3.5 px-2 bg-card">
 				<span class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">Memory</span>
-				<span class="text-lg font-bold text-foreground tabular-nums">
+				<span class="text-lg font-bold text-foreground tabular-nums whitespace-nowrap">
 					{latest.memoryRssMb != null ? `${latest.memoryRssMb.toFixed(0)} MB` : '-'}
 				</span>
 			</div>
 		</div>
-
-		{#if chronological.length >= 2}
-			<div class="px-4 pt-3 pb-1">
-				<Chart options={chartOptions} height="200px" />
-			</div>
-		{/if}
-
-		{#if channelStatus}
-			<div class="px-4 py-3 border-t border-border">
-				<span class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium block mb-2">Channel Status</span>
-				<div class="flex flex-wrap gap-3">
-					{#each channelStatus as { channel, account, status } (`${channel}:${account}`)}
-						<div class="flex items-center gap-1.5" title={getChannelDotLabel(status)}>
-							<span
-								class="inline-block w-2 h-2 rounded-full shrink-0"
-								style="background-color: {getChannelDotColor(status)}"
-							></span>
-							<span class="text-[11px] text-foreground/80">{channel}</span>
-							<span class="text-[10px] text-muted-foreground/60">{account}</span>
-						</div>
-					{/each}
+		<!-- Row 3: MIDDLE -->
+		<div>
+			{#if chronological.length >= 2}
+				<div class="px-4 pt-3 pb-1">
+					<Chart options={chartOptions} height="200px" />
 				</div>
-			</div>
-		{/if}
+			{/if}
+		</div>
+		<!-- Row 4: BOTTOM -->
+		<div>
+			{#if channelGroups}
+				<div class="px-4 py-3 border-t border-border">
+					<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground block mb-2">Channel Status</span>
+					<div class="flex flex-wrap gap-x-5 gap-y-3">
+						{#each channelGroups as group (group.channel)}
+							<div class="flex flex-col gap-0.5 min-w-[100px]">
+								<div class="flex items-center gap-1.5 mb-0.5">
+									<ChannelBrandIcon channel={group.channel} size={12} class="text-muted-foreground/60" />
+									<span class="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground/60">{group.channel}</span>
+								</div>
+								{#each group.accounts as { account, status: accStatus } (`${group.channel}:${account}`)}
+									<div class="flex items-center gap-1.5 h-5 pl-0.5" title={getChannelDotLabel(accStatus)}>
+										<span
+											class="inline-block w-1.5 h-1.5 rounded-full shrink-0"
+											style:background-color={getChannelDotColor(accStatus)}
+										></span>
+										<span class="text-[11px] text-foreground/80">{account}</span>
+									</div>
+								{/each}
+							</div>
+						{/each}
+					</div>
+				</div>
+			{/if}
+		</div>
 	{/if}
 </div>

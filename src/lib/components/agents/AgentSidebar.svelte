@@ -10,6 +10,7 @@
     import { hostsState } from "$lib/state/features/hosts.svelte";
     import { wsConnect } from "$lib/services/gateway.svelte";
     import AddAgentModal from "./AddAgentModal.svelte";
+    import Skeleton from "$lib/components/ui/Skeleton.svelte";
     import { Plus, ChevronLeft, ChevronRight, Bot, Radio, LayoutList, LayoutGrid, FolderPlus } from "lucide-svelte";
     import * as m from "$lib/paraglide/messages";
     import type { CollapseLevel } from '$lib/components/layout/Splitter.svelte';
@@ -224,58 +225,69 @@
     <!-- Agent list -->
     <div class="flex-1 overflow-y-auto overflow-x-hidden min-h-0">
         {#if !conn.connected}
-            <div class="py-8 px-3 text-center">
-                {#if collapsed}
-                    <div
-                        class="flex flex-col items-center gap-2 text-muted-foreground/50"
-                    >
-                        <Radio size={16} />
-                        <span class="text-[9px] rotate-90 whitespace-nowrap"
-                            >{m.sidebar_offline()}</span
-                        >
-                    </div>
-                {:else}
-                    <div
-                        class="flex flex-col items-center gap-3 text-muted-foreground"
-                    >
+            {#if conn.connecting && !collapsed}
+                <!-- Skeleton loading rows while connecting -->
+                <div class="py-2 px-2.5 flex flex-col gap-1">
+                    {#each Array(5) as _}
+                        <div class="flex items-center gap-2.5 px-2 py-2.5 rounded-lg">
+                            <Skeleton width="28px" height="28px" rounded="rounded-full" />
+                            <div class="flex-1 flex flex-col gap-1.5">
+                                <Skeleton width="60%" height="10px" />
+                                <Skeleton width="35%" height="8px" />
+                            </div>
+                        </div>
+                    {/each}
+                </div>
+            {:else}
+                <div class="px-2 py-4 text-center">
+                    {#if collapsed}
                         <div
-                            class="w-10 h-10 rounded-full bg-bg3 flex items-center justify-center"
+                            class="flex flex-col items-center text-muted-foreground/50"
                         >
-                            <Radio size={18} class="opacity-50" />
+                            <Radio size={16} />
                         </div>
-                        <div class="text-xs">
-                            {conn.connecting
-                                ? m.conn_connecting()
-                                : m.conn_notConnected()}
-                        </div>
-                        {#if !conn.connecting}
-                            {#if hostsState.activeHostId}
-                                <button
-                                    class="text-[10px] px-3 py-1.5 rounded-full bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors"
-                                    onclick={() => wsConnect()}
-                                >
-                                    {m.sidebar_reconnect()}
-                                </button>
-                            {:else}
-                                <button
-                                    class="text-[10px] px-3 py-1.5 rounded-full bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors"
-                                    onclick={() => (ui.overlayOpen = true)}
-                                >
-                                    {m.sidebar_connectToHost()}
-                                </button>
+                    {:else}
+                        <div
+                            class="flex flex-col items-center gap-3 text-muted-foreground"
+                        >
+                            <div
+                                class="w-10 h-10 rounded-full bg-bg3 flex items-center justify-center"
+                            >
+                                <Radio size={18} class="opacity-50" />
+                            </div>
+                            <div class="text-xs">
+                                {conn.connecting
+                                    ? m.conn_connecting()
+                                    : m.conn_notConnected()}
+                            </div>
+                            {#if !conn.connecting}
+                                {#if hostsState.activeHostId}
+                                    <button
+                                        class="text-[10px] px-3 py-1.5 rounded-full bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors"
+                                        onclick={() => wsConnect()}
+                                    >
+                                        {m.sidebar_reconnect()}
+                                    </button>
+                                {:else}
+                                    <button
+                                        class="text-[10px] px-3 py-1.5 rounded-full bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors"
+                                        onclick={() => (ui.overlayOpen = true)}
+                                    >
+                                        {m.sidebar_connectToHost()}
+                                    </button>
+                                {/if}
                             {/if}
-                        {/if}
-                    </div>
-                {/if}
-            </div>
+                        </div>
+                    {/if}
+                </div>
+            {/if}
         {:else if agents.length === 0}
-            <div class="py-8 px-3 text-center">
+            <div class="px-2 py-4 text-center">
                 {#if collapsed}
                     <div
-                        class="flex flex-col items-center gap-2 text-muted-foreground/50"
+                        class="flex flex-col items-center text-muted-foreground/50"
                     >
                         <Bot size={18} />
-                        <span class="text-[9px]">0</span>
                     </div>
                 {:else}
                     <div

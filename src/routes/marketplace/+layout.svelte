@@ -7,7 +7,7 @@
     } from "$lib/state/features/marketplace.svelte";
     import AgentCreatorWizard from "$lib/components/marketplace/AgentCreatorWizard.svelte";
     import * as m from "$lib/paraglide/messages";
-    import { Store, Bot, Wrench, Plug, Puzzle, Settings, Plus } from "lucide-svelte";
+    import { Store, Bot, Terminal, Puzzle, Anchor, Server, Plus } from "lucide-svelte";
     import Splitter from "$lib/components/layout/Splitter.svelte";
 
     import { type Snippet } from "svelte";
@@ -16,6 +16,20 @@
 
     const sections = [
         {
+            href: "/marketplace/plugins",
+            label: "Plugins",
+            icon: Puzzle,
+            active: true,
+            soon: false,
+        },
+        {
+            href: "/marketplace/tools",
+            label: "Commands / Tools",
+            icon: Terminal,
+            active: false,
+            soon: true,
+        },
+        {
             href: "/marketplace/agents",
             label: "Agents",
             icon: Bot,
@@ -23,32 +37,18 @@
             soon: false,
         },
         {
-            href: "/marketplace/skills",
-            label: "Skills",
-            icon: Wrench,
+            href: "/marketplace/hooks",
+            label: "Hooks",
+            icon: Anchor,
             active: false,
             soon: true,
         },
         {
-            href: "/marketplace/tools",
-            label: "Tools",
-            icon: Settings,
+            href: "/marketplace/mcp-servers",
+            label: "MCP Servers",
+            icon: Server,
             active: false,
             soon: true,
-        },
-        {
-            href: "/marketplace/integrations",
-            label: "Integrations",
-            icon: Plug,
-            active: false,
-            soon: true,
-        },
-        {
-            href: "/marketplace/plugins",
-            label: "Plugins",
-            icon: Puzzle,
-            active: true,
-            soon: false,
         },
     ];
 
@@ -59,12 +59,12 @@
 
 <div class="relative z-10 flex flex-col h-screen overflow-hidden">
     <Topbar />
+    <div class="marketplace-splitter-wrapper">
     <Splitter
         storageKey="sidebar-marketplace"
         defaultSize={16}
         minibarSize={5}
         maxSize={22}
-        collapsedSize={0}
     >
         {#snippet panel({ collapseLevel })}
             <aside class="marketplace-sidebar" class:mini={collapseLevel !== 'expanded'}>
@@ -128,6 +128,7 @@
             {@render children()}
         </main>
     </Splitter>
+    </div>
 </div>
 
 {#if showCreatorWizard}
@@ -142,6 +143,7 @@
     /* Sidebar */
     .marketplace-sidebar {
         width: 100%;
+        height: 100%;
         flex-shrink: 0;
         display: flex;
         flex-direction: column;
@@ -341,6 +343,14 @@
         transform: translateY(-1px);
     }
 
+    /* Splitter wrapper — flex fills remaining height below topbar */
+    .marketplace-splitter-wrapper {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        overflow: hidden;
+    }
+
     /* Main Content */
     .marketplace-main {
         flex: 1;
@@ -369,6 +379,28 @@
 
     /* Responsive */
     @media (max-width: 768px) {
+        /*
+         * Force the Zag splitter panel to a narrow fixed width on mobile.
+         * The Zag machine stores its panel size as a percentage in localStorage.
+         * A large stored percentage (e.g. 45%) can render as 169px on a 375px
+         * viewport. max-width overrides flex-basis so this always wins.
+         */
+        :global(.marketplace-splitter-wrapper [data-part="panel"][data-index="0"]) {
+            max-width: 44px !important;
+            flex-basis: 44px !important;
+            flex-shrink: 0;
+        }
+
+        /* Hide resize handle on mobile — panel is fixed width */
+        :global(.marketplace-splitter-wrapper [data-part="resize-trigger"]) {
+            display: none;
+        }
+
+        .marketplace-sidebar {
+            width: 44px;
+            min-width: 44px;
+        }
+
         .sidebar-brand {
             display: none;
         }
@@ -382,21 +414,26 @@
 
         .sidebar-nav {
             flex: 1;
-            padding: 6px 0;
-            overflow: visible;
+            padding: 4px 0;
+            overflow-x: hidden;
+            overflow-y: auto;
         }
 
         .nav-section {
-            flex-direction: row;
+            flex-direction: column;
         }
 
         .nav-list {
-            flex-direction: row;
+            flex-direction: column;
             gap: 2px;
+            flex-wrap: nowrap;
         }
 
         .nav-item {
-            padding: 7px 10px;
+            padding: 8px;
+            justify-content: center;
+            gap: 0;
+            flex-shrink: 0;
         }
 
         .nav-text {
