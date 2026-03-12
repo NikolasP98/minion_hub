@@ -12,7 +12,7 @@
         save,
         restartState,
     } from "$lib/state/config/config.svelte";
-    import { countConfiguredKeys, getGroupsForTab, TABS } from "$lib/utils/config-schema";
+    import { countConfiguredKeys, getGroupsForTab, TABS, SECURITY_GROUP_IDS } from "$lib/utils/config-schema";
     import { theme } from "$lib/state/ui/theme.svelte";
     import { logoState } from "$lib/state/ui/logo.svelte";
     import { locale } from "$lib/state/ui/locale.svelte";
@@ -65,13 +65,13 @@ import MinionLogo from "$lib/components/layout/MinionLogo.svelte";
     });
 
     // Hub-managed tabs (not gateway config)
-    const HUB_TAB_IDS = new Set(['appearance', 'channels', 'hosts', 'backups']);
+    const HUB_TAB_IDS = new Set(['appearance', 'hosts', 'backups']);
     // Gateway config tab IDs
     const GATEWAY_TAB_IDS = new Set(TABS.filter((t) => !HUB_TAB_IDS.has(t.id)).map((t) => t.id));
 
     // URL-persisted active tab
     const activeTab = $derived(
-        page.url.searchParams.get("s") ?? "appearance"
+        page.url.searchParams.get("s") ?? "hosts"
     );
 
     function selectTab(id: string) {
@@ -129,11 +129,31 @@ import MinionLogo from "$lib/components/layout/MinionLogo.svelte";
         }
         return result;
     });
+
+    // Compute dirty tab IDs: a tab is dirty if any of its groups has dirty fields
+    const dirtyTabIds = $derived.by(() => {
+        const result = new Set<string>();
+        for (const groupId of dirtyGroupIds) {
+            if (SECURITY_GROUP_IDS.has(groupId.toLowerCase())) {
+                result.add('security');
+                continue;
+            }
+            for (const tab of TABS) {
+                if (HUB_TAB_IDS.has(tab.id)) continue;
+                const tabGroups = getGroupsForTab(tab.id, groups.value);
+                if (tabGroups.some(g => g.id === groupId)) {
+                    result.add(tab.id);
+                    break;
+                }
+            }
+        }
+        return result;
+    });
 </script>
 
 <div class="relative z-10 flex flex-col h-screen overflow-hidden text-foreground">
     <Topbar />
-    <SettingsTabBar {activeTab} onselect={selectTab} />
+    <SettingsTabBar {activeTab} onselect={selectTab} {dirtyTabIds} />
 
     <div class="flex-1 min-h-0 relative">
         <!-- Hosts tab panel (hub-managed) -->
@@ -311,20 +331,6 @@ import MinionLogo from "$lib/components/layout/MinionLogo.svelte";
             </div>
         </div>
 
-        <!-- Channels tab panel (hub-managed) -->
-        <div
-            class="tab-panel absolute inset-0 flex flex-col overflow-hidden"
-            style:visibility={activeTab === 'channels' ? 'visible' : 'hidden'}
-            style:z-index={activeTab === 'channels' ? 1 : 0}
-            role="tabpanel"
-        >
-            <div class="flex-1 overflow-y-auto p-6 md:p-10">
-                <div class="max-w-2xl mx-auto">
-                    <ChannelsTab />
-                </div>
-            </div>
-        </div>
-
         <!-- Backups tab panel (hub-managed) -->
         <div
             class="tab-panel absolute inset-0 flex flex-col overflow-hidden"
@@ -418,6 +424,11 @@ import MinionLogo from "$lib/components/layout/MinionLogo.svelte";
                                 {#if tab.id === 'agents'}
                                     <div class="mt-6">
                                         <BindingsTab />
+                                    </div>
+                                {/if}
+                                {#if tab.id === 'comms'}
+                                    <div class="mt-6">
+                                        <ChannelsTab />
                                     </div>
                                 {/if}
                             </div>

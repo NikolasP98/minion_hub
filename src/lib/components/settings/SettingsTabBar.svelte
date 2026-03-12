@@ -1,17 +1,18 @@
 <script lang="ts">
-    import { Brain, Bot, Radio, MessageSquare, Shield, Server, Palette, HardDrive, DatabaseBackup } from "lucide-svelte";
+    import { Brain, Bot, Radio, Shield, Server, Palette, HardDrive, DatabaseBackup } from "lucide-svelte";
     import { isAdmin } from "$lib/state/features/user.svelte";
 
     interface Props {
         activeTab: string;
         onselect: (id: string) => void;
+        dirtyTabIds?: Set<string>;
     }
 
-    let { activeTab, onselect }: Props = $props();
+    let { activeTab, onselect, dirtyTabIds = new Set<string>() }: Props = $props();
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const ICON_MAP: Record<string, any> = {
-        Brain, Bot, Radio, MessageSquare, Shield, Server, Palette, HardDrive, DatabaseBackup,
+        Brain, Bot, Radio, Shield, Server, Palette, HardDrive, DatabaseBackup,
     };
 
     const ALL_TABS: { id: string; label: string; icon: string }[] = [
@@ -19,7 +20,6 @@
         { id: 'ai',         label: 'AI',         icon: 'Brain'   },
         { id: 'agents',     label: 'Agents',     icon: 'Bot'     },
         { id: 'comms',      label: 'Comms',      icon: 'Radio'   },
-        { id: 'channels',   label: 'Channels',  icon: 'MessageSquare' },
         { id: 'security',   label: 'Security',   icon: 'Shield'  },
         { id: 'system',     label: 'System',     icon: 'Server'  },
         { id: 'backups',    label: 'Backups',    icon: 'DatabaseBackup' },
@@ -52,6 +52,14 @@
                     <Icon size={14} />
                 {/if}
                 <span class="hidden lg:inline">{tab.label}</span>
+
+                <!-- Dirty dot indicator (only visible when not active) -->
+                {#if dirtyTabIds.has(tab.id) && !isActive}
+                    <span
+                        class="absolute top-1.5 right-1 w-1.5 h-1.5 rounded-full bg-accent"
+                        aria-hidden="true"
+                    ></span>
+                {/if}
 
                 <!-- Active underline indicator -->
                 {#if isActive}
