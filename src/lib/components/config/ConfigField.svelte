@@ -537,22 +537,43 @@
         {@render fieldLabel(label, tooltipContent)}
         <div class="space-y-1.5">
             {#each entries as [key, val]}
-                <div class="flex gap-1.5 items-center">
-                    <span
-                        class="text-xs text-muted-foreground font-mono min-w-20 shrink-0"
-                        >{key}</span
-                    >
-                    <input
-                        class={inputClass}
-                        type="text"
-                        value={String(val ?? "")}
-                        oninput={(e) => onRecordValueInput(key, e)}
-                    />
-                    <button
-                        type="button"
-                        class="bg-transparent border-none text-muted-foreground cursor-pointer text-xs p-1 hover:text-destructive shrink-0"
-                        onclick={() => removeRecordEntry(key)}>&times;</button
-                    >
+                <div class="flex flex-col gap-1.5">
+                    <div class="flex gap-1.5 items-center">
+                        <span
+                            class="text-xs text-muted-foreground font-mono min-w-20 shrink-0"
+                            >{key}</span
+                        >
+                        {#if val != null && typeof val === 'object' && !Array.isArray(val)}
+                            <span class="flex-1"></span>
+                        {:else}
+                            <input
+                                class={inputClass}
+                                type="text"
+                                value={String(val ?? "")}
+                                oninput={(e) => onRecordValueInput(key, e)}
+                            />
+                        {/if}
+                        <button
+                            type="button"
+                            class="bg-transparent border-none text-muted-foreground cursor-pointer text-xs p-1 hover:text-destructive shrink-0"
+                            onclick={() => removeRecordEntry(key)}>&times;</button
+                        >
+                    </div>
+                    {#if val != null && typeof val === 'object' && !Array.isArray(val)}
+                        <div class="pl-3 border-l border-border">
+                            {#if typeof schema.additionalProperties === 'object' && schema.additionalProperties.properties}
+                                <ConfigField
+                                    path={`${path}.${key}`}
+                                    schema={schema.additionalProperties}
+                                    hint={configState.uiHints[`${path}.${key}`] ?? {}}
+                                    value={val}
+                                    depth={depth + 1}
+                                />
+                            {:else}
+                                <ConfigJsonEditor path={`${path}.${key}`} value={val} />
+                            {/if}
+                        </div>
+                    {/if}
                 </div>
             {/each}
         </div>
