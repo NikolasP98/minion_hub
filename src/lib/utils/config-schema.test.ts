@@ -54,7 +54,7 @@ describe('TABS constant', () => {
 
   it('has correct tab IDs in order', () => {
     expect(TABS.map((t) => t.id)).toEqual([
-      'hosts', 'ai', 'agents', 'comms', 'channels', 'security', 'system', 'appearance',
+      'hosts', 'ai', 'agents', 'comms', 'security', 'system', 'backups', 'appearance',
     ]);
   });
 
@@ -71,6 +71,10 @@ describe('TAB_MAPPING', () => {
   it('is exported as a constant', () => {
     expect(TAB_MAPPING).toBeDefined();
     expect(typeof TAB_MAPPING).toBe('object');
+  });
+
+  it('does not have a channels key', () => {
+    expect(TAB_MAPPING).not.toHaveProperty('channels');
   });
 });
 
