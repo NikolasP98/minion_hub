@@ -3,7 +3,7 @@
  * tracks edits, computes patches, and saves.
  */
 import { sendRequest } from '$lib/services/gateway.svelte';
-import { toastError, toastSuccess, toastInfo } from '$lib/state/ui/toast.svelte';
+import { toaster, toastError, toastSuccess, toastWarning } from '$lib/state/ui/toast.svelte';
 import { isAdmin } from '$lib/state/features/user.svelte';
 import { extractGroups, computeDirtyPaths, computePatch, deepGet, deepSet } from '$lib/utils/config-schema';
 import {
@@ -69,26 +69,41 @@ export const restartState = $state<RestartStateData>(createRestartState());
 
 let _restartTimeoutId: ReturnType<typeof setTimeout> | null = null;
 let _dismissTimeoutId: ReturnType<typeof setTimeout> | null = null;
+let _restartToastId: string | null = null;
 
 export function beginRestart() {
   _clearRestartTimers();
   Object.assign(restartState, applyBeginRestart(restartState, Date.now()));
+  if (_restartToastId) { toaster.dismiss(_restartToastId); }
+  _restartToastId = toaster.create({
+    title: 'Gateway restarting\u2026',
+    type: 'loading',
+    duration: Infinity,
+  });
   _restartTimeoutId = setTimeout(() => {
     if (restartState.phase === 'restarting') {
       restartState.phase = 'failed';
+      if (_restartToastId) { toaster.dismiss(_restartToastId); _restartToastId = null; }
+      toastError("Gateway didn't reconnect", 'Try reconnecting manually');
     }
   }, RESTART_TIMEOUT_MS);
 }
 
 export function onRestartReconnected() {
   _clearRestartTimers();
+  if (_restartToastId) { toaster.dismiss(_restartToastId); _restartToastId = null; }
   const dirty = _isDirty;
   Object.assign(restartState, applyReconnected(restartState, dirty));
+  if (dirty) {
+    toastWarning('Gateway reconnected', 'You had unsaved local changes that were preserved');
+  } else {
+    toastSuccess('Gateway reconnected', 'Changes applied');
+  }
   _dismissTimeoutId = setTimeout(() => {
     if (restartState.phase === 'reconnected') {
       resetRestartState();
     }
-  }, RECONNECTED_DISMISS_MS);
+  }, 0);
 }
 
 export function resetRestartState() {
@@ -272,9 +287,8 @@ export async function save(): Promise<boolean> {
     } catch (reloadErr) {
       const msg = (reloadErr as Error).message ?? '';
       if (msg.includes('closed') || msg.includes('not connected')) {
-        // Gateway likely restarted to apply config changes
+        // Gateway likely restarted to apply config changes — beginRestart() creates the toast
         beginRestart();
-        toastInfo('Gateway restarting…');
       }
       // Non-WS reload errors are non-fatal (config will reload on reconnect)
     }
@@ -282,9 +296,8 @@ export async function save(): Promise<boolean> {
   } catch (e) {
     const msg = (e as Error).message ?? 'Save failed';
     if (saveSucceeded && (msg.includes('closed') || msg.includes('not connected'))) {
-      // The save itself went through but something closed after
+      // The save itself went through but something closed after — beginRestart() creates the toast
       beginRestart();
-      toastInfo('Gateway restarting…');
     } else if (msg.includes('closed') || msg.includes('not connected')) {
       // sendRequest itself failed — save may not have reached gateway
       configState.saveError = 'Connection lost. Your changes were not saved.';
