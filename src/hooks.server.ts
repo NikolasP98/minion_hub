@@ -44,8 +44,25 @@ async function resolveServerTokenAuth(
   return null;
 }
 
+/** Paths handled by Better Auth (auth API + OIDC provider endpoints). */
+function isBetterAuthPath(pathname: string): boolean {
+  return pathname.startsWith('/api/auth/') || pathname.startsWith('/api/auth');
+}
+
 const authHandle: Handle = async ({ event, resolve }) => {
-  if (building || !event.url.pathname.startsWith('/api/auth/')) {
+  // Proxy the standard OIDC discovery endpoint to Better Auth's path
+  if (!building && event.url.pathname === '/.well-known/openid-configuration') {
+    const internalUrl = new URL('/api/auth/.well-known/openid-configuration', event.url.origin);
+    const response = await getAuth().handler(new Request(internalUrl, event.request));
+    const body = await response.arrayBuffer();
+    return new Response(body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
+  }
+
+  if (building || !isBetterAuthPath(event.url.pathname)) {
     return resolve(event);
   }
   try {
@@ -66,7 +83,7 @@ const authHandle: Handle = async ({ event, resolve }) => {
   }
 };
 
-const UNPROTECTED_PREFIXES = ['/login', '/api/', '/invite/'];
+const UNPROTECTED_PREFIXES = ['/login', '/api/', '/invite/', '/.well-known/'];
 
 const appHandle: Handle = async ({ event, resolve }) => {
   const path = event.url.pathname;
