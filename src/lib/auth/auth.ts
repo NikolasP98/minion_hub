@@ -1,6 +1,7 @@
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { jwt } from 'better-auth/plugins';
+import { oidcProvider } from 'better-auth/plugins';
 import { organization } from 'better-auth/plugins';
 import { getDb } from '$server/db/client';
 import * as schema from '$server/db/schema';
@@ -12,10 +13,11 @@ let _auth: ReturnType<typeof betterAuth> | null = null;
 /** Lazy getter — safe to call at request time; never evaluates at module load. */
 export function getAuth() {
 	if (!_auth) {
+		const hubUrl = env.BETTER_AUTH_URL ?? 'http://localhost:5173';
 		_auth = betterAuth({
 			database: drizzleAdapter(getDb(), { provider: 'sqlite', schema }),
 			secret: env.BETTER_AUTH_SECRET,
-			baseURL: env.BETTER_AUTH_URL ?? 'http://localhost:5173',
+			baseURL: hubUrl,
 			trustedOrigins: [
 				'http://localhost:5173',
 				'http://localhost:5174',
@@ -32,21 +34,33 @@ export function getAuth() {
 					: {}),
 			},
 			plugins: [
-			jwt(),
-			organization({
-				async sendInvitationEmail(data) {
-					const baseUrl = env.BETTER_AUTH_URL ?? 'http://localhost:5173';
-					const inviteUrl = `${baseUrl}/invite/accept?id=${data.id}`;
-					await sendInvitationEmail({
-						to: data.email,
-						inviterName: data.inviter.user.name ?? data.inviter.user.email,
-						organizationName: data.organization.name,
-						role: data.role ?? 'member',
-						inviteUrl,
-					});
-				},
-			}),
-		],
+				jwt({
+					jwt: {
+						issuer: hubUrl,
+						audience: 'openclaw-gateway',
+						expirationTime: '1h',
+					},
+					jwks: {
+						keyPairConfig: { alg: 'EdDSA' },
+					},
+				}),
+				oidcProvider({
+					loginPage: '/login',
+				}),
+				organization({
+					async sendInvitationEmail(data) {
+						const baseUrl = env.BETTER_AUTH_URL ?? 'http://localhost:5173';
+						const inviteUrl = `${baseUrl}/invite/accept?id=${data.id}`;
+						await sendInvitationEmail({
+							to: data.email,
+							inviterName: data.inviter.user.name ?? data.inviter.user.email,
+							organizationName: data.organization.name,
+							role: data.role ?? 'member',
+							inviteUrl,
+						});
+					},
+				}),
+			],
 		});
 	}
 	return _auth;

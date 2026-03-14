@@ -1,5 +1,5 @@
 // Better Auth tables (replaces tenants, users, userTenants, authSessions)
-export { user, session, account, verification, jwks, organization, member, invitation } from './auth';
+export { user, session, account, verification, jwks, organization, member, invitation, oauthApplication, oauthAccessToken, oauthConsent } from './auth';
 export { servers } from './servers';
 export { agents } from './agents';
 export { skills } from './skills';
@@ -32,3 +32,4 @@ export { backupConfigs } from './backup-configs';
 export { serverBackups } from './server-backups';
 export { agentGroups, agentGroupMembers } from './agent-groups';
 export { unifiedEvents } from './unified-events';
+export { channelIdentities } from './channel-identities';

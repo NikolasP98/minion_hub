@@ -25,6 +25,7 @@ import {
   serverBackups,
   agentGroups,
   agentGroupMembers,
+  channelIdentities,
 } from './schema';
 
 // ── Better Auth: User ─────────────────────────────────────────────────────────
@@ -37,6 +38,7 @@ export const userRelations = relations(user, ({ many }) => ({
   files: many(files),
   userServers: many(userServers),
   userAgents: many(userAgents),
+  channelIdentities: many(channelIdentities),
 }));
 
 // ── Better Auth: Session ──────────────────────────────────────────────────────
@@ -216,4 +218,10 @@ export const agentGroupsRelations = relations(agentGroups, ({ one, many }) => ({
 export const agentGroupMembersRelations = relations(agentGroupMembers, ({ one }) => ({
   group: one(agentGroups, { fields: [agentGroupMembers.groupId], references: [agentGroups.id] }),
   server: one(servers, { fields: [agentGroupMembers.serverId], references: [servers.id] }),
+}));
+
+// ── Channel Identities ──────────────────────────────────────────────────
+
+export const channelIdentitiesRelations = relations(channelIdentities, ({ one }) => ({
+  user: one(user, { fields: [channelIdentities.userId], references: [user.id] }),
 }));

@@ -131,3 +131,60 @@ export const invitation = sqliteTable(
 	},
 	(t) => [index('idx_invitation_org').on(t.organizationId)],
 );
+
+// ── OIDC provider plugin: oauthApplication ──────────────────────────────────
+export const oauthApplication = sqliteTable('oauth_application', {
+	id: text('id').primaryKey(),
+	name: text('name').notNull(),
+	icon: text('icon'),
+	metadata: text('metadata'),
+	clientId: text('client_id').notNull().unique(),
+	clientSecret: text('client_secret'),
+	redirectUrls: text('redirect_urls').notNull(),
+	type: text('type').notNull(),
+	disabled: integer('disabled', { mode: 'boolean' }).default(false),
+	userId: text('user_id').references(() => user.id, { onDelete: 'cascade' }),
+	createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+	updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+});
+
+// ── OIDC provider plugin: oauthAccessToken ──────────────────────────────────
+export const oauthAccessToken = sqliteTable(
+	'oauth_access_token',
+	{
+		id: text('id').primaryKey(),
+		accessToken: text('access_token').notNull().unique(),
+		refreshToken: text('refresh_token').notNull().unique(),
+		accessTokenExpiresAt: integer('access_token_expires_at', { mode: 'timestamp' }).notNull(),
+		refreshTokenExpiresAt: integer('refresh_token_expires_at', { mode: 'timestamp' }).notNull(),
+		clientId: text('client_id').notNull(),
+		userId: text('user_id').references(() => user.id, { onDelete: 'cascade' }),
+		scopes: text('scopes').notNull(),
+		createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+		updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+	},
+	(t) => [
+		index('idx_oauth_access_token_client').on(t.clientId),
+		index('idx_oauth_access_token_user').on(t.userId),
+	],
+);
+
+// ── OIDC provider plugin: oauthConsent ──────────────────────────────────────
+export const oauthConsent = sqliteTable(
+	'oauth_consent',
+	{
+		id: text('id').primaryKey(),
+		clientId: text('client_id').notNull(),
+		userId: text('user_id')
+			.notNull()
+			.references(() => user.id, { onDelete: 'cascade' }),
+		scopes: text('scopes').notNull(),
+		createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+		updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+		consentGiven: integer('consent_given', { mode: 'boolean' }).notNull(),
+	},
+	(t) => [
+		index('idx_oauth_consent_client').on(t.clientId),
+		index('idx_oauth_consent_user').on(t.userId),
+	],
+);
