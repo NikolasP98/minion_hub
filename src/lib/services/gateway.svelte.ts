@@ -95,6 +95,7 @@ export function wsConnect() {
   try {
     const gen = ++wsGeneration;
     ws = new WebSocket(host.url);
+    ws.binaryType = 'arraybuffer';
 
     ws.addEventListener('open', () => {
       // Wait for connect.challenge event
@@ -102,6 +103,11 @@ export function wsConnect() {
 
     ws.addEventListener('message', (ev) => {
       if (wsGeneration !== gen) return; // stale socket
+      // Route binary frames to registered handlers
+      if (ev.data instanceof ArrayBuffer) {
+        notifyBinaryListeners(new Uint8Array(ev.data));
+        return;
+      }
       handleMessage(String(ev.data ?? ''));
     });
 
@@ -708,4 +714,31 @@ function startPolling() {
 function stopPolling() {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   if (pollPresenceTimer) { clearInterval(pollPresenceTimer); pollPresenceTimer = null; }
+}
+
+// ─── Binary Frame API ──────────────────────────────────────────────────────
+type BinaryMessageHandler = (data: Uint8Array) => void;
+const binaryListeners = new Set<BinaryMessageHandler>();
+
+function notifyBinaryListeners(data: Uint8Array) {
+  for (const handler of binaryListeners) {
+    try { handler(data); } catch { /* ignore */ }
+  }
+}
+
+/** Send raw binary data through the WebSocket. */
+export function sendBinary(data: Uint8Array): void {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(data);
+}
+
+/** Register a handler for incoming binary WebSocket messages. Returns unsubscribe function. */
+export function onBinaryMessage(handler: BinaryMessageHandler): () => void {
+  binaryListeners.add(handler);
+  return () => { binaryListeners.delete(handler); };
+}
+
+/** Get whether the WebSocket is currently connected and ready. */
+export function isWsReady(): boolean {
+  return ws !== null && ws.readyState === WebSocket.OPEN;
 }
