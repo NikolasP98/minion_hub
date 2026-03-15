@@ -1,4 +1,4 @@
-import { eq, and, desc, gte, lte, sql } from 'drizzle-orm';
+import { eq, and, desc, gte, lte, lt, sql } from 'drizzle-orm';
 import { reliabilityEvents } from '$server/db/schema';
 import { nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
@@ -150,4 +150,22 @@ export async function getReliabilitySummary(
     })),
     bucketMs,
   };
+}
+
+const PRUNE_INTERVAL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+export async function pruneOldReliabilityEvents(
+  ctx: TenantContext,
+  maxAgeDays = 30,
+): Promise<number> {
+  const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+  const result = await ctx.db
+    .delete(reliabilityEvents)
+    .where(
+      and(
+        eq(reliabilityEvents.tenantId, ctx.tenantId),
+        lt(reliabilityEvents.occurredAt, cutoff),
+      ),
+    );
+  return (result as any).rowsAffected ?? 0;
 }

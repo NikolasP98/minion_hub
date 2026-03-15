@@ -110,6 +110,8 @@
   "reliability_browserIssues": "Browser Issues",
   "reliability_authIssues": "Auth Issues",
   "reliability_gatewayIssues": "Gateway",
+  "reliability_agentIssues": "Agent Issues",
+  "reliability_skillIssues": "Skill Issues",
   "reliability_healthMetrics": "Health Metrics",
   "reliability_recentIncidents": "Recent Incidents",
   "reliability_pluginTitle": "Plugin Health",

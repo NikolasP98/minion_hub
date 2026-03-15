@@ -33,6 +33,8 @@
 		Server,
 		ChevronLeft,
 		ChevronRight,
+		Bot,
+		Wrench,
 	} from 'lucide-svelte';
 
 	// ── Persistence ───────────────────────────────────────────────────────────
@@ -182,6 +184,8 @@
 		{ key: 'browser',  Icon: Globe,         color: 'var(--color-purple)',       label: m.reliability_browserIssues(), value: summary?.byCategory?.browser ?? 0 },
 		{ key: 'auth',     Icon: KeyRound,      color: 'var(--color-success)',      label: m.reliability_authIssues(),     value: summary?.byCategory?.auth ?? 0 },
 		{ key: 'gateway',  Icon: Radio,         color: 'var(--color-cyan)',         label: m.reliability_gatewayIssues(), value: summary?.byCategory?.gateway ?? 0 },
+		{ key: 'agent',    Icon: Bot,           color: '#ec4899',                   label: m.reliability_agentIssues(),   value: summary?.byCategory?.agent ?? 0 },
+		{ key: 'skill',    Icon: Wrench,        color: '#06b6d4',                   label: m.reliability_skillIssues(),   value: summary?.byCategory?.skill ?? 0 },
 	]);
 
 	async function loadData() {
@@ -515,7 +519,7 @@
 		<div class="flex flex-col gap-3">
 			<!-- ── Overview Stats Widget ───────────────────────────────────────── -->
 			<div class="bg-card border border-border rounded-lg overflow-hidden">
-				<div class="grid grid-cols-6 divide-x divide-border/60 max-[900px]:grid-cols-3 max-sm:grid-cols-2">
+				<div class="grid grid-cols-8 divide-x divide-border/60 max-[1100px]:grid-cols-4 max-[700px]:grid-cols-2">
 					{#each statItems as item (item.key)}
 						{@const Icon = item.Icon}
 						<div class="relative px-5 pt-4 pb-5 flex flex-col gap-2">
