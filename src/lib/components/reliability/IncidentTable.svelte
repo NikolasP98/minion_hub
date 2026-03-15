@@ -14,7 +14,7 @@
 	interface ReliabilityEvent {
 		id?: number;
 		category: 'cron' | 'browser' | 'timezone' | 'general' | 'auth' | 'skill' | 'agent' | 'gateway';
-		severity: 'critical' | 'high' | 'medium' | 'low';
+		severity: 'critical' | 'high' | 'medium' | 'low' | 'ok';
 		event: string;
 		message: string;
 		agentId?: string;
@@ -45,7 +45,7 @@
 	});
 
 	// ── TanStack Table state ─────────────────────────────────────────────────
-	const SEVERITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+	const SEVERITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, ok: 4 };
 	const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
 
 	let sorting = $state<SortingState>([{ id: 'timestamp', desc: true }]);
@@ -195,6 +195,7 @@
 		high: 'border-l-2 border-l-warning',
 		medium: 'border-l-2 border-l-purple',
 		low: 'border-l-2 border-l-muted-foreground/30',
+		ok: 'border-l-2 border-l-green-500',
 	};
 
 	const severityClasses: Record<string, string> = {
@@ -202,6 +203,7 @@
 		high: 'bg-warning text-black',
 		medium: 'bg-purple text-white',
 		low: 'bg-muted-foreground text-white',
+		ok: 'bg-green-500 text-white',
 	};
 
 	const categoryClasses: Record<string, string> = {

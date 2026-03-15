@@ -134,3 +134,7 @@ All components are organized into domain subdirectories — no loose `.svelte` f
 ### Auth (`src/lib/auth/`)
 
 Better Auth configuration (`auth.ts`) and client (`auth-client.ts`) with barrel `index.ts`.
+
+- Better Auth uses **scrypt** for passwords (not argon2). Reset via: `import { hashPassword } from 'better-auth/crypto'`
+- Dev auth bypass needs BOTH `AUTH_DISABLED=true` (server) AND `PUBLIC_AUTH_DISABLED=true` (client) in `.env`
+- Drizzle relations referencing non-existent columns fail silently at compile time — only crash at runtime in `extractTablesRelationalConfig`. If auth returns 500 with `Cannot read properties of undefined (reading 'notNull')`, check `src/server/db/relations.ts` for column mismatches.

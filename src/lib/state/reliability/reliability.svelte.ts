@@ -1,6 +1,6 @@
 export interface ReliabilityEvent {
   category: 'cron' | 'browser' | 'timezone' | 'general' | 'auth' | 'skill' | 'agent' | 'gateway';
-  severity: 'critical' | 'high' | 'medium' | 'low';
+  severity: 'critical' | 'high' | 'medium' | 'low' | 'ok';
   event: string;
   message: string;
   agentId?: string;
@@ -14,7 +14,7 @@ export interface ReliabilitySummary {
   byCategory: Record<string, number>;
   bySeverity: Record<string, number>;
   topEvents: Array<{ event: string; count: number }>;
-  timeseries: Array<{ bucket: number; category: string; count: number }>;
+  timeseries: Array<{ bucket: number; category: string; severity: string; count: number }>;
   bucketMs: number;
 }
 

@@ -108,7 +108,8 @@
 		critical: '#ef4444',
 		high:     '#f59e0b',
 		medium:   '#a855f7',
-		low:      '#64748b'
+		low:      '#64748b',
+		ok:       '#22c55e'
 	};
 
 	const CATEGORIES = ['cron', 'browser', 'timezone', 'general', 'auth', 'skill', 'agent', 'gateway'] as const;
@@ -167,7 +168,7 @@
 		persistFilters();
 	}
 
-	const SEVERITIES = ['critical', 'high', 'medium', 'low'] as const;
+	const SEVERITIES = ['critical', 'high', 'medium', 'low', 'ok'] as const;
 
 	let filteredEvents = $derived.by(() => {
 		let evts = reliability.events;
@@ -236,12 +237,15 @@
 	}
 
 	let timelineOptions: EChartsOption = $derived.by(() => {
-		const evts = filteredEvents;
-		const { from, to } = reliability.dateRange;
-		const rangeMs = to - from;
-		const bucketMs = getBucketMs(rangeMs);
+		const ts = summary?.timeseries ?? [];
+		const bucketMs = summary?.bucketMs ?? 3_600_000;
 
-		if (evts.length === 0) {
+		// Apply category + severity filters to the server-side timeseries
+		let filtered = ts;
+		if (selectedCategories.size > 0) filtered = filtered.filter(p => selectedCategories.has(p.category));
+		if (selectedSeverities.size > 0) filtered = filtered.filter(p => selectedSeverities.has(p.severity));
+
+		if (filtered.length === 0) {
 			return {
 				backgroundColor: 'transparent',
 				grid: { left: 48, right: 24, top: 32, bottom: 32 },
@@ -251,34 +255,35 @@
 			};
 		}
 
-		// Build all bucket timestamps covering the range
-		const rangeStart = Math.floor(from / bucketMs) * bucketMs;
-		const buckets: number[] = [];
-		for (let b = rangeStart; b <= to; b += bucketMs) buckets.push(b);
-
-		// Tally events per bucket per category
+		// Aggregate by bucket + category (sum across severities after filtering)
 		const counts = new Map<string, Map<number, number>>();
-		for (const evt of evts) {
-			const cat = evt.category;
-			const bucket = Math.floor(evt.timestamp / bucketMs) * bucketMs;
+		const allBuckets = new Set<number>();
+		for (const p of filtered) {
+			const cat = p.category;
+			const bucket = Number(p.bucket);
+			allBuckets.add(bucket);
 			if (!counts.has(cat)) counts.set(cat, new Map());
 			const catMap = counts.get(cat)!;
-			catMap.set(bucket, (catMap.get(bucket) ?? 0) + 1);
+			catMap.set(bucket, (catMap.get(bucket) ?? 0) + Number(p.count));
 		}
+
+		const buckets = [...allBuckets].sort((a, b) => a - b);
 
 		const visibleCategories = selectedCategories.size > 0
 			? CATEGORIES.filter(c => selectedCategories.has(c))
 			: CATEGORIES;
 
-		const series = visibleCategories.map(cat => ({
-			name: cat,
-			type: 'bar' as const,
-			stack: 'events',
-			data: buckets.map(b => [b, counts.get(cat)?.get(b) ?? 0]),
-			itemStyle: { color: CATEGORY_COLORS[cat] },
-			emphasis: { itemStyle: { opacity: 1 } },
-			barMaxWidth: 24,
-		}));
+		const series = visibleCategories
+			.filter(c => counts.has(c))
+			.map(cat => ({
+				name: cat,
+				type: 'bar' as const,
+				stack: 'events',
+				data: buckets.map(b => [b, counts.get(cat)?.get(b) ?? 0]),
+				itemStyle: { color: CATEGORY_COLORS[cat] },
+				emphasis: { itemStyle: { opacity: 1 } },
+				barMaxWidth: 24,
+			}));
 
 		return {
 			backgroundColor: 'transparent',
