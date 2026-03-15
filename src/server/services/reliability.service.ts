@@ -7,7 +7,7 @@ export interface ReliabilityEventInput {
   serverId: string;
   agentId?: string;
   category: 'cron' | 'browser' | 'timezone' | 'general' | 'auth' | 'skill' | 'agent' | 'gateway';
-  severity: 'critical' | 'high' | 'medium' | 'low';
+  severity: 'critical' | 'high' | 'medium' | 'low' | 'ok';
   event: string;
   message: string;
   metadata?: string;
@@ -54,7 +54,7 @@ export async function listReliabilityEvents(
   if (filters.category)
     conditions.push(eq(reliabilityEvents.category, filters.category as 'cron' | 'browser' | 'timezone' | 'general' | 'auth' | 'skill' | 'agent' | 'gateway'));
   if (filters.severity)
-    conditions.push(eq(reliabilityEvents.severity, filters.severity as 'critical' | 'high' | 'medium' | 'low'));
+    conditions.push(eq(reliabilityEvents.severity, filters.severity as 'critical' | 'high' | 'medium' | 'low' | 'ok'));
   if (filters.from) conditions.push(gte(reliabilityEvents.occurredAt, filters.from));
   if (filters.to) conditions.push(lte(reliabilityEvents.occurredAt, filters.to));
 
@@ -83,28 +83,43 @@ export async function getReliabilitySummary(
 
   const where = and(...conditions);
 
-  // Per-category counts
-  const byCategoryRows = await ctx.db
+  // ── Single-scan KPI query: total + byCategory + bySeverity ──────────────
+  const [kpi] = await ctx.db
     .select({
-      category: reliabilityEvents.category,
-      count: sql<number>`count(*)`.as('count'),
+      total: sql<number>`count(*)`,
+      // Category counts
+      cat_cron: sql<number>`sum(case when ${reliabilityEvents.category}='cron' then 1 else 0 end)`,
+      cat_browser: sql<number>`sum(case when ${reliabilityEvents.category}='browser' then 1 else 0 end)`,
+      cat_timezone: sql<number>`sum(case when ${reliabilityEvents.category}='timezone' then 1 else 0 end)`,
+      cat_general: sql<number>`sum(case when ${reliabilityEvents.category}='general' then 1 else 0 end)`,
+      cat_auth: sql<number>`sum(case when ${reliabilityEvents.category}='auth' then 1 else 0 end)`,
+      cat_skill: sql<number>`sum(case when ${reliabilityEvents.category}='skill' then 1 else 0 end)`,
+      cat_agent: sql<number>`sum(case when ${reliabilityEvents.category}='agent' then 1 else 0 end)`,
+      cat_gateway: sql<number>`sum(case when ${reliabilityEvents.category}='gateway' then 1 else 0 end)`,
+      // Severity counts
+      sev_critical: sql<number>`sum(case when ${reliabilityEvents.severity}='critical' then 1 else 0 end)`,
+      sev_high: sql<number>`sum(case when ${reliabilityEvents.severity}='high' then 1 else 0 end)`,
+      sev_medium: sql<number>`sum(case when ${reliabilityEvents.severity}='medium' then 1 else 0 end)`,
+      sev_low: sql<number>`sum(case when ${reliabilityEvents.severity}='low' then 1 else 0 end)`,
+      sev_ok: sql<number>`sum(case when ${reliabilityEvents.severity}='ok' then 1 else 0 end)`,
     })
     .from(reliabilityEvents)
-    .where(where)
-    .groupBy(reliabilityEvents.category);
+    .where(where);
 
-  // Per-severity counts
-  const bySeverityRows = await ctx.db
-    .select({
-      severity: reliabilityEvents.severity,
-      count: sql<number>`count(*)`.as('count'),
-    })
-    .from(reliabilityEvents)
-    .where(where)
-    .groupBy(reliabilityEvents.severity);
+  const total = Number(kpi.total) || 0;
+  const byCategory: Record<string, number> = {};
+  for (const cat of ['cron', 'browser', 'timezone', 'general', 'auth', 'skill', 'agent', 'gateway'] as const) {
+    const v = Number(kpi[`cat_${cat}` as keyof typeof kpi]) || 0;
+    if (v > 0) byCategory[cat] = v;
+  }
+  const bySeverity: Record<string, number> = {};
+  for (const sev of ['critical', 'high', 'medium', 'low', 'ok'] as const) {
+    const v = Number(kpi[`sev_${sev}` as keyof typeof kpi]) || 0;
+    if (v > 0) bySeverity[sev] = v;
+  }
 
-  // Per-event counts (top events)
-  const byEventRows = await ctx.db
+  // ── Top events (separate query — needs GROUP BY + ORDER BY + LIMIT) ─────
+  const topEventsRows = await ctx.db
     .select({
       event: reliabilityEvents.event,
       count: sql<number>`count(*)`.as('count'),
@@ -115,37 +130,33 @@ export async function getReliabilitySummary(
     .orderBy(sql`count(*) desc`)
     .limit(20);
 
-  // Time series — bucket by hour
+  // ── Timeseries (separate query — different GROUP BY dimensions) ─────────
   const from = filters.from ?? Date.now() - 7 * 86400000;
   const to = filters.to ?? Date.now();
   const rangeMs = to - from;
-  // Use hourly buckets for ranges ≤7 days, daily for longer
   const bucketMs = rangeMs <= 7 * 86400000 ? 3600000 : 86400000;
 
   const timeseriesRows = await ctx.db
     .select({
       bucket: sql<number>`(${reliabilityEvents.occurredAt} / ${bucketMs}) * ${bucketMs}`.as('bucket'),
       category: reliabilityEvents.category,
+      severity: reliabilityEvents.severity,
       count: sql<number>`count(*)`.as('count'),
     })
     .from(reliabilityEvents)
     .where(where)
-    .groupBy(sql`bucket`, reliabilityEvents.category)
+    .groupBy(sql`bucket`, reliabilityEvents.category, reliabilityEvents.severity)
     .orderBy(sql`bucket`);
-
-  const total = byCategoryRows.reduce((sum, r) => sum + r.count, 0);
-  const byCategory = Object.fromEntries(byCategoryRows.map((r) => [r.category, r.count]));
-  const bySeverity = Object.fromEntries(bySeverityRows.map((r) => [r.severity, r.count]));
-  const topEvents = byEventRows.map((r) => ({ event: r.event, count: r.count }));
 
   return {
     total,
     byCategory,
     bySeverity,
-    topEvents,
+    topEvents: topEventsRows.map((r) => ({ event: r.event, count: r.count })),
     timeseries: timeseriesRows.map((r) => ({
       bucket: r.bucket,
       category: r.category,
+      severity: r.severity,
       count: r.count,
     })),
     bucketMs,
