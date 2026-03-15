@@ -15,6 +15,7 @@
         Menu,
         X,
         GitBranch,
+        BookOpen,
     } from "lucide-svelte";
     import { ui } from "$lib/state/ui/ui.svelte";
 
@@ -28,6 +29,7 @@
     );
     const isSettings = $derived(page.url.pathname.startsWith("/settings"));
     const isFlowEditor = $derived(page.url.pathname.startsWith("/flow-editor"));
+    const isBuilder = $derived(page.url.pathname.startsWith('/builder'));
 
     // Mobile menu state
     let mobileMenuOpen = $state(false);
@@ -77,7 +79,20 @@
             <HostPill />
         </div>
 
-        <div class="h-5 w-px bg-border/60 mx-1 shrink-0"></div>
+        <!-- Reliability (icon-only, next to host picker, all breakpoints) -->
+        <Tooltip label={m.nav_reliability()} id="nav-reliability">
+            {#snippet children(triggerProps)}
+                <a
+                    href="/reliability"
+                    class="hidden min-[470px]:flex items-center justify-center w-8 h-8 rounded-lg text-muted hover:text-foreground hover:bg-bg3 transition-all duration-150 {isReliability ? 'text-accent bg-accent/12' : ''}"
+                    {...triggerProps}
+                >
+                    <Activity size={16} />
+                </a>
+            {/snippet}
+        </Tooltip>
+
+        <div class="h-5 w-px bg-border/60 mx-1 shrink-0 hidden min-[470px]:block"></div>
 
         <!-- Desktop Navigation - Full text (xl+) -->
         <nav class="hidden xl:flex items-center gap-1 flex-1 min-w-0">
@@ -92,6 +107,10 @@
                     <Wrench size={14} />
                     <span>{m.nav_workshop()}</span>
                 </a>
+                <a href="/builder" class="nav-pill {isBuilder ? 'active' : ''}" title="Builder">
+                    <BookOpen size={14} />
+                    <span>Builder</span>
+                </a>
                 <a
                     href="/flow-editor"
                     class="nav-pill {isFlowEditor ? 'active' : ''}"
@@ -99,14 +118,6 @@
                 >
                     <GitBranch size={14} />
                     <span>Flows</span>
-                </a>
-                <a
-                    href="/reliability"
-                    class="nav-pill {isReliability ? 'active' : ''}"
-                    title="Reliability"
-                >
-                    <Activity size={14} />
-                    <span>{m.nav_reliability()}</span>
                 </a>
             </div>
 
@@ -134,17 +145,17 @@
                         </a>
                     {/snippet}
                 </Tooltip>
+                <Tooltip label="Builder" id="nav-lg-builder">
+                    {#snippet children(triggerProps)}
+                        <a href="/builder" class="nav-pill {isBuilder ? 'active' : ''}" {...triggerProps}>
+                            <BookOpen size={16} />
+                        </a>
+                    {/snippet}
+                </Tooltip>
                 <Tooltip label="Flow Editor" id="nav-lg-flow-editor">
                     {#snippet children(triggerProps)}
                         <a href="/flow-editor" class="nav-pill {isFlowEditor ? 'active' : ''}" {...triggerProps}>
                             <GitBranch size={16} />
-                        </a>
-                    {/snippet}
-                </Tooltip>
-                <Tooltip label={m.nav_reliability()} id="nav-lg-reliability">
-                    {#snippet children(triggerProps)}
-                        <a href="/reliability" class="nav-pill {isReliability ? 'active' : ''}" {...triggerProps}>
-                            <Activity size={16} />
                         </a>
                     {/snippet}
                 </Tooltip>
@@ -170,17 +181,17 @@
                     </a>
                 {/snippet}
             </Tooltip>
+            <Tooltip label="Builder" id="nav-md-builder">
+                {#snippet children(triggerProps)}
+                    <a href="/builder" class="nav-pill-sm {isBuilder ? 'active' : ''}" {...triggerProps}>
+                        <BookOpen size={18} />
+                    </a>
+                {/snippet}
+            </Tooltip>
             <Tooltip label="Flow Editor" id="nav-md-flow-editor">
                 {#snippet children(triggerProps)}
                     <a href="/flow-editor" class="nav-pill-sm {isFlowEditor ? 'active' : ''}" {...triggerProps}>
                         <GitBranch size={18} />
-                    </a>
-                {/snippet}
-            </Tooltip>
-            <Tooltip label={m.nav_reliability()} id="nav-md-reliability">
-                {#snippet children(triggerProps)}
-                    <a href="/reliability" class="nav-pill-sm {isReliability ? 'active' : ''}" {...triggerProps}>
-                        <Activity size={18} />
                     </a>
                 {/snippet}
             </Tooltip>
@@ -244,12 +255,24 @@
         >
             <nav class="flex flex-col p-2 gap-1">
                 <a
+                    href="/reliability"
+                    class="mobile-nav-link {isReliability ? 'active' : ''}"
+                    onclick={closeMobileMenu}
+                >
+                    <Activity size={18} />
+                    <span>{m.nav_reliability()}</span>
+                </a>
+                <a
                     href="/workshop"
                     class="mobile-nav-link {isWorkshop ? 'active' : ''}"
                     onclick={closeMobileMenu}
                 >
                     <Wrench size={18} />
                     <span>{m.nav_workshop()}</span>
+                </a>
+                <a href="/builder" class="mobile-nav-link {isBuilder ? 'active' : ''}" onclick={closeMobileMenu}>
+                    <BookOpen size={18} />
+                    <span>Builder</span>
                 </a>
                 <a
                     href="/flow-editor"
@@ -258,14 +281,6 @@
                 >
                     <GitBranch size={18} />
                     <span>Flows</span>
-                </a>
-                <a
-                    href="/reliability"
-                    class="mobile-nav-link {isReliability ? 'active' : ''}"
-                    onclick={closeMobileMenu}
-                >
-                    <Activity size={18} />
-                    <span>{m.nav_reliability()}</span>
                 </a>
                 <div class="h-px bg-border/60 my-1"></div>
                 <a
