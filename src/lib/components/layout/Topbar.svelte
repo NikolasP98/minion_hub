@@ -99,14 +99,6 @@
             <div
                 class="flex items-center gap-0.5 px-1.5 py-1 rounded-lg bg-bg2/50 border border-border/50"
             >
-                <a
-                    href="/workshop"
-                    class="nav-pill {isWorkshop ? 'active' : ''}"
-                    title="Workshop"
-                >
-                    <Wrench size={14} />
-                    <span>{m.nav_workshop()}</span>
-                </a>
                 <a href="/builder" class="nav-pill {isBuilder ? 'active' : ''}" title="Builder">
                     <BookOpen size={14} />
                     <span>Builder</span>
@@ -118,6 +110,14 @@
                 >
                     <GitBranch size={14} />
                     <span>Flows</span>
+                </a>
+                <a
+                    href="/workshop"
+                    class="nav-pill {isWorkshop ? 'active' : ''}"
+                    title="Workshop"
+                >
+                    <Wrench size={14} />
+                    <span>{m.nav_workshop()}</span>
                 </a>
             </div>
 
@@ -138,13 +138,6 @@
             <div
                 class="flex items-center gap-0.5 px-1.5 py-1 rounded-lg bg-bg2/50 border border-border/50"
             >
-                <Tooltip label={m.nav_workshop()} id="nav-lg-workshop">
-                    {#snippet children(triggerProps)}
-                        <a href="/workshop" class="nav-pill {isWorkshop ? 'active' : ''}" {...triggerProps}>
-                            <Wrench size={16} />
-                        </a>
-                    {/snippet}
-                </Tooltip>
                 <Tooltip label="Builder" id="nav-lg-builder">
                     {#snippet children(triggerProps)}
                         <a href="/builder" class="nav-pill {isBuilder ? 'active' : ''}" {...triggerProps}>
@@ -156,6 +149,13 @@
                     {#snippet children(triggerProps)}
                         <a href="/flow-editor" class="nav-pill {isFlowEditor ? 'active' : ''}" {...triggerProps}>
                             <GitBranch size={16} />
+                        </a>
+                    {/snippet}
+                </Tooltip>
+                <Tooltip label={m.nav_workshop()} id="nav-lg-workshop">
+                    {#snippet children(triggerProps)}
+                        <a href="/workshop" class="nav-pill {isWorkshop ? 'active' : ''}" {...triggerProps}>
+                            <Wrench size={16} />
                         </a>
                     {/snippet}
                 </Tooltip>
@@ -174,13 +174,6 @@
 
         <!-- Small Tablet Navigation - Icons only, no bg (470px to lg) -->
         <nav class="hidden min-[470px]:flex lg:hidden items-center gap-0.5 flex-1">
-            <Tooltip label={m.nav_workshop()} id="nav-md-workshop">
-                {#snippet children(triggerProps)}
-                    <a href="/workshop" class="nav-pill-sm {isWorkshop ? 'active' : ''}" {...triggerProps}>
-                        <Wrench size={18} />
-                    </a>
-                {/snippet}
-            </Tooltip>
             <Tooltip label="Builder" id="nav-md-builder">
                 {#snippet children(triggerProps)}
                     <a href="/builder" class="nav-pill-sm {isBuilder ? 'active' : ''}" {...triggerProps}>
@@ -192,6 +185,13 @@
                 {#snippet children(triggerProps)}
                     <a href="/flow-editor" class="nav-pill-sm {isFlowEditor ? 'active' : ''}" {...triggerProps}>
                         <GitBranch size={18} />
+                    </a>
+                {/snippet}
+            </Tooltip>
+            <Tooltip label={m.nav_workshop()} id="nav-md-workshop">
+                {#snippet children(triggerProps)}
+                    <a href="/workshop" class="nav-pill-sm {isWorkshop ? 'active' : ''}" {...triggerProps}>
+                        <Wrench size={18} />
                     </a>
                 {/snippet}
             </Tooltip>
@@ -262,14 +262,6 @@
                     <Activity size={18} />
                     <span>{m.nav_reliability()}</span>
                 </a>
-                <a
-                    href="/workshop"
-                    class="mobile-nav-link {isWorkshop ? 'active' : ''}"
-                    onclick={closeMobileMenu}
-                >
-                    <Wrench size={18} />
-                    <span>{m.nav_workshop()}</span>
-                </a>
                 <a href="/builder" class="mobile-nav-link {isBuilder ? 'active' : ''}" onclick={closeMobileMenu}>
                     <BookOpen size={18} />
                     <span>Builder</span>
@@ -281,6 +273,14 @@
                 >
                     <GitBranch size={18} />
                     <span>Flows</span>
+                </a>
+                <a
+                    href="/workshop"
+                    class="mobile-nav-link {isWorkshop ? 'active' : ''}"
+                    onclick={closeMobileMenu}
+                >
+                    <Wrench size={18} />
+                    <span>{m.nav_workshop()}</span>
                 </a>
                 <div class="h-px bg-border/60 my-1"></div>
                 <a

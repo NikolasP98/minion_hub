@@ -12,6 +12,7 @@ interface AgentGroupsState {
   loading: boolean;
   viewMode: 'list' | 'gallery';
   collapsedGroupIds: Set<string>;
+  ungroupedCollapsed: boolean;
 }
 
 function loadPersistedViewMode(): 'list' | 'gallery' {
@@ -39,11 +40,24 @@ function persistCollapsed(ids: Set<string>) {
   try { localStorage.setItem('agentGroups:collapsed', JSON.stringify([...ids])); } catch { /* ignore */ }
 }
 
+function loadPersistedUngroupedCollapsed(): boolean {
+  try {
+    return localStorage.getItem('agentGroups:ungroupedCollapsed') === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function persistUngroupedCollapsed(collapsed: boolean) {
+  try { localStorage.setItem('agentGroups:ungroupedCollapsed', String(collapsed)); } catch { /* ignore */ }
+}
+
 export const agentGroupsState: AgentGroupsState = $state({
   groups: [],
   loading: false,
   viewMode: loadPersistedViewMode(),
   collapsedGroupIds: loadPersistedCollapsed(),
+  ungroupedCollapsed: loadPersistedUngroupedCollapsed(),
 });
 
 function getServerId(): string | null {
@@ -171,4 +185,9 @@ export function toggleGroupCollapsed(groupId: string) {
     agentGroupsState.collapsedGroupIds.add(groupId);
   }
   persistCollapsed(agentGroupsState.collapsedGroupIds);
+}
+
+export function toggleUngroupedCollapsed() {
+  agentGroupsState.ungroupedCollapsed = !agentGroupsState.ungroupedCollapsed;
+  persistUngroupedCollapsed(agentGroupsState.ungroupedCollapsed);
 }

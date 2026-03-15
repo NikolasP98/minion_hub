@@ -3,18 +3,24 @@ import { agentGroups, agentGroupMembers } from '$server/db/schema';
 import { newId, nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
 
-export async function listGroups(ctx: TenantContext, serverId: string) {
+export async function listGroups(ctx: TenantContext, userId: string) {
   const groups = await ctx.db
     .select()
     .from(agentGroups)
-    .where(and(eq(agentGroups.serverId, serverId), eq(agentGroups.tenantId, ctx.tenantId)))
+    .where(and(eq(agentGroups.userId, userId), eq(agentGroups.tenantId, ctx.tenantId)))
     .orderBy(asc(agentGroups.sortOrder));
 
-  const members = await ctx.db
-    .select()
-    .from(agentGroupMembers)
-    .where(eq(agentGroupMembers.serverId, serverId))
-    .orderBy(asc(agentGroupMembers.sortOrder));
+  const groupIds = groups.map((g) => g.id);
+  let members: { groupId: string; agentId: string; sortOrder: number | null }[] = [];
+  if (groupIds.length > 0) {
+    members = await ctx.db
+      .select()
+      .from(agentGroupMembers)
+      .orderBy(asc(agentGroupMembers.sortOrder));
+    // Filter to only members of these groups
+    const groupIdSet = new Set(groupIds);
+    members = members.filter((m) => groupIdSet.has(m.groupId));
+  }
 
   return groups.map((g) => ({
     id: g.id,
@@ -24,12 +30,12 @@ export async function listGroups(ctx: TenantContext, serverId: string) {
   }));
 }
 
-export async function createGroup(ctx: TenantContext, serverId: string, name: string) {
+export async function createGroup(ctx: TenantContext, userId: string, name: string) {
   const id = newId();
   const now = nowMs();
   await ctx.db.insert(agentGroups).values({
     id,
-    serverId,
+    userId,
     tenantId: ctx.tenantId,
     name,
     sortOrder: 0,
@@ -40,7 +46,7 @@ export async function createGroup(ctx: TenantContext, serverId: string, name: st
 
 export async function updateGroup(
   ctx: TenantContext,
-  serverId: string,
+  userId: string,
   groupId: string,
   data: { name?: string; sortOrder?: number },
 ) {
@@ -53,22 +59,30 @@ export async function updateGroup(
     .update(agentGroups)
     .set(set)
     .where(
-      and(eq(agentGroups.id, groupId), eq(agentGroups.serverId, serverId), eq(agentGroups.tenantId, ctx.tenantId)),
+      and(eq(agentGroups.id, groupId), eq(agentGroups.userId, userId), eq(agentGroups.tenantId, ctx.tenantId)),
     );
 }
 
-export async function deleteGroup(ctx: TenantContext, serverId: string, groupId: string) {
+export async function deleteGroup(ctx: TenantContext, userId: string, groupId: string) {
   await ctx.db
     .delete(agentGroups)
     .where(
-      and(eq(agentGroups.id, groupId), eq(agentGroups.serverId, serverId), eq(agentGroups.tenantId, ctx.tenantId)),
+      and(eq(agentGroups.id, groupId), eq(agentGroups.userId, userId), eq(agentGroups.tenantId, ctx.tenantId)),
     );
 }
 
-export async function setGroupMembers(ctx: TenantContext, serverId: string, groupId: string, agentIds: string[]) {
+export async function setGroupMembers(ctx: TenantContext, userId: string, groupId: string, agentIds: string[]) {
+  // Verify the group belongs to this user
+  const [group] = await ctx.db
+    .select({ id: agentGroups.id })
+    .from(agentGroups)
+    .where(and(eq(agentGroups.id, groupId), eq(agentGroups.userId, userId), eq(agentGroups.tenantId, ctx.tenantId)))
+    .limit(1);
+  if (!group) return;
+
   await ctx.db
     .delete(agentGroupMembers)
-    .where(and(eq(agentGroupMembers.groupId, groupId), eq(agentGroupMembers.serverId, serverId)));
+    .where(eq(agentGroupMembers.groupId, groupId));
 
   if (agentIds.length === 0) return;
 
@@ -76,42 +90,40 @@ export async function setGroupMembers(ctx: TenantContext, serverId: string, grou
     agentIds.map((agentId, i) => ({
       groupId,
       agentId,
-      serverId,
       sortOrder: i,
     })),
   );
 }
 
-export async function addAgentToGroup(ctx: TenantContext, serverId: string, groupId: string, agentId: string) {
+export async function addAgentToGroup(ctx: TenantContext, userId: string, groupId: string, agentId: string) {
   await ctx.db
     .insert(agentGroupMembers)
-    .values({ groupId, agentId, serverId, sortOrder: 0 })
+    .values({ groupId, agentId, sortOrder: 0 })
     .onConflictDoNothing();
 }
 
-export async function removeAgentFromGroup(ctx: TenantContext, serverId: string, groupId: string, agentId: string) {
+export async function removeAgentFromGroup(ctx: TenantContext, userId: string, groupId: string, agentId: string) {
   await ctx.db
     .delete(agentGroupMembers)
     .where(
       and(
         eq(agentGroupMembers.groupId, groupId),
         eq(agentGroupMembers.agentId, agentId),
-        eq(agentGroupMembers.serverId, serverId),
       ),
     );
 }
 
 export async function moveAgentToGroup(
   ctx: TenantContext,
-  serverId: string,
+  userId: string,
   agentId: string,
   fromGroupId: string | null,
   toGroupId: string | null,
 ) {
   if (fromGroupId) {
-    await removeAgentFromGroup(ctx, serverId, fromGroupId, agentId);
+    await removeAgentFromGroup(ctx, userId, fromGroupId, agentId);
   }
   if (toGroupId) {
-    await addAgentToGroup(ctx, serverId, toGroupId, agentId);
+    await addAgentToGroup(ctx, userId, toGroupId, agentId);
   }
 }

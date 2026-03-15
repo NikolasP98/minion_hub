@@ -28,7 +28,6 @@
         {#snippet panel({ collapseLevel })}
             <AgentSidebar
                 {collapseLevel}
-                ontoggle={() => splitterApi?.toggle()}
             />
         {/snippet}
         <DetailPanel />

@@ -1,14 +1,13 @@
 import { sqliteTable, text, integer, index, primaryKey } from 'drizzle-orm/sqlite-core';
-import { organization } from './auth';
-import { servers } from './servers';
+import { organization, user } from './auth';
 
 export const agentGroups = sqliteTable(
   'agent_groups',
   {
     id: text('id').primaryKey(),
-    serverId: text('server_id')
+    userId: text('user_id')
       .notNull()
-      .references(() => servers.id, { onDelete: 'cascade' }),
+      .references(() => user.id, { onDelete: 'cascade' }),
     tenantId: text('tenant_id')
       .notNull()
       .references(() => organization.id, { onDelete: 'cascade' }),
@@ -16,7 +15,7 @@ export const agentGroups = sqliteTable(
     sortOrder: integer('sort_order').default(0),
     createdAt: integer('created_at').notNull(),
   },
-  (t) => [index('idx_agent_groups_server').on(t.serverId)],
+  (t) => [index('idx_agent_groups_user').on(t.userId, t.tenantId)],
 );
 
 export const agentGroupMembers = sqliteTable(
@@ -26,13 +25,9 @@ export const agentGroupMembers = sqliteTable(
       .notNull()
       .references(() => agentGroups.id, { onDelete: 'cascade' }),
     agentId: text('agent_id').notNull(),
-    serverId: text('server_id')
-      .notNull()
-      .references(() => servers.id, { onDelete: 'cascade' }),
     sortOrder: integer('sort_order').default(0),
   },
   (t) => [
-    primaryKey({ columns: [t.groupId, t.agentId, t.serverId] }),
-    index('idx_agm_agent').on(t.agentId, t.serverId),
+    primaryKey({ columns: [t.groupId, t.agentId] }),
   ],
 );
