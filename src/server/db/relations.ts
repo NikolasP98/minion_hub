@@ -210,14 +210,12 @@ export const serverBackupsRelations = relations(serverBackups, ({ one }) => ({
 // ── Agent Groups ─────────────────────────────────────────────────────
 
 export const agentGroupsRelations = relations(agentGroups, ({ one, many }) => ({
-  server: one(servers, { fields: [agentGroups.serverId], references: [servers.id] }),
   organization: one(organization, { fields: [agentGroups.tenantId], references: [organization.id] }),
   members: many(agentGroupMembers),
 }));
 
 export const agentGroupMembersRelations = relations(agentGroupMembers, ({ one }) => ({
   group: one(agentGroups, { fields: [agentGroupMembers.groupId], references: [agentGroups.id] }),
-  server: one(servers, { fields: [agentGroupMembers.serverId], references: [servers.id] }),
 }));
 
 // ── Channel Identities ──────────────────────────────────────────────────
