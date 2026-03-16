@@ -133,8 +133,10 @@ export async function deleteAgentGroup(groupId: string) {
   if (!res.ok) return;
 
   agentGroupsState.groups = agentGroupsState.groups.filter((g) => g.id !== groupId);
-  agentGroupsState.collapsedGroupIds.delete(groupId);
-  persistCollapsed(agentGroupsState.collapsedGroupIds);
+  const next = new Set(agentGroupsState.collapsedGroupIds);
+  next.delete(groupId);
+  agentGroupsState.collapsedGroupIds = next;
+  persistCollapsed(next);
 }
 
 export async function moveAgentToGroup(agentId: string, fromGroupId: string | null, toGroupId: string | null) {
@@ -179,12 +181,14 @@ export function toggleAgentViewMode() {
 }
 
 export function toggleGroupCollapsed(groupId: string) {
-  if (agentGroupsState.collapsedGroupIds.has(groupId)) {
-    agentGroupsState.collapsedGroupIds.delete(groupId);
+  const next = new Set(agentGroupsState.collapsedGroupIds);
+  if (next.has(groupId)) {
+    next.delete(groupId);
   } else {
-    agentGroupsState.collapsedGroupIds.add(groupId);
+    next.add(groupId);
   }
-  persistCollapsed(agentGroupsState.collapsedGroupIds);
+  agentGroupsState.collapsedGroupIds = next;
+  persistCollapsed(next);
 }
 
 export function toggleUngroupedCollapsed() {
