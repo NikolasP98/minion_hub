@@ -26,11 +26,12 @@ import {
   agentGroups,
   agentGroupMembers,
   channelIdentities,
+  personalAgents,
 } from './schema';
 
 // ── Better Auth: User ─────────────────────────────────────────────────────────
 
-export const userRelations = relations(user, ({ many }) => ({
+export const userRelations = relations(user, ({ one, many }) => ({
   sessions: many(session),
   accounts: many(account),
   memberships: many(member),
@@ -39,6 +40,7 @@ export const userRelations = relations(user, ({ many }) => ({
   userServers: many(userServers),
   userAgents: many(userAgents),
   channelIdentities: many(channelIdentities),
+  personalAgent: one(personalAgents, { fields: [user.id], references: [personalAgents.userId] }),
 }));
 
 // ── Better Auth: Session ──────────────────────────────────────────────────────
@@ -222,4 +224,11 @@ export const agentGroupMembersRelations = relations(agentGroupMembers, ({ one })
 
 export const channelIdentitiesRelations = relations(channelIdentities, ({ one }) => ({
   user: one(user, { fields: [channelIdentities.userId], references: [user.id] }),
+}));
+
+// ── Personal Agents ──────────────────────────────────────────────────────
+
+export const personalAgentsRelations = relations(personalAgents, ({ one }) => ({
+  user: one(user, { fields: [personalAgents.userId], references: [user.id] }),
+  server: one(servers, { fields: [personalAgents.serverId], references: [servers.id] }),
 }));

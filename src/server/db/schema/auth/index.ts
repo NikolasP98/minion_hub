@@ -15,6 +15,7 @@ export const user = sqliteTable('user', {
 	createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 	updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
 	role: text('role', { enum: ['user', 'admin'] }).notNull().default('user'),
+	personalAgentId: text('personal_agent_id'),
 });
 
 // ── Core: session ────────────────────────────────────────────────────────────
