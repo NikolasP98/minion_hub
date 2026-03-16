@@ -3,10 +3,12 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { jwt } from 'better-auth/plugins';
 import { oidcProvider } from 'better-auth/plugins';
 import { organization } from 'better-auth/plugins';
+import { createAuthMiddleware } from 'better-auth/api';
 import { getDb } from '$server/db/client';
 import * as schema from '$server/db/schema';
 import { env } from '$env/dynamic/private';
 import { sendInvitationEmail } from '$server/services/email.service';
+import { provisionPersonalAgent } from '$server/services/personal-agent.service';
 
 let _auth: ReturnType<typeof betterAuth> | null = null;
 
@@ -61,6 +63,29 @@ export function getAuth() {
 					},
 				}),
 			],
+			hooks: {
+				after: createAuthMiddleware(async (ctx) => {
+					if (ctx.path.startsWith('/sign-up')) {
+						const newSession = ctx.context.newSession;
+						if (newSession) {
+							// Create pending personal agent row synchronously (fast DB insert).
+							// Gateway provisioning is async and handled separately (Plan 04).
+							try {
+								const db = getDb();
+								const tenantCtx = { db, tenantId: 'default' };
+								await provisionPersonalAgent(tenantCtx, {
+									userId: newSession.user.id,
+									userName: newSession.user.name ?? newSession.user.email.split('@')[0],
+									serverId: '',
+								});
+							} catch (err) {
+								// Don't block signup if personal agent creation fails
+								console.error('[personal-agent] Failed to provision on signup:', err);
+							}
+						}
+					}
+				}),
+			},
 		});
 	}
 	return _auth;

@@ -9,6 +9,7 @@ import { eq } from 'drizzle-orm';
 import { decryptToken } from '$server/auth/crypto';
 import { env } from '$env/dynamic/private';
 import { startBackupScheduler } from '$server/services/backup-scheduler';
+import { ensurePersonalAgentOnLogin } from '$server/services/personal-agent.service';
 
 /**
  * Resolve tenantCtx from a Bearer server token.
@@ -119,7 +120,7 @@ const appHandle: Handle = async ({ event, resolve }) => {
   if (betterAuthSession) {
     const db = getDb();
     const [dbUser] = await db
-      .select({ role: userTable.role })
+      .select({ role: userTable.role, personalAgentId: userTable.personalAgentId })
       .from(userTable)
       .where(eq(userTable.id, betterAuthSession.user.id))
       .limit(1);
@@ -135,6 +136,21 @@ const appHandle: Handle = async ({ event, resolve }) => {
     if (orgId) {
       const db = getDb();
       event.locals.tenantCtx = { db, tenantId: orgId };
+    }
+
+    // Login-time backfill: create personal agent for existing users who don't have one yet.
+    // Fire-and-forget: don't block the request. After first successful call,
+    // user.personalAgentId is set and this condition won't trigger again.
+    if (!dbUser?.personalAgentId) {
+      const backfillDb = getDb();
+      ensurePersonalAgentOnLogin(
+        { db: backfillDb, tenantId: orgId ?? 'default' },
+        {
+          userId: betterAuthSession.user.id,
+          userName: betterAuthSession.user.name ?? '',
+          serverId: '',
+        },
+      ).catch((err) => console.error('[personal-agent] Login backfill failed:', err));
     }
   }
 
