@@ -64,6 +64,47 @@ export const personalAgent = {
 		}
 	},
 
+	/**
+	 * Check if this user's personal agent needs gateway provisioning and trigger it.
+	 * Called on page load -- fetches provisioning status from server, then calls
+	 * agents.create via the browser WebSocket if needed. Reports result back to server.
+	 * Silently fails -- will retry on next page load via exponential backoff.
+	 */
+	async checkAndProvision() {
+		try {
+			const res = await fetch('/api/personal-agent/provision');
+			if (!res.ok) return;
+			const data = await res.json();
+			if (!data.needsProvisioning) return;
+
+			// Call gateway to create the agent workspace
+			const { sendRequest } = await import('$lib/services/gateway.svelte');
+			try {
+				await sendRequest('agents.create', data.payload);
+				// Mark as active
+				await fetch('/api/personal-agent/provision', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ status: 'active' }),
+				});
+				// Reload agent data to reflect new status
+				await this.load();
+			} catch (err) {
+				// Mark as error
+				await fetch('/api/personal-agent/provision', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						status: 'error',
+						error: err instanceof Error ? err.message : 'Gateway unreachable',
+					}),
+				});
+			}
+		} catch {
+			// Silently fail -- will retry next page load
+		}
+	},
+
 	async save(updates: Partial<PersonalAgentData>) {
 		state.saving = true;
 		state.error = null;
