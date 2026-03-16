@@ -177,6 +177,11 @@ const appHandle: Handle = async ({ event, resolve }) => {
     return new Response(null, { status: 302, headers: { location: '/' } });
   }
 
+  // Non-admin users: landing page is /my-agent instead of /
+  if (event.locals.user && event.locals.user.role !== 'admin' && path === '/') {
+    return new Response(null, { status: 302, headers: { location: '/my-agent' } });
+  }
+
   return resolve(event);
 };
 

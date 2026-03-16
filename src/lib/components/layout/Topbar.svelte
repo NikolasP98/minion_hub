@@ -16,6 +16,7 @@
         X,
         GitBranch,
         BookOpen,
+        User,
     } from "lucide-svelte";
     import { ui } from "$lib/state/ui/ui.svelte";
 
@@ -30,6 +31,7 @@
     const isSettings = $derived(page.url.pathname.startsWith("/settings"));
     const isFlowEditor = $derived(page.url.pathname.startsWith("/flow-editor"));
     const isBuilder = $derived(page.url.pathname.startsWith('/builder'));
+    const isMyAgent = $derived(page.url.pathname.startsWith('/my-agent'));
 
     // Mobile menu state
     let mobileMenuOpen = $state(false);
@@ -99,6 +101,10 @@
             <div
                 class="flex items-center gap-0.5 px-1.5 py-1 rounded-lg bg-bg2/50 border border-border/50"
             >
+                <a href="/my-agent" class="nav-pill {isMyAgent ? 'active' : ''}" title="My Agent">
+                    <User size={14} />
+                    <span>My Agent</span>
+                </a>
                 <a href="/builder" class="nav-pill {isBuilder ? 'active' : ''}" title="Builder">
                     <BookOpen size={14} />
                     <span>Builder</span>
@@ -138,6 +144,13 @@
             <div
                 class="flex items-center gap-0.5 px-1.5 py-1 rounded-lg bg-bg2/50 border border-border/50"
             >
+                <Tooltip label="My Agent" id="nav-lg-my-agent">
+                    {#snippet children(triggerProps)}
+                        <a href="/my-agent" class="nav-pill {isMyAgent ? 'active' : ''}" {...triggerProps}>
+                            <User size={16} />
+                        </a>
+                    {/snippet}
+                </Tooltip>
                 <Tooltip label="Builder" id="nav-lg-builder">
                     {#snippet children(triggerProps)}
                         <a href="/builder" class="nav-pill {isBuilder ? 'active' : ''}" {...triggerProps}>
@@ -174,6 +187,13 @@
 
         <!-- Small Tablet Navigation - Icons only, no bg (470px to lg) -->
         <nav class="hidden min-[470px]:flex lg:hidden items-center gap-0.5 flex-1">
+            <Tooltip label="My Agent" id="nav-md-my-agent">
+                {#snippet children(triggerProps)}
+                    <a href="/my-agent" class="nav-pill-sm {isMyAgent ? 'active' : ''}" {...triggerProps}>
+                        <User size={18} />
+                    </a>
+                {/snippet}
+            </Tooltip>
             <Tooltip label="Builder" id="nav-md-builder">
                 {#snippet children(triggerProps)}
                     <a href="/builder" class="nav-pill-sm {isBuilder ? 'active' : ''}" {...triggerProps}>
@@ -254,6 +274,14 @@
             style="animation: slide-up 150ms ease-out"
         >
             <nav class="flex flex-col p-2 gap-1">
+                <a
+                    href="/my-agent"
+                    class="mobile-nav-link {isMyAgent ? 'active' : ''}"
+                    onclick={closeMobileMenu}
+                >
+                    <User size={18} />
+                    <span>My Agent</span>
+                </a>
                 <a
                     href="/reliability"
                     class="mobile-nav-link {isReliability ? 'active' : ''}"
