@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://minion.admin-console.dev/sitemap.xml
