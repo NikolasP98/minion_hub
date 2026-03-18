@@ -30,6 +30,10 @@ export function getAuth() {
 				...(env.VERCEL_URL ? [`https://${env.VERCEL_URL}`] : []),
 			],
 			emailAndPassword: { enabled: true },
+			accountLinking: {
+				enabled: true,
+				trustedProviders: ['google'],
+			},
 			socialProviders: {
 				...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
 					? { google: { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET } }
