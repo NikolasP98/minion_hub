@@ -3,6 +3,7 @@
     import { goto } from "$app/navigation";
     import { onMount } from "svelte";
     import { builderState, loadBuiltSkills, loadBuiltAgents, loadBuiltTools, createSkill, createAgent } from "$lib/state/builder";
+    import posthog from "posthog-js";
     import { isAdmin as hubIsAdmin } from "$lib/state/features/user.svelte";
     import { conn } from "$lib/state/gateway/connection.svelte";
     import { sendRequest } from "$lib/services/gateway.svelte";
@@ -49,9 +50,10 @@
 
     async function executeDelete() {
         if (!deleteTarget) return;
-        const { type, id } = deleteTarget;
+        const { type, id, name } = deleteTarget;
         const path = type === 'skill' ? 'skills' : type === 'agent' ? 'agents' : 'tools';
         await fetch(`/api/builder/${path}/${id}`, { method: 'DELETE' });
+        posthog.capture('builder_item_deleted', { item_type: type, item_id: id, item_name: name });
         if (type === 'skill') await loadBuiltSkills();
         else if (type === 'agent') await loadBuiltAgents();
         else await loadBuiltTools();
@@ -418,14 +420,14 @@
 
 {#if showSkillWizard}
     <SkillCreateWizard
-        onComplete={(id) => { showSkillWizard = false; goto(`/builder/skills/${id}`); }}
+        onComplete={(id) => { showSkillWizard = false; posthog.capture('skill_created', { skill_id: id }); goto(`/builder/skills/${id}`); }}
         onClose={() => { showSkillWizard = false; }}
     />
 {/if}
 
 {#if showAgentWizard}
     <AgentCreateWizard
-        onComplete={(id) => { showAgentWizard = false; goto(`/builder/agents/${id}`); }}
+        onComplete={(id) => { showAgentWizard = false; posthog.capture('agent_created', { agent_id: id }); goto(`/builder/agents/${id}`); }}
         onClose={() => { showAgentWizard = false; }}
     />
 {/if}

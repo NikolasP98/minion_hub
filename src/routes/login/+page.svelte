@@ -7,6 +7,7 @@
   import { loadHosts, hostsState } from '$lib/state/features/hosts.svelte';
   import { wsConnect } from '$lib/services/gateway.svelte';
   import ScanLine from '$lib/components/decorations/ScanLine.svelte';
+  import posthog from 'posthog-js';
 
   const { data } = $props();
 
@@ -21,6 +22,7 @@
   async function handleGoogleSignIn() {
     if (googleLoading) return;
     googleLoading = true;
+    posthog.capture('user_signed_in_with_google');
     const callbackURL = `/auth/google-callback${redirectTo !== '/' ? `?redirectTo=${encodeURIComponent(redirectTo)}` : ''}`;
     await authClient.signIn.social({ provider: 'google', callbackURL });
     // authClient redirects the browser — no further action needed
@@ -49,6 +51,8 @@
     await loadUser();
     await loadHosts();
     if (hostsState.activeHostId) wsConnect();
+    posthog.identify(email, { email });
+    posthog.capture('user_signed_in', { method: 'email' });
     goto(redirectTo, { replaceState: true });
   }
 </script>
