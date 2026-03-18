@@ -10,6 +10,7 @@ export interface CreateSkillInput {
   description?: string;
   emoji?: string;
   serverId?: string;
+  maxCycles?: number;
 }
 
 export async function createBuiltSkill(ctx: TenantContext, input: CreateSkillInput) {

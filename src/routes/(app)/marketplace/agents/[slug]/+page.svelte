@@ -17,6 +17,7 @@
         UserPlus, FileText, Info, AlignLeft,
         ClipboardList, BarChart2,
     } from "lucide-svelte";
+    import posthog from "posthog-js";
 
     const slug = $derived($page.params.slug);
     const initialTab = $derived(
@@ -97,6 +98,13 @@
         const data = await loadAgent(slug as string);
         agent = data;
         loading = false;
+        if (data) {
+            posthog.capture('marketplace_agent_viewed', {
+                agent_id: data.id,
+                agent_name: data.name,
+                agent_category: data.category,
+            });
+        }
     });
 
     // Simple markdown renderer
@@ -156,8 +164,19 @@
         );
         if (ok) {
             hireSuccess = true;
+            posthog.capture('marketplace_agent_hired', {
+                agent_id: agent.id,
+                agent_name: agent.name,
+                agent_category: agent.category,
+                server_id: selectedServerId,
+            });
         } else {
             hireError = marketplaceState.installError;
+            posthog.capture('marketplace_agent_hire_failed', {
+                agent_id: agent.id,
+                agent_name: agent.name,
+                error: marketplaceState.installError,
+            });
         }
         isHiring = false;
     }

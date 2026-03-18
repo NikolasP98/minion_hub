@@ -26,17 +26,18 @@ export function shouldRetryAgent(agent: PersonalAgentRow, nowMs?: number): boole
 
 /**
  * Build the params for a gateway `agents.create` WebSocket call.
- * IMPORTANT: Always includes agentType: 'standard' per PA-01 locked decision.
+ * The gateway schema requires { name, workspace } and derives agentId from name
+ * via normalizeAgentId(). We use the agentId (e.g. "personal-abc123") as the name
+ * so the gateway produces the correct deterministic ID.
+ * Workspace uses ~ prefix which resolveUserPath expands on the gateway server.
  */
 export function getProvisioningPayload(agent: PersonalAgentRow): {
 	name: string;
-	agentId: string;
-	agentType: 'standard';
+	workspace: string;
 } {
 	return {
-		name: agent.displayName,
-		agentId: agent.agentId,
-		agentType: 'standard',
+		name: agent.agentId,
+		workspace: `~/.minion/agents/${agent.agentId}/workspace`,
 	};
 }
 

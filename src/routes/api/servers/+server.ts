@@ -2,6 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { listServers, upsertServer } from '$server/services/server.service';
 import { getTenantCtx, getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
+import { getPostHogClient } from '$lib/server/posthog';
 
 export const GET: RequestHandler = async ({ locals }) => {
 	const ctx = await getTenantCtx(locals);
@@ -20,6 +21,15 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	try {
 		const body = await request.json();
 		await upsertServer(ctx, body, locals.user?.id);
+		const posthog = await getPostHogClient();
+		posthog?.capture({
+			distinctId: locals.user?.id ?? 'anonymous',
+			event: 'server_added',
+			properties: {
+				server_name: body.name,
+				server_url: body.url,
+			},
+		});
 		return json({ ok: true });
 	} catch (e) {
 		console.error('[POST /api/servers]', e);

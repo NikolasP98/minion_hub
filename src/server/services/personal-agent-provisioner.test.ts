@@ -127,22 +127,23 @@ describe('getBackoffDelay', () => {
 });
 
 describe('getProvisioningPayload', () => {
-	it('returns { name, agentId, agentType: "standard" } for a PersonalAgentRow', () => {
+	it('returns { name, workspace } matching the gateway agents.create schema', () => {
 		const agent = makeAgent({
 			displayName: "Nikolas's Agent",
 			agentId: 'personal-user-1',
 		});
 		const payload = getProvisioningPayload(agent);
 		expect(payload).toEqual({
-			name: "Nikolas's Agent",
-			agentId: 'personal-user-1',
-			agentType: 'standard',
+			name: 'personal-user-1',
+			workspace: '~/.minion/agents/personal-user-1/workspace',
 		});
 	});
 
-	it('always includes agentType standard', () => {
-		const agent = makeAgent();
-		expect(getProvisioningPayload(agent).agentType).toBe('standard');
+	it('uses agentId as name so gateway derives correct ID', () => {
+		const agent = makeAgent({ agentId: 'personal-abc123' });
+		const payload = getProvisioningPayload(agent);
+		expect(payload.name).toBe('personal-abc123');
+		expect(payload.workspace).toBe('~/.minion/agents/personal-abc123/workspace');
 	});
 });
 
@@ -155,9 +156,8 @@ describe('getPendingProvisioningForUser', () => {
 		expect(result).not.toBeNull();
 		expect(result!.agent).toEqual(pendingAgent);
 		expect(result!.payload).toEqual({
-			name: "Nikolas's Agent",
-			agentId: 'personal-user-1',
-			agentType: 'standard',
+			name: 'personal-user-1',
+			workspace: '~/.minion/agents/personal-user-1/workspace',
 		});
 	});
 

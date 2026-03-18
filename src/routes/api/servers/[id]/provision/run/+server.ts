@@ -10,6 +10,7 @@ import {
   savePhaseStatuses,
   type PhaseStatus,
 } from '$server/services/provision.service';
+import { getPostHogClient } from '$lib/server/posthog';
 
 export const POST: RequestHandler = async ({ locals, params, request }) => {
   requireAdmin(locals);
@@ -25,6 +26,17 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 
     const body = await request.json().catch(() => ({}));
     const startFrom = (body as { startFrom?: string }).startFrom;
+
+    const posthog = await getPostHogClient();
+    posthog?.capture({
+      distinctId: locals.user?.id ?? 'server',
+      event: 'provision_run_started',
+      properties: {
+        server_id: params.id,
+        ssh_host: config.sshHost,
+        start_from: startFrom ?? null,
+      },
+    });
 
     const controller = new AbortController();
     const stream = runSetupPhase(config, startFrom, controller.signal);

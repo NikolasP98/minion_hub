@@ -5,6 +5,7 @@ import { nowMs } from '$server/db/utils';
 import { getAgentWithFiles, recordInstall } from '$server/services/marketplace.service';
 import { upsertAgents } from '$server/services/agent.service';
 import { getTenantCtx } from '$server/auth/tenant-ctx';
+import { getPostHogClient } from '$lib/server/posthog';
 
 export const POST: RequestHandler = async ({ locals, request }) => {
   const tenantCtx = await getTenantCtx(locals);
@@ -57,6 +58,18 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 
   // Record the install in the hub DB
   await recordInstall(tenantCtx, agentId, serverId);
+  const posthog = await getPostHogClient();
+  posthog?.capture({
+    distinctId: locals.user?.id ?? 'anonymous',
+    event: 'agent_installed_from_marketplace',
+    properties: {
+      agent_id: agentId,
+      agent_name: agent.name,
+      agent_category: agent.category,
+      agent_version: agent.version,
+      server_id: serverId,
+    },
+  });
 
   // Build agent.json content from DB fields for gateway delivery
   const agentJson = JSON.stringify({

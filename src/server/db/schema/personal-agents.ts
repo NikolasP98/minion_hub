@@ -12,8 +12,7 @@ export const personalAgents = sqliteTable(
 			.references(() => user.id, { onDelete: 'cascade' }),
 		agentId: text('agent_id').notNull(),
 		serverId: text('server_id')
-			.notNull()
-			.references(() => servers.id, { onDelete: 'cascade' }),
+			.references(() => servers.id, { onDelete: 'set null' }),
 		displayName: text('display_name').notNull(),
 		conversationName: text('conversation_name'),
 		avatarUrl: text('avatar_url'),

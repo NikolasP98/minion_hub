@@ -1,6 +1,7 @@
 import { sequence } from '@sveltejs/kit/hooks';
 import type { Handle } from '@sveltejs/kit';
 import { i18n } from '$lib/i18n';
+import { getPostHogClient } from '$lib/server/posthog';
 import { getAuth } from '$lib/auth/auth';
 import { building } from '$app/environment';
 import { getDb } from '$server/db/client';
@@ -185,12 +186,50 @@ const appHandle: Handle = async ({ event, resolve }) => {
   return resolve(event);
 };
 
-export const handle = sequence(i18n.handle(), authHandle, appHandle);
+const posthogProxyHandle: Handle = async ({ event, resolve }) => {
+  const { pathname } = event.url;
+  if (pathname.startsWith('/ingest')) {
+    const hostname = pathname.startsWith('/ingest/static/')
+      ? 'us-assets.i.posthog.com'
+      : 'us.i.posthog.com';
+    const url = new URL(event.request.url);
+    url.protocol = 'https:';
+    url.hostname = hostname;
+    url.port = '443';
+    url.pathname = pathname.replace(/^\/ingest/, '');
+    const headers = new Headers(event.request.headers);
+    headers.set('host', hostname);
+    headers.set('accept-encoding', '');
+    const clientIp = event.request.headers.get('x-forwarded-for') || event.getClientAddress();
+    if (clientIp) headers.set('x-forwarded-for', clientIp);
+    return fetch(url.toString(), {
+      method: event.request.method,
+      headers,
+      body: event.request.body,
+      // @ts-expect-error - duplex is required for streaming request bodies
+      duplex: 'half',
+    });
+  }
+  return resolve(event);
+};
+
+export const handle = sequence(i18n.handle(), posthogProxyHandle, authHandle, appHandle);
 
 import type { HandleServerError } from '@sveltejs/kit';
 
-export const handleError: HandleServerError = ({ error, event }) => {
+export const handleError: HandleServerError = async ({ error, event, status, message }) => {
   console.error(`[handleError] ${event.request.method} ${event.url.pathname}`, error);
+  const posthog = await getPostHogClient();
+  posthog?.capture({
+    distinctId: 'server',
+    event: 'server_error',
+    properties: {
+      error: error instanceof Error ? error.message : String(error),
+      status,
+      message,
+      path: event.url.pathname,
+    },
+  });
   return { message: 'Internal Error' };
 };
 

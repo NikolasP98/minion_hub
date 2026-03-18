@@ -11,6 +11,9 @@ const config = {
     alias: {
       '$server': 'src/server',
       '$server/*': 'src/server/*'
+    },
+    paths: {
+      relative: false
     }
   }
 };
