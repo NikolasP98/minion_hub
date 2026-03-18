@@ -1,4 +1,4 @@
-import { eq, and, inArray, lt } from 'drizzle-orm';
+import { eq, and, inArray, lt, sql } from 'drizzle-orm';
 import { personalAgents } from '$server/db/schema/personal-agents';
 import { user } from '$server/db/schema/auth';
 import { newId, nowMs } from '$server/db/utils';
@@ -44,7 +44,7 @@ export async function provisionPersonalAgent(
 		id: newId(),
 		userId: params.userId,
 		agentId,
-		serverId: params.serverId,
+		serverId: params.serverId || null,
 		displayName,
 		personalityConfigured: false,
 		provisioningStatus: 'pending',
@@ -117,6 +117,7 @@ export async function updateProvisioningStatus(
 	if (status === 'error') {
 		setData.provisioningError = error ?? null;
 		setData.lastRetryAt = now;
+		setData.retryCount = sql`${personalAgents.retryCount} + 1`;
 	}
 
 	if (status === 'active') {

@@ -10,7 +10,7 @@
         type ColorMode,
     } from '@xyflow/svelte';
     import '@xyflow/svelte/dist/style.css';
-    import { Plus, BookOpen, GitBranch } from 'lucide-svelte';
+    import { Plus, BookOpen, GitBranch, Trash2 } from 'lucide-svelte';
     import { theme } from '$lib/state/ui/theme.svelte';
     import ConditionNode from './ConditionNode.svelte';
 
@@ -154,6 +154,45 @@
             onDeleteEdge(edge.id);
         }
     }
+
+    // ── Context menu ─────────────────────────────────────────────────────────
+    interface ContextMenuState {
+        type: 'node' | 'edge';
+        id: string;
+        x: number;
+        y: number;
+    }
+
+    let contextMenu = $state<ContextMenuState | null>(null);
+
+    function handleNodeContextMenu({ node, event }: { node: Node; event: MouseEvent }) {
+        event.preventDefault();
+        contextMenu = { type: 'node', id: node.id, x: event.clientX, y: event.clientY };
+    }
+
+    function handleEdgeContextMenu({ edge, event }: { edge: Edge; event: MouseEvent }) {
+        event.preventDefault();
+        contextMenu = { type: 'edge', id: edge.id, x: event.clientX, y: event.clientY };
+    }
+
+    function closeContextMenu() {
+        contextMenu = null;
+    }
+
+    function handleCtxDelete() {
+        if (!contextMenu) return;
+        if (contextMenu.type === 'node') {
+            const chapter = chapters.find((ch) => ch.id === contextMenu!.id);
+            if (chapter) onDeleteChapter(chapter);
+        } else {
+            onDeleteEdge(contextMenu.id);
+        }
+        contextMenu = null;
+    }
+
+    function handleCtxKeydown(e: KeyboardEvent) {
+        if (e.key === 'Escape') closeContextMenu();
+    }
 </script>
 
 <div class="chapter-dag-container">
@@ -202,6 +241,9 @@
             onnodeclick={handleNodeClick}
             onconnect={handleConnect}
             ondelete={handleDelete}
+            onnodecontextmenu={handleNodeContextMenu}
+            onedgecontextmenu={handleEdgeContextMenu}
+            onpaneclick={closeContextMenu}
             proOptions={{ hideAttribution: true }}
         >
             <Background
@@ -212,6 +254,21 @@
             />
             <Controls position="bottom-right" />
         </SvelteFlow>
+    {/if}
+
+    {#if contextMenu}
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="ctx-backdrop" onclick={closeContextMenu} onkeydown={handleCtxKeydown}></div>
+        <div
+            class="ctx-menu"
+            style="left: {contextMenu.x}px; top: {contextMenu.y}px;"
+            role="menu"
+        >
+            <button type="button" class="ctx-item danger" onclick={handleCtxDelete} role="menuitem">
+                <Trash2 size={13} />
+                <span>{contextMenu.type === 'node' ? 'Delete Chapter' : 'Delete Connection'}</span>
+            </button>
+        </div>
     {/if}
 </div>
 
@@ -315,6 +372,49 @@
         border-left: 3px solid var(--color-accent, #6366f1);
         font-size: 0.75rem;
         font-family: inherit;
+    }
+
+    /* ── Context Menu ─────────────────────────────────────────────────── */
+    .ctx-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 99;
+    }
+
+    .ctx-menu {
+        position: fixed;
+        z-index: 100;
+        min-width: 9rem;
+        padding: 0.25rem;
+        background: var(--color-bg2, #1a1a2e);
+        border: 1px solid var(--color-border, #333);
+        border-radius: 0.375rem;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    }
+
+    .ctx-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        width: 100%;
+        padding: 0.375rem 0.625rem;
+        font-size: 0.75rem;
+        font-family: inherit;
+        font-weight: 500;
+        border: none;
+        border-radius: 0.25rem;
+        background: transparent;
+        cursor: pointer;
+        text-align: left;
+        transition: background 0.1s ease;
+    }
+
+    .ctx-item.danger {
+        color: var(--color-error, #ef4444);
+    }
+
+    .ctx-item.danger:hover {
+        background: color-mix(in srgb, var(--color-error, #ef4444) 12%, transparent);
     }
 
     /* Edge labels */

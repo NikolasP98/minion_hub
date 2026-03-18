@@ -1,7 +1,8 @@
 <script lang="ts">
     import { page } from "$app/state";
-    import { ArrowLeft, BookOpen, Loader2, Check, Upload, Circle, AlertTriangle, XCircle, CheckCircle2, Sparkles, GitBranch } from "lucide-svelte";
+    import { ArrowLeft, BookOpen, Loader2, Check, Upload, Circle, AlertTriangle, XCircle, CheckCircle2, Sparkles, GitBranch, RotateCcw } from "lucide-svelte";
     import { onMount } from "svelte";
+    import posthog from "posthog-js";
     import { sendRequest } from "$lib/services/gateway.svelte";
     import { conn } from "$lib/state/gateway";
     import type { ToolStatusEntry, ToolsStatusReport } from "$lib/types/tools";
@@ -21,6 +22,7 @@
     let description = $state("");
     let emoji = $state("📘");
     let status: "draft" | "published" = $state("draft");
+    let maxCycles = $state(3);
     let loading = $state(true);
     let saving = $state(false);
     let dirty = $state(false);
@@ -60,6 +62,7 @@
             description = data.skill.description ?? '';
             emoji = data.skill.emoji ?? '📘';
             status = data.skill.status;
+            maxCycles = data.skill.maxCycles ?? 3;
             chapters = data.chapters;
             chapterEdges = data.edges;
 
@@ -99,7 +102,7 @@
             await fetch(`/api/builder/skills/${skillId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, description, emoji }),
+                body: JSON.stringify({ name, description, emoji, maxCycles }),
             });
             dirty = false;
         } catch (e) {
@@ -123,6 +126,7 @@
                 body: JSON.stringify({ action: 'publish' }),
             });
             status = 'published';
+            posthog.capture('skill_published', { skill_id: skillId, skill_name: name });
         } catch (e) {
             console.error('[skill-editor] Publish failed:', e);
         } finally {
@@ -260,6 +264,11 @@
             chapters = [...chapters, ...newChapters];
             chapterEdges = [...chapterEdges, ...newEdges];
             chapterToolMap = newToolMap;
+            posthog.capture('skill_ai_generated', {
+                skill_id: skillId,
+                skill_name: name,
+                chapters_count: newChapters.length,
+            });
         } catch (e) {
             aiBuildError = e instanceof Error ? e.message : 'Failed to build skill';
             console.error('[skill-editor] AI build failed:', e);
@@ -568,7 +577,7 @@
                 if (!visited.has(ch.id)) dfs(ch.id);
             }
             if (hasCycle) {
-                findings.push({ level: 'error', message: 'Chapter graph contains a cycle' });
+                findings.push({ level: 'ok', message: `Cycle detected — max ${maxCycles} iteration${maxCycles !== 1 ? 's' : ''}` });
             } else {
                 findings.push({ level: 'ok', message: 'Chapter graph is acyclic' });
             }
@@ -632,6 +641,20 @@
                     <span>Saved</span>
                 {/if}
             </span>
+
+            <div class="h-4 w-px bg-border/60"></div>
+
+            <label class="max-cycles-control" title="Maximum cycle iterations allowed at runtime">
+                <RotateCcw size={12} class="max-cycles-icon" />
+                <input
+                    type="number"
+                    min="1"
+                    max="20"
+                    class="max-cycles-input"
+                    value={maxCycles}
+                    oninput={(e) => { maxCycles = Math.max(1, parseInt((e.target as HTMLInputElement).value) || 1); scheduleSave(); }}
+                />
+            </label>
 
             <div class="h-4 w-px bg-border/60"></div>
 
@@ -1414,6 +1437,45 @@
 
     .validation-btn.ok:hover {
         background: color-mix(in srgb, var(--color-success, #22c55e) 15%, transparent);
+    }
+
+    /* ── Max Cycles Control ──────────────────────────────────────────── */
+    .max-cycles-control {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+        cursor: default;
+        color: var(--color-muted);
+        font-size: 0.7rem;
+    }
+
+    .max-cycles-icon {
+        opacity: 0.7;
+        flex-shrink: 0;
+    }
+
+    .max-cycles-input {
+        width: 2.5rem;
+        padding: 0.2rem 0.3rem;
+        font-size: 0.7rem;
+        font-family: inherit;
+        text-align: center;
+        background: var(--color-bg2, #1a1a2e);
+        border: 1px solid var(--color-border);
+        border-radius: 0.25rem;
+        color: var(--color-foreground);
+        appearance: textfield;
+        -moz-appearance: textfield;
+    }
+
+    .max-cycles-input::-webkit-inner-spin-button,
+    .max-cycles-input::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+    }
+
+    .max-cycles-input:focus {
+        outline: none;
+        border-color: var(--color-accent);
     }
 
     /* ── Validation Modal ────────────────────────────────────────────── */

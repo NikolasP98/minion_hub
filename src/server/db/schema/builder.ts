@@ -9,6 +9,7 @@ export const builtSkills = sqliteTable('built_skills', {
   description: text('description').default(''),
   emoji: text('emoji').default('📖'),
   status: text('status', { enum: ['draft', 'published'] }).notNull().default('draft'),
+  maxCycles: integer('max_cycles').notNull().default(3),
   serverId: text('server_id').references(() => servers.id, { onDelete: 'cascade' }),
   tenantId: text('tenant_id').references(() => organization.id, { onDelete: 'cascade' }),
   createdBy: text('created_by'),
