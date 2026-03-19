@@ -1,6 +1,7 @@
 <script lang="ts">
     import { page } from "$app/state";
     import { ArrowLeft, BookOpen, Loader2, Check, Upload, Circle, AlertTriangle, XCircle, CheckCircle2, Sparkles, GitBranch, RotateCcw } from "lucide-svelte";
+    import ValidationPanel from "$lib/components/builder/ValidationPanel.svelte";
     import { conn } from "$lib/state/gateway";
     import { getToolInfo } from "$lib/data/tool-manifest";
     import ChapterEditor from "$lib/components/builder/ChapterEditor.svelte";
@@ -13,6 +14,7 @@
         saveCondition, updateCondition, openConditionOrChapter,
         confirmRemoveChapter, executeDeleteChapter, openChapterEditor,
         saveChapterEdits, connectChapters, deleteEdge, updateChapterPosition,
+        handlePublishClick,
     } from '$lib/state/builder/skill-editor.svelte';
 
     const skillId = $derived(page.params.id);
@@ -106,9 +108,11 @@
             <button
                 type="button"
                 class="toolbar-btn {skillEditorState.status === 'published' ? 'published' : 'primary'}"
-                onclick={publishSkill}
-                disabled={skillEditorState.publishing}
-                title={skillEditorState.status === 'published' ? 'Republish with latest changes' : 'Publish to shared space'}
+                onclick={handlePublishClick}
+                disabled={skillEditorDerived.validationCounts.errors > 0 || skillEditorState.publishing}
+                title={skillEditorDerived.validationCounts.errors > 0
+                    ? `Fix ${skillEditorDerived.validationCounts.errors} error${skillEditorDerived.validationCounts.errors !== 1 ? 's' : ''} before publishing`
+                    : skillEditorState.status === 'published' ? 'Republish with latest changes' : 'Publish to shared space'}
             >
                 {#if skillEditorState.publishing}
                     <Loader2 size={14} class="loading-spinner" />
@@ -228,6 +232,9 @@
                     onConnect={connectChapters}
                     onDeleteEdge={deleteEdge}
                 />
+                {#if skillEditorState.showValidation}
+                    <ValidationPanel />
+                {/if}
             </section>
 
         </div>
@@ -235,13 +242,13 @@
 
 {#if skillEditorState.chapterToDelete}
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <div class="confirm-overlay" role="dialog" aria-modal="true" onclick={(e) => { if (e.target === e.currentTarget) skillEditorState.chapterToDelete = null; }} onkeydown={(e) => { if (e.key === 'Escape') skillEditorState.chapterToDelete = null; }}>
-        <div class="confirm-modal">
-            <p class="confirm-title">Delete "{skillEditorState.chapterToDelete.name}"?</p>
+    <div class="confirm-overlay" onclick={(e) => { if (e.target === e.currentTarget) skillEditorState.chapterToDelete = null; }} onkeydown={(e) => { if (e.key === 'Escape') skillEditorState.chapterToDelete = null; }}>
+        <div class="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="delete-modal-title">
+            <p class="confirm-title" id="delete-modal-title">Delete "{skillEditorState.chapterToDelete.name}"?</p>
             <p class="confirm-desc">This chapter and its configuration will be permanently removed.</p>
             <div class="confirm-actions">
-                <button type="button" class="confirm-btn cancel" onclick={() => { skillEditorState.chapterToDelete = null; }}>Cancel</button>
-                <button type="button" class="confirm-btn delete" onclick={executeDeleteChapter}>Delete</button>
+                <button type="button" class="confirm-btn cancel" onclick={() => { skillEditorState.chapterToDelete = null; }}>Keep Chapter</button>
+                <button type="button" class="confirm-btn delete" onclick={executeDeleteChapter}>Delete Chapter</button>
             </div>
         </div>
     </div>
@@ -259,46 +266,13 @@
     />
 {/if}
 
-{#if skillEditorState.showValidation}
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <div class="confirm-overlay" role="dialog" aria-modal="true" onclick={(e) => { if (e.target === e.currentTarget) skillEditorState.showValidation = false; }} onkeydown={(e) => { if (e.key === 'Escape') skillEditorState.showValidation = false; }}>
-        <div class="validation-modal">
-            <div class="validation-header">
-                <span class="validation-title">Skill Validation</span>
-                <button type="button" class="close-btn" onclick={() => { skillEditorState.showValidation = false; }} aria-label="Close">×</button>
-            </div>
-            <div class="validation-body">
-                {#each skillEditorDerived.validationFindings as finding}
-                    <div class="validation-row {finding.level}">
-                        {#if finding.level === 'error'}
-                            <XCircle size={14} class="validation-icon error" />
-                        {:else if finding.level === 'warning'}
-                            <AlertTriangle size={14} class="validation-icon warning" />
-                        {:else}
-                            <CheckCircle2 size={14} class="validation-icon ok" />
-                        {/if}
-                        <span>{finding.message}</span>
-                    </div>
-                {/each}
-            </div>
-            <div class="validation-footer">
-                <span class="validation-summary">
-                    {skillEditorDerived.validationCounts.errors} error{skillEditorDerived.validationCounts.errors !== 1 ? 's' : ''},
-                    {skillEditorDerived.validationCounts.warnings} warning{skillEditorDerived.validationCounts.warnings !== 1 ? 's' : ''}
-                </span>
-                <button type="button" class="confirm-btn cancel" onclick={() => { skillEditorState.showValidation = false; }}>Close</button>
-            </div>
-        </div>
-    </div>
-{/if}
-
 {#if skillEditorState.editingCondition}
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <div class="confirm-overlay" role="dialog" aria-modal="true" onclick={(e) => { if (e.target === e.currentTarget) { skillEditorState.editingCondition = null; } }} onkeydown={(e) => { if (e.key === 'Escape') { skillEditorState.editingCondition = null; } }}>
-        <div class="condition-modal">
+    <div class="confirm-overlay" onclick={(e) => { if (e.target === e.currentTarget) { skillEditorState.editingCondition = null; } }} onkeydown={(e) => { if (e.key === 'Escape') { skillEditorState.editingCondition = null; } }}>
+        <div class="condition-modal" role="dialog" aria-modal="true" aria-labelledby="condition-modal-title">
             <div class="condition-modal-header">
                 <GitBranch size={16} class="condition-icon" />
-                <span class="condition-modal-title">{skillEditorState.editingCondition.id ? 'Edit Condition' : 'New Condition'}</span>
+                <span class="condition-modal-title" id="condition-modal-title">{skillEditorState.editingCondition.id ? 'Edit Condition' : 'New Condition'}</span>
                 <button type="button" class="close-btn" onclick={() => { skillEditorState.editingCondition = null; }} aria-label="Close">×</button>
             </div>
             <div class="condition-modal-body">
@@ -345,29 +319,6 @@
 {/if}
 
 <style>
-    /* ── Publish Error Banner ────────────────────────────────────────── */
-    .publish-error {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.5rem 0.75rem;
-        background: color-mix(in srgb, var(--color-error) 12%, transparent);
-        border-bottom: 1px solid color-mix(in srgb, var(--color-error) 30%, transparent);
-        color: var(--color-error);
-        font-size: 0.8125rem;
-    }
-    .publish-error span { flex: 1; }
-    .publish-error-dismiss {
-        background: none;
-        border: none;
-        color: var(--color-error);
-        cursor: pointer;
-        font-size: 1rem;
-        padding: 0 0.25rem;
-        opacity: 0.7;
-    }
-    .publish-error-dismiss:hover { opacity: 1; }
-
     /* ── Editor Toolbar ──────────────────────────────────────────────── */
     .editor-toolbar {
         display: flex;
@@ -432,6 +383,11 @@
         cursor: pointer;
         transition: all 0.15s ease;
         font-family: inherit;
+    }
+
+    .toolbar-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
     }
 
     .toolbar-btn.secondary {
@@ -520,6 +476,13 @@
     .dag-page {
         padding: 0;
         position: relative;
+        display: flex;
+        flex-direction: row;
+    }
+
+    .dag-page :global(> :first-child) {
+        flex: 1;
+        min-width: 0;
     }
 
     .book-spine {
@@ -928,108 +891,6 @@
     .max-cycles-input:focus {
         outline: none;
         border-color: var(--color-accent);
-    }
-
-    /* ── Validation Modal ────────────────────────────────────────────── */
-    .validation-modal {
-        background: var(--color-bg);
-        border: 1px solid var(--color-border);
-        border-radius: 0.75rem;
-        max-width: 420px;
-        width: 100%;
-        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
-        display: flex;
-        flex-direction: column;
-    }
-
-    .validation-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 0.875rem 1.25rem;
-        border-bottom: 1px solid var(--color-border);
-    }
-
-    .validation-title {
-        font-size: 0.875rem;
-        font-weight: 700;
-        color: var(--color-foreground);
-    }
-
-    .close-btn {
-        background: none;
-        border: none;
-        color: var(--color-muted);
-        cursor: pointer;
-        font-size: 1.125rem;
-        line-height: 1;
-        padding: 0.25rem;
-        border-radius: 0.25rem;
-        transition: color 0.15s ease;
-    }
-
-    .close-btn:hover {
-        color: var(--color-foreground);
-    }
-
-    .validation-body {
-        padding: 0.75rem 1.25rem;
-        display: flex;
-        flex-direction: column;
-        gap: 0.375rem;
-        max-height: 50vh;
-        overflow-y: auto;
-    }
-
-    .validation-row {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.375rem 0.5rem;
-        border-radius: 0.375rem;
-        font-size: 0.75rem;
-        color: var(--color-foreground);
-    }
-
-    .validation-row.error {
-        background: color-mix(in srgb, var(--color-error, #ef4444) 8%, transparent);
-    }
-
-    .validation-row.warning {
-        background: color-mix(in srgb, var(--color-warning, #f59e0b) 8%, transparent);
-    }
-
-    .validation-row.ok {
-        background: color-mix(in srgb, var(--color-success, #22c55e) 6%, transparent);
-        color: var(--color-muted);
-    }
-
-    :global(.validation-icon.error) {
-        color: var(--color-error, #ef4444);
-        flex-shrink: 0;
-    }
-
-    :global(.validation-icon.warning) {
-        color: var(--color-warning, #f59e0b);
-        flex-shrink: 0;
-    }
-
-    :global(.validation-icon.ok) {
-        color: var(--color-success, #22c55e);
-        flex-shrink: 0;
-    }
-
-    .validation-footer {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 0.75rem 1.25rem;
-        border-top: 1px solid var(--color-border);
-    }
-
-    .validation-summary {
-        font-size: 0.6875rem;
-        color: var(--color-muted);
     }
 
     /* ── AI Assist Button ────────────────────────────────────────────── */
