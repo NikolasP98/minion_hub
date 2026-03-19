@@ -2,8 +2,23 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
 import { env } from '$env/dynamic/private';
+import { getToolInfo } from '$lib/data/tool-manifest';
 
-const SYSTEM_PROMPT = `You are a skill-building assistant for an AI agent platform called OpenClaw. Given a subprocess chapter's name and description within a larger skill, generate suggestions for ALL fields following Anthropic's best practices for skill development.
+const MODEL_PRICE_TABLE: Record<string, { inputPerMillion: number; outputPerMillion: number }> = {
+  'anthropic/claude-sonnet-4': { inputPerMillion: 3.00, outputPerMillion: 15.00 },
+  'anthropic/claude-haiku-3': { inputPerMillion: 0.25, outputPerMillion: 1.25 },
+  'openai/gpt-4o': { inputPerMillion: 2.50, outputPerMillion: 10.00 },
+  'openai/gpt-4o-mini': { inputPerMillion: 0.15, outputPerMillion: 0.60 },
+};
+
+function estimateCost(model: string, promptTokens: number, completionTokens: number): number {
+  const prices = MODEL_PRICE_TABLE[model];
+  if (!prices) return 0;
+  return (promptTokens / 1_000_000) * prices.inputPerMillion +
+         (completionTokens / 1_000_000) * prices.outputPerMillion;
+}
+
+const SYSTEM_PROMPT = `You are a skill-building assistant for an AI agent platform called OpenClaw. Given a subprocess chapter's name and description within a larger skill, generate suggestions for ALL fields following best practices for skill development.
 
 RULES:
 - Write ALL instructions in imperative/infinitive form (verb-first): "Search for X", "Extract data from Y", "Validate output against Z"
@@ -16,19 +31,22 @@ RULES:
 - The name suggestion should be a clear, concise subprocess name
 - The description should explain the subprocess's role in the pipeline
 - Trigger conditions should specify when this subprocess activates
-- Success criteria should define what must be true when complete
+- Success criteria should define what must be true when complete`;
 
-Respond with ONLY valid JSON, no markdown fences or explanation:
-{
-  "name": "Improved Chapter Name",
-  "description": "Clear description of what this subprocess does in the pipeline",
-  "triggerConditions": "When upstream provides X, After Y completes",
-  "guide": "- Search the web for relevant sources on the topic\\n- Extract key findings from top 3 results\\n- Cross-reference findings against known data",
-  "suggestedToolIds": ["web_search", "web_fetch"],
-  "context": "Receives a research topic string and optional list of seed URLs from the upstream chapter",
-  "outputDef": "Structured JSON array of findings, each with: title, source URL, key points (string[]), confidence score (0-1)",
-  "successCriteria": "All sources have been verified, Output contains at least 3 data points with confidence > 0.7"
-}`;
+const CHAPTER_SUGGESTION_SCHEMA = {
+  type: 'object',
+  required: ['name', 'guide', 'suggestedToolIds'],
+  properties: {
+    name: { type: 'string', description: 'Improved chapter name' },
+    description: { type: 'string', description: 'Role of this chapter in the pipeline' },
+    triggerConditions: { type: 'string', description: 'When this chapter activates' },
+    guide: { type: 'string', description: 'Imperative bullet-point instructions (3-8 items)' },
+    suggestedToolIds: { type: 'array', items: { type: 'string' }, description: 'Tool IDs from available pool' },
+    context: { type: 'string', description: 'Input data expectations from upstream' },
+    outputDef: { type: 'string', description: 'Concrete output data structure description' },
+    successCriteria: { type: 'string', description: 'Completion criteria' },
+  },
+} as const;
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const DEFAULT_MODEL = 'anthropic/claude-sonnet-4';
@@ -46,11 +64,20 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   const { name, description, skillName, skillDescription, availableToolIds, model } = body;
   if (!name) throw error(400, 'Chapter name is required');
 
-  const userPrompt = `Skill: "${skillName || 'Untitled Skill'}"${skillDescription ? ` — ${skillDescription}` : ''}
+  const toolDescriptions = (availableToolIds ?? [])
+    .map((id: string) => {
+      const info = getToolInfo(id);
+      return `- ${info.id}: ${info.description}`;
+    })
+    .join('\n');
 
-Chapter: "${name}"${description ? ` — ${description}` : ''}
+  // CFIX-07: Wrap user inputs in XML delimiters to prevent injection
+  const userPrompt = `Skill: <skill_name>${skillName || 'Untitled Skill'}</skill_name>${skillDescription ? `\nSkill description: <skill_description>${skillDescription}</skill_description>` : ''}
 
-Available tool IDs: ${(availableToolIds ?? []).join(', ') || 'none'}
+Chapter: <chapter_name>${name}</chapter_name>${description ? `\nChapter description: <chapter_description>${description}</chapter_description>` : ''}
+
+Available tools:
+${toolDescriptions || '(none)'}
 
 Generate the guide (imperative instructions), suggested tool IDs from the available list, input context expectations, and output definition for this chapter.`;
 
@@ -70,6 +97,15 @@ Generate the guide (imperative instructions), suggested tool IDs from the availa
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: userPrompt },
         ],
+        tools: [{
+          type: 'function',
+          function: {
+            name: 'suggest_chapter_fields',
+            description: 'Generate suggested fields for a skill chapter',
+            parameters: CHAPTER_SUGGESTION_SCHEMA,
+          },
+        }],
+        tool_choice: { type: 'function', function: { name: 'suggest_chapter_fields' } },
       }),
     });
 
@@ -80,21 +116,60 @@ Generate the guide (imperative instructions), suggested tool IDs from the availa
     }
 
     const completion = await res.json();
-    const content = completion.choices?.[0]?.message?.content ?? '';
 
-    // Parse JSON from the response (handle potential markdown fences)
-    const jsonStr = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    const parsed = JSON.parse(jsonStr);
+    // CFIX-05: Check for completion.error before attempting to parse choices
+    if (completion.error) {
+      console.error('[ai/suggest-chapter] completion.error:', completion.error);
+      return json({
+        name: '', description: '', triggerConditions: '', guide: '',
+        suggestedToolIds: [], context: '', outputDef: '', successCriteria: '',
+        error: completion.error?.message ?? JSON.stringify(completion.error) ?? 'AI returned an error',
+      });
+    }
+
+    // Try tool_calls first (structured output), fall back to content parsing
+    let parsed: Record<string, unknown>;
+    const toolCall = completion.choices?.[0]?.message?.tool_calls?.[0];
+    if (toolCall?.function?.arguments) {
+      parsed = JSON.parse(toolCall.function.arguments);
+    } else {
+      // Fallback: parse from content (for models that don't support tool_choice)
+      console.warn('[ai/suggest-chapter] No tool_calls in response — falling back to content parse');
+      const content = completion.choices?.[0]?.message?.content ?? '';
+      const jsonStr = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      parsed = JSON.parse(jsonStr);
+    }
+
+    // CFIX-03: Filter suggestedToolIds against available pool
+    const availableSet = new Set<string>(availableToolIds ?? []);
+    const rawSuggestedToolIds = (parsed.suggestedToolIds as string[]) ?? [];
+    const validToolIds = rawSuggestedToolIds.filter(id => availableSet.has(id));
+    const removedToolIds = rawSuggestedToolIds.filter(id => !availableSet.has(id));
+    const filteredWarning = removedToolIds.length > 0
+      ? `${removedToolIds.length} tool(s) not available in current pool were removed: ${removedToolIds.join(', ')}`
+      : undefined;
+
+    // CFIX-10: Extract usage and estimate cost
+    const rawUsage = completion.usage ?? {};
+    const promptTokens = rawUsage.prompt_tokens ?? 0;
+    const completionTokens = rawUsage.completion_tokens ?? 0;
+    const usedModel = model || DEFAULT_MODEL;
 
     return json({
-      name: parsed.name ?? '',
-      description: parsed.description ?? '',
-      triggerConditions: parsed.triggerConditions ?? '',
-      guide: parsed.guide ?? '',
-      suggestedToolIds: parsed.suggestedToolIds ?? [],
-      context: parsed.context ?? '',
-      outputDef: parsed.outputDef ?? '',
-      successCriteria: parsed.successCriteria ?? '',
+      name: (parsed.name as string) ?? '',
+      description: (parsed.description as string) ?? '',
+      triggerConditions: (parsed.triggerConditions as string) ?? '',
+      guide: (parsed.guide as string) ?? '',
+      suggestedToolIds: validToolIds,
+      context: (parsed.context as string) ?? '',
+      outputDef: (parsed.outputDef as string) ?? '',
+      successCriteria: (parsed.successCriteria as string) ?? '',
+      ...(filteredWarning ? { filteredToolIds: removedToolIds, warning: filteredWarning } : {}),
+      usage: {
+        promptTokens,
+        completionTokens,
+        estimatedCost: estimateCost(usedModel, promptTokens, completionTokens),
+      },
     });
   } catch (e) {
     console.error('[ai/suggest-chapter]', e);
