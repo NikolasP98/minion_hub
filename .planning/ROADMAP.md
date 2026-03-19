@@ -80,7 +80,7 @@ Plans:
   2. Chapters, edges, chapterToolMap, dirty tracking, and AI generation state are owned by `src/lib/state/builder/skill-editor.svelte.ts`, not inline in `+page.svelte`
   3. The `+page.svelte` file is reduced to template markup and lifecycle orchestration with no inline business logic variables
   4. The saveTimer cleanup and existing `$effect` patterns are consolidated in the state module, with no lifecycle leaks on page navigation
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
 - [ ] 05-01-PLAN.md — Extract all state, derived values, and business functions to skill-editor.svelte.ts; reduce page to template + lifecycle
@@ -187,7 +187,7 @@ Phases execute in numeric order: 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 
 | 2. Cards and Field Widgets | v1.0 | 0/0 | Deferred | - |
 | 3. Discovery and Overrides | v1.0 | 0/0 | Deferred | - |
 | 4. Setup Wizard | v1.0 | 0/0 | Deferred | - |
-| 5. State Architecture Refactor | v2.0 | 0/1 | In progress | - |
+| 5. State Architecture Refactor | 1/1 | Complete   | 2026-03-19 | - |
 | 6. Critical Code Fixes | v2.0 | 0/TBD | Not started | - |
 | 7. Validation UX | v2.0 | 0/TBD | Not started | - |
 | 8. Error Handling | v2.0 | 0/TBD | Not started | - |

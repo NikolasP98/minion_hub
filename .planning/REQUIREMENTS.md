@@ -9,8 +9,8 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### State Architecture
 
-- [ ] **ARCH-01**: Skill editor state (chapters, edges, tools, dirty tracking, AI generation) is extracted from +page.svelte into a dedicated .svelte.ts state module
-- [ ] **ARCH-02**: +page.svelte is reduced to template + lifecycle orchestration, delegating business logic to the state module
+- [x] **ARCH-01**: Skill editor state (chapters, edges, tools, dirty tracking, AI generation) is extracted from +page.svelte into a dedicated .svelte.ts state module
+- [x] **ARCH-02**: +page.svelte is reduced to template + lifecycle orchestration, delegating business logic to the state module
 
 ### Critical Code Fixes
 
@@ -114,8 +114,8 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ARCH-01 | Phase 5 | Pending |
-| ARCH-02 | Phase 5 | Pending |
+| ARCH-01 | Phase 5 | Complete |
+| ARCH-02 | Phase 5 | Complete |
 | CFIX-01 | Phase 6 | Pending |
 | CFIX-02 | Phase 6 | Pending |
 | CFIX-03 | Phase 6 | Pending |
