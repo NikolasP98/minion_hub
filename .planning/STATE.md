@@ -1,68 +1,49 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
+milestone: v2.0
+milestone_name: Skill Builder Improvements
 current_plan: Not started
 status: unknown
-stopped_at: Completed 01-03-PLAN.md
-last_updated: "2026-03-12T06:30:54.626Z"
+stopped_at: Defining requirements
+last_updated: "2026-03-18T22:35:00.000Z"
 progress:
-  total_phases: 4
-  completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Execution State
 
 ## Current Position
 
-- **Phase:** 01-tab-layout-and-save-infrastructure
-- **Current Plan:** Not started
-- **Last Completed:** 01-03-PLAN.md
-- **Stopped At:** Completed 01-03-PLAN.md
+- **Phase:** Not started (defining requirements)
+- **Current Plan:** --
+- **Last Completed:** --
+- **Stopped At:** Milestone v2.0 started
 
 ## Progress
 
 ```
-Phase 1: [==========] 3/3 plans complete (including gap closure)
-Phase 2: [----------] 0/3 plans complete
-Phase 3: [----------] 0/2 plans complete
-Phase 4: [----------] 0/1 plans complete
+No phases defined yet — requirements in progress.
 ```
 
-## Performance Metrics
+## Accumulated Context
 
-| Phase | Plan | Duration | Tasks | Files |
-|-------|------|----------|-------|-------|
-| 01    | 01   | 3min     | 3     | 4     |
-| 01    | 02   | 6min     | 2     | 4     |
-| 01    | 03   | 5min     | 2     | 2     |
+### From v1.0 Settings Page Revamp
+- Phase 1 (Tab Layout and Save) completed: 3/3 plans, merged ChannelsTab into Comms, dirty tab dots, save/restart hardening
+- Phases 2-4 not started (paused for builder work)
+- Key pattern: config state management via `config.svelte.ts` with dirty tracking
 
 ## Decisions
 
-- **01-01**: ChannelsTab integrated inside Comms gateway panel using same inline section pattern as TeamTab (security) and BindingsTab (agents)
-- **01-01**: dirtyTabIds uses SECURITY_GROUP_IDS carve-out first, consistent with how groups are routed
-- **01-01**: Dirty dot hidden when tab is active (user already viewing dirty content)
-- **01-01**: Default tab changed from 'appearance' to 'hosts' per locked tab order decision
-- **01-02**: toaster.create() returns string ID directly from @zag-js/toast — no UUID workaround needed
-- **01-02**: onRestartReconnected uses setTimeout(0) for immediate reset since toast manages dismiss timing
-- **01-02**: Auto-save on reconnect skips when restartState.phase !== 'idle' to avoid race with restart cycle
-- **01-03**: Banner placed before {#if !conn.connected} block so it renders in both connected and disconnected states when isDirty is true
-- **01-03**: SettingsTabBar imports TABS from config-schema.ts; inline ALL_TABS removed entirely (single source of truth)
+None yet for v2.0.
 
 ## Active Blockers
 
 None
 
-### Quick Tasks Completed
-
-| # | Description | Date | Commit | Directory |
-|---|-------------|------|--------|-----------|
-| 1 | Fix settings rendering [object Object] text for nested object values in config editor | 2026-03-12 | 6ec0d2b | [1-fix-settings-rendering-object-object-tex](./quick/1-fix-settings-rendering-object-object-tex/) |
-
 ## Session Info
 
-- **Last Session:** 2026-03-12T06:32:21Z
-- **Last Activity:** 2026-03-12 - Completed quick task 1: Fix settings rendering [object Object] text for nested object values in config editor
-- **Stopped At:** Completed 01-03-PLAN.md (2 tasks, 2 files)
+- **Last Session:** 2026-03-18
+- **Last Activity:** 2026-03-18 — Milestone v2.0 started
