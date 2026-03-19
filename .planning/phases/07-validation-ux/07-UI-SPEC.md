@@ -47,7 +47,7 @@ Declared values (multiples of 4):
 Source: existing page.svelte styles (modal padding: 0.875rem / 1.25rem / 0.75rem map to sm, md, sm rhythm).
 
 Exceptions:
-- Toolbar button padding: 0.375rem 0.625rem (6px × 10px) — existing non-4-grid exception inherited from `.toolbar-btn`
+- Toolbar button padding: 0.375rem 0.625rem (6px × 10px) — existing non-4-grid exception inherited from `.toolbar-btn`. This phase does not introduce or extend this pattern.
 - Validation panel fixed width: 280px — not a spacing token, it is a layout dimension
 - Panel header height: 2.75rem (44px) — matches toolbar height for visual alignment
 
@@ -57,14 +57,16 @@ Exceptions:
 
 All values are inherited from the existing codebase. Do not introduce new type scales.
 
+Two weights only: 400 (regular) and 600 (emphasis). Weight 700 is not used in new components introduced by this phase.
+
 | Role | Size | Weight | Line Height |
 |------|------|--------|-------------|
 | Body (validation message text) | 12px (0.75rem) | 400 | 1.5 |
 | Label (chapter group header, panel title) | 11px (0.6875rem) | 600 | 1.4 |
 | Micro (summary counts, passing count footer) | 11px (0.6875rem) | 400 | 1.4 |
-| Section heading (panel "Validation — N errors" header) | 14px (0.875rem) | 700 | 1.2 |
+| Section heading (panel "Validation — N errors" header) | 14px (0.875rem) | 600 | 1.2 |
 
-Source: existing validation modal styles in +page.svelte — `.validation-title` (0.875rem/700), `.validation-summary` (0.6875rem), `.validation-row` (0.75rem).
+Source: existing validation modal styles in +page.svelte — `.validation-title` (0.875rem), `.validation-summary` (0.6875rem), `.validation-row` (0.75rem). The existing `.validation-title` style declares weight 700; new panel header uses 600 to stay within the 2-weight contract. The executor must not add a third weight.
 
 No new font sizes are introduced. The panel re-uses the exact scale already present in the outgoing modal.
 
@@ -113,7 +115,7 @@ New component: `src/lib/components/builder/ValidationPanel.svelte`
 ```
 ┌──────────────────────────────────────┐  ← border-right: 1px solid --color-border (panel left edge)
 │ HEADER                               │  ← background: --color-bg2, height: 2.75rem, padding: 0 md
-│ "Validation — N errors, N warnings"  │  ← 14px/700, color: --color-foreground
+│ "Validation — N errors, N warnings"  │  ← 14px/600, color: --color-foreground
 │                                  [×] │  ← close button, color: --color-muted
 ├──────────────────────────────────────┤
 │ BODY (scrollable)                    │  ← overflow-y: auto, padding: sm md
@@ -137,7 +139,7 @@ New component: `src/lib/components/builder/ValidationPanel.svelte`
 .validation-row {
   display: flex;
   align-items: flex-start;  /* flex-start for multi-line messages */
-  gap: 6px;                 /* xs */
+  gap: 4px;                 /* xs */
   padding: 4px 8px;         /* xs sm */
   border-radius: var(--radius-sm, 4px);
   font-size: 0.75rem;
@@ -154,7 +156,7 @@ New component: `src/lib/components/builder/ValidationPanel.svelte`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 0 2px 0;         /* sm top, xs bottom */
+  padding: 8px 0 4px 0;         /* sm top, xs bottom — both multiples of 4 */
   margin-top: 8px;               /* sm, except first group */
   border-top: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
 }
@@ -173,7 +175,7 @@ New component: `src/lib/components/builder/ValidationPanel.svelte`
 .fix-btn {
   font-size: 0.625rem;     /* 10px — compact label next to chapter name */
   font-weight: 600;
-  padding: 2px 6px;        /* xs */
+  padding: 4px 8px;        /* xs sm — both multiples of 4 */
   color: var(--color-accent);
   background: color-mix(in srgb, var(--color-accent) 10%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-accent) 25%, transparent);
@@ -241,7 +243,7 @@ ValidationPanel uses `role="complementary"` with `aria-label="Skill validation"`
 | Panel header (all clear) | "Validation — all clear" |
 | Panel close button aria-label | "Close validation panel" |
 | Skill group header (skill-level findings) | "Skill" |
-| Chapter Fix button | "Fix" |
+| Chapter Fix button label | "Fix →" (the arrow character is a literal U+2192 →, not an icon) |
 | Panel footer: passing count | "N chapter(s) passing" (use actual count; "0 chapters passing" when all have issues) |
 | Panel footer: Publish Anyway button | "Publish Anyway" |
 | Publish button tooltip (errors > 0) | "Fix N error(s) before publishing" (pluralized: "1 error" not "1 errors") |
@@ -254,6 +256,8 @@ ValidationPanel uses `role="complementary"` with `aria-label="Skill validation"`
 | Empty state (no findings — panel is open) | Handled by panel header "all clear" — no separate empty body copy needed |
 | Delete confirmation title | "Delete "{chapterName}"?" |
 | Delete confirmation body | "This chapter and its configuration will be permanently removed." |
+| Delete confirmation confirm button | "Delete Chapter" |
+| Delete confirmation cancel button | "Keep Chapter" |
 
 Source: CONTEXT.md decisions, existing +page.svelte strings (confirmed and extended).
 
