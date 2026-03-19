@@ -83,7 +83,7 @@ Plans:
 **Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 05-01-PLAN.md — Extract all state, derived values, and business functions to skill-editor.svelte.ts; reduce page to template + lifecycle
+- [x] 05-01-PLAN.md — Extract all state, derived values, and business functions to skill-editor.svelte.ts; reduce page to template + lifecycle
 
 ### Phase 6: Critical Code Fixes
 **Goal**: The skill builder produces correct AI output, performs efficient database operations, and handles edge cases that currently cause silent bugs or incorrect behavior
@@ -95,7 +95,12 @@ Plans:
   3. Publish validation executes as a single batch query regardless of chapter count — no N+1 SELECT loop
   4. User inputs in AI prompts are wrapped in XML delimiters and cannot break out of their expected prompt context
   5. AI API endpoints return a `usage` object (prompt_tokens, completion_tokens, cost) in every response — usage data is no longer silently discarded
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — Fix AI endpoints: SYSTEM_PROMPT DAG text, nullable edge labels, tool filtering, completion.error check, XML injection safety, usage/cost return
+- [ ] 06-02-PLAN.md — Fix builder service: batch query for publish validation, BFS connectivity check, batch inserts for setChapterTools/setAgentBuiltSkills
+- [ ] 06-03-PLAN.md — Fix publish safety: abort publish if prior save failed (dirty re-check after saveSkill)
 
 ### Phase 7: Validation UX
 **Goal**: Skill authors see exactly which chapters have errors, why publish is blocked, and can navigate directly to any broken chapter from the error panel
@@ -187,8 +192,8 @@ Phases execute in numeric order: 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 
 | 2. Cards and Field Widgets | v1.0 | 0/0 | Deferred | - |
 | 3. Discovery and Overrides | v1.0 | 0/0 | Deferred | - |
 | 4. Setup Wizard | v1.0 | 0/0 | Deferred | - |
-| 5. State Architecture Refactor | 1/1 | Complete   | 2026-03-19 | - |
-| 6. Critical Code Fixes | v2.0 | 0/TBD | Not started | - |
+| 5. State Architecture Refactor | v2.0 | 1/1 | Complete | 2026-03-19 |
+| 6. Critical Code Fixes | v2.0 | 0/3 | Planned | - |
 | 7. Validation UX | v2.0 | 0/TBD | Not started | - |
 | 8. Error Handling | v2.0 | 0/TBD | Not started | - |
 | 9. AI Quality and Tool Manifest | v2.0 | 0/TBD | Not started | - |
