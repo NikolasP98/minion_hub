@@ -28,6 +28,7 @@ Gateway administrators and skill authors can confidently manage, monitor, and ex
 
 - v1.0 Settings Page Revamp: Tab layout and save infrastructure (Phase 1 shipped)
 - ARCH-01, ARCH-02: State architecture extraction — skill editor god-component decomposed into `skill-editor.svelte.ts` module (Phase 5 complete)
+- CFIX-01 through CFIX-10: All 10 critical code fixes — AI endpoint bugs, DB layer performance, publish safety (Phase 6 complete)
 
 ### Active
 
@@ -82,4 +83,4 @@ See `.planning/REQUIREMENTS.md` for full REQ-ID breakdown.
 | Phase 8 included as placeholder | Keeps runtime-dependent features visible in roadmap | -- Pending |
 
 ---
-*Last updated: 2026-03-19 after Phase 5 (state architecture refactor) completion*
+*Last updated: 2026-03-19 after Phase 6 (critical code fixes) completion*
