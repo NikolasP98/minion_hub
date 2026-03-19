@@ -95,7 +95,7 @@ Plans:
   3. Publish validation executes as a single batch query regardless of chapter count — no N+1 SELECT loop
   4. User inputs in AI prompts are wrapped in XML delimiters and cannot break out of their expected prompt context
   5. AI API endpoints return a `usage` object (prompt_tokens, completion_tokens, cost) in every response — usage data is no longer silently discarded
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 
 Plans:
 - [ ] 06-01-PLAN.md — Fix AI endpoints: SYSTEM_PROMPT DAG text, nullable edge labels, tool filtering, completion.error check, XML injection safety, usage/cost return
@@ -193,7 +193,7 @@ Phases execute in numeric order: 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 
 | 3. Discovery and Overrides | v1.0 | 0/0 | Deferred | - |
 | 4. Setup Wizard | v1.0 | 0/0 | Deferred | - |
 | 5. State Architecture Refactor | v2.0 | 1/1 | Complete | 2026-03-19 |
-| 6. Critical Code Fixes | 1/3 | In Progress|  | - |
+| 6. Critical Code Fixes | 2/3 | In Progress|  | - |
 | 7. Validation UX | v2.0 | 0/TBD | Not started | - |
 | 8. Error Handling | v2.0 | 0/TBD | Not started | - |
 | 9. AI Quality and Tool Manifest | v2.0 | 0/TBD | Not started | - |
