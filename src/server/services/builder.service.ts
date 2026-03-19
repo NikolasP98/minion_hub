@@ -2,6 +2,7 @@ import { eq, and, desc, inArray } from 'drizzle-orm';
 import { builtSkills, builtSkillTools, builtChapters, builtChapterEdges, builtChapterTools, builtAgents, builtAgentSkills, builtTools, agentBuiltSkills } from '$server/db/schema';
 import { newId, nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
+import { validateSkill } from '$lib/utils/skill-validation';
 
 // ── Built Skills ──────────────────────────────────────────────────────
 
@@ -79,84 +80,50 @@ export interface ValidationResult {
 }
 
 export async function validateSkillForPublish(ctx: TenantContext, skillId: string): Promise<ValidationResult> {
-  const errors: string[] = [];
-
   const skill = await getBuiltSkill(ctx, skillId);
   if (!skill) return { valid: false, errors: ['Skill not found'] };
 
-  if (!skill.name?.trim()) errors.push('Skill must have a name');
-
   const chapters = await getChapters(ctx, skillId);
-  if (chapters.length === 0) {
-    errors.push('Skill must have at least 1 chapter');
-    return { valid: false, errors };
-  }
+  const edges = chapters.length > 1 ? await getChapterEdges(ctx, skillId) : [];
 
-  // Chapter-type nodes must have guide text
-  const missingGuide = chapters.filter(ch => ch.type === 'chapter' && !ch.guide?.trim());
-  if (missingGuide.length > 0) {
-    errors.push(`${missingGuide.length} chapter(s) missing instructions: ${missingGuide.map(ch => ch.name).join(', ')}`);
-  }
-
-  // Condition-type nodes must have conditionText
-  const missingCondition = chapters.filter(ch => ch.type === 'condition' && !ch.conditionText?.trim());
-  if (missingCondition.length > 0) {
-    errors.push(`${missingCondition.length} condition(s) missing question: ${missingCondition.map(ch => ch.name).join(', ')}`);
-  }
-
-  // Chapter-type nodes must have at least 1 tool — single batch query instead of N+1
+  // Build chapterToolMap from DB — batch query for all chapter-type nodes
+  const chapterToolMap: Record<string, string[]> = {};
   const chapterOnlyNodes = chapters.filter(c => c.type === 'chapter');
   if (chapterOnlyNodes.length > 0) {
     const chapterIds = chapterOnlyNodes.map(c => c.id);
     const allTools = await ctx.db
-      .select({ chapterId: builtChapterTools.chapterId })
+      .select({ chapterId: builtChapterTools.chapterId, toolId: builtChapterTools.toolId })
       .from(builtChapterTools)
       .where(inArray(builtChapterTools.chapterId, chapterIds));
-    const chaptersWithTools = new Set(allTools.map(t => t.chapterId));
+    for (const t of allTools) {
+      if (!chapterToolMap[t.chapterId]) chapterToolMap[t.chapterId] = [];
+      chapterToolMap[t.chapterId].push(t.toolId);
+    }
+    // Ensure chapters with no tools have empty arrays
     for (const ch of chapterOnlyNodes) {
-      if (!chaptersWithTools.has(ch.id)) {
-        errors.push(`Chapter "${ch.name}" has no tools assigned`);
-      }
+      if (!chapterToolMap[ch.id]) chapterToolMap[ch.id] = [];
     }
   }
 
-  // Multi-chapter skills must have edges and all nodes reachable via BFS from root nodes
-  if (chapters.length > 1) {
-    const edges = await getChapterEdges(ctx, skillId);
-    if (edges.length === 0) {
-      errors.push('Chapters are not connected (no edges defined)');
-    } else {
-      // BFS from all root nodes (nodes with no incoming edges)
-      const hasIncoming = new Set(edges.map(e => e.targetChapterId));
-      const roots = chapters.filter(ch => !hasIncoming.has(ch.id));
+  const findings = validateSkill({
+    name: skill.name ?? '',
+    description: skill.description ?? '',
+    chapters: chapters.map(ch => ({
+      id: ch.id,
+      name: ch.name,
+      type: ch.type ?? 'chapter',
+      guide: ch.guide ?? '',
+      conditionText: ch.conditionText ?? '',
+      outputDef: ch.outputDef ?? '',
+    })),
+    edges: edges.map(e => ({
+      sourceChapterId: e.sourceChapterId,
+      targetChapterId: e.targetChapterId,
+    })),
+    chapterToolMap,
+  });
 
-      if (roots.length > 0) {
-        // Build adjacency list and BFS from all roots
-        const reachable = new Set<string>(roots.map(r => r.id));
-        const queue = [...roots.map(r => r.id)];
-        const adjMap = new Map<string, string[]>();
-        for (const ch of chapters) adjMap.set(ch.id, []);
-        for (const e of edges) adjMap.get(e.sourceChapterId)?.push(e.targetChapterId);
-
-        while (queue.length > 0) {
-          const current = queue.shift()!;
-          for (const neighbor of adjMap.get(current) ?? []) {
-            if (!reachable.has(neighbor)) {
-              reachable.add(neighbor);
-              queue.push(neighbor);
-            }
-          }
-        }
-
-        const unreachable = chapters.filter(ch => !reachable.has(ch.id));
-        if (unreachable.length > 0) {
-          errors.push(`${unreachable.length} disconnected chapter(s): ${unreachable.map(ch => ch.name).join(', ')}`);
-        }
-      }
-      // else: roots.length === 0 means all nodes have incoming edges (pure cycle) — valid, skip reachability check
-    }
-  }
-
+  const errors = findings.filter(f => f.level === 'error').map(f => f.message);
   return { valid: errors.length === 0, errors };
 }
 

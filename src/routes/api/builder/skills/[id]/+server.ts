@@ -5,6 +5,7 @@ import {
   getSkillTools, addSkillTool, removeSkillTool,
   getChapters, createChapter, updateChapter, deleteChapter,
   getChapterEdges, createChapterEdge, deleteChapterEdge,
+  validateSkillForPublish,
 } from '$server/services/builder.service';
 import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
 
@@ -35,6 +36,10 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
 
   // Dispatch on action type
   if (action === 'publish') {
+    const validation = await validateSkillForPublish(ctx, params.id!);
+    if (!validation.valid) {
+      return json({ ok: false, errors: validation.errors }, { status: 400 });
+    }
     await publishBuiltSkill(ctx, params.id!);
     return json({ ok: true });
   }
