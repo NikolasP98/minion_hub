@@ -1,610 +1,42 @@
 <script lang="ts">
     import { page } from "$app/state";
     import { ArrowLeft, BookOpen, Loader2, Check, Upload, Circle, AlertTriangle, XCircle, CheckCircle2, Sparkles, GitBranch, RotateCcw } from "lucide-svelte";
-    import { onMount } from "svelte";
-    import posthog from "posthog-js";
-    import { sendRequest } from "$lib/services/gateway.svelte";
     import { conn } from "$lib/state/gateway";
-    import type { ToolStatusEntry, ToolsStatusReport } from "$lib/types/tools";
     import { getToolInfo } from "$lib/data/tool-manifest";
     import ChapterEditor from "$lib/components/builder/ChapterEditor.svelte";
     import ChapterDAG from "$lib/components/builder/ChapterDAG.svelte";
     import EmojiPicker from "$lib/components/builder/EmojiPicker.svelte";
+    import {
+        skillEditorState,
+        validationFindings, validationCounts, worstLevel, conditionValidation,
+        poolToolIds, allToolIds, validationTooltip,
+        initSkillEditor, cleanupSkillEditor, loadGatewayTools, scheduleSave,
+        publishSkill, buildSkillWithAI, addChapter, addCondition,
+        saveCondition, updateCondition, openConditionOrChapter,
+        confirmRemoveChapter, executeDeleteChapter, openChapterEditor,
+        saveChapterEdits, connectChapters, deleteEdge, updateChapterPosition,
+    } from '$lib/state/builder/skill-editor.svelte';
 
     const skillId = $derived(page.params.id);
 
-    // ── Chapter editor modal state ────────────────────────────────────
-    let editingChapter = $state<ChapterEntry | null>(null);
-    let editingChapterToolIds = $state<string[]>([]);
-
-    // ── Form state ──────────────────────────────────────────────────────
-    let name = $state("Untitled Skill");
-    let description = $state("");
-    let emoji = $state("📘");
-    let status: "draft" | "published" = $state("draft");
-    let maxCycles = $state(3);
-    let loading = $state(true);
-    let saving = $state(false);
-    let dirty = $state(false);
-    let saveTimer: ReturnType<typeof setTimeout> | null = null;
-
-    // ── Tool pool state (derived from chapter tools) ────────────────────
-    let chapterToolMap = $state<Record<string, string[]>>({});
-    const poolToolIds = $derived([...new Set(Object.values(chapterToolMap).flat())]);
-
-    // ── Chapters state ──────────────────────────────────────────────────
-    interface ChapterEntry { id: string; type?: string; name: string; description: string; guide: string; context: string; outputDef: string; conditionText?: string; positionX: number; positionY: number; }
-    let chapters = $state<ChapterEntry[]>([]);
-    let chapterEdges = $state<{ id: string; sourceChapterId: string; targetChapterId: string; label: string | null }[]>([]);
-
-    // ── Gateway tools (for chapter editor tool selection) ──────────────
-    let gatewayTools = $state<ToolStatusEntry[]>([]);
-    const allToolIds = $derived(gatewayTools.map(t => t.id));
-
-    async function loadGatewayTools() {
-        if (!conn.connected) return;
-        try {
-            const report = (await sendRequest('tools.status', {})) as ToolsStatusReport;
-            gatewayTools = report.tools;
-        } catch (e) {
-            console.error('[skill-editor] Failed to load gateway tools:', e);
-        }
-    }
-
-    // ── Load skill data ─────────────────────────────────────────────────
-    async function loadSkill() {
-        loading = true;
-        try {
-            const res = await fetch(`/api/builder/skills/${skillId}`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data = await res.json();
-            name = data.skill.name;
-            description = data.skill.description ?? '';
-            emoji = data.skill.emoji ?? '📘';
-            status = data.skill.status;
-            maxCycles = data.skill.maxCycles ?? 3;
-            chapters = data.chapters;
-            chapterEdges = data.edges;
-
-            // Load chapter tools into map
-            const toolMap: Record<string, string[]> = {};
-            await Promise.all(data.chapters.map(async (ch: ChapterEntry) => {
-                try {
-                    const toolRes = await fetch(`/api/builder/skills/${skillId}/chapter-tools/${ch.id}`);
-                    if (toolRes.ok) {
-                        const toolData = await toolRes.json();
-                        toolMap[ch.id] = toolData.toolIds ?? [];
-                    } else {
-                        toolMap[ch.id] = [];
-                    }
-                } catch {
-                    toolMap[ch.id] = [];
-                }
-            }));
-            chapterToolMap = toolMap;
-        } catch (e) {
-            console.error('[skill-editor] Failed to load:', e);
-        } finally {
-            loading = false;
-        }
-    }
-
-    // ── Auto-save (debounced 2s) ─────────────────────────────────────────
-    function scheduleSave() {
-        dirty = true;
-        if (saveTimer) clearTimeout(saveTimer);
-        saveTimer = setTimeout(() => saveSkill(), 2000);
-    }
-
-    async function saveSkill() {
-        saving = true;
-        try {
-            await fetch(`/api/builder/skills/${skillId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, description, emoji, maxCycles }),
-            });
-            dirty = false;
-        } catch (e) {
-            console.error('[skill-editor] Save failed:', e);
-        } finally {
-            saving = false;
-        }
-    }
-
-    // ── Publish ──────────────────────────────────────────────────────────
-    let publishing = $state(false);
-
-    async function publishSkill() {
-        // Flush any pending save first
-        if (dirty) await saveSkill();
-        publishing = true;
-        try {
-            await fetch(`/api/builder/skills/${skillId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'publish' }),
-            });
-            status = 'published';
-            posthog.capture('skill_published', { skill_id: skillId, skill_name: name });
-        } catch (e) {
-            console.error('[skill-editor] Publish failed:', e);
-        } finally {
-            publishing = false;
-        }
-    }
-
-    // ── AI Assist: Generate full skill pipeline ─────────────────────────
-    let aiBuilding = $state(false);
-    let aiBuildError = $state<string | null>(null);
-
-    async function buildSkillWithAI() {
-        if (!description.trim()) return;
-        aiBuilding = true;
-        aiBuildError = null;
-
-        try {
-            const res = await fetch('/api/builder/ai/suggest-skill', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    name: name.trim(),
-                    description: description.trim(),
-                    availableToolIds: allToolIds,
-                }),
-            });
-
-            if (!res.ok) {
-                const data = await res.json();
-                throw new Error(data.error || `Request failed (${res.status})`);
-            }
-
-            const data = await res.json();
-            if (!data.chapters?.length) {
-                throw new Error('AI returned no chapters');
-            }
-
-            // Create all chapters via API and collect their real IDs
-            const chapterIdMap: string[] = []; // index → real ID
-            const newChapters: ChapterEntry[] = [];
-            const newToolMap: Record<string, string[]> = { ...chapterToolMap };
-
-            for (const ch of data.chapters) {
-                const createRes = await fetch(`/api/builder/skills/${skillId}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        action: 'add-chapter',
-                        name: ch.name,
-                        type: ch.type ?? 'chapter',
-                        conditionText: ch.conditionText ?? '',
-                        positionX: ch.positionX ?? 300,
-                        positionY: ch.positionY ?? 0,
-                    }),
-                });
-
-                if (!createRes.ok) continue;
-                const { id } = await createRes.json();
-                chapterIdMap.push(id);
-
-                newChapters.push({
-                    id,
-                    type: ch.type ?? 'chapter',
-                    name: ch.name,
-                    description: ch.description ?? '',
-                    guide: ch.guide ?? '',
-                    context: ch.context ?? '',
-                    outputDef: ch.outputDef ?? '',
-                    conditionText: ch.conditionText ?? '',
-                    positionX: ch.positionX ?? 300,
-                    positionY: ch.positionY ?? 0,
-                });
-
-                // Set chapter tools if provided
-                const toolIds = (ch.toolIds ?? []).filter((t: string) => allToolIds.includes(t));
-                if (toolIds.length > 0) {
-                    await fetch(`/api/builder/skills/${skillId}/chapter-tools/${id}`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ toolIds }),
-                    });
-                }
-                newToolMap[id] = toolIds;
-
-                // Save chapter metadata (guide, context, outputDef)
-                if (ch.guide || ch.context || ch.outputDef || ch.description) {
-                    await fetch(`/api/builder/skills/${skillId}`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            action: 'update-chapter',
-                            chapterId: id,
-                            data: {
-                                description: ch.description ?? '',
-                                guide: ch.guide ?? '',
-                                context: ch.context ?? '',
-                                outputDef: ch.outputDef ?? '',
-                                conditionText: ch.conditionText ?? '',
-                            },
-                        }),
-                    });
-                }
-            }
-
-            // Create edges
-            const newEdges: typeof chapterEdges = [];
-            for (const edge of data.edges ?? []) {
-                const srcId = chapterIdMap[edge.from];
-                const tgtId = chapterIdMap[edge.to];
-                if (!srcId || !tgtId) continue;
-
-                const edgeRes = await fetch(`/api/builder/skills/${skillId}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        action: 'add-edge',
-                        sourceChapterId: srcId,
-                        targetChapterId: tgtId,
-                        label: edge.label ?? null,
-                    }),
-                });
-
-                if (edgeRes.ok) {
-                    const { id } = await edgeRes.json();
-                    newEdges.push({
-                        id,
-                        sourceChapterId: srcId,
-                        targetChapterId: tgtId,
-                        label: edge.label ?? null,
-                    });
-                }
-            }
-
-            // Update local state
-            chapters = [...chapters, ...newChapters];
-            chapterEdges = [...chapterEdges, ...newEdges];
-            chapterToolMap = newToolMap;
-            posthog.capture('skill_ai_generated', {
-                skill_id: skillId,
-                skill_name: name,
-                chapters_count: newChapters.length,
-            });
-        } catch (e) {
-            aiBuildError = e instanceof Error ? e.message : 'Failed to build skill';
-            console.error('[skill-editor] AI build failed:', e);
-        } finally {
-            aiBuilding = false;
-        }
-    }
-
-    // ── Condition node support ───────────────────────────────────────────
-    let editingCondition = $state<ChapterEntry | null>(null);
-    let conditionText = $state('');
-    let conditionName = $state('');
-
-    function validateConditionText(text: string): { valid: boolean; reason?: string } {
-        const trimmed = text.trim();
-        if (!trimmed) return { valid: false, reason: 'Condition text is required' };
-        if (!trimmed.endsWith('?')) return { valid: false, reason: 'Must be a question (end with ?)' };
-
-        const subjective = /\b(feel|feeling|think|opinion|subjective|how much|how well|how good|how bad|prefer|like|enjoy|rate|score|scale|how does|how do)\b/i;
-        if (subjective.test(trimmed)) return { valid: false, reason: 'Must have a binary yes/no answer — not subjective' };
-
-        const binary = /^(is|are|does|do|has|have|can|could|will|would|should|shall|was|were|did|had)\b/i;
-        if (!binary.test(trimmed)) return { valid: false, reason: 'Start with a binary question word (Is, Does, Has, Can, Will, etc.)' };
-
-        return { valid: true };
-    }
-
-    const conditionValidation = $derived(validateConditionText(conditionText));
-
-    async function addCondition() {
-        editingCondition = null;
-        conditionText = '';
-        conditionName = `Condition ${chapters.filter(c => c.type === 'condition').length + 1}`;
-        editingCondition = { id: '', type: 'condition', name: conditionName, description: '', guide: '', context: '', outputDef: '', conditionText: '', positionX: 300, positionY: 100 + chapters.length * 180 };
-    }
-
-    async function saveCondition() {
-        if (!conditionValidation.valid) return;
-
-        const res = await fetch(`/api/builder/skills/${skillId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                action: 'add-chapter',
-                name: conditionName || 'Condition',
-                type: 'condition',
-                conditionText,
-                positionX: 300,
-                positionY: 100 + chapters.length * 180,
-            }),
-        });
-
-        if (res.ok) {
-            const { id } = await res.json();
-            chapters = [...chapters, {
-                id,
-                type: 'condition',
-                name: conditionName || 'Condition',
-                description: '',
-                guide: '',
-                context: '',
-                outputDef: '',
-                conditionText,
-                positionX: 300,
-                positionY: 100 + (chapters.length - 1) * 180,
-            }];
-            chapterToolMap = { ...chapterToolMap, [id]: [] };
-        }
-        editingCondition = null;
-    }
-
-    function openConditionOrChapter(chapter: ChapterEntry) {
-        if (chapter.type === 'condition') {
-            editingCondition = chapter;
-            conditionText = chapter.conditionText ?? '';
-            conditionName = chapter.name;
-        } else {
-            openChapterEditor(chapter);
-        }
-    }
-
-    async function updateCondition() {
-        if (!editingCondition || !editingCondition.id || !conditionValidation.valid) return;
-
-        await fetch(`/api/builder/skills/${skillId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                action: 'update-chapter',
-                chapterId: editingCondition.id,
-                data: { name: conditionName, conditionText },
-            }),
-        });
-
-        chapters = chapters.map(c => c.id === editingCondition!.id ? { ...c, name: conditionName, conditionText } : c);
-        editingCondition = null;
-    }
-
-    // ── Chapter actions ──────────────────────────────────────────────────
-    async function addChapter() {
-        const chapterName = `Chapter ${chapters.length + 1}`;
-        const res = await fetch(`/api/builder/skills/${skillId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'add-chapter', name: chapterName, positionX: 100 + chapters.length * 200, positionY: 100 }),
-        });
-        if (res.ok) {
-            const { id } = await res.json();
-            chapters = [...chapters, { id, name: chapterName, description: '', guide: '', context: '', outputDef: '', positionX: 100 + (chapters.length - 1) * 200, positionY: 100 }];
-            chapterToolMap = { ...chapterToolMap, [id]: [] };
-        }
-    }
-
-    async function removeChapter(chapterId: string) {
-        await fetch(`/api/builder/skills/${skillId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'delete-chapter', chapterId }),
-        });
-        chapters = chapters.filter(c => c.id !== chapterId);
-        chapterEdges = chapterEdges.filter(e => e.sourceChapterId !== chapterId && e.targetChapterId !== chapterId);
-        const { [chapterId]: _, ...restToolMap } = chapterToolMap;
-        chapterToolMap = restToolMap;
-    }
-
-    // ── Chapter position update (from DAG drag) ──────────────────────
-    async function updateChapterPosition(chapterId: string, x: number, y: number) {
-        chapters = chapters.map(c => c.id === chapterId ? { ...c, positionX: x, positionY: y } : c);
-        await fetch(`/api/builder/skills/${skillId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'update-chapter', chapterId, data: { positionX: x, positionY: y } }),
-        });
-    }
-
-    // ── Chapter edge creation ────────────────────────────────────────
-    async function connectChapters(sourceId: string, targetId: string, label?: string) {
-        const res = await fetch(`/api/builder/skills/${skillId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'add-edge', sourceChapterId: sourceId, targetChapterId: targetId, label: label ?? null }),
-        });
-        if (res.ok) {
-            const { id } = await res.json();
-            chapterEdges = [...chapterEdges, { id, sourceChapterId: sourceId, targetChapterId: targetId, label: label ?? null }];
-        }
-    }
-
-    async function deleteEdge(edgeId: string) {
-        await fetch(`/api/builder/skills/${skillId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'delete-edge', edgeId }),
-        });
-        chapterEdges = chapterEdges.filter(e => e.id !== edgeId);
-    }
-
-    // ── Chapter delete confirmation ─────────────────────────────────
-    let chapterToDelete = $state<ChapterEntry | null>(null);
-
-    function confirmRemoveChapter(chapter: ChapterEntry) {
-        chapterToDelete = chapter;
-    }
-
-    async function executeDeleteChapter() {
-        if (!chapterToDelete) return;
-        await removeChapter(chapterToDelete.id);
-        chapterToDelete = null;
-    }
-
-    // ── Chapter editor ────────────────────────────────────────────────
-    function openChapterEditor(chapter: ChapterEntry) {
-        editingChapter = chapter;
-        editingChapterToolIds = chapterToolMap[chapter.id] ?? [];
-    }
-
-    async function saveChapterEdits(data: { name: string; description: string; guide: string; context: string; outputDef: string; toolIds: string[] }) {
-        if (!editingChapter) return;
-        const chapterId = editingChapter.id;
-
-        saving = true;
-        try {
-            // Save chapter metadata
-            await fetch(`/api/builder/skills/${skillId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'update-chapter', chapterId, data: { name: data.name, description: data.description, guide: data.guide, context: data.context, outputDef: data.outputDef } }),
-            });
-
-            // Save chapter tools
-            await fetch(`/api/builder/skills/${skillId}/chapter-tools/${chapterId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ toolIds: data.toolIds }),
-            });
-
-            // Update local state
-            chapters = chapters.map(c => c.id === chapterId ? { ...c, name: data.name, description: data.description, guide: data.guide, context: data.context, outputDef: data.outputDef } : c);
-            chapterToolMap = { ...chapterToolMap, [chapterId]: data.toolIds };
-        } catch (e) {
-            console.error('[skill-editor] Save chapter failed:', e);
-        } finally {
-            saving = false;
-            editingChapter = null;
-        }
-    }
-
-    // ── Lifecycle ───────────────────────────────────────────────────────
-    onMount(() => {
-        loadSkill();
-        loadGatewayTools();
+    $effect(() => {
+        const id = skillId ?? '';
+        initSkillEditor(id);
+        return () => cleanupSkillEditor();
     });
 
-    // Reload tools when gateway connects
+    // Reload tools when gateway reconnects
     $effect(() => {
         if (conn.connected) loadGatewayTools();
     });
 
-    // Trigger auto-save on field changes
+    // Auto-save on field changes
     $effect(() => {
-        // Access reactive values to track them
-        void name; void description; void emoji;
-        if (!loading) scheduleSave();
+        void skillEditorState.name;
+        void skillEditorState.description;
+        void skillEditorState.emoji;
+        if (!skillEditorState.loading) scheduleSave();
     });
-
-    // ── Validation ──────────────────────────────────────────────────────
-    interface ValidationFinding {
-        level: 'error' | 'warning' | 'ok';
-        message: string;
-    }
-
-    const validationFindings = $derived.by(() => {
-        const findings: ValidationFinding[] = [];
-
-        // Check skill has a name
-        if (!name.trim() || name.trim() === 'Untitled Skill') {
-            findings.push({ level: 'warning', message: 'Skill has no custom name' });
-        } else {
-            findings.push({ level: 'ok', message: 'Skill has a name' });
-        }
-
-        // Check skill has a description
-        if (!description.trim()) {
-            findings.push({ level: 'warning', message: 'Skill has no description' });
-        } else {
-            findings.push({ level: 'ok', message: 'Skill has a description' });
-        }
-
-        // Check at least one chapter exists
-        if (chapters.length === 0) {
-            findings.push({ level: 'error', message: 'No chapters defined' });
-        } else {
-            findings.push({ level: 'ok', message: `${chapters.length} chapter${chapters.length !== 1 ? 's' : ''} defined` });
-        }
-
-        // Check chapters have tools assigned
-        const chaptersWithoutTools = chapters.filter(ch => !(chapterToolMap[ch.id]?.length));
-        if (chaptersWithoutTools.length > 0) {
-            findings.push({ level: 'warning', message: `${chaptersWithoutTools.length} chapter${chaptersWithoutTools.length !== 1 ? 's' : ''} without tools` });
-        } else if (chapters.length > 0) {
-            findings.push({ level: 'ok', message: 'All chapters have tools' });
-        }
-
-        // Check chapters have guide text
-        const chaptersWithoutGuide = chapters.filter(ch => !ch.guide?.trim());
-        if (chaptersWithoutGuide.length > 0) {
-            findings.push({ level: 'warning', message: `${chaptersWithoutGuide.length} chapter${chaptersWithoutGuide.length !== 1 ? 's' : ''} without instructions` });
-        } else if (chapters.length > 0) {
-            findings.push({ level: 'ok', message: 'All chapters have instructions' });
-        }
-
-        // Check chapters have output definitions
-        const chaptersWithoutOutput = chapters.filter(ch => !ch.outputDef?.trim());
-        if (chaptersWithoutOutput.length > 0) {
-            findings.push({ level: 'warning', message: `${chaptersWithoutOutput.length} chapter${chaptersWithoutOutput.length !== 1 ? 's' : ''} without output definitions` });
-        } else if (chapters.length > 0) {
-            findings.push({ level: 'ok', message: 'All chapters have output definitions' });
-        }
-
-        // Check DAG is connected (has edges if >1 chapter)
-        if (chapters.length > 1 && chapterEdges.length === 0) {
-            findings.push({ level: 'warning', message: 'Chapters are not connected (no edges)' });
-        } else if (chapters.length > 1) {
-            findings.push({ level: 'ok', message: 'Chapter flow is connected' });
-        }
-
-        // Check for cycles in the DAG
-        if (chapters.length > 1 && chapterEdges.length > 0) {
-            const adj = new Map<string, string[]>();
-            for (const ch of chapters) adj.set(ch.id, []);
-            for (const e of chapterEdges) adj.get(e.sourceChapterId)?.push(e.targetChapterId);
-            const visited = new Set<string>();
-            const stack = new Set<string>();
-            let hasCycle = false;
-            function dfs(node: string) {
-                if (hasCycle) return;
-                visited.add(node);
-                stack.add(node);
-                for (const neighbor of adj.get(node) ?? []) {
-                    if (stack.has(neighbor)) { hasCycle = true; return; }
-                    if (!visited.has(neighbor)) dfs(neighbor);
-                }
-                stack.delete(node);
-            }
-            for (const ch of chapters) {
-                if (!visited.has(ch.id)) dfs(ch.id);
-            }
-            if (hasCycle) {
-                findings.push({ level: 'ok', message: `Cycle detected — max ${maxCycles} iteration${maxCycles !== 1 ? 's' : ''}` });
-            } else {
-                findings.push({ level: 'ok', message: 'Chapter graph is acyclic' });
-            }
-        }
-
-        return findings;
-    });
-
-    const validationCounts = $derived({
-        errors: validationFindings.filter(f => f.level === 'error').length,
-        warnings: validationFindings.filter(f => f.level === 'warning').length,
-        ok: validationFindings.filter(f => f.level === 'ok').length,
-    });
-
-    const worstLevel = $derived<'error' | 'warning' | 'ok'>(
-        validationCounts.errors > 0 ? 'error' : validationCounts.warnings > 0 ? 'warning' : 'ok'
-    );
-
-    let showValidation = $state(false);
-
-    const validationTooltip = $derived(
-        [
-            validationCounts.errors > 0 ? `${validationCounts.errors} error${validationCounts.errors !== 1 ? 's' : ''}` : '',
-            validationCounts.warnings > 0 ? `${validationCounts.warnings} warning${validationCounts.warnings !== 1 ? 's' : ''}` : '',
-            validationCounts.ok > 0 ? `${validationCounts.ok} ok` : '',
-        ].filter(Boolean).join(', ')
-    );
 </script>
 
 <!-- ── Skill Editor Toolbar ─────────────────────────────────────── -->
@@ -619,21 +51,21 @@
             <div class="flex items-center gap-2 min-w-0">
                 <BookOpen size={16} class="text-accent shrink-0" />
                 <span class="text-sm font-semibold text-foreground truncate">
-                    {name}
+                    {skillEditorState.name}
                 </span>
-                <span class="status-badge {status}">
-                    {status}
+                <span class="status-badge {skillEditorState.status}">
+                    {skillEditorState.status}
                 </span>
             </div>
         </div>
 
         <div class="flex items-center gap-2">
             <!-- Save status indicator -->
-            <span class="save-indicator" title={saving ? 'Saving changes...' : dirty ? 'Unsaved changes' : 'All changes saved'}>
-                {#if saving}
+            <span class="save-indicator" title={skillEditorState.saving ? 'Saving changes...' : skillEditorState.dirty ? 'Unsaved changes' : 'All changes saved'}>
+                {#if skillEditorState.saving}
                     <Loader2 size={12} class="loading-spinner" />
                     <span>Saving...</span>
-                {:else if dirty}
+                {:else if skillEditorState.dirty}
                     <Circle size={8} class="dirty-dot" />
                     <span>Unsaved</span>
                 {:else}
@@ -651,8 +83,8 @@
                     min="1"
                     max="20"
                     class="max-cycles-input"
-                    value={maxCycles}
-                    oninput={(e) => { maxCycles = Math.max(1, parseInt((e.target as HTMLInputElement).value) || 1); scheduleSave(); }}
+                    value={skillEditorState.maxCycles}
+                    oninput={(e) => { skillEditorState.maxCycles = Math.max(1, parseInt((e.target as HTMLInputElement).value) || 1); scheduleSave(); }}
                 />
             </label>
 
@@ -662,7 +94,7 @@
                 type="button"
                 class="toolbar-btn validation-btn {worstLevel}"
                 title={validationTooltip}
-                onclick={() => { showValidation = !showValidation; }}
+                onclick={() => { skillEditorState.showValidation = !skillEditorState.showValidation; }}
             >
                 {#if worstLevel === 'error'}
                     <XCircle size={14} />
@@ -675,20 +107,28 @@
             </button>
             <button
                 type="button"
-                class="toolbar-btn {status === 'published' ? 'published' : 'primary'}"
+                class="toolbar-btn {skillEditorState.status === 'published' ? 'published' : 'primary'}"
                 onclick={publishSkill}
-                disabled={publishing}
-                title={status === 'published' ? 'Republish with latest changes' : 'Publish to shared space'}
+                disabled={skillEditorState.publishing}
+                title={skillEditorState.status === 'published' ? 'Republish with latest changes' : 'Publish to shared space'}
             >
-                {#if publishing}
+                {#if skillEditorState.publishing}
                     <Loader2 size={14} class="loading-spinner" />
                 {:else}
                     <Upload size={14} />
                 {/if}
-                <span class="hidden sm:inline">{publishing ? 'Publishing...' : status === 'published' ? 'Republish' : 'Publish'}</span>
+                <span class="hidden sm:inline">{skillEditorState.publishing ? 'Publishing...' : skillEditorState.status === 'published' ? 'Republish' : 'Publish'}</span>
             </button>
         </div>
     </div>
+
+    {#if skillEditorState.publishError}
+        <div class="publish-error">
+            <XCircle size={14} />
+            <span>{skillEditorState.publishError}</span>
+            <button type="button" class="publish-error-dismiss" onclick={() => skillEditorState.publishError = null}>&times;</button>
+        </div>
+    {/if}
 
     <!-- ── Three-Column Book Layout ─────────────────────────────────── -->
     <div class="flex-1 min-h-0 flex">
@@ -698,7 +138,7 @@
 
             <!-- Book Left Page: Metadata -->
             <section class="book-page book-page-left">
-                {#if loading}
+                {#if skillEditorState.loading}
                     <div class="flex items-center justify-center h-full">
                         <span class="text-muted text-sm">Loading...</span>
                     </div>
@@ -706,11 +146,11 @@
                     <div class="page-content">
                         <!-- Emoji + Name -->
                         <div class="name-row">
-                            <EmojiPicker value={emoji} onSelect={(e) => { emoji = e; }} />
+                            <EmojiPicker value={skillEditorState.emoji} onSelect={(e) => { skillEditorState.emoji = e; }} />
                             <input
                                 type="text"
                                 class="name-input"
-                                bind:value={name}
+                                bind:value={skillEditorState.name}
                                 placeholder="Skill name"
                             />
                         </div>
@@ -718,21 +158,21 @@
                         <!-- Description -->
                         <textarea
                             class="desc-input"
-                            bind:value={description}
+                            bind:value={skillEditorState.description}
                             placeholder="Describe what this skill does..."
                             rows="3"
                         ></textarea>
 
                         <!-- AI Assist: Build entire skill from description -->
-                        {#if description.trim().length >= 10}
+                        {#if skillEditorState.description.trim().length >= 10}
                             <div class="ai-assist-section">
                                 <button
                                     type="button"
                                     class="ai-assist-btn"
                                     onclick={buildSkillWithAI}
-                                    disabled={aiBuilding}
+                                    disabled={skillEditorState.aiBuilding}
                                 >
-                                    {#if aiBuilding}
+                                    {#if skillEditorState.aiBuilding}
                                         <Loader2 size={14} class="loading-spinner" />
                                         <span>Building skill pipeline...</span>
                                     {:else}
@@ -740,8 +180,8 @@
                                         <span>Build chapters with AI</span>
                                     {/if}
                                 </button>
-                                {#if aiBuildError}
-                                    <span class="ai-assist-error">{aiBuildError}</span>
+                                {#if skillEditorState.aiBuildError}
+                                    <span class="ai-assist-error">{skillEditorState.aiBuildError}</span>
                                 {/if}
                             </div>
                         {/if}
@@ -788,8 +228,8 @@
             <!-- Book Right Page: DAG / Subprocesses -->
             <section class="book-page book-page-right dag-page">
                 <ChapterDAG
-                    {chapters}
-                    edges={chapterEdges}
+                    chapters={skillEditorState.chapters}
+                    edges={skillEditorState.chapterEdges}
                     onChapterClick={openConditionOrChapter}
                     onChapterPositionChange={updateChapterPosition}
                     onAddChapter={addChapter}
@@ -803,39 +243,39 @@
         </div>
     </div>
 
-{#if chapterToDelete}
+{#if skillEditorState.chapterToDelete}
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <div class="confirm-overlay" role="dialog" aria-modal="true" onclick={(e) => { if (e.target === e.currentTarget) chapterToDelete = null; }} onkeydown={(e) => { if (e.key === 'Escape') chapterToDelete = null; }}>
+    <div class="confirm-overlay" role="dialog" aria-modal="true" onclick={(e) => { if (e.target === e.currentTarget) skillEditorState.chapterToDelete = null; }} onkeydown={(e) => { if (e.key === 'Escape') skillEditorState.chapterToDelete = null; }}>
         <div class="confirm-modal">
-            <p class="confirm-title">Delete "{chapterToDelete.name}"?</p>
+            <p class="confirm-title">Delete "{skillEditorState.chapterToDelete.name}"?</p>
             <p class="confirm-desc">This chapter and its configuration will be permanently removed.</p>
             <div class="confirm-actions">
-                <button type="button" class="confirm-btn cancel" onclick={() => { chapterToDelete = null; }}>Cancel</button>
+                <button type="button" class="confirm-btn cancel" onclick={() => { skillEditorState.chapterToDelete = null; }}>Cancel</button>
                 <button type="button" class="confirm-btn delete" onclick={executeDeleteChapter}>Delete</button>
             </div>
         </div>
     </div>
 {/if}
 
-{#if editingChapter}
+{#if skillEditorState.editingChapter}
     <ChapterEditor
-        chapter={editingChapter}
+        chapter={skillEditorState.editingChapter}
         availableToolIds={allToolIds}
-        chapterToolIds={editingChapterToolIds}
-        skillName={name}
-        skillDescription={description}
+        chapterToolIds={skillEditorState.editingChapterToolIds}
+        skillName={skillEditorState.name}
+        skillDescription={skillEditorState.description}
         onSave={saveChapterEdits}
-        onClose={() => { editingChapter = null; }}
+        onClose={() => { skillEditorState.editingChapter = null; }}
     />
 {/if}
 
-{#if showValidation}
+{#if skillEditorState.showValidation}
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <div class="confirm-overlay" role="dialog" aria-modal="true" onclick={(e) => { if (e.target === e.currentTarget) showValidation = false; }} onkeydown={(e) => { if (e.key === 'Escape') showValidation = false; }}>
+    <div class="confirm-overlay" role="dialog" aria-modal="true" onclick={(e) => { if (e.target === e.currentTarget) skillEditorState.showValidation = false; }} onkeydown={(e) => { if (e.key === 'Escape') skillEditorState.showValidation = false; }}>
         <div class="validation-modal">
             <div class="validation-header">
                 <span class="validation-title">Skill Validation</span>
-                <button type="button" class="close-btn" onclick={() => { showValidation = false; }} aria-label="Close">×</button>
+                <button type="button" class="close-btn" onclick={() => { skillEditorState.showValidation = false; }} aria-label="Close">×</button>
             </div>
             <div class="validation-body">
                 {#each validationFindings as finding}
@@ -857,25 +297,25 @@
                     {validationCounts.warnings} warning{validationCounts.warnings !== 1 ? 's' : ''},
                     {validationCounts.ok} ok
                 </span>
-                <button type="button" class="confirm-btn cancel" onclick={() => { showValidation = false; }}>Close</button>
+                <button type="button" class="confirm-btn cancel" onclick={() => { skillEditorState.showValidation = false; }}>Close</button>
             </div>
         </div>
     </div>
 {/if}
 
-{#if editingCondition}
+{#if skillEditorState.editingCondition}
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <div class="confirm-overlay" role="dialog" aria-modal="true" onclick={(e) => { if (e.target === e.currentTarget) { editingCondition = null; } }} onkeydown={(e) => { if (e.key === 'Escape') { editingCondition = null; } }}>
+    <div class="confirm-overlay" role="dialog" aria-modal="true" onclick={(e) => { if (e.target === e.currentTarget) { skillEditorState.editingCondition = null; } }} onkeydown={(e) => { if (e.key === 'Escape') { skillEditorState.editingCondition = null; } }}>
         <div class="condition-modal">
             <div class="condition-modal-header">
                 <GitBranch size={16} class="condition-icon" />
-                <span class="condition-modal-title">{editingCondition.id ? 'Edit Condition' : 'New Condition'}</span>
-                <button type="button" class="close-btn" onclick={() => { editingCondition = null; }} aria-label="Close">×</button>
+                <span class="condition-modal-title">{skillEditorState.editingCondition.id ? 'Edit Condition' : 'New Condition'}</span>
+                <button type="button" class="close-btn" onclick={() => { skillEditorState.editingCondition = null; }} aria-label="Close">×</button>
             </div>
             <div class="condition-modal-body">
                 <div class="condition-field">
                     <label class="condition-label" for="cond-name">Label</label>
-                    <input id="cond-name" type="text" class="condition-input" bind:value={conditionName} placeholder="e.g. Sufficient Data?" />
+                    <input id="cond-name" type="text" class="condition-input" bind:value={skillEditorState.conditionName} placeholder="e.g. Sufficient Data?" />
                 </div>
                 <div class="condition-field">
                     <label class="condition-label" for="cond-text">Condition <span class="required">*</span></label>
@@ -884,12 +324,12 @@
                         id="cond-text"
                         type="text"
                         class="condition-input"
-                        class:invalid={conditionText.trim().length > 0 && !conditionValidation.valid}
+                        class:invalid={skillEditorState.conditionText.trim().length > 0 && !conditionValidation.valid}
                         class:valid-input={conditionValidation.valid}
-                        bind:value={conditionText}
+                        bind:value={skillEditorState.conditionText}
                         placeholder="Is the user authenticated?"
                     />
-                    {#if conditionText.trim().length > 0 && !conditionValidation.valid}
+                    {#if skillEditorState.conditionText.trim().length > 0 && !conditionValidation.valid}
                         <span class="condition-error">
                             <XCircle size={12} />
                             {conditionValidation.reason}
@@ -903,19 +343,42 @@
                 </div>
             </div>
             <div class="condition-modal-footer">
-                <button type="button" class="confirm-btn cancel" onclick={() => { editingCondition = null; }}>Cancel</button>
+                <button type="button" class="confirm-btn cancel" onclick={() => { skillEditorState.editingCondition = null; }}>Cancel</button>
                 <button
                     type="button"
                     class="confirm-btn primary"
                     disabled={!conditionValidation.valid}
-                    onclick={editingCondition.id ? updateCondition : saveCondition}
-                >{editingCondition.id ? 'Update' : 'Create'}</button>
+                    onclick={skillEditorState.editingCondition.id ? updateCondition : saveCondition}
+                >{skillEditorState.editingCondition.id ? 'Update' : 'Create'}</button>
             </div>
         </div>
     </div>
 {/if}
 
 <style>
+    /* ── Publish Error Banner ────────────────────────────────────────── */
+    .publish-error {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 0.75rem;
+        background: color-mix(in srgb, var(--color-error) 12%, transparent);
+        border-bottom: 1px solid color-mix(in srgb, var(--color-error) 30%, transparent);
+        color: var(--color-error);
+        font-size: 0.8125rem;
+    }
+    .publish-error span { flex: 1; }
+    .publish-error-dismiss {
+        background: none;
+        border: none;
+        color: var(--color-error);
+        cursor: pointer;
+        font-size: 1rem;
+        padding: 0 0.25rem;
+        opacity: 0.7;
+    }
+    .publish-error-dismiss:hover { opacity: 1; }
+
     /* ── Editor Toolbar ──────────────────────────────────────────────── */
     .editor-toolbar {
         display: flex;
