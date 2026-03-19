@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Skill Builder Improvements
 status: unknown
-last_updated: "2026-03-19T05:12:36.096Z"
+last_updated: "2026-03-19T05:33:05.146Z"
 last_activity: 2026-03-19
 progress:
   total_phases: 9
   completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
+  total_plans: 4
+  completed_plans: 4
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-18)
 
 **Core value:** Skill authors can confidently create, validate, and version AI agent skills through a reliable, informative builder interface.
-**Current focus:** Phase 05 — builder-tab
+**Current focus:** Phase 06 — critical-code-fixes
 
 ## Current Position
 
-Phase: 05 (builder-tab) — EXECUTING
-Plan: 1 of 1
+Phase: 06 (critical-code-fixes) — EXECUTING
+Plan: 3 of 3
 
 ## Performance Metrics
 
@@ -43,11 +43,17 @@ Plan: 1 of 1
 ## Accumulated Context
 
 | Phase 05 P01 | 8m | 2 tasks | 3 files |
+| Phase 06 P03 | 5m | 1 task | 1 file |
 
 ### From v1.0 Settings Page Revamp
 
 - Phase 1 (Tab Layout and Save) completed: 3/3 plans
 - Phases 2-4 deferred to v3.0 — builder improvements are higher priority
+
+### Phase 06 Decisions
+
+- CFIX-06: Use dirty flag re-check after saveSkill() as failure signal — dirty=true after save means save failed (saveSkill only clears it on success path)
+- CFIX-06: publishSkill sets publishError before returning so user sees clear message instead of silent no-op
 
 ### v2.0 Decisions
 
@@ -63,5 +69,6 @@ Plan: 1 of 1
 
 ## Session Info
 
-- **Last Session:** 2026-03-19T05:12:36.094Z
+- **Last Session:** 2026-03-19T00:10:00Z
+- **Stopped At:** Completed 06-03-PLAN.md (publish safety check CFIX-06)
 - **Last Activity:** 2026-03-19

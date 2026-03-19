@@ -19,7 +19,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 - [ ] **CFIX-03**: AI-generated tool IDs are filtered server-side against available tools, with filtered tools reported in the response
 - [ ] **CFIX-04**: Publish validation uses a single batch query instead of per-chapter N+1 SELECT loop
 - [ ] **CFIX-05**: AI endpoints check completion.error before attempting fallback parse, with console.warn on fallback path
-- [ ] **CFIX-06**: Publish flow aborts if prior save failed (dirty check after saveSkill)
+- [x] **CFIX-06**: Publish flow aborts if prior save failed (dirty check after saveSkill)
 - [ ] **CFIX-07**: User inputs in AI prompts are wrapped in XML tag delimiters for injection safety
 - [ ] **CFIX-08**: Disconnected-node validation uses BFS from root to verify single connected component
 - [ ] **CFIX-09**: setChapterTools and setAgentBuiltSkills use batch inserts instead of sequential loops
@@ -121,7 +121,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 | CFIX-03 | Phase 6 | Pending |
 | CFIX-04 | Phase 6 | Pending |
 | CFIX-05 | Phase 6 | Pending |
-| CFIX-06 | Phase 6 | Pending |
+| CFIX-06 | Phase 6 | Complete |
 | CFIX-07 | Phase 6 | Pending |
 | CFIX-08 | Phase 6 | Pending |
 | CFIX-09 | Phase 6 | Pending |
