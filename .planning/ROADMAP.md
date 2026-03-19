@@ -112,7 +112,12 @@ Plans:
   3. Client-side validation catches condition nodes missing conditionText and chapters with no assigned tools, consistent with server-side rules via a shared validation module
   4. When publishing with warnings but no errors, a modal appears automatically showing the warnings with a "Publish Anyway" option
   5. All modals have `role="dialog"` on the modal element with `aria-labelledby` pointing to the modal title
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 07-01-PLAN.md — Shared validation module: pure validateSkill() function with TDD tests (VALID-04, VALID-03)
+- [ ] 07-02-PLAN.md — State + server wiring: wire shared module into skill-editor.svelte.ts and builder.service.ts, toast migration, publishAnyway state (VALID-04, VALID-01, VALID-05)
+- [ ] 07-03-PLAN.md — UI integration: ValidationPanel component, page integration, disabled publish button, aria fixes (VALID-01, VALID-02, VALID-05, A11Y-01)
 
 ### Phase 8: Error Handling
 **Goal**: All mutations surface failures to the user, recover gracefully without data loss, and AI requests cannot hang indefinitely
@@ -194,7 +199,7 @@ Phases execute in numeric order: 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 
 | 4. Setup Wizard | v1.0 | 0/0 | Deferred | - |
 | 5. State Architecture Refactor | v2.0 | 1/1 | Complete | 2026-03-19 |
 | 6. Critical Code Fixes | 3/3 | Complete   | 2026-03-19 | - |
-| 7. Validation UX | v2.0 | 0/TBD | Not started | - |
+| 7. Validation UX | v2.0 | 0/3 | Planned | - |
 | 8. Error Handling | v2.0 | 0/TBD | Not started | - |
 | 9. AI Quality and Tool Manifest | v2.0 | 0/TBD | Not started | - |
 | 10. Data Flow Visualization | v2.0 | 0/TBD | Not started | - |
