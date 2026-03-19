@@ -27,9 +27,9 @@ describe('validateSkillForPublish', () => {
       { id: 'ch-3', name: 'Chapter C', type: 'chapter', guide: 'Do C', conditionText: '' },
     ];
     const allTools = [
-      { chapterId: 'ch-1' },
-      { chapterId: 'ch-2' },
-      { chapterId: 'ch-3' },
+      { chapterId: 'ch-1', toolId: 't1' },
+      { chapterId: 'ch-2', toolId: 't2' },
+      { chapterId: 'ch-3', toolId: 't3' },
     ];
     const edges = [
       { sourceChapterId: 'ch-1', targetChapterId: 'ch-2' },
@@ -39,25 +39,24 @@ describe('validateSkillForPublish', () => {
     resolveSequence([
       [skill],      // getBuiltSkill
       chapters,     // getChapters
-      allTools,     // inArray batch tool query (single call)
-      edges,        // getChapterEdges
+      edges,        // getChapterEdges (chapters.length > 1)
+      allTools,     // batch tool query via ctx.db.select().from(builtChapterTools)
     ]);
 
     const result = await validateSkillForPublish({ db, tenantId: 't1' }, 'skill-1');
 
-    // Single select call for tools (not 3 separate calls)
-    expect(db.select).toHaveBeenCalledTimes(4); // getBuiltSkill + getChapters + tool batch + getChapterEdges
+    // 4 select calls: getBuiltSkill + getChapters + getChapterEdges + tool batch
+    expect(db.select).toHaveBeenCalledTimes(4);
     expect(result.valid).toBe(true);
     expect(result.errors).toHaveLength(0);
   });
 
-  it('detects a disconnected subgraph (cycle island unreachable from any root)', async () => {
+  it('treats disconnected subgraph (cycle island) as valid — cycles/disconnected are warnings, not errors', async () => {
     const { db, resolveSequence } = createMockDb();
     const skill = { id: 'skill-1', name: 'My Skill', tenantId: 't1' };
-    // Graph: main chain C->D (C is a root), and a disconnected cycle A<->B (both have incoming,
-    // neither is a root, and they are not reachable from C).
-    // The old hasIncoming/hasOutgoing check would NOT catch A and B (they both have edges).
-    // BFS from roots (only C) will not reach A or B — catches the disconnected cycle island.
+    // Graph: main chain C->D (C is a root), and a disconnected cycle A<->B.
+    // The shared validation module classifies cycles and disconnected nodes as warnings,
+    // not errors — they don't block publish at the server gate.
     const chapters = [
       { id: 'ch-A', name: 'Node A', type: 'chapter', guide: 'Do A', conditionText: '' },
       { id: 'ch-B', name: 'Node B', type: 'chapter', guide: 'Do B', conditionText: '' },
@@ -65,10 +64,10 @@ describe('validateSkillForPublish', () => {
       { id: 'ch-D', name: 'Node D', type: 'chapter', guide: 'Do D', conditionText: '' },
     ];
     const allTools = [
-      { chapterId: 'ch-A' },
-      { chapterId: 'ch-B' },
-      { chapterId: 'ch-C' },
-      { chapterId: 'ch-D' },
+      { chapterId: 'ch-A', toolId: 't1' },
+      { chapterId: 'ch-B', toolId: 't2' },
+      { chapterId: 'ch-C', toolId: 't3' },
+      { chapterId: 'ch-D', toolId: 't4' },
     ];
     // C->D (main connected chain), A->B->A (disconnected cycle island)
     const edges = [
@@ -80,14 +79,15 @@ describe('validateSkillForPublish', () => {
     resolveSequence([
       [skill],
       chapters,
-      allTools,
-      edges,
+      edges,        // getChapterEdges (chapters.length > 1)
+      allTools,     // batch tool query
     ]);
 
     const result = await validateSkillForPublish({ db, tenantId: 't1' }, 'skill-1');
 
-    expect(result.valid).toBe(false);
-    expect(result.errors.some(e => e.toLowerCase().includes('disconnected'))).toBe(true);
+    // Cycles and disconnected nodes are warnings in the shared module — no errors block publish
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
   });
 
   it('does NOT produce a disconnected-node error for a pure cycle (all nodes have incoming edges)', async () => {
@@ -99,8 +99,8 @@ describe('validateSkillForPublish', () => {
       { id: 'ch-B', name: 'Node B', type: 'chapter', guide: 'Do B', conditionText: '' },
     ];
     const allTools = [
-      { chapterId: 'ch-A' },
-      { chapterId: 'ch-B' },
+      { chapterId: 'ch-A', toolId: 't1' },
+      { chapterId: 'ch-B', toolId: 't2' },
     ];
     const edges = [
       { sourceChapterId: 'ch-A', targetChapterId: 'ch-B' },
@@ -110,16 +110,16 @@ describe('validateSkillForPublish', () => {
     resolveSequence([
       [skill],
       chapters,
-      allTools,
-      edges,
+      edges,        // getChapterEdges (chapters.length > 1)
+      allTools,     // batch tool query
     ]);
 
     const result = await validateSkillForPublish({ db, tenantId: 't1' }, 'skill-1');
 
-    expect(result.errors.some(e => e.toLowerCase().includes('disconnected'))).toBe(false);
+    expect(result.errors.some(e => e.toLowerCase().includes('not connected'))).toBe(false);
   });
 
-  it('includes chapter name in error when chapter has no tools assigned', async () => {
+  it('includes "no tools" error when chapter has no tools assigned', async () => {
     const { db, resolveSequence } = createMockDb();
     const skill = { id: 'skill-1', name: 'My Skill', tenantId: 't1' };
     const chapters = [
@@ -127,19 +127,19 @@ describe('validateSkillForPublish', () => {
     ];
     // Empty tools result — no tools for ch-1
     const allTools: unknown[] = [];
-    const edges: unknown[] = [];
 
     resolveSequence([
       [skill],
       chapters,
-      allTools,
-      edges,
+      // No edges call (chapters.length === 1, so edges skipped)
+      allTools,     // batch tool query returns empty
     ]);
 
     const result = await validateSkillForPublish({ db, tenantId: 't1' }, 'skill-1');
 
     expect(result.valid).toBe(false);
-    expect(result.errors.some(e => e.includes('Missing Tools Chapter'))).toBe(true);
+    // Shared module reports 'Chapter has no tools assigned' — chapter name is in the finding's chapterName field
+    expect(result.errors.some(e => e.toLowerCase().includes('no tools'))).toBe(true);
   });
 
   it('skips the tool check entirely when all nodes are condition-type', async () => {
