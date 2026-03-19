@@ -193,7 +193,7 @@
 		const { from, to } = reliability.dateRange;
 		await Promise.all([
 			loadReliabilitySummary(serverId, from, to),
-			loadReliabilityEvents(serverId, { from, to, limit: 200 })
+			loadReliabilityEvents(serverId, { from, to, limit: 1000 })
 		]);
 	}
 
@@ -227,7 +227,7 @@
 		}
 	});
 
-	// ── Timeline bar chart (adaptive bucketing) ──────────────────────────────
+	// ── Timeline bar chart (derived from events) ─────────────────────────────
 	function getBucketMs(rangeMs: number): number {
 		if (rangeMs <= 3_600_000)          return 5 * 60_000;      // 1h  → 5min buckets
 		if (rangeMs <= 24 * 3_600_000)     return 3_600_000;       // 24h → 1h buckets
@@ -236,15 +236,8 @@
 	}
 
 	let timelineOptions: EChartsOption = $derived.by(() => {
-		const ts = summary?.timeseries ?? [];
-		const bucketMs = summary?.bucketMs ?? 3_600_000;
-
-		// Apply category + severity filters to the server-side timeseries
-		let filtered = ts;
-		if (selectedCategories.size > 0) filtered = filtered.filter(p => selectedCategories.has(p.category));
-		if (selectedSeverities.size > 0) filtered = filtered.filter(p => selectedSeverities.has(p.severity));
-
-		if (filtered.length === 0) {
+		const evts = filteredEvents;
+		if (evts.length === 0) {
 			return {
 				backgroundColor: 'transparent',
 				grid: { left: 48, right: 24, top: 32, bottom: 32 },
@@ -254,16 +247,19 @@
 			};
 		}
 
-		// Aggregate by bucket + category (sum across severities after filtering)
+		const rangeMs = reliability.dateRange.to - reliability.dateRange.from;
+		const bucketMs = getBucketMs(rangeMs);
+
+		// Aggregate events into time buckets by category
 		const counts = new Map<string, Map<number, number>>();
 		const allBuckets = new Set<number>();
-		for (const p of filtered) {
-			const cat = p.category;
-			const bucket = Number(p.bucket);
+		for (const evt of evts) {
+			const cat = evt.category;
+			const bucket = Math.floor(evt.timestamp / bucketMs) * bucketMs;
 			allBuckets.add(bucket);
 			if (!counts.has(cat)) counts.set(cat, new Map());
 			const catMap = counts.get(cat)!;
-			catMap.set(bucket, (catMap.get(bucket) ?? 0) + Number(p.count));
+			catMap.set(bucket, (catMap.get(bucket) ?? 0) + 1);
 		}
 
 		const buckets = [...allBuckets].sort((a, b) => a - b);
@@ -327,10 +323,10 @@
 		};
 	});
 
-	// ── Top Events bar chart ──────────────────────────────────────────────────
+	// ── Top Events bar chart (derived from events) ────────────────────────────
 	let topEventsOptions: EChartsOption = $derived.by(() => {
-		const topEvents = summary?.topEvents ?? [];
-		if (topEvents.length === 0) {
+		const evts = filteredEvents;
+		if (evts.length === 0) {
 			return {
 				backgroundColor: 'transparent',
 				grid: { left: 48, right: 24, top: 8, bottom: 24 },
@@ -340,7 +336,16 @@
 			};
 		}
 
-		const reversed = [...topEvents].reverse();
+		// Count events by event name
+		const eventCounts = new Map<string, number>();
+		for (const evt of evts) {
+			eventCounts.set(evt.event, (eventCounts.get(evt.event) ?? 0) + 1);
+		}
+		const topEvents = [...eventCounts.entries()]
+			.sort((a, b) => b[1] - a[1])
+			.slice(0, 20)
+			.reverse();
+
 		return {
 			backgroundColor: 'transparent',
 			tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
@@ -352,12 +357,12 @@
 			},
 			yAxis: {
 				type: 'category',
-				data: reversed.map((e) => e.event),
+				data: topEvents.map(([name]) => name),
 				axisLabel: { fontSize: 10, width: 100, overflow: 'truncate' }
 			},
 			series: [{
 				type: 'bar',
-				data: reversed.map((e) => e.count),
+				data: topEvents.map(([, count]) => count),
 				itemStyle: { color: '#3b82f6', borderRadius: [0, 4, 4, 0] },
 				barMaxWidth: 20
 			}]

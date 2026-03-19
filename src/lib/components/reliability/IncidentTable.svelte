@@ -11,17 +11,7 @@
 	import type { ColumnDef, SortingState, PaginationState } from '@tanstack/svelte-table';
 	import Fuse from 'fuse.js';
 
-	interface ReliabilityEvent {
-		id?: number;
-		category: 'cron' | 'browser' | 'timezone' | 'general' | 'auth' | 'skill' | 'agent' | 'gateway';
-		severity: 'critical' | 'high' | 'medium' | 'low' | 'ok';
-		event: string;
-		message: string;
-		agentId?: string;
-		sessionKey?: string;
-		metadata?: Record<string, unknown>;
-		timestamp: number;
-	}
+	import type { ReliabilityEvent } from '$lib/state/reliability/reliability.svelte';
 
 	let {
 		events = [],
@@ -150,7 +140,7 @@
 
 	function hasMetadata(evt: ReliabilityEvent): boolean {
 		const meta = parseMetadata(evt.metadata);
-		return (meta != null && Object.keys(meta).length > 0) || !!evt.agentId || !!evt.sessionKey;
+		return (meta != null && Object.keys(meta).length > 0) || !!evt.agentId || !!evt.correlationId;
 	}
 
 	function formatMetaValue(
@@ -304,12 +294,12 @@
 			<table class="w-full border-collapse">
 				<thead>
 					<tr class="bg-bg3/40 sticky top-0 z-[1]">
-						<th class="w-7 py-2 px-0 border-b border-border"></th>
+						<th class="w-6 py-1 px-0 border-b border-border"></th>
 						{#each table.getHeaderGroups()[0].headers as header (header.id)}
 							{@const sorted = header.column.getIsSorted()}
 							{@const SortIcon = sorted === 'asc' ? ChevronUp : sorted === 'desc' ? ChevronDown : ChevronsUpDown}
 							<th
-								class="py-2 px-3 text-left border-b border-border cursor-pointer select-none hover:text-foreground transition-colors"
+								class="py-1 px-2 text-left border-b border-border cursor-pointer select-none hover:text-foreground transition-colors"
 								style="width:{header.getSize()}px"
 								onclick={header.column.getToggleSortingHandler()}
 							>
@@ -336,43 +326,43 @@
 							class="border-b border-border/40 hover:bg-white/[0.025] {severityRowBorder[evt.severity] ?? ''} {expandable ? 'cursor-pointer' : ''}"
 							onclick={() => expandable && toggleExpand(rowId)}
 						>
-							<td class="w-7 py-2 px-1 align-middle text-center">
+							<td class="w-6 py-0.5 px-0.5 align-middle text-center">
 								{#if expandable}
 									<span
 										class="inline-flex items-center justify-center transition-transform duration-150 {isExpanded ? 'rotate-90' : ''}"
 									>
-										<ChevronRight size={12} class="text-muted-foreground" />
+										<ChevronRight size={10} class="text-muted-foreground" />
 									</span>
 								{/if}
 							</td>
 							<td
-								class="py-2 px-3 text-xs text-muted-foreground tabular-nums cursor-default align-middle font-mono"
+								class="py-0.5 px-2 text-[11px] text-muted-foreground tabular-nums cursor-default align-middle font-mono"
 								style="width:{columns[0].size}px"
 								title={formatFullDate(evt.timestamp)}
 							>
 								{formatRelativeTime(evt.timestamp)}
 							</td>
-							<td class="py-2 px-3 text-xs align-middle" style="width:{columns[1].size}px">
+							<td class="py-0.5 px-2 text-[11px] align-middle" style="width:{columns[1].size}px">
 								<span
-									class="inline-block text-[10px] font-semibold py-0.5 px-2 rounded-md leading-snug whitespace-nowrap {severityClasses[evt.severity] ?? ''}"
+									class="inline-block text-[9px] font-semibold py-px px-1.5 rounded leading-snug whitespace-nowrap {severityClasses[evt.severity] ?? ''}"
 									>{evt.severity}</span
 								>
 							</td>
-							<td class="py-2 px-3 text-xs align-middle" style="width:{columns[2].size}px">
+							<td class="py-0.5 px-2 text-[11px] align-middle" style="width:{columns[2].size}px">
 								<span
-									class="inline-block text-[10px] font-semibold py-0.5 px-2 rounded-md leading-snug whitespace-nowrap {categoryClasses[evt.category] ?? ''}"
+									class="inline-block text-[9px] font-semibold py-px px-1.5 rounded leading-snug whitespace-nowrap {categoryClasses[evt.category] ?? ''}"
 									>{evt.category}</span
 								>
 							</td>
 							<td
-								class="py-2 px-3 text-xs text-foreground align-middle font-mono max-w-0 truncate"
+								class="py-0.5 px-2 text-[11px] text-foreground align-middle font-mono max-w-0 truncate"
 								style="width:{columns[3].size}px"
 								title={evt.event}
 							>
 								{evt.event}
 							</td>
 							<td
-								class="py-2 px-3 text-xs text-muted-foreground align-middle max-w-0 truncate"
+								class="py-0.5 px-2 text-[11px] text-muted-foreground align-middle max-w-0 truncate"
 								title={evt.message}
 							>
 								{evt.message}
@@ -380,8 +370,8 @@
 						</tr>
 						{#if isExpanded}
 							<tr class="bg-bg3/30">
-								<td colspan="6" class="py-3 px-4">
-									<div class="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
+								<td colspan="6" class="py-1.5 px-3">
+									<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
 										{#if evt.agentId}
 											<div class="flex items-center gap-2">
 												<span class="text-muted-foreground font-medium">agentId:</span>
@@ -390,11 +380,11 @@
 												>
 											</div>
 										{/if}
-										{#if evt.sessionKey}
+										{#if evt.correlationId}
 											<div class="flex items-center gap-2">
-												<span class="text-muted-foreground font-medium">sessionKey:</span>
+												<span class="text-muted-foreground font-medium">correlationId:</span>
 												<span class="text-foreground font-mono text-[11px]"
-													>{evt.sessionKey}</span
+													>{evt.correlationId}</span
 												>
 											</div>
 										{/if}
