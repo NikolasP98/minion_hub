@@ -1,4 +1,4 @@
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, inArray } from 'drizzle-orm';
 import { builtSkills, builtSkillTools, builtChapters, builtChapterEdges, builtChapterTools, builtAgents, builtAgentSkills, builtTools, agentBuiltSkills } from '$server/db/schema';
 import { newId, nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
@@ -69,6 +69,95 @@ export async function publishBuiltSkill(ctx: TenantContext, skillId: string) {
     .update(builtSkills)
     .set({ status: 'published', publishedAt: now, updatedAt: now })
     .where(and(eq(builtSkills.id, skillId), eq(builtSkills.tenantId, ctx.tenantId)));
+}
+
+// ── Publish Validation ────────────────────────────────────────────────
+
+export interface ValidationResult {
+  valid: boolean;
+  errors: string[];
+}
+
+export async function validateSkillForPublish(ctx: TenantContext, skillId: string): Promise<ValidationResult> {
+  const errors: string[] = [];
+
+  const skill = await getBuiltSkill(ctx, skillId);
+  if (!skill) return { valid: false, errors: ['Skill not found'] };
+
+  if (!skill.name?.trim()) errors.push('Skill must have a name');
+
+  const chapters = await getChapters(ctx, skillId);
+  if (chapters.length === 0) {
+    errors.push('Skill must have at least 1 chapter');
+    return { valid: false, errors };
+  }
+
+  // Chapter-type nodes must have guide text
+  const missingGuide = chapters.filter(ch => ch.type === 'chapter' && !ch.guide?.trim());
+  if (missingGuide.length > 0) {
+    errors.push(`${missingGuide.length} chapter(s) missing instructions: ${missingGuide.map(ch => ch.name).join(', ')}`);
+  }
+
+  // Condition-type nodes must have conditionText
+  const missingCondition = chapters.filter(ch => ch.type === 'condition' && !ch.conditionText?.trim());
+  if (missingCondition.length > 0) {
+    errors.push(`${missingCondition.length} condition(s) missing question: ${missingCondition.map(ch => ch.name).join(', ')}`);
+  }
+
+  // Chapter-type nodes must have at least 1 tool — single batch query instead of N+1
+  const chapterOnlyNodes = chapters.filter(c => c.type === 'chapter');
+  if (chapterOnlyNodes.length > 0) {
+    const chapterIds = chapterOnlyNodes.map(c => c.id);
+    const allTools = await ctx.db
+      .select({ chapterId: builtChapterTools.chapterId })
+      .from(builtChapterTools)
+      .where(inArray(builtChapterTools.chapterId, chapterIds));
+    const chaptersWithTools = new Set(allTools.map(t => t.chapterId));
+    for (const ch of chapterOnlyNodes) {
+      if (!chaptersWithTools.has(ch.id)) {
+        errors.push(`Chapter "${ch.name}" has no tools assigned`);
+      }
+    }
+  }
+
+  // Multi-chapter skills must have edges and all nodes reachable via BFS from root nodes
+  if (chapters.length > 1) {
+    const edges = await getChapterEdges(ctx, skillId);
+    if (edges.length === 0) {
+      errors.push('Chapters are not connected (no edges defined)');
+    } else {
+      // BFS from all root nodes (nodes with no incoming edges)
+      const hasIncoming = new Set(edges.map(e => e.targetChapterId));
+      const roots = chapters.filter(ch => !hasIncoming.has(ch.id));
+
+      if (roots.length > 0) {
+        // Build adjacency list and BFS from all roots
+        const reachable = new Set<string>(roots.map(r => r.id));
+        const queue = [...roots.map(r => r.id)];
+        const adjMap = new Map<string, string[]>();
+        for (const ch of chapters) adjMap.set(ch.id, []);
+        for (const e of edges) adjMap.get(e.sourceChapterId)?.push(e.targetChapterId);
+
+        while (queue.length > 0) {
+          const current = queue.shift()!;
+          for (const neighbor of adjMap.get(current) ?? []) {
+            if (!reachable.has(neighbor)) {
+              reachable.add(neighbor);
+              queue.push(neighbor);
+            }
+          }
+        }
+
+        const unreachable = chapters.filter(ch => !reachable.has(ch.id));
+        if (unreachable.length > 0) {
+          errors.push(`${unreachable.length} disconnected chapter(s): ${unreachable.map(ch => ch.name).join(', ')}`);
+        }
+      }
+      // else: roots.length === 0 means all nodes have incoming edges (pure cycle) — valid, skip reachability check
+    }
+  }
+
+  return { valid: errors.length === 0, errors };
 }
 
 // ── Skill Tools (pool) ───────────────────────────────────────────────
@@ -157,8 +246,10 @@ export async function getChapterTools(ctx: TenantContext, chapterId: string) {
 
 export async function setChapterTools(ctx: TenantContext, chapterId: string, toolIds: string[]) {
   await ctx.db.delete(builtChapterTools).where(eq(builtChapterTools.chapterId, chapterId));
-  for (const toolId of toolIds) {
-    await ctx.db.insert(builtChapterTools).values({ id: newId(), chapterId, toolId });
+  if (toolIds.length > 0) {
+    await ctx.db.insert(builtChapterTools).values(
+      toolIds.map(toolId => ({ id: newId(), chapterId, toolId }))
+    );
   }
 }
 
@@ -241,16 +332,18 @@ export async function setAgentBuiltSkills(ctx: TenantContext, gatewayAgentId: st
       eq(agentBuiltSkills.serverId, serverId),
       eq(agentBuiltSkills.tenantId, ctx.tenantId),
     ));
-  const now = nowMs();
-  for (let i = 0; i < skillIds.length; i++) {
-    await ctx.db.insert(agentBuiltSkills).values({
-      id: newId(),
-      gatewayAgentId,
-      serverId,
-      tenantId: ctx.tenantId,
-      skillId: skillIds[i],
-      position: i,
-      createdAt: now,
-    });
+  if (skillIds.length > 0) {
+    const now = nowMs();
+    await ctx.db.insert(agentBuiltSkills).values(
+      skillIds.map((skillId, i) => ({
+        id: newId(),
+        gatewayAgentId,
+        serverId,
+        tenantId: ctx.tenantId,
+        skillId,
+        position: i,
+        createdAt: now,
+      }))
+    );
   }
 }

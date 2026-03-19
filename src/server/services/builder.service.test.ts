@@ -51,10 +51,13 @@ describe('validateSkillForPublish', () => {
     expect(result.errors).toHaveLength(0);
   });
 
-  it('detects a disconnected subgraph (node reachable only from isolated node)', async () => {
+  it('detects a disconnected subgraph (cycle island unreachable from any root)', async () => {
     const { db, resolveSequence } = createMockDb();
     const skill = { id: 'skill-1', name: 'My Skill', tenantId: 't1' };
-    // Graph: A->B (connected), C->D (disconnected subgraph — C has no incoming, but is not root reachable from A)
+    // Graph: main chain C->D (C is a root), and a disconnected cycle A<->B (both have incoming,
+    // neither is a root, and they are not reachable from C).
+    // The old hasIncoming/hasOutgoing check would NOT catch A and B (they both have edges).
+    // BFS from roots (only C) will not reach A or B — catches the disconnected cycle island.
     const chapters = [
       { id: 'ch-A', name: 'Node A', type: 'chapter', guide: 'Do A', conditionText: '' },
       { id: 'ch-B', name: 'Node B', type: 'chapter', guide: 'Do B', conditionText: '' },
@@ -67,10 +70,11 @@ describe('validateSkillForPublish', () => {
       { chapterId: 'ch-C' },
       { chapterId: 'ch-D' },
     ];
-    // Two disconnected chains: A->B and C->D
+    // C->D (main connected chain), A->B->A (disconnected cycle island)
     const edges = [
-      { sourceChapterId: 'ch-A', targetChapterId: 'ch-B' },
       { sourceChapterId: 'ch-C', targetChapterId: 'ch-D' },
+      { sourceChapterId: 'ch-A', targetChapterId: 'ch-B' },
+      { sourceChapterId: 'ch-B', targetChapterId: 'ch-A' },
     ];
 
     resolveSequence([
