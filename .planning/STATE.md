@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Skill Builder Improvements
 status: unknown
-stopped_at: Completed 07-02-PLAN.md (wire shared validation, publishAnyway state, toast feedback)
-last_updated: "2026-03-19T07:33:19.350Z"
+stopped_at: Completed 07-03-PLAN.md (validation panel, disabled publish button, aria fixes) — awaiting human-verify checkpoint
+last_updated: "2026-03-19T07:42:52.569Z"
 last_activity: 2026-03-19
 progress:
   total_phases: 9
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 7
-  completed_plans: 6
+  completed_plans: 7
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-18)
 
 ## Current Position
 
-Phase: 07 (validation-ux) — EXECUTING
+Phase: 07 (validation-ux) — COMPLETE (awaiting Task 3 human-verify)
 Plan: 3 of 3
 
 ## Performance Metrics
@@ -41,6 +41,7 @@ Plan: 3 of 3
 |-------|-------|-------|----------|
 | Phase 07 | P01 | 5m | 5m |
 | Phase 07 P02 | 10 | 2 tasks | 5 files |
+| Phase 07 P03 | 6 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -61,6 +62,7 @@ Plan: 3 of 3
 - VALID-03: "chapter missing guide" and "chapter with no tools" reclassified as errors (not warnings) — align with CONTEXT.md classification
 - VALID-04: ValidationFinding.level is 'error' | 'warning' only — no 'ok' level; callers count passing chapters separately
 - VALID-01/VALID-05: publishError state removed — replaced with toastError/toastSuccess; handlePublishClick() is the new warning-gated publish entry point; server filters findings to errors only (warnings don't block publish)
+- VALID-02/A11Y-01: ValidationPanel is an aside (complementary landmark) rendered inline alongside DAG canvas in a flex row — not a modal overlay; role=dialog belongs on inner .modal/.confirm-modal/.condition-modal not the backdrop overlay
 
 ### Phase 06 Decisions
 
@@ -83,6 +85,6 @@ Plan: 3 of 3
 
 ## Session Info
 
-- **Last Session:** 2026-03-19T07:33:19.347Z
-- **Stopped At:** Completed 07-02-PLAN.md (wire shared validation, publishAnyway state, toast feedback)
+- **Last Session:** 2026-03-19T07:42:52.565Z
+- **Stopped At:** Completed 07-03-PLAN.md (validation panel, disabled publish button, aria fixes) — awaiting human-verify checkpoint
 - **Last Activity:** 2026-03-19

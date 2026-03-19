@@ -28,7 +28,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 ### Validation UX
 
 - [x] **VALID-01**: Publish button is disabled when validation errors exist, with tooltip explaining why
-- [ ] **VALID-02**: Publish errors display as a structured panel with per-chapter messages and "Fix" buttons that navigate to the chapter editor
+- [x] **VALID-02**: Publish errors display as a structured panel with per-chapter messages and "Fix" buttons that navigate to the chapter editor
 - [x] **VALID-03**: Client-side validation includes condition nodes missing conditionText and per-chapter tool assignment checks
 - [x] **VALID-04**: A shared pure validation function in $lib/utils/ is used by both client-side $derived and server-side validateSkillForPublish
 - [x] **VALID-05**: When publish is clicked with warnings but no errors, the validation modal auto-opens with a "Publish Anyway" button
@@ -78,7 +78,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Accessibility
 
-- [ ] **A11Y-01**: Modal role="dialog" is on the modal element (not backdrop), with aria-labelledby on validation/condition/delete modals
+- [x] **A11Y-01**: Modal role="dialog" is on the modal element (not backdrop), with aria-labelledby on validation/condition/delete modals
 - [ ] **A11Y-02**: DAG nodes support keyboard activation (Enter key opens chapter editor on focused node)
 - [ ] **A11Y-03**: Context menu has proper focus management
 
@@ -127,11 +127,11 @@ Requirements for this milestone. Each maps to roadmap phases.
 | CFIX-09 | Phase 6 | Complete |
 | CFIX-10 | Phase 6 | Complete |
 | VALID-01 | Phase 7 | Complete |
-| VALID-02 | Phase 7 | Pending |
+| VALID-02 | Phase 7 | Complete |
 | VALID-03 | Phase 7 | Complete |
 | VALID-04 | Phase 7 | Complete |
 | VALID-05 | Phase 7 | Complete |
-| A11Y-01 | Phase 7 | Pending |
+| A11Y-01 | Phase 7 | Complete |
 | ERR-01 | Phase 8 | Pending |
 | ERR-02 | Phase 8 | Pending |
 | ERR-03 | Phase 8 | Pending |
