@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Skill Builder Improvements
 status: unknown
-stopped_at: Phase 7 context gathered
-last_updated: "2026-03-19T06:30:14.204Z"
+stopped_at: "Completed 07-01-PLAN.md (validateSkill pure function)"
+last_updated: "2026-03-19T07:22:00Z"
 last_activity: 2026-03-19
 progress:
   total_phases: 9
   completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
+  total_plans: 7
+  completed_plans: 5
 ---
 
 # Project State
@@ -20,29 +20,30 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-18)
 
 **Core value:** Skill authors can confidently create, validate, and version AI agent skills through a reliable, informative builder interface.
-**Current focus:** Phase 06 — critical-code-fixes
+**Current focus:** Phase 07 — validation-ux
 
 ## Current Position
 
-Phase: 06 (critical-code-fixes) — EXECUTING
-Plan: 3 of 3
+Phase: 07 (validation-ux) — EXECUTING
+Plan: 2 of 3
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 0 (v2.0)
-- Average duration: --
-- Total execution time: --
+- Total plans completed: 1 (v2.0)
+- Average duration: 5 min
+- Total execution time: 5 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| Phase 07 | P01 | 5m | 5m |
 
 ## Accumulated Context
 
+| Phase 07 P01 | 5m | 1 task (TDD) | 2 files |
 | Phase 05 P01 | 8m | 2 tasks | 3 files |
 | Phase 06 P03 | 5m | 1 task | 1 file |
 | Phase 06 P01 | 3m | 2 tasks | 2 files |
@@ -52,6 +53,12 @@ Plan: 3 of 3
 
 - Phase 1 (Tab Layout and Save) completed: 3/3 plans
 - Phases 2-4 deferred to v3.0 — builder improvements are higher priority
+
+### Phase 07 Decisions
+
+- VALID-03/VALID-04: validateSkill() is pure TypeScript (no Svelte/DB imports) — used by both client $derived and server publish gate
+- VALID-03: "chapter missing guide" and "chapter with no tools" reclassified as errors (not warnings) — align with CONTEXT.md classification
+- VALID-04: ValidationFinding.level is 'error' | 'warning' only — no 'ok' level; callers count passing chapters separately
 
 ### Phase 06 Decisions
 
@@ -74,6 +81,6 @@ Plan: 3 of 3
 
 ## Session Info
 
-- **Last Session:** 2026-03-19T06:30:14.202Z
-- **Stopped At:** Phase 7 context gathered
+- **Last Session:** 2026-03-19T07:22:00Z
+- **Stopped At:** Completed 07-01-PLAN.md (validateSkill pure function)
 - **Last Activity:** 2026-03-19
