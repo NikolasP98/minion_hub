@@ -29,6 +29,7 @@ Gateway administrators and skill authors can confidently manage, monitor, and ex
 - v1.0 Settings Page Revamp: Tab layout and save infrastructure (Phase 1 shipped)
 - ARCH-01, ARCH-02: State architecture extraction — skill editor god-component decomposed into `skill-editor.svelte.ts` module (Phase 5 complete)
 - CFIX-01 through CFIX-10: All 10 critical code fixes — AI endpoint bugs, DB layer performance, publish safety (Phase 6 complete)
+- VALID-01 through VALID-05, A11Y-01: Validation UX — shared validation module, structured error panel, disabled publish button, toast feedback, aria fixes (Phase 7 complete)
 
 ### Active
 
