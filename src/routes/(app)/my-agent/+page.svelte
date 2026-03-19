@@ -2,7 +2,8 @@
 	import { page } from '$app/state';
 	import { personalAgent, type PersonalAgentData } from '$lib/state/features/personal-agent.svelte';
 	import { conn } from '$lib/state/gateway';
-	import { User, Save, Loader2, MessageSquare, Clock, Zap } from 'lucide-svelte';
+	import { ui } from '$lib/state/ui/ui.svelte';
+	import { User, Save, Loader2, MessageSquare, Clock, Zap, Plug } from 'lucide-svelte';
 
 	// ── Data from server load ────────────────────────────────────────────────
 	const serverData = $derived(page.data as {
@@ -24,6 +25,8 @@
 	const isProvisioning = $derived(agent?.provisioningStatus === 'provisioning');
 	const isError = $derived(agent?.provisioningStatus === 'error');
 	const showOnboarding = $derived(agent && !agent.personalityConfigured && isActive);
+	// Show gateway blocker for any non-active agent when disconnected
+	const needsGateway = $derived(!conn.connected && agent && !isActive);
 
 	// ── Local edit state ─────────────────────────────────────────────────────
 	type PresetKey = 'professional' | 'casual' | 'creative' | 'technical';
@@ -62,8 +65,19 @@
 	let selectedPrompt = $state<string | null>(null);
 	let saveSuccess = $state(false);
 
-	// Trigger provisioning for pending/error agents once the gateway is connected
+	// Trigger provisioning for pending/error agents once the gateway is connected.
+	// Track the last-seen status so that when it changes (e.g. after reload marks
+	// the agent as 'error'), the attempt flag resets and retry becomes possible
+	// without a full page refresh.
 	let provisionAttempted = $state(false);
+	let lastSeenStatus = $state('');
+	$effect(() => {
+		const currentStatus = agent?.provisioningStatus ?? '';
+		if (currentStatus !== lastSeenStatus) {
+			lastSeenStatus = currentStatus;
+			provisionAttempted = false;
+		}
+	});
 	$effect(() => {
 		if (agent && conn.connected && !provisionAttempted && (agent.provisioningStatus === 'pending' || agent.provisioningStatus === 'error')) {
 			provisionAttempted = true;
@@ -156,8 +170,30 @@
 <div class="flex flex-col flex-1 overflow-y-auto">
 	<div class="w-full max-w-2xl mx-auto px-4 py-6 space-y-4">
 
-		<!-- Provisioning: Pending -->
-		{#if isPending}
+		<!-- Gateway required: disconnected with non-active agent -->
+		{#if needsGateway}
+			<div class="flex flex-col items-center justify-center py-16 text-center space-y-5">
+				<div class="w-16 h-16 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center">
+					<Plug size={28} class="text-accent" />
+				</div>
+				<div class="space-y-2 max-w-sm">
+					<h2 class="text-xl font-bold text-foreground">Connect to a gateway</h2>
+					<p class="text-sm text-muted-foreground leading-relaxed">
+						Your personal agent needs a gateway connection to finish setup. Add a host to get started.
+					</p>
+				</div>
+				<button
+					type="button"
+					onclick={() => (ui.overlayOpen = true)}
+					class="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-accent text-accent-foreground font-medium text-sm hover:brightness-110 transition-all cursor-pointer"
+				>
+					<Plug size={14} />
+					Connect a host
+				</button>
+			</div>
+
+		<!-- Provisioning: Pending (gateway is connected) -->
+		{:else if isPending}
 			<div class="bg-card/50 backdrop-blur-sm border border-border rounded-xl p-6">
 				<div class="flex items-center gap-3">
 					<div class="w-8 h-8 rounded-full bg-warning/20 flex items-center justify-center animate-pulse">

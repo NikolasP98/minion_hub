@@ -44,7 +44,7 @@ export async function provisionPersonalAgent(
 		id: newId(),
 		userId: params.userId,
 		agentId,
-		serverId: params.serverId || null,
+		serverId: params.serverId,
 		displayName,
 		personalityConfigured: false,
 		provisioningStatus: 'pending',

@@ -1,4 +1,3 @@
-import { insertReliabilityEvents, pruneOldReliabilityEvents, type ReliabilityEventInput } from './reliability.service';
 import { insertCredentialHealthSnapshot, type CredentialHealthInput } from './credential-health.service';
 import { insertSkillStats, type SkillStatInput } from './skill-stats.service';
 import { sessions, gatewayHeartbeats } from '$server/db/schema';
@@ -28,7 +27,6 @@ export interface SessionPushInput {
 }
 
 export interface MetricsBatchInput {
-  reliabilityEvents?: ReliabilityEventInput[];
   credentialHealth?: {
     serverId: string;
     snapshotJson: string;
@@ -39,27 +37,11 @@ export interface MetricsBatchInput {
   sessions?: SessionPushInput[];
 }
 
-let pushCount = 0;
-
 export async function processMetricsBatch(
   ctx: TenantContext,
   batch: MetricsBatchInput,
   serverId: string,
 ) {
-  // Periodically prune old events (~every 100 pushes)
-  pushCount++;
-  if (pushCount % 100 === 0) {
-    pruneOldReliabilityEvents(ctx).catch(() => {});
-  }
-  // Ensure all serverId fields match the authenticated server
-  if (batch.reliabilityEvents?.length) {
-    const events = batch.reliabilityEvents.map((e) => ({
-      ...e,
-      serverId,
-    }));
-    await insertReliabilityEvents(ctx, events);
-  }
-
   if (batch.credentialHealth) {
     await insertCredentialHealthSnapshot(ctx, {
       serverId,

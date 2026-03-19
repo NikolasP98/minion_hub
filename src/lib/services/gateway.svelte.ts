@@ -5,7 +5,7 @@ import { hostsState, getActiveHost, updateHost, saveLastActiveHost } from '$lib/
 import { autoSave, resetWorkshop } from '$lib/state/workshop/workshop.svelte';
 import { ui } from '$lib/state/ui/ui.svelte';
 import { toastError, toastInfo, toastSuccess } from '$lib/state/ui/toast.svelte';
-import { pushReliabilityEvent, setReliabilityServerId, type ReliabilityEvent } from '$lib/state/reliability/reliability.svelte';
+import { pushReliabilityEvent, type ReliabilityEvent } from '$lib/state/reliability/reliability.svelte';
 import { configState, loadConfig, restartState, onRestartReconnected } from '$lib/state/config/config.svelte';
 import { uuid } from '$lib/utils/uuid';
 import { extractText } from '$lib/utils/text';
@@ -329,7 +329,6 @@ async function resolveServerId() {
     });
     if (match) {
       ui.selectedServerId = match.id;
-      setReliabilityServerId(match.id);
       fetchActivityBinsFromDb(match.id);
       startSqliteFlush(match.id);
       loadAgentGroups(match.id);

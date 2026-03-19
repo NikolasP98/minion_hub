@@ -10,35 +10,8 @@ describe('MetricsBatchInput validation', () => {
     expect(Object.keys(batch)).toHaveLength(0);
   });
 
-  it('accepts a batch with only reliabilityEvents', () => {
-    const batch = {
-      reliabilityEvents: [
-        {
-          serverId: 'srv1',
-          category: 'auth' as const,
-          severity: 'high' as const,
-          event: 'credential.refresh.failed',
-          message: 'Token expired',
-          occurredAt: Date.now(),
-        },
-      ],
-    };
-    expect(batch.reliabilityEvents).toHaveLength(1);
-    expect(batch.reliabilityEvents[0].category).toBe('auth');
-  });
-
   it('accepts a batch with all metric types', () => {
     const batch = {
-      reliabilityEvents: [
-        {
-          serverId: 'srv1',
-          category: 'gateway' as const,
-          severity: 'low' as const,
-          event: 'startup',
-          message: 'Gateway started',
-          occurredAt: Date.now(),
-        },
-      ],
       credentialHealth: {
         serverId: 'srv1',
         snapshotJson: JSON.stringify({ profiles: [], providers: [] }),
@@ -62,28 +35,9 @@ describe('MetricsBatchInput validation', () => {
         capturedAt: Date.now(),
       },
     };
-    expect(batch.reliabilityEvents).toHaveLength(1);
     expect(batch.credentialHealth.snapshotJson).toBeTruthy();
     expect(batch.skillStats).toHaveLength(1);
     expect(batch.heartbeat.uptimeMs).toBe(3600000);
-  });
-
-  it('validates new reliability categories', () => {
-    const validCategories = [
-      'cron', 'browser', 'timezone', 'general',
-      'auth', 'skill', 'agent', 'gateway',
-    ];
-    for (const category of validCategories) {
-      const event = {
-        serverId: 'srv1',
-        category,
-        severity: 'low',
-        event: 'test',
-        message: 'test',
-        occurredAt: Date.now(),
-      };
-      expect(event.category).toBe(category);
-    }
   });
 
   it('validates skill stat statuses', () => {

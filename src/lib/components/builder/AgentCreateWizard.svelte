@@ -9,10 +9,22 @@
     } from "lucide-svelte";
     import * as steps from "@zag-js/steps";
     import { useMachine, normalizeProps } from "@zag-js/svelte";
-    import { onMount } from "svelte";
     import EmojiPicker from "./EmojiPicker.svelte";
+    import Combobox from "$lib/components/ui/Combobox.svelte";
+    import { sendRequest } from "$lib/services/gateway.svelte";
+    import { conn } from "$lib/state/gateway/connection.svelte";
+    import { hostsState } from "$lib/state/features/hosts.svelte";
+    import type { SkillStatusEntry, SkillStatusReport } from "$lib/types/skills";
 
     // ── Types ────────────────────────────────────────────────────────────────
+    interface BuiltSkill {
+        id: string;
+        name: string;
+        description: string;
+        emoji: string;
+        status: string;
+    }
+
     interface Props {
         onComplete: (id: string) => void;
         onClose: () => void;
@@ -28,12 +40,17 @@
     let systemPrompt = $state('');
     let temperature = $state(0.7);
     let maxTokens = $state(4096);
-    let selectedSkillIds = $state<string[]>([]);
+    let selectedGatewaySkillIds = $state<string[]>([]);
+    let selectedBuiltSkillIds = $state<string[]>([]);
     let creating = $state(false);
-    let publishedSkills = $state<Array<{ id: string; name: string; emoji: string; description: string }>>([]);
+    let gatewaySkills = $state<SkillStatusEntry[]>([]);
+    let publishedSkills = $state<BuiltSkill[]>([]);
     let skillsLoading = $state(false);
 
-    const emojiOptions = ['\u{1F916}', '\u{1F9E0}', '\u{1F4AC}', '\u{1F527}', '\u{1F4CA}', '\u{1F3AF}', '\u26A1', '\u{1F310}'];
+    // ── Models ──────────────────────────────────────────────────────────────
+    type ModelItem = { id: string; name: string };
+    let modelItems = $state<ModelItem[]>([]);
+    let defaultModel = $state('');
 
     // ── Zag.js steps machine ─────────────────────────────────────────────────
     const STEP_COUNT = 4;
@@ -53,29 +70,83 @@
     const isLastStep = $derived(api.value === STEP_COUNT - 1);
     const canAdvanceStep0 = $derived(name.trim().length >= 3);
 
-    // ── Fetch published skills ───────────────────────────────────────────────
-    onMount(async () => {
-        skillsLoading = true;
-        try {
-            const res = await fetch('/api/builder/skills');
-            if (res.ok) {
-                const data = await res.json();
-                publishedSkills = (data as Array<{ id: string; name: string; emoji: string; description: string; status: string }>)
-                    .filter((s) => s.status === 'published');
-            }
-        } catch {
-            // Silently fail — skills step is optional
-        } finally {
-            skillsLoading = false;
+    // ── Derived skill groups ──────────────────────────────────────────────────
+    const eligibleSkills = $derived(gatewaySkills.filter((s) => s.eligible));
+    const ineligibleSkills = $derived(gatewaySkills.filter((s) => !s.eligible));
+    const totalSelectedSkills = $derived(selectedGatewaySkillIds.length + selectedBuiltSkillIds.length);
+    const hasBuiltSkills = $derived(publishedSkills.length > 0);
+    const hasGatewaySkills = $derived(gatewaySkills.length > 0);
+
+    // ── Fetch models + skills when gateway connects ──────────────────────────
+    let modelsLoaded = $state(false);
+    let skillsLoaded = $state(false);
+
+    let builtSkillsLoaded = $state(false);
+
+    $effect(() => {
+        if (!conn.connected) return;
+        // Fetch models
+        if (!modelsLoaded) {
+            sendRequest('models.list', {}).then((raw) => {
+                const res = raw as { models?: ModelItem[]; defaultModel?: string } | null;
+                if (res?.models) {
+                    const seen = new Set<string>();
+                    modelItems = res.models.filter((m) =>
+                        seen.has(m.id) ? false : (seen.add(m.id), true),
+                    );
+                }
+                if (res?.defaultModel) {
+                    defaultModel = res.defaultModel;
+                    if (!model) model = res.defaultModel;
+                }
+                modelsLoaded = true;
+            }).catch(() => {
+                modelsLoaded = true;
+            });
+        }
+        // Fetch gateway skills
+        if (!skillsLoaded) {
+            skillsLoading = true;
+            sendRequest('skills.status', {}).then((raw) => {
+                const report = raw as SkillStatusReport;
+                if (report?.skills) {
+                    gatewaySkills = report.skills;
+                }
+                skillsLoaded = true;
+                skillsLoading = false;
+            }).catch(() => {
+                skillsLoaded = true;
+                skillsLoading = false;
+            });
+        }
+        // Fetch published built skills
+        if (!builtSkillsLoaded) {
+            fetch('/api/builder/skills?status=published')
+                .then((r) => r.json())
+                .then((data) => {
+                    publishedSkills = data.skills ?? [];
+                    builtSkillsLoaded = true;
+                })
+                .catch(() => {
+                    builtSkillsLoaded = true;
+                });
         }
     });
 
-    // ── Skill toggle ─────────────────────────────────────────────────────────
-    function toggleSkill(skillId: string) {
-        if (selectedSkillIds.includes(skillId)) {
-            selectedSkillIds = selectedSkillIds.filter((id) => id !== skillId);
+    // ── Skill toggles ────────────────────────────────────────────────────────
+    function toggleGatewaySkill(skillKey: string) {
+        if (selectedGatewaySkillIds.includes(skillKey)) {
+            selectedGatewaySkillIds = selectedGatewaySkillIds.filter((k) => k !== skillKey);
         } else {
-            selectedSkillIds = [...selectedSkillIds, skillId];
+            selectedGatewaySkillIds = [...selectedGatewaySkillIds, skillKey];
+        }
+    }
+
+    function toggleBuiltSkill(skillId: string) {
+        if (selectedBuiltSkillIds.includes(skillId)) {
+            selectedBuiltSkillIds = selectedBuiltSkillIds.filter((k) => k !== skillId);
+        } else {
+            selectedBuiltSkillIds = [...selectedBuiltSkillIds, skillId];
         }
     }
 
@@ -91,38 +162,47 @@
     async function handleCreate() {
         creating = true;
         try {
-            // 1. Create the agent
-            const res = await fetch('/api/builder/agents', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    name: name.trim(),
-                    emoji,
-                    description: description.trim(),
-                    model: model.trim(),
-                    systemPrompt: systemPrompt.trim(),
-                    temperature,
-                    maxTokens,
-                }),
-            });
+            // 1. Create the agent via gateway protocol
+            const params: Record<string, unknown> = {
+                name: name.trim(),
+            };
+            if (model.trim()) params.model = model.trim();
+            if (emoji.trim()) params.emoji = emoji.trim();
+            if (description.trim()) params.description = description.trim();
+            if (systemPrompt.trim()) params.systemPrompt = systemPrompt.trim();
 
-            if (!res.ok) {
-                throw new Error(`Failed to create agent: ${res.status}`);
+            const res = (await sendRequest('agents.create', params)) as {
+                agentId?: string;
+            } | null;
+
+            const agentId = res?.agentId;
+            if (!agentId) {
+                throw new Error('Agent creation failed: no agent ID returned');
             }
 
-            const { id } = await res.json();
-
-            // 2. Attach selected skills
-            for (const skillId of selectedSkillIds) {
-                await fetch(`/api/builder/agents/${id}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'add-skill', skillId }),
+            // 2. Set selected gateway skills on the agent
+            if (selectedGatewaySkillIds.length > 0) {
+                await sendRequest('agents.skills.set', {
+                    agentId,
+                    skills: selectedGatewaySkillIds,
                 });
             }
 
-            // 3. Notify parent
-            onComplete(id);
+            // 3. Persist built skill selections via hub API
+            if (selectedBuiltSkillIds.length > 0 && hostsState.activeHostId) {
+                await fetch('/api/builder/agent-skills', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        gatewayAgentId: agentId,
+                        serverId: hostsState.activeHostId,
+                        skillIds: selectedBuiltSkillIds,
+                    }),
+                });
+            }
+
+            // 4. Notify parent
+            onComplete(agentId);
         } catch (err) {
             console.error('Agent creation failed:', err);
         } finally {
@@ -239,14 +319,27 @@
                 <!-- Step 1: Model & Prompt -->
                 <div {...api.getContentProps({ index: 1 })}>
                     <div class="field">
-                        <label class="field-label" for="agent-model">Model</label>
-                        <input
-                            id="agent-model"
-                            class="field-input"
-                            type="text"
+                        <Combobox
+                            id="wizard-model"
+                            items={modelItems}
+                            itemToValue={(m) => m.id}
+                            itemToString={(m) => m.name}
                             bind:value={model}
-                            placeholder="e.g. claude-sonnet-4, gpt-4o, llama-3"
-                        />
+                            label="Model"
+                            placeholder="Search models\u2026"
+                        >
+                            {#snippet item({ item: m, selected, itemTextProps })}
+                                <span
+                                    class="model-item-name"
+                                    class:model-item-selected={selected}
+                                    {...itemTextProps}
+                                >{m.name}</span>
+                                {#if m.id === defaultModel}
+                                    <span class="model-badge">default</span>
+                                {/if}
+                                <span class="model-item-id">{m.id}</span>
+                            {/snippet}
+                        </Combobox>
                     </div>
 
                     <div class="field">
@@ -265,7 +358,7 @@
                 <!-- Step 2: Skills -->
                 <div {...api.getContentProps({ index: 2 })}>
                     <span class="field-helper">
-                        Assign published skills to this agent (you can add more later)
+                        Select skills to enable for this agent ({totalSelectedSkills} selected)
                     </span>
 
                     {#if skillsLoading}
@@ -273,35 +366,91 @@
                             <Loader2 size={18} class="spin" />
                             <span>Loading skills...</span>
                         </div>
-                    {:else if publishedSkills.length === 0}
+                    {:else if !hasBuiltSkills && !hasGatewaySkills}
                         <div class="skills-empty">
-                            No published skills available. You can add skills later.
+                            No skills available. Create skills in the Builder tab or add them to the gateway.
                         </div>
                     {:else}
-                        <div class="skills-grid">
-                            {#each publishedSkills as skill (skill.id)}
-                                {@const selected = selectedSkillIds.includes(skill.id)}
-                                <button
-                                    type="button"
-                                    class="skill-card"
-                                    class:selected
-                                    onclick={() => toggleSkill(skill.id)}
-                                >
-                                    <span class="skill-emoji">{skill.emoji || '\u{1F4D6}'}</span>
-                                    <div class="skill-info">
-                                        <span class="skill-name">{skill.name}</span>
-                                        {#if skill.description}
-                                            <span class="skill-desc">{skill.description}</span>
+                        <!-- Your Skills (published built skills) -->
+                        {#if hasBuiltSkills}
+                            {#if hasGatewaySkills}
+                                <span class="skills-section-label">Your Skills</span>
+                            {/if}
+                            <div class="skills-grid">
+                                {#each publishedSkills as skill (skill.id)}
+                                    {@const selected = selectedBuiltSkillIds.includes(skill.id)}
+                                    <button
+                                        type="button"
+                                        class="skill-card"
+                                        class:selected
+                                        onclick={() => toggleBuiltSkill(skill.id)}
+                                    >
+                                        <span class="skill-emoji">{skill.emoji || '\u{1F4D6}'}</span>
+                                        <div class="skill-info">
+                                            <span class="skill-name">{skill.name}</span>
+                                            {#if skill.description}
+                                                <span class="skill-desc">{skill.description}</span>
+                                            {/if}
+                                        </div>
+                                        <span class="skill-badge skill-badge--custom">custom</span>
+                                        {#if selected}
+                                            <span class="skill-check">
+                                                <Check size={14} />
+                                            </span>
                                         {/if}
+                                    </button>
+                                {/each}
+                            </div>
+                        {/if}
+
+                        <!-- Gateway Skills -->
+                        {#if hasGatewaySkills}
+                            {#if hasBuiltSkills}
+                                <span class="skills-section-label" class:skills-section-label--spaced={hasBuiltSkills}>Gateway Skills</span>
+                            {/if}
+                            <div class="skills-grid">
+                                {#each eligibleSkills as skill (skill.skillKey)}
+                                    {@const selected = selectedGatewaySkillIds.includes(skill.skillKey)}
+                                    <button
+                                        type="button"
+                                        class="skill-card"
+                                        class:selected
+                                        class:skill-disabled={skill.disabled}
+                                        onclick={() => toggleGatewaySkill(skill.skillKey)}
+                                    >
+                                        <span class="skill-emoji">{skill.emoji || '\u{1F4D6}'}</span>
+                                        <div class="skill-info">
+                                            <span class="skill-name">{skill.name}</span>
+                                            {#if skill.description}
+                                                <span class="skill-desc">{skill.description}</span>
+                                            {/if}
+                                        </div>
+                                        {#if skill.disabled}
+                                            <span class="skill-badge skill-badge--off">disabled</span>
+                                        {:else if selected}
+                                            <span class="skill-check">
+                                                <Check size={14} />
+                                            </span>
+                                        {/if}
+                                    </button>
+                                {/each}
+                            </div>
+
+                            <!-- Ineligible skills: compact icon grid at bottom -->
+                            {#if ineligibleSkills.length > 0}
+                                <div class="ineligible-section">
+                                    <span class="ineligible-label">Unavailable ({ineligibleSkills.length})</span>
+                                    <div class="ineligible-grid">
+                                        {#each ineligibleSkills as skill (skill.skillKey)}
+                                            <span
+                                                class="ineligible-icon"
+                                                title="{skill.name} — missing dependencies"
+                                            >{skill.emoji || '\u{1F4D6}'}</span>
+                                        {/each}
                                     </div>
-                                    {#if selected}
-                                        <span class="skill-check">
-                                            <Check size={14} />
-                                        </span>
-                                    {/if}
-                                </button>
-                            {/each}
-                        </div>
+                                </div>
+                            {/if}
+                        {/if}
                     {/if}
                 </div>
 
@@ -350,7 +499,7 @@
                             </div>
                         {/if}
                         <div class="summary-detail">
-                            Skills: {selectedSkillIds.length}
+                            Skills: {totalSelectedSkills}
                         </div>
                         <div class="summary-detail">
                             Temperature: {temperature}
@@ -698,6 +847,36 @@
         color: var(--color-muted);
     }
 
+    /* ── Model item styles (inside Combobox snippet) ────────────────────── */
+    .model-item-name {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--color-foreground);
+    }
+    .model-item-selected {
+        color: var(--color-accent);
+        font-weight: 600;
+    }
+
+    .model-badge {
+        font-size: 10px;
+        color: var(--color-accent);
+        background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+        border-radius: 3px;
+        padding: 1px 5px;
+        flex-shrink: 0;
+    }
+
+    .model-item-id {
+        color: var(--color-muted);
+        font-size: 11px;
+        font-family: "JetBrains Mono", "Fira Code", monospace;
+        flex-shrink: 0;
+    }
+
     /* ── Skills ──────────────────────────────────────────────────────────── */
     .skills-loading {
         display: flex;
@@ -777,6 +956,83 @@
         display: -webkit-box;
         -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
+    }
+
+    .skill-disabled {
+        opacity: 0.5;
+    }
+
+    .skill-badge {
+        font-size: 10px;
+        padding: 1px 6px;
+        border-radius: 3px;
+        flex-shrink: 0;
+        margin-top: 2px;
+    }
+
+    .skill-badge--off {
+        color: var(--color-muted);
+        background: var(--color-bg3, var(--color-bg));
+    }
+
+    .skill-badge--custom {
+        color: var(--color-accent);
+        background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+    }
+
+    .skills-section-label {
+        display: block;
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--color-muted);
+        margin-top: 4px;
+        margin-bottom: 4px;
+    }
+
+    .skills-section-label--spaced {
+        margin-top: 16px;
+        padding-top: 12px;
+        border-top: 1px dashed var(--color-border);
+    }
+
+    /* ── Ineligible skills (compact icon grid) ────────────────────────── */
+    .ineligible-section {
+        margin-top: 16px;
+        padding-top: 12px;
+        border-top: 1px dashed var(--color-border);
+    }
+
+    .ineligible-label {
+        font-size: 10px;
+        color: var(--color-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        font-weight: 600;
+        display: block;
+        margin-bottom: 6px;
+    }
+
+    .ineligible-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+    }
+
+    .ineligible-icon {
+        width: 28px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        background: var(--color-bg2);
+        border: 1px solid var(--color-border);
+        border-radius: 5px;
+        opacity: 0.4;
+        cursor: default;
+        line-height: 1;
     }
 
     .skill-check {

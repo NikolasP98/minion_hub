@@ -1,5 +1,5 @@
 import { eq, and, desc } from 'drizzle-orm';
-import { builtSkills, builtSkillTools, builtChapters, builtChapterEdges, builtChapterTools, builtAgents, builtAgentSkills, builtTools } from '$server/db/schema';
+import { builtSkills, builtSkillTools, builtChapters, builtChapterEdges, builtChapterTools, builtAgents, builtAgentSkills, builtTools, agentBuiltSkills } from '$server/db/schema';
 import { newId, nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
 
@@ -31,11 +31,13 @@ export async function createBuiltSkill(ctx: TenantContext, input: CreateSkillInp
   return { id };
 }
 
-export async function listBuiltSkills(ctx: TenantContext) {
+export async function listBuiltSkills(ctx: TenantContext, opts?: { status?: 'draft' | 'published' }) {
+  const conditions = [eq(builtSkills.tenantId, ctx.tenantId)];
+  if (opts?.status) conditions.push(eq(builtSkills.status, opts.status));
   return ctx.db
     .select()
     .from(builtSkills)
-    .where(eq(builtSkills.tenantId, ctx.tenantId))
+    .where(and(...conditions))
     .orderBy(desc(builtSkills.updatedAt));
 }
 
@@ -227,4 +229,28 @@ export async function publishBuiltTool(ctx: TenantContext, toolId: string) {
     .update(builtTools)
     .set({ status: 'published', publishedAt: now, updatedAt: now })
     .where(and(eq(builtTools.id, toolId), eq(builtTools.tenantId, ctx.tenantId)));
+}
+
+// ── Agent Built Skills (gateway agent → built skill mapping) ─────────
+
+export async function setAgentBuiltSkills(ctx: TenantContext, gatewayAgentId: string, serverId: string, skillIds: string[]) {
+  await ctx.db
+    .delete(agentBuiltSkills)
+    .where(and(
+      eq(agentBuiltSkills.gatewayAgentId, gatewayAgentId),
+      eq(agentBuiltSkills.serverId, serverId),
+      eq(agentBuiltSkills.tenantId, ctx.tenantId),
+    ));
+  const now = nowMs();
+  for (let i = 0; i < skillIds.length; i++) {
+    await ctx.db.insert(agentBuiltSkills).values({
+      id: newId(),
+      gatewayAgentId,
+      serverId,
+      tenantId: ctx.tenantId,
+      skillId: skillIds[i],
+      position: i,
+      createdAt: now,
+    });
+  }
 }

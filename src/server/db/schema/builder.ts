@@ -88,6 +88,17 @@ export const builtAgentSkills = sqliteTable('built_agent_skills', {
   configOverrides: text('config_overrides').default('{}'), // JSON
 });
 
+// ── Agent Built Skills (junction: gateway agent → built skill) ────────
+export const agentBuiltSkills = sqliteTable('agent_built_skills', {
+  id: text('id').primaryKey(),
+  gatewayAgentId: text('gateway_agent_id').notNull(),
+  serverId: text('server_id').notNull().references(() => servers.id, { onDelete: 'cascade' }),
+  tenantId: text('tenant_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  skillId: text('skill_id').notNull().references(() => builtSkills.id, { onDelete: 'cascade' }),
+  position: integer('position').notNull().default(0),
+  createdAt: integer('created_at').notNull(),
+});
+
 // ── Built Tools (admin-only playground) ──────────────────────────────
 export const builtTools = sqliteTable('built_tools', {
   id: text('id').primaryKey(),

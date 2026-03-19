@@ -87,8 +87,6 @@ export const personalAgent = {
 					headers: { 'Content-Type': 'application/json' },
 					body: JSON.stringify({ status: 'active' }),
 				});
-				// Reload agent data to reflect new status
-				await this.load();
 			} catch (err) {
 				// Mark as error
 				await fetch('/api/personal-agent/provision', {
@@ -100,6 +98,8 @@ export const personalAgent = {
 					}),
 				});
 			}
+			// Always reload so client state reflects the DB outcome
+			await this.load();
 		} catch {
 			// Silently fail -- will retry next page load
 		}
