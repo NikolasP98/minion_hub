@@ -27,6 +27,7 @@ Gateway administrators and skill authors can confidently manage, monitor, and ex
 ### Validated
 
 - v1.0 Settings Page Revamp: Tab layout and save infrastructure (Phase 1 shipped)
+- ARCH-01, ARCH-02: State architecture extraction — skill editor god-component decomposed into `skill-editor.svelte.ts` module (Phase 5 complete)
 
 ### Active
 
@@ -57,7 +58,8 @@ See `.planning/REQUIREMENTS.md` for full REQ-ID breakdown.
 - `src/routes/api/builder/ai/suggest-skill/+server.ts` — AI skill generation
 - `src/routes/api/builder/ai/suggest-chapter/+server.ts` — AI chapter generation
 - `src/server/services/builder.service.ts` — Builder service layer
-- `src/routes/(app)/builder/skills/[id]/+page.svelte` — Main skill editor
+- `src/lib/state/builder/skill-editor.svelte.ts` — Skill editor state module (all state, derived, business logic)
+- `src/routes/(app)/builder/skills/[id]/+page.svelte` — Skill editor template + lifecycle (reduced from 1,789 to ~1,200 lines)
 - `src/lib/components/builder/ChapterEditor.svelte` — Chapter editor modal
 - `src/lib/components/builder/ChapterDAG.svelte` — DAG canvas
 - `src/lib/data/tool-manifest.ts` — Tool metadata
@@ -80,4 +82,4 @@ See `.planning/REQUIREMENTS.md` for full REQ-ID breakdown.
 | Phase 8 included as placeholder | Keeps runtime-dependent features visible in roadmap | -- Pending |
 
 ---
-*Last updated: 2026-03-18 after milestone v2.0 initialization*
+*Last updated: 2026-03-19 after Phase 5 (state architecture refactor) completion*
