@@ -67,12 +67,12 @@ export const skillEditorState = $state({
 
 let _saveTimer: ReturnType<typeof setTimeout> | null = null;
 
-// ── Derived values ────────────────────────────────────────────────────
+// ── Derived values (module-private, exposed via exported getters) ─────
 
-export const poolToolIds = $derived([...new Set(Object.values(skillEditorState.chapterToolMap).flat())]);
-export const allToolIds = $derived(skillEditorState.gatewayTools.map(t => t.id));
+const _poolToolIds = $derived([...new Set(Object.values(skillEditorState.chapterToolMap).flat())]);
+const _allToolIds = $derived(skillEditorState.gatewayTools.map(t => t.id));
 
-export const validationFindings = $derived.by(() => {
+const _validationFindings = $derived.by(() => {
   const findings: ValidationFinding[] = [];
 
   // Check skill has a name
@@ -158,25 +158,36 @@ export const validationFindings = $derived.by(() => {
   return findings;
 });
 
-export const validationCounts = $derived({
-  errors: validationFindings.filter(f => f.level === 'error').length,
-  warnings: validationFindings.filter(f => f.level === 'warning').length,
-  ok: validationFindings.filter(f => f.level === 'ok').length,
+const _validationCounts = $derived({
+  errors: _validationFindings.filter(f => f.level === 'error').length,
+  warnings: _validationFindings.filter(f => f.level === 'warning').length,
+  ok: _validationFindings.filter(f => f.level === 'ok').length,
 });
 
-export const worstLevel = $derived<'error' | 'warning' | 'ok'>(
-  validationCounts.errors > 0 ? 'error' : validationCounts.warnings > 0 ? 'warning' : 'ok'
+const _worstLevel = $derived<'error' | 'warning' | 'ok'>(
+  _validationCounts.errors > 0 ? 'error' : _validationCounts.warnings > 0 ? 'warning' : 'ok'
 );
 
-export const conditionValidation = $derived(validateConditionText(skillEditorState.conditionText));
+const _conditionValidation = $derived(validateConditionText(skillEditorState.conditionText));
 
-export const validationTooltip = $derived(
+const _validationTooltip = $derived(
   [
-    validationCounts.errors > 0 ? `${validationCounts.errors} error${validationCounts.errors !== 1 ? 's' : ''}` : '',
-    validationCounts.warnings > 0 ? `${validationCounts.warnings} warning${validationCounts.warnings !== 1 ? 's' : ''}` : '',
-    validationCounts.ok > 0 ? `${validationCounts.ok} ok` : '',
+    _validationCounts.errors > 0 ? `${_validationCounts.errors} error${_validationCounts.errors !== 1 ? 's' : ''}` : '',
+    _validationCounts.warnings > 0 ? `${_validationCounts.warnings} warning${_validationCounts.warnings !== 1 ? 's' : ''}` : '',
+    _validationCounts.ok > 0 ? `${_validationCounts.ok} ok` : '',
   ].filter(Boolean).join(', ')
 );
+
+// Exported reactive getters — use these in components
+export const skillEditorDerived = {
+  get poolToolIds() { return _poolToolIds; },
+  get allToolIds() { return _allToolIds; },
+  get validationFindings() { return _validationFindings; },
+  get validationCounts() { return _validationCounts; },
+  get worstLevel() { return _worstLevel; },
+  get conditionValidation() { return _conditionValidation; },
+  get validationTooltip() { return _validationTooltip; },
+};
 
 // ── Pure functions ────────────────────────────────────────────────────
 
@@ -274,6 +285,13 @@ export async function saveSkill() {
 export async function publishSkill() {
   // Flush any pending save first
   if (skillEditorState.dirty) await saveSkill();
+
+  // Re-check: if still dirty, save failed — abort publish
+  if (skillEditorState.dirty) {
+    skillEditorState.publishError = 'Cannot publish — unsaved changes could not be saved. Please try again.';
+    return;
+  }
+
   skillEditorState.publishing = true;
   skillEditorState.publishError = null;
   try {
@@ -312,7 +330,7 @@ export async function buildSkillWithAI() {
       body: JSON.stringify({
         name: skillEditorState.name.trim(),
         description: skillEditorState.description.trim(),
-        availableToolIds: allToolIds,
+        availableToolIds: _allToolIds,
       }),
     });
 
@@ -363,7 +381,7 @@ export async function buildSkillWithAI() {
       });
 
       // Set chapter tools if provided
-      const toolIds = (ch.toolIds ?? []).filter((t: string) => allToolIds.includes(t));
+      const toolIds = (ch.toolIds ?? []).filter((t: string) => _allToolIds.includes(t));
       if (toolIds.length > 0) {
         await fetch(`/api/builder/skills/${skillEditorState.skillId}/chapter-tools/${id}`, {
           method: 'PUT',
@@ -462,7 +480,7 @@ export async function addCondition() {
 }
 
 export async function saveCondition() {
-  if (!conditionValidation.valid) return;
+  if (!_conditionValidation.valid) return;
   try {
     const res = await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
       method: 'PUT',
@@ -510,7 +528,7 @@ export function openConditionOrChapter(chapter: ChapterEntry) {
 }
 
 export async function updateCondition() {
-  if (!skillEditorState.editingCondition || !skillEditorState.editingCondition.id || !conditionValidation.valid) return;
+  if (!skillEditorState.editingCondition || !skillEditorState.editingCondition.id || !_conditionValidation.valid) return;
   try {
     await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
       method: 'PUT',
