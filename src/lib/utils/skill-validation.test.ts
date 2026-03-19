@@ -358,12 +358,13 @@ describe('Test 11: every finding has required fields', () => {
 describe('Test 12: no ok-level findings are ever returned', () => {
   it('returns no ok-level findings for a valid skill', () => {
     const result = validateSkill(makeInput());
-    expect(result.every(f => f.level !== 'ok')).toBe(true);
+    // Cast level to string so TS does not complain that 'ok' is unreachable in the union
+    expect(result.every(f => (f.level as string) !== 'ok')).toBe(true);
   });
 
   it('returns no ok-level findings even when there are errors', () => {
     const result = validateSkill(makeInput({ chapters: [], chapterToolMap: {} }));
-    expect(result.every(f => f.level !== 'ok')).toBe(true);
+    expect(result.every(f => (f.level as string) !== 'ok')).toBe(true);
   });
 });
 
