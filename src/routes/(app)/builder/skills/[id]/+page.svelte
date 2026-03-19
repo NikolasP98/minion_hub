@@ -7,9 +7,7 @@
     import ChapterDAG from "$lib/components/builder/ChapterDAG.svelte";
     import EmojiPicker from "$lib/components/builder/EmojiPicker.svelte";
     import {
-        skillEditorState,
-        validationFindings, validationCounts, worstLevel, conditionValidation,
-        poolToolIds, allToolIds, validationTooltip,
+        skillEditorState, skillEditorDerived,
         initSkillEditor, cleanupSkillEditor, loadGatewayTools, scheduleSave,
         publishSkill, buildSkillWithAI, addChapter, addCondition,
         saveCondition, updateCondition, openConditionOrChapter,
@@ -92,13 +90,13 @@
 
             <button
                 type="button"
-                class="toolbar-btn validation-btn {worstLevel}"
-                title={validationTooltip}
+                class="toolbar-btn validation-btn {skillEditorDerived.worstLevel}"
+                title={skillEditorDerived.validationTooltip}
                 onclick={() => { skillEditorState.showValidation = !skillEditorState.showValidation; }}
             >
-                {#if worstLevel === 'error'}
+                {#if skillEditorDerived.worstLevel === 'error'}
                     <XCircle size={14} />
-                {:else if worstLevel === 'warning'}
+                {:else if skillEditorDerived.worstLevel === 'warning'}
                     <AlertTriangle size={14} />
                 {:else}
                     <CheckCircle2 size={14} />
@@ -121,14 +119,6 @@
             </button>
         </div>
     </div>
-
-    {#if skillEditorState.publishError}
-        <div class="publish-error">
-            <XCircle size={14} />
-            <span>{skillEditorState.publishError}</span>
-            <button type="button" class="publish-error-dismiss" onclick={() => skillEditorState.publishError = null}>&times;</button>
-        </div>
-    {/if}
 
     <!-- ── Three-Column Book Layout ─────────────────────────────────── -->
     <div class="flex-1 min-h-0 flex">
@@ -188,21 +178,21 @@
 
                         <!-- Tool Pool (read-only, aggregated from chapters) -->
                         <div class="tool-pool-section">
-                            <h3 class="section-label">Tool Pool <span class="pool-count">{poolToolIds.length}</span></h3>
+                            <h3 class="section-label">Tool Pool <span class="pool-count">{skillEditorDerived.poolToolIds.length}</span></h3>
                             <p class="section-sublabel">
                                 Tools used across chapters
                             </p>
                             <div
                                 class="tool-pool-drop"
-                                class:has-tools={poolToolIds.length > 0}
+                                class:has-tools={skillEditorDerived.poolToolIds.length > 0}
                                 role="list"
                             >
-                                {#if poolToolIds.length === 0}
+                                {#if skillEditorDerived.poolToolIds.length === 0}
                                     <span class="pool-empty-text">
                                         No tools assigned in any chapter yet
                                     </span>
                                 {:else}
-                                    {#each poolToolIds as toolId (toolId)}
+                                    {#each skillEditorDerived.poolToolIds as toolId (toolId)}
                                         {@const info = getToolInfo(toolId)}
                                         <div class="pool-card" role="listitem">
                                             <div class="pool-card-top">
@@ -260,7 +250,7 @@
 {#if skillEditorState.editingChapter}
     <ChapterEditor
         chapter={skillEditorState.editingChapter}
-        availableToolIds={allToolIds}
+        availableToolIds={skillEditorDerived.allToolIds}
         chapterToolIds={skillEditorState.editingChapterToolIds}
         skillName={skillEditorState.name}
         skillDescription={skillEditorState.description}
@@ -278,7 +268,7 @@
                 <button type="button" class="close-btn" onclick={() => { skillEditorState.showValidation = false; }} aria-label="Close">×</button>
             </div>
             <div class="validation-body">
-                {#each validationFindings as finding}
+                {#each skillEditorDerived.validationFindings as finding}
                     <div class="validation-row {finding.level}">
                         {#if finding.level === 'error'}
                             <XCircle size={14} class="validation-icon error" />
@@ -293,9 +283,8 @@
             </div>
             <div class="validation-footer">
                 <span class="validation-summary">
-                    {validationCounts.errors} error{validationCounts.errors !== 1 ? 's' : ''},
-                    {validationCounts.warnings} warning{validationCounts.warnings !== 1 ? 's' : ''},
-                    {validationCounts.ok} ok
+                    {skillEditorDerived.validationCounts.errors} error{skillEditorDerived.validationCounts.errors !== 1 ? 's' : ''},
+                    {skillEditorDerived.validationCounts.warnings} warning{skillEditorDerived.validationCounts.warnings !== 1 ? 's' : ''}
                 </span>
                 <button type="button" class="confirm-btn cancel" onclick={() => { skillEditorState.showValidation = false; }}>Close</button>
             </div>
@@ -324,17 +313,17 @@
                         id="cond-text"
                         type="text"
                         class="condition-input"
-                        class:invalid={skillEditorState.conditionText.trim().length > 0 && !conditionValidation.valid}
-                        class:valid-input={conditionValidation.valid}
+                        class:invalid={skillEditorState.conditionText.trim().length > 0 && !skillEditorDerived.conditionValidation.valid}
+                        class:valid-input={skillEditorDerived.conditionValidation.valid}
                         bind:value={skillEditorState.conditionText}
                         placeholder="Is the user authenticated?"
                     />
-                    {#if skillEditorState.conditionText.trim().length > 0 && !conditionValidation.valid}
+                    {#if skillEditorState.conditionText.trim().length > 0 && !skillEditorDerived.conditionValidation.valid}
                         <span class="condition-error">
                             <XCircle size={12} />
-                            {conditionValidation.reason}
+                            {skillEditorDerived.conditionValidation.reason}
                         </span>
-                    {:else if conditionValidation.valid}
+                    {:else if skillEditorDerived.conditionValidation.valid}
                         <span class="condition-valid">
                             <CheckCircle2 size={12} />
                             Valid binary condition
@@ -347,7 +336,7 @@
                 <button
                     type="button"
                     class="confirm-btn primary"
-                    disabled={!conditionValidation.valid}
+                    disabled={!skillEditorDerived.conditionValidation.valid}
                     onclick={skillEditorState.editingCondition.id ? updateCondition : saveCondition}
                 >{skillEditorState.editingCondition.id ? 'Update' : 'Create'}</button>
             </div>

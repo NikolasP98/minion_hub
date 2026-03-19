@@ -2,15 +2,14 @@ export { builderState, loadBuiltSkills, loadBuiltAgents, loadBuiltTools, createS
 export type { BuiltSkillSummary, BuiltAgentSummary, BuiltToolSummary } from './builder.svelte';
 
 export {
-  skillEditorState,
-  validationFindings, validationCounts, worstLevel, conditionValidation,
-  poolToolIds, allToolIds, validationTooltip,
+  skillEditorState, skillEditorDerived,
   initSkillEditor, cleanupSkillEditor, loadSkill, loadGatewayTools,
-  scheduleSave, saveSkill, publishSkill, buildSkillWithAI,
+  scheduleSave, saveSkill, publishSkill, handlePublishClick, buildSkillWithAI,
   addChapter, removeChapter, updateChapterPosition,
   connectChapters, deleteEdge, confirmRemoveChapter, executeDeleteChapter,
   openChapterEditor, saveChapterEdits,
   addCondition, saveCondition, updateCondition, openConditionOrChapter,
   validateConditionText,
 } from './skill-editor.svelte';
-export type { ChapterEntry, ValidationFinding } from './skill-editor.svelte';
+export type { ChapterEntry } from './skill-editor.svelte';
+export type { ValidationFinding, SkillValidationInput } from '$lib/utils/skill-validation';

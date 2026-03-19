@@ -1,6 +1,8 @@
 import { sendRequest } from '$lib/services/gateway.svelte';
 import { conn } from '$lib/state/gateway';
+import { toastSuccess, toastError } from '$lib/state/ui/toast.svelte';
 import type { ToolStatusEntry, ToolsStatusReport } from '$lib/types/tools';
+import { validateSkill, type ValidationFinding } from '$lib/utils/skill-validation';
 import posthog from 'posthog-js';
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -16,11 +18,6 @@ export interface ChapterEntry {
   conditionText?: string;
   positionX: number;
   positionY: number;
-}
-
-export interface ValidationFinding {
-  level: 'error' | 'warning' | 'ok';
-  message: string;
 }
 
 // ── State ────────────────────────────────────────────────────────────
@@ -51,7 +48,6 @@ export const skillEditorState = $state({
 
   // Publish state
   publishing: false,
-  publishError: null as string | null,
 
   // Modal/editing state (kept in module for Phase 7/8 access)
   editingChapter: null as ChapterEntry | null,
@@ -61,6 +57,7 @@ export const skillEditorState = $state({
   conditionName: '',
   chapterToDelete: null as ChapterEntry | null,
   showValidation: false,
+  publishAnyway: false,
 });
 
 // ── Private timer (NOT $state — timers do not need reactivity) ───────
@@ -73,95 +70,21 @@ const _poolToolIds = $derived([...new Set(Object.values(skillEditorState.chapter
 const _allToolIds = $derived(skillEditorState.gatewayTools.map(t => t.id));
 
 const _validationFindings = $derived.by(() => {
-  const findings: ValidationFinding[] = [];
-
-  // Check skill has a name
-  if (!skillEditorState.name.trim() || skillEditorState.name.trim() === 'Untitled Skill') {
-    findings.push({ level: 'warning', message: 'Skill has no custom name' });
-  } else {
-    findings.push({ level: 'ok', message: 'Skill has a name' });
-  }
-
-  // Check skill has a description
-  if (!skillEditorState.description.trim()) {
-    findings.push({ level: 'warning', message: 'Skill has no description' });
-  } else {
-    findings.push({ level: 'ok', message: 'Skill has a description' });
-  }
-
-  // Check at least one chapter exists
-  if (skillEditorState.chapters.length === 0) {
-    findings.push({ level: 'error', message: 'No chapters defined' });
-  } else {
-    findings.push({ level: 'ok', message: `${skillEditorState.chapters.length} chapter${skillEditorState.chapters.length !== 1 ? 's' : ''} defined` });
-  }
-
-  // Check chapters have tools assigned
-  const chaptersWithoutTools = skillEditorState.chapters.filter(ch => !(skillEditorState.chapterToolMap[ch.id]?.length));
-  if (chaptersWithoutTools.length > 0) {
-    findings.push({ level: 'warning', message: `${chaptersWithoutTools.length} chapter${chaptersWithoutTools.length !== 1 ? 's' : ''} without tools` });
-  } else if (skillEditorState.chapters.length > 0) {
-    findings.push({ level: 'ok', message: 'All chapters have tools' });
-  }
-
-  // Check chapters have guide text
-  const chaptersWithoutGuide = skillEditorState.chapters.filter(ch => !ch.guide?.trim());
-  if (chaptersWithoutGuide.length > 0) {
-    findings.push({ level: 'warning', message: `${chaptersWithoutGuide.length} chapter${chaptersWithoutGuide.length !== 1 ? 's' : ''} without instructions` });
-  } else if (skillEditorState.chapters.length > 0) {
-    findings.push({ level: 'ok', message: 'All chapters have instructions' });
-  }
-
-  // Check chapters have output definitions
-  const chaptersWithoutOutput = skillEditorState.chapters.filter(ch => !ch.outputDef?.trim());
-  if (chaptersWithoutOutput.length > 0) {
-    findings.push({ level: 'warning', message: `${chaptersWithoutOutput.length} chapter${chaptersWithoutOutput.length !== 1 ? 's' : ''} without output definitions` });
-  } else if (skillEditorState.chapters.length > 0) {
-    findings.push({ level: 'ok', message: 'All chapters have output definitions' });
-  }
-
-  // Check DAG is connected (has edges if >1 chapter)
-  if (skillEditorState.chapters.length > 1 && skillEditorState.chapterEdges.length === 0) {
-    findings.push({ level: 'warning', message: 'Chapters are not connected (no edges)' });
-  } else if (skillEditorState.chapters.length > 1) {
-    findings.push({ level: 'ok', message: 'Chapter flow is connected' });
-  }
-
-  // Check for cycles in the DAG
-  if (skillEditorState.chapters.length > 1 && skillEditorState.chapterEdges.length > 0) {
-    const adj = new Map<string, string[]>();
-    for (const ch of skillEditorState.chapters) adj.set(ch.id, []);
-    for (const e of skillEditorState.chapterEdges) adj.get(e.sourceChapterId)?.push(e.targetChapterId);
-    const visited = new Set<string>();
-    const stack = new Set<string>();
-    let hasCycle = false;
-    function dfs(node: string) {
-      if (hasCycle) return;
-      visited.add(node);
-      stack.add(node);
-      for (const neighbor of adj.get(node) ?? []) {
-        if (stack.has(neighbor)) { hasCycle = true; return; }
-        if (!visited.has(neighbor)) dfs(neighbor);
-      }
-      stack.delete(node);
-    }
-    for (const ch of skillEditorState.chapters) {
-      if (!visited.has(ch.id)) dfs(ch.id);
-    }
-    if (hasCycle) {
-      findings.push({ level: 'ok', message: `Cycle detected — max ${skillEditorState.maxCycles} iteration${skillEditorState.maxCycles !== 1 ? 's' : ''}` });
-    } else {
-      findings.push({ level: 'ok', message: 'Chapter graph is acyclic' });
-    }
-  }
-
-  return findings;
+  return validateSkill({
+    name: skillEditorState.name,
+    description: skillEditorState.description,
+    chapters: skillEditorState.chapters,
+    edges: skillEditorState.chapterEdges.map(e => ({
+      sourceChapterId: e.sourceChapterId,
+      targetChapterId: e.targetChapterId,
+    })),
+    chapterToolMap: skillEditorState.chapterToolMap,
+  });
 });
 
 const _validationCounts = $derived({
   errors: _validationFindings.filter(f => f.level === 'error').length,
   warnings: _validationFindings.filter(f => f.level === 'warning').length,
-  ok: _validationFindings.filter(f => f.level === 'ok').length,
 });
 
 const _worstLevel = $derived<'error' | 'warning' | 'ok'>(
@@ -174,8 +97,7 @@ const _validationTooltip = $derived(
   [
     _validationCounts.errors > 0 ? `${_validationCounts.errors} error${_validationCounts.errors !== 1 ? 's' : ''}` : '',
     _validationCounts.warnings > 0 ? `${_validationCounts.warnings} warning${_validationCounts.warnings !== 1 ? 's' : ''}` : '',
-    _validationCounts.ok > 0 ? `${_validationCounts.ok} ok` : '',
-  ].filter(Boolean).join(', ')
+  ].filter(Boolean).join(', ') || 'All checks passing'
 );
 
 // Exported reactive getters — use these in components
@@ -288,12 +210,11 @@ export async function publishSkill() {
 
   // Re-check: if still dirty, save failed — abort publish
   if (skillEditorState.dirty) {
-    skillEditorState.publishError = 'Cannot publish — unsaved changes could not be saved. Please try again.';
+    toastError('Publish failed', 'Cannot publish — unsaved changes could not be saved. Please try again.', { duration: 5000 });
     return;
   }
 
   skillEditorState.publishing = true;
-  skillEditorState.publishError = null;
   try {
     const res = await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
       method: 'PUT',
@@ -303,19 +224,31 @@ export async function publishSkill() {
     if (!res.ok) {
       const data = await res.json();
       if (data.errors?.length) {
-        skillEditorState.publishError = data.errors.join('; ');
+        toastError('Publish failed', `Validation failed: ${data.errors.join('; ')}`, { duration: 5000 });
         return;
       }
       throw new Error(`HTTP ${res.status}`);
     }
     skillEditorState.status = 'published';
+    skillEditorState.publishAnyway = false;
+    toastSuccess('Skill published!');
     posthog.capture('skill_published', { skill_id: skillEditorState.skillId, skill_name: skillEditorState.name });
   } catch (e) {
-    skillEditorState.publishError = e instanceof Error ? e.message : 'Publish failed';
+    toastError('Publish failed', e instanceof Error ? e.message : 'Could not reach server. Please try again.', { duration: 5000 });
     console.error('[skill-editor] Publish failed:', e);
   } finally {
     skillEditorState.publishing = false;
   }
+}
+
+export function handlePublishClick() {
+  if (skillEditorDerived.validationCounts.errors > 0) return; // button is disabled, shouldn't be reachable
+  if (skillEditorDerived.validationCounts.warnings > 0) {
+    skillEditorState.showValidation = true;
+    skillEditorState.publishAnyway = true;
+    return; // don't publish yet — show warnings in panel
+  }
+  publishSkill();
 }
 
 export async function buildSkillWithAI() {
@@ -742,6 +675,6 @@ export function cleanupSkillEditor() {
   skillEditorState.editingCondition = null;
   skillEditorState.chapterToDelete = null;
   skillEditorState.showValidation = false;
-  skillEditorState.publishError = null;
+  skillEditorState.publishAnyway = false;
   skillEditorState.aiBuildError = null;
 }
