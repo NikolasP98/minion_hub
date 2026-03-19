@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Skill Builder Improvements
 status: unknown
-stopped_at: "Completed 07-01-PLAN.md (validateSkill pure function)"
-last_updated: "2026-03-19T07:22:00Z"
+stopped_at: Completed 07-02-PLAN.md (wire shared validation, publishAnyway state, toast feedback)
+last_updated: "2026-03-19T07:33:19.350Z"
 last_activity: 2026-03-19
 progress:
   total_phases: 9
   completed_phases: 2
   total_plans: 7
-  completed_plans: 5
+  completed_plans: 6
 ---
 
 # Project State
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-03-18)
 ## Current Position
 
 Phase: 07 (validation-ux) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 
 ## Performance Metrics
 
@@ -40,6 +40,7 @@ Plan: 2 of 3
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | Phase 07 | P01 | 5m | 5m |
+| Phase 07 P02 | 10 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -59,6 +60,7 @@ Plan: 2 of 3
 - VALID-03/VALID-04: validateSkill() is pure TypeScript (no Svelte/DB imports) — used by both client $derived and server publish gate
 - VALID-03: "chapter missing guide" and "chapter with no tools" reclassified as errors (not warnings) — align with CONTEXT.md classification
 - VALID-04: ValidationFinding.level is 'error' | 'warning' only — no 'ok' level; callers count passing chapters separately
+- VALID-01/VALID-05: publishError state removed — replaced with toastError/toastSuccess; handlePublishClick() is the new warning-gated publish entry point; server filters findings to errors only (warnings don't block publish)
 
 ### Phase 06 Decisions
 
@@ -81,6 +83,6 @@ Plan: 2 of 3
 
 ## Session Info
 
-- **Last Session:** 2026-03-19T07:22:00Z
-- **Stopped At:** Completed 07-01-PLAN.md (validateSkill pure function)
+- **Last Session:** 2026-03-19T07:33:19.347Z
+- **Stopped At:** Completed 07-02-PLAN.md (wire shared validation, publishAnyway state, toast feedback)
 - **Last Activity:** 2026-03-19

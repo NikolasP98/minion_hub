@@ -27,11 +27,11 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Validation UX
 
-- [ ] **VALID-01**: Publish button is disabled when validation errors exist, with tooltip explaining why
+- [x] **VALID-01**: Publish button is disabled when validation errors exist, with tooltip explaining why
 - [ ] **VALID-02**: Publish errors display as a structured panel with per-chapter messages and "Fix" buttons that navigate to the chapter editor
 - [x] **VALID-03**: Client-side validation includes condition nodes missing conditionText and per-chapter tool assignment checks
 - [x] **VALID-04**: A shared pure validation function in $lib/utils/ is used by both client-side $derived and server-side validateSkillForPublish
-- [ ] **VALID-05**: When publish is clicked with warnings but no errors, the validation modal auto-opens with a "Publish Anyway" button
+- [x] **VALID-05**: When publish is clicked with warnings but no errors, the validation modal auto-opens with a "Publish Anyway" button
 
 ### Error Handling
 
@@ -126,11 +126,11 @@ Requirements for this milestone. Each maps to roadmap phases.
 | CFIX-08 | Phase 6 | Complete |
 | CFIX-09 | Phase 6 | Complete |
 | CFIX-10 | Phase 6 | Complete |
-| VALID-01 | Phase 7 | Pending |
+| VALID-01 | Phase 7 | Complete |
 | VALID-02 | Phase 7 | Pending |
 | VALID-03 | Phase 7 | Complete |
 | VALID-04 | Phase 7 | Complete |
-| VALID-05 | Phase 7 | Pending |
+| VALID-05 | Phase 7 | Complete |
 | A11Y-01 | Phase 7 | Pending |
 | ERR-01 | Phase 8 | Pending |
 | ERR-02 | Phase 8 | Pending |
