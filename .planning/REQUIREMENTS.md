@@ -112,17 +112,62 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ## Traceability
 
-Updated during roadmap creation.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (populated by roadmapper) | | |
+| ARCH-01 | Phase 5 | Pending |
+| ARCH-02 | Phase 5 | Pending |
+| CFIX-01 | Phase 6 | Pending |
+| CFIX-02 | Phase 6 | Pending |
+| CFIX-03 | Phase 6 | Pending |
+| CFIX-04 | Phase 6 | Pending |
+| CFIX-05 | Phase 6 | Pending |
+| CFIX-06 | Phase 6 | Pending |
+| CFIX-07 | Phase 6 | Pending |
+| CFIX-08 | Phase 6 | Pending |
+| CFIX-09 | Phase 6 | Pending |
+| CFIX-10 | Phase 6 | Pending |
+| VALID-01 | Phase 7 | Pending |
+| VALID-02 | Phase 7 | Pending |
+| VALID-03 | Phase 7 | Pending |
+| VALID-04 | Phase 7 | Pending |
+| VALID-05 | Phase 7 | Pending |
+| A11Y-01 | Phase 7 | Pending |
+| ERR-01 | Phase 8 | Pending |
+| ERR-02 | Phase 8 | Pending |
+| ERR-03 | Phase 8 | Pending |
+| ERR-04 | Phase 8 | Pending |
+| ERR-05 | Phase 8 | Pending |
+| ERR-06 | Phase 8 | Pending |
+| EDGE-01 | Phase 8 | Pending |
+| EDGE-02 | Phase 8 | Pending |
+| AIQL-01 | Phase 9 | Pending |
+| AIQL-02 | Phase 9 | Pending |
+| AIQL-03 | Phase 9 | Pending |
+| AIQL-04 | Phase 9 | Pending |
+| EDGE-03 | Phase 9 | Pending |
+| DFLOW-01 | Phase 10 | Pending |
+| DFLOW-02 | Phase 10 | Pending |
+| DFLOW-03 | Phase 10 | Pending |
+| A11Y-02 | Phase 10 | Pending |
+| A11Y-03 | Phase 10 | Pending |
+| COST-01 | Phase 11 | Pending |
+| COST-02 | Phase 11 | Pending |
+| VERS-01 | Phase 12 | Pending |
+| VERS-02 | Phase 12 | Pending |
+| VERS-03 | Phase 12 | Pending |
+| VERS-04 | Phase 12 | Pending |
+| VERS-05 | Phase 12 | Pending |
+| VERS-06 | Phase 12 | Pending |
+| VERS-07 | Phase 12 | Pending |
+| ADV-01 | Phase 13 | Pending |
+| ADV-02 | Phase 13 | Pending |
+| ADV-03 | Phase 13 | Pending |
 
 **Coverage:**
-- v2.0 requirements: 42 total
-- Mapped to phases: 0
-- Unmapped: 42
+- v2.0 requirements: 48 total
+- Mapped to phases: 48
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-18*
-*Last updated: 2026-03-18 after initial definition*
+*Last updated: 2026-03-18 after roadmap creation — traceability populated*
