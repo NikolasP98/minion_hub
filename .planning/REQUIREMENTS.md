@@ -17,12 +17,12 @@ Requirements for this milestone. Each maps to roadmap phases.
 - [x] **CFIX-01**: AI skill generation does not produce cyclic edges in few-shot examples
 - [x] **CFIX-02**: AI skill generation allows null edge labels in the schema definition
 - [x] **CFIX-03**: AI-generated tool IDs are filtered server-side against available tools, with filtered tools reported in the response
-- [ ] **CFIX-04**: Publish validation uses a single batch query instead of per-chapter N+1 SELECT loop
+- [x] **CFIX-04**: Publish validation uses a single batch query instead of per-chapter N+1 SELECT loop
 - [x] **CFIX-05**: AI endpoints check completion.error before attempting fallback parse, with console.warn on fallback path
 - [x] **CFIX-06**: Publish flow aborts if prior save failed (dirty check after saveSkill)
 - [x] **CFIX-07**: User inputs in AI prompts are wrapped in XML tag delimiters for injection safety
-- [ ] **CFIX-08**: Disconnected-node validation uses BFS from root to verify single connected component
-- [ ] **CFIX-09**: setChapterTools and setAgentBuiltSkills use batch inserts instead of sequential loops
+- [x] **CFIX-08**: Disconnected-node validation uses BFS from root to verify single connected component
+- [x] **CFIX-09**: setChapterTools and setAgentBuiltSkills use batch inserts instead of sequential loops
 - [x] **CFIX-10**: AI endpoints return usage object (prompt_tokens, completion_tokens, cost) in response
 
 ### Validation UX
@@ -119,12 +119,12 @@ Requirements for this milestone. Each maps to roadmap phases.
 | CFIX-01 | Phase 6 | Complete |
 | CFIX-02 | Phase 6 | Complete |
 | CFIX-03 | Phase 6 | Complete |
-| CFIX-04 | Phase 6 | Pending |
+| CFIX-04 | Phase 6 | Complete |
 | CFIX-05 | Phase 6 | Complete |
 | CFIX-06 | Phase 6 | Complete |
 | CFIX-07 | Phase 6 | Complete |
-| CFIX-08 | Phase 6 | Pending |
-| CFIX-09 | Phase 6 | Pending |
+| CFIX-08 | Phase 6 | Complete |
+| CFIX-09 | Phase 6 | Complete |
 | CFIX-10 | Phase 6 | Complete |
 | VALID-01 | Phase 7 | Pending |
 | VALID-02 | Phase 7 | Pending |

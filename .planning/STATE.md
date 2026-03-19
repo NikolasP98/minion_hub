@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Skill Builder Improvements
 status: unknown
-stopped_at: Completed 06-01-PLAN.md
-last_updated: "2026-03-19T05:38:13.012Z"
+stopped_at: Completed 06-02-PLAN.md
+last_updated: "2026-03-19T05:39:35.928Z"
 last_activity: 2026-03-19
 progress:
   total_phases: 9
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 4
-  completed_plans: 3
+  completed_plans: 4
 ---
 
 # Project State
@@ -46,6 +46,7 @@ Plan: 3 of 3
 | Phase 05 P01 | 8m | 2 tasks | 3 files |
 | Phase 06 P03 | 5m | 1 task | 1 file |
 | Phase 06 P01 | 3m | 2 tasks | 2 files |
+| Phase 06 P02 | 4m | 2 tasks | 2 files |
 
 ### From v1.0 Settings Page Revamp
 
@@ -56,6 +57,8 @@ Plan: 3 of 3
 
 - CFIX-06: Use dirty flag re-check after saveSkill() as failure signal — dirty=true after save means save failed (saveSkill only clears it on success path)
 - CFIX-06: publishSkill sets publishError before returning so user sees clear message instead of silent no-op
+- CFIX-08: BFS test: two-chain topology correctly passes BFS (both have roots); disconnected cycle island is the canonical failing case
+- CFIX-04/09: guard inArray and batch insert with empty-array check — LibSQL throws on both empty IN() and INSERT INTO ... VALUES ()
 
 ### v2.0 Decisions
 
@@ -71,6 +74,6 @@ Plan: 3 of 3
 
 ## Session Info
 
-- **Last Session:** 2026-03-19T05:38:13.010Z
-- **Stopped At:** Completed 06-01-PLAN.md
+- **Last Session:** 2026-03-19T05:39:35.926Z
+- **Stopped At:** Completed 06-02-PLAN.md
 - **Last Activity:** 2026-03-19
