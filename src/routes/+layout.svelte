@@ -9,6 +9,7 @@
   import BgPattern from '$lib/components/decorations/BgPattern.svelte';
   import VoxelShader from '$lib/components/decorations/VoxelShader.svelte';
   import Toaster from '$lib/components/layout/Toaster.svelte';
+  import BugReporter from '$lib/components/layout/BugReporter.svelte';
   import HostsOverlay from '$lib/components/hosts/HostsOverlay.svelte';
   import { theme, applyTheme } from '$lib/state/ui/theme.svelte';
   import { crtConfig } from '$lib/state/ui/crt-config.svelte';
@@ -19,6 +20,7 @@
   import { loadUser, userState } from '$lib/state/features/user.svelte';
   import { type Snippet } from 'svelte';
   import { locale } from '$lib/state/ui/locale.svelte';
+  import { installInterceptor } from '$lib/utils/console-interceptor';
   import { injectSpeedInsights } from '@vercel/speed-insights/sveltekit';
   import { inject as injectAnalytics } from '@vercel/analytics';
 
@@ -30,6 +32,7 @@
   const isVoxelized = $derived(theme.preset.id === 'voxelized');
 
   onMount(async () => {
+    installInterceptor();
     await loadUser();
 
     if (!userState.user) {
@@ -70,6 +73,7 @@
     <BgPattern />
   {/if}
   <Toaster />
+  <BugReporter />
 
   {#if conn.connecting}
     <div class="fixed top-14 left-0 right-0 h-[2px] bg-bg3 z-40 overflow-hidden">

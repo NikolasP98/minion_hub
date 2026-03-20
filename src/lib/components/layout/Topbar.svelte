@@ -17,8 +17,10 @@
         GitBranch,
         BookOpen,
         User,
+        Bug,
     } from "lucide-svelte";
     import { ui } from "$lib/state/ui/ui.svelte";
+    import { captureSnapshot, bugReporter } from "$lib/state/ui/bug-reporter.svelte";
 
     const isHome = $derived(page.url.pathname === "/");
     const isMarketplace = $derived(
@@ -232,6 +234,17 @@
 
         <!-- Right Actions -->
         <div class="flex items-center gap-1.5 shrink-0">
+            <!-- Bug Report -->
+            <button
+                onclick={() => captureSnapshot()}
+                disabled={bugReporter.phase === 'capturing'}
+                class="flex items-center justify-center w-9 h-9 rounded-lg text-muted hover:text-foreground hover:bg-bg3 transition-all duration-150 disabled:opacity-50 disabled:cursor-wait"
+                aria-label="Report a bug"
+                title="Report a bug"
+            >
+                <Bug size={18} />
+            </button>
+
             <!-- Settings -->
             <a
                 href="/settings"

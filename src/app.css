@@ -239,6 +239,34 @@
     from { transform: scaleX(0); }
     to { transform: scaleX(1); }
   }
+
+  /* ── Bug Reporter animations ── */
+  @keyframes fab-pulse {
+    0%, 100% { box-shadow: 0 0 6px 1px color-mix(in srgb, var(--color-accent) 30%, transparent); }
+    50% { box-shadow: 0 0 14px 3px color-mix(in srgb, var(--color-accent) 50%, transparent); }
+  }
+
+  @keyframes camera-flash {
+    0% { opacity: 0; }
+    8% { opacity: 0.08; }
+    100% { opacity: 0; }
+  }
+
+  @keyframes card-expand {
+    from { opacity: 0; transform: scale(0.95) translateY(8px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  @keyframes success-pop {
+    0% { transform: scale(0.5); opacity: 0; }
+    60% { transform: scale(1.15); }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  @keyframes progress-drain {
+    from { width: 100%; }
+    to { width: 0%; }
+  }
 }
 
 /* ── Reduced motion: suppress all animations ── */
