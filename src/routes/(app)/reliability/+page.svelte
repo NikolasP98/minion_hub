@@ -7,6 +7,7 @@
 	import GatewayHealthPanel from '$lib/components/reliability/GatewayHealthPanel.svelte';
 	import PluginHealthPanel from '$lib/components/reliability/PluginHealthPanel.svelte';
 	import ConnectionEventsPanel from '$lib/components/reliability/ConnectionEventsPanel.svelte';
+	import AgentLlmMetricsPanel from '$lib/components/reliability/AgentLlmMetricsPanel.svelte';
 	import ScanLine from '$lib/components/decorations/ScanLine.svelte';
 	import {
 		reliability,
@@ -14,6 +15,7 @@
 		loadReliabilityEvents
 	} from '$lib/state/reliability/reliability.svelte';
 	import { hostsState } from '$lib/state/features/hosts.svelte';
+	import { conn } from '$lib/state/gateway';
 	import { onMount, untrack } from 'svelte';
 	import type { EChartsOption } from 'echarts';
 	import * as m from '$lib/paraglide/messages';
@@ -176,16 +178,27 @@
 		return evts;
 	});
 
-	// Overview stat cells
+	// Overview stat cells — derived from filtered events for full reactivity
+	let filteredSummary = $derived.by(() => {
+		const evts = filteredEvents;
+		const byCategory: Record<string, number> = {};
+		const bySeverity: Record<string, number> = {};
+		for (const e of evts) {
+			byCategory[e.category] = (byCategory[e.category] ?? 0) + 1;
+			bySeverity[e.severity] = (bySeverity[e.severity] ?? 0) + 1;
+		}
+		return { total: evts.length, byCategory, bySeverity };
+	});
+
 	const statItems = $derived([
-		{ key: 'total',    Icon: Activity,      color: 'var(--color-accent)',       label: m.reliability_totalEvents(),    value: summary?.total ?? 0 },
-		{ key: 'critical', Icon: AlertCircle,   color: 'var(--color-destructive)',  label: m.reliability_criticalEvents(), value: summary?.bySeverity?.critical ?? 0 },
-		{ key: 'cron',     Icon: Clock,         color: 'var(--color-warning)',      label: m.reliability_cronIssues(),     value: summary?.byCategory?.cron ?? 0 },
-		{ key: 'browser',  Icon: Globe,         color: 'var(--color-purple)',       label: m.reliability_browserIssues(), value: summary?.byCategory?.browser ?? 0 },
-		{ key: 'auth',     Icon: KeyRound,      color: 'var(--color-success)',      label: m.reliability_authIssues(),     value: summary?.byCategory?.auth ?? 0 },
-		{ key: 'gateway',  Icon: Radio,         color: 'var(--color-cyan)',         label: m.reliability_gatewayIssues(), value: summary?.byCategory?.gateway ?? 0 },
-		{ key: 'agent',    Icon: Bot,           color: '#ec4899',                   label: m.reliability_agentIssues(),   value: summary?.byCategory?.agent ?? 0 },
-		{ key: 'skill',    Icon: Wrench,        color: '#06b6d4',                   label: m.reliability_skillIssues(),   value: summary?.byCategory?.skill ?? 0 },
+		{ key: 'total',    Icon: Activity,      color: 'var(--color-accent)',       label: m.reliability_totalEvents(),    value: filteredSummary.total },
+		{ key: 'critical', Icon: AlertCircle,   color: 'var(--color-destructive)',  label: m.reliability_criticalEvents(), value: filteredSummary.bySeverity.critical ?? 0 },
+		{ key: 'cron',     Icon: Clock,         color: 'var(--color-warning)',      label: m.reliability_cronIssues(),     value: filteredSummary.byCategory.cron ?? 0 },
+		{ key: 'browser',  Icon: Globe,         color: 'var(--color-purple)',       label: m.reliability_browserIssues(), value: filteredSummary.byCategory.browser ?? 0 },
+		{ key: 'auth',     Icon: KeyRound,      color: 'var(--color-success)',      label: m.reliability_authIssues(),     value: filteredSummary.byCategory.auth ?? 0 },
+		{ key: 'gateway',  Icon: Radio,         color: 'var(--color-cyan)',         label: m.reliability_gatewayIssues(), value: filteredSummary.byCategory.gateway ?? 0 },
+		{ key: 'agent',    Icon: Bot,           color: '#ec4899',                   label: m.reliability_agentIssues(),   value: filteredSummary.byCategory.agent ?? 0 },
+		{ key: 'skill',    Icon: Wrench,        color: '#06b6d4',                   label: m.reliability_skillIssues(),   value: filteredSummary.byCategory.skill ?? 0 },
 	]);
 
 	async function loadData() {
@@ -193,7 +206,7 @@
 		const { from, to } = reliability.dateRange;
 		await Promise.all([
 			loadReliabilitySummary(serverId, from, to),
-			loadReliabilityEvents(serverId, { from, to, limit: 1000 })
+			loadReliabilityEvents(serverId, { from, to, limit: 10_000 })
 		]);
 	}
 
@@ -215,24 +228,34 @@
 			reliability.dateRange.from = now - 86_400_000;
 			reliability.dateRange.to = now;
 		}
-		// The $effect watching dateRange will trigger loadData()
+		// Explicit initial load — the $effect handles subsequent reactive updates
+		if (serverId && conn.connected) loadData();
 	});
 
 	$effect(() => {
 		const _from = reliability.dateRange.from;
 		const _to = reliability.dateRange.to;
 		const _sid = serverId;
-		if (_sid) {
+		const _connected = conn.connected;
+		if (_sid && _connected) {
 			untrack(() => loadData());
 		}
 	});
 
 	// ── Timeline bar chart (derived from events) ─────────────────────────────
 	function getBucketMs(rangeMs: number): number {
-		if (rangeMs <= 3_600_000)          return 5 * 60_000;      // 1h  → 5min buckets
-		if (rangeMs <= 24 * 3_600_000)     return 3_600_000;       // 24h → 1h buckets
-		if (rangeMs <= 7 * 24 * 3_600_000) return 6 * 3_600_000;   // 7d  → 6h buckets
-		return 24 * 3_600_000;                                      // 30d → 1d buckets
+		// Target ~30 bars regardless of range; snap to a clean interval
+		const TARGET_BARS = 30;
+		const snaps = [
+			60_000, 2 * 60_000, 5 * 60_000, 10 * 60_000, 15 * 60_000, 30 * 60_000,
+			3_600_000, 2 * 3_600_000, 4 * 3_600_000, 6 * 3_600_000, 12 * 3_600_000,
+			86_400_000,
+		];
+		return snaps.reduce((best, s) => {
+			const bars = rangeMs / s;
+			const bestBars = rangeMs / best;
+			return Math.abs(bars - TARGET_BARS) < Math.abs(bestBars - TARGET_BARS) ? s : best;
+		});
 	}
 
 	let timelineOptions: EChartsOption = $derived.by(() => {
@@ -250,19 +273,23 @@
 		const rangeMs = reliability.dateRange.to - reliability.dateRange.from;
 		const bucketMs = getBucketMs(rangeMs);
 
+		// Pre-fill ALL buckets across the full date range (so empty periods show as zero-height bars)
+		const rangeFrom = Math.floor(reliability.dateRange.from / bucketMs) * bucketMs;
+		const rangeTo = reliability.dateRange.to;
+		const buckets: number[] = [];
+		for (let t = rangeFrom; t <= rangeTo; t += bucketMs) {
+			buckets.push(t);
+		}
+
 		// Aggregate events into time buckets by category
 		const counts = new Map<string, Map<number, number>>();
-		const allBuckets = new Set<number>();
 		for (const evt of evts) {
 			const cat = evt.category;
 			const bucket = Math.floor(evt.timestamp / bucketMs) * bucketMs;
-			allBuckets.add(bucket);
 			if (!counts.has(cat)) counts.set(cat, new Map());
 			const catMap = counts.get(cat)!;
 			catMap.set(bucket, (catMap.get(bucket) ?? 0) + 1);
 		}
-
-		const buckets = [...allBuckets].sort((a, b) => a - b);
 
 		const visibleCategories = selectedCategories.size > 0
 			? CATEGORIES.filter(c => selectedCategories.has(c))
@@ -371,7 +398,7 @@
 
 	// ── Severity pie ──────────────────────────────────────────────────────────
 	let severityOptions: EChartsOption = $derived.by(() => {
-		const bySeverity = summary?.bySeverity ?? {};
+		const bySeverity = filteredSummary.bySeverity;
 		const data = Object.entries(bySeverity)
 			.filter(([name, count]) => count > 0 && (selectedSeverities.size === 0 || selectedSeverities.has(name)))
 			.map(([name, value]) => ({
@@ -586,6 +613,9 @@
 				<CredentialHealthPanel {serverId} />
 				<SkillStatsPanel {serverId} />
 			</div>
+
+			<!-- ── Agent LLM Metrics (full-width) ─────────────────────────────── -->
+			<AgentLlmMetricsPanel events={filteredEvents} />
 
 			<!-- ── Plugin Health (full-width) ──────────────────────────────────── -->
 			<PluginHealthPanel {serverId} />

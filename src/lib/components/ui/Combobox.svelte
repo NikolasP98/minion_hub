@@ -1,4 +1,5 @@
 <script lang="ts" generics="T">
+  import { tick } from 'svelte';
   import type { Snippet } from 'svelte';
   import * as combobox from '@zag-js/combobox';
   import { useMachine, normalizeProps } from '@zag-js/svelte';
@@ -117,9 +118,22 @@
   }
 
   // ── Sync external value into combobox ───────────────────────────────────
+  // Track both value and items so this re-runs when async items load.
+  // Use tick() to wait for useMachine to flush the new collection to the
+  // zag machine before calling setValue.
   $effect(() => {
-    if (value && api.value[0] !== value) {
-      api.setValue([value]);
+    const v = value;
+    const currentItems = items;
+    if (v && currentItems.length > 0) {
+      tick().then(() => {
+        if (api.value[0] !== v) {
+          api.setValue([v]);
+          const found = currentItems.find((i) => itemToValue(i) === v);
+          if (found) {
+            api.setInputValue(itemToString(found));
+          }
+        }
+      });
     }
   });
 </script>
