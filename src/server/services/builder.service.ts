@@ -1,7 +1,8 @@
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, inArray } from 'drizzle-orm';
 import { builtSkills, builtSkillTools, builtChapters, builtChapterEdges, builtChapterTools, builtAgents, builtAgentSkills, builtTools, agentBuiltSkills } from '$server/db/schema';
 import { newId, nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
+import { validateSkill } from '$lib/utils/skill-validation';
 
 // ── Built Skills ──────────────────────────────────────────────────────
 
@@ -69,6 +70,61 @@ export async function publishBuiltSkill(ctx: TenantContext, skillId: string) {
     .update(builtSkills)
     .set({ status: 'published', publishedAt: now, updatedAt: now })
     .where(and(eq(builtSkills.id, skillId), eq(builtSkills.tenantId, ctx.tenantId)));
+}
+
+// ── Publish Validation ────────────────────────────────────────────────
+
+export interface ValidationResult {
+  valid: boolean;
+  errors: string[];
+}
+
+export async function validateSkillForPublish(ctx: TenantContext, skillId: string): Promise<ValidationResult> {
+  const skill = await getBuiltSkill(ctx, skillId);
+  if (!skill) return { valid: false, errors: ['Skill not found'] };
+
+  const chapters = await getChapters(ctx, skillId);
+  const edges = chapters.length > 1 ? await getChapterEdges(ctx, skillId) : [];
+
+  // Build chapterToolMap from DB — batch query for all chapter-type nodes
+  const chapterToolMap: Record<string, string[]> = {};
+  const chapterOnlyNodes = chapters.filter(c => c.type === 'chapter');
+  if (chapterOnlyNodes.length > 0) {
+    const chapterIds = chapterOnlyNodes.map(c => c.id);
+    const allTools = await ctx.db
+      .select({ chapterId: builtChapterTools.chapterId, toolId: builtChapterTools.toolId })
+      .from(builtChapterTools)
+      .where(inArray(builtChapterTools.chapterId, chapterIds));
+    for (const t of allTools) {
+      if (!chapterToolMap[t.chapterId]) chapterToolMap[t.chapterId] = [];
+      chapterToolMap[t.chapterId].push(t.toolId);
+    }
+    // Ensure chapters with no tools have empty arrays
+    for (const ch of chapterOnlyNodes) {
+      if (!chapterToolMap[ch.id]) chapterToolMap[ch.id] = [];
+    }
+  }
+
+  const findings = validateSkill({
+    name: skill.name ?? '',
+    description: skill.description ?? '',
+    chapters: chapters.map(ch => ({
+      id: ch.id,
+      name: ch.name,
+      type: ch.type ?? 'chapter',
+      guide: ch.guide ?? '',
+      conditionText: ch.conditionText ?? '',
+      outputDef: ch.outputDef ?? '',
+    })),
+    edges: edges.map(e => ({
+      sourceChapterId: e.sourceChapterId,
+      targetChapterId: e.targetChapterId,
+    })),
+    chapterToolMap,
+  });
+
+  const errors = findings.filter(f => f.level === 'error').map(f => f.message);
+  return { valid: errors.length === 0, errors };
 }
 
 // ── Skill Tools (pool) ───────────────────────────────────────────────
@@ -157,8 +213,10 @@ export async function getChapterTools(ctx: TenantContext, chapterId: string) {
 
 export async function setChapterTools(ctx: TenantContext, chapterId: string, toolIds: string[]) {
   await ctx.db.delete(builtChapterTools).where(eq(builtChapterTools.chapterId, chapterId));
-  for (const toolId of toolIds) {
-    await ctx.db.insert(builtChapterTools).values({ id: newId(), chapterId, toolId });
+  if (toolIds.length > 0) {
+    await ctx.db.insert(builtChapterTools).values(
+      toolIds.map(toolId => ({ id: newId(), chapterId, toolId }))
+    );
   }
 }
 
@@ -241,16 +299,18 @@ export async function setAgentBuiltSkills(ctx: TenantContext, gatewayAgentId: st
       eq(agentBuiltSkills.serverId, serverId),
       eq(agentBuiltSkills.tenantId, ctx.tenantId),
     ));
-  const now = nowMs();
-  for (let i = 0; i < skillIds.length; i++) {
-    await ctx.db.insert(agentBuiltSkills).values({
-      id: newId(),
-      gatewayAgentId,
-      serverId,
-      tenantId: ctx.tenantId,
-      skillId: skillIds[i],
-      position: i,
-      createdAt: now,
-    });
+  if (skillIds.length > 0) {
+    const now = nowMs();
+    await ctx.db.insert(agentBuiltSkills).values(
+      skillIds.map((skillId, i) => ({
+        id: newId(),
+        gatewayAgentId,
+        serverId,
+        tenantId: ctx.tenantId,
+        skillId,
+        position: i,
+        createdAt: now,
+      }))
+    );
   }
 }

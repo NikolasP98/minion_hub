@@ -286,7 +286,7 @@
         saving = true;
         errorMsg = "";
         try {
-            const workspace = `/home/${hostUser}/${configDir}/workspaces/${name.trim()}`;
+            const workspace = `~/${configDir}/workspaces/${name.trim()}`;
             const params: Record<string, string> = {
                 name: name.trim(),
                 workspace,

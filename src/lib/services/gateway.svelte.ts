@@ -309,7 +309,7 @@ async function sendConnect() {
     .catch((err) => {
       console.error('[hub] connect failed:', err);
       conn.connectError = String(err?.message ?? err);
-      toastError('Connection failed', conn.connectError);
+      toastError('Connection failed', conn.connectError, { id: 'gateway-connect-failed' });
       ws?.close(4008, 'connect failed');
     });
 }
@@ -393,7 +393,7 @@ function handleEvent(evt: Record<string, unknown>) {
     case 'shutdown': {
       const reason = ((evt.payload as { reason?: string })?.reason) ?? 'Gateway shutting down';
       ui.shutdownReason = reason;
-      toastError('Gateway shutdown', reason, { duration: Infinity });
+      toastError('Gateway shutdown', reason, { id: 'gateway-shutdown', duration: Infinity });
       break;
     }
     case 'reliability':

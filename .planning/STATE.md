@@ -1,68 +1,91 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-current_plan: Not started
+milestone: v2.0
+milestone_name: Skill Builder Improvements
 status: unknown
-stopped_at: Completed 01-03-PLAN.md
-last_updated: "2026-03-12T06:30:54.626Z"
+stopped_at: Completed 07-03-PLAN.md — human-verify checkpoint approved, phase 07 validation-ux complete
+last_updated: "2026-03-19T08:02:14.711Z"
+last_activity: 2026-03-19
 progress:
-  total_phases: 4
-  completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  total_phases: 9
+  completed_phases: 3
+  total_plans: 7
+  completed_plans: 7
 ---
 
-# Execution State
+# Project State
+
+## Project Reference
+
+See: .planning/PROJECT.md (updated 2026-03-18)
+
+**Core value:** Skill authors can confidently create, validate, and version AI agent skills through a reliable, informative builder interface.
+**Current focus:** Phase 07 — validation-ux
 
 ## Current Position
 
-- **Phase:** 01-tab-layout-and-save-infrastructure
-- **Current Plan:** Not started
-- **Last Completed:** 01-03-PLAN.md
-- **Stopped At:** Completed 01-03-PLAN.md
-
-## Progress
-
-```
-Phase 1: [==========] 3/3 plans complete (including gap closure)
-Phase 2: [----------] 0/3 plans complete
-Phase 3: [----------] 0/2 plans complete
-Phase 4: [----------] 0/1 plans complete
-```
+Phase: 07 (validation-ux) — COMPLETE
+Plan: 3 of 3
 
 ## Performance Metrics
 
-| Phase | Plan | Duration | Tasks | Files |
-|-------|------|----------|-------|-------|
-| 01    | 01   | 3min     | 3     | 4     |
-| 01    | 02   | 6min     | 2     | 4     |
-| 01    | 03   | 5min     | 2     | 2     |
+**Velocity:**
 
-## Decisions
+- Total plans completed: 1 (v2.0)
+- Average duration: 5 min
+- Total execution time: 5 min
 
-- **01-01**: ChannelsTab integrated inside Comms gateway panel using same inline section pattern as TeamTab (security) and BindingsTab (agents)
-- **01-01**: dirtyTabIds uses SECURITY_GROUP_IDS carve-out first, consistent with how groups are routed
-- **01-01**: Dirty dot hidden when tab is active (user already viewing dirty content)
-- **01-01**: Default tab changed from 'appearance' to 'hosts' per locked tab order decision
-- **01-02**: toaster.create() returns string ID directly from @zag-js/toast — no UUID workaround needed
-- **01-02**: onRestartReconnected uses setTimeout(0) for immediate reset since toast manages dismiss timing
-- **01-02**: Auto-save on reconnect skips when restartState.phase !== 'idle' to avoid race with restart cycle
-- **01-03**: Banner placed before {#if !conn.connected} block so it renders in both connected and disconnected states when isDirty is true
-- **01-03**: SettingsTabBar imports TABS from config-schema.ts; inline ALL_TABS removed entirely (single source of truth)
+**By Phase:**
 
-## Active Blockers
+| Phase | Plans | Total | Avg/Plan |
+|-------|-------|-------|----------|
+| Phase 07 | P01 | 5m | 5m |
+| Phase 07 P02 | 10 | 2 tasks | 5 files |
+| Phase 07 P03 | 6 | 2 tasks | 3 files |
+| Phase 07 P03 | 15 | 3 tasks | 3 files |
 
-None
+## Accumulated Context
 
-### Quick Tasks Completed
+| Phase 07 P01 | 5m | 1 task (TDD) | 2 files |
+| Phase 05 P01 | 8m | 2 tasks | 3 files |
+| Phase 06 P03 | 5m | 1 task | 1 file |
+| Phase 06 P01 | 3m | 2 tasks | 2 files |
+| Phase 06 P02 | 4m | 2 tasks | 2 files |
 
-| # | Description | Date | Commit | Directory |
-|---|-------------|------|--------|-----------|
-| 1 | Fix settings rendering [object Object] text for nested object values in config editor | 2026-03-12 | 6ec0d2b | [1-fix-settings-rendering-object-object-tex](./quick/1-fix-settings-rendering-object-object-tex/) |
+### From v1.0 Settings Page Revamp
+
+- Phase 1 (Tab Layout and Save) completed: 3/3 plans
+- Phases 2-4 deferred to v3.0 — builder improvements are higher priority
+
+### Phase 07 Decisions
+
+- VALID-03/VALID-04: validateSkill() is pure TypeScript (no Svelte/DB imports) — used by both client $derived and server publish gate
+- VALID-03: "chapter missing guide" and "chapter with no tools" reclassified as errors (not warnings) — align with CONTEXT.md classification
+- VALID-04: ValidationFinding.level is 'error' | 'warning' only — no 'ok' level; callers count passing chapters separately
+- VALID-01/VALID-05: publishError state removed — replaced with toastError/toastSuccess; handlePublishClick() is the new warning-gated publish entry point; server filters findings to errors only (warnings don't block publish)
+- VALID-02/A11Y-01: ValidationPanel is an aside (complementary landmark) rendered inline alongside DAG canvas in a flex row — not a modal overlay; role=dialog belongs on inner .modal/.confirm-modal/.condition-modal not the backdrop overlay
+
+### Phase 06 Decisions
+
+- CFIX-06: Use dirty flag re-check after saveSkill() as failure signal — dirty=true after save means save failed (saveSkill only clears it on success path)
+- CFIX-06: publishSkill sets publishError before returning so user sees clear message instead of silent no-op
+- CFIX-08: BFS test: two-chain topology correctly passes BFS (both have roots); disconnected cycle island is the canonical failing case
+- CFIX-04/09: guard inArray and batch insert with empty-array check — LibSQL throws on both empty IN() and INSERT INTO ... VALUES ()
+
+### v2.0 Decisions
+
+- Extract +page.svelte state FIRST (Phase 5) — prerequisite for all subsequent phases
+- Phase 13 (Advanced) is a placeholder: blocked on gateway runtime, include in roadmap for visibility
+- Phase 11 (Cost) depends on Phase 6 completing CFIX-10 (usage return from AI endpoints)
+- Phase 12 (Versioning) depends on Phase 7 completing VALID-04 (shared validation module)
+- Research flags: verify Drizzle LibSQL `ctx.db.transaction()` API before Phase 12 planning; verify SvelteFlow `$derived` re-render behavior before Phase 10 planning
+
+### Active Blockers
+
+- Phase 13: Gateway skill runtime not yet built (external blocker — not hub work)
 
 ## Session Info
 
-- **Last Session:** 2026-03-12T06:32:21Z
-- **Last Activity:** 2026-03-12 - Completed quick task 1: Fix settings rendering [object Object] text for nested object values in config editor
-- **Stopped At:** Completed 01-03-PLAN.md (2 tasks, 2 files)
+- **Last Session:** 2026-03-19T07:51:11.013Z
+- **Stopped At:** Completed 07-03-PLAN.md — human-verify checkpoint approved, phase 07 validation-ux complete
+- **Last Activity:** 2026-03-19

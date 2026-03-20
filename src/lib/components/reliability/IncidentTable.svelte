@@ -143,22 +143,31 @@
 		return (meta != null && Object.keys(meta).length > 0) || !!evt.agentId || !!evt.correlationId;
 	}
 
+	function formatNumber(n: number): string {
+		return n.toLocaleString('en-US');
+	}
+
+	function isNestedObject(value: unknown): value is Record<string, unknown> {
+		return typeof value === 'object' && value !== null && !Array.isArray(value);
+	}
+
 	function formatMetaValue(
 		key: string,
 		value: unknown,
-	): { text: string; style: 'plain' | 'pill' | 'code' | 'status-ok' | 'status-err' | 'duration' } {
+	): { text: string; style: 'plain' | 'pill' | 'code' | 'status-ok' | 'status-err' | 'duration' | 'id' | 'number' } {
 		if (key === 'durationMs' && typeof value === 'number') {
 			const text = value >= 1000 ? `${(value / 1000).toFixed(1)}s` : `${value}ms`;
 			return { text, style: 'duration' };
 		}
-		if (key === 'profileId' || key === 'provider') return { text: String(value), style: 'pill' };
 		if (key === 'statusCode') {
 			const code = Number(value);
 			return { text: String(value), style: code >= 200 && code < 300 ? 'status-ok' : 'status-err' };
 		}
+		if (key === 'provider') return { text: String(value), style: 'pill' };
+		if (key.endsWith('Id') && typeof value === 'string' && value.length > 20)
+			return { text: String(value), style: 'id' };
 		if (key === 'error' || key === 'jobId') return { text: String(value), style: 'code' };
-		if (typeof value === 'object' && value !== null)
-			return { text: JSON.stringify(value, null, 2), style: 'code' };
+		if (typeof value === 'number') return { text: formatNumber(value), style: 'number' };
 		return { text: String(value), style: 'plain' };
 	}
 
@@ -371,7 +380,7 @@
 						{#if isExpanded}
 							<tr class="bg-bg3/30">
 								<td colspan="6" class="py-1.5 px-3">
-									<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
+									<div class="grid grid-cols-2 gap-x-6 gap-y-1.5 text-[11px]">
 										{#if evt.agentId}
 											<div class="flex items-center gap-2">
 												<span class="text-muted-foreground font-medium">agentId:</span>
@@ -383,44 +392,68 @@
 										{#if evt.correlationId}
 											<div class="flex items-center gap-2">
 												<span class="text-muted-foreground font-medium">correlationId:</span>
-												<span class="text-foreground font-mono text-[11px]"
+												<span class="text-foreground/60 font-mono text-[11px] truncate max-w-[220px]" title={evt.correlationId}
 													>{evt.correlationId}</span
 												>
 											</div>
 										{/if}
 										{#if parseMetadata(evt.metadata)}
 											{#each Object.entries(parseMetadata(evt.metadata)!) as [key, value] (key)}
-												{@const formatted = formatMetaValue(key, value)}
-												<div
-													class="flex items-center gap-2 {formatted.style === 'code' && String(value).length > 60 ? 'col-span-2' : ''}"
-												>
-													<span class="text-muted-foreground font-medium">{key}:</span>
-													{#if formatted.style === 'pill'}
-														<span
-															class="inline-block text-[10px] font-semibold py-0.5 px-2 rounded-md bg-accent/15 text-accent border border-accent/30"
-															>{formatted.text}</span
-														>
-													{:else if formatted.style === 'status-ok'}
-														<span class="text-green-400 font-mono tabular-nums"
-															>{formatted.text}</span
-														>
-													{:else if formatted.style === 'status-err'}
-														<span class="text-destructive font-mono tabular-nums"
-															>{formatted.text}</span
-														>
-													{:else if formatted.style === 'duration'}
-														<span class="text-foreground font-mono tabular-nums"
-															>{formatted.text}</span
-														>
-													{:else if formatted.style === 'code'}
-														<code
-															class="bg-bg3/60 text-foreground/80 px-1.5 py-0.5 rounded text-[11px] font-mono break-all"
-															>{formatted.text}</code
-														>
-													{:else}
-														<span class="text-foreground">{formatted.text}</span>
-													{/if}
-												</div>
+												{#if isNestedObject(value)}
+													<div class="col-span-2 flex items-center gap-2 flex-wrap">
+														<span class="text-muted-foreground font-medium shrink-0">{key}:</span>
+														<div class="flex items-center gap-1.5 flex-wrap">
+															{#each Object.entries(value) as [subKey, subVal] (subKey)}
+																<span class="inline-flex items-center gap-1 bg-bg3/60 rounded px-1.5 py-0.5">
+																	<span class="text-muted-foreground/70 text-[10px]">{subKey}</span>
+																	<span class="text-foreground font-mono tabular-nums text-[11px]">
+																		{typeof subVal === 'number' ? formatNumber(subVal) : String(subVal)}
+																	</span>
+																</span>
+															{/each}
+														</div>
+													</div>
+												{:else}
+													{@const formatted = formatMetaValue(key, value)}
+													<div
+														class="flex items-center gap-2 {formatted.style === 'code' && String(value).length > 60 ? 'col-span-2' : ''}"
+													>
+														<span class="text-muted-foreground font-medium">{key}:</span>
+														{#if formatted.style === 'pill'}
+															<span
+																class="inline-block text-[10px] font-semibold py-0.5 px-2 rounded-md bg-accent/15 text-accent border border-accent/30"
+																>{formatted.text}</span
+															>
+														{:else if formatted.style === 'status-ok'}
+															<span class="text-green-400 font-mono tabular-nums"
+																>{formatted.text}</span
+															>
+														{:else if formatted.style === 'status-err'}
+															<span class="text-destructive font-mono tabular-nums"
+																>{formatted.text}</span
+															>
+														{:else if formatted.style === 'duration'}
+															<span class="text-foreground font-mono tabular-nums"
+																>{formatted.text}</span
+															>
+														{:else if formatted.style === 'code'}
+															<code
+																class="bg-bg3/60 text-foreground/80 px-1.5 py-0.5 rounded text-[11px] font-mono break-all"
+																>{formatted.text}</code
+															>
+														{:else if formatted.style === 'id'}
+															<span class="text-foreground/60 font-mono text-[11px] truncate max-w-[220px]" title={formatted.text}
+																>{formatted.text}</span
+															>
+														{:else if formatted.style === 'number'}
+															<span class="text-foreground font-mono tabular-nums"
+																>{formatted.text}</span
+															>
+														{:else}
+															<span class="text-foreground">{formatted.text}</span>
+														{/if}
+													</div>
+												{/if}
 											{/each}
 										{/if}
 									</div>

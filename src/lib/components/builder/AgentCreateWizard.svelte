@@ -6,6 +6,7 @@
         Check,
         Loader2,
         Bot,
+        Wrench,
     } from "lucide-svelte";
     import * as steps from "@zag-js/steps";
     import { useMachine, normalizeProps } from "@zag-js/svelte";
@@ -15,6 +16,7 @@
     import { conn } from "$lib/state/gateway/connection.svelte";
     import { hostsState } from "$lib/state/features/hosts.svelte";
     import type { SkillStatusEntry, SkillStatusReport } from "$lib/types/skills";
+    import type { ToolStatusEntry, ToolsStatusReport } from "$lib/types/tools";
 
     // ── Types ────────────────────────────────────────────────────────────────
     interface BuiltSkill {
@@ -34,18 +36,41 @@
 
     // ── Local form state ─────────────────────────────────────────────────────
     let name = $state('');
-    let description = $state('');
     let emoji = $state('\u{1F916}');
     let model = $state('');
-    let systemPrompt = $state('');
-    let temperature = $state(0.7);
-    let maxTokens = $state(4096);
+    let configDir = $state('.minion');
     let selectedGatewaySkillIds = $state<string[]>([]);
     let selectedBuiltSkillIds = $state<string[]>([]);
+    let selectedToolIds = $state<string[]>([]);
     let creating = $state(false);
     let gatewaySkills = $state<SkillStatusEntry[]>([]);
     let publishedSkills = $state<BuiltSkill[]>([]);
+    let gatewayTools = $state<ToolStatusEntry[]>([]);
+    let toolGroups = $state<Record<string, string[]>>({});
     let skillsLoading = $state(false);
+    let toolsLoading = $state(false);
+
+    // ── Popover state ──────────────────────────────────────────────────────
+    let hoveredItem = $state<{ type: 'skill' | 'built-skill' | 'tool'; id: string } | null>(null);
+    let popoverEl = $state<HTMLDivElement | null>(null);
+    let popoverPos = $state({ x: 0, y: 0 });
+    let hoverTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    function showPopover(type: 'skill' | 'built-skill' | 'tool', id: string, e: MouseEvent) {
+        if (hoverTimeout) clearTimeout(hoverTimeout);
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        const modalEl = (e.currentTarget as HTMLElement).closest('.modal');
+        const modalRect = modalEl?.getBoundingClientRect() ?? { left: 0, top: 0 };
+        popoverPos = {
+            x: rect.left - modalRect.left + rect.width / 2,
+            y: rect.top - modalRect.top - 4,
+        };
+        hoveredItem = { type, id };
+    }
+
+    function hidePopover() {
+        hoverTimeout = setTimeout(() => { hoveredItem = null; }, 120);
+    }
 
     // ── Models ──────────────────────────────────────────────────────────────
     type ModelItem = { id: string; name: string };
@@ -53,12 +78,10 @@
     let defaultModel = $state('');
 
     // ── Zag.js steps machine ─────────────────────────────────────────────────
-    const STEP_COUNT = 4;
+    const STEP_COUNT = 2;
     const stepsData = [
         { title: "Identity" },
-        { title: "Model & Prompt" },
-        { title: "Skills" },
-        { title: "Behavior" },
+        { title: "Skills & Tools" },
     ];
 
     const service = useMachine(steps.machine, () => ({
@@ -70,17 +93,41 @@
     const isLastStep = $derived(api.value === STEP_COUNT - 1);
     const canAdvanceStep0 = $derived(name.trim().length >= 3);
 
-    // ── Derived skill groups ──────────────────────────────────────────────────
+    // ── Derived groups ──────────────────────────────────────────────────────
     const eligibleSkills = $derived(gatewaySkills.filter((s) => s.eligible));
     const ineligibleSkills = $derived(gatewaySkills.filter((s) => !s.eligible));
-    const totalSelectedSkills = $derived(selectedGatewaySkillIds.length + selectedBuiltSkillIds.length);
-    const hasBuiltSkills = $derived(publishedSkills.length > 0);
-    const hasGatewaySkills = $derived(gatewaySkills.length > 0);
+    const totalSelected = $derived(
+        selectedGatewaySkillIds.length + selectedBuiltSkillIds.length + selectedToolIds.length
+    );
 
-    // ── Fetch models + skills when gateway connects ──────────────────────────
+    // Group skills by source
+    const skillsBySource = $derived.by(() => {
+        const groups = new Map<string, SkillStatusEntry[]>();
+        for (const s of eligibleSkills) {
+            const key = s.source || 'other';
+            const arr = groups.get(key);
+            if (arr) arr.push(s);
+            else groups.set(key, [s]);
+        }
+        return groups;
+    });
+
+    // Group tools by their first group tag
+    const toolsByGroup = $derived.by(() => {
+        const groups = new Map<string, ToolStatusEntry[]>();
+        for (const t of gatewayTools) {
+            const groupTag = t.groups[0]?.replace(/^group:/, '') || 'other';
+            const arr = groups.get(groupTag);
+            if (arr) arr.push(t);
+            else groups.set(groupTag, [t]);
+        }
+        return groups;
+    });
+
+    // ── Fetch models + skills + tools when gateway connects ────────────────
     let modelsLoaded = $state(false);
     let skillsLoaded = $state(false);
-
+    let toolsLoaded = $state(false);
     let builtSkillsLoaded = $state(false);
 
     $effect(() => {
@@ -119,6 +166,24 @@
                 skillsLoading = false;
             });
         }
+        // Fetch gateway tools
+        if (!toolsLoaded) {
+            toolsLoading = true;
+            sendRequest('tools.status', {}).then((raw) => {
+                const report = raw as ToolsStatusReport;
+                if (report?.tools) {
+                    gatewayTools = report.tools;
+                }
+                if (report?.groups) {
+                    toolGroups = report.groups;
+                }
+                toolsLoaded = true;
+                toolsLoading = false;
+            }).catch(() => {
+                toolsLoaded = true;
+                toolsLoading = false;
+            });
+        }
         // Fetch published built skills
         if (!builtSkillsLoaded) {
             fetch('/api/builder/skills?status=published')
@@ -133,7 +198,7 @@
         }
     });
 
-    // ── Skill toggles ────────────────────────────────────────────────────────
+    // ── Toggles ─────────────────────────────────────────────────────────────
     function toggleGatewaySkill(skillKey: string) {
         if (selectedGatewaySkillIds.includes(skillKey)) {
             selectedGatewaySkillIds = selectedGatewaySkillIds.filter((k) => k !== skillKey);
@@ -150,6 +215,46 @@
         }
     }
 
+    function toggleTool(toolId: string) {
+        if (selectedToolIds.includes(toolId)) {
+            selectedToolIds = selectedToolIds.filter((k) => k !== toolId);
+        } else {
+            selectedToolIds = [...selectedToolIds, toolId];
+        }
+    }
+
+    // ── Popover data helpers ────────────────────────────────────────────────
+    function getPopoverData() {
+        if (!hoveredItem) return null;
+        if (hoveredItem.type === 'skill') {
+            const s = gatewaySkills.find((sk) => sk.skillKey === hoveredItem!.id);
+            if (!s) return null;
+            return { emoji: s.emoji || '\u{1F4D6}', name: s.name, desc: s.description, badge: s.source };
+        }
+        if (hoveredItem.type === 'built-skill') {
+            const s = publishedSkills.find((sk) => sk.id === hoveredItem!.id);
+            if (!s) return null;
+            return { emoji: s.emoji || '\u{1F4D6}', name: s.name, desc: s.description, badge: 'custom' };
+        }
+        if (hoveredItem.type === 'tool') {
+            const t = gatewayTools.find((tk) => tk.id === hoveredItem!.id);
+            if (!t) return null;
+            const tags: string[] = [];
+            if (t.mcpExport) tags.push('MCP');
+            if (t.multi) tags.push('multi');
+            if (t.optional) tags.push('opt');
+            return {
+                emoji: null,
+                name: t.id,
+                desc: t.groups.map((g) => g.replace(/^group:/, '')).join(', ') || 'tool',
+                badge: tags.join(' ') || null,
+            };
+        }
+        return null;
+    }
+
+    const popoverData = $derived(getPopoverData());
+
     // ── Actions ──────────────────────────────────────────────────────────────
     function handleNextOrCreate() {
         if (isLastStep) {
@@ -163,13 +268,13 @@
         creating = true;
         try {
             // 1. Create the agent via gateway protocol
+            const workspace = `~/${configDir}/workspaces/${name.trim()}`;
             const params: Record<string, unknown> = {
                 name: name.trim(),
+                workspace,
             };
             if (model.trim()) params.model = model.trim();
             if (emoji.trim()) params.emoji = emoji.trim();
-            if (description.trim()) params.description = description.trim();
-            if (systemPrompt.trim()) params.systemPrompt = systemPrompt.trim();
 
             const res = (await sendRequest('agents.create', params)) as {
                 agentId?: string;
@@ -188,7 +293,16 @@
                 });
             }
 
-            // 3. Persist built skill selections via hub API
+            // 3. Enable selected tools on the agent
+            for (const toolId of selectedToolIds) {
+                await sendRequest('tools.update', {
+                    agentId,
+                    toolId,
+                    enabled: true,
+                });
+            }
+
+            // 4. Persist built skill selections via hub API
             if (selectedBuiltSkillIds.length > 0 && hostsState.activeHostId) {
                 await fetch('/api/builder/agent-skills', {
                     method: 'POST',
@@ -201,7 +315,7 @@
                 });
             }
 
-            // 4. Notify parent
+            // 5. Notify parent
             onComplete(agentId);
         } catch (err) {
             console.error('Agent creation failed:', err);
@@ -305,20 +419,6 @@
                     </div>
 
                     <div class="field">
-                        <label class="field-label" for="agent-desc">Description</label>
-                        <textarea
-                            id="agent-desc"
-                            class="field-textarea"
-                            rows="2"
-                            bind:value={description}
-                            placeholder="Briefly describe what this agent does"
-                        ></textarea>
-                    </div>
-                </div>
-
-                <!-- Step 1: Model & Prompt -->
-                <div {...api.getContentProps({ index: 1 })}>
-                    <div class="field">
                         <Combobox
                             id="wizard-model"
                             items={modelItems}
@@ -341,170 +441,165 @@
                             {/snippet}
                         </Combobox>
                     </div>
-
-                    <div class="field">
-                        <label class="field-label" for="agent-prompt">System Prompt</label>
-                        <span class="field-helper">Define the agent's role and behavioral guidelines</span>
-                        <textarea
-                            id="agent-prompt"
-                            class="field-textarea field-textarea--mono"
-                            rows="6"
-                            bind:value={systemPrompt}
-                            placeholder="You are a helpful assistant that..."
-                        ></textarea>
-                    </div>
                 </div>
 
-                <!-- Step 2: Skills -->
-                <div {...api.getContentProps({ index: 2 })}>
+                <!-- Step 1: Skills & Tools -->
+                <div {...api.getContentProps({ index: 1 })}>
                     <span class="field-helper">
-                        Select skills to enable for this agent ({totalSelectedSkills} selected)
+                        Select skills and tools ({totalSelected} selected)
                     </span>
 
-                    {#if skillsLoading}
-                        <div class="skills-loading">
+                    {#if skillsLoading || toolsLoading}
+                        <div class="cap-loading">
                             <Loader2 size={18} class="spin" />
-                            <span>Loading skills...</span>
-                        </div>
-                    {:else if !hasBuiltSkills && !hasGatewaySkills}
-                        <div class="skills-empty">
-                            No skills available. Create skills in the Builder tab or add them to the gateway.
+                            <span>Loading capabilities...</span>
                         </div>
                     {:else}
-                        <!-- Your Skills (published built skills) -->
-                        {#if hasBuiltSkills}
-                            {#if hasGatewaySkills}
-                                <span class="skills-section-label">Your Skills</span>
-                            {/if}
-                            <div class="skills-grid">
-                                {#each publishedSkills as skill (skill.id)}
-                                    {@const selected = selectedBuiltSkillIds.includes(skill.id)}
-                                    <button
-                                        type="button"
-                                        class="skill-card"
-                                        class:selected
-                                        onclick={() => toggleBuiltSkill(skill.id)}
-                                    >
-                                        <span class="skill-emoji">{skill.emoji || '\u{1F4D6}'}</span>
-                                        <div class="skill-info">
-                                            <span class="skill-name">{skill.name}</span>
-                                            {#if skill.description}
-                                                <span class="skill-desc">{skill.description}</span>
-                                            {/if}
-                                        </div>
-                                        <span class="skill-badge skill-badge--custom">custom</span>
-                                        {#if selected}
-                                            <span class="skill-check">
-                                                <Check size={14} />
-                                            </span>
-                                        {/if}
-                                    </button>
-                                {/each}
+                        <!-- Built Skills (custom) -->
+                        {#if publishedSkills.length > 0}
+                            <div class="cap-group">
+                                <span class="cap-group-label">Custom Skills</span>
+                                <div class="icon-grid">
+                                    {#each publishedSkills as skill (skill.id)}
+                                        {@const selected = selectedBuiltSkillIds.includes(skill.id)}
+                                        <button
+                                            type="button"
+                                            class="icon-btn"
+                                            class:selected
+                                            onclick={() => toggleBuiltSkill(skill.id)}
+                                            onmouseenter={(e) => showPopover('built-skill', skill.id, e)}
+                                            onmouseleave={hidePopover}
+                                            aria-label={skill.name}
+                                        >
+                                            <span class="icon-emoji">{skill.emoji || '\u{1F4D6}'}</span>
+                                            {#if selected}<span class="icon-check"><Check size={10} /></span>{/if}
+                                        </button>
+                                    {/each}
+                                </div>
                             </div>
                         {/if}
 
-                        <!-- Gateway Skills -->
-                        {#if hasGatewaySkills}
-                            {#if hasBuiltSkills}
-                                <span class="skills-section-label" class:skills-section-label--spaced={hasBuiltSkills}>Gateway Skills</span>
-                            {/if}
-                            <div class="skills-grid">
-                                {#each eligibleSkills as skill (skill.skillKey)}
-                                    {@const selected = selectedGatewaySkillIds.includes(skill.skillKey)}
-                                    <button
-                                        type="button"
-                                        class="skill-card"
-                                        class:selected
-                                        class:skill-disabled={skill.disabled}
-                                        onclick={() => toggleGatewaySkill(skill.skillKey)}
-                                    >
-                                        <span class="skill-emoji">{skill.emoji || '\u{1F4D6}'}</span>
-                                        <div class="skill-info">
-                                            <span class="skill-name">{skill.name}</span>
-                                            {#if skill.description}
-                                                <span class="skill-desc">{skill.description}</span>
-                                            {/if}
-                                        </div>
-                                        {#if skill.disabled}
-                                            <span class="skill-badge skill-badge--off">disabled</span>
-                                        {:else if selected}
-                                            <span class="skill-check">
-                                                <Check size={14} />
-                                            </span>
-                                        {/if}
-                                    </button>
-                                {/each}
+                        <!-- Gateway Skills grouped by source -->
+                        {#each [...skillsBySource.entries()] as [source, skills] (source)}
+                            <div class="cap-group">
+                                <span class="cap-group-label">
+                                    {source === 'bundled' ? 'Built-in Skills' : source}
+                                </span>
+                                <div class="icon-grid">
+                                    {#each skills as skill (skill.skillKey)}
+                                        {@const selected = selectedGatewaySkillIds.includes(skill.skillKey)}
+                                        <button
+                                            type="button"
+                                            class="icon-btn"
+                                            class:selected
+                                            class:icon-disabled={skill.disabled}
+                                            onclick={() => toggleGatewaySkill(skill.skillKey)}
+                                            onmouseenter={(e) => showPopover('skill', skill.skillKey, e)}
+                                            onmouseleave={hidePopover}
+                                            aria-label={skill.name}
+                                        >
+                                            <span class="icon-emoji">{skill.emoji || '\u{1F4D6}'}</span>
+                                            {#if selected}<span class="icon-check"><Check size={10} /></span>{/if}
+                                        </button>
+                                    {/each}
+                                </div>
                             </div>
+                        {/each}
 
-                            <!-- Ineligible skills: compact icon grid at bottom -->
-                            {#if ineligibleSkills.length > 0}
-                                <div class="ineligible-section">
-                                    <span class="ineligible-label">Unavailable ({ineligibleSkills.length})</span>
-                                    <div class="ineligible-grid">
-                                        {#each ineligibleSkills as skill (skill.skillKey)}
-                                            <span
-                                                class="ineligible-icon"
-                                                title="{skill.name} — missing dependencies"
-                                            >{skill.emoji || '\u{1F4D6}'}</span>
+                        <!-- Ineligible skills -->
+                        {#if ineligibleSkills.length > 0}
+                            <div class="cap-group">
+                                <span class="cap-group-label cap-group-label--dim">Unavailable ({ineligibleSkills.length})</span>
+                                <div class="icon-grid">
+                                    {#each ineligibleSkills as skill (skill.skillKey)}
+                                        <button
+                                            type="button"
+                                            class="icon-btn icon-ineligible"
+                                            disabled
+                                            onmouseenter={(e) => showPopover('skill', skill.skillKey, e)}
+                                            onmouseleave={hidePopover}
+                                            aria-label="{skill.name} (unavailable)"
+                                        >
+                                            <span class="icon-emoji">{skill.emoji || '\u{1F4D6}'}</span>
+                                        </button>
+                                    {/each}
+                                </div>
+                            </div>
+                        {/if}
+
+                        <!-- Tools grouped by group tag -->
+                        {#if gatewayTools.length > 0}
+                            {#each [...toolsByGroup.entries()] as [group, tools] (group)}
+                                <div class="cap-group">
+                                    <span class="cap-group-label">
+                                        <Wrench size={10} class="cap-group-icon" />
+                                        {group}
+                                    </span>
+                                    <div class="icon-grid">
+                                        {#each tools as tool (tool.id)}
+                                            {@const selected = selectedToolIds.includes(tool.id)}
+                                            <button
+                                                type="button"
+                                                class="icon-btn icon-btn--tool"
+                                                class:selected
+                                                onclick={() => toggleTool(tool.id)}
+                                                onmouseenter={(e) => showPopover('tool', tool.id, e)}
+                                                onmouseleave={hidePopover}
+                                                aria-label={tool.id}
+                                            >
+                                                <span class="icon-tool-label">{tool.id.slice(0, 2)}</span>
+                                                {#if selected}<span class="icon-check"><Check size={10} /></span>{/if}
+                                            </button>
                                         {/each}
                                     </div>
                                 </div>
-                            {/if}
+                            {/each}
+                        {/if}
+
+                        {#if gatewaySkills.length === 0 && publishedSkills.length === 0 && gatewayTools.length === 0}
+                            <div class="cap-empty">
+                                No capabilities available. Add skills or tools to the gateway first.
+                            </div>
                         {/if}
                     {/if}
-                </div>
-
-                <!-- Step 3: Behavior -->
-                <div {...api.getContentProps({ index: 3 })}>
-                    <div class="field">
-                        <label class="field-label" for="agent-temp">
-                            Temperature: {temperature}
-                        </label>
-                        <input
-                            id="agent-temp"
-                            class="field-range"
-                            type="range"
-                            min="0"
-                            max="1"
-                            step="0.1"
-                            bind:value={temperature}
-                        />
-                        <div class="range-labels">
-                            <span>Precise</span>
-                            <span>Creative</span>
-                        </div>
-                    </div>
-
-                    <div class="field">
-                        <label class="field-label" for="agent-tokens">Max Tokens</label>
-                        <input
-                            id="agent-tokens"
-                            class="field-input"
-                            type="number"
-                            bind:value={maxTokens}
-                            min="1"
-                        />
-                    </div>
 
                     <!-- Summary -->
                     <div class="summary">
-                        <div class="summary-title">Summary</div>
                         <div class="summary-row">
                             <span class="summary-emoji">{emoji}</span>
                             <span class="summary-name">{name || 'Untitled'}</span>
                         </div>
                         {#if model}
                             <div class="summary-detail">
-                                Model: <code>{model}</code>
+                                <code>{model}</code>
                             </div>
                         {/if}
                         <div class="summary-detail">
-                            Skills: {totalSelectedSkills}
-                        </div>
-                        <div class="summary-detail">
-                            Temperature: {temperature}
+                            {totalSelected} capabilities selected
                         </div>
                     </div>
+
+                    <!-- Popover -->
+                    {#if hoveredItem && popoverData}
+                        <div
+                            class="popover"
+                            bind:this={popoverEl}
+                            style="left: {popoverPos.x}px; top: {popoverPos.y}px;"
+                        >
+                            <div class="popover-inner">
+                                {#if popoverData.emoji}
+                                    <span class="popover-emoji">{popoverData.emoji}</span>
+                                {/if}
+                                <span class="popover-name">{popoverData.name}</span>
+                                {#if popoverData.desc}
+                                    <span class="popover-desc">{popoverData.desc}</span>
+                                {/if}
+                                {#if popoverData.badge}
+                                    <span class="popover-badge">{popoverData.badge}</span>
+                                {/if}
+                            </div>
+                        </div>
+                    {/if}
                 </div>
             </div>
         </div>
@@ -566,6 +661,7 @@
 
     /* ── Modal ───────────────────────────────────────────────────────────── */
     .modal {
+        position: relative;
         background: var(--color-bg);
         border: 1px solid var(--color-border);
         border-radius: 12px;
@@ -747,7 +843,7 @@
     .field-helper {
         font-size: 11px;
         color: var(--color-muted);
-        margin-bottom: 2px;
+        margin-bottom: 6px;
     }
 
     .field-error {
@@ -777,34 +873,6 @@
         color: var(--color-muted);
     }
 
-    .field-textarea {
-        background: var(--color-bg2);
-        border: 1px solid var(--color-border);
-        border-radius: 6px;
-        color: var(--color-foreground);
-        font-family: inherit;
-        font-size: 13px;
-        padding: 8px 10px;
-        outline: none;
-        resize: vertical;
-        transition:
-            border-color 0.15s,
-            box-shadow 0.15s;
-    }
-    .field-textarea:focus {
-        border-color: var(--color-accent);
-        box-shadow: 0 0 0 2px
-            color-mix(in srgb, var(--color-accent) 20%, transparent);
-    }
-    .field-textarea::placeholder {
-        color: var(--color-muted);
-    }
-
-    .field-textarea--mono {
-        font-family: "JetBrains Mono", "Fira Code", monospace;
-        font-size: 12px;
-    }
-
     /* ── Name row with emoji ───────────────────────────────────────────── */
     .name-row {
         display: flex;
@@ -816,38 +884,7 @@
         flex: 1;
     }
 
-    /* REMOVED: .emoji-row, .emoji-btn (replaced by EmojiPicker component)
-    .emoji-btn-removed {
-        width: 36px;
-        height: 36px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 18px;
-        background: var(--color-bg2);
-        border: 1.5px solid var(--color-border);
-        border-radius: 8px;
-        cursor: pointer;
-        transition: all 0.15s;
-    }
-    .emoji-btn-removed:hover { display: none; }
-    */
-
-    /* ── Range input ─────────────────────────────────────────────────────── */
-    .field-range {
-        width: 100%;
-        accent-color: var(--color-accent);
-        cursor: pointer;
-    }
-
-    .range-labels {
-        display: flex;
-        justify-content: space-between;
-        font-size: 10px;
-        color: var(--color-muted);
-    }
-
-    /* ── Model item styles (inside Combobox snippet) ────────────────────── */
+    /* ── Model item styles ─────────────────────────────────────────────── */
     .model-item-name {
         flex: 1;
         min-width: 0;
@@ -877,8 +914,8 @@
         flex-shrink: 0;
     }
 
-    /* ── Skills ──────────────────────────────────────────────────────────── */
-    .skills-loading {
+    /* ── Capability groups ──────────────────────────────────────────────── */
+    .cap-loading {
         display: flex;
         align-items: center;
         justify-content: center;
@@ -888,7 +925,7 @@
         font-size: 13px;
     }
 
-    .skills-empty {
+    .cap-empty {
         padding: 24px;
         text-align: center;
         color: var(--color-muted);
@@ -899,148 +936,175 @@
         margin-top: 8px;
     }
 
-    .skills-grid {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        margin-top: 8px;
+    .cap-group {
+        margin-bottom: 14px;
     }
 
-    .skill-card {
+    .cap-group-label {
         display: flex;
-        align-items: flex-start;
-        gap: 10px;
-        padding: 10px 12px;
+        align-items: center;
+        gap: 4px;
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--color-muted);
+        margin-bottom: 6px;
+    }
+
+    .cap-group-label--dim {
+        opacity: 0.6;
+    }
+
+    :global(.cap-group-icon) {
+        opacity: 0.6;
+    }
+
+    /* ── Icon grid ──────────────────────────────────────────────────────── */
+    .icon-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        justify-content: flex-start;
+    }
+
+    .icon-btn {
+        position: relative;
+        width: 36px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
         background: var(--color-bg2);
         border: 1.5px solid var(--color-border);
         border-radius: 8px;
         cursor: pointer;
         transition: all 0.15s;
-        text-align: left;
         font-family: inherit;
+        padding: 0;
+        flex-shrink: 0;
     }
-    .skill-card:hover {
+    .icon-btn:hover {
         border-color: var(--color-accent);
+        background: color-mix(in srgb, var(--color-accent) 6%, var(--color-bg2));
+        transform: translateY(-1px);
     }
-    .skill-card.selected {
+    .icon-btn.selected {
         border-color: var(--color-accent);
-        background: color-mix(in srgb, var(--color-accent) 8%, var(--color-bg2));
+        background: color-mix(in srgb, var(--color-accent) 12%, var(--color-bg2));
+        box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--color-accent) 30%, transparent);
     }
 
-    .skill-emoji {
-        font-size: 18px;
-        flex-shrink: 0;
+    .icon-btn.icon-disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+
+    .icon-btn.icon-ineligible {
+        opacity: 0.25;
+        cursor: default;
+    }
+
+    .icon-btn--tool {
+        background: var(--color-bg2);
+    }
+
+    .icon-emoji {
+        font-size: 16px;
         line-height: 1;
-        margin-top: 1px;
     }
 
-    .skill-info {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-        min-width: 0;
-        flex: 1;
-    }
-
-    .skill-name {
-        font-size: 13px;
-        font-weight: 600;
-        color: var(--color-foreground);
-    }
-
-    .skill-desc {
-        font-size: 11px;
-        color: var(--color-muted);
-        line-height: 1.3;
-        overflow: hidden;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-    }
-
-    .skill-disabled {
-        opacity: 0.5;
-    }
-
-    .skill-badge {
+    .icon-tool-label {
         font-size: 10px;
-        padding: 1px 6px;
-        border-radius: 3px;
-        flex-shrink: 0;
-        margin-top: 2px;
-    }
-
-    .skill-badge--off {
+        font-weight: 700;
+        font-family: "JetBrains Mono", "Fira Code", monospace;
         color: var(--color-muted);
-        background: var(--color-bg3, var(--color-bg));
+        text-transform: lowercase;
+        line-height: 1;
     }
-
-    .skill-badge--custom {
+    .icon-btn.selected .icon-tool-label {
         color: var(--color-accent);
-        background: color-mix(in srgb, var(--color-accent) 15%, transparent);
     }
 
-    .skills-section-label {
-        display: block;
-        font-size: 10px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        color: var(--color-muted);
-        margin-top: 4px;
-        margin-bottom: 4px;
-    }
-
-    .skills-section-label--spaced {
-        margin-top: 16px;
-        padding-top: 12px;
-        border-top: 1px dashed var(--color-border);
-    }
-
-    /* ── Ineligible skills (compact icon grid) ────────────────────────── */
-    .ineligible-section {
-        margin-top: 16px;
-        padding-top: 12px;
-        border-top: 1px dashed var(--color-border);
-    }
-
-    .ineligible-label {
-        font-size: 10px;
-        color: var(--color-muted);
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        font-weight: 600;
-        display: block;
-        margin-bottom: 6px;
-    }
-
-    .ineligible-grid {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 4px;
-    }
-
-    .ineligible-icon {
-        width: 28px;
-        height: 28px;
+    .icon-check {
+        position: absolute;
+        top: -4px;
+        right: -4px;
+        width: 14px;
+        height: 14px;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 14px;
-        background: var(--color-bg2);
-        border: 1px solid var(--color-border);
-        border-radius: 5px;
-        opacity: 0.4;
-        cursor: default;
+        background: var(--color-accent);
+        color: white;
+        border-radius: 50%;
         line-height: 1;
     }
 
-    .skill-check {
+    /* ── Popover ─────────────────────────────────────────────────────────── */
+    .popover {
+        position: absolute;
+        z-index: 10;
+        transform: translate(-50%, -100%);
+        pointer-events: none;
+        animation: popover-inflate 0.18s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    }
+
+    @keyframes popover-inflate {
+        from {
+            opacity: 0;
+            transform: translate(-50%, -100%) scale(0.85);
+        }
+        to {
+            opacity: 1;
+            transform: translate(-50%, -100%) scale(1);
+        }
+    }
+
+    .popover-inner {
         display: flex;
+        flex-direction: column;
         align-items: center;
+        gap: 3px;
+        background: var(--color-bg);
+        border: 1px solid var(--color-border);
+        border-radius: 8px;
+        padding: 8px 12px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+        max-width: 220px;
+        text-align: center;
+    }
+
+    .popover-emoji {
+        font-size: 18px;
+        line-height: 1;
+    }
+
+    .popover-name {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--color-foreground);
+        line-height: 1.2;
+    }
+
+    .popover-desc {
+        font-size: 10px;
+        color: var(--color-muted);
+        line-height: 1.3;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
+    .popover-badge {
+        font-size: 9px;
+        font-weight: 600;
         color: var(--color-accent);
-        flex-shrink: 0;
-        margin-top: 2px;
+        background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+        border-radius: 3px;
+        padding: 1px 5px;
+        margin-top: 1px;
     }
 
     /* ── Summary ─────────────────────────────────────────────────────────── */
@@ -1048,19 +1112,11 @@
         background: var(--color-bg2);
         border: 1px solid var(--color-border);
         border-radius: 8px;
-        padding: 14px 16px;
+        padding: 12px 14px;
         display: flex;
         flex-direction: column;
-        gap: 6px;
-    }
-
-    .summary-title {
-        font-size: 11px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: var(--color-muted);
-        margin-bottom: 2px;
+        gap: 4px;
+        margin-top: 16px;
     }
 
     .summary-row {
@@ -1070,24 +1126,24 @@
     }
 
     .summary-emoji {
-        font-size: 20px;
+        font-size: 18px;
         line-height: 1;
     }
 
     .summary-name {
-        font-size: 14px;
+        font-size: 13px;
         font-weight: 700;
         color: var(--color-foreground);
     }
 
     .summary-detail {
-        font-size: 12px;
+        font-size: 11px;
         color: var(--color-muted);
     }
 
     .summary-detail code {
         font-family: "JetBrains Mono", "Fira Code", monospace;
-        font-size: 11px;
+        font-size: 10px;
         background: var(--color-bg3, var(--color-bg));
         padding: 1px 5px;
         border-radius: 3px;

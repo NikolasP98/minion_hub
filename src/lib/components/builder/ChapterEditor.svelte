@@ -339,17 +339,14 @@
 
 <div
     class="overlay"
-    role="dialog"
-    aria-modal="true"
-    aria-label="Edit Chapter"
     tabindex="-1"
     onclick={handleOverlayClick}
     onkeydown={handleKeydown}
 >
-    <div class="modal">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="chapter-editor-title">
         <!-- Header -->
         <div class="modal-header">
-            <span class="modal-title">Edit Chapter</span>
+            <span class="modal-title" id="chapter-editor-title">Edit Chapter</span>
             {#if totalConflicts > 0}
                 <span class="header-conflict-note">
                     <AlertCircle size={12} />

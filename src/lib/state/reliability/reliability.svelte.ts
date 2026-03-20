@@ -35,10 +35,21 @@ export const reliability = $state({
 
 /**
  * Push a live reliability event received from the gateway WebSocket.
- * No persistence — just keeps the last 200 in memory for the live feed.
+ * Keeps the last 200 in memory for the live feed, and also appends to
+ * the displayed events array if it falls within the active date range.
  */
 export function pushReliabilityEvent(event: ReliabilityEvent) {
-  reliability.recentEvents = [...reliability.recentEvents.slice(-199), event];
+  const normalized: ReliabilityEvent = {
+    ...event,
+    timestamp: event.timestamp ?? (event as any).occurredAt,
+  };
+  reliability.recentEvents = [...reliability.recentEvents.slice(-199), normalized];
+
+  // Also inject into displayed events so panels update live
+  const { from, to } = reliability.dateRange;
+  if (normalized.timestamp >= from && normalized.timestamp <= to) {
+    reliability.events = [...reliability.events, normalized];
+  }
 }
 
 /**

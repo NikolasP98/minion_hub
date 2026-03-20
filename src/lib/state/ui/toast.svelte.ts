@@ -2,7 +2,8 @@ import * as toast from '@zag-js/toast';
 
 export const toaster = toast.createStore({
   placement: 'top',
-  overlap: true,
+  overlap: false,
+  max: 6,
 });
 
 type ToastOverrides = Partial<toast.Options>;
