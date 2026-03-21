@@ -34,3 +34,4 @@ export { unifiedEvents } from './unified-events';
 export { channelIdentities } from './channel-identities';
 export { personalAgents } from './personal-agents';
 export { builtSkills, builtSkillTools, builtChapters, builtChapterEdges, builtChapterTools, builtAgents, builtAgentSkills, builtTools, agentBuiltSkills } from './builder';
+export { userPreferences } from './user-preferences';

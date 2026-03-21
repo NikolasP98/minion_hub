@@ -1,4 +1,5 @@
 /** Reactive background pattern state — persisted to localStorage */
+import { syncPreferenceToServer } from './preference-sync.svelte';
 
 const STORAGE_KEY = 'minion-hub-bg-pattern';
 
@@ -36,9 +37,16 @@ export const bgPattern = {
   get opacity() { return opacity; },
   get size() { return size; },
 
-  setPattern(p: PatternType) { pattern = p; save({ pattern, opacity, size }); },
-  setOpacity(v: number) { opacity = v; save({ pattern, opacity, size }); },
-  setSize(v: number) { size = v; save({ pattern, opacity, size }); },
+  setPattern(p: PatternType) { pattern = p; save({ pattern, opacity, size }); syncPreferenceToServer('bgPattern', { pattern, opacity, size }); },
+  setOpacity(v: number) { opacity = v; save({ pattern, opacity, size }); syncPreferenceToServer('bgPattern', { pattern, opacity, size }); },
+  setSize(v: number) { size = v; save({ pattern, opacity, size }); syncPreferenceToServer('bgPattern', { pattern, opacity, size }); },
+
+  applyFromServer(data: { pattern: string; opacity: number; size: number }) {
+    pattern = data.pattern as PatternType;
+    opacity = data.opacity;
+    size = data.size;
+    save({ pattern, opacity, size });
+  },
 };
 
 export const PATTERN_OPTIONS: { id: PatternType; label: string; icon: string }[] = [

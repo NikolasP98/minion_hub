@@ -1,5 +1,6 @@
 // Logo state module - manages site identity/logo presets
 // Includes squid-inspired design from WhatsApp profile pic
+import { syncPreferenceToServer } from './preference-sync.svelte';
 
 export interface LogoPreset {
   id: string;
@@ -97,8 +98,15 @@ export const logoState = {
   setPreset(id: string) {
     presetId = id;
     saveConfig({ presetId });
+    syncPreferenceToServer('logo', { presetId });
     // Update favicon when logo changes
     updateFavicon(id);
+  },
+
+  applyFromServer(data: { presetId: string }) {
+    presetId = data.presetId;
+    saveConfig({ presetId });
+    updateFavicon(presetId);
   },
 
   // Get SVG content for current preset (for favicon generation)

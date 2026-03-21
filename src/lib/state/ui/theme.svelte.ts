@@ -1,4 +1,5 @@
 import { PRESETS, ACCENT_OPTIONS, DEFAULT_STYLE, type ThemePreset } from '$lib/themes/presets';
+import { syncPreferenceToServer } from './preference-sync.svelte';
 
 const STORAGE_KEY = 'minion-hub-theme';
 
@@ -39,9 +40,17 @@ export const theme = {
   setPreset(id: string) {
     presetId = id;
     saveConfig({ presetId, accentId });
+    syncPreferenceToServer('theme', { presetId, accentId });
   },
   setAccent(id: string) {
     accentId = id;
+    saveConfig({ presetId, accentId });
+    syncPreferenceToServer('theme', { presetId, accentId });
+  },
+
+  applyFromServer(data: { presetId: string; accentId: string }) {
+    presetId = data.presetId;
+    accentId = data.accentId;
     saveConfig({ presetId, accentId });
   },
 };
