@@ -1,3 +1,5 @@
+import { syncPreferenceToServer } from './preference-sync.svelte';
+
 const STORAGE_KEY = 'minion-hub-crt-config';
 
 export interface CRTConfig {
@@ -57,10 +59,17 @@ export const crtConfig = {
   set(updates: Partial<CRTConfig>) {
     config = { ...config, ...updates };
     saveCRTConfig(config);
+    syncPreferenceToServer('crt', config);
   },
 
   reset() {
     config = { ...DEFAULT_CRT_CONFIG };
+    saveCRTConfig(config);
+    syncPreferenceToServer('crt', config);
+  },
+
+  applyFromServer(data: Record<string, unknown>) {
+    config = { ...DEFAULT_CRT_CONFIG, ...(data as Partial<CRTConfig>) };
     saveCRTConfig(config);
   },
 

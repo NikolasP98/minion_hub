@@ -1,3 +1,5 @@
+import { syncPreferenceToServer } from './preference-sync.svelte';
+
 export type SparklineStyle = 'area' | 'bar' | 'stepped';
 
 export const SPARKLINE_STYLE_OPTIONS: { id: SparklineStyle; label: string; icon: string }[] = [
@@ -25,6 +27,17 @@ export const sparklineStyle = {
     current = s;
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem(STORAGE_KEY, s);
+    }
+    syncPreferenceToServer('sparklineStyle', { style: s });
+  },
+
+  applyFromServer(data: { style: string }) {
+    const s = data.style;
+    if (s === 'area' || s === 'bar' || s === 'stepped') {
+      current = s;
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(STORAGE_KEY, s);
+      }
     }
   },
 };

@@ -20,6 +20,7 @@
   import { loadUser, userState } from '$lib/state/features/user.svelte';
   import { type Snippet } from 'svelte';
   import { locale } from '$lib/state/ui/locale.svelte';
+  import { loadAndApplyServerPreferences } from '$lib/state/ui/preference-sync.svelte';
   import { installInterceptor } from '$lib/utils/console-interceptor';
   import { injectSpeedInsights } from '@vercel/speed-insights/sveltekit';
   import { inject as injectAnalytics } from '@vercel/analytics';
@@ -45,6 +46,7 @@
       return;
     }
 
+    await loadAndApplyServerPreferences();
     await loadHosts();
     if (hostsState.activeHostId) wsConnect();
   });

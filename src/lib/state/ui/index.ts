@@ -6,3 +6,4 @@ export * from './theme.svelte';
 export * from './toast.svelte';
 export * from './ui.svelte';
 export * from './bug-reporter.svelte';
+export * from './preference-sync.svelte';

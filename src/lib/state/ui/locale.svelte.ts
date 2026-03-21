@@ -1,4 +1,5 @@
 import { setLanguageTag, availableLanguageTags, type AvailableLanguageTag } from '$lib/paraglide/runtime';
+import { syncPreferenceToServer } from './preference-sync.svelte';
 
 const STORAGE_KEY = 'minion-hub-locale';
 const DEFAULT_LOCALE: AvailableLanguageTag = 'en';
@@ -31,11 +32,20 @@ export const locale = {
   set(tag: AvailableLanguageTag) {
     current = tag;
     saveLocale(tag);
+    syncPreferenceToServer('locale', { tag });
   },
 
   toggle() {
     const next = current === 'en' ? 'es' : 'en';
     current = next;
     saveLocale(next);
+    syncPreferenceToServer('locale', { tag: next });
+  },
+
+  applyFromServer(data: { tag: string }) {
+    if ((availableLanguageTags as readonly string[]).includes(data.tag)) {
+      current = data.tag as AvailableLanguageTag;
+      saveLocale(current);
+    }
   },
 };
