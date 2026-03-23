@@ -79,6 +79,8 @@ export interface FurnitureInstance {
 	zY: number;
 	/** Render-time horizontal flip flag (for mirrored side variants) */
 	mirrored?: boolean;
+	/** True when this is an ON-state furniture item (e.g. CRT monitor active) */
+	isOnState?: boolean;
 }
 
 export interface ToolActivity {
