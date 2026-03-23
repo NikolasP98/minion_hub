@@ -91,7 +91,12 @@ Phases 8-13 from v2.0 Skill Builder (Error Handling, AI Quality, Data Flow, Cost
   3. Agent tool usage (Write/Edit/Bash vs Read/Grep/Glob) correctly drives typing vs reading animation on the corresponding character
   4. CRT monitor sprites switch to their ON state when the seated agent is actively typing, and permission/waiting bubbles appear above characters based on gateway presence data
   5. Idle agents wander via BFS pathfinding on the tile grid (respecting furniture walkability) and return to their assigned seat when becoming active
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 08-01-PLAN.md — Animation constants consolidation + character FSM updates
+- [ ] 08-02-PLAN.md — Gateway bridge enhancement + spawn/despawn wiring
+- [ ] 08-03-PLAN.md — Renderer additions + drag-to-reassign interaction
 
 ### Phase 9: Interaction + Persistence
 **Goal**: Users can click characters to select agents, navigate the office with pan/zoom, see status labels, and have all layout state persist across reloads
@@ -142,7 +147,7 @@ Phases execute in numeric order: 8 → 9 → 10 → 11
 | 5. State Architecture Refactor | v2.0 | 1/1 | Complete | 2026-03-19 |
 | 6. Critical Code Fixes | v2.0 | 3/3 | Complete | 2026-03-19 |
 | 7. Validation UX | v2.0 | 3/3 | Complete | 2026-03-19 |
-| 8. Character Animation + Gateway Bridge | v3.0 | 0/? | Not started | - |
+| 8. Character Animation + Gateway Bridge | v3.0 | 0/3 | In progress | - |
 | 9. Interaction + Persistence | v3.0 | 0/? | Not started | - |
 | 10. PixiJS Renderer Migration | v3.0 | 0/? | Not started | - |
 | 11. Layout Editor | v3.0 | 0/? | Not started | - |
