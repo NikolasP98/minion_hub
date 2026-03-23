@@ -28,11 +28,15 @@ created: 2026-03-23
 
 **Note:** Phase 8 is predominantly a canvas rendering and logic wiring phase. The "UI contract" describes canvas draw operations, sprite visual states, and the pixel art visual language. DOM-layer UI is limited to agent name labels (rendered on canvas) and any minimal status chrome in `WorkshopCanvas.svelte`.
 
+**Primary visual anchor:** An active typing character seated at their desk, distinguished by the 2-frame typing animation and the CRT monitor glow (`rgba(0, 255, 120, 0.4)` green shadow). This is the canonical "agent is working" state and the most visually prominent element in the canvas view.
+
 ---
 
 ## Spacing Scale
 
-This scale applies to DOM wrapper UI only. Canvas rendering uses pixel-grid units.
+### DOM Wrapper Spacing (CSS tokens)
+
+This scale applies to DOM wrapper UI only.
 
 | Token | Value | Usage |
 |-------|-------|-------|
@@ -43,6 +47,10 @@ This scale applies to DOM wrapper UI only. Canvas rendering uses pixel-grid unit
 | xl | 32px | Layout gaps |
 | 2xl | 48px | Major section breaks |
 | 3xl | 64px | Page-level spacing |
+
+### Canvas Constants (locked — do not apply CSS tokens here)
+
+Canvas rendering uses pixel-grid units, not CSS spacing tokens. All values below are fixed constants from `constants.ts` and `types.ts`.
 
 **Canvas grid unit:** `TILE_SIZE = 16px` (from `types.ts`). All canvas offsets must be multiples of 16px or sub-pixel fractions of it (e.g. `CHARACTER_SITTING_OFFSET_PX = 6` for seated vertical adjustment — intentional non-multiple).
 
@@ -171,7 +179,8 @@ All states are canvas-rendered. This section defines the visual contract for eac
 ### Wander State (ANIM-04)
 - Uses walk animation while moving between tiles via BFS path
 - At wander pause: idle pose facing last direction
-- Wander pause: `WANDER_PAUSE_MIN_SEC = 2.0s`, `WANDER_PAUSE_MAX_SEC = 20.0s` — updated to match D-02 range (30–60s after finishing work via `SEAT_REST_MIN_SEC/MAX_SEC`)
+- Wander pause: `WANDER_PAUSE_MIN_SEC = 2.0s`, `WANDER_PAUSE_MAX_SEC = 20.0s` — unchanged (short pause between steps within a wander episode)
+- Seat rest before wander: `SEAT_REST_MIN_SEC = 5.0s`, `SEAT_REST_MAX_SEC = 15.0s` — per D-07 (characters stay seated 5-15 seconds after finishing work before potentially wandering)
 
 ### Spawn Effect (ANIM-06, GATE-02)
 - Matrix digital rain: `MATRIX_EFFECT_DURATION_SEC = 0.3s`
@@ -210,6 +219,47 @@ Source: GATE-01 through GATE-06, D-09 through D-20.
 
 ---
 
+## Drag Interaction Contract (D-11)
+
+Per D-11: users can drag a pixel character to a different desk to reassign them. This interaction is implemented in the canvas layer.
+
+### Drag Visual States
+
+| State | Visual |
+|-------|--------|
+| Idle (no drag) | Character rendered at seat in normal state |
+| Drag start (mousedown on character) | Character lifts off seat — rendered at cursor position, offset 8px above cursor center (`CHARACTER_DRAG_OFFSET_Y = -8`) to prevent occlusion by cursor; character alpha set to 0.85 to signal detachment |
+| Dragging (mousemove) | Character follows cursor at 0.85 alpha; drop targets (unoccupied desks) highlight with `SEAT_AVAILABLE_COLOR` (`rgba(0,200,80,0.35)`) overlay; occupied desks highlight with `SEAT_BUSY_COLOR` (`rgba(220,50,50,0.35)`) to indicate invalid drop |
+| Hover over valid desk | Target desk seat highlight intensifies to `rgba(0,200,80,0.6)` (2× opacity); character alpha returns to 1.0 |
+| Drop on valid desk (mouseup) | Character snaps to new seat in idle pose; seat assignment updated; no animation transition — character appears directly seated |
+| Drop on invalid target (occupied desk or non-desk tile) | Character returns to original seat via a straight-line snap (no walk animation); no error message — seat highlight clears |
+| Drop outside canvas bounds | Same as invalid target: character snaps back to original seat |
+
+### Interaction Contract
+
+- **Drag initiator:** `mousedown` on a character tile (within the character's bounding box: `TILE_SIZE × TILE_SIZE` centered on character position)
+- **Drag tracking:** `mousemove` on the canvas element; character position updates each frame
+- **Drop:** `mouseup` anywhere (including outside canvas — handled via `window` listener to catch out-of-bounds release)
+- **FSM state during drag:** Character FSM enters `dragged` state (already present in `agent-fsm.ts`); animation freezes at current frame
+- **Cancellation:** `Escape` key or `mouseup` outside a valid desk returns character to original seat
+- **Multi-character safety:** Only one character can be dragged at a time; a second `mousedown` while drag is active is ignored
+
+### Seat Assignment on Drop
+
+- On valid drop: call `office-state.ts` `reassignSeat(characterId, newSeatId)` — updates `character.seatId` and frees the original seat
+- Gateway-side: reassignment is local to the canvas view only in Phase 8 (persistence deferred to Phase 9 per PERS-01)
+- On reassign: if character was in `wandering` FSM state, FSM transitions to `idle` and character walks to new seat at `WALK_SPEED_PX_PER_SEC = 64px/s`
+
+### File Responsibility
+
+| File | Drag Responsibility |
+|------|---------------------|
+| `src/lib/workshop/pixel/characters.ts` | `CHARACTER_DRAG_OFFSET_Y` constant; `dragCharacter(id, x, y)`, `dropCharacter(id)`, `cancelDrag(id)` functions |
+| `src/lib/workshop/pixel/office-state.ts` | `reassignSeat(characterId, newSeatId)` — validates seat availability, updates seat map |
+| `src/lib/components/workshop/WorkshopCanvas.svelte` | `mousedown`/`mousemove`/`mouseup`/`keydown` event listeners on canvas; calls drag functions; manages `window` mouseup listener for out-of-bounds drop |
+
+---
+
 ## Copywriting Contract
 
 Phase 8 has no primary user-facing CTAs or empty states — it is a background wiring and animation phase. The only visible text is canvas-rendered character labels.
@@ -239,8 +289,8 @@ All timing values come from `constants.ts` and the decisions in `08-CONTEXT.md`.
 | Read frame duration | `characters.ts` | 0.5s | Claude's discretion |
 | `WANDER_PAUSE_MIN_SEC` | `constants.ts` | 2.0s | Unchanged (short pause between steps) |
 | `WANDER_PAUSE_MAX_SEC` | `constants.ts` | 20.0s | Unchanged |
-| `SEAT_REST_MIN_SEC` | `constants.ts` | 30.0s | D-07 (was 120s) |
-| `SEAT_REST_MAX_SEC` | `constants.ts` | 60.0s | D-07 (was 240s) |
+| `SEAT_REST_MIN_SEC` | `constants.ts` | 5.0s | D-07 (stay seated 5-15s after finishing work) |
+| `SEAT_REST_MAX_SEC` | `constants.ts` | 15.0s | D-07 (stay seated 5-15s after finishing work) |
 | Return-to-seat speed | `characters.ts` | 128px/sec (2× walk) | D-03 |
 | `MATRIX_EFFECT_DURATION_SEC` | `types.ts` | 0.3s | Unchanged |
 | `WAITING_BUBBLE_DURATION_SEC` | `constants.ts` | 2.0s | D-20 |
@@ -265,12 +315,12 @@ New modules to create or modify in Phase 8 (for the planner):
 
 | File | Action | What Changes |
 |------|--------|--------------|
-| `src/lib/workshop/pixel/constants.ts` | Modify | Update `WALK_SPEED_PX_PER_SEC` → 64, `SEAT_REST_MIN_SEC` → 30, `SEAT_REST_MAX_SEC` → 60 |
-| `src/lib/workshop/pixel/characters.ts` | Modify | Add 2x return-to-seat speed, read animation (0.5s frames), 4-frame walk loop with duplicate |
+| `src/lib/workshop/pixel/constants.ts` | Modify | Update `WALK_SPEED_PX_PER_SEC` → 64, `SEAT_REST_MIN_SEC` → 5, `SEAT_REST_MAX_SEC` → 15; add `CHARACTER_DRAG_OFFSET_Y = -8` |
+| `src/lib/workshop/pixel/characters.ts` | Modify | Add 2x return-to-seat speed, read animation (0.5s frames), 4-frame walk loop with duplicate; add `dragCharacter()`, `dropCharacter()`, `cancelDrag()` |
 | `src/lib/workshop/pixel/gateway-pixel-bridge.ts` | Modify | Sub-agent support (D-09), tool name passthrough (D-10), entrance spawn (D-14), initial load fast-path (D-17) |
-| `src/lib/workshop/pixel/renderer.ts` | Modify | CRT glow effect (D-18), sub-agent alpha/scale (D-09), name label rendering (D-12) |
-| `src/lib/workshop/pixel/office-state.ts` | Modify | Wire agent connect/disconnect to matrix spawn/despawn (GATE-02) |
-| `src/lib/components/workshop/WorkshopCanvas.svelte` | Modify | Connect gateway presence reactive effects to `syncAgentList()` / `syncAgentState()` |
+| `src/lib/workshop/pixel/renderer.ts` | Modify | CRT glow effect (D-18), sub-agent alpha/scale (D-09), name label rendering (D-12), drag state rendering (D-11) |
+| `src/lib/workshop/pixel/office-state.ts` | Modify | Wire agent connect/disconnect to matrix spawn/despawn (GATE-02); add `reassignSeat(characterId, newSeatId)` (D-11) |
+| `src/lib/components/workshop/WorkshopCanvas.svelte` | Modify | Connect gateway presence reactive effects to `syncAgentList()` / `syncAgentState()`; add mousedown/mousemove/mouseup/keydown drag handlers (D-11) |
 
 No new Svelte DOM components are required for Phase 8.
 
