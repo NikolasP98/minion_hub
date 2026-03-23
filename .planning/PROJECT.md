@@ -8,19 +8,21 @@ Minion Hub is a SvelteKit web dashboard for managing and monitoring AI agent gat
 
 Gateway administrators and skill authors can confidently manage, monitor, and extend their AI agents through a polished, reliable web interface.
 
-## Current Milestone: v2.0 Skill Builder Improvements
+## Current Milestone: v3.0 Pixel Office
 
-**Goal:** Harden the visual skill builder — fix critical code bugs, improve validation UX, strengthen error handling, enhance AI generation quality, add data flow visualization, cost tracking, and skill versioning.
+**Goal:** Complete the pixel art office workshop view with full character animations, real-time gateway agent integration, and migrate the Canvas 2D renderer to PixiJS for GPU-accelerated performance.
 
 **Target features:**
-- Critical code fixes (cyclic edges, N+1 queries, tool filtering, batch inserts)
-- Publish validation UX (disable on errors, structured error panel, shared validation)
-- Error handling hardening (modal save errors, mutation try/catch, timeouts)
-- Tool manifest expansion + AI quality (descriptions, expandable cards, staged import, DAG context)
-- Data flow visualization (upstream preview, root chapter config, edge labels)
-- Cost tracking display (token usage, budget control)
-- Skill versioning (schema, service, API, version history, changelog)
-- Advanced features placeholder (dry-run, per-node test status, approval nodes — blocked on runtime)
+- Character animations (walk cycle, typing, reading, idle wander with BFS pathfinding)
+- Gateway agent bridge (real agent FSM states → pixel character typing/reading/idle behavior)
+- Agent interaction (click → sidebar selection, status labels above characters)
+- Monitor auto-on (CRT screens light up when agents work at desks)
+- Speech bubbles (permission/waiting indicators from gateway presence data)
+- Matrix spawn/despawn effect (digital rain animation on agent connect/disconnect)
+- PixiJS renderer migration (replace Canvas 2D with PixiJS Sprite batching, reuse existing workshop PixiJS app)
+- Layout persistence (save/load pixel office state per host via localStorage)
+- Layout editor (furniture placement, floor/wall painting, undo/redo)
+- Pan/zoom polish (smooth camera following, keyboard shortcuts, DPR-aware rendering)
 
 ## Requirements
 
@@ -83,5 +85,22 @@ See `.planning/REQUIREMENTS.md` for full REQ-ID breakdown.
 | 4-specialist review before implementation | Caught 45 issues before they compound | ✓ Good |
 | Phase 8 included as placeholder | Keeps runtime-dependent features visible in roadmap | -- Pending |
 
+## Evolution
+
+This document evolves at phase transitions and milestone boundaries.
+
+**After each phase transition** (via `/gsd:transition`):
+1. Requirements invalidated? → Move to Out of Scope with reason
+2. Requirements validated? → Move to Validated with phase reference
+3. New requirements emerged? → Add to Active
+4. Decisions to log? → Add to Key Decisions
+5. "What This Is" still accurate? → Update if drifted
+
+**After each milestone** (via `/gsd:complete-milestone`):
+1. Full review of all sections
+2. Core Value check — still the right priority?
+3. Audit Out of Scope — reasons still valid?
+4. Update Context with current state
+
 ---
-*Last updated: 2026-03-19 after Phase 6 (critical code fixes) completion*
+*Last updated: 2026-03-23 after milestone v3.0 Pixel Office initialization*
