@@ -9,12 +9,12 @@ Requirements for v3.0 milestone. Each maps to roadmap phases.
 
 ### Character Animation
 
-- [ ] **ANIM-01**: Characters play 4-frame walk animation when wandering between tiles
-- [ ] **ANIM-02**: Characters play 2-frame typing animation when agent is conversing/writing
-- [ ] **ANIM-03**: Characters play 2-frame reading animation when agent is reading files
-- [ ] **ANIM-04**: Characters wander via BFS pathfinding on tile grid when idle (respecting furniture walkability)
-- [ ] **ANIM-05**: Characters return to assigned seat when agent becomes active
-- [ ] **ANIM-06**: Matrix digital rain effect plays on agent spawn/despawn (0.3s)
+- [x] **ANIM-01**: Characters play 4-frame walk animation when wandering between tiles
+- [x] **ANIM-02**: Characters play 2-frame typing animation when agent is conversing/writing
+- [x] **ANIM-03**: Characters play 2-frame reading animation when agent is reading files
+- [x] **ANIM-04**: Characters wander via BFS pathfinding on tile grid when idle (respecting furniture walkability)
+- [x] **ANIM-05**: Characters return to assigned seat when agent becomes active
+- [x] **ANIM-06**: Matrix digital rain effect plays on agent spawn/despawn (0.3s)
 
 ### Gateway Integration
 
@@ -83,12 +83,12 @@ Requirements for v3.0 milestone. Each maps to roadmap phases.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ANIM-01 | Phase 8 | Pending |
-| ANIM-02 | Phase 8 | Pending |
-| ANIM-03 | Phase 8 | Pending |
-| ANIM-04 | Phase 8 | Pending |
-| ANIM-05 | Phase 8 | Pending |
-| ANIM-06 | Phase 8 | Pending |
+| ANIM-01 | Phase 8 | Complete |
+| ANIM-02 | Phase 8 | Complete |
+| ANIM-03 | Phase 8 | Complete |
+| ANIM-04 | Phase 8 | Complete |
+| ANIM-05 | Phase 8 | Complete |
+| ANIM-06 | Phase 8 | Complete |
 | GATE-01 | Phase 8 | Pending |
 | GATE-02 | Phase 8 | Pending |
 | GATE-03 | Phase 8 | Pending |
