@@ -83,13 +83,46 @@ Requirements for v3.0 milestone. Each maps to roadmap phases.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (Populated by roadmapper) | | |
+| ANIM-01 | Phase 8 | Pending |
+| ANIM-02 | Phase 8 | Pending |
+| ANIM-03 | Phase 8 | Pending |
+| ANIM-04 | Phase 8 | Pending |
+| ANIM-05 | Phase 8 | Pending |
+| ANIM-06 | Phase 8 | Pending |
+| GATE-01 | Phase 8 | Pending |
+| GATE-02 | Phase 8 | Pending |
+| GATE-03 | Phase 8 | Pending |
+| GATE-04 | Phase 8 | Pending |
+| GATE-05 | Phase 8 | Pending |
+| GATE-06 | Phase 8 | Pending |
+| INTR-01 | Phase 9 | Pending |
+| INTR-02 | Phase 9 | Pending |
+| INTR-03 | Phase 9 | Pending |
+| INTR-04 | Phase 9 | Pending |
+| INTR-05 | Phase 9 | Pending |
+| PERS-01 | Phase 9 | Pending |
+| PERS-02 | Phase 9 | Pending |
+| PERS-03 | Phase 9 | Pending |
+| PERS-04 | Phase 9 | Pending |
+| PIXI-01 | Phase 10 | Pending |
+| PIXI-02 | Phase 10 | Pending |
+| PIXI-03 | Phase 10 | Pending |
+| PIXI-04 | Phase 10 | Pending |
+| PIXI-05 | Phase 10 | Pending |
+| PIXI-06 | Phase 10 | Pending |
+| PIXI-07 | Phase 10 | Pending |
+| EDIT-01 | Phase 11 | Pending |
+| EDIT-02 | Phase 11 | Pending |
+| EDIT-03 | Phase 11 | Pending |
+| EDIT-04 | Phase 11 | Pending |
+| EDIT-05 | Phase 11 | Pending |
+| EDIT-06 | Phase 11 | Pending |
 
 **Coverage:**
 - v1 requirements: 28 total
-- Mapped to phases: 0
-- Unmapped: 28
+- Mapped to phases: 28
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-23*
-*Last updated: 2026-03-23 after initial definition*
+*Last updated: 2026-03-23 after roadmap creation*
