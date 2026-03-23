@@ -32,6 +32,8 @@ Gateway administrators and skill authors can confidently manage, monitor, and ex
 - ARCH-01, ARCH-02: State architecture extraction — skill editor god-component decomposed into `skill-editor.svelte.ts` module (Phase 5 complete)
 - CFIX-01 through CFIX-10: All 10 critical code fixes — AI endpoint bugs, DB layer performance, publish safety (Phase 6 complete)
 - VALID-01 through VALID-05, A11Y-01: Validation UX — shared validation module, structured error panel, disabled publish button, toast feedback, aria fixes (Phase 7 complete)
+- ANIM-01 through ANIM-06: Character animations — walk cycle, typing, reading, idle wander, return-to-seat, spawn/despawn effects (Phase 8 complete)
+- GATE-01 through GATE-06: Gateway integration — FSM state bridge, tool-call events, CRT auto-ON, permission/waiting bubbles, sub-agent lifecycle (Phase 8 complete)
 
 ### Active
 
@@ -103,4 +105,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-23 after milestone v3.0 Pixel Office initialization*
+*Last updated: 2026-03-23 after Phase 8 (Character Animation + Gateway Bridge) completion*
