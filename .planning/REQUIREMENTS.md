@@ -18,12 +18,12 @@ Requirements for v3.0 milestone. Each maps to roadmap phases.
 
 ### Gateway Integration
 
-- [ ] **GATE-01**: Workshop agent FSM states (conversing, reading, idle, wandering) drive pixel character isActive and currentTool
-- [ ] **GATE-02**: Agent connect/disconnect adds/removes pixel characters with spawn/despawn effects
-- [ ] **GATE-03**: Agent tool activity (Write/Edit/Bash vs Read/Grep/Glob) maps to typing vs reading animation
-- [ ] **GATE-04**: CRT monitors auto-switch to ON sprite when agent actively types at that desk
-- [ ] **GATE-05**: Permission bubble (amber dots) shows when agent waits for user approval
-- [ ] **GATE-06**: Waiting bubble (green checkmark) shows when agent is idle after task completion
+- [x] **GATE-01**: Workshop agent FSM states (conversing, reading, idle, wandering) drive pixel character isActive and currentTool
+- [x] **GATE-02**: Agent connect/disconnect adds/removes pixel characters with spawn/despawn effects
+- [x] **GATE-03**: Agent tool activity (Write/Edit/Bash vs Read/Grep/Glob) maps to typing vs reading animation
+- [x] **GATE-04**: CRT monitors auto-switch to ON sprite when agent actively types at that desk
+- [x] **GATE-05**: Permission bubble (amber dots) shows when agent waits for user approval
+- [x] **GATE-06**: Waiting bubble (green checkmark) shows when agent is idle after task completion
 
 ### Interaction
 
@@ -89,12 +89,12 @@ Requirements for v3.0 milestone. Each maps to roadmap phases.
 | ANIM-04 | Phase 8 | Complete |
 | ANIM-05 | Phase 8 | Complete |
 | ANIM-06 | Phase 8 | Complete |
-| GATE-01 | Phase 8 | Pending |
-| GATE-02 | Phase 8 | Pending |
-| GATE-03 | Phase 8 | Pending |
-| GATE-04 | Phase 8 | Pending |
-| GATE-05 | Phase 8 | Pending |
-| GATE-06 | Phase 8 | Pending |
+| GATE-01 | Phase 8 | Complete |
+| GATE-02 | Phase 8 | Complete |
+| GATE-03 | Phase 8 | Complete |
+| GATE-04 | Phase 8 | Complete |
+| GATE-05 | Phase 8 | Complete |
+| GATE-06 | Phase 8 | Complete |
 | INTR-01 | Phase 9 | Pending |
 | INTR-02 | Phase 9 | Pending |
 | INTR-03 | Phase 9 | Pending |

@@ -95,7 +95,7 @@ Phases 8-13 from v2.0 Skill Builder (Error Handling, AI Quality, Data Flow, Cost
 
 Plans:
 - [x] 08-01-PLAN.md — Animation constants consolidation + character FSM updates
-- [ ] 08-02-PLAN.md — Gateway bridge enhancement + spawn/despawn wiring
+- [x] 08-02-PLAN.md — Gateway bridge enhancement + spawn/despawn wiring
 - [ ] 08-03-PLAN.md — Renderer additions + drag-to-reassign interaction
 
 ### Phase 9: Interaction + Persistence
