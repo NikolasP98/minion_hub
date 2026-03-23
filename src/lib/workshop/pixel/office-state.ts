@@ -85,6 +85,8 @@ export class OfficeState {
 		this.blockedTiles = getBlockedTiles(layout.furniture);
 		this.rebuildFurnitureInstances();
 		this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles);
+		// Invalidate entrance tile cache whenever layout changes
+		this._entranceTile = undefined;
 
 		// Shift character positions when grid expands left/up
 		if (shift && (shift.col !== 0 || shift.row !== 0)) {
@@ -392,6 +394,34 @@ export class OfficeState {
 		ch.frame = 0;
 		ch.frameTimer = 0;
 		return true;
+	}
+
+	/** Cached entrance tile — undefined = not yet computed, null = no walkable edge tile found */
+	private _entranceTile: { col: number; row: number } | null | undefined = undefined;
+
+	/**
+	 * Find the first walkable edge tile for entrance spawn (D-14).
+	 * Scans edges: top row L→R, left col T→B, bottom row L→R, right col T→B.
+	 * Result is cached after first call; invalidated by rebuildFromLayout().
+	 */
+	findEntranceTile(): { col: number; row: number } | null {
+		if (this._entranceTile !== undefined) return this._entranceTile;
+		const rows = this.tileMap.length;
+		const cols = rows > 0 ? this.tileMap[0].length : 0;
+		// Scan edges: top row L->R, left col T->B, bottom row L->R, right col T->B
+		const edges: Array<{ col: number; row: number }> = [];
+		for (let c = 0; c < cols; c++) edges.push({ col: c, row: 0 });
+		for (let r = 1; r < rows; r++) edges.push({ col: 0, row: r });
+		for (let c = 1; c < cols; c++) edges.push({ col: c, row: rows - 1 });
+		for (let r = 1; r < rows - 1; r++) edges.push({ col: cols - 1, row: r });
+		for (const tile of edges) {
+			if (isWalkable(tile.col, tile.row, this.tileMap, this.blockedTiles)) {
+				this._entranceTile = tile;
+				return tile;
+			}
+		}
+		this._entranceTile = null;
+		return null;
 	}
 
 	/** Create a sub-agent character with the parent's palette. Returns the sub-agent ID. */
