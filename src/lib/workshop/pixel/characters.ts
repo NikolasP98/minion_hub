@@ -29,7 +29,15 @@ import {
   WANDER_MOVES_BEFORE_REST_MAX,
   SEAT_REST_MIN_SEC,
   SEAT_REST_MAX_SEC,
+  CHARACTER_HIT_HALF_WIDTH,
+  CHARACTER_HIT_HEIGHT,
 } from './constants';
+/** Minimal interface to avoid circular import with office-state.ts */
+interface OfficeRef {
+  characters: Map<number, Character>;
+  seats: Map<string, { seatCol: number; seatRow: number; assigned: boolean }>;
+  reassignSeat(agentId: number, seatId: string): void;
+}
 
 // ── Reading Tool Detection ──────────────────────────────────────
 
@@ -447,4 +455,124 @@ export function getCharacterSprite(
     default:
       return sprites.walk[ch.dir][1];
   }
+}
+
+// ── Drag-to-reassign interaction ────────────────────────────────
+
+/** Currently dragged character ID, or null */
+let draggedCharId: number | null = null;
+let dragOriginalSeatId: string | null = null;
+let dragOriginalCol: number = 0;
+let dragOriginalRow: number = 0;
+let dragWorldX: number = 0;
+let dragWorldY: number = 0;
+
+export function getDragState(): {
+  charId: number | null;
+  worldX: number;
+  worldY: number;
+} {
+  return { charId: draggedCharId, worldX: dragWorldX, worldY: dragWorldY };
+}
+
+/**
+ * Find the character at a given world position using bounding-box hit test.
+ * Uses CHARACTER_HIT_HALF_WIDTH and CHARACTER_HIT_HEIGHT from constants.
+ * Returns the Character if found, null otherwise.
+ */
+export function findCharacterAtWorld(
+  office: OfficeRef,
+  worldX: number,
+  worldY: number,
+): Character | null {
+  for (const ch of office.characters.values()) {
+    const dx = Math.abs(worldX - ch.x);
+    const dy = ch.y - worldY; // characters are drawn with origin at feet
+    if (dx <= CHARACTER_HIT_HALF_WIDTH && dy >= 0 && dy <= CHARACTER_HIT_HEIGHT) {
+      return ch;
+    }
+  }
+  return null;
+}
+
+/**
+ * Start dragging a character. Returns true if drag started.
+ * Only one character can be dragged at a time.
+ */
+export function dragCharacter(
+  id: number,
+  characters: Map<number, Character>,
+): boolean {
+  if (draggedCharId !== null) return false; // already dragging
+  const ch = characters.get(id);
+  if (!ch) return false;
+  draggedCharId = id;
+  dragOriginalSeatId = ch.seatId;
+  dragOriginalCol = ch.tileCol;
+  dragOriginalRow = ch.tileRow;
+  return true;
+}
+
+/**
+ * Update dragged character position (world coordinates).
+ */
+export function updateDragPosition(worldX: number, worldY: number): void {
+  dragWorldX = worldX;
+  dragWorldY = worldY;
+}
+
+/**
+ * Drop the dragged character. Returns the charId if drop was valid, null otherwise.
+ * On valid drop, calls office.reassignSeat. On invalid drop, calls cancelDrag.
+ */
+export function dropCharacter(
+  office: OfficeRef,
+  worldX: number,
+  worldY: number,
+): number | null {
+  if (draggedCharId === null) return null;
+  const charId = draggedCharId;
+
+  // Find which tile the cursor is over
+  const dropCol = Math.floor(worldX / TILE_SIZE);
+  const dropRow = Math.floor(worldY / TILE_SIZE);
+
+  // Find if there's an unoccupied seat at this tile
+  let targetSeatId: string | null = null;
+  for (const [seatId, seat] of office.seats) {
+    if (seat.seatCol === dropCol && seat.seatRow === dropRow && !seat.assigned) {
+      targetSeatId = seatId;
+      break;
+    }
+  }
+
+  if (targetSeatId) {
+    // Valid drop on unoccupied seat
+    office.reassignSeat(charId, targetSeatId);
+    draggedCharId = null;
+    return charId;
+  }
+
+  // Invalid drop — snap back to original seat
+  cancelDrag(office);
+  return null;
+}
+
+/**
+ * Cancel drag — return character to original position.
+ */
+export function cancelDrag(office: OfficeRef): void {
+  if (draggedCharId === null) return;
+  const ch = office.characters.get(draggedCharId);
+  if (ch) {
+    ch.tileCol = dragOriginalCol;
+    ch.tileRow = dragOriginalRow;
+    ch.x = dragOriginalCol * TILE_SIZE + TILE_SIZE / 2;
+    ch.y = dragOriginalRow * TILE_SIZE + TILE_SIZE / 2;
+    // Restore original seatId if it was set
+    if (dragOriginalSeatId !== null) {
+      ch.seatId = dragOriginalSeatId;
+    }
+  }
+  draggedCharId = null;
 }

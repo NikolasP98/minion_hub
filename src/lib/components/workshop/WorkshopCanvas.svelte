@@ -89,6 +89,13 @@
         startToolCallListener,
         startSubagentListener,
     } from "$lib/workshop/pixel/gateway-pixel-bridge";
+    import {
+        findCharacterAtWorld,
+        dragCharacter,
+        updateDragPosition,
+        dropCharacter,
+        cancelDrag,
+    } from "$lib/workshop/pixel/characters";
     import type { OfficeLayout } from "$lib/workshop/pixel/types";
 
     // ---------------------------------------------------------------------------
@@ -108,6 +115,7 @@
     let stopPixelLoop: (() => void) | null = null;
     let cleanupToolListener: (() => void) | null = null;
     let cleanupSubagentListener: (() => void) | null = null;
+    let cleanupPixelDragListeners: (() => void) | null = null;
     let pixelPanX = 0;
     let pixelPanY = 0;
     let pixelInitializing = false;
@@ -276,10 +284,15 @@
             cleanupSubagentListener();
             cleanupSubagentListener = null;
         }
+        if (cleanupPixelDragListeners) {
+            cleanupPixelDragListeners();
+            cleanupPixelDragListeners = null;
+        }
         if (pixelResizeObserver) {
             pixelResizeObserver.disconnect();
             pixelResizeObserver = null;
         }
+        isPixelDragging = false;
         clearMappings();
         pixelOffice = null;
         if (pixelCanvas) {
@@ -422,13 +435,14 @@
                     ctx.imageSmoothingEnabled = false;
                     const office = pixelOffice;
                     const z = pixelOfficeState.settings.zoomLevel;
-                    const sel = office.selectedAgentId !== null ? {
+                    // Always pass seats/characters so drag overlays and hit-tests work
+                    const sel = {
                         selectedAgentId: office.selectedAgentId,
                         hoveredAgentId: office.hoveredAgentId,
                         hoveredTile: office.hoveredTile,
                         seats: office.seats,
                         characters: office.characters,
-                    } : undefined;
+                    };
                     pixelRenderFrame(
                         ctx,
                         pixelCanvas.width,
@@ -451,6 +465,14 @@
             // Wire real-time event listeners (GATE-03, GATE-05, D-09)
             cleanupToolListener = startToolCallListener(pixelOffice);
             cleanupSubagentListener = startSubagentListener(pixelOffice);
+
+            // Wire drag-to-reassign window listener (cleanup on teardown)
+            window.addEventListener('mouseup', handlePixelMouseupWindow);
+            window.addEventListener('keydown', handlePixelKeydown);
+            cleanupPixelDragListeners = () => {
+                window.removeEventListener('mouseup', handlePixelMouseupWindow);
+                window.removeEventListener('keydown', handlePixelKeydown);
+            };
         } finally {
             pixelInitializing = false;
         }
@@ -721,11 +743,86 @@
     let pixelPanDragStartY = 0;
     let isPixelPanning = false;
 
+    // ---------------------------------------------------------------------------
+    // Pixel mode: drag-to-reassign seat state
+    // ---------------------------------------------------------------------------
+    let isPixelDragging = false;
+
+    /** Convert pixel canvas screen coords (offsetX/Y relative to canvas) to world coords */
+    function pixelScreenToWorld(screenX: number, screenY: number): { x: number; y: number } {
+        if (!pixelCanvas) return { x: 0, y: 0 };
+        const z = pixelOfficeState.settings.zoomLevel;
+        const TP = 16;
+        const layout = pixelOffice?.layout;
+        if (!layout) return { x: 0, y: 0 };
+        const mapW = layout.cols * TP * z;
+        const mapH = layout.rows * TP * z;
+        const ox = Math.floor((pixelCanvas.width - mapW) / 2) + Math.round(pixelPanX);
+        const oy = Math.floor((pixelCanvas.height - mapH) / 2) + Math.round(pixelPanY);
+        return { x: (screenX - ox) / z, y: (screenY - oy) / z };
+    }
+
+    function handlePixelMousedown(e: MouseEvent) {
+        if (!pixelOffice || e.button !== 0) return;
+        const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
+        const worldPos = pixelScreenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+        const hitChar = findCharacterAtWorld(pixelOffice, worldPos.x, worldPos.y);
+        if (hitChar) {
+            const started = dragCharacter(hitChar.id, pixelOffice.characters);
+            if (started) {
+                isPixelDragging = true;
+                updateDragPosition(worldPos.x, worldPos.y);
+                // Stop panning from triggering
+                isPixelPanning = false;
+                e.stopPropagation();
+            }
+        }
+    }
+
+    function handlePixelMousemove(e: MouseEvent) {
+        if (!isPixelDragging || !pixelOffice) return;
+        const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
+        const worldPos = pixelScreenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+        updateDragPosition(worldPos.x, worldPos.y);
+    }
+
+    function handlePixelMouseupWindow(e: MouseEvent) {
+        if (!isPixelDragging || !pixelOffice) return;
+        isPixelDragging = false;
+        if (!pixelCanvas) return;
+        const rect = pixelCanvas.getBoundingClientRect();
+        const worldPos = pixelScreenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+        dropCharacter(pixelOffice, worldPos.x, worldPos.y);
+    }
+
+    function handlePixelKeydown(e: KeyboardEvent) {
+        if (e.key === 'Escape' && isPixelDragging && pixelOffice) {
+            isPixelDragging = false;
+            cancelDrag(pixelOffice);
+        }
+    }
+
     function handlePointerDown(e: PointerEvent) {
         if (!canvasContainer) return;
 
-        // Pixel mode: any mouse button starts panning
+        // Pixel mode: check for character drag first, then pan
         if (workshopState.settings.viewMode === "pixel") {
+            if (e.button === 0 && pixelOffice && pixelCanvas) {
+                const rect = pixelCanvas.getBoundingClientRect();
+                const worldPos = pixelScreenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+                const hitChar = findCharacterAtWorld(pixelOffice, worldPos.x, worldPos.y);
+                if (hitChar) {
+                    const started = dragCharacter(hitChar.id, pixelOffice.characters);
+                    if (started) {
+                        isPixelDragging = true;
+                        updateDragPosition(worldPos.x, worldPos.y);
+                        (e.target as HTMLElement)?.setPointerCapture?.(e.pointerId);
+                        if (pixelCanvas) pixelCanvas.style.cursor = "grabbing";
+                        e.preventDefault();
+                        return;
+                    }
+                }
+            }
             if (e.button === 0 || e.button === 1) {
                 isPixelPanning = true;
                 pixelPanStartX = pixelPanX;
@@ -790,6 +887,14 @@
 
     function handlePointerMove(e: PointerEvent) {
         if (!canvasContainer) return;
+
+        // Pixel mode: update drag position when dragging a character
+        if (isPixelDragging && pixelOffice && pixelCanvas) {
+            const rect = pixelCanvas.getBoundingClientRect();
+            const worldPos = pixelScreenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+            updateDragPosition(worldPos.x, worldPos.y);
+            return;
+        }
 
         // Pixel mode panning
         if (isPixelPanning) {
@@ -858,6 +963,16 @@
 
     function handlePointerUp(e: PointerEvent) {
         if (!canvasContainer) return;
+
+        // Pixel mode: finish character drag
+        if (isPixelDragging && pixelOffice && pixelCanvas) {
+            isPixelDragging = false;
+            if (pixelCanvas) pixelCanvas.style.cursor = "grab";
+            const rect = pixelCanvas.getBoundingClientRect();
+            const worldPos = pixelScreenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+            dropCharacter(pixelOffice, worldPos.x, worldPos.y);
+            return;
+        }
 
         // Pixel mode: stop panning, detect clicks
         if (isPixelPanning) {
