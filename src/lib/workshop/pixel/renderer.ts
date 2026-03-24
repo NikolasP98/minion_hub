@@ -627,7 +627,7 @@ function renderNameLabels(
 	zoom: number,
 ): void {
 	ctx.save();
-	ctx.font = "bold 7px 'JetBrains Mono NF'";
+	ctx.font = "bold 14px 'JetBrains Mono NF'";
 	ctx.textAlign = 'center';
 	ctx.textBaseline = 'bottom';
 
@@ -659,16 +659,16 @@ function renderNameLabels(
 			ch.state === CharacterState.TYPE || (ch.seatId && ch.state === CharacterState.IDLE)
 				? CHARACTER_SITTING_OFFSET_PX
 				: 0;
-		const px = (ch.x + offsetX) * zoom;
-		const py = (ch.y - 10 - sittingOffset + offsetY) * zoom;
+		const px = offsetX + ch.x * zoom;
+		const py = offsetY + (ch.y - 10 - sittingOffset) * zoom;
 
 		// Sub-agent labels at 0.7 opacity per UI-SPEC
 		const alpha = ch.isSubagent ? 0.7 : 1.0;
 
-		// Drop shadow
+		// Drop shadow (fixed 1px offset regardless of zoom)
 		ctx.globalAlpha = alpha * 0.8;
 		ctx.fillStyle = 'rgba(0,0,0,0.8)';
-		ctx.fillText(name, px + zoom, py + zoom);
+		ctx.fillText(name, px + 1, py + 1);
 
 		// Main text
 		ctx.globalAlpha = alpha;

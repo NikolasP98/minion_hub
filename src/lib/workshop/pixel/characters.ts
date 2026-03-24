@@ -219,9 +219,22 @@ export function updateCharacter(
     }
 
     case CharacterState.IDLE: {
-      // No idle animation -- static pose
       ch.frame = 0;
       if (ch.seatTimer < 0) ch.seatTimer = 0; // clear turn-end sentinel
+
+      // Occasional look-around: randomly change facing direction while idle
+      // Only when standing (not seated at a desk)
+      if (!ch.seatId || !seats.has(ch.seatId) ||
+          ch.tileCol !== seats.get(ch.seatId)!.seatCol ||
+          ch.tileRow !== seats.get(ch.seatId)!.seatRow) {
+        ch.frameTimer += dt;
+        if (ch.frameTimer >= 3 + Math.random() * 4) {
+          ch.frameTimer = 0;
+          const dirs = [Direction.DOWN, Direction.LEFT, Direction.RIGHT, Direction.UP];
+          ch.dir = dirs[Math.floor(Math.random() * dirs.length)];
+        }
+      }
+
       // If became active, pathfind to seat
       if (ch.isActive) {
         if (!ch.seatId) {
@@ -378,6 +391,14 @@ export function updateCharacter(
 
       // Move toward next tile in path (using index instead of shift)
       const nextTile = ch.path[ch.pathIndex];
+      if (!nextTile) {
+        // Path exhausted or empty — return to idle
+        ch.state = CharacterState.IDLE;
+        ch.moveProgress = 0;
+        ch.pathIndex = 0;
+        ch.path = [];
+        break;
+      }
       ch.dir = directionBetween(
         ch.tileCol,
         ch.tileRow,

@@ -12,9 +12,17 @@
 import type { OfficeState } from './office-state';
 import type { AgentFsmState } from '../agent-fsm';
 import { getAgentState } from '../agent-fsm';
-import { workshopState } from '$lib/state/workshop/workshop.svelte';
+import { workshopState, updateAgentPosition } from '$lib/state/workshop/workshop.svelte';
 import { CharacterState, TILE_SIZE } from './types';
 import { WALK_SPEED_RETURN_PX_PER_SEC, PALETTE_COUNT } from './constants';
+
+/** Drop hints: when an agent is dropped onto the pixel canvas via drag/drop,
+ *  store the target tile so syncAgentList spawns them there instead of the entrance. */
+const dropHints = new Map<string, { col: number; row: number }>();
+
+export function setDropHint(instanceId: string, col: number, row: number): void {
+	dropHints.set(instanceId, { col, row });
+}
 
 /** Map from workshop instanceId (string) → pixel character id (number) */
 const instanceToCharId = new Map<string, number>();
@@ -133,6 +141,12 @@ export function syncAgentState(office: OfficeState): void {
 			office.setAgentActive(charId, shouldBeActive);
 		}
 
+		// When workshop FSM says "wandering", nudge the pixel character to move
+		// immediately instead of waiting for the full wander pause timer
+		if (fsmState === 'wandering' && ch.state === CharacterState.IDLE && ch.wanderTimer > 1) {
+			ch.wanderTimer = Math.random() * 0.5; // move within half a second
+		}
+
 		// GATE-06: Show waiting bubble on cooldown transition
 		if (fsmState === 'cooldown') {
 			if (ch.bubbleType !== 'waiting' && ch.bubbleType !== 'permission') {
@@ -189,17 +203,34 @@ export function syncAgentList(office: OfficeState, isInitialLoad = false): void 
 			// D-17: Initial load — appear directly at seat, no entrance walk, no matrix effect
 			office.addAgent(charId, palette, undefined, undefined, true);
 		} else {
-			// D-14: Runtime connect — spawn at entrance tile, matrix effect, then walk to seat
 			office.addAgent(charId, palette);
-			const entrance = office.findEntranceTile();
-			if (entrance) {
+			// Check if this agent was dropped onto the canvas (drag/drop from toolbar)
+			const hint = dropHints.get(instanceId);
+			if (hint) {
+				// Spawn at the drop position instead of entrance tile
+				dropHints.delete(instanceId);
 				const ch = office.characters.get(charId);
 				if (ch) {
-					// Place at entrance tile; FSM will walk them to their seat
-					ch.tileCol = entrance.col;
-					ch.tileRow = entrance.row;
-					ch.x = entrance.col * TILE_SIZE + TILE_SIZE / 2;
-					ch.y = entrance.row * TILE_SIZE + TILE_SIZE / 2;
+					ch.tileCol = hint.col;
+					ch.tileRow = hint.row;
+					ch.x = hint.col * TILE_SIZE + TILE_SIZE / 2;
+					ch.y = hint.row * TILE_SIZE + TILE_SIZE / 2;
+					// Start idle at drop position — don't immediately walk to seat
+					ch.state = CharacterState.IDLE;
+					ch.isActive = false;
+					ch.wanderTimer = 3 + Math.random() * 5; // brief pause before wandering
+				}
+			} else {
+				// D-14: Runtime connect — spawn at entrance tile, matrix effect, then walk to seat
+				const entrance = office.findEntranceTile();
+				if (entrance) {
+					const ch = office.characters.get(charId);
+					if (ch) {
+						ch.tileCol = entrance.col;
+						ch.tileRow = entrance.row;
+						ch.x = entrance.col * TILE_SIZE + TILE_SIZE / 2;
+						ch.y = entrance.row * TILE_SIZE + TILE_SIZE / 2;
+					}
 				}
 			}
 		}
@@ -311,4 +342,17 @@ export function startSubagentListener(office: OfficeState): () => void {
 		window.removeEventListener('pi-agent.subagent-spawned', onSubagentSpawned);
 		window.removeEventListener('pi-agent.subagent-completed', onSubagentCompleted);
 	};
+}
+
+/**
+ * Sync pixel character positions back to workshopState so that the
+ * simulation's proximity detection (banter, conversation indicators) works
+ * in pixel mode. Call once per frame after office.update().
+ */
+export function syncPositionsToWorkshop(office: OfficeState): void {
+	for (const [instanceId, charId] of instanceToCharId) {
+		const ch = office.characters.get(charId);
+		if (!ch) continue;
+		updateAgentPosition(instanceId, ch.x, ch.y);
+	}
 }

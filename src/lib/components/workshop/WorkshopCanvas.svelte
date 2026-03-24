@@ -88,6 +88,8 @@
         getInstanceForCharId,
         startToolCallListener,
         startSubagentListener,
+        setDropHint,
+        syncPositionsToWorkshop,
     } from "$lib/workshop/pixel/gateway-pixel-bridge";
     import {
         findCharacterAtWorld,
@@ -428,6 +430,8 @@
                     syncAgentList(pixelOffice, false);
                     syncAgentState(pixelOffice);
                     pixelOffice.update(dt);
+                    // Sync pixel character positions → workshopState for proximity/banter
+                    syncPositionsToWorkshop(pixelOffice);
                 },
                 render: (ctx) => {
                     if (!pixelOffice || !pixelCanvas) return;
@@ -553,14 +557,42 @@
     // ---------------------------------------------------------------------------
 
     /**
+     * Convert pixel-office world coords to CSS screen pixels using the pixel
+     * camera (zoom, pan). Inverse of pixelScreenToWorld().
+     */
+    function pixelWorldToScreen(
+        worldX: number,
+        worldY: number,
+    ): { x: number; y: number } {
+        if (!pixelCanvas || !pixelOffice) return { x: 0, y: 0 };
+        const z = pixelOfficeState.settings.zoomLevel;
+        const TP = 16;
+        const layout = pixelOffice.layout;
+        if (!layout) return { x: 0, y: 0 };
+        // Use CSS dimensions (clientWidth/Height) for HTML overlay positioning,
+        // not buffer dimensions (width/height) which may differ or lag behind.
+        const cw = pixelCanvas.clientWidth || pixelCanvas.width;
+        const ch = pixelCanvas.clientHeight || pixelCanvas.height;
+        const mapW = layout.cols * TP * z;
+        const mapH = layout.rows * TP * z;
+        const ox = Math.floor((cw - mapW) / 2) + Math.round(pixelPanX);
+        const oy = Math.floor((ch - mapH) / 2) + Math.round(pixelPanY);
+        return { x: worldX * z + ox, y: worldY * z + oy };
+    }
+
+    /**
      * Convert world coordinates to CSS screen pixels, accounting for the
      * current view mode. In classic mode this is just zoom+pan. In habbo mode
      * the world coords are first iso-projected, then zoom+pan is applied.
+     * In pixel mode, uses the pixel camera (separate zoom/pan system).
      */
     function worldToScreenAware(
         worldX: number,
         worldY: number,
     ): { x: number; y: number } {
+        if (workshopState.settings.viewMode === "pixel") {
+            return pixelWorldToScreen(worldX, worldY);
+        }
         const inWorld = renderer.worldToScreenForMode(worldX, worldY);
         return worldToScreen(inWorld.x, inWorld.y, workshopState.camera);
     }
@@ -755,10 +787,13 @@
         const TP = 16;
         const layout = pixelOffice?.layout;
         if (!layout) return { x: 0, y: 0 };
+        // Use CSS dimensions for screen↔world conversion (input is CSS pixels)
+        const cw = pixelCanvas.clientWidth || pixelCanvas.width;
+        const ch = pixelCanvas.clientHeight || pixelCanvas.height;
         const mapW = layout.cols * TP * z;
         const mapH = layout.rows * TP * z;
-        const ox = Math.floor((pixelCanvas.width - mapW) / 2) + Math.round(pixelPanX);
-        const oy = Math.floor((pixelCanvas.height - mapH) / 2) + Math.round(pixelPanY);
+        const ox = Math.floor((cw - mapW) / 2) + Math.round(pixelPanX);
+        const oy = Math.floor((ch - mapH) / 2) + Math.round(pixelPanY);
         return { x: (screenX - ox) / z, y: (screenY - oy) / z };
     }
 
@@ -1207,7 +1242,48 @@
         }
     }
 
+    function handlePixelDrop(e: DragEvent) {
+        if (!pixelCanvas || !pixelOffice) return;
+        e.preventDefault();
+
+        // Elements are not supported in pixel mode
+        if (e.dataTransfer?.getData("application/workshop-element")) return;
+
+        const raw = e.dataTransfer?.getData("application/workshop-agent");
+        if (!raw) return;
+
+        let agentData: { id: string; name?: string; emoji?: string; description?: string };
+        try {
+            agentData = JSON.parse(raw);
+        } catch {
+            return;
+        }
+
+        const rect = pixelCanvas.getBoundingClientRect();
+        const screenX = e.clientX - rect.left;
+        const screenY = e.clientY - rect.top;
+        const worldPos = pixelScreenToWorld(screenX, screenY);
+
+        // Convert world coords to tile
+        const TP = 16;
+        const col = Math.floor(worldPos.x / TP);
+        const row = Math.floor(worldPos.y / TP);
+
+        const instanceId = addAgentInstance(agentData.id, worldPos.x, worldPos.y);
+        createAgentFsm(instanceId, "stationary");
+
+        // Tell syncAgentList where to spawn this character on next frame
+        setDropHint(instanceId, col, row);
+
+        autoSave();
+    }
+
     async function handleDrop(e: DragEvent) {
+        // Pixel mode has its own drop handler (tile-based, no physics/PixiJS)
+        if (workshopState.settings.viewMode === "pixel") {
+            return handlePixelDrop(e);
+        }
+
         if (!canvasContainer) return;
         e.preventDefault();
 
@@ -1616,11 +1692,13 @@
         onpointermove={handlePointerMove}
         onpointerup={handlePointerUp}
         onwheel={handleWheel}
+        ondragover={handleDragOver}
+        ondrop={handleDrop}
         oncontextmenu={handleContextMenu}
     ></canvas>
 
-    <!-- HTML Overlay: speech bubbles + conversation indicators -->
-    <div class="absolute inset-0 pointer-events-none overflow-hidden">
+    <!-- HTML Overlay: speech bubbles + conversation indicators (z-20 to render above pixel canvas z-10) -->
+    <div class="absolute inset-0 pointer-events-none overflow-hidden z-20">
         {#each speechBubbles as bubble (bubble.id)}
             {@const agent = workshopState.agents[bubble.instanceId]}
             {#if agent}
@@ -1921,7 +1999,7 @@
     </div>
 
     {#if debugMode}
-        <DebugOverlay />
+        <DebugOverlay worldToScreenFn={worldToScreenAware} />
     {/if}
 
     <!-- Context Menu -->
