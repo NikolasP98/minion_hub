@@ -264,7 +264,7 @@ export function removeAgentFromSimulation(instanceId: string): void {
 function tick(now: number): void {
 	if (!running) return;
 
-	const dt = now - lastTime;
+	const dt = Math.min(now - lastTime, 100); // cap at 100ms to prevent teleportation after tab background
 	lastTime = now;
 	elapsed += dt;
 	wanderTimer += dt;

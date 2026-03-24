@@ -2,10 +2,11 @@
   import { workshopState } from '$lib/state/workshop/workshop.svelte';
   import { agentMemory } from '$lib/state/workshop/workshop.svelte';
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
-  import { worldToScreen } from '$lib/workshop/camera';
-  import { worldToScreenForMode } from '$lib/workshop/renderer-adapter';
   import { getAgentState } from '$lib/workshop/agent-fsm';
   import { getQueue_readonly } from '$lib/workshop/agent-queue';
+
+  /** Parent provides a view-mode-aware world→screen converter */
+  let { worldToScreenFn }: { worldToScreenFn: (x: number, y: number) => { x: number; y: number } } = $props();
 
   function resolveAgentName(agentId: string): string {
     const agent = gw.agents.find((a: { id: string }) => a.id === agentId);
@@ -39,8 +40,7 @@
 
 <div class="absolute inset-0 pointer-events-none overflow-hidden z-[45]">
   {#each Object.values(workshopState.agents) as agent (agent.instanceId)}
-    {@const inWorld = worldToScreenForMode(agent.position.x, agent.position.y)}
-    {@const pos = worldToScreen(inWorld.x, inWorld.y, workshopState.camera)}
+    {@const pos = worldToScreenFn(agent.position.x, agent.position.y)}
     {@const state = getAgentState(agent.instanceId) ?? 'idle'}
     {@const queue = getQueue_readonly(agent.instanceId)}
     {@const mem = agentMemory[agent.instanceId]}

@@ -74,6 +74,31 @@
     import { thinkingAgents } from "$lib/state/workshop/workshop-conversations.svelte";
     import DebugOverlay from "./DebugOverlay.svelte";
     import ToggleSwitch from "$lib/components/config/ToggleSwitch.svelte";
+    import { OfficeState } from "$lib/workshop/pixel/office-state";
+    import { startGameLoop } from "$lib/workshop/pixel/game-loop";
+    import { renderFrame as pixelRenderFrame } from "$lib/workshop/pixel/renderer";
+    import { pixelOfficeState, loadPixelOffice, autoSavePixelOffice } from "$lib/state/workshop/pixel-office.svelte";
+    import { loadPixelOfficeAssets } from "$lib/workshop/pixel/asset-loader";
+    import {
+        syncAgentState,
+        syncAgentList,
+        clearMappings,
+        allocateCharId,
+        registerMapping,
+        getInstanceForCharId,
+        startToolCallListener,
+        startSubagentListener,
+        setDropHint,
+        syncPositionsToWorkshop,
+    } from "$lib/workshop/pixel/gateway-pixel-bridge";
+    import {
+        findCharacterAtWorld,
+        dragCharacter,
+        updateDragPosition,
+        dropCharacter,
+        cancelDrag,
+    } from "$lib/workshop/pixel/characters";
+    import type { OfficeLayout } from "$lib/workshop/pixel/types";
 
     // ---------------------------------------------------------------------------
     // PixiJS state (not reactive - managed imperatively within onMount)
@@ -82,6 +107,20 @@
     let app: PIXI.Application | null = null;
     let worldContainer: PIXI.Container | null = null;
     let canvasContainer: HTMLDivElement | null = null;
+
+    // ---------------------------------------------------------------------------
+    // Pixel office state
+    // ---------------------------------------------------------------------------
+
+    let pixelCanvas: HTMLCanvasElement | null = null;
+    let pixelOffice: OfficeState | null = null;
+    let stopPixelLoop: (() => void) | null = null;
+    let cleanupToolListener: (() => void) | null = null;
+    let cleanupSubagentListener: (() => void) | null = null;
+    let cleanupPixelDragListeners: (() => void) | null = null;
+    let pixelPanX = 0;
+    let pixelPanY = 0;
+    let pixelInitializing = false;
 
     // ---------------------------------------------------------------------------
     // Interaction state
@@ -231,32 +270,258 @@
     });
 
     // ---------------------------------------------------------------------------
-    // View mode switch (classic ↔ habbo)
+    // View mode switch (classic ↔ habbo ↔ pixel)
     // ---------------------------------------------------------------------------
 
+    function teardownPixelOffice(): void {
+        if (stopPixelLoop) {
+            stopPixelLoop();
+            stopPixelLoop = null;
+        }
+        if (cleanupToolListener) {
+            cleanupToolListener();
+            cleanupToolListener = null;
+        }
+        if (cleanupSubagentListener) {
+            cleanupSubagentListener();
+            cleanupSubagentListener = null;
+        }
+        if (cleanupPixelDragListeners) {
+            cleanupPixelDragListeners();
+            cleanupPixelDragListeners = null;
+        }
+        if (pixelResizeObserver) {
+            pixelResizeObserver.disconnect();
+            pixelResizeObserver = null;
+        }
+        isPixelDragging = false;
+        clearMappings();
+        pixelOffice = null;
+        if (pixelCanvas) {
+            pixelCanvas.style.display = "none";
+        }
+    }
+
+    /** Resize the pixel canvas buffer to match its CSS display size */
+    function resizePixelCanvas(): void {
+        if (!pixelCanvas) return;
+        // Use the canvas's own rendered size (set by CSS absolute inset-0 w-full h-full)
+        let w = pixelCanvas.clientWidth;
+        let h = pixelCanvas.clientHeight;
+        // Fallback: if clientWidth is the default 300, try offsetWidth or parent
+        if ((w <= 300 && h <= 150) || w === 0 || h === 0) {
+            const parent = pixelCanvas.parentElement;
+            if (parent) {
+                w = parent.clientWidth;
+                h = parent.clientHeight;
+            }
+        }
+        if (w === 0 || h === 0) return;
+        // Only update if buffer size differs from display size
+        if (pixelCanvas.width !== w || pixelCanvas.height !== h) {
+            pixelCanvas.width = w;
+            pixelCanvas.height = h;
+        }
+    }
+
+    let pixelResizeObserver: ResizeObserver | null = null;
+
+    /** Assets are loaded once and cached — no need to reload on every mode switch */
+    let pixelAssetsLoaded = false;
+
+    async function initPixelOffice(): Promise<void> {
+        if (!pixelCanvas || !canvasContainer) return;
+        if (pixelInitializing) return; // guard against duplicate init
+        pixelInitializing = true;
+
+        try {
+            // Load layout from persistence or fetch default
+            const hostId = hostsState.activeHostId;
+            if (hostId) loadPixelOffice(hostId);
+
+            if (!pixelOfficeState.layout) {
+                try {
+                    const resp = await fetch("/pixel-office/default-layout-1.json");
+                    const layout: OfficeLayout = await resp.json();
+                    pixelOfficeState.layout = layout;
+                } catch (e) {
+                    console.warn("[Workshop Pixel] Failed to load default layout:", e);
+                    return;
+                }
+            }
+
+            // Show canvas and wait for layout
+            pixelCanvas.style.display = "block";
+            await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+            resizePixelCanvas();
+
+            pixelResizeObserver = new ResizeObserver(() => resizePixelCanvas());
+            pixelResizeObserver.observe(pixelCanvas);
+
+            // Load sprite assets once (cached across mode switches)
+            if (!pixelAssetsLoaded) {
+                await loadPixelOfficeAssets();
+                pixelAssetsLoaded = true;
+            }
+
+            // Create the office state from layout
+            pixelOffice = new OfficeState(pixelOfficeState.layout);
+
+            // Map workshop agents to pixel characters via the bridge
+            // D-17: Initial load — agents appear directly at seats, no entrance walk
+            clearMappings();
+            const agentInstances = Object.entries(workshopState.agents);
+            if (agentInstances.length > 0) {
+                syncAgentList(pixelOffice, true);
+            } else {
+                // No agents connected — add demo characters that wander
+                for (let i = 0; i < 3; i++) {
+                    const charId = allocateCharId();
+                    registerMapping(`demo-${i}`, charId);
+                    pixelOffice.addAgent(charId);
+                    // Set demo chars to inactive so they'll start wandering
+                    const ch = pixelOffice.characters.get(charId);
+                    if (ch) {
+                        ch.isActive = false;
+                        ch.seatTimer = 1 + i * 2; // stagger wander start
+                    }
+                }
+            }
+
+            // Auto-compute zoom to fit the non-VOID portion
+            const layout = pixelOfficeState.layout;
+            const TP = 16; // TILE_SIZE
+            let minR = layout.rows, maxR = 0, minC = layout.cols, maxC = 0;
+            for (let r = 0; r < layout.rows; r++) {
+                for (let c = 0; c < layout.cols; c++) {
+                    if (layout.tiles[r * layout.cols + c] !== 255) {
+                        minR = Math.min(minR, r);
+                        maxR = Math.max(maxR, r);
+                        minC = Math.min(minC, c);
+                        maxC = Math.max(maxC, c);
+                    }
+                }
+            }
+            const contentW = (maxC - minC + 1) * TP;
+            const contentH = (maxR - minR + 1) * TP;
+            const fitZoomW = Math.floor((pixelCanvas.width * 0.95) / contentW);
+            const fitZoomH = Math.floor((pixelCanvas.height * 0.95) / contentH);
+            const autoZoom = Math.max(1, Math.min(fitZoomW, fitZoomH, 8));
+            pixelOfficeState.settings.zoomLevel = autoZoom;
+
+            // Auto-pan to center on content
+            const mapW = layout.cols * TP * autoZoom;
+            const mapH = layout.rows * TP * autoZoom;
+            const ccx = ((minC + maxC + 1) / 2) * TP * autoZoom;
+            const ccy = ((minR + maxR + 1) / 2) * TP * autoZoom;
+            const bx = Math.floor((pixelCanvas.width - mapW) / 2);
+            const by = Math.floor((pixelCanvas.height - mapH) / 2);
+            pixelPanX = Math.round(pixelCanvas.width / 2 - ccx - bx);
+            pixelPanY = Math.round(pixelCanvas.height / 2 - ccy - by);
+
+            console.info(`[Workshop Pixel] ${layout.cols}×${layout.rows} grid, zoom=${autoZoom}, ${Object.keys(workshopState.agents).length} agents`);
+
+            // Start the render loop
+            stopPixelLoop = startGameLoop(pixelCanvas, {
+                update: (dt) => {
+                    if (!pixelOffice) return;
+                    // Sync gateway agent state → pixel character state
+                    // isInitialLoad=false: runtime connects spawn at entrance tile (D-14)
+                    syncAgentList(pixelOffice, false);
+                    syncAgentState(pixelOffice);
+                    pixelOffice.update(dt);
+                    // Sync pixel character positions → workshopState for proximity/banter
+                    syncPositionsToWorkshop(pixelOffice);
+                },
+                render: (ctx) => {
+                    if (!pixelOffice || !pixelCanvas) return;
+                    resizePixelCanvas();
+                    ctx.imageSmoothingEnabled = false;
+                    const office = pixelOffice;
+                    const z = pixelOfficeState.settings.zoomLevel;
+                    // Always pass seats/characters so drag overlays and hit-tests work
+                    const sel = {
+                        selectedAgentId: office.selectedAgentId,
+                        hoveredAgentId: office.hoveredAgentId,
+                        hoveredTile: office.hoveredTile,
+                        seats: office.seats,
+                        characters: office.characters,
+                    };
+                    pixelRenderFrame(
+                        ctx,
+                        pixelCanvas.width,
+                        pixelCanvas.height,
+                        office.tileMap,
+                        office.furniture,
+                        office.getCharacters(),
+                        z,
+                        pixelPanX,
+                        pixelPanY,
+                        sel,
+                        undefined,
+                        office.layout.tileColors,
+                        office.layout.cols,
+                        office.layout.rows,
+                    );
+                },
+            });
+
+            // Wire real-time event listeners (GATE-03, GATE-05, D-09)
+            cleanupToolListener = startToolCallListener(pixelOffice);
+            cleanupSubagentListener = startSubagentListener(pixelOffice);
+
+            // Wire drag-to-reassign window listener (cleanup on teardown)
+            window.addEventListener('mouseup', handlePixelMouseupWindow);
+            window.addEventListener('keydown', handlePixelKeydown);
+            cleanupPixelDragListeners = () => {
+                window.removeEventListener('mouseup', handlePixelMouseupWindow);
+                window.removeEventListener('keydown', handlePixelKeydown);
+            };
+        } finally {
+            pixelInitializing = false;
+        }
+    }
+
+    let prevViewMode: string | null = null;
+
     $effect(() => {
-        const _mode = workshopState.settings.viewMode; // subscribe to viewMode
+        const mode = workshopState.settings.viewMode; // subscribe to viewMode
         untrack(() => {
             if (!app || !worldContainer) return;
+            // Skip if mode hasn't actually changed
+            if (mode === prevViewMode) return;
+            const wasPixel = prevViewMode === "pixel";
+            prevViewMode = mode;
 
-            // Brief fade-out/fade-in during renderer swap
-            const canvas = app.canvas as HTMLCanvasElement;
-            canvas.style.transition = "opacity 120ms ease-out";
-            canvas.style.opacity = "0";
+            // Tear down pixel office only if switching AWAY from pixel
+            if (wasPixel) teardownPixelOffice();
 
-            setTimeout(() => {
-                renderer.destroyRenderer();
-                renderer.initRenderer(app!, worldContainer!);
-                rebuildScene();
+            if (mode === "pixel") {
+                // Hide PixiJS canvas, show pixel canvas
+                const pixi = app.canvas as HTMLCanvasElement;
+                pixi.style.display = "none";
+                initPixelOffice();
+            } else {
+                // Show PixiJS canvas
+                const pixi = app.canvas as HTMLCanvasElement;
+                pixi.style.display = "block";
 
-                requestAnimationFrame(() => {
-                    canvas.style.opacity = "1";
-                    // Clean up transition after it completes
-                    setTimeout(() => {
-                        canvas.style.transition = "";
-                    }, 140);
-                });
-            }, 130);
+                pixi.style.transition = "opacity 120ms ease-out";
+                pixi.style.opacity = "0";
+
+                setTimeout(() => {
+                    renderer.destroyRenderer();
+                    renderer.initRenderer(app!, worldContainer!);
+                    rebuildScene();
+
+                    requestAnimationFrame(() => {
+                        pixi.style.opacity = "1";
+                        setTimeout(() => {
+                            pixi.style.transition = "";
+                        }, 140);
+                    });
+                }, 130);
+            }
         });
     });
 
@@ -292,14 +557,42 @@
     // ---------------------------------------------------------------------------
 
     /**
+     * Convert pixel-office world coords to CSS screen pixels using the pixel
+     * camera (zoom, pan). Inverse of pixelScreenToWorld().
+     */
+    function pixelWorldToScreen(
+        worldX: number,
+        worldY: number,
+    ): { x: number; y: number } {
+        if (!pixelCanvas || !pixelOffice) return { x: 0, y: 0 };
+        const z = pixelOfficeState.settings.zoomLevel;
+        const TP = 16;
+        const layout = pixelOffice.layout;
+        if (!layout) return { x: 0, y: 0 };
+        // Use CSS dimensions (clientWidth/Height) for HTML overlay positioning,
+        // not buffer dimensions (width/height) which may differ or lag behind.
+        const cw = pixelCanvas.clientWidth || pixelCanvas.width;
+        const ch = pixelCanvas.clientHeight || pixelCanvas.height;
+        const mapW = layout.cols * TP * z;
+        const mapH = layout.rows * TP * z;
+        const ox = Math.floor((cw - mapW) / 2) + Math.round(pixelPanX);
+        const oy = Math.floor((ch - mapH) / 2) + Math.round(pixelPanY);
+        return { x: worldX * z + ox, y: worldY * z + oy };
+    }
+
+    /**
      * Convert world coordinates to CSS screen pixels, accounting for the
      * current view mode. In classic mode this is just zoom+pan. In habbo mode
      * the world coords are first iso-projected, then zoom+pan is applied.
+     * In pixel mode, uses the pixel camera (separate zoom/pan system).
      */
     function worldToScreenAware(
         worldX: number,
         worldY: number,
     ): { x: number; y: number } {
+        if (workshopState.settings.viewMode === "pixel") {
+            return pixelWorldToScreen(worldX, worldY);
+        }
         const inWorld = renderer.worldToScreenForMode(worldX, worldY);
         return worldToScreen(inWorld.x, inWorld.y, workshopState.camera);
     }
@@ -473,8 +766,110 @@
     // Pointer event handlers
     // ---------------------------------------------------------------------------
 
+    // ---------------------------------------------------------------------------
+    // Pixel mode: pan state for middle-mouse drag
+    // ---------------------------------------------------------------------------
+    let pixelPanStartX = 0;
+    let pixelPanStartY = 0;
+    let pixelPanDragStartX = 0;
+    let pixelPanDragStartY = 0;
+    let isPixelPanning = false;
+
+    // ---------------------------------------------------------------------------
+    // Pixel mode: drag-to-reassign seat state
+    // ---------------------------------------------------------------------------
+    let isPixelDragging = false;
+
+    /** Convert pixel canvas screen coords (offsetX/Y relative to canvas) to world coords */
+    function pixelScreenToWorld(screenX: number, screenY: number): { x: number; y: number } {
+        if (!pixelCanvas) return { x: 0, y: 0 };
+        const z = pixelOfficeState.settings.zoomLevel;
+        const TP = 16;
+        const layout = pixelOffice?.layout;
+        if (!layout) return { x: 0, y: 0 };
+        // Use CSS dimensions for screen↔world conversion (input is CSS pixels)
+        const cw = pixelCanvas.clientWidth || pixelCanvas.width;
+        const ch = pixelCanvas.clientHeight || pixelCanvas.height;
+        const mapW = layout.cols * TP * z;
+        const mapH = layout.rows * TP * z;
+        const ox = Math.floor((cw - mapW) / 2) + Math.round(pixelPanX);
+        const oy = Math.floor((ch - mapH) / 2) + Math.round(pixelPanY);
+        return { x: (screenX - ox) / z, y: (screenY - oy) / z };
+    }
+
+    function handlePixelMousedown(e: MouseEvent) {
+        if (!pixelOffice || e.button !== 0) return;
+        const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
+        const worldPos = pixelScreenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+        const hitChar = findCharacterAtWorld(pixelOffice, worldPos.x, worldPos.y);
+        if (hitChar) {
+            const started = dragCharacter(hitChar.id, pixelOffice.characters);
+            if (started) {
+                isPixelDragging = true;
+                updateDragPosition(worldPos.x, worldPos.y);
+                // Stop panning from triggering
+                isPixelPanning = false;
+                e.stopPropagation();
+            }
+        }
+    }
+
+    function handlePixelMousemove(e: MouseEvent) {
+        if (!isPixelDragging || !pixelOffice) return;
+        const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
+        const worldPos = pixelScreenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+        updateDragPosition(worldPos.x, worldPos.y);
+    }
+
+    function handlePixelMouseupWindow(e: MouseEvent) {
+        if (!isPixelDragging || !pixelOffice) return;
+        isPixelDragging = false;
+        if (!pixelCanvas) return;
+        const rect = pixelCanvas.getBoundingClientRect();
+        const worldPos = pixelScreenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+        dropCharacter(pixelOffice, worldPos.x, worldPos.y);
+    }
+
+    function handlePixelKeydown(e: KeyboardEvent) {
+        if (e.key === 'Escape' && isPixelDragging && pixelOffice) {
+            isPixelDragging = false;
+            cancelDrag(pixelOffice);
+        }
+    }
+
     function handlePointerDown(e: PointerEvent) {
         if (!canvasContainer) return;
+
+        // Pixel mode: check for character drag first, then pan
+        if (workshopState.settings.viewMode === "pixel") {
+            if (e.button === 0 && pixelOffice && pixelCanvas) {
+                const rect = pixelCanvas.getBoundingClientRect();
+                const worldPos = pixelScreenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+                const hitChar = findCharacterAtWorld(pixelOffice, worldPos.x, worldPos.y);
+                if (hitChar) {
+                    const started = dragCharacter(hitChar.id, pixelOffice.characters);
+                    if (started) {
+                        isPixelDragging = true;
+                        updateDragPosition(worldPos.x, worldPos.y);
+                        (e.target as HTMLElement)?.setPointerCapture?.(e.pointerId);
+                        if (pixelCanvas) pixelCanvas.style.cursor = "grabbing";
+                        e.preventDefault();
+                        return;
+                    }
+                }
+            }
+            if (e.button === 0 || e.button === 1) {
+                isPixelPanning = true;
+                pixelPanStartX = pixelPanX;
+                pixelPanStartY = pixelPanY;
+                pixelPanDragStartX = e.clientX;
+                pixelPanDragStartY = e.clientY;
+                (e.target as HTMLElement)?.setPointerCapture?.(e.pointerId);
+                if (pixelCanvas) pixelCanvas.style.cursor = "grabbing";
+                e.preventDefault();
+            }
+            return;
+        }
 
         if (contextMenu || elementContextMenu) {
             contextMenu = null;
@@ -527,6 +922,22 @@
 
     function handlePointerMove(e: PointerEvent) {
         if (!canvasContainer) return;
+
+        // Pixel mode: update drag position when dragging a character
+        if (isPixelDragging && pixelOffice && pixelCanvas) {
+            const rect = pixelCanvas.getBoundingClientRect();
+            const worldPos = pixelScreenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+            updateDragPosition(worldPos.x, worldPos.y);
+            return;
+        }
+
+        // Pixel mode panning
+        if (isPixelPanning) {
+            pixelPanX = pixelPanStartX + (e.clientX - pixelPanDragStartX);
+            pixelPanY = pixelPanStartY + (e.clientY - pixelPanDragStartY);
+            return;
+        }
+        if (workshopState.settings.viewMode === "pixel") return;
 
         const dx = e.clientX - lastPointerX;
         const dy = e.clientY - lastPointerY;
@@ -587,6 +998,64 @@
 
     function handlePointerUp(e: PointerEvent) {
         if (!canvasContainer) return;
+
+        // Pixel mode: finish character drag
+        if (isPixelDragging && pixelOffice && pixelCanvas) {
+            isPixelDragging = false;
+            if (pixelCanvas) pixelCanvas.style.cursor = "grab";
+            const rect = pixelCanvas.getBoundingClientRect();
+            const worldPos = pixelScreenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+            dropCharacter(pixelOffice, worldPos.x, worldPos.y);
+            return;
+        }
+
+        // Pixel mode: stop panning, detect clicks
+        if (isPixelPanning) {
+            const wasDrag = Math.abs(e.clientX - pixelPanDragStartX) > 4 ||
+                            Math.abs(e.clientY - pixelPanDragStartY) > 4;
+            isPixelPanning = false;
+            if (pixelCanvas) pixelCanvas.style.cursor = "grab";
+
+            // If it was a click (not drag), try to select a character
+            if (!wasDrag && pixelOffice && pixelCanvas) {
+                const rect = pixelCanvas.getBoundingClientRect();
+                const clickX = e.clientX - rect.left;
+                const clickY = e.clientY - rect.top;
+                const z = pixelOfficeState.settings.zoomLevel;
+                const TP = 16;
+                const layout = pixelOffice.layout;
+                // Convert screen coords to tile coords
+                const mapW = layout.cols * TP * z;
+                const mapH = layout.rows * TP * z;
+                const ox = Math.floor((pixelCanvas.width - mapW) / 2) + pixelPanX;
+                const oy = Math.floor((pixelCanvas.height - mapH) / 2) + pixelPanY;
+                const worldX = (clickX - ox) / z;
+                const worldY = (clickY - oy) / z;
+
+                // Find character at this world position
+                let hitCharId: number | null = null;
+                for (const ch of pixelOffice.characters.values()) {
+                    const dx = Math.abs(ch.x - worldX);
+                    const dy = Math.abs(ch.y - worldY);
+                    if (dx < 8 && dy < 16) { // ~half character width/height
+                        hitCharId = ch.id;
+                        break;
+                    }
+                }
+
+                if (hitCharId !== null) {
+                    const instanceId = getInstanceForCharId(hitCharId);
+                    if (instanceId) {
+                        // Select character in pixel office (show outline)
+                        pixelOffice.selectedAgentId = hitCharId;
+                    }
+                } else {
+                    pixelOffice.selectedAgentId = null;
+                }
+            }
+            return;
+        }
+        if (workshopState.settings.viewMode === "pixel") return;
 
         canvasContainer.releasePointerCapture(e.pointerId);
         canvasContainer.style.cursor = "default";
@@ -670,6 +1139,44 @@
         if (!canvasContainer) return;
         e.preventDefault();
 
+        // Pixel mode: integer zoom with pivot-preserving pan adjustment
+        if (workshopState.settings.viewMode === "pixel" && pixelCanvas && pixelOffice) {
+            const oldZoom = pixelOfficeState.settings.zoomLevel;
+            const newZoom = e.deltaY > 0
+                ? Math.max(1, oldZoom - 1)
+                : Math.min(8, oldZoom + 1);
+            if (newZoom === oldZoom) return;
+
+            const rect = pixelCanvas.getBoundingClientRect();
+            const cursorX = e.clientX - rect.left;
+            const cursorY = e.clientY - rect.top;
+            const cw = pixelCanvas.width;
+            const ch = pixelCanvas.height;
+            const layout = pixelOffice.layout;
+            const TP = 16;
+
+            // Compute the old and new centering offsets
+            const oldMapW = layout.cols * TP * oldZoom;
+            const oldMapH = layout.rows * TP * oldZoom;
+            const newMapW = layout.cols * TP * newZoom;
+            const newMapH = layout.rows * TP * newZoom;
+            const oldBaseX = Math.floor((cw - oldMapW) / 2);
+            const oldBaseY = Math.floor((ch - oldMapH) / 2);
+            const newBaseX = Math.floor((cw - newMapW) / 2);
+            const newBaseY = Math.floor((ch - newMapH) / 2);
+
+            // World point under cursor: worldX = (cursorX - oldBaseX - pixelPanX) / oldZoom
+            // After zoom: cursorX = newBaseX + newPanX + worldX * newZoom
+            // newPanX = cursorX - newBaseX - worldX * newZoom
+            const worldX = (cursorX - oldBaseX - pixelPanX) / oldZoom;
+            const worldY = (cursorY - oldBaseY - pixelPanY) / oldZoom;
+            pixelPanX = Math.round(cursorX - newBaseX - worldX * newZoom);
+            pixelPanY = Math.round(cursorY - newBaseY - worldY * newZoom);
+
+            pixelOfficeState.settings.zoomLevel = newZoom;
+            return;
+        }
+
         const rect = canvasContainer.getBoundingClientRect();
         const pivotX = e.clientX - rect.left;
         const pivotY = e.clientY - rect.top;
@@ -735,7 +1242,48 @@
         }
     }
 
+    function handlePixelDrop(e: DragEvent) {
+        if (!pixelCanvas || !pixelOffice) return;
+        e.preventDefault();
+
+        // Elements are not supported in pixel mode
+        if (e.dataTransfer?.getData("application/workshop-element")) return;
+
+        const raw = e.dataTransfer?.getData("application/workshop-agent");
+        if (!raw) return;
+
+        let agentData: { id: string; name?: string; emoji?: string; description?: string };
+        try {
+            agentData = JSON.parse(raw);
+        } catch {
+            return;
+        }
+
+        const rect = pixelCanvas.getBoundingClientRect();
+        const screenX = e.clientX - rect.left;
+        const screenY = e.clientY - rect.top;
+        const worldPos = pixelScreenToWorld(screenX, screenY);
+
+        // Convert world coords to tile
+        const TP = 16;
+        const col = Math.floor(worldPos.x / TP);
+        const row = Math.floor(worldPos.y / TP);
+
+        const instanceId = addAgentInstance(agentData.id, worldPos.x, worldPos.y);
+        createAgentFsm(instanceId, "stationary");
+
+        // Tell syncAgentList where to spawn this character on next frame
+        setDropHint(instanceId, col, row);
+
+        autoSave();
+    }
+
     async function handleDrop(e: DragEvent) {
+        // Pixel mode has its own drop handler (tile-based, no physics/PixiJS)
+        if (workshopState.settings.viewMode === "pixel") {
+            return handlePixelDrop(e);
+        }
+
         if (!canvasContainer) return;
         e.preventDefault();
 
@@ -1135,8 +1683,22 @@
         oncontextmenu={handleContextMenu}
     ></div>
 
-    <!-- HTML Overlay: speech bubbles + conversation indicators -->
-    <div class="absolute inset-0 pointer-events-none overflow-hidden">
+    <!-- Pixel office Canvas 2D (shown only in pixel viewMode, overlays the PixiJS div) -->
+    <canvas
+        bind:this={pixelCanvas}
+        class="absolute inset-0 z-10 bg-[#1a1a2e] w-full h-full"
+        style="display: none; image-rendering: pixelated; cursor: grab;"
+        onpointerdown={handlePointerDown}
+        onpointermove={handlePointerMove}
+        onpointerup={handlePointerUp}
+        onwheel={handleWheel}
+        ondragover={handleDragOver}
+        ondrop={handleDrop}
+        oncontextmenu={handleContextMenu}
+    ></canvas>
+
+    <!-- HTML Overlay: speech bubbles + conversation indicators (z-20 to render above pixel canvas z-10) -->
+    <div class="absolute inset-0 pointer-events-none overflow-hidden z-20">
         {#each speechBubbles as bubble (bubble.id)}
             {@const agent = workshopState.agents[bubble.instanceId]}
             {#if agent}
@@ -1352,6 +1914,15 @@
                         >
                             Habbo
                         </button>
+                        <button
+                            class="flex-1 px-2 py-0.5 text-[8px] transition-colors {workshopState
+                                .settings.viewMode === 'pixel'
+                                ? 'bg-accent text-white'
+                                : 'bg-bg3 text-muted hover:text-foreground'}"
+                            onclick={() => setViewMode("pixel")}
+                        >
+                            Pixel
+                        </button>
                     </div>
                 </div>
 
@@ -1428,7 +1999,7 @@
     </div>
 
     {#if debugMode}
-        <DebugOverlay />
+        <DebugOverlay worldToScreenFn={worldToScreenAware} />
     {/if}
 
     <!-- Context Menu -->

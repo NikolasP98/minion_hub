@@ -1,91 +1,76 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.0
-milestone_name: Skill Builder Improvements
-status: unknown
-stopped_at: Completed 07-03-PLAN.md — human-verify checkpoint approved, phase 07 validation-ux complete
-last_updated: "2026-03-19T08:02:14.711Z"
-last_activity: 2026-03-19
+milestone: v3.0
+milestone_name: Pixel Office
+status: Ready to plan
+stopped_at: Completed 08-03-PLAN.md
+last_updated: "2026-03-23T20:17:56.736Z"
 progress:
-  total_phases: 9
-  completed_phases: 3
-  total_plans: 7
-  completed_plans: 7
+  total_phases: 4
+  completed_phases: 1
+  total_plans: 3
+  completed_plans: 3
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-18)
+See: .planning/PROJECT.md (updated 2026-03-23)
 
-**Core value:** Skill authors can confidently create, validate, and version AI agent skills through a reliable, informative builder interface.
-**Current focus:** Phase 07 — validation-ux
+**Core value:** Agents are visualized as pixel art characters in a virtual office, driven by real-time gateway data, with GPU-accelerated rendering.
+**Current focus:** Phase 08 — character-animation-gateway-bridge
 
 ## Current Position
 
-Phase: 07 (validation-ux) — COMPLETE
-Plan: 3 of 3
+Phase: 9
+Plan: Not started
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 1 (v2.0)
-- Average duration: 5 min
-- Total execution time: 5 min
+- Total plans completed: 0 (v3.0)
+- Average duration: —
+- Total execution time: —
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| Phase 07 | P01 | 5m | 5m |
-| Phase 07 P02 | 10 | 2 tasks | 5 files |
-| Phase 07 P03 | 6 | 2 tasks | 3 files |
-| Phase 07 P03 | 15 | 3 tasks | 3 files |
+| - | - | - | - |
 
 ## Accumulated Context
 
-| Phase 07 P01 | 5m | 1 task (TDD) | 2 files |
-| Phase 05 P01 | 8m | 2 tasks | 3 files |
-| Phase 06 P03 | 5m | 1 task | 1 file |
-| Phase 06 P01 | 3m | 2 tasks | 2 files |
-| Phase 06 P02 | 4m | 2 tasks | 2 files |
+| Phase 08 P01 | 269 | 3 tasks | 4 files |
+| Phase 08 P02 | 420 | 3 tasks | 3 files |
+| Phase 08 P03 | 390 | 2 tasks | 5 files |
 
-### From v1.0 Settings Page Revamp
+### From previous milestones (v2.0)
 
-- Phase 1 (Tab Layout and Save) completed: 3/3 plans
-- Phases 2-4 deferred to v3.0 — builder improvements are higher priority
+- Workshop canvas uses PixiJS 8 + Rapier2D physics with renderer-adapter pattern (classic/habbo/pixel)
+- Pixel office engine ported from pixel-agents: 15 modules (4,200+ lines) in src/lib/workshop/pixel/
+- Asset loader fetches floor/wall/furniture/character sprites from /pixel-office/ static dir
+- Canvas 2D rendering works with auto-zoom, auto-center, pan/zoom interaction
+- Gateway bridge module (gateway-pixel-bridge.ts) maps workshop instanceId to pixel charId
+- Furniture catalog auto-generated from nested manifests (furniture-catalog.json)
 
-### Phase 07 Decisions
+### Key technical decisions
 
-- VALID-03/VALID-04: validateSkill() is pure TypeScript (no Svelte/DB imports) — used by both client $derived and server publish gate
-- VALID-03: "chapter missing guide" and "chapter with no tools" reclassified as errors (not warnings) — align with CONTEXT.md classification
-- VALID-04: ValidationFinding.level is 'error' | 'warning' only — no 'ok' level; callers count passing chapters separately
-- VALID-01/VALID-05: publishError state removed — replaced with toastError/toastSuccess; handlePublishClick() is the new warning-gated publish entry point; server filters findings to errors only (warnings don't block publish)
-- VALID-02/A11Y-01: ValidationPanel is an aside (complementary landmark) rendered inline alongside DAG canvas in a flex row — not a modal overlay; role=dialog belongs on inner .modal/.confirm-modal/.condition-modal not the backdrop overlay
+- Canvas 2D will migrate to PixiJS for GPU batching (Phase 10, after animations work on Canvas 2D)
+- BFS pathfinding uses integer keys (col + row * MAX_COLS)
+- Character sprites: PNG -> browser Image + Canvas -> SpriteData -> offscreen canvas cache
 
-### Phase 06 Decisions
+### Pending Todos
 
-- CFIX-06: Use dirty flag re-check after saveSkill() as failure signal — dirty=true after save means save failed (saveSkill only clears it on success path)
-- CFIX-06: publishSkill sets publishError before returning so user sees clear message instead of silent no-op
-- CFIX-08: BFS test: two-chain topology correctly passes BFS (both have roots); disconnected cycle island is the canonical failing case
-- CFIX-04/09: guard inArray and batch insert with empty-array check — LibSQL throws on both empty IN() and INSERT INTO ... VALUES ()
+None yet.
 
-### v2.0 Decisions
+### Blockers/Concerns
 
-- Extract +page.svelte state FIRST (Phase 5) — prerequisite for all subsequent phases
-- Phase 13 (Advanced) is a placeholder: blocked on gateway runtime, include in roadmap for visibility
-- Phase 11 (Cost) depends on Phase 6 completing CFIX-10 (usage return from AI endpoints)
-- Phase 12 (Versioning) depends on Phase 7 completing VALID-04 (shared validation module)
-- Research flags: verify Drizzle LibSQL `ctx.db.transaction()` API before Phase 12 planning; verify SvelteFlow `$derived` re-render behavior before Phase 10 planning
+None yet.
 
-### Active Blockers
+## Session Continuity
 
-- Phase 13: Gateway skill runtime not yet built (external blocker — not hub work)
-
-## Session Info
-
-- **Last Session:** 2026-03-19T07:51:11.013Z
-- **Stopped At:** Completed 07-03-PLAN.md — human-verify checkpoint approved, phase 07 validation-ux complete
-- **Last Activity:** 2026-03-19
+Last session: 2026-03-23T20:12:53.938Z
+Stopped at: Completed 08-03-PLAN.md
+Resume file: None

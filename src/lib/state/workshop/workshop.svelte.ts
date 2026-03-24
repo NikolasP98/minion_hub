@@ -116,8 +116,8 @@ export interface WorkshopSettings {
   banterPrompt: string;
   /** Default prompt for solo tasks */
   taskPrompt: string;
-  /** Visual mode: classic (freeform) or habbo (isometric) */
-  viewMode: "classic" | "habbo";
+  /** Visual mode: classic (freeform), habbo (isometric), or pixel (pixel art office) */
+  viewMode: "classic" | "habbo" | "pixel";
   /** When off, conversations are fully isolated to this workspace */
   crossWorkspaceChats: boolean;
 }
@@ -193,7 +193,7 @@ export function loadViewMode(): void {
   if (typeof localStorage === "undefined") return;
   try {
     const saved = localStorage.getItem(viewModeKey());
-    if (saved === "classic" || saved === "habbo") {
+    if (saved === "classic" || saved === "habbo" || saved === "pixel") {
       workshopState.settings.viewMode = saved;
     }
   } catch {
@@ -201,7 +201,7 @@ export function loadViewMode(): void {
   }
 }
 
-export function setViewMode(mode: "classic" | "habbo"): void {
+export function setViewMode(mode: "classic" | "habbo" | "pixel"): void {
   workshopState.settings.viewMode = mode;
   if (typeof localStorage !== "undefined") {
     try {
@@ -215,8 +215,9 @@ export function setViewMode(mode: "classic" | "habbo"): void {
 }
 
 export function toggleViewMode(): void {
-  const newMode =
-    workshopState.settings.viewMode === "classic" ? "habbo" : "classic";
+  const modes: Array<"classic" | "habbo" | "pixel"> = ["classic", "habbo", "pixel"];
+  const currentIdx = modes.indexOf(workshopState.settings.viewMode);
+  const newMode = modes[(currentIdx + 1) % modes.length];
   setViewMode(newMode);
 }
 
