@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: Pixel Office
 status: Ready to plan
-stopped_at: Phase 12 context gathered
-last_updated: "2026-03-30T06:25:05.777Z"
+stopped_at: Completed 12-02-PLAN.md
+last_updated: "2026-03-30T07:03:40Z"
 progress:
   total_phases: 5
   completed_phases: 1
@@ -23,8 +23,8 @@ See: .planning/PROJECT.md (updated 2026-03-23)
 
 ## Current Position
 
-Phase: 9
-Plan: Not started
+Phase: 12
+Plan: 3 of 3 (12-02 complete, advancing to 12-03)
 
 ## Performance Metrics
 
@@ -61,16 +61,22 @@ Plan: Not started
 - BFS pathfinding uses integer keys (col + row * MAX_COLS)
 - Character sprites: PNG -> browser Image + Canvas -> SpriteData -> offscreen canvas cache
 
+### Key technical decisions (Phase 12)
+
+- D-07: Vercel call sites guarded by VITE_DESKTOP in +layout.svelte (static imports preserved); dynamic import() in +layout.ts
+- D-08: posthog-js and PUBLIC_POSTHOG env vars moved inside init() as dynamic imports; VITE_DESKTOP early return skips all PostHog in desktop builds
+- D-09: posthogProxyHandle returns resolve(event) immediately when env.DESKTOP === '1'
+
 ### Pending Todos
 
 None yet.
 
 ### Blockers/Concerns
 
-None yet.
+Pre-existing build failure (codeSplitting rollup config + PostHog network timeout) — not caused by Phase 12 changes, exists on baseline.
 
 ## Session Continuity
 
-Last session: 2026-03-30T06:25:05.772Z
-Stopped at: Phase 12 context gathered
-Resume file: .planning/phases/12-electrobun-desktop-wrapper/12-CONTEXT.md
+Last session: 2026-03-30T07:03:40Z
+Stopped at: Completed 12-02-PLAN.md
+Resume file: None
