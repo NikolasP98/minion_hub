@@ -76,8 +76,10 @@
     "db:seed": "bun run src/server/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "desktop:build": "DESKTOP=1 VITE_DESKTOP=1 vite build",
+    "desktop:serve": "DESKTOP=1 VITE_DESKTOP=1 PORT=5959 ORIGIN=http://localhost:5959 HOST=127.0.0.1 node build/index.js",
     "desktop:dev": "DESKTOP=1 VITE_DESKTOP=1 vite build && DESKTOP=1 VITE_DESKTOP=1 electrobun dev",
-    "desktop:build": "DESKTOP=1 VITE_DESKTOP=1 vite build && DESKTOP=1 electrobun build"
+    "desktop:window": "DESKTOP=1 VITE_DESKTOP=1 electrobun dev"
   },
   "type": "module"
 }

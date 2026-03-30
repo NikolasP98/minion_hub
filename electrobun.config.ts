@@ -12,11 +12,16 @@ export default {
   build: {
     bun: {
       entrypoint: 'desktop/main.ts',
-      external: [
-        // D-12: native .node addons must not be bundled by Bun
-        '@libsql/client',
-        '@node-rs/argon2',
-      ],
+    },
+    copy: {
+      // Copy the SvelteKit adapter-node build output into the app bundle
+      // so desktop/main.ts can import handler.js at runtime
+      'build/client': 'build/client',
+      'build/server': 'build/server',
+      'build/handler.js': 'build/handler.js',
+      'build/env.js': 'build/env.js',
+      'build/index.js': 'build/index.js',
+      'build/shims.js': 'build/shims.js',
     },
   },
 } satisfies ElectrobunConfig;
