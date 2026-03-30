@@ -86,6 +86,7 @@ See `.planning/REQUIREMENTS.md` for full REQ-ID breakdown.
 | Tool/function calling for AI generation | Replaced fragile JSON regex parsing — deployed | ✓ Good |
 | 4-specialist review before implementation | Caught 45 issues before they compound | ✓ Good |
 | Phase 8 included as placeholder | Keeps runtime-dependent features visible in roadmap | -- Pending |
+| Electrobun desktop wrapper (Phase 12) | Optional native app shell via Electrobun, adapter-node, conditional Vercel guards | ✓ Shipped |
 
 ## Evolution
 
@@ -105,4 +106,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-23 after Phase 8 (Character Animation + Gateway Bridge) completion*
+*Last updated: 2026-03-30 after Phase 12 (Electrobun Desktop Wrapper) completion*
