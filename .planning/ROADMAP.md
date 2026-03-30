@@ -144,10 +144,10 @@ Plans:
   3. Vercel-specific imports (@vercel/analytics, @vercel/speed-insights, PostHog proxy) are conditionally skipped in desktop mode via `VITE_DESKTOP` / `DESKTOP` env vars
   4. Auth works in desktop mode (Better Auth trustedOrigins includes the desktop localhost port)
   5. All API routes, WebSocket gateway connection, and database access work in the desktop app
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 
 Plans:
-- [ ] 12-01-PLAN.md — Install dependencies, conditional adapter switching, desktop scripts, env template
+- [x] 12-01-PLAN.md — Install dependencies, conditional adapter switching, desktop scripts, env template
 - [x] 12-02-PLAN.md — Vercel analytics and PostHog conditional guards
 - [ ] 12-03-PLAN.md — Electrobun desktop entry point, config, and smoke test
 
@@ -177,4 +177,4 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 (v3.0), 12 (v4.0 parallel
 | 9. Interaction + Persistence | v3.0 | 0/? | Not started | - |
 | 10. PixiJS Renderer Migration | v3.0 | 0/? | Not started | - |
 | 11. Layout Editor | v3.0 | 0/? | Not started | - |
-| 12. Electrobun Desktop Wrapper | v4.0 | 1/3 | In Progress|  |
+| 12. Electrobun Desktop Wrapper | v4.0 | 2/3 | In Progress|  |
