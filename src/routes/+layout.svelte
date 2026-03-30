@@ -25,8 +25,11 @@
   import { injectSpeedInsights } from '@vercel/speed-insights/sveltekit';
   import { inject as injectAnalytics } from '@vercel/analytics';
 
-  injectSpeedInsights();
-  injectAnalytics();
+  // D-07: only call Vercel telemetry when NOT in desktop mode
+  if (!import.meta.env.VITE_DESKTOP) {
+    injectSpeedInsights();
+    injectAnalytics();
+  }
 
   let { children }: { children: Snippet } = $props();
 

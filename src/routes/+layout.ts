@@ -1,7 +1,10 @@
 import { dev } from '$app/environment';
-import { injectAnalytics } from '@vercel/analytics/sveltekit';
 
-injectAnalytics({ mode: dev ? 'development' : 'production' });
+// D-07: skip Vercel analytics in desktop mode
+if (!import.meta.env.VITE_DESKTOP) {
+  const { injectAnalytics } = await import('@vercel/analytics/sveltekit');
+  injectAnalytics({ mode: dev ? 'development' : 'production' });
+}
 
 export const ssr = false;
 export const prerender = false;
