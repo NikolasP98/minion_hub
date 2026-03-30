@@ -133,10 +133,31 @@ Plans:
 **Plans**: TBD
 **UI hint**: yes
 
+### Phase 12: Electrobun Desktop Wrapper
+**Goal**: The Minion Hub SvelteKit app can optionally run as a native desktop application via Electrobun, with adapter-node for the embedded server, conditional Vercel-specific code, and native window chrome — without breaking the existing web deployment
+**Depends on**: Nothing (standalone initiative, parallel to v3.0)
+**Requirements**: None (user-requested feature)
+**Canonical refs**: `docs/electrobun/`, `.claude/plans/enumerated-skipping-hennessy.md`
+**Success Criteria** (what must be TRUE):
+  1. `bun run dev` and `bun run build` continue to work identically as before (Vercel adapter, analytics, PostHog)
+  2. `bun run desktop:dev` builds SvelteKit with adapter-node and launches an Electrobun BrowserWindow pointing at the embedded local server
+  3. Vercel-specific imports (@vercel/analytics, @vercel/speed-insights, PostHog proxy) are conditionally skipped in desktop mode via `VITE_DESKTOP` / `DESKTOP` env vars
+  4. Auth works in desktop mode (Better Auth trustedOrigins includes the desktop localhost port)
+  5. All API routes, WebSocket gateway connection, and database access work in the desktop app
+**Plans**: TBD
+
+---
+
+### 🚧 v4.0 Desktop App (New)
+
+**Milestone Goal:** Wrap the Minion Hub web frontend in an optional Electrobun desktop engine, enabling native app distribution while preserving the existing Vercel web deployment unchanged.
+
+- [ ] **Phase 12: Electrobun Desktop Wrapper** - Optional desktop app engine with adapter switching, Vercel code guards, and native window shell
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 8 → 9 → 10 → 11
+Phases execute in numeric order: 8 → 9 → 10 → 11 (v3.0), 12 (v4.0 parallel)
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -151,3 +172,4 @@ Phases execute in numeric order: 8 → 9 → 10 → 11
 | 9. Interaction + Persistence | v3.0 | 0/? | Not started | - |
 | 10. PixiJS Renderer Migration | v3.0 | 0/? | Not started | - |
 | 11. Layout Editor | v3.0 | 0/? | Not started | - |
+| 12. Electrobun Desktop Wrapper | v4.0 | 0/? | Not started | - |
