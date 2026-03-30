@@ -40,9 +40,10 @@ created: 2026-03-30
 |---------|------|------|-------------|-----------|-------------------|-------------|--------|
 | 12-01-01 | 01 | 1 | SC-01 (web unchanged) | build | `bun run build` | existing | pending |
 | 12-01-02 | 01 | 1 | SC-03 (Vercel guards) | build+check | `bun run check` | existing | pending |
-| 12-02-01 | 02 | 2 | SC-02 (desktop:dev) | build | `DESKTOP=1 VITE_DESKTOP=1 bun run build` | new | pending |
-| 12-02-02 | 02 | 2 | SC-04 (auth works) | manual | Start desktop, login | n/a | pending |
-| 12-02-03 | 02 | 2 | SC-05 (API+WS works) | manual | Connect to gateway | n/a | pending |
+| 12-02-01 | 02 | 1 | D-07 (Vercel guards) | check+grep | `grep -n 'VITE_DESKTOP' src/routes/+layout.svelte src/routes/+layout.ts && bun run check 2>&1 \| tail -10` | existing | pending |
+| 12-02-02 | 02 | 1 | D-08, D-09 (PostHog guards) | build+grep | `grep -n 'VITE_DESKTOP\|DESKTOP' src/hooks.client.ts src/hooks.server.ts && bun run build 2>&1 \| tail -3` | existing | pending |
+| 12-03-01 | 03 | 2 | D-01 to D-04, D-12 to D-14 (desktop entry+config) | file existence+grep | `test -f desktop/main.ts && test -f electrobun.config.ts && grep -q 'createServer' desktop/main.ts && grep -q 'exitOnLastWindowClosed' electrobun.config.ts && echo PASS` | new | pending |
+| 12-03-02 | 03 | 2 | SC-02, SC-03 (desktop launch) | manual | `checkpoint:human-verify` — run `bun run desktop:dev`, verify native window opens | n/a | pending |
 
 *Status: pending = not yet executed*
 
