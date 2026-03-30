@@ -187,6 +187,9 @@ const appHandle: Handle = async ({ event, resolve }) => {
 };
 
 const posthogProxyHandle: Handle = async ({ event, resolve }) => {
+  // D-09: skip PostHog proxy in desktop mode
+  if (env.DESKTOP === '1') return resolve(event);
+
   const { pathname } = event.url;
   if (pathname.startsWith('/ingest')) {
     const hostname = pathname.startsWith('/ingest/static/')
