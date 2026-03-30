@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: Pixel Office
 status: Phase complete — ready for verification
-stopped_at: Completed 12-01-PLAN.md
-last_updated: "2026-03-30T07:08:20.348Z"
+stopped_at: Completed 12-03-PLAN.md
+last_updated: "2026-03-30T07:12:53.039Z"
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 6
-  completed_plans: 5
+  completed_plans: 6
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-23)
 ## Current Position
 
 Phase: 12
-Plan: 3 of 3 (12-02 complete, advancing to 12-03)
+Plan: 3 of 3 (complete)
 
 ## Performance Metrics
 
@@ -46,6 +46,7 @@ Plan: 3 of 3 (12-02 complete, advancing to 12-03)
 | Phase 08 P02 | 420 | 3 tasks | 3 files |
 | Phase 08 P03 | 390 | 2 tasks | 5 files |
 | Phase 12-electrobun-desktop-wrapper P01 | 13min | 2 tasks | 7 files |
+| Phase 12-electrobun-desktop-wrapper P03 | 2 | 1 tasks | 2 files |
 
 ### From previous milestones (v2.0)
 
@@ -67,6 +68,9 @@ Plan: 3 of 3 (12-02 complete, advancing to 12-03)
 - D-07: Vercel call sites guarded by VITE_DESKTOP in +layout.svelte (static imports preserved); dynamic import() in +layout.ts
 - D-08: posthog-js and PUBLIC_POSTHOG env vars moved inside init() as dynamic imports; VITE_DESKTOP early return skips all PostHog in desktop builds
 - D-09: posthogProxyHandle returns resolve(event) immediately when env.DESKTOP === '1'
+- D-03: node:http createServer (not Bun.serve) wraps adapter-node handler — Node HTTP (req, res) signature required
+- D-04: BrowserWindow loads http://127.0.0.1:5959 (not views://) — preserves WebSocket connections and relative API URL paths
+- D-12: electrobun.config.ts externals: @libsql/client and @node-rs/argon2 — native .node addons cannot be bundled by Bun
 
 ### Pending Todos
 
@@ -78,6 +82,6 @@ Pre-existing build failure (codeSplitting rollup config + PostHog network timeou
 
 ## Session Continuity
 
-Last session: 2026-03-30T07:08:20.345Z
-Stopped at: Completed 12-01-PLAN.md
+Last session: 2026-03-30T07:12:53.036Z
+Stopped at: Completed 12-03-PLAN.md
 Resume file: None
