@@ -1,8 +1,8 @@
 <script lang="ts">
-    import { X, Play, Loader2, CheckCircle2, XCircle, Clock, Zap } from 'lucide-svelte';
+    import { X, Play, Loader2, CheckCircle2, XCircle, Clock, Zap, AlertTriangle, BarChart3 } from 'lucide-svelte';
     import {
         skillEditorState, startDryRun, clearDryRun,
-        type DryRunChapterResult,
+        type DryRunChapterResult, type DryRunAnalysisDimension,
     } from '$lib/state/builder/skill-editor.svelte';
 
     let promptInput = $state('');
@@ -133,6 +133,51 @@
                         {/if}
                     </div>
                 {/each}
+            <!-- Analysis scorecard -->
+            {#if dryRun.analyzing}
+                <div class="analysis-loading">
+                    <Loader2 size={14} class="spin" />
+                    <span>Analyzing pipeline quality...</span>
+                </div>
+            {:else if dryRun.analysis}
+                <div class="analysis-section">
+                    <div class="analysis-header">
+                        <BarChart3 size={14} />
+                        <span>Quality Score</span>
+                        <span class="overall-score" class:good={dryRun.analysis.overallScore >= 70} class:warn={dryRun.analysis.overallScore >= 40 && dryRun.analysis.overallScore < 70} class:bad={dryRun.analysis.overallScore < 40}>
+                            {dryRun.analysis.overallScore}
+                        </span>
+                    </div>
+
+                    <div class="dimensions">
+                        {#each dryRun.analysis.dimensions as dim (dim.name)}
+                            <div class="dimension-row">
+                                <div class="dim-header">
+                                    <span class="dim-verdict" class:pass={dim.verdict === 'pass'} class:warn={dim.verdict === 'warn'} class:fail={dim.verdict === 'fail'}>
+                                        {#if dim.verdict === 'pass'}<CheckCircle2 size={12} />{:else if dim.verdict === 'warn'}<AlertTriangle size={12} />{:else}<XCircle size={12} />{/if}
+                                    </span>
+                                    <span class="dim-name">{dim.name}</span>
+                                    <span class="dim-score">{dim.score}</span>
+                                </div>
+                                <p class="dim-details">{dim.details}</p>
+                            </div>
+                        {/each}
+                    </div>
+
+                    {#if dryRun.analysis.recommendations?.length}
+                        <div class="recommendations">
+                            <span class="rec-label">Recommendations</span>
+                            {#each dryRun.analysis.recommendations as rec, i (i)}
+                                <div class="rec-item">
+                                    <span class="rec-number">{i + 1}</span>
+                                    <span class="rec-text">{rec}</span>
+                                </div>
+                            {/each}
+                        </div>
+                    {/if}
+                </div>
+            {/if}
+
             </div>
         </div>
     {/if}
@@ -338,6 +383,85 @@
         color: var(--color-muted);
         opacity: 0.6;
     }
+
+    /* Analysis */
+    .analysis-loading {
+        display: flex; align-items: center; gap: 8px;
+        padding: 12px 16px; font-size: 12px; color: var(--color-accent);
+    }
+
+    .analysis-section {
+        border-top: 1px solid var(--color-border);
+    }
+
+    .analysis-header {
+        display: flex; align-items: center; gap: 6px;
+        padding: 10px 16px;
+        font-size: 12px; font-weight: 600;
+        color: var(--color-foreground);
+        background: var(--color-bg2);
+        border-bottom: 1px solid var(--color-border);
+    }
+
+    .overall-score {
+        margin-left: auto;
+        font-size: 16px; font-weight: 700;
+        font-family: var(--font-mono, monospace);
+    }
+    .overall-score.good { color: var(--color-success, #22c55e); }
+    .overall-score.warn { color: var(--color-warning, #f59e0b); }
+    .overall-score.bad { color: var(--color-error, #ef4444); }
+
+    .dimensions { padding: 4px 12px; }
+
+    .dimension-row {
+        padding: 6px 0;
+        border-bottom: 1px solid color-mix(in srgb, var(--color-border) 40%, transparent);
+    }
+    .dimension-row:last-child { border-bottom: none; }
+
+    .dim-header {
+        display: flex; align-items: center; gap: 6px;
+        font-size: 12px;
+    }
+    .dim-verdict { display: flex; }
+    .dim-verdict.pass { color: var(--color-success, #22c55e); }
+    .dim-verdict.warn { color: var(--color-warning, #f59e0b); }
+    .dim-verdict.fail { color: var(--color-error, #ef4444); }
+
+    .dim-name { flex: 1; font-weight: 500; color: var(--color-foreground); }
+    .dim-score {
+        font-family: var(--font-mono, monospace); font-size: 11px; font-weight: 600;
+        color: var(--color-muted);
+    }
+
+    .dim-details {
+        font-size: 11px; color: var(--color-muted); line-height: 1.4;
+        margin: 2px 0 0 22px;
+    }
+
+    .recommendations {
+        padding: 8px 12px;
+        border-top: 1px solid var(--color-border);
+    }
+    .rec-label {
+        font-size: 11px; font-weight: 600; text-transform: uppercase;
+        letter-spacing: 0.04em; color: var(--color-muted); display: block;
+        margin-bottom: 6px;
+    }
+    .rec-item {
+        display: flex; align-items: flex-start; gap: 8px;
+        padding: 4px 0; font-size: 12px; color: var(--color-foreground);
+        line-height: 1.4;
+    }
+    .rec-number {
+        width: 18px; height: 18px; border-radius: 50%;
+        background: var(--color-bg3); color: var(--color-muted);
+        font-size: 10px; font-weight: 600;
+        display: flex; align-items: center; justify-content: center;
+        flex-shrink: 0; margin-top: 1px;
+    }
+    .rec-text { flex: 1; }
 
     :global(.spin) {
         animation: spin 1s linear infinite;

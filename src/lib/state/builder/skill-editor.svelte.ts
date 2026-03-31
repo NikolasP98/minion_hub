@@ -56,12 +56,27 @@ export interface DryRunChapterResult {
   error?: string;
 }
 
+export interface DryRunAnalysisDimension {
+  name: string;
+  score: number;
+  verdict: 'pass' | 'warn' | 'fail';
+  details: string;
+}
+
+export interface DryRunAnalysis {
+  overallScore: number;
+  dimensions: DryRunAnalysisDimension[];
+  recommendations: string[];
+}
+
 export interface DryRunState {
   running: boolean;
   prompt: string;
   results: DryRunChapterResult[];
   totalDurationMs: number;
   totalTokens: number;
+  analysis: DryRunAnalysis | null;
+  analyzing: boolean;
 }
 
 // ── State ────────────────────────────────────────────────────────────
@@ -422,6 +437,8 @@ export async function startDryRun(prompt: string) {
     results,
     totalDurationMs: 0,
     totalTokens: 0,
+    analysis: null,
+    analyzing: false,
   };
 
   const upstreamOutputs: Array<{ chapterName: string; output: string }> = [];
@@ -476,6 +493,63 @@ export async function startDryRun(prompt: string) {
 
   skillEditorState.dryRun.running = false;
   skillEditorState.dryRun = { ...skillEditorState.dryRun };
+
+  // Auto-trigger analysis after all chapters complete
+  const completedResults = skillEditorState.dryRun.results.filter(r => r.status === 'done');
+  if (completedResults.length > 0) {
+    analyzeRun();
+  }
+}
+
+async function analyzeRun() {
+  if (!skillEditorState.dryRun) return;
+  skillEditorState.dryRun.analyzing = true;
+  skillEditorState.dryRun = { ...skillEditorState.dryRun };
+
+  const chapters = skillEditorState.chapters
+    .filter(c => c.type !== 'condition')
+    .map(ch => ({
+      name: ch.name,
+      guide: ch.guide,
+      outputDef: ch.outputDef,
+      context: ch.context,
+      toolIds: skillEditorState.chapterToolMap[ch.id] ?? [],
+    }));
+
+  try {
+    const res = await fetch('/api/builder/ai/analyze-run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        skillName: skillEditorState.name,
+        skillDescription: skillEditorState.description,
+        chapters,
+        results: skillEditorState.dryRun.results.map(r => ({
+          output: r.output,
+          status: r.status,
+          durationMs: r.durationMs,
+          promptTokens: r.promptTokens,
+          completionTokens: r.completionTokens,
+        })),
+        totalTokens: skillEditorState.dryRun.totalTokens,
+        totalDurationMs: skillEditorState.dryRun.totalDurationMs,
+      }),
+    });
+
+    if (res.ok) {
+      const analysis = await res.json();
+      if (skillEditorState.dryRun) {
+        skillEditorState.dryRun.analysis = analysis;
+      }
+    }
+  } catch (e) {
+    console.error('[skill-editor] Run analysis failed:', e);
+  } finally {
+    if (skillEditorState.dryRun) {
+      skillEditorState.dryRun.analyzing = false;
+      skillEditorState.dryRun = { ...skillEditorState.dryRun };
+    }
+  }
 }
 
 export function clearDryRun() {
