@@ -33,8 +33,20 @@ if ! curl -sf http://127.0.0.1:$PORT > /dev/null 2>&1; then
 fi
 echo "[desktop] Server ready."
 
-# Launch Electrobun CEF window
+# Build Electrobun (bundles desktop/main.ts, downloads CEF if needed)
+echo "[desktop] Building Electrobun..."
+npx electrobun build --env=dev
+
+# Ensure index.js symlink exists (fixes Electrobun launcher bug:
+# launcher expects bun/index.js but CLI produces bun/main.js)
+APP_BUN_DIR=$(find build/dev-linux-x64 -path "*/Resources/app/bun" -type d 2>/dev/null | head -1)
+if [[ -n "$APP_BUN_DIR" && -f "$APP_BUN_DIR/main.js" && ! -e "$APP_BUN_DIR/index.js" ]]; then
+  ln -sf main.js "$APP_BUN_DIR/index.js"
+  echo "[desktop] Created index.js symlink"
+fi
+
+# Launch the built app
 echo "[desktop] Launching window..."
-npx electrobun dev
+npx electrobun run
 
 echo "[desktop] Window closed."
