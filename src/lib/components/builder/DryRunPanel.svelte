@@ -75,7 +75,7 @@
         <textarea
             id="dry-run-prompt"
             class="prompt-input"
-            use:autosize={promptInput}
+            use:autosize={{ value: promptInput, max: 200 }}
             bind:value={promptInput}
             onkeydown={handleKeydown}
             placeholder="Enter a sample user message to test this skill..."
@@ -285,7 +285,9 @@
         font-size: 13px;
         padding: 8px 10px;
         outline: none;
-        resize: none;
+        resize: vertical;
+        max-height: 200px;
+        overflow-y: auto;
         transition: border-color 0.15s;
     }
     .prompt-input:focus { border-color: var(--color-accent); }
