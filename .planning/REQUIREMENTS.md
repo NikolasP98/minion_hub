@@ -1,128 +1,82 @@
-# Requirements: Pixel Office (v3.0)
+# Requirements: Minion Hub v5.0 AI-Native Builder UX
 
-**Defined:** 2026-03-23
-**Core Value:** Agents are visualized as pixel art characters in a virtual office, driven by real-time gateway data, with GPU-accelerated rendering.
+**Defined:** 2026-03-31
+**Core Value:** Skill authors can build agent skills effortlessly through an AI-native builder that feels like "tipping a balanced boulder"
 
-## v1 Requirements
+## v5.0 Requirements
 
-Requirements for v3.0 milestone. Each maps to roadmap phases.
+### Layout Restructure (Phase 13 — SHIPPED)
 
-### Character Animation
+- [x] **LAYOUT-01**: Agent settings panel renders as 680px two-column drawer with left nav and right content
+- [x] **LAYOUT-02**: Agent skills use toggle switches with search and filter tabs instead of drag-and-drop
+- [x] **LAYOUT-03**: Overridden settings fields show persistent left-border accent indicator
+- [x] **LAYOUT-04**: Skill editor renders as sidebar (280px) + DAG canvas + optional drawer (380px)
+- [x] **LAYOUT-05**: Chapter editor renders as inline 380px drawer with progressive disclosure (advanced fields behind chevron)
+- [x] **LAYOUT-06**: Empty skill editor shows first-visit description prompt guiding users to AI build
+- [x] **LAYOUT-07**: DAG nodes show inline validation indicators (warning/error) without opening validation panel
 
-- [x] **ANIM-01**: Characters play 4-frame walk animation when wandering between tiles
-- [x] **ANIM-02**: Characters play 2-frame typing animation when agent is conversing/writing
-- [x] **ANIM-03**: Characters play 2-frame reading animation when agent is reading files
-- [x] **ANIM-04**: Characters wander via BFS pathfinding on tile grid when idle (respecting furniture walkability)
-- [x] **ANIM-05**: Characters return to assigned seat when agent becomes active
-- [x] **ANIM-06**: Matrix digital rain effect plays on agent spawn/despawn (0.3s)
+### AI-Native Interactions (Phase 14)
 
-### Gateway Integration
+- [ ] **AI-01**: Each chapter text field (description, guide, context, outputDef) has a wand icon that AI-fills that specific field based on skill context
+- [ ] **AI-02**: As user types a skill description (10+ chars), ghost chapter title suggestions appear below as faded pills, accepting one triggers AI generation for that chapter
+- [ ] **AI-03**: AI-generated chapters appear as a staged proposal overlay on the DAG with per-node accept/reject controls before committing to the graph
+- [ ] **AI-04**: After AI chapter generation, tools are pre-selected per chapter based on description match, shown as "suggested" chips the user can confirm or remove
+- [ ] **AI-05**: The suggest-skill API endpoint accepts a `currentGraph` parameter so AI generation is incremental (adds to existing chapters, not replaces)
 
-- [x] **GATE-01**: Workshop agent FSM states (conversing, reading, idle, wandering) drive pixel character isActive and currentTool
-- [x] **GATE-02**: Agent connect/disconnect adds/removes pixel characters with spawn/despawn effects
-- [x] **GATE-03**: Agent tool activity (Write/Edit/Bash vs Read/Grep/Glob) maps to typing vs reading animation
-- [x] **GATE-04**: CRT monitors auto-switch to ON sprite when agent actively types at that desk
-- [x] **GATE-05**: Permission bubble (amber dots) shows when agent waits for user approval
-- [x] **GATE-06**: Waiting bubble (green checkmark) shows when agent is idle after task completion
+### Visual Polish (Phase 15)
 
-### Interaction
+- [ ] **VIS-01**: Skill cards on listing page show a segmented SVG completion arc indicating readiness (name, description, chapters, tools)
+- [ ] **VIS-02**: AI-generated chapters appear with a staggered node-by-node reveal animation (150ms apart) during generation
+- [ ] **VIS-03**: A template shelf with 4-6 starter skill templates appears at skill creation, pre-filling name/desc and triggering AI chapter generation
 
-- [ ] **INTR-01**: Click a pixel character to select the corresponding agent in the sidebar
-- [ ] **INTR-02**: Mouse wheel zoom with world-space pivot preservation (integer zoom 1-8x)
-- [ ] **INTR-03**: Left-click drag pans the viewport with grab/grabbing cursor
-- [ ] **INTR-04**: Status label shows current tool name above active characters
-- [ ] **INTR-05**: Character selection shows white pixel-outline around selected character
+## v6.0 Requirements (Future)
 
-### PixiJS Migration
+### Conversational Builder
 
-- [ ] **PIXI-01**: Replace Canvas 2D tile grid rendering with PixiJS TilingSprite or Sprite batching
-- [ ] **PIXI-02**: Convert SpriteData (string[][] hex arrays) to PixiJS Textures via offscreen canvas → PIXI.Texture
-- [ ] **PIXI-03**: Render furniture as PixiJS Sprites with z-sorting via sortableChildren + zIndex
-- [ ] **PIXI-04**: Render characters as PixiJS AnimatedSprite with frame-based animation
-- [ ] **PIXI-05**: Reuse existing workshop PixiJS Application instead of creating separate Canvas 2D element
-- [ ] **PIXI-06**: Maintain pixel-perfect rendering (nearest-neighbor scaling, integer zoom)
-- [ ] **PIXI-07**: Performance: 60fps with 10+ agents at zoom level 4
-
-### Persistence
-
-- [ ] **PERS-01**: Pixel office layout saved to localStorage per host (auto-save with debounce)
-- [ ] **PERS-02**: Zoom level and pan position persist across page reloads
-- [ ] **PERS-03**: Character seat assignments persist across mode switches
-- [ ] **PERS-04**: View mode preference (classic/habbo/pixel) persists (already working)
-
-### Layout Editor
-
-- [ ] **EDIT-01**: Toggle edit mode to drag furniture to new positions
-- [ ] **EDIT-02**: Place new furniture from catalog palette
-- [ ] **EDIT-03**: Paint floor tiles with pattern + color picker
-- [ ] **EDIT-04**: Paint/erase wall tiles
-- [ ] **EDIT-05**: Undo/redo for all editor operations (50-level stack)
-- [ ] **EDIT-06**: Grid overlay shows tile boundaries in edit mode
-
-## v2 Requirements (Future)
+- **CONV-01**: Split-view conversational mode with chat left + graph right for building skills via natural language
+- **CONV-02**: Slash commands in text fields (/expand, /add chapter, /tools) for inline AI actions
 
 ### Advanced Features
 
-- **ADV-01**: Layout export/import (JSON file download/upload)
-- **ADV-02**: Multiple office layouts (switch between saved layouts)
-- **ADV-03**: Custom character sprite upload
-- **ADV-04**: Conversation ropes between agents (visual connection lines during multi-agent chat)
-- **ADV-05**: Activity sparkline per desk (from existing agentActivity spark-bins)
+- **ADV-01**: Skill versioning with diff view between versions
+- **ADV-02**: Dry-run preview showing simulated chapter outputs on DAG nodes
+- **ADV-03**: Condition insertion by right-clicking an edge (instead of separate creation flow)
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Physics simulation | Pixel office uses tile-grid movement, not continuous physics — Rapier2D unnecessary |
-| Isometric projection | Pixel office is top-down 2D, not isometric — habbo mode handles that |
-| Sound notifications | Deferred — no audio pipeline in hub yet |
-| Mobile touch controls | Desktop-first, workshop not used on mobile |
-| Custom furniture PNG upload | Complex asset pipeline, defer to v4 |
+| Conversational builder | High complexity — defer to v6.0 |
+| Skill runtime execution engine | Gateway-side, not hub |
+| Multi-tenant skill sharing | Future feature beyond current scope |
+| Real-time collaborative editing | Single-user builder, unnecessary complexity |
+| Full undo/redo system | Would require command pattern across all operations |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ANIM-01 | Phase 8 | Complete |
-| ANIM-02 | Phase 8 | Complete |
-| ANIM-03 | Phase 8 | Complete |
-| ANIM-04 | Phase 8 | Complete |
-| ANIM-05 | Phase 8 | Complete |
-| ANIM-06 | Phase 8 | Complete |
-| GATE-01 | Phase 8 | Complete |
-| GATE-02 | Phase 8 | Complete |
-| GATE-03 | Phase 8 | Complete |
-| GATE-04 | Phase 8 | Complete |
-| GATE-05 | Phase 8 | Complete |
-| GATE-06 | Phase 8 | Complete |
-| INTR-01 | Phase 9 | Pending |
-| INTR-02 | Phase 9 | Pending |
-| INTR-03 | Phase 9 | Pending |
-| INTR-04 | Phase 9 | Pending |
-| INTR-05 | Phase 9 | Pending |
-| PERS-01 | Phase 9 | Pending |
-| PERS-02 | Phase 9 | Pending |
-| PERS-03 | Phase 9 | Pending |
-| PERS-04 | Phase 9 | Pending |
-| PIXI-01 | Phase 10 | Pending |
-| PIXI-02 | Phase 10 | Pending |
-| PIXI-03 | Phase 10 | Pending |
-| PIXI-04 | Phase 10 | Pending |
-| PIXI-05 | Phase 10 | Pending |
-| PIXI-06 | Phase 10 | Pending |
-| PIXI-07 | Phase 10 | Pending |
-| EDIT-01 | Phase 11 | Pending |
-| EDIT-02 | Phase 11 | Pending |
-| EDIT-03 | Phase 11 | Pending |
-| EDIT-04 | Phase 11 | Pending |
-| EDIT-05 | Phase 11 | Pending |
-| EDIT-06 | Phase 11 | Pending |
+| LAYOUT-01 | Phase 13 | Complete |
+| LAYOUT-02 | Phase 13 | Complete |
+| LAYOUT-03 | Phase 13 | Complete |
+| LAYOUT-04 | Phase 13 | Complete |
+| LAYOUT-05 | Phase 13 | Complete |
+| LAYOUT-06 | Phase 13 | Complete |
+| LAYOUT-07 | Phase 13 | Complete |
+| AI-01 | Phase 14 | Pending |
+| AI-02 | Phase 14 | Pending |
+| AI-03 | Phase 14 | Pending |
+| AI-04 | Phase 14 | Pending |
+| AI-05 | Phase 14 | Pending |
+| VIS-01 | Phase 15 | Pending |
+| VIS-02 | Phase 15 | Pending |
+| VIS-03 | Phase 15 | Pending |
 
 **Coverage:**
-- v1 requirements: 28 total
-- Mapped to phases: 28
+- v5.0 requirements: 15 total
+- Mapped to phases: 15
 - Unmapped: 0
 
 ---
-*Requirements defined: 2026-03-23*
-*Last updated: 2026-03-23 after roadmap creation*
+*Requirements defined: 2026-03-31*
+*Last updated: 2026-03-31 after initial definition*
