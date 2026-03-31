@@ -45,6 +45,11 @@ export interface StagedProposal {
   edges: StagedEdge[];
 }
 
+export interface SuggestedPrompt {
+  text: string;
+  label: string;
+}
+
 export interface DryRunChapterResult {
   chapterId: string;
   chapterName: string;
@@ -410,6 +415,49 @@ function topoSort(chapters: ChapterEntry[], edges: typeof skillEditorState.chapt
     }
   }
   return sorted;
+}
+
+// ── Suggested test prompts ─────────────────────────────────────────────
+
+export const dryRunSuggestions = $state({
+  prompts: [] as SuggestedPrompt[],
+  loading: false,
+});
+
+export async function fetchTestPromptSuggestions() {
+  const chapters = skillEditorState.chapters.filter(c => c.type !== 'condition');
+  if (chapters.length === 0 || !skillEditorState.description.trim()) {
+    dryRunSuggestions.prompts = [];
+    return;
+  }
+
+  dryRunSuggestions.loading = true;
+  try {
+    const res = await fetch('/api/builder/ai/suggest-prompts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        skillName: skillEditorState.name,
+        skillDescription: skillEditorState.description,
+        chapters: chapters.map(ch => ({
+          name: ch.name,
+          description: ch.description,
+          guide: ch.guide,
+          context: ch.context,
+          toolIds: skillEditorState.chapterToolMap[ch.id] ?? [],
+        })),
+      }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      dryRunSuggestions.prompts = data.prompts ?? [];
+    }
+  } catch {
+    dryRunSuggestions.prompts = [];
+  } finally {
+    dryRunSuggestions.loading = false;
+  }
 }
 
 export async function startDryRun(prompt: string) {

@@ -1,7 +1,9 @@
 <script lang="ts">
-    import { X, Play, Loader2, CheckCircle2, XCircle, Clock, Zap, AlertTriangle, BarChart3 } from 'lucide-svelte';
+    import { X, Play, Loader2, CheckCircle2, XCircle, Clock, Zap, AlertTriangle, BarChart3, Sparkles } from 'lucide-svelte';
+    import { onMount } from 'svelte';
     import {
         skillEditorState, startDryRun, clearDryRun,
+        dryRunSuggestions, fetchTestPromptSuggestions,
         type DryRunChapterResult, type DryRunAnalysisDimension,
     } from '$lib/state/builder/skill-editor.svelte';
 
@@ -10,6 +12,17 @@
 
     const dryRun = $derived(skillEditorState.dryRun);
     const hasChapters = $derived(skillEditorState.chapters.filter(c => c.type !== 'condition').length > 0);
+
+    // Auto-fetch suggested prompts when panel mounts
+    onMount(() => {
+        if (hasChapters && dryRunSuggestions.prompts.length === 0) {
+            fetchTestPromptSuggestions();
+        }
+    });
+
+    function usePrompt(text: string) {
+        promptInput = text;
+    }
 
     function handleRun() {
         if (!promptInput.trim() || !hasChapters) return;
@@ -67,6 +80,27 @@
             placeholder="Enter a sample user message to test this skill..."
             disabled={dryRun?.running}
         ></textarea>
+        <!-- Suggested prompts -->
+        {#if dryRunSuggestions.loading}
+            <div class="suggestions-loading">
+                <Loader2 size={11} class="spin" />
+                <span>Generating test ideas...</span>
+            </div>
+        {:else if dryRunSuggestions.prompts.length > 0 && !promptInput.trim()}
+            <div class="suggestions-row">
+                {#each dryRunSuggestions.prompts as suggestion (suggestion.label)}
+                    <button
+                        class="suggestion-pill"
+                        onclick={() => usePrompt(suggestion.text)}
+                        title={suggestion.text}
+                    >
+                        <Sparkles size={10} />
+                        {suggestion.label}
+                    </button>
+                {/each}
+            </div>
+        {/if}
+
         <button
             class="run-btn"
             onclick={handleRun}
@@ -255,6 +289,30 @@
     }
     .prompt-input:focus { border-color: var(--color-accent); }
     .prompt-input::placeholder { color: var(--color-muted); }
+
+    /* Suggested prompts */
+    .suggestions-loading {
+        display: flex; align-items: center; gap: 6px;
+        font-size: 11px; color: var(--color-muted); opacity: 0.6;
+    }
+    .suggestions-row {
+        display: flex; flex-wrap: wrap; gap: 4px;
+    }
+    .suggestion-pill {
+        display: inline-flex; align-items: center; gap: 4px;
+        padding: 4px 10px;
+        font-size: 11px; font-weight: 500; font-family: inherit;
+        color: var(--color-accent);
+        background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+        border: 1px solid color-mix(in srgb, var(--color-accent) 20%, transparent);
+        border-radius: 9999px;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .suggestion-pill:hover {
+        background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+        border-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
+    }
 
     .run-btn {
         display: flex;
