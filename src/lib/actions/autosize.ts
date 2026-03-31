@@ -6,20 +6,16 @@ import { TextareaAutosize } from 'runed';
  *
  * Usage: <textarea use:autosize={value} />
  *
- * The parameter should be the reactive text value so the action
- * re-measures whenever content changes (including programmatic updates).
+ * The textarea auto-grows as content increases and can still be manually
+ * resized larger by the user (resize: vertical is preserved).
  */
 export function autosize(node: HTMLTextAreaElement, value: string) {
-	// Remove fixed rows so height is purely driven by content
-	node.style.overflow = 'hidden';
-	node.style.resize = 'none';
-
 	let currentValue = value;
 
 	const ta = new TextareaAutosize({
 		element: node,
 		input: () => currentValue,
-		styleProp: 'height',
+		styleProp: 'minHeight',
 	});
 
 	return {
@@ -28,9 +24,7 @@ export function autosize(node: HTMLTextAreaElement, value: string) {
 			ta.triggerResize();
 		},
 		destroy() {
-			// TextareaAutosize cleans up via GC (no explicit destroy)
-			node.style.overflow = '';
-			node.style.resize = '';
+			node.style.minHeight = '';
 		},
 	};
 }
