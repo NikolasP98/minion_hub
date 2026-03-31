@@ -194,7 +194,12 @@ Plans:
   3. When "Build with AI" generates chapters, they appear as a staged overlay on the DAG with per-node Accept/Reject controls before being committed to the graph
   4. After AI generation, each chapter's tool assignment shows pre-selected tools as "suggested" chips based on chapter description match against the tool manifest
   5. The suggest-skill API accepts a `currentGraph` parameter containing existing chapters/edges so generation adds incrementally rather than replacing
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 14-01-PLAN.md — Incremental AI endpoint + per-field wand icons
+- [ ] 14-02-PLAN.md — Staged proposal overlay + tool suggestion chips
+- [ ] 14-03-PLAN.md — Ghost chapter suggestions
 
 ### Phase 15: Visual Polish + Templates
 **Goal**: Add visual feedback and starter templates that reduce friction and communicate skill completeness at a glance
@@ -226,5 +231,5 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 (v3.0), 12 (v4.0), 13 →
 | 11. Layout Editor | v3.0 | 0/? | Not started | - |
 | 12. Electrobun Desktop Wrapper | v4.0 | 3/3 | Complete | 2026-03-30 |
 | 13. Layout Restructure | v5.0 | 0/0 | Complete | 2026-03-31 |
-| 14. AI-Native Interactions | v5.0 | 0/? | Not started | - |
+| 14. AI-Native Interactions | v5.0 | 0/3 | Planning complete | - |
 | 15. Visual Polish + Templates | v5.0 | 0/? | Not started | - |
