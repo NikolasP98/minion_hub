@@ -13,3 +13,10 @@ export {
 } from './skill-editor.svelte';
 export type { ChapterEntry } from './skill-editor.svelte';
 export type { ValidationFinding, SkillValidationInput } from '$lib/utils/skill-validation';
+
+export {
+  registryState, loadRegistry, registryDerived,
+  loadMore, resetVisibleCount,
+  categoryIcon, agentIcon,
+} from './registry.svelte';
+export type { RegistryAgent } from './registry.svelte';
