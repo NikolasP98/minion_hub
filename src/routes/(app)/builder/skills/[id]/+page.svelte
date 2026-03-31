@@ -1,7 +1,8 @@
 <script lang="ts">
     import { page } from "$app/state";
-    import { ArrowLeft, BookOpen, Loader2, Check, Upload, Circle, AlertTriangle, XCircle, CheckCircle2, Sparkles, GitBranch, RotateCcw, ChevronLeft, ChevronRight, Wrench, X } from "lucide-svelte";
+    import { ArrowLeft, BookOpen, Loader2, Check, Upload, Circle, AlertTriangle, XCircle, CheckCircle2, Sparkles, GitBranch, RotateCcw, ChevronLeft, ChevronRight, Wrench, X, FlaskConical } from "lucide-svelte";
     import ValidationPanel from "$lib/components/builder/ValidationPanel.svelte";
+    import DryRunPanel from "$lib/components/builder/DryRunPanel.svelte";
     import { conn } from "$lib/state/gateway";
     import { getToolInfo } from "$lib/data/tool-manifest";
     import ChapterEditor from "$lib/components/builder/ChapterEditor.svelte";
@@ -18,7 +19,10 @@
         acceptAllProposed, rejectAllProposed,
         acceptProposedChapter, rejectProposedChapter,
         fetchGhostSuggestions, generateGhostChapter,
+        clearDryRun,
     } from '$lib/state/builder/skill-editor.svelte';
+
+    let showDryRun = $state(false);
 
     const skillId = $derived(page.params.id);
 
@@ -101,6 +105,16 @@
         </label>
 
         <div class="h-4 w-px bg-border/60"></div>
+
+        <button
+            type="button"
+            class="toolbar-btn {showDryRun ? 'active' : ''}"
+            title="Test run this skill"
+            onclick={() => { showDryRun = !showDryRun; if (!showDryRun) clearDryRun(); }}
+        >
+            <FlaskConical size={14} />
+            <span class="hidden sm:inline">Test</span>
+        </button>
 
         <button
             type="button"
@@ -322,8 +336,13 @@
         {/if}
 
         <!-- Right: Validation panel (conditional) -->
-        {#if skillEditorState.showValidation && !skillEditorState.editingChapter}
+        {#if skillEditorState.showValidation && !skillEditorState.editingChapter && !showDryRun}
             <ValidationPanel />
+        {/if}
+
+        <!-- Right: Dry run panel (conditional) -->
+        {#if showDryRun && !skillEditorState.editingChapter}
+            <DryRunPanel />
         {/if}
     {/if}
 </div>
@@ -457,6 +476,7 @@
         font-family: inherit;
     }
     .toolbar-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .toolbar-btn.active { color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 12%, transparent); border: 1px solid color-mix(in srgb, var(--color-accent) 25%, transparent); }
     .toolbar-btn.primary { color: white; background: var(--color-accent); }
     .toolbar-btn.primary:hover { filter: brightness(1.1); }
     .toolbar-btn.published {
