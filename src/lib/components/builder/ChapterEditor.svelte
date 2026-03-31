@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { autosize } from '$lib/actions/autosize';
     import {
         X,
         Check,
@@ -335,7 +336,7 @@
                     {#if fieldAiLoading['description']}<Loader2 size={12} class="spin" />{:else}<Sparkles size={12} />{/if}
                 </button>
             </div>
-            <textarea id="ch-desc" class="field-textarea" class:ai-generated={fieldAiGenerated['description']} rows="2" bind:value={description} oninput={() => clearFieldAiGenerated('description')} placeholder="What does this chapter accomplish?"></textarea>
+            <textarea id="ch-desc" class="field-textarea" class:ai-generated={fieldAiGenerated['description']} use:autosize={description} bind:value={description} oninput={() => clearFieldAiGenerated('description')} placeholder="What does this chapter accomplish?"></textarea>
             {#if conflictSnippet('description')}
                 {@render conflictBox('description')}
             {/if}
@@ -402,7 +403,7 @@
                 <div class="field">
                     <label class="field-label" for="ch-trigger">Trigger Conditions</label>
                     <span class="field-helper">When should this chapter activate?</span>
-                    <textarea id="ch-trigger" class="field-textarea" rows="2" bind:value={triggerConditions} placeholder="e.g. When upstream provides URLs"></textarea>
+                    <textarea id="ch-trigger" class="field-textarea" use:autosize={triggerConditions} bind:value={triggerConditions} placeholder="e.g. When upstream provides URLs"></textarea>
                     {#if conflictSnippet('triggerConditions')}
                         {@render conflictBox('triggerConditions')}
                     {/if}
@@ -420,7 +421,7 @@
                     {#if aiGenerated && !conflicts.guide}
                         <span class="ai-label">(AI-generated — review and edit)</span>
                     {/if}
-                    <textarea id="ch-guide" class="field-textarea field-textarea--mono" class:ai-generated={fieldAiGenerated['guide']} rows="6" bind:value={guide} oninput={() => clearFieldAiGenerated('guide')} placeholder="Search the web for..., Extract key data..."></textarea>
+                    <textarea id="ch-guide" class="field-textarea field-textarea--mono" class:ai-generated={fieldAiGenerated['guide']} use:autosize={guide} bind:value={guide} oninput={() => clearFieldAiGenerated('guide')} placeholder="Search the web for..., Extract key data..."></textarea>
                     {#if conflictSnippet('guide')}
                         {@render conflictBox('guide')}
                     {/if}
@@ -438,7 +439,7 @@
                     {#if aiGenerated && !conflicts.context}
                         <span class="ai-label">(AI-generated)</span>
                     {/if}
-                    <textarea id="ch-context" class="field-textarea" class:ai-generated={fieldAiGenerated['context']} rows="2" bind:value={context} oninput={() => clearFieldAiGenerated('context')} placeholder="e.g. Array of search results"></textarea>
+                    <textarea id="ch-context" class="field-textarea" class:ai-generated={fieldAiGenerated['context']} use:autosize={context} bind:value={context} oninput={() => clearFieldAiGenerated('context')} placeholder="e.g. Array of search results"></textarea>
                     {#if conflictSnippet('context')}
                         {@render conflictBox('context')}
                     {/if}
@@ -456,7 +457,7 @@
                     {#if aiGenerated && !conflicts.outputDef}
                         <span class="ai-label">(AI-generated)</span>
                     {/if}
-                    <textarea id="ch-output" class="field-textarea" class:ai-generated={fieldAiGenerated['outputDef']} rows="2" bind:value={outputDef} oninput={() => clearFieldAiGenerated('outputDef')} placeholder="e.g. Structured JSON, Summary markdown"></textarea>
+                    <textarea id="ch-output" class="field-textarea" class:ai-generated={fieldAiGenerated['outputDef']} use:autosize={outputDef} bind:value={outputDef} oninput={() => clearFieldAiGenerated('outputDef')} placeholder="e.g. Structured JSON, Summary markdown"></textarea>
                     {#if conflictSnippet('outputDef')}
                         {@render conflictBox('outputDef')}
                     {/if}
@@ -466,7 +467,7 @@
                 <div class="field">
                     <label class="field-label" for="ch-success">Success Criteria</label>
                     <span class="field-helper">What must be true when this completes?</span>
-                    <textarea id="ch-success" class="field-textarea" rows="2" bind:value={successCriteria} placeholder="e.g. All URLs fetched, Output has 3+ data points"></textarea>
+                    <textarea id="ch-success" class="field-textarea" use:autosize={successCriteria} bind:value={successCriteria} placeholder="e.g. All URLs fetched, Output has 3+ data points"></textarea>
                     {#if conflictSnippet('successCriteria')}
                         {@render conflictBox('successCriteria')}
                     {/if}

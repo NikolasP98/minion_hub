@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { autosize } from '$lib/actions/autosize';
     import { X, Play, Loader2, CheckCircle2, XCircle, Clock, Zap, AlertTriangle, BarChart3, Sparkles } from 'lucide-svelte';
     import { onMount } from 'svelte';
     import {
@@ -74,7 +75,7 @@
         <textarea
             id="dry-run-prompt"
             class="prompt-input"
-            rows="2"
+            use:autosize={promptInput}
             bind:value={promptInput}
             onkeydown={handleKeydown}
             placeholder="Enter a sample user message to test this skill..."

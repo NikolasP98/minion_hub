@@ -1,5 +1,6 @@
 <script lang="ts">
     import { page } from "$app/state";
+    import { autosize } from '$lib/actions/autosize';
     import { ArrowLeft, BookOpen, Loader2, Check, Upload, Circle, AlertTriangle, XCircle, CheckCircle2, Sparkles, GitBranch, RotateCcw, ChevronLeft, ChevronRight, Wrench, X, FlaskConical } from "lucide-svelte";
     import ValidationPanel from "$lib/components/builder/ValidationPanel.svelte";
     import DryRunPanel from "$lib/components/builder/DryRunPanel.svelte";
@@ -177,9 +178,9 @@
                     <!-- Description -->
                     <textarea
                         class="desc-input"
+                        use:autosize={skillEditorState.description}
                         bind:value={skillEditorState.description}
                         placeholder="Describe what this skill does..."
-                        rows="3"
                     ></textarea>
 
                     <!-- Ghost chapter suggestions (AI-02) -->
