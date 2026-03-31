@@ -111,7 +111,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   }
 
   const body = await request.json();
-  const { name, description, availableToolIds, model } = body;
+  const { name, description, availableToolIds, model, currentGraph, previewOnly } = body;
   if (!description?.trim()) throw error(400, 'Skill description is required');
 
   const toolDescriptions = (availableToolIds ?? [])
@@ -121,7 +121,19 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     })
     .join('\n');
 
-  const userPrompt = `Skill: <skill_name>${name || 'Untitled Skill'}</skill_name>
+  // Build currentGraph context if chapters already exist (AI-05: incremental generation)
+  let graphContext = '';
+  if (currentGraph?.chapters?.length) {
+    const chapterList = currentGraph.chapters
+      .map((c: { name: string; description?: string }) => `- "${c.name}": ${c.description || '(no description)'}`)
+      .join('\n');
+    const edgeList = currentGraph.edges?.length
+      ? currentGraph.edges.map((e: { sourceChapterId: string; targetChapterId: string }) => `- ${e.sourceChapterId} -> ${e.targetChapterId}`).join('\n')
+      : '(none)';
+    graphContext = `\nEXISTING CHAPTERS (do NOT duplicate these — generate only NEW chapters that complement the pipeline):\n${chapterList}\n\nEXISTING EDGES:\n${edgeList}\n\nGenerate ADDITIONAL chapters that extend or complement this existing pipeline. Do not duplicate any existing chapter names. Connect new chapters to existing ones where logical.\n`;
+  }
+
+  const userPrompt = `${graphContext}Skill: <skill_name>${name || 'Untitled Skill'}</skill_name>
 Description: <skill_description>${description}</skill_description>
 
 Available tools:
@@ -140,9 +152,9 @@ Design a complete chapter pipeline for this skill. Include condition nodes where
       },
       body: JSON.stringify({
         model: model || DEFAULT_MODEL,
-        max_tokens: 2048,
+        max_tokens: previewOnly ? 512 : 2048,
         messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'system', content: SYSTEM_PROMPT + (previewOnly ? '\n\nIMPORTANT: Return ONLY chapter names and brief one-line descriptions. Do not generate guide, context, outputDef, or toolIds content — leave them empty.' : '') },
           { role: 'user', content: userPrompt },
         ],
         tools: [{
@@ -223,6 +235,15 @@ Design a complete chapter pipeline for this skill. Include condition nodes where
     const promptTokens = rawUsage.prompt_tokens ?? 0;
     const completionTokens = rawUsage.completion_tokens ?? 0;
     const usedModel = model || DEFAULT_MODEL;
+
+    // previewOnly: return only chapter titles for ghost suggestions (AI-02)
+    if (previewOnly) {
+      return json({
+        chapters: chapters.map(ch => ({ name: ch.name, description: (ch as Record<string, unknown>).description ?? '' })),
+        previewOnly: true,
+        usage: { promptTokens, completionTokens, estimatedCost: estimateCost(usedModel, promptTokens, completionTokens) },
+      });
+    }
 
     return json({
       chapters,

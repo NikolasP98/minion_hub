@@ -264,6 +264,12 @@ export async function buildSkillWithAI() {
         name: skillEditorState.name.trim(),
         description: skillEditorState.description.trim(),
         availableToolIds: _allToolIds,
+        ...(skillEditorState.chapters.length > 0 ? {
+          currentGraph: {
+            chapters: skillEditorState.chapters.map(c => ({ name: c.name, description: c.description })),
+            edges: skillEditorState.chapterEdges.map(e => ({ sourceChapterId: e.sourceChapterId, targetChapterId: e.targetChapterId })),
+          },
+        } : {}),
       }),
     });
 
