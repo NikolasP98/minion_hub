@@ -17,6 +17,7 @@
         handlePublishClick,
         acceptAllProposed, rejectAllProposed,
         acceptProposedChapter, rejectProposedChapter,
+        fetchGhostSuggestions, generateGhostChapter,
     } from '$lib/state/builder/skill-editor.svelte';
 
     const skillId = $derived(page.params.id);
@@ -38,6 +39,12 @@
         void skillEditorState.description;
         void skillEditorState.emoji;
         if (!skillEditorState.loading) scheduleSave();
+    });
+
+    // Trigger ghost suggestions when description changes (AI-02)
+    $effect(() => {
+        void skillEditorState.description;
+        if (!skillEditorState.loading) fetchGhostSuggestions();
     });
 
     // ── Sidebar collapse state ────────────────────────────────────────
@@ -160,6 +167,29 @@
                         placeholder="Describe what this skill does..."
                         rows="3"
                     ></textarea>
+
+                    <!-- Ghost chapter suggestions (AI-02) -->
+                    {#if skillEditorState.ghostSuggestions.length > 0 || skillEditorState.ghostLoading}
+                        <div class="ghost-suggestions">
+                            {#if skillEditorState.ghostLoading}
+                                <div class="ghost-loading">
+                                    <Loader2 size={12} class="loading-spinner" />
+                                    <span>Suggesting chapters...</span>
+                                </div>
+                            {/if}
+                            {#each skillEditorState.ghostSuggestions as suggestion (suggestion.name)}
+                                <button
+                                    class="ghost-pill"
+                                    onclick={() => generateGhostChapter(suggestion.name)}
+                                    disabled={skillEditorState.aiBuilding}
+                                    title={suggestion.description || 'Click to generate this chapter'}
+                                >
+                                    <Sparkles size={10} />
+                                    <span>{suggestion.name}</span>
+                                </button>
+                            {/each}
+                        </div>
+                    {/if}
 
                     <!-- AI Build button -->
                     {#if skillEditorState.description.trim().length >= 10}
@@ -685,6 +715,35 @@
         border: 1px solid var(--color-border);
     }
     .first-visit-btn.ghost:hover { color: var(--color-foreground); border-color: var(--color-foreground); }
+
+    /* ── Ghost chapter suggestions (AI-02) ──────────────────────────────── */
+    .ghost-suggestions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.375rem;
+        padding: 0.25rem 0;
+    }
+    .ghost-loading {
+        display: flex; align-items: center; gap: 0.375rem;
+        font-size: 0.6875rem; color: var(--color-muted); opacity: 0.6; width: 100%;
+    }
+    .ghost-pill {
+        display: inline-flex; align-items: center; gap: 0.25rem;
+        padding: 0.25rem 0.625rem;
+        font-size: 0.6875rem; font-weight: 500; font-family: inherit;
+        color: var(--color-accent);
+        background: color-mix(in srgb, var(--color-accent) 4%, transparent);
+        border: 1px dashed color-mix(in srgb, var(--color-accent) 25%, transparent);
+        border-radius: 9999px;
+        cursor: pointer; opacity: 0.55;
+        transition: all 0.2s ease;
+    }
+    .ghost-pill:hover:not(:disabled) {
+        opacity: 0.85;
+        background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+        border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
+    }
+    .ghost-pill:disabled { cursor: not-allowed; opacity: 0.3; }
 
     /* ── Proposal batch actions ──────────────────────────────────────────── */
     .proposal-batch-actions {

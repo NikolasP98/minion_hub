@@ -73,6 +73,11 @@ export const skillEditorState = $state({
   stagedProposal: null as StagedProposal | null,
   suggestedToolMap: {} as Record<string, string[]>,
 
+  // Ghost suggestions (AI-02)
+  ghostSuggestions: [] as Array<{ name: string; description: string }>,
+  ghostLoading: false,
+  ghostDismissed: false,
+
   // Publish state
   publishing: false,
 
@@ -90,6 +95,7 @@ export const skillEditorState = $state({
 // ── Private timer (NOT $state — timers do not need reactivity) ───────
 
 let _saveTimer: ReturnType<typeof setTimeout> | null = null;
+let _ghostTimer: ReturnType<typeof setTimeout> | null = null;
 
 // ── Derived values (module-private, exposed via exported getters) ─────
 
@@ -342,6 +348,116 @@ export async function buildSkillWithAI() {
   }
 }
 
+// ── Ghost suggestions (AI-02) ─────────────────────────────────────────
+
+export function fetchGhostSuggestions() {
+  if (_ghostTimer) clearTimeout(_ghostTimer);
+
+  const desc = skillEditorState.description.trim();
+  if (desc.length < 10 || skillEditorState.ghostDismissed || skillEditorState.chapters.length > 0 || skillEditorState.aiBuilding) {
+    skillEditorState.ghostSuggestions = [];
+    return;
+  }
+
+  _ghostTimer = setTimeout(async () => {
+    skillEditorState.ghostLoading = true;
+    try {
+      const res = await fetch('/api/builder/ai/suggest-skill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: skillEditorState.name.trim(),
+          description: desc,
+          availableToolIds: _allToolIds,
+          previewOnly: true,
+        }),
+      });
+      if (!res.ok) { skillEditorState.ghostSuggestions = []; return; }
+      const data = await res.json();
+      if (skillEditorState.description.trim() === desc) {
+        skillEditorState.ghostSuggestions = (data.chapters ?? []).slice(0, 3);
+      }
+    } catch {
+      skillEditorState.ghostSuggestions = [];
+    } finally {
+      skillEditorState.ghostLoading = false;
+    }
+  }, 500);
+}
+
+export function dismissGhostSuggestions() {
+  skillEditorState.ghostDismissed = true;
+  skillEditorState.ghostSuggestions = [];
+  if (_ghostTimer) { clearTimeout(_ghostTimer); _ghostTimer = null; }
+}
+
+export async function generateGhostChapter(chapterName: string) {
+  dismissGhostSuggestions();
+  skillEditorState.aiBuilding = true;
+  skillEditorState.aiBuildError = null;
+
+  try {
+    const res = await fetch('/api/builder/ai/suggest-chapter', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: chapterName,
+        description: '',
+        skillName: skillEditorState.name.trim(),
+        skillDescription: skillEditorState.description.trim(),
+        availableToolIds: _allToolIds,
+      }),
+    });
+    if (!res.ok) throw new Error(`Request failed (${res.status})`);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    const createRes = await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'add-chapter',
+        name: data.name || chapterName,
+        type: 'chapter',
+        positionX: 300,
+        positionY: skillEditorState.chapters.length * 180,
+      }),
+    });
+    if (!createRes.ok) throw new Error('Failed to create chapter');
+    const { id } = await createRes.json();
+
+    await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'update-chapter',
+        chapterId: id,
+        data: { description: data.description ?? '', guide: data.guide ?? '', context: data.context ?? '', outputDef: data.outputDef ?? '' },
+      }),
+    });
+
+    const toolIds = (data.suggestedToolIds ?? []).filter((t: string) => _allToolIds.includes(t));
+    if (toolIds.length > 0) {
+      await fetch(`/api/builder/skills/${skillEditorState.skillId}/chapter-tools/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ toolIds }),
+      });
+    }
+
+    skillEditorState.chapters = [...skillEditorState.chapters, {
+      id, type: 'chapter', name: data.name || chapterName, description: data.description ?? '',
+      guide: data.guide ?? '', context: data.context ?? '', outputDef: data.outputDef ?? '',
+      positionX: 300, positionY: (skillEditorState.chapters.length - 1) * 180,
+    }];
+    skillEditorState.chapterToolMap = { ...skillEditorState.chapterToolMap, [id]: toolIds };
+  } catch (e) {
+    skillEditorState.aiBuildError = e instanceof Error ? e.message : 'Failed to generate chapter';
+  } finally {
+    skillEditorState.aiBuilding = false;
+  }
+}
+
 // ── Staged proposal accept/reject (AI-03) ────────────────────────────
 
 const _tempToRealId = new Map<string, string>();
@@ -556,6 +672,7 @@ export async function updateCondition() {
 }
 
 export async function addChapter() {
+  dismissGhostSuggestions();
   try {
     const chapterName = `Chapter ${skillEditorState.chapters.length + 1}`;
     const res = await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
@@ -750,4 +867,8 @@ export function cleanupSkillEditor() {
   skillEditorState.aiBuildError = null;
   skillEditorState.stagedProposal = null;
   skillEditorState.suggestedToolMap = {};
+  skillEditorState.ghostSuggestions = [];
+  skillEditorState.ghostLoading = false;
+  skillEditorState.ghostDismissed = false;
+  if (_ghostTimer) { clearTimeout(_ghostTimer); _ghostTimer = null; }
 }
