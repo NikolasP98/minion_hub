@@ -40,8 +40,8 @@ describe('derivePersonalAgentId', () => {
 });
 
 describe('deriveDisplayName', () => {
-	it('returns "{userName}\'s Agent"', () => {
-		expect(deriveDisplayName('Nikolas')).toBe("Nikolas's Agent");
+	it('returns "usr:{email}"', () => {
+		expect(deriveDisplayName('nik@example.com')).toBe('usr:nik@example.com');
 	});
 });
 
@@ -50,12 +50,12 @@ describe('provisionPersonalAgent', () => {
 		const { db } = createMockDb();
 		const result = await provisionPersonalAgent(
 			{ db, tenantId: 't1' },
-			{ userId: 'user-1', userName: 'Nikolas', serverId: 'srv-1' },
+			{ userId: 'user-1', email: 'nik@example.com', serverId: 'srv-1' },
 		);
 		expect(result).toBeDefined();
 		expect(result.agentId).toBe('personal-user-1');
 		expect(result.provisioningStatus).toBe('pending');
-		expect(result.displayName).toBe("Nikolas's Agent");
+		expect(result.displayName).toBe('usr:nik@example.com');
 		expect(db.insert).toHaveBeenCalled();
 	});
 
@@ -63,7 +63,7 @@ describe('provisionPersonalAgent', () => {
 		const { db } = createMockDb();
 		await provisionPersonalAgent(
 			{ db, tenantId: 't1' },
-			{ userId: 'user-1', userName: 'Nikolas', serverId: 'srv-1' },
+			{ userId: 'user-1', email: 'nik@example.com', serverId: 'srv-1' },
 		);
 		expect(mockAssignAgentToUser).toHaveBeenCalledWith(
 			expect.objectContaining({ db }),
@@ -81,7 +81,7 @@ describe('provisionPersonalAgent', () => {
 			userId: 'user-1',
 			agentId: 'personal-user-1',
 			serverId: 'srv-1',
-			displayName: "Nikolas's Agent",
+			displayName: 'usr:nik@example.com',
 			provisioningStatus: 'pending',
 			personalityConfigured: false,
 			retryCount: 0,
@@ -95,7 +95,7 @@ describe('provisionPersonalAgent', () => {
 		]);
 		const result = await provisionPersonalAgent(
 			{ db, tenantId: 't1' },
-			{ userId: 'user-1', userName: 'Nikolas', serverId: 'srv-1' },
+			{ userId: 'user-1', email: 'nik@example.com', serverId: 'srv-1' },
 		);
 		expect(result).toBeDefined();
 		expect(result.agentId).toBe('personal-user-1');
@@ -105,7 +105,7 @@ describe('provisionPersonalAgent', () => {
 		const { db } = createMockDb();
 		await provisionPersonalAgent(
 			{ db, tenantId: 't1' },
-			{ userId: 'user-1', userName: 'Nikolas', serverId: 'srv-1' },
+			{ userId: 'user-1', email: 'nik@example.com', serverId: 'srv-1' },
 		);
 		expect(db.update).toHaveBeenCalled();
 	});
@@ -184,7 +184,7 @@ describe('ensurePersonalAgentOnLogin', () => {
 			id: 'mock-pa-id-000000000001',
 			userId: 'user-1',
 			agentId: 'personal-user-1',
-			displayName: "Nikolas's Agent",
+			displayName: 'usr:nik@example.com',
 			provisioningStatus: 'pending',
 		};
 		resolveSequence([
@@ -195,13 +195,32 @@ describe('ensurePersonalAgentOnLogin', () => {
 		]);
 		const result = await ensurePersonalAgentOnLogin(
 			{ db, tenantId: 't1' },
-			{ userId: 'user-1', userName: 'Nikolas', serverId: 'srv-1' },
+			{ userId: 'user-1', email: 'nik@example.com', serverId: 'srv-1' },
 		);
 		expect(result).toBeDefined();
 		expect(result.agentId).toBe('personal-user-1');
 	});
 
-	it('returns existing agent if already present', async () => {
+	it('returns existing agent if displayName already matches', async () => {
+		const { db, resolve } = createMockDb();
+		const existingRow = {
+			id: 'pa-1',
+			userId: 'user-1',
+			agentId: 'personal-user-1',
+			displayName: 'usr:nik@example.com',
+			provisioningStatus: 'active',
+		};
+		resolve([existingRow]);
+		const result = await ensurePersonalAgentOnLogin(
+			{ db, tenantId: 't1' },
+			{ userId: 'user-1', email: 'nik@example.com', serverId: 'srv-1' },
+		);
+		expect(result).toEqual(existingRow);
+		// Should NOT have inserted or updated since displayName matches
+		expect(db.insert).not.toHaveBeenCalled();
+	});
+
+	it('backfills stale displayName on login', async () => {
 		const { db, resolve } = createMockDb();
 		const existingRow = {
 			id: 'pa-1',
@@ -213,11 +232,10 @@ describe('ensurePersonalAgentOnLogin', () => {
 		resolve([existingRow]);
 		const result = await ensurePersonalAgentOnLogin(
 			{ db, tenantId: 't1' },
-			{ userId: 'user-1', userName: 'Nikolas', serverId: 'srv-1' },
+			{ userId: 'user-1', email: 'nik@example.com', serverId: 'srv-1' },
 		);
-		expect(result).toEqual(existingRow);
-		// Should NOT have inserted since agent exists
-		expect(db.insert).not.toHaveBeenCalled();
+		expect(result.displayName).toBe('usr:nik@example.com');
+		expect(db.update).toHaveBeenCalled();
 	});
 });
 

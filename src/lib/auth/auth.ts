@@ -79,7 +79,7 @@ export function getAuth() {
 								const tenantCtx = { db, tenantId: 'default' };
 								await provisionPersonalAgent(tenantCtx, {
 									userId: newSession.user.id,
-									userName: newSession.user.name ?? newSession.user.email.split('@')[0],
+									email: newSession.user.email,
 									serverId: '',
 								});
 							} catch (err) {

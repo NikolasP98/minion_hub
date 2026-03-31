@@ -148,7 +148,7 @@ const appHandle: Handle = async ({ event, resolve }) => {
         { db: backfillDb, tenantId: orgId ?? 'default' },
         {
           userId: betterAuthSession.user.id,
-          userName: betterAuthSession.user.name ?? '',
+          email: betterAuthSession.user.email,
           serverId: '',
         },
       ).catch((err) => console.error('[personal-agent] Login backfill failed:', err));

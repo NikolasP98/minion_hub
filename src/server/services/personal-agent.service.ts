@@ -26,18 +26,18 @@ export function derivePersonalAgentId(userId: string): string {
 	return `personal-${userId}`;
 }
 
-export function deriveDisplayName(userName: string): string {
-	return `${userName}'s Agent`;
+export function deriveDisplayName(email: string): string {
+	return `usr:${email}`;
 }
 
 // ── Service Functions ────────────────────────────────────────────────────────
 
 export async function provisionPersonalAgent(
 	ctx: TenantContext,
-	params: { userId: string; userName: string; serverId: string },
+	params: { userId: string; email: string; serverId: string },
 ): Promise<PersonalAgentRow> {
 	const agentId = derivePersonalAgentId(params.userId);
-	const displayName = deriveDisplayName(params.userName);
+	const displayName = deriveDisplayName(params.email);
 	const now = nowMs();
 
 	const row: typeof personalAgents.$inferInsert = {
@@ -132,10 +132,18 @@ export async function updateProvisioningStatus(
 
 export async function ensurePersonalAgentOnLogin(
 	ctx: TenantContext,
-	params: { userId: string; userName: string; serverId: string },
+	params: { userId: string; email: string; serverId: string },
 ): Promise<PersonalAgentRow> {
 	const existing = await getPersonalAgent(ctx, params.userId);
-	if (existing) return existing;
+	if (existing) {
+		// Backfill: update stale displayName format (e.g. "X's Agent" → "usr:X@...")
+		const expected = deriveDisplayName(params.email);
+		if (existing.displayName !== expected) {
+			await updatePersonalAgent(ctx, params.userId, { displayName: expected });
+			return { ...existing, displayName: expected };
+		}
+		return existing;
+	}
 	return provisionPersonalAgent(ctx, params);
 }
 

@@ -621,6 +621,21 @@ function onHelloOk(hello: HelloOk) {
   sendRequest('channels.status', {}).then((r) => { if (r) gw.channels = r; }).catch(() => {});
   sendRequest('cron.list', {}).then((r) => { if (r) gw.cronJobs = (r as { jobs?: never[] })?.jobs ?? []; }).catch(() => {});
 
+  // Sync personal agent displayNames to gateway (cache is volatile, lost on restart)
+  fetch('/api/gateway/personal-agent-configs')
+    .then(r => r.ok ? r.json() : null)
+    .then(data => {
+      if (!data?.configs) return;
+      for (const cfg of data.configs as { agentId: string; displayName: string; avatarUrl?: string | null }[]) {
+        sendRequest('hub.personal-agent.updated', {
+          agentId: cfg.agentId,
+          displayName: cfg.displayName,
+          ...(cfg.avatarUrl ? { avatarUrl: cfg.avatarUrl } : {}),
+        }).catch(() => {});
+      }
+    })
+    .catch(() => {});
+
   // Reload config if it was loaded before disconnect (e.g. after a save that restarted the gateway)
   if (configState.loaded || configState.loading) {
     loadConfig().catch(() => {});
