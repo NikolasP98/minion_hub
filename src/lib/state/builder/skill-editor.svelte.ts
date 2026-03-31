@@ -20,6 +20,31 @@ export interface ChapterEntry {
   positionY: number;
 }
 
+export interface StagedChapter {
+  tempId: string;
+  type: string;
+  name: string;
+  description: string;
+  guide: string;
+  context: string;
+  outputDef: string;
+  conditionText?: string;
+  toolIds: string[];
+  positionX: number;
+  positionY: number;
+}
+
+export interface StagedEdge {
+  fromTempId: string;
+  toTempId: string;
+  label: string | null;
+}
+
+export interface StagedProposal {
+  chapters: StagedChapter[];
+  edges: StagedEdge[];
+}
+
 // ── State ────────────────────────────────────────────────────────────
 
 export const skillEditorState = $state({
@@ -45,6 +70,8 @@ export const skillEditorState = $state({
   // AI state
   aiBuilding: false,
   aiBuildError: null as string | null,
+  stagedProposal: null as StagedProposal | null,
+  suggestedToolMap: {} as Record<string, string[]>,
 
   // Publish state
   publishing: false,
@@ -283,117 +310,155 @@ export async function buildSkillWithAI() {
       throw new Error('AI returned no chapters');
     }
 
-    // Create all chapters via API and collect their real IDs
-    const chapterIdMap: string[] = []; // index → real ID
-    const newChapters: ChapterEntry[] = [];
-    const newToolMap: Record<string, string[]> = { ...skillEditorState.chapterToolMap };
+    // Stage the proposal instead of committing immediately (AI-03)
+    const stagedChapters: StagedChapter[] = data.chapters.map((ch: Record<string, unknown>, i: number) => ({
+      tempId: `staged-${i}-${Date.now()}`,
+      type: (ch.type as string) ?? 'chapter',
+      name: ch.name as string,
+      description: (ch.description as string) ?? '',
+      guide: (ch.guide as string) ?? '',
+      context: (ch.context as string) ?? '',
+      outputDef: (ch.outputDef as string) ?? '',
+      conditionText: (ch.conditionText as string) ?? '',
+      toolIds: ((ch.toolIds as string[]) ?? []).filter((t: string) => _allToolIds.includes(t)),
+      positionX: (ch.positionX as number) ?? 300,
+      positionY: (ch.positionY as number) ?? (i * 180),
+    }));
 
-    for (const ch of data.chapters) {
-      const createRes = await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'add-chapter',
-          name: ch.name,
-          type: ch.type ?? 'chapter',
-          conditionText: ch.conditionText ?? '',
-          positionX: ch.positionX ?? 300,
-          positionY: ch.positionY ?? 0,
-        }),
-      });
+    const stagedEdges: StagedEdge[] = (data.edges ?? [])
+      .filter((e: { from: number; to: number }) => e.from >= 0 && e.to >= 0 && e.from < stagedChapters.length && e.to < stagedChapters.length)
+      .map((e: { from: number; to: number; label?: string | null }) => ({
+        fromTempId: stagedChapters[e.from].tempId,
+        toTempId: stagedChapters[e.to].tempId,
+        label: e.label ?? null,
+      }));
 
-      if (!createRes.ok) continue;
-      const { id } = await createRes.json();
-      chapterIdMap.push(id);
-
-      newChapters.push({
-        id,
-        type: ch.type ?? 'chapter',
-        name: ch.name,
-        description: ch.description ?? '',
-        guide: ch.guide ?? '',
-        context: ch.context ?? '',
-        outputDef: ch.outputDef ?? '',
-        conditionText: ch.conditionText ?? '',
-        positionX: ch.positionX ?? 300,
-        positionY: ch.positionY ?? 0,
-      });
-
-      // Set chapter tools if provided
-      const toolIds = (ch.toolIds ?? []).filter((t: string) => _allToolIds.includes(t));
-      if (toolIds.length > 0) {
-        await fetch(`/api/builder/skills/${skillEditorState.skillId}/chapter-tools/${id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ toolIds }),
-        });
-      }
-      newToolMap[id] = toolIds;
-
-      // Save chapter metadata (guide, context, outputDef)
-      if (ch.guide || ch.context || ch.outputDef || ch.description) {
-        await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'update-chapter',
-            chapterId: id,
-            data: {
-              description: ch.description ?? '',
-              guide: ch.guide ?? '',
-              context: ch.context ?? '',
-              outputDef: ch.outputDef ?? '',
-              conditionText: ch.conditionText ?? '',
-            },
-          }),
-        });
-      }
-    }
-
-    // Create edges
-    const newEdges: typeof skillEditorState.chapterEdges = [];
-    for (const edge of data.edges ?? []) {
-      const srcId = chapterIdMap[edge.from];
-      const tgtId = chapterIdMap[edge.to];
-      if (!srcId || !tgtId) continue;
-
-      const edgeRes = await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'add-edge',
-          sourceChapterId: srcId,
-          targetChapterId: tgtId,
-          label: edge.label ?? null,
-        }),
-      });
-
-      if (edgeRes.ok) {
-        const { id } = await edgeRes.json();
-        newEdges.push({
-          id,
-          sourceChapterId: srcId,
-          targetChapterId: tgtId,
-          label: edge.label ?? null,
-        });
-      }
-    }
-
-    // Update local state
-    skillEditorState.chapters = [...skillEditorState.chapters, ...newChapters];
-    skillEditorState.chapterEdges = [...skillEditorState.chapterEdges, ...newEdges];
-    skillEditorState.chapterToolMap = newToolMap;
-    posthog.capture('skill_ai_generated', {
-      skill_id: skillEditorState.skillId,
-      skill_name: skillEditorState.name,
-      chapters_count: newChapters.length,
-    });
+    skillEditorState.stagedProposal = { chapters: stagedChapters, edges: stagedEdges };
   } catch (e) {
     skillEditorState.aiBuildError = e instanceof Error ? e.message : 'Failed to build skill';
     console.error('[skill-editor] AI build failed:', e);
   } finally {
     skillEditorState.aiBuilding = false;
   }
+}
+
+// ── Staged proposal accept/reject (AI-03) ────────────────────────────
+
+const _tempToRealId = new Map<string, string>();
+
+async function commitStagedChapter(ch: StagedChapter): Promise<string | null> {
+  try {
+    const createRes = await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'add-chapter',
+        name: ch.name,
+        type: ch.type,
+        conditionText: ch.conditionText ?? '',
+        positionX: ch.positionX,
+        positionY: ch.positionY,
+      }),
+    });
+    if (!createRes.ok) return null;
+    const { id } = await createRes.json();
+
+    // Save metadata
+    await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'update-chapter',
+        chapterId: id,
+        data: { description: ch.description, guide: ch.guide, context: ch.context, outputDef: ch.outputDef, conditionText: ch.conditionText ?? '' },
+      }),
+    });
+
+    // Save tools
+    if (ch.toolIds.length > 0) {
+      await fetch(`/api/builder/skills/${skillEditorState.skillId}/chapter-tools/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ toolIds: ch.toolIds }),
+      });
+    }
+
+    // Update local state
+    skillEditorState.chapters = [...skillEditorState.chapters, {
+      id, type: ch.type, name: ch.name, description: ch.description, guide: ch.guide,
+      context: ch.context, outputDef: ch.outputDef, conditionText: ch.conditionText,
+      positionX: ch.positionX, positionY: ch.positionY,
+    }];
+    skillEditorState.chapterToolMap = { ...skillEditorState.chapterToolMap, [id]: ch.toolIds };
+    if (ch.toolIds.length > 0) {
+      skillEditorState.suggestedToolMap = { ...skillEditorState.suggestedToolMap, [id]: ch.toolIds };
+    }
+    _tempToRealId.set(ch.tempId, id);
+    return id;
+  } catch { return null; }
+}
+
+export async function acceptProposedChapter(tempId: string) {
+  const proposal = skillEditorState.stagedProposal;
+  if (!proposal) return;
+  const ch = proposal.chapters.find(c => c.tempId === tempId);
+  if (!ch) return;
+
+  const realId = await commitStagedChapter(ch);
+  if (!realId) return;
+
+  // Create edges where both ends are accepted
+  for (const edge of proposal.edges) {
+    const srcReal = edge.fromTempId === tempId ? realId : _tempToRealId.get(edge.fromTempId);
+    const tgtReal = edge.toTempId === tempId ? realId : _tempToRealId.get(edge.toTempId);
+    if (srcReal && tgtReal) {
+      await connectChapters(srcReal, tgtReal, edge.label ?? undefined);
+    }
+  }
+
+  // Remove from staged
+  const remaining = proposal.chapters.filter(c => c.tempId !== tempId);
+  skillEditorState.stagedProposal = remaining.length > 0
+    ? { chapters: remaining, edges: proposal.edges.filter(e => e.fromTempId !== tempId && e.toTempId !== tempId) }
+    : null;
+}
+
+export async function rejectProposedChapter(tempId: string) {
+  const proposal = skillEditorState.stagedProposal;
+  if (!proposal) return;
+  const remaining = proposal.chapters.filter(c => c.tempId !== tempId);
+  skillEditorState.stagedProposal = remaining.length > 0
+    ? { chapters: remaining, edges: proposal.edges.filter(e => e.fromTempId !== tempId && e.toTempId !== tempId) }
+    : null;
+}
+
+export async function acceptAllProposed() {
+  const proposal = skillEditorState.stagedProposal;
+  if (!proposal) return;
+
+  for (const ch of proposal.chapters) {
+    await commitStagedChapter(ch);
+  }
+
+  // Create all edges after all chapters are committed
+  for (const edge of proposal.edges) {
+    const srcReal = _tempToRealId.get(edge.fromTempId);
+    const tgtReal = _tempToRealId.get(edge.toTempId);
+    if (srcReal && tgtReal) {
+      await connectChapters(srcReal, tgtReal, edge.label ?? undefined);
+    }
+  }
+
+  skillEditorState.stagedProposal = null;
+  posthog.capture('skill_ai_generated', {
+    skill_id: skillEditorState.skillId,
+    skill_name: skillEditorState.name,
+    chapters_count: proposal.chapters.length,
+  });
+}
+
+export function rejectAllProposed() {
+  skillEditorState.stagedProposal = null;
 }
 
 export async function addCondition() {
@@ -683,4 +748,6 @@ export function cleanupSkillEditor() {
   skillEditorState.showValidation = false;
   skillEditorState.publishAnyway = false;
   skillEditorState.aiBuildError = null;
+  skillEditorState.stagedProposal = null;
+  skillEditorState.suggestedToolMap = {};
 }

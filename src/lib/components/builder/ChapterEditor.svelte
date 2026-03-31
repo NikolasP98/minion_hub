@@ -38,6 +38,7 @@
         chapter: ChapterData;
         availableToolIds: string[];
         chapterToolIds: string[];
+        suggestedToolIds?: string[];
         skillName: string;
         skillDescription: string;
         onSave: (data: {
@@ -55,6 +56,7 @@
         chapter,
         availableToolIds,
         chapterToolIds,
+        suggestedToolIds = [],
         skillName,
         skillDescription,
         onSave,
@@ -367,10 +369,14 @@
                     {#each availableToolIds as toolId (toolId)}
                         {@const tool = getToolInfo(toolId)}
                         {@const checked = selectedToolIds.includes(toolId)}
-                        <label class="tool-chip" class:checked>
+                        {@const isSuggested = !checked && suggestedToolIds.includes(toolId)}
+                        <label class="tool-chip" class:checked class:suggested={isSuggested}>
                             <input type="checkbox" {checked} onchange={() => toggleTool(toolId)} />
                             <span class="tool-icon">{tool.icon}</span>
                             <span class="tool-name">{tool.name}</span>
+                            {#if isSuggested}
+                                <Sparkles size={10} class="suggested-sparkle" />
+                            {/if}
                         </label>
                     {/each}
                 </div>
@@ -751,6 +757,12 @@
         font-weight: 500;
     }
     .tool-chip:not(.checked) .tool-name { color: var(--color-muted); }
+    .tool-chip.suggested {
+        border-color: color-mix(in srgb, var(--color-accent) 30%, var(--color-border));
+        background: color-mix(in srgb, var(--color-accent) 4%, var(--color-bg2));
+        border-style: dashed;
+    }
+    :global(.suggested-sparkle) { color: var(--color-accent); opacity: 0.7; }
 
     /* ── Advanced toggle ─────────────────────────────────────────────────── */
     .advanced-toggle {
