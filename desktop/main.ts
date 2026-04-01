@@ -13,6 +13,7 @@ const win = new BrowserWindow({
   title: 'Minion Hub',
   url: `http://127.0.0.1:${PORT}`,
   frame: { width: 1400, height: 900 },
+  partition: 'persist:minionhub',
 });
 
 ApplicationMenu.setApplicationMenu([
