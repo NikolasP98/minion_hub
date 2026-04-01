@@ -22,6 +22,6 @@ export default {
     },
   },
   scripts: {
-    postBuild: './desktop/postbuild.sh',
+    postBuild: './desktop/postbuild.ts',
   },
 } satisfies ElectrobunConfig;
