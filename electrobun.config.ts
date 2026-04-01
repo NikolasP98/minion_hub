@@ -18,6 +18,7 @@ export default {
       defaultRenderer: 'cef',
       chromiumFlags: {
         'no-sandbox': true,
+        'password-store': 'basic',
       },
     },
   },
