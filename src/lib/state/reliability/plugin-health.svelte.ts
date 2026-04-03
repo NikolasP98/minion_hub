@@ -2,9 +2,11 @@
  * State module for plugin health data.
  *
  * Fetches reliability events related to plugin loading (plugin_load_success,
- * plugin_load_failure, plugins_loaded_summary) and presents them as a
- * structured view for the PluginHealthPanel.
+ * plugin_load_failure, plugins_loaded_summary) via the gateway WebSocket and
+ * presents them as a structured view for the PluginHealthPanel.
  */
+
+import { sendRequest } from '$lib/services/gateway.svelte';
 
 export interface PluginEntry {
   pluginId: string;
@@ -37,23 +39,23 @@ export function createPluginHealthState() {
   let loading = $state(true);
   let error = $state<string | null>(null);
 
-  async function load(serverId: string) {
+  async function load(_serverId: string) {
     loading = true;
     error = null;
     try {
-      // Fetch recent gateway-category events (last 24h, generous window)
-      const from = Date.now() - 24 * 60 * 60 * 1000;
-      const res = await globalThis.fetch(
-        `/api/reliability/events?serverId=${encodeURIComponent(serverId)}&category=gateway&from=${from}&limit=200`,
-      );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const events: Array<{
+      // Fetch recent gateway-category events via WS (last 24h, generous window)
+      const since = Date.now() - 24 * 60 * 60 * 1000;
+      const data = await sendRequest('reliability.events', {
+        category: 'gateway',
+        since,
+        limit: 200,
+      }) as { events?: Array<{
         event: string;
         message: string;
         metadata?: Record<string, unknown>;
         timestamp: number;
-      }> = data.events ?? [];
+      }> } | null;
+      const events = data?.events ?? [];
 
       // Find the latest summary event (= latest gateway boot)
       const summaryEvents = events.filter((e) => e.event === 'plugins_loaded_summary');

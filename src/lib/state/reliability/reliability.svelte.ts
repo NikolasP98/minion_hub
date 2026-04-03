@@ -53,7 +53,14 @@ export function pushReliabilityEvent(event: ReliabilityEvent) {
 }
 
 /**
+ * Max events to request per page.  Keeps WS frames under ~1MB.
+ */
+const PAGE_SIZE = 2000;
+
+/**
  * Load reliability summary from the gateway via WebSocket request.
+ * The summary is computed server-side via SQL aggregation — lightweight
+ * regardless of how many events exist.
  */
 export async function loadReliabilitySummary(_serverId: string, from?: number, _to?: number) {
   reliability.loading = true;
@@ -79,6 +86,7 @@ export async function loadReliabilitySummary(_serverId: string, from?: number, _
 
 /**
  * Load reliability events from the gateway via WebSocket request.
+ * Fetches in pages of PAGE_SIZE to keep WS frames small.
  */
 export async function loadReliabilityEvents(
   _serverId: string,
@@ -86,12 +94,16 @@ export async function loadReliabilityEvents(
 ) {
   reliability.loading = true;
   try {
-    const params: Record<string, unknown> = {};
+    const params: Record<string, unknown> = { limit: PAGE_SIZE };
     if (opts?.category) params.category = opts.category;
     if (opts?.from) params.since = opts.from;
-    if (opts?.limit) params.limit = opts.limit;
 
-    const data = await sendRequest('reliability.events', params) as { events?: ReliabilityEvent[] } | null;
+    const data = await sendRequest('reliability.events', params) as {
+      events?: ReliabilityEvent[];
+      total?: number;
+      limit?: number;
+    } | null;
+
     reliability.events = (data?.events ?? []).map((ev) => ({
       ...ev,
       timestamp: ev.timestamp ?? (ev as any).occurredAt,
