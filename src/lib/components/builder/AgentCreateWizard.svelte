@@ -50,26 +50,32 @@
     let skillsLoading = $state(false);
     let toolsLoading = $state(false);
 
-    // ── Popover state ──────────────────────────────────────────────────────
+    // ── Tooltip state (cursor-following) ────────────────────────────────────
     let hoveredItem = $state<{ type: 'skill' | 'built-skill' | 'tool'; id: string } | null>(null);
-    let popoverEl = $state<HTMLDivElement | null>(null);
-    let popoverPos = $state({ x: 0, y: 0 });
+    let tooltipPos = $state({ x: 0, y: 0 });
+    let tooltipVisible = $state(false);
     let hoverTimeout: ReturnType<typeof setTimeout> | null = null;
+    let showTimeout: ReturnType<typeof setTimeout> | null = null;
 
     function showPopover(type: 'skill' | 'built-skill' | 'tool', id: string, e: MouseEvent) {
         if (hoverTimeout) clearTimeout(hoverTimeout);
-        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-        const modalEl = (e.currentTarget as HTMLElement).closest('.modal');
-        const modalRect = modalEl?.getBoundingClientRect() ?? { left: 0, top: 0 };
-        popoverPos = {
-            x: rect.left - modalRect.left + rect.width / 2,
-            y: rect.top - modalRect.top - 4,
-        };
         hoveredItem = { type, id };
+        tooltipPos = { x: e.clientX, y: e.clientY };
+        // Small delay before showing to avoid flicker on fast mouse moves
+        if (showTimeout) clearTimeout(showTimeout);
+        showTimeout = setTimeout(() => { tooltipVisible = true; }, 80);
+    }
+
+    function trackCursor(e: MouseEvent) {
+        if (hoveredItem) {
+            tooltipPos = { x: e.clientX, y: e.clientY };
+        }
     }
 
     function hidePopover() {
-        hoverTimeout = setTimeout(() => { hoveredItem = null; }, 120);
+        if (showTimeout) clearTimeout(showTimeout);
+        tooltipVisible = false;
+        hoverTimeout = setTimeout(() => { hoveredItem = null; }, 150);
     }
 
     // ── Models ──────────────────────────────────────────────────────────────
@@ -426,7 +432,7 @@
                             itemToString={(m) => m.name}
                             bind:value={model}
                             label="Model"
-                            placeholder="Search models\u2026"
+                            placeholder="Search models…"
                         >
                             {#snippet item({ item: m, selected, itemTextProps })}
                                 <span
@@ -468,6 +474,7 @@
                                             class:selected
                                             onclick={() => toggleBuiltSkill(skill.id)}
                                             onmouseenter={(e) => showPopover('built-skill', skill.id, e)}
+                                            onmousemove={trackCursor}
                                             onmouseleave={hidePopover}
                                             aria-label={skill.name}
                                         >
@@ -495,6 +502,7 @@
                                             class:icon-disabled={skill.disabled}
                                             onclick={() => toggleGatewaySkill(skill.skillKey)}
                                             onmouseenter={(e) => showPopover('skill', skill.skillKey, e)}
+                                            onmousemove={trackCursor}
                                             onmouseleave={hidePopover}
                                             aria-label={skill.name}
                                         >
@@ -517,6 +525,7 @@
                                             class="icon-btn icon-ineligible"
                                             disabled
                                             onmouseenter={(e) => showPopover('skill', skill.skillKey, e)}
+                                            onmousemove={trackCursor}
                                             onmouseleave={hidePopover}
                                             aria-label="{skill.name} (unavailable)"
                                         >
@@ -544,6 +553,7 @@
                                                 class:selected
                                                 onclick={() => toggleTool(tool.id)}
                                                 onmouseenter={(e) => showPopover('tool', tool.id, e)}
+                                                onmousemove={trackCursor}
                                                 onmouseleave={hidePopover}
                                                 aria-label={tool.id}
                                             >
@@ -579,23 +589,22 @@
                         </div>
                     </div>
 
-                    <!-- Popover -->
-                    {#if hoveredItem && popoverData}
+                    <!-- Cursor-following tooltip -->
+                    {#if hoveredItem && popoverData && tooltipVisible}
                         <div
-                            class="popover"
-                            bind:this={popoverEl}
-                            style="left: {popoverPos.x}px; top: {popoverPos.y}px;"
+                            class="cursor-tooltip"
+                            style="left: {tooltipPos.x}px; top: {tooltipPos.y}px;"
                         >
-                            <div class="popover-inner">
+                            <div class="tooltip-inner">
                                 {#if popoverData.emoji}
-                                    <span class="popover-emoji">{popoverData.emoji}</span>
+                                    <span class="tooltip-emoji">{popoverData.emoji}</span>
                                 {/if}
-                                <span class="popover-name">{popoverData.name}</span>
+                                <span class="tooltip-name">{popoverData.name}</span>
                                 {#if popoverData.desc}
-                                    <span class="popover-desc">{popoverData.desc}</span>
+                                    <span class="tooltip-desc">{popoverData.desc}</span>
                                 {/if}
                                 {#if popoverData.badge}
-                                    <span class="popover-badge">{popoverData.badge}</span>
+                                    <span class="tooltip-badge">{popoverData.badge}</span>
                                 {/if}
                             </div>
                         </div>
@@ -813,6 +822,8 @@
         overflow-y: auto;
         padding: 20px;
         min-height: 0;
+        position: relative;
+        z-index: 1;
     }
 
     .step-content-area > [data-state="closed"] {
@@ -1042,26 +1053,27 @@
     }
 
     /* ── Popover ─────────────────────────────────────────────────────────── */
-    .popover {
-        position: absolute;
-        z-index: 10;
-        transform: translate(-50%, -100%);
+    .cursor-tooltip {
+        position: fixed;
+        z-index: 9999;
+        transform: translate(12px, -50%);
         pointer-events: none;
-        animation: popover-inflate 0.18s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        animation: tooltip-in 0.2s cubic-bezier(0.34, 1.4, 0.64, 1) forwards;
+        transition: left 0.08s ease-out, top 0.08s ease-out;
     }
 
-    @keyframes popover-inflate {
+    @keyframes tooltip-in {
         from {
             opacity: 0;
-            transform: translate(-50%, -100%) scale(0.85);
+            transform: translate(12px, -50%) scale(0.9) translateY(4px);
         }
         to {
             opacity: 1;
-            transform: translate(-50%, -100%) scale(1);
+            transform: translate(12px, -50%) scale(1) translateY(0);
         }
     }
 
-    .popover-inner {
+    .tooltip-inner {
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -1070,24 +1082,25 @@
         border: 1px solid var(--color-border);
         border-radius: 8px;
         padding: 8px 12px;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+        backdrop-filter: blur(12px);
         max-width: 220px;
         text-align: center;
     }
 
-    .popover-emoji {
+    .tooltip-emoji {
         font-size: 18px;
         line-height: 1;
     }
 
-    .popover-name {
+    .tooltip-name {
         font-size: 12px;
         font-weight: 700;
         color: var(--color-foreground);
         line-height: 1.2;
     }
 
-    .popover-desc {
+    .tooltip-desc {
         font-size: 10px;
         color: var(--color-muted);
         line-height: 1.3;
@@ -1097,7 +1110,7 @@
         overflow: hidden;
     }
 
-    .popover-badge {
+    .tooltip-badge {
         font-size: 9px;
         font-weight: 600;
         color: var(--color-accent);
@@ -1158,6 +1171,8 @@
         padding: 12px 20px;
         border-top: 1px solid var(--color-border);
         flex-shrink: 0;
+        position: relative;
+        z-index: 0;
     }
 
     .footer-left,

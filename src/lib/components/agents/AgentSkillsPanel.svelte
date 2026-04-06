@@ -1,6 +1,7 @@
 <script lang="ts">
   import { agentSkillsState, loadAgentSkills, setAgentSkills } from '$lib/state/agents/agent-skills.svelte';
   import type { SkillStatusEntry } from '$lib/types/skills';
+  import ToggleSwitch from '../config/ToggleSwitch.svelte';
   import * as m from '$lib/paraglide/messages';
 
   let { agentId }: { agentId: string } = $props();
@@ -9,109 +10,137 @@
     loadAgentSkills(agentId);
   });
 
-  let enabledSkills = $derived(agentSkillsState.skills.filter((s) => s.agentEnabled && !s.disabled));
-  let disabledSkills = $derived(agentSkillsState.skills.filter((s) => !s.agentEnabled || s.disabled));
+  let searchQuery = $state('');
+  let filter = $state<'all' | 'enabled' | 'disabled'>('all');
+  let missingBannerExpanded = $state(false);
 
-  let dragOverZone = $state<'enabled' | 'disabled' | null>(null);
-  let draggedSkillKey = $state<string | null>(null);
-  let tooltipOpen = $state(false);
+  const enabledSkills = $derived(agentSkillsState.skills.filter((s) => s.agentEnabled && !s.disabled));
+  const disabledSkills = $derived(agentSkillsState.skills.filter((s) => !s.agentEnabled || s.disabled));
 
-  function onDragStart(e: DragEvent, skill: SkillStatusEntry) {
-    if (skill.always) {
-      e.preventDefault();
-      return;
+  /** Skills with unmet dependencies */
+  const skillsWithMissing = $derived(
+    agentSkillsState.skills.filter(
+      (s) => (s.missing?.bins?.length ?? 0) > 0 || (s.missing?.env?.length ?? 0) > 0,
+    ),
+  );
+
+  /** Filtered + searched skills list */
+  const visibleSkills = $derived.by(() => {
+    let list = agentSkillsState.skills;
+
+    // Apply filter tab
+    if (filter === 'enabled') list = enabledSkills;
+    else if (filter === 'disabled') list = disabledSkills;
+
+    // Apply search
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(
+        (s) =>
+          s.name.toLowerCase().includes(q) ||
+          (s.description ?? '').toLowerCase().includes(q) ||
+          s.skillKey.toLowerCase().includes(q),
+      );
     }
-    draggedSkillKey = skill.skillKey;
-    e.dataTransfer!.effectAllowed = 'move';
-    e.dataTransfer!.setData(
-      'text/plain',
-      JSON.stringify({ skillKey: skill.skillKey, enabled: skill.agentEnabled && !skill.disabled }),
-    );
-  }
 
-  function onDragOver(e: DragEvent, zone: 'enabled' | 'disabled') {
-    e.preventDefault();
-    e.dataTransfer!.dropEffect = 'move';
-    dragOverZone = zone;
-  }
+    return list;
+  });
 
-  function onDragLeave() {
-    dragOverZone = null;
-  }
+  function toggleSkill(skill: SkillStatusEntry, enabled: boolean) {
+    const currentEnabled = agentSkillsState.skills
+      .filter((s) => s.agentEnabled && !s.disabled)
+      .map((s) => s.skillKey);
 
-  function onDrop(e: DragEvent, targetEnabled: boolean) {
-    e.preventDefault();
-    dragOverZone = null;
-    draggedSkillKey = null;
-    try {
-      const data = JSON.parse(e.dataTransfer!.getData('text/plain'));
-      const wasEnabled = data.enabled;
-      if (wasEnabled !== targetEnabled) {
-        const currentEnabled = agentSkillsState.skills
-          .filter((s) => s.agentEnabled && !s.disabled)
-          .map((s) => s.skillKey);
-        let next: string[];
-        if (targetEnabled) {
-          next = [...currentEnabled, data.skillKey];
-        } else {
-          next = currentEnabled.filter((k: string) => k !== data.skillKey);
-        }
-        setAgentSkills(agentId, next.length > 0 ? next : null);
-      }
-    } catch {}
-  }
-
-  function onDragEnd() {
-    dragOverZone = null;
-    draggedSkillKey = null;
+    let next: string[];
+    if (enabled) {
+      next = [...currentEnabled, skill.skillKey];
+    } else {
+      next = currentEnabled.filter((k) => k !== skill.skillKey);
+    }
+    setAgentSkills(agentId, next.length > 0 ? next : null);
   }
 </script>
 
-<div class="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
+<div class="flex-1 min-h-0 flex flex-col">
   <!-- Header -->
-  <div class="flex items-center justify-between">
+  <div class="flex items-center justify-between mb-2">
     <div class="flex items-center gap-2">
       <h2 class="text-sm font-semibold text-foreground">{m.skills_title()}</h2>
-      <div class="relative">
+      <span class="text-[10px] text-muted-foreground">
+        {enabledSkills.length}/{agentSkillsState.skills.length} enabled
+      </span>
+    </div>
+    <button
+      class="text-[10px] px-2.5 py-1 rounded border border-border bg-bg3 text-muted-foreground
+        hover:border-accent/50 hover:text-foreground transition-colors"
+      disabled={agentSkillsState.loading}
+      onclick={() => loadAgentSkills(agentId)}
+    >
+      {agentSkillsState.loading ? m.skills_loading() : m.skills_refresh()}
+    </button>
+  </div>
+
+  <p class="text-[10px] text-muted-foreground mb-3">{m.skills_description()}</p>
+
+  <!-- Search + filter -->
+  <div class="flex items-center gap-2 mb-3">
+    <input
+      type="text"
+      bind:value={searchQuery}
+      placeholder="Search skills…"
+      class="flex-1 bg-bg3 border border-border rounded-md text-[11px] text-foreground
+        px-2.5 py-1.5 outline-none placeholder:text-muted-foreground/40
+        focus:border-accent/50 transition-colors"
+    />
+    <div class="flex rounded-md border border-border overflow-hidden shrink-0">
+      {#each ['all', 'enabled', 'disabled'] as tab (tab)}
+        {@const count = tab === 'all' ? agentSkillsState.skills.length : tab === 'enabled' ? enabledSkills.length : disabledSkills.length}
         <button
           type="button"
-          class="w-4 h-4 rounded-full border border-border text-[9px] text-muted-foreground
-            hover:border-accent/50 hover:text-foreground transition-colors cursor-help
-            flex items-center justify-center"
-          onclick={() => (tooltipOpen = !tooltipOpen)}
-          onmouseenter={() => (tooltipOpen = true)}
-          onmouseleave={() => (tooltipOpen = false)}
+          class="text-[10px] px-2 py-1 border-none cursor-pointer transition-colors capitalize
+            {filter === tab
+              ? 'bg-accent/15 text-accent font-medium'
+              : 'bg-transparent text-muted-foreground hover:text-foreground hover:bg-bg3'}"
+          onclick={() => (filter = tab as typeof filter)}
         >
-          ?
+          {tab}
+          <span class="text-[9px] opacity-60 ml-0.5">{count}</span>
         </button>
-        {#if tooltipOpen}
-          <div
-            class="absolute left-6 top-0 z-50 w-64 rounded-lg border border-border bg-bg2
-              shadow-lg px-3 py-2.5 text-[10px] text-muted-foreground leading-relaxed whitespace-pre-line"
-          >
-            {m.skills_tooltip()}
-          </div>
-        {/if}
-      </div>
-    </div>
-    <div class="flex items-center gap-2">
-      {#if agentSkillsState.skills.length > 0}
-        <span class="text-[10px] text-muted-foreground">
-          {enabledSkills.length}/{agentSkillsState.skills.length} enabled
-        </span>
-      {/if}
-      <button
-        class="text-[10px] px-2.5 py-1 rounded border border-border bg-bg3 text-muted-foreground
-          hover:border-accent/50 hover:text-foreground transition-colors"
-        disabled={agentSkillsState.loading}
-        onclick={() => loadAgentSkills(agentId)}
-      >
-        {agentSkillsState.loading ? m.skills_loading() : m.skills_refresh()}
-      </button>
+      {/each}
     </div>
   </div>
 
-  <p class="text-[10px] text-muted-foreground -mt-1">{m.skills_description()}</p>
+  <!-- Missing deps banner -->
+  {#if skillsWithMissing.length > 0}
+    <div class="mb-3 rounded-md border border-yellow-500/20 bg-yellow-500/5 px-3 py-2">
+      <button
+        type="button"
+        class="w-full text-left flex items-center gap-2 bg-transparent border-none cursor-pointer p-0"
+        onclick={() => (missingBannerExpanded = !missingBannerExpanded)}
+      >
+        <span class="text-[10px] text-yellow-400">
+          {skillsWithMissing.length === 1
+            ? '1 skill has unmet dependencies'
+            : `${skillsWithMissing.length} skills have unmet dependencies`}
+        </span>
+        <span class="text-[9px] text-yellow-400/60 ml-auto">
+          {missingBannerExpanded ? '▾' : '▸'}
+        </span>
+      </button>
+      {#if missingBannerExpanded}
+        <div class="mt-2 space-y-1">
+          {#each skillsWithMissing as skill (skill.skillKey)}
+            <div class="text-[9px] text-muted-foreground flex items-center gap-1.5">
+              <span class="text-foreground/70">{skill.name}:</span>
+              <span class="text-yellow-400/70">
+                {[...(skill.missing?.bins ?? []), ...(skill.missing?.env ?? [])].join(', ')}
+              </span>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </div>
+  {/if}
 
   {#if agentSkillsState.loading && agentSkillsState.skills.length === 0}
     <div class="flex items-center justify-center py-8">
@@ -125,109 +154,67 @@
   {:else if agentSkillsState.skills.length === 0}
     <div class="text-[11px] text-muted-foreground py-4">{m.skills_noSkills()}</div>
   {:else}
-    <div class="grid grid-cols-2 gap-3">
-      <!-- Enabled zone -->
-      <div
-        class="rounded-lg border overflow-hidden transition-colors
-          {dragOverZone === 'enabled'
-          ? 'border-green-400/60 bg-green-500/10'
-          : 'border-green-500/20 bg-green-500/5'}"
-        role="list"
-        ondragover={(e) => onDragOver(e, 'enabled')}
-        ondragleave={onDragLeave}
-        ondrop={(e) => onDrop(e, true)}
-      >
-        <div class="px-3 py-2 border-b border-green-500/20 flex items-center justify-between">
-          <span class="text-[11px] font-semibold text-green-400 uppercase tracking-wider">
-            {m.skills_enabled()}
-          </span>
-          <span class="text-[10px] text-green-400/70">{enabledSkills.length}</span>
-        </div>
-        <div class="max-h-[500px] overflow-y-auto p-1">
-          {#each enabledSkills as skill (skill.skillKey)}
-            {@render skillItem(skill)}
-          {/each}
-          {#if enabledSkills.length === 0}
-            <div class="text-[10px] text-muted-foreground/50 text-center py-4">
-              Drop skills here to enable
-            </div>
-          {/if}
-        </div>
-      </div>
+    <!-- Skills toggle list -->
+    <div class="flex-1 overflow-y-auto -mx-1">
+      {#each visibleSkills as skill (skill.skillKey)}
+        {@const isEnabled = skill.agentEnabled && !skill.disabled}
+        {@const hasMissing = (skill.missing?.bins?.length ?? 0) > 0 || (skill.missing?.env?.length ?? 0) > 0}
+        <div
+          class="flex items-center gap-2.5 px-3 py-1.5 rounded-md transition-colors group
+            hover:bg-white/[0.03]"
+          title={skill.description ?? ''}
+        >
+          <!-- Toggle -->
+          <div class="shrink-0">
+            {#if skill.always}
+              <ToggleSwitch checked={true} id="skill-{skill.skillKey}" />
+            {:else}
+              <ToggleSwitch
+                checked={isEnabled}
+                id="skill-{skill.skillKey}"
+                onchange={(checked) => toggleSkill(skill, checked)}
+              />
+            {/if}
+          </div>
 
-      <!-- Disabled zone -->
-      <div
-        class="rounded-lg border overflow-hidden transition-colors
-          {dragOverZone === 'disabled'
-          ? 'border-muted-foreground/40 bg-bg3'
-          : 'border-border bg-bg2'}"
-        role="list"
-        ondragover={(e) => onDragOver(e, 'disabled')}
-        ondragleave={onDragLeave}
-        ondrop={(e) => onDrop(e, false)}
-      >
-        <div class="px-3 py-2 border-b border-border flex items-center justify-between">
-          <span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-            {m.skills_disabled()}
-          </span>
-          <span class="text-[10px] text-muted-foreground/70">{disabledSkills.length}</span>
-        </div>
-        <div class="max-h-[500px] overflow-y-auto p-1 opacity-60">
-          {#each disabledSkills as skill (skill.skillKey)}
-            {@render skillItem(skill)}
-          {/each}
-          {#if disabledSkills.length === 0}
-            <div class="text-[10px] text-muted-foreground/50 text-center py-4">
-              Drop skills here to disable
-            </div>
+          <!-- Emoji -->
+          {#if skill.emoji}
+            <span class="text-sm shrink-0">{skill.emoji}</span>
           {/if}
+
+          <!-- Name + badges -->
+          <div class="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap">
+            <span
+              class="text-[11px] font-medium truncate
+                {isEnabled ? 'text-foreground' : 'text-muted-foreground'}"
+            >
+              {skill.name}
+            </span>
+            {#if skill.bundled}
+              <span class="shrink-0 bg-accent/15 border border-accent/25 rounded-full px-1.5 text-[8px] text-accent leading-relaxed">
+                bundled
+              </span>
+            {/if}
+            {#if skill.always}
+              <span class="shrink-0 bg-yellow-500/15 border border-yellow-500/25 rounded-full px-1.5 text-[8px] text-yellow-400 leading-relaxed">
+                always
+              </span>
+            {/if}
+            {#if hasMissing}
+              <span
+                class="shrink-0 text-[10px] text-yellow-400/70"
+                title="Missing: {[...(skill.missing?.bins ?? []), ...(skill.missing?.env ?? [])].join(', ')}"
+              >!</span>
+            {/if}
+          </div>
         </div>
-      </div>
+      {/each}
+
+      {#if visibleSkills.length === 0 && searchQuery.trim()}
+        <div class="text-[11px] text-muted-foreground/50 text-center py-6">
+          No skills matching "{searchQuery}"
+        </div>
+      {/if}
     </div>
   {/if}
 </div>
-
-{#snippet skillItem(skill: SkillStatusEntry)}
-  <div
-    draggable={!skill.always}
-    ondragstart={(e) => onDragStart(e, skill)}
-    ondragend={onDragEnd}
-    class="flex items-start gap-1.5 px-2 py-1.5 rounded-md transition-colors group
-      {skill.always ? 'opacity-70 cursor-default' : 'cursor-grab active:cursor-grabbing hover:bg-white/5'}
-      {draggedSkillKey === skill.skillKey ? 'opacity-30' : ''}"
-    role="listitem"
-  >
-    <!-- Drag handle -->
-    <span class="text-[10px] text-muted-foreground/40 group-hover:text-muted-foreground mt-0.5 shrink-0 select-none">
-      {skill.always ? '' : '⠿'}
-    </span>
-
-    {#if skill.emoji}
-      <span class="text-sm shrink-0 mt-0.5">{skill.emoji}</span>
-    {/if}
-
-    <div class="flex-1 min-w-0">
-      <div class="flex items-center gap-1 flex-wrap">
-        <span class="text-[10px] text-foreground font-medium truncate">{skill.name}</span>
-        {#if skill.bundled}
-          <span class="shrink-0 bg-accent/20 border border-accent/30 rounded-full px-1 text-[8px] text-accent leading-relaxed">
-            bundled
-          </span>
-        {/if}
-        {#if skill.always}
-          <span class="shrink-0 bg-yellow-500/20 border border-yellow-500/30 rounded-full px-1 text-[8px] text-yellow-400 leading-relaxed">
-            always
-          </span>
-        {/if}
-      </div>
-      {#if skill.description}
-        <p class="text-[9px] text-muted-foreground mt-0.5 line-clamp-2">{skill.description}</p>
-      {/if}
-      {#if skill.missing?.bins?.length || skill.missing?.env?.length}
-        <p class="text-[8px] text-red-400 mt-0.5">
-          Missing: {[...(skill.missing.bins ?? []), ...(skill.missing.env ?? [])].join(', ')}
-        </p>
-      {/if}
-    </div>
-  </div>
-{/snippet}

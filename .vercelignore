@@ -7,22 +7,15 @@ build
 .env
 .env.*
 !.env.example
-vite.config.js.timestamp-*
-vite.config.ts.timestamp-*
 .playwright-mcp/
 .serena/
 *.png
 .worktrees/
-
-# Electrobun desktop build output
 desktop-build/
-
-# Dev tool directories
-.claude/
 .dmux/
 .dmux-hooks/
 .planning/
 .superpowers/
-
-# Reports
+.claude/
+docs/
 posthog-setup-report.md

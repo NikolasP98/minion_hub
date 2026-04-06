@@ -8,6 +8,7 @@ import { getDb } from '$server/db/client';
 import { servers, organization, user as userTable } from '$server/db/schema';
 import { eq } from 'drizzle-orm';
 import { decryptToken } from '$server/auth/crypto';
+import { saveDesktopCookies, loadDesktopCookies, clearDesktopCookies } from '$server/auth/desktop-session';
 import { env } from '$env/dynamic/private';
 import { startBackupScheduler } from '$server/services/backup-scheduler';
 import { ensurePersonalAgentOnLogin } from '$server/services/personal-agent.service';
@@ -69,6 +70,26 @@ const authHandle: Handle = async ({ event, resolve }) => {
   }
   try {
     const response = await getAuth().handler(event.request);
+
+    // Desktop: persist session cookies to disk so they survive CEF incognito mode
+    if (env.DESKTOP === '1') {
+      const setCookies = response.headers.getSetCookie();
+      const authPairs = setCookies
+        .filter((c) => c.startsWith('better-auth.'))
+        .map((c) => c.split(';')[0].trim())
+        .filter(Boolean);
+
+      const sessionPair = authPairs.find((c) => c.startsWith('better-auth.session_token='));
+      if (sessionPair) {
+        const value = sessionPair.slice('better-auth.session_token='.length);
+        if (value) {
+          saveDesktopCookies(authPairs.join('; '));
+        } else {
+          clearDesktopCookies();
+        }
+      }
+    }
+
     // Re-create the response so Set-Cookie headers are preserved on Vercel.
     const body = await response.arrayBuffer();
     return new Response(body, {
@@ -112,9 +133,23 @@ const appHandle: Handle = async ({ event, resolve }) => {
   }
 
   // Session auth via Better Auth
+  // Desktop: inject stored session cookies when CEF doesn't send them (incognito mode)
+  let sessionHeaders: HeadersInit = event.request.headers;
+  if (env.DESKTOP === '1') {
+    const reqCookies = event.request.headers.get('cookie') ?? '';
+    if (!reqCookies.includes('better-auth.session_token')) {
+      const stored = loadDesktopCookies();
+      if (stored) {
+        const merged = reqCookies ? `${reqCookies}; ${stored}` : stored;
+        sessionHeaders = new Headers(event.request.headers);
+        (sessionHeaders as Headers).set('cookie', merged);
+      }
+    }
+  }
+
   let betterAuthSession = null;
   try {
-    betterAuthSession = await getAuth().api.getSession({ headers: event.request.headers });
+    betterAuthSession = await getAuth().api.getSession({ headers: sessionHeaders });
   } catch (err) {
     console.error('[hooks] getSession failed, treating as unauthenticated:', err);
   }

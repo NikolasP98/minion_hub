@@ -1,5 +1,7 @@
 <script lang="ts">
 	import Topbar from '$lib/components/layout/Topbar.svelte';
+	import CommandPalette from '$lib/components/layout/CommandPalette.svelte';
+	import LiveRunWidget from '$lib/components/sessions/LiveRunWidget.svelte';
 	import { type Snippet } from 'svelte';
 
 	let { children }: { children: Snippet } = $props();
@@ -9,3 +11,6 @@
 	<Topbar />
 	{@render children()}
 </div>
+
+<CommandPalette />
+<LiveRunWidget />

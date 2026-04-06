@@ -20,6 +20,11 @@ export function getAuth() {
 			database: drizzleAdapter(getDb(), { provider: 'sqlite', schema }),
 			secret: env.BETTER_AUTH_SECRET,
 			baseURL: hubUrl,
+			advanced: {
+				// Desktop mode (Electrobun CEF) runs in incognito — cookies must not
+				// require Secure flag (http://localhost, not https)
+				useSecureCookies: hubUrl.startsWith('https://'),
+			},
 			trustedOrigins: [
 				'http://localhost:5173',
 				'http://localhost:5174',
