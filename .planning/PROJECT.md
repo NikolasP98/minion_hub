@@ -8,21 +8,22 @@ Minion Hub is a SvelteKit web dashboard for managing and monitoring AI agent gat
 
 Gateway administrators and skill authors can confidently manage, monitor, and extend their AI agents through a polished, reliable web interface.
 
-## Current Milestone: v3.0 Pixel Office
+## Current Milestone: v5.0 AI-Native Builder UX
 
-**Goal:** Complete the pixel art office workshop view with full character animations, real-time gateway agent integration, and migrate the Canvas 2D renderer to PixiJS for GPU-accelerated performance.
+**Goal:** Transform the skills builder from a form-heavy, modal-based experience into an AI-native, effortless builder — and redesign the agent settings panel for better navigation and density.
 
 **Target features:**
-- Character animations (walk cycle, typing, reading, idle wander with BFS pathfinding)
-- Gateway agent bridge (real agent FSM states → pixel character typing/reading/idle behavior)
-- Agent interaction (click → sidebar selection, status labels above characters)
-- Monitor auto-on (CRT screens light up when agents work at desks)
-- Speech bubbles (permission/waiting indicators from gateway presence data)
-- Matrix spawn/despawn effect (digital rain animation on agent connect/disconnect)
-- PixiJS renderer migration (replace Canvas 2D with PixiJS Sprite batching, reuse existing workshop PixiJS app)
-- Layout persistence (save/load pixel office state per host via localStorage)
-- Layout editor (furniture placement, floor/wall painting, undo/redo)
-- Pan/zoom polish (smooth camera following, keyboard shortcuts, DPR-aware rendering)
+- Sidebar + canvas + drawer layout for skill editor (replacing book layout + full-screen chapter modal)
+- Progressive disclosure on chapter fields (name+desc visible, advanced behind chevron)
+- First-visit empty state guiding users to describe → AI build
+- Inline validation dots on DAG nodes
+- Agent settings panel two-column drawer with search, toggle skills, and override borders
+- Per-field AI wand icons for individual chapter field generation
+- Ghost chapter suggestions as user types description
+- Staged AI proposal overlay with per-node accept/reject
+- AI tool pre-selection per chapter with "suggested" chips
+- Skill card completion indicators on listing page
+- Template shelf at creation entry point
 
 ## Requirements
 
@@ -34,6 +35,8 @@ Gateway administrators and skill authors can confidently manage, monitor, and ex
 - VALID-01 through VALID-05, A11Y-01: Validation UX — shared validation module, structured error panel, disabled publish button, toast feedback, aria fixes (Phase 7 complete)
 - ANIM-01 through ANIM-06: Character animations — walk cycle, typing, reading, idle wander, return-to-seat, spawn/despawn effects (Phase 8 complete)
 - GATE-01 through GATE-06: Gateway integration — FSM state bridge, tool-call events, CRT auto-ON, permission/waiting bubbles, sub-agent lifecycle (Phase 8 complete)
+- v5.0 Phase 13 (Layout): Agent settings two-column drawer, toggle skill list, override borders, search — shipped 2026-03-31
+- v5.0 Phase 13 (Layout): Skill editor sidebar + canvas + drawer, progressive disclosure, first-visit empty state, DAG validation dots — shipped 2026-03-31
 
 ### Active
 
@@ -86,6 +89,7 @@ See `.planning/REQUIREMENTS.md` for full REQ-ID breakdown.
 | Tool/function calling for AI generation | Replaced fragile JSON regex parsing — deployed | ✓ Good |
 | 4-specialist review before implementation | Caught 45 issues before they compound | ✓ Good |
 | Phase 8 included as placeholder | Keeps runtime-dependent features visible in roadmap | -- Pending |
+| Electrobun desktop wrapper (Phase 12) | Optional native app shell via Electrobun, adapter-node, conditional Vercel guards | ✓ Shipped |
 
 ## Evolution
 
@@ -105,4 +109,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-23 after Phase 8 (Character Animation + Gateway Bridge) completion*
+*Last updated: 2026-03-31 after milestone v5.0 started — AI-Native Builder UX*

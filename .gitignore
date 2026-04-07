@@ -13,3 +13,16 @@ vite.config.ts.timestamp-*
 .serena/
 *.png
 .worktrees/
+
+# Electrobun desktop build output
+desktop-build/
+
+# Dev tool directories
+.claude/
+.dmux/
+.dmux-hooks/
+.planning/
+.superpowers/
+
+# Reports
+posthog-setup-report.md

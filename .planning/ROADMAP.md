@@ -133,10 +133,88 @@ Plans:
 **Plans**: TBD
 **UI hint**: yes
 
+### Phase 12: Electrobun Desktop Wrapper
+**Goal**: The Minion Hub SvelteKit app can optionally run as a native desktop application via Electrobun, with adapter-node for the embedded server, conditional Vercel-specific code, and native window chrome — without breaking the existing web deployment
+**Depends on**: Nothing (standalone initiative, parallel to v3.0)
+**Requirements**: None (user-requested feature)
+**Canonical refs**: `docs/electrobun/`, `.claude/plans/enumerated-skipping-hennessy.md`
+**Success Criteria** (what must be TRUE):
+  1. `bun run dev` and `bun run build` continue to work identically as before (Vercel adapter, analytics, PostHog)
+  2. `bun run desktop:dev` builds SvelteKit with adapter-node and launches an Electrobun BrowserWindow pointing at the embedded local server
+  3. Vercel-specific imports (@vercel/analytics, @vercel/speed-insights, PostHog proxy) are conditionally skipped in desktop mode via `VITE_DESKTOP` / `DESKTOP` env vars
+  4. Auth works in desktop mode (Better Auth trustedOrigins includes the desktop localhost port)
+  5. All API routes, WebSocket gateway connection, and database access work in the desktop app
+**Plans:** 3/3 plans complete
+
+Plans:
+- [x] 12-01-PLAN.md — Install dependencies, conditional adapter switching, desktop scripts, env template
+- [x] 12-02-PLAN.md — Vercel analytics and PostHog conditional guards
+- [x] 12-03-PLAN.md — Electrobun desktop entry point, config, and smoke test
+
+---
+
+### 🚧 v4.0 Desktop App (New)
+
+**Milestone Goal:** Wrap the Minion Hub web frontend in an optional Electrobun desktop engine, enabling native app distribution while preserving the existing Vercel web deployment unchanged.
+
+- [x] **Phase 12: Electrobun Desktop Wrapper** - Optional desktop app engine with adapter switching, Vercel code guards, and native window shell (completed 2026-03-30)
+
+---
+
+### 🚧 v5.0 AI-Native Builder UX (In Progress)
+
+**Milestone Goal:** Transform the skills builder into an AI-native experience with ambient AI assistance, progressive disclosure, and visual polish — plus redesign agent settings for better navigation.
+
+- [x] **Phase 13: Layout Restructure** - Sidebar+canvas+drawer layout, toggle skills, progressive disclosure, first-visit state, validation dots (completed 2026-03-31)
+- [ ] **Phase 14: AI-Native Interactions** - Per-field wand icons, ghost suggestions, staged proposals, tool pre-selection, incremental AI endpoint
+- [ ] **Phase 15: Visual Polish + Templates** - Completion arcs on cards, staggered generation animation, template shelf
+
+## Phase Details (v5.0)
+
+### Phase 13: Layout Restructure
+**Goal**: Replace form-heavy modal-based layouts with panel-based architecture that keeps context visible while editing
+**Depends on**: Phase 7 (existing builder), Phase 1 (existing agent settings)
+**Requirements**: LAYOUT-01, LAYOUT-02, LAYOUT-03, LAYOUT-04, LAYOUT-05, LAYOUT-06, LAYOUT-07
+**Success Criteria** (what must be TRUE):
+  1. Agent settings panel opens as a 680px two-column drawer with left nav for section navigation and right content for fields
+  2. Agent skills are toggled via inline switches with search input and All/Enabled/Disabled filter tabs
+  3. Skill editor shows metadata in a collapsible 280px sidebar, DAG canvas uses remaining width, chapter editing opens as a 380px right drawer (not full-screen modal)
+  4. Chapter drawer shows name + description by default, with guide/context/outputDef/triggerConditions behind an "Advanced fields" chevron
+  5. DAG nodes display warning/error indicators inline when validation findings exist for that chapter
+**Plans:** 0/0 (implemented inline this session)
+**Status:** Complete (2026-03-31)
+
+### Phase 14: AI-Native Interactions
+**Goal**: Make AI assistance ambient throughout the builder — every field offers AI fill, suggestions appear proactively, and generated content is reviewable before committing
+**Depends on**: Phase 13
+**Requirements**: AI-01, AI-02, AI-03, AI-04, AI-05
+**Success Criteria** (what must be TRUE):
+  1. Each chapter text field in the drawer has a wand icon that, when clicked, AI-fills only that field using the skill name, description, and chapter context
+  2. As the user types a skill description (10+ chars), faded chapter title pills appear below the description suggesting what chapters AI would create — clicking one generates that chapter
+  3. When "Build with AI" generates chapters, they appear as a staged overlay on the DAG with per-node Accept/Reject controls before being committed to the graph
+  4. After AI generation, each chapter's tool assignment shows pre-selected tools as "suggested" chips based on chapter description match against the tool manifest
+  5. The suggest-skill API accepts a `currentGraph` parameter containing existing chapters/edges so generation adds incrementally rather than replacing
+**Plans:** 3 plans
+
+Plans:
+- [ ] 14-01-PLAN.md — Incremental AI endpoint + per-field wand icons
+- [ ] 14-02-PLAN.md — Staged proposal overlay + tool suggestion chips
+- [ ] 14-03-PLAN.md — Ghost chapter suggestions
+
+### Phase 15: Visual Polish + Templates
+**Goal**: Add visual feedback and starter templates that reduce friction and communicate skill completeness at a glance
+**Depends on**: Phase 14
+**Requirements**: VIS-01, VIS-02, VIS-03
+**Success Criteria** (what must be TRUE):
+  1. Each skill card on the listing page shows a 4-quadrant SVG completion arc (name set, description set, has chapters, has tools) with visual fill indicating readiness
+  2. During AI chapter generation, nodes appear with a staggered scale-in animation (150ms apart) instead of all appearing simultaneously
+  3. The "+ New Skill" flow offers a template shelf with 4-6 starter templates (e.g. "Web Research", "Code Review", "Data Analysis") that pre-fill name/description and auto-generate chapters
+**Plans**: TBD
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 8 → 9 → 10 → 11
+Phases execute in numeric order: 8 → 9 → 10 → 11 (v3.0), 12 (v4.0), 13 → 14 → 15 (v5.0)
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -147,7 +225,11 @@ Phases execute in numeric order: 8 → 9 → 10 → 11
 | 5. State Architecture Refactor | v2.0 | 1/1 | Complete | 2026-03-19 |
 | 6. Critical Code Fixes | v2.0 | 3/3 | Complete | 2026-03-19 |
 | 7. Validation UX | v2.0 | 3/3 | Complete | 2026-03-19 |
-| 8. Character Animation + Gateway Bridge | v3.0 | 3/3 | Complete   | 2026-03-23 |
+| 8. Character Animation + Gateway Bridge | v3.0 | 3/3 | Complete | 2026-03-23 |
 | 9. Interaction + Persistence | v3.0 | 0/? | Not started | - |
 | 10. PixiJS Renderer Migration | v3.0 | 0/? | Not started | - |
 | 11. Layout Editor | v3.0 | 0/? | Not started | - |
+| 12. Electrobun Desktop Wrapper | v4.0 | 3/3 | Complete | 2026-03-30 |
+| 13. Layout Restructure | v5.0 | 0/0 | Complete | 2026-03-31 |
+| 14. AI-Native Interactions | v5.0 | 0/3 | Planning complete | - |
+| 15. Visual Polish + Templates | v5.0 | 0/? | Not started | - |

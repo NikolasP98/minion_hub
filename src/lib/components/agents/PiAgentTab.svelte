@@ -3,6 +3,7 @@
 	import SubagentTree from './SubagentTree.svelte';
 	import PiAgentOrchestrations from './PiAgentOrchestrations.svelte';
 	import PiAgentTemplates from './PiAgentTemplates.svelte';
+	import DreamActivity from './DreamActivity.svelte';
 	import {
 		piAgentState,
 		loadPiAgentData,
@@ -21,6 +22,7 @@
 	let subagentsOpen = $state(true);
 	let orchestrationsOpen = $state(false);
 	let templatesOpen = $state(false);
+	let dreamOpen = $state(false);
 
 	// Debounced refresh for event-driven updates
 	let refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -152,6 +154,23 @@
 		{#if templatesOpen}
 			<div class="border-t border-border">
 				<PiAgentTemplates />
+			</div>
+		{/if}
+	</div>
+
+	<!-- Dream Activity section (collapsible) -->
+	<div class="border border-border rounded-lg overflow-hidden">
+		<button
+			type="button"
+			class="w-full flex items-center justify-between px-3 py-2 bg-bg2 hover:bg-bg3 transition-colors cursor-pointer"
+			onclick={() => (dreamOpen = !dreamOpen)}
+		>
+			<span class="text-[11px] font-semibold text-foreground">Dream Activity</span>
+			<span class="text-[10px] text-muted">{dreamOpen ? '\u25B2' : '\u25BC'}</span>
+		</button>
+		{#if dreamOpen}
+			<div class="border-t border-border">
+				<DreamActivity {agentId} />
 			</div>
 		{/if}
 	</div>

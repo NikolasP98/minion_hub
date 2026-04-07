@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { autosize } from '$lib/actions/autosize';
     import { X, Loader2, BookOpen } from "lucide-svelte";
     import EmojiPicker from "./EmojiPicker.svelte";
 
@@ -77,7 +78,7 @@
 
             <textarea
                 class="desc-input"
-                rows="3"
+                use:autosize={description}
                 bind:value={description}
                 placeholder="What does this skill do? (optional)"
             ></textarea>

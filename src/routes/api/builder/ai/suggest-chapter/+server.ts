@@ -61,7 +61,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   }
 
   const body = await request.json();
-  const { name, description, skillName, skillDescription, availableToolIds, model } = body;
+  const { name, description, skillName, skillDescription, availableToolIds, model, targetField } = body;
   if (!name) throw error(400, 'Chapter name is required');
 
   const toolDescriptions = (availableToolIds ?? [])
@@ -79,7 +79,7 @@ Chapter: <chapter_name>${name}</chapter_name>${description ? `\nChapter descript
 Available tools:
 ${toolDescriptions || '(none)'}
 
-Generate the guide (imperative instructions), suggested tool IDs from the available list, input context expectations, and output definition for this chapter.`;
+Generate the guide (imperative instructions), suggested tool IDs from the available list, input context expectations, and output definition for this chapter.${targetField ? `\n\nIMPORTANT: Focus primarily on generating the "${targetField}" field. Return a thorough, focused suggestion for this field.` : ''}`;
 
   try {
     const res = await fetch(OPENROUTER_URL, {
@@ -154,6 +154,14 @@ Generate the guide (imperative instructions), suggested tool IDs from the availa
     const promptTokens = rawUsage.prompt_tokens ?? 0;
     const completionTokens = rawUsage.completion_tokens ?? 0;
     const usedModel = model || DEFAULT_MODEL;
+
+    // targetField: return only the requested field (AI-01: per-field wand)
+    if (targetField && typeof parsed[targetField] === 'string') {
+      return json({
+        [targetField]: parsed[targetField],
+        usage: { promptTokens, completionTokens, estimatedCost: estimateCost(usedModel, promptTokens, completionTokens) },
+      });
+    }
 
     return json({
       name: (parsed.name as string) ?? '',

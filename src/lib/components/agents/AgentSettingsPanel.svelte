@@ -8,6 +8,8 @@
         discard,
         setField,
     } from "$lib/state/config/config.svelte";
+    import { agentSkillsState } from "$lib/state/agents/agent-skills.svelte";
+    import { gw } from "$lib/state/gateway/gateway-data.svelte";
     import { deepGet } from "$lib/utils/config-schema";
     import {
         buildGroupedFields,
@@ -16,21 +18,24 @@
         type AgentStructure,
     } from "$lib/utils/agent-settings-schema";
     import ConfigField from "../config/ConfigField.svelte";
-    import ConfigTooltip from "../config/ConfigTooltip.svelte";
     import AgentSkillsPanel from "./AgentSkillsPanel.svelte";
-    import { SvelteSet } from "svelte/reactivity";
+    import AgentSettingsNav from "./AgentSettingsNav.svelte";
     import * as m from "$lib/paraglide/messages";
 
     let { agentId }: { agentId: string } = $props();
 
-    // ─── Auto-load config on mount ───────────────────────────────────────────
+    // ─── Active section state ────────────────────────────────────────────
+    let activeSection = $state('identity');
+    let searchQuery = $state('');
+
+    // ─── Auto-load config on mount ───────────────────────────────────────
     $effect(() => {
         if (!configState.loaded && !configState.loading) {
             loadConfig();
         }
     });
 
-    // ─── Build grouped fields (re-derives when config changes) ─────────────
+    // ─── Build grouped fields (re-derives when config changes) ─────────
     const resolved = $derived(
         configState.loaded
             ? buildGroupedFields(
@@ -46,6 +51,12 @@
         resolved?.structure ?? null,
     );
     const isListStructure = $derived(structure?.type === "list");
+
+    // ─── Agent display name for title ─────────────────────────────────────
+    const agentData = $derived(gw.agents.find((a) => a.id === agentId));
+    const displayName = $derived(
+        agentData?.name || agentId.slice(0, 16) + (agentId.length > 16 ? '…' : ''),
+    );
 
     // ─── When this agent's `default` becomes true, clear all other agents' defaults
     $effect(() => {
@@ -80,18 +91,24 @@
         ),
     );
 
-    // ─── Expanded groups state ─────────────────────────────────────────────
-    let expandedGroups = new SvelteSet(["identity", "model"]);
+    // ─── Active group (the group currently shown in the right column) ──
+    const activeGroup = $derived(
+        visibleGroups.find((g) => g.group.id === activeSection) ?? null,
+    );
 
-    function toggleGroup(groupId: string) {
-        if (expandedGroups.has(groupId)) {
-            expandedGroups.delete(groupId);
-        } else {
-            expandedGroups.add(groupId);
-        }
-    }
+    // ─── Search filtering for right column ──────────────────────────────
+    const searchFilteredFields = $derived.by(() => {
+        if (!activeGroup || !searchQuery.trim()) return activeGroup?.fields ?? [];
+        const q = searchQuery.toLowerCase();
+        return activeGroup.fields.filter(
+            (f) =>
+                (f.hint?.label ?? f.key).toLowerCase().includes(q) ||
+                (f.hint?.help ?? '').toLowerCase().includes(q) ||
+                f.key.toLowerCase().includes(q),
+        );
+    });
 
-    // ─── Bindings that reference this agent ────────────────────────────────
+    // ─── Bindings that reference this agent ────────────────────────────
     const bindingEntries: [string, unknown][] = $derived.by(() => {
         const bindings = configState.current.bindings;
         if (
@@ -122,12 +139,12 @@
         configState.schema?.properties?.bindings ?? null,
     );
 
-    // ─── Reset a field (remove override, fall back to default) ─────────────
+    // ─── Reset a field (remove override, fall back to default) ─────────
     function resetField(field: ResolvedField) {
         setField(field.path, undefined);
     }
 
-    // ─── Helpers ───────────────────────────────────────────────────────────
+    // ─── Helpers ───────────────────────────────────────────────────────
     function close() {
         ui.agentSettingsOpen = false;
     }
@@ -147,6 +164,19 @@
     function countOverrides(fields: ResolvedField[]): number {
         return fields.filter((f) => f.isOverridden).length;
     }
+
+    // ─── Enabled skill counts for nav ──────────────────────────────────
+    const enabledSkillCount = $derived(
+        agentSkillsState.skills.filter((s) => s.agentEnabled && !s.disabled).length,
+    );
+
+    /** Copy agent ID to clipboard */
+    let idCopied = $state(false);
+    function copyAgentId() {
+        navigator.clipboard.writeText(agentId);
+        idCopied = true;
+        setTimeout(() => (idCopied = false), 1500);
+    }
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -160,19 +190,25 @@
     onclick={handleBackdropClick}
     onkeydown={(e) => e.key === "Escape" && close()}
 >
-    <!-- Panel -->
+    <!-- Panel — two-column drawer -->
     <div
-        class="absolute top-0 right-0 h-full w-105 max-w-full bg-bg2 border-l border-border flex flex-col shadow-2xl"
+        class="absolute top-0 right-0 h-full w-[680px] max-w-full bg-bg2 border-l border-border flex flex-col shadow-2xl"
         role="dialog"
         aria-label="Agent settings for {agentId}"
+        onclick={(e) => e.stopPropagation()}
     >
         <!-- Header -->
         <div
-            class="shrink-0 flex items-center gap-3 px-4 py-3.5 border-b border-border"
+            class="shrink-0 flex items-center gap-3 px-4 py-3 border-b border-border"
         >
-            <span class="text-sm font-bold text-foreground truncate flex-1">
-                {m.agent_settingsTitle({ agentId })}
-            </span>
+            {#if agentData?.emoji}
+                <span class="text-base">{agentData.emoji}</span>
+            {/if}
+            <div class="flex-1 min-w-0">
+                <span class="text-sm font-bold text-foreground truncate block">
+                    Configure {displayName}
+                </span>
+            </div>
             <button
                 type="button"
                 class="bg-transparent border-none text-muted-foreground cursor-pointer text-lg leading-none p-1 transition-colors hover:text-foreground"
@@ -220,147 +256,148 @@
                 </p>
             </div>
         {:else}
-            <div class="flex-1 overflow-y-auto">
-                <!-- Defaults info banner -->
-                {#if isListStructure}
-                    <div
-                        class="mx-4 mt-3 px-3 py-2 bg-accent/8 border border-accent/20 rounded-lg"
-                    >
-                        <p
-                            class="text-[11px] text-muted-foreground leading-relaxed m-0"
-                        >
-                            {m.config_inheritsDefaults()}
-                        </p>
-                    </div>
-                {/if}
+            <!-- Two-column layout -->
+            <div class="flex-1 flex min-h-0">
+                <!-- Left nav -->
+                <AgentSettingsNav
+                    {activeSection}
+                    onselect={(id) => (activeSection = id)}
+                    groups={visibleGroups}
+                    {enabledSkillCount}
+                    totalSkillCount={agentSkillsState.skills.length}
+                    bindingCount={bindingEntries.length}
+                    bind:searchQuery
+                />
 
-                <!-- Skills management -->
-                <div class="px-4 pt-3">
-                    <AgentSkillsPanel {agentId} />
-                </div>
-
-                <!-- Grouped settings sections -->
-                <div class="px-4 py-3 space-y-2">
-                    {#each visibleGroups as { group, fields } (group.id)}
-                        {@const isExpanded = expandedGroups.has(group.id)}
-                        {@const overrideCount = countOverrides(fields)}
-
-                        <section>
-                            <!-- Section header -->
-                            <button
-                                type="button"
-                                class="w-full flex items-center gap-2.5 px-3 py-2.5 bg-card border border-border cursor-pointer transition-colors hover:bg-bg3
-                  {isExpanded ? 'rounded-t-lg border-b-0' : 'rounded-lg'}"
-                                onclick={() => toggleGroup(group.id)}
-                            >
-                                <span
-                                    class="text-muted-foreground text-[9px] transition-transform {isExpanded
-                                        ? 'rotate-90'
-                                        : ''}">&#9654;</span
-                                >
-
-                                <span
-                                    class="flex flex-col items-start gap-0.5 min-w-0"
-                                >
-                                    <span class="flex items-center gap-2">
-                                        <span
-                                            class="text-[11px] font-semibold text-foreground uppercase tracking-wider"
-                                            >{group.label}</span
-                                        >
-                                        <span
-                                            class="text-[10px] text-muted-foreground"
-                                            >{fields.length === 1 ? m.config_fieldCount({ count: fields.length }) : m.config_fieldCountPlural({ count: fields.length })}</span
-                                        >
-                                        {#if overrideCount > 0}
-                                            <span
-                                                class="text-[10px] text-accent"
-                                                >{m.config_overridesSet({ count: overrideCount })}</span
-                                            >
-                                        {/if}
-                                    </span>
-                                    {#if group.description}
-                                        <span
-                                            class="text-[10px] text-muted-foreground leading-tight truncate max-w-full"
-                                            >{group.description}</span
-                                        >
-                                    {/if}
-                                </span>
-
-                                <span class="flex-1"></span>
-
-                                {#if overrideCount > 0}
-                                    <span
-                                        class="w-1.5 h-1.5 rounded-full bg-accent shrink-0"
-                                    ></span>
-                                {/if}
-                            </button>
-
-                            <!-- Section body -->
-                            {#if isExpanded}
+                <!-- Right content column -->
+                <div class="flex-1 overflow-y-auto min-h-0">
+                    {#if activeSection === 'skills'}
+                        <!-- Skills panel -->
+                        <div class="p-4">
+                            <AgentSkillsPanel {agentId} />
+                        </div>
+                    {:else if activeSection === 'bindings'}
+                        <!-- Bindings section -->
+                        <div class="p-4 space-y-3">
+                            <h3 class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider m-0">
+                                {m.config_bindingsSection()}
+                            </h3>
+                            <p class="text-[10px] text-muted-foreground -mt-1">
+                                Channel and routing bindings that reference this agent.
+                            </p>
+                            {#each bindingEntries as [bindKey, bindVal] (bindKey)}
+                                {@const bindPath = `bindings.${bindKey}`}
+                                {@const bindSchema =
+                                    bindingsSchema?.properties?.[bindKey] ??
+                                    (typeof bindingsSchema?.additionalProperties ===
+                                    "object"
+                                        ? bindingsSchema.additionalProperties
+                                        : { type: "string", title: bindKey })}
+                                {@const bindHint =
+                                    configState.uiHints[bindPath] ?? {}}
+                                <ConfigField
+                                    path={bindPath}
+                                    schema={bindSchema}
+                                    hint={bindHint}
+                                    value={bindVal}
+                                    depth={0}
+                                />
+                            {/each}
+                        </div>
+                    {:else if activeGroup}
+                        <!-- Settings group content -->
+                        <div class="p-4">
+                            <!-- Defaults info banner (first visit only) -->
+                            {#if isListStructure && activeSection === 'identity'}
                                 <div
-                                    class="bg-card border border-border border-t-0 rounded-b-lg p-3 space-y-1"
+                                    class="mb-4 px-3 py-2 bg-accent/8 border border-accent/20 rounded-lg"
                                 >
-                                    {#each fields as field (field.key)}
-                                        <div class="relative group/field">
-                                            <ConfigField
-                                                path={field.path}
-                                                schema={field.schema}
-                                                hint={field.hint}
-                                                value={field.value}
-                                                depth={0}
-                                            />
-                                            <!-- Reset button for overridden fields -->
-                                            {#if field.isOverridden && field.defaultValue !== undefined}
-                                                <button
-                                                    type="button"
-                                                    class="absolute top-1 right-0 opacity-0 group-hover/field:opacity-100 bg-transparent border border-border rounded text-[10px] text-muted-foreground py-0.5 px-1.5 cursor-pointer transition-all hover:text-foreground hover:border-muted"
-                                                    onclick={() =>
-                                                        resetField(field)}
-                                                    title="Reset to default: {JSON.stringify(
-                                                        field.defaultValue,
-                                                    )}"
-                                                >
-                                                    {m.common_reset()}
-                                                </button>
-                                            {/if}
-                                        </div>
-                                    {/each}
+                                    <p class="text-[11px] text-muted-foreground leading-relaxed m-0">
+                                        {m.config_inheritsDefaults()}
+                                    </p>
                                 </div>
                             {/if}
-                        </section>
-                    {/each}
-                </div>
 
-                <!-- Bindings section -->
-                {#if bindingEntries.length > 0}
-                    <div
-                        class="border-t border-border mx-4 pt-3 pb-4 space-y-3"
-                    >
-                        <h3
-                            class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider m-0"
-                        >
-                            {m.config_bindingsSection()}
-                        </h3>
-                        {#each bindingEntries as [bindKey, bindVal] (bindKey)}
-                            {@const bindPath = `bindings.${bindKey}`}
-                            {@const bindSchema =
-                                bindingsSchema?.properties?.[bindKey] ??
-                                (typeof bindingsSchema?.additionalProperties ===
-                                "object"
-                                    ? bindingsSchema.additionalProperties
-                                    : { type: "string", title: bindKey })}
-                            {@const bindHint =
-                                configState.uiHints[bindPath] ?? {}}
-                            <ConfigField
-                                path={bindPath}
-                                schema={bindSchema}
-                                hint={bindHint}
-                                value={bindVal}
-                                depth={0}
-                            />
-                        {/each}
-                    </div>
-                {/if}
+                            <!-- Group header -->
+                            <div class="mb-4">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <h3 class="text-sm font-semibold text-foreground m-0">
+                                        {activeGroup.group.label}
+                                    </h3>
+                                    <span class="text-[10px] text-muted-foreground">
+                                        {activeGroup.fields.length === 1
+                                            ? m.config_fieldCount({ count: activeGroup.fields.length })
+                                            : m.config_fieldCountPlural({ count: activeGroup.fields.length })}
+                                    </span>
+                                    {#if countOverrides(activeGroup.fields) > 0}
+                                        <span class="text-[10px] text-accent">
+                                            {m.config_overridesSet({ count: countOverrides(activeGroup.fields) })}
+                                        </span>
+                                    {/if}
+                                </div>
+                                {#if activeGroup.group.description}
+                                    <p class="text-[10px] text-muted-foreground m-0">
+                                        {activeGroup.group.description}
+                                    </p>
+                                {/if}
+                            </div>
+
+                            <!-- Agent ID chip (inside identity section) -->
+                            {#if activeSection === 'identity'}
+                                <div class="mb-4 flex items-center gap-2">
+                                    <span class="text-[10px] text-muted-foreground">Agent ID</span>
+                                    <button
+                                        type="button"
+                                        class="font-mono text-[10px] text-muted-foreground bg-bg3 border border-border rounded px-2 py-0.5
+                                            hover:border-accent/40 hover:text-foreground cursor-pointer transition-colors truncate max-w-[300px]"
+                                        onclick={copyAgentId}
+                                        title="Click to copy"
+                                    >
+                                        {idCopied ? 'Copied!' : agentId}
+                                    </button>
+                                </div>
+                            {/if}
+
+                            <!-- Fields -->
+                            <div class="space-y-1">
+                                {#each searchFilteredFields as field (field.key)}
+                                    <div
+                                        class="relative group/field rounded-md
+                                            {field.isOverridden ? 'border-l-2 border-l-accent pl-2' : 'pl-2'}"
+                                    >
+                                        <ConfigField
+                                            path={field.path}
+                                            schema={field.schema}
+                                            hint={field.hint}
+                                            value={field.value}
+                                            depth={0}
+                                        />
+                                        <!-- Reset button for overridden fields -->
+                                        {#if field.isOverridden && field.defaultValue !== undefined}
+                                            <button
+                                                type="button"
+                                                class="absolute top-1 right-0 opacity-0 group-hover/field:opacity-100 bg-transparent border border-border rounded text-[10px] text-muted-foreground py-0.5 px-1.5 cursor-pointer transition-all hover:text-foreground hover:border-muted"
+                                                onclick={() =>
+                                                    resetField(field)}
+                                                title="Reset to default: {JSON.stringify(
+                                                    field.defaultValue,
+                                                )}"
+                                            >
+                                                {m.common_reset()}
+                                            </button>
+                                        {/if}
+                                    </div>
+                                {/each}
+
+                                {#if searchFilteredFields.length === 0 && searchQuery.trim()}
+                                    <p class="text-[11px] text-muted-foreground/50 text-center py-6">
+                                        No fields matching "{searchQuery}"
+                                    </p>
+                                {/if}
+                            </div>
+                        </div>
+                    {/if}
+                </div>
             </div>
 
             <!-- Save/discard bar -->

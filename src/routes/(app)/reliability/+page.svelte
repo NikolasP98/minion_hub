@@ -178,8 +178,14 @@
 		return evts;
 	});
 
-	// Overview stat cells — derived from filtered events for full reactivity
-	let filteredSummary = $derived.by(() => {
+	// Overview stat cells — use server-side summary (SQL aggregation) for accurate totals,
+	// fall back to client-side counting from the paginated events list.
+	let overviewStats = $derived.by(() => {
+		if (summary && selectedCategories.size === 0 && selectedSeverities.size === 0) {
+			// No filters active — use the server-side summary (covers ALL events, not just the page)
+			return { total: summary.total, byCategory: summary.byCategory, bySeverity: summary.bySeverity };
+		}
+		// Filters active — compute from the (possibly paginated) event list
 		const evts = filteredEvents;
 		const byCategory: Record<string, number> = {};
 		const bySeverity: Record<string, number> = {};
@@ -191,14 +197,14 @@
 	});
 
 	const statItems = $derived([
-		{ key: 'total',    Icon: Activity,      color: 'var(--color-accent)',       label: m.reliability_totalEvents(),    value: filteredSummary.total },
-		{ key: 'critical', Icon: AlertCircle,   color: 'var(--color-destructive)',  label: m.reliability_criticalEvents(), value: filteredSummary.bySeverity.critical ?? 0 },
-		{ key: 'cron',     Icon: Clock,         color: 'var(--color-warning)',      label: m.reliability_cronIssues(),     value: filteredSummary.byCategory.cron ?? 0 },
-		{ key: 'browser',  Icon: Globe,         color: 'var(--color-purple)',       label: m.reliability_browserIssues(), value: filteredSummary.byCategory.browser ?? 0 },
-		{ key: 'auth',     Icon: KeyRound,      color: 'var(--color-success)',      label: m.reliability_authIssues(),     value: filteredSummary.byCategory.auth ?? 0 },
-		{ key: 'gateway',  Icon: Radio,         color: 'var(--color-cyan)',         label: m.reliability_gatewayIssues(), value: filteredSummary.byCategory.gateway ?? 0 },
-		{ key: 'agent',    Icon: Bot,           color: '#ec4899',                   label: m.reliability_agentIssues(),   value: filteredSummary.byCategory.agent ?? 0 },
-		{ key: 'skill',    Icon: Wrench,        color: '#06b6d4',                   label: m.reliability_skillIssues(),   value: filteredSummary.byCategory.skill ?? 0 },
+		{ key: 'total',    Icon: Activity,      color: 'var(--color-accent)',       label: m.reliability_totalEvents(),    value: overviewStats.total },
+		{ key: 'critical', Icon: AlertCircle,   color: 'var(--color-destructive)',  label: m.reliability_criticalEvents(), value: overviewStats.bySeverity.critical ?? 0 },
+		{ key: 'cron',     Icon: Clock,         color: 'var(--color-warning)',      label: m.reliability_cronIssues(),     value: overviewStats.byCategory.cron ?? 0 },
+		{ key: 'browser',  Icon: Globe,         color: 'var(--color-purple)',       label: m.reliability_browserIssues(), value: overviewStats.byCategory.browser ?? 0 },
+		{ key: 'auth',     Icon: KeyRound,      color: 'var(--color-success)',      label: m.reliability_authIssues(),     value: overviewStats.byCategory.auth ?? 0 },
+		{ key: 'gateway',  Icon: Radio,         color: 'var(--color-cyan)',         label: m.reliability_gatewayIssues(), value: overviewStats.byCategory.gateway ?? 0 },
+		{ key: 'agent',    Icon: Bot,           color: '#ec4899',                   label: m.reliability_agentIssues(),   value: overviewStats.byCategory.agent ?? 0 },
+		{ key: 'skill',    Icon: Wrench,        color: '#06b6d4',                   label: m.reliability_skillIssues(),   value: overviewStats.byCategory.skill ?? 0 },
 	]);
 
 	async function loadData() {
@@ -398,7 +404,7 @@
 
 	// ── Severity pie ──────────────────────────────────────────────────────────
 	let severityOptions: EChartsOption = $derived.by(() => {
-		const bySeverity = filteredSummary.bySeverity;
+		const bySeverity = overviewStats.bySeverity;
 		const data = Object.entries(bySeverity)
 			.filter(([name, count]) => count > 0 && (selectedSeverities.size === 0 || selectedSeverities.has(name)))
 			.map(([name, value]) => ({

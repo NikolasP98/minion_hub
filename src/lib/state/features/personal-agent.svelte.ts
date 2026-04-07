@@ -87,6 +87,14 @@ export const personalAgent = {
 					headers: { 'Content-Type': 'application/json' },
 					body: JSON.stringify({ status: 'active' }),
 				});
+				// Push displayName to gateway so agents.list returns it
+				await this.load();
+				if (state.agent) {
+					sendRequest('hub.personal-agent.updated', {
+						agentId: state.agent.agentId,
+						displayName: state.agent.displayName,
+					}).catch(() => {});
+				}
 			} catch (err) {
 				// Mark as error
 				await fetch('/api/personal-agent/provision', {

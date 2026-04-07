@@ -1,65 +1,68 @@
 ---
 gsd_state_version: 1.0
-milestone: v3.0
-milestone_name: Pixel Office
-status: Ready to plan
-stopped_at: Completed 08-03-PLAN.md
-last_updated: "2026-03-23T20:17:56.736Z"
+milestone: v5.0
+milestone_name: AI-Native Builder UX
+status: In progress
+stopped_at: Phase 13 complete (layout restructure), starting Phase 14
+last_updated: "2026-03-31T12:00:00.000Z"
 progress:
   total_phases: 4
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-23)
+See: .planning/PROJECT.md (updated 2026-03-31)
 
-**Core value:** Agents are visualized as pixel art characters in a virtual office, driven by real-time gateway data, with GPU-accelerated rendering.
-**Current focus:** Phase 08 — character-animation-gateway-bridge
+**Core value:** Gateway administrators and skill authors can confidently manage, monitor, and extend their AI agents through a polished, reliable web interface.
+**Current focus:** Phase 14 — AI-native chapter interactions
 
 ## Current Position
 
-Phase: 9
+Phase: 14
 Plan: Not started
+Status: Defining requirements for remaining phases
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 0 (v3.0)
+- Total plans completed: 0 (v5.0)
 - Average duration: —
 - Total execution time: —
 
-**By Phase:**
-
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| - | - | - | - |
-
 ## Accumulated Context
 
-| Phase 08 P01 | 269 | 3 tasks | 4 files |
-| Phase 08 P02 | 420 | 3 tasks | 3 files |
-| Phase 08 P03 | 390 | 2 tasks | 5 files |
+### From this session (2026-03-31)
 
-### From previous milestones (v2.0)
+**Phase 13 (Layout Restructure) — completed inline:**
+- Agent settings panel: 420px overlay → 680px two-column drawer (nav + content)
+- Agent skills: drag-drop → toggle list with search + filter tabs
+- Override indicators: 6px dot → 2px left-border accent
+- Skill editor: book layout → sidebar (280px collapsible) + DAG canvas (flex-1) + chapter drawer (380px)
+- ChapterEditor: full-screen 4-step wizard modal → inline 380px drawer with progressive disclosure
+- First-visit empty state: centered description prompt when chapters.length === 0
+- DAG validation: inline warning/error indicators on chapter nodes
 
-- Workshop canvas uses PixiJS 8 + Rapier2D physics with renderer-adapter pattern (classic/habbo/pixel)
-- Pixel office engine ported from pixel-agents: 15 modules (4,200+ lines) in src/lib/workshop/pixel/
-- Asset loader fetches floor/wall/furniture/character sprites from /pixel-office/ static dir
-- Canvas 2D rendering works with auto-zoom, auto-center, pan/zoom interaction
-- Gateway bridge module (gateway-pixel-bridge.ts) maps workshop instanceId to pixel charId
-- Furniture catalog auto-generated from nested manifests (furniture-catalog.json)
+**Key files modified:**
+- `src/lib/components/agents/AgentSettingsPanel.svelte` — two-column drawer
+- `src/lib/components/agents/AgentSettingsNav.svelte` — NEW left nav component
+- `src/lib/components/agents/AgentSkillsPanel.svelte` — toggle list + search
+- `src/routes/(app)/builder/skills/[id]/+page.svelte` — sidebar + canvas + drawer layout
+- `src/lib/components/builder/ChapterEditor.svelte` — drawer with progressive disclosure
+- `src/lib/components/builder/ChapterDAG.svelte` — validation dots on nodes
 
-### Key technical decisions
+### From previous milestones
 
-- Canvas 2D will migrate to PixiJS for GPU batching (Phase 10, after animations work on Canvas 2D)
-- BFS pathfinding uses integer keys (col + row * MAX_COLS)
-- Character sprites: PNG -> browser Image + Canvas -> SpriteData -> offscreen canvas cache
+- Workshop canvas uses PixiJS 8 + Rapier2D physics with renderer-adapter pattern
+- Pixel office engine: 15 modules (4,200+ lines) in src/lib/workshop/pixel/
+- Skill editor state extracted to skill-editor.svelte.ts (all state, derived, business logic)
+- AI generation uses tool/function calling (replaced JSON regex parsing)
+- Server-side publish validation with shared validation module
 
 ### Pending Todos
 
@@ -67,10 +70,10 @@ None yet.
 
 ### Blockers/Concerns
 
-None yet.
+- AI suggest-skill endpoint needs `currentGraph` parameter for incremental generation (required for Phase 14)
 
 ## Session Continuity
 
-Last session: 2026-03-23T20:12:53.938Z
-Stopped at: Completed 08-03-PLAN.md
+Last session: 2026-03-31
+Stopped at: Phase 13 complete, defining Phase 14-16
 Resume file: None

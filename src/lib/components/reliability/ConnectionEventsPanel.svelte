@@ -3,6 +3,7 @@
 	import { Activity, ChevronRight } from 'lucide-svelte';
 	import Chart from '$lib/components/charts/Chart.svelte';
 	import type { EChartsOption } from 'echarts';
+	import { sendRequest } from '$lib/services/gateway.svelte';
 
 	interface Props {
 		serverId: string;
@@ -232,19 +233,34 @@
 		loading = true;
 		fetchError = null;
 		try {
-			const params = new URLSearchParams({
+			const wsParams: Record<string, unknown> = { limit: 100 };
+			if (selectedCategory !== 'all') wsParams.category = selectedCategory;
+
+			const [eventsData, summaryData] = await Promise.all([
+				sendRequest('reliability.events', wsParams) as Promise<{ events?: Array<Record<string, unknown>> } | null>,
+				sendRequest('reliability.summary', {}) as Promise<{ total?: number; byCategory?: Record<string, number>; bySeverity?: Record<string, number> } | null>,
+			]);
+
+			events = (eventsData?.events ?? []).map((ev) => ({
+				id: (ev.id as number) ?? 0,
 				serverId,
-				limit: '100',
-				summary: '1',
-			});
-			if (selectedCategory !== 'all') {
-				params.set('category', selectedCategory);
-			}
-			const res = await globalThis.fetch(`/api/metrics/connection-events?${params}`);
-			if (!res.ok) throw new Error(`HTTP ${res.status}`);
-			const data = await res.json();
-			events = data.events ?? [];
-			summary = data.summary ?? null;
+				localEventId: (ev.id as number) ?? 0,
+				category: (ev.category as string) ?? '',
+				severity: (ev.severity as string) ?? '',
+				event: (ev.event as string) ?? '',
+				message: (ev.message as string) ?? '',
+				agentId: (ev.agentId as string) ?? null,
+				correlationId: (ev.correlationId as string) ?? null,
+				metadata: ev.metadata ? JSON.stringify(ev.metadata) : null,
+				occurredAt: (ev.timestamp as number) ?? 0,
+				createdAt: (ev.createdAt as number) ?? (ev.timestamp as number) ?? 0,
+			}));
+
+			summary = summaryData ? {
+				total: summaryData.total ?? 0,
+				byCategory: summaryData.byCategory ?? {},
+				bySeverity: summaryData.bySeverity ?? {},
+			} : null;
 		} catch (e) {
 			fetchError = e instanceof Error ? e.message : String(e);
 		} finally {

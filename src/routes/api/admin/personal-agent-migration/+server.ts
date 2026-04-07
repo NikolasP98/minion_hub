@@ -27,7 +27,7 @@ export const GET: RequestHandler = async ({ locals }) => {
  * Create hub DB entries for already-migrated agents (gateway-side migration complete).
  * Called after the gateway-side migration completes (directory rename + symlink + config update).
  *
- * Body: { migrations: Array<{ userId, userName, serverId, originalName, newAgentId }> }
+ * Body: { migrations: Array<{ userId, email, serverId, originalName, newAgentId }> }
  * Returns: { results: Array<{ newAgentId, success, error? }> }
  */
 export const POST: RequestHandler = async ({ locals, request }) => {
@@ -49,13 +49,14 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	const results: Array<{ newAgentId: string; success: boolean; error?: string }> = [];
 
 	for (const migration of body.migrations) {
-		const { userId, userName, serverId, originalName, newAgentId } = migration;
+		const { userId, email, userName, serverId, originalName, newAgentId } = migration;
+		const resolvedEmail = email ?? userName; // backward compat: accept legacy userName field
 
-		if (!userId || !userName || !serverId || !originalName || !newAgentId) {
+		if (!userId || !resolvedEmail || !serverId || !originalName || !newAgentId) {
 			results.push({
 				newAgentId: newAgentId ?? 'unknown',
 				success: false,
-				error: 'Missing required fields: userId, userName, serverId, originalName, newAgentId',
+				error: 'Missing required fields: userId, email, serverId, originalName, newAgentId',
 			});
 			continue;
 		}
@@ -63,7 +64,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		try {
 			await createMigratedPersonalAgent(ctx, {
 				userId,
-				userName,
+				email: resolvedEmail,
 				serverId,
 				originalName,
 				newAgentId,

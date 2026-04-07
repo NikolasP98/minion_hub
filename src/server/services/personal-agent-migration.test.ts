@@ -37,7 +37,7 @@ const mockRow = {
 	userId: 'user-922286663',
 	agentId: 'personal-user-922286663',
 	serverId: 'srv-1',
-	displayName: "Nikolas's Agent",
+	displayName: 'usr:nik@example.com',
 	conversationName: null,
 	avatarUrl: null,
 	personalityPreset: null,
@@ -66,7 +66,7 @@ function setupMockSequence() {
 describe('createMigratedPersonalAgent', () => {
 	const baseParams = {
 		userId: 'user-922286663',
-		userName: 'Nikolas',
+		email: 'nik@example.com',
 		serverId: 'srv-1',
 		originalName: 'PANIK',
 		newAgentId: 'personal-user-922286663',
@@ -94,9 +94,9 @@ describe('createMigratedPersonalAgent', () => {
 		expect(result.conversationName).toBe('PANIK');
 	});
 
-	it('sets displayName to "{User}\'s Agent" format', async () => {
+	it('sets displayName to "usr:{email}" format', async () => {
 		const { db } = setupMockSequence();
 		const result = await createMigratedPersonalAgent({ db, tenantId: 't1' }, baseParams);
-		expect(result.displayName).toBe("Nikolas's Agent");
+		expect(result.displayName).toBe('usr:nik@example.com');
 	});
 });

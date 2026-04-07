@@ -2,6 +2,10 @@ import type { auth } from '$lib/auth/auth';
 import type { TenantContext } from '$server/services/base';
 
 declare global {
+  interface ImportMetaEnv {
+    readonly VITE_DESKTOP?: string;
+  }
+
   namespace App {
     interface Locals {
       user?: {

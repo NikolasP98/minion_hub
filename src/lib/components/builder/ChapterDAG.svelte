@@ -10,9 +10,10 @@
         type ColorMode,
     } from '@xyflow/svelte';
     import '@xyflow/svelte/dist/style.css';
-    import { Plus, BookOpen, GitBranch, Trash2 } from 'lucide-svelte';
+    import { Plus, BookOpen, GitBranch, Trash2, Check, X, Sparkles } from 'lucide-svelte';
     import { theme } from '$lib/state/ui/theme.svelte';
     import ConditionNode from './ConditionNode.svelte';
+    import type { ValidationFinding } from '$lib/utils/skill-validation';
 
     // ── Types ────────────────────────────────────────────────────────────────
     interface ChapterNode {
@@ -35,9 +36,18 @@
         label: string | null;
     }
 
+    interface StagedProposalView {
+        chapters: Array<{ tempId: string; type: string; name: string; positionX: number; positionY: number }>;
+        edges: Array<{ fromTempId: string; toTempId: string; label: string | null }>;
+    }
+
     interface Props {
         chapters: ChapterNode[];
         edges: ChapterEdge[];
+        validationFindings?: ValidationFinding[];
+        stagedProposal?: StagedProposalView | null;
+        onAcceptProposed?: (tempId: string) => void;
+        onRejectProposed?: (tempId: string) => void;
         onChapterClick: (chapter: ChapterNode) => void;
         onChapterPositionChange: (chapterId: string, x: number, y: number) => void;
         onAddChapter: () => void;
@@ -50,6 +60,10 @@
     let {
         chapters,
         edges,
+        validationFindings = [],
+        stagedProposal = null,
+        onAcceptProposed,
+        onRejectProposed,
         onChapterClick,
         onChapterPositionChange,
         onAddChapter,
@@ -58,6 +72,19 @@
         onConnect,
         onDeleteEdge,
     }: Props = $props();
+
+    // ── Validation findings per chapter (for node badges) ────────────────
+    const chapterValidationLevel = $derived.by(() => {
+        const map = new Map<string, 'error' | 'warning'>();
+        for (const f of validationFindings) {
+            if (!f.chapterId) continue;
+            const current = map.get(f.chapterId);
+            if (f.level === 'error' || !current) {
+                map.set(f.chapterId, f.level);
+            }
+        }
+        return map;
+    });
 
     // ── xyflow configuration ─────────────────────────────────────────────────
     const nodeTypes: NodeTypes = {
@@ -71,19 +98,23 @@
     // ── Convert chapters → xyflow nodes ──────────────────────────────────────
     const flowNodes: Node[] = $derived(
         chapters.map((ch, i) => {
+            const vLevel = chapterValidationLevel.get(ch.id);
+            const vIndicator = vLevel === 'error' ? ' ⛔' : vLevel === 'warning' ? ' ⚠' : '';
             if (ch.type === 'condition') {
                 return {
                     id: ch.id,
                     type: 'condition',
                     position: { x: ch.positionX, y: ch.positionY },
-                    data: { label: ch.name, conditionText: ch.conditionText ?? '' },
+                    data: { label: ch.name + vIndicator, conditionText: ch.conditionText ?? '' },
+                    class: vLevel ? `validation-${vLevel}` : undefined,
                 };
             }
             return {
                 id: ch.id,
                 type: 'default' as const,
                 position: { x: ch.positionX, y: ch.positionY },
-                data: { label: `${i + 1}. ${ch.name}` },
+                data: { label: `${i + 1}. ${ch.name}${vIndicator}` },
+                class: vLevel ? `validation-${vLevel}` : undefined,
             };
         }),
     );
@@ -104,6 +135,34 @@
                 : 'stroke: var(--color-accent); stroke-width: 2;',
         })),
     );
+
+    // ── Staged proposal ghost nodes (AI-03) ────────────────────────────────
+    const stagedFlowNodes: Node[] = $derived(
+        (stagedProposal?.chapters ?? []).map((ch) => ({
+            id: ch.tempId,
+            type: 'default' as const,
+            position: { x: ch.positionX, y: ch.positionY },
+            data: { label: ch.name },
+            class: 'staged-node',
+            draggable: false,
+            connectable: false,
+            selectable: false,
+        })),
+    );
+
+    const stagedFlowEdges: Edge[] = $derived(
+        (stagedProposal?.edges ?? []).map((e, i) => ({
+            id: `staged-edge-${i}`,
+            source: e.fromTempId,
+            target: e.toTempId,
+            label: e.label ?? undefined,
+            animated: true,
+            style: 'stroke: var(--color-accent); stroke-width: 1.5; stroke-dasharray: 5 3; opacity: 0.5;',
+        })),
+    );
+
+    const allFlowNodes: Node[] = $derived([...flowNodes, ...stagedFlowNodes]);
+    const allFlowEdges: Edge[] = $derived([...flowEdges, ...stagedFlowEdges]);
 
     // ── Event handlers ───────────────────────────────────────────────────────
     function handleNodeDragStop({
@@ -232,8 +291,8 @@
         </div>
 
         <SvelteFlow
-            nodes={flowNodes}
-            edges={flowEdges}
+            nodes={allFlowNodes}
+            edges={allFlowEdges}
             {nodeTypes}
             {colorMode}
             fitView
@@ -254,6 +313,30 @@
             />
             <Controls position="bottom-right" />
         </SvelteFlow>
+    {/if}
+
+    {#if stagedProposal && stagedProposal.chapters.length > 0}
+        <div class="staged-controls">
+            <div class="staged-header">
+                <Sparkles size={14} />
+                <span>AI Proposal ({stagedProposal.chapters.length})</span>
+            </div>
+            <div class="staged-list">
+                {#each stagedProposal.chapters as ch (ch.tempId)}
+                    <div class="staged-item">
+                        <span class="staged-item-name">{ch.name}</span>
+                        <div class="staged-item-actions">
+                            <button class="staged-accept" onclick={() => onAcceptProposed?.(ch.tempId)} title="Accept">
+                                <Check size={12} />
+                            </button>
+                            <button class="staged-reject" onclick={() => onRejectProposed?.(ch.tempId)} title="Reject">
+                                <X size={12} />
+                            </button>
+                        </div>
+                    </div>
+                {/each}
+            </div>
+        </div>
     {/if}
 
     {#if contextMenu}
@@ -372,6 +455,70 @@
         border-left: 3px solid var(--color-accent, #6366f1);
         font-size: 0.75rem;
         font-family: inherit;
+    }
+
+    /* Staged/ghost nodes (AI-03) */
+    .chapter-dag-container :global(.svelte-flow__node.staged-node) {
+        border: 2px dashed color-mix(in srgb, var(--color-accent) 60%, transparent);
+        background: color-mix(in srgb, var(--color-accent) 6%, var(--color-bg2));
+        opacity: 0.75;
+        animation: staged-pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes staged-pulse {
+        0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 20%, transparent); }
+        50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 10%, transparent); }
+    }
+
+    /* Staged controls panel */
+    .staged-controls {
+        position: absolute;
+        top: 0.5rem;
+        left: 0.5rem;
+        z-index: 5;
+        background: var(--color-bg2);
+        border: 1px solid color-mix(in srgb, var(--color-accent) 30%, var(--color-border));
+        border-radius: 0.5rem;
+        min-width: 200px;
+        max-width: 280px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+    .staged-header {
+        display: flex; align-items: center; gap: 6px;
+        padding: 8px 12px;
+        font-size: 12px; font-weight: 600;
+        color: var(--color-accent);
+        border-bottom: 1px solid var(--color-border);
+    }
+    .staged-list { padding: 4px; }
+    .staged-item {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 6px 8px; border-radius: 4px; font-size: 12px;
+        color: var(--color-foreground);
+    }
+    .staged-item:hover { background: var(--color-bg3); }
+    .staged-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .staged-item-actions { display: flex; gap: 2px; flex-shrink: 0; }
+    .staged-accept, .staged-reject {
+        width: 22px; height: 22px;
+        display: flex; align-items: center; justify-content: center;
+        border: none; border-radius: 4px;
+        cursor: pointer; transition: all 0.15s; background: transparent;
+    }
+    .staged-accept { color: var(--color-success, #22c55e); }
+    .staged-accept:hover { background: color-mix(in srgb, var(--color-success, #22c55e) 15%, transparent); }
+    .staged-reject { color: var(--color-error, #ef4444); }
+    .staged-reject:hover { background: color-mix(in srgb, var(--color-error, #ef4444) 15%, transparent); }
+
+    /* Validation indicator on nodes */
+    .chapter-dag-container :global(.svelte-flow__node.validation-warning) {
+        border-color: var(--color-warning, #f59e0b);
+        box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-warning, #f59e0b) 30%, transparent);
+    }
+
+    .chapter-dag-container :global(.svelte-flow__node.validation-error) {
+        border-color: var(--color-error, #ef4444);
+        box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-error, #ef4444) 30%, transparent);
     }
 
     /* ── Context Menu ─────────────────────────────────────────────────── */
