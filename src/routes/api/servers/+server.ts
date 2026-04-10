@@ -3,6 +3,7 @@ import { json } from '@sveltejs/kit';
 import { listServers, upsertServer } from '$server/services/server.service';
 import { getTenantCtx, getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
 import { getPostHogClient } from '$lib/server/posthog';
+import { assertSafeUrl, SsrfBlockedError } from '$server/services/ssrf-guard';
 
 export const GET: RequestHandler = async ({ locals }) => {
 	const ctx = await getTenantCtx(locals);
@@ -20,6 +21,14 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	const ctx = await getOrCreateTenantCtx(locals);
 	try {
 		const body = await request.json();
+		try {
+			await assertSafeUrl(body.url, 'server URL');
+		} catch (err) {
+			if (err instanceof SsrfBlockedError) {
+				return json({ ok: false, error: err.message }, { status: 422 });
+			}
+			throw err;
+		}
 		await upsertServer(ctx, body, locals.user?.id);
 		const posthog = await getPostHogClient();
 		posthog?.capture({
