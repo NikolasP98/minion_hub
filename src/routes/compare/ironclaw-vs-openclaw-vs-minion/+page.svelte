@@ -15,7 +15,8 @@
     name="twitter:description"
     content="IronClaw secures your agents. Minion governs your company. See how they compare."
   />
-  <link rel="canonical" href="https://minion.ai/compare/ironclaw-vs-openclaw-vs-minion" />
+  <meta name="keywords" content="IronClaw vs OpenClaw, AI agent governance platform, enterprise agent audit trail, OpenClaw alternative, multi-agent orchestration enterprise" />
+  <link rel="canonical" href="/compare/ironclaw-vs-openclaw-vs-minion" />
 </svelte:head>
 
 <main class="min-h-screen bg-gray-950 text-gray-100 font-sans">

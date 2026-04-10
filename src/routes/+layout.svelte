@@ -34,8 +34,11 @@
   let { children }: { children: Snippet } = $props();
 
   const isVoxelized = $derived(theme.preset.id === 'voxelized');
+  const isPublicPage = $derived(page.url.pathname.startsWith('/compare'));
 
   onMount(async () => {
+    if (isPublicPage) return;
+
     installInterceptor();
     await loadUser();
 
@@ -67,32 +70,36 @@
   });
 </script>
 
-<ParaglideJS {i18n} languageTag={locale.current}>
-  {#if isVoxelized && page.url.pathname !== '/login'}
-    <VoxelShader />
-  {/if}
-  {#if !isVoxelized}
-    <ParticleCanvas />
-  {/if}
-  {#if page.url.pathname !== '/login' && !isVoxelized}
-    <BgPattern />
-  {/if}
-  <Toaster />
-  <BugReporter />
+{#if isPublicPage}
+  {@render children()}
+{:else}
+  <ParaglideJS {i18n} languageTag={locale.current}>
+    {#if isVoxelized && page.url.pathname !== '/login'}
+      <VoxelShader />
+    {/if}
+    {#if !isVoxelized}
+      <ParticleCanvas />
+    {/if}
+    {#if page.url.pathname !== '/login' && !isVoxelized}
+      <BgPattern />
+    {/if}
+    <Toaster />
+    <BugReporter />
 
-  {#if conn.connecting}
-    <div class="fixed top-14 left-0 right-0 h-[2px] bg-bg3 z-40 overflow-hidden">
-      <div class="h-full w-1/3 bg-accent animate-loading-slide"></div>
-    </div>
-  {/if}
+    {#if conn.connecting}
+      <div class="fixed top-14 left-0 right-0 h-[2px] bg-bg3 z-40 overflow-hidden">
+        <div class="h-full w-1/3 bg-accent animate-loading-slide"></div>
+      </div>
+    {/if}
 
-  {#key page.url.pathname.split('/')[1]}
-    <div style="animation: page-fade-in 120ms ease-out">
-      {@render children()}
-    </div>
-  {/key}
+    {#key page.url.pathname.split('/')[1]}
+      <div style="animation: page-fade-in 120ms ease-out">
+        {@render children()}
+      </div>
+    {/key}
 
-  {#if ui.overlayOpen}
-    <HostsOverlay />
-  {/if}
-</ParaglideJS>
+    {#if ui.overlayOpen}
+      <HostsOverlay />
+    {/if}
+  </ParaglideJS>
+{/if}
