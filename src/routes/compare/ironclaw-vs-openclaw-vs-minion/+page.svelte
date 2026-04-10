@@ -9,14 +9,17 @@
     property="og:description"
     content="IronClaw and OpenClaw handle agent execution. Minion handles the layer above: board approval, CEO delegation, full audit trail, and organizational accountability — from the top of your company down."
   />
+  <meta property="og:url" content="https://minion.ai/compare/ironclaw-vs-openclaw-vs-minion" />
+  <meta property="og:image" content="https://minion.ai/og/compare-ironclaw-openclaw.png" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Minion vs IronClaw vs OpenClaw" />
   <meta
     name="twitter:description"
     content="IronClaw secures your agents. Minion governs your company. See how they compare."
   />
+  <meta name="twitter:image" content="https://minion.ai/og/compare-ironclaw-openclaw.png" />
   <meta name="keywords" content="IronClaw vs OpenClaw, AI agent governance platform, enterprise agent audit trail, OpenClaw alternative, multi-agent orchestration enterprise" />
-  <link rel="canonical" href="/compare/ironclaw-vs-openclaw-vs-minion" />
+  <link rel="canonical" href="https://minion.ai/compare/ironclaw-vs-openclaw-vs-minion" />
 </svelte:head>
 
 <main class="min-h-screen bg-gray-950 text-gray-100 font-sans">
