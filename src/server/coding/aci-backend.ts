@@ -2,14 +2,15 @@ import { readFile, writeFile, access } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { resolve, relative } from 'node:path';
-import type { ACIResult, ACIBackendConfig } from './types';
+import type { ACIResult, ACIBackendConfig, CodingBackend, CodingResult } from './types';
 import { validateSyntax } from './syntax-validator';
 
 const execFileAsync = promisify(execFile);
 
 const DEFAULT_WINDOW_SIZE = 100;
 
-export class ACIBackend {
+export class ACIBackend implements CodingBackend {
+	readonly type = 'aci' as const;
 	private workDir: string;
 	private windowSize: number;
 	private currentFile: string | null = null;
