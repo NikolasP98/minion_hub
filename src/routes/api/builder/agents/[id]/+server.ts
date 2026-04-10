@@ -4,19 +4,39 @@ import { eq, and, asc } from 'drizzle-orm';
 import { builtAgents, builtAgentSkills } from '$server/db/schema';
 import { newId, nowMs } from '$server/db/utils';
 import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
+import { requireAuth } from '$server/auth/authorize';
+import type { TenantContext } from '$server/services/base';
+
+/**
+ * Fetch a built agent and verify the requesting user owns it (or is an admin).
+ * Throws 404 if not found in tenant, 403 if found but not owned.
+ */
+async function requireAgentOwnership(
+  userId: string,
+  isAdmin: boolean,
+  agentId: string,
+  tenantId: string,
+  ctx: TenantContext,
+) {
+  const [agent] = await ctx.db
+    .select()
+    .from(builtAgents)
+    .where(and(eq(builtAgents.id, agentId), eq(builtAgents.tenantId, tenantId)))
+    .limit(1);
+
+  if (!agent) throw error(404, 'Agent not found');
+
+  if (!isAdmin && agent.createdBy !== userId) throw error(403, 'Forbidden');
+
+  return agent;
+}
 
 /** GET /api/builder/agents/:id — agent with skill slots */
 export const GET: RequestHandler = async ({ locals, params }) => {
+  const user = requireAuth(locals);
   const ctx = await getOrCreateTenantCtx(locals);
-  if (!ctx) throw error(401);
 
-  const agents = await ctx.db
-    .select()
-    .from(builtAgents)
-    .where(and(eq(builtAgents.id, params.id!), eq(builtAgents.tenantId, ctx.tenantId)))
-    .limit(1);
-
-  if (agents.length === 0) throw error(404, 'Agent not found');
+  await requireAgentOwnership(user.id, user.role === 'admin', params.id!, ctx.tenantId, ctx);
 
   const skillSlots = await ctx.db
     .select()
@@ -24,13 +44,22 @@ export const GET: RequestHandler = async ({ locals, params }) => {
     .where(eq(builtAgentSkills.agentId, params.id!))
     .orderBy(asc(builtAgentSkills.position));
 
-  return json({ agent: agents[0], skillSlots });
+  // Re-fetch to return full agent data
+  const [agent] = await ctx.db
+    .select()
+    .from(builtAgents)
+    .where(eq(builtAgents.id, params.id!))
+    .limit(1);
+
+  return json({ agent, skillSlots });
 };
 
 /** PUT /api/builder/agents/:id — update agent or manage skill slots */
 export const PUT: RequestHandler = async ({ locals, params, request }) => {
+  const user = requireAuth(locals);
   const ctx = await getOrCreateTenantCtx(locals);
-  if (!ctx) throw error(401);
+
+  await requireAgentOwnership(user.id, user.role === 'admin', params.id!, ctx.tenantId, ctx);
 
   const body = await request.json();
   const { action } = body;
@@ -101,8 +130,11 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
 
 /** DELETE /api/builder/agents/:id */
 export const DELETE: RequestHandler = async ({ locals, params }) => {
+  const user = requireAuth(locals);
   const ctx = await getOrCreateTenantCtx(locals);
-  if (!ctx) throw error(401);
+
+  await requireAgentOwnership(user.id, user.role === 'admin', params.id!, ctx.tenantId, ctx);
+
   await ctx.db.delete(builtAgents).where(and(eq(builtAgents.id, params.id!), eq(builtAgents.tenantId, ctx.tenantId)));
   return json({ ok: true });
 };
