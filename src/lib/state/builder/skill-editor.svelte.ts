@@ -4,6 +4,7 @@ import { toastSuccess, toastError } from '$lib/state/ui/toast.svelte';
 import type { ToolStatusEntry, ToolsStatusReport } from '$lib/types/tools';
 import { validateSkill, type ValidationFinding } from '$lib/utils/skill-validation';
 import posthog from 'posthog-js';
+import * as m from '$lib/paraglide/messages';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -285,7 +286,7 @@ export async function publishSkill() {
 
   // Re-check: if still dirty, save failed — abort publish
   if (skillEditorState.dirty) {
-    toastError('Publish failed', 'Cannot publish — unsaved changes could not be saved. Please try again.', { duration: 5000 });
+    toastError(m.builder_publishFailed(), m.builder_publishFailedDesc(), { duration: 5000 });
     return;
   }
 
@@ -299,17 +300,17 @@ export async function publishSkill() {
     if (!res.ok) {
       const data = await res.json();
       if (data.errors?.length) {
-        toastError('Publish failed', `Validation failed: ${data.errors.join('; ')}`, { duration: 5000 });
+        toastError(m.builder_publishFailed(), m.builder_validationFailed({ errors: data.errors.join('; ') }), { duration: 5000 });
         return;
       }
       throw new Error(`HTTP ${res.status}`);
     }
     skillEditorState.status = 'published';
     skillEditorState.publishAnyway = false;
-    toastSuccess('Skill published!');
+    toastSuccess(m.builder_skillPublished());
     posthog.capture('skill_published', { skill_id: skillEditorState.skillId, skill_name: skillEditorState.name });
   } catch (e) {
-    toastError('Publish failed', e instanceof Error ? e.message : 'Could not reach server. Please try again.', { duration: 5000 });
+    toastError(m.builder_publishFailed(), e instanceof Error ? e.message : m.builder_publishError(), { duration: 5000 });
     console.error('[skill-editor] Publish failed:', e);
   } finally {
     skillEditorState.publishing = false;

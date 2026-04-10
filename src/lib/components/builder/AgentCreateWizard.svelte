@@ -17,6 +17,7 @@
     import { hostsState } from "$lib/state/features/hosts.svelte";
     import type { SkillStatusEntry, SkillStatusReport } from "$lib/types/skills";
     import type { ToolStatusEntry, ToolsStatusReport } from "$lib/types/tools";
+    import * as m from '$lib/paraglide/messages';
 
     // ── Types ────────────────────────────────────────────────────────────────
     interface BuiltSkill {
@@ -86,8 +87,8 @@
     // ── Zag.js steps machine ─────────────────────────────────────────────────
     const STEP_COUNT = 2;
     const stepsData = [
-        { title: "Identity" },
-        { title: "Skills & Tools" },
+        { title: m.builder_stepIdentity() },
+        { title: m.builder_stepSkillsTools() },
     ];
 
     const service = useMachine(steps.machine, () => ({
@@ -351,7 +352,7 @@
     class="overlay"
     role="dialog"
     aria-modal="true"
-    aria-label="New Agent"
+    aria-label={m.builder_newAgent()}
     tabindex="-1"
     onclick={handleOverlayClick}
     onkeydown={handleKeydown}
@@ -361,12 +362,12 @@
         <div class="modal-header">
             <div class="modal-title-row">
                 <Bot size={16} />
-                <span class="modal-title">New Agent</span>
+                <span class="modal-title">{m.builder_newAgent()}</span>
             </div>
             <button
                 class="close-btn"
                 onclick={onClose}
-                aria-label="Close"
+                aria-label={m.common_close()}
             >
                 <X size={16} />
             </button>
@@ -406,7 +407,7 @@
                 <div {...api.getContentProps({ index: 0 })}>
                     <div class="field">
                         <label class="field-label" for="agent-name">
-                            Name <span class="required">*</span>
+                            {m.agent_name()} <span class="required">*</span>
                         </label>
                         <div class="name-row">
                             <EmojiPicker value={emoji} onSelect={(e) => { emoji = e; }} size="md" />
@@ -415,12 +416,12 @@
                                 class="field-input name-field"
                                 type="text"
                                 bind:value={name}
-                                placeholder="e.g. Research Assistant, Code Reviewer"
+                                placeholder={m.builder_agentNamePlaceholder()}
                                 required
                             />
                         </div>
                         {#if name.length > 0 && name.trim().length < 3}
-                            <span class="field-error">Name must be at least 3 characters</span>
+                            <span class="field-error">{m.builder_nameTooShort()}</span>
                         {/if}
                     </div>
 
@@ -432,18 +433,18 @@
                             itemToString={(m) => m.name}
                             bind:value={model}
                             label="Model"
-                            placeholder="Search models…"
+                            placeholder={m.builder_searchModels()}
                         >
-                            {#snippet item({ item: m, selected, itemTextProps })}
+                            {#snippet item({ item: mi, selected, itemTextProps })}
                                 <span
                                     class="model-item-name"
                                     class:model-item-selected={selected}
                                     {...itemTextProps}
-                                >{m.name}</span>
-                                {#if m.id === defaultModel}
-                                    <span class="model-badge">default</span>
+                                >{mi.name}</span>
+                                {#if mi.id === defaultModel}
+                                    <span class="model-badge">{m.builder_modelDefault()}</span>
                                 {/if}
-                                <span class="model-item-id">{m.id}</span>
+                                <span class="model-item-id">{mi.id}</span>
                             {/snippet}
                         </Combobox>
                     </div>
@@ -452,19 +453,19 @@
                 <!-- Step 1: Skills & Tools -->
                 <div {...api.getContentProps({ index: 1 })}>
                     <span class="field-helper">
-                        Select skills and tools ({totalSelected} selected)
+                        {m.builder_selectSkillsTools({ count: totalSelected })}
                     </span>
 
                     {#if skillsLoading || toolsLoading}
                         <div class="cap-loading">
                             <Loader2 size={18} class="spin" />
-                            <span>Loading capabilities...</span>
+                            <span>{m.builder_loadingCapabilities()}</span>
                         </div>
                     {:else}
                         <!-- Built Skills (custom) -->
                         {#if publishedSkills.length > 0}
                             <div class="cap-group">
-                                <span class="cap-group-label">Custom Skills</span>
+                                <span class="cap-group-label">{m.builder_customSkills()}</span>
                                 <div class="icon-grid">
                                     {#each publishedSkills as skill (skill.id)}
                                         {@const selected = selectedBuiltSkillIds.includes(skill.id)}
@@ -490,7 +491,7 @@
                         {#each [...skillsBySource.entries()] as [source, skills] (source)}
                             <div class="cap-group">
                                 <span class="cap-group-label">
-                                    {source === 'bundled' ? 'Built-in Skills' : source}
+                                    {source === 'bundled' ? m.builder_builtInSkills() : source}
                                 </span>
                                 <div class="icon-grid">
                                     {#each skills as skill (skill.skillKey)}
@@ -517,7 +518,7 @@
                         <!-- Ineligible skills -->
                         {#if ineligibleSkills.length > 0}
                             <div class="cap-group">
-                                <span class="cap-group-label cap-group-label--dim">Unavailable ({ineligibleSkills.length})</span>
+                                <span class="cap-group-label cap-group-label--dim">{m.builder_unavailable({ count: ineligibleSkills.length })}</span>
                                 <div class="icon-grid">
                                     {#each ineligibleSkills as skill (skill.skillKey)}
                                         <button
@@ -527,7 +528,7 @@
                                             onmouseenter={(e) => showPopover('skill', skill.skillKey, e)}
                                             onmousemove={trackCursor}
                                             onmouseleave={hidePopover}
-                                            aria-label="{skill.name} (unavailable)"
+                                            aria-label="{skill.name} ({m.builder_unavailableLabel()})"
                                         >
                                             <span class="icon-emoji">{skill.emoji || '\u{1F4D6}'}</span>
                                         </button>
@@ -568,7 +569,7 @@
 
                         {#if gatewaySkills.length === 0 && publishedSkills.length === 0 && gatewayTools.length === 0}
                             <div class="cap-empty">
-                                No capabilities available. Add skills or tools to the gateway first.
+                                {m.builder_noCapabilities()}
                             </div>
                         {/if}
                     {/if}
@@ -577,7 +578,7 @@
                     <div class="summary">
                         <div class="summary-row">
                             <span class="summary-emoji">{emoji}</span>
-                            <span class="summary-name">{name || 'Untitled'}</span>
+                            <span class="summary-name">{name || m.builder_untitled()}</span>
                         </div>
                         {#if model}
                             <div class="summary-detail">
@@ -585,7 +586,7 @@
                             </div>
                         {/if}
                         <div class="summary-detail">
-                            {totalSelected} capabilities selected
+                            {m.builder_capabilitiesSelected({ count: totalSelected })}
                         </div>
                     </div>
 
@@ -622,13 +623,13 @@
                         {...api.getPrevTriggerProps()}
                     >
                         <ChevronLeft size={14} />
-                        Back
+                        {m.common_back()}
                     </button>
                 {/if}
             </div>
 
             <span class="step-counter">
-                Step {api.value + 1} of {STEP_COUNT}
+                {m.marketplace_wizardStepOf({ step: api.value + 1, total: STEP_COUNT })}
             </span>
 
             <div class="footer-right">
@@ -640,13 +641,13 @@
                     {#if isLastStep}
                         {#if creating}
                             <Loader2 size={14} class="spin" />
-                            Creating...
+                            {m.builder_creating()}
                         {:else}
                             <Check size={14} />
-                            Create
+                            {m.builder_create()}
                         {/if}
                     {:else}
-                        Next
+                        {m.builder_next()}
                         <ChevronRight size={14} />
                     {/if}
                 </button>

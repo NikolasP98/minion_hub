@@ -2,15 +2,16 @@
   import KanbanCol from '$lib/components/tasks/KanbanCol.svelte';
   import type { KanbanTask } from '$lib/components/tasks/TaskCard.svelte';
   import { sessionTasksState, loadSessionTasks } from '$lib/state/features/session-tasks.svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let { sessionKey, serverId }: { sessionKey: string | null; serverId: string | null } = $props();
 
-  const cols = [
-    { key: 'backlog' as const, label: 'Backlog', short: 'B' },
-    { key: 'todo' as const, label: 'Todo', short: 'T' },
-    { key: 'in_progress' as const, label: 'In Progress', short: 'P' },
-    { key: 'done' as const, label: 'Done', short: 'D' },
-  ];
+  const cols = $derived([
+    { key: 'backlog' as const, label: m.session_kanbanBacklog(), short: 'B' },
+    { key: 'todo' as const, label: m.session_kanbanTodo(), short: 'T' },
+    { key: 'in_progress' as const, label: m.session_kanbanInProgress(), short: 'P' },
+    { key: 'done' as const, label: m.session_kanbanDone(), short: 'D' },
+  ]);
 
   let collapsed = $state(sessionTasksState.kanbanCollapsed);
 
@@ -84,7 +85,7 @@
     >
 
     <span class="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
-      >Tasks</span
+      >{m.session_kanbanTasks()}</span
     >
 
     {#if total > 0}
@@ -103,7 +104,7 @@
         {/each}
       </div>
     {:else}
-      <span class="text-[10px] text-muted-foreground/40 ml-1">— no tasks</span>
+      <span class="text-[10px] text-muted-foreground/40 ml-1">{m.session_kanbanNoTasks()}</span>
       <span class="flex-1"></span>
     {/if}
   </button>
@@ -123,7 +124,7 @@
       </div>
     {:else}
       <div class="px-3 py-3 text-[11px] text-muted-foreground/40 text-center">
-        No tasks for this session.
+        {m.session_kanbanNoTasksForSession()}
       </div>
     {/if}
   {/if}

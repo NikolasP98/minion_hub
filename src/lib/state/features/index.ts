@@ -8,3 +8,4 @@ export * from './pi-agent-state.svelte';
 export * from './user.svelte';
 export * from './agent-groups.svelte';
 export * from './personal-agent.svelte';
+export * from './studio.svelte';

@@ -3,6 +3,7 @@
 	import SubagentMeta from './SubagentMeta.svelte';
 	import { getSelectedSubagent, subagentState } from '$lib/state/features/subagent-data.svelte';
 	import { ui } from '$lib/state/ui/ui.svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	let activeTab = $state<'chat' | 'monitor' | 'meta'>('monitor');
 
@@ -15,13 +16,13 @@
 	{#if !selectedSubagent}
 		<div class="flex-1 flex flex-col items-center justify-center gap-2.5 text-muted text-[13px]">
 			<span class="text-[28px] opacity-40">&larr;</span>
-			<span>Select a subagent to view details</span>
+			<span>{m.subagent_selectToView()}</span>
 		</div>
 	{:else}
 		<!-- Header with session info -->
 		<div class="shrink-0 px-4 py-2 border-b border-border bg-bg2 flex items-center gap-3">
 			<span class="text-[12px] font-medium truncate">
-				{selectedSubagent.label || selectedSubagent.key.split(':').pop() || 'Subagent'}
+				{selectedSubagent.label || selectedSubagent.key.split(':').pop() || m.subagent_fallbackName()}
 			</span>
 			<span class="text-[10px] text-muted font-mono">
 				{selectedSubagent.model ?? ''}
@@ -30,7 +31,7 @@
 
 		<!-- Sub-tabs -->
 		<div class="shrink-0 flex items-center border-b border-border bg-bg2">
-			{#each [{ id: 'monitor', label: 'Monitor' }, { id: 'meta', label: 'Meta' }] as tab (tab.id)}
+			{#each [{ id: 'monitor', label: m.subagent_tabMonitor() }, { id: 'meta', label: m.subagent_tabMeta() }] as tab (tab.id)}
 				<button
 					type="button"
 					class="px-4 py-1.5 text-[10px] font-semibold border-b-2 transition-colors cursor-pointer

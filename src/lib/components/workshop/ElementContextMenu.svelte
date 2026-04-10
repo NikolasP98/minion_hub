@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let {
     label,
@@ -39,12 +40,12 @@
     class="w-full px-3 py-1 text-left text-[10px] font-mono text-foreground hover:bg-accent/10"
     onclick={() => onAction('open')}
   >
-    Open
+    {m.workshop_open()}
   </button>
   <button
     class="w-full px-3 py-1 text-left text-[10px] font-mono text-foreground hover:bg-accent/10"
     onclick={() => onAction('remove')}
   >
-    Remove from canvas
+    {m.workshop_removeFromCanvas()}
   </button>
 </div>

@@ -21,6 +21,7 @@
         Bot,
         Command as CommandIcon,
     } from 'lucide-svelte';
+    import * as m from '$lib/paraglide/messages';
 
     let inputEl: HTMLInputElement | undefined = $state();
 
@@ -149,7 +150,7 @@
                     bind:value={palette.query}
                     type="text"
                     class="flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted"
-                    placeholder="Search pages, agents, actions..."
+                    placeholder={m.command_searchPlaceholder()}
                     autocomplete="off"
                     spellcheck="false"
                 />
@@ -162,7 +163,7 @@
             <div class="max-h-72 overflow-y-auto py-2">
                 {#if flatCommands.length === 0}
                     <div class="px-4 py-8 text-center text-sm text-muted">
-                        No results found
+                        {m.command_noResults()}
                     </div>
                 {:else}
                     {@const flatIdx = { value: 0 }}
@@ -196,7 +197,7 @@
                                 {/if}
                                 <span class="text-sm flex-1 truncate">{cmd.label}</span>
                                 {#if cmd.category === 'page'}
-                                    <span class="text-[10px] text-muted-foreground/40 font-mono shrink-0">Page</span>
+                                    <span class="text-[10px] text-muted-foreground/40 font-mono shrink-0">{m.command_pageTag()}</span>
                                 {/if}
                             </div>
                         {/each}
@@ -208,15 +209,15 @@
             <div class="px-4 py-2 border-t border-border flex items-center gap-4 text-[10px] text-muted-foreground/50">
                 <span class="flex items-center gap-1">
                     <kbd class="px-1 py-0.5 rounded bg-bg3 border border-border font-mono">&uarr;&darr;</kbd>
-                    navigate
+                    {m.command_hintNavigate()}
                 </span>
                 <span class="flex items-center gap-1">
                     <kbd class="px-1 py-0.5 rounded bg-bg3 border border-border font-mono">&crarr;</kbd>
-                    select
+                    {m.command_hintSelect()}
                 </span>
                 <span class="flex items-center gap-1">
                     <kbd class="px-1 py-0.5 rounded bg-bg3 border border-border font-mono">esc</kbd>
-                    close
+                    {m.command_hintClose()}
                 </span>
             </div>
         </div>

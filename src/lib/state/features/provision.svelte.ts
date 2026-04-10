@@ -1,4 +1,5 @@
 import type { PhaseStatus } from '$server/services/provision.service';
+import * as m from '$lib/paraglide/messages';
 
 export interface PhaseInfo {
   id: string;
@@ -24,16 +25,18 @@ export interface ProvisionConfigState {
   enableDiscord: boolean;
 }
 
-const DEFAULT_PHASES: PhaseInfo[] = [
-  { id: '00', name: 'Preflight', description: 'Check prerequisites (user, node)', status: 'pending' },
-  { id: '20', name: 'User Creation', description: 'Create minion user and directory structure', status: 'pending' },
-  { id: '30', name: 'Environment', description: 'Install Node.js 22+', status: 'pending' },
-  { id: '40', name: 'Install', description: 'Install minion package', status: 'pending' },
-  { id: '45', name: 'Alias', description: 'Configure PATH alias', status: 'pending' },
-  { id: '50', name: 'Config', description: 'Generate minion.json configuration', status: 'pending' },
-  { id: '60', name: 'Service', description: 'Set up systemd service', status: 'pending' },
-  { id: '70', name: 'Verification', description: 'Verify gateway health', status: 'pending' },
-];
+function makeDefaultPhases(): PhaseInfo[] {
+  return [
+    { id: '00', name: m.provision_phasePreflight(), description: m.provision_phasePreflightDesc(), status: 'pending' },
+    { id: '20', name: m.provision_phaseUserCreation(), description: m.provision_phaseUserCreationDesc(), status: 'pending' },
+    { id: '30', name: m.provision_phaseEnvironment(), description: m.provision_phaseEnvironmentDesc(), status: 'pending' },
+    { id: '40', name: m.provision_phaseInstall(), description: m.provision_phaseInstallDesc(), status: 'pending' },
+    { id: '45', name: m.provision_phaseAlias(), description: m.provision_phaseAliasDesc(), status: 'pending' },
+    { id: '50', name: m.provision_phaseConfig(), description: m.provision_phaseConfigDesc(), status: 'pending' },
+    { id: '60', name: m.provision_phaseService(), description: m.provision_phaseServiceDesc(), status: 'pending' },
+    { id: '70', name: m.provision_phaseVerification(), description: m.provision_phaseVerificationDesc(), status: 'pending' },
+  ];
+}
 
 const DEFAULT_CONFIG: ProvisionConfigState = {
   sshHost: '',
@@ -53,7 +56,7 @@ const DEFAULT_CONFIG: ProvisionConfigState = {
 };
 
 export const provisionState = $state({
-  phases: structuredClone(DEFAULT_PHASES) as PhaseInfo[],
+  phases: makeDefaultPhases() as PhaseInfo[],
   config: structuredClone(DEFAULT_CONFIG) as ProvisionConfigState,
   configLoaded: false,
   running: false,
@@ -265,7 +268,7 @@ export function stopProvision() {
 }
 
 export function resetState() {
-  provisionState.phases = structuredClone(DEFAULT_PHASES);
+  provisionState.phases = makeDefaultPhases();
   provisionState.config = structuredClone(DEFAULT_CONFIG);
   provisionState.configLoaded = false;
   provisionState.running = false;

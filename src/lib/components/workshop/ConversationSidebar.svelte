@@ -5,6 +5,7 @@
   import { loadConversationHistory } from '$lib/workshop/gateway-bridge';
   import { slide } from 'svelte/transition';
   import { conn } from '$lib/state/gateway/connection.svelte';
+  import * as m from '$lib/paraglide/messages';
   import { Carta, Markdown } from 'carta-md';
   import 'carta-md/default.css';
   import DOMPurify from 'dompurify';
@@ -91,13 +92,13 @@
   function formatRelativeTime(ts: number): string {
     const diff = Date.now() - ts;
     const seconds = Math.floor(diff / 1000);
-    if (seconds < 60) return 'just now';
+    if (seconds < 60) return m.common_justNow();
     const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes}m ago`;
+    if (minutes < 60) return m.common_minutesAgo({ count: minutes });
     const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
+    if (hours < 24) return m.common_hoursAgo({ count: hours });
     const days = Math.floor(hours / 24);
-    return `${days}d ago`;
+    return m.common_daysAgo({ count: days });
   }
 
   async function handleLoadHistory() {
@@ -113,12 +114,12 @@
   <!-- Conversation list (left section) -->
   <div class="w-[140px] shrink-0 flex flex-col border-r border-border">
     <div class="px-2 py-2 border-b border-border flex items-center justify-between">
-      <span class="text-[9px] font-mono uppercase text-muted tracking-wider">Conversations</span>
+      <span class="text-[9px] font-mono uppercase text-muted tracking-wider">{m.workshop_conversations()}</span>
     </div>
     <div class="flex-1 overflow-y-auto">
       {#if sortedConversations.length === 0}
         <div class="px-2 py-4 text-center">
-          <span class="text-[9px] text-muted">No conversations</span>
+          <span class="text-[9px] text-muted">{m.workshop_noConversations()}</span>
         </div>
       {:else}
         {#each sortedConversations as conv (conv.id)}
@@ -170,13 +171,13 @@
             <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse shrink-0"></span>
           {/if}
         {:else}
-          <span class="text-[11px] text-muted">Select a conversation</span>
+          <span class="text-[11px] text-muted">{m.workshop_selectConversation()}</span>
         {/if}
       </div>
       <button
         class="text-muted hover:text-foreground transition-colors shrink-0 p-0.5"
         onclick={onClose}
-        aria-label="Close conversation sidebar"
+        aria-label={m.workshop_closeConversationSidebar()}
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -189,26 +190,26 @@
     <div class="flex-1 px-3 py-2 space-y-3 overflow-y-auto">
       {#if !selectedConversation}
         <div class="flex flex-col items-center justify-center h-full gap-2">
-          <span class="text-[11px] text-muted">Pick a conversation from the list</span>
+          <span class="text-[11px] text-muted">{m.workshop_pickConversation()}</span>
         </div>
       {:else if isLoading}
         <div class="flex flex-col items-center justify-center h-full gap-2">
-          <span class="text-[11px] text-muted animate-pulse">Loading messages...</span>
+          <span class="text-[11px] text-muted animate-pulse">{m.workshop_loadingMessages()}</span>
         </div>
       {:else if messages.length === 0}
         <div class="flex flex-col items-center justify-center h-full gap-2">
           {#if selectedConversation.status === 'active'}
-            <span class="text-[11px] text-muted animate-pulse">Waiting for response...</span>
+            <span class="text-[11px] text-muted animate-pulse">{m.workshop_waitingForResponse()}</span>
           {:else if (selectedConversation.status === 'completed' || selectedConversation.status === 'interrupted') && conn.connected}
-            <span class="text-[11px] text-muted mb-2">No cached messages</span>
+            <span class="text-[11px] text-muted mb-2">{m.workshop_noCachedMessages()}</span>
             <button
               class="text-[10px] font-mono px-2 py-1 rounded bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
               onclick={handleLoadHistory}
             >
-              Load history
+              {m.workshop_loadHistory()}
             </button>
           {:else}
-            <span class="text-[11px] text-muted">No messages</span>
+            <span class="text-[11px] text-muted">{m.workshop_noMessages()}</span>
           {/if}
         </div>
       {:else}

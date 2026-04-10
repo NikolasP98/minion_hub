@@ -259,7 +259,7 @@
               <tr class="border-b border-border bg-bg2">
                 <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[10px]">{m.users_email()}</th>
                 <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[10px]">{m.users_role()}</th>
-                <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[10px]">Status</th>
+                <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[10px]">{m.users_status()}</th>
                 <th class="px-4 py-2.5"></th>
               </tr>
             </thead>

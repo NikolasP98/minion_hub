@@ -1,6 +1,7 @@
 <script lang="ts">
     import { conn } from "$lib/state/gateway/connection.svelte";
     import { META_GROUPS, getMetaGroupId } from "$lib/utils/config-schema";
+    import * as m from '$lib/paraglide/messages';
     import {
         Palette,
         SlidersHorizontal,
@@ -141,7 +142,7 @@
             <div
                 class="px-4 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/80"
             >
-                User
+                {m.settings_sectionUser()}
             </div>
             {#each USER_SECTIONS as section (section.id)}
                 <button
@@ -171,7 +172,7 @@
             <div
                 class="px-4 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/80"
             >
-                Gateway
+                {m.settings_sectionGateway()}
             </div>
 
             <!-- Config meta-groups (filtered to loaded groups when connected) -->
@@ -188,7 +189,7 @@
                           ? 'text-muted-foreground/40 cursor-not-allowed'
                           : 'text-muted-foreground hover:text-foreground hover:bg-bg3 cursor-pointer'}"
                     onclick={() => conn.connected && onselect(sectionId)}
-                    title={disabled ? "Connect to a gateway first" : undefined}
+                    title={disabled ? m.settings_connectFirst() : undefined}
                 >
                     <Icon
                         size={15}
@@ -221,7 +222,7 @@
                     onclick={() => {
                         if (section.id === 'gateways' || conn.connected) onselect(section.id);
                     }}
-                    title={disabled ? "Connect to a gateway first" : undefined}
+                    title={disabled ? m.settings_connectFirst() : undefined}
                 >
                     <section.icon
                         size={15}

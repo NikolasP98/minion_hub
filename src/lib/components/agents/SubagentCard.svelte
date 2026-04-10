@@ -4,6 +4,7 @@
     resolveStatus,
     formatDuration,
   } from '$lib/state/features/subagent-data.svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let {
     session,
@@ -25,7 +26,7 @@
   };
 
   const depthLabel = $derived(
-    session.spawnDepth != null ? `depth ${session.spawnDepth}` : null
+    session.spawnDepth != null ? m.subagent_depth({ depth: session.spawnDepth }) : null
   );
 
   const tokenDisplay = $derived(() => {
@@ -51,17 +52,17 @@
   <div class="flex items-center gap-2">
     <span class="w-2 h-2 rounded-full shrink-0 {statusColor[status] ?? statusColor.unknown}"></span>
     <span class="text-[12px] font-medium truncate flex-1">
-      {session.label || session.displayName || session.key.split(':').pop() || 'Unnamed'}
+      {session.label || session.displayName || session.key.split(':').pop() || m.subagent_unnamed()}
     </span>
     {#if status === 'running'}
-      <span class="text-[10px] text-yellow-400 font-mono animate-pulse">running</span>
+      <span class="text-[10px] text-yellow-400 font-mono animate-pulse">{m.subagent_running()}</span>
     {/if}
   </div>
 
   <!-- Row 2: model + depth -->
   <div class="flex items-center gap-2 pl-4">
     <span class="text-[10px] text-muted truncate">
-      {session.model ?? 'unknown model'}
+      {session.model ?? m.subagent_unknownModel()}
     </span>
     {#if depthLabel}
       <span class="text-[9px] px-1.5 py-0.5 rounded bg-white/[0.06] text-muted font-mono">
@@ -79,7 +80,7 @@
     {/if}
     {#if session.spawnedBy && session.spawnDepth && session.spawnDepth >= 2}
       <span class="opacity-60">&middot;</span>
-      <span class="truncate">from {session.spawnedBy.split(':').pop()}</span>
+      <span class="truncate">{m.subagent_from({ name: session.spawnedBy.split(':').pop() ?? '' })}</span>
     {/if}
   </div>
 </button>

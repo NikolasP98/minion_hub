@@ -1,5 +1,6 @@
 <script lang="ts">
     import { X, Check, AlertTriangle, XCircle, ArrowDown } from "lucide-svelte";
+    import * as m from '$lib/paraglide/messages';
     import { SvelteMap } from "svelte/reactivity";
     import { getToolInfo } from "$lib/data/tool-manifest";
 
@@ -143,13 +144,13 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 <div class="overlay" onclick={handleBackdropClick}>
-    <div class="modal" role="dialog" aria-label="Skill Preview: {skillName}">
+    <div class="modal" role="dialog" aria-label="{m.builder_skillPreviewLabel({ name: skillName })}">
         <!-- Header -->
         <div class="modal-header">
             <h2 class="modal-title">
-                Preview: {skillEmoji} {skillName}
+                {m.builder_previewTitle()}: {skillEmoji} {skillName}
             </h2>
-            <button class="close-btn" onclick={onClose} aria-label="Close preview">
+            <button class="close-btn" onclick={onClose} aria-label={m.common_close()}>
                 <X size={18} />
             </button>
         </div>
@@ -158,11 +159,11 @@
         <div class="modal-body">
             {#if chapters.length === 0}
                 <div class="empty-state">
-                    No chapters defined. Add chapters to preview the execution path.
+                    {m.builder_noChaptersDefined()}
                 </div>
             {:else}
                 <!-- Pipeline Overview -->
-                <div class="section-label">Execution Path</div>
+                <div class="section-label">{m.builder_executionPath()}</div>
                 <div class="pipeline">
                     {#each sortedIds as chId, i (chId)}
                         {@const ch = chapterMap.get(chId)}
@@ -198,20 +199,20 @@
                                     {/if}
                                     {#if ch.guide.trim()}
                                         <div class="chapter-guide">
-                                            Guide: "{ch.guide.trim().split("\n")[0].slice(0, 80)}{ch.guide.trim().split("\n")[0].length > 80 ? "..." : ""}"
+                                            {m.builder_previewGuide()}: "{ch.guide.trim().split("\n")[0].slice(0, 80)}{ch.guide.trim().split("\n")[0].length > 80 ? "..." : ""}"
                                         </div>
                                     {:else}
                                         <div class="chapter-guide chapter-guide--empty">
-                                            Guide: (empty)
+                                            {m.builder_previewGuide()}: ({m.builder_empty()})
                                         </div>
                                     {/if}
                                     {#if ch.outputDef.trim()}
                                         <div class="chapter-output">
-                                            Outputs: {ch.outputDef.trim().split("\n")[0].slice(0, 60)}{ch.outputDef.trim().split("\n")[0].length > 60 ? "..." : ""}
+                                            {m.builder_previewOutputs()}: {ch.outputDef.trim().split("\n")[0].slice(0, 60)}{ch.outputDef.trim().split("\n")[0].length > 60 ? "..." : ""}
                                         </div>
                                     {:else}
                                         <div class="chapter-output chapter-output--empty">
-                                            Outputs: (not defined)
+                                            {m.builder_previewOutputs()}: ({m.builder_notDefined()})
                                         </div>
                                     {/if}
                                 </div>
@@ -267,7 +268,7 @@
             {/if}
 
             <!-- Validation Checklist -->
-            <div class="section-label">Validation</div>
+            <div class="section-label">{m.builder_validationTitle()}</div>
             <div class="validation-list">
                 <div class="validation-item">
                     {#if allHaveTools}
@@ -275,7 +276,7 @@
                     {:else}
                         <span class="check-icon check-icon--fail"><XCircle size={14} /></span>
                     {/if}
-                    <span class="validation-text">All chapters have tools assigned</span>
+                    <span class="validation-text">{m.builder_validAllToolsAssigned()}</span>
                 </div>
 
                 <div class="validation-item">
@@ -284,7 +285,7 @@
                     {:else}
                         <span class="check-icon check-icon--fail"><XCircle size={14} /></span>
                     {/if}
-                    <span class="validation-text">DAG is acyclic</span>
+                    <span class="validation-text">{m.builder_validDagAcyclic()}</span>
                 </div>
 
                 <div class="validation-item">
@@ -293,7 +294,7 @@
                     {:else}
                         <span class="check-icon check-icon--fail"><XCircle size={14} /></span>
                     {/if}
-                    <span class="validation-text">All chapters have guide text</span>
+                    <span class="validation-text">{m.builder_validAllGuides()}</span>
                 </div>
 
                 <div class="validation-item">
@@ -302,7 +303,7 @@
                     {:else}
                         <span class="check-icon check-icon--fail"><XCircle size={14} /></span>
                     {/if}
-                    <span class="validation-text">All chapters have output definitions</span>
+                    <span class="validation-text">{m.builder_validAllOutputs()}</span>
                 </div>
 
                 <!-- Warnings for chapters with empty fields -->
@@ -310,8 +311,8 @@
                     <div class="validation-item validation-item--warn">
                         <span class="check-icon check-icon--warn"><AlertTriangle size={14} /></span>
                         <span class="validation-text">
-                            Missing guide: {chaptersWithoutGuide
-                                .map((ch) => ch.name || "Untitled")
+                            {m.builder_missingGuide()}: {chaptersWithoutGuide
+                                .map((ch) => ch.name || m.builder_untitled())
                                 .join(", ")}
                         </span>
                     </div>
@@ -320,8 +321,8 @@
                     <div class="validation-item validation-item--warn">
                         <span class="check-icon check-icon--warn"><AlertTriangle size={14} /></span>
                         <span class="validation-text">
-                            Missing output: {chaptersWithoutOutput
-                                .map((ch) => ch.name || "Untitled")
+                            {m.builder_missingOutput()}: {chaptersWithoutOutput
+                                .map((ch) => ch.name || m.builder_untitled())
                                 .join(", ")}
                         </span>
                     </div>
@@ -330,8 +331,8 @@
                     <div class="validation-item validation-item--warn">
                         <span class="check-icon check-icon--warn"><AlertTriangle size={14} /></span>
                         <span class="validation-text">
-                            Missing description: {chaptersWithoutDescription
-                                .map((ch) => ch.name || "Untitled")
+                            {m.builder_missingDescription()}: {chaptersWithoutDescription
+                                .map((ch) => ch.name || m.builder_untitled())
                                 .join(", ")}
                         </span>
                     </div>

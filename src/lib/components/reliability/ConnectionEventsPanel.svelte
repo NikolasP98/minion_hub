@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import * as m from '$lib/paraglide/messages';
 	import { Activity, ChevronRight } from 'lucide-svelte';
 	import Chart from '$lib/components/charts/Chart.svelte';
 	import type { EChartsOption } from 'echarts';
@@ -286,10 +287,10 @@
 	<div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20">
 		<Activity size={11} class="text-accent shrink-0" />
 		<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground"
-			>Activity Log</span
+			>{m.reliability_activityLog()}</span
 		>
 		{#if summary}
-			<span class="ml-auto text-[10px] text-muted-foreground">{summary.total} events</span>
+			<span class="ml-auto text-[10px] text-muted-foreground">{summary.total} {m.reliability_events()}</span>
 		{/if}
 	</div>
 
@@ -322,7 +323,7 @@
 
 	{#if loading && events.length === 0}
 		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">
-			Loading...
+			{m.common_loading()}
 		</div>
 	{:else if fetchError}
 		<div class="flex items-center justify-center py-12 px-4 text-destructive text-[13px]">
@@ -330,7 +331,7 @@
 		</div>
 	{:else if events.length === 0}
 		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">
-			No events recorded
+			{m.reliability_noEvents()}
 		</div>
 	{:else}
 		<!-- Scatter chart -->
@@ -394,32 +395,32 @@
 							<div class="bg-bg3/30 border border-border/50 rounded p-2 text-[10px]">
 								<div class="grid grid-cols-2 gap-x-4 gap-y-1 mb-2">
 									<div>
-										<span class="text-muted-foreground">Event:</span>
+										<span class="text-muted-foreground">{m.reliability_eventLabel()}</span>
 										<span class="text-foreground ml-1">{ev.event}</span>
 									</div>
 									<div>
-										<span class="text-muted-foreground">Category:</span>
+										<span class="text-muted-foreground">{m.reliability_categoryLabel()}</span>
 										<span class="text-foreground ml-1">{ev.category}</span>
 									</div>
 									<div>
-										<span class="text-muted-foreground">Severity:</span>
+										<span class="text-muted-foreground">{m.reliability_severityLabel()}</span>
 										<span class="text-foreground ml-1">{ev.severity}</span>
 									</div>
 									<div>
-										<span class="text-muted-foreground">Time:</span>
+										<span class="text-muted-foreground">{m.reliability_timeLabel()}</span>
 										<span class="text-foreground ml-1"
 											>{new Date(ev.occurredAt).toLocaleString()}</span
 										>
 									</div>
 									{#if ev.agentId}
 										<div>
-											<span class="text-muted-foreground">Agent:</span>
+											<span class="text-muted-foreground">{m.reliability_agentLabel()}</span>
 											<span class="text-foreground ml-1">{ev.agentId}</span>
 										</div>
 									{/if}
 									{#if ev.correlationId}
 										<div>
-											<span class="text-muted-foreground">Correlation:</span>
+											<span class="text-muted-foreground">{m.reliability_correlationLabel()}</span>
 											<span class="text-foreground ml-1"
 												>{ev.correlationId}</span
 											>
@@ -427,12 +428,12 @@
 									{/if}
 								</div>
 								<div>
-									<span class="text-muted-foreground">Message:</span>
+									<span class="text-muted-foreground">{m.reliability_messageLabel()}</span>
 									<span class="text-foreground ml-1">{ev.message}</span>
 								</div>
 								{#if meta}
 									<div class="mt-2">
-										<span class="text-muted-foreground">Metadata:</span>
+										<span class="text-muted-foreground">{m.reliability_metadataLabel()}</span>
 										<pre
 											class="mt-1 text-[9px] text-foreground/80 bg-bg3/50 rounded p-1.5 overflow-x-auto whitespace-pre-wrap break-all">{JSON.stringify(meta, null, 2)}</pre>
 									</div>

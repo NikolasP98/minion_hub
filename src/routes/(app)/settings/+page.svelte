@@ -317,7 +317,7 @@ import MinionLogo from "$lib/components/layout/MinionLogo.svelte";
                                             <circle cx="8" cy="8" r="2.5"/>
                                             <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41"/>
                                         </svg>
-                                        Configure
+                                        {m.settings_configure()}
                                     </button>
                                 {/if}
                             {/each}
@@ -414,9 +414,9 @@ import MinionLogo from "$lib/components/layout/MinionLogo.svelte";
                 <!-- Disconnect + dirty banner (top-level — must not be inside the :else branch) -->
                 {#if !conn.connected && isDirty.value}
                     <div class="mx-6 mt-4 px-4 py-3 rounded-lg border border-amber-500/30 bg-amber-500/10 flex items-center gap-3 shrink-0">
-                        <span class="text-amber-400 text-xs font-medium">Disconnected</span>
+                        <span class="text-amber-400 text-xs font-medium">{m.config_disconnected()}</span>
                         <span class="text-muted-foreground text-xs flex-1">
-                            Changes will be saved automatically when reconnected.
+                            {m.config_disconnectedAutoSave()}
                         </span>
                     </div>
                 {/if}
@@ -428,7 +428,7 @@ import MinionLogo from "$lib/components/layout/MinionLogo.svelte";
                                 {m.config_noServer()}
                             </p>
                             <p class="text-xs text-muted-foreground/60 mt-1">
-                                Connect via the System tab or select a host from the topbar
+                                {m.config_connectHint()}
                             </p>
                         </div>
                     </div>
@@ -474,10 +474,10 @@ import MinionLogo from "$lib/components/layout/MinionLogo.svelte";
                                 {#if getTabGroups(tab.id).length === 0 && configState.loaded}
                                     <div class="text-center py-12">
                                         <p class="text-muted-foreground text-sm">
-                                            No {tab.label} settings available
+                                            {m.config_noTabSettings({ label: tab.label })}
                                         </p>
                                         <p class="text-xs text-muted-foreground/60 mt-1">
-                                            This gateway may not expose settings for this category
+                                            {m.config_noTabSettingsHint()}
                                         </p>
                                     </div>
                                 {/if}

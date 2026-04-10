@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { SubagentSession } from '$lib/state/features/subagent-data.svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let { session }: { session: SubagentSession } = $props();
 
@@ -12,7 +13,7 @@
 
 <div class="flex-1 min-h-0 overflow-y-auto p-4 scrollbar-thin scrollbar-color-border">
   <h3 class="text-[11px] font-semibold text-muted uppercase tracking-wider mb-3">
-    Session Metadata
+    {m.subagent_sessionMetadata()}
   </h3>
   <div class="flex flex-col gap-1.5">
     {#each entries as [key, value] (key)}

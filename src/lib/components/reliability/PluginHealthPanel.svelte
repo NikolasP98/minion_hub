@@ -196,7 +196,7 @@
 						{:else if plugin.status === 'loaded'}
 							{#if plugin.tools != null}
 								<span class="text-[10px] text-muted-foreground whitespace-nowrap"
-									>{plugin.tools} tools</span
+									>{m.reliability_pluginTools({ count: plugin.tools })}</span
 								>
 							{/if}
 							{#if plugin.channels && plugin.channels.length > 0}
@@ -216,11 +216,11 @@
 				class="flex items-center gap-3 px-4 py-2 border-t border-border text-[10px] text-muted-foreground"
 			>
 				<span
-					>{snap.summary.loaded}/{snap.summary.total} loaded</span
+					>{m.reliability_pluginLoadedOf({ loaded: snap.summary.loaded, total: snap.summary.total })}</span
 				>
 				{#if snap.summary.failed > 0}
 					<span class="text-destructive font-semibold"
-						>{snap.summary.failed} failed</span
+						>{m.reliability_pluginFailed({ count: snap.summary.failed })}</span
 					>
 				{/if}
 			</div>

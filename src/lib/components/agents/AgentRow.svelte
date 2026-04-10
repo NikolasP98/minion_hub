@@ -64,10 +64,10 @@
     const hasActive = $derived(act?.working || activeSessions.length > 0);
 
     const statusLabel = $derived.by(() => {
-        if (act?.working) return "Working";
-        if (activeSessions.length > 0) return "Active";
-        if (chat?.loading) return "Loading";
-        return "Idle";
+        if (act?.working) return m.agent_statusWorking();
+        if (activeSessions.length > 0) return m.agent_statusActive({ count: activeSessions.length });
+        if (chat?.loading) return m.agent_statusLoading();
+        return m.agent_statusIdle();
     });
 
     const statusText = $derived.by(() => {
@@ -248,8 +248,7 @@
                 <!-- Sub-label: session count or gateway status -->
                 {#if activeSessions.length > 0}
                     <span class="text-[9px] text-muted-foreground/50 pl-2.5 leading-none">
-                        {activeSessions.length}
-                        {activeSessions.length === 1 ? "session" : "sessions"}
+                        {m.agent_sessionCount({ count: activeSessions.length })}
                     </span>
                 {:else if agent.status}
                     <span class="text-[9px] text-muted-foreground/50 pl-2.5 leading-none truncate" title={agent.status}>

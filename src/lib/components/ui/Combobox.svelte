@@ -3,6 +3,7 @@
   import type { Snippet } from 'svelte';
   import * as combobox from '@zag-js/combobox';
   import { useMachine, normalizeProps } from '@zag-js/svelte';
+  import * as m from '$lib/paraglide/messages';
 
   interface Props {
     /** Unique ID for the combobox machine */
@@ -194,7 +195,7 @@
           </li>
         {/each}
         {#if filteredItems.length === 0}
-          <li class="cb-empty">No matches</li>
+          <li class="cb-empty">{m.common_noMatches()}</li>
         {/if}
       </ul>
     </div>

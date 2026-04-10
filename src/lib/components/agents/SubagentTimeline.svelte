@@ -6,6 +6,7 @@
 		subagentState,
 		type SubagentSession
 	} from '$lib/state/features/subagent-data.svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	const sessions = $derived(
 		[...getSortedSubagents()].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
@@ -35,10 +36,10 @@
 		if (!ts) return '';
 		const d = new Date(ts);
 		const today = new Date();
-		if (d.toDateString() === today.toDateString()) return 'Today';
+		if (d.toDateString() === today.toDateString()) return m.common_today();
 		const yesterday = new Date(today);
 		yesterday.setDate(yesterday.getDate() - 1);
-		if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+		if (d.toDateString() === yesterday.toDateString()) return m.common_yesterday();
 		return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
 	}
 
@@ -90,16 +91,16 @@
 				<!-- Info -->
 				<div class="flex flex-col gap-0.5 flex-1 min-w-0">
 					<span class="text-[11px] font-medium truncate">
-						{session.label || session.displayName || session.key.split(':').pop() || 'Unnamed'}
+						{session.label || session.displayName || session.key.split(':').pop() || m.subagent_unnamed()}
 					</span>
 					<div class="flex items-center gap-2 text-[9px] text-muted/50">
-						<span>{session.model ?? 'unknown'}</span>
+						<span>{session.model ?? m.subagent_unknown()}</span>
 						{#if session.spawnDepth != null}
 							<span class="opacity-60">&middot;</span>
-							<span>depth {session.spawnDepth}</span>
+							<span>{m.subagent_depth({ depth: session.spawnDepth })}</span>
 						{/if}
 						{#if status === 'running'}
-							<span class="text-yellow-400 animate-pulse">running</span>
+							<span class="text-yellow-400 animate-pulse">{m.subagent_running()}</span>
 						{/if}
 					</div>
 				</div>

@@ -8,6 +8,7 @@
 		subagentState
 	} from '$lib/state/features/subagent-data.svelte';
 	import { piAgentState, killSubagent, steerSubagent } from '$lib/state/features/pi-agent-state.svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	let {
 		node,
@@ -101,7 +102,7 @@
 
 		<!-- Label -->
 		<span class="text-[11px] font-medium truncate flex-1">
-			{node.session.label || node.session.displayName || node.session.key.split(':').pop() || 'Unnamed'}
+			{node.session.label || node.session.displayName || node.session.key.split(':').pop() || m.subagent_unnamed()}
 		</span>
 
 		<!-- Template badge -->
@@ -131,12 +132,12 @@
 					type="button"
 					class="text-[9px] text-red-400 hover:text-red-300 px-1 bg-transparent border-0 cursor-pointer"
 					onclick={handleKill}
-				>Kill</button>
+				>{m.subagent_kill()}</button>
 				<button
 					type="button"
 					class="text-[9px] text-blue-400 hover:text-blue-300 px-1 bg-transparent border-0 cursor-pointer"
 					onclick={handleSteerToggle}
-				>Steer</button>
+				>{m.subagent_steer()}</button>
 			</div>
 		{/if}
 	</div>
@@ -147,7 +148,7 @@
 			<input
 				type="text"
 				bind:value={steerMessage}
-				placeholder="Type steering message..."
+				placeholder={m.subagent_steerPlaceholder()}
 				class="flex-1 bg-bg3 border border-border rounded text-[11px] px-2 py-1 text-foreground"
 				onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter' && steerMessage.trim()) { handleSteer(); } }}
 			/>
@@ -155,7 +156,7 @@
 				type="button"
 				class="text-[9px] px-2 py-1 bg-accent/20 text-accent rounded hover:bg-accent/30 cursor-pointer border-0"
 				onclick={handleSteer}
-			>Send</button>
+			>{m.subagent_send()}</button>
 		</div>
 	{/if}
 

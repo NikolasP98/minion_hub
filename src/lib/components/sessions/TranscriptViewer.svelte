@@ -1,6 +1,7 @@
 <script lang="ts">
     import { Copy, ChevronRight, ChevronDown, User, Bot, Wrench } from 'lucide-svelte';
     import { fmtTimeAgo } from '$lib/utils/format';
+    import * as m from '$lib/paraglide/messages';
 
     interface TranscriptTurn {
         id: string;
@@ -44,10 +45,10 @@
         }
     }
 
-    const roleBadge: Record<string, { label: string; class: string; icon: typeof User }> = {
-        user: { label: 'User', class: 'bg-blue-500/15 text-blue-400 border-blue-500/25', icon: User },
-        assistant: { label: 'Assistant', class: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25', icon: Bot },
-        tool: { label: 'Tool', class: 'bg-amber-500/15 text-amber-400 border-amber-500/25', icon: Wrench },
+    const roleBadge: Record<string, { label: () => string; class: string; icon: typeof User }> = {
+        user: { label: () => m.session_roleUser(), class: 'bg-blue-500/15 text-blue-400 border-blue-500/25', icon: User },
+        assistant: { label: () => m.session_roleAssistant(), class: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25', icon: Bot },
+        tool: { label: () => m.session_roleTool(), class: 'bg-amber-500/15 text-amber-400 border-amber-500/25', icon: Wrench },
     };
 </script>
 
@@ -59,7 +60,7 @@
             <div class="flex items-center gap-2 mb-2">
                 <div class="flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[10px] font-semibold uppercase tracking-wider {badge.class}">
                     <badge.icon size={10} />
-                    <span>{badge.label}</span>
+                    <span>{badge.label()}</span>
                 </div>
                 {#if turn.toolName}
                     <span class="text-[10px] font-mono text-muted-foreground bg-bg2 px-1.5 py-0.5 rounded">
@@ -75,7 +76,7 @@
                 <button
                     class="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-bg2 text-muted hover:text-foreground"
                     onclick={() => copyContent(turn.content)}
-                    title="Copy"
+                    title={m.session_copy()}
                 >
                     <Copy size={12} />
                 </button>
@@ -98,7 +99,7 @@
                         {:else}
                             <ChevronRight size={12} />
                         {/if}
-                        Reasoning
+                        {m.session_reasoning()}
                     </button>
                     {#if expandedReasoning.has(turn.id)}
                         <div class="mt-2 px-3 py-2 rounded-md bg-bg2/80 border border-border/50 text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed font-mono">
@@ -120,19 +121,19 @@
                         {:else}
                             <ChevronRight size={12} />
                         {/if}
-                        Details
+                        {m.session_details()}
                     </button>
                     {#if expandedTools.has(turn.id)}
                         <div class="mt-2 space-y-2">
                             {#if turn.toolInput}
                                 <div>
-                                    <div class="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/40 mb-1">Input</div>
+                                    <div class="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/40 mb-1">{m.session_input()}</div>
                                     <pre class="px-3 py-2 rounded-md bg-bg2/80 border border-border/50 text-xs text-foreground/70 overflow-x-auto font-mono">{turn.toolInput}</pre>
                                 </div>
                             {/if}
                             {#if turn.toolOutput}
                                 <div>
-                                    <div class="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/40 mb-1">Output</div>
+                                    <div class="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/40 mb-1">{m.session_output()}</div>
                                     <pre class="px-3 py-2 rounded-md bg-bg2/80 border border-border/50 text-xs text-foreground/70 overflow-x-auto font-mono">{turn.toolOutput}</pre>
                                 </div>
                             {/if}
@@ -145,7 +146,7 @@
 
     {#if turns.length === 0}
         <div class="py-8 text-center text-sm text-muted-foreground">
-            No transcript data
+            {m.session_noTranscriptData()}
         </div>
     {/if}
 </div>

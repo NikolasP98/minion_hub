@@ -143,7 +143,7 @@
                             {#if host.id === hostsState.activeHostId && conn.connected}
                                 <span
                                     class="text-[10px] font-semibold bg-success/12 text-success border border-success/25 rounded-full py-px px-1.75"
-                                    >connected</span
+                                    >{m.conn_connected()}</span
                                 >
                             {/if}
                         </div>
@@ -160,7 +160,7 @@
                             </div>
                         {:else}
                             <div class="text-[10px] text-muted-foreground mt-1">
-                                Last: {fmtTimeAgo(host.lastConnectedAt)}
+                                {m.hosts_last()} {fmtTimeAgo(host.lastConnectedAt)}
                             </div>
                         {/if}
                         {#if confirmDeleteId === host.id}

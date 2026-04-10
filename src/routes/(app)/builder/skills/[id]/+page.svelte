@@ -23,6 +23,8 @@
         clearDryRun,
     } from '$lib/state/builder/skill-editor.svelte';
 
+    import * as m from '$lib/paraglide/messages';
+
     let showDryRun = $state(false);
 
     const skillId = $derived(page.params.id);
@@ -59,7 +61,7 @@
 <!-- ── Toolbar ─────────────────────────────────────────────────────── -->
 <div class="editor-toolbar">
     <div class="flex items-center gap-3 min-w-0">
-        <a href="/builder" class="back-link" title="Back to Builder">
+        <a href="/builder" class="back-link" title={m.builder_backToBuilder()}>
             <ArrowLeft size={16} />
         </a>
 
@@ -78,22 +80,22 @@
 
     <div class="flex items-center gap-2">
         <!-- Save status -->
-        <span class="save-indicator" title={skillEditorState.saving ? 'Saving...' : skillEditorState.dirty ? 'Unsaved changes' : 'Saved'}>
+        <span class="save-indicator" title={skillEditorState.saving ? m.builder_saving() : skillEditorState.dirty ? m.builder_unsavedChanges() : m.builder_saved()}>
             {#if skillEditorState.saving}
                 <Loader2 size={12} class="loading-spinner" />
-                <span>Saving...</span>
+                <span>{m.builder_saving()}</span>
             {:else if skillEditorState.dirty}
                 <Circle size={8} class="dirty-dot" />
-                <span>Unsaved</span>
+                <span>{m.builder_unsaved()}</span>
             {:else}
                 <Check size={12} class="saved-check" />
-                <span>Saved</span>
+                <span>{m.builder_saved()}</span>
             {/if}
         </span>
 
         <div class="h-4 w-px bg-border/60"></div>
 
-        <label class="max-cycles-control" title="Maximum cycle iterations">
+        <label class="max-cycles-control" title={m.builder_maxCycleIterations()}>
             <RotateCcw size={12} class="max-cycles-icon" />
             <input
                 type="number"
@@ -110,11 +112,11 @@
         <button
             type="button"
             class="toolbar-btn {showDryRun ? 'active' : ''}"
-            title="Test run this skill"
+            title={m.builder_testRunSkill()}
             onclick={() => { showDryRun = !showDryRun; if (!showDryRun) clearDryRun(); }}
         >
             <FlaskConical size={14} />
-            <span class="hidden sm:inline">Test</span>
+            <span class="hidden sm:inline">{m.builder_test()}</span>
         </button>
 
         <button
@@ -130,7 +132,7 @@
             {:else}
                 <CheckCircle2 size={14} />
             {/if}
-            <span class="hidden sm:inline">Validation</span>
+            <span class="hidden sm:inline">{m.builder_validationTitle()}</span>
         </button>
         <button
             type="button"
@@ -138,15 +140,15 @@
             onclick={handlePublishClick}
             disabled={skillEditorDerived.validationCounts.errors > 0 || skillEditorState.publishing}
             title={skillEditorDerived.validationCounts.errors > 0
-                ? `Fix ${skillEditorDerived.validationCounts.errors} error${skillEditorDerived.validationCounts.errors !== 1 ? 's' : ''} before publishing`
-                : skillEditorState.status === 'published' ? 'Republish' : 'Publish'}
+                ? m.builder_fixErrorsBeforePublish({ count: skillEditorDerived.validationCounts.errors })
+                : skillEditorState.status === 'published' ? m.builder_republish() : m.builder_publish()}
         >
             {#if skillEditorState.publishing}
                 <Loader2 size={14} class="loading-spinner" />
             {:else}
                 <Upload size={14} />
             {/if}
-            <span class="hidden sm:inline">{skillEditorState.publishing ? 'Publishing...' : skillEditorState.status === 'published' ? 'Republish' : 'Publish'}</span>
+            <span class="hidden sm:inline">{skillEditorState.publishing ? m.builder_publishing() : skillEditorState.status === 'published' ? m.builder_republish() : m.builder_publish()}</span>
         </button>
     </div>
 </div>
@@ -156,7 +158,7 @@
 
     {#if skillEditorState.loading}
         <div class="flex-1 flex items-center justify-center">
-            <span class="text-muted text-sm">Loading...</span>
+            <span class="text-muted text-sm">{m.common_loading()}</span>
         </div>
     {:else}
 
@@ -171,7 +173,7 @@
                             type="text"
                             class="name-input"
                             bind:value={skillEditorState.name}
-                            placeholder="Skill name"
+                            placeholder={m.builder_skillNamePlaceholder()}
                         />
                     </div>
 
@@ -180,7 +182,7 @@
                         class="desc-input"
                         use:autosize={skillEditorState.description}
                         bind:value={skillEditorState.description}
-                        placeholder="Describe what this skill does..."
+                        placeholder={m.builder_skillDescPlaceholder2()}
                     ></textarea>
 
                     <!-- Ghost chapter suggestions (AI-02) -->
@@ -189,7 +191,7 @@
                             {#if skillEditorState.ghostLoading}
                                 <div class="ghost-loading">
                                     <Loader2 size={12} class="loading-spinner" />
-                                    <span>Suggesting chapters...</span>
+                                    <span>{m.builder_suggestingChapters()}</span>
                                 </div>
                             {/if}
                             {#each skillEditorState.ghostSuggestions as suggestion (suggestion.name)}
@@ -217,10 +219,10 @@
                             >
                                 {#if skillEditorState.aiBuilding}
                                     <Loader2 size={14} class="loading-spinner" />
-                                    <span>Building pipeline...</span>
+                                    <span>{m.builder_buildingPipeline()}</span>
                                 {:else}
                                     <Sparkles size={14} />
-                                    <span>Build with AI</span>
+                                    <span>{m.builder_buildWithAi()}</span>
                                 {/if}
                             </button>
                             {#if skillEditorState.aiBuildError}
@@ -233,11 +235,11 @@
                     <div class="tool-pool-section">
                         <h3 class="section-label">
                             <Wrench size={12} class="inline-block mr-1 opacity-50" />
-                            Tool Pool <span class="pool-count">{skillEditorDerived.poolToolIds.length}</span>
+                            {m.builder_toolPool()} <span class="pool-count">{skillEditorDerived.poolToolIds.length}</span>
                         </h3>
                         {#if skillEditorDerived.poolToolIds.length === 0}
                             <p class="pool-empty-text">
-                                Tools appear here as you build chapters
+                                {m.builder_toolPoolEmpty()}
                             </p>
                         {:else}
                             <div class="pool-chips">
@@ -257,7 +259,7 @@
                 <button
                     class="sidebar-collapse-btn"
                     onclick={() => (sidebarOpen = false)}
-                    title="Collapse sidebar"
+                    title={m.sidebar_collapse()}
                 >
                     <ChevronLeft size={14} />
                 </button>
@@ -267,7 +269,7 @@
             <button
                 class="sidebar-expand-btn"
                 onclick={() => (sidebarOpen = true)}
-                title="Show sidebar"
+                title={m.sidebar_expand()}
             >
                 <ChevronRight size={14} />
             </button>
@@ -279,15 +281,15 @@
             {#if skillEditorState.chapters.length === 0 && !skillEditorState.description.trim()}
                 <div class="first-visit-state">
                     <BookOpen size={32} strokeWidth={1.2} class="text-muted/30" />
-                    <h3 class="first-visit-title">Describe your skill to get started</h3>
-                    <p class="first-visit-desc">Write a description in the sidebar, then use AI to generate your chapter pipeline — or add chapters manually.</p>
+                    <h3 class="first-visit-title">{m.builder_firstVisitTitle()}</h3>
+                    <p class="first-visit-desc">{m.builder_firstVisitDesc()}</p>
                     <div class="first-visit-actions">
                         <button type="button" class="first-visit-btn primary" onclick={() => { sidebarOpen = true; }}>
                             <Sparkles size={14} />
-                            Open sidebar to begin
+                            {m.builder_openSidebarToBegin()}
                         </button>
                         <button type="button" class="first-visit-btn ghost" onclick={addChapter}>
-                            + Add chapter manually
+                            + {m.builder_addChapterManually()}
                         </button>
                     </div>
                 </div>
@@ -311,11 +313,11 @@
                     <div class="proposal-batch-actions">
                         <button class="batch-btn accept" onclick={acceptAllProposed}>
                             <Check size={14} />
-                            Accept All ({skillEditorState.stagedProposal.chapters.length})
+                            {m.builder_acceptAll({ count: skillEditorState.stagedProposal.chapters.length })}
                         </button>
                         <button class="batch-btn reject" onclick={rejectAllProposed}>
                             <X size={14} />
-                            Reject All
+                            {m.builder_rejectAll()}
                         </button>
                     </div>
                 {/if}
@@ -354,10 +356,10 @@
     <div class="confirm-overlay" onclick={(e) => { if (e.target === e.currentTarget) skillEditorState.chapterToDelete = null; }} onkeydown={(e) => { if (e.key === 'Escape') skillEditorState.chapterToDelete = null; }}>
         <div class="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="delete-modal-title">
             <p class="confirm-title" id="delete-modal-title">Delete "{skillEditorState.chapterToDelete.name}"?</p>
-            <p class="confirm-desc">This chapter and its configuration will be permanently removed.</p>
+            <p class="confirm-desc">{m.builder_deleteChapterDesc()}</p>
             <div class="confirm-actions">
-                <button type="button" class="confirm-btn cancel" onclick={() => { skillEditorState.chapterToDelete = null; }}>Keep Chapter</button>
-                <button type="button" class="confirm-btn delete" onclick={executeDeleteChapter}>Delete Chapter</button>
+                <button type="button" class="confirm-btn cancel" onclick={() => { skillEditorState.chapterToDelete = null; }}>{m.builder_keepChapter()}</button>
+                <button type="button" class="confirm-btn delete" onclick={executeDeleteChapter}>{m.builder_deleteChapterBtn()}</button>
             </div>
         </div>
     </div>
@@ -370,17 +372,17 @@
         <div class="condition-modal" role="dialog" aria-modal="true" aria-labelledby="condition-modal-title">
             <div class="condition-modal-header">
                 <GitBranch size={16} class="condition-icon" />
-                <span class="condition-modal-title" id="condition-modal-title">{skillEditorState.editingCondition.id ? 'Edit Condition' : 'New Condition'}</span>
+                <span class="condition-modal-title" id="condition-modal-title">{skillEditorState.editingCondition.id ? m.builder_editCondition() : m.builder_newCondition()}</span>
                 <button type="button" class="close-btn" onclick={() => { skillEditorState.editingCondition = null; }} aria-label="Close">&times;</button>
             </div>
             <div class="condition-modal-body">
                 <div class="condition-field">
-                    <label class="condition-label" for="cond-name">Label</label>
-                    <input id="cond-name" type="text" class="condition-input" bind:value={skillEditorState.conditionName} placeholder="e.g. Sufficient Data?" />
+                    <label class="condition-label" for="cond-name">{m.builder_conditionLabel()}</label>
+                    <input id="cond-name" type="text" class="condition-input" bind:value={skillEditorState.conditionName} placeholder={m.builder_conditionNamePlaceholder()} />
                 </div>
                 <div class="condition-field">
-                    <label class="condition-label" for="cond-text">Condition <span class="required">*</span></label>
-                    <span class="condition-helper">Binary yes/no question the agent evaluates at runtime</span>
+                    <label class="condition-label" for="cond-text">{m.builder_conditionText()} <span class="required">*</span></label>
+                    <span class="condition-helper">{m.builder_conditionHelper()}</span>
                     <input
                         id="cond-text"
                         type="text"
@@ -388,7 +390,7 @@
                         class:invalid={skillEditorState.conditionText.trim().length > 0 && !skillEditorDerived.conditionValidation.valid}
                         class:valid-input={skillEditorDerived.conditionValidation.valid}
                         bind:value={skillEditorState.conditionText}
-                        placeholder="Is the user authenticated?"
+                        placeholder={m.builder_conditionPlaceholder()}
                     />
                     {#if skillEditorState.conditionText.trim().length > 0 && !skillEditorDerived.conditionValidation.valid}
                         <span class="condition-error">
@@ -398,19 +400,19 @@
                     {:else if skillEditorDerived.conditionValidation.valid}
                         <span class="condition-valid">
                             <CheckCircle2 size={12} />
-                            Valid binary condition
+                            {m.builder_validBinaryCondition()}
                         </span>
                     {/if}
                 </div>
             </div>
             <div class="condition-modal-footer">
-                <button type="button" class="confirm-btn cancel" onclick={() => { skillEditorState.editingCondition = null; }}>Cancel</button>
+                <button type="button" class="confirm-btn cancel" onclick={() => { skillEditorState.editingCondition = null; }}>{m.common_cancel()}</button>
                 <button
                     type="button"
                     class="confirm-btn primary"
                     disabled={!skillEditorDerived.conditionValidation.valid}
                     onclick={skillEditorState.editingCondition.id ? updateCondition : saveCondition}
-                >{skillEditorState.editingCondition.id ? 'Update' : 'Create'}</button>
+                >{skillEditorState.editingCondition.id ? m.builder_update() : m.builder_create()}</button>
             </div>
         </div>
     </div>

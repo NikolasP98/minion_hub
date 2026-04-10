@@ -13,6 +13,7 @@
   } from '$lib/state/features/flow-editor.svelte';
   import ConsolePanel from '$lib/components/flow-editor/ConsolePanel.svelte';
   import { ArrowLeft, Save, GitBranch, Loader, Play, Trash2, Copy } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
   import { deleteNode, duplicateNode } from '$lib/state/features/flow-editor.svelte';
 
   let isRunning = $state(false);
@@ -71,7 +72,7 @@
           onclick={() => goto('/flow-editor')}
           class="text-xs text-muted hover:text-foreground transition-colors"
         >
-          ← Back to flows
+          {m.flow_backToFlows()}
         </button>
       </div>
     </div>
@@ -84,7 +85,7 @@
       <a
         href="/flow-editor"
         class="flex items-center justify-center w-7 h-7 rounded text-muted hover:text-foreground hover:bg-bg3 transition-colors"
-        title="Back to flows"
+        title={m.flow_backToFlows()}
       >
         <ArrowLeft size={14} />
       </a>
@@ -99,7 +100,7 @@
           class="bg-transparent text-sm font-semibold text-foreground focus:outline-none w-48 truncate placeholder:text-muted"
           value={flowEditorState.flowName}
           oninput={handleNameInput}
-          placeholder="Untitled Flow"
+          placeholder={m.flow_untitledFlow()}
         />
       </div>
 
@@ -109,12 +110,12 @@
           class="flex items-center gap-1.5 px-2 py-1 rounded bg-amber-500/15 border border-amber-500/30"
         >
           <div class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></div>
-          <span class="text-[10px] font-mono text-amber-300">RELATIONSHIP MODE</span>
+          <span class="text-[10px] font-mono text-amber-300">{m.flow_relationshipMode()}</span>
         </div>
       {:else if flowEditorState.isDirty}
         <div class="flex items-center gap-1 text-[10px] text-muted font-mono">
           <div class="w-1.5 h-1.5 rounded-full bg-yellow-500/60"></div>
-          Unsaved
+          {m.flow_unsaved()}
         </div>
       {/if}
 
@@ -132,7 +133,7 @@
         {:else}
           <Play size={12} />
         {/if}
-        Test Run
+        {m.flow_testRun()}
       </button>
 
       <!-- Save button -->
@@ -149,7 +150,7 @@
         {:else}
           <Save size={12} />
         {/if}
-        Save
+        {m.common_save()}
       </button>
     </div>
 
@@ -190,7 +191,7 @@
         class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left text-foreground/80 hover:bg-bg3 transition-colors"
       >
         <Copy size={12} class="shrink-0" />
-        Duplicate
+        {m.flow_duplicate()}
       </button>
       <div class="h-px bg-border/50 my-1"></div>
       <button
@@ -201,7 +202,7 @@
         class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left text-red-400 hover:bg-red-500/10 transition-colors"
       >
         <Trash2 size={12} class="shrink-0" />
-        Delete
+        {m.common_delete()}
       </button>
     </div>
   {/if}

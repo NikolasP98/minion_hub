@@ -2,6 +2,7 @@
   import { sparklineStyle, SPARKLINE_STYLE_OPTIONS } from '$lib/state/ui/sparkline-style.svelte';
   import { theme } from '$lib/state/ui/theme.svelte';
   import EChartsSparkline from '$lib/components/charts/EChartsSparkline.svelte';
+  import * as m from '$lib/paraglide/messages';
 
   // Synthetic 24h demo data
   const DEMO_BINS = Array.from({ length: 144 }, (_, i) => {
@@ -13,7 +14,7 @@
 </script>
 
 <section class="space-y-4">
-  <h2 class="text-xs font-semibold text-foreground uppercase tracking-wider">Sparkline Style</h2>
+  <h2 class="text-xs font-semibold text-foreground uppercase tracking-wider">{m.settings_sparklineStyle()}</h2>
 
   <!--
     Small: column layout — buttons fill full width in a row, preview below.

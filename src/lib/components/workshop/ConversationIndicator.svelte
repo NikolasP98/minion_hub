@@ -1,4 +1,6 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
+
   let {
     x,
     y,
@@ -17,7 +19,7 @@
     {type === 'task' ? 'border-accent bg-accent/15 hover:border-accent hover:bg-accent/25' : 'border-purple-500 bg-purple-500/15 hover:border-purple-400 hover:bg-purple-500/25'}"
   style="left: {x}px; top: {y}px; transform: translate(-50%, -50%);"
   {onclick}
-  aria-label="Open {type} conversation"
+  aria-label={m.workshop_openConversation({ type })}
 >
   <svg
     class="w-3.5 h-3.5 {type === 'task' ? 'text-accent' : 'text-purple-400'}"

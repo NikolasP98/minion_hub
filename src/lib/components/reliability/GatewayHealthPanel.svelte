@@ -93,7 +93,7 @@
 			],
 			series: [
 				{
-					name: 'Memory (MB)',
+					name: m.reliability_gatewayMemoryMb(),
 					type: 'line',
 					yAxisIndex: 0,
 					data: memoryData,
@@ -116,7 +116,7 @@
 					}
 				},
 				{
-					name: 'Sessions',
+					name: m.reliability_gatewaySessions(),
 					type: 'line',
 					yAxisIndex: 1,
 					data: sessionsData,
@@ -126,7 +126,7 @@
 					itemStyle: { color: '#22c55e' }
 				},
 				{
-					name: 'Agents',
+					name: m.reliability_gatewayAgents(),
 					type: 'line',
 					yAxisIndex: 1,
 					data: agentsData,
@@ -171,10 +171,10 @@
 	}
 
 	function getChannelDotLabel(s: ChannelAccountStatus): string {
-		if (!s.enabled || !s.configured) return 'Disabled';
-		if (s.running && s.connected) return 'Connected';
-		if (s.running && !s.connected) return 'Disconnected';
-		return 'Stopped';
+		if (!s.enabled || !s.configured) return m.reliability_channelDisabled();
+		if (s.running && s.connected) return m.reliability_channelConnected();
+		if (s.running && !s.connected) return m.reliability_channelDisconnected();
+		return m.reliability_channelStopped();
 	}
 
 	function formatUptime(ms: number): string {
@@ -237,19 +237,19 @@
 		<!-- Row 2: STATS -->
 		<div class="grid grid-cols-4 gap-px bg-border border-b border-border">
 			<div class="flex flex-col items-center gap-1 py-3.5 px-2 bg-card">
-				<span class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">Uptime</span>
+				<span class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_uptime()}</span>
 				<span class="text-lg font-bold text-success tabular-nums whitespace-nowrap">{formatUptime(latest.uptimeMs)}</span>
 			</div>
 			<div class="flex flex-col items-center gap-1 py-3.5 px-2 bg-card">
-				<span class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">Sessions</span>
+				<span class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_gatewaySessions()}</span>
 				<span class="text-lg font-bold text-foreground tabular-nums whitespace-nowrap">{latest.activeSessions}</span>
 			</div>
 			<div class="flex flex-col items-center gap-1 py-3.5 px-2 bg-card">
-				<span class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">Agents</span>
+				<span class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_gatewayAgents()}</span>
 				<span class="text-lg font-bold text-foreground tabular-nums whitespace-nowrap">{latest.activeAgents}</span>
 			</div>
 			<div class="flex flex-col items-center gap-1 py-3.5 px-2 bg-card">
-				<span class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">Memory</span>
+				<span class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_gatewayMemory()}</span>
 				<span class="text-lg font-bold text-foreground tabular-nums whitespace-nowrap">
 					{latest.memoryRssMb != null ? `${latest.memoryRssMb.toFixed(0)} MB` : '-'}
 				</span>
@@ -267,7 +267,7 @@
 		<div>
 			{#if channelGroups}
 				<div class="px-4 py-3 border-t border-border">
-					<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground block mb-2">Channel Status</span>
+					<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground block mb-2">{m.reliability_channelStatus()}</span>
 					<div class="flex flex-wrap gap-x-5 gap-y-3">
 						{#each channelGroups as group (group.channel)}
 							<div class="flex flex-col gap-0.5 min-w-[100px]">

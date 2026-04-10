@@ -11,6 +11,7 @@
     import SkillCreateWizard from "$lib/components/builder/SkillCreateWizard.svelte";
     import AgentCreateWizard from "$lib/components/builder/AgentCreateWizard.svelte";
     import AgentRegistry from "$lib/components/builder/AgentRegistry.svelte";
+    import * as m from '$lib/paraglide/messages';
     import { categoryIcon, agentIcon, type RegistryAgent } from "$lib/state/builder";
 
     // ── Registry detail sheet ───────────────────────────────────────
@@ -82,32 +83,32 @@
     const tabs = $derived<TabDef[]>([
         {
             id: "tools",
-            label: "Tools",
+            label: m.builder_tabTools(),
             icon: Wrench,
             locked: false,
-            newLabel: "New Tool",
-            emptyTitle: conn.connected ? "No tools yet" : "No custom tools yet",
+            newLabel: m.builder_newTool(),
+            emptyTitle: conn.connected ? m.builder_noToolsYet() : m.builder_noCustomToolsYet(),
             emptyDescription: conn.connected
-                ? "Gateway tools and custom tool scripts appear here"
-                : "Connect to a gateway to see gateway tools, or create custom tool scripts",
+                ? m.builder_gatewayToolsDesc()
+                : m.builder_noGatewayToolsDesc(),
         },
         {
             id: "skills",
-            label: "Skills",
+            label: m.builder_tabSkills(),
             icon: BookOpen,
             locked: false,
-            newLabel: "New Skill",
-            emptyTitle: "No skills yet",
-            emptyDescription: "Create your first skill to extend agent capabilities",
+            newLabel: m.builder_newSkill(),
+            emptyTitle: m.builder_noSkillsYet(),
+            emptyDescription: m.builder_noSkillsDesc(),
         },
         {
             id: "agents",
-            label: "Agents",
+            label: m.builder_tabAgents(),
             icon: Bot,
             locked: false,
-            newLabel: "New Agent",
-            emptyTitle: "No agents yet",
-            emptyDescription: "Build a custom agent with its own personality and tools",
+            newLabel: m.builder_newAgent(),
+            emptyTitle: m.builder_noAgentsYet(),
+            emptyDescription: m.builder_noAgentsDesc(),
         },
     ]);
 
@@ -249,10 +250,10 @@
             <!-- Page Header -->
             <div class="mb-8">
                 <h1 class="text-xl font-bold text-foreground tracking-tight">
-                    Builder
+                    {m.builder_pageTitle()}
                 </h1>
                 <p class="text-sm text-muted mt-1">
-                    Create skills, agents, and tools
+                    {m.builder_pageSubtitle()}
                 </p>
             </div>
 
@@ -292,7 +293,7 @@
                 {#if (activeTab === 'tools' && (gatewayToolsLoading || customToolsLoading)) || ((activeTab === 'skills' || activeTab === 'agents') && builderState.loading)}
                     <div class="loading-container">
                         <Loader2 size={24} class="loading-spinner" />
-                        <span class="loading-text">Loading...</span>
+                        <span class="loading-text">{m.common_loading()}</span>
                     </div>
                 {:else if activeTab === 'tools' && unifiedTools.length > 0}
                     <!-- Unified Tools Cards -->
@@ -320,7 +321,7 @@
                                     <div class="item-footer">
                                         {#if tool.source === 'gateway'}
                                             <span class="status-badge {tool.enabled ? 'published' : 'draft'}">
-                                                {tool.enabled ? 'enabled' : 'disabled'}
+                                                {tool.enabled ? m.builder_enabled() : m.builder_disabled()}
                                             </span>
                                             {#if tool.mcpExport}
                                                 <span class="tool-flag accent">MCP</span>
@@ -340,7 +341,7 @@
                                                 <span class="item-time">{formatRelativeTime(tool.updatedAt)}</span>
                                             {/if}
                                         {/if}
-                                        <span class="source-chip {tool.source}">{tool.source}</span>
+                                        <span class="source-chip {tool.source}">{tool.source === "gateway" ? m.builder_gatewaySource() : m.builder_customSource()}</span>
                                     </div>
                                 </div>
                             </div>
@@ -415,7 +416,7 @@
                                 <p class="empty-title">{currentTab.emptyTitle}</p>
                                 <p class="empty-desc">{currentTab.emptyDescription}</p>
                                 {#if !currentTab.locked}
-                                    <span class="empty-cta">+ Create</span>
+                                    <span class="empty-cta">+ {m.builder_create()}</span>
                                 {/if}
                             </div>
                         </button>
@@ -455,16 +456,16 @@
                 <p class="detail-desc">{selectedRegistryAgent.description}</p>
                 <div class="detail-info-grid">
                     <div class="detail-info">
-                        <span class="detail-label">Source</span>
+                        <span class="detail-label">{m.builder_source()}</span>
                         <span class="detail-value">{selectedRegistryAgent.source}</span>
                     </div>
                     <div class="detail-info">
-                        <span class="detail-label">ID</span>
+                        <span class="detail-label">{m.builder_id()}</span>
                         <span class="detail-value font-mono">{selectedRegistryAgent.id}</span>
                     </div>
                     {#if selectedRegistryAgent.tags.length > 0}
                         <div class="detail-info">
-                            <span class="detail-label">Tags</span>
+                            <span class="detail-label">{m.builder_tags()}</span>
                             <span class="detail-value">{selectedRegistryAgent.tags.join(', ')}</span>
                         </div>
                     {/if}
@@ -491,10 +492,10 @@
                         goto(`/builder/agents/${id}`);
                     }
                 }}>
-                    Use as Template
+                    {m.builder_useAsTemplate()}
                 </button>
                 <button type="button" class="detail-btn secondary" onclick={() => { selectedRegistryAgent = null; }}>
-                    Close
+                    {m.common_close()}
                 </button>
             </div>
         </div>
@@ -520,10 +521,10 @@
     <div class="confirm-overlay" role="dialog" aria-modal="true" onclick={(e) => { if (e.target === e.currentTarget) deleteTarget = null; }} onkeydown={(e) => { if (e.key === 'Escape') deleteTarget = null; }}>
         <div class="confirm-modal">
             <p class="confirm-title">Delete "{deleteTarget.name}"?</p>
-            <p class="confirm-desc">This {deleteTarget.type} will be permanently removed.</p>
+            <p class="confirm-desc">{m.builder_deleteDesc({ type: deleteTarget.type })}</p>
             <div class="confirm-actions">
-                <button type="button" class="confirm-btn cancel" onclick={() => { deleteTarget = null; }}>Cancel</button>
-                <button type="button" class="confirm-btn delete" onclick={executeDelete}>Delete</button>
+                <button type="button" class="confirm-btn cancel" onclick={() => { deleteTarget = null; }}>{m.common_cancel()}</button>
+                <button type="button" class="confirm-btn delete" onclick={executeDelete}>{m.common_delete()}</button>
             </div>
         </div>
     </div>

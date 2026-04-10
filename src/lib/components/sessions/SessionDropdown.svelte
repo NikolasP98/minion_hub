@@ -135,10 +135,12 @@
     })
   );
 
+  import * as m from '$lib/paraglide/messages';
+
   const comboboxService = useMachine(combobox.machine, () => ({
     id: 'session-combobox',
     collection: sessionCollection,
-    placeholder: 'Search sessions\u2026',
+    placeholder: m.sessions_searchPlaceholder(),
     selectionBehavior: 'replace' as const,
     openOnClick: true,
     openOnChange: true,
@@ -199,7 +201,7 @@
       <label
         class="text-[10px] font-bold uppercase tracking-[0.6px] text-muted-foreground shrink-0"
         {...api.getLabelProps()}
-      >Session</label>
+      >{m.session_label()}</label>
 
       <div
         class="flex flex-1 min-w-0 items-center bg-bg3 border border-border rounded-[4px] transition-all focus-within:border-accent"
@@ -214,7 +216,7 @@
           id="combobox:session-combobox:toggle-btn"
           class="bg-transparent border-none text-muted-foreground cursor-pointer text-[10px] px-1.5 self-stretch flex items-center shrink-0 transition-colors hover:text-foreground"
           tabindex={-1}
-          aria-label="Toggle session list"
+          aria-label={m.session_toggleList()}
           aria-haspopup="listbox"
           aria-expanded={api.open}
           data-state={api.open ? 'open' : 'closed'}
@@ -229,7 +231,7 @@
         <button
           class="shrink-0 text-[10px] font-semibold text-accent bg-accent/12 rounded-full px-2 py-[2px] transition-colors hover:bg-accent/20"
           onclick={backToMain}
-        >Back to main</button>
+        >{m.session_backToMain()}</button>
       {/if}
     </div>
 
@@ -259,7 +261,7 @@
             </li>
           {/each}
           {#if filteredItems.length === 0}
-            <li class="p-2 text-muted-foreground text-xs italic">No matching sessions</li>
+            <li class="p-2 text-muted-foreground text-xs italic">{m.session_noMatchingSessions()}</li>
           {/if}
         </ul>
       </div>

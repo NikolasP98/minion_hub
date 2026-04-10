@@ -3,6 +3,7 @@
     import { conn } from "$lib/state/gateway/connection.svelte";
     import { goto } from "$app/navigation";
     import { onMount } from "svelte";
+    import * as m from '$lib/paraglide/messages';
     import {
         HardDrive,
         Plus,
@@ -67,7 +68,7 @@
     }
 
     async function handleDelete(id: string, name: string) {
-        if (!confirm(`Delete server "${name}"? This cannot be undone.`)) return;
+        if (!confirm(m.hosts_deleteConfirm({ name }))) return;
         try {
             await removeHost(id);
         } catch (e) {
@@ -76,7 +77,7 @@
     }
 
     function formatTime(ts: number | null): string {
-        if (!ts) return 'Never';
+        if (!ts) return m.hosts_never();
         return new Date(ts).toLocaleString();
     }
 </script>
@@ -85,7 +86,7 @@
     <div class="flex items-center justify-between mb-2">
         <h2 class="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
             <HardDrive size={13} class="text-muted-foreground/70" />
-            Servers
+            {m.hosts_servers()}
         </h2>
         <button
             type="button"
@@ -93,15 +94,15 @@
             onclick={() => { showAddForm = !showAddForm; }}
         >
             <Plus size={13} />
-            Add Server
+            {m.hosts_addServer()}
         </button>
     </div>
 
     <!-- Server list -->
     {#if hostsState.hosts.length === 0}
         <div class="bg-card border border-border rounded-lg px-5 py-8 text-center">
-            <p class="text-sm text-muted-foreground">No servers configured yet.</p>
-            <p class="text-xs text-muted-foreground/60 mt-1">Add a server to get started.</p>
+            <p class="text-sm text-muted-foreground">{m.hosts_noServers()}</p>
+            <p class="text-xs text-muted-foreground/60 mt-1">{m.hosts_noServersHint()}</p>
         </div>
     {:else}
         <div class="space-y-2">
@@ -118,19 +119,19 @@
                             <input
                                 type="text"
                                 bind:value={editName}
-                                placeholder="Server name"
+                                placeholder={m.hosts_namePlaceholder()}
                                 class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent"
                             />
                             <input
                                 type="text"
                                 bind:value={editUrl}
-                                placeholder="ws://host:port"
+                                placeholder={m.hosts_urlPlaceholder()}
                                 class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground font-mono placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent"
                             />
                             <input
                                 type="password"
                                 bind:value={editToken}
-                                placeholder="Token (optional)"
+                                placeholder={m.hosts_tokenPlaceholder()}
                                 class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent"
                             />
                             <div class="flex gap-2 justify-end">
@@ -139,14 +140,14 @@
                                     class="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded bg-transparent border border-border text-muted-foreground cursor-pointer hover:text-foreground"
                                     onclick={() => { editingId = null; }}
                                 >
-                                    <X size={12} /> Cancel
+                                    <X size={12} /> {m.hosts_cancel()}
                                 </button>
                                 <button
                                     type="button"
                                     class="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded bg-accent text-accent-foreground border-none cursor-pointer hover:opacity-90"
                                     onclick={saveEdit}
                                 >
-                                    <Check size={12} /> Save
+                                    <Check size={12} /> {m.hosts_save()}
                                 </button>
                             </div>
                         </div>
@@ -158,11 +159,11 @@
                                     <span class="text-sm font-medium text-foreground truncate">{host.name}</span>
                                     {#if isConnected}
                                         <span class="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-400 text-[10px] font-medium">
-                                            <Wifi size={10} /> Connected
+                                            <Wifi size={10} /> {m.hosts_connect()}
                                         </span>
                                     {:else}
                                         <span class="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground text-[10px] font-medium">
-                                            <WifiOff size={10} /> Offline
+                                            <WifiOff size={10} /> {m.hosts_offline()}
                                         </span>
                                     {/if}
                                 </div>
@@ -170,7 +171,7 @@
                                     <span class="text-xs text-muted-foreground font-mono truncate">{host.url}</span>
                                     <span class="text-[10px] text-muted-foreground/60">&middot;</span>
                                     <span class="text-[10px] text-muted-foreground/60">
-                                        Last connected: {formatTime(host.lastConnectedAt)}
+                                        {m.hosts_lastConnected({ time: formatTime(host.lastConnectedAt) })}
                                     </span>
                                 </div>
                             </div>
@@ -179,7 +180,7 @@
                                 <button
                                     type="button"
                                     class="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-bg2 transition-colors cursor-pointer bg-transparent border-none"
-                                    title="Edit"
+                                    title={m.common_edit()}
                                     onclick={() => startEdit(host)}
                                 >
                                     <Pencil size={14} />
@@ -187,7 +188,7 @@
                                 <button
                                     type="button"
                                     class="p-1.5 rounded text-muted-foreground hover:text-accent hover:bg-bg2 transition-colors cursor-pointer bg-transparent border-none"
-                                    title="Provision"
+                                    title={m.hosts_provision()}
                                     onclick={() => goto(`/settings/provision?server=${host.id}`)}
                                 >
                                     <Wrench size={14} />
@@ -195,7 +196,7 @@
                                 <button
                                     type="button"
                                     class="p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-bg2 transition-colors cursor-pointer bg-transparent border-none"
-                                    title="Delete"
+                                    title={m.hosts_delete()}
                                     onclick={() => handleDelete(host.id, host.name)}
                                 >
                                     <Trash2 size={14} />
@@ -213,25 +214,25 @@
         <div class="bg-card border border-border rounded-lg px-4 py-3">
             <h3 class="text-xs font-semibold text-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
                 <Plug size={12} class="text-muted-foreground/70" />
-                New Server
+                {m.hosts_newServer()}
             </h3>
             <div class="space-y-2">
                 <input
                     type="text"
                     bind:value={addName}
-                    placeholder="Server name"
+                    placeholder={m.hosts_namePlaceholder()}
                     class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent"
                 />
                 <input
                     type="text"
                     bind:value={addUrl}
-                    placeholder="ws://host:port"
+                    placeholder={m.hosts_urlPlaceholder()}
                     class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground font-mono placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent"
                 />
                 <input
                     type="password"
                     bind:value={addToken}
-                    placeholder="Token (optional)"
+                    placeholder={m.hosts_tokenPlaceholder()}
                     class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent"
                 />
                 <div class="flex gap-2 justify-end pt-1">
@@ -240,7 +241,7 @@
                         class="px-3 py-1.5 text-xs font-medium rounded bg-transparent border border-border text-muted-foreground cursor-pointer hover:text-foreground"
                         onclick={() => { showAddForm = false; }}
                     >
-                        Cancel
+                        {m.hosts_cancel()}
                     </button>
                     <button
                         type="button"
@@ -249,9 +250,9 @@
                         onclick={handleAdd}
                     >
                         {#if adding}
-                            Adding...
+                            {m.hosts_adding()}
                         {:else}
-                            <Plus size={12} /> Add
+                            <Plus size={12} /> {m.common_add()}
                         {/if}
                     </button>
                 </div>

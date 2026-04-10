@@ -24,6 +24,7 @@
     import { sendRequest } from "$lib/services/gateway.svelte";
     import { isAdmin as hubIsAdmin } from "$lib/state/features/user.svelte";
     import type { ToolStatusEntry, ToolsStatusReport } from "$lib/types/tools";
+    import * as m from '$lib/paraglide/messages';
 
     const isAdmin = $derived(hubIsAdmin.value);
 
@@ -257,7 +258,7 @@
 <!-- Editor Toolbar -->
     <div class="editor-toolbar">
         <div class="toolbar-left">
-            <a href="/builder" class="back-link" title="Back to Builder">
+            <a href="/builder" class="back-link" title={m.builder_backToBuilder()}>
                 <ArrowLeft size={16} />
             </a>
 
@@ -272,14 +273,14 @@
                         type="text"
                         class="name-inline"
                         bind:value={name}
-                        placeholder="Tool name"
+                        placeholder={m.builder_toolNamePlaceholder()}
                         oninput={() => scheduleSave()}
                     />
                 {/if}
                 <span class="status-badge {status}">
                     {status}
                 </span>
-                <span class="toolbar-source">{isGatewayTool ? 'gateway' : 'custom'}</span>
+                <span class="toolbar-source">{isGatewayTool ? m.builder_gatewaySource() : m.builder_customSource()}</span>
             </div>
         </div>
 
@@ -292,14 +293,14 @@
                         type="button"
                         class="toolbar-btn {gatewayTool.enabled ? 'published' : 'run'}"
                         onclick={toggleGatewayToolEnabled}
-                        title={gatewayTool.enabled ? 'Disable tool' : 'Enable tool'}
+                        title={gatewayTool.enabled ? m.builder_disableTool() : m.builder_enableTool()}
                     >
                         {#if gatewayTool.enabled}
                             <PowerOff size={14} />
-                            <span class="hidden-sm">Disable</span>
+                            <span class="hidden-sm">{m.builder_disable()}</span>
                         {:else}
                             <Power size={14} />
-                            <span class="hidden-sm">Enable</span>
+                            <span class="hidden-sm">{m.builder_enable()}</span>
                         {/if}
                     </button>
                 {/if}
@@ -328,14 +329,14 @@
                         class="toolbar-btn run"
                         onclick={runTool}
                         disabled={running}
-                        title="Run script"
+                        title={m.builder_runScript()}
                     >
                         {#if running}
                             <Loader2 size={14} class="loading-spinner" />
                         {:else}
                             <Play size={14} />
                         {/if}
-                        <span class="hidden-sm">Run</span>
+                        <span class="hidden-sm">{m.builder_run()}</span>
                     </button>
 
                     <div class="toolbar-divider"></div>
@@ -343,17 +344,17 @@
                     <!-- Save Indicator -->
                     <span
                         class="save-indicator"
-                        title={saving ? "Saving changes..." : dirty ? "Unsaved changes" : "All changes saved"}
+                        title={saving ? m.builder_saving() : dirty ? m.builder_unsavedChanges() : m.builder_allSaved()}
                     >
                         {#if saving}
                             <Loader2 size={12} class="loading-spinner" />
-                            <span>Saving...</span>
+                            <span>{m.builder_saving()}</span>
                         {:else if dirty}
                             <Circle size={8} class="dirty-dot" />
-                            <span>Unsaved</span>
+                            <span>{m.builder_unsaved()}</span>
                         {:else}
                             <Check size={12} class="saved-check" />
-                            <span>Saved</span>
+                            <span>{m.builder_saved()}</span>
                         {/if}
                     </span>
 
@@ -364,8 +365,8 @@
                         onclick={publishTool}
                         disabled={publishing}
                         title={status === "published"
-                            ? "Republish with latest changes"
-                            : "Publish tool"}
+                            ? m.builder_republishLatest()
+                            : m.builder_publishTool()}
                     >
                         {#if publishing}
                             <Loader2 size={14} class="loading-spinner" />
@@ -374,10 +375,10 @@
                         {/if}
                         <span class="hidden-sm"
                             >{publishing
-                                ? "Publishing..."
+                                ? m.builder_publishing()
                                 : status === "published"
-                                    ? "Republish"
-                                    : "Publish"}</span
+                                    ? m.builder_republish()
+                                    : m.builder_publish()}</span
                         >
                     </button>
                 {:else}
@@ -391,7 +392,7 @@
     {#if loading}
         <div class="loading-container">
             <Loader2 size={24} class="loading-spinner" />
-            <span class="loading-text">Loading tool...</span>
+            <span class="loading-text">{m.builder_loadingTool()}</span>
         </div>
     {:else if isGatewayTool && gatewayTool}
         <!-- Gateway Tool Detail View -->
@@ -399,17 +400,17 @@
             <div class="gateway-detail-inner">
                 <!-- Tool Info Section -->
                 <div class="gw-section">
-                    <h3 class="gw-section-title">Tool Configuration</h3>
+                    <h3 class="gw-section-title">{m.builder_toolConfiguration()}</h3>
                     <div class="gw-field-grid">
                         <div class="gw-field">
-                            <label class="gw-label">Tool ID</label>
+                            <label class="gw-label">{m.builder_toolId()}</label>
                             <span class="gw-value mono">{gatewayTool.id}</span>
                         </div>
                         <div class="gw-field">
-                            <label class="gw-label">Status</label>
+                            <label class="gw-label">{m.builder_status()}</label>
                             <span class="gw-value">
                                 <span class="gw-status-dot {gatewayTool.enabled ? 'enabled' : 'disabled'}"></span>
-                                {gatewayTool.enabled ? 'Enabled' : 'Disabled'}
+                                {gatewayTool.enabled ? m.tools_enabled() : m.tools_disabled()}
                             </span>
                         </div>
                     </div>
@@ -418,7 +419,7 @@
                 <!-- Groups -->
                 {#if gatewayTool.groups.length > 0}
                     <div class="gw-section">
-                        <h3 class="gw-section-title">Groups</h3>
+                        <h3 class="gw-section-title">{m.builder_groups()}</h3>
                         <div class="gw-tags">
                             {#each gatewayTool.groups as group (group)}
                                 <span class="gw-tag">{group.replace('group:', '')}</span>
@@ -429,19 +430,19 @@
 
                 <!-- Flags -->
                 <div class="gw-section">
-                    <h3 class="gw-section-title">Flags</h3>
+                    <h3 class="gw-section-title">{m.builder_flags()}</h3>
                     <div class="gw-flags">
                         <div class="gw-flag" class:active={gatewayTool.mcpExport}>
-                            <span class="gw-flag-label">MCP Export</span>
-                            <span class="gw-flag-value">{gatewayTool.mcpExport ? 'Yes' : 'No'}</span>
+                            <span class="gw-flag-label">{m.builder_mcpExport()}</span>
+                            <span class="gw-flag-value">{gatewayTool.mcpExport ? m.builder_yes() : m.builder_no()}</span>
                         </div>
                         <div class="gw-flag" class:active={gatewayTool.multi}>
-                            <span class="gw-flag-label">Multi-instance</span>
-                            <span class="gw-flag-value">{gatewayTool.multi ? 'Yes' : 'No'}</span>
+                            <span class="gw-flag-label">{m.builder_multiInstance()}</span>
+                            <span class="gw-flag-value">{gatewayTool.multi ? m.builder_yes() : m.builder_no()}</span>
                         </div>
                         <div class="gw-flag" class:active={gatewayTool.optional}>
-                            <span class="gw-flag-label">Optional</span>
-                            <span class="gw-flag-value">{gatewayTool.optional ? 'Yes' : 'No'}</span>
+                            <span class="gw-flag-label">{m.builder_optional()}</span>
+                            <span class="gw-flag-value">{gatewayTool.optional ? m.builder_yes() : m.builder_no()}</span>
                         </div>
                     </div>
                 </div>
@@ -449,10 +450,10 @@
                 <!-- Requirements -->
                 {#if gatewayTool.requires?.bins?.length || gatewayTool.requires?.env?.length}
                     <div class="gw-section">
-                        <h3 class="gw-section-title">Requirements</h3>
+                        <h3 class="gw-section-title">{m.builder_requirements()}</h3>
                         {#if gatewayTool.requires?.bins?.length}
                             <div class="gw-field">
-                                <label class="gw-label">Binaries</label>
+                                <label class="gw-label">{m.builder_binaries()}</label>
                                 <div class="gw-tags">
                                     {#each gatewayTool.requires.bins as bin (bin)}
                                         <span class="gw-tag mono">{bin}</span>
@@ -462,7 +463,7 @@
                         {/if}
                         {#if gatewayTool.requires?.env?.length}
                             <div class="gw-field" style="margin-top: 0.75rem">
-                                <label class="gw-label">Environment Variables</label>
+                                <label class="gw-label">{m.builder_envVars()}</label>
                                 <div class="gw-tags">
                                     {#each gatewayTool.requires.env as env (env)}
                                         <span class="gw-tag mono">{env}</span>
@@ -476,7 +477,7 @@
                 <!-- Install Instructions -->
                 {#if gatewayTool.install?.length}
                     <div class="gw-section">
-                        <h3 class="gw-section-title">Install Instructions</h3>
+                        <h3 class="gw-section-title">{m.builder_installInstructions()}</h3>
                         <div class="gw-install-list">
                             {#each gatewayTool.install as inst, i (i)}
                                 <div class="gw-install-item">
@@ -493,7 +494,7 @@
                 <!-- Condition -->
                 {#if gatewayTool.condition}
                     <div class="gw-section">
-                        <h3 class="gw-section-title">Condition</h3>
+                        <h3 class="gw-section-title">{m.builder_conditionTitle()}</h3>
                         <code class="gw-condition">{gatewayTool.condition}</code>
                     </div>
                 {/if}
@@ -508,10 +509,10 @@
                         >
                             {#if gatewayTool.enabled}
                                 <PowerOff size={16} />
-                                <span>Disable Tool</span>
+                                <span>{m.builder_disableTool()}</span>
                             {:else}
                                 <Power size={16} />
-                                <span>Enable Tool</span>
+                                <span>{m.builder_enableTool()}</span>
                             {/if}
                         </button>
                     </div>
@@ -551,7 +552,7 @@
                             {:else}
                                 <ChevronRight size={14} />
                             {/if}
-                            <span>Environment Variables</span>
+                            <span>{m.builder_envVarsTitle()}</span>
                             <span class="env-count">{envVars.length}</span>
                         </span>
                     </button>
@@ -611,7 +612,7 @@
                             {/each}
                             <button type="button" class="env-add" onclick={addEnvVar}>
                                 <Plus size={12} />
-                                <span>Add Variable</span>
+                                <span>{m.builder_addVariable()}</span>
                             </button>
                         </div>
                     {/if}
@@ -626,16 +627,16 @@
                 <div class="console-header">
                     <span class="console-title">
                         <Terminal size={14} />
-                        <span>Console</span>
+                        <span>{m.builder_console()}</span>
                     </span>
                     <button
                         type="button"
                         class="console-clear"
                         onclick={clearConsole}
-                        title="Clear console"
+                        title={m.builder_clearConsole()}
                     >
                         <X size={12} />
-                        <span>Clear</span>
+                        <span>{m.builder_clear()}</span>
                     </button>
                 </div>
                 <div class="console-output" bind:this={consoleEl}>

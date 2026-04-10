@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { piAgentState } from '$lib/state/features/pi-agent-state.svelte';
 	import { sendRequest } from '$lib/services/gateway.svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	let expandedId = $state<string | null>(null);
 	let expandedDetail = $state<Record<string, unknown> | null>(null);
@@ -101,16 +102,16 @@
 		{#if expandedId === orch.orchestrationId}
 			<div class="px-3 py-2 bg-bg2/50 border-b border-border/30 text-[10px]">
 				{#if detailLoading}
-					<p class="text-muted">Loading details...</p>
+					<p class="text-muted">{m.pi_orchLoadingDetails()}</p>
 				{:else if expandedDetail}
 					<div class="flex flex-col gap-1.5">
 						<div class="flex items-center gap-3 text-muted">
 							<span>ID: <span class="text-foreground font-mono">{orch.orchestrationId}</span></span>
 						</div>
 						<div class="flex items-center gap-3 text-muted">
-							<span>Started: <span class="text-foreground">{formatTimestamp(orch.startedAt)}</span></span>
+							<span>{m.pi_orchStarted()}: <span class="text-foreground">{formatTimestamp(orch.startedAt)}</span></span>
 							{#if orch.completedAt}
-								<span>Duration: <span class="text-foreground">{formatDurationMs(orch.completedAt - orch.startedAt)}</span></span>
+								<span>{m.pi_orchDuration()}: <span class="text-foreground">{formatDurationMs(orch.completedAt - orch.startedAt)}</span></span>
 							{/if}
 						</div>
 
@@ -119,11 +120,11 @@
 							<table class="w-full text-[9px] mt-1">
 								<thead>
 									<tr class="text-muted border-b border-border/30">
-										<th class="text-left py-0.5 pr-2">#</th>
-										<th class="text-left py-0.5 pr-2">Label</th>
-										<th class="text-left py-0.5 pr-2">Status</th>
-										<th class="text-right py-0.5 pr-2">Duration</th>
-										<th class="text-right py-0.5">Tokens</th>
+										<th class="text-left py-0.5 pr-2">{m.pi_orchColNum()}</th>
+										<th class="text-left py-0.5 pr-2">{m.pi_orchColLabel()}</th>
+										<th class="text-left py-0.5 pr-2">{m.pi_orchColStatus()}</th>
+										<th class="text-right py-0.5 pr-2">{m.pi_orchColDuration()}</th>
+										<th class="text-right py-0.5">{m.pi_orchColTokens()}</th>
 									</tr>
 								</thead>
 								<tbody>
@@ -157,12 +158,12 @@
 						{/if}
 					</div>
 				{:else}
-					<p class="text-muted">Failed to load details.</p>
+					<p class="text-muted">{m.pi_orchFailedToLoad()}</p>
 				{/if}
 			</div>
 		{/if}
 	{/each}
 	{#if piAgentState.orchestrations.length === 0}
-		<p class="text-[11px] text-muted px-2 py-3">No orchestrations yet.</p>
+		<p class="text-[11px] text-muted px-2 py-3">{m.pi_orchNone()}</p>
 	{/if}
 </div>

@@ -85,7 +85,7 @@
     <div class="flex items-center gap-2">
       {#if agentToolsState.tools.length > 0}
         <span class="text-[10px] text-muted-foreground">
-          {enabledTools.length}/{agentToolsState.tools.length} enabled · profile: {agentToolsState.profile}
+          {m.tools_enabledCount({ enabled: enabledTools.length, total: agentToolsState.tools.length, profile: agentToolsState.profile })}
         </span>
       {/if}
       <button
@@ -139,7 +139,7 @@
           {/each}
           {#if enabledTools.length === 0}
             <div class="text-[10px] text-muted-foreground/50 text-center py-4">
-              Drop tools here to enable
+              {m.tools_dropToEnable()}
             </div>
           {/if}
         </div>
@@ -168,7 +168,7 @@
           {/each}
           {#if disabledTools.length === 0}
             <div class="text-[10px] text-muted-foreground/50 text-center py-4">
-              Drop tools here to disable
+              {m.tools_dropToDisable()}
             </div>
           {/if}
         </div>
@@ -198,17 +198,17 @@
         <span class="text-[10px] text-foreground font-mono font-medium truncate">{tool.id}</span>
         {#if tool.mcpExport}
           <span class="shrink-0 bg-accent/20 border border-accent/30 rounded-full px-1 text-[8px] text-accent leading-relaxed">
-            MCP
+            {m.tools_badgeMcp()}
           </span>
         {/if}
         {#if tool.multi}
           <span class="shrink-0 bg-bg3 border border-border rounded-full px-1 text-[8px] text-muted-foreground leading-relaxed">
-            multi
+            {m.tools_badgeMulti()}
           </span>
         {/if}
         {#if tool.optional}
           <span class="shrink-0 bg-bg3 border border-border rounded-full px-1 text-[8px] text-muted-foreground leading-relaxed">
-            opt
+            {m.tools_badgeOpt()}
           </span>
         {/if}
       </div>

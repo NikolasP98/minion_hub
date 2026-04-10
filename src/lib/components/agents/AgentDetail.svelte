@@ -13,6 +13,7 @@
   import AgentSkillsPanel from './AgentSkillsPanel.svelte';
   import PiAgentTab from './PiAgentTab.svelte';
   import { ui } from '$lib/state/ui/ui.svelte';
+  import * as m from '$lib/paraglide/messages';
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
   import type { Agent } from '$lib/types/gateway';
   import type { SessionRow } from '../sessions/SessionsList.svelte';
@@ -55,7 +56,7 @@
         : 'border-transparent text-muted hover:text-foreground'}"
       onclick={() => (ui.activeAgentTab = 'chat')}
     >
-      Chat
+      {m.agent_tabChat()}
     </button>
     <button
       type="button"
@@ -65,7 +66,7 @@
         : 'border-transparent text-muted hover:text-foreground'}"
       onclick={() => (ui.activeAgentTab = 'monitor')}
     >
-      Monitor
+      {m.agent_tabMonitor()}
     </button>
     <button
       type="button"
@@ -75,7 +76,7 @@
         : 'border-transparent text-muted hover:text-foreground'}"
       onclick={() => (ui.activeAgentTab = 'files')}
     >
-      Files
+      {m.agent_tabFiles()}
     </button>
     <button
       type="button"
@@ -85,7 +86,7 @@
         : 'border-transparent text-muted hover:text-foreground'}"
       onclick={() => (ui.activeAgentTab = 'prompt')}
     >
-      Prompt
+      {m.agent_tabPrompt()}
     </button>
     <button
       type="button"
@@ -95,7 +96,7 @@
         : 'border-transparent text-muted hover:text-foreground'}"
       onclick={() => (ui.activeAgentTab = 'graph')}
     >
-      Graph
+      {m.agent_tabGraph()}
     </button>
     <button
       type="button"
@@ -105,7 +106,7 @@
         : 'border-transparent text-muted hover:text-foreground'}"
       onclick={() => (ui.activeAgentTab = 'tools')}
     >
-      Tools
+      {m.agent_tabTools()}
     </button>
     <button
       type="button"
@@ -115,7 +116,7 @@
         : 'border-transparent text-muted hover:text-foreground'}"
       onclick={() => (ui.activeAgentTab = 'skills')}
     >
-      Skills
+      {m.agent_tabSkills()}
     </button>
     <button
       type="button"
@@ -125,7 +126,7 @@
         : 'border-transparent text-muted hover:text-foreground'}"
       onclick={() => (ui.activeAgentTab = 'pi-agent')}
     >
-      Pi-Agent
+      {m.agent_tabPiAgent()}
     </button>
   </div>
 

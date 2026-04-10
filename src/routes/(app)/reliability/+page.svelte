@@ -461,7 +461,7 @@
 				type="button"
 				class="flex items-center justify-center w-7 h-7 rounded border border-border bg-bg3 text-muted-foreground hover:text-foreground hover:bg-border cursor-pointer transition-colors"
 				onclick={loadData}
-				title="Refresh data"
+				title={m.reliability_refreshData()}
 			>
 				<RefreshCw size={12} class={loading ? 'animate-spin' : ''} />
 			</button>
@@ -496,7 +496,7 @@
 				bind:this={filterScrollEl}
 				class="flex items-center gap-1.5 px-4 pb-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden flex-nowrap sm:flex-wrap"
 			>
-				<span class="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground/60 mr-0.5 shrink-0">Category</span>
+				<span class="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground/60 mr-0.5 shrink-0">{m.reliability_category()}</span>
 				{#each CATEGORIES as cat (cat)}
 					<button
 						type="button"
@@ -511,7 +511,7 @@
 					</button>
 				{/each}
 				<span class="w-px h-4 bg-border mx-0.5 shrink-0"></span>
-				<span class="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground/60 mr-0.5 shrink-0">Severity</span>
+				<span class="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground/60 mr-0.5 shrink-0">{m.reliability_severity()}</span>
 				{#each SEVERITIES as sev (sev)}
 					<button
 						type="button"
@@ -531,7 +531,7 @@
 						class="text-[10px] py-0.5 px-2 rounded-md cursor-pointer text-muted-foreground hover:text-foreground transition-colors shrink-0"
 						onclick={() => { selectedCategories = new Set(); selectedSeverities = new Set(); persistFilters(); }}
 					>
-						clear
+						{m.marketplace_agentsListClearFilters()}
 					</button>
 				{/if}
 			</div>
@@ -580,7 +580,7 @@
 			<div class="bg-card border border-border rounded-lg overflow-hidden">
 				<div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20">
 					<TrendingUp size={11} class="text-accent shrink-0" />
-					<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Event Timeline</span>
+					<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{m.reliability_eventTimeline()}</span>
 				</div>
 				<div class="relative overflow-hidden">
 					<ScanLine speed={10} opacity={0.018} />
@@ -593,7 +593,7 @@
 				<div class="bg-card border border-border rounded-lg overflow-hidden">
 					<div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20">
 						<BarChart2 size={11} class="text-accent shrink-0" />
-						<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Top Events</span>
+						<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{m.reliability_topEvents()}</span>
 					</div>
 					<div class="relative overflow-hidden">
 						<ScanLine speed={14} opacity={0.018} />
@@ -604,7 +604,7 @@
 				<div class="bg-card border border-border rounded-lg overflow-hidden">
 					<div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20">
 						<PieChart size={11} class="text-accent shrink-0" />
-						<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Severity Distribution</span>
+						<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{m.reliability_severityDistribution()}</span>
 					</div>
 					<div class="relative overflow-hidden">
 						<ScanLine speed={8} opacity={0.018} />

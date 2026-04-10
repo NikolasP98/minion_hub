@@ -13,8 +13,8 @@
   {:else}
     <span class="text-muted-foreground text-[11px] flex-1">
       {dirtyPaths.value.size === 1
-        ? '1 unsaved change'
-        : `${dirtyPaths.value.size} unsaved changes`}
+        ? m.saveBar_sectionsModified({ count: dirtyPaths.value.size })
+        : m.saveBar_sectionsModifiedPlural({ count: dirtyPaths.value.size })}
     </span>
   {/if}
 

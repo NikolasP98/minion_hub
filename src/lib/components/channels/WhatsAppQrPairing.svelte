@@ -3,6 +3,7 @@
     import * as qrCode from '@zag-js/qr-code';
     import { useMachine, normalizeProps } from '@zag-js/svelte';
     import { requestWhatsAppPair } from '$lib/services/gateway.svelte';
+    import * as m from '$lib/paraglide/messages';
 
     interface Props {
         channelId: string;
@@ -72,38 +73,38 @@
             class="bg-accent text-accent-foreground rounded-md px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity"
             onclick={startPairing}
         >
-            Start QR Pairing
+            {m.channel_startQrPairing()}
         </button>
         <p class="text-xs text-muted-foreground">
-            Scan the QR code with WhatsApp to link this channel.
+            {m.channel_scanQrInstruction()}
         </p>
     {:else if pairingStatus === 'waiting' && qrData}
         <div class="flex flex-col items-center gap-3 p-4 bg-white rounded-lg" {...api.getRootProps()}>
             <svg {...api.getFrameProps()}>
                 <path {...api.getPatternProps()} />
             </svg>
-            <p class="text-xs text-gray-600">Scan with WhatsApp</p>
+            <p class="text-xs text-gray-600">{m.channel_scanWithWhatsApp()}</p>
         </div>
     {:else if pairingStatus === 'waiting'}
         <div class="flex items-center gap-2 text-sm text-muted-foreground">
             <div class="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
-            Waiting for QR code from gateway...
+            {m.channel_waitingQr()}
         </div>
     {:else if pairingStatus === 'connected'}
         <div class="flex items-center gap-2 text-sm text-success">
             <div class="w-2 h-2 rounded-full bg-success"></div>
-            WhatsApp paired successfully!
+            {m.channel_pairedSuccessfully()}
         </div>
     {:else if pairingStatus === 'error'}
         <div class="text-sm text-destructive">
-            {errorMsg ?? 'Pairing failed'}
+            {errorMsg ?? m.channel_pairingFailed()}
         </div>
         <button
             type="button"
             class="text-xs text-accent hover:underline"
             onclick={startPairing}
         >
-            Try again
+            {m.common_retry()}
         </button>
     {/if}
 </div>

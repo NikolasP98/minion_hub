@@ -1,4 +1,6 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
+
   export type ViewMode = 'list' | 'tree' | 'timeline';
 
   let {
@@ -9,15 +11,15 @@
     onchange?: (view: ViewMode) => void;
   } = $props();
 
-  const views: { id: ViewMode; label: string }[] = [
-    { id: 'list', label: 'List' },
-    { id: 'tree', label: 'Tree' },
-    { id: 'timeline', label: 'Timeline' },
-  ];
+  const views = $derived<{ id: ViewMode; label: string }[]>([
+    { id: 'list', label: m.subagent_viewList() },
+    { id: 'tree', label: m.subagent_viewTree() },
+    { id: 'timeline', label: m.subagent_viewTimeline() },
+  ]);
 </script>
 
 <div class="shrink-0 px-3 py-2 border-t border-border">
-  <div class="text-[9px] text-muted/40 uppercase tracking-wider mb-1.5 font-semibold">View</div>
+  <div class="text-[9px] text-muted/40 uppercase tracking-wider mb-1.5 font-semibold">{m.subagent_view()}</div>
   <div class="flex gap-1.5">
     {#each views as view (view.id)}
       <button

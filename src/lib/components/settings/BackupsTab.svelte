@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import * as m from '$lib/paraglide/messages';
   import { conn } from '$lib/state/gateway/connection.svelte';
   import { hostsState } from '$lib/state/features/hosts.svelte';
   import {
@@ -103,7 +104,7 @@
       });
       testResult = await res.json();
     } catch {
-      testResult = { ok: false, message: 'Request failed' };
+      testResult = { ok: false, message: m.backup_requestFailed() };
     } finally {
       testing = false;
     }
@@ -251,12 +252,12 @@
   <div class="bg-card border border-border rounded-lg px-5 py-4">
     <h2 class="text-xs font-semibold text-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
       <DatabaseBackup size={13} class="text-muted-foreground/70" />
-      Backup Destination
+      {m.backup_destination()}
     </h2>
 
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <label class="block">
-        <span class="text-xs text-muted-foreground">Host</span>
+        <span class="text-xs text-muted-foreground">{m.backup_host()}</span>
         <input
           type="text"
           bind:value={backupHost}
@@ -265,7 +266,7 @@
         />
       </label>
       <label class="block">
-        <span class="text-xs text-muted-foreground">User</span>
+        <span class="text-xs text-muted-foreground">{m.backup_user()}</span>
         <input
           type="text"
           bind:value={backupUser}
@@ -273,7 +274,7 @@
         />
       </label>
       <label class="block">
-        <span class="text-xs text-muted-foreground">Port</span>
+        <span class="text-xs text-muted-foreground">{m.backup_port()}</span>
         <input
           type="number"
           bind:value={backupPort}
@@ -281,7 +282,7 @@
         />
       </label>
       <label class="block">
-        <span class="text-xs text-muted-foreground">Base Path</span>
+        <span class="text-xs text-muted-foreground">{m.backup_basePath()}</span>
         <input
           type="text"
           bind:value={backupBasePath}
@@ -293,7 +294,7 @@
     <!-- Schedule & Retention -->
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
       <label class="block">
-        <span class="text-xs text-muted-foreground">Schedule (cron)</span>
+        <span class="text-xs text-muted-foreground">{m.backup_schedule()}</span>
         <input
           type="text"
           bind:value={schedule}
@@ -302,7 +303,7 @@
         />
       </label>
       <label class="block">
-        <span class="text-xs text-muted-foreground">Keep last N</span>
+        <span class="text-xs text-muted-foreground">{m.backup_keepLast()}</span>
         <input
           type="number"
           bind:value={retentionCount}
@@ -312,7 +313,7 @@
       </label>
       <label class="flex items-center gap-2 self-end pb-1">
         <input type="checkbox" bind:checked={enabled} class="accent-accent" />
-        <span class="text-xs text-muted-foreground">Enable scheduled backups</span>
+        <span class="text-xs text-muted-foreground">{m.backup_enableScheduled()}</span>
       </label>
     </div>
 
@@ -325,7 +326,7 @@
         disabled={saving}
       >
         <Save size={12} />
-        {saving ? 'Saving...' : 'Save'}
+        {saving ? m.backup_saving() : m.common_save()}
       </button>
       <button
         type="button"
@@ -334,7 +335,7 @@
         disabled={testing || !backupHost}
       >
         <TestTube size={12} />
-        {testing ? 'Testing...' : 'Test Connection'}
+        {testing ? m.backup_testing() : m.backup_testConnection()}
       </button>
       {#if testResult}
         <span class="text-xs {testResult.ok ? 'text-green-400' : 'text-destructive'}">
@@ -347,13 +348,13 @@
   <!-- Per-Server Backups -->
   {#if !conn.connected}
     <div class="bg-card border border-border rounded-lg px-5 py-8 text-center">
-      <p class="text-sm text-muted-foreground">Connect to a host to manage backups</p>
+      <p class="text-sm text-muted-foreground">{m.backup_connectToManage()}</p>
     </div>
   {:else}
     <div class="bg-card border border-border rounded-lg px-5 py-4">
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
-          Snapshots
+          {m.backup_snapshots()}
         </h2>
         <button
           type="button"
@@ -363,10 +364,10 @@
         >
           {#if running && runningAction === 'backup'}
             <Loader2 size={12} class="animate-spin" />
-            Backing up...
+            {m.backup_backingUp()}
           {:else}
             <Play size={12} />
-            Backup Now
+            {m.backup_backupNow()}
           {/if}
         </button>
       </div>
@@ -377,10 +378,10 @@
           <table class="w-full text-xs">
             <thead>
               <tr class="text-muted-foreground border-b border-border">
-                <th class="text-left py-2 px-2 font-medium">Date</th>
-                <th class="text-left py-2 px-2 font-medium">Size</th>
-                <th class="text-left py-2 px-2 font-medium">Status</th>
-                <th class="text-right py-2 px-2 font-medium">Actions</th>
+                <th class="text-left py-2 px-2 font-medium">{m.backup_colDate()}</th>
+                <th class="text-left py-2 px-2 font-medium">{m.backup_colSize()}</th>
+                <th class="text-left py-2 px-2 font-medium">{m.backup_colStatus()}</th>
+                <th class="text-right py-2 px-2 font-medium">{m.backup_colActions()}</th>
               </tr>
             </thead>
             <tbody>
@@ -402,7 +403,7 @@
                         <button
                           type="button"
                           class="p-1 rounded hover:bg-bg3 text-muted-foreground hover:text-foreground transition-colors"
-                          title="Restore"
+                          title={m.backup_restore()}
                           onclick={() => (confirmRestore = snapshot)}
                           disabled={running}
                         >
@@ -412,7 +413,7 @@
                       <button
                         type="button"
                         class="p-1 rounded hover:bg-bg3 text-muted-foreground hover:text-destructive transition-colors"
-                        title="Delete"
+                        title={m.common_delete()}
                         onclick={() => deleteSnapshot(snapshot)}
                         disabled={running}
                       >
@@ -426,7 +427,7 @@
           </table>
         </div>
       {:else if !loadingSnapshots}
-        <p class="text-xs text-muted-foreground text-center py-4">No snapshots yet</p>
+        <p class="text-xs text-muted-foreground text-center py-4">{m.backup_noSnapshots()}</p>
       {/if}
     </div>
 
@@ -434,7 +435,7 @@
     {#if logLines.length > 0}
       <div class="bg-card border border-border rounded-lg px-5 py-4">
         <h2 class="text-xs font-semibold text-foreground uppercase tracking-wider mb-2">
-          {runningAction === 'restore' ? 'Restore' : 'Backup'} Log
+          {runningAction === 'restore' ? m.backup_restore() : m.backup_backupNow()} {m.backup_log()}
         </h2>
         <div
           bind:this={logContainer}
@@ -451,10 +452,9 @@
     {#if confirmRestore}
       <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
         <div class="bg-card border border-border rounded-lg p-6 max-w-sm mx-4">
-          <h3 class="text-sm font-semibold text-foreground mb-2">Confirm Restore</h3>
+          <h3 class="text-sm font-semibold text-foreground mb-2">{m.backup_confirmRestoreTitle()}</h3>
           <p class="text-xs text-muted-foreground mb-4">
-            This will overwrite the current .minion directory on the gateway with the snapshot
-            from {formatDate(confirmRestore.timestamp)} and restart the gateway service.
+            {m.backup_confirmRestoreBody({ date: formatDate(confirmRestore.timestamp) })}
           </p>
           <div class="flex justify-end gap-2">
             <button
@@ -462,14 +462,14 @@
               class="bg-bg3 border border-border rounded-[5px] text-foreground cursor-pointer font-[inherit] text-xs font-medium py-[5px] px-3"
               onclick={() => (confirmRestore = null)}
             >
-              Cancel
+              {m.common_cancel()}
             </button>
             <button
               type="button"
               class="bg-destructive border-none rounded-[5px] text-white cursor-pointer font-[inherit] text-xs font-semibold py-[6px] px-3"
               onclick={() => startRestore(confirmRestore!)}
             >
-              Restore
+              {m.backup_restore()}
             </button>
           </div>
         </div>

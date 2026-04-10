@@ -4,6 +4,7 @@
     import { untrack } from 'svelte';
     import type { Snippet } from 'svelte';
     import { ChevronRight } from 'lucide-svelte';
+    import * as m from '$lib/paraglide/messages';
 
     export type CollapseLevel = 'expanded' | 'mini' | 'collapsed';
 
@@ -200,8 +201,8 @@
         <button
             class="popout-tab"
             onclick={() => goExpanded()}
-            aria-label="Expand sidebar"
-            title="Expand sidebar"
+            aria-label={m.sidebar_expand()}
+            title={m.sidebar_expand()}
         >
             <ChevronRight size={12} />
         </button>

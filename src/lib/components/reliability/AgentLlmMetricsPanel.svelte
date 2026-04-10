@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Cpu } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages';
 	import Chart from '$lib/components/charts/Chart.svelte';
 	import type { EChartsOption } from 'echarts';
 	import type { ReliabilityEvent } from '$lib/state/reliability/reliability.svelte';
@@ -151,7 +152,7 @@
 			},
 			series: [
 				{
-					name: 'Input',
+					name: m.reliability_inputTokens(),
 					type: 'bar',
 					stack: 'tokens',
 					barMaxWidth: 16,
@@ -159,7 +160,7 @@
 					data: byProvider.map((p) => p.input),
 				},
 				{
-					name: 'Output',
+					name: m.reliability_outputTokens(),
 					type: 'bar',
 					stack: 'tokens',
 					barMaxWidth: 16,
@@ -167,7 +168,7 @@
 					data: byProvider.map((p) => p.output),
 				},
 				{
-					name: 'Cache Read',
+					name: m.reliability_cacheRead(),
 					type: 'bar',
 					stack: 'tokens',
 					barMaxWidth: 16,
@@ -196,7 +197,7 @@
 			},
 			series: [
 				{
-					name: 'Total Tokens',
+					name: m.reliability_totalTokens(),
 					type: 'bar',
 					barMaxWidth: 16,
 					itemStyle: { color: '#ec4899' },
@@ -212,41 +213,41 @@
 	<div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20">
 		<Cpu size={11} class="text-accent shrink-0" />
 		<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground flex-1"
-			>Agent LLM Metrics</span
+			>{m.reliability_llmMetrics()}</span
 		>
 		<span class="text-[10px] text-muted-foreground/60"
-			>{summary.callCount} call{summary.callCount !== 1 ? 's' : ''}</span
+			>{summary.callCount} {summary.callCount !== 1 ? m.reliability_llmCallsPlural() : m.reliability_llmCall()}</span
 		>
 	</div>
 
 	{#if llmEvents.length === 0}
 		<div class="flex items-center justify-center py-8 text-muted-foreground text-[13px]">
-			No LLM usage data in selected range
+			{m.reliability_noLlmData()}
 		</div>
 	{:else}
 		<!-- SUMMARY STATS -->
 		<div class="grid grid-cols-4 gap-px bg-border border-b border-border">
 			<div class="flex flex-col items-center gap-1 py-3 px-2 bg-card">
 				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium"
-					>LLM Calls</span
+					>{m.reliability_llmCalls()}</span
 				>
 				<span class="text-lg font-bold text-foreground tabular-nums">{fmt(summary.callCount)}</span>
 			</div>
 			<div class="flex flex-col items-center gap-1 py-3 px-2 bg-card">
 				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium"
-					>Total Tokens</span
+					>{m.reliability_totalTokens()}</span
 				>
 				<span class="text-lg font-bold text-foreground tabular-nums">{fmt(summary.total)}</span>
 			</div>
 			<div class="flex flex-col items-center gap-1 py-3 px-2 bg-card">
 				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium"
-					>Input Tokens</span
+					>{m.reliability_inputTokens()}</span
 				>
 				<span class="text-lg font-bold text-foreground tabular-nums">{fmt(summary.input)}</span>
 			</div>
 			<div class="flex flex-col items-center gap-1 py-3 px-2 bg-card">
 				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium"
-					>Output Tokens</span
+					>{m.reliability_outputTokens()}</span
 				>
 				<span class="text-lg font-bold text-foreground tabular-nums">{fmt(summary.output)}</span>
 			</div>
@@ -259,7 +260,7 @@
 				<div
 					class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground px-4 pt-3 pb-1"
 				>
-					By Provider
+					{m.reliability_byProvider()}
 				</div>
 				{#if byProvider.length > 0}
 					<Chart options={providerChartOptions} height="220px" />
@@ -267,7 +268,7 @@
 					<div
 						class="flex items-center justify-center h-[220px] text-muted-foreground/50 text-[11px]"
 					>
-						No provider data
+						{m.reliability_noProviderData()}
 					</div>
 				{/if}
 			</div>
@@ -277,7 +278,7 @@
 				<div
 					class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground px-4 pt-3 pb-1"
 				>
-					By Agent
+					{m.reliability_byAgent()}
 				</div>
 				{#if byAgent.length > 0}
 					<Chart options={agentChartOptions} height="220px" />
@@ -285,7 +286,7 @@
 					<div
 						class="flex items-center justify-center h-[220px] text-muted-foreground/50 text-[11px]"
 					>
-						No agent data
+						{m.reliability_noAgentData()}
 					</div>
 				{/if}
 			</div>

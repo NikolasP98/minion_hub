@@ -652,6 +652,10 @@ export async function fetchSessionPromptReport(sessionKey: string) {
   });
 }
 
+export async function fetchPromptPreview(agentId: string) {
+  return sendRequest('prompt.preview', { agentId });
+}
+
 export async function fetchKGSnapshot(agentId: string) {
   return sendRequest('memory.snapshot', { agentId });
 }

@@ -4,6 +4,7 @@
 	import { conn } from '$lib/state/gateway';
 	import { ui } from '$lib/state/ui/ui.svelte';
 	import { User, Save, Loader2, MessageSquare, Clock, Zap, Plug } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	// ── Data from server load ────────────────────────────────────────────────
 	const serverData = $derived(page.data as {
@@ -31,22 +32,22 @@
 	// ── Local edit state ─────────────────────────────────────────────────────
 	type PresetKey = 'professional' | 'casual' | 'creative' | 'technical';
 
-	const PRESETS: Record<PresetKey, { label: string; preview: string }> = {
+	const PRESETS: Record<PresetKey, { label: () => string; preview: () => string }> = {
 		professional: {
-			label: 'Professional',
-			preview: 'Clear, structured responses with a focus on accuracy and efficiency.',
+			label: () => m.myAgent_presetProfessional(),
+			preview: () => m.myAgent_presetProfessionalPreview(),
 		},
 		casual: {
-			label: 'Casual',
-			preview: 'Friendly and conversational, like chatting with a helpful friend.',
+			label: () => m.myAgent_presetCasual(),
+			preview: () => m.myAgent_presetCasualPreview(),
 		},
 		creative: {
-			label: 'Creative',
-			preview: 'Imaginative and expressive, with a flair for creative solutions.',
+			label: () => m.myAgent_presetCreative(),
+			preview: () => m.myAgent_presetCreativePreview(),
 		},
 		technical: {
-			label: 'Technical',
-			preview: 'Precise and detail-oriented, with deep technical explanations.',
+			label: () => m.myAgent_presetTechnical(),
+			preview: () => m.myAgent_presetTechnicalPreview(),
 		},
 	};
 
@@ -111,7 +112,7 @@
 
 	function selectPreset(preset: PresetKey) {
 		editPreset = preset;
-		editPersonalityText = PRESETS[preset].preview;
+		editPersonalityText = PRESETS[preset].preview();
 	}
 
 	function getInitials(name: string): string {
@@ -177,9 +178,9 @@
 					<Plug size={28} class="text-accent" />
 				</div>
 				<div class="space-y-2 max-w-sm">
-					<h2 class="text-xl font-bold text-foreground">Connect to a gateway</h2>
+					<h2 class="text-xl font-bold text-foreground">{m.myAgent_connectTitle()}</h2>
 					<p class="text-sm text-muted-foreground leading-relaxed">
-						Your personal agent needs a gateway connection to finish setup. Add a host to get started.
+						{m.myAgent_connectDesc()}
 					</p>
 				</div>
 				<button
@@ -188,7 +189,7 @@
 					class="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-accent text-accent-foreground font-medium text-sm hover:brightness-110 transition-all cursor-pointer"
 				>
 					<Plug size={14} />
-					Connect a host
+					{m.myAgent_connectHost()}
 				</button>
 			</div>
 
@@ -200,8 +201,8 @@
 						<Loader2 size={16} class="text-warning animate-spin" />
 					</div>
 					<div>
-						<h2 class="text-[17px] font-bold text-foreground">Setting up your agent</h2>
-						<p class="text-sm text-muted-foreground">Your personal agent is being created. This usually takes a few seconds.</p>
+						<h2 class="text-[17px] font-bold text-foreground">{m.myAgent_settingUp()}</h2>
+						<p class="text-sm text-muted-foreground">{m.myAgent_settingUpDesc()}</p>
 					</div>
 				</div>
 				<div class="mt-4 space-y-3">
@@ -217,8 +218,8 @@
 				<div class="flex items-center gap-3">
 					<Loader2 size={20} class="text-accent animate-spin" />
 					<div>
-						<h2 class="text-[17px] font-bold text-foreground">Creating workspace...</h2>
-						<p class="text-sm text-muted-foreground">Almost ready. Setting up your agent workspace.</p>
+						<h2 class="text-[17px] font-bold text-foreground">{m.myAgent_creatingWorkspace()}</h2>
+						<p class="text-sm text-muted-foreground">{m.myAgent_creatingWorkspaceDesc()}</p>
 					</div>
 				</div>
 			</div>
@@ -226,9 +227,9 @@
 		<!-- Provisioning: Error -->
 		{:else if isError}
 			<div class="bg-destructive/5 border border-destructive/20 rounded-xl p-6">
-				<h2 class="text-[17px] font-bold text-destructive">Agent setup failed</h2>
+				<h2 class="text-[17px] font-bold text-destructive">{m.myAgent_setupFailed()}</h2>
 				<p class="text-sm text-muted-foreground mt-1">
-					It will retry automatically. If this persists, contact your admin.
+					{m.myAgent_setupFailedDesc()}
 				</p>
 			</div>
 
@@ -238,9 +239,9 @@
 			<!-- Onboarding Banner -->
 			{#if showOnboarding}
 				<div class="bg-accent/5 border border-accent/20 rounded-xl p-6">
-					<h1 class="text-2xl font-bold text-foreground">Welcome to your personal agent</h1>
+					<h1 class="text-2xl font-bold text-foreground">{m.myAgent_welcomeTitle()}</h1>
 					<p class="text-sm text-muted-foreground mt-1">
-						Pick a personality to get started, or just say hello in any channel.
+						{m.myAgent_welcomeDesc()}
 					</p>
 				</div>
 			{/if}
@@ -264,21 +265,21 @@
 							value={editDisplayName}
 							oninput={handleDisplayNameInput}
 							class="w-full bg-transparent text-[17px] font-bold text-foreground border-b border-transparent hover:border-border focus:border-accent focus:outline-none transition-colors pb-0.5"
-							placeholder="Display name"
+							placeholder={m.myAgent_displayNamePlaceholder()}
 							maxlength={50}
 						/>
 						<input
 							type="text"
 							bind:value={editConversationName}
 							class="w-full bg-transparent text-sm text-muted-foreground border-b border-transparent hover:border-border focus:border-accent focus:outline-none transition-colors pb-0.5"
-							placeholder="Conversation name (optional)"
+							placeholder={m.myAgent_conversationNamePlaceholder()}
 						/>
 					</div>
 				</div>
 
 				<!-- Personality Presets -->
 				<div class="space-y-3">
-					<h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Personality</h3>
+					<h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wide">{m.myAgent_personality()}</h3>
 					<div class="flex flex-wrap gap-2">
 						{#each Object.entries(PRESETS) as [key, preset]}
 							<button
@@ -288,7 +289,7 @@
 									? 'border-accent bg-accent/12 text-accent'
 									: 'border-border text-muted hover:text-foreground'}"
 							>
-								{preset.label}
+								{preset.label()}
 							</button>
 						{/each}
 					</div>
@@ -296,7 +297,7 @@
 					<!-- Preset preview text -->
 					{#if editPreset && PRESETS[editPreset]}
 						<p class="text-sm text-muted-foreground italic">
-							{PRESETS[editPreset].preview}
+							{PRESETS[editPreset].preview()}
 						</p>
 					{/if}
 				</div>
@@ -308,7 +309,7 @@
 						oninput={handlePersonalityInput}
 						class="w-full bg-bg2 border border-border rounded-lg p-3 text-sm text-foreground resize-none focus:outline-none focus:border-accent transition-colors"
 						rows={4}
-						placeholder="Describe your agent's personality, tone, and style..."
+						placeholder={m.myAgent_personalityPlaceholder()}
 						maxlength={500}
 					></textarea>
 					<div class="flex justify-end">
@@ -326,12 +327,12 @@
 					>
 						{#if personalAgent.saving}
 							<Loader2 size={14} class="animate-spin" />
-							Saving...
+							{m.myAgent_saving()}
 						{:else if saveSuccess}
-							Saved
+							{m.myAgent_saved()}
 						{:else}
 							<Save size={14} />
-							Save Changes
+							{m.myAgent_saveChanges()}
 						{/if}
 					</button>
 
@@ -343,7 +344,7 @@
 
 			<!-- Section 2: Channels Card -->
 			<div class="bg-card/50 backdrop-blur-sm border border-border rounded-xl p-6 space-y-3">
-				<h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Channels</h3>
+				<h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wide">{m.myAgent_channels()}</h3>
 				{#if serverData.channelIdentities.length > 0}
 					<div class="space-y-2">
 						{#each serverData.channelIdentities as identity}
@@ -358,29 +359,29 @@
 					</div>
 				{:else}
 					<div class="py-4 text-center">
-						<p class="text-sm text-muted-foreground">No channels linked</p>
-						<p class="text-xs text-muted-foreground mt-1">Your admin can link messaging channels to your agent.</p>
+						<p class="text-sm text-muted-foreground">{m.myAgent_noChannels()}</p>
+						<p class="text-xs text-muted-foreground mt-1">{m.myAgent_noChannelsDesc()}</p>
 					</div>
 				{/if}
 			</div>
 
 			<!-- Section 3: Activity Card -->
 			<div class="bg-card/50 backdrop-blur-sm border border-border rounded-xl p-6 space-y-4">
-				<h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Activity</h3>
+				<h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wide">{m.myAgent_activity()}</h3>
 
 				<!-- Stats row -->
 				<div class="flex items-center gap-6">
 					<div class="flex items-center gap-1.5">
 						<MessageSquare size={14} class="text-muted" />
-						<span class="text-[11px] font-medium text-muted">0 messages</span>
+						<span class="text-[11px] font-medium text-muted">{m.myAgent_zeroMessages()}</span>
 					</div>
 					<div class="flex items-center gap-1.5">
 						<Zap size={14} class="text-muted" />
-						<span class="text-[11px] font-medium text-muted">0 sessions</span>
+						<span class="text-[11px] font-medium text-muted">{m.myAgent_zeroSessions()}</span>
 					</div>
 					<div class="flex items-center gap-1.5">
 						<Clock size={14} class="text-muted" />
-						<span class="text-[11px] font-medium text-muted">Never</span>
+						<span class="text-[11px] font-medium text-muted">{m.myAgent_never()}</span>
 					</div>
 				</div>
 
@@ -388,9 +389,9 @@
 				<div class="space-y-3">
 					<p class="text-xs text-muted-foreground">
 						{#if agent.personalityConfigured}
-							Try asking your agent:
+							{m.myAgent_tryAsking()}
 						{:else}
-							No activity yet. Send your first message to get started. Try one of the prompts below.
+							{m.myAgent_noActivity()}
 						{/if}
 					</p>
 					<div class="flex flex-wrap gap-2">
@@ -410,7 +411,7 @@
 					{#if selectedPrompt}
 						<div class="bg-bg2/50 rounded-lg p-4 border border-border/50">
 							<p class="text-sm text-foreground">
-								This is a preview prompt. Connect to a gateway to start chatting with your agent.
+								{m.myAgent_previewPrompt()}
 							</p>
 						</div>
 					{/if}
@@ -421,8 +422,8 @@
 		{:else}
 			<div class="bg-card/50 backdrop-blur-sm border border-border rounded-xl p-6 text-center">
 				<User size={32} class="text-muted mx-auto mb-3" />
-				<h2 class="text-[17px] font-bold text-foreground">No personal agent</h2>
-				<p class="text-sm text-muted-foreground mt-1">Your personal agent will be created automatically.</p>
+				<h2 class="text-[17px] font-bold text-foreground">{m.myAgent_noAgent()}</h2>
+				<p class="text-sm text-muted-foreground mt-1">{m.myAgent_noAgentDesc()}</p>
 			</div>
 		{/if}
 

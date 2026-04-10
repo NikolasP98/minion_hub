@@ -15,6 +15,7 @@
     import ChannelCard from './ChannelCard.svelte';
     import ChannelForm from './ChannelForm.svelte';
     import { Plus, MessageSquare } from 'lucide-svelte';
+    import * as m from '$lib/paraglide/messages';
 
     let showCreateForm = $state(false);
     let heartbeatChannels = $state<Channel[]>([]);
@@ -177,7 +178,7 @@
 
     async function handleDelete(channel: Channel) {
         if (!serverId) return;
-        if (!confirm(`Delete channel "${channel.label}"?`)) return;
+        if (!confirm(m.channel_confirmDelete({ label: channel.label }))) return;
         await deleteChannel(serverId, channel.id);
     }
 
@@ -190,9 +191,9 @@
     <!-- Header -->
     <div class="flex items-center justify-between">
         <div>
-            <h2 class="text-xs font-semibold text-foreground uppercase tracking-wider">Channel Accounts</h2>
+            <h2 class="text-xs font-semibold text-foreground uppercase tracking-wider">{m.channel_accounts()}</h2>
             <p class="text-[10px] text-muted-foreground mt-0.5">
-                Register Discord, WhatsApp, and Telegram accounts for this gateway.
+                {m.channel_accountsSubtitle()}
             </p>
         </div>
         {#if !showCreateForm}
@@ -202,14 +203,14 @@
                 onclick={() => { showCreateForm = true; }}
             >
                 <Plus size={13} />
-                Add Channel
+                {m.channel_addChannel()}
             </button>
         {/if}
     </div>
 
     {#if !serverId}
         <p class="text-sm text-muted-foreground text-center py-8">
-            Select a server from the topbar to manage channels.
+            {m.channel_selectServer()}
         </p>
     {:else if showCreateForm}
         <div class="bg-card border border-border rounded-lg p-5">
@@ -220,7 +221,7 @@
             />
         </div>
     {:else if channelState.loading && mergedChannels.length === 0}
-        <div class="text-sm text-muted-foreground text-center py-8">Loading channels...</div>
+        <div class="text-sm text-muted-foreground text-center py-8">{m.channel_loadingChannels()}</div>
     {:else if channelState.error}
         <div class="text-sm text-destructive text-center py-8">{channelState.error}</div>
     {:else if mergedChannels.length === 0}
@@ -228,13 +229,13 @@
             <div class="w-12 h-12 rounded-full bg-bg3 flex items-center justify-center mx-auto">
                 <MessageSquare size={20} class="text-muted-foreground" />
             </div>
-            <p class="text-sm text-muted-foreground">No channels configured yet.</p>
+            <p class="text-sm text-muted-foreground">{m.channel_noChannels()}</p>
             <button
                 type="button"
                 class="text-xs text-accent hover:underline"
                 onclick={() => { showCreateForm = true; }}
             >
-                Add your first channel
+                {m.channel_addFirstChannel()}
             </button>
         </div>
     {:else}
