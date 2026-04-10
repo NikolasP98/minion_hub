@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
   let {
     open = $bindable(false),
     onsave,
@@ -31,9 +32,9 @@
       onclick={(e) => e.stopPropagation()}
       onkeydown={(e) => e.stopPropagation()}
     >
-      <h2 class="text-sm font-semibold text-foreground mb-2">Unsaved changes</h2>
+      <h2 class="text-sm font-semibold text-foreground mb-2">{m.saveBar_unsaved()}</h2>
       <p class="text-xs text-muted-foreground mb-5">
-        You have unsaved changes. What would you like to do?
+        {m.config_unsavedChangesPrompt()}
       </p>
       <div class="flex gap-2 justify-end">
         <button
@@ -41,21 +42,21 @@
           class="bg-transparent border border-border rounded-[5px] text-muted-foreground cursor-pointer font-[inherit] text-xs py-2 px-3 transition-colors hover:text-foreground"
           onclick={oncancel}
         >
-          Cancel
+          {m.common_cancel()}
         </button>
         <button
           type="button"
           class="bg-transparent border border-border rounded-[5px] text-destructive cursor-pointer font-[inherit] text-xs py-2 px-3 transition-colors hover:text-destructive"
           onclick={ondiscard}
         >
-          Discard
+          {m.saveBar_discard()}
         </button>
         <button
           type="button"
           class="bg-accent border-none rounded-[5px] text-white cursor-pointer font-[inherit] text-xs font-semibold py-2 px-4 transition-[filter] hover:brightness-115"
           onclick={onsave}
         >
-          Save &amp; Leave
+          {m.config_saveAndLeave()}
         </button>
       </div>
     </div>

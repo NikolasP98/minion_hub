@@ -1,6 +1,7 @@
 <script lang="ts">
     import { autosize } from '$lib/actions/autosize';
     import { X, Loader2, BookOpen } from "lucide-svelte";
+    import * as m from '$lib/paraglide/messages';
     import EmojiPicker from "./EmojiPicker.svelte";
 
     interface Props {
@@ -32,7 +33,7 @@
             const data = await res.json();
             onComplete(data.id);
         } catch (e) {
-            error = e instanceof Error ? e.message : "Failed to create skill";
+            error = e instanceof Error ? e.message : m.builder_failedCreateSkill();
             creating = false;
         }
     }
@@ -48,7 +49,7 @@
     class="overlay"
     role="dialog"
     aria-modal="true"
-    aria-label="New Skill"
+    aria-label={m.builder_newSkill()}
     tabindex="-1"
     onclick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     onkeydown={handleKeydown}
@@ -57,9 +58,9 @@
         <div class="modal-header">
             <div class="header-left">
                 <BookOpen size={16} class="text-accent" />
-                <span class="modal-title">New Skill</span>
+                <span class="modal-title">{m.builder_newSkill()}</span>
             </div>
-            <button class="close-btn" onclick={onClose} aria-label="Close">
+            <button class="close-btn" onclick={onClose} aria-label={m.common_close()}>
                 <X size={16} />
             </button>
         </div>
@@ -71,7 +72,7 @@
                     class="name-input"
                     type="text"
                     bind:value={name}
-                    placeholder="Skill name"
+                    placeholder={m.builder_skillNamePlaceholder()}
                     autofocus
                 />
             </div>
@@ -80,7 +81,7 @@
                 class="desc-input"
                 use:autosize={description}
                 bind:value={description}
-                placeholder="What does this skill do? (optional)"
+                placeholder={m.builder_skillDescPlaceholder()}
             ></textarea>
 
             {#if error}
@@ -89,13 +90,13 @@
         </div>
 
         <div class="modal-footer">
-            <button class="btn cancel" onclick={onClose}>Cancel</button>
+            <button class="btn cancel" onclick={onClose}>{m.common_cancel()}</button>
             <button class="btn create" onclick={handleCreate} disabled={!canCreate || creating}>
                 {#if creating}
                     <Loader2 size={14} class="spin" />
-                    Creating...
+                    {m.builder_creating()}
                 {:else}
-                    Create Skill
+                    {m.builder_createSkill()}
                 {/if}
             </button>
         </div>

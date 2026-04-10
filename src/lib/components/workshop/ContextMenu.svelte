@@ -1,4 +1,6 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
+
   let {
     instanceId,
     agentName,
@@ -46,7 +48,7 @@
   class="fixed inset-0 z-[999] w-full h-full bg-transparent border-none outline-none cursor-default"
   onclick={onClose}
   oncontextmenu={(e) => { e.preventDefault(); onClose(); }}
-  aria-label="Close context menu"
+  aria-label={m.workshop_closeContextMenu()}
 ></button>
 
 <!-- Context menu -->
@@ -69,13 +71,13 @@
       onclick={() => (conversationOpen = !conversationOpen)}
       onkeydown={(e) => e.key === 'Enter' && (conversationOpen = !conversationOpen)}
     >
-      <span>Start conversation with…</span>
+      <span>{m.workshop_startConversationWith()}</span>
       <span class="text-muted text-[9px]">{conversationOpen ? '▾' : '▸'}</span>
     </div>
     {#if conversationOpen}
       {#if nearbyAgents.length === 0}
         <div class="pl-6 pr-3 py-1.5 text-[11px] font-mono text-muted italic">
-          No nearby agents
+          {m.workshop_noNearbyAgents()}
         </div>
       {:else}
         {#each nearbyAgents as agent (agent.instanceId)}
@@ -91,7 +93,7 @@
             onclick={() => handleAction('quickBanter', { targetInstanceId: agent.instanceId })}
             onkeydown={(e) => e.key === 'Enter' && handleAction('quickBanter', { targetInstanceId: agent.instanceId })}
           >
-            Chat now
+            {m.workshop_chatNow()}
           </div>
           <!-- Custom topic sub-option -->
           <div
@@ -101,13 +103,13 @@
             onclick={() => handleAction('startConversation', { targetInstanceId: agent.instanceId })}
             onkeydown={(e) => e.key === 'Enter' && handleAction('startConversation', { targetInstanceId: agent.instanceId })}
           >
-            Custom topic…
+            {m.workshop_customTopic()}
           </div>
         {/each}
       {/if}
     {/if}
     {#if !isConnected}
-      <div class="px-3 pb-1 text-[9px] font-mono text-muted italic">not connected</div>
+      <div class="px-3 pb-1 text-[9px] font-mono text-muted italic">{m.workshop_notConnected()}</div>
     {/if}
   </div>
 
@@ -124,10 +126,10 @@
       onclick={() => handleAction('assignTask')}
       onkeydown={(e) => e.key === 'Enter' && handleAction('assignTask')}
     >
-      Assign task
+      {m.workshop_assignTask()}
     </div>
     {#if !isConnected}
-      <div class="px-3 pb-1 text-[9px] font-mono text-muted italic">not connected</div>
+      <div class="px-3 pb-1 text-[9px] font-mono text-muted italic">{m.workshop_notConnected()}</div>
     {/if}
   </div>
 
@@ -143,21 +145,25 @@
       onclick={() => (behaviorOpen = !behaviorOpen)}
       onkeydown={(e) => e.key === 'Enter' && (behaviorOpen = !behaviorOpen)}
     >
-      <span>Behavior</span>
+      <span>{m.workshop_behavior()}</span>
       <span class="text-muted text-[9px]">{behaviorOpen ? '▾' : '▸'}</span>
     </div>
     {#if behaviorOpen}
-      {#each ['Stationary', 'Wander', 'Patrol'] as mode (mode)}
-        {@const isActive = currentBehavior === mode.toLowerCase()}
+      {#each [
+        { value: 'stationary', label: m.workshop_behaviorStationary() },
+        { value: 'wander', label: m.workshop_behaviorWander() },
+        { value: 'patrol', label: m.workshop_behaviorPatrol() },
+      ] as mode (mode.value)}
+        {@const isActive = currentBehavior === mode.value}
         <div
           class="pl-6 pr-3 py-1.5 text-[11px] font-mono text-foreground hover:bg-bg3 cursor-pointer flex items-center gap-1.5"
           role="menuitem"
           tabindex="0"
-          onclick={() => handleAction('setBehavior', mode.toLowerCase())}
-          onkeydown={(e) => e.key === 'Enter' && handleAction('setBehavior', mode.toLowerCase())}
+          onclick={() => handleAction('setBehavior', mode.value)}
+          onkeydown={(e) => e.key === 'Enter' && handleAction('setBehavior', mode.value)}
         >
           <span class="text-[8px] w-3 text-center {isActive ? 'text-foreground' : 'text-transparent'}">●</span>
-          <span>{mode}</span>
+          <span>{mode.label}</span>
         </div>
       {/each}
     {/if}
@@ -174,6 +180,6 @@
     onclick={() => handleAction('remove')}
     onkeydown={(e) => e.key === 'Enter' && handleAction('remove')}
   >
-    Remove from canvas
+    {m.workshop_removeFromCanvas()}
   </div>
 </div>

@@ -5,6 +5,7 @@
     import { reliability } from '$lib/state/reliability/reliability.svelte';
     import { fmtTokens, fmtUptime } from '$lib/utils/format';
     import CornerAccent from '$lib/components/decorations/CornerAccent.svelte';
+    import * as m from '$lib/paraglide/messages';
 
     const agents = $derived(visibleAgents.value);
 
@@ -44,31 +45,31 @@
 
     const cards: MetricCard[] = $derived([
         {
-            label: 'Active Agents',
+            label: m.dashboard_activeAgents(),
             value: conn.connected ? `${activeAgentCount}/${totalAgentCount}` : '-',
             color: '--color-accent',
             icon: '\u{1F916}',
         },
         {
-            label: 'Sessions Today',
+            label: m.dashboard_sessionsToday(),
             value: conn.connected ? String(sessionsToday) : '-',
             color: '--color-accent',
             icon: '\u{1F4AC}',
         },
         {
-            label: 'Total Sessions',
+            label: m.dashboard_totalSessions(),
             value: conn.connected ? String(gw.sessions.length) : '-',
             color: '--color-accent',
             icon: '\u{1F4CA}',
         },
         {
-            label: 'Error Rate',
+            label: m.dashboard_errorRate(),
             value: conn.connected ? errorRate : '-',
             color: '--red',
             icon: '\u{26A0}\u{FE0F}',
         },
         {
-            label: 'Uptime',
+            label: m.dashboard_uptime(),
             value: conn.connected ? uptimeStr : '-',
             color: '--green',
             icon: '\u{23F1}\u{FE0F}',

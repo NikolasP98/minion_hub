@@ -80,7 +80,7 @@
       <input
         type="text"
         bind:value={searchQuery}
-        placeholder="Search settings…"
+        placeholder={m.settings_searchPlaceholder()}
         class="w-full bg-bg3 border border-border rounded-md text-[11px] text-foreground
           pl-7 pr-2 py-1.5 outline-none placeholder:text-muted-foreground/40
           focus:border-accent/50 transition-colors"
@@ -112,7 +112,7 @@
   <!-- Settings groups -->
   <div class="px-2 py-1 flex-1 space-y-px">
     <div class="px-2.5 pt-1 pb-1.5 text-[9px] font-semibold uppercase tracking-widest text-muted-foreground/40 select-none">
-      Settings
+      {m.settings_title()}
     </div>
     {#each filteredGroups as { group, fields } (group.id)}
       {@const overrides = countOverrides(fields)}

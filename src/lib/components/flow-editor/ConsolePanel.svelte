@@ -1,6 +1,7 @@
 <script lang="ts">
   import { flowEditorState, clearLogs } from '$lib/state/features/flow-editor.svelte';
   import { X, Trash2 } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let logContainer = $state<HTMLDivElement | null>(null);
 
@@ -33,7 +34,7 @@
   <!-- Header -->
   <div class="flex items-center justify-between px-3 py-1.5 border-b border-border bg-bg2 shrink-0">
     <div class="flex items-center gap-2">
-      <span class="text-[10px] font-semibold text-muted uppercase tracking-widest font-mono">Console</span>
+      <span class="text-[10px] font-semibold text-muted uppercase tracking-widest font-mono">{m.flow_console()}</span>
       {#if flowEditorState.consoleLogs.length > 0}
         <span class="text-[9px] font-mono text-muted/50 bg-bg3 px-1.5 py-0.5 rounded">
           {flowEditorState.consoleLogs.length}
@@ -44,14 +45,14 @@
       <button
         onclick={clearLogs}
         class="flex items-center justify-center w-5 h-5 rounded text-muted/60 hover:text-foreground hover:bg-bg3 transition-colors"
-        title="Clear logs"
+        title={m.flow_clearLogs()}
       >
         <Trash2 size={11} />
       </button>
       <button
         onclick={() => (flowEditorState.consoleOpen = false)}
         class="flex items-center justify-center w-5 h-5 rounded text-muted/60 hover:text-foreground hover:bg-bg3 transition-colors"
-        title="Close console"
+        title={m.flow_closeConsole()}
       >
         <X size={11} />
       </button>
@@ -64,7 +65,7 @@
     class="flex-1 overflow-y-auto px-3 py-2 space-y-0.5 font-mono"
   >
     {#if flowEditorState.consoleLogs.length === 0}
-      <p class="text-[11px] text-muted/40 italic">No output yet.</p>
+      <p class="text-[11px] text-muted/40 italic">{m.flow_noOutput()}</p>
     {:else}
       {#each flowEditorState.consoleLogs as entry (entry.id)}
         <div class="flex items-start gap-2 text-[11px] leading-5">

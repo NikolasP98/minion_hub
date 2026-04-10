@@ -275,7 +275,7 @@
     function validate(): boolean {
         nameError = "";
         if (!name.trim()) {
-            nameError = "Name is required";
+            nameError = m.agent_nameRequired();
             return false;
         }
         return true;
@@ -372,7 +372,7 @@
                         <!-- Emoji picker trigger -->
                         <button
                             class="w-8.5 h-8.5 shrink-0 aspect-square bg-bg3 border border-border rounded-[5px] text-[15px] cursor-pointer flex items-center justify-center transition-colors hover:not-disabled:border-accent disabled:opacity-50 disabled:cursor-not-allowed"
-                            aria-label="Pick emoji"
+                            aria-label={m.agent_pickEmoji()}
                             disabled={saving}
                             {...popoverApi.getTriggerProps()}
                             >{emoji || "🙂"}</button
@@ -436,7 +436,7 @@
                             <label
                                 for="ws-user"
                                 class="text-[10px] text-muted-foreground"
-                                >User</label
+                                >{m.agent_addUser()}</label
                             >
                             <input
                                 id="ws-user"
@@ -451,7 +451,7 @@
                             <label
                                 for="ws-dir"
                                 class="text-[10px] text-muted-foreground"
-                                >Config dir</label
+                                >{m.agent_addConfigDir()}</label
                             >
                             <input
                                 id="ws-dir"
@@ -464,7 +464,7 @@
                         </div>
                     </div>
                     <span class="text-[11px] text-muted-foreground"
-                        >Workspace (auto-generated)</span
+                        >{m.agent_addWorkspaceAuto()}</span
                     >
                     <div
                         class="font-mono text-xs text-muted bg-bg3 border border-border rounded-[5px] py-1.5 px-2.5 break-all"
@@ -478,7 +478,7 @@
                     <div {...comboboxApi.getRootProps()}>
                         <label
                             class="text-[11px] text-muted-foreground"
-                            {...comboboxApi.getLabelProps()}>Model</label
+                            {...comboboxApi.getLabelProps()}>{m.agent_model()}</label
                         >
                         <div
                             class="flex items-center bg-bg3 border border-border rounded-[5px] transition-all focus-within:border-accent focus-within:shadow-[0_0_0_2px_color-mix(in_srgb,var(--color-accent)_20%,transparent)]"
@@ -491,7 +491,7 @@
                             />
                             <button
                                 class="bg-transparent border-none text-muted-foreground cursor-pointer text-sm px-1 py-0 leading-none shrink-0 transition-colors hover:text-foreground data-[state=hidden]:hidden"
-                                aria-label="Clear model"
+                                aria-label={m.agent_clearModel()}
                                 tabindex="-1"
                                 {...comboboxApi.getClearTriggerProps()}
                                 >×</button
@@ -499,7 +499,7 @@
                             <button
                                 class="bg-transparent border-none text-muted-foreground cursor-pointer text-[10px] pr-2.25 pl-0.5 py-0 leading-none shrink-0 transition-colors hover:text-muted"
                                 tabindex="-1"
-                                aria-label="Toggle model list"
+                                aria-label={m.agent_toggleModelList()}
                                 {...comboboxApi.getTriggerProps()}>▾</button
                             >
                         </div>
@@ -532,7 +532,7 @@
                                             {#if item.id === defaultModel}
                                                 <span
                                                     class="text-[10px] text-accent bg-accent/15 rounded-[3px] py-px px-1.25 shrink-0"
-                                                    >default</span
+                                                    >{m.agent_modelDefault()}</span
                                                 >
                                             {/if}
                                             <span
@@ -545,7 +545,7 @@
                                         <li
                                             class="p-2 text-muted-foreground text-xs italic"
                                         >
-                                            No matches
+                                            {m.agent_noModelMatches()}
                                         </li>
                                     {/if}
                                 </ul>

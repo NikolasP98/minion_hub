@@ -9,6 +9,7 @@
 		getSortedSubagents,
 		selectSubagent
 	} from '$lib/state/features/subagent-data.svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	let viewMode = $state<ViewMode>('list');
 
@@ -19,7 +20,7 @@
 	<!-- Header -->
 	<div class="shrink-0 flex items-center justify-between px-3 py-2 border-b border-border">
 		<span class="text-[11px] font-semibold text-muted uppercase tracking-wider">
-			Subagents
+			{m.pi_subagents()}
 		</span>
 		<span class="text-[10px] text-muted/50 font-mono">
 			{subagentState.sessions.length}
@@ -30,7 +31,7 @@
 	<div class="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-color-border">
 		{#if subagentState.loading}
 			<div class="flex items-center justify-center py-8 text-muted text-[11px]">
-				Loading...
+				{m.common_loading()}
 			</div>
 		{:else if subagentState.error}
 			<div class="flex items-center justify-center py-8 text-red-400 text-[11px]">

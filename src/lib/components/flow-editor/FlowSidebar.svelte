@@ -5,6 +5,7 @@
   import { builderState, loadBuiltAgents } from '$lib/state/builder';
   import { Bot, Type, ChevronLeft, ChevronRight, Hammer } from 'lucide-svelte';
   import { onMount } from 'svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let collapsed = $state(false);
 
@@ -71,12 +72,12 @@
   <!-- Header / collapse toggle -->
   <div class="flex items-center border-b border-border {collapsed ? 'justify-center px-0 py-2' : 'justify-between px-3 py-2.5'}">
     {#if !collapsed}
-      <h2 class="text-[10px] font-semibold text-muted uppercase tracking-wider">Palette</h2>
+      <h2 class="text-[10px] font-semibold text-muted uppercase tracking-wider">{m.flow_palette()}</h2>
     {/if}
     <button
       onclick={() => (collapsed = !collapsed)}
       class="flex items-center justify-center w-5 h-5 rounded text-muted/60 hover:text-foreground hover:bg-bg3 transition-colors"
-      title={collapsed ? 'Expand palette' : 'Collapse palette'}
+      title={collapsed ? m.flow_expandPalette() : m.flow_collapsePalette()}
     >
       {#if collapsed}
         <ChevronRight size={12} />
@@ -95,7 +96,7 @@
         draggable="true"
         ondragstart={(e) => handleDragStart(e, { type: 'promptBox', label: 'Prompt' })}
         class="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
-        title="Prompt Box"
+        title={m.flow_promptBox()}
       >
         <Type size={13} class="text-violet-400" />
       </button>
@@ -139,7 +140,7 @@
       <!-- Inputs section -->
       <div>
         <p class="text-[9px] font-semibold text-muted/50 uppercase tracking-widest px-1 mb-1.5">
-          Inputs
+          {m.flow_inputs()}
         </p>
         <button
           onclick={addPromptBox}
@@ -151,8 +152,8 @@
             <Type size={12} class="text-violet-400" />
           </div>
           <div>
-            <div class="text-xs font-medium text-foreground">Prompt Box</div>
-            <div class="text-[10px] text-muted">Text input node</div>
+            <div class="text-xs font-medium text-foreground">{m.flow_promptBox()}</div>
+            <div class="text-[10px] text-muted">{m.flow_textInputNode()}</div>
           </div>
         </button>
       </div>
@@ -160,10 +161,10 @@
       <!-- Agents section -->
       <div>
         <p class="text-[9px] font-semibold text-muted/50 uppercase tracking-widest px-1 mb-1.5">
-          Agents
+          {m.flow_agents()}
         </p>
         {#if gw.agents.length === 0}
-          <p class="text-[10px] text-muted/50 italic px-2 py-1">No agents connected.</p>
+          <p class="text-[10px] text-muted/50 italic px-2 py-1">{m.flow_noAgentsConnected()}</p>
         {:else}
           <div class="flex flex-col gap-0.5">
             {#each gw.agents as agent (agent.id)}
@@ -193,7 +194,7 @@
       {#if builderState.agents.length > 0}
         <div>
           <p class="text-[9px] font-semibold text-muted/50 uppercase tracking-widest px-1 mb-1.5">
-            Built Agents
+            {m.flow_builtAgents()}
           </p>
           <div class="flex flex-col gap-0.5">
             {#each builderState.agents as agent (agent.id)}

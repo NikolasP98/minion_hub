@@ -12,6 +12,7 @@
     import '@xyflow/svelte/dist/style.css';
     import { Plus, BookOpen, GitBranch, Trash2, Check, X, Sparkles } from 'lucide-svelte';
     import { theme } from '$lib/state/ui/theme.svelte';
+    import * as m from '$lib/paraglide/messages';
     import ConditionNode from './ConditionNode.svelte';
     import type { ValidationFinding } from '$lib/utils/skill-validation';
 
@@ -258,15 +259,15 @@
     {#if chapters.length === 0}
         <div class="chapters-empty-state">
             <BookOpen size={28} strokeWidth={1.5} />
-            <p>Add chapters to build the execution flow</p>
+            <p>{m.builder_dagEmptyHint()}</p>
             <div class="empty-actions">
                 <button type="button" class="add-chapter-btn" onclick={onAddChapter}>
                     <Plus size={14} />
-                    <span>Add Chapter</span>
+                    <span>{m.builder_addChapter()}</span>
                 </button>
                 <button type="button" class="add-condition-btn" onclick={onAddCondition}>
                     <GitBranch size={14} />
-                    <span>Add Condition</span>
+                    <span>{m.builder_addCondition()}</span>
                 </button>
             </div>
         </div>
@@ -278,7 +279,7 @@
                 onclick={onAddChapter}
             >
                 <Plus size={12} />
-                <span>Chapter</span>
+                <span>{m.builder_chapter()}</span>
             </button>
             <button
                 type="button"
@@ -286,7 +287,7 @@
                 onclick={onAddCondition}
             >
                 <GitBranch size={12} />
-                <span>Condition</span>
+                <span>{m.builder_condition()}</span>
             </button>
         </div>
 
@@ -319,17 +320,17 @@
         <div class="staged-controls">
             <div class="staged-header">
                 <Sparkles size={14} />
-                <span>AI Proposal ({stagedProposal.chapters.length})</span>
+                <span>{m.builder_aiProposal({ count: stagedProposal.chapters.length })}</span>
             </div>
             <div class="staged-list">
                 {#each stagedProposal.chapters as ch (ch.tempId)}
                     <div class="staged-item">
                         <span class="staged-item-name">{ch.name}</span>
                         <div class="staged-item-actions">
-                            <button class="staged-accept" onclick={() => onAcceptProposed?.(ch.tempId)} title="Accept">
+                            <button class="staged-accept" onclick={() => onAcceptProposed?.(ch.tempId)} title={m.builder_accept()}>
                                 <Check size={12} />
                             </button>
-                            <button class="staged-reject" onclick={() => onRejectProposed?.(ch.tempId)} title="Reject">
+                            <button class="staged-reject" onclick={() => onRejectProposed?.(ch.tempId)} title={m.builder_reject()}>
                                 <X size={12} />
                             </button>
                         </div>
@@ -349,7 +350,7 @@
         >
             <button type="button" class="ctx-item danger" onclick={handleCtxDelete} role="menuitem">
                 <Trash2 size={13} />
-                <span>{contextMenu.type === 'node' ? 'Delete Chapter' : 'Delete Connection'}</span>
+                <span>{contextMenu.type === 'node' ? m.builder_deleteChapter() : m.builder_deleteConnection()}</span>
             </button>
         </div>
     {/if}

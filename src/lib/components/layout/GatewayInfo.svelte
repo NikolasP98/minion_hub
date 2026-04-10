@@ -3,6 +3,7 @@
   import { conn } from '$lib/state/gateway/connection.svelte';
   import { fmtUptime } from '$lib/utils/format';
   import { onMount } from 'svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let uptimeTick = $state(0);
 
@@ -30,13 +31,13 @@
       <span class="bg-bg3 border border-success rounded-sm py-[2px] px-2 text-[11px] whitespace-nowrap text-success">{fmtUptime(uptimeMs)}</span>
     {/if}
     {#if deviceCount > 0}
-      <span class="bg-bg3 border border-border rounded-sm py-[2px] px-2 text-[11px] whitespace-nowrap">{deviceCount} device{deviceCount !== 1 ? 's' : ''}</span>
+      <span class="bg-bg3 border border-border rounded-sm py-[2px] px-2 text-[11px] whitespace-nowrap">{m.gateway_devices({ count: deviceCount })}</span>
     {/if}
     {#if channels?.active}
-      <span class="bg-bg3 border border-border rounded-sm py-[2px] px-2 text-[11px] whitespace-nowrap">{channels.active} ch</span>
+      <span class="bg-bg3 border border-border rounded-sm py-[2px] px-2 text-[11px] whitespace-nowrap">{m.gateway_channels({ count: channels.active })}</span>
     {/if}
     {#if cronJobs?.length}
-      <span class="bg-bg3 border border-border rounded-sm py-[2px] px-2 text-[11px] whitespace-nowrap">{cronJobs.length} cron</span>
+      <span class="bg-bg3 border border-border rounded-sm py-[2px] px-2 text-[11px] whitespace-nowrap">{m.gateway_cronJobs({ count: cronJobs.length })}</span>
     {/if}
   </div>
 {/if}

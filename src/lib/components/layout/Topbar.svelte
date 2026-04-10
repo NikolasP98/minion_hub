@@ -103,26 +103,26 @@
             <div
                 class="flex items-center gap-0.5 px-1.5 py-1 rounded-lg bg-bg2/50 border border-border/50"
             >
-                <a href="/my-agent" class="nav-pill {isMyAgent ? 'active' : ''}" title="My Agent">
+                <a href="/my-agent" class="nav-pill {isMyAgent ? 'active' : ''}" title={m.nav_myAgent()}>
                     <User size={14} />
-                    <span>My Agent</span>
+                    <span>{m.nav_myAgent()}</span>
                 </a>
-                <a href="/builder" class="nav-pill {isBuilder ? 'active' : ''}" title="Builder">
+                <a href="/builder" class="nav-pill {isBuilder ? 'active' : ''}" title={m.nav_builder()}>
                     <BookOpen size={14} />
-                    <span>Builder</span>
+                    <span>{m.nav_builder()}</span>
                 </a>
                 <a
                     href="/flow-editor"
                     class="nav-pill {isFlowEditor ? 'active' : ''}"
-                    title="Flow Editor"
+                    title={m.nav_flowEditor()}
                 >
                     <GitBranch size={14} />
-                    <span>Flows</span>
+                    <span>{m.nav_flows()}</span>
                 </a>
                 <a
                     href="/workshop"
                     class="nav-pill {isWorkshop ? 'active' : ''}"
-                    title="Workshop"
+                    title={m.nav_workshop()}
                 >
                     <Wrench size={14} />
                     <span>{m.nav_workshop()}</span>
@@ -134,7 +134,7 @@
             <a
                 href="/marketplace"
                 class="nav-pill brand {isMarketplace ? 'active-brand' : ''}"
-                title="Marketplace"
+                title={m.nav_marketplace()}
             >
                 <Store size={14} />
                 <span>{m.nav_marketplace()}</span>
@@ -146,21 +146,21 @@
             <div
                 class="flex items-center gap-0.5 px-1.5 py-1 rounded-lg bg-bg2/50 border border-border/50"
             >
-                <Tooltip label="My Agent" id="nav-lg-my-agent">
+                <Tooltip label={m.nav_myAgent()} id="nav-lg-my-agent">
                     {#snippet children(triggerProps)}
                         <a href="/my-agent" class="nav-pill {isMyAgent ? 'active' : ''}" {...triggerProps}>
                             <User size={16} />
                         </a>
                     {/snippet}
                 </Tooltip>
-                <Tooltip label="Builder" id="nav-lg-builder">
+                <Tooltip label={m.nav_builder()} id="nav-lg-builder">
                     {#snippet children(triggerProps)}
                         <a href="/builder" class="nav-pill {isBuilder ? 'active' : ''}" {...triggerProps}>
                             <BookOpen size={16} />
                         </a>
                     {/snippet}
                 </Tooltip>
-                <Tooltip label="Flow Editor" id="nav-lg-flow-editor">
+                <Tooltip label={m.nav_flowEditor()} id="nav-lg-flow-editor">
                     {#snippet children(triggerProps)}
                         <a href="/flow-editor" class="nav-pill {isFlowEditor ? 'active' : ''}" {...triggerProps}>
                             <GitBranch size={16} />
@@ -189,21 +189,21 @@
 
         <!-- Small Tablet Navigation - Icons only, no bg (470px to lg) -->
         <nav class="hidden min-[470px]:flex lg:hidden items-center gap-0.5 flex-1">
-            <Tooltip label="My Agent" id="nav-md-my-agent">
+            <Tooltip label={m.nav_myAgent()} id="nav-md-my-agent">
                 {#snippet children(triggerProps)}
                     <a href="/my-agent" class="nav-pill-sm {isMyAgent ? 'active' : ''}" {...triggerProps}>
                         <User size={18} />
                     </a>
                 {/snippet}
             </Tooltip>
-            <Tooltip label="Builder" id="nav-md-builder">
+            <Tooltip label={m.nav_builder()} id="nav-md-builder">
                 {#snippet children(triggerProps)}
                     <a href="/builder" class="nav-pill-sm {isBuilder ? 'active' : ''}" {...triggerProps}>
                         <BookOpen size={18} />
                     </a>
                 {/snippet}
             </Tooltip>
-            <Tooltip label="Flow Editor" id="nav-md-flow-editor">
+            <Tooltip label={m.nav_flowEditor()} id="nav-md-flow-editor">
                 {#snippet children(triggerProps)}
                     <a href="/flow-editor" class="nav-pill-sm {isFlowEditor ? 'active' : ''}" {...triggerProps}>
                         <GitBranch size={18} />
@@ -239,8 +239,8 @@
                 onclick={() => captureSnapshot()}
                 disabled={bugReporter.phase === 'capturing'}
                 class="flex items-center justify-center w-9 h-9 rounded-lg text-muted hover:text-foreground hover:bg-bg3 transition-all duration-150 disabled:opacity-50 disabled:cursor-wait"
-                aria-label="Report a bug"
-                title="Report a bug"
+                aria-label={m.bug_reportButton()}
+                title={m.bug_reportButton()}
             >
                 <Bug size={18} />
             </button>
@@ -293,7 +293,7 @@
                     onclick={closeMobileMenu}
                 >
                     <User size={18} />
-                    <span>My Agent</span>
+                    <span>{m.nav_myAgent()}</span>
                 </a>
                 <a
                     href="/reliability"
@@ -305,7 +305,7 @@
                 </a>
                 <a href="/builder" class="mobile-nav-link {isBuilder ? 'active' : ''}" onclick={closeMobileMenu}>
                     <BookOpen size={18} />
-                    <span>Builder</span>
+                    <span>{m.nav_builder()}</span>
                 </a>
                 <a
                     href="/flow-editor"
@@ -313,7 +313,7 @@
                     onclick={closeMobileMenu}
                 >
                     <GitBranch size={18} />
-                    <span>Flows</span>
+                    <span>{m.nav_flows()}</span>
                 </a>
                 <a
                     href="/workshop"

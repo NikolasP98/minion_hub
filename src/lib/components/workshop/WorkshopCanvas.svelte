@@ -99,6 +99,7 @@
         cancelDrag,
     } from "$lib/workshop/pixel/characters";
     import type { OfficeLayout } from "$lib/workshop/pixel/types";
+    import * as m from "$lib/paraglide/messages";
 
     // ---------------------------------------------------------------------------
     // PixiJS state (not reactive - managed imperatively within onMount)
@@ -1673,7 +1674,7 @@
         use:pixiCanvas
         class="w-full h-full"
         role="application"
-        aria-label="Workshop canvas"
+        aria-label={m.workshop_canvasAriaLabel()}
         onpointerdown={handlePointerDown}
         onpointermove={handlePointerMove}
         onpointerup={handlePointerUp}
@@ -1804,7 +1805,7 @@
                     d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
                 ></path>
             </svg>
-            Chats
+            {m.workshop_chats()}
             {#if activeCount > 0}
                 <span
                     class="flex items-center justify-center w-4 h-4 rounded-full bg-green-500/20 text-green-400 text-[9px]"
@@ -1833,10 +1834,10 @@
                 <div
                     class="text-[7px] text-muted/60 uppercase tracking-wider mb-1"
                 >
-                    perf
+                    {m.workshop_configPerf()}
                 </div>
                 <div class="flex justify-between gap-3">
-                    <span class="text-muted/70">fps</span>
+                    <span class="text-muted/70">{m.workshop_configFps()}</span>
                     <span
                         class="tabular-nums font-semibold {perfFps >= 50
                             ? 'text-green-400'
@@ -1846,14 +1847,14 @@
                     >
                 </div>
                 <div class="flex justify-between gap-3">
-                    <span class="text-muted/70">frame</span>
+                    <span class="text-muted/70">{m.workshop_configFrame()}</span>
                     <span class="text-foreground/80 tabular-nums"
                         >{perfFrameMs}ms</span
                     >
                 </div>
                 {#if perfHeapMB !== null}
                     <div class="flex justify-between gap-3">
-                        <span class="text-muted/70">heap</span>
+                        <span class="text-muted/70">{m.workshop_configHeap()}</span>
                         <span class="text-foreground/80 tabular-nums"
                             >{perfHeapMB} MB</span
                         >
@@ -1865,22 +1866,22 @@
                     <div
                         class="text-[7px] text-muted/60 uppercase tracking-wider mb-0.5"
                     >
-                        scene
+                        {m.workshop_configScene()}
                     </div>
                     <div class="flex justify-between gap-3">
-                        <span class="text-muted/70">agents</span>
+                        <span class="text-muted/70">{m.workshop_configAgents()}</span>
                         <span class="text-foreground/80 tabular-nums"
                             >{agentCount}</span
                         >
                     </div>
                     <div class="flex justify-between gap-3">
-                        <span class="text-muted/70">elements</span>
+                        <span class="text-muted/70">{m.workshop_configElements()}</span>
                         <span class="text-foreground/80 tabular-nums"
                             >{elementCount}</span
                         >
                     </div>
                     <div class="flex justify-between gap-3">
-                        <span class="text-muted/70">convs</span>
+                        <span class="text-muted/70">{m.workshop_configConvs()}</span>
                         <span class="text-foreground/80 tabular-nums">
                             <span class="text-green-400">{activeConvs}</span
                             >/{totalConvs}
@@ -1893,7 +1894,7 @@
                     <div
                         class="text-[7px] text-muted/60 uppercase tracking-wider mb-1"
                     >
-                        view mode
+                        {m.workshop_configViewMode()}
                     </div>
                     <div class="flex rounded border border-border overflow-hidden">
                         <button
@@ -1903,7 +1904,7 @@
                                 : 'bg-bg3 text-muted hover:text-foreground'}"
                             onclick={() => setViewMode("classic")}
                         >
-                            Classic
+                            {m.workshop_viewClassic()}
                         </button>
                         <button
                             class="flex-1 px-2 py-0.5 text-[8px] transition-colors {workshopState
@@ -1912,7 +1913,7 @@
                                 : 'bg-bg3 text-muted hover:text-foreground'}"
                             onclick={() => setViewMode("habbo")}
                         >
-                            Habbo
+                            {m.workshop_viewHabbo()}
                         </button>
                         <button
                             class="flex-1 px-2 py-0.5 text-[8px] transition-colors {workshopState
@@ -1921,7 +1922,7 @@
                                 : 'bg-bg3 text-muted hover:text-foreground'}"
                             onclick={() => setViewMode("pixel")}
                         >
-                            Pixel
+                            {m.workshop_viewPixel()}
                         </button>
                     </div>
                 </div>
@@ -1931,7 +1932,7 @@
                     <div
                         class="text-[7px] text-muted/60 uppercase tracking-wider mb-1"
                     >
-                        ropes
+                        {m.workshop_configRopes()}
                     </div>
                     <div class="flex rounded border border-border overflow-hidden">
                         <button
@@ -1946,7 +1947,7 @@
                                 );
                             }}
                         >
-                            Chat
+                            {m.workshop_configRopesChat()}
                         </button>
                         <button
                             class="flex-1 px-2 py-0.5 text-[8px] transition-colors {showRelationshipRopes
@@ -1960,7 +1961,7 @@
                                 );
                             }}
                         >
-                            Relations
+                            {m.workshop_configRopesRelations()}
                         </button>
                     </div>
                 </div>
@@ -1969,7 +1970,7 @@
                 <div class="border-t border-border/30 mt-1 pt-1">
                     <div class="flex items-center justify-between">
                         <span class="text-[7px] text-muted/60 uppercase tracking-wider"
-                            >agent debug</span
+                            >{m.workshop_configAgentDebug()}</span
                         >
                         <ToggleSwitch
                             id="workshop-debug"
@@ -1994,7 +1995,7 @@
                 configOpen = !configOpen;
             }}
         >
-            {configOpen ? "⚙ config" : "⚙"}
+            {configOpen ? `⚙ ${m.workshop_config()}` : "⚙"}
         </button>
     </div>
 
@@ -2094,8 +2095,8 @@
             >
                 <h3 class="text-xs font-mono text-foreground mb-1">
                     {taskPromptDialog.mode === "assign"
-                        ? "Assign Task"
-                        : "Start Conversation"}
+                        ? m.workshop_assignTask()
+                        : m.workshop_startConversation()}
                 </h3>
                 <p class="text-[10px] text-muted mb-3">
                     {taskPromptDialog.agentName}
@@ -2103,8 +2104,8 @@
                 <textarea
                     class="w-full h-24 bg-bg1 border border-border rounded px-2 py-1.5 text-[11px] text-foreground font-mono resize-none focus:outline-none focus:ring-1 focus:ring-accent"
                     placeholder={taskPromptDialog.mode === "assign"
-                        ? "Describe the task..."
-                        : "What should they discuss?"}
+                        ? m.workshop_describeTask()
+                        : m.workshop_whatToDiscuss()}
                     bind:value={taskPromptInput}
                     onkeydown={(e) => {
                         if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -2120,17 +2121,17 @@
                             taskPromptInput = "";
                         }}
                     >
-                        Cancel
+                        {m.common_cancel()}
                     </button>
                     <button
                         class="px-3 py-1 text-[10px] font-mono text-accent-foreground bg-accent hover:bg-accent/90 rounded transition-colors disabled:opacity-40"
                         onclick={handleTaskPromptSubmit}
                     >
-                        {taskPromptDialog.mode === "assign" ? "Send" : "Start"}
+                        {taskPromptDialog.mode === "assign" ? m.workshop_send() : m.workshop_start()}
                     </button>
                 </div>
                 <p class="text-[9px] text-muted mt-2">
-                    Leave blank to use a default prompt · Cmd/Ctrl+Enter
+                    {m.workshop_taskPromptHint()}
                 </p>
             </div>
         </div>

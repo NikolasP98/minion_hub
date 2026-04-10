@@ -1,6 +1,7 @@
 <script lang="ts">
   import { X, Flame, AlertTriangle, Minus, Leaf, ChevronDown, ChevronUp } from 'lucide-svelte';
   import { bugReporter, submitReport, cancelReport } from '$lib/state/ui/bug-reporter.svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let dialogEl: HTMLDialogElement | undefined = $state();
 
@@ -22,12 +23,12 @@
     dialogEl?.close();
   }
 
-  const severityOptions = [
-    { value: 'critical' as const, label: 'Critical', Icon: Flame, color: 'text-destructive' },
-    { value: 'high' as const, label: 'High', Icon: AlertTriangle, color: 'text-warning' },
-    { value: 'medium' as const, label: 'Medium', Icon: Minus, color: 'text-accent' },
-    { value: 'low' as const, label: 'Low', Icon: Leaf, color: 'text-success' },
-  ] as const;
+  const severityOptions = $derived([
+    { value: 'critical' as const, label: m.bug_severityCritical(), Icon: Flame, color: 'text-destructive' },
+    { value: 'high' as const, label: m.bug_severityHigh(), Icon: AlertTriangle, color: 'text-warning' },
+    { value: 'medium' as const, label: m.bug_severityMedium(), Icon: Minus, color: 'text-accent' },
+    { value: 'low' as const, label: m.bug_severityLow(), Icon: Leaf, color: 'text-success' },
+  ] as const);
 
   const logLevelDot: Record<string, string> = {
     error: 'bg-destructive',
@@ -55,7 +56,7 @@
     data-no-capture
     class="fixed inset-0 z-[9999] cursor-default"
     onclick={cancelReport}
-    aria-label="Close bug reporter"
+    aria-label={m.bug_closeBugReporter()}
     tabindex="-1"
   ></button>
 
@@ -65,12 +66,12 @@
     style="animation: card-expand 200ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;"
     role="dialog"
     aria-modal="true"
-    aria-label="Bug report"
+    aria-label={m.bug_dialogLabel()}
   >
     <!-- Header -->
     <div class="flex items-center justify-between px-4 py-3 border-b border-border">
-      <h3 class="text-sm font-semibold text-foreground">Report a Bug</h3>
-      <button onclick={cancelReport} class="text-muted hover:text-foreground transition-colors" aria-label="Close">
+      <h3 class="text-sm font-semibold text-foreground">{m.bug_title()}</h3>
+      <button onclick={cancelReport} class="text-muted hover:text-foreground transition-colors" aria-label={m.common_close()}>
         <X size={16} />
       </button>
     </div>
@@ -84,13 +85,13 @@
         >
           <img
             src={bugReporter.screenshotDataUrl}
-            alt="Screenshot preview"
+            alt={m.bug_screenshotPreviewAlt()}
             class="w-full h-full object-cover"
           />
         </button>
       {:else}
         <div class="w-full aspect-video rounded-lg border border-border bg-bg3 flex items-center justify-center text-muted-foreground text-xs">
-          No screenshot captured
+          {m.bug_noScreenshot()}
         </div>
       {/if}
 
@@ -101,7 +102,7 @@
             onclick={() => (bugReporter.logsCollapsed = !bugReporter.logsCollapsed)}
             class="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-muted hover:text-foreground transition-colors"
           >
-            <span>Console Logs ({bugReporter.consoleLogs.length})</span>
+            <span>{m.bug_consoleLogs({ count: bugReporter.consoleLogs.length })}</span>
             {#if bugReporter.logsCollapsed}
               <ChevronDown size={14} />
             {:else}
@@ -123,8 +124,8 @@
       {/if}
 
       <!-- Severity picker -->
-      <div role="radiogroup" aria-label="Bug severity">
-        <p class="text-xs text-muted mb-2">Severity</p>
+      <div role="radiogroup" aria-label={m.bug_severityLabel()}>
+        <p class="text-xs text-muted mb-2">{m.bug_severityLabel()}</p>
         <div class="grid grid-cols-4 gap-1.5">
           {#each severityOptions as opt}
             <button
@@ -145,11 +146,11 @@
 
       <!-- Comment textarea -->
       <div>
-        <label for="bug-comment" class="text-xs text-muted block mb-1.5">What happened?</label>
+        <label for="bug-comment" class="text-xs text-muted block mb-1.5">{m.bug_commentLabel()}</label>
         <textarea
           id="bug-comment"
           bind:value={bugReporter.comment}
-          placeholder="Describe what went wrong..."
+          placeholder={m.bug_commentPlaceholder()}
           rows={3}
           class="w-full px-3 py-2 text-sm bg-bg border border-border rounded-lg text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-accent/50 resize-none"
         ></textarea>
@@ -162,13 +163,13 @@
         onclick={cancelReport}
         class="px-3 py-1.5 text-xs text-muted hover:text-foreground transition-colors rounded-md"
       >
-        Cancel
+        {m.common_cancel()}
       </button>
       <button
         onclick={() => submitReport()}
         class="px-4 py-1.5 text-xs font-medium bg-accent text-accent-foreground rounded-md hover:bg-accent/90 transition-colors"
       >
-        Submit
+        {m.bug_submit()}
       </button>
     </div>
   </div>
@@ -183,7 +184,7 @@
   {#if bugReporter.screenshotDataUrl}
     <img
       src={bugReporter.screenshotDataUrl}
-      alt="Full screenshot"
+      alt={m.bug_screenshotFullAlt()}
       class="max-w-full max-h-[90vh] rounded-xl"
     />
   {/if}

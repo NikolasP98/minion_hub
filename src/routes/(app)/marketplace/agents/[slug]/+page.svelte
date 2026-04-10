@@ -299,7 +299,7 @@
                             <span class="stat-value capitalize"
                                 >{agent.category}</span
                             >
-                            <span class="stat-label">Dept</span>
+                            <span class="stat-label">{m.marketplace_agentDetailDept()}</span>
                         </div>
                     </div>
 

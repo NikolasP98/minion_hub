@@ -7,6 +7,7 @@
         type RegistryAgent,
     } from '$lib/state/builder';
     import { onMount } from 'svelte';
+    import * as m from '$lib/paraglide/messages';
 
     let { onSelectAgent }: { onSelectAgent: (agent: RegistryAgent) => void } = $props();
 
@@ -65,10 +66,10 @@
 <div class="registry-section">
     <div class="registry-header">
         <div class="registry-title-row">
-            <h3 class="registry-title">Agent Registry</h3>
+            <h3 class="registry-title">{m.builder_registryTitle()}</h3>
             <span class="registry-count">
                 {#if registryState.loaded}
-                    {registryDerived.filteredAgents.length.toLocaleString()} agents
+                    {registryDerived.filteredAgents.length.toLocaleString()} {m.builder_registryAgentsCount()}
                 {/if}
             </span>
         </div>
@@ -82,7 +83,7 @@
                         type="button"
                         class="cat-pill {registryState.categoryFilter === null ? 'active' : ''}"
                         onclick={() => setCategory(null)}
-                    >All</button>
+                    >{m.marketplace_agentsListCategoryAll()}</button>
                     {#each topCategories as { category, count } (category)}
                         <button
                             type="button"
@@ -104,7 +105,7 @@
                                 onclick={() => { showMoreCategories = !showMoreCategories; }}
                             >
                                 <ChevronDown size={12} />
-                                +{overflowCategories.length} more
+                                +{overflowCategories.length} {m.builder_registryMore()}
                             </button>
                             {#if showMoreCategories}
                                 <div class="more-menu" onmousedown={(e) => e.stopPropagation()}>
@@ -129,7 +130,7 @@
                     <Search size={12} class="search-icon" />
                     <input
                         type="text"
-                        placeholder="Search agents..."
+                        placeholder={m.builder_registrySearchPlaceholder()}
                         value={searchInput}
                         oninput={onSearchInput}
                         class="search-input"
@@ -148,14 +149,14 @@
     {#if registryState.loading}
         <div class="loading-container">
             <Loader2 size={20} class="loading-spinner" />
-            <span class="loading-text">Loading registry...</span>
+            <span class="loading-text">{m.builder_registryLoading()}</span>
         </div>
     {:else if registryState.error}
         <div class="error-banner">{registryState.error}</div>
     {:else if registryDerived.visibleAgents.length === 0 && registryState.loaded}
         <div class="empty-state">
             <Bot size={24} class="empty-icon" />
-            <p class="empty-text">No agents match your filters</p>
+            <p class="empty-text">{m.builder_registryNoMatch()}</p>
         </div>
     {:else}
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -190,7 +191,7 @@
         {#if registryDerived.visibleAgents.length < registryDerived.filteredAgents.length}
             <div bind:this={sentinel} class="sentinel">
                 <Loader2 size={16} class="loading-spinner" />
-                <span class="loading-text">Loading more...</span>
+                <span class="loading-text">{m.builder_registryLoadingMore()}</span>
             </div>
         {/if}
     {/if}

@@ -3,6 +3,7 @@
     import { CHANNEL_FIELDS, CHANNEL_TYPE_LABELS } from '$lib/types/channels';
     import { MessageSquare, Smartphone, Send, Eye, EyeOff } from 'lucide-svelte';
     import WhatsAppQrPairing from './WhatsAppQrPairing.svelte';
+    import * as m from '$lib/paraglide/messages';
 
     interface Props {
         serverId: string;
@@ -79,7 +80,7 @@
     <!-- Type selector -->
     <div>
         <label class="text-xs font-semibold text-foreground uppercase tracking-wider block mb-2">
-            Channel Type
+            {m.channel_type()}
         </label>
         <div class="flex gap-2">
             {#each typeOptions as opt}
@@ -101,7 +102,7 @@
     <!-- Label -->
     <div>
         <label for="channel-label" class="text-xs font-medium text-muted-foreground block mb-1">
-            Label
+            {m.channel_label()}
         </label>
         <input
             id="channel-label"
@@ -120,7 +121,7 @@
                 <WhatsAppQrPairing {channelId} {serverId} />
             {:else}
                 <p class="text-xs text-muted-foreground italic">
-                    Save the channel first, then pair via QR code.
+                    {m.channel_saveFirstThenQr()}
                 </p>
             {/if}
         {:else}
@@ -167,7 +168,7 @@
             type="submit"
             class="bg-accent text-accent-foreground rounded-md px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity"
         >
-            {channelId ? 'Update' : 'Create'} Channel
+            {channelId ? m.channel_update() : m.channel_create()}
         </button>
         {#if oncancel}
             <button
@@ -175,7 +176,7 @@
                 class="bg-bg3 text-foreground border border-border rounded-md px-4 py-2 text-sm font-medium hover:border-muted-foreground transition-colors"
                 onclick={() => oncancel?.()}
             >
-                Cancel
+                {m.common_cancel()}
             </button>
         {/if}
     </div>

@@ -3,6 +3,7 @@
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
   import { slide } from 'svelte/transition';
   import type { WorkshopMessage } from '$lib/workshop/gateway-bridge';
+  import * as m from '$lib/paraglide/messages';
 
   let { conversationId, messages: workshopMessages = [], onClose }: {
     conversationId: string;
@@ -63,11 +64,11 @@
   function formatRelativeTime(ts: number): string {
     const diff = Date.now() - ts;
     const seconds = Math.floor(diff / 1000);
-    if (seconds < 60) return 'just now';
+    if (seconds < 60) return m.common_justNow();
     const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes}m ago`;
+    if (minutes < 60) return m.common_minutesAgo({ count: minutes });
     const hours = Math.floor(minutes / 60);
-    return `${hours}h ago`;
+    return m.common_hoursAgo({ count: hours });
   }
 </script>
 
@@ -88,7 +89,7 @@
     <button
       class="text-muted hover:text-foreground transition-colors shrink-0 p-0.5"
       onclick={onClose}
-      aria-label="Close chat panel"
+      aria-label={m.workshop_closeChatPanel()}
     >
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -102,9 +103,9 @@
     {#if messages.length === 0}
       <div class="flex flex-col items-center justify-center h-full gap-2">
         {#if conversation?.status === 'active'}
-          <span class="text-[11px] text-muted animate-pulse">Waiting for response...</span>
+          <span class="text-[11px] text-muted animate-pulse">{m.workshop_waitingForResponse()}</span>
         {:else}
-          <span class="text-[11px] text-muted">No messages yet</span>
+          <span class="text-[11px] text-muted">{m.workshop_noMessagesYet()}</span>
         {/if}
       </div>
     {:else}

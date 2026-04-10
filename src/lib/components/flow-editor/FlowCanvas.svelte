@@ -16,6 +16,7 @@
   import PromptBoxNode from './nodes/PromptBoxNode.svelte';
   import FlowEdgeComponent from './edges/FlowEdge.svelte';
   import ContextEdgeComponent from './edges/ContextEdge.svelte';
+  import * as m from '$lib/paraglide/messages';
 
   import {
     flowEditorState,
@@ -124,7 +125,7 @@
   bind:this={containerEl}
   class="flex-1 h-full {flowEditorState.relationshipMode ? 'cursor-crosshair' : ''}"
   role="region"
-  aria-label="Flow canvas"
+  aria-label={m.flow_canvasLabel()}
   ondragover={(e) => e.preventDefault()}
   ondrop={handleDrop}
 >

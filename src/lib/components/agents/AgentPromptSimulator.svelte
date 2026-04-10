@@ -1,5 +1,6 @@
 <script lang="ts">
   import { fetchSessionPromptReport } from '$lib/services/gateway.svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let {
     agentId,
@@ -73,17 +74,17 @@
 
   // ─── Pipeline step definitions ────────────────────────────────────────────
 
-  const STEPS = [
-    { id: 'bootstrap', label: 'Bootstrap Files' },
-    { id: 'parameters', label: 'Parameters' },
-    { id: 'skills', label: 'Skills' },
-    { id: 'sandbox', label: 'Sandbox' },
-    { id: 'tools', label: 'Tools' },
-    { id: 'memory', label: 'Memory Context' },
-    { id: 'tts', label: 'TTS Hint' },
-    { id: 'assembly', label: 'Prompt Assembly' },
-    { id: 'post-turn', label: 'Post-Turn Memory' },
-  ];
+  const STEPS = $derived([
+    { id: 'bootstrap', label: m.prompt_stepBootstrap() },
+    { id: 'parameters', label: m.prompt_stepParameters() },
+    { id: 'skills', label: m.prompt_stepSkills() },
+    { id: 'sandbox', label: m.prompt_stepSandbox() },
+    { id: 'tools', label: m.prompt_stepTools() },
+    { id: 'memory', label: m.prompt_stepMemory() },
+    { id: 'tts', label: m.prompt_stepTts() },
+    { id: 'assembly', label: m.prompt_stepAssembly() },
+    { id: 'post-turn', label: m.prompt_stepPostTurn() },
+  ]);
 
   // ─── Data loading ─────────────────────────────────────────────────────────
 
@@ -252,7 +253,7 @@
   <!-- Sidebar -->
   <div class="w-[200px] shrink-0 border-r border-border bg-bg2 overflow-y-auto flex flex-col">
     <div class="px-3 py-2 border-b border-border">
-      <span class="text-[10px] font-bold uppercase tracking-widest text-muted">Pipeline</span>
+      <span class="text-[10px] font-bold uppercase tracking-widest text-muted">{m.prompt_pipeline()}</span>
     </div>
     <div class="flex-1 py-1">
       {#each STEPS as step, i (step.id)}
@@ -289,7 +290,7 @@
         onclick={() => loadReport(sessionKey)}
         disabled={loading}
       >
-        {loading ? 'Loading…' : 'Refresh'}
+        {loading ? m.common_loading() : m.skills_refresh()}
       </button>
     </div>
   </div>
@@ -299,25 +300,25 @@
     {#if loading}
       <div class="flex items-center justify-center h-full gap-2 text-muted text-xs">
         <div class="w-4 h-4 border-2 border-border border-t-accent rounded-full animate-spin"></div>
-        Loading prompt report…
+        {m.prompt_loadingReport()}
       </div>
     {:else if error}
       <div class="flex flex-col items-center justify-center h-full gap-3">
-        <span class="text-destructive text-xs">Could not load prompt report</span>
+        <span class="text-destructive text-xs">{m.prompt_couldNotLoad()}</span>
         <span class="text-muted text-[11px]">{error}</span>
         <button
           type="button"
           class="text-[11px] font-semibold px-3 py-1.5 rounded border border-border text-muted hover:text-foreground transition-colors"
           onclick={() => loadReport(sessionKey)}
         >
-          Retry
+          {m.common_retry()}
         </button>
       </div>
     {:else if !report}
       <div class="flex flex-col items-center justify-center h-full gap-2 text-center px-6">
         <span class="text-2xl opacity-20">🧠</span>
-        <span class="text-muted text-xs">No prompt report available for this agent yet.</span>
-        <span class="text-muted text-[11px]">Send a message to generate the system prompt.</span>
+        <span class="text-muted text-xs">{m.prompt_noReport()}</span>
+        <span class="text-muted text-[11px]">{m.prompt_sendMessage()}</span>
       </div>
     {:else}
       <!-- Step content -->
@@ -325,18 +326,18 @@
         {#if activeStep === 0}
           <!-- Bootstrap Files -->
           <div>
-            <h2 class="text-sm font-semibold text-foreground mb-1">Bootstrap Files</h2>
+            <h2 class="text-sm font-semibold text-foreground mb-1">{m.prompt_stepBootstrap()}</h2>
             <p class="text-muted text-[11px] mb-3">
-              Workspace files injected at prompt start.
+              {m.prompt_bootstrapDesc()}
               {#if report.bootstrapMaxChars}
-                Budget: {fmtChars(report.bootstrapMaxChars)} per file
+                {m.prompt_bootstrapBudget({ perFile: fmtChars(report.bootstrapMaxChars) })}
                 {#if report.bootstrapTotalMaxChars}
-                  · {fmtChars(report.bootstrapTotalMaxChars)} total
+                  · {fmtChars(report.bootstrapTotalMaxChars)} {m.prompt_bootstrapTotal()}
                 {/if}.
               {/if}
             </p>
             {#if !report.injectedWorkspaceFiles?.length}
-              <p class="text-muted text-[11px]">No bootstrap files reported.</p>
+              <p class="text-muted text-[11px]">{m.prompt_noBootstrapFiles()}</p>
             {:else}
               <div class="space-y-1">
                 {#each report.injectedWorkspaceFiles as f (f.name)}
@@ -346,21 +347,20 @@
                     </span>
                     <span class="flex-1 min-w-0 text-[11px] font-mono text-foreground truncate">{f.name}</span>
                     {#if f.missing}
-                      <span class="shrink-0 text-[10px] text-destructive font-semibold">missing</span>
+                      <span class="shrink-0 text-[10px] text-destructive font-semibold">{m.prompt_fileMissing()}</span>
                     {:else}
                       <span class="shrink-0 text-[10px] text-muted">{fmtChars(f.injectedChars)}</span>
                       {#if f.truncated}
-                        <span class="shrink-0 text-[9px] font-semibold px-1 py-0.5 rounded bg-amber-500/15 text-amber-400">truncated</span>
+                        <span class="shrink-0 text-[9px] font-semibold px-1 py-0.5 rounded bg-amber-500/15 text-amber-400">{m.prompt_fileTruncated()}</span>
                       {:else}
-                        <span class="shrink-0 text-[9px] font-semibold px-1 py-0.5 rounded bg-green-500/10 text-green-400">ok</span>
+                        <span class="shrink-0 text-[9px] font-semibold px-1 py-0.5 rounded bg-green-500/10 text-green-400">{m.prompt_fileOk()}</span>
                       {/if}
                     {/if}
                   </div>
                 {/each}
               </div>
               <p class="text-muted text-[11px] mt-2">
-                {report.injectedWorkspaceFiles.filter(f => !f.missing).length} injected
-                · {fmtChars(report.injectedWorkspaceFiles.reduce((s, f) => s + (f.injectedChars ?? 0), 0))} total
+                {m.prompt_filesInjectedCount({ count: report.injectedWorkspaceFiles.filter(f => !f.missing).length, total: fmtChars(report.injectedWorkspaceFiles.reduce((s, f) => s + (f.injectedChars ?? 0), 0)) })}
               </p>
             {/if}
           </div>
@@ -368,15 +368,15 @@
         {:else if activeStep === 1}
           <!-- Parameters -->
           <div>
-            <h2 class="text-sm font-semibold text-foreground mb-1">Parameters</h2>
-            <p class="text-muted text-[11px] mb-3">Model and environment configuration for this agent session.</p>
+            <h2 class="text-sm font-semibold text-foreground mb-1">{m.prompt_stepParameters()}</h2>
+            <p class="text-muted text-[11px] mb-3">{m.prompt_parametersDesc()}</p>
             <div class="space-y-2">
               {#each [
-                ['Model', report.model ?? '—'],
-                ['Provider', report.provider ?? '—'],
-                ['Workspace', report.workspaceDir ?? '—'],
-                ['Generated', fmtDate(report.generatedAt)],
-                ['Source', report.source ?? '—'],
+                [m.agent_model(), report.model ?? '—'],
+                [m.prompt_paramProvider(), report.provider ?? '—'],
+                [m.prompt_paramWorkspace(), report.workspaceDir ?? '—'],
+                [m.prompt_paramGenerated(), fmtDate(report.generatedAt)],
+                [m.prompt_paramSource(), report.source ?? '—'],
               ] as [label, value] (label)}
                 <div class="flex items-start gap-3 py-1.5 px-2 rounded bg-bg2 border border-border/50">
                   <span class="shrink-0 w-20 text-[10px] font-bold uppercase tracking-wide text-muted">{label}</span>
@@ -389,15 +389,15 @@
         {:else if activeStep === 2}
           <!-- Skills -->
           <div>
-            <h2 class="text-sm font-semibold text-foreground mb-1">Skills</h2>
+            <h2 class="text-sm font-semibold text-foreground mb-1">{m.prompt_stepSkills()}</h2>
             <p class="text-muted text-[11px] mb-3">
-              Skill blocks injected into the system prompt.
+              {m.prompt_skillsDesc()}
               {#if report.skills?.promptChars}
-                Total: {fmtChars(report.skills.promptChars)}.
+                {m.prompt_skillsTotal({ total: fmtChars(report.skills.promptChars) })}.
               {/if}
             </p>
             {#if !report.skills?.entries?.length}
-              <p class="text-muted text-[11px]">No skills reported.</p>
+              <p class="text-muted text-[11px]">{m.prompt_noSkills()}</p>
             {:else}
               <div class="space-y-1">
                 {#each report.skills.entries as s (s.name)}
@@ -421,16 +421,16 @@
         {:else if activeStep === 3}
           <!-- Sandbox -->
           <div>
-            <h2 class="text-sm font-semibold text-foreground mb-1">Sandbox</h2>
-            <p class="text-muted text-[11px] mb-3">Sandbox isolation configuration for this agent.</p>
+            <h2 class="text-sm font-semibold text-foreground mb-1">{m.prompt_stepSandbox()}</h2>
+            <p class="text-muted text-[11px] mb-3">{m.prompt_sandboxDesc()}</p>
             {#if !report.sandbox}
-              <p class="text-muted text-[11px]">No sandbox configuration reported.</p>
+              <p class="text-muted text-[11px]">{m.prompt_noSandbox()}</p>
             {:else}
               <div class="space-y-2">
                 {#each [
-                  ['Enabled', report.sandbox.enabled ? 'Yes' : 'No'],
-                  ['Workspace access', report.sandbox.workspaceAccess ? 'Yes' : 'No'],
-                  ['Container dir', report.sandbox.containerDir ?? '—'],
+                  [m.prompt_sandboxEnabled(), report.sandbox.enabled ? m.common_yes() : m.common_no()],
+                  [m.prompt_sandboxWorkspaceAccess(), report.sandbox.workspaceAccess ? m.common_yes() : m.common_no()],
+                  [m.prompt_sandboxContainerDir(), report.sandbox.containerDir ?? '—'],
                 ] as [label, value] (label)}
                   <div class="flex items-start gap-3 py-1.5 px-2 rounded bg-bg2 border border-border/50">
                     <span class="shrink-0 w-28 text-[10px] font-bold uppercase tracking-wide text-muted">{label}</span>
@@ -444,22 +444,22 @@
         {:else if activeStep === 4}
           <!-- Tools -->
           <div>
-            <h2 class="text-sm font-semibold text-foreground mb-1">Tools</h2>
+            <h2 class="text-sm font-semibold text-foreground mb-1">{m.prompt_stepTools()}</h2>
             <p class="text-muted text-[11px] mb-3">
-              Tools available to this agent.
+              {m.prompt_toolsDesc()}
               {#if report.tools}
-                List: {fmtChars(report.tools.listChars)} · Schemas: {fmtChars(report.tools.schemaChars)}.
+                {m.prompt_toolsSizes({ list: fmtChars(report.tools.listChars), schemas: fmtChars(report.tools.schemaChars) })}.
               {/if}
             </p>
             {#if !report.tools?.entries?.length}
-              <p class="text-muted text-[11px]">No tool entries reported.</p>
+              <p class="text-muted text-[11px]">{m.prompt_noTools()}</p>
             {:else}
               <div class="space-y-1">
                 {#each report.tools.entries as t (t.name)}
                   <div class="flex items-center gap-2 py-1.5 px-2 rounded bg-bg2 border border-border/50">
                     <span class="text-accent text-[11px] shrink-0">●</span>
                     <span class="flex-1 min-w-0 text-[11px] text-foreground truncate font-mono">{t.name}</span>
-                    <span class="shrink-0 text-[10px] text-muted">{t.propertiesCount} props</span>
+                    <span class="shrink-0 text-[10px] text-muted">{m.prompt_toolProps({ count: t.propertiesCount })}</span>
                     <span class="shrink-0 text-[10px] text-muted">{fmtChars(t.schemaChars)}</span>
                     <!-- size bar -->
                     <div class="shrink-0 w-20 h-1.5 bg-bg1 rounded-full overflow-hidden">
@@ -477,14 +477,14 @@
         {:else if activeStep === 5}
           <!-- Memory Context -->
           <div>
-            <h2 class="text-sm font-semibold text-foreground mb-1">Memory Context</h2>
-            <p class="text-muted text-[11px] mb-3">Dynamic per-turn knowledge graph retrieval.</p>
+            <h2 class="text-sm font-semibold text-foreground mb-1">{m.prompt_stepMemory()}</h2>
+            <p class="text-muted text-[11px] mb-3">{m.prompt_memoryDesc()}</p>
             <div class="py-3 px-3 rounded bg-bg2 border border-border/50 space-y-2">
               <p class="text-[11px] text-foreground">
-                Before each turn, the gateway queries the knowledge graph for entity mentions relevant to the user's message.
+                {m.prompt_memoryBody1()}
               </p>
               <p class="text-[11px] text-muted">
-                Retrieved facts are injected as context — max ~500 tokens per turn. This is dynamic and not captured in the static report above.
+                {m.prompt_memoryBody2()}
               </p>
             </div>
           </div>
@@ -492,14 +492,14 @@
         {:else if activeStep === 6}
           <!-- TTS Hint -->
           <div>
-            <h2 class="text-sm font-semibold text-foreground mb-1">TTS Hint</h2>
-            <p class="text-muted text-[11px] mb-3">Text-to-speech output formatting instructions.</p>
+            <h2 class="text-sm font-semibold text-foreground mb-1">{m.prompt_stepTts()}</h2>
+            <p class="text-muted text-[11px] mb-3">{m.prompt_ttsDesc()}</p>
             <div class="py-3 px-3 rounded bg-bg2 border border-border/50 space-y-2">
               <p class="text-[11px] text-foreground">
-                If <code class="font-mono bg-bg1 px-1 rounded">tts</code> is configured for this agent, the gateway injects formatting instructions asking the model to produce speech-friendly output (avoid markdown, keep responses concise).
+                {m.prompt_ttsBody1()}
               </p>
               <p class="text-[11px] text-muted">
-                This hint is config-dependent and not visible in the static report.
+                {m.prompt_ttsBody2()}
               </p>
             </div>
           </div>
@@ -507,24 +507,24 @@
         {:else if activeStep === 7}
           <!-- Prompt Assembly -->
           <div>
-            <h2 class="text-sm font-semibold text-foreground mb-1">Prompt Assembly</h2>
-            <p class="text-muted text-[11px] mb-3">Final assembled system prompt composition.</p>
+            <h2 class="text-sm font-semibold text-foreground mb-1">{m.prompt_stepAssembly()}</h2>
+            <p class="text-muted text-[11px] mb-3">{m.prompt_assemblyDesc()}</p>
             {#if !report.systemPrompt}
-              <p class="text-muted text-[11px]">No assembly data reported.</p>
+              <p class="text-muted text-[11px]">{m.prompt_noAssembly()}</p>
             {:else}
               {@const sp = report.systemPrompt}
               <div class="space-y-3">
                 <!-- Total -->
                 <div class="py-2 px-3 rounded bg-bg2 border border-border/50 flex items-center gap-3">
-                  <span class="text-[10px] font-bold uppercase tracking-wide text-muted w-28 shrink-0">Total</span>
+                  <span class="text-[10px] font-bold uppercase tracking-wide text-muted w-28 shrink-0">{m.prompt_assemblyTotal()}</span>
                   <span class="text-[11px] text-foreground font-semibold">{fmtChars(sp.chars)}</span>
                 </div>
 
                 <!-- Project vs non-project bar chart -->
                 <div class="space-y-2">
                   {#each [
-                    { label: 'Project context', chars: sp.projectContextChars, color: 'bg-accent' },
-                    { label: 'Non-project context', chars: sp.nonProjectContextChars, color: 'bg-muted/40' },
+                    { label: m.prompt_assemblyProjectCtx(), chars: sp.projectContextChars, color: 'bg-accent' },
+                    { label: m.prompt_assemblyNonProjectCtx(), chars: sp.nonProjectContextChars, color: 'bg-muted/40' },
                   ] as seg (seg.label)}
                     <div class="space-y-1">
                       <div class="flex items-center justify-between">
@@ -543,12 +543,12 @@
 
                 <!-- Breakdown table -->
                 <div class="space-y-1 mt-2">
-                  <p class="text-[10px] font-bold uppercase tracking-wide text-muted mb-1">Breakdown</p>
+                  <p class="text-[10px] font-bold uppercase tracking-wide text-muted mb-1">{m.prompt_assemblyBreakdown()}</p>
                   {#each [
-                    { label: 'Bootstrap files', chars: report.injectedWorkspaceFiles?.reduce((s, f) => s + (f.injectedChars ?? 0), 0) ?? 0 },
-                    { label: 'Skills', chars: report.skills?.promptChars ?? 0 },
-                    { label: 'Tool list', chars: report.tools?.listChars ?? 0 },
-                    { label: 'Tool schemas', chars: report.tools?.schemaChars ?? 0 },
+                    { label: m.prompt_breakdownBootstrap(), chars: report.injectedWorkspaceFiles?.reduce((s, f) => s + (f.injectedChars ?? 0), 0) ?? 0 },
+                    { label: m.prompt_stepSkills(), chars: report.skills?.promptChars ?? 0 },
+                    { label: m.prompt_breakdownToolList(), chars: report.tools?.listChars ?? 0 },
+                    { label: m.prompt_breakdownToolSchemas(), chars: report.tools?.schemaChars ?? 0 },
                   ] as row (row.label)}
                     {#if row.chars > 0}
                       <div class="flex items-center gap-2 py-1.5 px-2 rounded bg-bg2 border border-border/50">
@@ -571,14 +571,14 @@
         {:else if activeStep === 8}
           <!-- Post-Turn Memory -->
           <div>
-            <h2 class="text-sm font-semibold text-foreground mb-1">Post-Turn Memory</h2>
-            <p class="text-muted text-[11px] mb-3">Knowledge graph extraction after each response.</p>
+            <h2 class="text-sm font-semibold text-foreground mb-1">{m.prompt_stepPostTurn()}</h2>
+            <p class="text-muted text-[11px] mb-3">{m.prompt_postTurnDesc()}</p>
             <div class="py-3 px-3 rounded bg-bg2 border border-border/50 space-y-2">
               <p class="text-[11px] text-foreground">
-                After each assistant response, the gateway runs an extraction pass to identify facts, entities, and relationships mentioned in the turn.
+                {m.prompt_postTurnBody1()}
               </p>
               <p class="text-[11px] text-muted">
-                Extracted facts are stored to the knowledge graph and become available as memory context in future turns. This process happens asynchronously and is not captured in the static report.
+                {m.prompt_postTurnBody2()}
               </p>
             </div>
           </div>

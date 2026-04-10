@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { piAgentState, setThinkingLevel } from '$lib/state/features/pi-agent-state.svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	let { agentId }: { agentId: string } = $props();
 
@@ -28,7 +29,7 @@
 	<div class="flex items-start gap-4">
 		<!-- Left: Context gauge -->
 		<div class="flex-1 min-w-0">
-			<div class="text-[11px] font-semibold text-muted mb-1.5">Context Window</div>
+			<div class="text-[11px] font-semibold text-muted mb-1.5">{m.pi_contextWindow()}</div>
 			{#if piAgentState.contextUsage}
 				<!-- Progress bar -->
 				<div class="w-full h-2 bg-bg3 rounded-full overflow-hidden">
@@ -40,22 +41,22 @@
 				<!-- Token counts -->
 				<div class="mt-1 text-[10px] text-foreground">
 					{#if piAgentState.contextUsage.contextWindow != null}
-						{formatTokensK(piAgentState.contextUsage.tokenCount)} / {formatTokensK(piAgentState.contextUsage.contextWindow)} tokens
+						{formatTokensK(piAgentState.contextUsage.tokenCount)} / {formatTokensK(piAgentState.contextUsage.contextWindow)} {m.pi_tokens()}
 					{:else}
-						{formatTokensK(piAgentState.contextUsage.tokenCount)} tokens (window unknown)
+						{formatTokensK(piAgentState.contextUsage.tokenCount)} {m.pi_tokensWindowUnknown()}
 					{/if}
 				</div>
 				<div class="text-[10px] text-muted">
-					{piAgentState.contextUsage.messageCount} messages, {piAgentState.contextUsage.compactionCount} compactions
+					{m.pi_messagesCompactions({ messages: piAgentState.contextUsage.messageCount, compactions: piAgentState.contextUsage.compactionCount })}
 				</div>
 			{:else}
-				<div class="text-[10px] text-muted">No active session</div>
+				<div class="text-[10px] text-muted">{m.pi_noActiveSession()}</div>
 			{/if}
 		</div>
 
 		<!-- Right: Thinking control -->
 		<div class="shrink-0">
-			<div class="text-[11px] font-semibold text-muted mb-1.5">Thinking</div>
+			<div class="text-[11px] font-semibold text-muted mb-1.5">{m.pi_thinking()}</div>
 			{#if piAgentState.thinkingLevels.length > 0}
 				<select
 					class="text-[11px] bg-bg3 border border-border rounded px-2 py-1 text-foreground cursor-pointer"
@@ -80,19 +81,19 @@
 	<!-- Bottom row: Session stats -->
 	<div class="flex items-center gap-3 text-[10px] text-muted border-t border-border pt-2">
 		{#if piAgentState.sessionStats}
-			<span>In: <span class="text-foreground">{formatTokens(piAgentState.sessionStats.inputTokens)}</span></span>
+			<span>{m.pi_statIn()}: <span class="text-foreground">{formatTokens(piAgentState.sessionStats.inputTokens)}</span></span>
 			<span class="text-border">|</span>
-			<span>Out: <span class="text-foreground">{formatTokens(piAgentState.sessionStats.outputTokens)}</span></span>
+			<span>{m.pi_statOut()}: <span class="text-foreground">{formatTokens(piAgentState.sessionStats.outputTokens)}</span></span>
 			<span class="text-border">|</span>
-			<span>Tools: <span class="text-foreground">{piAgentState.sessionStats.toolCallCount}</span></span>
+			<span>{m.pi_statTools()}: <span class="text-foreground">{piAgentState.sessionStats.toolCallCount}</span></span>
 			<span class="text-border">|</span>
-			<span>Turns: <span class="text-foreground">{piAgentState.sessionStats.turnCount}</span></span>
+			<span>{m.pi_statTurns()}: <span class="text-foreground">{piAgentState.sessionStats.turnCount}</span></span>
 		{:else}
-			<span>In: <span class="text-foreground">&mdash;</span></span>
+			<span>{m.pi_statIn()}: <span class="text-foreground">&mdash;</span></span>
 			<span class="text-border">|</span>
-			<span>Out: <span class="text-foreground">&mdash;</span></span>
+			<span>{m.pi_statOut()}: <span class="text-foreground">&mdash;</span></span>
 			<span class="text-border">|</span>
-			<span>Tools: <span class="text-foreground">&mdash;</span></span>
+			<span>{m.pi_statTools()}: <span class="text-foreground">&mdash;</span></span>
 		{/if}
 	</div>
 </div>

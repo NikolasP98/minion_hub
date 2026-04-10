@@ -3,6 +3,7 @@
     import { ArrowLeft, Bot, Eye, Grip, Loader2, Check, Upload, Circle, Plus, X, BookOpen } from "lucide-svelte";
     import { onMount } from "svelte";
     import EmojiPicker from "$lib/components/builder/EmojiPicker.svelte";
+    import * as m from '$lib/paraglide/messages';
 
     const agentId = $derived(page.params.id);
 
@@ -245,7 +246,7 @@
 <!-- Editor Toolbar -->
     <div class="editor-toolbar">
         <div class="flex items-center gap-3 min-w-0">
-            <a href="/builder" class="back-link" title="Back to Builder">
+            <a href="/builder" class="back-link" title={m.builder_backToBuilder()}>
                 <ArrowLeft size={16} />
             </a>
 
@@ -263,38 +264,38 @@
         </div>
 
         <div class="flex items-center gap-2">
-            <span class="save-indicator" title={saving ? 'Saving changes...' : dirty ? 'Unsaved changes' : 'All changes saved'}>
+            <span class="save-indicator" title={saving ? m.builder_saving() : dirty ? m.builder_unsavedChanges() : m.builder_allSaved()}>
                 {#if saving}
                     <Loader2 size={12} class="loading-spinner" />
-                    <span>Saving...</span>
+                    <span>{m.builder_saving()}</span>
                 {:else if dirty}
                     <Circle size={8} class="dirty-dot" />
-                    <span>Unsaved</span>
+                    <span>{m.builder_unsaved()}</span>
                 {:else}
                     <Check size={12} class="saved-check" />
-                    <span>Saved</span>
+                    <span>{m.builder_saved()}</span>
                 {/if}
             </span>
 
             <div class="h-4 w-px bg-border/60"></div>
 
-            <button type="button" class="toolbar-btn secondary" title="Preview">
+            <button type="button" class="toolbar-btn secondary" title={m.builder_preview()}>
                 <Eye size={14} />
-                <span class="hidden sm:inline">Preview</span>
+                <span class="hidden sm:inline">{m.builder_preview()}</span>
             </button>
             <button
                 type="button"
                 class="toolbar-btn {status === 'published' ? 'published' : 'primary'}"
                 onclick={publishAgent}
                 disabled={publishing}
-                title={status === 'published' ? 'Republish with latest changes' : 'Publish agent'}
+                title={status === 'published' ? m.builder_republishLatest() : m.builder_publishAgent()}
             >
                 {#if publishing}
                     <Loader2 size={14} class="loading-spinner" />
                 {:else}
                     <Upload size={14} />
                 {/if}
-                <span class="hidden sm:inline">{publishing ? 'Publishing...' : status === 'published' ? 'Republish' : 'Publish'}</span>
+                <span class="hidden sm:inline">{publishing ? m.builder_publishing() : status === 'published' ? m.builder_republish() : m.builder_publish()}</span>
             </button>
         </div>
     </div>
@@ -304,7 +305,7 @@
         {#if loading}
             <div class="loading-container">
                 <Loader2 size={24} class="loading-spinner" />
-                <span class="loading-text">Loading agent...</span>
+                <span class="loading-text">{m.builder_loadingAgent()}</span>
             </div>
         {:else}
             <div class="editor-scroll">
@@ -312,7 +313,7 @@
 
                     <!-- Section 1: Identity -->
                     <section class="editor-section">
-                        <h3 class="section-header">Identity</h3>
+                        <h3 class="section-header">{m.builder_stepIdentity()}</h3>
                         <div class="section-body">
                             <EmojiPicker value={emoji} onSelect={(e) => { emoji = e; }} />
 
@@ -320,13 +321,13 @@
                                 type="text"
                                 class="name-input"
                                 bind:value={name}
-                                placeholder="Agent name"
+                                placeholder={m.builder_agentNamePlaceholder()}
                             />
 
                             <textarea
                                 class="desc-input"
                                 bind:value={description}
-                                placeholder="Describe what this agent does..."
+                                placeholder={m.builder_agentDescPlaceholder()}
                                 rows="3"
                             ></textarea>
                         </div>
@@ -334,27 +335,27 @@
 
                     <!-- Section 2: Model & Prompt -->
                     <section class="editor-section">
-                        <h3 class="section-header">Model & Prompt</h3>
+                        <h3 class="section-header">{m.builder_modelAndPrompt()}</h3>
                         <div class="section-body">
                             <div class="field-group">
-                                <label class="field-label" for="model-input">Model</label>
+                                <label class="field-label" for="model-input">{m.agent_model()}</label>
                                 <input
                                     id="model-input"
                                     type="text"
                                     class="field-input"
                                     bind:value={model}
-                                    placeholder="e.g. claude-sonnet-4, gpt-4o"
+                                    placeholder={m.builder_modelPlaceholder()}
                                 />
                             </div>
 
                             <div class="field-group">
-                                <label class="field-label" for="system-prompt">System Prompt</label>
-                                <p class="field-helper">Define the agent's personality, role, and behavioral guidelines</p>
+                                <label class="field-label" for="system-prompt">{m.builder_systemPrompt()}</label>
+                                <p class="field-helper">{m.builder_systemPromptHelper()}</p>
                                 <textarea
                                     id="system-prompt"
                                     class="prompt-input"
                                     bind:value={systemPrompt}
-                                    placeholder="You are a helpful assistant that..."
+                                    placeholder={m.builder_systemPromptPlaceholder()}
                                     rows="8"
                                 ></textarea>
                             </div>
@@ -364,7 +365,7 @@
                     <!-- Section 3: Skills -->
                     <section class="editor-section">
                         <h3 class="section-header">
-                            Skill Slots
+                            {m.builder_skillSlots()}
                             <span class="section-count">{skillSlots.length}</span>
                         </h3>
                         <div class="section-body">
@@ -382,7 +383,7 @@
                                             ondrop={(e) => handleSlotDrop(e, i)}
                                             ondragend={handleSlotDragEnd}
                                         >
-                                            <span class="slot-grip" title="Drag to reorder">
+                                            <span class="slot-grip" title={m.builder_dragToReorder()}>
                                                 <Grip size={14} />
                                             </span>
                                             <span class="slot-emoji">{slot.info?.emoji ?? "\u{1F4D6}"}</span>
@@ -396,7 +397,7 @@
                                                 type="button"
                                                 class="slot-remove"
                                                 onclick={() => removeSkillSlot(slot.skillId)}
-                                                title="Remove skill"
+                                                title={m.common_remove()}
                                             >
                                                 <X size={14} />
                                             </button>
@@ -413,18 +414,18 @@
                                     onclick={() => { showSkillPicker = !showSkillPicker; }}
                                 >
                                     <Plus size={14} />
-                                    <span>Drop a skill here or click to browse</span>
+                                    <span>{m.builder_dropSkillHint()}</span>
                                 </button>
 
                                 {#if showSkillPicker}
                                     <div class="skill-picker">
                                         <div class="skill-picker-header">
                                             <BookOpen size={12} />
-                                            <span>Published Skills</span>
+                                            <span>{m.builder_publishedSkills()}</span>
                                         </div>
                                         {#if pickableSkills.length === 0}
                                             <div class="skill-picker-empty">
-                                                No published skills available
+                                                {m.builder_noPublishedSkills()}
                                             </div>
                                         {:else}
                                             {#each pickableSkills as skill (skill.id)}
@@ -450,7 +451,7 @@
                                     <!-- Already assigned skills shown grayed out -->
                                     <div class="skill-picker-assigned">
                                         <div class="skill-picker-header muted">
-                                            <span>Already assigned</span>
+                                            <span>{m.builder_alreadyAssigned()}</span>
                                         </div>
                                         {#each availableSkills.filter(s => assignedSkillIds.has(s.id)) as skill (skill.id)}
                                             <div class="skill-picker-item disabled">
@@ -468,10 +469,10 @@
 
                     <!-- Section 4: Behavior -->
                     <section class="editor-section">
-                        <h3 class="section-header">Behavior</h3>
+                        <h3 class="section-header">{m.builder_behavior()}</h3>
                         <div class="section-body">
                             <div class="field-group">
-                                <label class="field-label" for="temperature-input">Temperature</label>
+                                <label class="field-label" for="temperature-input">{m.builder_temperature()}</label>
                                 <div class="range-row">
                                     <input
                                         id="temperature-input"
@@ -487,7 +488,7 @@
                             </div>
 
                             <div class="field-group">
-                                <label class="field-label" for="max-tokens-input">Max Tokens</label>
+                                <label class="field-label" for="max-tokens-input">{m.builder_maxTokens()}</label>
                                 <input
                                     id="max-tokens-input"
                                     type="number"
@@ -500,7 +501,7 @@
                             </div>
 
                             <div class="field-group">
-                                <label class="field-label" for="retry-input">Retry Count</label>
+                                <label class="field-label" for="retry-input">{m.builder_retryCount()}</label>
                                 <input
                                     id="retry-input"
                                     type="number"
@@ -512,13 +513,13 @@
                             </div>
 
                             <div class="field-group">
-                                <label class="field-label" for="fallback-input">Fallback Agent</label>
+                                <label class="field-label" for="fallback-input">{m.builder_fallbackAgent()}</label>
                                 <input
                                     id="fallback-input"
                                     type="text"
                                     class="field-input"
                                     bind:value={fallbackAgentId}
-                                    placeholder="Agent ID (optional)"
+                                    placeholder={m.builder_fallbackAgentPlaceholder()}
                                 />
                             </div>
                         </div>

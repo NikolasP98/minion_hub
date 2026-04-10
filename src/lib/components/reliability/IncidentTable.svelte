@@ -51,7 +51,7 @@
 		{
 			id: 'timestamp',
 			accessorFn: (row) => row.timestamp,
-			header: 'Time',
+			header: m.reliability_time(),
 			size: 90,
 			minSize: 70,
 			sortingFn: 'basic',
@@ -59,7 +59,7 @@
 		{
 			id: 'severity',
 			accessorFn: (row) => row.severity,
-			header: 'Severity',
+			header: m.reliability_severity(),
 			size: 90,
 			minSize: 70,
 			sortingFn: (a, b) =>
@@ -69,21 +69,21 @@
 		{
 			id: 'category',
 			accessorKey: 'category',
-			header: 'Category',
+			header: m.reliability_category(),
 			size: 100,
 			minSize: 80,
 		},
 		{
 			id: 'event',
 			accessorKey: 'event',
-			header: 'Event',
+			header: m.reliability_event(),
 			size: 220,
 			minSize: 120,
 		},
 		{
 			id: 'message',
 			accessorKey: 'message',
-			header: 'Message',
+			header: m.reliability_message(),
 			size: 400,
 			minSize: 100,
 		},
@@ -240,7 +240,7 @@
 			<input
 				type="text"
 				bind:value={searchQuery}
-				placeholder="Search..."
+				placeholder={m.reliability_incidentSearch()}
 				class="h-6 w-40 pl-6 pr-2 text-[11px] bg-bg3/60 border border-border rounded text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-accent/50"
 			/>
 		</div>
@@ -296,7 +296,7 @@
 		</div>
 	{:else if filteredData.length === 0}
 		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">
-			No incidents matching "{searchQuery}"
+			{m.reliability_incidentNoMatch({ query: searchQuery })}
 		</div>
 	{:else}
 		<div class="overflow-x-auto">

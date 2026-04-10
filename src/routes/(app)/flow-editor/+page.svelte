@@ -2,6 +2,7 @@
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
   import { GitBranch, Plus, Trash2, Clock } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
 
   type FlowMeta = {
     id: string;
@@ -78,7 +79,7 @@
     <div class="flex items-center justify-between mb-6">
       <div class="flex items-center gap-2">
         <GitBranch size={16} class="text-muted" />
-        <h1 class="font-mono text-sm uppercase tracking-widest text-muted">Flow Editor</h1>
+        <h1 class="font-mono text-sm uppercase tracking-widest text-muted">{m.flow_title()}</h1>
       </div>
       <button
         onclick={handleCreate}
@@ -86,7 +87,7 @@
         class="flex items-center gap-1.5 h-7 px-3 text-[10px] font-mono uppercase tracking-wider rounded border border-border text-muted hover:bg-bg3 hover:text-foreground transition-colors disabled:opacity-50"
       >
         <Plus size={12} />
-        New Flow
+        {m.flow_newFlow()}
       </button>
     </div>
 
@@ -98,17 +99,17 @@
 
     <!-- Content -->
     {#if loading}
-      <p class="text-muted text-xs font-mono">Loading…</p>
+      <p class="text-muted text-xs font-mono">{m.common_loading()}</p>
     {:else if flows.length === 0}
       <div class="flex flex-col items-center justify-center py-24 gap-4">
         <GitBranch size={40} class="text-muted/30" />
-        <p class="text-muted text-sm font-mono italic">No flows yet</p>
+        <p class="text-muted text-sm font-mono italic">{m.flow_noFlows()}</p>
         <button
           onclick={handleCreate}
           class="flex items-center gap-1.5 h-8 px-4 text-xs font-mono rounded border border-border text-muted hover:bg-bg3 hover:text-foreground transition-colors"
         >
           <Plus size={12} />
-          Create your first flow
+          {m.flow_createFirst()}
         </button>
       </div>
     {:else}
@@ -125,7 +126,7 @@
             <div class="aspect-video bg-bg3/50 flex items-center justify-center relative">
               <GitBranch size={32} class="text-muted/20 group-hover:text-muted/30 transition-colors" />
               <div class="absolute bottom-2 right-2 text-[10px] font-mono text-muted/50">
-                {flow.nodeCount} node{flow.nodeCount !== 1 ? 's' : ''}
+                {flow.nodeCount === 1 ? m.flow_nodeCount({ count: flow.nodeCount }) : m.flow_nodeCountPlural({ count: flow.nodeCount })}
               </div>
             </div>
 
@@ -142,7 +143,7 @@
               <button
                 onclick={(e) => handleDelete(e, flow.id)}
                 class="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded text-muted hover:text-red-400 hover:bg-bg3"
-                title="Delete flow"
+                title={m.flow_deleteFlow()}
               >
                 <Trash2 size={14} />
               </button>

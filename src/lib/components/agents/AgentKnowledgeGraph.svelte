@@ -3,6 +3,7 @@
   import { SvelteSet } from 'svelte/reactivity';
   import { fetchKGSnapshot } from '$lib/services/gateway.svelte';
   import * as echarts from 'echarts';
+  import * as m from '$lib/paraglide/messages';
 
   let { agentId }: { agentId: string } = $props();
 
@@ -219,12 +220,12 @@
     disabled={loading}
     onclick={refresh}
   >
-    {loading ? 'Loading…' : 'Refresh'}
+    {loading ? m.common_loading() : m.skills_refresh()}
   </button>
 
   {#if !loading && !error}
     <span class="text-muted">
-      {nodes.length} node{nodes.length !== 1 ? 's' : ''} · {edges.length} edge{edges.length !== 1 ? 's' : ''}
+      {m.kg_nodeEdgeCount({ nodes: nodes.length, edges: edges.length })}
     </span>
   {/if}
 
@@ -245,8 +246,8 @@
     {:else if nodes.length === 0 && !error}
       <div class="absolute inset-0 flex items-center justify-center text-center px-8">
         <div>
-          <div class="text-muted text-sm">No memory objects yet</div>
-          <div class="text-muted/60 text-xs mt-1">The agent stores facts here as it learns.</div>
+          <div class="text-muted text-sm">{m.kg_noMemoryObjects()}</div>
+          <div class="text-muted/60 text-xs mt-1">{m.kg_noMemoryObjectsHint()}</div>
         </div>
       </div>
     {/if}
@@ -256,7 +257,7 @@
     {#if !sidebarOpen}
       <button
         type="button"
-        aria-label="Open sidebar"
+        aria-label={m.kg_openSidebar()}
         class="absolute top-1/2 right-0 -translate-y-1/2 w-5 h-10 flex items-center justify-center
                bg-bg2 border border-border border-r-0 rounded-l-md text-muted hover:text-foreground
                cursor-pointer transition-colors text-[11px]"
@@ -276,14 +277,14 @@
           class="flex-1 py-1.5 text-center text-[10px] font-semibold uppercase tracking-wide cursor-pointer transition-colors
             {sidebarTab === 'layout' ? 'text-foreground border-b-2 border-accent -mb-px' : 'text-muted hover:text-foreground'}"
           onclick={() => (sidebarTab = 'layout')}
-        >Layout</button>
+        >{m.kg_tabLayout()}</button>
         <button
           type="button"
           class="flex-1 py-1.5 text-center text-[10px] font-semibold uppercase tracking-wide cursor-pointer transition-colors relative
             {sidebarTab === 'node' ? 'text-foreground border-b-2 border-accent -mb-px' : 'text-muted hover:text-foreground'}"
           onclick={() => (sidebarTab = 'node')}
         >
-          Node
+          {m.kg_tabNode()}
           {#if selectedNode}
             <span class="absolute top-1 right-3 w-1.5 h-1.5 rounded-full bg-accent"></span>
           {/if}
@@ -291,7 +292,7 @@
         <!-- Collapse button -->
         <button
           type="button"
-          aria-label="Collapse sidebar"
+          aria-label={m.kg_collapseSidebar()}
           class="px-2 py-1.5 text-muted hover:text-foreground cursor-pointer transition-colors text-[11px]"
           onclick={() => (sidebarOpen = false)}
         >‹</button>
@@ -301,20 +302,20 @@
       {#if sidebarTab === 'layout'}
         <!-- Layout toggle -->
         <div class="px-3 pt-3 pb-2">
-          <div class="text-muted mb-1.5 font-semibold uppercase tracking-wide text-[10px]">Layout</div>
+          <div class="text-muted mb-1.5 font-semibold uppercase tracking-wide text-[10px]">{m.kg_tabLayout()}</div>
           <div class="flex rounded overflow-hidden border border-border">
             <button
               type="button"
               class="flex-1 py-1 text-center cursor-pointer transition-colors
                 {layout === 'force' ? 'bg-accent text-white' : 'bg-bg1 text-muted hover:text-foreground'}"
               onclick={() => (layout = 'force')}
-            >Force</button>
+            >{m.kg_layoutForce()}</button>
             <button
               type="button"
               class="flex-1 py-1 text-center cursor-pointer transition-colors border-l border-border
                 {layout === 'circular' ? 'bg-accent text-white' : 'bg-bg1 text-muted hover:text-foreground'}"
               onclick={() => (layout = 'circular')}
-            >Circular</button>
+            >{m.kg_layoutCircular()}</button>
           </div>
         </div>
 
@@ -322,17 +323,17 @@
         <div class="px-3 pb-2 border-b border-border">
           <label class="flex items-center gap-2 cursor-pointer py-0.5">
             <input type="checkbox" bind:checked={showNodeLabels} class="accent-accent" />
-            <span class="text-foreground">Node labels</span>
+            <span class="text-foreground">{m.kg_nodeLabels()}</span>
           </label>
           <label class="flex items-center gap-2 cursor-pointer py-0.5">
             <input type="checkbox" bind:checked={showEdgeLabels} class="accent-accent" />
-            <span class="text-foreground">Edge labels</span>
+            <span class="text-foreground">{m.kg_edgeLabels()}</span>
           </label>
         </div>
 
         <!-- Type filters -->
         <div class="px-3 pt-2 pb-2">
-          <div class="text-muted mb-1.5 font-semibold uppercase tracking-wide text-[10px]">Filter by type</div>
+          <div class="text-muted mb-1.5 font-semibold uppercase tracking-wide text-[10px]">{m.kg_filterByType()}</div>
           {#each OBJECT_TYPES as type (type)}
             {@const count = typeCounts[type] ?? 0}
             {@const active = activeTypes.has(type)}
@@ -359,18 +360,18 @@
       {#if sidebarTab === 'node'}
         {#if selectedNode}
           <div class="px-3 pt-3 pb-3">
-            <div class="text-muted mb-1.5 font-semibold uppercase tracking-wide text-[10px]">Selected node</div>
+            <div class="text-muted mb-1.5 font-semibold uppercase tracking-wide text-[10px]">{m.kg_selectedNode()}</div>
             <div class="space-y-1">
               <div>
-                <span class="text-muted">label: </span>
+                <span class="text-muted">{m.kg_nodeLabel()}: </span>
                 <span class="text-foreground break-words">{selectedNode.label}</span>
               </div>
               <div>
-                <span class="text-muted">type: </span>
+                <span class="text-muted">{m.kg_nodeType()}: </span>
                 <span style="color: {TYPE_COLORS[selectedNode.type]}">{selectedNode.type}</span>
               </div>
               <div>
-                <span class="text-muted">created: </span>
+                <span class="text-muted">{m.kg_nodeCreated()}: </span>
                 <span class="text-foreground">{formatDate(selectedNode.createdAt)}</span>
               </div>
               {#if Object.keys(selectedNode.data).length > 0}
@@ -380,25 +381,25 @@
                     class="text-muted hover:text-foreground cursor-pointer"
                     onclick={() => (jsonExpanded = !jsonExpanded)}
                   >
-                    data {jsonExpanded ? '▾' : '▸'}
+                    {m.kg_nodeData()} {jsonExpanded ? '▾' : '▸'}
                   </button>
                   {#if jsonExpanded}
                     <pre class="mt-1 text-[10px] bg-bg1 rounded p-1.5 overflow-x-auto text-foreground whitespace-pre-wrap break-all">{JSON.stringify(selectedNode.data, null, 2)}</pre>
                   {/if}
                 </div>
               {:else}
-                <div><span class="text-muted">data: </span><span class="text-muted/60">empty</span></div>
+                <div><span class="text-muted">{m.kg_nodeData()}: </span><span class="text-muted/60">{m.kg_nodeDataEmpty()}</span></div>
               {/if}
             </div>
             <button
               type="button"
               class="mt-2 text-muted hover:text-foreground cursor-pointer"
               onclick={() => { selectedNode = null; jsonExpanded = false; }}
-            >✕ clear</button>
+            >✕ {m.kg_clearNode()}</button>
           </div>
         {:else}
           <div class="flex-1 flex items-center justify-center text-muted text-[11px] py-8 px-4 text-center">
-            Click a node in the graph to inspect it
+            {m.kg_clickNodeToInspect()}
           </div>
         {/if}
       {/if}

@@ -1,6 +1,7 @@
 <script lang="ts">
     import { provisionState } from "$lib/state/features/provision.svelte";
     import { Circle, CheckCircle2, XCircle, Loader2, Play } from "lucide-svelte";
+    import * as m from '$lib/paraglide/messages';
 
     interface Props {
         onrunfrom?: (phaseId: string) => void;
@@ -50,7 +51,7 @@
                         {phase.name}
                     </span>
                     <span class="text-[10px] text-muted-foreground/60 font-mono">
-                        Phase {phase.id}
+                        {m.provision_phase({ id: phase.id })}
                     </span>
                 </div>
                 <p class="text-xs text-muted-foreground mt-0.5">{phase.description}</p>
@@ -63,7 +64,7 @@
                         onclick={() => onrunfrom?.(phase.id)}
                     >
                         <Play size={10} />
-                        Run from here
+                        {m.provision_runFromHere()}
                     </button>
                 {/if}
             </div>

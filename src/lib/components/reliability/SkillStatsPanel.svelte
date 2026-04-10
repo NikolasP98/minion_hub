@@ -25,10 +25,10 @@
 	};
 
 	const STATUS_LABELS: Record<SkillStatus, string> = {
-		ok: 'OK',
-		error: 'Error',
-		auth_error: 'Auth Error',
-		timeout: 'Timeout',
+		ok: m.reliability_skillStatusOk(),
+		error: m.reliability_skillStatusError(),
+		auth_error: m.reliability_skillStatusAuthError(),
+		timeout: m.reliability_skillStatusTimeout(),
 	};
 
 	function formatSkillName(name: string): string {
@@ -78,7 +78,7 @@
 		}));
 
 		const durationSeries = {
-			name: 'Avg Duration',
+			name: m.reliability_skillChartAvgDuration(),
 			type: 'custom' as const,
 			xAxisIndex: 1,
 			z: 10,
@@ -145,10 +145,10 @@
 			},
 			grid: { top: 50, right: 10, bottom: 10, left: 10, containLabel: true },
 			xAxis: [
-				{ type: 'value', name: 'Count', nameGap: 6, nameTextStyle: { fontSize: 10 } },
+				{ type: 'value', name: m.reliability_skillChartCount(), nameGap: 6, nameTextStyle: { fontSize: 10 } },
 				{
 					type: 'value',
-					name: 'Duration (s)',
+					name: m.reliability_skillChartDuration(),
 					nameGap: 6,
 					nameTextStyle: { fontSize: 10 },
 					position: 'top',
@@ -199,19 +199,19 @@
 		<!-- Row 2: STATS -->
 		<div class="grid grid-cols-4 gap-px bg-border border-b border-border">
 			<div class="flex flex-col items-center gap-1 py-3 px-2 bg-card">
-				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Total</span>
+				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_skillTotal()}</span>
 				<span class="text-lg font-bold text-foreground tabular-nums whitespace-nowrap">{totalExecs}</span>
 			</div>
 			<div class="flex flex-col items-center gap-1 py-3 px-2 bg-card">
-				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Success</span>
+				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_skillSuccess()}</span>
 				<span class="text-lg font-bold text-success tabular-nums whitespace-nowrap">{successRate}%</span>
 			</div>
 			<div class="flex flex-col items-center gap-1 py-3 px-2 bg-card">
-				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Errors</span>
+				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_errors()}</span>
 				<span class="text-lg font-bold tabular-nums whitespace-nowrap" class:text-destructive={totalErrors > 0} class:text-muted-foreground={totalErrors === 0}>{totalErrors}</span>
 			</div>
 			<div class="flex flex-col items-center gap-1 py-3 px-2 bg-card">
-				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Avg Time</span>
+				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_skillAvgTime()}</span>
 				<span class="text-lg font-bold text-foreground tabular-nums whitespace-nowrap">{formatDuration(avgDuration)}</span>
 			</div>
 		</div>
@@ -223,7 +223,7 @@
 		<div>
 			{#if skills.length > 0}
 				<div class="border-t border-border px-4 py-3">
-					<div class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Per Skill</div>
+					<div class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">{m.reliability_skillPerSkill()}</div>
 					<div class="flex flex-col gap-1.5">
 						{#each skills as skill (skill.skillName)}
 							{@const okPct = skill.total > 0 ? ((skill.byStatus.ok ?? 0) / skill.total) * 100 : 0}

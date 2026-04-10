@@ -1,5 +1,6 @@
 <script lang="ts">
     import { Search, Grid3X3, List, X, Puzzle, Package, Star, Download } from "lucide-svelte";
+    import * as m from '$lib/paraglide/messages';
 
     interface Plugin {
         id: string;
@@ -97,11 +98,11 @@
         <!-- Primary row -->
         <div class="flex items-center gap-3 px-4 py-2.5">
             <Puzzle size={13} class="text-[var(--color-brand-pink)] shrink-0" />
-            <h1 class="text-sm font-semibold tracking-tight">Plugins</h1>
+            <h1 class="text-sm font-semibold tracking-tight">{m.marketplace_plugins()}</h1>
             {#if filtered.length > 0}
                 <span class="text-[10px] bg-bg3 text-muted-foreground border border-border rounded-full px-1.5 leading-5 tabular-nums">{filtered.length}</span>
             {/if}
-            <span class="text-[11px] text-muted-foreground/70 hidden md:block truncate">Find and install plugins that extend Minion Hub</span>
+            <span class="text-[11px] text-muted-foreground/70 hidden md:block truncate">{m.marketplace_pluginsSubtitle()}</span>
             <div class="flex-1"></div>
 
             <!-- Search -->
@@ -109,7 +110,7 @@
                 <Search size={12} class="absolute left-2.5 text-muted-foreground pointer-events-none shrink-0" />
                 <input
                     type="text"
-                    placeholder="Search plugins…"
+                    placeholder={m.marketplace_pluginsSearch()}
                     bind:value={searchInput}
                     class="text-[11px] pl-7 pr-6 py-1 h-7 w-44 bg-bg3 text-foreground border border-border rounded-md placeholder:text-muted-foreground focus:outline-none focus:border-[var(--color-brand-pink)] [color-scheme:dark] transition-colors"
                 />
@@ -125,9 +126,9 @@
                 bind:value={sortBy}
                 class="text-[11px] h-7 py-0 px-2 bg-bg3 text-foreground border border-border rounded-md focus:outline-none focus:border-[var(--color-brand-pink)] [color-scheme:dark] cursor-pointer transition-colors"
             >
-                <option value="popular">Most Popular</option>
-                <option value="newest">Newest</option>
-                <option value="name">Name</option>
+                <option value="popular">{m.marketplace_agentsListSortPopular()}</option>
+                <option value="newest">{m.marketplace_agentsListSortNewest()}</option>
+                <option value="name">{m.marketplace_agentsListSortName()}</option>
             </select>
 
             <!-- View toggle -->
@@ -163,7 +164,7 @@
                         : 'bg-bg3 border-border text-muted-foreground hover:text-foreground'}"
             >
                 <Star size={10} />
-                Popular
+                {m.marketplace_pluginsPopular()}
             </button>
 
             <div class="flex-1"></div>
@@ -192,8 +193,8 @@
             <div class="flex flex-col items-center justify-center py-24 gap-3 text-center">
                 <Package size={32} class="text-muted-foreground/30" />
                 <div>
-                    <h3 class="text-sm font-semibold text-foreground mb-1">No plugins found</h3>
-                    <p class="text-xs text-muted-foreground">Try adjusting your filters or search query</p>
+                    <h3 class="text-sm font-semibold text-foreground mb-1">{m.marketplace_pluginsNoResults()}</h3>
+                    <p class="text-xs text-muted-foreground">{m.marketplace_agentsListEmptyHint()}</p>
                 </div>
                 {#if searchInput || selectedCategory || statusFilter || starredOnly}
                     <button
@@ -201,12 +202,12 @@
                         onclick={() => { searchInput = ''; selectedCategory = null; statusFilter = ''; starredOnly = false; }}
                         class="text-xs px-3 py-1.5 bg-bg3 border border-border rounded-md text-muted-foreground hover:text-foreground hover:bg-border cursor-pointer transition-colors"
                     >
-                        Clear filters
+                        {m.marketplace_agentsListClearFilters()}
                     </button>
                 {/if}
             </div>
         {:else}
-            <p class="text-[11px] text-muted-foreground mb-3">Showing {filtered.length} plugin{filtered.length !== 1 ? 's' : ''}</p>
+            <p class="text-[11px] text-muted-foreground mb-3">{filtered.length === 1 ? m.marketplace_pluginsShowing({ count: filtered.length }) : m.marketplace_pluginsShowingPlural({ count: filtered.length })}</p>
 
             {#if viewMode === 'grid'}
                 <div class="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3">
@@ -222,7 +223,7 @@
                                         <span class="plugin-name">{plugin.name}</span>
                                         <span class="status-dot" style:background={STATUS_COLOR[plugin.status]} title={plugin.status}></span>
                                     </div>
-                                    <span class="plugin-author">by {plugin.author}</span>
+                                    <span class="plugin-author">{m.marketplace_by({ author: plugin.author })}</span>
                                 </div>
                             </div>
 
@@ -246,7 +247,7 @@
                                     onclick={() => installed.has(plugin.id) ? installed.delete(plugin.id) : installed.add(plugin.id)}
                                     class="install-btn {installed.has(plugin.id) ? 'installed' : ''}"
                                 >
-                                    {installed.has(plugin.id) ? 'Installed' : 'Install'}
+                                    {installed.has(plugin.id) ? m.marketplace_installed() : m.marketplace_install()}
                                 </button>
                             </div>
                         </div>
@@ -263,7 +264,7 @@
                                 <div class="list-top">
                                     <span class="plugin-name">{plugin.name}</span>
                                     <span class="status-dot" style:background={STATUS_COLOR[plugin.status]}></span>
-                                    <span class="plugin-author">by {plugin.author} · v{plugin.version}</span>
+                                    <span class="plugin-author">{m.marketplace_by({ author: plugin.author })} · v{plugin.version}</span>
                                 </div>
                                 <p class="plugin-desc">{plugin.description}</p>
                                 <div class="plugin-tags">
@@ -283,7 +284,7 @@
                                     onclick={() => installed.has(plugin.id) ? installed.delete(plugin.id) : installed.add(plugin.id)}
                                     class="install-btn {installed.has(plugin.id) ? 'installed' : ''}"
                                 >
-                                    {installed.has(plugin.id) ? 'Installed' : 'Install'}
+                                    {installed.has(plugin.id) ? m.marketplace_installed() : m.marketplace_install()}
                                 </button>
                             </div>
                         </div>

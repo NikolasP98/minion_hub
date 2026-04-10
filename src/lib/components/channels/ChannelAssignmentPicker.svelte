@@ -2,6 +2,7 @@
     import type { ChannelAssignment } from '$lib/types/channels';
     import { fetchChannelAssignments, assignChannel, unassignChannel } from '$lib/state/channels';
     import { X, UserPlus } from 'lucide-svelte';
+    import * as m from '$lib/paraglide/messages';
 
     interface Props {
         serverId: string;
@@ -58,16 +59,16 @@
 </script>
 
 <div class="space-y-3">
-    <h3 class="text-xs font-semibold text-foreground uppercase tracking-wider">Assignments</h3>
+    <h3 class="text-xs font-semibold text-foreground uppercase tracking-wider">{m.channel_assignments()}</h3>
 
     {#if errorMsg}
         <p class="text-xs text-destructive">{errorMsg}</p>
     {/if}
 
     {#if loading}
-        <p class="text-xs text-muted-foreground">Loading...</p>
+        <p class="text-xs text-muted-foreground">{m.common_loading()}</p>
     {:else if assignments.length === 0}
-        <p class="text-xs text-muted-foreground italic">No assignments yet.</p>
+        <p class="text-xs text-muted-foreground italic">{m.channel_noAssignments()}</p>
     {:else}
         <div class="space-y-1">
             {#each assignments as a (a.id)}
@@ -80,7 +81,7 @@
                         type="button"
                         class="text-muted-foreground hover:text-destructive transition-colors"
                         onclick={() => handleRemove(a.id)}
-                        title="Remove"
+                        title={m.common_remove()}
                     >
                         <X size={14} />
                     </button>
@@ -95,20 +96,20 @@
             class="bg-bg border border-border rounded-md px-2 py-1.5 text-xs text-foreground"
             bind:value={targetType}
         >
-            <option value="user">User</option>
-            <option value="session">Session</option>
+            <option value="user">{m.channel_assignmentUser()}</option>
+            <option value="session">{m.channel_assignmentSession()}</option>
         </select>
         <input
             type="text"
             class="flex-1 bg-bg border border-border rounded-md px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent"
-            placeholder="{targetType === 'user' ? 'User' : 'Session'} ID"
+            placeholder="{targetType === 'user' ? m.channel_assignmentUser() : m.channel_assignmentSession()} ID"
             bind:value={targetId}
         />
         <button
             type="submit"
             class="p-1.5 rounded-md bg-accent text-accent-foreground hover:opacity-90 transition-opacity disabled:opacity-50"
             disabled={adding || !targetId.trim()}
-            title="Assign"
+            title={m.channel_assign()}
         >
             <UserPlus size={14} />
         </button>

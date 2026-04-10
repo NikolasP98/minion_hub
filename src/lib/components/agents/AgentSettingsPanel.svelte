@@ -206,7 +206,7 @@
             {/if}
             <div class="flex-1 min-w-0">
                 <span class="text-sm font-bold text-foreground truncate block">
-                    Configure {displayName}
+                    {m.settings_configureAgent({ name: displayName })}
                 </span>
             </div>
             <button
@@ -283,7 +283,7 @@
                                 {m.config_bindingsSection()}
                             </h3>
                             <p class="text-[10px] text-muted-foreground -mt-1">
-                                Channel and routing bindings that reference this agent.
+                                {m.settings_bindingsDesc()}
                             </p>
                             {#each bindingEntries as [bindKey, bindVal] (bindKey)}
                                 {@const bindPath = `bindings.${bindKey}`}
@@ -345,15 +345,15 @@
                             <!-- Agent ID chip (inside identity section) -->
                             {#if activeSection === 'identity'}
                                 <div class="mb-4 flex items-center gap-2">
-                                    <span class="text-[10px] text-muted-foreground">Agent ID</span>
+                                    <span class="text-[10px] text-muted-foreground">{m.settings_agentId()}</span>
                                     <button
                                         type="button"
                                         class="font-mono text-[10px] text-muted-foreground bg-bg3 border border-border rounded px-2 py-0.5
                                             hover:border-accent/40 hover:text-foreground cursor-pointer transition-colors truncate max-w-[300px]"
                                         onclick={copyAgentId}
-                                        title="Click to copy"
+                                        title={m.settings_clickToCopy()}
                                     >
-                                        {idCopied ? 'Copied!' : agentId}
+                                        {idCopied ? m.settings_copied() : agentId}
                                     </button>
                                 </div>
                             {/if}
@@ -391,7 +391,7 @@
 
                                 {#if searchFilteredFields.length === 0 && searchQuery.trim()}
                                     <p class="text-[11px] text-muted-foreground/50 text-center py-6">
-                                        No fields matching "{searchQuery}"
+                                        {m.settings_noFieldsMatching({ query: searchQuery })}
                                     </p>
                                 {/if}
                             </div>

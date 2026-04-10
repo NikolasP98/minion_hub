@@ -1,4 +1,5 @@
 <script lang="ts">
+    import * as m from '$lib/paraglide/messages';
     import { autosize } from '$lib/actions/autosize';
     import { X, Play, Loader2, CheckCircle2, XCircle, Clock, Zap, AlertTriangle, BarChart3, Sparkles } from 'lucide-svelte';
     import { onMount } from 'svelte';
@@ -60,32 +61,32 @@
     }
 </script>
 
-<aside class="dry-run-panel" role="complementary" aria-label="Dry run">
+<aside class="dry-run-panel" role="complementary" aria-label={m.builder_dryRunLabel()}>
     <!-- Header -->
     <div class="panel-header">
-        <span class="panel-title">Test Run</span>
-        <button class="close-btn" onclick={clearDryRun} aria-label="Close">
+        <span class="panel-title">{m.builder_testRun()}</span>
+        <button class="close-btn" onclick={clearDryRun} aria-label={m.common_close()}>
             <X size={14} />
         </button>
     </div>
 
     <!-- Prompt input -->
     <div class="prompt-section">
-        <label class="prompt-label" for="dry-run-prompt">Test prompt</label>
+        <label class="prompt-label" for="dry-run-prompt">{m.builder_testPrompt()}</label>
         <textarea
             id="dry-run-prompt"
             class="prompt-input"
             use:autosize={{ value: promptInput, max: 200 }}
             bind:value={promptInput}
             onkeydown={handleKeydown}
-            placeholder="Enter a sample user message to test this skill..."
+            placeholder={m.builder_testPromptPlaceholder()}
             disabled={dryRun?.running}
         ></textarea>
         <!-- Suggested prompts -->
         {#if dryRunSuggestions.loading}
             <div class="suggestions-loading">
                 <Loader2 size={11} class="spin" />
-                <span>Generating test ideas...</span>
+                <span>{m.builder_generatingTestIdeas()}</span>
             </div>
         {:else if dryRunSuggestions.prompts.length > 0 && !promptInput.trim()}
             <div class="suggestions-row">
@@ -109,14 +110,14 @@
         >
             {#if dryRun?.running}
                 <Loader2 size={14} class="spin" />
-                Running...
+                {m.builder_running()}
             {:else}
                 <Play size={14} />
-                Run Test
+                {m.builder_runTest()}
             {/if}
         </button>
         {#if !hasChapters}
-            <span class="prompt-hint">Add chapters before running a test</span>
+            <span class="prompt-hint">{m.builder_addChaptersFirst()}</span>
         {/if}
     </div>
 
@@ -134,7 +135,7 @@
                     <span>{dryRun.totalTokens.toLocaleString()} tokens</span>
                 </div>
                 <div class="metric">
-                    <span class="metric-label">{dryRun.results.filter(r => r.status === 'done').length}/{dryRun.results.length} chapters</span>
+                    <span class="metric-label">{dryRun.results.filter(r => r.status === 'done').length}/{dryRun.results.length} {m.builder_chapters()}</span>
                 </div>
             </div>
 
@@ -160,9 +161,9 @@
                                 {:else if result.status === 'done'}
                                     <pre class="result-output">{result.output}</pre>
                                 {:else if result.status === 'running'}
-                                    <div class="result-running">Executing...</div>
+                                    <div class="result-running">{m.builder_executing()}</div>
                                 {:else}
-                                    <div class="result-pending">Waiting for upstream chapters</div>
+                                    <div class="result-pending">{m.builder_waitingUpstream()}</div>
                                 {/if}
                             </div>
                         {/if}
@@ -172,13 +173,13 @@
             {#if dryRun.analyzing}
                 <div class="analysis-loading">
                     <Loader2 size={14} class="spin" />
-                    <span>Analyzing pipeline quality...</span>
+                    <span>{m.builder_analyzingPipeline()}</span>
                 </div>
             {:else if dryRun.analysis}
                 <div class="analysis-section">
                     <div class="analysis-header">
                         <BarChart3 size={14} />
-                        <span>Quality Score</span>
+                        <span>{m.builder_qualityScore()}</span>
                         <span class="overall-score" class:good={dryRun.analysis.overallScore >= 70} class:warn={dryRun.analysis.overallScore >= 40 && dryRun.analysis.overallScore < 70} class:bad={dryRun.analysis.overallScore < 40}>
                             {dryRun.analysis.overallScore}
                         </span>
@@ -201,7 +202,7 @@
 
                     {#if dryRun.analysis.recommendations?.length}
                         <div class="recommendations">
-                            <span class="rec-label">Recommendations</span>
+                            <span class="rec-label">{m.builder_recommendations()}</span>
                             {#each dryRun.analysis.recommendations as rec, i (i)}
                                 <div class="rec-item">
                                     <span class="rec-number">{i + 1}</span>

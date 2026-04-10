@@ -44,7 +44,7 @@
     class="fixed inset-0 z-50"
     role="button"
     tabindex="-1"
-    aria-label="Cancel"
+    aria-label={m.common_cancel()}
     onmousedown={onCancel}
 ></div>
 

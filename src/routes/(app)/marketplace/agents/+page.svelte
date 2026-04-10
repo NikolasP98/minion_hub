@@ -28,12 +28,12 @@
 
     // Quick category filters
     const categories = [
-        { id: null, label: "All" },
-        { id: "engineering", label: "Engineering" },
-        { id: "product", label: "Product" },
-        { id: "data", label: "Data" },
-        { id: "creative", label: "Creative" },
-        { id: "security", label: "Security" },
+        { id: null, label: () => m.marketplace_agentsListCategoryAll() },
+        { id: "engineering", label: () => m.marketplace_agentsListCategoryEngineering() },
+        { id: "product", label: () => m.marketplace_agentsListCategoryProduct() },
+        { id: "data", label: () => m.marketplace_agentsListCategoryData() },
+        { id: "creative", label: () => m.marketplace_agentsListCategoryCreative() },
+        { id: "security", label: () => m.marketplace_agentsListCategorySecurity() },
     ] as const;
 
     onMount(() => {
@@ -175,7 +175,7 @@
                         : 'bg-bg3 border-border text-muted-foreground hover:text-foreground'}"
             >
                 <Star size={10} />
-                Featured
+                {m.marketplace_agentsFeatured()}
             </button>
 
             <!-- Model filter -->
@@ -183,7 +183,7 @@
                 bind:value={modelFilter}
                 class="text-[11px] h-6 py-0 px-2 bg-bg3 text-muted-foreground border border-border rounded-md focus:outline-none [color-scheme:dark] cursor-pointer transition-colors hover:text-foreground"
             >
-                <option value="">Any Model</option>
+                <option value="">{m.marketplace_agentsAnyModel()}</option>
                 <option value="claude">Claude</option>
                 <option value="gpt">GPT</option>
                 <option value="llama">Llama</option>
@@ -202,7 +202,7 @@
                                 ? 'bg-[color-mix(in_srgb,var(--color-brand-pink)_15%,transparent)] border-[color-mix(in_srgb,var(--color-brand-pink)_30%,transparent)] text-[var(--color-brand-pink)]'
                                 : 'bg-bg3 border-border text-muted-foreground hover:text-foreground hover:border-border/80'}"
                     >
-                        {cat.label}
+                        {cat.label()}
                     </button>
                 {/each}
             </div>
@@ -250,7 +250,7 @@
             <p class="text-[11px] text-muted-foreground mb-3">
                 {m.marketplace_agentsListShowing({ count: marketplaceState.agents.length })}
                 {#if currentCategory.id}
-                    {m.marketplace_agentsListShowingIn({ category: currentCategory.label })}
+                    {m.marketplace_agentsListShowingIn({ category: currentCategory.label() })}
                 {/if}
             </p>
 

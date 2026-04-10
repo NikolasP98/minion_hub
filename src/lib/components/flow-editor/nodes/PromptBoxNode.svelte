@@ -4,6 +4,7 @@
   import type { PromptBoxData } from '$lib/state/features/flow-editor.svelte';
   import { flowEditorState, setNodes } from '$lib/state/features/flow-editor.svelte';
   import { Type } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let { data, id, selected }: NodeProps & { data: PromptBoxData } = $props();
 
@@ -51,7 +52,7 @@
 
   <textarea
     class="w-full text-xs bg-bg3 border border-border rounded-lg px-2 py-1.5 text-foreground resize-none focus:outline-none focus:border-accent/60 min-h-16"
-    placeholder="Enter prompt text…"
+    placeholder={m.flow_enterPromptText()}
     value={data.value}
     oninput={handleInput}
     rows="3"

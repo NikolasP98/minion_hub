@@ -10,6 +10,7 @@
         ChevronRight,
     } from "lucide-svelte";
     import { getToolInfo } from "$lib/data/tool-manifest";
+    import * as m from '$lib/paraglide/messages';
 
     // ── Types ────────────────────────────────────────────────────────────────
     type FieldKey =
@@ -253,7 +254,7 @@
             aiGenerated = true;
             showAdvanced = true;
         } catch (err) {
-            aiError = err instanceof Error ? err.message : "Failed to generate suggestions";
+            aiError = err instanceof Error ? err.message : m.builder_failedGenerateSuggestions();
         } finally {
             aiLoading = false;
         }
@@ -301,10 +302,10 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <!-- Drawer (right side, no backdrop — sits inside the editor layout) -->
-<aside class="chapter-drawer" role="dialog" aria-label="Edit Chapter: {name}">
+<aside class="chapter-drawer" role="dialog" aria-label="{m.builder_editChapterLabel({ name })}">
     <!-- Header -->
     <div class="drawer-header">
-        <span class="drawer-title">Edit Chapter</span>
+        <span class="drawer-title">{m.builder_editChapter()}</span>
         {#if totalConflicts > 0}
             <span class="conflict-note">
                 <AlertCircle size={12} />
@@ -321,8 +322,8 @@
     <div class="drawer-body">
         <!-- Name -->
         <div class="field">
-            <label class="field-label" for="ch-name">Name <span class="required">*</span></label>
-            <input id="ch-name" class="field-input" type="text" bind:value={name} placeholder="e.g. Research Phase" />
+            <label class="field-label" for="ch-name">{m.agent_name()} <span class="required">*</span></label>
+            <input id="ch-name" class="field-input" type="text" bind:value={name} placeholder={m.builder_chapterNamePlaceholder()} />
             {#if conflictSnippet('name')}
                 {@render conflictBox('name')}
             {/if}
@@ -331,12 +332,12 @@
         <!-- Description -->
         <div class="field">
             <div class="field-label-row">
-                <label class="field-label" for="ch-desc">Description</label>
-                <button class="ai-wand-btn" class:loading={fieldAiLoading['description']} onclick={() => requestFieldAiFill('description')} disabled={fieldAiLoading['description']} title="AI fill this field">
+                <label class="field-label" for="ch-desc">{m.builder_description()}</label>
+                <button class="ai-wand-btn" class:loading={fieldAiLoading['description']} onclick={() => requestFieldAiFill('description')} disabled={fieldAiLoading['description']} title={m.builder_aiFillField()}>
                     {#if fieldAiLoading['description']}<Loader2 size={12} class="spin" />{:else}<Sparkles size={12} />{/if}
                 </button>
             </div>
-            <textarea id="ch-desc" class="field-textarea" class:ai-generated={fieldAiGenerated['description']} use:autosize={description} bind:value={description} oninput={() => clearFieldAiGenerated('description')} placeholder="What does this chapter accomplish?"></textarea>
+            <textarea id="ch-desc" class="field-textarea" class:ai-generated={fieldAiGenerated['description']} use:autosize={description} bind:value={description} oninput={() => clearFieldAiGenerated('description')} placeholder={m.builder_chapterDescPlaceholder()}></textarea>
             {#if conflictSnippet('description')}
                 {@render conflictBox('description')}
             {/if}
@@ -348,10 +349,10 @@
                 <button class="ai-btn" onclick={requestAiSuggestion} disabled={aiLoading}>
                     {#if aiLoading}
                         <Loader2 size={14} class="spin" />
-                        Generating...
+                        {m.builder_generating()}
                     {:else}
                         <Sparkles size={14} />
-                        AI fill all fields
+                        {m.builder_aiFillAll()}
                     {/if}
                 </button>
                 {#if aiError}
@@ -362,9 +363,9 @@
 
         <!-- Tools -->
         <div class="field">
-            <span class="field-label">Tools <span class="tool-count">{selectedToolIds.length}</span></span>
+            <span class="field-label">{m.tools_title()} <span class="tool-count">{selectedToolIds.length}</span></span>
             {#if availableToolIds.length === 0}
-                <div class="tools-empty">No tools available</div>
+                <div class="tools-empty">{m.tools_noTools()}</div>
             {:else}
                 <div class="tools-grid">
                     {#each availableToolIds as toolId (toolId)}
@@ -391,7 +392,7 @@
             {:else}
                 <ChevronRight size={14} />
             {/if}
-            <span>Advanced fields</span>
+            <span>{m.builder_advancedFields()}</span>
             {#if !showAdvanced && (guide.trim() || context.trim() || outputDef.trim())}
                 <span class="advanced-filled-dot"></span>
             {/if}
@@ -401,9 +402,9 @@
             <div class="advanced-fields">
                 <!-- Trigger Conditions -->
                 <div class="field">
-                    <label class="field-label" for="ch-trigger">Trigger Conditions</label>
-                    <span class="field-helper">When should this chapter activate?</span>
-                    <textarea id="ch-trigger" class="field-textarea" use:autosize={triggerConditions} bind:value={triggerConditions} placeholder="e.g. When upstream provides URLs"></textarea>
+                    <label class="field-label" for="ch-trigger">{m.builder_triggerConditions()}</label>
+                    <span class="field-helper">{m.builder_triggerConditionsHint()}</span>
+                    <textarea id="ch-trigger" class="field-textarea" use:autosize={triggerConditions} bind:value={triggerConditions} placeholder={m.builder_triggerPlaceholder()}></textarea>
                     {#if conflictSnippet('triggerConditions')}
                         {@render conflictBox('triggerConditions')}
                     {/if}
@@ -412,16 +413,16 @@
                 <!-- Instructions (guide) -->
                 <div class="field">
                     <div class="field-label-row">
-                        <label class="field-label" for="ch-guide">Instructions</label>
+                        <label class="field-label" for="ch-guide">{m.builder_instructions()}</label>
                         <button class="ai-wand-btn" class:loading={fieldAiLoading['guide']} onclick={() => requestFieldAiFill('guide')} disabled={fieldAiLoading['guide']} title="AI fill this field">
                             {#if fieldAiLoading['guide']}<Loader2 size={12} class="spin" />{:else}<Sparkles size={12} />{/if}
                         </button>
                     </div>
-                    <span class="field-helper">Imperative, verb-first instructions</span>
+                    <span class="field-helper">{m.builder_instructionsHint()}</span>
                     {#if aiGenerated && !conflicts.guide}
-                        <span class="ai-label">(AI-generated — review and edit)</span>
+                        <span class="ai-label">({m.builder_aiGeneratedReview()})</span>
                     {/if}
-                    <textarea id="ch-guide" class="field-textarea field-textarea--mono" class:ai-generated={fieldAiGenerated['guide']} use:autosize={guide} bind:value={guide} oninput={() => clearFieldAiGenerated('guide')} placeholder="Search the web for..., Extract key data..."></textarea>
+                    <textarea id="ch-guide" class="field-textarea field-textarea--mono" class:ai-generated={fieldAiGenerated['guide']} use:autosize={guide} bind:value={guide} oninput={() => clearFieldAiGenerated('guide')} placeholder={m.builder_guidePlaceholder()}></textarea>
                     {#if conflictSnippet('guide')}
                         {@render conflictBox('guide')}
                     {/if}
@@ -430,16 +431,16 @@
                 <!-- Input Expectations (context) -->
                 <div class="field">
                     <div class="field-label-row">
-                        <label class="field-label" for="ch-context">Input Expectations</label>
+                        <label class="field-label" for="ch-context">{m.builder_inputExpectations()}</label>
                         <button class="ai-wand-btn" class:loading={fieldAiLoading['context']} onclick={() => requestFieldAiFill('context')} disabled={fieldAiLoading['context']} title="AI fill this field">
                             {#if fieldAiLoading['context']}<Loader2 size={12} class="spin" />{:else}<Sparkles size={12} />{/if}
                         </button>
                     </div>
-                    <span class="field-helper">What data does this chapter receive?</span>
+                    <span class="field-helper">{m.builder_inputExpectationsHint()}</span>
                     {#if aiGenerated && !conflicts.context}
-                        <span class="ai-label">(AI-generated)</span>
+                        <span class="ai-label">({m.builder_aiGenerated()})</span>
                     {/if}
-                    <textarea id="ch-context" class="field-textarea" class:ai-generated={fieldAiGenerated['context']} use:autosize={context} bind:value={context} oninput={() => clearFieldAiGenerated('context')} placeholder="e.g. Array of search results"></textarea>
+                    <textarea id="ch-context" class="field-textarea" class:ai-generated={fieldAiGenerated['context']} use:autosize={context} bind:value={context} oninput={() => clearFieldAiGenerated('context')} placeholder={m.builder_contextPlaceholder()}></textarea>
                     {#if conflictSnippet('context')}
                         {@render conflictBox('context')}
                     {/if}
@@ -448,16 +449,16 @@
                 <!-- Output Definition -->
                 <div class="field">
                     <div class="field-label-row">
-                        <label class="field-label" for="ch-output">Output Definition</label>
+                        <label class="field-label" for="ch-output">{m.builder_outputDefinition()}</label>
                         <button class="ai-wand-btn" class:loading={fieldAiLoading['outputDef']} onclick={() => requestFieldAiFill('outputDef')} disabled={fieldAiLoading['outputDef']} title="AI fill this field">
                             {#if fieldAiLoading['outputDef']}<Loader2 size={12} class="spin" />{:else}<Sparkles size={12} />{/if}
                         </button>
                     </div>
-                    <span class="field-helper">What does this chapter produce?</span>
+                    <span class="field-helper">{m.builder_outputDefinitionHint()}</span>
                     {#if aiGenerated && !conflicts.outputDef}
                         <span class="ai-label">(AI-generated)</span>
                     {/if}
-                    <textarea id="ch-output" class="field-textarea" class:ai-generated={fieldAiGenerated['outputDef']} use:autosize={outputDef} bind:value={outputDef} oninput={() => clearFieldAiGenerated('outputDef')} placeholder="e.g. Structured JSON, Summary markdown"></textarea>
+                    <textarea id="ch-output" class="field-textarea" class:ai-generated={fieldAiGenerated['outputDef']} use:autosize={outputDef} bind:value={outputDef} oninput={() => clearFieldAiGenerated('outputDef')} placeholder={m.builder_outputPlaceholder()}></textarea>
                     {#if conflictSnippet('outputDef')}
                         {@render conflictBox('outputDef')}
                     {/if}
@@ -465,9 +466,9 @@
 
                 <!-- Success Criteria -->
                 <div class="field">
-                    <label class="field-label" for="ch-success">Success Criteria</label>
-                    <span class="field-helper">What must be true when this completes?</span>
-                    <textarea id="ch-success" class="field-textarea" use:autosize={successCriteria} bind:value={successCriteria} placeholder="e.g. All URLs fetched, Output has 3+ data points"></textarea>
+                    <label class="field-label" for="ch-success">{m.builder_successCriteria()}</label>
+                    <span class="field-helper">{m.builder_successCriteriaHint()}</span>
+                    <textarea id="ch-success" class="field-textarea" use:autosize={successCriteria} bind:value={successCriteria} placeholder={m.builder_successPlaceholder()}></textarea>
                     {#if conflictSnippet('successCriteria')}
                         {@render conflictBox('successCriteria')}
                     {/if}
@@ -478,10 +479,10 @@
 
     <!-- Footer -->
     <div class="drawer-footer">
-        <button class="btn btn--ghost" onclick={onClose}>Cancel</button>
+        <button class="btn btn--ghost" onclick={onClose}>{m.common_cancel()}</button>
         <button class="btn btn--primary" onclick={handleSave} disabled={totalConflicts > 0}>
             <Check size={14} />
-            Save
+            {m.common_save()}
         </button>
     </div>
 </aside>
@@ -492,11 +493,11 @@
         <div class="conflict-box">
             <div class="conflict-header">
                 <Sparkles size={12} />
-                <span>AI suggested a different value</span>
+                <span>{m.builder_aiSuggestedDifferent()}</span>
             </div>
             <div class="conflict-options">
-                <button class="conflict-opt mine" onclick={() => resolveConflict(field, 'user')}>Keep yours</button>
-                <button class="conflict-opt ai" onclick={() => resolveConflict(field, 'ai')}>Use AI</button>
+                <button class="conflict-opt mine" onclick={() => resolveConflict(field, 'user')}>{m.builder_keepYours()}</button>
+                <button class="conflict-opt ai" onclick={() => resolveConflict(field, 'ai')}>{m.builder_useAi()}</button>
             </div>
             <div class="conflict-preview">{c.aiValue.slice(0, 120)}{c.aiValue.length > 120 ? '...' : ''}</div>
         </div>

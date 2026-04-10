@@ -2,6 +2,7 @@
   import type { FlowNode, AgentNodeData } from '$lib/state/features/flow-editor.svelte';
   import { flowEditorState, setNodes } from '$lib/state/features/flow-editor.svelte';
   import { X, Plus, Trash2 } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let { nodeId, onclose }: { nodeId: string; onclose: () => void } = $props();
 
@@ -50,7 +51,7 @@
   <div class="bg-bg2 border border-border rounded-xl shadow-xl w-72 overflow-hidden">
     <!-- Header -->
     <div class="flex items-center justify-between px-4 py-3 border-b border-border">
-      <span class="text-sm font-semibold text-foreground">Node Settings</span>
+      <span class="text-sm font-semibold text-foreground">{m.flow_nodeSettings()}</span>
       <button
         onclick={onclose}
         class="w-6 h-6 rounded flex items-center justify-center text-muted hover:text-foreground hover:bg-bg3 transition-colors"
@@ -62,7 +63,7 @@
     <div class="p-4 space-y-4">
       <!-- Label -->
       <div>
-        <label for="node-label" class="text-xs font-medium text-muted block mb-1">Label</label>
+        <label for="node-label" class="text-xs font-medium text-muted block mb-1">{m.flow_nodeLabel()}</label>
         <input
           id="node-label"
           type="text"
@@ -75,13 +76,13 @@
       <!-- Default Values -->
       <div>
         <div class="flex items-center justify-between mb-2">
-          <span class="text-xs font-medium text-muted">Default Values</span>
+          <span class="text-xs font-medium text-muted">{m.flow_defaultValues()}</span>
           <button
             onclick={addDefaultValue}
             class="flex items-center gap-1 text-xs text-accent hover:text-accent/80 transition-colors"
           >
             <Plus size={12} />
-            Add
+            {m.common_add()}
           </button>
         </div>
 
@@ -109,13 +110,13 @@
         {/each}
 
         {#if Object.keys(nodeData.defaultValues ?? {}).length === 0}
-          <p class="text-xs text-muted/50 italic">No default values configured</p>
+          <p class="text-xs text-muted/50 italic">{m.flow_noDefaultValues()}</p>
         {/if}
       </div>
 
       <!-- Context Rules -->
       <div>
-        <p class="text-xs font-medium text-muted block mb-1">Context Rules</p>
+        <p class="text-xs font-medium text-muted block mb-1">{m.flow_contextRules()}</p>
         {#each nodeData.contextRules ?? [] as rule (rule.contextNodeId + rule.condition)}
           <div class="text-xs bg-bg3 border border-border rounded px-2 py-1.5 mb-1.5">
             <span class="text-muted">if </span>
@@ -125,7 +126,7 @@
           </div>
         {/each}
         {#if !nodeData.contextRules?.length}
-          <p class="text-xs text-muted/50 italic">No context rules configured</p>
+          <p class="text-xs text-muted/50 italic">{m.flow_noContextRules()}</p>
         {/if}
       </div>
     </div>

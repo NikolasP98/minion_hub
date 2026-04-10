@@ -1,6 +1,7 @@
 <script lang="ts">
   import { crtConfig, type CRTConfig } from '$lib/state/ui/crt-config.svelte';
   import { X, Settings } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let { open = $bindable(false) }: { open: boolean } = $props();
 
@@ -57,19 +58,19 @@
     return '';
   });
 
-  const pixelRows = [
-    { key: 'subpixel',    label: 'RGB Subpixels',  desc: 'R/G/B column fringing' },
-    { key: 'matrix',      label: 'LCD Matrix',      desc: '3x3 pixel cell grid' },
-    { key: 'phosphorDots',label: 'Phosphor Dots',   desc: 'Dot triad pattern' },
-    { key: 'rgbFringe',   label: 'RGB Fringe',      desc: 'Chromatic scan bleed' },
-  ];
+  const pixelRows = $derived([
+    { key: 'subpixel',    label: m.crt_subpixelLabel(),    desc: m.crt_subpixelDesc() },
+    { key: 'matrix',      label: m.crt_matrixLabel(),      desc: m.crt_matrixDesc() },
+    { key: 'phosphorDots',label: m.crt_phosphorDotsLabel(), desc: m.crt_phosphorDotsDesc() },
+    { key: 'rgbFringe',   label: m.crt_rgbFringeLabel(),   desc: m.crt_rgbFringeDesc() },
+  ]);
 
-  const atmosphereRows = [
-    { key: 'warmAmbient', label: 'Warm Ambient',    desc: 'Amber backlight glow' },
-    { key: 'vignette',    label: 'Vignette',         desc: 'Edge darkening' },
-    { key: 'glass',       label: 'Glass Reflection', desc: 'Top surface sheen' },
-    { key: 'flicker',     label: 'Screen Flicker',   desc: 'Subtle 60Hz flicker' },
-  ];
+  const atmosphereRows = $derived([
+    { key: 'warmAmbient', label: m.crt_warmAmbientLabel(), desc: m.crt_warmAmbientDesc() },
+    { key: 'vignette',    label: m.crt_vignetteLabel(),    desc: m.crt_vignetteDesc() },
+    { key: 'glass',       label: m.crt_glassLabel(),       desc: m.crt_glassDesc() },
+    { key: 'flicker',     label: m.crt_flickerLabel(),     desc: m.crt_flickerDesc() },
+  ]);
 
   const bloomValues: CRTConfig['bloom'][] = ['none', 'subtle', 'deep', 'halation'];
   const scanValues: CRTConfig['scan'][] = ['off', 'subtle', 'default', 'heavy', 'cinematic'];
@@ -99,16 +100,16 @@
         <Settings size={18} style="color: var(--crt-hot, #ffbe40);" />
         <div class="flex-1">
           <div class="text-sm font-semibold tracking-widest uppercase" style="color: var(--crt-hot, #ffbe40); font-family: 'Courier New', monospace;">
-            CRT Effects
+            {m.crt_title()}
           </div>
-          <div class="text-xs text-muted-foreground mt-0.5">Customize phosphor &amp; screen effects. Changes apply on save.</div>
+          <div class="text-xs text-muted-foreground mt-0.5">{m.crt_subtitle()}</div>
         </div>
         <button
           type="button"
           onclick={close}
           class="w-7 h-7 flex items-center justify-center border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-all"
           style="border-radius: 0;"
-          aria-label="Close"
+          aria-label={m.common_close()}
         >
           <X size={14} />
         </button>
@@ -123,7 +124,7 @@
           <!-- Phosphor Bloom -->
           <div class="flex flex-col gap-2">
             <div class="text-[10px] font-semibold tracking-widest uppercase text-muted-foreground pb-1.5 border-b border-border">
-              Phosphor Bloom
+              {m.crt_phosphorBloom()}
             </div>
             <div class="flex gap-0.5 bg-bg border border-border p-0.5">
               {#each bloomValues as val (val)}
@@ -140,14 +141,14 @@
               {/each}
             </div>
             <div class="text-[11px] text-muted-foreground">
-              {local.bloom === 'none' ? 'No text glow' : local.bloom === 'subtle' ? 'Soft 2-layer glow around bright elements' : local.bloom === 'deep' ? 'Multi-layer phosphor bleed' : 'Wide halation corona around all text'}
+              {local.bloom === 'none' ? m.crt_bloomNone() : local.bloom === 'subtle' ? m.crt_bloomSubtle() : local.bloom === 'deep' ? m.crt_bloomDeep() : m.crt_bloomHalation()}
             </div>
           </div>
 
           <!-- Scanlines -->
           <div class="flex flex-col gap-2">
             <div class="text-[10px] font-semibold tracking-widest uppercase text-muted-foreground pb-1.5 border-b border-border">
-              Scanlines
+              {m.crt_scanlines()}
             </div>
             <div class="flex gap-0.5 bg-bg border border-border p-0.5">
               {#each scanValues as val (val)}
@@ -168,7 +169,7 @@
           <!-- Pixel Structure -->
           <div class="flex flex-col gap-0">
             <div class="text-[10px] font-semibold tracking-widest uppercase text-muted-foreground pb-1.5 border-b border-border mb-1">
-              Pixel Structure
+              {m.crt_pixelStructure()}
             </div>
             {#each pixelRows as row, i (row.key)}
               <button
@@ -197,7 +198,7 @@
           <!-- Atmosphere -->
           <div class="flex flex-col gap-0">
             <div class="text-[10px] font-semibold tracking-widests uppercase text-muted-foreground pb-1.5 border-b border-border mb-1">
-              Atmosphere
+              {m.crt_atmosphere()}
             </div>
             {#each atmosphereRows as row, i (row.key)}
               <button
@@ -227,7 +228,7 @@
         <!-- Live Preview -->
         <div class="w-[280px] shrink-0 flex flex-col bg-bg">
           <div class="px-3.5 py-2.5 text-[10px] font-semibold tracking-widest uppercase text-muted-foreground border-b border-border shrink-0">
-            Live Preview
+            {m.crt_livePreview()}
           </div>
           <div class="flex-1 p-4 flex items-start">
             <!-- CRT mini preview -->
@@ -302,14 +303,14 @@
 
       <!-- Footer -->
       <div class="flex items-center gap-2.5 px-5 py-3 border-t border-border shrink-0">
-        <div class="flex-1 text-[11px] text-muted-foreground">Changes apply on save</div>
+        <div class="flex-1 text-[11px] text-muted-foreground">{m.crt_changesApplyOnSave()}</div>
         <button
           type="button"
           onclick={() => { local = { bloom: 'subtle', scan: 'default', matrix: false, subpixel: true, phosphorDots: false, rgbFringe: false, warmAmbient: true, vignette: false, glass: false, flicker: true }; }}
           class="px-3 py-1.5 text-[11px] text-muted-foreground border border-border hover:text-foreground hover:border-muted-foreground transition-all"
           style="border-radius: 0;"
         >
-          Reset
+          {m.common_reset()}
         </button>
         <button
           type="button"
@@ -317,7 +318,7 @@
           class="px-3 py-1.5 text-[11px] text-muted-foreground border border-border hover:text-foreground hover:border-muted-foreground transition-all"
           style="border-radius: 0;"
         >
-          Cancel
+          {m.common_cancel()}
         </button>
         <button
           type="button"
@@ -325,7 +326,7 @@
           class="px-4 py-1.5 text-[11px] font-medium uppercase tracking-widest transition-all"
           style="background: var(--crt-base, #c87820); color: #000; font-family: 'Courier New', monospace; border: none; box-shadow: 0 0 8px rgba(200,120,32,0.4); border-radius: 0;"
         >
-          Apply
+          {m.crt_apply()}
         </button>
       </div>
 

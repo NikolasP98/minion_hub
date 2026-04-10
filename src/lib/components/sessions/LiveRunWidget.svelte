@@ -6,6 +6,7 @@
     import { fmtTokens } from '$lib/utils/format';
     import StatusBadge from '$lib/components/agents/StatusBadge.svelte';
     import { ChevronDown, ChevronUp, Zap } from 'lucide-svelte';
+    import * as m from '$lib/paraglide/messages';
 
     let collapsed = $state(false);
 
@@ -65,7 +66,7 @@
             <div class="flex items-center gap-2">
                 <Zap size={14} class="text-accent animate-pulse" />
                 <span class="text-xs font-semibold text-foreground">
-                    {activeRuns.length} active {activeRuns.length === 1 ? 'run' : 'runs'}
+                    {activeRuns.length === 1 ? m.session_activeRunSingular({ count: activeRuns.length }) : m.session_activeRunPlural({ count: activeRuns.length })}
                 </span>
             </div>
             <div class="flex items-center gap-2 text-muted">
@@ -88,7 +89,7 @@
                                 {run.agentName}
                             </div>
                             <div class="text-[10px] text-muted-foreground font-mono mt-0.5">
-                                {run.status === 'thinking' ? 'Thinking...' : 'Processing...'}
+                                {run.status === 'thinking' ? m.session_statusThinking() : m.session_statusProcessing()}
                             </div>
                         </div>
                         <div class="text-right shrink-0">

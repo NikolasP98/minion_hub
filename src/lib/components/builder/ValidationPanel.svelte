@@ -1,5 +1,6 @@
 <script lang="ts">
     import { XCircle, AlertTriangle, X } from 'lucide-svelte';
+    import * as m from '$lib/paraglide/messages';
     import {
         skillEditorState, skillEditorDerived,
         openConditionOrChapter, publishSkill,
@@ -32,21 +33,21 @@
         const { errors, warnings } = skillEditorDerived.validationCounts;
         const ePlural = errors !== 1 ? 's' : '';
         const wPlural = warnings !== 1 ? 's' : '';
-        if (errors > 0 && warnings > 0) return `Validation — ${errors} error${ePlural}, ${warnings} warning${wPlural}`;
-        if (errors > 0) return `Validation — ${errors} error${ePlural}`;
-        if (warnings > 0) return `Validation — ${warnings} warning${wPlural}`;
-        return 'Validation — all clear';
+        if (errors > 0 && warnings > 0) return `${m.builder_validationTitle()} — ${errors} ${m.builder_error({ count: errors })}, ${warnings} ${m.builder_warning({ count: warnings })}`;
+        if (errors > 0) return `${m.builder_validationTitle()} — ${errors} ${m.builder_error({ count: errors })}`;
+        if (warnings > 0) return `${m.builder_validationTitle()} — ${warnings} ${m.builder_warning({ count: warnings })}`;
+        return `${m.builder_validationTitle()} — ${m.builder_validationAllClear()}`;
     });
 </script>
 
-<aside role="complementary" aria-label="Skill validation" class="validation-panel">
+<aside role="complementary" aria-label={m.builder_skillValidation()} class="validation-panel">
     <!-- HEADER -->
     <div class="panel-header">
         <span class="panel-title">{headerText}</span>
         <button
             class="close-btn"
             onclick={() => { skillEditorState.showValidation = false; skillEditorState.publishAnyway = false; }}
-            aria-label="Close validation panel"
+            aria-label={m.builder_closeValidation()}
         >
             <X size={14} />
         </button>
@@ -58,7 +59,7 @@
         {#if skillFindings.length > 0}
             <div class="chapter-group">
                 <div class="chapter-group-header">
-                    <span class="chapter-group-name">Skill</span>
+                    <span class="chapter-group-name">{m.builder_skillLabel()}</span>
                 </div>
                 {#each skillFindings as finding (finding.message)}
                     <div class="validation-row {finding.level}">
@@ -84,7 +85,7 @@
                             const ch = skillEditorState.chapters.find(c => c.id === chapterId);
                             if (ch) openConditionOrChapter(ch);
                         }}
-                    >Fix &#x2192;</button>
+                    >{m.builder_fix()} &#x2192;</button>
                 </div>
                 {#each group.findings as finding (finding.message)}
                     <div class="validation-row {finding.level}">
@@ -102,10 +103,10 @@
 
     <!-- FOOTER -->
     <div class="panel-footer">
-        <span class="passing-count">{passingCount} chapter{passingCount !== 1 ? 's' : ''} passing</span>
+        <span class="passing-count">{m.builder_chaptersPassing({ count: passingCount })}</span>
         {#if skillEditorState.publishAnyway}
             <button class="publish-anyway-btn" onclick={() => { publishSkill(); }}>
-                Publish Anyway
+                {m.builder_publishAnyway()}
             </button>
         {/if}
     </div>

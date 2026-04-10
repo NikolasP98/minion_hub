@@ -4,6 +4,7 @@
   import type { AgentNodeData } from '$lib/state/features/flow-editor.svelte';
   import { flowEditorState } from '$lib/state/features/flow-editor.svelte';
   import { Bot } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let { data, id, selected }: NodeProps & { data: AgentNodeData } = $props();
 
@@ -25,7 +26,7 @@
   <div
     class="absolute bottom-full mb-2 left-0 right-0 bg-bg2 border border-border rounded-lg p-3 shadow-xl z-50 min-w-48"
   >
-    <div class="text-xs font-semibold text-muted mb-2">Default Values</div>
+    <div class="text-xs font-semibold text-muted mb-2">{m.flow_defaultValues()}</div>
     {#each Object.entries(data.defaultValues ?? {}) as [key, value] (key)}
       <div class="flex items-center gap-2 mb-1.5">
         <span class="text-xs text-muted w-20 truncate">{key}</span>
@@ -38,7 +39,7 @@
       </div>
     {/each}
     {#if Object.keys(data.defaultValues ?? {}).length === 0}
-      <p class="text-xs text-muted/60 italic">No default values</p>
+      <p class="text-xs text-muted/60 italic">{m.flow_noDefaultValues()}</p>
     {/if}
   </div>
 {/if}

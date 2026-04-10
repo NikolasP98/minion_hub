@@ -216,7 +216,7 @@
         </div>
       {:else if error}
         <div class="flex-1 flex flex-col items-center justify-center gap-2.5 text-destructive text-xs">
-          <span>Error: {error}</span>
+          <span>{m.common_error()}: {error}</span>
         </div>
       {:else if messages.filter((m) => m.content.trim()).length === 0}
         <div class="flex-1 flex flex-col items-center justify-center gap-2.5 text-muted text-xs">

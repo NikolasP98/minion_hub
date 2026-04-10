@@ -8,6 +8,7 @@
     import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
     import ChannelAssignmentPicker from './ChannelAssignmentPicker.svelte';
     import ChannelForm from './ChannelForm.svelte';
+    import * as m from '$lib/paraglide/messages';
 
     interface Props {
         channel: Channel;
@@ -195,16 +196,16 @@
             {/if}
         </div>
         {#if isGateway}
-            <div class="flex items-center gap-1 text-[10px] text-accent/80" title="Reported by gateway (read-only)">
+            <div class="flex items-center gap-1 text-[10px] text-accent/80" title={m.channel_gatewayReadOnly()}>
                 <Radio size={12} />
-                <span>live</span>
+                <span>{m.channel_live()}</span>
             </div>
         {:else}
             <button
                 type="button"
                 class="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors opacity-0 group-hover:opacity-100"
                 onclick={(e) => { e.stopPropagation(); ondelete?.(); }}
-                title="Delete"
+                title={m.common_delete()}
             >
                 <Trash2 size={14} />
             </button>
@@ -228,35 +229,35 @@
                 <!-- Live Status -->
                 {#if hasLiveData}
                     <div>
-                        <h4 class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Live Status</h4>
+                        <h4 class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">{m.channel_liveStatus()}</h4>
                         <div class="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1.5 text-xs">
                             {#if channel.gwConnected !== undefined}
                                 <div class="flex items-center gap-1.5">
                                     <span class="w-1.5 h-1.5 rounded-full {channel.gwConnected ? 'bg-success' : 'bg-destructive'}"></span>
-                                    <span class="text-muted-foreground">Connected</span>
+                                    <span class="text-muted-foreground">{m.channel_connected()}</span>
                                 </div>
                             {/if}
                             {#if channel.gwRunning !== undefined}
                                 <div class="flex items-center gap-1.5">
                                     <span class="w-1.5 h-1.5 rounded-full {channel.gwRunning ? 'bg-success' : 'bg-muted-foreground'}"></span>
-                                    <span class="text-muted-foreground">Running</span>
+                                    <span class="text-muted-foreground">{m.channel_running()}</span>
                                 </div>
                             {/if}
                             {#if channel.gwEnabled !== undefined}
                                 <div class="flex items-center gap-1.5">
                                     <span class="w-1.5 h-1.5 rounded-full {channel.gwEnabled ? 'bg-success' : 'bg-muted-foreground'}"></span>
-                                    <span class="text-muted-foreground">Enabled</span>
+                                    <span class="text-muted-foreground">{m.channel_enabled()}</span>
                                 </div>
                             {/if}
                             {#if channel.gwConfigured !== undefined}
                                 <div class="flex items-center gap-1.5">
                                     <span class="w-1.5 h-1.5 rounded-full {channel.gwConfigured ? 'bg-success' : 'bg-muted-foreground'}"></span>
-                                    <span class="text-muted-foreground">Configured</span>
+                                    <span class="text-muted-foreground">{m.channel_configured()}</span>
                                 </div>
                             {/if}
                             {#if channel.gwReconnectAttempts !== undefined && channel.gwReconnectAttempts > 0}
                                 <div class="flex items-center gap-1.5">
-                                    <span class="text-muted-foreground">Reconnects:</span>
+                                    <span class="text-muted-foreground">{m.channel_reconnects()}</span>
                                     <span class="text-warning font-medium">{channel.gwReconnectAttempts}</span>
                                 </div>
                             {/if}
@@ -270,7 +271,7 @@
                 <!-- Credentials Meta -->
                 {#if metaEntries.length > 0}
                     <div>
-                        <h4 class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Credentials</h4>
+                        <h4 class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">{m.channel_credentials()}</h4>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs">
                             {#each metaEntries as [key, value]}
                                 <div class="flex items-center gap-1.5 min-w-0">
@@ -284,7 +285,7 @@
 
                 <!-- Assignments -->
                 <div>
-                    <h4 class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Assignments</h4>
+                    <h4 class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">{m.channel_assignments()}</h4>
                     <ChannelAssignmentPicker {serverId} channelId={channel.id} />
                 </div>
 
@@ -311,13 +312,13 @@
                                 onclick={() => { showEditForm = true; }}
                             >
                                 <Pencil size={12} />
-                                Edit Credentials
+                                {m.channel_editCredentials()}
                             </button>
                         {/if}
                     </div>
                 {:else}
                     <div class="flex items-center justify-between">
-                        <p class="text-[10px] text-muted-foreground/60 italic">Managed by gateway — credentials are read-only.</p>
+                        <p class="text-[10px] text-muted-foreground/60 italic">{m.channel_managedByGateway()}</p>
                         {#if gwChannelType && gwAccountId}
                             <button
                                 type="button"
@@ -331,7 +332,7 @@
                                     <span class="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
                                 {:else}
                                     <Power size={12} />
-                                    {channel.gwEnabled === false ? 'Enable' : 'Disable'}
+                                    {channel.gwEnabled === false ? m.channel_enable() : m.channel_disable()}
                                 {/if}
                             </button>
                         {/if}

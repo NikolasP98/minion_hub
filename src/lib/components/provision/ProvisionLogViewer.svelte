@@ -1,6 +1,7 @@
 <script lang="ts">
     import { provisionState } from "$lib/state/features/provision.svelte";
     import { Terminal } from "lucide-svelte";
+    import * as m from '$lib/paraglide/messages';
 
     let logContainer: HTMLDivElement | undefined = $state();
 
@@ -26,12 +27,12 @@
 <div class="bg-card border border-border rounded-lg overflow-hidden flex flex-col h-full">
     <div class="flex items-center gap-2 px-3 py-2 border-b border-border bg-bg/50">
         <Terminal size={13} class="text-muted-foreground/70" />
-        <span class="text-xs font-semibold text-foreground uppercase tracking-wider">Output</span>
+        <span class="text-xs font-semibold text-foreground uppercase tracking-wider">{m.provision_output()}</span>
         {#if provisionState.running}
-            <span class="ml-auto text-[10px] text-accent font-medium animate-pulse">Live</span>
+            <span class="ml-auto text-[10px] text-accent font-medium animate-pulse">{m.provision_live()}</span>
         {/if}
         <span class="text-[10px] text-muted-foreground/60 {provisionState.running ? '' : 'ml-auto'}">
-            {provisionState.logs.length} lines
+            {m.provision_logLines({ count: provisionState.logs.length })}
         </span>
     </div>
 
@@ -42,7 +43,7 @@
     >
         {#if provisionState.logs.length === 0}
             <p class="text-muted-foreground/40 text-center py-8">
-                No output yet. Run provisioning to see logs here.
+                {m.provision_noOutput()}
             </p>
         {:else}
             {#each provisionState.logs as line, i (i)}

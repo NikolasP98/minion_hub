@@ -3,6 +3,7 @@
   import { configState, dirtyPaths } from '$lib/state/config/config.svelte';
   import ConfigField from './ConfigField.svelte';
   import { ChevronRight, ChevronsDown, ChevronsUp } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let { group, expanded = false, ontoggle, configuredCount = 0 }: {
     group: ConfigGroup;
@@ -86,10 +87,10 @@
         >
           {#if showAdvanced}
             <ChevronsUp size={11} class="shrink-0" />
-            Hide {advancedFields.length} advanced field{advancedFields.length === 1 ? '' : 's'}
+            {advancedFields.length === 1 ? m.config_hideAdvancedField({ count: advancedFields.length }) : m.config_hideAdvancedFields({ count: advancedFields.length })}
           {:else}
             <ChevronsDown size={11} class="shrink-0" />
-            Show {advancedFields.length} advanced field{advancedFields.length === 1 ? '' : 's'}
+            {advancedFields.length === 1 ? m.config_showAdvancedField({ count: advancedFields.length }) : m.config_showAdvancedFields({ count: advancedFields.length })}
           {/if}
         </button>
 

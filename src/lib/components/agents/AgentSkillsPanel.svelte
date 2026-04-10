@@ -67,7 +67,7 @@
     <div class="flex items-center gap-2">
       <h2 class="text-sm font-semibold text-foreground">{m.skills_title()}</h2>
       <span class="text-[10px] text-muted-foreground">
-        {enabledSkills.length}/{agentSkillsState.skills.length} enabled
+        {m.skills_enabledCount({ enabled: enabledSkills.length, total: agentSkillsState.skills.length })}
       </span>
     </div>
     <button
@@ -87,24 +87,27 @@
     <input
       type="text"
       bind:value={searchQuery}
-      placeholder="Search skills…"
+      placeholder={m.skills_searchPlaceholder()}
       class="flex-1 bg-bg3 border border-border rounded-md text-[11px] text-foreground
         px-2.5 py-1.5 outline-none placeholder:text-muted-foreground/40
         focus:border-accent/50 transition-colors"
     />
     <div class="flex rounded-md border border-border overflow-hidden shrink-0">
-      {#each ['all', 'enabled', 'disabled'] as tab (tab)}
-        {@const count = tab === 'all' ? agentSkillsState.skills.length : tab === 'enabled' ? enabledSkills.length : disabledSkills.length}
+      {#each [
+        { key: 'all', label: m.skills_filterAll(), count: agentSkillsState.skills.length },
+        { key: 'enabled', label: m.skills_filterEnabled(), count: enabledSkills.length },
+        { key: 'disabled', label: m.skills_filterDisabled(), count: disabledSkills.length },
+      ] as tab (tab.key)}
         <button
           type="button"
-          class="text-[10px] px-2 py-1 border-none cursor-pointer transition-colors capitalize
-            {filter === tab
+          class="text-[10px] px-2 py-1 border-none cursor-pointer transition-colors
+            {filter === tab.key
               ? 'bg-accent/15 text-accent font-medium'
               : 'bg-transparent text-muted-foreground hover:text-foreground hover:bg-bg3'}"
-          onclick={() => (filter = tab as typeof filter)}
+          onclick={() => (filter = tab.key as typeof filter)}
         >
-          {tab}
-          <span class="text-[9px] opacity-60 ml-0.5">{count}</span>
+          {tab.label}
+          <span class="text-[9px] opacity-60 ml-0.5">{tab.count}</span>
         </button>
       {/each}
     </div>
@@ -119,9 +122,7 @@
         onclick={() => (missingBannerExpanded = !missingBannerExpanded)}
       >
         <span class="text-[10px] text-yellow-400">
-          {skillsWithMissing.length === 1
-            ? '1 skill has unmet dependencies'
-            : `${skillsWithMissing.length} skills have unmet dependencies`}
+          {m.skills_unmetDeps({ count: skillsWithMissing.length })}
         </span>
         <span class="text-[9px] text-yellow-400/60 ml-auto">
           {missingBannerExpanded ? '▾' : '▸'}
@@ -192,12 +193,12 @@
             </span>
             {#if skill.bundled}
               <span class="shrink-0 bg-accent/15 border border-accent/25 rounded-full px-1.5 text-[8px] text-accent leading-relaxed">
-                bundled
+                {m.skills_badgeBundled()}
               </span>
             {/if}
             {#if skill.always}
               <span class="shrink-0 bg-yellow-500/15 border border-yellow-500/25 rounded-full px-1.5 text-[8px] text-yellow-400 leading-relaxed">
-                always
+                {m.skills_badgeAlways()}
               </span>
             {/if}
             {#if hasMissing}
@@ -212,7 +213,7 @@
 
       {#if visibleSkills.length === 0 && searchQuery.trim()}
         <div class="text-[11px] text-muted-foreground/50 text-center py-6">
-          No skills matching "{searchQuery}"
+          {m.skills_noMatching({ query: searchQuery })}
         </div>
       {/if}
     </div>

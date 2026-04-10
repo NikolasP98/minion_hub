@@ -15,6 +15,7 @@
 		clearSubagents,
 		subagentState
 	} from '$lib/state/features/subagent-data.svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	let { agentId }: { agentId: string } = $props();
 
@@ -67,14 +68,14 @@
 <div class="flex flex-col flex-1 min-h-0 overflow-y-auto p-4 gap-4">
 	<!-- Header with refresh button -->
 	<div class="flex items-center justify-between">
-		<h3 class="text-[12px] font-semibold text-foreground">Pi-Agent</h3>
+		<h3 class="text-[12px] font-semibold text-foreground">{m.agent_tabPiAgent()}</h3>
 		<button
 			type="button"
 			class="text-[10px] text-muted hover:text-foreground border border-border rounded px-2 py-0.5 cursor-pointer hover:bg-bg3 transition-colors"
 			onclick={handleRefresh}
 			disabled={piAgentState.loading}
 		>
-			{piAgentState.loading ? 'Loading...' : 'Refresh'}
+			{piAgentState.loading ? m.common_loading() : m.skills_refresh()}
 		</button>
 	</div>
 
@@ -96,7 +97,7 @@
 			onclick={() => (subagentsOpen = !subagentsOpen)}
 		>
 			<span class="text-[11px] font-semibold text-foreground">
-				Subagents
+				{m.pi_subagents()}
 				{#if subagentState.sessions.length > 0}
 					<span class="text-muted font-normal ml-1">({subagentState.sessions.length})</span>
 				{/if}
@@ -108,7 +109,7 @@
 				{#if subagentState.sessions.length > 0}
 					<SubagentTree />
 				{:else}
-					<p class="text-[11px] text-muted">No active subagents.</p>
+					<p class="text-[11px] text-muted">{m.pi_noActiveSubagents()}</p>
 				{/if}
 			</div>
 		{/if}
@@ -122,7 +123,7 @@
 			onclick={() => (orchestrationsOpen = !orchestrationsOpen)}
 		>
 			<span class="text-[11px] font-semibold text-foreground">
-				Orchestrations
+				{m.pi_orchestrations()}
 				{#if piAgentState.orchestrations.length > 0}
 					<span class="text-muted font-normal ml-1">({piAgentState.orchestrations.length})</span>
 				{/if}
@@ -144,7 +145,7 @@
 			onclick={() => (templatesOpen = !templatesOpen)}
 		>
 			<span class="text-[11px] font-semibold text-foreground">
-				Templates
+				{m.pi_templates()}
 				{#if piAgentState.templates.length > 0}
 					<span class="text-muted font-normal ml-1">({piAgentState.templates.length})</span>
 				{/if}
@@ -165,7 +166,7 @@
 			class="w-full flex items-center justify-between px-3 py-2 bg-bg2 hover:bg-bg3 transition-colors cursor-pointer"
 			onclick={() => (dreamOpen = !dreamOpen)}
 		>
-			<span class="text-[11px] font-semibold text-foreground">Dream Activity</span>
+			<span class="text-[11px] font-semibold text-foreground">{m.pi_dreamActivity()}</span>
 			<span class="text-[10px] text-muted">{dreamOpen ? '\u25B2' : '\u25BC'}</span>
 		</button>
 		{#if dreamOpen}

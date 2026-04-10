@@ -22,6 +22,7 @@
         RefreshCw,
         Loader2,
     } from "lucide-svelte";
+    import * as m from '$lib/paraglide/messages';
 
     const serverId = $derived(page.url.searchParams.get("server") ?? "");
 
@@ -66,11 +67,11 @@
             onclick={() => goto('/settings?s=hosts')}
         >
             <ArrowLeft size={14} />
-            Back to Hosts
+            {m.provision_backToHosts()}
         </button>
         <div class="w-px h-4 bg-border"></div>
         <span class="text-sm font-medium text-foreground">
-            {server?.name ?? 'Unknown Server'}
+            {server?.name ?? m.provision_unknownServer()}
         </span>
         {#if server?.url}
             <span class="text-xs text-muted-foreground font-mono">{server.url}</span>
@@ -86,10 +87,10 @@
             >
                 {#if provisionState.checking}
                     <Loader2 size={13} class="animate-spin" />
-                    Checking...
+                    {m.provision_checking()}
                 {:else}
                     <RefreshCw size={13} />
-                    Check Status
+                    {m.provision_checkStatus()}
                 {/if}
             </button>
 
@@ -100,7 +101,7 @@
                     onclick={stopProvision}
                 >
                     <Square size={13} />
-                    Stop
+                    {m.provision_stop()}
                 </button>
             {:else}
                 <button
@@ -110,7 +111,7 @@
                     onclick={handleRun}
                 >
                     <Play size={13} />
-                    Run
+                    {m.provision_run()}
                 </button>
             {/if}
         </div>
@@ -129,13 +130,13 @@
             <div class="max-w-5xl mx-auto">
                 {#if !serverId}
                     <div class="text-center py-12">
-                        <p class="text-sm text-muted-foreground">No server selected.</p>
+                        <p class="text-sm text-muted-foreground">{m.provision_noServer()}</p>
                         <button
                             type="button"
                             class="mt-2 text-xs text-accent hover:underline cursor-pointer bg-transparent border-none"
                             onclick={() => goto('/settings?s=hosts')}
                         >
-                            Go to Hosts
+                            {m.provision_goToHosts()}
                         </button>
                     </div>
                 {:else}
@@ -146,7 +147,7 @@
 
                             <div class="bg-card border border-border rounded-lg px-5 py-4">
                                 <h3 class="text-xs font-semibold text-foreground uppercase tracking-wider mb-4">
-                                    Provisioning Steps
+                                    {m.provision_steps()}
                                 </h3>
                                 <ProvisionStepper onrunfrom={handleRunFrom} />
                             </div>

@@ -107,7 +107,7 @@
 		<KeyRound size={11} class="text-accent shrink-0" />
 		<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground flex-1">{m.reliability_credentialTitle()}</span>
 		{#if parsed}
-			<span class="text-[10px] text-muted-foreground/60">{parsed.providers.length} credential{parsed.providers.length !== 1 ? 's' : ''}</span>
+			<span class="text-[10px] text-muted-foreground/60">{parsed.providers.length} {parsed.providers.length !== 1 ? m.reliability_credentialsPlural() : m.reliability_credentialSingular()}</span>
 		{/if}
 	</div>
 
@@ -127,19 +127,19 @@
 		<!-- Row 2: STATS -->
 		<div class="grid grid-cols-4 gap-px bg-border border-b border-border">
 			<div class="flex flex-col items-center gap-1 py-3 px-2 bg-card">
-				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">OK</span>
+				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_credentialOk()}</span>
 				<span class="text-lg font-bold text-success tabular-nums whitespace-nowrap">{statusCounts.ok}</span>
 			</div>
 			<div class="flex flex-col items-center gap-1 py-3 px-2 bg-card">
-				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Expiring</span>
+				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_credentialExpiring()}</span>
 				<span class="text-lg font-bold tabular-nums whitespace-nowrap" class:text-warning={statusCounts.expiring > 0} class:text-muted-foreground={statusCounts.expiring === 0}>{statusCounts.expiring}</span>
 			</div>
 			<div class="flex flex-col items-center gap-1 py-3 px-2 bg-card">
-				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Expired</span>
+				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_credentialExpired()}</span>
 				<span class="text-lg font-bold tabular-nums whitespace-nowrap" class:text-destructive={statusCounts.expired > 0} class:text-muted-foreground={statusCounts.expired === 0}>{statusCounts.expired}</span>
 			</div>
 			<div class="flex flex-col items-center gap-1 py-3 px-2 bg-card">
-				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Static</span>
+				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_credentialStatic()}</span>
 				<span class="text-lg font-bold text-muted-foreground tabular-nums whitespace-nowrap">{statusCounts.static}</span>
 			</div>
 		</div>
@@ -153,7 +153,7 @@
 		<div>
 			{#if timelineProfiles.length > 0}
 				<div class="px-4 py-3 border-t border-border">
-					<div class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Expiration Timeline</div>
+					<div class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">{m.reliability_expirationTimeline()}</div>
 					<div class="flex flex-col gap-2">
 						{#each timelineProfiles as profile (profile.profileId)}
 							{@const pct = expiryBarPercent(profile.expiresAt!)}

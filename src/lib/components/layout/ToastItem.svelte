@@ -2,6 +2,7 @@
   import * as toast from '@zag-js/toast';
   import { normalizeProps, useMachine } from '@zag-js/svelte';
   import { X, Loader2, Info, CircleCheck, CircleAlert, TriangleAlert } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
 
   interface Props {
     toast: toast.Options;
@@ -55,7 +56,7 @@
       <p {...api.getDescriptionProps() as Record<string, unknown>} class="toast-desc">{api.description}</p>
     {/if}
   </div>
-  <button class="toast-close" onclick={api.dismiss} aria-label="Close">
+  <button class="toast-close" onclick={api.dismiss} aria-label={m.common_close()}>
     <X size={14} />
   </button>
 </div>

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { ChevronDown } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	interface Props {
 		from: number;
@@ -63,7 +64,7 @@
 
 	let fromDateStr = $derived(epochToDateString(from));
 	let toDateStr = $derived(epochToDateString(to));
-	let triggerLabel = $derived(activePreset ?? 'Custom');
+	let triggerLabel = $derived(activePreset ?? m.dateRange_custom());
 </script>
 
 <!-- Desktop: inline layout (>=640px) -->
@@ -83,7 +84,7 @@
 	</div>
 
 	<div class="flex flex-col gap-0.5">
-		<label for="date-from" class="text-[11px] text-muted-foreground leading-none">From</label>
+		<label for="date-from" class="text-[11px] text-muted-foreground leading-none">{m.dateRange_from()}</label>
 		<input
 			id="date-from"
 			type="date"
@@ -94,7 +95,7 @@
 	</div>
 
 	<div class="flex flex-col gap-0.5">
-		<label for="date-to" class="text-[11px] text-muted-foreground leading-none">To</label>
+		<label for="date-to" class="text-[11px] text-muted-foreground leading-none">{m.dateRange_to()}</label>
 		<input
 			id="date-to"
 			type="date"
@@ -125,7 +126,7 @@
 			type="button"
 			class="fixed inset-0 z-40"
 			onclick={() => (open = false)}
-			aria-label="Close date picker"
+			aria-label={m.dateRange_closePicker()}
 		></button>
 
 		<!-- Dropdown panel -->
@@ -146,7 +147,7 @@
 
 			<div class="flex flex-col gap-2">
 				<div class="flex flex-col gap-0.5">
-					<label for="date-from-mobile" class="text-[11px] text-muted-foreground leading-none">From</label>
+					<label for="date-from-mobile" class="text-[11px] text-muted-foreground leading-none">{m.dateRange_from()}</label>
 					<input
 						id="date-from-mobile"
 						type="date"
@@ -156,7 +157,7 @@
 					/>
 				</div>
 				<div class="flex flex-col gap-0.5">
-					<label for="date-to-mobile" class="text-[11px] text-muted-foreground leading-none">To</label>
+					<label for="date-to-mobile" class="text-[11px] text-muted-foreground leading-none">{m.dateRange_to()}</label>
 					<input
 						id="date-to-mobile"
 						type="date"

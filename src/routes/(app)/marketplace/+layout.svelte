@@ -16,35 +16,35 @@
     const sections = [
         {
             href: "/marketplace/plugins",
-            label: "Plugins",
+            label: () => m.marketplace_plugins(),
             icon: Puzzle,
             active: true,
             soon: false,
         },
         {
             href: "/marketplace/tools",
-            label: "Commands / Tools",
+            label: () => m.marketplace_tools(),
             icon: Terminal,
             active: false,
             soon: true,
         },
         {
             href: "/marketplace/agents",
-            label: "Agents",
+            label: () => m.marketplace_agents(),
             icon: Bot,
             active: true,
             soon: false,
         },
         {
             href: "/marketplace/hooks",
-            label: "Hooks",
+            label: () => m.marketplace_hooks(),
             icon: Anchor,
             active: false,
             soon: true,
         },
         {
             href: "/marketplace/mcp-servers",
-            label: "MCP Servers",
+            label: () => m.marketplace_mcpServers(),
             icon: Server,
             active: false,
             soon: true,
@@ -92,7 +92,7 @@
                                         class:disabled={section.soon}
                                     >
                                         <section.icon size={16} />
-                                        <span class="nav-text">{section.label}</span
+                                        <span class="nav-text">{section.label()}</span
                                         >
                                         {#if section.soon}
                                             <span class="soon-badge">{m.marketplace_comingSoon()}</span>

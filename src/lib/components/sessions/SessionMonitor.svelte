@@ -4,6 +4,7 @@
   import { sendRequest } from '$lib/services/gateway.svelte';
   import { parseToolCallRuns, type Run, type ToolCall } from '$lib/utils/tool-calls';
   import type { ChatMessage } from '$lib/types/chat';
+  import * as m from '$lib/paraglide/messages';
 
   let {
     agentId,
@@ -130,21 +131,21 @@
 <div class="flex-1 min-h-0 flex flex-col overflow-hidden bg-bg">
   {#if !sessionKey}
     <div class="flex-1 flex items-center justify-center text-muted text-xs">
-      Select a session to monitor
+      {m.session_selectToMonitor()}
     </div>
   {:else if loading}
     <div class="flex-1 flex items-center justify-center gap-2 text-muted text-xs">
       <div class="w-4 h-4 border-2 border-border border-t-accent rounded-full animate-spin"></div>
-      Loading...
+      {m.common_loading()}
     </div>
   {:else if error}
     <div class="flex-1 flex items-center justify-center text-destructive text-xs">
-      Error: {error}
+      {m.common_error()}: {error}
     </div>
   {:else if runs.length === 0}
     <div class="flex-1 flex flex-col items-center justify-center gap-2 text-muted text-xs">
       <span class="text-2xl opacity-30">📭</span>
-      <span>No tool calls in this session</span>
+      <span>{m.session_noToolCalls()}</span>
     </div>
   {:else}
     <!-- Run tabs -->
@@ -159,7 +160,7 @@
             : 'border-border bg-bg3 text-muted hover:text-foreground'}"
           onclick={() => selectRun(i)}
         >
-          Run {run.idx}
+          {m.session_run({ idx: run.idx })}
         </button>
       {/each}
     </div>
@@ -170,10 +171,10 @@
         class="shrink-0 px-3 py-2 border-b border-border bg-bg2 flex items-center gap-3"
       >
         <span class="text-xs font-semibold text-foreground truncate flex-1 min-w-0">
-          {selectedRun.userPrompt || `Run ${selectedRun.idx}`}
+          {selectedRun.userPrompt || m.session_run({ idx: selectedRun.idx })}
         </span>
         <span class="text-[10px] text-muted shrink-0"
-          >{selectedRun.toolCalls.length} call{selectedRun.toolCalls.length === 1 ? '' : 's'}</span
+          >{selectedRun.toolCalls.length === 1 ? m.session_callSingular({ count: selectedRun.toolCalls.length }) : m.session_callPlural({ count: selectedRun.toolCalls.length })}</span
         >
         <span class="text-[10px] text-muted shrink-0"
           >{fmtDuration(selectedRun.endTs - selectedRun.startTs)}</span
@@ -184,9 +185,9 @@
       <div
         class="shrink-0 flex items-center px-3 py-1.5 bg-bg border-b border-border text-[9px] font-bold uppercase tracking-widest text-muted"
       >
-        <span class="w-[160px] shrink-0">Tool</span>
-        <span class="flex-1 min-w-0 ml-2">Timeline</span>
-        <span class="w-[60px] text-right shrink-0">Duration</span>
+        <span class="w-[160px] shrink-0">{m.session_colTool()}</span>
+        <span class="flex-1 min-w-0 ml-2">{m.session_colTimeline()}</span>
+        <span class="w-[60px] text-right shrink-0">{m.session_colDuration()}</span>
       </div>
 
       <!-- Waterfall rows -->
