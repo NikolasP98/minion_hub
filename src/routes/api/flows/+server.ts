@@ -1,13 +1,27 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { getDb } from '$server/db/client';
 import { flows } from '$server/db/schema';
-import { desc } from 'drizzle-orm';
+import { desc, and, eq, or, isNull } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
+import { requireAuth } from '$server/auth/authorize';
+import { getTenantCtx } from '$server/auth/tenant-ctx';
 
-export const GET: RequestHandler = async () => {
-  const db = getDb();
-  const rows = await db.select().from(flows).orderBy(desc(flows.updatedAt));
+export const GET: RequestHandler = async ({ locals }) => {
+  const user = requireAuth(locals);
+  const ctx = await getTenantCtx(locals);
+  if (!ctx) throw error(401);
+
+  // Return flows owned by this user OR legacy flows with no owner (within same tenant)
+  const rows = await ctx.db
+    .select()
+    .from(flows)
+    .where(
+      and(
+        or(eq(flows.userId, user.id), isNull(flows.userId)),
+        or(eq(flows.tenantId, ctx.tenantId), isNull(flows.tenantId)),
+      ),
+    )
+    .orderBy(desc(flows.updatedAt));
 
   const result = rows.map((row) => {
     let nodeCount = 0;
@@ -28,21 +42,26 @@ export const GET: RequestHandler = async () => {
   return json({ flows: result });
 };
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ locals, request }) => {
+  const user = requireAuth(locals);
+  const ctx = await getTenantCtx(locals);
+  if (!ctx) throw error(401);
+
   const body = await request.json();
   const { name } = body as { name?: string };
 
   if (!name || typeof name !== 'string') throw error(400, 'name is required');
 
-  const db = getDb();
   const id = randomUUID();
   const now = Date.now();
 
-  await db.insert(flows).values({
+  await ctx.db.insert(flows).values({
     id,
     name,
     nodes: '[]',
     edges: '[]',
+    userId: user.id,
+    tenantId: ctx.tenantId,
     createdAt: now,
     updatedAt: now,
   });

@@ -62,6 +62,10 @@
     "vitest": "^4.0.18"
   },
   "private": true,
+  "overrides": {
+    "devalue": "^5.7.1",
+    "sha.js": "^2.4.12"
+  },
   "scripts": {
     "i18n:compile": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide",
     "dev": "vite dev",

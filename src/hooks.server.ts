@@ -190,12 +190,34 @@ const appHandle: Handle = async ({ event, resolve }) => {
     }
   }
 
-  // For API routes: unauthenticated fallback to first org (preserve existing behaviour)
+  // For API routes: unauthenticated fallback is restricted to explicitly safe paths only.
+  // Sensitive routes (workshop, flows, personal-agent, users) require explicit auth and
+  // must NOT fall through to the tenant fallback — individual route handlers call requireAuth().
+  const API_UNAUTH_FALLBACK_PREFIXES = [
+    '/api/marketplace/',
+    '/api/registry/',
+    '/api/servers/',
+    '/api/metrics/',
+    '/api/gateway/',
+    '/api/device-identity/',
+    '/api/studio/',
+    '/api/admin/',
+    '/api/invitations/',
+    '/api/auth/',
+  ];
   if (!event.locals.tenantCtx && path.startsWith('/api/')) {
-    const db = getDb();
-    const rows = await db.select({ id: organization.id }).from(organization).limit(1);
-    if (rows.length > 0) event.locals.tenantCtx = { db, tenantId: rows[0].id };
-    return resolve(event);
+    const allowFallback = API_UNAUTH_FALLBACK_PREFIXES.some((p) => path.startsWith(p));
+    if (allowFallback) {
+      const db = getDb();
+      const rows = await db.select({ id: organization.id }).from(organization).limit(1);
+      if (rows.length > 0) event.locals.tenantCtx = { db, tenantId: rows[0].id };
+      return resolve(event);
+    }
+    // All other unauthenticated API requests get an explicit 401
+    return new Response(JSON.stringify({ error: 'Authentication required' }), {
+      status: 401,
+      headers: { 'content-type': 'application/json' },
+    });
   }
 
   // Redirect unauthenticated browser requests to /login
