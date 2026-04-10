@@ -18,6 +18,7 @@
         BookOpen,
         User,
         Bug,
+        Paintbrush,
     } from "lucide-svelte";
     import { ui } from "$lib/state/ui/ui.svelte";
     import { captureSnapshot, bugReporter } from "$lib/state/ui/bug-reporter.svelte";
@@ -34,6 +35,7 @@
     const isFlowEditor = $derived(page.url.pathname.startsWith("/flow-editor"));
     const isBuilder = $derived(page.url.pathname.startsWith('/builder'));
     const isMyAgent = $derived(page.url.pathname.startsWith('/my-agent'));
+    const isStudio = $derived(page.url.pathname.startsWith('/studio'));
 
     // Mobile menu state
     let mobileMenuOpen = $state(false);
@@ -139,6 +141,15 @@
                 <Store size={14} />
                 <span>{m.nav_marketplace()}</span>
             </a>
+
+            <a
+                href="/studio"
+                class="nav-pill brand {isStudio ? 'active-brand' : ''}"
+                title="Studio"
+            >
+                <Paintbrush size={14} />
+                <span>{m.nav_studio()}</span>
+            </a>
         </nav>
 
         <!-- Tablet Navigation - Icons only (lg to xl) -->
@@ -185,6 +196,14 @@
                     </a>
                 {/snippet}
             </Tooltip>
+
+            <Tooltip label={m.nav_studio()} id="nav-lg-studio">
+                {#snippet children(triggerProps)}
+                    <a href="/studio" class="nav-pill brand {isStudio ? 'active-brand' : ''}" {...triggerProps}>
+                        <Paintbrush size={16} />
+                    </a>
+                {/snippet}
+            </Tooltip>
         </nav>
 
         <!-- Small Tablet Navigation - Icons only, no bg (470px to lg) -->
@@ -224,6 +243,14 @@
                 {#snippet children(triggerProps)}
                     <a href="/marketplace" class="nav-pill-sm brand {isMarketplace ? 'active-brand' : ''}" {...triggerProps}>
                         <Store size={18} />
+                    </a>
+                {/snippet}
+            </Tooltip>
+
+            <Tooltip label={m.nav_studio()} id="nav-md-studio">
+                {#snippet children(triggerProps)}
+                    <a href="/studio" class="nav-pill-sm brand {isStudio ? 'active-brand' : ''}" {...triggerProps}>
+                        <Paintbrush size={18} />
                     </a>
                 {/snippet}
             </Tooltip>
@@ -333,6 +360,16 @@
                 >
                     <Store size={18} />
                     <span>{m.nav_marketplace()}</span>
+                </a>
+                <a
+                    href="/studio"
+                    class="mobile-nav-link brand {isStudio
+                        ? 'active-brand'
+                        : ''}"
+                    onclick={closeMobileMenu}
+                >
+                    <Paintbrush size={18} />
+                    <span>{m.nav_studio()}</span>
                 </a>
                 <a
                     href="/settings"

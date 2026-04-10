@@ -3,6 +3,7 @@ import { conn } from '$lib/state/gateway/connection.svelte';
 import { ui } from './ui.svelte';
 import { toaster, toastSuccess, toastError } from './toast.svelte';
 import { hostsState } from '$lib/state/features/hosts.svelte';
+import * as m from '$lib/paraglide/messages';
 
 export type BugReportPhase = 'idle' | 'capturing' | 'previewing' | 'submitting' | 'success' | 'error';
 
@@ -99,7 +100,7 @@ export async function captureSnapshot(): Promise<void> {
 export async function submitReport(): Promise<void> {
   // Close the card immediately, show a loading toast
   const loadingId = toaster.create({
-    title: 'Submitting bug report...',
+    title: m.bug_submitting(),
     type: 'loading',
     duration: Infinity,
   });
@@ -127,14 +128,14 @@ export async function submitReport(): Promise<void> {
     }
 
     if (data.githubIssueUrl) {
-      toastSuccess('Bug reported', 'GitHub issue created', { duration: 3000 });
+      toastSuccess(m.bug_reported(), m.bug_issueCreated(), { duration: 3000 });
     } else {
-      toastSuccess('Bug saved', 'Saved locally', { duration: 3000 });
+      toastSuccess(m.bug_saved(), m.bug_savedLocally(), { duration: 3000 });
     }
   } catch (err) {
     toaster.dismiss(loadingId);
-    const msg = err instanceof Error ? err.message : 'Unknown error';
-    toastError('Bug report failed', msg, { duration: 5000 });
+    const msg = err instanceof Error ? err.message : m.bug_unknownError();
+    toastError(m.bug_reportFailed(), msg, { duration: 5000 });
   }
 }
 

@@ -1,5 +1,6 @@
 import { sendRequest } from '$lib/services/gateway.svelte';
 import { toastError, toastInfo } from '$lib/state/ui/toast.svelte';
+import * as m from '$lib/paraglide/messages';
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -199,16 +200,16 @@ export async function setThinkingLevel(level: string) {
 		await sendRequest('pi-agent.thinking.set', { key: sessionKey, level });
 		piAgentState.currentThinkingLevel = level;
 	} catch (e) {
-		toastError('Failed to set thinking level', e instanceof Error ? e.message : String(e));
+		toastError(m.piAgent_thinkingLevelFailed(), e instanceof Error ? e.message : String(e));
 	}
 }
 
 export async function killSubagent(key: string) {
 	try {
 		await sendRequest('pi-agent.subagents.kill', { key });
-		toastInfo('Subagent killed');
+		toastInfo(m.piAgent_subagentKilled());
 	} catch (e) {
-		toastError('Failed to kill subagent', e instanceof Error ? e.message : String(e));
+		toastError(m.piAgent_killFailed(), e instanceof Error ? e.message : String(e));
 	}
 	refreshPiAgentData();
 }
@@ -216,8 +217,8 @@ export async function killSubagent(key: string) {
 export async function steerSubagent(key: string, message: string) {
 	try {
 		await sendRequest('pi-agent.subagents.steer', { key, message });
-		toastInfo('Message sent');
+		toastInfo(m.piAgent_messageSent());
 	} catch (e) {
-		toastError('Failed to steer subagent', e instanceof Error ? e.message : String(e));
+		toastError(m.piAgent_steerFailed(), e instanceof Error ? e.message : String(e));
 	}
 }

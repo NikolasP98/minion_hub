@@ -4,6 +4,7 @@
  */
 import { sendRequest } from '$lib/services/gateway.svelte';
 import { toaster, toastError, toastSuccess, toastWarning } from '$lib/state/ui/toast.svelte';
+import * as m from '$lib/paraglide/messages';
 import { isAdmin } from '$lib/state/features/user.svelte';
 import { extractGroups, computeDirtyPaths, computePatch, deepGet, deepSet } from '$lib/utils/config-schema';
 import {
@@ -76,7 +77,7 @@ export function beginRestart() {
   Object.assign(restartState, applyBeginRestart(restartState, Date.now()));
   if (_restartToastId) { toaster.dismiss(_restartToastId); }
   _restartToastId = toaster.create({
-    title: 'Gateway restarting\u2026',
+    title: m.config_gatewayRestarting(),
     type: 'loading',
     duration: Infinity,
   });
@@ -84,7 +85,7 @@ export function beginRestart() {
     if (restartState.phase === 'restarting') {
       restartState.phase = 'failed';
       if (_restartToastId) { toaster.dismiss(_restartToastId); _restartToastId = null; }
-      toastError("Gateway didn't reconnect", 'Try reconnecting manually');
+      toastError(m.config_reconnectFailed(), m.config_reconnectManually());
     }
   }, RESTART_TIMEOUT_MS);
 }
@@ -95,9 +96,9 @@ export function onRestartReconnected() {
   const dirty = _isDirty;
   Object.assign(restartState, applyReconnected(restartState, dirty));
   if (dirty) {
-    toastWarning('Gateway reconnected', 'You had unsaved local changes that were preserved');
+    toastWarning(m.config_gatewayReconnected(), m.config_unsavedPreserved());
   } else {
-    toastSuccess('Gateway reconnected', 'Changes applied');
+    toastSuccess(m.config_gatewayReconnected(), m.config_changesApplied());
   }
   _dismissTimeoutId = setTimeout(() => {
     if (restartState.phase === 'reconnected') {
@@ -225,7 +226,7 @@ export async function loadConfig(): Promise<void> {
     if (hadDirty && Object.keys(stashedChanges).length > 0) {
       restartState.hadLocalChanges = true;
       const keepChanges = typeof window !== 'undefined'
-        ? window.confirm('Gateway config was reloaded after restart. You had unsaved changes.\n\nClick OK to keep your changes, or Cancel to use gateway values.')
+        ? window.confirm(m.config_reloadDialog())
         : false;
       if (keepChanges) {
         for (const [key, val] of Object.entries(stashedChanges)) {
@@ -283,7 +284,7 @@ export async function save(): Promise<boolean> {
     // with a 'closed'/'not connected' error which we handle below.
     try {
       await loadConfig();
-      toastSuccess('Config saved');
+      toastSuccess(m.config_configSaved());
     } catch (reloadErr) {
       const msg = (reloadErr as Error).message ?? '';
       if (msg.includes('closed') || msg.includes('not connected')) {
@@ -300,11 +301,11 @@ export async function save(): Promise<boolean> {
       beginRestart();
     } else if (msg.includes('closed') || msg.includes('not connected')) {
       // sendRequest itself failed — save may not have reached gateway
-      configState.saveError = 'Connection lost. Your changes were not saved.';
-      toastError('Config save failed', configState.saveError);
+      configState.saveError = m.config_connectionLost();
+      toastError(m.config_saveFailed(), configState.saveError);
     } else {
       configState.saveError = msg;
-      toastError('Config save failed', msg);
+      toastError(m.config_saveFailed(), msg);
     }
     return !saveSucceeded ? false : true;
   } finally {
