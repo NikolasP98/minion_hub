@@ -3,6 +3,7 @@
   import { sendRequest } from '$lib/services/gateway.svelte';
   import type { SessionRow } from './SessionsList.svelte';
   import * as m from '$lib/paraglide/messages';
+  import AIDisclosureBadge from '$lib/components/chat/AIDisclosureBadge.svelte';
 
   let {
     serverId,
@@ -231,6 +232,11 @@
                 : 'self-start bg-bg3 text-foreground rounded-bl-[3px] border border-border'}"
           >
             {msg.content}
+            {#if msg.role !== 'user'}
+              <span class="block mt-1 text-right">
+                <AIDisclosureBadge />
+              </span>
+            {/if}
           </div>
         {/each}
       {/if}
