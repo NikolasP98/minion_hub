@@ -84,6 +84,7 @@ export async function createGitHubIssue(input: {
   severity: string;
   screenshotBase64?: string;
   screenshotUrl?: string;
+  pastedImages?: string[];
   consoleLogs?: Array<{ level: string; message: string; timestamp: number }>;
   stateSnapshot?: Record<string, unknown>;
   bugId?: string;
@@ -112,12 +113,36 @@ export async function createGitHubIssue(input: {
 
   sections.push(`## Bug Report\n**Severity:** ${emoji} ${input.severity}`);
 
+  // Services section — triggers github-agent-trigger plugin version parser
+  const services = input.stateSnapshot?.services as Record<string, string> | undefined;
+  if (services && Object.keys(services).length > 0) {
+    const lines = Object.entries(services).map(([name, version]) => `- ${name}: ${version}`);
+    sections.push(`### Services\n${lines.join('\n')}`);
+  }
+
   if (input.comment) {
     sections.push(`### Description\n${input.comment}`);
   }
 
   if (screenshotUrl) {
     sections.push(`### Screenshot\n![Screenshot](${screenshotUrl})`);
+  }
+
+  if (input.pastedImages?.length && input.bugId) {
+    const imageLines: string[] = [];
+    for (let i = 0; i < input.pastedImages.length; i++) {
+      const dataUrl = input.pastedImages[i];
+      const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, '');
+      try {
+        const url = await uploadScreenshotToRepo(repo, base64, `${input.bugId}-paste-${i + 1}`);
+        imageLines.push(`![Pasted image ${i + 1}](${url})`);
+      } catch (err) {
+        console.error(`[GitHub] Pasted image ${i + 1} upload failed:`, err);
+      }
+    }
+    if (imageLines.length > 0) {
+      sections.push(`### Attachments\n${imageLines.join('\n\n')}`);
+    }
   }
 
   if (input.consoleLogs?.length) {
@@ -154,7 +179,7 @@ export async function createGitHubIssue(input: {
   const body: CreateIssueInput = {
     title,
     body: sections.join('\n\n'),
-    labels: ['bug', input.severity],
+    labels: ['bug', input.severity, 'agent'],
   };
 
   const result = await fetchGitHub(`repos/${repo}/issues`, {

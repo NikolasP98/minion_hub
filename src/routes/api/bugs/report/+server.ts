@@ -18,6 +18,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 
   let body: {
     screenshot?: string;
+    pastedImages?: string[];
     consoleLogs?: Array<{ level: string; message: string; timestamp: number; stack?: string }>;
     severity?: string;
     comment?: string;
@@ -64,6 +65,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
         severity,
         screenshotBase64,
         screenshotUrl,
+        pastedImages: body.pastedImages,
         consoleLogs: body.consoleLogs,
         stateSnapshot: body.stateSnapshot,
         bugId,

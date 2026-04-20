@@ -1,15 +1,19 @@
 import { getConsoleBuffer, type ConsoleEntry } from '$lib/utils/console-interceptor';
 import { conn } from '$lib/state/gateway/connection.svelte';
+import { gw } from '$lib/state/gateway/gateway-data.svelte';
 import { ui } from './ui.svelte';
 import { toaster, toastSuccess, toastError } from './toast.svelte';
 import { hostsState } from '$lib/state/features/hosts.svelte';
 import * as m from '$lib/paraglide/messages';
+declare const __APP_VERSION__: string;
+const hubVersion = __APP_VERSION__;
 
-export type BugReportPhase = 'idle' | 'capturing' | 'previewing' | 'submitting' | 'success' | 'error';
+export type BugReportPhase = 'idle' | 'capturing' | 'previewing' | 'minimized' | 'submitting' | 'success' | 'error';
 
 export const bugReporter = $state({
   phase: 'idle' as BugReportPhase,
   screenshotDataUrl: null as string | null,
+  pastedImages: [] as string[],
   consoleLogs: [] as ConsoleEntry[],
   severity: 'medium' as 'critical' | 'high' | 'medium' | 'low',
   comment: '',
@@ -21,6 +25,9 @@ export const bugReporter = $state({
 });
 
 function collectStateSnapshot(): Record<string, unknown> {
+  const gatewayVersion = gw.hello?.server?.version ?? null;
+  const gatewayCommit = gw.hello?.server?.commit ?? null;
+
   return {
     url: typeof window !== 'undefined' ? window.location.href : '',
     viewport:
@@ -33,6 +40,10 @@ function collectStateSnapshot(): Record<string, unknown> {
     activeHostId: hostsState.activeHostId,
     selectedAgentId: ui.selectedAgentId,
     timestamp: new Date().toISOString(),
+    services: {
+      minion_hub: `v${hubVersion}`,
+      ...(gatewayVersion ? { gateway: gatewayCommit ? `v${gatewayVersion}.${gatewayCommit}` : `v${gatewayVersion}` } : {}),
+    },
   };
 }
 
@@ -97,6 +108,61 @@ export async function captureSnapshot(): Promise<void> {
   bugReporter.phase = 'previewing';
 }
 
+export function minimizeReport(): void {
+  if (bugReporter.phase === 'previewing') {
+    bugReporter.phase = 'minimized';
+  }
+}
+
+export function restoreReport(): void {
+  if (bugReporter.phase === 'minimized') {
+    bugReporter.phase = 'previewing';
+  }
+}
+
+let lastEscAt = 0;
+
+export function handleEsc(): void {
+  if (bugReporter.phase === 'previewing') {
+    const now = Date.now();
+    if (now - lastEscAt < 500) {
+      // Double-ESC: discard
+      cancelReport();
+    } else {
+      // Single ESC: minimize
+      minimizeReport();
+    }
+    lastEscAt = now;
+  } else if (bugReporter.phase === 'minimized') {
+    restoreReport();
+  }
+}
+
+export function handlePaste(e: ClipboardEvent): void {
+  if (bugReporter.phase !== 'previewing' && bugReporter.phase !== 'minimized') return;
+  const items = e.clipboardData?.items;
+  if (!items) return;
+
+  for (const item of items) {
+    if (!item.type.startsWith('image/')) continue;
+    e.preventDefault();
+    const file = item.getAsFile();
+    if (!file) continue;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        bugReporter.pastedImages.push(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+}
+
+export function removePastedImage(index: number): void {
+  bugReporter.pastedImages.splice(index, 1);
+}
+
 export async function submitReport(): Promise<void> {
   // Close the card immediately, show a loading toast
   const loadingId = toaster.create({
@@ -106,6 +172,7 @@ export async function submitReport(): Promise<void> {
   });
   const snapshot = {
     screenshot: bugReporter.screenshotDataUrl,
+    pastedImages: bugReporter.pastedImages.length > 0 ? [...bugReporter.pastedImages] : undefined,
     consoleLogs: bugReporter.consoleLogs,
     severity: bugReporter.severity,
     comment: bugReporter.comment,
@@ -142,6 +209,7 @@ export async function submitReport(): Promise<void> {
 export function cancelReport(): void {
   bugReporter.phase = 'idle';
   bugReporter.screenshotDataUrl = null;
+  bugReporter.pastedImages = [];
   bugReporter.consoleLogs = [];
   bugReporter.severity = 'medium';
   bugReporter.comment = '';
