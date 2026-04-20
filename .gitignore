@@ -26,3 +26,6 @@ desktop-build/
 
 # Reports
 posthog-setup-report.md
+
+.infisical.json
+infisical-dev.sh
