@@ -17,7 +17,7 @@ export function getAuth(): AuthInstance {
 		_auth = createAuth({
 			db: getDb(),
 			schema,
-			secret: env.BETTER_AUTH_SECRET,
+			secret: env.BETTER_AUTH_SECRET ?? '',
 			baseURL: hubUrl,
 			trustedOrigins: [
 				...(env.VERCEL_URL ? [`https://${env.VERCEL_URL}`] : []),
