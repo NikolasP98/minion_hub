@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { uuid } from './uuid';
+// uuid migrated to @minion-stack/shared (Phase 7 WS-03)
+import { uuid } from '@minion-stack/shared';
 
 describe('uuid', () => {
   it('returns a 36-char string', () => {

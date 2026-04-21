@@ -1,4 +1,4 @@
-import type { Agent, Session, PresenceEntry, HelloOk } from '$lib/types/gateway';
+import type { Agent, Session, PresenceEntry, HelloOk } from '@minion-stack/shared';
 import { userState } from '$lib/state/features/user.svelte';
 
 /**

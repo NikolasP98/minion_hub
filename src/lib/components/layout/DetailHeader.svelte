@@ -3,7 +3,7 @@
   import { ui } from '$lib/state/ui/ui.svelte';
   import HudBorder from '$lib/components/decorations/HudBorder.svelte';
   import { diceBearAvatarUrl } from '$lib/utils/avatar';
-  import type { Agent } from '$lib/types/gateway';
+  import type { Agent } from '@minion-stack/shared';
   import * as m from '$lib/paraglide/messages';
 
   let { agentId, agent }: { agentId: string; agent: Agent } = $props();

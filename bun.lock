@@ -13,6 +13,7 @@
         "@libsql/client": "^0.17.0",
         "@minion-stack/auth": "^0.2.0",
         "@minion-stack/db": "^0.2.0",
+        "@minion-stack/shared": "^0.3.0",
         "@node-rs/argon2": "^2.0.2",
         "@paralleldrive/cuid2": "^3.3.0",
         "@tailwindcss/vite": "^4.2.0",
@@ -341,6 +342,8 @@
     "@minion-stack/db": ["@minion-stack/db@0.2.0", "", { "peerDependencies": { "drizzle-orm": ">=0.45.0" } }, "sha512-4AARTpPYK5kN+4DAZmPN+s58rZnkKMSDHI7LDbnm3x/CGxKYJfUK3fB1ujA1rCxgTqdvXIdjUfI3wNnKcjxbsA=="],
 
     "@minion-stack/lint-config": ["@minion-stack/lint-config@0.1.1", "", { "peerDependencies": { "@eslint/js": ">=9.0.0", "eslint": ">=9.0.0", "oxlint": ">=0.15.0", "prettier": ">=3.0.0", "typescript-eslint": ">=8.0.0" }, "optionalPeers": ["@eslint/js", "eslint", "oxlint", "prettier", "typescript-eslint"] }, "sha512-/hbtiD6cnwu56yCoqqTDmHWBD9JLL3aph49h5XhTG4lPQe06WNMxkNKA4FlXM9xnCDd2eKaf7y9TwPhQ30Nqug=="],
+
+    "@minion-stack/shared": ["@minion-stack/shared@0.3.0", "", { "peerDependencies": { "ws": "^8.0.0" }, "optionalPeers": ["ws"] }, "sha512-TXjlIhRzIDpPkYkMZnjF1GjujvmVxvhUnSOuekMR1ieDSiVpqDjJVw8OU6NWlTUZLqoB7zGA3sJQ77Y1qrHPOA=="],
 
     "@minion-stack/tsconfig": ["@minion-stack/tsconfig@0.1.0", "", {}, "sha512-Luq2w1k9b7WuJkrAiowFMLcUnNhqo2kct4u+eYXqq8nmjMIs2P9FRtz/XLD+UWkJgx16tQUUWBR+DZjD3TVgfw=="],
 

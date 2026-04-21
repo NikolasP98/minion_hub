@@ -1,5 +1,5 @@
 import type { Host } from '$lib/types/host';
-import { uuid } from '$lib/utils/uuid';
+import { uuid } from '@minion-stack/shared';
 
 const HOSTS_CACHE_KEY = 'minion-dash-hosts-cache';
 

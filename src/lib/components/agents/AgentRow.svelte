@@ -6,7 +6,7 @@
     import { agentActivity, agentChat, SPARK_BIN_COUNT, SPARK_BIN_MS } from "$lib/state/chat/chat.svelte";
     import { ui } from "$lib/state/ui/ui.svelte";
     import { gw } from "$lib/state/gateway/gateway-data.svelte";
-    import type { Agent } from "$lib/types/gateway";
+    import type { Agent } from "@minion-stack/shared";
     import { diceBearAvatarUrl } from "$lib/utils/avatar";
     import * as m from "$lib/paraglide/messages";
     import * as tooltip from "@zag-js/tooltip";

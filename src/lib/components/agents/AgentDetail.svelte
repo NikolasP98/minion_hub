@@ -15,7 +15,7 @@
   import { ui } from '$lib/state/ui/ui.svelte';
   import * as m from '$lib/paraglide/messages';
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
-  import type { Agent } from '$lib/types/gateway';
+  import type { Agent } from '@minion-stack/shared';
   import type { SessionRow } from '../sessions/SessionsList.svelte';
 
   let { agentId, agent }: { agentId: string; agent: Agent } = $props();
