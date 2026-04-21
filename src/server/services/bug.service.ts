@@ -1,5 +1,5 @@
 import { eq, and, desc } from 'drizzle-orm';
-import { bugs } from '$server/db/schema';
+import { bugs } from '@minion-stack/db/schema';
 import { newId, nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
 

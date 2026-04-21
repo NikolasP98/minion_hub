@@ -1,5 +1,5 @@
 import { getDb } from '$server/db/client';
-import { organization } from '$server/db/schema';
+import { organization } from '@minion-stack/db/schema';
 import type { TenantContext } from '$server/services/base';
 
 /**

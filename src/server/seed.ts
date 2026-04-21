@@ -3,7 +3,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { organization as orgPlugin } from 'better-auth/plugins';
 import { eq } from 'drizzle-orm';
 import { getDb } from './db/client';
-import { organization, member } from './db/schema';
+import { organization, member } from '@minion-stack/db/schema';
 
 // Seed-time auth instance using process.env directly (no SvelteKit virtual modules)
 const auth = betterAuth({
@@ -41,12 +41,8 @@ async function seed() {
     console.log(`Created user: ${userId}`);
   } else {
     // User already exists — look them up
-    const { user: userTable } = await import('./db/schema');
-    const rows = await db
-      .select({ id: userTable.id })
-      .from(userTable)
-      .where(eq(userTable.email, email))
-      .limit(1);
+    const { user: userTable } = await import('@minion-stack/db/schema');
+    const rows = await db.select({ id: userTable.id }).from(userTable).where(eq(userTable.email, email)).limit(1);
     if (rows.length === 0) {
       console.error(`User ${email} not found and sign-up failed.`);
       process.exit(1);

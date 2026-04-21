@@ -1,8 +1,8 @@
 import { drizzle } from 'drizzle-orm/libsql';
 import { createClient } from '@libsql/client';
 import { env } from '$env/dynamic/private';
-import * as schema from './schema';
-import * as relations from './relations';
+import * as schema from '@minion-stack/db/schema';
+import * as relations from '@minion-stack/db/relations';
 
 const allSchema = { ...schema, ...relations };
 

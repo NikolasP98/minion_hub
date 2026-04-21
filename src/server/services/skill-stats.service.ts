@@ -1,5 +1,5 @@
 import { eq, and, desc, gte, lte, sql } from 'drizzle-orm';
-import { skillExecutionStats } from '$server/db/schema';
+import { skillExecutionStats } from '@minion-stack/db/schema';
 import { nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
 

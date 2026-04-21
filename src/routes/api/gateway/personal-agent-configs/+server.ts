@@ -1,6 +1,6 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { personalAgents } from '$server/db/schema/personal-agents';
+import { personalAgents } from '@minion-stack/db/schema';
 import { eq } from 'drizzle-orm';
 import { getTenantCtx } from '$server/auth/tenant-ctx';
 

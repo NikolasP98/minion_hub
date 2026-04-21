@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { userPreferences } from '$server/db/schema';
+import { userPreferences } from '@minion-stack/db/schema';
 import { nowMs } from '$server/db/utils';
 import type { Db } from '$server/db/client';
 

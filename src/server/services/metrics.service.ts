@@ -3,7 +3,7 @@ import {
   type CredentialHealthInput,
 } from './credential-health.service';
 import { insertSkillStats, type SkillStatInput } from './skill-stats.service';
-import { sessions, gatewayHeartbeats } from '$server/db/schema';
+import { sessions, gatewayHeartbeats } from '@minion-stack/db/schema';
 import { newId, nowMs } from '$server/db/utils';
 import { sql } from 'drizzle-orm';
 import type { TenantContext } from './base';

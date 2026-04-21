@@ -1,6 +1,6 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { servers } from '$server/db/schema';
+import { servers } from '@minion-stack/db/schema';
 import { nowMs } from '$server/db/utils';
 import { getAgentWithFiles, recordInstall } from '$server/services/marketplace.service';
 import { upsertAgents } from '$server/services/agent.service';

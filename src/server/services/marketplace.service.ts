@@ -1,6 +1,6 @@
 import { eq, and, sql } from 'drizzle-orm';
 import { env } from '$env/dynamic/private';
-import { marketplaceAgents, marketplaceInstalls } from '$server/db/schema';
+import { marketplaceAgents, marketplaceInstalls } from '@minion-stack/db/schema';
 import { newId, nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
 

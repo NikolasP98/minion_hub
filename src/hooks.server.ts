@@ -5,7 +5,7 @@ import { getPostHogClient } from '$lib/server/posthog';
 import { getAuth } from '$lib/auth/auth';
 import { building } from '$app/environment';
 import { getDb } from '$server/db/client';
-import { servers, organization, user as userTable } from '$server/db/schema';
+import { servers, organization, user as userTable } from '@minion-stack/db/schema';
 import { eq } from 'drizzle-orm';
 import { decryptToken } from '$server/auth/crypto';
 import {

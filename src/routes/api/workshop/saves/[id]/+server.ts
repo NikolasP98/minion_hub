@@ -1,6 +1,6 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { workshopSaves } from '$server/db/schema';
+import { workshopSaves } from '@minion-stack/db/schema';
 import { eq } from 'drizzle-orm';
 import { requireAuth } from '$server/auth/authorize';
 import { getTenantCtx } from '$server/auth/tenant-ctx';

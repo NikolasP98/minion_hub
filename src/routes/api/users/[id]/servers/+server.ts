@@ -2,7 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { requireAuth, requireAdmin } from '$server/auth/authorize';
 import { eq } from 'drizzle-orm';
-import { userServers } from '$server/db/schema';
+import { userServers } from '@minion-stack/db/schema';
 import { nowMs } from '$server/db/utils';
 
 export const GET: RequestHandler = async ({ locals, params }) => {

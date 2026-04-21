@@ -1,6 +1,6 @@
 import { eq, desc } from 'drizzle-orm';
 import { SignJWT, importJWK } from 'jose';
-import { user, userAgents, jwks } from '$server/db/schema';
+import { user, userAgents, jwks } from '@minion-stack/db/schema';
 import { getDb } from '$server/db/client';
 import { env } from '$env/dynamic/private';
 import type { TenantContext } from './base';

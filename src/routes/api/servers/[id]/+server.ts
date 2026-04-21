@@ -2,7 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { upsertServer, deleteServer } from '$server/services/server.service';
 import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
-import { userServers } from '$server/db/schema';
+import { userServers } from '@minion-stack/db/schema';
 import { and, eq } from 'drizzle-orm';
 
 export const PUT: RequestHandler = async ({ locals, params, request }) => {

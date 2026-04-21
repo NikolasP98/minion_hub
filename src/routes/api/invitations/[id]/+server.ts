@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getDb } from '$server/db/client';
-import { invitation, organization } from '$server/db/schema';
+import { invitation, organization } from '@minion-stack/db/schema';
 import { eq } from 'drizzle-orm';
 
 /**

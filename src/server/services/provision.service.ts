@@ -1,5 +1,5 @@
 import { eq, and } from 'drizzle-orm';
-import { serverProvisionConfigs } from '$server/db/schema';
+import { serverProvisionConfigs } from '@minion-stack/db/schema';
 import { newId, nowMs } from '$server/db/utils';
 import { encrypt, decrypt } from '$server/auth/crypto';
 import type { TenantContext } from './base';
