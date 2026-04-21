@@ -3,7 +3,7 @@
     import { ui } from "$lib/state/ui/ui.svelte";
     import { gw } from "$lib/state/gateway/gateway-data.svelte";
     import { sendRequest } from "$lib/services/gateway.svelte";
-    import type { Agent } from "$lib/types/gateway";
+    import type { Agent } from "@minion-stack/shared";
     import * as m from "$lib/paraglide/messages";
     import * as popover from "@zag-js/popover";
     import * as combobox from "@zag-js/combobox";

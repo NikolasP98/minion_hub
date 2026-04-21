@@ -37,11 +37,17 @@ import {
   restartState,
   onRestartReconnected,
 } from '$lib/state/config/config.svelte';
-import { uuid } from '$lib/utils/uuid';
 import { extractText } from '$lib/utils/text';
-import type { HelloOk, ChatEvent, Session } from '$lib/types/gateway';
-import { parseAgentSessionKey } from '$lib/utils/session-key';
 import { loadAgentGroups } from '$lib/state/features/agent-groups.svelte';
+import {
+  GatewayClient,
+  uuid,
+  parseAgentSessionKey,
+  type HelloOk,
+  type ChatEvent,
+  type Session,
+  type EventFrame,
+} from '@minion-stack/shared';
 
 // ─── Pi-Agent Notification Preferences ────────────────────────────────────────
 
@@ -99,13 +105,8 @@ function mapGatewaySessionRows(raw: unknown[]): Session[] {
     .filter((s) => s.sessionKey);
 }
 
-// Internal WS state — plain vars, not $state
-let ws: WebSocket | null = null;
-let wsGeneration = 0;
-let pending = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
-let connectSent = false;
-let connectNonce: string | null = null;
-let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+// Internal state — plain vars, not $state
+let client: GatewayClient | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let pollPresenceTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -118,55 +119,157 @@ export function wsConnect() {
   conn.connecting = true;
   conn.particleHue = 'amber';
 
-  connectSent = false;
-  connectNonce = null;
   gw.lastSeq = null;
 
-  // Close any existing socket; its close handler will no-op due to the stale generation check.
-  if (ws) {
-    ws.close();
-    ws = null;
+  // Close existing client before creating a new one
+  if (client) {
+    client.close();
+    client = null;
   }
 
-  try {
-    const gen = ++wsGeneration;
-    ws = new WebSocket(host.url);
-    ws.binaryType = 'arraybuffer';
+  const capturedHostId = hostsState.activeHostId;
+  const token = host.token.trim();
+  const role = 'operator';
+  const scopes = [
+    'operator.admin',
+    'operator.read',
+    'operator.write',
+    'operator.approvals',
+    'operator.pairing',
+  ];
 
-    ws.addEventListener('open', () => {
-      // Wait for connect.challenge event
-    });
+  client = new GatewayClient({
+    url: host.url,
+    autoReconnect: true,
 
-    ws.addEventListener('message', (ev) => {
-      if (wsGeneration !== gen) return; // stale socket
-      // Route binary frames to registered handlers
-      if (ev.data instanceof ArrayBuffer) {
-        notifyBinaryListeners(new Uint8Array(ev.data));
-        return;
+    onOpen() {
+      // Wait for connect.challenge event — no action needed here
+    },
+
+    async onChallenge(nonce: string): Promise<Record<string, unknown>> {
+      // Fetch device identity + signature from server
+      let device:
+        | { id: string; publicKey: string; signature: string; signedAt: number; nonce?: string }
+        | undefined;
+      try {
+        const signRes = await fetch('/api/device-identity/sign', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nonce,
+            token: token || undefined,
+            role,
+            scopes,
+            clientId: 'minion-control-ui',
+            clientMode: 'ui',
+          }),
+        });
+        if (signRes.ok) {
+          const data = await signRes.json();
+          device = data.device;
+        } else {
+          console.warn('[hub] device-identity sign failed:', signRes.status);
+        }
+      } catch (e) {
+        console.warn('[hub] device-identity sign error:', e);
       }
-      handleMessage(String(ev.data ?? ''));
-    });
 
-    ws.addEventListener('close', (ev) => {
-      if (wsGeneration !== gen) return; // stale socket
-      const reason = String(ev.reason ?? '');
-      ws = null;
+      return {
+        minProtocol: 3,
+        maxProtocol: 3,
+        client: { id: 'minion-control-ui', version: '1.0', platform: 'web', mode: 'ui' },
+        role,
+        scopes,
+        caps: [],
+        auth: token ? { token } : undefined,
+        device,
+        userAgent: navigator.userAgent,
+        locale: navigator.language,
+      };
+    },
+
+    onEvent(frame: EventFrame) {
+      const seq = typeof frame.seq === 'number' ? frame.seq : null;
+      if (seq !== null) {
+        if (gw.lastSeq !== null && seq > gw.lastSeq + 1) {
+          console.warn('[hub] event gap: expected', gw.lastSeq + 1, 'got', seq);
+        }
+        gw.lastSeq = seq;
+      }
+      handleEvent(frame as unknown as Record<string, unknown>);
+    },
+
+    onClose(code: number, reason: string) {
       conn.connected = false;
       conn.connecting = false;
       conn.particleHue = 'red';
-      flushPending(new Error(`closed (${ev.code}): ${reason}`));
-      scheduleReconnect();
-    });
+      // Binary listeners: raw socket is gone, no cleanup needed for Uint8Array listeners
+    },
 
-    ws.addEventListener('error', () => {
-      // close handler fires next
-    });
-  } catch (e) {
+    onReconnectScheduled(_delayMs: number) {
+      // Reconnect scheduled — conn state already updated in onClose
+    },
+  });
+
+  // Wire binary frame listener for Yjs workshop sync.
+  // TODO(phase-8): upstream proper binary channel API to GatewayClient.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rawWs = (client as unknown as { ws: WebSocket | null }).ws;
+
+  // Attach binary listener after connect resolves so we have a socket reference.
+  void client.connect().then((hello) => {
+    const wasReconnect = conn.backoffMs > 800;
+    conn.backoffMs = 800;
+    conn.connected = true;
     conn.connecting = false;
-    conn.particleHue = 'red';
+    conn.particleHue = 'blue';
+    conn.connectedAt = Date.now();
+    conn.connectError = null;
 
-    ws = null;
-  }
+    if (wasReconnect) {
+      const activeHost = getActiveHost();
+      toastSuccess('Reconnected', activeHost?.name ?? activeHost?.url);
+    }
+
+    gw.hello = hello as HelloOk;
+    gw.presence = (hello as HelloOk).snapshot?.presence ?? [];
+
+    if (capturedHostId) {
+      const h = hostsState.hosts.find((x) => x.id === capturedHostId);
+      if (h) {
+        h.lastConnectedAt = conn.connectedAt;
+        updateHost(capturedHostId, {
+          name: h.name,
+          url: h.url,
+          token: h.token,
+          lastConnectedAt: conn.connectedAt,
+        });
+        saveLastActiveHost(capturedHostId);
+      }
+    }
+
+    // Wire binary message handler onto the underlying socket.
+    // TODO(phase-8): upstream proper binary channel API to GatewayClient.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sock = (client as unknown as { ws: unknown }).ws as { binaryType?: string; addEventListener?: (ev: string, fn: (e: MessageEvent) => void) => void } | null;
+    if (sock && typeof sock.addEventListener === 'function') {
+      sock.binaryType = 'arraybuffer';
+      sock.addEventListener('message', (ev: MessageEvent) => {
+        if (ev.data instanceof ArrayBuffer) {
+          notifyBinaryListeners(new Uint8Array(ev.data));
+        }
+      });
+    }
+
+    onHelloOk(hello as HelloOk);
+    resolveServerId();
+  }).catch((err) => {
+    console.error('[hub] connect failed:', err);
+    conn.connectError = String((err as Error)?.message ?? err);
+    toastError('Connection failed', conn.connectError, { id: 'gateway-connect-failed' });
+  });
+
+  void rawWs; // suppress unused warning
 }
 
 export function wsDisconnect() {
@@ -176,16 +279,11 @@ export function wsDisconnect() {
 
   conn.particleHue = 'red';
 
-  if (reconnectTimer) {
-    clearTimeout(reconnectTimer);
-    reconnectTimer = null;
-  }
-  if (ws) {
-    ws.close();
-    ws = null;
+  if (client) {
+    client.close();
+    client = null;
   }
 
-  flushPending(new Error('disconnected'));
   stopPolling();
   stopSqliteFlush();
 
@@ -221,27 +319,8 @@ export function wsDisconnect() {
 }
 
 export function sendRequest(method: string, params?: unknown, timeoutMs = 15000): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-      return reject(new Error('not connected'));
-    }
-    const id = uuid();
-    const timer = setTimeout(() => {
-      pending.delete(id);
-      reject(new Error(`request '${method}' timed out after ${timeoutMs}ms`));
-    }, timeoutMs);
-    pending.set(id, {
-      resolve: (v) => {
-        clearTimeout(timer);
-        resolve(v);
-      },
-      reject: (e) => {
-        clearTimeout(timer);
-        reject(e);
-      },
-    });
-    ws.send(JSON.stringify({ type: 'req', id, method, params }));
-  });
+  if (!client) return Promise.reject(new Error('not connected'));
+  return client.request<unknown>(method, params, { timeoutMs });
 }
 
 /**
@@ -262,120 +341,6 @@ export async function requestWhatsAppPair(channelId: string): Promise<void> {
 }
 
 // ─── Internal ─────────────────────────────────────────────────────────────────
-
-function scheduleReconnect() {
-  if (conn.closed) return;
-  const delay = conn.backoffMs;
-  conn.backoffMs = Math.min(conn.backoffMs * 1.7, 15000);
-
-  reconnectTimer = setTimeout(() => {
-    reconnectTimer = null;
-    wsConnect();
-  }, delay);
-}
-
-function flushPending(err: Error) {
-  for (const p of pending.values()) p.reject(err);
-  pending.clear();
-}
-
-async function sendConnect() {
-  if (connectSent) return;
-  connectSent = true;
-
-  const activeHost = getActiveHost();
-  const token = activeHost ? activeHost.token.trim() : '';
-  const capturedHostId = hostsState.activeHostId;
-  const role = 'operator';
-  const scopes = [
-    'operator.admin',
-    'operator.read',
-    'operator.write',
-    'operator.approvals',
-    'operator.pairing',
-  ];
-
-  // Fetch device identity + signature from server
-  let device:
-    | { id: string; publicKey: string; signature: string; signedAt: number; nonce?: string }
-    | undefined;
-  try {
-    const signRes = await fetch('/api/device-identity/sign', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        nonce: connectNonce,
-        token: token || undefined,
-        role,
-        scopes,
-        clientId: 'minion-control-ui',
-        clientMode: 'ui',
-      }),
-    });
-    if (signRes.ok) {
-      const data = await signRes.json();
-      device = data.device;
-    } else {
-      console.warn('[hub] device-identity sign failed:', signRes.status);
-    }
-  } catch (e) {
-    console.warn('[hub] device-identity sign error:', e);
-  }
-
-  sendRequest('connect', {
-    minProtocol: 3,
-    maxProtocol: 3,
-    client: { id: 'minion-control-ui', version: '1.0', platform: 'web', mode: 'ui' },
-    role,
-    scopes,
-    caps: [],
-    auth: token ? { token } : undefined,
-    device,
-    userAgent: navigator.userAgent,
-    locale: navigator.language,
-  })
-    .then((hello) => {
-      const wasReconnect = conn.backoffMs > 800;
-      conn.backoffMs = 800;
-      conn.connected = true;
-      conn.connecting = false;
-      conn.particleHue = 'blue';
-      conn.connectedAt = Date.now();
-      conn.connectError = null;
-
-      if (wasReconnect) {
-        const host = getActiveHost();
-        toastSuccess('Reconnected', host?.name ?? host?.url);
-      }
-
-      gw.hello = hello as HelloOk;
-      gw.presence = (hello as HelloOk).snapshot?.presence ?? [];
-
-      if (capturedHostId) {
-        const h = hostsState.hosts.find((x) => x.id === capturedHostId);
-        if (h) {
-          h.lastConnectedAt = conn.connectedAt;
-          updateHost(capturedHostId, {
-            name: h.name,
-            url: h.url,
-            token: h.token,
-            lastConnectedAt: conn.connectedAt,
-          });
-          saveLastActiveHost(capturedHostId);
-        }
-      }
-      onHelloOk(hello as HelloOk);
-
-      // Resolve DB server ID from active host URL
-      resolveServerId();
-    })
-    .catch((err) => {
-      console.error('[hub] connect failed:', err);
-      conn.connectError = String(err?.message ?? err);
-      toastError('Connection failed', conn.connectError, { id: 'gateway-connect-failed' });
-      ws?.close(4008, 'connect failed');
-    });
-}
 
 async function resolveServerId() {
   try {
@@ -410,45 +375,6 @@ async function fetchActivityBinsFromDb(serverId: string): Promise<void> {
     if (Array.isArray(bins)) mergeActivityBinsFromDb(bins);
   } catch {
     /* non-critical */
-  }
-}
-
-function handleMessage(raw: string) {
-  let frame: Record<string, unknown>;
-  try {
-    frame = JSON.parse(raw);
-  } catch {
-    return;
-  }
-
-  if (frame.type === 'event') {
-    if (frame.event === 'connect.challenge') {
-      const payload = frame.payload as { nonce?: unknown } | undefined;
-      connectNonce = payload && typeof payload.nonce === 'string' ? payload.nonce : null;
-      sendConnect();
-      return;
-    }
-    const seq = typeof frame.seq === 'number' ? frame.seq : null;
-    if (seq !== null) {
-      if (gw.lastSeq !== null && seq > gw.lastSeq + 1) {
-        console.warn('[hub] event gap: expected', gw.lastSeq + 1, 'got', seq);
-      }
-      gw.lastSeq = seq;
-    }
-    handleEvent(frame);
-    return;
-  }
-
-  if (frame.type === 'res') {
-    const p = pending.get(frame.id as string);
-    if (!p) return;
-    pending.delete(frame.id as string);
-    if (frame.ok) {
-      p.resolve(frame.payload);
-    } else {
-      const err = frame.error as { message?: string } | undefined;
-      p.reject(new Error(err?.message ?? 'request failed'));
-    }
   }
 }
 
@@ -569,7 +495,6 @@ function onAgentEvent(payload: Record<string, unknown>) {
   markSparkBinDirty(agentId, binTs, act.sparkBins[binIdx]);
 
   if (act._workingTimer) clearTimeout(act._workingTimer);
-  const aid = agentId;
   act._workingTimer = setTimeout(() => {
     act.working = false;
   }, 5000);
@@ -902,8 +827,12 @@ function notifyBinaryListeners(data: Uint8Array) {
 
 /** Send raw binary data through the WebSocket. */
 export function sendBinary(data: Uint8Array): void {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(data);
+  if (!client) return;
+  // TODO(phase-8): upstream proper binary channel API to GatewayClient.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sock = (client as unknown as { ws: { readyState: number; send: (d: Uint8Array) => void } | null }).ws;
+  if (!sock || sock.readyState !== 1 /* OPEN */) return;
+  sock.send(data);
 }
 
 /** Register a handler for incoming binary WebSocket messages. Returns unsubscribe function. */
@@ -916,5 +845,8 @@ export function onBinaryMessage(handler: BinaryMessageHandler): () => void {
 
 /** Get whether the WebSocket is currently connected and ready. */
 export function isWsReady(): boolean {
-  return ws !== null && ws.readyState === WebSocket.OPEN;
+  if (!client) return false;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sock = (client as unknown as { ws: { readyState: number } | null }).ws;
+  return sock !== null && sock.readyState === 1 /* OPEN */;
 }

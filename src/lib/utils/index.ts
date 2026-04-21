@@ -2,7 +2,7 @@ export * from './agent-settings-schema';
 export * from './avatar';
 export * from './config-schema';
 export * from './format';
-export * from './session-key';
+// session-key and uuid migrated to @minion-stack/shared (Phase 7 WS-03)
+export { parseAgentSessionKey, uuid } from '@minion-stack/shared';
 export * from './text';
 export * from './tool-calls';
-export * from './uuid';

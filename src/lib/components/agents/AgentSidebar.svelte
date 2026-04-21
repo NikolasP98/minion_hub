@@ -24,7 +24,7 @@
         toggleUngroupedCollapsed,
     } from "$lib/state/features/agent-groups.svelte";
     import { builderState, loadBuiltAgents } from "$lib/state/builder/builder.svelte";
-    import type { Agent } from "$lib/types/gateway";
+    import type { Agent } from "@minion-stack/shared";
     import { diceBearAvatarUrl } from "$lib/utils/avatar";
     import { goto } from "$app/navigation";
     import { onMount } from "svelte";
