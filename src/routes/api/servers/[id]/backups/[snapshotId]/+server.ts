@@ -3,7 +3,7 @@ import { json } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
 import { requireAdmin } from '$server/auth/authorize';
 import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
-import { serverBackups } from '$server/db/schema';
+import { serverBackups } from '@minion-stack/db/schema';
 import {
   getBackupConfig,
   deleteRemoteSnapshot,

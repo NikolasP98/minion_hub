@@ -1,7 +1,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { eq, and, desc, gte, lte } from 'drizzle-orm';
-import { gatewayHeartbeats } from '$server/db/schema';
+import { gatewayHeartbeats } from '@minion-stack/db/schema';
 
 export const GET: RequestHandler = async ({ locals, url }) => {
   if (!locals.tenantCtx) throw error(401);

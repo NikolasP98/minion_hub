@@ -1,5 +1,5 @@
 import { eq, and, asc } from 'drizzle-orm';
-import { tasks } from '$server/db/schema';
+import { tasks } from '@minion-stack/db/schema';
 import { newId, nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
 

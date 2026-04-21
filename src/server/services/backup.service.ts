@@ -1,5 +1,5 @@
 import { eq, and, desc } from 'drizzle-orm';
-import { backupConfigs, serverBackups } from '$server/db/schema';
+import { backupConfigs, serverBackups } from '@minion-stack/db/schema';
 import { newId, nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
 import type { ProvisionConfig } from './provision.service';

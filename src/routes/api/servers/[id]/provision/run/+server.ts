@@ -2,7 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
 import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
-import { serverProvisionConfigs } from '$server/db/schema';
+import { serverProvisionConfigs } from '@minion-stack/db/schema';
 import { requireAdmin } from '$server/auth/authorize';
 import {
   getProvisionConfig,

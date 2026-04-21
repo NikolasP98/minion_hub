@@ -1,6 +1,6 @@
 import { eq, and, inArray, lt, sql } from 'drizzle-orm';
-import { personalAgents } from '$server/db/schema/personal-agents';
-import { user } from '$server/db/schema/auth';
+import { personalAgents } from '@minion-stack/db/schema';
+import { user } from '@minion-stack/db/schema';
 import { newId, nowMs } from '$server/db/utils';
 import { assignAgentToUser } from './user-agents.service';
 import type { TenantContext } from './base';

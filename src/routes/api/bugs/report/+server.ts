@@ -5,7 +5,7 @@ import { createGitHubIssue, isGitHubConfigured } from '$server/services/github-i
 import { uploadToB2, getSignedDownloadUrl } from '$server/storage/b2';
 import { newId } from '$server/db/utils';
 import { getTenantCtx } from '$server/auth/tenant-ctx';
-import { servers } from '$server/db/schema';
+import { servers } from '@minion-stack/db/schema';
 import { eq } from 'drizzle-orm';
 
 function isB2Configured(): boolean {

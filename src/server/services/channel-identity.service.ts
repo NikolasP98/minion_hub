@@ -1,5 +1,5 @@
 import { eq, and } from 'drizzle-orm';
-import { channelIdentities, user } from '$server/db/schema';
+import { channelIdentities, user } from '@minion-stack/db/schema';
 import { newId, nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
 

@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { eq } from 'drizzle-orm';
-import { deviceIdentities } from '$server/db/schema';
+import { deviceIdentities } from '@minion-stack/db/schema';
 import { newId, nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
 

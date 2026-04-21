@@ -1,7 +1,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { eq, and, asc } from 'drizzle-orm';
-import { builtAgents, builtAgentSkills } from '$server/db/schema';
+import { builtAgents, builtAgentSkills } from '@minion-stack/db/schema';
 import { newId, nowMs } from '$server/db/utils';
 import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
 import { requireAuth } from '$server/auth/authorize';

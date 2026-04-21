@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { user } from '$server/db/schema';
+import { user } from '@minion-stack/db/schema';
 import type { TenantContext } from './base';
 import { getAuth } from '$lib/auth/auth';
 

@@ -9,7 +9,7 @@ import {
   builtAgentSkills,
   builtTools,
   agentBuiltSkills,
-} from '$server/db/schema';
+} from '@minion-stack/db/schema';
 import { newId, nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
 import { validateSkill } from '$lib/utils/skill-validation';

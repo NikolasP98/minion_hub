@@ -1,5 +1,5 @@
 import { eq, and, desc, gte, lte, sql } from 'drizzle-orm';
-import { unifiedEvents } from '$server/db/schema';
+import { unifiedEvents } from '@minion-stack/db/schema';
 import { nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
 

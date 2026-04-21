@@ -1,5 +1,5 @@
 import { eq, and, asc } from 'drizzle-orm';
-import { chatMessages } from '$server/db/schema';
+import { chatMessages } from '@minion-stack/db/schema';
 import { nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
 

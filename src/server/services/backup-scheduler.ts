@@ -1,5 +1,5 @@
 import { getDb } from '$server/db/client';
-import { backupConfigs, serverProvisionConfigs } from '$server/db/schema';
+import { backupConfigs, serverProvisionConfigs } from '@minion-stack/db/schema';
 import { eq } from 'drizzle-orm';
 import {
   getBackupConfig,

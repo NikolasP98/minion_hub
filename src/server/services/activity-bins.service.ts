@@ -1,5 +1,5 @@
 import { eq, and, gte, lt, sql } from 'drizzle-orm';
-import { activityBins } from '$server/db/schema';
+import { activityBins } from '@minion-stack/db/schema';
 import type { TenantContext } from './base';
 
 export interface ActivityBinItem {

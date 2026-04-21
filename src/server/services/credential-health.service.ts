@@ -1,5 +1,5 @@
 import { eq, and, desc, gte, lte } from 'drizzle-orm';
-import { credentialHealthSnapshots } from '$server/db/schema';
+import { credentialHealthSnapshots } from '@minion-stack/db/schema';
 import { nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
 
