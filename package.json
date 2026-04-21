@@ -8,6 +8,8 @@
     "@dimforge/rapier2d-compat": "^0.19.3",
     "@inlang/paraglide-sveltekit": "^0.16.1",
     "@libsql/client": "^0.17.0",
+    "@minion-stack/auth": "^0.2.0",
+    "@minion-stack/db": "^0.2.0",
     "@node-rs/argon2": "^2.0.2",
     "@paralleldrive/cuid2": "^3.3.0",
     "@tailwindcss/vite": "^4.2.0",
