@@ -6,15 +6,18 @@ const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 // Model routing: which provider + API method to use
-const MODEL_CONFIG: Record<string, { provider: 'gemini' | 'openrouter'; method?: 'generateContent' | 'predict' }> = {
-  'gemini-2.5-flash-image':          { provider: 'gemini', method: 'generateContent' },
-  'gemini-3.1-flash-image-preview':  { provider: 'gemini', method: 'generateContent' },
-  'gemini-3-pro-image-preview':      { provider: 'gemini', method: 'generateContent' },
-  'imagen-4.0-fast-generate-001':    { provider: 'gemini', method: 'predict' },
-  'imagen-4.0-generate-001':         { provider: 'gemini', method: 'predict' },
-  'imagen-4.0-ultra-generate-001':   { provider: 'gemini', method: 'predict' },
-  'openai/gpt-5-image-mini':         { provider: 'openrouter' },
-  'openai/gpt-5-image':              { provider: 'openrouter' },
+const MODEL_CONFIG: Record<
+  string,
+  { provider: 'gemini' | 'openrouter'; method?: 'generateContent' | 'predict' }
+> = {
+  'gemini-2.5-flash-image': { provider: 'gemini', method: 'generateContent' },
+  'gemini-3.1-flash-image-preview': { provider: 'gemini', method: 'generateContent' },
+  'gemini-3-pro-image-preview': { provider: 'gemini', method: 'generateContent' },
+  'imagen-4.0-fast-generate-001': { provider: 'gemini', method: 'predict' },
+  'imagen-4.0-generate-001': { provider: 'gemini', method: 'predict' },
+  'imagen-4.0-ultra-generate-001': { provider: 'gemini', method: 'predict' },
+  'openai/gpt-5-image-mini': { provider: 'openrouter' },
+  'openai/gpt-5-image': { provider: 'openrouter' },
 };
 const DEFAULT_MODEL = 'openai/gpt-5-image-mini';
 
@@ -72,7 +75,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${orKey}`,
+          Authorization: `Bearer ${orKey}`,
           'HTTP-Referer': 'https://minionhub.admin-console.dev',
           'X-Title': 'Minion Hub Image Studio',
         },
@@ -92,7 +95,9 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
       const msg = data?.choices?.[0]?.message;
 
       // GPT-5 Image returns images in message.images[] as data URIs
-      const images = msg?.images as Array<{ type: string; image_url?: { url: string } }> | undefined;
+      const images = msg?.images as
+        | Array<{ type: string; image_url?: { url: string } }>
+        | undefined;
       if (images?.length) {
         for (const img of images) {
           if (img.image_url?.url?.startsWith('data:')) {
@@ -127,7 +132,10 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
         const errBody = await res.text().catch(() => '');
         console.error('[studio/generate] Imagen API error:', res.status, errBody);
         const isQuota = errBody.includes('quota') || errBody.includes('billing');
-        throw error(502, isQuota ? 'Imagen requires a paid Google AI plan' : 'Image generation service error');
+        throw error(
+          502,
+          isQuota ? 'Imagen requires a paid Google AI plan' : 'Image generation service error',
+        );
       }
 
       const data = await res.json();
@@ -157,7 +165,12 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
         const errBody = await res.text().catch(() => '');
         console.error('[studio/generate] Gemini API error:', res.status, errBody);
         const isQuota = errBody.includes('quota') || errBody.includes('billing');
-        throw error(502, isQuota ? 'Gemini image generation requires a paid Google AI plan' : 'Image generation service error');
+        throw error(
+          502,
+          isQuota
+            ? 'Gemini image generation requires a paid Google AI plan'
+            : 'Image generation service error',
+        );
       }
 
       const data = await res.json();

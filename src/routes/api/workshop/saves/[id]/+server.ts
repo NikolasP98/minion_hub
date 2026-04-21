@@ -6,10 +6,7 @@ import { eq } from 'drizzle-orm';
 
 export const GET: RequestHandler = async ({ params }) => {
   const db = getDb();
-  const [save] = await db
-    .select()
-    .from(workshopSaves)
-    .where(eq(workshopSaves.id, params.id!));
+  const [save] = await db.select().from(workshopSaves).where(eq(workshopSaves.id, params.id!));
 
   if (!save) throw error(404, 'Save not found');
 
@@ -25,10 +22,7 @@ export const PUT: RequestHandler = async ({ params, request }) => {
   const db = getDb();
 
   // Verify save exists
-  const [existing] = await db
-    .select()
-    .from(workshopSaves)
-    .where(eq(workshopSaves.id, params.id!));
+  const [existing] = await db.select().from(workshopSaves).where(eq(workshopSaves.id, params.id!));
 
   if (!existing) throw error(404, 'Save not found');
 
@@ -56,10 +50,7 @@ export const PUT: RequestHandler = async ({ params, request }) => {
     updates.thumbnail = typeof thumbnail === 'string' ? thumbnail : null;
   }
 
-  await db
-    .update(workshopSaves)
-    .set(updates)
-    .where(eq(workshopSaves.id, params.id!));
+  await db.update(workshopSaves).set(updates).where(eq(workshopSaves.id, params.id!));
 
   return json({ ok: true });
 };
@@ -67,16 +58,11 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 export const DELETE: RequestHandler = async ({ params }) => {
   const db = getDb();
 
-  const [existing] = await db
-    .select()
-    .from(workshopSaves)
-    .where(eq(workshopSaves.id, params.id!));
+  const [existing] = await db.select().from(workshopSaves).where(eq(workshopSaves.id, params.id!));
 
   if (!existing) throw error(404, 'Save not found');
 
-  await db
-    .delete(workshopSaves)
-    .where(eq(workshopSaves.id, params.id!));
+  await db.delete(workshopSaves).where(eq(workshopSaves.id, params.id!));
 
   return json({ ok: true });
 };

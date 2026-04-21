@@ -36,7 +36,9 @@ function flushSparkSave() {
       if (bins) data[agentId] = { bins: [...bins], savedAt: Date.now() };
     }
     localStorage.setItem(SPARK_STORAGE_KEY, JSON.stringify(data));
-  } catch { /* ignore quota errors */ }
+  } catch {
+    /* ignore quota errors */
+  }
   sparkDirtyAgents.clear();
 }
 
@@ -118,11 +120,15 @@ async function flushToSqlite(): Promise<void> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ bins }),
     });
-  } catch { /* non-critical */ }
+  } catch {
+    /* non-critical */
+  }
 }
 
 /** Merge activity bins fetched from DB into ring buffer slots that are still 0. */
-export function mergeActivityBinsFromDb(bins: { agentId: string; binTs: number; count: number }[]): void {
+export function mergeActivityBinsFromDb(
+  bins: { agentId: string; binTs: number; count: number }[],
+): void {
   for (const { agentId, binTs, count } of bins) {
     const act = agentActivity[agentId];
     if (!act) continue;

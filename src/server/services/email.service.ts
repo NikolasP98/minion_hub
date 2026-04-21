@@ -4,34 +4,34 @@ import { Resend } from 'resend';
 let _resend: Resend | null = null;
 
 function getResend(): Resend | null {
-	const key = env.RESEND_API_KEY;
-	if (!key) return null;
-	if (!_resend) _resend = new Resend(key);
-	return _resend;
+  const key = env.RESEND_API_KEY;
+  if (!key) return null;
+  if (!_resend) _resend = new Resend(key);
+  return _resend;
 }
 
 interface InvitationEmailParams {
-	to: string;
-	inviterName: string;
-	organizationName: string;
-	role: string;
-	inviteUrl: string;
+  to: string;
+  inviterName: string;
+  organizationName: string;
+  role: string;
+  inviteUrl: string;
 }
 
 export async function sendInvitationEmail(params: InvitationEmailParams): Promise<void> {
-	const resend = getResend();
-	if (!resend) {
-		console.warn(
-			`[email] RESEND_API_KEY not set — skipping invitation email to ${params.to}. ` +
-			`Share this link manually: ${params.inviteUrl}`,
-		);
-		return;
-	}
+  const resend = getResend();
+  if (!resend) {
+    console.warn(
+      `[email] RESEND_API_KEY not set — skipping invitation email to ${params.to}. ` +
+        `Share this link manually: ${params.inviteUrl}`,
+    );
+    return;
+  }
 
-	const from = env.RESEND_FROM ?? 'Minion Hub <noreply@minionhub.admin-console.dev>';
-	const { to, inviterName, organizationName, role, inviteUrl } = params;
+  const from = env.RESEND_FROM ?? 'Minion Hub <noreply@minionhub.admin-console.dev>';
+  const { to, inviterName, organizationName, role, inviteUrl } = params;
 
-	const html = `
+  const html = `
 <!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -66,17 +66,17 @@ export async function sendInvitationEmail(params: InvitationEmailParams): Promis
 </body>
 </html>`.trim();
 
-	try {
-		await resend.emails.send({
-			from,
-			to,
-			subject: `${inviterName} invited you to join ${organizationName} on Minion Hub`,
-			html,
-			headers: {
-				'List-Unsubscribe': `<mailto:${from.match(/<(.+)>/)?.[1] ?? 'noreply@minionhub.admin-console.dev'}?subject=unsubscribe>`,
-			},
-		});
-	} catch (err) {
-		console.error('[email] Failed to send invitation email:', err);
-	}
+  try {
+    await resend.emails.send({
+      from,
+      to,
+      subject: `${inviterName} invited you to join ${organizationName} on Minion Hub`,
+      html,
+      headers: {
+        'List-Unsubscribe': `<mailto:${from.match(/<(.+)>/)?.[1] ?? 'noreply@minionhub.admin-console.dev'}?subject=unsubscribe>`,
+      },
+    });
+  } catch (err) {
+    console.error('[email] Failed to send invitation email:', err);
+  }
 }

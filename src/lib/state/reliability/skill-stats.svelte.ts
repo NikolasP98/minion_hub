@@ -55,7 +55,14 @@ export function createSkillStatsState() {
     for (const row of bySkill) {
       let agg = map.get(row.skillName);
       if (!agg) {
-        agg = { skillName: row.skillName, total: 0, byStatus: {}, avgDurationMs: null, minDurationMs: null, maxDurationMs: null };
+        agg = {
+          skillName: row.skillName,
+          total: 0,
+          byStatus: {},
+          avgDurationMs: null,
+          minDurationMs: null,
+          maxDurationMs: null,
+        };
         map.set(row.skillName, agg);
       }
       agg.total += row.count;
@@ -68,10 +75,16 @@ export function createSkillStatsState() {
       }
       // Track overall min/max across status rows
       if (row.minDurationMs != null) {
-        agg.minDurationMs = agg.minDurationMs != null ? Math.min(agg.minDurationMs, row.minDurationMs) : row.minDurationMs;
+        agg.minDurationMs =
+          agg.minDurationMs != null
+            ? Math.min(agg.minDurationMs, row.minDurationMs)
+            : row.minDurationMs;
       }
       if (row.maxDurationMs != null) {
-        agg.maxDurationMs = agg.maxDurationMs != null ? Math.max(agg.maxDurationMs, row.maxDurationMs) : row.maxDurationMs;
+        agg.maxDurationMs =
+          agg.maxDurationMs != null
+            ? Math.max(agg.maxDurationMs, row.maxDurationMs)
+            : row.maxDurationMs;
       }
     }
 

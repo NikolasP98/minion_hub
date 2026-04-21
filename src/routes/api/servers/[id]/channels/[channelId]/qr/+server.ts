@@ -8,7 +8,8 @@ export const POST: RequestHandler = async ({ locals, params }) => {
   try {
     const channel = await getChannel(locals.tenantCtx, params.channelId!, params.id!);
     if (!channel) throw error(404, 'Channel not found');
-    if (channel.type !== 'whatsapp') throw error(400, 'QR pairing is only available for WhatsApp channels');
+    if (channel.type !== 'whatsapp')
+      throw error(400, 'QR pairing is only available for WhatsApp channels');
 
     await updateChannel(locals.tenantCtx, params.channelId!, { status: 'pairing' }, params.id!);
 
@@ -16,6 +17,9 @@ export const POST: RequestHandler = async ({ locals, params }) => {
   } catch (e) {
     if (e && typeof e === 'object' && 'status' in e) throw e;
     console.error(`[POST /api/servers/${params.id}/channels/${params.channelId}/qr]`, e);
-    return json({ ok: false, error: e instanceof Error ? e.message : 'Unknown error' }, { status: 500 });
+    return json(
+      { ok: false, error: e instanceof Error ? e.message : 'Unknown error' },
+      { status: 500 },
+    );
   }
 };

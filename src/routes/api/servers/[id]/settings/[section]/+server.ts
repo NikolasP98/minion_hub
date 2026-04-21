@@ -22,6 +22,9 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
     return json({ ok: true });
   } catch (e) {
     console.error(`[PUT /api/servers/${params.id}/settings/${params.section}]`, e);
-    return json({ ok: false, error: e instanceof Error ? e.message : 'Unknown error' }, { status: 500 });
+    return json(
+      { ok: false, error: e instanceof Error ? e.message : 'Unknown error' },
+      { status: 500 },
+    );
   }
 };

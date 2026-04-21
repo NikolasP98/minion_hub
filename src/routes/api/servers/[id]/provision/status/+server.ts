@@ -14,10 +14,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
   try {
     const config = await getProvisionConfig(ctx, params.id!);
     if (!config?.sshHost) {
-      return json(
-        { ok: false, error: 'No SSH host configured for this server' },
-        { status: 400 },
-      );
+      return json({ ok: false, error: 'No SSH host configured for this server' }, { status: 400 });
     }
 
     const phases = await checkPhaseStatus({

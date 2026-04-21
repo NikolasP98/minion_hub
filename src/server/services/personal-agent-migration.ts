@@ -8,9 +8,9 @@
  */
 import type { PersonalAgentRow } from './personal-agent.service';
 import {
-	provisionPersonalAgent,
-	updateProvisioningStatus,
-	updatePersonalAgent,
+  provisionPersonalAgent,
+  updateProvisioningStatus,
+  updatePersonalAgent,
 } from './personal-agent.service';
 import type { TenantContext } from './base';
 
@@ -25,33 +25,33 @@ import type { TenantContext } from './base';
  * The displayName defaults to "usr:{email}" from provisionPersonalAgent.
  */
 export async function createMigratedPersonalAgent(
-	ctx: TenantContext,
-	params: {
-		userId: string;
-		email: string;
-		serverId: string;
-		originalName: string;
-		newAgentId: string;
-	},
+  ctx: TenantContext,
+  params: {
+    userId: string;
+    email: string;
+    serverId: string;
+    originalName: string;
+    newAgentId: string;
+  },
 ): Promise<PersonalAgentRow> {
-	// 1. Create the personal_agents + user_agents rows (starts as 'pending')
-	const row = await provisionPersonalAgent(ctx, {
-		userId: params.userId,
-		email: params.email,
-		serverId: params.serverId,
-	});
+  // 1. Create the personal_agents + user_agents rows (starts as 'pending')
+  const row = await provisionPersonalAgent(ctx, {
+    userId: params.userId,
+    email: params.email,
+    serverId: params.serverId,
+  });
 
-	// 2. Immediately transition to 'active' since the workspace already exists
-	await updateProvisioningStatus(ctx, params.userId, 'active');
+  // 2. Immediately transition to 'active' since the workspace already exists
+  await updateProvisioningStatus(ctx, params.userId, 'active');
 
-	// 3. Preserve the original agent name as conversationName
-	await updatePersonalAgent(ctx, params.userId, {
-		conversationName: params.originalName,
-	});
+  // 3. Preserve the original agent name as conversationName
+  await updatePersonalAgent(ctx, params.userId, {
+    conversationName: params.originalName,
+  });
 
-	return {
-		...row,
-		provisioningStatus: 'active',
-		conversationName: params.originalName,
-	};
+  return {
+    ...row,
+    provisioningStatus: 'active',
+    conversationName: params.originalName,
+  };
 }

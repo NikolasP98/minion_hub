@@ -73,10 +73,7 @@ async function uploadScreenshotToRepo(
     }),
   })) as { content?: { download_url?: string } };
 
-  return (
-    result.content?.download_url ??
-    `https://raw.githubusercontent.com/${repo}/main/${path}`
-  );
+  return result.content?.download_url ?? `https://raw.githubusercontent.com/${repo}/main/${path}`;
 }
 
 export async function createGitHubIssue(input: {
@@ -98,11 +95,7 @@ export async function createGitHubIssue(input: {
   let screenshotUrl = input.screenshotUrl;
   if (input.screenshotBase64 && input.bugId) {
     try {
-      screenshotUrl = await uploadScreenshotToRepo(
-        repo,
-        input.screenshotBase64,
-        input.bugId,
-      );
+      screenshotUrl = await uploadScreenshotToRepo(repo, input.screenshotBase64, input.bugId);
     } catch (err) {
       console.error('[GitHub] Screenshot upload failed:', err);
     }

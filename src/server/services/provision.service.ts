@@ -207,10 +207,7 @@ export async function getProvisionConfig(
   };
 }
 
-export async function deleteProvisionConfig(
-  ctx: TenantContext,
-  serverId: string,
-): Promise<void> {
+export async function deleteProvisionConfig(ctx: TenantContext, serverId: string): Promise<void> {
   await ctx.db
     .delete(serverProvisionConfigs)
     .where(
@@ -239,18 +236,26 @@ export async function sshExec(
 ): Promise<{ ok: boolean; stdout: string }> {
   return new Promise((resolve) => {
     const proc = spawn('ssh', [
-      '-o', 'StrictHostKeyChecking=no',
-      '-o', 'ConnectTimeout=5',
-      '-o', 'BatchMode=yes',
-      '-p', String(port),
+      '-o',
+      'StrictHostKeyChecking=no',
+      '-o',
+      'ConnectTimeout=5',
+      '-o',
+      'BatchMode=yes',
+      '-p',
+      String(port),
       `${user}@${host}`,
       command,
     ]);
 
     let stdout = '';
     let stderr = '';
-    proc.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
-    proc.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
+    proc.stdout.on('data', (d: Buffer) => {
+      stdout += d.toString();
+    });
+    proc.stderr.on('data', (d: Buffer) => {
+      stderr += d.toString();
+    });
     proc.on('close', (code) => {
       resolve({ ok: code === 0, stdout: stdout.trim() });
     });
@@ -264,7 +269,9 @@ export async function checkPhaseStatus(
   opts: SshCheckOptions,
 ): Promise<Record<string, PhaseStatus>> {
   const { sshHost, sshUser, sshPort, agentName, gatewayPort = 18789 } = opts;
-  const minionUser = agentName ? `minion-${agentName.toLowerCase().replace(/\s+/g, '-')}` : 'minion';
+  const minionUser = agentName
+    ? `minion-${agentName.toLowerCase().replace(/\s+/g, '-')}`
+    : 'minion';
   const results: Record<string, PhaseStatus> = {};
 
   // Phase 00: Preflight — user exists + node available
@@ -272,8 +279,12 @@ export async function checkPhaseStatus(
   results['00'] = preflight.ok ? 'complete' : 'pending';
 
   // Phase 20: User Creation — ~/.minion directory exists
-  const userCreation = await sshExec(sshHost, sshUser, sshPort,
-    `sudo -u ${minionUser} test -d /home/${minionUser}/.minion`);
+  const userCreation = await sshExec(
+    sshHost,
+    sshUser,
+    sshPort,
+    `sudo -u ${minionUser} test -d /home/${minionUser}/.minion`,
+  );
   results['20'] = userCreation.ok ? 'complete' : 'pending';
 
   // Phase 30: Environment — Node 22+
@@ -286,28 +297,48 @@ export async function checkPhaseStatus(
   }
 
   // Phase 40: Install — minion package installed
-  const install = await sshExec(sshHost, sshUser, sshPort,
-    `sudo -u ${minionUser} bash -lc "minion --version" 2>/dev/null || npm list -g @nikolasp98/minion 2>/dev/null`);
+  const install = await sshExec(
+    sshHost,
+    sshUser,
+    sshPort,
+    `sudo -u ${minionUser} bash -lc "minion --version" 2>/dev/null || npm list -g @nikolasp98/minion 2>/dev/null`,
+  );
   results['40'] = install.ok ? 'complete' : 'pending';
 
   // Phase 45: Alias — minion in PATH
-  const alias = await sshExec(sshHost, sshUser, sshPort,
-    `sudo -u ${minionUser} bash -lc "which minion"`);
+  const alias = await sshExec(
+    sshHost,
+    sshUser,
+    sshPort,
+    `sudo -u ${minionUser} bash -lc "which minion"`,
+  );
   results['45'] = alias.ok ? 'complete' : 'pending';
 
   // Phase 50: Config — minion.json exists
-  const config = await sshExec(sshHost, sshUser, sshPort,
-    `sudo -u ${minionUser} test -f /home/${minionUser}/.minion/minion.json`);
+  const config = await sshExec(
+    sshHost,
+    sshUser,
+    sshPort,
+    `sudo -u ${minionUser} test -f /home/${minionUser}/.minion/minion.json`,
+  );
   results['50'] = config.ok ? 'complete' : 'pending';
 
   // Phase 60: Service — systemd active
-  const service = await sshExec(sshHost, sshUser, sshPort,
-    `sudo -u ${minionUser} bash -c "XDG_RUNTIME_DIR=/run/user/$(id -u ${minionUser}) systemctl --user is-active minion-gateway"`);
+  const service = await sshExec(
+    sshHost,
+    sshUser,
+    sshPort,
+    `sudo -u ${minionUser} bash -c "XDG_RUNTIME_DIR=/run/user/$(id -u ${minionUser}) systemctl --user is-active minion-gateway"`,
+  );
   results['60'] = service.ok ? 'complete' : 'pending';
 
   // Phase 70: Verification — health endpoint
-  const verify = await sshExec(sshHost, sshUser, sshPort,
-    `curl -s --max-time 3 http://127.0.0.1:${gatewayPort}/health`);
+  const verify = await sshExec(
+    sshHost,
+    sshUser,
+    sshPort,
+    `curl -s --max-time 3 http://127.0.0.1:${gatewayPort}/health`,
+  );
   results['70'] = verify.ok && verify.stdout.length > 0 ? 'complete' : 'pending';
 
   return results;
@@ -337,8 +368,7 @@ export async function savePhaseStatuses(
 // ─── Run Setup ──────────────────────────────────────────────────────────
 
 function getSetupScriptPath(): string {
-  return process.env.MINION_SETUP_PATH
-    ?? path.resolve(process.cwd(), '../minion/setup/setup.sh');
+  return process.env.MINION_SETUP_PATH ?? path.resolve(process.cwd(), '../minion/setup/setup.sh');
 }
 
 export function runSetupPhase(
@@ -383,7 +413,7 @@ export function runSetupPhase(
       if (config.enableDiscord) args.push('--enable-discord');
       if (startFrom) args.push(`--start-from=${startFrom}`);
 
-      const env: Record<string, string> = { ...process.env as Record<string, string> };
+      const env: Record<string, string> = { ...(process.env as Record<string, string>) };
       if (config.apiKey) env.ANTHROPIC_API_KEY = config.apiKey;
 
       const proc = spawn('bash', args, { env });
@@ -398,13 +428,17 @@ export function runSetupPhase(
       proc.stdout.on('data', (data: Buffer) => {
         try {
           controller.enqueue(stripAnsi(data.toString()));
-        } catch { /* stream closed */ }
+        } catch {
+          /* stream closed */
+        }
       });
 
       proc.stderr.on('data', (data: Buffer) => {
         try {
           controller.enqueue(stripAnsi(data.toString()));
-        } catch { /* stream closed */ }
+        } catch {
+          /* stream closed */
+        }
       });
 
       proc.on('close', (code) => {
@@ -413,7 +447,9 @@ export function runSetupPhase(
         try {
           controller.enqueue(`\n[Process exited with code ${code}]\n`);
           controller.close();
-        } catch { /* stream closed */ }
+        } catch {
+          /* stream closed */
+        }
       });
 
       proc.on('error', (err) => {
@@ -422,7 +458,9 @@ export function runSetupPhase(
         try {
           controller.enqueue(`\nERROR: ${err.message}\n`);
           controller.close();
-        } catch { /* stream closed */ }
+        } catch {
+          /* stream closed */
+        }
       });
     },
     cancel() {

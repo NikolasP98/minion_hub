@@ -60,10 +60,7 @@ export async function upsertBackupConfig(
     if (input.retentionCount !== undefined) updates.retentionCount = input.retentionCount;
     if (input.enabled !== undefined) updates.enabled = input.enabled;
 
-    await ctx.db
-      .update(backupConfigs)
-      .set(updates)
-      .where(eq(backupConfigs.id, existing.id));
+    await ctx.db.update(backupConfigs).set(updates).where(eq(backupConfigs.id, existing.id));
     return existing.id;
   }
 
@@ -90,12 +87,7 @@ export async function listSnapshots(ctx: TenantContext, serverId: string): Promi
   return ctx.db
     .select()
     .from(serverBackups)
-    .where(
-      and(
-        eq(serverBackups.serverId, serverId),
-        eq(serverBackups.tenantId, ctx.tenantId),
-      ),
-    )
+    .where(and(eq(serverBackups.serverId, serverId), eq(serverBackups.tenantId, ctx.tenantId)))
     .orderBy(desc(serverBackups.timestamp));
 }
 
@@ -126,10 +118,7 @@ export async function updateSnapshotStatus(
 ): Promise<void> {
   const updates: Record<string, unknown> = { status };
   if (sizeBytes !== undefined) updates.sizeBytes = sizeBytes;
-  await ctx.db
-    .update(serverBackups)
-    .set(updates)
-    .where(eq(serverBackups.id, snapshotId));
+  await ctx.db.update(serverBackups).set(updates).where(eq(serverBackups.id, snapshotId));
 }
 
 export async function deleteSnapshotRecord(ctx: TenantContext, snapshotId: string): Promise<void> {
@@ -152,7 +141,12 @@ export async function testBackupConnection(
   backupPort: number,
   backupBasePath: string,
 ): Promise<{ ok: boolean; message: string }> {
-  const result = await sshExec(backupHost, backupUser, backupPort, `test -d "${backupBasePath}" && echo OK`);
+  const result = await sshExec(
+    backupHost,
+    backupUser,
+    backupPort,
+    `test -d "${backupBasePath}" && echo OK`,
+  );
   if (result.ok && result.stdout.includes('OK')) {
     return { ok: true, message: `Connected. Path ${backupBasePath} exists.` };
   }
@@ -201,10 +195,14 @@ export function runBackup(
 
   // SSH into gateway and run the rsync command
   const sshArgs = [
-    '-o', 'StrictHostKeyChecking=no',
-    '-o', 'ConnectTimeout=10',
-    '-o', 'BatchMode=yes',
-    '-p', String(provisionConfig.sshPort ?? 22),
+    '-o',
+    'StrictHostKeyChecking=no',
+    '-o',
+    'ConnectTimeout=10',
+    '-o',
+    'BatchMode=yes',
+    '-p',
+    String(provisionConfig.sshPort ?? 22),
     `${provisionConfig.sshUser ?? 'root'}@${provisionConfig.sshHost}`,
     rsyncCmd,
   ];
@@ -217,10 +215,18 @@ export function runBackup(
       signal.addEventListener('abort', onAbort, { once: true });
 
       proc.stdout.on('data', (data: Buffer) => {
-        try { controller.enqueue(data.toString()); } catch { /* closed */ }
+        try {
+          controller.enqueue(data.toString());
+        } catch {
+          /* closed */
+        }
       });
       proc.stderr.on('data', (data: Buffer) => {
-        try { controller.enqueue(data.toString()); } catch { /* closed */ }
+        try {
+          controller.enqueue(data.toString());
+        } catch {
+          /* closed */
+        }
       });
       proc.on('close', (code) => {
         activeBackups.delete(serverId);
@@ -228,7 +234,9 @@ export function runBackup(
         try {
           controller.enqueue(`\n[Process exited with code ${code}]\n`);
           controller.close();
-        } catch { /* closed */ }
+        } catch {
+          /* closed */
+        }
       });
       proc.on('error', (err) => {
         activeBackups.delete(serverId);
@@ -236,7 +244,9 @@ export function runBackup(
         try {
           controller.enqueue(`\nERROR: ${err.message}\n`);
           controller.close();
-        } catch { /* closed */ }
+        } catch {
+          /* closed */
+        }
       });
     },
     cancel() {
@@ -281,10 +291,14 @@ export function runRestore(
   const fullCmd = `${rsyncCmd} && echo '--- Restarting gateway ---' && ${restartCmd}`;
 
   const sshArgs = [
-    '-o', 'StrictHostKeyChecking=no',
-    '-o', 'ConnectTimeout=10',
-    '-o', 'BatchMode=yes',
-    '-p', String(provisionConfig.sshPort ?? 22),
+    '-o',
+    'StrictHostKeyChecking=no',
+    '-o',
+    'ConnectTimeout=10',
+    '-o',
+    'BatchMode=yes',
+    '-p',
+    String(provisionConfig.sshPort ?? 22),
     `${provisionConfig.sshUser ?? 'root'}@${provisionConfig.sshHost}`,
     fullCmd,
   ];
@@ -297,10 +311,18 @@ export function runRestore(
       signal.addEventListener('abort', onAbort, { once: true });
 
       proc.stdout.on('data', (data: Buffer) => {
-        try { controller.enqueue(data.toString()); } catch { /* closed */ }
+        try {
+          controller.enqueue(data.toString());
+        } catch {
+          /* closed */
+        }
       });
       proc.stderr.on('data', (data: Buffer) => {
-        try { controller.enqueue(data.toString()); } catch { /* closed */ }
+        try {
+          controller.enqueue(data.toString());
+        } catch {
+          /* closed */
+        }
       });
       proc.on('close', (code) => {
         activeBackups.delete(serverId);
@@ -308,7 +330,9 @@ export function runRestore(
         try {
           controller.enqueue(`\n[Process exited with code ${code}]\n`);
           controller.close();
-        } catch { /* closed */ }
+        } catch {
+          /* closed */
+        }
       });
       proc.on('error', (err) => {
         activeBackups.delete(serverId);
@@ -316,7 +340,9 @@ export function runRestore(
         try {
           controller.enqueue(`\nERROR: ${err.message}\n`);
           controller.close();
-        } catch { /* closed */ }
+        } catch {
+          /* closed */
+        }
       });
     },
     cancel() {

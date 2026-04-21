@@ -7,10 +7,7 @@ import { randomUUID } from 'crypto';
 
 export const GET: RequestHandler = async () => {
   const db = getDb();
-  const rows = await db
-    .select()
-    .from(workshopSaves)
-    .orderBy(desc(workshopSaves.updatedAt));
+  const rows = await db.select().from(workshopSaves).orderBy(desc(workshopSaves.updatedAt));
 
   const saves = rows.map((row) => {
     let agentCount = 0;
@@ -65,7 +62,10 @@ export const POST: RequestHandler = async ({ request }) => {
     });
   } catch (err) {
     console.error('[workshop saves POST] db insert failed:', err);
-    throw error(500, `Failed to save workspace: ${err instanceof Error ? err.message : String(err)}`);
+    throw error(
+      500,
+      `Failed to save workspace: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   return json({ id, ok: true });

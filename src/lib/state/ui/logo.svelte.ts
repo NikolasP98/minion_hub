@@ -91,9 +91,15 @@ let presetId = $state(initial.presetId);
 const preset = $derived(LOGO_PRESETS.find((p) => p.id === presetId) ?? LOGO_PRESETS[0]);
 
 export const logoState = {
-  get presetId() { return presetId; },
-  get preset() { return preset; },
-  get presets() { return LOGO_PRESETS; },
+  get presetId() {
+    return presetId;
+  },
+  get preset() {
+    return preset;
+  },
+  get presets() {
+    return LOGO_PRESETS;
+  },
 
   setPreset(id: string) {
     presetId = id;

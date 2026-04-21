@@ -24,7 +24,9 @@ export const serverProvisionConfigs = sqliteTable(
 
     // Agent config
     agentName: text('agent_name'),
-    sandboxMode: text('sandbox_mode', { enum: ['non-main', 'always', 'never'] }).default('non-main'),
+    sandboxMode: text('sandbox_mode', { enum: ['non-main', 'always', 'never'] }).default(
+      'non-main',
+    ),
     dmPolicy: text('dm_policy', { enum: ['pairing', 'solo', 'disabled'] }).default('pairing'),
 
     // Install config

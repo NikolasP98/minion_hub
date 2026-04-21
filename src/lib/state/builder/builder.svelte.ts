@@ -75,7 +75,11 @@ export async function loadBuiltTools() {
   }
 }
 
-export async function createSkill(input: { name: string; description?: string; emoji?: string }): Promise<string | null> {
+export async function createSkill(input: {
+  name: string;
+  description?: string;
+  emoji?: string;
+}): Promise<string | null> {
   try {
     const res = await fetch('/api/builder/skills', {
       method: 'POST',
@@ -92,7 +96,12 @@ export async function createSkill(input: { name: string; description?: string; e
   }
 }
 
-export async function createAgent(input: { name: string; emoji?: string; description?: string; model?: string }): Promise<string | null> {
+export async function createAgent(input: {
+  name: string;
+  emoji?: string;
+  description?: string;
+  model?: string;
+}): Promise<string | null> {
   try {
     const res = await fetch('/api/builder/agents', {
       method: 'POST',

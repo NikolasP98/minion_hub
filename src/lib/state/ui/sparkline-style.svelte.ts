@@ -22,7 +22,9 @@ function loadStyle(): SparklineStyle {
 let current = $state<SparklineStyle>(loadStyle());
 
 export const sparklineStyle = {
-  get current() { return current; },
+  get current() {
+    return current;
+  },
   set(s: SparklineStyle) {
     current = s;
     if (typeof localStorage !== 'undefined') {

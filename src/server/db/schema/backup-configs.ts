@@ -18,7 +18,5 @@ export const backupConfigs = sqliteTable(
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
-  (t) => [
-    index('idx_backup_configs_tenant').on(t.tenantId),
-  ],
+  (t) => [index('idx_backup_configs_tenant').on(t.tenantId)],
 );

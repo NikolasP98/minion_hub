@@ -5,17 +5,19 @@ import { env } from '$env/dynamic/private';
 import { getToolInfo } from '$lib/data/tool-manifest';
 
 const MODEL_PRICE_TABLE: Record<string, { inputPerMillion: number; outputPerMillion: number }> = {
-  'anthropic/claude-sonnet-4': { inputPerMillion: 3.00, outputPerMillion: 15.00 },
+  'anthropic/claude-sonnet-4': { inputPerMillion: 3.0, outputPerMillion: 15.0 },
   'anthropic/claude-haiku-3': { inputPerMillion: 0.25, outputPerMillion: 1.25 },
-  'openai/gpt-4o': { inputPerMillion: 2.50, outputPerMillion: 10.00 },
-  'openai/gpt-4o-mini': { inputPerMillion: 0.15, outputPerMillion: 0.60 },
+  'openai/gpt-4o': { inputPerMillion: 2.5, outputPerMillion: 10.0 },
+  'openai/gpt-4o-mini': { inputPerMillion: 0.15, outputPerMillion: 0.6 },
 };
 
 function estimateCost(model: string, promptTokens: number, completionTokens: number): number {
   const prices = MODEL_PRICE_TABLE[model];
   if (!prices) return 0;
-  return (promptTokens / 1_000_000) * prices.inputPerMillion +
-         (completionTokens / 1_000_000) * prices.outputPerMillion;
+  return (
+    (promptTokens / 1_000_000) * prices.inputPerMillion +
+    (completionTokens / 1_000_000) * prices.outputPerMillion
+  );
 }
 
 const SYSTEM_PROMPT = `You are a skill-building assistant for an AI agent platform called OpenClaw. Given a subprocess chapter's name and description within a larger skill, generate suggestions for ALL fields following best practices for skill development.
@@ -41,7 +43,11 @@ const CHAPTER_SUGGESTION_SCHEMA = {
     description: { type: 'string', description: 'Role of this chapter in the pipeline' },
     triggerConditions: { type: 'string', description: 'When this chapter activates' },
     guide: { type: 'string', description: 'Imperative bullet-point instructions (3-8 items)' },
-    suggestedToolIds: { type: 'array', items: { type: 'string' }, description: 'Tool IDs from available pool' },
+    suggestedToolIds: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'Tool IDs from available pool',
+    },
     context: { type: 'string', description: 'Input data expectations from upstream' },
     outputDef: { type: 'string', description: 'Concrete output data structure description' },
     successCriteria: { type: 'string', description: 'Completion criteria' },
@@ -57,11 +63,18 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 
   const apiKey = env.OPENROUTER_API_KEY;
   if (!apiKey) {
-    return json({ guide: '', suggestedToolIds: [], context: '', outputDef: '', error: 'OPENROUTER_API_KEY not configured' });
+    return json({
+      guide: '',
+      suggestedToolIds: [],
+      context: '',
+      outputDef: '',
+      error: 'OPENROUTER_API_KEY not configured',
+    });
   }
 
   const body = await request.json();
-  const { name, description, skillName, skillDescription, availableToolIds, model, targetField } = body;
+  const { name, description, skillName, skillDescription, availableToolIds, model, targetField } =
+    body;
   if (!name) throw error(400, 'Chapter name is required');
 
   const toolDescriptions = (availableToolIds ?? [])
@@ -86,7 +99,7 @@ Generate the guide (imperative instructions), suggested tool IDs from the availa
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
         'HTTP-Referer': 'https://minionhub.admin-console.dev',
         'X-Title': 'Minion Hub Builder',
       },
@@ -97,14 +110,16 @@ Generate the guide (imperative instructions), suggested tool IDs from the availa
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: userPrompt },
         ],
-        tools: [{
-          type: 'function',
-          function: {
-            name: 'suggest_chapter_fields',
-            description: 'Generate suggested fields for a skill chapter',
-            parameters: CHAPTER_SUGGESTION_SCHEMA,
+        tools: [
+          {
+            type: 'function',
+            function: {
+              name: 'suggest_chapter_fields',
+              description: 'Generate suggested fields for a skill chapter',
+              parameters: CHAPTER_SUGGESTION_SCHEMA,
+            },
           },
-        }],
+        ],
         tool_choice: { type: 'function', function: { name: 'suggest_chapter_fields' } },
       }),
     });
@@ -112,7 +127,13 @@ Generate the guide (imperative instructions), suggested tool IDs from the availa
     if (!res.ok) {
       const errText = await res.text();
       console.error('[ai/suggest-chapter] OpenRouter error:', res.status, errText);
-      return json({ guide: '', suggestedToolIds: [], context: '', outputDef: '', error: `OpenRouter returned ${res.status}` });
+      return json({
+        guide: '',
+        suggestedToolIds: [],
+        context: '',
+        outputDef: '',
+        error: `OpenRouter returned ${res.status}`,
+      });
     }
 
     const completion = await res.json();
@@ -121,9 +142,16 @@ Generate the guide (imperative instructions), suggested tool IDs from the availa
     if (completion.error) {
       console.error('[ai/suggest-chapter] completion.error:', completion.error);
       return json({
-        name: '', description: '', triggerConditions: '', guide: '',
-        suggestedToolIds: [], context: '', outputDef: '', successCriteria: '',
-        error: completion.error?.message ?? JSON.stringify(completion.error) ?? 'AI returned an error',
+        name: '',
+        description: '',
+        triggerConditions: '',
+        guide: '',
+        suggestedToolIds: [],
+        context: '',
+        outputDef: '',
+        successCriteria: '',
+        error:
+          completion.error?.message ?? JSON.stringify(completion.error) ?? 'AI returned an error',
       });
     }
 
@@ -134,20 +162,26 @@ Generate the guide (imperative instructions), suggested tool IDs from the availa
       parsed = JSON.parse(toolCall.function.arguments);
     } else {
       // Fallback: parse from content (for models that don't support tool_choice)
-      console.warn('[ai/suggest-chapter] No tool_calls in response — falling back to content parse');
+      console.warn(
+        '[ai/suggest-chapter] No tool_calls in response — falling back to content parse',
+      );
       const content = completion.choices?.[0]?.message?.content ?? '';
-      const jsonStr = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      const jsonStr = content
+        .replace(/```json\n?/g, '')
+        .replace(/```\n?/g, '')
+        .trim();
       parsed = JSON.parse(jsonStr);
     }
 
     // CFIX-03: Filter suggestedToolIds against available pool
     const availableSet = new Set<string>(availableToolIds ?? []);
     const rawSuggestedToolIds = (parsed.suggestedToolIds as string[]) ?? [];
-    const validToolIds = rawSuggestedToolIds.filter(id => availableSet.has(id));
-    const removedToolIds = rawSuggestedToolIds.filter(id => !availableSet.has(id));
-    const filteredWarning = removedToolIds.length > 0
-      ? `${removedToolIds.length} tool(s) not available in current pool were removed: ${removedToolIds.join(', ')}`
-      : undefined;
+    const validToolIds = rawSuggestedToolIds.filter((id) => availableSet.has(id));
+    const removedToolIds = rawSuggestedToolIds.filter((id) => !availableSet.has(id));
+    const filteredWarning =
+      removedToolIds.length > 0
+        ? `${removedToolIds.length} tool(s) not available in current pool were removed: ${removedToolIds.join(', ')}`
+        : undefined;
 
     // CFIX-10: Extract usage and estimate cost
     const rawUsage = completion.usage ?? {};
@@ -159,7 +193,11 @@ Generate the guide (imperative instructions), suggested tool IDs from the availa
     if (targetField && typeof parsed[targetField] === 'string') {
       return json({
         [targetField]: parsed[targetField],
-        usage: { promptTokens, completionTokens, estimatedCost: estimateCost(usedModel, promptTokens, completionTokens) },
+        usage: {
+          promptTokens,
+          completionTokens,
+          estimatedCost: estimateCost(usedModel, promptTokens, completionTokens),
+        },
       });
     }
 

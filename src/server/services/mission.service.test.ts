@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createMission, listMissions, getMission, updateMission, deleteMission } from './mission.service';
+import {
+  createMission,
+  listMissions,
+  getMission,
+  updateMission,
+  deleteMission,
+} from './mission.service';
 import { createMockDb } from '$server/test-utils/mock-db';
 
 beforeEach(() => {
@@ -44,7 +50,10 @@ describe('listMissions', () => {
   it('accepts sessionId filter without error', async () => {
     const { db, resolve } = createMockDb();
     resolve([]);
-    const result = await listMissions({ db, tenantId: 't1' }, { serverId: 's1', sessionId: 'sess1' });
+    const result = await listMissions(
+      { db, tenantId: 't1' },
+      { serverId: 's1', sessionId: 'sess1' },
+    );
     expect(result).toEqual([]);
   });
 });

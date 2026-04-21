@@ -69,10 +69,15 @@ export async function loadAndApplyServerPreferences() {
   applying = true;
   try {
     // Apply server values to each module that has data
-    if (serverPrefs.theme) theme.applyFromServer(serverPrefs.theme as { presetId: string; accentId: string });
+    if (serverPrefs.theme)
+      theme.applyFromServer(serverPrefs.theme as { presetId: string; accentId: string });
     if (serverPrefs.crt) crtConfig.applyFromServer(serverPrefs.crt as Record<string, unknown>);
-    if (serverPrefs.bgPattern) bgPattern.applyFromServer(serverPrefs.bgPattern as { pattern: string; opacity: number; size: number });
-    if (serverPrefs.sparklineStyle) sparklineStyle.applyFromServer(serverPrefs.sparklineStyle as { style: string });
+    if (serverPrefs.bgPattern)
+      bgPattern.applyFromServer(
+        serverPrefs.bgPattern as { pattern: string; opacity: number; size: number },
+      );
+    if (serverPrefs.sparklineStyle)
+      sparklineStyle.applyFromServer(serverPrefs.sparklineStyle as { style: string });
     if (serverPrefs.logo) logoState.applyFromServer(serverPrefs.logo as { presetId: string });
     if (serverPrefs.locale) locale.applyFromServer(serverPrefs.locale as { tag: string });
   } finally {
@@ -82,8 +87,23 @@ export async function loadAndApplyServerPreferences() {
   // Push any sections missing on the server (first-device seeding)
   const localSections: Record<string, () => unknown> = {
     theme: () => ({ presetId: theme.presetId, accentId: theme.accentId }),
-    crt: () => ({ bloom: crtConfig.bloom, scan: crtConfig.scan, matrix: crtConfig.matrix, subpixel: crtConfig.subpixel, phosphorDots: crtConfig.phosphorDots, rgbFringe: crtConfig.rgbFringe, warmAmbient: crtConfig.warmAmbient, vignette: crtConfig.vignette, glass: crtConfig.glass, flicker: crtConfig.flicker }),
-    bgPattern: () => ({ pattern: bgPattern.pattern, opacity: bgPattern.opacity, size: bgPattern.size }),
+    crt: () => ({
+      bloom: crtConfig.bloom,
+      scan: crtConfig.scan,
+      matrix: crtConfig.matrix,
+      subpixel: crtConfig.subpixel,
+      phosphorDots: crtConfig.phosphorDots,
+      rgbFringe: crtConfig.rgbFringe,
+      warmAmbient: crtConfig.warmAmbient,
+      vignette: crtConfig.vignette,
+      glass: crtConfig.glass,
+      flicker: crtConfig.flicker,
+    }),
+    bgPattern: () => ({
+      pattern: bgPattern.pattern,
+      opacity: bgPattern.opacity,
+      size: bgPattern.size,
+    }),
     sparklineStyle: () => ({ style: sparklineStyle.current }),
     logo: () => ({ presetId: logoState.presetId }),
     locale: () => ({ tag: locale.current }),

@@ -54,7 +54,9 @@ export async function loadUser() {
         email: u.email,
         displayName: u.name ?? null,
       };
-      state.orgId = (session.data.session as { activeOrganizationId?: string | null }).activeOrganizationId ?? null;
+      state.orgId =
+        (session.data.session as { activeOrganizationId?: string | null }).activeOrganizationId ??
+        null;
 
       // Auto-activate first org if session exists but no activeOrganizationId
       if (!state.orgId) {
@@ -65,7 +67,9 @@ export async function loadUser() {
             await authClient.organization.setActive({ organizationId: firstOrg.id });
             state.orgId = firstOrg.id;
           }
-        } catch { /* non-fatal */ }
+        } catch {
+          /* non-fatal */
+        }
       }
 
       // Fetch role from /api/me
@@ -104,7 +108,9 @@ export async function loadAllowedAgents(serverId: string) {
       const data = await res.json();
       state.allowedAgentIds = new Set(data.agentIds ?? []);
     }
-  } catch { /* non-fatal, default to showing nothing */ }
+  } catch {
+    /* non-fatal, default to showing nothing */
+  }
 }
 
 export async function logout() {

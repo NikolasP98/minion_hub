@@ -52,7 +52,9 @@ export async function getTask(ctx: TenantContext, id: string) {
 export async function updateTask(
   ctx: TenantContext,
   id: string,
-  data: Partial<Pick<typeof tasks.$inferInsert, 'title' | 'description' | 'status' | 'sortOrder' | 'metadata'>>,
+  data: Partial<
+    Pick<typeof tasks.$inferInsert, 'title' | 'description' | 'status' | 'sortOrder' | 'metadata'>
+  >,
 ) {
   await ctx.db
     .update(tasks)
@@ -61,7 +63,5 @@ export async function updateTask(
 }
 
 export async function deleteTask(ctx: TenantContext, id: string) {
-  await ctx.db
-    .delete(tasks)
-    .where(and(eq(tasks.id, id), eq(tasks.tenantId, ctx.tenantId)));
+  await ctx.db.delete(tasks).where(and(eq(tasks.id, id), eq(tasks.tenantId, ctx.tenantId)));
 }

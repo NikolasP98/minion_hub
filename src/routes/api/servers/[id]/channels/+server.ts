@@ -9,7 +9,10 @@ export const GET: RequestHandler = async ({ locals, params }) => {
     return json({ channels: items });
   } catch (e) {
     console.error(`[GET /api/servers/${params.id}/channels]`, e);
-    return json({ ok: false, error: e instanceof Error ? e.message : 'Unknown error' }, { status: 500 });
+    return json(
+      { ok: false, error: e instanceof Error ? e.message : 'Unknown error' },
+      { status: 500 },
+    );
   }
 };
 
@@ -32,6 +35,9 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
   } catch (e) {
     if (e && typeof e === 'object' && 'status' in e) throw e;
     console.error(`[POST /api/servers/${params.id}/channels]`, e);
-    return json({ ok: false, error: e instanceof Error ? e.message : 'Unknown error' }, { status: 500 });
+    return json(
+      { ok: false, error: e instanceof Error ? e.message : 'Unknown error' },
+      { status: 500 },
+    );
   }
 };

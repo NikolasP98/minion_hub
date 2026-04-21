@@ -12,7 +12,9 @@ vi.mock('$server/db/utils', () => ({
 }));
 
 const mockUploadToB2 = vi.fn<(k: string, b: Buffer | Uint8Array, ct: string) => Promise<void>>();
-const mockGetSignedDownloadUrl = vi.fn<(k: string) => Promise<string>>().mockResolvedValue('https://signed-url.example.com/file');
+const mockGetSignedDownloadUrl = vi
+  .fn<(k: string) => Promise<string>>()
+  .mockResolvedValue('https://signed-url.example.com/file');
 const mockDeleteFromB2 = vi.fn<(k: string) => Promise<void>>();
 
 vi.mock('$server/storage/b2', () => ({

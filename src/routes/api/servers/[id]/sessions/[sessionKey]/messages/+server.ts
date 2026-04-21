@@ -1,17 +1,16 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { listChatMessagesBySessionKey, bulkInsertChatMessages } from '$server/services/chat.service';
+import {
+  listChatMessagesBySessionKey,
+  bulkInsertChatMessages,
+} from '$server/services/chat.service';
 import type { ChatMessageInput } from '$server/services/chat.service';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
   if (!locals.tenantCtx) throw error(401);
 
   const sessionKey = decodeURIComponent(params.sessionKey!);
-  const messages = await listChatMessagesBySessionKey(
-    locals.tenantCtx,
-    params.id!,
-    sessionKey,
-  );
+  const messages = await listChatMessagesBySessionKey(locals.tenantCtx, params.id!, sessionKey);
   return json({ messages });
 };
 
@@ -32,12 +31,13 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
         (typeof m.content === 'string' || Array.isArray(m.content)),
     )
     .map((m) => {
-      const content = typeof m.content === 'string'
-        ? m.content
-        : (m.content as Array<{ type?: string; text?: string }>)
-            .filter((b) => b.type === 'text')
-            .map((b) => b.text ?? '')
-            .join('');
+      const content =
+        typeof m.content === 'string'
+          ? m.content
+          : (m.content as Array<{ type?: string; text?: string }>)
+              .filter((b) => b.type === 'text')
+              .map((b) => b.text ?? '')
+              .join('');
       return {
         serverId,
         agentId: typeof m.agentId === 'string' ? m.agentId : 'default',

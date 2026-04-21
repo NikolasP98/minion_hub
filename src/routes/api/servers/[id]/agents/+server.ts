@@ -22,6 +22,9 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
     return json({ ok: true });
   } catch (e) {
     console.error(`[POST /api/servers/${params.id}/agents]`, e);
-    return json({ ok: false, error: e instanceof Error ? e.message : 'Unknown error' }, { status: 500 });
+    return json(
+      { ok: false, error: e instanceof Error ? e.message : 'Unknown error' },
+      { status: 500 },
+    );
   }
 };

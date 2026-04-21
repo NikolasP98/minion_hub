@@ -1,14 +1,14 @@
 // Habbo-style isometric renderer for Minion Workshop
 // Creates a playful, game-like visualization with isometric projection
 
-import * as PIXI from "pixi.js";
+import * as PIXI from 'pixi.js';
 import {
   getAvatarTexture,
   clearTextureCache,
   getGeneration,
   HABBO_TEXTURE_SIZE,
   TEXT_RESOLUTION,
-} from "./texture-cache";
+} from './texture-cache';
 
 // Constants for isometric rendering
 export const TILE_WIDTH = 64;
@@ -22,21 +22,14 @@ let tileContainer: PIXI.Container | null = null;
 let avatarContainer: PIXI.Container | null = null;
 
 // Isometric projection helpers
-export function isoToScreen(
-  x: number,
-  y: number,
-  z: number = 0,
-): { x: number; y: number } {
+export function isoToScreen(x: number, y: number, z: number = 0): { x: number; y: number } {
   // Convert 3D isometric coords to 2D screen coords
   const screenX = (x - y) * (TILE_WIDTH / 2);
   const screenY = (x + y) * (TILE_HEIGHT / 2) - z * (WALL_HEIGHT / 2);
   return { x: screenX, y: screenY };
 }
 
-export function screenToIso(
-  screenX: number,
-  screenY: number,
-): { x: number; y: number } {
+export function screenToIso(screenX: number, screenY: number): { x: number; y: number } {
   // Convert 2D screen coords back to isometric grid
   const isoX = (screenX / (TILE_WIDTH / 2) + screenY / (TILE_HEIGHT / 2)) / 2;
   const isoY = (screenY / (TILE_HEIGHT / 2) - screenX / (TILE_WIDTH / 2)) / 2;
@@ -105,7 +98,7 @@ export async function createHabboAvatarSprite(
 
   // --- Glow ring (matches classic renderer's ring style) ---
   const glow = new PIXI.Graphics();
-  glow.label = "glow";
+  glow.label = 'glow';
   glow.circle(0, 0, 22);
   glow.stroke({ color: 0x6366f1, width: 2.5, alpha: 0.5 });
   spriteContainer.addChild(glow);
@@ -118,7 +111,7 @@ export async function createHabboAvatarSprite(
 
   // Avatar body/circle base
   const body = new PIXI.Graphics();
-  body.label = "body";
+  body.label = 'body';
   body.circle(0, 0, 18);
   body.fill({ color: 0x3b82f6 });
   spriteContainer.addChild(body);
@@ -130,7 +123,7 @@ export async function createHabboAvatarSprite(
   // Avatar face (only if texture loaded successfully)
   if (texture) {
     const faceContainer = new PIXI.Container();
-    faceContainer.label = "avatar";
+    faceContainer.label = 'avatar';
     const face = new PIXI.Sprite(texture);
     face.anchor.set(0.5, 0.5);
     face.width = 36;
@@ -150,11 +143,11 @@ export async function createHabboAvatarSprite(
   const nameText = new PIXI.Text({
     text: info.name,
     style: {
-      fontFamily: "Inter, sans-serif",
+      fontFamily: 'Inter, sans-serif',
       fontSize: 5,
       fill: 0xffffff,
-      align: "center",
-      fontWeight: "bold",
+      align: 'center',
+      fontWeight: 'bold',
     },
     resolution: TEXT_RESOLUTION,
   });
@@ -171,8 +164,8 @@ export async function createHabboAvatarSprite(
   spriteContainer.addChild(nameText);
 
   // Interaction
-  spriteContainer.eventMode = "static";
-  spriteContainer.cursor = "grab";
+  spriteContainer.eventMode = 'static';
+  spriteContainer.cursor = 'grab';
 
   container.addChild(spriteContainer);
   sprites.set(instanceId, spriteContainer);
@@ -210,7 +203,7 @@ export function renderIsoRoom(
   }
 
   tileContainer = new PIXI.Container();
-  tileContainer.label = "isoRoom";
+  tileContainer.label = 'isoRoom';
 
   const tileTexture = createTileTexture(app);
 
@@ -235,7 +228,7 @@ export function renderIsoRoom(
 
   // Add walls on the back edges
   const wallGraphics = new PIXI.Graphics();
-  wallGraphics.label = "walls";
+  wallGraphics.label = 'walls';
 
   // Back-left wall
   for (let i = 0; i < gridSize; i++) {
@@ -297,7 +290,7 @@ export function animateAvatarWalk(instanceId: string, time: number): void {
     phase += instanceId.charCodeAt(i);
   }
 
-  const avatar = sprite.getChildByLabel("avatar") || sprite;
+  const avatar = sprite.getChildByLabel('avatar') || sprite;
   avatar.y = Math.sin(time * 0.008 + phase) * 2;
 }
 
@@ -320,20 +313,16 @@ export function clearAllAvatars(): void {
 }
 
 // Show speech bubble above avatar
-export function showSpeechBubble(
-  instanceId: string,
-  text: string,
-  app: PIXI.Application,
-): void {
+export function showSpeechBubble(instanceId: string, text: string, app: PIXI.Application): void {
   const sprite = sprites.get(instanceId);
   if (!sprite) return;
 
   // Remove existing bubble if any
-  const existing = sprite.getChildByLabel("bubble");
+  const existing = sprite.getChildByLabel('bubble');
   if (existing) existing.destroy();
 
   const bubble = new PIXI.Container();
-  bubble.label = "bubble";
+  bubble.label = 'bubble';
   bubble.y = -45;
 
   // Bubble background
@@ -341,7 +330,7 @@ export function showSpeechBubble(
   const padding = 8;
   const maxWidth = 120;
   const style = new PIXI.TextStyle({
-    fontFamily: "Inter, sans-serif",
+    fontFamily: 'Inter, sans-serif',
     fontSize: 10,
     fill: 0x000000,
     wordWrap: true,
@@ -388,10 +377,7 @@ const WORLD_TO_ISO_SCALE = 1 / 80;
  * Convert world coordinates (used by physics/state) to iso screen coordinates.
  * This is the key bridge between the world-coordinate system and the iso view.
  */
-export function worldToIsoScreen(
-  worldX: number,
-  worldY: number,
-): { x: number; y: number } {
+export function worldToIsoScreen(worldX: number, worldY: number): { x: number; y: number } {
   const isoX = worldX * WORLD_TO_ISO_SCALE;
   const isoY = worldY * WORLD_TO_ISO_SCALE;
   return isoToScreen(isoX, isoY, 0);
@@ -400,10 +386,7 @@ export function worldToIsoScreen(
 /**
  * Convert iso screen coordinates back to world coordinates (for pointer events).
  */
-export function isoScreenToWorld(
-  screenX: number,
-  screenY: number,
-): { x: number; y: number } {
+export function isoScreenToWorld(screenX: number, screenY: number): { x: number; y: number } {
   const iso = screenToIso(screenX, screenY);
   return {
     x: iso.x / WORLD_TO_ISO_SCALE,
@@ -442,7 +425,7 @@ export function setSpriteGlowColor(instanceId: string, color: number): void {
   const sprite = sprites.get(instanceId);
   if (!sprite) return;
 
-  const glow = sprite.getChildByLabel("glow") as PIXI.Graphics | null;
+  const glow = sprite.getChildByLabel('glow') as PIXI.Graphics | null;
   if (glow) {
     glow.clear();
     glow.circle(0, 0, 22);
@@ -488,7 +471,7 @@ export function showReactionEmoji(instanceId: string, emoji: string): void {
 
   const text = new PIXI.Text({
     text: emoji,
-    style: { fontSize: 20, align: "center" },
+    style: { fontSize: 20, align: 'center' },
     resolution: TEXT_RESOLUTION,
   });
   text.anchor.set(0.5, 1);
@@ -521,10 +504,7 @@ let habboApp: PIXI.Application | null = null;
 let habboWorldContainer: PIXI.Container | null = null;
 
 // Initialize the Habbo renderer
-export function initHabboRenderer(
-  app: PIXI.Application,
-  worldContainer: PIXI.Container,
-): void {
+export function initHabboRenderer(app: PIXI.Application, worldContainer: PIXI.Container): void {
   habboApp = app;
   habboWorldContainer = worldContainer;
 
@@ -533,7 +513,7 @@ export function initHabboRenderer(
 
   // Avatar/element container AFTER room so sprites render on top
   avatarContainer = new PIXI.Container();
-  avatarContainer.label = "habboAvatars";
+  avatarContainer.label = 'habboAvatars';
   worldContainer.addChild(avatarContainer);
 }
 
@@ -541,9 +521,7 @@ export function initHabboRenderer(
  * Re-render the floor grid to fit the current agent positions.
  * Called after agents are added/moved to ensure the room covers them.
  */
-export function resizeRoomIfNeeded(
-  agentPositions: { x: number; y: number }[],
-): void {
+export function resizeRoomIfNeeded(agentPositions: { x: number; y: number }[]): void {
   if (!habboApp || !habboWorldContainer) return;
   const size = computeRoomGridSize(agentPositions);
   renderIsoRoom(habboApp, habboWorldContainer, size);

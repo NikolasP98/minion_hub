@@ -3,10 +3,7 @@ import { userPreferences } from '$server/db/schema';
 import { nowMs } from '$server/db/utils';
 import type { Db } from '$server/db/client';
 
-export async function getUserPreferences(
-  db: Db,
-  userId: string,
-): Promise<Record<string, unknown>> {
+export async function getUserPreferences(db: Db, userId: string): Promise<Record<string, unknown>> {
   const rows = await db
     .select({ section: userPreferences.section, value: userPreferences.value })
     .from(userPreferences)

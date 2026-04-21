@@ -59,7 +59,9 @@ export function createCredentialHealthState() {
     const raw = snapshots[0];
     try {
       const parsed = JSON.parse(raw.snapshotJson);
-      const providers: CredentialProfile[] = Array.isArray(parsed.providers) ? parsed.providers : [];
+      const providers: CredentialProfile[] = Array.isArray(parsed.providers)
+        ? parsed.providers
+        : [];
       return {
         capturedAt: raw.capturedAt,
         providers: providers.map(recomputeStatus),

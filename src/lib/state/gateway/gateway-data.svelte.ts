@@ -20,16 +20,19 @@ export const gw = $state({
     channelOrder?: string[];
     channelLabels?: Record<string, string>;
     channelDetailLabels?: Record<string, string>;
-    channelAccounts?: Record<string, {
-      accountId: string;
-      name?: string | null;
-      enabled?: boolean | null;
-      configured?: boolean | null;
-      running?: boolean | null;
-      connected?: boolean | null;
-      reconnectAttempts?: number | null;
-      lastError?: string | null;
-    }[]>;
+    channelAccounts?: Record<
+      string,
+      {
+        accountId: string;
+        name?: string | null;
+        enabled?: boolean | null;
+        configured?: boolean | null;
+        running?: boolean | null;
+        connected?: boolean | null;
+        reconnectAttempts?: number | null;
+        lastError?: string | null;
+      }[]
+    >;
   } | null,
   cronJobs: [] as unknown[],
   lastSeq: null as number | null,

@@ -1,8 +1,5 @@
 {
-  "extends": [
-    "@minion-stack/tsconfig/svelte.json",
-    "./.svelte-kit/tsconfig.json"
-  ],
+  "extends": ["@minion-stack/tsconfig/svelte.json", "./.svelte-kit/tsconfig.json"],
   "compilerOptions": {
     "allowJs": true,
     "checkJs": true,

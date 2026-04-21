@@ -8,7 +8,14 @@ import * as m from '$lib/paraglide/messages';
 declare const __APP_VERSION__: string;
 const hubVersion = __APP_VERSION__;
 
-export type BugReportPhase = 'idle' | 'capturing' | 'previewing' | 'minimized' | 'submitting' | 'success' | 'error';
+export type BugReportPhase =
+  | 'idle'
+  | 'capturing'
+  | 'previewing'
+  | 'minimized'
+  | 'submitting'
+  | 'success'
+  | 'error';
 
 export const bugReporter = $state({
   phase: 'idle' as BugReportPhase,
@@ -42,7 +49,9 @@ function collectStateSnapshot(): Record<string, unknown> {
     timestamp: new Date().toISOString(),
     services: {
       minion_hub: `v${hubVersion}`,
-      ...(gatewayVersion ? { gateway: gatewayCommit ? `v${gatewayVersion}.${gatewayCommit}` : `v${gatewayVersion}` } : {}),
+      ...(gatewayVersion
+        ? { gateway: gatewayCommit ? `v${gatewayVersion}.${gatewayCommit}` : `v${gatewayVersion}` }
+        : {}),
     },
   };
 }

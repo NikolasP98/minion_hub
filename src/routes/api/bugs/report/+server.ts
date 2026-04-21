@@ -90,7 +90,11 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     const activeHostId = (body.stateSnapshot?.activeHostId as string) ?? null;
     let serverId = activeHostId;
     if (!serverId) {
-      const row = await ctx.db.select({ id: servers.id }).from(servers).where(eq(servers.tenantId, ctx.tenantId)).limit(1);
+      const row = await ctx.db
+        .select({ id: servers.id })
+        .from(servers)
+        .where(eq(servers.tenantId, ctx.tenantId))
+        .limit(1);
       serverId = row[0]?.id ?? null;
     }
 

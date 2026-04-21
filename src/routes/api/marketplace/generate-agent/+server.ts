@@ -13,8 +13,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     category?: string;
     personality?: {
       catchphrase?: string;
-      formalCasual?: number;  // 0=formal, 100=casual
-      cautiousBold?: number;  // 0=cautious, 100=bold
+      formalCasual?: number; // 0=formal, 100=casual
+      cautiousBold?: number; // 0=cautious, 100=bold
       technicalStrategic?: number; // 0=technical, 100=strategic
     };
   };
@@ -28,9 +28,24 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   const cautiousBold = personality?.cautiousBold ?? 50;
   const technicalStrategic = personality?.technicalStrategic ?? 50;
 
-  const toneDesc = formalCasual < 30 ? 'formal and professional' : formalCasual > 70 ? 'casual and approachable' : 'balanced between formal and casual';
-  const riskDesc = cautiousBold < 30 ? 'cautious and thorough' : cautiousBold > 70 ? 'bold and decisive' : 'balanced between cautious and bold';
-  const thinkingDesc = technicalStrategic < 30 ? 'deeply technical' : technicalStrategic > 70 ? 'strategic and big-picture' : 'both technical and strategic';
+  const toneDesc =
+    formalCasual < 30
+      ? 'formal and professional'
+      : formalCasual > 70
+        ? 'casual and approachable'
+        : 'balanced between formal and casual';
+  const riskDesc =
+    cautiousBold < 30
+      ? 'cautious and thorough'
+      : cautiousBold > 70
+        ? 'bold and decisive'
+        : 'balanced between cautious and bold';
+  const thinkingDesc =
+    technicalStrategic < 30
+      ? 'deeply technical'
+      : technicalStrategic > 70
+        ? 'strategic and big-picture'
+        : 'both technical and strategic';
 
   const prompt = `You are creating a fictional human professional persona for an AI assistant agent named ${name}, who works as a ${role} in the ${category} domain.
 
@@ -69,7 +84,7 @@ Return only valid JSON, no markdown code fences.`;
       throw error(502, `Anthropic API error: ${errText}`);
     }
 
-    const data = await res.json() as {
+    const data = (await res.json()) as {
       content: Array<{ type: string; text: string }>;
     };
 

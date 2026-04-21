@@ -63,7 +63,9 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
   if (action === 'remove-skill') {
     await ctx.db
       .delete(builtAgentSkills)
-      .where(and(eq(builtAgentSkills.agentId, params.id!), eq(builtAgentSkills.skillId, body.skillId)));
+      .where(
+        and(eq(builtAgentSkills.agentId, params.id!), eq(builtAgentSkills.skillId, body.skillId)),
+      );
     return json({ ok: true });
   }
 
@@ -73,13 +75,25 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
       await ctx.db
         .update(builtAgentSkills)
         .set({ position: i })
-        .where(and(eq(builtAgentSkills.agentId, params.id!), eq(builtAgentSkills.skillId, skillIds[i])));
+        .where(
+          and(eq(builtAgentSkills.agentId, params.id!), eq(builtAgentSkills.skillId, skillIds[i])),
+        );
     }
     return json({ ok: true });
   }
 
   // Default: update agent metadata
-  const { name, emoji, description, model, systemPrompt, temperature, maxTokens, retryPolicy, fallbackAgentId } = body;
+  const {
+    name,
+    emoji,
+    description,
+    model,
+    systemPrompt,
+    temperature,
+    maxTokens,
+    retryPolicy,
+    fallbackAgentId,
+  } = body;
   await ctx.db
     .update(builtAgents)
     .set({
@@ -103,6 +117,8 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
 export const DELETE: RequestHandler = async ({ locals, params }) => {
   const ctx = await getOrCreateTenantCtx(locals);
   if (!ctx) throw error(401);
-  await ctx.db.delete(builtAgents).where(and(eq(builtAgents.id, params.id!), eq(builtAgents.tenantId, ctx.tenantId)));
+  await ctx.db
+    .delete(builtAgents)
+    .where(and(eq(builtAgents.id, params.id!), eq(builtAgents.tenantId, ctx.tenantId)));
   return json({ ok: true });
 };

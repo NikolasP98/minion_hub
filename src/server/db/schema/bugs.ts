@@ -26,8 +26,5 @@ export const bugs = sqliteTable(
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
-  (t) => [
-    index('idx_bugs_tenant').on(t.tenantId),
-    index('idx_bugs_server').on(t.serverId),
-  ],
+  (t) => [index('idx_bugs_tenant').on(t.tenantId), index('idx_bugs_server').on(t.serverId)],
 );
