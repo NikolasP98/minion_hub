@@ -5,11 +5,13 @@ export async function init() {
   if (import.meta.env.VITE_DESKTOP) return;
 
   const posthog = (await import('posthog-js')).default;
-  const { PUBLIC_POSTHOG_KEY, PUBLIC_POSTHOG_HOST } = await import('$env/static/public');
+  const { env } = await import('$env/dynamic/public');
 
-  posthog.init(PUBLIC_POSTHOG_KEY, {
+  if (!env.PUBLIC_POSTHOG_KEY) return;
+
+  posthog.init(env.PUBLIC_POSTHOG_KEY, {
     api_host: `${window.location.origin}/ingest`,
-    ui_host: PUBLIC_POSTHOG_HOST,
+    ui_host: env.PUBLIC_POSTHOG_HOST,
     defaults: '2026-01-30',
     capture_exceptions: true,
   });
