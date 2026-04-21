@@ -26,9 +26,7 @@ function resolveBubbleSprite(data: BubbleSpriteJson): SpriteData {
 const bubbleSprites = new Map<string, SpriteData>();
 
 /** Set bubble sprites from loaded JSON data. Call once during asset initialization. */
-export function setBubbleSprites(
-  sprites: Record<string, BubbleSpriteJson>,
-): void {
+export function setBubbleSprites(sprites: Record<string, BubbleSpriteJson>): void {
   bubbleSprites.clear();
   for (const [key, data] of Object.entries(sprites)) {
     bubbleSprites.set(key, resolveBubbleSprite(data));
@@ -48,9 +46,7 @@ export function getBubbleSprite(type: string): SpriteData | null {
 const furnitureSprites = new Map<string, SpriteData>();
 
 /** Set furniture sprites from loaded asset data. Call once during asset initialization. */
-export function setFurnitureSprites(
-  sprites: Record<string, SpriteData>,
-): void {
+export function setFurnitureSprites(sprites: Record<string, SpriteData>): void {
   furnitureSprites.clear();
   for (const [key, data] of Object.entries(sprites)) {
     furnitureSprites.set(key, data);
@@ -113,10 +109,7 @@ export function setWallSprites(sets: SpriteData[][]): void {
  * Get a wall sprite by set index and bitmask.
  * Returns null if no wall sprites are loaded or the index is invalid.
  */
-export function getWallSprite(
-  setIndex: number,
-  bitmask: number,
-): SpriteData | null {
+export function getWallSprite(setIndex: number, bitmask: number): SpriteData | null {
   if (wallSets.length === 0) return null;
   const sprites = wallSets[setIndex] ?? wallSets[0];
   return sprites[bitmask] ?? null;
@@ -162,10 +155,7 @@ export interface CharacterSprites {
 const spriteCache = new Map<string, CharacterSprites>();
 
 /** Apply hue shift to every sprite in a CharacterSprites set */
-export function hueShiftSprites(
-  sprites: CharacterSprites,
-  hueShift: number,
-): CharacterSprites {
+export function hueShiftSprites(sprites: CharacterSprites, hueShift: number): CharacterSprites {
   const color: FloorColor = { h: hueShift, s: 0, b: 0, c: 0 };
   const shift = (s: SpriteData) => adjustSprite(s, color);
   const shiftWalk = (
@@ -176,9 +166,10 @@ export function hueShiftSprites(
     shift(arr[2]),
     shift(arr[3]),
   ];
-  const shiftPair = (
-    arr: [SpriteData, SpriteData],
-  ): [SpriteData, SpriteData] => [shift(arr[0]), shift(arr[1])];
+  const shiftPair = (arr: [SpriteData, SpriteData]): [SpriteData, SpriteData] => [
+    shift(arr[0]),
+    shift(arr[1]),
+  ];
 
   return {
     walk: {
@@ -215,10 +206,7 @@ function emptySprite(w: number, h: number): SpriteData {
  * Get the full CharacterSprites set for a palette index, with optional hue shift.
  * Results are cached by `paletteIndex:hueShift` key.
  */
-export function getCharacterSprites(
-  paletteIndex: number,
-  hueShift = 0,
-): CharacterSprites {
+export function getCharacterSprites(paletteIndex: number, hueShift = 0): CharacterSprites {
   const cacheKey = `${paletteIndex}:${hueShift}`;
   const cached = spriteCache.get(cacheKey);
   if (cached) return cached;
@@ -256,12 +244,7 @@ export function getCharacterSprites(
   } else {
     // Fallback: return transparent placeholder sprites (16x32)
     const e = emptySprite(16, 32);
-    const walkSet: [SpriteData, SpriteData, SpriteData, SpriteData] = [
-      e,
-      e,
-      e,
-      e,
-    ];
+    const walkSet: [SpriteData, SpriteData, SpriteData, SpriteData] = [e, e, e, e];
     const pairSet: [SpriteData, SpriteData] = [e, e];
     sprites = {
       walk: {
@@ -337,8 +320,7 @@ export function pickDiversePalette(
   // First round (minCount === 0): no hue shift. Subsequent rounds: random >= 45 degrees.
   let hueShift = 0;
   if (minCount > 0) {
-    hueShift =
-      HUE_SHIFT_MIN_DEG + Math.floor(Math.random() * HUE_SHIFT_RANGE_DEG);
+    hueShift = HUE_SHIFT_MIN_DEG + Math.floor(Math.random() * HUE_SHIFT_RANGE_DEG);
   }
   return { palette, hueShift };
 }

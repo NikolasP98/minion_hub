@@ -20,8 +20,5 @@ export const agents = sqliteTable(
     rawJson: text('raw_json').notNull(),
     lastSeenAt: integer('last_seen_at').notNull(),
   },
-  (t) => [
-    primaryKey({ columns: [t.id, t.serverId] }),
-    index('idx_agents_tenant').on(t.tenantId),
-  ],
+  (t) => [primaryKey({ columns: [t.id, t.serverId] }), index('idx_agents_tenant').on(t.tenantId)],
 );

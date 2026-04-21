@@ -11,14 +11,14 @@ import { createMigratedPersonalAgent } from '$server/services/personal-agent-mig
  * the admin to run migration from the gateway CLI.
  */
 export const GET: RequestHandler = async ({ locals }) => {
-	if (!locals.user || locals.user.role !== 'admin') {
-		return json({ error: 'Admin access required' }, { status: 403 });
-	}
+  if (!locals.user || locals.user.role !== 'admin') {
+    return json({ error: 'Admin access required' }, { status: 403 });
+  }
 
-	return json({
-		message: 'Run migration from gateway CLI: minion agents migrate-personal',
-		candidates: [],
-	});
+  return json({
+    message: 'Run migration from gateway CLI: minion agents migrate-personal',
+    candidates: [],
+  });
 };
 
 /**
@@ -31,53 +31,53 @@ export const GET: RequestHandler = async ({ locals }) => {
  * Returns: { results: Array<{ newAgentId, success, error? }> }
  */
 export const POST: RequestHandler = async ({ locals, request }) => {
-	if (!locals.user || locals.user.role !== 'admin') {
-		return json({ error: 'Admin access required' }, { status: 403 });
-	}
+  if (!locals.user || locals.user.role !== 'admin') {
+    return json({ error: 'Admin access required' }, { status: 403 });
+  }
 
-	const ctx = await getTenantCtx(locals);
-	if (!ctx) {
-		return json({ error: 'Authentication required' }, { status: 401 });
-	}
+  const ctx = await getTenantCtx(locals);
+  if (!ctx) {
+    return json({ error: 'Authentication required' }, { status: 401 });
+  }
 
-	const body = await request.json();
+  const body = await request.json();
 
-	if (!Array.isArray(body.migrations)) {
-		return json({ error: 'migrations must be an array' }, { status: 400 });
-	}
+  if (!Array.isArray(body.migrations)) {
+    return json({ error: 'migrations must be an array' }, { status: 400 });
+  }
 
-	const results: Array<{ newAgentId: string; success: boolean; error?: string }> = [];
+  const results: Array<{ newAgentId: string; success: boolean; error?: string }> = [];
 
-	for (const migration of body.migrations) {
-		const { userId, email, userName, serverId, originalName, newAgentId } = migration;
-		const resolvedEmail = email ?? userName; // backward compat: accept legacy userName field
+  for (const migration of body.migrations) {
+    const { userId, email, userName, serverId, originalName, newAgentId } = migration;
+    const resolvedEmail = email ?? userName; // backward compat: accept legacy userName field
 
-		if (!userId || !resolvedEmail || !serverId || !originalName || !newAgentId) {
-			results.push({
-				newAgentId: newAgentId ?? 'unknown',
-				success: false,
-				error: 'Missing required fields: userId, email, serverId, originalName, newAgentId',
-			});
-			continue;
-		}
+    if (!userId || !resolvedEmail || !serverId || !originalName || !newAgentId) {
+      results.push({
+        newAgentId: newAgentId ?? 'unknown',
+        success: false,
+        error: 'Missing required fields: userId, email, serverId, originalName, newAgentId',
+      });
+      continue;
+    }
 
-		try {
-			await createMigratedPersonalAgent(ctx, {
-				userId,
-				email: resolvedEmail,
-				serverId,
-				originalName,
-				newAgentId,
-			});
-			results.push({ newAgentId, success: true });
-		} catch (err) {
-			results.push({
-				newAgentId,
-				success: false,
-				error: err instanceof Error ? err.message : String(err),
-			});
-		}
-	}
+    try {
+      await createMigratedPersonalAgent(ctx, {
+        userId,
+        email: resolvedEmail,
+        serverId,
+        originalName,
+        newAgentId,
+      });
+      results.push({ newAgentId, success: true });
+    } catch (err) {
+      results.push({
+        newAgentId,
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
 
-	return json({ results });
+  return json({ results });
 };

@@ -68,7 +68,7 @@ export async function loadReliabilitySummary(_serverId: string, from?: number, _
     const params: Record<string, unknown> = {};
     if (from) params.since = from;
 
-    const data = await sendRequest('reliability.summary', params) as ReliabilitySummary | null;
+    const data = (await sendRequest('reliability.summary', params)) as ReliabilitySummary | null;
     if (data) {
       reliability.summary = {
         total: data.total ?? 0,
@@ -98,7 +98,7 @@ export async function loadReliabilityEvents(
     if (opts?.category) params.category = opts.category;
     if (opts?.from) params.since = opts.from;
 
-    const data = await sendRequest('reliability.events', params) as {
+    const data = (await sendRequest('reliability.events', params)) as {
       events?: ReliabilityEvent[];
       total?: number;
       limit?: number;

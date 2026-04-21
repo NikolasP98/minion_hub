@@ -2,6 +2,9 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { paraglide } from '@inlang/paraglide-sveltekit/vite';
 import { defineConfig } from 'vite';
+import { readFileSync } from 'node:fs';
+
+const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
 
 // @inlang/paraglide-js bundles posthog-node and creates a client at import time.
 // On process exit, posthog-node's shutdown() rejects with a timeout error.
@@ -15,6 +18,9 @@ process.on('unhandledRejection', (reason) => {
 });
 
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+  },
   plugins: [
     paraglide({ project: './project.inlang', outdir: './src/lib/paraglide' }),
     tailwindcss(),

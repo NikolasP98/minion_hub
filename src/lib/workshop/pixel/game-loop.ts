@@ -24,10 +24,7 @@ export interface GameLoopCallbacks {
  * @param callbacks - update and render functions called each frame
  * @returns A cleanup function that stops the loop and cancels the pending rAF
  */
-export function startGameLoop(
-  canvas: HTMLCanvasElement,
-  callbacks: GameLoopCallbacks,
-): () => void {
+export function startGameLoop(canvas: HTMLCanvasElement, callbacks: GameLoopCallbacks): () => void {
   const ctx = canvas.getContext('2d')!;
   // Disable image smoothing once at init for crisp pixel art rendering
   ctx.imageSmoothingEnabled = false;
@@ -38,10 +35,7 @@ export function startGameLoop(
 
   const frame = (time: number): void => {
     if (stopped) return;
-    const dt =
-      lastTime === 0
-        ? 0
-        : Math.min((time - lastTime) / 1000, MAX_DELTA_TIME_SEC);
+    const dt = lastTime === 0 ? 0 : Math.min((time - lastTime) / 1000, MAX_DELTA_TIME_SEC);
     lastTime = time;
 
     callbacks.update(dt);

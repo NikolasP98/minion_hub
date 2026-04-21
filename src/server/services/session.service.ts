@@ -54,11 +54,7 @@ export async function listSessions(ctx: TenantContext, serverId: string) {
     .orderBy(desc(sessions.updatedAt));
 }
 
-export async function listSessionsByServer(
-  ctx: TenantContext,
-  serverId: string,
-  agentId?: string,
-) {
+export async function listSessionsByServer(ctx: TenantContext, serverId: string, agentId?: string) {
   const conditions = [
     eq(sessions.serverId, serverId),
     eq(sessions.tenantId, ctx.tenantId),

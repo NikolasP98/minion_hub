@@ -3,7 +3,11 @@ import { parseToolCallRuns } from './tool-calls';
 import type { ChatMessage } from '$lib/types/chat';
 
 // Helper to build a minimal ChatMessage
-function msg(role: 'user' | 'assistant', content: ChatMessage['content'], timestamp: number): ChatMessage {
+function msg(
+  role: 'user' | 'assistant',
+  content: ChatMessage['content'],
+  timestamp: number,
+): ChatMessage {
   return { role, content, timestamp };
 }
 
@@ -23,13 +27,15 @@ describe('parseToolCallRuns', () => {
   it('parses a single run with one tool call', () => {
     const messages: ChatMessage[] = [
       msg('user', 'do something', 1000),
-      msg('assistant', [
-        { type: 'text', text: 'Sure' },
-        { type: 'tool_use', id: 'toolu_1', name: 'bash', input: { command: 'ls' } },
-      ], 2000),
-      msg('user', [
-        { type: 'tool_result', tool_use_id: 'toolu_1', content: 'file1\nfile2' },
-      ], 3000),
+      msg(
+        'assistant',
+        [
+          { type: 'text', text: 'Sure' },
+          { type: 'tool_use', id: 'toolu_1', name: 'bash', input: { command: 'ls' } },
+        ],
+        2000,
+      ),
+      msg('user', [{ type: 'tool_result', tool_use_id: 'toolu_1', content: 'file1\nfile2' }], 3000),
       msg('assistant', 'Done', 4000),
     ];
 
@@ -53,14 +59,22 @@ describe('parseToolCallRuns', () => {
   it('parses multiple tool calls in one assistant turn', () => {
     const messages: ChatMessage[] = [
       msg('user', 'do two things', 1000),
-      msg('assistant', [
-        { type: 'tool_use', id: 'tc_a', name: 'read_file', input: { path: 'a.txt' } },
-        { type: 'tool_use', id: 'tc_b', name: 'bash', input: { command: 'pwd' } },
-      ], 2000),
-      msg('user', [
-        { type: 'tool_result', tool_use_id: 'tc_a', content: 'content a' },
-        { type: 'tool_result', tool_use_id: 'tc_b', content: '/home' },
-      ], 3500),
+      msg(
+        'assistant',
+        [
+          { type: 'tool_use', id: 'tc_a', name: 'read_file', input: { path: 'a.txt' } },
+          { type: 'tool_use', id: 'tc_b', name: 'bash', input: { command: 'pwd' } },
+        ],
+        2000,
+      ),
+      msg(
+        'user',
+        [
+          { type: 'tool_result', tool_use_id: 'tc_a', content: 'content a' },
+          { type: 'tool_result', tool_use_id: 'tc_b', content: '/home' },
+        ],
+        3500,
+      ),
     ];
 
     const runs = parseToolCallRuns(messages);
@@ -73,15 +87,11 @@ describe('parseToolCallRuns', () => {
   it('creates separate runs for separate user messages', () => {
     const messages: ChatMessage[] = [
       msg('user', 'first task', 1000),
-      msg('assistant', [
-        { type: 'tool_use', id: 'tc_1', name: 'bash', input: {} },
-      ], 2000),
+      msg('assistant', [{ type: 'tool_use', id: 'tc_1', name: 'bash', input: {} }], 2000),
       msg('user', [{ type: 'tool_result', tool_use_id: 'tc_1', content: '' }], 3000),
       msg('assistant', 'done', 4000),
       msg('user', 'second task', 5000),
-      msg('assistant', [
-        { type: 'tool_use', id: 'tc_2', name: 'write_file', input: {} },
-      ], 6000),
+      msg('assistant', [{ type: 'tool_use', id: 'tc_2', name: 'write_file', input: {} }], 6000),
       msg('user', [{ type: 'tool_result', tool_use_id: 'tc_2', content: '' }], 7000),
       msg('assistant', 'done 2', 8000),
     ];
@@ -97,9 +107,7 @@ describe('parseToolCallRuns', () => {
   it('handles tool call with no matching result (endTs null)', () => {
     const messages: ChatMessage[] = [
       msg('user', 'run this', 1000),
-      msg('assistant', [
-        { type: 'tool_use', id: 'tc_orphan', name: 'bash', input: {} },
-      ], 2000),
+      msg('assistant', [{ type: 'tool_use', id: 'tc_orphan', name: 'bash', input: {} }], 2000),
       // No tool_result follows
       msg('assistant', 'partial response', 3000),
     ];
@@ -115,9 +123,7 @@ describe('parseToolCallRuns', () => {
     const longMsg = 'x'.repeat(120);
     const messages: ChatMessage[] = [
       msg('user', longMsg, 1000),
-      msg('assistant', [
-        { type: 'tool_use', id: 'tc_1', name: 'bash', input: {} },
-      ], 2000),
+      msg('assistant', [{ type: 'tool_use', id: 'tc_1', name: 'bash', input: {} }], 2000),
     ];
 
     const runs = parseToolCallRuns(messages);
@@ -127,9 +133,7 @@ describe('parseToolCallRuns', () => {
   it('extracts user prompt from content block arrays', () => {
     const messages: ChatMessage[] = [
       msg('user', [{ type: 'text', text: 'do the thing' }], 1000),
-      msg('assistant', [
-        { type: 'tool_use', id: 'tc_1', name: 'bash', input: {} },
-      ], 2000),
+      msg('assistant', [{ type: 'tool_use', id: 'tc_1', name: 'bash', input: {} }], 2000),
     ];
 
     const runs = parseToolCallRuns(messages);

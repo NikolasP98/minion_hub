@@ -45,16 +45,36 @@ function saveCRTConfig(cfg: CRTConfig) {
 let config = $state<CRTConfig>(loadCRTConfig());
 
 export const crtConfig = {
-  get bloom()       { return config.bloom; },
-  get scan()        { return config.scan; },
-  get matrix()      { return config.matrix; },
-  get subpixel()    { return config.subpixel; },
-  get phosphorDots(){ return config.phosphorDots; },
-  get rgbFringe()   { return config.rgbFringe; },
-  get warmAmbient() { return config.warmAmbient; },
-  get vignette()    { return config.vignette; },
-  get glass()       { return config.glass; },
-  get flicker()     { return config.flicker; },
+  get bloom() {
+    return config.bloom;
+  },
+  get scan() {
+    return config.scan;
+  },
+  get matrix() {
+    return config.matrix;
+  },
+  get subpixel() {
+    return config.subpixel;
+  },
+  get phosphorDots() {
+    return config.phosphorDots;
+  },
+  get rgbFringe() {
+    return config.rgbFringe;
+  },
+  get warmAmbient() {
+    return config.warmAmbient;
+  },
+  get vignette() {
+    return config.vignette;
+  },
+  get glass() {
+    return config.glass;
+  },
+  get flicker() {
+    return config.flicker;
+  },
 
   set(updates: Partial<CRTConfig>) {
     config = { ...config, ...updates };
@@ -77,15 +97,15 @@ export const crtConfig = {
   apply() {
     if (typeof document === 'undefined') return;
     const html = document.documentElement;
-    html.dataset.crtBloom     = config.bloom;
-    html.dataset.crtScan      = config.scan;
-    html.dataset.crtSubpixel  = String(config.subpixel);
-    html.dataset.crtWarm      = String(config.warmAmbient);
-    html.dataset.crtFlicker   = String(config.flicker);
-    html.dataset.crtVignette  = String(config.vignette);
-    html.dataset.crtGlass     = String(config.glass);
-    html.dataset.crtMatrix    = String(config.matrix);
-    html.dataset.crtPhosphor  = String(config.phosphorDots);
+    html.dataset.crtBloom = config.bloom;
+    html.dataset.crtScan = config.scan;
+    html.dataset.crtSubpixel = String(config.subpixel);
+    html.dataset.crtWarm = String(config.warmAmbient);
+    html.dataset.crtFlicker = String(config.flicker);
+    html.dataset.crtVignette = String(config.vignette);
+    html.dataset.crtGlass = String(config.glass);
+    html.dataset.crtMatrix = String(config.matrix);
+    html.dataset.crtPhosphor = String(config.phosphorDots);
     html.dataset.crtRgbfringe = String(config.rgbFringe);
   },
 
@@ -93,8 +113,18 @@ export const crtConfig = {
   cleanup() {
     if (typeof document === 'undefined') return;
     const html = document.documentElement;
-    for (const k of ['crtBloom', 'crtScan', 'crtSubpixel', 'crtWarm',
-      'crtFlicker', 'crtVignette', 'crtGlass', 'crtMatrix', 'crtPhosphor', 'crtRgbfringe'])
+    for (const k of [
+      'crtBloom',
+      'crtScan',
+      'crtSubpixel',
+      'crtWarm',
+      'crtFlicker',
+      'crtVignette',
+      'crtGlass',
+      'crtMatrix',
+      'crtPhosphor',
+      'crtRgbfringe',
+    ])
       delete html.dataset[k];
   },
 };

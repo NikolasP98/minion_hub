@@ -1,10 +1,10 @@
-import { hostsState } from "$lib/state/features/hosts.svelte";
+import { hostsState } from '$lib/state/features/hosts.svelte';
 
 export interface AgentInstance {
   instanceId: string;
   agentId: string;
   position: { x: number; y: number };
-  behavior: "stationary" | "wander" | "patrol";
+  behavior: 'stationary' | 'wander' | 'patrol';
   homePosition: { x: number; y: number };
 }
 
@@ -17,11 +17,11 @@ export interface Relationship {
 
 export interface WorkshopConversation {
   id: string;
-  type: "task" | "banter";
+  type: 'task' | 'banter';
   participantInstanceIds: string[];
   participantAgentIds: string[];
   sessionKey: string;
-  status: "active" | "interrupted" | "completed" | "queued";
+  status: 'active' | 'interrupted' | 'completed' | 'queued';
   startedAt: number;
   endedAt?: number;
   title?: string;
@@ -31,7 +31,7 @@ export interface WorkshopConversation {
 
 // --- Workshop interactive elements ---
 
-export type ElementType = "pinboard" | "messageboard" | "inbox" | "rulebook" | "portal";
+export type ElementType = 'pinboard' | 'messageboard' | 'inbox' | 'rulebook' | 'portal';
 
 export interface PinboardItem {
   id: string;
@@ -43,7 +43,7 @@ export interface PinboardItem {
   comments: Array<{ authorId: string; text: string; at: number }>;
 }
 
-export type InboxItemStatus = "open" | "closed" | "pending";
+export type InboxItemStatus = 'open' | 'closed' | 'pending';
 
 export interface InboxAttachment {
   id: string;
@@ -117,7 +117,7 @@ export interface WorkshopSettings {
   /** Default prompt for solo tasks */
   taskPrompt: string;
   /** Visual mode: classic (freeform), habbo (isometric), or pixel (pixel art office) */
-  viewMode: "classic" | "habbo" | "pixel";
+  viewMode: 'classic' | 'habbo' | 'pixel';
   /** When off, conversations are fully isolated to this workspace */
   crossWorkspaceChats: boolean;
 }
@@ -132,19 +132,19 @@ export interface WorkshopState {
 }
 
 type WorkshopSlice =
-  | "camera"
-  | "agents"
-  | "relationships"
-  | "conversations"
-  | "elements"
-  | "settings";
+  | 'camera'
+  | 'agents'
+  | 'relationships'
+  | 'conversations'
+  | 'elements'
+  | 'settings';
 const ALL_SLICES: WorkshopSlice[] = [
-  "camera",
-  "agents",
-  "relationships",
-  "conversations",
-  "elements",
-  "settings",
+  'camera',
+  'agents',
+  'relationships',
+  'conversations',
+  'elements',
+  'settings',
 ];
 
 function autosaveKey(hostId: string, slice: WorkshopSlice): string {
@@ -158,7 +158,7 @@ function legacyAutosaveKey(hostId: string): string {
 
 /** Key for view mode preference */
 function viewModeKey(): string {
-  return "workshop:viewMode";
+  return 'workshop:viewMode';
 }
 
 export const workshopState: WorkshopState = $state({
@@ -180,9 +180,8 @@ export const workshopState: WorkshopState = $state({
     responseTimeout: 120_000,
     banterPrompt:
       "Have a spontaneous, in-character conversation. Discuss what you're currently working on, share observations about the workspace, or just chat. Keep it natural and brief.",
-    taskPrompt:
-      "Reflect on your current state and describe what you'd work on next.",
-    viewMode: "classic",
+    taskPrompt: "Reflect on your current state and describe what you'd work on next.",
+    viewMode: 'classic',
     crossWorkspaceChats: true,
   },
 });
@@ -190,10 +189,10 @@ export const workshopState: WorkshopState = $state({
 // --- View Mode Management ---
 
 export function loadViewMode(): void {
-  if (typeof localStorage === "undefined") return;
+  if (typeof localStorage === 'undefined') return;
   try {
     const saved = localStorage.getItem(viewModeKey());
-    if (saved === "classic" || saved === "habbo" || saved === "pixel") {
+    if (saved === 'classic' || saved === 'habbo' || saved === 'pixel') {
       workshopState.settings.viewMode = saved;
     }
   } catch {
@@ -201,21 +200,21 @@ export function loadViewMode(): void {
   }
 }
 
-export function setViewMode(mode: "classic" | "habbo" | "pixel"): void {
+export function setViewMode(mode: 'classic' | 'habbo' | 'pixel'): void {
   workshopState.settings.viewMode = mode;
-  if (typeof localStorage !== "undefined") {
+  if (typeof localStorage !== 'undefined') {
     try {
       localStorage.setItem(viewModeKey(), mode);
     } catch {
       /* ignore */
     }
   }
-  dirtySlices.add("settings");
-  autoSave(undefined, "settings");
+  dirtySlices.add('settings');
+  autoSave(undefined, 'settings');
 }
 
 export function toggleViewMode(): void {
-  const modes: Array<"classic" | "habbo" | "pixel"> = ["classic", "habbo", "pixel"];
+  const modes: Array<'classic' | 'habbo' | 'pixel'> = ['classic', 'habbo', 'pixel'];
   const currentIdx = modes.indexOf(workshopState.settings.viewMode);
   const newMode = modes[(currentIdx + 1) % modes.length];
   setViewMode(newMode);
@@ -244,10 +243,7 @@ export function autoSave(
     const snapshot = $state.snapshot(workshopState);
     for (const slice of dirtySlices) {
       try {
-        localStorage.setItem(
-          autosaveKey(hid, slice),
-          JSON.stringify(snapshot[slice]),
-        );
+        localStorage.setItem(autosaveKey(hid, slice), JSON.stringify(snapshot[slice]));
       } catch {
         // non-critical (quota errors, etc.)
       }
@@ -263,8 +259,8 @@ function restoreConversations(saved: Partial<WorkshopState>) {
   const bestByPair = new Map<string, { id: string; startedAt: number }>();
   for (const [id, conv] of Object.entries(saved.conversations)) {
     if (!conv.participantAgentIds || !conv.startedAt) continue;
-    if (conv.status === "active") conv.status = "interrupted";
-    const pairKey = [...conv.participantAgentIds].sort().join(":");
+    if (conv.status === 'active') conv.status = 'interrupted';
+    const pairKey = [...conv.participantAgentIds].sort().join(':');
     const existing = bestByPair.get(pairKey);
     if (!existing || conv.startedAt > existing.startedAt) {
       if (existing) delete cleaned[existing.id];
@@ -278,7 +274,7 @@ function restoreConversations(saved: Partial<WorkshopState>) {
 /** Migrate pinboard items that pre-date voting fields (upvotes/downvotes/comments). */
 function migratePinboardVoting() {
   for (const el of Object.values(workshopState.elements)) {
-    if (el.type === "pinboard" && el.pinboardItems) {
+    if (el.type === 'pinboard' && el.pinboardItems) {
       for (const pin of el.pinboardItems) {
         if (!pin.upvotes) pin.upvotes = [];
         if (!pin.downvotes) pin.downvotes = [];
@@ -291,18 +287,18 @@ function migratePinboardVoting() {
 /** Migrate inbox items that pre-date subject/status fields. */
 function migrateInboxItems() {
   for (const el of Object.values(workshopState.elements)) {
-    if (el.type === "inbox") {
+    if (el.type === 'inbox') {
       for (const item of el.inboxItems ?? []) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const raw = item as any;
-        if (raw.status === undefined) item.status = "open";
-        if (raw.subject === undefined) item.subject = "";
+        if (raw.status === undefined) item.status = 'open';
+        if (raw.subject === undefined) item.subject = '';
       }
       for (const item of el.outboxItems ?? []) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const raw = item as any;
-        if (raw.status === undefined) item.status = "open";
-        if (raw.subject === undefined) item.subject = "";
+        if (raw.status === undefined) item.status = 'open';
+        if (raw.subject === undefined) item.subject = '';
       }
     }
   }
@@ -321,19 +317,16 @@ export function autoLoad(hostId: string | null = hostsState.activeHostId) {
         const raw = localStorage.getItem(autosaveKey(hostId, slice));
         return raw ? (JSON.parse(raw) as T) : null;
       };
-      const camera = load<WorkshopState["camera"]>("camera");
-      const agents = load<WorkshopState["agents"]>("agents");
-      const relationships =
-        load<WorkshopState["relationships"]>("relationships");
-      const settings = load<WorkshopState["settings"]>("settings");
-      const elements = load<WorkshopState["elements"]>("elements");
-      const conversations =
-        load<WorkshopState["conversations"]>("conversations");
+      const camera = load<WorkshopState['camera']>('camera');
+      const agents = load<WorkshopState['agents']>('agents');
+      const relationships = load<WorkshopState['relationships']>('relationships');
+      const settings = load<WorkshopState['settings']>('settings');
+      const elements = load<WorkshopState['elements']>('elements');
+      const conversations = load<WorkshopState['conversations']>('conversations');
       if (camera) workshopState.camera = camera;
       if (agents) workshopState.agents = agents;
       if (relationships) workshopState.relationships = relationships;
-      if (settings)
-        workshopState.settings = { ...workshopState.settings, ...settings };
+      if (settings) workshopState.settings = { ...workshopState.settings, ...settings };
       if (elements) workshopState.elements = elements;
       migratePinboardVoting();
       migrateInboxItems();
@@ -345,8 +338,7 @@ export function autoLoad(hostId: string | null = hostsState.activeHostId) {
       const saved = JSON.parse(raw) as Partial<WorkshopState>;
       workshopState.camera = saved.camera ?? workshopState.camera;
       workshopState.agents = saved.agents ?? workshopState.agents;
-      workshopState.relationships =
-        saved.relationships ?? workshopState.relationships;
+      workshopState.relationships = saved.relationships ?? workshopState.relationships;
       workshopState.settings = { ...workshopState.settings, ...saved.settings };
       workshopState.elements = saved.elements ?? {};
       migratePinboardVoting();
@@ -369,20 +361,16 @@ function generateInstanceId(): string {
   return `inst_${Date.now()}_${instanceCounter++}`;
 }
 
-export function addAgentInstance(
-  agentId: string,
-  x: number,
-  y: number,
-): string {
+export function addAgentInstance(agentId: string, x: number, y: number): string {
   const instanceId = generateInstanceId();
   workshopState.agents[instanceId] = {
     instanceId,
     agentId,
     position: { x, y },
-    behavior: "stationary",
+    behavior: 'stationary',
     homePosition: { x, y },
   };
-  autoSave(undefined, "agents");
+  autoSave(undefined, 'agents');
   return instanceId;
 }
 
@@ -394,7 +382,7 @@ export function removeAgentInstance(instanceId: string) {
       delete workshopState.relationships[id];
     }
   }
-  autoSave(undefined, "agents", "relationships");
+  autoSave(undefined, 'agents', 'relationships');
 }
 
 export function updateAgentPosition(instanceId: string, x: number, y: number) {
@@ -406,14 +394,11 @@ export function updateAgentPosition(instanceId: string, x: number, y: number) {
   }
 }
 
-export function setAgentBehavior(
-  instanceId: string,
-  behavior: AgentInstance["behavior"],
-) {
+export function setAgentBehavior(instanceId: string, behavior: AgentInstance['behavior']) {
   const agent = workshopState.agents[instanceId];
   if (agent) {
     agent.behavior = behavior;
-    autoSave(undefined, "agents");
+    autoSave(undefined, 'agents');
   }
 }
 
@@ -425,11 +410,7 @@ function generateRelationshipId(): string {
   return `rel_${Date.now()}_${relCounter++}`;
 }
 
-export function addRelationship(
-  from: string,
-  to: string,
-  label: string,
-): string {
+export function addRelationship(from: string, to: string, label: string): string {
   const id = generateRelationshipId();
   workshopState.relationships[id] = {
     id,
@@ -437,20 +418,20 @@ export function addRelationship(
     toInstanceId: to,
     label,
   };
-  autoSave(undefined, "relationships");
+  autoSave(undefined, 'relationships');
   return id;
 }
 
 export function removeRelationship(id: string) {
   delete workshopState.relationships[id];
-  autoSave(undefined, "relationships");
+  autoSave(undefined, 'relationships');
 }
 
 export function updateRelationshipLabel(id: string, label: string) {
   const rel = workshopState.relationships[id];
   if (rel) {
     rel.label = label;
-    autoSave(undefined, "relationships");
+    autoSave(undefined, 'relationships');
   }
 }
 
@@ -488,8 +469,8 @@ export function scheduleDbSave() {
       const snapshot = $state.snapshot(workshopState);
       const thumbnail = thumbnailProvider ? await thumbnailProvider() : null;
       await fetch(`/api/workshop/saves/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           state: JSON.stringify(snapshot),
           ...(thumbnail ? { thumbnail } : {}),
@@ -512,10 +493,9 @@ export function cancelDbSave() {
 
 export async function openSave(id: string) {
   const res = await fetch(`/api/workshop/saves/${id}`);
-  if (!res.ok) throw new Error("Failed to load workspace");
+  if (!res.ok) throw new Error('Failed to load workspace');
   const { save } = await res.json();
-  const saved: WorkshopState =
-    typeof save.state === "string" ? JSON.parse(save.state) : save.state;
+  const saved: WorkshopState = typeof save.state === 'string' ? JSON.parse(save.state) : save.state;
   workshopState.camera = saved.camera;
   workshopState.agents = saved.agents;
   workshopState.relationships = saved.relationships;
@@ -532,19 +512,19 @@ export async function openSave(id: string) {
 export async function createBlankSave(name: string): Promise<string> {
   resetWorkshop();
   const snapshot = $state.snapshot(workshopState);
-  const res = await fetch("/api/workshop/saves", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+  const res = await fetch('/api/workshop/saves', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, state: JSON.stringify(snapshot) }),
   });
-  if (!res.ok) throw new Error("Failed to create workspace");
+  if (!res.ok) throw new Error('Failed to create workspace');
   const { id } = await res.json();
   saveSync.activeSaveId = id;
   autoSave(undefined, ...ALL_SLICES);
   return id;
 }
 
-const ACTIVE_SAVE_KEY = "workshop:activeSaveId";
+const ACTIVE_SAVE_KEY = 'workshop:activeSaveId';
 
 export function persistActiveSaveId(id: string | null) {
   try {
@@ -574,15 +554,15 @@ export async function listWorkspaceSaves(): Promise<
     elementCount: number;
   }>
 > {
-  const res = await fetch("/api/workshop/saves");
-  if (!res.ok) throw new Error("Failed to list workspace saves");
+  const res = await fetch('/api/workshop/saves');
+  if (!res.ok) throw new Error('Failed to list workspace saves');
   const { saves } = await res.json();
   return saves;
 }
 
 export async function deleteWorkspaceSave(id: string) {
-  const res = await fetch(`/api/workshop/saves/${id}`, { method: "DELETE" });
-  if (!res.ok) throw new Error("Failed to delete workspace save");
+  const res = await fetch(`/api/workshop/saves/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete workspace save');
 }
 
 // --- Reset ---
@@ -606,9 +586,8 @@ export function resetWorkshop() {
     responseTimeout: 120_000,
     banterPrompt:
       "Have a spontaneous, in-character conversation. Discuss what you're currently working on, share observations about the workspace, or just chat. Keep it natural and brief.",
-    taskPrompt:
-      "Reflect on your current state and describe what you'd work on next.",
-    viewMode: "classic",
+    taskPrompt: "Reflect on your current state and describe what you'd work on next.",
+    viewMode: 'classic',
     crossWorkspaceChats: true,
   };
 }
@@ -636,34 +615,30 @@ export function addElement(
     label,
   };
 
-  if (type === "pinboard") element.pinboardItems = [];
-  if (type === "messageboard") element.messageBoardContent = "";
-  if (type === "inbox") {
+  if (type === 'pinboard') element.pinboardItems = [];
+  if (type === 'messageboard') element.messageBoardContent = '';
+  if (type === 'inbox') {
     element.inboxAgentId = inboxAgentId;
     element.inboxItems = [];
     element.outboxItems = [];
   }
-  if (type === "rulebook") element.rulebookContent = "";
-  if (type === "portal") {
-    element.portalTargetWorkspaceId = "";
-    element.portalLabel = "";
+  if (type === 'rulebook') element.rulebookContent = '';
+  if (type === 'portal') {
+    element.portalTargetWorkspaceId = '';
+    element.portalLabel = '';
   }
 
   workshopState.elements[instanceId] = element;
-  autoSave(undefined, "elements");
+  autoSave(undefined, 'elements');
   return instanceId;
 }
 
 export function removeElement(instanceId: string) {
   delete workshopState.elements[instanceId];
-  autoSave(undefined, "elements");
+  autoSave(undefined, 'elements');
 }
 
-export function updateElementPosition(
-  instanceId: string,
-  x: number,
-  y: number,
-) {
+export function updateElementPosition(instanceId: string, x: number, y: number) {
   const el = workshopState.elements[instanceId];
   if (el) {
     el.position = { x, y };
@@ -673,13 +648,9 @@ export function updateElementPosition(
 const MAX_PINBOARD_ITEMS = 50;
 const MAX_INBOX_ITEMS = 100;
 
-export function addPinboardItem(
-  elementId: string,
-  content: string,
-  pinnedBy: string,
-) {
+export function addPinboardItem(elementId: string, content: string, pinnedBy: string) {
   const el = workshopState.elements[elementId];
-  if (!el || el.type !== "pinboard") return;
+  if (!el || el.type !== 'pinboard') return;
   if (!el.pinboardItems) el.pinboardItems = [];
   el.pinboardItems.push({
     id: `pin_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -695,14 +666,14 @@ export function addPinboardItem(
     el.pinboardItems.sort((a, b) => a.pinnedAt - b.pinnedAt);
     el.pinboardItems.splice(0, el.pinboardItems.length - MAX_PINBOARD_ITEMS);
   }
-  autoSave(undefined, "elements");
+  autoSave(undefined, 'elements');
 }
 
 export function removePinboardItem(elementId: string, itemId: string) {
   const el = workshopState.elements[elementId];
   if (!el || !el.pinboardItems) return;
   el.pinboardItems = el.pinboardItems.filter((p) => p.id !== itemId);
-  autoSave(undefined, "elements");
+  autoSave(undefined, 'elements');
 }
 
 /** Vote on a pinboard item. Removes opposite vote if it exists; auto-removes item if net score ≤ −3. */
@@ -710,14 +681,14 @@ export function votePinboardItem(
   elementId: string,
   pinId: string,
   voterId: string,
-  direction: "up" | "down",
+  direction: 'up' | 'down',
 ): void {
   const el = workshopState.elements[elementId];
   if (!el || !el.pinboardItems) return;
   const pin = el.pinboardItems.find((p) => p.id === pinId);
   if (!pin) return;
 
-  if (direction === "up") {
+  if (direction === 'up') {
     pin.downvotes = pin.downvotes.filter((v) => v !== voterId);
     if (!pin.upvotes.includes(voterId)) pin.upvotes.push(voterId);
   } else {
@@ -731,7 +702,7 @@ export function votePinboardItem(
     el.pinboardItems = el.pinboardItems.filter((p) => p.id !== pinId);
   }
 
-  autoSave(undefined, "elements");
+  autoSave(undefined, 'elements');
 }
 
 /** Add a comment to a pinboard item. */
@@ -746,7 +717,7 @@ export function addPinboardComment(
   const pin = el.pinboardItems.find((p) => p.id === pinId);
   if (!pin) return;
   pin.comments.push({ authorId, text, at: Date.now() });
-  autoSave(undefined, "elements");
+  autoSave(undefined, 'elements');
 }
 
 /** Count pins by a given agent on a board. */
@@ -768,34 +739,29 @@ export function addActivePinboardItem(instanceId: string, pinId: string): void {
 }
 
 /** Remove a pin ID from an agent's active pinboard context. */
-export function removeActivePinboardItem(
-  instanceId: string,
-  pinId: string,
-): void {
+export function removeActivePinboardItem(instanceId: string, pinId: string): void {
   const mem = getOrCreateMemory(instanceId);
-  mem.activePinboardItems = mem.activePinboardItems.filter(
-    (id) => id !== pinId,
-  );
+  mem.activePinboardItems = mem.activePinboardItems.filter((id) => id !== pinId);
   saveMemory();
 }
 
 export function setMessageBoardContent(elementId: string, content: string) {
   const el = workshopState.elements[elementId];
-  if (!el || el.type !== "messageboard") return;
+  if (!el || el.type !== 'messageboard') return;
   el.messageBoardContent = content;
-  autoSave(undefined, "elements");
+  autoSave(undefined, 'elements');
 }
 
 export function setRulebookContent(elementId: string, content: string) {
   const el = workshopState.elements[elementId];
-  if (!el || el.type !== "rulebook") return;
+  if (!el || el.type !== 'rulebook') return;
   el.rulebookContent = content;
-  autoSave(undefined, "elements");
+  autoSave(undefined, 'elements');
 }
 
-export function addInboxItem(elementId: string, item: Omit<InboxItem, "id">) {
+export function addInboxItem(elementId: string, item: Omit<InboxItem, 'id'>) {
   const el = workshopState.elements[elementId];
-  if (!el || el.type !== "inbox") return;
+  if (!el || el.type !== 'inbox') return;
   if (!el.inboxItems) el.inboxItems = [];
   el.inboxItems.push({
     ...item,
@@ -806,12 +772,12 @@ export function addInboxItem(elementId: string, item: Omit<InboxItem, "id">) {
     el.inboxItems.sort((a, b) => a.sentAt - b.sentAt);
     el.inboxItems.splice(0, el.inboxItems.length - MAX_INBOX_ITEMS);
   }
-  autoSave(undefined, "elements");
+  autoSave(undefined, 'elements');
 }
 
-export function addOutboxItem(elementId: string, item: Omit<InboxItem, "id">) {
+export function addOutboxItem(elementId: string, item: Omit<InboxItem, 'id'>) {
   const el = workshopState.elements[elementId];
-  if (!el || el.type !== "inbox") return;
+  if (!el || el.type !== 'inbox') return;
   if (!el.outboxItems) el.outboxItems = [];
   el.outboxItems.push({
     ...item,
@@ -822,7 +788,7 @@ export function addOutboxItem(elementId: string, item: Omit<InboxItem, "id">) {
     el.outboxItems.sort((a, b) => a.sentAt - b.sentAt);
     el.outboxItems.splice(0, el.outboxItems.length - MAX_INBOX_ITEMS);
   }
-  autoSave(undefined, "elements");
+  autoSave(undefined, 'elements');
 }
 
 export function markInboxItemRead(elementId: string, itemId: string) {
@@ -831,18 +797,19 @@ export function markInboxItemRead(elementId: string, itemId: string) {
   const item = el.inboxItems.find((m) => m.id === itemId);
   if (item) {
     item.read = true;
-    autoSave(undefined, "elements");
+    autoSave(undefined, 'elements');
   }
 }
 
 export function updateInboxItemStatus(elementId: string, itemId: string, status: InboxItemStatus) {
   const el = workshopState.elements[elementId];
   if (!el) return;
-  const item = (el.inboxItems ?? []).find((m) => m.id === itemId)
-    ?? (el.outboxItems ?? []).find((m) => m.id === itemId);
+  const item =
+    (el.inboxItems ?? []).find((m) => m.id === itemId) ??
+    (el.outboxItems ?? []).find((m) => m.id === itemId);
   if (item) {
     item.status = status;
-    autoSave(undefined, "elements");
+    autoSave(undefined, 'elements');
   }
 }
 
@@ -852,7 +819,7 @@ export function markAllInboxItemsRead(elementId: string) {
   for (const item of el.inboxItems) {
     item.read = true;
   }
-  autoSave(undefined, "elements");
+  autoSave(undefined, 'elements');
 }
 
 // --- Agent memory ---
@@ -861,7 +828,7 @@ export const agentMemory: Record<string, AgentMemory> = $state({});
 
 function emptyMemory(): AgentMemory {
   return {
-    contextSummary: "",
+    contextSummary: '',
     workspaceNotes: [],
     recentInteractions: [],
     environmentState: {},
@@ -880,29 +847,19 @@ export function addWorkspaceNote(instanceId: string, note: string): void {
   saveMemory();
 }
 
-export function addRecentInteraction(
-  instanceId: string,
-  summary: string,
-): void {
+export function addRecentInteraction(instanceId: string, summary: string): void {
   const mem = getOrCreateMemory(instanceId);
   mem.recentInteractions = [...mem.recentInteractions.slice(-4), summary]; // keep last 5
   saveMemory();
 }
 
-export function updateContextSummary(
-  instanceId: string,
-  summary: string,
-): void {
+export function updateContextSummary(instanceId: string, summary: string): void {
   const mem = getOrCreateMemory(instanceId);
   mem.contextSummary = summary;
   saveMemory();
 }
 
-export function recordElementRead(
-  instanceId: string,
-  elementId: string,
-  summary: string,
-): void {
+export function recordElementRead(instanceId: string, elementId: string, summary: string): void {
   const mem = getOrCreateMemory(instanceId);
   mem.environmentState[elementId] = { summary, lastReadAt: Date.now() };
   saveMemory();
@@ -914,15 +871,12 @@ export function clearAllMemory(): void {
 }
 
 function memoryKey(): string {
-  return `workshop:memory:${hostsState.activeHostId ?? "default"}`;
+  return `workshop:memory:${hostsState.activeHostId ?? 'default'}`;
 }
 
 function saveMemory(): void {
   try {
-    localStorage.setItem(
-      memoryKey(),
-      JSON.stringify($state.snapshot(agentMemory)),
-    );
+    localStorage.setItem(memoryKey(), JSON.stringify($state.snapshot(agentMemory)));
   } catch {
     /* non-critical */
   }

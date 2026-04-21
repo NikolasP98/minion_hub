@@ -8,7 +8,11 @@ export interface ActivityBinItem {
   count: number;
 }
 
-export async function getActivityBins(ctx: TenantContext, serverId: string, since: number): Promise<ActivityBinItem[]> {
+export async function getActivityBins(
+  ctx: TenantContext,
+  serverId: string,
+  since: number,
+): Promise<ActivityBinItem[]> {
   return ctx.db
     .select({ agentId: activityBins.agentId, binTs: activityBins.binTs, count: activityBins.count })
     .from(activityBins)
@@ -23,7 +27,11 @@ export async function getActivityBins(ctx: TenantContext, serverId: string, sinc
 
 const BATCH_SIZE = 100;
 
-export async function upsertActivityBins(ctx: TenantContext, serverId: string, items: ActivityBinItem[]): Promise<void> {
+export async function upsertActivityBins(
+  ctx: TenantContext,
+  serverId: string,
+  items: ActivityBinItem[],
+): Promise<void> {
   for (let i = 0; i < items.length; i += BATCH_SIZE) {
     const batch = items.slice(i, i + BATCH_SIZE);
     await ctx.db
@@ -45,7 +53,11 @@ export async function upsertActivityBins(ctx: TenantContext, serverId: string, i
   }
 }
 
-export async function pruneOldActivityBins(ctx: TenantContext, serverId: string, olderThan: number): Promise<void> {
+export async function pruneOldActivityBins(
+  ctx: TenantContext,
+  serverId: string,
+  olderThan: number,
+): Promise<void> {
   await ctx.db
     .delete(activityBins)
     .where(

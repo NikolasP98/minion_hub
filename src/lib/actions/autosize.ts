@@ -12,26 +12,26 @@ import { TextareaAutosize } from 'runed';
  * overflow switches to scroll once the limit is hit.
  */
 export function autosize(
-	node: HTMLTextAreaElement,
-	param: string | { value: string; max?: number },
+  node: HTMLTextAreaElement,
+  param: string | { value: string; max?: number },
 ) {
-	let currentValue = typeof param === 'string' ? param : param.value;
-	const maxHeight = typeof param === 'object' ? param.max : undefined;
+  let currentValue = typeof param === 'string' ? param : param.value;
+  const maxHeight = typeof param === 'object' ? param.max : undefined;
 
-	const ta = new TextareaAutosize({
-		element: node,
-		input: () => currentValue,
-		styleProp: 'minHeight',
-		maxHeight,
-	});
+  const ta = new TextareaAutosize({
+    element: node,
+    input: () => currentValue,
+    styleProp: 'minHeight',
+    maxHeight,
+  });
 
-	return {
-		update(newParam: string | { value: string; max?: number }) {
-			currentValue = typeof newParam === 'string' ? newParam : newParam.value;
-			ta.triggerResize();
-		},
-		destroy() {
-			node.style.minHeight = '';
-		},
-	};
+  return {
+    update(newParam: string | { value: string; max?: number }) {
+      currentValue = typeof newParam === 'string' ? newParam : newParam.value;
+      ta.triggerResize();
+    },
+    destroy() {
+      node.style.minHeight = '';
+    },
+  };
 }

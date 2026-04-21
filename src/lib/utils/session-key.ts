@@ -3,7 +3,7 @@
  * into { agentId: "panik", rest: "whatsapp:direct:+51922286663" }.
  */
 export function parseAgentSessionKey(
-  sessionKey: string | undefined | null
+  sessionKey: string | undefined | null,
 ): { agentId: string; rest: string } | null {
   const raw = (sessionKey ?? '').trim();
   if (!raw) return null;

@@ -14,7 +14,10 @@ export const GET: RequestHandler = async ({ locals, params }) => {
     return json({ assignments });
   } catch (e) {
     console.error(`[GET /api/servers/${params.id}/channels/${params.channelId}/assignments]`, e);
-    return json({ ok: false, error: e instanceof Error ? e.message : 'Unknown error' }, { status: 500 });
+    return json(
+      { ok: false, error: e instanceof Error ? e.message : 'Unknown error' },
+      { status: 500 },
+    );
   }
 };
 
@@ -23,14 +26,23 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
   try {
     const body = await request.json();
     if (!body.targetType || !body.targetId) throw error(400, 'targetType and targetId required');
-    if (!isValidTargetType(body.targetType)) throw error(400, `Invalid targetType: ${body.targetType}`);
+    if (!isValidTargetType(body.targetType))
+      throw error(400, `Invalid targetType: ${body.targetType}`);
 
-    const id = await assignChannel(locals.tenantCtx, params.channelId!, body.targetType, body.targetId);
+    const id = await assignChannel(
+      locals.tenantCtx,
+      params.channelId!,
+      body.targetType,
+      body.targetId,
+    );
     return json({ ok: true, id });
   } catch (e) {
     if (e && typeof e === 'object' && 'status' in e) throw e;
     console.error(`[POST /api/servers/${params.id}/channels/${params.channelId}/assignments]`, e);
-    return json({ ok: false, error: e instanceof Error ? e.message : 'Unknown error' }, { status: 500 });
+    return json(
+      { ok: false, error: e instanceof Error ? e.message : 'Unknown error' },
+      { status: 500 },
+    );
   }
 };
 
@@ -44,6 +56,9 @@ export const DELETE: RequestHandler = async ({ locals, url }) => {
     return json({ ok: true });
   } catch (e) {
     console.error(`[DELETE channel assignment ${assignmentId}]`, e);
-    return json({ ok: false, error: e instanceof Error ? e.message : 'Unknown error' }, { status: 500 });
+    return json(
+      { ok: false, error: e instanceof Error ? e.message : 'Unknown error' },
+      { status: 500 },
+    );
   }
 };

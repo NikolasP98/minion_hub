@@ -34,12 +34,9 @@ export async function listCredentialHealthSnapshots(
 ) {
   const conditions = [eq(credentialHealthSnapshots.tenantId, ctx.tenantId)];
 
-  if (filters.serverId)
-    conditions.push(eq(credentialHealthSnapshots.serverId, filters.serverId));
-  if (filters.from)
-    conditions.push(gte(credentialHealthSnapshots.capturedAt, filters.from));
-  if (filters.to)
-    conditions.push(lte(credentialHealthSnapshots.capturedAt, filters.to));
+  if (filters.serverId) conditions.push(eq(credentialHealthSnapshots.serverId, filters.serverId));
+  if (filters.from) conditions.push(gte(credentialHealthSnapshots.capturedAt, filters.from));
+  if (filters.to) conditions.push(lte(credentialHealthSnapshots.capturedAt, filters.to));
 
   return ctx.db
     .select()

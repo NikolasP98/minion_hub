@@ -9,11 +9,11 @@
 const MAX_CONVERSATION_MESSAGES = 500;
 
 export interface ConversationMessage {
-	role: 'user' | 'assistant';
-	agentId?: string;
-	instanceId?: string;
-	content: string;
-	timestamp: number;
+  role: 'user' | 'assistant';
+  agentId?: string;
+  instanceId?: string;
+  content: string;
+  timestamp: number;
 }
 
 /** Message cache: conversationSessionKey → messages */
@@ -23,37 +23,37 @@ export const conversationMessages: Record<string, ConversationMessage[]> = $stat
 export const conversationLoading: Record<string, boolean> = $state({});
 
 export function appendMessage(sessionKey: string, msg: ConversationMessage): void {
-	if (!conversationMessages[sessionKey]) {
-		conversationMessages[sessionKey] = [];
-	}
-	// Dedup safety net: skip if any of the last 10 messages has the same agentId + content.
-	// Checking only the last message missed duplicates when another agent's message
-	// was interleaved between two identical messages from the same agent.
-	const msgs = conversationMessages[sessionKey];
-	const lookback = Math.max(0, msgs.length - 10);
-	for (let i = msgs.length - 1; i >= lookback; i--) {
-		if (msgs[i].agentId === msg.agentId && msgs[i].content === msg.content) {
-			return;
-		}
-	}
-	msgs.push(msg);
-	if (msgs.length > MAX_CONVERSATION_MESSAGES) {
-		msgs.splice(0, msgs.length - MAX_CONVERSATION_MESSAGES);
-	}
+  if (!conversationMessages[sessionKey]) {
+    conversationMessages[sessionKey] = [];
+  }
+  // Dedup safety net: skip if any of the last 10 messages has the same agentId + content.
+  // Checking only the last message missed duplicates when another agent's message
+  // was interleaved between two identical messages from the same agent.
+  const msgs = conversationMessages[sessionKey];
+  const lookback = Math.max(0, msgs.length - 10);
+  for (let i = msgs.length - 1; i >= lookback; i--) {
+    if (msgs[i].agentId === msg.agentId && msgs[i].content === msg.content) {
+      return;
+    }
+  }
+  msgs.push(msg);
+  if (msgs.length > MAX_CONVERSATION_MESSAGES) {
+    msgs.splice(0, msgs.length - MAX_CONVERSATION_MESSAGES);
+  }
 }
 
 export function setMessages(sessionKey: string, msgs: ConversationMessage[]): void {
-	conversationMessages[sessionKey] = msgs;
+  conversationMessages[sessionKey] = msgs;
 }
 
 export function clearMessages(sessionKey: string): void {
-	delete conversationMessages[sessionKey];
+  delete conversationMessages[sessionKey];
 }
 
 export function clearAllMessages(): void {
-	for (const key of Object.keys(conversationMessages)) {
-		delete conversationMessages[key];
-	}
+  for (const key of Object.keys(conversationMessages)) {
+    delete conversationMessages[key];
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -64,9 +64,9 @@ export function clearAllMessages(): void {
 export const thinkingAgents: Record<string, boolean> = $state({});
 
 export function setAgentThinking(instanceId: string, thinking: boolean): void {
-	if (thinking) {
-		thinkingAgents[instanceId] = true;
-	} else {
-		delete thinkingAgents[instanceId];
-	}
+  if (thinking) {
+    thinkingAgents[instanceId] = true;
+  } else {
+    delete thinkingAgents[instanceId];
+  }
 }

@@ -7,11 +7,13 @@ import { getTenantCtx } from '$server/auth/tenant-ctx';
 import type { TenantContext } from '$server/services/base';
 
 /** Resolve a save and verify ownership. Throws 401/403/404 as appropriate. */
-async function requireSaveOwnership(userId: string, tenantId: string, saveId: string, ctx: TenantContext) {
-  const [save] = await ctx.db
-    .select()
-    .from(workshopSaves)
-    .where(eq(workshopSaves.id, saveId));
+async function requireSaveOwnership(
+  userId: string,
+  tenantId: string,
+  saveId: string,
+  ctx: TenantContext,
+) {
+  const [save] = await ctx.db.select().from(workshopSaves).where(eq(workshopSaves.id, saveId));
 
   if (!save) throw error(404, 'Save not found');
 
@@ -71,10 +73,7 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
     updates.thumbnail = typeof thumbnail === 'string' ? thumbnail : null;
   }
 
-  await ctx.db
-    .update(workshopSaves)
-    .set(updates)
-    .where(eq(workshopSaves.id, existing.id));
+  await ctx.db.update(workshopSaves).set(updates).where(eq(workshopSaves.id, existing.id));
 
   return json({ ok: true });
 };
@@ -86,9 +85,7 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
 
   const existing = await requireSaveOwnership(user.id, ctx.tenantId, params.id!, ctx);
 
-  await ctx.db
-    .delete(workshopSaves)
-    .where(eq(workshopSaves.id, existing.id));
+  await ctx.db.delete(workshopSaves).where(eq(workshopSaves.id, existing.id));
 
   return json({ ok: true });
 };

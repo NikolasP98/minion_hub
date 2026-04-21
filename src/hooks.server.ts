@@ -8,7 +8,11 @@ import { getDb } from '$server/db/client';
 import { servers, organization, user as userTable } from '$server/db/schema';
 import { eq } from 'drizzle-orm';
 import { decryptToken } from '$server/auth/crypto';
-import { saveDesktopCookies, loadDesktopCookies, clearDesktopCookies } from '$server/auth/desktop-session';
+import {
+  saveDesktopCookies,
+  loadDesktopCookies,
+  clearDesktopCookies,
+} from '$server/auth/desktop-session';
 import { env } from '$env/dynamic/private';
 import { startBackupScheduler } from '$server/services/backup-scheduler';
 import { ensurePersonalAgentOnLogin } from '$server/services/personal-agent.service';
@@ -116,7 +120,12 @@ const appHandle: Handle = async ({ event, resolve }) => {
     const db = getDb();
     const rows = await db.select({ id: organization.id }).from(organization).limit(1);
     if (rows.length > 0) event.locals.tenantCtx = { db, tenantId: rows[0].id };
-    event.locals.user = { id: 'local', email: 'local@dev', displayName: 'Local Dev', role: 'admin' };
+    event.locals.user = {
+      id: 'local',
+      email: 'local@dev',
+      displayName: 'Local Dev',
+      role: 'admin',
+    };
     return resolve(event);
   }
 
@@ -167,7 +176,9 @@ const appHandle: Handle = async ({ event, resolve }) => {
       role: (dbUser?.role ?? 'user') as 'user' | 'admin',
     };
     event.locals.session = betterAuthSession.session;
-    const orgId = (betterAuthSession.session as { activeOrganizationId?: string | null }).activeOrganizationId ?? undefined;
+    const orgId =
+      (betterAuthSession.session as { activeOrganizationId?: string | null })
+        .activeOrganizationId ?? undefined;
     event.locals.orgId = orgId;
     if (orgId) {
       const db = getDb();

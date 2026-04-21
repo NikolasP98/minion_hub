@@ -22,8 +22,5 @@ export const tasks = sqliteTable(
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
-  (t) => [
-    index('idx_tasks_tenant').on(t.tenantId),
-    index('idx_tasks_mission').on(t.missionId),
-  ],
+  (t) => [index('idx_tasks_tenant').on(t.tenantId), index('idx_tasks_mission').on(t.missionId)],
 );

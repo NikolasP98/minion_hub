@@ -1,17 +1,18 @@
 <script lang="ts">
-  import { X, Flame, AlertTriangle, Minus, Leaf, ChevronDown, ChevronUp } from 'lucide-svelte';
-  import { bugReporter, submitReport, cancelReport } from '$lib/state/ui/bug-reporter.svelte';
+  import { X, Flame, AlertTriangle, Minus, Leaf, ChevronDown, ChevronUp, ImagePlus, Minimize2, Bug } from 'lucide-svelte';
+  import { bugReporter, submitReport, cancelReport, handlePaste, removePastedImage, minimizeReport, restoreReport, handleEsc } from '$lib/state/ui/bug-reporter.svelte';
   import * as m from '$lib/paraglide/messages';
 
   let dialogEl: HTMLDialogElement | undefined = $state();
 
   const isOpen = $derived(bugReporter.phase === 'previewing');
+  const isMinimized = $derived(bugReporter.phase === 'minimized');
   const showFlash = $derived(bugReporter.flashVisible);
 
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape' && isOpen) {
+    if (e.key === 'Escape' && (isOpen || isMinimized)) {
       e.preventDefault();
-      cancelReport();
+      handleEsc();
     }
   }
 
@@ -38,7 +39,7 @@
   };
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
+<svelte:window onkeydown={handleKeydown} onpaste={handlePaste} />
 
 <!-- Camera flash overlay -->
 {#if showFlash}
@@ -51,12 +52,12 @@
 
 <!-- Card overlay -->
 {#if isOpen}
-  <!-- Backdrop (click to close) -->
+  <!-- Backdrop (click to minimize) -->
   <button
     data-no-capture
     class="fixed inset-0 z-[9999] cursor-default"
-    onclick={cancelReport}
-    aria-label={m.bug_closeBugReporter()}
+    onclick={minimizeReport}
+    aria-label="Minimize bug reporter"
     tabindex="-1"
   ></button>
 
@@ -71,9 +72,14 @@
     <!-- Header -->
     <div class="flex items-center justify-between px-4 py-3 border-b border-border">
       <h3 class="text-sm font-semibold text-foreground">{m.bug_title()}</h3>
-      <button onclick={cancelReport} class="text-muted hover:text-foreground transition-colors" aria-label={m.common_close()}>
-        <X size={16} />
-      </button>
+      <div class="flex items-center gap-1">
+        <button onclick={minimizeReport} class="text-muted hover:text-foreground transition-colors p-0.5 rounded" aria-label="Minimize" title="Minimize (ESC)">
+          <Minimize2 size={14} />
+        </button>
+        <button onclick={cancelReport} class="text-muted hover:text-destructive transition-colors p-0.5 rounded" aria-label="Discard report" title="Discard (ESC ESC)">
+          <X size={16} />
+        </button>
+      </div>
     </div>
 
     <div class="p-4 space-y-4 max-h-[70vh] overflow-y-auto">
@@ -93,6 +99,32 @@
         <div class="w-full aspect-video rounded-lg border border-border bg-bg3 flex items-center justify-center text-muted-foreground text-xs">
           {m.bug_noScreenshot()}
         </div>
+      {/if}
+
+      <!-- Pasted images -->
+      {#if bugReporter.pastedImages.length > 0}
+        <div>
+          <p class="text-xs text-muted mb-1.5 flex items-center gap-1">
+            <ImagePlus size={12} />
+            Pasted images ({bugReporter.pastedImages.length})
+          </p>
+          <div class="flex flex-wrap gap-2">
+            {#each bugReporter.pastedImages as img, i}
+              <div class="relative group w-20 h-20 rounded-lg overflow-hidden border border-border">
+                <img src={img} alt="Pasted {i + 1}" class="w-full h-full object-cover" />
+                <button
+                  onclick={() => removePastedImage(i)}
+                  class="absolute top-0.5 right-0.5 p-0.5 rounded-full bg-bg/80 text-muted hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                  aria-label="Remove image"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {:else if bugReporter.phase === 'previewing'}
+        <p class="text-[11px] text-muted-foreground/40 text-center">Paste images from clipboard (Ctrl+V)</p>
       {/if}
 
       <!-- Console logs (collapsible) -->
@@ -172,6 +204,34 @@
         {m.bug_submit()}
       </button>
     </div>
+  </div>
+{/if}
+
+<!-- Minimized pill -->
+{#if isMinimized}
+  <div
+    data-no-capture
+    class="fixed bottom-5 right-5 z-[10000] flex items-center gap-2 bg-bg2 border border-border rounded-full shadow-lg overflow-hidden"
+  >
+    <button
+      onclick={restoreReport}
+      class="flex items-center gap-2 px-4 py-2.5 hover:bg-bg3/50 transition-colors"
+      aria-label="Restore bug report"
+    >
+      <Bug size={16} class="text-accent" />
+      <span class="text-xs font-medium text-foreground">Bug Draft</span>
+      {#if bugReporter.comment}
+        <span class="text-[11px] text-muted truncate max-w-[120px]">{bugReporter.comment.slice(0, 30)}</span>
+      {/if}
+    </button>
+    <button
+      onclick={cancelReport}
+      class="px-2.5 py-2.5 text-muted hover:text-destructive hover:bg-bg3/50 transition-colors border-l border-border"
+      aria-label="Discard report"
+      title="Discard"
+    >
+      <X size={14} />
+    </button>
   </div>
 {/if}
 

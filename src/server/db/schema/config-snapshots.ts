@@ -16,7 +16,5 @@ export const configSnapshots = sqliteTable(
     configHash: text('config_hash').notNull(),
     fetchedAt: integer('fetched_at').notNull(),
   },
-  (t) => [
-    uniqueIndex('idx_config_snapshots_server').on(t.serverId),
-  ],
+  (t) => [uniqueIndex('idx_config_snapshots_server').on(t.serverId)],
 );

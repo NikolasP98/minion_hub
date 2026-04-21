@@ -7,21 +7,21 @@ const MAX_RETRIES = 5;
 const BACKOFF_MS = [5_000, 30_000, 120_000, 600_000, 600_000];
 
 export function getBackoffDelay(retryCount: number): number {
-	return BACKOFF_MS[Math.min(retryCount, BACKOFF_MS.length - 1)];
+  return BACKOFF_MS[Math.min(retryCount, BACKOFF_MS.length - 1)];
 }
 
 export function shouldRetryAgent(agent: PersonalAgentRow, nowMs?: number): boolean {
-	const now = nowMs ?? Date.now();
-	if (agent.provisioningStatus === 'active') return false;
-	if (agent.provisioningStatus === 'provisioning') return false;
-	if (agent.retryCount >= MAX_RETRIES) return false;
-	if (agent.provisioningStatus !== 'pending' && agent.provisioningStatus !== 'error') return false;
-	// Respect backoff delay
-	if (agent.lastRetryAt) {
-		const nextRetryAt = agent.lastRetryAt + getBackoffDelay(agent.retryCount);
-		if (now < nextRetryAt) return false;
-	}
-	return true;
+  const now = nowMs ?? Date.now();
+  if (agent.provisioningStatus === 'active') return false;
+  if (agent.provisioningStatus === 'provisioning') return false;
+  if (agent.retryCount >= MAX_RETRIES) return false;
+  if (agent.provisioningStatus !== 'pending' && agent.provisioningStatus !== 'error') return false;
+  // Respect backoff delay
+  if (agent.lastRetryAt) {
+    const nextRetryAt = agent.lastRetryAt + getBackoffDelay(agent.retryCount);
+    if (now < nextRetryAt) return false;
+  }
+  return true;
 }
 
 /**
@@ -32,13 +32,13 @@ export function shouldRetryAgent(agent: PersonalAgentRow, nowMs?: number): boole
  * Workspace uses ~ prefix which resolveUserPath expands on the gateway server.
  */
 export function getProvisioningPayload(agent: PersonalAgentRow): {
-	name: string;
-	workspace: string;
+  name: string;
+  workspace: string;
 } {
-	return {
-		name: agent.agentId,
-		workspace: `~/.minion/agents/${agent.agentId}/workspace`,
-	};
+  return {
+    name: agent.agentId,
+    workspace: `~/.minion/agents/${agent.agentId}/workspace`,
+  };
 }
 
 /**
@@ -48,32 +48,32 @@ export function getProvisioningPayload(agent: PersonalAgentRow): {
  * trigger provisioning via sendRequest('agents.create').
  */
 export async function getPendingProvisioningForUser(
-	ctx: TenantContext,
-	userId: string,
+  ctx: TenantContext,
+  userId: string,
 ): Promise<{ agent: PersonalAgentRow; payload: ReturnType<typeof getProvisioningPayload> } | null> {
-	const agent = await getPersonalAgent(ctx, userId);
-	if (!agent) return null;
-	if (!shouldRetryAgent(agent)) return null;
-	return { agent, payload: getProvisioningPayload(agent) };
+  const agent = await getPersonalAgent(ctx, userId);
+  if (!agent) return null;
+  if (!shouldRetryAgent(agent)) return null;
+  return { agent, payload: getProvisioningPayload(agent) };
 }
 
 /**
  * Mark an agent as provisioning (called server-side before client makes the gateway call).
  */
 export async function markProvisioning(ctx: TenantContext, userId: string): Promise<void> {
-	await updateProvisioningStatus(ctx, userId, 'provisioning');
+  await updateProvisioningStatus(ctx, userId, 'provisioning');
 }
 
 /**
  * Mark an agent as active (called from client-side API after successful agents.create).
  */
 export async function markActive(ctx: TenantContext, userId: string): Promise<void> {
-	await updateProvisioningStatus(ctx, userId, 'active');
+  await updateProvisioningStatus(ctx, userId, 'active');
 }
 
 /**
  * Mark an agent as error (called from client-side API after failed agents.create).
  */
 export async function markError(ctx: TenantContext, userId: string, error: string): Promise<void> {
-	await updateProvisioningStatus(ctx, userId, 'error', error);
+  await updateProvisioningStatus(ctx, userId, 'error', error);
 }

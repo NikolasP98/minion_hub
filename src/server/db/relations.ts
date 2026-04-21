@@ -69,13 +69,19 @@ export const organizationRelations = relations(organization, ({ many }) => ({
 
 export const memberRelations = relations(member, ({ one }) => ({
   user: one(user, { fields: [member.userId], references: [user.id] }),
-  organization: one(organization, { fields: [member.organizationId], references: [organization.id] }),
+  organization: one(organization, {
+    fields: [member.organizationId],
+    references: [organization.id],
+  }),
 }));
 
 // ── Better Auth: Invitation ───────────────────────────────────────────────────
 
 export const invitationRelations = relations(invitation, ({ one }) => ({
-  organization: one(organization, { fields: [invitation.organizationId], references: [organization.id] }),
+  organization: one(organization, {
+    fields: [invitation.organizationId],
+    references: [organization.id],
+  }),
   inviter: one(user, { fields: [invitation.inviterId], references: [user.id] }),
 }));
 
@@ -122,7 +128,10 @@ export const sessionsRelations = relations(sessions, ({ one, many }) => ({
 
 export const chatMessagesRelations = relations(chatMessages, ({ one }) => ({
   server: one(servers, { fields: [chatMessages.serverId], references: [servers.id] }),
-  organization: one(organization, { fields: [chatMessages.tenantId], references: [organization.id] }),
+  organization: one(organization, {
+    fields: [chatMessages.tenantId],
+    references: [organization.id],
+  }),
 }));
 
 // ── Bugs ─────────────────────────────────────────────────────────────────────
@@ -136,7 +145,10 @@ export const bugsRelations = relations(bugs, ({ one }) => ({
 
 export const connectionEventsRelations = relations(connectionEvents, ({ one }) => ({
   server: one(servers, { fields: [connectionEvents.serverId], references: [servers.id] }),
-  organization: one(organization, { fields: [connectionEvents.tenantId], references: [organization.id] }),
+  organization: one(organization, {
+    fields: [connectionEvents.tenantId],
+    references: [organization.id],
+  }),
 }));
 
 // ── Settings ─────────────────────────────────────────────────────────────────
@@ -172,7 +184,10 @@ export const tasksRelations = relations(tasks, ({ one }) => ({
 // ── Session Tasks ────────────────────────────────────────────────────────
 
 export const sessionTasksRelations = relations(sessionTasks, ({ one }) => ({
-  organization: one(organization, { fields: [sessionTasks.tenantId], references: [organization.id] }),
+  organization: one(organization, {
+    fields: [sessionTasks.tenantId],
+    references: [organization.id],
+  }),
   server: one(servers, { fields: [sessionTasks.serverId], references: [servers.id] }),
 }));
 
@@ -193,20 +208,29 @@ export const userAgentsRelations = relations(userAgents, ({ one }) => ({
 // ── Backup Configs ──────────────────────────────────────────────────────
 
 export const backupConfigsRelations = relations(backupConfigs, ({ one }) => ({
-  organization: one(organization, { fields: [backupConfigs.tenantId], references: [organization.id] }),
+  organization: one(organization, {
+    fields: [backupConfigs.tenantId],
+    references: [organization.id],
+  }),
 }));
 
 // ── Server Backups ──────────────────────────────────────────────────────
 
 export const serverBackupsRelations = relations(serverBackups, ({ one }) => ({
   server: one(servers, { fields: [serverBackups.serverId], references: [servers.id] }),
-  organization: one(organization, { fields: [serverBackups.tenantId], references: [organization.id] }),
+  organization: one(organization, {
+    fields: [serverBackups.tenantId],
+    references: [organization.id],
+  }),
 }));
 
 // ── Agent Groups ─────────────────────────────────────────────────────
 
 export const agentGroupsRelations = relations(agentGroups, ({ one, many }) => ({
-  organization: one(organization, { fields: [agentGroups.tenantId], references: [organization.id] }),
+  organization: one(organization, {
+    fields: [agentGroups.tenantId],
+    references: [organization.id],
+  }),
   members: many(agentGroupMembers),
 }));
 

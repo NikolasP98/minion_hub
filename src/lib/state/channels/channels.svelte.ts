@@ -34,7 +34,13 @@ export async function fetchChannels(serverId: string) {
 
 export async function createChannel(
   serverId: string,
-  input: { type: ChannelType; label: string; credentials?: Record<string, string>; credentialsMeta?: Record<string, string>; status?: ChannelStatus },
+  input: {
+    type: ChannelType;
+    label: string;
+    credentials?: Record<string, string>;
+    credentialsMeta?: Record<string, string>;
+    status?: ChannelStatus;
+  },
 ) {
   const res = await fetch(apiBase(serverId), {
     method: 'POST',
@@ -50,7 +56,12 @@ export async function createChannel(
 export async function updateChannel(
   serverId: string,
   channelId: string,
-  input: Partial<{ label: string; credentials: Record<string, string>; credentialsMeta: Record<string, string>; status: ChannelStatus }>,
+  input: Partial<{
+    label: string;
+    credentials: Record<string, string>;
+    credentialsMeta: Record<string, string>;
+    status: ChannelStatus;
+  }>,
 ) {
   const res = await fetch(`${apiBase(serverId)}/${channelId}`, {
     method: 'PUT',
@@ -68,14 +79,22 @@ export async function deleteChannel(serverId: string, channelId: string) {
   await fetchChannels(serverId);
 }
 
-export async function fetchChannelAssignments(serverId: string, channelId: string): Promise<ChannelAssignment[]> {
+export async function fetchChannelAssignments(
+  serverId: string,
+  channelId: string,
+): Promise<ChannelAssignment[]> {
   const res = await fetch(`${apiBase(serverId)}/${channelId}/assignments`);
   if (!res.ok) throw new Error(`Failed to load assignments: ${res.status}`);
   const data = await res.json();
   return data.assignments;
 }
 
-export async function assignChannel(serverId: string, channelId: string, targetType: 'user' | 'session', targetId: string) {
+export async function assignChannel(
+  serverId: string,
+  channelId: string,
+  targetType: 'user' | 'session',
+  targetId: string,
+) {
   const res = await fetch(`${apiBase(serverId)}/${channelId}/assignments`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -85,8 +104,11 @@ export async function assignChannel(serverId: string, channelId: string, targetT
 }
 
 export async function unassignChannel(serverId: string, channelId: string, assignmentId: string) {
-  const res = await fetch(`${apiBase(serverId)}/${channelId}/assignments?assignmentId=${assignmentId}`, {
-    method: 'DELETE',
-  });
+  const res = await fetch(
+    `${apiBase(serverId)}/${channelId}/assignments?assignmentId=${assignmentId}`,
+    {
+      method: 'DELETE',
+    },
+  );
   if (!res.ok) throw new Error(`Failed to unassign: ${res.status}`);
 }

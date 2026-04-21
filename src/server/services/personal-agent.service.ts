@@ -12,161 +12,150 @@ export type ProvisioningStatus = 'pending' | 'provisioning' | 'active' | 'error'
 export type PersonalityPreset = 'professional' | 'casual' | 'creative' | 'technical';
 
 export interface PersonalAgentUpdate {
-	displayName: string;
-	conversationName: string | null;
-	personalityPreset: PersonalityPreset | null;
-	personalityText: string | null;
-	personalityConfigured: boolean;
-	avatarUrl: string | null;
+  displayName: string;
+  conversationName: string | null;
+  personalityPreset: PersonalityPreset | null;
+  personalityText: string | null;
+  personalityConfigured: boolean;
+  avatarUrl: string | null;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 export function derivePersonalAgentId(userId: string): string {
-	return `personal-${userId}`;
+  return `personal-${userId}`;
 }
 
 export function deriveDisplayName(email: string): string {
-	return `usr:${email}`;
+  return `usr:${email}`;
 }
 
 // ── Service Functions ────────────────────────────────────────────────────────
 
 export async function provisionPersonalAgent(
-	ctx: TenantContext,
-	params: { userId: string; email: string; serverId: string },
+  ctx: TenantContext,
+  params: { userId: string; email: string; serverId: string },
 ): Promise<PersonalAgentRow> {
-	const agentId = derivePersonalAgentId(params.userId);
-	const displayName = deriveDisplayName(params.email);
-	const now = nowMs();
+  const agentId = derivePersonalAgentId(params.userId);
+  const displayName = deriveDisplayName(params.email);
+  const now = nowMs();
 
-	const row: typeof personalAgents.$inferInsert = {
-		id: newId(),
-		userId: params.userId,
-		agentId,
-		serverId: params.serverId,
-		displayName,
-		personalityConfigured: false,
-		provisioningStatus: 'pending',
-		retryCount: 0,
-		createdAt: now,
-		updatedAt: now,
-	};
+  const row: typeof personalAgents.$inferInsert = {
+    id: newId(),
+    userId: params.userId,
+    agentId,
+    serverId: params.serverId,
+    displayName,
+    personalityConfigured: false,
+    provisioningStatus: 'pending',
+    retryCount: 0,
+    createdAt: now,
+    updatedAt: now,
+  };
 
-	// Insert with onConflictDoNothing for idempotency (userId is unique)
-	await ctx.db.insert(personalAgents).values(row).onConflictDoNothing();
+  // Insert with onConflictDoNothing for idempotency (userId is unique)
+  await ctx.db.insert(personalAgents).values(row).onConflictDoNothing();
 
-	// Update user.personalAgentId for fast lookup
-	await ctx.db
-		.update(user)
-		.set({ personalAgentId: agentId })
-		.where(eq(user.id, params.userId));
+  // Update user.personalAgentId for fast lookup
+  await ctx.db.update(user).set({ personalAgentId: agentId }).where(eq(user.id, params.userId));
 
-	// Also insert into user_agents for JWT agentIds compatibility
-	await assignAgentToUser(ctx, params.userId, agentId, params.serverId);
+  // Also insert into user_agents for JWT agentIds compatibility
+  await assignAgentToUser(ctx, params.userId, agentId, params.serverId);
 
-	// Return the row (either newly created or existing)
-	const [existing] = await ctx.db
-		.select()
-		.from(personalAgents)
-		.where(eq(personalAgents.userId, params.userId))
-		.limit(1);
+  // Return the row (either newly created or existing)
+  const [existing] = await ctx.db
+    .select()
+    .from(personalAgents)
+    .where(eq(personalAgents.userId, params.userId))
+    .limit(1);
 
-	return existing ?? row;
+  return existing ?? row;
 }
 
 export async function getPersonalAgent(
-	ctx: TenantContext,
-	userId: string,
+  ctx: TenantContext,
+  userId: string,
 ): Promise<PersonalAgentRow | null> {
-	const rows = await ctx.db
-		.select()
-		.from(personalAgents)
-		.where(eq(personalAgents.userId, userId))
-		.limit(1);
+  const rows = await ctx.db
+    .select()
+    .from(personalAgents)
+    .where(eq(personalAgents.userId, userId))
+    .limit(1);
 
-	return rows[0] ?? null;
+  return rows[0] ?? null;
 }
 
 export async function updatePersonalAgent(
-	ctx: TenantContext,
-	userId: string,
-	updates: Partial<PersonalAgentUpdate>,
+  ctx: TenantContext,
+  userId: string,
+  updates: Partial<PersonalAgentUpdate>,
 ): Promise<void> {
-	await ctx.db
-		.update(personalAgents)
-		.set({
-			...updates,
-			updatedAt: nowMs(),
-		})
-		.where(eq(personalAgents.userId, userId));
+  await ctx.db
+    .update(personalAgents)
+    .set({
+      ...updates,
+      updatedAt: nowMs(),
+    })
+    .where(eq(personalAgents.userId, userId));
 }
 
 export async function updateProvisioningStatus(
-	ctx: TenantContext,
-	userId: string,
-	status: ProvisioningStatus,
-	error?: string,
+  ctx: TenantContext,
+  userId: string,
+  status: ProvisioningStatus,
+  error?: string,
 ): Promise<void> {
-	const now = nowMs();
-	const setData: Record<string, unknown> = {
-		provisioningStatus: status,
-		updatedAt: now,
-	};
+  const now = nowMs();
+  const setData: Record<string, unknown> = {
+    provisioningStatus: status,
+    updatedAt: now,
+  };
 
-	if (status === 'error') {
-		setData.provisioningError = error ?? null;
-		setData.lastRetryAt = now;
-		setData.retryCount = sql`${personalAgents.retryCount} + 1`;
-	}
+  if (status === 'error') {
+    setData.provisioningError = error ?? null;
+    setData.lastRetryAt = now;
+    setData.retryCount = sql`${personalAgents.retryCount} + 1`;
+  }
 
-	if (status === 'active') {
-		setData.provisioningError = null;
-	}
+  if (status === 'active') {
+    setData.provisioningError = null;
+  }
 
-	await ctx.db
-		.update(personalAgents)
-		.set(setData)
-		.where(eq(personalAgents.userId, userId));
+  await ctx.db.update(personalAgents).set(setData).where(eq(personalAgents.userId, userId));
 }
 
 export async function ensurePersonalAgentOnLogin(
-	ctx: TenantContext,
-	params: { userId: string; email: string; serverId: string },
+  ctx: TenantContext,
+  params: { userId: string; email: string; serverId: string },
 ): Promise<PersonalAgentRow> {
-	const existing = await getPersonalAgent(ctx, params.userId);
-	if (existing) {
-		// Backfill: update stale displayName format (e.g. "X's Agent" → "usr:X@...")
-		const expected = deriveDisplayName(params.email);
-		if (existing.displayName !== expected) {
-			await updatePersonalAgent(ctx, params.userId, { displayName: expected });
-			return { ...existing, displayName: expected };
-		}
-		return existing;
-	}
-	return provisionPersonalAgent(ctx, params);
+  const existing = await getPersonalAgent(ctx, params.userId);
+  if (existing) {
+    // Backfill: update stale displayName format (e.g. "X's Agent" → "usr:X@...")
+    const expected = deriveDisplayName(params.email);
+    if (existing.displayName !== expected) {
+      await updatePersonalAgent(ctx, params.userId, { displayName: expected });
+      return { ...existing, displayName: expected };
+    }
+    return existing;
+  }
+  return provisionPersonalAgent(ctx, params);
 }
 
 export async function listPendingAgents(
-	ctx: TenantContext,
-	maxRetries: number = 5,
+  ctx: TenantContext,
+  maxRetries: number = 5,
 ): Promise<PersonalAgentRow[]> {
-	return ctx.db
-		.select()
-		.from(personalAgents)
-		.where(
-			and(
-				inArray(personalAgents.provisioningStatus, ['pending', 'error']),
-				lt(personalAgents.retryCount, maxRetries),
-			),
-		);
+  return ctx.db
+    .select()
+    .from(personalAgents)
+    .where(
+      and(
+        inArray(personalAgents.provisioningStatus, ['pending', 'error']),
+        lt(personalAgents.retryCount, maxRetries),
+      ),
+    );
 }
 
-export async function deletePersonalAgent(
-	ctx: TenantContext,
-	userId: string,
-): Promise<void> {
-	await ctx.db
-		.delete(personalAgents)
-		.where(eq(personalAgents.userId, userId));
+export async function deletePersonalAgent(ctx: TenantContext, userId: string): Promise<void> {
+  await ctx.db.delete(personalAgents).where(eq(personalAgents.userId, userId));
 }

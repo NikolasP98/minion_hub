@@ -18,6 +18,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 
   let body: {
     screenshot?: string;
+    pastedImages?: string[];
     consoleLogs?: Array<{ level: string; message: string; timestamp: number; stack?: string }>;
     severity?: string;
     comment?: string;
@@ -64,6 +65,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
         severity,
         screenshotBase64,
         screenshotUrl,
+        pastedImages: body.pastedImages,
         consoleLogs: body.consoleLogs,
         stateSnapshot: body.stateSnapshot,
         bugId,
@@ -88,7 +90,11 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     const activeHostId = (body.stateSnapshot?.activeHostId as string) ?? null;
     let serverId = activeHostId;
     if (!serverId) {
-      const row = await ctx.db.select({ id: servers.id }).from(servers).where(eq(servers.tenantId, ctx.tenantId)).limit(1);
+      const row = await ctx.db
+        .select({ id: servers.id })
+        .from(servers)
+        .where(eq(servers.tenantId, ctx.tenantId))
+        .limit(1);
       serverId = row[0]?.id ?? null;
     }
 

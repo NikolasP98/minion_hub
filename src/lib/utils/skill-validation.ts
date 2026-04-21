@@ -91,7 +91,7 @@ export function validateSkill(input: SkillValidationInput): ValidationFinding[] 
         });
       }
 
-      if (!(input.chapterToolMap[ch.id]?.length)) {
+      if (!input.chapterToolMap[ch.id]?.length) {
         findings.push({
           level: 'error',
           message: 'Chapter has no tools assigned',
@@ -142,7 +142,10 @@ export function validateSkill(input: SkillValidationInput): ValidationFinding[] 
       visited.add(node);
       stack.add(node);
       for (const neighbor of adj.get(node) ?? []) {
-        if (stack.has(neighbor)) { hasCycle = true; return; }
+        if (stack.has(neighbor)) {
+          hasCycle = true;
+          return;
+        }
         if (!visited.has(neighbor)) dfs(neighbor);
       }
       stack.delete(node);

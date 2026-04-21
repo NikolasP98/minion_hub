@@ -31,17 +31,94 @@ export function closePalette() {
 }
 
 const staticCommands: Command[] = [
-  { id: 'page:dashboard', label: 'Dashboard', category: 'page', icon: 'home', keywords: 'home overview', action: () => goto('/') },
-  { id: 'page:my-agent', label: 'My Agent', category: 'page', icon: 'user', keywords: 'personal agent', action: () => goto('/my-agent') },
-  { id: 'page:builder', label: 'Builder', category: 'page', icon: 'book-open', keywords: 'create edit agents tools skills', action: () => goto('/builder') },
-  { id: 'page:marketplace', label: 'Marketplace', category: 'page', icon: 'store', keywords: 'plugins tools marketplace browse', action: () => goto('/marketplace') },
-  { id: 'page:reliability', label: 'Reliability', category: 'page', icon: 'activity', keywords: 'health monitoring events', action: () => goto('/reliability') },
-  { id: 'page:sessions', label: 'Sessions', category: 'page', icon: 'messages-square', keywords: 'conversations history', action: () => goto('/sessions') },
-  { id: 'page:settings', label: 'Settings', category: 'page', icon: 'settings', keywords: 'preferences config', action: () => goto('/settings') },
-  { id: 'page:workshop', label: 'Workshop', category: 'page', icon: 'wrench', keywords: 'test experiment sandbox', action: () => goto('/workshop') },
-  { id: 'page:flow-editor', label: 'Flow Editor', category: 'page', icon: 'git-branch', keywords: 'flows graph editor', action: () => goto('/flow-editor') },
-  { id: 'action:new-agent', label: 'New Agent', category: 'action', icon: 'plus', keywords: 'create add agent', action: () => goto('/builder') },
-  { id: 'action:settings', label: 'Open Settings', category: 'action', icon: 'settings', keywords: 'preferences configuration', action: () => goto('/settings') },
+  {
+    id: 'page:dashboard',
+    label: 'Dashboard',
+    category: 'page',
+    icon: 'home',
+    keywords: 'home overview',
+    action: () => goto('/'),
+  },
+  {
+    id: 'page:my-agent',
+    label: 'My Agent',
+    category: 'page',
+    icon: 'user',
+    keywords: 'personal agent',
+    action: () => goto('/my-agent'),
+  },
+  {
+    id: 'page:builder',
+    label: 'Builder',
+    category: 'page',
+    icon: 'book-open',
+    keywords: 'create edit agents tools skills',
+    action: () => goto('/builder'),
+  },
+  {
+    id: 'page:marketplace',
+    label: 'Marketplace',
+    category: 'page',
+    icon: 'store',
+    keywords: 'plugins tools marketplace browse',
+    action: () => goto('/marketplace'),
+  },
+  {
+    id: 'page:reliability',
+    label: 'Reliability',
+    category: 'page',
+    icon: 'activity',
+    keywords: 'health monitoring events',
+    action: () => goto('/reliability'),
+  },
+  {
+    id: 'page:sessions',
+    label: 'Sessions',
+    category: 'page',
+    icon: 'messages-square',
+    keywords: 'conversations history',
+    action: () => goto('/sessions'),
+  },
+  {
+    id: 'page:settings',
+    label: 'Settings',
+    category: 'page',
+    icon: 'settings',
+    keywords: 'preferences config',
+    action: () => goto('/settings'),
+  },
+  {
+    id: 'page:workshop',
+    label: 'Workshop',
+    category: 'page',
+    icon: 'wrench',
+    keywords: 'test experiment sandbox',
+    action: () => goto('/workshop'),
+  },
+  {
+    id: 'page:flow-editor',
+    label: 'Flow Editor',
+    category: 'page',
+    icon: 'git-branch',
+    keywords: 'flows graph editor',
+    action: () => goto('/flow-editor'),
+  },
+  {
+    id: 'action:new-agent',
+    label: 'New Agent',
+    category: 'action',
+    icon: 'plus',
+    keywords: 'create add agent',
+    action: () => goto('/builder'),
+  },
+  {
+    id: 'action:settings',
+    label: 'Open Settings',
+    category: 'action',
+    icon: 'settings',
+    keywords: 'preferences configuration',
+    action: () => goto('/settings'),
+  },
 ];
 
 const customCommands: Command[] = $state([]);
@@ -79,10 +156,12 @@ export function getFilteredCommands(): { category: string; commands: Command[] }
   const all = [...staticCommands, ...agentCommands, ...customCommands];
   const q = palette.query.trim();
 
-  const filtered = q ? all.filter((c) => {
-    const searchText = `${c.label} ${c.keywords ?? ''}`;
-    return fuzzyMatch(searchText, q);
-  }) : all;
+  const filtered = q
+    ? all.filter((c) => {
+        const searchText = `${c.label} ${c.keywords ?? ''}`;
+        return fuzzyMatch(searchText, q);
+      })
+    : all;
 
   // Group by category
   const groups: Record<string, Command[]> = {};

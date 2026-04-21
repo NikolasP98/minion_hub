@@ -22,10 +22,7 @@ export async function loadAgentSkills(agentId: string): Promise<void> {
   }
 }
 
-export async function setAgentSkills(
-  agentId: string,
-  skills: string[] | null,
-): Promise<void> {
+export async function setAgentSkills(agentId: string, skills: string[] | null): Promise<void> {
   agentSkillsState.error = null;
   try {
     await sendRequest('agents.skills.set', { agentId, skills });
@@ -42,10 +39,7 @@ export async function setAgentSkills(
   }
 }
 
-export async function toggleGlobalSkill(
-  skillKey: string,
-  enabled: boolean,
-): Promise<void> {
+export async function toggleGlobalSkill(skillKey: string, enabled: boolean): Promise<void> {
   agentSkillsState.error = null;
   try {
     await sendRequest('skills.update', { skillKey, enabled });

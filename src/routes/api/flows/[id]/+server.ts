@@ -7,11 +7,13 @@ import { getTenantCtx } from '$server/auth/tenant-ctx';
 import type { TenantContext } from '$server/services/base';
 
 /** Resolve a flow and verify ownership. Throws 401/403/404 as appropriate. */
-async function requireFlowOwnership(userId: string, tenantId: string, flowId: string, ctx: TenantContext) {
-  const [flow] = await ctx.db
-    .select()
-    .from(flows)
-    .where(eq(flows.id, flowId));
+async function requireFlowOwnership(
+  userId: string,
+  tenantId: string,
+  flowId: string,
+  ctx: TenantContext,
+) {
+  const [flow] = await ctx.db.select().from(flows).where(eq(flows.id, flowId));
 
   if (!flow) throw error(404, 'Flow not found');
 

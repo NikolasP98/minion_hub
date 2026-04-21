@@ -28,14 +28,14 @@ function makeInput(overrides: Partial<SkillValidationInput> = {}): SkillValidati
 describe('Test 1: no chapters error', () => {
   it('returns an error-level finding when chapters is empty', () => {
     const result = validateSkill(makeInput({ chapters: [], chapterToolMap: {} }));
-    const errors = result.filter(f => f.level === 'error');
+    const errors = result.filter((f) => f.level === 'error');
     expect(errors.length).toBeGreaterThanOrEqual(1);
-    expect(errors.some(f => f.message.toLowerCase().includes('chapter'))).toBe(true);
+    expect(errors.some((f) => f.message.toLowerCase().includes('chapter'))).toBe(true);
   });
 
   it('error finding has chapterId=null and chapterName=null (skill-level)', () => {
     const result = validateSkill(makeInput({ chapters: [], chapterToolMap: {} }));
-    const noChapterError = result.find(f => f.level === 'error');
+    const noChapterError = result.find((f) => f.level === 'error');
     expect(noChapterError?.chapterId).toBeNull();
     expect(noChapterError?.chapterName).toBeNull();
   });
@@ -47,33 +47,39 @@ describe('Test 2: chapter-type missing guide → error', () => {
   it('returns an error when a chapter-type node has empty guide', () => {
     const result = validateSkill(
       makeInput({
-        chapters: [{ id: 'ch1', name: 'Chapter 1', type: 'chapter', guide: '', outputDef: 'something' }],
+        chapters: [
+          { id: 'ch1', name: 'Chapter 1', type: 'chapter', guide: '', outputDef: 'something' },
+        ],
         chapterToolMap: { ch1: ['tool-a'] },
-      })
+      }),
     );
-    const errors = result.filter(f => f.level === 'error');
-    expect(errors.some(f => f.chapterId === 'ch1')).toBe(true);
+    const errors = result.filter((f) => f.level === 'error');
+    expect(errors.some((f) => f.chapterId === 'ch1')).toBe(true);
   });
 
   it('returns an error when a chapter-type node has whitespace-only guide', () => {
     const result = validateSkill(
       makeInput({
-        chapters: [{ id: 'ch1', name: 'Chapter 1', type: 'chapter', guide: '   ', outputDef: 'something' }],
+        chapters: [
+          { id: 'ch1', name: 'Chapter 1', type: 'chapter', guide: '   ', outputDef: 'something' },
+        ],
         chapterToolMap: { ch1: ['tool-a'] },
-      })
+      }),
     );
-    const errors = result.filter(f => f.level === 'error');
-    expect(errors.some(f => f.chapterId === 'ch1')).toBe(true);
+    const errors = result.filter((f) => f.level === 'error');
+    expect(errors.some((f) => f.chapterId === 'ch1')).toBe(true);
   });
 
   it('error finding has chapterId and chapterName set to the chapter values', () => {
     const result = validateSkill(
       makeInput({
-        chapters: [{ id: 'ch1', name: 'My Chapter', type: 'chapter', guide: '', outputDef: 'something' }],
+        chapters: [
+          { id: 'ch1', name: 'My Chapter', type: 'chapter', guide: '', outputDef: 'something' },
+        ],
         chapterToolMap: { ch1: ['tool-a'] },
-      })
+      }),
     );
-    const guideError = result.find(f => f.level === 'error' && f.chapterId === 'ch1');
+    const guideError = result.find((f) => f.level === 'error' && f.chapterId === 'ch1');
     expect(guideError?.chapterId).toBe('ch1');
     expect(guideError?.chapterName).toBe('My Chapter');
   });
@@ -86,44 +92,62 @@ describe('Test 3: condition-type missing conditionText → error', () => {
     const result = validateSkill(
       makeInput({
         chapters: [
-          { id: 'ch1', name: 'Chapter 1', type: 'chapter', guide: 'guide text', outputDef: 'output' },
+          {
+            id: 'ch1',
+            name: 'Chapter 1',
+            type: 'chapter',
+            guide: 'guide text',
+            outputDef: 'output',
+          },
           { id: 'cond1', name: 'My Condition', type: 'condition', conditionText: '' },
         ],
         chapterToolMap: { ch1: ['tool-a'], cond1: [] },
         edges: [{ sourceChapterId: 'ch1', targetChapterId: 'cond1' }],
-      })
+      }),
     );
-    const errors = result.filter(f => f.level === 'error');
-    expect(errors.some(f => f.chapterId === 'cond1')).toBe(true);
+    const errors = result.filter((f) => f.level === 'error');
+    expect(errors.some((f) => f.chapterId === 'cond1')).toBe(true);
   });
 
   it('returns an error when a condition node has whitespace-only conditionText', () => {
     const result = validateSkill(
       makeInput({
         chapters: [
-          { id: 'ch1', name: 'Chapter 1', type: 'chapter', guide: 'guide text', outputDef: 'output' },
+          {
+            id: 'ch1',
+            name: 'Chapter 1',
+            type: 'chapter',
+            guide: 'guide text',
+            outputDef: 'output',
+          },
           { id: 'cond1', name: 'My Condition', type: 'condition', conditionText: '   ' },
         ],
         chapterToolMap: { ch1: ['tool-a'], cond1: [] },
         edges: [{ sourceChapterId: 'ch1', targetChapterId: 'cond1' }],
-      })
+      }),
     );
-    const errors = result.filter(f => f.level === 'error');
-    expect(errors.some(f => f.chapterId === 'cond1')).toBe(true);
+    const errors = result.filter((f) => f.level === 'error');
+    expect(errors.some((f) => f.chapterId === 'cond1')).toBe(true);
   });
 
   it('error finding has chapterId and chapterName of the condition', () => {
     const result = validateSkill(
       makeInput({
         chapters: [
-          { id: 'ch1', name: 'Chapter 1', type: 'chapter', guide: 'guide text', outputDef: 'output' },
+          {
+            id: 'ch1',
+            name: 'Chapter 1',
+            type: 'chapter',
+            guide: 'guide text',
+            outputDef: 'output',
+          },
           { id: 'cond1', name: 'My Condition', type: 'condition', conditionText: '' },
         ],
         chapterToolMap: { ch1: ['tool-a'], cond1: [] },
         edges: [{ sourceChapterId: 'ch1', targetChapterId: 'cond1' }],
-      })
+      }),
     );
-    const condError = result.find(f => f.level === 'error' && f.chapterId === 'cond1');
+    const condError = result.find((f) => f.level === 'error' && f.chapterId === 'cond1');
     expect(condError?.chapterId).toBe('cond1');
     expect(condError?.chapterName).toBe('My Condition');
   });
@@ -135,33 +159,39 @@ describe('Test 4: chapter-type with no tools → error', () => {
   it('returns an error when a chapter-type node has no entry in chapterToolMap', () => {
     const result = validateSkill(
       makeInput({
-        chapters: [{ id: 'ch1', name: 'Chapter 1', type: 'chapter', guide: 'do it', outputDef: 'output' }],
+        chapters: [
+          { id: 'ch1', name: 'Chapter 1', type: 'chapter', guide: 'do it', outputDef: 'output' },
+        ],
         chapterToolMap: {},
-      })
+      }),
     );
-    const errors = result.filter(f => f.level === 'error');
-    expect(errors.some(f => f.chapterId === 'ch1')).toBe(true);
+    const errors = result.filter((f) => f.level === 'error');
+    expect(errors.some((f) => f.chapterId === 'ch1')).toBe(true);
   });
 
   it('returns an error when a chapter-type node has an empty tools array', () => {
     const result = validateSkill(
       makeInput({
-        chapters: [{ id: 'ch1', name: 'Chapter 1', type: 'chapter', guide: 'do it', outputDef: 'output' }],
+        chapters: [
+          { id: 'ch1', name: 'Chapter 1', type: 'chapter', guide: 'do it', outputDef: 'output' },
+        ],
         chapterToolMap: { ch1: [] },
-      })
+      }),
     );
-    const errors = result.filter(f => f.level === 'error');
-    expect(errors.some(f => f.chapterId === 'ch1')).toBe(true);
+    const errors = result.filter((f) => f.level === 'error');
+    expect(errors.some((f) => f.chapterId === 'ch1')).toBe(true);
   });
 
   it('error finding has chapterId and chapterName of the chapter', () => {
     const result = validateSkill(
       makeInput({
-        chapters: [{ id: 'ch1', name: 'Chapter 1', type: 'chapter', guide: 'do it', outputDef: 'output' }],
+        chapters: [
+          { id: 'ch1', name: 'Chapter 1', type: 'chapter', guide: 'do it', outputDef: 'output' },
+        ],
         chapterToolMap: { ch1: [] },
-      })
+      }),
     );
-    const toolError = result.find(f => f.level === 'error' && f.chapterId === 'ch1');
+    const toolError = result.find((f) => f.level === 'error' && f.chapterId === 'ch1');
     expect(toolError?.chapterId).toBe('ch1');
     expect(toolError?.chapterName).toBe('Chapter 1');
   });
@@ -173,7 +203,7 @@ describe('Test 5: early return after no-chapters error', () => {
   it('returns only the no-chapters error and no chapter-level findings when chapters is empty', () => {
     const result = validateSkill(makeInput({ chapters: [], chapterToolMap: {} }));
     // No chapter-specific (chapterId != null) findings should exist
-    expect(result.every(f => f.chapterId === null)).toBe(true);
+    expect(result.every((f) => f.chapterId === null)).toBe(true);
   });
 });
 
@@ -182,19 +212,23 @@ describe('Test 5: early return after no-chapters error', () => {
 describe('Test 6: no custom name → warning', () => {
   it('returns a warning when name is empty', () => {
     const result = validateSkill(makeInput({ name: '' }));
-    const warnings = result.filter(f => f.level === 'warning');
-    expect(warnings.some(f => f.chapterId === null && f.message.toLowerCase().includes('name'))).toBe(true);
+    const warnings = result.filter((f) => f.level === 'warning');
+    expect(
+      warnings.some((f) => f.chapterId === null && f.message.toLowerCase().includes('name')),
+    ).toBe(true);
   });
 
   it('returns a warning when name is "Untitled Skill"', () => {
     const result = validateSkill(makeInput({ name: 'Untitled Skill' }));
-    const warnings = result.filter(f => f.level === 'warning');
-    expect(warnings.some(f => f.chapterId === null)).toBe(true);
+    const warnings = result.filter((f) => f.level === 'warning');
+    expect(warnings.some((f) => f.chapterId === null)).toBe(true);
   });
 
   it('warning for name has chapterId=null and chapterName=null', () => {
     const result = validateSkill(makeInput({ name: '' }));
-    const nameWarning = result.find(f => f.level === 'warning' && f.message.toLowerCase().includes('name'));
+    const nameWarning = result.find(
+      (f) => f.level === 'warning' && f.message.toLowerCase().includes('name'),
+    );
     expect(nameWarning?.chapterId).toBeNull();
     expect(nameWarning?.chapterName).toBeNull();
   });
@@ -205,19 +239,23 @@ describe('Test 6: no custom name → warning', () => {
 describe('Test 7: no description → warning', () => {
   it('returns a warning when description is empty', () => {
     const result = validateSkill(makeInput({ description: '' }));
-    const warnings = result.filter(f => f.level === 'warning');
-    expect(warnings.some(f => f.chapterId === null && f.message.toLowerCase().includes('description'))).toBe(true);
+    const warnings = result.filter((f) => f.level === 'warning');
+    expect(
+      warnings.some((f) => f.chapterId === null && f.message.toLowerCase().includes('description')),
+    ).toBe(true);
   });
 
   it('returns a warning when description is whitespace-only', () => {
     const result = validateSkill(makeInput({ description: '   ' }));
-    const warnings = result.filter(f => f.level === 'warning');
-    expect(warnings.some(f => f.chapterId === null)).toBe(true);
+    const warnings = result.filter((f) => f.level === 'warning');
+    expect(warnings.some((f) => f.chapterId === null)).toBe(true);
   });
 
   it('warning for description has chapterId=null and chapterName=null', () => {
     const result = validateSkill(makeInput({ description: '' }));
-    const descWarning = result.find(f => f.level === 'warning' && f.message.toLowerCase().includes('description'));
+    const descWarning = result.find(
+      (f) => f.level === 'warning' && f.message.toLowerCase().includes('description'),
+    );
     expect(descWarning?.chapterId).toBeNull();
     expect(descWarning?.chapterName).toBeNull();
   });
@@ -229,33 +267,39 @@ describe('Test 8: chapter without outputDef → warning', () => {
   it('returns a warning when a chapter has empty outputDef', () => {
     const result = validateSkill(
       makeInput({
-        chapters: [{ id: 'ch1', name: 'Chapter 1', type: 'chapter', guide: 'do it', outputDef: '' }],
+        chapters: [
+          { id: 'ch1', name: 'Chapter 1', type: 'chapter', guide: 'do it', outputDef: '' },
+        ],
         chapterToolMap: { ch1: ['tool-a'] },
-      })
+      }),
     );
-    const warnings = result.filter(f => f.level === 'warning');
-    expect(warnings.some(f => f.chapterId === 'ch1')).toBe(true);
+    const warnings = result.filter((f) => f.level === 'warning');
+    expect(warnings.some((f) => f.chapterId === 'ch1')).toBe(true);
   });
 
   it('returns a warning when a chapter has whitespace-only outputDef', () => {
     const result = validateSkill(
       makeInput({
-        chapters: [{ id: 'ch1', name: 'Chapter 1', type: 'chapter', guide: 'do it', outputDef: '   ' }],
+        chapters: [
+          { id: 'ch1', name: 'Chapter 1', type: 'chapter', guide: 'do it', outputDef: '   ' },
+        ],
         chapterToolMap: { ch1: ['tool-a'] },
-      })
+      }),
     );
-    const warnings = result.filter(f => f.level === 'warning');
-    expect(warnings.some(f => f.chapterId === 'ch1')).toBe(true);
+    const warnings = result.filter((f) => f.level === 'warning');
+    expect(warnings.some((f) => f.chapterId === 'ch1')).toBe(true);
   });
 
   it('warning has chapterId and chapterName of the chapter', () => {
     const result = validateSkill(
       makeInput({
-        chapters: [{ id: 'ch1', name: 'My Chapter', type: 'chapter', guide: 'do it', outputDef: '' }],
+        chapters: [
+          { id: 'ch1', name: 'My Chapter', type: 'chapter', guide: 'do it', outputDef: '' },
+        ],
         chapterToolMap: { ch1: ['tool-a'] },
-      })
+      }),
     );
-    const outputWarning = result.find(f => f.level === 'warning' && f.chapterId === 'ch1');
+    const outputWarning = result.find((f) => f.level === 'warning' && f.chapterId === 'ch1');
     expect(outputWarning?.chapterId).toBe('ch1');
     expect(outputWarning?.chapterName).toBe('My Chapter');
   });
@@ -273,10 +317,12 @@ describe('Test 9: not connected → warning', () => {
         ],
         chapterToolMap: { ch1: ['tool-a'], ch2: ['tool-b'] },
         edges: [],
-      })
+      }),
     );
-    const warnings = result.filter(f => f.level === 'warning');
-    expect(warnings.some(f => f.chapterId === null && f.message.toLowerCase().includes('connect'))).toBe(true);
+    const warnings = result.filter((f) => f.level === 'warning');
+    expect(
+      warnings.some((f) => f.chapterId === null && f.message.toLowerCase().includes('connect')),
+    ).toBe(true);
   });
 
   it('not-connected warning has chapterId=null and chapterName=null', () => {
@@ -288,9 +334,11 @@ describe('Test 9: not connected → warning', () => {
         ],
         chapterToolMap: { ch1: ['tool-a'], ch2: ['tool-b'] },
         edges: [],
-      })
+      }),
     );
-    const connWarning = result.find(f => f.level === 'warning' && f.message.toLowerCase().includes('connect'));
+    const connWarning = result.find(
+      (f) => f.level === 'warning' && f.message.toLowerCase().includes('connect'),
+    );
     expect(connWarning?.chapterId).toBeNull();
     expect(connWarning?.chapterName).toBeNull();
   });
@@ -312,10 +360,12 @@ describe('Test 10: cycle detected → warning', () => {
           { sourceChapterId: 'ch1', targetChapterId: 'ch2' },
           { sourceChapterId: 'ch2', targetChapterId: 'ch1' },
         ],
-      })
+      }),
     );
-    const warnings = result.filter(f => f.level === 'warning');
-    expect(warnings.some(f => f.chapterId === null && f.message.toLowerCase().includes('cycle'))).toBe(true);
+    const warnings = result.filter((f) => f.level === 'warning');
+    expect(
+      warnings.some((f) => f.chapterId === null && f.message.toLowerCase().includes('cycle')),
+    ).toBe(true);
   });
 
   it('cycle warning has chapterId=null and chapterName=null', () => {
@@ -330,9 +380,11 @@ describe('Test 10: cycle detected → warning', () => {
           { sourceChapterId: 'ch1', targetChapterId: 'ch2' },
           { sourceChapterId: 'ch2', targetChapterId: 'ch1' },
         ],
-      })
+      }),
     );
-    const cycleWarning = result.find(f => f.level === 'warning' && f.message.toLowerCase().includes('cycle'));
+    const cycleWarning = result.find(
+      (f) => f.level === 'warning' && f.message.toLowerCase().includes('cycle'),
+    );
     expect(cycleWarning?.chapterId).toBeNull();
     expect(cycleWarning?.chapterName).toBeNull();
   });
@@ -342,7 +394,9 @@ describe('Test 10: cycle detected → warning', () => {
 
 describe('Test 11: every finding has required fields', () => {
   it('all findings have level, message, chapterId, chapterName', () => {
-    const result = validateSkill(makeInput({ name: '', description: '', chapters: [], chapterToolMap: {} }));
+    const result = validateSkill(
+      makeInput({ name: '', description: '', chapters: [], chapterToolMap: {} }),
+    );
     for (const f of result) {
       expect(f).toHaveProperty('level');
       expect(f).toHaveProperty('message');
@@ -359,12 +413,12 @@ describe('Test 12: no ok-level findings are ever returned', () => {
   it('returns no ok-level findings for a valid skill', () => {
     const result = validateSkill(makeInput());
     // Cast level to string so TS does not complain that 'ok' is unreachable in the union
-    expect(result.every(f => (f.level as string) !== 'ok')).toBe(true);
+    expect(result.every((f) => (f.level as string) !== 'ok')).toBe(true);
   });
 
   it('returns no ok-level findings even when there are errors', () => {
     const result = validateSkill(makeInput({ chapters: [], chapterToolMap: {} }));
-    expect(result.every(f => (f.level as string) !== 'ok')).toBe(true);
+    expect(result.every((f) => (f.level as string) !== 'ok')).toBe(true);
   });
 });
 
@@ -373,21 +427,21 @@ describe('Test 12: no ok-level findings are ever returned', () => {
 describe('Test 13: skill-level findings have chapterId=null, chapterName=null', () => {
   it('name warning has null chapter fields', () => {
     const result = validateSkill(makeInput({ name: '' }));
-    const finding = result.find(f => f.message.toLowerCase().includes('name'));
+    const finding = result.find((f) => f.message.toLowerCase().includes('name'));
     expect(finding?.chapterId).toBeNull();
     expect(finding?.chapterName).toBeNull();
   });
 
   it('description warning has null chapter fields', () => {
     const result = validateSkill(makeInput({ description: '' }));
-    const finding = result.find(f => f.message.toLowerCase().includes('description'));
+    const finding = result.find((f) => f.message.toLowerCase().includes('description'));
     expect(finding?.chapterId).toBeNull();
     expect(finding?.chapterName).toBeNull();
   });
 
   it('no-chapters error has null chapter fields', () => {
     const result = validateSkill(makeInput({ chapters: [], chapterToolMap: {} }));
-    const finding = result.find(f => f.level === 'error');
+    const finding = result.find((f) => f.level === 'error');
     expect(finding?.chapterId).toBeNull();
     expect(finding?.chapterName).toBeNull();
   });
@@ -399,11 +453,13 @@ describe('Test 14: chapter-level findings have chapterId and chapterName set', (
   it('guide error has chapterId and chapterName of the specific chapter', () => {
     const result = validateSkill(
       makeInput({
-        chapters: [{ id: 'abc', name: 'Named Chapter', type: 'chapter', guide: '', outputDef: 'out' }],
+        chapters: [
+          { id: 'abc', name: 'Named Chapter', type: 'chapter', guide: '', outputDef: 'out' },
+        ],
         chapterToolMap: { abc: ['tool-a'] },
-      })
+      }),
     );
-    const finding = result.find(f => f.level === 'error' && f.chapterId === 'abc');
+    const finding = result.find((f) => f.level === 'error' && f.chapterId === 'abc');
     expect(finding?.chapterId).toBe('abc');
     expect(finding?.chapterName).toBe('Named Chapter');
   });
@@ -411,11 +467,13 @@ describe('Test 14: chapter-level findings have chapterId and chapterName set', (
   it('tools error has chapterId and chapterName of the specific chapter', () => {
     const result = validateSkill(
       makeInput({
-        chapters: [{ id: 'abc', name: 'Named Chapter', type: 'chapter', guide: 'guide', outputDef: 'out' }],
+        chapters: [
+          { id: 'abc', name: 'Named Chapter', type: 'chapter', guide: 'guide', outputDef: 'out' },
+        ],
         chapterToolMap: { abc: [] },
-      })
+      }),
     );
-    const finding = result.find(f => f.level === 'error' && f.chapterId === 'abc');
+    const finding = result.find((f) => f.level === 'error' && f.chapterId === 'abc');
     expect(finding?.chapterId).toBe('abc');
     expect(finding?.chapterName).toBe('Named Chapter');
   });
@@ -433,11 +491,12 @@ describe('Test 15: condition nodes are not checked for tools', () => {
         ],
         chapterToolMap: { ch1: ['tool-a'], cond1: [] },
         edges: [{ sourceChapterId: 'ch1', targetChapterId: 'cond1' }],
-      })
+      }),
     );
     // No tools error for the condition node
     const condToolError = result.find(
-      f => f.level === 'error' && f.chapterId === 'cond1' && f.message.toLowerCase().includes('tool')
+      (f) =>
+        f.level === 'error' && f.chapterId === 'cond1' && f.message.toLowerCase().includes('tool'),
     );
     expect(condToolError).toBeUndefined();
   });
@@ -451,11 +510,14 @@ describe('Test 15: condition nodes are not checked for tools', () => {
         ],
         chapterToolMap: { ch1: ['tool-a'], cond1: [] },
         edges: [{ sourceChapterId: 'ch1', targetChapterId: 'cond1' }],
-      })
+      }),
     );
     // No guide error for condition node
     const condGuideError = result.find(
-      f => f.level === 'error' && f.chapterId === 'cond1' && f.message.toLowerCase().includes('instruction')
+      (f) =>
+        f.level === 'error' &&
+        f.chapterId === 'cond1' &&
+        f.message.toLowerCase().includes('instruction'),
     );
     expect(condGuideError).toBeUndefined();
   });
@@ -467,7 +529,7 @@ describe('Test 16: single chapter with 0 edges does not trigger not-connected wa
   it('does not return a not-connected warning for a single chapter', () => {
     const result = validateSkill(makeInput());
     const connWarning = result.find(
-      f => f.level === 'warning' && f.message.toLowerCase().includes('connect')
+      (f) => f.level === 'warning' && f.message.toLowerCase().includes('connect'),
     );
     expect(connWarning).toBeUndefined();
   });
@@ -492,7 +554,7 @@ describe('Test 17: valid skill returns empty array', () => {
         ],
         chapterToolMap: { ch1: ['tool-a'], ch2: ['tool-b'] },
         edges: [{ sourceChapterId: 'ch1', targetChapterId: 'ch2' }],
-      })
+      }),
     );
     expect(result).toEqual([]);
   });
@@ -506,9 +568,9 @@ describe('Test 18: multiple errors on same chapter all have that chapter id', ()
       makeInput({
         chapters: [{ id: 'ch1', name: 'Chapter 1', type: 'chapter', guide: '', outputDef: 'out' }],
         chapterToolMap: { ch1: [] },
-      })
+      }),
     );
-    const ch1Errors = result.filter(f => f.level === 'error' && f.chapterId === 'ch1');
+    const ch1Errors = result.filter((f) => f.level === 'error' && f.chapterId === 'ch1');
     // Should have at least 2 errors: missing guide + missing tools
     expect(ch1Errors.length).toBeGreaterThanOrEqual(2);
     for (const err of ch1Errors) {

@@ -8,7 +8,7 @@ export const ActionPlanSchema = z.object({
       action: z.string(),
       rationale: z.string().optional(),
       status: z.enum(['pending', 'active', 'done']).default('pending'),
-    })
+    }),
   ),
 });
 
@@ -19,7 +19,7 @@ export const SearchResultSchema = z.object({
       title: z.string(),
       url: z.string(),
       snippet: z.string().optional(),
-    })
+    }),
   ),
 });
 
@@ -31,7 +31,7 @@ export const CalendarSummarySchema = z.object({
       title: z.string(),
       location: z.string().optional(),
       notes: z.string().optional(),
-    })
+    }),
   ),
 });
 

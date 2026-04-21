@@ -1,7 +1,12 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
-import { getBuiltTool, updateBuiltTool, deleteBuiltTool, publishBuiltTool } from '$server/services/builder.service';
+import {
+  getBuiltTool,
+  updateBuiltTool,
+  deleteBuiltTool,
+  publishBuiltTool,
+} from '$server/services/builder.service';
 
 /** GET /api/builder/tools/:id — full tool record */
 export const GET: RequestHandler = async ({ locals, params }) => {
@@ -28,7 +33,8 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
   }
 
   // Default: update tool metadata
-  const { name, description, scriptCode, scriptLang, envVars, validationRules, executionConfig } = body;
+  const { name, description, scriptCode, scriptLang, envVars, validationRules, executionConfig } =
+    body;
   await updateBuiltTool(ctx, params.id!, {
     ...(name !== undefined && { name }),
     ...(description !== undefined && { description }),

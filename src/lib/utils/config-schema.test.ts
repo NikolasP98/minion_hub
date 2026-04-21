@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { TABS, TAB_MAPPING, SECURITY_GROUP_IDS, getGroupsForTab, extractGroups } from './config-schema';
+import {
+  TABS,
+  TAB_MAPPING,
+  SECURITY_GROUP_IDS,
+  getGroupsForTab,
+  extractGroups,
+} from './config-schema';
 import type { ConfigGroup } from '$lib/types/config';
 
 // Helper to create a mock ConfigGroup with a given id and order
@@ -54,7 +60,14 @@ describe('TABS constant', () => {
 
   it('has correct tab IDs in order', () => {
     expect(TABS.map((t) => t.id)).toEqual([
-      'hosts', 'ai', 'agents', 'comms', 'security', 'system', 'backups', 'appearance',
+      'hosts',
+      'ai',
+      'agents',
+      'comms',
+      'security',
+      'system',
+      'backups',
+      'appearance',
     ]);
   });
 

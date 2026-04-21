@@ -52,16 +52,16 @@ In production: set `TURSO_DB_URL` (libsql://…) and `TURSO_DB_AUTH_TOKEN` for T
 
 All global state is Svelte 5 `$state` runes in `.svelte.ts` modules, organized into domain subdirectories:
 
-| Directory | Modules | Purpose |
-|---|---|---|
-| `gateway/` | `connection`, `gateway-data` | WebSocket status, live agent/session/presence data |
-| `features/` | `hosts`, `flow-editor`, `marketplace`, `missions`, `session-tasks`, `user` | Feature-specific state |
-| `ui/` | `theme`, `ui`, `locale`, `bg-pattern`, `logo`, `sparkline-style` | UI preferences and appearance |
-| `chat/` | `chat` | Per-agent chat messages and activity spark-bins |
-| `workshop/` | `workshop`, `workshop-conversations` | Canvas state and conversation threads |
-| `config/` | `config`, `config-restart` | Gateway config editor state |
-| `reliability/` | `reliability`, `credential-health`, `skill-stats` | Health monitoring data |
-| `agents/` | `agent-skills`, `agent-tools` | Agent capability state |
+| Directory      | Modules                                                                    | Purpose                                            |
+| -------------- | -------------------------------------------------------------------------- | -------------------------------------------------- |
+| `gateway/`     | `connection`, `gateway-data`                                               | WebSocket status, live agent/session/presence data |
+| `features/`    | `hosts`, `flow-editor`, `marketplace`, `missions`, `session-tasks`, `user` | Feature-specific state                             |
+| `ui/`          | `theme`, `ui`, `locale`, `bg-pattern`, `logo`, `sparkline-style`           | UI preferences and appearance                      |
+| `chat/`        | `chat`                                                                     | Per-agent chat messages and activity spark-bins    |
+| `workshop/`    | `workshop`, `workshop-conversations`                                       | Canvas state and conversation threads              |
+| `config/`      | `config`, `config-restart`                                                 | Gateway config editor state                        |
+| `reliability/` | `reliability`, `credential-health`, `skill-stats`                          | Health monitoring data                             |
+| `agents/`      | `agent-skills`, `agent-tools`                                              | Agent capability state                             |
 
 Each subdirectory has an `index.ts` barrel for clean imports (e.g., `import { conn } from '$lib/state/gateway'`).
 
@@ -113,23 +113,23 @@ CSS variables for the full colour palette. Theme presets in `src/lib/themes/pres
 
 All components are organized into domain subdirectories — no loose `.svelte` files at root:
 
-| Directory | Purpose |
-|---|---|
-| `agents/` | Agent list, detail, settings, skills, tools panels |
-| `sessions/` | Session cards, kanban, monitor, viewer |
-| `hosts/` | Host dropdown, pill, overlay |
-| `chat/` | Chat message and panel |
-| `tasks/` | Kanban column and task card |
-| `charts/` | Chart, sparkline, activity bars |
-| `layout/` | Topbar, splitter, detail panel, particle canvas, etc. |
-| `config/` | Config editor components |
-| `decorations/` | Visual effects (BgPattern, ScanLine, etc.) |
-| `flow-editor/` | Flow editor canvas, sidebar, nodes |
-| `marketplace/` | Marketplace browsing components |
-| `reliability/` | Reliability dashboard panels |
-| `settings/` | Settings page components |
-| `users/` | User management components |
-| `workshop/` | Workshop canvas overlays |
+| Directory      | Purpose                                               |
+| -------------- | ----------------------------------------------------- |
+| `agents/`      | Agent list, detail, settings, skills, tools panels    |
+| `sessions/`    | Session cards, kanban, monitor, viewer                |
+| `hosts/`       | Host dropdown, pill, overlay                          |
+| `chat/`        | Chat message and panel                                |
+| `tasks/`       | Kanban column and task card                           |
+| `charts/`      | Chart, sparkline, activity bars                       |
+| `layout/`      | Topbar, splitter, detail panel, particle canvas, etc. |
+| `config/`      | Config editor components                              |
+| `decorations/` | Visual effects (BgPattern, ScanLine, etc.)            |
+| `flow-editor/` | Flow editor canvas, sidebar, nodes                    |
+| `marketplace/` | Marketplace browsing components                       |
+| `reliability/` | Reliability dashboard panels                          |
+| `settings/`    | Settings page components                              |
+| `users/`       | User management components                            |
+| `workshop/`    | Workshop canvas overlays                              |
 
 ### Auth (`src/lib/auth/`)
 

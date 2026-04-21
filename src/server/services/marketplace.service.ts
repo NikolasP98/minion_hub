@@ -83,16 +83,22 @@ function decodeFileResult(res: PromiseSettledResult<unknown>): string | undefine
   if (res.status !== 'fulfilled') return undefined;
   const f = res.value as { content?: string };
   if (!f.content) return undefined;
-  try { return decodeBase64(f.content); } catch { return undefined; }
+  try {
+    return decodeBase64(f.content);
+  } catch {
+    return undefined;
+  }
 }
 
 // ─── Sync (metadata only) ────────────────────────────────────────────────────
 
-export async function syncMarketplaceAgents(db: TenantContext['db']): Promise<{ synced: number; errors: string[] }> {
+export async function syncMarketplaceAgents(
+  db: TenantContext['db'],
+): Promise<{ synced: number; errors: string[] }> {
   const errors: string[] = [];
   const agents: MarketplaceAgentUpsert[] = [];
 
-  const contents = await fetchGitHubJson(`repos/${GITHUB_REPO}/contents/agents`) as Array<{
+  const contents = (await fetchGitHubJson(`repos/${GITHUB_REPO}/contents/agents`)) as Array<{
     name: string;
     type: string;
     path: string;
@@ -104,7 +110,10 @@ export async function syncMarketplaceAgents(db: TenantContext['db']): Promise<{ 
     dirs.map(async (dir) => {
       try {
         const basePath = `repos/${GITHUB_REPO}/contents/agents/${dir.name}`;
-        const agentFile = await fetchGitHubJson(`${basePath}/agent.json`) as { content?: string; encoding?: string };
+        const agentFile = (await fetchGitHubJson(`${basePath}/agent.json`)) as {
+          content?: string;
+          encoding?: string;
+        };
 
         if (!agentFile.content) {
           errors.push(`${dir.name}: empty agent.json`);
@@ -205,7 +214,10 @@ export async function populateAgentFiles(db: TenantContext['db'], agentId: strin
 /**
  * Returns an agent with all markdown fields, lazily fetching from GitHub if not yet cached.
  */
-export async function getAgentWithFiles(db: TenantContext['db'], id: string): Promise<MarketplaceAgentRecord | null> {
+export async function getAgentWithFiles(
+  db: TenantContext['db'],
+  id: string,
+): Promise<MarketplaceAgentRecord | null> {
   const rows = await db
     .select()
     .from(marketplaceAgents)
@@ -231,26 +243,32 @@ export async function getAgentWithFiles(db: TenantContext['db'], id: string): Pr
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
 
-export async function listMarketplaceAgents(db: TenantContext['db'], filters: MarketplaceFilters = {}) {
+export async function listMarketplaceAgents(
+  db: TenantContext['db'],
+  filters: MarketplaceFilters = {},
+) {
   const { category, search, limit = 50, offset = 0 } = filters;
 
-  let query = db.select({
-    id: marketplaceAgents.id,
-    name: marketplaceAgents.name,
-    role: marketplaceAgents.role,
-    category: marketplaceAgents.category,
-    tags: marketplaceAgents.tags,
-    description: marketplaceAgents.description,
-    catchphrase: marketplaceAgents.catchphrase,
-    version: marketplaceAgents.version,
-    model: marketplaceAgents.model,
-    avatarSeed: marketplaceAgents.avatarSeed,
-    githubPath: marketplaceAgents.githubPath,
-    installCount: marketplaceAgents.installCount,
-    syncedAt: marketplaceAgents.syncedAt,
-    createdAt: marketplaceAgents.createdAt,
-    updatedAt: marketplaceAgents.updatedAt,
-  }).from(marketplaceAgents).$dynamic();
+  let query = db
+    .select({
+      id: marketplaceAgents.id,
+      name: marketplaceAgents.name,
+      role: marketplaceAgents.role,
+      category: marketplaceAgents.category,
+      tags: marketplaceAgents.tags,
+      description: marketplaceAgents.description,
+      catchphrase: marketplaceAgents.catchphrase,
+      version: marketplaceAgents.version,
+      model: marketplaceAgents.model,
+      avatarSeed: marketplaceAgents.avatarSeed,
+      githubPath: marketplaceAgents.githubPath,
+      installCount: marketplaceAgents.installCount,
+      syncedAt: marketplaceAgents.syncedAt,
+      createdAt: marketplaceAgents.createdAt,
+      updatedAt: marketplaceAgents.updatedAt,
+    })
+    .from(marketplaceAgents)
+    .$dynamic();
 
   if (category) {
     query = query.where(eq(marketplaceAgents.category, category));
@@ -259,7 +277,7 @@ export async function listMarketplaceAgents(db: TenantContext['db'], filters: Ma
   if (search) {
     const pattern = `%${search}%`;
     query = query.where(
-      sql`(${marketplaceAgents.name} LIKE ${pattern} OR ${marketplaceAgents.role} LIKE ${pattern} OR ${marketplaceAgents.description} LIKE ${pattern} OR ${marketplaceAgents.tags} LIKE ${pattern})`
+      sql`(${marketplaceAgents.name} LIKE ${pattern} OR ${marketplaceAgents.role} LIKE ${pattern} OR ${marketplaceAgents.description} LIKE ${pattern} OR ${marketplaceAgents.tags} LIKE ${pattern})`,
     );
   }
 
@@ -276,7 +294,10 @@ export async function getMarketplaceAgent(db: TenantContext['db'], id: string) {
   return rows[0] ?? null;
 }
 
-export async function upsertMarketplaceAgents(db: TenantContext['db'], agents: MarketplaceAgentUpsert[]) {
+export async function upsertMarketplaceAgents(
+  db: TenantContext['db'],
+  agents: MarketplaceAgentUpsert[],
+) {
   const now = nowMs();
   const results: { id: string; ok: boolean }[] = [];
 
@@ -341,15 +362,13 @@ export async function recordInstall(ctx: TenantContext, agentId: string, serverI
   const now = nowMs();
   const id = newId();
 
-  await ctx.db
-    .insert(marketplaceInstalls)
-    .values({
-      id,
-      tenantId: ctx.tenantId,
-      agentId,
-      serverId,
-      installedAt: now,
-    });
+  await ctx.db.insert(marketplaceInstalls).values({
+    id,
+    tenantId: ctx.tenantId,
+    agentId,
+    serverId,
+    installedAt: now,
+  });
 
   // Increment install count
   await ctx.db
@@ -365,10 +384,7 @@ export async function getInstallCountForTenant(ctx: TenantContext, agentId: stri
     .select({ id: marketplaceInstalls.id })
     .from(marketplaceInstalls)
     .where(
-      and(
-        eq(marketplaceInstalls.tenantId, ctx.tenantId),
-        eq(marketplaceInstalls.agentId, agentId),
-      )
+      and(eq(marketplaceInstalls.tenantId, ctx.tenantId), eq(marketplaceInstalls.agentId, agentId)),
     );
   return rows.length;
 }

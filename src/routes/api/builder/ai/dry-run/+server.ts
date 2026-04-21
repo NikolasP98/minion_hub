@@ -18,7 +18,16 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   if (!apiKey) return json({ error: 'OPENROUTER_API_KEY not configured' }, { status: 500 });
 
   const body = await request.json();
-  const { chapterName, guide, context: inputContext, outputDef, toolIds, userPrompt, upstreamOutputs, model } = body;
+  const {
+    chapterName,
+    guide,
+    context: inputContext,
+    outputDef,
+    toolIds,
+    userPrompt,
+    upstreamOutputs,
+    model,
+  } = body;
 
   if (!chapterName || !userPrompt) throw error(400, 'chapterName and userPrompt are required');
 
@@ -61,7 +70,7 @@ Simulate executing this chapter. Produce realistic output matching the expected 
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
         'HTTP-Referer': 'https://minionhub.admin-console.dev',
         'X-Title': 'Minion Hub Builder - Dry Run',
       },

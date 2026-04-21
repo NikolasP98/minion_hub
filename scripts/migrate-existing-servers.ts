@@ -9,7 +9,8 @@ const authToken = process.env.TURSO_DB_AUTH_TOKEN;
 const client = createClient({ url, authToken });
 const db = drizzle(client, { schema: { user, userServers, servers } });
 
-const adminRows = await db.select({ id: user.id })
+const adminRows = await db
+  .select({ id: user.id })
   .from(user)
   .where(eq(user.email, 'admin@minion.hub'))
   .limit(1);
@@ -31,7 +32,8 @@ const now = Date.now();
 
 let linked = 0;
 for (const s of allServers) {
-  await db.insert(userServers)
+  await db
+    .insert(userServers)
     .values({ userId: adminId, serverId: s.id, createdAt: now })
     .onConflictDoNothing();
   linked++;

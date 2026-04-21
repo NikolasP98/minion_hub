@@ -54,15 +54,8 @@ export async function createUser(
   return userId;
 }
 
-export async function updateUserRole(
-  ctx: TenantContext,
-  userId: string,
-  role: 'user' | 'admin',
-) {
-  await ctx.db
-    .update(user)
-    .set({ role, updatedAt: new Date() })
-    .where(eq(user.id, userId));
+export async function updateUserRole(ctx: TenantContext, userId: string, role: 'user' | 'admin') {
+  await ctx.db.update(user).set({ role, updatedAt: new Date() }).where(eq(user.id, userId));
 }
 
 export async function deleteUser(ctx: TenantContext, userId: string) {

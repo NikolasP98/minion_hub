@@ -12,25 +12,22 @@ import { getTenantCtx } from '$server/auth/tenant-ctx';
  * after reconnection (the gateway's in-memory cache is volatile).
  */
 export const GET: RequestHandler = async ({ locals }) => {
-	const ctx = await getTenantCtx(locals);
-	if (!ctx) throw error(401, 'Authentication required');
+  const ctx = await getTenantCtx(locals);
+  if (!ctx) throw error(401, 'Authentication required');
 
-	try {
-		const rows = await ctx.db
-			.select({
-				agentId: personalAgents.agentId,
-				displayName: personalAgents.displayName,
-				avatarUrl: personalAgents.avatarUrl,
-			})
-			.from(personalAgents)
-			.where(eq(personalAgents.provisioningStatus, 'active'));
+  try {
+    const rows = await ctx.db
+      .select({
+        agentId: personalAgents.agentId,
+        displayName: personalAgents.displayName,
+        avatarUrl: personalAgents.avatarUrl,
+      })
+      .from(personalAgents)
+      .where(eq(personalAgents.provisioningStatus, 'active'));
 
-		return json({ configs: rows });
-	} catch (e) {
-		console.error('[GET /api/gateway/personal-agent-configs]', e);
-		return json(
-			{ error: e instanceof Error ? e.message : 'Unknown error' },
-			{ status: 500 },
-		);
-	}
+    return json({ configs: rows });
+  } catch (e) {
+    console.error('[GET /api/gateway/personal-agent-configs]', e);
+    return json({ error: e instanceof Error ? e.message : 'Unknown error' }, { status: 500 });
+  }
 };

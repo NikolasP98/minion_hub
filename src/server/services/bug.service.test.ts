@@ -25,10 +25,7 @@ describe('createBug', () => {
   it('defaults severity to medium', async () => {
     const { db } = createMockDb();
     // The function sets severity ?? 'medium' — we verify it doesn't throw with no severity
-    const id = await createBug(
-      { db, tenantId: 't1' },
-      { serverId: 's1', message: 'Error' },
-    );
+    const id = await createBug({ db, tenantId: 't1' }, { serverId: 's1', message: 'Error' });
     expect(typeof id).toBe('string');
   });
 });

@@ -81,7 +81,10 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     });
   } catch (err) {
     console.error('[workshop saves POST] db insert failed:', err);
-    throw error(500, `Failed to save workspace: ${err instanceof Error ? err.message : String(err)}`);
+    throw error(
+      500,
+      `Failed to save workspace: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   return json({ id, ok: true });

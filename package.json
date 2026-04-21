@@ -51,6 +51,8 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@minion-stack/lint-config": "^0.1.1",
+    "@minion-stack/tsconfig": "^0.1.0",
     "@sveltejs/adapter-node": "^5.5.4",
     "@sveltejs/adapter-vercel": "^5.0.0",
     "@sveltejs/kit": "^2.52.0",
@@ -58,6 +60,7 @@
     "@types/dompurify": "^3.2.0",
     "drizzle-kit": "^0.31.9",
     "electrobun": "^1.16.0",
+    "prettier": "^3.0.0",
     "svelte": "^5.0.0",
     "svelte-check": "^4.0.0",
     "typescript": "^5.0.0",
@@ -71,11 +74,13 @@
   },
   "scripts": {
     "i18n:compile": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide",
-    "dev": "vite dev",
+    "dev": "./infisical-dev.sh vite dev || vite dev",
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:migrate": "drizzle-kit migrate",
@@ -88,5 +93,6 @@
     "desktop:dev": "DESKTOP=1 VITE_DESKTOP=1 vite build && DESKTOP=1 VITE_DESKTOP=1 electrobun dev",
     "desktop:window": "DESKTOP=1 VITE_DESKTOP=1 electrobun dev"
   },
-  "type": "module"
+  "type": "module",
+  "prettier": "@minion-stack/lint-config/prettier.config.cjs"
 }

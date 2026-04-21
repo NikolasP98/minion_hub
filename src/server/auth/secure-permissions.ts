@@ -23,25 +23,25 @@ const FILE_MODE = 0o600;
  * Directories get 0700, files get 0600.
  */
 export function enforceSecurePermissions(dirPath: string): void {
-	if (!existsSync(dirPath)) return;
+  if (!existsSync(dirPath)) return;
 
-	const stat = statSync(dirPath);
-	if (!stat.isDirectory()) {
-		chmodSync(dirPath, FILE_MODE);
-		return;
-	}
+  const stat = statSync(dirPath);
+  if (!stat.isDirectory()) {
+    chmodSync(dirPath, FILE_MODE);
+    return;
+  }
 
-	chmodSync(dirPath, DIR_MODE);
+  chmodSync(dirPath, DIR_MODE);
 
-	const entries = readdirSync(dirPath, { withFileTypes: true });
-	for (const entry of entries) {
-		const fullPath = join(dirPath, entry.name);
-		if (entry.isDirectory()) {
-			enforceSecurePermissions(fullPath);
-		} else if (entry.isFile() || entry.isSymbolicLink()) {
-			chmodSync(fullPath, FILE_MODE);
-		}
-	}
+  const entries = readdirSync(dirPath, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = join(dirPath, entry.name);
+    if (entry.isDirectory()) {
+      enforceSecurePermissions(fullPath);
+    } else if (entry.isFile() || entry.isSymbolicLink()) {
+      chmodSync(fullPath, FILE_MODE);
+    }
+  }
 }
 
 /**
@@ -49,10 +49,10 @@ export function enforceSecurePermissions(dirPath: string): void {
  * Creates parent directories as needed.
  */
 export function secureCreateDir(dirPath: string): void {
-	if (!existsSync(dirPath)) {
-		mkdirSync(dirPath, { recursive: true, mode: DIR_MODE });
-	}
-	chmodSync(dirPath, DIR_MODE);
+  if (!existsSync(dirPath)) {
+    mkdirSync(dirPath, { recursive: true, mode: DIR_MODE });
+  }
+  chmodSync(dirPath, DIR_MODE);
 }
 
 /**
@@ -67,22 +67,22 @@ export function secureCreateDir(dirPath: string): void {
  * - config files (minion.json, *.pem, *.key)
  */
 export function enforceProfilePermissions(basePath: string): void {
-	if (!existsSync(basePath)) return;
+  if (!existsSync(basePath)) return;
 
-	// Secure the base directory itself
-	chmodSync(basePath, DIR_MODE);
+  // Secure the base directory itself
+  chmodSync(basePath, DIR_MODE);
 
-	const entries = readdirSync(basePath, { withFileTypes: true });
-	for (const entry of entries) {
-		const fullPath = join(basePath, entry.name);
-		if (entry.isDirectory()) {
-			// Recursively secure all subdirectories
-			enforceSecurePermissions(fullPath);
-		} else if (entry.isFile()) {
-			// Secure all files in the profile root
-			chmodSync(fullPath, FILE_MODE);
-		}
-	}
+  const entries = readdirSync(basePath, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = join(basePath, entry.name);
+    if (entry.isDirectory()) {
+      // Recursively secure all subdirectories
+      enforceSecurePermissions(fullPath);
+    } else if (entry.isFile()) {
+      // Secure all files in the profile root
+      chmodSync(fullPath, FILE_MODE);
+    }
+  }
 }
 
 /**
@@ -92,11 +92,11 @@ export function enforceProfilePermissions(basePath: string): void {
  * Returns the shell command string to execute via SSH.
  */
 export function buildRemotePermissionCommand(minionUser: string): string {
-	const homeDir = `/home/${minionUser}/.minion`;
-	return [
-		// Directories: 0700
-		`find "${homeDir}" -type d -exec chmod 700 {} +`,
-		// Files: 0600
-		`find "${homeDir}" -type f -exec chmod 600 {} +`,
-	].join(' && ');
+  const homeDir = `/home/${minionUser}/.minion`;
+  return [
+    // Directories: 0700
+    `find "${homeDir}" -type d -exec chmod 700 {} +`,
+    // Files: 0600
+    `find "${homeDir}" -type f -exec chmod 600 {} +`,
+  ].join(' && ');
 }

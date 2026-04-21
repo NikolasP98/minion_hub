@@ -1,6 +1,10 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { setGroupMembers, addAgentToGroup, removeAgentFromGroup } from '$server/services/agent-group.service';
+import {
+  setGroupMembers,
+  addAgentToGroup,
+  removeAgentFromGroup,
+} from '$server/services/agent-group.service';
 
 export const PUT: RequestHandler = async ({ locals, params, request }) => {
   if (!locals.tenantCtx) throw error(401);

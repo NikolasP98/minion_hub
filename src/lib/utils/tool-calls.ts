@@ -57,7 +57,7 @@ export function parseToolCallRuns(messages: ChatMessage[]): Run[] {
             const tc = pending.get(block.tool_use_id as string);
             if (tc) {
               tc.endTs = ts;
-              tc.durationMs = (ts > 0 && tc.startTs > 0) ? ts - tc.startTs : null;
+              tc.durationMs = ts > 0 && tc.startTs > 0 ? ts - tc.startTs : null;
               const c = block.content;
               tc.result = typeof c === 'string' ? c : c != null ? JSON.stringify(c) : null;
               pending.delete(block.tool_use_id as string);
@@ -69,7 +69,13 @@ export function parseToolCallRuns(messages: ChatMessage[]): Run[] {
         // New run boundary
         if (current && current.toolCalls.length > 0) runs.push(current);
         const prompt = extractPrompt(msg.content).slice(0, 80);
-        current = { idx: runs.length + 1, userPrompt: prompt, startTs: ts, endTs: ts, toolCalls: [] };
+        current = {
+          idx: runs.length + 1,
+          userPrompt: prompt,
+          startTs: ts,
+          endTs: ts,
+          toolCalls: [],
+        };
       }
     } else if (msg.role === 'assistant') {
       if (!current) continue;

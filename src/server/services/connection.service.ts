@@ -25,15 +25,13 @@ export async function insertConnectionEvent(ctx: TenantContext, ev: ConnectionEv
   });
 }
 
-export async function listConnectionEvents(
-  ctx: TenantContext,
-  serverId: string,
-  limit = 100,
-) {
+export async function listConnectionEvents(ctx: TenantContext, serverId: string, limit = 100) {
   return ctx.db
     .select()
     .from(connectionEvents)
-    .where(and(eq(connectionEvents.serverId, serverId), eq(connectionEvents.tenantId, ctx.tenantId)))
+    .where(
+      and(eq(connectionEvents.serverId, serverId), eq(connectionEvents.tenantId, ctx.tenantId)),
+    )
     .orderBy(desc(connectionEvents.occurredAt))
     .limit(limit);
 }

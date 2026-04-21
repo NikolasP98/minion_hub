@@ -21,25 +21,25 @@ Industry research found that 36.7% of publicly exposed MCP servers lack this pro
 A shared utility that validates any URL before the server uses it as a fetch/WebSocket
 target. It rejects:
 
-| Category | Examples |
-|---|---|
-| Loopback | `127.0.0.0/8`, `::1` |
-| RFC-1918 private | `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16` |
-| Link-local / IMDS | `169.254.0.0/16` (incl. `169.254.169.254`, `169.254.170.2`) |
-| Shared address space | `100.64.0.0/10` (RFC 6598 carrier-grade NAT) |
-| IPv6 loopback/link-local | `::1`, `fe80::/10`, `fc00::/7` |
-| IPv4-mapped IPv6 | `::ffff:192.168.x.x` (both dotted and WHATWG hex form) |
-| Disallowed protocols | `file://`, `ftp://`, etc. (only `http/https/ws/wss` allowed) |
-| Unresolvable hostnames | NXDOMAIN / SERVFAIL — blocked to prevent SSRF via typosquat |
-| DNS rebinding | Hostname resolves to private IP at validation time |
+| Category                 | Examples                                                     |
+| ------------------------ | ------------------------------------------------------------ |
+| Loopback                 | `127.0.0.0/8`, `::1`                                         |
+| RFC-1918 private         | `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`              |
+| Link-local / IMDS        | `169.254.0.0/16` (incl. `169.254.169.254`, `169.254.170.2`)  |
+| Shared address space     | `100.64.0.0/10` (RFC 6598 carrier-grade NAT)                 |
+| IPv6 loopback/link-local | `::1`, `fe80::/10`, `fc00::/7`                               |
+| IPv4-mapped IPv6         | `::ffff:192.168.x.x` (both dotted and WHATWG hex form)       |
+| Disallowed protocols     | `file://`, `ftp://`, etc. (only `http/https/ws/wss` allowed) |
+| Unresolvable hostnames   | NXDOMAIN / SERVFAIL — blocked to prevent SSRF via typosquat  |
+| DNS rebinding            | Hostname resolves to private IP at validation time           |
 
 ### 2. Endpoints protected
 
-| Endpoint | File | Attack vector before fix |
-|---|---|---|
-| `GET /api/registry/catalog` | `src/routes/api/registry/catalog/+server.ts` | `REGISTRY_CATALOG_URL` env var could point to IMDS |
-| `GET /api/registry/version` | `src/routes/api/registry/version/+server.ts` | `REGISTRY_INDEX_URL` env var could point to IMDS |
-| `POST /api/servers` | `src/routes/api/servers/+server.ts` | User-supplied server URL stored and used for WebSocket |
+| Endpoint                    | File                                         | Attack vector before fix                               |
+| --------------------------- | -------------------------------------------- | ------------------------------------------------------ |
+| `GET /api/registry/catalog` | `src/routes/api/registry/catalog/+server.ts` | `REGISTRY_CATALOG_URL` env var could point to IMDS     |
+| `GET /api/registry/version` | `src/routes/api/registry/version/+server.ts` | `REGISTRY_INDEX_URL` env var could point to IMDS       |
+| `POST /api/servers`         | `src/routes/api/servers/+server.ts`          | User-supplied server URL stored and used for WebSocket |
 
 ### 3. Test coverage
 
