@@ -72,6 +72,8 @@
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:migrate": "drizzle-kit migrate",
@@ -84,5 +86,6 @@
     "desktop:dev": "DESKTOP=1 VITE_DESKTOP=1 vite build && DESKTOP=1 VITE_DESKTOP=1 electrobun dev",
     "desktop:window": "DESKTOP=1 VITE_DESKTOP=1 electrobun dev"
   },
-  "type": "module"
+  "type": "module",
+  "prettier": "@minion-stack/lint-config/prettier.config.cjs"
 }
