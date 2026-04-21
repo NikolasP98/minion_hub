@@ -63,7 +63,6 @@
         "@sveltejs/kit": "^2.52.0",
         "@sveltejs/vite-plugin-svelte": "^4.0.0",
         "@types/dompurify": "^3.2.0",
-        "drizzle-kit": "^0.31.9",
         "electrobun": "^1.16.0",
         "prettier": "^3.0.0",
         "svelte": "^5.0.0",
