@@ -5,6 +5,7 @@ import { encrypt, decrypt } from '$server/auth/crypto';
 import type { TenantContext } from './base';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
+import { buildRemotePermissionCommand } from '$server/auth/secure-permissions';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -278,12 +279,12 @@ export async function checkPhaseStatus(
   const preflight = await sshExec(sshHost, sshUser, sshPort, `id ${minionUser} && which node`);
   results['00'] = preflight.ok ? 'complete' : 'pending';
 
-  // Phase 20: User Creation — ~/.minion directory exists
+  // Phase 20: User Creation — ~/.minion directory exists with secure permissions (0700)
   const userCreation = await sshExec(
     sshHost,
     sshUser,
     sshPort,
-    `sudo -u ${minionUser} test -d /home/${minionUser}/.minion`,
+    `sudo -u ${minionUser} test -d /home/${minionUser}/.minion && stat -c '%a' /home/${minionUser}/.minion 2>/dev/null | grep -q '^700$'`,
   );
   results['20'] = userCreation.ok ? 'complete' : 'pending';
 
@@ -342,6 +343,25 @@ export async function checkPhaseStatus(
   results['70'] = verify.ok && verify.stdout.length > 0 ? 'complete' : 'pending';
 
   return results;
+}
+
+// ─── Enforce secure permissions on remote profile directories ───────────
+
+/**
+ * Recursively enforce secure permissions (0700 dirs, 0600 files)
+ * on all auth profile directories on a remote server.
+ */
+export async function enforceRemoteProfilePermissions(
+  sshHost: string,
+  sshUser: string,
+  sshPort: number,
+  agentName?: string,
+): Promise<{ ok: boolean; stdout: string }> {
+  const minionUser = agentName
+    ? `minion-${agentName.toLowerCase().replace(/\s+/g, '-')}`
+    : 'minion';
+  const cmd = buildRemotePermissionCommand(minionUser);
+  return sshExec(sshHost, sshUser, sshPort, cmd);
 }
 
 // ─── Save phase statuses to DB ──────────────────────────────────────────

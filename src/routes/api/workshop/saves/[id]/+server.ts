@@ -1,14 +1,38 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { getDb } from '$server/db/client';
 import { workshopSaves } from '$server/db/schema';
 import { eq } from 'drizzle-orm';
+import { requireAuth } from '$server/auth/authorize';
+import { getTenantCtx } from '$server/auth/tenant-ctx';
+import type { TenantContext } from '$server/services/base';
 
-export const GET: RequestHandler = async ({ params }) => {
-  const db = getDb();
-  const [save] = await db.select().from(workshopSaves).where(eq(workshopSaves.id, params.id!));
+/** Resolve a save and verify ownership. Throws 401/403/404 as appropriate. */
+async function requireSaveOwnership(
+  userId: string,
+  tenantId: string,
+  saveId: string,
+  ctx: TenantContext,
+) {
+  const [save] = await ctx.db.select().from(workshopSaves).where(eq(workshopSaves.id, saveId));
 
   if (!save) throw error(404, 'Save not found');
+
+  // Allow if owned by this user; legacy rows (userId null) visible only within same tenant
+  const ownedByUser = save.userId === userId;
+  const legacyRow = save.userId === null;
+  const sameTenant = save.tenantId === tenantId || save.tenantId === null;
+
+  if ((!ownedByUser && !legacyRow) || !sameTenant) throw error(403, 'Forbidden');
+
+  return save;
+}
+
+export const GET: RequestHandler = async ({ locals, params }) => {
+  const user = requireAuth(locals);
+  const ctx = await getTenantCtx(locals);
+  if (!ctx) throw error(401);
+
+  const save = await requireSaveOwnership(user.id, ctx.tenantId, params.id!, ctx);
 
   return json({
     save: {
@@ -18,13 +42,12 @@ export const GET: RequestHandler = async ({ params }) => {
   });
 };
 
-export const PUT: RequestHandler = async ({ params, request }) => {
-  const db = getDb();
+export const PUT: RequestHandler = async ({ locals, params, request }) => {
+  const user = requireAuth(locals);
+  const ctx = await getTenantCtx(locals);
+  if (!ctx) throw error(401);
 
-  // Verify save exists
-  const [existing] = await db.select().from(workshopSaves).where(eq(workshopSaves.id, params.id!));
-
-  if (!existing) throw error(404, 'Save not found');
+  const existing = await requireSaveOwnership(user.id, ctx.tenantId, params.id!, ctx);
 
   const body = await request.json();
   const { name, state, thumbnail } = body as { name?: string; state?: string; thumbnail?: string };
@@ -50,19 +73,19 @@ export const PUT: RequestHandler = async ({ params, request }) => {
     updates.thumbnail = typeof thumbnail === 'string' ? thumbnail : null;
   }
 
-  await db.update(workshopSaves).set(updates).where(eq(workshopSaves.id, params.id!));
+  await ctx.db.update(workshopSaves).set(updates).where(eq(workshopSaves.id, existing.id));
 
   return json({ ok: true });
 };
 
-export const DELETE: RequestHandler = async ({ params }) => {
-  const db = getDb();
+export const DELETE: RequestHandler = async ({ locals, params }) => {
+  const user = requireAuth(locals);
+  const ctx = await getTenantCtx(locals);
+  if (!ctx) throw error(401);
 
-  const [existing] = await db.select().from(workshopSaves).where(eq(workshopSaves.id, params.id!));
+  const existing = await requireSaveOwnership(user.id, ctx.tenantId, params.id!, ctx);
 
-  if (!existing) throw error(404, 'Save not found');
-
-  await db.delete(workshopSaves).where(eq(workshopSaves.id, params.id!));
+  await ctx.db.delete(workshopSaves).where(eq(workshopSaves.id, existing.id));
 
   return json({ ok: true });
 };

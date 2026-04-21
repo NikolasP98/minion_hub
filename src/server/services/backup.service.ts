@@ -5,6 +5,7 @@ import type { TenantContext } from './base';
 import type { ProvisionConfig } from './provision.service';
 import { sshExec } from './provision.service';
 import { spawn } from 'node:child_process';
+import { buildRemotePermissionCommand } from '$server/auth/secure-permissions';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -286,9 +287,10 @@ export function runRestore(
     rsyncCmd += ` -e "ssh -p ${backupPort}"`;
   }
 
-  // After rsync, restart the gateway service
+  // After rsync, enforce secure permissions then restart the gateway service
+  const permCmd = buildRemotePermissionCommand(minionUser);
   const restartCmd = `sudo -u ${minionUser} bash -c "XDG_RUNTIME_DIR=/run/user/$(id -u ${minionUser}) systemctl --user restart minion-gateway" 2>/dev/null || true`;
-  const fullCmd = `${rsyncCmd} && echo '--- Restarting gateway ---' && ${restartCmd}`;
+  const fullCmd = `${rsyncCmd} && echo '--- Enforcing secure permissions ---' && ${permCmd} && echo '--- Restarting gateway ---' && ${restartCmd}`;
 
   const sshArgs = [
     '-o',

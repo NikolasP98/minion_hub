@@ -5,7 +5,14 @@ const IV_BYTES = 12;
 const AUTH_TAG_BYTES = 16;
 
 function getEncryptionKey(): Buffer {
-  const raw = process.env.ENCRYPTION_KEY || 'minion-hub-dev-key';
+  const raw = process.env.ENCRYPTION_KEY;
+  if (!raw) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('ENCRYPTION_KEY environment variable must be set in production');
+    }
+    // Dev-only fallback — never used in production
+    return scryptSync('minion-hub-dev-key', 'minion-hub-salt', 32);
+  }
   return scryptSync(raw, 'minion-hub-salt', 32);
 }
 

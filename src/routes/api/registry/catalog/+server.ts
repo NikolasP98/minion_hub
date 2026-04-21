@@ -2,6 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { assertSafeUrl } from '$server/services/ssrf-guard';
 
 interface CachedCatalog {
   agents: unknown[];
@@ -30,6 +31,7 @@ async function fetchCatalog(): Promise<CachedCatalog> {
     }
   } else {
     const url = process.env.REGISTRY_CATALOG_URL ?? B2_PUBLIC_URL;
+    await assertSafeUrl(url, 'REGISTRY_CATALOG_URL');
     const res = await fetch(url);
     if (!res.ok) throw new Error(`B2 fetch failed: HTTP ${res.status}`);
     raw = await res.text();
