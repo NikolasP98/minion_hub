@@ -48,6 +48,8 @@
     "yjs": "^13.6.30"
   },
   "devDependencies": {
+    "@minion-stack/lint-config": "^0.1.1",
+    "@minion-stack/tsconfig": "^0.1.0",
     "@sveltejs/adapter-node": "^5.5.4",
     "@sveltejs/adapter-vercel": "^5.0.0",
     "@sveltejs/kit": "^2.52.0",
@@ -55,6 +57,7 @@
     "@types/dompurify": "^3.2.0",
     "drizzle-kit": "^0.31.9",
     "electrobun": "^1.16.0",
+    "prettier": "^3.0.0",
     "svelte": "^5.0.0",
     "svelte-check": "^4.0.0",
     "typescript": "^5.0.0",
