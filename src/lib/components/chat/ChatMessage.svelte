@@ -1,5 +1,6 @@
 <script lang="ts">
   import { extractText, extractMessageTimestamp } from '$lib/utils/text';
+  import AIDisclosureBadge from './AIDisclosureBadge.svelte';
 
   let { message, streaming = false, error = false }: {
     message: unknown;
@@ -7,10 +8,11 @@
     error?: boolean;
   } = $props();
 
-  const m = $derived(message as { role?: string; content?: unknown });
+  const m = $derived(message as { role?: string; content?: unknown; provenance?: { disclosure?: string } });
   const text = $derived(extractText(message) ?? '');
   const role = $derived(m.role === 'user' ? 'user' : 'assistant');
   const timestamp = $derived(extractMessageTimestamp(message));
+  const disclosure = $derived(m.provenance?.disclosure);
 </script>
 
 {#if text || error}
@@ -26,6 +28,11 @@
   {text}
   {#if timestamp}
     <span class="block text-[9px] opacity-70 mt-0.5 text-right">{timestamp}</span>
+  {/if}
+  {#if role === 'assistant' && !error}
+    <span class="block mt-1 text-right">
+      <AIDisclosureBadge disclosure={disclosure} />
+    </span>
   {/if}
 </div>
 {/if}
