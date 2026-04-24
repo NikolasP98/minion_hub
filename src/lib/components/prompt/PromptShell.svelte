@@ -5,6 +5,7 @@
     import EmptyState from "./EmptyState.svelte";
     import PromptTopbarChip from "./PromptTopbarChip.svelte";
     import SectionBrowser from "./SectionBrowser.svelte";
+    import SectionEditor from "./SectionEditor.svelte";
 
     // Minor type drift between @zag-js/svelte@1.35.2 and @zag-js/splitter@1.35.3
     // (schema generic type narrowing). Safe to cast — runtime API is compatible.
@@ -45,9 +46,7 @@
                 {...api.getPanelProps({ id: "editor" })}
                 class="overflow-hidden flex flex-col"
             >
-                <div class="p-4 text-sm text-muted">
-                    Editor — populated in 20-03
-                </div>
+                <SectionEditor />
             </div>
             <div
                 {...api.getResizeTriggerProps({ id: "editor:preview" })}
