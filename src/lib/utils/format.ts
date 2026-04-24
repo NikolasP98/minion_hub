@@ -1,3 +1,25 @@
+/**
+ * Human-readable byte formatter per Phase 20 CONTEXT specifics: `523 B`, `2.3 KB`,
+ * `14.1 KB`, `1.2 MB`. Used by PreviewPanel totals + breakdown.
+ */
+export function formatBytes(n: number | null | undefined): string {
+  if (!n || n <= 0) return '0 B';
+  if (n < 1024) return `${n} B`;
+  const kb = n / 1024;
+  if (kb < 1024) return `${kb.toFixed(1)} KB`;
+  const mb = kb / 1024;
+  return `${mb.toFixed(1)} MB`;
+}
+
+/**
+ * Token count formatter per Phase 20 CONTEXT specifics: `1,234 tokens` with
+ * thousands separator, no unit compaction. Used by PreviewPanel.
+ */
+export function formatTokens(n: number | null | undefined): string {
+  const v = n ?? 0;
+  return `${v.toLocaleString('en-US')} tokens`;
+}
+
 export function fmtTokens(n: number | null | undefined): string {
   if (!n || n === 0) return '0';
   if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';

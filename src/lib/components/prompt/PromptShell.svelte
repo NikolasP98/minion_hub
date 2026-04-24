@@ -6,6 +6,7 @@
     import PromptTopbarChip from "./PromptTopbarChip.svelte";
     import SectionBrowser from "./SectionBrowser.svelte";
     import SectionEditor from "./SectionEditor.svelte";
+    import PreviewPanel from "./PreviewPanel.svelte";
 
     // Minor type drift between @zag-js/svelte@1.35.2 and @zag-js/splitter@1.35.3
     // (schema generic type narrowing). Safe to cast — runtime API is compatible.
@@ -54,11 +55,9 @@
             ></div>
             <div
                 {...api.getPanelProps({ id: "preview" })}
-                class="overflow-y-auto border-l border-border"
+                class="overflow-hidden border-l border-border"
             >
-                <div class="p-4 text-sm text-muted">
-                    Preview — populated in 20-04
-                </div>
+                <PreviewPanel />
             </div>
         </div>
     {/if}
