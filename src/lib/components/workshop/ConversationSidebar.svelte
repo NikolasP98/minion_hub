@@ -9,6 +9,7 @@
   import { Carta, Markdown } from 'carta-md';
   import 'carta-md/default.css';
   import DOMPurify from 'dompurify';
+  import AIDisclosureBadge from '$lib/components/chat/AIDisclosureBadge.svelte';
 
   const carta = new Carta({ sanitizer: (html) => DOMPurify.sanitize(html) });
 
@@ -226,6 +227,9 @@
               </div>
               <div class="ws-message-md text-[11px] text-foreground leading-snug mt-0.5">
                 <Markdown {carta} value={msg.content} />
+              </div>
+              <div class="mt-1 text-right">
+                <AIDisclosureBadge />
               </div>
             </div>
           </div>

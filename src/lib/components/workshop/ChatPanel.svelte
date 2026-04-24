@@ -4,6 +4,7 @@
   import { slide } from 'svelte/transition';
   import type { WorkshopMessage } from '$lib/workshop/gateway-bridge';
   import * as m from '$lib/paraglide/messages';
+  import AIDisclosureBadge from '$lib/components/chat/AIDisclosureBadge.svelte';
 
   let { conversationId, messages: workshopMessages = [], onClose }: {
     conversationId: string;
@@ -118,6 +119,9 @@
               <span class="text-[9px] text-muted/60">{formatRelativeTime(msg.timestamp)}</span>
             </div>
             <p class="text-[11px] text-foreground leading-snug mt-0.5">{msg.text}</p>
+            <div class="mt-1 text-right">
+              <AIDisclosureBadge />
+            </div>
           </div>
         </div>
       {/each}
