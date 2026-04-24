@@ -217,57 +217,63 @@ export function wsConnect() {
   const rawWs = (client as unknown as { ws: WebSocket | null }).ws;
 
   // Attach binary listener after connect resolves so we have a socket reference.
-  void client.connect().then((hello) => {
-    const wasReconnect = conn.backoffMs > 800;
-    conn.backoffMs = 800;
-    conn.connected = true;
-    conn.connecting = false;
-    conn.particleHue = 'blue';
-    conn.connectedAt = Date.now();
-    conn.connectError = null;
+  void client
+    .connect()
+    .then((hello) => {
+      const wasReconnect = conn.backoffMs > 800;
+      conn.backoffMs = 800;
+      conn.connected = true;
+      conn.connecting = false;
+      conn.particleHue = 'blue';
+      conn.connectedAt = Date.now();
+      conn.connectError = null;
 
-    if (wasReconnect) {
-      const activeHost = getActiveHost();
-      toastSuccess('Reconnected', activeHost?.name ?? activeHost?.url);
-    }
-
-    gw.hello = hello as HelloOk;
-    gw.presence = (hello as HelloOk).snapshot?.presence ?? [];
-
-    if (capturedHostId) {
-      const h = hostsState.hosts.find((x) => x.id === capturedHostId);
-      if (h) {
-        h.lastConnectedAt = conn.connectedAt;
-        updateHost(capturedHostId, {
-          name: h.name,
-          url: h.url,
-          token: h.token,
-          lastConnectedAt: conn.connectedAt,
-        });
-        saveLastActiveHost(capturedHostId);
+      if (wasReconnect) {
+        const activeHost = getActiveHost();
+        toastSuccess('Reconnected', activeHost?.name ?? activeHost?.url);
       }
-    }
 
-    // Wire binary message handler onto the underlying socket.
-    // TODO(phase-8): upstream proper binary channel API to GatewayClient.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sock = (client as unknown as { ws: unknown }).ws as { binaryType?: string; addEventListener?: (ev: string, fn: (e: MessageEvent) => void) => void } | null;
-    if (sock && typeof sock.addEventListener === 'function') {
-      sock.binaryType = 'arraybuffer';
-      sock.addEventListener('message', (ev: MessageEvent) => {
-        if (ev.data instanceof ArrayBuffer) {
-          notifyBinaryListeners(new Uint8Array(ev.data));
+      gw.hello = hello as HelloOk;
+      gw.presence = (hello as HelloOk).snapshot?.presence ?? [];
+
+      if (capturedHostId) {
+        const h = hostsState.hosts.find((x) => x.id === capturedHostId);
+        if (h) {
+          h.lastConnectedAt = conn.connectedAt;
+          updateHost(capturedHostId, {
+            name: h.name,
+            url: h.url,
+            token: h.token,
+            lastConnectedAt: conn.connectedAt,
+          });
+          saveLastActiveHost(capturedHostId);
         }
-      });
-    }
+      }
 
-    onHelloOk(hello as HelloOk);
-    resolveServerId();
-  }).catch((err) => {
-    console.error('[hub] connect failed:', err);
-    conn.connectError = String((err as Error)?.message ?? err);
-    toastError('Connection failed', conn.connectError, { id: 'gateway-connect-failed' });
-  });
+      // Wire binary message handler onto the underlying socket.
+      // TODO(phase-8): upstream proper binary channel API to GatewayClient.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sock = (client as unknown as { ws: unknown }).ws as {
+        binaryType?: string;
+        addEventListener?: (ev: string, fn: (e: MessageEvent) => void) => void;
+      } | null;
+      if (sock && typeof sock.addEventListener === 'function') {
+        sock.binaryType = 'arraybuffer';
+        sock.addEventListener('message', (ev: MessageEvent) => {
+          if (ev.data instanceof ArrayBuffer) {
+            notifyBinaryListeners(new Uint8Array(ev.data));
+          }
+        });
+      }
+
+      onHelloOk(hello as HelloOk);
+      resolveServerId();
+    })
+    .catch((err) => {
+      console.error('[hub] connect failed:', err);
+      conn.connectError = String((err as Error)?.message ?? err);
+      toastError('Connection failed', conn.connectError, { id: 'gateway-connect-failed' });
+    });
 
   void rawWs; // suppress unused warning
 }
@@ -830,7 +836,9 @@ export function sendBinary(data: Uint8Array): void {
   if (!client) return;
   // TODO(phase-8): upstream proper binary channel API to GatewayClient.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const sock = (client as unknown as { ws: { readyState: number; send: (d: Uint8Array) => void } | null }).ws;
+  const sock = (
+    client as unknown as { ws: { readyState: number; send: (d: Uint8Array) => void } | null }
+  ).ws;
   if (!sock || sock.readyState !== 1 /* OPEN */) return;
   sock.send(data);
 }
