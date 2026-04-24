@@ -1,7 +1,5 @@
-import { createAuthClient } from 'better-auth/svelte';
-import { jwtClient, organizationClient } from 'better-auth/client/plugins';
+import { createMinionAuthClient } from '@minion-stack/auth/client';
 
-export const authClient = createAuthClient({
+export const authClient = createMinionAuthClient({
   baseURL: import.meta.env.VITE_BETTER_AUTH_URL,
-  plugins: [jwtClient(), organizationClient()],
 });

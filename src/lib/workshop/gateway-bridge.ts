@@ -47,8 +47,7 @@ import {
   setMessages,
 } from '$lib/state/workshop/workshop-conversations.svelte';
 import { configState } from '$lib/state/config/config.svelte';
-import { uuid } from '@minion-stack/shared';
-import { extractText } from '$lib/utils/text';
+import { uuid, extractText } from '@minion-stack/shared';
 import { showReactionEmoji } from '$lib/workshop/renderer-adapter';
 import { sendFsmEvent } from './agent-fsm';
 import type { ConversationMessage } from '$lib/state/workshop/workshop-conversations.svelte';

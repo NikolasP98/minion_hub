@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { extractText, extractMessageTimestamp } from '$lib/utils/text';
+  import { extractText, extractMessageTimestamp } from '@minion-stack/shared';
   import AIDisclosureBadge from './AIDisclosureBadge.svelte';
 
   let { message, streaming = false, error = false }: {

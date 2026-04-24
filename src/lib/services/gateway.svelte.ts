@@ -37,12 +37,12 @@ import {
   restartState,
   onRestartReconnected,
 } from '$lib/state/config/config.svelte';
-import { extractText } from '$lib/utils/text';
 import { loadAgentGroups } from '$lib/state/features/agent-groups.svelte';
 import {
   GatewayClient,
   uuid,
   parseAgentSessionKey,
+  extractText,
   type HelloOk,
   type ChatEvent,
   type Session,
