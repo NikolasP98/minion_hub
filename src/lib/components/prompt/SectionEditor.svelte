@@ -11,6 +11,7 @@
   import { PromptSectionsError } from "$lib/services/prompt-sections-rpc";
   import { toastError, toastSuccess } from "$lib/state/ui/toast.svelte";
   import EditorMetadata from "./EditorMetadata.svelte";
+  import MarkdownView from "./MarkdownView.svelte";
   import ValidationErrors from "./ValidationErrors.svelte";
 
   // Local $state mirror of the full section — populated on active change.
@@ -200,18 +201,24 @@
       {/if}
     </div>
 
-    <!-- Body: YAML textarea (carta-md is a markdown editor; textarea is more
-         appropriate for YAML editing — see 20-03-SUMMARY.md for rationale) -->
-    <div class="flex-1 overflow-hidden flex flex-col">
-      <textarea
-        class="flex-1 w-full p-3 font-mono text-xs bg-bg text-text resize-none outline-none border-0 focus:ring-0"
-        spellcheck="false"
-        autocomplete="off"
-        readonly={isBuiltin}
-        value={promptSections.activeBody}
-        oninput={onBodyInput}
-        placeholder="# YAML section body…"
-      ></textarea>
+    <!-- Body: builtin → MarkdownView (rendered output), custom → YAML textarea
+         (editable). The gateway returns def.render(ctx) for builtins so we
+         show the actual prompt content the model receives. -->
+    <div class="flex-1 overflow-auto flex flex-col">
+      {#if isBuiltin}
+        <div class="p-3">
+          <MarkdownView value={promptSections.activeBody} />
+        </div>
+      {:else}
+        <textarea
+          class="flex-1 w-full p-3 font-mono text-xs bg-bg text-text resize-none outline-none border-0 focus:ring-0"
+          spellcheck="false"
+          autocomplete="off"
+          value={promptSections.activeBody}
+          oninput={onBodyInput}
+          placeholder="# YAML section body…"
+        ></textarea>
+      {/if}
     </div>
 
     <!-- Validation errors (inline, D-10) -->
