@@ -19,6 +19,7 @@
         User,
         Bug,
         Paintbrush,
+        Wand2,
     } from "lucide-svelte";
     import { ui } from "$lib/state/ui/ui.svelte";
     import { captureSnapshot, bugReporter } from "$lib/state/ui/bug-reporter.svelte";
@@ -36,6 +37,7 @@
     const isBuilder = $derived(page.url.pathname.startsWith('/builder'));
     const isMyAgent = $derived(page.url.pathname.startsWith('/my-agent'));
     const isStudio = $derived(page.url.pathname.startsWith('/studio'));
+    const isPrompt = $derived(page.url.pathname.startsWith('/prompt'));
 
     // Mobile menu state
     let mobileMenuOpen = $state(false);
@@ -143,6 +145,15 @@
             </a>
 
             <a
+                href="/prompt"
+                class="nav-pill brand {isPrompt ? 'active-brand' : ''}"
+                title={m.nav_prompt()}
+            >
+                <Wand2 size={14} />
+                <span>{m.nav_prompt()}</span>
+            </a>
+
+            <a
                 href="/studio"
                 class="nav-pill brand {isStudio ? 'active-brand' : ''}"
                 title="Studio"
@@ -197,6 +208,14 @@
                 {/snippet}
             </Tooltip>
 
+            <Tooltip label={m.nav_prompt()} id="nav-lg-prompt">
+                {#snippet children(triggerProps)}
+                    <a href="/prompt" class="nav-pill brand {isPrompt ? 'active-brand' : ''}" {...triggerProps}>
+                        <Wand2 size={16} />
+                    </a>
+                {/snippet}
+            </Tooltip>
+
             <Tooltip label={m.nav_studio()} id="nav-lg-studio">
                 {#snippet children(triggerProps)}
                     <a href="/studio" class="nav-pill brand {isStudio ? 'active-brand' : ''}" {...triggerProps}>
@@ -243,6 +262,14 @@
                 {#snippet children(triggerProps)}
                     <a href="/marketplace" class="nav-pill-sm brand {isMarketplace ? 'active-brand' : ''}" {...triggerProps}>
                         <Store size={18} />
+                    </a>
+                {/snippet}
+            </Tooltip>
+
+            <Tooltip label={m.nav_prompt()} id="nav-md-prompt">
+                {#snippet children(triggerProps)}
+                    <a href="/prompt" class="nav-pill-sm brand {isPrompt ? 'active-brand' : ''}" {...triggerProps}>
+                        <Wand2 size={18} />
                     </a>
                 {/snippet}
             </Tooltip>
@@ -360,6 +387,16 @@
                 >
                     <Store size={18} />
                     <span>{m.nav_marketplace()}</span>
+                </a>
+                <a
+                    href="/prompt"
+                    class="mobile-nav-link brand {isPrompt
+                        ? 'active-brand'
+                        : ''}"
+                    onclick={closeMobileMenu}
+                >
+                    <Wand2 size={18} />
+                    <span>{m.nav_prompt()}</span>
                 </a>
                 <a
                     href="/studio"
