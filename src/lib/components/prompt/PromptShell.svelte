@@ -4,6 +4,7 @@
     import { promptSections } from "$lib/state/features/prompt-sections.svelte";
     import EmptyState from "./EmptyState.svelte";
     import PromptTopbarChip from "./PromptTopbarChip.svelte";
+    import SectionBrowser from "./SectionBrowser.svelte";
 
     // Minor type drift between @zag-js/svelte@1.35.2 and @zag-js/splitter@1.35.3
     // (schema generic type narrowing). Safe to cast — runtime API is compatible.
@@ -32,11 +33,9 @@
         <div {...api.getRootProps()} class="flex-1 flex overflow-hidden">
             <div
                 {...api.getPanelProps({ id: "browser" })}
-                class="overflow-y-auto border-r border-border"
+                class="overflow-hidden border-r border-border"
             >
-                <div class="p-4 text-sm text-muted">
-                    Section browser — populated in 20-03
-                </div>
+                <SectionBrowser />
             </div>
             <div
                 {...api.getResizeTriggerProps({ id: "browser:editor" })}
