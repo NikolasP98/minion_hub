@@ -474,6 +474,21 @@ function handleEvent(evt: Record<string, unknown>) {
       }
       break;
     }
+    default: {
+      // Phase 25: bubble prompt.section.* mutations to a single window event
+      // so /prompt subscribers can refetch usage without a per-event case.
+      const evtName = evt.event as string | undefined;
+      if (
+        typeof evtName === 'string' &&
+        evtName.startsWith('prompt.section.') &&
+        typeof window !== 'undefined'
+      ) {
+        window.dispatchEvent(
+          new CustomEvent('prompt.sections.changed', { detail: evt.payload }),
+        );
+      }
+      break;
+    }
   }
 }
 

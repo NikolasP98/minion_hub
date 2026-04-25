@@ -179,3 +179,24 @@ export async function setOverrides(
     throw normalizeError(e);
   }
 }
+
+// Phase 25: cross-agent usage map. Single round-trip — gateway returns the
+// pre-built inverse index `{ [sectionId]: AgentRef[] }`.
+export interface SectionUsageAgentRef {
+  agentId: string;
+  label: string;
+  emoji?: string;
+  avatarUrl?: string;
+  theme?: string;
+}
+export type SectionUsageMap = Record<string, SectionUsageAgentRef[]>;
+export async function getSectionUsage(): Promise<SectionUsageMap> {
+  try {
+    const res = (await sendRequest("prompt.sections.usage", {})) as
+      | { usage?: SectionUsageMap }
+      | null;
+    return res?.usage ?? {};
+  } catch (e) {
+    throw normalizeError(e);
+  }
+}
