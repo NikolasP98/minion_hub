@@ -16,6 +16,7 @@ import {
 import { env } from '$env/dynamic/private';
 import { startBackupScheduler } from '$server/services/backup-scheduler';
 import { ensurePersonalAgentOnLogin } from '$server/services/personal-agent.service';
+import { mintPaperclipIdentity } from '$lib/server/paperclip-identity';
 
 /**
  * Resolve tenantCtx from a Bearer server token.
@@ -284,7 +285,31 @@ const posthogProxyHandle: Handle = async ({ event, resolve }) => {
   return resolve(event);
 };
 
-export const handle = sequence(i18n.handle(), posthogProxyHandle, authHandle, appHandle);
+const paperclipIdentityHandle: Handle = async ({ event, resolve }) => {
+  if (event.locals.user) {
+    const companyId = event.cookies.get('pc_company_id') ?? null;
+    try {
+      const token = await mintPaperclipIdentity({
+        userId: event.locals.user.id,
+        email: event.locals.user.email ?? null,
+        name: event.locals.user.displayName ?? null,
+        companyId,
+      });
+      event.locals.paperclipIdentity = {
+        token,
+        companyId,
+        userId: event.locals.user.id,
+      };
+    } catch (err) {
+      // Don't block the request if JWT minting fails (e.g. secret not set in dev).
+      // Routes that require paperclipIdentity will throw when they call paperclipServerClient.
+      console.warn('[paperclipIdentityHandle] JWT mint failed:', err);
+    }
+  }
+  return resolve(event);
+};
+
+export const handle = sequence(i18n.handle(), posthogProxyHandle, authHandle, appHandle, paperclipIdentityHandle);
 
 import type { HandleServerError } from '@sveltejs/kit';
 

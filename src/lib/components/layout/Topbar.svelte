@@ -4,6 +4,7 @@
     import MinionLogo from "./MinionLogo.svelte";
     import Tooltip from "./Tooltip.svelte";
     import ScanLine from "$lib/components/decorations/ScanLine.svelte";
+    import CompanySwitcher from "./CompanySwitcher.svelte";
     import { theme } from "$lib/state/ui/theme.svelte";
     import { page } from "$app/state";
     import * as m from "$lib/paraglide/messages";
@@ -20,6 +21,8 @@
         Bug,
         Paintbrush,
         Wand2,
+        Users,
+        LayoutDashboard,
     } from "lucide-svelte";
     import { ui } from "$lib/state/ui/ui.svelte";
     import { captureSnapshot, bugReporter } from "$lib/state/ui/bug-reporter.svelte";
@@ -38,6 +41,7 @@
     const isMyAgent = $derived(page.url.pathname.startsWith('/my-agent'));
     const isStudio = $derived(page.url.pathname.startsWith('/studio'));
     const isPrompt = $derived(page.url.pathname.startsWith('/prompt'));
+    const isWorkforce = $derived(page.url.pathname.startsWith('/workforce'));
 
     // Mobile menu state
     let mobileMenuOpen = $state(false);
@@ -104,9 +108,40 @@
 
         <!-- Desktop Navigation - Full text (xl+) -->
         <nav class="hidden xl:flex items-center gap-1 flex-1 min-w-0">
+            <!-- Workforce group -->
+            <div class="flex items-center gap-0.5 px-1.5 py-1 rounded-lg bg-bg2/50 border border-border/50">
+                <span class="px-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted/60 select-none">Workforce</span>
+                <a href="/workforce" class="nav-pill {isWorkforce ? 'active' : ''}" title="Dashboard">
+                    <LayoutDashboard size={14} />
+                    <span>Dashboard</span>
+                </a>
+                <Tooltip label="Coming soon" id="nav-wf-issues">
+                    {#snippet children(triggerProps)}
+                        <span class="nav-pill disabled" {...triggerProps}>Issues</span>
+                    {/snippet}
+                </Tooltip>
+                <Tooltip label="Coming soon" id="nav-wf-goals">
+                    {#snippet children(triggerProps)}
+                        <span class="nav-pill disabled" {...triggerProps}>Goals</span>
+                    {/snippet}
+                </Tooltip>
+                <Tooltip label="Coming soon" id="nav-wf-people">
+                    {#snippet children(triggerProps)}
+                        <span class="nav-pill disabled" {...triggerProps}>
+                            <Users size={14} />
+                            <span>People</span>
+                        </span>
+                    {/snippet}
+                </Tooltip>
+            </div>
+
+            <div class="w-px h-4 bg-border/60 mx-1"></div>
+
+            <!-- Gateway group -->
             <div
                 class="flex items-center gap-0.5 px-1.5 py-1 rounded-lg bg-bg2/50 border border-border/50"
             >
+                <span class="px-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted/60 select-none">Gateway</span>
                 <a href="/my-agent" class="nav-pill {isMyAgent ? 'active' : ''}" title={m.nav_myAgent()}>
                     <User size={14} />
                     <span>{m.nav_myAgent()}</span>
@@ -165,6 +200,22 @@
 
         <!-- Tablet Navigation - Icons only (lg to xl) -->
         <nav class="hidden lg:flex xl:hidden items-center gap-1 flex-1">
+            <!-- Workforce group (icon only) -->
+            <div
+                class="flex items-center gap-0.5 px-1.5 py-1 rounded-lg bg-bg2/50 border border-border/50"
+            >
+                <Tooltip label="Workforce Dashboard" id="nav-lg-workforce">
+                    {#snippet children(triggerProps)}
+                        <a href="/workforce" class="nav-pill {isWorkforce ? 'active' : ''}" {...triggerProps}>
+                            <LayoutDashboard size={16} />
+                        </a>
+                    {/snippet}
+                </Tooltip>
+            </div>
+
+            <div class="w-px h-4 bg-border/60 mx-1"></div>
+
+            <!-- Gateway group (icon only) -->
             <div
                 class="flex items-center gap-0.5 px-1.5 py-1 rounded-lg bg-bg2/50 border border-border/50"
             >
@@ -227,6 +278,16 @@
 
         <!-- Small Tablet Navigation - Icons only, no bg (470px to lg) -->
         <nav class="hidden min-[470px]:flex lg:hidden items-center gap-0.5 flex-1">
+            <Tooltip label="Workforce Dashboard" id="nav-md-workforce">
+                {#snippet children(triggerProps)}
+                    <a href="/workforce" class="nav-pill-sm {isWorkforce ? 'active' : ''}" {...triggerProps}>
+                        <LayoutDashboard size={18} />
+                    </a>
+                {/snippet}
+            </Tooltip>
+
+            <div class="w-px h-4 bg-border/60 mx-1"></div>
+
             <Tooltip label={m.nav_myAgent()} id="nav-md-my-agent">
                 {#snippet children(triggerProps)}
                     <a href="/my-agent" class="nav-pill-sm {isMyAgent ? 'active' : ''}" {...triggerProps}>
@@ -288,6 +349,11 @@
 
         <!-- Right Actions -->
         <div class="flex items-center gap-1.5 shrink-0">
+            <!-- Company Switcher (hidden on mobile) -->
+            <div class="hidden sm:block">
+                <CompanySwitcher />
+            </div>
+
             <!-- Bug Report -->
             <button
                 onclick={() => captureSnapshot()}
@@ -341,6 +407,34 @@
             style="animation: slide-up 150ms ease-out"
         >
             <nav class="flex flex-col p-2 gap-1">
+                <!-- Workforce section -->
+                <div class="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted/60">Workforce</div>
+                <a
+                    href="/workforce"
+                    class="mobile-nav-link {isWorkforce ? 'active' : ''}"
+                    onclick={closeMobileMenu}
+                >
+                    <LayoutDashboard size={18} />
+                    <span>Dashboard</span>
+                </a>
+                <span class="mobile-nav-link disabled">
+                    <span>Issues</span>
+                    <span class="ml-auto text-[10px] text-muted/50">Soon</span>
+                </span>
+                <span class="mobile-nav-link disabled">
+                    <span>Goals</span>
+                    <span class="ml-auto text-[10px] text-muted/50">Soon</span>
+                </span>
+                <span class="mobile-nav-link disabled">
+                    <Users size={18} />
+                    <span>People</span>
+                    <span class="ml-auto text-[10px] text-muted/50">Soon</span>
+                </span>
+
+                <div class="h-px bg-border/60 my-1"></div>
+
+                <!-- Gateway section -->
+                <div class="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted/60">Gateway</div>
                 <a
                     href="/my-agent"
                     class="mobile-nav-link {isMyAgent ? 'active' : ''}"
@@ -377,7 +471,9 @@
                     <Wrench size={18} />
                     <span>{m.nav_workshop()}</span>
                 </a>
+
                 <div class="h-px bg-border/60 my-1"></div>
+
                 <a
                     href="/marketplace"
                     class="mobile-nav-link brand {isMarketplace
@@ -416,6 +512,12 @@
                     <Settings size={18} />
                     <span>{m.nav_settings()}</span>
                 </a>
+
+                <!-- Company switcher in mobile menu -->
+                <div class="h-px bg-border/60 my-1"></div>
+                <div class="px-3 py-2">
+                    <CompanySwitcher />
+                </div>
             </nav>
         </div>
     {/if}
@@ -494,6 +596,14 @@
         background: var(--color-brand-pink);
         border-radius: 1px;
         animation: indicator-in 200ms ease-out;
+    }
+
+    /* Disabled nav pills (coming soon placeholders) */
+    .nav-pill.disabled,
+    .mobile-nav-link.disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+        pointer-events: none;
     }
 
     /* Small nav pills (icon only) */
