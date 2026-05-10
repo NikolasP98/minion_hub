@@ -94,7 +94,7 @@ export function clearSelection() {
     promptSections.validationErrors = [];
 }
 
-export function toggleGroupCollapsed(layerKey: string) {
+export function toggleLayerCollapsed(layerKey: string) {
     const next = new Set(promptSections.collapsedGroups);
     if (next.has(layerKey)) next.delete(layerKey);
     else next.add(layerKey);

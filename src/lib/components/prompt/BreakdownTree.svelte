@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { SectionMeta } from "@minion-stack/shared";
-  import { promptSections, patchUsage, toggleSelected, toggleGroupSelected, toggleGroupCollapsed } from "$lib/state/features/prompt-sections.svelte";
+  import { promptSections, patchUsage, toggleSelected, toggleGroupSelected, toggleLayerCollapsed } from "$lib/state/features/prompt-sections.svelte";
   import { colorForLayer, LAYER_ORDER, layerLabel } from "$lib/utils/layer-colors";
   import { formatBytes } from "$lib/utils/format";
   import { getOverrides, getSection, getSectionUsage, listSections, setOverrides, upsertSection } from "$lib/services/prompt-sections-rpc";
@@ -204,7 +204,7 @@
             type="button"
             class="w-4 h-4 flex items-center justify-center text-muted hover:text-fg shrink-0"
             aria-label={isOpen ? "Collapse" : "Expand"}
-            onclick={() => toggleGroupCollapsed(group.key)}
+            onclick={() => toggleLayerCollapsed(group.key)}
           >
             <svg viewBox="0 0 12 12" class="w-3 h-3 transition-transform {isOpen ? 'rotate-90' : ''}">
               <path d="M4 2 L8 6 L4 10" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>

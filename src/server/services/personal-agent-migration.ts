@@ -10,7 +10,6 @@ import type { PersonalAgentRow } from './personal-agent.service';
 import {
   provisionPersonalAgent,
   updateProvisioningStatus,
-  updatePersonalAgent,
 } from './personal-agent.service';
 import type { TenantContext } from './base';
 
@@ -20,9 +19,12 @@ import type { TenantContext } from './base';
  * Flow:
  * 1. provisionPersonalAgent creates personal_agents + user_agents rows (status 'pending')
  * 2. updateProvisioningStatus transitions to 'active' (workspace already exists from migration)
- * 3. updatePersonalAgent sets conversationName to originalName (preserves original name in chat)
  *
- * The displayName defaults to "usr:{email}" from provisionPersonalAgent.
+ * Phase 3c — `conversationName` no longer lives in the hub DB; it now
+ * lives in the gateway config at `agents.list[].personality.conversationName`.
+ * The migration step that preserved `originalName` as `conversationName` in
+ * the DB has been removed; the original name is preserved in the gateway
+ * config by the gateway-side migration runner.
  */
 export async function createMigratedPersonalAgent(
   ctx: TenantContext,
@@ -44,14 +46,8 @@ export async function createMigratedPersonalAgent(
   // 2. Immediately transition to 'active' since the workspace already exists
   await updateProvisioningStatus(ctx, params.userId, 'active');
 
-  // 3. Preserve the original agent name as conversationName
-  await updatePersonalAgent(ctx, params.userId, {
-    conversationName: params.originalName,
-  });
-
   return {
     ...row,
     provisioningStatus: 'active',
-    conversationName: params.originalName,
   };
 }

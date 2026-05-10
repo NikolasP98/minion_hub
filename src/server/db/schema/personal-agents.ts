@@ -12,13 +12,18 @@ export const personalAgents = sqliteTable(
       .references(() => user.id, { onDelete: 'cascade' }),
     agentId: text('agent_id').notNull(),
     serverId: text('server_id').references(() => servers.id, { onDelete: 'set null' }),
+    /** @deprecated See @minion-stack/db schema. Removed by 0012 migration. */
     displayName: text('display_name').notNull(),
+    /** @deprecated See @minion-stack/db schema. Removed by 0013 migration (Phase 3c). */
     conversationName: text('conversation_name'),
     avatarUrl: text('avatar_url'),
+    /** @deprecated See @minion-stack/db schema. Removed by 0013 migration (Phase 3c). */
     personalityPreset: text('personality_preset', {
       enum: ['professional', 'casual', 'creative', 'technical'],
     }),
+    /** @deprecated See @minion-stack/db schema. Removed by 0013 migration (Phase 3c). */
     personalityText: text('personality_text'),
+    /** @deprecated See @minion-stack/db schema. Removed by 0013 migration (Phase 3c). */
     personalityConfigured: integer('personality_configured', { mode: 'boolean' })
       .notNull()
       .default(false),

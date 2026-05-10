@@ -26,6 +26,7 @@
     import { builderState, loadBuiltAgents } from "$lib/state/builder/builder.svelte";
     import type { Agent } from "@minion-stack/shared";
     import { diceBearAvatarUrl } from "$lib/utils/avatar";
+    import { agentDisplayName } from "$lib/utils/agent-display";
     import { goto } from "$app/navigation";
     import { onMount } from "svelte";
 
@@ -203,28 +204,12 @@
                 </div>
             </div>
 
-            <!-- Stats row -->
-            {#if conn.connected}
-                <div
-                    class="flex items-center gap-3 text-[10px] text-muted-foreground"
-                >
-                    <div class="flex items-center gap-1.5">
-                        <span class="w-1.5 h-1.5 rounded-full bg-success"
-                        ></span>
-                        <span
-                            >{m.agent_statusActive({
-                                count: activeAgentCount,
-                            })}</span
-                        >
-                    </div>
-                    <div class="flex items-center gap-1.5">
-                        <span
-                            class="w-1.5 h-1.5 rounded-full bg-muted-foreground/50"
-                        ></span>
-                        <span
-                            >{m.sidebar_totalCount({ count: agentCount })}</span
-                        >
-                    </div>
+            <!-- Stats row removed — promoted to topbar in command-center redesign -->
+            {#if conn.connected && agentCount > 0}
+                <div class="flex items-center gap-3 text-[10px] text-muted-foreground/70 tabular-nums">
+                    <span>{activeAgentCount} active</span>
+                    <span class="opacity-50">·</span>
+                    <span>{agentCount} total</span>
                 </div>
             {/if}
         </div>
@@ -430,12 +415,12 @@
                                                 if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
                                             }}
                                             onclick={() => selectAgent(agent)}
-                                            title={agent.name ?? agent.id}
+                                            title={agentDisplayName(agent)}
                                         >
                                             {#if agent.emoji}
                                                 <span class="text-base leading-none">{agent.emoji}</span>
                                             {:else}
-                                                <img src={diceBearAvatarUrl(agent.name ?? agent.id)} alt="" class="w-6 h-6 rounded-full" />
+                                                <img src={diceBearAvatarUrl(agentDisplayName(agent))} alt="" class="w-6 h-6 rounded-full" />
                                             {/if}
                                         </button>
                                     {/if}
@@ -469,12 +454,12 @@
                                         if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
                                     }}
                                     onclick={() => selectAgent(agent)}
-                                    title={agent.name ?? agent.id}
+                                    title={agentDisplayName(agent)}
                                 >
                                     {#if agent.emoji}
                                         <span class="text-base leading-none">{agent.emoji}</span>
                                     {:else}
-                                        <img src={diceBearAvatarUrl(agent.name ?? agent.id)} alt="" class="w-6 h-6 rounded-full" />
+                                        <img src={diceBearAvatarUrl(agentDisplayName(agent))} alt="" class="w-6 h-6 rounded-full" />
                                     {/if}
                                 </button>
                             {/each}

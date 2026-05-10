@@ -67,7 +67,6 @@ describe('GET /api/personal-agent', () => {
       id: 'pa-1',
       userId: 'user-1',
       agentId: 'personal-user-1',
-      displayName: "Test User's Agent",
       provisioningStatus: 'active',
     };
     mockGetPersonalAgent.mockResolvedValue(agentRow);
@@ -121,91 +120,38 @@ describe('PATCH /api/personal-agent', () => {
     expect(response.status).toBe(401);
   });
 
-  it('with valid displayName (3 chars) returns { ok: true }', async () => {
+  it('silently ignores deprecated fields (displayName, personality*, conversationName)', async () => {
     const { db } = createMockDb();
     const ctx = { db, tenantId: 'org-1' };
     mockGetTenantCtx.mockResolvedValue(ctx);
     mockUpdatePersonalAgent.mockResolvedValue(undefined);
 
     const locals = makeLocals();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const { PATCH } = await import('./+server');
     const response = await PATCH({
       locals,
-      request: makeRequest('PATCH', { displayName: 'Bob' }),
+      request: makeRequest('PATCH', {
+        displayName: 'Bob',
+        conversationName: 'PANIK',
+        personalityText: 'Be chill',
+        personalityPreset: 'casual',
+        personalityConfigured: true,
+        avatarUrl: 'https://example.com/a.png',
+      }),
     } as Parameters<typeof PATCH>[0]);
 
     expect(response.status).toBe(200);
-    const data = await response.json();
-    expect(data.ok).toBe(true);
-    expect(mockUpdatePersonalAgent).toHaveBeenCalledWith(ctx, 'user-1', { displayName: 'Bob' });
+    // All deprecated fields dropped; only avatarUrl makes it through.
+    expect(mockUpdatePersonalAgent).toHaveBeenCalledWith(ctx, 'user-1', {
+      avatarUrl: 'https://example.com/a.png',
+    });
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
   });
 
-  it('rejects displayName longer than 50 chars with 400', async () => {
-    const { db } = createMockDb();
-    const ctx = { db, tenantId: 'org-1' };
-    mockGetTenantCtx.mockResolvedValue(ctx);
-
-    const locals = makeLocals();
-
-    const { PATCH } = await import('./+server');
-    const response = await PATCH({
-      locals,
-      request: makeRequest('PATCH', { displayName: 'A'.repeat(51) }),
-    } as Parameters<typeof PATCH>[0]);
-
-    expect(response.status).toBe(400);
-  });
-
-  it('rejects displayName shorter than 1 char with 400', async () => {
-    const { db } = createMockDb();
-    const ctx = { db, tenantId: 'org-1' };
-    mockGetTenantCtx.mockResolvedValue(ctx);
-
-    const locals = makeLocals();
-
-    const { PATCH } = await import('./+server');
-    const response = await PATCH({
-      locals,
-      request: makeRequest('PATCH', { displayName: '' }),
-    } as Parameters<typeof PATCH>[0]);
-
-    expect(response.status).toBe(400);
-  });
-
-  it('rejects personalityText longer than 500 chars with 400', async () => {
-    const { db } = createMockDb();
-    const ctx = { db, tenantId: 'org-1' };
-    mockGetTenantCtx.mockResolvedValue(ctx);
-
-    const locals = makeLocals();
-
-    const { PATCH } = await import('./+server');
-    const response = await PATCH({
-      locals,
-      request: makeRequest('PATCH', { personalityText: 'X'.repeat(501) }),
-    } as Parameters<typeof PATCH>[0]);
-
-    expect(response.status).toBe(400);
-  });
-
-  it('rejects invalid personalityPreset with 400', async () => {
-    const { db } = createMockDb();
-    const ctx = { db, tenantId: 'org-1' };
-    mockGetTenantCtx.mockResolvedValue(ctx);
-
-    const locals = makeLocals();
-
-    const { PATCH } = await import('./+server');
-    const response = await PATCH({
-      locals,
-      request: makeRequest('PATCH', { personalityPreset: 'invalid-preset' }),
-    } as Parameters<typeof PATCH>[0]);
-
-    expect(response.status).toBe(400);
-  });
-
-  it('with valid partial update (only personalityText) succeeds', async () => {
+  it('with valid partial update (only avatarUrl) succeeds', async () => {
     const { db } = createMockDb();
     const ctx = { db, tenantId: 'org-1' };
     mockGetTenantCtx.mockResolvedValue(ctx);
@@ -216,14 +162,14 @@ describe('PATCH /api/personal-agent', () => {
     const { PATCH } = await import('./+server');
     const response = await PATCH({
       locals,
-      request: makeRequest('PATCH', { personalityText: 'Be helpful and kind' }),
+      request: makeRequest('PATCH', { avatarUrl: 'https://example.com/avatar.png' }),
     } as Parameters<typeof PATCH>[0]);
 
     expect(response.status).toBe(200);
     const data = await response.json();
     expect(data.ok).toBe(true);
     expect(mockUpdatePersonalAgent).toHaveBeenCalledWith(ctx, 'user-1', {
-      personalityText: 'Be helpful and kind',
+      avatarUrl: 'https://example.com/avatar.png',
     });
   });
 });

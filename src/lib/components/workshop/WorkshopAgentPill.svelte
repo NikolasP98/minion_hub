@@ -2,12 +2,15 @@
   import * as tooltip from '@zag-js/tooltip';
   import { normalizeProps, useMachine } from '@zag-js/svelte';
   import { diceBearAvatarUrl } from '$lib/utils/avatar';
+  import { agentDisplayName } from '$lib/utils/agent-display';
 
   let { agent, onDragStart, count }: {
-    agent: { id: string; name?: string; emoji?: string; description?: string };
+    agent: { id: string; name?: string; emoji?: string; description?: string; identity?: { name?: string } | null };
     onDragStart: (e: DragEvent) => void;
     count?: number;
   } = $props();
+
+  const displayName = $derived(agentDisplayName(agent));
 
   const service = useMachine(tooltip.machine, () => ({
     id: `ws-pill-${agent.id}`,
@@ -31,8 +34,8 @@
       <span class="text-lg leading-none">{agent.emoji}</span>
     {:else}
       <img
-        src={diceBearAvatarUrl(agent.name ?? agent.id)}
-        alt={agent.name ?? agent.id}
+        src={diceBearAvatarUrl(displayName)}
+        alt={displayName}
         class="w-full h-full object-cover rounded-full"
         draggable="false"
       />
@@ -49,7 +52,7 @@
       {...tip.getContentProps()}
       class="bg-bg2 border border-border rounded px-2.5 py-1.5 shadow-lg whitespace-nowrap"
     >
-      <div class="text-xs font-semibold text-foreground">{agent.name ?? agent.id}</div>
+      <div class="text-xs font-semibold text-foreground">{displayName}</div>
       {#if agent.description}
         <div class="text-[10px] text-muted mt-0.5 max-w-[200px] whitespace-normal">{agent.description}</div>
       {/if}

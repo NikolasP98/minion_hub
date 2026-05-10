@@ -27,7 +27,7 @@ function makeAgent(overrides: Partial<PersonalAgentRow> = {}): PersonalAgentRow 
     userId: 'user-1',
     agentId: 'personal-user-1',
     serverId: 'srv-1',
-    displayName: "Nikolas's Agent",
+    displayName: '',
     conversationName: null,
     avatarUrl: null,
     personalityPreset: null,
@@ -130,7 +130,6 @@ describe('getBackoffDelay', () => {
 describe('getProvisioningPayload', () => {
   it('returns { name, workspace } matching the gateway agents.create schema', () => {
     const agent = makeAgent({
-      displayName: "Nikolas's Agent",
       agentId: 'personal-user-1',
     });
     const payload = getProvisioningPayload(agent);

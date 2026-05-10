@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   derivePersonalAgentId,
-  deriveDisplayName,
   provisionPersonalAgent,
   getPersonalAgent,
   updatePersonalAgent,
@@ -40,12 +39,6 @@ describe('derivePersonalAgentId', () => {
   });
 });
 
-describe('deriveDisplayName', () => {
-  it('returns "usr:{email}"', () => {
-    expect(deriveDisplayName('nik@example.com')).toBe('usr:nik@example.com');
-  });
-});
-
 describe('provisionPersonalAgent', () => {
   it('creates a personal_agents row with status pending and deterministic agentId', async () => {
     const { db } = createMockDb();
@@ -56,7 +49,6 @@ describe('provisionPersonalAgent', () => {
     expect(result).toBeDefined();
     expect(result.agentId).toBe('personal-user-1');
     expect(result.provisioningStatus).toBe('pending');
-    expect(result.displayName).toBe('usr:nik@example.com');
     expect(db.insert).toHaveBeenCalled();
   });
 
@@ -137,15 +129,10 @@ describe('getPersonalAgent', () => {
 });
 
 describe('updatePersonalAgent', () => {
-  it('updates displayName, conversationName, personalityPreset, personalityText', async () => {
+  it('updates avatarUrl (the only remaining hub-DB-owned field)', async () => {
     const { db } = createMockDb();
     await updatePersonalAgent({ db, tenantId: 't1' }, 'user-1', {
-      displayName: 'My Assistant',
-      conversationName: 'PANIK',
-      personalityPreset: 'casual',
-      personalityText: 'Be chill and friendly',
-      personalityConfigured: true,
-      avatarUrl: null,
+      avatarUrl: 'https://example.com/a.png',
     });
     expect(db.update).toHaveBeenCalled();
   });
@@ -202,13 +189,12 @@ describe('ensurePersonalAgentOnLogin', () => {
     expect(result.agentId).toBe('personal-user-1');
   });
 
-  it('returns existing agent if displayName already matches', async () => {
+  it('returns existing agent without modification', async () => {
     const { db, resolve } = createMockDb();
     const existingRow = {
       id: 'pa-1',
       userId: 'user-1',
       agentId: 'personal-user-1',
-      displayName: 'usr:nik@example.com',
       provisioningStatus: 'active',
     };
     resolve([existingRow]);
@@ -217,26 +203,9 @@ describe('ensurePersonalAgentOnLogin', () => {
       { userId: 'user-1', email: 'nik@example.com', serverId: 'srv-1' },
     );
     expect(result).toEqual(existingRow);
-    // Should NOT have inserted or updated since displayName matches
+    // displayName lives in gateway config now — login must NOT touch DB.
     expect(db.insert).not.toHaveBeenCalled();
-  });
-
-  it('backfills stale displayName on login', async () => {
-    const { db, resolve } = createMockDb();
-    const existingRow = {
-      id: 'pa-1',
-      userId: 'user-1',
-      agentId: 'personal-user-1',
-      displayName: "Nikolas's Agent",
-      provisioningStatus: 'active',
-    };
-    resolve([existingRow]);
-    const result = await ensurePersonalAgentOnLogin(
-      { db, tenantId: 't1' },
-      { userId: 'user-1', email: 'nik@example.com', serverId: 'srv-1' },
-    );
-    expect(result.displayName).toBe('usr:nik@example.com');
-    expect(db.update).toHaveBeenCalled();
+    expect(db.update).not.toHaveBeenCalled();
   });
 });
 

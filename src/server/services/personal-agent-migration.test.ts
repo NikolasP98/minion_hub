@@ -36,7 +36,6 @@ const mockRow = {
   userId: 'user-922286663',
   agentId: 'personal-user-922286663',
   serverId: 'srv-1',
-  displayName: 'usr:nik@example.com',
   conversationName: null,
   avatarUrl: null,
   personalityPreset: null,
@@ -57,7 +56,6 @@ function setupMockSequence() {
     undefined, // 2: update user.personalAgentId
     [mockRow], // 3: select from personalAgents (provisionPersonalAgent return)
     undefined, // 4: update provisioningStatus to 'active'
-    undefined, // 5: update conversationName
   ]);
   return mock;
 }
@@ -87,15 +85,7 @@ describe('createMigratedPersonalAgent', () => {
     expect(db.update).toHaveBeenCalled();
   });
 
-  it('preserves originalName as conversationName', async () => {
-    const { db } = setupMockSequence();
-    const result = await createMigratedPersonalAgent({ db, tenantId: 't1' }, baseParams);
-    expect(result.conversationName).toBe('PANIK');
-  });
-
-  it('sets displayName to "usr:{email}" format', async () => {
-    const { db } = setupMockSequence();
-    const result = await createMigratedPersonalAgent({ db, tenantId: 't1' }, baseParams);
-    expect(result.displayName).toBe('usr:nik@example.com');
-  });
+  // Phase 3c — `conversationName` no longer lives in the hub DB. The
+  // gateway-side migration runner is responsible for preserving the
+  // original agent name into `agents.list[].personality.conversationName`.
 });

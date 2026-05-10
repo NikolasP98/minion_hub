@@ -693,24 +693,9 @@ function onHelloOk(hello: HelloOk) {
     })
     .catch(() => {});
 
-  // Sync personal agent displayNames to gateway (cache is volatile, lost on restart)
-  fetch('/api/gateway/personal-agent-configs')
-    .then((r) => (r.ok ? r.json() : null))
-    .then((data) => {
-      if (!data?.configs) return;
-      for (const cfg of data.configs as {
-        agentId: string;
-        displayName: string;
-        avatarUrl?: string | null;
-      }[]) {
-        sendRequest('hub.personal-agent.updated', {
-          agentId: cfg.agentId,
-          displayName: cfg.displayName,
-          ...(cfg.avatarUrl ? { avatarUrl: cfg.avatarUrl } : {}),
-        }).catch(() => {});
-      }
-    })
-    .catch(() => {});
+  // (Removed) Personal-agent displayName sync from hub→gateway. Display name
+  // now lives in gateway config (`agents.list[].identity.name`) and survives
+  // restarts. /my-agent writes via config.patch directly.
 
   // Reload config if it was loaded before disconnect (e.g. after a save that restarted the gateway)
   if (configState.loaded || configState.loading) {
