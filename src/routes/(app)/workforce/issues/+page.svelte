@@ -74,23 +74,24 @@
 				</h2>
 				<ul class="divide-y divide-border rounded-lg border border-border bg-card">
 					{#each group.issues as issue (issue.id)}
-						<li class="px-4 py-2.5 flex items-center gap-3 text-sm">
-							<!-- Status badge -->
-							<span
-								class="shrink-0 rounded px-1.5 py-0.5 text-xs font-medium {STATUS_BADGE[issue.status]}"
-							>
-								{STATUS_LABELS[issue.status]}
-							</span>
-
-							<!-- Identifier -->
-							{#if issue.identifier}
-								<span class="shrink-0 text-xs font-mono text-muted-foreground">
-									{issue.identifier}
+						<li>
+							<a href="/workforce/issues/{issue.id}" class="px-4 py-2.5 flex items-center gap-3 text-sm hover:bg-accent transition-colors">
+								<!-- Status badge -->
+								<span
+									class="shrink-0 rounded px-1.5 py-0.5 text-xs font-medium {STATUS_BADGE[issue.status]}"
+								>
+									{STATUS_LABELS[issue.status]}
 								</span>
-							{/if}
 
-							<!-- Title -->
-							<span class="flex-1 min-w-0 truncate font-medium">{issue.title}</span>
+								<!-- Identifier -->
+								{#if issue.identifier}
+									<span class="shrink-0 text-xs font-mono text-muted-foreground">
+										{issue.identifier}
+									</span>
+								{/if}
+
+								<!-- Title -->
+								<span class="flex-1 min-w-0 truncate font-medium">{issue.title}</span>
 
 							<!-- Priority -->
 							{#if issue.priority}
@@ -106,13 +107,14 @@
 								</span>
 							{/if}
 
-							<!-- Created at -->
-							<time
-								class="shrink-0 text-xs text-muted-foreground whitespace-nowrap"
-								datetime={new Date(issue.createdAt).toISOString()}
-							>
-								{formatDate(issue.createdAt)}
-							</time>
+								<!-- Created at -->
+								<time
+									class="shrink-0 text-xs text-muted-foreground whitespace-nowrap"
+									datetime={new Date(issue.createdAt).toISOString()}
+								>
+									{formatDate(issue.createdAt)}
+								</time>
+							</a>
 						</li>
 					{/each}
 				</ul>
