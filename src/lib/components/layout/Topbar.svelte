@@ -115,11 +115,10 @@
                     <LayoutDashboard size={14} />
                     <span>Dashboard</span>
                 </a>
-                <Tooltip label="Coming soon" id="nav-wf-issues">
-                    {#snippet children(triggerProps)}
-                        <span class="nav-pill disabled" {...triggerProps}>Issues</span>
-                    {/snippet}
-                </Tooltip>
+                <a href="/workforce/issues" class="nav-pill {page.url.pathname.startsWith('/workforce/issues') ? 'active' : ''}">Issues</a>
+                <a href="/workforce/approvals" class="nav-pill {page.url.pathname.startsWith('/workforce/approvals') ? 'active' : ''}">
+                    <span>Approvals</span>
+                </a>
                 <Tooltip label="Coming soon" id="nav-wf-goals">
                     {#snippet children(triggerProps)}
                         <span class="nav-pill disabled" {...triggerProps}>Goals</span>
@@ -417,10 +416,20 @@
                     <LayoutDashboard size={18} />
                     <span>Dashboard</span>
                 </a>
-                <span class="mobile-nav-link disabled">
+                <a
+                    href="/workforce/issues"
+                    class="mobile-nav-link {page.url.pathname.startsWith('/workforce/issues') ? 'active' : ''}"
+                    onclick={closeMobileMenu}
+                >
                     <span>Issues</span>
-                    <span class="ml-auto text-[10px] text-muted/50">Soon</span>
-                </span>
+                </a>
+                <a
+                    href="/workforce/approvals"
+                    class="mobile-nav-link {page.url.pathname.startsWith('/workforce/approvals') ? 'active' : ''}"
+                    onclick={closeMobileMenu}
+                >
+                    <span>Approvals</span>
+                </a>
                 <span class="mobile-nav-link disabled">
                     <span>Goals</span>
                     <span class="ml-auto text-[10px] text-muted/50">Soon</span>
