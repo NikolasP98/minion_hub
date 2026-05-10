@@ -2,6 +2,7 @@
 	import Topbar from '$lib/components/layout/Topbar.svelte';
 	import CommandPalette from '$lib/components/layout/CommandPalette.svelte';
 	import LiveRunWidget from '$lib/components/sessions/LiveRunWidget.svelte';
+	import FloatingAssistant from '$lib/components/layout/FloatingAssistant.svelte';
 	import { type Snippet } from 'svelte';
 
 	let { children }: { children: Snippet } = $props();
@@ -14,3 +15,4 @@
 
 <CommandPalette />
 <LiveRunWidget />
+<FloatingAssistant />
