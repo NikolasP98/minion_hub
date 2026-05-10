@@ -47,6 +47,9 @@
     label: string;
     chars: number;
     order: number;
+    /** Phase D-0e: rendered text content (gateway-side D-0e #105). May be
+     * undefined if the gateway hasn't been updated yet — UI shows a notice. */
+    content?: string;
   }
 
   interface SystemPromptReport {
@@ -548,6 +551,28 @@
                   <span class="shrink-0 text-[10px] text-muted">{totalChars > 0 ? ((currentSection.chars / totalChars) * 100).toFixed(1) + '%' : '—'}</span>
                 </div>
               </div>
+            </div>
+
+            <!-- Phase D-0e: rendered section content (real prompt text) -->
+            <div class="mt-4">
+              <div class="flex items-center justify-between mb-1">
+                <p class="text-[10px] font-bold uppercase tracking-wide text-muted">Rendered content</p>
+                {#if currentSection.content !== undefined}
+                  <span class="text-[9px] text-muted font-mono">{currentSection.content.length} chars</span>
+                {/if}
+              </div>
+              {#if currentSection.content === undefined}
+                <div class="rounded border border-border/50 bg-bg2 px-3 py-2 text-[11px] text-muted italic">
+                  Gateway hasn't been updated to emit per-section content yet (D-0e #105).
+                  Until then, only metadata is available.
+                </div>
+              {:else if currentSection.content.length === 0}
+                <div class="rounded border border-border/50 bg-bg2 px-3 py-2 text-[11px] text-muted italic">
+                  This section rendered empty for the current parameters.
+                </div>
+              {:else}
+                <pre class="rounded border border-border/50 bg-bg1 p-3 text-[11px] font-mono text-foreground whitespace-pre-wrap break-words max-h-96 overflow-auto">{currentSection.content}</pre>
+              {/if}
             </div>
 
             <!-- Contextual detail for known sections -->
