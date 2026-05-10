@@ -10,7 +10,8 @@
     "@libsql/client": "^0.17.0",
     "@minion-stack/auth": "^0.2.0",
     "@minion-stack/db": "^0.2.0",
-    "@minion-stack/shared": "^0.3.0",
+    "@minion-stack/paperclip-client": "^0.1.0",
+    "@minion-stack/shared": "^0.5.0",
     "@node-rs/argon2": "^2.0.2",
     "@paralleldrive/cuid2": "^3.3.0",
     "@tailwindcss/vite": "^4.2.0",
@@ -54,6 +55,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@playwright/test": "^1.48.0",
     "@minion-stack/lint-config": "^0.1.1",
     "@minion-stack/tsconfig": "^0.1.0",
     "@sveltejs/adapter-node": "^5.5.4",
@@ -86,6 +88,7 @@
     "db:seed": "bun run src/server/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
     "desktop:build": "DESKTOP=1 VITE_DESKTOP=1 vite build",
     "desktop:serve": "DESKTOP=1 VITE_DESKTOP=1 PORT=5959 ORIGIN=http://localhost:5959 HOST=127.0.0.1 node build/index.js",
     "desktop:dev": "DESKTOP=1 VITE_DESKTOP=1 vite build && DESKTOP=1 VITE_DESKTOP=1 electrobun dev",

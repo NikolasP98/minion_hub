@@ -74,6 +74,7 @@
     import { thinkingAgents } from "$lib/state/workshop/workshop-conversations.svelte";
     import DebugOverlay from "./DebugOverlay.svelte";
     import ToggleSwitch from "$lib/components/config/ToggleSwitch.svelte";
+    import { agentDisplayName } from "$lib/utils/agent-display";
     import { OfficeState } from "$lib/workshop/pixel/office-state";
     import { startGameLoop } from "$lib/workshop/pixel/game-loop";
     import { renderFrame as pixelRenderFrame } from "$lib/workshop/pixel/renderer";
@@ -614,12 +615,12 @@
 
     function resolveAgentName(agentId: string): string {
         const agent = gw.agents.find((a) => a.id === agentId);
-        return agent?.name ?? agentId;
+        return agent ? agentDisplayName(agent) : agentId;
     }
 
     function resolveAvatarSeed(agentId: string): string {
         const agent = gw.agents.find((a) => a.id === agentId);
-        return agent?.name ?? agentId;
+        return agent ? agentDisplayName(agent) : agentId;
     }
 
     function resolveEmoji(agentId: string): string | undefined {

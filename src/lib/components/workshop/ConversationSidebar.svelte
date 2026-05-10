@@ -10,6 +10,7 @@
   import 'carta-md/default.css';
   import DOMPurify from 'dompurify';
   import AIDisclosureBadge from '$lib/components/chat/AIDisclosureBadge.svelte';
+  import { agentDisplayName } from '$lib/utils/agent-display';
 
   const carta = new Carta({ sanitizer: (html) => DOMPurify.sanitize(html) });
 
@@ -72,7 +73,7 @@
     if (!agentId) return { name: 'Unknown', emoji: '' };
     const agent = gw.agents.find((a: { id: string }) => a.id === agentId);
     return {
-      name: agent?.name ?? agentId,
+      name: agent ? agentDisplayName(agent) : agentId,
       emoji: (agent as { emoji?: string } | undefined)?.emoji ?? '',
     };
   }

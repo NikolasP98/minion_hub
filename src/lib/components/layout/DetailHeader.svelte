@@ -3,6 +3,7 @@
   import { ui } from '$lib/state/ui/ui.svelte';
   import HudBorder from '$lib/components/decorations/HudBorder.svelte';
   import { diceBearAvatarUrl } from '$lib/utils/avatar';
+  import { agentDisplayName } from '$lib/utils/agent-display';
   import type { Agent } from '@minion-stack/shared';
   import * as m from '$lib/paraglide/messages';
 
@@ -36,12 +37,12 @@
       <span>{agent.emoji}</span>
     {:else}
       <img
-        src={diceBearAvatarUrl(agent.name ?? agentId)}
+        src={diceBearAvatarUrl(agentDisplayName(agent) || agentId)}
         alt=""
         class="w-7 h-7 rounded-full inline-block shrink-0"
       />
     {/if}
-    {agent.name ?? agentId}
+    {agentDisplayName(agent) || agentId}
   </span>
   <div class="flex gap-1.5 items-center ml-auto">
     {#if runningCount > 0}

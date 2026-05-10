@@ -12,11 +12,6 @@ export type ProvisioningStatus = 'pending' | 'provisioning' | 'active' | 'error'
 export type PersonalityPreset = 'professional' | 'casual' | 'creative' | 'technical';
 
 export interface PersonalAgentUpdate {
-  displayName: string;
-  conversationName: string | null;
-  personalityPreset: PersonalityPreset | null;
-  personalityText: string | null;
-  personalityConfigured: boolean;
   avatarUrl: string | null;
 }
 
@@ -26,10 +21,6 @@ export function derivePersonalAgentId(userId: string): string {
   return `personal-${userId}`;
 }
 
-export function deriveDisplayName(email: string): string {
-  return `usr:${email}`;
-}
-
 // ── Service Functions ────────────────────────────────────────────────────────
 
 export async function provisionPersonalAgent(
@@ -37,21 +28,29 @@ export async function provisionPersonalAgent(
   params: { userId: string; email: string; serverId: string },
 ): Promise<PersonalAgentRow> {
   const agentId = derivePersonalAgentId(params.userId);
-  const displayName = deriveDisplayName(params.email);
   const now = nowMs();
 
+  // NOTE: The schema in packages/db is dropping `display_name` (Phase 2b),
+  // `personality_preset`, `personality_text`, `personality_configured`,
+  // and `conversation_name` (Phase 3c) — all of those now live in the
+  // gateway config. Until @minion-stack/db v0.3.0 ships on npm, the
+  // pinned `$inferInsert` type still requires the deprecated columns.
+  // We pass empty / default placeholders which the 0012 + 0013 migrations
+  // drop from the table entirely.
+  // TODO(post-publish): remove this cast and the placeholder fields once
+  // @minion-stack/db v0.3.0 ships without the deprecated columns.
   const row: typeof personalAgents.$inferInsert = {
     id: newId(),
     userId: params.userId,
     agentId,
     serverId: params.serverId,
-    displayName,
+    displayName: '',
     personalityConfigured: false,
     provisioningStatus: 'pending',
     retryCount: 0,
     createdAt: now,
     updatedAt: now,
-  };
+  } as typeof personalAgents.$inferInsert;
 
   // Insert with onConflictDoNothing for idempotency (userId is unique)
   await ctx.db.insert(personalAgents).values(row).onConflictDoNothing();
@@ -129,15 +128,7 @@ export async function ensurePersonalAgentOnLogin(
   params: { userId: string; email: string; serverId: string },
 ): Promise<PersonalAgentRow> {
   const existing = await getPersonalAgent(ctx, params.userId);
-  if (existing) {
-    // Backfill: update stale displayName format (e.g. "X's Agent" → "usr:X@...")
-    const expected = deriveDisplayName(params.email);
-    if (existing.displayName !== expected) {
-      await updatePersonalAgent(ctx, params.userId, { displayName: expected });
-      return { ...existing, displayName: expected };
-    }
-    return existing;
-  }
+  if (existing) return existing;
   return provisionPersonalAgent(ctx, params);
 }
 

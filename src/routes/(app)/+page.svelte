@@ -16,8 +16,8 @@
 </script>
 
 <Splitter
-        storageKey="sidebar-main"
-        defaultSize={20}
+        storageKey="sidebar-main-v2"
+        defaultSize={5}
         minibarSize={5}
         maxSize={28}
         onapi={(api) => { splitterApi = api; }}

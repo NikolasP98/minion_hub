@@ -21,6 +21,7 @@
     import AgentSkillsPanel from "./AgentSkillsPanel.svelte";
     import AgentSettingsNav from "./AgentSettingsNav.svelte";
     import * as m from "$lib/paraglide/messages";
+    import { agentDisplayName } from "$lib/utils/agent-display";
 
     let { agentId }: { agentId: string } = $props();
 
@@ -55,7 +56,7 @@
     // ─── Agent display name for title ─────────────────────────────────────
     const agentData = $derived(gw.agents.find((a) => a.id === agentId));
     const displayName = $derived(
-        agentData?.name || agentId.slice(0, 16) + (agentId.length > 16 ? '…' : ''),
+        agentDisplayName(agentData) || agentId.slice(0, 16) + (agentId.length > 16 ? '…' : ''),
     );
 
     // ─── When this agent's `default` becomes true, clear all other agents' defaults

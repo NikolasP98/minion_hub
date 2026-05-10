@@ -6,6 +6,7 @@
   import { Bot, Type, ChevronLeft, ChevronRight, Hammer } from 'lucide-svelte';
   import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
+  import { agentDisplayName } from '$lib/utils/agent-display';
 
   let collapsed = $state(false);
 
@@ -105,11 +106,11 @@
         <div class="w-4 h-px bg-border/40 my-0.5"></div>
         {#each gw.agents as agent (agent.id)}
           <button
-            onclick={() => addAgentNode(agent.id, agent.name ?? agent.id)}
+            onclick={() => addAgentNode(agent.id, agentDisplayName(agent))}
             draggable="true"
-            ondragstart={(e) => handleDragStart(e, { type: 'agent', agentId: agent.id, label: agent.name ?? agent.id })}
+            ondragstart={(e) => handleDragStart(e, { type: 'agent', agentId: agent.id, label: agentDisplayName(agent) })}
             class="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-bg3 transition-colors border border-transparent hover:border-border/60 text-sm"
-            title={agent.name ?? agent.id}
+            title={agentDisplayName(agent)}
           >
             {#if agent.emoji}
               {agent.emoji}
@@ -169,9 +170,9 @@
           <div class="flex flex-col gap-0.5">
             {#each gw.agents as agent (agent.id)}
               <button
-                onclick={() => addAgentNode(agent.id, agent.name ?? agent.id)}
+                onclick={() => addAgentNode(agent.id, agentDisplayName(agent))}
                 draggable="true"
-                ondragstart={(e) => handleDragStart(e, { type: 'agent', agentId: agent.id, label: agent.name ?? agent.id })}
+                ondragstart={(e) => handleDragStart(e, { type: 'agent', agentId: agent.id, label: agentDisplayName(agent) })}
                 class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
               >
                 <div class="w-6 h-6 rounded bg-indigo-500/20 flex items-center justify-center shrink-0 text-sm">
@@ -182,7 +183,7 @@
                   {/if}
                 </div>
                 <div class="min-w-0">
-                  <div class="text-xs font-medium text-foreground truncate">{agent.name ?? agent.id}</div>
+                  <div class="text-xs font-medium text-foreground truncate">{agentDisplayName(agent)}</div>
                 </div>
               </button>
             {/each}

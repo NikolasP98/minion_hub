@@ -4,6 +4,7 @@
   import type { SessionRow } from './SessionsList.svelte';
   import * as m from '$lib/paraglide/messages';
   import AIDisclosureBadge from '$lib/components/chat/AIDisclosureBadge.svelte';
+  import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
 
   let {
     serverId,
@@ -226,12 +227,16 @@
       {:else}
         {#each messages.filter((m) => m.content.trim()) as msg (msg.id)}
           <div
-            class="max-w-[82%] px-3 py-2 rounded-lg font-mono text-xs leading-[1.55] break-words whitespace-pre-wrap
+            class="max-w-[82%] px-3 py-2 rounded-lg text-xs leading-[1.55] break-words
               {msg.role === 'user'
-                ? 'self-end bg-brand-pink text-white rounded-br-[3px]'
+                ? 'self-end bg-brand-pink text-white rounded-br-[3px] font-mono whitespace-pre-wrap'
                 : 'self-start bg-bg3 text-foreground rounded-bl-[3px] border border-border'}"
           >
-            {msg.content}
+            {#if msg.role === 'user'}
+              {msg.content}
+            {:else}
+              <MarkdownMessage value={msg.content} tone="assistant" />
+            {/if}
             {#if msg.role !== 'user'}
               <span class="block mt-1 text-right">
                 <AIDisclosureBadge />

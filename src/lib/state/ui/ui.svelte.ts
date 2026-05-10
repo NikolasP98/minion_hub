@@ -1,7 +1,8 @@
 export const ui = $state({
   selectedAgentId: null as string | null,
   selectedSessionKey: null as string | null,
-  activeAgentTab: 'chat' as
+  activeAgentTab: 'dashboard' as
+    | 'dashboard'
     | 'chat'
     | 'monitor'
     | 'files'

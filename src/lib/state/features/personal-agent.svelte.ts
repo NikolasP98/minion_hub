@@ -9,12 +9,7 @@ export interface PersonalAgentData {
   id: string;
   userId: string;
   agentId: string;
-  displayName: string;
-  conversationName: string | null;
   avatarUrl: string | null;
-  personalityPreset: string | null;
-  personalityText: string | null;
-  personalityConfigured: boolean;
   provisioningStatus: string;
   provisioningError: string | null;
   createdAt: number;
@@ -87,14 +82,10 @@ export const personalAgent = {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: 'active' }),
         });
-        // Push displayName to gateway so agents.list returns it
+        // displayName lives in the gateway config (`agents.list[].identity.name`)
+        // as the single source of truth — /my-agent writes it via config.patch.
+        // We no longer push it from the DB via hub.personal-agent.updated.
         await this.load();
-        if (state.agent) {
-          sendRequest('hub.personal-agent.updated', {
-            agentId: state.agent.agentId,
-            displayName: state.agent.displayName,
-          }).catch(() => {});
-        }
       } catch (err) {
         // Mark as error
         await fetch('/api/personal-agent/provision', {
@@ -128,23 +119,11 @@ export const personalAgent = {
       if (state.agent) {
         state.agent = { ...state.agent, ...updates, updatedAt: Date.now() };
       }
-      // Push to gateway via client-side WebSocket (fire-and-forget)
-      try {
-        const { sendRequest } = await import('$lib/services/gateway.svelte');
-        if (state.agent) {
-          await sendRequest('hub.personal-agent.updated', {
-            agentId: state.agent.agentId,
-            personalityText: updates.personalityText,
-            personalityConfigured: updates.personalityText ? true : undefined,
-            conversationName: updates.conversationName,
-            displayName: updates.displayName,
-            avatarUrl: updates.avatarUrl,
-          });
-        }
-      } catch {
-        // Gateway push is best-effort; DB is source of truth
-        console.warn('[personal-agent] Gateway push failed (will sync on next gateway restart)');
-      }
+      // Phase 3c — gateway no longer exposes a `hub.personal-agent.updated`
+      // handler (personality + display name + conversation name all live in
+      // gateway config now and are written via `config.patch` directly from
+      // /my-agent). The hub DB only retains avatarUrl until that surface is
+      // moved as well.
     } catch (err) {
       state.error = err instanceof Error ? err.message : 'Unknown error';
     } finally {
