@@ -1,5 +1,11 @@
 import { conn } from '$lib/state/gateway/connection.svelte';
 import {
+  type DebugStepEvent,
+  type DebugStepName,
+  pushDebugStepEvent,
+  pushDebugStepTimeout,
+} from '$lib/state/debug';
+import {
   gw,
   upsertSession,
   mergeSessions,
@@ -475,9 +481,9 @@ function handleEvent(evt: Record<string, unknown>) {
       break;
     }
     default: {
+      const evtName = evt.event as string | undefined;
       // Phase 25: bubble prompt.section.* mutations to a single window event
       // so /prompt subscribers can refetch usage without a per-event case.
-      const evtName = evt.event as string | undefined;
       if (
         typeof evtName === 'string' &&
         evtName.startsWith('prompt.section.') &&
@@ -487,8 +493,48 @@ function handleEvent(evt: Record<string, unknown>) {
           new CustomEvent('prompt.sections.changed', { detail: evt.payload }),
         );
       }
+      // Phase D-0c: debug.step.* (admin-only) — push to debug rune store
+      if (typeof evtName === 'string' && evtName.startsWith('debug.step.')) {
+        onDebugStepEvent(evtName, evt.payload);
+      }
       break;
     }
+  }
+}
+
+function onDebugStepEvent(eventName: string, payload: unknown) {
+  if (!payload || typeof payload !== 'object') return;
+  const stepFromName = eventName.slice('debug.step.'.length);
+  // Special: debug.step.timeout — auto-resume notification, not a gate fire
+  if (stepFromName === 'timeout') {
+    const p = payload as { sessionKey?: unknown; step?: unknown; ts?: unknown };
+    if (typeof p.sessionKey === 'string' && typeof p.step === 'string') {
+      pushDebugStepTimeout({
+        sessionKey: p.sessionKey,
+        step: p.step as DebugStepName,
+        ts: typeof p.ts === 'number' ? p.ts : Date.now(),
+      });
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(eventName, { detail: payload }));
+    }
+    return;
+  }
+  // Step gate event: push into the debug store. Payload shape matches the
+  // gateway's DebugStepEvent type.
+  const p = payload as Partial<DebugStepEvent>;
+  if (typeof p.sessionKey === 'string' && typeof p.step === 'string') {
+    pushDebugStepEvent({
+      category: 'debug.step',
+      step: p.step as DebugStepName,
+      sessionKey: p.sessionKey,
+      agentId: typeof p.agentId === 'string' ? p.agentId : undefined,
+      state: (p.state as Record<string, unknown>) ?? {},
+      ts: typeof p.ts === 'number' ? p.ts : Date.now(),
+    });
+  }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(eventName, { detail: payload }));
   }
 }
 
@@ -719,6 +765,26 @@ export async function fetchPromptPreview(agentId: string) {
 
 export async function fetchKGSnapshot(agentId: string) {
   return sendRequest('memory.snapshot', { agentId });
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Phase D-0c — debug stepped-build RPCs (admin-only)
+// ──────────────────────────────────────────────────────────────────────────
+
+export async function debugSetSteppedBuild(
+  sessionKey: string,
+  enabled: boolean,
+  pauseTimeoutMs?: number,
+) {
+  return sendRequest('debug.setSteppedBuild', { sessionKey, enabled, pauseTimeoutMs });
+}
+
+export async function debugStepContinue(sessionKey: string, fromStep?: string) {
+  return sendRequest('debug.stepContinue', { sessionKey, fromStep });
+}
+
+export async function debugSkipAll(sessionKey: string) {
+  return sendRequest('debug.skipAll', { sessionKey });
 }
 
 export function loadChatHistory(agentId: string) {
