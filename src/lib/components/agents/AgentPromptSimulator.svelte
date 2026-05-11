@@ -1,5 +1,6 @@
 <script lang="ts">
   import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
+  import SectionProseEditor from '$lib/components/agents/SectionProseEditor.svelte';
   import { fetchSessionPromptReport, fetchPromptPreview } from '$lib/services/gateway.svelte';
   import * as m from '$lib/paraglide/messages';
 
@@ -147,6 +148,9 @@
   /** Phase D-0e: toggle for rendered-content panel between markdown and raw. */
   let contentViewMode = $state<'rendered' | 'raw'>('rendered');
 
+  /** Phase D-0f: prose-editor modal state. */
+  let editorOpen = $state(false);
+
   // ─── Pipeline steps ──────────────────────────────────────────────────────
 
   // Classic fallback steps when sections data is not available
@@ -168,6 +172,11 @@
   const activeSections = $derived(
     report?.sections?.filter((s) => s.chars > 0) ?? [],
   );
+
+  /** Phase D-0f: top-level reference to the currently-focused section so the
+   * editor modal (rendered outside the template's section-detail scope) can
+   * read its id/layer/source. */
+  const currentSectionTop = $derived(activeSections[activeStep] ?? null);
 
   const currentSteps = $derived(
     viewMode === 'sections' && hasSections
@@ -558,15 +567,29 @@
               <span class="text-[9px] px-1.5 py-0.5 rounded bg-bg2 border border-border/50 text-muted font-mono">{currentSection.layer}</span>
               {#if currentSection.source}
                 {@const meta = SOURCE_META[currentSection.source]}
-                <span
-                  class="text-[9px] px-1.5 py-0.5 rounded font-mono uppercase tracking-wide"
-                  style:background-color={`${meta.color}22`}
-                  style:border={`1px solid ${meta.color}66`}
-                  style:color={meta.color}
-                  title={meta.description}
-                >
-                  {meta.label}
-                </span>
+                {#if currentSection.source === 'static'}
+                  <button
+                    type="button"
+                    class="text-[9px] px-1.5 py-0.5 rounded font-mono uppercase tracking-wide hover:opacity-80 transition-opacity cursor-pointer"
+                    style:background-color={`${meta.color}22`}
+                    style:border={`1px solid ${meta.color}66`}
+                    style:color={meta.color}
+                    title={`${meta.description} — click to edit`}
+                    onclick={() => (editorOpen = true)}
+                  >
+                    {meta.label} ✎
+                  </button>
+                {:else}
+                  <span
+                    class="text-[9px] px-1.5 py-0.5 rounded font-mono uppercase tracking-wide"
+                    style:background-color={`${meta.color}22`}
+                    style:border={`1px solid ${meta.color}66`}
+                    style:color={meta.color}
+                    title={meta.description}
+                  >
+                    {meta.label}
+                  </span>
+                {/if}
               {/if}
             </div>
             <p class="text-muted text-[11px] mb-3">
@@ -982,3 +1005,16 @@
   </div>
   </div><!-- /flex flex-1 (sidebar + detail row) -->
 </div>
+
+{#if currentSectionTop && currentSectionTop.source === 'static'}
+  <SectionProseEditor
+    bind:open={editorOpen}
+    layer={currentSectionTop.layer as 'platform' | 'agent-type' | 'identity' | 'user' | 'session'}
+    sectionId={currentSectionTop.id}
+    sectionLabel={currentSectionTop.label}
+    onSaved={() => {
+      // Re-fetch the prompt preview so the rendered content panel shows the edit.
+      void runTest();
+    }}
+  />
+{/if}
