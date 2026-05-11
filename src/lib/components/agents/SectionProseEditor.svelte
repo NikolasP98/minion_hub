@@ -77,6 +77,9 @@
     exists: boolean;
     dirty: string | null;
     templateDefault?: string;
+    /** D-0g-3: surface from gateway; true means edits invalidate the
+     * Anthropic prompt-cache prefix on this section's next render. */
+    cacheable?: boolean;
     /** D-0g-2: mtime from the read response, sent back as expectedMtimeMs
      * on the next write so we detect concurrent edits. 0 if file didn't
      * exist when read (= "must still not exist" assertion). */
@@ -143,6 +146,7 @@
         scope: 'global' | 'agent';
         templateDefault?: string;
         mtimeMs?: number;
+        cacheable?: boolean;
       };
       slots = results
         .filter((r): r is ReadOk =>
@@ -156,6 +160,7 @@
           dirty: null,
           templateDefault: r.templateDefault,
           mtimeMs: r.mtimeMs,
+          cacheable: r.cacheable,
         }));
       activeIdx = 0;
       conflict = null;
@@ -458,6 +463,24 @@
         {:else}
           {@const slot = slots[activeIdx]}
           <p class="text-[10px] text-muted mb-2 font-mono break-all">{slot.path}</p>
+          <!-- D-0g-3: prompt-cache warning. Only render when there are unsaved
+               changes — otherwise it's just noise. -->
+          {#if slot.cacheable && slot.dirty !== null}
+            <div
+              class="mb-3 rounded border border-amber-500/40 bg-amber-500/5 px-3 py-2 flex items-start gap-2"
+            >
+              <span class="text-amber-400 text-[14px] leading-none mt-0.5">⚠</span>
+              <div class="flex-1 min-w-0">
+                <p class="text-amber-300 text-[11px] font-semibold">
+                  Cacheable section
+                </p>
+                <p class="text-amber-200/70 text-[10px] mt-0.5">
+                  Editing this section invalidates the Anthropic prompt-cache prefix on
+                  the agent's next call. Small but real cost on long contexts.
+                </p>
+              </div>
+            </div>
+          {/if}
           {#if !slot.exists && slot.dirty === null}
             <div class="space-y-2 mb-3">
               <p class="text-muted text-xs">
