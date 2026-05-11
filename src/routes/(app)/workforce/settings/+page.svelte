@@ -33,7 +33,7 @@
 		<a href="/workforce/settings" class="rounded-md border border-border bg-card px-3 py-1.5 font-medium">
 			General
 		</a>
-		<a href="/workforce/settings/agents" class="rounded-md border border-border bg-card px-3 py-1.5 hover:bg-accent transition-colors">
+		<a href="/workforce/settings/agents" class="rounded-md border border-border bg-card px-3 py-1.5 hover:bg-muted transition-colors">
 			Agents
 			<span class="ml-1 text-xs text-muted-foreground">{agentCount}</span>
 		</a>

@@ -208,7 +208,7 @@
 						<li>
 							<a
 								href="/workforce/issues/{issue.id}"
-								class="px-4 py-3 flex items-center gap-3 text-sm hover:bg-accent transition-colors"
+								class="px-4 py-3 flex items-center gap-3 text-sm hover:bg-muted transition-colors"
 							>
 								<span class="shrink-0 rounded px-1.5 py-0.5 text-xs font-medium {ISSUE_STATUS_BADGE[issue.status] ?? 'bg-muted'}">
 									{issue.status}

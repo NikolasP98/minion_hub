@@ -93,7 +93,7 @@
 				<ul class="divide-y divide-border rounded-lg border border-border bg-card">
 					{#each group.issues as issue (issue.id)}
 						<li>
-							<a href="/workforce/issues/{issue.id}" class="px-4 py-2.5 flex items-center gap-3 text-sm hover:bg-accent transition-colors">
+							<a href="/workforce/issues/{issue.id}" class="px-4 py-2.5 flex items-center gap-3 text-sm hover:bg-muted transition-colors">
 								<!-- Status badge -->
 								<span
 									class="shrink-0 rounded px-1.5 py-0.5 text-xs font-medium {STATUS_BADGE[issue.status]}"

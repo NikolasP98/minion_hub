@@ -227,7 +227,7 @@
 		<!-- Zoom controls -->
 		<div class="absolute top-3 right-3 z-10 flex flex-col gap-1">
 			<button
-				class="w-7 h-7 flex items-center justify-center bg-background border border-border rounded text-sm hover:bg-accent transition-colors"
+				class="w-7 h-7 flex items-center justify-center bg-background border border-border rounded text-sm hover:bg-muted transition-colors"
 				onclick={zoomIn}
 				aria-label="Zoom in"
 				type="button"
@@ -235,7 +235,7 @@
 				+
 			</button>
 			<button
-				class="w-7 h-7 flex items-center justify-center bg-background border border-border rounded text-sm hover:bg-accent transition-colors"
+				class="w-7 h-7 flex items-center justify-center bg-background border border-border rounded text-sm hover:bg-muted transition-colors"
 				onclick={zoomOut}
 				aria-label="Zoom out"
 				type="button"
@@ -243,7 +243,7 @@
 				−
 			</button>
 			<button
-				class="w-7 h-7 flex items-center justify-center bg-background border border-border rounded text-[10px] hover:bg-accent transition-colors"
+				class="w-7 h-7 flex items-center justify-center bg-background border border-border rounded text-[10px] hover:bg-muted transition-colors"
 				onclick={fitToScreen}
 				title="Fit to screen"
 				aria-label="Fit chart to screen"

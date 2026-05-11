@@ -18,7 +18,7 @@
 	</header>
 
 	<nav class="flex flex-wrap gap-2 text-sm">
-		<a href="/workforce/settings" class="rounded-md border border-border bg-card px-3 py-1.5 hover:bg-accent transition-colors">
+		<a href="/workforce/settings" class="rounded-md border border-border bg-card px-3 py-1.5 hover:bg-muted transition-colors">
 			General
 		</a>
 		<a href="/workforce/settings/agents" class="rounded-md border border-border bg-card px-3 py-1.5 font-medium">

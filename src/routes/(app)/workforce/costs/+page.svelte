@@ -152,7 +152,7 @@
 				{#each byAgent as row (row.agentId)}
 					<a
 						href="/workforce/agents/{row.agentId}"
-						class="block px-4 py-3 text-sm hover:bg-accent transition-colors"
+						class="block px-4 py-3 text-sm hover:bg-muted transition-colors"
 					>
 						<div class="flex items-center gap-2 mb-1.5">
 							<span

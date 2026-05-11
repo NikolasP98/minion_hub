@@ -126,7 +126,7 @@
 						<svelte:element
 							this={Tag}
 							href={item.href ?? undefined}
-							class="relative flex items-start gap-3 px-4 py-3 text-sm text-foreground no-underline transition-colors {item.href ? 'hover:bg-accent hover:text-accent-foreground' : ''} {!item.readAt ? 'border-l-2 border-l-primary -ml-px' : ''}"
+							class="relative flex items-start gap-3 px-4 py-3 text-sm text-foreground no-underline transition-colors {item.href ? 'hover:bg-muted' : ''} {!item.readAt ? 'border-l-2 border-l-primary -ml-px' : ''}"
 						>
 							<!-- Type icon badge -->
 							<span

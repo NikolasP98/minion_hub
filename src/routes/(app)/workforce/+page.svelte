@@ -279,7 +279,7 @@
 				<li>
 					<a
 						href={tile.href}
-						class="group relative flex flex-col gap-2 rounded-lg border border-border bg-card p-4 transition-colors hover:bg-accent hover:border-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+						class="group relative flex flex-col gap-2 rounded-lg border border-border bg-card p-4 transition-colors hover:bg-muted hover:border-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
 						aria-label="{tile.label} — {tile.description}"
 					>
 						<div class="flex items-center justify-between gap-2">
