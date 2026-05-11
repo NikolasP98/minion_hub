@@ -213,6 +213,25 @@
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
+  /**
+   * Phase D-0f-1.5: silent refresh after a prose edit. Re-fetches the
+   * preview and updates `report` in place, leaving the animation state
+   * (stepStatus, activeStep) untouched so the user keeps their current
+   * focused section. Used by the editor modal's onSaved callback.
+   */
+  async function refreshReportSilently() {
+    try {
+      const res = (await fetchPromptPreview(agentId)) as SystemPromptReport | null;
+      if (res) {
+        report = res;
+      }
+    } catch (e) {
+      // Don't surface errors here — the user explicitly saved, the prompt
+      // panel just becomes momentarily stale. Re-running Test will recover.
+      console.warn('[prompt] silent refresh failed:', e);
+    }
+  }
+
   async function runTest() {
     testing = true;
     error = null;
@@ -1014,8 +1033,9 @@
     sectionId={currentSectionTop.id}
     sectionLabel={currentSectionTop.label}
     onSaved={() => {
-      // Re-fetch the prompt preview so the rendered content panel shows the edit.
-      void runTest();
+      // Phase D-0f-1.5: silent refresh — don't replay the animation. Just
+      // update the rendered content panel so the edit shows immediately.
+      void refreshReportSilently();
     }}
   />
 {/if}
