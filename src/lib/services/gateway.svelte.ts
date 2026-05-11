@@ -796,8 +796,9 @@ export interface ProseReadParams {
   sectionId: string;
   variant?: string;
   scope: 'global' | 'agent';
+  /** Required when scope === 'agent'. The server derives the workspace path
+   * from this — clients no longer send a path (D-0f-1.5 security fix). */
   agentId?: string;
-  agentWorkspaceDir?: string;
 }
 
 export interface ProseReadResult {
@@ -805,6 +806,10 @@ export interface ProseReadResult {
   content: string;
   exists: boolean;
   scope: 'global' | 'agent';
+  /** D-0f-1.5: present when the section ships a Tier-1 default template
+   * and the file doesn't exist yet. Hub uses this to power the
+   * "Initialize from default" empty-state button. */
+  templateDefault?: string;
 }
 
 export async function readSectionProse(params: ProseReadParams): Promise<ProseReadResult> {
