@@ -12,6 +12,7 @@
    */
   import {
     listSectionWorkspaceFiles,
+    ProseConflictError,
     readSectionProse,
     writeSectionProse,
     type WorkspaceFileEntry,
@@ -76,6 +77,17 @@
     exists: boolean;
     dirty: string | null;
     templateDefault?: string;
+    /** D-0g-2: mtime from the read response, sent back as expectedMtimeMs
+     * on the next write so we detect concurrent edits. 0 if file didn't
+     * exist when read (= "must still not exist" assertion). */
+    mtimeMs?: number;
+  };
+
+  /** D-0g-2: present after a write returns CONFLICT. Holds the live
+   * server-side content so the user can compare/discard. */
+  type ConflictInfo = {
+    actualContent: string;
+    actualMtimeMs: number;
   };
 
   let scope = $state<'global' | 'agent'>('global');
@@ -84,6 +96,7 @@
   let loading = $state(false);
   let saving = $state(false);
   let error = $state<string | null>(null);
+  let conflict = $state<ConflictInfo | null>(null);
 
   $effect(() => {
     if (open && sectionId) {
@@ -129,6 +142,7 @@
         exists: boolean;
         scope: 'global' | 'agent';
         templateDefault?: string;
+        mtimeMs?: number;
       };
       slots = results
         .filter((r): r is ReadOk =>
@@ -141,8 +155,10 @@
           exists: r.exists,
           dirty: null,
           templateDefault: r.templateDefault,
+          mtimeMs: r.mtimeMs,
         }));
       activeIdx = 0;
+      conflict = null;
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     } finally {
@@ -155,24 +171,71 @@
     if (!slot || slot.dirty === null) return;
     saving = true;
     error = null;
+    conflict = null;
     try {
-      await writeSectionProse({
+      // D-0g-2: send expectedMtimeMs so a concurrent edit from another
+      // operator (or external fs edit) is rejected with CONFLICT.
+      // mtimeMs from read: number = "file matches", 0 = "must not exist"
+      // (new files), undefined = no concurrency check.
+      const expectedMtimeMs = slot.exists ? slot.mtimeMs ?? undefined : 0;
+      const res = await writeSectionProse({
         layer,
         sectionId,
         variant: slot.variant,
         scope,
         agentId: scope === 'agent' ? agentId : undefined,
         content: slot.dirty,
+        expectedMtimeMs,
       });
       slot.content = slot.dirty;
       slot.exists = true;
       slot.dirty = null;
+      slot.mtimeMs = res.mtimeMs;
       onSaved?.();
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err);
+      if (err instanceof ProseConflictError) {
+        // Fetch the live content so the user can see what diverged.
+        try {
+          const fresh = await readSectionProse({
+            layer,
+            sectionId,
+            variant: slot.variant,
+            scope,
+            agentId: scope === 'agent' ? agentId : undefined,
+          });
+          conflict = {
+            actualContent: fresh.content,
+            actualMtimeMs: fresh.mtimeMs ?? 0,
+          };
+        } catch {
+          conflict = { actualContent: '(failed to fetch)', actualMtimeMs: err.actualMtimeMs ?? 0 };
+        }
+      } else {
+        error = err instanceof Error ? err.message : String(err);
+      }
     } finally {
       saving = false;
     }
+  }
+
+  /** D-0g-2: discard local edits and adopt the server-side content. */
+  function resolveConflictDiscardMine() {
+    const slot = slots[activeIdx];
+    if (!slot || !conflict) return;
+    slot.content = conflict.actualContent;
+    slot.mtimeMs = conflict.actualMtimeMs;
+    slot.dirty = null;
+    slot.exists = true;
+    conflict = null;
+  }
+
+  /** D-0g-2: keep local edits but acknowledge the new server mtime so the
+   *  next save overwrites. (Last-write-wins after explicit acknowledgement.) */
+  function resolveConflictOverwrite() {
+    const slot = slots[activeIdx];
+    if (!slot || !conflict) return;
+    slot.mtimeMs = conflict.actualMtimeMs;
+    conflict = null;
   }
 
   function initFromDefault() {
@@ -346,6 +409,41 @@
           <p class="text-muted text-xs">Loading…</p>
         {:else if error}
           <p class="text-red-400 text-xs font-mono">{error}</p>
+        {:else if conflict}
+          <!-- D-0g-2: write conflict resolution UI -->
+          <div class="space-y-3">
+            <div class="rounded border border-amber-500/50 bg-amber-500/10 px-3 py-2">
+              <p class="text-amber-300 text-xs font-semibold">File changed since you opened it</p>
+              <p class="text-amber-200/80 text-[11px] mt-1">
+                Another save (from another operator or external edit) landed before yours.
+                Your unsaved edits are preserved — choose how to proceed.
+              </p>
+            </div>
+            <div>
+              <p class="text-[10px] font-bold uppercase tracking-wide text-muted mb-1">
+                Current server content
+              </p>
+              <pre
+                class="px-3 py-2 text-[11px] font-mono text-foreground whitespace-pre-wrap break-words max-h-[25vh] overflow-auto bg-bg2 border border-border/50 rounded"
+              >{conflict.actualContent}</pre>
+            </div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                class="text-[11px] px-2.5 py-1 rounded border border-border text-muted hover:text-foreground transition-colors"
+                onclick={resolveConflictDiscardMine}
+              >
+                Discard my changes
+              </button>
+              <button
+                type="button"
+                class="text-[11px] px-2.5 py-1 rounded border border-amber-500/50 text-amber-300 hover:bg-amber-500/10 transition-colors"
+                onclick={resolveConflictOverwrite}
+              >
+                Keep my changes (overwrite on next save)
+              </button>
+            </div>
+          </div>
         {:else if slots.length === 0}
           <div class="space-y-2">
             <p class="text-muted text-xs">
