@@ -17,6 +17,13 @@
 			workspaces = await res.json();
 			// Default to first entry — server controls the actual active selection.
 			currentCompanyId = workspaces[0]?.companyId ?? null;
+			// If exactly one workspace, auto-select it so the pc_company_id cookie
+			// is set without requiring an explicit dropdown interaction. Without
+			// this, single-workspace users land on /workforce/welcome because
+			// the <select onchange> never fires.
+			if (workspaces.length === 1 && currentCompanyId) {
+				await select(currentCompanyId);
+			}
 		}
 		loading = false;
 	});

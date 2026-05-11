@@ -30,3 +30,5 @@ posthog-setup-report.md
 
 .infisical.json
 infisical-dev.sh
+.paperclip-mock.local.ts
+.paperclip-mock-probe.local.ts
