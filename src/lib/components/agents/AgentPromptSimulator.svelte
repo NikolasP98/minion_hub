@@ -598,6 +598,18 @@
                   >
                     {meta.label} ✎
                   </button>
+                {:else if currentSection.source === 'file'}
+                  <button
+                    type="button"
+                    class="text-[9px] px-1.5 py-0.5 rounded font-mono uppercase tracking-wide hover:opacity-80 transition-opacity cursor-pointer"
+                    style:background-color={`${meta.color}22`}
+                    style:border={`1px solid ${meta.color}66`}
+                    style:color={meta.color}
+                    title={`${meta.description} — click to inspect`}
+                    onclick={() => (editorOpen = true)}
+                  >
+                    {meta.label} 🔍
+                  </button>
                 {:else}
                   <span
                     class="text-[9px] px-1.5 py-0.5 rounded font-mono uppercase tracking-wide"
@@ -1025,13 +1037,14 @@
   </div><!-- /flex flex-1 (sidebar + detail row) -->
 </div>
 
-{#if currentSectionTop && currentSectionTop.source === 'static'}
+{#if currentSectionTop && (currentSectionTop.source === 'static' || currentSectionTop.source === 'file')}
   <SectionProseEditor
     bind:open={editorOpen}
     {agentId}
     layer={currentSectionTop.layer as 'platform' | 'agent-type' | 'identity' | 'user' | 'session'}
     sectionId={currentSectionTop.id}
     sectionLabel={currentSectionTop.label}
+    mode={currentSectionTop.source === 'file' ? 'fileInspector' : 'prose'}
     onSaved={() => {
       // Phase D-0f-1.5: silent refresh — don't replay the animation. Just
       // update the rendered content panel so the edit shows immediately.
