@@ -126,7 +126,7 @@
 						<svelte:element
 							this={Tag}
 							href={item.href ?? undefined}
-							class="flex items-start gap-3 px-4 py-3 text-sm transition-colors {item.href ? 'hover:bg-accent' : ''} {!item.readAt ? 'bg-primary/5' : ''}"
+							class="relative flex items-start gap-3 px-4 py-3 text-sm text-foreground no-underline transition-colors {item.href ? 'hover:bg-accent hover:text-accent-foreground' : ''} {!item.readAt ? 'border-l-2 border-l-primary -ml-px' : ''}"
 						>
 							<!-- Type icon badge -->
 							<span
@@ -140,7 +140,7 @@
 							<!-- Body -->
 							<div class="flex-1 min-w-0 space-y-0.5">
 								<div class="flex items-center gap-2 flex-wrap">
-									<span class="font-medium truncate">{item.title}</span>
+									<span class="font-medium text-foreground truncate">{item.title}</span>
 									{#if !item.readAt}
 										<span class="shrink-0 h-1.5 w-1.5 rounded-full bg-primary" title="Unread"></span>
 									{/if}
