@@ -824,6 +824,23 @@ export async function writeSectionProse(
   return res as { path: string; bytes: number };
 }
 
+// Phase D-0g-1: FILE-source inspector. Read-only list of workspace files
+// embedded by sections like project-context.
+export interface WorkspaceFileEntry {
+  path: string;
+  chars: number;
+  truncatedPreview: string;
+  exists: boolean;
+  synthetic?: boolean;
+}
+
+export async function listSectionWorkspaceFiles(agentId: string): Promise<WorkspaceFileEntry[]> {
+  const res = (await sendRequest('prompt.sections.workspaceFiles.list', { agentId })) as {
+    files: WorkspaceFileEntry[];
+  };
+  return res.files ?? [];
+}
+
 export function loadChatHistory(agentId: string) {
   const chat = ensureAgentChat(agentId);
   const isInitialLoad = chat.messages.length === 0;

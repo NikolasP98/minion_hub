@@ -10,7 +10,12 @@
    *   override at <workspaceDir>/prompts/<id>.md). Server derives the
    *   workspace path from agentId — client never sends a path.
    */
-  import { readSectionProse, writeSectionProse } from '$lib/services/gateway.svelte';
+  import {
+    listSectionWorkspaceFiles,
+    readSectionProse,
+    writeSectionProse,
+    type WorkspaceFileEntry,
+  } from '$lib/services/gateway.svelte';
 
   let {
     open = $bindable(false),
@@ -18,6 +23,7 @@
     layer,
     sectionId,
     sectionLabel,
+    mode = 'prose',
     onSaved,
   }: {
     open?: boolean;
@@ -25,8 +31,41 @@
     layer: 'platform' | 'agent-type' | 'identity' | 'user' | 'session';
     sectionId: string;
     sectionLabel: string;
+    /** Phase D-0g-1: 'prose' = editor for STATIC sections (default);
+     * 'fileInspector' = read-only list of workspace files embedded by
+     * FILE-source sections (e.g. project-context). */
+    mode?: 'prose' | 'fileInspector';
     onSaved?: () => void;
   } = $props();
+
+  // ── Phase D-0g-1: file-inspector state ──────────────────────────────────
+  let inspectorFiles = $state<WorkspaceFileEntry[]>([]);
+  let inspectorLoading = $state(false);
+  let inspectorError = $state<string | null>(null);
+  let activeFileIdx = $state(0);
+
+  $effect(() => {
+    if (open && mode === 'fileInspector' && agentId) {
+      void loadInspector();
+    } else if (!open) {
+      inspectorFiles = [];
+      activeFileIdx = 0;
+      inspectorError = null;
+    }
+  });
+
+  async function loadInspector() {
+    inspectorLoading = true;
+    inspectorError = null;
+    try {
+      inspectorFiles = await listSectionWorkspaceFiles(agentId);
+      activeFileIdx = 0;
+    } catch (err) {
+      inspectorError = err instanceof Error ? err.message : String(err);
+    } finally {
+      inspectorLoading = false;
+    }
+  }
 
   const CANDIDATE_VARIANTS: (string | undefined)[] = [undefined, 'full', 'minimal'];
 
@@ -179,38 +218,40 @@
       <div class="px-4 py-3 border-b border-border flex items-center justify-between gap-3">
         <div class="min-w-0">
           <h2 id="prose-editor-title" class="text-sm font-semibold text-foreground">
-            Edit prose — {sectionLabel}
+            {mode === 'fileInspector' ? 'Workspace files' : 'Edit prose'} — {sectionLabel}
           </h2>
           <p class="text-[10px] text-muted mt-0.5 font-mono truncate">
-            {scope} · {layer}/{sectionId}
+            {mode === 'fileInspector' ? 'read-only' : scope} · {layer}/{sectionId}
           </p>
         </div>
-        <!-- Scope toggle -->
-        <div class="flex items-center gap-0.5 bg-bg2 rounded p-0.5 shrink-0">
-          <button
-            type="button"
-            class="text-[10px] px-2 py-1 rounded transition-colors"
-            class:bg-bg1={scope === 'global'}
-            class:text-foreground={scope === 'global'}
-            class:text-muted={scope !== 'global'}
-            onclick={() => (scope = 'global')}
-            disabled={saving}
-          >
-            Global
-          </button>
-          <button
-            type="button"
-            class="text-[10px] px-2 py-1 rounded transition-colors"
-            class:bg-bg1={scope === 'agent'}
-            class:text-foreground={scope === 'agent'}
-            class:text-muted={scope !== 'agent'}
-            onclick={() => (scope = 'agent')}
-            disabled={saving}
-            title="Per-agent override at <workspaceDir>/prompts/"
-          >
-            Agent
-          </button>
-        </div>
+        <!-- Scope toggle (prose mode only) -->
+        {#if mode === 'prose'}
+          <div class="flex items-center gap-0.5 bg-bg2 rounded p-0.5 shrink-0">
+            <button
+              type="button"
+              class="text-[10px] px-2 py-1 rounded transition-colors"
+              class:bg-bg1={scope === 'global'}
+              class:text-foreground={scope === 'global'}
+              class:text-muted={scope !== 'global'}
+              onclick={() => (scope = 'global')}
+              disabled={saving}
+            >
+              Global
+            </button>
+            <button
+              type="button"
+              class="text-[10px] px-2 py-1 rounded transition-colors"
+              class:bg-bg1={scope === 'agent'}
+              class:text-foreground={scope === 'agent'}
+              class:text-muted={scope !== 'agent'}
+              onclick={() => (scope = 'agent')}
+              disabled={saving}
+              title="Per-agent override at <workspaceDir>/prompts/"
+            >
+              Agent
+            </button>
+          </div>
+        {/if}
         <button
           type="button"
           class="text-muted hover:text-foreground transition-colors shrink-0"
@@ -221,8 +262,8 @@
         </button>
       </div>
 
-      <!-- Variant tabs (only if >1) -->
-      {#if slots.length > 1}
+      <!-- Variant tabs (only if >1, prose mode only) -->
+      {#if mode === 'prose' && slots.length > 1}
         <div class="px-4 pt-2 flex gap-1 border-b border-border/30">
           {#each slots as slot, i}
             <button
@@ -248,7 +289,60 @@
 
       <!-- Body -->
       <div class="flex-1 overflow-auto px-4 py-3">
-        {#if loading}
+        {#if mode === 'fileInspector'}
+          {#if inspectorLoading}
+            <p class="text-muted text-xs">Loading workspace files…</p>
+          {:else if inspectorError}
+            <p class="text-red-400 text-xs font-mono">{inspectorError}</p>
+          {:else if inspectorFiles.length === 0}
+            <p class="text-muted text-xs">No workspace files embedded by this section.</p>
+          {:else}
+            <p class="text-[10px] text-muted mb-3">
+              These files are embedded verbatim into the prompt by this section. To edit
+              them, use your agent's file tools or workspace editor — they're agent-owned
+              content, not prompt-template prose.
+            </p>
+            <!-- File list -->
+            <div class="space-y-1 mb-3">
+              {#each inspectorFiles as file, i}
+                <button
+                  type="button"
+                  class="w-full text-left px-2 py-1.5 rounded border transition-colors flex items-center justify-between gap-2"
+                  class:border-accent={activeFileIdx === i}
+                  class:bg-bg2={activeFileIdx === i}
+                  class:border-border={activeFileIdx !== i}
+                  class:hover:bg-bg2={activeFileIdx !== i}
+                  onclick={() => (activeFileIdx = i)}
+                >
+                  <span class="text-[11px] font-mono text-foreground truncate flex-1">
+                    {file.path}
+                  </span>
+                  <span class="text-[9px] text-muted font-mono shrink-0">
+                    {file.chars.toLocaleString()} chars
+                  </span>
+                  {#if !file.exists && !file.synthetic}
+                    <span class="text-[9px] text-red-400 font-mono shrink-0" title="File not found on disk">missing</span>
+                  {/if}
+                  {#if file.synthetic}
+                    <span class="text-[9px] text-amber-400 font-mono shrink-0" title="Synthetic entry (e.g. onboarding gate)">synthetic</span>
+                  {/if}
+                </button>
+              {/each}
+            </div>
+            <!-- Preview pane -->
+            {@const active = inspectorFiles[activeFileIdx]}
+            {#if active}
+              <div class="border border-border/50 rounded">
+                <div class="px-3 py-1.5 border-b border-border/30 text-[9px] font-mono text-muted">
+                  Preview · {active.path}
+                </div>
+                <pre
+                  class="px-3 py-2 text-[11px] font-mono text-foreground whitespace-pre-wrap break-words max-h-[40vh] overflow-auto"
+                >{active.truncatedPreview}</pre>
+              </div>
+            {/if}
+          {/if}
+        {:else if loading}
           <p class="text-muted text-xs">Loading…</p>
         {:else if error}
           <p class="text-red-400 text-xs font-mono">{error}</p>
@@ -301,21 +395,23 @@
           onclick={close}
           disabled={saving}
         >
-          Cancel
+          {mode === 'fileInspector' ? 'Close' : 'Cancel'}
         </button>
-        <button
-          type="button"
-          class="text-xs px-3 py-1.5 rounded bg-accent text-accent-foreground hover:opacity-90 transition-opacity disabled:opacity-50"
-          onclick={save}
-          disabled={
-            saving ||
-            loading ||
-            slots.length === 0 ||
-            slots[activeIdx]?.dirty === null
-          }
-        >
-          {saving ? 'Saving…' : 'Save'}
-        </button>
+        {#if mode === 'prose'}
+          <button
+            type="button"
+            class="text-xs px-3 py-1.5 rounded bg-accent text-accent-foreground hover:opacity-90 transition-opacity disabled:opacity-50"
+            onclick={save}
+            disabled={
+              saving ||
+              loading ||
+              slots.length === 0 ||
+              slots[activeIdx]?.dirty === null
+            }
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        {/if}
       </div>
     </div>
   </div>
