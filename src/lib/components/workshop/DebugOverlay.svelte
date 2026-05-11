@@ -4,13 +4,14 @@
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
   import { getAgentState } from '$lib/workshop/agent-fsm';
   import { getQueue_readonly } from '$lib/workshop/agent-queue';
+  import { agentDisplayName } from '$lib/utils/agent-display';
 
   /** Parent provides a view-mode-aware world→screen converter */
   let { worldToScreenFn }: { worldToScreenFn: (x: number, y: number) => { x: number; y: number } } = $props();
 
   function resolveAgentName(agentId: string): string {
     const agent = gw.agents.find((a: { id: string }) => a.id === agentId);
-    return agent?.name ?? agentId;
+    return agent ? agentDisplayName(agent) : agentId;
   }
 
   const FSM_COLORS: Record<string, string> = {

@@ -43,7 +43,9 @@ interface CachedEntry {
 function openIDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(IDB_NAME, IDB_VERSION);
-    req.onupgradeneeded = () => { req.result.createObjectStore(IDB_STORE, { keyPath: 'key' }); };
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore(IDB_STORE, { keyPath: 'key' });
+    };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
@@ -58,15 +60,24 @@ async function readCache(): Promise<CachedEntry | null> {
       req.onsuccess = () => resolve(req.result ?? null);
       req.onerror = () => resolve(null);
     });
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 async function writeCache(hash: string, agents: RegistryAgent[]): Promise<void> {
   try {
     const db = await openIDB();
     const tx = db.transaction(IDB_STORE, 'readwrite');
-    tx.objectStore(IDB_STORE).put({ key: 'catalog', hash, agents, cachedAt: Date.now() } satisfies CachedEntry);
-  } catch { /* best-effort */ }
+    tx.objectStore(IDB_STORE).put({
+      key: 'catalog',
+      hash,
+      agents,
+      cachedAt: Date.now(),
+    } satisfies CachedEntry);
+  } catch {
+    /* best-effort */
+  }
 }
 
 // ─── Normalize agent data (v1/v2/v3 compat) ────────────────
@@ -139,7 +150,9 @@ async function checkForUpdates(cachedHash: string) {
       // Registry updated since cache — refresh in background
       await fullFetch();
     }
-  } catch { /* non-critical */ }
+  } catch {
+    /* non-critical */
+  }
 }
 
 // ─── Derived (exported as getters) ──────────────────────────
@@ -155,9 +168,10 @@ const _filteredAgents = $derived.by(() => {
   if (registryState.search) {
     const q = registryState.search.toLowerCase();
     agents = agents.filter(
-      (a) => a.name.toLowerCase().includes(q) ||
-             a.description.toLowerCase().includes(q) ||
-             a.tags.some((t) => t.toLowerCase().includes(q)),
+      (a) =>
+        a.name.toLowerCase().includes(q) ||
+        a.description.toLowerCase().includes(q) ||
+        a.tags.some((t) => t.toLowerCase().includes(q)),
     );
   }
 
@@ -179,9 +193,15 @@ const _registryCategories = $derived.by(() => {
 });
 
 export const registryDerived = {
-  get filteredAgents() { return _filteredAgents; },
-  get visibleAgents() { return _visibleAgents; },
-  get categories() { return _registryCategories; },
+  get filteredAgents() {
+    return _filteredAgents;
+  },
+  get visibleAgents() {
+    return _visibleAgents;
+  },
+  get categories() {
+    return _registryCategories;
+  },
 };
 
 export function loadMore() {
@@ -195,20 +215,59 @@ export function resetVisibleCount() {
 // ─── Icons ──────────────────────────────────────────────────
 
 const CATEGORY_ICONS: Record<string, string> = {
-  automation: '⚡', marketing: '📣', business: '💼', education: '🎓',
-  finance: '💰', creative: '🎨', data: '🗄️', 'data-analytics': '📊',
-  engineering: '🔧', legal: '⚖️', healthcare: '❤️', hr: '👥',
-  security: '🛡️', testing: '🧪', compliance: '📋', ecommerce: '🛒',
-  gaming: '🎮', personal: '👤', productivity: '⏱️', 'real-estate': '🏢',
-  saas: '☁️', sales: '📈', voice: '🎙️', science: '⚛️',
-  operations: '⚙️', 'customer-service': '🎧', 'customer-success': '🏆',
-  communication: '💬', executive: '👑', specialist: '⭐', spatial: '📦',
-  'project-management': '📌', strategy: '🎯', product: '📦', 'supply-chain': '🚚',
-  freelance: '🧑‍💻', general: '🤖', moltbook: '📖',
-  lang: '💻', infra: '🖥️', core: '🔲', biz: '💼', dx: '✨',
-  'data-ai': '🧠', domains: '🌐', quality: '✅', meta: '🔗',
-  research: '🔍', review: '👁️',
-  execution: '🚀', planning: '📐', verification: '☑️', ui: '🖼️',
+  automation: '⚡',
+  marketing: '📣',
+  business: '💼',
+  education: '🎓',
+  finance: '💰',
+  creative: '🎨',
+  data: '🗄️',
+  'data-analytics': '📊',
+  engineering: '🔧',
+  legal: '⚖️',
+  healthcare: '❤️',
+  hr: '👥',
+  security: '🛡️',
+  testing: '🧪',
+  compliance: '📋',
+  ecommerce: '🛒',
+  gaming: '🎮',
+  personal: '👤',
+  productivity: '⏱️',
+  'real-estate': '🏢',
+  saas: '☁️',
+  sales: '📈',
+  voice: '🎙️',
+  science: '⚛️',
+  operations: '⚙️',
+  'customer-service': '🎧',
+  'customer-success': '🏆',
+  communication: '💬',
+  executive: '👑',
+  specialist: '⭐',
+  spatial: '📦',
+  'project-management': '📌',
+  strategy: '🎯',
+  product: '📦',
+  'supply-chain': '🚚',
+  freelance: '🧑‍💻',
+  general: '🤖',
+  moltbook: '📖',
+  lang: '💻',
+  infra: '🖥️',
+  core: '🔲',
+  biz: '💼',
+  dx: '✨',
+  'data-ai': '🧠',
+  domains: '🌐',
+  quality: '✅',
+  meta: '🔗',
+  research: '🔍',
+  review: '👁️',
+  execution: '🚀',
+  planning: '📐',
+  verification: '☑️',
+  ui: '🖼️',
 };
 
 export function categoryIcon(category: string): string {

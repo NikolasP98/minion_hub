@@ -33,7 +33,7 @@ let generation = 0;
 
 /** Current generation counter – callers snapshot before async work. */
 export function getGeneration(): number {
-	return generation;
+  return generation;
 }
 
 /**
@@ -44,45 +44,48 @@ export function getGeneration(): number {
  * @param size  Canvas render size (defaults to classic sprite size).
  */
 export async function getAvatarTexture(
-	seed: string,
-	size: number = CLASSIC_TEX_SIZE,
+  seed: string,
+  size: number = CLASSIC_TEX_SIZE,
 ): Promise<PIXI.Texture | null> {
-	const key = `${seed}:${size}`;
-	const cached = textureCache.get(key);
-	if (cached) return cached;
+  const key = `${seed}:${size}`;
+  const cached = textureCache.get(key);
+  if (cached) return cached;
 
-	try {
-		const url = diceBearAvatarUrl(seed);
-		const res = await fetch(url);
-		if (!res.ok) throw new Error(`DiceBear fetch failed: ${res.status}`);
+  try {
+    const url = diceBearAvatarUrl(seed);
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`DiceBear fetch failed: ${res.status}`);
 
-		const svgText = await res.text();
+    const svgText = await res.text();
 
-		const texture = await new Promise<PIXI.Texture>((resolve, reject) => {
-			const img = new Image();
-			img.onload = () => {
-				const canvas = document.createElement('canvas');
-				canvas.width = size;
-				canvas.height = size;
-				const ctx = canvas.getContext('2d')!;
-				ctx.drawImage(img, 0, 0, size, size);
-				URL.revokeObjectURL(img.src);
-				const source = new PIXI.ImageSource({ resource: canvas, alphaMode: 'no-premultiply-alpha' });
-				resolve(new PIXI.Texture({ source }));
-			};
-			img.onerror = () => {
-				URL.revokeObjectURL(img.src);
-				reject(new Error('Failed to load SVG as image'));
-			};
-			const blob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
-			img.src = URL.createObjectURL(blob);
-		});
+    const texture = await new Promise<PIXI.Texture>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(img, 0, 0, size, size);
+        URL.revokeObjectURL(img.src);
+        const source = new PIXI.ImageSource({
+          resource: canvas,
+          alphaMode: 'no-premultiply-alpha',
+        });
+        resolve(new PIXI.Texture({ source }));
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(img.src);
+        reject(new Error('Failed to load SVG as image'));
+      };
+      const blob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
+      img.src = URL.createObjectURL(blob);
+    });
 
-		textureCache.set(key, texture);
-		return texture;
-	} catch {
-		return null;
-	}
+    textureCache.set(key, texture);
+    return texture;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -90,14 +93,14 @@ export async function getAvatarTexture(
  * Returns a hex colour number (e.g. 0xRRGGBB).
  */
 export function seedToColor(seed: string): number {
-	let hash = 0;
-	for (let i = 0; i < seed.length; i++) {
-		hash = seed.charCodeAt(i) + ((hash << 5) - hash);
-	}
-	const r = (Math.abs(hash) >> 16) & 0xff;
-	const g = (Math.abs(hash) >> 8) & 0xff;
-	const b = Math.abs(hash) & 0xff;
-	return (r << 16) | (g << 8) | b;
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const r = (Math.abs(hash) >> 16) & 0xff;
+  const g = (Math.abs(hash) >> 8) & 0xff;
+  const b = Math.abs(hash) & 0xff;
+  return (r << 16) | (g << 8) | b;
 }
 
 /**
@@ -105,11 +108,11 @@ export function seedToColor(seed: string): number {
  * so in-flight loads from previous callers are discarded.
  */
 export function clearTextureCache(): void {
-	generation++;
-	for (const [, tex] of textureCache) {
-		tex.destroy(true);
-	}
-	textureCache.clear();
+  generation++;
+  for (const [, tex] of textureCache) {
+    tex.destroy(true);
+  }
+  textureCache.clear();
 }
 
 /** Size constant for classic renderer textures. */

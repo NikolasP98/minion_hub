@@ -1,6 +1,6 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { servers } from '$server/db/schema';
+import { servers } from '@minion-stack/db/schema';
 import { nowMs } from '$server/db/utils';
 import { getAgentWithFiles, recordInstall } from '$server/services/marketplace.service';
 import { upsertAgents } from '$server/services/agent.service';
@@ -72,18 +72,22 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   });
 
   // Build agent.json content from DB fields for gateway delivery
-  const agentJson = JSON.stringify({
-    id: agent.id,
-    name: agent.name,
-    role: agent.role,
-    category: agent.category,
-    tags: JSON.parse(agent.tags),
-    description: agent.description,
-    catchphrase: agent.catchphrase,
-    version: agent.version,
-    model: agent.model,
-    avatarSeed: agent.avatarSeed,
-  }, null, 2);
+  const agentJson = JSON.stringify(
+    {
+      id: agent.id,
+      name: agent.name,
+      role: agent.role,
+      category: agent.category,
+      tags: JSON.parse(agent.tags),
+      description: agent.description,
+      catchphrase: agent.catchphrase,
+      version: agent.version,
+      model: agent.model,
+      avatarSeed: agent.avatarSeed,
+    },
+    null,
+    2,
+  );
 
   // Return files so the client can push them to the gateway via WebSocket
   const files: Record<string, string> = { 'agent.json': agentJson };

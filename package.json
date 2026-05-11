@@ -2,11 +2,16 @@
   "name": "minion_hub",
   "version": "0.0.1",
   "dependencies": {
+    "@ai-sdk/openai": "^3.0.52",
     "@aws-sdk/client-s3": "^3.992.0",
     "@aws-sdk/s3-request-presigner": "^3.992.0",
     "@dimforge/rapier2d-compat": "^0.19.3",
     "@inlang/paraglide-sveltekit": "^0.16.1",
     "@libsql/client": "^0.17.0",
+    "@minion-stack/auth": "^0.2.0",
+    "@minion-stack/db": "^0.2.0",
+    "@minion-stack/paperclip-client": "^0.1.0",
+    "@minion-stack/shared": "^0.5.0",
     "@node-rs/argon2": "^2.0.2",
     "@paralleldrive/cuid2": "^3.3.0",
     "@tailwindcss/vite": "^4.2.0",
@@ -29,6 +34,7 @@
     "@zag-js/toggle-group": "^1.34.0",
     "@zag-js/tooltip": "^1.34.0",
     "@zag-js/tree-view": "^1.34.0",
+    "ai": "^6.0.158",
     "better-auth": "1.4.19",
     "carta-md": "^4.11.1",
     "dompurify": "^3.3.1",
@@ -45,16 +51,20 @@
     "tailwindcss": "^4.2.0",
     "y-indexeddb": "^9.0.12",
     "y-protocols": "^1.0.7",
-    "yjs": "^13.6.30"
+    "yjs": "^13.6.30",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "@minion-stack/lint-config": "^0.1.1",
+    "@minion-stack/tsconfig": "^0.1.0",
     "@sveltejs/adapter-node": "^5.5.4",
     "@sveltejs/adapter-vercel": "^5.0.0",
     "@sveltejs/kit": "^2.52.0",
     "@sveltejs/vite-plugin-svelte": "^4.0.0",
     "@types/dompurify": "^3.2.0",
-    "drizzle-kit": "^0.31.9",
     "electrobun": "^1.16.0",
+    "prettier": "^3.0.0",
     "svelte": "^5.0.0",
     "svelte-check": "^4.0.0",
     "typescript": "^5.0.0",
@@ -62,24 +72,28 @@
     "vitest": "^4.0.18"
   },
   "private": true,
+  "overrides": {
+    "devalue": "^5.7.1",
+    "sha.js": "^2.4.12"
+  },
   "scripts": {
     "i18n:compile": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide",
-    "dev": "vite dev",
+    "dev": "./infisical-dev.sh vite dev || vite dev",
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-    "db:generate": "drizzle-kit generate",
-    "db:push": "drizzle-kit push",
-    "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "db:seed": "bun run src/server/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
     "desktop:build": "DESKTOP=1 VITE_DESKTOP=1 vite build",
     "desktop:serve": "DESKTOP=1 VITE_DESKTOP=1 PORT=5959 ORIGIN=http://localhost:5959 HOST=127.0.0.1 node build/index.js",
     "desktop:dev": "DESKTOP=1 VITE_DESKTOP=1 vite build && DESKTOP=1 VITE_DESKTOP=1 electrobun dev",
     "desktop:window": "DESKTOP=1 VITE_DESKTOP=1 electrobun dev"
   },
-  "type": "module"
+  "type": "module",
+  "prettier": "@minion-stack/lint-config/prettier.config.cjs"
 }

@@ -42,13 +42,7 @@ interface OfficeRef {
 // ── Reading Tool Detection ──────────────────────────────────────
 
 /** Tools that show reading animation instead of typing */
-const READING_TOOLS = new Set([
-  'Read',
-  'Grep',
-  'Glob',
-  'WebFetch',
-  'WebSearch',
-]);
+const READING_TOOLS = new Set(['Read', 'Grep', 'Glob', 'WebFetch', 'WebSearch']);
 
 export function isReadingTool(tool: string | null): boolean {
   if (!tool) return false;
@@ -58,10 +52,7 @@ export function isReadingTool(tool: string | null): boolean {
 // ── Tile Helpers ────────────────────────────────────────────────
 
 /** Pixel center of a tile */
-function tileCenter(
-  col: number,
-  row: number,
-): { x: number; y: number } {
+function tileCenter(col: number, row: number): { x: number; y: number } {
   return {
     x: col * TILE_SIZE + TILE_SIZE / 2,
     y: row * TILE_SIZE + TILE_SIZE / 2,
@@ -123,10 +114,7 @@ export function createCharacter(
     frameTimer: 0,
     wanderTimer: 0,
     wanderCount: 0,
-    wanderLimit: randomInt(
-      WANDER_MOVES_BEFORE_REST_MIN,
-      WANDER_MOVES_BEFORE_REST_MAX,
-    ),
+    wanderLimit: randomInt(WANDER_MOVES_BEFORE_REST_MIN, WANDER_MOVES_BEFORE_REST_MAX),
     isActive: true,
     seatId,
     bubbleType: null,
@@ -162,10 +150,7 @@ export type FindPathFn = (
 /**
  * Helper: assign a fresh path to a character (resets pathIndex and moveProgress).
  */
-function assignPath(
-  ch: Character,
-  path: Array<{ col: number; row: number }>,
-): void {
+function assignPath(ch: Character, path: Array<{ col: number; row: number }>): void {
   ch.path = path;
   ch.pathIndex = 0;
   ch.moveProgress = 0;
@@ -192,8 +177,8 @@ export function updateCharacter(
   switch (ch.state) {
     case CharacterState.TYPE: {
       const frameDuration = isReadingTool(ch.currentTool)
-        ? READ_FRAME_DURATION_SEC   // 0.5s for reading
-        : TYPE_FRAME_DURATION_SEC;  // 0.3s for typing
+        ? READ_FRAME_DURATION_SEC // 0.5s for reading
+        : TYPE_FRAME_DURATION_SEC; // 0.3s for typing
       if (ch.frameTimer >= frameDuration) {
         ch.frameTimer -= frameDuration;
         ch.frame = (ch.frame + 1) % 2;
@@ -210,10 +195,7 @@ export function updateCharacter(
         ch.frameTimer = 0;
         ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC);
         ch.wanderCount = 0;
-        ch.wanderLimit = randomInt(
-          WANDER_MOVES_BEFORE_REST_MIN,
-          WANDER_MOVES_BEFORE_REST_MAX,
-        );
+        ch.wanderLimit = randomInt(WANDER_MOVES_BEFORE_REST_MIN, WANDER_MOVES_BEFORE_REST_MAX);
       }
       break;
     }
@@ -224,9 +206,12 @@ export function updateCharacter(
 
       // Occasional look-around: randomly change facing direction while idle
       // Only when standing (not seated at a desk)
-      if (!ch.seatId || !seats.has(ch.seatId) ||
-          ch.tileCol !== seats.get(ch.seatId)!.seatCol ||
-          ch.tileRow !== seats.get(ch.seatId)!.seatRow) {
+      if (
+        !ch.seatId ||
+        !seats.has(ch.seatId) ||
+        ch.tileCol !== seats.get(ch.seatId)!.seatCol ||
+        ch.tileRow !== seats.get(ch.seatId)!.seatRow
+      ) {
         ch.frameTimer += dt;
         if (ch.frameTimer >= 3 + Math.random() * 4) {
           ch.frameTimer = 0;
@@ -296,8 +281,7 @@ export function updateCharacter(
           }
         }
         if (walkableTiles.length > 0) {
-          const target =
-            walkableTiles[Math.floor(Math.random() * walkableTiles.length)];
+          const target = walkableTiles[Math.floor(Math.random() * walkableTiles.length)];
           const path = findPath(
             ch.tileCol,
             ch.tileRow,
@@ -338,11 +322,7 @@ export function updateCharacter(
             ch.state = CharacterState.TYPE;
           } else {
             const seat = seats.get(ch.seatId);
-            if (
-              seat &&
-              ch.tileCol === seat.seatCol &&
-              ch.tileRow === seat.seatRow
-            ) {
+            if (seat && ch.tileCol === seat.seatCol && ch.tileRow === seat.seatRow) {
               ch.state = CharacterState.TYPE;
               ch.dir = seat.facingDir;
             } else {
@@ -353,11 +333,7 @@ export function updateCharacter(
           // Check if arrived at assigned seat -- sit down for a rest before wandering again
           if (ch.seatId) {
             const seat = seats.get(ch.seatId);
-            if (
-              seat &&
-              ch.tileCol === seat.seatCol &&
-              ch.tileRow === seat.seatRow
-            ) {
+            if (seat && ch.tileCol === seat.seatCol && ch.tileRow === seat.seatRow) {
               ch.state = CharacterState.TYPE;
               ch.dir = seat.facingDir;
               ch.walkSpeedOverride = null;
@@ -379,10 +355,7 @@ export function updateCharacter(
             }
           }
           ch.state = CharacterState.IDLE;
-          ch.wanderTimer = randomRange(
-            WANDER_PAUSE_MIN_SEC,
-            WANDER_PAUSE_MAX_SEC,
-          );
+          ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC);
         }
         ch.frame = 0;
         ch.frameTimer = 0;
@@ -399,12 +372,7 @@ export function updateCharacter(
         ch.path = [];
         break;
       }
-      ch.dir = directionBetween(
-        ch.tileCol,
-        ch.tileRow,
-        nextTile.col,
-        nextTile.row,
-      );
+      ch.dir = directionBetween(ch.tileCol, ch.tileRow, nextTile.col, nextTile.row);
 
       const speed = ch.walkSpeedOverride ?? WALK_SPEED_PX_PER_SEC;
       ch.moveProgress += (speed / TILE_SIZE) * dt;
@@ -431,11 +399,7 @@ export function updateCharacter(
         if (seat) {
           const lastStepIdx = ch.path.length - 1;
           const lastStep = lastStepIdx >= 0 ? ch.path[lastStepIdx] : undefined;
-          if (
-            !lastStep ||
-            lastStep.col !== seat.seatCol ||
-            lastStep.row !== seat.seatRow
-          ) {
+          if (!lastStep || lastStep.col !== seat.seatCol || lastStep.row !== seat.seatRow) {
             const newPath = findPath(
               ch.tileCol,
               ch.tileRow,
@@ -458,10 +422,7 @@ export function updateCharacter(
 // ── Sprite Selection ────────────────────────────────────────────
 
 /** Get the correct sprite frame for a character's current state and direction */
-export function getCharacterSprite(
-  ch: Character,
-  sprites: CharacterSprites,
-): SpriteData {
+export function getCharacterSprite(ch: Character, sprites: CharacterSprites): SpriteData {
   switch (ch.state) {
     case CharacterState.TYPE:
       if (isReadingTool(ch.currentTool)) {
@@ -520,10 +481,7 @@ export function findCharacterAtWorld(
  * Start dragging a character. Returns true if drag started.
  * Only one character can be dragged at a time.
  */
-export function dragCharacter(
-  id: number,
-  characters: Map<number, Character>,
-): boolean {
+export function dragCharacter(id: number, characters: Map<number, Character>): boolean {
   if (draggedCharId !== null) return false; // already dragging
   const ch = characters.get(id);
   if (!ch) return false;
@@ -546,11 +504,7 @@ export function updateDragPosition(worldX: number, worldY: number): void {
  * Drop the dragged character. Returns the charId if drop was valid, null otherwise.
  * On valid drop, calls office.reassignSeat. On invalid drop, calls cancelDrag.
  */
-export function dropCharacter(
-  office: OfficeRef,
-  worldX: number,
-  worldY: number,
-): number | null {
+export function dropCharacter(office: OfficeRef, worldX: number, worldY: number): number | null {
   if (draggedCharId === null) return null;
   const charId = draggedCharId;
 

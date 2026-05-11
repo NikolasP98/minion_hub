@@ -16,7 +16,10 @@ const PROMPTS_SCHEMA = {
         type: 'object',
         required: ['text', 'label'],
         properties: {
-          text: { type: 'string', description: 'The full test prompt a user would send to trigger this skill' },
+          text: {
+            type: 'string',
+            description: 'The full test prompt a user would send to trigger this skill',
+          },
           label: { type: 'string', description: 'Short 2-4 word label for the pill button' },
         },
       },
@@ -42,8 +45,16 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   if (!chapters?.length) return json({ prompts: [] });
 
   const chapterSummary = chapters
-    .map((ch: { name: string; description: string; guide: string; context: string; toolIds: string[] }) =>
-      `- "${ch.name}": ${ch.description || ch.guide?.slice(0, 80) || '(no description)'}${ch.toolIds?.length ? ` [tools: ${ch.toolIds.join(', ')}]` : ''}${ch.context ? ` [expects: ${ch.context.slice(0, 60)}]` : ''}`)
+    .map(
+      (ch: {
+        name: string;
+        description: string;
+        guide: string;
+        context: string;
+        toolIds: string[];
+      }) =>
+        `- "${ch.name}": ${ch.description || ch.guide?.slice(0, 80) || '(no description)'}${ch.toolIds?.length ? ` [tools: ${ch.toolIds.join(', ')}]` : ''}${ch.context ? ` [expects: ${ch.context.slice(0, 60)}]` : ''}`,
+    )
     .join('\n');
 
   const userMessage = `Skill: "${skillName}"
@@ -65,7 +76,7 @@ Each prompt needs a short 2-4 word label for a pill button.`;
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
         'HTTP-Referer': 'https://minionhub.admin-console.dev',
         'X-Title': 'Minion Hub Builder - Prompt Suggestions',
       },
@@ -73,17 +84,23 @@ Each prompt needs a short 2-4 word label for a pill button.`;
         model: model || DEFAULT_MODEL,
         max_tokens: 512,
         messages: [
-          { role: 'system', content: 'You generate realistic test prompts for AI skill pipelines. Return exactly 3 prompts via the tool call.' },
+          {
+            role: 'system',
+            content:
+              'You generate realistic test prompts for AI skill pipelines. Return exactly 3 prompts via the tool call.',
+          },
           { role: 'user', content: userMessage },
         ],
-        tools: [{
-          type: 'function',
-          function: {
-            name: 'suggest_test_prompts',
-            description: 'Return suggested test prompts for the skill pipeline',
-            parameters: PROMPTS_SCHEMA,
+        tools: [
+          {
+            type: 'function',
+            function: {
+              name: 'suggest_test_prompts',
+              description: 'Return suggested test prompts for the skill pipeline',
+              parameters: PROMPTS_SCHEMA,
+            },
           },
-        }],
+        ],
         tool_choice: { type: 'function', function: { name: 'suggest_test_prompts' } },
       }),
     });

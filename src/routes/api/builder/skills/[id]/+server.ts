@@ -1,10 +1,20 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import {
-  getBuiltSkill, updateBuiltSkill, deleteBuiltSkill, publishBuiltSkill,
-  getSkillTools, addSkillTool, removeSkillTool,
-  getChapters, createChapter, updateChapter, deleteChapter,
-  getChapterEdges, createChapterEdge, deleteChapterEdge,
+  getBuiltSkill,
+  updateBuiltSkill,
+  deleteBuiltSkill,
+  publishBuiltSkill,
+  getSkillTools,
+  addSkillTool,
+  removeSkillTool,
+  getChapters,
+  createChapter,
+  updateChapter,
+  deleteChapter,
+  getChapterEdges,
+  createChapterEdge,
+  deleteChapterEdge,
   validateSkillForPublish,
 } from '$server/services/builder.service';
 import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
@@ -70,7 +80,13 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
   }
 
   if (action === 'add-edge') {
-    const { id } = await createChapterEdge(ctx, params.id!, body.sourceChapterId, body.targetChapterId, body.label);
+    const { id } = await createChapterEdge(
+      ctx,
+      params.id!,
+      body.sourceChapterId,
+      body.targetChapterId,
+      body.label,
+    );
     return json({ id });
   }
 

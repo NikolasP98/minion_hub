@@ -19,9 +19,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   await insertCredentialHealthSnapshot(locals.tenantCtx, {
     serverId,
     snapshotJson:
-      typeof body.snapshotJson === 'string'
-        ? body.snapshotJson
-        : JSON.stringify(body.snapshotJson),
+      typeof body.snapshotJson === 'string' ? body.snapshotJson : JSON.stringify(body.snapshotJson),
     capturedAt: body.capturedAt,
   });
 

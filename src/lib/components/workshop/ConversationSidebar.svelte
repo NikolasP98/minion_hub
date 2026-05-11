@@ -9,6 +9,8 @@
   import { Carta, Markdown } from 'carta-md';
   import 'carta-md/default.css';
   import DOMPurify from 'dompurify';
+  import AIDisclosureBadge from '$lib/components/chat/AIDisclosureBadge.svelte';
+  import { agentDisplayName } from '$lib/utils/agent-display';
 
   const carta = new Carta({ sanitizer: (html) => DOMPurify.sanitize(html) });
 
@@ -71,7 +73,7 @@
     if (!agentId) return { name: 'Unknown', emoji: '' };
     const agent = gw.agents.find((a: { id: string }) => a.id === agentId);
     return {
-      name: agent?.name ?? agentId,
+      name: agent ? agentDisplayName(agent) : agentId,
       emoji: (agent as { emoji?: string } | undefined)?.emoji ?? '',
     };
   }
@@ -226,6 +228,9 @@
               </div>
               <div class="ws-message-md text-[11px] text-foreground leading-snug mt-0.5">
                 <Markdown {carta} value={msg.content} />
+              </div>
+              <div class="mt-1 text-right">
+                <AIDisclosureBadge />
               </div>
             </div>
           </div>

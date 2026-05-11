@@ -25,12 +25,12 @@ import { REDACTED_SENTINEL } from '$lib/types/config';
 //   System      500+    logging (and any unknown high-order groups)
 
 export const META_GROUPS: { id: string; label: string; minOrder: number; maxOrder: number }[] = [
-  { id: 'setup',      label: 'Setup',         minOrder: 0,   maxOrder: 39  },
-  { id: 'ai',         label: 'AI',            minOrder: 40,  maxOrder: 79  },
-  { id: 'automation', label: 'Automation',    minOrder: 80,  maxOrder: 129 },
-  { id: 'comms',      label: 'Communication', minOrder: 130, maxOrder: 199 },
-  { id: 'extensions', label: 'Extensions',    minOrder: 200, maxOrder: 499 },
-  { id: 'system',     label: 'System',        minOrder: 500, maxOrder: Infinity },
+  { id: 'setup', label: 'Setup', minOrder: 0, maxOrder: 39 },
+  { id: 'ai', label: 'AI', minOrder: 40, maxOrder: 79 },
+  { id: 'automation', label: 'Automation', minOrder: 80, maxOrder: 129 },
+  { id: 'comms', label: 'Communication', minOrder: 130, maxOrder: 199 },
+  { id: 'extensions', label: 'Extensions', minOrder: 200, maxOrder: 499 },
+  { id: 'system', label: 'System', minOrder: 500, maxOrder: Infinity },
 ];
 
 /** Returns the meta-group ID for a given group order value. */
@@ -44,22 +44,59 @@ export function getMetaGroupId(order: number): string {
 // ─── Group order (mirrors gateway's GROUP_ORDER) ────────────────────────────
 
 const GROUP_ORDER: Record<string, number> = {
-  wizard: 20, update: 25, diagnostics: 27, gateway: 30, nodeHost: 35,
-  agents: 40, tools: 50, bindings: 55, audio: 60, models: 70,
-  messages: 80, commands: 85, session: 90, cron: 100, hooks: 110,
-  ui: 120, browser: 130, talk: 140, channels: 150, skills: 200,
-  plugins: 205, discovery: 210, presence: 220, voicewake: 230, logging: 900,
+  wizard: 20,
+  update: 25,
+  diagnostics: 27,
+  gateway: 30,
+  nodeHost: 35,
+  agents: 40,
+  tools: 50,
+  bindings: 55,
+  audio: 60,
+  models: 70,
+  messages: 80,
+  commands: 85,
+  session: 90,
+  cron: 100,
+  hooks: 110,
+  ui: 120,
+  browser: 130,
+  talk: 140,
+  channels: 150,
+  skills: 200,
+  plugins: 205,
+  discovery: 210,
+  presence: 220,
+  voicewake: 230,
+  logging: 900,
 };
 
 const GROUP_LABELS: Record<string, string> = {
-  wizard: 'Wizard', update: 'Update', diagnostics: 'Diagnostics',
-  logging: 'Logging', gateway: 'Gateway', nodeHost: 'Node Host',
-  agents: 'Agents', tools: 'Tools', bindings: 'Bindings',
-  audio: 'Audio', models: 'Models', messages: 'Messages',
-  commands: 'Commands', session: 'Session', cron: 'Cron',
-  hooks: 'Hooks', ui: 'UI', browser: 'Browser', talk: 'Talk',
-  channels: 'Messaging Channels', skills: 'Skills', plugins: 'Plugins',
-  discovery: 'Discovery', presence: 'Presence', voicewake: 'Voice Wake',
+  wizard: 'Wizard',
+  update: 'Update',
+  diagnostics: 'Diagnostics',
+  logging: 'Logging',
+  gateway: 'Gateway',
+  nodeHost: 'Node Host',
+  agents: 'Agents',
+  tools: 'Tools',
+  bindings: 'Bindings',
+  audio: 'Audio',
+  models: 'Models',
+  messages: 'Messages',
+  commands: 'Commands',
+  session: 'Session',
+  cron: 'Cron',
+  hooks: 'Hooks',
+  ui: 'UI',
+  browser: 'Browser',
+  talk: 'Talk',
+  channels: 'Messaging Channels',
+  skills: 'Skills',
+  plugins: 'Plugins',
+  discovery: 'Discovery',
+  presence: 'Presence',
+  voicewake: 'Voice Wake',
 };
 
 // ─── Tab definitions ─────────────────────────────────────────────────────────
@@ -73,13 +110,13 @@ export const SECURITY_GROUP_IDS = new Set(['session', 'commands']);
 
 /** Tab definitions with id, label, and lucide icon name. */
 export const TABS: { id: string; label: string; icon: string }[] = [
-  { id: 'hosts',      label: 'Hosts',      icon: 'HardDrive' },
-  { id: 'ai',         label: 'AI',         icon: 'Brain'   },
-  { id: 'agents',     label: 'Agents',     icon: 'Bot'     },
-  { id: 'comms',      label: 'Comms',      icon: 'Radio'   },
-  { id: 'security',   label: 'Security',   icon: 'Shield'  },
-  { id: 'system',     label: 'System',     icon: 'Server'  },
-  { id: 'backups',    label: 'Backups',    icon: 'DatabaseBackup' },
+  { id: 'hosts', label: 'Hosts', icon: 'HardDrive' },
+  { id: 'ai', label: 'AI', icon: 'Brain' },
+  { id: 'agents', label: 'Agents', icon: 'Bot' },
+  { id: 'comms', label: 'Comms', icon: 'Radio' },
+  { id: 'security', label: 'Security', icon: 'Shield' },
+  { id: 'system', label: 'System', icon: 'Server' },
+  { id: 'backups', label: 'Backups', icon: 'DatabaseBackup' },
   { id: 'appearance', label: 'Appearance', icon: 'Palette' },
 ];
 
@@ -88,13 +125,13 @@ export const TABS: { id: string; label: string; icon: string }[] = [
  * Security carve-outs are handled separately via SECURITY_GROUP_IDS.
  */
 export const TAB_MAPPING: Record<string, string[]> = {
-  hosts:      [], // hub-managed, not gateway config
-  ai:         ['ai'],
-  agents:     ['automation'],
-  comms:      ['comms'],
-  security:   [], // populated via SECURITY_GROUP_IDS carve-out
-  system:     ['setup', 'extensions', 'system'],
-  backups:    [], // hub-managed, not gateway config
+  hosts: [], // hub-managed, not gateway config
+  ai: ['ai'],
+  agents: ['automation'],
+  comms: ['comms'],
+  security: [], // populated via SECURITY_GROUP_IDS carve-out
+  system: ['setup', 'extensions', 'system'],
+  backups: [], // hub-managed, not gateway config
   appearance: [], // local-only, no gateway config groups
 };
 
@@ -246,7 +283,10 @@ export function deepDelete(obj: Record<string, unknown>, path: string): void {
 
 function parsePath(path: string): string[] {
   // Split on '.' but not inside brackets; also handle 'foo[0].bar'
-  return path.replace(/\[(\d+)]/g, '.$1').split('.').filter(Boolean);
+  return path
+    .replace(/\[(\d+)]/g, '.$1')
+    .split('.')
+    .filter(Boolean);
 }
 
 // ─── Dirty tracking ─────────────────────────────────────────────────────────
@@ -282,8 +322,8 @@ export function computeDeepDirtyPaths(
   const allKeys = new Set([...Object.keys(original ?? {}), ...Object.keys(current ?? {})]);
   for (const key of allKeys) {
     const path = prefix ? `${prefix}.${key}` : key;
-    const origVal = (original ?? {} as Record<string, unknown>)[key];
-    const curVal = (current ?? {} as Record<string, unknown>)[key];
+    const origVal = (original ?? ({} as Record<string, unknown>))[key];
+    const curVal = (current ?? ({} as Record<string, unknown>))[key];
     if (!deepEqual(origVal, curVal)) {
       dirty.add(path);
       // Also recurse into objects for finer granularity
@@ -395,7 +435,8 @@ export function hasConfiguredValues(value: unknown): boolean {
 /** Count how many top-level properties in an object have configured values */
 export function countConfiguredKeys(value: unknown): number {
   if (value == null || typeof value !== 'object' || Array.isArray(value)) return 0;
-  return Object.values(value as Record<string, unknown>).filter((v) => hasConfiguredValues(v)).length;
+  return Object.values(value as Record<string, unknown>).filter((v) => hasConfiguredValues(v))
+    .length;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────

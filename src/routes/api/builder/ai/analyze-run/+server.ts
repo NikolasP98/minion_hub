@@ -19,7 +19,11 @@ const ANALYSIS_SCHEMA = {
         properties: {
           name: { type: 'string', description: 'Dimension name' },
           score: { type: 'number', description: 'Score 0-100 for this dimension' },
-          verdict: { type: 'string', enum: ['pass', 'warn', 'fail'], description: 'pass/warn/fail' },
+          verdict: {
+            type: 'string',
+            enum: ['pass', 'warn', 'fail'],
+            description: 'pass/warn/fail',
+          },
           details: { type: 'string', description: 'Brief explanation (1-2 sentences)' },
         },
       },
@@ -44,14 +48,20 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   if (!apiKey) return json({ error: 'OPENROUTER_API_KEY not configured' }, { status: 500 });
 
   const body = await request.json();
-  const { skillName, skillDescription, chapters, results, totalTokens, totalDurationMs, model } = body;
+  const { skillName, skillDescription, chapters, results, totalTokens, totalDurationMs, model } =
+    body;
 
   if (!results?.length) throw error(400, 'No results to analyze');
 
   // Build the analysis prompt with all chapter definitions and outputs
-  const chapterDetails = chapters.map((ch: { name: string; guide: string; outputDef: string; context: string; toolIds: string[] }, i: number) => {
-    const result = results[i];
-    return `
+  const chapterDetails = chapters
+    .map(
+      (
+        ch: { name: string; guide: string; outputDef: string; context: string; toolIds: string[] },
+        i: number,
+      ) => {
+        const result = results[i];
+        return `
 ## Chapter ${i + 1}: ${ch.name}
 **Instructions (guide):** ${ch.guide || '(none)'}
 **Expected output format (outputDef):** ${ch.outputDef || '(none)'}
@@ -61,7 +71,9 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 **Status:** ${result?.status ?? 'unknown'}
 **Duration:** ${result?.durationMs ?? 0}ms
 **Tokens:** ${(result?.promptTokens ?? 0) + (result?.completionTokens ?? 0)}`;
-  }).join('\n');
+      },
+    )
+    .join('\n');
 
   const systemPrompt = `You are a skill pipeline quality analyst. Analyze the dry-run results of an AI skill pipeline and score it across 6 dimensions.
 
@@ -98,7 +110,7 @@ Include top 3 actionable recommendations for improvement.`;
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
         'HTTP-Referer': 'https://minionhub.admin-console.dev',
         'X-Title': 'Minion Hub Builder - Run Analysis',
       },
@@ -109,14 +121,16 @@ Include top 3 actionable recommendations for improvement.`;
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userMessage },
         ],
-        tools: [{
-          type: 'function',
-          function: {
-            name: 'submit_analysis',
-            description: 'Submit pipeline quality analysis with scores and recommendations',
-            parameters: ANALYSIS_SCHEMA,
+        tools: [
+          {
+            type: 'function',
+            function: {
+              name: 'submit_analysis',
+              description: 'Submit pipeline quality analysis with scores and recommendations',
+              parameters: ANALYSIS_SCHEMA,
+            },
           },
-        }],
+        ],
         tool_choice: { type: 'function', function: { name: 'submit_analysis' } },
       }),
     });

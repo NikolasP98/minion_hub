@@ -92,11 +92,13 @@ describe('extractText', () => {
   it('extracts tool_result with nested text blocks', () => {
     const msg = {
       role: 'user',
-      content: [{
-        type: 'tool_result',
-        tool_use_id: 't1',
-        content: [{ type: 'text', text: 'nested result' }],
-      }],
+      content: [
+        {
+          type: 'tool_result',
+          tool_use_id: 't1',
+          content: [{ type: 'text', text: 'nested result' }],
+        },
+      ],
     };
     expect(extractText(msg)).toBe('nested result');
   });

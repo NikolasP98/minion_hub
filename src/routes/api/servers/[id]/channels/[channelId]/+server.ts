@@ -16,7 +16,10 @@ export const GET: RequestHandler = async ({ locals, params }) => {
   } catch (e) {
     if (e && typeof e === 'object' && 'status' in e) throw e;
     console.error(`[GET /api/servers/${params.id}/channels/${params.channelId}]`, e);
-    return json({ ok: false, error: e instanceof Error ? e.message : 'Unknown error' }, { status: 500 });
+    return json(
+      { ok: false, error: e instanceof Error ? e.message : 'Unknown error' },
+      { status: 500 },
+    );
   }
 };
 
@@ -42,7 +45,10 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
   } catch (e) {
     if (e && typeof e === 'object' && 'status' in e) throw e;
     console.error(`[PUT /api/servers/${params.id}/channels/${params.channelId}]`, e);
-    return json({ ok: false, error: e instanceof Error ? e.message : 'Unknown error' }, { status: 500 });
+    return json(
+      { ok: false, error: e instanceof Error ? e.message : 'Unknown error' },
+      { status: 500 },
+    );
   }
 };
 
@@ -53,6 +59,9 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
     return json({ ok: true });
   } catch (e) {
     console.error(`[DELETE /api/servers/${params.id}/channels/${params.channelId}]`, e);
-    return json({ ok: false, error: e instanceof Error ? e.message : 'Unknown error' }, { status: 500 });
+    return json(
+      { ok: false, error: e instanceof Error ? e.message : 'Unknown error' },
+      { status: 500 },
+    );
   }
 };

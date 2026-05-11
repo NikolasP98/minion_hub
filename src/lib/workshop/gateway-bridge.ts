@@ -24,30 +24,30 @@
 import { sendRequest } from '$lib/services/gateway.svelte';
 import { conn } from '$lib/state/gateway/connection.svelte';
 import {
-	workshopState,
-	agentMemory,
-	addWorkspaceNote,
-	updateContextSummary,
-	recordElementRead,
-	getOrCreateMemory,
-	votePinboardItem,
-	addActivePinboardItem,
-	removeActivePinboardItem,
-	removePinboardItem,
-	addPinboardItem,
-	getAgentPinCount,
+  workshopState,
+  agentMemory,
+  addWorkspaceNote,
+  updateContextSummary,
+  recordElementRead,
+  getOrCreateMemory,
+  votePinboardItem,
+  addActivePinboardItem,
+  removeActivePinboardItem,
+  removePinboardItem,
+  addPinboardItem,
+  getAgentPinCount,
 } from '$lib/state/workshop/workshop.svelte';
 import { gw } from '$lib/state/gateway/gateway-data.svelte';
 import { startConversation, endConversation } from './conversation-manager';
 import {
-	appendMessage,
-	setAgentThinking,
-	conversationMessages,
-	conversationLoading,
-	setMessages,
+  appendMessage,
+  setAgentThinking,
+  conversationMessages,
+  conversationLoading,
+  setMessages,
 } from '$lib/state/workshop/workshop-conversations.svelte';
 import { configState } from '$lib/state/config/config.svelte';
-import { uuid } from '$lib/utils/uuid';
+import { uuid } from '@minion-stack/shared';
 import { extractText } from '$lib/utils/text';
 import { showReactionEmoji } from '$lib/workshop/renderer-adapter';
 import { sendFsmEvent } from './agent-fsm';
@@ -68,8 +68,8 @@ import type { ConversationMessage } from '$lib/state/workshop/workshop-conversat
  *     per-agent gateway session keys like `agent:alice:workshop:conv:alice:bob`
  */
 function buildConversationKey(participantAgentIds: string[]): string {
-	const sorted = [...participantAgentIds].sort().join(':');
-	return `conv:${sorted}`;
+  const sorted = [...participantAgentIds].sort().join(':');
+  return `conv:${sorted}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -77,17 +77,17 @@ function buildConversationKey(participantAgentIds: string[]): string {
 // ---------------------------------------------------------------------------
 
 export interface WorkshopMessage {
-	conversationId: string;
-	agentId: string;
-	instanceId: string;
-	message: string;
-	timestamp: number;
+  conversationId: string;
+  agentId: string;
+  instanceId: string;
+  message: string;
+  timestamp: number;
 }
 
 export interface WorkshopConversationHandle {
-	conversationId: string;
-	/** Abort the conversation early. */
-	abort: () => void;
+  conversationId: string;
+  /** Abort the conversation early. */
+  abort: () => void;
 }
 
 type MessageCallback = (msg: WorkshopMessage) => void;
@@ -100,10 +100,7 @@ type MessageCallback = (msg: WorkshopMessage) => void;
 const messageCallbacks: Set<MessageCallback> = new Set();
 
 /** Active orchestration loops, keyed by conversationId. */
-const activeLoops = new Map<
-	string,
-	{ aborted: boolean; turnCount: number; maxTurns: number }
->();
+const activeLoops = new Map<string, { aborted: boolean; turnCount: number; maxTurns: number }>();
 
 /** Track gateway turn counts per session key for compaction trigger */
 const sessionTurnCounts = new Map<string, number>();
@@ -119,10 +116,10 @@ const sessionTurnCounts = new Map<string, number>();
  * Returns an unsubscribe function.
  */
 export function onWorkshopMessage(callback: MessageCallback): () => void {
-	messageCallbacks.add(callback);
-	return () => {
-		messageCallbacks.delete(callback);
-	};
+  messageCallbacks.add(callback);
+  return () => {
+    messageCallbacks.delete(callback);
+  };
 }
 
 /**
@@ -135,90 +132,98 @@ export function onWorkshopMessage(callback: MessageCallback): () => void {
  *          if the conversation could not be started (e.g. not connected).
  */
 export function startWorkshopConversation(
-	participantInstanceIds: string[],
-	taskPrompt: string,
-	maxTurns?: number,
+  participantInstanceIds: string[],
+  taskPrompt: string,
+  maxTurns?: number,
 ): WorkshopConversationHandle | null {
-	const effectiveMaxTurns = maxTurns ?? workshopState.settings.taskMaxTurns;
+  const effectiveMaxTurns = maxTurns ?? workshopState.settings.taskMaxTurns;
 
-	if (!conn.connected) {
-		console.warn('[workshop-bridge] Cannot start conversation: not connected to gateway');
-		return null;
-	}
+  if (!conn.connected) {
+    console.warn('[workshop-bridge] Cannot start conversation: not connected to gateway');
+    return null;
+  }
 
-	if (!workshopState.settings.agentChatsEnabled) {
-		console.warn('[workshop-bridge] Agent-agent chats are disabled');
-		return null;
-	}
+  if (!workshopState.settings.agentChatsEnabled) {
+    console.warn('[workshop-bridge] Agent-agent chats are disabled');
+    return null;
+  }
 
-	if (participantInstanceIds.length < 2) {
-		console.warn('[workshop-bridge] Need at least 2 participants');
-		return null;
-	}
+  if (participantInstanceIds.length < 2) {
+    console.warn('[workshop-bridge] Need at least 2 participants');
+    return null;
+  }
 
-	// Resolve instance IDs to agent IDs
-	const participants = participantInstanceIds.map((iid) => {
-		const inst = workshopState.agents[iid];
-		return { instanceId: iid, agentId: inst?.agentId ?? '' };
-	});
+  // Resolve instance IDs to agent IDs
+  const participants = participantInstanceIds.map((iid) => {
+    const inst = workshopState.agents[iid];
+    return { instanceId: iid, agentId: inst?.agentId ?? '' };
+  });
 
-	if (participants.some((p) => !p.agentId)) {
-		console.warn('[workshop-bridge] Some participant instance IDs could not be resolved');
-		return null;
-	}
+  if (participants.some((p) => !p.agentId)) {
+    console.warn('[workshop-bridge] Some participant instance IDs could not be resolved');
+    return null;
+  }
 
-	const agentIds = participants.map((p) => p.agentId);
+  const agentIds = participants.map((p) => p.agentId);
 
-	// Create a deterministic session key for this conversation
-	const convSessionKey = buildConversationKey(agentIds);
+  // Create a deterministic session key for this conversation
+  const convSessionKey = buildConversationKey(agentIds);
 
-	// Build a human-readable title from agent names
-	const nameOf = (agentId: string): string => {
-		const gwAgent = gw.agents.find((a: { id: string }) => a.id === agentId);
-		return gwAgent?.name ?? agentId;
-	};
-	const title = agentIds.map(nameOf).join(' & ');
+  // Build a human-readable title from agent names
+  const nameOf = (agentId: string): string => {
+    const gwAgent = gw.agents.find((a: { id: string }) => a.id === agentId);
+    return gwAgent?.name ?? agentId;
+  };
+  const title = agentIds.map(nameOf).join(' & ');
 
-	// Register with the conversation manager
-	const conversationId = startConversation('task', participantInstanceIds, agentIds, convSessionKey, title);
-	if (!conversationId) {
-		console.warn('[workshop-bridge] Conversation manager rejected the conversation');
-		return null;
-	}
+  // Register with the conversation manager
+  const conversationId = startConversation(
+    'task',
+    participantInstanceIds,
+    agentIds,
+    convSessionKey,
+    title,
+  );
+  if (!conversationId) {
+    console.warn('[workshop-bridge] Conversation manager rejected the conversation');
+    return null;
+  }
 
-	// Guard: if an orchestration loop is already running for this conversation,
-	// don't start a second one (prevents duplicate messages from parallel loops)
-	if (activeLoops.has(conversationId)) {
-		console.warn('[workshop-bridge] Orchestration loop already running for', conversationId);
-		return { conversationId, abort: () => activeLoops.get(conversationId)!.aborted = true };
-	}
+  // Guard: if an orchestration loop is already running for this conversation,
+  // don't start a second one (prevents duplicate messages from parallel loops)
+  if (activeLoops.has(conversationId)) {
+    console.warn('[workshop-bridge] Orchestration loop already running for', conversationId);
+    return { conversationId, abort: () => (activeLoops.get(conversationId)!.aborted = true) };
+  }
 
-	// Persist taskPrompt and maxTurns so this conversation can be resumed after refresh
-	// (done after the duplicate-loop guard so we don't overwrite a live conversation's record)
-	const convRecord = workshopState.conversations[conversationId];
-	if (convRecord) {
-		convRecord.taskPrompt = taskPrompt;
-		convRecord.maxTurns = effectiveMaxTurns;
-	}
+  // Persist taskPrompt and maxTurns so this conversation can be resumed after refresh
+  // (done after the duplicate-loop guard so we don't overwrite a live conversation's record)
+  const convRecord = workshopState.conversations[conversationId];
+  if (convRecord) {
+    convRecord.taskPrompt = taskPrompt;
+    convRecord.maxTurns = effectiveMaxTurns;
+  }
 
-	const loopState = { aborted: false, turnCount: 0, maxTurns: effectiveMaxTurns };
-	activeLoops.set(conversationId, loopState);
+  const loopState = { aborted: false, turnCount: 0, maxTurns: effectiveMaxTurns };
+  activeLoops.set(conversationId, loopState);
 
-	// Kick off the orchestration loop asynchronously
-	runOrchestrationLoop(conversationId, convSessionKey, participants, taskPrompt, loopState).catch((err) => {
-		console.error('[workshop-bridge] Orchestration loop error:', err);
-		endConversation(conversationId);
-		activeLoops.delete(conversationId);
-	});
+  // Kick off the orchestration loop asynchronously
+  runOrchestrationLoop(conversationId, convSessionKey, participants, taskPrompt, loopState).catch(
+    (err) => {
+      console.error('[workshop-bridge] Orchestration loop error:', err);
+      endConversation(conversationId);
+      activeLoops.delete(conversationId);
+    },
+  );
 
-	return {
-		conversationId,
-		abort: () => {
-			loopState.aborted = true;
-			endConversation(conversationId);
-			activeLoops.delete(conversationId);
-		},
-	};
+  return {
+    conversationId,
+    abort: () => {
+      loopState.aborted = true;
+      endConversation(conversationId);
+      activeLoops.delete(conversationId);
+    },
+  };
 }
 
 /**
@@ -229,115 +234,120 @@ export function startWorkshopConversation(
  * @returns The agent's response text, or null on failure.
  */
 export async function sendAgentMessage(
-	conversationId: string,
-	fromInstanceId: string,
-	message: string,
+  conversationId: string,
+  fromInstanceId: string,
+  message: string,
 ): Promise<string | null> {
-	const inst = workshopState.agents[fromInstanceId];
-	if (!inst) return null;
+  const inst = workshopState.agents[fromInstanceId];
+  if (!inst) return null;
 
-	const agentId = inst.agentId;
-	const conv = workshopState.conversations[conversationId];
-	const convKey = conv?.sessionKey ?? conversationId;
-	const sessionKey = buildWorkshopSessionKey(agentId, convKey);
+  const agentId = inst.agentId;
+  const conv = workshopState.conversations[conversationId];
+  const convKey = conv?.sessionKey ?? conversationId;
+  const sessionKey = buildWorkshopSessionKey(agentId, convKey);
 
-	try {
-		const responseText = await sendAndWaitForResponse(agentId, sessionKey, message);
+  try {
+    const responseText = await sendAndWaitForResponse(agentId, sessionKey, message);
 
-		if (responseText) {
-			emitMessage({
-				conversationId,
-				agentId,
-				instanceId: fromInstanceId,
-				message: responseText,
-				timestamp: Date.now(),
-			});
-		}
+    if (responseText) {
+      emitMessage({
+        conversationId,
+        agentId,
+        instanceId: fromInstanceId,
+        message: responseText,
+        timestamp: Date.now(),
+      });
+    }
 
-		return responseText;
-	} catch (err) {
-		console.error('[workshop-bridge] sendAgentMessage error:', err);
-		return null;
-	}
+    return responseText;
+  } catch (err) {
+    console.error('[workshop-bridge] sendAgentMessage error:', err);
+    return null;
+  }
 }
 
 /**
  * Start a single-agent task conversation (for the "Assign task" action).
  */
 export function assignTask(
-	instanceId: string,
-	taskPrompt: string,
+  instanceId: string,
+  taskPrompt: string,
 ): WorkshopConversationHandle | null {
-	if (!conn.connected) {
-		console.warn('[workshop-bridge] Cannot assign task: not connected to gateway');
-		return null;
-	}
+  if (!conn.connected) {
+    console.warn('[workshop-bridge] Cannot assign task: not connected to gateway');
+    return null;
+  }
 
-	const inst = workshopState.agents[instanceId];
-	if (!inst) return null;
+  const inst = workshopState.agents[instanceId];
+  if (!inst) return null;
 
-	const convSessionKey = `task:${inst.agentId}`;
-	const conversationId = startConversation('task', [instanceId], [inst.agentId], convSessionKey);
-	if (!conversationId) return null;
+  const convSessionKey = `task:${inst.agentId}`;
+  const conversationId = startConversation('task', [instanceId], [inst.agentId], convSessionKey);
+  if (!conversationId) return null;
 
-	// Guard against duplicate loops (startConversation may return an existing active id)
-	if (activeLoops.has(conversationId)) {
-		console.warn('[workshop-bridge] assignTask: loop already running for', conversationId);
-		return { conversationId, abort: () => { activeLoops.get(conversationId)!.aborted = true; } };
-	}
+  // Guard against duplicate loops (startConversation may return an existing active id)
+  if (activeLoops.has(conversationId)) {
+    console.warn('[workshop-bridge] assignTask: loop already running for', conversationId);
+    return {
+      conversationId,
+      abort: () => {
+        activeLoops.get(conversationId)!.aborted = true;
+      },
+    };
+  }
 
-	// Persist taskPrompt and maxTurns for resume support
-	const assignConvRecord = workshopState.conversations[conversationId];
-	if (assignConvRecord) {
-		assignConvRecord.taskPrompt = taskPrompt;
-		assignConvRecord.maxTurns = 1;
-	}
+  // Persist taskPrompt and maxTurns for resume support
+  const assignConvRecord = workshopState.conversations[conversationId];
+  if (assignConvRecord) {
+    assignConvRecord.taskPrompt = taskPrompt;
+    assignConvRecord.maxTurns = 1;
+  }
 
-	const loopState = { aborted: false, turnCount: 0, maxTurns: 1 };
-	activeLoops.set(conversationId, loopState);
+  const loopState = { aborted: false, turnCount: 0, maxTurns: 1 };
+  activeLoops.set(conversationId, loopState);
 
-	// Send the task and handle the response
-	(async () => {
-		try {
-			const agentId = inst.agentId;
-			const sessionKey = buildWorkshopSessionKey(agentId, convSessionKey);
+  // Send the task and handle the response
+  (async () => {
+    try {
+      const agentId = inst.agentId;
+      const sessionKey = buildWorkshopSessionKey(agentId, convSessionKey);
 
-			setAgentThinking(instanceId, true);
-			const responseText = await sendAndWaitForResponse(agentId, sessionKey, taskPrompt);
-			setAgentThinking(instanceId, false);
-			if (responseText && !loopState.aborted) {
-				emitMessage({
-					conversationId,
-					agentId,
-					instanceId,
-					message: responseText,
-					timestamp: Date.now(),
-				});
-			}
-		} catch (err) {
-			console.error('[workshop-bridge] assignTask error:', err);
-		} finally {
-			setAgentThinking(instanceId, false);
-			endConversation(conversationId);
-			activeLoops.delete(conversationId);
-		}
-	})();
+      setAgentThinking(instanceId, true);
+      const responseText = await sendAndWaitForResponse(agentId, sessionKey, taskPrompt);
+      setAgentThinking(instanceId, false);
+      if (responseText && !loopState.aborted) {
+        emitMessage({
+          conversationId,
+          agentId,
+          instanceId,
+          message: responseText,
+          timestamp: Date.now(),
+        });
+      }
+    } catch (err) {
+      console.error('[workshop-bridge] assignTask error:', err);
+    } finally {
+      setAgentThinking(instanceId, false);
+      endConversation(conversationId);
+      activeLoops.delete(conversationId);
+    }
+  })();
 
-	return {
-		conversationId,
-		abort: () => {
-			loopState.aborted = true;
-			endConversation(conversationId);
-			activeLoops.delete(conversationId);
-		},
-	};
+  return {
+    conversationId,
+    abort: () => {
+      loopState.aborted = true;
+      endConversation(conversationId);
+      activeLoops.delete(conversationId);
+    },
+  };
 }
 
 /**
  * Check whether a conversation loop is still running.
  */
 export function isConversationActive(conversationId: string): boolean {
-	return activeLoops.has(conversationId);
+  return activeLoops.has(conversationId);
 }
 
 /**
@@ -351,132 +361,132 @@ export function isConversationActive(conversationId: string): boolean {
  * Returns handles for all successfully resumed conversations.
  */
 export async function resumeInterruptedConversations(): Promise<WorkshopConversationHandle[]> {
-	if (!conn.connected) return [];
+  if (!conn.connected) return [];
 
-	const interrupted = Object.values(workshopState.conversations).filter(
-		(c) => c.status === 'interrupted',
-	);
+  const interrupted = Object.values(workshopState.conversations).filter(
+    (c) => c.status === 'interrupted',
+  );
 
-	if (interrupted.length === 0) return [];
+  if (interrupted.length === 0) return [];
 
-	const handles: WorkshopConversationHandle[] = [];
+  const handles: WorkshopConversationHandle[] = [];
 
-	for (const conv of interrupted) {
-		// taskPrompt is required to reconstruct turn prompts
-		if (!conv.taskPrompt) {
-			conv.status = 'completed';
-			conv.endedAt = Date.now();
-			continue;
-		}
+  for (const conv of interrupted) {
+    // taskPrompt is required to reconstruct turn prompts
+    if (!conv.taskPrompt) {
+      conv.status = 'completed';
+      conv.endedAt = Date.now();
+      continue;
+    }
 
-		// Remap participantAgentIds → current instanceIds (instance IDs change on every load)
-		const remappedInstanceIds: string[] = [];
-		let canResume = true;
-		for (const agentId of conv.participantAgentIds) {
-			const inst = Object.values(workshopState.agents).find((a) => a.agentId === agentId);
-			if (!inst) {
-				canResume = false;
-				break;
-			}
-			remappedInstanceIds.push(inst.instanceId);
-		}
+    // Remap participantAgentIds → current instanceIds (instance IDs change on every load)
+    const remappedInstanceIds: string[] = [];
+    let canResume = true;
+    for (const agentId of conv.participantAgentIds) {
+      const inst = Object.values(workshopState.agents).find((a) => a.agentId === agentId);
+      if (!inst) {
+        canResume = false;
+        break;
+      }
+      remappedInstanceIds.push(inst.instanceId);
+    }
 
-		if (!canResume) {
-			conv.status = 'completed';
-			conv.endedAt = Date.now();
-			continue;
-		}
+    if (!canResume) {
+      conv.status = 'completed';
+      conv.endedAt = Date.now();
+      continue;
+    }
 
-		// Load history from gateway to reconstruct turn state
-		let history: ConversationMessage[] = [];
-		try {
-			history = await loadConversationHistory(conv);
-		} catch {
-			conv.status = 'completed';
-			conv.endedAt = Date.now();
-			continue;
-		}
+    // Load history from gateway to reconstruct turn state
+    let history: ConversationMessage[] = [];
+    try {
+      history = await loadConversationHistory(conv);
+    } catch {
+      conv.status = 'completed';
+      conv.endedAt = Date.now();
+      continue;
+    }
 
-		const effectiveMaxTurns = conv.maxTurns ?? workshopState.settings.taskMaxTurns;
-		const turnCount = history.length;
+    const effectiveMaxTurns = conv.maxTurns ?? workshopState.settings.taskMaxTurns;
+    const turnCount = history.length;
 
-		// If already at or past maxTurns, the conversation completed normally
-		if (turnCount >= effectiveMaxTurns) {
-			conv.status = 'completed';
-			conv.endedAt = conv.endedAt ?? Date.now();
-			continue;
-		}
+    // If already at or past maxTurns, the conversation completed normally
+    if (turnCount >= effectiveMaxTurns) {
+      conv.status = 'completed';
+      conv.endedAt = conv.endedAt ?? Date.now();
+      continue;
+    }
 
-		// Reconstruct loop state from history
-		const nameOf = (agentId: string): string => {
-			const gwAgent = gw.agents.find((a: { id: string }) => a.id === agentId);
-			return gwAgent?.name ?? agentId;
-		};
+    // Reconstruct loop state from history
+    const nameOf = (agentId: string): string => {
+      const gwAgent = gw.agents.find((a: { id: string }) => a.id === agentId);
+      return gwAgent?.name ?? agentId;
+    };
 
-		const n = conv.participantAgentIds.length;
-		const lastMsg = history[history.length - 1];
-		const resumeState: ResumeState = {
-			turnCount,
-			// last-completed index: (turnCount - 1 + n) % n; only meaningful when turnCount > 0
-			currentTurnIdx: turnCount > 0 ? (turnCount - 1 + n) % n : 0,
-			lastResponse: lastMsg?.content ?? '',
-			lastAgentName: lastMsg?.agentId ? nameOf(lastMsg.agentId) : '',
-			collectedMessages: history.map((m) => `${nameOf(m.agentId ?? '')}: ${m.content}`),
-		};
+    const n = conv.participantAgentIds.length;
+    const lastMsg = history[history.length - 1];
+    const resumeState: ResumeState = {
+      turnCount,
+      // last-completed index: (turnCount - 1 + n) % n; only meaningful when turnCount > 0
+      currentTurnIdx: turnCount > 0 ? (turnCount - 1 + n) % n : 0,
+      lastResponse: lastMsg?.content ?? '',
+      lastAgentName: lastMsg?.agentId ? nameOf(lastMsg.agentId) : '',
+      collectedMessages: history.map((m) => `${nameOf(m.agentId ?? '')}: ${m.content}`),
+    };
 
-		// Guard against duplicate loops (before any mutations or FSM events)
-		if (activeLoops.has(conv.id)) continue;
+    // Guard against duplicate loops (before any mutations or FSM events)
+    if (activeLoops.has(conv.id)) continue;
 
-		// Re-activate the conversation with current instance IDs
-		conv.status = 'active';
-		conv.participantInstanceIds = remappedInstanceIds;
+    // Re-activate the conversation with current instance IDs
+    conv.status = 'active';
+    conv.participantInstanceIds = remappedInstanceIds;
 
-		const participants = conv.participantAgentIds.map((agentId, i) => ({
-			agentId,
-			instanceId: remappedInstanceIds[i],
-		}));
+    const participants = conv.participantAgentIds.map((agentId, i) => ({
+      agentId,
+      instanceId: remappedInstanceIds[i],
+    }));
 
-		// Fire FSM conversationStart for all participants
-		for (const instanceId of remappedInstanceIds) {
-			sendFsmEvent(instanceId, 'conversationStart');
-		}
+    // Fire FSM conversationStart for all participants
+    for (const instanceId of remappedInstanceIds) {
+      sendFsmEvent(instanceId, 'conversationStart');
+    }
 
-		const loopState = { aborted: false, turnCount, maxTurns: effectiveMaxTurns };
-		activeLoops.set(conv.id, loopState);
+    const loopState = { aborted: false, turnCount, maxTurns: effectiveMaxTurns };
+    activeLoops.set(conv.id, loopState);
 
-		// Resume the orchestration loop asynchronously
-		runOrchestrationLoop(
-			conv.id,
-			conv.sessionKey,
-			participants,
-			conv.taskPrompt,
-			loopState,
-			resumeState,
-		).catch((err) => {
-			console.error('[workshop-bridge] Resume loop error:', err);
-			endConversation(conv.id);
-			activeLoops.delete(conv.id);
-		});
+    // Resume the orchestration loop asynchronously
+    runOrchestrationLoop(
+      conv.id,
+      conv.sessionKey,
+      participants,
+      conv.taskPrompt,
+      loopState,
+      resumeState,
+    ).catch((err) => {
+      console.error('[workshop-bridge] Resume loop error:', err);
+      endConversation(conv.id);
+      activeLoops.delete(conv.id);
+    });
 
-		handles.push({
-			conversationId: conv.id,
-			abort: () => {
-				loopState.aborted = true;
-				endConversation(conv.id);
-				activeLoops.delete(conv.id);
-			},
-		});
-	}
+    handles.push({
+      conversationId: conv.id,
+      abort: () => {
+        loopState.aborted = true;
+        endConversation(conv.id);
+        activeLoops.delete(conv.id);
+      },
+    });
+  }
 
-	return handles;
+  return handles;
 }
 
 export function getSessionTurnCount(sessionKey: string): number {
-	return sessionTurnCounts.get(sessionKey) ?? 0;
+  return sessionTurnCounts.get(sessionKey) ?? 0;
 }
 
 export function resetSessionTurnCount(sessionKey: string): void {
-	sessionTurnCounts.set(sessionKey, 0);
+  sessionTurnCounts.set(sessionKey, 0);
 }
 
 /**
@@ -484,37 +494,34 @@ export function resetSessionTurnCount(sessionKey: string): void {
  * to its memory. Prunes the in-memory message cache to the last 2 messages.
  * Called by simulation.ts when draining a compactContext queue action.
  */
-export async function compactAgentContext(
-	instanceId: string,
-	sessionKey: string,
-): Promise<void> {
-	const inst = workshopState.agents[instanceId];
-	if (!inst) return;
+export async function compactAgentContext(instanceId: string, sessionKey: string): Promise<void> {
+  const inst = workshopState.agents[instanceId];
+  if (!inst) return;
 
-	const agentId = inst.agentId;
-	const gateSessionKey = buildWorkshopSessionKey(agentId, sessionKey);
+  const agentId = inst.agentId;
+  const gateSessionKey = buildWorkshopSessionKey(agentId, sessionKey);
 
-	const prompt = [
-		'Summarise your recent activity and key learnings in ≤400 tokens.',
-		'Retain: workspace rules, unresolved tasks, agent relationships, important decisions.',
-		'Discard: pleasantries, resolved topics, repeated information.',
-		'Respond with ONLY the summary — no commentary.',
-	].join('\n');
+  const prompt = [
+    'Summarise your recent activity and key learnings in ≤400 tokens.',
+    'Retain: workspace rules, unresolved tasks, agent relationships, important decisions.',
+    'Discard: pleasantries, resolved topics, repeated information.',
+    'Respond with ONLY the summary — no commentary.',
+  ].join('\n');
 
-	try {
-		setAgentThinking(instanceId, true);
-		const summary = await sendAndWaitForResponse(agentId, gateSessionKey, prompt, 45_000);
-		if (summary) {
-			updateContextSummary(instanceId, summary);
-			// Prune local cache to last 2 messages
-			const msgs = conversationMessages[sessionKey];
-			if (msgs && msgs.length > 2) {
-				setMessages(sessionKey, msgs.slice(-2));
-			}
-		}
-	} finally {
-		setAgentThinking(instanceId, false);
-	}
+  try {
+    setAgentThinking(instanceId, true);
+    const summary = await sendAndWaitForResponse(agentId, gateSessionKey, prompt, 45_000);
+    if (summary) {
+      updateContextSummary(instanceId, summary);
+      // Prune local cache to last 2 messages
+      const msgs = conversationMessages[sessionKey];
+      if (msgs && msgs.length > 2) {
+        setMessages(sessionKey, msgs.slice(-2));
+      }
+    }
+  } finally {
+    setAgentThinking(instanceId, false);
+  }
 }
 
 /**
@@ -524,104 +531,108 @@ export async function compactAgentContext(
  * Called by simulation.ts when draining readElement / seekInfo actions.
  */
 export async function readElementForAgent(
-	instanceId: string,
-	elementId: string,
-	sessionKey: string,
+  instanceId: string,
+  elementId: string,
+  sessionKey: string,
 ): Promise<void> {
-	const inst = workshopState.agents[instanceId];
-	const el = workshopState.elements[elementId];
-	if (!inst || !el) return;
+  const inst = workshopState.agents[instanceId];
+  const el = workshopState.elements[elementId];
+  if (!inst || !el) return;
 
-	const agentId = inst.agentId;
-	const gateSessionKey = buildWorkshopSessionKey(agentId, sessionKey);
+  const agentId = inst.agentId;
+  const gateSessionKey = buildWorkshopSessionKey(agentId, sessionKey);
 
-	// Build element content summary
-	let contentDesc = '';
-	let promptLines: string[] = [];
+  // Build element content summary
+  let contentDesc = '';
+  let promptLines: string[] = [];
 
-	if (el.type === 'rulebook') {
-		contentDesc = el.rulebookContent?.trim() ?? '';
-		promptLines = [
-			`--- RULEBOOK: "${el.label}" ---`,
-			'Purpose: Strict rules that must be followed throughout this session.',
-			'',
-			contentDesc,
-			'',
-			'Acknowledge these rules. Use [REMEMBER: note] to record key points.',
-			'Respond briefly.',
-		];
-	} else if (el.type === 'messageboard') {
-		contentDesc = el.messageBoardContent?.trim() ?? '';
-		promptLines = [
-			`--- MESSAGE BOARD: "${el.label}" ---`,
-			contentDesc,
-			'',
-			'Process this information. Use [REMEMBER: note] to record anything important.',
-			'Respond briefly.',
-		];
-	} else if (el.type === 'pinboard') {
-		const fullView = buildPinboardFullView(el, instanceId);
-		contentDesc = fullView || '(empty)';
-		if (!fullView) {
-			showReactionEmoji(instanceId, '👀');
-			recordElementRead(instanceId, elementId, '(empty)');
-			return;
-		}
-		promptLines = [
-			fullView,
-			'',
-			'Review each item. Use [KEEP_PIN: id] to save items to your active memory.',
-			'Use [VOTE_UP: id] or [VOTE_DOWN: id] to signal your assessment.',
-			'Use [REMEMBER: note] to record anything important.',
-			'Respond briefly.',
-		];
-	} else if (el.type === 'inbox') {
-		const unread = (el.inboxItems ?? []).filter((m) => !m.read);
-		contentDesc = unread.map((m) => `From ${m.fromId}: ${m.content}`).join('\n');
-		promptLines = [
-			'--- INBOX ---',
-			'Purpose: Tasks and messages addressed directly to you.',
-			'',
-			contentDesc,
-			'',
-			'Process these messages. Use [REMEMBER: note] to record action items.',
-			'Respond briefly.',
-		];
-	}
+  if (el.type === 'rulebook') {
+    contentDesc = el.rulebookContent?.trim() ?? '';
+    promptLines = [
+      `--- RULEBOOK: "${el.label}" ---`,
+      'Purpose: Strict rules that must be followed throughout this session.',
+      '',
+      contentDesc,
+      '',
+      'Acknowledge these rules. Use [REMEMBER: note] to record key points.',
+      'Respond briefly.',
+    ];
+  } else if (el.type === 'messageboard') {
+    contentDesc = el.messageBoardContent?.trim() ?? '';
+    promptLines = [
+      `--- MESSAGE BOARD: "${el.label}" ---`,
+      contentDesc,
+      '',
+      'Process this information. Use [REMEMBER: note] to record anything important.',
+      'Respond briefly.',
+    ];
+  } else if (el.type === 'pinboard') {
+    const fullView = buildPinboardFullView(el, instanceId);
+    contentDesc = fullView || '(empty)';
+    if (!fullView) {
+      showReactionEmoji(instanceId, '👀');
+      recordElementRead(instanceId, elementId, '(empty)');
+      return;
+    }
+    promptLines = [
+      fullView,
+      '',
+      'Review each item. Use [KEEP_PIN: id] to save items to your active memory.',
+      'Use [VOTE_UP: id] or [VOTE_DOWN: id] to signal your assessment.',
+      'Use [REMEMBER: note] to record anything important.',
+      'Respond briefly.',
+    ];
+  } else if (el.type === 'inbox') {
+    const unread = (el.inboxItems ?? []).filter((m) => !m.read);
+    contentDesc = unread.map((m) => `From ${m.fromId}: ${m.content}`).join('\n');
+    promptLines = [
+      '--- INBOX ---',
+      'Purpose: Tasks and messages addressed directly to you.',
+      '',
+      contentDesc,
+      '',
+      'Process these messages. Use [REMEMBER: note] to record action items.',
+      'Respond briefly.',
+    ];
+  }
 
-	if (!contentDesc) {
-		// Nothing to read — just show emoji and mark as read
-		showReactionEmoji(instanceId, '👀');
-		recordElementRead(instanceId, elementId, '(empty)');
-		return;
-	}
+  if (!contentDesc) {
+    // Nothing to read — just show emoji and mark as read
+    showReactionEmoji(instanceId, '👀');
+    recordElementRead(instanceId, elementId, '(empty)');
+    return;
+  }
 
-	const prompt = promptLines.join('\n');
+  const prompt = promptLines.join('\n');
 
-	// Show reading indicator emoji while processing
-	showReactionEmoji(instanceId, '🔍');
+  // Show reading indicator emoji while processing
+  showReactionEmoji(instanceId, '🔍');
 
-	try {
-		setAgentThinking(instanceId, true);
-		const response = await sendAndWaitForResponse(agentId, gateSessionKey, prompt, 45_000);
-		if (response) {
-			extractAndApplyRemembers(response, instanceId);
-			// For pinboards: also extract KEEP_PIN/RELEASE_PIN and VOTE markers
-			if (el.type === 'pinboard') {
-				extractAndApplyKeepPins(response, instanceId);
-				extractAndApplyVotes(response, agentId);
-			}
-			recordElementRead(instanceId, elementId, contentDesc.slice(0, 200));
-			// Show a confirmation emoji
-			const emoji = el.type === 'rulebook' ? '📖'
-				: el.type === 'messageboard' ? '📋'
-				: el.type === 'pinboard' ? '📌'
-				: '📬';
-			showReactionEmoji(instanceId, emoji);
-		}
-	} finally {
-		setAgentThinking(instanceId, false);
-	}
+  try {
+    setAgentThinking(instanceId, true);
+    const response = await sendAndWaitForResponse(agentId, gateSessionKey, prompt, 45_000);
+    if (response) {
+      extractAndApplyRemembers(response, instanceId);
+      // For pinboards: also extract KEEP_PIN/RELEASE_PIN and VOTE markers
+      if (el.type === 'pinboard') {
+        extractAndApplyKeepPins(response, instanceId);
+        extractAndApplyVotes(response, agentId);
+      }
+      recordElementRead(instanceId, elementId, contentDesc.slice(0, 200));
+      // Show a confirmation emoji
+      const emoji =
+        el.type === 'rulebook'
+          ? '📖'
+          : el.type === 'messageboard'
+            ? '📋'
+            : el.type === 'pinboard'
+              ? '📌'
+              : '📬';
+      showReactionEmoji(instanceId, emoji);
+    }
+  } finally {
+    setAgentThinking(instanceId, false);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -629,135 +640,143 @@ export async function readElementForAgent(
 // ---------------------------------------------------------------------------
 
 interface ResumeState {
-	turnCount: number;
-	/**
-	 * Index of the LAST COMPLETED participant in the participants array.
-	 * The while loop pre-advances this by 1 (mod n) before the next turn.
-	 * Compute as `(turnCount - 1 + n) % n` where n = participants.length.
-	 * Only used when turnCount > 0; ignored on the turnCount===0 fresh path.
-	 */
-	currentTurnIdx: number;
-	lastResponse: string;
-	lastAgentName: string;
-	collectedMessages: string[];
+  turnCount: number;
+  /**
+   * Index of the LAST COMPLETED participant in the participants array.
+   * The while loop pre-advances this by 1 (mod n) before the next turn.
+   * Compute as `(turnCount - 1 + n) % n` where n = participants.length.
+   * Only used when turnCount > 0; ignored on the turnCount===0 fresh path.
+   */
+  currentTurnIdx: number;
+  lastResponse: string;
+  lastAgentName: string;
+  collectedMessages: string[];
 }
 
 async function runOrchestrationLoop(
-	conversationId: string,
-	convSessionKey: string,
-	participants: Array<{ instanceId: string; agentId: string }>,
-	taskPrompt: string,
-	loopState: { aborted: boolean; turnCount: number; maxTurns: number },
-	resumeState?: ResumeState,
+  conversationId: string,
+  convSessionKey: string,
+  participants: Array<{ instanceId: string; agentId: string }>,
+  taskPrompt: string,
+  loopState: { aborted: boolean; turnCount: number; maxTurns: number },
+  resumeState?: ResumeState,
 ): Promise<void> {
-	// Build agent name map for context formatting
-	const nameOf = (agentId: string): string => {
-		const gwAgent = gw.agents.find((a: { id: string }) => a.id === agentId);
-		return gwAgent?.name ?? agentId;
-	};
+  // Build agent name map for context formatting
+  const nameOf = (agentId: string): string => {
+    const gwAgent = gw.agents.find((a: { id: string }) => a.id === agentId);
+    return gwAgent?.name ?? agentId;
+  };
 
-	// Initialise from resumeState (resume path) or defaults (fresh path)
-	let currentTurnIdx = resumeState?.currentTurnIdx ?? 0;
-	let previousResponse = resumeState?.lastResponse ?? '';
-	let previousAgentName = resumeState?.lastAgentName ?? '';
-	const collectedMessages: string[] = resumeState?.collectedMessages ? [...resumeState.collectedMessages] : [];
+  // Initialise from resumeState (resume path) or defaults (fresh path)
+  let currentTurnIdx = resumeState?.currentTurnIdx ?? 0;
+  let previousResponse = resumeState?.lastResponse ?? '';
+  let previousAgentName = resumeState?.lastAgentName ?? '';
+  const collectedMessages: string[] = resumeState?.collectedMessages
+    ? [...resumeState.collectedMessages]
+    : [];
 
-	// Sync loopState turn count from resume (gateway is source of truth)
-	if (resumeState) {
-		loopState.turnCount = resumeState.turnCount;
-	}
+  // Sync loopState turn count from resume (gateway is source of truth)
+  if (resumeState) {
+    loopState.turnCount = resumeState.turnCount;
+  }
 
-	try {
-		if (!resumeState || resumeState.turnCount === 0) {
-			// Fresh conversation (or resume before any turn completed): send initial prompt to first participant
-			const firstParticipant = participants[0];
-			const otherNames = participants
-				.slice(1)
-				.map((p) => nameOf(p.agentId))
-				.join(', ');
+  try {
+    if (!resumeState || resumeState.turnCount === 0) {
+      // Fresh conversation (or resume before any turn completed): send initial prompt to first participant
+      const firstParticipant = participants[0];
+      const otherNames = participants
+        .slice(1)
+        .map((p) => nameOf(p.agentId))
+        .join(', ');
 
-			const initialPrompt = formatInitialPrompt(taskPrompt, otherNames, participants.length, firstParticipant.agentId, firstParticipant.instanceId);
+      const initialPrompt = formatInitialPrompt(
+        taskPrompt,
+        otherNames,
+        participants.length,
+        firstParticipant.agentId,
+        firstParticipant.instanceId,
+      );
 
-			const sessionKey = buildWorkshopSessionKey(firstParticipant.agentId, convSessionKey);
-			setAgentThinking(firstParticipant.instanceId, true);
-			const response = await sendAndWaitForResponse(
-				firstParticipant.agentId,
-				sessionKey,
-				initialPrompt,
-			);
-			setAgentThinking(firstParticipant.instanceId, false);
+      const sessionKey = buildWorkshopSessionKey(firstParticipant.agentId, convSessionKey);
+      setAgentThinking(firstParticipant.instanceId, true);
+      const response = await sendAndWaitForResponse(
+        firstParticipant.agentId,
+        sessionKey,
+        initialPrompt,
+      );
+      setAgentThinking(firstParticipant.instanceId, false);
 
-			if (loopState.aborted || !response) return;
+      if (loopState.aborted || !response) return;
 
-			previousResponse = response;
-			previousAgentName = nameOf(firstParticipant.agentId);
-			loopState.turnCount++;
-			collectedMessages.push(`${previousAgentName}: ${response}`);
+      previousResponse = response;
+      previousAgentName = nameOf(firstParticipant.agentId);
+      loopState.turnCount++;
+      collectedMessages.push(`${previousAgentName}: ${response}`);
 
-			emitMessage({
-				conversationId,
-				agentId: firstParticipant.agentId,
-				instanceId: firstParticipant.instanceId,
-				message: response,
-				timestamp: Date.now(),
-			});
-		}
+      emitMessage({
+        conversationId,
+        agentId: firstParticipant.agentId,
+        instanceId: firstParticipant.instanceId,
+        message: response,
+        timestamp: Date.now(),
+      });
+    }
 
-		// Continue the loop: alternate between participants
-		while (loopState.turnCount < loopState.maxTurns && !loopState.aborted) {
-			currentTurnIdx = (currentTurnIdx + 1) % participants.length;
-			const participant = participants[currentTurnIdx];
-			const agentSessionKey = buildWorkshopSessionKey(participant.agentId, convSessionKey);
+    // Continue the loop: alternate between participants
+    while (loopState.turnCount < loopState.maxTurns && !loopState.aborted) {
+      currentTurnIdx = (currentTurnIdx + 1) % participants.length;
+      const participant = participants[currentTurnIdx];
+      const agentSessionKey = buildWorkshopSessionKey(participant.agentId, convSessionKey);
 
-			const turnPrompt = formatTurnPrompt(
-				taskPrompt,
-				previousAgentName,
-				previousResponse,
-				loopState.turnCount,
-				loopState.maxTurns,
-				collectedMessages,
-				participant.agentId,
-				participant.instanceId,
-			);
+      const turnPrompt = formatTurnPrompt(
+        taskPrompt,
+        previousAgentName,
+        previousResponse,
+        loopState.turnCount,
+        loopState.maxTurns,
+        collectedMessages,
+        participant.agentId,
+        participant.instanceId,
+      );
 
-			setAgentThinking(participant.instanceId, true);
-			const turnResponse = await sendAndWaitForResponse(
-				participant.agentId,
-				agentSessionKey,
-				turnPrompt,
-			);
-			setAgentThinking(participant.instanceId, false);
+      setAgentThinking(participant.instanceId, true);
+      const turnResponse = await sendAndWaitForResponse(
+        participant.agentId,
+        agentSessionKey,
+        turnPrompt,
+      );
+      setAgentThinking(participant.instanceId, false);
 
-			if (loopState.aborted || !turnResponse) break;
+      if (loopState.aborted || !turnResponse) break;
 
-			previousResponse = turnResponse;
-			previousAgentName = nameOf(participant.agentId);
-			loopState.turnCount++;
-			collectedMessages.push(`${previousAgentName}: ${turnResponse}`);
+      previousResponse = turnResponse;
+      previousAgentName = nameOf(participant.agentId);
+      loopState.turnCount++;
+      collectedMessages.push(`${previousAgentName}: ${turnResponse}`);
 
-			emitMessage({
-				conversationId,
-				agentId: participant.agentId,
-				instanceId: participant.instanceId,
-				message: turnResponse,
-				timestamp: Date.now(),
-			});
-		}
-	} finally {
-		// Clear thinking state for all participants
-		for (const p of participants) {
-			setAgentThinking(p.instanceId, false);
-		}
+      emitMessage({
+        conversationId,
+        agentId: participant.agentId,
+        instanceId: participant.instanceId,
+        message: turnResponse,
+        timestamp: Date.now(),
+      });
+    }
+  } finally {
+    // Clear thinking state for all participants
+    for (const p of participants) {
+      setAgentThinking(p.instanceId, false);
+    }
 
-		if (!loopState.aborted) {
-			endConversation(conversationId);
+    if (!loopState.aborted) {
+      endConversation(conversationId);
 
-			// Best-effort owner notification for personal agents
-			const recentMessages = collectedMessages.slice(-4);
-			tryOwnerNotification(participants, conversationId, recentMessages).catch(() => {});
-		}
-		activeLoops.delete(conversationId);
-	}
+      // Best-effort owner notification for personal agents
+      const recentMessages = collectedMessages.slice(-4);
+      tryOwnerNotification(participants, conversationId, recentMessages).catch(() => {});
+    }
+    activeLoops.delete(conversationId);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -770,7 +789,7 @@ async function runOrchestrationLoop(
  */
 /** Build a workshop-specific session key. Exported for use by simulation.ts. */
 export function buildWorkshopSessionKey(agentId: string, conversationId: string): string {
-	return `agent:${agentId}:workshop:${conversationId}`;
+  return `agent:${agentId}:workshop:${conversationId}`;
 }
 
 /** @deprecated Use `buildWorkshopSessionKey` directly. */
@@ -784,118 +803,118 @@ export const buildWorkshopSessionKey_public = buildWorkshopSessionKey;
  * Returns the extracted text of the assistant's response, or null.
  */
 async function sendAndWaitForResponse(
-	agentId: string,
-	sessionKey: string,
-	message: string,
-	timeoutMs?: number,
+  agentId: string,
+  sessionKey: string,
+  message: string,
+  timeoutMs?: number,
 ): Promise<string | null> {
-	const effectiveTimeout = timeoutMs ?? workshopState.settings.responseTimeout;
-	const runId = uuid();
+  const effectiveTimeout = timeoutMs ?? workshopState.settings.responseTimeout;
+  const runId = uuid();
 
-	// --- Baseline snapshot BEFORE sending the prompt ---
-	// Count existing assistant messages and capture the last one's content so
-	// the polling loop can distinguish a genuinely new response from a stale
-	// one that was already in the session history.
-	let baselineAssistantCount = 0;
-	let baselineLastContent = '';
+  // --- Baseline snapshot BEFORE sending the prompt ---
+  // Count existing assistant messages and capture the last one's content so
+  // the polling loop can distinguish a genuinely new response from a stale
+  // one that was already in the session history.
+  let baselineAssistantCount = 0;
+  let baselineLastContent = '';
 
-	try {
-		const baselineRes = (await sendRequest('chat.history', {
-			sessionKey,
-			limit: 50,
-		})) as { messages?: Array<{ role: string; content: unknown }> } | null;
+  try {
+    const baselineRes = (await sendRequest('chat.history', {
+      sessionKey,
+      limit: 50,
+    })) as { messages?: Array<{ role: string; content: unknown }> } | null;
 
-		const baselineMsgs = baselineRes?.messages ?? [];
-		for (const msg of baselineMsgs) {
-			if (msg.role === 'assistant') {
-				baselineAssistantCount++;
-				const text = extractText(msg);
-				if (typeof text === 'string') baselineLastContent = text;
-			}
-		}
-	} catch {
-		// If baseline fetch fails, proceed with zero baseline — worst case we
-		// might pick up a stale message, but that's the same as the old behavior.
-	}
+    const baselineMsgs = baselineRes?.messages ?? [];
+    for (const msg of baselineMsgs) {
+      if (msg.role === 'assistant') {
+        baselineAssistantCount++;
+        const text = extractText(msg);
+        if (typeof text === 'string') baselineLastContent = text;
+      }
+    }
+  } catch {
+    // If baseline fetch fails, proceed with zero baseline — worst case we
+    // might pick up a stale message, but that's the same as the old behavior.
+  }
 
-	try {
-		await sendRequest(
-			'chat.send',
-			{ sessionKey, message, deliver: false, idempotencyKey: runId },
-			15_000,
-		);
-	} catch (err) {
-		console.error('[workshop-bridge] chat.send failed:', err);
-		return null;
-	}
+  try {
+    await sendRequest(
+      'chat.send',
+      { sessionKey, message, deliver: false, idempotencyKey: runId },
+      15_000,
+    );
+  } catch (err) {
+    console.error('[workshop-bridge] chat.send failed:', err);
+    return null;
+  }
 
-	// Poll for the response by loading chat history after a delay.
-	// The gateway streams chat events, but those are handled by the global
-	// onChatEvent handler in gateway.svelte.ts which updates agentChat state.
-	// For workshop sessions with custom session keys, those events won't be
-	// captured by the default handler (it parses agent:{id}:main pattern).
-	//
-	// Instead, we poll chat.history on our workshop session key.
-	// We only resolve when the assistant message count has increased AND the
-	// content differs from the baseline — this prevents stale response pickup.
-	return new Promise<string | null>((resolve) => {
-		const startTime = Date.now();
-		let resolved = false;
+  // Poll for the response by loading chat history after a delay.
+  // The gateway streams chat events, but those are handled by the global
+  // onChatEvent handler in gateway.svelte.ts which updates agentChat state.
+  // For workshop sessions with custom session keys, those events won't be
+  // captured by the default handler (it parses agent:{id}:main pattern).
+  //
+  // Instead, we poll chat.history on our workshop session key.
+  // We only resolve when the assistant message count has increased AND the
+  // content differs from the baseline — this prevents stale response pickup.
+  return new Promise<string | null>((resolve) => {
+    const startTime = Date.now();
+    let resolved = false;
 
-		const poll = async () => {
-			if (resolved) return;
-			if (Date.now() - startTime > effectiveTimeout) {
-				resolved = true;
-				resolve(null);
-				return;
-			}
+    const poll = async () => {
+      if (resolved) return;
+      if (Date.now() - startTime > effectiveTimeout) {
+        resolved = true;
+        resolve(null);
+        return;
+      }
 
-			try {
-				const res = (await sendRequest('chat.history', {
-					sessionKey,
-					limit: 50,
-				})) as { messages?: Array<{ role: string; content: unknown }> } | null;
+      try {
+        const res = (await sendRequest('chat.history', {
+          sessionKey,
+          limit: 50,
+        })) as { messages?: Array<{ role: string; content: unknown }> } | null;
 
-				const messages = res?.messages ?? [];
+        const messages = res?.messages ?? [];
 
-				// Count current assistant messages and find the last one
-				let currentAssistantCount = 0;
-				let lastAssistantText = '';
-				for (const msg of messages) {
-					if (msg.role === 'assistant') {
-						currentAssistantCount++;
-						const text = extractText(msg);
-						if (typeof text === 'string' && text.trim()) {
-							lastAssistantText = text;
-						}
-					}
-				}
+        // Count current assistant messages and find the last one
+        let currentAssistantCount = 0;
+        let lastAssistantText = '';
+        for (const msg of messages) {
+          if (msg.role === 'assistant') {
+            currentAssistantCount++;
+            const text = extractText(msg);
+            if (typeof text === 'string' && text.trim()) {
+              lastAssistantText = text;
+            }
+          }
+        }
 
-				// Only resolve if there's a NEW assistant message (count increased)
-				// AND its content differs from the baseline last message
-				if (
-					currentAssistantCount > baselineAssistantCount &&
-					lastAssistantText &&
-					lastAssistantText !== baselineLastContent
-				) {
-					resolved = true;
-					sessionTurnCounts.set(sessionKey, (sessionTurnCounts.get(sessionKey) ?? 0) + 1);
-					resolve(lastAssistantText);
-					return;
-				}
-			} catch {
-				// Ignore polling errors, retry
-			}
+        // Only resolve if there's a NEW assistant message (count increased)
+        // AND its content differs from the baseline last message
+        if (
+          currentAssistantCount > baselineAssistantCount &&
+          lastAssistantText &&
+          lastAssistantText !== baselineLastContent
+        ) {
+          resolved = true;
+          sessionTurnCounts.set(sessionKey, (sessionTurnCounts.get(sessionKey) ?? 0) + 1);
+          resolve(lastAssistantText);
+          return;
+        }
+      } catch {
+        // Ignore polling errors, retry
+      }
 
-			// Poll again after a delay
-			if (!resolved) {
-				setTimeout(poll, 2000);
-			}
-		};
+      // Poll again after a delay
+      if (!resolved) {
+        setTimeout(poll, 2000);
+      }
+    };
 
-		// Give the agent a moment to start processing before first poll
-		setTimeout(poll, 3000);
-	});
+    // Give the agent a moment to start processing before first poll
+    setTimeout(poll, 3000);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -906,14 +925,14 @@ async function sendAndWaitForResponse(
  * Format a relative time string from a timestamp.
  */
 function relativeTime(ts: number): string {
-	const diff = Date.now() - ts;
-	const seconds = Math.floor(diff / 1000);
-	if (seconds < 60) return 'just now';
-	const minutes = Math.floor(seconds / 60);
-	if (minutes < 60) return `${minutes}m ago`;
-	const hours = Math.floor(minutes / 60);
-	if (hours < 24) return `${hours}h ago`;
-	return `${Math.floor(hours / 24)}d ago`;
+  const diff = Date.now() - ts;
+  const seconds = Math.floor(diff / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
 }
 
 /**
@@ -921,161 +940,180 @@ function relativeTime(ts: number): string {
  * Includes: WORKSHOP clause, rulebooks, message boards, inbox, active pinboard memory, agent memory.
  */
 export function getWorkshopContext(agentId?: string, instanceId?: string): string {
-	const parts: string[] = [];
+  const parts: string[] = [];
 
-	const gwAgent = agentId
-		? (gw.agents.find((a: { id: string }) => a.id === agentId) as { id: string; name?: string; shareWorkspaceInfo?: boolean } | undefined)
-		: undefined;
-	const shareWorkspace = gwAgent?.shareWorkspaceInfo !== false; // default true
+  const gwAgent = agentId
+    ? (gw.agents.find((a: { id: string }) => a.id === agentId) as
+        | { id: string; name?: string; shareWorkspaceInfo?: boolean }
+        | undefined)
+    : undefined;
+  const shareWorkspace = gwAgent?.shareWorkspaceInfo !== false; // default true
 
-	// A. WORKSHOP clause — always first
-	const agentsOnCanvas = Object.values(workshopState.agents).map((inst) => {
-		const ag = gw.agents.find((a: { id: string; name?: string }) => a.id === inst.agentId) as { id: string; name?: string } | undefined;
-		const name = ag?.name ?? inst.agentId;
-		return `${name} (${inst.agentId})`;
-	});
+  // A. WORKSHOP clause — always first
+  const agentsOnCanvas = Object.values(workshopState.agents).map((inst) => {
+    const ag = gw.agents.find((a: { id: string; name?: string }) => a.id === inst.agentId) as
+      | { id: string; name?: string }
+      | undefined;
+    const name = ag?.name ?? inst.agentId;
+    return `${name} (${inst.agentId})`;
+  });
 
-	const mem = instanceId ? agentMemory[instanceId] : undefined;
-	const activePins = mem?.activePinboardItems ?? [];
-	const activePinsCount = activePins.length;
+  const mem = instanceId ? agentMemory[instanceId] : undefined;
+  const activePins = mem?.activePinboardItems ?? [];
+  const activePinsCount = activePins.length;
 
-	const workshopClause = [
-		'=== WORKSHOP ENVIRONMENT ===',
-		'You are operating on a multi-agent workshop canvas — a shared interactive space where',
-		'agents read and write to shared environment elements, exchange messages, and collaborate.',
-		'',
-		agentsOnCanvas.length > 0
-			? `Agents on canvas: ${agentsOnCanvas.join(', ')}`
-			: 'No other agents on canvas.',
-		'',
-		'Available markers (use in your responses to interact with the environment):',
-		'  [PIN: your note]           — Add to the shared pinboard (max 5 pins per agent)',
-		'  [REMOVE_PIN: pin-id]       — Remove one of your existing pins',
-		'  [VOTE_UP: pin-id]          — Upvote a pinboard item you find valuable',
-		'  [VOTE_DOWN: pin-id]        — Downvote an item you find outdated or incorrect',
-		'  [KEEP_PIN: pin-id]         — Add a pinboard item to your active memory (max 5 slots)',
-		'  [RELEASE_PIN: pin-id]      — Remove a pinboard item from your active memory',
-		'  [SEND to AgentName: msg]   — Send a message to another agent\'s inbox',
-		'  [REMEMBER: note]           — Save a note to your personal workspace memory',
-		'',
-		`Active pinboard memory: ${activePinsCount}/5 slots used`,
-		'=== END WORKSHOP ENVIRONMENT ===',
-	].join('\n');
-	parts.push(workshopClause);
+  const workshopClause = [
+    '=== WORKSHOP ENVIRONMENT ===',
+    'You are operating on a multi-agent workshop canvas — a shared interactive space where',
+    'agents read and write to shared environment elements, exchange messages, and collaborate.',
+    '',
+    agentsOnCanvas.length > 0
+      ? `Agents on canvas: ${agentsOnCanvas.join(', ')}`
+      : 'No other agents on canvas.',
+    '',
+    'Available markers (use in your responses to interact with the environment):',
+    '  [PIN: your note]           — Add to the shared pinboard (max 5 pins per agent)',
+    '  [REMOVE_PIN: pin-id]       — Remove one of your existing pins',
+    '  [VOTE_UP: pin-id]          — Upvote a pinboard item you find valuable',
+    '  [VOTE_DOWN: pin-id]        — Downvote an item you find outdated or incorrect',
+    '  [KEEP_PIN: pin-id]         — Add a pinboard item to your active memory (max 5 slots)',
+    '  [RELEASE_PIN: pin-id]      — Remove a pinboard item from your active memory',
+    "  [SEND to AgentName: msg]   — Send a message to another agent's inbox",
+    '  [REMEMBER: note]           — Save a note to your personal workspace memory',
+    '',
+    `Active pinboard memory: ${activePinsCount}/5 slots used`,
+    '=== END WORKSHOP ENVIRONMENT ===',
+  ].join('\n');
+  parts.push(workshopClause);
 
-	if (!workshopState.settings.crossWorkspaceChats) {
-		parts.push([
-			'--- WORKSPACE ISOLATION NOTICE ---',
-			'Cross-workspace chats are DISABLED. All conversations are fully isolated to this workspace.',
-			'Do not reference, mention, or continue conversations from other workspaces.',
-			'--- END ISOLATION NOTICE ---',
-		].join('\n'));
-	}
+  if (!workshopState.settings.crossWorkspaceChats) {
+    parts.push(
+      [
+        '--- WORKSPACE ISOLATION NOTICE ---',
+        'Cross-workspace chats are DISABLED. All conversations are fully isolated to this workspace.',
+        'Do not reference, mention, or continue conversations from other workspaces.',
+        '--- END ISOLATION NOTICE ---',
+      ].join('\n'),
+    );
+  }
 
-	if (!shareWorkspace) return parts.join('\n\n');
+  if (!shareWorkspace) return parts.join('\n\n');
 
-	// B. Rulebook — always, if present
-	const rulebooks = Object.values(workshopState.elements).filter(
-		(el) => el.type === 'rulebook' && el.rulebookContent?.trim(),
-	);
-	for (const rb of rulebooks) {
-		parts.push([
-			'--- RULEBOOK START ---',
-			'Purpose: Strict rules that must be followed throughout this workshop session.',
-			'Injected: always',
-			'',
-			rb.rulebookContent!.trim(),
-			'--- RULEBOOK END ---',
-		].join('\n'));
-	}
+  // B. Rulebook — always, if present
+  const rulebooks = Object.values(workshopState.elements).filter(
+    (el) => el.type === 'rulebook' && el.rulebookContent?.trim(),
+  );
+  for (const rb of rulebooks) {
+    parts.push(
+      [
+        '--- RULEBOOK START ---',
+        'Purpose: Strict rules that must be followed throughout this workshop session.',
+        'Injected: always',
+        '',
+        rb.rulebookContent!.trim(),
+        '--- RULEBOOK END ---',
+      ].join('\n'),
+    );
+  }
 
-	// C. Message boards — always, if present
-	for (const el of Object.values(workshopState.elements)) {
-		if (el.type === 'messageboard' && el.messageBoardContent?.trim()) {
-			parts.push([
-				`--- MESSAGE BOARD START: "${el.label}" ---`,
-				'Purpose: Guidelines and announcements for this workshop session.',
-				'Injected: always',
-				'',
-				el.messageBoardContent.trim(),
-				'--- MESSAGE BOARD END ---',
-			].join('\n'));
-		}
-	}
+  // C. Message boards — always, if present
+  for (const el of Object.values(workshopState.elements)) {
+    if (el.type === 'messageboard' && el.messageBoardContent?.trim()) {
+      parts.push(
+        [
+          `--- MESSAGE BOARD START: "${el.label}" ---`,
+          'Purpose: Guidelines and announcements for this workshop session.',
+          'Injected: always',
+          '',
+          el.messageBoardContent.trim(),
+          '--- MESSAGE BOARD END ---',
+        ].join('\n'),
+      );
+    }
+  }
 
-	// D. Inbox — always if agent has unread messages
-	if (agentId) {
-		for (const el of Object.values(workshopState.elements)) {
-			if (el.type === 'inbox' && el.inboxAgentId === agentId) {
-				const unread = (el.inboxItems ?? []).filter((m) => !m.read && m.status !== 'closed');
-				if (unread.length > 0) {
-					const lines = [
-						'--- INBOX START ---',
-						'Purpose: Tasks and messages addressed directly to you from humans or other agents.',
-						'Injected: always when unread messages exist.',
-						'',
-					];
-					for (const msg of unread) {
-						const fromAgent = gw.agents.find((a: { id: string; name?: string }) => a.id === msg.fromId) as { id: string; name?: string } | undefined;
-						const fromName = fromAgent?.name ?? msg.fromId;
-						lines.push(`[From ${msg.fromId} (${fromName})]: ${msg.content}`);
-					}
-					lines.push('--- INBOX END ---');
-					parts.push(lines.join('\n'));
-				}
-			}
-		}
-	}
+  // D. Inbox — always if agent has unread messages
+  if (agentId) {
+    for (const el of Object.values(workshopState.elements)) {
+      if (el.type === 'inbox' && el.inboxAgentId === agentId) {
+        const unread = (el.inboxItems ?? []).filter((m) => !m.read && m.status !== 'closed');
+        if (unread.length > 0) {
+          const lines = [
+            '--- INBOX START ---',
+            'Purpose: Tasks and messages addressed directly to you from humans or other agents.',
+            'Injected: always when unread messages exist.',
+            '',
+          ];
+          for (const msg of unread) {
+            const fromAgent = gw.agents.find(
+              (a: { id: string; name?: string }) => a.id === msg.fromId,
+            ) as { id: string; name?: string } | undefined;
+            const fromName = fromAgent?.name ?? msg.fromId;
+            lines.push(`[From ${msg.fromId} (${fromName})]: ${msg.content}`);
+          }
+          lines.push('--- INBOX END ---');
+          parts.push(lines.join('\n'));
+        }
+      }
+    }
+  }
 
-	// E. Active pinboard memory — only items agent has kept via KEEP_PIN
-	if (instanceId && activePins.length > 0) {
-		// Collect all pinboard items across all boards indexed by pin ID
-		const allPins = new Map<string, { pin: import('$lib/state/workshop/workshop.svelte').PinboardItem; boardLabel: string }>();
-		for (const el of Object.values(workshopState.elements)) {
-			if (el.type === 'pinboard') {
-				for (const pin of el.pinboardItems ?? []) {
-					allPins.set(pin.id, { pin, boardLabel: el.label });
-				}
-			}
-		}
+  // E. Active pinboard memory — only items agent has kept via KEEP_PIN
+  if (instanceId && activePins.length > 0) {
+    // Collect all pinboard items across all boards indexed by pin ID
+    const allPins = new Map<
+      string,
+      { pin: import('$lib/state/workshop/workshop.svelte').PinboardItem; boardLabel: string }
+    >();
+    for (const el of Object.values(workshopState.elements)) {
+      if (el.type === 'pinboard') {
+        for (const pin of el.pinboardItems ?? []) {
+          allPins.set(pin.id, { pin, boardLabel: el.label });
+        }
+      }
+    }
 
-		const activeLines = [
-			'--- ACTIVE PINBOARD MEMORY START ---',
-			'Purpose: Pinboard items you have chosen to keep in active context.',
-			`Slots used: ${activePinsCount}/5  (use [RELEASE_PIN: id] to free a slot, [KEEP_PIN: id] to add one)`,
-			'',
-		];
+    const activeLines = [
+      '--- ACTIVE PINBOARD MEMORY START ---',
+      'Purpose: Pinboard items you have chosen to keep in active context.',
+      `Slots used: ${activePinsCount}/5  (use [RELEASE_PIN: id] to free a slot, [KEEP_PIN: id] to add one)`,
+      '',
+    ];
 
-		let hasAny = false;
-		for (const pinId of activePins) {
-			const entry = allPins.get(pinId);
-			if (!entry) continue; // pin was removed
-			const { pin } = entry;
-			const net = pin.upvotes.length - pin.downvotes.length;
-			activeLines.push(`[${pin.id}] ▲${pin.upvotes.length} ▼${pin.downvotes.length} (net ${net > 0 ? '+' : ''}${net})  ${pin.content}`);
-			hasAny = true;
-		}
+    let hasAny = false;
+    for (const pinId of activePins) {
+      const entry = allPins.get(pinId);
+      if (!entry) continue; // pin was removed
+      const { pin } = entry;
+      const net = pin.upvotes.length - pin.downvotes.length;
+      activeLines.push(
+        `[${pin.id}] ▲${pin.upvotes.length} ▼${pin.downvotes.length} (net ${net > 0 ? '+' : ''}${net})  ${pin.content}`,
+      );
+      hasAny = true;
+    }
 
-		if (hasAny) {
-			activeLines.push('--- ACTIVE PINBOARD MEMORY END ---');
-			parts.push(activeLines.join('\n'));
-		}
-	}
+    if (hasAny) {
+      activeLines.push('--- ACTIVE PINBOARD MEMORY END ---');
+      parts.push(activeLines.join('\n'));
+    }
+  }
 
-	// F. Agent memory
-	if (mem) {
-		if (mem.contextSummary) {
-			parts.push(`--- YOUR MEMORY SUMMARY ---\n${mem.contextSummary}`);
-		}
-		if (mem.workspaceNotes?.length) {
-			parts.push(`--- YOUR NOTES ---\n${mem.workspaceNotes.map((n) => `- ${n}`).join('\n')}`);
-		}
-		if (mem.recentInteractions?.length) {
-			parts.push(`--- RECENT INTERACTIONS ---\n${mem.recentInteractions.map((i) => `- ${i}`).join('\n')}`);
-		}
-	}
+  // F. Agent memory
+  if (mem) {
+    if (mem.contextSummary) {
+      parts.push(`--- YOUR MEMORY SUMMARY ---\n${mem.contextSummary}`);
+    }
+    if (mem.workspaceNotes?.length) {
+      parts.push(`--- YOUR NOTES ---\n${mem.workspaceNotes.map((n) => `- ${n}`).join('\n')}`);
+    }
+    if (mem.recentInteractions?.length) {
+      parts.push(
+        `--- RECENT INTERACTIONS ---\n${mem.recentInteractions.map((i) => `- ${i}`).join('\n')}`,
+      );
+    }
+  }
 
-	return parts.join('\n\n');
+  return parts.join('\n\n');
 }
 
 /**
@@ -1083,39 +1121,43 @@ export function getWorkshopContext(agentId?: string, instanceId?: string): strin
  * Shows ALL items with IDs and scores so the agent can evaluate and KEEP_PIN/VOTE.
  */
 function buildPinboardFullView(
-	el: import('$lib/state/workshop/workshop.svelte').WorkshopElement,
-	instanceId: string,
+  el: import('$lib/state/workshop/workshop.svelte').WorkshopElement,
+  instanceId: string,
 ): string {
-	const pins = el.pinboardItems ?? [];
-	if (pins.length === 0) return '';
+  const pins = el.pinboardItems ?? [];
+  if (pins.length === 0) return '';
 
-	const mem = agentMemory[instanceId];
-	const activePins = mem?.activePinboardItems ?? [];
-	const slotsRemaining = 5 - activePins.length;
+  const mem = agentMemory[instanceId];
+  const activePins = mem?.activePinboardItems ?? [];
+  const slotsRemaining = 5 - activePins.length;
 
-	const sorted = [...pins].sort((a, b) => {
-		const na = a.upvotes.length - a.downvotes.length;
-		const nb = b.upvotes.length - b.downvotes.length;
-		return nb - na;
-	});
+  const sorted = [...pins].sort((a, b) => {
+    const na = a.upvotes.length - a.downvotes.length;
+    const nb = b.upvotes.length - b.downvotes.length;
+    return nb - na;
+  });
 
-	const lines = [
-		`--- PINBOARD FULL VIEW: "${el.label}" ---`,
-		`Review these items. Use [KEEP_PIN: id] to add to your active memory (${slotsRemaining} slots remaining).`,
-		'Use [VOTE_UP: id] or [VOTE_DOWN: id] to signal your assessment.',
-		'',
-	];
+  const lines = [
+    `--- PINBOARD FULL VIEW: "${el.label}" ---`,
+    `Review these items. Use [KEEP_PIN: id] to add to your active memory (${slotsRemaining} slots remaining).`,
+    'Use [VOTE_UP: id] or [VOTE_DOWN: id] to signal your assessment.',
+    '',
+  ];
 
-	for (const pin of sorted) {
-		const net = pin.upvotes.length - pin.downvotes.length;
-		const flag = net <= -2 ? ' ⚠️ flagged' : '';
-		const fromAgent = gw.agents.find((a: { id: string; name?: string }) => a.id === pin.pinnedBy) as { id: string; name?: string } | undefined;
-		const byName = fromAgent?.name ?? pin.pinnedBy;
-		lines.push(`[${pin.id}] ▲${pin.upvotes.length} ▼${pin.downvotes.length}  ${pin.content}  (by ${byName}, ${relativeTime(pin.pinnedAt)})${flag}`);
-	}
+  for (const pin of sorted) {
+    const net = pin.upvotes.length - pin.downvotes.length;
+    const flag = net <= -2 ? ' ⚠️ flagged' : '';
+    const fromAgent = gw.agents.find(
+      (a: { id: string; name?: string }) => a.id === pin.pinnedBy,
+    ) as { id: string; name?: string } | undefined;
+    const byName = fromAgent?.name ?? pin.pinnedBy;
+    lines.push(
+      `[${pin.id}] ▲${pin.upvotes.length} ▼${pin.downvotes.length}  ${pin.content}  (by ${byName}, ${relativeTime(pin.pinnedAt)})${flag}`,
+    );
+  }
 
-	lines.push('--- PINBOARD FULL VIEW END ---');
-	return lines.join('\n');
+  lines.push('--- PINBOARD FULL VIEW END ---');
+  return lines.join('\n');
 }
 
 /**
@@ -1123,104 +1165,102 @@ function buildPinboardFullView(
  * pinboard element. Enforces a max of 5 pins per agent (auto-removes oldest).
  */
 function extractAndApplyPins(responseText: string, agentId: string): void {
-	const pinRegex = /\[PIN:\s*(.+?)\]/gi;
-	let match: RegExpExecArray | null;
-	const pins: string[] = [];
+  const pinRegex = /\[PIN:\s*(.+?)\]/gi;
+  let match: RegExpExecArray | null;
+  const pins: string[] = [];
 
-	while ((match = pinRegex.exec(responseText)) !== null) {
-		pins.push(match[1].trim());
-	}
+  while ((match = pinRegex.exec(responseText)) !== null) {
+    pins.push(match[1].trim());
+  }
 
-	if (pins.length === 0) return;
+  if (pins.length === 0) return;
 
-	// Find the first pinboard element
-	const pinboardEl = Object.values(workshopState.elements).find(
-		(el) => el.type === 'pinboard',
-	);
-	if (!pinboardEl) return;
+  // Find the first pinboard element
+  const pinboardEl = Object.values(workshopState.elements).find((el) => el.type === 'pinboard');
+  if (!pinboardEl) return;
 
-	for (const content of pins) {
-		// Enforce per-agent 5-pin limit: auto-remove oldest if at limit
-		const MAX_PINS_PER_AGENT = 5;
-		const currentCount = getAgentPinCount(pinboardEl.instanceId, agentId);
-		if (currentCount >= MAX_PINS_PER_AGENT) {
-			// Find and remove oldest pin by this agent
-			const agentPins = (pinboardEl.pinboardItems ?? [])
-				.filter((p) => p.pinnedBy === agentId)
-				.sort((a, b) => a.pinnedAt - b.pinnedAt);
-			if (agentPins.length > 0) {
-				removePinboardItem(pinboardEl.instanceId, agentPins[0].id);
-			}
-		}
-		addPinboardItem(pinboardEl.instanceId, content, agentId);
-	}
+  for (const content of pins) {
+    // Enforce per-agent 5-pin limit: auto-remove oldest if at limit
+    const MAX_PINS_PER_AGENT = 5;
+    const currentCount = getAgentPinCount(pinboardEl.instanceId, agentId);
+    if (currentCount >= MAX_PINS_PER_AGENT) {
+      // Find and remove oldest pin by this agent
+      const agentPins = (pinboardEl.pinboardItems ?? [])
+        .filter((p) => p.pinnedBy === agentId)
+        .sort((a, b) => a.pinnedAt - b.pinnedAt);
+      if (agentPins.length > 0) {
+        removePinboardItem(pinboardEl.instanceId, agentPins[0].id);
+      }
+    }
+    addPinboardItem(pinboardEl.instanceId, content, agentId);
+  }
 }
 
 /**
  * Scan agent response for [REMOVE_PIN: id] markers.
  */
 function extractAndApplyRemovePins(responseText: string, agentId: string): void {
-	const removeRegex = /\[REMOVE_PIN:\s*([\w_]+)\]/gi;
-	let match: RegExpExecArray | null;
+  const removeRegex = /\[REMOVE_PIN:\s*([\w_]+)\]/gi;
+  let match: RegExpExecArray | null;
 
-	while ((match = removeRegex.exec(responseText)) !== null) {
-		const pinId = match[1].trim();
-		// Find the pinboard containing this pin and verify ownership
-		for (const el of Object.values(workshopState.elements)) {
-			if (el.type !== 'pinboard' || !el.pinboardItems) continue;
-			const pin = el.pinboardItems.find((p) => p.id === pinId);
-			if (pin && pin.pinnedBy === agentId) {
-				removePinboardItem(el.instanceId, pinId);
-				break;
-			}
-		}
-	}
+  while ((match = removeRegex.exec(responseText)) !== null) {
+    const pinId = match[1].trim();
+    // Find the pinboard containing this pin and verify ownership
+    for (const el of Object.values(workshopState.elements)) {
+      if (el.type !== 'pinboard' || !el.pinboardItems) continue;
+      const pin = el.pinboardItems.find((p) => p.id === pinId);
+      if (pin && pin.pinnedBy === agentId) {
+        removePinboardItem(el.instanceId, pinId);
+        break;
+      }
+    }
+  }
 }
 
 /**
  * Scan agent response for [VOTE_UP: id] / [VOTE_DOWN: id] markers.
  */
 function extractAndApplyVotes(responseText: string, agentId: string): void {
-	const voteUpRegex = /\[VOTE_UP:\s*([\w_]+)\]/gi;
-	const voteDownRegex = /\[VOTE_DOWN:\s*([\w_]+)\]/gi;
-	let match: RegExpExecArray | null;
+  const voteUpRegex = /\[VOTE_UP:\s*([\w_]+)\]/gi;
+  const voteDownRegex = /\[VOTE_DOWN:\s*([\w_]+)\]/gi;
+  let match: RegExpExecArray | null;
 
-	while ((match = voteUpRegex.exec(responseText)) !== null) {
-		const pinId = match[1].trim();
-		for (const el of Object.values(workshopState.elements)) {
-			if (el.type === 'pinboard' && el.pinboardItems?.some((p) => p.id === pinId)) {
-				votePinboardItem(el.instanceId, pinId, agentId, 'up');
-				break;
-			}
-		}
-	}
+  while ((match = voteUpRegex.exec(responseText)) !== null) {
+    const pinId = match[1].trim();
+    for (const el of Object.values(workshopState.elements)) {
+      if (el.type === 'pinboard' && el.pinboardItems?.some((p) => p.id === pinId)) {
+        votePinboardItem(el.instanceId, pinId, agentId, 'up');
+        break;
+      }
+    }
+  }
 
-	while ((match = voteDownRegex.exec(responseText)) !== null) {
-		const pinId = match[1].trim();
-		for (const el of Object.values(workshopState.elements)) {
-			if (el.type === 'pinboard' && el.pinboardItems?.some((p) => p.id === pinId)) {
-				votePinboardItem(el.instanceId, pinId, agentId, 'down');
-				break;
-			}
-		}
-	}
+  while ((match = voteDownRegex.exec(responseText)) !== null) {
+    const pinId = match[1].trim();
+    for (const el of Object.values(workshopState.elements)) {
+      if (el.type === 'pinboard' && el.pinboardItems?.some((p) => p.id === pinId)) {
+        votePinboardItem(el.instanceId, pinId, agentId, 'down');
+        break;
+      }
+    }
+  }
 }
 
 /**
  * Scan agent response for [KEEP_PIN: id] / [RELEASE_PIN: id] markers.
  */
 function extractAndApplyKeepPins(responseText: string, instanceId: string): void {
-	const keepRegex = /\[KEEP_PIN:\s*([\w_]+)\]/gi;
-	const releaseRegex = /\[RELEASE_PIN:\s*([\w_]+)\]/gi;
-	let match: RegExpExecArray | null;
+  const keepRegex = /\[KEEP_PIN:\s*([\w_]+)\]/gi;
+  const releaseRegex = /\[RELEASE_PIN:\s*([\w_]+)\]/gi;
+  let match: RegExpExecArray | null;
 
-	while ((match = keepRegex.exec(responseText)) !== null) {
-		addActivePinboardItem(instanceId, match[1].trim());
-	}
+  while ((match = keepRegex.exec(responseText)) !== null) {
+    addActivePinboardItem(instanceId, match[1].trim());
+  }
 
-	while ((match = releaseRegex.exec(responseText)) !== null) {
-		removeActivePinboardItem(instanceId, match[1].trim());
-	}
+  while ((match = releaseRegex.exec(responseText)) !== null) {
+    removeActivePinboardItem(instanceId, match[1].trim());
+  }
 }
 
 /**
@@ -1228,44 +1268,44 @@ function extractAndApplyKeepPins(responseText: string, instanceId: string): void
  * route to inbox elements.
  */
 function extractAndRouteSends(responseText: string, fromAgentId: string): void {
-	const sendRegex = /\[SEND to (\S+?):\s*(.+?)\]/gi;
-	let match: RegExpExecArray | null;
+  const sendRegex = /\[SEND to (\S+?):\s*(.+?)\]/gi;
+  let match: RegExpExecArray | null;
 
-	while ((match = sendRegex.exec(responseText)) !== null) {
-		const targetName = match[1].trim();
-		const content = match[2].trim();
+  while ((match = sendRegex.exec(responseText)) !== null) {
+    const targetName = match[1].trim();
+    const content = match[2].trim();
 
-		// Find inbox element for target agent
-		const targetAgent = gw.agents.find(
-			(a: { id: string; name?: string }) => a.name === targetName || a.id === targetName,
-		);
-		if (!targetAgent) continue;
+    // Find inbox element for target agent
+    const targetAgent = gw.agents.find(
+      (a: { id: string; name?: string }) => a.name === targetName || a.id === targetName,
+    );
+    if (!targetAgent) continue;
 
-		const inboxEl = Object.values(workshopState.elements).find(
-			(el) => el.type === 'inbox' && el.inboxAgentId === targetAgent.id,
-		);
-		if (!inboxEl) continue;
+    const inboxEl = Object.values(workshopState.elements).find(
+      (el) => el.type === 'inbox' && el.inboxAgentId === targetAgent.id,
+    );
+    if (!inboxEl) continue;
 
-		if (!inboxEl.inboxItems) inboxEl.inboxItems = [];
-		inboxEl.inboxItems.push({
-			id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-			fromId: fromAgentId,
-			toId: targetAgent.id,
-			content,
-			subject: '',
-			status: 'open',
-			sentAt: Date.now(),
-			read: false,
-		});
-	}
+    if (!inboxEl.inboxItems) inboxEl.inboxItems = [];
+    inboxEl.inboxItems.push({
+      id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      fromId: fromAgentId,
+      toId: targetAgent.id,
+      content,
+      subject: '',
+      status: 'open',
+      sentAt: Date.now(),
+      read: false,
+    });
+  }
 }
 
 function extractAndApplyRemembers(responseText: string, instanceId: string): void {
-	const rememberRegex = /\[REMEMBER:\s*(.+?)\]/gi;
-	let match: RegExpExecArray | null;
-	while ((match = rememberRegex.exec(responseText)) !== null) {
-		addWorkspaceNote(instanceId, match[1].trim());
-	}
+  const rememberRegex = /\[REMEMBER:\s*(.+?)\]/gi;
+  let match: RegExpExecArray | null;
+  while ((match = rememberRegex.exec(responseText)) !== null) {
+    addWorkspaceNote(instanceId, match[1].trim());
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1273,93 +1313,86 @@ function extractAndApplyRemembers(responseText: string, instanceId: string): voi
 // ---------------------------------------------------------------------------
 
 function formatInitialPrompt(
-	taskPrompt: string,
-	otherAgentNames: string,
-	totalParticipants: number,
-	agentId?: string,
-	instanceId?: string,
+  taskPrompt: string,
+  otherAgentNames: string,
+  totalParticipants: number,
+  agentId?: string,
+  instanceId?: string,
 ): string {
-	const workshopCtx = getWorkshopContext(agentId, instanceId);
+  const workshopCtx = getWorkshopContext(agentId, instanceId);
 
-	if (totalParticipants <= 1) {
-		const lines: string[] = [];
-		if (workshopCtx) lines.push(workshopCtx, '');
-		lines.push(taskPrompt);
-		return lines.join('\n');
-	}
+  if (totalParticipants <= 1) {
+    const lines: string[] = [];
+    if (workshopCtx) lines.push(workshopCtx, '');
+    lines.push(taskPrompt);
+    return lines.join('\n');
+  }
 
-	const lines: string[] = [];
-	if (workshopCtx) lines.push(workshopCtx, '');
+  const lines: string[] = [];
+  if (workshopCtx) lines.push(workshopCtx, '');
 
-	lines.push(
-		`You are in a workshop conversation with ${otherAgentNames}.`,
-		``,
-		`Task: ${taskPrompt}`,
-	);
+  lines.push(
+    `You are in a workshop conversation with ${otherAgentNames}.`,
+    ``,
+    `Task: ${taskPrompt}`,
+  );
 
-	lines.push(
-		``,
-		`Share a specific perspective or position on this task. Be concrete — propose ideas, take a stance, or raise a question for discussion.`,
-		`Your response will be shared with the other participant(s). Keep it focused and concise.`,
-	);
+  lines.push(
+    ``,
+    `Share a specific perspective or position on this task. Be concrete — propose ideas, take a stance, or raise a question for discussion.`,
+    `Your response will be shared with the other participant(s). Keep it focused and concise.`,
+  );
 
-	return lines.join('\n');
+  return lines.join('\n');
 }
 
 function formatTurnPrompt(
-	taskPrompt: string,
-	previousAgentName: string,
-	previousResponse: string,
-	turnNumber: number,
-	maxTurns: number,
-	conversationHistory: string[] = [],
-	agentId?: string,
-	instanceId?: string,
+  taskPrompt: string,
+  previousAgentName: string,
+  previousResponse: string,
+  turnNumber: number,
+  maxTurns: number,
+  conversationHistory: string[] = [],
+  agentId?: string,
+  instanceId?: string,
 ): string {
-	const remaining = maxTurns - turnNumber;
-	const isLastTurn = remaining <= 1;
-	const workshopCtx = getWorkshopContext(agentId, instanceId);
+  const remaining = maxTurns - turnNumber;
+  const isLastTurn = remaining <= 1;
+  const workshopCtx = getWorkshopContext(agentId, instanceId);
 
-	const lines: string[] = [];
-	if (workshopCtx) lines.push(workshopCtx, '');
+  const lines: string[] = [];
+  if (workshopCtx) lines.push(workshopCtx, '');
 
-	lines.push(
-		`You are in a workshop conversation.`,
-		``,
-		`Original task: ${taskPrompt}`,
-		``,
-	);
+  lines.push(`You are in a workshop conversation.`, ``, `Original task: ${taskPrompt}`, ``);
 
-	// Include condensed history of recent exchanges for context
-	const recentHistory = conversationHistory.slice(-4);
-	if (recentHistory.length > 1) {
-		lines.push(`Recent discussion:`);
-		for (const entry of recentHistory) {
-			// Truncate each entry to keep the prompt manageable
-			const truncated = entry.length > 200 ? entry.slice(0, 200) + '...' : entry;
-			lines.push(`- ${truncated}`);
-		}
-		lines.push(``);
-	}
+  // Include condensed history of recent exchanges for context
+  const recentHistory = conversationHistory.slice(-4);
+  if (recentHistory.length > 1) {
+    lines.push(`Recent discussion:`);
+    for (const entry of recentHistory) {
+      // Truncate each entry to keep the prompt manageable
+      const truncated = entry.length > 200 ? entry.slice(0, 200) + '...' : entry;
+      lines.push(`- ${truncated}`);
+    }
+    lines.push(``);
+  }
 
-	lines.push(
-		`${previousAgentName} just said:`,
-		`> ${previousResponse.split('\n').join('\n> ')}`,
-		``,
-	);
+  lines.push(
+    `${previousAgentName} just said:`,
+    `> ${previousResponse.split('\n').join('\n> ')}`,
+    ``,
+  );
 
-	if (isLastTurn) {
-		lines.push(
-			`This is the final turn. Summarize conclusions or action items.`,
-		);
-	} else {
-		lines.push(
-			`Respond with your thoughts. ${remaining} turns remaining.`,
-			`IMPORTANT: Do not restate what has already been said. Build on the discussion — advance with new ideas, counterpoints, or concrete next steps.`,
-		);
-	}
+  if (isLastTurn) {
+    lines.push(`This is the final turn. Summarize conclusions or action items.`);
+  } else {
+    lines.push(
+      `Respond with your thoughts. ${remaining} turns remaining.`,
+      `IMPORTANT: Do not restate what has already been said. Build on the discussion — advance with new ideas, counterpoints, or concrete next steps.`,
+    );
+  }
 
-	return lines.join('\n');
+  return lines.join('\n');
 }
 
 // ---------------------------------------------------------------------------
@@ -1367,42 +1400,40 @@ function formatTurnPrompt(
 // ---------------------------------------------------------------------------
 
 function emitMessage(msg: WorkshopMessage): void {
-	// Persist message in the conversation state cache
-	const conv = Object.values(workshopState.conversations).find(
-		(c) => c.id === msg.conversationId,
-	);
-	if (conv) {
-		appendMessage(conv.sessionKey, {
-			role: 'assistant',
-			agentId: msg.agentId,
-			instanceId: msg.instanceId,
-			content: msg.message,
-			timestamp: msg.timestamp,
-		});
-	}
+  // Persist message in the conversation state cache
+  const conv = Object.values(workshopState.conversations).find((c) => c.id === msg.conversationId);
+  if (conv) {
+    appendMessage(conv.sessionKey, {
+      role: 'assistant',
+      agentId: msg.agentId,
+      instanceId: msg.instanceId,
+      content: msg.message,
+      timestamp: msg.timestamp,
+    });
+  }
 
-	// Extract markers from agent responses
-	try {
-		extractAndApplyPins(msg.message, msg.agentId);
-		extractAndApplyRemovePins(msg.message, msg.agentId);
-		extractAndApplyVotes(msg.message, msg.agentId);
-		extractAndRouteSends(msg.message, msg.agentId);
-		if (msg.instanceId) {
-			extractAndApplyRemembers(msg.message, msg.instanceId);
-			extractAndApplyKeepPins(msg.message, msg.instanceId);
-		}
-	} catch {
-		// non-critical
-	}
+  // Extract markers from agent responses
+  try {
+    extractAndApplyPins(msg.message, msg.agentId);
+    extractAndApplyRemovePins(msg.message, msg.agentId);
+    extractAndApplyVotes(msg.message, msg.agentId);
+    extractAndRouteSends(msg.message, msg.agentId);
+    if (msg.instanceId) {
+      extractAndApplyRemembers(msg.message, msg.instanceId);
+      extractAndApplyKeepPins(msg.message, msg.instanceId);
+    }
+  } catch {
+    // non-critical
+  }
 
-	// Fire callbacks for speech bubbles / other listeners
-	for (const cb of messageCallbacks) {
-		try {
-			cb(msg);
-		} catch (err) {
-			console.error('[workshop-bridge] Callback error:', err);
-		}
-	}
+  // Fire callbacks for speech bubbles / other listeners
+  for (const cb of messageCallbacks) {
+    try {
+      cb(msg);
+    } catch (err) {
+      console.error('[workshop-bridge] Callback error:', err);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1414,11 +1445,9 @@ function emitMessage(msg: WorkshopMessage): void {
  * belongs to a specific user rather than being a shared/default agent).
  */
 function isPersonalAgent(agentId: string): boolean {
-	const bindings = configState.current?.bindings as
-		| Array<{ agentId: string }>
-		| undefined;
-	if (!bindings || !Array.isArray(bindings)) return false;
-	return bindings.filter((b) => b.agentId === agentId).length === 1;
+  const bindings = configState.current?.bindings as Array<{ agentId: string }> | undefined;
+  if (!bindings || !Array.isArray(bindings)) return false;
+  return bindings.filter((b) => b.agentId === agentId).length === 1;
 }
 
 /**
@@ -1426,31 +1455,31 @@ function isPersonalAgent(agentId: string): boolean {
  * them to notify their owner about the conversation (best-effort).
  */
 async function tryOwnerNotification(
-	participants: Array<{ instanceId: string; agentId: string }>,
-	conversationId: string,
-	lastMessages: string[],
+  participants: Array<{ instanceId: string; agentId: string }>,
+  conversationId: string,
+  lastMessages: string[],
 ): Promise<void> {
-	for (const p of participants) {
-		if (!isPersonalAgent(p.agentId)) continue;
+  for (const p of participants) {
+    if (!isPersonalAgent(p.agentId)) continue;
 
-		const sessionKey = buildWorkshopSessionKey(p.agentId, conversationId);
-		const summary = lastMessages.slice(-4).join('\n---\n');
+    const sessionKey = buildWorkshopSessionKey(p.agentId, conversationId);
+    const summary = lastMessages.slice(-4).join('\n---\n');
 
-		const prompt = [
-			'A workshop conversation you participated in just ended. Here is a brief summary of the recent exchange:',
-			'',
-			summary,
-			'',
-			'If anything in this conversation is relevant to your owner, please notify them using your available communication tools.',
-			'Keep it brief and only notify if truly important. If nothing warrants notification, simply respond with "No notification needed."',
-		].join('\n');
+    const prompt = [
+      'A workshop conversation you participated in just ended. Here is a brief summary of the recent exchange:',
+      '',
+      summary,
+      '',
+      'If anything in this conversation is relevant to your owner, please notify them using your available communication tools.',
+      'Keep it brief and only notify if truly important. If nothing warrants notification, simply respond with "No notification needed."',
+    ].join('\n');
 
-		try {
-			await sendAndWaitForResponse(p.agentId, sessionKey, prompt, 60_000);
-		} catch {
-			// non-critical — best effort notification
-		}
-	}
+    try {
+      await sendAndWaitForResponse(p.agentId, sessionKey, prompt, 60_000);
+    } catch {
+      // non-critical — best effort notification
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1462,59 +1491,59 @@ async function tryOwnerNotification(
  * participant's session transcript and interleaving by timestamp.
  */
 export async function loadConversationHistory(
-	conv: import('$lib/state/workshop/workshop.svelte').WorkshopConversation,
+  conv: import('$lib/state/workshop/workshop.svelte').WorkshopConversation,
 ): Promise<ConversationMessage[]> {
-	conversationLoading[conv.sessionKey] = true;
+  conversationLoading[conv.sessionKey] = true;
 
-	try {
-		const allMessages: ConversationMessage[] = [];
+  try {
+    const allMessages: ConversationMessage[] = [];
 
-		for (const agentId of conv.participantAgentIds) {
-			const sessionKey = buildWorkshopSessionKey(agentId, conv.sessionKey);
+    for (const agentId of conv.participantAgentIds) {
+      const sessionKey = buildWorkshopSessionKey(agentId, conv.sessionKey);
 
-			try {
-				const res = (await sendRequest('chat.history', {
-					sessionKey,
-					limit: 200,
-				})) as { messages?: Array<{ role: string; content: unknown; timestamp?: number }> } | null;
+      try {
+        const res = (await sendRequest('chat.history', {
+          sessionKey,
+          limit: 200,
+        })) as { messages?: Array<{ role: string; content: unknown; timestamp?: number }> } | null;
 
-				const messages = res?.messages ?? [];
-				for (const msg of messages) {
-					const text = extractText(msg);
-					if (typeof text === 'string' && text.trim()) {
-						allMessages.push({
-							role: msg.role as 'user' | 'assistant',
-							agentId,
-							content: text,
-							timestamp: msg.timestamp ?? 0,
-						});
-					}
-				}
-			} catch {
-				// Skip this agent's history on error
-			}
-		}
+        const messages = res?.messages ?? [];
+        for (const msg of messages) {
+          const text = extractText(msg);
+          if (typeof text === 'string' && text.trim()) {
+            allMessages.push({
+              role: msg.role as 'user' | 'assistant',
+              agentId,
+              content: text,
+              timestamp: msg.timestamp ?? 0,
+            });
+          }
+        }
+      } catch {
+        // Skip this agent's history on error
+      }
+    }
 
-		// Filter out 'user' role messages — these are orchestration prompts, not
-		// actual conversation content shown to the user.
-		const assistantMessages = allMessages.filter((m) => m.role === 'assistant');
+    // Filter out 'user' role messages — these are orchestration prompts, not
+    // actual conversation content shown to the user.
+    const assistantMessages = allMessages.filter((m) => m.role === 'assistant');
 
-		// Deduplicate by (role, agentId, content) — cross-session merges can
-		// produce identical entries when the same message exists in multiple
-		// agent session histories.
-		const seen = new Set<string>();
-		const deduped = assistantMessages.filter((m) => {
-			const key = `${m.role}:${m.agentId ?? ''}:${m.content}`;
-			if (seen.has(key)) return false;
-			seen.add(key);
-			return true;
-		});
+    // Deduplicate by (role, agentId, content) — cross-session merges can
+    // produce identical entries when the same message exists in multiple
+    // agent session histories.
+    const seen = new Set<string>();
+    const deduped = assistantMessages.filter((m) => {
+      const key = `${m.role}:${m.agentId ?? ''}:${m.content}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 
-		// Sort by timestamp to interleave messages from different agents
-		deduped.sort((a, b) => a.timestamp - b.timestamp);
-		setMessages(conv.sessionKey, deduped);
-		return deduped;
-	} finally {
-		conversationLoading[conv.sessionKey] = false;
-	}
+    // Sort by timestamp to interleave messages from different agents
+    deduped.sort((a, b) => a.timestamp - b.timestamp);
+    setMessages(conv.sessionKey, deduped);
+    return deduped;
+  } finally {
+    conversationLoading[conv.sessionKey] = false;
+  }
 }

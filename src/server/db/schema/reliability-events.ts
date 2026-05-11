@@ -13,7 +13,9 @@ export const reliabilityEvents = sqliteTable(
       .notNull()
       .references(() => servers.id, { onDelete: 'cascade' }),
     agentId: text('agent_id'),
-    category: text('category', { enum: ['cron', 'browser', 'timezone', 'general', 'auth', 'skill', 'agent', 'gateway'] }).notNull(),
+    category: text('category', {
+      enum: ['cron', 'browser', 'timezone', 'general', 'auth', 'skill', 'agent', 'gateway'],
+    }).notNull(),
     severity: text('severity', { enum: ['critical', 'high', 'medium', 'low', 'ok'] }).notNull(),
     event: text('event').notNull(),
     message: text('message').notNull(),

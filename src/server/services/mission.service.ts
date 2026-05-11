@@ -1,5 +1,5 @@
 import { eq, and, desc } from 'drizzle-orm';
-import { missions } from '$server/db/schema';
+import { missions } from '@minion-stack/db/schema';
 import { newId, nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
 
@@ -53,9 +53,7 @@ export async function listMissions(
   return ctx.db
     .select()
     .from(missions)
-    .where(
-      and(eq(missions.tenantId, ctx.tenantId), eq(missions.serverId, filters.serverId)),
-    )
+    .where(and(eq(missions.tenantId, ctx.tenantId), eq(missions.serverId, filters.serverId)))
     .orderBy(desc(missions.createdAt))
     .limit(200);
 }
@@ -72,7 +70,9 @@ export async function getMission(ctx: TenantContext, id: string) {
 export async function updateMission(
   ctx: TenantContext,
   id: string,
-  data: Partial<Pick<typeof missions.$inferInsert, 'title' | 'description' | 'status' | 'metadata'>>,
+  data: Partial<
+    Pick<typeof missions.$inferInsert, 'title' | 'description' | 'status' | 'metadata'>
+  >,
 ) {
   await ctx.db
     .update(missions)

@@ -35,7 +35,9 @@ describe('upsertServer', () => {
 describe('listServers', () => {
   it('calls db.select and returns results', async () => {
     const { db, resolve } = createMockDb();
-    const mockServers = [{ id: 's1', name: 'test', url: 'http://x', token: 'x', lastConnectedAt: null }];
+    const mockServers = [
+      { id: 's1', name: 'test', url: 'http://x', token: 'x', lastConnectedAt: null },
+    ];
     resolve(mockServers);
     const result = await listServers({ db, tenantId: 't1' });
     expect(result).toEqual(mockServers);

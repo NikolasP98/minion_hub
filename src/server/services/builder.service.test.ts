@@ -1,9 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import {
-  validateSkillForPublish,
-  setChapterTools,
-  setAgentBuiltSkills,
-} from './builder.service';
+import { validateSkillForPublish, setChapterTools, setAgentBuiltSkills } from './builder.service';
 import { createMockDb } from '$server/test-utils/mock-db';
 
 beforeEach(() => {
@@ -37,10 +33,10 @@ describe('validateSkillForPublish', () => {
     ];
 
     resolveSequence([
-      [skill],      // getBuiltSkill
-      chapters,     // getChapters
-      edges,        // getChapterEdges (chapters.length > 1)
-      allTools,     // batch tool query via ctx.db.select().from(builtChapterTools)
+      [skill], // getBuiltSkill
+      chapters, // getChapters
+      edges, // getChapterEdges (chapters.length > 1)
+      allTools, // batch tool query via ctx.db.select().from(builtChapterTools)
     ]);
 
     const result = await validateSkillForPublish({ db, tenantId: 't1' }, 'skill-1');
@@ -79,8 +75,8 @@ describe('validateSkillForPublish', () => {
     resolveSequence([
       [skill],
       chapters,
-      edges,        // getChapterEdges (chapters.length > 1)
-      allTools,     // batch tool query
+      edges, // getChapterEdges (chapters.length > 1)
+      allTools, // batch tool query
     ]);
 
     const result = await validateSkillForPublish({ db, tenantId: 't1' }, 'skill-1');
@@ -110,20 +106,26 @@ describe('validateSkillForPublish', () => {
     resolveSequence([
       [skill],
       chapters,
-      edges,        // getChapterEdges (chapters.length > 1)
-      allTools,     // batch tool query
+      edges, // getChapterEdges (chapters.length > 1)
+      allTools, // batch tool query
     ]);
 
     const result = await validateSkillForPublish({ db, tenantId: 't1' }, 'skill-1');
 
-    expect(result.errors.some(e => e.toLowerCase().includes('not connected'))).toBe(false);
+    expect(result.errors.some((e) => e.toLowerCase().includes('not connected'))).toBe(false);
   });
 
   it('includes "no tools" error when chapter has no tools assigned', async () => {
     const { db, resolveSequence } = createMockDb();
     const skill = { id: 'skill-1', name: 'My Skill', tenantId: 't1' };
     const chapters = [
-      { id: 'ch-1', name: 'Missing Tools Chapter', type: 'chapter', guide: 'Do it', conditionText: '' },
+      {
+        id: 'ch-1',
+        name: 'Missing Tools Chapter',
+        type: 'chapter',
+        guide: 'Do it',
+        conditionText: '',
+      },
     ];
     // Empty tools result — no tools for ch-1
     const allTools: unknown[] = [];
@@ -132,14 +134,14 @@ describe('validateSkillForPublish', () => {
       [skill],
       chapters,
       // No edges call (chapters.length === 1, so edges skipped)
-      allTools,     // batch tool query returns empty
+      allTools, // batch tool query returns empty
     ]);
 
     const result = await validateSkillForPublish({ db, tenantId: 't1' }, 'skill-1');
 
     expect(result.valid).toBe(false);
     // Shared module reports 'Chapter has no tools assigned' — chapter name is in the finding's chapterName field
-    expect(result.errors.some(e => e.toLowerCase().includes('no tools'))).toBe(true);
+    expect(result.errors.some((e) => e.toLowerCase().includes('no tools'))).toBe(true);
   });
 
   it('skips the tool check entirely when all nodes are condition-type', async () => {
@@ -160,7 +162,7 @@ describe('validateSkillForPublish', () => {
     // select called for: getBuiltSkill + getChapters only (no tool batch query)
     expect(db.select).toHaveBeenCalledTimes(2);
     // condition node missing conditionText would be an error — but here conditionText is set
-    expect(result.errors.some(e => e.toLowerCase().includes('tool'))).toBe(false);
+    expect(result.errors.some((e) => e.toLowerCase().includes('tool'))).toBe(false);
   });
 });
 
@@ -187,7 +189,11 @@ describe('setChapterTools', () => {
 describe('setAgentBuiltSkills', () => {
   it('calls db.insert exactly once for 3 skillIds (not 3 times)', async () => {
     const { db } = createMockDb();
-    await setAgentBuiltSkills({ db, tenantId: 't1' }, 'agent-1', 'server-1', ['skill-a', 'skill-b', 'skill-c']);
+    await setAgentBuiltSkills({ db, tenantId: 't1' }, 'agent-1', 'server-1', [
+      'skill-a',
+      'skill-b',
+      'skill-c',
+    ]);
     expect(db.delete).toHaveBeenCalledTimes(1);
     expect(db.insert).toHaveBeenCalledTimes(1);
   });

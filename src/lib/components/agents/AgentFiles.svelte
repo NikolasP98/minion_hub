@@ -5,10 +5,11 @@
   import 'carta-md/default.css';
   import * as tree from '@zag-js/tree-view';
   import { useMachine, normalizeProps } from '@zag-js/svelte';
+  import DOMPurify from 'dompurify';
 
   let { agentId }: { agentId: string } = $props();
 
-  const carta = new Carta({ sanitizer: false });
+  const carta = new Carta({ sanitizer: (html) => DOMPurify.sanitize(html) });
 
   // ─── FileNode type ────────────────────────────────────────────────────────
   interface FileNode {

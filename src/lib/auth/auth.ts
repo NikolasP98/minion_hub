@@ -1,63 +1,32 @@
-import { betterAuth } from 'better-auth';
-import { drizzleAdapter } from 'better-auth/adapters/drizzle';
-import { jwt } from 'better-auth/plugins';
-import { oidcProvider } from 'better-auth/plugins';
-import { organization } from 'better-auth/plugins';
+import { createAuth, type AuthInstance } from '@minion-stack/auth';
+import { oidcProvider, organization } from 'better-auth/plugins';
 import { createAuthMiddleware } from 'better-auth/api';
 import { getDb } from '$server/db/client';
-import * as schema from '$server/db/schema';
+import * as schema from '@minion-stack/db/schema';
 import { env } from '$env/dynamic/private';
 import { sendInvitationEmail } from '$server/services/email.service';
 import { provisionPersonalAgent } from '$server/services/personal-agent.service';
 
-let _auth: ReturnType<typeof betterAuth> | null = null;
+let _auth: AuthInstance | null = null;
 
-/** Lazy getter — safe to call at request time; never evaluates at module load. */
-export function getAuth() {
+/** Lazy getter — safe to call at request time; never evaluates env at module load. */
+export function getAuth(): AuthInstance {
 	if (!_auth) {
 		const hubUrl = env.BETTER_AUTH_URL ?? 'http://localhost:5173';
-		_auth = betterAuth({
-			database: drizzleAdapter(getDb(), { provider: 'sqlite', schema }),
-			secret: env.BETTER_AUTH_SECRET,
+
+		_auth = createAuth({
+			db: getDb(),
+			schema,
+			secret: env.BETTER_AUTH_SECRET ?? '',
 			baseURL: hubUrl,
-			advanced: {
-				// Desktop mode (Electrobun CEF) runs in incognito — cookies must not
-				// require Secure flag (http://localhost, not https)
-				useSecureCookies: hubUrl.startsWith('https://'),
-			},
 			trustedOrigins: [
-				'http://localhost:5173',
-				'http://localhost:5174',
-				'http://localhost:4173',
-				...(env.BETTER_AUTH_URL && env.BETTER_AUTH_URL !== 'http://localhost:5173'
-					? [env.BETTER_AUTH_URL]
-					: []),
 				...(env.VERCEL_URL ? [`https://${env.VERCEL_URL}`] : []),
 			],
-			emailAndPassword: { enabled: true },
-			accountLinking: {
-				enabled: true,
-				trustedProviders: ['google'],
-			},
-			socialProviders: {
-				...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
-					? { google: { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET } }
-					: {}),
-			},
+			google:
+				env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
+					? { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET }
+					: undefined,
 			plugins: [
-				jwt({
-					jwt: {
-						issuer: hubUrl,
-						audience: 'openclaw-gateway',
-						expirationTime: '1h',
-					},
-					jwks: {
-						keyPairConfig: { alg: 'EdDSA' },
-					},
-				}),
-				oidcProvider({
-					loginPage: '/login',
-				}),
 				organization({
 					async sendInvitationEmail(data) {
 						const baseUrl = env.BETTER_AUTH_URL ?? 'http://localhost:5173';
@@ -70,6 +39,9 @@ export function getAuth() {
 							inviteUrl,
 						});
 					},
+				}),
+				oidcProvider({
+					loginPage: '/login',
 				}),
 			],
 			hooks: {

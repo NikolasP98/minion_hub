@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { listUsers, createUser, updateUserRole, deleteUser } from './user.service';
 import { createMockDb } from '$server/test-utils/mock-db';
-import { user } from '$server/db/schema';
+import { user } from '@minion-stack/db/schema';
 
 beforeEach(() => {
   vi.clearAllMocks();

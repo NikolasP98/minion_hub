@@ -12,19 +12,19 @@
  */
 
 export type AgentAction =
-  | { type: 'readElement';   elementId: string; priority: 'high' | 'normal' }
+  | { type: 'readElement'; elementId: string; priority: 'high' | 'normal' }
   | { type: 'approachAgent'; targetInstanceId: string }
   | { type: 'compactContext' }
-  | { type: 'seekInfo';      elementId: string };
+  | { type: 'seekInfo'; elementId: string };
 
 const QUEUE_MAX = 5;
 
 // Priority order: lower = higher priority
 const PRIORITY_ORDER: Record<AgentAction['type'], number> = {
   compactContext: 0,
-  readElement:    1, // refined by action.priority below
-  seekInfo:       3,
-  approachAgent:  4,
+  readElement: 1, // refined by action.priority below
+  seekInfo: 3,
+  approachAgent: 4,
 };
 
 function actionPriority(a: AgentAction): number {
@@ -65,14 +65,20 @@ export function enqueue(instanceId: string, action: AgentAction): void {
   if (isDup) return;
 
   // Cap check (compactContext bypasses)
-  if (action.type !== 'compactContext' && q.filter((a) => a.type !== 'compactContext').length >= QUEUE_MAX) {
+  if (
+    action.type !== 'compactContext' &&
+    q.filter((a) => a.type !== 'compactContext').length >= QUEUE_MAX
+  ) {
     // Drop lowest-priority non-compact action
     let worstIdx = -1;
     let worstPri = -1;
     for (let i = 0; i < q.length; i++) {
       if (q[i].type === 'compactContext') continue;
       const pri = actionPriority(q[i]);
-      if (pri > worstPri) { worstPri = pri; worstIdx = i; }
+      if (pri > worstPri) {
+        worstPri = pri;
+        worstIdx = i;
+      }
     }
     if (worstIdx >= 0) q.splice(worstIdx, 1);
   }

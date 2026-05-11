@@ -7,8 +7,8 @@ export type PatternType = 'none' | 'dots' | 'grid' | 'crosses' | 'diagonal' | 'h
 
 export interface BgPatternConfig {
   pattern: PatternType;
-  opacity: number;   // 0–100
-  size: number;       // 8–48 (gap in px)
+  opacity: number; // 0–100
+  size: number; // 8–48 (gap in px)
 }
 
 const DEFAULTS: BgPatternConfig = { pattern: 'dots', opacity: 8, size: 18 };
@@ -33,13 +33,31 @@ let opacity = $state(initial.opacity);
 let size = $state(initial.size);
 
 export const bgPattern = {
-  get pattern() { return pattern; },
-  get opacity() { return opacity; },
-  get size() { return size; },
+  get pattern() {
+    return pattern;
+  },
+  get opacity() {
+    return opacity;
+  },
+  get size() {
+    return size;
+  },
 
-  setPattern(p: PatternType) { pattern = p; save({ pattern, opacity, size }); syncPreferenceToServer('bgPattern', { pattern, opacity, size }); },
-  setOpacity(v: number) { opacity = v; save({ pattern, opacity, size }); syncPreferenceToServer('bgPattern', { pattern, opacity, size }); },
-  setSize(v: number) { size = v; save({ pattern, opacity, size }); syncPreferenceToServer('bgPattern', { pattern, opacity, size }); },
+  setPattern(p: PatternType) {
+    pattern = p;
+    save({ pattern, opacity, size });
+    syncPreferenceToServer('bgPattern', { pattern, opacity, size });
+  },
+  setOpacity(v: number) {
+    opacity = v;
+    save({ pattern, opacity, size });
+    syncPreferenceToServer('bgPattern', { pattern, opacity, size });
+  },
+  setSize(v: number) {
+    size = v;
+    save({ pattern, opacity, size });
+    syncPreferenceToServer('bgPattern', { pattern, opacity, size });
+  },
 
   applyFromServer(data: { pattern: string; opacity: number; size: number }) {
     pattern = data.pattern as PatternType;

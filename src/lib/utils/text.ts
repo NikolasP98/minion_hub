@@ -48,7 +48,10 @@ export function parseGatewayMetadata(text: string): { clean: string; isoTs?: str
   const tsRe = /^\[([^\[\]]+)\]\s*/;
   let isoTs: string | undefined;
   const m = clean.match(tsRe);
-  if (m) { isoTs = m[1]; clean = clean.slice(m[0].length); }
+  if (m) {
+    isoTs = m[1];
+    clean = clean.slice(m[0].length);
+  }
   return { clean, isoTs };
 }
 
@@ -73,7 +76,10 @@ export function extractMessageTimestamp(message: unknown): string | undefined {
 
   // Fallback: numeric timestamp field
   if (typeof m.timestamp === 'number') {
-    return new Date(m.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    return new Date(m.timestamp).toLocaleTimeString(undefined, {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   }
   return undefined;
 }

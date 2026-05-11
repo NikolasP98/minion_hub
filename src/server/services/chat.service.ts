@@ -1,5 +1,5 @@
 import { eq, and, asc } from 'drizzle-orm';
-import { chatMessages } from '$server/db/schema';
+import { chatMessages } from '@minion-stack/db/schema';
 import { nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
 
@@ -27,11 +27,7 @@ export async function insertChatMessage(ctx: TenantContext, msg: ChatMessageInpu
   });
 }
 
-export async function listChatMessages(
-  ctx: TenantContext,
-  agentId: string,
-  limit = 200,
-) {
+export async function listChatMessages(ctx: TenantContext, agentId: string, limit = 200) {
   return ctx.db
     .select({
       role: chatMessages.role,
@@ -65,10 +61,7 @@ export async function listChatMessagesBySessionKey(
     .limit(limit);
 }
 
-export async function bulkInsertChatMessages(
-  ctx: TenantContext,
-  messages: ChatMessageInput[],
-) {
+export async function bulkInsertChatMessages(ctx: TenantContext, messages: ChatMessageInput[]) {
   if (messages.length === 0) return;
   const now = nowMs();
   for (const msg of messages) {

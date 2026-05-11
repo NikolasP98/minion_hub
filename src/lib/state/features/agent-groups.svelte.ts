@@ -28,16 +28,26 @@ function loadPersistedCollapsed(): Set<string> {
   try {
     const raw = localStorage.getItem('agentGroups:collapsed');
     if (raw) return new Set(JSON.parse(raw));
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return new Set();
 }
 
 function persistViewMode(mode: 'list' | 'gallery') {
-  try { localStorage.setItem('agentGroups:viewMode', mode); } catch { /* ignore */ }
+  try {
+    localStorage.setItem('agentGroups:viewMode', mode);
+  } catch {
+    /* ignore */
+  }
 }
 
 function persistCollapsed(ids: Set<string>) {
-  try { localStorage.setItem('agentGroups:collapsed', JSON.stringify([...ids])); } catch { /* ignore */ }
+  try {
+    localStorage.setItem('agentGroups:collapsed', JSON.stringify([...ids]));
+  } catch {
+    /* ignore */
+  }
 }
 
 function loadPersistedUngroupedCollapsed(): boolean {
@@ -49,7 +59,11 @@ function loadPersistedUngroupedCollapsed(): boolean {
 }
 
 function persistUngroupedCollapsed(collapsed: boolean) {
-  try { localStorage.setItem('agentGroups:ungroupedCollapsed', String(collapsed)); } catch { /* ignore */ }
+  try {
+    localStorage.setItem('agentGroups:ungroupedCollapsed', String(collapsed));
+  } catch {
+    /* ignore */
+  }
 }
 
 export const agentGroupsState: AgentGroupsState = $state({
@@ -109,7 +123,10 @@ export async function createAgentGroup(name: string) {
   }
 }
 
-export async function updateAgentGroup(groupId: string, data: { name?: string; sortOrder?: number }) {
+export async function updateAgentGroup(
+  groupId: string,
+  data: { name?: string; sortOrder?: number },
+) {
   const sid = getServerId();
   if (!sid) return;
 
@@ -139,7 +156,11 @@ export async function deleteAgentGroup(groupId: string) {
   persistCollapsed(next);
 }
 
-export async function moveAgentToGroup(agentId: string, fromGroupId: string | null, toGroupId: string | null) {
+export async function moveAgentToGroup(
+  agentId: string,
+  fromGroupId: string | null,
+  toGroupId: string | null,
+) {
   const sid = getServerId();
   if (!sid) return;
 

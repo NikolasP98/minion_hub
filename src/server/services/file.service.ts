@@ -1,5 +1,5 @@
 import { eq, and, desc } from 'drizzle-orm';
-import { files } from '$server/db/schema';
+import { files } from '@minion-stack/db/schema';
 import { newId, nowMs } from '$server/db/utils';
 import { uploadToB2, getSignedDownloadUrl, deleteFromB2 } from '$server/storage/b2';
 import type { TenantContext } from './base';

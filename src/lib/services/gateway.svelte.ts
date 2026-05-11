@@ -1,17 +1,59 @@
 import { conn } from '$lib/state/gateway/connection.svelte';
-import { gw, upsertSession, mergeSessions, clearSessions } from '$lib/state/gateway/gateway-data.svelte';
-import { agentChat, agentActivity, ensureAgentChat, ensureAgentActivity, markSparkBinDirty, mergeActivityBinsFromDb, startSqliteFlush, stopSqliteFlush, pushChatMessage, SPARK_BIN_MS, SPARK_BIN_COUNT } from '$lib/state/chat/chat.svelte';
-import { hostsState, getActiveHost, updateHost, saveLastActiveHost } from '$lib/state/features/hosts.svelte';
+import {
+  type DebugStepEvent,
+  type DebugStepName,
+  pushDebugStepEvent,
+  pushDebugStepTimeout,
+} from '$lib/state/debug';
+import {
+  gw,
+  upsertSession,
+  mergeSessions,
+  clearSessions,
+} from '$lib/state/gateway/gateway-data.svelte';
+import {
+  agentChat,
+  agentActivity,
+  ensureAgentChat,
+  ensureAgentActivity,
+  markSparkBinDirty,
+  mergeActivityBinsFromDb,
+  startSqliteFlush,
+  stopSqliteFlush,
+  pushChatMessage,
+  SPARK_BIN_MS,
+  SPARK_BIN_COUNT,
+} from '$lib/state/chat/chat.svelte';
+import {
+  hostsState,
+  getActiveHost,
+  updateHost,
+  saveLastActiveHost,
+} from '$lib/state/features/hosts.svelte';
 import { autoSave, resetWorkshop } from '$lib/state/workshop/workshop.svelte';
 import { ui } from '$lib/state/ui/ui.svelte';
 import { toastError, toastInfo, toastSuccess } from '$lib/state/ui/toast.svelte';
-import { pushReliabilityEvent, type ReliabilityEvent } from '$lib/state/reliability/reliability.svelte';
-import { configState, loadConfig, restartState, onRestartReconnected } from '$lib/state/config/config.svelte';
-import { uuid } from '$lib/utils/uuid';
+import {
+  pushReliabilityEvent,
+  type ReliabilityEvent,
+} from '$lib/state/reliability/reliability.svelte';
+import {
+  configState,
+  loadConfig,
+  restartState,
+  onRestartReconnected,
+} from '$lib/state/config/config.svelte';
 import { extractText } from '$lib/utils/text';
-import type { HelloOk, ChatEvent, Session } from '$lib/types/gateway';
-import { parseAgentSessionKey } from '$lib/utils/session-key';
 import { loadAgentGroups } from '$lib/state/features/agent-groups.svelte';
+import {
+  GatewayClient,
+  uuid,
+  parseAgentSessionKey,
+  type HelloOk,
+  type ChatEvent,
+  type Session,
+  type EventFrame,
+} from '@minion-stack/shared';
 
 // ─── Pi-Agent Notification Preferences ────────────────────────────────────────
 
@@ -31,9 +73,12 @@ const DEFAULT_PREFS: NotificationPrefs = {
 
 function getNotificationPrefs(): NotificationPrefs {
   try {
-    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('minion-hub:notifications') : null;
+    const raw =
+      typeof localStorage !== 'undefined' ? localStorage.getItem('minion-hub:notifications') : null;
     if (raw) return { ...DEFAULT_PREFS, ...JSON.parse(raw) };
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return DEFAULT_PREFS;
 }
 
@@ -66,13 +111,8 @@ function mapGatewaySessionRows(raw: unknown[]): Session[] {
     .filter((s) => s.sessionKey);
 }
 
-// Internal WS state — plain vars, not $state
-let ws: WebSocket | null = null;
-let wsGeneration = 0;
-let pending = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
-let connectSent = false;
-let connectNonce: string | null = null;
-let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+// Internal state — plain vars, not $state
+let client: GatewayClient | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let pollPresenceTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -85,52 +125,157 @@ export function wsConnect() {
   conn.connecting = true;
   conn.particleHue = 'amber';
 
-  connectSent = false;
-  connectNonce = null;
   gw.lastSeq = null;
 
-  // Close any existing socket; its close handler will no-op due to the stale generation check.
-  if (ws) { ws.close(); ws = null; }
+  // Close existing client before creating a new one
+  if (client) {
+    client.close();
+    client = null;
+  }
 
-  try {
-    const gen = ++wsGeneration;
-    ws = new WebSocket(host.url);
-    ws.binaryType = 'arraybuffer';
+  const capturedHostId = hostsState.activeHostId;
+  const token = host.token.trim();
+  const role = 'operator';
+  const scopes = [
+    'operator.admin',
+    'operator.read',
+    'operator.write',
+    'operator.approvals',
+    'operator.pairing',
+  ];
 
-    ws.addEventListener('open', () => {
-      // Wait for connect.challenge event
-    });
+  client = new GatewayClient({
+    url: host.url,
+    autoReconnect: true,
 
-    ws.addEventListener('message', (ev) => {
-      if (wsGeneration !== gen) return; // stale socket
-      // Route binary frames to registered handlers
-      if (ev.data instanceof ArrayBuffer) {
-        notifyBinaryListeners(new Uint8Array(ev.data));
-        return;
+    onOpen() {
+      // Wait for connect.challenge event — no action needed here
+    },
+
+    async onChallenge(nonce: string): Promise<Record<string, unknown>> {
+      // Fetch device identity + signature from server
+      let device:
+        | { id: string; publicKey: string; signature: string; signedAt: number; nonce?: string }
+        | undefined;
+      try {
+        const signRes = await fetch('/api/device-identity/sign', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nonce,
+            token: token || undefined,
+            role,
+            scopes,
+            clientId: 'minion-control-ui',
+            clientMode: 'ui',
+          }),
+        });
+        if (signRes.ok) {
+          const data = await signRes.json();
+          device = data.device;
+        } else {
+          console.warn('[hub] device-identity sign failed:', signRes.status);
+        }
+      } catch (e) {
+        console.warn('[hub] device-identity sign error:', e);
       }
-      handleMessage(String(ev.data ?? ''));
-    });
 
-    ws.addEventListener('close', (ev) => {
-      if (wsGeneration !== gen) return; // stale socket
-      const reason = String(ev.reason ?? '');
-      ws = null;
+      return {
+        minProtocol: 3,
+        maxProtocol: 3,
+        client: { id: 'minion-control-ui', version: '1.0', platform: 'web', mode: 'ui' },
+        role,
+        scopes,
+        caps: [],
+        auth: token ? { token } : undefined,
+        device,
+        userAgent: navigator.userAgent,
+        locale: navigator.language,
+      };
+    },
+
+    onEvent(frame: EventFrame) {
+      const seq = typeof frame.seq === 'number' ? frame.seq : null;
+      if (seq !== null) {
+        if (gw.lastSeq !== null && seq > gw.lastSeq + 1) {
+          console.warn('[hub] event gap: expected', gw.lastSeq + 1, 'got', seq);
+        }
+        gw.lastSeq = seq;
+      }
+      handleEvent(frame as unknown as Record<string, unknown>);
+    },
+
+    onClose(code: number, reason: string) {
       conn.connected = false;
       conn.connecting = false;
       conn.particleHue = 'red';
-      flushPending(new Error(`closed (${ev.code}): ${reason}`));
-      scheduleReconnect();
-    });
+      // Binary listeners: raw socket is gone, no cleanup needed for Uint8Array listeners
+    },
 
-    ws.addEventListener('error', () => {
-      // close handler fires next
-    });
-  } catch (e) {
+    onReconnectScheduled(_delayMs: number) {
+      // Reconnect scheduled — conn state already updated in onClose
+    },
+  });
+
+  // Wire binary frame listener for Yjs workshop sync.
+  // TODO(phase-8): upstream proper binary channel API to GatewayClient.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rawWs = (client as unknown as { ws: WebSocket | null }).ws;
+
+  // Attach binary listener after connect resolves so we have a socket reference.
+  void client.connect().then((hello) => {
+    const wasReconnect = conn.backoffMs > 800;
+    conn.backoffMs = 800;
+    conn.connected = true;
     conn.connecting = false;
-    conn.particleHue = 'red';
-  
-    ws = null;
-  }
+    conn.particleHue = 'blue';
+    conn.connectedAt = Date.now();
+    conn.connectError = null;
+
+    if (wasReconnect) {
+      const activeHost = getActiveHost();
+      toastSuccess('Reconnected', activeHost?.name ?? activeHost?.url);
+    }
+
+    gw.hello = hello as HelloOk;
+    gw.presence = (hello as HelloOk).snapshot?.presence ?? [];
+
+    if (capturedHostId) {
+      const h = hostsState.hosts.find((x) => x.id === capturedHostId);
+      if (h) {
+        h.lastConnectedAt = conn.connectedAt;
+        updateHost(capturedHostId, {
+          name: h.name,
+          url: h.url,
+          token: h.token,
+          lastConnectedAt: conn.connectedAt,
+        });
+        saveLastActiveHost(capturedHostId);
+      }
+    }
+
+    // Wire binary message handler onto the underlying socket.
+    // TODO(phase-8): upstream proper binary channel API to GatewayClient.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sock = (client as unknown as { ws: unknown }).ws as { binaryType?: string; addEventListener?: (ev: string, fn: (e: MessageEvent) => void) => void } | null;
+    if (sock && typeof sock.addEventListener === 'function') {
+      sock.binaryType = 'arraybuffer';
+      sock.addEventListener('message', (ev: MessageEvent) => {
+        if (ev.data instanceof ArrayBuffer) {
+          notifyBinaryListeners(new Uint8Array(ev.data));
+        }
+      });
+    }
+
+    onHelloOk(hello as HelloOk);
+    resolveServerId();
+  }).catch((err) => {
+    console.error('[hub] connect failed:', err);
+    conn.connectError = String((err as Error)?.message ?? err);
+    toastError('Connection failed', conn.connectError, { id: 'gateway-connect-failed' });
+  });
+
+  void rawWs; // suppress unused warning
 }
 
 export function wsDisconnect() {
@@ -140,10 +285,11 @@ export function wsDisconnect() {
 
   conn.particleHue = 'red';
 
-  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
-  if (ws) { ws.close(); ws = null; }
+  if (client) {
+    client.close();
+    client = null;
+  }
 
-  flushPending(new Error('disconnected'));
   stopPolling();
   stopSqliteFlush();
 
@@ -179,21 +325,8 @@ export function wsDisconnect() {
 }
 
 export function sendRequest(method: string, params?: unknown, timeoutMs = 15000): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-      return reject(new Error('not connected'));
-    }
-    const id = uuid();
-    const timer = setTimeout(() => {
-      pending.delete(id);
-      reject(new Error(`request '${method}' timed out after ${timeoutMs}ms`));
-    }, timeoutMs);
-    pending.set(id, {
-      resolve: (v) => { clearTimeout(timer); resolve(v); },
-      reject: (e) => { clearTimeout(timer); reject(e); },
-    });
-    ws.send(JSON.stringify({ type: 'req', id, method, params }));
-  });
+  if (!client) return Promise.reject(new Error('not connected'));
+  return client.request<unknown>(method, params, { timeoutMs });
 }
 
 /**
@@ -214,105 +347,6 @@ export async function requestWhatsAppPair(channelId: string): Promise<void> {
 }
 
 // ─── Internal ─────────────────────────────────────────────────────────────────
-
-function scheduleReconnect() {
-  if (conn.closed) return;
-  const delay = conn.backoffMs;
-  conn.backoffMs = Math.min(conn.backoffMs * 1.7, 15000);
-
-  reconnectTimer = setTimeout(() => { reconnectTimer = null; wsConnect(); }, delay);
-}
-
-function flushPending(err: Error) {
-  for (const p of pending.values()) p.reject(err);
-  pending.clear();
-}
-
-async function sendConnect() {
-  if (connectSent) return;
-  connectSent = true;
-
-  const activeHost = getActiveHost();
-  const token = activeHost ? activeHost.token.trim() : '';
-  const capturedHostId = hostsState.activeHostId;
-  const role = 'operator';
-  const scopes = ['operator.admin', 'operator.read', 'operator.write', 'operator.approvals', 'operator.pairing'];
-
-  // Fetch device identity + signature from server
-  let device: { id: string; publicKey: string; signature: string; signedAt: number; nonce?: string } | undefined;
-  try {
-    const signRes = await fetch('/api/device-identity/sign', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        nonce: connectNonce,
-        token: token || undefined,
-        role,
-        scopes,
-        clientId: 'minion-control-ui',
-        clientMode: 'ui',
-      }),
-    });
-    if (signRes.ok) {
-      const data = await signRes.json();
-      device = data.device;
-    } else {
-      console.warn('[hub] device-identity sign failed:', signRes.status);
-    }
-  } catch (e) {
-    console.warn('[hub] device-identity sign error:', e);
-  }
-
-  sendRequest('connect', {
-    minProtocol: 3,
-    maxProtocol: 3,
-    client: { id: 'minion-control-ui', version: '1.0', platform: 'web', mode: 'ui' },
-    role,
-    scopes,
-    caps: [],
-    auth: token ? { token } : undefined,
-    device,
-    userAgent: navigator.userAgent,
-    locale: navigator.language,
-  })
-    .then((hello) => {
-      const wasReconnect = conn.backoffMs > 800;
-      conn.backoffMs = 800;
-      conn.connected = true;
-      conn.connecting = false;
-      conn.particleHue = 'blue';
-      conn.connectedAt = Date.now();
-      conn.connectError = null;
-
-      if (wasReconnect) {
-        const host = getActiveHost();
-        toastSuccess('Reconnected', host?.name ?? host?.url);
-      }
-
-
-      gw.hello = hello as HelloOk;
-      gw.presence = (hello as HelloOk).snapshot?.presence ?? [];
-
-      if (capturedHostId) {
-        const h = hostsState.hosts.find((x) => x.id === capturedHostId);
-        if (h) {
-          h.lastConnectedAt = conn.connectedAt;
-          updateHost(capturedHostId, { name: h.name, url: h.url, token: h.token, lastConnectedAt: conn.connectedAt });
-          saveLastActiveHost(capturedHostId);
-        }
-      }
-      onHelloOk(hello as HelloOk);
-
-      // Resolve DB server ID from active host URL
-      resolveServerId();
-    })
-    .catch((err) => {
-      console.error('[hub] connect failed:', err);
-      conn.connectError = String(err?.message ?? err);
-      toastError('Connection failed', conn.connectError, { id: 'gateway-connect-failed' });
-      ws?.close(4008, 'connect failed');
-    });
-}
 
 async function resolveServerId() {
   try {
@@ -345,53 +379,30 @@ async function fetchActivityBinsFromDb(serverId: string): Promise<void> {
     if (!res.ok) return;
     const { bins } = await res.json();
     if (Array.isArray(bins)) mergeActivityBinsFromDb(bins);
-  } catch { /* non-critical */ }
-}
-
-function handleMessage(raw: string) {
-  let frame: Record<string, unknown>;
-  try { frame = JSON.parse(raw); } catch { return; }
-
-  if (frame.type === 'event') {
-    if (frame.event === 'connect.challenge') {
-      const payload = frame.payload as { nonce?: unknown } | undefined;
-      connectNonce = payload && typeof payload.nonce === 'string' ? payload.nonce : null;
-      sendConnect();
-      return;
-    }
-    const seq = typeof frame.seq === 'number' ? frame.seq : null;
-    if (seq !== null) {
-      if (gw.lastSeq !== null && seq > gw.lastSeq + 1) {
-        console.warn('[hub] event gap: expected', gw.lastSeq + 1, 'got', seq);
-      }
-      gw.lastSeq = seq;
-    }
-    handleEvent(frame);
-    return;
-  }
-
-  if (frame.type === 'res') {
-    const p = pending.get(frame.id as string);
-    if (!p) return;
-    pending.delete(frame.id as string);
-    if (frame.ok) {
-      p.resolve(frame.payload);
-    } else {
-      const err = frame.error as { message?: string } | undefined;
-      p.reject(new Error(err?.message ?? 'request failed'));
-    }
+  } catch {
+    /* non-critical */
   }
 }
 
 function handleEvent(evt: Record<string, unknown>) {
   switch (evt.event) {
-    case 'agent':   onAgentEvent(evt.payload as Record<string, unknown>); break;
-    case 'chat':    onChatEvent(evt.payload as ChatEvent); break;
-    case 'presence': onPresenceEvent(evt.payload); break;
-    case 'health':  gw.health = evt.payload; break;
-    case 'tick':    ui.lastTickAt = Date.now(); break;
+    case 'agent':
+      onAgentEvent(evt.payload as Record<string, unknown>);
+      break;
+    case 'chat':
+      onChatEvent(evt.payload as ChatEvent);
+      break;
+    case 'presence':
+      onPresenceEvent(evt.payload);
+      break;
+    case 'health':
+      gw.health = evt.payload;
+      break;
+    case 'tick':
+      ui.lastTickAt = Date.now();
+      break;
     case 'shutdown': {
-      const reason = ((evt.payload as { reason?: string })?.reason) ?? 'Gateway shutting down';
+      const reason = (evt.payload as { reason?: string })?.reason ?? 'Gateway shutting down';
       ui.shutdownReason = reason;
       toastError('Gateway shutdown', reason, { id: 'gateway-shutdown', duration: Infinity });
       break;
@@ -428,7 +439,9 @@ function handleEvent(evt: Record<string, unknown>) {
       }
       break;
     case 'pi-agent.subagent-completed': {
-      const scPayload = evt.payload as { key?: string; status?: string; agentId?: string } | undefined;
+      const scPayload = evt.payload as
+        | { key?: string; status?: string; agentId?: string }
+        | undefined;
       if (scPayload?.status === 'failed') {
         const prefs = getNotificationPrefs();
         if (prefs.subagentFailed && shouldShowToast(prefs)) {
@@ -441,7 +454,9 @@ function handleEvent(evt: Record<string, unknown>) {
       break;
     }
     case 'pi-agent.orchestration-progress': {
-      const opPayload = evt.payload as { type?: string; orchestrationId?: string; data?: Record<string, unknown> } | undefined;
+      const opPayload = evt.payload as
+        | { type?: string; orchestrationId?: string; data?: Record<string, unknown> }
+        | undefined;
       const prefs = getNotificationPrefs();
       if (opPayload?.type === 'orchestration.started') {
         if (prefs.orchestrationStarted && shouldShowToast(prefs)) {
@@ -453,7 +468,10 @@ function handleEvent(evt: Record<string, unknown>) {
           if (orchStatus === 'completed') {
             toastSuccess('Orchestration completed', opPayload?.orchestrationId?.slice(0, 8) ?? '');
           } else {
-            toastError('Orchestration ' + (orchStatus ?? 'ended'), opPayload?.orchestrationId?.slice(0, 8) ?? '');
+            toastError(
+              'Orchestration ' + (orchStatus ?? 'ended'),
+              opPayload?.orchestrationId?.slice(0, 8) ?? '',
+            );
           }
         }
       }
@@ -462,13 +480,69 @@ function handleEvent(evt: Record<string, unknown>) {
       }
       break;
     }
+    default: {
+      const evtName = evt.event as string | undefined;
+      // Phase 25: bubble prompt.section.* mutations to a single window event
+      // so /prompt subscribers can refetch usage without a per-event case.
+      if (
+        typeof evtName === 'string' &&
+        evtName.startsWith('prompt.section.') &&
+        typeof window !== 'undefined'
+      ) {
+        window.dispatchEvent(
+          new CustomEvent('prompt.sections.changed', { detail: evt.payload }),
+        );
+      }
+      // Phase D-0c: debug.step.* (admin-only) — push to debug rune store
+      if (typeof evtName === 'string' && evtName.startsWith('debug.step.')) {
+        onDebugStepEvent(evtName, evt.payload);
+      }
+      break;
+    }
+  }
+}
+
+function onDebugStepEvent(eventName: string, payload: unknown) {
+  if (!payload || typeof payload !== 'object') return;
+  const stepFromName = eventName.slice('debug.step.'.length);
+  // Special: debug.step.timeout — auto-resume notification, not a gate fire
+  if (stepFromName === 'timeout') {
+    const p = payload as { sessionKey?: unknown; step?: unknown; ts?: unknown };
+    if (typeof p.sessionKey === 'string' && typeof p.step === 'string') {
+      pushDebugStepTimeout({
+        sessionKey: p.sessionKey,
+        step: p.step as DebugStepName,
+        ts: typeof p.ts === 'number' ? p.ts : Date.now(),
+      });
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(eventName, { detail: payload }));
+    }
+    return;
+  }
+  // Step gate event: push into the debug store. Payload shape matches the
+  // gateway's DebugStepEvent type.
+  const p = payload as Partial<DebugStepEvent>;
+  if (typeof p.sessionKey === 'string' && typeof p.step === 'string') {
+    pushDebugStepEvent({
+      category: 'debug.step',
+      step: p.step as DebugStepName,
+      sessionKey: p.sessionKey,
+      agentId: typeof p.agentId === 'string' ? p.agentId : undefined,
+      state: (p.state as Record<string, unknown>) ?? {},
+      ts: typeof p.ts === 'number' ? p.ts : Date.now(),
+    });
+  }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(eventName, { detail: payload }));
   }
 }
 
 function onAgentEvent(payload: Record<string, unknown>) {
   if (!payload) return;
   let agentId = payload.agentId as string | undefined;
-  if (!agentId && payload.sessionKey) agentId = parseAgentId(payload.sessionKey as string) ?? undefined;
+  if (!agentId && payload.sessionKey)
+    agentId = parseAgentId(payload.sessionKey as string) ?? undefined;
   if (!agentId) agentId = gw.defaultAgentId ?? 'default';
 
   const act = ensureAgentActivity(agentId);
@@ -482,8 +556,9 @@ function onAgentEvent(payload: Record<string, unknown>) {
   markSparkBinDirty(agentId, binTs, act.sparkBins[binIdx]);
 
   if (act._workingTimer) clearTimeout(act._workingTimer);
-  const aid = agentId;
-  act._workingTimer = setTimeout(() => { act.working = false; }, 5000);
+  act._workingTimer = setTimeout(() => {
+    act.working = false;
+  }, 5000);
 
   if (payload.sessionKey) {
     const sk = payload.sessionKey as string;
@@ -533,22 +608,37 @@ function onChatEvent(payload: ChatEvent) {
     // Only refresh main chat history — workshop sessions are handled by the bridge
     if (sk === `agent:${agentId}:main`) loadChatHistory(agentId);
     setSessionIdle(sk);
-    if (ui.sessionStatusTimers[sk]) { clearTimeout(ui.sessionStatusTimers[sk]); delete ui.sessionStatusTimers[sk]; }
+    if (ui.sessionStatusTimers[sk]) {
+      clearTimeout(ui.sessionStatusTimers[sk]);
+      delete ui.sessionStatusTimers[sk];
+    }
   } else if (payload.state === 'aborted') {
     const msg = payload.message as { role?: string; content?: unknown } | null;
     if (msg?.role === 'assistant' && Array.isArray(msg.content)) {
       pushChatMessage(chat, msg as never);
     } else if (chat.stream?.trim()) {
-      pushChatMessage(chat, { role: 'assistant', content: [{ type: 'text', text: chat.stream }], timestamp: Date.now() } as never);
+      pushChatMessage(chat, {
+        role: 'assistant',
+        content: [{ type: 'text', text: chat.stream }],
+        timestamp: Date.now(),
+      } as never);
     }
-    chat.stream = null; chat.runId = null;
+    chat.stream = null;
+    chat.runId = null;
     setSessionIdle(sk);
-    if (ui.sessionStatusTimers[sk]) { clearTimeout(ui.sessionStatusTimers[sk]); delete ui.sessionStatusTimers[sk]; }
+    if (ui.sessionStatusTimers[sk]) {
+      clearTimeout(ui.sessionStatusTimers[sk]);
+      delete ui.sessionStatusTimers[sk];
+    }
   } else if (payload.state === 'error') {
-    chat.stream = null; chat.runId = null;
+    chat.stream = null;
+    chat.runId = null;
     chat.lastError = payload.errorMessage ?? 'chat error';
     setSessionIdle(sk);
-    if (ui.sessionStatusTimers[sk]) { clearTimeout(ui.sessionStatusTimers[sk]); delete ui.sessionStatusTimers[sk]; }
+    if (ui.sessionStatusTimers[sk]) {
+      clearTimeout(ui.sessionStatusTimers[sk]);
+      delete ui.sessionStatusTimers[sk];
+    }
   }
 }
 
@@ -574,11 +664,17 @@ function setSessionIdle(sk: string) {
   ui.sessionStatus[sk] = 'idle';
   const existing = sessionEvictTimers.get(sk);
   if (existing) clearTimeout(existing);
-  sessionEvictTimers.set(sk, setTimeout(() => {
-    sessionEvictTimers.delete(sk);
-    delete ui.sessionStatus[sk];
-    delete ui.sessionStatusTimers[sk];
-  }, 10 * 60 * 1000));
+  sessionEvictTimers.set(
+    sk,
+    setTimeout(
+      () => {
+        sessionEvictTimers.delete(sk);
+        delete ui.sessionStatus[sk];
+        delete ui.sessionStatusTimers[sk];
+      },
+      10 * 60 * 1000,
+    ),
+  );
 }
 
 function parseAgentId(sessionKey: string): string | null {
@@ -598,12 +694,18 @@ function onHelloOk(hello: HelloOk) {
     .then((r) => {
       const res = r as { agents?: never[]; defaultId?: string } | null;
       gw.agents = res?.agents ?? [];
-      gw.defaultAgentId = res?.defaultId ?? (gw.agents.length > 0 ? (gw.agents[0] as { id: string }).id : null);
+      gw.defaultAgentId =
+        res?.defaultId ?? (gw.agents.length > 0 ? (gw.agents[0] as { id: string }).id : null);
       for (const agent of gw.agents) {
         const a = agent as { id: string };
         ensureAgentChat(a.id);
         ensureAgentActivity(a.id);
-        upsertSession({ sessionKey: `agent:${a.id}:main`, agentId: a.id, label: 'main', status: 'idle' });
+        upsertSession({
+          sessionKey: `agent:${a.id}:main`,
+          agentId: a.id,
+          label: 'main',
+          status: 'idle',
+        });
       }
       for (const agent of gw.agents) loadChatHistory((agent as { id: string }).id);
     })
@@ -611,30 +713,35 @@ function onHelloOk(hello: HelloOk) {
 
   sendRequest('sessions.list', {})
     .then((r) => {
-      const raw = ((r as { sessions?: unknown[] })?.sessions) ?? [];
+      const raw = (r as { sessions?: unknown[] })?.sessions ?? [];
       mergeSessions(mapGatewaySessionRows(raw));
     })
     .catch(() => {});
 
-  sendRequest('health', {}).then((r) => { gw.health = r; }).catch(() => {});
-  sendRequest('system-presence', {}).then((r) => { if (Array.isArray(r)) gw.presence = r; }).catch(() => {});
-  sendRequest('channels.status', {}).then((r) => { if (r) gw.channels = r; }).catch(() => {});
-  sendRequest('cron.list', {}).then((r) => { if (r) gw.cronJobs = (r as { jobs?: never[] })?.jobs ?? []; }).catch(() => {});
-
-  // Sync personal agent displayNames to gateway (cache is volatile, lost on restart)
-  fetch('/api/gateway/personal-agent-configs')
-    .then(r => r.ok ? r.json() : null)
-    .then(data => {
-      if (!data?.configs) return;
-      for (const cfg of data.configs as { agentId: string; displayName: string; avatarUrl?: string | null }[]) {
-        sendRequest('hub.personal-agent.updated', {
-          agentId: cfg.agentId,
-          displayName: cfg.displayName,
-          ...(cfg.avatarUrl ? { avatarUrl: cfg.avatarUrl } : {}),
-        }).catch(() => {});
-      }
+  sendRequest('health', {})
+    .then((r) => {
+      gw.health = r;
     })
     .catch(() => {});
+  sendRequest('system-presence', {})
+    .then((r) => {
+      if (Array.isArray(r)) gw.presence = r;
+    })
+    .catch(() => {});
+  sendRequest('channels.status', {})
+    .then((r) => {
+      if (r) gw.channels = r;
+    })
+    .catch(() => {});
+  sendRequest('cron.list', {})
+    .then((r) => {
+      if (r) gw.cronJobs = (r as { jobs?: never[] })?.jobs ?? [];
+    })
+    .catch(() => {});
+
+  // (Removed) Personal-agent displayName sync from hub→gateway. Display name
+  // now lives in gateway config (`agents.list[].identity.name`) and survives
+  // restarts. /my-agent writes via config.patch directly.
 
   // Reload config if it was loaded before disconnect (e.g. after a save that restarted the gateway)
   if (configState.loaded || configState.loading) {
@@ -660,6 +767,121 @@ export async function fetchKGSnapshot(agentId: string) {
   return sendRequest('memory.snapshot', { agentId });
 }
 
+// ──────────────────────────────────────────────────────────────────────────
+// Phase D-0c — debug stepped-build RPCs (admin-only)
+// ──────────────────────────────────────────────────────────────────────────
+
+export async function debugSetSteppedBuild(
+  sessionKey: string,
+  enabled: boolean,
+  pauseTimeoutMs?: number,
+) {
+  return sendRequest('debug.setSteppedBuild', { sessionKey, enabled, pauseTimeoutMs });
+}
+
+export async function debugStepContinue(sessionKey: string, fromStep?: string) {
+  return sendRequest('debug.stepContinue', { sessionKey, fromStep });
+}
+
+export async function debugSkipAll(sessionKey: string) {
+  return sendRequest('debug.skipAll', { sessionKey });
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Phase D-0f — externalized section prose read/write
+// ──────────────────────────────────────────────────────────────────────────
+
+export interface ProseReadParams {
+  layer: 'platform' | 'agent-type' | 'identity' | 'user' | 'session';
+  sectionId: string;
+  variant?: string;
+  scope: 'global' | 'agent';
+  /** Required when scope === 'agent'. The server derives the workspace path
+   * from this — clients no longer send a path (D-0f-1.5 security fix). */
+  agentId?: string;
+}
+
+export interface ProseReadResult {
+  path: string;
+  content: string;
+  exists: boolean;
+  scope: 'global' | 'agent';
+  /** D-0f-1.5: present when the section ships a Tier-1 default template
+   * and the file doesn't exist yet. Hub uses this to power the
+   * "Initialize from default" empty-state button. */
+  templateDefault?: string;
+  /** D-0g-2: filesystem mtime — pass back as expectedMtimeMs on the next
+   * write to enable optimistic-concurrency conflict detection. */
+  mtimeMs?: number;
+  /** D-0g-3: section's `cacheable` flag — when true, editing this prose
+   * invalidates the Anthropic prompt-cache prefix on the next request. */
+  cacheable?: boolean;
+}
+
+export async function readSectionProse(params: ProseReadParams): Promise<ProseReadResult> {
+  const res = await sendRequest('prompt.sections.prose.read', params);
+  return res as ProseReadResult;
+}
+
+export interface ProseWriteResult {
+  path: string;
+  bytes: number;
+  /** D-0g-2: post-write mtime to thread into the next write. */
+  mtimeMs?: number;
+}
+
+/** D-0g-2: thrown by writeSectionProse when the gateway returns CONFLICT.
+ *  Carries the expected vs actual mtimes so the UI can show "file changed,
+ *  reload?" without re-parsing the raw error. */
+export class ProseConflictError extends Error {
+  expectedMtimeMs: number | undefined;
+  actualMtimeMs: number | undefined;
+  constructor(message: string, expected: number | undefined, actual: number | undefined) {
+    super(message);
+    this.name = 'ProseConflictError';
+    this.expectedMtimeMs = expected;
+    this.actualMtimeMs = actual;
+  }
+}
+
+export async function writeSectionProse(
+  params: ProseReadParams & { content: string; expectedMtimeMs?: number },
+): Promise<ProseWriteResult> {
+  try {
+    const res = await sendRequest('prompt.sections.prose.write', params);
+    return res as ProseWriteResult;
+  } catch (err: unknown) {
+    // The shared GatewayClient surfaces ErrorShape via a thrown Error whose
+    // message/code carry the CONFLICT label. Extract details when possible.
+    const anyErr = err as { code?: string; details?: { expectedMtimeMs?: number; actualMtimeMs?: number }; message?: string };
+    if (anyErr?.code === 'CONFLICT') {
+      throw new ProseConflictError(
+        anyErr.message ?? 'prose file changed since last read',
+        anyErr.details?.expectedMtimeMs,
+        anyErr.details?.actualMtimeMs,
+      );
+    }
+    throw err;
+  }
+}
+
+// Phase D-0g-1: FILE-source inspector. Read-only list of workspace files
+// embedded by sections like project-context.
+export interface WorkspaceFileEntry {
+  path: string;
+  chars: number;
+  truncatedPreview: string;
+  exists: boolean;
+  synthetic?: boolean;
+}
+
+export async function listSectionWorkspaceFiles(agentId: string): Promise<WorkspaceFileEntry[]> {
+  const res = (await sendRequest('prompt.sections.workspaceFiles.list', { agentId })) as {
+    files: WorkspaceFileEntry[];
+  };
+  return res.files ?? [];
+}
+
 export function loadChatHistory(agentId: string) {
   const chat = ensureAgentChat(agentId);
   const isInitialLoad = chat.messages.length === 0;
@@ -672,7 +894,9 @@ export function loadChatHistory(agentId: string) {
       chat.messages.splice(0, chat.messages.length, ...incoming);
     })
     .catch(() => {})
-    .finally(() => { chat.loading = false; });
+    .finally(() => {
+      chat.loading = false;
+    });
 }
 
 export function sendChatMsg(agentId: string) {
@@ -683,7 +907,11 @@ export function sendChatMsg(agentId: string) {
   const sessionKey = `agent:${agentId}:main`;
   const runId = uuid();
 
-  pushChatMessage(chat, { role: 'user', content: [{ type: 'text', text: msg }], timestamp: Date.now() } as never);
+  pushChatMessage(chat, {
+    role: 'user',
+    content: [{ type: 'text', text: msg }],
+    timestamp: Date.now(),
+  } as never);
   chat.inputText = '';
   chat.sending = true;
   chat.runId = runId;
@@ -691,7 +919,9 @@ export function sendChatMsg(agentId: string) {
   chat.lastError = null;
 
   sendRequest('chat.send', { sessionKey, message: msg, deliver: false, idempotencyKey: runId })
-    .then(() => { chat.sending = false; })
+    .then(() => {
+      chat.sending = false;
+    })
     .catch((e) => {
       chat.runId = null;
       chat.stream = null;
@@ -714,7 +944,7 @@ function startPolling() {
           gw.defaultAgentId = r.defaultId ?? gw.defaultAgentId;
         }
         if (results[1].status === 'fulfilled' && results[1].value) {
-          const raw = ((results[1].value as { sessions?: unknown[] })?.sessions) ?? [];
+          const raw = (results[1].value as { sessions?: unknown[] })?.sessions ?? [];
           mergeSessions(mapGatewaySessionRows(raw));
         }
       })
@@ -724,14 +954,22 @@ function startPolling() {
   pollPresenceTimer = setInterval(() => {
     if (!conn.connected) return;
     sendRequest('system-presence', {})
-      .then((res) => { if (Array.isArray(res)) gw.presence = res; })
+      .then((res) => {
+        if (Array.isArray(res)) gw.presence = res;
+      })
       .catch(() => {});
   }, 60000);
 }
 
 function stopPolling() {
-  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-  if (pollPresenceTimer) { clearInterval(pollPresenceTimer); pollPresenceTimer = null; }
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+  if (pollPresenceTimer) {
+    clearInterval(pollPresenceTimer);
+    pollPresenceTimer = null;
+  }
 }
 
 // ─── Binary Frame API ──────────────────────────────────────────────────────
@@ -740,23 +978,36 @@ const binaryListeners = new Set<BinaryMessageHandler>();
 
 function notifyBinaryListeners(data: Uint8Array) {
   for (const handler of binaryListeners) {
-    try { handler(data); } catch { /* ignore */ }
+    try {
+      handler(data);
+    } catch {
+      /* ignore */
+    }
   }
 }
 
 /** Send raw binary data through the WebSocket. */
 export function sendBinary(data: Uint8Array): void {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(data);
+  if (!client) return;
+  // TODO(phase-8): upstream proper binary channel API to GatewayClient.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sock = (client as unknown as { ws: { readyState: number; send: (d: Uint8Array) => void } | null }).ws;
+  if (!sock || sock.readyState !== 1 /* OPEN */) return;
+  sock.send(data);
 }
 
 /** Register a handler for incoming binary WebSocket messages. Returns unsubscribe function. */
 export function onBinaryMessage(handler: BinaryMessageHandler): () => void {
   binaryListeners.add(handler);
-  return () => { binaryListeners.delete(handler); };
+  return () => {
+    binaryListeners.delete(handler);
+  };
 }
 
 /** Get whether the WebSocket is currently connected and ready. */
 export function isWsReady(): boolean {
-  return ws !== null && ws.readyState === WebSocket.OPEN;
+  if (!client) return false;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sock = (client as unknown as { ws: { readyState: number } | null }).ws;
+  return sock !== null && sock.readyState === 1 /* OPEN */;
 }

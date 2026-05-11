@@ -10,14 +10,22 @@ const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 3;
 const ZOOM_SPEED = 0.001;
 
-export function screenToWorld(screenX: number, screenY: number, camera: CameraState): { x: number; y: number } {
+export function screenToWorld(
+  screenX: number,
+  screenY: number,
+  camera: CameraState,
+): { x: number; y: number } {
   return {
     x: (screenX - camera.x) / camera.zoom,
     y: (screenY - camera.y) / camera.zoom,
   };
 }
 
-export function worldToScreen(worldX: number, worldY: number, camera: CameraState): { x: number; y: number } {
+export function worldToScreen(
+  worldX: number,
+  worldY: number,
+  camera: CameraState,
+): { x: number; y: number } {
   return {
     x: worldX * camera.zoom + camera.x,
     y: worldY * camera.zoom + camera.y,

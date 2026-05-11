@@ -1,5 +1,5 @@
 import type { Host } from '$lib/types/host';
-import { uuid } from '$lib/utils/uuid';
+import { uuid } from '@minion-stack/shared';
 
 const HOSTS_CACHE_KEY = 'minion-dash-hosts-cache';
 
@@ -30,7 +30,9 @@ export async function loadHosts() {
           hostsState.hosts = cached;
         }
       }
-    } catch { /* ignore corrupt cache */ }
+    } catch {
+      /* ignore corrupt cache */
+    }
   }
 
   // Fetch fresh data from DB
@@ -47,9 +49,7 @@ export async function loadHosts() {
 
   // Restore last-active preference
   const lastId =
-    typeof localStorage !== 'undefined'
-      ? localStorage.getItem('minion-dash-last-host')
-      : null;
+    typeof localStorage !== 'undefined' ? localStorage.getItem('minion-dash-last-host') : null;
   if (lastId && hostsState.hosts.some((h) => h.id === lastId)) {
     hostsState.activeHostId = lastId;
   } else if (hostsState.hosts.length > 0) {

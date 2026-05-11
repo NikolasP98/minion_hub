@@ -1,5 +1,15 @@
 import { eq, and, desc, inArray } from 'drizzle-orm';
-import { builtSkills, builtSkillTools, builtChapters, builtChapterEdges, builtChapterTools, builtAgents, builtAgentSkills, builtTools, agentBuiltSkills } from '$server/db/schema';
+import {
+  builtSkills,
+  builtSkillTools,
+  builtChapters,
+  builtChapterEdges,
+  builtChapterTools,
+  builtAgents,
+  builtAgentSkills,
+  builtTools,
+  agentBuiltSkills,
+} from '@minion-stack/db/schema';
 import { newId, nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
 import { validateSkill } from '$lib/utils/skill-validation';
@@ -32,7 +42,10 @@ export async function createBuiltSkill(ctx: TenantContext, input: CreateSkillInp
   return { id };
 }
 
-export async function listBuiltSkills(ctx: TenantContext, opts?: { status?: 'draft' | 'published' }) {
+export async function listBuiltSkills(
+  ctx: TenantContext,
+  opts?: { status?: 'draft' | 'published' },
+) {
   const conditions = [eq(builtSkills.tenantId, ctx.tenantId)];
   if (opts?.status) conditions.push(eq(builtSkills.status, opts.status));
   return ctx.db
@@ -51,7 +64,11 @@ export async function getBuiltSkill(ctx: TenantContext, skillId: string) {
   return rows[0] ?? null;
 }
 
-export async function updateBuiltSkill(ctx: TenantContext, skillId: string, data: Partial<CreateSkillInput>) {
+export async function updateBuiltSkill(
+  ctx: TenantContext,
+  skillId: string,
+  data: Partial<CreateSkillInput>,
+) {
   await ctx.db
     .update(builtSkills)
     .set({ ...data, updatedAt: nowMs() })
@@ -79,7 +96,10 @@ export interface ValidationResult {
   errors: string[];
 }
 
-export async function validateSkillForPublish(ctx: TenantContext, skillId: string): Promise<ValidationResult> {
+export async function validateSkillForPublish(
+  ctx: TenantContext,
+  skillId: string,
+): Promise<ValidationResult> {
   const skill = await getBuiltSkill(ctx, skillId);
   if (!skill) return { valid: false, errors: ['Skill not found'] };
 
@@ -88,9 +108,9 @@ export async function validateSkillForPublish(ctx: TenantContext, skillId: strin
 
   // Build chapterToolMap from DB — batch query for all chapter-type nodes
   const chapterToolMap: Record<string, string[]> = {};
-  const chapterOnlyNodes = chapters.filter(c => c.type === 'chapter');
+  const chapterOnlyNodes = chapters.filter((c) => c.type === 'chapter');
   if (chapterOnlyNodes.length > 0) {
-    const chapterIds = chapterOnlyNodes.map(c => c.id);
+    const chapterIds = chapterOnlyNodes.map((c) => c.id);
     const allTools = await ctx.db
       .select({ chapterId: builtChapterTools.chapterId, toolId: builtChapterTools.toolId })
       .from(builtChapterTools)
@@ -108,7 +128,7 @@ export async function validateSkillForPublish(ctx: TenantContext, skillId: strin
   const findings = validateSkill({
     name: skill.name ?? '',
     description: skill.description ?? '',
-    chapters: chapters.map(ch => ({
+    chapters: chapters.map((ch) => ({
       id: ch.id,
       name: ch.name,
       type: ch.type ?? 'chapter',
@@ -116,24 +136,21 @@ export async function validateSkillForPublish(ctx: TenantContext, skillId: strin
       conditionText: ch.conditionText ?? '',
       outputDef: ch.outputDef ?? '',
     })),
-    edges: edges.map(e => ({
+    edges: edges.map((e) => ({
       sourceChapterId: e.sourceChapterId,
       targetChapterId: e.targetChapterId,
     })),
     chapterToolMap,
   });
 
-  const errors = findings.filter(f => f.level === 'error').map(f => f.message);
+  const errors = findings.filter((f) => f.level === 'error').map((f) => f.message);
   return { valid: errors.length === 0, errors };
 }
 
 // ── Skill Tools (pool) ───────────────────────────────────────────────
 
 export async function getSkillTools(ctx: TenantContext, skillId: string) {
-  return ctx.db
-    .select()
-    .from(builtSkillTools)
-    .where(eq(builtSkillTools.skillId, skillId));
+  return ctx.db.select().from(builtSkillTools).where(eq(builtSkillTools.skillId, skillId));
 }
 
 export async function addSkillTool(ctx: TenantContext, skillId: string, toolId: string) {
@@ -149,13 +166,20 @@ export async function removeSkillTool(ctx: TenantContext, skillId: string, toolI
 // ── Chapters ─────────────────────────────────────────────────────────
 
 export async function getChapters(ctx: TenantContext, skillId: string) {
-  return ctx.db
-    .select()
-    .from(builtChapters)
-    .where(eq(builtChapters.skillId, skillId));
+  return ctx.db.select().from(builtChapters).where(eq(builtChapters.skillId, skillId));
 }
 
-export async function createChapter(ctx: TenantContext, skillId: string, data: { name: string; type?: string; conditionText?: string; positionX?: number; positionY?: number }) {
+export async function createChapter(
+  ctx: TenantContext,
+  skillId: string,
+  data: {
+    name: string;
+    type?: string;
+    conditionText?: string;
+    positionX?: number;
+    positionY?: number;
+  },
+) {
   const now = nowMs();
   const id = newId();
   await ctx.db.insert(builtChapters).values({
@@ -172,7 +196,20 @@ export async function createChapter(ctx: TenantContext, skillId: string, data: {
   return { id };
 }
 
-export async function updateChapter(ctx: TenantContext, chapterId: string, data: Partial<{ name: string; description: string; guide: string; context: string; outputDef: string; conditionText: string; positionX: number; positionY: number }>) {
+export async function updateChapter(
+  ctx: TenantContext,
+  chapterId: string,
+  data: Partial<{
+    name: string;
+    description: string;
+    guide: string;
+    context: string;
+    outputDef: string;
+    conditionText: string;
+    positionX: number;
+    positionY: number;
+  }>,
+) {
   await ctx.db
     .update(builtChapters)
     .set({ ...data, updatedAt: nowMs() })
@@ -186,15 +223,20 @@ export async function deleteChapter(ctx: TenantContext, chapterId: string) {
 // ── Chapter Edges ────────────────────────────────────────────────────
 
 export async function getChapterEdges(ctx: TenantContext, skillId: string) {
-  return ctx.db
-    .select()
-    .from(builtChapterEdges)
-    .where(eq(builtChapterEdges.skillId, skillId));
+  return ctx.db.select().from(builtChapterEdges).where(eq(builtChapterEdges.skillId, skillId));
 }
 
-export async function createChapterEdge(ctx: TenantContext, skillId: string, sourceChapterId: string, targetChapterId: string, label?: string) {
+export async function createChapterEdge(
+  ctx: TenantContext,
+  skillId: string,
+  sourceChapterId: string,
+  targetChapterId: string,
+  label?: string,
+) {
   const id = newId();
-  await ctx.db.insert(builtChapterEdges).values({ id, skillId, sourceChapterId, targetChapterId, label: label ?? null });
+  await ctx.db
+    .insert(builtChapterEdges)
+    .values({ id, skillId, sourceChapterId, targetChapterId, label: label ?? null });
   return { id };
 }
 
@@ -205,18 +247,15 @@ export async function deleteChapterEdge(ctx: TenantContext, edgeId: string) {
 // ── Chapter Tools ────────────────────────────────────────────────────
 
 export async function getChapterTools(ctx: TenantContext, chapterId: string) {
-  return ctx.db
-    .select()
-    .from(builtChapterTools)
-    .where(eq(builtChapterTools.chapterId, chapterId));
+  return ctx.db.select().from(builtChapterTools).where(eq(builtChapterTools.chapterId, chapterId));
 }
 
 export async function setChapterTools(ctx: TenantContext, chapterId: string, toolIds: string[]) {
   await ctx.db.delete(builtChapterTools).where(eq(builtChapterTools.chapterId, chapterId));
   if (toolIds.length > 0) {
-    await ctx.db.insert(builtChapterTools).values(
-      toolIds.map(toolId => ({ id: newId(), chapterId, toolId }))
-    );
+    await ctx.db
+      .insert(builtChapterTools)
+      .values(toolIds.map((toolId) => ({ id: newId(), chapterId, toolId })));
   }
 }
 
@@ -230,7 +269,17 @@ export async function listBuiltAgents(ctx: TenantContext) {
     .orderBy(desc(builtAgents.updatedAt));
 }
 
-export async function createBuiltAgent(ctx: TenantContext, input: { name: string; emoji?: string; description?: string; model?: string; systemPrompt?: string; serverId?: string }) {
+export async function createBuiltAgent(
+  ctx: TenantContext,
+  input: {
+    name: string;
+    emoji?: string;
+    description?: string;
+    model?: string;
+    systemPrompt?: string;
+    serverId?: string;
+  },
+) {
   const now = nowMs();
   const id = newId();
   await ctx.db.insert(builtAgents).values({
@@ -268,7 +317,19 @@ export async function getBuiltTool(ctx: TenantContext, toolId: string) {
   return rows[0] ?? null;
 }
 
-export async function updateBuiltTool(ctx: TenantContext, toolId: string, data: Partial<{ name: string; description: string; scriptCode: string; scriptLang: 'javascript' | 'python' | 'bash'; envVars: string; validationRules: string; executionConfig: string }>) {
+export async function updateBuiltTool(
+  ctx: TenantContext,
+  toolId: string,
+  data: Partial<{
+    name: string;
+    description: string;
+    scriptCode: string;
+    scriptLang: 'javascript' | 'python' | 'bash';
+    envVars: string;
+    validationRules: string;
+    executionConfig: string;
+  }>,
+) {
   await ctx.db
     .update(builtTools)
     .set({ ...data, updatedAt: nowMs() })
@@ -291,14 +352,21 @@ export async function publishBuiltTool(ctx: TenantContext, toolId: string) {
 
 // ── Agent Built Skills (gateway agent → built skill mapping) ─────────
 
-export async function setAgentBuiltSkills(ctx: TenantContext, gatewayAgentId: string, serverId: string, skillIds: string[]) {
+export async function setAgentBuiltSkills(
+  ctx: TenantContext,
+  gatewayAgentId: string,
+  serverId: string,
+  skillIds: string[],
+) {
   await ctx.db
     .delete(agentBuiltSkills)
-    .where(and(
-      eq(agentBuiltSkills.gatewayAgentId, gatewayAgentId),
-      eq(agentBuiltSkills.serverId, serverId),
-      eq(agentBuiltSkills.tenantId, ctx.tenantId),
-    ));
+    .where(
+      and(
+        eq(agentBuiltSkills.gatewayAgentId, gatewayAgentId),
+        eq(agentBuiltSkills.serverId, serverId),
+        eq(agentBuiltSkills.tenantId, ctx.tenantId),
+      ),
+    );
   if (skillIds.length > 0) {
     const now = nowMs();
     await ctx.db.insert(agentBuiltSkills).values(
@@ -310,7 +378,7 @@ export async function setAgentBuiltSkills(ctx: TenantContext, gatewayAgentId: st
         skillId,
         position: i,
         createdAt: now,
-      }))
+      })),
     );
   }
 }

@@ -83,7 +83,10 @@ export async function syncFromGitHub(): Promise<{ synced: number; errors: string
     }
     const data = await res.json();
     // Reload agents after sync
-    await loadAgents(marketplaceState.selectedCategory ?? undefined, marketplaceState.searchQuery || undefined);
+    await loadAgents(
+      marketplaceState.selectedCategory ?? undefined,
+      marketplaceState.searchQuery || undefined,
+    );
     return data;
   } catch (err) {
     marketplaceState.syncError = (err as Error).message;
@@ -93,7 +96,12 @@ export async function syncFromGitHub(): Promise<{ synced: number; errors: string
   }
 }
 
-export async function installAgent(agentId: string, serverId: string, serverName?: string, serverUrl?: string): Promise<boolean> {
+export async function installAgent(
+  agentId: string,
+  serverId: string,
+  serverName?: string,
+  serverUrl?: string,
+): Promise<boolean> {
   marketplaceState.installing = true;
   marketplaceState.installError = null;
   try {
@@ -108,7 +116,7 @@ export async function installAgent(agentId: string, serverId: string, serverName
       return false;
     }
 
-    const data = await res.json() as { ok: boolean; files?: Record<string, string> };
+    const data = (await res.json()) as { ok: boolean; files?: Record<string, string> };
 
     // Push agent files to the gateway filesystem via the active WebSocket connection
     if (data.files && Object.keys(data.files).length > 0) {

@@ -1,5 +1,5 @@
 import { eq, and, desc, gte, lte, sql } from 'drizzle-orm';
-import { skillExecutionStats } from '$server/db/schema';
+import { skillExecutionStats } from '@minion-stack/db/schema';
 import { nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
 
@@ -14,10 +14,7 @@ export interface SkillStatInput {
   occurredAt: number;
 }
 
-export async function insertSkillStats(
-  ctx: TenantContext,
-  stats: SkillStatInput[],
-) {
+export async function insertSkillStats(ctx: TenantContext, stats: SkillStatInput[]) {
   if (stats.length === 0) return;
   const now = nowMs();
   await ctx.db.insert(skillExecutionStats).values(
@@ -48,14 +45,10 @@ export async function listSkillStats(
 ) {
   const conditions = [eq(skillExecutionStats.tenantId, ctx.tenantId)];
 
-  if (filters.serverId)
-    conditions.push(eq(skillExecutionStats.serverId, filters.serverId));
-  if (filters.skillName)
-    conditions.push(eq(skillExecutionStats.skillName, filters.skillName));
-  if (filters.from)
-    conditions.push(gte(skillExecutionStats.occurredAt, filters.from));
-  if (filters.to)
-    conditions.push(lte(skillExecutionStats.occurredAt, filters.to));
+  if (filters.serverId) conditions.push(eq(skillExecutionStats.serverId, filters.serverId));
+  if (filters.skillName) conditions.push(eq(skillExecutionStats.skillName, filters.skillName));
+  if (filters.from) conditions.push(gte(skillExecutionStats.occurredAt, filters.from));
+  if (filters.to) conditions.push(lte(skillExecutionStats.occurredAt, filters.to));
 
   return ctx.db
     .select()
@@ -75,12 +68,9 @@ export async function getSkillStatsSummary(
 ) {
   const conditions = [eq(skillExecutionStats.tenantId, ctx.tenantId)];
 
-  if (filters.serverId)
-    conditions.push(eq(skillExecutionStats.serverId, filters.serverId));
-  if (filters.from)
-    conditions.push(gte(skillExecutionStats.occurredAt, filters.from));
-  if (filters.to)
-    conditions.push(lte(skillExecutionStats.occurredAt, filters.to));
+  if (filters.serverId) conditions.push(eq(skillExecutionStats.serverId, filters.serverId));
+  if (filters.from) conditions.push(gte(skillExecutionStats.occurredAt, filters.from));
+  if (filters.to) conditions.push(lte(skillExecutionStats.occurredAt, filters.to));
 
   const where = and(...conditions);
 

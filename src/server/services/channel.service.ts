@@ -1,5 +1,5 @@
 import { eq, and } from 'drizzle-orm';
-import { channels, channelAssignments } from '$server/db/schema';
+import { channels, channelAssignments } from '@minion-stack/db/schema';
 import { newId, nowMs } from '$server/db/utils';
 import { encrypt, decrypt } from '$server/auth/crypto';
 import type { TenantContext } from './base';
@@ -130,7 +130,8 @@ export async function updateChannel(
 
   if (input.label !== undefined) set.label = input.label;
   if (input.status !== undefined) set.status = input.status;
-  if (input.credentialsMeta !== undefined) set.credentialsMeta = JSON.stringify(input.credentialsMeta);
+  if (input.credentialsMeta !== undefined)
+    set.credentialsMeta = JSON.stringify(input.credentialsMeta);
 
   if (input.credentials !== undefined) {
     const { ciphertext, iv } = encryptCredentials(input.credentials);
@@ -151,16 +152,19 @@ export async function deleteChannel(ctx: TenantContext, channelId: string, serve
   const conditions = [eq(channels.id, channelId), eq(channels.tenantId, ctx.tenantId)];
   if (serverId) conditions.push(eq(channels.serverId, serverId));
 
-  await ctx.db
-    .delete(channels)
-    .where(and(...conditions));
+  await ctx.db.delete(channels).where(and(...conditions));
 }
 
 export async function listChannelAssignments(ctx: TenantContext, channelId: string) {
   return ctx.db
     .select()
     .from(channelAssignments)
-    .where(and(eq(channelAssignments.channelId, channelId), eq(channelAssignments.tenantId, ctx.tenantId)))
+    .where(
+      and(
+        eq(channelAssignments.channelId, channelId),
+        eq(channelAssignments.tenantId, ctx.tenantId),
+      ),
+    )
     .orderBy(channelAssignments.createdAt);
 }
 
@@ -184,5 +188,7 @@ export async function assignChannel(
 export async function unassignChannel(ctx: TenantContext, assignmentId: string) {
   await ctx.db
     .delete(channelAssignments)
-    .where(and(eq(channelAssignments.id, assignmentId), eq(channelAssignments.tenantId, ctx.tenantId)));
+    .where(
+      and(eq(channelAssignments.id, assignmentId), eq(channelAssignments.tenantId, ctx.tenantId)),
+    );
 }

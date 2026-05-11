@@ -1,7 +1,7 @@
 <script lang="ts">
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
   import { ui } from '$lib/state/ui/ui.svelte';
-  import type { Session } from '$lib/types/gateway';
+  import type { Session } from '@minion-stack/shared';
   import * as combobox from '@zag-js/combobox';
   import { useMachine, normalizeProps } from '@zag-js/svelte';
 

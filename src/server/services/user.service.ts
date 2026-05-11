@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { user } from '$server/db/schema';
+import { user } from '@minion-stack/db/schema';
 import type { TenantContext } from './base';
 import { getAuth } from '$lib/auth/auth';
 
@@ -54,15 +54,8 @@ export async function createUser(
   return userId;
 }
 
-export async function updateUserRole(
-  ctx: TenantContext,
-  userId: string,
-  role: 'user' | 'admin',
-) {
-  await ctx.db
-    .update(user)
-    .set({ role, updatedAt: new Date() })
-    .where(eq(user.id, userId));
+export async function updateUserRole(ctx: TenantContext, userId: string, role: 'user' | 'admin') {
+  await ctx.db.update(user).set({ role, updatedAt: new Date() }).where(eq(user.id, userId));
 }
 
 export async function deleteUser(ctx: TenantContext, userId: string) {

@@ -27,7 +27,5 @@ export const agentGroupMembers = sqliteTable(
     agentId: text('agent_id').notNull(),
     sortOrder: integer('sort_order').default(0),
   },
-  (t) => [
-    primaryKey({ columns: [t.groupId, t.agentId] }),
-  ],
+  (t) => [primaryKey({ columns: [t.groupId, t.agentId] })],
 );

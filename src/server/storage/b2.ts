@@ -44,16 +44,12 @@ export async function uploadToB2(
 
 export async function getSignedDownloadUrl(key: string, expiresIn = 3600): Promise<string> {
   const client = getClient();
-  return getSignedUrl(
-    client,
-    new GetObjectCommand({ Bucket: getBucket(), Key: key }),
-    { expiresIn },
-  );
+  return getSignedUrl(client, new GetObjectCommand({ Bucket: getBucket(), Key: key }), {
+    expiresIn,
+  });
 }
 
 export async function deleteFromB2(key: string): Promise<void> {
   const client = getClient();
-  await client.send(
-    new DeleteObjectCommand({ Bucket: getBucket(), Key: key }),
-  );
+  await client.send(new DeleteObjectCommand({ Bucket: getBucket(), Key: key }));
 }

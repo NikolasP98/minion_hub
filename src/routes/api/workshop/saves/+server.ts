@@ -1,15 +1,26 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { getDb } from '$server/db/client';
-import { workshopSaves } from '$server/db/schema';
-import { desc } from 'drizzle-orm';
+import { workshopSaves } from '@minion-stack/db/schema';
+import { and, desc, eq, isNull, or } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
+import { requireAuth } from '$server/auth/authorize';
+import { getTenantCtx } from '$server/auth/tenant-ctx';
 
-export const GET: RequestHandler = async () => {
-  const db = getDb();
-  const rows = await db
+export const GET: RequestHandler = async ({ locals }) => {
+  const user = requireAuth(locals);
+  const ctx = await getTenantCtx(locals);
+  if (!ctx) throw error(401);
+
+  // Return saves owned by this user OR legacy saves with no owner (admin-visible only)
+  const rows = await ctx.db
     .select()
     .from(workshopSaves)
+    .where(
+      and(
+        or(eq(workshopSaves.userId, user.id), isNull(workshopSaves.userId)),
+        or(eq(workshopSaves.tenantId, ctx.tenantId), isNull(workshopSaves.tenantId)),
+      ),
+    )
     .orderBy(desc(workshopSaves.updatedAt));
 
   const saves = rows.map((row) => {
@@ -36,7 +47,11 @@ export const GET: RequestHandler = async () => {
   return json({ saves });
 };
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ locals, request }) => {
+  const user = requireAuth(locals);
+  const ctx = await getTenantCtx(locals);
+  if (!ctx) throw error(401);
+
   const body = await request.json();
   const { name, state, thumbnail } = body as { name?: string; state?: string; thumbnail?: string };
 
@@ -50,22 +65,26 @@ export const POST: RequestHandler = async ({ request }) => {
     throw error(400, 'state must be valid JSON');
   }
 
-  const db = getDb();
   const id = randomUUID();
   const now = Date.now();
 
   try {
-    await db.insert(workshopSaves).values({
+    await ctx.db.insert(workshopSaves).values({
       id,
       name,
       state,
       thumbnail: typeof thumbnail === 'string' ? thumbnail : null,
+      userId: user.id,
+      tenantId: ctx.tenantId,
       createdAt: now,
       updatedAt: now,
     });
   } catch (err) {
     console.error('[workshop saves POST] db insert failed:', err);
-    throw error(500, `Failed to save workspace: ${err instanceof Error ? err.message : String(err)}`);
+    throw error(
+      500,
+      `Failed to save workspace: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   return json({ id, ok: true });

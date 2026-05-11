@@ -21,7 +21,11 @@ function findAppBunDir(dir: string): string | null {
 }
 
 const appBunDir = findAppBunDir(buildDir);
-if (appBunDir && existsSync(join(appBunDir, 'main.js')) && !existsSync(join(appBunDir, 'index.js'))) {
+if (
+  appBunDir &&
+  existsSync(join(appBunDir, 'main.js')) &&
+  !existsSync(join(appBunDir, 'index.js'))
+) {
   symlinkSync('main.js', join(appBunDir, 'index.js'));
   console.log('[postbuild] Created index.js symlink in', appBunDir);
 } else {

@@ -4,6 +4,8 @@
   import { slide } from 'svelte/transition';
   import type { WorkshopMessage } from '$lib/workshop/gateway-bridge';
   import * as m from '$lib/paraglide/messages';
+  import AIDisclosureBadge from '$lib/components/chat/AIDisclosureBadge.svelte';
+  import { agentDisplayName } from '$lib/utils/agent-display';
 
   let { conversationId, messages: workshopMessages = [], onClose }: {
     conversationId: string;
@@ -23,7 +25,7 @@
         : undefined;
       return {
         instanceId,
-        name: agent?.name ?? instance?.agentId ?? 'Unknown',
+        name: agent ? agentDisplayName(agent) : (instance?.agentId ?? 'Unknown'),
         emoji: agent?.emoji,
       };
     })
@@ -44,7 +46,7 @@
       const agent = inst ? gw.agents.find((a: { id: string }) => a.id === inst.agentId) : undefined;
       return {
         id: `${wm.conversationId}_${idx}`,
-        agentName: agent?.name ?? wm.agentId,
+        agentName: agent ? agentDisplayName(agent) : wm.agentId,
         emoji: agent?.emoji ?? '',
         text: wm.message,
         timestamp: wm.timestamp,
@@ -118,6 +120,9 @@
               <span class="text-[9px] text-muted/60">{formatRelativeTime(msg.timestamp)}</span>
             </div>
             <p class="text-[11px] text-foreground leading-snug mt-0.5">{msg.text}</p>
+            <div class="mt-1 text-right">
+              <AIDisclosureBadge />
+            </div>
           </div>
         </div>
       {/each}

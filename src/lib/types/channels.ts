@@ -41,16 +41,53 @@ export interface ChannelFieldDef {
 
 export const CHANNEL_FIELDS: Record<ChannelType, ChannelFieldDef[]> = {
   discord: [
-    { key: 'token', label: 'Bot Token', type: 'password', required: true, placeholder: 'Discord bot token' },
-    { key: 'appId', label: 'Application ID', type: 'text', required: true, placeholder: 'Discord application ID' },
-    { key: 'publicKey', label: 'Public Key', type: 'text', required: false, placeholder: 'Interaction verification key' },
-    { key: 'username', label: 'Bot Username', type: 'text', required: false, placeholder: 'MyBot#1234', help: 'Display name (not encrypted)' },
+    {
+      key: 'token',
+      label: 'Bot Token',
+      type: 'password',
+      required: true,
+      placeholder: 'Discord bot token',
+    },
+    {
+      key: 'appId',
+      label: 'Application ID',
+      type: 'text',
+      required: true,
+      placeholder: 'Discord application ID',
+    },
+    {
+      key: 'publicKey',
+      label: 'Public Key',
+      type: 'text',
+      required: false,
+      placeholder: 'Interaction verification key',
+    },
+    {
+      key: 'username',
+      label: 'Bot Username',
+      type: 'text',
+      required: false,
+      placeholder: 'MyBot#1234',
+      help: 'Display name (not encrypted)',
+    },
   ],
   whatsapp: [
-    { key: 'qr', label: 'QR Pairing', type: 'qr', required: false, help: 'Pair via QR code from the gateway' },
+    {
+      key: 'qr',
+      label: 'QR Pairing',
+      type: 'qr',
+      required: false,
+      help: 'Pair via QR code from the gateway',
+    },
   ],
   telegram: [
-    { key: 'botToken', label: 'Bot Token', type: 'password', required: true, placeholder: '123456:ABC-DEF...' },
+    {
+      key: 'botToken',
+      label: 'Bot Token',
+      type: 'password',
+      required: true,
+      placeholder: '123456:ABC-DEF...',
+    },
   ],
 };
 

@@ -1,5 +1,5 @@
 import { getDb } from '$server/db/client';
-import { backupConfigs, serverProvisionConfigs } from '$server/db/schema';
+import { backupConfigs, serverProvisionConfigs } from '@minion-stack/db/schema';
 import { eq } from 'drizzle-orm';
 import {
   getBackupConfig,
@@ -61,7 +61,8 @@ async function tick() {
       const latestPath = latestComplete?.snapshotPath ?? null;
 
       const timestamp = Date.now();
-      const serverName = provisionConfig.agentName?.toLowerCase().replace(/\s+/g, '-') ?? pc.serverId;
+      const serverName =
+        provisionConfig.agentName?.toLowerCase().replace(/\s+/g, '-') ?? pc.serverId;
       const basePath = backupConfig.backupBasePath ?? '/mnt/agent-data/backups';
       const tsStr = new Date(timestamp).toISOString().replace(/[:.]/g, '-');
       const snapshotPath = `${basePath}/${serverName}/${tsStr}`;

@@ -1,5 +1,5 @@
 import { eq, and } from 'drizzle-orm';
-import { servers, userServers } from '$server/db/schema';
+import { servers, userServers } from '@minion-stack/db/schema';
 import { newId, nowMs } from '$server/db/utils';
 import { encryptToken, decryptToken } from '$server/auth/crypto';
 import type { TenantContext } from './base';
@@ -12,11 +12,7 @@ export interface ServerInput {
   lastConnectedAt?: number | null;
 }
 
-export async function upsertServer(
-  ctx: TenantContext,
-  s: ServerInput,
-  userId?: string,
-) {
+export async function upsertServer(ctx: TenantContext, s: ServerInput, userId?: string) {
   const now = nowMs();
   const id = s.id ?? newId();
   const { encrypted, iv } = encryptToken(s.token);
@@ -63,11 +59,7 @@ export async function upsertServer(
   return finalId;
 }
 
-export async function listServers(
-  ctx: TenantContext,
-  userId?: string,
-  userRole?: string,
-) {
+export async function listServers(ctx: TenantContext, userId?: string, userRole?: string) {
   const isAdmin = userRole === 'admin';
 
   if (isAdmin || !userId) {
@@ -117,7 +109,5 @@ export async function listServers(
 }
 
 export async function deleteServer(ctx: TenantContext, id: string) {
-  await ctx.db
-    .delete(servers)
-    .where(and(eq(servers.id, id), eq(servers.tenantId, ctx.tenantId)));
+  await ctx.db.delete(servers).where(and(eq(servers.id, id), eq(servers.tenantId, ctx.tenantId)));
 }

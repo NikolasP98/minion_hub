@@ -2,6 +2,7 @@
     import { Copy, ChevronRight, ChevronDown, User, Bot, Wrench } from 'lucide-svelte';
     import { fmtTimeAgo } from '$lib/utils/format';
     import * as m from '$lib/paraglide/messages';
+    import AIDisclosureBadge from '$lib/components/chat/AIDisclosureBadge.svelte';
 
     interface TranscriptTurn {
         id: string;
@@ -86,6 +87,11 @@
             <div class="text-sm text-foreground/90 whitespace-pre-wrap break-words leading-relaxed">
                 {turn.content}
             </div>
+            {#if turn.role === 'assistant'}
+                <div class="mt-1 text-right">
+                    <AIDisclosureBadge />
+                </div>
+            {/if}
 
             <!-- Reasoning block (collapsible) -->
             {#if turn.reasoning}

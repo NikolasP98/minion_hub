@@ -5,13 +5,18 @@ import { getPostHogClient } from '$lib/server/posthog';
 import { getAuth } from '$lib/auth/auth';
 import { building } from '$app/environment';
 import { getDb } from '$server/db/client';
-import { servers, organization, user as userTable } from '$server/db/schema';
+import { servers, organization, user as userTable } from '@minion-stack/db/schema';
 import { eq } from 'drizzle-orm';
 import { decryptToken } from '$server/auth/crypto';
-import { saveDesktopCookies, loadDesktopCookies, clearDesktopCookies } from '$server/auth/desktop-session';
+import {
+  saveDesktopCookies,
+  loadDesktopCookies,
+  clearDesktopCookies,
+} from '$server/auth/desktop-session';
 import { env } from '$env/dynamic/private';
 import { startBackupScheduler } from '$server/services/backup-scheduler';
 import { ensurePersonalAgentOnLogin } from '$server/services/personal-agent.service';
+import { mintPaperclipIdentity } from '$lib/server/paperclip-identity';
 
 /**
  * Resolve tenantCtx from a Bearer server token.
@@ -116,7 +121,12 @@ const appHandle: Handle = async ({ event, resolve }) => {
     const db = getDb();
     const rows = await db.select({ id: organization.id }).from(organization).limit(1);
     if (rows.length > 0) event.locals.tenantCtx = { db, tenantId: rows[0].id };
-    event.locals.user = { id: 'local', email: 'local@dev', displayName: 'Local Dev', role: 'admin' };
+    event.locals.user = {
+      id: 'local',
+      email: 'local@dev',
+      displayName: 'Local Dev',
+      role: 'admin',
+    };
     return resolve(event);
   }
 
@@ -167,7 +177,9 @@ const appHandle: Handle = async ({ event, resolve }) => {
       role: (dbUser?.role ?? 'user') as 'user' | 'admin',
     };
     event.locals.session = betterAuthSession.session;
-    const orgId = (betterAuthSession.session as { activeOrganizationId?: string | null }).activeOrganizationId ?? undefined;
+    const orgId =
+      (betterAuthSession.session as { activeOrganizationId?: string | null })
+        .activeOrganizationId ?? undefined;
     event.locals.orgId = orgId;
     if (orgId) {
       const db = getDb();
@@ -190,12 +202,34 @@ const appHandle: Handle = async ({ event, resolve }) => {
     }
   }
 
-  // For API routes: unauthenticated fallback to first org (preserve existing behaviour)
+  // For API routes: unauthenticated fallback is restricted to explicitly safe paths only.
+  // Sensitive routes (workshop, flows, personal-agent, users) require explicit auth and
+  // must NOT fall through to the tenant fallback — individual route handlers call requireAuth().
+  const API_UNAUTH_FALLBACK_PREFIXES = [
+    '/api/marketplace/',
+    '/api/registry/',
+    '/api/servers/',
+    '/api/metrics/',
+    '/api/gateway/',
+    '/api/device-identity/',
+    '/api/studio/',
+    '/api/admin/',
+    '/api/invitations/',
+    '/api/auth/',
+  ];
   if (!event.locals.tenantCtx && path.startsWith('/api/')) {
-    const db = getDb();
-    const rows = await db.select({ id: organization.id }).from(organization).limit(1);
-    if (rows.length > 0) event.locals.tenantCtx = { db, tenantId: rows[0].id };
-    return resolve(event);
+    const allowFallback = API_UNAUTH_FALLBACK_PREFIXES.some((p) => path.startsWith(p));
+    if (allowFallback) {
+      const db = getDb();
+      const rows = await db.select({ id: organization.id }).from(organization).limit(1);
+      if (rows.length > 0) event.locals.tenantCtx = { db, tenantId: rows[0].id };
+      return resolve(event);
+    }
+    // All other unauthenticated API requests get an explicit 401
+    return new Response(JSON.stringify({ error: 'Authentication required' }), {
+      status: 401,
+      headers: { 'content-type': 'application/json' },
+    });
   }
 
   // Redirect unauthenticated browser requests to /login
@@ -251,7 +285,31 @@ const posthogProxyHandle: Handle = async ({ event, resolve }) => {
   return resolve(event);
 };
 
-export const handle = sequence(i18n.handle(), posthogProxyHandle, authHandle, appHandle);
+const paperclipIdentityHandle: Handle = async ({ event, resolve }) => {
+  if (event.locals.user) {
+    const companyId = event.cookies.get('pc_company_id') ?? null;
+    try {
+      const token = await mintPaperclipIdentity({
+        userId: event.locals.user.id,
+        email: event.locals.user.email ?? null,
+        name: event.locals.user.displayName ?? null,
+        companyId,
+      });
+      event.locals.paperclipIdentity = {
+        token,
+        companyId,
+        userId: event.locals.user.id,
+      };
+    } catch (err) {
+      // Don't block the request if JWT minting fails (e.g. secret not set in dev).
+      // Routes that require paperclipIdentity will throw when they call paperclipServerClient.
+      console.warn('[paperclipIdentityHandle] JWT mint failed:', err);
+    }
+  }
+  return resolve(event);
+};
+
+export const handle = sequence(i18n.handle(), posthogProxyHandle, authHandle, appHandle, paperclipIdentityHandle);
 
 import type { HandleServerError } from '@sveltejs/kit';
 

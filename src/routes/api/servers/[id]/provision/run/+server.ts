@@ -2,7 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
 import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
-import { serverProvisionConfigs } from '$server/db/schema';
+import { serverProvisionConfigs } from '@minion-stack/db/schema';
 import { requireAdmin } from '$server/auth/authorize';
 import {
   getProvisionConfig,
@@ -18,10 +18,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
   try {
     const config = await getProvisionConfig(ctx, params.id!);
     if (!config?.sshHost) {
-      return json(
-        { ok: false, error: 'No SSH host configured for this server' },
-        { status: 400 },
-      );
+      return json({ ok: false, error: 'No SSH host configured for this server' }, { status: 400 });
     }
 
     const body = await request.json().catch(() => ({}));
@@ -65,7 +62,9 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
               currentPhase = phaseMatch[1];
               liveStatuses[currentPhase] = 'running';
               sseController.enqueue(
-                encoder.encode(`event: phase\ndata: ${JSON.stringify({ phase: currentPhase })}\n\n`),
+                encoder.encode(
+                  `event: phase\ndata: ${JSON.stringify({ phase: currentPhase })}\n\n`,
+                ),
               );
             }
 

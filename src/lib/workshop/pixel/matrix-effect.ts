@@ -98,14 +98,10 @@ export function renderMatrixEffect(
 
   for (let col = 0; col < MATRIX_SPRITE_COLS; col++) {
     // Stagger: each column starts at a slightly different time
-    const stagger =
-      (ch.matrixEffectSeeds[col] ?? 0) * MATRIX_COLUMN_STAGGER_RANGE;
+    const stagger = (ch.matrixEffectSeeds[col] ?? 0) * MATRIX_COLUMN_STAGGER_RANGE;
     const colProgress = Math.max(
       0,
-      Math.min(
-        1,
-        (progress - stagger) / (1 - MATRIX_COLUMN_STAGGER_RANGE),
-      ),
+      Math.min(1, (progress - stagger) / (1 - MATRIX_COLUMN_STAGGER_RANGE)),
     );
     const headRow = colProgress * totalSweep;
 
@@ -133,8 +129,7 @@ export function renderMatrixEffect(
             ctx.fillStyle = pixel;
             ctx.fillRect(px, py, zoom, zoom);
             // Green overlay that fades as trail progresses
-            const greenAlpha =
-              (1 - trailPos) * MATRIX_TRAIL_OVERLAY_ALPHA;
+            const greenAlpha = (1 - trailPos) * MATRIX_TRAIL_OVERLAY_ALPHA;
             if (flickerVisible(col, row, time)) {
               ctx.fillStyle = `rgba(0, 255, 65, ${greenAlpha})`;
               ctx.fillRect(px, py, zoom, zoom);
@@ -142,8 +137,7 @@ export function renderMatrixEffect(
           } else {
             // No character pixel: fading green trail
             if (flickerVisible(col, row, time)) {
-              const alpha =
-                (1 - trailPos) * MATRIX_TRAIL_EMPTY_ALPHA;
+              const alpha = (1 - trailPos) * MATRIX_TRAIL_EMPTY_ALPHA;
               ctx.fillStyle =
                 trailPos < MATRIX_TRAIL_MID_THRESHOLD
                   ? `rgba(0, 255, 65, ${alpha})`
@@ -176,8 +170,7 @@ export function renderMatrixEffect(
           // Trail zone: fading green
           if (flickerVisible(col, row, time)) {
             const trailPos = distFromHead / MATRIX_TRAIL_LENGTH;
-            const alpha =
-              (1 - trailPos) * MATRIX_TRAIL_EMPTY_ALPHA;
+            const alpha = (1 - trailPos) * MATRIX_TRAIL_EMPTY_ALPHA;
             ctx.fillStyle =
               trailPos < MATRIX_TRAIL_MID_THRESHOLD
                 ? `rgba(0, 255, 65, ${alpha})`

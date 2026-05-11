@@ -15,7 +15,9 @@ export const serverBackups = sqliteTable(
     snapshotPath: text('snapshot_path').notNull(),
     timestamp: integer('timestamp').notNull(),
     sizeBytes: integer('size_bytes'),
-    status: text('status', { enum: ['running', 'complete', 'failed'] }).notNull().default('running'),
+    status: text('status', { enum: ['running', 'complete', 'failed'] })
+      .notNull()
+      .default('running'),
     createdAt: integer('created_at').notNull(),
   },
   (t) => [

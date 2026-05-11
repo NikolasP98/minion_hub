@@ -1,6 +1,9 @@
-import { insertCredentialHealthSnapshot, type CredentialHealthInput } from './credential-health.service';
+import {
+  insertCredentialHealthSnapshot,
+  type CredentialHealthInput,
+} from './credential-health.service';
 import { insertSkillStats, type SkillStatInput } from './skill-stats.service';
-import { sessions, gatewayHeartbeats } from '$server/db/schema';
+import { sessions, gatewayHeartbeats } from '@minion-stack/db/schema';
 import { newId, nowMs } from '$server/db/utils';
 import { sql } from 'drizzle-orm';
 import type { TenantContext } from './base';
@@ -86,8 +89,18 @@ export async function processMetricsBatch(
             serverId,
             agentId: s.agentId,
             sessionKey: s.sessionKey,
-            status: (s.status ?? 'idle') as 'running' | 'thinking' | 'idle' | 'aborted' | 'completed',
-            metadata: JSON.stringify({ label: s.label, displayName: s.displayName, totalTokens: s.totalTokens, updatedAt: s.updatedAt }),
+            status: (s.status ?? 'idle') as
+              | 'running'
+              | 'thinking'
+              | 'idle'
+              | 'aborted'
+              | 'completed',
+            metadata: JSON.stringify({
+              label: s.label,
+              displayName: s.displayName,
+              totalTokens: s.totalTokens,
+              updatedAt: s.updatedAt,
+            }),
             startedAt: null,
             endedAt: null,
             createdAt: now,

@@ -10,6 +10,7 @@
     import { sendInboxMessage } from "$lib/workshop/inbox-bridge";
     import { gw } from "$lib/state/gateway/gateway-data.svelte";
     import * as m from "$lib/paraglide/messages";
+    import { agentDisplayName } from "$lib/utils/agent-display";
 
     let {
         elementId,
@@ -63,7 +64,7 @@
 
     function getAgentName(id: string): string {
         const agent = gw.agents.find((a) => a.id === id);
-        return agent?.name ?? id;
+        return agent ? agentDisplayName(agent) : id;
     }
 
     function statusColor(status: InboxItemStatus): string {
@@ -233,7 +234,7 @@
             >
                 <option value="">{m.inbox_allAgents()}</option>
                 {#each gw.agents as agent (agent.id)}
-                    <option value={agent.id}>{agent.name ?? agent.id}</option>
+                    <option value={agent.id}>{agentDisplayName(agent)}</option>
                 {/each}
             </select>
         </div>
@@ -391,7 +392,7 @@
                         <option value="" disabled>{m.inbox_selectAgent()}</option>
                         {#each gw.agents as agent (agent.id)}
                             <option value={agent.id}
-                                >{agent.name ?? agent.id}</option
+                                >{agentDisplayName(agent)}</option
                             >
                         {/each}
                     </select>

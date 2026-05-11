@@ -1,4 +1,6 @@
 <script lang="ts">
+  import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
+  import SectionProseEditor from '$lib/components/agents/SectionProseEditor.svelte';
   import { fetchSessionPromptReport, fetchPromptPreview } from '$lib/services/gateway.svelte';
   import * as m from '$lib/paraglide/messages';
 
@@ -47,7 +49,43 @@
     label: string;
     chars: number;
     order: number;
+    /** Phase D-0e: rendered text content (gateway-side D-0e #105). May be
+     * undefined if the gateway hasn't been updated yet — UI shows a notice. */
+    content?: string;
+    /** Phase D-0e/f: where this section's content originates. */
+    source?: 'static' | 'file' | 'generated' | 'config' | 'custom';
   }
+
+  const SOURCE_META: Record<
+    NonNullable<SectionEntry['source']>,
+    { label: string; color: string; description: string }
+  > = {
+    static: {
+      label: 'Static',
+      color: '#6b7280',
+      description: 'Hardcoded boilerplate in the gateway section definition.',
+    },
+    file: {
+      label: 'File',
+      color: '#06b6d4',
+      description: 'Loaded from an agent workspace file (bootstrap or project docs).',
+    },
+    generated: {
+      label: 'Generated',
+      color: '#8b5cf6',
+      description: 'Produced at request time from runtime state (skills, memory, workspace, time).',
+    },
+    config: {
+      label: 'Config',
+      color: '#f59e0b',
+      description: 'User-configurable per-agent setting (personality, sandbox, permissions).',
+    },
+    custom: {
+      label: 'Custom',
+      color: '#10b981',
+      description: 'User-authored YAML section from Phase 19 customisation.',
+    },
+  };
 
   interface SystemPromptReport {
     source?: string;
@@ -96,6 +134,23 @@
   /** 'sections' = per-section view, 'classic' = old aggregated view */
   let viewMode = $state<'sections' | 'classic'>('sections');
 
+  // ─── Phase D-0d: stepped Test playback ─────────────────────────────────
+  // Per-step status during animated playback after Test is clicked.
+  // 'pending' = not yet reached, 'loading' = currently processing,
+  // 'ok' = completed with content, 'missing' = completed but section produced
+  // no content. When `stepStatus` is empty (default), legacy non-animated
+  // rendering is used; the animator sets entries during runTest.
+  let stepStatus = $state<Record<string, 'pending' | 'loading' | 'ok' | 'missing'>>({});
+  let testPrompt = $state('Tell me about today\'s schedule.');
+  /** Per-step delay during animated playback. */
+  const STEP_ANIMATION_MS = 220;
+
+  /** Phase D-0e: toggle for rendered-content panel between markdown and raw. */
+  let contentViewMode = $state<'rendered' | 'raw'>('rendered');
+
+  /** Phase D-0f: prose-editor modal state. */
+  let editorOpen = $state(false);
+
   // ─── Pipeline steps ──────────────────────────────────────────────────────
 
   // Classic fallback steps when sections data is not available
@@ -117,6 +172,11 @@
   const activeSections = $derived(
     report?.sections?.filter((s) => s.chars > 0) ?? [],
   );
+
+  /** Phase D-0f: top-level reference to the currently-focused section so the
+   * editor modal (rendered outside the template's section-detail scope) can
+   * read its id/layer/source. */
+  const currentSectionTop = $derived(activeSections[activeStep] ?? null);
 
   const currentSteps = $derived(
     viewMode === 'sections' && hasSections
@@ -149,26 +209,95 @@
     }
   }
 
+  function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Phase D-0f-1.5: silent refresh after a prose edit. Re-fetches the
+   * preview and updates `report` in place, leaving the animation state
+   * (stepStatus, activeStep) untouched so the user keeps their current
+   * focused section. Used by the editor modal's onSaved callback.
+   */
+  async function refreshReportSilently() {
+    try {
+      const res = (await fetchPromptPreview(agentId)) as SystemPromptReport | null;
+      if (res) {
+        report = res;
+      }
+    } catch (e) {
+      // Don't surface errors here — the user explicitly saved, the prompt
+      // panel just becomes momentarily stale. Re-running Test will recover.
+      console.warn('[prompt] silent refresh failed:', e);
+    }
+  }
+
   async function runTest() {
     testing = true;
     error = null;
     report = null;
+    stepStatus = {};
+    activeStep = 0;
     try {
+      // Phase D-0d: fetch the full prompt preview, then animate the pipeline
+      // sidebar one step at a time so each step renders as if it were its
+      // own mini-prompt to an LLM. The data is real; the stepping is a
+      // client-side playback. A real-events upgrade is a future enhancement.
       const res = (await fetchPromptPreview(agentId)) as SystemPromptReport | null;
       report = res;
-      // Switch to sections view if sections data is available
       if (res?.sections && res.sections.length > 0) {
         viewMode = 'sections';
+      }
+
+      // Capture step list AFTER report is set so currentSteps reflects sections.
+      // Use a microtask to let derived currentSteps recompute.
+      await sleep(0);
+      const stepsToPlay = currentSteps;
+      // Mark all pending up front so the sidebar shows an explicit playback queue.
+      const initialStatus: Record<string, 'pending' | 'loading' | 'ok' | 'missing'> = {};
+      for (const s of stepsToPlay) initialStatus[s.id] = 'pending';
+      stepStatus = initialStatus;
+
+      // Walk steps sequentially: pending → loading (active) → ok/missing.
+      for (let i = 0; i < stepsToPlay.length; i += 1) {
+        const step = stepsToPlay[i];
+        if (!step) continue;
+        activeStep = i;
+        stepStatus = { ...stepStatus, [step.id]: 'loading' };
+        await sleep(STEP_ANIMATION_MS);
+        const hasContent =
+          step.chars === undefined ? true : (step.chars ?? 0) > 0;
+        stepStatus = {
+          ...stepStatus,
+          [step.id]: hasContent ? 'ok' : 'missing',
+        };
       }
     } catch (e) {
       error = (e as Error).message ?? 'Failed to generate prompt preview';
     } finally {
       testing = false;
-      activeStep = 0;
     }
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
+
+  function stepIcon(stepId: string): string {
+    const status = stepStatus[stepId];
+    if (!status) return '';
+    if (status === 'pending') return '○';
+    if (status === 'loading') return '⏳';
+    if (status === 'ok') return '✓';
+    return '×';
+  }
+
+  function stepStatusClass(stepId: string): string {
+    const status = stepStatus[stepId];
+    if (status === 'loading') return 'text-accent animate-pulse';
+    if (status === 'ok') return 'text-emerald-400';
+    if (status === 'missing') return 'text-rose-400';
+    if (status === 'pending') return 'text-foreground/30';
+    return '';
+  }
 
   function fmtChars(n: number): string {
     if (n >= 1000) return `${(n / 1000).toFixed(1)}k chars`;
@@ -346,6 +475,11 @@
                   : 'border-l-2 border-transparent text-muted hover:text-foreground hover:bg-white/[0.03]'}"
                 onclick={() => (activeStep = stepIdx)}
               >
+                {#if stepStatus[section.id]}
+                  <span class={`shrink-0 w-3 text-center text-[11px] font-mono ${stepStatusClass(section.id)}`}>
+                    {stepIcon(section.id)}
+                  </span>
+                {/if}
                 <span class="flex-1 min-w-0 text-[11px] truncate">{section.label}</span>
                 <span class="shrink-0 text-[9px] text-foreground/30 font-mono">{section.chars > 0 ? fmtChars(section.chars) : ''}</span>
               </button>
@@ -372,6 +506,11 @@
               {i + 1}
             </span>
             <span class="text-[11px] font-medium truncate">{step.label}</span>
+            {#if stepStatus[step.id]}
+              <span class={`shrink-0 ml-auto text-[11px] font-mono ${stepStatusClass(step.id)}`}>
+                {stepIcon(step.id)}
+              </span>
+            {/if}
           </button>
         {/each}
       </div>
@@ -379,11 +518,24 @@
 
     <!-- Action buttons -->
     <div class="shrink-0 px-3 py-2 border-t border-border space-y-1.5">
+      <!-- Phase D-0d: editable test prompt fed into the stepped playback -->
+      <label class="block">
+        <span class="block text-[9px] font-bold uppercase tracking-widest text-muted mb-1">
+          Test prompt
+        </span>
+        <textarea
+          bind:value={testPrompt}
+          rows="2"
+          class="w-full text-[11px] px-2 py-1.5 rounded border border-border bg-bg1 text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-accent/60 resize-none font-mono"
+          placeholder="Enter a sample message…"
+          disabled={testing}
+        ></textarea>
+      </label>
       <button
         type="button"
         class="w-full text-[10px] font-semibold px-2 py-1.5 rounded border border-accent/40 text-accent hover:bg-accent/10 transition-colors cursor-pointer disabled:opacity-40"
         onclick={runTest}
-        disabled={testing || loading}
+        disabled={testing || loading || !testPrompt.trim()}
       >
         {testing ? m.prompt_generating() : m.prompt_test()}
       </button>
@@ -432,6 +584,44 @@
               <span class="w-2 h-2 rounded-full shrink-0" style:background-color={LAYER_META[currentSection.layer]?.color ?? '#6b7280'}></span>
               <h2 class="text-sm font-semibold text-foreground">{currentSection.label}</h2>
               <span class="text-[9px] px-1.5 py-0.5 rounded bg-bg2 border border-border/50 text-muted font-mono">{currentSection.layer}</span>
+              {#if currentSection.source}
+                {@const meta = SOURCE_META[currentSection.source]}
+                {#if currentSection.source === 'static'}
+                  <button
+                    type="button"
+                    class="text-[9px] px-1.5 py-0.5 rounded font-mono uppercase tracking-wide hover:opacity-80 transition-opacity cursor-pointer"
+                    style:background-color={`${meta.color}22`}
+                    style:border={`1px solid ${meta.color}66`}
+                    style:color={meta.color}
+                    title={`${meta.description} — click to edit`}
+                    onclick={() => (editorOpen = true)}
+                  >
+                    {meta.label} ✎
+                  </button>
+                {:else if currentSection.source === 'file'}
+                  <button
+                    type="button"
+                    class="text-[9px] px-1.5 py-0.5 rounded font-mono uppercase tracking-wide hover:opacity-80 transition-opacity cursor-pointer"
+                    style:background-color={`${meta.color}22`}
+                    style:border={`1px solid ${meta.color}66`}
+                    style:color={meta.color}
+                    title={`${meta.description} — click to inspect`}
+                    onclick={() => (editorOpen = true)}
+                  >
+                    {meta.label} 🔍
+                  </button>
+                {:else}
+                  <span
+                    class="text-[9px] px-1.5 py-0.5 rounded font-mono uppercase tracking-wide"
+                    style:background-color={`${meta.color}22`}
+                    style:border={`1px solid ${meta.color}66`}
+                    style:color={meta.color}
+                    title={meta.description}
+                  >
+                    {meta.label}
+                  </span>
+                {/if}
+              {/if}
             </div>
             <p class="text-muted text-[11px] mb-3">
               {LAYER_META[currentSection.layer]?.description ?? ''}
@@ -464,6 +654,43 @@
                   <span class="shrink-0 text-[10px] text-muted">{totalChars > 0 ? ((currentSection.chars / totalChars) * 100).toFixed(1) + '%' : '—'}</span>
                 </div>
               </div>
+            </div>
+
+            <!-- Phase D-0e: rendered section content (real prompt text) -->
+            <div class="mt-4">
+              <div class="flex items-center justify-between mb-1">
+                <p class="text-[10px] font-bold uppercase tracking-wide text-muted">Rendered content</p>
+                <div class="flex items-center gap-2">
+                  {#if currentSection.content !== undefined}
+                    <span class="text-[9px] text-muted font-mono">{currentSection.content.length} chars</span>
+                    <button
+                      type="button"
+                      class="text-[9px] px-1.5 py-0.5 rounded border border-border text-muted hover:text-foreground transition-colors cursor-pointer"
+                      onclick={() => (contentViewMode = contentViewMode === 'rendered' ? 'raw' : 'rendered')}
+                    >
+                      {contentViewMode === 'rendered' ? 'Raw' : 'Rendered'}
+                    </button>
+                  {/if}
+                </div>
+              </div>
+              {#if currentSection.content === undefined}
+                <div class="rounded border border-border/50 bg-bg2 px-3 py-2 text-[11px] text-muted italic">
+                  Gateway hasn't been updated to emit per-section content yet (D-0e #105).
+                  Until then, only metadata is available.
+                </div>
+              {:else if currentSection.content.length === 0}
+                <div class="rounded border border-border/50 bg-bg2 px-3 py-2 text-[11px] text-muted italic">
+                  This section rendered empty for the current parameters.
+                </div>
+              {:else if contentViewMode === 'rendered'}
+                <div class="rounded border border-border/50 bg-bg1 p-3 max-h-96 overflow-auto prompt-md">
+                  {#key currentSection.id}
+                    <MarkdownMessage value={currentSection.content} tone="assistant" />
+                  {/key}
+                </div>
+              {:else}
+                <pre class="rounded border border-border/50 bg-bg1 p-3 text-[11px] font-mono text-foreground whitespace-pre-wrap break-words max-h-96 overflow-auto">{currentSection.content}</pre>
+              {/if}
             </div>
 
             <!-- Contextual detail for known sections -->
@@ -809,3 +1036,19 @@
   </div>
   </div><!-- /flex flex-1 (sidebar + detail row) -->
 </div>
+
+{#if currentSectionTop && (currentSectionTop.source === 'static' || currentSectionTop.source === 'file')}
+  <SectionProseEditor
+    bind:open={editorOpen}
+    {agentId}
+    layer={currentSectionTop.layer as 'platform' | 'agent-type' | 'identity' | 'user' | 'session'}
+    sectionId={currentSectionTop.id}
+    sectionLabel={currentSectionTop.label}
+    mode={currentSectionTop.source === 'file' ? 'fileInspector' : 'prose'}
+    onSaved={() => {
+      // Phase D-0f-1.5: silent refresh — don't replay the animation. Just
+      // update the rendered content panel so the edit shows immediately.
+      void refreshReportSilently();
+    }}
+  />
+{/if}

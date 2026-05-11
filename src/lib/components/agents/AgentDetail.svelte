@@ -5,6 +5,7 @@
   import SessionKanban from '../sessions/SessionKanban.svelte';
   import ChatPanel from '../chat/ChatPanel.svelte';
   import AgentSettingsPanel from './AgentSettingsPanel.svelte';
+  import AgentDashboard from './AgentDashboard.svelte';
   import SessionMonitor from '../sessions/SessionMonitor.svelte';
   import AgentFiles from './AgentFiles.svelte';
   import AgentKnowledgeGraph from './AgentKnowledgeGraph.svelte';
@@ -15,7 +16,7 @@
   import { ui } from '$lib/state/ui/ui.svelte';
   import * as m from '$lib/paraglide/messages';
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
-  import type { Agent } from '$lib/types/gateway';
+  import type { Agent } from '@minion-stack/shared';
   import type { SessionRow } from '../sessions/SessionsList.svelte';
 
   let { agentId, agent }: { agentId: string; agent: Agent } = $props();
@@ -48,6 +49,16 @@
 
   <!-- Tab bar -->
   <div class="shrink-0 flex items-center border-b border-border bg-bg2">
+    <button
+      type="button"
+      class="px-4 py-2 text-[11px] font-semibold border-b-2 transition-colors cursor-pointer
+        {ui.activeAgentTab === 'dashboard'
+        ? 'border-accent text-accent'
+        : 'border-transparent text-muted hover:text-foreground'}"
+      onclick={() => (ui.activeAgentTab = 'dashboard')}
+    >
+      Overview
+    </button>
     <button
       type="button"
       class="px-4 py-2 text-[11px] font-semibold border-b-2 transition-colors cursor-pointer
@@ -133,7 +144,9 @@
   <!-- Main content: chat or monitor -->
   {#key ui.activeAgentTab}
     <div class="flex-1 min-h-0 flex flex-col overflow-hidden" style="animation: tab-slide-in 100ms ease-out">
-      {#if ui.activeAgentTab === 'monitor'}
+      {#if ui.activeAgentTab === 'dashboard'}
+        <AgentDashboard {agentId} {agent} />
+      {:else if ui.activeAgentTab === 'monitor'}
         <SessionKanban sessionKey={ui.selectedSessionKey} serverId={ui.selectedServerId} />
         <SessionMonitor
           {agentId}

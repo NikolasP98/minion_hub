@@ -27,14 +27,54 @@ export interface ProvisionConfigState {
 
 function makeDefaultPhases(): PhaseInfo[] {
   return [
-    { id: '00', name: m.provision_phasePreflight(), description: m.provision_phasePreflightDesc(), status: 'pending' },
-    { id: '20', name: m.provision_phaseUserCreation(), description: m.provision_phaseUserCreationDesc(), status: 'pending' },
-    { id: '30', name: m.provision_phaseEnvironment(), description: m.provision_phaseEnvironmentDesc(), status: 'pending' },
-    { id: '40', name: m.provision_phaseInstall(), description: m.provision_phaseInstallDesc(), status: 'pending' },
-    { id: '45', name: m.provision_phaseAlias(), description: m.provision_phaseAliasDesc(), status: 'pending' },
-    { id: '50', name: m.provision_phaseConfig(), description: m.provision_phaseConfigDesc(), status: 'pending' },
-    { id: '60', name: m.provision_phaseService(), description: m.provision_phaseServiceDesc(), status: 'pending' },
-    { id: '70', name: m.provision_phaseVerification(), description: m.provision_phaseVerificationDesc(), status: 'pending' },
+    {
+      id: '00',
+      name: m.provision_phasePreflight(),
+      description: m.provision_phasePreflightDesc(),
+      status: 'pending',
+    },
+    {
+      id: '20',
+      name: m.provision_phaseUserCreation(),
+      description: m.provision_phaseUserCreationDesc(),
+      status: 'pending',
+    },
+    {
+      id: '30',
+      name: m.provision_phaseEnvironment(),
+      description: m.provision_phaseEnvironmentDesc(),
+      status: 'pending',
+    },
+    {
+      id: '40',
+      name: m.provision_phaseInstall(),
+      description: m.provision_phaseInstallDesc(),
+      status: 'pending',
+    },
+    {
+      id: '45',
+      name: m.provision_phaseAlias(),
+      description: m.provision_phaseAliasDesc(),
+      status: 'pending',
+    },
+    {
+      id: '50',
+      name: m.provision_phaseConfig(),
+      description: m.provision_phaseConfigDesc(),
+      status: 'pending',
+    },
+    {
+      id: '60',
+      name: m.provision_phaseService(),
+      description: m.provision_phaseServiceDesc(),
+      status: 'pending',
+    },
+    {
+      id: '70',
+      name: m.provision_phaseVerification(),
+      description: m.provision_phaseVerificationDesc(),
+      status: 'pending',
+    },
   ];
 }
 
@@ -222,7 +262,9 @@ export async function startProvision(serverId: string, startFrom?: string) {
             } else if (payload.type === 'error') {
               provisionState.logs.push(`ERROR: ${payload.line}`);
             }
-          } catch { /* ignore parse errors */ }
+          } catch {
+            /* ignore parse errors */
+          }
         } else if (line.startsWith('event: phase')) {
           // Next data line has phase info — handled in data parsing
           const nextData = lines.find((l) => l.startsWith('data: ') && l.includes('"phase"'));
@@ -233,7 +275,9 @@ export async function startProvision(serverId: string, startFrom?: string) {
               // Mark phase as running
               const phase = provisionState.phases.find((ph) => ph.id === p.phase);
               if (phase) phase.status = 'running';
-            } catch { /* ignore */ }
+            } catch {
+              /* ignore */
+            }
           }
         } else if (line.startsWith('event: done')) {
           // Mark remaining running phases as complete

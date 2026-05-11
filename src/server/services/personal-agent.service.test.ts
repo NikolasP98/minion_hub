@@ -1,269 +1,239 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
-	derivePersonalAgentId,
-	deriveDisplayName,
-	provisionPersonalAgent,
-	getPersonalAgent,
-	updatePersonalAgent,
-	updateProvisioningStatus,
-	ensurePersonalAgentOnLogin,
-	listPendingAgents,
-	deletePersonalAgent,
+  derivePersonalAgentId,
+  provisionPersonalAgent,
+  getPersonalAgent,
+  updatePersonalAgent,
+  updateProvisioningStatus,
+  ensurePersonalAgentOnLogin,
+  listPendingAgents,
+  deletePersonalAgent,
 } from './personal-agent.service';
 import { createMockDb } from '$server/test-utils/mock-db';
 
 beforeEach(() => {
-	vi.clearAllMocks();
+  vi.clearAllMocks();
 });
 
 vi.mock('$server/db/utils', () => ({
-	newId: () => 'mock-pa-id-000000000001',
-	nowMs: () => 1_700_000_000_000,
+  newId: () => 'mock-pa-id-000000000001',
+  nowMs: () => 1_700_000_000_000,
 }));
 
-const mockAssignAgentToUser = vi.fn<(ctx: unknown, userId: string, agentId: string, serverId: string) => Promise<void>>();
+const mockAssignAgentToUser =
+  vi.fn<(ctx: unknown, userId: string, agentId: string, serverId: string) => Promise<void>>();
 vi.mock('./user-agents.service', () => ({
-	assignAgentToUser: (ctx: unknown, userId: string, agentId: string, serverId: string) =>
-		mockAssignAgentToUser(ctx, userId, agentId, serverId),
+  assignAgentToUser: (ctx: unknown, userId: string, agentId: string, serverId: string) =>
+    mockAssignAgentToUser(ctx, userId, agentId, serverId),
 }));
 
 describe('derivePersonalAgentId', () => {
-	it('returns personal-{userId}', () => {
-		expect(derivePersonalAgentId('user-abc-123')).toBe('personal-user-abc-123');
-	});
+  it('returns personal-{userId}', () => {
+    expect(derivePersonalAgentId('user-abc-123')).toBe('personal-user-abc-123');
+  });
 
-	it('is deterministic for the same userId', () => {
-		const id1 = derivePersonalAgentId('u1');
-		const id2 = derivePersonalAgentId('u1');
-		expect(id1).toBe(id2);
-	});
-});
-
-describe('deriveDisplayName', () => {
-	it('returns "usr:{email}"', () => {
-		expect(deriveDisplayName('nik@example.com')).toBe('usr:nik@example.com');
-	});
+  it('is deterministic for the same userId', () => {
+    const id1 = derivePersonalAgentId('u1');
+    const id2 = derivePersonalAgentId('u1');
+    expect(id1).toBe(id2);
+  });
 });
 
 describe('provisionPersonalAgent', () => {
-	it('creates a personal_agents row with status pending and deterministic agentId', async () => {
-		const { db } = createMockDb();
-		const result = await provisionPersonalAgent(
-			{ db, tenantId: 't1' },
-			{ userId: 'user-1', email: 'nik@example.com', serverId: 'srv-1' },
-		);
-		expect(result).toBeDefined();
-		expect(result.agentId).toBe('personal-user-1');
-		expect(result.provisioningStatus).toBe('pending');
-		expect(result.displayName).toBe('usr:nik@example.com');
-		expect(db.insert).toHaveBeenCalled();
-	});
+  it('creates a personal_agents row with status pending and deterministic agentId', async () => {
+    const { db } = createMockDb();
+    const result = await provisionPersonalAgent(
+      { db, tenantId: 't1' },
+      { userId: 'user-1', email: 'nik@example.com', serverId: 'srv-1' },
+    );
+    expect(result).toBeDefined();
+    expect(result.agentId).toBe('personal-user-1');
+    expect(result.provisioningStatus).toBe('pending');
+    expect(db.insert).toHaveBeenCalled();
+  });
 
-	it('calls assignAgentToUser for JWT compatibility', async () => {
-		const { db } = createMockDb();
-		await provisionPersonalAgent(
-			{ db, tenantId: 't1' },
-			{ userId: 'user-1', email: 'nik@example.com', serverId: 'srv-1' },
-		);
-		expect(mockAssignAgentToUser).toHaveBeenCalledWith(
-			expect.objectContaining({ db }),
-			'user-1',
-			'personal-user-1',
-			'srv-1',
-		);
-	});
+  it('calls assignAgentToUser for JWT compatibility', async () => {
+    const { db } = createMockDb();
+    await provisionPersonalAgent(
+      { db, tenantId: 't1' },
+      { userId: 'user-1', email: 'nik@example.com', serverId: 'srv-1' },
+    );
+    expect(mockAssignAgentToUser).toHaveBeenCalledWith(
+      expect.objectContaining({ db }),
+      'user-1',
+      'personal-user-1',
+      'srv-1',
+    );
+  });
 
-	it('is idempotent -- calling twice for same user returns existing without error', async () => {
-		const { db, resolveSequence } = createMockDb();
-		// First call: insert succeeds (onConflictDoNothing), then select returns new row
-		const existingRow = {
-			id: 'mock-pa-id-000000000001',
-			userId: 'user-1',
-			agentId: 'personal-user-1',
-			serverId: 'srv-1',
-			displayName: 'usr:nik@example.com',
-			provisioningStatus: 'pending',
-			personalityConfigured: false,
-			retryCount: 0,
-			createdAt: 1_700_000_000_000,
-			updatedAt: 1_700_000_000_000,
-		};
-		resolveSequence([
-			undefined, // insert().values().onConflictDoNothing()
-			undefined, // update (user.personalAgentId)
-			[existingRow], // select after insert to return row
-		]);
-		const result = await provisionPersonalAgent(
-			{ db, tenantId: 't1' },
-			{ userId: 'user-1', email: 'nik@example.com', serverId: 'srv-1' },
-		);
-		expect(result).toBeDefined();
-		expect(result.agentId).toBe('personal-user-1');
-	});
+  it('is idempotent -- calling twice for same user returns existing without error', async () => {
+    const { db, resolveSequence } = createMockDb();
+    // First call: insert succeeds (onConflictDoNothing), then select returns new row
+    const existingRow = {
+      id: 'mock-pa-id-000000000001',
+      userId: 'user-1',
+      agentId: 'personal-user-1',
+      serverId: 'srv-1',
+      displayName: 'usr:nik@example.com',
+      provisioningStatus: 'pending',
+      personalityConfigured: false,
+      retryCount: 0,
+      createdAt: 1_700_000_000_000,
+      updatedAt: 1_700_000_000_000,
+    };
+    resolveSequence([
+      undefined, // insert().values().onConflictDoNothing()
+      undefined, // update (user.personalAgentId)
+      [existingRow], // select after insert to return row
+    ]);
+    const result = await provisionPersonalAgent(
+      { db, tenantId: 't1' },
+      { userId: 'user-1', email: 'nik@example.com', serverId: 'srv-1' },
+    );
+    expect(result).toBeDefined();
+    expect(result.agentId).toBe('personal-user-1');
+  });
 
-	it('updates user.personalAgentId for fast lookup', async () => {
-		const { db } = createMockDb();
-		await provisionPersonalAgent(
-			{ db, tenantId: 't1' },
-			{ userId: 'user-1', email: 'nik@example.com', serverId: 'srv-1' },
-		);
-		expect(db.update).toHaveBeenCalled();
-	});
+  it('updates user.personalAgentId for fast lookup', async () => {
+    const { db } = createMockDb();
+    await provisionPersonalAgent(
+      { db, tenantId: 't1' },
+      { userId: 'user-1', email: 'nik@example.com', serverId: 'srv-1' },
+    );
+    expect(db.update).toHaveBeenCalled();
+  });
 });
 
 describe('getPersonalAgent', () => {
-	it('returns the personal agent row for a userId', async () => {
-		const { db, resolve } = createMockDb();
-		const mockRow = {
-			id: 'pa-1',
-			userId: 'user-1',
-			agentId: 'personal-user-1',
-			displayName: "Nikolas's Agent",
-			provisioningStatus: 'active',
-		};
-		resolve([mockRow]);
-		const result = await getPersonalAgent({ db, tenantId: 't1' }, 'user-1');
-		expect(result).toEqual(mockRow);
-		expect(db.select).toHaveBeenCalled();
-	});
+  it('returns the personal agent row for a userId', async () => {
+    const { db, resolve } = createMockDb();
+    const mockRow = {
+      id: 'pa-1',
+      userId: 'user-1',
+      agentId: 'personal-user-1',
+      displayName: "Nikolas's Agent",
+      provisioningStatus: 'active',
+    };
+    resolve([mockRow]);
+    const result = await getPersonalAgent({ db, tenantId: 't1' }, 'user-1');
+    expect(result).toEqual(mockRow);
+    expect(db.select).toHaveBeenCalled();
+  });
 
-	it('returns null if no personal agent exists', async () => {
-		const { db, resolve } = createMockDb();
-		resolve([]);
-		const result = await getPersonalAgent({ db, tenantId: 't1' }, 'user-1');
-		expect(result).toBeNull();
-	});
+  it('returns null if no personal agent exists', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([]);
+    const result = await getPersonalAgent({ db, tenantId: 't1' }, 'user-1');
+    expect(result).toBeNull();
+  });
 });
 
 describe('updatePersonalAgent', () => {
-	it('updates displayName, conversationName, personalityPreset, personalityText', async () => {
-		const { db } = createMockDb();
-		await updatePersonalAgent({ db, tenantId: 't1' }, 'user-1', {
-			displayName: 'My Assistant',
-			conversationName: 'PANIK',
-			personalityPreset: 'casual',
-			personalityText: 'Be chill and friendly',
-			personalityConfigured: true,
-			avatarUrl: null,
-		});
-		expect(db.update).toHaveBeenCalled();
-	});
+  it('updates avatarUrl (the only remaining hub-DB-owned field)', async () => {
+    const { db } = createMockDb();
+    await updatePersonalAgent({ db, tenantId: 't1' }, 'user-1', {
+      avatarUrl: 'https://example.com/a.png',
+    });
+    expect(db.update).toHaveBeenCalled();
+  });
 });
 
 describe('updateProvisioningStatus', () => {
-	it('transitions pending -> provisioning', async () => {
-		const { db } = createMockDb();
-		await updateProvisioningStatus({ db, tenantId: 't1' }, 'user-1', 'provisioning');
-		expect(db.update).toHaveBeenCalled();
-	});
+  it('transitions pending -> provisioning', async () => {
+    const { db } = createMockDb();
+    await updateProvisioningStatus({ db, tenantId: 't1' }, 'user-1', 'provisioning');
+    expect(db.update).toHaveBeenCalled();
+  });
 
-	it('transitions provisioning -> active', async () => {
-		const { db } = createMockDb();
-		await updateProvisioningStatus({ db, tenantId: 't1' }, 'user-1', 'active');
-		expect(db.update).toHaveBeenCalled();
-	});
+  it('transitions provisioning -> active', async () => {
+    const { db } = createMockDb();
+    await updateProvisioningStatus({ db, tenantId: 't1' }, 'user-1', 'active');
+    expect(db.update).toHaveBeenCalled();
+  });
 
-	it('transitions provisioning -> error with error message', async () => {
-		const { db } = createMockDb();
-		await updateProvisioningStatus(
-			{ db, tenantId: 't1' },
-			'user-1',
-			'error',
-			'Gateway unreachable',
-		);
-		expect(db.update).toHaveBeenCalled();
-	});
+  it('transitions provisioning -> error with error message', async () => {
+    const { db } = createMockDb();
+    await updateProvisioningStatus(
+      { db, tenantId: 't1' },
+      'user-1',
+      'error',
+      'Gateway unreachable',
+    );
+    expect(db.update).toHaveBeenCalled();
+  });
 });
 
 describe('ensurePersonalAgentOnLogin', () => {
-	it('creates personal agent if none exists', async () => {
-		const { db, resolveSequence } = createMockDb();
-		// First select returns empty (no existing agent)
-		// Then insert + update + select returns new row
-		const newRow = {
-			id: 'mock-pa-id-000000000001',
-			userId: 'user-1',
-			agentId: 'personal-user-1',
-			displayName: 'usr:nik@example.com',
-			provisioningStatus: 'pending',
-		};
-		resolveSequence([
-			[], // getPersonalAgent select -> no rows
-			undefined, // insert
-			undefined, // update user.personalAgentId
-			[newRow], // select after insert
-		]);
-		const result = await ensurePersonalAgentOnLogin(
-			{ db, tenantId: 't1' },
-			{ userId: 'user-1', email: 'nik@example.com', serverId: 'srv-1' },
-		);
-		expect(result).toBeDefined();
-		expect(result.agentId).toBe('personal-user-1');
-	});
+  it('creates personal agent if none exists', async () => {
+    const { db, resolveSequence } = createMockDb();
+    // First select returns empty (no existing agent)
+    // Then insert + update + select returns new row
+    const newRow = {
+      id: 'mock-pa-id-000000000001',
+      userId: 'user-1',
+      agentId: 'personal-user-1',
+      displayName: 'usr:nik@example.com',
+      provisioningStatus: 'pending',
+    };
+    resolveSequence([
+      [], // getPersonalAgent select -> no rows
+      undefined, // insert
+      undefined, // update user.personalAgentId
+      [newRow], // select after insert
+    ]);
+    const result = await ensurePersonalAgentOnLogin(
+      { db, tenantId: 't1' },
+      { userId: 'user-1', email: 'nik@example.com', serverId: 'srv-1' },
+    );
+    expect(result).toBeDefined();
+    expect(result.agentId).toBe('personal-user-1');
+  });
 
-	it('returns existing agent if displayName already matches', async () => {
-		const { db, resolve } = createMockDb();
-		const existingRow = {
-			id: 'pa-1',
-			userId: 'user-1',
-			agentId: 'personal-user-1',
-			displayName: 'usr:nik@example.com',
-			provisioningStatus: 'active',
-		};
-		resolve([existingRow]);
-		const result = await ensurePersonalAgentOnLogin(
-			{ db, tenantId: 't1' },
-			{ userId: 'user-1', email: 'nik@example.com', serverId: 'srv-1' },
-		);
-		expect(result).toEqual(existingRow);
-		// Should NOT have inserted or updated since displayName matches
-		expect(db.insert).not.toHaveBeenCalled();
-	});
-
-	it('backfills stale displayName on login', async () => {
-		const { db, resolve } = createMockDb();
-		const existingRow = {
-			id: 'pa-1',
-			userId: 'user-1',
-			agentId: 'personal-user-1',
-			displayName: "Nikolas's Agent",
-			provisioningStatus: 'active',
-		};
-		resolve([existingRow]);
-		const result = await ensurePersonalAgentOnLogin(
-			{ db, tenantId: 't1' },
-			{ userId: 'user-1', email: 'nik@example.com', serverId: 'srv-1' },
-		);
-		expect(result.displayName).toBe('usr:nik@example.com');
-		expect(db.update).toHaveBeenCalled();
-	});
+  it('returns existing agent without modification', async () => {
+    const { db, resolve } = createMockDb();
+    const existingRow = {
+      id: 'pa-1',
+      userId: 'user-1',
+      agentId: 'personal-user-1',
+      provisioningStatus: 'active',
+    };
+    resolve([existingRow]);
+    const result = await ensurePersonalAgentOnLogin(
+      { db, tenantId: 't1' },
+      { userId: 'user-1', email: 'nik@example.com', serverId: 'srv-1' },
+    );
+    expect(result).toEqual(existingRow);
+    // displayName lives in gateway config now — login must NOT touch DB.
+    expect(db.insert).not.toHaveBeenCalled();
+    expect(db.update).not.toHaveBeenCalled();
+  });
 });
 
 describe('listPendingAgents', () => {
-	it('returns agents with status pending or error and retryCount < maxRetries', async () => {
-		const { db, resolve } = createMockDb();
-		const pendingRows = [
-			{ id: 'pa-1', userId: 'u1', provisioningStatus: 'pending', retryCount: 0 },
-			{ id: 'pa-2', userId: 'u2', provisioningStatus: 'error', retryCount: 2 },
-		];
-		resolve(pendingRows);
-		const result = await listPendingAgents({ db, tenantId: 't1' });
-		expect(result).toEqual(pendingRows);
-		expect(db.select).toHaveBeenCalled();
-	});
+  it('returns agents with status pending or error and retryCount < maxRetries', async () => {
+    const { db, resolve } = createMockDb();
+    const pendingRows = [
+      { id: 'pa-1', userId: 'u1', provisioningStatus: 'pending', retryCount: 0 },
+      { id: 'pa-2', userId: 'u2', provisioningStatus: 'error', retryCount: 2 },
+    ];
+    resolve(pendingRows);
+    const result = await listPendingAgents({ db, tenantId: 't1' });
+    expect(result).toEqual(pendingRows);
+    expect(db.select).toHaveBeenCalled();
+  });
 
-	it('accepts custom maxRetries parameter', async () => {
-		const { db, resolve } = createMockDb();
-		resolve([]);
-		const result = await listPendingAgents({ db, tenantId: 't1' }, 3);
-		expect(result).toEqual([]);
-	});
+  it('accepts custom maxRetries parameter', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([]);
+    const result = await listPendingAgents({ db, tenantId: 't1' }, 3);
+    expect(result).toEqual([]);
+  });
 });
 
 describe('deletePersonalAgent', () => {
-	it('deletes personal agent row', async () => {
-		const { db } = createMockDb();
-		await deletePersonalAgent({ db, tenantId: 't1' }, 'user-1');
-		expect(db.delete).toHaveBeenCalled();
-	});
+  it('deletes personal agent row', async () => {
+    const { db } = createMockDb();
+    await deletePersonalAgent({ db, tenantId: 't1' }, 'user-1');
+    expect(db.delete).toHaveBeenCalled();
+  });
 });

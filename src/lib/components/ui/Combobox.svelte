@@ -78,7 +78,13 @@
       onValueChange?.(value);
     },
     onOpenChange({ open, value: vals }: { open: boolean; value: string[] }) {
-      if (!open) {
+      if (open) {
+        // Clear filter so full list is visible on every open
+        queueMicrotask(() => {
+          filterQuery = '';
+          api.setInputValue('');
+        });
+      } else {
         // Revert input text to the selected item's display name
         const currentVal = vals[0] ?? null;
         if (currentVal) {
@@ -100,23 +106,6 @@
   }));
 
   const api = $derived(combobox.connect(service, normalizeProps));
-
-  // ── Chevron handlers ────────────────────────────────────────────────────
-  function handleChevronPointerDown(e: PointerEvent) {
-    if (e.pointerType === 'touch') return;
-    if (e.button !== 0) return;
-    e.preventDefault(); // keep focus on input
-  }
-
-  function handleChevronClick() {
-    if (!api.open) {
-      filterQuery = '';
-      api.setInputValue('');
-      api.setOpen(true, 'trigger-click');
-    } else {
-      api.setOpen(false, 'trigger-click');
-    }
-  }
 
   // ── Sync external value into combobox ───────────────────────────────────
   // Track both value and items so this re-runs when async items load.
@@ -146,17 +135,7 @@
 
   <div class="cb-control" {...api.getControlProps()}>
     <input class="cb-input" {...api.getInputProps()} />
-    <button
-      type="button"
-      class="cb-chevron"
-      tabindex={-1}
-      aria-label="Toggle list"
-      aria-haspopup="listbox"
-      aria-expanded={api.open}
-      data-state={api.open ? 'open' : 'closed'}
-      onclick={handleChevronClick}
-      onpointerdown={handleChevronPointerDown}
-    >
+    <button class="cb-chevron" {...api.getTriggerProps()}>
       <svg
         viewBox="0 0 16 16"
         width="14"
@@ -257,7 +236,7 @@
   .cb-chevron:hover {
     color: var(--color-foreground);
   }
-  .cb-chevron[data-state='open'] svg {
+  .cb-chevron:is([data-state='open']) svg {
     transform: rotate(180deg);
   }
   .cb-chevron svg {
@@ -273,12 +252,11 @@
   }
 
   .cb-content {
-    background: var(--color-bg);
+    background: var(--color-bg2, var(--color-bg));
     border: 1px solid var(--color-border);
     border-radius: 6px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
     overflow: hidden;
-    backdrop-filter: blur(16px);
   }
 
   .cb-list {

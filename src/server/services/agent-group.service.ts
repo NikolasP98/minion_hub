@@ -1,5 +1,5 @@
 import { eq, and, asc } from 'drizzle-orm';
-import { agentGroups, agentGroupMembers } from '$server/db/schema';
+import { agentGroups, agentGroupMembers } from '@minion-stack/db/schema';
 import { newId, nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
 
@@ -59,7 +59,11 @@ export async function updateGroup(
     .update(agentGroups)
     .set(set)
     .where(
-      and(eq(agentGroups.id, groupId), eq(agentGroups.userId, userId), eq(agentGroups.tenantId, ctx.tenantId)),
+      and(
+        eq(agentGroups.id, groupId),
+        eq(agentGroups.userId, userId),
+        eq(agentGroups.tenantId, ctx.tenantId),
+      ),
     );
 }
 
@@ -67,22 +71,35 @@ export async function deleteGroup(ctx: TenantContext, userId: string, groupId: s
   await ctx.db
     .delete(agentGroups)
     .where(
-      and(eq(agentGroups.id, groupId), eq(agentGroups.userId, userId), eq(agentGroups.tenantId, ctx.tenantId)),
+      and(
+        eq(agentGroups.id, groupId),
+        eq(agentGroups.userId, userId),
+        eq(agentGroups.tenantId, ctx.tenantId),
+      ),
     );
 }
 
-export async function setGroupMembers(ctx: TenantContext, userId: string, groupId: string, agentIds: string[]) {
+export async function setGroupMembers(
+  ctx: TenantContext,
+  userId: string,
+  groupId: string,
+  agentIds: string[],
+) {
   // Verify the group belongs to this user
   const [group] = await ctx.db
     .select({ id: agentGroups.id })
     .from(agentGroups)
-    .where(and(eq(agentGroups.id, groupId), eq(agentGroups.userId, userId), eq(agentGroups.tenantId, ctx.tenantId)))
+    .where(
+      and(
+        eq(agentGroups.id, groupId),
+        eq(agentGroups.userId, userId),
+        eq(agentGroups.tenantId, ctx.tenantId),
+      ),
+    )
     .limit(1);
   if (!group) return;
 
-  await ctx.db
-    .delete(agentGroupMembers)
-    .where(eq(agentGroupMembers.groupId, groupId));
+  await ctx.db.delete(agentGroupMembers).where(eq(agentGroupMembers.groupId, groupId));
 
   if (agentIds.length === 0) return;
 
@@ -95,22 +112,27 @@ export async function setGroupMembers(ctx: TenantContext, userId: string, groupI
   );
 }
 
-export async function addAgentToGroup(ctx: TenantContext, userId: string, groupId: string, agentId: string) {
+export async function addAgentToGroup(
+  ctx: TenantContext,
+  userId: string,
+  groupId: string,
+  agentId: string,
+) {
   await ctx.db
     .insert(agentGroupMembers)
     .values({ groupId, agentId, sortOrder: 0 })
     .onConflictDoNothing();
 }
 
-export async function removeAgentFromGroup(ctx: TenantContext, userId: string, groupId: string, agentId: string) {
+export async function removeAgentFromGroup(
+  ctx: TenantContext,
+  userId: string,
+  groupId: string,
+  agentId: string,
+) {
   await ctx.db
     .delete(agentGroupMembers)
-    .where(
-      and(
-        eq(agentGroupMembers.groupId, groupId),
-        eq(agentGroupMembers.agentId, agentId),
-      ),
-    );
+    .where(and(eq(agentGroupMembers.groupId, groupId), eq(agentGroupMembers.agentId, agentId)));
 }
 
 export async function moveAgentToGroup(

@@ -20,45 +20,45 @@ const db = drizzle(client);
 
 // Find all personal agents whose displayName is NOT already in "usr:" format
 const rows = await db
-	.select({
-		paId: personalAgents.id,
-		userId: personalAgents.userId,
-		agentId: personalAgents.agentId,
-		displayName: personalAgents.displayName,
-	})
-	.from(personalAgents)
-	.where(not(like(personalAgents.displayName, 'usr:%')));
+  .select({
+    paId: personalAgents.id,
+    userId: personalAgents.userId,
+    agentId: personalAgents.agentId,
+    displayName: personalAgents.displayName,
+  })
+  .from(personalAgents)
+  .where(not(like(personalAgents.displayName, 'usr:%')));
 
 if (rows.length === 0) {
-	console.log('All personal agents already have usr: display names. Nothing to do.');
-	process.exit(0);
+  console.log('All personal agents already have usr: display names. Nothing to do.');
+  process.exit(0);
 }
 
 console.log(`Found ${rows.length} personal agent(s) to backfill:\n`);
 
 let updated = 0;
 for (const row of rows) {
-	// Look up the user's email
-	const [u] = await db
-		.select({ email: user.email })
-		.from(user)
-		.where(eq(user.id, row.userId))
-		.limit(1);
+  // Look up the user's email
+  const [u] = await db
+    .select({ email: user.email })
+    .from(user)
+    .where(eq(user.id, row.userId))
+    .limit(1);
 
-	if (!u) {
-		console.log(`  SKIP ${row.agentId} — user ${row.userId} not found`);
-		continue;
-	}
+  if (!u) {
+    console.log(`  SKIP ${row.agentId} — user ${row.userId} not found`);
+    continue;
+  }
 
-	const newDisplayName = `usr:${u.email}`;
-	console.log(`  ${row.agentId}: "${row.displayName}" → "${newDisplayName}"`);
+  const newDisplayName = `usr:${u.email}`;
+  console.log(`  ${row.agentId}: "${row.displayName}" → "${newDisplayName}"`);
 
-	await db
-		.update(personalAgents)
-		.set({ displayName: newDisplayName, updatedAt: Date.now() })
-		.where(eq(personalAgents.id, row.paId));
+  await db
+    .update(personalAgents)
+    .set({ displayName: newDisplayName, updatedAt: Date.now() })
+    .where(eq(personalAgents.id, row.paId));
 
-	updated++;
+  updated++;
 }
 
 console.log(`\nDone. Updated ${updated}/${rows.length} personal agent(s).`);

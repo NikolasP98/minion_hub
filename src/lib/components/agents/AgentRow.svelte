@@ -6,8 +6,9 @@
     import { agentActivity, agentChat, SPARK_BIN_COUNT, SPARK_BIN_MS } from "$lib/state/chat/chat.svelte";
     import { ui } from "$lib/state/ui/ui.svelte";
     import { gw } from "$lib/state/gateway/gateway-data.svelte";
-    import type { Agent } from "$lib/types/gateway";
+    import type { Agent } from "@minion-stack/shared";
     import { diceBearAvatarUrl } from "$lib/utils/avatar";
+    import { agentDisplayName } from "$lib/utils/agent-display";
     import * as m from "$lib/paraglide/messages";
     import * as tooltip from "@zag-js/tooltip";
     import { normalizeProps, useMachine } from "@zag-js/svelte";
@@ -147,7 +148,7 @@
                 <span class="text-base leading-none">{agent.emoji}</span>
             {:else}
                 <img
-                    src={diceBearAvatarUrl(agent.name ?? agent.id)}
+                    src={diceBearAvatarUrl(agentDisplayName(agent))}
                     alt=""
                     class="w-6 h-6 rounded-full"
                 />
@@ -173,100 +174,75 @@
                 class="bg-bg2 border border-border rounded px-2.5 py-1.5 shadow-lg whitespace-nowrap"
             >
                 <div class="text-xs font-semibold text-foreground">
-                    {agent.name ?? agent.id}
+                    {agentDisplayName(agent)}
                 </div>
                 <div class="text-[10px] text-muted mt-0.5">{statusText}</div>
             </div>
         </div>
     {/if}
 {:else}
-    <!-- Full row -->
+    <!-- Compact full row: single line — status dot + avatar + name + sparkline -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div draggable="true" ondragstart={handleDragStart} ondragend={handleDragEnd} role="listitem">
     <button
         type="button"
-        class="w-full flex flex-col px-2.5 py-1.5 gap-1.5 border-l-3 border-b border-b-[rgba(42,53,72,0.5)] cursor-pointer transition-[background] duration-120 hover:bg-white/3 bg-transparent text-inherit {selected
+        class="group w-full h-8 flex items-center gap-2 px-2.5 border-l-2 cursor-pointer transition-[background] duration-120 hover:bg-white/3 bg-transparent text-inherit {selected
             ? 'bg-bg3'
             : 'border-l-transparent'}"
         style:border-left-color={selected ? accentColor : undefined}
         title={statusText}
         onclick={handleClick}
     >
-        <!-- Row 1: status indicator + agent name -->
-        <div class="flex items-center gap-2 min-w-0">
+        <!-- Status indicator (hammer when active, dot when idle) -->
+        <span class="shrink-0 flex items-center justify-center w-3">
             {#if hasActive}
                 <span
-                    class="text-[11px] leading-none shrink-0 inline-block"
+                    class="text-[11px] leading-none inline-block"
                     style:transform="scale({hammerScale.current}) rotate({$rot}deg)"
                     style:transform-origin="bottom right">🔨</span
                 >
             {:else}
-                <StatusDot status="idle" size="sm" />
+                <span
+                    class="w-1.5 h-1.5 rounded-full transition-colors duration-200"
+                    style:background-color={chat?.loading
+                        ? "var(--color-accent)"
+                        : "var(--color-border)"}
+                ></span>
             {/if}
+        </span>
 
-            <span class="flex items-center gap-1.5 min-w-0 overflow-hidden">
-                {#if agent.emoji}
-                    <span class="leading-none shrink-0 text-[13px]">{agent.emoji}</span>
-                {:else}
-                    <img
-                        src={diceBearAvatarUrl(agent.name ?? agent.id)}
-                        alt=""
-                        class="w-5 h-5 rounded-full inline-block shrink-0"
-                    />
-                {/if}
-                <span class="text-[13px] font-semibold text-foreground truncate">{agent.name ?? agent.id}</span>
+        <!-- Avatar -->
+        {#if agent.emoji}
+            <span class="leading-none shrink-0 text-[13px]">{agent.emoji}</span>
+        {:else}
+            <img
+                src={diceBearAvatarUrl(agentDisplayName(agent))}
+                alt=""
+                class="w-5 h-5 rounded-full shrink-0"
+            />
+        {/if}
+
+        <!-- Name -->
+        <span class="text-[13px] font-medium text-foreground truncate flex-1 text-left">{agentDisplayName(agent)}</span>
+
+        <!-- Sparkline (subtle, only on hover or when active) -->
+        <div
+            class="w-12 h-4 shrink-0 transition-opacity duration-150 {hasActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-60'}"
+        >
+            <EChartsSparkline
+                bins={rotatedBins}
+                color={accentColor}
+                glow={hasActive}
+                chartStyle={sparklineStyle.current}
+            />
+        </div>
+
+        <!-- Active session badge -->
+        {#if activeSessions.length > 0}
+            <span class="text-[9px] tabular-nums text-success font-semibold shrink-0">
+                {activeSessions.length}
             </span>
-        </div>
-
-        <!-- Row 2: 2-column — left KPIs + right activity chart -->
-        <div class="flex items-end gap-2">
-
-            <!-- Left: textual status KPIs (~56px) -->
-            <div class="flex flex-col gap-0.5 w-14 shrink-0">
-                <!-- Status dot + label -->
-                <div class="flex items-center gap-1">
-                    <div
-                        class="w-1.5 h-1.5 rounded-full shrink-0 transition-colors duration-200"
-                        style:background-color={hasActive
-                            ? "var(--color-success)"
-                            : chat?.loading
-                              ? "var(--color-accent)"
-                              : "var(--color-border)"}
-                    ></div>
-                    <span
-                        class="text-[10px] font-medium leading-none truncate transition-colors duration-200"
-                        style:color={hasActive
-                            ? "var(--color-success)"
-                            : chat?.loading
-                              ? "var(--color-accent)"
-                              : "var(--color-muted-foreground)"}
-                    >
-                        {statusLabel}
-                    </span>
-                </div>
-
-                <!-- Sub-label: session count or gateway status -->
-                {#if activeSessions.length > 0}
-                    <span class="text-[9px] text-muted-foreground/50 pl-2.5 leading-none">
-                        {m.agent_sessionCount({ count: activeSessions.length })}
-                    </span>
-                {:else if agent.status}
-                    <span class="text-[9px] text-muted-foreground/50 pl-2.5 leading-none truncate" title={agent.status}>
-                        {agent.status}
-                    </span>
-                {/if}
-            </div>
-
-            <!-- Right: ECharts sparkline (flex-1) -->
-            <div class="flex-1 h-5">
-                <EChartsSparkline
-                    bins={rotatedBins}
-                    color={accentColor}
-                    glow={hasActive}
-                    chartStyle={sparklineStyle.current}
-                />
-            </div>
-        </div>
+        {/if}
     </button>
     </div>
 {/if}

@@ -3,7 +3,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { organization as orgPlugin } from 'better-auth/plugins';
 import { eq } from 'drizzle-orm';
 import { getDb } from './db/client';
-import { organization, member } from './db/schema';
+import { organization, member } from '@minion-stack/db/schema';
 
 // Seed-time auth instance using process.env directly (no SvelteKit virtual modules)
 const auth = betterAuth({
@@ -18,7 +18,10 @@ async function seed() {
   const email = process.env.SEED_ADMIN_EMAIL ?? 'admin@minion.hub';
   const password = process.env.SEED_ADMIN_PASSWORD ?? 'changeme';
   const orgName = process.env.SEED_TENANT_NAME ?? 'Default';
-  const slug = orgName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  const slug = orgName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
 
   console.log(`Seeding organization "${orgName}" with admin user ${email}...`);
 
@@ -27,16 +30,18 @@ async function seed() {
 
   // 1. Sign up the admin user (skip if already exists)
   let userId: string;
-  const signUpResult = await auth.api.signUpEmail({
-    body: { email, password, name: 'Admin' },
-  }).catch(() => null);
+  const signUpResult = await auth.api
+    .signUpEmail({
+      body: { email, password, name: 'Admin' },
+    })
+    .catch(() => null);
 
   if (signUpResult?.user) {
     userId = signUpResult.user.id;
     console.log(`Created user: ${userId}`);
   } else {
     // User already exists — look them up
-    const { user: userTable } = await import('./db/schema');
+    const { user: userTable } = await import('@minion-stack/db/schema');
     const rows = await db.select({ id: userTable.id }).from(userTable).where(eq(userTable.email, email)).limit(1);
     if (rows.length === 0) {
       console.error(`User ${email} not found and sign-up failed.`);
@@ -47,7 +52,11 @@ async function seed() {
   }
 
   // 2. Create the organization if it doesn't exist
-  const existing = await db.select({ id: organization.id }).from(organization).where(eq(organization.slug, slug)).limit(1);
+  const existing = await db
+    .select({ id: organization.id })
+    .from(organization)
+    .where(eq(organization.slug, slug))
+    .limit(1);
   let orgId: string;
   if (existing.length > 0) {
     orgId = existing[0].id;
@@ -59,8 +68,11 @@ async function seed() {
   }
 
   // 3. Add admin as organization owner (skip if already a member)
-  const existingMember = await db.select({ id: member.id }).from(member)
-    .where(eq(member.userId, userId)).limit(1);
+  const existingMember = await db
+    .select({ id: member.id })
+    .from(member)
+    .where(eq(member.userId, userId))
+    .limit(1);
   if (existingMember.length === 0) {
     await db.insert(member).values({
       id: crypto.randomUUID(),

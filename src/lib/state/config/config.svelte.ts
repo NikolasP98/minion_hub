@@ -6,7 +6,13 @@ import { sendRequest } from '$lib/services/gateway.svelte';
 import { toaster, toastError, toastSuccess, toastWarning } from '$lib/state/ui/toast.svelte';
 import * as m from '$lib/paraglide/messages';
 import { isAdmin } from '$lib/state/features/user.svelte';
-import { extractGroups, computeDirtyPaths, computePatch, deepGet, deepSet } from '$lib/utils/config-schema';
+import {
+  extractGroups,
+  computeDirtyPaths,
+  computePatch,
+  deepGet,
+  deepSet,
+} from '$lib/utils/config-schema';
 import {
   type RestartPhase,
   type RestartStateData,
@@ -60,9 +66,21 @@ const _dirtyPaths = $derived(computeDirtyPaths(configState.original, configState
 const _isDirty = $derived(_dirtyPaths.size > 0);
 const _groups: ConfigGroup[] = $derived(extractGroups(configState.schema, configState.uiHints));
 
-export const dirtyPaths = { get value() { return _dirtyPaths; } };
-export const isDirty = { get value() { return _isDirty; } };
-export const groups = { get value() { return _groups; } };
+export const dirtyPaths = {
+  get value() {
+    return _dirtyPaths;
+  },
+};
+export const isDirty = {
+  get value() {
+    return _isDirty;
+  },
+};
+export const groups = {
+  get value() {
+    return _groups;
+  },
+};
 
 // ─── Restart state machine ──────────────────────────────────────────────────
 
@@ -75,7 +93,9 @@ let _restartToastId: string | null = null;
 export function beginRestart() {
   _clearRestartTimers();
   Object.assign(restartState, applyBeginRestart(restartState, Date.now()));
-  if (_restartToastId) { toaster.dismiss(_restartToastId); }
+  if (_restartToastId) {
+    toaster.dismiss(_restartToastId);
+  }
   _restartToastId = toaster.create({
     title: m.config_gatewayRestarting(),
     type: 'loading',
@@ -84,7 +104,10 @@ export function beginRestart() {
   _restartTimeoutId = setTimeout(() => {
     if (restartState.phase === 'restarting') {
       restartState.phase = 'failed';
-      if (_restartToastId) { toaster.dismiss(_restartToastId); _restartToastId = null; }
+      if (_restartToastId) {
+        toaster.dismiss(_restartToastId);
+        _restartToastId = null;
+      }
       toastError(m.config_reconnectFailed(), m.config_reconnectManually());
     }
   }, RESTART_TIMEOUT_MS);
@@ -92,7 +115,10 @@ export function beginRestart() {
 
 export function onRestartReconnected() {
   _clearRestartTimers();
-  if (_restartToastId) { toaster.dismiss(_restartToastId); _restartToastId = null; }
+  if (_restartToastId) {
+    toaster.dismiss(_restartToastId);
+    _restartToastId = null;
+  }
   const dirty = _isDirty;
   Object.assign(restartState, applyReconnected(restartState, dirty));
   if (dirty) {
@@ -113,8 +139,14 @@ export function resetRestartState() {
 }
 
 function _clearRestartTimers() {
-  if (_restartTimeoutId) { clearTimeout(_restartTimeoutId); _restartTimeoutId = null; }
-  if (_dismissTimeoutId) { clearTimeout(_dismissTimeoutId); _dismissTimeoutId = null; }
+  if (_restartTimeoutId) {
+    clearTimeout(_restartTimeoutId);
+    _restartTimeoutId = null;
+  }
+  if (_dismissTimeoutId) {
+    clearTimeout(_dismissTimeoutId);
+    _dismissTimeoutId = null;
+  }
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -128,8 +160,14 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`timeout after ${ms}ms`)), ms);
     promise.then(
-      (v) => { clearTimeout(timer); resolve(v); },
-      (e) => { clearTimeout(timer); reject(e); },
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
     );
   });
 }
@@ -139,7 +177,11 @@ function inferSchemaFromConfig(config: Record<string, unknown>): JsonSchemaNode 
   const properties: Record<string, JsonSchemaNode> = {};
   for (const [key, val] of Object.entries(config)) {
     if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
-      properties[key] = { type: 'object', title: key, properties: inferProperties(val as Record<string, unknown>) };
+      properties[key] = {
+        type: 'object',
+        title: key,
+        properties: inferProperties(val as Record<string, unknown>),
+      };
     } else if (Array.isArray(val)) {
       properties[key] = { type: 'array', title: key };
     } else if (typeof val === 'boolean') {
@@ -157,7 +199,11 @@ function inferProperties(obj: Record<string, unknown>): Record<string, JsonSchem
   const props: Record<string, JsonSchemaNode> = {};
   for (const [key, val] of Object.entries(obj)) {
     if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
-      props[key] = { type: 'object', title: key, properties: inferProperties(val as Record<string, unknown>) };
+      props[key] = {
+        type: 'object',
+        title: key,
+        properties: inferProperties(val as Record<string, unknown>),
+      };
     } else if (Array.isArray(val)) {
       props[key] = { type: 'array', title: key };
     } else if (typeof val === 'boolean') {
@@ -225,9 +271,8 @@ export async function loadConfig(): Promise<void> {
     // Re-apply stashed dirty values if user confirms
     if (hadDirty && Object.keys(stashedChanges).length > 0) {
       restartState.hadLocalChanges = true;
-      const keepChanges = typeof window !== 'undefined'
-        ? window.confirm(m.config_reloadDialog())
-        : false;
+      const keepChanges =
+        typeof window !== 'undefined' ? window.confirm(m.config_reloadDialog()) : false;
       if (keepChanges) {
         for (const [key, val] of Object.entries(stashedChanges)) {
           configState.current[key] = val;

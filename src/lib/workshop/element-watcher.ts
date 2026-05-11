@@ -61,8 +61,9 @@ export function checkElementChanges(): void {
     }
     // Inbox got new items (only target agent)
     else if (curr.inboxCount > prev.inboxCount && el.inboxAgentId) {
-      const targetAgent = Object.values(workshopState.agents)
-        .find((a) => a.agentId === el.inboxAgentId);
+      const targetAgent = Object.values(workshopState.agents).find(
+        (a) => a.agentId === el.inboxAgentId,
+      );
       if (targetAgent) {
         enqueue(targetAgent.instanceId, { type: 'readElement', elementId, priority: 'high' });
       }

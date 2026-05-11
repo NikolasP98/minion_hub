@@ -9,3 +9,4 @@ export * from './user.svelte';
 export * from './agent-groups.svelte';
 export * from './personal-agent.svelte';
 export * from './studio.svelte';
+export * from './prompt-sections.svelte';

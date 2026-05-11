@@ -1,4 +1,8 @@
-import { setLanguageTag, availableLanguageTags, type AvailableLanguageTag } from '$lib/paraglide/runtime';
+import {
+  setLanguageTag,
+  availableLanguageTags,
+  type AvailableLanguageTag,
+} from '$lib/paraglide/runtime';
 import { syncPreferenceToServer } from './preference-sync.svelte';
 
 const STORAGE_KEY = 'minion-hub-locale';
@@ -26,8 +30,12 @@ let current = $state<AvailableLanguageTag>(loadLocale());
 setLanguageTag(() => current);
 
 export const locale = {
-  get current() { return current; },
-  get available() { return availableLanguageTags as readonly AvailableLanguageTag[]; },
+  get current() {
+    return current;
+  },
+  get available() {
+    return availableLanguageTags as readonly AvailableLanguageTag[];
+  },
 
   set(tag: AvailableLanguageTag) {
     current = tag;

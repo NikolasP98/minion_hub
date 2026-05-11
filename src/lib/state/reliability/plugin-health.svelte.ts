@@ -45,16 +45,18 @@ export function createPluginHealthState() {
     try {
       // Fetch recent gateway-category events via WS (last 24h, generous window)
       const since = Date.now() - 24 * 60 * 60 * 1000;
-      const data = await sendRequest('reliability.events', {
+      const data = (await sendRequest('reliability.events', {
         category: 'gateway',
         since,
         limit: 200,
-      }) as { events?: Array<{
-        event: string;
-        message: string;
-        metadata?: Record<string, unknown>;
-        timestamp: number;
-      }> } | null;
+      })) as {
+        events?: Array<{
+          event: string;
+          message: string;
+          metadata?: Record<string, unknown>;
+          timestamp: number;
+        }>;
+      } | null;
       const events = data?.events ?? [];
 
       // Find the latest summary event (= latest gateway boot)
@@ -64,9 +66,7 @@ export function createPluginHealthState() {
         return;
       }
 
-      const latestSummary = summaryEvents.reduce((a, b) =>
-        a.timestamp > b.timestamp ? a : b,
-      );
+      const latestSummary = summaryEvents.reduce((a, b) => (a.timestamp > b.timestamp ? a : b));
       const meta = latestSummary.metadata ?? {};
 
       const summary: PluginSummary = {
@@ -74,9 +74,7 @@ export function createPluginHealthState() {
         loaded: typeof meta.loaded === 'number' ? meta.loaded : 0,
         failed: typeof meta.failed === 'number' ? meta.failed : 0,
         loadTimeMs: typeof meta.loadTimeMs === 'number' ? meta.loadTimeMs : undefined,
-        failedPlugins: Array.isArray(meta.failedPlugins)
-          ? (meta.failedPlugins as string[])
-          : [],
+        failedPlugins: Array.isArray(meta.failedPlugins) ? (meta.failedPlugins as string[]) : [],
         capturedAt: latestSummary.timestamp,
       };
 

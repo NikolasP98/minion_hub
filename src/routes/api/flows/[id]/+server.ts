@@ -1,28 +1,54 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { getDb } from '$server/db/client';
-import { flows } from '$server/db/schema';
+import { flows } from '@minion-stack/db/schema';
 import { eq } from 'drizzle-orm';
+import { requireAuth } from '$server/auth/authorize';
+import { getTenantCtx } from '$server/auth/tenant-ctx';
+import type { TenantContext } from '$server/services/base';
 
-export const GET: RequestHandler = async ({ params }) => {
-  const db = getDb();
-  const [row] = await db.select().from(flows).where(eq(flows.id, params.id!));
+/** Resolve a flow and verify ownership. Throws 401/403/404 as appropriate. */
+async function requireFlowOwnership(
+  userId: string,
+  tenantId: string,
+  flowId: string,
+  ctx: TenantContext,
+) {
+  const [flow] = await ctx.db.select().from(flows).where(eq(flows.id, flowId));
 
-  if (!row) throw error(404, 'Flow not found');
+  if (!flow) throw error(404, 'Flow not found');
+
+  // Allow if owned by this user; legacy rows (userId null) visible within same tenant
+  const ownedByUser = flow.userId === userId;
+  const legacyRow = flow.userId === null;
+  const sameTenant = flow.tenantId === tenantId || flow.tenantId === null;
+
+  if ((!ownedByUser && !legacyRow) || !sameTenant) throw error(403, 'Forbidden');
+
+  return flow;
+}
+
+export const GET: RequestHandler = async ({ locals, params }) => {
+  const user = requireAuth(locals);
+  const ctx = await getTenantCtx(locals);
+  if (!ctx) throw error(401);
+
+  const flow = await requireFlowOwnership(user.id, ctx.tenantId, params.id!, ctx);
 
   return json({
     flow: {
-      ...row,
-      nodes: JSON.parse(row.nodes),
-      edges: JSON.parse(row.edges),
+      ...flow,
+      nodes: JSON.parse(flow.nodes),
+      edges: JSON.parse(flow.edges),
     },
   });
 };
 
-export const PUT: RequestHandler = async ({ params, request }) => {
-  const db = getDb();
-  const [existing] = await db.select().from(flows).where(eq(flows.id, params.id!));
-  if (!existing) throw error(404, 'Flow not found');
+export const PUT: RequestHandler = async ({ locals, params, request }) => {
+  const user = requireAuth(locals);
+  const ctx = await getTenantCtx(locals);
+  if (!ctx) throw error(401);
+
+  const existing = await requireFlowOwnership(user.id, ctx.tenantId, params.id!, ctx);
 
   const body = await request.json();
   const { name, nodes, edges } = body as { name?: string; nodes?: unknown[]; edges?: unknown[] };
@@ -32,17 +58,19 @@ export const PUT: RequestHandler = async ({ params, request }) => {
   if (nodes !== undefined) updates.nodes = JSON.stringify(nodes);
   if (edges !== undefined) updates.edges = JSON.stringify(edges);
 
-  await db.update(flows).set(updates).where(eq(flows.id, params.id!));
+  await ctx.db.update(flows).set(updates).where(eq(flows.id, existing.id));
 
   return json({ ok: true });
 };
 
-export const DELETE: RequestHandler = async ({ params }) => {
-  const db = getDb();
-  const [existing] = await db.select().from(flows).where(eq(flows.id, params.id!));
-  if (!existing) throw error(404, 'Flow not found');
+export const DELETE: RequestHandler = async ({ locals, params }) => {
+  const user = requireAuth(locals);
+  const ctx = await getTenantCtx(locals);
+  if (!ctx) throw error(401);
 
-  await db.delete(flows).where(eq(flows.id, params.id!));
+  const existing = await requireFlowOwnership(user.id, ctx.tenantId, params.id!, ctx);
+
+  await ctx.db.delete(flows).where(eq(flows.id, existing.id));
 
   return json({ ok: true });
 };

@@ -16,7 +16,5 @@ export const files = sqliteTable(
     category: text('category').notNull().default('general'),
     createdAt: integer('created_at').notNull(),
   },
-  (t) => [
-    index('idx_files_tenant').on(t.tenantId),
-  ],
+  (t) => [index('idx_files_tenant').on(t.tenantId)],
 );

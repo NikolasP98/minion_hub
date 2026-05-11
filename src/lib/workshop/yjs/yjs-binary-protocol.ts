@@ -42,23 +42,23 @@ const textDecoder = new TextDecoder();
  * @returns A single `Uint8Array` ready to send as a binary WS message
  */
 export function encodeYjsBinaryFrame(
-	type: number,
-	roomId: string,
-	payload: Uint8Array,
+  type: number,
+  roomId: string,
+  payload: Uint8Array,
 ): Uint8Array {
-	const roomIdBytes = textEncoder.encode(roomId);
-	const roomIdLen = roomIdBytes.byteLength;
+  const roomIdBytes = textEncoder.encode(roomId);
+  const roomIdLen = roomIdBytes.byteLength;
 
-	// 1 (type) + 4 (roomIdLen) + roomIdLen + payload.byteLength
-	const buf = new Uint8Array(1 + 4 + roomIdLen + payload.byteLength);
-	const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  // 1 (type) + 4 (roomIdLen) + roomIdLen + payload.byteLength
+  const buf = new Uint8Array(1 + 4 + roomIdLen + payload.byteLength);
+  const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
 
-	buf[0] = type;
-	view.setUint32(1, roomIdLen, true); // little-endian
-	buf.set(roomIdBytes, 5);
-	buf.set(payload, 5 + roomIdLen);
+  buf[0] = type;
+  view.setUint32(1, roomIdLen, true); // little-endian
+  buf.set(roomIdBytes, 5);
+  buf.set(payload, 5 + roomIdLen);
 
-	return buf;
+  return buf;
 }
 
 // ---------------------------------------------------------------------------
@@ -73,30 +73,28 @@ export function encodeYjsBinaryFrame(
  * @throws If the buffer is too short to contain a valid frame header
  */
 export function decodeYjsBinaryFrame(data: Uint8Array): {
-	type: number;
-	roomId: string;
-	payload: Uint8Array;
+  type: number;
+  roomId: string;
+  payload: Uint8Array;
 } {
-	if (data.byteLength < 5) {
-		throw new Error(
-			`Binary frame too short: expected at least 5 bytes, got ${data.byteLength}`,
-		);
-	}
+  if (data.byteLength < 5) {
+    throw new Error(`Binary frame too short: expected at least 5 bytes, got ${data.byteLength}`);
+  }
 
-	const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
 
-	const type = data[0];
-	const roomIdLen = view.getUint32(1, true); // little-endian
+  const type = data[0];
+  const roomIdLen = view.getUint32(1, true); // little-endian
 
-	const headerLen = 5 + roomIdLen;
-	if (data.byteLength < headerLen) {
-		throw new Error(
-			`Binary frame too short for roomId: need ${headerLen} bytes, got ${data.byteLength}`,
-		);
-	}
+  const headerLen = 5 + roomIdLen;
+  if (data.byteLength < headerLen) {
+    throw new Error(
+      `Binary frame too short for roomId: need ${headerLen} bytes, got ${data.byteLength}`,
+    );
+  }
 
-	const roomId = textDecoder.decode(data.subarray(5, 5 + roomIdLen));
-	const payload = data.subarray(headerLen);
+  const roomId = textDecoder.decode(data.subarray(5, 5 + roomIdLen));
+  const payload = data.subarray(headerLen);
 
-	return { type, roomId, payload };
+  return { type, roomId, payload };
 }

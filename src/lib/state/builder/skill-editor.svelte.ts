@@ -103,7 +103,12 @@ export const skillEditorState = $state({
 
   // Data
   chapters: [] as ChapterEntry[],
-  chapterEdges: [] as { id: string; sourceChapterId: string; targetChapterId: string; label: string | null }[],
+  chapterEdges: [] as {
+    id: string;
+    sourceChapterId: string;
+    targetChapterId: string;
+    label: string | null;
+  }[],
   chapterToolMap: {} as Record<string, string[]>,
   gatewayTools: [] as ToolStatusEntry[],
 
@@ -143,14 +148,14 @@ let _ghostTimer: ReturnType<typeof setTimeout> | null = null;
 // ── Derived values (module-private, exposed via exported getters) ─────
 
 const _poolToolIds = $derived([...new Set(Object.values(skillEditorState.chapterToolMap).flat())]);
-const _allToolIds = $derived(skillEditorState.gatewayTools.map(t => t.id));
+const _allToolIds = $derived(skillEditorState.gatewayTools.map((t) => t.id));
 
 const _validationFindings = $derived.by(() => {
   return validateSkill({
     name: skillEditorState.name,
     description: skillEditorState.description,
     chapters: skillEditorState.chapters,
-    edges: skillEditorState.chapterEdges.map(e => ({
+    edges: skillEditorState.chapterEdges.map((e) => ({
       sourceChapterId: e.sourceChapterId,
       targetChapterId: e.targetChapterId,
     })),
@@ -159,32 +164,52 @@ const _validationFindings = $derived.by(() => {
 });
 
 const _validationCounts = $derived({
-  errors: _validationFindings.filter(f => f.level === 'error').length,
-  warnings: _validationFindings.filter(f => f.level === 'warning').length,
+  errors: _validationFindings.filter((f) => f.level === 'error').length,
+  warnings: _validationFindings.filter((f) => f.level === 'warning').length,
 });
 
 const _worstLevel = $derived<'error' | 'warning' | 'ok'>(
-  _validationCounts.errors > 0 ? 'error' : _validationCounts.warnings > 0 ? 'warning' : 'ok'
+  _validationCounts.errors > 0 ? 'error' : _validationCounts.warnings > 0 ? 'warning' : 'ok',
 );
 
 const _conditionValidation = $derived(validateConditionText(skillEditorState.conditionText));
 
 const _validationTooltip = $derived(
   [
-    _validationCounts.errors > 0 ? `${_validationCounts.errors} error${_validationCounts.errors !== 1 ? 's' : ''}` : '',
-    _validationCounts.warnings > 0 ? `${_validationCounts.warnings} warning${_validationCounts.warnings !== 1 ? 's' : ''}` : '',
-  ].filter(Boolean).join(', ') || 'All checks passing'
+    _validationCounts.errors > 0
+      ? `${_validationCounts.errors} error${_validationCounts.errors !== 1 ? 's' : ''}`
+      : '',
+    _validationCounts.warnings > 0
+      ? `${_validationCounts.warnings} warning${_validationCounts.warnings !== 1 ? 's' : ''}`
+      : '',
+  ]
+    .filter(Boolean)
+    .join(', ') || 'All checks passing',
 );
 
 // Exported reactive getters — use these in components
 export const skillEditorDerived = {
-  get poolToolIds() { return _poolToolIds; },
-  get allToolIds() { return _allToolIds; },
-  get validationFindings() { return _validationFindings; },
-  get validationCounts() { return _validationCounts; },
-  get worstLevel() { return _worstLevel; },
-  get conditionValidation() { return _conditionValidation; },
-  get validationTooltip() { return _validationTooltip; },
+  get poolToolIds() {
+    return _poolToolIds;
+  },
+  get allToolIds() {
+    return _allToolIds;
+  },
+  get validationFindings() {
+    return _validationFindings;
+  },
+  get validationCounts() {
+    return _validationCounts;
+  },
+  get worstLevel() {
+    return _worstLevel;
+  },
+  get conditionValidation() {
+    return _conditionValidation;
+  },
+  get validationTooltip() {
+    return _validationTooltip;
+  },
 };
 
 // ── Pure functions ────────────────────────────────────────────────────
@@ -194,11 +219,17 @@ export function validateConditionText(text: string): { valid: boolean; reason?: 
   if (!trimmed) return { valid: false, reason: 'Condition text is required' };
   if (!trimmed.endsWith('?')) return { valid: false, reason: 'Must be a question (end with ?)' };
 
-  const subjective = /\b(feel|feeling|think|opinion|subjective|how much|how well|how good|how bad|prefer|like|enjoy|rate|score|scale|how does|how do)\b/i;
-  if (subjective.test(trimmed)) return { valid: false, reason: 'Must have a binary yes/no answer — not subjective' };
+  const subjective =
+    /\b(feel|feeling|think|opinion|subjective|how much|how well|how good|how bad|prefer|like|enjoy|rate|score|scale|how does|how do)\b/i;
+  if (subjective.test(trimmed))
+    return { valid: false, reason: 'Must have a binary yes/no answer — not subjective' };
 
   const binary = /^(is|are|does|do|has|have|can|could|will|would|should|shall|was|were|did|had)\b/i;
-  if (!binary.test(trimmed)) return { valid: false, reason: 'Start with a binary question word (Is, Does, Has, Can, Will, etc.)' };
+  if (!binary.test(trimmed))
+    return {
+      valid: false,
+      reason: 'Start with a binary question word (Is, Does, Has, Can, Will, etc.)',
+    };
 
   return { valid: true };
 }
@@ -232,19 +263,21 @@ export async function loadSkill(skillId: string) {
 
     // Load chapter tools into map
     const toolMap: Record<string, string[]> = {};
-    await Promise.all(data.chapters.map(async (ch: ChapterEntry) => {
-      try {
-        const toolRes = await fetch(`/api/builder/skills/${skillId}/chapter-tools/${ch.id}`);
-        if (toolRes.ok) {
-          const toolData = await toolRes.json();
-          toolMap[ch.id] = toolData.toolIds ?? [];
-        } else {
+    await Promise.all(
+      data.chapters.map(async (ch: ChapterEntry) => {
+        try {
+          const toolRes = await fetch(`/api/builder/skills/${skillId}/chapter-tools/${ch.id}`);
+          if (toolRes.ok) {
+            const toolData = await toolRes.json();
+            toolMap[ch.id] = toolData.toolIds ?? [];
+          } else {
+            toolMap[ch.id] = [];
+          }
+        } catch {
           toolMap[ch.id] = [];
         }
-      } catch {
-        toolMap[ch.id] = [];
-      }
-    }));
+      }),
+    );
     skillEditorState.chapterToolMap = toolMap;
   } catch (e) {
     console.error('[skill-editor] Failed to load:', e);
@@ -300,7 +333,11 @@ export async function publishSkill() {
     if (!res.ok) {
       const data = await res.json();
       if (data.errors?.length) {
-        toastError(m.builder_publishFailed(), m.builder_validationFailed({ errors: data.errors.join('; ') }), { duration: 5000 });
+        toastError(
+          m.builder_publishFailed(),
+          m.builder_validationFailed({ errors: data.errors.join('; ') }),
+          { duration: 5000 },
+        );
         return;
       }
       throw new Error(`HTTP ${res.status}`);
@@ -308,9 +345,16 @@ export async function publishSkill() {
     skillEditorState.status = 'published';
     skillEditorState.publishAnyway = false;
     toastSuccess(m.builder_skillPublished());
-    posthog.capture('skill_published', { skill_id: skillEditorState.skillId, skill_name: skillEditorState.name });
+    posthog.capture('skill_published', {
+      skill_id: skillEditorState.skillId,
+      skill_name: skillEditorState.name,
+    });
   } catch (e) {
-    toastError(m.builder_publishFailed(), e instanceof Error ? e.message : m.builder_publishError(), { duration: 5000 });
+    toastError(
+      m.builder_publishFailed(),
+      e instanceof Error ? e.message : m.builder_publishError(),
+      { duration: 5000 },
+    );
     console.error('[skill-editor] Publish failed:', e);
   } finally {
     skillEditorState.publishing = false;
@@ -340,12 +384,20 @@ export async function buildSkillWithAI() {
         name: skillEditorState.name.trim(),
         description: skillEditorState.description.trim(),
         availableToolIds: _allToolIds,
-        ...(skillEditorState.chapters.length > 0 ? {
-          currentGraph: {
-            chapters: skillEditorState.chapters.map(c => ({ name: c.name, description: c.description })),
-            edges: skillEditorState.chapterEdges.map(e => ({ sourceChapterId: e.sourceChapterId, targetChapterId: e.targetChapterId })),
-          },
-        } : {}),
+        ...(skillEditorState.chapters.length > 0
+          ? {
+              currentGraph: {
+                chapters: skillEditorState.chapters.map((c) => ({
+                  name: c.name,
+                  description: c.description,
+                })),
+                edges: skillEditorState.chapterEdges.map((e) => ({
+                  sourceChapterId: e.sourceChapterId,
+                  targetChapterId: e.targetChapterId,
+                })),
+              },
+            }
+          : {}),
       }),
     });
 
@@ -360,22 +412,30 @@ export async function buildSkillWithAI() {
     }
 
     // Stage the proposal instead of committing immediately (AI-03)
-    const stagedChapters: StagedChapter[] = data.chapters.map((ch: Record<string, unknown>, i: number) => ({
-      tempId: `staged-${i}-${Date.now()}`,
-      type: (ch.type as string) ?? 'chapter',
-      name: ch.name as string,
-      description: (ch.description as string) ?? '',
-      guide: (ch.guide as string) ?? '',
-      context: (ch.context as string) ?? '',
-      outputDef: (ch.outputDef as string) ?? '',
-      conditionText: (ch.conditionText as string) ?? '',
-      toolIds: ((ch.toolIds as string[]) ?? []).filter((t: string) => _allToolIds.includes(t)),
-      positionX: (ch.positionX as number) ?? 300,
-      positionY: (ch.positionY as number) ?? (i * 180),
-    }));
+    const stagedChapters: StagedChapter[] = data.chapters.map(
+      (ch: Record<string, unknown>, i: number) => ({
+        tempId: `staged-${i}-${Date.now()}`,
+        type: (ch.type as string) ?? 'chapter',
+        name: ch.name as string,
+        description: (ch.description as string) ?? '',
+        guide: (ch.guide as string) ?? '',
+        context: (ch.context as string) ?? '',
+        outputDef: (ch.outputDef as string) ?? '',
+        conditionText: (ch.conditionText as string) ?? '',
+        toolIds: ((ch.toolIds as string[]) ?? []).filter((t: string) => _allToolIds.includes(t)),
+        positionX: (ch.positionX as number) ?? 300,
+        positionY: (ch.positionY as number) ?? i * 180,
+      }),
+    );
 
     const stagedEdges: StagedEdge[] = (data.edges ?? [])
-      .filter((e: { from: number; to: number }) => e.from >= 0 && e.to >= 0 && e.from < stagedChapters.length && e.to < stagedChapters.length)
+      .filter(
+        (e: { from: number; to: number }) =>
+          e.from >= 0 &&
+          e.to >= 0 &&
+          e.from < stagedChapters.length &&
+          e.to < stagedChapters.length,
+      )
       .map((e: { from: number; to: number; label?: string | null }) => ({
         fromTempId: stagedChapters[e.from].tempId,
         toTempId: stagedChapters[e.to].tempId,
@@ -395,16 +455,19 @@ export async function buildSkillWithAI() {
 
 /** Topological sort of chapters using edges. Returns ordered chapter IDs. */
 function topoSort(chapters: ChapterEntry[], edges: typeof skillEditorState.chapterEdges): string[] {
-  const ids = new Set(chapters.map(c => c.id));
+  const ids = new Set(chapters.map((c) => c.id));
   const inDegree = new Map<string, number>();
   const adj = new Map<string, string[]>();
-  for (const id of ids) { inDegree.set(id, 0); adj.set(id, []); }
+  for (const id of ids) {
+    inDegree.set(id, 0);
+    adj.set(id, []);
+  }
   for (const e of edges) {
     if (!ids.has(e.sourceChapterId) || !ids.has(e.targetChapterId)) continue;
     adj.get(e.sourceChapterId)!.push(e.targetChapterId);
     inDegree.set(e.targetChapterId, (inDegree.get(e.targetChapterId) ?? 0) + 1);
   }
-  const queue = [...ids].filter(id => (inDegree.get(id) ?? 0) === 0);
+  const queue = [...ids].filter((id) => (inDegree.get(id) ?? 0) === 0);
   const sorted: string[] = [];
   while (queue.length > 0) {
     const id = queue.shift()!;
@@ -426,7 +489,7 @@ export const dryRunSuggestions = $state({
 });
 
 export async function fetchTestPromptSuggestions() {
-  const chapters = skillEditorState.chapters.filter(c => c.type !== 'condition');
+  const chapters = skillEditorState.chapters.filter((c) => c.type !== 'condition');
   if (chapters.length === 0 || !skillEditorState.description.trim()) {
     dryRunSuggestions.prompts = [];
     return;
@@ -440,7 +503,7 @@ export async function fetchTestPromptSuggestions() {
       body: JSON.stringify({
         skillName: skillEditorState.name,
         skillDescription: skillEditorState.description,
-        chapters: chapters.map(ch => ({
+        chapters: chapters.map((ch) => ({
           name: ch.name,
           description: ch.description,
           guide: ch.guide,
@@ -464,11 +527,11 @@ export async function fetchTestPromptSuggestions() {
 export async function startDryRun(prompt: string) {
   if (!prompt.trim() || skillEditorState.chapters.length === 0) return;
 
-  const chapters = skillEditorState.chapters.filter(c => c.type !== 'condition');
+  const chapters = skillEditorState.chapters.filter((c) => c.type !== 'condition');
   const order = topoSort(chapters, skillEditorState.chapterEdges);
 
-  const results: DryRunChapterResult[] = order.map(id => {
-    const ch = chapters.find(c => c.id === id);
+  const results: DryRunChapterResult[] = order.map((id) => {
+    const ch = chapters.find((c) => c.id === id);
     return {
       chapterId: id,
       chapterName: ch?.name ?? id,
@@ -497,8 +560,11 @@ export async function startDryRun(prompt: string) {
     // Force reactivity update
     skillEditorState.dryRun = { ...skillEditorState.dryRun };
 
-    const ch = chapters.find(c => c.id === result.chapterId);
-    if (!ch) { result.status = 'skipped'; continue; }
+    const ch = chapters.find((c) => c.id === result.chapterId);
+    if (!ch) {
+      result.status = 'skipped';
+      continue;
+    }
 
     try {
       const res = await fetch('/api/builder/ai/dry-run', {
@@ -544,7 +610,7 @@ export async function startDryRun(prompt: string) {
   skillEditorState.dryRun = { ...skillEditorState.dryRun };
 
   // Auto-trigger analysis after all chapters complete
-  const completedResults = skillEditorState.dryRun.results.filter(r => r.status === 'done');
+  const completedResults = skillEditorState.dryRun.results.filter((r) => r.status === 'done');
   if (completedResults.length > 0) {
     analyzeRun();
   }
@@ -556,8 +622,8 @@ async function analyzeRun() {
   skillEditorState.dryRun = { ...skillEditorState.dryRun };
 
   const chapters = skillEditorState.chapters
-    .filter(c => c.type !== 'condition')
-    .map(ch => ({
+    .filter((c) => c.type !== 'condition')
+    .map((ch) => ({
       name: ch.name,
       guide: ch.guide,
       outputDef: ch.outputDef,
@@ -573,7 +639,7 @@ async function analyzeRun() {
         skillName: skillEditorState.name,
         skillDescription: skillEditorState.description,
         chapters,
-        results: skillEditorState.dryRun.results.map(r => ({
+        results: skillEditorState.dryRun.results.map((r) => ({
           output: r.output,
           status: r.status,
           durationMs: r.durationMs,
@@ -611,7 +677,12 @@ export function fetchGhostSuggestions() {
   if (_ghostTimer) clearTimeout(_ghostTimer);
 
   const desc = skillEditorState.description.trim();
-  if (desc.length < 10 || skillEditorState.ghostDismissed || skillEditorState.chapters.length > 0 || skillEditorState.aiBuilding) {
+  if (
+    desc.length < 10 ||
+    skillEditorState.ghostDismissed ||
+    skillEditorState.chapters.length > 0 ||
+    skillEditorState.aiBuilding
+  ) {
     skillEditorState.ghostSuggestions = [];
     return;
   }
@@ -629,7 +700,10 @@ export function fetchGhostSuggestions() {
           previewOnly: true,
         }),
       });
-      if (!res.ok) { skillEditorState.ghostSuggestions = []; return; }
+      if (!res.ok) {
+        skillEditorState.ghostSuggestions = [];
+        return;
+      }
       const data = await res.json();
       if (skillEditorState.description.trim() === desc) {
         skillEditorState.ghostSuggestions = (data.chapters ?? []).slice(0, 3);
@@ -645,7 +719,10 @@ export function fetchGhostSuggestions() {
 export function dismissGhostSuggestions() {
   skillEditorState.ghostDismissed = true;
   skillEditorState.ghostSuggestions = [];
-  if (_ghostTimer) { clearTimeout(_ghostTimer); _ghostTimer = null; }
+  if (_ghostTimer) {
+    clearTimeout(_ghostTimer);
+    _ghostTimer = null;
+  }
 }
 
 export async function generateGhostChapter(chapterName: string) {
@@ -689,7 +766,12 @@ export async function generateGhostChapter(chapterName: string) {
       body: JSON.stringify({
         action: 'update-chapter',
         chapterId: id,
-        data: { description: data.description ?? '', guide: data.guide ?? '', context: data.context ?? '', outputDef: data.outputDef ?? '' },
+        data: {
+          description: data.description ?? '',
+          guide: data.guide ?? '',
+          context: data.context ?? '',
+          outputDef: data.outputDef ?? '',
+        },
       }),
     });
 
@@ -702,11 +784,20 @@ export async function generateGhostChapter(chapterName: string) {
       });
     }
 
-    skillEditorState.chapters = [...skillEditorState.chapters, {
-      id, type: 'chapter', name: data.name || chapterName, description: data.description ?? '',
-      guide: data.guide ?? '', context: data.context ?? '', outputDef: data.outputDef ?? '',
-      positionX: 300, positionY: (skillEditorState.chapters.length - 1) * 180,
-    }];
+    skillEditorState.chapters = [
+      ...skillEditorState.chapters,
+      {
+        id,
+        type: 'chapter',
+        name: data.name || chapterName,
+        description: data.description ?? '',
+        guide: data.guide ?? '',
+        context: data.context ?? '',
+        outputDef: data.outputDef ?? '',
+        positionX: 300,
+        positionY: (skillEditorState.chapters.length - 1) * 180,
+      },
+    ];
     skillEditorState.chapterToolMap = { ...skillEditorState.chapterToolMap, [id]: toolIds };
   } catch (e) {
     skillEditorState.aiBuildError = e instanceof Error ? e.message : 'Failed to generate chapter';
@@ -743,7 +834,13 @@ async function commitStagedChapter(ch: StagedChapter): Promise<string | null> {
       body: JSON.stringify({
         action: 'update-chapter',
         chapterId: id,
-        data: { description: ch.description, guide: ch.guide, context: ch.context, outputDef: ch.outputDef, conditionText: ch.conditionText ?? '' },
+        data: {
+          description: ch.description,
+          guide: ch.guide,
+          context: ch.context,
+          outputDef: ch.outputDef,
+          conditionText: ch.conditionText ?? '',
+        },
       }),
     });
 
@@ -757,24 +854,39 @@ async function commitStagedChapter(ch: StagedChapter): Promise<string | null> {
     }
 
     // Update local state
-    skillEditorState.chapters = [...skillEditorState.chapters, {
-      id, type: ch.type, name: ch.name, description: ch.description, guide: ch.guide,
-      context: ch.context, outputDef: ch.outputDef, conditionText: ch.conditionText,
-      positionX: ch.positionX, positionY: ch.positionY,
-    }];
+    skillEditorState.chapters = [
+      ...skillEditorState.chapters,
+      {
+        id,
+        type: ch.type,
+        name: ch.name,
+        description: ch.description,
+        guide: ch.guide,
+        context: ch.context,
+        outputDef: ch.outputDef,
+        conditionText: ch.conditionText,
+        positionX: ch.positionX,
+        positionY: ch.positionY,
+      },
+    ];
     skillEditorState.chapterToolMap = { ...skillEditorState.chapterToolMap, [id]: ch.toolIds };
     if (ch.toolIds.length > 0) {
-      skillEditorState.suggestedToolMap = { ...skillEditorState.suggestedToolMap, [id]: ch.toolIds };
+      skillEditorState.suggestedToolMap = {
+        ...skillEditorState.suggestedToolMap,
+        [id]: ch.toolIds,
+      };
     }
     _tempToRealId.set(ch.tempId, id);
     return id;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 export async function acceptProposedChapter(tempId: string) {
   const proposal = skillEditorState.stagedProposal;
   if (!proposal) return;
-  const ch = proposal.chapters.find(c => c.tempId === tempId);
+  const ch = proposal.chapters.find((c) => c.tempId === tempId);
   if (!ch) return;
 
   const realId = await commitStagedChapter(ch);
@@ -790,19 +902,27 @@ export async function acceptProposedChapter(tempId: string) {
   }
 
   // Remove from staged
-  const remaining = proposal.chapters.filter(c => c.tempId !== tempId);
-  skillEditorState.stagedProposal = remaining.length > 0
-    ? { chapters: remaining, edges: proposal.edges.filter(e => e.fromTempId !== tempId && e.toTempId !== tempId) }
-    : null;
+  const remaining = proposal.chapters.filter((c) => c.tempId !== tempId);
+  skillEditorState.stagedProposal =
+    remaining.length > 0
+      ? {
+          chapters: remaining,
+          edges: proposal.edges.filter((e) => e.fromTempId !== tempId && e.toTempId !== tempId),
+        }
+      : null;
 }
 
 export async function rejectProposedChapter(tempId: string) {
   const proposal = skillEditorState.stagedProposal;
   if (!proposal) return;
-  const remaining = proposal.chapters.filter(c => c.tempId !== tempId);
-  skillEditorState.stagedProposal = remaining.length > 0
-    ? { chapters: remaining, edges: proposal.edges.filter(e => e.fromTempId !== tempId && e.toTempId !== tempId) }
-    : null;
+  const remaining = proposal.chapters.filter((c) => c.tempId !== tempId);
+  skillEditorState.stagedProposal =
+    remaining.length > 0
+      ? {
+          chapters: remaining,
+          edges: proposal.edges.filter((e) => e.fromTempId !== tempId && e.toTempId !== tempId),
+        }
+      : null;
 }
 
 export async function acceptAllProposed() {
@@ -838,7 +958,7 @@ export async function addCondition() {
   try {
     skillEditorState.editingCondition = null;
     skillEditorState.conditionText = '';
-    skillEditorState.conditionName = `Condition ${skillEditorState.chapters.filter(c => c.type === 'condition').length + 1}`;
+    skillEditorState.conditionName = `Condition ${skillEditorState.chapters.filter((c) => c.type === 'condition').length + 1}`;
     skillEditorState.editingCondition = {
       id: '',
       type: 'condition',
@@ -874,18 +994,21 @@ export async function saveCondition() {
 
     if (res.ok) {
       const { id } = await res.json();
-      skillEditorState.chapters = [...skillEditorState.chapters, {
-        id,
-        type: 'condition',
-        name: skillEditorState.conditionName || 'Condition',
-        description: '',
-        guide: '',
-        context: '',
-        outputDef: '',
-        conditionText: skillEditorState.conditionText,
-        positionX: 300,
-        positionY: 100 + (skillEditorState.chapters.length - 1) * 180,
-      }];
+      skillEditorState.chapters = [
+        ...skillEditorState.chapters,
+        {
+          id,
+          type: 'condition',
+          name: skillEditorState.conditionName || 'Condition',
+          description: '',
+          guide: '',
+          context: '',
+          outputDef: '',
+          conditionText: skillEditorState.conditionText,
+          positionX: 300,
+          positionY: 100 + (skillEditorState.chapters.length - 1) * 180,
+        },
+      ];
       skillEditorState.chapterToolMap = { ...skillEditorState.chapterToolMap, [id]: [] };
     }
     skillEditorState.editingCondition = null;
@@ -905,7 +1028,12 @@ export function openConditionOrChapter(chapter: ChapterEntry) {
 }
 
 export async function updateCondition() {
-  if (!skillEditorState.editingCondition || !skillEditorState.editingCondition.id || !_conditionValidation.valid) return;
+  if (
+    !skillEditorState.editingCondition ||
+    !skillEditorState.editingCondition.id ||
+    !_conditionValidation.valid
+  )
+    return;
   try {
     await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
       method: 'PUT',
@@ -913,14 +1041,21 @@ export async function updateCondition() {
       body: JSON.stringify({
         action: 'update-chapter',
         chapterId: skillEditorState.editingCondition.id,
-        data: { name: skillEditorState.conditionName, conditionText: skillEditorState.conditionText },
+        data: {
+          name: skillEditorState.conditionName,
+          conditionText: skillEditorState.conditionText,
+        },
       }),
     });
 
-    skillEditorState.chapters = skillEditorState.chapters.map(c =>
+    skillEditorState.chapters = skillEditorState.chapters.map((c) =>
       c.id === skillEditorState.editingCondition!.id
-        ? { ...c, name: skillEditorState.conditionName, conditionText: skillEditorState.conditionText }
-        : c
+        ? {
+            ...c,
+            name: skillEditorState.conditionName,
+            conditionText: skillEditorState.conditionText,
+          }
+        : c,
     );
     skillEditorState.editingCondition = null;
   } catch (e) {
@@ -944,16 +1079,19 @@ export async function addChapter() {
     });
     if (res.ok) {
       const { id } = await res.json();
-      skillEditorState.chapters = [...skillEditorState.chapters, {
-        id,
-        name: chapterName,
-        description: '',
-        guide: '',
-        context: '',
-        outputDef: '',
-        positionX: 100 + (skillEditorState.chapters.length - 1) * 200,
-        positionY: 100,
-      }];
+      skillEditorState.chapters = [
+        ...skillEditorState.chapters,
+        {
+          id,
+          name: chapterName,
+          description: '',
+          guide: '',
+          context: '',
+          outputDef: '',
+          positionX: 100 + (skillEditorState.chapters.length - 1) * 200,
+          positionY: 100,
+        },
+      ];
       skillEditorState.chapterToolMap = { ...skillEditorState.chapterToolMap, [id]: [] };
     }
   } catch (e) {
@@ -968,9 +1106,9 @@ export async function removeChapter(chapterId: string) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'delete-chapter', chapterId }),
     });
-    skillEditorState.chapters = skillEditorState.chapters.filter(c => c.id !== chapterId);
+    skillEditorState.chapters = skillEditorState.chapters.filter((c) => c.id !== chapterId);
     skillEditorState.chapterEdges = skillEditorState.chapterEdges.filter(
-      e => e.sourceChapterId !== chapterId && e.targetChapterId !== chapterId
+      (e) => e.sourceChapterId !== chapterId && e.targetChapterId !== chapterId,
     );
     const { [chapterId]: _, ...restToolMap } = skillEditorState.chapterToolMap;
     skillEditorState.chapterToolMap = restToolMap;
@@ -981,13 +1119,17 @@ export async function removeChapter(chapterId: string) {
 
 export async function updateChapterPosition(chapterId: string, x: number, y: number) {
   try {
-    skillEditorState.chapters = skillEditorState.chapters.map(c =>
-      c.id === chapterId ? { ...c, positionX: x, positionY: y } : c
+    skillEditorState.chapters = skillEditorState.chapters.map((c) =>
+      c.id === chapterId ? { ...c, positionX: x, positionY: y } : c,
     );
     await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'update-chapter', chapterId, data: { positionX: x, positionY: y } }),
+      body: JSON.stringify({
+        action: 'update-chapter',
+        chapterId,
+        data: { positionX: x, positionY: y },
+      }),
     });
   } catch (e) {
     console.error('[skill-editor] updateChapterPosition failed:', e);
@@ -1008,12 +1150,15 @@ export async function connectChapters(sourceId: string, targetId: string, label?
     });
     if (res.ok) {
       const { id } = await res.json();
-      skillEditorState.chapterEdges = [...skillEditorState.chapterEdges, {
-        id,
-        sourceChapterId: sourceId,
-        targetChapterId: targetId,
-        label: label ?? null,
-      }];
+      skillEditorState.chapterEdges = [
+        ...skillEditorState.chapterEdges,
+        {
+          id,
+          sourceChapterId: sourceId,
+          targetChapterId: targetId,
+          label: label ?? null,
+        },
+      ];
     }
   } catch (e) {
     console.error('[skill-editor] connectChapters failed:', e);
@@ -1027,7 +1172,7 @@ export async function deleteEdge(edgeId: string) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'delete-edge', edgeId }),
     });
-    skillEditorState.chapterEdges = skillEditorState.chapterEdges.filter(e => e.id !== edgeId);
+    skillEditorState.chapterEdges = skillEditorState.chapterEdges.filter((e) => e.id !== edgeId);
   } catch (e) {
     console.error('[skill-editor] deleteEdge failed:', e);
   }
@@ -1086,12 +1231,22 @@ export async function saveChapterEdits(data: {
     });
 
     // Update local state
-    skillEditorState.chapters = skillEditorState.chapters.map(c =>
+    skillEditorState.chapters = skillEditorState.chapters.map((c) =>
       c.id === chapterId
-        ? { ...c, name: data.name, description: data.description, guide: data.guide, context: data.context, outputDef: data.outputDef }
-        : c
+        ? {
+            ...c,
+            name: data.name,
+            description: data.description,
+            guide: data.guide,
+            context: data.context,
+            outputDef: data.outputDef,
+          }
+        : c,
     );
-    skillEditorState.chapterToolMap = { ...skillEditorState.chapterToolMap, [chapterId]: data.toolIds };
+    skillEditorState.chapterToolMap = {
+      ...skillEditorState.chapterToolMap,
+      [chapterId]: data.toolIds,
+    };
   } catch (e) {
     console.error('[skill-editor] Save chapter failed:', e);
   } finally {
@@ -1128,5 +1283,8 @@ export function cleanupSkillEditor() {
   skillEditorState.ghostLoading = false;
   skillEditorState.ghostDismissed = false;
   skillEditorState.dryRun = null;
-  if (_ghostTimer) { clearTimeout(_ghostTimer); _ghostTimer = null; }
+  if (_ghostTimer) {
+    clearTimeout(_ghostTimer);
+    _ghostTimer = null;
+  }
 }

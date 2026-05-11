@@ -1,5 +1,5 @@
 import { eq, and, asc } from 'drizzle-orm';
-import { sessionTasks } from '$server/db/schema';
+import { sessionTasks } from '@minion-stack/db/schema';
 import { newId, nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
 
@@ -34,11 +34,7 @@ export async function createSessionTask(ctx: TenantContext, input: SessionTaskIn
   return id;
 }
 
-export async function listSessionTasks(
-  ctx: TenantContext,
-  serverId: string,
-  sessionKey: string,
-) {
+export async function listSessionTasks(ctx: TenantContext, serverId: string, sessionKey: string) {
   const cutoff = nowMs() - 24 * 60 * 60 * 1000;
 
   const rows = await ctx.db
@@ -54,15 +50,18 @@ export async function listSessionTasks(
     .orderBy(asc(sessionTasks.sortOrder), asc(sessionTasks.createdAt));
 
   // Filter out done tasks older than 24h
-  return rows.filter(
-    (t) => !(t.status === 'done' && t.updatedAt < cutoff),
-  );
+  return rows.filter((t) => !(t.status === 'done' && t.updatedAt < cutoff));
 }
 
 export async function updateSessionTask(
   ctx: TenantContext,
   id: string,
-  data: Partial<Pick<typeof sessionTasks.$inferInsert, 'title' | 'description' | 'status' | 'sortOrder' | 'metadata'>>,
+  data: Partial<
+    Pick<
+      typeof sessionTasks.$inferInsert,
+      'title' | 'description' | 'status' | 'sortOrder' | 'metadata'
+    >
+  >,
 ) {
   await ctx.db
     .update(sessionTasks)

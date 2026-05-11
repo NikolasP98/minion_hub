@@ -28,9 +28,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   if (!b.email || typeof b.email !== 'string') throw error(400, 'email is required');
   if (!b.password || typeof b.password !== 'string') throw error(400, 'password is required');
 
-  const role = typeof b.role === 'string' && VALID_ROLES.includes(b.role as Role)
-    ? (b.role as Role)
-    : 'user';
+  const role =
+    typeof b.role === 'string' && VALID_ROLES.includes(b.role as Role) ? (b.role as Role) : 'user';
 
   try {
     const id = await createUser(locals.tenantCtx, {

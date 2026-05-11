@@ -1,0 +1,28 @@
+# Dependencies
+node_modules
+.svelte-kit
+build
+.vercel
+dist
+desktop-build
+
+# Generated
+src/lib/paraglide
+src/paraglide
+drizzle/meta
+
+# Lock files
+bun.lock
+bun.lockb
+package-lock.json
+pnpm-lock.yaml
+
+# Pixel office asset manifests (auto-generated)
+static/pixel-office/furniture
+
+# Data / binary
+*.db
+*.png
+*.jpg
+*.ico
+data/
