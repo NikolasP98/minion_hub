@@ -4,11 +4,97 @@
 	import { startPolling } from '$lib/util/live-polling';
 	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
 	import Sparkline from '$lib/components/Sparkline.svelte';
+	import {
+		ListTodo,
+		ClipboardCheck,
+		Activity as ActivityIcon,
+		Network,
+		Target,
+		Gauge,
+		Inbox,
+		Receipt,
+		Settings,
+	} from 'lucide-svelte';
 
 	let { data }: { data: PageData } = $props();
 
 	const { summary, badges, activity, costTrend } = $derived(data);
 	const trendValues = $derived(costTrend.map((p) => p.cents));
+
+	type WorkforceTile = {
+		label: string;
+		href: string;
+		icon: typeof ListTodo;
+		description: string;
+		badge?: { text: string; tone: 'primary' | 'amber' | 'destructive' | 'muted' };
+	};
+
+	const tiles = $derived<WorkforceTile[]>([
+		{
+			label: 'Issues',
+			href: '/workforce/issues',
+			icon: ListTodo,
+			description: `${summary.tasks.open + summary.tasks.inProgress} open`,
+		},
+		{
+			label: 'Approvals',
+			href: '/workforce/approvals',
+			icon: ClipboardCheck,
+			description: 'pending decisions',
+			badge: badges.approvals > 0 ? { text: String(badges.approvals), tone: 'amber' } : undefined,
+		},
+		{
+			label: 'Activity',
+			href: '/workforce/activity',
+			icon: ActivityIcon,
+			description: 'recent events',
+		},
+		{
+			label: 'Org',
+			href: '/workforce/org',
+			icon: Network,
+			description: 'reporting tree',
+		},
+		{
+			label: 'Goals',
+			href: '/workforce/goals',
+			icon: Target,
+			description: 'company → agent',
+		},
+		{
+			label: 'Reliability',
+			href: '/workforce/reliability',
+			icon: Gauge,
+			description: 'activity heatmap',
+			badge: badges.failedRuns > 0 ? { text: String(badges.failedRuns), tone: 'destructive' } : undefined,
+		},
+		{
+			label: 'Inbox',
+			href: '/workforce/inbox',
+			icon: Inbox,
+			description: 'notifications',
+			badge: badges.inbox > 0 ? { text: String(badges.inbox), tone: 'primary' } : undefined,
+		},
+		{
+			label: 'Costs',
+			href: '/workforce/costs',
+			icon: Receipt,
+			description: `${summary.costs.monthUtilizationPercent.toFixed(0)}% of budget`,
+		},
+		{
+			label: 'Settings',
+			href: '/workforce/settings',
+			icon: Settings,
+			description: 'company + agents',
+		},
+	]);
+
+	const BADGE_TINT: Record<NonNullable<WorkforceTile['badge']>['tone'], string> = {
+		primary: 'bg-primary/10 text-primary',
+		amber: 'bg-amber-500/10 text-amber-600',
+		destructive: 'bg-destructive/10 text-destructive',
+		muted: 'bg-muted text-muted-foreground',
+	};
 
 	function formatCents(cents: number): string {
 		return `$${(cents / 100).toFixed(2)}`;
@@ -181,6 +267,42 @@
 			{/if}
 		</section>
 	{/if}
+
+	<!-- Workforce nav tiles (bento grid) -->
+	<section aria-label="Workforce navigation">
+		<h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+			Explore workforce
+		</h2>
+		<ul class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+			{#each tiles as tile (tile.href)}
+				{@const Icon = tile.icon}
+				<li>
+					<a
+						href={tile.href}
+						class="group relative flex flex-col gap-2 rounded-lg border border-border bg-card p-4 transition-colors hover:bg-accent hover:border-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+						aria-label="{tile.label} — {tile.description}"
+					>
+						<div class="flex items-center justify-between gap-2">
+							<span class="inline-flex h-9 w-9 items-center justify-center rounded-md bg-muted text-muted-foreground group-hover:text-foreground transition-colors">
+								<Icon size={18} aria-hidden="true" />
+							</span>
+							{#if tile.badge}
+								<span
+									class="rounded-full px-2 py-0.5 text-xs font-medium tabular-nums {BADGE_TINT[tile.badge.tone]}"
+								>
+									{tile.badge.text}
+								</span>
+							{/if}
+						</div>
+						<div class="space-y-0.5 min-w-0">
+							<div class="text-sm font-medium text-foreground truncate">{tile.label}</div>
+							<div class="text-xs text-muted-foreground truncate">{tile.description}</div>
+						</div>
+					</a>
+				</li>
+			{/each}
+		</ul>
+	</section>
 
 	<!-- Activity feed -->
 	<section aria-label="Recent activity">
