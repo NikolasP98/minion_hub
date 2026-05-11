@@ -3,10 +3,12 @@
 	import type { PageData } from './$types';
 	import { startPolling } from '$lib/util/live-polling';
 	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
+	import Sparkline from '$lib/components/Sparkline.svelte';
 
 	let { data }: { data: PageData } = $props();
 
-	const { summary, badges, activity } = $derived(data);
+	const { summary, badges, activity, costTrend } = $derived(data);
+	const trendValues = $derived(costTrend.map((p) => p.cents));
 
 	function formatCents(cents: number): string {
 		return `$${(cents / 100).toFixed(2)}`;
@@ -121,8 +123,17 @@
 
 		<!-- Costs -->
 		<div class="rounded-lg border border-border bg-card p-4 space-y-2">
-			<h2 class="text-sm font-medium text-muted-foreground">Monthly spend</h2>
-			<div class="text-2xl font-semibold tabular-nums">{formatCents(summary.costs.monthSpendCents)}</div>
+			<div class="flex items-start justify-between gap-2">
+				<div class="space-y-1">
+					<h2 class="text-sm font-medium text-muted-foreground">Monthly spend</h2>
+					<div class="text-2xl font-semibold tabular-nums">{formatCents(summary.costs.monthSpendCents)}</div>
+				</div>
+				{#if trendValues.length > 1}
+					<div class="text-primary shrink-0 mt-1" title="Daily spend over the last 14 days">
+						<Sparkline values={trendValues} width={120} height={32} />
+					</div>
+				{/if}
+			</div>
 			<div class="text-xs text-muted-foreground">
 				of {formatCents(summary.costs.monthBudgetCents)} budget
 				({summary.costs.monthUtilizationPercent.toFixed(1)}%)

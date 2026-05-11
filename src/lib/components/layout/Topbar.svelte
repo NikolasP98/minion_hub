@@ -119,11 +119,7 @@
                 <a href="/workforce/approvals" class="nav-pill {page.url.pathname.startsWith('/workforce/approvals') ? 'active' : ''}">
                     <span>Approvals</span>
                 </a>
-                <Tooltip label="Coming soon" id="nav-wf-goals">
-                    {#snippet children(triggerProps)}
-                        <span class="nav-pill disabled" {...triggerProps}>Goals</span>
-                    {/snippet}
-                </Tooltip>
+                <a href="/workforce/goals" class="nav-pill {page.url.pathname.startsWith('/workforce/goals') ? 'active' : ''}">Goals</a>
                 <a href="/workforce/org" class="nav-pill {page.url.pathname.startsWith('/workforce/org') ? 'active' : ''}" title="Org chart">
                     <Users size={14} />
                     <span>Org</span>
@@ -426,10 +422,13 @@
                 >
                     <span>Approvals</span>
                 </a>
-                <span class="mobile-nav-link disabled">
+                <a
+                    href="/workforce/goals"
+                    class="mobile-nav-link {page.url.pathname.startsWith('/workforce/goals') ? 'active' : ''}"
+                    onclick={closeMobileMenu}
+                >
                     <span>Goals</span>
-                    <span class="ml-auto text-[10px] text-muted/50">Soon</span>
-                </span>
+                </a>
                 <a
                     href="/workforce/org"
                     class="mobile-nav-link {page.url.pathname.startsWith('/workforce/org') ? 'active' : ''}"
