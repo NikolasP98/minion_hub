@@ -120,6 +120,7 @@
                     <span>Approvals</span>
                 </a>
                 <a href="/workforce/goals" class="nav-pill {page.url.pathname.startsWith('/workforce/goals') ? 'active' : ''}">Goals</a>
+                <a href="/workforce/projects" class="nav-pill {page.url.pathname.startsWith('/workforce/projects') ? 'active' : ''}">Projects</a>
                 <a href="/workforce/org" class="nav-pill {page.url.pathname.startsWith('/workforce/org') ? 'active' : ''}" title="Org chart">
                     <Users size={14} />
                     <span>Org</span>
@@ -428,6 +429,13 @@
                     onclick={closeMobileMenu}
                 >
                     <span>Goals</span>
+                </a>
+                <a
+                    href="/workforce/projects"
+                    class="mobile-nav-link {page.url.pathname.startsWith('/workforce/projects') ? 'active' : ''}"
+                    onclick={closeMobileMenu}
+                >
+                    <span>Projects</span>
                 </a>
                 <a
                     href="/workforce/org"

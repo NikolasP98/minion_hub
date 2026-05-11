@@ -14,6 +14,7 @@
 		Inbox,
 		Receipt,
 		Settings,
+		FolderKanban,
 	} from 'lucide-svelte';
 
 	let { data }: { data: PageData } = $props();
@@ -60,6 +61,12 @@
 			href: '/workforce/goals',
 			icon: Target,
 			description: 'company → agent',
+		},
+		{
+			label: 'Projects',
+			href: '/workforce/projects',
+			icon: FolderKanban,
+			description: 'workspaces + scope',
 		},
 		{
 			label: 'Reliability',
