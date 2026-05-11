@@ -1,10 +1,15 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import type { PageData } from './$types';
 	import type { IssueStatus } from '@minion-stack/paperclip-client';
+	import { startPolling } from '$lib/util/live-polling';
+	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
 
 	let { data }: { data: PageData } = $props();
 
-	const { items } = $derived(data);
+	const { items, status } = $derived(data);
+
+	onMount(() => startPolling('app:issues', 5000));
 
 	const STATUS_ORDER: IssueStatus[] = ['in_progress', 'blocked', 'todo', 'backlog', 'in_review', 'done', 'cancelled'];
 
@@ -54,8 +59,21 @@
 </script>
 
 <div class="p-6 space-y-6">
-	<div class="flex items-center justify-between">
-		<h1 class="text-2xl font-semibold">Issues</h1>
+	<div class="flex items-center justify-between flex-wrap gap-3">
+		<div class="flex items-center gap-3 flex-wrap">
+			<h1 class="text-2xl font-semibold">Issues</h1>
+			<LiveIndicator intervalMs={5000} />
+			{#if status}
+				<a
+					href="/workforce/issues"
+					class="inline-flex items-center gap-1.5 rounded-full bg-primary/10 text-primary px-2.5 py-0.5 text-xs font-medium hover:bg-primary/15"
+					title="Clear filter"
+				>
+					status: {STATUS_LABELS[status as IssueStatus] ?? status}
+					<span aria-hidden="true">×</span>
+				</a>
+			{/if}
+		</div>
 		<span class="text-sm text-muted-foreground">{items.length} issue{items.length !== 1 ? 's' : ''}</span>
 	</div>
 

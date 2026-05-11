@@ -1,9 +1,14 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import type { PageData } from './$types';
+	import { startPolling } from '$lib/util/live-polling';
+	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
 
 	let { data }: { data: PageData } = $props();
 
 	const { items } = $derived(data);
+
+	onMount(() => startPolling('app:activity', 5000));
 
 	const ACTOR_COLORS: Record<string, string> = {
 		agent: 'bg-primary/10 text-primary',
@@ -27,8 +32,11 @@
 </script>
 
 <div class="p-6 space-y-6">
-	<div class="flex items-center justify-between">
-		<h1 class="text-2xl font-semibold">Activity</h1>
+	<div class="flex items-center justify-between flex-wrap gap-3">
+		<div class="flex items-center gap-3">
+			<h1 class="text-2xl font-semibold">Activity</h1>
+			<LiveIndicator intervalMs={5000} />
+		</div>
 		<span class="text-sm text-muted-foreground">{items.length} event{items.length !== 1 ? 's' : ''}</span>
 	</div>
 

@@ -7,6 +7,7 @@ export const load: PageServerLoad = async (event) => {
 	if (!event.locals.paperclipIdentity?.companyId) {
 		throw redirect(302, '/workforce/welcome');
 	}
+	event.depends('app:dashboard');
 	const companyId = event.locals.paperclipIdentity.companyId;
 	const client = paperclipServerClient(event);
 	try {
