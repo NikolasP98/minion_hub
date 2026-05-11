@@ -787,6 +787,38 @@ export async function debugSkipAll(sessionKey: string) {
   return sendRequest('debug.skipAll', { sessionKey });
 }
 
+// ──────────────────────────────────────────────────────────────────────────
+// Phase D-0f — externalized section prose read/write
+// ──────────────────────────────────────────────────────────────────────────
+
+export interface ProseReadParams {
+  layer: 'platform' | 'agent-type' | 'identity' | 'user' | 'session';
+  sectionId: string;
+  variant?: string;
+  scope: 'global' | 'agent';
+  agentId?: string;
+  agentWorkspaceDir?: string;
+}
+
+export interface ProseReadResult {
+  path: string;
+  content: string;
+  exists: boolean;
+  scope: 'global' | 'agent';
+}
+
+export async function readSectionProse(params: ProseReadParams): Promise<ProseReadResult> {
+  const res = await sendRequest('prompt.sections.prose.read', params);
+  return res as ProseReadResult;
+}
+
+export async function writeSectionProse(
+  params: ProseReadParams & { content: string },
+): Promise<{ path: string; bytes: number }> {
+  const res = await sendRequest('prompt.sections.prose.write', params);
+  return res as { path: string; bytes: number };
+}
+
 export function loadChatHistory(agentId: string) {
   const chat = ensureAgentChat(agentId);
   const isInitialLoad = chat.messages.length === 0;
