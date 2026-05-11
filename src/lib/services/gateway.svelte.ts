@@ -813,6 +813,9 @@ export interface ProseReadResult {
   /** D-0g-2: filesystem mtime — pass back as expectedMtimeMs on the next
    * write to enable optimistic-concurrency conflict detection. */
   mtimeMs?: number;
+  /** D-0g-3: section's `cacheable` flag — when true, editing this prose
+   * invalidates the Anthropic prompt-cache prefix on the next request. */
+  cacheable?: boolean;
 }
 
 export async function readSectionProse(params: ProseReadParams): Promise<ProseReadResult> {
