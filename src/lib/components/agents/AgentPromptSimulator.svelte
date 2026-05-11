@@ -1,4 +1,5 @@
 <script lang="ts">
+  import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
   import { fetchSessionPromptReport, fetchPromptPreview } from '$lib/services/gateway.svelte';
   import * as m from '$lib/paraglide/messages';
 
@@ -50,7 +51,40 @@
     /** Phase D-0e: rendered text content (gateway-side D-0e #105). May be
      * undefined if the gateway hasn't been updated yet — UI shows a notice. */
     content?: string;
+    /** Phase D-0e/f: where this section's content originates. */
+    source?: 'static' | 'file' | 'generated' | 'config' | 'custom';
   }
+
+  const SOURCE_META: Record<
+    NonNullable<SectionEntry['source']>,
+    { label: string; color: string; description: string }
+  > = {
+    static: {
+      label: 'Static',
+      color: '#6b7280',
+      description: 'Hardcoded boilerplate in the gateway section definition.',
+    },
+    file: {
+      label: 'File',
+      color: '#06b6d4',
+      description: 'Loaded from an agent workspace file (bootstrap or project docs).',
+    },
+    generated: {
+      label: 'Generated',
+      color: '#8b5cf6',
+      description: 'Produced at request time from runtime state (skills, memory, workspace, time).',
+    },
+    config: {
+      label: 'Config',
+      color: '#f59e0b',
+      description: 'User-configurable per-agent setting (personality, sandbox, permissions).',
+    },
+    custom: {
+      label: 'Custom',
+      color: '#10b981',
+      description: 'User-authored YAML section from Phase 19 customisation.',
+    },
+  };
 
   interface SystemPromptReport {
     source?: string;
@@ -109,6 +143,9 @@
   let testPrompt = $state('Tell me about today\'s schedule.');
   /** Per-step delay during animated playback. */
   const STEP_ANIMATION_MS = 220;
+
+  /** Phase D-0e: toggle for rendered-content panel between markdown and raw. */
+  let contentViewMode = $state<'rendered' | 'raw'>('rendered');
 
   // ─── Pipeline steps ──────────────────────────────────────────────────────
 
@@ -519,6 +556,18 @@
               <span class="w-2 h-2 rounded-full shrink-0" style:background-color={LAYER_META[currentSection.layer]?.color ?? '#6b7280'}></span>
               <h2 class="text-sm font-semibold text-foreground">{currentSection.label}</h2>
               <span class="text-[9px] px-1.5 py-0.5 rounded bg-bg2 border border-border/50 text-muted font-mono">{currentSection.layer}</span>
+              {#if currentSection.source}
+                {@const meta = SOURCE_META[currentSection.source]}
+                <span
+                  class="text-[9px] px-1.5 py-0.5 rounded font-mono uppercase tracking-wide"
+                  style:background-color={`${meta.color}22`}
+                  style:border={`1px solid ${meta.color}66`}
+                  style:color={meta.color}
+                  title={meta.description}
+                >
+                  {meta.label}
+                </span>
+              {/if}
             </div>
             <p class="text-muted text-[11px] mb-3">
               {LAYER_META[currentSection.layer]?.description ?? ''}
@@ -557,9 +606,18 @@
             <div class="mt-4">
               <div class="flex items-center justify-between mb-1">
                 <p class="text-[10px] font-bold uppercase tracking-wide text-muted">Rendered content</p>
-                {#if currentSection.content !== undefined}
-                  <span class="text-[9px] text-muted font-mono">{currentSection.content.length} chars</span>
-                {/if}
+                <div class="flex items-center gap-2">
+                  {#if currentSection.content !== undefined}
+                    <span class="text-[9px] text-muted font-mono">{currentSection.content.length} chars</span>
+                    <button
+                      type="button"
+                      class="text-[9px] px-1.5 py-0.5 rounded border border-border text-muted hover:text-foreground transition-colors cursor-pointer"
+                      onclick={() => (contentViewMode = contentViewMode === 'rendered' ? 'raw' : 'rendered')}
+                    >
+                      {contentViewMode === 'rendered' ? 'Raw' : 'Rendered'}
+                    </button>
+                  {/if}
+                </div>
               </div>
               {#if currentSection.content === undefined}
                 <div class="rounded border border-border/50 bg-bg2 px-3 py-2 text-[11px] text-muted italic">
@@ -569,6 +627,12 @@
               {:else if currentSection.content.length === 0}
                 <div class="rounded border border-border/50 bg-bg2 px-3 py-2 text-[11px] text-muted italic">
                   This section rendered empty for the current parameters.
+                </div>
+              {:else if contentViewMode === 'rendered'}
+                <div class="rounded border border-border/50 bg-bg1 p-3 max-h-96 overflow-auto prompt-md">
+                  {#key currentSection.id}
+                    <MarkdownMessage value={currentSection.content} tone="assistant" />
+                  {/key}
                 </div>
               {:else}
                 <pre class="rounded border border-border/50 bg-bg1 p-3 text-[11px] font-mono text-foreground whitespace-pre-wrap break-words max-h-96 overflow-auto">{currentSection.content}</pre>
