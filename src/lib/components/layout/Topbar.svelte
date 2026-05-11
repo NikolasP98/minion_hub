@@ -124,14 +124,10 @@
                         <span class="nav-pill disabled" {...triggerProps}>Goals</span>
                     {/snippet}
                 </Tooltip>
-                <Tooltip label="Coming soon" id="nav-wf-people">
-                    {#snippet children(triggerProps)}
-                        <span class="nav-pill disabled" {...triggerProps}>
-                            <Users size={14} />
-                            <span>People</span>
-                        </span>
-                    {/snippet}
-                </Tooltip>
+                <a href="/workforce/org" class="nav-pill {page.url.pathname.startsWith('/workforce/org') ? 'active' : ''}" title="Org chart">
+                    <Users size={14} />
+                    <span>Org</span>
+                </a>
             </div>
 
             <div class="w-px h-4 bg-border/60 mx-1"></div>
@@ -434,11 +430,14 @@
                     <span>Goals</span>
                     <span class="ml-auto text-[10px] text-muted/50">Soon</span>
                 </span>
-                <span class="mobile-nav-link disabled">
+                <a
+                    href="/workforce/org"
+                    class="mobile-nav-link {page.url.pathname.startsWith('/workforce/org') ? 'active' : ''}"
+                    onclick={closeMobileMenu}
+                >
                     <Users size={18} />
-                    <span>People</span>
-                    <span class="ml-auto text-[10px] text-muted/50">Soon</span>
-                </span>
+                    <span>Org</span>
+                </a>
 
                 <div class="h-px bg-border/60 my-1"></div>
 
