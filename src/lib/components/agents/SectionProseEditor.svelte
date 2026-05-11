@@ -1,28 +1,33 @@
 <script lang="ts">
   /**
-   * Phase D-0f-1 — editor modal for externalized static section prose.
+   * Phase D-0f-1.5 — editor modal for externalized section prose.
    *
-   * Reads/writes via prompt.sections.prose.read|write RPCs. Tries known variant
-   * names (none, full, minimal) and shows the ones that exist as sub-tabs.
-   * Global scope only in the pilot; per-agent override comes in D-0f-2.
+   * - Probes known variant suffixes (none, full, minimal) and shows existing
+   *   files as sub-tabs.
+   * - When a variant has no file yet but the section ships a `templateText`
+   *   (Tier-1), an "Initialize from default" button seeds the textarea.
+   * - Scope toggle: Global (gateway-wide default) vs Agent (per-agent
+   *   override at <workspaceDir>/prompts/<id>.md). Server derives the
+   *   workspace path from agentId — client never sends a path.
    */
   import { readSectionProse, writeSectionProse } from '$lib/services/gateway.svelte';
 
   let {
     open = $bindable(false),
+    agentId,
     layer,
     sectionId,
     sectionLabel,
     onSaved,
   }: {
     open?: boolean;
+    agentId: string;
     layer: 'platform' | 'agent-type' | 'identity' | 'user' | 'session';
     sectionId: string;
     sectionLabel: string;
     onSaved?: () => void;
   } = $props();
 
-  // Variants we'll probe. Section files use these suffixes today.
   const CANDIDATE_VARIANTS: (string | undefined)[] = [undefined, 'full', 'minimal'];
 
   type Slot = {
@@ -30,9 +35,11 @@
     path: string;
     content: string;
     exists: boolean;
-    dirty: string | null; // user-edited content, null if pristine
+    dirty: string | null;
+    templateDefault?: string;
   };
 
+  let scope = $state<'global' | 'agent'>('global');
   let slots = $state<Slot[]>([]);
   let activeIdx = $state(0);
   let loading = $state(false);
@@ -43,11 +50,17 @@
     if (open && sectionId) {
       void loadAll();
     } else if (!open) {
-      // Reset on close so reopen always re-fetches.
       slots = [];
       activeIdx = 0;
       error = null;
+      scope = 'global';
     }
+  });
+
+  // Re-fetch when scope changes (but only while open).
+  $effect(() => {
+    const _trigger = scope;
+    if (open && sectionId) void loadAll();
   });
 
   async function loadAll() {
@@ -56,20 +69,39 @@
     try {
       const results = await Promise.all(
         CANDIDATE_VARIANTS.map((variant) =>
-          readSectionProse({ layer, sectionId, variant, scope: 'global' }).then(
+          readSectionProse({
+            layer,
+            sectionId,
+            variant,
+            scope,
+            agentId: scope === 'agent' ? agentId : undefined,
+          }).then(
             (r) => ({ variant, ...r }),
             (err) => ({ variant, error: err }),
           ),
         ),
       );
+      // Keep every slot that either has content or has a templateDefault available.
+      // That way the modal shows variants the user can initialize.
+      type ReadOk = {
+        variant: string | undefined;
+        path: string;
+        content: string;
+        exists: boolean;
+        scope: 'global' | 'agent';
+        templateDefault?: string;
+      };
       slots = results
-        .filter((r): r is { variant: string | undefined; path: string; content: string; exists: boolean; scope: 'global' | 'agent' } => 'exists' in r && r.exists)
+        .filter((r): r is ReadOk =>
+          'exists' in r && (r.exists || typeof r.templateDefault === 'string'),
+        )
         .map((r) => ({
           variant: r.variant,
           path: r.path,
           content: r.content,
           exists: r.exists,
           dirty: null,
+          templateDefault: r.templateDefault,
         }));
       activeIdx = 0;
     } catch (err) {
@@ -89,10 +121,12 @@
         layer,
         sectionId,
         variant: slot.variant,
-        scope: 'global',
+        scope,
+        agentId: scope === 'agent' ? agentId : undefined,
         content: slot.dirty,
       });
       slot.content = slot.dirty;
+      slot.exists = true;
       slot.dirty = null;
       onSaved?.();
     } catch (err) {
@@ -100,6 +134,12 @@
     } finally {
       saving = false;
     }
+  }
+
+  function initFromDefault() {
+    const slot = slots[activeIdx];
+    if (!slot?.templateDefault) return;
+    slot.dirty = slot.templateDefault;
   }
 
   function onInput(e: Event) {
@@ -136,18 +176,44 @@
       onkeydown={(e) => e.stopPropagation()}
     >
       <!-- Header -->
-      <div class="px-4 py-3 border-b border-border flex items-center justify-between">
-        <div>
+      <div class="px-4 py-3 border-b border-border flex items-center justify-between gap-3">
+        <div class="min-w-0">
           <h2 id="prose-editor-title" class="text-sm font-semibold text-foreground">
             Edit prose — {sectionLabel}
           </h2>
-          <p class="text-[10px] text-muted mt-0.5 font-mono">
-            global · {layer}/{sectionId}
+          <p class="text-[10px] text-muted mt-0.5 font-mono truncate">
+            {scope} · {layer}/{sectionId}
           </p>
+        </div>
+        <!-- Scope toggle -->
+        <div class="flex items-center gap-0.5 bg-bg2 rounded p-0.5 shrink-0">
+          <button
+            type="button"
+            class="text-[10px] px-2 py-1 rounded transition-colors"
+            class:bg-bg1={scope === 'global'}
+            class:text-foreground={scope === 'global'}
+            class:text-muted={scope !== 'global'}
+            onclick={() => (scope = 'global')}
+            disabled={saving}
+          >
+            Global
+          </button>
+          <button
+            type="button"
+            class="text-[10px] px-2 py-1 rounded transition-colors"
+            class:bg-bg1={scope === 'agent'}
+            class:text-foreground={scope === 'agent'}
+            class:text-muted={scope !== 'agent'}
+            onclick={() => (scope = 'agent')}
+            disabled={saving}
+            title="Per-agent override at <workspaceDir>/prompts/"
+          >
+            Agent
+          </button>
         </div>
         <button
           type="button"
-          class="text-muted hover:text-foreground transition-colors"
+          class="text-muted hover:text-foreground transition-colors shrink-0"
           onclick={close}
           aria-label="Close"
         >
@@ -169,6 +235,9 @@
               onclick={() => (activeIdx = i)}
             >
               {variantLabel(slot.variant)}
+              {#if !slot.exists}
+                <span class="text-muted/60" title="Not yet initialized">○</span>
+              {/if}
               {#if slot.dirty !== null}
                 <span class="text-accent">•</span>
               {/if}
@@ -184,13 +253,41 @@
         {:else if error}
           <p class="text-red-400 text-xs font-mono">{error}</p>
         {:else if slots.length === 0}
-          <p class="text-muted text-xs">No prose files found for this section.</p>
+          <div class="space-y-2">
+            <p class="text-muted text-xs">
+              This section hasn't been migrated to editable prose yet.
+            </p>
+            <p class="text-muted/70 text-[10px]">
+              Pure-prose sections will become editable in the D-0f-2 sweep. Sections with
+              conditional rendering logic (e.g. tool-availability branches) stay rendered
+              at runtime.
+            </p>
+          </div>
         {:else}
           {@const slot = slots[activeIdx]}
           <p class="text-[10px] text-muted mb-2 font-mono break-all">{slot.path}</p>
+          {#if !slot.exists && slot.dirty === null}
+            <div class="space-y-2 mb-3">
+              <p class="text-muted text-xs">
+                No file yet. {slot.templateDefault
+                  ? 'Initialize from the section default to start editing.'
+                  : 'This variant has no default template — type below to create one.'}
+              </p>
+              {#if slot.templateDefault}
+                <button
+                  type="button"
+                  class="text-[11px] px-2.5 py-1 rounded border border-accent/50 text-accent hover:bg-accent/10 transition-colors"
+                  onclick={initFromDefault}
+                >
+                  Initialize from default
+                </button>
+              {/if}
+            </div>
+          {/if}
           <textarea
             class="w-full h-[40vh] bg-bg2 border border-border/50 rounded px-3 py-2 text-xs font-mono text-foreground resize-none focus:outline-none focus:border-accent"
             value={slot.dirty ?? slot.content}
+            placeholder={slot.templateDefault && !slot.exists ? slot.templateDefault : ''}
             oninput={onInput}
           ></textarea>
         {/if}

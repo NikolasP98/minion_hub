@@ -1009,6 +1009,7 @@
 {#if currentSectionTop && currentSectionTop.source === 'static'}
   <SectionProseEditor
     bind:open={editorOpen}
+    {agentId}
     layer={currentSectionTop.layer as 'platform' | 'agent-type' | 'identity' | 'user' | 'session'}
     sectionId={currentSectionTop.id}
     sectionLabel={currentSectionTop.label}
