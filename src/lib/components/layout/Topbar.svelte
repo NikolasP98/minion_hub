@@ -115,24 +115,16 @@
                     <LayoutDashboard size={14} />
                     <span>Dashboard</span>
                 </a>
-                <Tooltip label="Coming soon" id="nav-wf-issues">
-                    {#snippet children(triggerProps)}
-                        <span class="nav-pill disabled" {...triggerProps}>Issues</span>
-                    {/snippet}
-                </Tooltip>
-                <Tooltip label="Coming soon" id="nav-wf-goals">
-                    {#snippet children(triggerProps)}
-                        <span class="nav-pill disabled" {...triggerProps}>Goals</span>
-                    {/snippet}
-                </Tooltip>
-                <Tooltip label="Coming soon" id="nav-wf-people">
-                    {#snippet children(triggerProps)}
-                        <span class="nav-pill disabled" {...triggerProps}>
-                            <Users size={14} />
-                            <span>People</span>
-                        </span>
-                    {/snippet}
-                </Tooltip>
+                <a href="/workforce/issues" class="nav-pill {page.url.pathname.startsWith('/workforce/issues') ? 'active' : ''}">Issues</a>
+                <a href="/workforce/approvals" class="nav-pill {page.url.pathname.startsWith('/workforce/approvals') ? 'active' : ''}">
+                    <span>Approvals</span>
+                </a>
+                <a href="/workforce/goals" class="nav-pill {page.url.pathname.startsWith('/workforce/goals') ? 'active' : ''}">Goals</a>
+                <a href="/workforce/projects" class="nav-pill {page.url.pathname.startsWith('/workforce/projects') ? 'active' : ''}">Projects</a>
+                <a href="/workforce/org" class="nav-pill {page.url.pathname.startsWith('/workforce/org') ? 'active' : ''}" title="Org chart">
+                    <Users size={14} />
+                    <span>Org</span>
+                </a>
             </div>
 
             <div class="w-px h-4 bg-border/60 mx-1"></div>
@@ -417,19 +409,42 @@
                     <LayoutDashboard size={18} />
                     <span>Dashboard</span>
                 </a>
-                <span class="mobile-nav-link disabled">
+                <a
+                    href="/workforce/issues"
+                    class="mobile-nav-link {page.url.pathname.startsWith('/workforce/issues') ? 'active' : ''}"
+                    onclick={closeMobileMenu}
+                >
                     <span>Issues</span>
-                    <span class="ml-auto text-[10px] text-muted/50">Soon</span>
-                </span>
-                <span class="mobile-nav-link disabled">
+                </a>
+                <a
+                    href="/workforce/approvals"
+                    class="mobile-nav-link {page.url.pathname.startsWith('/workforce/approvals') ? 'active' : ''}"
+                    onclick={closeMobileMenu}
+                >
+                    <span>Approvals</span>
+                </a>
+                <a
+                    href="/workforce/goals"
+                    class="mobile-nav-link {page.url.pathname.startsWith('/workforce/goals') ? 'active' : ''}"
+                    onclick={closeMobileMenu}
+                >
                     <span>Goals</span>
-                    <span class="ml-auto text-[10px] text-muted/50">Soon</span>
-                </span>
-                <span class="mobile-nav-link disabled">
+                </a>
+                <a
+                    href="/workforce/projects"
+                    class="mobile-nav-link {page.url.pathname.startsWith('/workforce/projects') ? 'active' : ''}"
+                    onclick={closeMobileMenu}
+                >
+                    <span>Projects</span>
+                </a>
+                <a
+                    href="/workforce/org"
+                    class="mobile-nav-link {page.url.pathname.startsWith('/workforce/org') ? 'active' : ''}"
+                    onclick={closeMobileMenu}
+                >
                     <Users size={18} />
-                    <span>People</span>
-                    <span class="ml-auto text-[10px] text-muted/50">Soon</span>
-                </span>
+                    <span>Org</span>
+                </a>
 
                 <div class="h-px bg-border/60 my-1"></div>
 

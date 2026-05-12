@@ -22,13 +22,14 @@
         toggleAgentViewMode,
         toggleGroupCollapsed,
         toggleUngroupedCollapsed,
+        destroyGroupsStore,
     } from "$lib/state/features/agent-groups.svelte";
     import { builderState, loadBuiltAgents } from "$lib/state/builder/builder.svelte";
     import type { Agent } from "@minion-stack/shared";
     import { diceBearAvatarUrl } from "$lib/utils/avatar";
     import { agentDisplayName } from "$lib/utils/agent-display";
     import { goto } from "$app/navigation";
-    import { onMount } from "svelte";
+    import { onMount, onDestroy } from "svelte";
 
     interface Props {
         /** Collapse level from the parent Splitter */
@@ -42,6 +43,10 @@
 
     onMount(() => {
         loadBuiltAgents();
+    });
+
+    onDestroy(() => {
+        destroyGroupsStore();
     });
 
     type SidebarAgent = Agent & {

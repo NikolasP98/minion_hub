@@ -1,5 +1,6 @@
 import { eq, and, desc, gte, lte, sql } from 'drizzle-orm';
 import { skillExecutionStats } from '@minion-stack/db/schema';
+import { cached, keys, tags } from '@minion-stack/cache';
 import { nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
 
@@ -43,19 +44,31 @@ export async function listSkillStats(
     limit?: number;
   } = {},
 ) {
-  const conditions = [eq(skillExecutionStats.tenantId, ctx.tenantId)];
+  return cached(
+    keys.hub('skill-stats', {
+      t: ctx.tenantId,
+      d: { s: filters.serverId, sk: filters.skillName, f: filters.from, to: filters.to, l: filters.limit },
+    }),
+    {
+      ttl: '30s',
+      tags: tags.tenantDomain(ctx.tenantId, 'reliability'),
+    },
+    async () => {
+      const conditions = [eq(skillExecutionStats.tenantId, ctx.tenantId)];
 
-  if (filters.serverId) conditions.push(eq(skillExecutionStats.serverId, filters.serverId));
-  if (filters.skillName) conditions.push(eq(skillExecutionStats.skillName, filters.skillName));
-  if (filters.from) conditions.push(gte(skillExecutionStats.occurredAt, filters.from));
-  if (filters.to) conditions.push(lte(skillExecutionStats.occurredAt, filters.to));
+      if (filters.serverId) conditions.push(eq(skillExecutionStats.serverId, filters.serverId));
+      if (filters.skillName) conditions.push(eq(skillExecutionStats.skillName, filters.skillName));
+      if (filters.from) conditions.push(gte(skillExecutionStats.occurredAt, filters.from));
+      if (filters.to) conditions.push(lte(skillExecutionStats.occurredAt, filters.to));
 
-  return ctx.db
-    .select()
-    .from(skillExecutionStats)
-    .where(and(...conditions))
-    .orderBy(desc(skillExecutionStats.occurredAt))
-    .limit(filters.limit ?? 200);
+      return ctx.db
+        .select()
+        .from(skillExecutionStats)
+        .where(and(...conditions))
+        .orderBy(desc(skillExecutionStats.occurredAt))
+        .limit(filters.limit ?? 200);
+    },
+  );
 }
 
 export async function getSkillStatsSummary(
@@ -66,27 +79,39 @@ export async function getSkillStatsSummary(
     to?: number;
   } = {},
 ) {
-  const conditions = [eq(skillExecutionStats.tenantId, ctx.tenantId)];
+  return cached(
+    keys.hub('skill-stats-summary', {
+      t: ctx.tenantId,
+      d: { s: filters.serverId, f: filters.from, to: filters.to },
+    }),
+    {
+      ttl: '30s',
+      tags: tags.tenantDomain(ctx.tenantId, 'reliability'),
+    },
+    async () => {
+      const conditions = [eq(skillExecutionStats.tenantId, ctx.tenantId)];
 
-  if (filters.serverId) conditions.push(eq(skillExecutionStats.serverId, filters.serverId));
-  if (filters.from) conditions.push(gte(skillExecutionStats.occurredAt, filters.from));
-  if (filters.to) conditions.push(lte(skillExecutionStats.occurredAt, filters.to));
+      if (filters.serverId) conditions.push(eq(skillExecutionStats.serverId, filters.serverId));
+      if (filters.from) conditions.push(gte(skillExecutionStats.occurredAt, filters.from));
+      if (filters.to) conditions.push(lte(skillExecutionStats.occurredAt, filters.to));
 
-  const where = and(...conditions);
+      const where = and(...conditions);
 
-  const bySkill = await ctx.db
-    .select({
-      skillName: skillExecutionStats.skillName,
-      status: skillExecutionStats.status,
-      count: sql<number>`count(*)`.as('count'),
-      avgDurationMs: sql<number>`avg(${skillExecutionStats.durationMs})`.as('avg_duration'),
-      minDurationMs: sql<number>`min(${skillExecutionStats.durationMs})`.as('min_duration'),
-      maxDurationMs: sql<number>`max(${skillExecutionStats.durationMs})`.as('max_duration'),
-    })
-    .from(skillExecutionStats)
-    .where(where)
-    .groupBy(skillExecutionStats.skillName, skillExecutionStats.status)
-    .orderBy(sql`count(*) desc`);
+      const bySkill = await ctx.db
+        .select({
+          skillName: skillExecutionStats.skillName,
+          status: skillExecutionStats.status,
+          count: sql<number>`count(*)`.as('count'),
+          avgDurationMs: sql<number>`avg(${skillExecutionStats.durationMs})`.as('avg_duration'),
+          minDurationMs: sql<number>`min(${skillExecutionStats.durationMs})`.as('min_duration'),
+          maxDurationMs: sql<number>`max(${skillExecutionStats.durationMs})`.as('max_duration'),
+        })
+        .from(skillExecutionStats)
+        .where(where)
+        .groupBy(skillExecutionStats.skillName, skillExecutionStats.status)
+        .orderBy(sql`count(*) desc`);
 
-  return { bySkill };
+      return { bySkill };
+    },
+  );
 }
