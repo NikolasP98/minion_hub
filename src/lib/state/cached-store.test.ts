@@ -47,3 +47,58 @@ describe('createCachedStore — minimal', () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('createCachedStore — sessionStorage', () => {
+  it('reads existing fresh entry from sessionStorage on mount', () => {
+    const seed = { groups: [{ id: 'persisted' }] };
+    const now = Date.now();
+    sessionStorage.setItem(
+      'hub:cache:v1:k',
+      JSON.stringify({ value: seed, expiresAt: now + 60_000, staleUntil: now + 120_000 }),
+    );
+    const store = createCachedStore({
+      key: 'k', tags: ['t'], fetcher: async () => ({ groups: [] }),
+      ttl: 60_000, swr: 60_000,
+    });
+    expect(store.data).toEqual(seed);
+    expect(store.stale).toBe(false);
+  });
+
+  it('marks stale when sessionStorage entry is past TTL but within SWR', () => {
+    const seed = 'stale-value';
+    const now = Date.now();
+    sessionStorage.setItem(
+      'hub:cache:v1:k',
+      JSON.stringify({ value: seed, expiresAt: now - 1_000, staleUntil: now + 60_000 }),
+    );
+    const store = createCachedStore({
+      key: 'k', tags: ['t'], fetcher: async () => 'fresh',
+      ttl: 60_000, swr: 60_000,
+    });
+    expect(store.data).toEqual(seed);
+    expect(store.stale).toBe(true);
+  });
+
+  it('writes back to sessionStorage on successful refresh', async () => {
+    const store = createCachedStore({
+      key: 'k', tags: ['t'], fetcher: async () => 'fresh',
+      ttl: 60_000, swr: 60_000,
+    });
+    await store.refresh();
+    const raw = sessionStorage.getItem('hub:cache:v1:k');
+    expect(raw).not.toBeNull();
+    const parsed = JSON.parse(raw!);
+    expect(parsed.value).toBe('fresh');
+    expect(typeof parsed.expiresAt).toBe('number');
+    expect(typeof parsed.staleUntil).toBe('number');
+  });
+
+  it('ignores corrupted sessionStorage entry', () => {
+    sessionStorage.setItem('hub:cache:v1:k', 'not-json');
+    const store = createCachedStore({
+      key: 'k', tags: ['t'], fetcher: async () => 'fresh',
+    });
+    expect(store.data).toBeNull();
+    expect(store.loading).toBe(true);
+  });
+});
