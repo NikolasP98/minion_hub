@@ -17,6 +17,7 @@ import { env } from '$env/dynamic/private';
 import { startBackupScheduler } from '$server/services/backup-scheduler';
 import { ensurePersonalAgentOnLogin } from '$server/services/personal-agent.service';
 import { mintPaperclipIdentity } from '$lib/server/paperclip-identity';
+import { initCache } from '$lib/server/cache';
 
 /**
  * Resolve tenantCtx from a Bearer server token.
@@ -330,3 +331,6 @@ export const handleError: HandleServerError = async ({ error, event, status, mes
 };
 
 startBackupScheduler();
+
+// One-time cache initialization.
+void initCache().catch((err) => console.error('[cache] init failed', err));
