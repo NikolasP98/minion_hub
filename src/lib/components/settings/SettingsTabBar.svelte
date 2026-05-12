@@ -1,7 +1,9 @@
 <script lang="ts">
-    import { Brain, Bot, Radio, Shield, Server, Palette, HardDrive, DatabaseBackup } from "lucide-svelte";
+    import { Brain, Bot, Radio, Shield, Server, Palette, HardDrive, DatabaseBackup, Puzzle } from "lucide-svelte";
+    import { page } from "$app/state";
     import { isAdmin } from "$lib/state/features/user.svelte";
     import { TABS } from "$lib/utils/config-schema";
+    import * as m from "$lib/paraglide/messages";
 
     interface Props {
         activeTab: string;
@@ -10,6 +12,8 @@
     }
 
     let { activeTab, onselect, dirtyTabIds = new Set<string>() }: Props = $props();
+
+    const isPluginsRoute = $derived(page.url.pathname.startsWith("/settings/plugins"));
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const ICON_MAP: Record<string, any> = {
@@ -57,5 +61,23 @@
                 {/if}
             </button>
         {/each}
+
+        <!-- Plugins (separate route, not a ?s= tab) -->
+        <a
+            href="/settings/plugins"
+            role="tab"
+            aria-selected={isPluginsRoute}
+            class="relative flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium transition-colors bg-transparent border-none cursor-pointer font-[inherit] whitespace-nowrap no-underline
+                {isPluginsRoute
+                ? 'text-accent'
+                : 'text-muted-foreground hover:text-foreground'}"
+        >
+            <Puzzle size={14} />
+            <span class="hidden lg:inline">{m.settings_plugins()}</span>
+
+            {#if isPluginsRoute}
+                <div class="absolute bottom-0 left-2 right-2 h-[2px] bg-accent rounded-t-full"></div>
+            {/if}
+        </a>
     </div>
 </div>
