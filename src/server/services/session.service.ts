@@ -1,5 +1,6 @@
 import { eq, and, desc } from 'drizzle-orm';
 import { sessions } from '@minion-stack/db/schema';
+import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { newId, nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
 
@@ -43,28 +44,52 @@ export async function upsertSession(ctx: TenantContext, input: SessionInput) {
       },
     });
 
+  await invalidateTags([
+    ...tags.tenantDomain(ctx.tenantId, 'sessions'),
+    ...tags.entity('session', id),
+  ]);
+
   return id;
 }
 
 export async function listSessions(ctx: TenantContext, serverId: string) {
-  return ctx.db
-    .select()
-    .from(sessions)
-    .where(and(eq(sessions.serverId, serverId), eq(sessions.tenantId, ctx.tenantId)))
-    .orderBy(desc(sessions.updatedAt));
+  return cached(
+    keys.hub('sessions', { t: ctx.tenantId, d: { serverId } }),
+    {
+      ttl: '2m',
+      swr: '30s',
+      tags: tags.tenantDomain(ctx.tenantId, 'sessions'),
+    },
+    () =>
+      ctx.db
+        .select()
+        .from(sessions)
+        .where(and(eq(sessions.serverId, serverId), eq(sessions.tenantId, ctx.tenantId)))
+        .orderBy(desc(sessions.updatedAt)),
+  );
 }
 
 export async function listSessionsByServer(ctx: TenantContext, serverId: string, agentId?: string) {
-  const conditions = [
-    eq(sessions.serverId, serverId),
-    eq(sessions.tenantId, ctx.tenantId),
-    ...(agentId ? [eq(sessions.agentId, agentId)] : []),
-  ];
-  return ctx.db
-    .select()
-    .from(sessions)
-    .where(and(...conditions))
-    .orderBy(desc(sessions.updatedAt));
+  return cached(
+    keys.hub('sessions', { t: ctx.tenantId, d: { agentId: agentId ?? '', serverId } }),
+    {
+      ttl: '2m',
+      swr: '30s',
+      tags: tags.tenantDomain(ctx.tenantId, 'sessions'),
+    },
+    () => {
+      const conditions = [
+        eq(sessions.serverId, serverId),
+        eq(sessions.tenantId, ctx.tenantId),
+        ...(agentId ? [eq(sessions.agentId, agentId)] : []),
+      ];
+      return ctx.db
+        .select()
+        .from(sessions)
+        .where(and(...conditions))
+        .orderBy(desc(sessions.updatedAt));
+    },
+  );
 }
 
 export async function getSession(ctx: TenantContext, id: string) {
