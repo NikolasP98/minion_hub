@@ -70,14 +70,25 @@ export async function loadHosts() {
     console.warn('[hosts] GET /api/servers threw; preserving cache', err);
   }
 
-  // Restore last-active preference
+  // Restore last-active preference. Persist whichever id wins so the next
+  // reload picks the same host even if the WS handshake hasn't run yet
+  // (saveLastActiveHost was previously only called from inside the WS
+  // success path, so a freshly-added host with no completed connect would
+  // never write the key).
   const lastId =
     typeof localStorage !== 'undefined' ? localStorage.getItem('minion-dash-last-host') : null;
   if (lastId && hostsState.hosts.some((h) => h.id === lastId)) {
     hostsState.activeHostId = lastId;
   } else if (hostsState.hosts.length > 0) {
     hostsState.activeHostId = hostsState.hosts[0].id;
+    saveLastActiveHost(hostsState.hosts[0].id);
   }
+}
+
+export function selectHost(id: string): void {
+  if (!hostsState.hosts.some((h) => h.id === id)) return;
+  hostsState.activeHostId = id;
+  saveLastActiveHost(id);
 }
 
 export async function addHost(host: { name: string; url: string; token: string }): Promise<string> {
@@ -87,6 +98,7 @@ export async function addHost(host: { name: string; url: string; token: string }
     // Update the existing host instead of creating a duplicate
     await updateHost(existing.id, { name: host.name, token: host.token });
     hostsState.activeHostId = existing.id;
+    saveLastActiveHost(existing.id);
     updateHostsCache(hostsState.hosts);
     return existing.id;
   }
@@ -102,6 +114,7 @@ export async function addHost(host: { name: string; url: string; token: string }
   hostsState.hosts.push(newHost);
   updateHostsCache(hostsState.hosts);
   hostsState.activeHostId = id;
+  saveLastActiveHost(id);
   return id;
 }
 
@@ -124,6 +137,14 @@ export async function removeHost(id: string) {
   if (!res.ok) throw new Error(`Failed to remove host: ${res.status}`);
   hostsState.hosts = hostsState.hosts.filter((h) => h.id !== id);
   updateHostsCache(hostsState.hosts);
+  // If we just removed the active host, advance to another or clear.
+  if (hostsState.activeHostId === id) {
+    const next = hostsState.hosts[0]?.id ?? null;
+    hostsState.activeHostId = next;
+    if (next) saveLastActiveHost(next);
+    else if (typeof localStorage !== 'undefined')
+      localStorage.removeItem('minion-dash-last-host');
+  }
 }
 
 export function saveLastActiveHost(id: string) {
