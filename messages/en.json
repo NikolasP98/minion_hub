@@ -1043,6 +1043,7 @@
   "settings_clickToCopy": "Click to copy",
   "settings_copied": "Copied!",
   "settings_noFieldsMatching": "No fields matching \"{query}\"",
+  "settings_plugins": "Plugins",
   "skills_searchPlaceholder": "Search skills…",
   "skills_enabledCount": "{enabled}/{total} enabled",
   "skills_filterAll": "All",
