@@ -1,5 +1,6 @@
 import { eq, and, desc } from 'drizzle-orm';
 import { files } from '@minion-stack/db/schema';
+import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { newId, nowMs } from '$server/db/utils';
 import { uploadToB2, getSignedDownloadUrl, deleteFromB2 } from '$server/storage/b2';
 import type { TenantContext } from './base';
@@ -31,6 +32,7 @@ export async function uploadFile(ctx: TenantContext, input: FileUploadInput) {
     createdAt: nowMs(),
   });
 
+  await invalidateTags(tags.tenantDomain(ctx.tenantId, 'files'));
   return id;
 }
 
@@ -58,19 +60,33 @@ export async function deleteFile(ctx: TenantContext, id: string) {
 
   await deleteFromB2(file.b2FileKey);
   await ctx.db.delete(files).where(eq(files.id, id));
+  await invalidateTags([
+    ...tags.tenantDomain(ctx.tenantId, 'files'),
+    ...tags.entity('file', id),
+  ]);
 }
 
 export async function listFiles(ctx: TenantContext, category?: string) {
-  let query = ctx.db
-    .select()
-    .from(files)
-    .where(eq(files.tenantId, ctx.tenantId))
-    .orderBy(desc(files.createdAt))
-    .$dynamic();
+  return cached(
+    keys.hub('files', { t: ctx.tenantId, d: { category: category ?? null } }),
+    {
+      ttl: '5m',
+      swr: '30s',
+      tags: tags.tenantDomain(ctx.tenantId, 'files'),
+    },
+    async () => {
+      let query = ctx.db
+        .select()
+        .from(files)
+        .where(eq(files.tenantId, ctx.tenantId))
+        .orderBy(desc(files.createdAt))
+        .$dynamic();
 
-  if (category) {
-    query = query.where(and(eq(files.tenantId, ctx.tenantId), eq(files.category, category)));
-  }
+      if (category) {
+        query = query.where(and(eq(files.tenantId, ctx.tenantId), eq(files.category, category)));
+      }
 
-  return query.limit(200);
+      return query.limit(200);
+    },
+  );
 }
