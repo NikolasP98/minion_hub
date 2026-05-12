@@ -47,11 +47,42 @@ function readStorage<T>(key: string, storage: Storage): StoredEntry<T> | null {
   }
 }
 
-function writeStorage<T>(key: string, entry: StoredEntry<T>, storage: Storage): void {
+const INDEX_KEY = STORAGE_PREFIX + '__index';
+
+function readIndex(storage: Storage): string[] {
   try {
-    storage.setItem(STORAGE_PREFIX + key, JSON.stringify(entry));
+    const raw = storage.getItem(INDEX_KEY);
+    return raw ? (JSON.parse(raw) as string[]) : [];
   } catch {
-    // Quota exceeded — Task 5 adds eviction. For now: swallow.
+    return [];
+  }
+}
+
+function writeIndex(storage: Storage, idx: string[]): void {
+  try { storage.setItem(INDEX_KEY, JSON.stringify(idx)); } catch { /* ignore */ }
+}
+
+function bumpIndex(storage: Storage, key: string): void {
+  const idx = readIndex(storage).filter((k) => k !== key);
+  idx.push(key);
+  writeIndex(storage, idx);
+}
+
+function writeStorage<T>(key: string, entry: StoredEntry<T>, storage: Storage): void {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      storage.setItem(STORAGE_PREFIX + key, JSON.stringify(entry));
+      bumpIndex(storage, key);
+      return;
+    } catch (err) {
+      const name = (err as { name?: string })?.name;
+      if (name !== 'QuotaExceededError' && name !== 'NS_ERROR_DOM_QUOTA_REACHED') throw err;
+      const idx = readIndex(storage);
+      const oldest = idx.shift();
+      if (oldest === undefined) return;
+      storage.removeItem(STORAGE_PREFIX + oldest);
+      writeIndex(storage, idx);
+    }
   }
 }
 
