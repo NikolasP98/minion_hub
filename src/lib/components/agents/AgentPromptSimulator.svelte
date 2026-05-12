@@ -202,6 +202,31 @@
       } | null;
       const first = res?.sessions?.[0];
       report = first?.contextWeight ?? null;
+      // Stored contextWeight reports captured before D-0e #105 don't carry
+      // per-section `content`. Backfill from a fresh prompt.preview so the
+      // viewer panel works for legacy sessions without forcing the operator
+      // to hit Test. Runtime stats (chars/order/tokens) stay from the stored
+      // report; only content/source are merged in by id.
+      if (report?.sections && report.sections.some((s) => s.content === undefined)) {
+        try {
+          const fresh = (await fetchPromptPreview(agentId)) as SystemPromptReport | null;
+          if (fresh?.sections) {
+            const freshById = new Map(fresh.sections.map((s) => [s.id, s]));
+            report = {
+              ...report,
+              sections: report.sections.map((s) => {
+                if (s.content !== undefined) return s;
+                const live = freshById.get(s.id);
+                return live
+                  ? { ...s, content: live.content, source: s.source ?? live.source }
+                  : s;
+              }),
+            };
+          }
+        } catch (e) {
+          console.warn('[prompt] content backfill failed:', e);
+        }
+      }
     } catch (e) {
       error = (e as Error).message ?? 'Failed to load prompt report';
     } finally {
