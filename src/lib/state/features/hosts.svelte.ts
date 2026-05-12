@@ -35,16 +35,39 @@ export async function loadHosts() {
     }
   }
 
-  // Fetch fresh data from DB
+  // Fetch fresh data from DB. Do NOT overwrite cache on error or on a
+  // suspicious empty response — silent wipes on refresh are the bug that
+  // motivated this guard. Only treat an empty list as authoritative when
+  // we either had no cache to begin with, or the response carries an
+  // explicit `authoritative: true` (e.g. server can prove "no hosts" is
+  // a real DB state, not an auth/decrypt failure masquerading as empty).
   try {
     const res = await fetch('/api/servers');
-    if (res.ok) {
-      const data = await res.json();
-      hostsState.hosts = data.servers as Host[];
-      updateHostsCache(data.servers);
+    if (!res.ok) {
+      console.warn(
+        `[hosts] GET /api/servers returned ${res.status}; preserving cached hosts`,
+      );
+      return;
     }
-  } catch {
-    // Keep cached hosts if network fails
+    const data = (await res.json()) as { servers?: Host[]; authoritative?: boolean };
+    const fresh = Array.isArray(data.servers) ? data.servers : null;
+    if (fresh === null) {
+      console.warn('[hosts] GET /api/servers returned unexpected payload; preserving cache');
+      return;
+    }
+    const cachedCount = hostsState.hosts.length;
+    if (fresh.length === 0 && cachedCount > 0 && data.authoritative !== true) {
+      console.warn(
+        `[hosts] Server returned 0 hosts but cache has ${cachedCount}. ` +
+          'Treating as suspect (likely auth/decrypt drift). Preserving cache. ' +
+          'Add ?force=1 to /api/servers or call addHost/removeHost to overwrite.',
+      );
+      return;
+    }
+    hostsState.hosts = fresh;
+    updateHostsCache(fresh);
+  } catch (err) {
+    console.warn('[hosts] GET /api/servers threw; preserving cache', err);
   }
 
   // Restore last-active preference
