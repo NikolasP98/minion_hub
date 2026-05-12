@@ -3,8 +3,8 @@ export interface CachedStoreOptions<T> {
   tags?: string[];
   fetcher: () => Promise<T>;
   initial?: T;
-  ttl?: number;     // ms; used in Task 4
-  swr?: number;     // ms; used in Task 4
+  ttl?: number;
+  swr?: number;
   storage?: 'session' | 'memory';
 }
 
@@ -20,10 +20,10 @@ export interface CachedStore<T> {
 }
 
 export function createCachedStore<T>(opts: CachedStoreOptions<T>): CachedStore<T> {
-  let data: T | null = opts.initial ?? null;
-  let loading: boolean = opts.initial === undefined;
-  let error: Error | null = null;
-  let stale: boolean = false;
+  let data = $state<T | null>(opts.initial ?? null);
+  let loading = $state<boolean>(opts.initial === undefined);
+  let error = $state<Error | null>(null);
+  let stale = $state<boolean>(false);
 
   let inFlight: Promise<void> | null = null;
 
@@ -52,12 +52,24 @@ export function createCachedStore<T>(opts: CachedStoreOptions<T>): CachedStore<T
   }
 
   return {
-    get data() { return data; },
-    get loading() { return loading; },
-    get error() { return error; },
-    get stale() { return stale; },
-    get key() { return opts.key; },
-    get tags() { return (opts.tags ?? []) as readonly string[]; },
+    get data() {
+      return data;
+    },
+    get loading() {
+      return loading;
+    },
+    get error() {
+      return error;
+    },
+    get stale() {
+      return stale;
+    },
+    get key() {
+      return opts.key;
+    },
+    get tags() {
+      return (opts.tags ?? []) as readonly string[];
+    },
     refresh,
     invalidate,
   };
