@@ -7,13 +7,21 @@ import { assertSafeUrl, SsrfBlockedError } from '$server/services/ssrf-guard';
 
 export const GET: RequestHandler = async ({ locals }) => {
   const ctx = await getTenantCtx(locals);
-  if (!ctx) return json({ servers: [] });
+  if (!ctx) {
+    // No org seeded yet — authoritative empty.
+    return json({ servers: [], authoritative: true });
+  }
   try {
     const servers = await listServers(ctx, locals.user?.id, locals.user?.role);
-    return json({ servers });
+    return json({ servers, authoritative: true });
   } catch (e) {
     console.error('[GET /api/servers]', e);
-    return json({ servers: [] });
+    // Non-authoritative failure (decrypt error, schema drift, etc.).
+    // Return 500 so the client preserves its cached hosts.
+    return json(
+      { ok: false, error: e instanceof Error ? e.message : 'Unknown error' },
+      { status: 500 },
+    );
   }
 };
 
