@@ -18,7 +18,6 @@
     theme: Theme;
     tokens: Record<string, string>;
     gatewayBaseUrl: string;
-    hostOrigin: string;
     authToken?: string;
   }
 
@@ -28,17 +27,10 @@
     theme,
     tokens,
     gatewayBaseUrl,
-    hostOrigin,
     authToken = "",
   }: Props = $props();
 
   let selected = $state(0);
-
-  // hostOrigin is reserved for future origin-lock enforcement; bridge-host
-  // currently derives pluginOrigin from gatewayBaseUrl. Reference inside a
-  // $derived to silence Svelte's "state_referenced_locally" warning.
-  const _hostOriginRef = $derived(hostOrigin);
-  void _hostOriginRef;
 
   const def = $derived(SLOT_DEFINITIONS[slot]);
   const current = $derived(entries[selected]);
@@ -72,6 +64,7 @@
       <div class="flex-1">
         <PluginIframe
           pluginId={current.pluginId}
+          entrypoint={current.entrypoint}
           gatewayUrl={gatewayBaseUrl}
           {authToken}
           {theme}

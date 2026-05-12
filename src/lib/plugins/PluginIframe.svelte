@@ -5,19 +5,20 @@
 
   interface Props {
     pluginId: string;
+    entrypoint: string;
     gatewayUrl: string;
     authToken: string;
     theme: Theme;
     tokens: Record<string, string>;
   }
 
-  let { pluginId, gatewayUrl, authToken, theme, tokens }: Props = $props();
+  let { pluginId, entrypoint, gatewayUrl, authToken, theme, tokens }: Props = $props();
 
   let iframeEl: HTMLIFrameElement | null = $state(null);
   let mounted: MountedHostBridge | null = null;
   let height = $state(600);
 
-  const src = `${gatewayUrl}/plugins/${pluginId}/ui/`;
+  const src = `${gatewayUrl}/plugins/${pluginId}/ui/${entrypoint}`;
   const pluginOrigin = new URL(gatewayUrl).origin;
 
   function handleLoad(): void {
