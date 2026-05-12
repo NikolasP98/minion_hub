@@ -10,3 +10,7 @@ process.env.B2_ENDPOINT ??= 'http://localhost:0';
 process.env.B2_KEY_ID ??= 'test-key-id';
 process.env.B2_APP_KEY ??= 'test-app-key';
 process.env.B2_BUCKET_NAME ??= 'test-bucket';
+
+import { configureCache, createBackend } from '@minion-stack/cache';
+
+configureCache({ backend: createBackend({ backend: 'noop' }) });

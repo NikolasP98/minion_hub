@@ -1,5 +1,6 @@
 import { eq, and } from 'drizzle-orm';
 import { agents, userAgents } from '@minion-stack/db/schema';
+import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
 
@@ -42,15 +43,27 @@ export async function upsertAgents(ctx: TenantContext, serverId: string, items: 
         },
       });
   }
+
+  await invalidateTags(tags.tenantDomain(ctx.tenantId, 'agents'));
 }
 
 export async function listAgents(ctx: TenantContext, serverId: string) {
-  const rows = await ctx.db
-    .select({ rawJson: agents.rawJson })
-    .from(agents)
-    .where(and(eq(agents.serverId, serverId), eq(agents.tenantId, ctx.tenantId)));
+  return cached(
+    keys.hub('agents', { t: ctx.tenantId, d: { serverId } }),
+    {
+      ttl: '30m',
+      swr: '5m',
+      tags: tags.tenantDomain(ctx.tenantId, 'agents'),
+    },
+    async () => {
+      const rows = await ctx.db
+        .select({ rawJson: agents.rawJson })
+        .from(agents)
+        .where(and(eq(agents.serverId, serverId), eq(agents.tenantId, ctx.tenantId)));
 
-  return rows.map((r) => JSON.parse(r.rawJson));
+      return rows.map((r) => JSON.parse(r.rawJson));
+    },
+  );
 }
 
 export async function listAgentsForUser(
@@ -61,18 +74,28 @@ export async function listAgentsForUser(
 ) {
   if (userRole === 'admin') return listAgents(ctx, serverId);
 
-  const rows = await ctx.db
-    .select({ rawJson: agents.rawJson })
-    .from(agents)
-    .innerJoin(
-      userAgents,
-      and(
-        eq(userAgents.agentId, agents.id),
-        eq(userAgents.serverId, agents.serverId),
-        eq(userAgents.userId, userId),
-      ),
-    )
-    .where(and(eq(agents.serverId, serverId), eq(agents.tenantId, ctx.tenantId)));
+  return cached(
+    keys.hub('agents', { t: ctx.tenantId, u: userId, d: { serverId } }),
+    {
+      ttl: '30m',
+      swr: '5m',
+      tags: [...tags.tenantDomain(ctx.tenantId, 'agents'), ...tags.user(userId)],
+    },
+    async () => {
+      const rows = await ctx.db
+        .select({ rawJson: agents.rawJson })
+        .from(agents)
+        .innerJoin(
+          userAgents,
+          and(
+            eq(userAgents.agentId, agents.id),
+            eq(userAgents.serverId, agents.serverId),
+            eq(userAgents.userId, userId),
+          ),
+        )
+        .where(and(eq(agents.serverId, serverId), eq(agents.tenantId, ctx.tenantId)));
 
-  return rows.map((r) => JSON.parse(r.rawJson));
+      return rows.map((r) => JSON.parse(r.rawJson));
+    },
+  );
 }
