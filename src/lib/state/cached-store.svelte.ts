@@ -1,3 +1,5 @@
+import { registerStore, unregisterStore } from './cache-invalidate-listener.svelte';
+
 export interface CachedStoreOptions<T> {
   key: string;
   tags?: string[];
@@ -17,6 +19,7 @@ export interface CachedStore<T> {
   readonly tags: readonly string[];
   refresh(): Promise<void>;
   invalidate(): void;
+  destroy(): void;
 }
 
 const STORAGE_PREFIX = 'hub:cache:v1:';
@@ -138,6 +141,16 @@ export function createCachedStore<T>(opts: CachedStoreOptions<T>): CachedStore<T
     if (storage) storage.removeItem(STORAGE_PREFIX + opts.key);
   }
 
+  const handle = registerStore({
+    key: opts.key,
+    tags: (opts.tags ?? []) as readonly string[],
+    invalidate: () => {
+      // Bust + refetch to keep UI live.
+      invalidate();
+      void refresh();
+    },
+  });
+
   return {
     get data() {
       return data;
@@ -159,5 +172,6 @@ export function createCachedStore<T>(opts: CachedStoreOptions<T>): CachedStore<T
     },
     refresh,
     invalidate,
+    destroy() { unregisterStore(handle); },
   };
 }
