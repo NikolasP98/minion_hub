@@ -1034,6 +1034,7 @@
   "settings_clickToCopy": "Clic para copiar",
   "settings_copied": "¡Copiado!",
   "settings_noFieldsMatching": "Sin campos que coincidan con \"{query}\"",
+  "settings_plugins": "Plugins",
   "skills_searchPlaceholder": "Buscar habilidades…",
   "skills_enabledCount": "{enabled}/{total} habilitadas",
   "skills_filterAll": "Todas",
