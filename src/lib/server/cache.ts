@@ -2,12 +2,18 @@ import {
   configureCache,
   createBackend,
   createBackendAsync,
+  HttpBroadcaster,
+  NoopBroadcaster,
   type Backend,
   type CacheBackend,
+  type CacheBroadcaster,
 } from '@minion-stack/cache';
 import { env } from '$env/dynamic/private';
+import { randomUUID } from 'node:crypto';
 
 let initialized = false;
+
+const sourceId = env.VERCEL_DEPLOYMENT_ID ?? randomUUID();
 
 /**
  * One-time cache initialization. Idempotent — safe to call from multiple
@@ -16,6 +22,10 @@ let initialized = false;
  * Backend selection:
  *   - CACHE_BACKEND env wins if set ('memory' | 'valkey' | 'noop')
  *   - Else dev defaults to 'memory', production defaults to 'noop'
+ *
+ * Broadcaster selection:
+ *   - If MINION_GATEWAY_BROADCAST_URL + OPENCLAW_GATEWAY_TOKEN set → HttpBroadcaster
+ *   - Else NoopBroadcaster (cross-runtime invalidation disabled)
  *
  * Valkey is selected via createBackendAsync since it dynamically imports
  * ioredis. We block on it once at boot.
@@ -44,15 +54,33 @@ export async function initCache(): Promise<void> {
     backend = createBackend({ backend: backendName });
   }
 
+  const broadcastUrl = env.MINION_GATEWAY_BROADCAST_URL;
+  const broadcastToken = env.OPENCLAW_GATEWAY_TOKEN;
+  let broadcaster: CacheBroadcaster;
+  if (broadcastUrl && broadcastToken) {
+    broadcaster = new HttpBroadcaster({
+      url: broadcastUrl,
+      token: broadcastToken,
+    });
+    console.log(`[cache] broadcaster=http url=${broadcastUrl}`);
+  } else {
+    broadcaster = new NoopBroadcaster();
+    if (!broadcastUrl) {
+      console.warn('[cache] MINION_GATEWAY_BROADCAST_URL unset — invalidations not broadcast to gateway');
+    }
+  }
+
   configureCache({
     backend,
     namespace: 'hub',
-    // Broadcaster wired up later when gateway receive endpoint ships.
+    broadcaster,
+    source: 'hub',
+    sourceId,
     logger:
       env.CACHE_LOG === '1' || !isProd
         ? (evt) => console.log(`[cache] ${JSON.stringify(evt)}`)
         : undefined,
   });
 
-  console.log(`[cache] initialized — backend=${backendName}`);
+  console.log(`[cache] initialized — backend=${backendName} sourceId=${sourceId.slice(0, 8)}`);
 }
