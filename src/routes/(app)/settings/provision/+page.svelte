@@ -15,6 +15,7 @@
     import ProvisionConfigForm from "$lib/components/provision/ProvisionConfigForm.svelte";
     import ProvisionStepper from "$lib/components/provision/ProvisionStepper.svelte";
     import ProvisionLogViewer from "$lib/components/provision/ProvisionLogViewer.svelte";
+    import SettingsSkeleton from "$lib/components/settings/SettingsSkeleton.svelte";
     import {
         ArrowLeft,
         Play,
@@ -139,6 +140,8 @@
                             {m.provision_goToHosts()}
                         </button>
                     </div>
+                {:else if !provisionState.configLoaded}
+                    <SettingsSkeleton />
                 {:else}
                     <div class="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-6">
                         <!-- Left column: Config + Stepper -->
