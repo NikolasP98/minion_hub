@@ -1063,3 +1063,9 @@ html[data-theme='crt'][data-crt-flicker='true'] body {
   ) !important;
   border-radius: 14px !important;
 }
+
+.mention {
+  color: var(--accent);
+  font-weight: 600;
+  cursor: default;
+}

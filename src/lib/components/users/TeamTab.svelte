@@ -3,6 +3,7 @@
   import * as m from '$lib/paraglide/messages';
   import { authClient } from '$lib/auth';
   import { toastSuccess, toastError } from '$lib/state/ui/toast.svelte';
+  import { ensureAliases, invalidateAliases } from '$lib/state/features/aliases.svelte';
   import UserEditor from './UserEditor.svelte';
 
   type UserRow = {
@@ -48,6 +49,8 @@
       return;
     }
     users = users.map((u) => (u.id === userId ? { ...u, ...patch } : u));
+    invalidateAliases();
+    void ensureAliases();
     toastSuccess(m.users_team());
     expandedId = null;
   }
