@@ -8,9 +8,10 @@
     interface Props {
         channelId: string;
         serverId: string;
+        onpaired?: (phone: string) => void;
     }
 
-    let { channelId, serverId }: Props = $props();
+    let { channelId, serverId, onpaired }: Props = $props();
 
     let qrData = $state('');
     let pairingStatus = $state<'idle' | 'waiting' | 'scanning' | 'connected' | 'error'>('idle');
@@ -31,9 +32,10 @@
     }
 
     function handlePairedEvent(e: Event) {
-        const detail = (e as CustomEvent<{ channelId: string }>).detail;
+        const detail = (e as CustomEvent<{ channelId: string; phone?: string }>).detail;
         if (detail.channelId === channelId) {
             pairingStatus = 'connected';
+            if (detail.phone) onpaired?.(detail.phone);
         }
     }
 

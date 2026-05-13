@@ -1441,5 +1441,20 @@
   "builder_publishFailedDesc": "No se puede publicar — los cambios sin guardar no pudieron guardarse. Inténtalo de nuevo.",
   "builder_validationFailed": "Validación fallida: {errors}",
   "builder_skillPublished": "¡Habilidad publicada!",
-  "builder_publishError": "No se pudo conectar con el servidor. Inténtalo de nuevo."
+  "builder_publishError": "No se pudo conectar con el servidor. Inténtalo de nuevo.",
+  "channelWizard_stepConnect": "Conectar",
+  "channelWizard_stepName": "Nombrar",
+  "channelWizard_stepAssign": "Asignar",
+  "channelWizard_verifyToken": "Verificar token",
+  "channelWizard_verifying": "Verificando…",
+  "channelWizard_verified": "Verificado",
+  "channelWizard_retry": "Reingresar token",
+  "channelWizard_tokenInvalid": "Ese token no funcionó",
+  "channelWizard_next": "Continuar",
+  "channelWizard_back": "Atrás",
+  "channelWizard_finish": "Finalizar",
+  "channelWizard_close": "Cerrar",
+  "channelWizard_telegramHint": "Pega el token de @BotFather.",
+  "channelWizard_discordHint": "Encuentra el token en el Portal de Desarrolladores de Discord → tu bot → Restablecer Token.",
+  "channelWizard_whatsappHint": "Abre WhatsApp en tu teléfono → Configuración → Dispositivos vinculados → Vincular un dispositivo."
 }

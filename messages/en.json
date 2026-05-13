@@ -1441,5 +1441,20 @@
   "builder_publishFailedDesc": "Cannot publish — unsaved changes could not be saved. Please try again.",
   "builder_validationFailed": "Validation failed: {errors}",
   "builder_skillPublished": "Skill published!",
-  "builder_publishError": "Could not reach server. Please try again."
+  "builder_publishError": "Could not reach server. Please try again.",
+  "channelWizard_stepConnect": "Connect",
+  "channelWizard_stepName": "Name it",
+  "channelWizard_stepAssign": "Assign",
+  "channelWizard_verifyToken": "Verify token",
+  "channelWizard_verifying": "Verifying…",
+  "channelWizard_verified": "Verified",
+  "channelWizard_retry": "Re-enter token",
+  "channelWizard_tokenInvalid": "That token didn't work",
+  "channelWizard_next": "Continue",
+  "channelWizard_back": "Back",
+  "channelWizard_finish": "Finish",
+  "channelWizard_close": "Close",
+  "channelWizard_telegramHint": "Paste the token from @BotFather.",
+  "channelWizard_discordHint": "Find the token in the Discord Developer Portal → your bot → Reset Token.",
+  "channelWizard_whatsappHint": "Open WhatsApp on your phone → Settings → Linked Devices → Link a Device."
 }
