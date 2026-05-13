@@ -117,14 +117,10 @@
                 baseHash: configState.baseHash,
                 note: `Create ${channelType}:${accountId} via Hub wizard`,
             })) as { reloadMode?: string } | undefined;
-            const reloadMode = result?.reloadMode ?? 'restart';
+            void result; // reloadMode is informational — restart happens in background; user still advances to Step 3
             await loadConfig();
             committedChannelId = `gw:${channelType}:${accountId}`;
             toastSuccess(`Created ${CHANNEL_TYPE_LABELS[channelType]}: ${label}`);
-            if (reloadMode === 'restart') {
-                onclose();
-                return;
-            }
             step = 'assign';
         } catch (e) {
             try { await loadConfig(); } catch { /* refresh baseHash for retry */ }
