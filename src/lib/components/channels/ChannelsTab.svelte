@@ -30,7 +30,18 @@
         const result: Channel[] = [];
         for (const [channelType, accounts] of Object.entries(ca)) {
             const type = (CHANNEL_TYPE_LABELS[channelType as ChannelType] ? channelType : 'discord') as ChannelType;
-            for (const acct of accounts) {
+            for (const acctRaw of accounts) {
+                // The gateway snapshot is intentionally open-ended (additionalProperties: true).
+                // Widen the local type so we can read channel-specific fields like `bot`,
+                // `application`, `self`, `probe`, `tokenSource`, `dmPolicy` without a per-field cast.
+                const acct = acctRaw as typeof acctRaw & {
+                    bot?: { id?: string | number; username?: string };
+                    probe?: { bot?: { id?: string | number; username?: string } };
+                    application?: { id?: string };
+                    self?: { e164?: string };
+                    tokenSource?: string;
+                    dmPolicy?: string;
+                };
                 const displayName = acct.name || acct.accountId;
                 // Channels with persistent connections (WhatsApp) use `connected`;
                 // channels without (Discord, Telegram) treat `running` as active.
@@ -39,9 +50,13 @@
                 const isPairing = hasConnectedField && acct.running && !acct.connected;
 
                 // Build credentialsMeta from gateway snapshot data
+                // `bot` is the direct runtime field (Discord); Telegram surfaces the same
+                // info via the periodic probe under `acct.probe.bot`.
                 const meta: Record<string, string> = {};
-                if (acct.bot?.username) meta.username = acct.bot.username;
-                if (acct.bot?.id) meta.botId = acct.bot.id;
+                const botUsername = acct.bot?.username ?? acct.probe?.bot?.username;
+                const botId = acct.bot?.id ?? acct.probe?.bot?.id;
+                if (botUsername) meta.username = String(botUsername);
+                if (botId) meta.botId = String(botId);
                 if (acct.application?.id) meta.appId = acct.application.id;
                 if (acct.self?.e164) meta.phone = acct.self.e164;
                 if (acct.tokenSource && acct.tokenSource !== 'none') meta.tokenSource = acct.tokenSource;

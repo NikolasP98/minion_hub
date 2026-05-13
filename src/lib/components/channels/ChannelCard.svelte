@@ -28,8 +28,10 @@
     let showEditForm = $state(false);
     let toggling = $state(false);
 
+    // `username` is shown as @handle in the header — exclude it from the credentials grid
+    // to avoid double-display.
     const metaEntries = $derived(
-        Object.entries(channel.credentialsMeta ?? {}).filter(([, v]) => v)
+        Object.entries(channel.credentialsMeta ?? {}).filter(([k, v]) => v && k !== 'username')
     );
 
     const GATEWAY_META_LABELS: Record<string, string> = {
