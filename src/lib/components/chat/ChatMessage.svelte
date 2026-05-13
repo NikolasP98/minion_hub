@@ -1,7 +1,10 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { extractText, extractMessageTimestamp } from '$lib/utils/text';
   import AIDisclosureBadge from './AIDisclosureBadge.svelte';
   import MarkdownMessage from './MarkdownMessage.svelte';
+  import { ensureAliases, getAliases } from '$lib/state/features/aliases.svelte';
+  import { renderMention } from '$lib/utils/mention';
 
   let { message, streaming = false, error = false }: {
     message: unknown;
@@ -14,6 +17,11 @@
   const role = $derived(m.role === 'user' ? 'user' : 'assistant');
   const timestamp = $derived(extractMessageTimestamp(message));
   const disclosure = $derived(m.provenance?.disclosure);
+  const renderedText = $derived(renderMention(text, getAliases()));
+
+  onMount(() => {
+    void ensureAliases();
+  });
 </script>
 
 {#if text || error}
@@ -29,7 +37,7 @@
   {#if role === 'assistant' && !error}
     <MarkdownMessage value={text} tone="assistant" />
   {:else}
-    {text}
+    <span>{@html renderedText}</span>
   {/if}
   {#if timestamp}
     <span class="block text-[9px] opacity-70 mt-0.5 text-right">{timestamp}</span>

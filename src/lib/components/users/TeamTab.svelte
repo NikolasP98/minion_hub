@@ -3,12 +3,17 @@
   import * as m from '$lib/paraglide/messages';
   import { authClient } from '$lib/auth';
   import { toastSuccess, toastError } from '$lib/state/ui/toast.svelte';
+  import { ensureAliases, invalidateAliases } from '$lib/state/features/aliases.svelte';
+  import { can } from '$lib/state/features/permissions.svelte';
+  import UserEditor from './UserEditor.svelte';
 
   type UserRow = {
     id: string;
     email: string;
     displayName: string | null;
     role: 'user' | 'admin';
+    alias: string | null;
+    roleId: string | null;
     createdAt: string | null;
   };
 
@@ -23,10 +28,36 @@
   const ROLES: UserRow['role'][] = ['user', 'admin'];
   const INVITE_ROLES = ['member', 'admin'];
 
+  type CustomRole = { id: string; name: string; isSystem: boolean };
+  let customRoles = $state<CustomRole[]>([]);
+
   let users = $state<UserRow[]>([]);
   let invitations = $state<PendingInvite[]>([]);
   let loading = $state(false);
   let error = $state<string | null>(null);
+  let expandedId = $state<string | null>(null);
+
+  function toggleExpand(id: string) {
+    expandedId = expandedId === id ? null : id;
+  }
+
+  async function saveProfile(userId: string, patch: Partial<UserRow>) {
+    const res = await fetch(`/api/users/${userId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      toastError((d as { message?: string }).message ?? 'save failed');
+      return;
+    }
+    users = users.map((u) => (u.id === userId ? { ...u, ...patch } : u));
+    invalidateAliases();
+    void ensureAliases();
+    toastSuccess(m.users_team());
+    expandedId = null;
+  }
 
   // Invite form state
   let showInvite = $state(false);
@@ -67,6 +98,20 @@
     } catch {
       // non-fatal — invitations just won't show
     }
+  }
+
+  async function loadCustomRoles() {
+    const res = await fetch('/api/roles');
+    if (res.ok) customRoles = ((await res.json()) as { roles: CustomRole[] }).roles;
+  }
+
+  async function changeRoleId(userId: string, roleId: string | null) {
+    const res = await fetch(`/api/users/${userId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roleId }),
+    });
+    if (res.ok) users = users.map((u) => (u.id === userId ? { ...u, roleId } : u));
   }
 
   async function changeRole(userId: string, role: UserRow['role']) {
@@ -139,6 +184,7 @@
   onMount(() => {
     load();
     loadInvitations();
+    loadCustomRoles();
   });
 </script>
 
@@ -149,12 +195,14 @@
       <h2 class="text-sm font-semibold text-foreground uppercase tracking-wider">
         {m.users_team()}
       </h2>
-      <button
-        class="text-xs px-3 py-1.5 rounded-md bg-accent text-white border-none cursor-pointer font-[inherit] font-semibold hover:opacity-90 transition-opacity"
-        onclick={() => (showInvite = !showInvite)}
-      >
-        {showInvite ? m.users_inviteCancelBtn() : m.users_inviteOpen()}
-      </button>
+      {#if can('users:invite')}
+        <button
+          class="text-xs px-3 py-1.5 rounded-md bg-accent text-white border-none cursor-pointer font-[inherit] font-semibold hover:opacity-90 transition-opacity"
+          onclick={() => (showInvite = !showInvite)}
+        >
+          {showInvite ? m.users_inviteCancelBtn() : m.users_inviteOpen()}
+        </button>
+      {/if}
     </div>
 
     <!-- Invite form -->
@@ -213,25 +261,46 @@
           </thead>
           <tbody>
             {#each users as u (u.id)}
-              <tr class="border-b border-border/50 last:border-0 hover:bg-bg2/50 transition-colors">
+              <tr
+                class="border-b border-border/50 last:border-0 hover:bg-muted/30 transition-colors cursor-pointer"
+                onclick={() => toggleExpand(u.id)}
+              >
                 <td class="px-4 py-3">
                   <div class="font-semibold text-foreground">{u.displayName ?? u.email}</div>
                   {#if u.displayName}
                     <div class="text-muted text-[10px] mt-0.5">{u.email}</div>
                   {/if}
+                  {#if u.alias}
+                    <div class="text-accent text-[10px] mt-0.5">@{u.alias}</div>
+                  {/if}
                 </td>
-                <td class="px-4 py-3">
+                <td class="px-4 py-3" onclick={(e) => e.stopPropagation()}>
                   <select
                     class="bg-transparent border border-border rounded-md text-foreground px-2 py-1 text-[11px] font-[inherit] outline-none cursor-pointer focus:border-accent"
-                    value={u.role}
-                    onchange={(e) => changeRole(u.id, (e.currentTarget as HTMLSelectElement).value as UserRow['role'])}
+                    value={u.roleId ?? `legacy:${u.role}`}
+                    onchange={(e) => {
+                      const v = (e.currentTarget as HTMLSelectElement).value;
+                      if (v.startsWith('legacy:')) {
+                        changeRole(u.id, v.slice(7) as UserRow['role']);
+                      } else {
+                        changeRoleId(u.id, v);
+                      }
+                    }}
                   >
-                    {#each ROLES as r (r)}
-                      <option value={r}>{r}</option>
-                    {/each}
+                    <optgroup label="Built-in">
+                      <option value="legacy:user">user</option>
+                      <option value="legacy:admin">admin</option>
+                    </optgroup>
+                    {#if customRoles.filter((r) => !r.isSystem).length > 0}
+                      <optgroup label="Custom">
+                        {#each customRoles.filter((r) => !r.isSystem) as r (r.id)}
+                          <option value={r.id}>{r.name}</option>
+                        {/each}
+                      </optgroup>
+                    {/if}
                   </select>
                 </td>
-                <td class="px-4 py-3 text-right">
+                <td class="px-4 py-3 text-right" onclick={(e) => e.stopPropagation()}>
                   <button
                     class="text-muted hover:text-destructive transition-colors bg-transparent border-none cursor-pointer text-xs font-[inherit]"
                     onclick={() => remove(u.id)}
@@ -241,6 +310,18 @@
                   </button>
                 </td>
               </tr>
+              {#if expandedId === u.id}
+                <tr class="border-b border-border/50 bg-bg2/30">
+                  <td colspan="3" class="px-4 py-4">
+                    <UserEditor
+                      user={u}
+                      customRoles={customRoles}
+                      onSave={(patch) => saveProfile(u.id, patch)}
+                      onCancel={() => (expandedId = null)}
+                    />
+                  </td>
+                </tr>
+              {/if}
             {/each}
           </tbody>
         </table>

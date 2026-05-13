@@ -59,3 +59,4 @@ export {
 export { userPreferences } from './user-preferences';
 export { workspaceMembership } from './workspace-membership';
 export type { WorkspaceMembership, NewWorkspaceMembership } from './workspace-membership';
+export { roles, rolePermissions } from './roles';

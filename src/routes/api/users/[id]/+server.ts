@@ -1,10 +1,17 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { updateUserRole, deleteUser, getUser } from '$server/services/user.service';
+import {
+  deleteUser,
+  getUser,
+  isAliasTaken,
+  updateUserProfile,
+  updateUserRole,
+} from '$server/services/user.service';
 import { requireAdmin } from '$server/auth/authorize';
+import { normalizeAlias, validateAlias } from '$lib/utils/alias';
 
 const VALID_ROLES = ['user', 'admin'] as const;
-type Role = (typeof VALID_ROLES)[number];
+type LegacyRole = (typeof VALID_ROLES)[number];
 
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
   requireAdmin(locals);
@@ -24,11 +31,45 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
     throw error(400, 'invalid JSON body');
   }
   const b = body as Record<string, unknown>;
-  if (!b.role || !VALID_ROLES.includes(b.role as Role)) {
-    throw error(400, 'role must be one of: user, admin');
+
+  const patch: Parameters<typeof updateUserProfile>[2] = {};
+
+  if (typeof b.displayName === 'string') patch.displayName = b.displayName.trim();
+  if (typeof b.email === 'string') patch.email = b.email.trim();
+
+  if (b.alias !== undefined) {
+    if (b.alias === null || b.alias === '') {
+      patch.alias = null;
+    } else if (typeof b.alias !== 'string') {
+      throw error(400, 'alias must be string or null');
+    } else {
+      const normalized = normalizeAlias(b.alias);
+      if (!normalized) {
+        patch.alias = null;
+      } else {
+        const check = validateAlias(normalized);
+        if (!check.ok) throw error(400, 'alias format invalid');
+        if (await isAliasTaken(ctx, normalized, userId)) {
+          throw error(409, 'alias taken');
+        }
+        patch.alias = normalized;
+      }
+    }
   }
 
-  await updateUserRole(ctx, userId, b.role as Role);
+  if (b.roleId !== undefined) {
+    patch.roleId = b.roleId === null ? null : typeof b.roleId === 'string' ? b.roleId : null;
+  }
+
+  // Backward-compat: legacy 'role' enum still accepted via dedicated call.
+  if (typeof b.role === 'string' && VALID_ROLES.includes(b.role as LegacyRole)) {
+    await updateUserRole(ctx, userId, b.role as LegacyRole);
+  }
+
+  if (Object.keys(patch).length > 0) {
+    await updateUserProfile(ctx, userId, patch);
+  }
+
   return json({ ok: true });
 };
 
