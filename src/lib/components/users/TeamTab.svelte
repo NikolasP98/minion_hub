@@ -4,6 +4,7 @@
   import { authClient } from '$lib/auth';
   import { toastSuccess, toastError } from '$lib/state/ui/toast.svelte';
   import { ensureAliases, invalidateAliases } from '$lib/state/features/aliases.svelte';
+  import { can } from '$lib/state/features/permissions.svelte';
   import UserEditor from './UserEditor.svelte';
 
   type UserRow = {
@@ -194,12 +195,14 @@
       <h2 class="text-sm font-semibold text-foreground uppercase tracking-wider">
         {m.users_team()}
       </h2>
-      <button
-        class="text-xs px-3 py-1.5 rounded-md bg-accent text-white border-none cursor-pointer font-[inherit] font-semibold hover:opacity-90 transition-opacity"
-        onclick={() => (showInvite = !showInvite)}
-      >
-        {showInvite ? m.users_inviteCancelBtn() : m.users_inviteOpen()}
-      </button>
+      {#if can('users:invite')}
+        <button
+          class="text-xs px-3 py-1.5 rounded-md bg-accent text-white border-none cursor-pointer font-[inherit] font-semibold hover:opacity-90 transition-opacity"
+          onclick={() => (showInvite = !showInvite)}
+        >
+          {showInvite ? m.users_inviteCancelBtn() : m.users_inviteOpen()}
+        </button>
+      {/if}
     </div>
 
     <!-- Invite form -->
