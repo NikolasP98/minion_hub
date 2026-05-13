@@ -28,6 +28,8 @@
 <span
     class="inline-flex items-center gap-1 rounded-full font-medium {s.bg} {s.text} {padding}"
     title={tooltip}
+    role="status"
+    aria-label={s.label()}
 >
     <s.Icon size={iconSize} class={s.pulse ? 'animate-pulse' : ''} />
     {s.label()}
