@@ -86,6 +86,10 @@ async function seed() {
     console.log(`User already a member of an org, skipping.`);
   }
 
+  const { seedSystemRoles } = await import('./services/roles.service');
+  await seedSystemRoles({ db, tenantId: orgId });
+  console.log('Seeded system roles for org', orgId);
+
   console.log(`Done! Organization: ${orgId}, User: ${userId}`);
 }
 
