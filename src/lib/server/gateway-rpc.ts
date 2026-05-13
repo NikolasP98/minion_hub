@@ -63,8 +63,16 @@ export async function gatewayCall<T = unknown>(
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const { url, token } = await resolveCredentials();
 
+  // Origin header must match an entry in gateway.controlUi.allowedOrigins so
+  // minion-control-ui+ui can bypass device-auth for admin scopes. Node ws
+  // omits Origin by default; we set it explicitly to the hub's public URL.
+  const origin =
+    env.MINION_HUB_ORIGIN ??
+    (env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${env.VERCEL_PROJECT_PRODUCTION_URL}` : '') ||
+    'https://minionhub.admin-console.dev';
+
   return new Promise<T>((resolve, reject) => {
-    const ws = new WebSocket(url);
+    const ws = new WebSocket(url, { headers: { Origin: origin } });
     let settled = false;
     let connectId: string | null = null;
     let requestId: string | null = null;
@@ -115,10 +123,10 @@ export async function gatewayCall<T = unknown>(
               minProtocol: 3,
               maxProtocol: 3,
               client: {
-                id: 'cli',
+                id: 'minion-control-ui',
                 version: '1.0',
                 platform: 'node',
-                mode: 'cli',
+                mode: 'ui',
               },
               role: 'operator',
               scopes: ['operator.admin', 'operator.read', 'operator.write'],
