@@ -1,0 +1,41 @@
+import { describe, expect, it } from 'vitest';
+import { deriveChannelDisplayState } from './channel-display-state';
+import type { Channel } from '$lib/types/channels';
+
+const base: Channel = {
+  id: 'gw:telegram:default',
+  serverId: 's1',
+  type: 'telegram',
+  label: 'bot',
+  credentialsMeta: {},
+  status: 'active',
+  createdAt: 0,
+  updatedAt: 0,
+};
+
+describe('deriveChannelDisplayState', () => {
+  it('returns disabled when gwEnabled is false', () => {
+    expect(deriveChannelDisplayState({ ...base, gwEnabled: false })).toBe('disabled');
+  });
+  it('returns pending-config when configured is false', () => {
+    expect(deriveChannelDisplayState({ ...base, gwEnabled: true, gwConfigured: false })).toBe('pending-config');
+  });
+  it('returns error when lastError present', () => {
+    expect(deriveChannelDisplayState({ ...base, gwEnabled: true, gwConfigured: true, gwLastError: 'boom' })).toBe('error');
+  });
+  it('returns pairing when running but not connected', () => {
+    expect(deriveChannelDisplayState({ ...base, gwEnabled: true, gwConfigured: true, gwRunning: true, gwConnected: false })).toBe('pairing');
+  });
+  it('returns starting when not running', () => {
+    expect(deriveChannelDisplayState({ ...base, gwEnabled: true, gwConfigured: true, gwRunning: false })).toBe('starting');
+  });
+  it('returns degraded when reconnectAttempts > 0', () => {
+    expect(deriveChannelDisplayState({ ...base, gwEnabled: true, gwConfigured: true, gwRunning: true, gwConnected: true, gwReconnectAttempts: 3 })).toBe('degraded');
+  });
+  it('returns live in the healthy case', () => {
+    expect(deriveChannelDisplayState({ ...base, gwEnabled: true, gwConfigured: true, gwRunning: true, gwConnected: true })).toBe('live');
+  });
+  it('returns live when gw booleans are all undefined (legacy hub-source)', () => {
+    expect(deriveChannelDisplayState({ ...base })).toBe('live');
+  });
+});
