@@ -1,13 +1,14 @@
 <script lang="ts">
     import type { Channel, ChannelType } from '$lib/types/channels';
     import { CHANNEL_TYPE_LABELS, CHANNEL_FIELDS } from '$lib/types/channels';
-    import { MessageSquare, Smartphone, Send, Trash2, Radio, ChevronDown, Pencil, Power } from 'lucide-svelte';
+    import { Trash2, ChevronDown, Pencil, Power, RefreshCw } from 'lucide-svelte';
     import { sendRequest } from '$lib/services/gateway.svelte';
     import { gw } from '$lib/state/gateway';
     import { configState, loadConfig, beginRestart } from '$lib/state/config/config.svelte';
     import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
     import ChannelAssignmentPicker from './ChannelAssignmentPicker.svelte';
-    import ChannelForm from './ChannelForm.svelte';
+    import ChannelEditForm from './ChannelEditForm.svelte';
+    import ChannelStatusPill from './ChannelStatusPill.svelte';
     import * as m from '$lib/paraglide/messages';
 
     interface Props {
@@ -17,32 +18,20 @@
         onclick?: () => void;
         ondelete?: () => void;
         onsave?: (data: { type: ChannelType; label: string; credentials: Record<string, string>; credentialsMeta: Record<string, string> }) => Promise<void>;
+        transportEnabled?: boolean;
+        onreauthenticate?: () => void;
     }
 
-    let { channel, expanded = false, serverId, onclick, ondelete, onsave }: Props = $props();
+    let { channel, expanded = false, serverId, onclick, ondelete, onsave, transportEnabled, onreauthenticate }: Props = $props();
 
     const isGateway = $derived(channel.source === 'gateway');
     let showEditForm = $state(false);
     let toggling = $state(false);
 
-    const statusColor: Record<string, string> = {
-        active: 'bg-success/20 text-success',
-        inactive: 'bg-muted-foreground/20 text-muted-foreground',
-        pairing: 'bg-warning/20 text-warning',
-    };
-
-    const icons = { discord: MessageSquare, whatsapp: Smartphone, telegram: Send } as const;
-    const ChannelIcon = $derived(icons[channel.type]);
-
-    const hasLiveData = $derived(
-        channel.gwConnected !== undefined ||
-        channel.gwEnabled !== undefined ||
-        channel.gwRunning !== undefined ||
-        channel.gwConfigured !== undefined
-    );
-
+    // `username` is shown as @handle in the header — exclude it from the credentials grid
+    // to avoid double-display.
     const metaEntries = $derived(
-        Object.entries(channel.credentialsMeta ?? {}).filter(([, v]) => v)
+        Object.entries(channel.credentialsMeta ?? {}).filter(([k, v]) => v && k !== 'username')
     );
 
     const GATEWAY_META_LABELS: Record<string, string> = {
@@ -180,27 +169,16 @@
         role="button"
         tabindex="0"
     >
-        <div class="w-8 h-8 rounded-md bg-bg3 flex items-center justify-center shrink-0">
-            <ChannelIcon size={16} class="text-muted-foreground" />
-        </div>
         <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-2">
+            <div class="flex items-baseline gap-2">
                 <span class="text-sm font-medium text-foreground truncate">{channel.label}</span>
-                <span class="text-[10px] px-1.5 py-0.5 rounded-full {statusColor[channel.status] ?? statusColor.inactive}">
-                    {channel.status}
-                </span>
+                {#if channel.credentialsMeta?.username}
+                    <span class="text-xs text-muted-foreground/70 truncate">@{channel.credentialsMeta.username}</span>
+                {/if}
             </div>
-            <span class="text-xs text-muted-foreground">{CHANNEL_TYPE_LABELS[channel.type]}</span>
-            {#if channel.credentialsMeta?.username}
-                <span class="text-xs text-muted-foreground/70"> &middot; {channel.credentialsMeta.username}</span>
-            {/if}
         </div>
-        {#if isGateway}
-            <div class="flex items-center gap-1 text-[10px] text-accent/80" title={m.channel_gatewayReadOnly()}>
-                <Radio size={12} />
-                <span>{m.channel_live()}</span>
-            </div>
-        {:else}
+        <ChannelStatusPill {channel} size="sm" />
+        {#if !isGateway}
             <button
                 type="button"
                 class="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors opacity-0 group-hover:opacity-100"
@@ -226,46 +204,22 @@
         <div class="overflow-hidden">
             <div class="px-4 pb-4 space-y-4 border-t border-border/50 pt-3">
 
-                <!-- Live Status -->
-                {#if hasLiveData}
-                    <div>
-                        <h4 class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">{m.channel_liveStatus()}</h4>
-                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1.5 text-xs">
-                            {#if channel.gwConnected !== undefined}
-                                <div class="flex items-center gap-1.5">
-                                    <span class="w-1.5 h-1.5 rounded-full {channel.gwConnected ? 'bg-success' : 'bg-destructive'}"></span>
-                                    <span class="text-muted-foreground">{m.channel_connected()}</span>
-                                </div>
-                            {/if}
-                            {#if channel.gwRunning !== undefined}
-                                <div class="flex items-center gap-1.5">
-                                    <span class="w-1.5 h-1.5 rounded-full {channel.gwRunning ? 'bg-success' : 'bg-muted-foreground'}"></span>
-                                    <span class="text-muted-foreground">{m.channel_running()}</span>
-                                </div>
-                            {/if}
-                            {#if channel.gwEnabled !== undefined}
-                                <div class="flex items-center gap-1.5">
-                                    <span class="w-1.5 h-1.5 rounded-full {channel.gwEnabled ? 'bg-success' : 'bg-muted-foreground'}"></span>
-                                    <span class="text-muted-foreground">{m.channel_enabled()}</span>
-                                </div>
-                            {/if}
-                            {#if channel.gwConfigured !== undefined}
-                                <div class="flex items-center gap-1.5">
-                                    <span class="w-1.5 h-1.5 rounded-full {channel.gwConfigured ? 'bg-success' : 'bg-muted-foreground'}"></span>
-                                    <span class="text-muted-foreground">{m.channel_configured()}</span>
-                                </div>
-                            {/if}
-                            {#if channel.gwReconnectAttempts !== undefined && channel.gwReconnectAttempts > 0}
-                                <div class="flex items-center gap-1.5">
-                                    <span class="text-muted-foreground">{m.channel_reconnects()}</span>
-                                    <span class="text-warning font-medium">{channel.gwReconnectAttempts}</span>
-                                </div>
-                            {/if}
-                        </div>
-                        {#if channel.gwLastError}
-                            <p class="text-xs text-destructive mt-1.5 break-words">{channel.gwLastError}</p>
-                        {/if}
-                    </div>
+                <!-- Compact details (status pill lives in the header) -->
+                <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                    <dt class="text-muted-foreground">Account</dt>
+                    <dd class="text-foreground truncate">{gwAccountId ?? channel.label}</dd>
+                    <dt class="text-muted-foreground">Transport</dt>
+                    <dd class="text-foreground">{CHANNEL_TYPE_LABELS[channel.type]}</dd>
+                    {#if channel.gwReconnectAttempts && channel.gwReconnectAttempts > 0}
+                        <dt class="text-muted-foreground">Reconnects</dt>
+                        <dd class="text-warning">{channel.gwReconnectAttempts}</dd>
+                    {/if}
+                </dl>
+                {#if channel.gwLastError}
+                    <details class="text-xs">
+                        <summary class="text-destructive cursor-pointer">Show error</summary>
+                        <pre class="mt-1 p-2 bg-bg3 rounded text-destructive overflow-x-auto whitespace-pre-wrap break-words">{channel.gwLastError}</pre>
+                    </details>
                 {/if}
 
                 <!-- Credentials Meta -->
@@ -283,61 +237,68 @@
                     </div>
                 {/if}
 
-                <!-- Assignments -->
-                <div>
-                    <h4 class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">{m.channel_assignments()}</h4>
-                    <ChannelAssignmentPicker {serverId} channelId={channel.id} />
-                </div>
+                <!-- Assignments (route incoming messages from this channel to specific users/sessions) -->
+                <ChannelAssignmentPicker {serverId} channelId={channel.id} />
 
-                <!-- Edit / Managed note -->
-                {#if !isGateway}
-                    <div>
-                        {#if showEditForm}
-                            <div class="bg-bg2 border border-border rounded-md p-3">
-                                <ChannelForm
-                                    {serverId}
-                                    initialType={channel.type}
-                                    initialLabel={channel.label}
-                                    initialCredentials={channel.credentials}
-                                    initialMeta={channel.credentialsMeta}
-                                    channelId={channel.id}
-                                    onsave={handleInlineSave}
-                                    oncancel={() => { showEditForm = false; }}
-                                />
-                            </div>
-                        {:else}
+                <!-- Edit / Re-authenticate / Power toggle -->
+                <div>
+                    {#if showEditForm}
+                        <div class="bg-bg2 border border-border rounded-md p-3">
+                            <ChannelEditForm
+                                initialLabel={channel.label}
+                                initialMeta={channel.credentialsMeta ?? {}}
+                                channelType={channel.type}
+                                onsave={async (data) => {
+                                    await onsave?.({
+                                        type: channel.type,
+                                        label: data.label,
+                                        credentials: {},
+                                        credentialsMeta: data.credentialsMeta,
+                                    });
+                                    showEditForm = false;
+                                }}
+                                oncancel={() => { showEditForm = false; }}
+                            />
+                        </div>
+                    {:else}
+                        <div class="flex items-center gap-3 flex-wrap">
                             <button
                                 type="button"
                                 class="flex items-center gap-1.5 text-xs text-accent hover:text-accent/80 transition-colors"
-                                onclick={() => { showEditForm = true; }}
+                                onclick={(e) => { e.stopPropagation(); showEditForm = true; }}
                             >
                                 <Pencil size={12} />
-                                {m.channel_editCredentials()}
+                                {m.common_edit()}
                             </button>
-                        {/if}
-                    </div>
-                {:else}
-                    <div class="flex items-center justify-between">
-                        <p class="text-[10px] text-muted-foreground/60 italic">{m.channel_managedByGateway()}</p>
-                        {#if gwChannelType && gwAccountId}
                             <button
                                 type="button"
-                                class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md transition-colors {channel.gwEnabled === false
-                                    ? 'bg-success/10 text-success hover:bg-success/20'
-                                    : 'bg-destructive/10 text-destructive hover:bg-destructive/20'}"
-                                onclick={(e) => { e.stopPropagation(); handleToggleEnabled(); }}
-                                disabled={toggling}
+                                class="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                                onclick={(e) => { e.stopPropagation(); onreauthenticate?.(); }}
                             >
-                                {#if toggling}
-                                    <span class="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
-                                {:else}
-                                    <Power size={12} />
-                                    {channel.gwEnabled === false ? m.channel_enable() : m.channel_disable()}
-                                {/if}
+                                <RefreshCw size={12} />
+                                Re-authenticate
                             </button>
-                        {/if}
-                    </div>
-                {/if}
+                            {#if isGateway && gwChannelType && gwAccountId}
+                                <button
+                                    type="button"
+                                    class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md transition-colors {channel.gwEnabled === false
+                                        ? 'bg-success/10 text-success hover:bg-success/20'
+                                        : 'bg-destructive/10 text-destructive hover:bg-destructive/20'}"
+                                    onclick={(e) => { e.stopPropagation(); handleToggleEnabled(); }}
+                                    disabled={toggling || transportEnabled === false}
+                                    title={transportEnabled === false ? m.channel_transportOffTooltip() : ''}
+                                >
+                                    {#if toggling}
+                                        <span class="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
+                                    {:else}
+                                        <Power size={12} />
+                                        {channel.gwEnabled === false ? m.channel_enable() : m.channel_disable()}
+                                    {/if}
+                                </button>
+                            {/if}
+                        </div>
+                    {/if}
+                </div>
             </div>
         </div>
     </div>

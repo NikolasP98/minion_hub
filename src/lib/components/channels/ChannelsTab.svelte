@@ -5,7 +5,6 @@
     import {
         channelState,
         fetchChannels,
-        createChannel,
         updateChannel,
         deleteChannel,
     } from '$lib/state/channels';
@@ -13,11 +12,12 @@
     import { conn } from '$lib/state/gateway/connection.svelte';
     import { configState, loadConfig } from '$lib/state/config/config.svelte';
     import ChannelCard from './ChannelCard.svelte';
-    import ChannelForm from './ChannelForm.svelte';
-    import { Plus, MessageSquare } from 'lucide-svelte';
+    import ChannelGroup from './ChannelGroup.svelte';
+    import ChannelSetupWizard from './ChannelSetupWizard.svelte';
+    import { MessageSquare } from 'lucide-svelte';
     import * as m from '$lib/paraglide/messages';
 
-    let showCreateForm = $state(false);
+    let wizardType = $state<ChannelType | null>(null);
     let heartbeatChannels = $state<Channel[]>([]);
     let expandedChannelId = $state<string | null>(null);
 
@@ -30,7 +30,18 @@
         const result: Channel[] = [];
         for (const [channelType, accounts] of Object.entries(ca)) {
             const type = (CHANNEL_TYPE_LABELS[channelType as ChannelType] ? channelType : 'discord') as ChannelType;
-            for (const acct of accounts) {
+            for (const acctRaw of accounts) {
+                // The gateway snapshot is intentionally open-ended (additionalProperties: true).
+                // Widen the local type so we can read channel-specific fields like `bot`,
+                // `application`, `self`, `probe`, `tokenSource`, `dmPolicy` without a per-field cast.
+                const acct = acctRaw as typeof acctRaw & {
+                    bot?: { id?: string | number; username?: string };
+                    probe?: { bot?: { id?: string | number; username?: string } };
+                    application?: { id?: string };
+                    self?: { e164?: string };
+                    tokenSource?: string;
+                    dmPolicy?: string;
+                };
                 const displayName = acct.name || acct.accountId;
                 // Channels with persistent connections (WhatsApp) use `connected`;
                 // channels without (Discord, Telegram) treat `running` as active.
@@ -39,9 +50,13 @@
                 const isPairing = hasConnectedField && acct.running && !acct.connected;
 
                 // Build credentialsMeta from gateway snapshot data
+                // `bot` is the direct runtime field (Discord); Telegram surfaces the same
+                // info via the periodic probe under `acct.probe.bot`.
                 const meta: Record<string, string> = {};
-                if (acct.bot?.username) meta.username = acct.bot.username;
-                if (acct.bot?.id) meta.botId = acct.bot.id;
+                const botUsername = acct.bot?.username ?? acct.probe?.bot?.username;
+                const botId = acct.bot?.id ?? acct.probe?.bot?.id;
+                if (botUsername) meta.username = String(botUsername);
+                if (botId) meta.botId = String(botId);
                 if (acct.application?.id) meta.appId = acct.application.id;
                 if (acct.self?.e164) meta.phone = acct.self.e164;
                 if (acct.tokenSource && acct.tokenSource !== 'none') meta.tokenSource = acct.tokenSource;
@@ -170,12 +185,6 @@
         await updateChannel(serverId, channelId, data);
     }
 
-    async function handleCreate(data: { type: ChannelType; label: string; credentials: Record<string, string>; credentialsMeta: Record<string, string> }) {
-        if (!serverId) return;
-        await createChannel(serverId, data);
-        showCreateForm = false;
-    }
-
     async function handleDelete(channel: Channel) {
         if (!serverId) return;
         if (!confirm(m.channel_confirmDelete({ label: channel.label }))) return;
@@ -189,77 +198,65 @@
 
 <div class="space-y-4">
     <!-- Header -->
-    <div class="flex items-center justify-between">
-        <div>
-            <h2 class="text-xs font-semibold text-foreground uppercase tracking-wider">{m.channel_accounts()}</h2>
-            <p class="text-[10px] text-muted-foreground mt-0.5">
-                {m.channel_accountsSubtitle()}
-            </p>
-        </div>
-        {#if !showCreateForm}
-            <button
-                type="button"
-                class="flex items-center gap-1.5 bg-accent text-accent-foreground rounded-md px-3 py-1.5 text-xs font-medium hover:opacity-90 transition-opacity"
-                onclick={() => { showCreateForm = true; }}
-            >
-                <Plus size={13} />
-                {m.channel_addChannel()}
-            </button>
-        {/if}
+    <div>
+        <h2 class="text-xs font-semibold text-foreground uppercase tracking-wider">{m.channel_accounts()}</h2>
+        <p class="text-[10px] text-muted-foreground mt-0.5">
+            {m.channel_accountsSubtitle()}
+        </p>
     </div>
 
     {#if !serverId}
         <p class="text-sm text-muted-foreground text-center py-8">
             {m.channel_selectServer()}
         </p>
-    {:else if showCreateForm}
-        <div class="bg-card border border-border rounded-lg p-5">
-            <ChannelForm
-                {serverId}
-                onsave={handleCreate}
-                oncancel={() => { showCreateForm = false; }}
-            />
-        </div>
     {:else if channelState.loading && mergedChannels.length === 0}
         <div class="text-sm text-muted-foreground text-center py-8">{m.channel_loadingChannels()}</div>
     {:else if channelState.error}
         <div class="text-sm text-destructive text-center py-8">{channelState.error}</div>
-    {:else if mergedChannels.length === 0}
-        <div class="text-center py-12 space-y-3">
-            <div class="w-12 h-12 rounded-full bg-bg3 flex items-center justify-center mx-auto">
-                <MessageSquare size={20} class="text-muted-foreground" />
-            </div>
-            <p class="text-sm text-muted-foreground">{m.channel_noChannels()}</p>
-            <button
-                type="button"
-                class="text-xs text-accent hover:underline"
-                onclick={() => { showCreateForm = true; }}
-            >
-                {m.channel_addFirstChannel()}
-            </button>
-        </div>
     {:else}
-        <!-- Channel list grouped by type -->
-        <div class="space-y-4">
-            {#each [...grouped.entries()] as [type, channels] (type)}
-                <div>
-                    <h3 class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                        {CHANNEL_TYPE_LABELS[type]}
-                    </h3>
-                    <div class="space-y-1.5">
-                        {#each channels as channel (channel.id)}
-                            <ChannelCard
-                                {channel}
-                                {serverId}
-                                expanded={expandedChannelId === channel.id}
-                                onclick={() => toggleExpand(channel.id)}
-                                ondelete={() => handleDelete(channel)}
-                                onsave={(data) => handleSave(channel.id, data)}
-                            />
-                        {/each}
-                    </div>
-                </div>
-            {/each}
-        </div>
+        <!-- Wizard overlay (covers create + re-authenticate) -->
+        {#if wizardType}
+            <ChannelSetupWizard
+                {serverId}
+                channelType={wizardType}
+                onclose={() => {
+                    wizardType = null;
+                    fetchChannels(serverId);
+                }}
+            />
+        {/if}
+
+        <!-- One section per type, always rendered -->
+        {#each ['telegram', 'whatsapp', 'discord'] as t (t)}
+            {@const type = t as ChannelType}
+            {@const channelsOfType = grouped.get(type) ?? []}
+            {@const configChannels = (configState.original?.channels as Record<string, { enabled?: boolean }> | undefined)}
+            {@const transportEnabled = configChannels?.[type]?.enabled ?? true}
+            <ChannelGroup
+                {type}
+                channels={channelsOfType}
+                {transportEnabled}
+                onaddclick={() => { wizardType = type; }}
+            >
+                {#if channelsOfType.length === 0}
+                    <p class="text-xs text-muted-foreground text-center py-4">
+                        No {CHANNEL_TYPE_LABELS[type]} accounts yet.
+                    </p>
+                {:else}
+                    {#each channelsOfType as channel (channel.id)}
+                        <ChannelCard
+                            {channel}
+                            {serverId}
+                            {transportEnabled}
+                            expanded={expandedChannelId === channel.id}
+                            onclick={() => toggleExpand(channel.id)}
+                            ondelete={() => handleDelete(channel)}
+                            onsave={(data) => handleSave(channel.id, data)}
+                            onreauthenticate={() => { wizardType = channel.type; }}
+                        />
+                    {/each}
+                {/if}
+            </ChannelGroup>
+        {/each}
     {/if}
 </div>
