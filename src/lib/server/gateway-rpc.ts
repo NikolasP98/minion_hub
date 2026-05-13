@@ -106,10 +106,10 @@ export function gatewayCall<T = unknown>(
               minProtocol: 3,
               maxProtocol: 3,
               client: {
-                id: 'minion-hub-ssr',
+                id: 'minion-control-ui',
                 version: '1.0',
                 platform: 'node',
-                mode: 'admin',
+                mode: 'ui',
               },
               role: 'operator',
               scopes: ['operator.admin', 'operator.read', 'operator.write'],

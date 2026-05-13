@@ -77,12 +77,24 @@ export async function upsertServer(ctx: TenantContext, s: ServerInput, userId?: 
 }
 
 /**
- * Lists hosts WITHOUT tokens. Tokens are fetched separately via
- * `getServerToken` immediately before opening a WebSocket so they cannot
- * drift in client-side cache. Returns metadata only.
+ * Lists hosts visible to the caller WITHOUT tokens. Per-user scoping:
+ * - Anonymous (no userId, not admin): returns []. Hosts are never
+ *   exposed to unauthenticated visitors. Combined with the unauth
+ *   fallback in hooks.server.ts, this makes the response authoritative-
+ *   empty rather than 401, so the client cache wipes cleanly.
+ * - Authenticated non-admin: only hosts the user is linked to via
+ *   `userServers`.
+ * - Admin: all hosts in the tenant.
+ *
+ * Tokens are fetched separately via `getServerToken` immediately before
+ * opening a WebSocket so they cannot drift in client-side cache.
  */
 export async function listServers(ctx: TenantContext, userId?: string, userRole?: string) {
   const isAdmin = userRole === 'admin';
+
+  if (!userId && !isAdmin) return [];
+  // From this point onward, either isAdmin OR userId is defined.
+  // The non-admin branch uses userId in the join filter.
 
   const baseCols = {
     id: servers.id,
@@ -91,7 +103,7 @@ export async function listServers(ctx: TenantContext, userId?: string, userRole?
     lastConnectedAt: servers.lastConnectedAt,
   };
 
-  if (isAdmin || !userId) {
+  if (isAdmin) {
     return ctx.db
       .select(baseCols)
       .from(servers)
@@ -99,11 +111,13 @@ export async function listServers(ctx: TenantContext, userId?: string, userRole?
       .orderBy(servers.createdAt);
   }
 
+  // TS-narrow: by this point !isAdmin && userId is defined (anonymous
+  // case already returned []).
   return ctx.db
     .select(baseCols)
     .from(servers)
     .innerJoin(userServers, eq(userServers.serverId, servers.id))
-    .where(and(eq(servers.tenantId, ctx.tenantId), eq(userServers.userId, userId)))
+    .where(and(eq(servers.tenantId, ctx.tenantId), eq(userServers.userId, userId as string)))
     .orderBy(servers.createdAt);
 }
 
