@@ -4,6 +4,7 @@
 	import { startPolling } from '$lib/util/live-polling';
 	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
 	import Sparkline from '$lib/components/Sparkline.svelte';
+	import JsonView from '$lib/components/workforce/JsonView.svelte';
 	import {
 		ListTodo,
 		ClipboardCheck,
@@ -334,7 +335,7 @@
 								<span class="text-muted-foreground"> on {item.entityType}</span>
 							{/if}
 							{#if item.details !== null}
-								<pre class="mt-1 text-xs text-muted-foreground whitespace-pre-wrap">{JSON.stringify(item.details)}</pre>
+								<div class="mt-1"><JsonView value={item.details} /></div>
 							{/if}
 						</div>
 						<time

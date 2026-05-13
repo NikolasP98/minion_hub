@@ -4,6 +4,7 @@
   import { fetchKGSnapshot } from '$lib/services/gateway.svelte';
   import * as echarts from 'echarts';
   import * as m from '$lib/paraglide/messages';
+  import JsonView from '$lib/components/workforce/JsonView.svelte';
 
   let { agentId }: { agentId: string } = $props();
 
@@ -471,8 +472,9 @@
                   onclick={() => (jsonExpanded = !jsonExpanded)}
                 >{m.kg_nodeData()} {jsonExpanded ? '\u25BE' : '\u25B8'}</button>
                 {#if jsonExpanded}
-                  <pre class="mt-1 text-[10px] bg-bg1 rounded p-1.5 overflow-x-auto text-foreground
-                              whitespace-pre-wrap break-all max-h-[150px] overflow-y-auto">{JSON.stringify(selectedNode.data, null, 2)}</pre>
+                  <div class="mt-1 max-h-[150px] overflow-y-auto rounded bg-bg1 p-1.5">
+                    <JsonView value={selectedNode.data} />
+                  </div>
                 {/if}
               </div>
             {:else}

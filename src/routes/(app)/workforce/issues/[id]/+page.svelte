@@ -1,6 +1,8 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import type { IssueStatus } from '@minion-stack/paperclip-client';
+	import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
+	import ApprovalPayload from '$lib/components/workforce/ApprovalPayload.svelte';
 
 	let { data }: { data: PageData } = $props();
 	const { issue, comments, documents, workProducts, approvals, children, agentNames } = $derived(data);
@@ -83,7 +85,9 @@
 		</div>
 		<h1 class="text-2xl font-semibold leading-tight">{issue.title}</h1>
 		{#if issue.description}
-			<p class="text-sm text-foreground/80 whitespace-pre-wrap leading-relaxed">{issue.description}</p>
+			<div class="text-sm text-foreground/90 leading-relaxed">
+				<MarkdownMessage value={issue.description} />
+			</div>
 		{/if}
 	</header>
 
@@ -192,8 +196,8 @@
 									<span class="rounded bg-muted px-1.5 py-0.5 text-xs">{a.type}</span>
 									<span class="text-xs">{a.status}</span>
 								</div>
-								{#if a.payload && typeof a.payload === 'object' && 'description' in a.payload}
-									<p class="text-xs text-muted-foreground">{(a.payload as any).description}</p>
+								{#if a.payload && typeof a.payload === 'object' && Object.keys(a.payload as Record<string, unknown>).length > 0}
+									<ApprovalPayload type={a.type} payload={a.payload as Record<string, unknown>} hidePrimaryTitle />
 								{/if}
 							</li>
 						{/each}
@@ -218,7 +222,7 @@
 									<span class="font-medium text-foreground">{actorLabel(c.authorAgentId, c.authorUserId)}</span>
 									<time datetime={new Date(c.createdAt).toISOString()}>{formatDate(c.createdAt)}</time>
 								</div>
-								<p class="whitespace-pre-wrap leading-relaxed">{c.body}</p>
+								<div class="leading-relaxed"><MarkdownMessage value={c.body} /></div>
 							</li>
 						{/each}
 					</ul>

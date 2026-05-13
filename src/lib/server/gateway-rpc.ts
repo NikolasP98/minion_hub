@@ -35,6 +35,19 @@ function toWsUrl(raw: string): string {
   return raw;
 }
 
+/** Inverse: ws(s) → http(s) for plugin UI iframe sources. */
+export function toHttpUrl(raw: string): string {
+  if (raw.startsWith('ws://')) return 'http://' + raw.slice('ws://'.length);
+  if (raw.startsWith('wss://')) return 'https://' + raw.slice('wss://'.length);
+  return raw;
+}
+
+/** Resolve the gateway HTTP base URL (for browser-side iframe srcs etc.). */
+export async function getGatewayHttpUrl(): Promise<string> {
+  const { url } = await resolveCredentials();
+  return toHttpUrl(url).replace(/\/+$/, '');
+}
+
 async function resolveCredentials(): Promise<{ url: string; token: string }> {
   // DB is the source of truth.
   try {

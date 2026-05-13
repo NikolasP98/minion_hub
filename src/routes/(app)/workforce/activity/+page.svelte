@@ -3,6 +3,7 @@
 	import type { PageData } from './$types';
 	import { startPolling } from '$lib/util/live-polling';
 	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
+	import JsonView from '$lib/components/workforce/JsonView.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -68,8 +69,7 @@
 							{/if}
 						</p>
 						{#if item.details !== null}
-							<!-- TODO polish: render details as human-readable summary -->
-							<pre class="text-xs text-muted-foreground whitespace-pre-wrap break-all">{JSON.stringify(item.details)}</pre>
+							<JsonView value={item.details} />
 						{/if}
 					</div>
 
