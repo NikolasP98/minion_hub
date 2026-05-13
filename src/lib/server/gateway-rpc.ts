@@ -67,7 +67,7 @@ export async function gatewayCall<T = unknown>(
   // minion-control-ui+ui can bypass device-auth for admin scopes. Node ws
   // omits Origin by default; we set it explicitly to the hub's public URL.
   const origin =
-    env.MINION_HUB_ORIGIN ??
+    env.MINION_HUB_ORIGIN ||
     (env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${env.VERCEL_PROJECT_PRODUCTION_URL}` : '') ||
     'https://minionhub.admin-console.dev';
 
@@ -170,10 +170,10 @@ export async function gatewayCall<T = unknown>(
 
 /** Convenience: list plugin UI manifest occupants. */
 export async function pluginsUiList(): Promise<PluginUiManifestOccupant[]> {
-  const res = await gatewayCall<{ occupants?: PluginUiManifestOccupant[] } | PluginUiManifestOccupant[]>(
-    'plugins.ui.list',
-    {},
-  );
+  const res = await gatewayCall<
+    | { entries?: PluginUiManifestOccupant[]; occupants?: PluginUiManifestOccupant[] }
+    | PluginUiManifestOccupant[]
+  >('plugins.ui.list', {});
   if (Array.isArray(res)) return res;
-  return res?.occupants ?? [];
+  return res?.entries ?? res?.occupants ?? [];
 }
