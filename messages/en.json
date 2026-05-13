@@ -903,6 +903,7 @@
   "channel_managedByGateway": "Managed by gateway — credentials are read-only.",
   "channel_enable": "Enable",
   "channel_disable": "Disable",
+  "channel_transportOffTooltip": "Transport is disabled — enable it first",
   "channel_type": "Channel Type",
   "channel_label": "Label",
   "channel_saveFirstThenQr": "Save the channel first, then pair via QR code.",

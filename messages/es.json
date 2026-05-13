@@ -894,6 +894,7 @@
   "channel_managedByGateway": "Gestionado por el gateway — las credenciales son de solo lectura.",
   "channel_enable": "Habilitar",
   "channel_disable": "Deshabilitar",
+  "channel_transportOffTooltip": "El transporte está deshabilitado — habilítalo primero",
   "channel_type": "Tipo de canal",
   "channel_label": "Etiqueta",
   "channel_saveFirstThenQr": "Guarda el canal primero y luego empareja con código QR.",
