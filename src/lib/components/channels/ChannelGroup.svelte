@@ -48,11 +48,17 @@
             }
             const next = !(transportEnabled ?? true);
             const patch = { channels: { [type]: { enabled: next } } };
-            await sendRequest('config.patch', {
+            const result = (await sendRequest('config.patch', {
                 raw: JSON.stringify(patch),
                 baseHash: configState.baseHash,
                 note: `${next ? 'Enable' : 'Disable'} ${type} transport via Hub`,
-            });
+            })) as { reloadMode?: string } | undefined;
+
+            const reloadMode = result?.reloadMode ?? 'restart';
+            if (reloadMode === 'restart') {
+                beginRestart();
+                return;
+            }
             try { await loadConfig(); } catch { /* refresh baseHash on next call */ }
             toastSuccess(`${next ? 'Enabled' : 'Disabled'} ${CHANNEL_TYPE_LABELS[type]} transport`);
         } catch (e) {
