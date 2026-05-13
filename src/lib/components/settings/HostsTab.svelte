@@ -50,11 +50,14 @@
         }
     }
 
-    function startEdit(host: { id: string; name: string; url: string; token: string }) {
+    function startEdit(host: { id: string; name: string; url: string }) {
         editingId = host.id;
         editName = host.name;
         editUrl = host.url;
-        editToken = host.token;
+        // Token field starts blank — submitting an empty token preserves
+        // the server-stored value. The cached host object no longer
+        // carries the token.
+        editToken = '';
     }
 
     async function saveEdit() {

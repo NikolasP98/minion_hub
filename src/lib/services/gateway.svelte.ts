@@ -30,6 +30,7 @@ import {
   getActiveHost,
   updateHost,
   saveLastActiveHost,
+  fetchHostToken,
 } from '$lib/state/features/hosts.svelte';
 import { autoSave, resetWorkshop } from '$lib/state/workshop/workshop.svelte';
 import { ui } from '$lib/state/ui/ui.svelte';
@@ -119,7 +120,7 @@ let pollPresenceTimer: ReturnType<typeof setInterval> | null = null;
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-export function wsConnect() {
+export async function wsConnect() {
   const host = getActiveHost();
   if (!host?.url) return;
   conn.closed = false;
@@ -135,7 +136,30 @@ export function wsConnect() {
   }
 
   const capturedHostId = hostsState.activeHostId;
-  const token = host.token.trim();
+
+  // Fetch the gateway token fresh from the server. The token is NEVER read
+  // from localStorage — that's the whole point of this design. If the user
+  // isn't authenticated to the hub (401) or the server can't be reached,
+  // surface the failure immediately instead of attempting a handshake with
+  // a stale/missing token (which fails as a confusing NOT_PAIRED close).
+  if (!capturedHostId) {
+    conn.connecting = false;
+    return;
+  }
+  const fetched = await fetchHostToken(capturedHostId);
+  if (fetched === null) {
+    conn.connecting = false;
+    conn.particleHue = 'red';
+    conn.connectError =
+      'Could not load gateway token. Log in to the hub, then try again.';
+    toastError(
+      'Cannot connect',
+      conn.connectError,
+      { id: 'gateway-token-unavailable' },
+    );
+    return;
+  }
+  const token = fetched.trim();
   const role = 'operator';
   const scopes = [
     'operator.admin',
@@ -245,10 +269,12 @@ export function wsConnect() {
       const h = hostsState.hosts.find((x) => x.id === capturedHostId);
       if (h) {
         h.lastConnectedAt = conn.connectedAt;
+        // Don't send `token` — the server preserves the existing token
+        // when token is omitted (or empty). Tokens never round-trip
+        // through the client cache.
         updateHost(capturedHostId, {
           name: h.name,
           url: h.url,
-          token: h.token,
           lastConnectedAt: conn.connectedAt,
         });
         saveLastActiveHost(capturedHostId);

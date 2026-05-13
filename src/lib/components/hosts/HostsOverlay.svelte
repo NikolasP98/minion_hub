@@ -36,7 +36,10 @@
         editingId = host.id;
         formName = host.name;
         formUrl = host.url;
-        formToken = host.token;
+        // Tokens are no longer carried in the host cache — leave the field
+        // blank so the user can decide whether to rotate. Submitting an
+        // empty token preserves the stored one server-side.
+        formToken = "";
     }
 
     function cancelEdit() {
