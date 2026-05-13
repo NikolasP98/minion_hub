@@ -115,10 +115,10 @@ export async function gatewayCall<T = unknown>(
               minProtocol: 3,
               maxProtocol: 3,
               client: {
-                id: 'minion-control-ui',
+                id: 'cli',
                 version: '1.0',
                 platform: 'node',
-                mode: 'ui',
+                mode: 'cli',
               },
               role: 'operator',
               scopes: ['operator.admin', 'operator.read', 'operator.write'],
