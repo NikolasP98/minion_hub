@@ -3,12 +3,15 @@
   import * as m from '$lib/paraglide/messages';
   import { authClient } from '$lib/auth';
   import { toastSuccess, toastError } from '$lib/state/ui/toast.svelte';
+  import UserEditor from './UserEditor.svelte';
 
   type UserRow = {
     id: string;
     email: string;
     displayName: string | null;
     role: 'user' | 'admin';
+    alias: string | null;
+    roleId: string | null;
     createdAt: string | null;
   };
 
@@ -27,6 +30,27 @@
   let invitations = $state<PendingInvite[]>([]);
   let loading = $state(false);
   let error = $state<string | null>(null);
+  let expandedId = $state<string | null>(null);
+
+  function toggleExpand(id: string) {
+    expandedId = expandedId === id ? null : id;
+  }
+
+  async function saveProfile(userId: string, patch: Partial<UserRow>) {
+    const res = await fetch(`/api/users/${userId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      toastError((d as { message?: string }).message ?? 'save failed');
+      return;
+    }
+    users = users.map((u) => (u.id === userId ? { ...u, ...patch } : u));
+    toastSuccess(m.users_team());
+    expandedId = null;
+  }
 
   // Invite form state
   let showInvite = $state(false);
@@ -213,14 +237,20 @@
           </thead>
           <tbody>
             {#each users as u (u.id)}
-              <tr class="border-b border-border/50 last:border-0 hover:bg-bg2/50 transition-colors">
+              <tr
+                class="border-b border-border/50 last:border-0 hover:bg-muted/30 transition-colors cursor-pointer"
+                onclick={() => toggleExpand(u.id)}
+              >
                 <td class="px-4 py-3">
                   <div class="font-semibold text-foreground">{u.displayName ?? u.email}</div>
                   {#if u.displayName}
                     <div class="text-muted text-[10px] mt-0.5">{u.email}</div>
                   {/if}
+                  {#if u.alias}
+                    <div class="text-accent text-[10px] mt-0.5">@{u.alias}</div>
+                  {/if}
                 </td>
-                <td class="px-4 py-3">
+                <td class="px-4 py-3" onclick={(e) => e.stopPropagation()}>
                   <select
                     class="bg-transparent border border-border rounded-md text-foreground px-2 py-1 text-[11px] font-[inherit] outline-none cursor-pointer focus:border-accent"
                     value={u.role}
@@ -231,7 +261,7 @@
                     {/each}
                   </select>
                 </td>
-                <td class="px-4 py-3 text-right">
+                <td class="px-4 py-3 text-right" onclick={(e) => e.stopPropagation()}>
                   <button
                     class="text-muted hover:text-destructive transition-colors bg-transparent border-none cursor-pointer text-xs font-[inherit]"
                     onclick={() => remove(u.id)}
@@ -241,6 +271,17 @@
                   </button>
                 </td>
               </tr>
+              {#if expandedId === u.id}
+                <tr class="border-b border-border/50 bg-bg2/30">
+                  <td colspan="3" class="px-4 py-4">
+                    <UserEditor
+                      user={u}
+                      onSave={(patch) => saveProfile(u.id, patch)}
+                      onCancel={() => (expandedId = null)}
+                    />
+                  </td>
+                </tr>
+              {/if}
             {/each}
           </tbody>
         </table>
