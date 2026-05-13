@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
 import { assertSafeUrl, SsrfBlockedError } from './ssrf-guard';
 
 // Mock DNS so tests are hermetic and don't require real network access.
@@ -176,5 +176,90 @@ describe('invalid input', () => {
 
   it('throws SsrfBlockedError for a non-URL string', async () => {
     await expect(assertSafeUrl('not-a-url')).rejects.toBeInstanceOf(SsrfBlockedError);
+  });
+});
+
+// ── Operator opt-in: hostname allowlist & Tailscale CGNAT ─────────────────────
+
+describe('SSRF_ALLOWED_HOSTNAME_SUFFIXES', () => {
+  const original = process.env.SSRF_ALLOWED_HOSTNAME_SUFFIXES;
+  beforeEach(() => {
+    process.env.SSRF_ALLOWED_HOSTNAME_SUFFIXES = '';
+  });
+  afterAll(() => {
+    if (original === undefined) delete process.env.SSRF_ALLOWED_HOSTNAME_SUFFIXES;
+    else process.env.SSRF_ALLOWED_HOSTNAME_SUFFIXES = original;
+  });
+
+  it('allowlisted suffix bypasses DNS lookup entirely', async () => {
+    process.env.SSRF_ALLOWED_HOSTNAME_SUFFIXES = '.ts.net';
+    // Not in mock DNS map — without allowlist would throw ENOTFOUND.
+    await expect(
+      assertSafeUrl('wss://protopi.donkey-agama.ts.net/'),
+    ).resolves.toBeUndefined();
+  });
+
+  it('exact-match suffix without leading dot', async () => {
+    process.env.SSRF_ALLOWED_HOSTNAME_SUFFIXES = 'corp.internal';
+    await expect(assertSafeUrl('https://corp.internal/foo')).resolves.toBeUndefined();
+    await expect(assertSafeUrl('https://api.corp.internal/foo')).resolves.toBeUndefined();
+  });
+
+  it('does not allow a different suffix when only one is configured', async () => {
+    process.env.SSRF_ALLOWED_HOSTNAME_SUFFIXES = '.ts.net';
+    // internal.corp resolves to 10.0.1.50 via mock — must still block.
+    await expect(assertSafeUrl('https://internal.corp/foo')).rejects.toBeInstanceOf(
+      SsrfBlockedError,
+    );
+  });
+
+  it('case-insensitive match', async () => {
+    process.env.SSRF_ALLOWED_HOSTNAME_SUFFIXES = '.TS.NET';
+    await expect(
+      assertSafeUrl('wss://Protopi.Donkey-Agama.ts.net/'),
+    ).resolves.toBeUndefined();
+  });
+
+  it('handles multiple comma-separated suffixes', async () => {
+    process.env.SSRF_ALLOWED_HOSTNAME_SUFFIXES = '.ts.net, corp.internal';
+    await expect(assertSafeUrl('https://foo.ts.net/')).resolves.toBeUndefined();
+    await expect(assertSafeUrl('https://thing.corp.internal/')).resolves.toBeUndefined();
+  });
+
+  it('still blocks loopback-by-IP even when configured (allowlist gates hostnames, not IP literals)', async () => {
+    process.env.SSRF_ALLOWED_HOSTNAME_SUFFIXES = '.ts.net';
+    await expect(assertSafeUrl('http://127.0.0.1/')).rejects.toBeInstanceOf(SsrfBlockedError);
+  });
+});
+
+describe('SSRF_ALLOW_TAILSCALE_CGNAT', () => {
+  const original = process.env.SSRF_ALLOW_TAILSCALE_CGNAT;
+  beforeEach(() => {
+    delete process.env.SSRF_ALLOW_TAILSCALE_CGNAT;
+  });
+  afterAll(() => {
+    if (original === undefined) delete process.env.SSRF_ALLOW_TAILSCALE_CGNAT;
+    else process.env.SSRF_ALLOW_TAILSCALE_CGNAT = original;
+  });
+
+  it('blocks CGNAT 100.64.0.1 by default', async () => {
+    await expect(assertSafeUrl('http://100.64.0.1/')).rejects.toBeInstanceOf(SsrfBlockedError);
+  });
+
+  it('allows CGNAT 100.64.0.1 when toggled on', async () => {
+    process.env.SSRF_ALLOW_TAILSCALE_CGNAT = 'true';
+    await expect(assertSafeUrl('http://100.64.0.1/')).resolves.toBeUndefined();
+  });
+
+  it('allows the full /10 range edge 100.127.255.254 when toggled on', async () => {
+    process.env.SSRF_ALLOW_TAILSCALE_CGNAT = 'true';
+    await expect(assertSafeUrl('http://100.127.255.254/')).resolves.toBeUndefined();
+  });
+
+  it('still blocks other private ranges when CGNAT is toggled on', async () => {
+    process.env.SSRF_ALLOW_TAILSCALE_CGNAT = 'true';
+    await expect(assertSafeUrl('http://10.0.0.1/')).rejects.toBeInstanceOf(SsrfBlockedError);
+    await expect(assertSafeUrl('http://192.168.0.1/')).rejects.toBeInstanceOf(SsrfBlockedError);
+    await expect(assertSafeUrl('http://127.0.0.1/')).rejects.toBeInstanceOf(SsrfBlockedError);
   });
 });

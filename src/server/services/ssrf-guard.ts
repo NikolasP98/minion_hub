@@ -1,11 +1,45 @@
 import { promises as dns } from 'node:dns';
 
 /**
+ * Operator opt-in: comma-separated DNS suffixes that bypass the SSRF guard
+ * entirely. Use for trusted private namespaces with their own auth/encryption
+ * (e.g. Tailscale `.ts.net`). Matched case-insensitively against the URL hostname.
+ *
+ * Example: `SSRF_ALLOWED_HOSTNAME_SUFFIXES=.ts.net,corp.internal`
+ *
+ * Read from `process.env` (not `$env/dynamic/private`) so this module is
+ * testable under vitest without SvelteKit module resolution.
+ */
+function allowedHostnameSuffixes(): string[] {
+  const raw = process.env.SSRF_ALLOWED_HOSTNAME_SUFFIXES ?? '';
+  return raw
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+/**
+ * Operator opt-in: when `SSRF_ALLOW_TAILSCALE_CGNAT=true`, the carrier-grade NAT
+ * range 100.64.0.0/10 is allowed for literal-IP URLs and for hostnames that
+ * resolve to a CGNAT IP. Pair with the hostname allowlist for namespaces like
+ * Tailscale where the resolved IP will be in this block.
+ */
+function allowTailscaleCgnat(): boolean {
+  return process.env.SSRF_ALLOW_TAILSCALE_CGNAT === 'true';
+}
+
+/**
  * IPv4 CIDR ranges that must never be the target of a proxied fetch/WebSocket.
  * Covers: loopback, RFC-1918, link-local (AWS IMDS 169.254.169.254,
  * ECS credentials 169.254.170.2), shared address space, and reserved blocks.
  */
-const BLOCKED_IPV4_RANGES: { start: [number, number, number, number]; prefixLen: number }[] = [
+type CidrRange = { start: [number, number, number, number]; prefixLen: number };
+
+// Shared address space / carrier-grade NAT (RFC 6598). Tailscale assigns
+// endpoint IPs from this block — opt-in unblock via SSRF_ALLOW_TAILSCALE_CGNAT.
+const TAILSCALE_CGNAT_RANGE: CidrRange = { start: [100, 64, 0, 0], prefixLen: 10 };
+
+const BLOCKED_IPV4_RANGES: CidrRange[] = [
   // Loopback
   { start: [127, 0, 0, 0], prefixLen: 8 },
   // RFC-1918 private
@@ -16,8 +50,8 @@ const BLOCKED_IPV4_RANGES: { start: [number, number, number, number]; prefixLen:
   { start: [169, 254, 0, 0], prefixLen: 16 },
   // Unspecified / "this" network
   { start: [0, 0, 0, 0], prefixLen: 8 },
-  // Shared address space / carrier-grade NAT (RFC 6598)
-  { start: [100, 64, 0, 0], prefixLen: 10 },
+  // Shared address space / carrier-grade NAT (RFC 6598) — see TAILSCALE_CGNAT_RANGE
+  TAILSCALE_CGNAT_RANGE,
   // IETF Protocol Assignments
   { start: [192, 0, 0, 0], prefixLen: 24 },
   // Documentation / TEST-NET
@@ -38,9 +72,23 @@ function isBlockedIpv4(ip: string): boolean {
   const parts = ip.split('.').map(Number);
   if (parts.length !== 4 || parts.some((p) => isNaN(p) || p < 0 || p > 255)) return false;
   const addr = ipv4ToUint32(parts as [number, number, number, number]);
-  for (const { start, prefixLen } of BLOCKED_IPV4_RANGES) {
-    const shift = 32 - prefixLen;
-    if (addr >>> shift === ipv4ToUint32(start) >>> shift) return true;
+  const cgnatAllowed = allowTailscaleCgnat();
+  for (const range of BLOCKED_IPV4_RANGES) {
+    if (cgnatAllowed && range === TAILSCALE_CGNAT_RANGE) continue;
+    const shift = 32 - range.prefixLen;
+    if (addr >>> shift === ipv4ToUint32(range.start) >>> shift) return true;
+  }
+  return false;
+}
+
+function hostnameIsAllowlisted(host: string): boolean {
+  const lower = host.toLowerCase();
+  for (const suffix of allowedHostnameSuffixes()) {
+    if (suffix.startsWith('.')) {
+      if (lower.endsWith(suffix) || lower === suffix.slice(1)) return true;
+    } else {
+      if (lower === suffix || lower.endsWith(`.${suffix}`)) return true;
+    }
   }
   return false;
 }
@@ -107,6 +155,13 @@ export async function assertSafeUrl(rawUrl: string, context = 'URL'): Promise<vo
   // Block well-known internal hostnames before any DNS lookup
   if (BLOCKED_HOSTNAMES.has(host.toLowerCase())) {
     throw new SsrfBlockedError(`Blocked hostname "${host}" in ${context}`);
+  }
+
+  // Operator allowlist: trusted suffixes (e.g. `.ts.net` for Tailscale) bypass
+  // both literal-IP and DNS-resolved private-range checks. Use only for
+  // namespaces with their own auth/encryption layer.
+  if (hostnameIsAllowlisted(host)) {
+    return;
   }
 
   const ipv4Pattern = /^\d+\.\d+\.\d+\.\d+$/;
