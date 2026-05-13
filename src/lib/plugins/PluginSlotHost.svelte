@@ -17,7 +17,13 @@
     entries: PluginUiManifestOccupant[];
     theme: Theme;
     tokens: Record<string, string>;
-    gatewayBaseUrl: string;
+    /**
+     * Optional. When omitted, defaults to the active host (`getActiveHost()`)
+     * and `fetchHostToken()` is used to obtain a per-user token rather
+     * than receiving one in props. Keeps plaintext tokens out of SSR
+     * page data.
+     */
+    gatewayBaseUrl?: string;
     authToken?: string;
   }
 
@@ -26,7 +32,7 @@
     entries,
     theme,
     tokens,
-    gatewayBaseUrl,
+    gatewayBaseUrl = "",
     authToken = "",
   }: Props = $props();
 

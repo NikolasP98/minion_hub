@@ -3,9 +3,11 @@ import { pluginsUiList } from '$lib/server/gateway-rpc';
 import type { PluginUiManifestOccupant } from '$lib/plugins/PluginSlotHost.svelte';
 
 export const load: PageServerLoad = async () => {
-  const gatewayUrl = process.env.MINION_GATEWAY_URL ?? process.env.OPENCLAW_GATEWAY_URL ?? '';
-  const authToken = process.env.OPENCLAW_GATEWAY_TOKEN ?? '';
-
+  // No longer reads gateway env vars. The page used to receive a
+  // plaintext `authToken` here for downstream client-side WS use; that
+  // was a leak. If a plugin UI needs a gateway connection from the
+  // browser, it should now fetch a token via POST /api/servers/[id]/token
+  // for the user's active host.
   let entries: PluginUiManifestOccupant[] = [];
   let errorMessage: string | undefined;
   try {
@@ -18,8 +20,6 @@ export const load: PageServerLoad = async () => {
 
   return {
     entries,
-    gatewayUrl,
-    authToken,
     error: errorMessage,
   };
 };

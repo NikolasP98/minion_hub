@@ -10,6 +10,8 @@ import {
 } from '@minion-stack/cache';
 import { env } from '$env/dynamic/private';
 import { randomUUID } from 'node:crypto';
+import { getDb } from '$server/db/client';
+import { getSystemGatewayCredentials } from '$server/services/server.service';
 
 let initialized = false;
 
@@ -55,7 +57,25 @@ export async function initCache(): Promise<void> {
   }
 
   const broadcastUrl = env.MINION_GATEWAY_BROADCAST_URL;
-  const broadcastToken = env.OPENCLAW_GATEWAY_TOKEN;
+  // Token comes from the encrypted DB row (single source of truth) — not
+  // from a duplicated env var. Falls back to env.OPENCLAW_GATEWAY_TOKEN
+  // only when the DB has no servers yet (initial bootstrap).
+  let broadcastToken: string | null = null;
+  try {
+    const creds = await getSystemGatewayCredentials(
+      getDb(),
+      env.MINION_GATEWAY_PRIMARY_URL,
+    );
+    broadcastToken = creds?.token ?? null;
+  } catch (err) {
+    console.warn('[cache] could not resolve gateway token from DB', err);
+  }
+  if (!broadcastToken && env.OPENCLAW_GATEWAY_TOKEN) {
+    console.warn(
+      '[cache] falling back to OPENCLAW_GATEWAY_TOKEN env var — add a host in /settings/hosts to migrate the secret to the DB',
+    );
+    broadcastToken = env.OPENCLAW_GATEWAY_TOKEN;
+  }
   let broadcaster: CacheBroadcaster;
   if (broadcastUrl && broadcastToken) {
     broadcaster = new HttpBroadcaster({
@@ -67,6 +87,8 @@ export async function initCache(): Promise<void> {
     broadcaster = new NoopBroadcaster();
     if (!broadcastUrl) {
       console.warn('[cache] MINION_GATEWAY_BROADCAST_URL unset — invalidations not broadcast to gateway');
+    } else if (!broadcastToken) {
+      console.warn('[cache] no gateway token available — invalidations not broadcast');
     }
   }
 

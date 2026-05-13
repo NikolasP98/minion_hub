@@ -40,7 +40,5 @@
     entries={data.entries}
     {theme}
     {tokens}
-    gatewayBaseUrl={data.gatewayUrl}
-    authToken={data.authToken}
   />
 </section>
