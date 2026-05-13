@@ -33,18 +33,34 @@ describe('upsertServer', () => {
 });
 
 describe('listServers', () => {
-  it('returns rows without token fields', async () => {
+  it('returns [] for anonymous callers (no userId, not admin)', async () => {
+    const { db } = createMockDb();
+    const result = await listServers({ db, tenantId: 't1' });
+    expect(result).toEqual([]);
+    // Importantly: did not query the DB at all.
+    expect(db.select).not.toHaveBeenCalled();
+  });
+
+  it('returns rows without token fields for admin', async () => {
     const { db, resolve } = createMockDb();
     const mockServers = [
       { id: 's1', name: 'test', url: 'http://x', lastConnectedAt: null },
     ];
     resolve(mockServers);
-    const result = await listServers({ db, tenantId: 't1' });
+    const result = await listServers({ db, tenantId: 't1' }, undefined, 'admin');
     expect(result).toEqual(mockServers);
     for (const row of result as Array<Record<string, unknown>>) {
       expect(row).not.toHaveProperty('token');
       expect(row).not.toHaveProperty('tokenIv');
     }
+  });
+
+  it('joins user_servers for non-admin users', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([{ id: 's1', name: 'mine', url: 'http://x', lastConnectedAt: null }]);
+    const result = await listServers({ db, tenantId: 't1' }, 'u1', 'user');
+    expect(result).toHaveLength(1);
+    expect(db.select).toHaveBeenCalled();
   });
 });
 

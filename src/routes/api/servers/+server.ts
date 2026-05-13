@@ -2,6 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { listServers, upsertServer } from '$server/services/server.service';
 import { getTenantCtx, getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
+import { requireAuth } from '$server/auth/authorize';
 import { getPostHogClient } from '$lib/server/posthog';
 import { assertSafeUrl, SsrfBlockedError } from '$server/services/ssrf-guard';
 
@@ -12,6 +13,8 @@ export const GET: RequestHandler = async ({ locals }) => {
     return json({ servers: [], authoritative: true });
   }
   try {
+    // listServers handles per-user scoping itself: anonymous → [],
+    // non-admin → only linked hosts, admin → all in tenant.
     const servers = await listServers(ctx, locals.user?.id, locals.user?.role);
     return json({ servers, authoritative: true });
   } catch (e) {
@@ -26,6 +29,11 @@ export const GET: RequestHandler = async ({ locals }) => {
 };
 
 export const POST: RequestHandler = async ({ locals, request }) => {
+  // Per-user host ownership: only authenticated users can add hosts so
+  // every new server gets a `user_servers` link. Anonymous adds would
+  // leave the row orphaned (visible only to admins, invisible to the
+  // person who added it on next session).
+  const user = requireAuth(locals);
   const ctx = await getOrCreateTenantCtx(locals);
   try {
     const body = await request.json();
@@ -37,10 +45,10 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       }
       throw err;
     }
-    await upsertServer(ctx, body, locals.user?.id);
+    await upsertServer(ctx, body, user.id);
     const posthog = await getPostHogClient();
     posthog?.capture({
-      distinctId: locals.user?.id ?? 'anonymous',
+      distinctId: user.id,
       event: 'server_added',
       properties: {
         server_name: body.name,
