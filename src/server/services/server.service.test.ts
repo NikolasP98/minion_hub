@@ -33,14 +33,18 @@ describe('upsertServer', () => {
 });
 
 describe('listServers', () => {
-  it('calls db.select and returns results', async () => {
+  it('returns rows without token fields', async () => {
     const { db, resolve } = createMockDb();
     const mockServers = [
-      { id: 's1', name: 'test', url: 'http://x', token: 'x', lastConnectedAt: null },
+      { id: 's1', name: 'test', url: 'http://x', lastConnectedAt: null },
     ];
     resolve(mockServers);
     const result = await listServers({ db, tenantId: 't1' });
     expect(result).toEqual(mockServers);
+    for (const row of result as Array<Record<string, unknown>>) {
+      expect(row).not.toHaveProperty('token');
+      expect(row).not.toHaveProperty('tokenIv');
+    }
   });
 });
 
