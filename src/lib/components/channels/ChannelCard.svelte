@@ -37,13 +37,6 @@
     const icons = { discord: MessageSquare, whatsapp: Smartphone, telegram: Send } as const;
     const ChannelIcon = $derived(icons[channel.type]);
 
-    const hasLiveData = $derived(
-        channel.gwConnected !== undefined ||
-        channel.gwEnabled !== undefined ||
-        channel.gwRunning !== undefined ||
-        channel.gwConfigured !== undefined
-    );
-
     const metaEntries = $derived(
         Object.entries(channel.credentialsMeta ?? {}).filter(([, v]) => v)
     );
