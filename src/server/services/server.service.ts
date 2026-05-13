@@ -141,3 +141,35 @@ export async function getServerToken(ctx: TenantContext, id: string): Promise<st
 export async function deleteServer(ctx: TenantContext, id: string) {
   await ctx.db.delete(servers).where(and(eq(servers.id, id), eq(servers.tenantId, ctx.tenantId)));
 }
+
+/**
+ * System-level lookup of a gateway URL+token across ALL tenants. Used by
+ * hub-internal admin paths (cache invalidation broadcast, SSR one-shot
+ * RPCs) that operate outside of any user session. Replaces reading the
+ * gateway token from a Vercel env var — the encrypted DB row is now the
+ * single source of truth.
+ *
+ * Resolution order:
+ *   1. If `preferredUrl` is provided, look up the matching server row
+ *      across all tenants and return its decrypted token.
+ *   2. Otherwise return the oldest server row in the DB.
+ *
+ * Returns null when no servers exist or decryption fails.
+ *
+ * NOTE: bypasses tenant scoping by design. Callers must be trusted
+ * server-side bootstrap code, never user-facing routes.
+ */
+export async function getSystemGatewayCredentials(
+  db: TenantContext['db'],
+  preferredUrl?: string,
+): Promise<{ url: string; token: string } | null> {
+  const cols = { url: servers.url, token: servers.token, tokenIv: servers.tokenIv };
+  const rows = preferredUrl
+    ? await db.select(cols).from(servers).where(eq(servers.url, preferredUrl)).limit(1)
+    : await db.select(cols).from(servers).orderBy(servers.createdAt).limit(1);
+  if (rows.length === 0) return null;
+  const row = rows[0];
+  const token = row.tokenIv ? decryptToken(row.token, row.tokenIv) : row.token;
+  if (!token) return null;
+  return { url: row.url, token };
+}

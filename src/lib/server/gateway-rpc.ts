@@ -10,12 +10,17 @@
  * raw operator token in the `connect` request; the gateway treats
  * token/password auth without a JWT as `role: "admin"`.
  *
- * Env vars (already used elsewhere in hub):
- *   MINION_GATEWAY_URL        — ws:// or wss:// URL of the gateway
- *   OPENCLAW_GATEWAY_TOKEN    — operator/admin token
+ * Credentials come from the encrypted DB row (`servers` table), not from
+ * env vars. Resolution: if `MINION_GATEWAY_PRIMARY_URL` env is set, look
+ * up the matching server row; otherwise pick the oldest server. The
+ * `OPENCLAW_GATEWAY_TOKEN` / `MINION_GATEWAY_URL` env vars remain only as
+ * a one-time bootstrap fallback for fresh deployments with an empty DB.
  */
 import { WebSocket } from 'ws';
 import { randomUUID } from 'node:crypto';
+
+import { getDb } from '$server/db/client';
+import { getSystemGatewayCredentials } from '$server/services/server.service';
 
 const env = process.env;
 
@@ -23,36 +28,40 @@ import type { PluginUiManifestOccupant } from '$lib/plugins/PluginSlotHost.svelt
 
 const DEFAULT_TIMEOUT_MS = 8000;
 
-function resolveGatewayUrl(): string {
-  const raw = env.MINION_GATEWAY_URL ?? env.OPENCLAW_GATEWAY_URL ?? '';
-  if (!raw) {
-    throw new Error('MINION_GATEWAY_URL is not set');
-  }
-  // Normalise http(s) → ws(s) so callers can paste either.
+/** Normalise http(s) → ws(s) so callers (or DB rows) can use either. */
+function toWsUrl(raw: string): string {
   if (raw.startsWith('http://')) return 'ws://' + raw.slice('http://'.length);
   if (raw.startsWith('https://')) return 'wss://' + raw.slice('https://'.length);
   return raw;
 }
 
-function resolveToken(): string {
-  const tok = env.OPENCLAW_GATEWAY_TOKEN ?? '';
-  if (!tok) {
-    throw new Error('OPENCLAW_GATEWAY_TOKEN is not set');
+async function resolveCredentials(): Promise<{ url: string; token: string }> {
+  // DB is the source of truth.
+  try {
+    const creds = await getSystemGatewayCredentials(getDb(), env.MINION_GATEWAY_PRIMARY_URL);
+    if (creds) return { url: toWsUrl(creds.url), token: creds.token };
+  } catch (err) {
+    console.warn('[gateway-rpc] DB credential lookup failed, trying env fallback', err);
   }
-  return tok;
+  // Bootstrap fallback (empty DB).
+  const fallbackUrl = env.MINION_GATEWAY_URL ?? env.OPENCLAW_GATEWAY_URL ?? '';
+  const fallbackToken = env.OPENCLAW_GATEWAY_TOKEN ?? '';
+  if (!fallbackUrl) throw new Error('No gateway host in DB and MINION_GATEWAY_URL is not set');
+  if (!fallbackToken)
+    throw new Error('No gateway token in DB and OPENCLAW_GATEWAY_TOKEN is not set');
+  return { url: toWsUrl(fallbackUrl), token: fallbackToken };
 }
 
 /**
  * Call a gateway RPC over a one-shot WebSocket and return the result.
  */
-export function gatewayCall<T = unknown>(
+export async function gatewayCall<T = unknown>(
   method: string,
   params: Record<string, unknown> = {},
   opts: { timeoutMs?: number } = {},
 ): Promise<T> {
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const url = resolveGatewayUrl();
-  const token = resolveToken();
+  const { url, token } = await resolveCredentials();
 
   return new Promise<T>((resolve, reject) => {
     const ws = new WebSocket(url);
