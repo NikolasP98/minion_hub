@@ -33,7 +33,8 @@
 
     function handlePairedEvent(e: Event) {
         const detail = (e as CustomEvent<{ channelId: string; phone?: string }>).detail;
-        if (detail.channelId === channelId) {
+        // `channelId === 'pending'` is a wizard sentinel (no account exists yet) — accept any paired event.
+        if (channelId === 'pending' || detail.channelId === channelId) {
             pairingStatus = 'connected';
             if (detail.phone) onpaired?.(detail.phone);
         }

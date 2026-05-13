@@ -112,16 +112,22 @@
         if (verified.kind === 'discord') accountPatch.token = token;
         const patch = { channels: { [channelType]: { accounts: { [accountId]: accountPatch } } } };
         try {
-            await sendRequest('config.patch', {
+            const result = (await sendRequest('config.patch', {
                 raw: JSON.stringify(patch),
                 baseHash: configState.baseHash,
                 note: `Create ${channelType}:${accountId} via Hub wizard`,
-            });
+            })) as { reloadMode?: string } | undefined;
+            const reloadMode = result?.reloadMode ?? 'restart';
             await loadConfig();
             committedChannelId = `gw:${channelType}:${accountId}`;
             toastSuccess(`Created ${CHANNEL_TYPE_LABELS[channelType]}: ${label}`);
+            if (reloadMode === 'restart') {
+                onclose();
+                return;
+            }
             step = 'assign';
         } catch (e) {
+            try { await loadConfig(); } catch { /* refresh baseHash for retry */ }
             toastError('Save failed', (e as Error).message);
         }
     }
