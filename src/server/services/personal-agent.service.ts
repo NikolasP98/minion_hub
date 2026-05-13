@@ -43,7 +43,11 @@ export async function provisionPersonalAgent(
     id: newId(),
     userId: params.userId,
     agentId,
-    serverId: params.serverId,
+    // Coerce empty string to null — the column is FK→servers.id and nullable.
+    // Callers like hooks.server.ts pass '' when no default server is known
+    // (e.g. fresh local DB with no configured host), which would trigger
+    // SQLITE_CONSTRAINT_FOREIGNKEY since '' isn't a valid server id.
+    serverId: params.serverId === '' ? null : params.serverId,
     displayName: '',
     personalityConfigured: false,
     provisioningStatus: 'pending',
@@ -58,8 +62,13 @@ export async function provisionPersonalAgent(
   // Update user.personalAgentId for fast lookup
   await ctx.db.update(user).set({ personalAgentId: agentId }).where(eq(user.id, params.userId));
 
-  // Also insert into user_agents for JWT agentIds compatibility
-  await assignAgentToUser(ctx, params.userId, agentId, params.serverId);
+  // Also insert into user_agents for JWT agentIds compatibility.
+  // user_agents.server_id is NOT NULL + FK→servers.id, so skip when no
+  // server is configured (e.g. fresh local DB). The assignment will
+  // happen later when a host is added through the UI.
+  if (params.serverId) {
+    await assignAgentToUser(ctx, params.userId, agentId, params.serverId);
+  }
 
   // Return the row (either newly created or existing)
   const [existing] = await ctx.db

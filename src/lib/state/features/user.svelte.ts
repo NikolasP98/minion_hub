@@ -1,5 +1,6 @@
 import { authClient } from '$lib/auth';
 import { env } from '$env/dynamic/public';
+import { invalidate } from '$app/navigation';
 
 type UserRole = 'user' | 'admin';
 
@@ -7,6 +8,17 @@ interface CurrentUser {
   id: string;
   email: string;
   displayName: string | null;
+}
+
+/**
+ * Shape returned by `/api/me` AND by `LayoutServerLoad` (locals.user).
+ * Both paths share these fields.
+ */
+export interface ServerUser {
+  id: string;
+  email: string;
+  displayName: string | null;
+  role: UserRole;
 }
 
 interface UserState {
@@ -34,6 +46,41 @@ export const isAdmin = {
     return state.role === 'admin';
   },
 };
+
+/**
+ * Sync the rune state from a fresh `LayoutServerLoad` payload. Call this from
+ * `+layout.svelte` inside an `$effect(() => data.user)` so every re-run of the
+ * server load (initial + invalidation) reflows into the rune state, keeping all
+ * 17+ consumers (`isAdmin.value`, `userState.role`, etc.) automatically fresh.
+ *
+ * If `data` is null (unauthenticated), clears the user state.
+ */
+export function hydrateUser(data: ServerUser | null): void {
+  if (!data) {
+    state.user = null;
+    state.role = null;
+    state.orgId = null;
+    return;
+  }
+  state.user = {
+    id: data.id,
+    email: data.email,
+    displayName: data.displayName,
+  };
+  state.role = data.role;
+}
+
+/**
+ * Force a re-fetch of `LayoutServerLoad` data. Call after any client action that
+ * could change the user's role / displayName / alias / etc. on the server —
+ * profile edit, admin-grants-role, identity link, etc. The layout load re-runs,
+ * which re-reads `locals.user` (which `hooks.server.ts` populates with a fresh
+ * DB SELECT every request), and the resulting `data.user` flows back into the
+ * rune state via the layout's `$effect`.
+ */
+export async function invalidateUser(): Promise<void> {
+  await invalidate('app:user');
+}
 
 export async function loadUser() {
   if (env.PUBLIC_AUTH_DISABLED === 'true') {

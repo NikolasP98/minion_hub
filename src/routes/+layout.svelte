@@ -17,8 +17,9 @@
   import { conn } from '$lib/state/gateway/connection.svelte';
   import { loadHosts, hostsState } from '$lib/state/features/hosts.svelte';
   import { wsConnect } from '$lib/services/gateway.svelte';
-  import { loadUser, userState } from '$lib/state/features/user.svelte';
+  import { hydrateUser, loadUser, userState } from '$lib/state/features/user.svelte';
   import { type Snippet } from 'svelte';
+  import type { LayoutData } from './$types';
   import { locale } from '$lib/state/ui/locale.svelte';
   import { loadAndApplyServerPreferences } from '$lib/state/ui/preference-sync.svelte';
   import { installInterceptor } from '$lib/utils/console-interceptor';
@@ -31,12 +32,23 @@
     injectAnalytics();
   }
 
-  let { children }: { children: Snippet } = $props();
+  let { data, children }: { data: LayoutData; children: Snippet } = $props();
 
   const isVoxelized = $derived(theme.preset.id === 'voxelized');
 
+  // Reflow LayoutServerLoad data into the rune state on every load (initial +
+  // every `invalidate('app:user')` triggered re-run). This keeps `isAdmin.value`
+  // and all userState consumers in sync without forcing a hard refresh.
+  $effect(() => {
+    hydrateUser(data.user ?? null);
+  });
+
   onMount(async () => {
     installInterceptor();
+    // `hydrateUser` above already set user state from server data. Keep
+    // `loadUser()` for the side effects it does (auth client session check,
+    // org auto-activation, allowedAgentIds). Will be a no-op for state fields
+    // already hydrated.
     await loadUser();
 
     if (!userState.user) {
