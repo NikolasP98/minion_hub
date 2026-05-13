@@ -27,6 +27,9 @@
   const ROLES: UserRow['role'][] = ['user', 'admin'];
   const INVITE_ROLES = ['member', 'admin'];
 
+  type CustomRole = { id: string; name: string; isSystem: boolean };
+  let customRoles = $state<CustomRole[]>([]);
+
   let users = $state<UserRow[]>([]);
   let invitations = $state<PendingInvite[]>([]);
   let loading = $state(false);
@@ -94,6 +97,20 @@
     } catch {
       // non-fatal — invitations just won't show
     }
+  }
+
+  async function loadCustomRoles() {
+    const res = await fetch('/api/roles');
+    if (res.ok) customRoles = ((await res.json()) as { roles: CustomRole[] }).roles;
+  }
+
+  async function changeRoleId(userId: string, roleId: string | null) {
+    const res = await fetch(`/api/users/${userId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roleId }),
+    });
+    if (res.ok) users = users.map((u) => (u.id === userId ? { ...u, roleId } : u));
   }
 
   async function changeRole(userId: string, role: UserRow['role']) {
@@ -166,6 +183,7 @@
   onMount(() => {
     load();
     loadInvitations();
+    loadCustomRoles();
   });
 </script>
 
@@ -256,12 +274,27 @@
                 <td class="px-4 py-3" onclick={(e) => e.stopPropagation()}>
                   <select
                     class="bg-transparent border border-border rounded-md text-foreground px-2 py-1 text-[11px] font-[inherit] outline-none cursor-pointer focus:border-accent"
-                    value={u.role}
-                    onchange={(e) => changeRole(u.id, (e.currentTarget as HTMLSelectElement).value as UserRow['role'])}
+                    value={u.roleId ?? `legacy:${u.role}`}
+                    onchange={(e) => {
+                      const v = (e.currentTarget as HTMLSelectElement).value;
+                      if (v.startsWith('legacy:')) {
+                        changeRole(u.id, v.slice(7) as UserRow['role']);
+                      } else {
+                        changeRoleId(u.id, v);
+                      }
+                    }}
                   >
-                    {#each ROLES as r (r)}
-                      <option value={r}>{r}</option>
-                    {/each}
+                    <optgroup label="Built-in">
+                      <option value="legacy:user">user</option>
+                      <option value="legacy:admin">admin</option>
+                    </optgroup>
+                    {#if customRoles.filter((r) => !r.isSystem).length > 0}
+                      <optgroup label="Custom">
+                        {#each customRoles.filter((r) => !r.isSystem) as r (r.id)}
+                          <option value={r.id}>{r.name}</option>
+                        {/each}
+                      </optgroup>
+                    {/if}
                   </select>
                 </td>
                 <td class="px-4 py-3 text-right" onclick={(e) => e.stopPropagation()}>
@@ -279,6 +312,7 @@
                   <td colspan="3" class="px-4 py-4">
                     <UserEditor
                       user={u}
+                      customRoles={customRoles}
                       onSave={(patch) => saveProfile(u.id, patch)}
                       onCancel={() => (expandedId = null)}
                     />

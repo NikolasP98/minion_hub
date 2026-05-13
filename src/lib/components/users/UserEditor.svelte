@@ -17,16 +17,19 @@
     user,
     onSave,
     onCancel,
+    customRoles = [],
   }: {
     user: UserRow;
     onSave: (patch: Partial<UserRow>) => Promise<void>;
     onCancel: () => void;
+    customRoles?: { id: string; name: string; isSystem: boolean }[];
   } = $props();
 
   let displayName = $state(user.displayName ?? '');
   let email = $state(user.email);
   let alias = $state(user.alias ?? '');
   let role = $state<'user' | 'admin'>(user.role);
+  let roleId = $state<string | null>(user.roleId);
   let saving = $state(false);
   let availability = $state<AvailabilityState>('idle');
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
@@ -35,7 +38,8 @@
     displayName !== (user.displayName ?? '') ||
       email !== user.email ||
       alias !== (user.alias ?? '') ||
-      role !== user.role,
+      role !== user.role ||
+      roleId !== user.roleId,
   );
 
   const aliasValid = $derived(
@@ -71,6 +75,7 @@
         email: email.trim(),
         alias: normalizeAlias(alias),
         role,
+        roleId,
       });
     } finally {
       saving = false;
@@ -105,9 +110,30 @@
     </label>
     <label class="grid grid-cols-[80px_1fr] gap-2 items-center text-xs">
       <span class="text-muted">Role</span>
-      <select class="bg-bg border border-border rounded px-2 py-1 outline-none focus:border-accent" bind:value={role}>
-        <option value="user">user</option>
-        <option value="admin">admin</option>
+      <select
+        class="bg-bg border border-border rounded px-2 py-1 outline-none focus:border-accent"
+        value={roleId ?? `legacy:${role}`}
+        onchange={(e) => {
+          const v = (e.currentTarget as HTMLSelectElement).value;
+          if (v.startsWith('legacy:')) {
+            role = v.slice(7) as 'user' | 'admin';
+            roleId = null;
+          } else {
+            roleId = v;
+          }
+        }}
+      >
+        <optgroup label="Built-in">
+          <option value="legacy:user">user</option>
+          <option value="legacy:admin">admin</option>
+        </optgroup>
+        {#if customRoles.filter((r) => !r.isSystem).length > 0}
+          <optgroup label="Custom">
+            {#each customRoles.filter((r) => !r.isSystem) as r (r.id)}
+              <option value={r.id}>{r.name}</option>
+            {/each}
+          </optgroup>
+        {/if}
       </select>
     </label>
   </div>
