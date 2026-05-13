@@ -18,7 +18,6 @@
     import * as m from '$lib/paraglide/messages';
 
     let wizardType = $state<ChannelType | null>(null);
-    let reauthChannel = $state<Channel | null>(null);
     let heartbeatChannels = $state<Channel[]>([]);
     let expandedChannelId = $state<string | null>(null);
 
@@ -207,7 +206,6 @@
                 channelType={wizardType}
                 onclose={() => {
                     wizardType = null;
-                    reauthChannel = null;
                     fetchChannels(serverId);
                 }}
             />
@@ -239,7 +237,7 @@
                             onclick={() => toggleExpand(channel.id)}
                             ondelete={() => handleDelete(channel)}
                             onsave={(data) => handleSave(channel.id, data)}
-                            onreauthenticate={() => { reauthChannel = channel; wizardType = channel.type; }}
+                            onreauthenticate={() => { wizardType = channel.type; }}
                         />
                     {/each}
                 {/if}
