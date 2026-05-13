@@ -3,9 +3,48 @@ import { uuid } from '@minion-stack/shared';
 
 const HOSTS_CACHE_KEY = 'minion-dash-hosts-cache';
 
+/**
+ * Strip token before persisting. Tokens live server-side and are fetched
+ * via POST /api/servers/[id]/token immediately before WS connect — never
+ * read from localStorage. Cached tokens drift, server-encrypted tokens
+ * don't.
+ */
+function stripTokens(hosts: Host[]): Host[] {
+  return hosts.map(({ token: _drop, ...rest }) => rest);
+}
+
 function updateHostsCache(hosts: Host[]) {
   if (typeof localStorage !== 'undefined') {
-    localStorage.setItem(HOSTS_CACHE_KEY, JSON.stringify(hosts));
+    localStorage.setItem(HOSTS_CACHE_KEY, JSON.stringify(stripTokens(hosts)));
+  }
+}
+
+/**
+ * Fetches the decrypted gateway token for a host immediately before
+ * connecting. Requires an authenticated session — surfaces 401 so the
+ * caller can redirect to /login. Returns `null` on any failure; callers
+ * MUST treat that as "cannot connect" rather than silently retrying with
+ * a stale cached token.
+ */
+export async function fetchHostToken(id: string): Promise<string | null> {
+  try {
+    const res = await fetch(`/api/servers/${id}/token`, {
+      method: 'POST',
+      headers: { 'cache-control': 'no-store' },
+    });
+    if (res.status === 401) {
+      console.warn('[hosts] token fetch 401 — session required to connect');
+      return null;
+    }
+    if (!res.ok) {
+      console.warn(`[hosts] token fetch failed: ${res.status}`);
+      return null;
+    }
+    const data = (await res.json()) as { token?: string };
+    return data.token ?? null;
+  } catch (err) {
+    console.warn('[hosts] token fetch threw', err);
+    return null;
   }
 }
 

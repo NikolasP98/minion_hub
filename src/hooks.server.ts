@@ -206,20 +206,27 @@ const appHandle: Handle = async ({ event, resolve }) => {
   // For API routes: unauthenticated fallback is restricted to explicitly safe paths only.
   // Sensitive routes (workshop, flows, personal-agent, users) require explicit auth and
   // must NOT fall through to the tenant fallback — individual route handlers call requireAuth().
-  const API_UNAUTH_FALLBACK_PREFIXES = [
-    '/api/marketplace/',
-    '/api/registry/',
-    '/api/servers/',
-    '/api/metrics/',
-    '/api/gateway/',
-    '/api/device-identity/',
-    '/api/studio/',
-    '/api/admin/',
-    '/api/invitations/',
-    '/api/auth/',
+  // Each entry is matched both as an exact path and as a prefix (with the
+  // trailing slash appended) so e.g. `/api/servers` AND `/api/servers/123`
+  // both fall through. Previously only the trailing-slash form was matched
+  // which let the LIST endpoint (no slash) silently 401, freezing the
+  // client-side hosts cache in a stale state.
+  const API_UNAUTH_FALLBACK_PATHS = [
+    '/api/marketplace',
+    '/api/registry',
+    '/api/servers',
+    '/api/metrics',
+    '/api/gateway',
+    '/api/device-identity',
+    '/api/studio',
+    '/api/admin',
+    '/api/invitations',
+    '/api/auth',
   ];
   if (!event.locals.tenantCtx && path.startsWith('/api/')) {
-    const allowFallback = API_UNAUTH_FALLBACK_PREFIXES.some((p) => path.startsWith(p));
+    const allowFallback = API_UNAUTH_FALLBACK_PATHS.some(
+      (p) => path === p || path.startsWith(`${p}/`),
+    );
     if (allowFallback) {
       const db = getDb();
       const rows = await db.select({ id: organization.id }).from(organization).limit(1);
@@ -289,22 +296,36 @@ const posthogProxyHandle: Handle = async ({ event, resolve }) => {
 const paperclipIdentityHandle: Handle = async ({ event, resolve }) => {
   if (event.locals.user) {
     const companyId = event.cookies.get('pc_company_id') ?? null;
-    try {
-      const token = await mintPaperclipIdentity({
-        userId: event.locals.user.id,
-        email: event.locals.user.email ?? null,
-        name: event.locals.user.displayName ?? null,
-        companyId,
-      });
+    // Bearer board-key auth mode (Phase 2). Per-user identity is not preserved —
+    // paperclip sees all requests as the same board principal. Trade-off accepted
+    // to avoid deploying the hub-identity middleware on the Netcup instance.
+    // Restore mintPaperclipIdentity() when HUB_PAPERCLIP_SHARED_SECRET is set
+    // on both sides.
+    const boardKey = env.HUB_PAPERCLIP_BOARD_KEY ?? null;
+    if (boardKey) {
       event.locals.paperclipIdentity = {
-        token,
+        token: boardKey,
         companyId,
         userId: event.locals.user.id,
       };
-    } catch (err) {
-      // Don't block the request if JWT minting fails (e.g. secret not set in dev).
-      // Routes that require paperclipIdentity will throw when they call paperclipServerClient.
-      console.warn('[paperclipIdentityHandle] JWT mint failed:', err);
+    } else {
+      // Try JWT mint as the legacy/dev fallback when board key isn't configured.
+      try {
+        const token = await mintPaperclipIdentity({
+          userId: event.locals.user.id,
+          email: event.locals.user.email ?? null,
+          name: event.locals.user.displayName ?? null,
+          companyId,
+        });
+        event.locals.paperclipIdentity = {
+          token,
+          companyId,
+          userId: event.locals.user.id,
+        };
+      } catch (err) {
+        // Don't block the request if neither auth mode is configured.
+        console.warn('[paperclipIdentityHandle] no auth configured:', err);
+      }
     }
   }
   return resolve(event);
