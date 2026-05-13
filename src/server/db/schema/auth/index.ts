@@ -18,6 +18,8 @@ export const user = sqliteTable('user', {
     .notNull()
     .default('user'),
   personalAgentId: text('personal_agent_id'),
+  alias: text('alias').unique(),
+  roleId: text('role_id'),
 });
 
 // ── Core: session ────────────────────────────────────────────────────────────
