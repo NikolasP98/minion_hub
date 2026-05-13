@@ -27,6 +27,7 @@ import MinionLogo from "$lib/components/layout/MinionLogo.svelte";
     import NavigationGuardModal from "$lib/components/config/NavigationGuardModal.svelte";
     import SettingsScrollspy from "$lib/components/settings/SettingsScrollspy.svelte";
     import TeamTab from "$lib/components/users/TeamTab.svelte";
+    import RolesSection from "$lib/components/users/RolesSection.svelte";
     import BindingsTab from "$lib/components/users/BindingsTab.svelte";
     import ChannelsTab from "$lib/components/channels/ChannelsTab.svelte";
     import HostsTab from "$lib/components/settings/HostsTab.svelte";
@@ -486,6 +487,7 @@ import MinionLogo from "$lib/components/layout/MinionLogo.svelte";
                                 {#if tab.id === 'security'}
                                     <div class="mt-6">
                                         <TeamTab />
+                                        <RolesSection />
                                     </div>
                                 {/if}
                                 {#if tab.id === 'agents'}
