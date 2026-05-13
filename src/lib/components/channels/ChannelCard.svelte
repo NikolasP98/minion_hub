@@ -1,7 +1,7 @@
 <script lang="ts">
     import type { Channel, ChannelType } from '$lib/types/channels';
     import { CHANNEL_TYPE_LABELS, CHANNEL_FIELDS } from '$lib/types/channels';
-    import { MessageSquare, Smartphone, Send, Trash2, Radio, ChevronDown, Pencil, Power, RefreshCw } from 'lucide-svelte';
+    import { Trash2, ChevronDown, Pencil, Power, RefreshCw } from 'lucide-svelte';
     import { sendRequest } from '$lib/services/gateway.svelte';
     import { gw } from '$lib/state/gateway';
     import { configState, loadConfig, beginRestart } from '$lib/state/config/config.svelte';
@@ -27,15 +27,6 @@
     const isGateway = $derived(channel.source === 'gateway');
     let showEditForm = $state(false);
     let toggling = $state(false);
-
-    const statusColor: Record<string, string> = {
-        active: 'bg-success/20 text-success',
-        inactive: 'bg-muted-foreground/20 text-muted-foreground',
-        pairing: 'bg-warning/20 text-warning',
-    };
-
-    const icons = { discord: MessageSquare, whatsapp: Smartphone, telegram: Send } as const;
-    const ChannelIcon = $derived(icons[channel.type]);
 
     const metaEntries = $derived(
         Object.entries(channel.credentialsMeta ?? {}).filter(([, v]) => v)
@@ -176,27 +167,16 @@
         role="button"
         tabindex="0"
     >
-        <div class="w-8 h-8 rounded-md bg-bg3 flex items-center justify-center shrink-0">
-            <ChannelIcon size={16} class="text-muted-foreground" />
-        </div>
         <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-2">
+            <div class="flex items-baseline gap-2">
                 <span class="text-sm font-medium text-foreground truncate">{channel.label}</span>
-                <span class="text-[10px] px-1.5 py-0.5 rounded-full {statusColor[channel.status] ?? statusColor.inactive}">
-                    {channel.status}
-                </span>
+                {#if channel.credentialsMeta?.username}
+                    <span class="text-xs text-muted-foreground/70 truncate">@{channel.credentialsMeta.username}</span>
+                {/if}
             </div>
-            <span class="text-xs text-muted-foreground">{CHANNEL_TYPE_LABELS[channel.type]}</span>
-            {#if channel.credentialsMeta?.username}
-                <span class="text-xs text-muted-foreground/70"> &middot; {channel.credentialsMeta.username}</span>
-            {/if}
         </div>
-        {#if isGateway}
-            <div class="flex items-center gap-1 text-[10px] text-accent/80" title={m.channel_gatewayReadOnly()}>
-                <Radio size={12} />
-                <span>{m.channel_live()}</span>
-            </div>
-        {:else}
+        <ChannelStatusPill {channel} size="sm" />
+        {#if !isGateway}
             <button
                 type="button"
                 class="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors opacity-0 group-hover:opacity-100"
@@ -222,26 +202,23 @@
         <div class="overflow-hidden">
             <div class="px-4 pb-4 space-y-4 border-t border-border/50 pt-3">
 
-                <!-- Status pill + compact details -->
-                <div class="space-y-2">
-                    <ChannelStatusPill {channel} />
-                    <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                        <dt class="text-muted-foreground">Account</dt>
-                        <dd class="text-foreground truncate">{gwAccountId ?? channel.label}</dd>
-                        <dt class="text-muted-foreground">Transport</dt>
-                        <dd class="text-foreground">{CHANNEL_TYPE_LABELS[channel.type]}</dd>
-                        {#if channel.gwReconnectAttempts && channel.gwReconnectAttempts > 0}
-                            <dt class="text-muted-foreground">Reconnects</dt>
-                            <dd class="text-warning">{channel.gwReconnectAttempts}</dd>
-                        {/if}
-                    </dl>
-                    {#if channel.gwLastError}
-                        <details class="text-xs">
-                            <summary class="text-destructive cursor-pointer">Show error</summary>
-                            <pre class="mt-1 p-2 bg-bg3 rounded text-destructive overflow-x-auto whitespace-pre-wrap break-words">{channel.gwLastError}</pre>
-                        </details>
+                <!-- Compact details (status pill lives in the header) -->
+                <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                    <dt class="text-muted-foreground">Account</dt>
+                    <dd class="text-foreground truncate">{gwAccountId ?? channel.label}</dd>
+                    <dt class="text-muted-foreground">Transport</dt>
+                    <dd class="text-foreground">{CHANNEL_TYPE_LABELS[channel.type]}</dd>
+                    {#if channel.gwReconnectAttempts && channel.gwReconnectAttempts > 0}
+                        <dt class="text-muted-foreground">Reconnects</dt>
+                        <dd class="text-warning">{channel.gwReconnectAttempts}</dd>
                     {/if}
-                </div>
+                </dl>
+                {#if channel.gwLastError}
+                    <details class="text-xs">
+                        <summary class="text-destructive cursor-pointer">Show error</summary>
+                        <pre class="mt-1 p-2 bg-bg3 rounded text-destructive overflow-x-auto whitespace-pre-wrap break-words">{channel.gwLastError}</pre>
+                    </details>
+                {/if}
 
                 <!-- Credentials Meta -->
                 {#if metaEntries.length > 0}
@@ -258,11 +235,8 @@
                     </div>
                 {/if}
 
-                <!-- Assignments -->
-                <div>
-                    <h4 class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">{m.channel_assignments()}</h4>
-                    <ChannelAssignmentPicker {serverId} channelId={channel.id} />
-                </div>
+                <!-- Assignments (route incoming messages from this channel to specific users/sessions) -->
+                <ChannelAssignmentPicker {serverId} channelId={channel.id} />
 
                 <!-- Edit / Re-authenticate / Power toggle -->
                 <div>
@@ -292,7 +266,7 @@
                                 onclick={(e) => { e.stopPropagation(); showEditForm = true; }}
                             >
                                 <Pencil size={12} />
-                                {m.channel_editCredentials()}
+                                {m.common_edit()}
                             </button>
                             <button
                                 type="button"

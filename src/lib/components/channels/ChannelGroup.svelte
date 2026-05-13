@@ -2,7 +2,8 @@
     import type { Snippet } from 'svelte';
     import type { Channel, ChannelType } from '$lib/types/channels';
     import { CHANNEL_TYPE_LABELS } from '$lib/types/channels';
-    import { MessageSquare, Smartphone, Send, Plus, Power } from 'lucide-svelte';
+    import { Plus, Power } from 'lucide-svelte';
+    import ChannelBrandIcon from './ChannelBrandIcon.svelte';
     import { sendRequest } from '$lib/services/gateway.svelte';
     import { configState, loadConfig, beginRestart } from '$lib/state/config/config.svelte';
     import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
@@ -17,13 +18,6 @@
         children: Snippet;
     }
     let { type, channels, transportEnabled, onaddclick, children }: Props = $props();
-
-    const icons: Record<ChannelType, typeof MessageSquare> = {
-        discord: MessageSquare,
-        whatsapp: Smartphone,
-        telegram: Send,
-    };
-    const Icon = $derived(icons[type]);
 
     const summary = $derived.by(() => {
         let live = 0, paused = 0, errored = 0;
@@ -76,8 +70,8 @@
     class:opacity-60={transportEnabled === false}
 >
     <header class="flex items-center gap-3 px-4 py-2.5 border-b border-border/60">
-        <div class="w-7 h-7 rounded-md bg-bg3 flex items-center justify-center shrink-0">
-            <Icon size={14} class="text-muted-foreground" />
+        <div class="w-7 h-7 rounded-md bg-bg3 flex items-center justify-center shrink-0 text-foreground">
+            <ChannelBrandIcon channel={type} size={16} />
         </div>
         <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2">
