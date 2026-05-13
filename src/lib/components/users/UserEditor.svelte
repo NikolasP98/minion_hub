@@ -1,5 +1,6 @@
 <script lang="ts">
   import { validateAlias, normalizeAlias } from '$lib/utils/alias';
+  import IdentityList from './IdentityList.svelte';
 
   type UserRow = {
     id: string;
@@ -110,6 +111,8 @@
       </select>
     </label>
   </div>
+
+  <IdentityList userId={user.id} />
 
   <div class="flex justify-end gap-2">
     <button type="button" class="text-xs px-3 py-1.5 rounded-md bg-transparent border border-border text-foreground hover:bg-muted/30" onclick={onCancel}>Cancel</button>
