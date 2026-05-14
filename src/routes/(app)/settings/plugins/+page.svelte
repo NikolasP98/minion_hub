@@ -17,35 +17,31 @@
 
   let { data }: { data: PageData } = $props();
 
-  // Snapshot the current hub theme + every CSS custom property declared on
-  // :root so the plugin iframe can inherit the live design tokens. Plugins
-  // that style with `var(--foreground)` etc will match the hub automatically.
-  const theme: Theme = $derived(
-    typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
-      ? 'dark'
-      : 'light'
-  );
-  const tokens: Record<string, string> = $derived.by(() => {
-    if (typeof document === 'undefined') return {};
+  // Snapshot the hub theme + every CSS custom property declared on :root so
+  // plugin iframes can inherit the live design tokens. Plain `let` (not
+  // $derived/$state) — the values are read once when PluginIframe mounts and
+  // making them reactive would tear down the bridge on every read.
+  let theme: Theme = 'light';
+  let tokens: Record<string, string> = {};
+  if (typeof document !== 'undefined') {
+    theme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
     const computed = getComputedStyle(document.documentElement);
-    const out: Record<string, string> = {};
     for (const sheet of Array.from(document.styleSheets)) {
       let rules: CSSRuleList;
       try {
         rules = sheet.cssRules;
       } catch {
-        continue; // cross-origin stylesheet, skip
+        continue;
       }
       for (const rule of Array.from(rules)) {
         if (!(rule instanceof CSSStyleRule)) continue;
         if (!/^:root\b/.test(rule.selectorText)) continue;
         for (const name of Array.from(rule.style)) {
-          if (name.startsWith('--')) out[name] = computed.getPropertyValue(name).trim();
+          if (name.startsWith('--')) tokens[name] = computed.getPropertyValue(name).trim();
         }
       }
     }
-    return out;
-  });
+  }
 
   let selected = $state(0);
   const current = $derived(data.entries[selected]);
