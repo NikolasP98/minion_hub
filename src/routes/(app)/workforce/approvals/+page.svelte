@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import type { ApprovalStatus } from '@minion-stack/paperclip-client';
+	import ApprovalPayload from '$lib/components/workforce/ApprovalPayload.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -42,15 +43,10 @@
 		});
 	}
 
-	function formatCents(payload: Record<string, unknown>): string | null {
+	function topLineAmount(payload: Record<string, unknown>): string | null {
 		const raw = payload.amountCents ?? payload.amount_cents;
 		if (typeof raw !== 'number') return null;
 		return `$${(raw / 100).toFixed(2)}`;
-	}
-
-	function extractDescription(payload: Record<string, unknown>): string | null {
-		const desc = payload.description ?? payload.reason ?? payload.summary;
-		return typeof desc === 'string' ? desc : null;
 	}
 </script>
 
@@ -87,20 +83,14 @@
 								<span class="text-xs font-mono text-muted-foreground ml-1">#{approval.id.slice(0, 8)}</span>
 							</p>
 
-							<!-- Description from payload -->
-							{#if extractDescription(approval.payload)}
-								<p class="text-sm text-muted-foreground">{extractDescription(approval.payload)}</p>
+							<!-- Amount quick-glance (kept above the structured block) -->
+							{#if topLineAmount(approval.payload)}
+								<p class="text-sm font-semibold">{topLineAmount(approval.payload)}</p>
 							{/if}
 
-							<!-- Amount if present in payload -->
-							{#if formatCents(approval.payload)}
-								<p class="text-sm font-semibold">{formatCents(approval.payload)}</p>
-							{/if}
-
-							<!-- Payload fallback for opaque types -->
-							{#if !extractDescription(approval.payload) && !formatCents(approval.payload) && Object.keys(approval.payload).length > 0}
-								<!-- TODO polish: render payload fields in a human-readable form per approval type -->
-								<pre class="text-xs text-muted-foreground whitespace-pre-wrap break-all">{JSON.stringify(approval.payload)}</pre>
+							<!-- Type-specific structured renderer (ported from paperclip ApprovalPayload.tsx) -->
+							{#if Object.keys(approval.payload).length > 0}
+								<ApprovalPayload type={approval.type} payload={approval.payload} />
 							{/if}
 						</div>
 

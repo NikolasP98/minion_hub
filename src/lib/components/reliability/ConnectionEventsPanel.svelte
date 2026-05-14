@@ -5,6 +5,7 @@
 	import Chart from '$lib/components/charts/Chart.svelte';
 	import type { EChartsOption } from 'echarts';
 	import { sendRequest } from '$lib/services/gateway.svelte';
+	import JsonView from '$lib/components/workforce/JsonView.svelte';
 
 	interface Props {
 		serverId: string;
@@ -434,8 +435,9 @@
 								{#if meta}
 									<div class="mt-2">
 										<span class="text-muted-foreground">{m.reliability_metadataLabel()}</span>
-										<pre
-											class="mt-1 text-[9px] text-foreground/80 bg-bg3/50 rounded p-1.5 overflow-x-auto whitespace-pre-wrap break-all">{JSON.stringify(meta, null, 2)}</pre>
+										<div class="mt-1 rounded bg-bg3/50 p-1.5">
+											<JsonView value={meta} />
+										</div>
 									</div>
 								{/if}
 							</div>

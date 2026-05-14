@@ -30,6 +30,7 @@
   <PluginSlotHost
     slot="settings.plugins"
     entries={data.entries}
+    gatewayBaseUrl={data.gatewayBaseUrl}
     {theme}
     {tokens}
   />

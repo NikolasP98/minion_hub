@@ -7,13 +7,18 @@ function baseUrl(): string {
 }
 
 /**
- * Paperclip accepts two distinct auth modes that travel on different headers:
- *   - Board keys (token starts with `pcli_`): must be sent via
- *     `Authorization: Bearer <token>` (paperclip's auth.ts rejects them on
- *     `x-hub-identity`).
- *   - JWT identity mints (everything else): sent via `x-hub-identity: <token>`.
- * See memory `reference_hub_paperclip_auth_header_split` for the original
- * surface of this bug (2026-05-12).
+ * Pick the right auth header for the current paperclip identity.
+ *
+ * Two auth modes are supported:
+ *  - Board key (Phase 2, current prod): tokens prefixed `pcli_`. Paperclip's
+ *    `server/src/middleware/auth.ts` only accepts these as `Authorization: Bearer <token>`.
+ *  - JWT minted via HUB_PAPERCLIP_SHARED_SECRET (legacy/dev): consumed by
+ *    paperclip's `middleware/hub-identity.ts` via the `x-hub-identity` header.
+ *
+ * Sending the wrong header → paperclip 403 "Board access required" and every
+ * workforce server-loader returns "paperclip unavailable". See memory
+ * `reference_hub_paperclip_auth_header_split` — the fix has regressed once
+ * across a merge boundary (2026-05-12 → re-applied 2026-05-13 PR #43).
  */
 function authHeaders(token: string): Record<string, string> {
 	return token.startsWith('pcli_')

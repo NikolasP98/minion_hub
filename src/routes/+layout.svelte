@@ -1,7 +1,7 @@
 <script lang="ts">
   import '../app.css';
   import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
+  import { goto, afterNavigate } from '$app/navigation';
   import { page } from '$app/state';
   import { ParaglideJS } from '@inlang/paraglide-sveltekit';
   import { i18n } from '$lib/i18n';
@@ -40,6 +40,16 @@
 
   // userState now derives from `page.data` via getters — no rune hydration
   // needed. Server load + `invalidate('app:user')` is the single refresh path.
+
+  // Manual PostHog pageview capture. We disabled the default history-patch
+  // capture (`capture_pageview: false` in hooks.client.ts) to silence the
+  // SvelteKit "Avoid using history.pushState(...)" router warning.
+  if (!import.meta.env.VITE_DESKTOP) {
+    afterNavigate(() => {
+      const ph = (window as Window & { posthog?: { capture: (e: string, p?: Record<string, unknown>) => void } }).posthog;
+      ph?.capture('$pageview');
+    });
+  }
 
   onMount(async () => {
     installInterceptor();

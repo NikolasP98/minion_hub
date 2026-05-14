@@ -35,6 +35,19 @@ function toWsUrl(raw: string): string {
   return raw;
 }
 
+/** Inverse: ws(s) → http(s) for plugin UI iframe sources. */
+export function toHttpUrl(raw: string): string {
+  if (raw.startsWith('ws://')) return 'http://' + raw.slice('ws://'.length);
+  if (raw.startsWith('wss://')) return 'https://' + raw.slice('wss://'.length);
+  return raw;
+}
+
+/** Resolve the gateway HTTP base URL (for browser-side iframe srcs etc.). */
+export async function getGatewayHttpUrl(): Promise<string> {
+  const { url } = await resolveCredentials();
+  return toHttpUrl(url).replace(/\/+$/, '');
+}
+
 async function resolveCredentials(): Promise<{ url: string; token: string }> {
   // DB is the source of truth.
   try {
@@ -63,8 +76,16 @@ export async function gatewayCall<T = unknown>(
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const { url, token } = await resolveCredentials();
 
+  // Origin header must match an entry in gateway.controlUi.allowedOrigins so
+  // minion-control-ui+ui can bypass device-auth for admin scopes. Node ws
+  // omits Origin by default; we set it explicitly to the hub's public URL.
+  const origin =
+    env.MINION_HUB_ORIGIN ||
+    (env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${env.VERCEL_PROJECT_PRODUCTION_URL}` : '') ||
+    'https://minionhub.admin-console.dev';
+
   return new Promise<T>((resolve, reject) => {
-    const ws = new WebSocket(url);
+    const ws = new WebSocket(url, { headers: { Origin: origin } });
     let settled = false;
     let connectId: string | null = null;
     let requestId: string | null = null;
@@ -162,10 +183,10 @@ export async function gatewayCall<T = unknown>(
 
 /** Convenience: list plugin UI manifest occupants. */
 export async function pluginsUiList(): Promise<PluginUiManifestOccupant[]> {
-  const res = await gatewayCall<{ occupants?: PluginUiManifestOccupant[] } | PluginUiManifestOccupant[]>(
-    'plugins.ui.list',
-    {},
-  );
+  const res = await gatewayCall<
+    | { entries?: PluginUiManifestOccupant[]; occupants?: PluginUiManifestOccupant[] }
+    | PluginUiManifestOccupant[]
+  >('plugins.ui.list', {});
   if (Array.isArray(res)) return res;
-  return res?.occupants ?? [];
+  return res?.entries ?? res?.occupants ?? [];
 }

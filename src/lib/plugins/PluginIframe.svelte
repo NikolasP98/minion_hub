@@ -18,7 +18,11 @@
   let mounted: MountedHostBridge | null = null;
   let height = $state(600);
 
-  const src = `${gatewayUrl}/plugins/${pluginId}/ui/${entrypoint}`;
+  // Gateway serves /plugins/<id>/ui/<subpath> resolving against ui/dist/.
+  // Some manifests list entrypoint as "ui/dist/index.html" (disk path); strip
+  // that prefix so the URL is just /plugins/<id>/ui/index.html.
+  const subpath = entrypoint.replace(/^ui\/dist\//, "").replace(/^\/+/, "");
+  const src = `${gatewayUrl}/plugins/${pluginId}/ui/${subpath}`;
   const pluginOrigin = new URL(gatewayUrl).origin;
 
   function handleLoad(): void {
