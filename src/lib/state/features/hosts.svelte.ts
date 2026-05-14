@@ -1,7 +1,22 @@
 import type { Host } from '$lib/types/host';
 import { uuid } from '@minion-stack/shared';
+import { page } from '$app/state';
+import { invalidateHosts } from './user.svelte';
 
 const HOSTS_CACHE_KEY = 'minion-dash-hosts-cache';
+
+/**
+ * Hosts now flow through the canonical (app)/+layout.server.ts bundle
+ * into page.data. The localStorage cache is retained ONLY as a fast
+ * fallback for the brief window before the layout-load completes (e.g.
+ * pages outside (app)/ that still consume `hostsState`).
+ *
+ * activeHostId stays in localStorage and is exposed as writable state —
+ * per spec it's a per-device user preference and does NOT belong in the
+ * server-load bundle.
+ *
+ * Tokens are never persisted client-side: see `fetchHostToken()`.
+ */
 
 /**
  * Strip token before persisting. Tokens live server-side and are fetched
@@ -16,6 +31,18 @@ function stripTokens(hosts: Host[]): Host[] {
 function updateHostsCache(hosts: Host[]) {
   if (typeof localStorage !== 'undefined') {
     localStorage.setItem(HOSTS_CACHE_KEY, JSON.stringify(stripTokens(hosts)));
+  }
+}
+
+function readHostsCache(): Host[] {
+  if (typeof localStorage === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(HOSTS_CACHE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Host[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
   }
 }
 
@@ -48,97 +75,84 @@ export async function fetchHostToken(id: string): Promise<string | null> {
   }
 }
 
-export const hostsState = $state({
-  hosts: [] as Host[],
+const local = $state({
   activeHostId: null as string | null,
+  /** Local overlay applied after add/remove/update mutations so the UI
+   *  reflects the change before `invalidateHosts()` re-runs the
+   *  layout-load. Cleared on the next page-data read that includes the
+   *  mutation. */
+  overlay: null as Host[] | null,
 });
 
-export function getActiveHost(): Host | null {
-  if (!hostsState.activeHostId) return null;
-  return hostsState.hosts.find((h) => h.id === hostsState.activeHostId) ?? null;
+function pageHosts(): Host[] | null {
+  const data = page.data as { hosts?: { servers?: Host[] } } | undefined;
+  const servers = data?.hosts?.servers;
+  return Array.isArray(servers) ? servers : null;
 }
 
-export async function loadHosts() {
-  // Seed state immediately from localStorage cache for instant UI
-  if (typeof localStorage !== 'undefined') {
-    try {
-      const raw = localStorage.getItem(HOSTS_CACHE_KEY);
-      if (raw) {
-        const cached = JSON.parse(raw) as Host[];
-        if (Array.isArray(cached) && cached.length > 0) {
-          hostsState.hosts = cached;
-        }
-      }
-    } catch {
-      /* ignore corrupt cache */
+export const hostsState = {
+  /** Authoritative on (app)/* via page.data; falls back to overlay /
+   *  localStorage cache outside that scope or during transitions. */
+  get hosts(): Host[] {
+    if (local.overlay) return local.overlay;
+    const fromPage = pageHosts();
+    if (fromPage) return fromPage;
+    return readHostsCache();
+  },
+  get activeHostId(): string | null {
+    return local.activeHostId;
+  },
+  set activeHostId(id: string | null) {
+    local.activeHostId = id;
+    if (id) saveLastActiveHost(id);
+    else if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem('minion-dash-last-host');
     }
+  },
+};
+
+export function getActiveHost(): Host | null {
+  if (!local.activeHostId) return null;
+  return hostsState.hosts.find((h) => h.id === local.activeHostId) ?? null;
+}
+
+/**
+ * Initialize activeHostId from localStorage and warm the cache from the
+ * current page.data snapshot. No network — data is server-loaded.
+ */
+export function loadHosts(): void {
+  // Pull authoritative list from page.data (if (app)/+layout loaded);
+  // mirror into localStorage so non-app routes have a fallback.
+  const fromPage = pageHosts();
+  if (fromPage) {
+    updateHostsCache(fromPage);
+    // Clear any stale overlay now that the layout-load has caught up.
+    local.overlay = null;
   }
 
-  // Fetch fresh data from DB. Do NOT overwrite cache on error or on a
-  // suspicious empty response — silent wipes on refresh are the bug that
-  // motivated this guard. Only treat an empty list as authoritative when
-  // we either had no cache to begin with, or the response carries an
-  // explicit `authoritative: true` (e.g. server can prove "no hosts" is
-  // a real DB state, not an auth/decrypt failure masquerading as empty).
-  try {
-    const res = await fetch('/api/servers');
-    if (!res.ok) {
-      console.warn(
-        `[hosts] GET /api/servers returned ${res.status}; preserving cached hosts`,
-      );
-      return;
-    }
-    const data = (await res.json()) as { servers?: Host[]; authoritative?: boolean };
-    const fresh = Array.isArray(data.servers) ? data.servers : null;
-    if (fresh === null) {
-      console.warn('[hosts] GET /api/servers returned unexpected payload; preserving cache');
-      return;
-    }
-    const cachedCount = hostsState.hosts.length;
-    if (fresh.length === 0 && cachedCount > 0 && data.authoritative !== true) {
-      console.warn(
-        `[hosts] Server returned 0 hosts but cache has ${cachedCount}. ` +
-          'Treating as suspect (likely auth/decrypt drift). Preserving cache. ' +
-          'Add ?force=1 to /api/servers or call addHost/removeHost to overwrite.',
-      );
-      return;
-    }
-    hostsState.hosts = fresh;
-    updateHostsCache(fresh);
-  } catch (err) {
-    console.warn('[hosts] GET /api/servers threw; preserving cache', err);
-  }
-
-  // Restore last-active preference. Persist whichever id wins so the next
-  // reload picks the same host even if the WS handshake hasn't run yet
-  // (saveLastActiveHost was previously only called from inside the WS
-  // success path, so a freshly-added host with no completed connect would
-  // never write the key).
+  const hosts = hostsState.hosts;
   const lastId =
     typeof localStorage !== 'undefined' ? localStorage.getItem('minion-dash-last-host') : null;
-  if (lastId && hostsState.hosts.some((h) => h.id === lastId)) {
-    hostsState.activeHostId = lastId;
-  } else if (hostsState.hosts.length > 0) {
-    hostsState.activeHostId = hostsState.hosts[0].id;
-    saveLastActiveHost(hostsState.hosts[0].id);
+  if (lastId && hosts.some((h) => h.id === lastId)) {
+    local.activeHostId = lastId;
+  } else if (hosts.length > 0) {
+    local.activeHostId = hosts[0].id;
+    saveLastActiveHost(hosts[0].id);
   }
 }
 
 export function selectHost(id: string): void {
   if (!hostsState.hosts.some((h) => h.id === id)) return;
-  hostsState.activeHostId = id;
+  local.activeHostId = id;
   saveLastActiveHost(id);
 }
 
 export async function addHost(host: { name: string; url: string; token: string }): Promise<string> {
-  // Check for existing host with the same URL to prevent duplicates
   const existing = hostsState.hosts.find((h) => h.url === host.url);
   if (existing) {
-    // Update the existing host instead of creating a duplicate
     await updateHost(existing.id, { name: host.name, token: host.token });
-    hostsState.activeHostId = existing.id;
+    local.activeHostId = existing.id;
     saveLastActiveHost(existing.id);
-    updateHostsCache(hostsState.hosts);
     return existing.id;
   }
 
@@ -150,10 +164,13 @@ export async function addHost(host: { name: string; url: string; token: string }
     body: JSON.stringify(newHost),
   });
   if (!res.ok) throw new Error(`Failed to save host: ${res.status}`);
-  hostsState.hosts.push(newHost);
-  updateHostsCache(hostsState.hosts);
-  hostsState.activeHostId = id;
+
+  // Optimistic overlay until invalidateHosts re-runs the layout-load.
+  local.overlay = [...hostsState.hosts, newHost];
+  updateHostsCache(local.overlay);
+  local.activeHostId = id;
   saveLastActiveHost(id);
+  await invalidateHosts();
   return id;
 }
 
@@ -164,26 +181,26 @@ export async function updateHost(id: string, updates: Partial<Omit<Host, 'id'>>)
     body: JSON.stringify(updates),
   });
   if (!res.ok) throw new Error(`Failed to update host: ${res.status}`);
-  const h = hostsState.hosts.find((x) => x.id === id);
-  if (h) {
-    Object.assign(h, updates);
-    updateHostsCache(hostsState.hosts);
-  }
+  const merged = hostsState.hosts.map((h) => (h.id === id ? { ...h, ...updates } : h));
+  local.overlay = merged;
+  updateHostsCache(merged);
+  await invalidateHosts();
 }
 
 export async function removeHost(id: string) {
   const res = await fetch(`/api/servers/${id}`, { method: 'DELETE' });
   if (!res.ok) throw new Error(`Failed to remove host: ${res.status}`);
-  hostsState.hosts = hostsState.hosts.filter((h) => h.id !== id);
-  updateHostsCache(hostsState.hosts);
-  // If we just removed the active host, advance to another or clear.
-  if (hostsState.activeHostId === id) {
-    const next = hostsState.hosts[0]?.id ?? null;
-    hostsState.activeHostId = next;
+  const filtered = hostsState.hosts.filter((h) => h.id !== id);
+  local.overlay = filtered;
+  updateHostsCache(filtered);
+  if (local.activeHostId === id) {
+    const next = filtered[0]?.id ?? null;
+    local.activeHostId = next;
     if (next) saveLastActiveHost(next);
     else if (typeof localStorage !== 'undefined')
       localStorage.removeItem('minion-dash-last-host');
   }
+  await invalidateHosts();
 }
 
 export function saveLastActiveHost(id: string) {
