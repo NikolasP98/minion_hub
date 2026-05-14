@@ -3,7 +3,7 @@ import { roles, rolePermissions } from '../db/schema/roles';
 import { user } from '../db/schema/auth/index';
 import type { TenantContext } from './base';
 import { randomUUID } from 'node:crypto';
-import { PERMISSIONS } from '$lib/permissions';
+import { PERMISSIONS, MODULE_PERMISSIONS } from '$lib/permissions';
 
 export type RoleInput = {
   name: string;
@@ -141,7 +141,36 @@ export async function seedSystemRoles(ctx: TenantContext) {
   await createRole(ctx, {
     name: 'user',
     description: 'View-only',
-    permissions: PERMISSIONS.filter((p) => p.endsWith(':view')),
+    permissions: [
+      ...PERMISSIONS.filter((p) => p.endsWith(':view')),
+      // user gets the two non-admin modules by default; explicit module perms win over derivation
+      'module:operations',
+      'module:workspace',
+    ],
     isSystem: true,
   });
+}
+
+/**
+ * Backfill module perms on the built-in admin role for tenants seeded before modules existed.
+ * Idempotent — safe to call on every load.
+ */
+export async function ensureAdminHasModules(ctx: TenantContext) {
+  const adminRow = (
+    await ctx.db
+      .select()
+      .from(roles)
+      .where(eq(roles.tenantId, ctx.tenantId))
+  ).find((r) => r.isSystem && r.name === 'admin');
+  if (!adminRow) return;
+  const have = new Set(
+    (await ctx.db.select().from(rolePermissions).where(eq(rolePermissions.roleId, adminRow.id))).map(
+      (r) => r.permission,
+    ),
+  );
+  const missing = MODULE_PERMISSIONS.filter((p) => !have.has(p));
+  if (missing.length === 0) return;
+  await ctx.db
+    .insert(rolePermissions)
+    .values(missing.map((p) => ({ roleId: adminRow.id, permission: p })));
 }

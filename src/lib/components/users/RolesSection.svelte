@@ -1,8 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { invalidate } from '$app/navigation';
+  import { Plus, Trash2, ShieldCheck, Users, Pencil, Check, X } from 'lucide-svelte';
   import PermissionGrid from './PermissionGrid.svelte';
+  import ModuleToggles from './ModuleToggles.svelte';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
+  import { MODULES as DEFAULT_MODULES, type ModuleKey } from '$lib/permissions';
 
   type Role = {
     id: string;
@@ -13,22 +16,35 @@
     memberCount: number;
   };
 
+  type Modules = Record<ModuleKey, { label: string; description: string; resources: string[] }>;
+
   interface Props {
     initialRoles?: Role[];
     initialCatalog?: Record<string, string[]>;
+    modules?: Modules;
   }
-  let { initialRoles = [], initialCatalog = {} }: Props = $props();
+  let {
+    initialRoles = [],
+    initialCatalog = {},
+    modules = DEFAULT_MODULES,
+  }: Props = $props();
+
   const hasServerData = $derived(
     initialRoles.length > 0 || Object.keys(initialCatalog).length > 0,
   );
 
   let roles = $state<Role[]>(initialRoles);
   let catalog = $state<Record<string, string[]>>(initialCatalog);
-  let expandedId = $state<string | null>(null);
+  let selectedId = $state<string | null>(initialRoles[0]?.id ?? null);
   let creating = $state(false);
   let draftName = $state('');
   let draftDesc = $state('');
   let draftPerms = $state<string[]>([]);
+  let editingMeta = $state(false);
+  let metaName = $state('');
+  let metaDesc = $state('');
+
+  const selected = $derived(roles.find((r) => r.id === selectedId) ?? null);
 
   async function load() {
     const [rRes, cRes] = await Promise.all([
@@ -37,37 +53,69 @@
     ]);
     if (rRes.ok) roles = ((await rRes.json()) as { roles: Role[] }).roles;
     if (cRes.ok) catalog = ((await cRes.json()) as { catalog: Record<string, string[]> }).catalog;
+    if (!selectedId && roles[0]) selectedId = roles[0].id;
   }
 
-  async function saveRole(role: Role, perms: string[]) {
+  function selectRole(id: string) {
+    selectedId = id;
+    creating = false;
+    editingMeta = false;
+  }
+
+  async function persistPerms(role: Role, perms: string[]) {
+    const prev = role.permissions;
+    roles = roles.map((r) => (r.id === role.id ? { ...r, permissions: perms } : r));
     const res = await fetch(`/api/roles/${role.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ permissions: perms }),
     });
     if (res.ok) {
-      roles = roles.map((r) => (r.id === role.id ? { ...r, permissions: perms } : r));
-      toastSuccess('Role updated');
       void invalidate('settings:roles');
     } else {
+      roles = roles.map((r) => (r.id === role.id ? { ...r, permissions: prev } : r));
       toastError('Save failed');
     }
   }
 
+  function togglePermission(perm: string, next: boolean) {
+    if (!selected || selected.isSystem) return;
+    const set = new Set(selected.permissions);
+    if (next) set.add(perm);
+    else set.delete(perm);
+    void persistPerms(selected, [...set]);
+  }
+
+  function onGridChange(perms: string[]) {
+    if (!selected || selected.isSystem) return;
+    void persistPerms(selected, perms);
+  }
+
+  function startCreate() {
+    creating = true;
+    draftName = '';
+    draftDesc = '';
+    draftPerms = [];
+  }
+
   async function createDraft() {
-    if (!draftName) return;
+    if (!draftName.trim()) return;
     const res = await fetch('/api/roles', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: draftName, description: draftDesc, permissions: draftPerms }),
+      body: JSON.stringify({
+        name: draftName.trim(),
+        description: draftDesc.trim() || null,
+        permissions: draftPerms,
+      }),
     });
     if (res.ok) {
-      draftName = '';
-      draftDesc = '';
-      draftPerms = [];
+      const body = (await res.json().catch(() => ({}))) as { id?: string };
       creating = false;
       await load();
       void invalidate('settings:roles');
+      toastSuccess('Role created');
+      if (body.id) selectedId = body.id;
     } else {
       const d = await res.json().catch(() => ({}));
       toastError((d as { message?: string }).message ?? 'create failed');
@@ -80,66 +128,264 @@
     const res = await fetch(`/api/roles/${role.id}`, { method: 'DELETE' });
     if (res.ok) {
       roles = roles.filter((r) => r.id !== role.id);
+      if (selectedId === role.id) selectedId = roles[0]?.id ?? null;
       void invalidate('settings:roles');
+      toastSuccess('Role deleted');
     } else {
       toastError('Delete failed');
     }
   }
 
+  function startEditMeta() {
+    if (!selected || selected.isSystem) return;
+    metaName = selected.name;
+    metaDesc = selected.description ?? '';
+    editingMeta = true;
+  }
+
+  async function saveMeta() {
+    if (!selected) return;
+    const res = await fetch(`/api/roles/${selected.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: metaName.trim(), description: metaDesc.trim() || null }),
+    });
+    if (res.ok) {
+      roles = roles.map((r) =>
+        r.id === selected!.id
+          ? { ...r, name: metaName.trim(), description: metaDesc.trim() || null }
+          : r,
+      );
+      editingMeta = false;
+      void invalidate('settings:roles');
+    } else {
+      toastError('Save failed');
+    }
+  }
+
   onMount(() => {
-    if (!hasServerData) load();
+    if (!hasServerData) void load();
   });
+
+  // toggle a draft perm
+  function toggleDraftPerm(perm: string, next: boolean) {
+    const set = new Set(draftPerms);
+    if (next) set.add(perm);
+    else set.delete(perm);
+    draftPerms = [...set];
+  }
 </script>
 
-<section class="max-w-3xl mx-auto mt-8">
-  <div class="flex items-center justify-between mb-3">
-    <h2 class="text-sm font-semibold text-foreground uppercase tracking-wider">Roles</h2>
-    <button
-      class="text-xs px-3 py-1.5 rounded-md bg-accent text-white font-semibold"
-      onclick={() => (creating = !creating)}
-    >
-      {creating ? 'Cancel' : '+ New Role'}
-    </button>
-  </div>
-
-  {#if creating}
-    <div class="bg-card border border-border rounded-lg p-4 mb-3 space-y-2">
-      <input class="bg-bg2 border border-border rounded px-2 py-1.5 text-xs w-full" placeholder="Role name" bind:value={draftName} />
-      <input class="bg-bg2 border border-border rounded px-2 py-1.5 text-xs w-full" placeholder="Description" bind:value={draftDesc} />
-      <PermissionGrid {catalog} selected={new Set(draftPerms)} onChange={(p) => (draftPerms = p)} />
-      <button class="text-xs px-3 py-1.5 rounded bg-accent text-white" onclick={createDraft}>Create</button>
+<section class="max-w-6xl mx-auto mt-6 px-4">
+  <header class="flex items-baseline justify-between mb-5">
+    <div>
+      <h2 class="text-base font-semibold text-foreground">Roles</h2>
+      <p class="text-[12px] text-muted mt-0.5">
+        Group permissions and pages members can see. Built-in roles are read-only.
+      </p>
     </div>
-  {/if}
+  </header>
 
-  <div class="bg-card border border-border rounded-lg overflow-hidden">
-    {#each roles as r (r.id)}
-      <div class="border-b border-border/50 last:border-0">
-        <div class="px-4 py-3 cursor-pointer hover:bg-muted/30" onclick={() => (expandedId = expandedId === r.id ? null : r.id)}>
-          <div class="flex items-center gap-2">
-            <span class="font-semibold text-foreground">{r.name}</span>
-            {#if r.isSystem}
-              <span class="text-[10px] px-1.5 py-0.5 rounded bg-muted/30 text-muted">Built-in</span>
-            {/if}
-            <span class="text-muted text-[10px] ml-auto">{r.memberCount} members</span>
-            {#if !r.isSystem}
-              <button class="text-muted hover:text-destructive bg-transparent border-none cursor-pointer" onclick={(e) => { e.stopPropagation(); removeRole(r); }}>✕</button>
-            {/if}
+  <div class="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-4 items-start">
+    <!-- Sidebar -->
+    <aside class="bg-card border border-border rounded-lg overflow-hidden">
+      <div class="flex items-center justify-between px-3 py-2.5 border-b border-border/60">
+        <span class="text-[11px] uppercase tracking-wider text-muted font-semibold">All roles</span>
+        <button
+          class="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-md bg-accent text-white hover:bg-accent/90 font-medium"
+          onclick={startCreate}
+        >
+          <Plus class="h-3 w-3" /> New
+        </button>
+      </div>
+      <ul class="divide-y divide-border/40">
+        {#each roles as r (r.id)}
+          {@const active = r.id === selectedId && !creating}
+          <li>
+            <button
+              type="button"
+              class="w-full text-left px-3 py-2.5 flex items-center gap-2 transition-colors {active
+                ? 'bg-accent/10'
+                : 'hover:bg-muted/20'}"
+              onclick={() => selectRole(r.id)}
+            >
+              <span class="h-1.5 w-1.5 rounded-full {active ? 'bg-accent' : 'bg-muted/50'}"></span>
+              <span class="min-w-0 flex-1">
+                <span class="flex items-center gap-1.5">
+                  <span class="text-[13px] font-medium text-foreground truncate">{r.name}</span>
+                  {#if r.isSystem}
+                    <ShieldCheck class="h-3 w-3 text-muted" />
+                  {/if}
+                </span>
+                {#if r.description}
+                  <span class="block text-[11px] text-muted truncate">{r.description}</span>
+                {/if}
+              </span>
+              <span class="inline-flex items-center gap-1 text-[10px] text-muted">
+                <Users class="h-3 w-3" />
+                {r.memberCount}
+              </span>
+            </button>
+          </li>
+        {/each}
+        {#if roles.length === 0}
+          <li class="px-3 py-6 text-center text-[12px] text-muted">No roles yet</li>
+        {/if}
+      </ul>
+    </aside>
+
+    <!-- Detail / Create -->
+    <div class="bg-card border border-border rounded-lg">
+      {#if creating}
+        <div class="p-5 space-y-5">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-semibold text-foreground">New role</h3>
+            <button
+              class="text-muted hover:text-foreground p-1 rounded"
+              aria-label="Cancel"
+              onclick={() => (creating = false)}
+            >
+              <X class="h-4 w-4" />
+            </button>
           </div>
-          {#if r.description}
-            <div class="text-muted text-[11px] mt-1">{r.description}</div>
-          {/if}
-        </div>
-        {#if expandedId === r.id}
-          <div class="px-4 py-3 bg-bg2/30">
-            <PermissionGrid
-              {catalog}
-              selected={new Set(r.permissions)}
-              readonly={r.isSystem}
-              onChange={(p) => saveRole(r, p)}
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label class="block">
+              <span class="block text-[11px] uppercase tracking-wider text-muted font-semibold mb-1">Name</span>
+              <input
+                class="bg-bg2 border border-border rounded-md px-2.5 py-1.5 text-[13px] w-full focus:outline-none focus:border-accent"
+                placeholder="e.g. Support"
+                bind:value={draftName}
+              />
+            </label>
+            <label class="block">
+              <span class="block text-[11px] uppercase tracking-wider text-muted font-semibold mb-1">Description</span>
+              <input
+                class="bg-bg2 border border-border rounded-md px-2.5 py-1.5 text-[13px] w-full focus:outline-none focus:border-accent"
+                placeholder="What this role is for"
+                bind:value={draftDesc}
+              />
+            </label>
+          </div>
+          <div>
+            <h4 class="text-[11px] uppercase tracking-wider text-muted font-semibold mb-2">Modules</h4>
+            <ModuleToggles
+              {modules}
+              selected={new Set(draftPerms)}
+              onToggle={toggleDraftPerm}
             />
           </div>
-        {/if}
-      </div>
-    {/each}
+          <div>
+            <h4 class="text-[11px] uppercase tracking-wider text-muted font-semibold mb-2">Permissions</h4>
+            <div class="bg-bg2/40 border border-border rounded-md p-3">
+              <PermissionGrid {catalog} selected={new Set(draftPerms)} onChange={(p) => (draftPerms = p)} />
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button
+              class="inline-flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-md bg-accent text-white font-medium hover:bg-accent/90 disabled:opacity-50"
+              disabled={!draftName.trim()}
+              onclick={createDraft}
+            >
+              <Check class="h-3.5 w-3.5" /> Create role
+            </button>
+            <button
+              class="text-[12px] px-3 py-1.5 rounded-md border border-border text-muted hover:text-foreground"
+              onclick={() => (creating = false)}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      {:else if selected}
+        <div class="p-5 space-y-5">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0 flex-1">
+              {#if editingMeta}
+                <div class="space-y-2">
+                  <input
+                    class="bg-bg2 border border-border rounded-md px-2.5 py-1.5 text-[15px] font-semibold w-full"
+                    bind:value={metaName}
+                  />
+                  <input
+                    class="bg-bg2 border border-border rounded-md px-2.5 py-1.5 text-[12px] w-full"
+                    placeholder="Description"
+                    bind:value={metaDesc}
+                  />
+                  <div class="flex gap-2">
+                    <button class="text-[11px] px-2.5 py-1 rounded bg-accent text-white" onclick={saveMeta}>Save</button>
+                    <button class="text-[11px] px-2.5 py-1 rounded border border-border text-muted" onclick={() => (editingMeta = false)}>Cancel</button>
+                  </div>
+                </div>
+              {:else}
+                <div class="flex items-center gap-2 flex-wrap">
+                  <h3 class="text-[15px] font-semibold text-foreground">{selected.name}</h3>
+                  {#if selected.isSystem}
+                    <span class="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-muted/20 text-muted">
+                      <ShieldCheck class="h-3 w-3" /> Built-in
+                    </span>
+                  {/if}
+                  <span class="inline-flex items-center gap-1 text-[11px] text-muted ml-auto">
+                    <Users class="h-3 w-3" /> {selected.memberCount} member{selected.memberCount === 1 ? '' : 's'}
+                  </span>
+                </div>
+                {#if selected.description}
+                  <p class="text-[12px] text-muted mt-1">{selected.description}</p>
+                {/if}
+              {/if}
+            </div>
+            {#if !selected.isSystem && !editingMeta}
+              <div class="flex items-center gap-1">
+                <button
+                  class="p-1.5 rounded text-muted hover:text-foreground hover:bg-muted/20"
+                  aria-label="Edit role"
+                  onclick={startEditMeta}
+                >
+                  <Pencil class="h-3.5 w-3.5" />
+                </button>
+                <button
+                  class="p-1.5 rounded text-muted hover:text-destructive hover:bg-destructive/10"
+                  aria-label="Delete role"
+                  onclick={() => removeRole(selected!)}
+                >
+                  <Trash2 class="h-3.5 w-3.5" />
+                </button>
+              </div>
+            {/if}
+          </div>
+
+          <section>
+            <div class="flex items-baseline justify-between mb-2">
+              <h4 class="text-[11px] uppercase tracking-wider text-muted font-semibold">Modules</h4>
+              <span class="text-[10px] text-muted">Which sections this role can see</span>
+            </div>
+            <ModuleToggles
+              {modules}
+              selected={new Set(selected.permissions)}
+              readonly={selected.isSystem}
+              onToggle={togglePermission}
+            />
+          </section>
+
+          <section>
+            <div class="flex items-baseline justify-between mb-2">
+              <h4 class="text-[11px] uppercase tracking-wider text-muted font-semibold">Permissions</h4>
+              <span class="text-[10px] text-muted">Per-action capabilities within visible modules</span>
+            </div>
+            <div class="bg-bg2/40 border border-border rounded-md p-3">
+              <PermissionGrid
+                {catalog}
+                selected={new Set(selected.permissions)}
+                readonly={selected.isSystem}
+                onChange={onGridChange}
+              />
+            </div>
+          </section>
+        </div>
+      {:else}
+        <div class="p-10 text-center text-[12px] text-muted">
+          Select a role to edit, or create a new one.
+        </div>
+      {/if}
+    </div>
   </div>
 </section>

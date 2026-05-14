@@ -5,4 +5,8 @@
   let { data }: { data: PageData } = $props();
 </script>
 
-<RolesSection initialRoles={data.roles} initialCatalog={data.catalog} />
+<RolesSection
+  initialRoles={data.roles}
+  initialCatalog={data.catalog}
+  modules={data.modules}
+/>
