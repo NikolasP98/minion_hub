@@ -1,22 +1,15 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
-import { listServers, upsertServer } from '$server/services/server.service';
-import { getTenantCtx, getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
+import { upsertServer } from '$server/services/server.service';
+import { loadHostsForUser } from '$server/services/hosts.service';
+import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
 import { requireAuth } from '$server/auth/authorize';
 import { getPostHogClient } from '$lib/server/posthog';
 import { assertSafeUrl, SsrfBlockedError } from '$server/services/ssrf-guard';
 
 export const GET: RequestHandler = async ({ locals }) => {
-  const ctx = await getTenantCtx(locals);
-  if (!ctx) {
-    // No org seeded yet — authoritative empty.
-    return json({ servers: [], authoritative: true });
-  }
   try {
-    // listServers handles per-user scoping itself: anonymous → [],
-    // non-admin → only linked hosts, admin → all in tenant.
-    const servers = await listServers(ctx, locals.user?.id, locals.user?.role);
-    return json({ servers, authoritative: true });
+    return json(await loadHostsForUser(locals, locals.user?.id, locals.user?.role));
   } catch (e) {
     console.error('[GET /api/servers]', e);
     // Non-authoritative failure (decrypt error, schema drift, etc.).

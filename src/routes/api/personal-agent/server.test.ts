@@ -11,10 +11,14 @@ vi.mock('$server/auth/tenant-ctx', () => ({
 const mockGetPersonalAgent = vi.fn<(ctx: unknown, userId: string) => Promise<unknown>>();
 const mockUpdatePersonalAgent =
   vi.fn<(ctx: unknown, userId: string, updates: unknown) => Promise<void>>();
+const mockLoadPersonalAgentForUser =
+  vi.fn<(locals: unknown, userId: string) => Promise<unknown>>();
 vi.mock('$server/services/personal-agent.service', () => ({
   getPersonalAgent: (ctx: unknown, userId: string) => mockGetPersonalAgent(ctx, userId),
   updatePersonalAgent: (ctx: unknown, userId: string, updates: unknown) =>
     mockUpdatePersonalAgent(ctx, userId, updates),
+  loadPersonalAgentForUser: (locals: unknown, userId: string) =>
+    mockLoadPersonalAgentForUser(locals, userId),
 }));
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -59,17 +63,13 @@ describe('GET /api/personal-agent', () => {
   });
 
   it('returns { agent: PersonalAgentRow } when authenticated with existing agent', async () => {
-    const { db } = createMockDb();
-    const ctx = { db, tenantId: 'org-1' };
-    mockGetTenantCtx.mockResolvedValue(ctx);
-
     const agentRow = {
       id: 'pa-1',
       userId: 'user-1',
       agentId: 'personal-user-1',
       provisioningStatus: 'active',
     };
-    mockGetPersonalAgent.mockResolvedValue(agentRow);
+    mockLoadPersonalAgentForUser.mockResolvedValue({ agent: agentRow });
 
     const locals = makeLocals();
 
@@ -85,10 +85,7 @@ describe('GET /api/personal-agent', () => {
   });
 
   it('returns { agent: null } when authenticated but no agent exists', async () => {
-    const { db } = createMockDb();
-    const ctx = { db, tenantId: 'org-1' };
-    mockGetTenantCtx.mockResolvedValue(ctx);
-    mockGetPersonalAgent.mockResolvedValue(null);
+    mockLoadPersonalAgentForUser.mockResolvedValue({ agent: null });
 
     const locals = makeLocals();
 

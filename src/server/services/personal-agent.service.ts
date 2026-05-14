@@ -1,9 +1,11 @@
 import { eq, and, inArray, lt, sql } from 'drizzle-orm';
+import { error as httpError } from '@sveltejs/kit';
 import { personalAgents } from '@minion-stack/db/schema';
 import { user } from '@minion-stack/db/schema';
 import { newId, nowMs } from '$server/db/utils';
 import { assignAgentToUser } from './user-agents.service';
 import type { TenantContext } from './base';
+import type { LoadCtx } from './types';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -158,4 +160,34 @@ export async function listPendingAgents(
 
 export async function deletePersonalAgent(ctx: TenantContext, userId: string): Promise<void> {
   await ctx.db.delete(personalAgents).where(eq(personalAgents.userId, userId));
+}
+
+// ── Load helper (callable from +server.ts AND +layout.server.ts) ────────────
+
+export interface PersonalAgentLoadResult {
+  agent: PersonalAgentRow | null;
+}
+
+/**
+ * Load the authenticated user's personal agent row, shaped exactly like
+ * `GET /api/personal-agent` (`{ agent }`).
+ *
+ * Resolves the tenant context internally (matching the endpoint behavior:
+ * fall back to the first organization if `locals.tenantCtx` is unset).
+ * Throws 401 if no tenant has been seeded yet.
+ *
+ * Implementation note: `getTenantCtx` is imported dynamically because it
+ * pulls in `$server/db/client` (and through it `$env/dynamic/private`),
+ * which the existing unit tests for this module don't stub. Keeping the
+ * top-level import surface unchanged preserves test isolation.
+ */
+export async function loadPersonalAgentForUser(
+  locals: LoadCtx,
+  userId: string,
+): Promise<PersonalAgentLoadResult> {
+  const { getTenantCtx } = await import('$server/auth/tenant-ctx');
+  const ctx = await getTenantCtx(locals as App.Locals);
+  if (!ctx) throw httpError(401, 'Authentication required');
+  const agent = await getPersonalAgent(ctx, userId);
+  return { agent };
 }
