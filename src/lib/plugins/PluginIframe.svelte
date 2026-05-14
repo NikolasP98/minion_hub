@@ -26,7 +26,7 @@
   // have happened. If `plugin:ready` doesn't arrive within HANDSHAKE_TIMEOUT_MS
   // we render a diagnostic overlay instead of leaving the user staring at the
   // plugin's "Loading…" screen with no actionable info.
-  const HANDSHAKE_TIMEOUT_MS = 6000;
+  const HANDSHAKE_TIMEOUT_MS = 2500;
   let iframeLoaded = $state(false);
   let pluginReady = $state(false);
   let handshakeTimedOut = $state(false);
@@ -74,7 +74,17 @@
     });
     if (timeoutHandle === null && !pluginReady) {
       timeoutHandle = setTimeout(() => {
-        if (!pluginReady) handshakeTimedOut = true;
+        if (!pluginReady) {
+          console.warn("[PluginIframe] handshake timed out", {
+            pluginId,
+            src,
+            pluginOrigin,
+            hostOrigin,
+            iframeLoaded,
+            pluginReady,
+          });
+          handshakeTimedOut = true;
+        }
       }, HANDSHAKE_TIMEOUT_MS);
     }
   });
@@ -106,7 +116,7 @@
   ></iframe>
   {#if handshakeTimedOut && !pluginReady}
     <div
-      class="bg-background/95 absolute inset-0 flex items-start justify-center overflow-auto p-6 backdrop-blur"
+      class="bg-background/95 absolute inset-0 z-10 flex items-start justify-center overflow-auto p-6 backdrop-blur"
     >
       <div class="max-w-xl space-y-3 rounded-md border border-destructive/50 bg-card p-4 text-sm">
         <header class="font-semibold text-destructive">
