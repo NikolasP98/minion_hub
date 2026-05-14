@@ -17,11 +17,35 @@
 
   let { data }: { data: PageData } = $props();
 
-  // MVP: theme rune wiring lands in Phase B alongside the first consumer
-  // plugin. For now we forward a stable token bag so iframes get a
-  // predictable hello payload.
-  const theme: Theme = 'light';
-  const tokens: Record<string, string> = {};
+  // Snapshot the current hub theme + every CSS custom property declared on
+  // :root so the plugin iframe can inherit the live design tokens. Plugins
+  // that style with `var(--foreground)` etc will match the hub automatically.
+  const theme: Theme = $derived(
+    typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
+      ? 'dark'
+      : 'light'
+  );
+  const tokens: Record<string, string> = $derived.by(() => {
+    if (typeof document === 'undefined') return {};
+    const computed = getComputedStyle(document.documentElement);
+    const out: Record<string, string> = {};
+    for (const sheet of Array.from(document.styleSheets)) {
+      let rules: CSSRuleList;
+      try {
+        rules = sheet.cssRules;
+      } catch {
+        continue; // cross-origin stylesheet, skip
+      }
+      for (const rule of Array.from(rules)) {
+        if (!(rule instanceof CSSStyleRule)) continue;
+        if (!/^:root\b/.test(rule.selectorText)) continue;
+        for (const name of Array.from(rule.style)) {
+          if (name.startsWith('--')) out[name] = computed.getPropertyValue(name).trim();
+        }
+      }
+    }
+    return out;
+  });
 
   let selected = $state(0);
   const current = $derived(data.entries[selected]);
@@ -227,8 +251,12 @@
                     class="flex w-full items-start gap-2.5 px-4 py-3 text-left text-sm transition-colors hover:bg-muted"
                     class:bg-muted={selected === i}
                   >
-                    <span class="mt-0.5 text-base leading-none">
-                      {entry.icon ?? '🔌'}
+                    <span class="mt-0.5 inline-flex items-center justify-center text-base leading-none text-muted-foreground">
+                      {#if entry.icon && /\p{Extended_Pictographic}/u.test(entry.icon)}
+                        {entry.icon}
+                      {:else}
+                        <Puzzle size={14} />
+                      {/if}
                     </span>
                     <span class="min-w-0 flex-1">
                       <span class="block truncate font-medium text-foreground">{entry.title}</span>
@@ -249,21 +277,17 @@
 
           <div class="min-w-0">
             {#if current}
-              <div class="flex items-center justify-between border-b border-border px-4 py-3">
-                <div>
-                  <p class="text-sm font-medium">{current.title}</p>
-                  {#if current.description}
-                    <p class="text-xs text-muted-foreground">{current.description}</p>
+              {#if tokenLoading || tokenError}
+                <div class="flex items-center justify-end border-b border-border px-4 py-2">
+                  {#if tokenLoading}
+                    <span class="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <RefreshCw size={12} class="animate-spin" /> Authenticating…
+                    </span>
+                  {:else if tokenError}
+                    <span class="text-xs text-destructive">Auth: {tokenError}</span>
                   {/if}
                 </div>
-                {#if tokenLoading}
-                  <span class="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <RefreshCw size={12} class="animate-spin" /> Authenticating…
-                  </span>
-                {:else if tokenError}
-                  <span class="text-xs text-destructive">Auth: {tokenError}</span>
-                {/if}
-              </div>
+              {/if}
               {#if tokenLoading}
                 <div class="flex items-center gap-2 px-4 py-6 text-sm text-muted-foreground">
                   <RefreshCw size={14} class="animate-spin" />
