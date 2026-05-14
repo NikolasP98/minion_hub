@@ -19,6 +19,21 @@ vi.mock('$server/services/preferences.service', () => ({
   loadUserPreferences: vi.fn(async () => ({ preferences: {} })),
 }));
 
+// Defensive org-activation pulls in db + schema; mock these so vitest doesn't
+// try to resolve $env/dynamic/private in the test environment.
+vi.mock('$server/db/client', () => ({
+  getDb: vi.fn(() => ({
+    select: () => ({
+      from: () => ({ where: () => ({ limit: async () => [{ orgId: 'tenant-x' }] }) }),
+    }),
+    update: () => ({ set: () => ({ where: async () => undefined }) }),
+  })),
+}));
+vi.mock('@minion-stack/db/schema', () => ({
+  member: { userId: 'user_id', organizationId: 'organization_id' },
+  session: { id: 'id' },
+}));
+
 // `requireAuth` lives in $server/auth/authorize. Import the real module so
 // it throws the real SvelteKit 401 when `locals.user` is missing.
 import { load } from './+layout.server';
