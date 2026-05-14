@@ -26,7 +26,15 @@
   // Some manifests list entrypoint as "ui/dist/index.html" (disk path); strip
   // that prefix so the URL is just /plugins/<id>/ui/index.html.
   const subpath = entrypoint.replace(/^ui\/dist\//, "").replace(/^\/+/, "");
-  const src = `${gatewayUrl}/plugins/${pluginId}/ui/${subpath}`;
+  // Pass the host origin via URL hash so the plugin can validate inbound
+  // postMessage events without depending on document.referrer (which is
+  // stripped under strict Referrer-Policy for cross-origin iframes — that
+  // failure mode silently bricks the plugin's bridge handshake).
+  const hostOrigin = typeof window !== "undefined" ? window.location.origin : "";
+  const srcBase = `${gatewayUrl}/plugins/${pluginId}/ui/${subpath}`;
+  const src = hostOrigin
+    ? `${srcBase}#hostOrigin=${encodeURIComponent(hostOrigin)}`
+    : srcBase;
   const pluginOrigin = new URL(gatewayUrl).origin;
 
   // Mount the host bridge as soon as iframeEl is bound — NOT in the iframe's
@@ -60,6 +68,7 @@
   bind:this={iframeEl}
   title="Plugin: {pluginId}"
   {src}
+  referrerpolicy="strict-origin"
   style:height="{height}px"
   class="w-full border-0"
 ></iframe>
