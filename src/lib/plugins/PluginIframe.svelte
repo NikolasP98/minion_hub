@@ -6,6 +6,47 @@
   // Lazy import to keep this component test-renderable without pulling
   // SvelteKit-only modules (gateway service transitively imports $app/state).
   async function forwardRpc(method: string, params: unknown): Promise<unknown> {
+    // Hub-served RPCs: methods whose data lives in the hub DB (users,
+    // identities, workspace state) are answered locally instead of forwarded
+    // to the gateway, which has no concept of hub-side users/@aliases.
+    if (method === "plugins.users.list") {
+      const [usersRes, idsRes] = await Promise.all([
+        fetch("/api/users", { credentials: "same-origin" }),
+        fetch("/api/gateway/channel-identities", { credentials: "same-origin" }),
+      ]);
+      if (!usersRes.ok) throw new Error(`plugins.users.list: /api/users ${usersRes.status}`);
+      if (!idsRes.ok)
+        throw new Error(`plugins.users.list: /api/gateway/channel-identities ${idsRes.status}`);
+      const { users } = (await usersRes.json()) as {
+        users: Array<{ id: string; email: string; displayName: string | null; alias: string | null }>;
+      };
+      const { identities } = (await idsRes.json()) as {
+        identities: Array<{
+          userId: string;
+          channel: string;
+          channelUserId: string;
+          displayName: string | null;
+        }>;
+      };
+      const byUser = new Map<string, typeof identities>();
+      for (const id of identities) {
+        const arr = byUser.get(id.userId) ?? [];
+        arr.push(id);
+        byUser.set(id.userId, arr);
+      }
+      return {
+        users: users.map((u) => ({
+          id: u.id,
+          name: u.displayName ?? u.email,
+          alias: u.alias,
+          identities: (byUser.get(u.id) ?? []).map((i) => ({
+            channel: i.channel,
+            identifier: i.channelUserId,
+            displayName: i.displayName,
+          })),
+        })),
+      };
+    }
     const mod = await import("$lib/services/gateway.svelte");
     return mod.sendRequest(method, params);
   }
