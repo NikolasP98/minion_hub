@@ -13,6 +13,7 @@ export interface MountHostBridgeOptions {
   onResize?: (height: number) => void;
   onNotify?: (level: "info" | "warn" | "error", message: string) => void;
   onPluginReady?: () => void;
+  forwardRpc?: (method: string, params: unknown) => Promise<unknown>;
 }
 
 export interface MountedHostBridge {
@@ -26,6 +27,7 @@ export function mountHostBridge(opts: MountHostBridgeOptions): MountedHostBridge
     self: opts.self,
     target: opts.target,
     pluginOrigin: opts.pluginOrigin,
+    forwardRpc: opts.forwardRpc,
   });
   bridge.sendHelloOnReady(opts.hello);
   if (opts.onResize) bridge.onResize(opts.onResize);

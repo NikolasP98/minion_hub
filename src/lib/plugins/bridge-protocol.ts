@@ -15,12 +15,25 @@ export type HostToPlugin =
       type: "host:theme-change";
       theme: Theme;
       tokens: Record<string, string>;
+    }
+  | {
+      type: "host:rpc-response";
+      id: string;
+      ok: boolean;
+      payload?: unknown;
+      error?: { code?: string; message?: string };
     };
 
 export type PluginToHost =
   | { type: "plugin:ready" }
   | { type: "plugin:resize"; height: number }
-  | { type: "plugin:notify"; level: "info" | "warn" | "error"; message: string };
+  | { type: "plugin:notify"; level: "info" | "warn" | "error"; message: string }
+  | {
+      type: "plugin:rpc-request";
+      id: string;
+      method: string;
+      params?: unknown;
+    };
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
@@ -29,13 +42,25 @@ function isObject(v: unknown): v is Record<string, unknown> {
 function isPluginToHost(v: unknown): v is PluginToHost {
   if (!isObject(v)) return false;
   const t = v.type;
-  return t === "plugin:ready" || t === "plugin:resize" || t === "plugin:notify";
+  return (
+    t === "plugin:ready" ||
+    t === "plugin:resize" ||
+    t === "plugin:notify" ||
+    t === "plugin:rpc-request"
+  );
 }
 
 export interface HostBridgeOptions {
   self: Window;
   target: Window;
   pluginOrigin: string;
+  /**
+   * Forward a plugin RPC request through the host's privileged gateway WS.
+   * Resolves with the gateway response payload or rejects with an Error.
+   * Wired by mountHostBridge in bridge-host.ts; without it plugin:rpc-request
+   * messages are dropped (legacy plugins that don't use bridge.call still work).
+   */
+  forwardRpc?: (method: string, params: unknown) => Promise<unknown>;
 }
 
 export class HostBridge {
@@ -74,8 +99,37 @@ export class HostBridge {
     } else if (ev.data.type === "plugin:notify") {
       const { level, message } = ev.data;
       for (const h of this.notifyHandlers) h(level, message);
+    } else if (ev.data.type === "plugin:rpc-request") {
+      const { id, method, params } = ev.data;
+      const forward = this.opts.forwardRpc;
+      if (!forward) {
+        this.replyRpc(id, false, undefined, {
+          code: "no-forwarder",
+          message: "host has no forwardRpc configured",
+        });
+        return;
+      }
+      Promise.resolve()
+        .then(() => forward(method, params))
+        .then((payload) => this.replyRpc(id, true, payload))
+        .catch((err: unknown) =>
+          this.replyRpc(id, false, undefined, {
+            code: "rpc-failed",
+            message: err instanceof Error ? err.message : String(err),
+          }),
+        );
     }
   };
+
+  private replyRpc(
+    id: string,
+    ok: boolean,
+    payload?: unknown,
+    error?: { code?: string; message?: string },
+  ): void {
+    const msg: HostToPlugin = { type: "host:rpc-response", id, ok, payload, error };
+    this.opts.target.postMessage(msg, this.opts.pluginOrigin);
+  }
 
   sendHelloOnReady(
     payload: Omit<Extract<HostToPlugin, { type: "host:hello" }>, "type">,

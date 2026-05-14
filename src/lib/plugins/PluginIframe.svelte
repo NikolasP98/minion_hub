@@ -3,6 +3,13 @@
   import { mountHostBridge, type MountedHostBridge } from "./bridge-host";
   import type { Theme } from "./bridge-protocol";
 
+  // Lazy import to keep this component test-renderable without pulling
+  // SvelteKit-only modules (gateway service transitively imports $app/state).
+  async function forwardRpc(method: string, params: unknown): Promise<unknown> {
+    const mod = await import("$lib/services/gateway.svelte");
+    return mod.sendRequest(method, params);
+  }
+
   interface Props {
     pluginId: string;
     entrypoint: string;
@@ -46,6 +53,11 @@
     ? `${srcBase}#hostOrigin=${encodeURIComponent(hostOrigin)}`
     : srcBase;
   const pluginOrigin = new URL(gatewayUrl).origin;
+  // hello.gatewayUrl is consumed by the plugin's WebSocket client. The hub
+  // surfaces gatewayUrl as HTTP(S) because it's also used to derive the
+  // pluginOrigin for postMessage targeting; the plugin needs the ws(s):
+  // equivalent. Convert here so plugins don't have to think about it.
+  const wsGatewayUrl = gatewayUrl.replace(/^http/, "ws");
 
   // Mount the host bridge as soon as iframeEl is bound — NOT in the iframe's
   // onload handler. The plugin's `notifyReady()` fires synchronously when its
@@ -60,7 +72,7 @@
       self: window,
       target: iframeEl.contentWindow,
       pluginOrigin,
-      hello: { theme, tokens, gatewayUrl, authToken },
+      hello: { theme, tokens, gatewayUrl: wsGatewayUrl, authToken },
       onResize: (h) => {
         height = h;
       },
@@ -71,6 +83,12 @@
           timeoutHandle = null;
         }
       },
+      // Plugin RPC forwarded through the hub's existing privileged gateway WS.
+      // Plugins call `bridge.call("plugins.config.get", { ... })` from inside
+      // their iframe; this function relays through sendRequest, so they never
+      // see the gateway token, never need to reimplement the connect frame
+      // protocol, and don't open a second WebSocket.
+      forwardRpc,
     });
     if (timeoutHandle === null && !pluginReady) {
       timeoutHandle = setTimeout(() => {
