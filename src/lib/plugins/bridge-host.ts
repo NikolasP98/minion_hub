@@ -12,6 +12,7 @@ export interface MountHostBridgeOptions {
   };
   onResize?: (height: number) => void;
   onNotify?: (level: "info" | "warn" | "error", message: string) => void;
+  onPluginReady?: () => void;
 }
 
 export interface MountedHostBridge {
@@ -29,6 +30,7 @@ export function mountHostBridge(opts: MountHostBridgeOptions): MountedHostBridge
   bridge.sendHelloOnReady(opts.hello);
   if (opts.onResize) bridge.onResize(opts.onResize);
   if (opts.onNotify) bridge.onNotify(opts.onNotify);
+  if (opts.onPluginReady) bridge.onPluginReady(opts.onPluginReady);
   return {
     bridge,
     dispose: () => bridge.dispose(),

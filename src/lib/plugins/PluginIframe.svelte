@@ -22,6 +22,16 @@
   let mounted: MountedHostBridge | null = null;
   let height = $state(600);
 
+  // Handshake observability: track which stages of the iframe→bridge handshake
+  // have happened. If `plugin:ready` doesn't arrive within HANDSHAKE_TIMEOUT_MS
+  // we render a diagnostic overlay instead of leaving the user staring at the
+  // plugin's "Loading…" screen with no actionable info.
+  const HANDSHAKE_TIMEOUT_MS = 6000;
+  let iframeLoaded = $state(false);
+  let pluginReady = $state(false);
+  let handshakeTimedOut = $state(false);
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
   // Gateway serves /plugins/<id>/ui/<subpath> resolving against ui/dist/.
   // Some manifests list entrypoint as "ui/dist/index.html" (disk path); strip
   // that prefix so the URL is just /plugins/<id>/ui/index.html.
@@ -54,21 +64,80 @@
       onResize: (h) => {
         height = h;
       },
+      onPluginReady: () => {
+        pluginReady = true;
+        if (timeoutHandle !== null) {
+          clearTimeout(timeoutHandle);
+          timeoutHandle = null;
+        }
+      },
     });
+    if (timeoutHandle === null && !pluginReady) {
+      timeoutHandle = setTimeout(() => {
+        if (!pluginReady) handshakeTimedOut = true;
+      }, HANDSHAKE_TIMEOUT_MS);
+    }
   });
 
   $effect(() => {
     mounted?.sendThemeChange(theme, tokens);
   });
 
-  onDestroy(() => mounted?.dispose());
+  onDestroy(() => {
+    mounted?.dispose();
+    if (timeoutHandle !== null) {
+      clearTimeout(timeoutHandle);
+      timeoutHandle = null;
+    }
+  });
 </script>
 
-<iframe
-  bind:this={iframeEl}
-  title="Plugin: {pluginId}"
-  {src}
-  referrerpolicy="strict-origin"
-  style:height="{height}px"
-  class="w-full border-0"
-></iframe>
+<div class="relative w-full">
+  <iframe
+    bind:this={iframeEl}
+    title="Plugin: {pluginId}"
+    {src}
+    referrerpolicy="strict-origin"
+    onload={() => {
+      iframeLoaded = true;
+    }}
+    style:height="{height}px"
+    class="w-full border-0"
+  ></iframe>
+  {#if handshakeTimedOut && !pluginReady}
+    <div
+      class="bg-background/95 absolute inset-0 flex items-start justify-center overflow-auto p-6 backdrop-blur"
+    >
+      <div class="max-w-xl space-y-3 rounded-md border border-destructive/50 bg-card p-4 text-sm">
+        <header class="font-semibold text-destructive">
+          Plugin handshake timed out ({HANDSHAKE_TIMEOUT_MS / 1000}s)
+        </header>
+        <p class="text-muted-foreground">
+          The plugin loaded its assets but did not send <code>plugin:ready</code> in time, or its
+          <code>host:hello</code> reply was rejected. Common causes: cross-origin Referrer-Policy
+          stripped the host origin, the plugin throws before <code>bridge.notifyReady()</code>, or
+          the plugin's gateway WebSocket fails immediately.
+        </p>
+        <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-xs">
+          <dt class="text-muted-foreground">plugin</dt>
+          <dd>{pluginId}</dd>
+          <dt class="text-muted-foreground">iframe src</dt>
+          <dd class="break-all">{src}</dd>
+          <dt class="text-muted-foreground">plugin origin</dt>
+          <dd>{pluginOrigin}</dd>
+          <dt class="text-muted-foreground">host origin</dt>
+          <dd>{hostOrigin || "(unknown — SSR?)"}</dd>
+          <dt class="text-muted-foreground">iframe loaded</dt>
+          <dd>{iframeLoaded ? "yes" : "no"}</dd>
+          <dt class="text-muted-foreground">plugin:ready</dt>
+          <dd>{pluginReady ? "yes" : "no"}</dd>
+        </dl>
+        <p class="text-muted-foreground">
+          Open the iframe URL directly in a new tab and check its console for errors. If the page
+          shows the plugin's own "Loading…" screen, the bridge handshake is the culprit — check
+          DevTools → Network for postMessage failures.
+        </p>
+      </div>
+    </div>
+  {/if}
+</div>

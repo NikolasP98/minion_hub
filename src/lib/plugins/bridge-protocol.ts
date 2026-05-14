@@ -53,6 +53,7 @@ export class HostBridge {
   private pluginReady = false;
   private resizeHandlers: Array<(height: number) => void> = [];
   private notifyHandlers: Array<(level: "info" | "warn" | "error", message: string) => void> = [];
+  private readyHandlers: Array<() => void> = [];
 
   constructor(private opts: HostBridgeOptions) {
     opts.self.addEventListener("message", this.handle);
@@ -62,9 +63,11 @@ export class HostBridge {
     if (ev.origin !== this.opts.pluginOrigin) return;
     if (!isPluginToHost(ev.data)) return;
     if (ev.data.type === "plugin:ready") {
+      const wasReady = this.pluginReady;
       this.pluginReady = true;
       this.flushHello();
       this.flushTheme();
+      if (!wasReady) for (const h of this.readyHandlers) h();
     } else if (ev.data.type === "plugin:resize") {
       const { height } = ev.data;
       for (const h of this.resizeHandlers) h(height);
@@ -107,11 +110,17 @@ export class HostBridge {
     this.notifyHandlers.push(fn);
   }
 
+  onPluginReady(fn: () => void): void {
+    if (this.pluginReady) fn();
+    else this.readyHandlers.push(fn);
+  }
+
   dispose(): void {
     this.opts.self.removeEventListener("message", this.handle);
     this.pendingHelloPayload = null;
     this.pendingThemePayload = null;
     this.resizeHandlers = [];
     this.notifyHandlers = [];
+    this.readyHandlers = [];
   }
 }
