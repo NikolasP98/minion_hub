@@ -1,0 +1,29 @@
+<script lang="ts">
+    import type { Snippet } from 'svelte';
+    import SettingsTabBar from '$lib/components/settings/SettingsTabBar.svelte';
+    import { page } from '$app/state';
+    import { goto } from '$app/navigation';
+
+    interface Props {
+        children: Snippet;
+    }
+
+    let { children }: Props = $props();
+
+    // Gateway-tab selection is only meaningful when we're on /settings (legacy host page).
+    // For hub-tab routes (/settings/team, /settings/backups, …) clicking a gateway tab
+    // navigates to /settings?s=<id>.
+    function handleSelect(id: string) {
+        const target = `/settings?s=${id}`;
+        if (page.url.pathname === '/settings') {
+            goto(target, { replaceState: true, noScroll: true });
+        } else {
+            goto(target);
+        }
+    }
+</script>
+
+<div class="flex-1 min-h-0 flex flex-col">
+    <SettingsTabBar onselect={handleSelect} />
+    {@render children()}
+</div>
