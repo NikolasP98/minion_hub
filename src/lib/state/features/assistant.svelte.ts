@@ -5,14 +5,15 @@
  * routed through the gateway's regular chat.send RPC against that agent's
  * main session. The existing agentChat[personalAgentId] state stream powers
  * the conversation UI, so we don't reinvent message rendering or streaming.
+ *
+ * personalAgent data flows through the canonical (app)/+layout.server.ts
+ * load bundle into page.data — no client fetch on mount.
  */
 
-interface AssistantState {
+import { page } from '$app/state';
+
+interface AssistantUiState {
     open: boolean;
-    /** Resolved personal agent ID (from /api/personal-agent) */
-    personalAgentId: string | null;
-    loading: boolean;
-    error: string | null;
     /** Current scope context shown above input — surfaces what the assistant can see */
     scope: {
         route: string | null;
@@ -20,55 +21,77 @@ interface AssistantState {
     };
 }
 
-export const assistant = $state<AssistantState>({
+const ui = $state<AssistantUiState>({
     open: false,
-    personalAgentId: null,
-    loading: false,
-    error: null,
     scope: {
         route: null,
         agentId: null,
     },
 });
 
-export function toggleAssistant() {
-    assistant.open = !assistant.open;
-}
+type PersonalAgentEntry = { agentId?: string | null } | null;
 
-export function openAssistant() {
-    assistant.open = true;
-}
-
-export function closeAssistant() {
-    assistant.open = false;
-}
-
-export function setScope(scope: Partial<AssistantState['scope']>) {
-    Object.assign(assistant.scope, scope);
+function pagePersonalAgent(): PersonalAgentEntry {
+    const data = page.data as { personalAgent?: { agent: PersonalAgentEntry } | null } | undefined;
+    return data?.personalAgent?.agent ?? null;
 }
 
 /**
- * Fetch the user's personal agent ID. Memoized — safe to call repeatedly.
+ * Public state surface. personalAgentId/loading/error are getters over
+ * page.data so the canonical server-load is the single source of truth.
  */
-export async function loadPersonalAgent(): Promise<void> {
-    if (assistant.personalAgentId || assistant.loading) return;
-    assistant.loading = true;
-    assistant.error = null;
-    try {
-        const res = await fetch('/api/personal-agent');
-        if (!res.ok) {
-            assistant.error = res.status === 401 ? 'Sign in to use the assistant' : 'Assistant unavailable';
-            return;
+export const assistant = {
+    get open() {
+        return ui.open;
+    },
+    set open(value: boolean) {
+        ui.open = value;
+    },
+    get scope() {
+        return ui.scope;
+    },
+    get personalAgentId(): string | null {
+        return pagePersonalAgent()?.agentId ?? null;
+    },
+    /**
+     * No client-side loading anymore — kept for source compatibility.
+     */
+    get loading(): boolean {
+        return false;
+    },
+    get error(): string | null {
+        // Synthesize an error message when the server-load returned no
+        // personal agent (rare; means the user has no provisioned agent).
+        const data = page.data as { personalAgent?: unknown } | undefined;
+        if (data && 'personalAgent' in (data ?? {})) {
+            const agent = pagePersonalAgent();
+            if (!agent?.agentId) return 'No personal agent provisioned';
         }
-        const data = (await res.json()) as { agent: { agentId?: string | null } | null };
-        if (data.agent?.agentId) {
-            assistant.personalAgentId = data.agent.agentId;
-        } else {
-            assistant.error = 'No personal agent provisioned';
-        }
-    } catch (e) {
-        assistant.error = e instanceof Error ? e.message : 'Failed to load assistant';
-    } finally {
-        assistant.loading = false;
-    }
+        return null;
+    },
+};
+
+export function toggleAssistant() {
+    ui.open = !ui.open;
+}
+
+export function openAssistant() {
+    ui.open = true;
+}
+
+export function closeAssistant() {
+    ui.open = false;
+}
+
+export function setScope(scope: Partial<AssistantUiState['scope']>) {
+    Object.assign(ui.scope, scope);
+}
+
+/**
+ * No-op shim: data is now hydrated via the (app)/+layout.server.ts bundle
+ * and exposed through `assistant.personalAgentId`. Kept so existing
+ * callsites (e.g. FloatingAssistant.svelte onMount) don't break.
+ */
+export function loadPersonalAgent(): void {
+    /* no-op — see module docblock */
 }
