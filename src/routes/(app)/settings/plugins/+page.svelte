@@ -248,15 +248,26 @@
           >
             <ul class="flex flex-row overflow-x-auto md:flex-col md:overflow-x-visible">
               {#each data.entries as entry, i (entry.pluginId + ':' + entry.entrypoint)}
+                {@const active = selected === i}
                 <li>
                   <button
                     type="button"
                     onclick={() => (selected = i)}
-                    aria-current={selected === i ? 'page' : undefined}
-                    class="flex w-full items-start gap-2.5 px-4 py-3 text-left text-sm transition-colors hover:bg-muted"
-                    class:bg-muted={selected === i}
+                    aria-current={active ? 'page' : undefined}
+                    class="group relative flex w-full items-start gap-2.5 border-l-2 px-4 py-3 text-left text-sm transition-colors"
+                    class:border-l-transparent={!active}
+                    class:hover:bg-muted={!active}
+                    class:hover:border-l-border={!active}
+                    class:border-l-accent={active}
+                    class:bg-accent={active}
+                    class:text-accent-foreground={active}
+                    class:shadow-inner={active}
                   >
-                    <span class="mt-0.5 inline-flex items-center justify-center text-base leading-none text-muted-foreground">
+                    <span
+                      class="mt-0.5 inline-flex items-center justify-center text-base leading-none"
+                      class:text-muted-foreground={!active}
+                      class:text-accent-foreground={active}
+                    >
                       {#if entry.icon && /\p{Extended_Pictographic}/u.test(entry.icon)}
                         {entry.icon}
                       {:else}
@@ -264,13 +275,27 @@
                       {/if}
                     </span>
                     <span class="min-w-0 flex-1">
-                      <span class="block truncate font-medium text-foreground">{entry.title}</span>
+                      <span
+                        class="block truncate font-medium"
+                        class:text-foreground={!active}
+                        class:text-accent-foreground={active}
+                      >{entry.title}</span>
                       {#if entry.description}
-                        <span class="mt-0.5 block truncate text-xs text-muted-foreground">
+                        <span
+                          class="mt-0.5 block truncate text-xs"
+                          class:text-muted-foreground={!active}
+                          class:text-accent-foreground={active}
+                          class:opacity-80={active}
+                        >
                           {entry.description}
                         </span>
                       {/if}
-                      <span class="mt-1 block truncate font-mono text-[10px] text-muted-foreground">
+                      <span
+                        class="mt-1 block truncate font-mono text-[10px]"
+                        class:text-muted-foreground={!active}
+                        class:text-accent-foreground={active}
+                        class:opacity-60={active}
+                      >
                         {entry.pluginId}
                       </span>
                     </span>
