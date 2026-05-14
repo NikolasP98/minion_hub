@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { invalidate } from '$app/navigation';
   import * as m from '$lib/paraglide/messages';
   import { authClient } from '$lib/auth';
   import { toastSuccess, toastError } from '$lib/state/ui/toast.svelte';
@@ -28,10 +29,21 @@
   const ROLES: UserRow['role'][] = ['user', 'admin'];
   const INVITE_ROLES = ['member', 'admin'];
 
-  type CustomRole = { id: string; name: string; isSystem: boolean };
-  let customRoles = $state<CustomRole[]>([]);
+  type CustomRole = { id: string; name: string; isSystem: boolean; description?: string | null; permissions?: string[]; memberCount?: number };
 
-  let users = $state<UserRow[]>([]);
+  // Server-loaded initial data (passed by /settings/team/+page.server.ts).
+  // When the component is mounted on a route that didn't preload, both default
+  // to empty arrays and the component falls back to client-side fetches.
+  interface Props {
+    initialUsers?: UserRow[];
+    initialCustomRoles?: CustomRole[];
+  }
+  let { initialUsers = [], initialCustomRoles = [] }: Props = $props();
+  const hasServerData = $derived(initialUsers.length > 0 || initialCustomRoles.length > 0);
+
+  let customRoles = $state<CustomRole[]>(initialCustomRoles);
+
+  let users = $state<UserRow[]>(initialUsers);
   let invitations = $state<PendingInvite[]>([]);
   let loading = $state(false);
   let error = $state<string | null>(null);
@@ -57,6 +69,7 @@
     void ensureAliases();
     toastSuccess(m.users_team());
     expandedId = null;
+    void invalidate('settings:team');
   }
 
   // Invite form state
@@ -111,7 +124,10 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ roleId }),
     });
-    if (res.ok) users = users.map((u) => (u.id === userId ? { ...u, roleId } : u));
+    if (res.ok) {
+      users = users.map((u) => (u.id === userId ? { ...u, roleId } : u));
+      void invalidate('settings:team');
+    }
   }
 
   async function changeRole(userId: string, role: UserRow['role']) {
@@ -182,9 +198,15 @@
   }
 
   onMount(() => {
-    load();
+    // When initial server data is provided (the file-routed page), skip the
+    // users + customRoles refetches — they're already in `users`/`customRoles`.
+    // Invitations always need a client fetch because Better Auth's organization
+    // API is exposed via authClient (server invocation requires extra wiring).
+    if (!hasServerData) {
+      load();
+      loadCustomRoles();
+    }
     loadInvitations();
-    loadCustomRoles();
   });
 </script>
 

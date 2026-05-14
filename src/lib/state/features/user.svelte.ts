@@ -1,5 +1,6 @@
+import { page } from '$app/state';
+import { invalidate } from '$app/navigation';
 import { authClient } from '$lib/auth';
-import { env } from '$env/dynamic/public';
 
 type UserRole = 'user' | 'admin';
 
@@ -9,111 +10,74 @@ interface CurrentUser {
   displayName: string | null;
 }
 
-interface UserState {
-  user: CurrentUser | null;
-  role: UserRole | null;
-  orgId: string | null;
-  loading: boolean;
-  error: string | null;
-  allowedAgentIds: Set<string> | null; // null = no filtering (admin)
-}
-
-const state = $state<UserState>({
-  user: null,
-  role: null,
-  orgId: null,
-  loading: false,
-  error: null,
-  allowedAgentIds: null,
-});
-
-export const userState = state;
-
-export const isAdmin = {
-  get value() {
-    return state.role === 'admin';
+/**
+ * Canonical user state. Read-only getters that derive from `page.data`, which
+ * is populated by `(app)/+layout.server.ts` (auth bundle: user, permissions,
+ * workspaces, hosts, preferences, personalAgent).
+ *
+ * Replaces the previous module-scoped `$state` rune — server load + page.data
+ * now drives every auth-derived value, so `invalidate('app:user')` (etc.) is
+ * the single mechanism for refreshing client state after a mutation.
+ *
+ * The `(page.data as any)` casts here are a pragmatic shortcut — SvelteKit's
+ * generated `LayoutData` is hard to reference from inside `$lib`, and the
+ * shape is stable per the layout-server contract.
+ */
+export const userState = {
+  get user(): CurrentUser | null {
+    const u = (page.data as any)?.user;
+    return u ? { id: u.id, email: u.email, displayName: u.displayName ?? null } : null;
+  },
+  get role(): UserRole | null {
+    return ((page.data as any)?.user?.role as UserRole) ?? null;
+  },
+  get orgId(): string | null {
+    return ((page.data as any)?.user?.orgId as string) ?? null;
+  },
+  get allowedAgentIds(): Set<string> | null {
+    const ids = (page.data as any)?.permissions?.allowedAgentIds;
+    return ids ? new Set(ids) : null;
   },
 };
 
-export async function loadUser() {
-  if (env.PUBLIC_AUTH_DISABLED === 'true') {
-    state.user = { id: 'local', email: 'local@dev', displayName: 'Local Dev' };
-    state.role = 'admin';
-    state.orgId = 'local';
-    state.loading = false;
-    return;
-  }
-  state.loading = true;
-  state.error = null;
-  try {
-    const session = await authClient.getSession();
-    if (session.data?.user) {
-      const u = session.data.user;
-      state.user = {
-        id: u.id,
-        email: u.email,
-        displayName: u.name ?? null,
-      };
-      state.orgId =
-        (session.data.session as { activeOrganizationId?: string | null }).activeOrganizationId ??
-        null;
+export const isAdmin = {
+  get value(): boolean {
+    return ((page.data as any)?.user?.role) === 'admin';
+  },
+};
 
-      // Auto-activate first org if session exists but no activeOrganizationId
-      if (!state.orgId) {
-        try {
-          const orgs = await authClient.organization.list();
-          const firstOrg = orgs.data?.[0];
-          if (firstOrg) {
-            await authClient.organization.setActive({ organizationId: firstOrg.id });
-            state.orgId = firstOrg.id;
-          }
-        } catch {
-          /* non-fatal */
-        }
-      }
-
-      // Fetch role from /api/me
-      try {
-        const res = await fetch('/api/me');
-        if (res.ok) {
-          const data = await res.json();
-          state.role = data.role ?? 'user';
-        } else {
-          state.role = 'user';
-        }
-      } catch {
-        state.role = 'user';
-      }
-    } else {
-      state.user = null;
-      state.role = null;
-      state.orgId = null;
-    }
-  } catch (err) {
-    state.error = err instanceof Error ? err.message : 'Failed to load user';
-  } finally {
-    state.loading = false;
-  }
+/**
+ * Force a re-fetch of `LayoutServerLoad` data. Call after any client action
+ * that could change the user / permissions / workspaces / hosts / preferences /
+ * personalAgent on the server — the layout load re-runs, `locals.user` is
+ * re-read fresh from the DB, and the result flows into `page.data` so every
+ * getter above sees the new value automatically.
+ */
+export async function invalidateUser(): Promise<void> {
+  await invalidate('app:user');
 }
 
-export async function loadAllowedAgents(serverId: string) {
-  if (state.role === 'admin') {
-    state.allowedAgentIds = null; // admin sees all
-    return;
-  }
-  if (!state.user) return;
-  try {
-    const res = await fetch(`/api/users/${state.user.id}/agents?serverId=${serverId}`);
-    if (res.ok) {
-      const data = await res.json();
-      state.allowedAgentIds = new Set(data.agentIds ?? []);
-    }
-  } catch {
-    /* non-fatal, default to showing nothing */
-  }
+export async function invalidatePermissions(): Promise<void> {
+  await invalidate('app:permissions');
 }
 
-export async function logout() {
+export async function invalidateWorkspaces(): Promise<void> {
+  await invalidate('app:workspaces');
+}
+
+export async function invalidateHosts(): Promise<void> {
+  await invalidate('app:hosts');
+}
+
+export async function invalidatePreferences(): Promise<void> {
+  await invalidate('app:preferences');
+}
+
+export async function invalidatePersonalAgent(): Promise<void> {
+  await invalidate('app:personalAgent');
+}
+
+export async function logout(): Promise<void> {
   try {
     await authClient.signOut();
   } finally {
@@ -121,7 +85,7 @@ export async function logout() {
   }
 }
 
-export function getUserInitials(user: CurrentUser): string {
+export function getUserInitials(user: { displayName: string | null; email: string }): string {
   if (user.displayName) {
     return user.displayName
       .split(' ')

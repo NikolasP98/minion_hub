@@ -2,7 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getTenantCtx } from '$server/auth/tenant-ctx';
 import {
-  getPersonalAgent,
+  loadPersonalAgentForUser,
   updatePersonalAgent,
 } from '$server/services/personal-agent.service';
 
@@ -16,13 +16,17 @@ export const GET: RequestHandler = async ({ locals }) => {
     return json({ error: 'Authentication required' }, { status: 401 });
   }
 
-  const ctx = await getTenantCtx(locals);
-  if (!ctx) {
-    return json({ error: 'Authentication required' }, { status: 401 });
+  try {
+    return json(await loadPersonalAgentForUser(locals, locals.user.id));
+  } catch (e) {
+    // Preserve the existing 401 JSON shape (`{ error }`) for the
+    // "no tenant seeded yet" case rather than SvelteKit's default
+    // `{ message }` body.
+    if (e && typeof e === 'object' && 'status' in e && (e as { status: number }).status === 401) {
+      return json({ error: 'Authentication required' }, { status: 401 });
+    }
+    throw e;
   }
-
-  const agent = await getPersonalAgent(ctx, locals.user.id);
-  return json({ agent });
 };
 
 /**

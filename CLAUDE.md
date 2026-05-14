@@ -138,3 +138,18 @@ Better Auth configuration (`auth.ts`) and client (`auth-client.ts`) with barrel 
 - Better Auth uses **scrypt** for passwords (not argon2). Reset via: `import { hashPassword } from 'better-auth/crypto'`
 - Dev auth bypass needs BOTH `AUTH_DISABLED=true` (server) AND `PUBLIC_AUTH_DISABLED=true` (client) in `.env`
 - Drizzle relations referencing non-existent columns fail silently at compile time — only crash at runtime in `extractTablesRelationalConfig`. If auth returns 500 with `Cannot read properties of undefined (reading 'notNull')`, check `src/server/db/relations.ts` for column mismatches.
+
+### Auth-derived data: canonical load flow
+
+Auth-derived data (`user`, `permissions`, `workspaces`, `personalAgent`, `hosts`, `preferences`)
+flows through `(app)/+layout.server.ts` and per-page `+page.server.ts` loads. Client
+components read via `page.data.X` (or via the getter wrappers in `$lib/state/features/user.svelte.ts`).
+Mutations call `invalidate('app:X')` (or `'settings:X'` for per-page deps) to refresh.
+
+**Anti-pattern (do NOT add)**: client `fetch('/api/me')`, `fetch('/api/users/me/permissions')`,
+etc., from `$effect`/`onMount` to load auth-derived data. That's what the
+2026-05-13 canonical-load-flow refactor removed because it produces a 401 race window
+during the OAuth callback transition. If you need new auth-derived data, add it to the
+appropriate `+layout.server.ts` or `+page.server.ts` load function.
+
+Spec/plan: `docs/superpowers/specs/2026-05-13-hub-canonical-load-flow-design.md`

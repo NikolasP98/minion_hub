@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { invalidate } from '$app/navigation';
   import PermissionGrid from './PermissionGrid.svelte';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
 
@@ -12,8 +13,17 @@
     memberCount: number;
   };
 
-  let roles = $state<Role[]>([]);
-  let catalog = $state<Record<string, string[]>>({});
+  interface Props {
+    initialRoles?: Role[];
+    initialCatalog?: Record<string, string[]>;
+  }
+  let { initialRoles = [], initialCatalog = {} }: Props = $props();
+  const hasServerData = $derived(
+    initialRoles.length > 0 || Object.keys(initialCatalog).length > 0,
+  );
+
+  let roles = $state<Role[]>(initialRoles);
+  let catalog = $state<Record<string, string[]>>(initialCatalog);
   let expandedId = $state<string | null>(null);
   let creating = $state(false);
   let draftName = $state('');
@@ -38,6 +48,7 @@
     if (res.ok) {
       roles = roles.map((r) => (r.id === role.id ? { ...r, permissions: perms } : r));
       toastSuccess('Role updated');
+      void invalidate('settings:roles');
     } else {
       toastError('Save failed');
     }
@@ -56,6 +67,7 @@
       draftPerms = [];
       creating = false;
       await load();
+      void invalidate('settings:roles');
     } else {
       const d = await res.json().catch(() => ({}));
       toastError((d as { message?: string }).message ?? 'create failed');
@@ -66,11 +78,17 @@
     if (role.isSystem) return;
     if (!confirm(`Delete role "${role.name}"?`)) return;
     const res = await fetch(`/api/roles/${role.id}`, { method: 'DELETE' });
-    if (res.ok) roles = roles.filter((r) => r.id !== role.id);
-    else toastError('Delete failed');
+    if (res.ok) {
+      roles = roles.filter((r) => r.id !== role.id);
+      void invalidate('settings:roles');
+    } else {
+      toastError('Delete failed');
+    }
   }
 
-  onMount(load);
+  onMount(() => {
+    if (!hasServerData) load();
+  });
 </script>
 
 <section class="max-w-3xl mx-auto mt-8">

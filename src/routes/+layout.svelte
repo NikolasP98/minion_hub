@@ -17,8 +17,9 @@
   import { conn } from '$lib/state/gateway/connection.svelte';
   import { loadHosts, hostsState } from '$lib/state/features/hosts.svelte';
   import { wsConnect } from '$lib/services/gateway.svelte';
-  import { loadUser, userState } from '$lib/state/features/user.svelte';
+  import { userState } from '$lib/state/features/user.svelte';
   import { type Snippet } from 'svelte';
+  import type { LayoutData } from './$types';
   import { locale } from '$lib/state/ui/locale.svelte';
   import { loadAndApplyServerPreferences } from '$lib/state/ui/preference-sync.svelte';
   import { installInterceptor } from '$lib/utils/console-interceptor';
@@ -31,13 +32,17 @@
     injectAnalytics();
   }
 
-  let { children }: { children: Snippet } = $props();
+  // `data` (LayoutData) is consumed via `page.data` getters in userState; we
+  // don't need it directly in this component.
+  let { children }: { data: LayoutData; children: Snippet } = $props();
 
   const isVoxelized = $derived(theme.preset.id === 'voxelized');
 
+  // userState now derives from `page.data` via getters — no rune hydration
+  // needed. Server load + `invalidate('app:user')` is the single refresh path.
+
   onMount(async () => {
     installInterceptor();
-    await loadUser();
 
     if (!userState.user) {
       const current = page.url.pathname;

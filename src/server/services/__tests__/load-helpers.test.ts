@@ -1,0 +1,88 @@
+/**
+ * Smoke tests for server-side load helpers.
+ *
+ * These verify that each helper:
+ *   1. Has the (ctx: LoadCtx, userId: string) => Promise<T> shape.
+ *   2. Delegates to the underlying service function.
+ *   3. Returns a response that matches the byte-shape of the corresponding
+ *      API endpoint.
+ *
+ * The actual business logic is unit-tested via the existing service tests
+ * (roles.service, server.service, user-preferences.service, etc.). Here
+ * we only test the shim layer.
+ */
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// ── Mocks ────────────────────────────────────────────────────────────────────
+
+const mockGetPermissionsForUser =
+  vi.fn<(ctx: unknown, userId: string) => Promise<Set<string>>>();
+vi.mock('../roles.service', () => ({
+  getPermissionsForUser: (ctx: unknown, userId: string) =>
+    mockGetPermissionsForUser(ctx, userId),
+}));
+
+const mockListServers =
+  vi.fn<(ctx: unknown, userId?: string, role?: string) => Promise<unknown[]>>();
+vi.mock('../server.service', () => ({
+  listServers: (ctx: unknown, userId?: string, role?: string) =>
+    mockListServers(ctx, userId, role),
+}));
+
+const mockGetTenantCtx = vi.fn<(locals: unknown) => Promise<unknown>>();
+vi.mock('$server/auth/tenant-ctx', () => ({
+  getTenantCtx: (locals: unknown) => mockGetTenantCtx(locals),
+}));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+// ── permissions.service ──────────────────────────────────────────────────────
+
+describe('loadPermissionsForUser', () => {
+  it('returns { permissions: string[] }', async () => {
+    mockGetPermissionsForUser.mockResolvedValue(new Set(['agents:read', 'agents:write']));
+    const { loadPermissionsForUser } = await import('../permissions.service');
+
+    const result = await loadPermissionsForUser(
+      { tenantCtx: { db: {}, tenantId: 't1' } as never },
+      'u1',
+    );
+
+    expect(result).toEqual({ permissions: ['agents:read', 'agents:write'] });
+    expect(mockGetPermissionsForUser).toHaveBeenCalledWith({ db: {}, tenantId: 't1' }, 'u1');
+  });
+
+  it('throws 401 when tenantCtx is absent', async () => {
+    const { loadPermissionsForUser } = await import('../permissions.service');
+    await expect(loadPermissionsForUser({}, 'u1')).rejects.toMatchObject({ status: 401 });
+  });
+});
+
+// ── hosts.service ────────────────────────────────────────────────────────────
+
+describe('loadHostsForUser', () => {
+  it('returns authoritative empty list when no tenant seeded', async () => {
+    mockGetTenantCtx.mockResolvedValue(null);
+    const { loadHostsForUser } = await import('../hosts.service');
+
+    const result = await loadHostsForUser({}, 'u1', 'user');
+    expect(result).toEqual({ servers: [], authoritative: true });
+    expect(mockListServers).not.toHaveBeenCalled();
+  });
+
+  it('delegates to listServers when tenant exists', async () => {
+    const ctx = { db: {}, tenantId: 't1' };
+    mockGetTenantCtx.mockResolvedValue(ctx);
+    mockListServers.mockResolvedValue([{ id: 's1', name: 'host-1' }]);
+    const { loadHostsForUser } = await import('../hosts.service');
+
+    const result = await loadHostsForUser({}, 'u1', 'admin');
+    expect(result).toEqual({
+      servers: [{ id: 's1', name: 'host-1' }],
+      authoritative: true,
+    });
+    expect(mockListServers).toHaveBeenCalledWith(ctx, 'u1', 'admin');
+  });
+});

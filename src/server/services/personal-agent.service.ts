@@ -1,9 +1,11 @@
 import { eq, and, inArray, lt, sql } from 'drizzle-orm';
+import { error as httpError } from '@sveltejs/kit';
 import { personalAgents } from '@minion-stack/db/schema';
 import { user } from '@minion-stack/db/schema';
 import { newId, nowMs } from '$server/db/utils';
 import { assignAgentToUser } from './user-agents.service';
 import type { TenantContext } from './base';
+import type { LoadCtx } from './types';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -43,7 +45,11 @@ export async function provisionPersonalAgent(
     id: newId(),
     userId: params.userId,
     agentId,
-    serverId: params.serverId,
+    // Coerce empty string to null — the column is FK→servers.id and nullable.
+    // Callers like hooks.server.ts pass '' when no default server is known
+    // (e.g. fresh local DB with no configured host), which would trigger
+    // SQLITE_CONSTRAINT_FOREIGNKEY since '' isn't a valid server id.
+    serverId: params.serverId === '' ? null : params.serverId,
     displayName: '',
     personalityConfigured: false,
     provisioningStatus: 'pending',
@@ -58,8 +64,13 @@ export async function provisionPersonalAgent(
   // Update user.personalAgentId for fast lookup
   await ctx.db.update(user).set({ personalAgentId: agentId }).where(eq(user.id, params.userId));
 
-  // Also insert into user_agents for JWT agentIds compatibility
-  await assignAgentToUser(ctx, params.userId, agentId, params.serverId);
+  // Also insert into user_agents for JWT agentIds compatibility.
+  // user_agents.server_id is NOT NULL + FK→servers.id, so skip when no
+  // server is configured (e.g. fresh local DB). The assignment will
+  // happen later when a host is added through the UI.
+  if (params.serverId) {
+    await assignAgentToUser(ctx, params.userId, agentId, params.serverId);
+  }
 
   // Return the row (either newly created or existing)
   const [existing] = await ctx.db
@@ -149,4 +160,34 @@ export async function listPendingAgents(
 
 export async function deletePersonalAgent(ctx: TenantContext, userId: string): Promise<void> {
   await ctx.db.delete(personalAgents).where(eq(personalAgents.userId, userId));
+}
+
+// ── Load helper (callable from +server.ts AND +layout.server.ts) ────────────
+
+export interface PersonalAgentLoadResult {
+  agent: PersonalAgentRow | null;
+}
+
+/**
+ * Load the authenticated user's personal agent row, shaped exactly like
+ * `GET /api/personal-agent` (`{ agent }`).
+ *
+ * Resolves the tenant context internally (matching the endpoint behavior:
+ * fall back to the first organization if `locals.tenantCtx` is unset).
+ * Throws 401 if no tenant has been seeded yet.
+ *
+ * Implementation note: `getTenantCtx` is imported dynamically because it
+ * pulls in `$server/db/client` (and through it `$env/dynamic/private`),
+ * which the existing unit tests for this module don't stub. Keeping the
+ * top-level import surface unchanged preserves test isolation.
+ */
+export async function loadPersonalAgentForUser(
+  locals: LoadCtx,
+  userId: string,
+): Promise<PersonalAgentLoadResult> {
+  const { getTenantCtx } = await import('$server/auth/tenant-ctx');
+  const ctx = await getTenantCtx(locals as App.Locals);
+  if (!ctx) throw httpError(401, 'Authentication required');
+  const agent = await getPersonalAgent(ctx, userId);
+  return { agent };
 }

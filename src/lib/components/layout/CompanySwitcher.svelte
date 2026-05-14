@@ -1,31 +1,27 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
+	import { page } from '$app/state';
+	import { invalidateWorkspaces } from '$lib/state/features/user.svelte';
 
 	type Workspace = { companyId: string; role: string; name: string };
 
-	let workspaces = $state<Workspace[]>([]);
+	// Workspaces flow through the (app)/+layout.server.ts bundle into
+	// page.data — no client-side fetch on mount required.
+	const workspaces = $derived<Workspace[]>(
+		((page.data as { workspaces?: Workspace[] })?.workspaces) ?? [],
+	);
 	// currentCompanyId: We can't read the httpOnly pc_company_id cookie from JS.
-	// Instead we default to the first workspace returned by the API; the real
-	// company selection is enforced server-side via the cookie anyway.
+	// Default to the first workspace; the real selection is enforced server-side.
 	let currentCompanyId = $state<string | null>(null);
-	let loading = $state(true);
 
-	onMount(async () => {
-		const res = await fetch('/api/workspaces');
-		if (res.ok) {
-			workspaces = await res.json();
-			// Default to first entry — server controls the actual active selection.
-			currentCompanyId = workspaces[0]?.companyId ?? null;
-			// If exactly one workspace, auto-select it so the pc_company_id cookie
-			// is set without requiring an explicit dropdown interaction. Without
-			// this, single-workspace users land on /workforce/welcome because
-			// the <select onchange> never fires.
-			if (workspaces.length === 1 && currentCompanyId) {
-				await select(currentCompanyId);
-			}
+	onMount(() => {
+		currentCompanyId = workspaces[0]?.companyId ?? null;
+		// If exactly one workspace, auto-select it so the pc_company_id cookie
+		// is set without requiring an explicit dropdown interaction.
+		if (workspaces.length === 1 && currentCompanyId) {
+			void select(currentCompanyId);
 		}
-		loading = false;
 	});
 
 	async function select(companyId: string) {
@@ -36,12 +32,13 @@
 		});
 		if (res.ok) {
 			currentCompanyId = companyId;
+			await invalidateWorkspaces();
 			await invalidateAll();
 		}
 	}
 </script>
 
-{#if !loading && workspaces.length > 0}
+{#if workspaces.length > 0}
 	<select
 		class="switcher"
 		value={currentCompanyId}

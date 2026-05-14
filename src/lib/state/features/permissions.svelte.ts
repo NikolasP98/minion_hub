@@ -1,21 +1,30 @@
 import type { Permission } from '$lib/permissions';
+import { page } from '$app/state';
 
-let perms = $state(new Set<string>());
-let loaded = $state(false);
+/**
+ * Permissions flow through the canonical (app)/+layout.server.ts bundle
+ * into page.data — no client fetch. Mutations should call
+ * `invalidatePermissions()` from `$lib/state/features/user.svelte` to
+ * trigger a targeted re-fetch via the `app:permissions` dep key.
+ */
 
-export async function ensurePermissions() {
-  if (loaded) return;
-  const res = await fetch('/api/users/me/permissions');
-  if (!res.ok) return;
-  const data = (await res.json()) as { permissions: string[] };
-  perms = new Set(data.permissions);
-  loaded = true;
+function pagePermissions(): string[] {
+  const data = page.data as { permissions?: { permissions?: string[] } } | undefined;
+  return data?.permissions?.permissions ?? [];
+}
+
+/**
+ * No-op shim: data is server-loaded. Kept for callsite compatibility
+ * (e.g. `(app)/+layout.svelte` onMount). Safe to remove later.
+ */
+export function ensurePermissions(): void {
+  /* no-op */
 }
 
 export function can(perm: Permission): boolean {
-  return perms.has(perm);
+  return pagePermissions().includes(perm);
 }
 
 export function getPermissions(): Set<string> {
-  return perms;
+  return new Set(pagePermissions());
 }

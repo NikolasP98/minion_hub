@@ -1,15 +1,9 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
   import PluginSlotHost from '$lib/plugins/PluginSlotHost.svelte';
-  import SettingsTabBar from '$lib/components/settings/SettingsTabBar.svelte';
   import type { Theme } from '$lib/plugins/bridge-protocol';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
-
-  function selectTab(id: string) {
-    goto(`/settings?s=${id}`);
-  }
 
   // MVP: pick up theme mode from the document root and forward a tiny token
   // bag. The full theme/preset wiring lands in Phase B alongside the first
@@ -18,8 +12,6 @@
   const theme: Theme = 'light';
   const tokens: Record<string, string> = {};
 </script>
-
-<SettingsTabBar activeTab="" onselect={selectTab} />
 
 <section class="space-y-4 p-6">
   <header>

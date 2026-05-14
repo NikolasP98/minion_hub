@@ -1,8 +1,10 @@
 /**
- * Cross-device preference sync — debounced writes to server, bulk load on login.
+ * Cross-device preference sync — debounced writes to server. Initial load
+ * comes from the canonical (app)/+layout.server.ts bundle via page.data;
  * localStorage remains the fast cache; server is source of truth.
  */
 import { userState } from '$lib/state/features/user.svelte';
+import { page } from '$app/state';
 
 const DEBOUNCE_MS = 1_000;
 const pendingTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -42,21 +44,18 @@ export function syncPreferenceToServer(section: string, value: unknown) {
 }
 
 /**
- * Fetch all preferences from the server, apply them to each state module,
- * then push any sections missing on the server (first-device seeding).
+ * Read preferences from the (app)/+layout.server.ts bundle (via page.data),
+ * apply them to each state module, then push any sections missing on the
+ * server (first-device seeding).
+ *
+ * Synchronous up to the dynamic state-module imports — the fetch on mount
+ * is gone; data is already hydrated by the time this runs.
  */
 export async function loadAndApplyServerPreferences() {
   if (!userState.user) return;
 
-  let serverPrefs: Record<string, unknown>;
-  try {
-    const res = await fetch('/api/me/preferences');
-    if (!res.ok) return;
-    const data = await res.json();
-    serverPrefs = data.preferences ?? {};
-  } catch {
-    return;
-  }
+  const data = page.data as { preferences?: { preferences?: Record<string, unknown> } } | undefined;
+  const serverPrefs: Record<string, unknown> = data?.preferences?.preferences ?? {};
 
   // Lazy-import state modules to avoid circular deps
   const { theme } = await import('./theme.svelte');

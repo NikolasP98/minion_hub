@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { invalidate } from '$app/navigation';
   import * as m from '$lib/paraglide/messages';
   import { conn } from '$lib/state/gateway/connection.svelte';
   import { hostsState } from '$lib/state/features/hosts.svelte';
@@ -13,15 +14,32 @@
     Loader2,
   } from 'lucide-svelte';
 
+  // Server-loaded initial config (from /settings/backups/+page.server.ts).
+  // null = no config row yet; undefined = legacy embedded usage (fall back to fetch).
+  interface BackupConfigShape {
+    backupHost?: string | null;
+    backupUser?: string | null;
+    backupPort?: number | null;
+    backupBasePath?: string | null;
+    schedule?: string | null;
+    retentionCount?: number | null;
+    enabled?: number | null;
+  }
+  interface Props {
+    initialConfig?: BackupConfigShape | null;
+  }
+  let { initialConfig }: Props = $props();
+  const hasServerData = $derived(initialConfig !== undefined);
+
   // ─── Backup config state ───────────────────────────────────────
-  let backupHost = $state('');
-  let backupUser = $state('root');
-  let backupPort = $state(22);
-  let backupBasePath = $state('/mnt/agent-data/backups');
-  let schedule = $state('');
-  let retentionCount = $state(7);
-  let enabled = $state(false);
-  let configLoaded = $state(false);
+  let backupHost = $state(initialConfig?.backupHost ?? '');
+  let backupUser = $state(initialConfig?.backupUser ?? 'root');
+  let backupPort = $state(initialConfig?.backupPort ?? 22);
+  let backupBasePath = $state(initialConfig?.backupBasePath ?? '/mnt/agent-data/backups');
+  let schedule = $state(initialConfig?.schedule ?? '');
+  let retentionCount = $state(initialConfig?.retentionCount ?? 7);
+  let enabled = $state(!!initialConfig?.enabled);
+  let configLoaded = $state(hasServerData);
   let saving = $state(false);
   let testing = $state(false);
   let testResult = $state<{ ok: boolean; message: string } | null>(null);
@@ -85,6 +103,7 @@
           enabled: enabled ? 1 : 0,
         }),
       });
+      void invalidate('settings:backups');
     } catch (e) {
       console.error('Failed to save backup config:', e);
     } finally {
@@ -239,7 +258,7 @@
 
   // ─── Lifecycle ────────────────────────────────────────────────
   onMount(() => {
-    loadConfig();
+    if (!hasServerData) loadConfig();
   });
 
   $effect(() => {
