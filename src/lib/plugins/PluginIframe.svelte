@@ -15,6 +15,10 @@
   let { pluginId, entrypoint, gatewayUrl, authToken, theme, tokens }: Props = $props();
 
   let iframeEl: HTMLIFrameElement | null = $state(null);
+  // Plain `let` (not $state) — the bridge-mount $effect both reads
+  // `mounted?.dispose()` and writes `mounted = ...`. Making this reactive
+  // creates an infinite re-run loop ("updated at PluginIframe.svelte" warning
+  // in console) and the iframe never settles.
   let mounted: MountedHostBridge | null = null;
   let height = $state(600);
 
@@ -25,7 +29,13 @@
   const src = `${gatewayUrl}/plugins/${pluginId}/ui/${subpath}`;
   const pluginOrigin = new URL(gatewayUrl).origin;
 
-  function handleLoad(): void {
+  // Mount the host bridge as soon as iframeEl is bound — NOT in the iframe's
+  // onload handler. The plugin's `notifyReady()` fires synchronously when its
+  // module loads; if we wait for `onload` to register the listener, that
+  // message has already dispatched and is lost, leaving the plugin stuck on
+  // its loading screen forever. Binding-time mount + the buffered hello in
+  // HostBridge.flushHello cover both ordering races.
+  $effect(() => {
     if (!iframeEl?.contentWindow) return;
     mounted?.dispose();
     mounted = mountHostBridge({
@@ -37,7 +47,7 @@
         height = h;
       },
     });
-  }
+  });
 
   $effect(() => {
     mounted?.sendThemeChange(theme, tokens);
@@ -50,7 +60,6 @@
   bind:this={iframeEl}
   title="Plugin: {pluginId}"
   {src}
-  onload={handleLoad}
   style:height="{height}px"
   class="w-full border-0"
 ></iframe>

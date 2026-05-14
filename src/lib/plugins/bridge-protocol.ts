@@ -41,6 +41,11 @@ export interface HostBridgeOptions {
 export class HostBridge {
   private pendingHelloPayload: Omit<Extract<HostToPlugin, { type: "host:hello" }>, "type"> | null =
     null;
+  // Buffer the plugin:ready signal in case it arrives before sendHelloOnReady
+  // has been called. Without this, hello is silently dropped and the plugin
+  // hangs waiting for host:hello forever (race when the iframe's notifyReady()
+  // fires before the host registers its message listener / sets the payload).
+  private pluginReady = false;
   private resizeHandlers: Array<(height: number) => void> = [];
   private notifyHandlers: Array<(level: "info" | "warn" | "error", message: string) => void> = [];
 
@@ -52,10 +57,8 @@ export class HostBridge {
     if (ev.origin !== this.opts.pluginOrigin) return;
     if (!isPluginToHost(ev.data)) return;
     if (ev.data.type === "plugin:ready") {
-      if (this.pendingHelloPayload) {
-        const msg: HostToPlugin = { type: "host:hello", ...this.pendingHelloPayload };
-        this.opts.target.postMessage(msg, this.opts.pluginOrigin);
-      }
+      this.pluginReady = true;
+      this.flushHello();
     } else if (ev.data.type === "plugin:resize") {
       const { height } = ev.data;
       for (const h of this.resizeHandlers) h(height);
@@ -69,6 +72,13 @@ export class HostBridge {
     payload: Omit<Extract<HostToPlugin, { type: "host:hello" }>, "type">,
   ): void {
     this.pendingHelloPayload = payload;
+    this.flushHello();
+  }
+
+  private flushHello(): void {
+    if (!this.pluginReady || !this.pendingHelloPayload) return;
+    const msg: HostToPlugin = { type: "host:hello", ...this.pendingHelloPayload };
+    this.opts.target.postMessage(msg, this.opts.pluginOrigin);
   }
 
   sendThemeChange(payload: { theme: Theme; tokens: Record<string, string> }): void {
