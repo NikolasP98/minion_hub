@@ -25,7 +25,15 @@
   let tokens: Record<string, string> = {};
   if (typeof document !== 'undefined') {
     theme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
-    const computed = getComputedStyle(document.documentElement);
+    const root = document.documentElement;
+    const computed = getComputedStyle(root);
+    // Hub theme runtime sets `--color-*` / `--theme-*` etc as INLINE styles on
+    // <html>, not in stylesheets. Walk inline first.
+    for (const name of Array.from(root.style)) {
+      if (name.startsWith('--')) tokens[name] = root.style.getPropertyValue(name).trim();
+    }
+    // Then sweep any same-origin stylesheet `:root` blocks (CSS-defined tokens
+    // like Tailwind's --radius). Inline values override since they're set last.
     for (const sheet of Array.from(document.styleSheets)) {
       let rules: CSSRuleList;
       try {
@@ -37,7 +45,8 @@
         if (!(rule instanceof CSSStyleRule)) continue;
         if (!/^:root\b/.test(rule.selectorText)) continue;
         for (const name of Array.from(rule.style)) {
-          if (name.startsWith('--')) tokens[name] = computed.getPropertyValue(name).trim();
+          if (name.startsWith('--') && !(name in tokens))
+            tokens[name] = computed.getPropertyValue(name).trim();
         }
       }
     }
