@@ -36,10 +36,15 @@ export async function loadWorkspacesForUser(
   const token = ctx.paperclipIdentity?.token;
   let companies: Array<{ id: string; name: string }> = [];
   if (token) {
+    // Board-key tokens (pcli_*) go via `Authorization: Bearer`; JWT identity
+    // tokens go via `x-hub-identity`. See reference_hub_paperclip_auth_header_split.
+    const headers = token.startsWith('pcli_')
+      ? { Authorization: `Bearer ${token}` }
+      : { 'x-hub-identity': token };
     const client = createPaperclipClient({
       baseUrl: paperclipBaseUrl(),
       fetch: globalThis.fetch,
-      headers: { 'x-hub-identity': token },
+      headers,
     });
     companies = await client.companies.list().catch(() => []);
   }
