@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { Brain, Bot, Radio, Shield, Server, Palette, HardDrive, DatabaseBackup, Puzzle, Users, KeyRound } from "lucide-svelte";
+    import { Brain, Bot, Radio, Shield, Server, Palette, HardDrive, DatabaseBackup, Puzzle, Users, KeyRound, Phone } from "lucide-svelte";
     import { page } from "$app/state";
     import { isAdmin } from "$lib/state/features/user.svelte";
     import { TABS } from "$lib/utils/config-schema";
@@ -14,7 +14,7 @@
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const ICON_MAP: Record<string, any> = {
-        Brain, Bot, Radio, Shield, Server, Palette, HardDrive, DatabaseBackup, Puzzle, Users, KeyRound,
+        Brain, Bot, Radio, Shield, Server, Palette, HardDrive, DatabaseBackup, Puzzle, Users, KeyRound, Phone,
     };
 
     // Hub tabs: own routes under /settings/<id>. Render as <a href>.

@@ -9,7 +9,20 @@
     PlugZap,
     ArrowUpRight,
     ServerCrash,
+    Phone,
+    Megaphone,
   } from 'lucide-svelte';
+
+  // Plugin manifests can name a lucide-svelte icon as a string. Map the
+  // known set; unknown strings fall back to Puzzle (same as before). Emoji
+  // icons are handled inline by the Extended_Pictographic regex below.
+  // See memory: reference_hub_plugin_icon_raw_text_leak.
+  const PLUGIN_ICON_MAP: Record<string, typeof Puzzle> = {
+    Phone,
+    Megaphone,
+    MegaphoneSimple: Megaphone,
+    Puzzle,
+  };
   import PluginIframe from '$lib/plugins/PluginIframe.svelte';
   import type { Theme } from '$lib/plugins/bridge-protocol';
   import { hostsState, fetchHostToken } from '$lib/state/features/hosts.svelte';
@@ -270,6 +283,9 @@
                     >
                       {#if entry.icon && /\p{Extended_Pictographic}/u.test(entry.icon)}
                         {entry.icon}
+                      {:else if entry.icon && PLUGIN_ICON_MAP[entry.icon]}
+                        {@const IconComp = PLUGIN_ICON_MAP[entry.icon]}
+                        <IconComp size={14} />
                       {:else}
                         <Puzzle size={14} />
                       {/if}
