@@ -140,8 +140,8 @@
   }
 </script>
 
-<div class="flex-1 overflow-y-auto p-6 md:p-10">
-  <div class="mx-auto max-w-4xl space-y-4">
+<div class="flex min-h-0 flex-1 flex-col p-6 md:p-10">
+  <div class="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col gap-4">
     <header class="space-y-1">
       <div class="flex items-center gap-2">
         <PlugZap size={20} class="text-muted-foreground" />
@@ -253,10 +253,10 @@
     {/if}
 
     {#if data.entries.length > 0}
-      <div class="overflow-hidden rounded-lg border border-border bg-card">
-        <div class="grid grid-cols-1 md:grid-cols-[16rem_1fr]">
+      <div class="flex min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-card">
+        <div class="grid min-h-0 w-full grid-cols-1 md:grid-cols-[16rem_1fr]">
           <nav
-            class="border-b border-border md:border-b-0 md:border-r"
+            class="min-h-0 overflow-y-auto border-b border-border md:border-b-0 md:border-r"
             aria-label="Installed plugins"
           >
             <ul class="flex flex-row overflow-x-auto md:flex-col md:overflow-x-visible">
@@ -321,7 +321,7 @@
             </ul>
           </nav>
 
-          <div class="min-w-0">
+          <div class="flex min-h-0 min-w-0 flex-col">
             {#if current}
               {#if tokenLoading || tokenError}
                 <div class="flex items-center justify-end border-b border-border px-4 py-2">
@@ -344,14 +344,18 @@
                   No active host. Pick one in the host switcher to load this plugin.
                 </div>
               {:else}
-                <PluginIframe
-                  pluginId={current.pluginId}
-                  entrypoint={current.entrypoint}
-                  gatewayUrl={data.gatewayBaseUrl}
-                  {authToken}
-                  {theme}
-                  {tokens}
-                />
+                <div class="min-h-0 flex-1 overflow-y-auto">
+                  {#key current.pluginId + ':' + current.entrypoint}
+                    <PluginIframe
+                      pluginId={current.pluginId}
+                      entrypoint={current.entrypoint}
+                      gatewayUrl={data.gatewayBaseUrl}
+                      {authToken}
+                      {theme}
+                      {tokens}
+                    />
+                  {/key}
+                </div>
               {/if}
             {/if}
           </div>
