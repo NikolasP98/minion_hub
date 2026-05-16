@@ -11,6 +11,7 @@
     ServerCrash,
     Phone,
     Megaphone,
+    BellRing,
   } from 'lucide-svelte';
 
   // Plugin manifests can name a lucide-svelte icon as a string. Map the
@@ -21,6 +22,7 @@
     Phone,
     Megaphone,
     MegaphoneSimple: Megaphone,
+    BellRing,
     Puzzle,
   };
   import PluginIframe from '$lib/plugins/PluginIframe.svelte';
