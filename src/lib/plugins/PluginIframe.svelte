@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy } from "svelte";
+  import { Loader2, Check, AlertTriangle, RotateCw } from "lucide-svelte";
   import { mountHostBridge, type MountedHostBridge } from "./bridge-host";
   import type { Theme } from "./bridge-protocol";
 
@@ -70,6 +71,27 @@
   let mounted: MountedHostBridge | null = null;
   let height = $state(600);
 
+  // Hub-rendered save bar state. Plugins emit `plugin:dirty-changed` on every
+  // config edit; we render the save button (sticky at top) whenever dirty.
+  // The button posts `host:save`, plugin runs its save flow, replies with
+  // `plugin:save-result` which clears saving + surfaces success/error.
+  let dirty = $state(false);
+  let saving = $state(false);
+  let pendingSaveId = $state<string | null>(null);
+  let saveError = $state<string | null>(null);
+  let saveOk = $state(false);
+  let restartRequired = $state(false);
+  let saveOkTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function triggerSave() {
+    if (!mounted || saving || !dirty) return;
+    saving = true;
+    saveError = null;
+    saveOk = false;
+    restartRequired = false;
+    pendingSaveId = mounted.requestSave();
+  }
+
   // Handshake observability: track which stages of the iframe→bridge handshake
   // have happened. If `plugin:ready` doesn't arrive within HANDSHAKE_TIMEOUT_MS
   // we render a diagnostic overlay instead of leaving the user staring at the
@@ -124,6 +146,31 @@
           timeoutHandle = null;
         }
       },
+      onDirtyChanged: (d) => {
+        dirty = d;
+        // Reverting clears any stale post-save status indicator.
+        if (!d) {
+          saveError = null;
+          saveOk = false;
+          restartRequired = false;
+        }
+      },
+      onSaveResult: (id, ok, error, restart) => {
+        if (pendingSaveId && id !== pendingSaveId) return;
+        saving = false;
+        pendingSaveId = null;
+        if (ok) {
+          saveOk = true;
+          restartRequired = !!restart;
+          if (saveOkTimer) clearTimeout(saveOkTimer);
+          saveOkTimer = setTimeout(() => {
+            saveOk = false;
+            saveOkTimer = null;
+          }, 2500);
+        } else {
+          saveError = error ?? "Save failed";
+        }
+      },
       // Plugin RPC forwarded through the hub's existing privileged gateway WS.
       // Plugins call `bridge.call("plugins.config.get", { ... })` from inside
       // their iframe; this function relays through sendRequest, so they never
@@ -158,10 +205,48 @@
       clearTimeout(timeoutHandle);
       timeoutHandle = null;
     }
+    if (saveOkTimer !== null) {
+      clearTimeout(saveOkTimer);
+      saveOkTimer = null;
+    }
   });
 </script>
 
-<div class="relative w-full">
+<div class="relative flex w-full flex-col">
+  {#if dirty || saving || saveError || saveOk}
+    <div
+      class="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-border bg-card/95 px-4 py-2.5 backdrop-blur"
+    >
+      <div class="flex items-center gap-2 text-sm">
+        {#if saving}
+          <Loader2 size={14} class="animate-spin text-muted-foreground" />
+          <span class="text-muted-foreground">Saving…</span>
+        {:else if saveError}
+          <AlertTriangle size={14} class="text-destructive" />
+          <span class="text-destructive">{saveError}</span>
+        {:else if saveOk}
+          <Check size={14} class="text-emerald-500" />
+          <span class="text-foreground">
+            Saved{restartRequired ? " — gateway restart required" : ""}.
+          </span>
+        {:else if dirty}
+          <span class="inline-block h-1.5 w-1.5 rounded-full bg-accent" aria-hidden="true"></span>
+          <span class="text-muted-foreground">Unsaved changes</span>
+        {/if}
+      </div>
+      <button
+        type="button"
+        onclick={triggerSave}
+        disabled={saving || !dirty}
+        class="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground shadow-sm transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {#if saving}
+          <RotateCw size={12} class="animate-spin" />
+        {/if}
+        {saving ? "Saving…" : "Save changes"}
+      </button>
+    </div>
+  {/if}
   <iframe
     bind:this={iframeEl}
     title="Plugin: {pluginId}"

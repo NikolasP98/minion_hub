@@ -22,6 +22,13 @@ export type HostToPlugin =
       ok: boolean;
       payload?: unknown;
       error?: { code?: string; message?: string };
+    }
+  | {
+      // Hub-rendered Save click. Plugin runs save flow + replies with
+      // plugin:save-result echoing the same id. See bridge-protocol notes
+      // in @nikolasp98/plugin-ui-bridge v0.2.0.
+      type: "host:save";
+      id: string;
     };
 
 export type PluginToHost =
@@ -33,6 +40,14 @@ export type PluginToHost =
       id: string;
       method: string;
       params?: unknown;
+    }
+  | { type: "plugin:dirty-changed"; dirty: boolean }
+  | {
+      type: "plugin:save-result";
+      id: string;
+      ok: boolean;
+      error?: string;
+      restartRequired?: boolean;
     };
 
 function isObject(v: unknown): v is Record<string, unknown> {
@@ -46,7 +61,9 @@ function isPluginToHost(v: unknown): v is PluginToHost {
     t === "plugin:ready" ||
     t === "plugin:resize" ||
     t === "plugin:notify" ||
-    t === "plugin:rpc-request"
+    t === "plugin:rpc-request" ||
+    t === "plugin:dirty-changed" ||
+    t === "plugin:save-result"
   );
 }
 
@@ -79,6 +96,11 @@ export class HostBridge {
   private resizeHandlers: Array<(height: number) => void> = [];
   private notifyHandlers: Array<(level: "info" | "warn" | "error", message: string) => void> = [];
   private readyHandlers: Array<() => void> = [];
+  private dirtyHandlers: Array<(dirty: boolean) => void> = [];
+  private saveResultHandlers: Array<
+    (id: string, ok: boolean, error?: string, restartRequired?: boolean) => void
+  > = [];
+  private saveSeq = 0;
 
   constructor(private opts: HostBridgeOptions) {
     opts.self.addEventListener("message", this.handle);
@@ -99,6 +121,12 @@ export class HostBridge {
     } else if (ev.data.type === "plugin:notify") {
       const { level, message } = ev.data;
       for (const h of this.notifyHandlers) h(level, message);
+    } else if (ev.data.type === "plugin:dirty-changed") {
+      const { dirty } = ev.data;
+      for (const h of this.dirtyHandlers) h(dirty);
+    } else if (ev.data.type === "plugin:save-result") {
+      const { id, ok, error, restartRequired } = ev.data;
+      for (const h of this.saveResultHandlers) h(id, ok, error, restartRequired);
     } else if (ev.data.type === "plugin:rpc-request") {
       const { id, method, params } = ev.data;
       const forward = this.opts.forwardRpc;
@@ -169,6 +197,27 @@ export class HostBridge {
     else this.readyHandlers.push(fn);
   }
 
+  onDirtyChanged(fn: (dirty: boolean) => void): void {
+    this.dirtyHandlers.push(fn);
+  }
+
+  onSaveResult(
+    fn: (id: string, ok: boolean, error?: string, restartRequired?: boolean) => void,
+  ): void {
+    this.saveResultHandlers.push(fn);
+  }
+
+  /**
+   * Trigger the plugin's save flow. Returns the request id; pair with
+   * onSaveResult to observe completion.
+   */
+  requestSave(): string {
+    const id = `save-${++this.saveSeq}-${Date.now()}`;
+    const msg: HostToPlugin = { type: "host:save", id };
+    this.opts.target.postMessage(msg, this.opts.pluginOrigin);
+    return id;
+  }
+
   dispose(): void {
     this.opts.self.removeEventListener("message", this.handle);
     this.pendingHelloPayload = null;
@@ -176,5 +225,7 @@ export class HostBridge {
     this.resizeHandlers = [];
     this.notifyHandlers = [];
     this.readyHandlers = [];
+    this.dirtyHandlers = [];
+    this.saveResultHandlers = [];
   }
 }

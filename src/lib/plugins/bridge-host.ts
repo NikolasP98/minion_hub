@@ -13,6 +13,8 @@ export interface MountHostBridgeOptions {
   onResize?: (height: number) => void;
   onNotify?: (level: "info" | "warn" | "error", message: string) => void;
   onPluginReady?: () => void;
+  onDirtyChanged?: (dirty: boolean) => void;
+  onSaveResult?: (id: string, ok: boolean, error?: string, restartRequired?: boolean) => void;
   forwardRpc?: (method: string, params: unknown) => Promise<unknown>;
 }
 
@@ -20,6 +22,7 @@ export interface MountedHostBridge {
   bridge: HostBridge;
   dispose: () => void;
   sendThemeChange: (theme: Theme, tokens: Record<string, string>) => void;
+  requestSave: () => string;
 }
 
 export function mountHostBridge(opts: MountHostBridgeOptions): MountedHostBridge {
@@ -33,9 +36,12 @@ export function mountHostBridge(opts: MountHostBridgeOptions): MountedHostBridge
   if (opts.onResize) bridge.onResize(opts.onResize);
   if (opts.onNotify) bridge.onNotify(opts.onNotify);
   if (opts.onPluginReady) bridge.onPluginReady(opts.onPluginReady);
+  if (opts.onDirtyChanged) bridge.onDirtyChanged(opts.onDirtyChanged);
+  if (opts.onSaveResult) bridge.onSaveResult(opts.onSaveResult);
   return {
     bridge,
     dispose: () => bridge.dispose(),
     sendThemeChange: (theme, tokens) => bridge.sendThemeChange({ theme, tokens }),
+    requestSave: () => bridge.requestSave(),
   };
 }
