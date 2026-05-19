@@ -6,11 +6,13 @@
 	import { type Snippet } from 'svelte';
 	import { onMount } from 'svelte';
 	import { ensurePermissions } from '$lib/state/features/permissions.svelte';
+	import { hydratePluginNav } from '$lib/state/plugin-nav.svelte';
 
 	let { children }: { children: Snippet } = $props();
 
 	onMount(() => {
 		void ensurePermissions();
+		void hydratePluginNav();
 	});
 </script>
 
