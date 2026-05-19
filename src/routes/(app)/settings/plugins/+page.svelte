@@ -9,6 +9,9 @@
     PlugZap,
     ArrowUpRight,
     ServerCrash,
+    Power,
+    Loader2,
+    RotateCw,
   } from 'lucide-svelte';
   import { PLUGIN_ICON_MAP } from '$lib/plugins/icon-map';
   import PluginIframe from '$lib/plugins/PluginIframe.svelte';
@@ -115,6 +118,89 @@
       2,
     ),
   );
+
+  // Per-plugin local override of `enabled` after a successful toggle. Avoids a
+  // full `invalidateAll()` round-trip (which would tear down the iframe) and
+  // keeps the row visible even though the gateway list will only refresh after
+  // restart. Keyed by pluginId.
+  let enabledOverrides = $state<Record<string, boolean>>({});
+  let togglingId = $state<string | null>(null);
+  let toggleError = $state<string | null>(null);
+  let restartRequired = $state(false);
+
+  function effectiveEnabled(entry: {
+    pluginId: string;
+    enabled?: boolean;
+    configEnabled?: boolean;
+  }): boolean {
+    if (entry.pluginId in enabledOverrides) return enabledOverrides[entry.pluginId];
+    // Soft master is the source of truth. Falls back to load-level enabled
+    // only when the gateway hasn't populated configEnabled (older gateway).
+    if (typeof entry.configEnabled === 'boolean') return entry.configEnabled;
+    return entry.enabled !== false;
+  }
+
+  async function toggleEnabled(entry: { pluginId: string; enabled?: boolean }) {
+    const next = !effectiveEnabled(entry);
+    togglingId = entry.pluginId;
+    toggleError = null;
+    try {
+      const res = await fetch(`/api/plugins/${encodeURIComponent(entry.pluginId)}/toggle`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ enabled: next }),
+      });
+      const body = (await res.json()) as {
+        ok?: boolean;
+        restartRequired?: boolean;
+        errors?: string[];
+        error?: string;
+      };
+      if (!res.ok || body.ok === false) {
+        toggleError = body.error ?? body.errors?.join('; ') ?? `HTTP ${res.status}`;
+        return;
+      }
+      enabledOverrides = { ...enabledOverrides, [entry.pluginId]: next };
+      if (body.restartRequired) restartRequired = true;
+    } catch (err) {
+      toggleError = err instanceof Error ? err.message : String(err);
+    } finally {
+      togglingId = null;
+    }
+  }
+
+  function statusDotClass(entry: {
+    pluginId: string;
+    enabled?: boolean;
+    status?: string;
+    pluginError?: string;
+  }): string {
+    if (entry.status === 'error' || entry.pluginError) return 'bg-destructive';
+    if (!effectiveEnabled(entry)) return 'bg-muted-foreground/40';
+    return 'bg-emerald-500';
+  }
+
+  function statusLabel(entry: {
+    pluginId: string;
+    enabled?: boolean;
+    status?: string;
+    pluginError?: string;
+  }): string {
+    if (entry.status === 'error' || entry.pluginError) return 'Error';
+    if (!effectiveEnabled(entry)) return 'Disabled';
+    if (entry.status === 'loaded') return 'Loaded';
+    return entry.status ?? 'Unknown';
+  }
+
+  // Save bar state hoisted out of PluginIframe via bindable props so the new
+  // header can host the Save button alongside the on/off toggle (avoids the
+  // duplicate-header that PluginIframe's internal sticky bar produced).
+  let saveDirty = $state(false);
+  let saveSaving = $state(false);
+  let saveError = $state<string | null>(null);
+  let saveOk = $state(false);
+  let saveRestart = $state(false);
+  let triggerSaveFn: (() => void) | null = $state(null);
 
   let copied = $state(false);
   async function copySnippet() {
@@ -278,6 +364,33 @@
                         <Puzzle size={14} />
                       {/if}
                     </span>
+                    <span class="group/dot relative mt-1.5 shrink-0">
+                      <span
+                        class="block size-2 rounded-full ring-2 ring-card transition-colors {statusDotClass(
+                          entry,
+                        )}"
+                        aria-label={statusLabel(entry)}
+                      ></span>
+                      <span
+                        role="tooltip"
+                        class="pointer-events-none absolute left-1/2 top-full z-30 mt-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-left text-[11px] leading-tight text-popover-foreground shadow-lg group-hover/dot:block"
+                      >
+                        <span class="flex items-center gap-1.5 font-medium">
+                          <span class="size-1.5 rounded-full {statusDotClass(entry)}"></span>
+                          {statusLabel(entry)}
+                        </span>
+                        <span class="mt-1 block font-mono text-[10px] text-muted-foreground"
+                          >{entry.pluginId}{entry.pluginVersion
+                            ? ` · v${entry.pluginVersion}`
+                            : ''}</span
+                        >
+                        {#if entry.pluginError}
+                          <span class="mt-1 block max-w-[18rem] whitespace-normal text-destructive"
+                            >{entry.pluginError}</span
+                          >
+                        {/if}
+                      </span>
+                    </span>
                     <span class="min-w-0 flex-1">
                       <span
                         class="block truncate font-medium"
@@ -311,15 +424,96 @@
 
           <div class="flex min-h-0 min-w-0 flex-col">
             {#if current}
-              {#if tokenLoading || tokenError}
-                <div class="flex items-center justify-end border-b border-border px-4 py-2">
-                  {#if tokenLoading}
-                    <span class="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <RefreshCw size={12} class="animate-spin" /> Authenticating…
-                    </span>
-                  {:else if tokenError}
-                    <span class="text-xs text-destructive">Auth: {tokenError}</span>
-                  {/if}
+              {@const on = effectiveEnabled(current)}
+              {@const busy = togglingId === current.pluginId}
+              <div
+                class="flex items-center justify-end gap-3 border-b border-border px-4 py-2"
+              >
+                {#if tokenLoading}
+                  <span class="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <RefreshCw size={12} class="animate-spin" /> Authenticating…
+                  </span>
+                {:else if tokenError}
+                  <span class="text-xs text-destructive">Auth: {tokenError}</span>
+                {/if}
+                {#if saveSaving}
+                  <span class="flex items-center gap-1.5 text-xs">
+                    <Loader2 size={12} class="animate-spin text-muted-foreground" />
+                    <span class="text-muted-foreground">Saving…</span>
+                  </span>
+                {:else if saveError}
+                  <span class="flex items-center gap-1.5 text-xs">
+                    <AlertTriangle size={12} class="text-destructive" />
+                    <span class="text-destructive">{saveError}</span>
+                  </span>
+                {:else if saveOk}
+                  <span class="flex items-center gap-1.5 text-xs">
+                    <Check size={12} class="text-emerald-500" />
+                    <span class="text-foreground"
+                      >Saved{saveRestart ? ' — restart required' : ''}.</span
+                    >
+                  </span>
+                {:else if saveDirty}
+                  <span class="flex items-center gap-1.5 text-xs">
+                    <span
+                      class="inline-block h-1.5 w-1.5 rounded-full bg-accent"
+                      aria-hidden="true"
+                    ></span>
+                    <span class="text-muted-foreground">Unsaved changes</span>
+                  </span>
+                {/if}
+                {#if saveDirty || saveSaving}
+                  <button
+                    type="button"
+                    onclick={() => triggerSaveFn?.()}
+                    disabled={saveSaving || !saveDirty}
+                    class="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground shadow-sm transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {#if saveSaving}
+                      <RotateCw size={12} class="animate-spin" />
+                    {/if}
+                    {saveSaving ? 'Saving…' : 'Save changes'}
+                  </button>
+                {/if}
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={on}
+                  disabled={busy}
+                  onclick={() => toggleEnabled(current)}
+                  title={on ? 'Disable plugin' : 'Enable plugin'}
+                  class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border border-border transition-colors disabled:cursor-wait disabled:opacity-60"
+                  class:bg-emerald-500={on}
+                  class:bg-muted={!on}
+                >
+                  <span class="sr-only">{on ? 'Disable' : 'Enable'} {current.title}</span>
+                  <span
+                    class="inline-flex size-5 items-center justify-center rounded-full bg-card shadow-sm transition-transform"
+                    class:translate-x-5={on}
+                    class:translate-x-0.5={!on}
+                  >
+                    {#if busy}
+                      <RefreshCw size={10} class="animate-spin text-muted-foreground" />
+                    {:else}
+                      <Power size={10} class={on ? 'text-emerald-600' : 'text-muted-foreground'} />
+                    {/if}
+                  </span>
+                </button>
+              </div>
+              {#if toggleError}
+                <div
+                  class="border-b border-destructive/40 bg-destructive/5 px-4 py-2 text-xs text-destructive"
+                  role="alert"
+                >
+                  Toggle failed: {toggleError}
+                </div>
+              {/if}
+              {#if restartRequired}
+                <div
+                  class="flex items-center gap-2 border-b border-amber-500/40 bg-amber-500/5 px-4 py-2 text-xs text-amber-700 dark:text-amber-300"
+                >
+                  <AlertTriangle size={12} />
+                  Gateway restart required for the change to take effect.
                 </div>
               {/if}
               {#if tokenLoading}
@@ -332,7 +526,7 @@
                   No active host. Pick one in the host switcher to load this plugin.
                 </div>
               {:else}
-                <div class="min-h-0 flex-1 overflow-y-auto">
+                <div class="flex min-h-0 flex-1 flex-col">
                   {#key current.pluginId + ':' + current.entrypoint}
                     <PluginIframe
                       pluginId={current.pluginId}
@@ -341,6 +535,14 @@
                       {authToken}
                       {theme}
                       {tokens}
+                      externalSaveBar
+                      fillContainer
+                      bind:dirty={saveDirty}
+                      bind:saving={saveSaving}
+                      bind:saveError
+                      bind:saveOk
+                      bind:restartRequired={saveRestart}
+                      bindTriggerSave={(fn) => (triggerSaveFn = fn)}
                     />
                   {/key}
                 </div>

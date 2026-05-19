@@ -59,9 +59,45 @@
     authToken: string;
     theme: Theme;
     tokens: Record<string, string>;
+    /**
+     * When true, the iframe suppresses its own sticky save bar and exposes the
+     * save state via bindable props plus `bindTriggerSave(fn)`. The host renders
+     * the save UI in its own chrome (e.g. a shared plugin page header).
+     */
+    externalSaveBar?: boolean;
+    dirty?: boolean;
+    saving?: boolean;
+    saveError?: string | null;
+    saveOk?: boolean;
+    restartRequired?: boolean;
+    /** Receives a `() => void` that the host can call to invoke save. */
+    bindTriggerSave?: (fn: () => void) => void;
+    /**
+     * Fill the parent container vertically and let the iframe scroll itself,
+     * rather than growing the iframe to fit reported content height (the
+     * default). Needed when plugins render `position: fixed` modals — those
+     * resolve to the iframe's viewport, so a grow-to-content iframe puts the
+     * modal at the middle of the long content instead of the visible area.
+     */
+    fillContainer?: boolean;
   }
 
-  let { pluginId, entrypoint, gatewayUrl, authToken, theme, tokens }: Props = $props();
+  let {
+    pluginId,
+    entrypoint,
+    gatewayUrl,
+    authToken,
+    theme,
+    tokens,
+    externalSaveBar = false,
+    dirty = $bindable(false),
+    saving = $bindable(false),
+    saveError = $bindable<string | null>(null),
+    saveOk = $bindable(false),
+    restartRequired = $bindable(false),
+    bindTriggerSave,
+    fillContainer = false,
+  }: Props = $props();
 
   let iframeEl: HTMLIFrameElement | null = $state(null);
   // Plain `let` (not $state) — the bridge-mount $effect both reads
@@ -72,15 +108,10 @@
   let height = $state(600);
 
   // Hub-rendered save bar state. Plugins emit `plugin:dirty-changed` on every
-  // config edit; we render the save button (sticky at top) whenever dirty.
-  // The button posts `host:save`, plugin runs its save flow, replies with
-  // `plugin:save-result` which clears saving + surfaces success/error.
-  let dirty = $state(false);
-  let saving = $state(false);
+  // config edit; we render the save button (sticky at top) whenever dirty —
+  // unless `externalSaveBar` is set, in which case the host hoists the state
+  // up via bindable props and renders the save UI itself.
   let pendingSaveId = $state<string | null>(null);
-  let saveError = $state<string | null>(null);
-  let saveOk = $state(false);
-  let restartRequired = $state(false);
   let saveOkTimer: ReturnType<typeof setTimeout> | null = null;
 
   function triggerSave() {
@@ -91,6 +122,10 @@
     restartRequired = false;
     pendingSaveId = mounted.requestSave();
   }
+
+  $effect(() => {
+    bindTriggerSave?.(triggerSave);
+  });
 
   // Handshake observability: track which stages of the iframe→bridge handshake
   // have happened. If `plugin:ready` doesn't arrive within HANDSHAKE_TIMEOUT_MS
@@ -137,7 +172,7 @@
       pluginOrigin,
       hello: { theme, tokens, gatewayUrl: wsGatewayUrl, authToken },
       onResize: (h) => {
-        height = h;
+        if (!fillContainer) height = h;
       },
       onPluginReady: () => {
         pluginReady = true;
@@ -212,8 +247,8 @@
   });
 </script>
 
-<div class="relative flex w-full flex-col">
-  {#if dirty || saving || saveError || saveOk}
+<div class="relative flex w-full flex-col" class:h-full={fillContainer}>
+  {#if !externalSaveBar && (dirty || saving || saveError || saveOk)}
     <div
       class="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-border bg-card/95 px-4 py-2.5 backdrop-blur"
     >
@@ -255,8 +290,10 @@
     onload={() => {
       iframeLoaded = true;
     }}
-    style:height="{height}px"
+    style:height={fillContainer ? '100%' : `${height}px`}
     class="w-full border-0"
+    class:min-h-0={fillContainer}
+    class:flex-1={fillContainer}
   ></iframe>
   {#if handshakeTimedOut && !pluginReady}
     <div
