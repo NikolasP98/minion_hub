@@ -5,93 +5,52 @@
     import Tooltip from "./Tooltip.svelte";
     import ScanLine from "$lib/components/decorations/ScanLine.svelte";
     import CompanySwitcher from "./CompanySwitcher.svelte";
+    import SectionSwitcher from "./SectionSwitcher.svelte";
+    import { getSections, findActiveSection } from "./sections";
     import { theme } from "$lib/state/ui/theme.svelte";
     import { page } from "$app/state";
     import * as m from "$lib/paraglide/messages";
-    import {
-        Wrench,
-        Activity,
-        Store,
-        Settings,
-        Menu,
-        X,
-        GitBranch,
-        BookOpen,
-        User,
-        Bug,
-        Paintbrush,
-        Wand2,
-        Users,
-        LayoutDashboard,
-    } from "lucide-svelte";
-    import { ui } from "$lib/state/ui/ui.svelte";
+    import { Activity, Settings, Menu, X, Bug } from "lucide-svelte";
     import { captureSnapshot, bugReporter } from "$lib/state/ui/bug-reporter.svelte";
 
-    const isHome = $derived(page.url.pathname === "/");
-    const isMarketplace = $derived(
-        page.url.pathname.startsWith("/marketplace"),
-    );
-    const isWorkshop = $derived(page.url.pathname.startsWith("/workshop"));
-    const isReliability = $derived(
-        page.url.pathname.startsWith("/reliability"),
-    );
+    const sections = getSections();
+    const activeSection = $derived(findActiveSection(sections, page.url.pathname));
+    const isReliability = $derived(page.url.pathname.startsWith("/reliability"));
     const isSettings = $derived(page.url.pathname.startsWith("/settings"));
-    const isFlowEditor = $derived(page.url.pathname.startsWith("/flow-editor"));
-    const isBuilder = $derived(page.url.pathname.startsWith('/builder'));
-    const isMyAgent = $derived(page.url.pathname.startsWith('/my-agent'));
-    const isStudio = $derived(page.url.pathname.startsWith('/studio'));
-    const isPrompt = $derived(page.url.pathname.startsWith('/prompt'));
-    const isWorkforce = $derived(page.url.pathname.startsWith('/workforce'));
 
-    // Mobile menu state
     let mobileMenuOpen = $state(false);
-
-    function toggleMobileMenu() {
-        mobileMenuOpen = !mobileMenuOpen;
-    }
-
-    function closeMobileMenu() {
-        mobileMenuOpen = false;
-    }
+    function toggleMobileMenu() { mobileMenuOpen = !mobileMenuOpen; }
+    function closeMobileMenu() { mobileMenuOpen = false; }
 </script>
 
-<header
-    class="shrink-0 relative z-50 bg-bg/95 backdrop-blur-md border-b border-border h-14"
->
+<header class="shrink-0 relative z-50 bg-bg/95 backdrop-blur-md border-b border-border h-14">
     <!-- Subtle scan line effect -->
     <div class="absolute inset-0 overflow-hidden pointer-events-none">
         <ScanLine speed={16} opacity={0.015} dual={theme.preset.id === 'voxelized'} />
     </div>
 
-    <!-- Single Row Navigation -->
     <div class="relative flex items-center h-full px-3 gap-2">
-        <!-- Brand Logo (icon always, text on xl+) -->
+        <!-- Brand Logo -->
         <a
             href="/"
             class="flex items-center gap-2 no-underline group shrink-0"
             aria-label="Minion Hub"
         >
             <MinionLogo size="sm" />
-            <div class="hidden xl:flex items-center leading-none">
-                <span
-                    class="font-black text-sm tracking-wide uppercase text-brand-pink group-hover:text-brand-pink/90 transition-colors"
-                    >MINION</span
-                >
-                <span
-                    class="font-semibold text-sm text-foreground/80 ml-1 group-hover:text-foreground transition-colors"
-                    >hub</span
-                >
+            <div class="hidden 2xl:flex items-center leading-none">
+                <span class="font-black text-sm tracking-wide uppercase text-brand-pink group-hover:text-brand-pink/90 transition-colors">MINION</span>
+                <span class="font-semibold text-sm text-foreground/80 ml-1 group-hover:text-foreground transition-colors">hub</span>
             </div>
         </a>
 
         <div class="h-5 w-px bg-border/60 mx-1 shrink-0"></div>
 
-        <!-- Host Pill (always visible) -->
+        <!-- Host Pill -->
         <div class="shrink-0">
             <HostPill />
         </div>
 
-        <!-- Reliability (icon-only, next to host picker, all breakpoints) -->
+        <!-- Reliability quick-link (icon only) -->
         <Tooltip label={m.nav_reliability()} id="nav-reliability">
             {#snippet children(triggerProps)}
                 <a
@@ -106,247 +65,45 @@
 
         <div class="h-5 w-px bg-border/60 mx-1 shrink-0 hidden min-[470px]:block"></div>
 
-        <!-- Desktop Navigation - Full text (xl+) -->
-        <nav class="hidden xl:flex items-center gap-1 flex-1 min-w-0">
-            <!-- Workforce group -->
-            <div class="flex items-center gap-0.5 px-1.5 py-1 rounded-lg bg-bg2/50 border border-border/50">
-                <span class="px-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted/60 select-none">Workforce</span>
-                <a href="/workforce" class="nav-pill {isWorkforce ? 'active' : ''}" title="Dashboard">
-                    <LayoutDashboard size={14} />
-                    <span>Dashboard</span>
-                </a>
-                <a href="/workforce/issues" class="nav-pill {page.url.pathname.startsWith('/workforce/issues') ? 'active' : ''}">Issues</a>
-                <a href="/workforce/approvals" class="nav-pill {page.url.pathname.startsWith('/workforce/approvals') ? 'active' : ''}">
-                    <span>Approvals</span>
-                </a>
-                <a href="/workforce/goals" class="nav-pill {page.url.pathname.startsWith('/workforce/goals') ? 'active' : ''}">Goals</a>
-                <a href="/workforce/projects" class="nav-pill {page.url.pathname.startsWith('/workforce/projects') ? 'active' : ''}">Projects</a>
-                <a href="/workforce/org" class="nav-pill {page.url.pathname.startsWith('/workforce/org') ? 'active' : ''}" title="Org chart">
-                    <Users size={14} />
-                    <span>Org</span>
-                </a>
-            </div>
+        <!-- Section Switcher (always visible from 470px up) -->
+        <div class="hidden min-[470px]:block">
+            <SectionSwitcher />
+        </div>
 
-            <div class="w-px h-4 bg-border/60 mx-1"></div>
-
-            <!-- Gateway group -->
-            <div
-                class="flex items-center gap-0.5 px-1.5 py-1 rounded-lg bg-bg2/50 border border-border/50"
+        <!-- Contextual sub-nav for the active section -->
+        {#if activeSection}
+            <nav
+                class="hidden md:flex items-center gap-0.5 min-w-0 overflow-hidden pl-1"
+                aria-label="{activeSection.label} navigation"
             >
-                <span class="px-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted/60 select-none">Gateway</span>
-                <a href="/my-agent" class="nav-pill {isMyAgent ? 'active' : ''}" title={m.nav_myAgent()}>
-                    <User size={14} />
-                    <span>{m.nav_myAgent()}</span>
-                </a>
-                <a href="/builder" class="nav-pill {isBuilder ? 'active' : ''}" title={m.nav_builder()}>
-                    <BookOpen size={14} />
-                    <span>{m.nav_builder()}</span>
-                </a>
-                <a
-                    href="/flow-editor"
-                    class="nav-pill {isFlowEditor ? 'active' : ''}"
-                    title={m.nav_flowEditor()}
-                >
-                    <GitBranch size={14} />
-                    <span>{m.nav_flows()}</span>
-                </a>
-                <a
-                    href="/workshop"
-                    class="nav-pill {isWorkshop ? 'active' : ''}"
-                    title={m.nav_workshop()}
-                >
-                    <Wrench size={14} />
-                    <span>{m.nav_workshop()}</span>
-                </a>
-            </div>
+                {#each activeSection.items as item (item.href)}
+                    {@const isActive = item.matcher(page.url.pathname)}
+                    <Tooltip label={item.label} id="ctx-{item.href}">
+                        {#snippet children(triggerProps)}
+                            <a
+                                href={item.href}
+                                class="ctx-link {isActive ? 'ctx-active' : ''} {activeSection.tone === 'brand' ? 'ctx-brand' : 'ctx-accent'}"
+                                {...triggerProps}
+                            >
+                                <!-- icon on small, text on lg+ -->
+                                <item.icon size={14} class="ctx-icon" />
+                                <span class="hidden lg:inline">{item.label}</span>
+                            </a>
+                        {/snippet}
+                    </Tooltip>
+                {/each}
+            </nav>
+        {/if}
 
-            <div class="w-px h-4 bg-border/60 mx-1"></div>
-
-            <a
-                href="/marketplace"
-                class="nav-pill brand {isMarketplace ? 'active-brand' : ''}"
-                title={m.nav_marketplace()}
-            >
-                <Store size={14} />
-                <span>{m.nav_marketplace()}</span>
-            </a>
-
-            <a
-                href="/prompt"
-                class="nav-pill brand {isPrompt ? 'active-brand' : ''}"
-                title={m.nav_prompt()}
-            >
-                <Wand2 size={14} />
-                <span>{m.nav_prompt()}</span>
-            </a>
-
-            <a
-                href="/studio"
-                class="nav-pill brand {isStudio ? 'active-brand' : ''}"
-                title="Studio"
-            >
-                <Paintbrush size={14} />
-                <span>{m.nav_studio()}</span>
-            </a>
-        </nav>
-
-        <!-- Tablet Navigation - Icons only (lg to xl) -->
-        <nav class="hidden lg:flex xl:hidden items-center gap-1 flex-1">
-            <!-- Workforce group (icon only) -->
-            <div
-                class="flex items-center gap-0.5 px-1.5 py-1 rounded-lg bg-bg2/50 border border-border/50"
-            >
-                <Tooltip label="Workforce Dashboard" id="nav-lg-workforce">
-                    {#snippet children(triggerProps)}
-                        <a href="/workforce" class="nav-pill {isWorkforce ? 'active' : ''}" {...triggerProps}>
-                            <LayoutDashboard size={16} />
-                        </a>
-                    {/snippet}
-                </Tooltip>
-            </div>
-
-            <div class="w-px h-4 bg-border/60 mx-1"></div>
-
-            <!-- Gateway group (icon only) -->
-            <div
-                class="flex items-center gap-0.5 px-1.5 py-1 rounded-lg bg-bg2/50 border border-border/50"
-            >
-                <Tooltip label={m.nav_myAgent()} id="nav-lg-my-agent">
-                    {#snippet children(triggerProps)}
-                        <a href="/my-agent" class="nav-pill {isMyAgent ? 'active' : ''}" {...triggerProps}>
-                            <User size={16} />
-                        </a>
-                    {/snippet}
-                </Tooltip>
-                <Tooltip label={m.nav_builder()} id="nav-lg-builder">
-                    {#snippet children(triggerProps)}
-                        <a href="/builder" class="nav-pill {isBuilder ? 'active' : ''}" {...triggerProps}>
-                            <BookOpen size={16} />
-                        </a>
-                    {/snippet}
-                </Tooltip>
-                <Tooltip label={m.nav_flowEditor()} id="nav-lg-flow-editor">
-                    {#snippet children(triggerProps)}
-                        <a href="/flow-editor" class="nav-pill {isFlowEditor ? 'active' : ''}" {...triggerProps}>
-                            <GitBranch size={16} />
-                        </a>
-                    {/snippet}
-                </Tooltip>
-                <Tooltip label={m.nav_workshop()} id="nav-lg-workshop">
-                    {#snippet children(triggerProps)}
-                        <a href="/workshop" class="nav-pill {isWorkshop ? 'active' : ''}" {...triggerProps}>
-                            <Wrench size={16} />
-                        </a>
-                    {/snippet}
-                </Tooltip>
-            </div>
-
-            <div class="w-px h-4 bg-border/60 mx-1"></div>
-
-            <Tooltip label={m.nav_marketplace()} id="nav-lg-marketplace">
-                {#snippet children(triggerProps)}
-                    <a href="/marketplace" class="nav-pill brand {isMarketplace ? 'active-brand' : ''}" {...triggerProps}>
-                        <Store size={16} />
-                    </a>
-                {/snippet}
-            </Tooltip>
-
-            <Tooltip label={m.nav_prompt()} id="nav-lg-prompt">
-                {#snippet children(triggerProps)}
-                    <a href="/prompt" class="nav-pill brand {isPrompt ? 'active-brand' : ''}" {...triggerProps}>
-                        <Wand2 size={16} />
-                    </a>
-                {/snippet}
-            </Tooltip>
-
-            <Tooltip label={m.nav_studio()} id="nav-lg-studio">
-                {#snippet children(triggerProps)}
-                    <a href="/studio" class="nav-pill brand {isStudio ? 'active-brand' : ''}" {...triggerProps}>
-                        <Paintbrush size={16} />
-                    </a>
-                {/snippet}
-            </Tooltip>
-        </nav>
-
-        <!-- Small Tablet Navigation - Icons only, no bg (470px to lg) -->
-        <nav class="hidden min-[470px]:flex lg:hidden items-center gap-0.5 flex-1">
-            <Tooltip label="Workforce Dashboard" id="nav-md-workforce">
-                {#snippet children(triggerProps)}
-                    <a href="/workforce" class="nav-pill-sm {isWorkforce ? 'active' : ''}" {...triggerProps}>
-                        <LayoutDashboard size={18} />
-                    </a>
-                {/snippet}
-            </Tooltip>
-
-            <div class="w-px h-4 bg-border/60 mx-1"></div>
-
-            <Tooltip label={m.nav_myAgent()} id="nav-md-my-agent">
-                {#snippet children(triggerProps)}
-                    <a href="/my-agent" class="nav-pill-sm {isMyAgent ? 'active' : ''}" {...triggerProps}>
-                        <User size={18} />
-                    </a>
-                {/snippet}
-            </Tooltip>
-            <Tooltip label={m.nav_builder()} id="nav-md-builder">
-                {#snippet children(triggerProps)}
-                    <a href="/builder" class="nav-pill-sm {isBuilder ? 'active' : ''}" {...triggerProps}>
-                        <BookOpen size={18} />
-                    </a>
-                {/snippet}
-            </Tooltip>
-            <Tooltip label={m.nav_flowEditor()} id="nav-md-flow-editor">
-                {#snippet children(triggerProps)}
-                    <a href="/flow-editor" class="nav-pill-sm {isFlowEditor ? 'active' : ''}" {...triggerProps}>
-                        <GitBranch size={18} />
-                    </a>
-                {/snippet}
-            </Tooltip>
-            <Tooltip label={m.nav_workshop()} id="nav-md-workshop">
-                {#snippet children(triggerProps)}
-                    <a href="/workshop" class="nav-pill-sm {isWorkshop ? 'active' : ''}" {...triggerProps}>
-                        <Wrench size={18} />
-                    </a>
-                {/snippet}
-            </Tooltip>
-
-            <div class="w-px h-4 bg-border/60 mx-1"></div>
-
-            <Tooltip label={m.nav_marketplace()} id="nav-md-marketplace">
-                {#snippet children(triggerProps)}
-                    <a href="/marketplace" class="nav-pill-sm brand {isMarketplace ? 'active-brand' : ''}" {...triggerProps}>
-                        <Store size={18} />
-                    </a>
-                {/snippet}
-            </Tooltip>
-
-            <Tooltip label={m.nav_prompt()} id="nav-md-prompt">
-                {#snippet children(triggerProps)}
-                    <a href="/prompt" class="nav-pill-sm brand {isPrompt ? 'active-brand' : ''}" {...triggerProps}>
-                        <Wand2 size={18} />
-                    </a>
-                {/snippet}
-            </Tooltip>
-
-            <Tooltip label={m.nav_studio()} id="nav-md-studio">
-                {#snippet children(triggerProps)}
-                    <a href="/studio" class="nav-pill-sm brand {isStudio ? 'active-brand' : ''}" {...triggerProps}>
-                        <Paintbrush size={18} />
-                    </a>
-                {/snippet}
-            </Tooltip>
-        </nav>
-
-        <!-- Spacer for mobile -->
-        <div class="flex-1 min-[470px]:hidden"></div>
+        <!-- Spacer: pushes right cluster to the right -->
+        <div class="flex-1 min-w-0"></div>
 
         <!-- Right Actions -->
         <div class="flex items-center gap-1.5 shrink-0">
-            <!-- Company Switcher (hidden on mobile) -->
             <div class="hidden sm:block">
                 <CompanySwitcher />
             </div>
 
-            <!-- Bug Report -->
             <button
                 onclick={() => captureSnapshot()}
                 disabled={bugReporter.phase === 'capturing'}
@@ -357,12 +114,9 @@
                 <Bug size={18} />
             </button>
 
-            <!-- Settings -->
             <a
                 href="/settings"
-                class="flex items-center justify-center w-9 h-9 rounded-lg text-muted hover:text-foreground hover:bg-bg3 transition-all duration-150 {isSettings
-                    ? 'text-foreground bg-bg3'
-                    : ''}"
+                class="flex items-center justify-center w-9 h-9 rounded-lg text-muted hover:text-foreground hover:bg-bg3 transition-all duration-150 {isSettings ? 'text-foreground bg-bg3' : ''}"
                 title={m.nav_settings()}
             >
                 <Settings size={18} />
@@ -370,12 +124,10 @@
 
             <div class="h-5 w-px bg-border/60 mx-0.5 hidden sm:block"></div>
 
-            <!-- Profile (hidden on xs) -->
             <div class="hidden sm:block">
                 <ProfileMenu />
             </div>
 
-            <!-- Mobile Menu Toggle (below 470px) -->
             <button
                 type="button"
                 onclick={toggleMobileMenu}
@@ -383,11 +135,7 @@
                 aria-label={m.topbar_toggleMenu()}
                 aria-expanded={mobileMenuOpen}
             >
-                {#if mobileMenuOpen}
-                    <X size={20} />
-                {:else}
-                    <Menu size={20} />
-                {/if}
+                {#if mobileMenuOpen}<X size={20} />{:else}<Menu size={20} />{/if}
             </button>
         </div>
     </div>
@@ -399,65 +147,6 @@
             style="animation: slide-up 150ms ease-out"
         >
             <nav class="flex flex-col p-2 gap-1">
-                <!-- Workforce section -->
-                <div class="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted/60">Workforce</div>
-                <a
-                    href="/workforce"
-                    class="mobile-nav-link {isWorkforce ? 'active' : ''}"
-                    onclick={closeMobileMenu}
-                >
-                    <LayoutDashboard size={18} />
-                    <span>Dashboard</span>
-                </a>
-                <a
-                    href="/workforce/issues"
-                    class="mobile-nav-link {page.url.pathname.startsWith('/workforce/issues') ? 'active' : ''}"
-                    onclick={closeMobileMenu}
-                >
-                    <span>Issues</span>
-                </a>
-                <a
-                    href="/workforce/approvals"
-                    class="mobile-nav-link {page.url.pathname.startsWith('/workforce/approvals') ? 'active' : ''}"
-                    onclick={closeMobileMenu}
-                >
-                    <span>Approvals</span>
-                </a>
-                <a
-                    href="/workforce/goals"
-                    class="mobile-nav-link {page.url.pathname.startsWith('/workforce/goals') ? 'active' : ''}"
-                    onclick={closeMobileMenu}
-                >
-                    <span>Goals</span>
-                </a>
-                <a
-                    href="/workforce/projects"
-                    class="mobile-nav-link {page.url.pathname.startsWith('/workforce/projects') ? 'active' : ''}"
-                    onclick={closeMobileMenu}
-                >
-                    <span>Projects</span>
-                </a>
-                <a
-                    href="/workforce/org"
-                    class="mobile-nav-link {page.url.pathname.startsWith('/workforce/org') ? 'active' : ''}"
-                    onclick={closeMobileMenu}
-                >
-                    <Users size={18} />
-                    <span>Org</span>
-                </a>
-
-                <div class="h-px bg-border/60 my-1"></div>
-
-                <!-- Gateway section -->
-                <div class="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted/60">Gateway</div>
-                <a
-                    href="/my-agent"
-                    class="mobile-nav-link {isMyAgent ? 'active' : ''}"
-                    onclick={closeMobileMenu}
-                >
-                    <User size={18} />
-                    <span>{m.nav_myAgent()}</span>
-                </a>
                 <a
                     href="/reliability"
                     class="mobile-nav-link {isReliability ? 'active' : ''}"
@@ -466,59 +155,24 @@
                     <Activity size={18} />
                     <span>{m.nav_reliability()}</span>
                 </a>
-                <a href="/builder" class="mobile-nav-link {isBuilder ? 'active' : ''}" onclick={closeMobileMenu}>
-                    <BookOpen size={18} />
-                    <span>{m.nav_builder()}</span>
-                </a>
-                <a
-                    href="/flow-editor"
-                    class="mobile-nav-link {isFlowEditor ? 'active' : ''}"
-                    onclick={closeMobileMenu}
-                >
-                    <GitBranch size={18} />
-                    <span>{m.nav_flows()}</span>
-                </a>
-                <a
-                    href="/workshop"
-                    class="mobile-nav-link {isWorkshop ? 'active' : ''}"
-                    onclick={closeMobileMenu}
-                >
-                    <Wrench size={18} />
-                    <span>{m.nav_workshop()}</span>
-                </a>
-
+                {#each sections as section (section.id)}
+                    <div class="h-px bg-border/60 my-1"></div>
+                    <div class="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted/60">
+                        {section.label}
+                    </div>
+                    {#each section.items as item (item.href)}
+                        {@const isActive = item.matcher(page.url.pathname)}
+                        <a
+                            href={item.href}
+                            class="mobile-nav-link {section.tone === 'brand' ? 'brand' : ''} {isActive ? (section.tone === 'brand' ? 'active-brand' : 'active') : ''}"
+                            onclick={closeMobileMenu}
+                        >
+                            <item.icon size={18} />
+                            <span>{item.label}</span>
+                        </a>
+                    {/each}
+                {/each}
                 <div class="h-px bg-border/60 my-1"></div>
-
-                <a
-                    href="/marketplace"
-                    class="mobile-nav-link brand {isMarketplace
-                        ? 'active-brand'
-                        : ''}"
-                    onclick={closeMobileMenu}
-                >
-                    <Store size={18} />
-                    <span>{m.nav_marketplace()}</span>
-                </a>
-                <a
-                    href="/prompt"
-                    class="mobile-nav-link brand {isPrompt
-                        ? 'active-brand'
-                        : ''}"
-                    onclick={closeMobileMenu}
-                >
-                    <Wand2 size={18} />
-                    <span>{m.nav_prompt()}</span>
-                </a>
-                <a
-                    href="/studio"
-                    class="mobile-nav-link brand {isStudio
-                        ? 'active-brand'
-                        : ''}"
-                    onclick={closeMobileMenu}
-                >
-                    <Paintbrush size={18} />
-                    <span>{m.nav_studio()}</span>
-                </a>
                 <a
                     href="/settings"
                     class="mobile-nav-link {isSettings ? 'active' : ''}"
@@ -527,8 +181,6 @@
                     <Settings size={18} />
                     <span>{m.nav_settings()}</span>
                 </a>
-
-                <!-- Company switcher in mobile menu -->
                 <div class="h-px bg-border/60 my-1"></div>
                 <div class="px-3 py-2">
                     <CompanySwitcher />
@@ -539,124 +191,99 @@
 </header>
 
 <style>
-    /* Desktop nav pills with text */
-    .nav-pill {
-        display: flex;
+    .ctx-link {
+        display: inline-flex;
         align-items: center;
         gap: 0.375rem;
-        padding: 0.375rem 0.625rem;
-        border-radius: 0.5rem;
+        padding: 0.375rem 0.5rem;
+        border-radius: 0.4375rem;
         font-size: 0.75rem;
         font-weight: 500;
         color: var(--color-muted);
         text-decoration: none;
-        transition: all 0.15s ease;
         white-space: nowrap;
+        transition:
+            color 120ms ease,
+            background 120ms ease;
         position: relative;
     }
-
-    .nav-pill:hover {
-        color: var(--color-foreground);
-        background: var(--color-bg3);
+    .ctx-link :global(.ctx-icon) {
+        opacity: 0.7;
+        transition: opacity 120ms ease;
     }
-
-    .nav-pill.active {
+    .ctx-link:hover {
+        color: var(--color-foreground);
+        background: var(--color-bg2);
+    }
+    .ctx-link:hover :global(.ctx-icon) {
+        opacity: 1;
+    }
+    .ctx-active.ctx-accent {
         color: var(--color-accent);
         background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-        box-shadow: inset 0 0 0 1px
-            color-mix(in srgb, var(--color-accent) 25%, transparent);
+        font-weight: 600;
     }
-
-    .nav-pill.active::after {
-        content: '';
+    .ctx-active.ctx-accent :global(.ctx-icon) {
+        opacity: 1;
+        color: var(--color-accent);
+    }
+    .ctx-active.ctx-accent::after {
+        content: "";
         position: absolute;
-        bottom: -1px;
         left: 25%;
         right: 25%;
+        bottom: -1px;
         height: 2px;
         background: var(--color-accent);
         border-radius: 1px;
-        animation: indicator-in 200ms ease-out;
+        animation: indicator-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
     }
-
-    .nav-pill.brand {
+    .ctx-active.ctx-brand {
+        color: var(--color-brand-pink);
+        background: color-mix(
+            in srgb,
+            var(--color-brand-pink) 12%,
+            transparent
+        );
+        font-weight: 600;
+    }
+    .ctx-active.ctx-brand :global(.ctx-icon) {
+        opacity: 1;
         color: var(--color-brand-pink);
     }
-
-    .nav-pill.brand:hover {
-        background: color-mix(
-            in srgb,
-            var(--color-brand-pink) 10%,
-            transparent
-        );
-    }
-
-    .nav-pill.active-brand {
-        background: color-mix(
-            in srgb,
-            var(--color-brand-pink) 15%,
-            transparent
-        );
-        box-shadow: inset 0 0 0 1px
-            color-mix(in srgb, var(--color-brand-pink) 30%, transparent);
-    }
-
-    .nav-pill.active-brand::after {
-        content: '';
+    .ctx-active.ctx-brand::after {
+        content: "";
         position: absolute;
-        bottom: -1px;
         left: 25%;
         right: 25%;
+        bottom: -1px;
         height: 2px;
         background: var(--color-brand-pink);
         border-radius: 1px;
-        animation: indicator-in 200ms ease-out;
+        animation: indicator-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
     }
 
-    /* Disabled nav pills (coming soon placeholders) */
-    .nav-pill.disabled,
-    .mobile-nav-link.disabled {
-        opacity: 0.4;
-        cursor: not-allowed;
-        pointer-events: none;
+    @keyframes indicator-in {
+        from {
+            transform: scaleX(0.4);
+            opacity: 0;
+        }
+        to {
+            transform: scaleX(1);
+            opacity: 1;
+        }
+    }
+    @keyframes slide-up {
+        from {
+            opacity: 0;
+            transform: translateY(-6px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
     }
 
-    /* Small nav pills (icon only) */
-    .nav-pill-sm {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 2rem;
-        height: 2rem;
-        border-radius: 0.5rem;
-        color: var(--color-muted);
-        transition: all 0.15s ease;
-    }
-
-    .nav-pill-sm:hover {
-        color: var(--color-foreground);
-        background: var(--color-bg3);
-    }
-
-    .nav-pill-sm.active {
-        color: var(--color-accent);
-        background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-    }
-
-    .nav-pill-sm.brand {
-        color: var(--color-brand-pink);
-    }
-
-    .nav-pill-sm.active-brand {
-        color: var(--color-brand-pink);
-        background: color-mix(
-            in srgb,
-            var(--color-brand-pink) 15%,
-            transparent
-        );
-    }
-
-    /* Mobile nav links */
     .mobile-nav-link {
         display: flex;
         align-items: center;
@@ -669,21 +296,17 @@
         text-decoration: none;
         transition: all 0.15s ease;
     }
-
     .mobile-nav-link:hover {
         color: var(--color-foreground);
         background: var(--color-bg3);
     }
-
     .mobile-nav-link.active {
         color: var(--color-accent);
         background: color-mix(in srgb, var(--color-accent) 12%, transparent);
     }
-
     .mobile-nav-link.brand {
         color: var(--color-brand-pink);
     }
-
     .mobile-nav-link.active-brand {
         background: color-mix(
             in srgb,
