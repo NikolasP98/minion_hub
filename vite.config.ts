@@ -27,7 +27,7 @@ export default defineConfig({
     sveltekit(),
   ],
   optimizeDeps: {
-    include: ['@zag-js/popover', '@zag-js/combobox', '@zag-js/slider'],
+    include: ['@zag-js/popover', '@zag-js/combobox', '@zag-js/slider', '@inlang/paraglide-sveltekit/internal'],
     exclude: ['@dimforge/rapier2d-compat'],
   },
   ssr: {
