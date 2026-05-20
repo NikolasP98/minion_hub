@@ -3,11 +3,8 @@
     import { onMount } from 'svelte';
     import type { Channel, ChannelType } from '$lib/types/channels';
     import { CHANNEL_TYPE_LABELS } from '$lib/types/channels';
-    import { ChevronDown, Plus, Power, Settings2 } from 'lucide-svelte';
+    import { ArrowUpRight, Plus, Power, Settings2 } from 'lucide-svelte';
     import ChannelBrandIcon from './ChannelBrandIcon.svelte';
-    import PluginIframe from '$lib/plugins/PluginIframe.svelte';
-    import type { Theme } from '$lib/plugins/bridge-protocol';
-    import { hostsState, fetchHostToken } from '$lib/state/features/hosts.svelte';
     import { hydratePluginNav, pluginNavState } from '$lib/state/plugin-nav.svelte';
     import { sendRequest } from '$lib/services/gateway.svelte';
     import { configState, loadConfig, beginRestart } from '$lib/state/config/config.svelte';
@@ -21,86 +18,18 @@
         transportEnabled: boolean | undefined;
         onaddclick: () => void;
         children: Snippet;
-        /** Gateway base URL (HTTP) used to construct the plugin iframe src. */
-        gatewayBaseUrl?: string;
     }
-    let { type, channels, transportEnabled, onaddclick, children, gatewayBaseUrl }: Props = $props();
+    let { type, channels, transportEnabled, onaddclick, children }: Props = $props();
 
-    // Plugin settings inline-embed. We surface a "Plugin settings" disclosure
-    // when the gateway advertises a `settings.plugins` UI for a plugin whose
-    // id matches this channel type (first-party comms plugins use pluginId
-    // === channelType). The plugin's own settings page is the source of
-    // truth — embedding it inline gives users one consistent surface and
-    // avoids duplicating the config schema in the hub.
-    let pluginSettingsOpen = $state(false);
+    // Plugin settings deep-link. When the gateway advertises a
+    // `settings.plugins` UI for a plugin whose id matches this channel type
+    // (first-party comms plugins use pluginId === channelType), surface a
+    // CTA that navigates to `/settings/plugins?plugin=<id>` so the user
+    // lands directly on that plugin's settings tab. The plugin page reads
+    // the query param and auto-selects the matching entry on load.
     const pluginSettingsEntry = $derived(
         pluginNavState.loaded ? pluginNavState.settingsByPluginId[type] : undefined,
     );
-
-    // Lazy iframe state — only materialise theme/tokens/token-fetch when the
-    // user actually expands the section. Avoids paying for an iframe per
-    // channel group on every comms-tab visit.
-    //
-    // Theme/tokens are stored as plain `let` (NOT `$state`) because PluginIframe
-    // forwards them through `postMessage`, which can't clone Svelte 5 reactive
-    // proxies (DataCloneError). The /settings/plugins page uses the same plain
-    // `let` pattern for the same reason. Values are read once when the iframe
-    // mounts (gated by `iframeAuthToken`), so reactivity isn't needed here.
-    let iframeTheme: Theme = 'light';
-    let iframeTokens: Record<string, string> = {};
-    let iframeAuthToken = $state('');
-    let iframeTokenError = $state<string | null>(null);
-
-    function snapshotThemeTokens() {
-        if (typeof document === 'undefined') return;
-        iframeTheme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
-        const root = document.documentElement;
-        const computed = getComputedStyle(root);
-        const next: Record<string, string> = {};
-        for (const name of Array.from(root.style)) {
-            if (name.startsWith('--')) next[name] = root.style.getPropertyValue(name).trim();
-        }
-        for (const sheet of Array.from(document.styleSheets)) {
-            let rules: CSSRuleList;
-            try {
-                rules = sheet.cssRules;
-            } catch {
-                continue;
-            }
-            for (const rule of Array.from(rules)) {
-                if (!(rule instanceof CSSStyleRule)) continue;
-                if (!/^:root\b/.test(rule.selectorText)) continue;
-                for (const name of Array.from(rule.style)) {
-                    if (name.startsWith('--') && !(name in next))
-                        next[name] = computed.getPropertyValue(name).trim();
-                }
-            }
-        }
-        iframeTokens = next;
-    }
-
-    async function togglePluginSettings() {
-        const next = !pluginSettingsOpen;
-        if (next && !iframeAuthToken && !iframeTokenError) {
-            const hostId = hostsState.activeHostId;
-            if (hostId) {
-                snapshotThemeTokens();
-                try {
-                    const tok = await fetchHostToken(hostId);
-                    if (tok === null) {
-                        iframeTokenError = 'Could not obtain gateway token.';
-                    } else {
-                        iframeAuthToken = tok;
-                    }
-                } catch (err) {
-                    iframeTokenError = err instanceof Error ? err.message : String(err);
-                }
-            } else {
-                iframeTokenError = 'No active host selected.';
-            }
-        }
-        pluginSettingsOpen = next;
-    }
 
     onMount(() => {
         void hydratePluginNav();
@@ -175,13 +104,13 @@
                 : 'bg-success/10 text-success hover:bg-success/20'}"
             onclick={toggleTransport}
             disabled={toggling}
-            title={transportEnabled === false ? m.channel_transportOff() : m.channel_transportOn()}
+            title={transportEnabled === false ? 'Channel off' : 'Channel on'}
         >
             {#if toggling}
                 <span class="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
             {:else}
                 <Power size={12} />
-                {transportEnabled === false ? m.channel_transportOff() : m.channel_transportOn()}
+                {transportEnabled === false ? 'Channel off' : 'Channel on'}
             {/if}
         </button>
         <button
@@ -196,42 +125,15 @@
     <div class="p-3 space-y-1.5">
         {@render children()}
     </div>
-    {#if pluginSettingsEntry && gatewayBaseUrl}
-        <div class="border-t border-border/60">
-            <button
-                type="button"
-                class="flex w-full items-center gap-2 px-4 py-2.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                onclick={togglePluginSettings}
-                aria-expanded={pluginSettingsOpen}
-            >
-                <Settings2 size={12} />
-                <span class="font-medium">Plugin settings</span>
-                <span class="text-muted-foreground/70">— {pluginSettingsEntry.description}</span>
-                <ChevronDown
-                    size={12}
-                    class="ml-auto transition-transform duration-200 {pluginSettingsOpen ? 'rotate-180' : ''}"
-                />
-            </button>
-            {#if pluginSettingsOpen}
-                <div class="px-2 pb-3">
-                    {#if iframeTokenError}
-                        <p class="px-2 py-3 text-xs text-destructive">{iframeTokenError}</p>
-                    {:else if !iframeAuthToken}
-                        <p class="px-2 py-3 text-xs text-muted-foreground">Loading plugin…</p>
-                    {:else}
-                        <div class="rounded-md border border-border/60 bg-bg2 overflow-hidden">
-                            <PluginIframe
-                                pluginId={pluginSettingsEntry.pluginId}
-                                entrypoint={pluginSettingsEntry.entrypoint}
-                                gatewayUrl={gatewayBaseUrl}
-                                authToken={iframeAuthToken}
-                                theme={iframeTheme}
-                                tokens={iframeTokens}
-                            />
-                        </div>
-                    {/if}
-                </div>
-            {/if}
-        </div>
+    {#if pluginSettingsEntry}
+        <a
+            href="/settings/plugins?plugin={encodeURIComponent(pluginSettingsEntry.pluginId)}"
+            class="flex items-center gap-2 border-t border-border/60 px-4 py-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-bg2/40 transition-colors"
+        >
+            <Settings2 size={12} />
+            <span class="font-medium">Plugin settings</span>
+            <span class="text-muted-foreground/70">— {pluginSettingsEntry.description}</span>
+            <ArrowUpRight size={12} class="ml-auto" />
+        </a>
     {/if}
 </section>

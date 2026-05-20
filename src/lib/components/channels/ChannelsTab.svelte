@@ -22,18 +22,6 @@
     let expandedChannelId = $state<string | null>(null);
 
     const serverId = $derived(hostsState.activeHostId);
-    const gatewayBaseUrl = $derived.by(() => {
-        // Track both hosts list and active id so the derived re-runs on host
-        // switch — getActiveHost() reads from a separate local store that
-        // isn't reactive on its own. PluginIframe expects an HTTP(S) URL
-        // (the iframe is loaded via http; ws scheme is derived internally),
-        // so convert from the stored WS URL.
-        const id = hostsState.activeHostId;
-        if (!id) return undefined;
-        const url = hostsState.hosts.find((h) => h.id === id)?.url;
-        if (!url) return undefined;
-        return url.replace(/^ws/, 'http');
-    });
 
     /** Transform live WS channelAccounts (array-based) into Channel objects */
     const liveChannels = $derived.by((): Channel[] => {
@@ -248,7 +236,6 @@
                 {type}
                 channels={channelsOfType}
                 {transportEnabled}
-                {gatewayBaseUrl}
                 onaddclick={() => { wizardType = type; }}
             >
                 {#if channelsOfType.length === 0}

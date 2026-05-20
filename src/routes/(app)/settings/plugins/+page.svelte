@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invalidateAll } from '$app/navigation';
+  import { page } from '$app/state';
   import {
     Puzzle,
     AlertTriangle,
@@ -58,6 +59,17 @@
 
   let selected = $state(0);
   const current = $derived(data.entries[selected]);
+
+  // Auto-select the entry matching `?plugin=<id>` so deep-links from elsewhere
+  // (e.g. the Comms tab's "Plugin settings" CTA) land directly on the right
+  // plugin instead of always opening the first entry. Re-runs if the URL
+  // changes — `page.url` is reactive in Svelte 5 / Sveltekit `$app/state`.
+  $effect(() => {
+    const target = page.url.searchParams.get('plugin');
+    if (!target) return;
+    const idx = data.entries.findIndex((e) => e.pluginId === target);
+    if (idx >= 0 && idx !== selected) selected = idx;
+  });
 
   // Fetch a per-user gateway token for the active host so plugin iframes can
   // open authenticated WS connections to the gateway. Tokens are NOT sent
