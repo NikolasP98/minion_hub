@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { SecretsSummary } from '@minion-stack/shared';
+  import type { SecretsSummary } from '$lib/types/secrets';
   import SecretStatusPill from './SecretStatusPill.svelte';
 
   interface Props {

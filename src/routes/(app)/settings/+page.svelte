@@ -23,6 +23,7 @@
     import BindingsTab from "$lib/components/users/BindingsTab.svelte";
     import ChannelsTab from "$lib/components/channels/ChannelsTab.svelte";
     import HostsTab from "$lib/components/settings/HostsTab.svelte";
+    import SecretsSection from "$lib/components/settings/SecretsSection.svelte";
     import * as m from "$lib/paraglide/messages";
     import { SvelteSet } from "svelte/reactivity";
 
@@ -265,6 +266,9 @@
 
                             <!-- Integrated sections per tab -->
                             {#if tab.id === 'security'}
+                                <div class="mt-6">
+                                    <SecretsSection />
+                                </div>
                                 <!-- Team + Roles management has moved to dedicated routes -->
                                 <div class="mt-6 bg-card border border-border rounded-lg px-5 py-4 text-xs text-muted-foreground">
                                     <p>
