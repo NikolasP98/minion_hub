@@ -32,6 +32,7 @@ import {
   saveLastActiveHost,
   fetchHostToken,
 } from '$lib/state/features/hosts.svelte';
+import { userState } from '$lib/state/features/user.svelte';
 import { autoSave, resetWorkshop } from '$lib/state/workshop/workshop.svelte';
 import { ui } from '$lib/state/ui/ui.svelte';
 import { toastError, toastInfo, toastSuccess } from '$lib/state/ui/toast.svelte';
@@ -229,6 +230,13 @@ export async function wsConnect() {
       // branch already accepts valid shared-secret auth (canSkipDevice =
       // sharedAuthOk) and that's the correct path for the UI.
 
+      // Carry the Better Auth user id forward so the gateway can scope
+      // per-user RPCs (myAgent.feedToday, etc.) to the right tenant. The
+      // gateway accepts this claim only when the connection also presents
+      // a valid shared-secret token + operator scope — same trust boundary
+      // as the secret itself. See `message-handler.ts` proxy-userId block.
+      const userId = userState.user?.id;
+
       return {
         minProtocol: 3,
         maxProtocol: 3,
@@ -237,6 +245,7 @@ export async function wsConnect() {
         scopes,
         caps: [],
         auth: token ? { token } : undefined,
+        userId,
         userAgent: navigator.userAgent,
         locale: navigator.language,
       };
