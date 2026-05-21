@@ -117,6 +117,45 @@ function mapGatewaySessionRows(raw: unknown[]): Session[] {
 let client: GatewayClient | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let pollPresenceTimer: ReturnType<typeof setInterval> | null = null;
+// One-shot guard: when the gateway closes with NOT_PAIRED / "device identity
+// required", we refetch the token and try exactly once more. A second auth-
+// fatal close halts the reconnect loop and surfaces a CTA instead of letting
+// the shared client autoReconnect with the same stale credential forever.
+let notPairedRefetchAttempted = false;
+
+function isAuthFatalClose(code: number, reason: string): boolean {
+  if (code !== 1008) return false;
+  return /device identity required|pairing required|not paired/i.test(reason);
+}
+
+async function handleAuthFatalClose(reason: string): Promise<void> {
+  const hostId = hostsState.activeHostId;
+  if (!hostId) return;
+
+  // Tear down the dead client so its autoReconnect timer is cancelled
+  // (GatewayClient.close() sets `closed = true`, which short-circuits
+  // scheduleReconnect on the way back up the close handler).
+  if (client) {
+    client.close();
+    client = null;
+  }
+
+  if (notPairedRefetchAttempted) {
+    conn.connectError =
+      `Gateway rejected the token (${reason}). Rotate this host's token in Hosts → Edit, then reconnect.`;
+    toastError('Authentication failed', conn.connectError, {
+      id: 'gateway-not-paired',
+      duration: Infinity,
+    });
+    return;
+  }
+
+  notPairedRefetchAttempted = true;
+  toastInfo('Refetching gateway token…', 'One retry before giving up', {
+    id: 'gateway-token-refetch',
+  });
+  await wsConnect();
+}
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -177,33 +216,18 @@ export async function wsConnect() {
       // Wait for connect.challenge event — no action needed here
     },
 
-    async onChallenge(nonce: string): Promise<Record<string, unknown>> {
-      // Fetch device identity + signature from server
-      let device:
-        | { id: string; publicKey: string; signature: string; signedAt: number; nonce?: string }
-        | undefined;
-      try {
-        const signRes = await fetch('/api/device-identity/sign', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            nonce,
-            token: token || undefined,
-            role,
-            scopes,
-            clientId: 'minion-control-ui',
-            clientMode: 'ui',
-          }),
-        });
-        if (signRes.ok) {
-          const data = await signRes.json();
-          device = data.device;
-        } else {
-          console.warn('[hub] device-identity sign failed:', signRes.status);
-        }
-      } catch (e) {
-        console.warn('[hub] device-identity sign error:', e);
-      }
+    async onChallenge(_nonce: string): Promise<Record<string, unknown>> {
+      // Control-UI auth model: the shared-secret gateway token (carried in WS
+      // upgrade headers + the connect frame's auth path) IS the credential.
+      // The real access filter is the hub's user_servers link — only users
+      // approved for this host can even fetch the token via POST /api/servers/[id]/token.
+      //
+      // We DELIBERATELY do not send a `device` field. Sending it would force
+      // the gateway into its per-device-pairing branch (message-handler.ts:705),
+      // requiring an out-of-band `minion devices approve` for every new hub
+      // instance — wrong UX for control-UI clients. The gateway's no-device
+      // branch already accepts valid shared-secret auth (canSkipDevice =
+      // sharedAuthOk) and that's the correct path for the UI.
 
       return {
         minProtocol: 3,
@@ -213,7 +237,6 @@ export async function wsConnect() {
         scopes,
         caps: [],
         auth: token ? { token } : undefined,
-        device,
         userAgent: navigator.userAgent,
         locale: navigator.language,
       };
@@ -235,6 +258,15 @@ export async function wsConnect() {
       conn.connecting = false;
       conn.particleHue = 'red';
       // Binary listeners: raw socket is gone, no cleanup needed for Uint8Array listeners
+
+      // Auth-fatal closes (NOT_PAIRED / "device identity required") will never
+      // recover by retrying the same token, so handle them out-of-band: one
+      // forced token refetch + reconnect, then halt the reconnect loop and
+      // surface a clear CTA. Without this, GatewayClient autoReconnect would
+      // ping-pong against the same stale credential indefinitely.
+      if (isAuthFatalClose(code, reason)) {
+        void handleAuthFatalClose(reason);
+      }
     },
 
     onReconnectScheduled(_delayMs: number) {
@@ -256,6 +288,9 @@ export async function wsConnect() {
     conn.particleHue = 'blue';
     conn.connectedAt = Date.now();
     conn.connectError = null;
+    // Successful handshake — clear the one-shot NOT_PAIRED refetch guard so a
+    // future stale-token incident gets its own retry budget.
+    notPairedRefetchAttempted = false;
 
     if (wasReconnect) {
       const activeHost = getActiveHost();
