@@ -255,9 +255,11 @@ const appHandle: Handle = async ({ event, resolve }) => {
     return new Response(null, { status: 302, headers: { location: '/' } });
   }
 
-  // Non-admin users: landing page is /my-agent instead of /
-  if (event.locals.user && event.locals.user.role !== 'admin' && path === '/') {
-    return new Response(null, { status: 302, headers: { location: '/my-agent' } });
+  // All authenticated users land on /my-agent by default. The legacy admin
+  // landing (agents list) now lives at /agents. Per-user override picker
+  // ships in Phase 1.5 (DB-backed users.home_page_choice).
+  if (event.locals.user && path === '/') {
+    return new Response(null, { status: 307, headers: { location: '/my-agent' } });
   }
 
   return resolve(event);
