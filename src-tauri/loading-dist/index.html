@@ -24,7 +24,10 @@
     </div>
   </div>
   <script>
-    const URL = 'http://127.0.0.1:5959';
+    // Use 'localhost' (not 127.0.0.1) so the resulting page Origin matches
+    // SvelteKit's ORIGIN env + Better Auth baseURL. Different host strings
+    // are treated as different origins by Better Auth's trustedOrigins check.
+    const URL = 'http://localhost:5959';
     const DEADLINE_MS = 30_000;
     const POLL_MS = 250;
     const started = performance.now();

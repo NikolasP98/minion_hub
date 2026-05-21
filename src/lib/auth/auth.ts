@@ -21,6 +21,19 @@ export function getAuth(): AuthInstance {
 			baseURL: hubUrl,
 			trustedOrigins: [
 				...(env.VERCEL_URL ? [`https://${env.VERCEL_URL}`] : []),
+				// Desktop (Tauri) shell: webview navigates to the local Node sidecar.
+				// Add both host spellings so it doesn't matter whether the loader
+				// redirected to localhost or 127.0.0.1.
+				...(env.DESKTOP === '1'
+					? [
+							'http://localhost:5959',
+							'http://127.0.0.1:5959',
+							// Tauri webview's own origin on macOS/Linux (asset protocol)
+							'tauri://localhost',
+							// Tauri webview's origin on Windows
+							'https://tauri.localhost',
+						]
+					: []),
 			],
 			google:
 				env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET

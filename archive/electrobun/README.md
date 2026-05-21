@@ -32,11 +32,10 @@ stalls or we ever want to ship a CEF variant separately.
   Tauri will reuse it.
 - `src/hooks.server.ts` — three `DESKTOP=1` guards (auth cookie persistence,
   PostHog bypass). Shell-agnostic.
-- `src/server/auth/desktop-session.ts` — cookie persistence helpers. Named
-  shell-agnostically; originally written for Electrobun bug #278 (CEF Linux
-  incognito fallback). Tauri's webview persists cookies by default so this may
-  become dead code — leave in place until the Tauri scaffold is tested, then
-  re-evaluate.
+- ~~`src/server/auth/desktop-session.ts`~~ — **archived 2026-05-20 after
+  verification.** Tauri webview (WebKitGTK on Linux) persists cookies natively
+  across `bunx tauri dev` restarts; the Electrobun-bug-#278 workaround was
+  redundant. Removed the three imports + two call sites from `hooks.server.ts`.
 - `package.json` scripts:
   - **kept**: `desktop:build`, `desktop:serve` (framework-agnostic)
   - **removed**: `desktop:dev`, `desktop:window` (called `electrobun` directly)
@@ -51,6 +50,7 @@ stalls or we ever want to ship a CEF variant separately.
 | `desktop-main.ts` | `minion_hub/desktop/main.ts` |
 | `desktop-postbuild.ts` | `minion_hub/desktop/postbuild.ts` |
 | `desktop-launch.sh` | `minion_hub/desktop/launch.sh` |
+| `desktop-session.ts` | `minion_hub/src/server/auth/desktop-session.ts` |
 
 ## To restore
 
@@ -61,5 +61,7 @@ git mv archive/electrobun/electrobun.config.ts ./electrobun.config.ts
 git mv archive/electrobun/desktop-main.ts desktop/main.ts
 git mv archive/electrobun/desktop-postbuild.ts desktop/postbuild.ts
 git mv archive/electrobun/desktop-launch.sh desktop/launch.sh
-# Then re-add electrobun devDep to package.json and run `bun install`.
+git mv archive/electrobun/desktop-session.ts src/server/auth/desktop-session.ts
+# Then re-add electrobun devDep to package.json and run `bun install`,
+# and restore the three imports + two call sites in src/hooks.server.ts.
 ```
