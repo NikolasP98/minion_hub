@@ -1,3 +1,8 @@
+// Hoist .env values into process.env at boot — server modules that read raw
+// `process.env` (e.g. ssrf-guard for vitest testability) see them in dev mode.
+// Must run before any server-only module is loaded; this import is first.
+import '$server/env-hoist';
+
 import { sequence } from '@sveltejs/kit/hooks';
 import type { Handle } from '@sveltejs/kit';
 import { i18n } from '$lib/i18n';
