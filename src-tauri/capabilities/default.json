@@ -1,0 +1,9 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default permissions for the Minion Hub desktop shell. Minimal — the webview only loads the local Node server.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default"
+  ]
+}

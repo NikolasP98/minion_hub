@@ -66,8 +66,8 @@
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/svelte": "^5.3.1",
+    "@tauri-apps/cli": "^2",
     "@types/dompurify": "^3.2.0",
-    "electrobun": "^1.16.0",
     "happy-dom": "^15.0.0",
     "jsdom": "^29.1.1",
     "prettier": "^3.0.0",
@@ -97,8 +97,9 @@
     "test:e2e": "playwright test",
     "desktop:build": "DESKTOP=1 VITE_DESKTOP=1 vite build",
     "desktop:serve": "DESKTOP=1 VITE_DESKTOP=1 PORT=5959 ORIGIN=http://localhost:5959 HOST=127.0.0.1 node build/index.js",
-    "desktop:dev": "DESKTOP=1 VITE_DESKTOP=1 vite build && DESKTOP=1 VITE_DESKTOP=1 electrobun dev",
-    "desktop:window": "DESKTOP=1 VITE_DESKTOP=1 electrobun dev"
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
   },
   "type": "module",
   "prettier": "@minion-stack/lint-config/prettier.config.cjs"

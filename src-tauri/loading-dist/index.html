@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Minion Hub — starting…</title>
+  <style>
+    :root { color-scheme: dark; }
+    html, body { margin: 0; padding: 0; height: 100%; background: #0e0e14; color: #e6e6f0; font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+    .wrap { display: grid; place-items: center; height: 100%; }
+    .card { text-align: center; padding: 32px 40px; }
+    h1 { margin: 0 0 8px; font-size: 18px; font-weight: 500; letter-spacing: 0.3px; }
+    p { margin: 0; opacity: 0.6; font-size: 13px; }
+    .dot { display: inline-block; width: 8px; height: 8px; margin-right: 10px; border-radius: 50%; background: #ffb454; box-shadow: 0 0 0 0 #ffb45499; animation: pulse 1.4s infinite ease-out; vertical-align: middle; }
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 #ffb45466; } 70% { box-shadow: 0 0 0 12px #ffb45400; } 100% { box-shadow: 0 0 0 0 #ffb45400; } }
+    .err .dot { background: #ff6b6b; animation: none; box-shadow: 0 0 0 0 #ff6b6b00; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card" id="card">
+      <h1><span class="dot"></span><span id="msg">Starting hub server…</span></h1>
+      <p id="sub">Waiting for http://127.0.0.1:5959</p>
+    </div>
+  </div>
+  <script>
+    const URL = 'http://127.0.0.1:5959';
+    const DEADLINE_MS = 30_000;
+    const POLL_MS = 250;
+    const started = performance.now();
+    async function ping() {
+      try {
+        const r = await fetch(URL + '/healthz', { method: 'GET', cache: 'no-store' });
+        if (r.ok || r.status === 404) return true; // 404 still means the server responded
+        return false;
+      } catch { return false; }
+    }
+    async function loop() {
+      while (performance.now() - started < DEADLINE_MS) {
+        if (await ping()) {
+          location.replace(URL);
+          return;
+        }
+        await new Promise(r => setTimeout(r, POLL_MS));
+      }
+      document.getElementById('card').classList.add('err');
+      document.getElementById('msg').textContent = 'Server did not start';
+      document.getElementById('sub').textContent =
+        'No response from ' + URL + ' after 30s — check the embedded Node process.';
+    }
+    loop();
+  </script>
+</body>
+</html>

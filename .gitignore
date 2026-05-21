@@ -13,9 +13,15 @@ vite.config.ts.timestamp-*
 .playwright-mcp/
 .serena/
 *.png
+# Tauri ships app icons as PNG; whitelist that subtree so they get tracked
+!src-tauri/icons/*.png
 .worktrees/
 
-# Electrobun desktop build output
+# Tauri build artifacts
+src-tauri/target/
+src-tauri/gen/
+
+# Electrobun desktop build output (shell archived; rule kept harmless)
 desktop-build/
 
 # Dev tool directories
