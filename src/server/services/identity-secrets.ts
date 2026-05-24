@@ -1,4 +1,4 @@
-import { encrypt, decrypt } from '$server/auth/crypto';
+import { encrypt, decrypt } from '../auth/crypto';
 
 /** Google Application Default Credentials (authorized_user) blob. */
 export type GoogleAdc = {
