@@ -1,17 +1,20 @@
 import type { HandleClientError } from '@sveltejs/kit';
+// Use static (build-time inlined) public env, not dynamic. Dynamic public env
+// reads `globalThis.__sveltekit_<hash>.env` at runtime, which throws on the
+// client when a deploy serves a server/client build with mismatched hashes.
+import { PUBLIC_POSTHOG_KEY, PUBLIC_POSTHOG_HOST } from '$env/static/public';
 
 export async function init() {
   // D-08: skip PostHog initialization in desktop mode
   if (import.meta.env.VITE_DESKTOP) return;
 
+  if (!PUBLIC_POSTHOG_KEY) return;
+
   const posthog = (await import('posthog-js')).default;
-  const { env } = await import('$env/dynamic/public');
 
-  if (!env.PUBLIC_POSTHOG_KEY) return;
-
-  posthog.init(env.PUBLIC_POSTHOG_KEY, {
+  posthog.init(PUBLIC_POSTHOG_KEY, {
     api_host: `${window.location.origin}/ingest`,
-    ui_host: env.PUBLIC_POSTHOG_HOST,
+    ui_host: PUBLIC_POSTHOG_HOST,
     defaults: '2026-01-30',
     capture_exceptions: true,
     // Disable PostHog's history.pushState/replaceState monkey-patch. SvelteKit's
