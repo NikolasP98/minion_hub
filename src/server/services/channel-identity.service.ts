@@ -1,5 +1,5 @@
 import { eq, and } from 'drizzle-orm';
-import { channelIdentities, user } from '@minion-stack/db/schema';
+import { userIdentities } from '../db/schema/user-identities';
 import { newId, nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
 
@@ -15,25 +15,30 @@ export interface ChannelIdentityEntry {
 }
 
 /**
+ * Channel identities are stored in the unified `user_identities` table with
+ * kind='channel' (provider=<channel>, externalId=<channelUserId>). These
+ * projections preserve the legacy ChannelIdentityEntry shape the gateway
+ * consumes, so the channel→user mapping keeps working unchanged.
+ */
+const channelProjection = {
+  id: userIdentities.id,
+  userId: userIdentities.userId,
+  channel: userIdentities.provider,
+  channelUserId: userIdentities.externalId,
+  displayName: userIdentities.displayName,
+  verifiedAt: userIdentities.verifiedAt,
+  createdAt: userIdentities.createdAt,
+};
+
+/**
  * List all channel identity mappings.
  * Used by the gateway on startup to fetch the full mapping table.
  */
 export async function listChannelIdentities(ctx: TenantContext): Promise<ChannelIdentityEntry[]> {
-  // Join through user to scope by tenant (users belong to orgs via member table,
-  // but for simplicity we return all channel identities -- the gateway filters by its own users)
-  const rows = await ctx.db
-    .select({
-      id: channelIdentities.id,
-      userId: channelIdentities.userId,
-      channel: channelIdentities.channel,
-      channelUserId: channelIdentities.channelUserId,
-      displayName: channelIdentities.displayName,
-      verifiedAt: channelIdentities.verifiedAt,
-      createdAt: channelIdentities.createdAt,
-    })
-    .from(channelIdentities);
-
-  return rows;
+  return ctx.db
+    .select(channelProjection)
+    .from(userIdentities)
+    .where(eq(userIdentities.kind, 'channel'));
 }
 
 /**
@@ -44,22 +49,14 @@ export async function getChannelIdentitiesForUser(
   userId: string,
 ): Promise<ChannelIdentityEntry[]> {
   return ctx.db
-    .select({
-      id: channelIdentities.id,
-      userId: channelIdentities.userId,
-      channel: channelIdentities.channel,
-      channelUserId: channelIdentities.channelUserId,
-      displayName: channelIdentities.displayName,
-      verifiedAt: channelIdentities.verifiedAt,
-      createdAt: channelIdentities.createdAt,
-    })
-    .from(channelIdentities)
-    .where(eq(channelIdentities.userId, userId));
+    .select(channelProjection)
+    .from(userIdentities)
+    .where(and(eq(userIdentities.userId, userId), eq(userIdentities.kind, 'channel')));
 }
 
 /**
  * Link a channel identity to a user.
- * Upserts on (channel, channelUserId) unique constraint.
+ * Upserts on (provider, externalId) unique constraint.
  */
 export async function linkChannelIdentity(
   ctx: TenantContext,
@@ -74,20 +71,28 @@ export async function linkChannelIdentity(
   const now = nowMs();
 
   await ctx.db
-    .insert(channelIdentities)
+    .insert(userIdentities)
     .values({
       id,
       userId: params.userId,
-      channel: params.channel,
-      channelUserId: params.channelUserId,
+      provider: params.channel,
+      kind: 'channel',
+      externalId: params.channelUserId,
       displayName: params.displayName ?? null,
+      scope: null,
+      secretCiphertext: null,
+      secretIv: null,
+      expiresAt: null,
+      verifiedAt: null,
       createdAt: now,
+      updatedAt: now,
     })
     .onConflictDoUpdate({
-      target: [channelIdentities.channel, channelIdentities.channelUserId],
+      target: [userIdentities.provider, userIdentities.externalId],
       set: {
         userId: params.userId,
         displayName: params.displayName ?? null,
+        updatedAt: now,
       },
     });
 
@@ -98,7 +103,7 @@ export async function linkChannelIdentity(
  * Unlink a channel identity by ID.
  */
 export async function unlinkChannelIdentity(ctx: TenantContext, id: string): Promise<void> {
-  await ctx.db.delete(channelIdentities).where(eq(channelIdentities.id, id));
+  await ctx.db.delete(userIdentities).where(eq(userIdentities.id, id));
 }
 
 /**
@@ -110,6 +115,12 @@ export async function unlinkChannelIdentitiesByChannel(
   channel: string,
 ): Promise<void> {
   await ctx.db
-    .delete(channelIdentities)
-    .where(and(eq(channelIdentities.userId, userId), eq(channelIdentities.channel, channel)));
+    .delete(userIdentities)
+    .where(
+      and(
+        eq(userIdentities.userId, userId),
+        eq(userIdentities.kind, 'channel'),
+        eq(userIdentities.provider, channel),
+      ),
+    );
 }
