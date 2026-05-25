@@ -4,8 +4,6 @@ import {
     Sparkles,
     LayoutDashboard,
     Users,
-    User,
-    BookOpen,
     GitBranch,
     Wrench,
     Store,
@@ -96,15 +94,9 @@ export function getSections(): Section[] {
             items: [
                 {
                     href: "/my-agent",
-                    label: m.nav_myAgent(),
-                    icon: User,
-                    matcher: (p) => p.startsWith("/my-agent"),
-                },
-                {
-                    href: "/builder",
-                    label: m.nav_builder(),
-                    icon: BookOpen,
-                    matcher: (p) => p.startsWith("/builder"),
+                    label: m.nav_agents(),
+                    icon: Users,
+                    matcher: (p) => p.startsWith("/my-agent") || p.startsWith("/agents"),
                 },
                 {
                     href: "/flow-editor",
@@ -113,10 +105,10 @@ export function getSections(): Section[] {
                     matcher: (p) => p.startsWith("/flow-editor"),
                 },
                 {
-                    href: "/workshop",
-                    label: m.nav_workshop(),
+                    href: "/tools",
+                    label: m.nav_tools(),
                     icon: Wrench,
-                    matcher: (p) => p.startsWith("/workshop"),
+                    matcher: (p) => p.startsWith("/tools"),
                 },
             ],
         },

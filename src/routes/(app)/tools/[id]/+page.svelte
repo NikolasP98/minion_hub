@@ -258,7 +258,7 @@
 <!-- Editor Toolbar -->
     <div class="editor-toolbar">
         <div class="toolbar-left">
-            <a href="/builder" class="back-link" title={m.builder_backToBuilder()}>
+            <a href="/tools" class="back-link" title="Back to Tools">
                 <ArrowLeft size={16} />
             </a>
 

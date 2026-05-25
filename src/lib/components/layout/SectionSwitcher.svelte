@@ -5,10 +5,10 @@
     import { pluginNavState } from "$lib/state/plugin-nav.svelte";
 
     const staticSections = getSections();
-    const sections = $derived.by(() => {
-        const dyn = getDynamicPluginsSection(pluginNavState.controlCenters);
-        return dyn ? [...staticSections, dyn] : staticSections;
-    });
+    const pluginsSection = $derived(getDynamicPluginsSection(pluginNavState.controlCenters));
+    const sections = $derived(
+        pluginsSection ? [...staticSections, pluginsSection] : staticSections,
+    );
     const activeSection = $derived(findActiveSection(sections, page.url.pathname));
 
     let open = $state(false);
@@ -67,8 +67,29 @@
             class="panel"
             style="animation: panel-in 140ms cubic-bezier(0.22, 1, 0.36, 1)"
         >
+            {#if pluginsSection}
+                <div class="plugins-band col">
+                    <div class="col-head {pluginsSection.tone === 'brand' ? 'head-brand' : 'head-accent'}">
+                        <pluginsSection.icon size={13} />
+                        <span>{pluginsSection.label}</span>
+                    </div>
+                    <div class="plugins-items">
+                        {#each pluginsSection.items as item (item.href)}
+                            {@const isActive = item.matcher(page.url.pathname)}
+                            <a
+                                href={item.href}
+                                class="row {isActive ? 'row-active' : ''} {pluginsSection.tone === 'brand' ? 'row-brand' : 'row-accent'}"
+                                role="menuitem"
+                            >
+                                <item.icon size={14} />
+                                <span>{item.label}</span>
+                            </a>
+                        {/each}
+                    </div>
+                </div>
+            {/if}
             <div class="panel-grid">
-                {#each sections as section (section.id)}
+                {#each staticSections as section (section.id)}
                     <div class="col">
                         <div class="col-head {section.tone === 'brand' ? 'head-brand' : 'head-accent'}">
                             <section.icon size={13} />
@@ -188,6 +209,16 @@
         display: grid;
         grid-template-columns: repeat(3, minmax(160px, 1fr));
         gap: 0.25rem;
+    }
+    .plugins-band {
+        margin-bottom: 0.375rem;
+        padding-bottom: 0.375rem;
+        border-bottom: 1px dashed var(--color-border);
+    }
+    .plugins-items {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(160px, 1fr));
+        gap: 0.0625rem 0.25rem;
     }
     .col {
         display: flex;

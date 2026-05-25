@@ -48,12 +48,12 @@ const staticCommands: Command[] = [
     action: () => goto('/my-agent'),
   },
   {
-    id: 'page:builder',
-    label: 'Builder',
+    id: 'page:tools',
+    label: 'Tools',
     category: 'page',
-    icon: 'book-open',
-    keywords: 'create edit agents tools skills',
-    action: () => goto('/builder'),
+    icon: 'wrench',
+    keywords: 'tools gateway custom create edit',
+    action: () => goto('/tools'),
   },
   {
     id: 'page:marketplace',
@@ -93,7 +93,7 @@ const staticCommands: Command[] = [
     category: 'page',
     icon: 'wrench',
     keywords: 'test experiment sandbox',
-    action: () => goto('/workshop'),
+    action: () => goto('/agents/workshop'),
   },
   {
     id: 'page:flow-editor',
@@ -109,7 +109,7 @@ const staticCommands: Command[] = [
     category: 'action',
     icon: 'plus',
     keywords: 'create add agent',
-    action: () => goto('/builder'),
+    action: () => goto('/agents/builder'),
   },
   {
     id: 'action:settings',

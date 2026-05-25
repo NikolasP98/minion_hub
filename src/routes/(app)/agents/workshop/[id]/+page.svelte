@@ -15,13 +15,13 @@
   const saveId = $derived(page.params.id);
 
   onMount(async () => {
-    if (!saveId) { goto('/workshop'); return; }
+    if (!saveId) { goto('/agents/workshop'); return; }
     if (saveSync.activeSaveId !== saveId) {
       try {
         await openSave(saveId);
         persistActiveSaveId(saveId);
       } catch {
-        goto('/workshop');
+        goto('/agents/workshop');
       }
     }
   });

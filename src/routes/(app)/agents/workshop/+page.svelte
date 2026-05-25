@@ -31,13 +31,13 @@
   async function handleCreateBlank() {
     const name = `Workspace ${new Date().toLocaleDateString()}`;
     const id = await createBlankSave(name);
-    goto(`/workshop/${id}`);
+    goto(`/agents/workshop/${id}`);
   }
 
   async function handleOpen(id: string) {
     await openSave(id);
     persistActiveSaveId(id);
-    goto(`/workshop/${id}`);
+    goto(`/agents/workshop/${id}`);
   }
 
   async function handleDelete(e: MouseEvent, id: string) {

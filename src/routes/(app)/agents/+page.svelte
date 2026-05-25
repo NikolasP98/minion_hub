@@ -15,17 +15,18 @@
     let splitterApi = $state<SplitterApiHandle | null>(null);
 </script>
 
+<!-- NavRail is provided by /agents/+layout.svelte -->
 <Splitter
-        storageKey="sidebar-main-v2"
-        defaultSize={5}
-        minibarSize={5}
-        maxSize={28}
-        onapi={(api) => { splitterApi = api; }}
-    >
-        {#snippet panel({ collapseLevel })}
-            <AgentSidebar
-                {collapseLevel}
-            />
-        {/snippet}
-        <DetailPanel />
-    </Splitter>
+    storageKey="sidebar-main-v2"
+    defaultSize={5}
+    minibarSize={5}
+    maxSize={28}
+    onapi={(api) => { splitterApi = api; }}
+>
+    {#snippet panel({ collapseLevel })}
+        <AgentSidebar
+            {collapseLevel}
+        />
+    {/snippet}
+    <DetailPanel />
+</Splitter>

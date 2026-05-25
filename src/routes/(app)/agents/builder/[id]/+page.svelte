@@ -246,7 +246,7 @@
 <!-- Editor Toolbar -->
     <div class="editor-toolbar">
         <div class="flex items-center gap-3 min-w-0">
-            <a href="/builder" class="back-link" title={m.builder_backToBuilder()}>
+            <a href="/agents" class="back-link" title="Back to Agents">
                 <ArrowLeft size={16} />
             </a>
 

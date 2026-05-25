@@ -781,6 +781,8 @@
   "gateway_channels": "{count} canal(es)",
   "gateway_cronJobs": "{count} tarea(s) cron",
   "nav_myAgent": "Mi Agente",
+  "nav_agents": "Agentes",
+  "nav_tools": "Herramientas",
   "nav_builder": "Constructor",
   "nav_flowEditor": "Editor de Flujos",
   "nav_flows": "Flujos",

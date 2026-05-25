@@ -143,7 +143,7 @@
     function selectAgent(agent: SidebarAgent) {
         if (agent.source === 'builder') {
             const builderId = agent.id.replace(/^builder:/, '');
-            goto(`/builder/agents/${builderId}`);
+            goto(`/agents/builder/${builderId}`);
         } else {
             ui.selectedAgentId = agent.id;
             ui.selectedSessionKey = `agent:${agent.id}:main`;

@@ -61,7 +61,7 @@
 <!-- ── Toolbar ─────────────────────────────────────────────────────── -->
 <div class="editor-toolbar">
     <div class="flex items-center gap-3 min-w-0">
-        <a href="/builder" class="back-link" title={m.builder_backToBuilder()}>
+        <a href="/flow-editor" class="back-link" title="Back to Flows">
             <ArrowLeft size={16} />
         </a>
 

@@ -1,8 +1,12 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
-  import { GitBranch, Plus, Trash2, Clock } from 'lucide-svelte';
+  import { GitBranch, Plus, Trash2, Clock, BookOpen } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
+  import BuilderHub from '$lib/components/builder/BuilderHub.svelte';
+
+  // Flows list lives here; Skills are authored through the same flow surface.
+  let view = $state<'flows' | 'skills'>('flows');
 
   type FlowMeta = {
     id: string;
@@ -74,22 +78,41 @@
   }
 </script>
 
-  <div class="flex-1 overflow-y-auto p-6">
-    <!-- Header -->
-    <div class="flex items-center justify-between mb-6">
-      <div class="flex items-center gap-2">
-        <GitBranch size={16} class="text-muted" />
-        <h1 class="font-mono text-sm uppercase tracking-widest text-muted">{m.flow_title()}</h1>
+  <div class="flex flex-col flex-1 min-h-0">
+    <!-- Header: Flows / Skills view toggle -->
+    <div class="flex items-center justify-between px-6 pt-6 pb-4 shrink-0">
+      <div class="flex items-center gap-1 p-0.5 rounded-lg border border-border bg-bg2">
+        <button
+          type="button"
+          onclick={() => (view = 'flows')}
+          class="flex items-center gap-1.5 h-7 px-3 text-[10px] font-mono uppercase tracking-wider rounded transition-colors {view === 'flows' ? 'bg-accent/[0.12] text-accent' : 'text-muted hover:text-foreground'}"
+        >
+          <GitBranch size={12} />
+          {m.flow_title()}
+        </button>
+        <button
+          type="button"
+          onclick={() => (view = 'skills')}
+          class="flex items-center gap-1.5 h-7 px-3 text-[10px] font-mono uppercase tracking-wider rounded transition-colors {view === 'skills' ? 'bg-accent/[0.12] text-accent' : 'text-muted hover:text-foreground'}"
+        >
+          <BookOpen size={12} />
+          Skills
+        </button>
       </div>
-      <button
-        onclick={handleCreate}
-        disabled={creating}
-        class="flex items-center gap-1.5 h-7 px-3 text-[10px] font-mono uppercase tracking-wider rounded border border-border text-muted hover:bg-bg3 hover:text-foreground transition-colors disabled:opacity-50"
-      >
-        <Plus size={12} />
-        {m.flow_newFlow()}
-      </button>
+      {#if view === 'flows'}
+        <button
+          onclick={handleCreate}
+          disabled={creating}
+          class="flex items-center gap-1.5 h-7 px-3 text-[10px] font-mono uppercase tracking-wider rounded border border-border text-muted hover:bg-bg3 hover:text-foreground transition-colors disabled:opacity-50"
+        >
+          <Plus size={12} />
+          {m.flow_newFlow()}
+        </button>
+      {/if}
     </div>
+
+    {#if view === 'flows'}
+      <div class="flex-1 overflow-y-auto px-6 pb-6">
 
     {#if createError}
       <div class="mb-4 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-xs text-red-400 font-mono">
@@ -151,5 +174,9 @@
           </div>
         {/each}
       </div>
+    {/if}
+      </div>
+    {:else}
+      <BuilderHub only="skills" />
     {/if}
   </div>

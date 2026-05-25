@@ -790,6 +790,8 @@
   "gateway_channels": "{count} channel(s)",
   "gateway_cronJobs": "{count} cron job(s)",
   "nav_myAgent": "My Agent",
+  "nav_agents": "Agents",
+  "nav_tools": "Tools",
   "nav_builder": "Builder",
   "nav_flowEditor": "Flow Editor",
   "nav_flows": "Flows",

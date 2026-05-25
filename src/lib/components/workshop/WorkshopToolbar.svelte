@@ -234,7 +234,7 @@
             >
         {/if}
         <a
-            href="/workshop"
+            href="/agents/workshop"
             class="h-7 px-2.5 text-[10px] font-mono uppercase tracking-wider rounded border border-border text-muted hover:bg-bg3 hover:text-foreground transition-colors flex items-center gap-1"
         >
             ↩ {m.workshop_gallery()}

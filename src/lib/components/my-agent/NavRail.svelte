@@ -1,20 +1,33 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { Home, Users, Settings } from 'lucide-svelte';
+	import { Home, Users, Wrench, Settings } from 'lucide-svelte';
 
 	const items = [
 		{ href: '/my-agent', label: 'My Agent', icon: Home },
 		{ href: '/agents', label: 'Agents', icon: Users },
+		{ href: '/agents/workshop', label: 'Workshop', icon: Wrench },
 		{ href: '/settings', label: 'Settings', icon: Settings },
 	];
 
 	const currentPath = $derived(page.url.pathname);
+
+	// Highlight only the most-specific matching item so e.g. /agents/workshop
+	// lights up Workshop rather than both Workshop and Agents.
+	const activeHref = $derived.by(() => {
+		let best = '';
+		for (const it of items) {
+			if ((currentPath === it.href || currentPath.startsWith(it.href + '/')) && it.href.length > best.length) {
+				best = it.href;
+			}
+		}
+		return best;
+	});
 </script>
 
 <nav class="nav-rail" aria-label="Primary">
 	{#each items as item (item.href)}
 		{@const Icon = item.icon}
-		{@const active = currentPath === item.href || currentPath.startsWith(item.href + '/')}
+		{@const active = item.href === activeHref}
 		<a
 			href={item.href}
 			class="nav-rail-item"
