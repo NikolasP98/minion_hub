@@ -65,11 +65,9 @@
 
 <style>
 	.chat-input-wrap {
-		position: sticky;
-		bottom: 16px;
-		padding-top: 16px;
-		background: linear-gradient(to bottom, transparent, var(--color-bg, #0d0d0d) 24px);
-		z-index: 10;
+		flex-shrink: 0;
+		padding: 12px 0 16px;
+		background: var(--color-bg, #0d0d0d);
 	}
 
 	.chat-input {

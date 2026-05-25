@@ -1,5 +1,7 @@
 <script lang="ts">
-    import { Sparkles, X, Send, ChevronDown, AlertCircle } from 'lucide-svelte';
+    import { Sparkles, X, Send, ChevronDown, AlertCircle, Mic, MicOff, PhoneOff } from 'lucide-svelte';
+    import { voiceCall, mouth, toggleMute, endCall } from '$lib/state/features/voice-call.svelte';
+    import OpenHumanAvatar from '$lib/components/my-agent/OpenHumanAvatar.svelte';
     import {
         assistant,
         toggleAssistant,
@@ -136,10 +138,64 @@
     function msgTs(msg: unknown): number | undefined {
         return (msg as { timestamp?: number }).timestamp;
     }
+
+    // On /my-agent the user is already in a full chat with this same personal
+    // agent (same thread, same AI), so the floating assistant is redundant
+    // there — hide it entirely on that route.
+    const onMyAgentPage = $derived(page.url.pathname === '/my-agent');
+
+    // A call lives at the app level (module singleton). When it's running and
+    // the user has navigated off the call UI, this anchored popup surfaces the
+    // live status + controls so the call is never interrupted by navigation.
+    const callElsewhere = $derived(voiceCall.active && !onMyAgentPage);
+    const CALL_STATUS_LABEL: Record<string, string> = {
+        idle: 'Muted',
+        listening: 'Listening…',
+        thinking: 'Thinking…',
+        speaking: 'Speaking…',
+    };
 </script>
 
 <!-- Pill (collapsed state) -->
-{#if !assistant.open}
+{#if onMyAgentPage}
+    <!-- redundant on /my-agent — the page hosts the same chat inline -->
+{:else if callElsewhere && !assistant.open}
+    <!-- Live-call status pill: keeps the call reachable after navigating away. -->
+    <div
+        class="fixed bottom-5 right-5 z-50 flex items-center gap-2.5 pl-2 pr-2.5 py-2 rounded-full bg-bg2 border border-accent/40 shadow-lg"
+    >
+        <button
+            type="button"
+            onclick={() => (assistant.open = true)}
+            class="flex items-center gap-2 group"
+            title="Open call transcript"
+        >
+            <span class="w-7 h-7 rounded-full overflow-hidden bg-black/40 ring-1 ring-accent/50 shrink-0">
+                <OpenHumanAvatar mouthRef={mouth} status={voiceCall.status} />
+            </span>
+            <span class="text-xs font-medium text-foreground tabular-nums">
+                {CALL_STATUS_LABEL[voiceCall.status] ?? 'On call'}
+            </span>
+        </button>
+        <button
+            type="button"
+            onclick={toggleMute}
+            class="w-7 h-7 flex items-center justify-center rounded-full border border-border hover:bg-bg3 transition-colors {voiceCall.muted ? 'text-accent border-accent/50' : 'text-foreground'}"
+            title={voiceCall.muted ? 'Unmute' : 'Mute'}
+            aria-pressed={voiceCall.muted}
+        >
+            {#if voiceCall.muted}<MicOff size={13} />{:else}<Mic size={13} />{/if}
+        </button>
+        <button
+            type="button"
+            onclick={endCall}
+            class="w-7 h-7 flex items-center justify-center rounded-full border border-destructive/40 text-destructive hover:bg-destructive/15 transition-colors"
+            title="End call"
+        >
+            <PhoneOff size={13} />
+        </button>
+    </div>
+{:else if !assistant.open}
     <button
         type="button"
         onclick={toggleAssistant}
@@ -175,6 +231,36 @@
                 <X size={14} />
             </button>
         </div>
+
+        {#if callElsewhere}
+            <!-- Live-call strip: status + controls while the call runs in the background -->
+            <div class="shrink-0 flex items-center gap-2 px-3 py-2 border-b border-accent/30 bg-accent/5">
+                <span class="w-7 h-7 rounded-full overflow-hidden bg-black/40 ring-1 ring-accent/50 shrink-0">
+                    <OpenHumanAvatar mouthRef={mouth} status={voiceCall.status} />
+                </span>
+                <span class="text-[11px] font-medium text-foreground flex-1 tabular-nums">
+                    On call · {CALL_STATUS_LABEL[voiceCall.status] ?? ''}
+                    {#if voiceCall.interim}<span class="text-muted-foreground italic">“{voiceCall.interim}”</span>{/if}
+                </span>
+                <button
+                    type="button"
+                    onclick={toggleMute}
+                    class="w-6 h-6 flex items-center justify-center rounded-md border border-border hover:bg-bg3 transition-colors {voiceCall.muted ? 'text-accent border-accent/50' : 'text-foreground'}"
+                    title={voiceCall.muted ? 'Unmute' : 'Mute'}
+                    aria-pressed={voiceCall.muted}
+                >
+                    {#if voiceCall.muted}<MicOff size={12} />{:else}<Mic size={12} />{/if}
+                </button>
+                <button
+                    type="button"
+                    onclick={endCall}
+                    class="w-6 h-6 flex items-center justify-center rounded-md border border-destructive/40 text-destructive hover:bg-destructive/15 transition-colors"
+                    title="End call"
+                >
+                    <PhoneOff size={12} />
+                </button>
+            </div>
+        {/if}
 
         <!-- Messages -->
         <div

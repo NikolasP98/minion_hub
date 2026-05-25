@@ -8,26 +8,13 @@
 </script>
 
 <header class="greeting">
-	<div class="avatar" aria-hidden="true"></div>
 	<p class="text">{greeting}</p>
 </header>
 
 <style>
 	.greeting {
 		display: flex;
-		align-items: flex-start;
-		gap: 16px;
-		padding: 32px 0 24px;
-	}
-
-	.avatar {
-		width: 32px;
-		height: 32px;
-		border-radius: 50%;
-		background: rgba(232, 125, 106, 0.08);
-		box-shadow: 0 0 0 1px #e87d6a;
-		flex-shrink: 0;
-		margin-top: 2px;
+		align-items: center;
 	}
 
 	.text {
