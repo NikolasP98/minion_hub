@@ -5,6 +5,7 @@ import {
   attachIdentity,
   findByChannelKey,
   getGoogleCredential,
+  syncGoogleIdentityFromAccount,
 } from './identity.service';
 import { encryptAdc } from './identity-secrets';
 
@@ -81,5 +82,33 @@ describe('identity.service', () => {
     resolveSequence([[]]);
     const cred = await getGoogleCredential({ db, tenantId: 't1' } as never, 'u1');
     expect(cred).toBeNull();
+  });
+
+  it('syncGoogleIdentityFromAccount mirrors a Better Auth google account into user_identities', async () => {
+    vi.stubEnv('GOOGLE_CLIENT_ID', 'cid');
+    vi.stubEnv('GOOGLE_CLIENT_SECRET', 'sec');
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      // 1st select: account row (provider=google for user)
+      [{ userId: 'u1', providerId: 'google', refreshToken: 'rt', scope: 'calendar', accountId: 'acc1' }],
+      // 2nd select: user row (for email)
+      [{ id: 'u1', email: 'nik@example.com' }],
+      // 3rd: insert .onConflictDoUpdate chain (awaited, returns [])
+    ]);
+    const result = await syncGoogleIdentityFromAccount({ db, tenantId: 't1' } as never, 'u1');
+    expect(result).toEqual({ email: 'nik@example.com' });
+    expect(db.insert).toHaveBeenCalledTimes(1);
+    vi.unstubAllEnvs();
+  });
+
+  it('syncGoogleIdentityFromAccount returns null when user has no google account or no refresh token', async () => {
+    vi.stubEnv('GOOGLE_CLIENT_ID', 'cid');
+    vi.stubEnv('GOOGLE_CLIENT_SECRET', 'sec');
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[]]); // no account row
+    const result = await syncGoogleIdentityFromAccount({ db, tenantId: 't1' } as never, 'u1');
+    expect(result).toBeNull();
+    expect(db.insert).not.toHaveBeenCalled();
+    vi.unstubAllEnvs();
   });
 });
