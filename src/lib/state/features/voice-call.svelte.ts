@@ -17,7 +17,7 @@
  */
 import { Lipsync } from 'wawa-lipsync';
 import { REST_MOUTH, visemeToMouth, type AgentVoiceState, type MouthShape } from '$lib/voice/visemeMap';
-import { agentChat } from '$lib/state/chat/chat.svelte';
+import { agentChat, onAgentReplyFinal } from '$lib/state/chat/chat.svelte';
 import { sendVoiceTurn } from '$lib/services/gateway.svelte';
 import { extractText } from '$lib/utils/text';
 
@@ -141,19 +141,17 @@ function handleFinal(text: string) {
 }
 
 /**
- * Watch the active agent's thread and speak each new assistant reply. Runs in
- * an `$effect.root` so the call keeps driving itself regardless of which page
- * (if any) is mounted — the user can navigate away mid-call.
+ * Subscribe to agent-reply-final events and speak the reply. Driven by the
+ * gateway's chat 'final' handler (after history reload) rather than reactivity,
+ * so it fires reliably and the call keeps driving itself regardless of which
+ * page (if any) is mounted — the user can navigate away mid-call.
  */
 function startReplyWatcher(agentId: string) {
   stopWatcher?.();
-  stopWatcher = $effect.root(() => {
-    $effect(() => {
-      // Track the thread so this re-runs as messages land.
-      void agentChat[agentId]?.messages.length;
-      const last = lastAssistant(agentId);
-      if (last && last.text) void speakReply(last.text, last.key);
-    });
+  stopWatcher = onAgentReplyFinal((repliedAgentId) => {
+    if (repliedAgentId !== ui.agentId) return;
+    const last = lastAssistant(agentId);
+    if (last && last.text) void speakReply(last.text, last.key);
   });
 }
 

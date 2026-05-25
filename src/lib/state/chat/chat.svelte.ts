@@ -19,6 +19,28 @@ export function pushChatMessage(chat: AgentChatState, msg: ChatMessage): void {
 export const agentChat = $state({} as Record<string, AgentChatState>);
 export const agentActivity = $state({} as Record<string, AgentActivityState>);
 
+// ─── Agent-reply notifications ──────────────────────────────────────────────
+// Fired when an agent turn reaches its final state AND the freshly reloaded
+// history is in place. Lets the voice-call engine speak the reply reliably
+// instead of racing the async history reload via reactivity.
+type AgentReplyListener = (agentId: string) => void;
+const agentReplyListeners = new Set<AgentReplyListener>();
+
+export function onAgentReplyFinal(cb: AgentReplyListener): () => void {
+  agentReplyListeners.add(cb);
+  return () => agentReplyListeners.delete(cb);
+}
+
+export function notifyAgentReplyFinal(agentId: string): void {
+  for (const cb of agentReplyListeners) {
+    try {
+      cb(agentId);
+    } catch {
+      /* listener errors must not break event handling */
+    }
+  }
+}
+
 const SPARK_STORAGE_KEY = 'minion-spark-data';
 
 // Debounce spark bin saves: accumulate dirty agents and write every 3 seconds.

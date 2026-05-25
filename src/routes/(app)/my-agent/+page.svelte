@@ -259,39 +259,41 @@
 			<section class="chat-section" aria-label="Conversation">
 				{#if messages.length > 0 || stream || sending}
 					<div class="thread" bind:this={threadEl} onscroll={onThreadScroll}>
-						{#each messages as msg, i (`${msgTs(msg) ?? ''}_${i}`)}
-							{@const role = msgRole(msg)}
-							{@const text = stripVoiceTurnPrefix(extractText(msg) ?? '')}
-							{#if text}
-								<div class="bubble-row {role}">
-									<div class="bubble {role}">
-										{#if role === 'assistant'}
-											<MarkdownMessage value={text} tone="assistant" />
-										{:else}
-											{text}
-										{/if}
+						<div class="thread-inner">
+							{#each messages as msg, i (`${msgTs(msg) ?? ''}_${i}`)}
+								{@const role = msgRole(msg)}
+								{@const text = stripVoiceTurnPrefix(extractText(msg) ?? '')}
+								{#if text}
+									<div class="bubble-row {role}">
+										<div class="bubble {role}">
+											{#if role === 'assistant'}
+												<MarkdownMessage value={text} tone="assistant" />
+											{:else}
+												{text}
+											{/if}
+										</div>
+										{#if msgTs(msg)}<span class="bubble-time">{fmtTime(msgTs(msg))}</span>{/if}
 									</div>
-									{#if msgTs(msg)}<span class="bubble-time">{fmtTime(msgTs(msg))}</span>{/if}
+								{/if}
+							{/each}
+
+							{#if stream !== null && stream !== ''}
+								<div class="bubble-row assistant">
+									<div class="bubble assistant streaming">
+										<MarkdownMessage value={stream} tone="assistant" />
+									</div>
+								</div>
+							{:else if sending}
+								<div class="thinking-row">
+									<span class="dot"></span><span class="dot"></span><span class="dot"></span>
+									Thinking…
 								</div>
 							{/if}
-						{/each}
 
-						{#if stream !== null && stream !== ''}
-							<div class="bubble-row assistant">
-								<div class="bubble assistant streaming">
-									<MarkdownMessage value={stream} tone="assistant" />
-								</div>
-							</div>
-						{:else if sending}
-							<div class="thinking-row">
-								<span class="dot"></span><span class="dot"></span><span class="dot"></span>
-								Thinking…
-							</div>
-						{/if}
-
-						{#if chat?.lastError}
-							<p class="state-note error">{chat.lastError}</p>
-						{/if}
+							{#if chat?.lastError}
+								<p class="state-note error">{chat.lastError}</p>
+							{/if}
+						</div>
 					</div>
 				{/if}
 			</section>
@@ -435,11 +437,19 @@
 		min-height: 0;
 		display: flex;
 		flex-direction: column;
-		justify-content: flex-end;
-		gap: 10px;
 		overflow-y: auto;
 		scrollbar-width: thin;
 		padding: 4px 2px;
+	}
+
+	/* Pin messages to the bottom when short, but stay fully scrollable when the
+	   history overflows (justify-content:flex-end on the scroller would make the
+	   top unreachable — margin-top:auto on an inner block does not). */
+	.thread-inner {
+		margin-top: auto;
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
 	}
 
 	.bubble-row {

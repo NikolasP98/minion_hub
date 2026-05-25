@@ -22,6 +22,7 @@ import {
   startSqliteFlush,
   stopSqliteFlush,
   pushChatMessage,
+  notifyAgentReplyFinal,
   SPARK_BIN_MS,
   SPARK_BIN_COUNT,
 } from '$lib/state/chat/chat.svelte';
@@ -660,7 +661,9 @@ function onChatEvent(payload: ChatEvent) {
 
   // Cross-run: a different run finished
   if (payload.runId && chat.runId && payload.runId !== chat.runId) {
-    if (payload.state === 'final' && sk === `agent:${agentId}:main`) loadChatHistory(agentId);
+    if (payload.state === 'final' && sk === `agent:${agentId}:main`) {
+      void loadChatHistory(agentId).then(() => notifyAgentReplyFinal(agentId));
+    }
     return;
   }
 
@@ -679,8 +682,11 @@ function onChatEvent(payload: ChatEvent) {
   } else if (payload.state === 'final') {
     chat.stream = null;
     chat.runId = null;
-    // Only refresh main chat history — workshop sessions are handled by the bridge
-    if (sk === `agent:${agentId}:main`) loadChatHistory(agentId);
+    // Only refresh main chat history — workshop sessions are handled by the bridge.
+    // Notify after the reload lands so listeners (voice-call) see the new reply.
+    if (sk === `agent:${agentId}:main`) {
+      void loadChatHistory(agentId).then(() => notifyAgentReplyFinal(agentId));
+    }
     setSessionIdle(sk);
     if (ui.sessionStatusTimers[sk]) {
       clearTimeout(ui.sessionStatusTimers[sk]);
@@ -956,11 +962,11 @@ export async function listSectionWorkspaceFiles(agentId: string): Promise<Worksp
   return res.files ?? [];
 }
 
-export function loadChatHistory(agentId: string) {
+export function loadChatHistory(agentId: string): Promise<void> {
   const chat = ensureAgentChat(agentId);
   const isInitialLoad = chat.messages.length === 0;
   if (isInitialLoad) chat.loading = true;
-  sendRequest('chat.history', { sessionKey: `agent:${agentId}:main`, limit: 200 })
+  return sendRequest('chat.history', { sessionKey: `agent:${agentId}:main`, limit: 200 })
     .then((res) => {
       const incoming = Array.isArray((res as { messages?: never[] })?.messages)
         ? (res as { messages: never[] }).messages
