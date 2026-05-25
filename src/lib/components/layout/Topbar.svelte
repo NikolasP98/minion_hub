@@ -17,6 +17,8 @@
     const activeSection = $derived(findActiveSection(sections, page.url.pathname));
     const isReliability = $derived(page.url.pathname.startsWith("/reliability"));
     const isSettings = $derived(page.url.pathname.startsWith("/settings"));
+    // Company picker is scoped to the Workforce area only.
+    const isWorkforce = $derived(page.url.pathname.startsWith("/workforce"));
 
     let mobileMenuOpen = $state(false);
     function toggleMobileMenu() { mobileMenuOpen = !mobileMenuOpen; }
@@ -100,9 +102,11 @@
 
         <!-- Right Actions -->
         <div class="flex items-center gap-1.5 shrink-0">
-            <div class="hidden sm:block">
-                <CompanySwitcher />
-            </div>
+            {#if isWorkforce}
+                <div class="hidden sm:block">
+                    <CompanySwitcher />
+                </div>
+            {/if}
 
             <button
                 onclick={() => captureSnapshot()}
@@ -181,10 +185,12 @@
                     <Settings size={18} />
                     <span>{m.nav_settings()}</span>
                 </a>
-                <div class="h-px bg-border/60 my-1"></div>
-                <div class="px-3 py-2">
-                    <CompanySwitcher />
-                </div>
+                {#if isWorkforce}
+                    <div class="h-px bg-border/60 my-1"></div>
+                    <div class="px-3 py-2">
+                        <CompanySwitcher />
+                    </div>
+                {/if}
             </nav>
         </div>
     {/if}
