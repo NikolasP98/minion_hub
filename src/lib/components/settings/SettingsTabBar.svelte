@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { Brain, Bot, Radio, Shield, Server, Palette, HardDrive, DatabaseBackup, Puzzle, Users, KeyRound, Phone } from "lucide-svelte";
+    import { Brain, Bot, Radio, Shield, Server, Palette, HardDrive, DatabaseBackup, Puzzle, Users, KeyRound, Phone, User } from "lucide-svelte";
     import { page } from "$app/state";
     import { isAdmin } from "$lib/state/features/user.svelte";
     import { TABS } from "$lib/utils/config-schema";
@@ -14,12 +14,13 @@
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const ICON_MAP: Record<string, any> = {
-        Brain, Bot, Radio, Shield, Server, Palette, HardDrive, DatabaseBackup, Puzzle, Users, KeyRound, Phone,
+        Brain, Bot, Radio, Shield, Server, Palette, HardDrive, DatabaseBackup, Puzzle, Users, KeyRound, Phone, User,
     };
 
     // Hub tabs: own routes under /settings/<id>. Render as <a href>.
     type HubTab = { id: string; label: string; icon: string; href: string; adminOnly: boolean };
     const HUB_TABS: HubTab[] = [
+        { id: 'account', label: 'Account', icon: 'User', href: '/settings/account', adminOnly: false },
         { id: 'appearance', label: 'Appearance', icon: 'Palette', href: '/settings/appearance', adminOnly: false },
         { id: 'plugins', label: 'Plugins', icon: 'Puzzle', href: '/settings/plugins', adminOnly: false },
         { id: 'team', label: 'Team', icon: 'Users', href: '/settings/team', adminOnly: true },
