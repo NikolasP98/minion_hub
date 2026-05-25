@@ -149,8 +149,10 @@ function handleFinal(text: string) {
 function startReplyWatcher(agentId: string) {
   stopWatcher?.();
   stopWatcher = onAgentReplyFinal((repliedAgentId) => {
-    if (repliedAgentId !== ui.agentId) return;
-    const last = lastAssistant(agentId);
+    // Match case-insensitively (gateway lowercases ids) and read the thread
+    // under the id the event actually used, so we get the fresh reply.
+    if (repliedAgentId.toLowerCase() !== (ui.agentId ?? '').toLowerCase()) return;
+    const last = lastAssistant(repliedAgentId);
     if (last && last.text) void speakReply(last.text, last.key);
   });
 }

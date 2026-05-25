@@ -51,7 +51,12 @@ export const assistant = {
         return ui.scope;
     },
     get personalAgentId(): string | null {
-        return pagePersonalAgent()?.agentId ?? null;
+        // The gateway lowercases agent ids in its session keys (so chat events
+        // arrive keyed as `agent:<lowercased-id>:main`). The DB-stored id can be
+        // mixed-case, which would mismatch the live event stream — breaking live
+        // chat updates AND the voice-call reply trigger. Canonicalize to lower so
+        // agentChat keys, sessionKeys and event ids all agree.
+        return pagePersonalAgent()?.agentId?.toLowerCase() ?? null;
     },
     /**
      * No client-side loading anymore — kept for source compatibility.
