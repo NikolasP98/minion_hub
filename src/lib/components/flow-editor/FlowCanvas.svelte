@@ -83,6 +83,7 @@
         data: {
           agentId: payload.agentId,
           label: payload.label ?? payload.agentId,
+          sessionMode: 'ephemeral',
           defaultValues: {},
           contextRules: [],
           inputHandles: [{ id: 'in', label: 'input' }],

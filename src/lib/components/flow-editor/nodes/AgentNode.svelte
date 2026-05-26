@@ -3,6 +3,8 @@
   import type { NodeProps } from '@xyflow/svelte';
   import type { AgentNodeData } from '$lib/state/features/flow-editor.svelte';
   import { flowEditorState, setNodes } from '$lib/state/features/flow-editor.svelte';
+  import { gw } from '$lib/state/gateway/gateway-data.svelte';
+  import { agentDisplayName } from '$lib/utils/agent-display';
   import { Bot } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
 
@@ -12,29 +14,31 @@
   let hovered = $state(false);
   const showHandles = $derived(flowEditorState.relationshipMode || selected || hovered);
 
-  // MVP: execution is direct-LLM, so the picker chooses a model id, written into
-  // the existing agentId/label fields. Later phases will list real gw/built agents.
-  const MODEL_OPTIONS = [
-    { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
-    { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
-    { id: 'claude-opus-4-7', label: 'Claude Opus 4.7' },
-  ];
-
-  function pickModel(e: Event) {
-    const modelId = (e.target as HTMLSelectElement).value;
-    const label = MODEL_OPTIONS.find((o) => o.id === modelId)?.label ?? modelId;
-    const next = flowEditorState.nodes.map((n) =>
-      n.id === id ? { ...n, data: { ...n.data, agentId: modelId, label } } : n,
-    );
-    setNodes(next);
-  }
-
   function isHandleConnected(handleId: string): boolean {
     return flowEditorState.edges.some(
       (e) =>
         (e.source === id && e.sourceHandle === handleId) ||
         (e.target === id && e.targetHandle === handleId),
     );
+  }
+
+  function pickAgent(e: Event) {
+    const agentId = (e.target as HTMLSelectElement).value;
+    const found = gw.agents.find((a) => a.id === agentId);
+    const label = found ? agentDisplayName(found) : agentId;
+    const next = flowEditorState.nodes.map((n) =>
+      n.id === id
+        ? { ...n, data: { ...n.data, agentId, label } }
+        : n,
+    );
+    setNodes(next);
+  }
+
+  function setSessionMode(mode: 'ephemeral' | 'shared') {
+    const next = flowEditorState.nodes.map((n) =>
+      n.id === id ? { ...n, data: { ...n.data, sessionMode: mode } } : n,
+    );
+    setNodes(next);
   }
 </script>
 
@@ -99,21 +103,49 @@
     <div class="w-6 h-6 rounded-md bg-indigo-500/20 flex items-center justify-center shrink-0">
       <Bot size={12} class="text-indigo-400" />
     </div>
-    <span class="text-xs font-semibold text-foreground truncate">{data.label}</span>
+    <span class="text-xs font-semibold text-foreground truncate">{data.label || data.agentId}</span>
   </div>
+
+  <!-- Agent picker -->
   <select
     class="mt-1 w-full text-[10px] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground"
     value={data.agentId}
     onclick={(e) => e.stopPropagation()}
-    onchange={pickModel}
+    onchange={pickAgent}
   >
-    {#each MODEL_OPTIONS as opt (opt.id)}
-      <option value={opt.id}>{opt.label}</option>
-    {/each}
-    {#if data.agentId && !MODEL_OPTIONS.some((o) => o.id === data.agentId)}
-      <option value={data.agentId}>{data.label}</option>
+    {#if gw.agents.length === 0}
+      <option value={data.agentId} disabled>{data.label || 'No agents connected'}</option>
+    {:else}
+      {#each gw.agents as agent (agent.id)}
+        <option value={agent.id}>{agentDisplayName(agent)}</option>
+      {/each}
+      {#if data.agentId && !gw.agents.some((a) => a.id === data.agentId)}
+        <option value={data.agentId}>{data.label}</option>
+      {/if}
     {/if}
   </select>
+
+  <!-- Session mode toggle -->
+  <div class="mt-1.5 flex gap-1">
+    <button
+      class="flex-1 text-[9px] font-semibold rounded px-1 py-0.5 transition-colors
+        {(data.sessionMode ?? 'ephemeral') === 'ephemeral'
+          ? 'bg-indigo-500/25 text-indigo-300 border border-indigo-500/40'
+          : 'text-muted/60 hover:text-muted border border-transparent'}"
+      onclick={(e) => { e.stopPropagation(); setSessionMode('ephemeral'); }}
+    >
+      Ephemeral
+    </button>
+    <button
+      class="flex-1 text-[9px] font-semibold rounded px-1 py-0.5 transition-colors
+        {(data.sessionMode ?? 'ephemeral') === 'shared'
+          ? 'bg-amber-500/25 text-amber-300 border border-amber-500/40'
+          : 'text-muted/60 hover:text-muted border border-transparent'}"
+      onclick={(e) => { e.stopPropagation(); setSessionMode('shared'); }}
+    >
+      Shared
+    </button>
+  </div>
 </div>
 
 <!-- Output handles (right) -->

@@ -35,6 +35,7 @@
       data: {
         agentId,
         label,
+        sessionMode: 'ephemeral',
         defaultValues: {},
         contextRules: [],
         inputHandles: [{ id: 'in', label: 'input' }],
