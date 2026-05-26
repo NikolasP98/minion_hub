@@ -48,6 +48,7 @@
     "lucide-svelte": "^0.575.0",
     "msedge-tts": "^2.0.5",
     "pixi.js": "^8.18.1",
+    "postgres": "^3.4.9",
     "posthog-js": "^1.376.0",
     "posthog-node": "^5.35.1",
     "resend": "^6.12.3",
