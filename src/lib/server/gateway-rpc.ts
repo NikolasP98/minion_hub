@@ -68,6 +68,10 @@ export async function resolveCredentialsForUser(
       const creds = await getUserGatewayCredentials(profileId);
       if (creds) return { url: toWsUrl(creds.url), token: creds.token };
     } catch (err) {
+      // Wave 1: catch covers both the dynamic import() and getUserGatewayCredentials().
+      // A PG runtime error is currently demoted to a warn + Turso fallback — acceptable
+      // for the transition period. Wave 2: split the catch so only the import() failure
+      // is silenced and runtime errors propagate.
       console.warn('[gateway-rpc] PG per-user lookup failed, falling back to Turso', err);
     }
   }
