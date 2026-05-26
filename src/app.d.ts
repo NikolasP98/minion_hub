@@ -10,6 +10,7 @@ declare global {
     interface Locals {
       user?: {
         id: string;
+        supabaseId?: string;
         email: string;
         displayName: string | null;
         role: 'user' | 'admin';
