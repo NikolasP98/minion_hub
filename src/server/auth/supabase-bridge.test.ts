@@ -31,4 +31,12 @@ describe('mapProfileToUser', () => {
     const u = mapProfileToUser({ ...base, role: null }, 'supa-uuid-1');
     expect(u.role).toBe('user');
   });
+
+  it('maps super_admin role through', () => {
+    const u = mapProfileToUser(
+      { id: 'p1', email: 'a@b.c', display_name: 'A', role: 'super_admin', legacy_user_id: null },
+      'uuid-1',
+    );
+    expect(u.role).toBe('super_admin');
+  });
 });

@@ -22,6 +22,13 @@ export function requireAdmin(locals: App.Locals): AuthUser {
   return user;
 }
 
+/** Require a super-admin user. Throws 401 if not logged in, 403 otherwise. */
+export function requireSuperAdmin(locals: App.Locals): AuthUser {
+  const user = requireAuth(locals);
+  if (user.role !== 'super_admin') throw error(403, 'Super-admin access required');
+  return user;
+}
+
 /**
  * Require tenant context (set by session auth, Bearer token, or AUTH_DISABLED fallback).
  */

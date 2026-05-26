@@ -7,7 +7,7 @@ export interface ProfileRow {
   id: string;
   email: string | null;
   display_name: string | null;
-  role: 'user' | 'admin' | null;
+  role: 'user' | 'admin' | 'super_admin' | null;
   legacy_user_id: string | null;
 }
 
@@ -15,17 +15,19 @@ export interface BridgedUser {
   id: string; // legacy_user_id when present (matches Turso), else supabase uuid
   email: string;
   displayName: string | null;
-  role: 'user' | 'admin';
+  role: 'user' | 'admin' | 'super_admin';
   supabaseId: string;
 }
 
 /** Pure: profiles row + supabase uuid -> hub locals.user shape. */
 export function mapProfileToUser(profile: ProfileRow, supabaseId: string): BridgedUser {
+  const role =
+    profile.role === 'super_admin' ? 'super_admin' : profile.role === 'admin' ? 'admin' : 'user';
   return {
     id: profile.legacy_user_id ?? supabaseId,
     email: profile.email ?? '',
     displayName: profile.display_name ?? null,
-    role: profile.role === 'admin' ? 'admin' : 'user',
+    role,
     supabaseId,
   };
 }
