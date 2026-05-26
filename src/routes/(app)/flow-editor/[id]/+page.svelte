@@ -1,47 +1,20 @@
 <script lang="ts">
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount } from 'svelte';
   import FlowCanvas from '$lib/components/flow-editor/FlowCanvas.svelte';
   import FlowSidebar from '$lib/components/flow-editor/FlowSidebar.svelte';
   import {
     flowEditorState,
     loadFlow,
     saveFlow,
-    appendLog,
-    clearLogs,
+    runFlow,
+    deleteNode,
+    duplicateNode,
   } from '$lib/state/features/flow-editor.svelte';
   import ConsolePanel from '$lib/components/flow-editor/ConsolePanel.svelte';
   import { ArrowLeft, Save, GitBranch, Loader, Play, Trash2, Copy } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
-  import { deleteNode, duplicateNode } from '$lib/state/features/flow-editor.svelte';
-
-  let isRunning = $state(false);
-  let destroyed = $state(false);
-  onDestroy(() => { destroyed = true; });
-
-  async function handleTestRun() {
-    isRunning = true;
-    clearLogs();
-    flowEditorState.consoleOpen = true;
-
-    const steps: Array<{ level: 'info' | 'debug'; message: string }> = [
-      { level: 'info', message: 'Starting flow test run…' },
-      { level: 'debug', message: 'Resolving node execution order' },
-      { level: 'info', message: `Processing ${flowEditorState.nodes.length} node(s)` },
-      { level: 'info', message: 'Executing prompt box inputs' },
-      { level: 'info', message: 'Dispatching to agents' },
-      { level: 'info', message: 'Flow run complete.' },
-    ];
-
-    for (const step of steps) {
-      if (destroyed) break;
-      appendLog({ level: step.level, message: step.message });
-      await new Promise<void>((resolve) => setTimeout(resolve, 350));
-    }
-
-    if (!destroyed) isRunning = false;
-  }
 
   const flowId = $derived(page.params.id);
   let loadError = $state<string | null>(null);
@@ -123,12 +96,12 @@
 
       <!-- Test Run button -->
       <button
-        onclick={handleTestRun}
-        disabled={isRunning}
+        onclick={runFlow}
+        disabled={flowEditorState.isRunning}
         class="flex items-center gap-1.5 h-7 px-3 text-xs rounded border transition-colors
           border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10 disabled:opacity-50 disabled:cursor-default"
       >
-        {#if isRunning}
+        {#if flowEditorState.isRunning}
           <Loader size={12} class="animate-spin" />
         {:else}
           <Play size={12} />
