@@ -13,7 +13,7 @@
         "@libsql/client": "^0.17.3",
         "@minion-stack/auth": "^0.2.0",
         "@minion-stack/cache": "^0.2.0",
-        "@minion-stack/db": "^0.3.0",
+        "@minion-stack/db": "^0.3.1",
         "@minion-stack/paperclip-client": "^0.1.0",
         "@minion-stack/shared": "^0.5.0",
         "@node-rs/argon2": "^2.0.2",
@@ -364,7 +364,7 @@
 
     "@minion-stack/cache": ["@minion-stack/cache@0.2.0", "", { "dependencies": { "ioredis": "^5.4.1" } }, "sha512-1G/BBM8dIVZElkv3kPG64lG8FMRw7bosFC5SVaahBbu36W7KnXz0rfkqvYJn7SiTi9GiI+a/wfkx64GbaU4isQ=="],
 
-    "@minion-stack/db": ["@minion-stack/db@0.3.0", "", { "peerDependencies": { "drizzle-orm": ">=0.45.0" } }, "sha512-FO2zUCfi/sgZUc9af+69j7tn72UdBaqTwVQNLArB1fZqm9rLopqUlzALtYN+UA+rsgQ5iUDxSwGOKHxqvt+FjA=="],
+    "@minion-stack/db": ["@minion-stack/db@0.3.1", "", { "peerDependencies": { "drizzle-orm": ">=0.45.0" } }, "sha512-0AeZvWAl6yPQQC4uwjs8o7pZOGmNjX7dlRl0rISy+3uoZ9JnJw2rNib+rZytzE7ADlRyRVxCcrgKFeDvmBNP+w=="],
 
     "@minion-stack/lint-config": ["@minion-stack/lint-config@0.1.1", "", { "peerDependencies": { "@eslint/js": ">=9.0.0", "eslint": ">=9.0.0", "oxlint": ">=0.15.0", "prettier": ">=3.0.0", "typescript-eslint": ">=8.0.0" }, "optionalPeers": ["@eslint/js", "eslint", "oxlint", "prettier", "typescript-eslint"] }, "sha512-/hbtiD6cnwu56yCoqqTDmHWBD9JLL3aph49h5XhTG4lPQe06WNMxkNKA4FlXM9xnCDd2eKaf7y9TwPhQ30Nqug=="],
 
