@@ -245,6 +245,7 @@ const finishApp: Handle = async ({ event, resolve }) => {
     // able to POST a join request. Handlers enforce their own auth (requireAuth
     // / requireAdmin), so falling through here is safe — mirrors /api/invitations.
     '/api/join-requests',
+    '/api/gateways',
     '/api/auth',
   ];
   if (!event.locals.tenantCtx && path.startsWith('/api/')) {
