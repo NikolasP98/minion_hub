@@ -48,33 +48,60 @@ export async function getGatewayHttpUrl(): Promise<string> {
   return toHttpUrl(url).replace(/\/+$/, '');
 }
 
-async function resolveCredentials(): Promise<{ url: string; token: string }> {
-  // DB is the source of truth.
+/** Resolve the gateway HTTP base URL for a specific user (per-user PG creds). */
+export async function getGatewayHttpUrlForUser(profileId: string | undefined): Promise<string> {
+  const { url } = await resolveCredentialsForUser(profileId);
+  return toHttpUrl(url).replace(/\/+$/, '');
+}
+
+/**
+ * Resolve gateway credentials for a specific user.
+ * Priority: PG per-user → Turso system-wide → env fallback.
+ */
+export async function resolveCredentialsForUser(
+  profileId: string | undefined,
+): Promise<{ url: string; token: string }> {
+  // 1. Per-user PG lookup (new primary path).
+  if (profileId) {
+    try {
+      const { getUserGatewayCredentials } = await import('$server/services/gateway.pg.service');
+      const creds = await getUserGatewayCredentials(profileId);
+      if (creds) return { url: toWsUrl(creds.url), token: creds.token };
+    } catch (err) {
+      console.warn('[gateway-rpc] PG per-user lookup failed, falling back to Turso', err);
+    }
+  }
+  // 2. Turso system-wide fallback (Wave 1 transition — removed in Wave 2).
   try {
     const creds = await getSystemGatewayCredentials(getDb(), env.MINION_GATEWAY_PRIMARY_URL);
     if (creds) return { url: toWsUrl(creds.url), token: creds.token };
   } catch (err) {
-    console.warn('[gateway-rpc] DB credential lookup failed, trying env fallback', err);
+    console.warn('[gateway-rpc] Turso credential lookup failed, trying env fallback', err);
   }
-  // Bootstrap fallback (empty DB).
+  // 3. Bootstrap env fallback.
   const fallbackUrl = env.MINION_GATEWAY_URL ?? env.OPENCLAW_GATEWAY_URL ?? '';
   const fallbackToken = env.OPENCLAW_GATEWAY_TOKEN ?? '';
-  if (!fallbackUrl) throw new Error('No gateway host in DB and MINION_GATEWAY_URL is not set');
-  if (!fallbackToken)
-    throw new Error('No gateway token in DB and OPENCLAW_GATEWAY_TOKEN is not set');
+  if (!fallbackUrl) throw new Error('No gateway configured. Add a gateway in Settings → Gateways.');
+  if (!fallbackToken) throw new Error('No gateway token configured.');
   return { url: toWsUrl(fallbackUrl), token: fallbackToken };
 }
 
+async function resolveCredentials(): Promise<{ url: string; token: string }> {
+  return resolveCredentialsForUser(undefined);
+}
+
 /**
- * Call a gateway RPC over a one-shot WebSocket and return the result.
+ * Low-level WS call with explicit credentials. Extracted so both gatewayCall
+ * and gatewayCallAsUser can share the same transport logic.
  */
-export async function gatewayCall<T = unknown>(
+async function gatewayCallWithCreds<T = unknown>(
   method: string,
-  params: Record<string, unknown> = {},
+  params: Record<string, unknown>,
+  url: string,
+  token: string,
   opts: { timeoutMs?: number } = {},
 ): Promise<T> {
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const { url, token } = await resolveCredentials();
 
   // Origin header must match an entry in gateway.controlUi.allowedOrigins so
   // minion-control-ui+ui can bypass device-auth for admin scopes. Node ws
@@ -181,12 +208,41 @@ export async function gatewayCall<T = unknown>(
   });
 }
 
-/** Convenience: list plugin UI manifest occupants. */
-export async function pluginsUiList(): Promise<PluginUiManifestOccupant[]> {
-  const res = await gatewayCall<
+/**
+ * Call a gateway RPC over a one-shot WebSocket and return the result.
+ * Uses system-wide credentials (Turso fallback → env).
+ */
+export async function gatewayCall<T = unknown>(
+  method: string,
+  params: Record<string, unknown> = {},
+  opts: { timeoutMs?: number } = {},
+): Promise<T> {
+  const { url, token } = await resolveCredentials();
+  return gatewayCallWithCreds<T>(method, params, url, token, opts);
+}
+
+/**
+ * Call a gateway RPC using per-user credentials resolved from PG.
+ * Falls back to system-wide Turso creds and env if no per-user row exists.
+ */
+export async function gatewayCallAsUser<T = unknown>(
+  method: string,
+  params: Record<string, unknown> = {},
+  profileId: string | undefined,
+  opts: { timeoutMs?: number } = {},
+): Promise<T> {
+  const { url, token } = await resolveCredentialsForUser(profileId);
+  return gatewayCallWithCreds<T>(method, params, url, token, opts);
+}
+
+/** Convenience: list plugin UI manifest occupants for a specific user. */
+export async function pluginsUiList(
+  profileId?: string | undefined,
+): Promise<PluginUiManifestOccupant[]> {
+  const res = await gatewayCallAsUser<
     | { entries?: PluginUiManifestOccupant[]; occupants?: PluginUiManifestOccupant[] }
     | PluginUiManifestOccupant[]
-  >('plugins.ui.list', {});
+  >('plugins.ui.list', {}, profileId);
   if (Array.isArray(res)) return res;
   return res?.entries ?? res?.occupants ?? [];
 }

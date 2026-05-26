@@ -6,7 +6,7 @@ import { pluginsUiList } from '$lib/server/gateway-rpc';
 export const GET: RequestHandler = async ({ locals }) => {
   requireAuth(locals);
   try {
-    const entries = await pluginsUiList();
+    const entries = await pluginsUiList(locals.user?.supabaseId);
     return json({ entries });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
