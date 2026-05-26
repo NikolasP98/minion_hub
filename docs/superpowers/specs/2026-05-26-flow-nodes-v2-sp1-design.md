@@ -124,11 +124,20 @@ If the gateway is unreachable, `sendAgentTurn` throws a descriptive error that s
 ### 2. New env vars in `langgraph-server/.env`
 
 ```
-GATEWAY_URL=ws://localhost:8765       # minion gateway WS endpoint
-GATEWAY_TOKEN=<your-gateway-token>    # MINION_GATEWAY_TOKEN value
+GATEWAY_URL=ws://localhost:8765           # minion gateway WS endpoint
+GATEWAY_TOKEN=<your-gateway-token>        # MINION_GATEWAY_TOKEN value
+
+# LLM provider — OpenRouter is the default (routes any model string)
+OPENROUTER_API_KEY=<your-openrouter-key>  # preferred — enables all OpenRouter models
+ANTHROPIC_API_KEY=<your-anthropic-key>   # fallback if only Anthropic is configured
 ```
 
-These live alongside `ANTHROPIC_API_KEY` in the shared `.env` (consistent with the flows-plugin single-config vision: one config drives both the server binding and the hub's API calls).
+**Provider selection logic:** langgraph-server picks the provider at startup:
+1. `OPENROUTER_API_KEY` set → use OpenRouter (`@langchain/openai` with `baseURL: 'https://openrouter.ai/api/v1'`). Any model string from `models.list` works without extra config.
+2. Otherwise, `ANTHROPIC_API_KEY` set → use `ChatAnthropic` (current behaviour).
+3. Neither set → server starts but `llm` node execution returns an error event at runtime.
+
+OpenRouter is the recommended default because it accepts any model id (claude, gpt-4o, mistral, llama, deepseek, etc.) that the gateway's `models.list` may return, with no per-provider credential management in langgraph-server.
 
 ### 3. `compileFlow` extensions (`src/flow/compile-flow.ts`)
 
@@ -139,7 +148,11 @@ These live alongside `ANTHROPIC_API_KEY` in the shared `.env` (consistent with t
 
 **Execution node compilation:**
 
-`llm` node → `ChatAnthropic` node (existing path). `data.modelId` replaces `data.agentId` as the source of the model id.
+`llm` node → a `StateGraph` node that invokes `resolveProviderModel(modelId)`. The model factory (new helper `src/flow/provider.ts`) returns a `BaseChatModel` wrapping:
+- OpenRouter (`ChatOpenAI` → `baseURL: 'https://openrouter.ai/api/v1'`) if `OPENROUTER_API_KEY` is set, or
+- `ChatAnthropic` if only `ANTHROPIC_API_KEY` is set.
+
+The `modelId` string (e.g. `'anthropic/claude-haiku-4-5'`, `'openai/gpt-4o'`, `'mistralai/mistral-large'`) is passed verbatim to whichever provider is active.
 
 `agent` node → a StateGraph node:
 ```ts
@@ -156,9 +169,12 @@ async function callGatewayAgent(state: typeof MessagesAnnotation.State) {
 }
 ```
 
-### 4. `resolveModelId` (backward compat, unchanged)
+### 4. `resolveModelId` (removed from LLM path)
 
-The `llm` node path uses `data.modelId` directly, so `resolveModelId` is not on the `llm` path. For the `agent` node path, `resolveModelId` is not called either — `agentId` is passed verbatim to `sendAgentTurn`. Existing `agent` nodes with a `claude-*` id fall through to the old direct-LLM path via a check in `compileFlow`:
+`resolveModelId` was a heuristic for the MVP's conflated node. With the clean split:
+- `llm` node → `data.modelId` is passed verbatim to the provider. No resolution needed.
+- `agent` node → `data.agentId` is passed verbatim to `sendAgentTurn`. No resolution needed.
+- `resolveModelId` is **kept only for backward compat** on existing `agent` nodes with a claude-* agentId:
 
 ```ts
 // Backward compat: 'agent' node with a claude-* id → treat as llm node
@@ -177,11 +193,11 @@ This avoids breaking saved flows (e.g. the MVP "PONG demo" flow).
 
 ### 1. New `LLMNode.svelte`
 
-- Displays a `<select>` populated from `sendRequest('models.list', {})` on mount.
-- Falls back to the 3 hardcoded Claude models if the RPC fails (no crash, no silent failure — show a small warning text).
-- Output handle only (right side, emerald, `id: 'out'`). No input handle (the incoming edge from the promptBox provides the prompt at execution time).
+- Displays a `<select>` populated from `sendRequest('models.list', {})` on mount. `models.list` reflects the gateway's configured providers — **OpenRouter is the default**, meaning the picker shows all OpenRouter-available models (claude, gpt-4o, mistral, llama, deepseek, etc.); if the user has a different provider set up, that provider's models appear instead.
+- Falls back to showing just the gateway's `defaultModel` (from the RPC response) if model list fetch fails. If the gateway itself is unreachable, shows a minimal hardcoded fallback (`claude-haiku-4-5-20251001`) with a visible warning. No silent failure.
+- Output handle only (right side, emerald, `id: 'out'`). No input handle.
 - `onchange` writes `data.modelId` + `data.label` via `setNodes`.
-- `onclick` stop-propagation (same pattern as AgentNode picker — prevents node drag eating the click).
+- `onclick` stop-propagation (prevents node drag eating the click).
 
 ### 2. Reworked `AgentNode.svelte`
 
@@ -222,7 +238,8 @@ The `FlowRunEvent` and `readSseStream` are not affected — same SSE contract.
 |---|---|
 | Gateway not connected when Agent node runs | `error` SSE event: "Gateway agent not reachable — check GATEWAY_URL and GATEWAY_TOKEN." |
 | Agent id not found by gateway | `error` SSE event with gateway's error message |
-| `models.list` RPC fails in LLM node picker | Falls back to hardcoded 3 Claude models; no crash |
+| Neither OPENROUTER_API_KEY nor ANTHROPIC_API_KEY set | `error` SSE event: "No LLM provider configured — set OPENROUTER_API_KEY or ANTHROPIC_API_KEY." |
+| `models.list` RPC fails in LLM node picker | Falls back to gateway's `defaultModel` if available; otherwise shows minimal hardcoded fallback with a warning |
 | `gw.agents` empty when AgentNode renders | Picker shows "No agents connected" disabled option |
 | Legacy `agent` node with claude-* id | Falls back to direct LLM execution (backward compat) |
 
@@ -254,7 +271,8 @@ The `FlowRunEvent` and `readSseStream` are not affected — same SSE contract.
 
 | Key | Where | Purpose |
 |---|---|---|
+| `OPENROUTER_API_KEY` | `langgraph-server/.env` | **Primary** LLM provider — routes any model string (claude, gpt-4o, mistral, llama…) |
+| `ANTHROPIC_API_KEY` | `langgraph-server/.env` | Fallback LLM provider if only Anthropic is configured |
 | `GATEWAY_URL` | `langgraph-server/.env` | Gateway WS endpoint for agent routing |
 | `GATEWAY_TOKEN` | `langgraph-server/.env` | Auth token for gateway WS connection |
 | `PUBLIC_LANGGRAPH_FLOWS_URL` | `minion_hub/.env` | Hub → langgraph-server /flows/run (from MVP) |
-| `ANTHROPIC_API_KEY` | `langgraph-server/.env` | Direct LLM calls (from MVP) |
