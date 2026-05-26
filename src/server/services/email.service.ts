@@ -80,3 +80,40 @@ export async function sendInvitationEmail(params: InvitationEmailParams): Promis
     console.error('[email] Failed to send invitation email:', err);
   }
 }
+
+interface JoinRequestEmailParams {
+  to: string;
+  requesterEmail: string;
+  requesterName: string;
+}
+
+export async function sendJoinRequestEmail(params: JoinRequestEmailParams): Promise<void> {
+  const resend = getResend();
+  if (!resend) {
+    console.warn(`[email] RESEND_API_KEY not set — skipping join-request email to ${params.to}.`);
+    return;
+  }
+  const from = env.RESEND_FROM ?? 'Minion Hub <noreply@minion-ai.org>';
+  const reviewUrl = `${env.PUBLIC_APP_URL ?? 'https://hub.minion-ai.org'}/users/join-requests`;
+  const html = `
+<!DOCTYPE html><html><body style="margin:0;background:#0a0a0f;font-family:-apple-system,Segoe UI,Roboto,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#0a0a0f;padding:40px 20px"><tr><td align="center">
+<table width="480" cellpadding="0" cellspacing="0" style="background:#13131a;border:1px solid #1e1e2e;border-radius:12px">
+<tr><td style="padding:32px;text-align:center">
+  <h1 style="color:#e4e4e7;font-size:18px;margin:0 0 8px">New access request</h1>
+  <p style="color:#71717a;font-size:14px;margin:0 0 24px;line-height:1.5">
+    <strong style="color:#a1a1aa">${params.requesterName}</strong> (${params.requesterEmail}) requested to join Minion Hub.
+  </p>
+  <a href="${reviewUrl}" style="display:inline-block;background:#e91e8c;color:#fff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 32px;border-radius:8px">Review request</a>
+</td></tr></table></td></tr></table></body></html>`.trim();
+  try {
+    await resend.emails.send({
+      from,
+      to: params.to,
+      subject: `Access request from ${params.requesterName} on Minion Hub`,
+      html,
+    });
+  } catch (err) {
+    console.error('[email] Failed to send join-request email:', err);
+  }
+}
