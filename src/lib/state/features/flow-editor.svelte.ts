@@ -1,4 +1,6 @@
 // Flow Editor State — Svelte 5 runes
+import { readSseStream } from './flow-run';
+import { env } from '$env/dynamic/public';
 
 export type HandleDef = { id: string; label: string };
 
@@ -57,6 +59,7 @@ export const flowEditorState = $state({
   selectedNodeIds: [] as string[],
   isDirty: false,
   isSaving: false,
+  isRunning: false,
   relationshipMode: false,
   consoleOpen: false,
   consoleLogs: [] as LogEntry[],
@@ -211,4 +214,37 @@ export function duplicateNode(nodeId: string) {
   };
   flowEditorState.nodes = [...flowEditorState.nodes, newNode];
   markDirty();
+}
+
+const FLOWS_URL = env.PUBLIC_LANGGRAPH_FLOWS_URL ?? 'http://localhost:2025';
+
+export async function runFlow() {
+  if (flowEditorState.isRunning) return;
+  flowEditorState.isRunning = true;
+  flowEditorState.consoleOpen = true;
+  clearLogs();
+
+  try {
+    const res = await fetch(`${FLOWS_URL}/flows/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        nodes: flowEditorState.nodes,
+        edges: flowEditorState.edges,
+      }),
+    });
+
+    if (!res.ok || !res.body) {
+      appendLog({ level: 'error', message: `Flow runner returned ${res.status}.` });
+      return;
+    }
+
+    for await (const event of readSseStream(res.body)) {
+      appendLog({ level: event.level, message: event.message, nodeId: event.nodeId });
+    }
+  } catch {
+    appendLog({ level: 'error', message: `Could not reach flow runner at ${FLOWS_URL}.` });
+  } finally {
+    flowEditorState.isRunning = false;
+  }
 }
