@@ -5,6 +5,7 @@ import { nowMs } from '../db/utils';
 import type { TenantContext } from './base';
 import { randomUUID } from 'node:crypto';
 import { encryptAdc, decryptAdc, type GoogleAdc } from './identity-secrets';
+import { getGoogleCredentialFromSupabase } from './supabase-credential';
 
 export type AttachIdentityInput = {
   channel: string;
@@ -89,11 +90,22 @@ export async function attachGoogleIdentity(
   return id;
 }
 
-/** Decrypt the stored Google ADC for a user (first google identity). */
+/**
+ * Decrypt the stored Google ADC for a user (first google identity).
+ *
+ * Source of truth is the canonical Supabase `user_identities` vault (where
+ * Supabase logins seal fresh refresh tokens). Falls back to the legacy Turso
+ * vault for any credential that hasn't been re-captured via a Supabase login
+ * yet — so this is never worse than the pre-Supabase behavior.
+ */
 export async function getGoogleCredential(
   ctx: TenantContext,
   userId: string,
 ): Promise<{ email: string; adc: GoogleAdc } | null> {
+  const fromSupabase = await getGoogleCredentialFromSupabase(userId);
+  if (fromSupabase) return fromSupabase;
+
+  // Legacy fallback: Turso user_identities (keyed by legacy userId).
   const rows = await ctx.db
     .select()
     .from(userIdentities)
