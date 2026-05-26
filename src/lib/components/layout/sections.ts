@@ -30,6 +30,11 @@ export type SectionItem = {
     label: string;
     icon: LucideIcon;
     matcher: (path: string) => boolean;
+    // Optional access-policy key (see $lib/access/policy). When set, the nav
+    // item is only rendered for users who satisfy it (admin-only "plugin"
+    // views). Filtered in Topbar via canClient(); routes are also guarded
+    // server-side, so hiding here is UX only.
+    requires?: string;
 };
 
 export type Section = {

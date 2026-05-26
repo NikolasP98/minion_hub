@@ -7,6 +7,7 @@
     import CompanySwitcher from "./CompanySwitcher.svelte";
     import SectionSwitcher from "./SectionSwitcher.svelte";
     import { getSections, findActiveSection } from "./sections";
+    import { canClient } from "$lib/access/can.svelte";
     import { theme } from "$lib/state/ui/theme.svelte";
     import { page } from "$app/state";
     import * as m from "$lib/paraglide/messages";
@@ -52,7 +53,8 @@
             <HostPill />
         </div>
 
-        <!-- Reliability quick-link (icon only) -->
+        <!-- Reliability quick-link (icon only) — admin-only plugin view -->
+        {#if canClient('reliability.monitor')}
         <Tooltip label={m.nav_reliability()} id="nav-reliability">
             {#snippet children(triggerProps)}
                 <a
@@ -64,6 +66,7 @@
                 </a>
             {/snippet}
         </Tooltip>
+        {/if}
 
         <div class="h-5 w-px bg-border/60 mx-1 shrink-0 hidden min-[470px]:block"></div>
 
@@ -78,7 +81,7 @@
                 class="hidden md:flex items-center gap-0.5 min-w-0 overflow-hidden pl-1"
                 aria-label="{activeSection.label} navigation"
             >
-                {#each activeSection.items as item (item.href)}
+                {#each activeSection.items.filter((i) => !i.requires || canClient(i.requires)) as item (item.href)}
                     {@const isActive = item.matcher(page.url.pathname)}
                     <Tooltip label={item.label} id="ctx-{item.href}">
                         {#snippet children(triggerProps)}
@@ -151,6 +154,7 @@
             style="animation: slide-up 150ms ease-out"
         >
             <nav class="flex flex-col p-2 gap-1">
+                {#if canClient('reliability.monitor')}
                 <a
                     href="/reliability"
                     class="mobile-nav-link {isReliability ? 'active' : ''}"
@@ -159,12 +163,13 @@
                     <Activity size={18} />
                     <span>{m.nav_reliability()}</span>
                 </a>
+                {/if}
                 {#each sections as section (section.id)}
                     <div class="h-px bg-border/60 my-1"></div>
                     <div class="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted/60">
                         {section.label}
                     </div>
-                    {#each section.items as item (item.href)}
+                    {#each section.items.filter((i) => !i.requires || canClient(i.requires)) as item (item.href)}
                         {@const isActive = item.matcher(page.url.pathname)}
                         <a
                             href={item.href}
