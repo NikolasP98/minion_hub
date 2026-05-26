@@ -20,6 +20,13 @@ vi.mock('$lib/auth', () => ({
   authClient: { signOut: vi.fn(async () => {}) },
 }));
 
+// Mock the supabase client + public env so importing user.svelte.ts doesn't
+// pull $env/static/public (unresolvable under vitest).
+vi.mock('$env/dynamic/public', () => ({ env: { PUBLIC_AUTH_PROVIDER: 'better-auth' } }));
+vi.mock('$lib/supabase/client', () => ({
+  supabaseBrowser: () => ({ auth: { signOut: vi.fn(async () => {}) } }),
+}));
+
 describe('user.svelte.ts canonical getters', () => {
   test('userState.user reads from page.data', async () => {
     const { userState } = await import('./user.svelte');
