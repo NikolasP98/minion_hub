@@ -26,6 +26,7 @@
         { id: 'team', label: 'Team', icon: 'Users', href: '/settings/team', adminOnly: true },
         { id: 'roles', label: 'Roles', icon: 'KeyRound', href: '/settings/roles', adminOnly: true },
         { id: 'backups', label: 'Backups', icon: 'DatabaseBackup', href: '/settings/backups', adminOnly: true },
+        { id: 'gateways', label: 'Gateways', icon: 'Server', href: '/settings/gateways', adminOnly: true },
     ];
 
     // Gateway tabs: live on /settings?s=<id>. Render as <button>.
