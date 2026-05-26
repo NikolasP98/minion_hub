@@ -12,6 +12,7 @@ export type ContextRule = {
 export type AgentNodeData = {
   agentId: string;
   label: string;
+  sessionMode: 'ephemeral' | 'shared';
   defaultValues: Record<string, string>;
   contextRules: ContextRule[];
   inputHandles: HandleDef[];
@@ -24,11 +25,16 @@ export type PromptBoxData = {
   value: string;
 };
 
+export type LLMNodeData = {
+  modelId: string;
+  label: string;
+};
+
 export type FlowNode = {
   id: string;
-  type: 'agent' | 'promptBox';
+  type: 'agent' | 'promptBox' | 'llm';
   position: { x: number; y: number };
-  data: AgentNodeData | PromptBoxData;
+  data: AgentNodeData | PromptBoxData | LLMNodeData;
 };
 
 export type FlowEdge = {
