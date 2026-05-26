@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { eq, and } from 'drizzle-orm';
 import { member, user, organization } from '@minion-stack/db/schema';
 import type { Db } from '$server/db/client';
@@ -51,7 +52,7 @@ export async function createMembership(
 
   if (existingMember.length === 0) {
     await db.insert(member).values({
-      id: `m-${u.id.slice(0, 12)}-${orgId.slice(0, 8)}`,
+      id: randomUUID(),
       organizationId: orgId,
       userId: u.id,
       role: role === 'admin' ? 'admin' : 'member',
