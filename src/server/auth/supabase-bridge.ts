@@ -3,11 +3,13 @@
 // supabase-bridge.runtime.ts so this file remains unit-testable without the vite
 // $env/static/public shim.
 
+export type UserRole = 'user' | 'admin' | 'super_admin';
+
 export interface ProfileRow {
   id: string;
   email: string | null;
   display_name: string | null;
-  role: 'user' | 'admin' | 'super_admin' | null;
+  role: UserRole | null;
   legacy_user_id: string | null;
 }
 
@@ -15,7 +17,7 @@ export interface BridgedUser {
   id: string; // legacy_user_id when present (matches Turso), else supabase uuid
   email: string;
   displayName: string | null;
-  role: 'user' | 'admin' | 'super_admin';
+  role: UserRole;
   supabaseId: string;
 }
 

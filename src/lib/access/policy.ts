@@ -1,6 +1,6 @@
 import { SUPER_VIEWS } from './super-views';
+import type { UserRole } from '$server/auth/supabase-bridge';
 
-type UserRole = 'user' | 'admin' | 'super_admin';
 type Capability = { minRole?: UserRole; permission?: string };
 
 const ROLE_RANK: Record<UserRole, number> = { user: 0, admin: 1, super_admin: 2 };
@@ -12,7 +12,7 @@ const BASE_ACCESS: Record<string, Capability> = {
 
 /** Super-view keys auto-register as super_admin-only. */
 const SUPER_ACCESS: Record<string, Capability> = Object.fromEntries(
-  SUPER_VIEWS.map((v) => [v.key, { minRole: 'super_admin' } as Capability]),
+  SUPER_VIEWS.map((v) => [v.key, { minRole: 'super_admin' }]),
 );
 
 export const ACCESS: Record<string, Capability> = { ...BASE_ACCESS, ...SUPER_ACCESS };

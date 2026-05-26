@@ -22,4 +22,8 @@ describe('can()', () => {
   test('unknown key denies', () => {
     expect(can('nope', sa)).toBe(false);
   });
+  test('null/undefined user treated as anonymous (user rank)', () => {
+    expect(can('users.manage', null)).toBe(false);
+    expect(can('users.manage', undefined)).toBe(false);
+  });
 });
