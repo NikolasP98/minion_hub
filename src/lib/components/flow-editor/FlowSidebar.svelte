@@ -1,9 +1,9 @@
 <script lang="ts">
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
   import { flowEditorState, setNodes } from '$lib/state/features/flow-editor.svelte';
-  import type { FlowNode, AgentNodeData, PromptBoxData } from '$lib/state/features/flow-editor.svelte';
+  import type { FlowNode, AgentNodeData, PromptBoxData, LLMNodeData } from '$lib/state/features/flow-editor.svelte';
   import { builderState, loadBuiltAgents } from '$lib/state/builder';
-  import { Bot, Type, ChevronLeft, ChevronRight, Hammer } from 'lucide-svelte';
+  import { Bot, Type, ChevronLeft, ChevronRight, Hammer, Cpu } from 'lucide-svelte';
   import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
   import { agentDisplayName } from '$lib/utils/agent-display';
@@ -59,7 +59,20 @@
     setNodes([...flowEditorState.nodes, node]);
   }
 
-  function handleDragStart(e: DragEvent, payload: { type: 'agent' | 'promptBox'; agentId?: string; label?: string }) {
+  function addLLMNode() {
+    const node: FlowNode = {
+      id: makeId(),
+      type: 'llm',
+      position: getDropPosition(),
+      data: {
+        modelId: 'claude-haiku-4-5-20251001',
+        label: 'LLM',
+      } satisfies LLMNodeData,
+    };
+    setNodes([...flowEditorState.nodes, node]);
+  }
+
+  function handleDragStart(e: DragEvent, payload: { type: 'agent' | 'promptBox' | 'llm'; agentId?: string; label?: string }) {
     if (!e.dataTransfer) return;
     e.dataTransfer.effectAllowed = 'copy';
     e.dataTransfer.setData('application/flow-node', JSON.stringify(payload));
@@ -101,6 +114,17 @@
         title={m.flow_promptBox()}
       >
         <Type size={13} class="text-violet-400" />
+      </button>
+
+      <!-- LLM icon -->
+      <button
+        onclick={addLLMNode}
+        draggable="true"
+        ondragstart={(e) => handleDragStart(e, { type: 'llm' })}
+        class="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
+        title="LLM"
+      >
+        <Cpu size={13} class="text-violet-400" />
       </button>
 
       {#if gw.agents.length > 0}
@@ -156,6 +180,20 @@
           <div>
             <div class="text-xs font-medium text-foreground">{m.flow_promptBox()}</div>
             <div class="text-[10px] text-muted">{m.flow_textInputNode()}</div>
+          </div>
+        </button>
+        <button
+          onclick={addLLMNode}
+          draggable="true"
+          ondragstart={(e) => handleDragStart(e, { type: 'llm' })}
+          class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
+        >
+          <div class="w-6 h-6 rounded bg-violet-500/20 flex items-center justify-center shrink-0">
+            <Cpu size={12} class="text-violet-400" />
+          </div>
+          <div>
+            <div class="text-xs font-medium text-foreground">LLM</div>
+            <div class="text-[10px] text-muted">Direct model call</div>
           </div>
         </button>
       </div>

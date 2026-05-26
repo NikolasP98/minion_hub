@@ -14,6 +14,7 @@
 
   import AgentNode from './nodes/AgentNode.svelte';
   import PromptBoxNode from './nodes/PromptBoxNode.svelte';
+  import LLMNode from './nodes/LLMNode.svelte';
   import FlowEdgeComponent from './edges/FlowEdge.svelte';
   import ContextEdgeComponent from './edges/ContextEdge.svelte';
   import * as m from '$lib/paraglide/messages';
@@ -27,12 +28,14 @@
     type FlowEdge,
     type AgentNodeData,
     type PromptBoxData,
+    type LLMNodeData,
   } from '$lib/state/features/flow-editor.svelte';
   import { theme } from '$lib/state/ui/theme.svelte';
 
   const nodeTypes: NodeTypes = {
     agent: AgentNode,
     promptBox: PromptBoxNode,
+    llm: LLMNode,
   };
 
   const edgeTypes: EdgeTypes = {
@@ -62,7 +65,7 @@
     const raw = e.dataTransfer?.getData('application/flow-node');
     if (!raw) return;
 
-    let payload: { type: 'agent' | 'promptBox'; agentId?: string; label?: string };
+    let payload: { type: 'agent' | 'promptBox' | 'llm'; agentId?: string; label?: string };
     try { payload = JSON.parse(raw); } catch { return; }
 
     const position = screenToFlowPosition({ x: e.clientX, y: e.clientY });
@@ -90,6 +93,17 @@
           outputHandles: [{ id: 'out', label: 'output' }],
           contextHandles: [{ id: 'ctx', label: 'context' }],
         } satisfies AgentNodeData,
+      };
+      setNodes([...flowEditorState.nodes, node]);
+    } else if (payload.type === 'llm') {
+      const node: FlowNode = {
+        id: makeId(),
+        type: 'llm',
+        position,
+        data: {
+          modelId: 'claude-haiku-4-5-20251001',
+          label: 'LLM',
+        } satisfies LLMNodeData,
       };
       setNodes([...flowEditorState.nodes, node]);
     }
