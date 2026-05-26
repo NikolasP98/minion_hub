@@ -1,5 +1,5 @@
 import type { LayoutServerLoad } from './$types';
-import { error } from '@sveltejs/kit';
+import { redirect } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
 import { requireAuth } from '$server/auth/authorize';
 import { loadPermissionsForUser } from '$server/services/permissions.service';
@@ -8,7 +8,7 @@ import { loadPersonalAgentForUser } from '$server/services/personal-agent.servic
 import { loadHostsForUser } from '$server/services/hosts.service';
 import { loadUserPreferences } from '$server/services/preferences.service';
 import { getDb } from '$server/db/client';
-import { member, session as sessionTable } from '@minion-stack/db/schema';
+import { member, session as sessionTable, organization } from '@minion-stack/db/schema';
 
 /**
  * Authenticated (app)/* layout server load.
@@ -56,30 +56,41 @@ export const load: LayoutServerLoad = async ({ locals, depends }) => {
       .limit(1);
 
     if (memberships.length === 0) {
-      throw error(403, 'No organization membership. Contact your administrator.');
-    }
-
-    const orgId = memberships[0].orgId;
-
-    // Persist activeOrganizationId on the session row so subsequent requests
-    // see it via hooks.server.ts. Direct DB update because Better Auth's
-    // organization plugin doesn't expose `setActiveOrganization` as a typed
-    // server-callable endpoint; the plugin's `setActive` client method
-    // resolves to the same row mutation under the hood.
-    if (locals.session?.id) {
-      try {
-        await db
-          .update(sessionTable)
-          .set({ activeOrganizationId: orgId })
-          .where(eq(sessionTable.id, locals.session.id));
-      } catch (err) {
-        console.warn('[layout-load] session.activeOrganizationId update failed:', err);
+      // Super-admins operate cross-org and are never gated on membership;
+      // seed a best-effort org context so their queries work. Everyone else
+      // is sent to the self-serve /join flow instead of a dead-end 403.
+      if (user.role === 'super_admin') {
+        const [firstOrg] = await db.select({ id: organization.id }).from(organization).limit(1);
+        if (firstOrg) {
+          locals.orgId = firstOrg.id;
+          locals.tenantCtx = { db, tenantId: firstOrg.id };
+        }
+      } else {
+        throw redirect(303, '/join');
       }
-    }
+    } else {
+      const orgId = memberships[0].orgId;
 
-    // Seed locals for THIS request so the bundle queries below see the org.
-    locals.orgId = orgId;
-    locals.tenantCtx = { db, tenantId: orgId };
+      // Persist activeOrganizationId on the session row so subsequent requests
+      // see it via hooks.server.ts. Direct DB update because Better Auth's
+      // organization plugin doesn't expose `setActiveOrganization` as a typed
+      // server-callable endpoint; the plugin's `setActive` client method
+      // resolves to the same row mutation under the hood.
+      if (locals.session?.id) {
+        try {
+          await db
+            .update(sessionTable)
+            .set({ activeOrganizationId: orgId })
+            .where(eq(sessionTable.id, locals.session.id));
+        } catch (err) {
+          console.warn('[layout-load] session.activeOrganizationId update failed:', err);
+        }
+      }
+
+      // Seed locals for THIS request so the bundle queries below see the org.
+      locals.orgId = orgId;
+      locals.tenantCtx = { db, tenantId: orgId };
+    }
   }
 
   const [permissions, workspaces, personalAgent, hosts, preferences] = await Promise.all([
