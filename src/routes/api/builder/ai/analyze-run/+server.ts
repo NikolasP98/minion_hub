@@ -111,7 +111,7 @@ Include top 3 actionable recommendations for improvement.`;
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
-        'HTTP-Referer': 'https://minionhub.admin-console.dev',
+        'HTTP-Referer': 'https://hub.minion-ai.org',
         'X-Title': 'Minion Hub Builder - Run Analysis',
       },
       body: JSON.stringify({

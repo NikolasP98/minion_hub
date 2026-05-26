@@ -38,7 +38,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     baseURL: OPENROUTER_BASE_URL,
     apiKey,
     headers: {
-      'HTTP-Referer': 'https://minionhub.admin-console.dev',
+      'HTTP-Referer': 'https://hub.minion-ai.org',
       'X-Title': 'Minion Hub - Structured Stream',
     },
   });

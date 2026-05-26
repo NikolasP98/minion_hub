@@ -82,7 +82,7 @@ export async function gatewayCall<T = unknown>(
   const origin =
     env.MINION_HUB_ORIGIN ||
     (env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${env.VERCEL_PROJECT_PRODUCTION_URL}` : '') ||
-    'https://minionhub.admin-console.dev';
+    'https://hub.minion-ai.org';
 
   return new Promise<T>((resolve, reject) => {
     const ws = new WebSocket(url, { headers: { Origin: origin } });

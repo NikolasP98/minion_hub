@@ -77,7 +77,7 @@ Each prompt needs a short 2-4 word label for a pill button.`;
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
-        'HTTP-Referer': 'https://minionhub.admin-console.dev',
+        'HTTP-Referer': 'https://hub.minion-ai.org',
         'X-Title': 'Minion Hub Builder - Prompt Suggestions',
       },
       body: JSON.stringify({

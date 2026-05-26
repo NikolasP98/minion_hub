@@ -28,7 +28,7 @@ export async function sendInvitationEmail(params: InvitationEmailParams): Promis
     return;
   }
 
-  const from = env.RESEND_FROM ?? 'Minion Hub <noreply@minionhub.admin-console.dev>';
+  const from = env.RESEND_FROM ?? 'Minion Hub <noreply@hub.minion-ai.org>';
   const { to, inviterName, organizationName, role, inviteUrl } = params;
 
   const html = `
@@ -73,7 +73,7 @@ export async function sendInvitationEmail(params: InvitationEmailParams): Promis
       subject: `${inviterName} invited you to join ${organizationName} on Minion Hub`,
       html,
       headers: {
-        'List-Unsubscribe': `<mailto:${from.match(/<(.+)>/)?.[1] ?? 'noreply@minionhub.admin-console.dev'}?subject=unsubscribe>`,
+        'List-Unsubscribe': `<mailto:${from.match(/<(.+)>/)?.[1] ?? 'noreply@hub.minion-ai.org'}?subject=unsubscribe>`,
       },
     });
   } catch (err) {

@@ -76,7 +76,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${orKey}`,
-          'HTTP-Referer': 'https://minionhub.admin-console.dev',
+          'HTTP-Referer': 'https://hub.minion-ai.org',
           'X-Title': 'Minion Hub Image Studio',
         },
         body: JSON.stringify({

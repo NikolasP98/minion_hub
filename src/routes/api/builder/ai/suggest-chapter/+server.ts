@@ -100,7 +100,7 @@ Generate the guide (imperative instructions), suggested tool IDs from the availa
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
-        'HTTP-Referer': 'https://minionhub.admin-console.dev',
+        'HTTP-Referer': 'https://hub.minion-ai.org',
         'X-Title': 'Minion Hub Builder',
       },
       body: JSON.stringify({
