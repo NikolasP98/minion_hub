@@ -1,6 +1,7 @@
 <script lang="ts">
     import { Brain, Bot, Radio, Shield, Server, Palette, HardDrive, DatabaseBackup, Puzzle, Users, KeyRound, Phone, User } from "lucide-svelte";
     import { page } from "$app/state";
+    import { goto } from "$app/navigation";
     import { isAdmin } from "$lib/state/features/user.svelte";
     import { TABS } from "$lib/utils/config-schema";
     import * as m from "$lib/paraglide/messages";
@@ -58,6 +59,11 @@
     const visibleGatewayTabs = $derived(isAdmin.value ? gatewayTabs : []);
 
     function handleGatewayClick(id: string) {
+        // Consolidation: "hosts" now lives at /settings/gateways
+        if (id === 'hosts') {
+            goto('/settings/gateways');
+            return;
+        }
         onselect?.(id);
     }
 
