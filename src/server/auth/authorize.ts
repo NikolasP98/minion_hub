@@ -15,14 +15,17 @@ export function requireAuth(locals: App.Locals): AuthUser {
 
 /**
  * Require an authenticated admin user. Throws 401 if not logged in, 403 if not admin.
+ * super_admin implies admin and also passes this check.
  */
 export function requireAdmin(locals: App.Locals): AuthUser {
   const user = requireAuth(locals);
-  if (user.role !== 'admin') throw error(403, 'Admin access required');
+  if (user.role !== 'admin' && user.role !== 'super_admin') throw error(403, 'Admin access required');
   return user;
 }
 
-/** Require a super-admin user. Throws 401 if not logged in, 403 otherwise. */
+/**
+ * Require a super-admin user. Throws 401 if not logged in, 403 otherwise.
+ */
 export function requireSuperAdmin(locals: App.Locals): AuthUser {
   const user = requireAuth(locals);
   if (user.role !== 'super_admin') throw error(403, 'Super-admin access required');

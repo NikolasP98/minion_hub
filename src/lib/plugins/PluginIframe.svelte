@@ -136,6 +136,15 @@
   let pluginReady = $state(false);
   let handshakeTimedOut = $state(false);
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  // Populated on timeout by a HEAD fetch of the iframe URL. Surfaces the
+  // single most common silent-failure mode: gateway sets
+  // `Content-Security-Policy: frame-ancestors 'none'` (the historical default
+  // when gateway.json omits `pluginUi.allowedFrameAncestors`), Chrome blocks
+  // the embed *after* the network request completes, the iframe `onload` event
+  // still fires, the plugin JS never executes, no `plugin:ready` is sent, and
+  // the user is left with no clue what went wrong.
+  let diagnosticCsp = $state<string | null>(null);
+  let diagnosticCspBlocks = $state(false);
 
   // Gateway serves /plugins/<id>/ui/<subpath> resolving against ui/dist/.
   // Some manifests list entrypoint as "ui/dist/index.html" (disk path); strip
@@ -225,6 +234,24 @@
             pluginReady,
           });
           handshakeTimedOut = true;
+          void fetch(src, { method: "GET", mode: "cors", credentials: "omit" })
+            .then((r) => {
+              const csp = r.headers.get("content-security-policy");
+              if (!csp) return;
+              diagnosticCsp = csp;
+              const m = /frame-ancestors\s+([^;]+)/i.exec(csp);
+              if (!m) return;
+              const ancestors = m[1]!.trim();
+              if (ancestors.includes("'none'")) {
+                diagnosticCspBlocks = true;
+                return;
+              }
+              if (ancestors.includes("*")) return;
+              if (hostOrigin && !ancestors.includes(hostOrigin)) {
+                diagnosticCspBlocks = true;
+              }
+            })
+            .catch(() => {});
         }
       }, HANDSHAKE_TIMEOUT_MS);
     }
@@ -303,12 +330,32 @@
         <header class="font-semibold text-destructive">
           Plugin handshake timed out ({HANDSHAKE_TIMEOUT_MS / 1000}s)
         </header>
-        <p class="text-muted-foreground">
-          The plugin loaded its assets but did not send <code>plugin:ready</code> in time, or its
-          <code>host:hello</code> reply was rejected. Common causes: cross-origin Referrer-Policy
-          stripped the host origin, the plugin throws before <code>bridge.notifyReady()</code>, or
-          the plugin's gateway WebSocket fails immediately.
-        </p>
+        {#if diagnosticCspBlocks}
+          <p class="text-foreground">
+            <strong>Gateway CSP blocks this hub from embedding the plugin.</strong> The plugin
+            served a <code>frame-ancestors</code> directive that excludes
+            <code>{hostOrigin}</code>. The iframe request succeeded, but Chrome refuses to render —
+            so the plugin's JS never runs and <code>plugin:ready</code> is never sent.
+          </p>
+          <p class="text-muted-foreground">
+            Fix on the gateway side: set <code>gateway.pluginUi.allowedFrameAncestors</code> in
+            <code>gateway.json</code> to include this hub's origin (or <code>"*"</code>), then
+            restart the gateway. Recent gateway builds default to <code>*</code> when this key is
+            absent — older deployments that hardcoded <code>'none'</code> need a config change or
+            a redeploy.
+          </p>
+          {#if diagnosticCsp}
+            <pre
+              class="overflow-x-auto rounded bg-muted p-2 text-xs">{diagnosticCsp}</pre>
+          {/if}
+        {:else}
+          <p class="text-muted-foreground">
+            The plugin loaded its assets but did not send <code>plugin:ready</code> in time, or its
+            <code>host:hello</code> reply was rejected. Common causes: cross-origin Referrer-Policy
+            stripped the host origin, the plugin throws before <code>bridge.notifyReady()</code>,
+            or the plugin's gateway WebSocket fails immediately.
+          </p>
+        {/if}
         <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-xs">
           <dt class="text-muted-foreground">plugin</dt>
           <dd>{pluginId}</dd>

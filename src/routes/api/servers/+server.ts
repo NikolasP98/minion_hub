@@ -22,6 +22,9 @@ export const GET: RequestHandler = async ({ locals }) => {
 };
 
 export const POST: RequestHandler = async ({ locals, request }) => {
+  console.log('[POST /api/servers] ENTRY user=', locals.user?.email ?? 'NONE');
+  console.log('[POST /api/servers] env.SSRF_ALLOWED_HOSTNAME_SUFFIXES=', process.env.SSRF_ALLOWED_HOSTNAME_SUFFIXES);
+  console.log('[POST /api/servers] env.SSRF_ALLOW_TAILSCALE_CGNAT=', process.env.SSRF_ALLOW_TAILSCALE_CGNAT);
   // Per-user host ownership: only authenticated users can add hosts so
   // every new server gets a `user_servers` link. Anonymous adds would
   // leave the row orphaned (visible only to admins, invisible to the
@@ -30,9 +33,12 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   const ctx = await getOrCreateTenantCtx(locals);
   try {
     const body = await request.json();
+    console.log('[POST /api/servers] body=', JSON.stringify(body));
     try {
       await assertSafeUrl(body.url, 'server URL');
+      console.log('[POST /api/servers] SSRF check PASSED for url=', body.url);
     } catch (err) {
+      console.log('[POST /api/servers] SSRF check FAILED:', err instanceof Error ? err.message : String(err));
       if (err instanceof SsrfBlockedError) {
         return json({ ok: false, error: err.message }, { status: 422 });
       }

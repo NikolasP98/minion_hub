@@ -17,9 +17,14 @@ import { getServerToken } from '$server/services/server.service';
  * proxy access logs, and the default HTTP cache.
  */
 export const POST: RequestHandler = async ({ locals, params }) => {
+  console.log('[token-ep] ENTRY user=', locals.user?.email ?? 'NONE', 'role=', locals.user?.role, 'id=', params.id);
   const user = requireAuth(locals);
   const ctx = await getTenantCtx(locals);
-  if (!ctx) return json({ error: 'No tenant context' }, { status: 403 });
+  if (!ctx) {
+    console.log('[token-ep] no tenant ctx -> 403');
+    return json({ error: 'No tenant context' }, { status: 403 });
+  }
+  console.log('[token-ep] tenant=', ctx.tenantId);
 
   const id = params.id!;
 
@@ -28,11 +33,24 @@ export const POST: RequestHandler = async ({ locals, params }) => {
       .select({ serverId: userServers.serverId })
       .from(userServers)
       .where(and(eq(userServers.userId, user.id), eq(userServers.serverId, id)));
-    if (!link) return json({ error: 'Not found' }, { status: 404 });
+    if (!link) {
+      console.log('[token-ep] non-admin without link -> 404');
+      return json({ error: 'Not found' }, { status: 404 });
+    }
   }
 
-  const token = await getServerToken(ctx, id);
-  if (token === null) return json({ error: 'Not found' }, { status: 404 });
+  let token: string | null;
+  try {
+    token = await getServerToken(ctx, id);
+  } catch (err) {
+    console.error('[token-ep] getServerToken threw:', err);
+    return json({ error: 'decrypt failed', message: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
+  if (token === null) {
+    console.log('[token-ep] getServerToken returned null -> 404');
+    return json({ error: 'Not found' }, { status: 404 });
+  }
+  console.log('[token-ep] OK token len=', token.length);
 
   return json(
     { token },
