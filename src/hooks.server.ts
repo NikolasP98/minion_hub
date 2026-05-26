@@ -10,9 +10,10 @@ import { getPostHogClient } from '$lib/server/posthog';
 import { getAuth } from '$lib/auth/auth';
 import { building } from '$app/environment';
 import { getDb } from '$server/db/client';
-import { servers, organization, user as userTable } from '@minion-stack/db/schema';
+import { servers, organization, user as userTable, jwks, member } from '@minion-stack/db/schema';
 import { eq } from 'drizzle-orm';
 import { decryptToken } from '$server/auth/crypto';
+import { resolveSupabaseUser } from '$server/auth/supabase-bridge.runtime';
 import { env } from '$env/dynamic/private';
 import { startBackupScheduler } from '$server/services/backup-scheduler';
 import { ensurePersonalAgentOnLogin } from '$server/services/personal-agent.service';
@@ -112,6 +113,34 @@ const appHandle: Handle = async ({ event, resolve }) => {
     return resolve(event);
   }
 
+  // Supabase auth (becomes default). Resolves locals.user via the supabase->legacy
+  // bridge so downstream Turso-keyed loads + (app) layout org auto-activation work.
+  // Leaves locals.session unset (no Better Auth session row); the (app) layout load
+  // resolves org from `member` by user.id and guards the session-table write.
+  if (env.AUTH_PROVIDER === 'supabase' && env.AUTH_DISABLED !== 'true' && !path.startsWith('/api/metrics/')) {
+    const bridged = await resolveSupabaseUser(event);
+    if (bridged) {
+      const db = getDb();
+      event.locals.user = {
+        id: bridged.id,
+        email: bridged.email,
+        displayName: bridged.displayName,
+        role: bridged.role,
+        supabaseId: bridged.supabaseId,
+      };
+      const [m] = await db
+        .select({ orgId: member.organizationId })
+        .from(member)
+        .where(eq(member.userId, bridged.id))
+        .limit(1);
+      if (m?.orgId) {
+        event.locals.orgId = m.orgId;
+        event.locals.tenantCtx = { db, tenantId: m.orgId };
+      }
+    }
+    return finishApp({ event, resolve });
+  }
+
   // Bearer token auth for /api/metrics/*
   if (path.startsWith('/api/metrics/')) {
     const authHeader = event.request.headers.get('authorization');
@@ -130,7 +159,18 @@ const appHandle: Handle = async ({ event, resolve }) => {
   try {
     betterAuthSession = await getAuth().api.getSession({ headers: event.request.headers });
   } catch (err) {
-    console.error('[hooks] getSession failed, treating as unauthenticated:', err);
+    if (isJwksDecryptError(err) && (await healStaleJwks())) {
+      // Self-heal triggered (see healStaleJwks). Retry once with the
+      // regenerated keypair. If this also fails, fall through to the
+      // unauthenticated path.
+      try {
+        betterAuthSession = await getAuth().api.getSession({ headers: event.request.headers });
+      } catch (retryErr) {
+        console.error('[hooks] getSession failed after JWKS heal:', retryErr);
+      }
+    } else {
+      console.error('[hooks] getSession failed, treating as unauthenticated:', err);
+    }
   }
   if (betterAuthSession) {
     const db = getDb();
@@ -170,6 +210,18 @@ const appHandle: Handle = async ({ event, resolve }) => {
       ).catch((err) => console.error('[personal-agent] Login backfill failed:', err));
     }
   }
+
+  return finishApp({ event, resolve });
+};
+
+/**
+ * Shared tail for appHandle — runs after locals.user/tenantCtx have been set
+ * (or left unset) by whichever auth branch handled the request. Both the
+ * Better Auth path and the Supabase bridge path route through here so the
+ * unauthenticated-API fallback + redirect logic isn't duplicated.
+ */
+const finishApp: Handle = async ({ event, resolve }) => {
+  const path = event.url.pathname;
 
   // For API routes: unauthenticated fallback is restricted to explicitly safe paths only.
   // Sensitive routes (workshop, flows, personal-agent, users) require explicit auth and
@@ -325,3 +377,62 @@ startBackupScheduler();
 
 // One-time cache initialization.
 void initCache().catch((err) => console.error('[cache] init failed', err));
+
+/**
+ * JWKS auto-heal: at-most-once-per-process recovery from stale-secret state.
+ *
+ * Better Auth's oidcProvider encrypts the JWKS private key with BETTER_AUTH_SECRET.
+ * If the secret changes between server boots (Infisical rotation, switching .env vs
+ * .env.local, switching dev vs desktop contexts, restoring from backup, etc.) the
+ * row in the `jwks` table can no longer be decrypted and every authenticated
+ * request fails silently — login form just resets, no surface error.
+ *
+ * Reactive heal: the catch block in authHandle detects any JWT-signing-path
+ * error that indicates an unreadable JWKS row (`Failed to decrypt private key`
+ * with the right secret, or `... is not valid JSON` from a malformed row),
+ * deletes the stale row, and retries once. Better Auth lazily regenerates the
+ * keypair on the next JWKS access using the current secret.
+ *
+ * Idempotency: jwksHealAttempted flips to `true` after the first heal so we
+ * don't loop on a real (non-decrypt) auth error. The flag survives the process
+ * lifetime — if the secret is rotated AGAIN mid-run we'd need a restart, but
+ * that's vanishingly rare and a restart is cheap.
+ */
+let jwksHealAttempted = false;
+function isJwksDecryptError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const msg = err.message;
+  const stack = err.stack ?? '';
+  // Better Auth's wrapper error when a valid encrypted JSON private key
+  // can't be decrypted with the current BETTER_AUTH_SECRET.
+  if (msg.includes('Failed to decrypt private key')) return true;
+  // Underlying JSON.parse failure on the stored private_key field — fires
+  // when the row is malformed (partial write, corrupted backup, test shim).
+  // Both originate from the JWT-signing path in the jwt/oidc plugin.
+  if (stack.includes('/plugins/jwt/sign') || stack.includes('/plugins/jwt/index')) {
+    if (msg.includes('is not valid JSON') || msg.includes('decrypt') || msg.includes('JWK')) {
+      return true;
+    }
+  }
+  return false;
+}
+async function healStaleJwks(): Promise<boolean> {
+  if (jwksHealAttempted) return false;
+  jwksHealAttempted = true;
+  console.warn(
+    '[jwks-heal] decrypt failed with current BETTER_AUTH_SECRET — clearing stale row so Better Auth can regenerate. ' +
+      'Expected after secret rotation, switching .env contexts, or restoring from backup.',
+  );
+  try {
+    const db = getDb();
+    const result = await db.delete(jwks);
+    console.warn(
+      `[jwks-heal] stale row cleared (${result.rowsAffected ?? '?'} row); ` +
+        'next request will regenerate the keypair.',
+    );
+    return true;
+  } catch (delErr) {
+    console.error('[jwks-heal] failed to clear stale row:', delErr);
+    return false;
+  }
+}
