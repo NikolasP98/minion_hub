@@ -2,7 +2,7 @@
   import { Handle, Position } from '@xyflow/svelte';
   import type { NodeProps } from '@xyflow/svelte';
   import type { AgentNodeData } from '$lib/state/features/flow-editor.svelte';
-  import { flowEditorState } from '$lib/state/features/flow-editor.svelte';
+  import { flowEditorState, setNodes } from '$lib/state/features/flow-editor.svelte';
   import { Bot } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
 
@@ -11,6 +11,23 @@
   let showSettings = $state(false);
   let hovered = $state(false);
   const showHandles = $derived(flowEditorState.relationshipMode || selected || hovered);
+
+  // MVP: execution is direct-LLM, so the picker chooses a model id, written into
+  // the existing agentId/label fields. Later phases will list real gw/built agents.
+  const MODEL_OPTIONS = [
+    { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
+    { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
+    { id: 'claude-opus-4-7', label: 'Claude Opus 4.7' },
+  ];
+
+  function pickModel(e: Event) {
+    const modelId = (e.target as HTMLSelectElement).value;
+    const label = MODEL_OPTIONS.find((o) => o.id === modelId)?.label ?? modelId;
+    const next = flowEditorState.nodes.map((n) =>
+      n.id === id ? { ...n, data: { ...n.data, agentId: modelId, label } } : n,
+    );
+    setNodes(next);
+  }
 
   function isHandleConnected(handleId: string): boolean {
     return flowEditorState.edges.some(
@@ -84,9 +101,19 @@
     </div>
     <span class="text-xs font-semibold text-foreground truncate">{data.label}</span>
   </div>
-  {#if data.agentId}
-    <div class="text-[10px] text-muted truncate font-mono">{data.agentId}</div>
-  {/if}
+  <select
+    class="mt-1 w-full text-[10px] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground"
+    value={data.agentId}
+    onclick={(e) => e.stopPropagation()}
+    onchange={pickModel}
+  >
+    {#each MODEL_OPTIONS as opt (opt.id)}
+      <option value={opt.id}>{opt.label}</option>
+    {/each}
+    {#if data.agentId && !MODEL_OPTIONS.some((o) => o.id === data.agentId)}
+      <option value={data.agentId}>{data.label}</option>
+    {/if}
+  </select>
 </div>
 
 <!-- Output handles (right) -->
