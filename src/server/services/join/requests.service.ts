@@ -85,15 +85,9 @@ export async function approveRequest(
 	opts: { reviewerId: string; role: string; organizationId: string },
 ): Promise<void> {
 	const sb = supabaseAdmin();
-	// Atomically mark approved only if still pending; the returned row provides member data.
-	const { data: row, error } = await sb
-		.from('join_request')
-		.update({ status: 'approved', reviewed_by: opts.reviewerId, reviewed_at: new Date().toISOString() })
-		.eq('id', id)
-		.select()
-		.single();
-	if (error) throw new Error(error.message);
-	if (!row) return; // already non-pending — no-op
+	const { data: row, error: readErr } = await sb.from('join_request').select('*').eq('id', id).single();
+	if (readErr || !row) throw new Error('request not found');
+	if (row.status !== 'pending') return; // no-op for already-resolved requests
 
 	await createMembership(
 		getDb(),
@@ -101,6 +95,12 @@ export async function approveRequest(
 		opts.organizationId,
 		opts.role,
 	);
+
+	const { error } = await sb
+		.from('join_request')
+		.update({ status: 'approved', reviewed_by: opts.reviewerId, reviewed_at: new Date().toISOString() })
+		.eq('id', id);
+	if (error) throw new Error(error.message);
 }
 
 export async function denyRequest(id: string, reviewerId: string): Promise<void> {

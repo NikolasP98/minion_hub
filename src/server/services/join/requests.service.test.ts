@@ -3,13 +3,17 @@ import { describe, test, expect, vi, beforeEach } from 'vitest';
 const calls: any = {};
 vi.mock('$server/supabase', () => ({
   supabaseAdmin: () => ({
-    from: (table: string) => ({
+    from: (_table: string) => ({
       insert: (row: any) => ({ select: () => ({ single: async () => ((calls.inserted = row), { data: { id: 'r1', ...row }, error: null }) }) }),
       select: () => ({
-        eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: calls.pending ?? null, error: null }) }) }),
+        eq: () => ({
+          eq: () => ({ maybeSingle: async () => ({ data: calls.pending ?? null, error: null }) }),
+          single: async () => ({ data: calls.row ?? null, error: calls.row ? null : { message: 'not found' } }),
+          order: () => ({ /* listPending unused here */ }),
+        }),
         in: () => ({ data: calls.admins ?? [], error: null }),
       }),
-      update: (patch: any) => ({ eq: () => ({ select: () => ({ single: async () => ((calls.updated = patch), { data: { id: 'r1', ...calls.row, ...patch }, error: null }) }) }) }),
+      update: (patch: any) => ({ eq: () => { calls.updated = patch; return Promise.resolve({ error: null }); } }),
     }),
   }),
 }));
@@ -31,9 +35,17 @@ describe('requests.service', () => {
 
   test('approve creates membership + marks approved', async () => {
     const { approveRequest } = await import('./requests.service');
-    calls.row = { user_id: 'u1', email: 'a@b.c', display_name: 'A', organization_id: 'org1' };
+    calls.row = { status: 'pending', user_id: 'u1', email: 'a@b.c', display_name: 'A', organization_id: 'org1' };
     await approveRequest('r1', { reviewerId: 'admin1', role: 'user', organizationId: 'org1' });
     expect(calls.membership).toBe(true);
     expect(calls.updated.status).toBe('approved');
+  });
+
+  test('approve is a no-op when request is not pending', async () => {
+    const { approveRequest } = await import('./requests.service');
+    calls.row = { status: 'approved', user_id: 'u1', email: 'a@b.c', display_name: 'A', organization_id: 'org1' };
+    await approveRequest('r1', { reviewerId: 'admin1', role: 'user', organizationId: 'org1' });
+    expect(calls.membership).toBeUndefined();
+    expect(calls.updated).toBeUndefined();
   });
 });
