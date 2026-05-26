@@ -56,7 +56,7 @@ export async function createRequest(
 	const { data: admins } = await sb
 		.from('profiles')
 		.select('email,role')
-		.in('role', ['admin', 'super_admin']);
+		.in('role', ['admin']);
 	for (const a of admins ?? []) {
 		if (a.email) {
 			await sendJoinRequestEmail({

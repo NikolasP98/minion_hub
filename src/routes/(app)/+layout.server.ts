@@ -8,7 +8,7 @@ import { loadPersonalAgentForUser } from '$server/services/personal-agent.servic
 import { loadHostsForUser } from '$server/services/hosts.service';
 import { loadUserPreferences } from '$server/services/preferences.service';
 import { getDb } from '$server/db/client';
-import { member, session as sessionTable, organization } from '@minion-stack/db/schema';
+import { member, session as sessionTable } from '@minion-stack/db/schema';
 
 /**
  * Authenticated (app)/* layout server load.
@@ -56,18 +56,7 @@ export const load: LayoutServerLoad = async ({ locals, depends }) => {
       .limit(1);
 
     if (memberships.length === 0) {
-      // Super-admins operate cross-org and are never gated on membership;
-      // seed a best-effort org context so their queries work. Everyone else
-      // is sent to the self-serve /join flow instead of a dead-end 403.
-      if (user.role === 'super_admin') {
-        const [firstOrg] = await db.select({ id: organization.id }).from(organization).limit(1);
-        if (firstOrg) {
-          locals.orgId = firstOrg.id;
-          locals.tenantCtx = { db, tenantId: firstOrg.id };
-        }
-      } else {
-        throw redirect(303, '/join');
-      }
+      throw redirect(303, '/join');
     } else {
       const orgId = memberships[0].orgId;
 

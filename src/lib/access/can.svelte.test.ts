@@ -8,7 +8,7 @@ describe('canClient', () => {
   test('reads role + permissions from page.data', async () => {
     const { canClient } = await import('./can.svelte');
     expect(canClient('users.manage')).toBe(true);
-    expect(canClient('reliability.monitor')).toBe(false);
+    expect(canClient('reliability.monitor')).toBe(true);
     expect(canClient('agents.publish')).toBe(true);
   });
 });

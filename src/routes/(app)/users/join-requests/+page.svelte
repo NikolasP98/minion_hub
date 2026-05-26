@@ -38,7 +38,7 @@
             </div>
             <div class="flex items-center gap-2">
               <select class="bg-bg border border-border rounded px-2 py-1 text-xs" bind:value={r.requested_role}>
-                <option value="user">user</option><option value="admin">admin</option><option value="super_admin">super_admin</option>
+                <option value="user">user</option><option value="admin">admin</option>
               </select>
               <button disabled={busy === r.id} onclick={() => approve(r.id, r.organization_id, r.requested_role)} class="px-3 py-1 rounded border text-xs bg-accent/20 border-accent/30 text-accent">Approve</button>
               <button disabled={busy === r.id} onclick={() => deny(r.id)} class="px-3 py-1 rounded border text-xs text-red-400 border-red-400/30">Deny</button>

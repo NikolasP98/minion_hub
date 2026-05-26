@@ -3,16 +3,16 @@ import type { UserRole } from '$server/auth/supabase-bridge';
 
 type Capability = { minRole?: UserRole; permission?: string };
 
-const ROLE_RANK: Record<UserRole, number> = { user: 0, admin: 1, super_admin: 2 };
+const ROLE_RANK: Record<UserRole, number> = { user: 0, admin: 1 };
 
 const BASE_ACCESS: Record<string, Capability> = {
   'users.manage': { minRole: 'admin' },
   'agents.publish': { permission: 'marketplace:publish' },
 };
 
-/** Super-view keys auto-register as super_admin-only. */
+/** Super-view keys auto-register as admin-only. */
 const SUPER_ACCESS: Record<string, Capability> = Object.fromEntries(
-  SUPER_VIEWS.map((v) => [v.key, { minRole: 'super_admin' }]),
+  SUPER_VIEWS.map((v) => [v.key, { minRole: 'admin' }]),
 );
 
 export const ACCESS: Record<string, Capability> = { ...BASE_ACCESS, ...SUPER_ACCESS };

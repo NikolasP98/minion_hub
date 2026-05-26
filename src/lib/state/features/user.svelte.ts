@@ -4,7 +4,7 @@ import { authClient } from '$lib/auth';
 import { env as publicEnv } from '$env/dynamic/public';
 import { supabaseBrowser } from '$lib/supabase/client';
 
-type UserRole = 'user' | 'admin' | 'super_admin';
+type UserRole = 'user' | 'admin';
 
 interface CurrentUser {
   id: string;

@@ -3,7 +3,7 @@
 // supabase-bridge.runtime.ts so this file remains unit-testable without the vite
 // $env/static/public shim.
 
-export type UserRole = 'user' | 'admin' | 'super_admin';
+export type UserRole = 'user' | 'admin';
 
 export interface ProfileRow {
   id: string;
@@ -23,8 +23,7 @@ export interface BridgedUser {
 
 /** Pure: profiles row + supabase uuid -> hub locals.user shape. */
 export function mapProfileToUser(profile: ProfileRow, supabaseId: string): BridgedUser {
-  const role =
-    profile.role === 'super_admin' ? 'super_admin' : profile.role === 'admin' ? 'admin' : 'user';
+  const role = profile.role === 'admin' ? 'admin' : 'user';
   return {
     id: profile.legacy_user_id ?? supabaseId,
     email: profile.email ?? '',
