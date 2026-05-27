@@ -71,7 +71,3 @@ export function installInterceptor(): void {
 export function getConsoleBuffer(): ConsoleEntry[] {
   return buffer.slice();
 }
-
-export function clearConsoleBuffer(): void {
-  buffer.length = 0;
-}

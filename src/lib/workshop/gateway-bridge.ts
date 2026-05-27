@@ -792,9 +792,6 @@ export function buildWorkshopSessionKey(agentId: string, conversationId: string)
   return `agent:${agentId}:workshop:${conversationId}`;
 }
 
-/** @deprecated Use `buildWorkshopSessionKey` directly. */
-export const buildWorkshopSessionKey_public = buildWorkshopSessionKey;
-
 /**
  * Send a chat message to a specific agent session and wait for the final
  * response. This uses the same `chat.send` method as the main UI, but on a

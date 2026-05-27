@@ -25,7 +25,7 @@ import {
   resetSessionTurnCount,
   compactAgentContext,
   readElementForAgent,
-  buildWorkshopSessionKey_public,
+  buildWorkshopSessionKey,
 } from './gateway-bridge';
 import { thinkingAgents } from '$lib/state/workshop/workshop-conversations.svelte';
 import type { Container } from 'pixi.js';
@@ -347,7 +347,7 @@ function tick(now: number): void {
     const latestConv = agentConvs.sort((a, b) => b.startedAt - a.startedAt)[0];
     const sessionKey = latestConv.sessionKey;
 
-    const turns = getSessionTurnCount(buildWorkshopSessionKey_public(agent.agentId, sessionKey));
+    const turns = getSessionTurnCount(buildWorkshopSessionKey(agent.agentId, sessionKey));
     if (turns >= COMPACT_TURN_THRESHOLD) {
       enqueue(id, { type: 'compactContext' });
     }
@@ -387,7 +387,7 @@ function tick(now: number): void {
     } else if (action.type === 'compactContext') {
       dequeue(id);
       sendFsmEvent(id, 'startReading');
-      const fullSessionKey = buildWorkshopSessionKey_public(agent.agentId, sessionKey);
+      const fullSessionKey = buildWorkshopSessionKey(agent.agentId, sessionKey);
       compactAgentContext(id, sessionKey)
         .then(() => {
           resetSessionTurnCount(fullSessionKey);
@@ -448,7 +448,7 @@ function tick(now: number): void {
       // compactContext executes in-place even while wandering/patrolling
       dequeue(id);
       sendFsmEvent(id, 'startReading');
-      const fullSessionKey = buildWorkshopSessionKey_public(agent.agentId, sessionKey);
+      const fullSessionKey = buildWorkshopSessionKey(agent.agentId, sessionKey);
       compactAgentContext(id, sessionKey)
         .then(() => {
           resetSessionTurnCount(fullSessionKey);

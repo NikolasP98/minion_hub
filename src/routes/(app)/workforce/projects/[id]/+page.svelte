@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import type { PageData } from './$types';
 	import type { ProjectStatus } from '@minion-stack/paperclip-client';
-	import { startPolling } from '$lib/util/live-polling';
+	import { startPolling } from '$lib/utils/live-polling';
 	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
 
 	let { data }: { data: PageData } = $props();
