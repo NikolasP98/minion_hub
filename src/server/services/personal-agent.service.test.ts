@@ -11,6 +11,7 @@ import {
   listOrgPersonalAgents,
 } from './personal-agent.service';
 import { createMockDb } from '$server/test-utils/mock-db';
+import type { TenantContext } from './base';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -249,7 +250,7 @@ describe('listOrgPersonalAgents', () => {
     const innerJoin = vi.fn(() => ({ orderBy }));
     const from = vi.fn(() => ({ innerJoin }));
     const select = vi.fn(() => ({ from }));
-    const ctx = { db: { select }, tenantId: 't1' } as never;
+    const ctx = { db: { select }, tenantId: 't1' } as unknown as TenantContext;
     const result = await listOrgPersonalAgents(ctx);
     expect(result).toEqual(rows);
     expect(select).toHaveBeenCalledTimes(1);

@@ -9,15 +9,15 @@ vi.mock('$server/auth/authorize', () => ({ requireAuth: vi.fn() }));
 
 import { GET } from './+server';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const callGET = GET as (event: any) => Promise<any>;
+const callGET = (locals: unknown) =>
+  GET({ locals } as unknown as Parameters<typeof GET>[0]);
 
 describe('GET /api/personal-agents', () => {
   it('401s without tenantCtx', async () => {
-    await expect(callGET({ locals: {} })).rejects.toMatchObject({ status: 401 });
+    await expect(callGET({})).rejects.toMatchObject({ status: 401 });
   });
   it('returns the org personal-agent list', async () => {
-    const res = await callGET({ locals: { tenantCtx: { db: {}, tenantId: 't1' } } });
+    const res = await callGET({ tenantCtx: { db: {}, tenantId: 't1' } });
     const body = await res.json();
     expect(body).toEqual({ personalAgents: [{ agentId: 'personal-u1', userName: 'Alice' }] });
   });
