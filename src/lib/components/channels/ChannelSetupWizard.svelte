@@ -107,7 +107,9 @@
                 : verified.kind === 'discord'
                   ? verified.id
                   : verified.phone;
-        const accountPatch: Record<string, unknown> = { label, dmPolicy };
+        // The gateway account schemas are strict and use `name` (not `label`)
+        // for the display name — an unknown `label` key is rejected.
+        const accountPatch: Record<string, unknown> = { name: label, dmPolicy };
         // dmPolicy "open" is invalid unless allowFrom explicitly includes "*"
         // (the gateway config schema enforces this for every channel).
         if (dmPolicy === 'open') accountPatch.allowFrom = ['*'];
