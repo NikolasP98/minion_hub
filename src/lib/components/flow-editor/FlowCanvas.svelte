@@ -90,14 +90,14 @@
         data: { label: 'Prompt', value: '' } satisfies PromptBoxData,
       };
       setNodes([...flowEditorState.nodes, node]);
-    } else if (payload.type === 'agent' && payload.agentId) {
+    } else if (payload.type === 'agent') {
       const node: FlowNode = {
         id: makeId(),
         type: 'agent',
         position,
         data: {
-          agentId: payload.agentId,
-          label: payload.label ?? payload.agentId,
+          agentId: '',
+          label: 'Agent',
           sessionMode: 'ephemeral',
           defaultValues: {},
           contextRules: [],

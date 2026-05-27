@@ -1,12 +1,10 @@
 <script lang="ts">
-  import { gw } from '$lib/state/gateway/gateway-data.svelte';
   import { flowEditorState, setNodes } from '$lib/state/features/flow-editor.svelte';
   import type { FlowNode, AgentNodeData, PromptBoxData, LLMNodeData, TriggerNodeData } from '$lib/state/features/flow-editor.svelte';
-  import { builderState, loadBuiltAgents } from '$lib/state/builder';
-  import { Bot, Type, ChevronLeft, ChevronRight, Hammer, Cpu, Zap } from 'lucide-svelte';
+  import { loadBuiltAgents } from '$lib/state/builder';
+  import { Bot, Type, ChevronLeft, ChevronRight, Cpu, Zap } from 'lucide-svelte';
   import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
-  import { agentDisplayName } from '$lib/utils/agent-display';
   import { sendRequest } from '$lib/services/gateway.svelte';
 
   let collapsed = $state(false);
@@ -52,14 +50,14 @@
     };
   }
 
-  function addAgentNode(agentId: string, label: string) {
+  function addAgentNode() {
     const node: FlowNode = {
       id: makeId(),
       type: 'agent',
       position: getDropPosition(),
       data: {
-        agentId,
-        label,
+        agentId: '',
+        label: 'Agent',
         sessionMode: 'ephemeral',
         defaultValues: {},
         contextRules: [],
@@ -192,39 +190,16 @@
         <Cpu size={13} class="text-violet-400" />
       </button>
 
-      {#if gw.agents.length > 0}
-        <div class="w-4 h-px bg-border/40 my-0.5"></div>
-        {#each gw.agents as agent (agent.id)}
-          <button
-            onclick={() => addAgentNode(agent.id, agentDisplayName(agent))}
-            draggable="true"
-            ondragstart={(e) => handleDragStart(e, { type: 'agent', agentId: agent.id, label: agentDisplayName(agent) })}
-            class="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-bg3 transition-colors border border-transparent hover:border-border/60 text-sm"
-            title={agentDisplayName(agent)}
-          >
-            {#if agent.emoji}
-              {agent.emoji}
-            {:else}
-              <Bot size={13} class="text-indigo-400" />
-            {/if}
-          </button>
-        {/each}
-      {/if}
-
-      {#if builderState.agents.length > 0}
-        <div class="w-4 h-px bg-border/40 my-0.5"></div>
-        {#each builderState.agents as agent (agent.id)}
-          <button
-            onclick={() => addAgentNode(`built:${agent.id}`, agent.name)}
-            draggable="true"
-            ondragstart={(e) => handleDragStart(e, { type: 'agent', agentId: `built:${agent.id}`, label: agent.name })}
-            class="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-bg3 transition-colors border border-transparent hover:border-border/60 text-sm"
-            title="{agent.name} ({agent.status})"
-          >
-            {agent.emoji || '🤖'}
-          </button>
-        {/each}
-      {/if}
+      <!-- Agent icon -->
+      <button
+        onclick={addAgentNode}
+        draggable="true"
+        ondragstart={(e) => handleDragStart(e, { type: 'agent' })}
+        class="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
+        title="Agent"
+      >
+        <Bot size={13} class="text-indigo-400" />
+      </button>
     </div>
   {:else}
     <div class="flex-1 overflow-y-auto py-3 px-2 space-y-5">
@@ -275,68 +250,21 @@
             <div class="text-[10px] text-muted">Direct model call</div>
           </div>
         </button>
-      </div>
-
-      <!-- Agents section -->
-      <div>
-        <p class="text-[9px] font-semibold text-muted/50 uppercase tracking-widest px-1 mb-1.5">
-          {m.flow_agents()}
-        </p>
-        {#if gw.agents.length === 0}
-          <p class="text-[10px] text-muted/50 italic px-2 py-1">{m.flow_noAgentsConnected()}</p>
-        {:else}
-          <div class="flex flex-col gap-0.5">
-            {#each gw.agents as agent (agent.id)}
-              <button
-                onclick={() => addAgentNode(agent.id, agentDisplayName(agent))}
-                draggable="true"
-                ondragstart={(e) => handleDragStart(e, { type: 'agent', agentId: agent.id, label: agentDisplayName(agent) })}
-                class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
-              >
-                <div class="w-6 h-6 rounded bg-indigo-500/20 flex items-center justify-center shrink-0 text-sm">
-                  {#if agent.emoji}
-                    {agent.emoji}
-                  {:else}
-                    <Bot size={12} class="text-indigo-400" />
-                  {/if}
-                </div>
-                <div class="min-w-0">
-                  <div class="text-xs font-medium text-foreground truncate">{agentDisplayName(agent)}</div>
-                </div>
-              </button>
-            {/each}
+        <button
+          onclick={addAgentNode}
+          draggable="true"
+          ondragstart={(e) => handleDragStart(e, { type: 'agent' })}
+          class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
+        >
+          <div class="w-6 h-6 rounded bg-indigo-500/20 flex items-center justify-center shrink-0">
+            <Bot size={12} class="text-indigo-400" />
           </div>
-        {/if}
-      </div>
-
-      <!-- Built Agents section -->
-      {#if builderState.agents.length > 0}
-        <div>
-          <p class="text-[9px] font-semibold text-muted/50 uppercase tracking-widest px-1 mb-1.5">
-            {m.flow_builtAgents()}
-          </p>
-          <div class="flex flex-col gap-0.5">
-            {#each builderState.agents as agent (agent.id)}
-              <button
-                onclick={() => addAgentNode(`built:${agent.id}`, agent.name)}
-                draggable="true"
-                ondragstart={(e) => handleDragStart(e, { type: 'agent', agentId: `built:${agent.id}`, label: agent.name })}
-                class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
-              >
-                <div class="w-6 h-6 rounded bg-amber-500/20 flex items-center justify-center shrink-0 text-sm">
-                  {agent.emoji || '🤖'}
-                </div>
-                <div class="min-w-0 flex-1">
-                  <div class="text-xs font-medium text-foreground truncate">{agent.name}</div>
-                </div>
-                <span class="text-[8px] font-semibold uppercase px-1 py-0.5 rounded {agent.status === 'published' ? 'bg-green-500/15 text-green-400' : 'bg-muted/15 text-muted'}">
-                  {agent.status === 'published' ? '●' : '○'}
-                </span>
-              </button>
-            {/each}
+          <div>
+            <div class="text-xs font-medium text-foreground">Agent</div>
+            <div class="text-[10px] text-muted">Custom / personal / drone</div>
           </div>
-        </div>
-      {/if}
+        </button>
+      </div>
 
       <!-- Plugin Nodes section -->
       {#if pluginGroups.length > 0}
