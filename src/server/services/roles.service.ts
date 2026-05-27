@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { roles, rolePermissions } from '../db/schema/roles';
 import { user } from '../db/schema/auth/index';
 import type { TenantContext } from './base';
@@ -69,7 +69,7 @@ export async function updateRolePermissions(
   roleId: string,
   permissions: string[],
 ) {
-  const existing = (await ctx.db.select().from(roles).where(eq(roles.id, roleId)))[0];
+  const existing = (await ctx.db.select().from(roles).where(and(eq(roles.id, roleId), eq(roles.tenantId, ctx.tenantId))))[0];
   if (!existing) throw new Error('role not found');
   if (existing.isSystem) throw new Error('cannot edit system role');
   await ctx.db.delete(rolePermissions).where(eq(rolePermissions.roleId, roleId));
@@ -86,7 +86,7 @@ export async function updateRoleMeta(
   roleId: string,
   patch: { name?: string; description?: string | null },
 ) {
-  const existing = (await ctx.db.select().from(roles).where(eq(roles.id, roleId)))[0];
+  const existing = (await ctx.db.select().from(roles).where(and(eq(roles.id, roleId), eq(roles.tenantId, ctx.tenantId))))[0];
   if (!existing) throw new Error('role not found');
   if (existing.isSystem) throw new Error('cannot edit system role');
   await ctx.db
@@ -96,7 +96,7 @@ export async function updateRoleMeta(
 }
 
 export async function deleteRole(ctx: TenantContext, roleId: string) {
-  const existing = (await ctx.db.select().from(roles).where(eq(roles.id, roleId)))[0];
+  const existing = (await ctx.db.select().from(roles).where(and(eq(roles.id, roleId), eq(roles.tenantId, ctx.tenantId))))[0];
   if (!existing) throw new Error('role not found');
   if (existing.isSystem) throw new Error('cannot delete system role');
   await ctx.db.update(user).set({ roleId: null }).where(eq(user.roleId, roleId));

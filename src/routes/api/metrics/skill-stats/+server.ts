@@ -5,6 +5,7 @@ import {
   listSkillStats,
   getSkillStatsSummary,
 } from '$server/services/skill-stats.service';
+import { requireTenantCtx } from '$server/auth/authorize';
 
 export const POST: RequestHandler = async ({ locals, request }) => {
   if (!locals.tenantCtx) throw error(401, 'Unauthorized');
@@ -25,7 +26,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 };
 
 export const GET: RequestHandler = async ({ locals, url }) => {
-  if (!locals.tenantCtx) throw error(401);
+  const ctx = requireTenantCtx(locals);
 
   const serverId = url.searchParams.get('serverId') ?? undefined;
   const skillName = url.searchParams.get('skillName') ?? undefined;
@@ -35,11 +36,11 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   const summary = url.searchParams.get('summary') === 'true';
 
   if (summary) {
-    const result = await getSkillStatsSummary(locals.tenantCtx, { serverId, from, to });
+    const result = await getSkillStatsSummary(ctx, { serverId, from, to });
     return json(result);
   }
 
-  const stats = await listSkillStats(locals.tenantCtx, {
+  const stats = await listSkillStats(ctx, {
     serverId,
     skillName,
     from,

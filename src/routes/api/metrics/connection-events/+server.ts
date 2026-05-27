@@ -1,9 +1,10 @@
 import type { RequestHandler } from '@sveltejs/kit';
-import { json, error } from '@sveltejs/kit';
+import { json } from '@sveltejs/kit';
 import { listEvents, eventsSummary } from '$server/services/events.service';
+import { requireTenantCtx } from '$server/auth/authorize';
 
 export const GET: RequestHandler = async ({ locals, url }) => {
-  if (!locals.tenantCtx) throw error(401);
+  const ctx = requireTenantCtx(locals);
 
   const serverId = url.searchParams.get('serverId') ?? undefined;
   if (!serverId) return json({ events: [], summary: null });
@@ -20,7 +21,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 
   const includeSummary = url.searchParams.get('summary') === '1';
 
-  const events = await listEvents(locals.tenantCtx, serverId, {
+  const events = await listEvents(ctx, serverId, {
     category,
     severity,
     agentId,
@@ -31,7 +32,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   });
 
   const summary = includeSummary
-    ? await eventsSummary(locals.tenantCtx, serverId, { since })
+    ? await eventsSummary(ctx, serverId, { since })
     : null;
 
   return json({ events, summary });

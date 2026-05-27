@@ -1,4 +1,4 @@
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { skills } from '@minion-stack/db/schema';
 import { nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
@@ -14,29 +14,21 @@ export interface SkillInput {
   [key: string]: unknown;
 }
 
+const BATCH_SIZE = 100;
+
 export async function upsertSkills(ctx: TenantContext, serverId: string, items: SkillInput[]) {
   if (items.length === 0) return;
   const now = nowMs();
 
-  for (const s of items) {
+  for (let i = 0; i < items.length; i += BATCH_SIZE) {
+    const batch = items.slice(i, i + BATCH_SIZE);
     await ctx.db
       .insert(skills)
-      .values({
-        skillKey: s.skill_key,
-        serverId,
-        tenantId: ctx.tenantId,
-        name: s.name,
-        description: s.description ?? null,
-        emoji: s.emoji ?? null,
-        bundled: s.bundled ?? false,
-        disabled: s.disabled ?? false,
-        eligible: s.eligible ?? false,
-        rawJson: JSON.stringify(s),
-        lastSeenAt: now,
-      })
-      .onConflictDoUpdate({
-        target: [skills.skillKey, skills.serverId],
-        set: {
+      .values(
+        batch.map((s) => ({
+          skillKey: s.skill_key,
+          serverId,
+          tenantId: ctx.tenantId,
           name: s.name,
           description: s.description ?? null,
           emoji: s.emoji ?? null,
@@ -44,6 +36,19 @@ export async function upsertSkills(ctx: TenantContext, serverId: string, items: 
           disabled: s.disabled ?? false,
           eligible: s.eligible ?? false,
           rawJson: JSON.stringify(s),
+          lastSeenAt: now,
+        })),
+      )
+      .onConflictDoUpdate({
+        target: [skills.skillKey, skills.serverId],
+        set: {
+          name: sql`excluded.name`,
+          description: sql`excluded.description`,
+          emoji: sql`excluded.emoji`,
+          bundled: sql`excluded.bundled`,
+          disabled: sql`excluded.disabled`,
+          eligible: sql`excluded.eligible`,
+          rawJson: sql`excluded.raw_json`,
           lastSeenAt: now,
         },
       });

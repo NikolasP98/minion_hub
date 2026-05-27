@@ -1,26 +1,27 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { getMission, updateMission, deleteMission } from '$server/services/mission.service';
+import { requireTenantCtx } from '$server/auth/authorize';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
-  if (!locals.tenantCtx) throw error(401);
+  const ctx = requireTenantCtx(locals);
 
-  const mission = await getMission(locals.tenantCtx, params.missionId!);
+  const mission = await getMission(ctx, params.missionId!);
   if (!mission) throw error(404);
   return json({ mission });
 };
 
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
-  if (!locals.tenantCtx) throw error(401);
+  const ctx = requireTenantCtx(locals);
 
   const body = await request.json();
-  await updateMission(locals.tenantCtx, params.missionId!, body);
+  await updateMission(ctx, params.missionId!, body);
   return json({ ok: true });
 };
 
 export const DELETE: RequestHandler = async ({ locals, params }) => {
-  if (!locals.tenantCtx) throw error(401);
+  const ctx = requireTenantCtx(locals);
 
-  await deleteMission(locals.tenantCtx, params.missionId!);
+  await deleteMission(ctx, params.missionId!);
   return json({ ok: true });
 };

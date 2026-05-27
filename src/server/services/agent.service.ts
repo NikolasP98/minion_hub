@@ -1,4 +1,4 @@
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { agents, userAgents } from '@minion-stack/db/schema';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { nowMs } from '$server/db/utils';
@@ -13,32 +13,37 @@ export interface AgentInput {
   [key: string]: unknown;
 }
 
+const BATCH_SIZE = 100;
+
 export async function upsertAgents(ctx: TenantContext, serverId: string, items: AgentInput[]) {
   if (items.length === 0) return;
   const now = nowMs();
 
-  for (const a of items) {
+  for (let i = 0; i < items.length; i += BATCH_SIZE) {
+    const batch = items.slice(i, i + BATCH_SIZE);
     await ctx.db
       .insert(agents)
-      .values({
-        id: a.id,
-        serverId,
-        tenantId: ctx.tenantId,
-        name: a.name ?? null,
-        emoji: a.emoji ?? null,
-        description: a.description ?? null,
-        model: a.model ?? null,
-        rawJson: JSON.stringify(a),
-        lastSeenAt: now,
-      })
-      .onConflictDoUpdate({
-        target: [agents.id, agents.serverId],
-        set: {
+      .values(
+        batch.map((a) => ({
+          id: a.id,
+          serverId,
+          tenantId: ctx.tenantId,
           name: a.name ?? null,
           emoji: a.emoji ?? null,
           description: a.description ?? null,
           model: a.model ?? null,
           rawJson: JSON.stringify(a),
+          lastSeenAt: now,
+        })),
+      )
+      .onConflictDoUpdate({
+        target: [agents.id, agents.serverId],
+        set: {
+          name: sql`excluded.name`,
+          emoji: sql`excluded.emoji`,
+          description: sql`excluded.description`,
+          model: sql`excluded.model`,
+          rawJson: sql`excluded.raw_json`,
           lastSeenAt: now,
         },
       });

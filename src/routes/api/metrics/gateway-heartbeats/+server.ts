@@ -1,12 +1,11 @@
 import type { RequestHandler } from '@sveltejs/kit';
-import { json, error } from '@sveltejs/kit';
+import { json } from '@sveltejs/kit';
 import { eq, and, desc, gte, lte } from 'drizzle-orm';
 import { gatewayHeartbeats } from '@minion-stack/db/schema';
+import { requireTenantCtx } from '$server/auth/authorize';
 
 export const GET: RequestHandler = async ({ locals, url }) => {
-  if (!locals.tenantCtx) throw error(401);
-
-  const { db, tenantId } = locals.tenantCtx;
+  const { db, tenantId } = requireTenantCtx(locals);
   const serverId = url.searchParams.get('serverId') ?? undefined;
   const from = url.searchParams.get('from') ? Number(url.searchParams.get('from')) : undefined;
   const to = url.searchParams.get('to') ? Number(url.searchParams.get('to')) : undefined;

@@ -1,21 +1,22 @@
 import type { RequestHandler } from '@sveltejs/kit';
-import { json, error } from '@sveltejs/kit';
+import { json } from '@sveltejs/kit';
 import {
   listChatMessagesBySessionKey,
   bulkInsertChatMessages,
 } from '$server/services/chat.service';
 import type { ChatMessageInput } from '$server/services/chat.service';
+import { requireTenantCtx } from '$server/auth/authorize';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
-  if (!locals.tenantCtx) throw error(401);
+  const ctx = requireTenantCtx(locals);
 
   const sessionKey = decodeURIComponent(params.sessionKey!);
-  const messages = await listChatMessagesBySessionKey(locals.tenantCtx, params.id!, sessionKey);
+  const messages = await listChatMessagesBySessionKey(ctx, params.id!, sessionKey);
   return json({ messages });
 };
 
 export const POST: RequestHandler = async ({ locals, params, request }) => {
-  if (!locals.tenantCtx) throw error(401);
+  const ctx = requireTenantCtx(locals);
 
   const body = await request.json();
   const incoming: unknown[] = Array.isArray(body.messages) ? body.messages : [];
@@ -50,6 +51,6 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
     })
     .filter((m) => m.content.length > 0);
 
-  await bulkInsertChatMessages(locals.tenantCtx, messages);
+  await bulkInsertChatMessages(ctx, messages);
   return json({ ok: true, count: messages.length });
 };

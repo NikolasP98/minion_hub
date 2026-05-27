@@ -1,11 +1,12 @@
 import type { RequestHandler } from '@sveltejs/kit';
-import { json, error } from '@sveltejs/kit';
+import { json } from '@sveltejs/kit';
 import { getSettings } from '$server/services/settings.service';
+import { requireTenantCtx } from '$server/auth/authorize';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
-  if (!locals.tenantCtx) throw error(401);
+  const ctx = requireTenantCtx(locals);
   try {
-    const settings = await getSettings(locals.tenantCtx, params.id!);
+    const settings = await getSettings(ctx, params.id!);
     return json({ settings });
   } catch {
     return json({ settings: {} });

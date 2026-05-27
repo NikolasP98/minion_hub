@@ -4,6 +4,7 @@ import {
   insertCredentialHealthSnapshot,
   listCredentialHealthSnapshots,
 } from '$server/services/credential-health.service';
+import { requireTenantCtx } from '$server/auth/authorize';
 
 export const POST: RequestHandler = async ({ locals, request }) => {
   if (!locals.tenantCtx) throw error(401, 'Unauthorized');
@@ -27,14 +28,14 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 };
 
 export const GET: RequestHandler = async ({ locals, url }) => {
-  if (!locals.tenantCtx) throw error(401);
+  const ctx = requireTenantCtx(locals);
 
   const serverId = url.searchParams.get('serverId') ?? undefined;
   const from = url.searchParams.get('from') ? Number(url.searchParams.get('from')) : undefined;
   const to = url.searchParams.get('to') ? Number(url.searchParams.get('to')) : undefined;
   const limit = url.searchParams.get('limit') ? Number(url.searchParams.get('limit')) : undefined;
 
-  const snapshots = await listCredentialHealthSnapshots(locals.tenantCtx, {
+  const snapshots = await listCredentialHealthSnapshots(ctx, {
     serverId,
     from,
     to,

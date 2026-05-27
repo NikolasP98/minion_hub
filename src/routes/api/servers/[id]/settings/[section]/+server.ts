@@ -1,12 +1,12 @@
 import type { RequestHandler } from '@sveltejs/kit';
-import { json, error } from '@sveltejs/kit';
+import { json } from '@sveltejs/kit';
 import { getSettingsSection, upsertSettings } from '$server/services/settings.service';
-import { requireAdmin } from '$server/auth/authorize';
+import { requireAdmin, requireTenantCtx } from '$server/auth/authorize';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
-  if (!locals.tenantCtx) throw error(401);
+  const ctx = requireTenantCtx(locals);
   try {
-    const value = await getSettingsSection(locals.tenantCtx, params.id!, params.section!);
+    const value = await getSettingsSection(ctx, params.id!, params.section!);
     return json({ value });
   } catch {
     return json({ value: null });
@@ -15,10 +15,10 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 
 export const PUT: RequestHandler = async ({ locals, params, request }) => {
   requireAdmin(locals);
-  if (!locals.tenantCtx) throw error(401);
+  const ctx = requireTenantCtx(locals);
   try {
     const body: unknown = await request.json();
-    await upsertSettings(locals.tenantCtx, params.id!, params.section!, body);
+    await upsertSettings(ctx, params.id!, params.section!, body);
     return json({ ok: true });
   } catch (e) {
     console.error(`[PUT /api/servers/${params.id}/settings/${params.section}]`, e);
