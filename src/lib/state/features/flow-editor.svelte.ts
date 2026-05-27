@@ -30,11 +30,25 @@ export type LLMNodeData = {
   label: string;
 };
 
+export type TriggerNodeData = {
+  event:
+    | 'message:received'
+    | 'message:sent'
+    | 'agent:bootstrap'
+    | 'memory:node_created'
+    | 'memory:node_updated'
+    | 'memory:node_deleted';
+  label: string;
+  deliverResponse: boolean;
+  filterChannelId?: string;
+  filterAgentId?: string;
+};
+
 export type FlowNode = {
   id: string;
-  type: 'agent' | 'promptBox' | 'llm';
+  type: 'agent' | 'promptBox' | 'llm' | 'trigger';
   position: { x: number; y: number };
-  data: AgentNodeData | PromptBoxData | LLMNodeData;
+  data: AgentNodeData | PromptBoxData | LLMNodeData | TriggerNodeData;
 };
 
 export type FlowEdge = {
