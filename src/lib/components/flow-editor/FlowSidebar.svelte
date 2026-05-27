@@ -1,8 +1,8 @@
 <script lang="ts">
   import { flowEditorState, setNodes } from '$lib/state/features/flow-editor.svelte';
-  import type { FlowNode, AgentNodeData, PromptBoxData, LLMNodeData, TriggerNodeData } from '$lib/state/features/flow-editor.svelte';
+  import type { FlowNode, AgentNodeData, PromptBoxData, LLMNodeData, TriggerNodeData, TransformNodeData, StructuredNodeData } from '$lib/state/features/flow-editor.svelte';
   import { loadBuiltAgents } from '$lib/state/builder';
-  import { Bot, Type, ChevronLeft, ChevronRight, Cpu, Zap } from 'lucide-svelte';
+  import { Bot, Type, ChevronLeft, ChevronRight, Cpu, Zap, Braces } from 'lucide-svelte';
   import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
   import { sendRequest } from '$lib/services/gateway.svelte';
@@ -119,10 +119,26 @@
     setNodes([...flowEditorState.nodes, node]);
   }
 
+  function addTransform() {
+    const node: FlowNode = {
+      id: makeId(), type: 'transform', position: getDropPosition(),
+      data: { template: '{input}', label: 'Transform' } satisfies TransformNodeData,
+    };
+    setNodes([...flowEditorState.nodes, node]);
+  }
+
+  function addStructured() {
+    const node: FlowNode = {
+      id: makeId(), type: 'structured', position: getDropPosition(),
+      data: { modelId: 'claude-haiku-4-5-20251001', schema: '{\n  "type": "object",\n  "properties": {}\n}', label: 'Structured' } satisfies StructuredNodeData,
+    };
+    setNodes([...flowEditorState.nodes, node]);
+  }
+
   function handleDragStart(
     e: DragEvent,
     payload:
-      | { type: 'agent' | 'promptBox' | 'llm' | 'trigger'; agentId?: string; label?: string }
+      | { type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'transform' | 'structured'; agentId?: string; label?: string }
       | { type: 'pluginTrigger' | 'pluginAction'; descriptor: FlowNodeDescriptor },
   ) {
     if (!e.dataTransfer) return;
@@ -200,6 +216,24 @@
       >
         <Bot size={13} class="text-indigo-400" />
       </button>
+      <button
+        onclick={addTransform}
+        draggable="true"
+        ondragstart={(e) => handleDragStart(e, { type: 'transform' })}
+        class="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
+        title="Transform"
+      >
+        <Braces size={13} class="text-slate-300" />
+      </button>
+      <button
+        onclick={addStructured}
+        draggable="true"
+        ondragstart={(e) => handleDragStart(e, { type: 'structured' })}
+        class="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
+        title="Structured"
+      >
+        <Braces size={13} class="text-teal-300" />
+      </button>
     </div>
   {:else}
     <div class="flex-1 overflow-y-auto py-3 px-2 space-y-5">
@@ -262,6 +296,34 @@
           <div>
             <div class="text-xs font-medium text-foreground">Agent</div>
             <div class="text-[10px] text-muted">Custom / personal / drone</div>
+          </div>
+        </button>
+        <button
+          onclick={addTransform}
+          draggable="true"
+          ondragstart={(e) => handleDragStart(e, { type: 'transform' })}
+          class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
+        >
+          <div class="w-6 h-6 rounded bg-slate-500/20 flex items-center justify-center shrink-0">
+            <Braces size={12} class="text-slate-300" />
+          </div>
+          <div>
+            <div class="text-xs font-medium text-foreground">Transform</div>
+            <div class="text-[10px] text-muted">Template text</div>
+          </div>
+        </button>
+        <button
+          onclick={addStructured}
+          draggable="true"
+          ondragstart={(e) => handleDragStart(e, { type: 'structured' })}
+          class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
+        >
+          <div class="w-6 h-6 rounded bg-teal-500/20 flex items-center justify-center shrink-0">
+            <Braces size={12} class="text-teal-300" />
+          </div>
+          <div>
+            <div class="text-xs font-medium text-foreground">Structured</div>
+            <div class="text-[10px] text-muted">JSON output</div>
           </div>
         </button>
       </div>

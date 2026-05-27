@@ -36,6 +36,8 @@
     type TriggerNodeData,
     type PluginTriggerNodeData,
     type PluginActionNodeData,
+    type TransformNodeData,
+    type StructuredNodeData,
   } from '$lib/state/features/flow-editor.svelte';
   import { theme } from '$lib/state/ui/theme.svelte';
 
@@ -78,7 +80,7 @@
     if (!raw) return;
 
     let payload: {
-      type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'pluginTrigger' | 'pluginAction';
+      type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'pluginTrigger' | 'pluginAction' | 'transform' | 'structured';
       agentId?: string; label?: string;
       descriptor?: { pluginId: string; id: string; kind: 'trigger' | 'action'; label: string; event?: string; method?: string };
     };
@@ -146,6 +148,18 @@
         type: 'pluginAction',
         position,
         data: { pluginId: d.pluginId, contributionId: d.id, method: d.method ?? '', label: d.label } satisfies PluginActionNodeData,
+      };
+      setNodes([...flowEditorState.nodes, node]);
+    } else if (payload.type === 'transform') {
+      const node: FlowNode = {
+        id: makeId(), type: 'transform', position,
+        data: { template: '{input}', label: 'Transform' } satisfies TransformNodeData,
+      };
+      setNodes([...flowEditorState.nodes, node]);
+    } else if (payload.type === 'structured') {
+      const node: FlowNode = {
+        id: makeId(), type: 'structured', position,
+        data: { modelId: 'claude-haiku-4-5-20251001', schema: '{\n  "type": "object",\n  "properties": {}\n}', label: 'Structured' } satisfies StructuredNodeData,
       };
       setNodes([...flowEditorState.nodes, node]);
     }
