@@ -20,7 +20,9 @@
   const flowId = $derived(page.params.id);
   let loadError = $state<string | null>(null);
   let isActivating = $state(false);
-  const hasTrigger = $derived(flowEditorState.nodes.some((n) => n.type === 'trigger'));
+  const hasTrigger = $derived(
+    flowEditorState.nodes.some((n) => n.type === 'trigger' || n.type === 'pluginTrigger'),
+  );
 
   async function handleActivate() {
     if (isActivating || !flowEditorState.flowId) return;
@@ -33,9 +35,16 @@
         body: JSON.stringify({ active: newActive }),
       });
       flowEditorState.flowActive = newActive;
-      const triggerNode = flowEditorState.nodes.find((n) => n.type === 'trigger');
+      const triggerNode = flowEditorState.nodes.find(
+        (n) => n.type === 'trigger' || n.type === 'pluginTrigger',
+      );
       if (!triggerNode) return;
-      const td = triggerNode.data as import('$lib/state/features/flow-editor.svelte').TriggerNodeData;
+      const td = triggerNode.data as {
+        event: string;
+        deliverResponse: boolean;
+        filterChannelId?: string;
+        filterAgentId?: string;
+      };
       if (newActive) {
         await sendRequest('flows.trigger.register', {
           flowId: flowEditorState.flowId,

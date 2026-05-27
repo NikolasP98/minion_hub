@@ -799,7 +799,9 @@ function onHelloOk(hello: HelloOk) {
         flows?: Array<{ id: string; nodes: Array<{ type: string; data: unknown }>; active: boolean }>;
       }) => {
         for (const flow of body.flows ?? []) {
-          const triggerNode = flow.nodes.find((n) => n.type === 'trigger');
+          const triggerNode = flow.nodes.find(
+            (n) => n.type === 'trigger' || n.type === 'pluginTrigger',
+          );
           if (!triggerNode) continue;
           const td = triggerNode.data as {
             event: string;
