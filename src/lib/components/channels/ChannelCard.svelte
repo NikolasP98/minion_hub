@@ -28,6 +28,9 @@
     const isGateway = $derived(channel.source === 'gateway');
     let showEditForm = $state(false);
     let toggling = $state(false);
+    let removing = $state(false);
+    // Two-click confirm for account removal (avoids a blocking window.confirm).
+    let confirmRemove = $state(false);
     // WhatsApp re-auth renders the QR pairing flow inline within this card.
     let reauthing = $state(false);
 
@@ -160,6 +163,50 @@
             }
         } finally {
             toggling = false;
+        }
+    }
+
+    async function handleRemoveAccount() {
+        if (!isGateway || !gwChannelType || !gwAccountId || removing) return;
+        const label = `${gwChannelType}:${gwAccountId}`;
+        removing = true;
+        try {
+            // Unlink first so credentials are cleared (e.g. WhatsApp logs out the
+            // linked device). Best-effort — token channels don't support logout.
+            try {
+                await sendRequest('channels.logout', { channel: gwChannelType, accountId: gwAccountId });
+            } catch {
+                /* channel may not support logout — continue to config removal */
+            }
+            // Refresh baseHash (logout can mutate config) before patching.
+            try { await loadConfig(); } catch { /* best effort */ }
+            if (!configState.baseHash) {
+                toastError('Remove failed', 'Could not load config — try refreshing the page.');
+                return;
+            }
+            // RFC 7386 merge-patch: a null value deletes the account key.
+            const patch = { channels: { [gwChannelType]: { accounts: { [gwAccountId]: null } } } };
+            await sendRequest('config.patch', {
+                raw: JSON.stringify(patch),
+                baseHash: configState.baseHash,
+                note: `Remove ${label} via Hub`,
+            });
+            try { await loadConfig(); } catch { /* refresh baseHash */ }
+            try {
+                const r = await sendRequest('channels.status', {});
+                if (r) gw.channels = r as typeof gw.channels;
+            } catch { /* best effort */ }
+            toastSuccess(`Removed ${label}`);
+        } catch (e) {
+            const msg = (e as Error).message ?? '';
+            if (msg.includes('closed') || msg.includes('not connected')) {
+                beginRestart();
+            } else {
+                toastError('Remove failed', msg || 'Unknown error');
+            }
+        } finally {
+            removing = false;
+            confirmRemove = false;
         }
     }
 
@@ -329,6 +376,38 @@
                                         {channel.gwEnabled === false ? m.channel_enable() : m.channel_disable()}
                                     {/if}
                                 </button>
+                                {#if confirmRemove}
+                                    <button
+                                        type="button"
+                                        class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
+                                        onclick={(e) => { e.stopPropagation(); handleRemoveAccount(); }}
+                                        disabled={removing}
+                                    >
+                                        {#if removing}
+                                            <span class="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
+                                        {:else}
+                                            <Trash2 size={12} />
+                                        {/if}
+                                        {m.common_confirm()}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                                        onclick={(e) => { e.stopPropagation(); confirmRemove = false; }}
+                                        disabled={removing}
+                                    >
+                                        {m.common_cancel()}
+                                    </button>
+                                {:else}
+                                    <button
+                                        type="button"
+                                        class="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-destructive transition-colors"
+                                        onclick={(e) => { e.stopPropagation(); confirmRemove = true; }}
+                                    >
+                                        <Trash2 size={12} />
+                                        {m.common_remove()}
+                                    </button>
+                                {/if}
                             {/if}
                         </div>
                     {/if}
