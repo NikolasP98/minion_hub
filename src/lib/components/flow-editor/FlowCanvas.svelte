@@ -19,6 +19,7 @@
   import PluginNode from './nodes/PluginNode.svelte';
   import TransformNode from './nodes/TransformNode.svelte';
   import StructuredNode from './nodes/StructuredNode.svelte';
+  import RouterNode from './nodes/RouterNode.svelte';
   import FlowEdgeComponent from './edges/FlowEdge.svelte';
   import ContextEdgeComponent from './edges/ContextEdge.svelte';
   import * as m from '$lib/paraglide/messages';
@@ -50,6 +51,7 @@
     pluginAction: PluginNode,
     transform: TransformNode,
     structured: StructuredNode,
+    router: RouterNode,
   };
 
   const edgeTypes: EdgeTypes = {
