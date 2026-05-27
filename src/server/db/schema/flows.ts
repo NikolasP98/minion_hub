@@ -9,4 +9,6 @@ export const flows = sqliteTable('flows', {
   tenantId: text('tenant_id'), // tenant scope — null for pre-migration rows
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
+  active: integer('active', { mode: 'boolean' }).notNull().default(false),
+  config: text('config').notNull().default('{}'),
 });
