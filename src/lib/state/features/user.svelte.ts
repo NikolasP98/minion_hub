@@ -10,6 +10,8 @@ interface CurrentUser {
   id: string;
   email: string;
   displayName: string | null;
+  avatarUrl: string | null;
+  createdAt: string | null;
 }
 
 /**
@@ -28,7 +30,15 @@ interface CurrentUser {
 export const userState = {
   get user(): CurrentUser | null {
     const u = (page.data as any)?.user;
-    return u ? { id: u.id, email: u.email, displayName: u.displayName ?? null } : null;
+    return u
+      ? {
+          id: u.id,
+          email: u.email,
+          displayName: u.displayName ?? null,
+          avatarUrl: u.avatarUrl ?? null,
+          createdAt: u.createdAt ?? null,
+        }
+      : null;
   },
   get role(): UserRole | null {
     return ((page.data as any)?.user?.role as UserRole) ?? null;

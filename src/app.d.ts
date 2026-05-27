@@ -13,7 +13,9 @@ declare global {
         supabaseId?: string;
         email: string;
         displayName: string | null;
+        avatarUrl?: string | null;
         role: 'user' | 'admin';
+        createdAt?: string | null;
       };
       session?: typeof auth.$Infer.Session.session;
       orgId?: string;

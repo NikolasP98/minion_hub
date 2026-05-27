@@ -9,16 +9,20 @@ export interface ProfileRow {
   id: string;
   email: string | null;
   display_name: string | null;
+  avatar_url?: string | null;
   role: UserRole | null;
   legacy_user_id: string | null;
+  created_at?: string | null;
 }
 
 export interface BridgedUser {
   id: string; // legacy_user_id when present (matches Turso), else supabase uuid
   email: string;
   displayName: string | null;
+  avatarUrl: string | null;
   role: UserRole;
   supabaseId: string;
+  createdAt: string | null;
 }
 
 /** Pure: profiles row + supabase uuid -> hub locals.user shape. */
@@ -28,7 +32,9 @@ export function mapProfileToUser(profile: ProfileRow, supabaseId: string): Bridg
     id: profile.legacy_user_id ?? supabaseId,
     email: profile.email ?? '',
     displayName: profile.display_name ?? null,
+    avatarUrl: profile.avatar_url ?? null,
     role,
     supabaseId,
+    createdAt: profile.created_at ?? null,
   };
 }

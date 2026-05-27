@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { userState, logout, getUserInitials } from '$lib/state/features/user.svelte';
+  import { userState, logout } from '$lib/state/features/user.svelte';
   import { locale } from '$lib/state/ui/locale.svelte';
   import * as m from '$lib/paraglide/messages';
   import { LogOut, Globe, User } from 'lucide-svelte';
+  import UserAvatar from '$lib/components/users/UserAvatar.svelte';
 
   let open = $state(false);
 
@@ -10,11 +11,9 @@
     if (open && e.key === 'Escape') open = false;
   }
 
-  const initials = $derived(
-    userState.user ? getUserInitials(userState.user) : '?'
-  );
   const displayName = $derived(userState.user?.displayName ?? userState.user?.email ?? '');
   const email = $derived(userState.user?.email ?? '');
+  const avatarUrl = $derived(userState.user?.avatarUrl ?? null);
   const role = $derived(userState.role ?? '');
 </script>
 
@@ -23,12 +22,12 @@
 <div class="relative">
   <button
     onclick={() => (open = !open)}
-    class="w-7 h-7 rounded-full bg-accent/20 border border-accent/30 text-accent text-[11px] font-bold flex items-center justify-center hover:bg-accent/30 transition-colors duration-150 select-none"
+    class="rounded-full p-0 border-none bg-transparent cursor-pointer hover:opacity-90 transition-opacity duration-150"
     aria-label="Profile menu"
     aria-expanded={open}
     aria-haspopup="menu"
   >
-    {initials}
+    <UserAvatar name={displayName} {email} src={avatarUrl} size={28} />
   </button>
 
   {#if open}

@@ -20,7 +20,7 @@ export async function resolveSupabaseUser(event: RequestEvent): Promise<BridgedU
 
   const { data: profile } = await supabaseAdmin()
     .from('profiles')
-    .select('id, email, display_name, role, legacy_user_id')
+    .select('id, email, display_name, avatar_url, role, legacy_user_id, created_at')
     .eq('id', user.id)
     .single();
 
@@ -29,8 +29,13 @@ export async function resolveSupabaseUser(event: RequestEvent): Promise<BridgedU
       id: user.id,
       email: user.email ?? null,
       display_name: (user.user_metadata?.full_name as string) ?? null,
+      avatar_url:
+        (user.user_metadata?.avatar_url as string) ??
+        (user.user_metadata?.picture as string) ??
+        null,
       role: null,
       legacy_user_id: null,
+      created_at: null,
     },
     user.id,
   );
