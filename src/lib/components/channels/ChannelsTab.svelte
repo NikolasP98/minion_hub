@@ -42,6 +42,18 @@
                     tokenSource?: string;
                     dmPolicy?: string;
                 };
+                // Don't show the synthesized "default" profile for a channel with no
+                // real account yet (no credentials, not connected/running). Comms
+                // plugins should start with zero profiles; the user adds or pairs one
+                // explicitly. A configured/linked/running default still shows.
+                if (
+                    acct.accountId === 'default' &&
+                    !acct.configured &&
+                    !acct.connected &&
+                    !acct.running
+                ) {
+                    continue;
+                }
                 const displayName = acct.name || acct.accountId;
                 // Channels with persistent connections (WhatsApp) use `connected`;
                 // channels without (Discord, Telegram) treat `running` as active.
@@ -141,6 +153,15 @@
             for (const [channelType, accounts] of Object.entries(data.channelAccounts as Record<string, Record<string, { enabled?: boolean; configured?: boolean; running?: boolean; connected?: boolean; reconnectAttempts?: number; lastError?: string | null }>>)) {
                 const type = (CHANNEL_TYPE_LABELS[channelType as ChannelType] ? channelType : 'discord') as ChannelType;
                 for (const [accountId, status] of Object.entries(accounts)) {
+                    // Mirror liveChannels: hide a synthesized, unconfigured "default".
+                    if (
+                        accountId === 'default' &&
+                        !status.configured &&
+                        !status.connected &&
+                        !status.running
+                    ) {
+                        continue;
+                    }
                     const hasConn = status.connected !== undefined;
                     const active = hasConn ? status.connected : status.running;
                     const pairing = hasConn && status.running && !status.connected;
