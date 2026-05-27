@@ -258,6 +258,11 @@ const finishApp: Handle = async ({ event, resolve }) => {
       if (rows.length > 0) event.locals.tenantCtx = { db, tenantId: rows[0].id };
       return resolve(event);
     }
+    // Internal server-to-server routes (e.g. /api/internal/*) do their own
+    // Bearer-token check — bypass the user-auth gate and let the handler run.
+    if (path.startsWith('/api/internal/')) {
+      return resolve(event);
+    }
     // All other unauthenticated API requests get an explicit 401
     return new Response(JSON.stringify({ error: 'Authentication required' }), {
       status: 401,
