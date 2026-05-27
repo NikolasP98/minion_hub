@@ -22,10 +22,22 @@
         Command as CommandIcon,
     } from 'lucide-svelte';
     import * as m from '$lib/paraglide/messages';
+    import { isFlowsNavVisible } from './sections';
+    import { pluginNavState } from '$lib/state/plugin-nav.svelte';
 
     let inputEl: HTMLInputElement | undefined = $state();
 
-    const groups = $derived(getFilteredCommands());
+    // Reactively drop the Flow Editor command when the flows plugin is disabled.
+    const groups = $derived(
+        isFlowsNavVisible(pluginNavState.enabledByPluginId)
+            ? getFilteredCommands()
+            : getFilteredCommands()
+                  .map((g) => ({
+                      ...g,
+                      commands: g.commands.filter((c) => c.id !== 'page:flow-editor'),
+                  }))
+                  .filter((g) => g.commands.length > 0),
+    );
 
     // Flat list for keyboard nav
     const flatCommands = $derived(groups.flatMap((g) => g.commands));

@@ -6,7 +6,8 @@
     import ScanLine from "$lib/components/decorations/ScanLine.svelte";
     import CompanySwitcher from "./CompanySwitcher.svelte";
     import SectionSwitcher from "./SectionSwitcher.svelte";
-    import { getSections, findActiveSection } from "./sections";
+    import { getSections, gateSections, findActiveSection } from "./sections";
+    import { pluginNavState } from "$lib/state/plugin-nav.svelte";
     import { canClient } from "$lib/access/can.svelte";
     import { theme } from "$lib/state/ui/theme.svelte";
     import { page } from "$app/state";
@@ -14,7 +15,7 @@
     import { Activity, Settings, Menu, X, Bug } from "lucide-svelte";
     import { captureSnapshot, bugReporter } from "$lib/state/ui/bug-reporter.svelte";
 
-    const sections = getSections();
+    const sections = $derived(gateSections(getSections(), pluginNavState.enabledByPluginId));
     const activeSection = $derived(findActiveSection(sections, page.url.pathname));
     const isReliability = $derived(page.url.pathname.startsWith("/reliability"));
     const isSettings = $derived(page.url.pathname.startsWith("/settings"));

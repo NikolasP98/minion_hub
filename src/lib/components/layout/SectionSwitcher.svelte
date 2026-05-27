@@ -1,10 +1,10 @@
 <script lang="ts">
     import { page } from "$app/state";
     import { ChevronDown, Compass } from "lucide-svelte";
-    import { getSections, getDynamicPluginsSection, findActiveSection } from "./sections";
+    import { getSections, getDynamicPluginsSection, findActiveSection, gateSections } from "./sections";
     import { pluginNavState } from "$lib/state/plugin-nav.svelte";
 
-    const staticSections = getSections();
+    const staticSections = $derived(gateSections(getSections(), pluginNavState.enabledByPluginId));
     const pluginsSection = $derived(getDynamicPluginsSection(pluginNavState.controlCenters));
     const sections = $derived(
         pluginsSection ? [...staticSections, pluginsSection] : staticSections,
