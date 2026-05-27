@@ -30,6 +30,12 @@
   const oauthIdentities = $derived(identities.filter((i) => i.kind === 'oauth'));
   const channelIdentities = $derived(identities.filter((i) => i.kind === 'channel'));
 
+  // A user must keep at least one login provider — never offer to remove the
+  // last one. Channels can always be removed (they aren't login methods).
+  const canRemoveOauth = $derived(oauthIdentities.length > 1);
+  // Only providers that aren't already connected can be added.
+  const hasGoogle = $derived(oauthIdentities.some((i) => i.provider === 'google'));
+
   async function unlink(identity: Identity) {
     if (!confirm('Unlink this identity?')) return;
     const qs = identity.source ? `?source=${identity.source}` : '';
@@ -78,14 +84,18 @@
             {#if id.verifiedAt}
               <span class="text-green-400" title="verified">✓</span>
             {/if}
-            <button class="text-muted hover:text-destructive bg-transparent border-none cursor-pointer" onclick={() => unlink(id)}>✕</button>
+            {#if canRemoveOauth}
+              <button class="text-muted hover:text-destructive bg-transparent border-none cursor-pointer" onclick={() => unlink(id)}>✕</button>
+            {/if}
           </div>
         {/each}
       </div>
     {/if}
-    <button class="text-xs px-2 py-1 rounded bg-transparent border border-border text-foreground hover:bg-muted/30" onclick={connectGoogle}>
-      Connect Google
-    </button>
+    {#if !hasGoogle}
+      <button class="text-xs px-2 py-1 rounded bg-transparent border border-border text-foreground hover:bg-muted/30" onclick={connectGoogle}>
+        Connect Google
+      </button>
+    {/if}
   </section>
 
   <section class="space-y-2">
