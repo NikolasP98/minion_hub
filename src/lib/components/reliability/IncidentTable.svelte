@@ -12,6 +12,7 @@
 	import Fuse from 'fuse.js';
 
 	import type { ReliabilityEvent } from '$lib/state/reliability/reliability.svelte';
+	import PanelHeader from './PanelHeader.svelte';
 
 	let {
 		events = [],
@@ -226,13 +227,14 @@
 
 <div class="w-full rounded-lg overflow-hidden bg-card border border-border">
 	<!-- Header: title + search + pagination controls -->
-	<div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20 flex-wrap gap-y-1.5">
-		<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground shrink-0"
-			>{title || m.reliability_recentIncidents()}</span
-		>
-
-		<!-- Search input -->
-		<div class="relative ml-2">
+	<PanelHeader
+		label={title || m.reliability_recentIncidents()}
+		labelClass="shrink-0"
+		class="flex-wrap gap-y-1.5"
+	>
+		{#snippet actions()}
+			<!-- Search input -->
+			<div class="relative ml-2">
 			<Search
 				size={11}
 				class="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground/50 pointer-events-none"
@@ -287,8 +289,9 @@
 			>
 				<ChevronRight size={12} />
 			</button>
-		{/if}
-	</div>
+			{/if}
+		{/snippet}
+	</PanelHeader>
 
 	{#if events.length === 0}
 		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">

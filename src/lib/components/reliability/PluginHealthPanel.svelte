@@ -8,6 +8,7 @@
 		createPluginHealthState,
 		type PluginEntry
 	} from '$lib/state/reliability/plugin-health.svelte';
+	import PanelHeader from './PanelHeader.svelte';
 
 	interface Props {
 		serverId: string;
@@ -126,18 +127,19 @@
 </script>
 
 <div class="bg-card border border-border rounded-lg overflow-hidden">
-	<div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20">
-		<Puzzle size={11} class="text-accent shrink-0" />
-		<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground flex-1"
-			>{m.reliability_pluginTitle()}</span
-		>
-		{#if snap?.summary?.loadTimeMs != null}
-			<span class="text-[10px] text-muted-foreground/60">{snap.summary.loadTimeMs}ms</span>
-		{/if}
-		{#if capturedAgo}
-			<span class="text-[10px] text-muted-foreground/60">{capturedAgo}</span>
-		{/if}
-	</div>
+	<PanelHeader label={m.reliability_pluginTitle()} labelClass="flex-1">
+		{#snippet icon()}
+			<Puzzle size={11} class="text-accent shrink-0" />
+		{/snippet}
+		{#snippet actions()}
+			{#if snap?.summary?.loadTimeMs != null}
+				<span class="text-[10px] text-muted-foreground/60">{snap.summary.loadTimeMs}ms</span>
+			{/if}
+			{#if capturedAgo}
+				<span class="text-[10px] text-muted-foreground/60">{capturedAgo}</span>
+			{/if}
+		{/snippet}
+	</PanelHeader>
 
 	{#if state.loading && !snap}
 		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[13px]">

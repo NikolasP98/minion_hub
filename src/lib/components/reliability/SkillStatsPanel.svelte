@@ -5,6 +5,8 @@
 	import { Zap } from 'lucide-svelte';
 	import Chart from '$lib/components/charts/Chart.svelte';
 	import type { EChartsOption } from 'echarts';
+	import PanelHeader from './PanelHeader.svelte';
+	import MetricCard from './MetricCard.svelte';
 
 	interface Props {
 		serverId: string;
@@ -178,10 +180,11 @@
 
 <div class="bg-card border border-border rounded-lg overflow-hidden grid grid-rows-subgrid row-span-4">
 	<!-- Row 1: HEADER -->
-	<div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20">
-		<Zap size={11} class="text-accent shrink-0" />
-		<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground flex-1">{m.reliability_skillTitle()}</span>
-	</div>
+	<PanelHeader label={m.reliability_skillTitle()} labelClass="flex-1">
+		{#snippet icon()}
+			<Zap size={11} class="text-accent shrink-0" />
+		{/snippet}
+	</PanelHeader>
 
 	{#if state.loading && skills.length === 0}
 		<div></div>
@@ -198,22 +201,13 @@
 	{:else}
 		<!-- Row 2: STATS -->
 		<div class="grid grid-cols-4 gap-px bg-border border-b border-border">
-			<div class="flex flex-col items-center gap-1 py-3 px-2 bg-card">
-				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_skillTotal()}</span>
-				<span class="text-lg font-bold text-foreground tabular-nums whitespace-nowrap">{totalExecs}</span>
-			</div>
-			<div class="flex flex-col items-center gap-1 py-3 px-2 bg-card">
-				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_skillSuccess()}</span>
-				<span class="text-lg font-bold text-success tabular-nums whitespace-nowrap">{successRate}%</span>
-			</div>
+			<MetricCard label={m.reliability_skillTotal()} value={totalExecs} valueClass="text-foreground tabular-nums whitespace-nowrap" />
+			<MetricCard label={m.reliability_skillSuccess()} value={`${successRate}%`} valueClass="text-success tabular-nums whitespace-nowrap" />
 			<div class="flex flex-col items-center gap-1 py-3 px-2 bg-card">
 				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_errors()}</span>
 				<span class="text-lg font-bold tabular-nums whitespace-nowrap" class:text-destructive={totalErrors > 0} class:text-muted-foreground={totalErrors === 0}>{totalErrors}</span>
 			</div>
-			<div class="flex flex-col items-center gap-1 py-3 px-2 bg-card">
-				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_skillAvgTime()}</span>
-				<span class="text-lg font-bold text-foreground tabular-nums whitespace-nowrap">{formatDuration(avgDuration)}</span>
-			</div>
+			<MetricCard label={m.reliability_skillAvgTime()} value={formatDuration(avgDuration)} valueClass="text-foreground tabular-nums whitespace-nowrap" />
 		</div>
 		<!-- Row 3: MIDDLE (chart) -->
 		<div class="px-4 py-3 min-h-0">

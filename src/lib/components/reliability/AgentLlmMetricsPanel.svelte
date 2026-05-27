@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { Cpu } from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages';
+	import PanelHeader from './PanelHeader.svelte';
+	import MetricCard from './MetricCard.svelte';
 	import Chart from '$lib/components/charts/Chart.svelte';
 	import type { EChartsOption } from 'echarts';
 	import type { ReliabilityEvent } from '$lib/state/reliability/reliability.svelte';
@@ -210,15 +212,16 @@
 
 <div class="bg-card border border-border rounded-lg overflow-hidden">
 	<!-- HEADER -->
-	<div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20">
-		<Cpu size={11} class="text-accent shrink-0" />
-		<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground flex-1"
-			>{m.reliability_llmMetrics()}</span
-		>
-		<span class="text-[10px] text-muted-foreground/60"
-			>{summary.callCount} {summary.callCount !== 1 ? m.reliability_llmCallsPlural() : m.reliability_llmCall()}</span
-		>
-	</div>
+	<PanelHeader label={m.reliability_llmMetrics()} labelClass="flex-1">
+		{#snippet icon()}
+			<Cpu size={11} class="text-accent shrink-0" />
+		{/snippet}
+		{#snippet actions()}
+			<span class="text-[10px] text-muted-foreground/60"
+				>{summary.callCount} {summary.callCount !== 1 ? m.reliability_llmCallsPlural() : m.reliability_llmCall()}</span
+			>
+		{/snippet}
+	</PanelHeader>
 
 	{#if llmEvents.length === 0}
 		<div class="flex items-center justify-center py-8 text-muted-foreground text-[13px]">
@@ -227,30 +230,10 @@
 	{:else}
 		<!-- SUMMARY STATS -->
 		<div class="grid grid-cols-4 gap-px bg-border border-b border-border">
-			<div class="flex flex-col items-center gap-1 py-3 px-2 bg-card">
-				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium"
-					>{m.reliability_llmCalls()}</span
-				>
-				<span class="text-lg font-bold text-foreground tabular-nums">{fmt(summary.callCount)}</span>
-			</div>
-			<div class="flex flex-col items-center gap-1 py-3 px-2 bg-card">
-				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium"
-					>{m.reliability_totalTokens()}</span
-				>
-				<span class="text-lg font-bold text-foreground tabular-nums">{fmt(summary.total)}</span>
-			</div>
-			<div class="flex flex-col items-center gap-1 py-3 px-2 bg-card">
-				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium"
-					>{m.reliability_inputTokens()}</span
-				>
-				<span class="text-lg font-bold text-foreground tabular-nums">{fmt(summary.input)}</span>
-			</div>
-			<div class="flex flex-col items-center gap-1 py-3 px-2 bg-card">
-				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium"
-					>{m.reliability_outputTokens()}</span
-				>
-				<span class="text-lg font-bold text-foreground tabular-nums">{fmt(summary.output)}</span>
-			</div>
+			<MetricCard label={m.reliability_llmCalls()} value={fmt(summary.callCount)} valueClass="text-foreground tabular-nums" />
+			<MetricCard label={m.reliability_totalTokens()} value={fmt(summary.total)} valueClass="text-foreground tabular-nums" />
+			<MetricCard label={m.reliability_inputTokens()} value={fmt(summary.input)} valueClass="text-foreground tabular-nums" />
+			<MetricCard label={m.reliability_outputTokens()} value={fmt(summary.output)} valueClass="text-foreground tabular-nums" />
 		</div>
 
 		<!-- CHARTS -->

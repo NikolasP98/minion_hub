@@ -6,6 +6,7 @@
 	import type { EChartsOption } from 'echarts';
 	import { sendRequest } from '$lib/services/gateway.svelte';
 	import JsonView from '$lib/components/workforce/JsonView.svelte';
+	import PanelHeader from './PanelHeader.svelte';
 
 	interface Props {
 		serverId: string;
@@ -285,15 +286,16 @@
 
 <div class="bg-card border border-border rounded-lg overflow-hidden">
 	<!-- Header -->
-	<div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20">
-		<Activity size={11} class="text-accent shrink-0" />
-		<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground"
-			>{m.reliability_activityLog()}</span
-		>
-		{#if summary}
-			<span class="ml-auto text-[10px] text-muted-foreground">{summary.total} {m.reliability_events()}</span>
-		{/if}
-	</div>
+	<PanelHeader label={m.reliability_activityLog()}>
+		{#snippet icon()}
+			<Activity size={11} class="text-accent shrink-0" />
+		{/snippet}
+		{#snippet actions()}
+			{#if summary}
+				<span class="ml-auto text-[10px] text-muted-foreground">{summary.total} {m.reliability_events()}</span>
+			{/if}
+		{/snippet}
+	</PanelHeader>
 
 	<!-- Category filter tabs -->
 	<div

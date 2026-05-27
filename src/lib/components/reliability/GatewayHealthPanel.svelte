@@ -6,6 +6,7 @@
 	import * as m from '$lib/paraglide/messages';
 	import Chart from '$lib/components/charts/Chart.svelte';
 	import type { EChartsOption } from 'echarts';
+	import PanelHeader from './PanelHeader.svelte';
 
 	interface Props {
 		serverId: string;
@@ -215,11 +216,14 @@
 
 <div class="bg-card border border-border rounded-lg overflow-hidden grid grid-rows-subgrid row-span-4">
 	<!-- Row 1: HEADER -->
-	<div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20">
-		<Server size={11} class="text-accent shrink-0" />
-		<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground flex-1">{m.reliability_gatewayTitle()}</span>
-		<StatusDot status={latest ? 'running' : 'idle'} size="sm" />
-	</div>
+	<PanelHeader label={m.reliability_gatewayTitle()} labelClass="flex-1">
+		{#snippet icon()}
+			<Server size={11} class="text-accent shrink-0" />
+		{/snippet}
+		{#snippet actions()}
+			<StatusDot status={latest ? 'running' : 'idle'} size="sm" />
+		{/snippet}
+	</PanelHeader>
 
 	{#if loading && !latest}
 		<div></div>

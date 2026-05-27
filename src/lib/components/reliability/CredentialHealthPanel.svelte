@@ -5,6 +5,8 @@
 	import Chart from '$lib/components/charts/Chart.svelte';
 	import type { EChartsOption } from 'echarts';
 	import { createCredentialHealthState } from '$lib/state/reliability/credential-health.svelte';
+	import PanelHeader from './PanelHeader.svelte';
+	import MetricCard from './MetricCard.svelte';
 
 	interface Props {
 		serverId: string;
@@ -103,13 +105,16 @@
 
 <div class="bg-card border border-border rounded-lg overflow-hidden grid grid-rows-subgrid row-span-4">
 	<!-- Row 1: HEADER -->
-	<div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20">
-		<KeyRound size={11} class="text-accent shrink-0" />
-		<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground flex-1">{m.reliability_credentialTitle()}</span>
-		{#if parsed}
-			<span class="text-[10px] text-muted-foreground/60">{parsed.providers.length} {parsed.providers.length !== 1 ? m.reliability_credentialsPlural() : m.reliability_credentialSingular()}</span>
-		{/if}
-	</div>
+	<PanelHeader label={m.reliability_credentialTitle()} labelClass="flex-1">
+		{#snippet icon()}
+			<KeyRound size={11} class="text-accent shrink-0" />
+		{/snippet}
+		{#snippet actions()}
+			{#if parsed}
+				<span class="text-[10px] text-muted-foreground/60">{parsed.providers.length} {parsed.providers.length !== 1 ? m.reliability_credentialsPlural() : m.reliability_credentialSingular()}</span>
+			{/if}
+		{/snippet}
+	</PanelHeader>
 
 	{#if state.loading && !parsed}
 		<div></div>
@@ -126,10 +131,7 @@
 	{:else}
 		<!-- Row 2: STATS -->
 		<div class="grid grid-cols-4 gap-px bg-border border-b border-border">
-			<div class="flex flex-col items-center gap-1 py-3 px-2 bg-card">
-				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_credentialOk()}</span>
-				<span class="text-lg font-bold text-success tabular-nums whitespace-nowrap">{statusCounts.ok}</span>
-			</div>
+			<MetricCard label={m.reliability_credentialOk()} value={statusCounts.ok} valueClass="text-success tabular-nums whitespace-nowrap" />
 			<div class="flex flex-col items-center gap-1 py-3 px-2 bg-card">
 				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_credentialExpiring()}</span>
 				<span class="text-lg font-bold tabular-nums whitespace-nowrap" class:text-warning={statusCounts.expiring > 0} class:text-muted-foreground={statusCounts.expiring === 0}>{statusCounts.expiring}</span>
@@ -138,10 +140,7 @@
 				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_credentialExpired()}</span>
 				<span class="text-lg font-bold tabular-nums whitespace-nowrap" class:text-destructive={statusCounts.expired > 0} class:text-muted-foreground={statusCounts.expired === 0}>{statusCounts.expired}</span>
 			</div>
-			<div class="flex flex-col items-center gap-1 py-3 px-2 bg-card">
-				<span class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">{m.reliability_credentialStatic()}</span>
-				<span class="text-lg font-bold text-muted-foreground tabular-nums whitespace-nowrap">{statusCounts.static}</span>
-			</div>
+			<MetricCard label={m.reliability_credentialStatic()} value={statusCounts.static} valueClass="text-muted-foreground tabular-nums whitespace-nowrap" />
 		</div>
 		<!-- Row 3: MIDDLE (donut chart) -->
 		<div class="flex justify-center py-3">
