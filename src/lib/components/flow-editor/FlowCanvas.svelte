@@ -16,6 +16,7 @@
   import PromptBoxNode from './nodes/PromptBoxNode.svelte';
   import LLMNode from './nodes/LLMNode.svelte';
   import TriggerNode from './nodes/TriggerNode.svelte';
+  import PluginNode from './nodes/PluginNode.svelte';
   import FlowEdgeComponent from './edges/FlowEdge.svelte';
   import ContextEdgeComponent from './edges/ContextEdge.svelte';
   import * as m from '$lib/paraglide/messages';
@@ -39,6 +40,8 @@
     promptBox: PromptBoxNode,
     llm: LLMNode,
     trigger: TriggerNode,
+    pluginTrigger: PluginNode,
+    pluginAction: PluginNode,
   };
 
   const edgeTypes: EdgeTypes = {
