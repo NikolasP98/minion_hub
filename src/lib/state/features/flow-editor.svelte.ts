@@ -57,6 +57,17 @@ export type RouterNodeData = {
   label: string;
 };
 
+export type ToolRef =
+  | { kind: 'builtin'; id: string }
+  | { kind: 'gateway'; method: string; name: string; description: string };
+
+export type ToolAgentNodeData = {
+  modelId: string;
+  systemPrompt?: string;
+  tools: ToolRef[];
+  label: string;
+};
+
 export type TriggerNodeData = {
   event:
     | 'message:received'
@@ -88,7 +99,7 @@ export type PluginActionNodeData = {
 
 export type FlowNode = {
   id: string;
-  type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'pluginTrigger' | 'pluginAction' | 'transform' | 'structured' | 'router';
+  type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'pluginTrigger' | 'pluginAction' | 'transform' | 'structured' | 'router' | 'toolAgent';
   position: { x: number; y: number };
   data:
     | AgentNodeData
@@ -99,7 +110,8 @@ export type FlowNode = {
     | PluginActionNodeData
     | TransformNodeData
     | StructuredNodeData
-    | RouterNodeData;
+    | RouterNodeData
+    | ToolAgentNodeData;
 };
 
 export type FlowEdge = {
