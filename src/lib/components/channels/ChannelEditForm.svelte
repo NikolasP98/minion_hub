@@ -43,7 +43,7 @@
         <select id="edit-dm" bind:value={dmPolicy} class="w-full bg-bg border border-border rounded-md px-3 py-2 text-sm">
             <option value="open">open</option>
             <option value="pairing">pairing</option>
-            <option value="closed">closed</option>
+            <option value="disabled">disabled</option>
         </select>
     </div>
     <div>
