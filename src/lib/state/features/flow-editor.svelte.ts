@@ -10,6 +10,7 @@ export type ContextRule = {
 };
 
 export type AgentNodeData = {
+  agentKind?: 'custom' | 'personal' | 'drone';
   agentId: string;
   label: string;
   sessionMode: 'ephemeral' | 'shared';
