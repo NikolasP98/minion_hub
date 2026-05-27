@@ -162,6 +162,24 @@ export async function deletePersonalAgent(ctx: TenantContext, userId: string): P
   await ctx.db.delete(personalAgents).where(eq(personalAgents.userId, userId));
 }
 
+/**
+ * List personal agents of users in the tenant, labeled by username.
+ * Tenant scoping matches listUsers(ctx) (route-level via tenantCtx). Inner-join
+ * means only users WITH a personal agent are returned. Label = name ?? email.
+ */
+export async function listOrgPersonalAgents(
+  ctx: TenantContext,
+): Promise<Array<{ agentId: string; userName: string }>> {
+  return ctx.db
+    .select({
+      agentId: personalAgents.agentId,
+      userName: sql<string>`coalesce(${user.name}, ${user.email})`,
+    })
+    .from(personalAgents)
+    .innerJoin(user, eq(user.id, personalAgents.userId))
+    .orderBy(user.createdAt);
+}
+
 // ── Load helper (callable from +server.ts AND +layout.server.ts) ────────────
 
 export interface PersonalAgentLoadResult {

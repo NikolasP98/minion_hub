@@ -8,6 +8,7 @@ import {
   ensurePersonalAgentOnLogin,
   listPendingAgents,
   deletePersonalAgent,
+  listOrgPersonalAgents,
 } from './personal-agent.service';
 import { createMockDb } from '$server/test-utils/mock-db';
 
@@ -235,5 +236,22 @@ describe('deletePersonalAgent', () => {
     const { db } = createMockDb();
     await deletePersonalAgent({ db, tenantId: 't1' }, 'user-1');
     expect(db.delete).toHaveBeenCalled();
+  });
+});
+
+describe('listOrgPersonalAgents', () => {
+  it('returns {agentId, userName} rows from the user⋈personalAgents join', async () => {
+    const rows = [
+      { agentId: 'personal-u1', userName: 'Alice' },
+      { agentId: 'personal-u2', userName: 'bob@example.com' },
+    ];
+    const orderBy = vi.fn().mockResolvedValue(rows);
+    const innerJoin = vi.fn(() => ({ orderBy }));
+    const from = vi.fn(() => ({ innerJoin }));
+    const select = vi.fn(() => ({ from }));
+    const ctx = { db: { select }, tenantId: 't1' } as never;
+    const result = await listOrgPersonalAgents(ctx);
+    expect(result).toEqual(rows);
+    expect(select).toHaveBeenCalledTimes(1);
   });
 });
