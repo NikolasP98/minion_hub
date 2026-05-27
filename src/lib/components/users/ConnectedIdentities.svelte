@@ -8,6 +8,7 @@
 
   type Identity = {
     id: string;
+    source?: 'turso' | 'supabase';
     provider: string;
     kind: 'oauth' | 'channel';
     externalId: string;
@@ -29,9 +30,10 @@
   const oauthIdentities = $derived(identities.filter((i) => i.kind === 'oauth'));
   const channelIdentities = $derived(identities.filter((i) => i.kind === 'channel'));
 
-  async function unlink(id: string) {
+  async function unlink(identity: Identity) {
     if (!confirm('Unlink this identity?')) return;
-    const res = await fetch(`/api/users/${userId}/identities/${id}`, { method: 'DELETE' });
+    const qs = identity.source ? `?source=${identity.source}` : '';
+    const res = await fetch(`/api/users/${userId}/identities/${identity.id}${qs}`, { method: 'DELETE' });
     if (res.ok) {
       toastSuccess('Identity removed');
       await invalidate('app:identities');
@@ -41,7 +43,7 @@
   }
 
   async function connectGoogle() {
-    await authClient.linkSocial({ provider: 'google', callbackURL: '/settings/account?linked=google' });
+    await authClient.linkSocial({ provider: 'google', callbackURL: '/account?linked=google' });
   }
 
   async function onLinked() {
@@ -53,7 +55,7 @@
     if (page.url.searchParams.get('linked') !== 'google') return;
     try {
       await fetch(`/api/users/${userId}/identities/sync-google`, { method: 'POST' });
-      await goto('/settings/account', { replaceState: true, noScroll: true });
+      await goto('/account', { replaceState: true, noScroll: true });
       await invalidate('app:identities');
     } catch (e) {
       toastError((e as Error).message);
@@ -76,7 +78,7 @@
             {#if id.verifiedAt}
               <span class="text-green-400" title="verified">✓</span>
             {/if}
-            <button class="text-muted hover:text-destructive bg-transparent border-none cursor-pointer" onclick={() => unlink(id.id)}>✕</button>
+            <button class="text-muted hover:text-destructive bg-transparent border-none cursor-pointer" onclick={() => unlink(id)}>✕</button>
           </div>
         {/each}
       </div>
@@ -102,7 +104,7 @@
             {:else}
               <span class="text-yellow-400" title="pending">⏳</span>
             {/if}
-            <button class="text-muted hover:text-destructive bg-transparent border-none cursor-pointer" onclick={() => unlink(id.id)}>✕</button>
+            <button class="text-muted hover:text-destructive bg-transparent border-none cursor-pointer" onclick={() => unlink(id)}>✕</button>
           </div>
         {/each}
       </div>

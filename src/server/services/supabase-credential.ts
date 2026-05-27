@@ -73,3 +73,88 @@ export async function getGoogleCredentialFromSupabase(
     },
   };
 }
+
+/** Map a hub user id (legacy_user_id) OR supabase uuid -> profile id. */
+async function resolveProfileId(
+  admin: ReturnType<typeof supabaseAdmin>,
+  userId: string,
+): Promise<string | null> {
+  const byLegacy = await admin
+    .from('profiles')
+    .select('id')
+    .eq('legacy_user_id', userId)
+    .maybeSingle();
+  if (byLegacy.data?.id) return byLegacy.data.id;
+  if (UUID_RE.test(userId)) {
+    const byId = await admin.from('profiles').select('id').eq('id', userId).maybeSingle();
+    if (byId.data?.id) return byId.data.id;
+  }
+  return null;
+}
+
+export type SupabaseOAuthIdentity = {
+  id: string;
+  provider: string;
+  externalId: string;
+  displayName: string | null;
+  verifiedAt: number | null;
+};
+
+/**
+ * List a user's OAuth identities (kind='oauth') from the canonical Supabase
+ * `user_identities` vault — where {@link syncGoogleLogin} auto-writes the
+ * Google identity on every OAuth login. This is the source of truth for the
+ * account page's "Connected Accounts" so a Google login appears automatically,
+ * with no manual re-link/confirm step.
+ *
+ * Accepts the hub user id (legacy_user_id) or a supabase uuid. Returns an empty
+ * array (never throws) when Supabase is unreachable or the user has no profile,
+ * so the account page degrades gracefully in local/dev.
+ */
+export async function listOAuthIdentitiesFromSupabase(
+  userId: string,
+): Promise<SupabaseOAuthIdentity[]> {
+  try {
+    const admin = supabaseAdmin();
+    const profileId = await resolveProfileId(admin, userId);
+    if (!profileId) return [];
+
+    const { data, error } = await admin
+      .from('user_identities')
+      .select('id, provider, external_id, display_name, verified_at')
+      .eq('user_id', profileId)
+      .eq('kind', 'oauth');
+    if (error || !data) return [];
+
+    return data.map((r) => ({
+      id: r.id as string,
+      provider: r.provider as string,
+      externalId: r.external_id as string,
+      displayName: (r.display_name as string | null) ?? null,
+      verifiedAt: r.verified_at == null ? null : Number(r.verified_at),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Unlink an OAuth identity from the Supabase vault. Scoped to the resolved
+ * profile so a user can only remove their own identity. Returns true on
+ * success.
+ */
+export async function deleteOAuthIdentityFromSupabase(
+  userId: string,
+  identityId: string,
+): Promise<boolean> {
+  const admin = supabaseAdmin();
+  const profileId = await resolveProfileId(admin, userId);
+  if (!profileId) return false;
+
+  const { error } = await admin
+    .from('user_identities')
+    .delete()
+    .eq('user_id', profileId)
+    .eq('id', identityId);
+  return !error;
+}

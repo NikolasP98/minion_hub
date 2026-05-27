@@ -2,7 +2,7 @@
   import { userState, logout, getUserInitials } from '$lib/state/features/user.svelte';
   import { locale } from '$lib/state/ui/locale.svelte';
   import * as m from '$lib/paraglide/messages';
-  import { LogOut, Globe } from 'lucide-svelte';
+  import { LogOut, Globe, User } from 'lucide-svelte';
 
   let open = $state(false);
 
@@ -40,7 +40,12 @@
     ></button>
 
     <div id="profile-dropdown" role="menu" class="absolute right-0 top-full mt-1.5 z-50 w-56 bg-bg2 border border-border rounded-lg shadow-lg overflow-hidden">
-      <div class="px-3.5 py-3 border-b border-border">
+      <a
+        href="/account"
+        role="menuitem"
+        onclick={() => (open = false)}
+        class="block px-3.5 py-3 border-b border-border no-underline hover:bg-bg3 transition-colors duration-100"
+      >
         <div class="flex items-center justify-between gap-2">
           <div class="min-w-0">
             <p class="text-sm font-semibold text-foreground truncate">{displayName}</p>
@@ -52,9 +57,18 @@
             </span>
           {/if}
         </div>
-      </div>
+      </a>
 
       <div class="py-1">
+        <a
+          href="/account"
+          role="menuitem"
+          onclick={() => (open = false)}
+          class="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-muted hover:text-foreground hover:bg-bg3 transition-colors duration-100 no-underline"
+        >
+          <User size={14} />
+          <span class="flex-1 text-left">{m.nav_account()}</span>
+        </a>
         <button
           onclick={locale.toggle}
           class="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-muted hover:text-foreground hover:bg-bg3 transition-colors duration-100"
