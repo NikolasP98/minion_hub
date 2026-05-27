@@ -33,7 +33,7 @@
 
     // Step 2 state
     let label = $state('');
-    let dmPolicy = $state<'open' | 'pairing' | 'closed'>('open');
+    let dmPolicy = $state<'open' | 'pairing' | 'disabled'>('open');
 
     // Step 3 state
     let committedChannelId = $state<string | null>(null);
@@ -108,6 +108,9 @@
                   ? verified.id
                   : verified.phone;
         const accountPatch: Record<string, unknown> = { label, dmPolicy };
+        // dmPolicy "open" is invalid unless allowFrom explicitly includes "*"
+        // (the gateway config schema enforces this for every channel).
+        if (dmPolicy === 'open') accountPatch.allowFrom = ['*'];
         if (verified.kind === 'telegram') accountPatch.botToken = token;
         if (verified.kind === 'discord') accountPatch.token = token;
         const patch = { channels: { [channelType]: { accounts: { [accountId]: accountPatch } } } };
@@ -277,7 +280,7 @@
                 >
                     <option value="open">open — anyone can DM</option>
                     <option value="pairing">pairing — must pair first</option>
-                    <option value="closed">closed — DMs disabled</option>
+                    <option value="disabled">disabled — DMs disabled</option>
                 </select>
             </div>
         </div>
