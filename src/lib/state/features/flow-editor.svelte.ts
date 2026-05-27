@@ -44,11 +44,32 @@ export type TriggerNodeData = {
   filterAgentId?: string;
 };
 
+export type PluginTriggerNodeData = {
+  pluginId: string;
+  contributionId: string;
+  event: string;
+  label: string;
+  deliverResponse: boolean;
+};
+
+export type PluginActionNodeData = {
+  pluginId: string;
+  contributionId: string;
+  method: string;
+  label: string;
+};
+
 export type FlowNode = {
   id: string;
-  type: 'agent' | 'promptBox' | 'llm' | 'trigger';
+  type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'pluginTrigger' | 'pluginAction';
   position: { x: number; y: number };
-  data: AgentNodeData | PromptBoxData | LLMNodeData | TriggerNodeData;
+  data:
+    | AgentNodeData
+    | PromptBoxData
+    | LLMNodeData
+    | TriggerNodeData
+    | PluginTriggerNodeData
+    | PluginActionNodeData;
 };
 
 export type FlowEdge = {
