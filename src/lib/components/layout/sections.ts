@@ -146,6 +146,28 @@ export function getSections(): Section[] {
     ];
 }
 
+/** Flows nav item is visible unless an explicit `false` exists for pluginId "flows". */
+export function isFlowsNavVisible(enabledByPluginId: Record<string, boolean>): boolean {
+    return enabledByPluginId.flows !== false;
+}
+
+/**
+ * Apply plugin enable-state gates to the static sections. Currently: drops the
+ * Gateway-section `/flow-editor` item when the flows plugin is explicitly
+ * disabled. Returns new section/item arrays (does not mutate the input).
+ */
+export function gateSections(
+    sections: Section[],
+    enabledByPluginId: Record<string, boolean>,
+): Section[] {
+    if (isFlowsNavVisible(enabledByPluginId)) return sections;
+    return sections.map((s) =>
+        s.id === "gateway"
+            ? { ...s, items: s.items.filter((it) => it.href !== "/flow-editor") }
+            : s,
+    );
+}
+
 export function findActiveSection(
     sections: Section[],
     pathname: string,

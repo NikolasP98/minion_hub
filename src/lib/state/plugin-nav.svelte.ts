@@ -9,9 +9,15 @@ export const pluginNavState = $state<{
    * party comms plugins like whatsapp, telegram, discord).
    */
   settingsByPluginId: Record<string, PluginUiManifestOccupant>;
+  /**
+   * Whether each plugin is enabled, keyed by pluginId. Absent configEnabled
+   * on an entry is treated as true (back-compat). Used by gateSections() to
+   * conditionally show/hide plugin-contributed nav items (e.g. /flow-editor).
+   */
+  enabledByPluginId: Record<string, boolean>;
   loaded: boolean;
   error: string | null;
-}>({ controlCenters: [], settingsByPluginId: {}, loaded: false, error: null });
+}>({ controlCenters: [], settingsByPluginId: {}, enabledByPluginId: {}, loaded: false, error: null });
 
 export async function hydratePluginNav(): Promise<void> {
   if (pluginNavState.loaded) return;
@@ -29,6 +35,9 @@ export async function hydratePluginNav(): Promise<void> {
       }
     }
     pluginNavState.settingsByPluginId = byId;
+    const enabled: Record<string, boolean> = {};
+    for (const e of entries) enabled[e.pluginId] = e.configEnabled !== false;
+    pluginNavState.enabledByPluginId = enabled;
     pluginNavState.loaded = true;
   } catch (err) {
     pluginNavState.error = err instanceof Error ? err.message : String(err);
