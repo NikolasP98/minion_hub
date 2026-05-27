@@ -194,7 +194,14 @@
     function toggleExpand(id: string) {
         expandedChannelId = expandedChannelId === id ? null : id;
     }
+
+    function closeWizard() {
+        wizardType = null;
+        if (serverId) fetchChannels(serverId);
+    }
 </script>
+
+<svelte:window onkeydown={(e) => { if (e.key === 'Escape' && wizardType) closeWizard(); }} />
 
 <div class="space-y-4">
     <!-- Header -->
@@ -214,16 +221,26 @@
     {:else if channelState.error}
         <div class="text-sm text-destructive text-center py-8">{channelState.error}</div>
     {:else}
-        <!-- Wizard overlay (covers create + re-authenticate) -->
+        <!-- New-account setup wizard, presented as a modal dialog. -->
         {#if wizardType}
-            <ChannelSetupWizard
-                {serverId}
-                channelType={wizardType}
-                onclose={() => {
-                    wizardType = null;
-                    fetchChannels(serverId);
-                }}
-            />
+            <div
+                class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+                role="presentation"
+                onclick={closeWizard}
+            >
+                <div
+                    class="w-full max-w-md max-h-[90vh] overflow-y-auto"
+                    role="dialog"
+                    aria-modal="true"
+                    onclick={(e) => e.stopPropagation()}
+                >
+                    <ChannelSetupWizard
+                        {serverId}
+                        channelType={wizardType}
+                        onclose={closeWizard}
+                    />
+                </div>
+            </div>
         {/if}
 
         <!-- One section per type, always rendered -->

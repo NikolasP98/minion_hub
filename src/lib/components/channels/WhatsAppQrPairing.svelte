@@ -104,8 +104,8 @@
             {m.channel_scanQrInstruction()}
         </p>
     {:else if pairingStatus === 'waiting' && qrData}
-        <div class="flex flex-col items-center gap-3 p-4 bg-white rounded-lg" {...api.getRootProps()}>
-            <svg {...api.getFrameProps()}>
+        <div class="flex flex-col items-center gap-3 p-4 bg-white rounded-lg w-fit mx-auto" {...api.getRootProps()}>
+            <svg class="h-48 w-48" {...api.getFrameProps()}>
                 <path {...api.getPatternProps()} />
             </svg>
             <p class="text-xs text-gray-600">{m.channel_scanWithWhatsApp()}</p>

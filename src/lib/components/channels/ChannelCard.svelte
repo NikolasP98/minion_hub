@@ -9,6 +9,7 @@
     import ChannelAssignmentPicker from './ChannelAssignmentPicker.svelte';
     import ChannelEditForm from './ChannelEditForm.svelte';
     import ChannelStatusPill from './ChannelStatusPill.svelte';
+    import WhatsAppQrPairing from './WhatsAppQrPairing.svelte';
     import * as m from '$lib/paraglide/messages';
 
     interface Props {
@@ -27,6 +28,18 @@
     const isGateway = $derived(channel.source === 'gateway');
     let showEditForm = $state(false);
     let toggling = $state(false);
+    // WhatsApp re-auth renders the QR pairing flow inline within this card.
+    let reauthing = $state(false);
+
+    function handleReauthenticate() {
+        if (channel.type === 'whatsapp') {
+            showEditForm = false;
+            reauthing = true;
+        } else {
+            // Token-based channels (telegram/discord) re-auth via the wizard modal.
+            onreauthenticate?.();
+        }
+    }
 
     // `username` is shown as @handle in the header — exclude it from the credentials grid
     // to avoid double-display.
@@ -260,6 +273,27 @@
                                 oncancel={() => { showEditForm = false; }}
                             />
                         </div>
+                    {:else if reauthing}
+                        <div class="bg-bg2 border border-border rounded-md p-3 space-y-2">
+                            <div class="flex items-center justify-between">
+                                <h4 class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                                    Re-authenticate
+                                </h4>
+                                <button
+                                    type="button"
+                                    class="text-xs text-muted-foreground hover:text-foreground"
+                                    onclick={(e) => { e.stopPropagation(); reauthing = false; }}
+                                >
+                                    {m.channelWizard_close()}
+                                </button>
+                            </div>
+                            <WhatsAppQrPairing
+                                channelId={channel.id}
+                                {serverId}
+                                accountId={gwAccountId ?? undefined}
+                                onpaired={() => { reauthing = false; }}
+                            />
+                        </div>
                     {:else}
                         <div class="flex items-center gap-3 flex-wrap">
                             <button
@@ -273,7 +307,7 @@
                             <button
                                 type="button"
                                 class="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                                onclick={(e) => { e.stopPropagation(); onreauthenticate?.(); }}
+                                onclick={(e) => { e.stopPropagation(); handleReauthenticate(); }}
                             >
                                 <RefreshCw size={12} />
                                 Re-authenticate
