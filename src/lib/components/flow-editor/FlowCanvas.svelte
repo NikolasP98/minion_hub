@@ -39,6 +39,7 @@
     type PluginActionNodeData,
     type TransformNodeData,
     type StructuredNodeData,
+    type RouterNodeData,
   } from '$lib/state/features/flow-editor.svelte';
   import { theme } from '$lib/state/ui/theme.svelte';
 
@@ -82,7 +83,7 @@
     if (!raw) return;
 
     let payload: {
-      type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'pluginTrigger' | 'pluginAction' | 'transform' | 'structured';
+      type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'pluginTrigger' | 'pluginAction' | 'transform' | 'structured' | 'router';
       agentId?: string; label?: string;
       descriptor?: { pluginId: string; id: string; kind: 'trigger' | 'action'; label: string; event?: string; method?: string };
     };
@@ -162,6 +163,12 @@
       const node: FlowNode = {
         id: makeId(), type: 'structured', position,
         data: { modelId: 'claude-haiku-4-5-20251001', schema: '{\n  "type": "object",\n  "properties": {}\n}', label: 'Structured' } satisfies StructuredNodeData,
+      };
+      setNodes([...flowEditorState.nodes, node]);
+    } else if (payload.type === 'router') {
+      const node: FlowNode = {
+        id: makeId(), type: 'router', position,
+        data: { mode: 'rule', branches: [{ id: `b-${makeId()}`, label: 'Branch 1', rule: { op: 'contains', value: '' } }], label: 'Router' } satisfies RouterNodeData,
       };
       setNodes([...flowEditorState.nodes, node]);
     }

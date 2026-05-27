@@ -1,8 +1,8 @@
 <script lang="ts">
   import { flowEditorState, setNodes } from '$lib/state/features/flow-editor.svelte';
-  import type { FlowNode, AgentNodeData, PromptBoxData, LLMNodeData, TriggerNodeData, TransformNodeData, StructuredNodeData } from '$lib/state/features/flow-editor.svelte';
+  import type { FlowNode, AgentNodeData, PromptBoxData, LLMNodeData, TriggerNodeData, TransformNodeData, StructuredNodeData, RouterNodeData } from '$lib/state/features/flow-editor.svelte';
   import { loadBuiltAgents } from '$lib/state/builder';
-  import { Bot, Type, ChevronLeft, ChevronRight, Cpu, Zap, Braces } from 'lucide-svelte';
+  import { Bot, Type, ChevronLeft, ChevronRight, Cpu, Zap, Braces, Split } from 'lucide-svelte';
   import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
   import { sendRequest } from '$lib/services/gateway.svelte';
@@ -135,10 +135,18 @@
     setNodes([...flowEditorState.nodes, node]);
   }
 
+  function addRouter() {
+    const node: FlowNode = {
+      id: makeId(), type: 'router', position: getDropPosition(),
+      data: { mode: 'rule', branches: [{ id: `b-${makeId()}`, label: 'Branch 1', rule: { op: 'contains', value: '' } }], label: 'Router' } satisfies RouterNodeData,
+    };
+    setNodes([...flowEditorState.nodes, node]);
+  }
+
   function handleDragStart(
     e: DragEvent,
     payload:
-      | { type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'transform' | 'structured'; agentId?: string; label?: string }
+      | { type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'transform' | 'structured' | 'router'; agentId?: string; label?: string }
       | { type: 'pluginTrigger' | 'pluginAction'; descriptor: FlowNodeDescriptor },
   ) {
     if (!e.dataTransfer) return;
@@ -234,6 +242,15 @@
       >
         <Braces size={13} class="text-teal-300" />
       </button>
+      <button
+        onclick={addRouter}
+        draggable="true"
+        ondragstart={(e) => handleDragStart(e, { type: 'router' })}
+        class="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
+        title="Router"
+      >
+        <Split size={13} class="text-amber-400" />
+      </button>
     </div>
   {:else}
     <div class="flex-1 overflow-y-auto py-3 px-2 space-y-5">
@@ -324,6 +341,20 @@
           <div>
             <div class="text-xs font-medium text-foreground">Structured</div>
             <div class="text-[10px] text-muted">JSON output</div>
+          </div>
+        </button>
+        <button
+          onclick={addRouter}
+          draggable="true"
+          ondragstart={(e) => handleDragStart(e, { type: 'router' })}
+          class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
+        >
+          <div class="w-6 h-6 rounded bg-amber-500/20 flex items-center justify-center shrink-0">
+            <Split size={12} class="text-amber-400" />
+          </div>
+          <div>
+            <div class="text-xs font-medium text-foreground">Router</div>
+            <div class="text-[10px] text-muted">Branch by rule / LLM</div>
           </div>
         </button>
       </div>
