@@ -4,8 +4,11 @@
   import type { AgentNodeData } from '$lib/state/features/flow-editor.svelte';
   import { flowEditorState, setNodes } from '$lib/state/features/flow-editor.svelte';
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
+  import { builderState } from '$lib/state/builder';
   import { agentDisplayName } from '$lib/utils/agent-display';
+  import { sendRequest } from '$lib/services/gateway.svelte';
   import { Bot } from 'lucide-svelte';
+  import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
 
   let { data, id, selected }: NodeProps & { data: AgentNodeData } = $props();
@@ -13,6 +16,59 @@
   let showSettings = $state(false);
   let hovered = $state(false);
   const showHandles = $derived(flowEditorState.relationshipMode || selected || hovered);
+
+  type Kind = 'custom' | 'personal' | 'drone';
+  interface InstanceOption { id: string; label: string }
+
+  let personalAgents = $state<InstanceOption[]>([]);
+  let drones = $state<InstanceOption[]>([]);
+  let loadedPersonal = $state(false);
+  let loadedDrones = $state(false);
+
+  const customOptions = $derived<InstanceOption[]>([
+    ...gw.agents.map((a) => ({ id: a.id, label: agentDisplayName(a) })),
+    ...builderState.agents.map((a) => ({ id: `built:${a.id}`, label: a.name })),
+  ]);
+
+  const instanceOptions = $derived<InstanceOption[]>(
+    data.agentKind === 'custom'
+      ? customOptions
+      : data.agentKind === 'personal'
+        ? personalAgents
+        : data.agentKind === 'drone'
+          ? drones
+          : [],
+  );
+
+  async function loadPersonal() {
+    if (loadedPersonal) return;
+    loadedPersonal = true;
+    try {
+      const res = await fetch('/api/personal-agents?scope=org');
+      if (res.ok) {
+        const body = (await res.json()) as { personalAgents?: Array<{ agentId: string; userName: string }> };
+        personalAgents = (body.personalAgents ?? []).map((p) => ({ id: p.agentId, label: p.userName }));
+      }
+    } catch {
+      personalAgents = [];
+    }
+  }
+
+  async function loadDrones() {
+    if (loadedDrones) return;
+    loadedDrones = true;
+    try {
+      const res = (await sendRequest('drones.list', {})) as { drones?: Array<{ id: string; description: string }> } | null;
+      drones = (res?.drones ?? []).map((d) => ({ id: d.id, label: d.description || d.id }));
+    } catch {
+      drones = [];
+    }
+  }
+
+  onMount(() => {
+    if (data.agentKind === 'personal') loadPersonal();
+    if (data.agentKind === 'drone') loadDrones();
+  });
 
   function isHandleConnected(handleId: string): boolean {
     return flowEditorState.edges.some(
@@ -22,23 +78,28 @@
     );
   }
 
-  function pickAgent(e: Event) {
-    const agentId = (e.target as HTMLSelectElement).value;
-    const found = gw.agents.find((a) => a.id === agentId);
-    const label = found ? agentDisplayName(found) : agentId;
+  function patch(partial: Partial<AgentNodeData>) {
     const next = flowEditorState.nodes.map((n) =>
-      n.id === id
-        ? { ...n, data: { ...n.data, agentId, label } }
-        : n,
+      n.id === id ? { ...n, data: { ...n.data, ...partial } } : n,
     );
     setNodes(next);
   }
 
+  function pickKind(e: Event) {
+    const agentKind = (e.target as HTMLSelectElement).value as Kind;
+    patch({ agentKind, agentId: '', label: agentKind === 'custom' ? 'Agent' : agentKind });
+    if (agentKind === 'personal') loadPersonal();
+    if (agentKind === 'drone') loadDrones();
+  }
+
+  function pickInstance(e: Event) {
+    const agentId = (e.target as HTMLSelectElement).value;
+    const label = instanceOptions.find((o) => o.id === agentId)?.label ?? agentId;
+    patch({ agentId, label });
+  }
+
   function setSessionMode(mode: 'ephemeral' | 'shared') {
-    const next = flowEditorState.nodes.map((n) =>
-      n.id === id ? { ...n, data: { ...n.data, sessionMode: mode } } : n,
-    );
-    setNodes(next);
+    patch({ sessionMode: mode });
   }
 </script>
 
@@ -106,24 +167,39 @@
     <span class="text-xs font-semibold text-foreground truncate">{data.label || data.agentId}</span>
   </div>
 
-  <!-- Agent picker -->
+  <!-- Type picker -->
   <select
     class="mt-1 w-full text-[10px] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground"
-    value={data.agentId}
+    value={data.agentKind ?? ''}
     onclick={(e) => e.stopPropagation()}
-    onchange={pickAgent}
+    onchange={pickKind}
   >
-    {#if gw.agents.length === 0}
-      <option value={data.agentId} disabled>{data.label || 'No agents connected'}</option>
-    {:else}
-      {#each gw.agents as agent (agent.id)}
-        <option value={agent.id}>{agentDisplayName(agent)}</option>
-      {/each}
-      {#if data.agentId && !gw.agents.some((a) => a.id === data.agentId)}
-        <option value={data.agentId}>{data.label}</option>
-      {/if}
+    <option value="" disabled>Select type…</option>
+    <option value="custom">Custom agent</option>
+    <option value="personal">Personal agent</option>
+    <option value="drone">Drone task</option>
+  </select>
+
+  <!-- Instance picker (disabled until a type is chosen) -->
+  <select
+    class="mt-1 w-full text-[10px] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground disabled:opacity-50"
+    value={data.agentId}
+    disabled={!data.agentKind}
+    onclick={(e) => e.stopPropagation()}
+    onchange={pickInstance}
+  >
+    <option value="" disabled>{data.agentKind ? 'Select…' : 'Pick a type first'}</option>
+    {#each instanceOptions as opt (opt.id)}
+      <option value={opt.id}>{opt.label}</option>
+    {/each}
+    {#if data.agentId && !instanceOptions.some((o) => o.id === data.agentId)}
+      <option value={data.agentId}>{data.label || data.agentId}</option>
     {/if}
   </select>
+
+  {#if data.agentKind === 'drone' && data.agentId}
+    <p class="mt-1 text-[9px] text-amber-400/80">Drone execution coming soon</p>
+  {/if}
 
   <!-- Session mode toggle -->
   <div class="mt-1.5 flex gap-1">
