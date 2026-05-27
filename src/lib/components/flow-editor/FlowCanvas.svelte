@@ -32,6 +32,8 @@
     type PromptBoxData,
     type LLMNodeData,
     type TriggerNodeData,
+    type PluginTriggerNodeData,
+    type PluginActionNodeData,
   } from '$lib/state/features/flow-editor.svelte';
   import { theme } from '$lib/state/ui/theme.svelte';
 
@@ -71,7 +73,11 @@
     const raw = e.dataTransfer?.getData('application/flow-node');
     if (!raw) return;
 
-    let payload: { type: 'agent' | 'promptBox' | 'llm' | 'trigger'; agentId?: string; label?: string };
+    let payload: {
+      type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'pluginTrigger' | 'pluginAction';
+      agentId?: string; label?: string;
+      descriptor?: { pluginId: string; id: string; kind: 'trigger' | 'action'; label: string; event?: string; method?: string };
+    };
     try { payload = JSON.parse(raw); } catch { return; }
 
     const position = screenToFlowPosition({ x: e.clientX, y: e.clientY });
@@ -118,6 +124,24 @@
         type: 'trigger',
         position,
         data: { event: 'message:received', label: 'Message received', deliverResponse: false } satisfies TriggerNodeData,
+      };
+      setNodes([...flowEditorState.nodes, node]);
+    } else if (payload.type === 'pluginTrigger' && payload.descriptor) {
+      const d = payload.descriptor;
+      const node: FlowNode = {
+        id: makeId(),
+        type: 'pluginTrigger',
+        position,
+        data: { pluginId: d.pluginId, contributionId: d.id, event: d.event ?? '', label: d.label, deliverResponse: false } satisfies PluginTriggerNodeData,
+      };
+      setNodes([...flowEditorState.nodes, node]);
+    } else if (payload.type === 'pluginAction' && payload.descriptor) {
+      const d = payload.descriptor;
+      const node: FlowNode = {
+        id: makeId(),
+        type: 'pluginAction',
+        position,
+        data: { pluginId: d.pluginId, contributionId: d.id, method: d.method ?? '', label: d.label } satisfies PluginActionNodeData,
       };
       setNodes([...flowEditorState.nodes, node]);
     }

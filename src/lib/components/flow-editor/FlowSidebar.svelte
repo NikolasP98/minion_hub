@@ -7,11 +7,36 @@
   import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
   import { agentDisplayName } from '$lib/utils/agent-display';
+  import { sendRequest } from '$lib/services/gateway.svelte';
 
   let collapsed = $state(false);
 
+  interface FlowNodeDescriptor {
+    pluginId: string; id: string; kind: 'trigger' | 'action';
+    label: string; description?: string; icon?: string;
+    event?: string; method?: string;
+  }
+  let pluginNodes = $state<FlowNodeDescriptor[]>([]);
+
+  const pluginGroups = $derived(
+    Object.entries(
+      pluginNodes.reduce<Record<string, FlowNodeDescriptor[]>>((acc, n) => {
+        (acc[n.pluginId] ??= []).push(n);
+        return acc;
+      }, {}),
+    ),
+  );
+
   onMount(() => {
     loadBuiltAgents();
+    (async () => {
+      try {
+        const res = (await sendRequest('flows.nodes.list', {})) as { nodes?: FlowNodeDescriptor[] } | null;
+        if (res?.nodes) pluginNodes = res.nodes;
+      } catch {
+        pluginNodes = [];
+      }
+    })();
   });
 
   function makeId() {
@@ -82,7 +107,26 @@
     setNodes([...flowEditorState.nodes, node]);
   }
 
-  function handleDragStart(e: DragEvent, payload: { type: 'agent' | 'promptBox' | 'llm' | 'trigger'; agentId?: string; label?: string }) {
+  function addPluginNode(d: FlowNodeDescriptor) {
+    const data =
+      d.kind === 'trigger'
+        ? { pluginId: d.pluginId, contributionId: d.id, event: d.event ?? '', label: d.label, deliverResponse: false }
+        : { pluginId: d.pluginId, contributionId: d.id, method: d.method ?? '', label: d.label };
+    const node: FlowNode = {
+      id: makeId(),
+      type: d.kind === 'trigger' ? 'pluginTrigger' : 'pluginAction',
+      position: getDropPosition(),
+      data: data as FlowNode['data'],
+    };
+    setNodes([...flowEditorState.nodes, node]);
+  }
+
+  function handleDragStart(
+    e: DragEvent,
+    payload:
+      | { type: 'agent' | 'promptBox' | 'llm' | 'trigger'; agentId?: string; label?: string }
+      | { type: 'pluginTrigger' | 'pluginAction'; descriptor: FlowNodeDescriptor },
+  ) {
     if (!e.dataTransfer) return;
     e.dataTransfer.effectAllowed = 'copy';
     e.dataTransfer.setData('application/flow-node', JSON.stringify(payload));
@@ -292,6 +336,35 @@
             {/each}
           </div>
         </div>
+      {/if}
+
+      <!-- Plugin Nodes section -->
+      {#if pluginGroups.length > 0}
+        {#each pluginGroups as [pluginId, nodes] (pluginId)}
+          <div>
+            <p class="text-[9px] font-semibold text-muted/50 uppercase tracking-widest px-1 mb-1.5">
+              {pluginId}
+            </p>
+            <div class="flex flex-col gap-0.5">
+              {#each nodes as d (d.id)}
+                <button
+                  onclick={() => addPluginNode(d)}
+                  draggable="true"
+                  ondragstart={(e) => handleDragStart(e, { type: d.kind === 'trigger' ? 'pluginTrigger' : 'pluginAction', descriptor: d })}
+                  class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
+                >
+                  <div class="w-6 h-6 rounded bg-violet-500/20 flex items-center justify-center shrink-0 text-[10px] text-violet-400">
+                    {d.kind === 'trigger' ? '⚡' : '🧩'}
+                  </div>
+                  <div class="min-w-0">
+                    <div class="text-xs font-medium text-foreground truncate">{d.label}</div>
+                    <div class="text-[10px] text-muted truncate">{d.kind}</div>
+                  </div>
+                </button>
+              {/each}
+            </div>
+          </div>
+        {/each}
       {/if}
     </div>
   {/if}
