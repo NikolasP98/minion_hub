@@ -1,9 +1,11 @@
 <script lang="ts">
-  import { invalidateAll } from '$app/navigation';
+  import { invalidateAll, goto } from '$app/navigation';
   import ScanLine from '$lib/components/decorations/ScanLine.svelte';
-  import { addHost, removeHost, updateHost } from '$lib/state/features/hosts.svelte';
-  import { wsConnect, wsDisconnect } from '$lib/services/gateway.svelte';
-  import { hostsState } from '$lib/state/features/hosts.svelte';
+  import { addHost, removeHost, updateHost, hostsState } from '$lib/state/features/hosts.svelte';
+  import { wsConnect } from '$lib/services/gateway.svelte';
+  import { conn } from '$lib/state/gateway/connection.svelte';
+  import * as m from '$lib/paraglide/messages';
+  import { Plus, Plug, Trash2, Wrench, Pencil, X, Check, Wifi, WifiOff } from 'lucide-svelte';
 
   const { data } = $props();
 
@@ -48,7 +50,7 @@
   }
 
   async function removeTursoHost(id: string, hostName: string) {
-    if (!confirm(`Remove ${hostName}?`)) return;
+    if (!confirm(m.hosts_deleteConfirm({ name: hostName }))) return;
     await removeHost(id);
     await invalidateAll();
   }
@@ -62,6 +64,7 @@
     editingId = host.id;
     editName = host.name;
     editUrl = host.url;
+    // Token field starts blank — submitting empty preserves the server-stored value.
     editToken = '';
   }
 
@@ -79,77 +82,105 @@
     wsConnect();
   }
 
+  function formatTime(ts: number | null | undefined): string {
+    if (!ts) return m.hosts_never();
+    return new Date(ts).toLocaleString();
+  }
+
   // Deduplicate: a host is in "both" if its URL appears in both lists
-  const tursoUrlSet = $derived(new Set(data.tursoHosts.map((h: any) => h.url)));
-  const pgOnly = $derived(data.pgGateways.filter((g: any) => !tursoUrlSet.has(g.url)));
+  const tursoUrlSet = $derived(new Set(data.tursoHosts.map((h: { url: string }) => h.url)));
+  const pgOnly = $derived(data.pgGateways.filter((g: { url: string }) => !tursoUrlSet.has(g.url)));
 </script>
 
 <div class="p-6 space-y-8">
   <section>
-    <h1 class="text-lg font-semibold mb-1">Gateways</h1>
+    <h1 class="text-lg font-semibold mb-1">{m.hosts_title()}</h1>
     <p class="text-xs text-muted mb-5">Manage gateway connections. Adding here registers the gateway for WS connect and per-user credential resolution.</p>
 
     <!-- Add form -->
     <div class="border border-border rounded-lg overflow-hidden mb-6">
-      <div class="relative px-4 py-3 border-b border-border bg-bg/60">
+      <div class="relative px-4 py-3 border-b border-border bg-bg/60 flex items-center gap-2">
         <ScanLine speed={10} opacity={0.02} />
-        <span class="text-[10px] font-mono text-muted uppercase tracking-widest">Add gateway</span>
+        <Plug size={12} class="text-muted/70" />
+        <span class="text-[10px] font-mono text-muted uppercase tracking-widest">{m.hosts_newServer()}</span>
       </div>
       <div class="p-4 space-y-3">
-        <input bind:value={name} placeholder="Name (e.g. production)"
+        <input bind:value={name} placeholder={m.hosts_namePlaceholder()}
           class="w-full bg-bg border border-border rounded px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted/40 focus:outline-none focus:border-accent/60" />
-        <input bind:value={url} placeholder="URL (ws:// or wss://)"
+        <input bind:value={url} placeholder={m.hosts_urlPlaceholder()}
           class="w-full bg-bg border border-border rounded px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted/40 focus:outline-none focus:border-accent/60" />
-        <input bind:value={token} type="password" placeholder="Token"
+        <input bind:value={token} type="password" placeholder={m.hosts_tokenPlaceholder()}
           class="w-full bg-bg border border-border rounded px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted/40 focus:outline-none focus:border-accent/60" />
         {#if addError}<p class="text-[11px] font-mono text-red-400">{addError}</p>{/if}
         {#if addSuccess}<p class="text-[11px] font-mono text-green-400">{addSuccess}</p>{/if}
         <button onclick={addGateway} disabled={adding || !name || !url || !token}
-          class="px-4 py-2 rounded border text-sm font-mono bg-accent/20 border-accent/30 text-accent hover:bg-accent/30 disabled:opacity-50">
-          {adding ? 'Adding…' : 'Add gateway'}
+          class="flex items-center gap-1.5 px-4 py-2 rounded border text-sm font-mono bg-accent/20 border-accent/30 text-accent hover:bg-accent/30 disabled:opacity-50">
+          {#if adding}{m.hosts_adding()}{:else}<Plus size={13} /> {m.hosts_addServer()}{/if}
         </button>
       </div>
     </div>
 
     <!-- Unified gateway list (Turso hosts = source of truth for WS connect) -->
     {#if data.tursoHosts.length === 0 && pgOnly.length === 0}
-      <p class="text-sm text-muted">No gateways configured yet.</p>
+      <div class="bg-card border border-border rounded-lg px-5 py-8 text-center">
+        <p class="text-sm text-muted-foreground">{m.hosts_noServers()}</p>
+        <p class="text-xs text-muted-foreground/60 mt-1">{m.hosts_noServersHint()}</p>
+      </div>
     {:else}
       <ul class="space-y-2">
         {#each data.tursoHosts as host (host.id)}
-          <li class="border border-border rounded overflow-hidden">
+          {@const isConnected = conn.connected && hostsState.activeHostId === host.id}
+          <li class="border border-border rounded-lg overflow-hidden bg-card {isConnected ? 'border-accent/40' : ''}">
             {#if editingId === host.id}
               <div class="p-3 space-y-2">
-                <input bind:value={editName} class="w-full bg-bg border border-border rounded px-3 py-1.5 text-sm font-mono text-foreground focus:outline-none focus:border-accent/60" />
-                <input bind:value={editUrl} class="w-full bg-bg border border-border rounded px-3 py-1.5 text-sm font-mono text-foreground focus:outline-none focus:border-accent/60" />
-                <input bind:value={editToken} type="password" placeholder="New token (leave blank to keep)"
+                <input bind:value={editName} placeholder={m.hosts_namePlaceholder()} class="w-full bg-bg border border-border rounded px-3 py-1.5 text-sm font-mono text-foreground focus:outline-none focus:border-accent/60" />
+                <input bind:value={editUrl} placeholder={m.hosts_urlPlaceholder()} class="w-full bg-bg border border-border rounded px-3 py-1.5 text-sm font-mono text-foreground focus:outline-none focus:border-accent/60" />
+                <input bind:value={editToken} type="password" placeholder={m.hosts_tokenPlaceholder()}
                   class="w-full bg-bg border border-border rounded px-3 py-1.5 text-sm font-mono text-foreground placeholder:text-muted/40 focus:outline-none focus:border-accent/60" />
-                <div class="flex gap-2">
-                  <button onclick={saveEdit} class="px-3 py-1 rounded border text-xs font-mono bg-accent/20 border-accent/30 text-accent hover:bg-accent/30">Save</button>
-                  <button onclick={cancelEdit} class="px-3 py-1 rounded border text-xs font-mono bg-bg border-border text-muted hover:text-foreground">Cancel</button>
+                <div class="flex gap-2 justify-end">
+                  <button onclick={cancelEdit} class="flex items-center gap-1 px-3 py-1 rounded border text-xs font-mono bg-bg border-border text-muted hover:text-foreground"><X size={12} /> {m.hosts_cancel()}</button>
+                  <button onclick={saveEdit} class="flex items-center gap-1 px-3 py-1 rounded border text-xs font-mono bg-accent/20 border-accent/30 text-accent hover:bg-accent/30"><Check size={12} /> {m.hosts_save()}</button>
                 </div>
               </div>
             {:else}
-              <div class="flex items-center justify-between px-3 py-2">
-                <div class="flex items-center gap-2 min-w-0">
-                  <div class="w-1.5 h-1.5 rounded-full shrink-0 {hostsState.activeHostId === host.id ? 'bg-green-400' : 'bg-muted/30'}"></div>
-                  <div class="min-w-0">
-                    <div class="text-sm text-foreground truncate">{host.name}</div>
-                    <div class="text-xs text-muted font-mono truncate">{host.url}</div>
+              <div class="flex items-center gap-3 px-4 py-3">
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2">
+                    <span class="text-sm font-medium text-foreground truncate">{host.name}</span>
+                    {#if isConnected}
+                      <span class="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-400 text-[10px] font-medium">
+                        <Wifi size={10} /> {m.hosts_connect()}
+                      </span>
+                    {:else}
+                      <span class="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground text-[10px] font-medium">
+                        <WifiOff size={10} /> {m.hosts_offline()}
+                      </span>
+                    {/if}
+                  </div>
+                  <div class="flex items-center gap-2 mt-0.5">
+                    <span class="text-xs text-muted-foreground font-mono truncate">{host.url}</span>
+                    <span class="text-[10px] text-muted-foreground/60">&middot;</span>
+                    <span class="text-[10px] text-muted-foreground/60">{m.hosts_lastConnected({ time: formatTime(host.lastConnectedAt) })}</span>
                   </div>
                 </div>
-                <div class="flex items-center gap-1.5 shrink-0 ml-3">
-                  <button onclick={() => connect(host)}
-                    class="px-2 py-1 rounded border text-xs font-mono text-accent border-accent/30 hover:bg-accent/10">
-                    Connect
+                <div class="flex items-center gap-1.5 shrink-0">
+                  {#if !isConnected}
+                    <button onclick={() => connect(host)} title={m.hosts_connect()}
+                      class="px-2 py-1 rounded border text-xs font-mono text-accent border-accent/30 hover:bg-accent/10">
+                      {m.hosts_connect()}
+                    </button>
+                  {/if}
+                  <button onclick={() => goto(`/settings/provision?server=${host.id}`)} title={m.hosts_provision()}
+                    class="p-1.5 rounded text-muted-foreground hover:text-accent hover:bg-bg2 transition-colors cursor-pointer bg-transparent border-none">
+                    <Wrench size={14} />
                   </button>
-                  <button onclick={() => startEdit(host)}
-                    class="px-2 py-1 rounded border text-xs font-mono text-muted border-border hover:text-foreground">
-                    Edit
+                  <button onclick={() => startEdit(host)} title={m.common_edit()}
+                    class="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-bg2 transition-colors cursor-pointer bg-transparent border-none">
+                    <Pencil size={14} />
                   </button>
-                  <button onclick={() => removeTursoHost(host.id, host.name)}
-                    class="px-2 py-1 rounded border text-xs font-mono text-red-400 border-red-400/20 hover:bg-red-400/5">
-                    Remove
+                  <button onclick={() => removeTursoHost(host.id, host.name)} title={m.hosts_delete()}
+                    class="p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-bg2 transition-colors cursor-pointer bg-transparent border-none">
+                    <Trash2 size={14} />
                   </button>
                 </div>
               </div>
@@ -159,14 +190,14 @@
 
         <!-- PG-only gateways (not yet in Turso — no WS connect button) -->
         {#each pgOnly as g (g.id)}
-          <li class="border border-border/50 border-dashed rounded px-3 py-2 flex items-center justify-between opacity-70">
-            <div>
-              <div class="text-sm text-foreground">{g.name} <span class="text-[10px] text-muted font-mono ml-1">pg only</span></div>
-              <div class="text-xs text-muted font-mono">{g.url}</div>
+          <li class="border border-border/50 border-dashed rounded-lg px-4 py-3 flex items-center justify-between opacity-70">
+            <div class="min-w-0">
+              <div class="text-sm text-foreground truncate">{g.name} <span class="text-[10px] text-muted font-mono ml-1">pg only</span></div>
+              <div class="text-xs text-muted font-mono truncate">{g.url}</div>
             </div>
-            <button onclick={() => removePgGateway(g.id)}
-              class="px-2 py-1 rounded border text-xs font-mono text-red-400 border-red-400/20 hover:bg-red-400/5">
-              Remove
+            <button onclick={() => removePgGateway(g.id)} title={m.hosts_delete()}
+              class="p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-bg2 transition-colors cursor-pointer bg-transparent border-none shrink-0">
+              <Trash2 size={14} />
             </button>
           </li>
         {/each}

@@ -22,7 +22,6 @@
     import SettingsScrollspy from "$lib/components/settings/SettingsScrollspy.svelte";
     import BindingsTab from "$lib/components/users/BindingsTab.svelte";
     import ChannelsTab from "$lib/components/channels/ChannelsTab.svelte";
-    import HostsTab from "$lib/components/settings/HostsTab.svelte";
     import SecretsSection from "$lib/components/settings/SecretsSection.svelte";
     import * as m from "$lib/paraglide/messages";
     import { SvelteSet } from "svelte/reactivity";
@@ -103,20 +102,18 @@
         };
     });
 
-    // Gateway-config tabs hosted on this page (hosts + ai/agents/comms/security/system).
-    // appearance + backups are now their own routes; they no longer live here.
-    const GATEWAY_TAB_IDS = new Set(['hosts', 'ai', 'agents', 'comms', 'security', 'system']);
+    // Gateway-config tabs hosted on this page (ai/agents/comms/security/system).
+    // appearance + backups are now their own routes; gateway connections live at
+    // /settings/gateways. None of those live here.
+    const GATEWAY_TAB_IDS = new Set(['ai', 'agents', 'comms', 'security', 'system']);
     const gatewayTabsList = TABS.filter((t) => GATEWAY_TAB_IDS.has(t.id));
 
     // URL-persisted active tab
     const activeTab = $derived(
-        page.url.searchParams.get("s") ?? "hosts"
+        page.url.searchParams.get("s") ?? "ai"
     );
 
-    const isHostsTab = $derived(activeTab === 'hosts');
-    const isConfigTab = $derived(
-        activeTab !== 'hosts' && GATEWAY_TAB_IDS.has(activeTab),
-    );
+    const isConfigTab = $derived(GATEWAY_TAB_IDS.has(activeTab));
 
     // Load config when entering any non-hosts gateway tab while connected
     $effect(() => {
@@ -170,22 +167,8 @@
 </script>
 
 <div class="flex-1 min-h-0 relative">
-    <!-- Hosts tab panel (hub-managed but still hosted here for now) -->
-    <div
-        class="tab-panel absolute inset-0 flex flex-col overflow-hidden"
-        style:visibility={isHostsTab ? 'visible' : 'hidden'}
-        style:z-index={isHostsTab ? 1 : 0}
-        role="tabpanel"
-    >
-        <div class="flex-1 overflow-y-auto p-6 md:p-10">
-            <div class="max-w-2xl mx-auto">
-                <HostsTab />
-            </div>
-        </div>
-    </div>
-
     <!-- Gateway config tab panels (AI, Agents, Comms, Security, System) -->
-    {#each gatewayTabsList.filter((t) => t.id !== 'hosts') as tab (tab.id)}
+    {#each gatewayTabsList as tab (tab.id)}
         {@const isActive = activeTab === tab.id}
         <div
             class="tab-panel absolute inset-0 flex flex-col overflow-hidden"

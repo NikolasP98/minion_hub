@@ -65,7 +65,7 @@
         <button
             type="button"
             class="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer bg-transparent border-none font-[inherit]"
-            onclick={() => goto('/settings?s=hosts')}
+            onclick={() => goto('/settings/gateways')}
         >
             <ArrowLeft size={14} />
             {m.provision_backToHosts()}
@@ -135,7 +135,7 @@
                         <button
                             type="button"
                             class="mt-2 text-xs text-accent hover:underline cursor-pointer bg-transparent border-none"
-                            onclick={() => goto('/settings?s=hosts')}
+                            onclick={() => goto('/settings/gateways')}
                         >
                             {m.provision_goToHosts()}
                         </button>

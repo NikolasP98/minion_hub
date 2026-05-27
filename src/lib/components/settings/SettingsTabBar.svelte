@@ -1,7 +1,6 @@
 <script lang="ts">
-    import { Brain, Bot, Radio, Shield, Server, Palette, HardDrive, DatabaseBackup, Puzzle, Users, KeyRound, Phone, User } from "lucide-svelte";
+    import { Brain, Bot, Radio, Shield, Server, Palette, DatabaseBackup, Puzzle, Users, KeyRound, Phone, User } from "lucide-svelte";
     import { page } from "$app/state";
-    import { goto } from "$app/navigation";
     import { isAdmin } from "$lib/state/features/user.svelte";
     import { TABS } from "$lib/utils/config-schema";
     import * as m from "$lib/paraglide/messages";
@@ -15,7 +14,7 @@
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const ICON_MAP: Record<string, any> = {
-        Brain, Bot, Radio, Shield, Server, Palette, HardDrive, DatabaseBackup, Puzzle, Users, KeyRound, Phone, User,
+        Brain, Bot, Radio, Shield, Server, Palette, DatabaseBackup, Puzzle, Users, KeyRound, Phone, User,
     };
 
     // Hub tabs: own routes under /settings/<id>. Render as <a href>.
@@ -32,7 +31,6 @@
 
     // Gateway tabs: live on /settings?s=<id>. Render as <button>.
     // Filter out the hub-managed ones that previously had ?s= identity (appearance, backups).
-    // Also filter out 'hosts' (kept on the legacy ?s= page for now per scope).
     const HUB_LEGACY_IDS = new Set(['appearance', 'backups']);
     const gatewayTabs = $derived(TABS.filter((t) => !HUB_LEGACY_IDS.has(t.id)));
 
@@ -48,8 +46,8 @@
         // The legacy gateway tabs only count as active when on /settings (no sub-path)
         if (pathname !== '/settings') return false;
         if (queryS) return queryS === id;
-        // default selection on /settings with no ?s= → hosts
-        return id === 'hosts';
+        // default selection on /settings with no ?s= → first gateway tab (ai)
+        return id === 'ai';
     }
 
     // Visibility filter
@@ -59,11 +57,6 @@
     const visibleGatewayTabs = $derived(isAdmin.value ? gatewayTabs : []);
 
     function handleGatewayClick(id: string) {
-        // Consolidation: "hosts" now lives at /settings/gateways
-        if (id === 'hosts') {
-            goto('/settings/gateways');
-            return;
-        }
         onselect?.(id);
     }
 
