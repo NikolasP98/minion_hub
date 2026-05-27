@@ -1,26 +1,32 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { flows } from '@minion-stack/db/schema';
+import { flows } from '$server/db/schema';
 import { and, desc, eq, isNull, or } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { requireAuth } from '$server/auth/authorize';
 import { getTenantCtx } from '$server/auth/tenant-ctx';
 
-export const GET: RequestHandler = async ({ locals }) => {
+export const GET: RequestHandler = async ({ locals, url }) => {
   const user = requireAuth(locals);
   const ctx = await getTenantCtx(locals);
   if (!ctx) throw error(401);
 
+  const activeOnly = url.searchParams.get('active') === 'true';
+
   // Return flows owned by this user OR legacy flows with no owner (within same tenant)
+  const ownershipFilter = and(
+    or(eq(flows.userId, user.id), isNull(flows.userId)),
+    or(eq(flows.tenantId, ctx.tenantId), isNull(flows.tenantId)),
+  );
+
+  const whereClause = activeOnly
+    ? and(ownershipFilter, eq(flows.active, true))
+    : ownershipFilter;
+
   const rows = await ctx.db
     .select()
     .from(flows)
-    .where(
-      and(
-        or(eq(flows.userId, user.id), isNull(flows.userId)),
-        or(eq(flows.tenantId, ctx.tenantId), isNull(flows.tenantId)),
-      ),
-    )
+    .where(whereClause)
     .orderBy(desc(flows.updatedAt));
 
   const result = rows.map((row) => {
@@ -33,6 +39,7 @@ export const GET: RequestHandler = async ({ locals }) => {
     return {
       id: row.id,
       name: row.name,
+      active: row.active,
       nodeCount,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,

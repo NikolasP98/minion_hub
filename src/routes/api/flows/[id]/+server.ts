@@ -1,6 +1,6 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { flows } from '@minion-stack/db/schema';
+import { flows } from '$server/db/schema';
 import { eq } from 'drizzle-orm';
 import { requireAuth } from '$server/auth/authorize';
 import { getTenantCtx } from '$server/auth/tenant-ctx';
@@ -37,6 +37,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
   return json({
     flow: {
       ...flow,
+      active: flow.active,
       nodes: JSON.parse(flow.nodes),
       edges: JSON.parse(flow.edges),
     },
@@ -51,12 +52,13 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
   const existing = await requireFlowOwnership(user.id, ctx.tenantId, params.id!, ctx);
 
   const body = await request.json();
-  const { name, nodes, edges } = body as { name?: string; nodes?: unknown[]; edges?: unknown[] };
+  const { name, nodes, edges, active } = body as { name?: string; nodes?: unknown[]; edges?: unknown[]; active?: boolean };
 
   const updates: Record<string, unknown> = { updatedAt: Date.now() };
   if (name !== undefined) updates.name = name;
   if (nodes !== undefined) updates.nodes = JSON.stringify(nodes);
   if (edges !== undefined) updates.edges = JSON.stringify(edges);
+  if (active !== undefined) updates.active = active;
 
   await ctx.db.update(flows).set(updates).where(eq(flows.id, existing.id));
 
