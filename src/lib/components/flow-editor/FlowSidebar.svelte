@@ -1,8 +1,8 @@
 <script lang="ts">
   import { flowEditorState, setNodes } from '$lib/state/features/flow-editor.svelte';
-  import type { FlowNode, AgentNodeData, PromptBoxData, LLMNodeData, TriggerNodeData, TransformNodeData, StructuredNodeData, RouterNodeData } from '$lib/state/features/flow-editor.svelte';
+  import type { FlowNode, AgentNodeData, PromptBoxData, LLMNodeData, TriggerNodeData, TransformNodeData, StructuredNodeData, RouterNodeData, ToolAgentNodeData } from '$lib/state/features/flow-editor.svelte';
   import { loadBuiltAgents } from '$lib/state/builder';
-  import { Bot, Type, ChevronLeft, ChevronRight, Cpu, Zap, Braces, Split } from 'lucide-svelte';
+  import { Bot, Type, ChevronLeft, ChevronRight, Cpu, Zap, Braces, Split, Wrench } from 'lucide-svelte';
   import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
   import { sendRequest } from '$lib/services/gateway.svelte';
@@ -143,10 +143,18 @@
     setNodes([...flowEditorState.nodes, node]);
   }
 
+  function addToolAgent() {
+    const node: FlowNode = {
+      id: makeId(), type: 'toolAgent', position: getDropPosition(),
+      data: { modelId: '', systemPrompt: '', tools: [], label: 'Tool Agent' } satisfies ToolAgentNodeData,
+    };
+    setNodes([...flowEditorState.nodes, node]);
+  }
+
   function handleDragStart(
     e: DragEvent,
     payload:
-      | { type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'transform' | 'structured' | 'router'; agentId?: string; label?: string }
+      | { type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'transform' | 'structured' | 'router' | 'toolAgent'; agentId?: string; label?: string }
       | { type: 'pluginTrigger' | 'pluginAction'; descriptor: FlowNodeDescriptor },
   ) {
     if (!e.dataTransfer) return;
@@ -250,6 +258,15 @@
         title="Router"
       >
         <Split size={13} class="text-amber-400" />
+      </button>
+      <button
+        onclick={addToolAgent}
+        draggable="true"
+        ondragstart={(e) => handleDragStart(e, { type: 'toolAgent' })}
+        class="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
+        title="Tool Agent"
+      >
+        <Wrench size={13} class="text-emerald-400" />
       </button>
     </div>
   {:else}
@@ -355,6 +372,20 @@
           <div>
             <div class="text-xs font-medium text-foreground">Router</div>
             <div class="text-[10px] text-muted">Branch by rule / LLM</div>
+          </div>
+        </button>
+        <button
+          onclick={addToolAgent}
+          draggable="true"
+          ondragstart={(e) => handleDragStart(e, { type: 'toolAgent' })}
+          class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
+        >
+          <div class="w-6 h-6 rounded bg-emerald-500/20 flex items-center justify-center shrink-0">
+            <Wrench size={12} class="text-emerald-400" />
+          </div>
+          <div>
+            <div class="text-xs font-medium text-foreground">Tool Agent</div>
+            <div class="text-[10px] text-muted">LLM with tool calls</div>
           </div>
         </button>
       </div>

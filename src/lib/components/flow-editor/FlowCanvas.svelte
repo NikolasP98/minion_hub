@@ -20,6 +20,7 @@
   import TransformNode from './nodes/TransformNode.svelte';
   import StructuredNode from './nodes/StructuredNode.svelte';
   import RouterNode from './nodes/RouterNode.svelte';
+  import ToolAgentNode from './nodes/ToolAgentNode.svelte';
   import FlowEdgeComponent from './edges/FlowEdge.svelte';
   import ContextEdgeComponent from './edges/ContextEdge.svelte';
   import * as m from '$lib/paraglide/messages';
@@ -40,6 +41,7 @@
     type TransformNodeData,
     type StructuredNodeData,
     type RouterNodeData,
+    type ToolAgentNodeData,
   } from '$lib/state/features/flow-editor.svelte';
   import { theme } from '$lib/state/ui/theme.svelte';
 
@@ -53,6 +55,7 @@
     transform: TransformNode,
     structured: StructuredNode,
     router: RouterNode,
+    toolAgent: ToolAgentNode,
   };
 
   const edgeTypes: EdgeTypes = {
@@ -83,7 +86,7 @@
     if (!raw) return;
 
     let payload: {
-      type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'pluginTrigger' | 'pluginAction' | 'transform' | 'structured' | 'router';
+      type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'pluginTrigger' | 'pluginAction' | 'transform' | 'structured' | 'router' | 'toolAgent';
       agentId?: string; label?: string;
       descriptor?: { pluginId: string; id: string; kind: 'trigger' | 'action'; label: string; event?: string; method?: string };
     };
@@ -169,6 +172,12 @@
       const node: FlowNode = {
         id: makeId(), type: 'router', position,
         data: { mode: 'rule', branches: [{ id: `b-${makeId()}`, label: 'Branch 1', rule: { op: 'contains', value: '' } }], label: 'Router' } satisfies RouterNodeData,
+      };
+      setNodes([...flowEditorState.nodes, node]);
+    } else if (payload.type === 'toolAgent') {
+      const node: FlowNode = {
+        id: makeId(), type: 'toolAgent', position,
+        data: { modelId: '', systemPrompt: '', tools: [], label: 'Tool Agent' } satisfies ToolAgentNodeData,
       };
       setNodes([...flowEditorState.nodes, node]);
     }
