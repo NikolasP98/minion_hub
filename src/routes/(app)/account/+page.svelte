@@ -3,6 +3,7 @@
   import { userState } from '$lib/state/features/user.svelte';
   import ProfileCard from '$lib/components/users/ProfileCard.svelte';
   import ConnectedIdentities from '$lib/components/users/ConnectedIdentities.svelte';
+  import ChannelLinking from '$lib/components/users/ChannelLinking.svelte';
 
   let { data }: { data: PageData } = $props();
 
@@ -22,5 +23,7 @@
     />
 
     <ConnectedIdentities userId={data.userId} identities={data.identities} />
+
+    <ChannelLinking userId={data.userId} identities={data.identities} />
   </div>
 </div>
