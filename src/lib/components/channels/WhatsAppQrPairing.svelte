@@ -8,10 +8,13 @@
     interface Props {
         channelId: string;
         serverId: string;
+        /** Optional explicit WhatsApp accountId; defaults to deriving from channelId. */
+        accountId?: string;
         onpaired?: (phone: string) => void;
     }
 
-    let { channelId, serverId, onpaired }: Props = $props();
+    let { channelId, serverId, accountId, onpaired }: Props = $props();
+    void serverId; // QR pairing now runs over the active gateway WS connection, not a per-server REST route.
 
     let qrData = $state('');
     let pairingStatus = $state<'idle' | 'waiting' | 'scanning' | 'connected' | 'error'>('idle');
@@ -31,24 +34,38 @@
         pairingStatus = 'waiting';
     }
 
+    // `channelId === 'pending'` is a wizard sentinel (no account exists yet) — accept any matching event.
+    function isForThisChannel(eventChannelId: string) {
+        return channelId === 'pending' || eventChannelId === channelId;
+    }
+
     function handlePairedEvent(e: Event) {
         const detail = (e as CustomEvent<{ channelId: string; phone?: string }>).detail;
-        // `channelId === 'pending'` is a wizard sentinel (no account exists yet) — accept any paired event.
-        if (channelId === 'pending' || detail.channelId === channelId) {
+        if (isForThisChannel(detail.channelId)) {
             pairingStatus = 'connected';
             if (detail.phone) onpaired?.(detail.phone);
+        }
+    }
+
+    function handlePairFailedEvent(e: Event) {
+        const detail = (e as CustomEvent<{ channelId: string; message?: string }>).detail;
+        if (isForThisChannel(detail.channelId)) {
+            pairingStatus = 'error';
+            errorMsg = detail.message ?? 'Pairing failed';
         }
     }
 
     onMount(() => {
         window.addEventListener('channels.whatsapp.qr', handleQrEvent);
         window.addEventListener('channels.whatsapp.paired', handlePairedEvent);
+        window.addEventListener('channels.whatsapp.pairFailed', handlePairFailedEvent);
     });
 
     onDestroy(() => {
         if (typeof window !== 'undefined') {
             window.removeEventListener('channels.whatsapp.qr', handleQrEvent);
             window.removeEventListener('channels.whatsapp.paired', handlePairedEvent);
+            window.removeEventListener('channels.whatsapp.pairFailed', handlePairFailedEvent);
         }
     });
 
@@ -56,12 +73,17 @@
         pairingStatus = 'waiting';
         errorMsg = null;
         try {
-            const res = await fetch(`/api/servers/${serverId}/channels/${channelId}/qr`, { method: 'POST' });
+            // QR generation is driven entirely over the gateway WS connection: the
+            // gateway starts a web login, then pushes `channels.whatsapp.qr` and the
+            // terminal paired/pairFailed events. No per-server REST precondition.
+            const res = await requestWhatsAppPair(channelId, accountId);
             if (!res.ok) {
-                const data = await res.json().catch(() => ({}));
-                throw new Error(data.error ?? `QR request failed: ${res.status}`);
+                pairingStatus = 'error';
+                errorMsg = res.alreadyLinked
+                    ? (res.message ?? 'This WhatsApp account is already linked.')
+                    : (res.message ?? 'Failed to start pairing');
             }
-            await requestWhatsAppPair(channelId);
+            // On success we stay in `waiting` until the qr event arrives.
         } catch (e) {
             pairingStatus = 'error';
             errorMsg = e instanceof Error ? e.message : 'Failed to start pairing';

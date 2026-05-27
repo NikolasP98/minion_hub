@@ -410,12 +410,32 @@ export async function sendInstall(agentId: string, files: Record<string, string>
   await sendRequest('agent.install', { agentId, files });
 }
 
+export interface WhatsAppPairResult {
+  ok: boolean;
+  alreadyLinked?: boolean;
+  message?: string;
+}
+
 /**
  * Request WhatsApp QR pairing from the gateway.
- * The gateway will respond with `channels.whatsapp.qr` events containing QR data.
+ *
+ * The gateway starts a web login and pushes the QR as a `channels.whatsapp.qr`
+ * event, then a terminal `channels.whatsapp.paired` / `channels.whatsapp.pairFailed`
+ * event once the scan resolves. The response returned here reports whether the
+ * login could be started (e.g. `alreadyLinked` when no QR is needed).
+ *
+ * `accountId` is optional — when omitted the gateway derives it from `channelId`
+ * (`gw:whatsapp:<id>`), falling back to the default account for the `pending`
+ * wizard sentinel.
  */
-export async function requestWhatsAppPair(channelId: string): Promise<void> {
-  await sendRequest('channels.whatsapp.pair', { channelId });
+export async function requestWhatsAppPair(
+  channelId: string,
+  accountId?: string,
+): Promise<WhatsAppPairResult> {
+  const res = (await sendRequest('channels.whatsapp.pair', { channelId, accountId })) as
+    | WhatsAppPairResult
+    | undefined;
+  return res ?? { ok: false, message: 'No response from gateway' };
 }
 
 // ─── Internal ─────────────────────────────────────────────────────────────────
@@ -503,6 +523,13 @@ function handleEvent(evt: Record<string, unknown>) {
     case 'channels.whatsapp.paired':
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('channels.whatsapp.paired', { detail: evt.payload }));
+      }
+      break;
+    case 'channels.whatsapp.pairFailed':
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('channels.whatsapp.pairFailed', { detail: evt.payload }),
+        );
       }
       break;
     case 'pi-agent.run-start':
