@@ -80,6 +80,7 @@ export const flowEditorState = $state({
   isDirty: false,
   isSaving: false,
   isRunning: false,
+  flowActive: false,
   relationshipMode: false,
   consoleOpen: false,
   consoleLogs: [] as LogEntry[],
@@ -158,6 +159,8 @@ export async function loadFlow(id: string) {
     flowEditorState.nodes = flow.nodes;
     flowEditorState.edges = flow.edges;
   }
+
+  flowEditorState.flowActive = flow.active ?? false;
 }
 
 export async function saveFlow() {

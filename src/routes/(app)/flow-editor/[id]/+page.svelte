@@ -13,11 +13,44 @@
     duplicateNode,
   } from '$lib/state/features/flow-editor.svelte';
   import ConsolePanel from '$lib/components/flow-editor/ConsolePanel.svelte';
+  import { sendRequest } from '$lib/services/gateway.svelte';
   import { ArrowLeft, Save, GitBranch, Loader, Play, Trash2, Copy } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
 
   const flowId = $derived(page.params.id);
   let loadError = $state<string | null>(null);
+  let isActivating = $state(false);
+  const hasTrigger = $derived(flowEditorState.nodes.some((n) => n.type === 'trigger'));
+
+  async function handleActivate() {
+    if (isActivating || !flowEditorState.flowId) return;
+    isActivating = true;
+    try {
+      const newActive = !flowEditorState.flowActive;
+      await fetch(`/api/flows/${flowEditorState.flowId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: newActive }),
+      });
+      flowEditorState.flowActive = newActive;
+      const triggerNode = flowEditorState.nodes.find((n) => n.type === 'trigger');
+      if (!triggerNode) return;
+      const td = triggerNode.data as import('$lib/state/features/flow-editor.svelte').TriggerNodeData;
+      if (newActive) {
+        await sendRequest('flows.trigger.register', {
+          flowId: flowEditorState.flowId,
+          event: td.event,
+          deliverResponse: td.deliverResponse,
+          filterChannelId: td.filterChannelId,
+          filterAgentId: td.filterAgentId,
+        });
+      } else {
+        await sendRequest('flows.trigger.unregister', { flowId: flowEditorState.flowId });
+      }
+    } finally {
+      isActivating = false;
+    }
+  }
 
   onMount(async () => {
     try {
@@ -108,6 +141,21 @@
         {/if}
         {m.flow_testRun()}
       </button>
+
+      <!-- Activate / Deactivate button -->
+      {#if hasTrigger}
+        <button
+          onclick={handleActivate}
+          disabled={isActivating}
+          class="flex items-center gap-1.5 h-7 px-3 text-xs rounded border transition-colors
+            {flowEditorState.flowActive
+              ? 'border-red-500/50 text-red-400 hover:bg-red-500/10'
+              : 'border-amber-500/50 text-amber-400 hover:bg-amber-500/10'}
+            disabled:opacity-50 disabled:cursor-default"
+        >
+          {flowEditorState.flowActive ? 'Deactivate' : 'Activate'}
+        </button>
+      {/if}
 
       <!-- Save button -->
       <button

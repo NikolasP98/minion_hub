@@ -791,6 +791,38 @@ function onHelloOk(hello: HelloOk) {
     })
     .catch((e) => console.error('[hub] agents.list error:', e));
 
+  // Re-register active trigger flows
+  fetch('/api/flows?active=true')
+    .then((r) => r.json())
+    .then(
+      async (body: {
+        flows?: Array<{ id: string; nodes: Array<{ type: string; data: unknown }>; active: boolean }>;
+      }) => {
+        for (const flow of body.flows ?? []) {
+          const triggerNode = flow.nodes.find((n) => n.type === 'trigger');
+          if (!triggerNode) continue;
+          const td = triggerNode.data as {
+            event: string;
+            deliverResponse: boolean;
+            filterChannelId?: string;
+            filterAgentId?: string;
+          };
+          await sendRequest('flows.trigger.register', {
+            flowId: flow.id,
+            event: td.event,
+            deliverResponse: td.deliverResponse,
+            filterChannelId: td.filterChannelId,
+            filterAgentId: td.filterAgentId,
+          }).catch(() => {
+            /* gateway may lack the method — non-fatal */
+          });
+        }
+      },
+    )
+    .catch(() => {
+      /* hub not ready — non-fatal */
+    });
+
   sendRequest('sessions.list', {})
     .then((r) => {
       const raw = (r as { sessions?: unknown[] })?.sessions ?? [];

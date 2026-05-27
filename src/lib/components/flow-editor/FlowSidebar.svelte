@@ -1,9 +1,9 @@
 <script lang="ts">
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
   import { flowEditorState, setNodes } from '$lib/state/features/flow-editor.svelte';
-  import type { FlowNode, AgentNodeData, PromptBoxData, LLMNodeData } from '$lib/state/features/flow-editor.svelte';
+  import type { FlowNode, AgentNodeData, PromptBoxData, LLMNodeData, TriggerNodeData } from '$lib/state/features/flow-editor.svelte';
   import { builderState, loadBuiltAgents } from '$lib/state/builder';
-  import { Bot, Type, ChevronLeft, ChevronRight, Hammer, Cpu } from 'lucide-svelte';
+  import { Bot, Type, ChevronLeft, ChevronRight, Hammer, Cpu, Zap } from 'lucide-svelte';
   import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
   import { agentDisplayName } from '$lib/utils/agent-display';
@@ -72,7 +72,17 @@
     setNodes([...flowEditorState.nodes, node]);
   }
 
-  function handleDragStart(e: DragEvent, payload: { type: 'agent' | 'promptBox' | 'llm'; agentId?: string; label?: string }) {
+  function addTriggerNode() {
+    const node: FlowNode = {
+      id: makeId(),
+      type: 'trigger',
+      position: getDropPosition(),
+      data: { event: 'message:received', label: 'Message received', deliverResponse: false } satisfies TriggerNodeData,
+    };
+    setNodes([...flowEditorState.nodes, node]);
+  }
+
+  function handleDragStart(e: DragEvent, payload: { type: 'agent' | 'promptBox' | 'llm' | 'trigger'; agentId?: string; label?: string }) {
     if (!e.dataTransfer) return;
     e.dataTransfer.effectAllowed = 'copy';
     e.dataTransfer.setData('application/flow-node', JSON.stringify(payload));
@@ -105,6 +115,17 @@
   {#if collapsed}
     <!-- Icon-only column when collapsed -->
     <div class="flex-1 overflow-y-auto py-2 flex flex-col items-center gap-1">
+      <!-- Trigger icon -->
+      <button
+        onclick={addTriggerNode}
+        draggable="true"
+        ondragstart={(e) => handleDragStart(e, { type: 'trigger' })}
+        class="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
+        title="Trigger"
+      >
+        <Zap size={13} class="text-amber-400" />
+      </button>
+
       <!-- Prompt Box icon -->
       <button
         onclick={addPromptBox}
@@ -168,6 +189,20 @@
         <p class="text-[9px] font-semibold text-muted/50 uppercase tracking-widest px-1 mb-1.5">
           {m.flow_inputs()}
         </p>
+        <button
+          onclick={addTriggerNode}
+          draggable="true"
+          ondragstart={(e) => handleDragStart(e, { type: 'trigger' })}
+          class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
+        >
+          <div class="w-6 h-6 rounded bg-amber-500/20 flex items-center justify-center shrink-0">
+            <Zap size={12} class="text-amber-400" />
+          </div>
+          <div>
+            <div class="text-xs font-medium text-foreground">Trigger</div>
+            <div class="text-[10px] text-muted">Event entry point</div>
+          </div>
+        </button>
         <button
           onclick={addPromptBox}
           draggable="true"
