@@ -1,0 +1,72 @@
+name: Thermonuclear Code Review
+
+# Adversarial, highest-severity code-quality review of every PR, powered by the
+# `thermonuclear-code-quality-review` skill (published as the `thermonuclear-review`
+# plugin in the minion-plugins marketplace). Posts a single severity-grouped review
+# comment: Top 3 -> Critical/High/Medium/Low -> ship / fix-criticals-first / needs-rework.
+#
+# IMPORTANT: claude-code-action only runs a review workflow once this file exists,
+# with IDENTICAL content, on the repository's DEFAULT branch (a guard against PRs
+# tampering with the reviewer). Merge this file to the default branch to activate it.
+#
+# Prerequisites (one-time, per repo):
+#   - Install the Claude GitHub App  (run `claude` then `/install-github-app`)
+#   - Add a CLAUDE_CODE_OAUTH_TOKEN repository secret (the installer sets both up)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# One review per PR; a newer push cancels an in-flight run so we never stack
+# duplicate review comments (per the workflow's own first review).
+concurrency:
+  group: thermonuclear-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  thermonuclear-review:
+    # Skip drafts to avoid burning tokens on work-in-progress.
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # required so Claude can post the review via `gh pr comment`
+      id-token: write
+      actions: read # lets Claude read CI results on the PR
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Full history so the skill can diff against the merge-base with the base branch.
+          fetch-depth: 0
+
+      - name: Run thermonuclear review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          plugin_marketplaces: 'https://github.com/NikolasP98/minion_plugins.git'
+          plugins: 'thermonuclear-review@minion-plugins'
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+            BASE BRANCH: ${{ github.event.pull_request.base.ref }}
+
+            Use the "thermonuclear-code-quality-review" skill to perform an
+            adversarial, highest-severity code-quality review of this pull request.
+            The PR branch is already checked out in the working directory.
+
+            Follow the skill exactly:
+            - Select the change set as the PR diff (run
+              `gh pr diff ${{ github.event.pull_request.number }}`).
+            - Read the surrounding code and call sites for context before judging.
+            - Verify every finding against a real file:line trigger; drop anything
+              you cannot demonstrate.
+
+            Post your review as a SINGLE top-level PR comment in the skill's output
+            format: write it to a file and run
+            `gh pr comment ${{ github.event.pull_request.number }} --body-file <file>`.
+            If the change is clean, post a brief comment saying so. Only post GitHub
+            comments — do not submit the review as a chat message.
+          claude_args: |
+            --allowedTools "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Bash(git merge-base:*),Read,Grep,Glob,Write,mcp__github_inline_comment__create_inline_comment"
