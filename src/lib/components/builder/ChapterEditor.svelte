@@ -1,40 +1,14 @@
 <script lang="ts">
     import { autosize } from '$lib/actions/autosize';
-    import {
-        X,
-        Check,
-        Sparkles,
-        Loader2,
-        AlertCircle,
-        ChevronDown,
-        ChevronRight,
-    } from "lucide-svelte";
-    import { getToolInfo } from "$lib/data/tool-manifest";
+    import { Sparkles, Loader2, ChevronDown, ChevronRight } from "lucide-svelte";
     import * as m from '$lib/paraglide/messages';
-
-    // ── Types ────────────────────────────────────────────────────────────────
-    type FieldKey =
-        | "name"
-        | "description"
-        | "triggerConditions"
-        | "guide"
-        | "context"
-        | "outputDef"
-        | "successCriteria";
-
-    interface FieldConflict {
-        userValue: string;
-        aiValue: string;
-    }
-
-    interface ChapterData {
-        id: string;
-        name: string;
-        description: string;
-        guide: string;
-        context: string;
-        outputDef: string;
-    }
+    import AiWandButton from './_chapter-editor/AiWandButton.svelte';
+    import ConflictBox from './_chapter-editor/ConflictBox.svelte';
+    import ToolsPanel from './_chapter-editor/ToolsPanel.svelte';
+    import AdvancedFields from './_chapter-editor/AdvancedFields.svelte';
+    import DrawerHeader from './_chapter-editor/DrawerHeader.svelte';
+    import DrawerFooter from './_chapter-editor/DrawerFooter.svelte';
+    import type { FieldKey, FieldConflict, ChapterData, AiFieldName } from './_chapter-editor/types';
 
     interface Props {
         chapter: ChapterData;
@@ -84,11 +58,9 @@
     let aiError = $state<string | null>(null);
     let aiGenerated = $state(false);
 
-    // ── Per-field AI wand state (AI-01) ─────────────────────────────────
+    // ── Per-field AI wand state ─────────────────────────────────────────
     let fieldAiLoading = $state<Record<string, boolean>>({});
     let fieldAiGenerated = $state<Record<string, boolean>>({});
-
-    type AiFieldName = 'description' | 'guide' | 'context' | 'outputDef';
 
     async function requestFieldAiFill(fieldName: AiFieldName) {
         fieldAiLoading = { ...fieldAiLoading, [fieldName]: true };
@@ -292,31 +264,13 @@
     function handleKeydown(e: KeyboardEvent) {
         if (e.key === "Escape") onClose();
     }
-
-    // ── Conflict snippet ────────────────────────────────────────────────
-    function conflictSnippet(field: FieldKey): FieldConflict | undefined {
-        return conflicts[field];
-    }
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
 
 <!-- Drawer (right side, no backdrop — sits inside the editor layout) -->
 <aside class="chapter-drawer" role="dialog" aria-label="{m.builder_editChapterLabel({ name })}">
-    <!-- Header -->
-    <div class="drawer-header">
-        <span class="drawer-title">{m.builder_editChapter()}</span>
-        {#if totalConflicts > 0}
-            <span class="conflict-note">
-                <AlertCircle size={12} />
-                {totalConflicts} conflict{totalConflicts !== 1 ? "s" : ""}
-            </span>
-        {/if}
-        <span class="flex-1"></span>
-        <button class="close-btn" onclick={onClose} aria-label="Close">
-            <X size={16} />
-        </button>
-    </div>
+    <DrawerHeader {totalConflicts} {onClose} />
 
     <!-- Scrollable body -->
     <div class="drawer-body">
@@ -324,8 +278,8 @@
         <div class="field">
             <label class="field-label" for="ch-name">{m.agent_name()} <span class="required">*</span></label>
             <input id="ch-name" class="field-input" type="text" bind:value={name} placeholder={m.builder_chapterNamePlaceholder()} />
-            {#if conflictSnippet('name')}
-                {@render conflictBox('name')}
+            {#if conflicts.name}
+                <ConflictBox field="name" conflict={conflicts.name} onResolve={resolveConflict} />
             {/if}
         </div>
 
@@ -333,13 +287,11 @@
         <div class="field">
             <div class="field-label-row">
                 <label class="field-label" for="ch-desc">{m.builder_description()}</label>
-                <button class="ai-wand-btn" class:loading={fieldAiLoading['description']} onclick={() => requestFieldAiFill('description')} disabled={fieldAiLoading['description']} title={m.builder_aiFillField()}>
-                    {#if fieldAiLoading['description']}<Loader2 size={12} class="spin" />{:else}<Sparkles size={12} />{/if}
-                </button>
+                <AiWandButton loading={!!fieldAiLoading['description']} onclick={() => requestFieldAiFill('description')} />
             </div>
             <textarea id="ch-desc" class="field-textarea" class:ai-generated={fieldAiGenerated['description']} use:autosize={description} bind:value={description} oninput={() => clearFieldAiGenerated('description')} placeholder={m.builder_chapterDescPlaceholder()}></textarea>
-            {#if conflictSnippet('description')}
-                {@render conflictBox('description')}
+            {#if conflicts.description}
+                <ConflictBox field="description" conflict={conflicts.description} onResolve={resolveConflict} />
             {/if}
         </div>
 
@@ -362,28 +314,12 @@
         {/if}
 
         <!-- Tools -->
-        <div class="field">
-            <span class="field-label">{m.tools_title()} <span class="tool-count">{selectedToolIds.length}</span></span>
-            {#if availableToolIds.length === 0}
-                <div class="tools-empty">{m.tools_noTools()}</div>
-            {:else}
-                <div class="tools-grid">
-                    {#each availableToolIds as toolId (toolId)}
-                        {@const tool = getToolInfo(toolId)}
-                        {@const checked = selectedToolIds.includes(toolId)}
-                        {@const isSuggested = !checked && suggestedToolIds.includes(toolId)}
-                        <label class="tool-chip" class:checked class:suggested={isSuggested}>
-                            <input type="checkbox" {checked} onchange={() => toggleTool(toolId)} />
-                            <span class="tool-icon">{tool.icon}</span>
-                            <span class="tool-name">{tool.name}</span>
-                            {#if isSuggested}
-                                <Sparkles size={10} class="suggested-sparkle" />
-                            {/if}
-                        </label>
-                    {/each}
-                </div>
-            {/if}
-        </div>
+        <ToolsPanel
+            {availableToolIds}
+            {selectedToolIds}
+            {suggestedToolIds}
+            onToggle={toggleTool}
+        />
 
         <!-- Advanced fields (progressive disclosure) -->
         <button class="advanced-toggle" onclick={() => (showAdvanced = !showAdvanced)}>
@@ -399,110 +335,25 @@
         </button>
 
         {#if showAdvanced}
-            <div class="advanced-fields">
-                <!-- Trigger Conditions -->
-                <div class="field">
-                    <label class="field-label" for="ch-trigger">{m.builder_triggerConditions()}</label>
-                    <span class="field-helper">{m.builder_triggerConditionsHint()}</span>
-                    <textarea id="ch-trigger" class="field-textarea" use:autosize={triggerConditions} bind:value={triggerConditions} placeholder={m.builder_triggerPlaceholder()}></textarea>
-                    {#if conflictSnippet('triggerConditions')}
-                        {@render conflictBox('triggerConditions')}
-                    {/if}
-                </div>
-
-                <!-- Instructions (guide) -->
-                <div class="field">
-                    <div class="field-label-row">
-                        <label class="field-label" for="ch-guide">{m.builder_instructions()}</label>
-                        <button class="ai-wand-btn" class:loading={fieldAiLoading['guide']} onclick={() => requestFieldAiFill('guide')} disabled={fieldAiLoading['guide']} title="AI fill this field">
-                            {#if fieldAiLoading['guide']}<Loader2 size={12} class="spin" />{:else}<Sparkles size={12} />{/if}
-                        </button>
-                    </div>
-                    <span class="field-helper">{m.builder_instructionsHint()}</span>
-                    {#if aiGenerated && !conflicts.guide}
-                        <span class="ai-label">({m.builder_aiGeneratedReview()})</span>
-                    {/if}
-                    <textarea id="ch-guide" class="field-textarea field-textarea--mono" class:ai-generated={fieldAiGenerated['guide']} use:autosize={guide} bind:value={guide} oninput={() => clearFieldAiGenerated('guide')} placeholder={m.builder_guidePlaceholder()}></textarea>
-                    {#if conflictSnippet('guide')}
-                        {@render conflictBox('guide')}
-                    {/if}
-                </div>
-
-                <!-- Input Expectations (context) -->
-                <div class="field">
-                    <div class="field-label-row">
-                        <label class="field-label" for="ch-context">{m.builder_inputExpectations()}</label>
-                        <button class="ai-wand-btn" class:loading={fieldAiLoading['context']} onclick={() => requestFieldAiFill('context')} disabled={fieldAiLoading['context']} title="AI fill this field">
-                            {#if fieldAiLoading['context']}<Loader2 size={12} class="spin" />{:else}<Sparkles size={12} />{/if}
-                        </button>
-                    </div>
-                    <span class="field-helper">{m.builder_inputExpectationsHint()}</span>
-                    {#if aiGenerated && !conflicts.context}
-                        <span class="ai-label">({m.builder_aiGenerated()})</span>
-                    {/if}
-                    <textarea id="ch-context" class="field-textarea" class:ai-generated={fieldAiGenerated['context']} use:autosize={context} bind:value={context} oninput={() => clearFieldAiGenerated('context')} placeholder={m.builder_contextPlaceholder()}></textarea>
-                    {#if conflictSnippet('context')}
-                        {@render conflictBox('context')}
-                    {/if}
-                </div>
-
-                <!-- Output Definition -->
-                <div class="field">
-                    <div class="field-label-row">
-                        <label class="field-label" for="ch-output">{m.builder_outputDefinition()}</label>
-                        <button class="ai-wand-btn" class:loading={fieldAiLoading['outputDef']} onclick={() => requestFieldAiFill('outputDef')} disabled={fieldAiLoading['outputDef']} title="AI fill this field">
-                            {#if fieldAiLoading['outputDef']}<Loader2 size={12} class="spin" />{:else}<Sparkles size={12} />{/if}
-                        </button>
-                    </div>
-                    <span class="field-helper">{m.builder_outputDefinitionHint()}</span>
-                    {#if aiGenerated && !conflicts.outputDef}
-                        <span class="ai-label">(AI-generated)</span>
-                    {/if}
-                    <textarea id="ch-output" class="field-textarea" class:ai-generated={fieldAiGenerated['outputDef']} use:autosize={outputDef} bind:value={outputDef} oninput={() => clearFieldAiGenerated('outputDef')} placeholder={m.builder_outputPlaceholder()}></textarea>
-                    {#if conflictSnippet('outputDef')}
-                        {@render conflictBox('outputDef')}
-                    {/if}
-                </div>
-
-                <!-- Success Criteria -->
-                <div class="field">
-                    <label class="field-label" for="ch-success">{m.builder_successCriteria()}</label>
-                    <span class="field-helper">{m.builder_successCriteriaHint()}</span>
-                    <textarea id="ch-success" class="field-textarea" use:autosize={successCriteria} bind:value={successCriteria} placeholder={m.builder_successPlaceholder()}></textarea>
-                    {#if conflictSnippet('successCriteria')}
-                        {@render conflictBox('successCriteria')}
-                    {/if}
-                </div>
-            </div>
+            <AdvancedFields
+                bind:triggerConditions
+                bind:guide
+                bind:context
+                bind:outputDef
+                bind:successCriteria
+                {conflicts}
+                {aiGenerated}
+                {fieldAiLoading}
+                {fieldAiGenerated}
+                onFieldAiFill={requestFieldAiFill}
+                onClearFieldAiGenerated={clearFieldAiGenerated}
+                onResolveConflict={resolveConflict}
+            />
         {/if}
     </div>
 
-    <!-- Footer -->
-    <div class="drawer-footer">
-        <button class="btn btn--ghost" onclick={onClose}>{m.common_cancel()}</button>
-        <button class="btn btn--primary" onclick={handleSave} disabled={totalConflicts > 0}>
-            <Check size={14} />
-            {m.common_save()}
-        </button>
-    </div>
+    <DrawerFooter {totalConflicts} {onClose} onSave={handleSave} />
 </aside>
-
-{#snippet conflictBox(field: FieldKey)}
-    {@const c = conflicts[field]}
-    {#if c}
-        <div class="conflict-box">
-            <div class="conflict-header">
-                <Sparkles size={12} />
-                <span>{m.builder_aiSuggestedDifferent()}</span>
-            </div>
-            <div class="conflict-options">
-                <button class="conflict-opt mine" onclick={() => resolveConflict(field, 'user')}>{m.builder_keepYours()}</button>
-                <button class="conflict-opt ai" onclick={() => resolveConflict(field, 'ai')}>{m.builder_useAi()}</button>
-            </div>
-            <div class="conflict-preview">{c.aiValue.slice(0, 120)}{c.aiValue.length > 120 ? '...' : ''}</div>
-        </div>
-    {/if}
-{/snippet}
 
 <style>
     /* ── Drawer ──────────────────────────────────────────────────────────── */
@@ -521,49 +372,6 @@
         from { transform: translateX(100%); opacity: 0; }
         to { transform: translateX(0); opacity: 1; }
     }
-
-    .drawer-header {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        height: 2.75rem;
-        padding: 0 16px;
-        background: var(--color-bg2);
-        border-bottom: 1px solid var(--color-border);
-        flex-shrink: 0;
-    }
-
-    .drawer-title {
-        font-size: 14px;
-        font-weight: 700;
-        color: var(--color-foreground);
-    }
-
-    .conflict-note {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        font-size: 11px;
-        font-weight: 600;
-        color: var(--color-warning, #f59e0b);
-    }
-
-    .flex-1 { flex: 1; }
-
-    .close-btn {
-        background: transparent;
-        border: none;
-        color: var(--color-muted);
-        cursor: pointer;
-        padding: 4px;
-        border-radius: 4px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: color 0.15s;
-        flex-shrink: 0;
-    }
-    .close-btn:hover { color: var(--color-foreground); }
 
     /* ── Body ────────────────────────────────────────────────────────────── */
     .drawer-body {
@@ -589,11 +397,6 @@
     }
 
     .required { color: var(--color-accent); }
-
-    .field-helper {
-        font-size: 11px;
-        color: var(--color-muted);
-    }
 
     .field-input {
         background: var(--color-bg2);
@@ -630,11 +433,6 @@
     }
     .field-textarea::placeholder { color: var(--color-muted); }
 
-    .field-textarea--mono {
-        font-family: "JetBrains Mono", "Fira Code", monospace;
-        font-size: 12px;
-    }
-
     /* ── Field label row with wand ────────────────────────────────────────── */
     .field-label-row {
         display: flex;
@@ -643,7 +441,9 @@
         gap: 4px;
     }
 
-    .ai-wand-btn {
+    /* AI wand button — :global because <AiWandButton> is a child component
+       but uses parent's .field:hover for show/hide. */
+    :global(.ai-wand-btn) {
         display: none;
         align-items: center;
         justify-content: center;
@@ -658,15 +458,15 @@
         transition: all 0.15s;
         flex-shrink: 0;
     }
-    .field:hover .ai-wand-btn,
-    .ai-wand-btn.loading {
+    .field:hover :global(.ai-wand-btn),
+    :global(.ai-wand-btn.loading) {
         display: inline-flex;
     }
-    .ai-wand-btn:hover:not(:disabled) {
+    :global(.ai-wand-btn:hover:not(:disabled)) {
         background: color-mix(in srgb, var(--color-accent) 10%, transparent);
         border-color: color-mix(in srgb, var(--color-accent) 25%, transparent);
     }
-    .ai-wand-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    :global(.ai-wand-btn:disabled) { opacity: 0.5; cursor: not-allowed; }
 
     .field-textarea.ai-generated {
         opacity: 0.85;
@@ -701,69 +501,6 @@
 
     .ai-error { font-size: 11px; color: #ef4444; }
 
-    .ai-label {
-        font-size: 11px;
-        font-style: italic;
-        color: var(--color-muted);
-    }
-
-    /* ── Tools ────────────────────────────────────────────────────────────── */
-    .tool-count {
-        font-size: 10px;
-        color: var(--color-muted);
-        background: var(--color-bg3);
-        padding: 1px 6px;
-        border-radius: 9999px;
-        margin-left: 4px;
-        font-weight: 500;
-    }
-
-    .tools-empty {
-        padding: 12px;
-        text-align: center;
-        color: var(--color-muted);
-        font-size: 12px;
-        background: var(--color-bg2);
-        border: 1px dashed var(--color-border);
-        border-radius: 6px;
-    }
-
-    .tools-grid {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 4px;
-    }
-
-    .tool-chip {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        padding: 4px 8px;
-        background: var(--color-bg2);
-        border: 1px solid var(--color-border);
-        border-radius: 6px;
-        cursor: pointer;
-        font-size: 11px;
-        transition: all 0.15s;
-    }
-    .tool-chip:hover { border-color: var(--color-accent); }
-    .tool-chip.checked {
-        border-color: var(--color-accent);
-        background: color-mix(in srgb, var(--color-accent) 8%, var(--color-bg2));
-    }
-    .tool-chip input[type="checkbox"] { display: none; }
-
-    .tool-icon { font-size: 14px; }
-    .tool-name {
-        color: var(--color-foreground);
-        font-weight: 500;
-    }
-    .tool-chip:not(.checked) .tool-name { color: var(--color-muted); }
-    .tool-chip.suggested {
-        border-color: color-mix(in srgb, var(--color-accent) 30%, var(--color-border));
-        background: color-mix(in srgb, var(--color-accent) 4%, var(--color-bg2));
-        border-style: dashed;
-    }
     :global(.suggested-sparkle) { color: var(--color-accent); opacity: 0.7; }
 
     /* ── Advanced toggle ─────────────────────────────────────────────────── */
@@ -790,107 +527,6 @@
         border-radius: 50%;
         background: var(--color-accent);
     }
-
-    .advanced-fields {
-        display: flex;
-        flex-direction: column;
-        gap: 14px;
-        padding-top: 4px;
-    }
-
-    /* ── Conflict resolution ──────────────────────────────────────────────── */
-    .conflict-box {
-        border: 1px solid color-mix(in srgb, var(--color-accent) 30%, var(--color-border));
-        border-radius: 6px;
-        padding: 8px 10px;
-        background: color-mix(in srgb, var(--color-accent) 4%, var(--color-bg));
-        margin-top: 4px;
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-    }
-
-    .conflict-header {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 11px;
-        font-weight: 600;
-        color: var(--color-accent);
-    }
-
-    .conflict-options { display: flex; gap: 6px; }
-
-    .conflict-opt {
-        font-family: inherit;
-        font-size: 11px;
-        font-weight: 600;
-        padding: 4px 10px;
-        border-radius: 4px;
-        cursor: pointer;
-        border: 1px solid var(--color-border);
-        background: var(--color-bg2);
-        color: var(--color-foreground);
-        transition: all 0.15s;
-    }
-    .conflict-opt.mine:hover { border-color: var(--color-foreground); }
-    .conflict-opt.ai {
-        background: var(--color-accent);
-        border-color: var(--color-accent);
-        color: white;
-    }
-    .conflict-opt.ai:hover { filter: brightness(1.15); }
-
-    .conflict-preview {
-        font-size: 11px;
-        color: var(--color-muted);
-        font-style: italic;
-        line-height: 1.3;
-        overflow: hidden;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-    }
-
-    /* ── Footer ──────────────────────────────────────────────────────────── */
-    .drawer-footer {
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-        gap: 8px;
-        padding: 10px 16px;
-        border-top: 1px solid var(--color-border);
-        background: var(--color-bg2);
-        flex-shrink: 0;
-    }
-
-    .btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        font-family: inherit;
-        font-size: 12px;
-        font-weight: 600;
-        padding: 6px 14px;
-        border-radius: 6px;
-        cursor: pointer;
-        transition: all 0.15s;
-        border: none;
-    }
-
-    .btn--ghost {
-        background: transparent;
-        border: 1px solid var(--color-border);
-        color: var(--color-muted);
-    }
-    .btn--ghost:hover { color: var(--color-foreground); border-color: var(--color-foreground); }
-
-    .btn--primary {
-        background: var(--color-accent);
-        color: white;
-    }
-    .btn--primary:hover:not(:disabled) { filter: brightness(1.15); }
-    .btn--primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
     :global(.spin) {
         animation: spin 1s linear infinite;
