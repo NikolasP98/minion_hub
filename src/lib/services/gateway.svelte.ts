@@ -58,6 +58,9 @@ import {
   type Session,
   type EventFrame,
 } from '@minion-stack/shared';
+// Internal: event handlers below call loadChatHistory on stream errors. The
+// function now lives in the chat-rpc sub-module — function-only cycle, ESM-safe.
+import { loadChatHistory } from './gateway/chat-rpc';
 
 // ─── Pi-Agent Notification Preferences ────────────────────────────────────────
 
@@ -408,34 +411,6 @@ export function sendRequest(method: string, params?: unknown, timeoutMs = 15000)
  */
 export async function sendInstall(agentId: string, files: Record<string, string>): Promise<void> {
   await sendRequest('agent.install', { agentId, files });
-}
-
-export interface WhatsAppPairResult {
-  ok: boolean;
-  alreadyLinked?: boolean;
-  message?: string;
-}
-
-/**
- * Request WhatsApp QR pairing from the gateway.
- *
- * The gateway starts a web login and pushes the QR as a `channels.whatsapp.qr`
- * event, then a terminal `channels.whatsapp.paired` / `channels.whatsapp.pairFailed`
- * event once the scan resolves. The response returned here reports whether the
- * login could be started (e.g. `alreadyLinked` when no QR is needed).
- *
- * `accountId` is optional — when omitted the gateway derives it from `channelId`
- * (`gw:whatsapp:<id>`), falling back to the default account for the `pending`
- * wizard sentinel.
- */
-export async function requestWhatsAppPair(
-  channelId: string,
-  accountId?: string,
-): Promise<WhatsAppPairResult> {
-  const res = (await sendRequest('channels.whatsapp.pair', { channelId, accountId })) as
-    | WhatsAppPairResult
-    | undefined;
-  return res ?? { ok: false, message: 'No response from gateway' };
 }
 
 // ─── Internal ─────────────────────────────────────────────────────────────────
@@ -892,244 +867,9 @@ function onHelloOk(hello: HelloOk) {
   setTimeout(startPolling, 3000);
 }
 
-export async function fetchSessionPromptReport(sessionKey: string) {
-  return sendRequest('sessions.usage', {
-    key: sessionKey,
-    includeContextWeight: true,
-    limit: 1,
-  });
-}
 
-export async function fetchPromptPreview(agentId: string) {
-  return sendRequest('prompt.preview', { agentId });
-}
 
-export async function fetchKGSnapshot(agentId: string) {
-  return sendRequest('memory.snapshot', { agentId });
-}
 
-// ──────────────────────────────────────────────────────────────────────────
-// Phase D-0c — debug stepped-build RPCs (admin-only)
-// ──────────────────────────────────────────────────────────────────────────
-
-export async function debugSetSteppedBuild(
-  sessionKey: string,
-  enabled: boolean,
-  pauseTimeoutMs?: number,
-) {
-  return sendRequest('debug.setSteppedBuild', { sessionKey, enabled, pauseTimeoutMs });
-}
-
-export async function debugStepContinue(sessionKey: string, fromStep?: string) {
-  return sendRequest('debug.stepContinue', { sessionKey, fromStep });
-}
-
-export async function debugSkipAll(sessionKey: string) {
-  return sendRequest('debug.skipAll', { sessionKey });
-}
-
-// ──────────────────────────────────────────────────────────────────────────
-// Phase D-0f — externalized section prose read/write
-// ──────────────────────────────────────────────────────────────────────────
-
-export interface ProseReadParams {
-  layer: 'platform' | 'agent-type' | 'identity' | 'user' | 'session';
-  sectionId: string;
-  variant?: string;
-  scope: 'global' | 'agent';
-  /** Required when scope === 'agent'. The server derives the workspace path
-   * from this — clients no longer send a path (D-0f-1.5 security fix). */
-  agentId?: string;
-}
-
-export interface ProseReadResult {
-  path: string;
-  content: string;
-  exists: boolean;
-  scope: 'global' | 'agent';
-  /** D-0f-1.5: present when the section ships a Tier-1 default template
-   * and the file doesn't exist yet. Hub uses this to power the
-   * "Initialize from default" empty-state button. */
-  templateDefault?: string;
-  /** D-0g-2: filesystem mtime — pass back as expectedMtimeMs on the next
-   * write to enable optimistic-concurrency conflict detection. */
-  mtimeMs?: number;
-  /** D-0g-3: section's `cacheable` flag — when true, editing this prose
-   * invalidates the Anthropic prompt-cache prefix on the next request. */
-  cacheable?: boolean;
-}
-
-export async function readSectionProse(params: ProseReadParams): Promise<ProseReadResult> {
-  const res = await sendRequest('prompt.sections.prose.read', params);
-  return res as ProseReadResult;
-}
-
-export interface ProseWriteResult {
-  path: string;
-  bytes: number;
-  /** D-0g-2: post-write mtime to thread into the next write. */
-  mtimeMs?: number;
-}
-
-/** D-0g-2: thrown by writeSectionProse when the gateway returns CONFLICT.
- *  Carries the expected vs actual mtimes so the UI can show "file changed,
- *  reload?" without re-parsing the raw error. */
-export class ProseConflictError extends Error {
-  expectedMtimeMs: number | undefined;
-  actualMtimeMs: number | undefined;
-  constructor(message: string, expected: number | undefined, actual: number | undefined) {
-    super(message);
-    this.name = 'ProseConflictError';
-    this.expectedMtimeMs = expected;
-    this.actualMtimeMs = actual;
-  }
-}
-
-export async function writeSectionProse(
-  params: ProseReadParams & { content: string; expectedMtimeMs?: number },
-): Promise<ProseWriteResult> {
-  try {
-    const res = await sendRequest('prompt.sections.prose.write', params);
-    return res as ProseWriteResult;
-  } catch (err: unknown) {
-    // The shared GatewayClient surfaces ErrorShape via a thrown Error whose
-    // message/code carry the CONFLICT label. Extract details when possible.
-    const anyErr = err as { code?: string; details?: { expectedMtimeMs?: number; actualMtimeMs?: number }; message?: string };
-    if (anyErr?.code === 'CONFLICT') {
-      throw new ProseConflictError(
-        anyErr.message ?? 'prose file changed since last read',
-        anyErr.details?.expectedMtimeMs,
-        anyErr.details?.actualMtimeMs,
-      );
-    }
-    throw err;
-  }
-}
-
-// Phase D-0g-1: FILE-source inspector. Read-only list of workspace files
-// embedded by sections like project-context.
-export interface WorkspaceFileEntry {
-  path: string;
-  chars: number;
-  truncatedPreview: string;
-  exists: boolean;
-  synthetic?: boolean;
-}
-
-export async function listSectionWorkspaceFiles(agentId: string): Promise<WorkspaceFileEntry[]> {
-  const res = (await sendRequest('prompt.sections.workspaceFiles.list', { agentId })) as {
-    files: WorkspaceFileEntry[];
-  };
-  return res.files ?? [];
-}
-
-export function loadChatHistory(agentId: string): Promise<void> {
-  const chat = ensureAgentChat(agentId);
-  const isInitialLoad = chat.messages.length === 0;
-  if (isInitialLoad) chat.loading = true;
-  return sendRequest('chat.history', { sessionKey: `agent:${agentId}:main`, limit: 200 })
-    .then((res) => {
-      const incoming = Array.isArray((res as { messages?: never[] })?.messages)
-        ? (res as { messages: never[] }).messages
-        : [];
-      chat.messages.splice(0, chat.messages.length, ...incoming);
-    })
-    .catch(() => {})
-    .finally(() => {
-      chat.loading = false;
-    });
-}
-
-export function sendChatMsg(agentId: string) {
-  const chat = ensureAgentChat(agentId);
-  const msg = chat.inputText.trim();
-  if (!msg || chat.sending || !conn.connected) return;
-
-  const sessionKey = `agent:${agentId}:main`;
-  const runId = uuid();
-
-  pushChatMessage(chat, {
-    role: 'user',
-    content: [{ type: 'text', text: msg }],
-    timestamp: Date.now(),
-  } as never);
-  chat.inputText = '';
-  chat.sending = true;
-  chat.runId = runId;
-  chat.stream = '';
-  chat.lastError = null;
-
-  sendRequest('chat.send', { sessionKey, message: msg, deliver: false, idempotencyKey: runId })
-    .then(() => {
-      chat.sending = false;
-    })
-    .catch((e) => {
-      chat.runId = null;
-      chat.stream = null;
-      chat.sending = false;
-      chat.lastError = String(e);
-      // Sync in case the message was processed despite the error
-      loadChatHistory(agentId);
-    });
-}
-
-/**
- * Spoken-call equivalent of sendChatMsg. Routes a transcribed utterance through
- * the same agent + main session (so prompt engineering, tools and context match
- * text chat), but prepends a voice-call header instructing short spoken replies —
- * mirroring the gateway voice-call extension's composed-message approach. The
- * clean transcript (not the header) is what shows in the chat thread, so the
- * call reads naturally in the transcript.
- */
-export const VOICE_TURN_PREFIX =
-  '[Voice call — the user is speaking to you out loud and will hear your reply spoken aloud. ' +
-  'Reply in short, natural, spoken sentences (one to three). ' +
-  'No markdown, lists, code blocks or emoji — plain spoken words only.]\n\n';
-
-/**
- * Strip the voice-call header so the transcript reads cleanly in the UI.
- * Tolerant of whitespace drift after the gateway round-trips the message:
- * removes any leading `[Voice call …]` block, not just the exact constant.
- */
-export function stripVoiceTurnPrefix(text: string): string {
-  return text.replace(/^\s*\[Voice call[^\]]*\]\s*/, '');
-}
-
-export function sendVoiceTurn(agentId: string, transcript: string) {
-  const chat = ensureAgentChat(agentId);
-  const clean = transcript.trim();
-  if (!clean || chat.sending || !conn.connected) return;
-
-  const sessionKey = `agent:${agentId}:main`;
-  const runId = uuid();
-
-  pushChatMessage(chat, {
-    role: 'user',
-    content: [{ type: 'text', text: clean }],
-    timestamp: Date.now(),
-  } as never);
-  chat.sending = true;
-  chat.runId = runId;
-  chat.stream = '';
-  chat.lastError = null;
-
-  sendRequest('chat.send', {
-    sessionKey,
-    message: VOICE_TURN_PREFIX + clean,
-    deliver: false,
-    idempotencyKey: runId,
-  })
-    .then(() => {
-      chat.sending = false;
-    })
-    .catch((e) => {
-      chat.runId = null;
-      chat.stream = null;
-      chat.sending = false;
-      chat.lastError = String(e);
-      loadChatHistory(agentId);
-    });
-}
 
 function startPolling() {
   stopPolling();
@@ -1210,3 +950,9 @@ export function isWsReady(): boolean {
   const sock = (client as unknown as { ws: { readyState: number } | null }).ws;
   return sock !== null && sock.readyState === 1 /* OPEN */;
 }
+
+// ── Re-exports from sub-modules (see ./gateway/) ─────────────────────────────
+export * from './gateway/prose';
+export * from './gateway/debug-rpc';
+export * from './gateway/whatsapp';
+export * from './gateway/chat-rpc';
