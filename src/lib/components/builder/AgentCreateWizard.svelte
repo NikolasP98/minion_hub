@@ -6,18 +6,17 @@
         Check,
         Loader2,
         Bot,
-        Wrench,
     } from "lucide-svelte";
     import * as steps from "@zag-js/steps";
     import { useMachine, normalizeProps } from "@zag-js/svelte";
-    import EmojiPicker from "./EmojiPicker.svelte";
-    import Combobox from "$lib/components/ui/Combobox.svelte";
     import { sendRequest } from "$lib/services/gateway.svelte";
     import { conn } from "$lib/state/gateway/connection.svelte";
     import { hostsState } from "$lib/state/features/hosts.svelte";
     import type { SkillStatusEntry, SkillStatusReport } from "$lib/types/skills";
     import type { ToolStatusEntry, ToolsStatusReport } from "$lib/types/tools";
     import * as m from '$lib/paraglide/messages';
+    import Step0Identity from "./_agent-create-wizard/Step0Identity.svelte";
+    import Step1SkillsTools from "./_agent-create-wizard/Step1SkillsTools.svelte";
 
     // ── Types ────────────────────────────────────────────────────────────────
     interface BuiltSkill {
@@ -403,214 +402,43 @@
 
             <!-- Step content -->
             <div class="step-content-area">
-                <!-- Step 0: Identity -->
-                <div {...api.getContentProps({ index: 0 })}>
-                    <div class="field">
-                        <label class="field-label" for="agent-name">
-                            {m.agent_name()} <span class="required">*</span>
-                        </label>
-                        <div class="name-row">
-                            <EmojiPicker value={emoji} onSelect={(e) => { emoji = e; }} size="md" />
-                            <input
-                                id="agent-name"
-                                class="field-input name-field"
-                                type="text"
-                                bind:value={name}
-                                placeholder={m.builder_agentNamePlaceholder()}
-                                required
-                            />
-                        </div>
-                        {#if name.length > 0 && name.trim().length < 3}
-                            <span class="field-error">{m.builder_nameTooShort()}</span>
-                        {/if}
-                    </div>
+                <Step0Identity
+                    bind:name
+                    bind:emoji
+                    bind:model
+                    {modelItems}
+                    {defaultModel}
+                    contentProps={api.getContentProps({ index: 0 })}
+                />
 
-                    <div class="field">
-                        <Combobox
-                            id="wizard-model"
-                            items={modelItems}
-                            itemToValue={(m) => m.id}
-                            itemToString={(m) => m.name}
-                            bind:value={model}
-                            label="Model"
-                            placeholder={m.builder_searchModels()}
-                        >
-                            {#snippet item({ item: mi, selected, itemTextProps })}
-                                <span
-                                    class="model-item-name"
-                                    class:model-item-selected={selected}
-                                    {...itemTextProps}
-                                >{mi.name}</span>
-                                {#if mi.id === defaultModel}
-                                    <span class="model-badge">{m.builder_modelDefault()}</span>
-                                {/if}
-                                <span class="model-item-id">{mi.id}</span>
-                            {/snippet}
-                        </Combobox>
-                    </div>
-                </div>
-
-                <!-- Step 1: Skills & Tools -->
-                <div {...api.getContentProps({ index: 1 })}>
-                    <span class="field-helper">
-                        {m.builder_selectSkillsTools({ count: totalSelected })}
-                    </span>
-
-                    {#if skillsLoading || toolsLoading}
-                        <div class="cap-loading">
-                            <Loader2 size={18} class="spin" />
-                            <span>{m.builder_loadingCapabilities()}</span>
-                        </div>
-                    {:else}
-                        <!-- Built Skills (custom) -->
-                        {#if publishedSkills.length > 0}
-                            <div class="cap-group">
-                                <span class="cap-group-label">{m.builder_customSkills()}</span>
-                                <div class="icon-grid">
-                                    {#each publishedSkills as skill (skill.id)}
-                                        {@const selected = selectedBuiltSkillIds.includes(skill.id)}
-                                        <button
-                                            type="button"
-                                            class="icon-btn"
-                                            class:selected
-                                            onclick={() => toggleBuiltSkill(skill.id)}
-                                            onmouseenter={(e) => showPopover('built-skill', skill.id, e)}
-                                            onmousemove={trackCursor}
-                                            onmouseleave={hidePopover}
-                                            aria-label={skill.name}
-                                        >
-                                            <span class="icon-emoji">{skill.emoji || '\u{1F4D6}'}</span>
-                                            {#if selected}<span class="icon-check"><Check size={10} /></span>{/if}
-                                        </button>
-                                    {/each}
-                                </div>
-                            </div>
-                        {/if}
-
-                        <!-- Gateway Skills grouped by source -->
-                        {#each [...skillsBySource.entries()] as [source, skills] (source)}
-                            <div class="cap-group">
-                                <span class="cap-group-label">
-                                    {source === 'bundled' ? m.builder_builtInSkills() : source}
-                                </span>
-                                <div class="icon-grid">
-                                    {#each skills as skill (skill.skillKey)}
-                                        {@const selected = selectedGatewaySkillIds.includes(skill.skillKey)}
-                                        <button
-                                            type="button"
-                                            class="icon-btn"
-                                            class:selected
-                                            class:icon-disabled={skill.disabled}
-                                            onclick={() => toggleGatewaySkill(skill.skillKey)}
-                                            onmouseenter={(e) => showPopover('skill', skill.skillKey, e)}
-                                            onmousemove={trackCursor}
-                                            onmouseleave={hidePopover}
-                                            aria-label={skill.name}
-                                        >
-                                            <span class="icon-emoji">{skill.emoji || '\u{1F4D6}'}</span>
-                                            {#if selected}<span class="icon-check"><Check size={10} /></span>{/if}
-                                        </button>
-                                    {/each}
-                                </div>
-                            </div>
-                        {/each}
-
-                        <!-- Ineligible skills -->
-                        {#if ineligibleSkills.length > 0}
-                            <div class="cap-group">
-                                <span class="cap-group-label cap-group-label--dim">{m.builder_unavailable({ count: ineligibleSkills.length })}</span>
-                                <div class="icon-grid">
-                                    {#each ineligibleSkills as skill (skill.skillKey)}
-                                        <button
-                                            type="button"
-                                            class="icon-btn icon-ineligible"
-                                            disabled
-                                            onmouseenter={(e) => showPopover('skill', skill.skillKey, e)}
-                                            onmousemove={trackCursor}
-                                            onmouseleave={hidePopover}
-                                            aria-label="{skill.name} ({m.builder_unavailableLabel()})"
-                                        >
-                                            <span class="icon-emoji">{skill.emoji || '\u{1F4D6}'}</span>
-                                        </button>
-                                    {/each}
-                                </div>
-                            </div>
-                        {/if}
-
-                        <!-- Tools grouped by group tag -->
-                        {#if gatewayTools.length > 0}
-                            {#each [...toolsByGroup.entries()] as [group, tools] (group)}
-                                <div class="cap-group">
-                                    <span class="cap-group-label">
-                                        <Wrench size={10} class="cap-group-icon" />
-                                        {group}
-                                    </span>
-                                    <div class="icon-grid">
-                                        {#each tools as tool (tool.id)}
-                                            {@const selected = selectedToolIds.includes(tool.id)}
-                                            <button
-                                                type="button"
-                                                class="icon-btn icon-btn--tool"
-                                                class:selected
-                                                onclick={() => toggleTool(tool.id)}
-                                                onmouseenter={(e) => showPopover('tool', tool.id, e)}
-                                                onmousemove={trackCursor}
-                                                onmouseleave={hidePopover}
-                                                aria-label={tool.id}
-                                            >
-                                                <span class="icon-tool-label">{tool.id.slice(0, 2)}</span>
-                                                {#if selected}<span class="icon-check"><Check size={10} /></span>{/if}
-                                            </button>
-                                        {/each}
-                                    </div>
-                                </div>
-                            {/each}
-                        {/if}
-
-                        {#if gatewaySkills.length === 0 && publishedSkills.length === 0 && gatewayTools.length === 0}
-                            <div class="cap-empty">
-                                {m.builder_noCapabilities()}
-                            </div>
-                        {/if}
-                    {/if}
-
-                    <!-- Summary -->
-                    <div class="summary">
-                        <div class="summary-row">
-                            <span class="summary-emoji">{emoji}</span>
-                            <span class="summary-name">{name || m.builder_untitled()}</span>
-                        </div>
-                        {#if model}
-                            <div class="summary-detail">
-                                <code>{model}</code>
-                            </div>
-                        {/if}
-                        <div class="summary-detail">
-                            {m.builder_capabilitiesSelected({ count: totalSelected })}
-                        </div>
-                    </div>
-
-                    <!-- Cursor-following tooltip -->
-                    {#if hoveredItem && popoverData && tooltipVisible}
-                        <div
-                            class="cursor-tooltip"
-                            style="left: {tooltipPos.x}px; top: {tooltipPos.y}px;"
-                        >
-                            <div class="tooltip-inner">
-                                {#if popoverData.emoji}
-                                    <span class="tooltip-emoji">{popoverData.emoji}</span>
-                                {/if}
-                                <span class="tooltip-name">{popoverData.name}</span>
-                                {#if popoverData.desc}
-                                    <span class="tooltip-desc">{popoverData.desc}</span>
-                                {/if}
-                                {#if popoverData.badge}
-                                    <span class="tooltip-badge">{popoverData.badge}</span>
-                                {/if}
-                            </div>
-                        </div>
-                    {/if}
-                </div>
+                <Step1SkillsTools
+                    contentProps={api.getContentProps({ index: 1 })}
+                    {skillsLoading}
+                    {toolsLoading}
+                    {publishedSkills}
+                    {gatewaySkills}
+                    {gatewayTools}
+                    {ineligibleSkills}
+                    {skillsBySource}
+                    {toolsByGroup}
+                    {selectedBuiltSkillIds}
+                    {selectedGatewaySkillIds}
+                    {selectedToolIds}
+                    {totalSelected}
+                    {emoji}
+                    {name}
+                    {model}
+                    {hoveredItem}
+                    {tooltipPos}
+                    {tooltipVisible}
+                    {popoverData}
+                    {toggleBuiltSkill}
+                    {toggleGatewaySkill}
+                    {toggleTool}
+                    {showPopover}
+                    {trackCursor}
+                    {hidePopover}
+                />
             </div>
         </div>
 
@@ -827,341 +655,8 @@
         z-index: 1;
     }
 
-    .step-content-area > [data-state="closed"] {
+    .step-content-area > :global([data-state="closed"]) {
         display: none;
-    }
-
-    /* ── Form fields ─────────────────────────────────────────────────────── */
-    .field {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        margin-bottom: 16px;
-    }
-    .field:last-child {
-        margin-bottom: 0;
-    }
-
-    .field-label {
-        font-size: 12px;
-        font-weight: 600;
-        color: var(--color-foreground);
-    }
-
-    .required {
-        color: var(--color-accent);
-    }
-
-    .field-helper {
-        font-size: 11px;
-        color: var(--color-muted);
-        margin-bottom: 6px;
-    }
-
-    .field-error {
-        font-size: 11px;
-        color: var(--color-destructive, #ef4444);
-    }
-
-    .field-input {
-        background: var(--color-bg2);
-        border: 1px solid var(--color-border);
-        border-radius: 6px;
-        color: var(--color-foreground);
-        font-family: inherit;
-        font-size: 13px;
-        padding: 8px 10px;
-        outline: none;
-        transition:
-            border-color 0.15s,
-            box-shadow 0.15s;
-    }
-    .field-input:focus {
-        border-color: var(--color-accent);
-        box-shadow: 0 0 0 2px
-            color-mix(in srgb, var(--color-accent) 20%, transparent);
-    }
-    .field-input::placeholder {
-        color: var(--color-muted);
-    }
-
-    /* ── Name row with emoji ───────────────────────────────────────────── */
-    .name-row {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-    }
-
-    .name-field {
-        flex: 1;
-    }
-
-    /* ── Model item styles ─────────────────────────────────────────────── */
-    .model-item-name {
-        flex: 1;
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        color: var(--color-foreground);
-    }
-    .model-item-selected {
-        color: var(--color-accent);
-        font-weight: 600;
-    }
-
-    .model-badge {
-        font-size: 10px;
-        color: var(--color-accent);
-        background: color-mix(in srgb, var(--color-accent) 15%, transparent);
-        border-radius: 3px;
-        padding: 1px 5px;
-        flex-shrink: 0;
-    }
-
-    .model-item-id {
-        color: var(--color-muted);
-        font-size: 11px;
-        font-family: "JetBrains Mono", "Fira Code", monospace;
-        flex-shrink: 0;
-    }
-
-    /* ── Capability groups ──────────────────────────────────────────────── */
-    .cap-loading {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-        padding: 24px;
-        color: var(--color-muted);
-        font-size: 13px;
-    }
-
-    .cap-empty {
-        padding: 24px;
-        text-align: center;
-        color: var(--color-muted);
-        font-size: 13px;
-        background: var(--color-bg2);
-        border: 1px dashed var(--color-border);
-        border-radius: 8px;
-        margin-top: 8px;
-    }
-
-    .cap-group {
-        margin-bottom: 14px;
-    }
-
-    .cap-group-label {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        font-size: 10px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: var(--color-muted);
-        margin-bottom: 6px;
-    }
-
-    .cap-group-label--dim {
-        opacity: 0.6;
-    }
-
-    :global(.cap-group-icon) {
-        opacity: 0.6;
-    }
-
-    /* ── Icon grid ──────────────────────────────────────────────────────── */
-    .icon-grid {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        justify-content: flex-start;
-    }
-
-    .icon-btn {
-        position: relative;
-        width: 36px;
-        height: 36px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: var(--color-bg2);
-        border: 1.5px solid var(--color-border);
-        border-radius: 8px;
-        cursor: pointer;
-        transition: all 0.15s;
-        font-family: inherit;
-        padding: 0;
-        flex-shrink: 0;
-    }
-    .icon-btn:hover {
-        border-color: var(--color-accent);
-        background: color-mix(in srgb, var(--color-accent) 6%, var(--color-bg2));
-        transform: translateY(-1px);
-    }
-    .icon-btn.selected {
-        border-color: var(--color-accent);
-        background: color-mix(in srgb, var(--color-accent) 12%, var(--color-bg2));
-        box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--color-accent) 30%, transparent);
-    }
-
-    .icon-btn.icon-disabled {
-        opacity: 0.4;
-        cursor: not-allowed;
-    }
-
-    .icon-btn.icon-ineligible {
-        opacity: 0.25;
-        cursor: default;
-    }
-
-    .icon-btn--tool {
-        background: var(--color-bg2);
-    }
-
-    .icon-emoji {
-        font-size: 16px;
-        line-height: 1;
-    }
-
-    .icon-tool-label {
-        font-size: 10px;
-        font-weight: 700;
-        font-family: "JetBrains Mono", "Fira Code", monospace;
-        color: var(--color-muted);
-        text-transform: lowercase;
-        line-height: 1;
-    }
-    .icon-btn.selected .icon-tool-label {
-        color: var(--color-accent);
-    }
-
-    .icon-check {
-        position: absolute;
-        top: -4px;
-        right: -4px;
-        width: 14px;
-        height: 14px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: var(--color-accent);
-        color: white;
-        border-radius: 50%;
-        line-height: 1;
-    }
-
-    /* ── Popover ─────────────────────────────────────────────────────────── */
-    .cursor-tooltip {
-        position: fixed;
-        z-index: 9999;
-        transform: translate(12px, -50%);
-        pointer-events: none;
-        animation: tooltip-in 0.2s cubic-bezier(0.34, 1.4, 0.64, 1) forwards;
-        transition: left 0.08s ease-out, top 0.08s ease-out;
-    }
-
-    @keyframes tooltip-in {
-        from {
-            opacity: 0;
-            transform: translate(12px, -50%) scale(0.9) translateY(4px);
-        }
-        to {
-            opacity: 1;
-            transform: translate(12px, -50%) scale(1) translateY(0);
-        }
-    }
-
-    .tooltip-inner {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 3px;
-        background: var(--color-bg);
-        border: 1px solid var(--color-border);
-        border-radius: 8px;
-        padding: 8px 12px;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
-        backdrop-filter: blur(12px);
-        max-width: 220px;
-        text-align: center;
-    }
-
-    .tooltip-emoji {
-        font-size: 18px;
-        line-height: 1;
-    }
-
-    .tooltip-name {
-        font-size: 12px;
-        font-weight: 700;
-        color: var(--color-foreground);
-        line-height: 1.2;
-    }
-
-    .tooltip-desc {
-        font-size: 10px;
-        color: var(--color-muted);
-        line-height: 1.3;
-        display: -webkit-box;
-        -webkit-line-clamp: 3;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-    }
-
-    .tooltip-badge {
-        font-size: 9px;
-        font-weight: 600;
-        color: var(--color-accent);
-        background: color-mix(in srgb, var(--color-accent) 15%, transparent);
-        border-radius: 3px;
-        padding: 1px 5px;
-        margin-top: 1px;
-    }
-
-    /* ── Summary ─────────────────────────────────────────────────────────── */
-    .summary {
-        background: var(--color-bg2);
-        border: 1px solid var(--color-border);
-        border-radius: 8px;
-        padding: 12px 14px;
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        margin-top: 16px;
-    }
-
-    .summary-row {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-
-    .summary-emoji {
-        font-size: 18px;
-        line-height: 1;
-    }
-
-    .summary-name {
-        font-size: 13px;
-        font-weight: 700;
-        color: var(--color-foreground);
-    }
-
-    .summary-detail {
-        font-size: 11px;
-        color: var(--color-muted);
-    }
-
-    .summary-detail code {
-        font-family: "JetBrains Mono", "Fira Code", monospace;
-        font-size: 10px;
-        background: var(--color-bg3, var(--color-bg));
-        padding: 1px 5px;
-        border-radius: 3px;
-        color: var(--color-foreground);
     }
 
     /* ── Footer ──────────────────────────────────────────────────────────── */
