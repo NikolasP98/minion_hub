@@ -60,20 +60,28 @@
         resumeInterruptedConversations,
         type WorkshopMessage,
     } from "$lib/workshop/gateway-bridge";
-    import SpeechBubble from "./SpeechBubble.svelte";
     import ContextMenu from "./ContextMenu.svelte";
     import RelationshipPrompt from "./RelationshipPrompt.svelte";
     import ConversationSidebar from "./ConversationSidebar.svelte";
-    import ConversationIndicator from "./ConversationIndicator.svelte";
     import ElementContextMenu from "./ElementContextMenu.svelte";
     import PinboardOverlay from "./PinboardOverlay.svelte";
     import MessageBoardOverlay from "./MessageBoardOverlay.svelte";
     import InboxOverlay from "./InboxOverlay.svelte";
     import RulebookOverlay from "./RulebookOverlay.svelte";
     import PortalOverlay from "./PortalOverlay.svelte";
-    import { thinkingAgents } from "$lib/state/workshop/workshop-conversations.svelte";
     import DebugOverlay from "./DebugOverlay.svelte";
-    import ToggleSwitch from "$lib/components/config/ToggleSwitch.svelte";
+    import TaskPromptDialog from "./_workshop-canvas/TaskPromptDialog.svelte";
+    import ConversationsToggleButton from "./_workshop-canvas/ConversationsToggleButton.svelte";
+    import WorkshopConfigPanel from "./_workshop-canvas/WorkshopConfigPanel.svelte";
+    import CanvasHtmlOverlays from "./_workshop-canvas/CanvasHtmlOverlays.svelte";
+    import type {
+        ContextMenuState,
+        RelationshipPromptState,
+        SpeechBubbleEntry,
+        TaskPromptDialogState,
+        ActiveOverlayState,
+        ElementContextMenuState,
+    } from "./_workshop-canvas/types";
     import { agentDisplayName } from "$lib/utils/agent-display";
     import { OfficeState } from "$lib/workshop/pixel/office-state";
     import { startGameLoop } from "$lib/workshop/pixel/game-loop";
@@ -140,57 +148,25 @@
     // Overlay state
     // ---------------------------------------------------------------------------
 
-    let contextMenu = $state<{
-        instanceId: string;
-        agentName: string;
-        x: number;
-        y: number;
-    } | null>(null);
+    let contextMenu = $state<ContextMenuState | null>(null);
 
-    let relationshipPrompt = $state<{
-        fromId: string;
-        toId: string;
-        fromName: string;
-        toName: string;
-        x: number;
-        y: number;
-    } | null>(null);
+    let relationshipPrompt = $state<RelationshipPromptState | null>(null);
 
     let sidebarOpen = $state(false);
     let selectedConversationId = $state<string | null>(null);
 
-    let speechBubbles = $state<
-        Array<{
-            id: string;
-            message: string;
-            agentName: string;
-            instanceId: string;
-        }>
-    >([]);
+    let speechBubbles = $state<SpeechBubbleEntry[]>([]);
 
     // Task prompt dialog state
-    let taskPromptDialog = $state<{
-        instanceId: string;
-        targetInstanceId?: string; // set for "Start conversation with..."
-        agentName: string;
-        mode: "assign" | "conversation";
-    } | null>(null);
+    let taskPromptDialog = $state<TaskPromptDialogState | null>(null);
     let taskPromptInput = $state("");
 
     // (messages now stored in conversationMessages state module)
 
     // Element overlay state
-    let activeOverlay = $state<{
-        elementId: string;
-        type: ElementType;
-    } | null>(null);
+    let activeOverlay = $state<ActiveOverlayState | null>(null);
 
-    let elementContextMenu = $state<{
-        instanceId: string;
-        label: string;
-        x: number;
-        y: number;
-    } | null>(null);
+    let elementContextMenu = $state<ElementContextMenuState | null>(null);
 
     // Active conversation handles for abort
     let activeHandles = $state<Map<string, { abort: () => void }>>(new Map());
@@ -1700,305 +1676,60 @@
     ></canvas>
 
     <!-- HTML Overlay: speech bubbles + conversation indicators (z-20 to render above pixel canvas z-10) -->
-    <div class="absolute inset-0 pointer-events-none overflow-hidden z-20">
-        {#each speechBubbles as bubble (bubble.id)}
-            {@const agent = workshopState.agents[bubble.instanceId]}
-            {#if agent}
-                {@const screenPos = worldToScreenAware(
-                    agent.position.x,
-                    agent.position.y,
-                )}
-                <SpeechBubble
-                    message={bubble.message}
-                    agentName={bubble.agentName}
-                    screenX={screenPos.x}
-                    screenY={screenPos.y}
-                    onFaded={() => removeBubble(bubble.id)}
-                />
-            {/if}
-        {/each}
-
-        <!-- Conversation indicators between agent pairs -->
-        {#each Object.values(workshopState.conversations).filter((c) => c.status === "active") as conv (conv.id)}
-            {#if conv.participantInstanceIds.length >= 2}
-                {@const instA =
-                    workshopState.agents[conv.participantInstanceIds[0]]}
-                {@const instB =
-                    workshopState.agents[conv.participantInstanceIds[1]]}
-                {#if instA && instB}
-                    {@const midWorldX =
-                        (instA.position.x + instB.position.x) / 2}
-                    {@const midWorldY =
-                        Math.min(instA.position.y, instB.position.y) - 30}
-                    {@const screenPos = worldToScreenAware(
-                        midWorldX,
-                        midWorldY,
-                    )}
-                    <ConversationIndicator
-                        x={screenPos.x}
-                        y={screenPos.y}
-                        type={conv.type}
-                        onclick={() => {
-                            sidebarOpen = true;
-                            selectedConversationId = conv.id;
-                        }}
-                    />
-                {/if}
-            {/if}
-        {/each}
-
-        <!-- Thinking/typing indicators -->
-        {#each Object.keys(thinkingAgents) as instanceId (instanceId)}
-            {@const agent = workshopState.agents[instanceId]}
-            {#if agent}
-                {@const pos = worldToScreenAware(
-                    agent.position.x,
-                    agent.position.y,
-                )}
-                <div
-                    class="absolute pointer-events-none z-20 thinking-indicator"
-                    style="left: {pos.x}px; top: {pos.y -
-                        55}px; transform: translateX(-50%);"
-                >
-                    <div
-                        class="flex items-center gap-0.5 px-2 py-1 rounded-full bg-bg2/80 backdrop-blur border border-border/50"
-                    >
-                        <span
-                            class="thinking-dot w-1.5 h-1.5 rounded-full bg-accent"
-                        ></span>
-                        <span
-                            class="thinking-dot w-1.5 h-1.5 rounded-full bg-accent"
-                            style="animation-delay: 0.2s"
-                        ></span>
-                        <span
-                            class="thinking-dot w-1.5 h-1.5 rounded-full bg-accent"
-                            style="animation-delay: 0.4s"
-                        ></span>
-                    </div>
-                </div>
-            {/if}
-        {/each}
-    </div>
+    <CanvasHtmlOverlays
+        {speechBubbles}
+        {worldToScreenAware}
+        onRemoveBubble={removeBubble}
+        onOpenConversation={(id) => {
+            sidebarOpen = true;
+            selectedConversationId = id;
+        }}
+    />
 
     <!-- Conversations toggle button -->
     {#if Object.keys(workshopState.conversations).length > 0}
         {@const activeCount = Object.values(workshopState.conversations).filter(
             (c) => c.status === "active",
         ).length}
-        <button
-            class="absolute top-3 right-3 z-40 flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-bg2/90 backdrop-blur border border-border text-[10px] font-mono text-foreground hover:bg-accent/10 hover:border-accent/30 transition-all"
+        <ConversationsToggleButton
+            {activeCount}
             onclick={() => {
                 sidebarOpen = !sidebarOpen;
             }}
-        >
-            <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-            >
-                <path
-                    d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
-                ></path>
-            </svg>
-            {m.workshop_chats()}
-            {#if activeCount > 0}
-                <span
-                    class="flex items-center justify-center w-4 h-4 rounded-full bg-green-500/20 text-green-400 text-[9px]"
-                >
-                    {activeCount}
-                </span>
-            {/if}
-        </button>
+        />
     {/if}
 
     <!-- Config panel (bottom-left) -->
-    <div class="absolute bottom-3 left-3 z-40 flex flex-col items-start gap-0">
-        {#if configOpen}
-            {@const agentCount = Object.keys(workshopState.agents).length}
-            {@const elementCount = Object.keys(workshopState.elements).length}
-            {@const activeConvs = Object.values(
-                workshopState.conversations,
-            ).filter((c) => c.status === "active").length}
-            {@const totalConvs = Object.keys(
-                workshopState.conversations,
-            ).length}
-            <div
-                class="mb-0 rounded-t bg-bg2/90 backdrop-blur border border-b-0 border-border text-[8px] font-mono p-1.5 min-w-[130px] space-y-0.5"
-            >
-                <!-- Stats: perf -->
-                <div
-                    class="text-[7px] text-muted/60 uppercase tracking-wider mb-1"
-                >
-                    {m.workshop_configPerf()}
-                </div>
-                <div class="flex justify-between gap-3">
-                    <span class="text-muted/70">{m.workshop_configFps()}</span>
-                    <span
-                        class="tabular-nums font-semibold {perfFps >= 50
-                            ? 'text-green-400'
-                            : perfFps >= 30
-                              ? 'text-yellow-400'
-                              : 'text-red-400'}">{perfFps}</span
-                    >
-                </div>
-                <div class="flex justify-between gap-3">
-                    <span class="text-muted/70">{m.workshop_configFrame()}</span>
-                    <span class="text-foreground/80 tabular-nums"
-                        >{perfFrameMs}ms</span
-                    >
-                </div>
-                {#if perfHeapMB !== null}
-                    <div class="flex justify-between gap-3">
-                        <span class="text-muted/70">{m.workshop_configHeap()}</span>
-                        <span class="text-foreground/80 tabular-nums"
-                            >{perfHeapMB} MB</span
-                        >
-                    </div>
-                {/if}
-
-                <!-- Stats: scene -->
-                <div class="border-t border-border/30 mt-1 pt-1 space-y-0.5">
-                    <div
-                        class="text-[7px] text-muted/60 uppercase tracking-wider mb-0.5"
-                    >
-                        {m.workshop_configScene()}
-                    </div>
-                    <div class="flex justify-between gap-3">
-                        <span class="text-muted/70">{m.workshop_configAgents()}</span>
-                        <span class="text-foreground/80 tabular-nums"
-                            >{agentCount}</span
-                        >
-                    </div>
-                    <div class="flex justify-between gap-3">
-                        <span class="text-muted/70">{m.workshop_configElements()}</span>
-                        <span class="text-foreground/80 tabular-nums"
-                            >{elementCount}</span
-                        >
-                    </div>
-                    <div class="flex justify-between gap-3">
-                        <span class="text-muted/70">{m.workshop_configConvs()}</span>
-                        <span class="text-foreground/80 tabular-nums">
-                            <span class="text-green-400">{activeConvs}</span
-                            >/{totalConvs}
-                        </span>
-                    </div>
-                </div>
-
-                <!-- View Mode -->
-                <div class="border-t border-border/30 mt-1 pt-1">
-                    <div
-                        class="text-[7px] text-muted/60 uppercase tracking-wider mb-1"
-                    >
-                        {m.workshop_configViewMode()}
-                    </div>
-                    <div class="flex rounded border border-border overflow-hidden">
-                        <button
-                            class="flex-1 px-2 py-0.5 text-[8px] transition-colors {workshopState
-                                .settings.viewMode === 'classic'
-                                ? 'bg-accent text-white'
-                                : 'bg-bg3 text-muted hover:text-foreground'}"
-                            onclick={() => setViewMode("classic")}
-                        >
-                            {m.workshop_viewClassic()}
-                        </button>
-                        <button
-                            class="flex-1 px-2 py-0.5 text-[8px] transition-colors {workshopState
-                                .settings.viewMode === 'habbo'
-                                ? 'bg-accent text-white'
-                                : 'bg-bg3 text-muted hover:text-foreground'}"
-                            onclick={() => setViewMode("habbo")}
-                        >
-                            {m.workshop_viewHabbo()}
-                        </button>
-                        <button
-                            class="flex-1 px-2 py-0.5 text-[8px] transition-colors {workshopState
-                                .settings.viewMode === 'pixel'
-                                ? 'bg-accent text-white'
-                                : 'bg-bg3 text-muted hover:text-foreground'}"
-                            onclick={() => setViewMode("pixel")}
-                        >
-                            {m.workshop_viewPixel()}
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Ropes -->
-                <div class="border-t border-border/30 mt-1 pt-1">
-                    <div
-                        class="text-[7px] text-muted/60 uppercase tracking-wider mb-1"
-                    >
-                        {m.workshop_configRopes()}
-                    </div>
-                    <div class="flex rounded border border-border overflow-hidden">
-                        <button
-                            class="flex-1 px-2 py-0.5 text-[8px] transition-colors {showChatRopes
-                                ? 'bg-accent/80 text-white'
-                                : 'bg-bg3 text-muted hover:text-foreground'}"
-                            onclick={() => {
-                                showChatRopes = !showChatRopes;
-                                localStorage.setItem(
-                                    "workshop:showChatRopes",
-                                    String(showChatRopes),
-                                );
-                            }}
-                        >
-                            {m.workshop_configRopesChat()}
-                        </button>
-                        <button
-                            class="flex-1 px-2 py-0.5 text-[8px] transition-colors {showRelationshipRopes
-                                ? 'bg-accent/80 text-white'
-                                : 'bg-bg3 text-muted hover:text-foreground'}"
-                            onclick={() => {
-                                showRelationshipRopes = !showRelationshipRopes;
-                                localStorage.setItem(
-                                    "workshop:showRelationshipRopes",
-                                    String(showRelationshipRopes),
-                                );
-                            }}
-                        >
-                            {m.workshop_configRopesRelations()}
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Debug -->
-                <div class="border-t border-border/30 mt-1 pt-1">
-                    <div class="flex items-center justify-between">
-                        <span class="text-[7px] text-muted/60 uppercase tracking-wider"
-                            >{m.workshop_configAgentDebug()}</span
-                        >
-                        <ToggleSwitch
-                            id="workshop-debug"
-                            checked={debugMode}
-                            onchange={(v) => {
-                                debugMode = v;
-                                localStorage.setItem(
-                                    "workshop:debugMode",
-                                    String(debugMode),
-                                );
-                            }}
-                        />
-                    </div>
-                </div>
-            </div>
-        {/if}
-        <button
-            class="flex items-center gap-1.5 px-2 py-1 text-[9px] font-mono text-muted hover:text-foreground transition-colors backdrop-blur border border-border bg-bg2/80 {configOpen
-                ? 'rounded-b rounded-t-none w-full justify-center'
-                : 'rounded'}"
-            onclick={() => {
-                configOpen = !configOpen;
-            }}
-        >
-            {configOpen ? `⚙ ${m.workshop_config()}` : "⚙"}
-        </button>
-    </div>
+    <WorkshopConfigPanel
+        {configOpen}
+        onToggleOpen={() => {
+            configOpen = !configOpen;
+        }}
+        {perfFps}
+        {perfFrameMs}
+        {perfHeapMB}
+        {showChatRopes}
+        onToggleChatRopes={() => {
+            showChatRopes = !showChatRopes;
+            localStorage.setItem(
+                "workshop:showChatRopes",
+                String(showChatRopes),
+            );
+        }}
+        {showRelationshipRopes}
+        onToggleRelationshipRopes={() => {
+            showRelationshipRopes = !showRelationshipRopes;
+            localStorage.setItem(
+                "workshop:showRelationshipRopes",
+                String(showRelationshipRopes),
+            );
+        }}
+        {debugMode}
+        onToggleDebugMode={(v) => {
+            debugMode = v;
+            localStorage.setItem("workshop:debugMode", String(debugMode));
+        }}
+    />
 
     {#if debugMode}
         <DebugOverlay worldToScreenFn={worldToScreenAware} />
@@ -2088,72 +1819,17 @@
 
     <!-- Task Prompt Dialog -->
     {#if taskPromptDialog}
-        <div
-            class="fixed inset-0 z-1100 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-        >
-            <div
-                class="bg-bg2 border border-border rounded-lg shadow-xl w-96 max-w-[90vw] p-4"
-            >
-                <h3 class="text-xs font-mono text-foreground mb-1">
-                    {taskPromptDialog.mode === "assign"
-                        ? m.workshop_assignTask()
-                        : m.workshop_startConversation()}
-                </h3>
-                <p class="text-[10px] text-muted mb-3">
-                    {taskPromptDialog.agentName}
-                </p>
-                <textarea
-                    class="w-full h-24 bg-bg1 border border-border rounded px-2 py-1.5 text-[11px] text-foreground font-mono resize-none focus:outline-none focus:ring-1 focus:ring-accent"
-                    placeholder={taskPromptDialog.mode === "assign"
-                        ? m.workshop_describeTask()
-                        : m.workshop_whatToDiscuss()}
-                    bind:value={taskPromptInput}
-                    onkeydown={(e) => {
-                        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                            handleTaskPromptSubmit();
-                        }
-                    }}
-                ></textarea>
-                <div class="flex justify-end gap-2 mt-3">
-                    <button
-                        class="px-3 py-1 text-[10px] font-mono text-muted hover:text-foreground border border-border rounded transition-colors"
-                        onclick={() => {
-                            taskPromptDialog = null;
-                            taskPromptInput = "";
-                        }}
-                    >
-                        {m.common_cancel()}
-                    </button>
-                    <button
-                        class="px-3 py-1 text-[10px] font-mono text-accent-foreground bg-accent hover:bg-accent/90 rounded transition-colors disabled:opacity-40"
-                        onclick={handleTaskPromptSubmit}
-                    >
-                        {taskPromptDialog.mode === "assign" ? m.workshop_send() : m.workshop_start()}
-                    </button>
-                </div>
-                <p class="text-[9px] text-muted mt-2">
-                    {m.workshop_taskPromptHint()}
-                </p>
-            </div>
-        </div>
+        <TaskPromptDialog
+            mode={taskPromptDialog.mode}
+            agentName={taskPromptDialog.agentName}
+            value={taskPromptInput}
+            onValueChange={(v) => (taskPromptInput = v)}
+            onSubmit={handleTaskPromptSubmit}
+            onCancel={() => {
+                taskPromptDialog = null;
+                taskPromptInput = "";
+            }}
+        />
     {/if}
 </div>
 
-<style>
-    .thinking-dot {
-        animation: thinking-bounce 1.4s infinite ease-in-out;
-    }
-
-    @keyframes thinking-bounce {
-        0%,
-        80%,
-        100% {
-            opacity: 0.25;
-            transform: scale(0.8);
-        }
-        40% {
-            opacity: 1;
-            transform: scale(1.2);
-        }
-    }
-</style>
