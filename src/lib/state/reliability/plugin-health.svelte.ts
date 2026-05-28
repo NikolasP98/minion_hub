@@ -7,6 +7,7 @@
  */
 
 import { sendRequest } from '$lib/services/gateway.svelte';
+import { createAsyncResource, messageError } from '../async.svelte';
 
 export interface PluginEntry {
   pluginId: string;
@@ -35,14 +36,8 @@ export interface PluginHealthSnapshot {
 }
 
 export function createPluginHealthState() {
-  let snapshot = $state<PluginHealthSnapshot | null>(null);
-  let loading = $state(true);
-  let error = $state<string | null>(null);
-
-  async function load(_serverId: string) {
-    loading = true;
-    error = null;
-    try {
+  const resource = createAsyncResource<PluginHealthSnapshot, [string]>(
+    async (_serverId: string) => {
       // Fetch recent gateway-category events via WS (last 24h, generous window)
       const since = Date.now() - 24 * 60 * 60 * 1000;
       const data = (await sendRequest('reliability.events', {
@@ -62,8 +57,7 @@ export function createPluginHealthState() {
       // Find the latest summary event (= latest gateway boot)
       const summaryEvents = events.filter((e) => e.event === 'plugins_loaded_summary');
       if (summaryEvents.length === 0) {
-        snapshot = { summary: null, plugins: [] };
-        return;
+        return { summary: null, plugins: [] };
       }
 
       const latestSummary = summaryEvents.reduce((a, b) => (a.timestamp > b.timestamp ? a : b));
@@ -102,24 +96,21 @@ export function createPluginHealthState() {
         };
       });
 
-      snapshot = { summary, plugins };
-    } catch (e) {
-      error = e instanceof Error ? e.message : String(e);
-    } finally {
-      loading = false;
-    }
-  }
+      return { summary, plugins };
+    },
+    { initialLoading: true, formatError: messageError },
+  );
 
   return {
     get snapshot() {
-      return snapshot;
+      return resource.data;
     },
     get loading() {
-      return loading;
+      return resource.loading;
     },
     get error() {
-      return error;
+      return resource.error;
     },
-    load,
+    load: resource.load,
   };
 }

@@ -5,6 +5,8 @@
  * grouped by (skillName, status).
  */
 
+import { createAsyncResource, messageError } from '../async.svelte';
+
 export type SkillStatus = 'ok' | 'auth_error' | 'timeout' | 'error';
 
 export interface SkillStatRow {
@@ -27,32 +29,26 @@ export interface SkillAggregate {
 }
 
 export function createSkillStatsState() {
-  let bySkill = $state<SkillStatRow[]>([]);
-  let loading = $state(true);
-  let error = $state<string | null>(null);
-
-  async function load(serverId: string) {
-    loading = true;
-    error = null;
-    try {
+  const resource = createAsyncResource<SkillStatRow[], [string]>(
+    async (serverId: string) => {
       const res = await globalThis.fetch(
         `/api/metrics/skill-stats?serverId=${encodeURIComponent(serverId)}&summary=true`,
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      bySkill = data.bySkill ?? [];
-    } catch (e) {
-      error = e instanceof Error ? e.message : String(e);
-    } finally {
-      loading = false;
-    }
-  }
+      return data.bySkill ?? [];
+    },
+    { initialLoading: true, formatError: messageError },
+  );
+
+  const load = resource.load;
+  const bySkill = () => resource.data ?? [];
 
   /** Aggregate rows into per-skill summaries, sorted by total descending. */
   function aggregate(): SkillAggregate[] {
     const map = new Map<string, SkillAggregate>();
 
-    for (const row of bySkill) {
+    for (const row of bySkill()) {
       let agg = map.get(row.skillName);
       if (!agg) {
         agg = {
@@ -93,13 +89,13 @@ export function createSkillStatsState() {
 
   return {
     get bySkill() {
-      return bySkill;
+      return bySkill();
     },
     get loading() {
-      return loading;
+      return resource.loading;
     },
     get error() {
-      return error;
+      return resource.error;
     },
     load,
     aggregate,

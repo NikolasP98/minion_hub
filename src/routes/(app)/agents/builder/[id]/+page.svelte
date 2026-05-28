@@ -3,6 +3,7 @@
     import { ArrowLeft, Bot, Eye, Grip, Loader2, Check, Upload, Circle, Plus, X, BookOpen } from "lucide-svelte";
     import { onMount } from "svelte";
     import EmojiPicker from "$lib/components/builder/EmojiPicker.svelte";
+    import { createAutoSave } from "$lib/state/async.svelte";
     import * as m from '$lib/paraglide/messages';
 
     const agentId = $derived(page.params.id);
@@ -22,7 +23,7 @@
     let saving = $state(false);
     let dirty = $state(false);
     let publishing = $state(false);
-    let saveTimer: ReturnType<typeof setTimeout> | null = null;
+    const autoSave = createAutoSave(() => saveAgent(), 2000);
 
     // ── Skill slots ─────────────────────────────────────────────────────
     interface SkillSlot { skillId: string; position: number; }
@@ -99,8 +100,7 @@
     // ── Auto-save (debounced 2s) ────────────────────────────────────────
     function scheduleSave() {
         dirty = true;
-        if (saveTimer) clearTimeout(saveTimer);
-        saveTimer = setTimeout(() => saveAgent(), 2000);
+        autoSave.schedule();
     }
 
     async function saveAgent() {

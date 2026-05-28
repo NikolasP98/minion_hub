@@ -24,6 +24,7 @@
 	} from '$lib/state/features/voice-call.svelte';
 	import { extractText } from '$lib/utils/text';
 	import { getFeedToday, type ObservationRow } from '$lib/services/my-agent-rpc';
+	import { createConnectedFetch } from '$lib/state/async.svelte';
 	import { tick } from 'svelte';
 	import type { PageData } from './$types';
 
@@ -81,16 +82,8 @@
 	}
 
 	// Fetch once the WS connection is up. Re-fetch if the connection drops + recovers.
-	let fetchedForConnection = false;
-	$effect(() => {
-		if (conn.connected && !fetchedForConnection) {
-			fetchedForConnection = true;
-			void loadFeed();
-		}
-		if (!conn.connected) {
-			fetchedForConnection = false;
-		}
-	});
+	const feedFetch = createConnectedFetch(() => conn.connected, () => void loadFeed());
+	$effect(() => feedFetch.sync());
 
 	// ─── Personal-agent chat (same agent + thread as the floating assistant) ───
 	const agentId = $derived(assistant.personalAgentId);

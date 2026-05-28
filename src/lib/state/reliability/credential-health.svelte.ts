@@ -5,6 +5,8 @@
  * (e.g. { providers: [{ provider, profileId, status, expiresAt }] }).
  */
 
+import { createAsyncResource, messageError } from '../async.svelte';
+
 export interface CredentialProfile {
   provider: string;
   profileId: string;
@@ -25,26 +27,20 @@ export interface ParsedSnapshot {
 }
 
 export function createCredentialHealthState() {
-  let snapshots = $state<CredentialSnapshot[]>([]);
-  let loading = $state(true);
-  let error = $state<string | null>(null);
-
-  async function load(serverId: string) {
-    loading = true;
-    error = null;
-    try {
+  const resource = createAsyncResource<CredentialSnapshot[], [string]>(
+    async (serverId: string) => {
       const res = await globalThis.fetch(
         `/api/metrics/credential-health?serverId=${encodeURIComponent(serverId)}&limit=1`,
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      snapshots = data.snapshots ?? [];
-    } catch (e) {
-      error = e instanceof Error ? e.message : String(e);
-    } finally {
-      loading = false;
-    }
-  }
+      return data.snapshots ?? [];
+    },
+    { initialLoading: true, formatError: messageError },
+  );
+
+  const load = resource.load;
+  const snapshots = () => resource.data ?? [];
 
   function recomputeStatus(p: CredentialProfile): CredentialProfile {
     if (p.expiresAt == null) return p;
@@ -55,8 +51,9 @@ export function createCredentialHealthState() {
   }
 
   function parseLatest(): ParsedSnapshot | null {
-    if (snapshots.length === 0) return null;
-    const raw = snapshots[0];
+    const snaps = snapshots();
+    if (snaps.length === 0) return null;
+    const raw = snaps[0];
     try {
       const parsed = JSON.parse(raw.snapshotJson);
       const providers: CredentialProfile[] = Array.isArray(parsed.providers)
@@ -73,13 +70,13 @@ export function createCredentialHealthState() {
 
   return {
     get snapshots() {
-      return snapshots;
+      return snapshots();
     },
     get loading() {
-      return loading;
+      return resource.loading;
     },
     get error() {
-      return error;
+      return resource.error;
     },
     load,
     parseLatest,

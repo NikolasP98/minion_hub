@@ -22,6 +22,7 @@
     import { onMount } from "svelte";
     import { conn } from "$lib/state/gateway/connection.svelte";
     import { sendRequest } from "$lib/services/gateway.svelte";
+    import { createAutoSave } from "$lib/state/async.svelte";
     import { isAdmin as hubIsAdmin } from "$lib/state/features/user.svelte";
     import type { ToolStatusEntry, ToolsStatusReport } from "$lib/types/tools";
     import * as m from '$lib/paraglide/messages';
@@ -45,7 +46,7 @@
     let saving = $state(false);
     let dirty = $state(false);
     let publishing = $state(false);
-    let saveTimer: ReturnType<typeof setTimeout> | null = null;
+    const autoSave = createAutoSave(() => saveTool(), 2000);
 
     // ── Console state ───────────────────────────────────────────────────
     let consoleLines = $state<Array<{ text: string; type: "stdout" | "stderr" | "system" }>>([
@@ -77,8 +78,7 @@
     function scheduleSave() {
         if (isGatewayTool) return;
         dirty = true;
-        if (saveTimer) clearTimeout(saveTimer);
-        saveTimer = setTimeout(() => saveTool(), 2000);
+        autoSave.schedule();
     }
 
     async function saveTool() {
