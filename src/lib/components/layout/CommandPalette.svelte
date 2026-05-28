@@ -172,7 +172,11 @@
             </div>
 
             <!-- Results -->
-            <div class="max-h-72 overflow-y-auto py-2">
+            <div
+                class="max-h-72 overflow-y-auto py-2"
+                role="listbox"
+                aria-label={m.command_searchPlaceholder()}
+            >
                 {#if flatCommands.length === 0}
                     <div class="px-4 py-8 text-center text-sm text-muted">
                         {m.command_noResults()}

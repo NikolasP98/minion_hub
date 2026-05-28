@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { onDestroy } from "svelte";
     import { ArrowLeft, Bot, Eye, Loader2, Check, Upload, Circle } from "lucide-svelte";
     import * as m from '$lib/paraglide/messages';
 
@@ -12,11 +13,42 @@
     }
 
     let { name, status, saving, dirty, publishing, onPublish }: Props = $props();
+
+    // Track last successful save: saving→false while dirty===false means the save just completed.
+    let lastSavedAt = $state<number | null>(null);
+    let prevSaving = $state(false);
+    let nowTick = $state(Date.now());
+
+    $effect(() => {
+        if (prevSaving && !saving && !dirty) {
+            lastSavedAt = Date.now();
+        }
+        prevSaving = saving;
+    });
+
+    // Heartbeat to refresh the "Saved Xs ago" label.
+    const interval = setInterval(() => {
+        nowTick = Date.now();
+    }, 1000);
+    onDestroy(() => clearInterval(interval));
+
+    function relativeSaved(ts: number | null, _tick: number): string {
+        if (ts == null) return m.builder_saved();
+        const secs = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+        if (secs < 5) return m.builder_saved();
+        if (secs < 60) return `${m.builder_saved()} ${secs}s ago`;
+        const mins = Math.floor(secs / 60);
+        if (mins < 60) return `${m.builder_saved()} ${mins}m ago`;
+        const hrs = Math.floor(mins / 60);
+        return `${m.builder_saved()} ${hrs}h ago`;
+    }
+
+    const savedLabel = $derived(relativeSaved(lastSavedAt, nowTick));
 </script>
 
 <div class="editor-toolbar">
     <div class="flex items-center gap-3 min-w-0">
-        <a href="/agents" class="back-link" title="Back to Agents">
+        <a href="/agents" class="back-link" title="Back to Agents" aria-label="Back to Agents">
             <ArrowLeft size={16} />
         </a>
 
@@ -34,7 +66,13 @@
     </div>
 
     <div class="flex items-center gap-2">
-        <span class="save-indicator" title={saving ? m.builder_saving() : dirty ? m.builder_unsavedChanges() : m.builder_allSaved()}>
+        <span
+            class="save-indicator"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            title={saving ? m.builder_saving() : dirty ? m.builder_unsavedChanges() : savedLabel}
+        >
             {#if saving}
                 <Loader2 size={12} class="loading-spinner" />
                 <span>{m.builder_saving()}</span>
@@ -43,7 +81,7 @@
                 <span>{m.builder_unsaved()}</span>
             {:else}
                 <Check size={12} class="saved-check" />
-                <span>{m.builder_saved()}</span>
+                <span>{savedLabel}</span>
             {/if}
         </span>
 
