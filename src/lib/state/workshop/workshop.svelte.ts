@@ -1,135 +1,22 @@
 import { hostsState } from '$lib/state/features/hosts.svelte';
+import type {
+  AgentInstance,
+  Relationship,
+  WorkshopConversation,
+  ElementType,
+  PinboardItem,
+  InboxItemStatus,
+  InboxAttachment,
+  InboxItem,
+  AgentMemory,
+  WorkshopElement,
+  WorkshopSettings,
+  WorkshopState,
+} from './workshop.types';
+// Internal: autoLoad calls loadMemory after restoring slices. Memory split lives
+// in workshop.memory.svelte — function-only ref, ESM-safe.
+import { loadMemory } from './workshop.memory.svelte';
 
-export interface AgentInstance {
-  instanceId: string;
-  agentId: string;
-  position: { x: number; y: number };
-  behavior: 'stationary' | 'wander' | 'patrol';
-  homePosition: { x: number; y: number };
-}
-
-export interface Relationship {
-  id: string;
-  fromInstanceId: string;
-  toInstanceId: string;
-  label: string;
-}
-
-export interface WorkshopConversation {
-  id: string;
-  type: 'task' | 'banter';
-  participantInstanceIds: string[];
-  participantAgentIds: string[];
-  sessionKey: string;
-  status: 'active' | 'interrupted' | 'completed' | 'queued';
-  startedAt: number;
-  endedAt?: number;
-  title?: string;
-  taskPrompt?: string;
-  maxTurns?: number;
-}
-
-// --- Workshop interactive elements ---
-
-export type ElementType = 'pinboard' | 'messageboard' | 'inbox' | 'rulebook' | 'portal';
-
-export interface PinboardItem {
-  id: string;
-  content: string;
-  pinnedBy: string; // agentId or 'user'
-  pinnedAt: number;
-  upvotes: string[]; // voter IDs (agentId or 'user')
-  downvotes: string[]; // voter IDs
-  comments: Array<{ authorId: string; text: string; at: number }>;
-}
-
-export type InboxItemStatus = 'open' | 'closed' | 'pending';
-
-export interface InboxAttachment {
-  id: string;
-  fileName: string;
-  contentType: string;
-  url: string;
-  sizeBytes: number;
-}
-
-export interface InboxItem {
-  id: string;
-  fromId: string; // agentId or 'user'
-  toId: string; // agentId or 'user'
-  content: string;
-  subject: string;
-  status: InboxItemStatus;
-  sentAt: number;
-  read: boolean;
-  attachments?: InboxAttachment[];
-}
-
-export interface AgentMemory {
-  contextSummary: string;
-  workspaceNotes: string[]; // from [REMEMBER:] markers, max 10
-  recentInteractions: string[]; // "talked to AgentX about Y", max 5
-  environmentState: Record<
-    string,
-    {
-      // elementId → last-read info
-      summary: string;
-      lastReadAt: number;
-    }
-  >;
-  activePinboardItems: string[]; // pin IDs agent has chosen to keep in active context (max 5)
-}
-
-export interface WorkshopElement {
-  instanceId: string;
-  type: ElementType;
-  position: { x: number; y: number };
-  label: string;
-  pinboardItems?: PinboardItem[];
-  messageBoardContent?: string;
-  inboxAgentId?: string;
-  inboxItems?: InboxItem[];
-  outboxItems?: InboxItem[];
-  rulebookContent?: string;
-  portalTargetWorkspaceId?: string;
-  portalLabel?: string;
-}
-
-export interface WorkshopSettings {
-  maxConcurrentConversations: number;
-  /** Master killswitch — disables all agent-to-agent conversations when false */
-  agentChatsEnabled: boolean;
-  idleBanterEnabled: boolean;
-  idleBanterBudgetPerHour: number;
-  proximityRadius: number;
-  /** ms between idle-banter attempt checks */
-  banterCheckInterval: number;
-  /** ms cooldown between same-pair banters */
-  banterCooldown: number;
-  /** Max turns for banter conversations */
-  banterMaxTurns: number;
-  /** Max turns for task conversations */
-  taskMaxTurns: number;
-  /** ms to wait for agent response */
-  responseTimeout: number;
-  /** Default prompt for banter conversations */
-  banterPrompt: string;
-  /** Default prompt for solo tasks */
-  taskPrompt: string;
-  /** Visual mode: classic (freeform), habbo (isometric), or pixel (pixel art office) */
-  viewMode: 'classic' | 'habbo' | 'pixel';
-  /** When off, conversations are fully isolated to this workspace */
-  crossWorkspaceChats: boolean;
-}
-
-export interface WorkshopState {
-  camera: { x: number; y: number; zoom: number };
-  agents: Record<string, AgentInstance>;
-  relationships: Record<string, Relationship>;
-  conversations: Record<string, WorkshopConversation>;
-  elements: Record<string, WorkshopElement>;
-  settings: WorkshopSettings;
-}
 
 type WorkshopSlice =
   | 'camera'
@@ -727,23 +614,6 @@ export function getAgentPinCount(elementId: string, agentId: string): number {
   return el.pinboardItems.filter((p) => p.pinnedBy === agentId).length;
 }
 
-/** Add a pin ID to an agent's active pinboard context (max 5; drops oldest if at limit). */
-export function addActivePinboardItem(instanceId: string, pinId: string): void {
-  const mem = getOrCreateMemory(instanceId);
-  if (mem.activePinboardItems.includes(pinId)) return;
-  if (mem.activePinboardItems.length >= 5) {
-    mem.activePinboardItems = mem.activePinboardItems.slice(1); // drop oldest
-  }
-  mem.activePinboardItems.push(pinId);
-  saveMemory();
-}
-
-/** Remove a pin ID from an agent's active pinboard context. */
-export function removeActivePinboardItem(instanceId: string, pinId: string): void {
-  const mem = getOrCreateMemory(instanceId);
-  mem.activePinboardItems = mem.activePinboardItems.filter((id) => id !== pinId);
-  saveMemory();
-}
 
 export function setMessageBoardContent(elementId: string, content: string) {
   const el = workshopState.elements[elementId];
@@ -822,77 +692,7 @@ export function markAllInboxItemsRead(elementId: string) {
   autoSave(undefined, 'elements');
 }
 
-// --- Agent memory ---
 
-export const agentMemory: Record<string, AgentMemory> = $state({});
-
-function emptyMemory(): AgentMemory {
-  return {
-    contextSummary: '',
-    workspaceNotes: [],
-    recentInteractions: [],
-    environmentState: {},
-    activePinboardItems: [],
-  };
-}
-
-export function getOrCreateMemory(instanceId: string): AgentMemory {
-  if (!agentMemory[instanceId]) agentMemory[instanceId] = emptyMemory();
-  return agentMemory[instanceId];
-}
-
-export function addWorkspaceNote(instanceId: string, note: string): void {
-  const mem = getOrCreateMemory(instanceId);
-  mem.workspaceNotes = [...mem.workspaceNotes.slice(-9), note]; // keep last 10
-  saveMemory();
-}
-
-export function addRecentInteraction(instanceId: string, summary: string): void {
-  const mem = getOrCreateMemory(instanceId);
-  mem.recentInteractions = [...mem.recentInteractions.slice(-4), summary]; // keep last 5
-  saveMemory();
-}
-
-export function updateContextSummary(instanceId: string, summary: string): void {
-  const mem = getOrCreateMemory(instanceId);
-  mem.contextSummary = summary;
-  saveMemory();
-}
-
-export function recordElementRead(instanceId: string, elementId: string, summary: string): void {
-  const mem = getOrCreateMemory(instanceId);
-  mem.environmentState[elementId] = { summary, lastReadAt: Date.now() };
-  saveMemory();
-}
-
-export function clearAllMemory(): void {
-  for (const key of Object.keys(agentMemory)) delete agentMemory[key];
-  saveMemory();
-}
-
-function memoryKey(): string {
-  return `workshop:memory:${hostsState.activeHostId ?? 'default'}`;
-}
-
-function saveMemory(): void {
-  try {
-    localStorage.setItem(memoryKey(), JSON.stringify($state.snapshot(agentMemory)));
-  } catch {
-    /* non-critical */
-  }
-}
-
-export function loadMemory(): void {
-  try {
-    const raw = localStorage.getItem(memoryKey());
-    if (!raw) return;
-    const saved = JSON.parse(raw) as Record<string, AgentMemory>;
-    for (const [id, mem] of Object.entries(saved)) {
-      // Migrate memory records that pre-date activePinboardItems
-      if (!mem.activePinboardItems) mem.activePinboardItems = [];
-      agentMemory[id] = mem;
-    }
-  } catch {
-    /* non-critical */
-  }
-}
+// ── Re-exports from sub-modules ───────────────────────────────────────────────
+export * from './workshop.types';
+export * from './workshop.memory.svelte';
