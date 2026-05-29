@@ -36,6 +36,16 @@ export type LucideIcon = ComponentType<
 export type SectionId = "workforce" | "gateway" | "creative";
 export type SectionTone = "accent" | "brand";
 
+// Top-level product domain. The hub spans two surfaces — the agent-company
+// control plane (Workforce) and the live gateway dashboard (Gateway/Creative/
+// Plugins). Super-labels in the sidebar keep them legible as distinct domains
+// without hiding either (council #12, "clarify grouping").
+export type NavDomain = "control-plane" | "gateway";
+export const DOMAIN_LABEL: Record<NavDomain, string> = {
+    "control-plane": "Control plane",
+    gateway: "Gateway",
+};
+
 export interface RouteMeta {
     /** Canonical path (sidebar href + palette goto target). */
     path: string;
@@ -61,11 +71,11 @@ export interface RouteMeta {
 
 export const SECTION_META: Record<
     SectionId,
-    { label: string; icon: LucideIcon; tone: SectionTone }
+    { label: string; icon: LucideIcon; tone: SectionTone; domain: NavDomain }
 > = {
-    workforce: { label: "Workforce", icon: Briefcase, tone: "accent" },
-    gateway: { label: "Gateway", icon: Zap, tone: "accent" },
-    creative: { label: "Creative", icon: Sparkles, tone: "brand" },
+    workforce: { label: "Workforce", icon: Briefcase, tone: "accent", domain: "control-plane" },
+    gateway: { label: "Gateway", icon: Zap, tone: "accent", domain: "gateway" },
+    creative: { label: "Creative", icon: Sparkles, tone: "brand", domain: "gateway" },
 };
 
 /** Display order of nav sections. */

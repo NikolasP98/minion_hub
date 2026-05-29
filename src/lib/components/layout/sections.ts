@@ -6,15 +6,18 @@ import {
     ROUTES,
     SECTION_META,
     SECTION_ORDER,
+    DOMAIN_LABEL,
     isFlowsNavVisible,
     type SectionId,
     type SectionTone,
+    type NavDomain,
 } from "$lib/nav/routes";
 
 // lucide-svelte still ships legacy SvelteComponentTyped types; widen for Svelte 5 mixed code.
 type LucideIcon = ComponentType<SvelteComponent<{ size?: number | string; class?: string }>>;
 
-export type { SectionTone };
+export type { SectionTone, NavDomain };
+export { DOMAIN_LABEL };
 
 export type SectionItem = {
     href: string;
@@ -33,6 +36,7 @@ export type Section = {
     label: string;
     icon: LucideIcon;
     tone: SectionTone;
+    domain: NavDomain;
     items: SectionItem[];
 };
 
@@ -52,6 +56,7 @@ export function getSections(): Section[] {
             label: meta.label,
             icon: meta.icon,
             tone: meta.tone,
+            domain: meta.domain,
             items: ROUTES.filter((r) => r.inNav && r.section === id).map((r) => ({
                 href: r.path,
                 label: r.title(),
@@ -103,6 +108,7 @@ export function getDynamicPluginsSection(
         label: "Plugins",
         icon: Puzzle,
         tone: "accent",
+        domain: "gateway",
         items: entries.map((e) => ({
             href: `/plugins/${e.pluginId}`,
             label: e.title,

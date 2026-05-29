@@ -6,6 +6,7 @@
     getSections,
     gateSections,
     getDynamicPluginsSection,
+    DOMAIN_LABEL,
     type Section,
   } from './sections';
   import MinionLogo from './MinionLogo.svelte';
@@ -83,10 +84,15 @@
       <div class="h-px bg-[var(--hairline)] my-1.5 mx-1"></div>
     {/if}
 
-    {#each navSections as section (section.id)}
-      {@const items = section.items.filter((i) => !i.requires || canClient(i.requires))}
+    {#each navSections as section, si (section.id)}
+      {@const items = section.items.filter((it) => !it.requires || canClient(it.requires))}
       {#if items.length}
-        <div class="nav-group-head t-label {headCls}">{section.label}</div>
+        {#if section.domain !== navSections[si - 1]?.domain}
+          <div class="nav-domain-head {headCls}">{DOMAIN_LABEL[section.domain]}</div>
+        {/if}
+        {#if section.label !== DOMAIN_LABEL[section.domain]}
+          <div class="nav-group-head t-label {headCls}">{section.label}</div>
+        {/if}
         {#each items as item (item.href)}
           {@const active = item.matcher(page.url.pathname)}
           <a
@@ -199,6 +205,16 @@
   }
   .nav-group-head {
     padding: 0.5rem 0.625rem 0.25rem;
+  }
+  /* Top-level product domain super-label (Control plane / Gateway) —
+     stronger than the section group-head so the two surfaces read apart. */
+  .nav-domain-head {
+    padding: 0.65rem 0.625rem 0.1rem;
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--color-foreground) 52%, transparent);
   }
   @keyframes indicator-in {
     from {
