@@ -268,7 +268,7 @@
 
 <div class="space-y-4">
   <!-- Backup Destination Config -->
-  <div class="bg-card border border-border rounded-lg px-5 py-4">
+  <div class="surface-2 rounded-lg px-5 py-4">
     <h2 class="text-xs font-semibold text-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
       <DatabaseBackup size={13} class="text-muted-foreground/70" />
       {m.backup_destination()}
@@ -362,11 +362,11 @@
 
   <!-- Per-Server Backups -->
   {#if !conn.connected}
-    <div class="bg-card border border-border rounded-lg px-5 py-8 text-center">
+    <div class="surface-2 rounded-lg px-5 py-8 text-center">
       <p class="text-sm text-muted-foreground">{m.backup_connectToManage()}</p>
     </div>
   {:else}
-    <div class="bg-card border border-border rounded-lg px-5 py-4">
+    <div class="surface-2 rounded-lg px-5 py-4">
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
           {m.backup_snapshots()}
@@ -447,7 +447,7 @@
 
     <!-- Streaming log output -->
     {#if logLines.length > 0}
-      <div class="bg-card border border-border rounded-lg px-5 py-4">
+      <div class="surface-2 rounded-lg px-5 py-4">
         <h2 class="text-xs font-semibold text-foreground uppercase tracking-wider mb-2">
           {runningAction === 'restore' ? m.backup_restore() : m.backup_backupNow()} {m.backup_log()}
         </h2>
@@ -465,7 +465,7 @@
     <!-- Confirm restore dialog -->
     {#if confirmRestore}
       <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div class="bg-card border border-border rounded-lg p-6 max-w-sm mx-4">
+        <div class="surface-2 rounded-lg p-6 max-w-sm mx-4">
           <h3 class="text-sm font-semibold text-foreground mb-2">{m.backup_confirmRestoreTitle()}</h3>
           <p class="text-xs text-muted-foreground mb-4">
             {m.backup_confirmRestoreBody({ date: formatDate(confirmRestore.timestamp) })}

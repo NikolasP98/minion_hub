@@ -214,7 +214,7 @@
 	});
 </script>
 
-<div class="bg-card border border-border rounded-lg overflow-hidden grid grid-rows-subgrid row-span-4">
+<div class="surface-2 rounded-lg overflow-hidden grid grid-rows-subgrid row-span-4">
 	<!-- Row 1: HEADER -->
 	<PanelHeader label={m.reliability_gatewayTitle()} labelClass="flex-1">
 		{#snippet icon()}

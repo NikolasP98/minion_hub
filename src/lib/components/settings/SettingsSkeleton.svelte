@@ -13,7 +13,7 @@
 {#if visible}
     <div class="max-w-2xl mx-auto space-y-4 p-6 md:p-10">
         {#each { length: 4 } as _, i}
-            <div class="bg-card border border-border rounded-lg px-5 py-4 overflow-hidden">
+            <div class="surface-2 rounded-lg px-5 py-4 overflow-hidden">
                 <!-- Fake header -->
                 <div class="skeleton-line h-3 rounded mb-4" style="width: {50 + (i % 3) * 15}%"></div>
                 <!-- Fake field lines -->

@@ -225,7 +225,7 @@
 	let canNext = $derived(table.getCanNextPage());
 </script>
 
-<div class="w-full rounded-lg overflow-hidden bg-card border border-border">
+<div class="surface-2 w-full rounded-lg overflow-hidden">
 	<!-- Header: title + search + pagination controls -->
 	<PanelHeader
 		label={title || m.reliability_recentIncidents()}

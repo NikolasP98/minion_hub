@@ -169,7 +169,7 @@
   </header>
 
   {#if !conn.connected}
-    <div class="bg-card border border-border rounded-lg px-5 py-4 text-xs text-muted-foreground">
+    <div class="surface-2 rounded-lg px-5 py-4 text-xs text-muted-foreground">
       Connect to a gateway to manage secrets.
     </div>
   {:else if vaultUnavailable}
@@ -193,16 +193,16 @@
       </button>
     </div>
   {:else if !loaded}
-    <div class="bg-card border border-border rounded-lg px-5 py-4 text-xs text-muted-foreground">
+    <div class="surface-2 rounded-lg px-5 py-4 text-xs text-muted-foreground">
       Loading secrets…
     </div>
   {:else if secrets.length === 0}
-    <div class="bg-card border border-border rounded-lg px-5 py-6 text-center text-xs text-muted-foreground">
+    <div class="surface-2 rounded-lg px-5 py-6 text-center text-xs text-muted-foreground">
       No plugins have declared secrets, or the gateway vault is not configured.
     </div>
   {:else}
     {#if statics.length > 0}
-      <div class="bg-card border border-border rounded-lg overflow-hidden">
+      <div class="surface-2 rounded-lg overflow-hidden">
         <header class="px-5 py-3 border-b border-border">
           <h3 class="text-sm font-semibold text-foreground">Static credentials</h3>
           <p class="text-[11px] text-muted-foreground mt-0.5">

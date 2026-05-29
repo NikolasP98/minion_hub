@@ -126,7 +126,7 @@
 	});
 </script>
 
-<div class="bg-card border border-border rounded-lg overflow-hidden">
+<div class="surface-2 rounded-lg overflow-hidden">
 	<PanelHeader label={m.reliability_pluginTitle()} labelClass="flex-1">
 		{#snippet icon()}
 			<Puzzle size={11} class="text-accent shrink-0" />

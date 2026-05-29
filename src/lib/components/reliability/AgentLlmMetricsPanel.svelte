@@ -210,7 +210,7 @@
 	});
 </script>
 
-<div class="bg-card border border-border rounded-lg overflow-hidden">
+<div class="surface-2 rounded-lg overflow-hidden">
 	<!-- HEADER -->
 	<PanelHeader label={m.reliability_llmMetrics()} labelClass="flex-1">
 		{#snippet icon()}

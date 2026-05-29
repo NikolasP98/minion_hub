@@ -45,7 +45,7 @@
   }
 </script>
 
-<div class="bg-card border border-border rounded-lg overflow-hidden">
+<div class="surface-2 rounded-lg overflow-hidden">
   <header class="px-5 py-3 border-b border-border flex items-center justify-between gap-3">
     <div class="min-w-0">
       <h3 class="text-sm font-semibold text-foreground truncate">{label}</h3>
