@@ -115,7 +115,7 @@
 						When enabled, hiring a new agent requires explicit board sign-off before it can run.
 					</div>
 				</div>
-				<span class="text-xs font-medium px-2 py-1 rounded-md self-start {company.requireBoardApprovalForNewAgents ? 'bg-green-500/10 text-green-600' : 'bg-muted text-muted-foreground'}">
+				<span class="text-xs font-medium px-2 py-1 rounded-md self-start {company.requireBoardApprovalForNewAgents ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'}">
 					{company.requireBoardApprovalForNewAgents ? 'On' : 'Off'}
 				</span>
 			</div>
@@ -136,7 +136,7 @@
 						{/if}
 					</div>
 				</div>
-				<span class="text-xs font-medium px-2 py-1 rounded-md self-start {company.feedbackDataSharingEnabled ? 'bg-green-500/10 text-green-600' : 'bg-muted text-muted-foreground'}">
+				<span class="text-xs font-medium px-2 py-1 rounded-md self-start {company.feedbackDataSharingEnabled ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'}">
 					{company.feedbackDataSharingEnabled ? 'On' : 'Off'}
 				</span>
 			</div>

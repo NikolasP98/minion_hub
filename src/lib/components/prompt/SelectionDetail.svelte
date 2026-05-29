@@ -188,7 +188,7 @@
         </span>
         <span class="text-muted">order {editorActive.order}</span>
         <span class="text-muted">modes {editorActive.modes.join("/")}</span>
-        {#if editorActive.cacheable}<span class="text-amber-400">⚡ cacheable</span>{/if}
+        {#if editorActive.cacheable}<span class="text-warning">⚡ cacheable</span>{/if}
         <span class="flex-1"></span>
         <button
           type="button"
@@ -203,7 +203,7 @@
           type="button"
           disabled={deleting}
           onclick={handleDelete}
-          class="px-2 py-0.5 rounded border border-red-500/60 bg-red-500/10 text-red-300 text-[10px] disabled:opacity-40"
+          class="px-2 py-0.5 rounded border border-destructive/60 bg-destructive/10 text-destructive text-[10px] disabled:opacity-40"
         >
           {deleting ? "Deleting…" : "Delete"}
         </button>
@@ -242,7 +242,7 @@
             <span class="text-muted font-mono tabular-nums">{formatBytes(row.bytes)}</span>
             <span class="text-muted/60">·</span>
             <span class="text-muted font-mono tabular-nums">{row.tokens.toLocaleString("en-US")} tok</span>
-            {#if row.cacheable}<span class="text-amber-400" title="Cacheable">⚡</span>{/if}
+            {#if row.cacheable}<span class="text-warning" title="Cacheable">⚡</span>{/if}
             <span class="ml-2">
               <AgentAvatarStack
                 agents={promptSections.usage[meta.id] ?? []}

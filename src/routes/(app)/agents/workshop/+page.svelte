@@ -97,7 +97,7 @@
               </div>
               <button
                 onclick={(e) => handleDelete(e, save.id)}
-                class="opacity-0 group-hover:opacity-100 text-muted hover:text-red-400 text-xs transition-all shrink-0 mt-0.5"
+                class="opacity-0 group-hover:opacity-100 text-muted hover:text-destructive text-xs transition-all shrink-0 mt-0.5"
                 title={m.common_delete()}
               >×</button>
             </div>

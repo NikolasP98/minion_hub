@@ -46,9 +46,9 @@
 	}
 
 	const statusColor: Record<string, string> = {
-		running: 'bg-yellow-400',
-		completed: 'bg-emerald-400',
-		failed: 'bg-red-400',
+		running: 'bg-warning',
+		completed: 'bg-success',
+		failed: 'bg-destructive',
 		unknown: 'bg-zinc-500'
 	};
 
@@ -130,12 +130,12 @@
 			<div class="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
 				<button
 					type="button"
-					class="text-[9px] text-red-400 hover:text-red-300 px-1 bg-transparent border-0 cursor-pointer"
+					class="text-[9px] text-destructive hover:text-destructive px-1 bg-transparent border-0 cursor-pointer"
 					onclick={handleKill}
 				>{m.subagent_kill()}</button>
 				<button
 					type="button"
-					class="text-[9px] text-blue-400 hover:text-blue-300 px-1 bg-transparent border-0 cursor-pointer"
+					class="text-[9px] text-accent hover:text-accent px-1 bg-transparent border-0 cursor-pointer"
 					onclick={handleSteerToggle}
 				>{m.subagent_steer()}</button>
 			</div>

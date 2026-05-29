@@ -47,9 +47,9 @@
               {:else}
                 <span class="shrink-0 text-[10px] text-muted">{fmtChars(f.injectedChars)}</span>
                 {#if f.truncated}
-                  <span class="shrink-0 text-[9px] font-semibold px-1 py-0.5 rounded bg-amber-500/15 text-amber-400">{m.prompt_fileTruncated()}</span>
+                  <span class="shrink-0 text-[9px] font-semibold px-1 py-0.5 rounded bg-warning/15 text-warning">{m.prompt_fileTruncated()}</span>
                 {:else}
-                  <span class="shrink-0 text-[9px] font-semibold px-1 py-0.5 rounded bg-green-500/10 text-green-400">{m.prompt_fileOk()}</span>
+                  <span class="shrink-0 text-[9px] font-semibold px-1 py-0.5 rounded bg-success/10 text-success">{m.prompt_fileOk()}</span>
                 {/if}
               {/if}
             </div>

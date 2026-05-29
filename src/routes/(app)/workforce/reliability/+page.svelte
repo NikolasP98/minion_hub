@@ -46,9 +46,9 @@
 	};
 
 	const RUN_STATUS_BADGE: Record<string, string> = {
-		succeeded: 'bg-green-500/10 text-green-600',
+		succeeded: 'bg-success/10 text-success',
 		failed: 'bg-destructive/10 text-destructive',
-		running: 'bg-blue-500/10 text-blue-600',
+		running: 'bg-accent/10 text-accent',
 		cancelled: 'bg-muted text-muted-foreground',
 	};
 

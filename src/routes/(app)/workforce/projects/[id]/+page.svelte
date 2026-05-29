@@ -11,8 +11,8 @@
 	const STATUS_BADGE: Record<ProjectStatus, string> = {
 		backlog: 'bg-muted text-muted-foreground',
 		planned: 'bg-muted text-muted-foreground',
-		in_progress: 'bg-blue-500/10 text-blue-600',
-		completed: 'bg-green-500/10 text-green-600',
+		in_progress: 'bg-accent/10 text-accent',
+		completed: 'bg-success/10 text-success',
 		cancelled: 'bg-muted text-muted-strong',
 	};
 
@@ -25,12 +25,12 @@
 	};
 
 	const ISSUE_STATUS_BADGE: Record<string, string> = {
-		in_progress: 'bg-blue-500/10 text-blue-600',
-		blocked: 'bg-amber-500/10 text-amber-600',
+		in_progress: 'bg-accent/10 text-accent',
+		blocked: 'bg-warning/10 text-warning',
 		todo: 'bg-muted text-muted-foreground',
 		backlog: 'bg-muted text-muted-foreground',
 		in_review: 'bg-purple-500/10 text-purple-600',
-		done: 'bg-green-500/10 text-green-600',
+		done: 'bg-success/10 text-success',
 		cancelled: 'bg-muted text-muted-strong',
 	};
 

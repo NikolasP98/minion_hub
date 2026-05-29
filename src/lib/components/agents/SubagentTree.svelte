@@ -30,10 +30,10 @@
 	}
 
 	const orchStatusColor: Record<string, string> = {
-		running: 'bg-yellow-400',
-		completed: 'bg-emerald-400',
-		failed: 'bg-red-400',
-		interrupted: 'bg-red-400'
+		running: 'bg-warning',
+		completed: 'bg-success',
+		failed: 'bg-destructive',
+		interrupted: 'bg-destructive'
 	};
 </script>
 
