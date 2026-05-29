@@ -139,7 +139,7 @@
   aria-modal="true"
   aria-label="Create Marketplace Agent"
 >
-  <div class="bg-bg2 border border-border rounded-xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-2xl">
+  <div class="surface-2 rounded-xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-2xl">
     <!-- Header -->
     <div class="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
       <div>
