@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  export type SelectSize = 'sm' | 'md';
+  export type SelectSize = 'xs' | 'sm' | 'md';
   export type SelectValue = string | number;
   export type SelectOption = { value: SelectValue; label: string; disabled?: boolean };
 </script>
@@ -52,7 +52,13 @@
   const fieldId = $derived(id ?? generatedId);
   const describedBy = $derived(error ? `${fieldId}-err` : helper ? `${fieldId}-help` : undefined);
 
-  const sizeCls = $derived(size === 'sm' ? 'h-8 text-xs pl-2.5 pr-8' : 'h-9 text-sm pl-3 pr-9');
+  const sizeCls = $derived(
+    size === 'xs'
+      ? 'h-7 text-[11px] pl-2 pr-7'
+      : size === 'sm'
+        ? 'h-8 text-xs pl-2.5 pr-8'
+        : 'h-9 text-sm pl-3 pr-9'
+  );
 
   // bind:value already wrote the option's native-typed value; just notify.
   function handleChange() {
@@ -94,7 +100,7 @@
       {/if}
     </select>
     <ChevronDown
-      size={size === 'sm' ? 13 : 15}
+      size={size === 'md' ? 15 : size === 'sm' ? 13 : 12}
       class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
     />
   </div>
