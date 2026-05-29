@@ -191,7 +191,7 @@
     <div class="flex-1 p-4">
         {#if filtered.length === 0}
             <div class="flex flex-col items-center justify-center py-24 gap-3 text-center">
-                <Package size={32} class="text-muted-foreground/30" />
+                <Package size={32} class="text-muted-strong" />
                 <div>
                     <h3 class="text-sm font-semibold text-foreground mb-1">{m.marketplace_pluginsNoResults()}</h3>
                     <p class="text-xs text-muted-foreground">{m.marketplace_agentsListEmptyHint()}</p>

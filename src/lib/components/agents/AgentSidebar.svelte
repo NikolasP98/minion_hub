@@ -240,7 +240,7 @@
                 <div class="px-2 py-4 text-center">
                     {#if collapsed}
                         <div
-                            class="flex flex-col items-center text-muted-foreground/50"
+                            class="flex flex-col items-center text-muted-strong"
                         >
                             <Radio size={16} />
                         </div>
@@ -283,7 +283,7 @@
             <div class="px-2 py-4 text-center">
                 {#if collapsed}
                     <div
-                        class="flex flex-col items-center text-muted-foreground/50"
+                        class="flex flex-col items-center text-muted-strong"
                     >
                         <Bot size={18} />
                     </div>
@@ -373,10 +373,10 @@
                                         <ChevronDown size={12} />
                                     {/if}
                                 </span>
-                                <span class="flex-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50 truncate">
+                                <span class="flex-1 text-[11px] font-semibold uppercase tracking-wider text-muted-strong truncate">
                                     {m.agentGroup_ungrouped()}
                                 </span>
-                                <span class="text-[9px] text-muted-foreground/50 tabular-nums shrink-0">
+                                <span class="text-[9px] text-muted-strong tabular-nums shrink-0">
                                     {ungroupedAgents.length}
                                 </span>
                             </div>
@@ -398,7 +398,7 @@
                     <!-- GALLERY VIEW -->
                     {#each groups as group (group.id)}
                         <div class="px-2.5 pt-2 pb-1">
-                            <div class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 mb-1.5">
+                            <div class="text-[10px] font-semibold uppercase tracking-wider text-muted-strong mb-1.5">
                                 {group.name}
                             </div>
                             <div
@@ -437,7 +437,7 @@
                     {#if ungroupedAgents.length > 0}
                         {#if groups.length > 0}
                             <div class="px-2.5 pt-2 pb-1">
-                                <div class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 mb-1.5">
+                                <div class="text-[10px] font-semibold uppercase tracking-wider text-muted-strong mb-1.5">
                                     {m.agentGroup_ungrouped()}
                                 </div>
                             </div>

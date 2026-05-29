@@ -124,7 +124,7 @@
           </div>
         </div>
       {:else if bugReporter.phase === 'previewing'}
-        <p class="text-[11px] text-muted-foreground/40 text-center">Paste images from clipboard (Ctrl+V)</p>
+        <p class="text-[11px] text-muted-strong text-center">Paste images from clipboard (Ctrl+V)</p>
       {/if}
 
       <!-- Console logs (collapsible) -->
@@ -184,7 +184,7 @@
           bind:value={bugReporter.comment}
           placeholder={m.bug_commentPlaceholder()}
           rows={3}
-          class="w-full px-3 py-2 text-sm bg-bg border border-border rounded-lg text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-accent/50 resize-none"
+          class="w-full px-3 py-2 text-sm bg-bg border border-border rounded-lg text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/50 resize-none"
         ></textarea>
       </div>
     </div>

@@ -70,7 +70,7 @@
                 {/if}
                 <span class="flex-1"></span>
                 {#if turn.timestamp}
-                    <span class="text-[10px] text-muted-foreground/50 tabular-nums">
+                    <span class="text-[10px] text-muted-strong tabular-nums">
                         {fmtTimeAgo(turn.timestamp)}
                     </span>
                 {/if}
@@ -97,7 +97,7 @@
             {#if turn.reasoning}
                 <div class="mt-3">
                     <button
-                        class="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                        class="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-muted-strong hover:text-muted-foreground transition-colors"
                         onclick={() => toggleReasoning(turn.id)}
                     >
                         {#if expandedReasoning.has(turn.id)}
@@ -119,7 +119,7 @@
             {#if turn.role === 'tool' && (turn.toolInput || turn.toolOutput)}
                 <div class="mt-3">
                     <button
-                        class="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                        class="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-muted-strong hover:text-muted-foreground transition-colors"
                         onclick={() => toggleTool(turn.id)}
                     >
                         {#if expandedTools.has(turn.id)}
@@ -133,13 +133,13 @@
                         <div class="mt-2 space-y-2">
                             {#if turn.toolInput}
                                 <div>
-                                    <div class="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/40 mb-1">{m.session_input()}</div>
+                                    <div class="text-[9px] font-semibold uppercase tracking-wider text-muted-strong mb-1">{m.session_input()}</div>
                                     <pre class="px-3 py-2 rounded-md bg-bg2/80 border border-border/50 text-xs text-foreground/70 overflow-x-auto font-mono">{turn.toolInput}</pre>
                                 </div>
                             {/if}
                             {#if turn.toolOutput}
                                 <div>
-                                    <div class="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/40 mb-1">{m.session_output()}</div>
+                                    <div class="text-[9px] font-semibold uppercase tracking-wider text-muted-strong mb-1">{m.session_output()}</div>
                                     <pre class="px-3 py-2 rounded-md bg-bg2/80 border border-border/50 text-xs text-foreground/70 overflow-x-auto font-mono">{turn.toolOutput}</pre>
                                 </div>
                             {/if}

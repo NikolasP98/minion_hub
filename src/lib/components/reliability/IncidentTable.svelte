@@ -237,13 +237,13 @@
 			<div class="relative ml-2">
 			<Search
 				size={11}
-				class="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground/50 pointer-events-none"
+				class="absolute left-2 top-1/2 -translate-y-1/2 text-muted-strong pointer-events-none"
 			/>
 			<input
 				type="text"
 				bind:value={searchQuery}
 				placeholder={m.reliability_incidentSearch()}
-				class="h-6 w-40 pl-6 pr-2 text-[11px] bg-bg3/60 border border-border rounded text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-accent/50"
+				class="h-6 w-40 pl-6 pr-2 text-[11px] bg-bg3/60 border border-border rounded text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/50"
 			/>
 		</div>
 

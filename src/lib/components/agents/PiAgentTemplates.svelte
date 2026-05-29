@@ -73,20 +73,20 @@
 
 			<!-- Model badge -->
 			{#if tmpl.model}
-				<span class="text-[9px] text-muted/50 truncate max-w-20">{tmpl.model}</span>
+				<span class="text-[9px] text-muted-strong truncate max-w-20">{tmpl.model}</span>
 			{/if}
 
 			<!-- Spacer -->
 			<span class="flex-1"></span>
 
 			<!-- Usage count -->
-			<span class="text-[9px] text-muted/50">{m.pi_tmplUses({ count: tmpl.spawnCount })}</span>
+			<span class="text-[9px] text-muted-strong">{m.pi_tmplUses({ count: tmpl.spawnCount })}</span>
 
 			<!-- Last used -->
-			<span class="text-[9px] text-muted/40">{formatRelativeTime(tmpl.lastUsedAt)}</span>
+			<span class="text-[9px] text-muted-strong">{formatRelativeTime(tmpl.lastUsedAt)}</span>
 
 			<!-- Expand indicator -->
-			<span class="text-[9px] text-muted/40">{expandedName === tmpl.name ? '\u25B2' : '\u25BC'}</span>
+			<span class="text-[9px] text-muted-strong">{expandedName === tmpl.name ? '\u25B2' : '\u25BC'}</span>
 		</button>
 
 		<!-- Expanded detail -->

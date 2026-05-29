@@ -138,7 +138,7 @@
             {@render toolItem(tool)}
           {/each}
           {#if enabledTools.length === 0}
-            <div class="text-[10px] text-muted-foreground/50 text-center py-4">
+            <div class="text-[10px] text-muted-strong text-center py-4">
               {m.tools_dropToEnable()}
             </div>
           {/if}
@@ -167,7 +167,7 @@
             {@render toolItem(tool)}
           {/each}
           {#if disabledTools.length === 0}
-            <div class="text-[10px] text-muted-foreground/50 text-center py-4">
+            <div class="text-[10px] text-muted-strong text-center py-4">
               {m.tools_dropToDisable()}
             </div>
           {/if}
@@ -188,7 +188,7 @@
     role="listitem"
   >
     <!-- Drag handle -->
-    <span class="text-[10px] text-muted-foreground/40 group-hover:text-muted-foreground mt-0.5 shrink-0 select-none">
+    <span class="text-[10px] text-muted-strong group-hover:text-muted-foreground mt-0.5 shrink-0 select-none">
       ⠿
     </span>
 

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { validateAlias, normalizeAlias } from '$lib/utils/alias';
+  import { Select } from '$lib/components/ui';
   import IdentityList from './IdentityList.svelte';
 
   type UserRow = {
@@ -110,11 +111,10 @@
     </label>
     <label class="grid grid-cols-[80px_1fr] gap-2 items-center text-xs">
       <span class="text-muted">Role</span>
-      <select
-        class="bg-bg border border-border rounded px-2 py-1 outline-none focus:border-accent"
+      <Select
+        size="sm"
         value={roleId ?? `legacy:${role}`}
-        onchange={(e) => {
-          const v = (e.currentTarget as HTMLSelectElement).value;
+        onchange={(v) => {
           if (v.startsWith('legacy:')) {
             role = v.slice(7) as 'user' | 'admin';
             roleId = null;
@@ -134,7 +134,7 @@
             {/each}
           </optgroup>
         {/if}
-      </select>
+      </Select>
     </label>
   </div>
 

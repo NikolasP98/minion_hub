@@ -49,7 +49,7 @@
 		planned: 'bg-muted text-muted-foreground',
 		active: 'bg-blue-500/10 text-blue-600',
 		achieved: 'bg-green-500/10 text-green-600',
-		cancelled: 'bg-muted text-muted-foreground/50',
+		cancelled: 'bg-muted text-muted-strong',
 	};
 
 	const STATUS_LABELS: Record<GoalStatus, string> = {

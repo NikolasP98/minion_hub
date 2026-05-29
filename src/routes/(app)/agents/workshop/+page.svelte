@@ -79,7 +79,7 @@
               {#if save.thumbnail}
                 <img src={save.thumbnail} alt="" class="w-full h-full object-cover" />
               {:else}
-                <div class="w-full h-full flex items-center justify-center text-muted/30 text-2xl select-none">
+                <div class="w-full h-full flex items-center justify-center text-muted-strong text-2xl select-none">
                   ⬡
                 </div>
               {/if}

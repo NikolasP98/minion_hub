@@ -19,7 +19,7 @@
 </script>
 
 <div class="shrink-0 px-3 py-2 border-t border-border">
-  <div class="text-[9px] text-muted/40 uppercase tracking-wider mb-1.5 font-semibold">{m.subagent_view()}</div>
+  <div class="text-[9px] text-muted-strong uppercase tracking-wider mb-1.5 font-semibold">{m.subagent_view()}</div>
   <div class="flex gap-1.5">
     {#each views as view (view.id)}
       <button

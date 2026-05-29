@@ -220,7 +220,7 @@
         {:else if marketplaceState.agents.length === 0}
             <!-- Empty State -->
             <div class="flex flex-col items-center justify-center py-24 gap-3 text-center">
-                <Bot size={32} class="text-muted-foreground/30" />
+                <Bot size={32} class="text-muted-strong" />
                 <div>
                     <h3 class="text-sm font-semibold text-foreground mb-1">{m.marketplace_agentsListEmpty()}</h3>
                     <p class="text-xs text-muted-foreground">

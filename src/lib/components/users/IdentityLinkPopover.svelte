@@ -1,5 +1,6 @@
 <script lang="ts">
   import { toastError } from '$lib/state/ui/toast.svelte';
+  import { Select } from '$lib/components/ui';
 
   let { userId, onCancel, onLinked }: { userId: string; onCancel: () => void; onLinked: () => void } = $props();
 
@@ -82,9 +83,9 @@
 
   <label class="grid grid-cols-[80px_1fr] gap-2 items-center text-xs">
     <span class="text-muted">Channel</span>
-    <select class="bg-bg border border-border rounded px-2 py-1" bind:value={channel}>
+    <Select bind:value={channel} size="sm">
       {#each CHANNELS as c (c)}<option value={c}>{c}</option>{/each}
-    </select>
+    </Select>
   </label>
   <label class="grid grid-cols-[80px_1fr] gap-2 items-center text-xs">
     <span class="text-muted">User ID</span>

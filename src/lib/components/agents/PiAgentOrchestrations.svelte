@@ -81,21 +81,21 @@
 			<span class="text-[8px] px-1 py-0.5 rounded bg-accent/10 text-accent/60">{orch.mode}</span>
 
 			<!-- Task count -->
-			<span class="text-[9px] text-muted/50">{orch.taskCount} tasks</span>
+			<span class="text-[9px] text-muted-strong">{orch.taskCount} tasks</span>
 
 			<!-- Spacer -->
 			<span class="flex-1"></span>
 
 			<!-- Duration -->
 			{#if orch.completedAt}
-				<span class="text-[9px] text-muted/40 font-mono">{formatDurationMs(orch.completedAt - orch.startedAt)}</span>
+				<span class="text-[9px] text-muted-strong font-mono">{formatDurationMs(orch.completedAt - orch.startedAt)}</span>
 			{/if}
 
 			<!-- Relative time -->
-			<span class="text-[9px] text-muted/40">{formatRelativeTime(orch.startedAt)}</span>
+			<span class="text-[9px] text-muted-strong">{formatRelativeTime(orch.startedAt)}</span>
 
 			<!-- Expand indicator -->
-			<span class="text-[9px] text-muted/40">{expandedId === orch.orchestrationId ? '\u25B2' : '\u25BC'}</span>
+			<span class="text-[9px] text-muted-strong">{expandedId === orch.orchestrationId ? '\u25B2' : '\u25BC'}</span>
 		</button>
 
 		<!-- Expanded detail -->

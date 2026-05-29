@@ -13,7 +13,7 @@
 		planned: 'bg-muted text-muted-foreground',
 		in_progress: 'bg-blue-500/10 text-blue-600',
 		completed: 'bg-green-500/10 text-green-600',
-		cancelled: 'bg-muted text-muted-foreground/50',
+		cancelled: 'bg-muted text-muted-strong',
 	};
 
 	const STATUS_LABEL: Record<ProjectStatus, string> = {
@@ -31,7 +31,7 @@
 		backlog: 'bg-muted text-muted-foreground',
 		in_review: 'bg-purple-500/10 text-purple-600',
 		done: 'bg-green-500/10 text-green-600',
-		cancelled: 'bg-muted text-muted-foreground/50',
+		cancelled: 'bg-muted text-muted-strong',
 	};
 
 	function agentLabel(id: string | null): string {

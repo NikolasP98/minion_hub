@@ -63,7 +63,7 @@
 <div class="flex flex-col">
 	{#each grouped as group}
 		<!-- Date header -->
-		<div class="px-3 py-1.5 text-[9px] font-semibold text-muted/40 uppercase tracking-wider sticky top-0 bg-bg z-10">
+		<div class="px-3 py-1.5 text-[9px] font-semibold text-muted-strong uppercase tracking-wider sticky top-0 bg-bg z-10">
 			{group.date}
 		</div>
 
@@ -84,7 +84,7 @@
 				</div>
 
 				<!-- Time -->
-				<span class="text-[10px] text-muted/50 font-mono w-16 shrink-0">
+				<span class="text-[10px] text-muted-strong font-mono w-16 shrink-0">
 					{formatTime(session.updatedAt)}
 				</span>
 
@@ -93,7 +93,7 @@
 					<span class="text-[11px] font-medium truncate">
 						{session.label || session.displayName || session.key.split(':').pop() || m.subagent_unnamed()}
 					</span>
-					<div class="flex items-center gap-2 text-[9px] text-muted/50">
+					<div class="flex items-center gap-2 text-[9px] text-muted-strong">
 						<span>{session.model ?? m.subagent_unknown()}</span>
 						{#if session.spawnDepth != null}
 							<span class="opacity-60">&middot;</span>

@@ -106,11 +106,11 @@
       </div>
       <div class="p-4 space-y-3">
         <input bind:value={name} placeholder={m.hosts_namePlaceholder()}
-          class="w-full bg-bg border border-border rounded px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted/40 focus:outline-none focus:border-accent/60" />
+          class="w-full bg-bg border border-border rounded px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/60" />
         <input bind:value={url} placeholder={m.hosts_urlPlaceholder()}
-          class="w-full bg-bg border border-border rounded px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted/40 focus:outline-none focus:border-accent/60" />
+          class="w-full bg-bg border border-border rounded px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/60" />
         <input bind:value={token} type="password" placeholder={m.hosts_tokenPlaceholder()}
-          class="w-full bg-bg border border-border rounded px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted/40 focus:outline-none focus:border-accent/60" />
+          class="w-full bg-bg border border-border rounded px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/60" />
         {#if addError}<p class="text-[11px] font-mono text-red-400">{addError}</p>{/if}
         {#if addSuccess}<p class="text-[11px] font-mono text-green-400">{addSuccess}</p>{/if}
         <button onclick={addGateway} disabled={adding || !name || !url || !token}
@@ -136,7 +136,7 @@
                 <input bind:value={editName} placeholder={m.hosts_namePlaceholder()} class="w-full bg-bg border border-border rounded px-3 py-1.5 text-sm font-mono text-foreground focus:outline-none focus:border-accent/60" />
                 <input bind:value={editUrl} placeholder={m.hosts_urlPlaceholder()} class="w-full bg-bg border border-border rounded px-3 py-1.5 text-sm font-mono text-foreground focus:outline-none focus:border-accent/60" />
                 <input bind:value={editToken} type="password" placeholder={m.hosts_tokenPlaceholder()}
-                  class="w-full bg-bg border border-border rounded px-3 py-1.5 text-sm font-mono text-foreground placeholder:text-muted/40 focus:outline-none focus:border-accent/60" />
+                  class="w-full bg-bg border border-border rounded px-3 py-1.5 text-sm font-mono text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/60" />
                 <div class="flex gap-2 justify-end">
                   <button onclick={cancelEdit} class="flex items-center gap-1 px-3 py-1 rounded border text-xs font-mono bg-bg border-border text-muted hover:text-foreground"><X size={12} /> {m.hosts_cancel()}</button>
                   <button onclick={saveEdit} class="flex items-center gap-1 px-3 py-1 rounded border text-xs font-mono bg-accent/20 border-accent/30 text-accent hover:bg-accent/30"><Check size={12} /> {m.hosts_save()}</button>

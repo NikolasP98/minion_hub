@@ -104,7 +104,7 @@
         {/each}
       </div>
     {:else}
-      <span class="text-[10px] text-muted-foreground/40 ml-1">{m.session_kanbanNoTasks()}</span>
+      <span class="text-[10px] text-muted-strong ml-1">{m.session_kanbanNoTasks()}</span>
       <span class="flex-1"></span>
     {/if}
   </button>
@@ -123,7 +123,7 @@
         {/each}
       </div>
     {:else}
-      <div class="px-3 py-3 text-[11px] text-muted-foreground/40 text-center">
+      <div class="px-3 py-3 text-[11px] text-muted-strong text-center">
         {m.session_kanbanNoTasksForSession()}
       </div>
     {/if}

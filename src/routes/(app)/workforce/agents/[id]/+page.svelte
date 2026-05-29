@@ -28,7 +28,7 @@
 		error: 'bg-destructive/10 text-destructive',
 		idle: 'bg-muted text-muted-foreground',
 		pending_approval: 'bg-purple-500/10 text-purple-600',
-		terminated: 'bg-muted text-muted-foreground/50',
+		terminated: 'bg-muted text-muted-strong',
 	};
 
 	const RUN_STATUS_BADGE: Record<string, string> = {
@@ -45,7 +45,7 @@
 		backlog: 'bg-muted text-muted-foreground',
 		in_review: 'bg-purple-500/10 text-purple-600',
 		done: 'bg-green-500/10 text-green-600',
-		cancelled: 'bg-muted text-muted-foreground/50',
+		cancelled: 'bg-muted text-muted-strong',
 	};
 
 	function formatCents(cents: number): string {

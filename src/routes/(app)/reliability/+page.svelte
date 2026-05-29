@@ -546,7 +546,7 @@
 		{#if !serverId}
 			<div class="h-full flex items-center justify-center">
 				<div class="text-center">
-					<Server size={32} class="text-muted-foreground/30 mx-auto mb-3" />
+					<Server size={32} class="text-muted-strong mx-auto mb-3" />
 					<p class="text-muted-foreground text-sm">{m.reliability_connectToView()}</p>
 				</div>
 			</div>

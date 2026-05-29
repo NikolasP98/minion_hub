@@ -7,7 +7,7 @@
     import WhatsAppQrPairing from './WhatsAppQrPairing.svelte';
     import ChannelAssignmentPicker from './ChannelAssignmentPicker.svelte';
     import { CircleCheck, CircleX, Eye, EyeOff } from 'lucide-svelte';
-    import { Button } from '$lib/components/ui';
+    import { Button, Select } from '$lib/components/ui';
     import * as m from '$lib/paraglide/messages';
 
     interface Props {
@@ -156,7 +156,7 @@
                 {#if s === 'name'}{m.channelWizard_stepName()}{/if}
                 {#if s === 'assign'}{m.channelWizard_stepAssign()}{/if}
             </div>
-            {#if i < 2}<span class="text-muted-foreground/40">›</span>{/if}
+            {#if i < 2}<span class="text-muted-strong">›</span>{/if}
         {/each}
     </div>
 
@@ -268,15 +268,11 @@
                 <label for="wizard-dm" class="text-xs font-medium text-muted-foreground block mb-1"
                     >DM policy</label
                 >
-                <select
-                    id="wizard-dm"
-                    bind:value={dmPolicy}
-                    class="w-full bg-bg border border-border rounded-md px-3 py-2 text-sm"
-                >
+                <Select id="wizard-dm" bind:value={dmPolicy} size="md">
                     <option value="open">open — anyone can DM</option>
                     <option value="pairing">pairing — must pair first</option>
                     <option value="disabled">disabled — DMs disabled</option>
-                </select>
+                </Select>
             </div>
         </div>
         <div class="flex gap-2">

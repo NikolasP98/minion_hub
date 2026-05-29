@@ -1,6 +1,6 @@
 <script lang="ts">
     import type { ChannelType } from '$lib/types/channels';
-    import { Button } from '$lib/components/ui';
+    import { Button, Select } from '$lib/components/ui';
     import * as m from '$lib/paraglide/messages';
 
     interface Props {
@@ -41,11 +41,11 @@
     </div>
     <div>
         <label for="edit-dm" class="text-xs font-medium text-muted-foreground block mb-1">DM policy</label>
-        <select id="edit-dm" bind:value={dmPolicy} class="w-full bg-bg border border-border rounded-md px-3 py-2 text-sm">
+        <Select id="edit-dm" bind:value={dmPolicy} size="md">
             <option value="open">open</option>
             <option value="pairing">pairing</option>
             <option value="disabled">disabled</option>
-        </select>
+        </Select>
     </div>
     <div>
         <label for="edit-allow" class="text-xs font-medium text-muted-foreground block mb-1">Allow from (comma-separated)</label>

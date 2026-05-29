@@ -6,6 +6,7 @@
   import { toastSuccess, toastError } from '$lib/state/ui/toast.svelte';
   import { ensureAliases, invalidateAliases } from '$lib/state/features/aliases.svelte';
   import { can } from '$lib/state/features/permissions.svelte';
+  import { Select } from '$lib/components/ui';
   import UserEditor from './UserEditor.svelte';
 
   type UserRow = {
@@ -242,14 +243,11 @@
             bind:value={inviteEmail}
             required
           />
-          <select
-            class="bg-bg2 border border-border rounded-md text-foreground px-2.5 py-1.5 text-xs font-[inherit] outline-none cursor-pointer focus:border-accent"
-            bind:value={inviteRole}
-          >
+          <Select bind:value={inviteRole} size="sm">
             {#each INVITE_ROLES as r (r)}
               <option value={r}>{r}</option>
             {/each}
-          </select>
+          </Select>
         </div>
         {#if inviteError}
           <p class="text-xs text-destructive">{inviteError}</p>

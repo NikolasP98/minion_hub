@@ -89,7 +89,7 @@
       bind:value={searchQuery}
       placeholder={m.skills_searchPlaceholder()}
       class="flex-1 bg-bg3 border border-border rounded-md text-[11px] text-foreground
-        px-2.5 py-1.5 outline-none placeholder:text-muted-foreground/40
+        px-2.5 py-1.5 outline-none placeholder:text-muted-strong
         focus:border-accent/50 transition-colors"
     />
     <div class="flex rounded-md border border-border overflow-hidden shrink-0">
@@ -212,7 +212,7 @@
       {/each}
 
       {#if visibleSkills.length === 0 && searchQuery.trim()}
-        <div class="text-[11px] text-muted-foreground/50 text-center py-6">
+        <div class="text-[11px] text-muted-strong text-center py-6">
           {m.skills_noMatching({ query: searchQuery })}
         </div>
       {/if}

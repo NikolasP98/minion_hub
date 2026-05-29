@@ -1,6 +1,7 @@
 <script lang="ts">
     import { provisionState, saveConfig } from "$lib/state/features/provision.svelte";
     import { Server, Bot, Package, Radio, Key, Save, Loader2 } from "lucide-svelte";
+    import { Select } from '$lib/components/ui';
     import * as m from '$lib/paraglide/messages';
 
     interface Props {
@@ -33,7 +34,7 @@
                     type="text"
                     bind:value={provisionState.config.sshHost}
                     placeholder={m.provision_hostPlaceholder()}
-                    class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground font-mono placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent"
+                    class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground font-mono placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-accent"
                 />
             </div>
             <div class="grid grid-cols-2 gap-2.5">
@@ -44,7 +45,7 @@
                         type="text"
                         bind:value={provisionState.config.sshUser}
                         placeholder="root"
-                        class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent"
+                        class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-accent"
                     />
                 </div>
                 <div>
@@ -54,7 +55,7 @@
                         type="number"
                         bind:value={provisionState.config.sshPort}
                         placeholder="22"
-                        class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent"
+                        class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-accent"
                     />
                 </div>
             </div>
@@ -75,33 +76,25 @@
                     type="text"
                     bind:value={provisionState.config.agentName}
                     placeholder="minion"
-                    class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent"
+                    class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-accent"
                 />
             </div>
             <div class="grid grid-cols-2 gap-2.5">
                 <div>
                     <label class="text-xs text-muted-foreground mb-1 block" for="sandbox-mode">{m.provision_sandboxMode()}</label>
-                    <select
-                        id="sandbox-mode"
-                        bind:value={provisionState.config.sandboxMode}
-                        class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-accent"
-                    >
+                    <Select id="sandbox-mode" bind:value={provisionState.config.sandboxMode} size="md">
                         <option value="non-main">{m.provision_sandboxNonMain()}</option>
                         <option value="always">{m.provision_sandboxAlways()}</option>
                         <option value="never">{m.provision_sandboxNever()}</option>
-                    </select>
+                    </Select>
                 </div>
                 <div>
                     <label class="text-xs text-muted-foreground mb-1 block" for="dm-policy">{m.provision_dmPolicy()}</label>
-                    <select
-                        id="dm-policy"
-                        bind:value={provisionState.config.dmPolicy}
-                        class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-accent"
-                    >
+                    <Select id="dm-policy" bind:value={provisionState.config.dmPolicy} size="md">
                         <option value="pairing">{m.provision_dmPairing()}</option>
                         <option value="solo">{m.provision_dmSolo()}</option>
                         <option value="disabled">{m.provision_dmDisabled()}</option>
-                    </select>
+                    </Select>
                 </div>
             </div>
         </div>
@@ -116,25 +109,17 @@
         <div class="grid grid-cols-2 gap-2.5">
             <div>
                 <label class="text-xs text-muted-foreground mb-1 block" for="install-method">{m.provision_installMethod()}</label>
-                <select
-                    id="install-method"
-                    bind:value={provisionState.config.installMethod}
-                    class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-accent"
-                >
+                <Select id="install-method" bind:value={provisionState.config.installMethod} size="md">
                     <option value="package">{m.provision_installPackage()}</option>
                     <option value="source">{m.provision_installSource()}</option>
-                </select>
+                </Select>
             </div>
             <div>
                 <label class="text-xs text-muted-foreground mb-1 block" for="pkg-manager">{m.provision_pkgManager()}</label>
-                <select
-                    id="pkg-manager"
-                    bind:value={provisionState.config.pkgManager}
-                    class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-accent"
-                >
+                <Select id="pkg-manager" bind:value={provisionState.config.pkgManager} size="md">
                     <option value="npm">npm</option>
                     <option value="bun">bun</option>
-                </select>
+                </Select>
             </div>
         </div>
     </div>
@@ -153,19 +138,15 @@
                     type="number"
                     bind:value={provisionState.config.gatewayPort}
                     placeholder="18789"
-                    class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent"
+                    class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-accent"
                 />
             </div>
             <div>
                 <label class="text-xs text-muted-foreground mb-1 block" for="gw-bind">{m.provision_bind()}</label>
-                <select
-                    id="gw-bind"
-                    bind:value={provisionState.config.gatewayBind}
-                    class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-accent"
-                >
+                <Select id="gw-bind" bind:value={provisionState.config.gatewayBind} size="md">
                     <option value="loopback">{m.provision_bindLoopback()}</option>
                     <option value="all">{m.provision_bindAll()}</option>
-                </select>
+                </Select>
             </div>
         </div>
     </div>
@@ -204,7 +185,7 @@
                 type="password"
                 bind:value={provisionState.config.apiKey}
                 placeholder="sk-ant-..."
-                class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground font-mono placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent"
+                class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground font-mono placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-accent"
             />
             <p class="text-[10px] text-muted-foreground/60 mt-1">
                 {m.provision_apiKeyHint()}

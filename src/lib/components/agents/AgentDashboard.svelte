@@ -158,7 +158,7 @@
 
             <div class="border-t border-border/60 pt-2 mt-2 space-y-1">
                 {#if recentSessions.length === 0}
-                    <div class="text-[11px] text-muted-foreground/50 italic">No sessions yet</div>
+                    <div class="text-[11px] text-muted-strong italic">No sessions yet</div>
                 {:else}
                     {#each recentSessions as s}
                         <div class="flex items-center justify-between gap-2 text-[11px]">
@@ -263,7 +263,7 @@
                 >
                     Skills →
                 </button>
-                <span class="text-muted-foreground/30">·</span>
+                <span class="text-muted-strong">·</span>
                 <button
                     type="button"
                     onclick={(e) => { e.stopPropagation(); go('pi-agent'); }}

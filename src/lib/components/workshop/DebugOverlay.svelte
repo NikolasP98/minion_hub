@@ -67,7 +67,7 @@
               {/each}
             </div>
           {:else}
-            <div class="text-[7px] text-muted/40">queue: empty</div>
+            <div class="text-[7px] text-muted-strong">queue: empty</div>
           {/if}
 
           {#if mem?.contextSummary}
