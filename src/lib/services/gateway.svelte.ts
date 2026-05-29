@@ -507,6 +507,12 @@ function handleEvent(evt: Record<string, unknown>) {
         );
       }
       break;
+    case 'flows.run.event':
+      // Live per-node Test Run feedback — flow-editor state listens on the window.
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('flows.run.event', { detail: evt.payload }));
+      }
+      break;
     case 'pi-agent.run-start':
     case 'pi-agent.run-end':
     case 'pi-agent.tool-call':

@@ -160,12 +160,35 @@ export type FlowEdge = {
   label?: string;
 };
 
+export type FlowRunEventKind =
+  | 'run-start'
+  | 'node-start'
+  | 'node-end'
+  | 'node-error'
+  | 'run-end'
+  | 'log';
+
 export type LogEntry = {
   id: string;
   timestamp: number;
   level: 'info' | 'warn' | 'error' | 'debug';
   message: string;
   nodeId?: string;
+  /** Lifecycle classification (from the runner). */
+  kind?: FlowRunEventKind;
+  nodeType?: string;
+  nodeLabel?: string;
+  input?: string;
+  output?: string;
+};
+
+/** Live per-node execution status for the current/last Test Run. */
+export type NodeRunStatus = 'running' | 'done' | 'error';
+export type NodeRunState = {
+  status: NodeRunStatus;
+  input?: string;
+  output?: string;
+  error?: string;
 };
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -185,6 +208,10 @@ export const flowEditorState = $state({
   relationshipMode: false,
   consoleOpen: false,
   consoleLogs: [] as LogEntry[],
+  /** Per-node live status for the active/last Test Run (keyed by node id). */
+  nodeRuns: {} as Record<string, NodeRunState>,
+  /** True while the history drawer is open. */
+  historyOpen: false,
   canvasViewport: { x: 0, y: 0, zoom: 1 },
   contextMenu: { open: false, x: 0, y: 0, nodeId: null as string | null },
   /** Plugin node descriptors (from flows.nodes.list) — carry the config field
@@ -381,6 +408,58 @@ export function clearLogs() {
   flowEditorState.consoleLogs = [];
 }
 
+/** Reset per-node run status (start of a fresh Test Run). */
+export function resetNodeRuns() {
+  flowEditorState.nodeRuns = {};
+}
+
+/** A single execution event from the runner (mirror of the runner's FlowRunEvent). */
+export type RunnerEvent = {
+  level: LogEntry['level'];
+  message: string;
+  nodeId?: string;
+  kind?: FlowRunEventKind;
+  nodeType?: string;
+  nodeLabel?: string;
+  input?: string;
+  output?: string;
+  ts?: number;
+};
+
+/** Apply one runner event: append a console line and update per-node status. */
+export function applyRunEvent(ev: RunnerEvent) {
+  appendLog({
+    level: ev.level,
+    message: ev.message,
+    nodeId: ev.nodeId,
+    kind: ev.kind,
+    nodeType: ev.nodeType,
+    nodeLabel: ev.nodeLabel,
+    input: ev.input,
+    output: ev.output,
+  });
+  if (!ev.nodeId) return;
+  if (ev.kind === 'node-start') {
+    flowEditorState.nodeRuns[ev.nodeId] = { status: 'running', input: ev.input };
+  } else if (ev.kind === 'node-end') {
+    flowEditorState.nodeRuns[ev.nodeId] = { status: 'done', input: ev.input, output: ev.output };
+  } else if (ev.kind === 'node-error') {
+    flowEditorState.nodeRuns[ev.nodeId] = { status: 'error', input: ev.input, error: ev.message };
+  }
+}
+
+/** Replay a stored historic run into the console + node-status view. */
+export function loadHistoryRun(events: RunnerEvent[]) {
+  flowEditorState.consoleOpen = true;
+  clearLogs();
+  resetNodeRuns();
+  for (const ev of events) applyRunEvent(ev);
+}
+
+export function toggleHistory() {
+  flowEditorState.historyOpen = !flowEditorState.historyOpen;
+}
+
 /** Open the node context menu at the cursor, suppressing the browser default.
  *  Shared by every node component so right-click is consistent across the editor. */
 export function openNodeContextMenu(e: MouseEvent, nodeId: string) {
@@ -411,15 +490,6 @@ export function duplicateNode(nodeId: string) {
 
 const FLOWS_URL = env.PUBLIC_LANGGRAPH_FLOWS_URL ?? 'http://localhost:2025';
 
-type FlowRunEvent = { level: LogEntry['level']; message: string; nodeId?: string };
-
-/**
- * Test Run. Preferred path routes through the gateway WS (`flows.run`): the hub
- * already holds an authenticated socket, the flows runner stays localhost-only,
- * and there's no mixed-content/CORS problem over HTTPS in prod. When no gateway
- * WS is connected (pure local dev pointing straight at a runner), fall back to
- * the direct SSE fetch.
- */
 /**
  * A flow whose entry is a trigger/pluginTrigger has no prompt of its own — the
  * runner refuses to compile it without an `initialPrompt` (the event payload it
@@ -437,13 +507,65 @@ function testRunPrompt(): string | undefined {
   return hasTriggerEntry ? TEST_RUN_SAMPLE_PROMPT : undefined;
 }
 
+function runStatusOf(events: RunnerEvent[]): 'completed' | 'error' {
+  return events.some((e) => e.kind === 'node-error' || (e.kind === 'run-end' && e.level === 'error'))
+    ? 'error'
+    : 'completed';
+}
+
+/** Best-effort: persist a finished Test Run to the history table. */
+async function persistRun(startedAt: number, events: RunnerEvent[]) {
+  const flowId = flowEditorState.flowId;
+  if (!flowId || events.length === 0) return;
+  try {
+    await fetch(`/api/flows/${flowId}/runs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        startedAt,
+        durationMs: Date.now() - startedAt,
+        status: runStatusOf(events),
+        events,
+      }),
+    });
+  } catch {
+    // History is non-critical — never let a persistence failure surface to the run.
+  }
+}
+
+/**
+ * Test Run. Preferred path routes through the gateway WS (`flows.run`): the hub
+ * already holds an authenticated socket, the flows runner stays localhost-only,
+ * and there's no mixed-content/CORS problem over HTTPS in prod. The gateway
+ * streams each node-lifecycle event back as a `flows.run.event` (live node
+ * status + I/O), and returns the full set in its response (used to persist the
+ * run). When no gateway WS is connected (pure local dev pointing straight at a
+ * runner), fall back to the direct SSE fetch (no live frames).
+ */
 export async function runFlow() {
   if (flowEditorState.isRunning) return;
   flowEditorState.isRunning = true;
   flowEditorState.consoleOpen = true;
+  flowEditorState.historyOpen = false;
   clearLogs();
+  resetNodeRuns();
 
   const prompt = testRunPrompt();
+  const startedAt = Date.now();
+  const collected: RunnerEvent[] = [];
+  let liveCount = 0;
+
+  // Live per-node events streamed from the gateway during the WS run.
+  const onLive = (e: Event) => {
+    const ev = (e as CustomEvent).detail?.event as RunnerEvent | undefined;
+    if (!ev) return;
+    liveCount++;
+    collected.push(ev);
+    applyRunEvent(ev);
+  };
+  if (typeof window !== 'undefined') {
+    window.addEventListener('flows.run.event', onLive);
+  }
 
   try {
     if (prompt) {
@@ -455,14 +577,17 @@ export async function runFlow() {
         'flows.run',
         { nodes: flowEditorState.nodes, edges: flowEditorState.edges, ...(prompt ? { prompt } : {}) },
         190_000,
-      )) as { events?: FlowRunEvent[] } | null;
+      )) as { runId?: string; events?: RunnerEvent[] } | null;
       const events = res?.events ?? [];
-      if (events.length === 0) {
-        appendLog({ level: 'warn', message: 'Flow run returned no output.' });
+      // If the live stream delivered nothing (older gateway / missed frames),
+      // replay the batched events so the console is never empty.
+      if (liveCount === 0) {
+        if (events.length === 0) {
+          appendLog({ level: 'warn', message: 'Flow run returned no output.' });
+        }
+        for (const ev of events) applyRunEvent(ev);
       }
-      for (const event of events) {
-        appendLog({ level: event.level, message: event.message, nodeId: event.nodeId });
-      }
+      void persistRun(startedAt, events.length ? events : collected);
       return;
     }
 
@@ -483,12 +608,18 @@ export async function runFlow() {
     }
 
     for await (const event of readSseStream(res.body)) {
-      appendLog({ level: event.level, message: event.message, nodeId: event.nodeId });
+      const ev = event as RunnerEvent;
+      collected.push(ev);
+      applyRunEvent(ev);
     }
+    void persistRun(startedAt, collected);
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     appendLog({ level: 'error', message: `Flow run failed: ${detail}` });
   } finally {
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('flows.run.event', onLive);
+    }
     flowEditorState.isRunning = false;
   }
 }

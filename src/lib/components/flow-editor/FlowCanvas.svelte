@@ -23,6 +23,7 @@
   import ToolAgentNode from './nodes/ToolAgentNode.svelte';
   import NodeConfigPanel from './nodes/NodeConfigPanel.svelte';
   import FlowActionIsland from './FlowActionIsland.svelte';
+  import FlowHistoryPanel from './FlowHistoryPanel.svelte';
   import FlowEdgeComponent from './edges/FlowEdge.svelte';
   import ContextEdgeComponent from './edges/ContextEdge.svelte';
   import * as m from '$lib/paraglide/messages';
@@ -287,4 +288,5 @@
   </SvelteFlow>
   <NodeConfigPanel />
   <FlowActionIsland />
+  <FlowHistoryPanel />
 </div>
