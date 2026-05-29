@@ -24,6 +24,7 @@
   import NodeConfigPanel from './nodes/NodeConfigPanel.svelte';
   import FlowActionIsland from './FlowActionIsland.svelte';
   import FlowHistoryPanel from './FlowHistoryPanel.svelte';
+  import FlowRunStatusLayer from './FlowRunStatusLayer.svelte';
   import FlowEdgeComponent from './edges/FlowEdge.svelte';
   import ContextEdgeComponent from './edges/ContextEdge.svelte';
   import * as m from '$lib/paraglide/messages';
@@ -286,6 +287,7 @@
     <Controls />
     <MiniMap />
   </SvelteFlow>
+  <FlowRunStatusLayer />
   <NodeConfigPanel />
   <FlowActionIsland />
   <FlowHistoryPanel />

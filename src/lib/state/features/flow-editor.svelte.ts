@@ -183,7 +183,7 @@ export type LogEntry = {
 };
 
 /** Live per-node execution status for the current/last Test Run. */
-export type NodeRunStatus = 'running' | 'done' | 'error';
+export type NodeRunStatus = 'running' | 'done' | 'error' | 'skipped';
 export type NodeRunState = {
   status: NodeRunStatus;
   input?: string;
@@ -438,6 +438,16 @@ export function applyRunEvent(ev: RunnerEvent) {
     input: ev.input,
     output: ev.output,
   });
+  // On run completion, any processing node that never started was skipped
+  // (e.g. a router branch not taken, or nodes downstream of an error).
+  if (ev.kind === 'run-end') {
+    for (const n of flowEditorState.nodes) {
+      if (PROCESSING_NODE_TYPES.has(n.type) && !flowEditorState.nodeRuns[n.id]) {
+        flowEditorState.nodeRuns[n.id] = { status: 'skipped' };
+      }
+    }
+    return;
+  }
   if (!ev.nodeId) return;
   if (ev.kind === 'node-start') {
     flowEditorState.nodeRuns[ev.nodeId] = { status: 'running', input: ev.input };
@@ -447,6 +457,17 @@ export function applyRunEvent(ev: RunnerEvent) {
     flowEditorState.nodeRuns[ev.nodeId] = { status: 'error', input: ev.input, error: ev.message };
   }
 }
+
+/** Node types the runner actually executes (entry nodes excluded). */
+const PROCESSING_NODE_TYPES = new Set([
+  'llm',
+  'agent',
+  'pluginAction',
+  'transform',
+  'structured',
+  'router',
+  'toolAgent',
+]);
 
 /** Replay a stored historic run into the console + node-status view. */
 export function loadHistoryRun(events: RunnerEvent[]) {
@@ -525,6 +546,7 @@ async function persistRun(startedAt: number, events: RunnerEvent[]) {
         startedAt,
         durationMs: Date.now() - startedAt,
         status: runStatusOf(events),
+        source: 'test', // manual Test Run; live trigger runs are persisted by the gateway as 'production'
         events,
       }),
     });

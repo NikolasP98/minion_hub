@@ -11,6 +11,7 @@
     startedAt: number;
     durationMs: number;
     status: string;
+    source?: string; // 'test' | 'production'
     events: RunnerEvent[];
   };
 
@@ -114,7 +115,17 @@
                 <CheckCircle2 size={14} class="shrink-0 text-emerald-400" />
               {/if}
               <div class="min-w-0 flex-1">
-                <div class="truncate text-[11px] text-foreground/90">{fmt(run.startedAt)}</div>
+                <div class="flex items-center gap-1.5">
+                  <span class="truncate text-[11px] text-foreground/90">{fmt(run.startedAt)}</span>
+                  <span
+                    class="shrink-0 rounded px-1 py-0.5 font-mono text-[8px] font-semibold uppercase tracking-wide {run.source ===
+                    'production'
+                      ? 'bg-violet-500/20 text-violet-300 ring-1 ring-violet-500/30'
+                      : 'bg-bg3 text-muted/70'}"
+                  >
+                    {run.source === 'production' ? 'Live' : 'Test'}
+                  </span>
+                </div>
                 <div class="font-mono text-[10px] text-muted/60">
                   {nodeCount(run.events)} node{nodeCount(run.events) === 1 ? '' : 's'} ·
                   {(run.durationMs / 1000).toFixed(1)}s
