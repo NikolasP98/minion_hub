@@ -1,6 +1,8 @@
 // Flow Editor State — Svelte 5 runes
 import { readSseStream } from './flow-run';
 import { env } from '$env/dynamic/public';
+import { sendRequest } from '$lib/services/gateway.svelte';
+import { conn } from '$lib/state/gateway';
 
 export type HandleDef = { id: string; label: string };
 
@@ -409,6 +411,15 @@ export function duplicateNode(nodeId: string) {
 
 const FLOWS_URL = env.PUBLIC_LANGGRAPH_FLOWS_URL ?? 'http://localhost:2025';
 
+type FlowRunEvent = { level: LogEntry['level']; message: string; nodeId?: string };
+
+/**
+ * Test Run. Preferred path routes through the gateway WS (`flows.run`): the hub
+ * already holds an authenticated socket, the flows runner stays localhost-only,
+ * and there's no mixed-content/CORS problem over HTTPS in prod. When no gateway
+ * WS is connected (pure local dev pointing straight at a runner), fall back to
+ * the direct SSE fetch.
+ */
 export async function runFlow() {
   if (flowEditorState.isRunning) return;
   flowEditorState.isRunning = true;
@@ -416,6 +427,23 @@ export async function runFlow() {
   clearLogs();
 
   try {
+    if (conn.connected) {
+      const res = (await sendRequest(
+        'flows.run',
+        { nodes: flowEditorState.nodes, edges: flowEditorState.edges },
+        190_000,
+      )) as { events?: FlowRunEvent[] } | null;
+      const events = res?.events ?? [];
+      if (events.length === 0) {
+        appendLog({ level: 'warn', message: 'Flow run returned no output.' });
+      }
+      for (const event of events) {
+        appendLog({ level: event.level, message: event.message, nodeId: event.nodeId });
+      }
+      return;
+    }
+
+    // Local-dev fallback: no gateway WS, hit the runner directly.
     const res = await fetch(`${FLOWS_URL}/flows/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -433,8 +461,9 @@ export async function runFlow() {
     for await (const event of readSseStream(res.body)) {
       appendLog({ level: event.level, message: event.message, nodeId: event.nodeId });
     }
-  } catch {
-    appendLog({ level: 'error', message: `Could not reach flow runner at ${FLOWS_URL}.` });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    appendLog({ level: 'error', message: `Flow run failed: ${detail}` });
   } finally {
     flowEditorState.isRunning = false;
   }
