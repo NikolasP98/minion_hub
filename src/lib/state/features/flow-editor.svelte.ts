@@ -82,6 +82,32 @@ export type TriggerNodeData = {
   filterAgentId?: string;
 };
 
+/** A typed config field a plugin declares for one of its flow nodes (mirrors the
+ *  gateway's FlowNodeConfigField). Rendered as a form by NodeConfigPanel. */
+export type FlowNodeConfigField = {
+  key: string;
+  label: string;
+  type: 'string' | 'number' | 'boolean' | 'select' | 'textarea';
+  options?: { value: string; label: string }[];
+  default?: string | number | boolean;
+  placeholder?: string;
+  description?: string;
+};
+
+/** Plugin flow-node descriptor as returned by `flows.nodes.list`. */
+export type FlowNodeDescriptor = {
+  pluginId: string;
+  id: string;
+  kind: 'trigger' | 'action';
+  label: string;
+  description?: string;
+  icon?: string;
+  event?: string;
+  method?: string;
+  channelId?: string;
+  config?: FlowNodeConfigField[];
+};
+
 export type PluginTriggerNodeData = {
   pluginId: string;
   contributionId: string;
@@ -91,6 +117,8 @@ export type PluginTriggerNodeData = {
   /** Channel-scoped triggers (e.g. WhatsApp/Telegram) carry the channel id so
    *  trigger registration only fires for that channel's inbound traffic. */
   filterChannelId?: string;
+  /** Values for the contribution's declared config fields. */
+  config?: Record<string, unknown>;
 };
 
 export type PluginActionNodeData = {
@@ -98,6 +126,9 @@ export type PluginActionNodeData = {
   contributionId: string;
   method: string;
   label: string;
+  /** Values for the contribution's declared config fields; forwarded to the
+   *  gateway method by the langgraph runner. */
+  config?: Record<string, unknown>;
 };
 
 export type FlowNode = {
@@ -152,7 +183,67 @@ export const flowEditorState = $state({
   consoleLogs: [] as LogEntry[],
   canvasViewport: { x: 0, y: 0, zoom: 1 },
   contextMenu: { open: false, x: 0, y: 0, nodeId: null as string | null },
+  /** Plugin node descriptors (from flows.nodes.list) — carry the config field
+   *  defs the config panel renders. */
+  pluginNodeDescriptors: [] as FlowNodeDescriptor[],
+  /** Node currently open in the config panel (null = closed). */
+  configNodeId: null as string | null,
 });
+
+// ─── Plugin node config ─────────────────────────────────────────────────────
+
+export function setPluginNodeDescriptors(descriptors: FlowNodeDescriptor[]) {
+  flowEditorState.pluginNodeDescriptors = descriptors;
+}
+
+/** Resolve the descriptor (with config field defs) for a plugin node. */
+export function descriptorForNode(node: FlowNode | undefined): FlowNodeDescriptor | null {
+  if (!node || (node.type !== 'pluginAction' && node.type !== 'pluginTrigger')) return null;
+  const d = node.data as { pluginId?: string; contributionId?: string };
+  return (
+    flowEditorState.pluginNodeDescriptors.find(
+      (x) => x.pluginId === d.pluginId && x.id === d.contributionId,
+    ) ?? null
+  );
+}
+
+/** Build the default config value map from a contribution's declared fields. */
+export function defaultConfigForFields(
+  fields: FlowNodeConfigField[] | undefined,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const f of fields ?? []) {
+    if (f.default !== undefined) out[f.key] = f.default;
+    else if (f.type === 'boolean') out[f.key] = false;
+  }
+  return out;
+}
+
+/** True when a node exposes a configurable surface (declared config fields). */
+export function nodeHasConfig(node: FlowNode | undefined): boolean {
+  return (descriptorForNode(node)?.config?.length ?? 0) > 0;
+}
+
+export function openNodeConfig(nodeId: string) {
+  flowEditorState.configNodeId = nodeId;
+}
+
+export function closeNodeConfig() {
+  flowEditorState.configNodeId = null;
+}
+
+/** Set one config value on a node and persist. */
+export function updateNodeConfig(nodeId: string, key: string, value: unknown) {
+  flowEditorState.nodes = flowEditorState.nodes.map((n) => {
+    if (n.id !== nodeId) return n;
+    const data = n.data as Record<string, unknown> & { config?: Record<string, unknown> };
+    return {
+      ...n,
+      data: { ...data, config: { ...(data.config ?? {}), [key]: value } },
+    } as FlowNode;
+  });
+  markDirty();
+}
 
 // ─── Auto-save ────────────────────────────────────────────────────────────────
 
@@ -283,6 +374,14 @@ export function appendLog(entry: Omit<LogEntry, 'id' | 'timestamp'>) {
 
 export function clearLogs() {
   flowEditorState.consoleLogs = [];
+}
+
+/** Open the node context menu at the cursor, suppressing the browser default.
+ *  Shared by every node component so right-click is consistent across the editor. */
+export function openNodeContextMenu(e: MouseEvent, nodeId: string) {
+  e.preventDefault();
+  e.stopPropagation();
+  flowEditorState.contextMenu = { open: true, x: e.clientX, y: e.clientY, nodeId };
 }
 
 export function deleteNode(nodeId: string) {

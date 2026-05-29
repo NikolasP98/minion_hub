@@ -2,7 +2,7 @@
   import { Handle, Position } from '@xyflow/svelte';
   import type { NodeProps } from '@xyflow/svelte';
   import type { ToolAgentNodeData, ToolRef } from '$lib/state/features/flow-editor.svelte';
-  import { flowEditorState, setNodes } from '$lib/state/features/flow-editor.svelte';
+  import { flowEditorState, setNodes, openNodeContextMenu } from '$lib/state/features/flow-editor.svelte';
   import { sendRequest } from '$lib/services/gateway.svelte';
   import { Wrench, Plus, X } from 'lucide-svelte';
   import { onMount } from 'svelte';
@@ -76,7 +76,11 @@
 <Handle type="target" position={Position.Left} id="in" class="!w-3 !h-3 !border-2 !border-violet-400 !bg-violet-900" />
 <Handle type="source" position={Position.Right} id="out" class="!w-3 !h-3 !border-2 !border-violet-400 !bg-violet-900" />
 
-<div class="relative bg-bg2 border rounded-xl px-4 py-3 min-w-56 max-w-72 shadow-lg select-none border-border hover:border-border/80">
+<div
+  class="relative bg-bg2 border rounded-xl px-4 py-3 min-w-56 max-w-72 shadow-lg select-none border-border hover:border-border/80"
+  oncontextmenu={(e) => openNodeContextMenu(e, id)}
+  role="presentation"
+>
   <div class="flex items-center gap-2 mb-2">
     <div class="w-6 h-6 rounded-md bg-violet-500/20 flex items-center justify-center shrink-0">
       <Wrench size={12} class="text-violet-400" />

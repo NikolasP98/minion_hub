@@ -2,7 +2,7 @@
   import { Handle, Position, useUpdateNodeInternals } from '@xyflow/svelte';
   import type { NodeProps } from '@xyflow/svelte';
   import type { RouterNodeData, RouterBranch, RouterRuleOp } from '$lib/state/features/flow-editor.svelte';
-  import { flowEditorState, setNodes } from '$lib/state/features/flow-editor.svelte';
+  import { flowEditorState, setNodes, openNodeContextMenu } from '$lib/state/features/flow-editor.svelte';
   import { sendRequest } from '$lib/services/gateway.svelte';
   import { Split, Plus, X } from 'lucide-svelte';
   import { onMount, tick } from 'svelte';
@@ -58,7 +58,11 @@
 
 <Handle type="target" position={Position.Left} id="in" class="!w-3 !h-3 !border-2 !border-amber-400 !bg-amber-900" />
 
-<div class="relative bg-bg2 border rounded-xl px-4 py-3 min-w-56 max-w-72 shadow-lg select-none border-border hover:border-border/80">
+<div
+  class="relative bg-bg2 border rounded-xl px-4 py-3 min-w-56 max-w-72 shadow-lg select-none border-border hover:border-border/80"
+  oncontextmenu={(e) => openNodeContextMenu(e, id)}
+  role="presentation"
+>
   <div class="flex items-center gap-2 mb-2">
     <div class="w-6 h-6 rounded-md bg-amber-500/20 flex items-center justify-center shrink-0">
       <Split size={12} class="text-amber-400" />

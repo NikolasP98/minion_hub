@@ -2,7 +2,7 @@
   import { Handle, Position } from '@xyflow/svelte';
   import type { NodeProps } from '@xyflow/svelte';
   import type { LLMNodeData } from '$lib/state/features/flow-editor.svelte';
-  import { flowEditorState, setNodes } from '$lib/state/features/flow-editor.svelte';
+  import { flowEditorState, setNodes, openNodeContextMenu } from '$lib/state/features/flow-editor.svelte';
   import { Cpu } from 'lucide-svelte';
   import { onMount } from 'svelte';
   import { sendRequest } from '$lib/services/gateway.svelte';
@@ -64,6 +64,8 @@
 
 <div
   class="relative bg-bg2 border rounded-xl px-4 py-3 min-w-44 max-w-56 shadow-lg select-none border-border hover:border-border/80"
+  oncontextmenu={(e) => openNodeContextMenu(e, id)}
+  role="presentation"
 >
   <div class="flex items-center gap-2 mb-1">
     <div class="w-6 h-6 rounded-md bg-violet-500/20 flex items-center justify-center shrink-0">

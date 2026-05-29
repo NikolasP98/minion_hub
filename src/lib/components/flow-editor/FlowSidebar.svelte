@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { flowEditorState, setNodes } from '$lib/state/features/flow-editor.svelte';
-  import type { FlowNode, AgentNodeData, PromptBoxData, LLMNodeData, TriggerNodeData, TransformNodeData, StructuredNodeData, RouterNodeData, ToolAgentNodeData } from '$lib/state/features/flow-editor.svelte';
+  import { flowEditorState, setNodes, setPluginNodeDescriptors, defaultConfigForFields } from '$lib/state/features/flow-editor.svelte';
+  import type { FlowNode, AgentNodeData, PromptBoxData, LLMNodeData, TriggerNodeData, TransformNodeData, StructuredNodeData, RouterNodeData, ToolAgentNodeData, FlowNodeConfigField } from '$lib/state/features/flow-editor.svelte';
   import { loadBuiltAgents } from '$lib/state/builder';
   import { Bot, Type, ChevronLeft, ChevronRight, Cpu, Zap, Braces, Split, Wrench } from 'lucide-svelte';
   import { onMount } from 'svelte';
@@ -13,6 +13,7 @@
     pluginId: string; id: string; kind: 'trigger' | 'action';
     label: string; description?: string; icon?: string;
     event?: string; method?: string; channelId?: string;
+    config?: FlowNodeConfigField[];
   }
   let pluginNodes = $state<FlowNodeDescriptor[]>([]);
 
@@ -30,7 +31,12 @@
     (async () => {
       try {
         const res = (await sendRequest('flows.nodes.list', {})) as { nodes?: FlowNodeDescriptor[] } | null;
-        if (res?.nodes) pluginNodes = res.nodes;
+        if (res?.nodes) {
+          pluginNodes = res.nodes;
+          // Share descriptors with the editor so NodeConfigPanel can resolve
+          // each plugin node's declared config fields.
+          setPluginNodeDescriptors(res.nodes);
+        }
       } catch {
         pluginNodes = [];
       }
@@ -106,10 +112,11 @@
   }
 
   function addPluginNode(d: FlowNodeDescriptor) {
+    const config = defaultConfigForFields(d.config);
     const data =
       d.kind === 'trigger'
-        ? { pluginId: d.pluginId, contributionId: d.id, event: d.event ?? '', label: d.label, deliverResponse: false, filterChannelId: d.channelId }
-        : { pluginId: d.pluginId, contributionId: d.id, method: d.method ?? '', label: d.label };
+        ? { pluginId: d.pluginId, contributionId: d.id, event: d.event ?? '', label: d.label, deliverResponse: false, filterChannelId: d.channelId, config }
+        : { pluginId: d.pluginId, contributionId: d.id, method: d.method ?? '', label: d.label, config };
     const node: FlowNode = {
       id: makeId(),
       type: d.kind === 'trigger' ? 'pluginTrigger' : 'pluginAction',
