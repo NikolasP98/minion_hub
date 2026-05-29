@@ -3,6 +3,7 @@
     import * as qrCode from '@zag-js/qr-code';
     import { useMachine, normalizeProps } from '@zag-js/svelte';
     import { requestWhatsAppPair } from '$lib/services/gateway.svelte';
+    import { Button } from '$lib/components/ui';
     import * as m from '$lib/paraglide/messages';
 
     interface Props {
@@ -93,13 +94,9 @@
 
 <div class="space-y-3">
     {#if pairingStatus === 'idle'}
-        <button
-            type="button"
-            class="bg-accent text-accent-foreground rounded-md px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity"
-            onclick={startPairing}
-        >
+        <Button type="button" variant="primary" onclick={startPairing}>
             {m.channel_startQrPairing()}
-        </button>
+        </Button>
         <p class="text-xs text-muted-foreground">
             {m.channel_scanQrInstruction()}
         </p>

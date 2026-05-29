@@ -513,13 +513,14 @@
 }
 
 /* ── Dynamic-island clearance (md+) ──
-   Pad the MAIN page content scroller so the floating island has room AND
-   scrolled content passes underneath it (padding lives on the scroll
-   container, not a dead margin band). Targets the primary scroller only
-   (flex-1 + overflow-y-auto); sidebar + settings-submenu rails (inside
-   <aside>) are excluded. */
+   The floating island is fixed top-right. Many pages render a header bar
+   (title + right-aligned actions) ABOVE their scroll container, so padding
+   only the scroller leaves those headers colliding with the island. Pad the
+   shell content column itself so every page's top row (header or content)
+   clears the island. (A future unified PageHeader could move headers inside
+   the scroller to reclaim scroll-under behavior.) */
 @media (min-width: 768px) {
-  .shell-main [class~='overflow-y-auto'][class~='flex-1']:not(aside *) {
+  .shell-main {
     padding-top: 3.5rem;
   }
 }

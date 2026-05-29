@@ -12,6 +12,7 @@
     import ConfigField from "./ConfigField.svelte";
     import ConfigTooltip from "./ConfigTooltip.svelte";
     import ToggleSwitch from "./ToggleSwitch.svelte";
+    import { Button } from "$lib/components/ui";
     import * as m from "$lib/paraglide/messages";
 
     let {
@@ -391,22 +392,24 @@
                     : placeholder}
                 oninput={onSensitiveInput}
             />
-            <button
-                type="button"
-                class="bg-transparent border border-border rounded-[5px] text-muted-foreground cursor-pointer text-[11px] py-1.25 px-2 shrink-0 transition-colors hover:text-foreground"
+            <Button
+                variant="secondary"
+                size="sm"
+                class="shrink-0"
                 onclick={() => (showSensitive = !showSensitive)}
                 title={showSensitive ? m.config_hide() : m.config_show()}
             >
                 {showSensitive ? m.config_hide() : m.config_show()}
-            </button>
+            </Button>
             {#if !isRedacted && value !== getOriginalField(path)}
-                <button
-                    type="button"
-                    class="bg-transparent border border-border rounded-[5px] text-muted-foreground cursor-pointer text-[11px] py-1.25 px-2 shrink-0 transition-colors hover:text-foreground"
+                <Button
+                    variant="secondary"
+                    size="sm"
+                    class="shrink-0"
                     onclick={resetSensitive}
                 >
                     {m.common_reset()}
-                </button>
+                </Button>
             {/if}
         </div>
     </div>
@@ -497,10 +500,11 @@
                     }
                 }}
             />
-            <button
-                type="button"
-                class="bg-transparent border border-border rounded-[5px] text-muted-foreground cursor-pointer text-xs py-1.25 px-2 shrink-0 transition-colors hover:text-foreground"
-                onclick={addArrayItem}>{m.common_add()}</button
+            <Button
+                variant="secondary"
+                size="sm"
+                class="shrink-0"
+                onclick={addArrayItem}>{m.common_add()}</Button
             >
         </div>
     </div>
@@ -590,10 +594,11 @@
                     }
                 }}
             />
-            <button
-                type="button"
-                class="bg-transparent border border-border rounded-[5px] text-muted-foreground cursor-pointer text-xs py-1.25 px-2 shrink-0 transition-colors hover:text-foreground"
-                onclick={addRecordEntry}>{m.common_add()}</button
+            <Button
+                variant="secondary"
+                size="sm"
+                class="shrink-0"
+                onclick={addRecordEntry}>{m.common_add()}</Button
             >
         </div>
     </div>
@@ -609,10 +614,10 @@
                     <span class="text-[10px] text-muted-foreground font-mono"
                         >#{i}</span
                     >
-                    <button
-                        type="button"
-                        class="bg-transparent border-none text-muted-foreground cursor-pointer text-xs hover:text-destructive"
-                        onclick={() => removeArrayObject(i)}>{m.common_remove()}</button
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onclick={() => removeArrayObject(i)}>{m.common_remove()}</Button
                     >
                 </div>
                 {#if items?.properties}

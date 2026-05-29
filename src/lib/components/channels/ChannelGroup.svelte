@@ -5,6 +5,7 @@
     import { CHANNEL_TYPE_LABELS } from '$lib/types/channels';
     import { ArrowUpRight, Plus, Power, Settings2 } from 'lucide-svelte';
     import ChannelBrandIcon from './ChannelBrandIcon.svelte';
+    import { Button } from '$lib/components/ui';
     import { hydratePluginNav, pluginNavState } from '$lib/state/plugin-nav.svelte';
     import { sendRequest } from '$lib/services/gateway.svelte';
     import { configState, loadConfig, beginRestart } from '$lib/state/config/config.svelte';
@@ -113,14 +114,10 @@
                 {transportEnabled === false ? 'Channel off' : 'Channel on'}
             {/if}
         </button>
-        <button
-            type="button"
-            class="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-accent text-accent-foreground hover:opacity-90 transition-opacity"
-            onclick={onaddclick}
-        >
-            <Plus size={12} />
+        <Button type="button" variant="primary" size="sm" onclick={onaddclick}>
+            {#snippet icon()}<Plus size={12} />{/snippet}
             {m.channel_addAccount()}
-        </button>
+        </Button>
     </header>
     <div class="p-3 space-y-1.5">
         {@render children()}

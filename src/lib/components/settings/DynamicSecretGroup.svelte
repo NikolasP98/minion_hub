@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { SecretsSummary } from '$lib/types/secrets';
+  import { Button } from '$lib/components/ui';
   import SecretStatusPill from './SecretStatusPill.svelte';
 
   interface Props {
@@ -83,32 +84,32 @@
           </div>
           <SecretStatusPill status={inst.probeStatus} message={inst.probeMessage} />
           <div class="flex items-center gap-1">
-            <button
-              type="button"
-              class="text-[11px] text-muted-foreground hover:text-foreground border border-border rounded-[5px] px-2 py-1 transition-colors disabled:opacity-50"
-              disabled={busy[inst.instanceId!] === 'probe'}
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={busy[inst.instanceId!] === 'probe'}
               onclick={() => handleProbe(inst.instanceId!)}
               title="Re-probe this credential"
             >
-              {busy[inst.instanceId!] === 'probe' ? '…' : 'Probe'}
-            </button>
-            <button
-              type="button"
-              class="text-[11px] text-accent hover:brightness-115 border border-accent/30 rounded-[5px] px-2 py-1 transition-colors"
+              Probe
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               onclick={() => onRotate(inst.instanceId!)}
               title="Set a new value"
             >
               Rotate
-            </button>
-            <button
-              type="button"
-              class="text-[11px] text-rose-300 hover:text-rose-200 border border-rose-500/30 rounded-[5px] px-2 py-1 transition-colors disabled:opacity-50"
-              disabled={busy[inst.instanceId!] === 'clear'}
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              loading={busy[inst.instanceId!] === 'clear'}
               onclick={() => handleClear(inst.instanceId!)}
               title="Clear this credential"
             >
-              {busy[inst.instanceId!] === 'clear' ? '…' : 'Clear'}
-            </button>
+              Clear
+            </Button>
           </div>
         </li>
       {/each}

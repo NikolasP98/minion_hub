@@ -1,5 +1,6 @@
 <script lang="ts">
     import type { ChannelType } from '$lib/types/channels';
+    import { Button } from '$lib/components/ui';
     import * as m from '$lib/paraglide/messages';
 
     interface Props {
@@ -57,11 +58,11 @@
         />
     </div>
     <div class="flex gap-2 pt-1">
-        <button type="submit" class="bg-accent text-accent-foreground rounded-md px-4 py-2 text-sm font-medium hover:opacity-90">
+        <Button type="submit" variant="primary">
             {m.channel_update()}
-        </button>
-        <button type="button" class="bg-bg3 border border-border rounded-md px-4 py-2 text-sm" onclick={oncancel}>
+        </Button>
+        <Button type="button" variant="secondary" onclick={oncancel}>
             {m.common_cancel()}
-        </button>
+        </Button>
     </div>
 </form>

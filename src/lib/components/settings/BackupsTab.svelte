@@ -4,6 +4,7 @@
   import * as m from '$lib/paraglide/messages';
   import { conn } from '$lib/state/gateway/connection.svelte';
   import { hostsState } from '$lib/state/features/hosts.svelte';
+  import { Button } from '$lib/components/ui';
   import {
     DatabaseBackup,
     Play,
@@ -11,7 +12,6 @@
     Trash2,
     TestTube,
     Save,
-    Loader2,
   } from 'lucide-svelte';
 
   // Server-loaded initial config (from /settings/backups/+page.server.ts).
@@ -338,24 +338,20 @@
 
     <!-- Actions -->
     <div class="flex items-center gap-2 mt-4">
-      <button
-        type="button"
-        class="flex items-center gap-1.5 bg-accent border-none rounded-[5px] text-white cursor-pointer font-[inherit] text-xs font-semibold py-[6px] px-3 disabled:opacity-50"
-        onclick={saveConfig}
-        disabled={saving}
-      >
-        <Save size={12} />
+      <Button variant="primary" size="sm" loading={saving} onclick={saveConfig}>
+        {#snippet icon()}<Save size={12} />{/snippet}
         {saving ? m.backup_saving() : m.common_save()}
-      </button>
-      <button
-        type="button"
-        class="flex items-center gap-1.5 bg-bg3 border border-border rounded-[5px] text-foreground cursor-pointer font-[inherit] text-xs font-medium py-[5px] px-3 hover:border-muted-foreground disabled:opacity-50"
+      </Button>
+      <Button
+        variant="secondary"
+        size="sm"
+        loading={testing}
+        disabled={!backupHost}
         onclick={testConnection}
-        disabled={testing || !backupHost}
       >
-        <TestTube size={12} />
+        {#snippet icon()}<TestTube size={12} />{/snippet}
         {testing ? m.backup_testing() : m.backup_testConnection()}
-      </button>
+      </Button>
       {#if testResult}
         <span class="text-xs {testResult.ok ? 'text-green-400' : 'text-destructive'}">
           {testResult.message}
@@ -375,20 +371,16 @@
         <h2 class="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
           {m.backup_snapshots()}
         </h2>
-        <button
-          type="button"
-          class="flex items-center gap-1.5 bg-accent border-none rounded-[5px] text-white cursor-pointer font-[inherit] text-xs font-semibold py-[6px] px-3 disabled:opacity-50"
-          onclick={startBackup}
+        <Button
+          variant="primary"
+          size="sm"
+          loading={running && runningAction === 'backup'}
           disabled={running || !backupHost}
+          onclick={startBackup}
         >
-          {#if running && runningAction === 'backup'}
-            <Loader2 size={12} class="animate-spin" />
-            {m.backup_backingUp()}
-          {:else}
-            <Play size={12} />
-            {m.backup_backupNow()}
-          {/if}
-        </button>
+          {#snippet icon()}<Play size={12} />{/snippet}
+          {running && runningAction === 'backup' ? m.backup_backingUp() : m.backup_backupNow()}
+        </Button>
       </div>
 
       <!-- Snapshot table -->
@@ -419,25 +411,28 @@
                   <td class="py-2 px-2 text-right">
                     <div class="flex items-center justify-end gap-1">
                       {#if snapshot.status === 'complete'}
-                        <button
-                          type="button"
-                          class="p-1 rounded hover:bg-bg3 text-muted-foreground hover:text-foreground transition-colors"
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           title={m.backup_restore()}
+                          aria-label={m.backup_restore()}
                           onclick={() => (confirmRestore = snapshot)}
                           disabled={running}
                         >
-                          <RotateCcw size={13} />
-                        </button>
+                          {#snippet icon()}<RotateCcw size={13} />{/snippet}
+                        </Button>
                       {/if}
-                      <button
-                        type="button"
-                        class="p-1 rounded hover:bg-bg3 text-muted-foreground hover:text-destructive transition-colors"
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        class="hover:text-destructive"
                         title={m.common_delete()}
+                        aria-label={m.common_delete()}
                         onclick={() => deleteSnapshot(snapshot)}
                         disabled={running}
                       >
-                        <Trash2 size={13} />
-                      </button>
+                        {#snippet icon()}<Trash2 size={13} />{/snippet}
+                      </Button>
                     </div>
                   </td>
                 </tr>
@@ -476,20 +471,12 @@
             {m.backup_confirmRestoreBody({ date: formatDate(confirmRestore.timestamp) })}
           </p>
           <div class="flex justify-end gap-2">
-            <button
-              type="button"
-              class="bg-bg3 border border-border rounded-[5px] text-foreground cursor-pointer font-[inherit] text-xs font-medium py-[5px] px-3"
-              onclick={() => (confirmRestore = null)}
-            >
+            <Button variant="secondary" size="sm" onclick={() => (confirmRestore = null)}>
               {m.common_cancel()}
-            </button>
-            <button
-              type="button"
-              class="bg-destructive border-none rounded-[5px] text-white cursor-pointer font-[inherit] text-xs font-semibold py-[6px] px-3"
-              onclick={() => startRestore(confirmRestore!)}
-            >
+            </Button>
+            <Button variant="danger" size="sm" onclick={() => startRestore(confirmRestore!)}>
               {m.backup_restore()}
-            </button>
+            </Button>
           </div>
         </div>
       </div>

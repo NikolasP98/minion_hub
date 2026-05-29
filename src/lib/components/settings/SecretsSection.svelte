@@ -12,6 +12,7 @@
   import { sendRequest } from '$lib/services/gateway.svelte';
   import { conn } from '$lib/state/gateway/connection.svelte';
   import { toastSuccess, toastError } from '$lib/state/ui/toast.svelte';
+  import { Button } from '$lib/components/ui';
   import SecretStatusPill from './SecretStatusPill.svelte';
   import SecretEditModal from './SecretEditModal.svelte';
   import DynamicSecretGroup from './DynamicSecretGroup.svelte';
@@ -225,30 +226,26 @@
               </div>
               <SecretStatusPill status={s.probeStatus} message={s.probeMessage} />
               <div class="flex items-center gap-1">
-                <button
-                  type="button"
-                  class="text-[11px] text-muted-foreground hover:text-foreground border border-border rounded-[5px] px-2 py-1 transition-colors"
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onclick={() => probeStatic(s.groupKey)}
                   disabled={!s.configured}
                   title={s.configured ? 'Re-probe' : 'Set a value first'}
                 >
                   Probe
-                </button>
-                <button
-                  type="button"
-                  class="text-[11px] text-accent hover:brightness-115 border border-accent/30 rounded-[5px] px-2 py-1 transition-colors"
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
                   onclick={() => (editing = { kind: 'static', key: s.groupKey, label: s.label })}
                 >
                   {s.configured ? 'Rotate' : 'Set'}
-                </button>
+                </Button>
                 {#if s.configured}
-                  <button
-                    type="button"
-                    class="text-[11px] text-rose-300 hover:text-rose-200 border border-rose-500/30 rounded-[5px] px-2 py-1 transition-colors"
-                    onclick={() => clearStatic(s.groupKey)}
-                  >
+                  <Button variant="danger" size="sm" onclick={() => clearStatic(s.groupKey)}>
                     Clear
-                  </button>
+                  </Button>
                 {/if}
               </div>
             </li>
