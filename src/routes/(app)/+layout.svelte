@@ -21,7 +21,7 @@
 
 <div class="relative z-10 flex h-screen overflow-hidden text-foreground">
 	<Sidebar />
-	<div class="flex flex-col flex-1 min-w-0 overflow-hidden md:pt-14">
+	<div class="shell-main flex flex-col flex-1 min-w-0 overflow-hidden">
 		<Topbar />
 		<Breadcrumbs />
 		{@render children()}
