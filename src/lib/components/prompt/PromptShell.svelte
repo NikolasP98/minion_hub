@@ -114,7 +114,7 @@
      /prompt route content; the global navbar lives in (app)/+layout.svelte
      and remains visible at all times. -->
 <div class="flex flex-col h-full min-h-0 overflow-hidden">
-    <div class="shrink-0 border-b border-border px-4 py-2 flex items-center gap-3">
+    <div class="shrink-0 border-b border-border px-4 py-2 md:pr-[var(--notch-clearance)] flex items-center gap-3">
         <PromptTopbarChip />
     </div>
 
