@@ -7,8 +7,6 @@
   import {
     flowEditorState,
     loadFlow,
-    saveFlow,
-    runFlow,
     deleteNode,
     duplicateNode,
     openNodeConfig,
@@ -16,7 +14,7 @@
   } from '$lib/state/features/flow-editor.svelte';
   import ConsolePanel from '$lib/components/flow-editor/ConsolePanel.svelte';
   import { sendRequest } from '$lib/services/gateway.svelte';
-  import { ArrowLeft, Save, GitBranch, Loader, Play, Trash2, Copy, Settings2, Puzzle } from 'lucide-svelte';
+  import { ArrowLeft, GitBranch, Trash2, Copy, Settings2, Puzzle } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
 
   const flowId = $derived(page.params.id);
@@ -70,10 +68,6 @@
       loadError = e instanceof Error ? e.message : 'Failed to load flow';
     }
   });
-
-  async function handleSave() {
-    await saveFlow();
-  }
 
   function handleNameInput(e: Event) {
     flowEditorState.flowName = (e.target as HTMLInputElement).value;
@@ -149,21 +143,6 @@
 
       <div class="flex-1"></div>
 
-      <!-- Test Run button -->
-      <button
-        onclick={runFlow}
-        disabled={flowEditorState.isRunning}
-        class="flex items-center gap-1.5 h-7 px-3 text-xs rounded border transition-colors
-          border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10 disabled:opacity-50 disabled:cursor-default"
-      >
-        {#if flowEditorState.isRunning}
-          <Loader size={12} class="animate-spin" />
-        {:else}
-          <Play size={12} />
-        {/if}
-        {m.flow_testRun()}
-      </button>
-
       <!-- Activate / Deactivate button -->
       {#if hasTrigger}
         <button
@@ -178,23 +157,6 @@
           {flowEditorState.flowActive ? 'Deactivate' : 'Activate'}
         </button>
       {/if}
-
-      <!-- Save button -->
-      <button
-        onclick={handleSave}
-        disabled={flowEditorState.isSaving || !flowEditorState.isDirty}
-        class="flex items-center gap-1.5 h-7 px-3 text-xs rounded border transition-colors
-          {flowEditorState.isDirty
-          ? 'border-accent/50 text-accent hover:bg-accent/10'
-          : 'border-border text-muted/50 cursor-default'}"
-      >
-        {#if flowEditorState.isSaving}
-          <Loader size={12} class="animate-spin" />
-        {:else}
-          <Save size={12} />
-        {/if}
-        {m.common_save()}
-      </button>
     </div>
 
     <!-- Editor body -->

@@ -22,6 +22,7 @@
   import RouterNode from './nodes/RouterNode.svelte';
   import ToolAgentNode from './nodes/ToolAgentNode.svelte';
   import NodeConfigPanel from './nodes/NodeConfigPanel.svelte';
+  import FlowActionIsland from './FlowActionIsland.svelte';
   import FlowEdgeComponent from './edges/FlowEdge.svelte';
   import ContextEdgeComponent from './edges/ContextEdge.svelte';
   import * as m from '$lib/paraglide/messages';
@@ -285,4 +286,5 @@
     <MiniMap />
   </SvelteFlow>
   <NodeConfigPanel />
+  <FlowActionIsland />
 </div>
