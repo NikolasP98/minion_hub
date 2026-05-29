@@ -86,7 +86,7 @@
     <ol class="flex items-center gap-1 min-w-0">
       {#each crumbs as crumb, i (crumb.href)}
         {#if i > 0}
-          <ChevronRight size={12} class="text-muted-foreground/50 shrink-0" aria-hidden="true" />
+          <ChevronRight size={12} class="text-muted-strong shrink-0" aria-hidden="true" />
         {/if}
         <li class="min-w-0">
           {#if crumb.current}

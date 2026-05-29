@@ -42,7 +42,7 @@
         style="background: var(--color-bg); color: var(--color-foreground);"
     >
         {#if provisionState.logs.length === 0}
-            <p class="text-muted-foreground/40 text-center py-8">
+            <p class="text-muted-strong text-center py-8">
                 {m.provision_noOutput()}
             </p>
         {:else}

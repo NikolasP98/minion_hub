@@ -89,7 +89,7 @@
     </div>
   {:else}
     {#each visibleMeta as meta (meta.id)}
-      <div class="px-3 pt-3 pb-1 text-[9.5px] font-semibold uppercase tracking-widest text-muted-foreground/50 select-none">
+      <div class="px-3 pt-3 pb-1 text-[9.5px] font-semibold uppercase tracking-widest text-muted-strong select-none">
         {meta.label}
       </div>
       {#each meta.items as group (group.id)}
@@ -102,7 +102,7 @@
               ? 'bg-accent/10 text-accent font-medium'
               : configured
                 ? 'bg-transparent text-muted-foreground hover:bg-bg3 hover:text-foreground'
-                : 'bg-transparent text-muted-foreground/40 hover:bg-bg3 hover:text-muted-foreground'}"
+                : 'bg-transparent text-muted-strong hover:bg-bg3 hover:text-muted-foreground'}"
           onclick={() => onselect(group.id)}
         >
           <span class="flex-1 truncate">{group.label}</span>

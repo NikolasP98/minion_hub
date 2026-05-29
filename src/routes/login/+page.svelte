@@ -93,7 +93,7 @@
           <input
             id="login-email" type="email" autocomplete="email" required
             bind:value={email} placeholder="admin@minion.hub"
-            class="w-full bg-bg border border-border rounded px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted/40 focus:outline-none focus:border-accent/60 focus:ring-1 focus:ring-accent/30 transition-colors"
+            class="w-full bg-bg border border-border rounded px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/60 focus:ring-1 focus:ring-accent/30 transition-colors"
           />
         </div>
 
@@ -104,7 +104,7 @@
           <input
             id="login-password" type="password" autocomplete="current-password" required
             bind:value={password} placeholder="••••••••"
-            class="w-full bg-bg border border-border rounded px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted/40 focus:outline-none focus:border-accent/60 focus:ring-1 focus:ring-accent/30 transition-colors"
+            class="w-full bg-bg border border-border rounded px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/60 focus:ring-1 focus:ring-accent/30 transition-colors"
           />
         </div>
 
@@ -152,6 +152,6 @@
       </div>
       {/if}
     </div>
-    <p class="text-center text-[10px] text-muted/40 font-mono mt-4">{m.login_footer()}</p>
+    <p class="text-center text-[10px] text-muted-strong font-mono mt-4">{m.login_footer()}</p>
   </div>
 </div>

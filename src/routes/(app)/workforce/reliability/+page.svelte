@@ -30,7 +30,7 @@
 	}
 
 	function cellTextColor(cell: number): string {
-		if (cell === 0) return 'text-muted-foreground/30';
+		if (cell === 0) return 'text-muted-strong';
 		if (intensity(cell) > 0.55) return 'text-white';
 		return 'text-foreground/80';
 	}

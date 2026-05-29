@@ -87,7 +87,7 @@
 		{#if hasChildren}
 			<button
 				type="button"
-				class="w-4 h-4 flex items-center justify-center text-muted/50 hover:text-muted
+				class="w-4 h-4 flex items-center justify-center text-muted-strong hover:text-muted
 					bg-transparent border-0 cursor-pointer p-0 shrink-0 text-[10px]"
 				onclick={(e: MouseEvent) => { e.stopPropagation(); collapsed = !collapsed; }}
 			>
@@ -112,16 +112,16 @@
 
 		<!-- Token count -->
 		{#if totalTokens > 0}
-			<span class="text-[9px] text-muted/50 font-mono shrink-0">{formatCompactTokens(totalTokens)}t</span>
+			<span class="text-[9px] text-muted-strong font-mono shrink-0">{formatCompactTokens(totalTokens)}t</span>
 		{/if}
 
 		<!-- Model -->
-		<span class="text-[9px] text-muted/50 truncate max-w-20">
+		<span class="text-[9px] text-muted-strong truncate max-w-20">
 			{node.session.model ?? ''}
 		</span>
 
 		<!-- Duration -->
-		<span class="text-[9px] text-muted/40 font-mono shrink-0">
+		<span class="text-[9px] text-muted-strong font-mono shrink-0">
 			{formatDuration(node.session)}
 		</span>
 

@@ -114,7 +114,7 @@
     onkeydown={(e) => e.key === "Escape" && close()}
 >
     <div
-        class="bg-bg2 border border-border rounded-xl w-130 max-w-[calc(100vw-40px)] max-h-[80vh] flex flex-col shadow-md"
+        class="surface-2 rounded-xl w-130 max-w-[calc(100vw-40px)] max-h-[80vh] flex flex-col"
         role="dialog"
         aria-modal="true"
         tabindex="-1"

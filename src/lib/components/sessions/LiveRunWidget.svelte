@@ -82,7 +82,7 @@
         {#if !collapsed}
             <div class="px-4 pb-3 flex flex-wrap gap-3">
                 {#each activeRuns as run (run.agentId)}
-                    <div class="flex items-center gap-3 bg-bg3 border border-border rounded-lg px-3 py-2 min-w-56">
+                    <div class="surface-2 flex items-center gap-3 rounded-lg px-3 py-2 min-w-56">
                         <StatusBadge status={run.status} size="sm" />
                         <div class="flex-1 min-w-0">
                             <div class="text-xs font-medium text-foreground truncate">

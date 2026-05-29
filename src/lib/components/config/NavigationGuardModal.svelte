@@ -29,7 +29,7 @@
   >
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
-      class="bg-card border border-border rounded-xl p-6 max-w-sm w-full mx-4 shadow-2xl"
+      class="surface-2 rounded-xl p-6 max-w-sm w-full mx-4 shadow-2xl"
       onclick={(e) => e.stopPropagation()}
       onkeydown={(e) => e.stopPropagation()}
     >

@@ -2,7 +2,7 @@
     import type { ChannelAssignment } from '$lib/types/channels';
     import { fetchChannelAssignments, assignChannel, unassignChannel } from '$lib/state/channels';
     import { X, UserPlus } from 'lucide-svelte';
-    import { Button } from '$lib/components/ui';
+    import { Button, Select } from '$lib/components/ui';
     import * as m from '$lib/paraglide/messages';
 
     interface Props {
@@ -93,16 +93,13 @@
 
     <!-- Add assignment -->
     <form class="flex items-center gap-2" onsubmit={(e) => { e.preventDefault(); handleAssign(); }}>
-        <select
-            class="bg-bg border border-border rounded-md px-2 py-1.5 text-xs text-foreground"
-            bind:value={targetType}
-        >
+        <Select bind:value={targetType} size="sm">
             <option value="user">{m.channel_assignmentUser()}</option>
             <option value="session">{m.channel_assignmentSession()}</option>
-        </select>
+        </Select>
         <input
             type="text"
-            class="flex-1 bg-bg border border-border rounded-md px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent"
+            class="flex-1 bg-bg border border-border rounded-md px-3 py-1.5 text-sm text-foreground placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-accent"
             placeholder="{targetType === 'user' ? m.channel_assignmentUser() : m.channel_assignmentSession()} ID"
             bind:value={targetId}
         />

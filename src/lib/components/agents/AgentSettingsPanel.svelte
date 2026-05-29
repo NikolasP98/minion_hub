@@ -391,7 +391,7 @@
                                 {/each}
 
                                 {#if searchFilteredFields.length === 0 && searchQuery.trim()}
-                                    <p class="text-[11px] text-muted-foreground/50 text-center py-6">
+                                    <p class="text-[11px] text-muted-strong text-center py-6">
                                         {m.settings_noFieldsMatching({ query: searchQuery })}
                                     </p>
                                 {/if}

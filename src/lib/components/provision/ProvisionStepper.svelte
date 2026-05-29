@@ -36,7 +36,7 @@
                 {:else if phase.status === 'failed'}
                     <XCircle size={22} class="text-destructive" />
                 {:else}
-                    <Circle size={22} class="text-muted-foreground/40" />
+                    <Circle size={22} class="text-muted-strong" />
                 {/if}
             </div>
 

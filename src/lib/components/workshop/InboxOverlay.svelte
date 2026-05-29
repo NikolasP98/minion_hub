@@ -11,6 +11,7 @@
     import { gw } from "$lib/state/gateway/gateway-data.svelte";
     import * as m from "$lib/paraglide/messages";
     import { agentDisplayName } from "$lib/utils/agent-display";
+    import { Select } from "$lib/components/ui";
 
     let {
         elementId,
@@ -228,15 +229,12 @@
 
         <!-- Agent filter -->
         <div class="border-b border-border px-4 py-1.5">
-            <select
-                class="w-full rounded border border-border bg-bg3 px-2 py-1 text-[10px] text-foreground outline-none focus:border-accent"
-                bind:value={filterAgentId}
-            >
+            <Select bind:value={filterAgentId} size="sm">
                 <option value="">{m.inbox_allAgents()}</option>
                 {#each gw.agents as agent (agent.id)}
                     <option value={agent.id}>{agentDisplayName(agent)}</option>
                 {/each}
-            </select>
+            </Select>
         </div>
 
         <!-- Tabs -->
@@ -355,20 +353,15 @@
                                 <span class="text-[9px] text-muted"
                                     >{m.inbox_status()}</span
                                 >
-                                <select
-                                    class="rounded border border-border bg-bg3 px-1.5 py-0.5 text-[9px] text-foreground outline-none focus:border-accent"
+                                <Select
+                                    size="sm"
                                     value={item.status}
-                                    onchange={(e) =>
-                                        handleStatusChange(
-                                            item.id,
-                                            (e.target as HTMLSelectElement)
-                                                .value,
-                                        )}
+                                    onchange={(v) => handleStatusChange(item.id, v)}
                                 >
                                     <option value="open">{m.inbox_statusOpen()}</option>
                                     <option value="pending">{m.inbox_statusPending()}</option>
                                     <option value="closed">{m.inbox_statusClosed()}</option>
-                                </select>
+                                </Select>
                             </div>
                         </div>
                     {/if}
@@ -384,10 +377,11 @@
                         class="text-[9px] text-muted shrink-0"
                         for="compose-to">{m.inbox_composeTo()}</label
                     >
-                    <select
+                    <Select
                         id="compose-to"
-                        class="flex-1 rounded border border-border bg-bg3 px-2 py-1 text-[10px] text-foreground outline-none focus:border-accent"
+                        class="flex-1"
                         bind:value={composeToId}
+                        size="sm"
                     >
                         <option value="" disabled>{m.inbox_selectAgent()}</option>
                         {#each gw.agents as agent (agent.id)}
@@ -395,7 +389,7 @@
                                 >{agentDisplayName(agent)}</option
                             >
                         {/each}
-                    </select>
+                    </Select>
                 </div>
 
                 <div class="flex items-center gap-2">

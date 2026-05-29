@@ -48,7 +48,7 @@
 			{#if meta?.mode}
 				<span class="text-[8px] px-1 py-0.5 rounded bg-accent/10 text-accent/60">{meta.mode}</span>
 			{/if}
-			<span class="text-[9px] text-muted/50 ml-auto shrink-0">{nodes.length} tasks</span>
+			<span class="text-[9px] text-muted-strong ml-auto shrink-0">{nodes.length} tasks</span>
 		</div>
 		<!-- Grouped subagent nodes (rendered at depth 0 since they are under a header) -->
 		{#each nodes as node (node.session.key)}

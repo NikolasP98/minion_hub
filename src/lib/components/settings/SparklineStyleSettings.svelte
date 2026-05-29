@@ -43,7 +43,7 @@
     <div class="relative flex-1 rounded-lg border border-border overflow-hidden bg-bg px-3 flex items-center min-h-[48px]">
       <EChartsSparkline bins={DEMO_BINS} color={accentColor} glow={false} chartStyle={sparklineStyle.current} />
       <span class="absolute inset-0 flex items-end justify-end px-2 pb-1 pointer-events-none">
-        <span class="text-[9px] text-muted/40 uppercase tracking-widest">preview</span>
+        <span class="text-[9px] text-muted-strong uppercase tracking-widest">preview</span>
       </span>
     </div>
 

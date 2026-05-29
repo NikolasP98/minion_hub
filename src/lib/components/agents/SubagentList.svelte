@@ -22,7 +22,7 @@
 		<span class="text-[11px] font-semibold text-muted uppercase tracking-wider">
 			{m.pi_subagents()}
 		</span>
-		<span class="text-[10px] text-muted/50 font-mono">
+		<span class="text-[10px] text-muted-strong font-mono">
 			{subagentState.sessions.length}
 		</span>
 	</div>

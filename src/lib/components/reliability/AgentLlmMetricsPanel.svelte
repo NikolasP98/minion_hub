@@ -210,7 +210,7 @@
 	});
 </script>
 
-<div class="bg-card border border-border rounded-lg overflow-hidden">
+<div class="surface-2 rounded-lg overflow-hidden">
 	<!-- HEADER -->
 	<PanelHeader label={m.reliability_llmMetrics()} labelClass="flex-1">
 		{#snippet icon()}
@@ -249,7 +249,7 @@
 					<Chart options={providerChartOptions} height="220px" />
 				{:else}
 					<div
-						class="flex items-center justify-center h-[220px] text-muted-foreground/50 text-[11px]"
+						class="flex items-center justify-center h-[220px] text-muted-strong text-[11px]"
 					>
 						{m.reliability_noProviderData()}
 					</div>
@@ -267,7 +267,7 @@
 					<Chart options={agentChartOptions} height="220px" />
 				{:else}
 					<div
-						class="flex items-center justify-center h-[220px] text-muted-foreground/50 text-[11px]"
+						class="flex items-center justify-center h-[220px] text-muted-strong text-[11px]"
 					>
 						{m.reliability_noAgentData()}
 					</div>

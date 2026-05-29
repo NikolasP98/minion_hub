@@ -179,7 +179,7 @@
               type="text"
               placeholder={m.marketplace_wizardStep1RolePlaceholder()}
               bind:value={role}
-              class="w-full px-3 py-2 rounded-lg border border-border bg-bg3 text-sm text-foreground placeholder:text-muted/50 focus:outline-none focus:border-brand-pink/40 transition-colors"
+              class="w-full px-3 py-2 rounded-lg border border-border bg-bg3 text-sm text-foreground placeholder:text-muted-strong focus:outline-none focus:border-brand-pink/40 transition-colors"
             />
           </div>
           <div class="flex flex-col gap-1.5">
@@ -210,7 +210,7 @@
               type="text"
               placeholder={m.marketplace_wizardStep2NamePlaceholder()}
               bind:value={agentName}
-              class="w-full px-3 py-2 rounded-lg border border-border bg-bg3 text-sm text-foreground placeholder:text-muted/50 focus:outline-none focus:border-brand-pink/40 transition-colors"
+              class="w-full px-3 py-2 rounded-lg border border-border bg-bg3 text-sm text-foreground placeholder:text-muted-strong focus:outline-none focus:border-brand-pink/40 transition-colors"
             />
           </div>
           <div class="flex flex-col gap-1.5">
@@ -220,7 +220,7 @@
               type="text"
               placeholder={m.marketplace_wizardStep2CatchphrasePlaceholder()}
               bind:value={catchphrase}
-              class="w-full px-3 py-2 rounded-lg border border-border bg-bg3 text-sm text-foreground placeholder:text-muted/50 focus:outline-none focus:border-brand-pink/40 transition-colors"
+              class="w-full px-3 py-2 rounded-lg border border-border bg-bg3 text-sm text-foreground placeholder:text-muted-strong focus:outline-none focus:border-brand-pink/40 transition-colors"
             />
           </div>
 

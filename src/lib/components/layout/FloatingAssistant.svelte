@@ -359,7 +359,7 @@
                         rows="1"
                         placeholder={canSend ? 'Ask anything…' : conn.connected ? 'Loading…' : 'Gateway offline'}
                         disabled={!canSend && !!assistant.personalAgentId}
-                        class="flex-1 min-w-0 resize-none bg-bg border border-border rounded-md px-2.5 py-1.5 text-[12px] text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-accent/50 max-h-[120px] disabled:opacity-50"
+                        class="flex-1 min-w-0 resize-none bg-bg border border-border rounded-md px-2.5 py-1.5 text-[12px] text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/50 max-h-[120px] disabled:opacity-50"
                     ></textarea>
                     <button
                         type="button"

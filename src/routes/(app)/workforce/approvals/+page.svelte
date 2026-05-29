@@ -15,7 +15,7 @@
 		resubmitted: 'bg-blue-500/10 text-blue-600',
 		approved: 'bg-green-500/10 text-green-600',
 		rejected: 'bg-destructive/10 text-destructive',
-		cancelled: 'bg-muted text-muted-foreground/50',
+		cancelled: 'bg-muted text-muted-strong',
 	};
 
 	const STATUS_LABELS: Record<ApprovalStatus, string> = {

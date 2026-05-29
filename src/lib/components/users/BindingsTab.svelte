@@ -9,6 +9,7 @@
         discard,
     } from "$lib/state/config/config.svelte";
     import { SvelteMap } from "svelte/reactivity";
+    import { Select } from "$lib/components/ui";
 
     type BindingPeer = { kind: "dm" | "group"; id: string };
     type BindingMatch = { channel: string; peer?: BindingPeer; chatType?: string; chatId?: string };
@@ -195,21 +196,15 @@
                         placeholder={m.bindings_peerIdPlaceholder()}
                         bind:value={addPeerId}
                     />
-                    <select
-                        class="bg-bg2 border border-border rounded-md text-foreground px-2.5 py-1.75 text-xs font-[inherit] outline-none cursor-pointer focus:border-accent"
-                        bind:value={addChannel}
-                    >
+                    <Select bind:value={addChannel} size="sm">
                         {#each CHANNELS as c (c)}
                             <option value={c}>{c}</option>
                         {/each}
-                    </select>
-                    <select
-                        class="bg-bg2 border border-border rounded-md text-foreground px-2.5 py-1.75 text-xs font-[inherit] outline-none cursor-pointer focus:border-accent"
-                        bind:value={addKind}
-                    >
+                    </Select>
+                    <Select bind:value={addKind} size="sm">
                         <option value="dm">DM</option>
                         <option value="group">Group</option>
-                    </select>
+                    </Select>
                 </div>
                 {#if addError}
                     <p class="text-xs text-destructive">{addError}</p>

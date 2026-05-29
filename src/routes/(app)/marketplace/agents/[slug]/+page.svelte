@@ -77,7 +77,7 @@
     {:else if !agent}
         <!-- Not Found -->
         <div class="not-found">
-            <Search size={40} class="text-muted-foreground/30 mb-2" />
+            <Search size={40} class="text-muted-strong mb-2" />
             <h2>{m.marketplace_agentDetailNotFound()}</h2>
             <p>{m.marketplace_agentDetailNotFoundHint()}</p>
             <button type="button" onclick={goBack} class="back-btn">

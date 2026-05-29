@@ -113,7 +113,7 @@
         </span>
     {/if}
 
-    <span class="text-[9px] text-muted-foreground/50 tabular-nums shrink-0">
+    <span class="text-[9px] text-muted-strong tabular-nums shrink-0">
         {group.memberAgentIds.length}
     </span>
 
