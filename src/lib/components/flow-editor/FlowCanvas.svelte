@@ -31,6 +31,8 @@
     setNodes,
     setEdges,
     setRelationshipMode,
+    openNodeConfig,
+    closeNodeConfig,
     defaultConfigForFields,
     type FlowNodeConfigField,
     type FlowNode,
@@ -203,7 +205,28 @@
 
   function handleKeyDown(e: KeyboardEvent) {
     if (e.key === 'Shift') setRelationshipMode(true);
-    if (e.key === 'Escape') flowEditorState.contextMenu.open = false;
+    if (e.key === 'Escape') {
+      flowEditorState.contextMenu.open = false;
+      closeNodeConfig();
+    }
+    // Enter opens the focused node's config panel — keyboard parity with the
+    // mouse double-click. Ignored while typing or inside a dialog/panel.
+    if (e.key === 'Enter') {
+      const active = document.activeElement as HTMLElement | null;
+      if (
+        !active ||
+        active.tagName === 'INPUT' ||
+        active.tagName === 'TEXTAREA' ||
+        active.isContentEditable ||
+        active.closest('[role="dialog"]')
+      )
+        return;
+      const id = active.closest('.svelte-flow__node')?.getAttribute('data-id');
+      if (id) {
+        e.preventDefault();
+        openNodeConfig(id);
+      }
+    }
   }
 
   function handleKeyUp(e: KeyboardEvent) {
@@ -229,6 +252,13 @@
     {colorMode}
     bind:viewport={flowEditorState.canvasViewport}
     fitView
+    nodesFocusable
+    edgesFocusable
+    elementsSelectable
+    autoPanOnNodeFocus
+    onselectionchange={({ nodes: selected }) => {
+      flowEditorState.selectedNodeIds = selected.map((n) => n.id);
+    }}
     onnodedragstop={({ targetNode }) => {
       if (!targetNode) return;
       const updated = flowEditorState.nodes.map((n) =>
