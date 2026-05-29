@@ -1,5 +1,6 @@
 <script lang="ts">
   import { provisionShell, type ShellsProvisionResponse } from '$lib/services/shells-rpc';
+  import { Select, Button } from '$lib/components/ui';
 
   let { onProvisioned }: { onProvisioned: (res: ShellsProvisionResponse) => void } = $props();
 
@@ -42,143 +43,90 @@
       submitting = false;
     }
   }
+
+  const fieldCls =
+    'rounded-[var(--radius-md)] bg-[var(--elevation-2-bg)] border border-[var(--hairline)] ' +
+    'px-3 text-sm text-foreground placeholder:text-muted-strong outline-none ' +
+    'transition-[border-color,box-shadow] duration-[var(--duration-fast)] ease-[var(--ease-standard)] ' +
+    'hover:border-white/15 focus-visible:border-accent ' +
+    'focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--color-accent)_25%,transparent)]';
 </script>
 
-<form onsubmit={submit}>
-  <h2>Spin up a shell</h2>
+<form onsubmit={submit} class="flex flex-col gap-4 p-6 max-w-2xl">
+  <h2 class="t-heading">Spin up a shell</h2>
+
   {#if error}
-    <div class="error">{error}</div>
+    <div
+      class="rounded-[var(--radius-md)] border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+      role="alert"
+    >
+      {error}
+    </div>
   {/if}
-  <label>
+
+  <label class="flex flex-col gap-1.5 text-[0.75rem] text-muted">
     Display name
-    <input bind:value={displayName} type="text" placeholder="e.g. research assistant" required />
+    <input
+      bind:value={displayName}
+      type="text"
+      placeholder="e.g. research assistant"
+      required
+      class="h-9 {fieldCls}"
+    />
   </label>
-  <div class="row">
-    <label>
-      Harness
-      <select bind:value={harness}>
-        <option value="hermes">HERMES</option>
-        <option value="claude-code">Claude Code</option>
-        <option value="codex">Codex</option>
-      </select>
-    </label>
-    <label>
-      Region
-      <select bind:value={region}>
-        <option value="lax">LAX (Los Angeles)</option>
-        <option value="lon">LON (London)</option>
-        <option value="fra">FRA (Frankfurt)</option>
-      </select>
-    </label>
+
+  <div class="grid grid-cols-2 gap-3">
+    <Select label="Harness" size="sm" bind:value={harness}>
+      <option value="hermes">HERMES</option>
+      <option value="claude-code">Claude Code</option>
+      <option value="codex">Codex</option>
+    </Select>
+    <Select label="Region" size="sm" bind:value={region}>
+      <option value="lax">LAX (Los Angeles)</option>
+      <option value="lon">LON (London)</option>
+      <option value="fra">FRA (Frankfurt)</option>
+    </Select>
   </div>
-  <div class="row">
-    <label>
-      Disk
-      <select bind:value={diskGB}>
-        <option value={2}>2 GB</option>
-        <option value={4}>4 GB</option>
-        <option value={8}>8 GB</option>
-        <option value={10}>10 GB</option>
-      </select>
-    </label>
-    <label>
-      Memory
-      <select bind:value={memoryMB}>
-        <option value={256}>256 MB</option>
-        <option value={512}>512 MB</option>
-        <option value={1024}>1 GB</option>
-        <option value={2048}>2 GB</option>
-      </select>
-    </label>
+
+  <div class="grid grid-cols-2 gap-3">
+    <Select label="Disk" size="sm" bind:value={diskGB}>
+      <option value={2}>2 GB</option>
+      <option value={4}>4 GB</option>
+      <option value={8}>8 GB</option>
+      <option value={10}>10 GB</option>
+    </Select>
+    <Select label="Memory" size="sm" bind:value={memoryMB}>
+      <option value={256}>256 MB</option>
+      <option value={512}>512 MB</option>
+      <option value={1024}>1 GB</option>
+      <option value={2048}>2 GB</option>
+    </Select>
   </div>
-  <div class="row">
-    <label>
-      Auto-archive
-      <select bind:value={archivePolicy}>
-        <option value="24h">After 24h idle</option>
-        <option value="always-on">Always on</option>
-      </select>
-    </label>
-    <label>
-      Backups
-      <select bind:value={backupCadence}>
-        <option value="hourly">Hourly</option>
-        <option value="daily">Daily</option>
-        <option value="weekly">Weekly</option>
-        <option value="manual">Manual only</option>
-      </select>
-    </label>
+
+  <div class="grid grid-cols-2 gap-3">
+    <Select label="Auto-archive" size="sm" bind:value={archivePolicy}>
+      <option value="24h">After 24h idle</option>
+      <option value="always-on">Always on</option>
+    </Select>
+    <Select label="Backups" size="sm" bind:value={backupCadence}>
+      <option value="hourly">Hourly</option>
+      <option value="daily">Daily</option>
+      <option value="weekly">Weekly</option>
+      <option value="manual">Manual only</option>
+    </Select>
   </div>
-  <label>
+
+  <label class="flex flex-col gap-1.5 text-[0.75rem] text-muted">
     Initial prompt (optional)
     <textarea
       bind:value={initialPrompt}
       rows="3"
       placeholder="First instruction sent to the agent on boot…"
+      class="resize-y py-2 {fieldCls}"
     ></textarea>
   </label>
-  <button type="submit" disabled={submitting}>
-    {submitting ? 'Provisioning…' : 'Spin up shell'}
-  </button>
-</form>
 
-<style>
-  form {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    padding: 24px;
-    max-width: 640px;
-  }
-  h2 {
-    margin: 0 0 8px;
-    font-size: 18px;
-    font-weight: 600;
-  }
-  .row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-  }
-  label {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    font-size: 13px;
-    color: var(--color-text-muted, #6b7280);
-  }
-  input, select, textarea {
-    padding: 8px 10px;
-    border: 1px solid var(--color-border, #e5e7eb);
-    border-radius: 6px;
-    font-size: 14px;
-    color: inherit;
-    background: var(--color-surface, white);
-    font-family: inherit;
-  }
-  textarea {
-    resize: vertical;
-  }
-  button[type="submit"] {
-    padding: 10px 16px;
-    background: rgb(15, 23, 42);
-    color: white;
-    border: none;
-    border-radius: 6px;
-    font-weight: 500;
-    cursor: pointer;
-    align-self: flex-start;
-  }
-  button[type="submit"]:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-  .error {
-    padding: 8px 12px;
-    border-radius: 6px;
-    background: rgba(239, 68, 68, 0.1);
-    border: 1px solid rgba(239, 68, 68, 0.3);
-    color: rgb(185, 28, 28);
-    font-size: 13px;
-  }
-</style>
+  <Button type="submit" variant="primary" size="lg" loading={submitting} class="self-start"
+    >Spin up shell</Button
+  >
+</form>

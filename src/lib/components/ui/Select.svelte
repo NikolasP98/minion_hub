@@ -1,6 +1,7 @@
 <script lang="ts" module>
   export type SelectSize = 'sm' | 'md';
-  export type SelectOption = { value: string; label: string; disabled?: boolean };
+  export type SelectValue = string | number;
+  export type SelectOption = { value: SelectValue; label: string; disabled?: boolean };
 </script>
 
 <script lang="ts">
@@ -11,8 +12,9 @@
   const generatedId = `select-${nextId++}`;
 
   interface Props {
-    /** Bindable selected value. */
-    value?: string;
+    /** Bindable selected value. `bind:value` preserves the option's native
+     *  type, so binding a number ($state number + <option value={2}>) works. */
+    value?: SelectValue;
     /** Convenience: render options from an array. Use `children` for custom <option>s. */
     options?: SelectOption[];
     size?: SelectSize;
@@ -24,7 +26,7 @@
     id?: string;
     name?: string;
     class?: string;
-    onchange?: (value: string) => void;
+    onchange?: (value: SelectValue) => void;
     /** Custom <option>/<optgroup> markup (overrides `options`). */
     children?: Snippet;
     [key: string]: unknown;
@@ -52,8 +54,8 @@
 
   const sizeCls = $derived(size === 'sm' ? 'h-8 text-xs pl-2.5 pr-8' : 'h-9 text-sm pl-3 pr-9');
 
-  function handleChange(e: Event) {
-    value = (e.currentTarget as HTMLSelectElement).value;
+  // bind:value already wrote the option's native-typed value; just notify.
+  function handleChange() {
     onchange?.(value);
   }
 </script>
@@ -73,7 +75,7 @@
       {required}
       aria-invalid={error ? 'true' : undefined}
       aria-describedby={describedBy}
-      value={value}
+      bind:value
       onchange={handleChange}
       class={`w-full appearance-none rounded-[var(--radius-md)] bg-[var(--elevation-2-bg)]
         border border-[var(--hairline)] text-foreground outline-none cursor-pointer

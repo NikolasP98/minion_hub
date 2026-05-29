@@ -19,7 +19,7 @@ export type { CardElevation, CardPadding } from './Card.svelte';
 export type { ModalSize } from './Modal.svelte';
 export type { DangerMode } from './DangerModal.svelte';
 export type { InputSize } from './Input.svelte';
-export type { SelectSize, SelectOption } from './Select.svelte';
+export type { SelectSize, SelectOption, SelectValue } from './Select.svelte';
 export type { ToggleSize } from './Toggle.svelte';
 export type { TabsSize, TabItem } from './Tabs.svelte';
 export type { EmptyStateTone } from './EmptyState.svelte';

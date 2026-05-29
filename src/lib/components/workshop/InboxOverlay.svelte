@@ -356,7 +356,7 @@
                                 <Select
                                     size="sm"
                                     value={item.status}
-                                    onchange={(v) => handleStatusChange(item.id, v)}
+                                    onchange={(v) => handleStatusChange(item.id, String(v))}
                                 >
                                     <option value="open">{m.inbox_statusOpen()}</option>
                                     <option value="pending">{m.inbox_statusPending()}</option>
