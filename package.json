@@ -96,6 +96,8 @@
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "lint:design": "node scripts/design-lint.mjs",
+    "lint:design:ci": "node scripts/design-lint.mjs --ci",
     "db:seed": "bun run src/server/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest",
