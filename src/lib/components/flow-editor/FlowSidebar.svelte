@@ -12,7 +12,7 @@
   interface FlowNodeDescriptor {
     pluginId: string; id: string; kind: 'trigger' | 'action';
     label: string; description?: string; icon?: string;
-    event?: string; method?: string;
+    event?: string; method?: string; channelId?: string;
   }
   let pluginNodes = $state<FlowNodeDescriptor[]>([]);
 
@@ -108,7 +108,7 @@
   function addPluginNode(d: FlowNodeDescriptor) {
     const data =
       d.kind === 'trigger'
-        ? { pluginId: d.pluginId, contributionId: d.id, event: d.event ?? '', label: d.label, deliverResponse: false }
+        ? { pluginId: d.pluginId, contributionId: d.id, event: d.event ?? '', label: d.label, deliverResponse: false, filterChannelId: d.channelId }
         : { pluginId: d.pluginId, contributionId: d.id, method: d.method ?? '', label: d.label };
     const node: FlowNode = {
       id: makeId(),

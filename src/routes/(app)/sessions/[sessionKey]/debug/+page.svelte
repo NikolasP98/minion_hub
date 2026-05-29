@@ -15,6 +15,8 @@
     setSessionSteppedBuildEnabled,
   } from '$lib/state/debug';
   import { conn } from '$lib/state/gateway/connection.svelte';
+  import { PageHeader } from '$lib/components/ui';
+  import { Bug } from 'lucide-svelte';
 
   const sessionKey = $derived(decodeURIComponent(page.params.sessionKey ?? ''));
 
@@ -80,22 +82,21 @@
   <title>Debug · {sessionKey} · Minion Hub</title>
 </svelte:head>
 
-<div class="page">
-  <header>
-    <h1>Stepped build debug</h1>
-    <div class="meta">
-      <div>
-        Session: <code>{sessionKey}</code>
-      </div>
-      <div class="status">
-        Gateway:
-        <span class:on={conn.connected}>
-          {conn.connected ? 'connected' : conn.connecting ? 'connecting' : 'disconnected'}
-        </span>
-      </div>
+<PageHeader title="Stepped build debug" subtitle={sessionKey || undefined}>
+  {#snippet leading()}
+    <Bug size={16} class="text-accent shrink-0" />
+  {/snippet}
+  {#snippet actions()}
+    <div class="status">
+      Gateway:
+      <span class:on={conn.connected}>
+        {conn.connected ? 'connected' : conn.connecting ? 'connecting' : 'disconnected'}
+      </span>
     </div>
-  </header>
-
+  {/snippet}
+</PageHeader>
+<main class="flex-1 min-h-0 overflow-y-auto">
+<div class="page">
   {#if !sessionKey}
     <p class="error">No sessionKey in URL.</p>
   {:else}
@@ -137,6 +138,7 @@
     </div>
   {/if}
 </div>
+</main>
 
 <style>
   .page {
@@ -148,29 +150,9 @@
     gap: 1rem;
   }
 
-  header {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    flex-wrap: wrap;
-    gap: 0.75rem;
-  }
-
-  h1 {
-    margin: 0;
-    font-size: 1.5rem;
-  }
-
-  .meta {
-    display: flex;
-    gap: 1.5rem;
+  .status {
     color: var(--fg-muted, #888);
     font-size: 0.9rem;
-  }
-
-  code {
-    font-family: var(--font-mono, monospace);
-    color: var(--fg, #ddd);
   }
 
   .status .on {

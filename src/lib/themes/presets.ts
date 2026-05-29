@@ -64,7 +64,9 @@ export const PRESETS: ThemePreset[] = [
       bg3: '#27272a',
       card: '#0c0c0e',
       cardForeground: '#fafafa',
-      border: '#27272a',
+      // White-alpha border = the "hairline" depth cue (lifts with the surface
+      // in a dark UI), matching the .surface-* utilities. Council #2.
+      border: 'rgba(255, 255, 255, 0.08)',
       foreground: '#fafafa',
       muted: '#a1a1aa',
       mutedForeground: '#71717a',

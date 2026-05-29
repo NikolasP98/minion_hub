@@ -4,6 +4,8 @@
 	import type { Goal, GoalStatus, GoalLevel } from '@minion-stack/paperclip-client';
 	import { startPolling } from '$lib/utils/live-polling';
 	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
+	import { PageHeader } from '$lib/components/ui';
+	import { Target } from 'lucide-svelte';
 
 	let { data }: { data: PageData } = $props();
 	const { goals, agentNames } = $derived(data);
@@ -86,12 +88,12 @@
 	onMount(() => startPolling('app:goals', 8000));
 </script>
 
-<div class="p-6 space-y-6 max-w-5xl">
-	<header class="flex items-center justify-between flex-wrap gap-3">
-		<div class="flex items-center gap-3">
-			<h1 class="text-2xl font-semibold">Goals</h1>
-			<LiveIndicator intervalMs={8000} />
-		</div>
+<PageHeader title="Goals">
+	{#snippet leading()}
+		<Target size={16} class="text-accent shrink-0" />
+	{/snippet}
+	{#snippet actions()}
+		<LiveIndicator intervalMs={8000} />
 		<div class="flex flex-wrap gap-2 text-xs">
 			{#each (['active', 'planned', 'achieved', 'cancelled'] as GoalStatus[]) as s (s)}
 				{#if counts[s] > 0}
@@ -101,8 +103,9 @@
 				{/if}
 			{/each}
 		</div>
-	</header>
-
+	{/snippet}
+</PageHeader>
+<main class="flex-1 min-h-0 overflow-y-auto p-6 space-y-6 max-w-5xl">
 	{#if goals.length === 0}
 		<div class="rounded-lg border border-border bg-card p-12 flex flex-col items-center justify-center text-center">
 			<p class="text-muted-foreground text-sm">No goals defined.</p>
@@ -131,4 +134,4 @@
 			{/each}
 		</ul>
 	{/if}
-</div>
+</main>

@@ -88,6 +88,9 @@ export type PluginTriggerNodeData = {
   event: string;
   label: string;
   deliverResponse: boolean;
+  /** Channel-scoped triggers (e.g. WhatsApp/Telegram) carry the channel id so
+   *  trigger registration only fires for that channel's inbound traffic. */
+  filterChannelId?: string;
 };
 
 export type PluginActionNodeData = {

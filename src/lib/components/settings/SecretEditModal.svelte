@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { SecretsProbeStatus } from '$lib/types/secrets';
+  import { Button } from '$lib/components/ui';
   import SecretStatusPill from './SecretStatusPill.svelte';
 
   interface Props {
@@ -97,22 +98,18 @@
       {/if}
 
       <div class="flex gap-2 justify-end mt-5">
-        <button
-          type="button"
-          class="bg-transparent border border-border rounded-[5px] text-muted-foreground cursor-pointer font-[inherit] text-xs py-2 px-3 transition-colors hover:text-foreground disabled:opacity-50"
-          disabled={saving}
-          onclick={onClose}
-        >
+        <Button variant="ghost" size="sm" disabled={saving} onclick={onClose}>
           {result ? 'Close' : 'Cancel'}
-        </button>
-        <button
-          type="button"
-          class="bg-accent border-none rounded-[5px] text-white cursor-pointer font-[inherit] text-xs font-semibold py-2 px-4 transition-[filter] hover:brightness-115 disabled:opacity-50 disabled:cursor-not-allowed"
-          disabled={!value || saving}
+        </Button>
+        <Button
+          variant="primary"
+          size="sm"
+          loading={saving}
+          disabled={!value}
           onclick={handleSave}
         >
-          {saving ? 'Saving…' : 'Save & probe'}
-        </button>
+          Save & probe
+        </Button>
       </div>
     </div>
   </div>

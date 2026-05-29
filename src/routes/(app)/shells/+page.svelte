@@ -11,6 +11,8 @@
   import QuotaStrip from '$lib/components/shells/QuotaStrip.svelte';
   import ShellRow from '$lib/components/shells/ShellRow.svelte';
   import ProvisionForm from '$lib/components/shells/ProvisionForm.svelte';
+  import { PageHeader } from '$lib/components/ui';
+  import { Terminal } from 'lucide-svelte';
 
   let shells = $state<ShellSummary[]>([]);
   let quota = $state<ShellsQuota | null>(null);
@@ -44,17 +46,20 @@
   }
 </script>
 
-<div class="page">
-  <header>
-    <div class="title">
-      <h1>Shells</h1>
-      <p>Long-lived exe.dev VMs, each hosting one autonomous agent with full admin.</p>
-    </div>
+<PageHeader
+  title="Shells"
+  subtitle="Long-lived exe.dev VMs, each hosting one autonomous agent with full admin."
+>
+  {#snippet leading()}
+    <Terminal size={16} class="text-accent shrink-0" />
+  {/snippet}
+  {#snippet actions()}
     <button class="primary" onclick={() => (showProvision = !showProvision)}>
       {showProvision ? 'Cancel' : '+ Spin up shell'}
     </button>
-  </header>
-
+  {/snippet}
+</PageHeader>
+<main class="flex-1 min-h-0 overflow-y-auto">
   <QuotaStrip {quota} />
 
   {#if showProvision}
@@ -88,31 +93,9 @@
       {/each}
     </div>
   {/if}
-</div>
+</main>
 
 <style>
-  .page {
-    display: flex;
-    flex-direction: column;
-    min-height: 100%;
-  }
-  header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    padding: 24px 16px 16px;
-    border-bottom: 1px solid var(--color-border, #e5e7eb);
-  }
-  h1 {
-    margin: 0;
-    font-size: 22px;
-    font-weight: 600;
-  }
-  .title p {
-    margin: 4px 0 0;
-    font-size: 13px;
-    color: var(--color-text-muted, #6b7280);
-  }
   .primary {
     padding: 8px 14px;
     background: rgb(15, 23, 42);

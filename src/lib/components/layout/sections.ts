@@ -1,29 +1,23 @@
-import {
-    Briefcase,
-    Zap,
-    Sparkles,
-    LayoutDashboard,
-    Users,
-    GitBranch,
-    Wrench,
-    Store,
-    Wand2,
-    Paintbrush,
-    Inbox,
-    CheckCircle2,
-    Target,
-    FolderKanban,
-    Puzzle,
-} from "lucide-svelte";
+import { Puzzle } from "lucide-svelte";
 import type { ComponentType, SvelteComponent } from "svelte";
-import * as m from "$lib/paraglide/messages";
 import { resolvePluginIcon } from "$lib/plugins/icon-map";
 import type { PluginUiManifestOccupant } from "$lib/plugins/PluginSlotHost.svelte";
+import {
+    ROUTES,
+    SECTION_META,
+    SECTION_ORDER,
+    DOMAIN_LABEL,
+    isFlowsNavVisible,
+    type SectionId,
+    type SectionTone,
+    type NavDomain,
+} from "$lib/nav/routes";
 
 // lucide-svelte still ships legacy SvelteComponentTyped types; widen for Svelte 5 mixed code.
 type LucideIcon = ComponentType<SvelteComponent<{ size?: number | string; class?: string }>>;
 
-export type SectionTone = "accent" | "brand";
+export type { SectionTone, NavDomain };
+export { DOMAIN_LABEL };
 
 export type SectionItem = {
     href: string;
@@ -32,123 +26,46 @@ export type SectionItem = {
     matcher: (path: string) => boolean;
     // Optional access-policy key (see $lib/access/policy). When set, the nav
     // item is only rendered for users who satisfy it (admin-only "plugin"
-    // views). Filtered in Topbar via canClient(); routes are also guarded
+    // views). Filtered in the sidebar via canClient(); routes are also guarded
     // server-side, so hiding here is UX only.
     requires?: string;
 };
 
 export type Section = {
-    id: "workforce" | "gateway" | "creative" | "plugins";
+    id: SectionId | "plugins";
     label: string;
     icon: LucideIcon;
     tone: SectionTone;
+    domain: NavDomain;
     items: SectionItem[];
 };
 
-export function getSections(): Section[] {
-    return [
-        {
-            id: "workforce",
-            label: "Workforce",
-            icon: Briefcase,
-            tone: "accent",
-            items: [
-                {
-                    href: "/workforce",
-                    label: "Dashboard",
-                    icon: LayoutDashboard,
-                    matcher: (p) => p === "/workforce",
-                },
-                {
-                    href: "/workforce/issues",
-                    label: "Issues",
-                    icon: Inbox,
-                    matcher: (p) => p.startsWith("/workforce/issues"),
-                },
-                {
-                    href: "/workforce/approvals",
-                    label: "Approvals",
-                    icon: CheckCircle2,
-                    matcher: (p) => p.startsWith("/workforce/approvals"),
-                },
-                {
-                    href: "/workforce/goals",
-                    label: "Goals",
-                    icon: Target,
-                    matcher: (p) => p.startsWith("/workforce/goals"),
-                },
-                {
-                    href: "/workforce/projects",
-                    label: "Projects",
-                    icon: FolderKanban,
-                    matcher: (p) => p.startsWith("/workforce/projects"),
-                },
-                {
-                    href: "/workforce/org",
-                    label: "Org",
-                    icon: Users,
-                    matcher: (p) => p.startsWith("/workforce/org"),
-                },
-            ],
-        },
-        {
-            id: "gateway",
-            label: "Gateway",
-            icon: Zap,
-            tone: "accent",
-            items: [
-                {
-                    href: "/my-agent",
-                    label: m.nav_agents(),
-                    icon: Users,
-                    matcher: (p) => p.startsWith("/my-agent") || p.startsWith("/agents"),
-                },
-                {
-                    href: "/flow-editor",
-                    label: m.nav_flows(),
-                    icon: GitBranch,
-                    matcher: (p) => p.startsWith("/flow-editor"),
-                },
-                {
-                    href: "/tools",
-                    label: m.nav_tools(),
-                    icon: Wrench,
-                    matcher: (p) => p.startsWith("/tools"),
-                },
-            ],
-        },
-        {
-            id: "creative",
-            label: "Creative",
-            icon: Sparkles,
-            tone: "brand",
-            items: [
-                {
-                    href: "/marketplace",
-                    label: m.nav_marketplace(),
-                    icon: Store,
-                    matcher: (p) => p.startsWith("/marketplace"),
-                },
-                {
-                    href: "/prompt",
-                    label: m.nav_prompt(),
-                    icon: Wand2,
-                    matcher: (p) => p.startsWith("/prompt"),
-                },
-                {
-                    href: "/studio",
-                    label: m.nav_studio(),
-                    icon: Paintbrush,
-                    matcher: (p) => p.startsWith("/studio"),
-                },
-            ],
-        },
-    ];
-}
+export { isFlowsNavVisible };
 
-/** Flows nav item is visible unless an explicit `false` exists for pluginId "flows". */
-export function isFlowsNavVisible(enabledByPluginId: Record<string, boolean>): boolean {
-    return enabledByPluginId.flows !== false;
+/**
+ * Build the static nav sections from the canonical route registry
+ * (`$lib/nav/routes`). Section grouping/labels/tones come from SECTION_META;
+ * items are the registry entries flagged `inNav` for that section, in
+ * registry order.
+ */
+export function getSections(): Section[] {
+    return SECTION_ORDER.map((id) => {
+        const meta = SECTION_META[id];
+        return {
+            id,
+            label: meta.label,
+            icon: meta.icon,
+            tone: meta.tone,
+            domain: meta.domain,
+            items: ROUTES.filter((r) => r.inNav && r.section === id).map((r) => ({
+                href: r.path,
+                label: r.title(),
+                icon: r.icon,
+                matcher: r.matcher,
+                requires: r.requires,
+            })),
+        };
+    });
 }
 
 /**
@@ -191,6 +108,7 @@ export function getDynamicPluginsSection(
         label: "Plugins",
         icon: Puzzle,
         tone: "accent",
+        domain: "gateway",
         items: entries.map((e) => ({
             href: `/plugins/${e.pluginId}`,
             label: e.title,

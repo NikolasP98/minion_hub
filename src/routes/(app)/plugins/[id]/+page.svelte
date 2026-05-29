@@ -2,6 +2,8 @@
   import PluginIframe from '$lib/plugins/PluginIframe.svelte';
   import type { Theme } from '$lib/plugins/bridge-protocol';
   import { hostsState, fetchHostToken } from '$lib/state/features/hosts.svelte';
+  import { PageHeader } from '$lib/components/ui';
+  import { Puzzle } from 'lucide-svelte';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -68,12 +70,11 @@
 </script>
 
 <div class="flex h-full min-h-0 flex-col">
-  <header class="border-b border-border px-6 py-4">
-    <h1 class="text-lg font-semibold">{data.entry.title}</h1>
-    {#if data.entry.description}
-      <p class="text-sm text-muted-foreground">{data.entry.description}</p>
-    {/if}
-  </header>
+  <PageHeader title={data.entry.title} subtitle={data.entry.description ?? undefined}>
+    {#snippet leading()}
+      <Puzzle size={16} class="text-accent shrink-0" />
+    {/snippet}
+  </PageHeader>
   <div class="min-h-0 flex-1 overflow-y-auto">
     {#if tokenLoading}
       <div class="px-6 py-6 text-sm text-muted-foreground">Authenticating…</div>

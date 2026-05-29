@@ -2,6 +2,7 @@
     import type { ChannelAssignment } from '$lib/types/channels';
     import { fetchChannelAssignments, assignChannel, unassignChannel } from '$lib/state/channels';
     import { X, UserPlus } from 'lucide-svelte';
+    import { Button } from '$lib/components/ui';
     import * as m from '$lib/paraglide/messages';
 
     interface Props {
@@ -105,13 +106,16 @@
             placeholder="{targetType === 'user' ? m.channel_assignmentUser() : m.channel_assignmentSession()} ID"
             bind:value={targetId}
         />
-        <button
+        <Button
             type="submit"
-            class="p-1.5 rounded-md bg-accent text-accent-foreground hover:opacity-90 transition-opacity disabled:opacity-50"
-            disabled={adding || !targetId.trim()}
+            variant="primary"
+            size="icon"
+            loading={adding}
+            disabled={!targetId.trim()}
             title={m.channel_assign()}
+            aria-label={m.channel_assign()}
         >
-            <UserPlus size={14} />
-        </button>
+            {#snippet icon()}<UserPlus size={14} />{/snippet}
+        </Button>
     </form>
 </div>

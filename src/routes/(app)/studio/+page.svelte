@@ -6,6 +6,7 @@
   import GenerationHistory from '$lib/components/studio/GenerationHistory.svelte';
   import { Paintbrush } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
+  import { PageHeader } from '$lib/components/ui';
 
   onMount(() => {
     loadHistory();
@@ -14,17 +15,11 @@
 
 <div class="studio-page">
   <!-- Header -->
-  <header class="studio-header">
-    <div class="flex items-center gap-3">
-      <div class="header-icon">
-        <Paintbrush size={20} />
-      </div>
-      <div>
-        <h1 class="text-base font-bold text-foreground">{m.studio_title()}</h1>
-        <p class="text-xs text-muted">{m.studio_subtitle()}</p>
-      </div>
-    </div>
-  </header>
+  <PageHeader title={m.studio_title()} subtitle={m.studio_subtitle()}>
+    {#snippet leading()}
+      <Paintbrush size={16} class="text-accent shrink-0" />
+    {/snippet}
+  </PageHeader>
 
   <!-- Main content -->
   <div class="studio-content">
@@ -46,26 +41,6 @@
     flex-direction: column;
     height: 100%;
     overflow: hidden;
-  }
-
-  .studio-header {
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--color-border);
-    background: color-mix(in srgb, var(--color-bg2) 80%, transparent);
-    backdrop-filter: blur(8px);
-    flex-shrink: 0;
-  }
-
-  .header-icon {
-    width: 36px;
-    height: 36px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: color-mix(in srgb, var(--color-brand-pink) 15%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-brand-pink) 25%, transparent);
-    border-radius: 8px;
-    color: var(--color-brand-pink);
   }
 
   .studio-content {

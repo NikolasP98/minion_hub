@@ -2,6 +2,8 @@
 	import type { PageData } from './$types';
 	import type { ApprovalStatus } from '@minion-stack/paperclip-client';
 	import ApprovalPayload from '$lib/components/workforce/ApprovalPayload.svelte';
+	import { PageHeader } from '$lib/components/ui';
+	import { ClipboardCheck } from 'lucide-svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -50,16 +52,19 @@
 	}
 </script>
 
-<div class="p-6 space-y-6">
-	<div class="flex items-center justify-between">
-		<h1 class="text-2xl font-semibold">Approvals</h1>
+<PageHeader title="Approvals">
+	{#snippet leading()}
+		<ClipboardCheck size={16} class="text-accent shrink-0" />
+	{/snippet}
+	{#snippet actions()}
 		{#if pendingCount > 0}
 			<span class="rounded-full bg-amber-500/20 px-2.5 py-0.5 text-xs font-medium text-amber-600">
 				{pendingCount} pending
 			</span>
 		{/if}
-	</div>
-
+	{/snippet}
+</PageHeader>
+<main class="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
 	{#if items.length === 0}
 		<div class="rounded-lg border border-border bg-card p-12 flex flex-col items-center justify-center text-center">
 			<p class="text-muted-foreground text-sm">No approvals yet.</p>
@@ -121,4 +126,4 @@
 			{/each}
 		</ul>
 	{/if}
-</div>
+</main>

@@ -5,6 +5,7 @@
 	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
 	import Sparkline from '$lib/components/Sparkline.svelte';
 	import JsonView from '$lib/components/workforce/JsonView.svelte';
+	import { PageHeader } from '$lib/components/ui';
 	import {
 		ListTodo,
 		ClipboardCheck,
@@ -16,6 +17,7 @@
 		Receipt,
 		Settings,
 		FolderKanban,
+		LayoutDashboard,
 	} from 'lucide-svelte';
 
 	let { data }: { data: PageData } = $props();
@@ -99,7 +101,7 @@
 
 	const BADGE_TINT: Record<NonNullable<WorkforceTile['badge']>['tone'], string> = {
 		primary: 'bg-primary/10 text-primary',
-		amber: 'bg-amber-500/10 text-amber-600',
+		amber: 'bg-warning/10 text-warning',
 		destructive: 'bg-destructive/10 text-destructive',
 		muted: 'bg-muted text-muted-foreground',
 	};
@@ -111,21 +113,21 @@
 	onMount(() => startPolling('app:dashboard', 5000));
 </script>
 
-<div class="p-6 space-y-6">
-	<div class="flex items-center justify-between">
-		<div class="flex items-center gap-3">
-			<h1 class="text-2xl font-semibold">Dashboard</h1>
-			<LiveIndicator intervalMs={5000} />
-		</div>
+<PageHeader title="Dashboard">
+	{#snippet leading()}
+		<LayoutDashboard size={16} class="text-accent shrink-0" />
+	{/snippet}
+	{#snippet actions()}
+		<LiveIndicator intervalMs={5000} />
 		{#if badges.approvals > 0 || badges.inbox > 0 || badges.failedRuns > 0 || badges.joinRequests > 0}
-			<div class="flex gap-2 text-xs">
+			<div class="hidden sm:flex gap-2 text-xs">
 				{#if badges.inbox > 0}
 					<span class="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary">
 						{badges.inbox} inbox
 					</span>
 				{/if}
 				{#if badges.approvals > 0}
-					<span class="rounded-full bg-amber-500/10 px-2 py-0.5 font-medium text-amber-600">
+					<span class="rounded-full bg-warning/10 px-2 py-0.5 font-medium text-warning">
 						{badges.approvals} approvals
 					</span>
 				{/if}
@@ -141,12 +143,13 @@
 				{/if}
 			</div>
 		{/if}
-	</div>
-
+	{/snippet}
+</PageHeader>
+<main class="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
 	<!-- Summary cards -->
 	<section aria-label="Summary" class="grid grid-cols-1 gap-4 sm:grid-cols-3">
 		<!-- Agents -->
-		<div class="rounded-lg border border-border bg-card p-4 space-y-2">
+		<div class="surface-2 rounded-lg p-4 space-y-2">
 			<h2 class="text-sm font-medium text-muted-foreground">Agents</h2>
 			<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
 				<span class="text-muted-foreground">Active</span>
@@ -161,7 +164,7 @@
 		</div>
 
 		<!-- Tasks (clickable, drills into filtered issues) -->
-		<div class="rounded-lg border border-border bg-card p-4 space-y-2">
+		<div class="surface-2 rounded-lg p-4 space-y-2">
 			<h2 class="text-sm font-medium text-muted-foreground">Tasks</h2>
 			<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
 				<a
@@ -196,7 +199,7 @@
 				</a>
 				<a
 					href="/workforce/issues?status=blocked"
-					class="font-medium tabular-nums text-amber-600 hover:underline underline-offset-2"
+					class="font-medium tabular-nums text-warning hover:underline underline-offset-2"
 				>
 					{summary.tasks.blocked}
 				</a>
@@ -208,7 +211,7 @@
 				</a>
 				<a
 					href="/workforce/issues?status=done"
-					class="font-medium tabular-nums text-green-600 hover:underline underline-offset-2"
+					class="font-medium tabular-nums text-success hover:underline underline-offset-2"
 				>
 					{summary.tasks.done}
 				</a>
@@ -216,7 +219,7 @@
 		</div>
 
 		<!-- Costs -->
-		<div class="rounded-lg border border-border bg-card p-4 space-y-2">
+		<div class="surface-2 rounded-lg p-4 space-y-2">
 			<div class="flex items-start justify-between gap-2">
 				<div class="space-y-1">
 					<h2 class="text-sm font-medium text-muted-foreground">Monthly spend</h2>
@@ -255,9 +258,9 @@
 			{#if summary.pendingApprovals > 0}
 				<a
 					href="/workforce/approvals"
-					class="rounded-lg border border-amber-300/30 bg-amber-500/5 px-4 py-2 text-sm hover:bg-amber-500/10 transition-colors"
+					class="rounded-lg border border-warning/30 bg-warning/5 px-4 py-2 text-sm hover:bg-warning/10 transition-colors"
 				>
-					<span class="font-medium text-amber-600">{summary.pendingApprovals}</span>
+					<span class="font-medium text-warning">{summary.pendingApprovals}</span>
 					<span class="text-muted-foreground ml-1">pending approval{summary.pendingApprovals !== 1 ? 's' : ''}</span>
 				</a>
 			{/if}
@@ -287,7 +290,7 @@
 				<li>
 					<a
 						href={tile.href}
-						class="group relative flex flex-col gap-2 rounded-lg border border-border bg-card p-4 transition-colors hover:bg-muted hover:border-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+						class="group relative flex flex-col gap-2 surface-2 rounded-lg p-4 transition-colors hover:bg-bg3 hover:border-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
 						aria-label="{tile.label} — {tile.description}"
 					>
 						<div class="flex items-center justify-between gap-2">
@@ -323,7 +326,7 @@
 		{#if activity.length === 0}
 			<p class="text-muted-foreground text-sm">No recent activity yet.</p>
 		{:else}
-			<ul class="divide-y divide-border rounded-lg border border-border bg-card">
+			<ul class="surface-2 divide-hairline rounded-lg overflow-hidden">
 				{#each activity.slice(0, 8) as item (item.id)}
 					<li class="px-4 py-2 text-sm flex items-start gap-3">
 						<span class="shrink-0 mt-0.5 rounded px-1.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground uppercase tracking-wide">
@@ -349,4 +352,4 @@
 			</ul>
 		{/if}
 	</section>
-</div>
+</main>

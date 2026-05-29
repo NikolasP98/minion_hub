@@ -8,7 +8,8 @@
         type MarketplaceAgent,
     } from "$lib/state/features/marketplace.svelte";
     import * as m from "$lib/paraglide/messages";
-    import { Search, FileText, Info } from "lucide-svelte";
+    import { Search, FileText, Info, ArrowLeft } from "lucide-svelte";
+    import { PageHeader } from "$lib/components/ui";
     import posthog from "posthog-js";
     import IdBadgeCard from "./_components/IdBadgeCard.svelte";
     import HiringPanel from "./_components/HiringPanel.svelte";
@@ -51,22 +52,21 @@
     }
 </script>
 
-<div class="flex flex-col min-h-full">
-    <!-- Compact sticky toolbar -->
-    <header class="sticky top-0 z-10 shrink-0 flex items-center gap-3 px-4 py-2.5 border-b border-border bg-bg2/80 backdrop-blur-sm">
-        <button
-            type="button"
-            onclick={goBack}
-            class="flex items-center gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer transition-colors text-xs"
-        >
-            <span>{m.marketplace_agentDetailBack()}</span>
-        </button>
-        {#if agent}
-            <span class="text-border/60">·</span>
-            <span class="text-sm font-semibold tracking-tight truncate">{agent.name}</span>
-        {/if}
-    </header>
+<div class="flex flex-col min-h-0 flex-1">
+    <PageHeader title={agent?.name ?? "Agent"}>
+        {#snippet leading()}
+            <button
+                type="button"
+                onclick={goBack}
+                aria-label={m.marketplace_agentDetailBack()}
+                class="flex items-center text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+            >
+                <ArrowLeft size={16} class="text-accent shrink-0" />
+            </button>
+        {/snippet}
+    </PageHeader>
 
+    <main class="flex-1 min-h-0 overflow-y-auto">
     <div class="agent-detail-page">
     {#if loading}
         <!-- Loading State -->
@@ -96,7 +96,7 @@
 
         <!-- Tab Navigation -->
         <div class="tab-bar">
-            {#each ["overview", "documents"] as const as tab}
+            {#each ["overview", "documents"] as const as tab (tab)}
                 <button
                     type="button"
                     onclick={() => {
@@ -126,6 +126,7 @@
         </div>
     {/if}
     </div>
+    </main>
 </div>
 
 <style>

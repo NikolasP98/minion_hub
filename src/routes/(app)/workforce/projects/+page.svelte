@@ -4,6 +4,8 @@
 	import type { ProjectStatus } from '@minion-stack/paperclip-client';
 	import { startPolling } from '$lib/utils/live-polling';
 	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
+	import { PageHeader } from '$lib/components/ui';
+	import { FolderKanban } from 'lucide-svelte';
 
 	let { data }: { data: PageData } = $props();
 	const { projects, agentNames } = $derived(data);
@@ -50,12 +52,12 @@
 	onMount(() => startPolling('app:projects', 8000));
 </script>
 
-<div class="p-6 space-y-6 max-w-5xl">
-	<header class="flex items-center justify-between flex-wrap gap-3">
-		<div class="flex items-center gap-3">
-			<h1 class="text-2xl font-semibold">Projects</h1>
-			<LiveIndicator intervalMs={8000} />
-		</div>
+<PageHeader title="Projects">
+	{#snippet leading()}
+		<FolderKanban size={16} class="text-accent shrink-0" />
+	{/snippet}
+	{#snippet actions()}
+		<LiveIndicator intervalMs={8000} />
 		<div class="flex flex-wrap gap-2 text-xs">
 			{#each (['in_progress', 'planned', 'completed', 'backlog', 'cancelled'] as ProjectStatus[]) as s (s)}
 				{#if counts[s] > 0}
@@ -65,8 +67,9 @@
 				{/if}
 			{/each}
 		</div>
-	</header>
-
+	{/snippet}
+</PageHeader>
+<main class="flex-1 min-h-0 overflow-y-auto p-6 space-y-6 max-w-5xl">
 	{#if projects.length === 0}
 		<div class="rounded-lg border border-border bg-card p-12 text-center">
 			<p class="text-muted-foreground text-sm">No projects yet.</p>
@@ -128,4 +131,4 @@
 			{/each}
 		</ul>
 	{/if}
-</div>
+</main>

@@ -65,13 +65,13 @@
         {
             label: m.dashboard_errorRate(),
             value: conn.connected ? errorRate : '-',
-            color: '--red',
+            color: '--color-destructive',
             icon: '\u{26A0}\u{FE0F}',
         },
         {
             label: m.dashboard_uptime(),
             value: conn.connected ? uptimeStr : '-',
-            color: '--green',
+            color: '--color-success',
             icon: '\u{23F1}\u{FE0F}',
         },
     ]);

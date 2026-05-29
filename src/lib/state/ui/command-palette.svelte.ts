@@ -1,5 +1,8 @@
 import { goto } from '$app/navigation';
 import { visibleAgents } from '$lib/state/gateway/gateway-data.svelte';
+import { palettePageRoutes, isFlowsNavVisible } from '$lib/nav/routes';
+import { canClient } from '$lib/access/can.svelte';
+import { pluginNavState } from '$lib/state/plugin-nav.svelte';
 
 export interface Command {
   id: string;
@@ -30,79 +33,25 @@ export function closePalette() {
   palette.selectedIndex = 0;
 }
 
-const staticCommands: Command[] = [
-  {
-    id: 'page:dashboard',
-    label: 'Dashboard',
-    category: 'page',
-    icon: 'home',
-    keywords: 'home overview',
-    action: () => goto('/'),
-  },
-  {
-    id: 'page:my-agent',
-    label: 'My Agent',
-    category: 'page',
-    icon: 'user',
-    keywords: 'personal agent',
-    action: () => goto('/my-agent'),
-  },
-  {
-    id: 'page:tools',
-    label: 'Tools',
-    category: 'page',
-    icon: 'wrench',
-    keywords: 'tools gateway custom create edit',
-    action: () => goto('/tools'),
-  },
-  {
-    id: 'page:marketplace',
-    label: 'Marketplace',
-    category: 'page',
-    icon: 'store',
-    keywords: 'plugins tools marketplace browse',
-    action: () => goto('/marketplace'),
-  },
-  {
-    id: 'page:reliability',
-    label: 'Reliability',
-    category: 'page',
-    icon: 'activity',
-    keywords: 'health monitoring events',
-    action: () => goto('/reliability'),
-  },
-  {
-    id: 'page:sessions',
-    label: 'Sessions',
-    category: 'page',
-    icon: 'messages-square',
-    keywords: 'conversations history',
-    action: () => goto('/sessions'),
-  },
-  {
-    id: 'page:settings',
-    label: 'Settings',
-    category: 'page',
-    icon: 'settings',
-    keywords: 'preferences config',
-    action: () => goto('/settings'),
-  },
-  {
-    id: 'page:workshop',
-    label: 'Workshop',
-    category: 'page',
-    icon: 'wrench',
-    keywords: 'test experiment sandbox',
-    action: () => goto('/agents/workshop'),
-  },
-  {
-    id: 'page:flow-editor',
-    label: 'Flow Editor',
-    category: 'page',
-    icon: 'git-branch',
-    keywords: 'flows graph editor',
-    action: () => goto('/flow-editor'),
-  },
+// Page commands are generated from the canonical route registry
+// ($lib/nav/routes) so the palette stays in sync with the sidebar — add a
+// route there and it appears here automatically.
+function pageCommands(): Command[] {
+  const flowsVisible = isFlowsNavVisible(pluginNavState.enabledByPluginId);
+  return palettePageRoutes()
+    .filter((r) => !r.requires || canClient(r.requires))
+    .filter((r) => flowsVisible || r.path !== '/flow-editor')
+    .map((r) => ({
+      id: `page:${r.path}`,
+      label: r.title(),
+      category: 'page' as const,
+      icon: r.paletteIcon,
+      keywords: r.keywords,
+      action: () => goto(r.path),
+    }));
+}
+
+const actionCommands: Command[] = [
   {
     id: 'action:new-agent',
     label: 'New Agent',
@@ -153,7 +102,7 @@ export function getFilteredCommands(): { category: string; commands: Command[] }
     action: () => goto('/'),
   }));
 
-  const all = [...staticCommands, ...agentCommands, ...customCommands];
+  const all = [...pageCommands(), ...agentCommands, ...actionCommands, ...customCommands];
   const q = palette.query.trim();
 
   const filtered = q

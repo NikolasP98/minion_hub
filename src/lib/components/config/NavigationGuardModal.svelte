@@ -1,5 +1,6 @@
 <script lang="ts">
   import * as m from '$lib/paraglide/messages';
+  import { Button } from '$lib/components/ui';
   let {
     open = $bindable(false),
     onsave,
@@ -37,27 +38,15 @@
         {m.config_unsavedChangesPrompt()}
       </p>
       <div class="flex gap-2 justify-end">
-        <button
-          type="button"
-          class="bg-transparent border border-border rounded-[5px] text-muted-foreground cursor-pointer font-[inherit] text-xs py-2 px-3 transition-colors hover:text-foreground"
-          onclick={oncancel}
-        >
+        <Button variant="secondary" size="sm" onclick={oncancel}>
           {m.common_cancel()}
-        </button>
-        <button
-          type="button"
-          class="bg-transparent border border-border rounded-[5px] text-destructive cursor-pointer font-[inherit] text-xs py-2 px-3 transition-colors hover:text-destructive"
-          onclick={ondiscard}
-        >
+        </Button>
+        <Button variant="danger" size="sm" onclick={ondiscard}>
           {m.saveBar_discard()}
-        </button>
-        <button
-          type="button"
-          class="bg-accent border-none rounded-[5px] text-white cursor-pointer font-[inherit] text-xs font-semibold py-2 px-4 transition-[filter] hover:brightness-115"
-          onclick={onsave}
-        >
+        </Button>
+        <Button variant="primary" size="sm" onclick={onsave}>
           {m.config_saveAndLeave()}
-        </button>
+        </Button>
       </div>
     </div>
   </div>

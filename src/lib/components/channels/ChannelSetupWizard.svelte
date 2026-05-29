@@ -6,7 +6,8 @@
     import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
     import WhatsAppQrPairing from './WhatsAppQrPairing.svelte';
     import ChannelAssignmentPicker from './ChannelAssignmentPicker.svelte';
-    import { CircleCheck, CircleX, Eye, EyeOff, Loader } from 'lucide-svelte';
+    import { CircleCheck, CircleX, Eye, EyeOff } from 'lucide-svelte';
+    import { Button } from '$lib/components/ui';
     import * as m from '$lib/paraglide/messages';
 
     interface Props {
@@ -200,15 +201,15 @@
                     <span>{verifyError}</span>
                 </div>
             {/if}
-            <button
+            <Button
                 type="button"
-                class="bg-accent text-accent-foreground rounded-md px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity inline-flex items-center gap-2 disabled:opacity-50"
+                variant="primary"
+                loading={verifying}
+                disabled={!token}
                 onclick={startVerify}
-                disabled={!token || verifying}
             >
-                {#if verifying}<Loader size={14} class="animate-spin" />{/if}
                 {verifying ? m.channelWizard_verifying() : m.channelWizard_verifyToken()}
-            </button>
+            </Button>
         {:else}
             <!-- Confirmation card -->
             <div
@@ -239,20 +240,12 @@
                 </button>
             </div>
             <div class="flex gap-2">
-                <button
-                    type="button"
-                    class="bg-accent text-accent-foreground rounded-md px-4 py-2 text-sm font-medium hover:opacity-90"
-                    onclick={() => (step = 'name')}
-                >
+                <Button type="button" variant="primary" onclick={() => (step = 'name')}>
                     {m.channelWizard_next()}
-                </button>
-                <button
-                    type="button"
-                    class="bg-bg3 border border-border rounded-md px-4 py-2 text-sm"
-                    onclick={onclose}
-                >
+                </Button>
+                <Button type="button" variant="secondary" onclick={onclose}>
                     {m.channelWizard_close()}
-                </button>
+                </Button>
             </div>
         {/if}
 
@@ -287,21 +280,12 @@
             </div>
         </div>
         <div class="flex gap-2">
-            <button
-                type="button"
-                class="bg-bg3 border border-border rounded-md px-4 py-2 text-sm"
-                onclick={() => (step = 'connect')}
-            >
+            <Button type="button" variant="secondary" onclick={() => (step = 'connect')}>
                 {m.channelWizard_back()}
-            </button>
-            <button
-                type="button"
-                class="bg-accent text-accent-foreground rounded-md px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50"
-                onclick={commit}
-                disabled={!label}
-            >
+            </Button>
+            <Button type="button" variant="primary" onclick={commit} disabled={!label}>
                 {m.channelWizard_next()}
-            </button>
+            </Button>
         </div>
 
         <!-- Step 3: Assign -->
@@ -312,12 +296,8 @@
             </h4>
             <ChannelAssignmentPicker {serverId} channelId={committedChannelId} />
         </div>
-        <button
-            type="button"
-            class="bg-accent text-accent-foreground rounded-md px-4 py-2 text-sm font-medium hover:opacity-90"
-            onclick={onclose}
-        >
+        <Button type="button" variant="primary" onclick={onclose}>
             {m.channelWizard_finish()}
-        </button>
+        </Button>
     {/if}
 </div>

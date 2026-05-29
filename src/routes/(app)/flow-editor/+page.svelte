@@ -4,6 +4,7 @@
   import { GitBranch, Plus, Trash2, Clock, BookOpen } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import BuilderHub from '$lib/components/builder/BuilderHub.svelte';
+  import { sendRequest } from '$lib/services/gateway.svelte';
 
   // Flows list lives here; Skills are authored through the same flow surface.
   let view = $state<'flows' | 'skills'>('flows');
@@ -16,6 +17,18 @@
     updatedAt: number;
   };
 
+  // Flows shipped by enabled plugins (e.g. the alert-watcher pipeline), surfaced
+  // from the gateway's flows.templates.list and auto-installed into this user's
+  // flow list on first visit after the plugin is enabled.
+  type FlowTemplate = {
+    pluginId: string;
+    id: string;
+    name: string;
+    description?: string;
+    nodes: unknown[];
+    edges: unknown[];
+  };
+
   let flows = $state<FlowMeta[]>([]);
   let loading = $state(true);
   let creating = $state(false);
@@ -23,7 +36,31 @@
 
   onMount(async () => {
     await loadFlows();
+    // Auto-install any plugin-shipped flows this user hasn't installed yet, then
+    // refresh the list if new ones landed. Idempotent + deletion-safe server-side.
+    await syncPluginFlows();
   });
+
+  async function syncPluginFlows() {
+    try {
+      const res = (await sendRequest('flows.templates.list', {})) as
+        | { templates?: FlowTemplate[] }
+        | null;
+      const templates = res?.templates ?? [];
+      if (templates.length === 0) return;
+      const syncRes = await fetch('/api/flows/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ templates }),
+      });
+      if (syncRes.ok) {
+        const { count } = await syncRes.json();
+        if (count > 0) await loadFlows();
+      }
+    } catch {
+      // Gateway not connected yet (or no plugin flows) — they'll sync next visit.
+    }
+  }
 
   async function loadFlows() {
     loading = true;

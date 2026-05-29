@@ -96,7 +96,7 @@
     <!-- Compact sticky toolbar header -->
     <header class="sticky top-0 z-10 shrink-0 flex flex-col border-b border-border bg-bg2/80 backdrop-blur-sm">
         <!-- Primary row -->
-        <div class="flex items-center gap-3 px-4 py-2.5">
+        <div class="flex items-center gap-3 px-4 py-2.5 md:pr-[200px]">
             <Puzzle size={13} class="text-[var(--color-brand-pink)] shrink-0" />
             <h1 class="text-sm font-semibold tracking-tight">{m.marketplace_plugins()}</h1>
             {#if filtered.length > 0}

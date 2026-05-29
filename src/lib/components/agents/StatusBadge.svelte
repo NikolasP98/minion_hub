@@ -7,18 +7,18 @@
     let { status, size = 'md' }: Props = $props();
 
     const colors: Record<string, string> = {
-        running: 'bg-emerald-500',
-        thinking: 'bg-amber-500',
-        idle: 'bg-zinc-500',
-        error: 'bg-red-500',
-        paused: 'bg-blue-500',
+        running: 'bg-status-running',
+        thinking: 'bg-status-thinking',
+        idle: 'bg-status-idle',
+        error: 'bg-destructive',
+        paused: 'bg-accent',
     };
 
     const glows: Record<string, string> = {
-        running: 'shadow-[0_0_6px_theme(colors.emerald.500)]',
-        thinking: 'shadow-[0_0_6px_theme(colors.amber.500)]',
+        running: 'shadow-[0_0_6px_var(--color-status-running)]',
+        thinking: 'shadow-[0_0_6px_var(--color-status-thinking)]',
         idle: '',
-        error: 'shadow-[0_0_6px_theme(colors.red.500)]',
+        error: 'shadow-[0_0_6px_var(--color-destructive)]',
         paused: '',
     };
 

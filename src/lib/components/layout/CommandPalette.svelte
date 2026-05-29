@@ -10,6 +10,7 @@
         Search,
         Home,
         User,
+        Users,
         BookOpen,
         Store,
         Activity,
@@ -19,25 +20,21 @@
         GitBranch,
         Plus,
         Bot,
-        Command as CommandIcon,
+        LayoutDashboard,
+        Inbox,
+        CheckCircle2,
+        Target,
+        FolderKanban,
+        Wand2,
+        Paintbrush,
     } from 'lucide-svelte';
     import * as m from '$lib/paraglide/messages';
-    import { isFlowsNavVisible } from './sections';
-    import { pluginNavState } from '$lib/state/plugin-nav.svelte';
 
     let inputEl: HTMLInputElement | undefined = $state();
 
-    // Reactively drop the Flow Editor command when the flows plugin is disabled.
-    const groups = $derived(
-        isFlowsNavVisible(pluginNavState.enabledByPluginId)
-            ? getFilteredCommands()
-            : getFilteredCommands()
-                  .map((g) => ({
-                      ...g,
-                      commands: g.commands.filter((c) => c.id !== 'page:flow-editor'),
-                  }))
-                  .filter((g) => g.commands.length > 0),
-    );
+    // Flows/permission gating is handled inside getFilteredCommands (sourced
+    // from the canonical route registry $lib/nav/routes).
+    const groups = $derived(getFilteredCommands());
 
     // Flat list for keyboard nav
     const flatCommands = $derived(groups.flatMap((g) => g.commands));
@@ -45,6 +42,7 @@
     const iconMap: Record<string, typeof Home> = {
         home: Home,
         user: User,
+        users: Users,
         'book-open': BookOpen,
         store: Store,
         activity: Activity,
@@ -54,6 +52,13 @@
         'git-branch': GitBranch,
         plus: Plus,
         bot: Bot,
+        'layout-dashboard': LayoutDashboard,
+        inbox: Inbox,
+        check: CheckCircle2,
+        target: Target,
+        folder: FolderKanban,
+        wand: Wand2,
+        paintbrush: Paintbrush,
     };
 
     function handleKeydown(e: KeyboardEvent) {
@@ -185,7 +190,7 @@
                     {@const flatIdx = { value: 0 }}
                     {#each groups as group}
                         <div class="px-3 pt-2 pb-1">
-                            <span class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">
+                            <span class="text-[10px] font-semibold uppercase tracking-wider text-muted-strong">
                                 {group.category}
                             </span>
                         </div>
@@ -200,6 +205,7 @@
                                 onmouseenter={() => { palette.selectedIndex = currentIdx; }}
                                 onclick={() => selectCommand(currentIdx)}
                                 role="option"
+                                tabindex={-1}
                                 aria-selected={isSelected}
                             >
                                 {#if cmd.icon && cmd.icon.length <= 2}
@@ -213,7 +219,7 @@
                                 {/if}
                                 <span class="text-sm flex-1 truncate">{cmd.label}</span>
                                 {#if cmd.category === 'page'}
-                                    <span class="text-[10px] text-muted-foreground/40 font-mono shrink-0">{m.command_pageTag()}</span>
+                                    <span class="text-[10px] text-muted-foreground font-mono shrink-0">{m.command_pageTag()}</span>
                                 {/if}
                             </div>
                         {/each}
@@ -222,7 +228,7 @@
             </div>
 
             <!-- Footer hint -->
-            <div class="px-4 py-2 border-t border-border flex items-center gap-4 text-[10px] text-muted-foreground/50">
+            <div class="px-4 py-2 border-t border-border flex items-center gap-4 text-[10px] text-muted-foreground">
                 <span class="flex items-center gap-1">
                     <kbd class="px-1 py-0.5 rounded bg-bg3 border border-border font-mono">&uarr;&darr;</kbd>
                     {m.command_hintNavigate()}

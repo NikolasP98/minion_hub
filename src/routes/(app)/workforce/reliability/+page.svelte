@@ -3,6 +3,8 @@
 	import type { PageData } from './$types';
 	import { startPolling } from '$lib/utils/live-polling';
 	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
+	import { PageHeader } from '$lib/components/ui';
+	import { Gauge } from 'lucide-svelte';
 
 	let { data }: { data: PageData } = $props();
 	const { heatmap, recentRuns, agents } = $derived(data);
@@ -96,17 +98,18 @@
 	onMount(() => startPolling('app:reliability', 8000));
 </script>
 
-<div class="p-6 space-y-6 max-w-6xl">
-	<header class="flex items-center justify-between flex-wrap gap-3">
-		<div class="flex items-center gap-3">
-			<h1 class="text-2xl font-semibold">Reliability</h1>
-			<LiveIndicator intervalMs={8000} />
-		</div>
-		<div class="text-xs text-muted-foreground">
+<PageHeader title="Reliability">
+	{#snippet leading()}
+		<Gauge size={16} class="text-accent shrink-0" />
+	{/snippet}
+	{#snippet actions()}
+		<LiveIndicator intervalMs={8000} />
+		<div class="hidden sm:block text-xs text-muted-foreground">
 			{grandTotal} events across {heatmap.agents.length} agents · last 24 hours
 		</div>
-	</header>
-
+	{/snippet}
+</PageHeader>
+<main class="flex-1 min-h-0 overflow-y-auto p-6 space-y-6 max-w-6xl">
 	<!-- Heatmap -->
 	<section>
 		<h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
@@ -240,4 +243,4 @@
 			{/if}
 		</section>
 	</div>
-</div>
+</main>

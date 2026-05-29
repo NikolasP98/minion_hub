@@ -55,9 +55,14 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   if (!ctx) throw error(401);
 
   const body = await request.json();
-  const { name } = body as { name?: string };
+  const { name, nodes, edges } = body as { name?: string; nodes?: unknown; edges?: unknown };
 
   if (!name || typeof name !== 'string') throw error(400, 'name is required');
+
+  // Optional nodes/edges let a plugin-shipped flow template be imported as a new
+  // flow in one call. Stored as JSON; the editor/runner validate concrete shapes.
+  const nodesJson = Array.isArray(nodes) ? JSON.stringify(nodes) : '[]';
+  const edgesJson = Array.isArray(edges) ? JSON.stringify(edges) : '[]';
 
   const id = randomUUID();
   const now = Date.now();
@@ -65,8 +70,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   await ctx.db.insert(flows).values({
     id,
     name,
-    nodes: '[]',
-    edges: '[]',
+    nodes: nodesJson,
+    edges: edgesJson,
     userId: user.id,
     tenantId: ctx.tenantId,
     createdAt: now,
