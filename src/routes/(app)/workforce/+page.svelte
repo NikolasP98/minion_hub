@@ -5,6 +5,7 @@
 	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
 	import Sparkline from '$lib/components/Sparkline.svelte';
 	import JsonView from '$lib/components/workforce/JsonView.svelte';
+	import { PageHeader } from '$lib/components/ui';
 	import {
 		ListTodo,
 		ClipboardCheck,
@@ -16,6 +17,7 @@
 		Receipt,
 		Settings,
 		FolderKanban,
+		LayoutDashboard,
 	} from 'lucide-svelte';
 
 	let { data }: { data: PageData } = $props();
@@ -111,14 +113,14 @@
 	onMount(() => startPolling('app:dashboard', 5000));
 </script>
 
-<div class="p-6 space-y-6">
-	<div class="flex items-center justify-between">
-		<div class="flex items-center gap-3">
-			<h1 class="text-2xl font-semibold">Dashboard</h1>
-			<LiveIndicator intervalMs={5000} />
-		</div>
+<PageHeader title="Dashboard">
+	{#snippet leading()}
+		<LayoutDashboard size={16} class="text-accent shrink-0" />
+	{/snippet}
+	{#snippet actions()}
+		<LiveIndicator intervalMs={5000} />
 		{#if badges.approvals > 0 || badges.inbox > 0 || badges.failedRuns > 0 || badges.joinRequests > 0}
-			<div class="flex gap-2 text-xs">
+			<div class="hidden sm:flex gap-2 text-xs">
 				{#if badges.inbox > 0}
 					<span class="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary">
 						{badges.inbox} inbox
@@ -141,8 +143,9 @@
 				{/if}
 			</div>
 		{/if}
-	</div>
-
+	{/snippet}
+</PageHeader>
+<main class="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
 	<!-- Summary cards -->
 	<section aria-label="Summary" class="grid grid-cols-1 gap-4 sm:grid-cols-3">
 		<!-- Agents -->
@@ -349,4 +352,4 @@
 			</ul>
 		{/if}
 	</section>
-</div>
+</main>
