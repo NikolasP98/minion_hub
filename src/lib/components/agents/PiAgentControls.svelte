@@ -25,7 +25,7 @@
 	}
 </script>
 
-<div class="bg-bg2 border border-border rounded-lg p-4 space-y-3">
+<div class="surface-2 rounded-lg p-4 space-y-3">
 	<div class="flex items-start gap-4">
 		<!-- Left: Context gauge -->
 		<div class="flex-1 min-w-0">
@@ -63,7 +63,7 @@
 					value={piAgentState.currentThinkingLevel ?? ''}
 					onchange={onThinkingChange}
 				>
-					{#each piAgentState.thinkingLevels as level}
+					{#each piAgentState.thinkingLevels as level (level)}
 						<option value={level}>{level}</option>
 					{/each}
 				</select>

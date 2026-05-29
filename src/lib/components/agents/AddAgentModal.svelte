@@ -345,7 +345,7 @@
     onkeydown={handleOverlayKeydown}
 >
     <div
-        class="bg-bg2 border border-border rounded-xl w-120 max-w-[calc(100vw-40px)] flex flex-col shadow-md"
+        class="surface-2 rounded-xl w-120 max-w-[calc(100vw-40px)] flex flex-col shadow-md"
     >
         <div
             class="flex items-center justify-between px-5 pt-4 pb-3.5 border-b border-border shrink-0"
