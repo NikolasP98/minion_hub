@@ -11,7 +11,7 @@
   } from '$lib/types/secrets';
   import { sendRequest } from '$lib/services/gateway.svelte';
   import { conn } from '$lib/state/gateway/connection.svelte';
-  import { toastSuccess, toastError } from '$lib/state/ui/toast.svelte';
+  import { toastSuccess, toastError, toastWarning } from '$lib/state/ui/toast.svelte';
   import { Button } from '$lib/components/ui';
   import SecretStatusPill from './SecretStatusPill.svelte';
   import SecretEditModal from './SecretEditModal.svelte';
@@ -80,11 +80,20 @@
     return new Date(t).toLocaleString();
   }
 
+  // Probe result → toast severity (a 401/invalid key must NOT read as success):
+  // ok=success, invalid=error, missing/unknown=warning.
+  function probeToast(label: string, status: SecretsProbeStatus, message?: string) {
+    const desc = message || status;
+    if (status === 'ok') toastSuccess(label, desc);
+    else if (status === 'invalid') toastError(label, desc);
+    else toastWarning(label, desc);
+  }
+
   // Static actions
   async function probeStatic(key: string) {
     try {
       const res = (await sendRequest(SECRETS_METHODS.probe, { key })) as SecretsProbeResult;
-      toastSuccess(`Probed ${key}`, res.probeMessage || res.probeStatus);
+      probeToast(`Probed ${key}`, res.probeStatus, res.probeMessage);
       await refresh();
     } catch (err) {
       toastError(`Probe failed`, err instanceof Error ? err.message : String(err));
@@ -119,7 +128,7 @@
         groupKey,
         instanceId,
       })) as SecretsProbeScopedResult;
-      toastSuccess(`Probed ${groupKey}/${instanceId}`, res.probeMessage || res.probeStatus);
+      probeToast(`Probed ${groupKey}/${instanceId}`, res.probeStatus, res.probeMessage);
       await refresh();
     } catch (err) {
       toastError(`Probe failed`, err instanceof Error ? err.message : String(err));
