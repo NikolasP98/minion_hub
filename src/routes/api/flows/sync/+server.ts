@@ -58,6 +58,10 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       createdAt: now,
       updatedAt: now,
       active: false,
+      // Mark the flow as plugin-managed: blocks deletion + drives the plugin
+      // pill in the UI. Never overwritten by the editor save (which writes only
+      // name/nodes/edges/active). See $lib/flows/plugin-source.
+      config: JSON.stringify({ source: { pluginId: t.pluginId, templateId: t.id } }),
     });
     installedKeys.add(key);
     newlyInstalled.push({ key, id, name: t.name });

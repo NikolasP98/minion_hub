@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm';
 import { requireAuth } from '$server/auth/authorize';
 import { getTenantCtx } from '$server/auth/tenant-ctx';
 import type { TenantContext } from '$server/services/base';
+import { flowPluginId } from '$lib/flows/plugin-source';
 
 /** Resolve a flow and verify ownership. Throws 401/403/404 as appropriate. */
 async function requireFlowOwnership(
@@ -40,6 +41,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
       active: flow.active,
       nodes: JSON.parse(flow.nodes),
       edges: JSON.parse(flow.edges),
+      pluginId: flowPluginId(flow.config),
     },
   });
 };
@@ -71,6 +73,14 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
   if (!ctx) throw error(401);
 
   const existing = await requireFlowOwnership(user.id, ctx.tenantId, params.id!, ctx);
+
+  // Plugin-imported flows are managed by their plugin and cannot be deleted —
+  // re-syncing would just resurrect them, and deleting orphans the install
+  // record. Disable/re-import via the plugin instead.
+  const owningPlugin = flowPluginId(existing.config);
+  if (owningPlugin) {
+    throw error(403, `This flow is managed by the "${owningPlugin}" plugin and cannot be deleted.`);
+  }
 
   await ctx.db.delete(flows).where(eq(flows.id, existing.id));
 

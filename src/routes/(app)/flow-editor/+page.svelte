@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
-  import { GitBranch, Plus, Trash2, Clock, BookOpen } from 'lucide-svelte';
+  import { GitBranch, Plus, Trash2, Clock, BookOpen, Puzzle, Lock } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import BuilderHub from '$lib/components/builder/BuilderHub.svelte';
   import { sendRequest } from '$lib/services/gateway.svelte';
@@ -15,6 +15,8 @@
     nodeCount: number;
     createdAt: number;
     updatedAt: number;
+    /** Owning plugin id when imported from a plugin; null for user flows. */
+    pluginId?: string | null;
   };
 
   // Flows shipped by enabled plugins (e.g. the alert-watcher pipeline), surfaced
@@ -99,10 +101,13 @@
     }
   }
 
-  async function handleDelete(e: MouseEvent, id: string) {
+  async function handleDelete(e: MouseEvent, flow: FlowMeta) {
     e.stopPropagation();
-    await fetch(`/api/flows/${id}`, { method: 'DELETE' });
-    flows = flows.filter((f) => f.id !== id);
+    if (flow.pluginId) return; // plugin flows are not deletable (also enforced server-side)
+    const res = await fetch(`/api/flows/${flow.id}`, { method: 'DELETE' });
+    if (res.ok) {
+      flows = flows.filter((f) => f.id !== flow.id);
+    }
   }
 
   function formatDate(ts: number) {
@@ -180,11 +185,23 @@
             tabindex="0"
             onclick={() => goto(`/flow-editor/${flow.id}`)}
             onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && goto(`/flow-editor/${flow.id}`)}
-            class="group rounded-xl border border-border bg-bg2 overflow-hidden cursor-pointer hover:border-accent/50 transition-all shadow-sm hover:shadow-md"
+            class="group rounded-xl border bg-bg2 overflow-hidden cursor-pointer transition-all shadow-sm hover:shadow-md {flow.pluginId
+              ? 'border-accent/40 ring-1 ring-accent/20 shadow-accent/10 hover:border-accent/60 hover:ring-accent/30'
+              : 'border-border hover:border-accent/50'}"
           >
             <!-- Preview area -->
-            <div class="aspect-video bg-bg3/50 flex items-center justify-center relative">
+            <div class="aspect-video bg-bg3/50 flex items-center justify-center relative {flow.pluginId ? 'bg-gradient-to-br from-accent/[0.06] to-transparent' : ''}">
               <GitBranch size={32} class="text-muted/20 group-hover:text-muted/30 transition-colors" />
+              {#if flow.pluginId}
+                <!-- Plugin-origin pill -->
+                <div
+                  class="absolute top-2 left-2 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-accent/15 text-accent text-[9px] font-mono uppercase tracking-wider ring-1 ring-accent/20"
+                  title={m.flow_pluginManaged({ plugin: flow.pluginId })}
+                >
+                  <Puzzle size={9} />
+                  {flow.pluginId}
+                </div>
+              {/if}
               <div class="absolute bottom-2 right-2 text-[10px] font-mono text-muted/50">
                 {flow.nodeCount === 1 ? m.flow_nodeCount({ count: flow.nodeCount }) : m.flow_nodeCountPlural({ count: flow.nodeCount })}
               </div>
@@ -200,13 +217,22 @@
                 </div>
               </div>
 
-              <button
-                onclick={(e) => handleDelete(e, flow.id)}
-                class="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded text-muted hover:text-red-400 hover:bg-bg3"
-                title={m.flow_deleteFlow()}
-              >
-                <Trash2 size={14} />
-              </button>
+              {#if flow.pluginId}
+                <span
+                  class="p-1.5 rounded text-muted/40 cursor-not-allowed"
+                  title={m.flow_pluginManaged({ plugin: flow.pluginId })}
+                >
+                  <Lock size={14} />
+                </span>
+              {:else}
+                <button
+                  onclick={(e) => handleDelete(e, flow)}
+                  class="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded text-muted hover:text-red-400 hover:bg-bg3"
+                  title={m.flow_deleteFlow()}
+                >
+                  <Trash2 size={14} />
+                </button>
+              {/if}
             </div>
           </div>
         {/each}

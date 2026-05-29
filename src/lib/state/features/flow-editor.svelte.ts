@@ -178,6 +178,8 @@ export const flowEditorState = $state({
   isSaving: false,
   isRunning: false,
   flowActive: false,
+  /** Owning plugin id when this flow was imported from a plugin; null otherwise. */
+  flowPluginId: null as string | null,
   relationshipMode: false,
   consoleOpen: false,
   consoleLogs: [] as LogEntry[],
@@ -318,6 +320,7 @@ export async function loadFlow(id: string) {
   }
 
   flowEditorState.flowActive = flow.active ?? false;
+  flowEditorState.flowPluginId = flow.pluginId ?? null;
 }
 
 export async function saveFlow() {
