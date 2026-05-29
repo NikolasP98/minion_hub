@@ -95,22 +95,28 @@
 		return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 	}
 
+	// Category = qualitative labels (distinct hue set, kept clear of the severity
+	// ramp so a bar/donut never confuses category with urgency). Council 2026-05-29.
 	const CATEGORY_COLORS: Record<string, string> = {
-		cron:     '#3b82f6',
-		browser:  '#f59e0b',
-		timezone: '#a855f7',
-		general:  '#64748b',
-		auth:     '#22c55e',
-		skill:    '#06b6d4',
-		agent:    '#ec4899',
-		gateway:  '#10b981'
+		cron:     '#60a5fa',
+		browser:  '#c084fc',
+		timezone: '#818cf8',
+		general:  '#94a3b8',
+		auth:     '#34d399',
+		skill:    '#22d3ee',
+		agent:    '#f472b6',
+		gateway:  '#4ade80'
 	};
 
+	// Severity = ordinal alarm ramp (info→low→medium→high→critical, each step
+	// perceptually hotter); `ok` is a separate resolved state. info is now
+	// distinct from low (was both grey). Council 2026-05-29.
 	const SEVERITY_COLORS: Record<string, string> = {
-		critical: '#ef4444',
+		info:     '#38bdf8',
+		low:      '#a3e635',
+		medium:   '#fb923c',
 		high:     '#f59e0b',
-		medium:   '#a855f7',
-		low:      '#64748b',
+		critical: '#ef4444',
 		ok:       '#22c55e'
 	};
 
@@ -170,7 +176,7 @@
 		persistFilters();
 	}
 
-	const SEVERITIES = ['critical', 'high', 'medium', 'low', 'ok'] as const;
+	const SEVERITIES = ['critical', 'high', 'medium', 'low', 'info', 'ok'] as const;
 
 	let filteredEvents = $derived.by(() => {
 		let evts = reliability.events;

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { goto } from '$app/navigation';
   import { hostsState } from '$lib/state/features/hosts.svelte';
   import { ui } from '$lib/state/ui/ui.svelte';
   import { wsConnect, wsDisconnect } from '$lib/services/gateway.svelte';
@@ -14,15 +15,10 @@
     wsConnect();
   }
 
-  function disconnect() {
-    wsDisconnect();
-    ui.dropdownOpen = false;
-  }
-
   function openManage(e: MouseEvent) {
     e.stopPropagation();
     ui.dropdownOpen = false;
-    ui.overlayOpen = true;
+    goto('/settings/gateways');
   }
 </script>
 
@@ -42,11 +38,6 @@
   {/each}
 
   <div class="h-px bg-border"></div>
-  {#if conn.connected || conn.connecting}
-    <div class="py-2 px-[14px] text-xs text-destructive cursor-pointer transition-colors hover:bg-destructive/[0.08]" role="menuitem" tabindex="0" onclick={disconnect} onkeydown={(e) => e.key === 'Enter' && disconnect()}>
-      {m.hosts_disconnect()}
-    </div>
-  {/if}
   <div class="py-2 px-[14px] text-xs text-muted-foreground cursor-pointer transition-colors hover:bg-bg3 hover:text-muted" role="menuitem" tabindex="0" onclick={openManage} onkeydown={(e) => e.key === 'Enter' && openManage(e as unknown as MouseEvent)}>
     {m.hosts_manage()}
   </div>

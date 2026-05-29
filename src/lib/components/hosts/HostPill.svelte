@@ -24,17 +24,17 @@
 
 <button
     type="button"
-    class="relative bg-bg3 border border-border rounded-md text-foreground py-1.25 px-3 text-[13px] font-semibold cursor-pointer flex items-center gap-1.75 transition-colors whitespace-nowrap select-none hover:border-accent {!activeHost
-        ? 'border-accent text-accent'
-        : ''}"
+    class="relative w-full flex items-center gap-1.5 h-6 px-1.5 rounded-[var(--radius-sm)] text-[12px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none {!activeHost
+        ? 'text-accent hover:bg-white/[0.05]'
+        : 'text-muted-foreground hover:text-foreground hover:bg-white/[0.04]'}"
     onclick={handlePillClick}
 >
     {#if activeHost}
         <span
-            class="w-1.75 h-1.75 rounded-full shrink-0 bg-success shadow-[0_0_5px_var(--color-success)]"
+            class="w-1.5 h-1.5 rounded-full shrink-0 bg-success shadow-[0_0_4px_var(--color-success)]"
         ></span>
-        {activeHost.name}
-        <span class="opacity-50 text-[10px]">▾</span>
+        <span class="flex-1 overflow-hidden text-ellipsis text-left">{activeHost.name}</span>
+        <span class="opacity-40 text-[9px] shrink-0">▾</span>
     {:else}
         {m.hosts_addHost()}
     {/if}
