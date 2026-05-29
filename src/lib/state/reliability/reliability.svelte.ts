@@ -26,12 +26,41 @@ export const reliability = $state({
   summary: null as ReliabilitySummary | null,
   /** Events from gateway query */
   events: [] as ReliabilityEvent[],
+  /** Server-aggregated stacked timeline (reliability.timeline RPC). null → fall
+   *  back to client-side bucketing of `events` (older gateways). */
+  timeline: null as {
+    buckets: { bucket: number; category: string; count: number }[];
+    bucketMs: number;
+  } | null,
   loading: false,
   dateRange: {
     from: Date.now() - 86400000,
     to: Date.now(),
   },
 });
+
+/**
+ * Fetch the server-aggregated stacked timeline so the whole date range
+ * populates cheaply (instead of bucketing a capped raw-event dump). Falls back
+ * to null (→ client bucketing) when the gateway predates reliability.timeline.
+ */
+export async function loadReliabilityTimeline(from: number, to: number) {
+  try {
+    const data = (await sendRequest('reliability.timeline', {
+      since: from,
+      until: to,
+    })) as {
+      buckets?: { bucket: number; category: string; count: number }[];
+      bucketMs?: number;
+    } | null;
+    reliability.timeline =
+      data?.buckets && data.buckets.length && data.bucketMs
+        ? { buckets: data.buckets, bucketMs: data.bucketMs }
+        : null;
+  } catch {
+    reliability.timeline = null;
+  }
+}
 
 /**
  * Push a live reliability event received from the gateway WebSocket.
