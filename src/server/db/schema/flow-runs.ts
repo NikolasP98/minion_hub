@@ -15,6 +15,7 @@ export const flowRuns = sqliteTable(
     startedAt: integer('started_at').notNull(),
     durationMs: integer('duration_ms').notNull().default(0),
     status: text('status').notNull().default('completed'), // 'completed' | 'error'
+    source: text('source').notNull().default('test'), // 'test' (manual Test Run) | 'production' (live trigger)
     events: text('events').notNull().default('[]'), // JSON string of FlowRunEvent[]
     createdAt: integer('created_at').notNull(),
   },

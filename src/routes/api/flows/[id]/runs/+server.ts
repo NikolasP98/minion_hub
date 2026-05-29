@@ -47,6 +47,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
     startedAt: r.startedAt,
     durationMs: r.durationMs,
     status: r.status,
+    source: r.source,
     events: safeParse(r.events),
   }));
 
@@ -64,6 +65,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
     startedAt?: number;
     durationMs?: number;
     status?: string;
+    source?: string;
     events?: unknown[];
   };
   if (!Array.isArray(body.events)) throw error(400, 'events[] required');
@@ -78,6 +80,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
     startedAt: typeof body.startedAt === 'number' ? body.startedAt : now,
     durationMs: typeof body.durationMs === 'number' ? body.durationMs : 0,
     status: body.status === 'error' ? 'error' : 'completed',
+    source: body.source === 'production' ? 'production' : 'test',
     events: JSON.stringify(body.events),
     createdAt: now,
   });
