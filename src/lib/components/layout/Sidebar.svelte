@@ -8,6 +8,8 @@
     getDynamicPluginsSection,
     type Section,
   } from './sections';
+  import MinionLogo from './MinionLogo.svelte';
+  import HostPill from '../hosts/HostPill.svelte';
   import { pluginNavState } from '$lib/state/plugin-nav.svelte';
   import { canClient } from '$lib/access/can.svelte';
   import * as m from '$lib/paraglide/messages';
@@ -44,7 +46,30 @@
   class="surface-1 hidden md:flex flex-col shrink-0 {widthCls} h-full border-r border-[var(--hairline)] transition-[width] duration-200 ease-[cubic-bezier(0.2,0,0,1)] z-40"
   aria-label="Primary"
 >
-  <nav class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 py-3 flex flex-col gap-0.5">
+  <!-- Brand + active gateway (relocated from the topbar) -->
+  <div class="shrink-0 px-2 pt-3 pb-2 flex flex-col gap-2">
+    <a
+      href="/"
+      class="flex items-center {collapsed ? 'justify-center' : 'lg:justify-start justify-center'} gap-2 h-9 px-1.5 rounded-[var(--radius-md)] hover:bg-white/[0.05] transition-colors duration-[150ms] group"
+      aria-label="Minion Hub"
+    >
+      {#if collapsed}
+        <MinionLogo size="sm" />
+      {:else}
+        <span class="hidden lg:flex items-center leading-none">
+          <span class="font-black text-sm tracking-wide uppercase text-brand-pink group-hover:text-brand-pink/90 transition-colors">MINION</span>
+          <span class="font-semibold text-sm text-foreground/80 ml-1 group-hover:text-foreground transition-colors">hub</span>
+        </span>
+        <span class="lg:hidden"><MinionLogo size="sm" /></span>
+      {/if}
+    </a>
+    <div class={collapsed ? 'hidden' : 'hidden lg:block'}>
+      <HostPill />
+    </div>
+  </div>
+  <div class="h-px bg-[var(--hairline)] mx-2 mb-1"></div>
+
+  <nav class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 py-2 flex flex-col gap-0.5">
     {#if showReliability}
       <a
         href="/reliability"
