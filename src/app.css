@@ -514,18 +514,14 @@
   }
 }
 
-/* ── Dynamic-island clearance (md+) ──
-   The floating island is fixed top-right. Many pages render a header bar
-   (title + right-aligned actions) ABOVE their scroll container, so padding
-   only the scroller leaves those headers colliding with the island. Pad the
-   shell content column itself so every page's top row (header or content)
-   clears the island. (A future unified PageHeader could move headers inside
-   the scroller to reclaim scroll-under behavior.) */
-@media (min-width: 768px) {
-  .shell-main {
-    padding-top: 3.5rem;
-  }
-}
+/* ── Dynamic-island clearance ──
+   The floating island is fixed top-right. Clearance is owned PER PAGE by
+   <PageHeader> (sticky bar with md:pr that reserves the island footprint, so
+   content scrolls under the translucent header). A blanket top pad on
+   .shell-main was rejected: on fixed-height pages (chat, dashboards) it
+   reduced the overflow-hidden column height and clipped content. Pages
+   without a PageHeader simply let the translucent island float over their
+   (non-interactive) top-right corner. */
 
 /* ═══════════════════════════════════════════════════
    VOXELIZED THEME OVERRIDES  — neo 16-bit

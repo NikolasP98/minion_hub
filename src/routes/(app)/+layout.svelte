@@ -2,7 +2,6 @@
 	import Topbar from '$lib/components/layout/Topbar.svelte';
 	import Sidebar from '$lib/components/layout/Sidebar.svelte';
 	import DynamicIsland from '$lib/components/layout/DynamicIsland.svelte';
-	import Breadcrumbs from '$lib/components/layout/Breadcrumbs.svelte';
 	import ConnectionBanner from '$lib/components/layout/ConnectionBanner.svelte';
 	import CommandPalette from '$lib/components/layout/CommandPalette.svelte';
 	import LiveRunWidget from '$lib/components/sessions/LiveRunWidget.svelte';
@@ -25,7 +24,6 @@
 	<div class="shell-main flex flex-col flex-1 min-w-0 overflow-hidden">
 		<Topbar />
 		<ConnectionBanner />
-		<Breadcrumbs />
 		{@render children()}
 	</div>
 	<DynamicIsland />

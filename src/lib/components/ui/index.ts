@@ -9,6 +9,7 @@ export { default as Card } from './Card.svelte';
 export { default as Modal } from './Modal.svelte';
 export { default as DangerModal } from './DangerModal.svelte';
 export { default as Input } from './Input.svelte';
+export { default as PageHeader } from './PageHeader.svelte';
 export type { ButtonVariant, ButtonSize } from './Button.svelte';
 export type { CardElevation, CardPadding } from './Card.svelte';
 export type { ModalSize } from './Modal.svelte';

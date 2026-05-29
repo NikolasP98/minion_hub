@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Chart from '$lib/components/charts/Chart.svelte';
+	import { PageHeader } from '$lib/components/ui';
 	import DateRangePicker from '$lib/components/reliability/DateRangePicker.svelte';
 	import IncidentTable from '$lib/components/reliability/IncidentTable.svelte';
 	import CredentialHealthPanel from '$lib/components/reliability/CredentialHealthPanel.svelte';
@@ -447,11 +448,11 @@
 </script>
 
 <!-- Toolbar -->
-	<header class="shrink-0 relative z-20 flex flex-col border-b border-border bg-bg2/80 backdrop-blur-sm">
-		<div class="flex items-center gap-2 sm:gap-3 px-4 py-2.5 flex-wrap gap-y-2">
-			<ShieldCheck size={14} class="text-accent shrink-0" />
-			<h1 class="text-sm font-semibold tracking-tight">{m.reliability_title()}</h1>
-			<div class="flex-1"></div>
+	<PageHeader title={m.reliability_title()}>
+		{#snippet leading()}
+			<ShieldCheck size={16} class="text-accent shrink-0" />
+		{/snippet}
+		{#snippet actions()}
 			<DateRangePicker
 				from={reliability.dateRange.from}
 				to={reliability.dateRange.to}
@@ -465,8 +466,10 @@
 			>
 				<RefreshCw size={12} class={loading ? 'animate-spin' : ''} />
 			</button>
-		</div>
-		{#if summary}
+		{/snippet}
+	</PageHeader>
+	{#if summary}
+	<div class="shrink-0 relative z-20 border-b border-border bg-bg2/80 backdrop-blur-sm">
 		<div class="relative">
 			<!-- Left scroll arrow + gradient -->
 			{#if canScrollLeft}
@@ -536,8 +539,8 @@
 				{/if}
 			</div>
 		</div>
+		</div>
 		{/if}
-	</header>
 
 	<main class="flex-1 min-h-0 overflow-y-auto p-4">
 		{#if !serverId}
