@@ -79,13 +79,17 @@
   --color-card: #0c0c0e;
   --color-card-foreground: #fafafa;
 
-  /* Borders */
-  --color-border: #27272a;
+  /* Borders — white-alpha hairline depth cue (matches .surface-*); themes may
+     override at runtime via applyTheme(). Council #2. */
+  --color-border: rgba(255, 255, 255, 0.08);
 
   /* Text hierarchy */
   --color-foreground: #fafafa;
   --color-muted: #a1a1aa;
   --color-muted-foreground: #71717a;
+  /* AA-passing dim text — use instead of opacity-suffixed muted (e.g.
+     text-muted-foreground/50, which computes ~2:1 and fails WCAG AA). #13 */
+  --color-muted-strong: #9ca3af;
 
   /* Accent — overridden by theme presets */
   --color-accent: #3b82f6;

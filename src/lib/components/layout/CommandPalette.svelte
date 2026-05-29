@@ -190,7 +190,7 @@
                     {@const flatIdx = { value: 0 }}
                     {#each groups as group}
                         <div class="px-3 pt-2 pb-1">
-                            <span class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">
+                            <span class="text-[10px] font-semibold uppercase tracking-wider text-muted-strong">
                                 {group.category}
                             </span>
                         </div>
@@ -205,6 +205,7 @@
                                 onmouseenter={() => { palette.selectedIndex = currentIdx; }}
                                 onclick={() => selectCommand(currentIdx)}
                                 role="option"
+                                tabindex={-1}
                                 aria-selected={isSelected}
                             >
                                 {#if cmd.icon && cmd.icon.length <= 2}
@@ -218,7 +219,7 @@
                                 {/if}
                                 <span class="text-sm flex-1 truncate">{cmd.label}</span>
                                 {#if cmd.category === 'page'}
-                                    <span class="text-[10px] text-muted-foreground/40 font-mono shrink-0">{m.command_pageTag()}</span>
+                                    <span class="text-[10px] text-muted-foreground font-mono shrink-0">{m.command_pageTag()}</span>
                                 {/if}
                             </div>
                         {/each}
@@ -227,7 +228,7 @@
             </div>
 
             <!-- Footer hint -->
-            <div class="px-4 py-2 border-t border-border flex items-center gap-4 text-[10px] text-muted-foreground/50">
+            <div class="px-4 py-2 border-t border-border flex items-center gap-4 text-[10px] text-muted-foreground">
                 <span class="flex items-center gap-1">
                     <kbd class="px-1 py-0.5 rounded bg-bg3 border border-border font-mono">&uarr;&darr;</kbd>
                     {m.command_hintNavigate()}
