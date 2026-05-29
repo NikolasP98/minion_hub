@@ -10,6 +10,7 @@
         Search,
         Home,
         User,
+        Users,
         BookOpen,
         Store,
         Activity,
@@ -19,25 +20,21 @@
         GitBranch,
         Plus,
         Bot,
-        Command as CommandIcon,
+        LayoutDashboard,
+        Inbox,
+        CheckCircle2,
+        Target,
+        FolderKanban,
+        Wand2,
+        Paintbrush,
     } from 'lucide-svelte';
     import * as m from '$lib/paraglide/messages';
-    import { isFlowsNavVisible } from './sections';
-    import { pluginNavState } from '$lib/state/plugin-nav.svelte';
 
     let inputEl: HTMLInputElement | undefined = $state();
 
-    // Reactively drop the Flow Editor command when the flows plugin is disabled.
-    const groups = $derived(
-        isFlowsNavVisible(pluginNavState.enabledByPluginId)
-            ? getFilteredCommands()
-            : getFilteredCommands()
-                  .map((g) => ({
-                      ...g,
-                      commands: g.commands.filter((c) => c.id !== 'page:flow-editor'),
-                  }))
-                  .filter((g) => g.commands.length > 0),
-    );
+    // Flows/permission gating is handled inside getFilteredCommands (sourced
+    // from the canonical route registry $lib/nav/routes).
+    const groups = $derived(getFilteredCommands());
 
     // Flat list for keyboard nav
     const flatCommands = $derived(groups.flatMap((g) => g.commands));
@@ -45,6 +42,7 @@
     const iconMap: Record<string, typeof Home> = {
         home: Home,
         user: User,
+        users: Users,
         'book-open': BookOpen,
         store: Store,
         activity: Activity,
@@ -54,6 +52,13 @@
         'git-branch': GitBranch,
         plus: Plus,
         bot: Bot,
+        'layout-dashboard': LayoutDashboard,
+        inbox: Inbox,
+        check: CheckCircle2,
+        target: Target,
+        folder: FolderKanban,
+        wand: Wand2,
+        paintbrush: Paintbrush,
     };
 
     function handleKeydown(e: KeyboardEvent) {
