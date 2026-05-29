@@ -2,6 +2,7 @@
   import { flowEditorState, setNodes, setPluginNodeDescriptors, defaultConfigForFields } from '$lib/state/features/flow-editor.svelte';
   import type { FlowNode, AgentNodeData, PromptBoxData, LLMNodeData, TriggerNodeData, TransformNodeData, StructuredNodeData, RouterNodeData, ToolAgentNodeData, FlowNodeConfigField } from '$lib/state/features/flow-editor.svelte';
   import { loadBuiltAgents } from '$lib/state/builder';
+  import { conn } from '$lib/state/gateway';
   import { Bot, Type, ChevronLeft, ChevronRight, Cpu, Zap, Braces, Split, Wrench } from 'lucide-svelte';
   import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
@@ -28,7 +29,18 @@
 
   onMount(() => {
     loadBuiltAgents();
-    (async () => {
+  });
+
+  // Load the plugin flow-node descriptors once the gateway connection is live.
+  // A one-shot onMount fetch races the WS handshake: on a cold flow-editor load
+  // the connection often isn't up yet, sendRequest rejects with "not connected",
+  // and the plugin palette (and its config field defs) silently stays empty.
+  // Reacting to `conn.connected` fetches as soon as we're connected and re-tries
+  // on reconnect.
+  let descriptorsLoaded = $state(false);
+  $effect(() => {
+    if (!conn.connected || descriptorsLoaded) return;
+    void (async () => {
       try {
         const res = (await sendRequest('flows.nodes.list', {})) as { nodes?: FlowNodeDescriptor[] } | null;
         if (res?.nodes) {
@@ -36,9 +48,10 @@
           // Share descriptors with the editor so NodeConfigPanel can resolve
           // each plugin node's declared config fields.
           setPluginNodeDescriptors(res.nodes);
+          descriptorsLoaded = true;
         }
       } catch {
-        pluginNodes = [];
+        // Leave descriptorsLoaded false so a later (re)connection re-triggers.
       }
     })();
   });
