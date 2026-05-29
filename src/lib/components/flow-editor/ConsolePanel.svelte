@@ -20,6 +20,17 @@
     debug: 'text-muted/60',
   };
 
+  // Node-lifecycle chip color by kind.
+  const kindClass: Record<string, string> = {
+    'node-start': 'bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30',
+    'node-end': 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30',
+    'node-error': 'bg-red-500/15 text-red-300 ring-1 ring-red-500/30',
+  };
+
+  function clip(s: string, n = 400) {
+    return s.length > n ? s.slice(0, n) + '…' : s;
+  }
+
   function formatTime(ts: number) {
     return new Date(ts).toLocaleTimeString(undefined, {
       hour: '2-digit',
@@ -70,14 +81,42 @@
       {#each flowEditorState.consoleLogs as entry (entry.id)}
         <div class="flex items-start gap-2 text-[11px] leading-5">
           <span class="text-muted/40 shrink-0 select-none">{formatTime(entry.timestamp)}</span>
-          <span class="shrink-0 select-none {levelClass[entry.level] ?? 'text-foreground'} uppercase w-12">
-            [{entry.level}]
-          </span>
-          {#if entry.nodeId}
-            <span class="shrink-0 text-accent/70 bg-accent/10 px-1 rounded text-[10px]">{entry.nodeId}</span>
+          {#if entry.kind && entry.kind.startsWith('node-') && entry.nodeLabel}
+            <span
+              class="shrink-0 select-none px-1.5 rounded text-[10px] font-medium {kindClass[entry.kind] ??
+                'bg-bg3 text-muted'}"
+            >
+              {entry.nodeLabel}
+            </span>
+          {:else}
+            <span
+              class="shrink-0 select-none {levelClass[entry.level] ?? 'text-foreground'} uppercase w-12"
+            >
+              [{entry.level}]
+            </span>
+            {#if entry.nodeId}
+              <span class="shrink-0 text-accent/70 bg-accent/10 px-1 rounded text-[10px]">{entry.nodeId}</span>
+            {/if}
           {/if}
           <span class="text-foreground/80 break-all">{entry.message}</span>
         </div>
+        <!-- I/O detail for completed nodes -->
+        {#if entry.kind === 'node-end' && (entry.input || entry.output)}
+          <div class="ml-16 mb-1 space-y-0.5">
+            {#if entry.input}
+              <div class="flex gap-1.5 text-[10px] leading-4">
+                <span class="shrink-0 text-muted/50 select-none">in →</span>
+                <span class="text-muted/80 break-all whitespace-pre-wrap">{clip(entry.input)}</span>
+              </div>
+            {/if}
+            {#if entry.output}
+              <div class="flex gap-1.5 text-[10px] leading-4">
+                <span class="shrink-0 text-emerald-400/60 select-none">out ←</span>
+                <span class="text-foreground/70 break-all whitespace-pre-wrap">{clip(entry.output)}</span>
+              </div>
+            {/if}
+          </div>
+        {/if}
       {/each}
     {/if}
   </div>

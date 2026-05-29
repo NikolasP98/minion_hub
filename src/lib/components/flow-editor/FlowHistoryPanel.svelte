@@ -1,0 +1,129 @@
+<script lang="ts">
+  import {
+    flowEditorState,
+    loadHistoryRun,
+    type RunnerEvent,
+  } from '$lib/state/features/flow-editor.svelte';
+  import { X, History, CheckCircle2, AlertCircle, Loader } from 'lucide-svelte';
+
+  type Run = {
+    id: string;
+    startedAt: number;
+    durationMs: number;
+    status: string;
+    events: RunnerEvent[];
+  };
+
+  let runs = $state<Run[]>([]);
+  let loading = $state(false);
+  let loadError = $state<string | null>(null);
+  let selectedId = $state<string | null>(null);
+
+  async function load() {
+    const flowId = flowEditorState.flowId;
+    if (!flowId) return;
+    loading = true;
+    loadError = null;
+    try {
+      const res = await fetch(`/api/flows/${flowId}/runs`);
+      if (!res.ok) throw new Error(`Failed to load history (HTTP ${res.status})`);
+      const data = (await res.json()) as { runs?: Run[] };
+      runs = data.runs ?? [];
+    } catch (e) {
+      loadError = e instanceof Error ? e.message : String(e);
+    } finally {
+      loading = false;
+    }
+  }
+
+  // (Re)load whenever the drawer opens.
+  $effect(() => {
+    if (flowEditorState.historyOpen) load();
+  });
+
+  function nodeCount(events: RunnerEvent[]) {
+    return events.filter((e) => e.kind === 'node-end' || e.kind === 'node-error').length;
+  }
+
+  function fmt(ts: number) {
+    return new Date(ts).toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+  }
+
+  function openRun(run: Run) {
+    selectedId = run.id;
+    loadHistoryRun(run.events);
+  }
+</script>
+
+{#if flowEditorState.historyOpen}
+  <div
+    class="absolute right-0 top-0 bottom-0 z-30 flex w-80 flex-col border-l border-border bg-bg2/95 shadow-2xl shadow-black/40 backdrop-blur-md"
+  >
+    <!-- Header -->
+    <div class="flex shrink-0 items-center justify-between border-b border-border px-3 py-2">
+      <div class="flex items-center gap-1.5">
+        <History size={13} class="text-muted" />
+        <span class="font-mono text-[10px] font-semibold uppercase tracking-widest text-muted"
+          >Run history</span
+        >
+        {#if runs.length > 0}
+          <span class="rounded bg-bg3 px-1.5 py-0.5 font-mono text-[9px] text-muted/60">{runs.length}</span>
+        {/if}
+      </div>
+      <button
+        onclick={() => (flowEditorState.historyOpen = false)}
+        class="flex h-5 w-5 items-center justify-center rounded text-muted/60 transition-colors hover:bg-bg3 hover:text-foreground"
+        title="Close history"
+      >
+        <X size={12} />
+      </button>
+    </div>
+
+    <!-- List -->
+    <div class="flex-1 overflow-y-auto p-2">
+      {#if loading}
+        <div class="flex items-center justify-center gap-2 py-8 text-[11px] text-muted/60">
+          <Loader size={13} class="animate-spin" /> Loading…
+        </div>
+      {:else if loadError}
+        <p class="px-2 py-4 text-[11px] text-red-400">{loadError}</p>
+      {:else if runs.length === 0}
+        <p class="px-2 py-4 text-[11px] italic text-muted/40">
+          No runs yet — hit Test Run to record one.
+        </p>
+      {:else}
+        <div class="space-y-1">
+          {#each runs as run (run.id)}
+            <button
+              onclick={() => openRun(run)}
+              class="flex w-full items-center gap-2 rounded-md border px-2.5 py-2 text-left transition-colors
+                {selectedId === run.id
+                ? 'border-accent/50 bg-accent/10'
+                : 'border-transparent hover:border-border hover:bg-bg3'}"
+            >
+              {#if run.status === 'error'}
+                <AlertCircle size={14} class="shrink-0 text-red-400" />
+              {:else}
+                <CheckCircle2 size={14} class="shrink-0 text-emerald-400" />
+              {/if}
+              <div class="min-w-0 flex-1">
+                <div class="truncate text-[11px] text-foreground/90">{fmt(run.startedAt)}</div>
+                <div class="font-mono text-[10px] text-muted/60">
+                  {nodeCount(run.events)} node{nodeCount(run.events) === 1 ? '' : 's'} ·
+                  {(run.durationMs / 1000).toFixed(1)}s
+                </div>
+              </div>
+            </button>
+          {/each}
+        </div>
+      {/if}
+    </div>
+  </div>
+{/if}

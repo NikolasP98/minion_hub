@@ -1,6 +1,11 @@
 <script lang="ts">
-  import { flowEditorState, runFlow, saveFlow } from '$lib/state/features/flow-editor.svelte';
-  import { Check, Loader, Play, Save } from 'lucide-svelte';
+  import {
+    flowEditorState,
+    runFlow,
+    saveFlow,
+    toggleHistory,
+  } from '$lib/state/features/flow-editor.svelte';
+  import { Check, History, Loader, Play, Save } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
 
   async function handleSave() {
@@ -9,9 +14,9 @@
 </script>
 
 <!--
-  Floating action island — anchored bottom-center over the canvas. Holds the
-  build/test loop (Test Run + Save); the publish/lifecycle control
-  (Activate/Deactivate) stays in the top toolbar.
+  Floating action island — anchored bottom-center over the canvas. Order:
+  History · Test Run · Save. Build/test loop lives here; the publish/lifecycle
+  control (Activate/Deactivate) stays in the top toolbar.
 -->
 <div
   class="pointer-events-none absolute bottom-6 left-1/2 z-20 -translate-x-1/2"
@@ -21,6 +26,22 @@
   <div
     class="pointer-events-auto flex items-center gap-1.5 rounded-full border border-border/80 bg-bg2/90 p-1.5 shadow-2xl shadow-black/40 backdrop-blur-md"
   >
+    <!-- History (icon-only) -->
+    <button
+      onclick={toggleHistory}
+      title="Run history"
+      aria-label="Run history"
+      aria-pressed={flowEditorState.historyOpen}
+      class="flex h-8 w-8 items-center justify-center rounded-full border transition-colors
+        {flowEditorState.historyOpen
+        ? 'border-accent/50 text-accent bg-accent/10'
+        : 'border-border text-muted hover:text-foreground hover:bg-bg3'}"
+    >
+      <History size={14} />
+    </button>
+
+    <div class="h-5 w-px bg-border/60"></div>
+
     <!-- Test Run -->
     <button
       onclick={runFlow}
