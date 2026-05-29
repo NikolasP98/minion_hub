@@ -49,6 +49,8 @@ export type RouterRuleOp = 'contains' | 'equals' | 'regex';
 export type RouterBranch = {
   id: string;
   label: string;
+  /** LLM mode: rubric/conditions describing when this branch is chosen. */
+  description?: string;
   rule?: { op: RouterRuleOp; value: string };
 };
 

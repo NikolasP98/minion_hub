@@ -40,7 +40,13 @@
     updateNodeInternals(id);
   }
   function addBranch() {
-    setBranches([...data.branches, { id: makeBranchId(), label: `Branch ${data.branches.length + 1}`, rule: { op: 'contains', value: '' } }]);
+    const base = { id: makeBranchId(), label: `branch-${data.branches.length + 1}` };
+    setBranches([
+      ...data.branches,
+      data.mode === 'llm'
+        ? { ...base, description: '' }
+        : { ...base, rule: { op: 'contains' as RouterRuleOp, value: '' } },
+    ]);
   }
   function removeBranch(branchId: string) {
     setBranches(data.branches.filter((b) => b.id !== branchId));
@@ -95,36 +101,51 @@
   {/if}
 
   <div class="flex flex-col gap-1.5">
-    {#each data.branches as branch, i (branch.id)}
-      <div class="relative flex items-center gap-1">
-        <input
-          class="flex-1 text-[10px] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground"
-          value={branch.label}
-          placeholder="label"
-          onclick={(e) => e.stopPropagation()}
-          oninput={(e) => updateBranch(branch.id, { label: (e.target as HTMLInputElement).value })}
-        />
-        {#if data.mode === 'rule'}
-          <select
-            class="text-[9px] bg-bg3 border border-border rounded px-0.5 py-0.5 text-foreground"
-            value={branch.rule?.op ?? 'contains'}
-            onclick={(e) => e.stopPropagation()}
-            onchange={(e) => updateRule(branch.id, { op: (e.target as HTMLSelectElement).value as RouterRuleOp })}
-          >
-            {#each OPS as op (op)}<option value={op}>{op}</option>{/each}
-          </select>
+    {#each data.branches as branch (branch.id)}
+      <!-- Each branch is its own relative block so the source handle aligns to
+           the label row regardless of the description's height. -->
+      <div class="relative rounded border border-border/40 bg-bg/30 p-1">
+        <div class="flex items-center gap-1">
           <input
-            class="w-14 text-[10px] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground"
-            value={branch.rule?.value ?? ''}
-            placeholder="value"
+            class="flex-1 text-[10px] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground"
+            value={branch.label}
+            placeholder="label (the value the LLM outputs)"
             onclick={(e) => e.stopPropagation()}
-            oninput={(e) => updateRule(branch.id, { value: (e.target as HTMLInputElement).value })}
+            oninput={(e) => updateBranch(branch.id, { label: (e.target as HTMLInputElement).value })}
           />
+          <button class="text-muted/60 hover:text-red-400 shrink-0" onclick={(e) => { e.stopPropagation(); removeBranch(branch.id); }} title="Remove branch" aria-label="Remove branch">
+            <X size={11} />
+          </button>
+        </div>
+        {#if data.mode === 'rule'}
+          <div class="flex items-center gap-1 mt-1">
+            <select
+              class="text-[9px] bg-bg3 border border-border rounded px-0.5 py-0.5 text-foreground"
+              value={branch.rule?.op ?? 'contains'}
+              onclick={(e) => e.stopPropagation()}
+              onchange={(e) => updateRule(branch.id, { op: (e.target as HTMLSelectElement).value as RouterRuleOp })}
+            >
+              {#each OPS as op (op)}<option value={op}>{op}</option>{/each}
+            </select>
+            <input
+              class="flex-1 text-[10px] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground"
+              value={branch.rule?.value ?? ''}
+              placeholder="value"
+              onclick={(e) => e.stopPropagation()}
+              oninput={(e) => updateRule(branch.id, { value: (e.target as HTMLInputElement).value })}
+            />
+          </div>
+        {:else}
+          <textarea
+            class="mt-1 w-full text-[9px] bg-bg3 border border-border rounded px-1 py-0.5 text-muted/90 resize-none leading-snug"
+            rows="2"
+            placeholder="when to choose this branch (rubric / conditions)"
+            value={branch.description ?? ''}
+            onclick={(e) => e.stopPropagation()}
+            oninput={(e) => updateBranch(branch.id, { description: (e.target as HTMLTextAreaElement).value })}
+          ></textarea>
         {/if}
-        <button class="text-muted/60 hover:text-red-400" onclick={(e) => { e.stopPropagation(); removeBranch(branch.id); }} title="Remove branch" aria-label="Remove branch">
-          <X size={11} />
-        </button>
-        <Handle type="source" position={Position.Right} id={branch.id} style="top: {30 + i * 24}px" class="!w-3 !h-3 !border-2 !border-amber-400 !bg-amber-900" />
+        <Handle type="source" position={Position.Right} id={branch.id} style="top: 13px; right: -21px;" class="!w-3 !h-3 !border-2 !border-amber-400 !bg-amber-900" />
       </div>
     {/each}
   </div>
