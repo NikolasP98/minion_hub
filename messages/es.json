@@ -706,6 +706,7 @@
   "reliability_noAgentData": "Sin datos de agente",
   "reliability_activityLog": "Registro de Actividad",
   "reliability_events": "eventos",
+  "reliability_showingOfTotal": "mostrando {shown} de {total} cargados",
   "reliability_noEvents": "Sin eventos registrados",
   "reliability_eventLabel": "Evento:",
   "reliability_categoryLabel": "Categoría:",

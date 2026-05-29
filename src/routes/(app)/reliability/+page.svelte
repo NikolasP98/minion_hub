@@ -2,7 +2,6 @@
 	import Chart from '$lib/components/charts/Chart.svelte';
 	import { PageHeader } from '$lib/components/ui';
 	import DateRangePicker from '$lib/components/reliability/DateRangePicker.svelte';
-	import IncidentTable from '$lib/components/reliability/IncidentTable.svelte';
 	import CredentialHealthPanel from '$lib/components/reliability/CredentialHealthPanel.svelte';
 	import SkillStatsPanel from '$lib/components/reliability/SkillStatsPanel.svelte';
 	import GatewayHealthPanel from '$lib/components/reliability/GatewayHealthPanel.svelte';
@@ -98,30 +97,43 @@
 
 	// Category = qualitative labels (distinct hue set, kept clear of the severity
 	// ramp so a bar/donut never confuses category with urgency). Council 2026-05-29.
+	// Full raw event taxonomy (matches the gateway-emitted categories + the
+	// Activity Log tabs), so chips and the Event Timeline cover EVERY category —
+	// previously `channel` (~5.8k events) was invisible because it wasn't curated.
+	// Council 2026-05-29 (taxonomy-unification). crash kept off the critical-red
+	// ramp (#fb7185 rose) so category never reads as severity.
 	const CATEGORY_COLORS: Record<string, string> = {
-		cron:     '#60a5fa',
-		browser:  '#c084fc',
-		timezone: '#818cf8',
-		general:  '#94a3b8',
-		auth:     '#34d399',
-		skill:    '#22d3ee',
-		agent:    '#f472b6',
-		gateway:  '#4ade80'
+		gateway:       '#4ade80',
+		agent:         '#f472b6',
+		channel:       '#f59e0b',
+		message:       '#06b6d4',
+		tool:          '#a855f7',
+		orchestration: '#ec4899',
+		skill:         '#22d3ee',
+		connection:    '#14b8a6',
+		auth:          '#34d399',
+		cron:          '#60a5fa',
+		crash:         '#fb7185',
+		browser:       '#c084fc',
+		timezone:      '#818cf8',
+		general:       '#94a3b8'
 	};
 
-	// Severity = ordinal alarm ramp (info→low→medium→high→critical, each step
-	// perceptually hotter); `ok` is a separate resolved state. info is now
-	// distinct from low (was both grey). Council 2026-05-29.
+	// Severity = ordinal alarm ramp. info (blue) + low (slate) are the non-alarm
+	// cool/neutral steps; medium→critical is the warm danger ramp. low was lime
+	// (#a3e635) but collided with high (#f59e0b amber) under deuteranopia and
+	// wasn't perceptually monotonic — slate restores a colourblind-safe ramp while
+	// staying distinct from info. `ok` is a separate resolved state. Council 2026-05-29.
 	const SEVERITY_COLORS: Record<string, string> = {
 		info:     '#38bdf8',
-		low:      '#a3e635',
+		low:      '#64748b',
 		medium:   '#fb923c',
 		high:     '#f59e0b',
 		critical: '#ef4444',
 		ok:       '#22c55e'
 	};
 
-	const CATEGORIES = ['cron', 'browser', 'timezone', 'general', 'auth', 'skill', 'agent', 'gateway'] as const;
+	const CATEGORIES = ['gateway', 'agent', 'channel', 'message', 'tool', 'orchestration', 'skill', 'connection', 'auth', 'cron', 'crash', 'browser', 'timezone', 'general'] as const;
 
 	let summary = $derived(reliability.summary);
 	let loading = $derived(reliability.loading);
@@ -648,11 +660,12 @@
 			<!-- ── Plugin Health (full-width) ──────────────────────────────────── -->
 			<PluginHealthPanel {serverId} />
 
-			<!-- ── Connection Events (full-width) ─────────────────────────────── -->
-			<ConnectionEventsPanel {serverId} />
-
-			<!-- ── Incident Table ───────────────────────────────────────────────── -->
-			<IncidentTable events={filteredEvents} title={m.reliability_recentIncidents()} />
+			<!-- ── Activity Log (consolidated: scatter + tabs + sortable/searchable/paginated table) ── -->
+			<ConnectionEventsPanel
+				events={filteredEvents}
+				total={overviewStats.total}
+				byCategory={overviewStats.byCategory}
+			/>
 		</div>
 		{/if}
 	</main>
