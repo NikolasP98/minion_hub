@@ -88,7 +88,7 @@
     let payload: {
       type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'pluginTrigger' | 'pluginAction' | 'transform' | 'structured' | 'router' | 'toolAgent';
       agentId?: string; label?: string;
-      descriptor?: { pluginId: string; id: string; kind: 'trigger' | 'action'; label: string; event?: string; method?: string };
+      descriptor?: { pluginId: string; id: string; kind: 'trigger' | 'action'; label: string; event?: string; method?: string; channelId?: string };
     };
     try { payload = JSON.parse(raw); } catch { return; }
 
@@ -144,7 +144,7 @@
         id: makeId(),
         type: 'pluginTrigger',
         position,
-        data: { pluginId: d.pluginId, contributionId: d.id, event: d.event ?? '', label: d.label, deliverResponse: false } satisfies PluginTriggerNodeData,
+        data: { pluginId: d.pluginId, contributionId: d.id, event: d.event ?? '', label: d.label, deliverResponse: false, filterChannelId: d.channelId } satisfies PluginTriggerNodeData,
       };
       setNodes([...flowEditorState.nodes, node]);
     } else if (payload.type === 'pluginAction' && payload.descriptor) {
