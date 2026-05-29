@@ -6,8 +6,7 @@
 </script>
 
 {#if skillEditorState.chapterToDelete}
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <div class="confirm-overlay" onclick={(e) => { if (e.target === e.currentTarget) skillEditorState.chapterToDelete = null; }} onkeydown={(e) => { if (e.key === 'Escape') skillEditorState.chapterToDelete = null; }}>
+    <div class="confirm-overlay" role="presentation" onclick={(e) => { if (e.target === e.currentTarget) skillEditorState.chapterToDelete = null; }} onkeydown={(e) => { if (e.key === 'Escape') skillEditorState.chapterToDelete = null; }}>
         <div class="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="delete-modal-title">
             <p class="confirm-title" id="delete-modal-title">Delete "{skillEditorState.chapterToDelete.name}"?</p>
             <p class="confirm-desc">{m.builder_deleteChapterDesc()}</p>

@@ -26,9 +26,10 @@
 </script>
 
 {#if node && fields.length > 0}
-  <aside
+  <div
     class="absolute top-3 right-3 z-30 w-72 max-h-[calc(100%-1.5rem)] overflow-y-auto bg-bg2 border border-border rounded-xl shadow-xl flex flex-col"
     role="dialog"
+    tabindex="-1"
     aria-label="Node configuration"
   >
     <div class="flex items-center justify-between px-3 py-2.5 border-b border-border shrink-0">
@@ -112,5 +113,5 @@
         </div>
       {/each}
     </div>
-  </aside>
+  </div>
 {/if}

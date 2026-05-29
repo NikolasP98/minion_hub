@@ -8,8 +8,7 @@
 </script>
 
 {#if skillEditorState.editingCondition}
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <div class="confirm-overlay" onclick={(e) => { if (e.target === e.currentTarget) { skillEditorState.editingCondition = null; } }} onkeydown={(e) => { if (e.key === 'Escape') { skillEditorState.editingCondition = null; } }}>
+    <div class="confirm-overlay" role="presentation" onclick={(e) => { if (e.target === e.currentTarget) { skillEditorState.editingCondition = null; } }} onkeydown={(e) => { if (e.key === 'Escape') { skillEditorState.editingCondition = null; } }}>
         <div class="condition-modal" role="dialog" aria-modal="true" aria-labelledby="condition-modal-title">
             <div class="condition-modal-header">
                 <GitBranch size={16} class="condition-icon" />
