@@ -420,17 +420,40 @@ type FlowRunEvent = { level: LogEntry['level']; message: string; nodeId?: string
  * WS is connected (pure local dev pointing straight at a runner), fall back to
  * the direct SSE fetch.
  */
+/**
+ * A flow whose entry is a trigger/pluginTrigger has no prompt of its own — the
+ * runner refuses to compile it without an `initialPrompt` (the event payload it
+ * would normally receive from the live trigger). For a manual Test Run we seed a
+ * sample payload so the downstream nodes actually execute. Flows that start with
+ * a Prompt Box carry their own input, so they get no seed.
+ */
+const TEST_RUN_SAMPLE_PROMPT =
+  '(Test Run) Sample trigger message — edit the Prompt Box or wire a real trigger for production input.';
+
+function testRunPrompt(): string | undefined {
+  const hasTriggerEntry = flowEditorState.nodes.some(
+    (n) => n.type === 'trigger' || n.type === 'pluginTrigger',
+  );
+  return hasTriggerEntry ? TEST_RUN_SAMPLE_PROMPT : undefined;
+}
+
 export async function runFlow() {
   if (flowEditorState.isRunning) return;
   flowEditorState.isRunning = true;
   flowEditorState.consoleOpen = true;
   clearLogs();
 
+  const prompt = testRunPrompt();
+
   try {
+    if (prompt) {
+      appendLog({ level: 'debug', message: `Seeding trigger entry with sample input: "${prompt}"` });
+    }
+
     if (conn.connected) {
       const res = (await sendRequest(
         'flows.run',
-        { nodes: flowEditorState.nodes, edges: flowEditorState.edges },
+        { nodes: flowEditorState.nodes, edges: flowEditorState.edges, ...(prompt ? { prompt } : {}) },
         190_000,
       )) as { events?: FlowRunEvent[] } | null;
       const events = res?.events ?? [];
@@ -450,6 +473,7 @@ export async function runFlow() {
       body: JSON.stringify({
         nodes: flowEditorState.nodes,
         edges: flowEditorState.edges,
+        ...(prompt ? { prompt } : {}),
       }),
     });
 
