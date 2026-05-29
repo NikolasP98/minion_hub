@@ -23,7 +23,8 @@
 <style>
   .toast-group {
     position: fixed;
-    top: 12px;
+    /* Clear the floating DynamicIsland (md+) and the mobile topbar (h-14). */
+    top: 64px;
     right: 12px;
     z-index: 9999;
     display: flex;

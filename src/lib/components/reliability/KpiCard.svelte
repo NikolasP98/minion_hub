@@ -15,17 +15,17 @@
 		value,
 		trend = null,
 		trendInvert = false,
-		color = '--accent',
+		color = '--color-accent',
 		icon = ''
 	}: Props = $props();
 
 	let trendIsPositive = $derived(trend !== null && trend > 0);
 	let trendColor = $derived.by(() => {
-		if (trend === null || trend === 0) return 'var(--text3)';
+		if (trend === null || trend === 0) return 'var(--color-muted-foreground)';
 		if (trendInvert) {
-			return trendIsPositive ? 'var(--red)' : 'var(--green)';
+			return trendIsPositive ? 'var(--color-destructive)' : 'var(--color-success)';
 		}
-		return trendIsPositive ? 'var(--green)' : 'var(--red)';
+		return trendIsPositive ? 'var(--color-success)' : 'var(--color-destructive)';
 	});
 	let trendArrow = $derived.by(() => {
 		if (trend === null || trend === 0) return '';

@@ -472,12 +472,14 @@
     font-weight: 700;
     line-height: 1.2;
     letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums; /* live figures must not jitter */
   }
   .t-heading {
     font-size: 1.125rem; /* 18px */
     font-weight: 600;
     line-height: 1.3;
     letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
   }
   .t-title {
     font-size: 0.875rem; /* 14px */

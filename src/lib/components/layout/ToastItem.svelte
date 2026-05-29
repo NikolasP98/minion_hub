@@ -32,6 +32,7 @@
 <div
   {...api.getRootProps() as Record<string, unknown>}
   class="toast-item"
+  data-type={api.type}
   style:--accent={accentColor}
 >
   <div class="toast-accent"></div>
@@ -68,12 +69,47 @@
     gap: 0;
     min-width: 280px;
     max-width: 380px;
-    background: var(--color-card);
-    border: 1px solid var(--color-border);
-    border-radius: 6px;
+    background: var(--elevation-4-bg);
+    border: 1px solid var(--elevation-4-border);
+    border-radius: var(--radius-lg);
     overflow: hidden;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-lg);
     pointer-events: auto;
+  }
+
+  /* Severity emphasis — error/warning read louder than info/success */
+  .toast-item[data-type='error'],
+  .toast-item[data-type='warning'] {
+    border-color: color-mix(in srgb, var(--accent) 38%, var(--elevation-4-border));
+    background: color-mix(in srgb, var(--accent) 8%, var(--elevation-4-bg));
+  }
+
+  /* Enter / exit motion keyed off Zag's data-state (reduced-motion handled globally) */
+  .toast-item[data-state='open'] {
+    animation: toast-in var(--duration-normal) var(--ease-spring);
+  }
+  .toast-item[data-state='closed'] {
+    animation: toast-out var(--duration-fast) var(--ease-in) forwards;
+  }
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateX(16px) scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0) scale(1);
+    }
+  }
+  @keyframes toast-out {
+    from {
+      opacity: 1;
+      transform: translateX(0) scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: translateX(16px) scale(0.96);
+    }
   }
 
   .toast-accent {
