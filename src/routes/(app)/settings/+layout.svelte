@@ -1,6 +1,6 @@
 <script lang="ts">
     import type { Snippet } from 'svelte';
-    import SettingsTabBar from '$lib/components/settings/SettingsTabBar.svelte';
+    import SettingsNav from '$lib/components/settings/SettingsNav.svelte';
     import { page } from '$app/state';
     import { goto } from '$app/navigation';
 
@@ -23,7 +23,9 @@
     }
 </script>
 
-<div class="flex-1 min-h-0 flex flex-col">
-    <SettingsTabBar onselect={handleSelect} />
-    {@render children()}
+<div class="flex-1 min-h-0 flex">
+    <SettingsNav onselect={handleSelect} />
+    <div class="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
+        {@render children()}
+    </div>
 </div>
