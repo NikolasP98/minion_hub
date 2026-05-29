@@ -121,6 +121,30 @@
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.6);
+
+  /* ── Elevation: white-alpha borders are the PRIMARY depth cue in dark UI ── */
+  /* Compound surfaces (bg + hairline border + shadow). Use the .surface-* utilities. */
+  --elevation-1-bg: #131316; /* sits just above page bg */
+  --elevation-1-border: rgba(255, 255, 255, 0.06);
+  --elevation-2-bg: #18181b; /* cards, list rows, panels */
+  --elevation-2-border: rgba(255, 255, 255, 0.08);
+  --elevation-3-bg: #1e1e22; /* popovers, dropdowns, floating */
+  --elevation-3-border: rgba(255, 255, 255, 0.1);
+  --elevation-4-bg: #232327; /* modals, dialogs */
+  --elevation-4-border: rgba(255, 255, 255, 0.12);
+  /* Hairline divider — reads as intentional structure, not floating gaps */
+  --hairline: rgba(255, 255, 255, 0.07);
+
+  /* ── Motion tokens (single rhythm across the app) ── */
+  --duration-instant: 75ms; /* press depression, tactile feedback */
+  --duration-fast: 150ms; /* hover, focus, color change */
+  --duration-normal: 250ms; /* panels/toasts/modals entering */
+  --duration-slow: 400ms; /* status transitions, large moves */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1); /* general UI */
+  --ease-out: cubic-bezier(0, 0, 0.2, 1); /* entering */
+  --ease-in: cubic-bezier(0.4, 0, 1, 1); /* exiting */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1); /* success-pop, card-expand */
 
   /* Animations */
   --animate-typing-bounce: typing-bounce 0.6s ease infinite;
@@ -403,6 +427,88 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   DESIGN SYSTEM UTILITIES — elevation + functional type scale
+   Mature-software foundation. Prefer these over ad-hoc
+   `bg-bg3 border border-border` and `text-xs font-semibold` stacks.
+   ═══════════════════════════════════════════════════ */
+@layer components {
+  /* ── Elevation surfaces (compound: bg + hairline border + shadow) ── */
+  .surface-1 {
+    background-color: var(--elevation-1-bg);
+    border: 1px solid var(--elevation-1-border);
+    box-shadow: var(--shadow-sm);
+  }
+  .surface-2 {
+    background-color: var(--elevation-2-bg);
+    border: 1px solid var(--elevation-2-border);
+    box-shadow: var(--shadow-md);
+  }
+  .surface-3 {
+    background-color: var(--elevation-3-bg);
+    border: 1px solid var(--elevation-3-border);
+    box-shadow: var(--shadow-lg);
+  }
+  .surface-4 {
+    background-color: var(--elevation-4-bg);
+    border: 1px solid var(--elevation-4-border);
+    box-shadow: var(--shadow-xl);
+  }
+  /* Hairline divider helpers — structure over floating gaps */
+  .divide-hairline > * + * {
+    border-top: 1px solid var(--hairline);
+  }
+  .border-hairline {
+    border-color: var(--hairline);
+  }
+
+  /* ── Functional type scale (size · weight · leading · tracking) ── */
+  /* Replaces ad-hoc `text-[11px] font-semibold uppercase tracking-wide` stacks. */
+  .t-display {
+    font-size: 1.75rem; /* 28px */
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+  }
+  .t-heading {
+    font-size: 1.125rem; /* 18px */
+    font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: -0.01em;
+  }
+  .t-title {
+    font-size: 0.875rem; /* 14px */
+    font-weight: 600;
+    line-height: 1.4;
+  }
+  .t-body {
+    font-size: 0.8125rem; /* 13px */
+    font-weight: 400;
+    line-height: 1.55;
+  }
+  .t-label {
+    font-size: 0.6875rem; /* 11px */
+    font-weight: 500;
+    line-height: 1.4;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+  }
+  .t-caption {
+    font-size: 0.625rem; /* 10px */
+    font-weight: 400;
+    line-height: 1.5;
+    color: var(--color-muted-foreground);
+  }
+  .t-mono {
+    font-family: var(--font-mono);
+    font-size: 0.75rem; /* 12px */
+    font-weight: 400;
+    line-height: 1.5;
+    font-variant-numeric: tabular-nums;
   }
 }
 

@@ -1,5 +1,7 @@
 <script lang="ts">
 	import Topbar from '$lib/components/layout/Topbar.svelte';
+	import Sidebar from '$lib/components/layout/Sidebar.svelte';
+	import Breadcrumbs from '$lib/components/layout/Breadcrumbs.svelte';
 	import CommandPalette from '$lib/components/layout/CommandPalette.svelte';
 	import LiveRunWidget from '$lib/components/sessions/LiveRunWidget.svelte';
 	import FloatingAssistant from '$lib/components/layout/FloatingAssistant.svelte';
@@ -16,9 +18,13 @@
 	});
 </script>
 
-<div class="relative z-10 flex flex-col h-screen overflow-hidden text-foreground">
-	<Topbar />
-	{@render children()}
+<div class="relative z-10 flex h-screen overflow-hidden text-foreground">
+	<Sidebar />
+	<div class="flex flex-col flex-1 min-w-0 overflow-hidden">
+		<Topbar />
+		<Breadcrumbs />
+		{@render children()}
+	</div>
 </div>
 
 <CommandPalette />

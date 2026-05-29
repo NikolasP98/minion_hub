@@ -1,6 +1,7 @@
 <script lang="ts">
   import { configState, isDirty, dirtyPaths, save, discard } from '$lib/state/config/config.svelte';
   import { isAdmin } from '$lib/state/features/user.svelte';
+  import { Button } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
 </script>
 
@@ -19,26 +20,24 @@
   {/if}
 
   {#if isAdmin.value}
-    <button
-      type="button"
-      class="bg-transparent border border-border rounded-[5px] text-muted-foreground cursor-pointer font-[inherit] text-xs py-2 px-3 transition-colors hover:text-foreground disabled:opacity-40 disabled:cursor-default"
+    <Button
+      variant="ghost"
+      size="sm"
       disabled={!isDirty.value || configState.saving}
       onclick={() => discard()}
     >
       {m.saveBar_discard()}
-    </button>
+    </Button>
 
-    <button
-      type="button"
-      class="bg-accent border-none rounded-[5px] text-white cursor-pointer font-[inherit] text-xs font-semibold py-2 px-4 transition-[filter] hover:brightness-115 disabled:opacity-40 disabled:cursor-default flex items-center gap-2"
-      disabled={!isDirty.value || configState.saving}
+    <Button
+      variant="primary"
+      size="sm"
+      loading={configState.saving}
+      disabled={!isDirty.value}
       onclick={() => save()}
     >
-      {#if configState.saving}
-        <span class="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-      {/if}
       {m.saveBar_saveChanges()}
-    </button>
+    </Button>
   {/if}
 </div>
 
