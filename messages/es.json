@@ -540,6 +540,8 @@
   "flow_nodeCount": "{count} nodo",
   "flow_nodeCountPlural": "{count} nodos",
   "flow_deleteFlow": "Eliminar flujo",
+  "flow_pluginManaged": "Gestionado por el plugin {plugin} — no se puede eliminar",
+  "flow_pluginBadge": "Flujo de plugin",
   "flow_backToFlows": "← Volver a flujos",
   "flow_untitledFlow": "Flujo sin título",
   "flow_relationshipMode": "MODO RELACIÓN",

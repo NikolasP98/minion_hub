@@ -201,6 +201,14 @@
         gap: 0.5rem;
     }
 
+    /* Reserve the top-right notch so the right-side actions (Run / Publish /
+       Disable) never sit under the global notch. */
+    @media (min-width: 768px) {
+        .editor-toolbar {
+            padding-right: var(--notch-clearance);
+        }
+    }
+
     .toolbar-left {
         display: flex;
         align-items: center;

@@ -5,6 +5,7 @@ import { and, desc, eq, isNull, or } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { requireAuth } from '$server/auth/authorize';
 import { getTenantCtx } from '$server/auth/tenant-ctx';
+import { flowPluginId } from '$lib/flows/plugin-source';
 
 export const GET: RequestHandler = async ({ locals, url }) => {
   const user = requireAuth(locals);
@@ -43,6 +44,8 @@ export const GET: RequestHandler = async ({ locals, url }) => {
       nodeCount,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
+      // Owning plugin id when this flow was imported from a plugin, else null.
+      pluginId: flowPluginId(row.config),
     };
   });
 

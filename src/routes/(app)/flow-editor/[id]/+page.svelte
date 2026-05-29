@@ -16,7 +16,7 @@
   } from '$lib/state/features/flow-editor.svelte';
   import ConsolePanel from '$lib/components/flow-editor/ConsolePanel.svelte';
   import { sendRequest } from '$lib/services/gateway.svelte';
-  import { ArrowLeft, Save, GitBranch, Loader, Play, Trash2, Copy, Settings2 } from 'lucide-svelte';
+  import { ArrowLeft, Save, GitBranch, Loader, Play, Trash2, Copy, Settings2, Puzzle } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
 
   const flowId = $derived(page.params.id);
@@ -96,7 +96,7 @@
   {:else}
     <!-- Toolbar -->
     <div
-      class="shrink-0 h-10 border-b border-border bg-bg2/80 flex items-center px-3 gap-3"
+      class="shrink-0 h-10 border-b border-border bg-bg2/80 flex items-center px-3 gap-3 md:pr-[var(--notch-clearance)]"
     >
       <!-- Back -->
       <a
@@ -120,6 +120,17 @@
           placeholder={m.flow_untitledFlow()}
         />
       </div>
+
+      <!-- Plugin-origin pill -->
+      {#if flowEditorState.flowPluginId}
+        <div
+          class="flex items-center gap-1 px-2 py-1 rounded-full bg-accent/15 text-accent text-[10px] font-mono uppercase tracking-wider ring-1 ring-accent/25 shrink-0"
+          title={m.flow_pluginManaged({ plugin: flowEditorState.flowPluginId })}
+        >
+          <Puzzle size={11} />
+          {flowEditorState.flowPluginId}
+        </div>
+      {/if}
 
       <!-- Mode indicator -->
       {#if flowEditorState.relationshipMode}
