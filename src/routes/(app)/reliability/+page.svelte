@@ -13,7 +13,8 @@
 	import {
 		reliability,
 		loadReliabilitySummary,
-		loadReliabilityEvents
+		loadReliabilityEvents,
+		loadReliabilityTimeline
 	} from '$lib/state/reliability/reliability.svelte';
 	import { hostsState } from '$lib/state/features/hosts.svelte';
 	import { conn } from '$lib/state/gateway';
@@ -219,7 +220,8 @@
 		const { from, to } = reliability.dateRange;
 		await Promise.all([
 			loadReliabilitySummary(serverId, from, to),
-			loadReliabilityEvents(serverId, { from, to, limit: 10_000 })
+			loadReliabilityEvents(serverId, { from, to, limit: 10_000 }),
+			loadReliabilityTimeline(from, to)
 		]);
 	}
 
@@ -272,36 +274,47 @@
 	}
 
 	let timelineOptions: EChartsOption = $derived.by(() => {
-		const evts = filteredEvents;
-		if (evts.length === 0) {
-			return {
-				backgroundColor: 'transparent',
-				grid: { left: 48, right: 24, top: 32, bottom: 32 },
-				xAxis: { type: 'time', data: [] },
-				yAxis: { type: 'value' },
-				series: []
-			};
+		// Prefer the server-aggregated timeline (full range, cheap GROUP BY); fall
+		// back to client-side bucketing of the (capped) events when the gateway
+		// predates reliability.timeline.
+		const rpc = reliability.timeline;
+		const counts = new Map<string, Map<number, number>>();
+		let bucketMs: number;
+
+		if (rpc) {
+			bucketMs = rpc.bucketMs;
+			for (const b of rpc.buckets) {
+				if (!counts.has(b.category)) counts.set(b.category, new Map());
+				const catMap = counts.get(b.category)!;
+				catMap.set(b.bucket, (catMap.get(b.bucket) ?? 0) + b.count);
+			}
+		} else {
+			const evts = filteredEvents;
+			if (evts.length === 0) {
+				return {
+					backgroundColor: 'transparent',
+					grid: { left: 48, right: 24, top: 32, bottom: 32 },
+					xAxis: { type: 'time', data: [] },
+					yAxis: { type: 'value' },
+					series: []
+				};
+			}
+			bucketMs = getBucketMs(reliability.dateRange.to - reliability.dateRange.from);
+			for (const evt of evts) {
+				const cat = evt.category;
+				const bucket = Math.floor(evt.timestamp / bucketMs) * bucketMs;
+				if (!counts.has(cat)) counts.set(cat, new Map());
+				const catMap = counts.get(cat)!;
+				catMap.set(bucket, (catMap.get(bucket) ?? 0) + 1);
+			}
 		}
 
-		const rangeMs = reliability.dateRange.to - reliability.dateRange.from;
-		const bucketMs = getBucketMs(rangeMs);
-
-		// Pre-fill ALL buckets across the full date range (so empty periods show as zero-height bars)
+		// Pre-fill ALL buckets across the full date range (empty periods → zero bars)
 		const rangeFrom = Math.floor(reliability.dateRange.from / bucketMs) * bucketMs;
 		const rangeTo = reliability.dateRange.to;
 		const buckets: number[] = [];
 		for (let t = rangeFrom; t <= rangeTo; t += bucketMs) {
 			buckets.push(t);
-		}
-
-		// Aggregate events into time buckets by category
-		const counts = new Map<string, Map<number, number>>();
-		for (const evt of evts) {
-			const cat = evt.category;
-			const bucket = Math.floor(evt.timestamp / bucketMs) * bucketMs;
-			if (!counts.has(cat)) counts.set(cat, new Map());
-			const catMap = counts.get(cat)!;
-			catMap.set(bucket, (catMap.get(bucket) ?? 0) + 1);
 		}
 
 		const visibleCategories = selectedCategories.size > 0
