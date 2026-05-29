@@ -408,7 +408,7 @@
 														<div class="flex items-center gap-1.5 flex-wrap">
 															{#each Object.entries(value) as [subKey, subVal] (subKey)}
 																<span class="inline-flex items-center gap-1 bg-bg3/60 rounded px-1.5 py-0.5">
-																	<span class="text-muted-foreground/70 text-[10px]">{subKey}</span>
+																	<span class="text-muted-strong text-[10px]">{subKey}</span>
 																	<span class="text-foreground font-mono tabular-nums text-[11px]">
 																		{typeof subVal === 'number' ? formatNumber(subVal) : String(subVal)}
 																	</span>

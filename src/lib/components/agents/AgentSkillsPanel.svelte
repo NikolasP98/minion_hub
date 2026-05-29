@@ -115,16 +115,16 @@
 
   <!-- Missing deps banner -->
   {#if skillsWithMissing.length > 0}
-    <div class="mb-3 rounded-md border border-yellow-500/20 bg-yellow-500/5 px-3 py-2">
+    <div class="mb-3 rounded-md border border-warning/20 bg-warning/5 px-3 py-2">
       <button
         type="button"
         class="w-full text-left flex items-center gap-2 bg-transparent border-none cursor-pointer p-0"
         onclick={() => (missingBannerExpanded = !missingBannerExpanded)}
       >
-        <span class="text-[10px] text-yellow-400">
+        <span class="text-[10px] text-warning">
           {m.skills_unmetDeps({ count: skillsWithMissing.length })}
         </span>
-        <span class="text-[9px] text-yellow-400/60 ml-auto">
+        <span class="text-[9px] text-warning/60 ml-auto">
           {missingBannerExpanded ? '▾' : '▸'}
         </span>
       </button>
@@ -133,7 +133,7 @@
           {#each skillsWithMissing as skill (skill.skillKey)}
             <div class="text-[9px] text-muted-foreground flex items-center gap-1.5">
               <span class="text-foreground/70">{skill.name}:</span>
-              <span class="text-yellow-400/70">
+              <span class="text-warning/70">
                 {[...(skill.missing?.bins ?? []), ...(skill.missing?.env ?? [])].join(', ')}
               </span>
             </div>
@@ -149,7 +149,7 @@
       <span class="ml-2 text-[11px] text-muted-foreground">{m.skills_loading()}</span>
     </div>
   {:else if agentSkillsState.error}
-    <div class="bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 text-[11px] text-red-400">
+    <div class="bg-destructive/10 border border-destructive/30 rounded-lg px-3 py-2 text-[11px] text-destructive">
       {agentSkillsState.error}
     </div>
   {:else if agentSkillsState.skills.length === 0}
@@ -203,7 +203,7 @@
             {/if}
             {#if hasMissing}
               <span
-                class="shrink-0 text-[10px] text-yellow-400/70"
+                class="shrink-0 text-[10px] text-warning/70"
                 title="Missing: {[...(skill.missing?.bins ?? []), ...(skill.missing?.env ?? [])].join(', ')}"
               >!</span>
             {/if}

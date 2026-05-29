@@ -2,7 +2,7 @@
   import { Handle, Position } from '@xyflow/svelte';
   import type { NodeProps } from '@xyflow/svelte';
   import type { TriggerNodeData } from '$lib/state/features/flow-editor.svelte';
-  import { flowEditorState, setNodes } from '$lib/state/features/flow-editor.svelte';
+  import { flowEditorState, setNodes, openNodeContextMenu } from '$lib/state/features/flow-editor.svelte';
   import { Zap } from 'lucide-svelte';
 
   let { data, id }: NodeProps & { data: TriggerNodeData } = $props();
@@ -43,6 +43,8 @@
 
 <div
   class="relative bg-bg2 border rounded-xl px-4 py-3 min-w-48 max-w-60 shadow-lg select-none border-border hover:border-border/80"
+  oncontextmenu={(e) => openNodeContextMenu(e, id)}
+  role="presentation"
 >
   <div class="flex items-center gap-2 mb-2">
     <div class="w-6 h-6 rounded-md bg-amber-500/20 flex items-center justify-center shrink-0">

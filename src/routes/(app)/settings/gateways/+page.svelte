@@ -101,7 +101,7 @@
     <div class="border border-border rounded-lg overflow-hidden mb-6">
       <div class="relative px-4 py-3 border-b border-border bg-bg/60 flex items-center gap-2">
         <ScanLine speed={10} opacity={0.02} />
-        <Plug size={12} class="text-muted/70" />
+        <Plug size={12} class="text-muted-strong" />
         <span class="text-[10px] font-mono text-muted uppercase tracking-widest">{m.hosts_newServer()}</span>
       </div>
       <div class="p-4 space-y-3">
@@ -124,7 +124,7 @@
     {#if data.tursoHosts.length === 0 && pgOnly.length === 0}
       <div class="bg-card border border-border rounded-lg px-5 py-8 text-center">
         <p class="text-sm text-muted-foreground">{m.hosts_noServers()}</p>
-        <p class="text-xs text-muted-foreground/60 mt-1">{m.hosts_noServersHint()}</p>
+        <p class="text-xs text-muted-strong mt-1">{m.hosts_noServersHint()}</p>
       </div>
     {:else}
       <ul class="space-y-2">
@@ -159,8 +159,8 @@
                   </div>
                   <div class="flex items-center gap-2 mt-0.5">
                     <span class="text-xs text-muted-foreground font-mono truncate">{host.url}</span>
-                    <span class="text-[10px] text-muted-foreground/60">&middot;</span>
-                    <span class="text-[10px] text-muted-foreground/60">{m.hosts_lastConnected({ time: formatTime(host.lastConnectedAt) })}</span>
+                    <span class="text-[10px] text-muted-strong">&middot;</span>
+                    <span class="text-[10px] text-muted-strong">{m.hosts_lastConnected({ time: formatTime(host.lastConnectedAt) })}</span>
                   </div>
                 </div>
                 <div class="flex items-center gap-1.5 shrink-0">

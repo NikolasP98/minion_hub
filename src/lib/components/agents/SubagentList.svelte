@@ -34,7 +34,7 @@
 				{m.common_loading()}
 			</div>
 		{:else if subagentState.error}
-			<div class="flex items-center justify-center py-8 text-red-400 text-[11px]">
+			<div class="flex items-center justify-center py-8 text-destructive text-[11px]">
 				{subagentState.error}
 			</div>
 		{:else if sorted.length === 0}

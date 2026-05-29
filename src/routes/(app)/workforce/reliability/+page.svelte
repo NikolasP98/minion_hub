@@ -46,9 +46,9 @@
 	};
 
 	const RUN_STATUS_BADGE: Record<string, string> = {
-		succeeded: 'bg-green-500/10 text-green-600',
+		succeeded: 'bg-success/10 text-success',
 		failed: 'bg-destructive/10 text-destructive',
-		running: 'bg-blue-500/10 text-blue-600',
+		running: 'bg-accent/10 text-accent',
 		cancelled: 'bg-muted text-muted-foreground',
 	};
 
@@ -113,7 +113,7 @@
 	<!-- Heatmap -->
 	<section>
 		<h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-			Activity heatmap <span class="font-normal normal-case tracking-normal text-xs text-muted-foreground/60">(agent × hour-of-day)</span>
+			Activity heatmap <span class="font-normal normal-case tracking-normal text-xs text-muted-strong">(agent × hour-of-day)</span>
 		</h2>
 		<div class="rounded-lg border border-border bg-card p-4 overflow-x-auto">
 			<table class="w-full text-xs border-separate" style="border-spacing: 2px">
@@ -121,7 +121,7 @@
 					<tr>
 						<th class="text-left text-muted-foreground font-medium pr-3 sticky left-0 bg-card">Agent</th>
 						{#each heatmap.hourLabels as h (h)}
-							<th class="text-center text-muted-foreground/60 font-mono font-normal w-7">
+							<th class="text-center text-muted-strong font-mono font-normal w-7">
 								{#if h % 3 === 0}{h.toString().padStart(2, '0')}{/if}
 							</th>
 						{/each}
@@ -155,7 +155,7 @@
 					<tr>
 						<td class="pr-3 sticky left-0 bg-card text-muted-foreground font-medium">Σ</td>
 						{#each hourTotals as t, h (h)}
-							<td class="text-center text-muted-foreground/70 font-mono tabular-nums text-[10px] pt-1">
+							<td class="text-center text-muted-strong font-mono tabular-nums text-[10px] pt-1">
 								{t > 0 ? t : ''}
 							</td>
 						{/each}

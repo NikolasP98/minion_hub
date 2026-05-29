@@ -133,10 +133,10 @@
 		{/snippet}
 		{#snippet actions()}
 			{#if snap?.summary?.loadTimeMs != null}
-				<span class="text-[10px] text-muted-foreground/60">{snap.summary.loadTimeMs}ms</span>
+				<span class="text-[10px] text-muted-strong">{snap.summary.loadTimeMs}ms</span>
 			{/if}
 			{#if capturedAgo}
-				<span class="text-[10px] text-muted-foreground/60">{capturedAgo}</span>
+				<span class="text-[10px] text-muted-strong">{capturedAgo}</span>
 			{/if}
 		{/snippet}
 	</PanelHeader>

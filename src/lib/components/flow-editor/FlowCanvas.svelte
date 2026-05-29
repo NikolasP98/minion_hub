@@ -21,6 +21,7 @@
   import StructuredNode from './nodes/StructuredNode.svelte';
   import RouterNode from './nodes/RouterNode.svelte';
   import ToolAgentNode from './nodes/ToolAgentNode.svelte';
+  import NodeConfigPanel from './nodes/NodeConfigPanel.svelte';
   import FlowEdgeComponent from './edges/FlowEdge.svelte';
   import ContextEdgeComponent from './edges/ContextEdge.svelte';
   import * as m from '$lib/paraglide/messages';
@@ -30,6 +31,8 @@
     setNodes,
     setEdges,
     setRelationshipMode,
+    defaultConfigForFields,
+    type FlowNodeConfigField,
     type FlowNode,
     type FlowEdge,
     type AgentNodeData,
@@ -88,7 +91,7 @@
     let payload: {
       type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'pluginTrigger' | 'pluginAction' | 'transform' | 'structured' | 'router' | 'toolAgent';
       agentId?: string; label?: string;
-      descriptor?: { pluginId: string; id: string; kind: 'trigger' | 'action'; label: string; event?: string; method?: string; channelId?: string };
+      descriptor?: { pluginId: string; id: string; kind: 'trigger' | 'action'; label: string; event?: string; method?: string; channelId?: string; config?: FlowNodeConfigField[] };
     };
     try { payload = JSON.parse(raw); } catch { return; }
 
@@ -144,7 +147,7 @@
         id: makeId(),
         type: 'pluginTrigger',
         position,
-        data: { pluginId: d.pluginId, contributionId: d.id, event: d.event ?? '', label: d.label, deliverResponse: false, filterChannelId: d.channelId } satisfies PluginTriggerNodeData,
+        data: { pluginId: d.pluginId, contributionId: d.id, event: d.event ?? '', label: d.label, deliverResponse: false, filterChannelId: d.channelId, config: defaultConfigForFields(d.config) } satisfies PluginTriggerNodeData,
       };
       setNodes([...flowEditorState.nodes, node]);
     } else if (payload.type === 'pluginAction' && payload.descriptor) {
@@ -153,7 +156,7 @@
         id: makeId(),
         type: 'pluginAction',
         position,
-        data: { pluginId: d.pluginId, contributionId: d.id, method: d.method ?? '', label: d.label } satisfies PluginActionNodeData,
+        data: { pluginId: d.pluginId, contributionId: d.id, method: d.method ?? '', label: d.label, config: defaultConfigForFields(d.config) } satisfies PluginActionNodeData,
       };
       setNodes([...flowEditorState.nodes, node]);
     } else if (payload.type === 'transform') {
@@ -212,7 +215,7 @@
 
 <div
   bind:this={containerEl}
-  class="flex-1 h-full {flowEditorState.relationshipMode ? 'cursor-crosshair' : ''}"
+  class="relative flex-1 h-full {flowEditorState.relationshipMode ? 'cursor-crosshair' : ''}"
   role="region"
   aria-label={m.flow_canvasLabel()}
   ondragover={(e) => e.preventDefault()}
@@ -251,4 +254,5 @@
     <Controls />
     <MiniMap />
   </SvelteFlow>
+  <NodeConfigPanel />
 </div>

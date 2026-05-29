@@ -27,10 +27,10 @@
 	}
 
 	const orchStatusColor: Record<string, string> = {
-		running: 'bg-yellow-400',
-		completed: 'bg-emerald-400',
-		failed: 'bg-red-400',
-		interrupted: 'bg-red-400'
+		running: 'bg-warning',
+		completed: 'bg-success',
+		failed: 'bg-destructive',
+		interrupted: 'bg-destructive'
 	};
 
 	function getDetailTasks(detail: Record<string, unknown> | null): Array<Record<string, unknown>> {
@@ -75,7 +75,7 @@
 			<span class="w-1.5 h-1.5 rounded-full shrink-0 {orchStatusColor[orch.status] ?? 'bg-zinc-500'}"></span>
 
 			<!-- Orchestration ID (short) -->
-			<span class="text-[10px] font-mono text-muted/70">{orch.orchestrationId.slice(0, 8)}</span>
+			<span class="text-[10px] font-mono text-muted-strong">{orch.orchestrationId.slice(0, 8)}</span>
 
 			<!-- Mode badge -->
 			<span class="text-[8px] px-1 py-0.5 rounded bg-accent/10 text-accent/60">{orch.mode}</span>
@@ -133,7 +133,7 @@
 											<td class="py-0.5 pr-2 text-muted">{i + 1}</td>
 											<td class="py-0.5 pr-2 truncate max-w-32">{task.label ?? task.template ?? '-'}</td>
 											<td class="py-0.5 pr-2">
-												<span class="px-1 py-0.5 rounded {task.status === 'completed' ? 'bg-emerald-500/20 text-emerald-400' : task.status === 'failed' ? 'bg-red-500/20 text-red-400' : task.status === 'running' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-zinc-500/20 text-zinc-400'}">
+												<span class="px-1 py-0.5 rounded {task.status === 'completed' ? 'bg-success/20 text-success' : task.status === 'failed' ? 'bg-destructive/20 text-destructive' : task.status === 'running' ? 'bg-warning/20 text-warning' : 'bg-zinc-500/20 text-zinc-400'}">
 													{task.status ?? 'pending'}
 												</span>
 											</td>

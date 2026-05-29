@@ -139,7 +139,7 @@
   aria-modal="true"
   aria-label="Create Marketplace Agent"
 >
-  <div class="bg-bg2 border border-border rounded-xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-2xl">
+  <div class="surface-2 rounded-xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-2xl">
     <!-- Header -->
     <div class="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
       <div>
@@ -270,7 +270,7 @@
               {m.marketplace_wizardStep3Body({ name: agentName })}
             </p>
           </div>
-          <div class="w-full bg-bg3 border border-border rounded-lg p-3 text-left text-xs text-muted space-y-1">
+          <div class="w-full surface-2 rounded-lg p-3 text-left text-xs text-muted space-y-1">
             <div><span class="text-foreground font-medium">{m.marketplace_wizardStep3NameLabel()}</span> {agentName}</div>
             <div><span class="text-foreground font-medium">{m.marketplace_wizardStep3RoleLabel()}</span> {role}</div>
             <div><span class="text-foreground font-medium">{m.marketplace_wizardStep3CategoryLabel()}</span> {category}</div>
@@ -327,7 +327,7 @@
           </div>
 
           <!-- Doc preview -->
-          <div class="bg-bg3 border border-border rounded-lg p-3 max-h-40 overflow-y-auto">
+          <div class="surface-2 rounded-lg p-3 max-h-40 overflow-y-auto">
             {#each docTabs as dt (dt.id)}
               {#if activeDocPreview === dt.id}
                 <pre class="text-[10px] text-foreground/70 whitespace-pre-wrap font-mono leading-relaxed">{generated[dt.key]}</pre>
@@ -356,7 +356,7 @@
             {m.marketplace_wizardStep5DownloadBtn()}
           </button>
 
-          <div class="bg-bg3 border border-border rounded-lg p-3 text-xs text-muted font-mono leading-relaxed">
+          <div class="surface-2 rounded-lg p-3 text-xs text-muted font-mono leading-relaxed">
             <p class="text-foreground font-semibold mb-2"># Push to GitHub</p>
             <p>cd ~/nikolasp98/minions</p>
             <p>mkdir -p agents/{generated.agentJson.id}</p>
@@ -366,7 +366,7 @@
             <p>git push</p>
           </div>
 
-          <div class="bg-bg3 border border-border rounded-lg p-3 text-xs text-muted leading-relaxed">
+          <div class="surface-2 rounded-lg p-3 text-xs text-muted leading-relaxed">
             <p class="text-foreground font-semibold mb-1">{m.marketplace_wizardStep5SyncHeading()}</p>
             <p>{m.marketplace_wizardStep5SyncHint()}</p>
           </div>

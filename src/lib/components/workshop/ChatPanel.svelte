@@ -117,7 +117,7 @@
           <div class="min-w-0">
             <div class="flex items-baseline gap-1.5">
               <span class="text-[10px] font-mono text-muted">{msg.agentName}</span>
-              <span class="text-[9px] text-muted/60">{formatRelativeTime(msg.timestamp)}</span>
+              <span class="text-[9px] text-muted-strong">{formatRelativeTime(msg.timestamp)}</span>
             </div>
             <p class="text-[11px] text-foreground leading-snug mt-0.5">{msg.text}</p>
             <div class="mt-1 text-right">

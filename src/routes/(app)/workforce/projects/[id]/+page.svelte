@@ -11,8 +11,8 @@
 	const STATUS_BADGE: Record<ProjectStatus, string> = {
 		backlog: 'bg-muted text-muted-foreground',
 		planned: 'bg-muted text-muted-foreground',
-		in_progress: 'bg-blue-500/10 text-blue-600',
-		completed: 'bg-green-500/10 text-green-600',
+		in_progress: 'bg-accent/10 text-accent',
+		completed: 'bg-success/10 text-success',
 		cancelled: 'bg-muted text-muted-strong',
 	};
 
@@ -25,12 +25,12 @@
 	};
 
 	const ISSUE_STATUS_BADGE: Record<string, string> = {
-		in_progress: 'bg-blue-500/10 text-blue-600',
-		blocked: 'bg-amber-500/10 text-amber-600',
+		in_progress: 'bg-accent/10 text-accent',
+		blocked: 'bg-warning/10 text-warning',
 		todo: 'bg-muted text-muted-foreground',
 		backlog: 'bg-muted text-muted-foreground',
 		in_review: 'bg-purple-500/10 text-purple-600',
-		done: 'bg-green-500/10 text-green-600',
+		done: 'bg-success/10 text-success',
 		cancelled: 'bg-muted text-muted-strong',
 	};
 
@@ -150,7 +150,7 @@
 							{#if ws.isPrimary}
 								<span class="rounded px-1.5 py-0.5 text-[10px] font-medium bg-primary/10 text-primary">primary</span>
 							{/if}
-							<span class="font-mono text-[10px] text-muted-foreground/70">{ws.sourceType}</span>
+							<span class="font-mono text-[10px] text-muted-strong">{ws.sourceType}</span>
 						</div>
 						{#if ws.repoUrl}
 							<div class="font-mono text-xs text-muted-foreground truncate">{ws.repoUrl} · {ws.repoRef ?? 'main'}</div>

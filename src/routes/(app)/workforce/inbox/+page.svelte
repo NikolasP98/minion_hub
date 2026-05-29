@@ -148,7 +148,7 @@
 								{#if item.body}
 									<p class="text-xs text-muted-foreground line-clamp-2">{item.body}</p>
 								{/if}
-								<div class="text-[10px] text-muted-foreground/70 flex items-center gap-1.5 pt-0.5">
+								<div class="text-[10px] text-muted-strong flex items-center gap-1.5 pt-0.5">
 									<span>{actorLabel(item.actorAgentId, item.actorUserId)}</span>
 									{#if item.entityType}
 										<span aria-hidden="true">·</span>

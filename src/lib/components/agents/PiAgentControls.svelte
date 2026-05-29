@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { piAgentState, setThinkingLevel } from '$lib/state/features/pi-agent-state.svelte';
+	import { Select } from '$lib/components/ui';
 	import * as m from '$lib/paraglide/messages';
 
 	let { agentId }: { agentId: string } = $props();
@@ -16,16 +17,12 @@
 
 	const gaugePercent = $derived(piAgentState.contextUsage?.percent ?? 0);
 	const gaugeColor = $derived(
-		gaugePercent >= 90 ? 'bg-red-500' : gaugePercent >= 70 ? 'bg-yellow-500' : 'bg-emerald-500'
+		gaugePercent >= 90 ? 'bg-destructive' : gaugePercent >= 70 ? 'bg-warning' : 'bg-success'
 	);
 
-	function onThinkingChange(e: Event) {
-		const target = e.target as HTMLSelectElement;
-		setThinkingLevel(target.value);
-	}
 </script>
 
-<div class="bg-bg2 border border-border rounded-lg p-4 space-y-3">
+<div class="surface-2 rounded-lg p-4 space-y-3">
 	<div class="flex items-start gap-4">
 		<!-- Left: Context gauge -->
 		<div class="flex-1 min-w-0">
@@ -58,22 +55,19 @@
 		<div class="shrink-0">
 			<div class="text-[11px] font-semibold text-muted mb-1.5">{m.pi_thinking()}</div>
 			{#if piAgentState.thinkingLevels.length > 0}
-				<select
-					class="text-[11px] bg-bg3 border border-border rounded px-2 py-1 text-foreground cursor-pointer"
+				<Select
+					size="xs"
 					value={piAgentState.currentThinkingLevel ?? ''}
-					onchange={onThinkingChange}
+					onchange={(v) => setThinkingLevel(String(v))}
 				>
-					{#each piAgentState.thinkingLevels as level}
+					{#each piAgentState.thinkingLevels as level (level)}
 						<option value={level}>{level}</option>
 					{/each}
-				</select>
+				</Select>
 			{:else}
-				<select
-					class="text-[11px] bg-bg3 border border-border rounded px-2 py-1 text-muted"
-					disabled
-				>
+				<Select size="xs" disabled>
 					<option>N/A</option>
-				</select>
+				</Select>
 			{/if}
 		</div>
 	</div>

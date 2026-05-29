@@ -72,7 +72,7 @@
   </div>
 
   <!-- Row 3: duration + tokens + parent -->
-  <div class="flex items-center gap-2 pl-4 text-[10px] text-muted/60">
+  <div class="flex items-center gap-2 pl-4 text-[10px] text-muted-strong">
     <span>{formatDuration(session)}</span>
     {#if tokenDisplay()}
       <span class="opacity-60">&middot;</span>

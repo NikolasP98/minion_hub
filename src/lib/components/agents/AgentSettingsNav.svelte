@@ -101,7 +101,7 @@
       <Blocks size={14} class="shrink-0" />
       <span class="flex-1 truncate">{m.skills_title()}</span>
       {#if totalSkillCount > 0}
-        <span class="text-[9px] text-muted-foreground/60">{enabledSkillCount}/{totalSkillCount}</span>
+        <span class="text-[9px] text-muted-strong">{enabledSkillCount}/{totalSkillCount}</span>
       {/if}
     </button>
   </div>
@@ -125,7 +125,7 @@
             ? 'bg-accent/10 text-accent font-medium border-l-2 border-l-accent -ml-px'
             : isCritical
               ? 'bg-transparent text-muted-foreground hover:bg-bg3 hover:text-foreground'
-              : 'bg-transparent text-muted-foreground/60 hover:bg-bg3 hover:text-muted-foreground'}"
+              : 'bg-transparent text-muted-strong hover:bg-bg3 hover:text-muted-foreground'}"
         onclick={() => onselect(group.id)}
       >
         <Icon size={14} class="shrink-0" />
@@ -151,7 +151,7 @@
       >
         <Link size={14} class="shrink-0" />
         <span class="flex-1 truncate">{m.config_bindingsSection()}</span>
-        <span class="text-[9px] text-muted-foreground/60">{bindingCount}</span>
+        <span class="text-[9px] text-muted-strong">{bindingCount}</span>
       </button>
     </div>
   {/if}

@@ -102,7 +102,7 @@
         <div class="flex items-center gap-3 px-4 py-2.5 md:pr-[200px]">
             <Bot size={13} class="text-[var(--color-brand-pink)] shrink-0" />
             <h1 class="text-sm font-semibold tracking-tight">{m.marketplace_agents()}</h1>
-            <span class="text-[11px] text-muted-foreground/70 hidden md:block truncate">{m.marketplace_agentsSubtitle()}</span>
+            <span class="text-[11px] text-muted-strong hidden md:block truncate">{m.marketplace_agentsSubtitle()}</span>
             <div class="flex-1"></div>
 
             <!-- Search -->

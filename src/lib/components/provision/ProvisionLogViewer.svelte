@@ -26,12 +26,12 @@
 
 <div class="bg-card border border-border rounded-lg overflow-hidden flex flex-col h-full">
     <div class="flex items-center gap-2 px-3 py-2 border-b border-border bg-bg/50">
-        <Terminal size={13} class="text-muted-foreground/70" />
+        <Terminal size={13} class="text-muted-strong" />
         <span class="text-xs font-semibold text-foreground uppercase tracking-wider">{m.provision_output()}</span>
         {#if provisionState.running}
             <span class="ml-auto text-[10px] text-accent font-medium animate-pulse">{m.provision_live()}</span>
         {/if}
-        <span class="text-[10px] text-muted-foreground/60 {provisionState.running ? '' : 'ml-auto'}">
+        <span class="text-[10px] text-muted-strong {provisionState.running ? '' : 'ml-auto'}">
             {m.provision_logLines({ count: provisionState.logs.length })}
         </span>
     </div>

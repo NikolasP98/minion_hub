@@ -211,7 +211,7 @@
 
             <!-- Stats row removed — promoted to topbar in command-center redesign -->
             {#if conn.connected && agentCount > 0}
-                <div class="flex items-center gap-3 text-[10px] text-muted-foreground/70 tabular-nums">
+                <div class="flex items-center gap-3 text-[10px] text-muted-strong tabular-nums">
                     <span>{activeAgentCount} active</span>
                     <span class="opacity-50">·</span>
                     <span>{agentCount} total</span>

@@ -158,7 +158,7 @@
         </defs>
         <rect width="100%" height="100%" fill="url(#preview-pat)" />
       </svg>
-      <span class="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground/60 uppercase tracking-widest font-medium">{m.settings_preview()}</span>
+      <span class="absolute inset-0 flex items-center justify-center text-[10px] text-muted-strong uppercase tracking-widest font-medium">{m.settings_preview()}</span>
     </div>
   {/if}
 </section>

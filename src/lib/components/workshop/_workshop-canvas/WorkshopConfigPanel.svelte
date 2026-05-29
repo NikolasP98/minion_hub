@@ -48,12 +48,12 @@
         >
             <!-- Stats: perf -->
             <div
-                class="text-[7px] text-muted/60 uppercase tracking-wider mb-1"
+                class="text-[7px] text-muted-strong uppercase tracking-wider mb-1"
             >
                 {m.workshop_configPerf()}
             </div>
             <div class="flex justify-between gap-3">
-                <span class="text-muted/70">{m.workshop_configFps()}</span>
+                <span class="text-muted-strong">{m.workshop_configFps()}</span>
                 <span
                     class="tabular-nums font-semibold {perfFps >= 50
                         ? 'text-green-400'
@@ -63,14 +63,14 @@
                 >
             </div>
             <div class="flex justify-between gap-3">
-                <span class="text-muted/70">{m.workshop_configFrame()}</span>
+                <span class="text-muted-strong">{m.workshop_configFrame()}</span>
                 <span class="text-foreground/80 tabular-nums"
                     >{perfFrameMs}ms</span
                 >
             </div>
             {#if perfHeapMB !== null}
                 <div class="flex justify-between gap-3">
-                    <span class="text-muted/70">{m.workshop_configHeap()}</span>
+                    <span class="text-muted-strong">{m.workshop_configHeap()}</span>
                     <span class="text-foreground/80 tabular-nums"
                         >{perfHeapMB} MB</span
                     >
@@ -80,24 +80,24 @@
             <!-- Stats: scene -->
             <div class="border-t border-border/30 mt-1 pt-1 space-y-0.5">
                 <div
-                    class="text-[7px] text-muted/60 uppercase tracking-wider mb-0.5"
+                    class="text-[7px] text-muted-strong uppercase tracking-wider mb-0.5"
                 >
                     {m.workshop_configScene()}
                 </div>
                 <div class="flex justify-between gap-3">
-                    <span class="text-muted/70">{m.workshop_configAgents()}</span>
+                    <span class="text-muted-strong">{m.workshop_configAgents()}</span>
                     <span class="text-foreground/80 tabular-nums"
                         >{agentCount}</span
                     >
                 </div>
                 <div class="flex justify-between gap-3">
-                    <span class="text-muted/70">{m.workshop_configElements()}</span>
+                    <span class="text-muted-strong">{m.workshop_configElements()}</span>
                     <span class="text-foreground/80 tabular-nums"
                         >{elementCount}</span
                     >
                 </div>
                 <div class="flex justify-between gap-3">
-                    <span class="text-muted/70">{m.workshop_configConvs()}</span>
+                    <span class="text-muted-strong">{m.workshop_configConvs()}</span>
                     <span class="text-foreground/80 tabular-nums">
                         <span class="text-green-400">{activeConvs}</span
                         >/{totalConvs}
@@ -108,7 +108,7 @@
             <!-- View Mode -->
             <div class="border-t border-border/30 mt-1 pt-1">
                 <div
-                    class="text-[7px] text-muted/60 uppercase tracking-wider mb-1"
+                    class="text-[7px] text-muted-strong uppercase tracking-wider mb-1"
                 >
                     {m.workshop_configViewMode()}
                 </div>
@@ -146,7 +146,7 @@
             <!-- Ropes -->
             <div class="border-t border-border/30 mt-1 pt-1">
                 <div
-                    class="text-[7px] text-muted/60 uppercase tracking-wider mb-1"
+                    class="text-[7px] text-muted-strong uppercase tracking-wider mb-1"
                 >
                     {m.workshop_configRopes()}
                 </div>
@@ -173,7 +173,7 @@
             <!-- Debug -->
             <div class="border-t border-border/30 mt-1 pt-1">
                 <div class="flex items-center justify-between">
-                    <span class="text-[7px] text-muted/60 uppercase tracking-wider"
+                    <span class="text-[7px] text-muted-strong uppercase tracking-wider"
                         >{m.workshop_configAgentDebug()}</span
                     >
                     <ToggleSwitch

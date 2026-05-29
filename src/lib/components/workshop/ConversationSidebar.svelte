@@ -147,7 +147,7 @@
             <div class="mt-0.5 text-[10px] text-foreground truncate leading-tight">
               {getParticipantEmojis(conv)} {getParticipantNames(conv)}
             </div>
-            <div class="text-[9px] text-muted/60 mt-0.5">
+            <div class="text-[9px] text-muted-strong mt-0.5">
               {formatRelativeTime(conv.startedAt)}
             </div>
           </button>
@@ -224,7 +224,7 @@
             <div class="min-w-0">
               <div class="flex items-baseline gap-1.5">
                 <span class="text-[10px] font-mono text-muted">{agent.name}</span>
-                <span class="text-[9px] text-muted/60">{formatRelativeTime(msg.timestamp)}</span>
+                <span class="text-[9px] text-muted-strong">{formatRelativeTime(msg.timestamp)}</span>
               </div>
               <div class="ws-message-md text-[11px] text-foreground leading-snug mt-0.5">
                 <Markdown {carta} value={msg.content} />

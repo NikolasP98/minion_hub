@@ -208,7 +208,7 @@
     <!-- Element buttons -->
     <div class="flex items-center gap-1 shrink-0">
         <span
-            class="font-mono text-[9px] uppercase tracking-widest text-muted/60 mr-0.5 select-none"
+            class="font-mono text-[9px] uppercase tracking-widest text-muted-strong mr-0.5 select-none"
             >{m.workshop_elemLabel()}</span
         >
         {#each elementTypes as et (et.type)}
@@ -229,7 +229,7 @@
     <!-- Syncing indicator + Gallery link -->
     <div class="flex items-center gap-2 shrink-0">
         {#if saveSync.isSyncing}
-            <span class="text-[9px] font-mono text-muted/60 animate-pulse"
+            <span class="text-[9px] font-mono text-muted-strong animate-pulse"
                 >{m.workshop_syncing()}</span
             >
         {/if}

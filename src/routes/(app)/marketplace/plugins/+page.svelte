@@ -102,7 +102,7 @@
             {#if filtered.length > 0}
                 <span class="text-[10px] bg-bg3 text-muted-foreground border border-border rounded-full px-1.5 leading-5 tabular-nums">{filtered.length}</span>
             {/if}
-            <span class="text-[11px] text-muted-foreground/70 hidden md:block truncate">{m.marketplace_pluginsSubtitle()}</span>
+            <span class="text-[11px] text-muted-strong hidden md:block truncate">{m.marketplace_pluginsSubtitle()}</span>
             <div class="flex-1"></div>
 
             <!-- Search -->

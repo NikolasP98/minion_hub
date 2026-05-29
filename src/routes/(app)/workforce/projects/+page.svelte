@@ -13,8 +13,8 @@
 	const STATUS_BADGE: Record<ProjectStatus, string> = {
 		backlog: 'bg-muted text-muted-foreground',
 		planned: 'bg-muted text-muted-foreground',
-		in_progress: 'bg-blue-500/10 text-blue-600',
-		completed: 'bg-green-500/10 text-green-600',
+		in_progress: 'bg-accent/10 text-accent',
+		completed: 'bg-success/10 text-success',
 		cancelled: 'bg-muted text-muted-strong',
 	};
 
@@ -98,7 +98,7 @@
 								</span>
 								{#if p.targetDate}
 									<span class="text-[10px] text-muted-foreground font-mono">
-										target {p.targetDate} <span class="text-muted-foreground/60">· {daysUntil(p.targetDate)}</span>
+										target {p.targetDate} <span class="text-muted-strong">· {daysUntil(p.targetDate)}</span>
 									</span>
 								{/if}
 							</div>
@@ -112,11 +112,11 @@
 
 							<div class="flex items-center gap-3 flex-wrap text-[11px] text-muted-foreground pt-1">
 								<span title="Lead agent">
-									<span class="text-muted-foreground/60">lead</span> {agentLabel(p.leadAgentId)}
+									<span class="text-muted-strong">lead</span> {agentLabel(p.leadAgentId)}
 								</span>
 								{#if p.goals.length > 0}
 									<span>
-										<span class="text-muted-foreground/60">goal</span> {p.goals[0].title}
+										<span class="text-muted-strong">goal</span> {p.goals[0].title}
 									</span>
 								{/if}
 								{#if p.workspaces.length > 0}

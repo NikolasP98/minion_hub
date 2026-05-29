@@ -55,7 +55,7 @@
         <span class="font-mono text-fg tabular-nums">
           {formatBytes(preview.totalBytes)}
         </span>
-        <span class="text-muted/60">·</span>
+        <span class="text-muted-strong">·</span>
         <span class="font-mono text-fg tabular-nums">
           {formatTokens(preview.totalTokens)}
         </span>
@@ -104,7 +104,7 @@
             </span>
             <span class="flex-1"></span>
             <span class="text-muted font-mono tabular-nums">{formatBytes(row.bytes)}</span>
-            <span class="text-muted/60">·</span>
+            <span class="text-muted-strong">·</span>
             <span class="text-muted font-mono tabular-nums">{row.tokens.toLocaleString("en-US")}</span>
           </header>
           <div class="px-4 py-2">

@@ -111,7 +111,7 @@
 		{/snippet}
 		{#snippet actions()}
 			{#if parsed}
-				<span class="text-[10px] text-muted-foreground/60">{parsed.providers.length} {parsed.providers.length !== 1 ? m.reliability_credentialsPlural() : m.reliability_credentialSingular()}</span>
+				<span class="text-[10px] text-muted-strong">{parsed.providers.length} {parsed.providers.length !== 1 ? m.reliability_credentialsPlural() : m.reliability_credentialSingular()}</span>
 			{/if}
 		{/snippet}
 	</PanelHeader>

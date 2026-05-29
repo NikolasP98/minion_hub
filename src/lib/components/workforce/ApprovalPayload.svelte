@@ -114,8 +114,8 @@
 			</div>
 		{/if}
 		{#if recommendedAction}
-			<div class="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3.5 py-3">
-				<p class="text-[11px] font-medium uppercase tracking-[0.08em] text-amber-700">Recommended action</p>
+			<div class="rounded-lg border border-warning/20 bg-warning/10 px-3.5 py-3">
+				<p class="text-[11px] font-medium uppercase tracking-[0.08em] text-warning">Recommended action</p>
 				<p class="mt-1 leading-6 text-foreground">{recommendedAction}</p>
 			</div>
 		{/if}

@@ -108,7 +108,7 @@
       <span class="ml-2 text-[11px] text-muted-foreground">{m.tools_loading()}</span>
     </div>
   {:else if agentToolsState.error}
-    <div class="bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 text-[11px] text-red-400">
+    <div class="bg-destructive/10 border border-destructive/30 rounded-lg px-3 py-2 text-[11px] text-destructive">
       {agentToolsState.error}
     </div>
   {:else if agentToolsState.tools.length === 0}
@@ -120,18 +120,18 @@
       <div
         class="rounded-lg border overflow-hidden transition-colors
           {dragOverZone === 'enabled'
-          ? 'border-green-400/60 bg-green-500/10'
-          : 'border-green-500/20 bg-green-500/5'}"
+          ? 'border-success/60 bg-success/10'
+          : 'border-success/20 bg-success/5'}"
         role="list"
         ondragover={(e) => onDragOver(e, 'enabled')}
         ondragleave={onDragLeave}
         ondrop={(e) => onDrop(e, true)}
       >
-        <div class="px-3 py-2 border-b border-green-500/20 flex items-center justify-between">
-          <span class="text-[11px] font-semibold text-green-400 uppercase tracking-wider">
+        <div class="px-3 py-2 border-b border-success/20 flex items-center justify-between">
+          <span class="text-[11px] font-semibold text-success uppercase tracking-wider">
             {m.tools_enabled()}
           </span>
-          <span class="text-[10px] text-green-400/70">{enabledTools.length}</span>
+          <span class="text-[10px] text-success/70">{enabledTools.length}</span>
         </div>
         <div class="max-h-[500px] overflow-y-auto p-1">
           {#each enabledTools as tool (tool.id)}
@@ -160,7 +160,7 @@
           <span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
             {m.tools_disabled()}
           </span>
-          <span class="text-[10px] text-muted-foreground/70">{disabledTools.length}</span>
+          <span class="text-[10px] text-muted-strong">{disabledTools.length}</span>
         </div>
         <div class="max-h-[500px] overflow-y-auto p-1 opacity-60">
           {#each disabledTools as tool (tool.id)}

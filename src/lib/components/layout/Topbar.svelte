@@ -74,7 +74,7 @@
                 {/if}
                 {#each sections as section (section.id)}
                     <div class="h-px bg-border/60 my-1"></div>
-                    <div class="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted/60">
+                    <div class="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-strong">
                         {section.label}
                     </div>
                     {#each section.items.filter((i) => !i.requires || canClient(i.requires)) as item (item.href)}

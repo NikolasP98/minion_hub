@@ -115,11 +115,12 @@
         size="sm"
         value={roleId ?? `legacy:${role}`}
         onchange={(v) => {
-          if (v.startsWith('legacy:')) {
-            role = v.slice(7) as 'user' | 'admin';
+          const val = String(v);
+          if (val.startsWith('legacy:')) {
+            role = val.slice(7) as 'user' | 'admin';
             roleId = null;
           } else {
-            roleId = v;
+            roleId = val;
           }
         }}
       >

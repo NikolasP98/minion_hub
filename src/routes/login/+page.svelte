@@ -135,7 +135,7 @@
           onclick={signInWithGoogleSupabase}
           disabled={supabaseGoogleLoading || loading}
           class="w-full flex items-center justify-center gap-2.5 px-4 py-2 rounded border text-sm font-mono transition-all duration-150
-                 {supabaseGoogleLoading ? 'bg-bg border-border text-muted/60 cursor-not-allowed'
+                 {supabaseGoogleLoading ? 'bg-bg border-border text-muted-strong cursor-not-allowed'
                                         : 'bg-bg border-border text-foreground hover:border-accent/40 hover:bg-accent/5'}"
         >
           {#if !supabaseGoogleLoading}

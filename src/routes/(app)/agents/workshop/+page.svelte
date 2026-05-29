@@ -91,13 +91,13 @@
                 <p class="font-mono text-[10px] text-muted mt-0.5">
                   {m.workshop_agentElementCount({ agents: save.agentCount, elements: save.elementCount })}
                 </p>
-                <p class="font-mono text-[9px] text-muted/60 mt-0.5">
+                <p class="font-mono text-[9px] text-muted-strong mt-0.5">
                   {new Date(save.updatedAt).toLocaleDateString()}
                 </p>
               </div>
               <button
                 onclick={(e) => handleDelete(e, save.id)}
-                class="opacity-0 group-hover:opacity-100 text-muted hover:text-red-400 text-xs transition-all shrink-0 mt-0.5"
+                class="opacity-0 group-hover:opacity-100 text-muted hover:text-destructive text-xs transition-all shrink-0 mt-0.5"
                 title={m.common_delete()}
               >×</button>
             </div>

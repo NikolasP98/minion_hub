@@ -9,9 +9,9 @@
 
   function severityClass(severity: "block" | "warn") {
     if (severity === "block") {
-      return "border-red-500/60 bg-red-500/10 text-red-300";
+      return "border-destructive/60 bg-destructive/10 text-destructive";
     }
-    return "border-amber-500/60 bg-amber-500/10 text-amber-300";
+    return "border-warning/60 bg-warning/10 text-warning";
   }
 
   function severityLabel(severity: "block" | "warn") {

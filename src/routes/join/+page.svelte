@@ -45,13 +45,13 @@
           <button onclick={() => logout()} class="w-full px-4 py-2 rounded border text-sm font-mono bg-bg border-border text-muted hover:text-foreground hover:border-accent/40">Sign out</button>
         {:else}
           {#if data.linkError}
-            <p class="text-[11px] font-mono text-yellow-400 bg-yellow-400/8 border border-yellow-400/20 rounded px-3 py-2 mb-4">That invite link is invalid or expired. You can request access below.</p>
+            <p class="text-[11px] font-mono text-warning bg-warning/8 border border-warning/20 rounded px-3 py-2 mb-4">That invite link is invalid or expired. You can request access below.</p>
           {/if}
           <h1 class="text-lg font-semibold text-foreground mb-2">You're not in a workspace yet</h1>
           <p class="text-sm text-muted mb-5">Signed in as {data.email}. Request access and an admin will let you in.</p>
           <textarea bind:value={message} rows="3" placeholder="Optional: a note for the admin"
             class="w-full bg-bg border border-border rounded px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/60 mb-3"></textarea>
-          {#if errorMsg}<div class="text-[11px] font-mono text-red-400 bg-red-400/8 border border-red-400/20 rounded px-3 py-2 mb-3">{errorMsg}</div>{/if}
+          {#if errorMsg}<div class="text-[11px] font-mono text-destructive bg-destructive/8 border border-destructive/20 rounded px-3 py-2 mb-3">{errorMsg}</div>{/if}
           <button onclick={submitRequest} disabled={submitting}
             class="w-full px-4 py-2 rounded border text-sm font-mono bg-accent/20 border-accent/30 text-accent hover:bg-accent/30 disabled:opacity-50">
             {submitting ? 'Sending…' : 'Request access'}

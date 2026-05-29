@@ -217,7 +217,7 @@
 			<Cpu size={11} class="text-accent shrink-0" />
 		{/snippet}
 		{#snippet actions()}
-			<span class="text-[10px] text-muted-foreground/60"
+			<span class="text-[10px] text-muted-strong"
 				>{summary.callCount} {summary.callCount !== 1 ? m.reliability_llmCallsPlural() : m.reliability_llmCall()}</span
 			>
 		{/snippet}

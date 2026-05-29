@@ -119,7 +119,7 @@
 						{/if}
 
 						{#if approval.decisionNote}
-							<span class="ml-2 text-muted-foreground/70">Note: {approval.decisionNote}</span>
+							<span class="ml-2 text-muted-strong">Note: {approval.decisionNote}</span>
 						{/if}
 					</div>
 				</li>

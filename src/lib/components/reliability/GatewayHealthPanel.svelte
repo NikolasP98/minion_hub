@@ -276,8 +276,8 @@
 						{#each channelGroups as group (group.channel)}
 							<div class="flex flex-col gap-0.5 min-w-[100px]">
 								<div class="flex items-center gap-1.5 mb-0.5">
-									<ChannelBrandIcon channel={group.channel} size={12} class="text-muted-foreground/60" />
-									<span class="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground/60">{group.channel}</span>
+									<ChannelBrandIcon channel={group.channel} size={12} class="text-muted-strong" />
+									<span class="text-[9px] font-semibold uppercase tracking-widest text-muted-strong">{group.channel}</span>
 								</div>
 								{#each group.accounts as { account, status: accStatus } (`${group.channel}:${account}`)}
 									<div class="flex items-center gap-1.5 h-5 pl-0.5" title={getChannelDotLabel(accStatus)}>
