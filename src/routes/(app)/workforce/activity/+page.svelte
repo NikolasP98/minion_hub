@@ -4,6 +4,8 @@
 	import { startPolling } from '$lib/utils/live-polling';
 	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
 	import JsonView from '$lib/components/workforce/JsonView.svelte';
+	import { PageHeader } from '$lib/components/ui';
+	import { Activity } from 'lucide-svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -32,15 +34,16 @@
 	}
 </script>
 
-<div class="p-6 space-y-6">
-	<div class="flex items-center justify-between flex-wrap gap-3">
-		<div class="flex items-center gap-3">
-			<h1 class="text-2xl font-semibold">Activity</h1>
-			<LiveIndicator intervalMs={5000} />
-		</div>
+<PageHeader title="Activity">
+	{#snippet leading()}
+		<Activity size={16} class="text-accent shrink-0" />
+	{/snippet}
+	{#snippet actions()}
+		<LiveIndicator intervalMs={5000} />
 		<span class="text-sm text-muted-foreground">{items.length} event{items.length !== 1 ? 's' : ''}</span>
-	</div>
-
+	{/snippet}
+</PageHeader>
+<main class="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
 	{#if items.length === 0}
 		<div class="rounded-lg border border-border bg-card p-12 flex flex-col items-center justify-center text-center">
 			<p class="text-muted-foreground text-sm">No activity yet.</p>
@@ -84,4 +87,4 @@
 			{/each}
 		</ul>
 	{/if}
-</div>
+</main>

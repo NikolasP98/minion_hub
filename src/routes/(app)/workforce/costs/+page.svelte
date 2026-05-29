@@ -4,6 +4,8 @@
 	import { startPolling } from '$lib/utils/live-polling';
 	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
 	import Sparkline from '$lib/components/Sparkline.svelte';
+	import { PageHeader } from '$lib/components/ui';
+	import { Receipt } from 'lucide-svelte';
 
 	let { data }: { data: PageData } = $props();
 	const { kpis, byAgent, byProvider, trend } = $derived(data);
@@ -47,17 +49,18 @@
 	onMount(() => startPolling('app:costs', 8000));
 </script>
 
-<div class="p-6 space-y-6 max-w-6xl">
-	<header class="flex items-center justify-between flex-wrap gap-3">
-		<div class="flex items-center gap-3">
-			<h1 class="text-2xl font-semibold">Costs</h1>
-			<LiveIndicator intervalMs={8000} />
-		</div>
-		<div class="text-xs text-muted-foreground">
+<PageHeader title="Costs">
+	{#snippet leading()}
+		<Receipt size={16} class="text-accent shrink-0" />
+	{/snippet}
+	{#snippet actions()}
+		<LiveIndicator intervalMs={8000} />
+		<div class="hidden sm:block text-xs text-muted-foreground">
 			Trailing 14 days · projected month-end {formatBig(kpis.projectedMonthEndCents)}
 		</div>
-	</header>
-
+	{/snippet}
+</PageHeader>
+<main class="flex-1 min-h-0 overflow-y-auto p-6 space-y-6 max-w-6xl">
 	<!-- KPI row: today / last 7 / month / projected -->
 	<section class="grid grid-cols-2 sm:grid-cols-4 gap-4">
 		<div class="rounded-lg border border-border bg-card p-4 space-y-1">
@@ -211,4 +214,4 @@
 			</div>
 		</section>
 	</div>
-</div>
+</main>

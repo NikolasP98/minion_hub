@@ -4,6 +4,8 @@
 	type OrgNode = { id: string; name: string; role: string; status: string; reports: OrgNode[] };
 	import { startPolling } from '$lib/utils/live-polling';
 	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
+	import { PageHeader } from '$lib/components/ui';
+	import { Network } from 'lucide-svelte';
 
 	let { data }: { data: PageData } = $props();
 	const { tree, agents } = $derived(data);
@@ -199,17 +201,18 @@
 	}
 </script>
 
-<div class="flex flex-col h-[calc(100vh-3.5rem)] p-6 gap-3">
-	<header class="flex items-center justify-between flex-wrap gap-3">
-		<div class="flex items-center gap-3">
-			<h1 class="text-2xl font-semibold">Org chart</h1>
-			<LiveIndicator intervalMs={8000} />
-		</div>
-		<div class="text-xs text-muted-foreground">
+<PageHeader title="Org chart">
+	{#snippet leading()}
+		<Network size={16} class="text-accent shrink-0" />
+	{/snippet}
+	{#snippet actions()}
+		<LiveIndicator intervalMs={8000} />
+		<div class="hidden md:block text-xs text-muted-foreground">
 			{allNodes.length} agent{allNodes.length !== 1 ? 's' : ''} · drag to pan · scroll to zoom
 		</div>
-	</header>
-
+	{/snippet}
+</PageHeader>
+<main class="flex-1 min-h-0 flex flex-col p-6 gap-3 overflow-hidden">
 	<div
 		bind:this={container}
 		role="application"
@@ -328,4 +331,4 @@
 			</span>
 		{/each}
 	</footer>
-</div>
+</main>

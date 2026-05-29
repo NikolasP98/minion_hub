@@ -9,6 +9,8 @@
     backupNow,
     type ShellSummary,
   } from '$lib/services/shells-rpc';
+  import { PageHeader } from '$lib/components/ui';
+  import { ArrowLeft } from 'lucide-svelte';
 
   let shell = $state<ShellSummary | null>(null);
   let loading = $state(true);
@@ -52,9 +54,50 @@
   }
 </script>
 
-<div class="page">
-  <a class="back" href="/shells">← All shells</a>
-
+<PageHeader
+  title={shell?.displayName ?? 'Shell'}
+  subtitle={shell ? `${shell.harness} · ${shell.vmName} · ${shell.region}` : undefined}
+>
+  {#snippet leading()}
+    <a class="back" href="/shells" aria-label="All shells">
+      <ArrowLeft size={16} class="text-accent shrink-0" />
+    </a>
+  {/snippet}
+  {#snippet actions()}
+    {#if shell}
+      <div class="status status-{shell.status}">{shell.status}</div>
+      {#if shell.status === 'online'}
+        <button
+          disabled={actionRunning !== null}
+          onclick={() => void doAction('backup', () => backupNow(shell!.shellId))}
+        >
+          {actionRunning === 'backup' ? 'Backing up…' : 'Back up now'}
+        </button>
+        <button
+          disabled={actionRunning !== null}
+          onclick={() => void doAction('archive', () => archiveShell(shell!.shellId))}
+        >
+          {actionRunning === 'archive' ? 'Archiving…' : 'Sleep (archive)'}
+        </button>
+      {/if}
+      <button
+        class="danger"
+        disabled={actionRunning !== null}
+        onclick={async () => {
+          if (!confirm(`Permanently destroy ${shell!.displayName}? This deletes the VM and all backups.`)) {
+            return;
+          }
+          await doAction('destroy', () => destroyShell(shell!.shellId));
+          await goto('/shells');
+        }}
+      >
+        Destroy
+      </button>
+    {/if}
+  {/snippet}
+</PageHeader>
+<main class="flex-1 min-h-0 overflow-y-auto">
+  <div class="page">
   {#if error}
     <div class="error">{error}</div>
   {/if}
@@ -62,14 +105,6 @@
   {#if loading}
     <div class="empty">Loading…</div>
   {:else if shell}
-    <header>
-      <div>
-        <h1>{shell.displayName}</h1>
-        <p class="subtitle">{shell.harness} · {shell.vmName} · {shell.region}</p>
-      </div>
-      <div class="status status-{shell.status}">{shell.status}</div>
-    </header>
-
     {#if shell.errorMessage}
       <div class="alert">
         <strong>{shell.errorReason}</strong>: {shell.errorMessage}
@@ -122,37 +157,9 @@
       </div>
     </div>
 
-    <div class="actions">
-      {#if shell.status === 'online'}
-        <button
-          disabled={actionRunning !== null}
-          onclick={() => void doAction('backup', () => backupNow(shell!.shellId))}
-        >
-          {actionRunning === 'backup' ? 'Backing up…' : 'Back up now'}
-        </button>
-        <button
-          disabled={actionRunning !== null}
-          onclick={() => void doAction('archive', () => archiveShell(shell!.shellId))}
-        >
-          {actionRunning === 'archive' ? 'Archiving…' : 'Sleep (archive)'}
-        </button>
-      {/if}
-      <button
-        class="danger"
-        disabled={actionRunning !== null}
-        onclick={async () => {
-          if (!confirm(`Permanently destroy ${shell!.displayName}? This deletes the VM and all backups.`)) {
-            return;
-          }
-          await doAction('destroy', () => destroyShell(shell!.shellId));
-          await goto('/shells');
-        }}
-      >
-        Destroy
-      </button>
-    </div>
   {/if}
-</div>
+  </div>
+</main>
 
 <style>
   .page {
@@ -161,29 +168,12 @@
     margin: 0 auto;
   }
   .back {
-    display: inline-block;
-    margin-bottom: 16px;
+    display: inline-flex;
+    align-items: center;
     color: var(--color-text-muted, #6b7280);
     text-decoration: none;
-    font-size: 13px;
   }
-  .back:hover { text-decoration: underline; }
-  header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 24px;
-  }
-  h1 {
-    margin: 0;
-    font-size: 24px;
-    font-weight: 600;
-  }
-  .subtitle {
-    margin: 4px 0 0;
-    font-size: 13px;
-    color: var(--color-text-muted, #6b7280);
-  }
+  .back:hover { color: var(--color-text, inherit); }
   .status {
     padding: 4px 10px;
     border-radius: 999px;
@@ -235,29 +225,23 @@
     color: var(--color-text-muted, #6b7280);
     font-size: 12px;
   }
-  .actions {
-    margin-top: 20px;
-    display: flex;
-    gap: 8px;
-  }
-  .actions button {
-    padding: 8px 14px;
+  button {
+    padding: 6px 12px;
     border: 1px solid var(--color-border, #e5e7eb);
     border-radius: 6px;
-    background: white;
+    background: var(--color-bg2, white);
     cursor: pointer;
     font-size: 13px;
   }
-  .actions button:disabled {
+  button:disabled {
     opacity: 0.5;
     cursor: not-allowed;
   }
-  .actions button.danger {
-    margin-left: auto;
+  button.danger {
     color: rgb(185, 28, 28);
     border-color: rgba(239, 68, 68, 0.3);
   }
-  .actions button.danger:hover {
+  button.danger:hover {
     background: rgba(239, 68, 68, 0.05);
   }
   .empty, .error {
