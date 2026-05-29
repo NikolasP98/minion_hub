@@ -88,25 +88,25 @@
 	};
 
 	const SEVERITY_BG: Record<string, string> = {
-		critical: 'bg-red-500/20 text-red-400',
+		critical: 'bg-destructive/20 text-destructive',
 		high: 'bg-orange-500/20 text-orange-400',
-		medium: 'bg-yellow-500/20 text-yellow-400',
-		low: 'bg-blue-500/20 text-blue-400',
-		info: 'bg-zinc-500/20 text-zinc-400',
+		medium: 'bg-warning/20 text-warning',
+		low: 'bg-accent/20 text-accent',
+		info: 'bg-muted-foreground/20 text-muted-foreground',
 	};
 
 	const CATEGORY_BG: Record<string, string> = {
-		gateway: 'bg-blue-500/20 text-blue-400',
-		agent: 'bg-green-500/20 text-green-400',
-		tool: 'bg-purple-500/20 text-purple-400',
-		message: 'bg-cyan-500/20 text-cyan-400',
-		channel: 'bg-amber-500/20 text-amber-400',
-		orchestration: 'bg-pink-500/20 text-pink-400',
-		skill: 'bg-violet-500/20 text-violet-400',
-		crash: 'bg-red-500/20 text-red-400',
+		gateway: 'bg-accent/20 text-accent',
+		agent: 'bg-success/20 text-success',
+		tool: 'bg-purple/20 text-purple',
+		message: 'bg-cyan/20 text-cyan',
+		channel: 'bg-warning/20 text-warning',
+		orchestration: 'bg-pink/20 text-pink',
+		skill: 'bg-purple/20 text-purple',
+		crash: 'bg-destructive/20 text-destructive',
 		connection: 'bg-teal-500/20 text-teal-400',
 		auth: 'bg-orange-500/20 text-orange-400',
-		cron: 'bg-slate-500/20 text-slate-400',
+		cron: 'bg-muted-foreground/20 text-muted-foreground',
 	};
 
 	function relativeTime(ts: number): string {
@@ -367,7 +367,7 @@
 						<span
 							class="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-medium {CATEGORY_BG[
 								ev.category
-							] ?? 'bg-zinc-500/20 text-zinc-400'}"
+							] ?? 'bg-muted-foreground/20 text-muted-foreground'}"
 						>
 							{ev.category}
 						</span>
@@ -386,7 +386,7 @@
 						<span
 							class="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-medium {SEVERITY_BG[
 								ev.severity
-							] ?? 'bg-zinc-500/20 text-zinc-400'}"
+							] ?? 'bg-muted-foreground/20 text-muted-foreground'}"
 						>
 							{ev.severity}
 						</span>

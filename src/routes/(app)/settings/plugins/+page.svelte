@@ -189,7 +189,7 @@
   }): string {
     if (entry.status === 'error' || entry.pluginError) return 'bg-destructive';
     if (!effectiveEnabled(entry)) return 'bg-muted-foreground/40';
-    return 'bg-emerald-500';
+    return 'bg-success';
   }
 
   function statusLabel(entry: {
@@ -460,7 +460,7 @@
                   </span>
                 {:else if saveOk}
                   <span class="flex items-center gap-1.5 text-xs">
-                    <Check size={12} class="text-emerald-500" />
+                    <Check size={12} class="text-success" />
                     <span class="text-foreground"
                       >Saved{saveRestart ? ' — restart required' : ''}.</span
                     >
@@ -495,7 +495,7 @@
                   onclick={() => toggleEnabled(current)}
                   title={on ? 'Disable plugin' : 'Enable plugin'}
                   class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border border-border transition-colors disabled:cursor-wait disabled:opacity-60"
-                  class:bg-emerald-500={on}
+                  class:bg-success={on}
                   class:bg-muted={!on}
                 >
                   <span class="sr-only">{on ? 'Disable' : 'Enable'} {current.title}</span>
@@ -507,7 +507,7 @@
                     {#if busy}
                       <RefreshCw size={10} class="animate-spin text-muted-foreground" />
                     {:else}
-                      <Power size={10} class={on ? 'text-emerald-600' : 'text-muted-foreground'} />
+                      <Power size={10} class={on ? 'text-success' : 'text-muted-foreground'} />
                     {/if}
                   </span>
                 </button>
@@ -522,7 +522,7 @@
               {/if}
               {#if restartRequired}
                 <div
-                  class="flex items-center gap-2 border-b border-amber-500/40 bg-amber-500/5 px-4 py-2 text-xs text-amber-700 dark:text-amber-300"
+                  class="flex items-center gap-2 border-b border-warning/40 bg-warning/5 px-4 py-2 text-xs text-warning"
                 >
                   <AlertTriangle size={12} />
                   Gateway restart required for the change to take effect.
