@@ -170,7 +170,7 @@
 
 	<main class="column" aria-labelledby="my-agent-greeting">
 		<div class="inner">
-			<header class="greeting-row">
+			<header class="greeting-row md:pr-[var(--notch-clearance)]">
 				{#if !voiceCall.active}
 					<div class="mini-avatar">
 						<OpenHumanAvatar mouthRef={mouth} status={voiceCall.status} />

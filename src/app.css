@@ -140,6 +140,12 @@
   /* Hairline divider — reads as intentional structure, not floating gaps */
   --hairline: rgba(255, 255, 255, 0.07);
 
+  /* Top-right "notch" — the global utility cluster (status/⌘K/bug/profile) is
+     carved into the top-right corner. EVERY page's top row reserves this width
+     on the right (md:pr-[var(--notch-clearance)]) so content carves around the
+     notch instead of colliding with a floating island. One contract, all pages. */
+  --notch-clearance: 200px;
+
   /* ── Motion tokens (single rhythm across the app) ── */
   --duration-instant: 75ms; /* press depression, tactile feedback */
   --duration-fast: 150ms; /* hover, focus, color change */
@@ -518,14 +524,15 @@
   }
 }
 
-/* ── Dynamic-island clearance ──
-   The floating island is fixed top-right. Clearance is owned PER PAGE by
-   <PageHeader> (sticky bar with md:pr that reserves the island footprint, so
-   content scrolls under the translucent header). A blanket top pad on
-   .shell-main was rejected: on fixed-height pages (chat, dashboards) it
-   reduced the overflow-hidden column height and clipped content. Pages
-   without a PageHeader simply let the translucent island float over their
-   (non-interactive) top-right corner. */
+/* ── Notch clearance ──
+   The global utility cluster is a "notch" carved into the top-right corner
+   (DynamicIsland: fixed top-0 right-0, rounded-bl so content visually wraps
+   its lower-left curve). It is NOT a floating overlay — every page's top row
+   reserves --notch-clearance on the right so its controls carve AROUND the
+   notch and never collide. <PageHeader> applies it automatically; bespoke
+   headers + the flow-editor toolbar apply md:pr-[var(--notch-clearance)]
+   themselves. (A blanket top pad on the overflow-hidden .shell-main was
+   rejected earlier — it clipped fixed-height pages; reserve on the top ROW.) */
 
 /* ═══════════════════════════════════════════════════
    VOXELIZED THEME OVERRIDES  — neo 16-bit

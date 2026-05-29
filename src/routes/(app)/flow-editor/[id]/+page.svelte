@@ -96,7 +96,7 @@
   {:else}
     <!-- Toolbar -->
     <div
-      class="shrink-0 h-10 border-b border-border bg-bg2/80 flex items-center px-3 gap-3"
+      class="shrink-0 h-10 border-b border-border bg-bg2/80 flex items-center px-3 gap-3 md:pr-[var(--notch-clearance)]"
     >
       <!-- Back -->
       <a

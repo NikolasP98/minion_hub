@@ -17,14 +17,14 @@
 </script>
 
 <!--
-  data-page-header signals the shell to drop its 56px island-clearance pad for
-  this route (app.css :has rule), so content scrolls UNDER the sticky header +
-  translucent island. md:pr reserves the island's top-right footprint.
+  Sticky title bar. md:pr reserves the top-right notch footprint
+  (--notch-clearance) so the header's actions carve around the notch and
+  content scrolls under both. See app.css "Notch clearance".
 -->
 <header
   data-page-header
   class={`page-header ${sticky ? 'sticky top-0 z-30' : ''} shrink-0 flex items-center gap-3
-    h-14 px-4 md:px-5 md:pr-[200px]
+    h-14 px-4 md:px-5 md:pr-[var(--notch-clearance)]
     border-b border-[var(--hairline)] bg-bg/75 backdrop-blur-md ${cls}`}
 >
   {#if leading}
