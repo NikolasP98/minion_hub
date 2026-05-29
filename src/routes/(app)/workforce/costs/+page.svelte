@@ -135,11 +135,11 @@
 				{/if}
 			</div>
 			<div class="flex justify-between text-xs text-muted-foreground tabular-nums">
-				<span>{formatBig(kpis.monthCents)} <span class="text-muted-foreground/60">spent</span></span>
+				<span>{formatBig(kpis.monthCents)} <span class="text-muted-strong">spent</span></span>
 				<span>
-					{formatBig(kpis.projectedMonthEndCents)} <span class="text-muted-foreground/60">projected</span>
+					{formatBig(kpis.projectedMonthEndCents)} <span class="text-muted-strong">projected</span>
 				</span>
-				<span>{formatBig(kpis.budgetCents)} <span class="text-muted-foreground/60">budget</span></span>
+				<span>{formatBig(kpis.budgetCents)} <span class="text-muted-strong">budget</span></span>
 			</div>
 		</div>
 	</section>
@@ -188,7 +188,7 @@
 							<span class="font-medium truncate">{row.provider}</span>
 							<span class="font-mono text-xs text-muted-foreground/80 truncate">{row.model}</span>
 							<span class="ml-auto font-mono text-xs text-muted-foreground tabular-nums">
-								{formatCents(row.cents)} <span class="text-muted-foreground/60">({(row.share * 100).toFixed(0)}%)</span>
+								{formatCents(row.cents)} <span class="text-muted-strong">({(row.share * 100).toFixed(0)}%)</span>
 							</span>
 						</div>
 						<div class="relative h-1.5 rounded-full bg-muted overflow-hidden">
@@ -197,7 +197,7 @@
 								style="width: {(row.cents / maxProviderCents) * 100}%"
 							></div>
 						</div>
-						<div class="text-[10px] text-muted-foreground/70 mt-1 font-mono">
+						<div class="text-[10px] text-muted-strong mt-1 font-mono">
 							{row.requests} requests
 						</div>
 					</div>

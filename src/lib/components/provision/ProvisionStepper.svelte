@@ -50,7 +50,7 @@
                          'text-muted-foreground'}">
                         {phase.name}
                     </span>
-                    <span class="text-[10px] text-muted-foreground/60 font-mono">
+                    <span class="text-[10px] text-muted-strong font-mono">
                         {m.provision_phase({ id: phase.id })}
                     </span>
                 </div>

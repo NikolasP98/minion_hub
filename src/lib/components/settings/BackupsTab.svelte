@@ -270,7 +270,7 @@
   <!-- Backup Destination Config -->
   <div class="surface-2 rounded-lg px-5 py-4">
     <h2 class="text-xs font-semibold text-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
-      <DatabaseBackup size={13} class="text-muted-foreground/70" />
+      <DatabaseBackup size={13} class="text-muted-strong" />
       {m.backup_destination()}
     </h2>
 

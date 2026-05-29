@@ -94,7 +94,7 @@
     <div class="flex items-center gap-3">
       <span class="text-[10px] uppercase tracking-wider text-muted font-semibold w-24 shrink-0">Email</span>
       <span class="flex-1 text-sm text-foreground flex items-center gap-1.5">
-        <Mail size={13} class="text-muted-foreground/70" />
+        <Mail size={13} class="text-muted-strong" />
         {email ?? '—'}
       </span>
     </div>
@@ -114,7 +114,7 @@
       <div class="flex items-center gap-3">
         <span class="text-[10px] uppercase tracking-wider text-muted font-semibold w-24 shrink-0">Member since</span>
         <span class="flex-1 text-sm text-muted-foreground flex items-center gap-1.5">
-          <CalendarDays size={13} class="text-muted-foreground/70" />
+          <CalendarDays size={13} class="text-muted-strong" />
           {memberSince}
         </span>
       </div>

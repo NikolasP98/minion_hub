@@ -32,7 +32,7 @@
 </script>
 
 <span
-  class="ai-disclosure inline-flex items-center gap-1 text-[9px] text-muted-foreground/70 select-none"
+  class="ai-disclosure inline-flex items-center gap-1 text-[9px] text-muted-strong select-none"
   role="status"
   aria-label={disclosure}
 >

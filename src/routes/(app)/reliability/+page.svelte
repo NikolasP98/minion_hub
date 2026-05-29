@@ -499,7 +499,7 @@
 				bind:this={filterScrollEl}
 				class="flex items-center gap-1.5 px-4 pb-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden flex-nowrap sm:flex-wrap"
 			>
-				<span class="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground/60 mr-0.5 shrink-0">{m.reliability_category()}</span>
+				<span class="text-[9px] font-semibold uppercase tracking-widest text-muted-strong mr-0.5 shrink-0">{m.reliability_category()}</span>
 				{#each CATEGORIES as cat (cat)}
 					<button
 						type="button"
@@ -514,7 +514,7 @@
 					</button>
 				{/each}
 				<span class="w-px h-4 bg-border mx-0.5 shrink-0"></span>
-				<span class="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground/60 mr-0.5 shrink-0">{m.reliability_severity()}</span>
+				<span class="text-[9px] font-semibold uppercase tracking-widest text-muted-strong mr-0.5 shrink-0">{m.reliability_severity()}</span>
 				{#each SEVERITIES as sev (sev)}
 					<button
 						type="button"

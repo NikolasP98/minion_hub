@@ -240,7 +240,7 @@
             </span>
             <span class="text-muted">order {meta.order}</span>
             <span class="text-muted font-mono tabular-nums">{formatBytes(row.bytes)}</span>
-            <span class="text-muted/60">·</span>
+            <span class="text-muted-strong">·</span>
             <span class="text-muted font-mono tabular-nums">{row.tokens.toLocaleString("en-US")} tok</span>
             {#if row.cacheable}<span class="text-warning" title="Cacheable">⚡</span>{/if}
             <span class="ml-2">

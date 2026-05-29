@@ -89,7 +89,7 @@
 			<section aria-label={STATUS_LABELS[group.status]}>
 				<h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
 					{STATUS_LABELS[group.status]}
-					<span class="text-xs font-medium text-muted-foreground/60 normal-case tracking-normal">
+					<span class="text-xs font-medium text-muted-strong normal-case tracking-normal">
 						{group.issues.length}
 					</span>
 				</h2>

@@ -75,7 +75,7 @@
 			<span class="w-1.5 h-1.5 rounded-full shrink-0 {orchStatusColor[orch.status] ?? 'bg-zinc-500'}"></span>
 
 			<!-- Orchestration ID (short) -->
-			<span class="text-[10px] font-mono text-muted/70">{orch.orchestrationId.slice(0, 8)}</span>
+			<span class="text-[10px] font-mono text-muted-strong">{orch.orchestrationId.slice(0, 8)}</span>
 
 			<!-- Mode badge -->
 			<span class="text-[8px] px-1 py-0.5 rounded bg-accent/10 text-accent/60">{orch.mode}</span>

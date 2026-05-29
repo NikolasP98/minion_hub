@@ -222,7 +222,7 @@
           <AgentAvatarStack agents={groupAgents(group.items)} max={4} size={16} />
           <!-- Mirror item-row right-stack widths so columns align: order(w-9) bytes(w-12) cacheable(w-3) toggle(w-8) -->
           <span class="w-9 shrink-0" aria-hidden="true"></span>
-          <span class="text-[10px] text-muted/70 font-mono shrink-0 tabular-nums w-12 text-right">
+          <span class="text-[10px] text-muted-strong font-mono shrink-0 tabular-nums w-12 text-right">
             {group.bytes > 0 ? formatBytes(group.bytes) : ""}
           </span>
           <span class="w-3 shrink-0" aria-hidden="true"></span>
@@ -263,13 +263,13 @@
               >
                 {section.id}
               </span>
-              <span class="text-[10px] text-muted/70 font-mono shrink-0 tabular-nums w-9 text-right">
+              <span class="text-[10px] text-muted-strong font-mono shrink-0 tabular-nums w-9 text-right">
                 {section.order}
               </span>
-              <span class="text-[10px] text-muted/70 font-mono shrink-0 tabular-nums w-12 text-right">
+              <span class="text-[10px] text-muted-strong font-mono shrink-0 tabular-nums w-12 text-right">
                 {meta ? formatBytes(meta.bytes) : ""}
               </span>
-              <span class="text-[10px] text-muted/70 shrink-0 w-3 text-center" title={meta?.cacheable ? "Cacheable" : ""}>
+              <span class="text-[10px] text-muted-strong shrink-0 w-3 text-center" title={meta?.cacheable ? "Cacheable" : ""}>
                 {meta?.cacheable ? "⚡" : ""}
               </span>
               <span data-no-toggle class="shrink-0">

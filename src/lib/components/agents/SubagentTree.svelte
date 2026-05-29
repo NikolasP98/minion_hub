@@ -44,7 +44,7 @@
 		<!-- Orchestration header -->
 		<div class="flex items-center gap-1.5 px-2 py-1.5 bg-bg2/50 border-b border-border/30">
 			<span class="w-1.5 h-1.5 rounded-full shrink-0 {orchStatusColor[meta?.status ?? ''] ?? 'bg-zinc-500'}"></span>
-			<span class="text-[10px] font-mono text-muted/70 truncate">{orchId.slice(0, 8)}</span>
+			<span class="text-[10px] font-mono text-muted-strong truncate">{orchId.slice(0, 8)}</span>
 			{#if meta?.mode}
 				<span class="text-[8px] px-1 py-0.5 rounded bg-accent/10 text-accent/60">{meta.mode}</span>
 			{/if}

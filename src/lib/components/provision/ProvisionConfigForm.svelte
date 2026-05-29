@@ -23,7 +23,7 @@
     <!-- Connection -->
     <div class="bg-card border border-border rounded-lg px-5 py-4">
         <h3 class="text-xs font-semibold text-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
-            <Server size={12} class="text-muted-foreground/70" />
+            <Server size={12} class="text-muted-strong" />
             {m.provision_sshConnection()}
         </h3>
         <div class="space-y-2.5">
@@ -65,7 +65,7 @@
     <!-- Agent -->
     <div class="bg-card border border-border rounded-lg px-5 py-4">
         <h3 class="text-xs font-semibold text-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
-            <Bot size={12} class="text-muted-foreground/70" />
+            <Bot size={12} class="text-muted-strong" />
             {m.provision_agent()}
         </h3>
         <div class="space-y-2.5">
@@ -103,7 +103,7 @@
     <!-- Install -->
     <div class="bg-card border border-border rounded-lg px-5 py-4">
         <h3 class="text-xs font-semibold text-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
-            <Package size={12} class="text-muted-foreground/70" />
+            <Package size={12} class="text-muted-strong" />
             {m.provision_install()}
         </h3>
         <div class="grid grid-cols-2 gap-2.5">
@@ -127,7 +127,7 @@
     <!-- Gateway -->
     <div class="bg-card border border-border rounded-lg px-5 py-4">
         <h3 class="text-xs font-semibold text-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
-            <Radio size={12} class="text-muted-foreground/70" />
+            <Radio size={12} class="text-muted-strong" />
             {m.provision_gateway()}
         </h3>
         <div class="grid grid-cols-2 gap-2.5">
@@ -175,7 +175,7 @@
     <!-- Credentials -->
     <div class="bg-card border border-border rounded-lg px-5 py-4">
         <h3 class="text-xs font-semibold text-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
-            <Key size={12} class="text-muted-foreground/70" />
+            <Key size={12} class="text-muted-strong" />
             {m.provision_credentials()}
         </h3>
         <div>
@@ -187,7 +187,7 @@
                 placeholder="sk-ant-..."
                 class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground font-mono placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-accent"
             />
-            <p class="text-[10px] text-muted-foreground/60 mt-1">
+            <p class="text-[10px] text-muted-strong mt-1">
                 {m.provision_apiKeyHint()}
             </p>
         </div>

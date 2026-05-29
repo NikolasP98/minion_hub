@@ -160,7 +160,7 @@
           <span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
             {m.tools_disabled()}
           </span>
-          <span class="text-[10px] text-muted-foreground/70">{disabledTools.length}</span>
+          <span class="text-[10px] text-muted-strong">{disabledTools.length}</span>
         </div>
         <div class="max-h-[500px] overflow-y-auto p-1 opacity-60">
           {#each disabledTools as tool (tool.id)}

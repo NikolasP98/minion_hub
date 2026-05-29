@@ -118,7 +118,7 @@
         </button>
       {/if}
     </div>
-    <p class="text-[11px] text-muted-foreground/70">JPG, PNG or GIF · up to 5 MB</p>
+    <p class="text-[11px] text-muted-strong">JPG, PNG or GIF · up to 5 MB</p>
   </div>
 
   <input

@@ -311,7 +311,7 @@
 								{a?.title ?? roleLabel(node.role)}
 							</span>
 							{#if a?.adapterType}
-								<span class="text-[10px] text-muted-foreground/60 font-mono leading-tight mt-1">
+								<span class="text-[10px] text-muted-strong font-mono leading-tight mt-1">
 									{a.adapterType}
 								</span>
 							{/if}

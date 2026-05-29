@@ -309,7 +309,7 @@
                                 {/if}
                             </div>
                             {#if msgTs(msg)}
-                                <span class="text-[9px] text-muted-foreground/60 px-1 tabular-nums">
+                                <span class="text-[9px] text-muted-strong px-1 tabular-nums">
                                     {fmtTime(msgTs(msg))}
                                 </span>
                             {/if}

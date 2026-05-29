@@ -345,7 +345,7 @@
             >
               {variantLabel(slot.variant)}
               {#if !slot.exists}
-                <span class="text-muted/60" title="Not yet initialized">○</span>
+                <span class="text-muted-strong" title="Not yet initialized">○</span>
               {/if}
               {#if slot.dirty !== null}
                 <span class="text-accent">•</span>
@@ -454,7 +454,7 @@
             <p class="text-muted text-xs">
               This section hasn't been migrated to editable prose yet.
             </p>
-            <p class="text-muted/70 text-[10px]">
+            <p class="text-muted-strong text-[10px]">
               Pure-prose sections will become editable in the D-0f-2 sweep. Sections with
               conditional rendering logic (e.g. tool-availability branches) stay rendered
               at runtime.

@@ -227,7 +227,7 @@
 								<div class="w-16 h-1.5 rounded-full bg-border shrink-0 overflow-hidden">
 									<div class="h-full rounded-full" style="width:{okPct}%;background:{okPct === 100 ? '#22c55e' : okPct >= 80 ? '#f59e0b' : '#ef4444'}"></div>
 								</div>
-								<span class="text-muted-foreground/60 tabular-nums shrink-0 w-12 text-right">{formatDuration(skill.avgDurationMs)}</span>
+								<span class="text-muted-strong tabular-nums shrink-0 w-12 text-right">{formatDuration(skill.avgDurationMs)}</span>
 							</div>
 						{/each}
 					</div>

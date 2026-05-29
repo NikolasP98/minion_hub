@@ -149,11 +149,11 @@
 
   <!-- Per-plugin link subsections (driven by the gateway's channels.plugins.list) -->
   {#if !conn.connected}
-    <p class="text-xs text-muted-foreground/70">Connect to a gateway to link channels.</p>
+    <p class="text-xs text-muted-strong">Connect to a gateway to link channels.</p>
   {:else if loadError}
     <p class="text-xs text-destructive">{loadError}</p>
   {:else if plugins.length === 0 && !loading}
-    <p class="text-xs text-muted-foreground/70">No channel plugins are active on this gateway.</p>
+    <p class="text-xs text-muted-strong">No channel plugins are active on this gateway.</p>
   {:else}
     <div class="space-y-2 pt-1">
       {#each plugins as p (p.pluginId)}

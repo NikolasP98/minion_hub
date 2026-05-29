@@ -150,7 +150,7 @@
 							{#if ws.isPrimary}
 								<span class="rounded px-1.5 py-0.5 text-[10px] font-medium bg-primary/10 text-primary">primary</span>
 							{/if}
-							<span class="font-mono text-[10px] text-muted-foreground/70">{ws.sourceType}</span>
+							<span class="font-mono text-[10px] text-muted-strong">{ws.sourceType}</span>
 						</div>
 						{#if ws.repoUrl}
 							<div class="font-mono text-xs text-muted-foreground truncate">{ws.repoUrl} · {ws.repoRef ?? 'main'}</div>

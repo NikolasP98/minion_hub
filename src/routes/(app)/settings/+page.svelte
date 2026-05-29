@@ -192,7 +192,7 @@
                         <p class="text-sm text-muted-foreground">
                             {m.config_noServer()}
                         </p>
-                        <p class="text-xs text-muted-foreground/60 mt-1">
+                        <p class="text-xs text-muted-strong mt-1">
                             {m.config_connectHint()}
                         </p>
                     </div>
@@ -241,7 +241,7 @@
                                     <p class="text-muted-foreground text-sm">
                                         {m.config_noTabSettings({ label: tab.label })}
                                     </p>
-                                    <p class="text-xs text-muted-foreground/60 mt-1">
+                                    <p class="text-xs text-muted-strong mt-1">
                                         {m.config_noTabSettingsHint()}
                                     </p>
                                 </div>

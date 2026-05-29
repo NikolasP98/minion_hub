@@ -233,7 +233,7 @@
             <div class="flex items-baseline gap-2">
                 <span class="text-sm font-medium text-foreground truncate">{channel.label}</span>
                 {#if channel.credentialsMeta?.username}
-                    <span class="text-xs text-muted-foreground/70 truncate">@{channel.credentialsMeta.username}</span>
+                    <span class="text-xs text-muted-strong truncate">@{channel.credentialsMeta.username}</span>
                 {/if}
             </div>
         </div>

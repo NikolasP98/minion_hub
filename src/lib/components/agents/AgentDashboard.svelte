@@ -141,7 +141,7 @@
                     <Activity size={13} />
                     Activity
                 </div>
-                <span class="text-[10px] text-muted-foreground/60 group-hover:text-accent transition-colors">
+                <span class="text-[10px] text-muted-strong group-hover:text-accent transition-colors">
                     Monitor <ArrowRight size={10} class="inline" />
                 </span>
             </div>
@@ -163,7 +163,7 @@
                     {#each recentSessions as s}
                         <div class="flex items-center justify-between gap-2 text-[11px]">
                             <span class="truncate text-foreground/80">{s.label || s.sessionKey?.split(':').pop() || 'session'}</span>
-                            <span class="text-muted-foreground/60 tabular-nums shrink-0">{fmtAgo(s.updatedAt ?? s.createdAt)}</span>
+                            <span class="text-muted-strong tabular-nums shrink-0">{fmtAgo(s.updatedAt ?? s.createdAt)}</span>
                         </div>
                     {/each}
                 {/if}
@@ -183,7 +183,7 @@
                     <FileText size={13} />
                     Knowledge
                 </div>
-                <span class="text-[10px] text-muted-foreground/60 group-hover:text-accent transition-colors">
+                <span class="text-[10px] text-muted-strong group-hover:text-accent transition-colors">
                     Files <ArrowRight size={10} class="inline" />
                 </span>
             </div>
@@ -234,7 +234,7 @@
                     <Wrench size={13} />
                     Capabilities
                 </div>
-                <span class="text-[10px] text-muted-foreground/60 group-hover:text-accent transition-colors">
+                <span class="text-[10px] text-muted-strong group-hover:text-accent transition-colors">
                     Tools <ArrowRight size={10} class="inline" />
                 </span>
             </div>

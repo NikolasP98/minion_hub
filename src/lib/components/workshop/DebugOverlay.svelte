@@ -59,9 +59,9 @@
 
           {#if queue.length > 0}
             <div class="border-t border-border/40 pt-0.5">
-              <span class="text-muted/60">queue:</span>
+              <span class="text-muted-strong">queue:</span>
               {#each queue as action, i (i)}
-                <div class="pl-1 text-[7px] {i === 0 ? 'text-accent' : 'text-muted/70'} truncate">
+                <div class="pl-1 text-[7px] {i === 0 ? 'text-accent' : 'text-muted-strong'} truncate">
                   {i + 1}. {actionLabel(action)}
                 </div>
               {/each}
@@ -72,12 +72,12 @@
 
           {#if mem?.contextSummary}
             <div class="border-t border-border/40 pt-0.5">
-              <span class="text-muted/60">mem:</span>
-              <span class="text-muted/70 text-[7px]">{mem.contextSummary.slice(0, 60)}…</span>
+              <span class="text-muted-strong">mem:</span>
+              <span class="text-muted-strong text-[7px]">{mem.contextSummary.slice(0, 60)}…</span>
             </div>
           {/if}
           {#if mem?.workspaceNotes?.length}
-            <div class="text-[7px] text-muted/60">{mem.workspaceNotes.length} note(s)</div>
+            <div class="text-[7px] text-muted-strong">{mem.workspaceNotes.length} note(s)</div>
           {/if}
         </div>
       </div>

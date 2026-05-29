@@ -357,7 +357,7 @@
       <div class="absolute inset-0 flex items-center justify-center text-center px-8 pointer-events-none">
         <div>
           <div class="text-muted text-sm">{m.kg_noMemoryObjects()}</div>
-          <div class="text-muted/60 text-xs mt-1">{m.kg_noMemoryObjectsHint()}</div>
+          <div class="text-muted-strong text-xs mt-1">{m.kg_noMemoryObjectsHint()}</div>
         </div>
       </div>
     {/if}
@@ -412,7 +412,7 @@
                     ? 'opacity-30 cursor-default border-border'
                     : active
                       ? 'border-transparent text-white'
-                      : 'border-border text-muted/70 hover:text-foreground'}"
+                      : 'border-border text-muted-strong hover:text-foreground'}"
                 style={active && count > 0 ? `background-color: ${TYPE_COLORS[type]}` : ''}
                 disabled={count === 0}
                 onclick={() => toggleType(type)}
@@ -478,7 +478,7 @@
                 {/if}
               </div>
             {:else}
-              <div><span class="text-muted">{m.kg_nodeData()}: </span><span class="text-muted/60">{m.kg_nodeDataEmpty()}</span></div>
+              <div><span class="text-muted">{m.kg_nodeData()}: </span><span class="text-muted-strong">{m.kg_nodeDataEmpty()}</span></div>
             {/if}
           </div>
         </div>

@@ -91,7 +91,7 @@
                 <p class="font-mono text-[10px] text-muted mt-0.5">
                   {m.workshop_agentElementCount({ agents: save.agentCount, elements: save.elementCount })}
                 </p>
-                <p class="font-mono text-[9px] text-muted/60 mt-0.5">
+                <p class="font-mono text-[9px] text-muted-strong mt-0.5">
                   {new Date(save.updatedAt).toLocaleDateString()}
                 </p>
               </div>

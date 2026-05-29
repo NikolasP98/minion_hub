@@ -158,7 +158,7 @@
         <div class="bg-card border border-border rounded-lg px-5 py-4">
             <h2 class="text-xs font-semibold text-foreground uppercase tracking-wider mb-4">
                 <span class="flex items-center gap-2">
-                    <Globe size={13} class="text-muted-foreground/70" />
+                    <Globe size={13} class="text-muted-strong" />
                     {m.settings_language()}
                 </span>
             </h2>

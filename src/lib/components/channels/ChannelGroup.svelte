@@ -129,7 +129,7 @@
         >
             <Settings2 size={12} />
             <span class="font-medium">Plugin settings</span>
-            <span class="text-muted-foreground/70">— {pluginSettingsEntry.description}</span>
+            <span class="text-muted-strong">— {pluginSettingsEntry.description}</span>
             <ArrowUpRight size={12} class="ml-auto" />
         </a>
     {/if}
