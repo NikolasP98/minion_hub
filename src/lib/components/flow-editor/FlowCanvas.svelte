@@ -73,6 +73,21 @@
 
   const colorMode: ColorMode = $derived(theme.preset.id === 'light' ? 'light' : 'dark');
 
+  // Decorate nodes with a run-status class so the status-colored outline (the
+  // style rules below) tracks live nodeRuns without touching each node component.
+  const statusClass: Record<string, string> = {
+    running: 'flow-status-running',
+    done: 'flow-status-done',
+    error: 'flow-status-error',
+    skipped: 'flow-status-skipped',
+  };
+  const decoratedNodes = $derived(
+    flowEditorState.nodes.map((n) => {
+      const status = flowEditorState.nodeRuns[n.id]?.status;
+      return status ? { ...n, class: statusClass[status] } : n;
+    }),
+  );
+
   let containerEl: HTMLDivElement;
 
   function screenToFlowPosition(screenPos: { x: number; y: number }) {
@@ -248,7 +263,7 @@
   ondrop={handleDrop}
 >
   <SvelteFlow
-    nodes={flowEditorState.nodes}
+    nodes={decoratedNodes}
     edges={flowEditorState.edges}
     {nodeTypes}
     {edgeTypes}
@@ -292,3 +307,35 @@
   <FlowActionIsland />
   <FlowHistoryPanel />
 </div>
+
+<style>
+  /* Run-status outline on the node, matching the status badge color. Applied
+     via the `class` decorated onto each node in decoratedNodes. */
+  :global(.svelte-flow__node.flow-status-running) {
+    border-radius: 0.75rem;
+    box-shadow:
+      0 0 0 2px rgb(245 158 11),
+      0 0 18px 3px rgb(245 158 11 / 0.45);
+  }
+  :global(.svelte-flow__node.flow-status-done) {
+    border-radius: 0.75rem;
+    box-shadow:
+      0 0 0 2px rgb(16 185 129),
+      0 0 12px 1px rgb(16 185 129 / 0.3);
+  }
+  :global(.svelte-flow__node.flow-status-error) {
+    border-radius: 0.75rem;
+    box-shadow:
+      0 0 0 2px rgb(239 68 68),
+      0 0 12px 1px rgb(239 68 68 / 0.3);
+  }
+  :global(.svelte-flow__node.flow-status-skipped) {
+    border-radius: 0.75rem;
+    box-shadow: 0 0 0 1.5px rgb(130 130 140 / 0.5);
+    opacity: 0.6;
+  }
+  /* Keep node connectors (handles) above the node body for visibility. */
+  :global(.svelte-flow__handle) {
+    z-index: 6;
+  }
+</style>
