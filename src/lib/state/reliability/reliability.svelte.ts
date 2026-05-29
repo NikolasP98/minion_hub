@@ -78,6 +78,27 @@ export function pushReliabilityEvent(event: ReliabilityEvent) {
   const { from, to } = reliability.dateRange;
   if (normalized.timestamp >= from && normalized.timestamp <= to) {
     reliability.events = [...reliability.events, normalized];
+    // Keep the server-derived aggregates live too: increment total + the
+    // category/severity buckets so the count badge, overview stat cells and
+    // severity donut tick up in real time instead of waiting for the next
+    // snapshot RPC (reliability.summary). This is what makes the page "catch
+    // live changes" without a cache layer — the gateway already streams every
+    // event, so we fold it into the existing summary rather than re-fetching.
+    const s = reliability.summary;
+    if (s) {
+      reliability.summary = {
+        ...s,
+        total: s.total + 1,
+        byCategory: {
+          ...s.byCategory,
+          [normalized.category]: (s.byCategory[normalized.category] ?? 0) + 1,
+        },
+        bySeverity: {
+          ...s.bySeverity,
+          [normalized.severity]: (s.bySeverity[normalized.severity] ?? 0) + 1,
+        },
+      };
+    }
   }
 }
 
