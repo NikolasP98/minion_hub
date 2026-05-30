@@ -14,7 +14,5 @@ export const flowGroups = sqliteTable(
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
-  (t) => ({
-    ownerIdx: index('flow_groups_owner_idx').on(t.userId, t.tenantId),
-  }),
+  (t) => [index('flow_groups_owner_idx').on(t.userId, t.tenantId)],
 );
