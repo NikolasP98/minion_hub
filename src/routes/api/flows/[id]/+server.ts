@@ -42,6 +42,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
       nodes: JSON.parse(flow.nodes),
       edges: JSON.parse(flow.edges),
       pluginId: flowPluginId(flow.config),
+      groupId: flow.groupId ?? null,
     },
   });
 };
@@ -74,14 +75,8 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
 
   const existing = await requireFlowOwnership(user.id, ctx.tenantId, params.id!, ctx);
 
-  // Plugin-imported flows are managed by their plugin and cannot be deleted —
-  // re-syncing would just resurrect them, and deleting orphans the install
-  // record. Disable/re-import via the plugin instead.
-  const owningPlugin = flowPluginId(existing.config);
-  if (owningPlugin) {
-    throw error(403, `This flow is managed by the "${owningPlugin}" plugin and cannot be deleted.`);
-  }
-
+  // Instances (incl. plugin-template duplicates) are user-owned and deletable.
+  // The plugin's group container is what's protected — see /api/flow-groups/[id].
   await ctx.db.delete(flows).where(eq(flows.id, existing.id));
 
   return json({ ok: true });

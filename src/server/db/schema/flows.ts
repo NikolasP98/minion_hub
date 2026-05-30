@@ -11,4 +11,6 @@ export const flows = sqliteTable('flows', {
   updatedAt: integer('updated_at').notNull(),
   active: integer('active', { mode: 'boolean' }).notNull().default(false),
   config: text('config').notNull().default('{}'),
+  // FK→flow_groups.id; null ⇒ "My Flows" (ungrouped). Set at create/instantiate/reconcile.
+  groupId: text('group_id'),
 });

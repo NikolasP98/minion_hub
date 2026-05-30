@@ -35,6 +35,7 @@ export { workshopSaves } from './workshop-saves';
 export { deviceIdentities } from './device-identities';
 export { flows } from './flows';
 export { flowRuns } from './flow-runs';
+export { flowGroups } from './flow-groups';
 export { userServers } from './user-servers';
 export { userAgents } from './user-agents';
 export { channels } from './channels';

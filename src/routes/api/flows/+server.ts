@@ -46,6 +46,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
       updatedAt: row.updatedAt,
       // Owning plugin id when this flow was imported from a plugin, else null.
       pluginId: flowPluginId(row.config),
+      groupId: row.groupId ?? null,
     };
   });
 
@@ -58,7 +59,10 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   if (!ctx) throw error(401);
 
   const body = await request.json();
-  const { name, nodes, edges } = body as { name?: string; nodes?: unknown; edges?: unknown };
+  const { name, nodes, edges, groupId, pluginId, templateId } = body as {
+    name?: string; nodes?: unknown; edges?: unknown;
+    groupId?: string; pluginId?: string; templateId?: string;
+  };
 
   if (!name || typeof name !== 'string') throw error(400, 'name is required');
 
@@ -66,6 +70,12 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   // flow in one call. Stored as JSON; the editor/runner validate concrete shapes.
   const nodesJson = Array.isArray(nodes) ? JSON.stringify(nodes) : '[]';
   const edgesJson = Array.isArray(edges) ? JSON.stringify(edges) : '[]';
+
+  // When duplicating a plugin template into its group, record the source so the
+  // card can show the origin pill. config.source no longer locks the flow.
+  const config = pluginId
+    ? JSON.stringify({ source: { pluginId, templateId } })
+    : '{}';
 
   const id = randomUUID();
   const now = Date.now();
@@ -79,6 +89,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     tenantId: ctx.tenantId,
     createdAt: now,
     updatedAt: now,
+    groupId: groupId ?? null,
+    config,
   });
 
   return json({ id }, { status: 201 });
