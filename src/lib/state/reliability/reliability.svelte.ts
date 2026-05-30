@@ -19,6 +19,46 @@ export interface ReliabilitySummary {
   bySeverity: Record<string, number>;
 }
 
+/** One origin/model combo from the server-side usage aggregate (reliability.usage). */
+export interface UsageBucket {
+  model: string;
+  provider: string;
+  channel: string;
+  source: string;
+  agentId: string;
+  input: number;
+  output: number;
+  cacheRead: number;
+  total: number;
+  calls: number;
+  /** Cost in integer micro-USD (USD × 1,000,000). */
+  costMicroUsd: number;
+}
+
+export interface UsageTimelinePoint {
+  t: number;
+  input: number;
+  output: number;
+  cacheRead: number;
+  total: number;
+  costMicroUsd: number;
+}
+
+export interface UsageAggregate {
+  buckets: UsageBucket[];
+  timeline: UsageTimelinePoint[];
+  total: {
+    input: number;
+    output: number;
+    cacheRead: number;
+    total: number;
+    calls: number;
+    costMicroUsd: number;
+  };
+  eventCount: number;
+  generatedAt: number;
+}
+
 export const reliability = $state({
   /** Recent events from the live WS stream */
   recentEvents: [] as ReliabilityEvent[],
@@ -32,6 +72,9 @@ export const reliability = $state({
     buckets: { bucket: number; category: string; count: number }[];
     bucketMs: number;
   } | null,
+  /** Server-side LLM usage aggregate (reliability.usage RPC). null → fall back to
+   *  client-side derivation over the (capped) loaded events on older gateways. */
+  usage: null as UsageAggregate | null,
   loading: false,
   dateRange: {
     from: Date.now() - 86400000,
@@ -59,6 +102,27 @@ export async function loadReliabilityTimeline(from: number, to: number) {
         : null;
   } catch {
     reliability.timeline = null;
+  }
+}
+
+/**
+ * Fetch the full-coverage LLM usage aggregate (by model/provider/channel/source/
+ * agent) over the range. This bypasses the 2,000-event raw cap, so cost/origin
+ * charts see every channel regardless of total event volume, and cost is
+ * computed server-side (micro-USD). Sets `usage = null` on older gateways that
+ * lack the RPC → the UI falls back to client-side derivation over loaded events.
+ */
+export async function loadReliabilityUsage(from: number, to: number) {
+  try {
+    const data = (await sendRequest('reliability.usage', {
+      since: from,
+      until: to,
+    })) as UsageAggregate | null;
+    reliability.usage =
+      data && Array.isArray(data.buckets) && data.total ? data : null;
+  } catch {
+    // Method not supported (older gateway) or not connected — fall back to events.
+    reliability.usage = null;
   }
 }
 

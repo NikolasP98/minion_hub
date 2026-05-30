@@ -8,13 +8,14 @@
 	import GatewayHealthPanel from '$lib/components/reliability/GatewayHealthPanel.svelte';
 	import PluginHealthPanel from '$lib/components/reliability/PluginHealthPanel.svelte';
 	import ConnectionEventsPanel from '$lib/components/reliability/ConnectionEventsPanel.svelte';
-	import AgentLlmMetricsPanel from '$lib/components/reliability/AgentLlmMetricsPanel.svelte';
+	import AgentLlmAnalytics from '$lib/components/reliability/AgentLlmAnalytics.svelte';
 	import ScanLine from '$lib/components/decorations/ScanLine.svelte';
 	import {
 		reliability,
 		loadReliabilitySummary,
 		loadReliabilityEvents,
-		loadReliabilityTimeline
+		loadReliabilityTimeline,
+		loadReliabilityUsage
 	} from '$lib/state/reliability/reliability.svelte';
 	import { hostsState } from '$lib/state/features/hosts.svelte';
 	import { conn } from '$lib/state/gateway';
@@ -297,7 +298,8 @@
 		await Promise.all([
 			loadReliabilitySummary(serverId, from, to),
 			loadReliabilityEvents(serverId, { from, to, limit: 10_000 }),
-			loadReliabilityTimeline(from, to)
+			loadReliabilityTimeline(from, to),
+			loadReliabilityUsage(from, to)
 		]);
 	}
 
@@ -747,8 +749,8 @@
 				byCategory={overviewStats.byCategory}
 			/>
 			{:else if activeTab === 'agents'}
-			<!-- ── Agents & LLM ─────────────────────────────────────────────────── -->
-			<AgentLlmMetricsPanel events={filteredEvents} />
+			<!-- ── Agents & LLM: token cost + origin analytics + agent-activity log ── -->
+			<AgentLlmAnalytics events={filteredEvents} aggregate={reliability.usage} />
 			{:else if activeTab === 'plugins'}
 			<!-- ── Plugin Health (one section + KPI widgets per installed plugin) ── -->
 			<PluginHealthPanel {serverId} from={reliability.dateRange.from} to={reliability.dateRange.to} />
