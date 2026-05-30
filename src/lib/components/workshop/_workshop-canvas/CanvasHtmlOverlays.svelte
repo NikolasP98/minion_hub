@@ -13,7 +13,21 @@
     import ConversationIndicator from "../ConversationIndicator.svelte";
     import { workshopState } from "$lib/state/workshop/workshop.svelte";
     import { thinkingAgents } from "$lib/state/workshop/workshop-conversations.svelte";
+    import { getAgentState, type AgentFsmState } from "$lib/workshop/agent-fsm";
     import type { SpeechBubbleEntry } from "./types";
+
+    // Per-agent status glyph: a dot anchored to the sprite so you can scan who's
+    // doing what without opening the conversations sidebar. Only *noteworthy*
+    // states get a dot — idle / wandering / patrolling / dragged show nothing, so
+    // the canvas stays calm and activity pops.
+    const STATUS_GLYPHS: Partial<
+        Record<AgentFsmState, { cls: string; pulse: boolean; label: string }>
+    > = {
+        conversing: { cls: "bg-yellow-400", pulse: true, label: "In conversation" },
+        reading: { cls: "bg-blue-400", pulse: false, label: "Reading" },
+        cooldown: { cls: "bg-foreground/30", pulse: false, label: "Cooling down" },
+        heartbeat: { cls: "bg-cyan-400", pulse: true, label: "Waking up" },
+    };
 
     interface Props {
         speechBubbles: SpeechBubbleEntry[];
@@ -77,6 +91,29 @@
         {/if}
     {/each}
 
+    <!-- Per-agent status glyphs (conversing / reading / cooldown / heartbeat) -->
+    {#each Object.values(workshopState.agents) as agent (agent.instanceId)}
+        {@const glyph = STATUS_GLYPHS[getAgentState(agent.instanceId) ?? "idle"]}
+        {#if glyph}
+            {@const gp = worldToScreenAware(
+                agent.position.x,
+                agent.position.y,
+            )}
+            <div
+                class="absolute pointer-events-none z-20"
+                style="left: {gp.x + 13}px; top: {gp.y + 11}px;"
+                title={glyph.label}
+                aria-label={glyph.label}
+            >
+                <span
+                    class="block w-2 h-2 rounded-full ring-1 ring-bg2/80 {glyph.cls} {glyph.pulse
+                        ? 'status-glyph-pulse'
+                        : ''}"
+                ></span>
+            </div>
+        {/if}
+    {/each}
+
     <!-- Thinking/typing indicators -->
     {#each Object.keys(thinkingAgents) as instanceId (instanceId)}
         {@const agent = workshopState.agents[instanceId]}
@@ -113,6 +150,22 @@
 <style>
     .thinking-dot {
         animation: thinking-bounce 1.4s infinite ease-in-out;
+    }
+
+    .status-glyph-pulse {
+        animation: status-glyph-pulse 1.2s infinite ease-in-out;
+    }
+
+    @keyframes status-glyph-pulse {
+        0%,
+        100% {
+            opacity: 1;
+            transform: scale(1);
+        }
+        50% {
+            opacity: 0.5;
+            transform: scale(1.25);
+        }
     }
 
     @keyframes thinking-bounce {
