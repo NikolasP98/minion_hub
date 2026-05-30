@@ -4,6 +4,7 @@
   import { onDestroy, onMount } from 'svelte';
 
   import WorkshopToolbar from '$lib/components/workshop/WorkshopToolbar.svelte';
+  import WorkshopPalette from '$lib/components/workshop/WorkshopPalette.svelte';
   import WorkshopCanvas from '$lib/components/workshop/WorkshopCanvas.svelte';
   import {
     saveSync,
@@ -36,4 +37,7 @@
 </script>
 
 <WorkshopToolbar />
-<WorkshopCanvas />
+<div class="flex-1 flex min-h-0">
+  <WorkshopPalette />
+  <WorkshopCanvas />
+</div>

@@ -225,6 +225,8 @@
   "workshop_switchToClassic": "Switch to Classic View",
   "workshop_syncing": "syncing…",
   "workshop_undo": "Undo",
+  "workshop_paletteAgents": "Agents",
+  "workshop_paletteToggle": "Toggle palette",
   "workshop_banter": "Banter",
   "workshop_banterHintOn": "Idle agents auto-chat. Click to pause.",
   "workshop_banterHintOff": "Idle auto-chat is paused. Click to enable.",
