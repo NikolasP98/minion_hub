@@ -1,8 +1,15 @@
 import { eq, and, sql } from 'drizzle-orm';
 import { env } from '$env/dynamic/private';
 import { marketplaceAgents, marketplaceInstalls } from '@minion-stack/db/schema';
+import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { newId, nowMs } from '$server/db/utils';
-import type { TenantContext } from './base';
+import { scopeData, type TenantContext } from './base';
+
+/**
+ * The marketplace catalog is a single GLOBAL dataset (not tenant-scoped), so it
+ * uses a global invalidation tag shared by every reader.
+ */
+const MARKETPLACE_TAGS = tags.global('marketplace');
 
 const GITHUB_REPO = 'NikolasP98/minions';
 const GITHUB_API = 'https://api.github.com';
@@ -249,40 +256,52 @@ export async function listMarketplaceAgents(
 ) {
   const { category, search, limit = 50, offset = 0 } = filters;
 
-  let query = db
-    .select({
-      id: marketplaceAgents.id,
-      name: marketplaceAgents.name,
-      role: marketplaceAgents.role,
-      category: marketplaceAgents.category,
-      tags: marketplaceAgents.tags,
-      description: marketplaceAgents.description,
-      catchphrase: marketplaceAgents.catchphrase,
-      version: marketplaceAgents.version,
-      model: marketplaceAgents.model,
-      avatarSeed: marketplaceAgents.avatarSeed,
-      githubPath: marketplaceAgents.githubPath,
-      installCount: marketplaceAgents.installCount,
-      syncedAt: marketplaceAgents.syncedAt,
-      createdAt: marketplaceAgents.createdAt,
-      updatedAt: marketplaceAgents.updatedAt,
-    })
-    .from(marketplaceAgents)
-    .$dynamic();
+  // Global, read-mostly catalog — cache per filter combination. Invalidated on
+  // sync (upsertMarketplaceAgents) and install (recordInstall); short TTL + SWR
+  // keeps browse/search snappy without re-scanning the table per keystroke.
+  return cached(
+    keys.hub('marketplace', { d: scopeData({ category, search, limit, offset }) }),
+    {
+      ttl: '10m',
+      swr: '30m',
+      tags: MARKETPLACE_TAGS,
+    },
+    async () => {
+      let query = db
+        .select({
+          id: marketplaceAgents.id,
+          name: marketplaceAgents.name,
+          role: marketplaceAgents.role,
+          category: marketplaceAgents.category,
+          tags: marketplaceAgents.tags,
+          description: marketplaceAgents.description,
+          catchphrase: marketplaceAgents.catchphrase,
+          version: marketplaceAgents.version,
+          model: marketplaceAgents.model,
+          avatarSeed: marketplaceAgents.avatarSeed,
+          githubPath: marketplaceAgents.githubPath,
+          installCount: marketplaceAgents.installCount,
+          syncedAt: marketplaceAgents.syncedAt,
+          createdAt: marketplaceAgents.createdAt,
+          updatedAt: marketplaceAgents.updatedAt,
+        })
+        .from(marketplaceAgents)
+        .$dynamic();
 
-  if (category) {
-    query = query.where(eq(marketplaceAgents.category, category));
-  }
+      if (category) {
+        query = query.where(eq(marketplaceAgents.category, category));
+      }
 
-  if (search) {
-    const pattern = `%${search}%`;
-    query = query.where(
-      sql`(${marketplaceAgents.name} LIKE ${pattern} OR ${marketplaceAgents.role} LIKE ${pattern} OR ${marketplaceAgents.description} LIKE ${pattern} OR ${marketplaceAgents.tags} LIKE ${pattern})`,
-    );
-  }
+      if (search) {
+        const pattern = `%${search}%`;
+        query = query.where(
+          sql`(${marketplaceAgents.name} LIKE ${pattern} OR ${marketplaceAgents.role} LIKE ${pattern} OR ${marketplaceAgents.description} LIKE ${pattern} OR ${marketplaceAgents.tags} LIKE ${pattern})`,
+        );
+      }
 
-  const rows = await query.limit(limit).offset(offset).orderBy(marketplaceAgents.installCount);
-  return rows;
+      return query.limit(limit).offset(offset).orderBy(marketplaceAgents.installCount);
+    },
+  );
 }
 
 export async function getMarketplaceAgent(db: TenantContext['db'], id: string) {
@@ -353,6 +372,9 @@ export async function upsertMarketplaceAgents(
     }
   }
 
+  // Catalog metadata changed — drop every cached filter combination.
+  await invalidateTags(MARKETPLACE_TAGS);
+
   return results;
 }
 
@@ -375,6 +397,9 @@ export async function recordInstall(ctx: TenantContext, agentId: string, serverI
     .update(marketplaceAgents)
     .set({ installCount: sql`${marketplaceAgents.installCount} + 1` })
     .where(eq(marketplaceAgents.id, agentId));
+
+  // installCount feeds the listing (and its ordering) — refresh the catalog cache.
+  await invalidateTags(MARKETPLACE_TAGS);
 
   return id;
 }
