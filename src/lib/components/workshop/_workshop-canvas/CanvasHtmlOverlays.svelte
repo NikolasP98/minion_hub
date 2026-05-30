@@ -11,6 +11,7 @@
      */
     import SpeechBubble from "../SpeechBubble.svelte";
     import ConversationIndicator from "../ConversationIndicator.svelte";
+    import AgentActionBar from "../AgentActionBar.svelte";
     import { workshopState } from "$lib/state/workshop/workshop.svelte";
     import { thinkingAgents } from "$lib/state/workshop/workshop-conversations.svelte";
     import { getAgentState, type AgentFsmState } from "$lib/workshop/agent-fsm";
@@ -37,6 +38,12 @@
         };
         onRemoveBubble: (id: string) => void;
         onOpenConversation: (conversationId: string) => void;
+        selectedInstanceId?: string | null;
+        connected?: boolean;
+        onAgentChat?: () => void;
+        onAgentTask?: () => void;
+        onAgentBehavior?: () => void;
+        onAgentDelete?: () => void;
     }
 
     let {
@@ -44,6 +51,12 @@
         worldToScreenAware,
         onRemoveBubble,
         onOpenConversation,
+        selectedInstanceId = null,
+        connected = false,
+        onAgentChat,
+        onAgentTask,
+        onAgentBehavior,
+        onAgentDelete,
     }: Props = $props();
 </script>
 
@@ -145,6 +158,24 @@
             </div>
         {/if}
     {/each}
+
+    <!-- Selected-agent floating action bar -->
+    {#if selectedInstanceId}
+        {@const sel = workshopState.agents[selectedInstanceId]}
+        {#if sel}
+            {@const sp = worldToScreenAware(sel.position.x, sel.position.y)}
+            <AgentActionBar
+                screenX={sp.x}
+                screenY={sp.y}
+                {connected}
+                behavior={sel.behavior}
+                onChat={() => onAgentChat?.()}
+                onTask={() => onAgentTask?.()}
+                onBehavior={() => onAgentBehavior?.()}
+                onDelete={() => onAgentDelete?.()}
+            />
+        {/if}
+    {/if}
 </div>
 
 <style>
