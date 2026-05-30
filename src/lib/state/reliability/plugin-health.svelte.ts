@@ -1,102 +1,131 @@
 /**
- * State module for plugin health data.
+ * State module for the reliability/plugins page.
  *
- * Fetches reliability events related to plugin loading (plugin_load_success,
- * plugin_load_failure, plugins_loaded_summary) via the gateway WebSocket and
- * presents them as a structured view for the PluginHealthPanel.
+ * Calls the gateway `reliability.plugins` RPC, which returns one entry per
+ * INSTALLED plugin: load status + declared capabilities (from the live plugin
+ * registry) enriched with reliability telemetry attributed to that plugin
+ * (events, errors, last activity, top failure modes). This is reliability data,
+ * distinct from a plugin's own dashboard metrics.
  */
 
 import { sendRequest } from '$lib/services/gateway.svelte';
 import { createAsyncResource, messageError } from '../async.svelte';
 
-export interface PluginEntry {
-  pluginId: string;
-  status: 'loaded' | 'failed';
-  source?: string;
-  origin?: string;
-  version?: string;
-  error?: string;
-  channels?: string[];
-  tools?: number;
-  occurredAt: number;
+export interface PluginCapabilities {
+  tools: number;
+  hooks: number;
+  channels: number;
+  providers: number;
+  gatewayMethods: number;
+  httpHandlers: number;
+  cliCommands: number;
+  services: number;
+  commands: number;
+  flowNodes: number;
+  flows: number;
 }
 
-export interface PluginSummary {
-  total: number;
-  loaded: number;
-  failed: number;
-  loadTimeMs?: number;
-  failedPlugins: string[];
-  capturedAt: number;
+export interface PluginTelemetry {
+  totalEvents: number;
+  bySeverity: Record<string, number>;
+  errors: number;
+  lastActivityAt: number | null;
+  lastError: { event: string; message: string; timestamp: number } | null;
+  topFailureModes: { event: string; failureMode: string; count: number }[];
+}
+
+export interface PluginHealthEntry {
+  pluginId: string;
+  name: string;
+  version?: string;
+  description?: string;
+  origin: string;
+  source: string;
+  status: 'loaded' | 'disabled' | 'error';
+  enabled: boolean;
+  configEnabled: boolean;
+  error?: string;
+  capabilities: PluginCapabilities;
+  channelIds: string[];
+  providerIds: string[];
+  toolNames: string[];
+  telemetry: PluginTelemetry;
 }
 
 export interface PluginHealthSnapshot {
-  summary: PluginSummary | null;
-  plugins: PluginEntry[];
+  plugins: PluginHealthEntry[];
+  capturedAt: number;
+  period: { start: number; end: number };
+}
+
+const EMPTY_CAPS: PluginCapabilities = {
+  tools: 0,
+  hooks: 0,
+  channels: 0,
+  providers: 0,
+  gatewayMethods: 0,
+  httpHandlers: 0,
+  cliCommands: 0,
+  services: 0,
+  commands: 0,
+  flowNodes: 0,
+  flows: 0,
+};
+
+const EMPTY_TELEMETRY: PluginTelemetry = {
+  totalEvents: 0,
+  bySeverity: {},
+  errors: 0,
+  lastActivityAt: null,
+  lastError: null,
+  topFailureModes: [],
+};
+
+function normalizeEntry(raw: Record<string, unknown>): PluginHealthEntry {
+  const caps = (raw.capabilities ?? {}) as Partial<PluginCapabilities>;
+  const tel = (raw.telemetry ?? {}) as Partial<PluginTelemetry>;
+  return {
+    pluginId: String(raw.pluginId ?? 'unknown'),
+    name: String(raw.name ?? raw.pluginId ?? 'unknown'),
+    version: typeof raw.version === 'string' ? raw.version : undefined,
+    description: typeof raw.description === 'string' ? raw.description : undefined,
+    origin: String(raw.origin ?? 'unknown'),
+    source: String(raw.source ?? ''),
+    status: (raw.status as PluginHealthEntry['status']) ?? 'loaded',
+    enabled: raw.enabled !== false,
+    configEnabled: raw.configEnabled !== false,
+    error: typeof raw.error === 'string' ? raw.error : undefined,
+    capabilities: { ...EMPTY_CAPS, ...caps },
+    channelIds: Array.isArray(raw.channelIds) ? (raw.channelIds as string[]) : [],
+    providerIds: Array.isArray(raw.providerIds) ? (raw.providerIds as string[]) : [],
+    toolNames: Array.isArray(raw.toolNames) ? (raw.toolNames as string[]) : [],
+    telemetry: {
+      ...EMPTY_TELEMETRY,
+      ...tel,
+      bySeverity: (tel.bySeverity as Record<string, number>) ?? {},
+      topFailureModes: Array.isArray(tel.topFailureModes) ? tel.topFailureModes : [],
+    },
+  };
 }
 
 export function createPluginHealthState() {
-  const resource = createAsyncResource<PluginHealthSnapshot, [string]>(
-    async (_serverId: string) => {
-      // Fetch recent gateway-category events via WS (last 24h, generous window)
-      const since = Date.now() - 24 * 60 * 60 * 1000;
-      const data = (await sendRequest('reliability.events', {
-        category: 'gateway',
-        since,
-        limit: 200,
+  const resource = createAsyncResource<PluginHealthSnapshot, [string, number, number]>(
+    async (_serverId: string, from: number, to: number) => {
+      const data = (await sendRequest('reliability.plugins', {
+        since: from,
+        until: to,
       })) as {
-        events?: Array<{
-          event: string;
-          message: string;
-          metadata?: Record<string, unknown>;
-          timestamp: number;
-        }>;
+        plugins?: Record<string, unknown>[];
+        capturedAt?: number;
+        period?: { start: number; end: number };
       } | null;
-      const events = data?.events ?? [];
 
-      // Find the latest summary event (= latest gateway boot)
-      const summaryEvents = events.filter((e) => e.event === 'plugins_loaded_summary');
-      if (summaryEvents.length === 0) {
-        return { summary: null, plugins: [] };
-      }
-
-      const latestSummary = summaryEvents.reduce((a, b) => (a.timestamp > b.timestamp ? a : b));
-      const meta = latestSummary.metadata ?? {};
-
-      const summary: PluginSummary = {
-        total: typeof meta.total === 'number' ? meta.total : 0,
-        loaded: typeof meta.loaded === 'number' ? meta.loaded : 0,
-        failed: typeof meta.failed === 'number' ? meta.failed : 0,
-        loadTimeMs: typeof meta.loadTimeMs === 'number' ? meta.loadTimeMs : undefined,
-        failedPlugins: Array.isArray(meta.failedPlugins) ? (meta.failedPlugins as string[]) : [],
-        capturedAt: latestSummary.timestamp,
+      const plugins = (data?.plugins ?? []).map(normalizeEntry);
+      return {
+        plugins,
+        capturedAt: data?.capturedAt ?? Date.now(),
+        period: data?.period ?? { start: from, end: to },
       };
-
-      // Collect per-plugin events from same boot (timestamp >= summary - 5s tolerance)
-      const bootWindow = latestSummary.timestamp - 5000;
-      const pluginEvents = events.filter(
-        (e) =>
-          (e.event === 'plugin_load_success' || e.event === 'plugin_load_failure') &&
-          e.timestamp >= bootWindow &&
-          e.timestamp <= latestSummary.timestamp + 1000,
-      );
-
-      const plugins: PluginEntry[] = pluginEvents.map((e) => {
-        const m = e.metadata ?? {};
-        return {
-          pluginId: typeof m.pluginId === 'string' ? m.pluginId : 'unknown',
-          status: e.event === 'plugin_load_success' ? 'loaded' : 'failed',
-          source: typeof m.source === 'string' ? m.source : undefined,
-          origin: typeof m.origin === 'string' ? m.origin : undefined,
-          version: typeof m.version === 'string' ? m.version : undefined,
-          error: typeof m.error === 'string' ? m.error : undefined,
-          channels: Array.isArray(m.channels) ? (m.channels as string[]) : undefined,
-          tools: typeof m.tools === 'number' ? m.tools : undefined,
-          occurredAt: e.timestamp,
-        };
-      });
-
-      return { summary, plugins };
     },
     { initialLoading: true, formatError: messageError },
   );
