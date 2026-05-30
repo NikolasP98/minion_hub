@@ -4,7 +4,7 @@
 	import MetricCard from './MetricCard.svelte';
 	import Chart from '$lib/components/charts/Chart.svelte';
 	import type { EChartsOption } from 'echarts';
-	import type { ReliabilityEvent } from '$lib/state/reliability/reliability.svelte';
+	import type { ReliabilityEvent, ActivityAggregate } from '$lib/state/reliability/reliability.svelte';
 	import { deriveOrigin } from '$lib/utils/event-origin';
 
 	// "What are the agents actually DOING?" — derived purely from the unified event
@@ -12,7 +12,18 @@
 	// proactive-vs-reactive balance, and tool activity. Heartbeat events carry no
 	// agentId (keyed by account), so they're shown fleet-wide even when an agent
 	// filter is active; memory / tool / LLM KPIs respect the agent filter.
-	let { events = [], agentFilter }: { events: ReliabilityEvent[]; agentFilter?: string } = $props();
+	let {
+		events = [],
+		activity = null,
+		agentFilter,
+	}: { events: ReliabilityEvent[]; activity?: ActivityAggregate | null; agentFilter?: string } =
+		$props();
+
+	// Prefer the server-side activity aggregate (full coverage, fleet-wide) when
+	// the gateway provides it; else derive from the loaded (capped) events. In
+	// aggregate mode the agent filter doesn't apply (memory/heartbeat carry no
+	// agentId), so the panel is fleet-wide — which matches its intent.
+	let usingActivity = $derived(!!activity);
 
 	function parseMetadata(raw: unknown): Record<string, unknown> | null {
 		if (raw == null) return null;
@@ -58,6 +69,7 @@
 
 	// ── Memory / KG ──────────────────────────────────────────────────────────────
 	let memory = $derived.by(() => {
+		if (activity) return activity.memory;
 		let created = 0,
 			updated = 0,
 			deleted = 0;
@@ -84,6 +96,11 @@
 
 	// ── Heartbeats ────────────────────────────────────────────────────────────────
 	let heartbeat = $derived.by(() => {
+		if (activity) {
+			const h = activity.heartbeat;
+			const graded = h.ok + h.failed;
+			return { ...h, successRate: graded ? h.ok / graded : 1 };
+		}
 		let ok = 0,
 			failed = 0,
 			skipped = 0,
@@ -119,6 +136,10 @@
 
 	// ── Proactivity (from agent.llm.usage source) ──────────────────────────────────
 	let proactivity = $derived.by(() => {
+		if (activity) {
+			const p = activity.proactivity;
+			return { ...p, ratio: p.total ? p.proactive / p.total : 0 };
+		}
 		let proactive = 0,
 			reactive = 0,
 			interAgent = 0,
@@ -139,6 +160,10 @@
 
 	// ── Tools ───────────────────────────────────────────────────────────────────────
 	let tools = $derived.by(() => {
+		if (activity) {
+			const t = activity.tools;
+			return { ...t, errorRate: t.total ? t.err / t.total : 0 };
+		}
 		let ok = 0,
 			err = 0;
 		const byTool = new Map<string, number>();
@@ -218,14 +243,23 @@
 		{#snippet icon()}
 			<Sparkles size={11} class="text-accent shrink-0" />
 		{/snippet}
+		{#snippet actions()}
+			{#if usingActivity}
+				<span class="text-[10px] text-muted-strong">Fleet-wide · full coverage</span>
+			{/if}
+		{/snippet}
 	</PanelHeader>
 
 	{#if !hasAny}
 		<div class="flex flex-col items-center justify-center gap-1 py-8 px-4 text-center">
 			<span class="text-muted-foreground text-[13px]">No agent-activity signals in range</span>
 			<span class="text-muted-strong text-[11px] max-w-md">
-				Memory writes, heartbeats and tool calls appear here once the gateway is emitting them.
-				Requires the activity-telemetry gateway build.
+				{#if usingActivity}
+					No memory writes, heartbeats or tool calls in this range yet — they accrue as agents act.
+				{:else}
+					Memory writes, heartbeats and tool calls appear here once the gateway is emitting them
+					(requires the activity-telemetry gateway build).
+				{/if}
 			</span>
 		</div>
 	{:else}
