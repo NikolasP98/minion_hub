@@ -1,7 +1,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { flowGroups, flows } from '$server/db/schema';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull, or } from 'drizzle-orm';
 import { requireAuth } from '$server/auth/authorize';
 import { getTenantCtx } from '$server/auth/tenant-ctx';
 import type { TenantContext } from '$server/services/base';
@@ -43,7 +43,15 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
   }
 
   // Non-destructive: move the group's flows to "My Flows" (ungrouped), then drop the group.
-  await ctx.db.update(flows).set({ groupId: null, updatedAt: Date.now() }).where(eq(flows.groupId, group.id));
+  // Scope the update by owner/tenant too (defense-in-depth) so it can never touch
+  // another user's rows even if a group somehow contained foreign flows.
+  await ctx.db.update(flows).set({ groupId: null, updatedAt: Date.now() }).where(
+    and(
+      eq(flows.groupId, group.id),
+      or(eq(flows.userId, user.id), isNull(flows.userId)),
+      or(eq(flows.tenantId, ctx.tenantId), isNull(flows.tenantId)),
+    ),
+  );
   await ctx.db.delete(flowGroups).where(eq(flowGroups.id, group.id));
   return json({ ok: true });
 };

@@ -1,6 +1,6 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { flows } from '$server/db/schema';
+import { flows, flowGroups } from '$server/db/schema';
 import { and, desc, eq, isNull, or } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { requireAuth } from '$server/auth/authorize';
@@ -65,6 +65,18 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   };
 
   if (!name || typeof name !== 'string') throw error(400, 'name is required');
+
+  // SECURITY (IDOR): when a target group is specified, the caller must own it
+  // (or it's a legacy null-owner row in the same tenant). Without this check a
+  // client could assign a flow into another user's/tenant's group by id.
+  if (groupId) {
+    const [group] = await ctx.db.select().from(flowGroups).where(eq(flowGroups.id, groupId));
+    if (!group) throw error(404, 'Group not found');
+    const ownedByUser = group.userId === user.id;
+    const legacyRow = group.userId === null;
+    const sameTenant = group.tenantId === ctx.tenantId || group.tenantId === null;
+    if ((!ownedByUser && !legacyRow) || !sameTenant) throw error(403, 'Forbidden');
+  }
 
   // Optional nodes/edges let a plugin-shipped flow template be imported as a new
   // flow in one call. Stored as JSON; the editor/runner validate concrete shapes.

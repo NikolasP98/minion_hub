@@ -23,9 +23,10 @@ describe('GET /api/flows — groupId', () => {
 });
 
 describe('POST /api/flows — groupId + templateId', () => {
-  it('persists groupId and the template source', async () => {
+  it('persists groupId and the template source (into a group the user owns)', async () => {
     const { db, resolve } = createMockDb();
-    resolve([]);
+    // group-ownership lookup returns a group owned by this user → passes the check
+    resolve([{ id: 'g1', userId: 'user-1', tenantId: 'org-1', pluginId: 'aw' }]);
     mockGetTenantCtx.mockResolvedValue({ db, tenantId: 'org-1' });
     const { POST } = await import('./+server');
     const res = await POST({
@@ -34,5 +35,51 @@ describe('POST /api/flows — groupId + templateId', () => {
     } as Parameters<typeof POST>[0]);
     expect(res.status).toBe(201);
     expect(db.insert).toHaveBeenCalledTimes(1);
+  });
+
+  it('creates an ungrouped flow with no group lookup when groupId is absent', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([]);
+    mockGetTenantCtx.mockResolvedValue({ db, tenantId: 'org-1' });
+    const { POST } = await import('./+server');
+    const res = await POST({
+      locals: makeLocals(),
+      request: new Request('http://x/api/flows', { method: 'POST', body: JSON.stringify({ name: 'Solo' }) }),
+    } as Parameters<typeof POST>[0]);
+    expect(res.status).toBe(201);
+    expect(db.insert).toHaveBeenCalledTimes(1);
+  });
+
+  it('SECURITY: rejects a groupId owned by another user (IDOR) with 403 and no insert', async () => {
+    const { db, resolve } = createMockDb();
+    // group-ownership lookup returns a group owned by a DIFFERENT user
+    resolve([{ id: 'g-foreign', userId: 'other-user', tenantId: 'org-1', pluginId: null }]);
+    mockGetTenantCtx.mockResolvedValue({ db, tenantId: 'org-1' });
+    const { POST } = await import('./+server');
+    let status = 0;
+    try {
+      await POST({
+        locals: makeLocals(),
+        request: new Request('http://x/api/flows', { method: 'POST', body: JSON.stringify({ name: 'X', groupId: 'g-foreign' }) }),
+      } as Parameters<typeof POST>[0]);
+    } catch (e) { status = (e as { status?: number }).status ?? 0; }
+    expect(status).toBe(403);
+    expect(db.insert).not.toHaveBeenCalled();
+  });
+
+  it('SECURITY: rejects a non-existent groupId with 404 and no insert', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([]); // group lookup finds nothing
+    mockGetTenantCtx.mockResolvedValue({ db, tenantId: 'org-1' });
+    const { POST } = await import('./+server');
+    let status = 0;
+    try {
+      await POST({
+        locals: makeLocals(),
+        request: new Request('http://x/api/flows', { method: 'POST', body: JSON.stringify({ name: 'X', groupId: 'ghost' }) }),
+      } as Parameters<typeof POST>[0]);
+    } catch (e) { status = (e as { status?: number }).status ?? 0; }
+    expect(status).toBe(404);
+    expect(db.insert).not.toHaveBeenCalled();
   });
 });
