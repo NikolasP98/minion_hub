@@ -49,7 +49,11 @@
       };
     }
     const mod = await import("$lib/services/gateway.svelte");
-    return mod.sendRequest(method, params);
+    // Generation-class RPCs (e.g. studio.generate → an image model) legitimately
+    // run far longer than the 15s default; give them a generous ceiling so the
+    // hub doesn't time out a request the gateway is still happily serving.
+    const timeoutMs = /\.generate$/.test(method) ? 180_000 : undefined;
+    return mod.sendRequest(method, params, timeoutMs);
   }
 
   interface Props {
