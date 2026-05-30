@@ -16,7 +16,6 @@ import {
     Wrench,
     Store,
     Wand2,
-    Paintbrush,
     Inbox,
     CheckCircle2,
     Target,
@@ -210,17 +209,9 @@ export const ROUTES: RouteMeta[] = [
         keywords: "prompt builder craft",
         paletteIcon: "wand",
     },
-    {
-        path: "/studio",
-        title: () => m.nav_studio(),
-        icon: Paintbrush,
-        matcher: startsWith("/studio"),
-        section: "creative",
-        inNav: true,
-        inPalette: true,
-        keywords: "image studio generate art",
-        paletteIcon: "paintbrush",
-    },
+    // /studio is now a gateway plugin (extensions/studio). It self-registers in
+    // the sidebar via its `plugins.controlCenter` UI slot (getDynamicPluginsSection)
+    // and in Settings → Plugins via its `settings.plugins` slot — no static route.
 
     // ── Standalone (rendered specially in the sidebar / palette-only) ───────
     {
