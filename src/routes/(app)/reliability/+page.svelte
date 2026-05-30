@@ -750,8 +750,8 @@
 			<!-- ── Agents & LLM ─────────────────────────────────────────────────── -->
 			<AgentLlmMetricsPanel events={filteredEvents} />
 			{:else if activeTab === 'plugins'}
-			<!-- ── Plugin Health ────────────────────────────────────────────────── -->
-			<PluginHealthPanel {serverId} />
+			<!-- ── Plugin Health (one section + KPI widgets per installed plugin) ── -->
+			<PluginHealthPanel {serverId} from={reliability.dateRange.from} to={reliability.dateRange.to} />
 			{/if}
 		</div>
 		{/if}
