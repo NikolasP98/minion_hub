@@ -1061,6 +1061,24 @@
 
             sendFsmEvent(draggedInstanceId, "putDown");
             autoSave();
+
+            // A clean click (no drag) surfaces the agent's action menu, so every
+            // action is reachable on left-click — not only via right-click.
+            // Mirrors the element click-to-open pattern below.
+            const movedAgent =
+                Math.abs(e.clientX - pointerDownX) +
+                Math.abs(e.clientY - pointerDownY);
+            if (movedAgent < 5) {
+                const clicked = workshopState.agents[draggedInstanceId];
+                if (clicked) {
+                    contextMenu = {
+                        instanceId: draggedInstanceId,
+                        agentName: resolveAgentName(clicked.agentId),
+                        x: e.clientX,
+                        y: e.clientY,
+                    };
+                }
+            }
         } else if (isDraggingElement && draggedInstanceId) {
             // Check if it was just a click (no significant movement) — open overlay
             const moved =
