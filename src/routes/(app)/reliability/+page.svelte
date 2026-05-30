@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Chart from '$lib/components/charts/Chart.svelte';
-	import { PageHeader } from '$lib/components/ui';
+	import { PageHeader, Tabs, MultiSelectFilter } from '$lib/components/ui';
+	import type { MultiSelectOption } from '$lib/components/ui';
 	import DateRangePicker from '$lib/components/reliability/DateRangePicker.svelte';
 	import CredentialHealthPanel from '$lib/components/reliability/CredentialHealthPanel.svelte';
 	import SkillStatsPanel from '$lib/components/reliability/SkillStatsPanel.svelte';
@@ -33,10 +34,9 @@
 		PieChart,
 		RefreshCw,
 		Server,
-		ChevronLeft,
-		ChevronRight,
 		Bot,
 		Wrench,
+		Puzzle,
 	} from 'lucide-svelte';
 
 	// ── Persistence ───────────────────────────────────────────────────────────
@@ -48,6 +48,7 @@
 		datePreset: string | null;
 		customFrom?: number;
 		customTo?: number;
+		tab?: string;
 	}
 
 	const PRESET_MS: Record<string, number> = {
@@ -88,6 +89,7 @@
 			datePreset: preset,
 			customFrom: preset ? undefined : reliability.dateRange.from,
 			customTo: preset ? undefined : reliability.dateRange.to,
+			tab: activeTab,
 		});
 	}
 
@@ -139,41 +141,23 @@
 	let loading = $derived(reliability.loading);
 	let serverId = $derived(hostsState.activeHostId);
 
-	// ── Filter scroll indicators ──────────────────────────────────────────────
-	let filterScrollEl = $state<HTMLDivElement | null>(null);
-	let canScrollLeft = $state(false);
-	let canScrollRight = $state(false);
-
-	function updateScrollIndicators() {
-		if (!filterScrollEl) return;
-		const { scrollLeft, scrollWidth, clientWidth } = filterScrollEl;
-		canScrollLeft = scrollLeft > 2;
-		canScrollRight = scrollLeft + clientWidth < scrollWidth - 2;
-	}
-
-	function scrollFilters(direction: 'left' | 'right') {
-		if (!filterScrollEl) return;
-		const amount = filterScrollEl.clientWidth * 0.6;
-		filterScrollEl.scrollBy({ left: direction === 'left' ? -amount : amount, behavior: 'smooth' });
-	}
-
-	$effect(() => {
-		const el = filterScrollEl;
-		if (!el) return;
-		updateScrollIndicators();
-		el.addEventListener('scroll', updateScrollIndicators, { passive: true });
-		const ro = new ResizeObserver(updateScrollIndicators);
-		ro.observe(el);
-		return () => {
-			el.removeEventListener('scroll', updateScrollIndicators);
-			ro.disconnect();
-		};
-	});
-
 	// ── Filter state (restored from localStorage) ────────────────────────────
 	const _saved = loadFilters();
 	let selectedCategories = $state<Set<string>>(new Set(_saved.categories));
 	let selectedSeverities = $state<Set<string>>(new Set(_saved.severities));
+
+	// ── Tabs (separate concerns: overview / agents+llm / plugins) ─────────────
+	let activeTab = $state<string>(_saved.tab ?? 'overview');
+	const tabItems = $derived([
+		{ value: 'overview', label: m.reliability_tabOverview(), icon: Activity },
+		{ value: 'agents', label: m.reliability_tabAgents(), icon: Bot },
+		{ value: 'plugins', label: m.reliability_tabPlugins(), icon: Puzzle },
+	]);
+
+	function handleTabChange(v: string) {
+		activeTab = v;
+		persistFilters();
+	}
 
 	function toggleCategory(cat: string) {
 		const next = new Set(selectedCategories);
@@ -190,6 +174,31 @@
 	}
 
 	const SEVERITIES = ['critical', 'high', 'medium', 'low', 'info', 'ok'] as const;
+
+	// Dropdown option lists — counts come from the unfiltered server summary so
+	// each row shows how many of that category/severity exist in the range.
+	const categoryFilterOptions = $derived<MultiSelectOption[]>(
+		CATEGORIES.map((c) => ({
+			value: c,
+			label: c,
+			color: CATEGORY_COLORS[c],
+			count: summary?.byCategory[c] ?? 0,
+		})),
+	);
+	const severityFilterOptions = $derived<MultiSelectOption[]>(
+		SEVERITIES.map((s) => ({
+			value: s,
+			label: s,
+			color: SEVERITY_COLORS[s],
+			count: summary?.bySeverity[s] ?? 0,
+		})),
+	);
+
+	function clearAllFilters() {
+		selectedCategories = new Set();
+		selectedSeverities = new Set();
+		persistFilters();
+	}
 
 	let filteredEvents = $derived.by(() => {
 		let evts = reliability.events;
@@ -499,79 +508,46 @@
 			</button>
 		{/snippet}
 	</PageHeader>
-	{#if summary}
-	<div class="shrink-0 relative z-20 border-b border-border bg-bg2/80 backdrop-blur-sm">
-		<div class="relative">
-			<!-- Left scroll arrow + gradient -->
-			{#if canScrollLeft}
-				<button
-					type="button"
-					class="absolute left-0 top-0 bottom-2 z-10 flex items-center pl-1 pr-2 cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
-					style="background: linear-gradient(to right, var(--color-bg2) 40%, transparent)"
-					onclick={() => scrollFilters('left')}
-				>
-					<ChevronLeft size={12} />
-				</button>
-			{/if}
-
-			<!-- Right scroll arrow + gradient -->
-			{#if canScrollRight}
-				<button
-					type="button"
-					class="absolute right-0 top-0 bottom-2 z-10 flex items-center pr-1 pl-2 cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
-					style="background: linear-gradient(to left, var(--color-bg2) 40%, transparent)"
-					onclick={() => scrollFilters('right')}
-				>
-					<ChevronRight size={12} />
-				</button>
-			{/if}
-
-			<div
-				bind:this={filterScrollEl}
-				class="flex items-center gap-1.5 px-4 pb-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden flex-nowrap sm:flex-wrap"
-			>
-				<span class="text-[9px] font-semibold uppercase tracking-widest text-muted-strong mr-0.5 shrink-0">{m.reliability_category()}</span>
-				{#each CATEGORIES as cat (cat)}
-					<button
-						type="button"
-						class="text-[10px] font-semibold py-0.5 px-2 rounded-md cursor-pointer transition-all duration-150 leading-snug whitespace-nowrap border shrink-0"
-						style={selectedCategories.has(cat) ? `background:${CATEGORY_COLORS[cat]}22;color:${CATEGORY_COLORS[cat]};border-color:${CATEGORY_COLORS[cat]}44` : ''}
-						class:bg-bg3={!selectedCategories.has(cat)}
-						class:text-muted-foreground={!selectedCategories.has(cat)}
-						class:border-border={!selectedCategories.has(cat)}
-						onclick={() => toggleCategory(cat)}
-					>
-						{cat}
-					</button>
-				{/each}
-				<span class="w-px h-4 bg-border mx-0.5 shrink-0"></span>
-				<span class="text-[9px] font-semibold uppercase tracking-widest text-muted-strong mr-0.5 shrink-0">{m.reliability_severity()}</span>
-				{#each SEVERITIES as sev (sev)}
-					<button
-						type="button"
-						class="text-[10px] font-semibold py-0.5 px-2 rounded-md cursor-pointer transition-all duration-150 leading-snug whitespace-nowrap border shrink-0"
-						style={selectedSeverities.has(sev) ? `background:${SEVERITY_COLORS[sev]}22;color:${SEVERITY_COLORS[sev]};border-color:${SEVERITY_COLORS[sev]}44` : ''}
-						class:bg-bg3={!selectedSeverities.has(sev)}
-						class:text-muted-foreground={!selectedSeverities.has(sev)}
-						class:border-border={!selectedSeverities.has(sev)}
-						onclick={() => toggleSeverity(sev)}
-					>
-						{sev}
-					</button>
-				{/each}
+	<!-- Filter + tab bar -->
+	<div class="shrink-0 relative z-30 border-b border-border bg-bg2/80 backdrop-blur-sm">
+		{#if summary}
+			<div class="flex items-center gap-2 flex-wrap px-4 pt-2 pb-2.5">
+				<MultiSelectFilter
+					label={m.reliability_category()}
+					options={categoryFilterOptions}
+					selected={selectedCategories}
+					onToggle={toggleCategory}
+					onClear={() => { selectedCategories = new Set(); persistFilters(); }}
+					allLabel={m.reliability_filterAll()}
+				/>
+				<MultiSelectFilter
+					label={m.reliability_severity()}
+					options={severityFilterOptions}
+					selected={selectedSeverities}
+					onToggle={toggleSeverity}
+					onClear={() => { selectedSeverities = new Set(); persistFilters(); }}
+					allLabel={m.reliability_filterAll()}
+				/>
 				{#if selectedCategories.size > 0 || selectedSeverities.size > 0}
 					<button
 						type="button"
 						class="text-[10px] py-0.5 px-2 rounded-md cursor-pointer text-muted-foreground hover:text-foreground transition-colors shrink-0"
-						onclick={() => { selectedCategories = new Set(); selectedSeverities = new Set(); persistFilters(); }}
+						onclick={clearAllFilters}
 					>
 						{m.marketplace_agentsListClearFilters()}
 					</button>
 				{/if}
 			</div>
-		</div>
-		</div>
 		{/if}
+		<Tabs
+			tabs={tabItems}
+			value={activeTab}
+			size="sm"
+			class="px-4 border-b-0"
+			aria-label={m.reliability_title()}
+			onValueChange={handleTabChange}
+		/>
+	</div>
 
 	<main class="flex-1 min-h-0 overflow-y-auto p-4">
 		{#if !serverId}
@@ -590,6 +566,7 @@
 			</div>
 		{:else}
 		<div class="flex flex-col gap-3">
+			{#if activeTab === 'overview'}
 			<!-- ── Overview Stats Widget ───────────────────────────────────────── -->
 			<div class="bg-card border border-border rounded-lg overflow-hidden">
 				<div class="grid grid-cols-8 divide-x divide-border/60 max-[1100px]:grid-cols-4 max-[700px]:grid-cols-2">
@@ -654,18 +631,19 @@
 				<SkillStatsPanel {serverId} />
 			</div>
 
-			<!-- ── Agent LLM Metrics (full-width) ─────────────────────────────── -->
-			<AgentLlmMetricsPanel events={filteredEvents} />
-
-			<!-- ── Plugin Health (full-width) ──────────────────────────────────── -->
-			<PluginHealthPanel {serverId} />
-
 			<!-- ── Activity Log (consolidated: scatter + tabs + sortable/searchable/paginated table) ── -->
 			<ConnectionEventsPanel
 				events={filteredEvents}
 				total={overviewStats.total}
 				byCategory={overviewStats.byCategory}
 			/>
+			{:else if activeTab === 'agents'}
+			<!-- ── Agents & LLM ─────────────────────────────────────────────────── -->
+			<AgentLlmMetricsPanel events={filteredEvents} />
+			{:else if activeTab === 'plugins'}
+			<!-- ── Plugin Health ────────────────────────────────────────────────── -->
+			<PluginHealthPanel {serverId} />
+			{/if}
 		</div>
 		{/if}
 	</main>
