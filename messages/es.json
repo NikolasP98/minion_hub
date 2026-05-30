@@ -88,6 +88,8 @@
   "reliability_tabAgents": "Agentes y LLM",
   "reliability_tabPlugins": "Plugins",
   "reliability_filterAll": "Todos",
+  "reliability_failureMode": "Modo de Fallo",
+  "reliability_filterCategoryTitle": "Filtrar por {category}",
   "reliability_noData": "Sin datos de confiabilidad",
   "reliability_gateway": "Salud del Gateway",
   "reliability_credentials": "Salud de Credenciales",

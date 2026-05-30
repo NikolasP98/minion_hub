@@ -45,6 +45,7 @@
 	interface PersistedFilters {
 		categories: string[];
 		severities: string[];
+		failureModes?: string[];
 		datePreset: string | null;
 		customFrom?: number;
 		customTo?: number;
@@ -86,6 +87,7 @@
 		saveFilters({
 			categories: [...selectedCategories],
 			severities: [...selectedSeverities],
+			failureModes: [...selectedFailureModes],
 			datePreset: preset,
 			customFrom: preset ? undefined : reliability.dateRange.from,
 			customTo: preset ? undefined : reliability.dateRange.to,
@@ -145,6 +147,17 @@
 	const _saved = loadFilters();
 	let selectedCategories = $state<Set<string>>(new Set(_saved.categories));
 	let selectedSeverities = $state<Set<string>>(new Set(_saved.severities));
+	// Failure mode = the part of an event name after its `<type>.` prefix
+	// (e.g. `gateway.ws_slow_response` → type `gateway`, mode `ws_slow_response`).
+	let selectedFailureModes = $state<Set<string>>(new Set(_saved.failureModes ?? []));
+
+	// Split an event name into its type prefix + failure-mode suffix. Events are
+	// dotted (`<type>.<mode...>`); a dotless event is its own type with no mode.
+	function parseEventName(event: string): { type: string; failureMode: string } {
+		const dot = event.indexOf('.');
+		if (dot === -1) return { type: event, failureMode: event };
+		return { type: event.slice(0, dot), failureMode: event.slice(dot + 1) };
+	}
 
 	// ── Tabs (separate concerns: overview / agents+llm / plugins) ─────────────
 	let activeTab = $state<string>(_saved.tab ?? 'overview');
@@ -173,6 +186,13 @@
 		persistFilters();
 	}
 
+	function toggleFailureMode(mode: string) {
+		const next = new Set(selectedFailureModes);
+		if (next.has(mode)) next.delete(mode); else next.add(mode);
+		selectedFailureModes = next;
+		persistFilters();
+	}
+
 	const SEVERITIES = ['critical', 'high', 'medium', 'low', 'info', 'ok'] as const;
 
 	// Dropdown option lists — counts come from the unfiltered server summary so
@@ -197,20 +217,55 @@
 	function clearAllFilters() {
 		selectedCategories = new Set();
 		selectedSeverities = new Set();
+		selectedFailureModes = new Set();
 		persistFilters();
 	}
 
-	let filteredEvents = $derived.by(() => {
+	const hasActiveFilters = $derived(
+		selectedCategories.size > 0 || selectedSeverities.size > 0 || selectedFailureModes.size > 0,
+	);
+
+	// Events filtered by category + severity only — the failure-mode dropdown
+	// derives its option list from this set so picking a mode never collapses
+	// the list of available modes.
+	let categorySeverityFiltered = $derived.by(() => {
 		let evts = reliability.events;
 		if (selectedCategories.size > 0) evts = evts.filter(e => selectedCategories.has(e.category));
 		if (selectedSeverities.size > 0) evts = evts.filter(e => selectedSeverities.has(e.severity));
 		return evts;
 	});
 
+	let filteredEvents = $derived.by(() => {
+		if (selectedFailureModes.size === 0) return categorySeverityFiltered;
+		return categorySeverityFiltered.filter(e =>
+			selectedFailureModes.has(parseEventName(e.event).failureMode),
+		);
+	});
+
+	// Failure-mode dropdown options — distinct modes in the current cat/sev scope,
+	// sorted by frequency, coloured by their event type.
+	const failureModeFilterOptions = $derived.by((): MultiSelectOption[] => {
+		const counts = new Map<string, { count: number; type: string }>();
+		for (const e of categorySeverityFiltered) {
+			const { type, failureMode } = parseEventName(e.event);
+			const cur = counts.get(failureMode);
+			if (cur) cur.count++;
+			else counts.set(failureMode, { count: 1, type });
+		}
+		return [...counts.entries()]
+			.sort((a, b) => b[1].count - a[1].count)
+			.map(([mode, { count, type }]) => ({
+				value: mode,
+				label: mode,
+				color: CATEGORY_COLORS[type] ?? '#3b82f6',
+				count,
+			}));
+	});
+
 	// Overview stat cells — use server-side summary (SQL aggregation) for accurate totals,
 	// fall back to client-side counting from the paginated events list.
 	let overviewStats = $derived.by(() => {
-		if (summary && selectedCategories.size === 0 && selectedSeverities.size === 0) {
+		if (summary && !hasActiveFilters) {
 			// No filters active — use the server-side summary (covers ALL events, not just the page)
 			return { total: summary.total, byCategory: summary.byCategory, bySeverity: summary.bySeverity };
 		}
@@ -397,33 +452,50 @@
 		};
 	});
 
-	// ── Top Events bar chart (derived from events) ────────────────────────────
-	let topEventsOptions: EChartsOption = $derived.by(() => {
-		const evts = filteredEvents;
-		if (evts.length === 0) {
-			return {
-				backgroundColor: 'transparent',
-				grid: { left: 48, right: 24, top: 8, bottom: 24 },
-				xAxis: { type: 'value' },
-				yAxis: { type: 'category', data: [] },
-				series: []
-			};
-		}
+	// ── Top Events bar chart ──────────────────────────────────────────────────
+	// Bars are the top failure modes (the suffix of each `<type>.<mode>` event),
+	// labelled by mode and coloured by their type so the same chart shows BOTH
+	// dimensions. Counting keys on the full event name (unique); the y-axis label
+	// + tooltip surface the type/mode split. Click a bar to filter by that mode.
+	const TOP_EVENT_FALLBACK_COLOR = '#3b82f6';
 
-		// Count events by event name
+	let topEvents = $derived.by(() => {
 		const eventCounts = new Map<string, number>();
-		for (const evt of evts) {
+		for (const evt of filteredEvents) {
 			eventCounts.set(evt.event, (eventCounts.get(evt.event) ?? 0) + 1);
 		}
-		const topEvents = [...eventCounts.entries()]
-			.sort((a, b) => b[1] - a[1])
-			.slice(0, 20)
-			.reverse();
+		return [...eventCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 20);
+	});
 
+	// Distinct types present in the top events → custom HTML legend (ECharts can't
+	// legend per-item on a single bar series).
+	const topEventTypes = $derived.by(() => {
+		const types = new Set(topEvents.map(([name]) => parseEventName(name).type));
+		return [...types].map((type) => ({ type, color: CATEGORY_COLORS[type] ?? TOP_EVENT_FALLBACK_COLOR }));
+	});
+
+	let topEventsOptions: EChartsOption = $derived.by(() => {
+		const top = [...topEvents].reverse(); // ECharts category axis renders bottom→top
 		return {
 			backgroundColor: 'transparent',
-			tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-			grid: { left: 120, right: 24, top: 8, bottom: 24 },
+			tooltip: {
+				trigger: 'item',
+				axisPointer: { type: 'shadow' },
+				formatter: (params: any) => {
+					const full = String(params.name ?? '');
+					const { type, failureMode } = parseEventName(full);
+					const color = CATEGORY_COLORS[type] ?? TOP_EVENT_FALLBACK_COLOR;
+					const count = params.value as number;
+					return `<div style="font-size:11px">
+						<div style="font-weight:600">${failureMode}</div>
+						<div style="display:flex;align-items:center;gap:5px;margin:2px 0;color:var(--color-muted-foreground);font-size:10px">
+							<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${color}"></span>${type}
+						</div>
+						<div style="font-weight:600">${count} ${count === 1 ? m.reliability_llmCall() : m.reliability_llmCallsPlural()}</div>
+					</div>`;
+				}
+			},
+			grid: { left: 130, right: 32, top: 8, bottom: 24 },
 			xAxis: {
 				type: 'value',
 				minInterval: 1,
@@ -431,17 +503,32 @@
 			},
 			yAxis: {
 				type: 'category',
-				data: topEvents.map(([name]) => name),
-				axisLabel: { fontSize: 10, width: 100, overflow: 'truncate' }
+				data: top.map(([name]) => name),
+				axisLabel: {
+					fontSize: 10,
+					width: 110,
+					overflow: 'truncate',
+					formatter: (name: string) => parseEventName(name).failureMode
+				}
 			},
 			series: [{
 				type: 'bar',
-				data: topEvents.map(([, count]) => count),
-				itemStyle: { color: '#3b82f6', borderRadius: [0, 4, 4, 0] },
+				data: top.map(([name, count]) => ({
+					value: count,
+					itemStyle: {
+						color: CATEGORY_COLORS[parseEventName(name).type] ?? TOP_EVENT_FALLBACK_COLOR,
+						borderRadius: [0, 4, 4, 0]
+					}
+				})),
 				barMaxWidth: 20
 			}]
 		};
 	});
+
+	function handleTopEventClick(params: unknown) {
+		const name = (params as { name?: string })?.name;
+		if (name) toggleFailureMode(parseEventName(name).failureMode);
+	}
 
 	// ── Severity pie ──────────────────────────────────────────────────────────
 	let severityOptions: EChartsOption = $derived.by(() => {
@@ -528,7 +615,15 @@
 					onClear={() => { selectedSeverities = new Set(); persistFilters(); }}
 					allLabel={m.reliability_filterAll()}
 				/>
-				{#if selectedCategories.size > 0 || selectedSeverities.size > 0}
+				<MultiSelectFilter
+					label={m.reliability_failureMode()}
+					options={failureModeFilterOptions}
+					selected={selectedFailureModes}
+					onToggle={toggleFailureMode}
+					onClear={() => { selectedFailureModes = new Set(); persistFilters(); }}
+					allLabel={m.reliability_filterAll()}
+				/>
+				{#if hasActiveFilters}
 					<button
 						type="button"
 						class="text-[10px] py-0.5 px-2 rounded-md cursor-pointer text-muted-foreground hover:text-foreground transition-colors shrink-0"
@@ -605,10 +700,24 @@
 					<div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20">
 						<BarChart2 size={11} class="text-accent shrink-0" />
 						<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{m.reliability_topEvents()}</span>
+						<!-- Type legend: bar colours decode to event types -->
+						<div class="ml-auto flex items-center gap-2 flex-wrap justify-end">
+							{#each topEventTypes as t (t.type)}
+								<button
+									type="button"
+									class="flex items-center gap-1 cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
+									title={m.reliability_filterCategoryTitle({ category: t.type })}
+									onclick={() => toggleCategory(t.type)}
+								>
+									<span class="w-2 h-2 rounded-sm shrink-0" style:background={t.color}></span>
+									<span class="text-[9px] font-medium {selectedCategories.has(t.type) ? 'text-foreground' : ''}">{t.type}</span>
+								</button>
+							{/each}
+						</div>
 					</div>
 					<div class="relative overflow-hidden">
 						<ScanLine speed={14} opacity={0.018} />
-						<Chart options={topEventsOptions} height="300px" />
+						<Chart options={topEventsOptions} height="300px" onItemClick={handleTopEventClick} />
 					</div>
 				</div>
 
