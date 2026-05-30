@@ -1,11 +1,9 @@
 import { workshopState } from '$lib/state/workshop/workshop.svelte';
+import { banterBudget, recordBanter, resetBanterBudget } from '$lib/state/workshop/banter-budget.svelte';
 import { findNearbyAgents } from './proximity';
 import { sendFsmEvent } from './agent-fsm';
 
 // --- Module State ---
-
-let banterMessageCount = 0;
-let banterBudgetResetTime = Date.now() + 3600000;
 
 let conversationCounter = 0;
 
@@ -18,17 +16,15 @@ function generateConversationId(): string {
 }
 
 // --- Budget helpers ---
-
-export function resetBanterBudget(): void {
-  banterMessageCount = 0;
-  banterBudgetResetTime = Date.now() + 3600000;
-}
+// Reactive budget state lives in banter-budget.svelte.ts (so the toolbar meter
+// can read it live); re-exported here to preserve the existing import surface.
+export { resetBanterBudget };
 
 function checkBanterBudget(): boolean {
-  if (Date.now() > banterBudgetResetTime) {
+  if (Date.now() > banterBudget.resetAt) {
     resetBanterBudget();
   }
-  return banterMessageCount < workshopState.settings.idleBanterBudgetPerHour;
+  return banterBudget.used < workshopState.settings.idleBanterBudgetPerHour;
 }
 
 // --- Conversation counts ---
@@ -112,7 +108,7 @@ export function startConversation(
   }
 
   if (type === 'banter') {
-    banterMessageCount++;
+    recordBanter();
   }
 
   return id;

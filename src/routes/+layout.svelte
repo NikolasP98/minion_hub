@@ -96,7 +96,7 @@
   <BugReporter />
 
   {#if conn.connecting}
-    <div class="fixed top-14 left-0 right-0 h-[2px] bg-bg3 z-40 overflow-hidden">
+    <div class="fixed top-0 left-0 right-0 h-[2px] bg-bg3 z-50 overflow-hidden">
       <div class="h-full w-1/3 bg-accent animate-loading-slide"></div>
     </div>
   {/if}

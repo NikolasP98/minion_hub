@@ -33,6 +33,20 @@
     ),
   );
 
+  // Split live-or-recent from stale, so "90d ago" never sits next to "just now".
+  const DAY_MS = 86_400_000;
+  function isLive(c: (typeof sortedConversations)[0]): boolean {
+    return (
+      c.status === 'active' ||
+      c.status === 'queued' ||
+      Date.now() - c.startedAt < DAY_MS
+    );
+  }
+  let liveConversations = $derived(sortedConversations.filter(isLive));
+  let archivedConversations = $derived(
+    sortedConversations.filter((c) => !isLive(c)),
+  );
+
   let selectedConversation = $derived(
     selectedConversationId
       ? workshopState.conversations[selectedConversationId]
@@ -113,6 +127,35 @@
   class="conversation-sidebar absolute right-0 top-0 h-full w-[420px] z-50 flex bg-bg2/95 backdrop-blur border-l border-border"
   transition:slide={{ axis: 'x', duration: 200 }}
 >
+  {#snippet convRow(conv: (typeof sortedConversations)[0])}
+    <button
+      class="w-full text-left px-2 py-1.5 border-b border-border/50 hover:bg-accent/5 transition-colors
+        {selectedConversationId === conv.id ? 'bg-accent/10' : ''}
+        {conv.status === 'completed' ? 'opacity-60' : ''}"
+      onclick={() => onSelectConversation(conv.id)}
+    >
+      <div class="flex items-center gap-1">
+        {#if conv.status === 'active'}
+          <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse shrink-0"></span>
+        {:else if conv.status === 'queued'}
+          <span class="w-1.5 h-1.5 rounded-full bg-yellow-400 shrink-0"></span>
+        {:else}
+          <span class="w-1.5 h-1.5 rounded-full bg-muted/40 shrink-0"></span>
+        {/if}
+        <span class="text-[9px] font-mono uppercase px-1 py-0.5 rounded
+          {conv.type === 'task' ? 'bg-accent/10 text-accent' : 'bg-purple-500/10 text-purple-400'}">
+          {conv.type}
+        </span>
+      </div>
+      <div class="mt-0.5 text-[10px] text-foreground truncate leading-tight">
+        {getParticipantEmojis(conv)} {getParticipantNames(conv)}
+      </div>
+      <div class="text-[9px] text-muted-strong mt-0.5">
+        {formatRelativeTime(conv.startedAt)}
+      </div>
+    </button>
+  {/snippet}
+
   <!-- Conversation list (left section) -->
   <div class="w-[140px] shrink-0 flex flex-col border-r border-border">
     <div class="px-2 py-2 border-b border-border flex items-center justify-between">
@@ -124,34 +167,25 @@
           <span class="text-[9px] text-muted">{m.workshop_noConversations()}</span>
         </div>
       {:else}
-        {#each sortedConversations as conv (conv.id)}
-          <button
-            class="w-full text-left px-2 py-1.5 border-b border-border/50 hover:bg-accent/5 transition-colors
-              {selectedConversationId === conv.id ? 'bg-accent/10' : ''}
-              {conv.status === 'completed' ? 'opacity-60' : ''}"
-            onclick={() => onSelectConversation(conv.id)}
-          >
-            <div class="flex items-center gap-1">
-              {#if conv.status === 'active'}
-                <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse shrink-0"></span>
-              {:else if conv.status === 'queued'}
-                <span class="w-1.5 h-1.5 rounded-full bg-yellow-400 shrink-0"></span>
-              {:else}
-                <span class="w-1.5 h-1.5 rounded-full bg-muted/40 shrink-0"></span>
-              {/if}
-              <span class="text-[9px] font-mono uppercase px-1 py-0.5 rounded
-                {conv.type === 'task' ? 'bg-accent/10 text-accent' : 'bg-purple-500/10 text-purple-400'}">
-                {conv.type}
-              </span>
-            </div>
-            <div class="mt-0.5 text-[10px] text-foreground truncate leading-tight">
-              {getParticipantEmojis(conv)} {getParticipantNames(conv)}
-            </div>
-            <div class="text-[9px] text-muted-strong mt-0.5">
-              {formatRelativeTime(conv.startedAt)}
-            </div>
-          </button>
-        {/each}
+        {#if liveConversations.length > 0}
+          <div class="px-2 pt-2 pb-1 text-[8px] font-mono uppercase tracking-widest text-muted-strong">
+            {m.workshop_convActiveNow()} ({liveConversations.length})
+          </div>
+          {#each liveConversations as conv (conv.id)}
+            {@render convRow(conv)}
+          {/each}
+        {/if}
+        {#if archivedConversations.length > 0}
+          <details class="group">
+            <summary class="px-2 pt-2 pb-1 text-[8px] font-mono uppercase tracking-widest text-muted-strong cursor-pointer select-none hover:text-foreground list-none flex items-center gap-1">
+              <span class="transition-transform group-open:rotate-90">›</span>
+              {m.workshop_convArchive()} ({archivedConversations.length})
+            </summary>
+            {#each archivedConversations as conv (conv.id)}
+              {@render convRow(conv)}
+            {/each}
+          </details>
+        {/if}
       {/if}
     </div>
   </div>
@@ -221,15 +255,15 @@
             <span class="text-base leading-none shrink-0 w-6 h-6 flex items-center justify-center">
               {agent.emoji || '\u2022'}
             </span>
-            <div class="min-w-0">
-              <div class="flex items-baseline gap-1.5">
-                <span class="text-[10px] font-mono text-muted">{agent.name}</span>
-                <span class="text-[9px] text-muted-strong">{formatRelativeTime(msg.timestamp)}</span>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-baseline gap-1.5 mb-1">
+                <span class="text-[11px] font-medium text-foreground/90 truncate">{agent.name}</span>
+                <span class="text-[9px] text-muted-strong shrink-0">{formatRelativeTime(msg.timestamp)}</span>
               </div>
-              <div class="ws-message-md text-[11px] text-foreground leading-snug mt-0.5">
+              <div class="ws-message-md text-[13px] text-foreground leading-relaxed rounded-lg rounded-tl-sm bg-bg3 px-2.5 py-1.5 max-w-[34ch]">
                 <Markdown {carta} value={msg.content} />
               </div>
-              <div class="mt-1 text-right">
+              <div class="mt-1">
                 <AIDisclosureBadge />
               </div>
             </div>

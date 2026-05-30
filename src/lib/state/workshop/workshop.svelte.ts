@@ -107,6 +107,12 @@ export function toggleViewMode(): void {
   setViewMode(newMode);
 }
 
+/** Toggle whether idle agents auto-chat ("banter"). Persists to the settings slice. */
+export function toggleIdleBanter(): void {
+  workshopState.settings.idleBanterEnabled = !workshopState.settings.idleBanterEnabled;
+  autoSave(undefined, 'settings');
+}
+
 // --- Auto-save / auto-load (localStorage, incremental per-slice) ---
 
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
