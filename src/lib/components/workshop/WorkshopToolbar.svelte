@@ -25,13 +25,20 @@
     import ChevronLeft from "lucide-svelte/icons/chevron-left";
     import ChevronRight from "lucide-svelte/icons/chevron-right";
     import Undo2 from "lucide-svelte/icons/undo-2";
-    import { undoState } from "$lib/state/workshop/workshop.svelte";
+    import MessageCircle from "lucide-svelte/icons/message-circle";
+    import MessageCircleOff from "lucide-svelte/icons/message-circle-off";
+    import { undoState, toggleIdleBanter } from "$lib/state/workshop/workshop.svelte";
+    import { banterBudget } from "$lib/state/workshop/banter-budget.svelte";
 
     import type { ElementType } from "$lib/state/workshop/workshop.svelte";
 
     function requestUndo() {
         window.dispatchEvent(new Event("workshop:undo"));
     }
+
+    const banterEnabled = $derived(workshopState.settings.idleBanterEnabled);
+    const banterTotal = $derived(workshopState.settings.idleBanterBudgetPerHour);
+    const banterExhausted = $derived(banterBudget.used >= banterTotal);
 
     const elementTypes = $derived([
         { type: "pinboard" as ElementType, icon: "\u{1F4CC}", label: m.workshop_pinboard() },
@@ -245,6 +252,37 @@
             </button>
         {/each}
     </div>
+
+    <div class="w-px h-6 bg-border shrink-0"></div>
+
+    <!-- Banter budget meter: surfaces the hidden idle auto-chat budget + on/off -->
+    <button
+        type="button"
+        onclick={toggleIdleBanter}
+        title={banterEnabled
+            ? m.workshop_banterHintOn()
+            : m.workshop_banterHintOff()}
+        aria-label={m.workshop_banter()}
+        aria-pressed={banterEnabled}
+        class="h-7 px-2 shrink-0 flex items-center gap-1 rounded border border-border font-mono text-[10px] transition-colors hover:bg-bg3 {banterEnabled
+            ? 'text-muted'
+            : 'text-muted/40'}"
+    >
+        {#if banterEnabled}
+            <MessageCircle size={13} />
+        {:else}
+            <MessageCircleOff size={13} />
+        {/if}
+        <span
+            class="tabular-nums {!banterEnabled
+                ? 'line-through'
+                : banterExhausted
+                  ? 'text-yellow-400'
+                  : 'text-foreground/70'}"
+        >
+            {banterBudget.used}/{banterTotal}
+        </span>
+    </button>
 
     <div class="w-px h-6 bg-border shrink-0"></div>
 
