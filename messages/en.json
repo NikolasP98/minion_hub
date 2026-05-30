@@ -229,6 +229,8 @@
   "workshop_paletteToggle": "Toggle palette",
   "workshop_convActiveNow": "Active now",
   "workshop_convArchive": "Archive",
+  "workshop_emptyTitle": "Your workshop is empty",
+  "workshop_emptyHint": "Drag an agent from the palette on the left onto the canvas to bring the workspace to life.",
   "workshop_banter": "Banter",
   "workshop_banterHintOn": "Idle agents auto-chat. Click to pause.",
   "workshop_banterHintOff": "Idle auto-chat is paused. Click to enable.",

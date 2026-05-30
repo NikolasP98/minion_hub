@@ -191,6 +191,28 @@
     );
     let configOpen = $state(false);
 
+    // First-run empty state: guide the user to place their first agent, then
+    // retire for good once one lands (so it never nags on a deliberately empty
+    // scene later).
+    let onboardingDone = $state(
+        typeof localStorage !== "undefined"
+            ? localStorage.getItem("workshop:onboarding:done") === "1"
+            : false,
+    );
+    const showEmptyState = $derived(
+        !onboardingDone && Object.keys(workshopState.agents).length === 0,
+    );
+    $effect(() => {
+        if (Object.keys(workshopState.agents).length > 0 && !onboardingDone) {
+            onboardingDone = true;
+            try {
+                localStorage.setItem("workshop:onboarding:done", "1");
+            } catch {
+                /* ignore */
+            }
+        }
+    });
+
     // Keep simConfig in sync with local state
     $effect(() => {
         simConfig.showChatRopes = showChatRopes;
@@ -1706,6 +1728,25 @@
         >
             <span class="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse"></span>
             {m.workshop_gatewayOffline()}
+        </div>
+    {/if}
+
+    <!-- First-run empty state: centered prompt to place the first agent -->
+    {#if showEmptyState}
+        <div
+            class="absolute inset-0 z-20 flex items-center justify-center pointer-events-none"
+        >
+            <div
+                class="flex flex-col items-center gap-2 px-6 py-5 rounded-xl border border-dashed border-border bg-bg2/70 backdrop-blur text-center max-w-[300px]"
+            >
+                <span class="text-2xl">🏗️</span>
+                <span class="text-sm font-medium text-foreground"
+                    >{m.workshop_emptyTitle()}</span
+                >
+                <span class="text-[11px] text-muted leading-relaxed"
+                    >{m.workshop_emptyHint()}</span
+                >
+            </div>
         </div>
     {/if}
 
