@@ -1,5 +1,6 @@
 import { eq, and, sql } from 'drizzle-orm';
 import { skills } from '@minion-stack/db/schema';
+import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
 
@@ -53,13 +54,27 @@ export async function upsertSkills(ctx: TenantContext, serverId: string, items: 
         },
       });
   }
+
+  // Skills change only on gateway sync (upsert) — drop the read-aside entries so
+  // the next listSkills reflects the fresh catalog.
+  await invalidateTags(tags.tenantDomain(ctx.tenantId, 'skills'));
 }
 
 export async function listSkills(ctx: TenantContext, serverId: string) {
-  const rows = await ctx.db
-    .select({ rawJson: skills.rawJson })
-    .from(skills)
-    .where(and(eq(skills.serverId, serverId), eq(skills.tenantId, ctx.tenantId)));
+  return cached(
+    keys.hub('skills', { t: ctx.tenantId, d: { serverId } }),
+    {
+      ttl: '1h',
+      swr: '5m',
+      tags: tags.tenantDomain(ctx.tenantId, 'skills'),
+    },
+    async () => {
+      const rows = await ctx.db
+        .select({ rawJson: skills.rawJson })
+        .from(skills)
+        .where(and(eq(skills.serverId, serverId), eq(skills.tenantId, ctx.tenantId)));
 
-  return rows.map((r) => JSON.parse(r.rawJson));
+      return rows.map((r) => JSON.parse(r.rawJson));
+    },
+  );
 }
