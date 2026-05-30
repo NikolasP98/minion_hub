@@ -41,35 +41,23 @@ describe('GET /api/flows — plugin origin', () => {
   });
 });
 
-describe('DELETE /api/flows/[id] — plugin-managed flows are protected', () => {
-  it('rejects deleting a plugin-imported flow with 403 and does NOT delete', async () => {
+describe('DELETE /api/flows/[id] — instances are deletable', () => {
+  it('allows deleting a plugin-imported instance (no longer 403)', async () => {
     const { db, resolve } = createMockDb();
-    // requireFlowOwnership's select → the plugin flow row
     resolve([{ id: 'f1', userId: 'user-1', tenantId: 'org-1', config: PLUGIN_CONFIG }]);
     mockGetTenantCtx.mockResolvedValue({ db, tenantId: 'org-1' });
-
     const { DELETE } = await import('./[id]/+server');
-    let status = 0;
-    try {
-      await DELETE({ locals: makeLocals(), params: { id: 'f1' } } as Parameters<typeof DELETE>[0]);
-    } catch (e) {
-      status = (e as { status?: number }).status ?? 0;
-    }
-    expect(status).toBe(403);
-    expect(db.delete).not.toHaveBeenCalled();
+    const res = await DELETE({ locals: makeLocals(), params: { id: 'f1' } } as Parameters<typeof DELETE>[0]);
+    expect(res.status).toBe(200);
+    expect(db.delete).toHaveBeenCalledTimes(1);
   });
 
   it('allows deleting a user-authored flow', async () => {
     const { db, resolve } = createMockDb();
     resolve([{ id: 'f2', userId: 'user-1', tenantId: 'org-1', config: '{}' }]);
     mockGetTenantCtx.mockResolvedValue({ db, tenantId: 'org-1' });
-
     const { DELETE } = await import('./[id]/+server');
-    const res = await DELETE({
-      locals: makeLocals(),
-      params: { id: 'f2' },
-    } as Parameters<typeof DELETE>[0]);
-
+    const res = await DELETE({ locals: makeLocals(), params: { id: 'f2' } } as Parameters<typeof DELETE>[0]);
     expect(res.status).toBe(200);
     expect(db.delete).toHaveBeenCalledTimes(1);
   });
