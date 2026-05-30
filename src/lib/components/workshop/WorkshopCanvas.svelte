@@ -27,6 +27,7 @@
         destroyAgentFsm,
         sendFsmEvent,
         clearAllFsms,
+        applyStateGlow,
     } from "$lib/workshop/agent-fsm";
     import {
         checkElementChanges,
@@ -145,6 +146,7 @@
     let isLinking = $state(false);
     let linkFromInstanceId = $state<string | null>(null);
     let linkLineGraphics: PIXI.Graphics | null = null;
+    const LINK_GLOW_COLOR = 0x818cf8; // bright indigo — the active-linking highlight
 
     // ---------------------------------------------------------------------------
     // Overlay state
@@ -894,6 +896,8 @@
             if (e.shiftKey) {
                 isLinking = true;
                 linkFromInstanceId = hitId;
+                // Glow the source so "I'm linking from here" is unmistakable.
+                renderer.setSpriteGlowColor(hitId, LINK_GLOW_COLOR);
 
                 if (worldContainer) {
                     linkLineGraphics = new PIXI.Graphics();
@@ -988,10 +992,22 @@
                 // Project the pointer's world position to match the sprite's coordinate space
                 const endPos = renderer.worldToScreenForMode(worldPos.x, worldPos.y);
                 linkLineGraphics.clear();
-                linkLineGraphics
-                    .moveTo(fromSprite.x, fromSprite.y)
-                    .lineTo(endPos.x, endPos.y)
-                    .stroke({ width: 2, color: 0x6366f1, alpha: 0.6 });
+                // Dashed line (PIXI 8 has no native dash) — segment it manually so
+                // the in-progress link reads as a tentative "drag to connect".
+                const dx = endPos.x - fromSprite.x;
+                const dy = endPos.y - fromSprite.y;
+                const len = Math.hypot(dx, dy) || 1;
+                const ux = dx / len;
+                const uy = dy / len;
+                const dash = 8;
+                const gap = 5;
+                for (let d = 0; d < len; d += dash + gap) {
+                    const segEnd = Math.min(d + dash, len);
+                    linkLineGraphics
+                        .moveTo(fromSprite.x + ux * d, fromSprite.y + uy * d)
+                        .lineTo(fromSprite.x + ux * segEnd, fromSprite.y + uy * segEnd);
+                }
+                linkLineGraphics.stroke({ width: 2, color: LINK_GLOW_COLOR, alpha: 0.8 });
             }
         }
 
@@ -1144,6 +1160,8 @@
                 linkLineGraphics.destroy();
                 linkLineGraphics = null;
             }
+            // Restore the source agent's normal state glow.
+            if (linkFromInstanceId) applyStateGlow(linkFromInstanceId);
         } else if (isPanning) {
             autoSave();
         }
