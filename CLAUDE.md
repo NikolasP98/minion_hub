@@ -40,6 +40,20 @@ bun run db:seed      # Seed initial tenant + admin user
 bun run db:studio    # Open Drizzle Studio UI
 ```
 
+### Green baseline (as of 2026-05-29)
+
+The repo is **fully green** and must stay that way:
+
+- `bun run check` → **0 errors, 0 warnings**
+- `bun run test` → **all tests pass** (0 failures)
+- `bun run build` → succeeds cleanly (the only output is harmless "modules failed to locate dependencies" notices for optional native peers: `bufferutil`, `utf-8-validate`, `@react-email/render`, `supports-color`, `@neon-rs/load` — do not chase these)
+
+There is **no longer a tolerated baseline of pre-existing errors/warnings**. Any check error, test failure, or Svelte compiler warning you see is a regression — fix it before considering work done. Notes:
+
+- SvelteKit `$env/*` virtual modules don't resolve under vitest; they're aliased to stubs in `vitest.config.ts` → `src/server/test-utils/env-stubs/`. Per-test `vi.mock('$env/...')` still overrides.
+- `let foo = $state(prop.field ?? default)` (seeding editable form state once from a prop) is correct — suppress `state_referenced_locally` with `// svelte-ignore`, do NOT convert to `$derived` (that wipes user edits). Convert to `$derived` only for pure read-through props.
+- Cache-key `d` descriptors for `keys.hub()` must be `Record<string, string|number>` — use `scopeData()` from `src/server/services/base.ts` to drop optional/undefined filters.
+
 ## Local Setup
 
 Copy `.env.example` to `.env`. For local dev, `TURSO_DB_URL` defaults to `file:./data/minion_hub.db` (SQLite file, no Turso account needed). Run `db:push` then `db:seed` to initialise.
