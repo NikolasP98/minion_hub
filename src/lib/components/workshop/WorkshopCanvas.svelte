@@ -27,6 +27,7 @@
         destroyAgentFsm,
         sendFsmEvent,
         clearAllFsms,
+        applyStateGlow,
     } from "$lib/workshop/agent-fsm";
     import {
         checkElementChanges,
@@ -145,6 +146,11 @@
     let isLinking = $state(false);
     let linkFromInstanceId = $state<string | null>(null);
     let linkLineGraphics: PIXI.Graphics | null = null;
+    const LINK_GLOW_COLOR = 0x818cf8; // bright indigo — the active-linking highlight
+
+    // Selection: left-click an agent to select it (glow + floating action bar).
+    let selectedInstanceId = $state<string | null>(null);
+    const SELECT_GLOW_COLOR = 0xe879f9; // pink — the selection highlight
 
     // ---------------------------------------------------------------------------
     // Overlay state
@@ -744,6 +750,7 @@
     // ---------------------------------------------------------------------------
 
     function removeAgentFromCanvas(instanceId: string) {
+        if (selectedInstanceId === instanceId) selectedInstanceId = null;
         pushUndoCheckpoint();
         for (const [relId, rel] of Object.entries(
             workshopState.relationships,
@@ -894,6 +901,8 @@
             if (e.shiftKey) {
                 isLinking = true;
                 linkFromInstanceId = hitId;
+                // Glow the source so "I'm linking from here" is unmistakable.
+                renderer.setSpriteGlowColor(hitId, LINK_GLOW_COLOR);
 
                 if (worldContainer) {
                     linkLineGraphics = new PIXI.Graphics();
@@ -988,10 +997,22 @@
                 // Project the pointer's world position to match the sprite's coordinate space
                 const endPos = renderer.worldToScreenForMode(worldPos.x, worldPos.y);
                 linkLineGraphics.clear();
-                linkLineGraphics
-                    .moveTo(fromSprite.x, fromSprite.y)
-                    .lineTo(endPos.x, endPos.y)
-                    .stroke({ width: 2, color: 0x6366f1, alpha: 0.6 });
+                // Dashed line (PIXI 8 has no native dash) — segment it manually so
+                // the in-progress link reads as a tentative "drag to connect".
+                const dx = endPos.x - fromSprite.x;
+                const dy = endPos.y - fromSprite.y;
+                const len = Math.hypot(dx, dy) || 1;
+                const ux = dx / len;
+                const uy = dy / len;
+                const dash = 8;
+                const gap = 5;
+                for (let d = 0; d < len; d += dash + gap) {
+                    const segEnd = Math.min(d + dash, len);
+                    linkLineGraphics
+                        .moveTo(fromSprite.x + ux * d, fromSprite.y + uy * d)
+                        .lineTo(fromSprite.x + ux * segEnd, fromSprite.y + uy * segEnd);
+                }
+                linkLineGraphics.stroke({ width: 2, color: LINK_GLOW_COLOR, alpha: 0.8 });
             }
         }
 
@@ -1084,22 +1105,13 @@
             sendFsmEvent(draggedInstanceId, "putDown");
             autoSave();
 
-            // A clean click (no drag) surfaces the agent's action menu, so every
-            // action is reachable on left-click — not only via right-click.
-            // Mirrors the element click-to-open pattern below.
+            // A clean click (no drag) selects the agent → floating action bar.
+            // (Right-click still opens the full menu directly.)
             const movedAgent =
                 Math.abs(e.clientX - pointerDownX) +
                 Math.abs(e.clientY - pointerDownY);
             if (movedAgent < 5) {
-                const clicked = workshopState.agents[draggedInstanceId];
-                if (clicked) {
-                    contextMenu = {
-                        instanceId: draggedInstanceId,
-                        agentName: resolveAgentName(clicked.agentId),
-                        x: e.clientX,
-                        y: e.clientY,
-                    };
-                }
+                selectAgent(draggedInstanceId);
             }
         } else if (isDraggingElement && draggedInstanceId) {
             // Check if it was just a click (no significant movement) — open overlay
@@ -1144,7 +1156,14 @@
                 linkLineGraphics.destroy();
                 linkLineGraphics = null;
             }
+            // Restore the source agent's normal state glow.
+            if (linkFromInstanceId) applyStateGlow(linkFromInstanceId);
         } else if (isPanning) {
+            // A click on empty canvas (no pan) clears the selection.
+            const movedPan =
+                Math.abs(e.clientX - pointerDownX) +
+                Math.abs(e.clientY - pointerDownY);
+            if (movedPan < 5) deselectAgent();
             autoSave();
         }
 
@@ -1396,9 +1415,73 @@
     // Context menu action handler
     // ---------------------------------------------------------------------------
 
-    function handleContextAction(action: string, data?: unknown) {
-        if (!contextMenu) return;
-        const { instanceId, agentName } = contextMenu;
+    function selectAgent(id: string) {
+        if (selectedInstanceId && selectedInstanceId !== id) {
+            applyStateGlow(selectedInstanceId);
+        }
+        selectedInstanceId = id;
+        renderer.setSpriteGlowColor(id, SELECT_GLOW_COLOR);
+    }
+
+    function deselectAgent() {
+        if (selectedInstanceId) {
+            applyStateGlow(selectedInstanceId);
+            selectedInstanceId = null;
+        }
+    }
+
+    // Action-bar dispatch: act on the selected agent, then tidy up.
+    function handleSelectedAction(action: string, data?: unknown) {
+        const id = selectedInstanceId;
+        if (!id) return;
+        const inst = workshopState.agents[id];
+        if (!inst) return;
+        const agentName = resolveAgentName(inst.agentId);
+        if (action === "chat") {
+            // Chat needs the nearby-agent picker → escalate to the full menu.
+            const p = worldToScreenAware(inst.position.x, inst.position.y);
+            const rect = canvasContainer?.getBoundingClientRect();
+            contextMenu = {
+                instanceId: id,
+                agentName,
+                x: (rect?.left ?? 0) + p.x,
+                y: (rect?.top ?? 0) + p.y,
+            };
+            deselectAgent();
+            return;
+        }
+        handleContextAction(action, data, { instanceId: id, agentName });
+        if (action === "remove") deselectAgent();
+    }
+
+    function cycleSelectedBehavior() {
+        const id = selectedInstanceId;
+        if (!id) return;
+        const cur = workshopState.agents[id]?.behavior ?? "stationary";
+        const next =
+            cur === "stationary"
+                ? "wander"
+                : cur === "wander"
+                  ? "patrol"
+                  : "stationary";
+        handleSelectedAction("setBehavior", next);
+    }
+
+    function handleContextAction(
+        action: string,
+        data?: unknown,
+        target?: { instanceId: string; agentName: string },
+    ) {
+        const ctx =
+            target ??
+            (contextMenu
+                ? {
+                      instanceId: contextMenu.instanceId,
+                      agentName: contextMenu.agentName,
+                  }
+                : null);
+        if (!ctx) return;
+        const { instanceId, agentName } = ctx;
 
         if (action === "remove") {
             removeAgentFromCanvas(instanceId);
@@ -1668,6 +1751,11 @@
         }
 
         function handleUndoKey(e: KeyboardEvent) {
+            // Escape clears the current agent selection.
+            if (e.key === "Escape" && selectedInstanceId) {
+                deselectAgent();
+                return;
+            }
             // Structural undo: Ctrl/Cmd+Z (not Shift+Z = redo, which we don't ship yet)
             if (!(e.ctrlKey || e.metaKey) || e.shiftKey) return;
             if (e.key.toLowerCase() !== "z") return;
@@ -1788,6 +1876,12 @@
             sidebarOpen = true;
             selectedConversationId = id;
         }}
+        {selectedInstanceId}
+        connected={conn.connected}
+        onAgentChat={() => handleSelectedAction("chat")}
+        onAgentTask={() => handleSelectedAction("assignTask")}
+        onAgentBehavior={cycleSelectedBehavior}
+        onAgentDelete={() => handleSelectedAction("remove")}
     />
 
     <!-- Conversations toggle button -->

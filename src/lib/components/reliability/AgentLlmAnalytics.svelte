@@ -7,7 +7,11 @@
 	import AgentActivityPanel from './AgentActivityPanel.svelte';
 	import Chart from '$lib/components/charts/Chart.svelte';
 	import type { EChartsOption } from 'echarts';
-	import type { ReliabilityEvent, UsageAggregate } from '$lib/state/reliability/reliability.svelte';
+	import type {
+		ReliabilityEvent,
+		UsageAggregate,
+		ActivityAggregate,
+	} from '$lib/state/reliability/reliability.svelte';
 	import {
 		estimateCostUsd,
 		isModelPriced,
@@ -17,8 +21,15 @@
 	} from '$lib/utils/model-pricing';
 	import { deriveOrigin } from '$lib/utils/event-origin';
 
-	let { events = [], aggregate = null }: { events: ReliabilityEvent[]; aggregate?: UsageAggregate | null } =
-		$props();
+	let {
+		events = [],
+		aggregate = null,
+		activity = null,
+	}: {
+		events: ReliabilityEvent[];
+		aggregate?: UsageAggregate | null;
+		activity?: ActivityAggregate | null;
+	} = $props();
 
 	// Prefer the server-side aggregate (full coverage, no 2,000-event cap) when the
 	// gateway provides it; otherwise derive from the loaded (capped) events.
@@ -603,7 +614,7 @@
 	</div>
 
 	<!-- ── AGENT ACTIVITY (memory / heartbeat / proactivity / tools) ──────────── -->
-	<AgentActivityPanel {events} agentFilter={filters.agent} />
+	<AgentActivityPanel {events} {activity} agentFilter={filters.agent} />
 
 	<!-- ── AGENT ACTIVITY LOG ─────────────────────────────────────────────────── -->
 	<ActivityLogTable

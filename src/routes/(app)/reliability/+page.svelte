@@ -15,7 +15,8 @@
 		loadReliabilitySummary,
 		loadReliabilityEvents,
 		loadReliabilityTimeline,
-		loadReliabilityUsage
+		loadReliabilityUsage,
+		loadReliabilityActivity
 	} from '$lib/state/reliability/reliability.svelte';
 	import { hostsState } from '$lib/state/features/hosts.svelte';
 	import { conn } from '$lib/state/gateway';
@@ -299,7 +300,8 @@
 			loadReliabilitySummary(serverId, from, to),
 			loadReliabilityEvents(serverId, { from, to, limit: 10_000 }),
 			loadReliabilityTimeline(from, to),
-			loadReliabilityUsage(from, to)
+			loadReliabilityUsage(from, to),
+			loadReliabilityActivity(from, to)
 		]);
 	}
 
@@ -750,7 +752,11 @@
 			/>
 			{:else if activeTab === 'agents'}
 			<!-- ── Agents & LLM: token cost + origin analytics + agent-activity log ── -->
-			<AgentLlmAnalytics events={filteredEvents} aggregate={reliability.usage} />
+			<AgentLlmAnalytics
+				events={filteredEvents}
+				aggregate={reliability.usage}
+				activity={reliability.activity}
+			/>
 			{:else if activeTab === 'plugins'}
 			<!-- ── Plugin Health (one section + KPI widgets per installed plugin) ── -->
 			<PluginHealthPanel {serverId} from={reliability.dateRange.from} to={reliability.dateRange.to} />

@@ -297,6 +297,15 @@ export function getAgentState(instanceId: string): AgentFsmState | null {
 }
 
 /**
+ * Re-apply the sprite glow for an agent's current FSM state. Use to restore the
+ * glow after a transient override (e.g. the link-mode source highlight).
+ */
+export function applyStateGlow(instanceId: string): void {
+  const state = fsmMap.get(instanceId)?.current;
+  if (state) setSpriteGlowColor(instanceId, GLOW_COLORS[state]);
+}
+
+/**
  * Clear all FSMs. Call on workshop reset or host disconnect.
  */
 export function clearAllFsms(): void {

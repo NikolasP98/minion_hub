@@ -59,6 +59,36 @@ export interface UsageAggregate {
   generatedAt: number;
 }
 
+/** Full-coverage agent-activity aggregate (reliability.activity RPC). */
+export interface ActivityAggregate {
+  memory: {
+    created: number;
+    updated: number;
+    deleted: number;
+    total: number;
+    byType: { key: string; value: number }[];
+    lastTs: number;
+  };
+  heartbeat: {
+    ok: number;
+    failed: number;
+    skipped: number;
+    sent: number;
+    total: number;
+    lastTs: number;
+    lastStatus: string;
+  };
+  tools: { ok: number; err: number; total: number; top: { key: string; value: number }[] };
+  proactivity: {
+    proactive: number;
+    reactive: number;
+    interAgent: number;
+    other: number;
+    total: number;
+  };
+  generatedAt: number;
+}
+
 export const reliability = $state({
   /** Recent events from the live WS stream */
   recentEvents: [] as ReliabilityEvent[],
@@ -75,6 +105,9 @@ export const reliability = $state({
   /** Server-side LLM usage aggregate (reliability.usage RPC). null → fall back to
    *  client-side derivation over the (capped) loaded events on older gateways. */
   usage: null as UsageAggregate | null,
+  /** Server-side agent-activity aggregate (reliability.activity RPC). null → fall
+   *  back to client-side derivation over the (capped) loaded events. */
+  activity: null as ActivityAggregate | null,
   loading: false,
   dateRange: {
     from: Date.now() - 86400000,
@@ -123,6 +156,24 @@ export async function loadReliabilityUsage(from: number, to: number) {
   } catch {
     // Method not supported (older gateway) or not connected — fall back to events.
     reliability.usage = null;
+  }
+}
+
+/**
+ * Fetch the full-coverage agent-activity aggregate (memory/heartbeat/tools/
+ * proactivity) over the range — bypasses the 2,000-event cap so the Agent
+ * Activity panel shows fleet-wide totals. Sets `activity = null` on older
+ * gateways → UI falls back to client-side derivation over loaded events.
+ */
+export async function loadReliabilityActivity(from: number, to: number) {
+  try {
+    const data = (await sendRequest('reliability.activity', {
+      since: from,
+      until: to,
+    })) as ActivityAggregate | null;
+    reliability.activity = data && data.memory && data.heartbeat ? data : null;
+  } catch {
+    reliability.activity = null;
   }
 }
 

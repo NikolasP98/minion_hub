@@ -36,7 +36,7 @@
   let typeBadgeClass = $derived(
     conversation?.type === 'task'
       ? 'bg-accent/10 text-accent'
-      : 'bg-purple-500/10 text-purple-400'
+      : 'bg-bg3 text-muted-strong'
   );
 
   // Map workshop messages to display format
