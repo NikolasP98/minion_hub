@@ -8,10 +8,17 @@
 	import FloatingAssistant from '$lib/components/layout/FloatingAssistant.svelte';
 	import { type Snippet } from 'svelte';
 	import { onMount } from 'svelte';
+	import { page } from '$app/state';
 	import { ensurePermissions } from '$lib/state/features/permissions.svelte';
 	import { hydratePluginNav } from '$lib/state/plugin-nav.svelte';
 
 	let { children }: { children: Snippet } = $props();
+
+	// Workshop editor (a specific save, /agents/workshop/<id>) runs in an immersive
+	// focus mode: the global left rail collapses so the spatial canvas is the hero.
+	// The gallery (/agents/workshop) keeps the rail. WorkshopToolbar's "↩ Gallery"
+	// link is the escape hatch.
+	const immersive = $derived(/^\/agents\/workshop\/[^/]+/.test(page.url.pathname));
 
 	onMount(() => {
 		void ensurePermissions();
@@ -20,7 +27,9 @@
 </script>
 
 <div class="relative z-10 flex h-screen overflow-hidden text-foreground">
-	<Sidebar />
+	{#if !immersive}
+		<Sidebar />
+	{/if}
 	<div class="shell-main flex flex-col flex-1 min-w-0 overflow-hidden">
 		<Topbar />
 		<ConnectionBanner />

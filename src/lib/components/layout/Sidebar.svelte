@@ -25,10 +25,12 @@
   const isReliability = $derived(page.url.pathname.startsWith('/reliability'));
   const isSettings = $derived(page.url.pathname.startsWith('/settings'));
 
-  // User collapse preference. The sidebar is hidden below md; from md up the
-  // rendered width is driven purely by `collapsed` (expanded 224px / rail 56px),
-  // so the toggle works at every width where the button is shown — not only at
-  // lg+, where the old `lg:w-[224px]` gating left the button visibly inert.
+  // Three responsive tiers:
+  //   <md   : sidebar hidden — the mobile hamburger (Topbar) takes over.
+  //   md–lg : forced mini icon rail (56px) — the "midpoint" before the hamburger.
+  //   lg+   : honors the user's collapse preference (expanded 224px / mini 56px).
+  // Expanded affordances are all gated on lg+, so md–lg always renders the rail
+  // regardless of preference; the toggle is hidden below lg (see .collapse-toggle).
   let collapsed = $state(false);
   onMount(() => {
     collapsed = localStorage.getItem('hub-sidebar-collapsed') === '1';
@@ -38,12 +40,12 @@
     localStorage.setItem('hub-sidebar-collapsed', collapsed ? '1' : '0');
   }
 
-  // Class fragments driven by collapse state (apply at md+; aside is hidden below md).
-  const widthCls = $derived(collapsed ? 'w-14' : 'w-[224px]');
-  const labelCls = $derived(collapsed ? 'hidden' : 'inline');
-  const headCls = $derived(collapsed ? 'hidden' : 'block');
-  // Center icons in the rail when collapsed; left-align with label when expanded.
-  const rowJustify = $derived(collapsed ? 'justify-center' : 'justify-start');
+  // Expanded width/labels/heads unlock only at lg+; below that we stay a mini rail.
+  const widthCls = $derived(collapsed ? 'w-14' : 'w-14 lg:w-[224px]');
+  const labelCls = $derived(collapsed ? 'hidden' : 'hidden lg:inline');
+  const headCls = $derived(collapsed ? 'hidden' : 'hidden lg:block');
+  // Center icons in the mini rail; left-align with labels only in the lg+ expanded state.
+  const rowJustify = $derived(collapsed ? 'justify-center' : 'justify-center lg:justify-start');
 </script>
 
 <aside
@@ -54,19 +56,20 @@
   <div class="shrink-0 px-2 pt-3 pb-2 flex flex-col gap-2">
     <a
       href="/"
-      class="flex items-center {collapsed ? 'justify-center' : 'justify-start'} gap-2 h-9 px-1.5 rounded-[var(--radius-md)] hover:bg-white/[0.05] transition-colors duration-[150ms] group"
+      class="flex items-center {collapsed ? 'justify-center' : 'justify-center lg:justify-start'} gap-2 h-9 px-1.5 rounded-[var(--radius-md)] hover:bg-white/[0.05] transition-colors duration-[150ms] group"
       aria-label="Minion Hub"
     >
       {#if collapsed}
         <MinionLogo size="sm" />
       {:else}
-        <span class="flex items-center leading-none">
+        <span class="hidden lg:flex items-center leading-none">
           <span class="font-black text-sm tracking-wide uppercase text-brand-pink group-hover:text-brand-pink/90 transition-colors">MINION</span>
           <span class="font-semibold text-sm text-foreground/80 ml-1 group-hover:text-foreground transition-colors">hub</span>
         </span>
+        <span class="lg:hidden"><MinionLogo size="sm" /></span>
       {/if}
     </a>
-    <div class={collapsed ? 'hidden' : 'block'}>
+    <div class={collapsed ? 'hidden' : 'hidden lg:block'}>
       <HostPill />
     </div>
   </div>
@@ -131,7 +134,7 @@
     <button
       type="button"
       onclick={toggle}
-      class="nav-row {rowJustify} text-muted-foreground"
+      class="nav-row collapse-toggle {rowJustify} text-muted-foreground"
       aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
     >
@@ -162,6 +165,19 @@
     transition:
       color var(--duration-fast) var(--ease-standard),
       background-color var(--duration-fast) var(--ease-standard);
+  }
+  /* The collapse toggle is only meaningful at lg+ (md–lg is a forced mini rail).
+     Hidden here via scoped CSS rather than Tailwind `hidden lg:flex`, because the
+     scoped `.nav-row { display: flex }` rule outranks Tailwind's `.hidden` utility
+     and would otherwise leave the button visible — but inert — in the rail band.
+     64rem is the default Tailwind `lg` breakpoint. */
+  .collapse-toggle {
+    display: none;
+  }
+  @media (min-width: 64rem) {
+    .collapse-toggle {
+      display: flex;
+    }
   }
   .nav-row :global(.nav-icon) {
     opacity: 0.75;

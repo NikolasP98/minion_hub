@@ -1,4 +1,4 @@
-import { Phone, Megaphone, BellRing, Puzzle } from "lucide-svelte";
+import { Phone, Megaphone, BellRing, Puzzle, Palette, Image } from "lucide-svelte";
 import type { ComponentType, SvelteComponent } from "svelte";
 
 // lucide-svelte still ships legacy SvelteComponentTyped types; widen for Svelte 5 mixed code.
@@ -16,6 +16,8 @@ export const PLUGIN_ICON_MAP: Record<string, LucideIcon> = {
   Megaphone,
   MegaphoneSimple: Megaphone,
   BellRing,
+  Palette,
+  Image,
   Puzzle,
 };
 

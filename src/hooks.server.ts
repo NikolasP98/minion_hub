@@ -93,7 +93,6 @@ const finishApp: Handle = async ({ event, resolve }) => {
     '/api/metrics',
     '/api/gateway',
     '/api/device-identity',
-    '/api/studio',
     '/api/admin',
     '/api/invitations',
     // Self-serve join: a no-org (no tenantCtx) but authenticated user must be

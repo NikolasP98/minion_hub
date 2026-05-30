@@ -136,6 +136,7 @@ export function autoSave(
       }
     }
     dirtySlices.clear();
+    saveSync.lastSavedAt = Date.now();
     scheduleDbSave();
   }, 300);
 }
@@ -322,14 +323,68 @@ export function updateRelationshipLabel(id: string, label: string) {
   }
 }
 
+// --- Structural undo (add/remove agent · element · relationship) ---
+//
+// Physics canvases can't support frame-by-frame undo (positions change every
+// tick), so we snapshot only the *structural* slices before a discrete user
+// action. Restoring is followed by an imperative rebuildScene() in the canvas,
+// which is authoritative — no risk of a state/sprite ghost.
+
+interface WorkshopCheckpoint {
+  agents: Record<string, AgentInstance>;
+  relationships: Record<string, Relationship>;
+  elements: Record<string, WorkshopElement>;
+}
+
+const UNDO_LIMIT = 20;
+const undoStack: WorkshopCheckpoint[] = [];
+
+export const undoState = $state<{ canUndo: boolean }>({ canUndo: false });
+
+/** Snapshot the structural slices before a discrete, undoable user action. */
+export function pushUndoCheckpoint(): void {
+  const snap = $state.snapshot(workshopState);
+  // structuredClone yields a mutable deep copy ($state.snapshot is frozen).
+  undoStack.push({
+    agents: structuredClone(snap.agents) as Record<string, AgentInstance>,
+    relationships: structuredClone(snap.relationships) as Record<string, Relationship>,
+    elements: structuredClone(snap.elements) as Record<string, WorkshopElement>,
+  });
+  if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+  undoState.canUndo = undoStack.length > 0;
+}
+
+/**
+ * Restore the most recent checkpoint. Returns true if state changed (the caller
+ * is responsible for re-syncing the canvas via rebuildScene()).
+ */
+export function popUndoCheckpoint(): boolean {
+  const cp = undoStack.pop();
+  undoState.canUndo = undoStack.length > 0;
+  if (!cp) return false;
+  workshopState.agents = cp.agents;
+  workshopState.relationships = cp.relationships;
+  workshopState.elements = cp.elements;
+  autoSave(undefined, 'agents', 'relationships', 'elements');
+  return true;
+}
+
+/** Drop all undo history (e.g. when opening a different save). */
+export function clearUndoHistory(): void {
+  undoStack.length = 0;
+  undoState.canUndo = false;
+}
+
 // --- Server-side workspace saves ---
 
 export const saveSync = $state<{
   activeSaveId: string | null;
   isSyncing: boolean;
+  lastSavedAt: number | null;
 }>({
   activeSaveId: null,
   isSyncing: false,
+  lastSavedAt: null,
 });
 
 let thumbnailProvider: (() => Promise<string | null>) | null = null;
@@ -393,6 +448,7 @@ export async function openSave(id: string) {
   migrateInboxItems();
   restoreConversations({ conversations: saved.conversations });
   saveSync.activeSaveId = id;
+  clearUndoHistory();
   autoSave(undefined, ...ALL_SLICES);
 }
 

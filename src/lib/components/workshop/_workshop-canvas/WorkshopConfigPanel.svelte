@@ -1,8 +1,5 @@
 <script lang="ts">
-    import {
-        workshopState,
-        setViewMode,
-    } from "$lib/state/workshop/workshop.svelte";
+    import { workshopState } from "$lib/state/workshop/workshop.svelte";
     import ToggleSwitch from "$lib/components/config/ToggleSwitch.svelte";
     import * as m from "$lib/paraglide/messages";
 
@@ -102,44 +99,6 @@
                         <span class="text-green-400">{activeConvs}</span
                         >/{totalConvs}
                     </span>
-                </div>
-            </div>
-
-            <!-- View Mode -->
-            <div class="border-t border-border/30 mt-1 pt-1">
-                <div
-                    class="text-[7px] text-muted-strong uppercase tracking-wider mb-1"
-                >
-                    {m.workshop_configViewMode()}
-                </div>
-                <div class="flex rounded border border-border overflow-hidden">
-                    <button
-                        class="flex-1 px-2 py-0.5 text-[8px] transition-colors {workshopState
-                            .settings.viewMode === 'classic'
-                            ? 'bg-accent text-white'
-                            : 'bg-bg3 text-muted hover:text-foreground'}"
-                        onclick={() => setViewMode("classic")}
-                    >
-                        {m.workshop_viewClassic()}
-                    </button>
-                    <button
-                        class="flex-1 px-2 py-0.5 text-[8px] transition-colors {workshopState
-                            .settings.viewMode === 'habbo'
-                            ? 'bg-accent text-white'
-                            : 'bg-bg3 text-muted hover:text-foreground'}"
-                        onclick={() => setViewMode("habbo")}
-                    >
-                        {m.workshop_viewHabbo()}
-                    </button>
-                    <button
-                        class="flex-1 px-2 py-0.5 text-[8px] transition-colors {workshopState
-                            .settings.viewMode === 'pixel'
-                            ? 'bg-accent text-white'
-                            : 'bg-bg3 text-muted hover:text-foreground'}"
-                        onclick={() => setViewMode("pixel")}
-                    >
-                        {m.workshop_viewPixel()}
-                    </button>
                 </div>
             </div>
 
