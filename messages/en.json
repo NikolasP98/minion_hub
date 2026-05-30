@@ -227,6 +227,8 @@
   "workshop_undo": "Undo",
   "workshop_paletteAgents": "Agents",
   "workshop_paletteToggle": "Toggle palette",
+  "workshop_convActiveNow": "Active now",
+  "workshop_convArchive": "Archive",
   "workshop_banter": "Banter",
   "workshop_banterHintOn": "Idle agents auto-chat. Click to pause.",
   "workshop_banterHintOff": "Idle auto-chat is paused. Click to enable.",

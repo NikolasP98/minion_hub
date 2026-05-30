@@ -225,6 +225,8 @@
   "workshop_undo": "Deshacer",
   "workshop_paletteAgents": "Agentes",
   "workshop_paletteToggle": "Alternar paleta",
+  "workshop_convActiveNow": "Activas ahora",
+  "workshop_convArchive": "Archivo",
   "workshop_banter": "Charla",
   "workshop_banterHintOn": "Los agentes inactivos charlan solos. Clic para pausar.",
   "workshop_banterHintOff": "La charla automática está en pausa. Clic para activar.",
