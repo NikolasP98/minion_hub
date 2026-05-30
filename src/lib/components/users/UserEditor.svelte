@@ -26,10 +26,15 @@
     customRoles?: { id: string; name: string; isSystem: boolean }[];
   } = $props();
 
+  // svelte-ignore state_referenced_locally
   let displayName = $state(user.displayName ?? '');
+  // svelte-ignore state_referenced_locally
   let email = $state(user.email);
+  // svelte-ignore state_referenced_locally
   let alias = $state(user.alias ?? '');
+  // svelte-ignore state_referenced_locally
   let role = $state<'user' | 'admin'>(user.role);
+  // svelte-ignore state_referenced_locally
   let roleId = $state<string | null>(user.roleId);
   let saving = $state(false);
   let availability = $state<AvailabilityState>('idle');

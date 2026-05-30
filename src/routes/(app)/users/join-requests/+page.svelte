@@ -5,6 +5,7 @@
   let actionError = $state<string | null>(null);
   let linkBusy = $state(false);
 
+  // svelte-ignore state_referenced_locally
   let roleChoices = $state<Record<string, string>>(
     Object.fromEntries(data.requests.map((r) => [r.id, r.requested_role])),
   );
@@ -25,6 +26,7 @@
     if (!res.ok) { actionError = 'Deny failed'; return; }
     await invalidateAll();
   }
+  // svelte-ignore state_referenced_locally
   let linkOrg = $state(data.orgs[0]?.id ?? '');
   let linkRole = $state('user');
   let createdUrl = $state<string | null>(null);

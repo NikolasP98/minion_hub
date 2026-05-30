@@ -37,6 +37,7 @@ describe('/plugins/[id] load', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       { params: { id: 'x' }, url: new URL('http://h/plugins/x') } as any,
     );
+    if (!result) throw new Error('expected load to return page data');
     expect(result.entry.entrypoint).toBe('c.html');
   });
 });

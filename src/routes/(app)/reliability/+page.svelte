@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Chart from '$lib/components/charts/Chart.svelte';
-	import { PageHeader } from '$lib/components/ui';
+	import { PageHeader, Tabs, MultiSelectFilter } from '$lib/components/ui';
+	import type { MultiSelectOption } from '$lib/components/ui';
 	import DateRangePicker from '$lib/components/reliability/DateRangePicker.svelte';
 	import CredentialHealthPanel from '$lib/components/reliability/CredentialHealthPanel.svelte';
 	import SkillStatsPanel from '$lib/components/reliability/SkillStatsPanel.svelte';
@@ -33,10 +34,9 @@
 		PieChart,
 		RefreshCw,
 		Server,
-		ChevronLeft,
-		ChevronRight,
 		Bot,
 		Wrench,
+		Puzzle,
 	} from 'lucide-svelte';
 
 	// ── Persistence ───────────────────────────────────────────────────────────
@@ -45,9 +45,11 @@
 	interface PersistedFilters {
 		categories: string[];
 		severities: string[];
+		failureModes?: string[];
 		datePreset: string | null;
 		customFrom?: number;
 		customTo?: number;
+		tab?: string;
 	}
 
 	const PRESET_MS: Record<string, number> = {
@@ -85,9 +87,11 @@
 		saveFilters({
 			categories: [...selectedCategories],
 			severities: [...selectedSeverities],
+			failureModes: [...selectedFailureModes],
 			datePreset: preset,
 			customFrom: preset ? undefined : reliability.dateRange.from,
 			customTo: preset ? undefined : reliability.dateRange.to,
+			tab: activeTab,
 		});
 	}
 
@@ -139,41 +143,34 @@
 	let loading = $derived(reliability.loading);
 	let serverId = $derived(hostsState.activeHostId);
 
-	// ── Filter scroll indicators ──────────────────────────────────────────────
-	let filterScrollEl = $state<HTMLDivElement | null>(null);
-	let canScrollLeft = $state(false);
-	let canScrollRight = $state(false);
-
-	function updateScrollIndicators() {
-		if (!filterScrollEl) return;
-		const { scrollLeft, scrollWidth, clientWidth } = filterScrollEl;
-		canScrollLeft = scrollLeft > 2;
-		canScrollRight = scrollLeft + clientWidth < scrollWidth - 2;
-	}
-
-	function scrollFilters(direction: 'left' | 'right') {
-		if (!filterScrollEl) return;
-		const amount = filterScrollEl.clientWidth * 0.6;
-		filterScrollEl.scrollBy({ left: direction === 'left' ? -amount : amount, behavior: 'smooth' });
-	}
-
-	$effect(() => {
-		const el = filterScrollEl;
-		if (!el) return;
-		updateScrollIndicators();
-		el.addEventListener('scroll', updateScrollIndicators, { passive: true });
-		const ro = new ResizeObserver(updateScrollIndicators);
-		ro.observe(el);
-		return () => {
-			el.removeEventListener('scroll', updateScrollIndicators);
-			ro.disconnect();
-		};
-	});
-
 	// ── Filter state (restored from localStorage) ────────────────────────────
 	const _saved = loadFilters();
 	let selectedCategories = $state<Set<string>>(new Set(_saved.categories));
 	let selectedSeverities = $state<Set<string>>(new Set(_saved.severities));
+	// Failure mode = the part of an event name after its `<type>.` prefix
+	// (e.g. `gateway.ws_slow_response` → type `gateway`, mode `ws_slow_response`).
+	let selectedFailureModes = $state<Set<string>>(new Set(_saved.failureModes ?? []));
+
+	// Split an event name into its type prefix + failure-mode suffix. Events are
+	// dotted (`<type>.<mode...>`); a dotless event is its own type with no mode.
+	function parseEventName(event: string): { type: string; failureMode: string } {
+		const dot = event.indexOf('.');
+		if (dot === -1) return { type: event, failureMode: event };
+		return { type: event.slice(0, dot), failureMode: event.slice(dot + 1) };
+	}
+
+	// ── Tabs (separate concerns: overview / agents+llm / plugins) ─────────────
+	let activeTab = $state<string>(_saved.tab ?? 'overview');
+	const tabItems = $derived([
+		{ value: 'overview', label: m.reliability_tabOverview(), icon: Activity },
+		{ value: 'agents', label: m.reliability_tabAgents(), icon: Bot },
+		{ value: 'plugins', label: m.reliability_tabPlugins(), icon: Puzzle },
+	]);
+
+	function handleTabChange(v: string) {
+		activeTab = v;
+		persistFilters();
+	}
 
 	function toggleCategory(cat: string) {
 		const next = new Set(selectedCategories);
@@ -189,19 +186,86 @@
 		persistFilters();
 	}
 
+	function toggleFailureMode(mode: string) {
+		const next = new Set(selectedFailureModes);
+		if (next.has(mode)) next.delete(mode); else next.add(mode);
+		selectedFailureModes = next;
+		persistFilters();
+	}
+
 	const SEVERITIES = ['critical', 'high', 'medium', 'low', 'info', 'ok'] as const;
 
-	let filteredEvents = $derived.by(() => {
+	// Dropdown option lists — counts come from the unfiltered server summary so
+	// each row shows how many of that category/severity exist in the range.
+	const categoryFilterOptions = $derived<MultiSelectOption[]>(
+		CATEGORIES.map((c) => ({
+			value: c,
+			label: c,
+			color: CATEGORY_COLORS[c],
+			count: summary?.byCategory[c] ?? 0,
+		})),
+	);
+	const severityFilterOptions = $derived<MultiSelectOption[]>(
+		SEVERITIES.map((s) => ({
+			value: s,
+			label: s,
+			color: SEVERITY_COLORS[s],
+			count: summary?.bySeverity[s] ?? 0,
+		})),
+	);
+
+	function clearAllFilters() {
+		selectedCategories = new Set();
+		selectedSeverities = new Set();
+		selectedFailureModes = new Set();
+		persistFilters();
+	}
+
+	const hasActiveFilters = $derived(
+		selectedCategories.size > 0 || selectedSeverities.size > 0 || selectedFailureModes.size > 0,
+	);
+
+	// Events filtered by category + severity only — the failure-mode dropdown
+	// derives its option list from this set so picking a mode never collapses
+	// the list of available modes.
+	let categorySeverityFiltered = $derived.by(() => {
 		let evts = reliability.events;
 		if (selectedCategories.size > 0) evts = evts.filter(e => selectedCategories.has(e.category));
 		if (selectedSeverities.size > 0) evts = evts.filter(e => selectedSeverities.has(e.severity));
 		return evts;
 	});
 
+	let filteredEvents = $derived.by(() => {
+		if (selectedFailureModes.size === 0) return categorySeverityFiltered;
+		return categorySeverityFiltered.filter(e =>
+			selectedFailureModes.has(parseEventName(e.event).failureMode),
+		);
+	});
+
+	// Failure-mode dropdown options — distinct modes in the current cat/sev scope,
+	// sorted by frequency, coloured by their event type.
+	const failureModeFilterOptions = $derived.by((): MultiSelectOption[] => {
+		const counts = new Map<string, { count: number; type: string }>();
+		for (const e of categorySeverityFiltered) {
+			const { type, failureMode } = parseEventName(e.event);
+			const cur = counts.get(failureMode);
+			if (cur) cur.count++;
+			else counts.set(failureMode, { count: 1, type });
+		}
+		return [...counts.entries()]
+			.sort((a, b) => b[1].count - a[1].count)
+			.map(([mode, { count, type }]) => ({
+				value: mode,
+				label: mode,
+				color: CATEGORY_COLORS[type] ?? '#3b82f6',
+				count,
+			}));
+	});
+
 	// Overview stat cells — use server-side summary (SQL aggregation) for accurate totals,
 	// fall back to client-side counting from the paginated events list.
 	let overviewStats = $derived.by(() => {
-		if (summary && selectedCategories.size === 0 && selectedSeverities.size === 0) {
+		if (summary && !hasActiveFilters) {
 			// No filters active — use the server-side summary (covers ALL events, not just the page)
 			return { total: summary.total, byCategory: summary.byCategory, bySeverity: summary.bySeverity };
 		}
@@ -388,33 +452,50 @@
 		};
 	});
 
-	// ── Top Events bar chart (derived from events) ────────────────────────────
-	let topEventsOptions: EChartsOption = $derived.by(() => {
-		const evts = filteredEvents;
-		if (evts.length === 0) {
-			return {
-				backgroundColor: 'transparent',
-				grid: { left: 48, right: 24, top: 8, bottom: 24 },
-				xAxis: { type: 'value' },
-				yAxis: { type: 'category', data: [] },
-				series: []
-			};
-		}
+	// ── Top Events bar chart ──────────────────────────────────────────────────
+	// Bars are the top failure modes (the suffix of each `<type>.<mode>` event),
+	// labelled by mode and coloured by their type so the same chart shows BOTH
+	// dimensions. Counting keys on the full event name (unique); the y-axis label
+	// + tooltip surface the type/mode split. Click a bar to filter by that mode.
+	const TOP_EVENT_FALLBACK_COLOR = '#3b82f6';
 
-		// Count events by event name
+	let topEvents = $derived.by(() => {
 		const eventCounts = new Map<string, number>();
-		for (const evt of evts) {
+		for (const evt of filteredEvents) {
 			eventCounts.set(evt.event, (eventCounts.get(evt.event) ?? 0) + 1);
 		}
-		const topEvents = [...eventCounts.entries()]
-			.sort((a, b) => b[1] - a[1])
-			.slice(0, 20)
-			.reverse();
+		return [...eventCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 20);
+	});
 
+	// Distinct types present in the top events → custom HTML legend (ECharts can't
+	// legend per-item on a single bar series).
+	const topEventTypes = $derived.by(() => {
+		const types = new Set(topEvents.map(([name]) => parseEventName(name).type));
+		return [...types].map((type) => ({ type, color: CATEGORY_COLORS[type] ?? TOP_EVENT_FALLBACK_COLOR }));
+	});
+
+	let topEventsOptions: EChartsOption = $derived.by(() => {
+		const top = [...topEvents].reverse(); // ECharts category axis renders bottom→top
 		return {
 			backgroundColor: 'transparent',
-			tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-			grid: { left: 120, right: 24, top: 8, bottom: 24 },
+			tooltip: {
+				trigger: 'item',
+				axisPointer: { type: 'shadow' },
+				formatter: (params: any) => {
+					const full = String(params.name ?? '');
+					const { type, failureMode } = parseEventName(full);
+					const color = CATEGORY_COLORS[type] ?? TOP_EVENT_FALLBACK_COLOR;
+					const count = params.value as number;
+					return `<div style="font-size:11px">
+						<div style="font-weight:600">${failureMode}</div>
+						<div style="display:flex;align-items:center;gap:5px;margin:2px 0;color:var(--color-muted-foreground);font-size:10px">
+							<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${color}"></span>${type}
+						</div>
+						<div style="font-weight:600">${count} ${count === 1 ? m.reliability_llmCall() : m.reliability_llmCallsPlural()}</div>
+					</div>`;
+				}
+			},
+			grid: { left: 130, right: 32, top: 8, bottom: 24 },
 			xAxis: {
 				type: 'value',
 				minInterval: 1,
@@ -422,17 +503,32 @@
 			},
 			yAxis: {
 				type: 'category',
-				data: topEvents.map(([name]) => name),
-				axisLabel: { fontSize: 10, width: 100, overflow: 'truncate' }
+				data: top.map(([name]) => name),
+				axisLabel: {
+					fontSize: 10,
+					width: 110,
+					overflow: 'truncate',
+					formatter: (name: string) => parseEventName(name).failureMode
+				}
 			},
 			series: [{
 				type: 'bar',
-				data: topEvents.map(([, count]) => count),
-				itemStyle: { color: '#3b82f6', borderRadius: [0, 4, 4, 0] },
+				data: top.map(([name, count]) => ({
+					value: count,
+					itemStyle: {
+						color: CATEGORY_COLORS[parseEventName(name).type] ?? TOP_EVENT_FALLBACK_COLOR,
+						borderRadius: [0, 4, 4, 0]
+					}
+				})),
 				barMaxWidth: 20
 			}]
 		};
 	});
+
+	function handleTopEventClick(params: unknown) {
+		const name = (params as { name?: string })?.name;
+		if (name) toggleFailureMode(parseEventName(name).failureMode);
+	}
 
 	// ── Severity pie ──────────────────────────────────────────────────────────
 	let severityOptions: EChartsOption = $derived.by(() => {
@@ -499,79 +595,54 @@
 			</button>
 		{/snippet}
 	</PageHeader>
-	{#if summary}
-	<div class="shrink-0 relative z-20 border-b border-border bg-bg2/80 backdrop-blur-sm">
-		<div class="relative">
-			<!-- Left scroll arrow + gradient -->
-			{#if canScrollLeft}
-				<button
-					type="button"
-					class="absolute left-0 top-0 bottom-2 z-10 flex items-center pl-1 pr-2 cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
-					style="background: linear-gradient(to right, var(--color-bg2) 40%, transparent)"
-					onclick={() => scrollFilters('left')}
-				>
-					<ChevronLeft size={12} />
-				</button>
-			{/if}
-
-			<!-- Right scroll arrow + gradient -->
-			{#if canScrollRight}
-				<button
-					type="button"
-					class="absolute right-0 top-0 bottom-2 z-10 flex items-center pr-1 pl-2 cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
-					style="background: linear-gradient(to left, var(--color-bg2) 40%, transparent)"
-					onclick={() => scrollFilters('right')}
-				>
-					<ChevronRight size={12} />
-				</button>
-			{/if}
-
-			<div
-				bind:this={filterScrollEl}
-				class="flex items-center gap-1.5 px-4 pb-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden flex-nowrap sm:flex-wrap"
-			>
-				<span class="text-[9px] font-semibold uppercase tracking-widest text-muted-strong mr-0.5 shrink-0">{m.reliability_category()}</span>
-				{#each CATEGORIES as cat (cat)}
-					<button
-						type="button"
-						class="text-[10px] font-semibold py-0.5 px-2 rounded-md cursor-pointer transition-all duration-150 leading-snug whitespace-nowrap border shrink-0"
-						style={selectedCategories.has(cat) ? `background:${CATEGORY_COLORS[cat]}22;color:${CATEGORY_COLORS[cat]};border-color:${CATEGORY_COLORS[cat]}44` : ''}
-						class:bg-bg3={!selectedCategories.has(cat)}
-						class:text-muted-foreground={!selectedCategories.has(cat)}
-						class:border-border={!selectedCategories.has(cat)}
-						onclick={() => toggleCategory(cat)}
-					>
-						{cat}
-					</button>
-				{/each}
-				<span class="w-px h-4 bg-border mx-0.5 shrink-0"></span>
-				<span class="text-[9px] font-semibold uppercase tracking-widest text-muted-strong mr-0.5 shrink-0">{m.reliability_severity()}</span>
-				{#each SEVERITIES as sev (sev)}
-					<button
-						type="button"
-						class="text-[10px] font-semibold py-0.5 px-2 rounded-md cursor-pointer transition-all duration-150 leading-snug whitespace-nowrap border shrink-0"
-						style={selectedSeverities.has(sev) ? `background:${SEVERITY_COLORS[sev]}22;color:${SEVERITY_COLORS[sev]};border-color:${SEVERITY_COLORS[sev]}44` : ''}
-						class:bg-bg3={!selectedSeverities.has(sev)}
-						class:text-muted-foreground={!selectedSeverities.has(sev)}
-						class:border-border={!selectedSeverities.has(sev)}
-						onclick={() => toggleSeverity(sev)}
-					>
-						{sev}
-					</button>
-				{/each}
-				{#if selectedCategories.size > 0 || selectedSeverities.size > 0}
+	<!-- Filter + tab bar -->
+	<div class="shrink-0 relative z-30 border-b border-border bg-bg2/80 backdrop-blur-sm">
+		{#if summary}
+			<div class="flex items-center gap-2 flex-wrap px-4 pt-2 pb-2.5">
+				<MultiSelectFilter
+					label={m.reliability_category()}
+					options={categoryFilterOptions}
+					selected={selectedCategories}
+					onToggle={toggleCategory}
+					onClear={() => { selectedCategories = new Set(); persistFilters(); }}
+					allLabel={m.reliability_filterAll()}
+				/>
+				<MultiSelectFilter
+					label={m.reliability_severity()}
+					options={severityFilterOptions}
+					selected={selectedSeverities}
+					onToggle={toggleSeverity}
+					onClear={() => { selectedSeverities = new Set(); persistFilters(); }}
+					allLabel={m.reliability_filterAll()}
+				/>
+				<MultiSelectFilter
+					label={m.reliability_failureMode()}
+					options={failureModeFilterOptions}
+					selected={selectedFailureModes}
+					onToggle={toggleFailureMode}
+					onClear={() => { selectedFailureModes = new Set(); persistFilters(); }}
+					allLabel={m.reliability_filterAll()}
+				/>
+				{#if hasActiveFilters}
 					<button
 						type="button"
 						class="text-[10px] py-0.5 px-2 rounded-md cursor-pointer text-muted-foreground hover:text-foreground transition-colors shrink-0"
-						onclick={() => { selectedCategories = new Set(); selectedSeverities = new Set(); persistFilters(); }}
+						onclick={clearAllFilters}
 					>
 						{m.marketplace_agentsListClearFilters()}
 					</button>
 				{/if}
 			</div>
-		</div>
-		</div>
 		{/if}
+		<Tabs
+			tabs={tabItems}
+			value={activeTab}
+			size="sm"
+			class="px-4 border-b-0"
+			aria-label={m.reliability_title()}
+			onValueChange={handleTabChange}
+		/>
+	</div>
 
 	<main class="flex-1 min-h-0 overflow-y-auto p-4">
 		{#if !serverId}
@@ -590,6 +661,7 @@
 			</div>
 		{:else}
 		<div class="flex flex-col gap-3">
+			{#if activeTab === 'overview'}
 			<!-- ── Overview Stats Widget ───────────────────────────────────────── -->
 			<div class="bg-card border border-border rounded-lg overflow-hidden">
 				<div class="grid grid-cols-8 divide-x divide-border/60 max-[1100px]:grid-cols-4 max-[700px]:grid-cols-2">
@@ -628,10 +700,24 @@
 					<div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20">
 						<BarChart2 size={11} class="text-accent shrink-0" />
 						<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{m.reliability_topEvents()}</span>
+						<!-- Type legend: bar colours decode to event types -->
+						<div class="ml-auto flex items-center gap-2 flex-wrap justify-end">
+							{#each topEventTypes as t (t.type)}
+								<button
+									type="button"
+									class="flex items-center gap-1 cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
+									title={m.reliability_filterCategoryTitle({ category: t.type })}
+									onclick={() => toggleCategory(t.type)}
+								>
+									<span class="w-2 h-2 rounded-sm shrink-0" style:background={t.color}></span>
+									<span class="text-[9px] font-medium {selectedCategories.has(t.type) ? 'text-foreground' : ''}">{t.type}</span>
+								</button>
+							{/each}
+						</div>
 					</div>
 					<div class="relative overflow-hidden">
 						<ScanLine speed={14} opacity={0.018} />
-						<Chart options={topEventsOptions} height="300px" />
+						<Chart options={topEventsOptions} height="300px" onItemClick={handleTopEventClick} />
 					</div>
 				</div>
 
@@ -654,18 +740,19 @@
 				<SkillStatsPanel {serverId} />
 			</div>
 
-			<!-- ── Agent LLM Metrics (full-width) ─────────────────────────────── -->
-			<AgentLlmMetricsPanel events={filteredEvents} />
-
-			<!-- ── Plugin Health (full-width) ──────────────────────────────────── -->
-			<PluginHealthPanel {serverId} />
-
 			<!-- ── Activity Log (consolidated: scatter + tabs + sortable/searchable/paginated table) ── -->
 			<ConnectionEventsPanel
 				events={filteredEvents}
 				total={overviewStats.total}
 				byCategory={overviewStats.byCategory}
 			/>
+			{:else if activeTab === 'agents'}
+			<!-- ── Agents & LLM ─────────────────────────────────────────────────── -->
+			<AgentLlmMetricsPanel events={filteredEvents} />
+			{:else if activeTab === 'plugins'}
+			<!-- ── Plugin Health ────────────────────────────────────────────────── -->
+			<PluginHealthPanel {serverId} />
+			{/if}
 		</div>
 		{/if}
 	</main>

@@ -11,8 +11,7 @@
     let { type, name, onCancel, onConfirm }: Props = $props();
 </script>
 
-<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<div class="confirm-overlay" role="dialog" aria-modal="true" onclick={(e) => { if (e.target === e.currentTarget) onCancel(); }} onkeydown={(e) => { if (e.key === 'Escape') onCancel(); }}>
+<div class="confirm-overlay" role="dialog" aria-modal="true" tabindex="-1" onclick={(e) => { if (e.target === e.currentTarget) onCancel(); }} onkeydown={(e) => { if (e.key === 'Escape') onCancel(); }}>
     <div class="confirm-modal">
         <p class="confirm-title">Delete "{name}"?</p>
         <p class="confirm-desc">{m.builder_deleteDesc({ type })}</p>

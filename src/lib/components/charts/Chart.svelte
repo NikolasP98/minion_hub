@@ -6,12 +6,15 @@
 		options,
 		class: className = '',
 		style = '',
-		height = '300px'
+		height = '300px',
+		onItemClick
 	}: {
 		options: EChartsOption;
 		class?: string;
 		style?: string;
 		height?: string;
+		/** Optional ECharts click handler (receives the click params). */
+		onItemClick?: (params: unknown) => void;
 	} = $props();
 
 	let container: HTMLDivElement;
@@ -90,6 +93,7 @@
 			echarts.registerTheme('minion-dark', buildTheme());
 			chart = echarts.init(container, 'minion-dark');
 			chart.setOption(applyDefaults(options));
+			if (onItemClick) chart.on('click', onItemClick);
 
 			resizeObs = new ResizeObserver(() => {
 				chart?.resize();
@@ -105,6 +109,7 @@
 				chart.dispose();
 				chart = echartsLib.init(container, 'minion-dark');
 				chart.setOption(applyDefaults(currentOpts));
+				if (onItemClick) chart.on('click', onItemClick);
 			});
 			themeObserver.observe(document.documentElement, {
 				attributes: true,

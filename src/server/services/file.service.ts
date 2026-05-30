@@ -3,7 +3,7 @@ import { files } from '@minion-stack/db/schema';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { newId, nowMs } from '$server/db/utils';
 import { uploadToB2, getSignedDownloadUrl, deleteFromB2 } from '$server/storage/b2';
-import type { TenantContext } from './base';
+import { scopeData, type TenantContext } from './base';
 
 export interface FileUploadInput {
   fileName: string;
@@ -68,7 +68,7 @@ export async function deleteFile(ctx: TenantContext, id: string) {
 
 export async function listFiles(ctx: TenantContext, category?: string) {
   return cached(
-    keys.hub('files', { t: ctx.tenantId, d: { category: category ?? null } }),
+    keys.hub('files', { t: ctx.tenantId, d: scopeData({ category }) }),
     {
       ttl: '5m',
       swr: '30s',

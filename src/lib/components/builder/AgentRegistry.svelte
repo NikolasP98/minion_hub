@@ -108,7 +108,7 @@
                                 +{overflowCategories.length} {m.builder_registryMore()}
                             </button>
                             {#if showMoreCategories}
-                                <div class="more-menu" onmousedown={(e) => e.stopPropagation()}>
+                                <div class="more-menu" role="presentation" onmousedown={(e) => e.stopPropagation()}>
                                     {#each overflowCategories as { category, count } (category)}
                                         <button
                                             type="button"
@@ -494,6 +494,7 @@
         overflow: hidden;
         display: -webkit-box;
         -webkit-line-clamp: 2;
+        line-clamp: 2;
         -webkit-box-orient: vertical;
     }
 

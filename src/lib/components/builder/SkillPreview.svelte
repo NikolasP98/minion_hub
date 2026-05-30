@@ -142,8 +142,8 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-<div class="overlay" onclick={handleBackdropClick}>
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<div class="overlay" role="presentation" onclick={handleBackdropClick}>
     <div class="modal" role="dialog" aria-label="{m.builder_skillPreviewLabel({ name: skillName })}">
         <!-- Header -->
         <div class="modal-header">

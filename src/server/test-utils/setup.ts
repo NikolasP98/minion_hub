@@ -13,4 +13,4 @@ process.env.B2_BUCKET_NAME ??= 'test-bucket';
 
 import { configureCache, createBackend } from '@minion-stack/cache';
 
-configureCache({ backend: createBackend({ backend: 'noop' }) });
+configureCache({ namespace: 'test', backend: createBackend({ backend: 'noop' }) });

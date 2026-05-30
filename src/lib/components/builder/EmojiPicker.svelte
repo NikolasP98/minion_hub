@@ -27,10 +27,9 @@
     </button>
 
     {#if open}
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div class="picker-backdrop" onclick={() => { open = false; }}></div>
+        <button type="button" class="picker-backdrop" aria-label="Close icon picker" onclick={() => { open = false; }}></button>
         <div class="picker-dropdown">
-            {#each emojis as emoji}
+            {#each emojis as emoji (emoji)}
                 <button
                     type="button"
                     class="picker-item"
@@ -102,6 +101,11 @@
         position: fixed;
         inset: 0;
         z-index: 99;
+        border: none;
+        padding: 0;
+        margin: 0;
+        background: transparent;
+        cursor: default;
     }
 
     .picker-dropdown {

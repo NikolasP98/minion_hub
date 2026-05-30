@@ -15,6 +15,7 @@
     }
 
     let { channelId, serverId, accountId, onpaired }: Props = $props();
+    // svelte-ignore state_referenced_locally
     void serverId; // QR pairing now runs over the active gateway WS connection, not a per-server REST route.
 
     let qrData = $state('');

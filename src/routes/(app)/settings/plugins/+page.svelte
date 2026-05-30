@@ -26,6 +26,7 @@
   // plugin iframes can inherit the live design tokens. Plain `let` (not
   // $derived/$state) — the values are read once when PluginIframe mounts and
   // making them reactive would tear down the bridge on every read.
+  // svelte-ignore non_reactive_update
   let theme: Theme = 'light';
   let tokens: Record<string, string> = {};
   if (typeof document !== 'undefined') {
