@@ -143,7 +143,7 @@
           <span class="w-1.5 h-1.5 rounded-full bg-muted/40 shrink-0"></span>
         {/if}
         <span class="text-[9px] font-mono uppercase px-1 py-0.5 rounded
-          {conv.type === 'task' ? 'bg-accent/10 text-accent' : 'bg-purple-500/10 text-purple-400'}">
+          {conv.type === 'task' ? 'bg-accent/10 text-accent' : 'bg-bg3 text-muted-strong'}">
           {conv.type}
         </span>
       </div>
@@ -197,7 +197,7 @@
       <div class="flex items-center gap-2 min-w-0">
         {#if selectedConversation}
           <span class="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded shrink-0
-            {selectedConversation.type === 'task' ? 'bg-accent/10 text-accent' : 'bg-purple-500/10 text-purple-400'}">
+            {selectedConversation.type === 'task' ? 'bg-accent/10 text-accent' : 'bg-bg3 text-muted-strong'}">
             {selectedConversation.type}
           </span>
           <span class="text-[11px] text-foreground truncate">
