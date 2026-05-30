@@ -42,6 +42,88 @@ export interface SectionEntry {
   content?: string;
   /** Phase D-0e/f: where this section's content originates. */
   source?: 'static' | 'file' | 'generated' | 'config' | 'custom';
+  /** Unified Prompt Tab: enriched from `prompt.sections.preview` breakdown. */
+  bytes?: number;
+  tokens?: number;
+  cacheable?: boolean;
+  /** True when an override has disabled this section. */
+  disabled?: boolean;
+}
+
+/**
+ * Phase 3: a single frame from the `prompt.sections.preview.event` stream.
+ * `start` is emitted once first (with the total section count); each `section`
+ * frame carries one rendered section breakdown row, in assembly order.
+ */
+export interface PreviewStreamEvent {
+  previewId: string;
+  kind: 'start' | 'section';
+  /** Total number of sections that will be streamed. */
+  total: number;
+  /** 0-based index of this section (only on `kind: 'section'`). */
+  index?: number;
+  /** The rendered section breakdown (only on `kind: 'section'`). */
+  section?: {
+    id: string;
+    layer: string;
+    order: number;
+    source: 'static' | 'file' | 'generated' | 'config' | 'custom' | 'builtin';
+    bytes: number;
+    tokens: number;
+    cacheable: boolean;
+    rendered: string;
+  };
+}
+
+/** How the sections rail groups rows. `pipeline` is the legacy classic view. */
+export type GroupMode = 'layer' | 'none' | 'pipeline';
+
+/** How the sections rail sorts rows within a group. */
+export type SortMode = 'order' | 'cached' | 'alpha' | 'size';
+
+/** Whole-prompt cacheable ratio (0–1). Uses bytes, falls back to chars. */
+export function cachedPct(sections: SectionEntry[]): number {
+  let total = 0;
+  let cached = 0;
+  for (const s of sections) {
+    const size = s.bytes ?? s.chars ?? 0;
+    total += size;
+    if (s.cacheable) cached += size;
+  }
+  if (total <= 0) return 0;
+  return cached / total;
+}
+
+/** Pure sort — returns a new array, never mutates the input. */
+export function sortSections(list: SectionEntry[], sort: SortMode): SectionEntry[] {
+  const copy = [...list];
+  switch (sort) {
+    case 'order':
+      copy.sort((a, b) => a.order - b.order);
+      break;
+    case 'cached':
+      copy.sort((a, b) => {
+        const ca = a.cacheable ? 0 : 1;
+        const cb = b.cacheable ? 0 : 1;
+        if (ca !== cb) return ca - cb;
+        return a.order - b.order;
+      });
+      break;
+    case 'alpha':
+      copy.sort((a, b) => a.label.localeCompare(b.label));
+      break;
+    case 'size':
+      copy.sort((a, b) => (b.bytes ?? b.chars ?? 0) - (a.bytes ?? a.chars ?? 0));
+      break;
+  }
+  return copy;
+}
+
+/** Banded divider label for the Group=None + Sort=Order view. */
+export function orderBand(order: number): string {
+  if (order < 500) return '0–499';
+  if (order < 1000) return '500–999';
+  return '1000+';
 }
 
 export interface SystemPromptReport {
@@ -121,6 +203,12 @@ export const SOURCE_META: Record<
 export function fmtChars(n: number): string {
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k chars`;
   return `${n} chars`;
+}
+
+/** Compact size label for tier-1 rows (no unit suffix, tabular). */
+export function fmtSize(n: number): string {
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return `${n}`;
 }
 
 export function fmtDate(ms?: number): string {

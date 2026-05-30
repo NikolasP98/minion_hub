@@ -154,6 +154,28 @@ export async function previewSections(
   }
 }
 
+/**
+ * Phase 3: streaming variant of {@link previewSections}. Issues
+ * `prompt.sections.preview.stream`; the gateway emits per-section
+ * `prompt.sections.preview.event` frames (forwarded as a window CustomEvent by
+ * the gateway service) *before* this promise resolves with the authoritative
+ * final {@link PreviewResponse}. Callers subscribe to the window event for the
+ * progressive build and use this return value as the source of truth.
+ */
+export async function previewSectionsStream(
+  agentId: string,
+  mode: PromptMode,
+  testInput?: string,
+): Promise<PreviewResponse> {
+  const params: Record<string, unknown> = { agentId, mode };
+  if (testInput) params.testInput = testInput;
+  try {
+    return (await sendRequest("prompt.sections.preview.stream", params)) as PreviewResponse;
+  } catch (e) {
+    throw normalizeError(e);
+  }
+}
+
 export async function getOverrides(agentId: string): Promise<OverridesGetResponse> {
   try {
     const res = (await sendRequest("prompt.sections.overrides.get", { agentId })) as

@@ -513,6 +513,17 @@ function handleEvent(evt: Record<string, unknown>) {
         window.dispatchEvent(new CustomEvent('flows.run.event', { detail: evt.payload }));
       }
       break;
+    case 'prompt.sections.preview.event':
+      // Phase 3: progressive per-section reveal for the /agents Prompt tab.
+      // Must be handled here explicitly — the generic `prompt.section.*`
+      // default branch below collapses payloads into `prompt.sections.changed`,
+      // which would drop the per-section breakdown this stream carries.
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('prompt.sections.preview.event', { detail: evt.payload }),
+        );
+      }
+      break;
     case 'pi-agent.run-start':
     case 'pi-agent.run-end':
     case 'pi-agent.tool-call':

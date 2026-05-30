@@ -15,6 +15,7 @@
     totalChars,
     contentViewMode = $bindable(),
     onOpenEditor,
+    onToggleDisabled,
   }: {
     currentSection: SectionEntry;
     report: SystemPromptReport;
@@ -22,6 +23,8 @@
     totalChars: number;
     contentViewMode: 'rendered' | 'raw';
     onOpenEditor: () => void;
+    /** Override controls: toggle this section on/off. */
+    onToggleDisabled?: (id: string, disabled: boolean) => void;
   } = $props();
 
   function barWidth(chars: number): string {
@@ -79,6 +82,33 @@
       {layerMeta[currentSection.layer]?.description ?? ''}
     </p>
 
+    {#if currentSection.disabled}
+      <div
+        class="mb-3 flex items-center gap-2 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5"
+      >
+        <span class="text-[11px] text-amber-400 flex-1">This section is overridden off.</span>
+        {#if onToggleDisabled}
+          <button
+            type="button"
+            class="text-[10px] font-semibold px-2 py-0.5 rounded border border-amber-500/50 text-amber-300 hover:bg-amber-500/20 transition-colors cursor-pointer"
+            onclick={() => onToggleDisabled?.(currentSection.id, false)}
+          >
+            Reset
+          </button>
+        {/if}
+      </div>
+    {:else if onToggleDisabled}
+      <div class="mb-3">
+        <button
+          type="button"
+          class="text-[10px] font-semibold px-2 py-0.5 rounded border border-border text-muted hover:text-foreground hover:border-accent/50 transition-colors cursor-pointer"
+          onclick={() => onToggleDisabled?.(currentSection.id, true)}
+        >
+          Disable section
+        </button>
+      </div>
+    {/if}
+
     <!-- Section stats -->
     <div class="space-y-2">
       <div class="flex items-start gap-3 py-1.5 px-2 rounded bg-bg2 border border-border/50">
@@ -93,6 +123,26 @@
         <span class="shrink-0 w-20 text-[10px] font-bold uppercase tracking-wide text-muted">{m.prompt_sectionOrder()}</span>
         <span class="flex-1 min-w-0 text-[11px] text-foreground font-mono">{currentSection.order}</span>
       </div>
+      {#if currentSection.bytes !== undefined}
+        <div class="flex items-start gap-3 py-1.5 px-2 rounded bg-bg2 border border-border/50">
+          <span class="shrink-0 w-20 text-[10px] font-bold uppercase tracking-wide text-muted">Bytes</span>
+          <span class="flex-1 min-w-0 text-[11px] text-foreground font-mono">{currentSection.bytes.toLocaleString()}</span>
+        </div>
+      {/if}
+      {#if currentSection.tokens !== undefined}
+        <div class="flex items-start gap-3 py-1.5 px-2 rounded bg-bg2 border border-border/50">
+          <span class="shrink-0 w-20 text-[10px] font-bold uppercase tracking-wide text-muted">Tokens</span>
+          <span class="flex-1 min-w-0 text-[11px] text-foreground font-mono">{currentSection.tokens.toLocaleString()}</span>
+        </div>
+      {/if}
+      {#if currentSection.cacheable !== undefined}
+        <div class="flex items-start gap-3 py-1.5 px-2 rounded bg-bg2 border border-border/50">
+          <span class="shrink-0 w-20 text-[10px] font-bold uppercase tracking-wide text-muted">Cacheable</span>
+          <span class="flex-1 min-w-0 text-[11px] font-mono" class:text-amber-400={currentSection.cacheable} class:text-muted={!currentSection.cacheable}>
+            {currentSection.cacheable ? '⚡ yes' : 'no'}
+          </span>
+        </div>
+      {/if}
       <div class="flex items-start gap-3 py-1.5 px-2 rounded bg-bg2 border border-border/50">
         <span class="shrink-0 w-20 text-[10px] font-bold uppercase tracking-wide text-muted">{m.prompt_sectionWeight()}</span>
         <div class="flex-1 min-w-0 flex items-center gap-2">
