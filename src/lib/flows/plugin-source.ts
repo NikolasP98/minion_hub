@@ -1,7 +1,7 @@
 /**
  * Plugin-imported flows carry their origin in the flow row's `config` JSON:
  *   { source: { pluginId, templateId } }
- * set once at import time (see api/flows/sync). It is never overwritten by the
+ * set once at import/seed time (see api/flows/reconcile). It is never overwritten by the
  * editor save (which only writes name/nodes/edges/active), so it durably marks
  * a flow as "managed by a plugin" — used to block deletion and show the pill.
  *
