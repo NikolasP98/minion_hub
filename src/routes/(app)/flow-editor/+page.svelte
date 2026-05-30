@@ -1,122 +1,126 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
-  import { GitBranch, Plus, Trash2, Clock, BookOpen, Puzzle, Lock } from 'lucide-svelte';
+  import { GitBranch, Plus, BookOpen } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import BuilderHub from '$lib/components/builder/BuilderHub.svelte';
+  import FlowGroupSection from '$lib/components/flow-editor/FlowGroupSection.svelte';
   import { sendRequest } from '$lib/services/gateway.svelte';
+  import { sortGroups, type FlowGroupMeta } from '$lib/flows/groups';
+  import { SvelteMap } from 'svelte/reactivity';
 
-  // Flows list lives here; Skills are authored through the same flow surface.
   let view = $state<'flows' | 'skills'>('flows');
 
-  type FlowMeta = {
-    id: string;
-    name: string;
-    nodeCount: number;
-    createdAt: number;
-    updatedAt: number;
-    /** Owning plugin id when imported from a plugin; null for user flows. */
-    pluginId?: string | null;
-  };
-
-  // Flows shipped by enabled plugins (e.g. the alert-watcher pipeline), surfaced
-  // from the gateway's flows.templates.list and auto-installed into this user's
-  // flow list on first visit after the plugin is enabled.
-  type FlowTemplate = {
-    pluginId: string;
-    id: string;
-    name: string;
-    description?: string;
-    nodes: unknown[];
-    edges: unknown[];
-  };
+  type FlowMeta = { id: string; name: string; nodeCount: number; createdAt: number; updatedAt: number; pluginId?: string | null; groupId?: string | null };
+  type Template = { id: string; name: string; nodes: unknown[]; edges: unknown[] };
+  type FlowPluginGroup = { pluginId: string; displayName: string; enabled: boolean; templates: Template[] };
 
   let flows = $state<FlowMeta[]>([]);
+  let groups = $state<FlowGroupMeta[]>([]);
+  let pluginTemplates = $state<Record<string, Template[]>>({});
   let loading = $state(true);
-  let creating = $state(false);
   let createError = $state<string | null>(null);
 
   onMount(async () => {
-    await loadFlows();
-    // Auto-install any plugin-shipped flows this user hasn't installed yet, then
-    // refresh the list if new ones landed. Idempotent + deletion-safe server-side.
-    await syncPluginFlows();
+    await loadAll();
+    await reconcile();
   });
 
-  async function syncPluginFlows() {
-    try {
-      const res = (await sendRequest('flows.templates.list', {})) as
-        | { templates?: FlowTemplate[] }
-        | null;
-      const templates = res?.templates ?? [];
-      if (templates.length === 0) return;
-      const syncRes = await fetch('/api/flows/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ templates }),
-      });
-      if (syncRes.ok) {
-        const { count } = await syncRes.json();
-        if (count > 0) await loadFlows();
-      }
-    } catch {
-      // Gateway not connected yet (or no plugin flows) — they'll sync next visit.
-    }
-  }
-
-  async function loadFlows() {
+  async function loadAll() {
     loading = true;
     try {
-      const res = await fetch('/api/flows');
-      if (res.ok) {
-        const data = await res.json();
-        flows = data.flows;
-      }
+      const [fRes, gRes] = await Promise.all([fetch('/api/flows'), fetch('/api/flow-groups')]);
+      if (fRes.ok) flows = (await fRes.json()).flows;
+      if (gRes.ok) groups = (await gRes.json()).groups;
     } finally {
       loading = false;
     }
   }
 
-  async function handleCreate() {
-    creating = true;
+  async function reconcile() {
+    try {
+      const res = (await sendRequest('flows.templates.list', {})) as
+        | { plugins?: FlowPluginGroup[]; templates?: { pluginId: string; id: string; name: string; nodes: unknown[]; edges: unknown[] }[] }
+        | null;
+      let plugins: FlowPluginGroup[] = res?.plugins ?? [];
+      if (plugins.length === 0 && res?.templates?.length) {
+        const byPlugin = new SvelteMap<string, Template[]>();
+        for (const t of res.templates) {
+          const arr = byPlugin.get(t.pluginId) ?? [];
+          arr.push({ id: t.id, name: t.name, nodes: t.nodes, edges: t.edges });
+          byPlugin.set(t.pluginId, arr);
+        }
+        plugins = [...byPlugin].map(([pluginId, templates]) => ({ pluginId, displayName: pluginId, enabled: true, templates }));
+      }
+      pluginTemplates = Object.fromEntries(plugins.map((p) => [p.pluginId, p.templates]));
+      const syncRes = await fetch('/api/flows/reconcile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plugins }),
+      });
+      if (syncRes.ok) {
+        const out = await syncRes.json();
+        if (out.groupsCreated || out.flowsSeeded || out.flowsReassigned || out.groupsReleased || out.groupsUpdated) {
+          await loadAll();
+        }
+      }
+    } catch {
+      // gateway not connected yet — reconcile next visit
+    }
+  }
+
+  const ungrouped = $derived(flows.filter((f) => !f.groupId));
+  const orderedGroups = $derived(sortGroups(groups));
+  function flowsIn(groupId: string) {
+    return flows.filter((f) => f.groupId === groupId);
+  }
+
+  async function handleCreate(groupId: string | null) {
     createError = null;
     try {
       const name = `Flow ${new Date().toLocaleDateString()}`;
       const res = await fetch('/api/flows', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, groupId }),
       });
       if (res.ok) {
         const { id } = await res.json();
         goto(`/flow-editor/${id}`);
       } else {
-        const text = await res.text();
-        createError = `Error ${res.status}: ${text}`;
+        createError = `Error ${res.status}: ${await res.text()}`;
       }
     } catch (e) {
       createError = e instanceof Error ? e.message : 'Unknown error';
-    } finally {
-      creating = false;
     }
   }
 
-  async function handleDelete(e: MouseEvent, flow: FlowMeta) {
-    e.stopPropagation();
-    if (flow.pluginId) return; // plugin flows are not deletable (also enforced server-side)
-    const res = await fetch(`/api/flows/${flow.id}`, { method: 'DELETE' });
-    if (res.ok) {
-      flows = flows.filter((f) => f.id !== flow.id);
-    }
-  }
-
-  function formatDate(ts: number) {
-    return new Date(ts).toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+  function handleDeleteFlow(flow: { id: string }) {
+    fetch(`/api/flows/${flow.id}`, { method: 'DELETE' }).then((res) => {
+      if (res.ok) flows = flows.filter((f) => f.id !== flow.id);
     });
+  }
+
+  async function handleNewGroup() {
+    const name = prompt(m.flow_groupNamePrompt());
+    if (!name) return;
+    const res = await fetch('/api/flow-groups', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),
+    });
+    if (res.ok) await loadAll();
+  }
+
+  async function handleRenameGroup(group: FlowGroupMeta) {
+    const name = prompt(m.flow_groupNamePrompt(), group.name);
+    if (!name) return;
+    const res = await fetch(`/api/flow-groups/${group.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),
+    });
+    if (res.ok) await loadAll();
+  }
+
+  async function handleDeleteGroup(group: FlowGroupMeta) {
+    const res = await fetch(`/api/flow-groups/${group.id}`, { method: 'DELETE' });
+    if (res.ok) await loadAll();
   }
 </script>
 
@@ -141,103 +145,44 @@
           Skills
         </button>
       </div>
-      {#if view === 'flows'}
-        <button
-          onclick={handleCreate}
-          disabled={creating}
-          class="flex items-center gap-1.5 h-7 px-3 text-[10px] font-mono uppercase tracking-wider rounded border border-border text-muted hover:bg-bg3 hover:text-foreground transition-colors disabled:opacity-50"
-        >
-          <Plus size={12} />
-          {m.flow_newFlow()}
-        </button>
-      {/if}
     </div>
 
     {#if view === 'flows'}
       <div class="flex-1 overflow-y-auto px-6 pb-6">
+        {#if createError}
+          <div class="mb-4 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-xs text-red-400 font-mono">{createError}</div>
+        {/if}
 
-    {#if createError}
-      <div class="mb-4 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-xs text-red-400 font-mono">
-        {createError}
-      </div>
-    {/if}
+        <div class="flex items-center justify-end mb-4">
+          <button onclick={handleNewGroup} class="flex items-center gap-1.5 h-7 px-3 text-[10px] font-mono uppercase tracking-wider rounded border border-border text-muted hover:bg-bg3 hover:text-foreground transition-colors">
+            <Plus size={12} /> {m.flow_newGroup()}
+          </button>
+        </div>
 
-    <!-- Content -->
-    {#if loading}
-      <p class="text-muted text-xs font-mono">{m.common_loading()}</p>
-    {:else if flows.length === 0}
-      <div class="flex flex-col items-center justify-center py-24 gap-4">
-        <GitBranch size={40} class="text-muted/30" />
-        <p class="text-muted text-sm font-mono italic">{m.flow_noFlows()}</p>
-        <button
-          onclick={handleCreate}
-          class="flex items-center gap-1.5 h-8 px-4 text-xs font-mono rounded border border-border text-muted hover:bg-bg3 hover:text-foreground transition-colors"
-        >
-          <Plus size={12} />
-          {m.flow_createFirst()}
-        </button>
-      </div>
-    {:else}
-      <div class="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-4">
-        {#each flows as flow (flow.id)}
-          <div
-            role="button"
-            tabindex="0"
-            onclick={() => goto(`/flow-editor/${flow.id}`)}
-            onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && goto(`/flow-editor/${flow.id}`)}
-            class="group rounded-xl border bg-bg2 overflow-hidden cursor-pointer transition-all shadow-sm hover:shadow-md {flow.pluginId
-              ? 'border-accent/40 ring-1 ring-accent/20 shadow-accent/10 hover:border-accent/60 hover:ring-accent/30'
-              : 'border-border hover:border-accent/50'}"
-          >
-            <!-- Preview area -->
-            <div class="aspect-video bg-bg3/50 flex items-center justify-center relative {flow.pluginId ? 'bg-gradient-to-br from-accent/[0.06] to-transparent' : ''}">
-              <GitBranch size={32} class="text-muted/20 group-hover:text-muted/30 transition-colors" />
-              {#if flow.pluginId}
-                <!-- Plugin-origin pill -->
-                <div
-                  class="absolute top-2 left-2 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-accent/15 text-accent text-[9px] font-mono uppercase tracking-wider ring-1 ring-accent/20"
-                  title={m.flow_pluginManaged({ plugin: flow.pluginId })}
-                >
-                  <Puzzle size={9} />
-                  {flow.pluginId}
-                </div>
-              {/if}
-              <div class="absolute bottom-2 right-2 text-[10px] font-mono text-muted/50">
-                {flow.nodeCount === 1 ? m.flow_nodeCount({ count: flow.nodeCount }) : m.flow_nodeCountPlural({ count: flow.nodeCount })}
-              </div>
-            </div>
-
-            <!-- Footer -->
-            <div class="px-4 py-3 flex items-center justify-between">
-              <div class="min-w-0">
-                <div class="text-sm font-semibold text-foreground truncate">{flow.name}</div>
-                <div class="flex items-center gap-1 text-[10px] text-muted mt-0.5">
-                  <Clock size={10} />
-                  {formatDate(flow.updatedAt)}
-                </div>
-              </div>
-
-              {#if flow.pluginId}
-                <span
-                  class="p-1.5 rounded text-muted/40 cursor-not-allowed"
-                  title={m.flow_pluginManaged({ plugin: flow.pluginId })}
-                >
-                  <Lock size={14} />
-                </span>
-              {:else}
-                <button
-                  onclick={(e) => handleDelete(e, flow)}
-                  class="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded text-muted hover:text-red-400 hover:bg-bg3"
-                  title={m.flow_deleteFlow()}
-                >
-                  <Trash2 size={14} />
-                </button>
-              {/if}
-            </div>
-          </div>
-        {/each}
-      </div>
-    {/if}
+        {#if loading}
+          <p class="text-muted text-xs font-mono">{m.common_loading()}</p>
+        {:else}
+          <FlowGroupSection
+            title={m.flow_myFlows()} kind="my" flows={ungrouped}
+            onNewBlank={() => handleCreate(null)} onDeleteFlow={handleDeleteFlow}
+          />
+          {#each orderedGroups as group (group.id)}
+            <FlowGroupSection
+              title={group.name}
+              kind={group.pluginId ? 'plugin' : 'user'}
+              pluginId={group.pluginId}
+              groupId={group.id}
+              disabled={group.disabled}
+              flows={flowsIn(group.id)}
+              templates={group.pluginId ? (pluginTemplates[group.pluginId] ?? []) : []}
+              onNewBlank={group.pluginId ? undefined : () => handleCreate(group.id)}
+              onDeleteFlow={handleDeleteFlow}
+              onRenameGroup={() => handleRenameGroup(group)}
+              onDeleteGroup={() => handleDeleteGroup(group)}
+              onChanged={loadAll}
+            />
+          {/each}
+        {/if}
       </div>
     {:else}
       <BuilderHub only="skills" />
