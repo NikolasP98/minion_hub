@@ -16,8 +16,10 @@ describe('mapProfileToUser', () => {
       id: 'better-auth-id-1',
       email: 'nik@example.com',
       displayName: 'Nik P',
+      avatarUrl: null,
       role: 'admin',
       supabaseId: 'supa-uuid-1',
+      createdAt: null,
     });
   });
 

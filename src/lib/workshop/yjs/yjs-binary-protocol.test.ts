@@ -130,7 +130,16 @@ describe('edge cases', () => {
     expect(decoded.type).toBe(FRAME_DRAG_LOCK);
     expect(decoded.roomId).toBe(roomId);
     expect(decoded.payload.byteLength).toBe(1024 * 1024);
-    expect(decoded.payload).toEqual(data);
+    // Byte-wise integrity check. vitest's toEqual does a slow reflective deep
+    // compare over 1M typed-array elements (>5s); a native loop is ~ms.
+    let identical = true;
+    for (let i = 0; i < data.length; i++) {
+      if (decoded.payload[i] !== data[i]) {
+        identical = false;
+        break;
+      }
+    }
+    expect(identical).toBe(true);
   });
 });
 

@@ -50,8 +50,8 @@
             bind:value={scriptCode}
             spellcheck="false"
             autocomplete="off"
-            autocorrect="off"
             autocapitalize="off"
+            {...{ autocorrect: 'off' }}
             placeholder={defaultCode[scriptLang]}
             readonly={!isAdmin}
         ></textarea>

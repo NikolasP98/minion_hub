@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { listUsers, createUser, updateUserRole, deleteUser } from './user.service';
 import { createMockDb } from '$server/test-utils/mock-db';
-import { user } from '@minion-stack/db/schema';
+// Import the same `user` table object the service uses (hub-local schema), so
+// toHaveBeenCalledWith(user) compares by identity rather than against the
+// canonical @minion-stack/db table (a different instance).
+import { user } from '../db/schema/auth';
 
 beforeEach(() => {
   vi.clearAllMocks();

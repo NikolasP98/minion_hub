@@ -10,6 +10,12 @@ export default defineConfig({
     alias: {
       $lib: path.resolve('src/lib'),
       $server: path.resolve('src/server'),
+      // SvelteKit virtual $env modules don't resolve under vitest (no sveltekit
+      // plugin). Alias them to stubs so any transitive import works; tests that
+      // need specific values still override via vi.mock('$env/...').
+      '$env/dynamic/private': path.resolve('src/server/test-utils/env-stubs/dynamic-private.ts'),
+      '$env/dynamic/public': path.resolve('src/server/test-utils/env-stubs/dynamic-public.ts'),
+      '$env/static/public': path.resolve('src/server/test-utils/env-stubs/static-public.ts'),
     },
   },
 });

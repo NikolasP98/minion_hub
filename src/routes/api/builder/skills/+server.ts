@@ -7,7 +7,8 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   const ctx = await getOrCreateTenantCtx(locals);
   if (!ctx) throw error(401);
   const status = url.searchParams.get('status');
-  const opts = status === 'published' || status === 'draft' ? { status } : undefined;
+  const opts: { status?: 'draft' | 'published' } | undefined =
+    status === 'published' || status === 'draft' ? { status } : undefined;
   const skills = await listBuiltSkills(ctx, opts);
   return json({ skills });
 };

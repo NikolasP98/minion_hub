@@ -30,7 +30,13 @@ vi.mock('$lib/supabase/client', () => ({
 describe('user.svelte.ts canonical getters', () => {
   test('userState.user reads from page.data', async () => {
     const { userState } = await import('./user.svelte');
-    expect(userState.user).toEqual({ id: 'u1', email: 'a@b.c', displayName: 'Test' });
+    expect(userState.user).toEqual({
+      id: 'u1',
+      email: 'a@b.c',
+      displayName: 'Test',
+      avatarUrl: null,
+      createdAt: null,
+    });
   });
   test('userState.role reads from page.data', async () => {
     const { userState } = await import('./user.svelte');

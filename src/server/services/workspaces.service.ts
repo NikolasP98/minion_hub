@@ -38,7 +38,7 @@ export async function loadWorkspacesForUser(
   if (token) {
     // Board-key tokens (pcli_*) go via `Authorization: Bearer`; JWT identity
     // tokens go via `x-hub-identity`. See reference_hub_paperclip_auth_header_split.
-    const headers = token.startsWith('pcli_')
+    const headers: Record<string, string> = token.startsWith('pcli_')
       ? { Authorization: `Bearer ${token}` }
       : { 'x-hub-identity': token };
     const client = createPaperclipClient({

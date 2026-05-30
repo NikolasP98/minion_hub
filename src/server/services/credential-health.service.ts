@@ -2,7 +2,7 @@ import { eq, and, desc, gte, lte } from 'drizzle-orm';
 import { credentialHealthSnapshots } from '@minion-stack/db/schema';
 import { cached, keys, tags } from '@minion-stack/cache';
 import { nowMs } from '$server/db/utils';
-import type { TenantContext } from './base';
+import { scopeData, type TenantContext } from './base';
 
 export interface CredentialHealthInput {
   serverId: string;
@@ -36,7 +36,7 @@ export async function listCredentialHealthSnapshots(
   return cached(
     keys.hub('credential-health', {
       t: ctx.tenantId,
-      d: { s: filters.serverId, f: filters.from, to: filters.to, l: filters.limit },
+      d: scopeData({ s: filters.serverId, f: filters.from, to: filters.to, l: filters.limit }),
     }),
     {
       ttl: '30s',

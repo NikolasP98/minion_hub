@@ -2,7 +2,7 @@ import { eq, and, desc, gte, lte, sql } from 'drizzle-orm';
 import { skillExecutionStats } from '@minion-stack/db/schema';
 import { cached, keys, tags } from '@minion-stack/cache';
 import { nowMs } from '$server/db/utils';
-import type { TenantContext } from './base';
+import { scopeData, type TenantContext } from './base';
 
 export interface SkillStatInput {
   serverId: string;
@@ -47,7 +47,13 @@ export async function listSkillStats(
   return cached(
     keys.hub('skill-stats', {
       t: ctx.tenantId,
-      d: { s: filters.serverId, sk: filters.skillName, f: filters.from, to: filters.to, l: filters.limit },
+      d: scopeData({
+        s: filters.serverId,
+        sk: filters.skillName,
+        f: filters.from,
+        to: filters.to,
+        l: filters.limit,
+      }),
     }),
     {
       ttl: '30s',
@@ -82,7 +88,7 @@ export async function getSkillStatsSummary(
   return cached(
     keys.hub('skill-stats-summary', {
       t: ctx.tenantId,
-      d: { s: filters.serverId, f: filters.from, to: filters.to },
+      d: scopeData({ s: filters.serverId, f: filters.from, to: filters.to }),
     }),
     {
       ttl: '30s',
