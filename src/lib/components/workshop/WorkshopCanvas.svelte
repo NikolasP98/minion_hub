@@ -47,6 +47,8 @@
         registerThumbnailProvider,
         unregisterThumbnailProvider,
         setViewMode,
+        pushUndoCheckpoint,
+        popUndoCheckpoint,
     } from "$lib/state/workshop/workshop.svelte";
     import type { ElementType } from "$lib/state/workshop/workshop.svelte";
     import { findNearbyAgents } from "$lib/workshop/proximity";
@@ -720,6 +722,7 @@
     // ---------------------------------------------------------------------------
 
     function removeAgentFromCanvas(instanceId: string) {
+        pushUndoCheckpoint();
         for (const [relId, rel] of Object.entries(
             workshopState.relationships,
         )) {
@@ -1247,6 +1250,7 @@
         const col = Math.floor(worldPos.x / TP);
         const row = Math.floor(worldPos.y / TP);
 
+        pushUndoCheckpoint();
         const instanceId = addAgentInstance(agentData.id, worldPos.x, worldPos.y);
         createAgentFsm(instanceId, "stationary");
 
@@ -1282,6 +1286,7 @@
             const screenY = e.clientY - rect.top;
             const worldPos = screenToWorldAware(screenX, screenY);
 
+            pushUndoCheckpoint();
             const instanceId = addElement(
                 data.type,
                 worldPos.x,
@@ -1323,6 +1328,7 @@
         const screenY = e.clientY - rect.top;
         const worldPos = screenToWorldAware(screenX, screenY);
 
+        pushUndoCheckpoint();
         const instanceId = addAgentInstance(agentData.id, worldPos.x, worldPos.y);
 
         physics.addAgentBody(instanceId, worldPos.x, worldPos.y);
@@ -1487,6 +1493,7 @@
 
         const { fromId, toId } = relationshipPrompt;
 
+        pushUndoCheckpoint();
         const relId = addRelationship(fromId, toId, label);
 
         physics.addSpringJoint(relId, fromId, toId);
@@ -1606,10 +1613,35 @@
             startSimulation();
 
             window.addEventListener("workshop:reload", handleReload);
+            window.addEventListener("keydown", handleUndoKey);
+            window.addEventListener("workshop:undo", doUndo);
         }
 
         function handleReload() {
             rebuildScene();
+        }
+
+        function doUndo() {
+            if (popUndoCheckpoint()) {
+                void rebuildScene();
+            }
+        }
+
+        function handleUndoKey(e: KeyboardEvent) {
+            // Structural undo: Ctrl/Cmd+Z (not Shift+Z = redo, which we don't ship yet)
+            if (!(e.ctrlKey || e.metaKey) || e.shiftKey) return;
+            if (e.key.toLowerCase() !== "z") return;
+            // Never hijack undo while the user is editing text (labels, prompts, chat)
+            const t = e.target as HTMLElement | null;
+            if (
+                t &&
+                (t.isContentEditable ||
+                    /^(input|textarea|select)$/i.test(t.tagName))
+            ) {
+                return;
+            }
+            e.preventDefault();
+            doUndo();
         }
 
         init();
@@ -1622,6 +1654,8 @@
                 setBanterCallback(null);
                 setRopeContainer(null);
                 window.removeEventListener("workshop:reload", handleReload);
+                window.removeEventListener("keydown", handleUndoKey);
+                window.removeEventListener("workshop:undo", doUndo);
                 stopSimulation();
                 clearConversationRopes();
                 physics.destroyPhysics();
@@ -1646,6 +1680,17 @@
 </script>
 
 <div class="flex-1 relative overflow-hidden">
+    <!-- Gateway-offline ribbon: slides down from the top of the canvas while disconnected -->
+    {#if !conn.connected}
+        <div
+            class="absolute top-0 left-0 right-0 z-30 flex items-center justify-center gap-2 h-7 px-3 bg-red-500/15 border-b border-red-500/30 text-red-300 text-[10px] font-mono pointer-events-none"
+            role="status"
+        >
+            <span class="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse"></span>
+            {m.workshop_gatewayOffline()}
+        </div>
+    {/if}
+
     <!-- PixiJS canvas mounts here via the pixiCanvas action -->
     <div
         use:pixiCanvas
