@@ -269,7 +269,7 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <!-- Drawer (right side, no backdrop — sits inside the editor layout) -->
-<aside class="chapter-drawer" role="dialog" aria-label="{m.builder_editChapterLabel({ name })}">
+<div class="chapter-drawer" role="dialog" tabindex="-1" aria-label="{m.builder_editChapterLabel({ name })}">
     <DrawerHeader {totalConflicts} {onClose} />
 
     <!-- Scrollable body -->
@@ -353,7 +353,7 @@
     </div>
 
     <DrawerFooter {totalConflicts} {onClose} onSave={handleSave} />
-</aside>
+</div>
 
 <style>
     /* ── Drawer ──────────────────────────────────────────────────────────── */

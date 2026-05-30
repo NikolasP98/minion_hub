@@ -13,8 +13,11 @@
 
     let { initialLabel, initialMeta, onsave, oncancel }: Props = $props();
 
+    // svelte-ignore state_referenced_locally
     let label = $state(initialLabel);
+    // svelte-ignore state_referenced_locally
     let dmPolicy = $state(initialMeta.dmPolicy ?? 'open');
+    // svelte-ignore state_referenced_locally
     let allowFrom = $state(initialMeta.allowFrom ?? '');
 
     function handleSubmit() {

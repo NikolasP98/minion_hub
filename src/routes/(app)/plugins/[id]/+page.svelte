@@ -11,6 +11,7 @@
   // Snapshot the hub theme + every CSS custom property declared on :root so
   // plugin iframes can inherit the live design tokens. Plain `let` — values
   // are read once when PluginIframe mounts.
+  // svelte-ignore non_reactive_update
   let theme: Theme = 'light';
   let tokens: Record<string, string> = {};
   if (typeof document !== 'undefined') {

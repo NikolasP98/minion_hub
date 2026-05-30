@@ -61,7 +61,7 @@
     }
 </script>
 
-<aside class="dry-run-panel" role="complementary" aria-label={m.builder_dryRunLabel()}>
+<aside class="dry-run-panel" aria-label={m.builder_dryRunLabel()}>
     <!-- Header -->
     <div class="panel-header">
         <span class="panel-title">{m.builder_testRun()}</span>

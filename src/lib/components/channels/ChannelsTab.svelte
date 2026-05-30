@@ -253,7 +253,9 @@
                     class="w-full max-w-md max-h-[90vh] overflow-y-auto"
                     role="dialog"
                     aria-modal="true"
+                    tabindex="-1"
                     onclick={(e) => e.stopPropagation()}
+                    onkeydown={(e) => e.stopPropagation()}
                 >
                     <ChannelSetupWizard
                         {serverId}

@@ -68,6 +68,7 @@
         <div class="modal-body">
             <div class="name-row">
                 <EmojiPicker value={emoji} onSelect={(e) => { emoji = e; }} size="md" />
+                <!-- svelte-ignore a11y_autofocus -->
                 <input
                     class="name-input"
                     type="text"

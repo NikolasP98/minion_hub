@@ -20,11 +20,11 @@
             <h3 class="gw-section-title">{m.builder_toolConfiguration()}</h3>
             <div class="gw-field-grid">
                 <div class="gw-field">
-                    <label class="gw-label">{m.builder_toolId()}</label>
+                    <span class="gw-label">{m.builder_toolId()}</span>
                     <span class="gw-value mono">{gatewayTool.id}</span>
                 </div>
                 <div class="gw-field">
-                    <label class="gw-label">{m.builder_status()}</label>
+                    <span class="gw-label">{m.builder_status()}</span>
                     <span class="gw-value">
                         <span class="gw-status-dot {gatewayTool.enabled ? 'enabled' : 'disabled'}"></span>
                         {gatewayTool.enabled ? m.tools_enabled() : m.tools_disabled()}
@@ -70,7 +70,7 @@
                 <h3 class="gw-section-title">{m.builder_requirements()}</h3>
                 {#if gatewayTool.requires?.bins?.length}
                     <div class="gw-field">
-                        <label class="gw-label">{m.builder_binaries()}</label>
+                        <span class="gw-label">{m.builder_binaries()}</span>
                         <div class="gw-tags">
                             {#each gatewayTool.requires.bins as bin (bin)}
                                 <span class="gw-tag mono">{bin}</span>
@@ -80,7 +80,7 @@
                 {/if}
                 {#if gatewayTool.requires?.env?.length}
                     <div class="gw-field" style="margin-top: 0.75rem">
-                        <label class="gw-label">{m.builder_envVars()}</label>
+                        <span class="gw-label">{m.builder_envVars()}</span>
                         <div class="gw-tags">
                             {#each gatewayTool.requires.env as env (env)}
                                 <span class="gw-tag mono">{env}</span>

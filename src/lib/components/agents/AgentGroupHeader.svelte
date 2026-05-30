@@ -24,6 +24,7 @@
     } = $props();
 
     let editing = $state(false);
+    // svelte-ignore state_referenced_locally
     let editName = $state(group.name);
     let dragOver = $state(false);
     let inputEl: HTMLInputElement | undefined = $state();

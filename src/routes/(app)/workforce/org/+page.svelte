@@ -215,9 +215,7 @@
 <main class="flex-1 min-h-0 flex flex-col p-6 gap-3 overflow-hidden">
 	<div
 		bind:this={container}
-		role="application"
-		aria-label="Organisation chart canvas"
-		tabindex="-1"
+		role="presentation"
 		class="relative flex-1 min-h-0 overflow-hidden rounded-lg border border-border bg-muted/20"
 		class:cursor-grab={!dragging}
 		class:cursor-grabbing={dragging}

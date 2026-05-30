@@ -33,8 +33,11 @@
     initialRoles.length > 0 || Object.keys(initialCatalog).length > 0,
   );
 
+  // svelte-ignore state_referenced_locally
   let roles = $state<Role[]>(initialRoles);
+  // svelte-ignore state_referenced_locally
   let catalog = $state<Record<string, string[]>>(initialCatalog);
+  // svelte-ignore state_referenced_locally
   let selectedId = $state<string | null>(initialRoles[0]?.id ?? null);
   let creating = $state(false);
   let draftName = $state('');

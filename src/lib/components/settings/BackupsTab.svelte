@@ -32,13 +32,21 @@
   const hasServerData = $derived(initialConfig !== undefined);
 
   // ─── Backup config state ───────────────────────────────────────
+  // svelte-ignore state_referenced_locally
   let backupHost = $state(initialConfig?.backupHost ?? '');
+  // svelte-ignore state_referenced_locally
   let backupUser = $state(initialConfig?.backupUser ?? 'root');
+  // svelte-ignore state_referenced_locally
   let backupPort = $state(initialConfig?.backupPort ?? 22);
+  // svelte-ignore state_referenced_locally
   let backupBasePath = $state(initialConfig?.backupBasePath ?? '/mnt/agent-data/backups');
+  // svelte-ignore state_referenced_locally
   let schedule = $state(initialConfig?.schedule ?? '');
+  // svelte-ignore state_referenced_locally
   let retentionCount = $state(initialConfig?.retentionCount ?? 7);
+  // svelte-ignore state_referenced_locally
   let enabled = $state(!!initialConfig?.enabled);
+  // svelte-ignore state_referenced_locally
   let configLoaded = $state(hasServerData);
   let saving = $state(false);
   let testing = $state(false);

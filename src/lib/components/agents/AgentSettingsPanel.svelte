@@ -195,8 +195,10 @@
     <div
         class="absolute top-0 right-0 h-full w-[680px] max-w-full bg-bg2 border-l border-border flex flex-col shadow-2xl"
         role="dialog"
+        tabindex="-1"
         aria-label="Agent settings for {agentId}"
         onclick={(e) => e.stopPropagation()}
+        onkeydown={(e) => e.stopPropagation()}
     >
         <!-- Header -->
         <div

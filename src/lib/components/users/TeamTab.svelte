@@ -42,8 +42,10 @@
   let { initialUsers = [], initialCustomRoles = [] }: Props = $props();
   const hasServerData = $derived(initialUsers.length > 0 || initialCustomRoles.length > 0);
 
+  // svelte-ignore state_referenced_locally
   let customRoles = $state<CustomRole[]>(initialCustomRoles);
 
+  // svelte-ignore state_referenced_locally
   let users = $state<UserRow[]>(initialUsers);
   let invitations = $state<PendingInvite[]>([]);
   let loading = $state(false);

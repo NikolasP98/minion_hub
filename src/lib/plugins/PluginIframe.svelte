@@ -149,22 +149,22 @@
   // Gateway serves /plugins/<id>/ui/<subpath> resolving against ui/dist/.
   // Some manifests list entrypoint as "ui/dist/index.html" (disk path); strip
   // that prefix so the URL is just /plugins/<id>/ui/index.html.
-  const subpath = entrypoint.replace(/^ui\/dist\//, "").replace(/^\/+/, "");
+  const subpath = $derived(entrypoint.replace(/^ui\/dist\//, "").replace(/^\/+/, ""));
   // Pass the host origin via URL hash so the plugin can validate inbound
   // postMessage events without depending on document.referrer (which is
   // stripped under strict Referrer-Policy for cross-origin iframes — that
   // failure mode silently bricks the plugin's bridge handshake).
   const hostOrigin = typeof window !== "undefined" ? window.location.origin : "";
-  const srcBase = `${gatewayUrl}/plugins/${pluginId}/ui/${subpath}`;
-  const src = hostOrigin
-    ? `${srcBase}#hostOrigin=${encodeURIComponent(hostOrigin)}`
-    : srcBase;
-  const pluginOrigin = new URL(gatewayUrl).origin;
+  const srcBase = $derived(`${gatewayUrl}/plugins/${pluginId}/ui/${subpath}`);
+  const src = $derived(
+    hostOrigin ? `${srcBase}#hostOrigin=${encodeURIComponent(hostOrigin)}` : srcBase,
+  );
+  const pluginOrigin = $derived(new URL(gatewayUrl).origin);
   // hello.gatewayUrl is consumed by the plugin's WebSocket client. The hub
   // surfaces gatewayUrl as HTTP(S) because it's also used to derive the
   // pluginOrigin for postMessage targeting; the plugin needs the ws(s):
   // equivalent. Convert here so plugins don't have to think about it.
-  const wsGatewayUrl = gatewayUrl.replace(/^http/, "ws");
+  const wsGatewayUrl = $derived(gatewayUrl.replace(/^http/, "ws"));
 
   // Mount the host bridge as soon as iframeEl is bound — NOT in the iframe's
   // onload handler. The plugin's `notifyReady()` fires synchronously when its

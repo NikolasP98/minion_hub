@@ -40,7 +40,7 @@
     });
 </script>
 
-<aside role="complementary" aria-label={m.builder_skillValidation()} class="validation-panel">
+<aside aria-label={m.builder_skillValidation()} class="validation-panel">
     <!-- HEADER -->
     <div class="panel-header">
         <span class="panel-title">{headerText}</span>

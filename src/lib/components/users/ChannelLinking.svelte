@@ -34,6 +34,7 @@
 
   // Compact theme/token snapshot for plugin iframes (only used by `iframe`
   // mode descriptors). Read once — making it reactive would tear down the bridge.
+  // svelte-ignore non_reactive_update
   let iframeTheme: Theme = 'light';
   let iframeTokens: Record<string, string> = {};
   if (typeof document !== 'undefined') {
