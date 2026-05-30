@@ -94,6 +94,7 @@
           {authToken}
           {theme}
           {tokens}
+          fillContainer
         />
       {/key}
     {/if}
