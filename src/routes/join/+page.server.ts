@@ -1,19 +1,44 @@
-import type { PageServerLoad } from './$types';
-import { redirect } from '@sveltejs/kit';
+import type { Actions, PageServerLoad } from './$types';
+import { redirect, error } from '@sveltejs/kit';
 import { requireAuth } from '$server/auth/authorize';
-import { consumeLink } from '$server/services/join/links.service';
+import { getDb } from '$server/db/client';
+import { organization } from '@minion-stack/db/schema';
+import { submitJoinRequest } from '$server/services/join-request.service';
 
-export const load: PageServerLoad = async ({ locals, url }) => {
+export const load: PageServerLoad = async ({ locals }) => {
   const user = requireAuth(locals);
-  const token = url.searchParams.get('token');
+  // Only show this page to users without an org membership
+  // (layout.server.ts already redirects here, but double-check)
+  return {
+    email: user.email ?? '',
+    displayName: user.displayName ?? '',
+  };
+};
 
-  if (token) {
-    try {
-      await consumeLink(token, { id: user.id, email: user.email, displayName: user.displayName });
-    } catch {
-      return { linkError: true, email: user.email, displayName: user.displayName };
+export const actions: Actions = {
+  default: async ({ locals, request }) => {
+    const user = requireAuth(locals);
+    const db = getDb();
+
+    const fd = await request.formData();
+    const message = String(fd.get('message') ?? '').trim();
+
+    // Find the first organization (default tenant)
+    const [org] = await db.select({ id: organization.id, name: organization.name })
+      .from(organization)
+      .limit(1);
+
+    if (!org) {
+      throw error(500, 'No organization configured on this hub.');
     }
-    throw redirect(303, '/');
-  }
-  return { linkError: false, email: user.email, displayName: user.displayName };
+
+    await submitJoinRequest(db, {
+      userId: user.id,
+      orgId: org.id,
+      email: user.email ?? '',
+      message: message || undefined,
+    });
+
+    throw redirect(303, '/join/sent');
+  },
 };

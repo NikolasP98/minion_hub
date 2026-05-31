@@ -1,64 +1,140 @@
 <script lang="ts">
-  import ScanLine from '$lib/components/decorations/ScanLine.svelte';
-  import { logout } from '$lib/state/features/user.svelte';
-  const { data } = $props();
-  let message = $state('');
-  let submitting = $state(false);
-  let submitted = $state(false);
-  let errorMsg = $state<string | null>(null);
+  import { enhance } from '$app/forms';
+  import type { PageData } from './$types';
 
-  async function submitRequest() {
-    if (submitting) return;
-    submitting = true; errorMsg = null;
-    const res = await fetch('/api/join-requests', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ message }),
-    });
-    submitting = false;
-    if (res.ok) submitted = true;
-    else errorMsg = 'Could not submit your request. Please try again.';
-  }
+  let { data, form }: { data: PageData; form: any } = $props();
+
+  let message = $state('');
 </script>
 
-<div class="relative z-10 flex items-center justify-center min-h-screen">
-  <div class="w-full max-w-sm mx-4">
-    <div class="bg-bg2 border border-border rounded-lg overflow-hidden shadow-2xl">
-      <div class="relative px-5 py-3.5 border-b border-border bg-bg/60 flex items-center justify-between">
-        <ScanLine speed={10} opacity={0.025} />
-        <span class="text-[10px] font-mono text-muted uppercase tracking-widest">request access</span>
-        <div class="flex items-center gap-1.5">
-          <span class="w-2 h-2 rounded-full bg-red-500/60"></span>
-          <span class="w-2 h-2 rounded-full bg-yellow-500/60"></span>
-          <span class="w-2 h-2 rounded-full bg-green-500/60"></span>
-        </div>
-      </div>
-      <div class="px-6 py-8 text-center">
-        <div class="inline-flex items-center select-none leading-none mb-5">
-          <span class="bg-brand-pink text-black font-black text-[13px] tracking-wide px-2 py-0.5 rounded-l-md uppercase">MINION</span>
-          <span class="text-white font-bold text-[13px] px-1.5 py-0.5">hub</span>
-        </div>
+<svelte:head>
+  <title>Request Access — Minion Hub</title>
+</svelte:head>
 
-        {#if submitted}
-          <h1 class="text-lg font-semibold text-foreground mb-2">Request sent</h1>
-          <p class="text-sm text-muted mb-6">You'll get access once an admin approves your request.</p>
-          <button onclick={() => logout()} class="w-full px-4 py-2 rounded border text-sm font-mono bg-bg border-border text-muted hover:text-foreground hover:border-accent/40">Sign out</button>
-        {:else}
-          {#if data.linkError}
-            <p class="text-[11px] font-mono text-warning bg-warning/8 border border-warning/20 rounded px-3 py-2 mb-4">That invite link is invalid or expired. You can request access below.</p>
-          {/if}
-          <h1 class="text-lg font-semibold text-foreground mb-2">You're not in a workspace yet</h1>
-          <p class="text-sm text-muted mb-5">Signed in as {data.email}. Request access and an admin will let you in.</p>
-          <textarea bind:value={message} rows="3" placeholder="Optional: a note for the admin"
-            class="w-full bg-bg border border-border rounded px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/60 mb-3"></textarea>
-          {#if errorMsg}<div class="text-[11px] font-mono text-destructive bg-destructive/8 border border-destructive/20 rounded px-3 py-2 mb-3">{errorMsg}</div>{/if}
-          <button onclick={submitRequest} disabled={submitting}
-            class="w-full px-4 py-2 rounded border text-sm font-mono bg-accent/20 border-accent/30 text-accent hover:bg-accent/30 disabled:opacity-50">
-            {submitting ? 'Sending…' : 'Request access'}
-          </button>
-          <button onclick={() => logout()} class="w-full mt-2 px-4 py-2 rounded border text-sm font-mono bg-bg border-border text-muted hover:text-foreground hover:border-accent/40">Sign out</button>
-        {/if}
+<div class="page">
+  <div class="card">
+    <div class="icon">🔐</div>
+    <h1>Request Access</h1>
+    <p class="subtitle">
+      Your account <strong>{data.email}</strong> isn't a member of any organization yet.
+      Submit a request and the admin will review it.
+    </p>
+
+    <form method="POST" use:enhance>
+      <div class="field">
+        <label for="message">Message (optional)</label>
+        <textarea
+          id="message"
+          name="message"
+          bind:value={message}
+          placeholder="Tell the admin who you are and why you need access..."
+          rows={4}
+          maxlength={500}
+        ></textarea>
+        <span class="charcount">{message.length}/500</span>
       </div>
-    </div>
+
+      <button type="submit" class="btn-primary">Submit Request</button>
+    </form>
+
+    {#if form?.error}
+      <p class="error">{form.error}</p>
+    {/if}
   </div>
 </div>
+
+<style>
+  .page {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    min-height: 100dvh;
+    background: radial-gradient(ellipse at 50% 40%, #0f0f23 0%, #060612 70%);
+    padding: 2rem;
+  }
+
+  .card {
+    background: rgba(20, 20, 40, 0.9);
+    border: 1px solid rgba(99, 102, 241, 0.15);
+    border-radius: 16px;
+    padding: 2.5rem;
+    max-width: 480px;
+    width: 100%;
+    text-align: center;
+    backdrop-filter: blur(20px);
+  }
+
+  .icon { font-size: 3rem; margin-bottom: 0.5rem; }
+
+  h1 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #e0e0f0;
+    margin: 0 0 0.75rem;
+  }
+
+  .subtitle {
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.5);
+    line-height: 1.5;
+    margin: 0 0 1.5rem;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    text-align: left;
+    margin-bottom: 1rem;
+  }
+
+  label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.5);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  textarea {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    padding: 0.75rem 0.85rem;
+    color: #e0e0f0;
+    font-size: 0.9rem;
+    font-family: inherit;
+    outline: none;
+    resize: vertical;
+    line-height: 1.5;
+  }
+  textarea:focus { border-color: #6366f1; }
+  textarea::placeholder { color: rgba(255, 255, 255, 0.2); }
+
+  .charcount {
+    font-size: 0.65rem;
+    color: rgba(255, 255, 255, 0.25);
+    text-align: right;
+  }
+
+  .btn-primary {
+    width: 100%;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 0.85rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  .btn-primary:hover { opacity: 0.9; }
+
+  .error {
+    font-size: 0.8rem;
+    color: #fca5a5;
+    margin-top: 1rem;
+  }
+</style>
