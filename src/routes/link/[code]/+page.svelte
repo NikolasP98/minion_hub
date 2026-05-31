@@ -2,8 +2,7 @@
   import { enhance } from '$app/forms';
   import type { PageData } from './$types';
 
-  export let data: PageData;
-  export let form: { success?: boolean } | undefined;
+  let { data, form }: { data: PageData; form: { success?: boolean } | undefined } = $props();
 
   let submitted = $state(false);
 </script>

@@ -32,7 +32,7 @@ import { member, session as sessionTable } from '@minion-stack/db/schema';
  * sessions that bypass the login/callback/invite client-side
  * `setActive()` flows (legacy users, session-table drift, manual SQL).
  */
-export const load: LayoutServerLoad = async ({ locals, depends }) => {
+export const load: LayoutServerLoad = async ({ locals, depends, url }) => {
   depends(
     'app:user',
     'app:permissions',
@@ -89,6 +89,14 @@ export const load: LayoutServerLoad = async ({ locals, depends }) => {
     loadHostsForUser(locals, user.id, user.role),
     loadUserPreferences(locals, user.id),
   ]);
+
+  // Redirect to onboarding if user hasn't completed it yet
+  if (
+    !url.pathname.startsWith('/onboarding') &&
+    (!personalAgent.agent || personalAgent.agent.provisioningStatus !== 'active')
+  ) {
+    throw redirect(303, '/onboarding');
+  }
 
   return {
     user,
