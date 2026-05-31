@@ -71,12 +71,12 @@
   }
 
   .card {
-    background: rgba(20, 20, 40, 0.85);
-    border: 1px solid rgba(99, 102, 241, 0.2);
-    border-radius: 16px;
+    background: var(--elevation-2-bg);
+    border: 1px solid var(--elevation-2-border);
+    border-radius: var(--radius-xl);
     padding: 2rem;
     width: 100%;
     backdrop-filter: blur(20px);
-    box-shadow: 0 0 40px rgba(99, 102, 241, 0.08);
+    box-shadow: var(--shadow-lg);
   }
 </style>

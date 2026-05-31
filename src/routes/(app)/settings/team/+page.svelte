@@ -73,96 +73,60 @@
   .pending-section {
     margin-bottom: 2rem;
     padding: 1.25rem;
-    background: rgba(99, 102, 241, 0.06);
-    border: 1px solid rgba(99, 102, 241, 0.2);
-    border-radius: 12px;
+    background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-accent) 20%, transparent);
+    border-radius: var(--radius-xl);
+    backdrop-filter: blur(12px);
   }
 
   .section-title {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.95rem;
-    font-weight: 600;
-    color: #c7d2fe;
+    display: flex; align-items: center; gap: 0.5rem;
+    font-size: 0.95rem; font-weight: 600;
+    color: var(--color-purple);
     margin: 0 0 1rem;
   }
 
   .count-badge {
-    background: #6366f1;
-    color: white;
-    font-size: 0.7rem;
-    padding: 0.1rem 0.45rem;
-    border-radius: 999px;
+    background: var(--color-accent);
+    color: var(--color-accent-foreground);
+    font-size: 0.7rem; padding: 0.1rem 0.45rem;
+    border-radius: var(--radius-full);
   }
 
-  .requests {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-  }
+  .requests { display: flex; flex-direction: column; gap: 0.75rem; }
 
   .request-card {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 1rem;
-    padding: 0.85rem 1rem;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 10px;
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 1rem; padding: 0.85rem 1rem;
+    background: var(--color-bg3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
   }
 
   .req-info { flex: 1; min-width: 0; }
-
-  .req-email {
-    font-weight: 600;
-    font-size: 0.9rem;
-    color: #e0e0f0;
-  }
-
-  .req-message {
-    font-size: 0.8rem;
-    color: rgba(255, 255, 255, 0.5);
-    margin: 0.25rem 0;
-    line-height: 1.4;
-  }
-
-  .req-date {
-    font-size: 0.7rem;
-    color: rgba(255, 255, 255, 0.3);
-  }
-
-  .req-actions {
-    display: flex;
-    gap: 0.5rem;
-    flex-shrink: 0;
-  }
+  .req-email { font-weight: 600; font-size: 0.9rem; color: var(--color-foreground); }
+  .req-message { font-size: 0.8rem; color: var(--color-muted); margin: 0.25rem 0; line-height: 1.4; }
+  .req-date { font-size: 0.7rem; color: var(--color-muted-foreground); }
+  .req-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
 
   .btn-approve, .btn-deny {
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    padding: 0.4rem 0.75rem;
-    border-radius: 8px;
-    font-size: 0.8rem;
-    font-weight: 500;
-    cursor: pointer;
-    border: none;
-    transition: opacity 0.2s;
+    display: flex; align-items: center; gap: 0.3rem;
+    padding: 0.4rem 0.75rem; border-radius: var(--radius-lg);
+    font-size: 0.8rem; font-weight: 500; cursor: pointer; border: none;
+    transition: background var(--duration-fast);
   }
 
   .btn-approve {
-    background: rgba(34, 197, 94, 0.15);
-    color: #4ade80;
+    background: color-mix(in srgb, var(--color-success) 15%, transparent);
+    color: var(--color-success);
   }
-  .btn-approve:hover { background: rgba(34, 197, 94, 0.25); }
+  .btn-approve:hover { background: color-mix(in srgb, var(--color-success) 25%, transparent); }
 
   .btn-deny {
-    background: rgba(239, 68, 68, 0.1);
-    color: #f87171;
+    background: color-mix(in srgb, var(--color-destructive) 10%, transparent);
+    color: var(--color-destructive);
   }
-  .btn-deny:hover { background: rgba(239, 68, 68, 0.2); }
+  .btn-deny:hover { background: color-mix(in srgb, var(--color-destructive) 20%, transparent); }
 
   button:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>

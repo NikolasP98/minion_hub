@@ -21,9 +21,9 @@
     justify-content: center;
     min-height: 100vh;
     min-height: 100dvh;
-    background: radial-gradient(ellipse at 50% 40%, #0f0f23 0%, #060612 70%);
-    color: #e0e0f0;
-    font-family: 'Inter', system-ui, sans-serif;
+    background: radial-gradient(ellipse at 50% 40%, var(--color-bg2) 0%, var(--color-bg) 70%);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
     overflow: hidden;
     position: relative;
   }

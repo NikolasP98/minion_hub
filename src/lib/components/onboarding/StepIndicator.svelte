@@ -1,10 +1,6 @@
 <script lang="ts">
-  interface Props {
-    step: number;
-    totalSteps: number;
-  }
+  interface Props { step: number; totalSteps: number; }
   let { step, totalSteps }: Props = $props();
-
   const labels = ['Awaken', 'Remember', 'Connect'];
 </script>
 
@@ -28,58 +24,32 @@
     gap: 0;
     margin-bottom: 2rem;
   }
-
-  .step-dot {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.4rem;
-  }
-
+  .step-dot { display: flex; flex-direction: column; align-items: center; gap: 0.4rem; }
   .dot {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.15);
-    border: 2px solid rgba(255, 255, 255, 0.1);
-    transition: all 0.4s ease;
+    width: 12px; height: 12px; border-radius: 50%;
+    background: var(--color-bg3);
+    border: 2px solid var(--color-border);
+    transition: all var(--duration-normal) var(--ease-standard);
   }
-
   .active .dot {
-    background: #818cf8;
-    border-color: #6366f1;
-    box-shadow: 0 0 12px rgba(99, 102, 241, 0.5);
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+    box-shadow: 0 0 12px color-mix(in srgb, var(--color-accent) 50%, transparent);
     transform: scale(1.3);
   }
-
-  .done .dot {
-    background: #6366f1;
-    border-color: #6366f1;
-  }
-
+  .done .dot { background: var(--color-accent); border-color: var(--color-accent); }
   .label {
-    font-size: 0.65rem;
-    font-weight: 500;
-    color: rgba(255, 255, 255, 0.3);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    transition: color 0.3s;
+    font-size: 0.65rem; font-weight: 500;
+    color: var(--color-muted-foreground);
+    text-transform: uppercase; letter-spacing: 0.05em;
+    transition: color var(--duration-fast);
   }
-
-  .active .label, .done .label {
-    color: rgba(255, 255, 255, 0.7);
-  }
-
+  .active .label, .done .label { color: var(--color-muted); }
   .connector {
-    width: 48px;
-    height: 2px;
-    background: rgba(255, 255, 255, 0.08);
-    margin: 0 4px;
-    margin-bottom: 1.2rem;
-    transition: background 0.4s;
+    width: 48px; height: 2px;
+    background: var(--hairline);
+    margin: 0 4px; margin-bottom: 1.2rem;
+    transition: background var(--duration-normal);
   }
-
-  .connector.filled {
-    background: rgba(99, 102, 241, 0.4);
-  }
+  .connector.filled { background: color-mix(in srgb, var(--color-accent) 40%, transparent); }
 </style>
