@@ -7,19 +7,26 @@
   const vibe = page.url.searchParams.get('vibe') ?? 'casual';
 
   let message = $state('');
+  let showBubble = $state(false);
+  let showCTA = $state(false);
   const fullMessage = "I'm alive. Let's get to work.";
 
   onMount(() => {
-    let i = 0;
-    const interval = setInterval(() => {
-      if (i < fullMessage.length) {
-        message += fullMessage[i];
-        i++;
-      } else {
-        clearInterval(interval);
-      }
-    }, 40);
-    return () => clearInterval(interval);
+    // Start typing after a short delay
+    setTimeout(() => {
+      showBubble = true;
+      let i = 0;
+      const interval = setInterval(() => {
+        if (i < fullMessage.length) {
+          message += fullMessage[i];
+          i++;
+        } else {
+          clearInterval(interval);
+          setTimeout(() => showCTA = true, 400);
+        }
+      }, 50);
+      return () => clearInterval(interval);
+    }, 800);
   });
 </script>
 
@@ -28,13 +35,21 @@
 </svelte:head>
 
 <div class="complete">
-  <OrbAnimation phase="connecting" agentName={name} />
+  <div class="orb-area">
+    <OrbAnimation phase="connecting" agentName={name} />
 
-  <div class="card">
-    <h1>{name} is alive.</h1>
-    <p class="agent-message">{message}<span class="cursor">|</span></p>
-    <a href="/" class="btn-primary">Enter the Hub →</a>
+    {#if showBubble}
+      <div class="chat-bubble">
+        <p class="bubble-text">{message}<span class="cursor">|</span></p>
+        <!-- Bubble tail pointing to orb -->
+        <div class="bubble-tail"></div>
+      </div>
+    {/if}
   </div>
+
+  {#if showCTA}
+    <a href="/" class="btn-primary">Enter the Hub →</a>
+  {/if}
 </div>
 
 <style>
@@ -42,48 +57,68 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 2rem;
+    gap: 3rem;
     width: 100%;
     max-width: 520px;
-    padding: 2rem 1rem;
+    padding: 3rem 1rem;
     z-index: 1;
   }
 
-  .card {
-    background: rgba(20, 20, 40, 0.85);
+  .orb-area {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  /* Chat bubble coming from the orb */
+  .chat-bubble {
+    position: absolute;
+    top: -60px;
+    left: 50%;
+    transform: translateX(-25%);
+    background: rgba(30, 30, 60, 0.95);
     border: 1px solid rgba(99, 102, 241, 0.3);
-    border-radius: 16px;
-    padding: 2.5rem 2rem;
-    width: 100%;
-    text-align: center;
-    backdrop-filter: blur(20px);
-    box-shadow: 0 0 60px rgba(99, 102, 241, 0.12);
+    border-radius: 16px 16px 4px 16px;
+    padding: 0.85rem 1.2rem;
+    max-width: 260px;
+    animation: bubble-in 0.4s ease-out;
+    box-shadow: 0 4px 20px rgba(99, 102, 241, 0.15);
   }
 
-  h1 {
-    font-size: 1.6rem;
-    font-weight: 700;
-    color: #e0e0f0;
-    margin: 0 0 1.5rem;
+  @keyframes bubble-in {
+    from { opacity: 0; transform: translateX(-25%) translateY(8px) scale(0.9); }
+    to { opacity: 1; transform: translateX(-25%) translateY(0) scale(1); }
   }
 
-  .agent-message {
-    font-size: 1.05rem;
-    color: #a5b4fc;
-    min-height: 2rem;
-    margin-bottom: 2rem;
+  .bubble-tail {
+    position: absolute;
+    bottom: -8px;
+    right: 20px;
+    width: 16px;
+    height: 16px;
+    background: rgba(30, 30, 60, 0.95);
+    border-right: 1px solid rgba(99, 102, 241, 0.3);
+    border-bottom: 1px solid rgba(99, 102, 241, 0.3);
+    transform: rotate(45deg);
+    border-radius: 0 0 4px 0;
+  }
+
+  .bubble-text {
+    font-size: 0.95rem;
+    color: #c7d2fe;
+    margin: 0;
+    line-height: 1.5;
     font-style: italic;
   }
 
   .cursor {
     animation: blink 1s step-end infinite;
-    color: #6366f1;
+    color: #818cf8;
     font-style: normal;
   }
 
-  @keyframes blink {
-    50% { opacity: 0; }
-  }
+  @keyframes blink { 50% { opacity: 0; } }
 
   .btn-primary {
     display: inline-block;
@@ -97,6 +132,13 @@
     cursor: pointer;
     text-decoration: none;
     transition: opacity 0.2s, transform 0.15s;
+    animation: fade-in-up 0.5s ease-out;
   }
+
   .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+
+  @keyframes fade-in-up {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
 </style>

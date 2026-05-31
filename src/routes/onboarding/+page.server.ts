@@ -33,11 +33,17 @@ export const actions: Actions = {
     const agentName = String(fd.get('agentName') ?? '').trim();
     const personality = String(fd.get('personality') ?? 'casual');
 
-    // Mark the personal agent as active with the chosen name
-    const existing = await getPersonalAgent(ctx, user.id);
-    if (existing) {
-      await updateProvisioningStatus(ctx, user.id, 'active');
-    }
+    // Ensure personal agent exists (it should have been created on login,
+    // but guard against races where it wasn't)
+    const { ensurePersonalAgentOnLogin } = await import(
+      '$server/services/personal-agent.service'
+    );
+    await ensurePersonalAgentOnLogin(ctx, {
+      userId: user.id,
+      email: user.email ?? '',
+      serverId: '',
+    });
+    await updateProvisioningStatus(ctx, user.id, 'active');
 
     throw redirect(303, `/onboarding/complete?name=${encodeURIComponent(agentName)}&vibe=${encodeURIComponent(personality)}`);
   },
