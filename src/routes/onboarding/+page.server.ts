@@ -1,8 +1,9 @@
-import type { Actions, PageServerLoad } from './$types';
+import type { PageServerLoad } from './$types';
 import { redirect } from '@sveltejs/kit';
 import { requireAuth } from '$server/auth/authorize';
 import { getTenantCtx } from '$server/auth/tenant-ctx';
-import { getPersonalAgent, updateProvisioningStatus } from '$server/services/personal-agent.service';
+import { getPersonalAgent } from '$server/services/personal-agent.service';
+import { listIdentities } from '$server/services/identity.service';
 
 export const load: PageServerLoad = async ({ locals }) => {
   const user = requireAuth(locals);
@@ -14,37 +15,24 @@ export const load: PageServerLoad = async ({ locals }) => {
     throw redirect(303, '/');
   }
 
+  const identities = (await listIdentities(ctx, user.id))
+    .filter((i) => i.kind === 'channel')
+    .map((i) => ({
+      id: i.id,
+      source: 'turso' as const,
+      provider: i.provider,
+      kind: 'channel' as const,
+      externalId: i.externalId,
+      displayName: i.displayName,
+      verifiedAt: i.verifiedAt,
+    }));
+
   return {
     user: {
       id: user.id,
       email: user.email ?? '',
       displayName: user.displayName ?? user.email ?? '',
     },
+    identities,
   };
-};
-
-export const actions: Actions = {
-  complete: async ({ locals, request }) => {
-    const user = requireAuth(locals);
-    const ctx = await getTenantCtx(locals as App.Locals);
-    if (!ctx) throw redirect(303, '/login');
-
-    const fd = await request.formData();
-    const agentName = String(fd.get('agentName') ?? '').trim();
-    const personality = String(fd.get('personality') ?? 'casual');
-
-    // Ensure personal agent exists (it should have been created on login,
-    // but guard against races where it wasn't)
-    const { ensurePersonalAgentOnLogin } = await import(
-      '$server/services/personal-agent.service'
-    );
-    await ensurePersonalAgentOnLogin(ctx, {
-      userId: user.id,
-      email: user.email ?? '',
-      serverId: '',
-    });
-    await updateProvisioningStatus(ctx, user.id, 'active');
-
-    throw redirect(303, `/onboarding/complete?name=${encodeURIComponent(agentName)}&vibe=${encodeURIComponent(personality)}`);
-  },
 };

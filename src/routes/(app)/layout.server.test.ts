@@ -10,7 +10,9 @@ vi.mock('$server/services/workspaces.service', () => ({
   ]),
 }));
 vi.mock('$server/services/personal-agent.service', () => ({
-  loadPersonalAgentForUser: vi.fn(async () => ({ agent: null })),
+  loadPersonalAgentForUser: vi.fn(async () => ({
+    agent: { id: 'pa-1', userId: 'u-1', agentId: 'personal-u-1', provisioningStatus: 'active' },
+  })),
 }));
 vi.mock('$server/services/hosts.service', () => ({
   loadHostsForUser: vi.fn(async () => ({ servers: [], authoritative: true as const })),
@@ -74,7 +76,9 @@ describe('(app)/+layout.server load', () => {
       user,
       permissions: { permissions: ['perm.a', 'perm.b'] },
       workspaces: [{ companyId: 'c1', role: 'admin', name: 'Acme' }],
-      personalAgent: { agent: null },
+      personalAgent: {
+        agent: { id: 'pa-1', userId: 'u-1', agentId: 'personal-u-1', provisioningStatus: 'active' },
+      },
       hosts: { servers: [], authoritative: true },
       preferences: { preferences: {} },
     });

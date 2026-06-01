@@ -6,7 +6,7 @@
     { id: 'professional', label: 'Pro', icon: '💼', desc: 'Precise, formal, business-ready' },
     { id: 'casual', label: 'Casual', icon: '✌️', desc: 'Relaxed, friendly, conversational' },
     { id: 'creative', label: 'Creative', icon: '🎨', desc: 'Inventive, bold, outside-the-box' },
-    { id: 'direct', label: 'Direct', icon: '⚡', desc: 'Blunt, efficient, no fluff' },
+    { id: 'technical', label: 'Technical', icon: '⚡', desc: 'Blunt, efficient, no fluff' },
   ];
   let nameError = $state('');
 
