@@ -239,7 +239,7 @@
         height: 2rem;
         border-radius: 0.375rem;
         color: var(--color-muted);
-        transition: all 0.15s ease;
+        transition: all var(--duration-fast) var(--ease-standard);
         flex-shrink: 0;
     }
 
@@ -272,7 +272,7 @@
         font-family: inherit;
         min-width: 6rem;
         max-width: 16rem;
-        transition: border-color 0.15s ease;
+        transition: border-color var(--duration-fast) var(--ease-standard);
     }
 
     .name-inline:focus {
@@ -340,7 +340,7 @@
         background: transparent;
         border: none;
         cursor: pointer;
-        transition: all 0.15s ease;
+        transition: all var(--duration-fast) var(--ease-standard);
         font-family: inherit;
         white-space: nowrap;
     }
@@ -366,7 +366,7 @@
         font-weight: 500;
         border: none;
         cursor: pointer;
-        transition: all 0.15s ease;
+        transition: all var(--duration-fast) var(--ease-standard);
         font-family: inherit;
     }
 

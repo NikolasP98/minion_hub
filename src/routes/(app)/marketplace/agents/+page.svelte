@@ -355,7 +355,7 @@
         background: var(--color-bg2);
         border: 1px solid var(--color-border);
         border-radius: 12px;
-        transition: border-color 0.15s ease;
+        transition: border-color var(--duration-fast) var(--ease-standard);
     }
 
     .list-item:hover {
@@ -591,7 +591,7 @@
         font-size: 12px;
         font-weight: 500;
         text-decoration: none;
-        transition: all 0.15s ease;
+        transition: all var(--duration-fast) var(--ease-standard);
     }
 
     .btn-secondary:hover {
@@ -608,7 +608,7 @@
         font-size: 12px;
         font-weight: 600;
         text-decoration: none;
-        transition: all 0.15s ease;
+        transition: all var(--duration-fast) var(--ease-standard);
     }
 
     .btn-primary:hover {
@@ -740,7 +740,7 @@
         );
         mix-blend-mode: overlay;
         opacity: 0;
-        transition: opacity 0.4s ease;
+        transition: opacity var(--duration-slow) var(--ease-standard);
     }
 
     :global(.list-item.holo-active) .lc-glare {
@@ -765,7 +765,7 @@
         );
         mix-blend-mode: overlay;
         opacity: 0;
-        transition: opacity 0.4s ease;
+        transition: opacity var(--duration-slow) var(--ease-standard);
     }
 
     :global(.list-item.holo-active) .lc-sheen {

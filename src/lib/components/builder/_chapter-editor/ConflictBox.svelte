@@ -57,7 +57,7 @@
         border: 1px solid var(--color-border);
         background: var(--color-bg2);
         color: var(--color-foreground);
-        transition: all 0.15s;
+        transition: all var(--duration-fast) var(--ease-standard);
     }
     .conflict-opt.mine:hover { border-color: var(--color-foreground); }
     .conflict-opt.ai {

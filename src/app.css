@@ -427,6 +427,26 @@
       width: 0%;
     }
   }
+
+  /* ── Page transition keyframes ── */
+  @keyframes page-enter {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes page-exit {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
 }
 
 /* ── Reduced motion: suppress all animations ── */
@@ -473,6 +493,14 @@
   }
   .border-hairline {
     border-color: var(--hairline);
+  }
+
+  /* ── Hover lift — standardized card/row/cell micro-interaction ── */
+  .hover-lift {
+    transition: transform var(--duration-fast) var(--ease-standard);
+  }
+  .hover-lift:hover {
+    transform: translateY(-2px);
   }
 
   /* ── Functional type scale (size · weight · leading · tracking) ── */
@@ -750,7 +778,7 @@
   box-shadow:
     0 0 0 1px var(--color-border),
     0 0 12px 1px rgba(var(--vx-glow-cyan), 0.12) !important;
-  transition: box-shadow 0.2s ease;
+  transition: box-shadow var(--duration-normal) var(--ease-standard);
 }
 [data-theme='voxelized'] .agent-card:hover {
   box-shadow:
@@ -1183,7 +1211,7 @@ html[data-theme='crt'][data-crt-flicker='true'] body {
   box-shadow:
     0 0 0 1px var(--color-border),
     2px 2px 0 #040300 !important;
-  transition: box-shadow 0.2s ease;
+  transition: box-shadow var(--duration-normal) var(--ease-standard);
 }
 [data-theme='crt'] .agent-card:hover {
   box-shadow:

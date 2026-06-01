@@ -63,7 +63,7 @@
         color: var(--color-muted);
         background: var(--color-bg2);
         border: 1px solid var(--color-border);
-        transition: all 0.15s ease;
+        transition: all var(--duration-fast) var(--ease-standard);
     }
 
     .agent-selector .nav-pill:hover {

@@ -71,7 +71,7 @@
         padding: 0.375rem 0.875rem;
         border-radius: 0.375rem;
         cursor: pointer;
-        transition: all 0.15s ease;
+        transition: all var(--duration-fast) var(--ease-standard);
         border: none;
     }
 

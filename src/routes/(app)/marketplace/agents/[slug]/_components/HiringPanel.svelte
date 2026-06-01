@@ -281,7 +281,7 @@
         font-size: 15px;
         font-weight: 700;
         cursor: pointer;
-        transition: all 0.2s ease;
+        transition: all var(--duration-normal) var(--ease-standard);
         box-shadow: 0 4px 20px rgba(232, 84, 122, 0.3);
     }
 

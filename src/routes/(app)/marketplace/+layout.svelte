@@ -262,7 +262,7 @@
         text-decoration: none;
         font-size: 13px;
         font-weight: 500;
-        transition: all 0.15s ease;
+        transition: all var(--duration-fast) var(--ease-standard);
         position: relative;
     }
 
@@ -331,7 +331,7 @@
         font-size: 13px;
         font-weight: 600;
         cursor: pointer;
-        transition: all 0.15s ease;
+        transition: all var(--duration-fast) var(--ease-standard);
     }
 
     .create-btn:hover {

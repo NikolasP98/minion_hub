@@ -305,7 +305,7 @@
         display: flex;
         flex-direction: column;
         gap: 10px;
-        transition: border-color 0.15s ease;
+        transition: border-color var(--duration-fast) var(--ease-standard);
         cursor: default;
     }
     .plugin-card:hover { border-color: color-mix(in srgb, var(--color-brand-pink) 30%, transparent); }
@@ -380,7 +380,7 @@
         background: var(--color-bg3);
         color: var(--color-muted-foreground);
         cursor: pointer;
-        transition: all 0.15s ease;
+        transition: all var(--duration-fast) var(--ease-standard);
         white-space: nowrap;
     }
     .install-btn:hover { background: var(--color-brand-pink); border-color: var(--color-brand-pink); color: white; }
@@ -396,7 +396,7 @@
         background: var(--color-bg2);
         border: 1px solid var(--color-border);
         border-radius: 8px;
-        transition: border-color 0.15s ease;
+        transition: border-color var(--duration-fast) var(--ease-standard);
     }
     .plugin-list-item:hover { border-color: color-mix(in srgb, var(--color-brand-pink) 30%, transparent); }
 

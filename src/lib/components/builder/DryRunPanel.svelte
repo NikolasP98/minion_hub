@@ -311,7 +311,7 @@
         border: 1px solid color-mix(in srgb, var(--color-accent) 20%, transparent);
         border-radius: 9999px;
         cursor: pointer;
-        transition: all 0.15s;
+        transition: all var(--duration-fast) var(--ease-standard);
     }
     .suggestion-pill:hover {
         background: color-mix(in srgb, var(--color-accent) 12%, transparent);

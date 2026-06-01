@@ -69,7 +69,7 @@
         align-items: center;
         justify-content: center;
     }
-    .confirm-btn { font-family: inherit; font-size: 0.75rem; font-weight: 600; padding: 0.375rem 0.875rem; border-radius: 0.375rem; cursor: pointer; transition: all 0.15s ease; border: none; }
+    .confirm-btn { font-family: inherit; font-size: 0.75rem; font-weight: 600; padding: 0.375rem 0.875rem; border-radius: 0.375rem; cursor: pointer; transition: all var(--duration-fast) var(--ease-standard); border: none; }
     .confirm-btn.cancel { background: var(--color-bg2); color: var(--color-muted); border: 1px solid var(--color-border); }
     .confirm-btn.cancel:hover { color: var(--color-foreground); border-color: var(--color-foreground); }
     .confirm-btn.primary { background: var(--color-accent); color: white; }
@@ -86,7 +86,7 @@
     .condition-label { font-size: 0.75rem; font-weight: 600; color: var(--color-foreground); }
     .required { color: var(--color-accent); }
     .condition-helper { font-size: 0.6875rem; color: var(--color-muted); }
-    .condition-input { background: var(--color-bg2); border: 1px solid var(--color-border); border-radius: 0.375rem; color: var(--color-foreground); font-family: inherit; font-size: 0.8125rem; padding: 0.5rem 0.625rem; outline: none; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+    .condition-input { background: var(--color-bg2); border: 1px solid var(--color-border); border-radius: 0.375rem; color: var(--color-foreground); font-family: inherit; font-size: 0.8125rem; padding: 0.5rem 0.625rem; outline: none; transition: border-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard); }
     .condition-input:focus { border-color: var(--color-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent); }
     .condition-input.invalid { border-color: var(--color-error, #ef4444); }
     .condition-input.invalid:focus { box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-error, #ef4444) 20%, transparent); }

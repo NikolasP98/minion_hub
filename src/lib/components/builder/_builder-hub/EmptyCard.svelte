@@ -40,7 +40,7 @@
         border-radius: 0.75rem;
         background: transparent;
         cursor: pointer;
-        transition: all 0.2s ease;
+        transition: all var(--duration-normal) var(--ease-standard);
         padding: 0;
         font-family: inherit;
         width: 100%;

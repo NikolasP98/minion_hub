@@ -89,7 +89,7 @@
         background: none;
         border: none;
         cursor: pointer;
-        transition: all 0.1s ease;
+        transition: all var(--duration-instant) var(--ease-standard);
         font-family: inherit;
     }
 

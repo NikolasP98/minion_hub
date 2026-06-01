@@ -250,7 +250,7 @@
         background: transparent;
         color: var(--color-muted);
         cursor: pointer;
-        transition: all 0.15s ease;
+        transition: all var(--duration-fast) var(--ease-standard);
         display: flex;
         align-items: center;
         gap: 0.25rem;
@@ -357,7 +357,7 @@
         background: var(--color-bg3);
         color: var(--color-foreground);
         outline: none;
-        transition: border-color 0.15s ease;
+        transition: border-color var(--duration-fast) var(--ease-standard);
         color-scheme: dark;
     }
 
@@ -445,7 +445,7 @@
         border-radius: 0.625rem;
         background: var(--color-bg2);
         cursor: pointer;
-        transition: all 0.15s ease;
+        transition: all var(--duration-fast) var(--ease-standard);
         padding: 0;
         font-family: inherit;
         width: 100%;

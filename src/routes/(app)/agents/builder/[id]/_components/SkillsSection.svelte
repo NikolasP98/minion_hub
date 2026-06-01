@@ -199,7 +199,7 @@
         background: var(--color-bg3);
         border: 1px solid var(--color-border);
         border-radius: 0.5rem;
-        transition: all 0.15s ease;
+        transition: all var(--duration-fast) var(--ease-standard);
         cursor: grab;
     }
 
@@ -282,7 +282,7 @@
         background: none;
         border: none;
         cursor: pointer;
-        transition: all 0.1s ease;
+        transition: all var(--duration-instant) var(--ease-standard);
         font-family: inherit;
         flex-shrink: 0;
         opacity: 0;
@@ -315,7 +315,7 @@
         font-size: 0.75rem;
         font-family: inherit;
         cursor: pointer;
-        transition: all 0.15s ease;
+        transition: all var(--duration-fast) var(--ease-standard);
     }
 
     .skill-drop-zone:hover {
@@ -373,7 +373,7 @@
         cursor: pointer;
         text-align: left;
         font-family: inherit;
-        transition: background 0.1s ease;
+        transition: background var(--duration-instant) var(--ease-standard);
         color: inherit;
     }
 

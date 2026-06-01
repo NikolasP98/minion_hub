@@ -42,7 +42,7 @@
         transform: translate(12px, -50%);
         pointer-events: none;
         animation: tooltip-in 0.2s cubic-bezier(0.34, 1.4, 0.64, 1) forwards;
-        transition: left 0.08s ease-out, top 0.08s ease-out;
+        transition: left var(--duration-instant) ease-out, top var(--duration-instant) ease-out;
     }
 
     @keyframes tooltip-in {

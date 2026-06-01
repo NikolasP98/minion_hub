@@ -76,7 +76,7 @@
         padding: 0.25rem 0;
         outline: none;
         font-family: inherit;
-        transition: border-color 0.15s ease;
+        transition: border-color var(--duration-fast) var(--ease-standard);
     }
 
     .name-input:focus {
@@ -99,7 +99,7 @@
         resize: vertical;
         font-family: inherit;
         line-height: 1.5;
-        transition: border-color 0.15s ease;
+        transition: border-color var(--duration-fast) var(--ease-standard);
     }
 
     .desc-input:focus {

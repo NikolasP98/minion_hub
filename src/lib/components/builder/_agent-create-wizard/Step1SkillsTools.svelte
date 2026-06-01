@@ -300,7 +300,7 @@
         border: 1.5px solid var(--color-border);
         border-radius: 8px;
         cursor: pointer;
-        transition: all 0.15s;
+        transition: all var(--duration-fast) var(--ease-standard);
         font-family: inherit;
         padding: 0;
         flex-shrink: 0;

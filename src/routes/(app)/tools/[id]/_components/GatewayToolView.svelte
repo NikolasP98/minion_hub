@@ -326,7 +326,7 @@
         font-size: 0.8125rem;
         font-weight: 600;
         cursor: pointer;
-        transition: all 0.15s ease;
+        transition: all var(--duration-fast) var(--ease-standard);
         font-family: inherit;
         border: none;
     }

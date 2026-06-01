@@ -323,7 +323,7 @@
         background: var(--color-accent);
         border: none;
         cursor: pointer;
-        transition: all 0.15s ease;
+        transition: all var(--duration-fast) var(--ease-standard);
         font-family: inherit;
     }
 

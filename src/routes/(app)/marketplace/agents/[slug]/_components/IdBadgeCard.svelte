@@ -423,7 +423,7 @@
         border-radius: 20px;
         z-index: -1;
         opacity: 0;
-        transition: opacity 0.3s ease;
+        transition: opacity var(--duration-slow) var(--ease-standard);
     }
 
     .id-badge-card:hover .badge-glow {

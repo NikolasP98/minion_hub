@@ -399,7 +399,7 @@
         border: 1px solid color-mix(in srgb, var(--color-accent) 25%, transparent);
         border-radius: 0.375rem;
         cursor: pointer;
-        transition: all 0.15s ease;
+        transition: all var(--duration-fast) var(--ease-standard);
         font-family: inherit;
     }
 
@@ -421,7 +421,7 @@
         border: 1px solid color-mix(in srgb, var(--color-warning, #f59e0b) 25%, transparent);
         border-radius: 0.375rem;
         cursor: pointer;
-        transition: all 0.15s ease;
+        transition: all var(--duration-fast) var(--ease-standard);
         font-family: inherit;
     }
 
@@ -504,7 +504,7 @@
         width: 22px; height: 22px;
         display: flex; align-items: center; justify-content: center;
         border: none; border-radius: 4px;
-        cursor: pointer; transition: all 0.15s; background: transparent;
+        cursor: pointer; transition: all var(--duration-fast) var(--ease-standard); background: transparent;
     }
     .staged-accept { color: var(--color-success, #22c55e); }
     .staged-accept:hover { background: color-mix(in srgb, var(--color-success, #22c55e) 15%, transparent); }
@@ -554,7 +554,7 @@
         background: transparent;
         cursor: pointer;
         text-align: left;
-        transition: background 0.1s ease;
+        transition: background var(--duration-instant) var(--ease-standard);
     }
 
     .ctx-item.danger {

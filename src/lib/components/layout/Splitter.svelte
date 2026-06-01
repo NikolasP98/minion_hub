@@ -218,7 +218,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        transition: background 0.15s ease;
+        transition: background var(--duration-fast) var(--ease-standard);
         position: relative;
         z-index: 10;
     }
@@ -234,7 +234,7 @@
         border-radius: 1px;
         background: var(--color-muted-foreground);
         opacity: 0;
-        transition: opacity 0.15s ease;
+        transition: opacity var(--duration-fast) var(--ease-standard);
     }
 
     .splitter-handle:hover .splitter-grip,

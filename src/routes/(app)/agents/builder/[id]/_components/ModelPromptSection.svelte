@@ -98,7 +98,7 @@
         padding: 0.5rem 0.75rem;
         outline: none;
         font-family: inherit;
-        transition: border-color 0.15s ease;
+        transition: border-color var(--duration-fast) var(--ease-standard);
     }
 
     .field-input:focus {
@@ -121,7 +121,7 @@
         resize: vertical;
         font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
         line-height: 1.6;
-        transition: border-color 0.15s ease;
+        transition: border-color var(--duration-fast) var(--ease-standard);
     }
 
     .prompt-input:focus {

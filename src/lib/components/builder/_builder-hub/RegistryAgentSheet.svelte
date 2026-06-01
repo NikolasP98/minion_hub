@@ -225,7 +225,7 @@
         padding: 0.4375rem 1rem;
         border-radius: 0.4375rem;
         cursor: pointer;
-        transition: all 0.15s ease;
+        transition: all var(--duration-fast) var(--ease-standard);
         border: none;
     }
 

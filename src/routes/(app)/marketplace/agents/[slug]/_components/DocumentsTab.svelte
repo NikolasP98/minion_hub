@@ -124,7 +124,7 @@
         font-weight: 600;
         font-family: "JetBrains Mono NF", monospace;
         cursor: pointer;
-        transition: all 0.2s ease;
+        transition: all var(--duration-normal) var(--ease-standard);
         text-transform: uppercase;
         letter-spacing: 0.05em;
     }

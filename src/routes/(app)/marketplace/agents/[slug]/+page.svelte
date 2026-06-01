@@ -184,7 +184,7 @@
         color: #a1a1aa;
         font-size: 13px;
         cursor: pointer;
-        transition: all 0.2s ease;
+        transition: all var(--duration-normal) var(--ease-standard);
     }
 
     .back-btn:hover {
@@ -224,7 +224,7 @@
         font-size: 13px;
         font-weight: 500;
         cursor: pointer;
-        transition: all 0.2s ease;
+        transition: all var(--duration-normal) var(--ease-standard);
     }
 
     .tab-btn:hover {

@@ -112,7 +112,7 @@
     gap: 8px;
     z-index: 30;
     opacity: 0.5;
-    transition: opacity 0.2s ease;
+    transition: opacity var(--duration-fast) var(--ease-standard);
   }
   .scrollspy-container:hover {
     opacity: 1;
@@ -128,7 +128,7 @@
     border: none;
     padding: 0;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: all var(--duration-fast) var(--ease-standard);
   }
   .scrollspy-dot:hover {
     opacity: 0.8;
@@ -159,7 +159,7 @@
     padding: 2px 6px;
     pointer-events: none;
     opacity: 0;
-    transition: opacity 0.15s ease;
+    transition: opacity var(--duration-fast) var(--ease-standard);
   }
   .scrollspy-dot:hover .scrollspy-tooltip {
     opacity: 1;

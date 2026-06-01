@@ -85,7 +85,7 @@
         border-radius: 6px;
         cursor: pointer;
         font-size: 11px;
-        transition: all 0.15s;
+        transition: all var(--duration-fast) var(--ease-standard);
     }
     .tool-chip:hover { border-color: var(--color-accent); }
     .tool-chip.checked {

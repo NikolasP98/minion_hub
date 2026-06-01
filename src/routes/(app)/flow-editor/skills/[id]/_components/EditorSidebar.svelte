@@ -159,7 +159,7 @@
         align-items: center;
         justify-content: center;
         z-index: 5;
-        transition: all 0.15s;
+        transition: all var(--duration-fast) var(--ease-standard);
     }
     .sidebar-collapse-btn:hover { color: var(--color-foreground); border-color: var(--color-accent); }
 
@@ -174,7 +174,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        transition: all 0.15s;
+        transition: all var(--duration-fast) var(--ease-standard);
     }
     .sidebar-expand-btn:hover { color: var(--color-foreground); background: var(--color-bg2); }
 
@@ -191,7 +191,7 @@
         padding: 0.25rem 0;
         outline: none;
         font-family: inherit;
-        transition: border-color 0.15s ease;
+        transition: border-color var(--duration-fast) var(--ease-standard);
     }
     .name-input:focus { border-bottom-color: var(--color-accent); }
     .name-input::placeholder { color: var(--color-muted); }
@@ -208,7 +208,7 @@
         resize: vertical;
         font-family: inherit;
         line-height: 1.5;
-        transition: border-color 0.15s ease;
+        transition: border-color var(--duration-fast) var(--ease-standard);
     }
     .desc-input:focus { border-color: var(--color-accent); }
     .desc-input::placeholder { color: var(--color-muted); }
@@ -226,7 +226,7 @@
         border: none;
         border-radius: 0.375rem;
         cursor: pointer;
-        transition: all 0.15s ease;
+        transition: all var(--duration-fast) var(--ease-standard);
         font-family: inherit;
         align-self: flex-start;
     }
@@ -303,7 +303,7 @@
         border: 1px dashed color-mix(in srgb, var(--color-accent) 25%, transparent);
         border-radius: 9999px;
         cursor: pointer; opacity: 0.55;
-        transition: all 0.2s ease;
+        transition: all var(--duration-normal) var(--ease-standard);
     }
     .ghost-pill:hover:not(:disabled) {
         opacity: 0.85;

@@ -63,7 +63,7 @@
         border-left: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 0;
         cursor: pointer;
-        transition: background 0.15s ease;
+        transition: background var(--duration-fast) var(--ease-standard);
         font-family: inherit;
     }
 

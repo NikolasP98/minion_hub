@@ -113,7 +113,7 @@
         font-weight: 600;
         border-radius: 0.375rem;
         cursor: pointer;
-        transition: all 0.15s ease;
+        transition: all var(--duration-fast) var(--ease-standard);
         font-family: inherit;
         border: none;
     }
@@ -140,7 +140,7 @@
         padding: 0.375rem 0.75rem;
         font-size: 0.7rem; font-weight: 600;
         border: none; border-radius: 0.375rem;
-        cursor: pointer; transition: all 0.15s;
+        cursor: pointer; transition: all var(--duration-fast) var(--ease-standard);
         font-family: inherit;
     }
     .batch-btn.accept { color: white; background: var(--color-success, #22c55e); }

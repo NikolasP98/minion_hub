@@ -65,7 +65,7 @@
 		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");
 		background-repeat: no-repeat;
 		background-position: right 0.5rem center;
-		transition: border-color 0.15s ease, background-color 0.15s ease;
+		transition: border-color var(--duration-fast) var(--ease-standard), background-color var(--duration-fast) var(--ease-standard);
 		max-width: 140px;
 		overflow: hidden;
 		text-overflow: ellipsis;

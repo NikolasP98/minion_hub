@@ -150,7 +150,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        transition: color 0.15s ease;
+        transition: color var(--duration-fast) var(--ease-standard);
     }
 
     .close-btn:hover {
@@ -202,7 +202,7 @@
         border-radius: var(--radius-sm, 4px);
         cursor: pointer;
         font-family: inherit;
-        transition: background 0.15s ease;
+        transition: background var(--duration-fast) var(--ease-standard);
     }
 
     .fix-btn:hover {
@@ -267,7 +267,7 @@
         border-radius: 0.375rem;
         cursor: pointer;
         font-family: inherit;
-        transition: filter 0.15s ease;
+        transition: filter var(--duration-fast) var(--ease-standard);
     }
 
     .publish-anyway-btn:hover {

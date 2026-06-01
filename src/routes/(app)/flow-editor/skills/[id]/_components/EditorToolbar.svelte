@@ -123,7 +123,7 @@
         height: 2rem;
         border-radius: 0.375rem;
         color: var(--color-muted);
-        transition: all 0.15s ease;
+        transition: all var(--duration-fast) var(--ease-standard);
     }
     .back-link:hover { color: var(--color-foreground); background: var(--color-bg3); }
 
@@ -159,7 +159,7 @@
         font-weight: 500;
         border: none;
         cursor: pointer;
-        transition: all 0.15s ease;
+        transition: all var(--duration-fast) var(--ease-standard);
         font-family: inherit;
     }
     .toolbar-btn:disabled { opacity: 0.5; cursor: not-allowed; }

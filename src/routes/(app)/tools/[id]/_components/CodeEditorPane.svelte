@@ -208,7 +208,7 @@
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.05em;
-        transition: color 0.15s ease;
+        transition: color var(--duration-fast) var(--ease-standard);
     }
 
     .env-header:hover {
@@ -310,7 +310,7 @@
         border: none;
         cursor: pointer;
         flex-shrink: 0;
-        transition: color 0.1s ease;
+        transition: color var(--duration-instant) var(--ease-standard);
     }
 
     .env-reveal:hover {
@@ -329,7 +329,7 @@
         border: none;
         cursor: pointer;
         flex-shrink: 0;
-        transition: all 0.1s ease;
+        transition: all var(--duration-instant) var(--ease-standard);
         opacity: 0.5;
     }
 
@@ -354,7 +354,7 @@
         font-size: 0.6875rem;
         font-weight: 500;
         cursor: pointer;
-        transition: all 0.15s ease;
+        transition: all var(--duration-fast) var(--ease-standard);
         font-family: inherit;
     }
 

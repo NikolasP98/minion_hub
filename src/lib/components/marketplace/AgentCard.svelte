@@ -238,7 +238,7 @@
         );
         mix-blend-mode: overlay;
         opacity: 0;
-        transition: opacity 0.4s ease;
+        transition: opacity var(--duration-slow) var(--ease-standard);
     }
 
     :global(.agent-card-container:not(.flipped).holo-active) .holo-glare {
@@ -264,7 +264,7 @@
         );
         mix-blend-mode: overlay;
         opacity: 0;
-        transition: opacity 0.4s ease;
+        transition: opacity var(--duration-slow) var(--ease-standard);
     }
 
     :global(.agent-card-container:not(.flipped).holo-active) .holo-sheen {

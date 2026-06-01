@@ -124,7 +124,7 @@
         padding: 0.5rem 0.75rem;
         outline: none;
         font-family: inherit;
-        transition: border-color 0.15s ease;
+        transition: border-color var(--duration-fast) var(--ease-standard);
     }
 
     .field-input:focus {

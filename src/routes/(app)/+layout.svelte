@@ -11,6 +11,7 @@
 	import { page } from '$app/state';
 	import { ensurePermissions } from '$lib/state/features/permissions.svelte';
 	import { hydratePluginNav } from '$lib/state/plugin-nav.svelte';
+	import { fadeIn } from '$lib/animations';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -33,7 +34,13 @@
 	<div class="shell-main flex flex-col flex-1 min-w-0 overflow-hidden">
 		<Topbar />
 		<ConnectionBanner />
-		{@render children()}
+		<div class="flex-1 min-h-0 overflow-y-auto">
+			{#key page.url.pathname}
+				<div in:fadeIn={{ duration: 200 }} class="h-full">
+					{@render children()}
+				</div>
+			{/key}
+		</div>
 	</div>
 	<DynamicIsland />
 </div>

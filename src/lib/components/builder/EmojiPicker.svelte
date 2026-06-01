@@ -55,7 +55,7 @@
         border: 2px dashed var(--color-border);
         background: var(--color-bg2);
         cursor: pointer;
-        transition: all 0.15s ease;
+        transition: all var(--duration-fast) var(--ease-standard);
     }
 
     .picker-trigger:hover {
@@ -134,7 +134,7 @@
         border: 1.5px solid transparent;
         background: none;
         cursor: pointer;
-        transition: all 0.1s ease;
+        transition: all var(--duration-instant) var(--ease-standard);
     }
 
     .picker-item:hover {

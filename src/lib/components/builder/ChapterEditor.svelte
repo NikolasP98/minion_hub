@@ -455,7 +455,7 @@
         border-radius: 4px;
         color: var(--color-accent);
         cursor: pointer;
-        transition: all 0.15s;
+        transition: all var(--duration-fast) var(--ease-standard);
         flex-shrink: 0;
     }
     .field:hover :global(.ai-wand-btn),

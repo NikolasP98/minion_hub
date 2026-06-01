@@ -227,7 +227,7 @@
         padding: 7px 16px;
         border-radius: 6px;
         cursor: pointer;
-        transition: all 0.15s;
+        transition: all var(--duration-fast) var(--ease-standard);
         border: none;
     }
 
