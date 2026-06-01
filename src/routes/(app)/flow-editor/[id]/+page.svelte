@@ -75,6 +75,9 @@
   }
 </script>
 
+<!-- Self-sufficient flex-column shell: Svelte Flow needs a definite-height
+     ancestor, so don't rely on the parent layout being a flex column. -->
+<div class="flex flex-col flex-1 min-h-0 h-full">
   {#if loadError}
     <div class="flex-1 flex items-center justify-center">
       <div class="text-center">
@@ -170,6 +173,7 @@
       {/if}
     </div>
   {/if}
+</div>
 
   <!-- Node context menu — rendered outside the flow canvas to avoid transform clipping -->
   {#if flowEditorState.contextMenu.open}
