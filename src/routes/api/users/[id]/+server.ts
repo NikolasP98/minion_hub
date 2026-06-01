@@ -6,6 +6,7 @@ import {
   isAliasTaken,
   updateUserProfile,
   updateUserRole,
+  updateUserOrganizations,
 } from '$server/services/user.service';
 import { requireAdmin } from '$server/auth/authorize';
 import { normalizeAlias, validateAlias } from '$lib/utils/alias';
@@ -64,6 +65,11 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
   // Backward-compat: legacy 'role' enum still accepted via dedicated call.
   if (typeof b.role === 'string' && VALID_ROLES.includes(b.role as LegacyRole)) {
     await updateUserRole(ctx, userId, b.role as LegacyRole);
+  }
+
+  if (Array.isArray(b.organizationIds)) {
+    const orgIds = b.organizationIds.filter((id): id is string => typeof id === 'string');
+    await updateUserOrganizations(ctx, userId, orgIds);
   }
 
   if (Object.keys(patch).length > 0) {

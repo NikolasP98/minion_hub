@@ -25,14 +25,19 @@ vi.mock('$lib/auth/auth', () => ({
 }));
 
 describe('listUsers', () => {
-  it('calls db.select and returns results', async () => {
-    const { db, resolve } = createMockDb();
+  it('calls db.select and returns results with organizations', async () => {
+    const { db, resolveSequence } = createMockDb();
     const mockUsers = [
       { id: 'u1', email: 'a@b.com', displayName: 'A', role: 'admin', createdAt: null },
     ];
-    resolve(mockUsers);
+    resolveSequence([
+      mockUsers,
+      [], // no memberships for these users
+    ]);
     const result = await listUsers({ db, tenantId: 't1' });
-    expect(result).toEqual(mockUsers);
+    expect(result).toEqual([
+      { ...mockUsers[0], organizations: [] },
+    ]);
   });
 });
 

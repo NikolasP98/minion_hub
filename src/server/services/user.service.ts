@@ -1,10 +1,10 @@
-import { and, eq, ne } from 'drizzle-orm';
-import { user } from '../db/schema/auth';
+import { and, eq, ne, inArray } from 'drizzle-orm';
+import { user, member, organization } from '../db/schema/auth';
 import type { TenantContext } from './base';
 import { getAuth } from '$lib/auth/auth';
 
 export async function listUsers(ctx: TenantContext) {
-  return ctx.db
+  const users = await ctx.db
     .select({
       id: user.id,
       email: user.email,
@@ -16,6 +16,32 @@ export async function listUsers(ctx: TenantContext) {
     })
     .from(user)
     .orderBy(user.createdAt);
+
+  if (users.length === 0) return [];
+
+  const userIds = users.map((u) => u.id);
+  const memberships = await ctx.db
+    .select({
+      userId: member.userId,
+      orgId: member.organizationId,
+      orgName: organization.name,
+      orgRole: member.role,
+    })
+    .from(member)
+    .innerJoin(organization, eq(member.organizationId, organization.id))
+    .where(inArray(member.userId, userIds));
+
+  const orgsByUser = new Map<string, Array<{ id: string; name: string; role: string }>>();
+  for (const m of memberships) {
+    const list = orgsByUser.get(m.userId) ?? [];
+    list.push({ id: m.orgId, name: m.orgName, role: m.orgRole });
+    orgsByUser.set(m.userId, list);
+  }
+
+  return users.map((u) => ({
+    ...u,
+    organizations: orgsByUser.get(u.id) ?? [],
+  }));
 }
 
 export async function getUser(ctx: TenantContext, userId: string) {
@@ -109,4 +135,52 @@ export async function listAliases(ctx: TenantContext): Promise<Record<string, st
     .select({ id: user.id, alias: user.alias })
     .from(user);
   return Object.fromEntries(rows.filter((r) => r.alias).map((r) => [r.id, r.alias!]));
+}
+
+export async function listOrganizations(ctx: TenantContext) {
+  return ctx.db
+    .select({ id: organization.id, name: organization.name })
+    .from(organization)
+    .orderBy(organization.name);
+}
+
+export async function updateUserOrganizations(
+  ctx: TenantContext,
+  userId: string,
+  orgIds: string[],
+) {
+  // Get current memberships
+  const current = await ctx.db
+    .select({ orgId: member.organizationId })
+    .from(member)
+    .where(eq(member.userId, userId));
+
+  const currentIds = new Set(current.map((c) => c.orgId));
+  const desiredIds = new Set(orgIds);
+
+  // Remove memberships that are no longer desired
+  for (const cid of currentIds) {
+    if (!desiredIds.has(cid)) {
+      await ctx.db
+        .delete(member)
+        .where(and(eq(member.userId, userId), eq(member.organizationId, cid)));
+    }
+  }
+
+  // Add new memberships
+  const now = new Date();
+  for (const did of desiredIds) {
+    if (!currentIds.has(did)) {
+      await ctx.db
+        .insert(member)
+        .values({
+          id: crypto.randomUUID(),
+          organizationId: did,
+          userId,
+          role: 'member',
+          createdAt: now,
+        })
+        .onConflictDoNothing();
+    }
+  }
 }

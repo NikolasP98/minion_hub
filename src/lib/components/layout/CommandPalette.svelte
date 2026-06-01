@@ -27,6 +27,7 @@
         FolderKanban,
         Wand2,
         Paintbrush,
+        Bell,
     } from 'lucide-svelte';
     import * as m from '$lib/paraglide/messages';
 
@@ -59,6 +60,7 @@
         folder: FolderKanban,
         wand: Wand2,
         paintbrush: Paintbrush,
+        bell: Bell,
     };
 
     function handleKeydown(e: KeyboardEvent) {

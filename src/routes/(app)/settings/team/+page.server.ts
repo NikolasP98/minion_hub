@@ -1,7 +1,7 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { requireAdmin } from '$server/auth/authorize';
-import { listUsers } from '$server/services/user.service';
+import { listUsers, listOrganizations } from '$server/services/user.service';
 import { listRoles } from '$server/services/roles.service';
 import { listPendingRequests } from '$server/services/join-request.service';
 import type { JoinRequestRow } from '$server/services/join-request.service';
@@ -11,10 +11,11 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   requireAdmin(locals);
   if (!locals.tenantCtx) throw error(401, 'tenant context required');
 
-  const [rawUsers, customRoles, pending] = await Promise.all([
+  const [rawUsers, customRoles, pending, organizations] = await Promise.all([
     listUsers(locals.tenantCtx),
     listRoles(locals.tenantCtx),
     listPendingRequests(locals.tenantCtx.db, locals.tenantCtx.tenantId),
+    listOrganizations(locals.tenantCtx),
   ]);
 
   const users = rawUsers.map((u) => ({
@@ -30,5 +31,5 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     createdAt: new Date(r.createdAt).toISOString(),
   }));
 
-  return { users, customRoles, pendingRequests };
+  return { users, customRoles, pendingRequests, organizations };
 };

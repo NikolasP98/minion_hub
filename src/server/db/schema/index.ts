@@ -48,7 +48,6 @@ export { unifiedEvents } from './unified-events';
 export { channelIdentities } from './channel-identities';
 export { userIdentities } from './user-identities';
 export { personalAgents } from './personal-agents';
-export { joinRequests } from './join-requests';
 export {
   builtSkills,
   builtSkillTools,

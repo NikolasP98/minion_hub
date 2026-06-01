@@ -1,19 +1,21 @@
 <script lang="ts">
   import ProfileMenu from './ProfileMenu.svelte';
+  import NotificationsPopup from './NotificationsPopup.svelte';
   import { Search, Bug, Bell } from 'lucide-svelte';
   import { togglePalette } from '$lib/state/ui/command-palette.svelte';
   import { captureSnapshot, bugReporter } from '$lib/state/ui/bug-reporter.svelte';
   import { conn } from '$lib/state/gateway/connection.svelte';
-  import { notificationState } from '$lib/state/features/notifications.svelte';
+  import { notifications, refreshNotifications } from '$lib/state/features/notifications.svelte';
   import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
 
   const connected = $derived(conn.connected);
 
+  let notificationsOpen = $state(false);
+
   onMount(() => {
-    notificationState.refresh();
-    // Poll every 60 seconds
-    const interval = setInterval(() => notificationState.refresh(), 60_000);
+    refreshNotifications();
+    const interval = setInterval(refreshNotifications, 60_000);
     return () => clearInterval(interval);
   });
 </script>
@@ -48,21 +50,26 @@
   </button>
 
   <!-- Notification bell -->
-  <a
-    href="/settings/team"
-    class="flex items-center justify-center w-7 h-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-white/[0.06] transition-colors duration-[150ms] relative"
-    aria-label="{notificationState.pendingCount} pending access requests"
-    title="Access requests"
-  >
-    <Bell size={14} />
-    {#if notificationState.hasPending}
-      <span
-        class="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[14px] h-[14px] px-1 rounded-full bg-red-500 text-[9px] font-bold text-white leading-none"
-      >
-        {notificationState.pendingCount > 99 ? '99+' : notificationState.pendingCount}
-      </span>
-    {/if}
-  </a>
+  <div class="relative">
+    <button
+      type="button"
+      onclick={() => (notificationsOpen = !notificationsOpen)}
+      class="flex items-center justify-center w-7 h-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-white/[0.06] transition-colors duration-[150ms] relative"
+      aria-label="{notifications.pendingCount} pending access requests"
+      title="Notifications"
+      aria-expanded={notificationsOpen}
+    >
+      <Bell size={14} />
+      {#if notifications.hasPending}
+        <span
+          class="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[14px] h-[14px] px-1 rounded-full bg-red-500 text-[9px] font-bold text-white leading-none"
+        >
+          {notifications.pendingCount > 99 ? '99+' : notifications.pendingCount}
+        </span>
+      {/if}
+    </button>
+    <NotificationsPopup bind:open={notificationsOpen} />
+  </div>
 
   <button
     onclick={() => captureSnapshot()}

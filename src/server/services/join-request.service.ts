@@ -1,6 +1,5 @@
 import { eq, and, desc } from 'drizzle-orm';
-import { joinRequests } from '../db/schema/join-requests';
-import { member, organization } from '../db/schema/auth';
+import { joinRequests, member } from '@minion-stack/db/schema';
 import { newId, nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
 

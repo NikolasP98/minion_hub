@@ -7,7 +7,10 @@
   import { ensureAliases, invalidateAliases } from '$lib/state/features/aliases.svelte';
   import { can } from '$lib/state/features/permissions.svelte';
   import { Select } from '$lib/components/ui';
+  import { MoreVertical } from 'lucide-svelte';
   import UserEditor from './UserEditor.svelte';
+
+  type OrgRef = { id: string; name: string; role: string };
 
   type UserRow = {
     id: string;
@@ -17,6 +20,7 @@
     alias: string | null;
     roleId: string | null;
     createdAt: string | null;
+    organizations?: OrgRef[];
   };
 
   type PendingInvite = {
@@ -27,19 +31,32 @@
     expiresAt: Date | string;
   };
 
+  type PendingRequest = {
+    id: string;
+    email: string;
+    message?: string | null;
+    createdAt: string;
+  };
+
   const ROLES: UserRow['role'][] = ['user', 'admin'];
   const INVITE_ROLES = ['member', 'admin'];
 
   type CustomRole = { id: string; name: string; isSystem: boolean; description?: string | null; permissions?: string[]; memberCount?: number };
 
-  // Server-loaded initial data (passed by /settings/team/+page.server.ts).
-  // When the component is mounted on a route that didn't preload, both default
-  // to empty arrays and the component falls back to client-side fetches.
+  type OrgOption = { id: string; name: string };
+
   interface Props {
     initialUsers?: UserRow[];
     initialCustomRoles?: CustomRole[];
+    initialPendingRequests?: PendingRequest[];
+    organizations?: OrgOption[];
   }
-  let { initialUsers = [], initialCustomRoles = [] }: Props = $props();
+  let {
+    initialUsers = [],
+    initialCustomRoles = [],
+    initialPendingRequests = [],
+    organizations = [],
+  }: Props = $props();
   const hasServerData = $derived(initialUsers.length > 0 || initialCustomRoles.length > 0);
 
   // svelte-ignore state_referenced_locally
@@ -48,9 +65,12 @@
   // svelte-ignore state_referenced_locally
   let users = $state<UserRow[]>(initialUsers);
   let invitations = $state<PendingInvite[]>([]);
+  // svelte-ignore state_referenced_locally
+  let pendingRequests = $state<PendingRequest[]>(initialPendingRequests);
   let loading = $state(false);
   let error = $state<string | null>(null);
   let expandedId = $state<string | null>(null);
+  let openMenuId = $state<string | null>(null);
 
   function toggleExpand(id: string) {
     expandedId = expandedId === id ? null : id;
@@ -112,7 +132,7 @@
           }));
       }
     } catch {
-      // non-fatal — invitations just won't show
+      // non-fatal
     }
   }
 
@@ -200,11 +220,27 @@
     }
   }
 
+  async function updateUserOrgs(userId: string, orgIds: string[]) {
+    try {
+      const res = await fetch(`/api/users/${userId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ organizationIds: orgIds }),
+      });
+      if (!res.ok) throw new Error('Failed to update orgs');
+      // Refresh local state
+      const refreshed = await fetch('/api/users');
+      if (refreshed.ok) {
+        const data = (await refreshed.json()) as { users: UserRow[] };
+        users = data.users;
+      }
+      toastSuccess('Organizations updated');
+    } catch {
+      toastError('Failed to update organizations');
+    }
+  }
+
   onMount(() => {
-    // When initial server data is provided (the file-routed page), skip the
-    // users + customRoles refetches — they're already in `users`/`customRoles`.
-    // Invitations always need a client fetch because Better Auth's organization
-    // API is exposed via authClient (server invocation requires extra wiring).
     if (!hasServerData) {
       load();
       loadCustomRoles();
@@ -220,49 +256,7 @@
       <h2 class="text-sm font-semibold text-foreground uppercase tracking-wider">
         {m.users_team()}
       </h2>
-      {#if can('users:invite')}
-        <button
-          class="text-xs px-3 py-1.5 rounded-md bg-accent text-white border-none cursor-pointer font-[inherit] font-semibold hover:opacity-90 transition-opacity"
-          onclick={() => (showInvite = !showInvite)}
-        >
-          {showInvite ? m.users_inviteCancelBtn() : m.users_inviteOpen()}
-        </button>
-      {/if}
     </div>
-
-    <!-- Invite form -->
-    {#if showInvite}
-      <form
-        class="bg-card border border-border rounded-lg p-4 mb-5 space-y-3"
-        onsubmit={(e) => { e.preventDefault(); sendInvite(); }}
-      >
-        <p class="text-xs font-semibold text-foreground">{m.users_invite()}</p>
-        <div class="grid grid-cols-2 gap-3">
-          <input
-            class="bg-bg2 border border-border rounded-md text-foreground px-2.5 py-1.5 text-xs font-[inherit] outline-none focus:border-accent placeholder:text-muted"
-            type="email"
-            placeholder={m.users_inviteEmail()}
-            bind:value={inviteEmail}
-            required
-          />
-          <Select bind:value={inviteRole} size="sm">
-            {#each INVITE_ROLES as r (r)}
-              <option value={r}>{r}</option>
-            {/each}
-          </Select>
-        </div>
-        {#if inviteError}
-          <p class="text-xs text-destructive">{inviteError}</p>
-        {/if}
-        <button
-          type="submit"
-          class="text-xs px-3 py-1.5 rounded-md bg-accent text-white border-none cursor-pointer font-[inherit] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
-          disabled={inviting || !inviteEmail}
-        >
-          {inviting ? m.users_creating() : m.users_inviteSubmit()}
-        </button>
-      </form>
-    {/if}
 
     <!-- Error / loading -->
     {#if loading}
@@ -272,12 +266,13 @@
     {:else if users.length === 0}
       <div class="text-muted text-xs py-8 text-center">{m.users_noUsers()}</div>
     {:else}
-      <div class="bg-card border border-border rounded-lg overflow-hidden">
+      <div class="bg-card border border-border rounded-lg">
         <table class="w-full text-xs border-collapse">
           <thead>
             <tr class="border-b border-border bg-bg2">
               <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[10px]">{m.users_name()}</th>
               <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[10px]">{m.users_role()}</th>
+              <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[10px]">Company</th>
               <th class="px-4 py-2.5"></th>
             </tr>
           </thead>
@@ -322,19 +317,85 @@
                     {/if}
                   </select>
                 </td>
-                <td class="px-4 py-3 text-right" onclick={(e) => e.stopPropagation()}>
+                <td class="px-4 py-3" onclick={(e) => e.stopPropagation()}>
+                  {#if organizations.length === 0}
+                    <span class="text-muted text-[10px]">—</span>
+                  {:else}
+                    <div class="flex items-center gap-1 flex-wrap max-w-[250px]">
+                      {#each organizations as org (org.id)}
+                        {@const isMember = (u.organizations ?? []).some((o) => o.id === org.id)}
+                        <button
+                          type="button"
+                          class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border cursor-pointer transition-colors
+                            {isMember
+                              ? 'bg-accent/15 text-accent border-accent/30 hover:bg-accent/25'
+                              : 'bg-bg2 text-muted-foreground border-border hover:border-white/20 hover:text-foreground'}"
+                          onclick={() => {
+                            const current = new Set((u.organizations ?? []).map((o) => o.id));
+                            if (current.has(org.id)) {
+                              current.delete(org.id);
+                            } else {
+                              current.add(org.id);
+                            }
+                            void updateUserOrgs(u.id, Array.from(current));
+                          }}
+                          title={isMember ? `Member of ${org.name}` : `Add to ${org.name}`}
+                        >
+                          {org.name}
+                        </button>
+                      {/each}
+                    </div>
+                  {/if}
+                </td>
+                <td class="px-4 py-3 text-right relative" onclick={(e) => e.stopPropagation()}>
                   <button
-                    class="text-muted hover:text-destructive transition-colors bg-transparent border-none cursor-pointer text-xs font-[inherit]"
-                    onclick={() => remove(u.id)}
-                    title={m.users_removeFromTenant()}
+                    type="button"
+                    class="text-muted hover:text-foreground transition-colors bg-transparent border-none cursor-pointer p-1 rounded-md hover:bg-bg2"
+                    onclick={(e) => { e.stopPropagation(); openMenuId = openMenuId === u.id ? null : u.id; }}
+                    title="Actions"
                   >
-                    ✕
+                    <MoreVertical size={14} />
                   </button>
+                  {#if openMenuId === u.id}
+                    <div
+                      class="absolute right-2 top-full mt-1 z-50 w-44 bg-bg2 border border-border rounded-lg shadow-lg overflow-hidden py-1"
+                      role="menu"
+                      tabindex="-1"
+                      onclick={(e) => e.stopPropagation()}
+                      onkeydown={(e) => e.stopPropagation()}
+                    >
+                      <button
+                        type="button"
+                        class="w-full text-left px-3 py-2 text-xs text-foreground hover:bg-bg3 transition-colors"
+                        role="menuitem"
+                        onclick={() => { toggleExpand(u.id); openMenuId = null; }}
+                      >
+                        Edit profile
+                      </button>
+                      <button
+                        type="button"
+                        class="w-full text-left px-3 py-2 text-xs text-foreground hover:bg-bg3 transition-colors"
+                        role="menuitem"
+                        onclick={() => { openMenuId = null; }}
+                      >
+                        Manage permissions
+                      </button>
+                      <div class="border-t border-border my-1"></div>
+                      <button
+                        type="button"
+                        class="w-full text-left px-3 py-2 text-xs text-destructive hover:bg-destructive/10 transition-colors"
+                        role="menuitem"
+                        onclick={() => { openMenuId = null; remove(u.id); }}
+                      >
+                        Delete user
+                      </button>
+                    </div>
+                  {/if}
                 </td>
               </tr>
               {#if expandedId === u.id}
                 <tr class="border-b border-border/50 bg-bg2/30">
-                  <td colspan="3" class="px-4 py-4">
+                  <td colspan="4" class="px-4 py-4">
                     <UserEditor
                       user={u}
                       customRoles={customRoles}
@@ -348,47 +409,135 @@
           </tbody>
         </table>
       </div>
+
+      <!-- Invite section (below table) -->
+      {#if can('users:invite')}
+        <div class="mt-4 flex justify-end">
+          <button
+            class="text-xs px-3 py-1.5 rounded-md bg-accent text-white border-none cursor-pointer font-[inherit] font-semibold hover:opacity-90 transition-opacity"
+            onclick={() => (showInvite = !showInvite)}
+          >
+            {showInvite ? m.users_inviteCancelBtn() : m.users_inviteOpen()}
+          </button>
+        </div>
+      {/if}
+
+      {#if showInvite}
+        <form
+          class="bg-card border border-border rounded-lg p-4 mt-3 space-y-3"
+          onsubmit={(e) => { e.preventDefault(); sendInvite(); }}
+        >
+          <p class="text-xs font-semibold text-foreground">{m.users_invite()}</p>
+          <div class="grid grid-cols-2 gap-3">
+            <input
+              class="bg-bg2 border border-border rounded-md text-foreground px-2.5 py-1.5 text-xs font-[inherit] outline-none focus:border-accent placeholder:text-muted"
+              type="email"
+              placeholder={m.users_inviteEmail()}
+              bind:value={inviteEmail}
+              required
+            />
+            <Select bind:value={inviteRole} size="sm">
+              {#each INVITE_ROLES as r (r)}
+                <option value={r}>{r}</option>
+              {/each}
+            </Select>
+          </div>
+          {#if inviteError}
+            <p class="text-xs text-destructive">{inviteError}</p>
+          {/if}
+          <button
+            type="submit"
+            class="text-xs px-3 py-1.5 rounded-md bg-accent text-white border-none cursor-pointer font-[inherit] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+            disabled={inviting || !inviteEmail}
+          >
+            {inviting ? m.users_creating() : m.users_inviteSubmit()}
+          </button>
+        </form>
+      {/if}
     {/if}
 
-    <!-- Pending Invitations -->
-    {#if invitations.length > 0}
+    <!-- Pending Invitations & Requests -->
+    {#if invitations.length > 0 || pendingRequests.length > 0}
       <div class="mt-6">
         <h3 class="text-xs font-semibold text-muted uppercase tracking-wider mb-3">
-          {m.invite_pendingTitle()}
+          Pending Access
+          {#if invitations.length + pendingRequests.length > 0}
+            <span class="ml-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-accent/20 text-accent text-[9px] font-bold">{invitations.length + pendingRequests.length}</span>
+          {/if}
         </h3>
-        <div class="bg-card border border-border rounded-lg overflow-hidden">
-          <table class="w-full text-xs border-collapse">
-            <thead>
-              <tr class="border-b border-border bg-bg2">
-                <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[10px]">{m.users_email()}</th>
-                <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[10px]">{m.users_role()}</th>
-                <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[10px]">{m.users_status()}</th>
-                <th class="px-4 py-2.5"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {#each invitations as inv (inv.id)}
-                <tr class="border-b border-border/50 last:border-0 hover:bg-bg2/50 transition-colors">
-                  <td class="px-4 py-3 text-foreground">{inv.email}</td>
-                  <td class="px-4 py-3 text-muted">{inv.role}</td>
-                  <td class="px-4 py-3">
-                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">
-                      {m.invite_statusPending()}
-                    </span>
-                  </td>
-                  <td class="px-4 py-3 text-right">
-                    <button
-                      class="text-muted hover:text-destructive transition-colors bg-transparent border-none cursor-pointer text-xs font-[inherit]"
-                      onclick={() => cancelInvite(inv.id)}
-                    >
-                      {m.invite_cancelInvite()}
-                    </button>
-                  </td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        </div>
+
+        {#if invitations.length > 0}
+          <div class="mb-3">
+            <h4 class="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">Invitations</h4>
+            <div class="bg-card border border-border rounded-lg overflow-hidden">
+              <table class="w-full text-xs border-collapse">
+                <thead>
+                  <tr class="border-b border-border bg-bg2">
+                    <th class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[10px]">{m.users_email()}</th>
+                    <th class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[10px]">{m.users_role()}</th>
+                    <th class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[10px]">{m.users_status()}</th>
+                    <th class="px-4 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {#each invitations as inv (inv.id)}
+                    <tr class="border-b border-border/50 last:border-0 hover:bg-bg2/50 transition-colors">
+                      <td class="px-4 py-2.5 text-foreground">{inv.email}</td>
+                      <td class="px-4 py-2.5 text-muted">{inv.role}</td>
+                      <td class="px-4 py-2.5">
+                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">
+                          {m.invite_statusPending()}
+                        </span>
+                      </td>
+                      <td class="px-4 py-2.5 text-right">
+                        <button
+                          class="text-muted hover:text-destructive transition-colors bg-transparent border-none cursor-pointer text-xs font-[inherit]"
+                          onclick={() => cancelInvite(inv.id)}
+                        >
+                          {m.invite_cancelInvite()}
+                        </button>
+                      </td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        {/if}
+
+        {#if pendingRequests.length > 0}
+          <div>
+            <h4 class="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">Join Requests</h4>
+            <div class="bg-card border border-border rounded-lg overflow-hidden">
+              <table class="w-full text-xs border-collapse">
+                <thead>
+                  <tr class="border-b border-border bg-bg2">
+                    <th class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[10px]">{m.users_email()}</th>
+                    <th class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[10px]">Message</th>
+                    <th class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[10px]">{m.users_status()}</th>
+                    <th class="px-4 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {#each pendingRequests as req (req.id)}
+                    <tr class="border-b border-border/50 last:border-0 hover:bg-bg2/50 transition-colors">
+                      <td class="px-4 py-2.5 text-foreground">{req.email}</td>
+                      <td class="px-4 py-2.5 text-muted max-w-[200px] truncate">{req.message ?? '—'}</td>
+                      <td class="px-4 py-2.5">
+                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-orange-500/10 text-orange-400 border border-orange-500/20">
+                          Awaiting review
+                        </span>
+                      </td>
+                      <td class="px-4 py-2.5 text-right text-muted text-[10px]">
+                        {new Date(req.createdAt).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        {/if}
       </div>
     {/if}
   </div>

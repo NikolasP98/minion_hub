@@ -23,6 +23,7 @@ import {
     Activity,
     Settings,
     MessagesSquare,
+    Bell,
 } from "lucide-svelte";
 import type { ComponentType, SvelteComponent } from "svelte";
 import * as m from "$lib/paraglide/messages";
@@ -234,6 +235,17 @@ export const ROUTES: RouteMeta[] = [
         inPalette: true,
         keywords: "conversations history chat",
         paletteIcon: "messages-square",
+    },
+    {
+        path: "/notifications",
+        title: () => "Notifications",
+        icon: Bell,
+        matcher: startsWith("/notifications"),
+        requires: "users.manage",
+        inNav: false,
+        inPalette: true,
+        keywords: "alerts join requests pending",
+        paletteIcon: "bell",
     },
     {
         path: "/settings",
