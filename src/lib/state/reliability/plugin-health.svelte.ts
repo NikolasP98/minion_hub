@@ -39,6 +39,7 @@ export interface PluginHealthEntry {
   name: string;
   version?: string;
   description?: string;
+  icon?: string;
   origin: string;
   source: string;
   status: 'loaded' | 'disabled' | 'error';
@@ -89,6 +90,7 @@ function normalizeEntry(raw: Record<string, unknown>): PluginHealthEntry {
     name: String(raw.name ?? raw.pluginId ?? 'unknown'),
     version: typeof raw.version === 'string' ? raw.version : undefined,
     description: typeof raw.description === 'string' ? raw.description : undefined,
+    icon: typeof raw.icon === 'string' ? raw.icon : undefined,
     origin: String(raw.origin ?? 'unknown'),
     source: String(raw.source ?? ''),
     status: (raw.status as PluginHealthEntry['status']) ?? 'loaded',

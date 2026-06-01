@@ -14,7 +14,8 @@
     Loader2,
     RotateCw,
   } from 'lucide-svelte';
-  import { PLUGIN_ICON_MAP } from '$lib/plugins/icon-map';
+  import { BRAND_ICON_SET, PLUGIN_ICON_MAP } from '$lib/plugins/icon-map';
+  import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
   import PluginIframe from '$lib/plugins/PluginIframe.svelte';
   import type { Theme } from '$lib/plugins/bridge-protocol';
   import { hostsState, fetchHostToken } from '$lib/state/features/hosts.svelte';
@@ -370,6 +371,8 @@
                     >
                       {#if entry.icon && /\p{Extended_Pictographic}/u.test(entry.icon)}
                         {entry.icon}
+                      {:else if entry.icon && BRAND_ICON_SET.has(entry.icon)}
+                        <ChannelBrandIcon channel={entry.icon} size={14} />
                       {:else if entry.icon && PLUGIN_ICON_MAP[entry.icon]}
                         {@const IconComp = PLUGIN_ICON_MAP[entry.icon]}
                         <IconComp size={14} />

@@ -4,6 +4,8 @@
   import { hostsState, fetchHostToken } from '$lib/state/features/hosts.svelte';
   import { PageHeader } from '$lib/components/ui';
   import { Puzzle } from 'lucide-svelte';
+  import { BRAND_ICON_SET, PLUGIN_ICON_MAP } from '$lib/plugins/icon-map';
+  import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -73,7 +75,14 @@
 <div class="flex h-full min-h-0 flex-col">
   <PageHeader title={data.entry.title} subtitle={data.entry.description ?? undefined}>
     {#snippet leading()}
-      <Puzzle size={16} class="text-accent shrink-0" />
+      {#if data.entry.icon && BRAND_ICON_SET.has(data.entry.icon)}
+        <ChannelBrandIcon channel={data.entry.icon} size={16} class="text-accent shrink-0" />
+      {:else if data.entry.icon && PLUGIN_ICON_MAP[data.entry.icon]}
+        {@const IconComp = PLUGIN_ICON_MAP[data.entry.icon]}
+        <IconComp size={16} class="text-accent shrink-0" />
+      {:else}
+        <Puzzle size={16} class="text-accent shrink-0" />
+      {/if}
     {/snippet}
   </PageHeader>
   <div class="min-h-0 flex-1 overflow-y-auto">

@@ -2,6 +2,9 @@
   import PluginIframe from "./PluginIframe.svelte";
   import { SLOT_DEFINITIONS, type PluginSlot } from "./slots";
   import type { Theme } from "./bridge-protocol";
+  import { Puzzle } from "lucide-svelte";
+  import { BRAND_ICON_SET, PLUGIN_ICON_MAP } from "./icon-map";
+  import ChannelBrandIcon from "$lib/components/channels/ChannelBrandIcon.svelte";
 
   export interface PluginUiManifestOccupant {
     pluginId: string;
@@ -45,6 +48,14 @@
 
   const def = $derived(SLOT_DEFINITIONS[slot]);
   const current = $derived(entries[selected]);
+
+  function renderIcon(entry: PluginUiManifestOccupant) {
+    if (!entry.icon) return null;
+    if (/\p{Extended_Pictographic}/u.test(entry.icon)) return entry.icon;
+    if (BRAND_ICON_SET.has(entry.icon)) return "brand:" + entry.icon;
+    if (PLUGIN_ICON_MAP[entry.icon]) return "lucide:" + entry.icon;
+    return null;
+  }
 </script>
 
 {#if entries.length === 0}
@@ -65,7 +76,17 @@
           class:border-transparent={selected !== i}
           onclick={() => (selected = i)}
         >
-          {#if entry.icon}<span class="mr-2">{entry.icon}</span>{/if}
+          {#if entry.icon}
+            {@const resolved = renderIcon(entry)}
+            {#if resolved?.startsWith("brand:")}
+              <span class="mr-2 inline-flex align-text-bottom"><ChannelBrandIcon channel={entry.icon} size={16} /></span>
+            {:else if resolved?.startsWith("lucide:")}
+              {@const IconComp = PLUGIN_ICON_MAP[entry.icon]}
+              <span class="mr-2 inline-flex align-text-bottom"><IconComp size={16} /></span>
+            {:else}
+              <span class="mr-2">{entry.icon}</span>
+            {/if}
+          {/if}
           {entry.title}
         </button>
       {/each}
