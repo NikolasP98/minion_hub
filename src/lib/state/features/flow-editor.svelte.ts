@@ -524,10 +524,20 @@ const TEST_RUN_SAMPLE_PROMPT =
   '(Test Run) Sample trigger message — edit the Prompt Box or wire a real trigger for production input.';
 
 function testRunPrompt(): string | undefined {
-  const hasTriggerEntry = flowEditorState.nodes.some(
-    (n) => n.type === 'trigger' || n.type === 'pluginTrigger',
+  // Only seed a sample payload when the flow's *connected* entry is a trigger.
+  // A wired Prompt Box carries its own input (no seed); orphaned trigger nodes
+  // dropped on the canvas but never wired must not force a seed — that mirrors
+  // the runner, which ignores unconnected entry nodes.
+  const flowSources = new Set(
+    flowEditorState.edges.filter((e) => e.type === 'flow').map((e) => e.source),
   );
-  return hasTriggerEntry ? TEST_RUN_SAMPLE_PROMPT : undefined;
+  const entry = flowEditorState.nodes.find(
+    (n) =>
+      (n.type === 'trigger' || n.type === 'pluginTrigger' || n.type === 'promptBox') &&
+      flowSources.has(n.id),
+  );
+  const isTriggerEntry = entry?.type === 'trigger' || entry?.type === 'pluginTrigger';
+  return isTriggerEntry ? TEST_RUN_SAMPLE_PROMPT : undefined;
 }
 
 function runStatusOf(events: RunnerEvent[]): 'completed' | 'error' {
