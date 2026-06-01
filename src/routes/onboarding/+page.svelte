@@ -8,6 +8,7 @@
   import StepIndicator from '$lib/components/onboarding/StepIndicator.svelte';
   import { sendRequest } from '$lib/services/gateway.svelte';
   import { conn } from '$lib/state/gateway/connection.svelte';
+  import { toastAsync } from '$lib/state/ui/toast.svelte';
 
 
   let { data }: { data: PageData } = $props();
@@ -70,59 +71,63 @@
 
     creating = true;
     try {
-      const provisionRes = await fetch('/api/personal-agent/provision');
-      if (!provisionRes.ok) {
-        throw new Error(`Provisioning check failed (${provisionRes.status})`);
-      }
-      const provision = (await provisionRes.json()) as {
-        needsProvisioning?: boolean;
-        payload?: { name: string; workspace: string };
-      };
-      if (!provision.needsProvisioning || !provision.payload) {
-        throw new Error('No pending personal agent was found for this user. Refresh and try again.');
-      }
-      const createPayload = provision.payload;
-      const createResult = (await sendRequest('agents.create', createPayload)) as { agentId?: string } | null;
-      const agentId = createResult?.agentId ?? createPayload.name;
+      await toastAsync(
+        (async () => {
+          const provisionRes = await fetch('/api/personal-agent/provision');
+          if (!provisionRes.ok) {
+            throw new Error(`Provisioning check failed (${provisionRes.status})`);
+          }
+          const provision = (await provisionRes.json()) as {
+            needsProvisioning?: boolean;
+            payload?: { name: string; workspace: string };
+          };
+          if (!provision.needsProvisioning || !provision.payload) {
+            throw new Error('No pending personal agent was found for this user. Refresh and try again.');
+          }
+          const createPayload = provision.payload;
+          const createResult = (await sendRequest('agents.create', createPayload)) as { agentId?: string } | null;
+          const agentId = createResult?.agentId ?? createPayload.name;
 
-      await sendRequest('config.patch', {
-        raw: JSON.stringify({
-          agents: {
-            list: [
-              {
-                id: agentId,
-                name,
-                identity: { name },
-                personality: {
-                  preset: personality,
-                  configured: true,
-                  conversationName: name,
-                  text: personalityText(),
-                },
-                contextMode: 'personal',
-                systemPromptUserAwareness: 'full',
+          await sendRequest('config.patch', {
+            raw: JSON.stringify({
+              agents: {
+                list: [
+                  {
+                    id: agentId,
+                    name,
+                    identity: { name },
+                    personality: {
+                      preset: personality,
+                      configured: true,
+                      conversationName: name,
+                      text: personalityText(),
+                    },
+                    contextMode: 'personal',
+                    systemPromptUserAwareness: 'full',
+                  },
+                ],
               },
-            ],
-          },
-        }),
-        note: `Create personal agent ${agentId} from onboarding`,
-      });
+            }),
+            note: `Create personal agent ${agentId} from onboarding`,
+          });
 
-      await fetch('/api/personal-agent/provision', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'active' }),
-      });
-      await invalidate('app:personalAgent');
-      goto(`/onboarding/complete?name=${encodeURIComponent(name)}&vibe=${encodeURIComponent(personality)}`);
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      createError = message;
-      await fetch('/api/personal-agent/provision', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'error', error: message }),
-      }).catch(() => {});
+          await fetch('/api/personal-agent/provision', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'active' }),
+          });
+          await invalidate('app:personalAgent');
+          goto(`/onboarding/complete?name=${encodeURIComponent(name)}&vibe=${encodeURIComponent(personality)}`);
+        })(),
+        {
+          loading: 'Creating your personal agent…',
+          getOutcome: () => ({ type: 'success', title: 'Agent created' }),
+          onError: (err: unknown) => ({
+            title: 'Failed to create agent',
+            description: err instanceof Error ? err.message : String(err),
+          }),
+        },
+      );
     } finally {
       creating = false;
     }

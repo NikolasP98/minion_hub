@@ -324,7 +324,7 @@ export async function wsConnect() {
           name: h.name,
           url: h.url,
           lastConnectedAt: conn.connectedAt,
-        });
+        }, { silent: true });
         saveLastActiveHost(capturedHostId);
       }
     }

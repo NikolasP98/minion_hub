@@ -6,6 +6,7 @@
   import { conn } from '$lib/state/gateway/connection.svelte';
   import * as m from '$lib/paraglide/messages';
   import { Plus, Plug, Trash2, Wrench, Pencil, X, Check, Wifi, WifiOff } from 'lucide-svelte';
+  import { toastAsync } from '$lib/state/ui/toast.svelte';
 
   const { data } = $props();
 
@@ -14,8 +15,6 @@
   let url = $state('');
   let token = $state('');
   let adding = $state(false);
-  let addError = $state<string | null>(null);
-  let addSuccess = $state<string | null>(null);
 
   // ── Inline edit (Turso hosts) ────────────────────────────────────────
   let editingId = $state<string | null>(null);
@@ -25,41 +24,72 @@
 
   async function addGateway() {
     if (adding) return;
-    adding = true; addError = null; addSuccess = null;
-    // Add to both PG (new) and Turso (legacy, for WS connect compat)
-    const res = await fetch('/api/servers', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name: name.trim(), url: url.trim(), token: token.trim() }),
-    });
-    if (res.ok) {
-      // Also add to PG gateway table
-      await fetch('/api/gateways', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), url: url.trim(), token: token.trim() }),
-      });
-      name = ''; url = ''; token = '';
-      addSuccess = 'Gateway added.';
+    adding = true;
+    try {
+      await toastAsync(
+        (async () => {
+          const res = await fetch('/api/servers', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ name: name.trim(), url: url.trim(), token: token.trim() }),
+          });
+          if (!res.ok) {
+            const j = (await res.json().catch(() => ({}))) as { error?: string };
+            throw new Error(j.error ?? 'Could not add gateway.');
+          }
+          await fetch('/api/gateways', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ name: name.trim(), url: url.trim(), token: token.trim() }),
+          });
+          name = ''; url = ''; token = '';
+        })(),
+        {
+          loading: m.hosts_adding(),
+          getOutcome: () => ({ type: 'success', title: 'Gateway added' }),
+          onError: (err: unknown) => ({
+            title: 'Failed to add gateway',
+            description: err instanceof Error ? err.message : 'Could not add gateway.',
+          }),
+        },
+      );
       await invalidateAll();
-    } else {
-      const j = await res.json().catch(() => ({})) as { error?: string };
-      addError = j.error ?? 'Could not add gateway.';
+    } finally {
+      adding = false;
     }
-    adding = false;
-  }
-
-  async function removeTursoHost(id: string, hostName: string) {
-    if (!confirm(m.hosts_deleteConfirm({ name: hostName }))) return;
-    await removeHost(id);
-    await invalidateAll();
   }
 
   async function removePgGateway(id: string) {
-    await fetch(`/api/gateways/${id}`, { method: 'DELETE' });
-    await invalidateAll();
+    try {
+      await toastAsync(
+        fetch(`/api/gateways/${id}`, { method: 'DELETE' }).then(async (res) => {
+          if (!res.ok) throw new Error('Delete failed');
+        }),
+        {
+          loading: 'Removing gateway…',
+          getOutcome: () => ({ type: 'success', title: 'Gateway removed' }),
+          onError: (err: unknown) => ({
+            title: 'Failed to remove gateway',
+            description: err instanceof Error ? err.message : 'Delete failed',
+          }),
+        },
+      );
+      await invalidateAll();
+    } catch {
+      // Error shown via toast
+    }
   }
 
+  async function saveEdit() {
+    if (!editingId || !editName.trim() || !editUrl.trim()) return;
+    try {
+      await updateHost(editingId, { name: editName.trim(), url: editUrl.trim(), token: editToken.trim() });
+      editingId = null;
+      await invalidateAll();
+    } catch {
+      // Error shown via toast in updateHost
+    }
+  }
   function startEdit(host: { id: string; name: string; url: string }) {
     editingId = host.id;
     editName = host.name;
@@ -68,14 +98,17 @@
     editToken = '';
   }
 
-  async function saveEdit() {
-    if (!editingId || !editName.trim() || !editUrl.trim()) return;
-    await updateHost(editingId, { name: editName.trim(), url: editUrl.trim(), token: editToken.trim() });
-    editingId = null;
-    await invalidateAll();
-  }
-
   function cancelEdit() { editingId = null; }
+
+  async function removeTursoHost(id: string, name: string) {
+    if (!confirm(`Delete gateway "${name}"?`)) return;
+    try {
+      await removeHost(id);
+      await invalidateAll();
+    } catch {
+      // Error shown via toast in removeHost
+    }
+  }
 
   function connect(host: { id: string }) {
     hostsState.activeHostId = host.id;
@@ -111,8 +144,6 @@
           class="w-full bg-bg border border-border rounded px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/60" />
         <input bind:value={token} type="password" placeholder={m.hosts_tokenPlaceholder()}
           class="w-full bg-bg border border-border rounded px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/60" />
-        {#if addError}<p class="text-[11px] font-mono text-red-400">{addError}</p>{/if}
-        {#if addSuccess}<p class="text-[11px] font-mono text-green-400">{addSuccess}</p>{/if}
         <button onclick={addGateway} disabled={adding || !name || !url || !token}
           class="flex items-center gap-1.5 px-4 py-2 rounded border text-sm font-mono bg-accent/20 border-accent/30 text-accent hover:bg-accent/30 disabled:opacity-50">
           {#if adding}{m.hosts_adding()}{:else}<Plus size={13} /> {m.hosts_addServer()}{/if}

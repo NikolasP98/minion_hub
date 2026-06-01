@@ -3,6 +3,7 @@
   import type { KanbanTask } from '$lib/components/tasks/TaskCard.svelte';
   import { sessionTasksState, loadSessionTasks } from '$lib/state/features/session-tasks.svelte';
   import * as m from '$lib/paraglide/messages';
+  import { toastError } from '$lib/state/ui/toast.svelte';
 
   let { sessionKey, serverId }: { sessionKey: string | null; serverId: string | null } = $props();
 
@@ -66,7 +67,7 @@
           },
         );
       } catch {
-        /* revert could be added here */
+        toastError('Failed to move task', 'The task status could not be updated.');
       }
     }
   }

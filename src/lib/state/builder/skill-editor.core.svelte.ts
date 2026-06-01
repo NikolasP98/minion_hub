@@ -1,6 +1,6 @@
 import { sendRequest } from '$lib/services/gateway.svelte';
 import { conn } from '$lib/state/gateway';
-import { toastSuccess, toastError } from '$lib/state/ui/toast.svelte';
+import { toastSuccess, toastError, toastAsync } from '$lib/state/ui/toast.svelte';
 import type { ToolStatusEntry, ToolsStatusReport } from '$lib/types/tools';
 import { validateSkill } from '$lib/utils/skill-validation';
 import posthog from 'posthog-js';
@@ -249,39 +249,48 @@ export async function publishSkill() {
     return;
   }
 
+  // Check warnings (user must acknowledge before publishing)
+  if (skillEditorDerived.validationCounts.warnings > 0) {
+    skillEditorState.showValidation = true;
+    skillEditorState.publishAnyway = true;
+    return;
+  }
+
   skillEditorState.publishing = true;
   try {
-    const res = await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'publish' }),
-    });
-    if (!res.ok) {
-      const data = await res.json();
-      if (data.errors?.length) {
-        toastError(
-          m.builder_publishFailed(),
-          m.builder_validationFailed({ errors: data.errors.join('; ') }),
-          { duration: 5000 },
-        );
-        return;
-      }
-      throw new Error(`HTTP ${res.status}`);
-    }
+    await toastAsync(
+      fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'publish' }),
+      }).then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json();
+          if (data.errors?.length) {
+            throw new Error(data.errors.join('; '));
+          }
+          throw new Error(`HTTP ${res.status}`);
+        }
+        return res.json();
+      }),
+      {
+        loading: m.builder_publishing(),
+        getOutcome: () => ({ type: 'success', title: m.builder_skillPublished() }),
+        onError: (err) => ({
+          title: m.builder_publishFailed(),
+          description: err instanceof Error ? err.message : m.builder_publishError(),
+        }),
+      },
+    );
+
     skillEditorState.status = 'published';
     skillEditorState.publishAnyway = false;
-    toastSuccess(m.builder_skillPublished());
     posthog.capture('skill_published', {
       skill_id: skillEditorState.skillId,
       skill_name: skillEditorState.name,
     });
-  } catch (e) {
-    toastError(
-      m.builder_publishFailed(),
-      e instanceof Error ? e.message : m.builder_publishError(),
-      { duration: 5000 },
-    );
-    console.error('[skill-editor] Publish failed:', e);
+  } catch {
+    // Error already shown via toastAsync
   } finally {
     skillEditorState.publishing = false;
   }
@@ -289,11 +298,6 @@ export async function publishSkill() {
 
 export function handlePublishClick() {
   if (skillEditorDerived.validationCounts.errors > 0) return; // button is disabled, shouldn't be reachable
-  if (skillEditorDerived.validationCounts.warnings > 0) {
-    skillEditorState.showValidation = true;
-    skillEditorState.publishAnyway = true;
-    return; // don't publish yet — show warnings in panel
-  }
   publishSkill();
 }
 

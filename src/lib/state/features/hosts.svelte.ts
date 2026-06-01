@@ -2,6 +2,8 @@ import type { Host } from '$lib/types/host';
 import { uuid } from '@minion-stack/shared';
 import { page } from '$app/state';
 import { invalidateHosts } from './user.svelte';
+import { toastAsync } from '$lib/state/ui/toast.svelte';
+import * as m from '$lib/paraglide/messages';
 
 const HOSTS_CACHE_KEY = 'minion-dash-hosts-cache';
 
@@ -150,7 +152,7 @@ export function selectHost(id: string): void {
 export async function addHost(host: { name: string; url: string; token: string }): Promise<string> {
   const existing = hostsState.hosts.find((h) => h.url === host.url);
   if (existing) {
-    await updateHost(existing.id, { name: host.name, token: host.token });
+    await updateHost(existing.id, { name: host.name, token: host.token }, { silent: true });
     local.activeHostId = existing.id;
     saveLastActiveHost(existing.id);
     return existing.id;
@@ -158,49 +160,93 @@ export async function addHost(host: { name: string; url: string; token: string }
 
   const id = uuid();
   const newHost: Host = { id, ...host, lastConnectedAt: null };
-  const res = await fetch('/api/servers', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(newHost),
-  });
-  if (!res.ok) throw new Error(`Failed to save host: ${res.status}`);
 
-  // Optimistic overlay until invalidateHosts re-runs the layout-load.
-  local.overlay = [...hostsState.hosts, newHost];
-  updateHostsCache(local.overlay);
-  local.activeHostId = id;
-  saveLastActiveHost(id);
-  await invalidateHosts();
-  return id;
+  return toastAsync(
+    (async () => {
+      const res = await fetch('/api/servers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newHost),
+      });
+      if (!res.ok) throw new Error(`Failed to save host: ${res.status}`);
+
+      local.overlay = [...hostsState.hosts, newHost];
+      updateHostsCache(local.overlay);
+      local.activeHostId = id;
+      saveLastActiveHost(id);
+      await invalidateHosts();
+      return id;
+    })(),
+    {
+      loading: m.hosts_adding(),
+      getOutcome: () => ({ type: 'success', title: 'Gateway added' }),
+      onError: (err: unknown) => ({
+        title: 'Failed to add gateway',
+        description: err instanceof Error ? err.message : 'Could not add gateway.',
+      }),
+    },
+  );
 }
 
-export async function updateHost(id: string, updates: Partial<Omit<Host, 'id'>>) {
-  const res = await fetch(`/api/servers/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updates),
-  });
-  if (!res.ok) throw new Error(`Failed to update host: ${res.status}`);
-  const merged = hostsState.hosts.map((h) => (h.id === id ? { ...h, ...updates } : h));
-  local.overlay = merged;
-  updateHostsCache(merged);
-  await invalidateHosts();
-}
+export async function updateHost(id: string, updates: Partial<Omit<Host, 'id'>>, options?: { silent?: boolean }) {
+  const run = async () => {
+    const res = await fetch(`/api/servers/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+    if (!res.ok) throw new Error(`Failed to update host: ${res.status}`);
+    const merged = hostsState.hosts.map((h) => (h.id === id ? { ...h, ...updates } : h));
+    local.overlay = merged;
+    updateHostsCache(merged);
+    await invalidateHosts();
+  };
 
-export async function removeHost(id: string) {
-  const res = await fetch(`/api/servers/${id}`, { method: 'DELETE' });
-  if (!res.ok) throw new Error(`Failed to remove host: ${res.status}`);
-  const filtered = hostsState.hosts.filter((h) => h.id !== id);
-  local.overlay = filtered;
-  updateHostsCache(filtered);
-  if (local.activeHostId === id) {
-    const next = filtered[0]?.id ?? null;
-    local.activeHostId = next;
-    if (next) saveLastActiveHost(next);
-    else if (typeof localStorage !== 'undefined')
-      localStorage.removeItem('minion-dash-last-host');
+  if (options?.silent) {
+    await run();
+    return;
   }
-  await invalidateHosts();
+
+  await toastAsync(run(), {
+    loading: 'Saving gateway…',
+    getOutcome: () => ({ type: 'success', title: 'Gateway updated' }),
+    onError: (err: unknown) => ({
+      title: 'Failed to update gateway',
+      description: err instanceof Error ? err.message : 'Update failed',
+    }),
+  });
+}
+
+export async function removeHost(id: string, options?: { silent?: boolean }) {
+  const run = async () => {
+    const res = await fetch(`/api/servers/${id}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(`Failed to remove host: ${res.status}`);
+    const filtered = hostsState.hosts.filter((h) => h.id !== id);
+    local.overlay = filtered;
+    updateHostsCache(filtered);
+    if (local.activeHostId === id) {
+      const next = filtered[0]?.id ?? null;
+      local.activeHostId = next;
+      if (next) saveLastActiveHost(next);
+      else if (typeof localStorage !== 'undefined')
+        localStorage.removeItem('minion-dash-last-host');
+    }
+    await invalidateHosts();
+  };
+
+  if (options?.silent) {
+    await run();
+    return;
+  }
+
+  await toastAsync(run(), {
+    loading: 'Removing gateway…',
+    getOutcome: () => ({ type: 'success', title: 'Gateway removed' }),
+    onError: (err: unknown) => ({
+      title: 'Failed to remove gateway',
+      description: err instanceof Error ? err.message : 'Remove failed',
+    }),
+  });
 }
 
 export function saveLastActiveHost(id: string) {

@@ -3,6 +3,7 @@
 
 import { skillEditorState } from './skill-editor.core.svelte';
 import type { ChapterEntry, DryRunChapterResult, SuggestedPrompt } from './skill-editor.types';
+import { toastError } from '$lib/state/ui/toast.svelte';
 
 /** Topological sort of chapters using edges. Returns ordered chapter IDs. */
 function topoSort(chapters: ChapterEntry[], edges: typeof skillEditorState.chapterEdges): string[] {
@@ -69,6 +70,7 @@ export async function fetchTestPromptSuggestions() {
       dryRunSuggestions.prompts = data.prompts ?? [];
     }
   } catch {
+    toastError('Failed to load suggestions', 'Test prompt suggestions could not be fetched.');
     dryRunSuggestions.prompts = [];
   } finally {
     dryRunSuggestions.loading = false;

@@ -4,6 +4,7 @@
 import posthog from 'posthog-js';
 import { skillEditorState, connectChapters } from './skill-editor.core.svelte';
 import type { StagedChapter } from './skill-editor.types';
+import { toastError } from '$lib/state/ui/toast.svelte';
 
 const _tempToRealId = new Map<string, string>();
 
@@ -76,6 +77,7 @@ async function commitStagedChapter(ch: StagedChapter): Promise<string | null> {
     _tempToRealId.set(ch.tempId, id);
     return id;
   } catch {
+    toastError('Failed to commit chapter', 'The proposed chapter could not be saved.');
     return null;
   }
 }

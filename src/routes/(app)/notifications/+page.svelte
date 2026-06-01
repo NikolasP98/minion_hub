@@ -2,6 +2,7 @@
   import type { PageData } from './$types';
   import { invalidate } from '$app/navigation';
   import { refreshNotifications } from '$lib/state/features/notifications.svelte';
+  import { toastPromise } from '$lib/state/ui/toast.svelte';
   import { Bell, Check, X } from 'lucide-svelte';
   import PageHeader from '$lib/components/ui/PageHeader.svelte';
 
@@ -12,15 +13,22 @@
   async function review(id: string, status: 'approved' | 'denied') {
     reviewing = id;
     try {
-      const res = await fetch(`/api/join-requests/${id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
-      });
-      if (res.ok) {
-        await invalidate('app:notifications');
-        refreshNotifications();
-      }
+      await toastPromise(
+        fetch(`/api/join-requests/${id}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status }),
+        }).then(async (res) => {
+          if (!res.ok) throw new Error(`Server returned ${res.status}`);
+          await invalidate('app:notifications');
+          refreshNotifications();
+        }),
+        {
+          loading: status === 'approved' ? 'Approving request…' : 'Denying request…',
+          success: status === 'approved' ? 'Request approved' : 'Request denied',
+          error: (err: unknown) => err instanceof Error ? err.message : 'Failed to process request',
+        },
+      );
     } finally {
       reviewing = null;
     }

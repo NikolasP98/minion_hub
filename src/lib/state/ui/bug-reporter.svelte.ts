@@ -2,7 +2,7 @@ import { getConsoleBuffer, type ConsoleEntry } from '$lib/utils/console-intercep
 import { conn } from '$lib/state/gateway/connection.svelte';
 import { gw } from '$lib/state/gateway/gateway-data.svelte';
 import { ui } from './ui.svelte';
-import { toaster, toastSuccess, toastError } from './toast.svelte';
+import { toaster, toastSuccess, toastError, toastAsync } from './toast.svelte';
 import { hostsState } from '$lib/state/features/hosts.svelte';
 import * as m from '$lib/paraglide/messages';
 declare const __APP_VERSION__: string;
@@ -173,12 +173,6 @@ export function removePastedImage(index: number): void {
 }
 
 export async function submitReport(): Promise<void> {
-  // Close the card immediately, show a loading toast
-  const loadingId = toaster.create({
-    title: m.bug_submitting(),
-    type: 'loading',
-    duration: Infinity,
-  });
   const snapshot = {
     screenshot: bugReporter.screenshotDataUrl,
     pastedImages: bugReporter.pastedImages.length > 0 ? [...bugReporter.pastedImages] : undefined,
@@ -189,30 +183,30 @@ export async function submitReport(): Promise<void> {
   };
   cancelReport();
 
-  try {
-    const res = await fetch('/api/bugs/report', {
+  await toastAsync(
+    fetch('/api/bugs/report', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(snapshot),
-    });
-
-    const data = await res.json();
-    toaster.dismiss(loadingId);
-
-    if (!res.ok || !data.ok) {
-      throw new Error(data.error ?? `Server returned ${res.status}`);
-    }
-
-    if (data.githubIssueUrl) {
-      toastSuccess(m.bug_reported(), m.bug_issueCreated(), { duration: 3000 });
-    } else {
-      toastSuccess(m.bug_saved(), m.bug_savedLocally(), { duration: 3000 });
-    }
-  } catch (err) {
-    toaster.dismiss(loadingId);
-    const msg = err instanceof Error ? err.message : m.bug_unknownError();
-    toastError(m.bug_reportFailed(), msg, { duration: 5000 });
-  }
+    }).then(async (res) => {
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error ?? `Server returned ${res.status}`);
+      }
+      return data;
+    }),
+    {
+      loading: m.bug_submitting(),
+      getOutcome: (data) =>
+        data.githubIssueUrl
+          ? { type: 'success', title: m.bug_reported(), description: m.bug_issueCreated() }
+          : { type: 'success', title: m.bug_saved(), description: m.bug_savedLocally() },
+      onError: (err) => ({
+        title: m.bug_reportFailed(),
+        description: err instanceof Error ? err.message : m.bug_unknownError(),
+      }),
+    },
+  );
 }
 
 export function cancelReport(): void {
