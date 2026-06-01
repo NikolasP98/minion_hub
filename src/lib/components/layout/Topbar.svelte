@@ -13,6 +13,7 @@
     import { page } from "$app/state";
     import * as m from "$lib/paraglide/messages";
     import { Activity, Settings, Menu, X, Search, Bell, LogOut, User } from "lucide-svelte";
+    import NavIcon from "./NavIcon.svelte";
     import { notifications, refreshNotifications } from "$lib/state/features/notifications.svelte";
     import { conn } from "$lib/state/gateway/connection.svelte";
     import { onMount } from "svelte";
@@ -158,7 +159,7 @@
                                         class="mobile-nav-link {section.tone === 'brand' ? 'brand' : ''} {isActive ? (section.tone === 'brand' ? 'active-brand' : 'active') : ''}"
                                         onclick={closeMobileMenu}
                                     >
-                                        <item.icon size={16} />
+                                        <NavIcon icon={item.icon} size={16} />
                                         <span>{item.label}</span>
                                     </a>
                                 {/each}

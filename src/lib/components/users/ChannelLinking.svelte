@@ -10,6 +10,9 @@
   import type { Theme } from '$lib/plugins/bridge-protocol';
   import type { ChannelPluginInfo } from '$lib/types/channel-link';
   import { Plug, RefreshCw, Settings as SettingsIcon } from 'lucide-svelte';
+  import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
+  import { BRAND_ICON_SET, PLUGIN_ICON_MAP } from '$lib/plugins/icon-map';
+  import { Puzzle } from 'lucide-svelte';
 
   type Identity = {
     id: string;
@@ -31,6 +34,13 @@
     discord: '🎮',
     email: '✉️',
   };
+
+  function resolveChannelIcon(icon?: string) {
+    if (!icon) return Puzzle;
+    if (BRAND_ICON_SET.has(icon)) return null; // use ChannelBrandIcon
+    if (PLUGIN_ICON_MAP[icon]) return PLUGIN_ICON_MAP[icon];
+    return Puzzle;
+  }
 
   // Compact theme/token snapshot for plugin iframes (only used by `iframe`
   // mode descriptors). Read once — making it reactive would tear down the bridge.
@@ -134,7 +144,12 @@
     <div class="space-y-1">
       {#each channelIdentities as id (id.id)}
         <div class="flex items-center gap-2 text-xs">
-          <span>{CHANNEL_ICON[id.provider] ?? '🔗'}</span>
+          {#if id.provider && BRAND_ICON_SET.has(id.provider)}
+            <ChannelBrandIcon channel={id.provider} class="h-4 w-4" />
+          {:else}
+            {@const IconComp = resolveChannelIcon(id.provider)}
+            <IconComp class="h-4 w-4" />
+          {/if}
           <span class="text-muted w-20">{id.provider}</span>
           <span class="text-foreground flex-1">{id.displayName ?? id.externalId}</span>
           {#if id.verifiedAt}
@@ -164,7 +179,14 @@
             class="w-full flex items-center gap-2 px-3 py-2 bg-bg/40 hover:bg-bg3/40 transition-colors cursor-pointer border-none text-left"
             onclick={() => toggle(p.pluginId)}
           >
-            <span class="text-base">{CHANNEL_ICON[p.channelType] ?? '🔌'}</span>
+            <span class="text-base">
+            {#if p.icon && BRAND_ICON_SET.has(p.icon)}
+              <ChannelBrandIcon channel={p.icon} class="h-4 w-4" />
+            {:else}
+              {@const IconComp = resolveChannelIcon(p.icon)}
+              <IconComp class="h-4 w-4" />
+            {/if}
+          </span>
             <span class="flex-1 min-w-0">
               <span class="block text-sm text-foreground">{p.label}</span>
               {#if p.description}<span class="block text-[11px] text-muted-foreground truncate">{p.description}</span>{/if}

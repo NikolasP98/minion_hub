@@ -1,7 +1,5 @@
-import { Puzzle } from "lucide-svelte";
 import type { ComponentType, SvelteComponent } from "svelte";
-import { resolvePluginIcon } from "$lib/plugins/icon-map";
-import type { PluginUiManifestOccupant } from "$lib/plugins/PluginSlotHost.svelte";
+import { Puzzle } from "lucide-svelte";
 import {
     ROUTES,
     SECTION_META,
@@ -12,6 +10,8 @@ import {
     type SectionTone,
     type NavDomain,
 } from "$lib/nav/routes";
+import { resolvePluginIcon } from "$lib/plugins/icon-map";
+import type { PluginUiManifestOccupant } from "$lib/plugins/plugin-types";
 
 // lucide-svelte still ships legacy SvelteComponentTyped types; widen for Svelte 5 mixed code.
 type LucideIcon = ComponentType<SvelteComponent<{ size?: number | string; class?: string }>>;
@@ -22,7 +22,7 @@ export { DOMAIN_LABEL };
 export type SectionItem = {
     href: string;
     label: string;
-    icon: LucideIcon;
+    icon: LucideIcon | string;
     matcher: (path: string) => boolean;
     // Optional access-policy key (see $lib/access/policy). When set, the nav
     // item is only rendered for users who satisfy it (admin-only "plugin"

@@ -1,4 +1,4 @@
-import type { PluginUiManifestOccupant } from '$lib/plugins/PluginSlotHost.svelte';
+import type { PluginUiManifestOccupant } from '$lib/plugins/plugin-types';
 
 /**
  * Block the flow editor only when a flows plugin entry exists AND is explicitly

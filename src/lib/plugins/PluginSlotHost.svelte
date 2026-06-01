@@ -1,24 +1,11 @@
 <script lang="ts">
+  import type { PluginUiManifestOccupant } from "./plugin-types";
   import PluginIframe from "./PluginIframe.svelte";
   import { SLOT_DEFINITIONS, type PluginSlot } from "./slots";
   import type { Theme } from "./bridge-protocol";
   import { Puzzle } from "lucide-svelte";
   import { BRAND_ICON_SET, PLUGIN_ICON_MAP } from "./icon-map";
   import ChannelBrandIcon from "$lib/components/channels/ChannelBrandIcon.svelte";
-
-  export interface PluginUiManifestOccupant {
-    pluginId: string;
-    slot: PluginSlot;
-    title: string;
-    description: string;
-    entrypoint: string;
-    icon?: string;
-    enabled?: boolean;
-    status?: "loaded" | "disabled" | "error";
-    pluginVersion?: string;
-    pluginError?: string;
-    configEnabled?: boolean;
-  }
 
   interface Props {
     slot: PluginSlot;

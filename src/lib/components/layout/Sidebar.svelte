@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { page } from '$app/state';
   import { Activity, Settings, PanelLeftClose, PanelLeft } from 'lucide-svelte';
+  import NavIcon from './NavIcon.svelte';
   import {
     getSections,
     gateSections,
@@ -111,7 +112,7 @@
             aria-current={active ? 'page' : undefined}
             title={item.label}
           >
-            <item.icon size={18} class="nav-icon shrink-0" />
+            <NavIcon icon={item.icon} size={18} class="nav-icon shrink-0" />
             <span class="nav-label {labelCls}">{item.label}</span>
           </a>
         {/each}

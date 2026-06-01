@@ -1,4 +1,4 @@
-import type { PluginUiManifestOccupant } from "$lib/plugins/PluginSlotHost.svelte";
+import type { PluginUiManifestOccupant } from "$lib/plugins/plugin-types";
 
 export const pluginNavState = $state<{
   controlCenters: PluginUiManifestOccupant[];

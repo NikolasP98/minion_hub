@@ -1,6 +1,6 @@
 import type { PageServerLoad } from './$types';
 import { pluginsUiList, getGatewayHttpUrl } from '$lib/server/gateway-rpc';
-import type { PluginUiManifestOccupant } from '$lib/plugins/PluginSlotHost.svelte';
+import type { PluginUiManifestOccupant } from '$lib/plugins/plugin-types';
 
 export type PluginManifestErrorKind = 'originNotAllowed' | 'unreachable' | 'other';
 

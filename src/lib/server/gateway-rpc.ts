@@ -24,7 +24,7 @@ import { getSystemGatewayCredentials } from '$server/services/server.service';
 
 const env = process.env;
 
-import type { PluginUiManifestOccupant } from '$lib/plugins/PluginSlotHost.svelte';
+import type { PluginUiManifestOccupant } from '$lib/plugins/plugin-types';
 
 const DEFAULT_TIMEOUT_MS = 8000;
 
