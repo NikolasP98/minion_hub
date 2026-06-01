@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createMockDb } from '$server/test-utils/mock-db';
 
+// Flows/groups read+write through getFlowsCtx (Postgres). user_preferences
+// bookkeeping reads through getTenantCtx (Turso). Mock both — point them at the
+// same mock db so the resolveSequence drives the flow/group selects.
+const mockGetFlowsCtx = vi.fn<(l: unknown) => Promise<unknown>>();
+vi.mock('$server/auth/flows-ctx', () => ({ getFlowsCtx: (l: unknown) => mockGetFlowsCtx(l) }));
+
 const mockGetTenantCtx = vi.fn<(l: unknown) => Promise<unknown>>();
 vi.mock('$server/auth/tenant-ctx', () => ({ getTenantCtx: (l: unknown) => mockGetTenantCtx(l) }));
 
@@ -26,6 +32,7 @@ describe('POST /api/flows/reconcile', () => {
     const { db, resolveSequence } = createMockDb();
     // 1st select → existing groups (none); 2nd select → ungrouped flows (none)
     resolveSequence([[], []]);
+    mockGetFlowsCtx.mockResolvedValue({ db, tenantId: 'org-1' });
     mockGetTenantCtx.mockResolvedValue({ db, tenantId: 'org-1' });
     mockGetPrefs.mockResolvedValue({});
     const { POST } = await import('./+server');
@@ -48,6 +55,7 @@ describe('POST /api/flows/reconcile', () => {
       [{ id: 'g1', name: 'Alert Watcher', userId: 'user-1', tenantId: 'org-1', pluginId: 'aw', disabled: false, createdAt: 0 }],
       [],
     ]);
+    mockGetFlowsCtx.mockResolvedValue({ db, tenantId: 'org-1' });
     mockGetTenantCtx.mockResolvedValue({ db, tenantId: 'org-1' });
     mockGetPrefs.mockResolvedValue({ pluginFlowInstalls: { keys: ['aw:pipeline'] } });
     const { POST } = await import('./+server');

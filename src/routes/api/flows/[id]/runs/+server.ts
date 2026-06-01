@@ -1,39 +1,32 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { randomUUID } from 'node:crypto';
-import { flows, flowRuns } from '$server/db/schema';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { flows, flowRuns } from '$server/db/pg-schema/flows';
+import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm';
 import { requireAuth } from '$server/auth/authorize';
-import { getTenantCtx } from '$server/auth/tenant-ctx';
-import type { TenantContext } from '$server/services/base';
+import { getFlowsCtx, type FlowsCtx } from '$server/auth/flows-ctx';
 
 /** How many runs to keep per flow (older ones are pruned on insert). */
 const MAX_RUNS_PER_FLOW = 50;
 /** How many runs the history list returns. */
 const LIST_LIMIT = 30;
 
-/** Resolve a flow and verify ownership (mirrors /api/flows/[id]). */
-async function requireFlowOwnership(
-  userId: string,
-  tenantId: string,
-  flowId: string,
-  ctx: TenantContext,
-) {
-  const [flow] = await ctx.db.select().from(flows).where(eq(flows.id, flowId));
+/** Resolve a flow and verify it belongs to the caller's org (mirrors /api/flows/[id]). */
+async function requireFlowInOrg(tenantId: string, flowId: string, ctx: FlowsCtx) {
+  const [flow] = await ctx.db
+    .select()
+    .from(flows)
+    .where(and(eq(flows.id, flowId), or(eq(flows.tenantId, tenantId), isNull(flows.tenantId))));
   if (!flow) throw error(404, 'Flow not found');
-  const ownedByUser = flow.userId === userId;
-  const legacyRow = flow.userId === null;
-  const sameTenant = flow.tenantId === tenantId || flow.tenantId === null;
-  if ((!ownedByUser && !legacyRow) || !sameTenant) throw error(403, 'Forbidden');
   return flow;
 }
 
 /** List recent Test Runs for a flow (newest first), events included for replay. */
 export const GET: RequestHandler = async ({ locals, params }) => {
-  const user = requireAuth(locals);
-  const ctx = await getTenantCtx(locals);
+  requireAuth(locals);
+  const ctx = await getFlowsCtx(locals);
   if (!ctx) throw error(401);
-  await requireFlowOwnership(user.id, ctx.tenantId, params.id!, ctx);
+  await requireFlowInOrg(ctx.tenantId, params.id!, ctx);
 
   const rows = await ctx.db
     .select()
@@ -57,9 +50,9 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 /** Persist one finished Test Run. */
 export const POST: RequestHandler = async ({ locals, params, request }) => {
   const user = requireAuth(locals);
-  const ctx = await getTenantCtx(locals);
+  const ctx = await getFlowsCtx(locals);
   if (!ctx) throw error(401);
-  await requireFlowOwnership(user.id, ctx.tenantId, params.id!, ctx);
+  await requireFlowInOrg(ctx.tenantId, params.id!, ctx);
 
   const body = (await request.json()) as {
     startedAt?: number;

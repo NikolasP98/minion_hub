@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createMockDb } from '$server/test-utils/mock-db';
 
-const mockGetTenantCtx = vi.fn<(locals: unknown) => Promise<unknown>>();
-vi.mock('$server/auth/tenant-ctx', () => ({
-  getTenantCtx: (locals: unknown) => mockGetTenantCtx(locals),
+const mockGetFlowsCtx = vi.fn<(locals: unknown) => Promise<unknown>>();
+vi.mock('$server/auth/flows-ctx', () => ({
+  getFlowsCtx: (locals: unknown) => mockGetFlowsCtx(locals),
 }));
 
 function makeLocals(): App.Locals {
@@ -26,7 +26,7 @@ describe('GET /api/flows — plugin origin', () => {
       { id: 'f1', name: 'Alert Watcher pipeline', nodes: '[]', active: false, createdAt: 1, updatedAt: 2, config: PLUGIN_CONFIG },
       { id: 'f2', name: 'My flow', nodes: '[]', active: false, createdAt: 1, updatedAt: 1, config: '{}' },
     ]);
-    mockGetTenantCtx.mockResolvedValue({ db, tenantId: 'org-1' });
+    mockGetFlowsCtx.mockResolvedValue({ db, tenantId: 'org-1' });
 
     const { GET } = await import('./+server');
     const res = await GET({
@@ -45,7 +45,7 @@ describe('DELETE /api/flows/[id] — instances are deletable', () => {
   it('allows deleting a plugin-imported instance (no longer 403)', async () => {
     const { db, resolve } = createMockDb();
     resolve([{ id: 'f1', userId: 'user-1', tenantId: 'org-1', config: PLUGIN_CONFIG }]);
-    mockGetTenantCtx.mockResolvedValue({ db, tenantId: 'org-1' });
+    mockGetFlowsCtx.mockResolvedValue({ db, tenantId: 'org-1' });
     const { DELETE } = await import('./[id]/+server');
     const res = await DELETE({ locals: makeLocals(), params: { id: 'f1' } } as Parameters<typeof DELETE>[0]);
     expect(res.status).toBe(200);
@@ -55,7 +55,7 @@ describe('DELETE /api/flows/[id] — instances are deletable', () => {
   it('allows deleting a user-authored flow', async () => {
     const { db, resolve } = createMockDb();
     resolve([{ id: 'f2', userId: 'user-1', tenantId: 'org-1', config: '{}' }]);
-    mockGetTenantCtx.mockResolvedValue({ db, tenantId: 'org-1' });
+    mockGetFlowsCtx.mockResolvedValue({ db, tenantId: 'org-1' });
     const { DELETE } = await import('./[id]/+server');
     const res = await DELETE({ locals: makeLocals(), params: { id: 'f2' } } as Parameters<typeof DELETE>[0]);
     expect(res.status).toBe(200);

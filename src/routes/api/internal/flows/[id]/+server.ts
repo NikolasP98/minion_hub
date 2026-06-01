@@ -1,14 +1,14 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { flows } from '$server/db/schema';
+import { flows } from '$server/db/pg-schema/flows';
 import { eq } from 'drizzle-orm';
-import { getDb } from '$server/db/client';
+import { getCoreDb } from '$server/db/pg-client';
 import { env } from '$env/dynamic/private';
 
 /**
  * Internal endpoint for langgraph-server to fetch flow nodes+edges by ID.
  * Requires Authorization: Bearer <HUB_API_TOKEN> when HUB_API_TOKEN is set.
- * Bypasses user auth — server-to-server only.
+ * Bypasses user auth — server-to-server only. Reads from Supabase Postgres.
  */
 export const GET: RequestHandler = async ({ params, request }) => {
   const authHeader = request.headers.get('Authorization') ?? '';
@@ -19,7 +19,7 @@ export const GET: RequestHandler = async ({ params, request }) => {
     throw error(401, 'Unauthorized');
   }
 
-  const db = getDb();
+  const db = getCoreDb();
   const [flow] = await db.select().from(flows).where(eq(flows.id, params.id!)).limit(1);
   if (!flow) throw error(404, 'Flow not found');
 

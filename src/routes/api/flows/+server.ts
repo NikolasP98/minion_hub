@@ -1,28 +1,25 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { flows, flowGroups } from '$server/db/schema';
+import { flows, flowGroups } from '$server/db/pg-schema/flows';
 import { and, desc, eq, isNull, or } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { requireAuth } from '$server/auth/authorize';
-import { getTenantCtx } from '$server/auth/tenant-ctx';
+import { getFlowsCtx } from '$server/auth/flows-ctx';
 import { flowPluginId } from '$lib/flows/plugin-source';
 
 export const GET: RequestHandler = async ({ locals, url }) => {
-  const user = requireAuth(locals);
-  const ctx = await getTenantCtx(locals);
+  requireAuth(locals);
+  const ctx = await getFlowsCtx(locals);
   if (!ctx) throw error(401);
 
   const activeOnly = url.searchParams.get('active') === 'true';
 
-  // Return flows owned by this user OR legacy flows with no owner (within same tenant)
-  const ownershipFilter = and(
-    or(eq(flows.userId, user.id), isNull(flows.userId)),
-    or(eq(flows.tenantId, ctx.tenantId), isNull(flows.tenantId)),
-  );
+  // Org-scoped: every member of the org sees the org's flows (plus legacy
+  // null-tenant rows). Per-user scoping was removed so plugin-seeded org
+  // automations are visible to all members, not just whoever first imported them.
+  const orgFilter = or(eq(flows.tenantId, ctx.tenantId), isNull(flows.tenantId));
 
-  const whereClause = activeOnly
-    ? and(ownershipFilter, eq(flows.active, true))
-    : ownershipFilter;
+  const whereClause = activeOnly ? and(orgFilter, eq(flows.active, true)) : orgFilter;
 
   const rows = await ctx.db
     .select()
@@ -55,7 +52,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 
 export const POST: RequestHandler = async ({ locals, request }) => {
   const user = requireAuth(locals);
-  const ctx = await getTenantCtx(locals);
+  const ctx = await getFlowsCtx(locals);
   if (!ctx) throw error(401);
 
   const body = await request.json();
@@ -66,16 +63,14 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 
   if (!name || typeof name !== 'string') throw error(400, 'name is required');
 
-  // SECURITY (IDOR): when a target group is specified, the caller must own it
-  // (or it's a legacy null-owner row in the same tenant). Without this check a
-  // client could assign a flow into another user's/tenant's group by id.
+  // SECURITY (IDOR): when a target group is specified, it must belong to the
+  // caller's org (or be a legacy null-tenant row). Flows are org-scoped, so any
+  // member may file into the org's groups — but never into another org's group.
   if (groupId) {
     const [group] = await ctx.db.select().from(flowGroups).where(eq(flowGroups.id, groupId));
     if (!group) throw error(404, 'Group not found');
-    const ownedByUser = group.userId === user.id;
-    const legacyRow = group.userId === null;
-    const sameTenant = group.tenantId === ctx.tenantId || group.tenantId === null;
-    if ((!ownedByUser && !legacyRow) || !sameTenant) throw error(403, 'Forbidden');
+    const sameOrg = group.tenantId === ctx.tenantId || group.tenantId === null;
+    if (!sameOrg) throw error(403, 'Forbidden');
   }
 
   // Optional nodes/edges let a plugin-shipped flow template be imported as a new

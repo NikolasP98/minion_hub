@@ -1,39 +1,33 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { flows } from '$server/db/schema';
+import { flows } from '$server/db/pg-schema/flows';
 import { eq } from 'drizzle-orm';
 import { requireAuth } from '$server/auth/authorize';
-import { getTenantCtx } from '$server/auth/tenant-ctx';
-import type { TenantContext } from '$server/services/base';
+import { getFlowsCtx, type FlowsCtx } from '$server/auth/flows-ctx';
 import { flowPluginId } from '$lib/flows/plugin-source';
 
-/** Resolve a flow and verify ownership. Throws 401/403/404 as appropriate. */
-async function requireFlowOwnership(
-  userId: string,
-  tenantId: string,
-  flowId: string,
-  ctx: TenantContext,
-) {
+/**
+ * Resolve a flow and verify it belongs to the caller's org. Org-scoped: any
+ * member of the org may read/edit/delete the org's flows (plus legacy
+ * null-tenant rows). Throws 403/404 as appropriate.
+ */
+async function requireFlowInOrg(tenantId: string, flowId: string, ctx: FlowsCtx) {
   const [flow] = await ctx.db.select().from(flows).where(eq(flows.id, flowId));
 
   if (!flow) throw error(404, 'Flow not found');
 
-  // Allow if owned by this user; legacy rows (userId null) visible within same tenant
-  const ownedByUser = flow.userId === userId;
-  const legacyRow = flow.userId === null;
-  const sameTenant = flow.tenantId === tenantId || flow.tenantId === null;
-
-  if ((!ownedByUser && !legacyRow) || !sameTenant) throw error(403, 'Forbidden');
+  const sameOrg = flow.tenantId === tenantId || flow.tenantId === null;
+  if (!sameOrg) throw error(403, 'Forbidden');
 
   return flow;
 }
 
 export const GET: RequestHandler = async ({ locals, params }) => {
-  const user = requireAuth(locals);
-  const ctx = await getTenantCtx(locals);
+  requireAuth(locals);
+  const ctx = await getFlowsCtx(locals);
   if (!ctx) throw error(401);
 
-  const flow = await requireFlowOwnership(user.id, ctx.tenantId, params.id!, ctx);
+  const flow = await requireFlowInOrg(ctx.tenantId, params.id!, ctx);
 
   return json({
     flow: {
@@ -48,11 +42,11 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 };
 
 export const PUT: RequestHandler = async ({ locals, params, request }) => {
-  const user = requireAuth(locals);
-  const ctx = await getTenantCtx(locals);
+  requireAuth(locals);
+  const ctx = await getFlowsCtx(locals);
   if (!ctx) throw error(401);
 
-  const existing = await requireFlowOwnership(user.id, ctx.tenantId, params.id!, ctx);
+  const existing = await requireFlowInOrg(ctx.tenantId, params.id!, ctx);
 
   const body = await request.json();
   const { name, nodes, edges, active } = body as { name?: string; nodes?: unknown[]; edges?: unknown[]; active?: boolean };
@@ -69,13 +63,13 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
 };
 
 export const DELETE: RequestHandler = async ({ locals, params }) => {
-  const user = requireAuth(locals);
-  const ctx = await getTenantCtx(locals);
+  requireAuth(locals);
+  const ctx = await getFlowsCtx(locals);
   if (!ctx) throw error(401);
 
-  const existing = await requireFlowOwnership(user.id, ctx.tenantId, params.id!, ctx);
+  const existing = await requireFlowInOrg(ctx.tenantId, params.id!, ctx);
 
-  // Instances (incl. plugin-template duplicates) are user-owned and deletable.
+  // Instances (incl. plugin-template duplicates) are deletable by any org member.
   // The plugin's group container is what's protected — see /api/flow-groups/[id].
   await ctx.db.delete(flows).where(eq(flows.id, existing.id));
 

@@ -1,26 +1,24 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { flowGroups, flows } from '$server/db/schema';
+import { flowGroups, flows } from '$server/db/pg-schema/flows';
 import { and, eq, isNull, or } from 'drizzle-orm';
 import { requireAuth } from '$server/auth/authorize';
-import { getTenantCtx } from '$server/auth/tenant-ctx';
-import type { TenantContext } from '$server/services/base';
+import { getFlowsCtx, type FlowsCtx } from '$server/auth/flows-ctx';
 
-async function requireGroupOwnership(userId: string, tenantId: string, groupId: string, ctx: TenantContext) {
+/** Resolve a group and verify it belongs to the caller's org (org-scoped). */
+async function requireGroupInOrg(tenantId: string, groupId: string, ctx: FlowsCtx) {
   const [group] = await ctx.db.select().from(flowGroups).where(eq(flowGroups.id, groupId));
   if (!group) throw error(404, 'Group not found');
-  const ownedByUser = group.userId === userId;
-  const legacyRow = group.userId === null;
-  const sameTenant = group.tenantId === tenantId || group.tenantId === null;
-  if ((!ownedByUser && !legacyRow) || !sameTenant) throw error(403, 'Forbidden');
+  const sameOrg = group.tenantId === tenantId || group.tenantId === null;
+  if (!sameOrg) throw error(403, 'Forbidden');
   return group;
 }
 
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
-  const user = requireAuth(locals);
-  const ctx = await getTenantCtx(locals);
+  requireAuth(locals);
+  const ctx = await getFlowsCtx(locals);
   if (!ctx) throw error(401);
-  const group = await requireGroupOwnership(user.id, ctx.tenantId, params.id!, ctx);
+  const group = await requireGroupInOrg(ctx.tenantId, params.id!, ctx);
 
   if (group.pluginId) throw error(403, 'Plugin-managed groups cannot be renamed.');
 
@@ -32,10 +30,10 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 };
 
 export const DELETE: RequestHandler = async ({ locals, params }) => {
-  const user = requireAuth(locals);
-  const ctx = await getTenantCtx(locals);
+  requireAuth(locals);
+  const ctx = await getFlowsCtx(locals);
   if (!ctx) throw error(401);
-  const group = await requireGroupOwnership(user.id, ctx.tenantId, params.id!, ctx);
+  const group = await requireGroupInOrg(ctx.tenantId, params.id!, ctx);
 
   // Plugin groups are managed by their plugin — reconcile would recreate them.
   if (group.pluginId) {
@@ -43,12 +41,11 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
   }
 
   // Non-destructive: move the group's flows to "My Flows" (ungrouped), then drop the group.
-  // Scope the update by owner/tenant too (defense-in-depth) so it can never touch
-  // another user's rows even if a group somehow contained foreign flows.
+  // Scope the update by org too (defense-in-depth) so it can never touch another
+  // org's rows even if a group somehow contained foreign flows.
   await ctx.db.update(flows).set({ groupId: null, updatedAt: Date.now() }).where(
     and(
       eq(flows.groupId, group.id),
-      or(eq(flows.userId, user.id), isNull(flows.userId)),
       or(eq(flows.tenantId, ctx.tenantId), isNull(flows.tenantId)),
     ),
   );

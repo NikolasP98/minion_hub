@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createMockDb } from '$server/test-utils/mock-db';
 
-const mockGetTenantCtx = vi.fn<(locals: unknown) => Promise<unknown>>();
-vi.mock('$server/auth/tenant-ctx', () => ({ getTenantCtx: (l: unknown) => mockGetTenantCtx(l) }));
+const mockGetFlowsCtx = vi.fn<(locals: unknown) => Promise<unknown>>();
+vi.mock('$server/auth/flows-ctx', () => ({ getFlowsCtx: (l: unknown) => mockGetFlowsCtx(l) }));
 
 function makeLocals(): App.Locals {
   return { user: { id: 'user-1', email: 't@t.com', displayName: 'T', role: 'user' },
@@ -14,7 +14,7 @@ describe('GET /api/flows — groupId', () => {
   it('returns groupId on each flow', async () => {
     const { db, resolve } = createMockDb();
     resolve([{ id: 'f1', name: 'F', nodes: '[]', active: false, createdAt: 1, updatedAt: 1, config: '{}', groupId: 'g1' }]);
-    mockGetTenantCtx.mockResolvedValue({ db, tenantId: 'org-1' });
+    mockGetFlowsCtx.mockResolvedValue({ db, tenantId: 'org-1' });
     const { GET } = await import('./+server');
     const res = await GET({ locals: makeLocals(), url: new URL('http://x/api/flows') } as Parameters<typeof GET>[0]);
     const body = await res.json();
@@ -27,7 +27,7 @@ describe('POST /api/flows — groupId + templateId', () => {
     const { db, resolve } = createMockDb();
     // group-ownership lookup returns a group owned by this user → passes the check
     resolve([{ id: 'g1', userId: 'user-1', tenantId: 'org-1', pluginId: 'aw' }]);
-    mockGetTenantCtx.mockResolvedValue({ db, tenantId: 'org-1' });
+    mockGetFlowsCtx.mockResolvedValue({ db, tenantId: 'org-1' });
     const { POST } = await import('./+server');
     const res = await POST({
       locals: makeLocals(),
@@ -40,7 +40,7 @@ describe('POST /api/flows — groupId + templateId', () => {
   it('creates an ungrouped flow with no group lookup when groupId is absent', async () => {
     const { db, resolve } = createMockDb();
     resolve([]);
-    mockGetTenantCtx.mockResolvedValue({ db, tenantId: 'org-1' });
+    mockGetFlowsCtx.mockResolvedValue({ db, tenantId: 'org-1' });
     const { POST } = await import('./+server');
     const res = await POST({
       locals: makeLocals(),
@@ -50,11 +50,12 @@ describe('POST /api/flows — groupId + templateId', () => {
     expect(db.insert).toHaveBeenCalledTimes(1);
   });
 
-  it('SECURITY: rejects a groupId owned by another user (IDOR) with 403 and no insert', async () => {
+  it('SECURITY: rejects a groupId belonging to another org (IDOR) with 403 and no insert', async () => {
     const { db, resolve } = createMockDb();
-    // group-ownership lookup returns a group owned by a DIFFERENT user
-    resolve([{ id: 'g-foreign', userId: 'other-user', tenantId: 'org-1', pluginId: null }]);
-    mockGetTenantCtx.mockResolvedValue({ db, tenantId: 'org-1' });
+    // group lookup returns a group in a DIFFERENT org. Flows are org-scoped, so a
+    // same-org group owned by another member is fine — but a foreign org's is not.
+    resolve([{ id: 'g-foreign', userId: 'other-user', tenantId: 'other-org', pluginId: null }]);
+    mockGetFlowsCtx.mockResolvedValue({ db, tenantId: 'org-1' });
     const { POST } = await import('./+server');
     let status = 0;
     try {
@@ -70,7 +71,7 @@ describe('POST /api/flows — groupId + templateId', () => {
   it('SECURITY: rejects a non-existent groupId with 404 and no insert', async () => {
     const { db, resolve } = createMockDb();
     resolve([]); // group lookup finds nothing
-    mockGetTenantCtx.mockResolvedValue({ db, tenantId: 'org-1' });
+    mockGetFlowsCtx.mockResolvedValue({ db, tenantId: 'org-1' });
     const { POST } = await import('./+server');
     let status = 0;
     try {
