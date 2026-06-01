@@ -22,14 +22,9 @@
 
 <style>
   .toast-group {
-    position: fixed;
-    /* Clear the floating DynamicIsland (md+) and the mobile topbar (h-14). */
-    top: 64px;
-    right: 12px;
-    z-index: 9999;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+    /* Zag sets position, top/right, display, flex-direction, and z-index via inline styles.
+       We only need to constrain the width so absolute children have a positioning context. */
+    width: 380px;
     pointer-events: none;
   }
 </style>

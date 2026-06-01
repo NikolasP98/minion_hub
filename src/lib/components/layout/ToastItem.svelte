@@ -35,6 +35,7 @@
   data-type={api.type}
   style:--accent={accentColor}
 >
+  <div {...api.getGhostBeforeProps() as Record<string, unknown>}></div>
   <div class="toast-accent"></div>
   <div class="toast-icon">
     {#if api.type === 'loading'}
@@ -57,13 +58,20 @@
       <p {...api.getDescriptionProps() as Record<string, unknown>} class="toast-desc">{api.description}</p>
     {/if}
   </div>
-  <button class="toast-close" onclick={api.dismiss} aria-label={m.common_close()}>
+  <button
+    {...api.getCloseTriggerProps() as Record<string, unknown>}
+    class="toast-close"
+    aria-label={m.common_close()}
+  >
     <X size={14} />
   </button>
+  <div {...api.getGhostAfterProps() as Record<string, unknown>}></div>
 </div>
 
 <style>
   .toast-item {
+    position: absolute;
+    right: 0;
     display: flex;
     align-items: stretch;
     gap: 0;
@@ -75,6 +83,16 @@
     overflow: hidden;
     box-shadow: var(--shadow-lg);
     pointer-events: auto;
+
+    /* Zag-driven positioning and motion */
+    transform: translateY(var(--y, 0));
+    opacity: var(--opacity, 1);
+    z-index: var(--z-index, 1);
+    height: var(--height, auto);
+    transition:
+      transform var(--duration-normal) var(--ease-spring),
+      opacity var(--duration-fast) var(--ease-in),
+      height var(--duration-normal) var(--ease-out);
   }
 
   /* Severity emphasis — error/warning read louder than info/success */
@@ -82,34 +100,6 @@
   .toast-item[data-type='warning'] {
     border-color: color-mix(in srgb, var(--accent) 38%, var(--elevation-4-border));
     background: color-mix(in srgb, var(--accent) 8%, var(--elevation-4-bg));
-  }
-
-  /* Enter / exit motion keyed off Zag's data-state (reduced-motion handled globally) */
-  .toast-item[data-state='open'] {
-    animation: toast-in var(--duration-normal) var(--ease-spring);
-  }
-  .toast-item[data-state='closed'] {
-    animation: toast-out var(--duration-fast) var(--ease-in) forwards;
-  }
-  @keyframes toast-in {
-    from {
-      opacity: 0;
-      transform: translateX(16px) scale(0.96);
-    }
-    to {
-      opacity: 1;
-      transform: translateX(0) scale(1);
-    }
-  }
-  @keyframes toast-out {
-    from {
-      opacity: 1;
-      transform: translateX(0) scale(1);
-    }
-    to {
-      opacity: 0;
-      transform: translateX(16px) scale(0.96);
-    }
   }
 
   .toast-accent {
@@ -157,7 +147,7 @@
     color: var(--color-muted-foreground);
     cursor: pointer;
     flex-shrink: 0;
-    transition: color 0.15s;
+    transition: color var(--duration-fast) var(--ease-out);
   }
   .toast-close:hover {
     color: var(--color-foreground);

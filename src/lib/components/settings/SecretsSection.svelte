@@ -11,7 +11,7 @@
   } from '$lib/types/secrets';
   import { sendRequest } from '$lib/services/gateway.svelte';
   import { conn } from '$lib/state/gateway/connection.svelte';
-  import { toastSuccess, toastError, toastWarning } from '$lib/state/ui/toast.svelte';
+  import { toastAsync, toastSuccess, toastError } from '$lib/state/ui/toast.svelte';
   import { Button } from '$lib/components/ui';
   import SecretStatusPill from './SecretStatusPill.svelte';
   import SecretEditModal from './SecretEditModal.svelte';
@@ -82,67 +82,92 @@
 
   // Probe result → toast severity (a 401/invalid key must NOT read as success):
   // ok=success, invalid=error, missing/unknown=warning.
-  function probeToast(label: string, status: SecretsProbeStatus, message?: string) {
+  function getProbeOutcome(label: string, status: SecretsProbeStatus, message?: string) {
     const desc = message || status;
-    if (status === 'ok') toastSuccess(label, desc);
-    else if (status === 'invalid') toastError(label, desc);
-    else toastWarning(label, desc);
+    if (status === 'ok') return { type: 'success' as const, title: label, description: desc };
+    if (status === 'invalid') return { type: 'error' as const, title: label, description: desc };
+    return { type: 'warning' as const, title: label, description: desc };
   }
 
-  // Static actions
   async function probeStatic(key: string) {
-    try {
-      const res = (await sendRequest(SECRETS_METHODS.probe, { key })) as SecretsProbeResult;
-      probeToast(`Probed ${key}`, res.probeStatus, res.probeMessage);
-      await refresh();
-    } catch (err) {
-      toastError(`Probe failed`, err instanceof Error ? err.message : String(err));
-    }
+    await toastAsync<SecretsProbeResult>(
+      sendRequest(SECRETS_METHODS.probe, { key }).then(async (res) => {
+        const result = res as SecretsProbeResult;
+        await refresh();
+        return result;
+      }),
+      {
+        loading: `Probing ${key}…`,
+        getOutcome: (r: SecretsProbeResult) =>
+          getProbeOutcome(`Probed ${key}`, r.probeStatus, r.probeMessage),
+      },
+    );
   }
 
   async function clearStatic(key: string) {
     if (!confirm(`Clear secret ${key}?`)) return;
-    try {
-      await sendRequest(SECRETS_METHODS.clear, { key });
-      toastSuccess(`Cleared ${key}`);
-      await refresh();
-    } catch (err) {
-      toastError(`Clear failed`, err instanceof Error ? err.message : String(err));
-    }
+    await toastAsync<void>(
+      sendRequest(SECRETS_METHODS.clear, { key }).then(async () => {
+        await refresh();
+      }),
+      {
+        loading: `Clearing ${key}…`,
+        getOutcome: () => ({ type: 'success' as const, title: `Cleared ${key}` }),
+      },
+    );
   }
 
   async function saveStatic(
     key: string,
     value: string,
   ): Promise<{ probeStatus: SecretsProbeStatus; probeMessage: string }> {
-    const res = (await sendRequest(SECRETS_METHODS.set, { key, value })) as SecretsSetResult;
-    // refresh in background
-    refresh();
-    return { probeStatus: res.probeStatus, probeMessage: res.probeMessage };
+    return toastAsync<{ probeStatus: SecretsProbeStatus; probeMessage: string }>(
+      sendRequest(SECRETS_METHODS.set, { key, value }).then((res) => {
+        const result = res as SecretsSetResult;
+        refresh();
+        return { probeStatus: result.probeStatus, probeMessage: result.probeMessage };
+      }),
+      {
+        loading: `Setting ${key}…`,
+        getOutcome: (r) =>
+          getProbeOutcome(`Set ${key}`, r.probeStatus, r.probeMessage),
+      },
+    );
   }
 
   // Dynamic actions
   async function probeScoped(groupKey: string, instanceId: string) {
-    try {
-      const res = (await sendRequest(SECRETS_METHODS.probeScoped, {
-        groupKey,
-        instanceId,
-      })) as SecretsProbeScopedResult;
-      probeToast(`Probed ${groupKey}/${instanceId}`, res.probeStatus, res.probeMessage);
-      await refresh();
-    } catch (err) {
-      toastError(`Probe failed`, err instanceof Error ? err.message : String(err));
-    }
+    await toastAsync<SecretsProbeScopedResult>(
+      sendRequest(SECRETS_METHODS.probeScoped, { groupKey, instanceId }).then(async (res) => {
+        const result = res as SecretsProbeScopedResult;
+        await refresh();
+        return result;
+      }),
+      {
+        loading: `Probing ${groupKey}/${instanceId}…`,
+        getOutcome: (r: SecretsProbeScopedResult) =>
+          getProbeOutcome(
+            `Probed ${groupKey}/${instanceId}`,
+            r.probeStatus,
+            r.probeMessage,
+          ),
+      },
+    );
   }
 
   async function clearScoped(groupKey: string, instanceId: string) {
-    try {
-      await sendRequest(SECRETS_METHODS.clearScoped, { groupKey, instanceId });
-      toastSuccess(`Cleared ${groupKey}/${instanceId}`);
-      await refresh();
-    } catch (err) {
-      toastError(`Clear failed`, err instanceof Error ? err.message : String(err));
-    }
+    await toastAsync<void>(
+      sendRequest(SECRETS_METHODS.clearScoped, { groupKey, instanceId }).then(async () => {
+        await refresh();
+      }),
+      {
+        loading: `Clearing ${groupKey}/${instanceId}…`,
+        getOutcome: () => ({
+          type: 'success' as const,
+          title: `Cleared ${groupKey}/${instanceId}`,
+        }),
+      },
+    );
   }
 
   async function saveScoped(
@@ -150,13 +175,22 @@
     instanceId: string,
     value: string,
   ): Promise<{ probeStatus: SecretsProbeStatus; probeMessage: string }> {
-    const res = (await sendRequest(SECRETS_METHODS.setScoped, {
-      groupKey,
-      instanceId,
-      value,
-    })) as SecretsSetScopedResult;
-    refresh();
-    return { probeStatus: res.probeStatus, probeMessage: res.probeMessage };
+    return toastAsync<{ probeStatus: SecretsProbeStatus; probeMessage: string }>(
+      sendRequest(SECRETS_METHODS.setScoped, {
+        groupKey,
+        instanceId,
+        value,
+      }).then((res) => {
+        const result = res as SecretsSetScopedResult;
+        refresh();
+        return { probeStatus: result.probeStatus, probeMessage: result.probeMessage };
+      }),
+      {
+        loading: `Setting ${groupKey}/${instanceId}…`,
+        getOutcome: (r) =>
+          getProbeOutcome(`Set ${groupKey}/${instanceId}`, r.probeStatus, r.probeMessage),
+      },
+    );
   }
 
   // Modal save dispatcher
