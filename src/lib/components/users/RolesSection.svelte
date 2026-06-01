@@ -179,7 +179,7 @@
   }
 </script>
 
-<section class="max-w-6xl mx-auto mt-6 px-4">
+<section class="max-w-6xl mx-auto pt-6 px-4 flex-1 min-h-0 overflow-y-auto">
   <header class="flex items-baseline justify-between mb-5">
     <div>
       <h2 class="text-base font-semibold text-foreground">Roles</h2>

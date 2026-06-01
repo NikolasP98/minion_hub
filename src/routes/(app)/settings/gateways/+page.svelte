@@ -92,7 +92,7 @@
   const pgOnly = $derived(data.pgGateways.filter((g: { url: string }) => !tursoUrlSet.has(g.url)));
 </script>
 
-<div class="p-6 space-y-8">
+<div class="flex-1 overflow-y-auto p-6 space-y-8">
   <section>
     <h1 class="text-lg font-semibold mb-1">{m.hosts_title()}</h1>
     <p class="text-xs text-muted mb-5">Manage gateway connections. Adding here registers the gateway for WS connect and per-user credential resolution.</p>

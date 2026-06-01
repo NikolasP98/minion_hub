@@ -278,7 +278,11 @@
   });
 </script>
 
-<div class="relative flex w-full flex-col" class:h-full={fillContainer}>
+<div
+  class="relative flex w-full flex-col"
+  class:h-full={fillContainer}
+  class:min-h-0={fillContainer}
+>
   {#if !externalSaveBar && (dirty || saving || saveError || saveOk)}
     <div
       class="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-border bg-card/95 px-4 py-2.5 backdrop-blur"
@@ -313,19 +317,32 @@
       </button>
     </div>
   {/if}
-  <iframe
-    bind:this={iframeEl}
-    title="Plugin: {pluginId}"
-    {src}
-    referrerpolicy="strict-origin"
-    onload={() => {
-      iframeLoaded = true;
-    }}
-    style:height={fillContainer ? '100%' : `${height}px`}
-    class="w-full border-0"
-    class:min-h-0={fillContainer}
-    class:flex-1={fillContainer}
-  ></iframe>
+  {#if fillContainer}
+    <div class="relative flex-1 min-h-0">
+      <iframe
+        bind:this={iframeEl}
+        title="Plugin: {pluginId}"
+        {src}
+        referrerpolicy="strict-origin"
+        onload={() => {
+          iframeLoaded = true;
+        }}
+        class="absolute inset-0 w-full h-full border-0"
+      ></iframe>
+    </div>
+  {:else}
+    <iframe
+      bind:this={iframeEl}
+      title="Plugin: {pluginId}"
+      {src}
+      referrerpolicy="strict-origin"
+      onload={() => {
+        iframeLoaded = true;
+      }}
+      style:height={`${height}px`}
+      class="w-full border-0"
+    ></iframe>
+  {/if}
   {#if handshakeTimedOut && !pluginReady}
     <div
       class="bg-background/95 absolute inset-0 z-10 flex items-start justify-center overflow-auto p-6 backdrop-blur"

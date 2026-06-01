@@ -217,7 +217,7 @@
                     </div>
                 </div>
             {:else}
-                <div class="flex-1 flex flex-col min-h-0 overflow-y-auto relative" bind:this={scrollContainers[tab.id]}>
+                <div class="flex-1 min-h-0 overflow-y-auto relative" bind:this={scrollContainers[tab.id]}>
                     <div class="px-6 py-5">
                         <div class="max-w-3xl mx-auto space-y-2.5">
                             {#if configState.version && tab.id === 'system'}
