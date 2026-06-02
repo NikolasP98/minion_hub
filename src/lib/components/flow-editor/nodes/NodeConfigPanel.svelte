@@ -8,6 +8,14 @@
   import { X, Settings2 } from 'lucide-svelte';
   import ChannelNodeConfig from './ChannelNodeConfig.svelte';
   import TriggerNodeConfig from './TriggerNodeConfig.svelte';
+  import { conn } from '$lib/state/gateway';
+  import { channelPlugins, ensureChannelPlugins } from '$lib/state/features/channel-sources.svelte';
+
+  // Shared channel list for `type: 'channel'` plugin config fields.
+  const channels = $derived(channelPlugins());
+  $effect(() => {
+    if (conn.connected) void ensureChannelPlugins();
+  });
 
   // The node currently being configured + its plugin-declared field defs.
   const node = $derived(flowEditorState.nodes.find((n) => n.id === flowEditorState.configNodeId));
@@ -110,6 +118,21 @@
                   set(field.key, v === '' ? undefined : Number(v));
                 }}
               />
+            {:else if field.type === 'channel'}
+              <select
+                id="cfg-{field.key}"
+                class="w-full text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground capitalize"
+                value={disp(field)}
+                onchange={(e) => set(field.key, (e.target as HTMLSelectElement).value)}
+              >
+                <option value="">Select a channel…</option>
+                {#each channels as c (c.id)}
+                  <option value={c.id}>{c.label}</option>
+                {/each}
+                {#if disp(field) && !channels.some((c) => c.id === disp(field))}
+                  <option value={disp(field)}>{disp(field)}</option>
+                {/if}
+              </select>
             {:else}
               <input
                 id="cfg-{field.key}"

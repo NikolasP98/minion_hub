@@ -138,12 +138,16 @@ export type TriggerNodeData = {
 export type FlowNodeConfigField = {
   key: string;
   label: string;
-  type: 'string' | 'number' | 'boolean' | 'select' | 'textarea';
+  type: 'string' | 'number' | 'boolean' | 'select' | 'textarea' | 'channel';
   options?: { value: string; label: string }[];
   default?: string | number | boolean;
   placeholder?: string;
   description?: string;
 };
+
+/** Palette group a contributed node belongs to (matches a built-in function
+ *  group, or names a new one; absent ⇒ grouped under the plugin id). */
+export type FlowNodeCategory = 'Triggers' | 'AI' | 'Logic & Data' | 'Output' | (string & {});
 
 /** Plugin flow-node descriptor as returned by `flows.nodes.list`. */
 export type FlowNodeDescriptor = {
@@ -153,6 +157,7 @@ export type FlowNodeDescriptor = {
   label: string;
   description?: string;
   icon?: string;
+  category?: FlowNodeCategory;
   event?: string;
   method?: string;
   channelId?: string;

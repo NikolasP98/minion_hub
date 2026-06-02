@@ -12,7 +12,7 @@
 
   interface FlowNodeDescriptor {
     pluginId: string; id: string; kind: 'trigger' | 'action';
-    label: string; description?: string; icon?: string;
+    label: string; description?: string; icon?: string; category?: string;
     event?: string; method?: string; channelId?: string;
     config?: FlowNodeConfigField[];
   }
@@ -26,16 +26,25 @@
     return n.kind === 'trigger' && !!n.channelId && n.event === 'message:received';
   }
 
-  const pluginGroups = $derived(
-    Object.entries(
-      pluginNodes
-        .filter((n) => !isRedundantChannelTrigger(n))
-        .reduce<Record<string, FlowNodeDescriptor[]>>((acc, n) => {
-          (acc[n.pluginId] ??= []).push(n);
-          return acc;
-        }, {}),
-    ).filter(([, nodes]) => nodes.length > 0),
-  );
+  const visiblePlugins = $derived(pluginNodes.filter((n) => !isRedundantChannelTrigger(n)));
+
+  // Plugin nodes whose `category` matches a built-in function group slot in
+  // alongside the built-ins (keyed by group title). The rest stay grouped by
+  // plugin id in their own sections below.
+  const pluginsByCategory = $derived.by(() => {
+    const m: Record<string, FlowNodeDescriptor[]> = {};
+    for (const n of visiblePlugins) {
+      if (n.category && BUILTIN_TITLES.has(n.category)) (m[n.category] ??= []).push(n);
+    }
+    return m;
+  });
+  const uncategorizedGroups = $derived.by(() => {
+    const m: Record<string, FlowNodeDescriptor[]> = {};
+    for (const n of visiblePlugins) {
+      if (!n.category || !BUILTIN_TITLES.has(n.category)) (m[n.pluginId] ??= []).push(n);
+    }
+    return Object.entries(m).filter(([, nodes]) => nodes.length > 0);
+  });
 
   onMount(() => {
     loadBuiltAgents();
@@ -257,6 +266,9 @@
     },
   ];
 
+  /** Built-in function-group titles — plugin nodes matching one slot into it. */
+  const BUILTIN_TITLES = new Set(CATEGORIES.map((c) => c.title));
+
   /** Drag payload for a built-in palette node (carries label/preset variants). */
   function nodeDragPayload(node: PaletteNode) {
     return {
@@ -312,6 +324,27 @@
       {/each}
     </div>
   {:else}
+    {#snippet pluginButton(d: FlowNodeDescriptor)}
+      <button
+        onclick={() => addPluginNode(d)}
+        draggable="true"
+        ondragstart={(e) => handleDragStart(e, { type: d.kind === 'trigger' ? 'pluginTrigger' : 'pluginAction', descriptor: d })}
+        class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
+      >
+        <div class="w-6 h-6 rounded bg-violet-500/20 flex items-center justify-center shrink-0">
+          {#if d.kind === 'trigger'}
+            <Zap size={12} class="text-violet-400" />
+          {:else}
+            <Puzzle size={12} class="text-violet-400" />
+          {/if}
+        </div>
+        <div class="min-w-0">
+          <div class="text-xs font-medium text-foreground truncate">{d.label}</div>
+          <div class="text-[10px] text-muted truncate">{d.description || (d.kind === 'trigger' ? 'trigger' : 'action')}</div>
+        </div>
+      </button>
+    {/snippet}
+
     <div class="flex-1 overflow-y-auto py-3 px-2 space-y-4">
       {#each CATEGORIES as cat (cat.title)}
         <div>
@@ -336,37 +369,24 @@
                 </div>
               </button>
             {/each}
+            <!-- Plugin nodes that declared this function group -->
+            {#each pluginsByCategory[cat.title] ?? [] as d (d.id)}
+              {@render pluginButton(d)}
+            {/each}
           </div>
         </div>
       {/each}
 
-      <!-- Plugin Nodes section -->
-      {#if pluginGroups.length > 0}
-        {#each pluginGroups as [pluginId, nodes] (pluginId)}
+      <!-- Remaining plugin nodes, grouped by plugin id -->
+      {#if uncategorizedGroups.length > 0}
+        {#each uncategorizedGroups as [pluginId, nodes] (pluginId)}
           <div>
             <p class="text-[9px] font-semibold text-muted/50 uppercase tracking-widest px-1 mb-1.5">
               {pluginId}
             </p>
             <div class="flex flex-col gap-0.5">
               {#each nodes as d (d.id)}
-                <button
-                  onclick={() => addPluginNode(d)}
-                  draggable="true"
-                  ondragstart={(e) => handleDragStart(e, { type: d.kind === 'trigger' ? 'pluginTrigger' : 'pluginAction', descriptor: d })}
-                  class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
-                >
-                  <div class="w-6 h-6 rounded bg-violet-500/20 flex items-center justify-center shrink-0">
-                    {#if d.kind === 'trigger'}
-                      <Zap size={12} class="text-violet-400" />
-                    {:else}
-                      <Puzzle size={12} class="text-violet-400" />
-                    {/if}
-                  </div>
-                  <div class="min-w-0">
-                    <div class="text-xs font-medium text-foreground truncate">{d.label}</div>
-                    <div class="text-[10px] text-muted truncate">{d.kind === 'trigger' ? 'trigger' : 'action'}</div>
-                  </div>
-                </button>
+                {@render pluginButton(d)}
               {/each}
             </div>
           </div>
