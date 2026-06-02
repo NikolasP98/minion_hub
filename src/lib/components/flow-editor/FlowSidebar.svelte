@@ -3,7 +3,7 @@
   import type { FlowNode, AgentNodeData, PromptBoxData, LLMNodeData, TriggerNodeData, TransformNodeData, StructuredNodeData, RouterNodeData, ToolAgentNodeData, ChannelNodeData, FlowNodeConfigField } from '$lib/state/features/flow-editor.svelte';
   import { loadBuiltAgents } from '$lib/state/builder';
   import { conn } from '$lib/state/gateway';
-  import { Bot, Type, ChevronLeft, ChevronRight, Cpu, Zap, Braces, Split, Wrench, Send } from 'lucide-svelte';
+  import { Bot, Type, ChevronLeft, ChevronRight, Cpu, Zap, Braces, Split, Wrench, Send, Puzzle } from 'lucide-svelte';
   import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
   import { sendRequest } from '$lib/services/gateway.svelte';
@@ -199,6 +199,52 @@
     e.dataTransfer.effectAllowed = 'copy';
     e.dataTransfer.setData('application/flow-node', JSON.stringify(payload));
   }
+
+  // ── Palette, grouped by FUNCTION ────────────────────────────────────────────
+  // One short, organised list instead of one long "Inputs" dump. All lucide
+  // icons share a component type, so `typeof Zap` types every entry's icon.
+  type BuiltinType = 'trigger' | 'promptBox' | 'llm' | 'agent' | 'toolAgent' | 'router' | 'structured' | 'transform' | 'channel';
+  type PaletteNode = {
+    type: BuiltinType;
+    label: string;
+    desc: string;
+    icon: typeof Zap;
+    color: string;
+    bg: string;
+    add: () => void;
+    dragLabel?: string;
+  };
+  const CATEGORIES: { title: string; nodes: PaletteNode[] }[] = [
+    {
+      title: 'Triggers',
+      nodes: [
+        { type: 'trigger', label: 'Channel Trigger', desc: 'Inbound message · one or more channels', icon: Zap, color: 'text-amber-400', bg: 'bg-amber-500/20', add: addTriggerNode },
+        { type: 'promptBox', label: 'Prompt Box', desc: 'Manual text input', icon: Type, color: 'text-violet-400', bg: 'bg-violet-500/20', add: addPromptBox, dragLabel: 'Prompt' },
+      ],
+    },
+    {
+      title: 'AI',
+      nodes: [
+        { type: 'llm', label: 'LLM', desc: 'Direct model call', icon: Cpu, color: 'text-violet-400', bg: 'bg-violet-500/20', add: addLLMNode },
+        { type: 'agent', label: 'Agent', desc: 'Custom / personal / drone', icon: Bot, color: 'text-indigo-400', bg: 'bg-indigo-500/20', add: addAgentNode },
+        { type: 'toolAgent', label: 'Tool Agent', desc: 'LLM with tool calls', icon: Wrench, color: 'text-emerald-400', bg: 'bg-emerald-500/20', add: addToolAgent },
+      ],
+    },
+    {
+      title: 'Logic & Data',
+      nodes: [
+        { type: 'router', label: 'Router', desc: 'Branch / classify by rule or LLM', icon: Split, color: 'text-amber-400', bg: 'bg-amber-500/20', add: addRouter },
+        { type: 'structured', label: 'Structured', desc: 'Extract JSON', icon: Braces, color: 'text-teal-300', bg: 'bg-teal-500/20', add: addStructured },
+        { type: 'transform', label: 'Transform', desc: 'Template text', icon: Braces, color: 'text-slate-300', bg: 'bg-slate-500/20', add: addTransform },
+      ],
+    },
+    {
+      title: 'Output',
+      nodes: [
+        { type: 'channel', label: 'Channel', desc: 'Send to WhatsApp / Telegram / …', icon: Send, color: 'text-cyan-400', bg: 'bg-cyan-500/20', add: addChannelNode },
+      ],
+    },
+  ];
 </script>
 
 <aside
@@ -225,238 +271,54 @@
   </div>
 
   {#if collapsed}
-    <!-- Icon-only column when collapsed -->
+    <!-- Icon-only column when collapsed: function groups separated by a hairline -->
     <div class="flex-1 overflow-y-auto py-2 flex flex-col items-center gap-1">
-      <!-- Trigger icon -->
-      <button
-        onclick={addTriggerNode}
-        draggable="true"
-        ondragstart={(e) => handleDragStart(e, { type: 'trigger' })}
-        class="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
-        title="Channel Trigger"
-      >
-        <Zap size={13} class="text-amber-400" />
-      </button>
-
-      <!-- Prompt Box icon -->
-      <button
-        onclick={addPromptBox}
-        draggable="true"
-        ondragstart={(e) => handleDragStart(e, { type: 'promptBox', label: 'Prompt' })}
-        class="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
-        title={m.flow_promptBox()}
-      >
-        <Type size={13} class="text-violet-400" />
-      </button>
-
-      <!-- LLM icon -->
-      <button
-        onclick={addLLMNode}
-        draggable="true"
-        ondragstart={(e) => handleDragStart(e, { type: 'llm' })}
-        class="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
-        title="LLM"
-      >
-        <Cpu size={13} class="text-violet-400" />
-      </button>
-
-      <!-- Agent icon -->
-      <button
-        onclick={addAgentNode}
-        draggable="true"
-        ondragstart={(e) => handleDragStart(e, { type: 'agent' })}
-        class="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
-        title="Agent"
-      >
-        <Bot size={13} class="text-indigo-400" />
-      </button>
-      <button
-        onclick={addTransform}
-        draggable="true"
-        ondragstart={(e) => handleDragStart(e, { type: 'transform' })}
-        class="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
-        title="Transform"
-      >
-        <Braces size={13} class="text-slate-300" />
-      </button>
-      <button
-        onclick={addStructured}
-        draggable="true"
-        ondragstart={(e) => handleDragStart(e, { type: 'structured' })}
-        class="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
-        title="Structured"
-      >
-        <Braces size={13} class="text-teal-300" />
-      </button>
-      <button
-        onclick={addRouter}
-        draggable="true"
-        ondragstart={(e) => handleDragStart(e, { type: 'router' })}
-        class="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
-        title="Router"
-      >
-        <Split size={13} class="text-amber-400" />
-      </button>
-      <button
-        onclick={addToolAgent}
-        draggable="true"
-        ondragstart={(e) => handleDragStart(e, { type: 'toolAgent' })}
-        class="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
-        title="Tool Agent"
-      >
-        <Wrench size={13} class="text-emerald-400" />
-      </button>
-      <button
-        onclick={addChannelNode}
-        draggable="true"
-        ondragstart={(e) => handleDragStart(e, { type: 'channel' })}
-        class="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
-        title="Channel"
-      >
-        <Send size={13} class="text-cyan-400" />
-      </button>
+      {#each CATEGORIES as cat, ci (cat.title)}
+        {#if ci > 0}
+          <div class="w-5 my-0.5 border-t border-border/40"></div>
+        {/if}
+        {#each cat.nodes as node (node.type)}
+          {@const Icon = node.icon}
+          <button
+            onclick={node.add}
+            draggable="true"
+            ondragstart={(e) => handleDragStart(e, node.dragLabel ? { type: node.type, label: node.dragLabel } : { type: node.type })}
+            class="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
+            title={node.label}
+          >
+            <Icon size={13} class={node.color} />
+          </button>
+        {/each}
+      {/each}
     </div>
   {:else}
-    <div class="flex-1 overflow-y-auto py-3 px-2 space-y-5">
-      <!-- Inputs section -->
-      <div>
-        <p class="text-[9px] font-semibold text-muted/50 uppercase tracking-widest px-1 mb-1.5">
-          {m.flow_inputs()}
-        </p>
-        <button
-          onclick={addTriggerNode}
-          draggable="true"
-          ondragstart={(e) => handleDragStart(e, { type: 'trigger' })}
-          class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
-        >
-          <div class="w-6 h-6 rounded bg-amber-500/20 flex items-center justify-center shrink-0">
-            <Zap size={12} class="text-amber-400" />
+    <div class="flex-1 overflow-y-auto py-3 px-2 space-y-4">
+      {#each CATEGORIES as cat (cat.title)}
+        <div>
+          <p class="text-[9px] font-semibold text-muted/50 uppercase tracking-widest px-1 mb-1.5">
+            {cat.title}
+          </p>
+          <div class="flex flex-col gap-0.5">
+            {#each cat.nodes as node (node.type)}
+              {@const Icon = node.icon}
+              <button
+                onclick={node.add}
+                draggable="true"
+                ondragstart={(e) => handleDragStart(e, node.dragLabel ? { type: node.type, label: node.dragLabel } : { type: node.type })}
+                class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
+              >
+                <div class="w-6 h-6 rounded {node.bg} flex items-center justify-center shrink-0">
+                  <Icon size={12} class={node.color} />
+                </div>
+                <div class="min-w-0">
+                  <div class="text-xs font-medium text-foreground truncate">{node.label}</div>
+                  <div class="text-[10px] text-muted truncate">{node.desc}</div>
+                </div>
+              </button>
+            {/each}
           </div>
-          <div>
-            <div class="text-xs font-medium text-foreground">Channel Trigger</div>
-            <div class="text-[10px] text-muted">Inbound message · one or more channels</div>
-          </div>
-        </button>
-        <button
-          onclick={addPromptBox}
-          draggable="true"
-          ondragstart={(e) => handleDragStart(e, { type: 'promptBox', label: 'Prompt' })}
-          class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
-        >
-          <div class="w-6 h-6 rounded bg-violet-500/20 flex items-center justify-center shrink-0">
-            <Type size={12} class="text-violet-400" />
-          </div>
-          <div>
-            <div class="text-xs font-medium text-foreground">{m.flow_promptBox()}</div>
-            <div class="text-[10px] text-muted">{m.flow_textInputNode()}</div>
-          </div>
-        </button>
-        <button
-          onclick={addLLMNode}
-          draggable="true"
-          ondragstart={(e) => handleDragStart(e, { type: 'llm' })}
-          class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
-        >
-          <div class="w-6 h-6 rounded bg-violet-500/20 flex items-center justify-center shrink-0">
-            <Cpu size={12} class="text-violet-400" />
-          </div>
-          <div>
-            <div class="text-xs font-medium text-foreground">LLM</div>
-            <div class="text-[10px] text-muted">Direct model call</div>
-          </div>
-        </button>
-        <button
-          onclick={addAgentNode}
-          draggable="true"
-          ondragstart={(e) => handleDragStart(e, { type: 'agent' })}
-          class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
-        >
-          <div class="w-6 h-6 rounded bg-indigo-500/20 flex items-center justify-center shrink-0">
-            <Bot size={12} class="text-indigo-400" />
-          </div>
-          <div>
-            <div class="text-xs font-medium text-foreground">Agent</div>
-            <div class="text-[10px] text-muted">Custom / personal / drone</div>
-          </div>
-        </button>
-        <button
-          onclick={addTransform}
-          draggable="true"
-          ondragstart={(e) => handleDragStart(e, { type: 'transform' })}
-          class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
-        >
-          <div class="w-6 h-6 rounded bg-slate-500/20 flex items-center justify-center shrink-0">
-            <Braces size={12} class="text-slate-300" />
-          </div>
-          <div>
-            <div class="text-xs font-medium text-foreground">Transform</div>
-            <div class="text-[10px] text-muted">Template text</div>
-          </div>
-        </button>
-        <button
-          onclick={addStructured}
-          draggable="true"
-          ondragstart={(e) => handleDragStart(e, { type: 'structured' })}
-          class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
-        >
-          <div class="w-6 h-6 rounded bg-teal-500/20 flex items-center justify-center shrink-0">
-            <Braces size={12} class="text-teal-300" />
-          </div>
-          <div>
-            <div class="text-xs font-medium text-foreground">Structured</div>
-            <div class="text-[10px] text-muted">JSON output</div>
-          </div>
-        </button>
-        <button
-          onclick={addRouter}
-          draggable="true"
-          ondragstart={(e) => handleDragStart(e, { type: 'router' })}
-          class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
-        >
-          <div class="w-6 h-6 rounded bg-amber-500/20 flex items-center justify-center shrink-0">
-            <Split size={12} class="text-amber-400" />
-          </div>
-          <div>
-            <div class="text-xs font-medium text-foreground">Router</div>
-            <div class="text-[10px] text-muted">Branch by rule / LLM</div>
-          </div>
-        </button>
-        <button
-          onclick={addToolAgent}
-          draggable="true"
-          ondragstart={(e) => handleDragStart(e, { type: 'toolAgent' })}
-          class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
-        >
-          <div class="w-6 h-6 rounded bg-emerald-500/20 flex items-center justify-center shrink-0">
-            <Wrench size={12} class="text-emerald-400" />
-          </div>
-          <div>
-            <div class="text-xs font-medium text-foreground">Tool Agent</div>
-            <div class="text-[10px] text-muted">LLM with tool calls</div>
-          </div>
-        </button>
-      </div>
-
-      <!-- Outputs section -->
-      <div>
-        <p class="text-[9px] font-semibold text-muted/50 uppercase tracking-widest px-1 mb-1.5">
-          Outputs
-        </p>
-        <button
-          onclick={addChannelNode}
-          draggable="true"
-          ondragstart={(e) => handleDragStart(e, { type: 'channel' })}
-          class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
-        >
-          <div class="w-6 h-6 rounded bg-cyan-500/20 flex items-center justify-center shrink-0">
-            <Send size={12} class="text-cyan-400" />
-          </div>
-          <div>
-            <div class="text-xs font-medium text-foreground">Channel</div>
-            <div class="text-[10px] text-muted">Send to WhatsApp / Telegram / …</div>
-          </div>
-        </button>
-      </div>
+        </div>
+      {/each}
 
       <!-- Plugin Nodes section -->
       {#if pluginGroups.length > 0}
@@ -473,12 +335,16 @@
                   ondragstart={(e) => handleDragStart(e, { type: d.kind === 'trigger' ? 'pluginTrigger' : 'pluginAction', descriptor: d })}
                   class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
                 >
-                  <div class="w-6 h-6 rounded bg-violet-500/20 flex items-center justify-center shrink-0 text-[10px] text-violet-400">
-                    {d.kind === 'trigger' ? '⚡' : '🧩'}
+                  <div class="w-6 h-6 rounded bg-violet-500/20 flex items-center justify-center shrink-0">
+                    {#if d.kind === 'trigger'}
+                      <Zap size={12} class="text-violet-400" />
+                    {:else}
+                      <Puzzle size={12} class="text-violet-400" />
+                    {/if}
                   </div>
                   <div class="min-w-0">
                     <div class="text-xs font-medium text-foreground truncate">{d.label}</div>
-                    <div class="text-[10px] text-muted truncate">{d.kind}</div>
+                    <div class="text-[10px] text-muted truncate">{d.kind === 'trigger' ? 'trigger' : 'action'}</div>
                   </div>
                 </button>
               {/each}
