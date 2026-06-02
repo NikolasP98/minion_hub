@@ -6,7 +6,12 @@
 	import ChatInput from '$lib/components/my-agent/ChatInput.svelte';
 	import OpenHumanAvatar from '$lib/components/my-agent/OpenHumanAvatar.svelte';
 	import CallControls from '$lib/components/my-agent/CallControls.svelte';
+	import NotesPanel from '$lib/components/my-agent/NotesPanel.svelte';
+	import ChatTurn from '$lib/components/my-agent/ChatTurn.svelte';
 	import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
+	import type { ChatMessage } from '$lib/types/chat';
+	import { StickyNote } from 'lucide-svelte';
+	import { notesState, loadNotes, togglePanel } from '$lib/state/features/agent-notes.svelte';
 	import { conn } from '$lib/state/gateway';
 	import { agentChat, ensureAgentChat } from '$lib/state/chat/chat.svelte';
 	import { assistant } from '$lib/state/features/assistant.svelte';
@@ -85,12 +90,130 @@
 	const feedFetch = createConnectedFetch(() => conn.connected, () => void loadFeed());
 	$effect(() => feedFetch.sync());
 
+	// Hydrate the notes/todos panel from localStorage (idempotent).
+	$effect(() => {
+		loadNotes();
+	});
+
 	// ─── Personal-agent chat (same agent + thread as the floating assistant) ───
 	const agentId = $derived(assistant.personalAgentId);
 	const chat = $derived(agentId ? agentChat[agentId] : undefined);
 	const messages = $derived(chat?.messages ?? []);
 	const stream = $derived(chat?.stream ?? null);
+	const streamMessage = $derived(chat?.streamMessage ?? null);
+	const streamDisplay = $derived(chat?.streamDisplay ?? '');
 	const sending = $derived(chat?.sending ?? false);
+
+	// ─── Rich content-block helpers (thinking + tools, claude-desktop style) ───
+
+	type Block = { type?: string; [k: string]: unknown };
+	function contentBlocks(m: ChatMessage | null | undefined): Block[] {
+		return m && Array.isArray(m.content) ? (m.content as Block[]) : [];
+	}
+	function stringifyToolResult(content: unknown): string {
+		if (typeof content === 'string') return content;
+		if (Array.isArray(content)) {
+			return (content as Block[])
+				.map((p) => (p?.type === 'text' && typeof p.text === 'string' ? (p.text as string) : ''))
+				.filter(Boolean)
+				.join('\n');
+		}
+		try {
+			return JSON.stringify(content, null, 2);
+		} catch {
+			return String(content ?? '');
+		}
+	}
+
+	// tool_use_id → result, collected across the whole thread (results live in the
+	// following user-role turn) so each tool card can show its outcome.
+	const toolResultsById = $derived.by<Record<string, { content: string; isError: boolean }>>(() => {
+		const map: Record<string, { content: string; isError: boolean }> = {};
+		const scan = (m: ChatMessage | null | undefined) => {
+			for (const b of contentBlocks(m)) {
+				if (b?.type === 'tool_result' && typeof b.tool_use_id === 'string') {
+					map[b.tool_use_id] = {
+						content: stringifyToolResult(b.content),
+						isError: !!b.is_error
+					};
+				}
+			}
+		};
+		for (const m of messages) scan(m as ChatMessage);
+		scan(streamMessage);
+		return map;
+	});
+
+	// A message is "tool-result only" (a tool-output carrier turn) → folded into
+	// the tool cards rather than shown as its own bubble.
+	function isToolResultOnly(m: ChatMessage): boolean {
+		const blocks = contentBlocks(m);
+		if (blocks.length === 0) return false;
+		return blocks.every((b) => b?.type === 'tool_result');
+	}
+	function assistantHasContent(m: ChatMessage): boolean {
+		if (typeof m.content === 'string') return m.content.trim().length > 0;
+		return contentBlocks(m).some((b) =>
+			['text', 'thinking', 'redacted_thinking', 'tool_use', 'image', 'image_url'].includes(
+				b?.type ?? ''
+			)
+		);
+	}
+
+	// Stable per-row key derived from content (NOT array index) — so reconciling
+	// server history into the optimistic thread reuses DOM instead of re-mounting
+	// every row (the old `${ts}_${i}` key was the "history flash" culprit).
+	function rowKey(m: ChatMessage): string {
+		const t = stripVoiceTurnPrefix(extractText(m) ?? '');
+		const toolNames = contentBlocks(m)
+			.filter((b) => b?.type === 'tool_use')
+			.map((b) => b.name)
+			.join(',');
+		return `${msgRole(m)}|${t.length}|${t.slice(0, 32)}|${t.slice(-24)}|${toolNames}`;
+	}
+
+	interface RenderedRow {
+		key: string;
+		msg: ChatMessage;
+		role: 'user' | 'assistant';
+		ts?: number;
+		text: string;
+	}
+	const renderedMessages = $derived.by<RenderedRow[]>(() => {
+		const seen = new Map<string, number>();
+		const rows: RenderedRow[] = [];
+		for (const raw of messages) {
+			const m = raw as ChatMessage;
+			if (isToolResultOnly(m)) continue;
+			const role = msgRole(m);
+			const text = stripVoiceTurnPrefix(extractText(m) ?? '');
+			if (role === 'user' ? text.trim().length === 0 : !assistantHasContent(m)) continue;
+			const base = rowKey(m);
+			const n = seen.get(base) ?? 0;
+			seen.set(base, n + 1);
+			rows.push({ key: `${base}#${n}`, msg: m, role, ts: msgTs(m), text });
+		}
+		return rows;
+	});
+
+	// Live status while a run streams: "Using <tool>…" / "Thinking…" / null (text
+	// is streaming, shown directly). Drives the activity line under the thread.
+	const streamActivity = $derived.by<string | null>(() => {
+		if (!streamMessage) return null;
+		const blocks = contentBlocks(streamMessage);
+		if (blocks.length === 0) return 'Thinking…';
+		const last = [...blocks].reverse().find((b) => b?.type);
+		if (!last) return 'Thinking…';
+		if (last.type === 'tool_use') return `Using ${(last.name as string) ?? 'a tool'}…`;
+		if (last.type === 'thinking' || last.type === 'redacted_thinking') return 'Thinking…';
+		return null; // text block streaming — the partial answer shows itself
+	});
+
+	// Whether the live streaming turn has any visible content yet (reasoning/tool
+	// meta, or smoothed answer text being revealed).
+	const streamHasContent = $derived(
+		(!!streamMessage && assistantHasContent(streamMessage)) || streamDisplay.length > 0
+	);
 
 	// Lazy-load the conversation history once connected + agent known.
 	let historyLoadedFor: string | null = null;
@@ -146,6 +269,9 @@
 	$effect(() => {
 		void messages.length;
 		void stream;
+		void streamMessage;
+		void streamDisplay;
+		void streamActivity;
 		if (atBottom) {
 			tick().then(() => {
 				if (threadEl) threadEl.scrollTop = threadEl.scrollHeight;
@@ -188,6 +314,17 @@
 					onend={endCall}
 					ontoggleMute={toggleMute}
 				/>
+				<button
+					type="button"
+					class="notes-toggle"
+					class:on={notesState.open}
+					title="Notes & Todos"
+					aria-label="Toggle notes and todos panel"
+					aria-pressed={notesState.open}
+					onclick={togglePanel}
+				>
+					<StickyNote size={17} />
+				</button>
 			</header>
 
 			{#if voiceCall.error}
@@ -250,36 +387,47 @@
 			<!-- Chat section: typed messages AND the live call transcript land here.
 			     Grows to fill the space between the agenda and the input. -->
 			<section class="chat-section" aria-label="Conversation">
-				{#if messages.length > 0 || stream || sending}
+				{#if renderedMessages.length > 0 || streamMessage || stream || sending}
 					<div class="thread" bind:this={threadEl} onscroll={onThreadScroll}>
 						<div class="thread-inner">
-							{#each messages as msg, i (`${msgTs(msg) ?? ''}_${i}`)}
-								{@const role = msgRole(msg)}
-								{@const text = stripVoiceTurnPrefix(extractText(msg) ?? '')}
-								{#if text}
-									<div class="bubble-row {role}">
-										<div class="bubble {role}">
-											{#if role === 'assistant'}
-												<MarkdownMessage value={text} tone="assistant" />
-											{:else}
-												{text}
-											{/if}
-										</div>
-										{#if msgTs(msg)}<span class="bubble-time">{fmtTime(msgTs(msg))}</span>{/if}
+							{#each renderedMessages as row (row.key)}
+								{#if row.role === 'assistant'}
+									<!-- Assistant turn: ChatTurn owns its layout — quiet reasoning/tool
+									     rows OUTSIDE the bubble, the reply inside its own bubble. -->
+									<div class="bubble-row assistant">
+										<ChatTurn message={row.msg} toolResults={toolResultsById} />
+										{#if row.ts}<span class="bubble-time">{fmtTime(row.ts)}</span>{/if}
+									</div>
+								{:else}
+									<div class="bubble-row user">
+										<div class="bubble user">{row.text}</div>
+										{#if row.ts}<span class="bubble-time">{fmtTime(row.ts)}</span>{/if}
 									</div>
 								{/if}
 							{/each}
 
-							{#if stream !== null && stream !== ''}
+							<!-- Live streaming turn: reasoning/tool rows surface above the reply;
+							     the answer text is the smoothed (typewriter) reveal via textOverride. -->
+							{#if streamHasContent && streamMessage}
+								<div class="bubble-row assistant">
+									<ChatTurn
+										message={streamMessage}
+										toolResults={toolResultsById}
+										streaming
+										textOverride={streamDisplay}
+									/>
+								</div>
+							{:else if streamDisplay.length > 0}
+								<!-- Fallback: smoothed text with no structured message. -->
 								<div class="bubble-row assistant">
 									<div class="bubble assistant streaming">
-										<MarkdownMessage value={stream} tone="assistant" />
+										<MarkdownMessage value={streamDisplay} tone="assistant" />
 									</div>
 								</div>
-							{:else if sending}
+							{:else if sending || streamMessage}
 								<div class="thinking-row">
 									<span class="dot"></span><span class="dot"></span><span class="dot"></span>
-									Thinking…
+									{streamActivity ?? 'Thinking…'}
 								</div>
 							{/if}
 
@@ -294,13 +442,22 @@
 			<ChatInput onsubmit={handleSubmit} />
 		</div>
 	</main>
+
+	{#if notesState.open}
+		<NotesPanel />
+	{/if}
 </div>
 
 <style>
 	.layout {
 		display: flex;
-		flex: 1;
+		/* Fill the height-constrained (app) scroll wrapper. The parent .h-full is a
+		   plain block, so `flex: 1` here is ignored — an explicit height is what
+		   pins the column to the viewport so only the chat thread scrolls (header
+		   + agenda stay fixed at top, ChatInput fixed at bottom). */
+		height: 100%;
 		min-height: 0;
+		overflow: hidden;
 		background: var(--color-bg, #0d0d0d);
 	}
 
@@ -332,6 +489,30 @@
 	.greeting-text {
 		flex: 1;
 		min-width: 0;
+	}
+
+	.notes-toggle {
+		flex-shrink: 0;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 36px;
+		height: 36px;
+		border-radius: 8px;
+		cursor: pointer;
+		color: rgba(255, 255, 255, 0.55);
+		background: rgba(255, 255, 255, 0.03);
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+	}
+	.notes-toggle:hover {
+		color: rgba(255, 255, 255, 0.9);
+		border-color: rgba(255, 255, 255, 0.16);
+	}
+	.notes-toggle.on {
+		color: #e87d6a;
+		background: rgba(232, 125, 106, 0.1);
+		border-color: rgba(232, 125, 106, 0.4);
 	}
 
 	.mini-avatar {
@@ -496,6 +677,7 @@
 		color: rgba(255, 255, 255, 0.45);
 		padding: 4px 6px;
 	}
+
 	.thinking-row .dot {
 		width: 4px;
 		height: 4px;

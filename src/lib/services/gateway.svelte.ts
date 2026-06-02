@@ -23,6 +23,9 @@ import {
   stopSqliteFlush,
   pushChatMessage,
   notifyAgentReplyFinal,
+  feedStreamMessage,
+  finishStreamMessage,
+  cancelStreamText,
   SPARK_BIN_MS,
   SPARK_BIN_COUNT,
 } from '$lib/state/chat/chat.svelte';
@@ -48,6 +51,7 @@ import {
   onRestartReconnected,
 } from '$lib/state/config/config.svelte';
 import { extractText } from '$lib/utils/text';
+import type { ChatMessage } from '$lib/types/chat';
 import { loadAgentGroups } from '$lib/state/features/agent-groups.svelte';
 import {
   GatewayClient,
@@ -686,12 +690,23 @@ function onChatEvent(payload: ChatEvent) {
     return;
   }
 
+  // The run has started producing events — hand the "thinking" indicator off to
+  // the streaming bubble (streamMessage/stream now drive it) so it doesn't flash.
+  chat.sending = false;
+
   if (payload.state === 'delta') {
-    const text = extractText(payload.message);
+    // Each delta carries the FULL partial assistant message so far. Feed it to
+    // the smoother: reasoning + tool blocks show immediately, the answer text is
+    // revealed progressively (the gateway throttles deltas to ~coarse chunks, so
+    // raw rendering "jumps"; the smoother types it out). `chat.stream` is kept as
+    // a plain-text mirror for the voice-call engine.
+    const m = payload.message;
+    const text = extractText(m);
     if (typeof text === 'string') {
       const cur = chat.stream ?? '';
       if (!cur || text.length >= cur.length) chat.stream = text;
     }
+    feedStreamMessage(agentId, m && typeof m === 'object' ? (m as ChatMessage) : null);
     ui.sessionStatus[sk] = 'thinking';
     if (ui.sessionStatusTimers[sk]) clearTimeout(ui.sessionStatusTimers[sk]);
     ui.sessionStatusTimers[sk] = setTimeout(() => {
@@ -699,19 +714,30 @@ function onChatEvent(payload: ChatEvent) {
       delete ui.sessionStatusTimers[sk];
     }, 60000);
   } else if (payload.state === 'final') {
-    chat.stream = null;
+    // Hand the final message to the smoother: it keeps revealing until the full
+    // answer text is shown, THEN commits the message (so the streamed text and
+    // the committed bubble never disagree — no jump, no blink). The history
+    // reconcile + reply-notify run after the commit.
+    const fm = payload.message as { role?: string; content?: unknown } | null;
+    const finalMsg: ChatMessage =
+      fm && fm.role === 'assistant' && (Array.isArray(fm.content) || typeof fm.content === 'string')
+        ? (fm as ChatMessage)
+        : { role: 'assistant', content: [{ type: 'text', text: chat.stream ?? '' }], timestamp: Date.now() };
     chat.runId = null;
-    // Only refresh main chat history — workshop sessions are handled by the bridge.
-    // Notify after the reload lands so listeners (voice-call) see the new reply.
-    if (sk === `agent:${agentId}:main`) {
-      void loadChatHistory(agentId).then(() => notifyAgentReplyFinal(agentId));
-    }
+    finishStreamMessage(agentId, finalMsg, () => {
+      if (sk === `agent:${agentId}:main`) {
+        void loadChatHistory(agentId).then(() => notifyAgentReplyFinal(agentId));
+      } else {
+        notifyAgentReplyFinal(agentId);
+      }
+    });
     setSessionIdle(sk);
     if (ui.sessionStatusTimers[sk]) {
       clearTimeout(ui.sessionStatusTimers[sk]);
       delete ui.sessionStatusTimers[sk];
     }
   } else if (payload.state === 'aborted') {
+    cancelStreamText(agentId);
     const msg = payload.message as { role?: string; content?: unknown } | null;
     if (msg?.role === 'assistant' && Array.isArray(msg.content)) {
       pushChatMessage(chat, msg as never);
@@ -723,6 +749,7 @@ function onChatEvent(payload: ChatEvent) {
       } as never);
     }
     chat.stream = null;
+    chat.streamMessage = null;
     chat.runId = null;
     setSessionIdle(sk);
     if (ui.sessionStatusTimers[sk]) {
@@ -730,7 +757,9 @@ function onChatEvent(payload: ChatEvent) {
       delete ui.sessionStatusTimers[sk];
     }
   } else if (payload.state === 'error') {
+    cancelStreamText(agentId);
     chat.stream = null;
+    chat.streamMessage = null;
     chat.runId = null;
     chat.lastError = payload.errorMessage ?? 'chat error';
     setSessionIdle(sk);

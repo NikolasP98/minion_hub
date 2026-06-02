@@ -16,9 +16,11 @@ export const load: PageServerLoad = async ({ locals }) => {
 	if (!locals.user) throw redirect(302, '/login');
 
 	const userName = locals.user.displayName ?? locals.user.email.split('@')[0];
+	// Greeting uses the first name only (e.g. "Nikolas", not "Nikolas Sarria").
+	const firstName = userName.trim().split(/\s+/)[0] || userName;
 
 	return {
 		userName,
-		greeting: `Good to see you, ${userName}.`,
+		greeting: `Good to see you, ${firstName}.`,
 	} satisfies MyAgentIdentity;
 };

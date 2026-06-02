@@ -17,6 +17,10 @@ export function loadChatHistory(agentId: string): Promise<void> {
       const incoming = Array.isArray((res as { messages?: never[] })?.messages)
         ? (res as { messages: never[] }).messages
         : [];
+      // Guard: never let a transient empty history response wipe a populated
+      // thread (would flash it blank on a hiccup). The UI keys rows by content,
+      // so this splice reconciles in place without re-mounting unchanged rows.
+      if (incoming.length === 0 && chat.messages.length > 0) return;
       chat.messages.splice(0, chat.messages.length, ...incoming);
     })
     .catch(() => {})
@@ -40,17 +44,27 @@ export function sendChatMsg(agentId: string) {
   } as never);
   chat.inputText = '';
   chat.sending = true;
+  chat.streamMessage = null;
   chat.runId = runId;
   chat.stream = '';
   chat.lastError = null;
 
+  // Keep `sending` (the "thinking" indicator) up until the run actually starts
+  // streaming — the chat.send RPC resolving only means the gateway ACCEPTED the
+  // message, not that the agent has produced output. onChatEvent clears `sending`
+  // on the first event for this run, so the indicator hands off smoothly to the
+  // streaming bubble instead of flashing out for the gap before the first token.
+  // Safety net: if no event ever arrives, drop the indicator after 2 minutes.
+  const guard = setTimeout(() => {
+    if (chat.runId === runId) chat.sending = false;
+  }, 120_000);
+
   sendRequest('chat.send', { sessionKey, message: msg, deliver: false, idempotencyKey: runId })
-    .then(() => {
-      chat.sending = false;
-    })
     .catch((e) => {
+      clearTimeout(guard);
       chat.runId = null;
       chat.stream = null;
+      chat.streamMessage = null;
       chat.sending = false;
       chat.lastError = String(e);
       // Sync in case the message was processed despite the error

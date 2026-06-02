@@ -166,6 +166,8 @@ export function ensureAgentChat(agentId: string): AgentChatState {
     agentChat[agentId] = {
       messages: [],
       stream: null,
+      streamMessage: null,
+      streamDisplay: '',
       runId: null,
       sending: false,
       loading: false,
@@ -174,6 +176,144 @@ export function ensureAgentChat(agentId: string): AgentChatState {
     };
   }
   return agentChat[agentId];
+}
+
+// ─── Streaming text smoother (typewriter reveal) ───────────────────────────
+// The gateway sends coarse, throttled deltas. To make streaming feel smooth
+// regardless of provider chunking, we reveal the answer text progressively with
+// an ease-out rate via requestAnimationFrame. `streamMessage` (reasoning + tool
+// blocks) shows immediately; only the answer TEXT is smoothed. On `final` we
+// keep revealing until the buffer is fully shown, THEN commit the message — so
+// the streamed text and the committed message never disagree (no jump).
+
+interface Smoother {
+  target: string;
+  shown: number;
+  timer: ReturnType<typeof setTimeout> | null;
+  pendingFinal: { msg: ChatMessage; onDone: () => void } | null;
+}
+const smoothers = new Map<string, Smoother>();
+
+// ~60fps reveal. setTimeout (not requestAnimationFrame) on purpose: rAF is
+// fully PAUSED in background/unfocused tabs, which would freeze the reveal AND
+// stall the final commit until the tab regains focus. setTimeout only throttles
+// in the background, so the stream still progresses and always commits.
+const SMOOTH_INTERVAL_MS = 16;
+
+/** Concatenated answer text (text blocks only) of an assistant message. */
+function answerText(msg: ChatMessage | null | undefined): string {
+  if (!msg) return '';
+  const c = msg.content;
+  if (typeof c === 'string') return c;
+  if (!Array.isArray(c)) return '';
+  let out = '';
+  for (const b of c) {
+    const bb = b as { type?: string; text?: string };
+    if (bb?.type === 'text' && typeof bb.text === 'string') out += bb.text;
+  }
+  return out;
+}
+
+function timersAvailable(): boolean {
+  return typeof window !== 'undefined';
+}
+
+/** Finalise a run that has fully revealed: commit the message and clear stream. */
+function commitPending(agentId: string, chat: AgentChatState, s: Smoother): void {
+  const pending = s.pendingFinal;
+  if (!pending) return;
+  pushChatMessage(chat, pending.msg as never);
+  chat.streamDisplay = '';
+  chat.streamMessage = null;
+  chat.stream = null;
+  smoothers.delete(agentId);
+  pending.onDone();
+}
+
+function stepSmoother(agentId: string): void {
+  const chat = agentChat[agentId];
+  const s = smoothers.get(agentId);
+  if (!chat || !s) return;
+  s.timer = null;
+  if (s.shown < s.target.length) {
+    const remaining = s.target.length - s.shown;
+    // Ease-out: bigger jumps reveal faster, but a min so short text still moves.
+    s.shown = Math.min(s.target.length, s.shown + Math.max(2, Math.ceil(remaining * 0.08)));
+    chat.streamDisplay = s.target.slice(0, s.shown);
+  }
+  if (s.shown >= s.target.length) {
+    if (s.pendingFinal) {
+      commitPending(agentId, chat, s);
+      return;
+    }
+    // Caught up to the current buffer — pause; a later feed will resume.
+    return;
+  }
+  s.timer = setTimeout(() => stepSmoother(agentId), SMOOTH_INTERVAL_MS);
+}
+
+function ensureRunning(agentId: string): void {
+  const s = smoothers.get(agentId);
+  if (!s || s.timer != null) return;
+  if (!timersAvailable()) {
+    // No DOM (SSR/tests): jump straight to the end so nothing is lost.
+    const chat = agentChat[agentId];
+    if (!chat) return;
+    s.shown = s.target.length;
+    chat.streamDisplay = s.target;
+    if (s.pendingFinal) commitPending(agentId, chat, s);
+    return;
+  }
+  s.timer = setTimeout(() => stepSmoother(agentId), SMOOTH_INTERVAL_MS);
+}
+
+/** Feed a streaming delta: show its meta blocks now, smooth-reveal its text. */
+export function feedStreamMessage(agentId: string, message: ChatMessage | null): void {
+  const chat = ensureAgentChat(agentId);
+  chat.streamMessage = message;
+  const text = answerText(message);
+  let s = smoothers.get(agentId);
+  if (!s) {
+    s = { target: '', shown: 0, timer: null, pendingFinal: null };
+    smoothers.set(agentId, s);
+  }
+  // New run or a shorter buffer (rare) → restart the reveal.
+  if (text.length < s.shown) {
+    s.shown = 0;
+    chat.streamDisplay = '';
+  }
+  s.target = text;
+  ensureRunning(agentId);
+}
+
+/** Finish a run: keep revealing to the end of `finalMsg`, then commit it. */
+export function finishStreamMessage(
+  agentId: string,
+  finalMsg: ChatMessage,
+  onDone: () => void,
+): void {
+  const chat = ensureAgentChat(agentId);
+  let s = smoothers.get(agentId);
+  const finalText = answerText(finalMsg);
+  if (!s) {
+    s = { target: '', shown: 0, timer: null, pendingFinal: null };
+    smoothers.set(agentId, s);
+  }
+  // Show the final message's meta (reasoning/tools) during the reveal.
+  chat.streamMessage = finalMsg;
+  if (finalText.length < s.shown) s.shown = 0;
+  s.target = finalText;
+  s.pendingFinal = { msg: finalMsg, onDone };
+  ensureRunning(agentId);
+}
+
+/** Abort/error: stop the smoother and clear the display. */
+export function cancelStreamText(agentId: string): void {
+  const s = smoothers.get(agentId);
+  if (s?.timer != null) clearTimeout(s.timer);
+  smoothers.delete(agentId);
+  const chat = agentChat[agentId];
+  if (chat) chat.streamDisplay = '';
 }
 
 export function ensureAgentActivity(agentId: string): AgentActivityState {
