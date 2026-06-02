@@ -1,5 +1,6 @@
 import { eq, and } from 'drizzle-orm';
 import { userIdentities } from '../db/schema/user-identities';
+import { user } from '../db/schema/auth';
 import { newId, nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
 
@@ -52,6 +53,68 @@ export async function getChannelIdentitiesForUser(
     .select(channelProjection)
     .from(userIdentities)
     .where(and(eq(userIdentities.userId, userId), eq(userIdentities.kind, 'channel')));
+}
+
+/** A channel identity enriched with the owning hub user's name (for pickers). */
+export interface ChannelIdentityPick {
+  id: string;
+  channel: string;
+  channelUserId: string;
+  displayName: string | null;
+  userName: string | null;
+  verifiedAt: number | null;
+}
+
+/**
+ * List channel identities joined with the owning hub user's name — for the flow
+ * editor's "Registered" destination picker, which shows WHO (the person), not
+ * the raw channel id. Label preference downstream: channel displayName → user
+ * name → channelUserId.
+ */
+export async function listChannelIdentitiesForPicker(
+  ctx: TenantContext,
+): Promise<ChannelIdentityPick[]> {
+  const rows = await ctx.db
+    .select({
+      id: userIdentities.id,
+      userId: userIdentities.userId,
+      channel: userIdentities.provider,
+      channelUserId: userIdentities.externalId,
+      displayName: userIdentities.displayName,
+      userName: user.name,
+      verifiedAt: userIdentities.verifiedAt,
+    })
+    .from(userIdentities)
+    .leftJoin(user, eq(userIdentities.userId, user.id))
+    .where(eq(userIdentities.kind, 'channel'));
+
+  // Fallback name source: in Supabase-primary setups the Better Auth `user`
+  // table is empty, but a user's OAuth identity usually carries their name or
+  // email in display_name. Resolve a best-effort name per user from any
+  // identity so the picker shows a person, not a raw channel id.
+  const all = await ctx.db
+    .select({
+      userId: userIdentities.userId,
+      kind: userIdentities.kind,
+      displayName: userIdentities.displayName,
+    })
+    .from(userIdentities);
+  const nameByUser = new Map<string, string>();
+  for (const n of all) {
+    const dn = n.displayName?.trim();
+    if (!dn) continue;
+    // Prefer a non-channel (e.g. oauth) name; don't let a channel row clobber it.
+    if (!nameByUser.has(n.userId) || n.kind !== 'channel') nameByUser.set(n.userId, dn);
+  }
+
+  return rows.map((r) => ({
+    id: r.id,
+    channel: r.channel,
+    channelUserId: r.channelUserId,
+    displayName: r.displayName,
+    userName: r.userName ?? nameByUser.get(r.userId) ?? null,
+    verifiedAt: r.verifiedAt,
+  }));
 }
 
 /**

@@ -1,6 +1,6 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { listChannelIdentities } from '$server/services/channel-identity.service';
+import { listChannelIdentitiesForPicker } from '$server/services/channel-identity.service';
 import { getTenantCtx } from '$server/auth/tenant-ctx';
 
 /**
@@ -18,14 +18,13 @@ export const GET: RequestHandler = async ({ locals }) => {
   if (!ctx) throw error(401, 'Authentication required');
 
   try {
-    const rows = await listChannelIdentities(ctx);
-    // Slim projection for the picker; only verified-or-not channel links.
+    const rows = await listChannelIdentitiesForPicker(ctx);
+    // Label preference: channel display name → hub user's name → raw channel id.
     const identities = rows.map((r) => ({
       id: r.id,
       channel: r.channel,
       to: r.channelUserId,
-      displayName: r.displayName,
-      userId: r.userId,
+      displayName: r.displayName?.trim() || r.userName?.trim() || null,
       verified: r.verifiedAt != null,
     }));
     return json({ identities });
