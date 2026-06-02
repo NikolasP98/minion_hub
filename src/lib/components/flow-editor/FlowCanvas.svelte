@@ -38,7 +38,6 @@
     openNodeConfig,
     closeNodeConfig,
     defaultConfigForFields,
-    classifyRouterData,
     type FlowNodeConfigField,
     type FlowNode,
     type FlowEdge,
@@ -114,7 +113,7 @@
 
     let payload: {
       type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'pluginTrigger' | 'pluginAction' | 'transform' | 'structured' | 'router' | 'toolAgent' | 'channel';
-      agentId?: string; label?: string; preset?: 'classify';
+      agentId?: string; label?: string;
       descriptor?: { pluginId: string; id: string; kind: 'trigger' | 'action'; label: string; event?: string; method?: string; channelId?: string; config?: FlowNodeConfigField[] };
     };
     try { payload = JSON.parse(raw); } catch { return; }
@@ -198,9 +197,7 @@
     } else if (payload.type === 'router') {
       const node: FlowNode = {
         id: makeId(), type: 'router', position,
-        data: payload.preset === 'classify'
-          ? classifyRouterData()
-          : { mode: 'rule', branches: [{ id: `b-${makeId()}`, label: 'Branch 1', rule: { op: 'contains', value: '' } }], label: 'Router' } satisfies RouterNodeData,
+        data: { mode: 'rule', branches: [{ id: `b-${makeId()}`, label: 'Branch 1', rule: { op: 'contains', value: '' } }], label: 'Router' } satisfies RouterNodeData,
       };
       setNodes([...flowEditorState.nodes, node]);
     } else if (payload.type === 'toolAgent') {

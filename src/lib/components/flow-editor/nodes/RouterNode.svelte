@@ -2,9 +2,9 @@
   import { Handle, Position, useUpdateNodeInternals } from '@xyflow/svelte';
   import type { NodeProps } from '@xyflow/svelte';
   import type { RouterNodeData, RouterBranch, RouterRuleOp } from '$lib/state/features/flow-editor.svelte';
-  import { flowEditorState, setNodes, openNodeContextMenu } from '$lib/state/features/flow-editor.svelte';
+  import { flowEditorState, setNodes, openNodeContextMenu, classifyRouterData } from '$lib/state/features/flow-editor.svelte';
   import { sendRequest } from '$lib/services/gateway.svelte';
-  import { Split, Plus, X } from 'lucide-svelte';
+  import { Split, Plus, X, ScanSearch } from 'lucide-svelte';
   import { onMount, tick } from 'svelte';
 
   let { data, id }: NodeProps & { data: RouterNodeData } = $props();
@@ -51,6 +51,18 @@
   }
   function removeBranch(branchId: string) {
     setBranches(data.branches.filter((b) => b.id !== branchId));
+  }
+  // A fresh node (no meaningful branches yet) can one-click load the severity
+  // rubric — the classic Classify preset, without a separate palette node.
+  const isFresh = $derived(
+    data.branches.length <= 1 &&
+    !data.branches[0]?.description?.trim() &&
+    !data.branches[0]?.rule?.value?.trim(),
+  );
+  async function loadSeverityPreset() {
+    const preset = classifyRouterData();
+    patch({ mode: data.mode === 'hybrid' ? 'hybrid' : 'llm', modelId: data.modelId || preset.modelId });
+    await setBranches(preset.branches);
   }
   function updateBranch(branchId: string, partial: Partial<RouterBranch>) {
     patch({ branches: data.branches.map((b) => (b.id === branchId ? { ...b, ...partial } : b)) });
@@ -159,9 +171,20 @@
     {/each}
   </div>
 
-  <button class="mt-1.5 flex items-center gap-1 text-[10px] text-amber-400/80 hover:text-amber-300" onclick={(e) => { e.stopPropagation(); addBranch(); }}>
-    <Plus size={11} /> Add branch
-  </button>
+  <div class="mt-1.5 flex items-center gap-2.5">
+    <button class="flex items-center gap-1 text-[10px] text-amber-400/80 hover:text-amber-300" onclick={(e) => { e.stopPropagation(); addBranch(); }}>
+      <Plus size={11} /> Add branch
+    </button>
+    {#if isFresh}
+      <button
+        class="flex items-center gap-1 text-[10px] text-rose-300/80 hover:text-rose-200"
+        onclick={(e) => { e.stopPropagation(); loadSeverityPreset(); }}
+        title="Load the none / low / med / high severity rubric (Classify)"
+      >
+        <ScanSearch size={11} /> Severity preset
+      </button>
+    {/if}
+  </div>
 
   <div class="relative mt-2 pt-1.5 border-t border-border/50 text-[10px] text-muted">
     default
