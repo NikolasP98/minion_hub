@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { flowEditorState, setNodes, setPluginNodeDescriptors, defaultConfigForFields } from '$lib/state/features/flow-editor.svelte';
+  import { flowEditorState, setNodes, setPluginNodeDescriptors, defaultConfigForFields, classifyRouterData } from '$lib/state/features/flow-editor.svelte';
   import type { FlowNode, AgentNodeData, PromptBoxData, LLMNodeData, TriggerNodeData, TransformNodeData, StructuredNodeData, RouterNodeData, ToolAgentNodeData, ChannelNodeData, FlowNodeConfigField } from '$lib/state/features/flow-editor.svelte';
   import { loadBuiltAgents } from '$lib/state/builder';
   import { conn } from '$lib/state/gateway';
-  import { Bot, Type, ChevronLeft, ChevronRight, Cpu, Zap, Braces, Split, Wrench, Send, Puzzle } from 'lucide-svelte';
+  import { Bot, Type, ChevronLeft, ChevronRight, Cpu, Zap, Braces, Split, Wrench, Send, Puzzle, ScanSearch } from 'lucide-svelte';
   import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
   import { sendRequest } from '$lib/services/gateway.svelte';
@@ -173,6 +173,14 @@
     setNodes([...flowEditorState.nodes, node]);
   }
 
+  function addClassifyPreset() {
+    const node: FlowNode = {
+      id: makeId(), type: 'router', position: getDropPosition(),
+      data: classifyRouterData(),
+    };
+    setNodes([...flowEditorState.nodes, node]);
+  }
+
   function addToolAgent() {
     const node: FlowNode = {
       id: makeId(), type: 'toolAgent', position: getDropPosition(),
@@ -192,7 +200,7 @@
   function handleDragStart(
     e: DragEvent,
     payload:
-      | { type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'transform' | 'structured' | 'router' | 'toolAgent' | 'channel'; agentId?: string; label?: string }
+      | { type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'transform' | 'structured' | 'router' | 'toolAgent' | 'channel'; agentId?: string; label?: string; preset?: 'classify' }
       | { type: 'pluginTrigger' | 'pluginAction'; descriptor: FlowNodeDescriptor },
   ) {
     if (!e.dataTransfer) return;
@@ -213,6 +221,8 @@
     bg: string;
     add: () => void;
     dragLabel?: string;
+    /** Preset variant of the node type (e.g. a Classify-configured Router). */
+    preset?: 'classify';
   };
   const CATEGORIES: { title: string; nodes: PaletteNode[] }[] = [
     {
@@ -233,7 +243,8 @@
     {
       title: 'Logic & Data',
       nodes: [
-        { type: 'router', label: 'Router', desc: 'Branch / classify by rule or LLM', icon: Split, color: 'text-amber-400', bg: 'bg-amber-500/20', add: addRouter },
+        { type: 'router', label: 'Router', desc: 'Branch by rule, LLM or hybrid', icon: Split, color: 'text-amber-400', bg: 'bg-amber-500/20', add: addRouter },
+        { type: 'router', label: 'Classify', desc: 'Severity / category by LLM rubric', icon: ScanSearch, color: 'text-rose-300', bg: 'bg-rose-500/20', add: addClassifyPreset, preset: 'classify' },
         { type: 'structured', label: 'Structured', desc: 'Extract JSON', icon: Braces, color: 'text-teal-300', bg: 'bg-teal-500/20', add: addStructured },
         { type: 'transform', label: 'Transform', desc: 'Template text', icon: Braces, color: 'text-slate-300', bg: 'bg-slate-500/20', add: addTransform },
       ],
@@ -245,6 +256,15 @@
       ],
     },
   ];
+
+  /** Drag payload for a built-in palette node (carries label/preset variants). */
+  function nodeDragPayload(node: PaletteNode) {
+    return {
+      type: node.type,
+      ...(node.dragLabel ? { label: node.dragLabel } : {}),
+      ...(node.preset ? { preset: node.preset } : {}),
+    };
+  }
 </script>
 
 <aside
@@ -277,12 +297,12 @@
         {#if ci > 0}
           <div class="w-5 my-0.5 border-t border-border/40"></div>
         {/if}
-        {#each cat.nodes as node (node.type)}
+        {#each cat.nodes as node (node.label)}
           {@const Icon = node.icon}
           <button
             onclick={node.add}
             draggable="true"
-            ondragstart={(e) => handleDragStart(e, node.dragLabel ? { type: node.type, label: node.dragLabel } : { type: node.type })}
+            ondragstart={(e) => handleDragStart(e, nodeDragPayload(node))}
             class="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
             title={node.label}
           >
@@ -299,12 +319,12 @@
             {cat.title}
           </p>
           <div class="flex flex-col gap-0.5">
-            {#each cat.nodes as node (node.type)}
+            {#each cat.nodes as node (node.label)}
               {@const Icon = node.icon}
               <button
                 onclick={node.add}
                 draggable="true"
-                ondragstart={(e) => handleDragStart(e, node.dragLabel ? { type: node.type, label: node.dragLabel } : { type: node.type })}
+                ondragstart={(e) => handleDragStart(e, nodeDragPayload(node))}
                 class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
               >
                 <div class="w-6 h-6 rounded {node.bg} flex items-center justify-center shrink-0">

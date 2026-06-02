@@ -41,12 +41,13 @@
   }
   function addBranch() {
     const base = { id: makeBranchId(), label: `branch-${data.branches.length + 1}` };
-    setBranches([
-      ...data.branches,
+    const branch: RouterBranch =
       data.mode === 'llm'
         ? { ...base, description: '' }
-        : { ...base, rule: { op: 'contains' as RouterRuleOp, value: '' } },
-    ]);
+        : data.mode === 'hybrid'
+          ? { ...base, description: '', rule: { op: 'contains' as RouterRuleOp, value: '' } }
+          : { ...base, rule: { op: 'contains' as RouterRuleOp, value: '' } };
+    setBranches([...data.branches, branch]);
   }
   function removeBranch(branchId: string) {
     setBranches(data.branches.filter((b) => b.id !== branchId));
@@ -80,14 +81,21 @@
     <button
       class="flex-1 text-[9px] font-semibold rounded px-1 py-0.5 transition-colors {data.mode === 'rule' ? 'bg-amber-500/25 text-amber-300 border border-amber-500/40' : 'text-muted/60 border border-transparent'}"
       onclick={(e) => { e.stopPropagation(); patch({ mode: 'rule' }); }}
+      title="Match by text rule (contains / equals / regex)"
     >Rule</button>
     <button
       class="flex-1 text-[9px] font-semibold rounded px-1 py-0.5 transition-colors {data.mode === 'llm' ? 'bg-amber-500/25 text-amber-300 border border-amber-500/40' : 'text-muted/60 border border-transparent'}"
       onclick={(e) => { e.stopPropagation(); patch({ mode: 'llm' }); }}
+      title="Classify by LLM using each branch's rubric"
     >LLM</button>
+    <button
+      class="flex-1 text-[9px] font-semibold rounded px-1 py-0.5 transition-colors {data.mode === 'hybrid' ? 'bg-amber-500/25 text-amber-300 border border-amber-500/40' : 'text-muted/60 border border-transparent'}"
+      onclick={(e) => { e.stopPropagation(); patch({ mode: 'hybrid' }); }}
+      title="Rule fast-path first, then LLM rubric fallback"
+    >Hybrid</button>
   </div>
 
-  {#if data.mode === 'llm'}
+  {#if data.mode === 'llm' || data.mode === 'hybrid'}
     <select
       class="w-full text-[10px] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground mb-2"
       value={data.modelId ?? ''}
@@ -117,7 +125,7 @@
             <X size={11} />
           </button>
         </div>
-        {#if data.mode === 'rule'}
+        {#if data.mode === 'rule' || data.mode === 'hybrid'}
           <div class="flex items-center gap-1 mt-1">
             <select
               class="text-[9px] bg-bg3 border border-border rounded px-0.5 py-0.5 text-foreground"
@@ -130,12 +138,13 @@
             <input
               class="flex-1 text-[10px] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground"
               value={branch.rule?.value ?? ''}
-              placeholder="value"
+              placeholder={data.mode === 'hybrid' ? 'rule (optional fast-path)' : 'value'}
               onclick={(e) => e.stopPropagation()}
               oninput={(e) => updateRule(branch.id, { value: (e.target as HTMLInputElement).value })}
             />
           </div>
-        {:else}
+        {/if}
+        {#if data.mode === 'llm' || data.mode === 'hybrid'}
           <textarea
             class="mt-1 w-full text-[9px] bg-bg3 border border-border rounded px-1 py-0.5 text-muted/90 resize-none leading-snug"
             rows="2"

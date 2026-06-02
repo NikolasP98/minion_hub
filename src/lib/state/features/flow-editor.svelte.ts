@@ -55,11 +55,30 @@ export type RouterBranch = {
 };
 
 export type RouterNodeData = {
-  mode: 'rule' | 'llm';
+  /** 'rule' = text matching; 'llm' = rubric classification; 'hybrid' = rule
+   *  fast-path then LLM rubric fallback (Classify/Route). */
+  mode: 'rule' | 'llm' | 'hybrid';
   modelId?: string;
   branches: RouterBranch[];
   label: string;
 };
+
+/** Router preset for the classic severity-classification use case (LLM rubric).
+ *  Powers the palette's "Classify" entry and keeps it in sync with the
+ *  alert-watcher pipeline's branch rubrics. */
+export function classifyRouterData(): RouterNodeData {
+  return {
+    mode: 'llm',
+    label: 'Classify',
+    modelId: 'claude-haiku-4-5-20251001',
+    branches: [
+      { id: 'none', label: 'none', description: 'Not a complaint: greetings, questions, positive feedback, neutral chit-chat — anything not expressing a problem or dissatisfaction.' },
+      { id: 'low', label: 'low', description: 'Minor issue or mild dissatisfaction: a small inconvenience, a gripe, an easily resolved request. No urgency or risk.' },
+      { id: 'med', label: 'med', description: 'A real problem: a service/product failure or a frustrated, unhappy customer that needs attention but is not an emergency.' },
+      { id: 'high', label: 'high', description: 'Severe or urgent: safety risk, legal threat, billing/payment dispute, major outage, extreme anger, or churn threat — needs immediate human attention.' },
+    ],
+  };
+}
 
 export type ToolRef =
   | { kind: 'builtin'; id: string }
