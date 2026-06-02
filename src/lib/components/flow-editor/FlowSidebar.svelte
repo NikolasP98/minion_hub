@@ -18,13 +18,23 @@
   }
   let pluginNodes = $state<FlowNodeDescriptor[]>([]);
 
+  // A per-channel "message" trigger (kind=trigger, channel-scoped, on the inbound
+  // message event) is now superseded by the built-in Channel Trigger node — hide
+  // it from the palette so the node list stays short. Older gateways that still
+  // ship these descriptors are filtered here until they redeploy.
+  function isRedundantChannelTrigger(n: FlowNodeDescriptor): boolean {
+    return n.kind === 'trigger' && !!n.channelId && n.event === 'message:received';
+  }
+
   const pluginGroups = $derived(
     Object.entries(
-      pluginNodes.reduce<Record<string, FlowNodeDescriptor[]>>((acc, n) => {
-        (acc[n.pluginId] ??= []).push(n);
-        return acc;
-      }, {}),
-    ),
+      pluginNodes
+        .filter((n) => !isRedundantChannelTrigger(n))
+        .reduce<Record<string, FlowNodeDescriptor[]>>((acc, n) => {
+          (acc[n.pluginId] ??= []).push(n);
+          return acc;
+        }, {}),
+    ).filter(([, nodes]) => nodes.length > 0),
   );
 
   onMount(() => {
@@ -119,7 +129,7 @@
       id: makeId(),
       type: 'trigger',
       position: getDropPosition(),
-      data: { event: 'message:received', label: 'Message received', deliverResponse: false } satisfies TriggerNodeData,
+      data: { event: 'message:received', label: 'Channel message', deliverResponse: false, sources: [] } satisfies TriggerNodeData,
     };
     setNodes([...flowEditorState.nodes, node]);
   }
@@ -223,7 +233,7 @@
         draggable="true"
         ondragstart={(e) => handleDragStart(e, { type: 'trigger' })}
         class="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
-        title="Trigger"
+        title="Channel Trigger"
       >
         <Zap size={13} class="text-amber-400" />
       </button>
@@ -323,8 +333,8 @@
             <Zap size={12} class="text-amber-400" />
           </div>
           <div>
-            <div class="text-xs font-medium text-foreground">Trigger</div>
-            <div class="text-[10px] text-muted">Event entry point</div>
+            <div class="text-xs font-medium text-foreground">Channel Trigger</div>
+            <div class="text-[10px] text-muted">Inbound message · one or more channels</div>
           </div>
         </button>
         <button

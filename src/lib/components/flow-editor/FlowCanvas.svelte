@@ -161,7 +161,7 @@
         id: makeId(),
         type: 'trigger',
         position,
-        data: { event: 'message:received', label: 'Message received', deliverResponse: false } satisfies TriggerNodeData,
+        data: { event: 'message:received', label: 'Channel message', deliverResponse: false, sources: [] } satisfies TriggerNodeData,
       };
       setNodes([...flowEditorState.nodes, node]);
     } else if (payload.type === 'pluginTrigger' && payload.descriptor) {

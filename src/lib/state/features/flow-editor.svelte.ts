@@ -91,16 +91,25 @@ export type ChannelNodeData = {
   label: string;
 };
 
+/** One inbound source for a Channel Trigger: a channel + optional linked account.
+ *  Mirrors the output node's destination rows. The trigger's single event applies
+ *  to every source; account narrows to one linked sender account (blank = any). */
+export type ChannelTriggerSource = {
+  channel: string;
+  accountId?: string;
+};
+
 export type TriggerNodeData = {
-  event:
-    | 'message:received'
-    | 'message:sent'
-    | 'agent:bootstrap'
-    | 'memory:node_created'
-    | 'memory:node_updated'
-    | 'memory:node_deleted';
+  /** Channel-scoped events only — non-channel events (memory/agent) don't belong
+   *  on a Channel Trigger. One event per node; add another node for a different one. */
+  event: 'message:received' | 'message:sent';
   label: string;
   deliverResponse: boolean;
+  /** Inbound sources (channel + optional account). Empty = all channels. */
+  sources?: ChannelTriggerSource[];
+  /** @deprecated slice-1 multi-channel shape; read for back-compat, migrated to `sources`. */
+  channels?: string[];
+  /** @deprecated single-channel filter; superseded by `sources`. Read for back-compat. */
   filterChannelId?: string;
   filterAgentId?: string;
 };
@@ -283,6 +292,30 @@ export function openNodeConfig(nodeId: string) {
 
 export function closeNodeConfig() {
   flowEditorState.configNodeId = null;
+}
+
+/** Effective inbound sources for a Channel Trigger, normalising the legacy
+ *  `channels[]` (slice-1) and single `filterChannelId` shapes into `sources`. */
+export function triggerSources(data: TriggerNodeData): ChannelTriggerSource[] {
+  if (Array.isArray(data.sources) && data.sources.length > 0) return data.sources;
+  if (Array.isArray(data.channels) && data.channels.length > 0) {
+    return data.channels.map((channel) => ({ channel }));
+  }
+  if (data.filterChannelId) return [{ channel: data.filterChannelId }];
+  return [];
+}
+
+/** Build the gateway trigger-registration channel filter from a trigger's data. */
+export function triggerChannelFilter(data: TriggerNodeData): {
+  filterChannelIds?: string[];
+  filterChannelAccounts?: { channel: string; accountId?: string }[];
+} {
+  const sources = triggerSources(data);
+  if (sources.length === 0) return {};
+  return {
+    filterChannelIds: [...new Set(sources.map((s) => s.channel))],
+    filterChannelAccounts: sources.map((s) => ({ channel: s.channel, accountId: s.accountId })),
+  };
 }
 
 /** Merge a partial patch into a node's `data` and persist. Used by built-in

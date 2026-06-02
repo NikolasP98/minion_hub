@@ -7,15 +7,21 @@
   } from '$lib/state/features/flow-editor.svelte';
   import { X, Settings2 } from 'lucide-svelte';
   import ChannelNodeConfig from './ChannelNodeConfig.svelte';
+  import TriggerNodeConfig from './TriggerNodeConfig.svelte';
 
   // The node currently being configured + its plugin-declared field defs.
   const node = $derived(flowEditorState.nodes.find((n) => n.id === flowEditorState.configNodeId));
   const isChannel = $derived(node?.type === 'channel');
+  const isTrigger = $derived(node?.type === 'trigger');
   const descriptor = $derived(descriptorForNode(node));
   const fields = $derived(descriptor?.config ?? []);
   const config = $derived(((node?.data as { config?: Record<string, unknown> })?.config ?? {}) as Record<string, unknown>);
-  const nodeLabel = $derived((node?.data as { label?: string })?.label ?? descriptor?.label ?? 'Node');
-  const subtitle = $derived(isChannel ? 'channel · destinations' : `${descriptor?.pluginId} · configure`);
+  const nodeLabel = $derived(
+    isTrigger ? 'Channel Trigger' : ((node?.data as { label?: string })?.label ?? descriptor?.label ?? 'Node'),
+  );
+  const subtitle = $derived(
+    isChannel ? 'channel · destinations' : isTrigger ? 'event · channels' : `${descriptor?.pluginId} · configure`,
+  );
 
   function set(key: string, value: unknown) {
     if (node) updateNodeConfig(node.id, key, value);
@@ -28,9 +34,9 @@
   }
 </script>
 
-{#if node && (isChannel || fields.length > 0)}
+{#if node && (isChannel || isTrigger || fields.length > 0)}
   <div
-    class="absolute top-3 right-3 z-30 {isChannel ? 'w-80' : 'w-72'} max-h-[calc(100%-1.5rem)] overflow-y-auto bg-bg2 border border-border rounded-xl shadow-xl flex flex-col"
+    class="absolute top-3 right-3 z-30 {isChannel || isTrigger ? 'w-80' : 'w-72'} max-h-[calc(100%-1.5rem)] overflow-y-auto bg-bg2 border border-border rounded-xl shadow-xl flex flex-col"
     role="dialog"
     tabindex="-1"
     aria-label="Node configuration"
@@ -55,6 +61,8 @@
 
     {#if isChannel}
       <ChannelNodeConfig nodeId={node.id} />
+    {:else if isTrigger}
+      <TriggerNodeConfig nodeId={node.id} />
     {:else}
     <div class="px-3 py-3 flex flex-col gap-3">
       {#each fields as field (field.key)}

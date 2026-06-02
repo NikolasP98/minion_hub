@@ -11,7 +11,9 @@
     duplicateNode,
     openNodeConfig,
     nodeHasConfig,
+    triggerChannelFilter,
   } from '$lib/state/features/flow-editor.svelte';
+  import type { TriggerNodeData } from '$lib/state/features/flow-editor.svelte';
   import ConsolePanel from '$lib/components/flow-editor/ConsolePanel.svelte';
   import { sendRequest } from '$lib/services/gateway.svelte';
   import { ArrowLeft, GitBranch, Trash2, Copy, Settings2, Puzzle } from 'lucide-svelte';
@@ -39,18 +41,13 @@
         (n) => n.type === 'trigger' || n.type === 'pluginTrigger',
       );
       if (!triggerNode) return;
-      const td = triggerNode.data as {
-        event: string;
-        deliverResponse: boolean;
-        filterChannelId?: string;
-        filterAgentId?: string;
-      };
+      const td = triggerNode.data as TriggerNodeData;
       if (newActive) {
         await sendRequest('flows.trigger.register', {
           flowId: flowEditorState.flowId,
           event: td.event,
           deliverResponse: td.deliverResponse,
-          filterChannelId: td.filterChannelId,
+          ...triggerChannelFilter(td),
           filterAgentId: td.filterAgentId,
         });
       } else {

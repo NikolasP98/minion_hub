@@ -2,7 +2,14 @@
   import { flowEditorState, updateNodeData } from '$lib/state/features/flow-editor.svelte';
   import type { ChannelNodeData, ChannelDestination } from '$lib/state/features/flow-editor.svelte';
   import { conn } from '$lib/state/gateway';
-  import { sendRequest } from '$lib/services/gateway.svelte';
+  import {
+    channelPlugins,
+    ensureChannelPlugins,
+    ensureChannelStatus,
+    ensureRegisteredIdentities,
+    accountsFor,
+    identitiesFor,
+  } from '$lib/state/features/channel-sources.svelte';
   import { Plus, Trash2, User, Pencil } from 'lucide-svelte';
 
   let { nodeId }: { nodeId: string } = $props();
@@ -11,30 +18,18 @@
   const data = $derived((node?.data ?? {}) as ChannelNodeData);
   const destinations = $derived(Array.isArray(data.destinations) ? data.destinations : []);
 
-  // ── Channel list (from the gateway's channel plugins) ───────────────────────
-  type ChannelItem = { id: string; label: string };
-  const FALLBACK_CHANNELS: ChannelItem[] = [
-    { id: 'whatsapp', label: 'WhatsApp' },
-    { id: 'telegram', label: 'Telegram' },
-    { id: 'discord', label: 'Discord' },
-  ];
-  let channels = $state<ChannelItem[]>(FALLBACK_CHANNELS);
+  const channels = $derived(channelPlugins());
+  const accounts = $derived(accountsFor(data.channel));
+  const registered = $derived(identitiesFor(data.channel));
 
   $effect(() => {
     if (!conn.connected) return;
-    void (async () => {
-      try {
-        const res = (await sendRequest('channels.plugins.list', {})) as
-          | { plugins?: { channelType?: string; pluginId?: string; label?: string }[] }
-          | null;
-        const items = (res?.plugins ?? [])
-          .map((p) => ({ id: p.channelType ?? p.pluginId ?? '', label: p.label ?? p.channelType ?? p.pluginId ?? '' }))
-          .filter((c) => c.id);
-        if (items.length > 0) channels = items;
-      } catch {
-        // keep fallback list
-      }
-    })();
+    void ensureChannelPlugins();
+    void ensureChannelStatus();
+  });
+  // Registered identities come from the hub DB (not the gateway) — load once.
+  $effect(() => {
+    void ensureRegisteredIdentities();
   });
 
   // ── Per-channel address hints (Custom mode) ─────────────────────────────────
@@ -45,45 +40,20 @@
   };
   const hint = $derived(HINTS[data.channel] ?? { placeholder: 'destination id', hint: 'Channel-specific address' });
 
-  // ── Registered directory (the "by user" picker source) ──────────────────────
-  type DirEntry = { id: string; name?: string; handle?: string; kind?: string };
-  let dirEntries = $state<DirEntry[]>([]);
-  let dirStatus = $state<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
-  let dirForChannel = $state<string>('');
-
-  // (Re)load the registered directory whenever the channel changes and at least
-  // one destination is in "user" mode. Degrades gracefully: an older gateway
-  // without `channels.directory.list` just leaves the picker empty + a note.
-  $effect(() => {
-    const needsDir = destinations.some((d) => d.kind === 'user');
-    if (!conn.connected || !data.channel || !needsDir) return;
-    if (dirForChannel === data.channel && dirStatus !== 'idle') return;
-    dirForChannel = data.channel;
-    dirStatus = 'loading';
-    void (async () => {
-      try {
-        const res = (await sendRequest('channels.directory.list', { channel: data.channel, limit: 200 })) as
-          | { entries?: DirEntry[] }
-          | null;
-        dirEntries = res?.entries ?? [];
-        dirStatus = 'ready';
-      } catch {
-        dirEntries = [];
-        dirStatus = 'unavailable';
-      }
-    })();
-  });
-
   // ── Mutations ───────────────────────────────────────────────────────────────
   function setChannel(channel: string) {
-    updateNodeData(nodeId, { channel });
+    // Reset account + registered destinations: they're channel-specific.
+    updateNodeData(nodeId, {
+      channel,
+      accountId: undefined,
+      destinations: destinations.map((d) => (d.kind === 'user' ? { ...d, to: '', label: undefined } : d)),
+    });
   }
   function setAccount(accountId: string) {
-    updateNodeData(nodeId, { accountId: accountId.trim() || undefined });
+    updateNodeData(nodeId, { accountId: accountId || undefined });
   }
   function patchDest(i: number, patch: Partial<ChannelDestination>) {
-    const next = destinations.map((d, idx) => (idx === i ? { ...d, ...patch } : d));
-    updateNodeData(nodeId, { destinations: next });
+    updateNodeData(nodeId, { destinations: destinations.map((d, idx) => (idx === i ? { ...d, ...patch } : d)) });
   }
   function addDest() {
     updateNodeData(nodeId, { destinations: [...destinations, { kind: 'custom', to: '' } as ChannelDestination] });
@@ -91,9 +61,9 @@
   function removeDest(i: number) {
     updateNodeData(nodeId, { destinations: destinations.filter((_, idx) => idx !== i) });
   }
-  function pickUser(i: number, value: string) {
-    const entry = dirEntries.find((e) => e.id === value);
-    patchDest(i, { to: value, label: entry?.name ?? entry?.handle ?? value });
+  function pickRegistered(i: number, value: string) {
+    const entry = registered.find((e) => e.to === value);
+    patchDest(i, { to: value, label: entry?.label ?? value });
   }
 </script>
 
@@ -117,17 +87,29 @@
     </select>
   </div>
 
-  <!-- Optional sending account -->
+  <!-- Sending account (linked accounts only — no free text) -->
   <div class="flex flex-col gap-1">
-    <label for="ch-account" class="text-[11px] font-medium text-foreground">Account <span class="text-muted font-normal">(optional)</span></label>
-    <input
+    <label for="ch-account" class="text-[11px] font-medium text-foreground">Sending account</label>
+    <select
       id="ch-account"
-      type="text"
-      class="w-full text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground"
-      placeholder="default account"
+      class="w-full text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground disabled:opacity-50"
       value={data.accountId ?? ''}
-      oninput={(e) => setAccount((e.target as HTMLInputElement).value)}
-    />
+      disabled={!data.channel}
+      onchange={(e) => setAccount((e.target as HTMLSelectElement).value)}
+    >
+      <option value="">Default account</option>
+      {#each accounts as a (a.accountId)}
+        <option value={a.accountId}>{a.label}{a.isDefault ? ' (default)' : ''}{a.connected ? '' : ' — offline'}</option>
+      {/each}
+      {#if data.accountId && !accounts.some((a) => a.accountId === data.accountId)}
+        <option value={data.accountId}>{data.accountId}</option>
+      {/if}
+    </select>
+    {#if data.channel && accounts.length === 0}
+      <p class="text-[10px] text-amber-400/80 leading-snug">
+        No linked account for {data.channel}. Link one in <span class="text-foreground">Settings → Channels</span> — the gateway can't send without it.
+      </p>
+    {/if}
   </div>
 
   <!-- Destinations -->
@@ -158,7 +140,7 @@
             <button
               class="flex items-center gap-1 px-2 py-0.5 text-[10px] {d.kind === 'user' ? 'bg-cyan-500/25 text-cyan-200' : 'text-muted hover:text-foreground'}"
               onclick={() => patchDest(i, { kind: 'user', to: '' })}
-              title="Pick a user registered with this channel"
+              title="Pick a user who linked this channel to their account"
             >
               <User size={10} /> Registered
             </button>
@@ -181,21 +163,19 @@
         </div>
 
         {#if d.kind === 'user'}
-          {#if dirStatus === 'loading'}
-            <p class="text-[10px] text-muted">Loading contacts…</p>
-          {:else if dirStatus === 'unavailable' || dirEntries.length === 0}
+          {#if registered.length === 0}
             <p class="text-[10px] text-amber-400/80 leading-snug">
-              No registered contacts available for {data.channel}. Switch to <span class="text-foreground">Custom</span> to enter an address.
+              No one has linked their {data.channel || 'channel'} account yet. Switch to <span class="text-foreground">Custom</span>, or link an account in Settings.
             </p>
           {:else}
             <select
               class="w-full text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground"
               value={d.to}
-              onchange={(e) => pickUser(i, (e.target as HTMLSelectElement).value)}
+              onchange={(e) => pickRegistered(i, (e.target as HTMLSelectElement).value)}
             >
-              <option value="" disabled>Select a contact…</option>
-              {#each dirEntries as e (e.id)}
-                <option value={e.id}>{e.name ?? e.handle ?? e.id}{e.kind && e.kind !== 'user' ? ` (${e.kind})` : ''}</option>
+              <option value="" disabled>Select a registered user…</option>
+              {#each registered as e (e.id)}
+                <option value={e.to}>{e.label}{e.verified ? '' : ' (unverified)'}</option>
               {/each}
             </select>
           {/if}

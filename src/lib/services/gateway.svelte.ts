@@ -854,14 +854,25 @@ function onHelloOk(hello: HelloOk) {
           const td = triggerNode.data as {
             event: string;
             deliverResponse: boolean;
+            sources?: { channel: string; accountId?: string }[];
+            channels?: string[];
             filterChannelId?: string;
             filterAgentId?: string;
           };
+          const srcs =
+            td.sources && td.sources.length > 0
+              ? td.sources
+              : td.channels && td.channels.length > 0
+                ? td.channels.map((channel) => ({ channel }))
+                : td.filterChannelId
+                  ? [{ channel: td.filterChannelId }]
+                  : [];
           await sendRequest('flows.trigger.register', {
             flowId: flow.id,
             event: td.event,
             deliverResponse: td.deliverResponse,
-            filterChannelId: td.filterChannelId,
+            filterChannelIds: srcs.length ? [...new Set(srcs.map((s) => s.channel))] : undefined,
+            filterChannelAccounts: srcs.length ? srcs : undefined,
             filterAgentId: td.filterAgentId,
           }).catch(() => {
             /* gateway may lack the method — non-fatal */
