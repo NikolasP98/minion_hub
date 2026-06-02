@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { flowEditorState, setNodes, setPluginNodeDescriptors, defaultConfigForFields } from '$lib/state/features/flow-editor.svelte';
+  import { flowEditorState, setNodes, setPluginNodeDescriptors, setNodePresets, defaultConfigForFields } from '$lib/state/features/flow-editor.svelte';
+  import type { FlowNodePreset } from '$lib/state/features/flow-editor.svelte';
   import type { FlowNode, AgentNodeData, PromptBoxData, LLMNodeData, TriggerNodeData, TransformNodeData, StructuredNodeData, RouterNodeData, ToolAgentNodeData, ChannelNodeData, FlowNodeConfigField } from '$lib/state/features/flow-editor.svelte';
   import { loadBuiltAgents } from '$lib/state/builder';
   import { conn } from '$lib/state/gateway';
@@ -61,12 +62,16 @@
     if (!conn.connected || descriptorsLoaded) return;
     void (async () => {
       try {
-        const res = (await sendRequest('flows.nodes.list', {})) as { nodes?: FlowNodeDescriptor[] } | null;
+        const res = (await sendRequest('flows.nodes.list', {})) as
+          | { nodes?: FlowNodeDescriptor[]; presets?: FlowNodePreset[] }
+          | null;
         if (res?.nodes) {
           pluginNodes = res.nodes;
           // Share descriptors with the editor so NodeConfigPanel can resolve
           // each plugin node's declared config fields.
           setPluginNodeDescriptors(res.nodes);
+          // Plugin-contributed presets for built-in nodes (e.g. Router severity).
+          setNodePresets(res.presets ?? []);
           descriptorsLoaded = true;
         }
       } catch {

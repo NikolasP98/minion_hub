@@ -1,10 +1,10 @@
 <script lang="ts">
   import { Handle, Position, useUpdateNodeInternals } from '@xyflow/svelte';
   import type { NodeProps } from '@xyflow/svelte';
-  import type { RouterNodeData, RouterBranch, RouterRuleOp } from '$lib/state/features/flow-editor.svelte';
-  import { flowEditorState, setNodes, openNodeContextMenu, classifyRouterData } from '$lib/state/features/flow-editor.svelte';
+  import type { RouterNodeData, RouterBranch, RouterRuleOp, FlowNodePreset } from '$lib/state/features/flow-editor.svelte';
+  import { flowEditorState, setNodes, openNodeContextMenu, presetsForNodeType } from '$lib/state/features/flow-editor.svelte';
   import { sendRequest } from '$lib/services/gateway.svelte';
-  import { Split, Plus, X, ScanSearch } from 'lucide-svelte';
+  import { Split, Plus, X, Sparkles } from 'lucide-svelte';
   import { onMount, tick } from 'svelte';
 
   let { data, id }: NodeProps & { data: RouterNodeData } = $props();
@@ -52,17 +52,21 @@
   function removeBranch(branchId: string) {
     setBranches(data.branches.filter((b) => b.id !== branchId));
   }
-  // A fresh node (no meaningful branches yet) can one-click load the severity
-  // rubric — the classic Classify preset, without a separate palette node.
+  // A fresh node (no meaningful branches yet) can one-click apply a plugin
+  // preset. Presets are CONTRIBUTED by plugins (e.g. alert-watcher's severity
+  // rubric) — not built in — so they vanish when the plugin isn't present.
   const isFresh = $derived(
     data.branches.length <= 1 &&
     !data.branches[0]?.description?.trim() &&
     !data.branches[0]?.rule?.value?.trim(),
   );
-  async function loadSeverityPreset() {
-    const preset = classifyRouterData();
-    patch({ mode: data.mode === 'hybrid' ? 'hybrid' : 'llm', modelId: data.modelId || preset.modelId });
-    await setBranches(preset.branches);
+  const routerPresets = $derived(presetsForNodeType('router'));
+
+  async function applyPreset(preset: FlowNodePreset) {
+    const d = preset.data as Partial<RouterNodeData>;
+    const { branches, ...rest } = d;
+    patch(rest);
+    if (Array.isArray(branches)) await setBranches(branches as RouterBranch[]);
   }
   function updateBranch(branchId: string, partial: Partial<RouterBranch>) {
     patch({ branches: data.branches.map((b) => (b.id === branchId ? { ...b, ...partial } : b)) });
@@ -176,13 +180,15 @@
       <Plus size={11} /> Add branch
     </button>
     {#if isFresh}
-      <button
-        class="flex items-center gap-1 text-[10px] text-rose-300/80 hover:text-rose-200"
-        onclick={(e) => { e.stopPropagation(); loadSeverityPreset(); }}
-        title="Load the none / low / med / high severity rubric (Classify)"
-      >
-        <ScanSearch size={11} /> Severity preset
-      </button>
+      {#each routerPresets as p (p.pluginId + ':' + p.id)}
+        <button
+          class="flex items-center gap-1 text-[10px] text-rose-300/80 hover:text-rose-200"
+          onclick={(e) => { e.stopPropagation(); applyPreset(p); }}
+          title={p.description ?? p.label}
+        >
+          <Sparkles size={11} /> {p.label}
+        </button>
+      {/each}
     {/if}
   </div>
 

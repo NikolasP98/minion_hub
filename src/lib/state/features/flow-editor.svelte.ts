@@ -63,22 +63,21 @@ export type RouterNodeData = {
   label: string;
 };
 
-/** Router preset for the classic severity-classification use case (LLM rubric).
- *  Powers the palette's "Classify" entry and keeps it in sync with the
- *  alert-watcher pipeline's branch rubrics. */
-export function classifyRouterData(): RouterNodeData {
-  return {
-    mode: 'llm',
-    label: 'Classify',
-    modelId: 'claude-haiku-4-5-20251001',
-    branches: [
-      { id: 'none', label: 'none', description: 'Not a complaint: greetings, questions, positive feedback, neutral chit-chat — anything not expressing a problem or dissatisfaction.' },
-      { id: 'low', label: 'low', description: 'Minor issue or mild dissatisfaction: a small inconvenience, a gripe, an easily resolved request. No urgency or risk.' },
-      { id: 'med', label: 'med', description: 'A real problem: a service/product failure or a frustrated, unhappy customer that needs attention but is not an emergency.' },
-      { id: 'high', label: 'high', description: 'Severe or urgent: safety risk, legal threat, billing/payment dispute, major outage, extreme anger, or churn threat — needs immediate human attention.' },
-    ],
-  };
-}
+/** A plugin-contributed preset for a built-in node (from `flows.nodes.list`).
+ *  Lets a plugin inject one-click starter config into a native node — e.g.
+ *  alert-watcher's "Severity" rubric on the Router. Surfaced only while the
+ *  contributing plugin is enabled. */
+export type FlowNodePreset = {
+  pluginId: string;
+  id: string;
+  /** Built-in node type this preset targets (e.g. 'router'). */
+  target: string;
+  label: string;
+  description?: string;
+  icon?: string;
+  /** Partial node `data` merged into the target node when applied. */
+  data: Record<string, unknown>;
+};
 
 export type ToolRef =
   | { kind: 'builtin'; id: string }
@@ -272,6 +271,8 @@ export const flowEditorState = $state({
   /** Plugin node descriptors (from flows.nodes.list) — carry the config field
    *  defs the config panel renders. */
   pluginNodeDescriptors: [] as FlowNodeDescriptor[],
+  /** Plugin-contributed presets for built-in nodes (from flows.nodes.list). */
+  nodePresets: [] as FlowNodePreset[],
   /** Node currently open in the config panel (null = closed). */
   configNodeId: null as string | null,
 });
@@ -280,6 +281,15 @@ export const flowEditorState = $state({
 
 export function setPluginNodeDescriptors(descriptors: FlowNodeDescriptor[]) {
   flowEditorState.pluginNodeDescriptors = descriptors;
+}
+
+export function setNodePresets(presets: FlowNodePreset[]) {
+  flowEditorState.nodePresets = presets;
+}
+
+/** Plugin presets targeting a given built-in node type (e.g. 'router'). */
+export function presetsForNodeType(type: string): FlowNodePreset[] {
+  return flowEditorState.nodePresets.filter((p) => p.target === type);
 }
 
 /** Resolve the descriptor (with config field defs) for a plugin node. */
