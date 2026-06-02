@@ -1,9 +1,9 @@
 <script lang="ts">
   import { flowEditorState, setNodes, setPluginNodeDescriptors, defaultConfigForFields } from '$lib/state/features/flow-editor.svelte';
-  import type { FlowNode, AgentNodeData, PromptBoxData, LLMNodeData, TriggerNodeData, TransformNodeData, StructuredNodeData, RouterNodeData, ToolAgentNodeData, FlowNodeConfigField } from '$lib/state/features/flow-editor.svelte';
+  import type { FlowNode, AgentNodeData, PromptBoxData, LLMNodeData, TriggerNodeData, TransformNodeData, StructuredNodeData, RouterNodeData, ToolAgentNodeData, ChannelNodeData, FlowNodeConfigField } from '$lib/state/features/flow-editor.svelte';
   import { loadBuiltAgents } from '$lib/state/builder';
   import { conn } from '$lib/state/gateway';
-  import { Bot, Type, ChevronLeft, ChevronRight, Cpu, Zap, Braces, Split, Wrench } from 'lucide-svelte';
+  import { Bot, Type, ChevronLeft, ChevronRight, Cpu, Zap, Braces, Split, Wrench, Send } from 'lucide-svelte';
   import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
   import { sendRequest } from '$lib/services/gateway.svelte';
@@ -171,10 +171,18 @@
     setNodes([...flowEditorState.nodes, node]);
   }
 
+  function addChannelNode() {
+    const node: FlowNode = {
+      id: makeId(), type: 'channel', position: getDropPosition(),
+      data: { channel: '', destinations: [], label: 'Channel' } satisfies ChannelNodeData,
+    };
+    setNodes([...flowEditorState.nodes, node]);
+  }
+
   function handleDragStart(
     e: DragEvent,
     payload:
-      | { type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'transform' | 'structured' | 'router' | 'toolAgent'; agentId?: string; label?: string }
+      | { type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'transform' | 'structured' | 'router' | 'toolAgent' | 'channel'; agentId?: string; label?: string }
       | { type: 'pluginTrigger' | 'pluginAction'; descriptor: FlowNodeDescriptor },
   ) {
     if (!e.dataTransfer) return;
@@ -287,6 +295,15 @@
         title="Tool Agent"
       >
         <Wrench size={13} class="text-emerald-400" />
+      </button>
+      <button
+        onclick={addChannelNode}
+        draggable="true"
+        ondragstart={(e) => handleDragStart(e, { type: 'channel' })}
+        class="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
+        title="Channel"
+      >
+        <Send size={13} class="text-cyan-400" />
       </button>
     </div>
   {:else}
@@ -406,6 +423,27 @@
           <div>
             <div class="text-xs font-medium text-foreground">Tool Agent</div>
             <div class="text-[10px] text-muted">LLM with tool calls</div>
+          </div>
+        </button>
+      </div>
+
+      <!-- Outputs section -->
+      <div>
+        <p class="text-[9px] font-semibold text-muted/50 uppercase tracking-widest px-1 mb-1.5">
+          Outputs
+        </p>
+        <button
+          onclick={addChannelNode}
+          draggable="true"
+          ondragstart={(e) => handleDragStart(e, { type: 'channel' })}
+          class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-bg3 transition-colors border border-transparent hover:border-border/60"
+        >
+          <div class="w-6 h-6 rounded bg-cyan-500/20 flex items-center justify-center shrink-0">
+            <Send size={12} class="text-cyan-400" />
+          </div>
+          <div>
+            <div class="text-xs font-medium text-foreground">Channel</div>
+            <div class="text-[10px] text-muted">Send to WhatsApp / Telegram / …</div>
           </div>
         </button>
       </div>

@@ -21,6 +21,7 @@
   import StructuredNode from './nodes/StructuredNode.svelte';
   import RouterNode from './nodes/RouterNode.svelte';
   import ToolAgentNode from './nodes/ToolAgentNode.svelte';
+  import ChannelNode from './nodes/ChannelNode.svelte';
   import NodeConfigPanel from './nodes/NodeConfigPanel.svelte';
   import FlowActionIsland from './FlowActionIsland.svelte';
   import FlowHistoryPanel from './FlowHistoryPanel.svelte';
@@ -50,6 +51,7 @@
     type StructuredNodeData,
     type RouterNodeData,
     type ToolAgentNodeData,
+    type ChannelNodeData,
   } from '$lib/state/features/flow-editor.svelte';
   import { theme } from '$lib/state/ui/theme.svelte';
 
@@ -64,6 +66,7 @@
     structured: StructuredNode,
     router: RouterNode,
     toolAgent: ToolAgentNode,
+    channel: ChannelNode,
   };
 
   const edgeTypes: EdgeTypes = {
@@ -109,7 +112,7 @@
     if (!raw) return;
 
     let payload: {
-      type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'pluginTrigger' | 'pluginAction' | 'transform' | 'structured' | 'router' | 'toolAgent';
+      type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'pluginTrigger' | 'pluginAction' | 'transform' | 'structured' | 'router' | 'toolAgent' | 'channel';
       agentId?: string; label?: string;
       descriptor?: { pluginId: string; id: string; kind: 'trigger' | 'action'; label: string; event?: string; method?: string; channelId?: string; config?: FlowNodeConfigField[] };
     };
@@ -201,6 +204,12 @@
       const node: FlowNode = {
         id: makeId(), type: 'toolAgent', position,
         data: { modelId: '', systemPrompt: '', tools: [], label: 'Tool Agent' } satisfies ToolAgentNodeData,
+      };
+      setNodes([...flowEditorState.nodes, node]);
+    } else if (payload.type === 'channel') {
+      const node: FlowNode = {
+        id: makeId(), type: 'channel', position,
+        data: { channel: '', destinations: [], label: 'Channel' } satisfies ChannelNodeData,
       };
       setNodes([...flowEditorState.nodes, node]);
     }

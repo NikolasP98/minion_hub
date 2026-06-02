@@ -72,6 +72,25 @@ export type ToolAgentNodeData = {
   label: string;
 };
 
+/** One delivery target for a built-in channel node. */
+export type ChannelDestination = {
+  /** 'user' = chosen from the channel's registered directory; 'custom' = manual address. */
+  kind: 'user' | 'custom';
+  /** Channel-native address: WhatsApp E.164/number, Telegram chat id, Discord user/channel id. */
+  to: string;
+  label?: string;
+};
+
+/** Built-in channel node — delivers the upstream message to one or more
+ *  destinations on a chosen channel (whatsapp/telegram/discord/…) via the
+ *  gateway `send` RPC. Not tied to any plugin. */
+export type ChannelNodeData = {
+  channel: string;
+  accountId?: string;
+  destinations: ChannelDestination[];
+  label: string;
+};
+
 export type TriggerNodeData = {
   event:
     | 'message:received'
@@ -137,7 +156,7 @@ export type PluginActionNodeData = {
 
 export type FlowNode = {
   id: string;
-  type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'pluginTrigger' | 'pluginAction' | 'transform' | 'structured' | 'router' | 'toolAgent';
+  type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'pluginTrigger' | 'pluginAction' | 'transform' | 'structured' | 'router' | 'toolAgent' | 'channel';
   position: { x: number; y: number };
   data:
     | AgentNodeData
@@ -149,7 +168,8 @@ export type FlowNode = {
     | TransformNodeData
     | StructuredNodeData
     | RouterNodeData
-    | ToolAgentNodeData;
+    | ToolAgentNodeData
+    | ChannelNodeData;
 };
 
 export type FlowEdge = {
@@ -263,6 +283,16 @@ export function openNodeConfig(nodeId: string) {
 
 export function closeNodeConfig() {
   flowEditorState.configNodeId = null;
+}
+
+/** Merge a partial patch into a node's `data` and persist. Used by built-in
+ *  nodes (e.g. the channel node) that store structured data directly on `data`
+ *  rather than under `data.config`. */
+export function updateNodeData(nodeId: string, patch: Record<string, unknown>) {
+  flowEditorState.nodes = flowEditorState.nodes.map((n) =>
+    n.id === nodeId ? ({ ...n, data: { ...(n.data as Record<string, unknown>), ...patch } } as FlowNode) : n,
+  );
+  markDirty();
 }
 
 /** Set one config value on a node and persist. */
@@ -469,6 +499,7 @@ const PROCESSING_NODE_TYPES = new Set([
   'structured',
   'router',
   'toolAgent',
+  'channel',
 ]);
 
 /** Replay a stored historic run into the console + node-status view. */

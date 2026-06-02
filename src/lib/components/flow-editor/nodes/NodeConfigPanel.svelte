@@ -6,13 +6,16 @@
     closeNodeConfig,
   } from '$lib/state/features/flow-editor.svelte';
   import { X, Settings2 } from 'lucide-svelte';
+  import ChannelNodeConfig from './ChannelNodeConfig.svelte';
 
   // The node currently being configured + its plugin-declared field defs.
   const node = $derived(flowEditorState.nodes.find((n) => n.id === flowEditorState.configNodeId));
+  const isChannel = $derived(node?.type === 'channel');
   const descriptor = $derived(descriptorForNode(node));
   const fields = $derived(descriptor?.config ?? []);
   const config = $derived(((node?.data as { config?: Record<string, unknown> })?.config ?? {}) as Record<string, unknown>);
   const nodeLabel = $derived((node?.data as { label?: string })?.label ?? descriptor?.label ?? 'Node');
+  const subtitle = $derived(isChannel ? 'channel · destinations' : `${descriptor?.pluginId} · configure`);
 
   function set(key: string, value: unknown) {
     if (node) updateNodeConfig(node.id, key, value);
@@ -25,9 +28,9 @@
   }
 </script>
 
-{#if node && fields.length > 0}
+{#if node && (isChannel || fields.length > 0)}
   <div
-    class="absolute top-3 right-3 z-30 w-72 max-h-[calc(100%-1.5rem)] overflow-y-auto bg-bg2 border border-border rounded-xl shadow-xl flex flex-col"
+    class="absolute top-3 right-3 z-30 {isChannel ? 'w-80' : 'w-72'} max-h-[calc(100%-1.5rem)] overflow-y-auto bg-bg2 border border-border rounded-xl shadow-xl flex flex-col"
     role="dialog"
     tabindex="-1"
     aria-label="Node configuration"
@@ -37,7 +40,7 @@
         <Settings2 size={13} class="text-accent shrink-0" />
         <div class="min-w-0">
           <div class="text-xs font-semibold text-foreground truncate">{nodeLabel}</div>
-          <div class="text-[10px] text-muted truncate">{descriptor?.pluginId} · configure</div>
+          <div class="text-[10px] text-muted truncate">{subtitle}</div>
         </div>
       </div>
       <button
@@ -50,6 +53,9 @@
       </button>
     </div>
 
+    {#if isChannel}
+      <ChannelNodeConfig nodeId={node.id} />
+    {:else}
     <div class="px-3 py-3 flex flex-col gap-3">
       {#each fields as field (field.key)}
         <div class="flex flex-col gap-1">
@@ -113,5 +119,6 @@
         </div>
       {/each}
     </div>
+    {/if}
   </div>
 {/if}
