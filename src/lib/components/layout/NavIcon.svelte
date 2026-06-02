@@ -27,5 +27,6 @@
     <Puzzle {size} class={className} />
   {/if}
 {:else}
-  <icon {size} class={className} />
+  {@const IconComp = icon}
+  <IconComp {size} class={className} />
 {/if}
