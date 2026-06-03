@@ -209,7 +209,7 @@ export async function resolveIdentity(event: RequestEvent): Promise<IdentityReso
   // Paths where a gateway server-token Bearer should be honored instead of the
   // browser-session Supabase provider (gateway→hub push: metrics, message ledger).
   const isServerTokenPath =
-    path.startsWith('/api/metrics/') || path.startsWith('/api/messages');
+    path.startsWith('/api/metrics/') || path === '/api/messages/ingest';
 
   if (env.AUTH_PROVIDER === 'supabase' && !isServerTokenPath) {
     return resolveViaSupabase(event);

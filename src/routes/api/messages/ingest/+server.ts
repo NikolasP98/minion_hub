@@ -14,7 +14,9 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   const serverId = (locals as Record<string, unknown>).serverId as string | undefined;
 
   const body = (await request.json()) as { rows?: IngestRow[]; patches?: RoutingPatch[] };
-  const rows = Array.isArray(body.rows) ? body.rows : [];
+  const rows = (Array.isArray(body.rows) ? body.rows : []).filter(
+    (r): r is IngestRow => typeof r?.clientId === 'string' && r.clientId.length > 0,
+  );
   const patches = Array.isArray(body.patches) ? body.patches : [];
 
   const accepted = await insertMessages(orgId, serverId ?? null, rows);
