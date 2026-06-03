@@ -1,10 +1,10 @@
 <script lang="ts">
   import { flowEditorState, setNodes, setPluginNodeDescriptors, setNodePresets, defaultConfigForFields } from '$lib/state/features/flow-editor.svelte';
   import type { FlowNodePreset } from '$lib/state/features/flow-editor.svelte';
-  import type { FlowNode, AgentNodeData, PromptBoxData, LLMNodeData, TriggerNodeData, TransformNodeData, StructuredNodeData, RouterNodeData, ToolAgentNodeData, ChannelNodeData, FlowNodeConfigField } from '$lib/state/features/flow-editor.svelte';
+  import type { FlowNode, AgentNodeData, PromptBoxData, LLMNodeData, TriggerNodeData, TransformNodeData, StructuredNodeData, RouterNodeData, ToolAgentNodeData, ChannelNodeData, HandoffNodeData, FlowNodeConfigField } from '$lib/state/features/flow-editor.svelte';
   import { loadBuiltAgents } from '$lib/state/builder';
   import { conn } from '$lib/state/gateway';
-  import { Bot, Type, ChevronLeft, ChevronRight, Cpu, Zap, Braces, Split, Wrench, Send, Puzzle } from 'lucide-svelte';
+  import { Bot, Type, ChevronLeft, ChevronRight, Cpu, Zap, Braces, Split, Wrench, Send, Headset, Puzzle } from 'lucide-svelte';
   import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
   import { sendRequest } from '$lib/services/gateway.svelte';
@@ -203,10 +203,18 @@
     setNodes([...flowEditorState.nodes, node]);
   }
 
+  function addHandoff() {
+    const node: FlowNode = {
+      id: makeId(), type: 'handoff', position: getDropPosition(),
+      data: { label: 'Human Handoff', destinations: [], suggestionCount: 3, language: 'es' } satisfies HandoffNodeData,
+    };
+    setNodes([...flowEditorState.nodes, node]);
+  }
+
   function handleDragStart(
     e: DragEvent,
     payload:
-      | { type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'transform' | 'structured' | 'router' | 'toolAgent' | 'channel'; agentId?: string; label?: string }
+      | { type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'transform' | 'structured' | 'router' | 'toolAgent' | 'channel' | 'handoff'; agentId?: string; label?: string }
       | { type: 'pluginTrigger' | 'pluginAction'; descriptor: FlowNodeDescriptor },
   ) {
     if (!e.dataTransfer) return;
@@ -217,7 +225,7 @@
   // ── Palette, grouped by FUNCTION ────────────────────────────────────────────
   // One short, organised list instead of one long "Inputs" dump. All lucide
   // icons share a component type, so `typeof Zap` types every entry's icon.
-  type BuiltinType = 'trigger' | 'promptBox' | 'llm' | 'agent' | 'toolAgent' | 'router' | 'structured' | 'transform' | 'channel';
+  type BuiltinType = 'trigger' | 'promptBox' | 'llm' | 'agent' | 'toolAgent' | 'router' | 'structured' | 'transform' | 'channel' | 'handoff';
   type PaletteNode = {
     type: BuiltinType;
     label: string;
@@ -256,6 +264,7 @@
       title: 'Output',
       nodes: [
         { type: 'channel', label: 'Channel', desc: 'Send to WhatsApp / Telegram / …', icon: Send, color: 'text-cyan-400', bg: 'bg-cyan-500/20', add: addChannelNode },
+        { type: 'handoff', label: 'Human Handoff', desc: 'Claim → suggest → relay to a human until /end', icon: Headset, color: 'text-rose-400', bg: 'bg-rose-500/20', add: addHandoff },
       ],
     },
   ];

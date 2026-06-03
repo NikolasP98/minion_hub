@@ -109,6 +109,19 @@ export type ChannelNodeData = {
   label: string;
 };
 
+export type HandoffDestination = { channel: string; to: string; accountId?: string };
+
+/** Built-in Human Handoff node — terminal; opens a live relay session to owners. */
+export type HandoffNodeData = {
+  label: string;
+  destinations: HandoffDestination[];
+  priority?: string;
+  suggestionCount?: number;
+  language?: string;
+  systemPrompt?: string;
+  closingMessage?: string;
+};
+
 /** Value stored by a `type: 'destination-list'` plugin config field — the same
  *  channel + sending-account + destinations the built-in Channel node carries,
  *  minus the node label. Forwarded to the plugin method verbatim. */
@@ -214,7 +227,7 @@ export type PluginActionNodeData = {
 
 export type FlowNode = {
   id: string;
-  type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'pluginTrigger' | 'pluginAction' | 'transform' | 'structured' | 'router' | 'toolAgent' | 'channel';
+  type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'pluginTrigger' | 'pluginAction' | 'transform' | 'structured' | 'router' | 'toolAgent' | 'channel' | 'handoff';
   position: { x: number; y: number };
   data:
     | AgentNodeData
@@ -227,7 +240,8 @@ export type FlowNode = {
     | StructuredNodeData
     | RouterNodeData
     | ToolAgentNodeData
-    | ChannelNodeData;
+    | ChannelNodeData
+    | HandoffNodeData;
 };
 
 export type FlowEdge = {
