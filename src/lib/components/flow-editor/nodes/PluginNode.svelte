@@ -1,15 +1,28 @@
 <script lang="ts">
-  import { Handle, Position } from '@xyflow/svelte';
+  import { Handle, Position, useUpdateNodeInternals } from '@xyflow/svelte';
   import type { NodeProps } from '@xyflow/svelte';
   import type { PluginTriggerNodeData, PluginActionNodeData } from '$lib/state/features/flow-editor.svelte';
-  import { flowEditorState, setNodes, openNodeContextMenu, openNodeConfig, descriptorForNode } from '$lib/state/features/flow-editor.svelte';
-  import { Puzzle, Settings2 } from 'lucide-svelte';
+  import { flowEditorState, setNodes, openNodeContextMenu, openNodeConfig, descriptorForNode, branchFieldFor } from '$lib/state/features/flow-editor.svelte';
+  import { Puzzle, Settings2, Split } from 'lucide-svelte';
 
   let { data, id }: NodeProps & { data: PluginTriggerNodeData | PluginActionNodeData } = $props();
+
+  const updateNodeInternals = useUpdateNodeInternals();
 
   const isTrigger = $derived('event' in data);
   const node = $derived(flowEditorState.nodes.find((n) => n.id === id));
   const configurable = $derived((descriptorForNode(node)?.config?.length ?? 0) > 0);
+  // A `branch-editor` config field turns this action node into a brancher: its
+  // branches surface as source handles so the user can wire each outcome.
+  const branch = $derived(isTrigger ? null : branchFieldFor(node));
+  const branches = $derived(branch?.value.branches ?? []);
+
+  // Branches are edited in the detached config panel, so this node re-registers
+  // its handles whenever the branch count changes (xyflow caches handle bounds).
+  $effect(() => {
+    branches.length;
+    updateNodeInternals(id);
+  });
 
   function handleDeliverChange(e: Event) {
     const deliverResponse = (e.target as HTMLInputElement).checked;
@@ -23,7 +36,10 @@
 {#if !isTrigger}
   <Handle type="target" position={Position.Left} id="in" class="!w-3 !h-3 !border-2 !border-violet-400 !bg-violet-900" />
 {/if}
-<Handle type="source" position={Position.Right} id="out" class="!w-3 !h-3 !border-2 !border-violet-400 !bg-violet-900" />
+{#if !branch}
+  <!-- Single passthrough output. A brancher renders per-branch handles below. -->
+  <Handle type="source" position={Position.Right} id="out" class="!w-3 !h-3 !border-2 !border-violet-400 !bg-violet-900" />
+{/if}
 
 <div
   class="relative bg-bg2 border rounded-xl px-4 py-3 min-w-48 max-w-60 shadow-lg select-none border-border hover:border-border/80"
@@ -62,5 +78,27 @@
       />
       <span class="text-[10px] text-muted">Reply to channel</span>
     </label>
+  {/if}
+
+  {#if branch}
+    <!-- Branch outputs: edit the rules in the config panel; wire them here. -->
+    <div class="mt-1.5 flex items-center gap-1 text-[9px] text-amber-400/80">
+      <Split size={10} /> routes on output
+    </div>
+    <div class="flex flex-col gap-1 mt-1">
+      {#each branches as b (b.id)}
+        <div class="relative rounded border border-border/40 bg-bg/30 px-1.5 py-0.5 text-[10px] text-foreground truncate">
+          {b.label || b.id}
+          <Handle type="source" position={Position.Right} id={b.id} style="top: 50%; right: -21px;" class="!w-3 !h-3 !border-2 !border-amber-400 !bg-amber-900" />
+        </div>
+      {/each}
+      {#if branches.length === 0}
+        <p class="text-[9px] text-muted/70">No branches yet — add them in Configure.</p>
+      {/if}
+      <div class="relative pt-1 mt-0.5 border-t border-border/50 text-[9px] text-muted">
+        default
+        <Handle type="source" position={Position.Right} id="default" style="top: 50%; right: -21px;" class="!w-3 !h-3 !border-2 !border-slate-400 !bg-slate-900" />
+      </div>
+    </div>
   {/if}
 </div>

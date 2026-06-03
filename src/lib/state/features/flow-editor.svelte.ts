@@ -109,6 +109,24 @@ export type ChannelNodeData = {
   label: string;
 };
 
+/** Value stored by a `type: 'destination-list'` plugin config field — the same
+ *  channel + sending-account + destinations the built-in Channel node carries,
+ *  minus the node label. Forwarded to the plugin method verbatim. */
+export type DestinationListValue = {
+  channel?: string;
+  accountId?: string;
+  destinations: ChannelDestination[];
+};
+
+/** Value stored by a `type: 'branch-editor'` plugin config field — the Router's
+ *  routing config minus the label. A node carrying this becomes a brancher: its
+ *  branch ids become source handles, and the runner routes on the node's output. */
+export type BranchConfig = {
+  mode: 'rule' | 'llm' | 'hybrid';
+  modelId?: string;
+  branches: RouterBranch[];
+};
+
 /** One inbound source for a Channel Trigger: a channel + optional linked account.
  *  Mirrors the output node's destination rows. The trigger's single event applies
  *  to every source; account narrows to one linked sender account (blank = any). */
@@ -137,7 +155,15 @@ export type TriggerNodeData = {
 export type FlowNodeConfigField = {
   key: string;
   label: string;
-  type: 'string' | 'number' | 'boolean' | 'select' | 'textarea' | 'channel';
+  type:
+    | 'string'
+    | 'number'
+    | 'boolean'
+    | 'select'
+    | 'textarea'
+    | 'channel'
+    | 'destination-list'
+    | 'branch-editor';
   options?: { value: string; label: string }[];
   default?: string | number | boolean;
   placeholder?: string;
@@ -303,6 +329,30 @@ export function descriptorForNode(node: FlowNode | undefined): FlowNodeDescripto
   );
 }
 
+/** If a plugin node declares a `branch-editor` config field, return its key and
+ *  current branch config (so the canvas node can render one source handle per
+ *  branch — the "edge-syncing" between the config and the graph). Null when the
+ *  node isn't a config-driven brancher. */
+export function branchFieldFor(
+  node: FlowNode | undefined,
+): { key: string; value: BranchConfig } | null {
+  const field = descriptorForNode(node)?.config?.find((f) => f.type === 'branch-editor');
+  if (!field) return null;
+  const config = ((node?.data as { config?: Record<string, unknown> })?.config ?? {}) as Record<
+    string,
+    unknown
+  >;
+  const raw = (config[field.key] ?? {}) as Partial<BranchConfig>;
+  return {
+    key: field.key,
+    value: {
+      mode: raw.mode === 'llm' || raw.mode === 'hybrid' ? raw.mode : 'rule',
+      modelId: raw.modelId,
+      branches: Array.isArray(raw.branches) ? raw.branches : [],
+    },
+  };
+}
+
 /** Build the default config value map from a contribution's declared fields. */
 export function defaultConfigForFields(
   fields: FlowNodeConfigField[] | undefined,
@@ -311,6 +361,8 @@ export function defaultConfigForFields(
   for (const f of fields ?? []) {
     if (f.default !== undefined) out[f.key] = f.default;
     else if (f.type === 'boolean') out[f.key] = false;
+    else if (f.type === 'destination-list') out[f.key] = { destinations: [] } satisfies DestinationListValue;
+    else if (f.type === 'branch-editor') out[f.key] = { mode: 'rule', branches: [] } satisfies BranchConfig;
   }
   return out;
 }

@@ -5,9 +5,12 @@
     updateNodeConfig,
     closeNodeConfig,
   } from '$lib/state/features/flow-editor.svelte';
+  import type { DestinationListValue, BranchConfig } from '$lib/state/features/flow-editor.svelte';
   import { X, Settings2 } from 'lucide-svelte';
   import ChannelNodeConfig from './ChannelNodeConfig.svelte';
   import TriggerNodeConfig from './TriggerNodeConfig.svelte';
+  import DestinationListField from './DestinationListField.svelte';
+  import BranchEditorField from './BranchEditorField.svelte';
   import { conn } from '$lib/state/gateway';
   import { channelPlugins, ensureChannelPlugins } from '$lib/state/features/channel-sources.svelte';
 
@@ -85,6 +88,24 @@
               />
               <span class="text-xs font-medium text-foreground">{field.label}</span>
             </label>
+          {:else if field.type === 'destination-list'}
+            <span class="text-[11px] font-medium text-foreground">{field.label}</span>
+            <DestinationListField
+              value={(config[field.key] as DestinationListValue) ?? { destinations: [] }}
+              onChange={(v) => set(field.key, v)}
+            />
+            {#if field.description}
+              <p class="text-[10px] text-muted leading-snug">{field.description}</p>
+            {/if}
+          {:else if field.type === 'branch-editor'}
+            <span class="text-[11px] font-medium text-foreground">{field.label}</span>
+            <BranchEditorField
+              value={(config[field.key] as BranchConfig) ?? { mode: 'rule', branches: [] }}
+              onChange={(v) => set(field.key, v)}
+            />
+            {#if field.description}
+              <p class="text-[10px] text-muted leading-snug">{field.description}</p>
+            {/if}
           {:else}
             <label for="cfg-{field.key}" class="text-[11px] font-medium text-foreground">{field.label}</label>
             {#if field.type === 'select'}
