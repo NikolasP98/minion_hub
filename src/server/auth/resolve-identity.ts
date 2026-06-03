@@ -206,11 +206,16 @@ export async function resolveIdentity(event: RequestEvent): Promise<IdentityReso
     return resolveAuthDisabled();
   }
 
-  if (env.AUTH_PROVIDER === 'supabase' && !path.startsWith('/api/metrics/')) {
+  // Paths where a gateway server-token Bearer should be honored instead of the
+  // browser-session Supabase provider (gateway→hub push: metrics, message ledger).
+  const isServerTokenPath =
+    path.startsWith('/api/metrics/') || path.startsWith('/api/messages');
+
+  if (env.AUTH_PROVIDER === 'supabase' && !isServerTokenPath) {
     return resolveViaSupabase(event);
   }
 
-  if (path.startsWith('/api/metrics/')) {
+  if (isServerTokenPath) {
     const bearer = await resolveViaMetricsBearer(event);
     if (bearer) return bearer;
   }
