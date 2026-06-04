@@ -23,6 +23,7 @@
   import ToolAgentNode from './nodes/ToolAgentNode.svelte';
   import ChannelNode from './nodes/ChannelNode.svelte';
   import HandoffNode from './nodes/HandoffNode.svelte';
+  import ReactionNode from './nodes/ReactionNode.svelte';
   import NodeConfigPanel from './nodes/NodeConfigPanel.svelte';
   import FlowActionIsland from './FlowActionIsland.svelte';
   import FlowHistoryPanel from './FlowHistoryPanel.svelte';
@@ -54,6 +55,7 @@
     type ToolAgentNodeData,
     type ChannelNodeData,
     type HandoffNodeData,
+    type ReactionNodeData,
   } from '$lib/state/features/flow-editor.svelte';
   import { theme } from '$lib/state/ui/theme.svelte';
 
@@ -70,6 +72,7 @@
     toolAgent: ToolAgentNode,
     channel: ChannelNode,
     handoff: HandoffNode,
+    reaction: ReactionNode,
   };
 
   const edgeTypes: EdgeTypes = {
@@ -115,7 +118,7 @@
     if (!raw) return;
 
     let payload: {
-      type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'pluginTrigger' | 'pluginAction' | 'transform' | 'structured' | 'router' | 'toolAgent' | 'channel' | 'handoff';
+      type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'pluginTrigger' | 'pluginAction' | 'transform' | 'structured' | 'router' | 'toolAgent' | 'channel' | 'handoff' | 'reaction';
       agentId?: string; label?: string;
       descriptor?: { pluginId: string; id: string; kind: 'trigger' | 'action'; label: string; event?: string; method?: string; channelId?: string; config?: FlowNodeConfigField[] };
     };
@@ -219,6 +222,12 @@
       const node: FlowNode = {
         id: makeId(), type: 'handoff', position,
         data: { label: 'Human Handoff', destinations: [], suggestionCount: 3, language: 'es' } satisfies HandoffNodeData,
+      };
+      setNodes([...flowEditorState.nodes, node]);
+    } else if (payload.type === 'reaction') {
+      const node: FlowNode = {
+        id: makeId(), type: 'reaction', position,
+        data: { label: 'Set Reaction', emoji: '👀' } satisfies ReactionNodeData,
       };
       setNodes([...flowEditorState.nodes, node]);
     }

@@ -122,6 +122,15 @@ export type HandoffNodeData = {
   closingMessage?: string;
 };
 
+/** Built-in Set Reaction node — transparent side-effect: sets a status emoji on
+ *  the flow's trigger message (via gateway `flows.reaction.set`) then passes the
+ *  upstream message through. Use to mark a complaint received/handled/escalated. */
+export type ReactionNodeData = {
+  label: string;
+  /** Single emoji to set. Telegram restricts to its allowed set; WhatsApp is open. */
+  emoji: string;
+};
+
 /** Value stored by a `type: 'destination-list'` plugin config field — the same
  *  channel + sending-account + destinations the built-in Channel node carries,
  *  minus the node label. Forwarded to the plugin method verbatim. */
@@ -227,7 +236,7 @@ export type PluginActionNodeData = {
 
 export type FlowNode = {
   id: string;
-  type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'pluginTrigger' | 'pluginAction' | 'transform' | 'structured' | 'router' | 'toolAgent' | 'channel' | 'handoff';
+  type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'pluginTrigger' | 'pluginAction' | 'transform' | 'structured' | 'router' | 'toolAgent' | 'channel' | 'handoff' | 'reaction';
   position: { x: number; y: number };
   data:
     | AgentNodeData
@@ -241,7 +250,8 @@ export type FlowNode = {
     | RouterNodeData
     | ToolAgentNodeData
     | ChannelNodeData
-    | HandoffNodeData;
+    | HandoffNodeData
+    | ReactionNodeData;
 };
 
 export type FlowEdge = {
@@ -633,6 +643,7 @@ const PROCESSING_NODE_TYPES = new Set([
   'router',
   'toolAgent',
   'channel',
+  'reaction',
 ]);
 
 /** Replay a stored historic run into the console + node-status view. */
