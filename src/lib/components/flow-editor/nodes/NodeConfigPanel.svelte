@@ -10,6 +10,7 @@
   import ChannelNodeConfig from './ChannelNodeConfig.svelte';
   import HandoffNodeConfig from './HandoffNodeConfig.svelte';
   import ReactionNodeConfig from './ReactionNodeConfig.svelte';
+  import SubflowNodeConfig from './SubflowNodeConfig.svelte';
   import TriggerNodeConfig from './TriggerNodeConfig.svelte';
   import DestinationListField from './DestinationListField.svelte';
   import BranchEditorField from './BranchEditorField.svelte';
@@ -27,6 +28,7 @@
   const isChannel = $derived(node?.type === 'channel');
   const isHandoff = $derived(node?.type === 'handoff');
   const isReaction = $derived(node?.type === 'reaction');
+  const isSubflow = $derived(node?.type === 'subflow');
   const isTrigger = $derived(node?.type === 'trigger');
   const descriptor = $derived(descriptorForNode(node));
   const fields = $derived(descriptor?.config ?? []);
@@ -41,9 +43,11 @@
         ? 'claim · suggest · relay'
         : isReaction
           ? 'emoji · trigger message'
-          : isTrigger
-            ? 'event · channels'
-            : `${descriptor?.pluginId} · configure`,
+          : isSubflow
+            ? 'run another flow'
+            : isTrigger
+              ? 'event · channels'
+              : `${descriptor?.pluginId} · configure`,
   );
 
   function set(key: string, value: unknown) {
@@ -57,7 +61,7 @@
   }
 </script>
 
-{#if node && (isChannel || isHandoff || isReaction || isTrigger || fields.length > 0)}
+{#if node && (isChannel || isHandoff || isReaction || isSubflow || isTrigger || fields.length > 0)}
   <div
     class="absolute top-3 right-3 z-30 {isChannel || isHandoff || isTrigger ? 'w-80' : 'w-72'} max-h-[calc(100%-1.5rem)] overflow-y-auto bg-bg2 border border-border rounded-xl shadow-xl flex flex-col"
     role="dialog"
@@ -90,6 +94,10 @@
       {/key}
     {:else if isReaction}
       <ReactionNodeConfig nodeId={node.id} />
+    {:else if isSubflow}
+      {#key node.id}
+        <SubflowNodeConfig nodeId={node.id} />
+      {/key}
     {:else if isTrigger}
       <TriggerNodeConfig nodeId={node.id} />
     {:else}

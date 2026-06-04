@@ -1,10 +1,10 @@
 <script lang="ts">
   import { flowEditorState, setNodes, setPluginNodeDescriptors, setNodePresets, defaultConfigForFields } from '$lib/state/features/flow-editor.svelte';
   import type { FlowNodePreset } from '$lib/state/features/flow-editor.svelte';
-  import type { FlowNode, AgentNodeData, PromptBoxData, LLMNodeData, TriggerNodeData, TransformNodeData, StructuredNodeData, RouterNodeData, ToolAgentNodeData, ChannelNodeData, HandoffNodeData, ReactionNodeData, FlowNodeConfigField } from '$lib/state/features/flow-editor.svelte';
+  import type { FlowNode, AgentNodeData, PromptBoxData, LLMNodeData, TriggerNodeData, TransformNodeData, StructuredNodeData, RouterNodeData, ToolAgentNodeData, ChannelNodeData, HandoffNodeData, ReactionNodeData, SubflowNodeData, FlowNodeConfigField } from '$lib/state/features/flow-editor.svelte';
   import { loadBuiltAgents } from '$lib/state/builder';
   import { conn } from '$lib/state/gateway';
-  import { Bot, Type, ChevronLeft, ChevronRight, Cpu, Zap, Braces, Split, Wrench, Send, Headset, SmilePlus, Puzzle } from 'lucide-svelte';
+  import { Bot, Type, ChevronLeft, ChevronRight, Cpu, Zap, Braces, Split, Wrench, Send, Headset, SmilePlus, Puzzle, Workflow } from 'lucide-svelte';
   import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
   import { sendRequest } from '$lib/services/gateway.svelte';
@@ -219,10 +219,18 @@
     setNodes([...flowEditorState.nodes, node]);
   }
 
+  function addSubflow() {
+    const node: FlowNode = {
+      id: makeId(), type: 'subflow', position: getDropPosition(),
+      data: { label: 'Subflow' } satisfies SubflowNodeData,
+    };
+    setNodes([...flowEditorState.nodes, node]);
+  }
+
   function handleDragStart(
     e: DragEvent,
     payload:
-      | { type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'transform' | 'structured' | 'router' | 'toolAgent' | 'channel' | 'handoff' | 'reaction'; agentId?: string; label?: string }
+      | { type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'transform' | 'structured' | 'router' | 'toolAgent' | 'channel' | 'handoff' | 'reaction' | 'subflow'; agentId?: string; label?: string }
       | { type: 'pluginTrigger' | 'pluginAction'; descriptor: FlowNodeDescriptor },
   ) {
     if (!e.dataTransfer) return;
@@ -233,7 +241,7 @@
   // ── Palette, grouped by FUNCTION ────────────────────────────────────────────
   // One short, organised list instead of one long "Inputs" dump. All lucide
   // icons share a component type, so `typeof Zap` types every entry's icon.
-  type BuiltinType = 'trigger' | 'promptBox' | 'llm' | 'agent' | 'toolAgent' | 'router' | 'structured' | 'transform' | 'channel' | 'handoff' | 'reaction';
+  type BuiltinType = 'trigger' | 'promptBox' | 'llm' | 'agent' | 'toolAgent' | 'router' | 'structured' | 'transform' | 'channel' | 'handoff' | 'reaction' | 'subflow';
   type PaletteNode = {
     type: BuiltinType;
     label: string;
@@ -266,6 +274,7 @@
         { type: 'router', label: 'Router / Classify', desc: 'Branch or classify — rule, LLM rubric, or both', icon: Split, color: 'text-amber-400', bg: 'bg-amber-500/20', add: addRouter },
         { type: 'structured', label: 'Structured', desc: 'Extract JSON', icon: Braces, color: 'text-teal-300', bg: 'bg-teal-500/20', add: addStructured },
         { type: 'transform', label: 'Transform', desc: 'Template text', icon: Braces, color: 'text-slate-300', bg: 'bg-slate-500/20', add: addTransform },
+        { type: 'subflow', label: 'Subflow', desc: 'Run another flow as a step', icon: Workflow, color: 'text-fuchsia-400', bg: 'bg-fuchsia-500/20', add: addSubflow },
       ],
     },
     {

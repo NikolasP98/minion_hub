@@ -131,6 +131,17 @@ export type ReactionNodeData = {
   emoji: string;
 };
 
+/** Subflow node — runs another saved flow as a subroutine: it receives this
+ *  node's input and its final output flows downstream. The runner resolves
+ *  `flowId` at execution time (with cycle + depth guards). */
+export type SubflowNodeData = {
+  label: string;
+  /** Id of the flow to run. */
+  flowId?: string;
+  /** Cached display name of the referenced flow (UI convenience). */
+  flowName?: string;
+};
+
 /** Value stored by a `type: 'destination-list'` plugin config field — the same
  *  channel + sending-account + destinations the built-in Channel node carries,
  *  minus the node label. Forwarded to the plugin method verbatim. */
@@ -236,7 +247,7 @@ export type PluginActionNodeData = {
 
 export type FlowNode = {
   id: string;
-  type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'pluginTrigger' | 'pluginAction' | 'transform' | 'structured' | 'router' | 'toolAgent' | 'channel' | 'handoff' | 'reaction';
+  type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'pluginTrigger' | 'pluginAction' | 'transform' | 'structured' | 'router' | 'toolAgent' | 'channel' | 'handoff' | 'reaction' | 'subflow';
   position: { x: number; y: number };
   data:
     | AgentNodeData
@@ -251,7 +262,8 @@ export type FlowNode = {
     | ToolAgentNodeData
     | ChannelNodeData
     | HandoffNodeData
-    | ReactionNodeData;
+    | ReactionNodeData
+    | SubflowNodeData;
 };
 
 export type FlowEdge = {
@@ -644,6 +656,7 @@ const PROCESSING_NODE_TYPES = new Set([
   'toolAgent',
   'channel',
   'reaction',
+  'subflow',
 ]);
 
 /** Replay a stored historic run into the console + node-status view. */
