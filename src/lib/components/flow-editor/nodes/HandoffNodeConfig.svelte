@@ -1,23 +1,43 @@
 <script lang="ts">
   import { flowEditorState, updateNodeData } from '$lib/state/features/flow-editor.svelte';
-  import type { HandoffNodeData, DestinationListValue } from '$lib/state/features/flow-editor.svelte';
+  import type {
+    HandoffNodeData,
+    HandoffDestination,
+    DestinationListValue,
+    ChannelDestination,
+  } from '$lib/state/features/flow-editor.svelte';
   import DestinationListField from './DestinationListField.svelte';
 
   let { nodeId }: { nodeId: string } = $props();
   const node = $derived(flowEditorState.nodes.find((n) => n.id === nodeId));
   const data = $derived((node?.data ?? {}) as HandoffNodeData);
 
-  const destValue = $derived<DestinationListValue>({
-    channel: data.destinations?.[0]?.channel,
-    accountId: data.destinations?.[0]?.accountId,
-    destinations: (data.destinations ?? []).map((d) => ({ kind: 'custom', to: d.to, label: d.to })),
-  });
+  // DestinationListField is a controlled editor that needs to hold in-progress
+  // rows (a freshly-added row has an empty `to`; toggling to "Registered" clears
+  // `to` until a user is picked). If we derived the field value straight from
+  // persisted node data and filtered empties on every change, those transient
+  // rows would vanish the instant they appear — making "Add" and "Registered"
+  // look broken. So keep a local working copy the field can mutate freely, and
+  // project only the valid (non-empty) rows back into node data. `{#key nodeId}`
+  // in NodeConfigPanel remounts this component per node, re-seeding cleanly.
+  let working = $state<DestinationListValue>(seed());
+  function seed(): DestinationListValue {
+    const list = Array.isArray(data.destinations) ? data.destinations : [];
+    return {
+      channel: list[0]?.channel ?? 'whatsapp',
+      accountId: list[0]?.accountId,
+      destinations: list.map(
+        (d) => ({ kind: 'custom', to: d.to, label: d.to } as ChannelDestination),
+      ),
+    };
+  }
+
   function onDest(v: DestinationListValue) {
-    updateNodeData(nodeId, {
-      destinations: v.destinations
-        .filter((d) => d.to.trim())
-        .map((d) => ({ channel: v.channel ?? 'whatsapp', to: d.to, accountId: v.accountId })),
-    });
+    working = v;
+    const destinations: HandoffDestination[] = v.destinations
+      .filter((d) => d.to.trim())
+      .map((d) => ({ channel: v.channel ?? 'whatsapp', to: d.to.trim(), accountId: v.accountId }));
+    updateNodeData(nodeId, { destinations });
   }
   function set(key: keyof HandoffNodeData, value: unknown) {
     updateNodeData(nodeId, { [key]: value });
@@ -27,7 +47,7 @@
 <div class="px-3 py-3 flex flex-col gap-3">
   <div>
     <span class="text-[11px] font-medium text-foreground">Owners (claim candidates)</span>
-    <DestinationListField value={destValue} onChange={onDest} />
+    <DestinationListField value={working} onChange={onDest} />
   </div>
   <label class="flex flex-col gap-1">
     <span class="text-[11px] font-medium text-foreground">Priority label</span>
