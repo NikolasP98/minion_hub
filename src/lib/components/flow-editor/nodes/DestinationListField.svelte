@@ -98,9 +98,9 @@
       disabled={!channel}
       onchange={(e) => setAccount((e.target as HTMLSelectElement).value)}
     >
-      <option value="">Default account</option>
+      <option value="">Any linked account</option>
       {#each accounts as a (a.accountId)}
-        <option value={a.accountId}>{a.label}{a.isDefault ? ' (default)' : ''}{a.connected ? '' : ' — offline'}</option>
+        <option value={a.accountId}>{a.label}{a.phone && a.phone !== a.label ? ` · ${a.phone}` : ''}{a.connected ? '' : ' — offline'}</option>
       {/each}
       {#if value.accountId && !accounts.some((a) => a.accountId === value.accountId)}
         <option value={value.accountId}>{value.accountId}</option>

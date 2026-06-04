@@ -129,7 +129,7 @@
           >
             <option value="">Any linked account</option>
             {#each accounts as a (a.accountId)}
-              <option value={a.accountId}>{a.label}{a.isDefault ? ' (default)' : ''}{a.connected ? '' : ' — offline'}</option>
+              <option value={a.accountId}>{a.label}{a.phone && a.phone !== a.label ? ` · ${a.phone}` : ''}{a.connected ? '' : ' — offline'}</option>
             {/each}
           </select>
           {#if accounts.length === 0}

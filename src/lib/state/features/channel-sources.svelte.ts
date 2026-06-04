@@ -20,6 +20,8 @@ export type ChannelAccount = {
   accountId: string;
   label: string;
   isDefault: boolean;
+  /** The actually-linked phone/identity (phone-based channels), for display. */
+  phone?: string;
   linked: boolean;
   connected: boolean;
 };
@@ -75,6 +77,7 @@ export async function ensureChannelPlugins(): Promise<void> {
 interface AccountSnapshot {
   accountId?: string;
   name?: string;
+  self?: { e164?: string | null; jid?: string | null } | null;
   linked?: boolean;
   connected?: boolean;
 }
@@ -97,6 +100,7 @@ export async function ensureChannelStatus(): Promise<void> {
           accountId: a.accountId!,
           label: a.name?.trim() || a.accountId!,
           isDefault: a.accountId === defaults[channel],
+          phone: a.self?.e164 ?? a.self?.jid ?? undefined,
           linked: a.linked !== false,
           connected: a.connected === true,
         }));
