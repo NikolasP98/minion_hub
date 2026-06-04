@@ -11,6 +11,9 @@
   import HandoffNodeConfig from './HandoffNodeConfig.svelte';
   import ReactionNodeConfig from './ReactionNodeConfig.svelte';
   import SubflowNodeConfig from './SubflowNodeConfig.svelte';
+  import DatabaseNodeConfig from './DatabaseNodeConfig.svelte';
+  import FileWriteNodeConfig from './FileWriteNodeConfig.svelte';
+  import ScheduleNodeConfig from './ScheduleNodeConfig.svelte';
   import TriggerNodeConfig from './TriggerNodeConfig.svelte';
   import DestinationListField from './DestinationListField.svelte';
   import BranchEditorField from './BranchEditorField.svelte';
@@ -29,6 +32,9 @@
   const isHandoff = $derived(node?.type === 'handoff');
   const isReaction = $derived(node?.type === 'reaction');
   const isSubflow = $derived(node?.type === 'subflow');
+  const isDatabase = $derived(node?.type === 'database');
+  const isFileWrite = $derived(node?.type === 'fileWrite');
+  const isSchedule = $derived(node?.type === 'schedule');
   const isTrigger = $derived(node?.type === 'trigger');
   const descriptor = $derived(descriptorForNode(node));
   const fields = $derived(descriptor?.config ?? []);
@@ -45,9 +51,15 @@
           ? 'emoji · trigger message'
           : isSubflow
             ? 'run another flow'
-            : isTrigger
-              ? 'event · channels'
-              : `${descriptor?.pluginId} · configure`,
+            : isDatabase
+              ? 'read · write (CRUD)'
+              : isFileWrite
+                ? 'path · content'
+                : isSchedule
+                  ? 'recurring interval'
+                  : isTrigger
+                    ? 'event · channels'
+                    : `${descriptor?.pluginId} · configure`,
   );
 
   function set(key: string, value: unknown) {
@@ -61,7 +73,7 @@
   }
 </script>
 
-{#if node && (isChannel || isHandoff || isReaction || isSubflow || isTrigger || fields.length > 0)}
+{#if node && (isChannel || isHandoff || isReaction || isSubflow || isDatabase || isFileWrite || isSchedule || isTrigger || fields.length > 0)}
   <div
     class="absolute top-3 right-3 z-30 {isChannel || isHandoff || isTrigger ? 'w-80' : 'w-72'} max-h-[calc(100%-1.5rem)] overflow-y-auto bg-bg2 border border-border rounded-xl shadow-xl flex flex-col"
     role="dialog"
@@ -98,6 +110,14 @@
       {#key node.id}
         <SubflowNodeConfig nodeId={node.id} />
       {/key}
+    {:else if isDatabase}
+      {#key node.id}
+        <DatabaseNodeConfig nodeId={node.id} />
+      {/key}
+    {:else if isFileWrite}
+      <FileWriteNodeConfig nodeId={node.id} />
+    {:else if isSchedule}
+      <ScheduleNodeConfig nodeId={node.id} />
     {:else if isTrigger}
       <TriggerNodeConfig nodeId={node.id} />
     {:else}

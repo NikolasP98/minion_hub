@@ -25,6 +25,9 @@
   import HandoffNode from './nodes/HandoffNode.svelte';
   import ReactionNode from './nodes/ReactionNode.svelte';
   import SubflowNode from './nodes/SubflowNode.svelte';
+  import DatabaseNode from './nodes/DatabaseNode.svelte';
+  import FileWriteNode from './nodes/FileWriteNode.svelte';
+  import ScheduleNode from './nodes/ScheduleNode.svelte';
   import NodeConfigPanel from './nodes/NodeConfigPanel.svelte';
   import FlowActionIsland from './FlowActionIsland.svelte';
   import FlowHistoryPanel from './FlowHistoryPanel.svelte';
@@ -58,6 +61,9 @@
     type HandoffNodeData,
     type ReactionNodeData,
     type SubflowNodeData,
+    type DatabaseNodeData,
+    type FileWriteNodeData,
+    type ScheduleNodeData,
   } from '$lib/state/features/flow-editor.svelte';
   import { theme } from '$lib/state/ui/theme.svelte';
 
@@ -76,6 +82,9 @@
     handoff: HandoffNode,
     reaction: ReactionNode,
     subflow: SubflowNode,
+    database: DatabaseNode,
+    fileWrite: FileWriteNode,
+    schedule: ScheduleNode,
   };
 
   const edgeTypes: EdgeTypes = {
@@ -121,7 +130,7 @@
     if (!raw) return;
 
     let payload: {
-      type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'pluginTrigger' | 'pluginAction' | 'transform' | 'structured' | 'router' | 'toolAgent' | 'channel' | 'handoff' | 'reaction' | 'subflow';
+      type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'pluginTrigger' | 'pluginAction' | 'transform' | 'structured' | 'router' | 'toolAgent' | 'channel' | 'handoff' | 'reaction' | 'subflow' | 'database' | 'fileWrite' | 'schedule';
       agentId?: string; label?: string;
       descriptor?: { pluginId: string; id: string; kind: 'trigger' | 'action'; label: string; event?: string; method?: string; channelId?: string; config?: FlowNodeConfigField[] };
     };
@@ -237,6 +246,24 @@
       const node: FlowNode = {
         id: makeId(), type: 'subflow', position,
         data: { label: 'Subflow' } satisfies SubflowNodeData,
+      };
+      setNodes([...flowEditorState.nodes, node]);
+    } else if (payload.type === 'database') {
+      const node: FlowNode = {
+        id: makeId(), type: 'database', position,
+        data: { label: 'Database', action: 'read', sql: '' } satisfies DatabaseNodeData,
+      };
+      setNodes([...flowEditorState.nodes, node]);
+    } else if (payload.type === 'fileWrite') {
+      const node: FlowNode = {
+        id: makeId(), type: 'fileWrite', position,
+        data: { label: 'Write File', path: 'report-{date}.md', mode: 'overwrite' } satisfies FileWriteNodeData,
+      };
+      setNodes([...flowEditorState.nodes, node]);
+    } else if (payload.type === 'schedule') {
+      const node: FlowNode = {
+        id: makeId(), type: 'schedule', position,
+        data: { label: 'Schedule', every: 1, unit: 'days' } satisfies ScheduleNodeData,
       };
       setNodes([...flowEditorState.nodes, node]);
     }

@@ -13,7 +13,7 @@
     nodeHasConfig,
     triggerChannelFilter,
   } from '$lib/state/features/flow-editor.svelte';
-  import type { TriggerNodeData } from '$lib/state/features/flow-editor.svelte';
+  import type { TriggerNodeData, ScheduleNodeData } from '$lib/state/features/flow-editor.svelte';
   import ConsolePanel from '$lib/components/flow-editor/ConsolePanel.svelte';
   import { sendRequest } from '$lib/services/gateway.svelte';
   import { ArrowLeft, GitBranch, Trash2, Copy, Settings2, Puzzle } from 'lucide-svelte';
@@ -23,7 +23,9 @@
   let loadError = $state<string | null>(null);
   let isActivating = $state(false);
   const hasTrigger = $derived(
-    flowEditorState.nodes.some((n) => n.type === 'trigger' || n.type === 'pluginTrigger'),
+    flowEditorState.nodes.some(
+      (n) => n.type === 'trigger' || n.type === 'pluginTrigger' || n.type === 'schedule',
+    ),
   );
 
   async function handleActivate() {
@@ -37,6 +39,25 @@
         body: JSON.stringify({ active: newActive }),
       });
       flowEditorState.flowActive = newActive;
+
+      // A schedule-entry flow registers with the gateway's interval scheduler
+      // instead of the event-driven trigger-manager.
+      const scheduleNode = flowEditorState.nodes.find((n) => n.type === 'schedule');
+      if (scheduleNode) {
+        const sd = scheduleNode.data as ScheduleNodeData;
+        if (newActive) {
+          await sendRequest('flows.schedule.register', {
+            flowId: flowEditorState.flowId,
+            every: sd.every,
+            unit: sd.unit,
+            atTime: sd.atTime,
+          });
+        } else {
+          await sendRequest('flows.schedule.unregister', { flowId: flowEditorState.flowId });
+        }
+        return;
+      }
+
       const triggerNode = flowEditorState.nodes.find(
         (n) => n.type === 'trigger' || n.type === 'pluginTrigger',
       );

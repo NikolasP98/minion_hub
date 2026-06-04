@@ -1,10 +1,10 @@
 <script lang="ts">
   import { flowEditorState, setNodes, setPluginNodeDescriptors, setNodePresets, defaultConfigForFields } from '$lib/state/features/flow-editor.svelte';
   import type { FlowNodePreset } from '$lib/state/features/flow-editor.svelte';
-  import type { FlowNode, AgentNodeData, PromptBoxData, LLMNodeData, TriggerNodeData, TransformNodeData, StructuredNodeData, RouterNodeData, ToolAgentNodeData, ChannelNodeData, HandoffNodeData, ReactionNodeData, SubflowNodeData, FlowNodeConfigField } from '$lib/state/features/flow-editor.svelte';
+  import type { FlowNode, AgentNodeData, PromptBoxData, LLMNodeData, TriggerNodeData, TransformNodeData, StructuredNodeData, RouterNodeData, ToolAgentNodeData, ChannelNodeData, HandoffNodeData, ReactionNodeData, SubflowNodeData, DatabaseNodeData, FileWriteNodeData, ScheduleNodeData, FlowNodeConfigField } from '$lib/state/features/flow-editor.svelte';
   import { loadBuiltAgents } from '$lib/state/builder';
   import { conn } from '$lib/state/gateway';
-  import { Bot, Type, ChevronLeft, ChevronRight, Cpu, Zap, Braces, Split, Wrench, Send, Headset, SmilePlus, Puzzle, Workflow } from 'lucide-svelte';
+  import { Bot, Type, ChevronLeft, ChevronRight, Cpu, Zap, Braces, Split, Wrench, Send, Headset, SmilePlus, Puzzle, Workflow, Database, FileText, Clock } from 'lucide-svelte';
   import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
   import { sendRequest } from '$lib/services/gateway.svelte';
@@ -227,10 +227,34 @@
     setNodes([...flowEditorState.nodes, node]);
   }
 
+  function addDatabase() {
+    const node: FlowNode = {
+      id: makeId(), type: 'database', position: getDropPosition(),
+      data: { label: 'Database', action: 'read', sql: '' } satisfies DatabaseNodeData,
+    };
+    setNodes([...flowEditorState.nodes, node]);
+  }
+
+  function addFileWrite() {
+    const node: FlowNode = {
+      id: makeId(), type: 'fileWrite', position: getDropPosition(),
+      data: { label: 'Write File', path: 'report-{date}.md', mode: 'overwrite' } satisfies FileWriteNodeData,
+    };
+    setNodes([...flowEditorState.nodes, node]);
+  }
+
+  function addSchedule() {
+    const node: FlowNode = {
+      id: makeId(), type: 'schedule', position: getDropPosition(),
+      data: { label: 'Schedule', every: 1, unit: 'days' } satisfies ScheduleNodeData,
+    };
+    setNodes([...flowEditorState.nodes, node]);
+  }
+
   function handleDragStart(
     e: DragEvent,
     payload:
-      | { type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'transform' | 'structured' | 'router' | 'toolAgent' | 'channel' | 'handoff' | 'reaction' | 'subflow'; agentId?: string; label?: string }
+      | { type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'transform' | 'structured' | 'router' | 'toolAgent' | 'channel' | 'handoff' | 'reaction' | 'subflow' | 'database' | 'fileWrite' | 'schedule'; agentId?: string; label?: string }
       | { type: 'pluginTrigger' | 'pluginAction'; descriptor: FlowNodeDescriptor },
   ) {
     if (!e.dataTransfer) return;
@@ -241,7 +265,7 @@
   // ── Palette, grouped by FUNCTION ────────────────────────────────────────────
   // One short, organised list instead of one long "Inputs" dump. All lucide
   // icons share a component type, so `typeof Zap` types every entry's icon.
-  type BuiltinType = 'trigger' | 'promptBox' | 'llm' | 'agent' | 'toolAgent' | 'router' | 'structured' | 'transform' | 'channel' | 'handoff' | 'reaction' | 'subflow';
+  type BuiltinType = 'trigger' | 'promptBox' | 'llm' | 'agent' | 'toolAgent' | 'router' | 'structured' | 'transform' | 'channel' | 'handoff' | 'reaction' | 'subflow' | 'database' | 'fileWrite' | 'schedule';
   type PaletteNode = {
     type: BuiltinType;
     label: string;
@@ -257,6 +281,7 @@
       title: 'Triggers',
       nodes: [
         { type: 'trigger', label: 'Channel Trigger', desc: 'Inbound message · one or more channels', icon: Zap, color: 'text-amber-400', bg: 'bg-amber-500/20', add: addTriggerNode },
+        { type: 'schedule', label: 'Schedule', desc: 'Run on a recurring interval', icon: Clock, color: 'text-amber-400', bg: 'bg-amber-500/20', add: addSchedule },
         { type: 'promptBox', label: 'Prompt Box', desc: 'Manual text input', icon: Type, color: 'text-violet-400', bg: 'bg-violet-500/20', add: addPromptBox, dragLabel: 'Prompt' },
       ],
     },
@@ -274,6 +299,7 @@
         { type: 'router', label: 'Router / Classify', desc: 'Branch or classify — rule, LLM rubric, or both', icon: Split, color: 'text-amber-400', bg: 'bg-amber-500/20', add: addRouter },
         { type: 'structured', label: 'Structured', desc: 'Extract JSON', icon: Braces, color: 'text-teal-300', bg: 'bg-teal-500/20', add: addStructured },
         { type: 'transform', label: 'Transform', desc: 'Template text', icon: Braces, color: 'text-slate-300', bg: 'bg-slate-500/20', add: addTransform },
+        { type: 'database', label: 'Database', desc: 'Read / write a SQLite DB (CRUD)', icon: Database, color: 'text-teal-300', bg: 'bg-teal-500/20', add: addDatabase },
         { type: 'subflow', label: 'Subflow', desc: 'Run another flow as a step', icon: Workflow, color: 'text-fuchsia-400', bg: 'bg-fuchsia-500/20', add: addSubflow },
       ],
     },
@@ -283,6 +309,7 @@
         { type: 'channel', label: 'Channel', desc: 'Send to WhatsApp / Telegram / …', icon: Send, color: 'text-cyan-400', bg: 'bg-cyan-500/20', add: addChannelNode },
         { type: 'handoff', label: 'Human Handoff', desc: 'Claim → suggest → relay to a human until /end', icon: Headset, color: 'text-rose-400', bg: 'bg-rose-500/20', add: addHandoff },
         { type: 'reaction', label: 'Set Reaction', desc: 'Mark the trigger message with a status emoji', icon: SmilePlus, color: 'text-pink-400', bg: 'bg-pink-500/20', add: addReaction },
+        { type: 'fileWrite', label: 'Write File', desc: 'Save the message to a file', icon: FileText, color: 'text-slate-300', bg: 'bg-slate-500/20', add: addFileWrite },
       ],
     },
   ];

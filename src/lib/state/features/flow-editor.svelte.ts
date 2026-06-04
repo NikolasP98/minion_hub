@@ -142,6 +142,46 @@ export type SubflowNodeData = {
   flowName?: string;
 };
 
+/** Database CRUD action. `read` → gateway `flows.db.query` (SELECT-only, returns
+ *  rows, optional consume-marker); `create`/`update`/`delete` → `flows.db.exec`
+ *  (write, returns the change count). */
+export type DatabaseAction = 'read' | 'create' | 'update' | 'delete';
+
+/** Built-in Database node — a single node covering all CRUD against a sqlite DB
+ *  (defaults to the message ledger). `action` selects read (SELECT, hardened
+ *  SELECT-only + identifier allowlist + DB-path confinement gateway-side, with an
+ *  optional consume-marker) vs. a write (create/update/delete). `{input}` expands
+ *  in the SQL. */
+export type DatabaseNodeData = {
+  label: string;
+  action: DatabaseAction;
+  sql: string;
+  dbPath?: string;
+  /** Read-only: consume-marker stamped on the returned rows (e.g. last_checked). */
+  markColumn?: string;
+  markTable?: string;
+  markIdColumn?: string;
+};
+
+/** Built-in Write File node — writes the upstream message content to a file via
+ *  gateway `flows.file.write` (path confined gateway-side; `{date}` expands). */
+export type FileWriteNodeData = {
+  label: string;
+  path: string;
+  mode: 'overwrite' | 'append';
+};
+
+/** Built-in Schedule trigger — an ENTRY node that fires the flow on a recurring
+ *  interval. The gateway's flows scheduler service evaluates the interval and
+ *  fires activated scheduled flows. No inbound message (empty seed prompt). */
+export type ScheduleNodeData = {
+  label: string;
+  every: number;
+  unit: 'minutes' | 'hours' | 'days';
+  /** Optional "HH:MM" local anchor — for the 'days' unit, fire at/after this time. */
+  atTime?: string;
+};
+
 /** Value stored by a `type: 'destination-list'` plugin config field — the same
  *  channel + sending-account + destinations the built-in Channel node carries,
  *  minus the node label. Forwarded to the plugin method verbatim. */
@@ -247,7 +287,7 @@ export type PluginActionNodeData = {
 
 export type FlowNode = {
   id: string;
-  type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'pluginTrigger' | 'pluginAction' | 'transform' | 'structured' | 'router' | 'toolAgent' | 'channel' | 'handoff' | 'reaction' | 'subflow';
+  type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'pluginTrigger' | 'pluginAction' | 'transform' | 'structured' | 'router' | 'toolAgent' | 'channel' | 'handoff' | 'reaction' | 'subflow' | 'database' | 'fileWrite' | 'schedule';
   position: { x: number; y: number };
   data:
     | AgentNodeData
@@ -263,7 +303,10 @@ export type FlowNode = {
     | ChannelNodeData
     | HandoffNodeData
     | ReactionNodeData
-    | SubflowNodeData;
+    | SubflowNodeData
+    | DatabaseNodeData
+    | FileWriteNodeData
+    | ScheduleNodeData;
 };
 
 export type FlowEdge = {
@@ -657,6 +700,8 @@ const PROCESSING_NODE_TYPES = new Set([
   'channel',
   'reaction',
   'subflow',
+  'database',
+  'fileWrite',
 ]);
 
 /** Replay a stored historic run into the console + node-status view. */
