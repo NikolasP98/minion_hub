@@ -5,6 +5,7 @@
   import * as m from '$lib/paraglide/messages';
   import BuilderHub from '$lib/components/builder/BuilderHub.svelte';
   import FlowGroupSection from '$lib/components/flow-editor/FlowGroupSection.svelte';
+  import MasterFlowsSection from '$lib/components/flow-editor/MasterFlowsSection.svelte';
   import { sendRequest } from '$lib/services/gateway.svelte';
   import { sortGroups, type FlowGroupMeta } from '$lib/flows/groups';
   import { SvelteMap } from 'svelte/reactivity';
@@ -158,6 +159,8 @@
             <Plus size={12} /> {m.flow_newGroup()}
           </button>
         </div>
+
+        <MasterFlowsSection />
 
         {#if loading}
           <p class="text-muted text-xs font-mono">{m.common_loading()}</p>
