@@ -23,6 +23,21 @@ describe('deriveChannelDisplayState', () => {
   it('returns error when lastError present', () => {
     expect(deriveChannelDisplayState({ ...base, gwEnabled: true, gwConfigured: true, gwLastError: 'boom' })).toBe('error');
   });
+  it('returns not-linked (not error) for an enabled account with no link, even with a lastError', () => {
+    expect(
+      deriveChannelDisplayState({ ...base, gwEnabled: true, gwConfigured: true, gwLinked: false, gwLastError: 'connection failure' }),
+    ).toBe('not-linked');
+  });
+  it('returns identity-mismatch when linked to the wrong number', () => {
+    expect(
+      deriveChannelDisplayState({ ...base, gwEnabled: true, gwConfigured: true, gwLinked: true, gwIdentityMismatch: true, gwConnected: true }),
+    ).toBe('identity-mismatch');
+  });
+  it('returns live when linked to the correct number', () => {
+    expect(
+      deriveChannelDisplayState({ ...base, gwEnabled: true, gwConfigured: true, gwLinked: true, gwIdentityMismatch: false, gwRunning: true, gwConnected: true }),
+    ).toBe('live');
+  });
   it('returns pairing when running but not connected', () => {
     expect(deriveChannelDisplayState({ ...base, gwEnabled: true, gwConfigured: true, gwRunning: true, gwConnected: false })).toBe('pairing');
   });

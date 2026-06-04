@@ -42,7 +42,10 @@
             const s = deriveChannelDisplayState(c);
             if (s === 'live' || s === 'degraded') live++;
             else if (s === 'disabled') paused++;
-            else if (s === 'error') errored++;
+            // A mismatched (wrong number) account is a genuine problem; an
+            // unlinked account is not — it's just awaiting a QR scan, so it is
+            // not counted as an error (matches how starting/pairing are treated).
+            else if (s === 'error' || s === 'identity-mismatch') errored++;
         }
         return { live, paused, error: errored };
     });

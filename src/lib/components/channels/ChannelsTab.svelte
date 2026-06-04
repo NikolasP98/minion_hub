@@ -38,7 +38,10 @@
                     bot?: { id?: string | number; username?: string };
                     probe?: { bot?: { id?: string | number; username?: string } };
                     application?: { id?: string };
-                    self?: { e164?: string };
+                    self?: { e164?: string | null; jid?: string | null };
+                    linked?: boolean;
+                    expectedIdentity?: string | null;
+                    identityMismatch?: boolean;
                     tokenSource?: string;
                     dmPolicy?: string;
                 };
@@ -70,7 +73,9 @@
                 if (botUsername) meta.username = String(botUsername);
                 if (botId) meta.botId = String(botId);
                 if (acct.application?.id) meta.appId = acct.application.id;
-                if (acct.self?.e164) meta.phone = acct.self.e164;
+                const linkedNumber = acct.self?.e164 ?? acct.self?.jid ?? undefined;
+                if (linkedNumber) meta.phone = linkedNumber;
+                if (acct.identityMismatch && acct.expectedIdentity) meta.expectedPhone = acct.expectedIdentity;
                 if (acct.tokenSource && acct.tokenSource !== 'none') meta.tokenSource = acct.tokenSource;
                 if (acct.dmPolicy) meta.dmPolicy = acct.dmPolicy;
 
@@ -87,9 +92,12 @@
                     gwConnected: acct.connected ?? undefined,
                     gwEnabled: acct.enabled ?? undefined,
                     gwConfigured: acct.configured ?? undefined,
+                    gwLinked: acct.linked ?? undefined,
                     gwRunning: acct.running ?? undefined,
                     gwLastError: acct.lastError ?? undefined,
                     gwReconnectAttempts: acct.reconnectAttempts ?? undefined,
+                    gwExpectedIdentity: acct.expectedIdentity ?? undefined,
+                    gwIdentityMismatch: acct.identityMismatch ?? undefined,
                 });
             }
         }

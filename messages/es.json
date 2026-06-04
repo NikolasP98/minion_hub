@@ -919,6 +919,8 @@
   "session_noTranscriptData": "Sin datos de transcripción",
   "channelState_disabled": "Deshabilitado",
   "channelState_pendingConfig": "Configuración pendiente",
+  "channelState_notLinked": "Sin vincular",
+  "channelState_identityMismatch": "Número incorrecto",
   "channelState_starting": "Iniciando…",
   "channelState_pairing": "Emparejando…",
   "channelState_live": "En vivo",

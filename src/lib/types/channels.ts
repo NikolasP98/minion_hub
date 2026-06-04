@@ -16,9 +16,14 @@ export interface Channel {
   gwConnected?: boolean;
   gwEnabled?: boolean;
   gwConfigured?: boolean;
+  gwLinked?: boolean;
   gwRunning?: boolean;
   gwLastError?: string | null;
   gwReconnectAttempts?: number;
+  /** The identity this account is expected to hold (phone-based channels). */
+  gwExpectedIdentity?: string | null;
+  /** True when the account is linked to a different number than expected. */
+  gwIdentityMismatch?: boolean;
 }
 
 export interface ChannelAssignment {

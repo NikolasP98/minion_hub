@@ -928,6 +928,8 @@
   "session_noTranscriptData": "No transcript data",
   "channelState_disabled": "Disabled",
   "channelState_pendingConfig": "Pending config",
+  "channelState_notLinked": "Not linked",
+  "channelState_identityMismatch": "Wrong number",
   "channelState_starting": "Starting…",
   "channelState_pairing": "Pairing…",
   "channelState_live": "Live",

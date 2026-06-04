@@ -55,6 +55,7 @@
         botId: 'Bot ID',
         appId: 'Application ID',
         phone: 'Phone',
+        expectedPhone: 'Expected',
         tokenSource: 'Token Source',
         dmPolicy: 'DM Policy',
     };
@@ -234,6 +235,14 @@
                 <span class="text-sm font-medium text-foreground truncate">{channel.label}</span>
                 {#if channel.credentialsMeta?.username}
                     <span class="text-xs text-muted-strong truncate">@{channel.credentialsMeta.username}</span>
+                {/if}
+                {#if channel.credentialsMeta?.phone}
+                    <span
+                        class="text-xs truncate tabular-nums {channel.gwIdentityMismatch ? 'text-warning font-medium' : 'text-muted-strong'}"
+                        title={channel.gwIdentityMismatch ? `Linked to ${channel.credentialsMeta.phone}${channel.credentialsMeta.expectedPhone ? ` — expected ${channel.credentialsMeta.expectedPhone}` : ''}` : channel.credentialsMeta.phone}
+                    >
+                        {channel.gwIdentityMismatch ? '⚠ ' : ''}{channel.credentialsMeta.phone}
+                    </span>
                 {/if}
             </div>
         </div>
