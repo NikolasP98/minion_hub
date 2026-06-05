@@ -28,6 +28,7 @@
     import type { Agent } from "@minion-stack/shared";
     import { diceBearAvatarUrl } from "$lib/utils/avatar";
     import { agentDisplayName } from "$lib/utils/agent-display";
+    import { loadPersonalAgentNames } from "$lib/state/features/personal-agent-names.svelte";
     import { goto } from "$app/navigation";
     import { onMount, onDestroy } from "svelte";
 
@@ -43,6 +44,7 @@
 
     onMount(() => {
         loadBuiltAgents();
+        loadPersonalAgentNames();
     });
 
     onDestroy(() => {

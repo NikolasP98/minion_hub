@@ -11,6 +11,8 @@
  * type (once `identity` lands in @minion-stack/shared) and any local agent
  * shape with `id` + optional `name`.
  */
+import { personalAgentName } from '$lib/state/features/personal-agent-names.svelte';
+
 export interface AgentDisplayInput {
     id: string;
     name?: string;
@@ -23,11 +25,15 @@ export function agentDisplayName(agent: AgentDisplayInput | null | undefined): s
     if (curated) return curated;
 
     // Personal agents have machine ids like `personal-<40-char user hash>` and
-    // usually no curated name — rendering the raw id is unreadable and overflows
-    // any compact surface. Show a tidy, honest label keyed by a short hash prefix
-    // (no fabricated owner name) so multiple personal agents stay distinguishable.
+    // usually no curated name. Prefer the owner's username (loaded into the
+    // personal-agent-names store from /api/personal-agents); fall back to a tidy
+    // hash-prefixed label so the id never renders raw.
     const personal = /^personal-(.+)$/.exec(agent.id);
-    if (personal) return `Personal · ${personal[1].slice(0, 6)}`;
+    if (personal) {
+        const owner = personalAgentName(agent.id);
+        if (owner) return owner;
+        return `Personal · ${personal[1].slice(0, 6)}`;
+    }
 
     return agent.id;
 }
