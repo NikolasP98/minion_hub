@@ -1,10 +1,14 @@
 import { eq, and, asc } from 'drizzle-orm';
-import { agentGroups, agentGroupMembers } from '@minion-stack/db/schema';
+import { agentGroups, agentGroupMembers } from '@minion-stack/db/pg';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
-import { newId, nowMs } from '$server/db/utils';
-import type { TenantContext } from './base';
+import { newId } from '$server/db/utils';
+import type { CoreCtx } from '$server/auth/core-ctx';
 
-export async function listGroups(ctx: TenantContext, userId: string) {
+// `userId` params below carry the Supabase profile id (profiles.id =
+// user.supabaseId): agent_groups is keyed by profile_id in Postgres, not the
+// legacy bridged user id.
+
+export async function listGroups(ctx: CoreCtx, userId: string) {
   return cached(
     keys.hub('agent-groups', { t: ctx.tenantId, u: userId }),
     {
@@ -16,7 +20,7 @@ export async function listGroups(ctx: TenantContext, userId: string) {
       const groups = await ctx.db
         .select()
         .from(agentGroups)
-        .where(and(eq(agentGroups.userId, userId), eq(agentGroups.tenantId, ctx.tenantId)))
+        .where(and(eq(agentGroups.profileId, userId), eq(agentGroups.tenantId, ctx.tenantId)))
         .orderBy(asc(agentGroups.sortOrder));
 
       const groupIds = groups.map((g) => g.id);
@@ -40,16 +44,14 @@ export async function listGroups(ctx: TenantContext, userId: string) {
   );
 }
 
-export async function createGroup(ctx: TenantContext, userId: string, name: string) {
+export async function createGroup(ctx: CoreCtx, userId: string, name: string) {
   const id = newId();
-  const now = nowMs();
   await ctx.db.insert(agentGroups).values({
     id,
-    userId,
+    profileId: userId,
     tenantId: ctx.tenantId,
     name,
     sortOrder: 0,
-    createdAt: now,
   });
   await invalidateTags([
     ...tags.tenantDomain(ctx.tenantId, 'agent-groups'),
@@ -59,7 +61,7 @@ export async function createGroup(ctx: TenantContext, userId: string, name: stri
 }
 
 export async function updateGroup(
-  ctx: TenantContext,
+  ctx: CoreCtx,
   userId: string,
   groupId: string,
   data: { name?: string; sortOrder?: number },
@@ -75,7 +77,7 @@ export async function updateGroup(
     .where(
       and(
         eq(agentGroups.id, groupId),
-        eq(agentGroups.userId, userId),
+        eq(agentGroups.profileId, userId),
         eq(agentGroups.tenantId, ctx.tenantId),
       ),
     );
@@ -86,13 +88,13 @@ export async function updateGroup(
   ]);
 }
 
-export async function deleteGroup(ctx: TenantContext, userId: string, groupId: string) {
+export async function deleteGroup(ctx: CoreCtx, userId: string, groupId: string) {
   await ctx.db
     .delete(agentGroups)
     .where(
       and(
         eq(agentGroups.id, groupId),
-        eq(agentGroups.userId, userId),
+        eq(agentGroups.profileId, userId),
         eq(agentGroups.tenantId, ctx.tenantId),
       ),
     );
@@ -104,7 +106,7 @@ export async function deleteGroup(ctx: TenantContext, userId: string, groupId: s
 }
 
 export async function setGroupMembers(
-  ctx: TenantContext,
+  ctx: CoreCtx,
   userId: string,
   groupId: string,
   agentIds: string[],
@@ -116,7 +118,7 @@ export async function setGroupMembers(
     .where(
       and(
         eq(agentGroups.id, groupId),
-        eq(agentGroups.userId, userId),
+        eq(agentGroups.profileId, userId),
         eq(agentGroups.tenantId, ctx.tenantId),
       ),
     )
@@ -143,7 +145,7 @@ export async function setGroupMembers(
 }
 
 export async function addAgentToGroup(
-  ctx: TenantContext,
+  ctx: CoreCtx,
   userId: string,
   groupId: string,
   agentId: string,
@@ -160,7 +162,7 @@ export async function addAgentToGroup(
 }
 
 export async function removeAgentFromGroup(
-  ctx: TenantContext,
+  ctx: CoreCtx,
   userId: string,
   groupId: string,
   agentId: string,
@@ -176,7 +178,7 @@ export async function removeAgentFromGroup(
 }
 
 export async function moveAgentToGroup(
-  ctx: TenantContext,
+  ctx: CoreCtx,
   userId: string,
   agentId: string,
   fromGroupId: string | null,
