@@ -1,3 +1,5 @@
+import { and, eq } from 'drizzle-orm';
+import { userGateway } from '@minion-stack/db/pg';
 import { getCoreDb } from '$server/db/pg-client';
 import { getTenantCtx } from '$server/auth/tenant-ctx';
 import { resolveGatewayId } from '$server/services/gateway.pg.service';
@@ -30,7 +32,16 @@ export async function getCoreCtx(locals: App.Locals): Promise<CoreCtx | null> {
  * the `/api/servers/[id]/*` route param; it's resolved to the Supabase
  * gateway.id via `resolveGatewayId` (gateway.legacy_server_id bridge).
  *
- * Returns null if there's no tenant or no gateway bridges that serverId.
+ * Returns null if there's no tenant, no gateway bridges that serverId, or the
+ * caller is not linked to that gateway.
+ *
+ * SECURITY: the serverId→gatewayId mapping is global, so we MUST verify the
+ * caller may access the resolved gateway — otherwise a user could pass another
+ * tenant's serverId and operate on its gateway-scoped rows (IDOR). The `gateway`
+ * table has no tenant_id; access is governed by `user_gateway` links (which
+ * mirror the legacy Turso `user_servers`). The id-mapping cache inside
+ * `resolveGatewayId` is safe to keep global because it is not secret — this
+ * ownership check is per-request and never cached.
  */
 export interface ServerCtx extends CoreCtx {
   gatewayId: string;
@@ -42,7 +53,16 @@ export async function getServerCtx(
 ): Promise<ServerCtx | null> {
   const base = await getCoreCtx(locals);
   if (!base) return null;
+  const profileId = locals.user?.supabaseId;
+  if (!profileId) return null;
   const gatewayId = await resolveGatewayId(serverId);
   if (!gatewayId) return null;
+  // Ownership gate: the caller must be linked to this gateway.
+  const [link] = await getCoreDb()
+    .select({ gatewayId: userGateway.gatewayId })
+    .from(userGateway)
+    .where(and(eq(userGateway.profileId, profileId), eq(userGateway.gatewayId, gatewayId)))
+    .limit(1);
+  if (!link) return null;
   return { ...base, gatewayId };
 }
