@@ -8,6 +8,7 @@ export const ui = $state({
     | 'files'
     | 'prompt'
     | 'graph'
+    | 'memory'
     | 'tools'
     | 'skills'
     | 'pi-agent',
