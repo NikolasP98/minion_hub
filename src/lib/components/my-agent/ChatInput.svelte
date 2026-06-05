@@ -67,7 +67,7 @@
 	.chat-input-wrap {
 		flex-shrink: 0;
 		padding: 12px 0 16px;
-		background: var(--color-bg, #0d0d0d);
+		background: var(--color-bg);
 	}
 
 	.chat-input {
@@ -76,15 +76,15 @@
 		gap: 8px;
 		padding: 12px 16px;
 		min-height: 52px;
-		background: #1a1a1a;
-		border: 1px solid rgba(255, 255, 255, 0.08);
+		background: var(--color-bg2);
+		border: 1px solid color-mix(in srgb, var(--color-foreground) 8%, transparent);
 		border-left-width: 3px;
 		border-radius: 12px;
 		transition: border-color 120ms ease, box-shadow 120ms ease;
 	}
 
 	.chat-input.focused {
-		box-shadow: 0 0 0 1px rgba(232, 125, 106, 0.25);
+		box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 25%, transparent);
 	}
 
 	.chat-input[data-mode='ask'] {
@@ -102,7 +102,7 @@
 		resize: none;
 		background: transparent;
 		border: none;
-		color: rgba(255, 255, 255, 0.92);
+		color: color-mix(in srgb, var(--color-foreground) 92%, transparent);
 		font-size: 14px;
 		line-height: 1.5;
 		font-family: inherit;
@@ -111,14 +111,14 @@
 	}
 
 	textarea::placeholder {
-		color: rgba(255, 255, 255, 0.35);
+		color: color-mix(in srgb, var(--color-foreground) 35%, transparent);
 	}
 
 	.kbd {
 		font-size: 10px;
-		color: rgba(255, 255, 255, 0.3);
+		color: color-mix(in srgb, var(--color-foreground) 30%, transparent);
 		padding: 2px 6px;
-		border: 1px solid rgba(255, 255, 255, 0.1);
+		border: 1px solid color-mix(in srgb, var(--color-foreground) 10%, transparent);
 		border-radius: 4px;
 		font-family: ui-monospace, monospace;
 		margin-bottom: 2px;
@@ -126,7 +126,7 @@
 
 	.hint {
 		font-size: 11px;
-		color: rgba(255, 255, 255, 0.3);
+		color: color-mix(in srgb, var(--color-foreground) 30%, transparent);
 		margin: 6px 4px 0;
 		text-align: right;
 	}

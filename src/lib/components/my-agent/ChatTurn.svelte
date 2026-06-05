@@ -176,7 +176,7 @@
 		border-radius: 6px;
 		cursor: pointer;
 		font-size: 11.5px;
-		color: rgba(255, 255, 255, 0.32);
+		color: color-mix(in srgb, var(--color-foreground) 32%, transparent);
 		list-style: none;
 		user-select: none;
 		transition: color 160ms ease;
@@ -186,7 +186,7 @@
 		display: none;
 	}
 	summary:hover {
-		color: rgba(255, 255, 255, 0.72);
+		color: color-mix(in srgb, var(--color-foreground) 72%, transparent);
 	}
 	/* Subtle "shine" sweep on hover. */
 	summary::after {
@@ -197,7 +197,7 @@
 		background: linear-gradient(
 			100deg,
 			transparent 30%,
-			rgba(255, 255, 255, 0.07) 50%,
+			color-mix(in srgb, var(--color-foreground) 7%, transparent) 50%,
 			transparent 70%
 		);
 		transform: translateX(-120%);
@@ -234,10 +234,10 @@
 		align-items: center;
 		flex-shrink: 0;
 		margin-left: 4px;
-		color: rgba(255, 255, 255, 0.4);
+		color: color-mix(in srgb, var(--color-foreground) 40%, transparent);
 	}
 	.tool-status.err {
-		color: #e0917f;
+		color: var(--color-accent);
 	}
 	.tool-status :global(.spin) {
 		animation: ct-spin 0.8s linear infinite;
@@ -257,7 +257,7 @@
 	.meta-body.reason {
 		font-size: 12px;
 		line-height: 1.55;
-		color: rgba(255, 255, 255, 0.5);
+		color: color-mix(in srgb, var(--color-foreground) 50%, transparent);
 		white-space: pre-wrap;
 		font-style: italic;
 	}
@@ -265,7 +265,7 @@
 		font-size: 9.5px;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
-		color: rgba(255, 255, 255, 0.3);
+		color: color-mix(in srgb, var(--color-foreground) 30%, transparent);
 		margin-top: 2px;
 	}
 	.pre {
@@ -276,7 +276,7 @@
 		font-size: 11px;
 		line-height: 1.45;
 		font-family: ui-monospace, monospace;
-		color: rgba(255, 255, 255, 0.72);
+		color: color-mix(in srgb, var(--color-foreground) 72%, transparent);
 		white-space: pre-wrap;
 		word-break: break-word;
 		max-height: 220px;
@@ -284,11 +284,11 @@
 		scrollbar-width: thin;
 	}
 	.pre.err {
-		color: #f0a99a;
+		color: var(--color-accent);
 	}
 	.pending {
 		font-size: 11px;
-		color: rgba(255, 255, 255, 0.4);
+		color: color-mix(in srgb, var(--color-foreground) 40%, transparent);
 		font-style: italic;
 	}
 
@@ -299,9 +299,9 @@
 		padding: 8px 12px;
 		font-size: 13px;
 		line-height: 1.5;
-		color: rgba(255, 255, 255, 0.9);
-		background: rgba(255, 255, 255, 0.04);
-		border: 1px solid rgba(255, 255, 255, 0.08);
+		color: color-mix(in srgb, var(--color-foreground) 90%, transparent);
+		background: color-mix(in srgb, var(--color-foreground) 4%, transparent);
+		border: 1px solid color-mix(in srgb, var(--color-foreground) 8%, transparent);
 		word-break: break-word;
 	}
 	.answer.streaming {
@@ -312,9 +312,9 @@
 	.img-chip {
 		display: inline-block;
 		font-size: 12px;
-		color: rgba(255, 255, 255, 0.55);
+		color: color-mix(in srgb, var(--color-foreground) 55%, transparent);
 		padding: 4px 8px;
-		border: 1px solid rgba(255, 255, 255, 0.08);
+		border: 1px solid color-mix(in srgb, var(--color-foreground) 8%, transparent);
 		border-radius: 7px;
 	}
 </style>

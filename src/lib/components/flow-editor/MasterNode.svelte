@@ -19,6 +19,21 @@
     Headset,
     Brain,
     Flag,
+    CopyCheck,
+    Hand,
+    ShieldAlert,
+    Mic,
+    RadioTower,
+    Terminal,
+    ListChecks,
+    GitMerge,
+    Inbox,
+    Workflow,
+    Database,
+    FileOutput,
+    Puzzle,
+    Braces,
+    Replace,
   } from 'lucide-svelte';
 
   // All lucide icons share one component type; use Zap's as the canonical shape.
@@ -61,6 +76,24 @@
     handoff: { icon: Headset, accent: 'rose' },
     memory: { icon: Brain, accent: 'fuchsia' },
     end: { icon: Flag, accent: 'slate' },
+    // Custom placeholder kinds — added to faithfully document gateway internals
+    // that the base palette can't express (read-only master flows only).
+    dedupe: { icon: CopyCheck, accent: 'slate' },
+    intercept: { icon: Hand, accent: 'amber' },
+    guardrail: { icon: ShieldAlert, accent: 'rose' },
+    voice: { icon: Mic, accent: 'violet' },
+    broadcast: { icon: RadioTower, accent: 'fuchsia' },
+    directive: { icon: Terminal, accent: 'indigo' },
+    preflight: { icon: ListChecks, accent: 'amber' },
+    coalesce: { icon: GitMerge, accent: 'violet' },
+    buffer: { icon: Inbox, accent: 'teal' },
+    subflow: { icon: Workflow, accent: 'fuchsia' },
+    database: { icon: Database, accent: 'teal' },
+    'file-write': { icon: FileOutput, accent: 'amber' },
+    'plugin-action': { icon: Puzzle, accent: 'violet' },
+    structured: { icon: Braces, accent: 'indigo' },
+    transform: { icon: Replace, accent: 'slate' },
+    'tool-agent': { icon: Bot, accent: 'sky' },
   };
 
   const spec = $derived(KIND[data.kind] ?? KIND.process);
