@@ -13,6 +13,8 @@
 		deleteTodoItem,
 		todoProgress,
 		setPanelOpen,
+		uploadNoteImage,
+		addAttachment,
 		NOTE_COLORS,
 		COLOR_STYLES,
 		type AgentNote
@@ -27,11 +29,33 @@
 		Search,
 		Palette
 	} from 'lucide-svelte';
+	import NoteImageStrip from './NoteImageStrip.svelte';
+	import ImageLightbox from './ImageLightbox.svelte';
 
 	const list = $derived(sortedNotes());
 
 	// Which card has its colour palette popover open.
 	let colorMenuFor = $state<string | null>(null);
+	// Fullscreen image preview source (null = closed).
+	let lightboxSrc = $state<string | null>(null);
+
+	// Paste an image straight onto a card (Ctrl+V while editing it).
+	async function onCardPaste(e: ClipboardEvent, note: AgentNote) {
+		const items = e.clipboardData?.items;
+		if (!items) return;
+		for (const item of items) {
+			if (!item.type.startsWith('image/')) continue;
+			const file = item.getAsFile();
+			if (!file) continue;
+			e.preventDefault();
+			try {
+				const fileId = await uploadNoteImage(file);
+				addAttachment(note.id, fileId);
+			} catch {
+				/* surfaced by the strip on next interaction */
+			}
+		}
+	}
 
 	// Autosize a textarea to its content (Svelte 5 attachment).
 	function autoGrow(el: Element) {
@@ -113,6 +137,7 @@
 				role="listitem"
 				style:border-color={style.border}
 				style:background={style.fill}
+					onpaste={(e) => onCardPaste(e, note)}
 			>
 				<div class="card-top">
 					{#if note.kind === 'todo'}
@@ -189,7 +214,11 @@
 					</ul>
 				{/if}
 
-				<footer class="card-foot">
+				{#if note.kind !== 'easel'}
+						<NoteImageStrip {note} onopen={(src) => (lightboxSrc = src)} />
+					{/if}
+
+					<footer class="card-foot">
 					<div class="color-wrap">
 						<button
 							type="button"
@@ -233,6 +262,8 @@
 		{/each}
 	</div>
 </aside>
+
+<ImageLightbox src={lightboxSrc} onclose={() => (lightboxSrc = null)} />
 
 <style>
 	.notes-panel {
