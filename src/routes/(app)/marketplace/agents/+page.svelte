@@ -75,7 +75,11 @@
                     (a, b) => (b.installCount ?? 0) - (a.installCount ?? 0),
                 );
             case "newest":
-                return agents.sort((a, b) => b.createdAt - a.createdAt);
+                return agents.sort(
+                    (a, b) =>
+                        new Date(b.createdAt).getTime() -
+                        new Date(a.createdAt).getTime(),
+                );
             case "name":
                 return agents.sort((a, b) => a.name.localeCompare(b.name));
             default:

@@ -1,9 +1,9 @@
 import type { LayoutServerLoad } from './$types';
-import { getDb } from '$server/db/client';
+import { getCoreDb } from '$server/db/pg-client';
 import { isCatalogStale, syncMarketplaceAgents } from '$server/services/marketplace.service';
 
 export const load: LayoutServerLoad = async () => {
-  const db = getDb();
+  const db = getCoreDb();
 
   // Fire-and-forget background sync if catalog is stale (> 1 hour old).
   // We don't await so the page doesn't block on GitHub API calls.

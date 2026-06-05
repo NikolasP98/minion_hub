@@ -16,9 +16,10 @@ export interface MarketplaceAgent {
   contextMd?: string | null;
   skillsMd?: string | null;
   installCount: number | null;
-  syncedAt: number;
-  createdAt: number;
-  updatedAt: number;
+  // Postgres timestamps serialise to ISO strings over the API (fed to `new Date()`).
+  syncedAt: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export const marketplaceState = $state({

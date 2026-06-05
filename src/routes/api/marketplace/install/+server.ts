@@ -5,11 +5,15 @@ import { nowMs } from '$server/db/utils';
 import { getAgentWithFiles, recordInstall } from '$server/services/marketplace.service';
 import { upsertAgents } from '$server/services/agent.service';
 import { getTenantCtx } from '$server/auth/tenant-ctx';
+import { getCoreCtx } from '$server/auth/core-ctx';
 import { getPostHogClient } from '$lib/server/posthog';
 
 export const POST: RequestHandler = async ({ locals, request }) => {
   const tenantCtx = await getTenantCtx(locals);
   if (!tenantCtx) throw error(401, 'No tenant configured');
+  // The marketplace catalog + installs live on the relational-core (Supabase) DB.
+  const coreCtx = await getCoreCtx(locals);
+  if (!coreCtx) throw error(401, 'No tenant configured');
 
   const body = await request.json();
   const { agentId, serverId, serverName, serverUrl } = body as {
@@ -38,7 +42,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     .onConflictDoNothing();
 
   // Fetch agent with all markdown files (lazy-populates from GitHub if not yet cached)
-  const agent = await getAgentWithFiles(tenantCtx.db, agentId);
+  const agent = await getAgentWithFiles(coreCtx.db, agentId);
   if (!agent) throw error(404, 'Agent not found in marketplace');
 
   // Upsert agent into hub agents DB for this server
@@ -57,7 +61,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   ]);
 
   // Record the install in the hub DB
-  await recordInstall(tenantCtx, agentId, serverId);
+  await recordInstall(coreCtx, agentId, serverId);
   const posthog = await getPostHogClient();
   posthog?.capture({
     distinctId: locals.user?.id ?? 'anonymous',

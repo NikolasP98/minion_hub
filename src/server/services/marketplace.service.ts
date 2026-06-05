@@ -1,9 +1,15 @@
 import { eq, and, sql } from 'drizzle-orm';
 import { env } from '$env/dynamic/private';
-import { marketplaceAgents, marketplaceInstalls } from '@minion-stack/db/schema';
+import { marketplaceAgents, marketplaceInstalls } from '@minion-stack/db/pg';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
-import { newId, nowMs } from '$server/db/utils';
-import { scopeData, type TenantContext } from './base';
+import { newId } from '$server/db/utils';
+import { getCoreDb } from '$server/db/pg-client';
+import { resolveGatewayId } from '$server/services/gateway.pg.service';
+import type { CoreCtx } from '$server/auth/core-ctx';
+import { scopeData } from './base';
+
+/** The relational-core (Supabase-Postgres) db handle — see `getCoreDb`. */
+type CoreDb = ReturnType<typeof getCoreDb>;
 
 /**
  * The marketplace catalog is a single GLOBAL dataset (not tenant-scoped), so it
@@ -35,10 +41,12 @@ export interface MarketplaceAgentRecord {
   contextMd: string | null;
   skillsMd: string | null;
   installCount: number | null;
-  syncedAt: number;
-  filesLoadedAt: number | null;
-  createdAt: number;
-  updatedAt: number;
+  // Postgres `timestamp` columns surface as Date (and serialise to ISO strings
+  // over the API — the frontend feeds them to `new Date()`, which accepts both).
+  syncedAt: Date;
+  filesLoadedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 /** Metadata-only upsert — no markdown fields, those are lazy-loaded */
@@ -100,7 +108,7 @@ function decodeFileResult(res: PromiseSettledResult<unknown>): string | undefine
 // ─── Sync (metadata only) ────────────────────────────────────────────────────
 
 export async function syncMarketplaceAgents(
-  db: TenantContext['db'],
+  db: CoreDb,
 ): Promise<{ synced: number; errors: string[] }> {
   const errors: string[] = [];
   const agents: MarketplaceAgentUpsert[] = [];
@@ -168,7 +176,7 @@ export async function syncMarketplaceAgents(
  * Returns true if the catalog is stale and should be re-synced.
  * Checks the most recently synced row; if none exist or the row is older than CATALOG_TTL_MS, returns true.
  */
-export async function isCatalogStale(db: TenantContext['db']): Promise<boolean> {
+export async function isCatalogStale(db: CoreDb): Promise<boolean> {
   const rows = await db
     .select({ syncedAt: marketplaceAgents.syncedAt })
     .from(marketplaceAgents)
@@ -176,16 +184,16 @@ export async function isCatalogStale(db: TenantContext['db']): Promise<boolean> 
     .limit(1);
 
   if (rows.length === 0) return true;
-  return Date.now() - rows[0].syncedAt > CATALOG_TTL_MS;
+  return Date.now() - rows[0].syncedAt.getTime() > CATALOG_TTL_MS;
 }
 
 // ─── Lazy file loading ────────────────────────────────────────────────────────
 
 /**
- * Fetches the 5 markdown files for an agent from GitHub and stores them in SQLite.
+ * Fetches the 5 markdown files for an agent from GitHub and stores them in the DB.
  * Updates filesLoadedAt so subsequent calls skip the fetch.
  */
-export async function populateAgentFiles(db: TenantContext['db'], agentId: string): Promise<void> {
+export async function populateAgentFiles(db: CoreDb, agentId: string): Promise<void> {
   const rows = await db
     .select({ githubPath: marketplaceAgents.githubPath })
     .from(marketplaceAgents)
@@ -203,7 +211,6 @@ export async function populateAgentFiles(db: TenantContext['db'], agentId: strin
     fetchGitHubJson(`${basePath}/SKILLS.md`),
   ]);
 
-  const now = nowMs();
   await db
     .update(marketplaceAgents)
     .set({
@@ -212,8 +219,8 @@ export async function populateAgentFiles(db: TenantContext['db'], agentId: strin
       userMd: decodeFileResult(userRes) ?? null,
       contextMd: decodeFileResult(contextRes) ?? null,
       skillsMd: decodeFileResult(skillsRes) ?? null,
-      filesLoadedAt: now,
-      updatedAt: now,
+      filesLoadedAt: new Date(),
+      updatedAt: new Date(),
     })
     .where(eq(marketplaceAgents.id, agentId));
 }
@@ -222,7 +229,7 @@ export async function populateAgentFiles(db: TenantContext['db'], agentId: strin
  * Returns an agent with all markdown fields, lazily fetching from GitHub if not yet cached.
  */
 export async function getAgentWithFiles(
-  db: TenantContext['db'],
+  db: CoreDb,
   id: string,
 ): Promise<MarketplaceAgentRecord | null> {
   const rows = await db
@@ -250,10 +257,7 @@ export async function getAgentWithFiles(
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
 
-export async function listMarketplaceAgents(
-  db: TenantContext['db'],
-  filters: MarketplaceFilters = {},
-) {
+export async function listMarketplaceAgents(db: CoreDb, filters: MarketplaceFilters = {}) {
   const { category, search, limit = 50, offset = 0 } = filters;
 
   // Global, read-mostly catalog — cache per filter combination. Invalidated on
@@ -295,7 +299,7 @@ export async function listMarketplaceAgents(
       if (search) {
         const pattern = `%${search}%`;
         query = query.where(
-          sql`(${marketplaceAgents.name} LIKE ${pattern} OR ${marketplaceAgents.role} LIKE ${pattern} OR ${marketplaceAgents.description} LIKE ${pattern} OR ${marketplaceAgents.tags} LIKE ${pattern})`,
+          sql`(${marketplaceAgents.name} ILIKE ${pattern} OR ${marketplaceAgents.role} ILIKE ${pattern} OR ${marketplaceAgents.description} ILIKE ${pattern} OR ${marketplaceAgents.tags} ILIKE ${pattern})`,
         );
       }
 
@@ -304,7 +308,7 @@ export async function listMarketplaceAgents(
   );
 }
 
-export async function getMarketplaceAgent(db: TenantContext['db'], id: string) {
+export async function getMarketplaceAgent(db: CoreDb, id: string) {
   const rows = await db
     .select()
     .from(marketplaceAgents)
@@ -313,11 +317,8 @@ export async function getMarketplaceAgent(db: TenantContext['db'], id: string) {
   return rows[0] ?? null;
 }
 
-export async function upsertMarketplaceAgents(
-  db: TenantContext['db'],
-  agents: MarketplaceAgentUpsert[],
-) {
-  const now = nowMs();
+export async function upsertMarketplaceAgents(db: CoreDb, agents: MarketplaceAgentUpsert[]) {
+  const now = new Date();
   const results: { id: string; ok: boolean }[] = [];
 
   for (const a of agents) {
@@ -345,8 +346,6 @@ export async function upsertMarketplaceAgents(
           installCount: 0,
           syncedAt: now,
           filesLoadedAt: null,
-          createdAt: now,
-          updatedAt: now,
         })
         .onConflictDoUpdate({
           target: marketplaceAgents.id,
@@ -380,16 +379,28 @@ export async function upsertMarketplaceAgents(
 
 // ─── Install tracking ─────────────────────────────────────────────────────────
 
-export async function recordInstall(ctx: TenantContext, agentId: string, serverId: string) {
-  const now = nowMs();
+/**
+ * Records a marketplace install. `serverId` is the legacy Turso server id; it's
+ * bridged to the Supabase `gateway.id` via `resolveGatewayId`. If no gateway
+ * bridges that serverId (e.g. a server not yet migrated to pg), the install-count
+ * tracking is skipped — the user-facing install still succeeds — and null is
+ * returned.
+ */
+export async function recordInstall(
+  ctx: CoreCtx,
+  agentId: string,
+  serverId: string,
+): Promise<string | null> {
+  const gatewayId = await resolveGatewayId(serverId);
+  if (!gatewayId) return null;
+
   const id = newId();
 
   await ctx.db.insert(marketplaceInstalls).values({
     id,
     tenantId: ctx.tenantId,
     agentId,
-    serverId,
-    installedAt: now,
+    gatewayId,
   });
 
   // Increment install count
@@ -404,7 +415,7 @@ export async function recordInstall(ctx: TenantContext, agentId: string, serverI
   return id;
 }
 
-export async function getInstallCountForTenant(ctx: TenantContext, agentId: string) {
+export async function getInstallCountForTenant(ctx: CoreCtx, agentId: string) {
   const rows = await ctx.db
     .select({ id: marketplaceInstalls.id })
     .from(marketplaceInstalls)
