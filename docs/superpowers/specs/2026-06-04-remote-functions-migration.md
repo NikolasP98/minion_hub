@@ -89,7 +89,7 @@ Routes left as-is: `internal/*`, `messages/ingest`, `metrics/*` push,
 
 ## Status — 2026-06-04 (branch `feature/remote-functions`, off `dev`)
 
-**Done & verified** (check 0/0, build clean — all 8 `*.remote.js` chunks generate;
+**Done & verified** (check 0/0, build clean — all 10 `*.remote.js` chunks generate;
 tests 574/575, the 1 failure = pre-existing `aci-backend.test.ts` git/GPG flake,
 unrelated). Each phase = one commit.
 
@@ -103,6 +103,8 @@ unrelated). Each phase = one commit.
 | 5 | workshop saves | `workshop.remote.ts` | workshop.svelte.ts | 5 |
 | 6 | agent-groups | `agent-groups.remote.ts` | agent-groups.svelte.ts | 6 (CachedStore kept) |
 | 7 | **skill editor** | `skill-editor.remote.ts` | skill-editor.core.svelte.ts | 13 (+ **N+1 → `query.batch`**) |
+| 8 | **channels** | `channels.remote.ts` | channels.svelte.ts | 7 (QR route kept) |
+| 9 | **servers (writes)** | `servers.remote.ts` | hosts.svelte.ts | 3 (SSRF/ownership; hosts read + token kept) |
 
 Foundation: `kit.experimental.remoteFunctions` + `compilerOptions.experimental.async`
 in `svelte.config.js`; `$server/remote/guard.ts` exposes `currentUser`,
@@ -125,11 +127,13 @@ in `svelte.config.js`; `$server/remote/guard.ts` exposes `currentUser`,
   `/api/builder/skills/[id]` action-dispatch PUT + GET + chapter-tools; the
   chapter-tools N+1 is now a **`query.batch`**. The `agents/[id]` and `tools/[id]`
   detail routes are still un-migrated (same action-dispatch shape, low priority).
-- **channels** CRUD (`/api/servers/[id]/channels*`) — server-scoped; QR/assignments.
-- **servers/gateways write** ops — `servers.status`/add/remove; SSRF guard →
-  zod `.refine`. Keep `hosts` *read* in the layout bundle.
+- **channels — DONE** (phase 8): `channels.remote.ts`, 7 fetches, QR route kept.
+- **servers/gateways write — DONE** (phase 9): `servers.remote.ts` add/update/remove
+  with SSRF guard (422) + ownership (404). `hosts` read stays in the layout bundle;
+  token-decrypt endpoint stays a route (sensitive/no-store).
 - Long tail of simple `/api/servers/[id]/*` CRUD (missions, sessions, settings,
-  backups, skills) — pure service calls, low risk.
+  backups, skills, agent-skills) + builder `agents/[id]`/`tools/[id]` detail — pure
+  service calls, low risk, not yet done.
 
 Experimental-API watch: pin the SvelteKit minor; the remote-functions API may
 change. If it does, fix call sites before bumping SvelteKit (owner's directive).
