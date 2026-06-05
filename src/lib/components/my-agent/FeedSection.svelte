@@ -30,7 +30,7 @@
 		font-weight: 600;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
-		color: rgba(232, 125, 106, 0.7);
+		color: color-mix(in srgb, var(--color-accent) 70%, transparent);
 		margin: 0 0 8px;
 		padding: 0 4px;
 		display: flex;
@@ -38,7 +38,7 @@
 	}
 
 	.count {
-		color: rgba(255, 255, 255, 0.35);
+		color: color-mix(in srgb, var(--color-foreground) 35%, transparent);
 	}
 
 	.items {

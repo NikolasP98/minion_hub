@@ -10,8 +10,7 @@
 	import ChatTurn from '$lib/components/my-agent/ChatTurn.svelte';
 	import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
 	import type { ChatMessage } from '$lib/types/chat';
-	import { StickyNote } from 'lucide-svelte';
-	import { notesState, loadNotes, togglePanel } from '$lib/state/features/agent-notes.svelte';
+	import { notesState, loadNotes } from '$lib/state/features/agent-notes.svelte';
 	import { conn } from '$lib/state/gateway';
 	import { agentChat, ensureAgentChat } from '$lib/state/chat/chat.svelte';
 	import { assistant } from '$lib/state/features/assistant.svelte';
@@ -296,35 +295,33 @@
 
 	<main class="column" aria-labelledby="my-agent-greeting">
 		<div class="inner">
-			<header class="greeting-row md:pr-[var(--notch-clearance)]">
-				{#if !voiceCall.active}
-					<div class="mini-avatar">
-						<OpenHumanAvatar mouthRef={mouth} status={voiceCall.status} />
+			<!-- Reserve the top-right notch clearance ONLY when the notes panel is
+			     collapsed — then the column reaches under the floating utility
+			     cluster. When the panel is open it sits over the panel, so the
+			     header takes full width (no clearance) and the greeting breathes. -->
+			<header class="greeting-row" class:notch-pad={!notesState.open}>
+				<div class="identity">
+					{#if !voiceCall.active}
+						<div class="mini-avatar">
+							<OpenHumanAvatar mouthRef={mouth} status={voiceCall.status} />
+						</div>
+					{/if}
+					<div class="greeting-text">
+						<AgentGreeting greeting={data.greeting} userName={data.userName} />
 					</div>
-				{/if}
-				<div class="greeting-text">
-					<AgentGreeting greeting={data.greeting} userName={data.userName} />
 				</div>
-				<CallControls
-					active={voiceCall.active}
-					muted={voiceCall.muted}
-					status={voiceCall.status}
-					disabled={!canCall}
-					onstart={handleStartCall}
-					onend={endCall}
-					ontoggleMute={toggleMute}
-				/>
-				<button
-					type="button"
-					class="notes-toggle"
-					class:on={notesState.open}
-					title="Notes & Todos"
-					aria-label="Toggle notes and todos panel"
-					aria-pressed={notesState.open}
-					onclick={togglePanel}
-				>
-					<StickyNote size={17} />
-				</button>
+
+				<div class="actions" role="group" aria-label="Agent actions">
+					<CallControls
+						active={voiceCall.active}
+						muted={voiceCall.muted}
+						status={voiceCall.status}
+						disabled={!canCall}
+						onstart={handleStartCall}
+						onend={endCall}
+						ontoggleMute={toggleMute}
+					/>
+				</div>
 			</header>
 
 			{#if voiceCall.error}
@@ -443,9 +440,7 @@
 		</div>
 	</main>
 
-	{#if notesState.open}
-		<NotesPanel />
-	{/if}
+	<NotesPanel />
 </div>
 
 <style>
@@ -458,7 +453,7 @@
 		height: 100%;
 		min-height: 0;
 		overflow: hidden;
-		background: var(--color-bg, #0d0d0d);
+		background: var(--color-bg);
 	}
 
 	.column {
@@ -477,13 +472,35 @@
 		flex-direction: column;
 		height: 100%;
 		min-height: 0;
+		/* Drives the responsive collapse of the header actions (CallControls label,
+		   greeting clamp) off the COLUMN width — so it reacts to the notes panel
+		   opening, not just the viewport. */
+		container-type: inline-size;
+		container-name: agentcol;
 	}
 
+	/* Header: identity grows to fill, action cluster sits at its natural size on
+	   the right. The identity is the only growing item, so the greeting always
+	   gets the leftover width — it never gets starved into a smooshed column. */
 	.greeting-row {
 		display: flex;
 		align-items: center;
+		gap: 14px;
+		padding-top: 10px;
+		padding-bottom: 4px;
+	}
+	@media (min-width: 768px) {
+		.greeting-row.notch-pad {
+			padding-right: var(--notch-clearance);
+		}
+	}
+
+	.identity {
+		display: flex;
+		align-items: center;
 		gap: 12px;
-		padding-top: 8px;
+		flex: 1 1 auto;
+		min-width: 0;
 	}
 
 	.greeting-text {
@@ -491,28 +508,11 @@
 		min-width: 0;
 	}
 
-	.notes-toggle {
-		flex-shrink: 0;
-		display: inline-flex;
+	.actions {
+		display: flex;
 		align-items: center;
-		justify-content: center;
-		width: 36px;
-		height: 36px;
-		border-radius: 8px;
-		cursor: pointer;
-		color: rgba(255, 255, 255, 0.55);
-		background: rgba(255, 255, 255, 0.03);
-		border: 1px solid rgba(255, 255, 255, 0.08);
-		transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
-	}
-	.notes-toggle:hover {
-		color: rgba(255, 255, 255, 0.9);
-		border-color: rgba(255, 255, 255, 0.16);
-	}
-	.notes-toggle.on {
-		color: #e87d6a;
-		background: rgba(232, 125, 106, 0.1);
-		border-color: rgba(232, 125, 106, 0.4);
+		gap: 8px;
+		flex-shrink: 0;
 	}
 
 	.mini-avatar {
@@ -522,7 +522,7 @@
 		border-radius: 50%;
 		overflow: hidden;
 		background: radial-gradient(circle at 50% 40%, #1b1408, #0c0a05 80%);
-		box-shadow: 0 0 0 1px rgba(232, 125, 106, 0.6);
+		box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 55%, transparent);
 	}
 
 	/* Stage: avatar above agenda by default. */
@@ -558,8 +558,12 @@
 		gap: 10px;
 		padding: 16px;
 		border-radius: 16px;
-		background: radial-gradient(circle at 50% 35%, rgba(247, 209, 69, 0.07), rgba(12, 12, 12, 0) 70%);
-		border: 1px solid rgba(255, 255, 255, 0.06);
+		background: radial-gradient(
+			circle at 50% 35%,
+			color-mix(in srgb, var(--color-accent) 8%, transparent),
+			transparent 70%
+		);
+		border: 1px solid var(--color-border);
 	}
 
 	.stage.in-call .avatar-big {
@@ -576,13 +580,13 @@
 	.avatar-caption {
 		margin: 0;
 		font-size: 13px;
-		color: rgba(255, 255, 255, 0.65);
+		color: var(--color-muted);
 		text-align: center;
 		min-height: 18px;
 	}
 	.interim {
 		display: block;
-		color: rgba(255, 255, 255, 0.4);
+		color: var(--color-muted-foreground);
 		font-style: italic;
 		font-size: 12px;
 		margin-top: 4px;
@@ -647,15 +651,15 @@
 		word-break: break-word;
 	}
 	.bubble.user {
-		background: rgba(232, 125, 106, 0.14);
-		border: 1px solid rgba(232, 125, 106, 0.22);
-		color: rgba(255, 255, 255, 0.92);
+		background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+		border: 1px solid color-mix(in srgb, var(--color-accent) 24%, transparent);
+		color: var(--color-foreground);
 		white-space: pre-wrap;
 	}
 	.bubble.assistant {
-		background: rgba(255, 255, 255, 0.04);
-		border: 1px solid rgba(255, 255, 255, 0.08);
-		color: rgba(255, 255, 255, 0.9);
+		background: color-mix(in srgb, var(--color-foreground) 4%, transparent);
+		border: 1px solid var(--color-border);
+		color: var(--color-foreground);
 	}
 	.bubble.assistant.streaming {
 		border-style: dashed;
@@ -664,7 +668,7 @@
 
 	.bubble-time {
 		font-size: 9px;
-		color: rgba(255, 255, 255, 0.35);
+		color: var(--color-muted-foreground);
 		padding: 0 4px;
 		font-variant-numeric: tabular-nums;
 	}
@@ -674,7 +678,7 @@
 		align-items: center;
 		gap: 6px;
 		font-size: 12px;
-		color: rgba(255, 255, 255, 0.45);
+		color: var(--color-muted);
 		padding: 4px 6px;
 	}
 
@@ -682,7 +686,7 @@
 		width: 4px;
 		height: 4px;
 		border-radius: 50%;
-		background: #e87d6a;
+		background: var(--color-accent);
 		animation: blink 1.2s infinite;
 	}
 	.thinking-row .dot:nth-child(2) {
@@ -703,20 +707,20 @@
 
 	.state-note {
 		font-size: 13px;
-		color: rgba(255, 255, 255, 0.45);
+		color: var(--color-muted);
 		padding: 8px 4px;
 	}
 	.state-note.error {
-		color: #e87d6a;
+		color: var(--color-accent);
 	}
 
 	.retry {
 		align-self: flex-start;
 		background: transparent;
-		border: 1px solid rgba(232, 125, 106, 0.4);
-		color: #e87d6a;
+		border: 1px solid color-mix(in srgb, var(--color-accent) 40%, transparent);
+		color: var(--color-accent);
 		padding: 4px 10px;
-		border-radius: 4px;
+		border-radius: var(--theme-radius, 4px);
 		cursor: pointer;
 		font-size: 12px;
 	}
@@ -728,12 +732,12 @@
 	}
 	.history hr {
 		border: none;
-		border-top: 1px solid rgba(255, 255, 255, 0.06);
+		border-top: 1px solid var(--color-border);
 		margin: 0 0 16px;
 	}
 	.history-note {
 		font-size: 12px;
-		color: rgba(255, 255, 255, 0.35);
+		color: var(--color-muted-foreground);
 		margin: 0;
 	}
 

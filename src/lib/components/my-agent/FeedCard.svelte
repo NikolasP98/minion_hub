@@ -98,8 +98,8 @@
 
 	.card:hover,
 	.card:focus-visible {
-		background: rgba(255, 255, 255, 0.025);
-		border-color: rgba(255, 255, 255, 0.06);
+		background: color-mix(in srgb, var(--color-foreground) 2.5%, transparent);
+		border-color: color-mix(in srgb, var(--color-foreground) 6%, transparent);
 		outline: none;
 	}
 
@@ -123,7 +123,7 @@
 
 	.title {
 		font-size: 14px;
-		color: rgba(255, 255, 255, 0.92);
+		color: color-mix(in srgb, var(--color-foreground) 92%, transparent);
 		line-height: 1.4;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -132,7 +132,7 @@
 
 	.subtitle {
 		font-size: 12px;
-		color: rgba(255, 255, 255, 0.5);
+		color: color-mix(in srgb, var(--color-foreground) 50%, transparent);
 		margin-top: 2px;
 	}
 
@@ -157,18 +157,18 @@
 		border-radius: 6px;
 		background: transparent;
 		border: none;
-		color: rgba(255, 255, 255, 0.5);
+		color: color-mix(in srgb, var(--color-foreground) 50%, transparent);
 		cursor: pointer;
 		transition: background 100ms ease, color 100ms ease;
 	}
 
 	.action:hover {
-		background: rgba(255, 255, 255, 0.06);
-		color: rgba(255, 255, 255, 0.92);
+		background: color-mix(in srgb, var(--color-foreground) 6%, transparent);
+		color: color-mix(in srgb, var(--color-foreground) 92%, transparent);
 	}
 
 	.action:focus-visible {
-		outline: 2px solid #e87d6a;
+		outline: 2px solid var(--color-accent);
 		outline-offset: 1px;
 	}
 </style>
