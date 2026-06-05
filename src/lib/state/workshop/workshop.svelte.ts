@@ -1,4 +1,11 @@
 import { hostsState } from '$lib/state/features/hosts.svelte';
+import {
+  listWorkshopSaves,
+  getWorkshopSave,
+  createWorkshopSave,
+  updateWorkshopSave,
+  deleteWorkshopSave,
+} from '$lib/remote/workshop.remote';
 import type {
   AgentInstance,
   Relationship,
@@ -416,13 +423,10 @@ export function scheduleDbSave() {
     try {
       const snapshot = $state.snapshot(workshopState);
       const thumbnail = thumbnailProvider ? await thumbnailProvider() : null;
-      await fetch(`/api/workshop/saves/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          state: JSON.stringify(snapshot),
-          ...(thumbnail ? { thumbnail } : {}),
-        }),
+      await updateWorkshopSave({
+        id,
+        state: JSON.stringify(snapshot),
+        ...(thumbnail ? { thumbnail } : {}),
       });
     } catch {
       // non-critical
@@ -440,10 +444,10 @@ export function cancelDbSave() {
 }
 
 export async function openSave(id: string) {
-  const res = await fetch(`/api/workshop/saves/${id}`);
-  if (!res.ok) throw new Error('Failed to load workspace');
-  const { save } = await res.json();
-  const saved: WorkshopState = typeof save.state === 'string' ? JSON.parse(save.state) : save.state;
+  const save = await getWorkshopSave(id);
+  const saved = (typeof save.state === 'string'
+    ? JSON.parse(save.state)
+    : save.state) as WorkshopState;
   workshopState.camera = saved.camera;
   workshopState.agents = saved.agents;
   workshopState.relationships = saved.relationships;
@@ -461,13 +465,7 @@ export async function openSave(id: string) {
 export async function createBlankSave(name: string): Promise<string> {
   resetWorkshop();
   const snapshot = $state.snapshot(workshopState);
-  const res = await fetch('/api/workshop/saves', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, state: JSON.stringify(snapshot) }),
-  });
-  if (!res.ok) throw new Error('Failed to create workspace');
-  const { id } = await res.json();
+  const { id } = await createWorkshopSave({ name, state: JSON.stringify(snapshot) });
   saveSync.activeSaveId = id;
   autoSave(undefined, ...ALL_SLICES);
   return id;
@@ -503,15 +501,11 @@ export async function listWorkspaceSaves(): Promise<
     elementCount: number;
   }>
 > {
-  const res = await fetch('/api/workshop/saves');
-  if (!res.ok) throw new Error('Failed to list workspace saves');
-  const { saves } = await res.json();
-  return saves;
+  return listWorkshopSaves();
 }
 
 export async function deleteWorkspaceSave(id: string) {
-  const res = await fetch(`/api/workshop/saves/${id}`, { method: 'DELETE' });
-  if (!res.ok) throw new Error('Failed to delete workspace save');
+  await deleteWorkshopSave(id);
 }
 
 // --- Reset ---
