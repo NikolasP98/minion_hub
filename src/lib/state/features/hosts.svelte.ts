@@ -3,6 +3,7 @@ import { uuid } from '@minion-stack/shared';
 import { page } from '$app/state';
 import { invalidateHosts } from './user.svelte';
 import { toastAsync } from '$lib/state/ui/toast.svelte';
+import { addServer, updateServer, removeServer } from '$lib/remote/servers.remote';
 import * as m from '$lib/paraglide/messages';
 
 const HOSTS_CACHE_KEY = 'minion-dash-hosts-cache';
@@ -163,12 +164,7 @@ export async function addHost(host: { name: string; url: string; token: string }
 
   return toastAsync(
     (async () => {
-      const res = await fetch('/api/servers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newHost),
-      });
-      if (!res.ok) throw new Error(`Failed to save host: ${res.status}`);
+      await addServer(newHost);
 
       local.overlay = [...hostsState.hosts, newHost];
       updateHostsCache(local.overlay);
@@ -190,12 +186,7 @@ export async function addHost(host: { name: string; url: string; token: string }
 
 export async function updateHost(id: string, updates: Partial<Omit<Host, 'id'>>, options?: { silent?: boolean }) {
   const run = async () => {
-    const res = await fetch(`/api/servers/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
-    });
-    if (!res.ok) throw new Error(`Failed to update host: ${res.status}`);
+    await updateServer({ id, ...updates });
     const merged = hostsState.hosts.map((h) => (h.id === id ? { ...h, ...updates } : h));
     local.overlay = merged;
     updateHostsCache(merged);
@@ -219,8 +210,7 @@ export async function updateHost(id: string, updates: Partial<Omit<Host, 'id'>>,
 
 export async function removeHost(id: string, options?: { silent?: boolean }) {
   const run = async () => {
-    const res = await fetch(`/api/servers/${id}`, { method: 'DELETE' });
-    if (!res.ok) throw new Error(`Failed to remove host: ${res.status}`);
+    await removeServer(id);
     const filtered = hostsState.hosts.filter((h) => h.id !== id);
     local.overlay = filtered;
     updateHostsCache(filtered);
