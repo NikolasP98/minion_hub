@@ -1,10 +1,10 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { listBuiltSkills, createBuiltSkill } from '$server/services/builder.service';
-import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
+import { requireCoreCtx } from '$server/auth/core-ctx';
 
 export const GET: RequestHandler = async ({ locals, url }) => {
-  const ctx = await getOrCreateTenantCtx(locals);
+  const ctx = await requireCoreCtx(locals);
   if (!ctx) throw error(401);
   const status = url.searchParams.get('status');
   const opts: { status?: 'draft' | 'published' } | undefined =
@@ -14,7 +14,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 };
 
 export const POST: RequestHandler = async ({ locals, request }) => {
-  const ctx = await getOrCreateTenantCtx(locals);
+  const ctx = await requireCoreCtx(locals);
   if (!ctx) throw error(401);
   const body = await request.json();
   const { id } = await createBuiltSkill(ctx, body);

@@ -1,11 +1,10 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { eq, and, asc } from 'drizzle-orm';
-import { builtAgents, builtAgentSkills } from '@minion-stack/db/schema';
-import { newId, nowMs } from '$server/db/utils';
-import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
+import { builtAgents, builtAgentSkills } from '@minion-stack/db/pg';
+import { newId } from '$server/db/utils';
+import { requireCoreCtx, type CoreCtx } from '$server/auth/core-ctx';
 import { requireAuth } from '$server/auth/authorize';
-import type { TenantContext } from '$server/services/base';
 
 /**
  * Fetch a built agent and verify the requesting user owns it (or is an admin).
@@ -16,7 +15,7 @@ async function requireAgentOwnership(
   isAdmin: boolean,
   agentId: string,
   tenantId: string,
-  ctx: TenantContext,
+  ctx: CoreCtx,
 ) {
   const [agent] = await ctx.db
     .select()
@@ -34,7 +33,7 @@ async function requireAgentOwnership(
 /** GET /api/builder/agents/:id — agent with skill slots */
 export const GET: RequestHandler = async ({ locals, params }) => {
   const user = requireAuth(locals);
-  const ctx = await getOrCreateTenantCtx(locals);
+  const ctx = await requireCoreCtx(locals);
 
   await requireAgentOwnership(user.id, user.role === 'admin', params.id!, ctx.tenantId, ctx);
 
@@ -57,7 +56,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 /** PUT /api/builder/agents/:id — update agent or manage skill slots */
 export const PUT: RequestHandler = async ({ locals, params, request }) => {
   const user = requireAuth(locals);
-  const ctx = await getOrCreateTenantCtx(locals);
+  const ctx = await requireCoreCtx(locals);
 
   await requireAgentOwnership(user.id, user.role === 'admin', params.id!, ctx.tenantId, ctx);
 
@@ -65,7 +64,7 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
   const { action } = body;
 
   if (action === 'publish') {
-    const now = nowMs();
+    const now = new Date();
     await ctx.db
       .update(builtAgents)
       .set({ status: 'published', publishedAt: now, updatedAt: now })
@@ -135,7 +134,7 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
       ...(maxTokens !== undefined && { maxTokens }),
       ...(retryPolicy !== undefined && { retryPolicy: JSON.stringify(retryPolicy) }),
       ...(fallbackAgentId !== undefined && { fallbackAgentId }),
-      updatedAt: nowMs(),
+      updatedAt: new Date(),
     })
     .where(and(eq(builtAgents.id, params.id!), eq(builtAgents.tenantId, ctx.tenantId)));
 
@@ -145,7 +144,7 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
 /** DELETE /api/builder/agents/:id */
 export const DELETE: RequestHandler = async ({ locals, params }) => {
   const user = requireAuth(locals);
-  const ctx = await getOrCreateTenantCtx(locals);
+  const ctx = await requireCoreCtx(locals);
 
   await requireAgentOwnership(user.id, user.role === 'admin', params.id!, ctx.tenantId, ctx);
 

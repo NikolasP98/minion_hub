@@ -11,6 +11,12 @@ vi.mock('$server/db/utils', () => ({
   nowMs: () => 1_700_000_000_000,
 }));
 
+// builder.service now resolves serverId→gatewayId via gateway.pg.service
+// (which would call the real getCoreDb). Stub it so unit tests stay hermetic.
+vi.mock('$server/services/gateway.pg.service', () => ({
+  resolveGatewayId: () => Promise.resolve('gw-1'),
+}));
+
 // ── validateSkillForPublish ───────────────────────────────────────────
 
 describe('validateSkillForPublish', () => {
@@ -39,7 +45,7 @@ describe('validateSkillForPublish', () => {
       allTools, // batch tool query via ctx.db.select().from(builtChapterTools)
     ]);
 
-    const result = await validateSkillForPublish({ db, tenantId: 't1' }, 'skill-1');
+    const result = await validateSkillForPublish({ db: db as never, tenantId: 't1' }, 'skill-1');
 
     // 4 select calls: getBuiltSkill + getChapters + getChapterEdges + tool batch
     expect(db.select).toHaveBeenCalledTimes(4);
@@ -79,7 +85,7 @@ describe('validateSkillForPublish', () => {
       allTools, // batch tool query
     ]);
 
-    const result = await validateSkillForPublish({ db, tenantId: 't1' }, 'skill-1');
+    const result = await validateSkillForPublish({ db: db as never, tenantId: 't1' }, 'skill-1');
 
     // Cycles and disconnected nodes are warnings in the shared module — no errors block publish
     expect(result.valid).toBe(true);
@@ -110,7 +116,7 @@ describe('validateSkillForPublish', () => {
       allTools, // batch tool query
     ]);
 
-    const result = await validateSkillForPublish({ db, tenantId: 't1' }, 'skill-1');
+    const result = await validateSkillForPublish({ db: db as never, tenantId: 't1' }, 'skill-1');
 
     expect(result.errors.some((e) => e.toLowerCase().includes('not connected'))).toBe(false);
   });
@@ -137,7 +143,7 @@ describe('validateSkillForPublish', () => {
       allTools, // batch tool query returns empty
     ]);
 
-    const result = await validateSkillForPublish({ db, tenantId: 't1' }, 'skill-1');
+    const result = await validateSkillForPublish({ db: db as never, tenantId: 't1' }, 'skill-1');
 
     expect(result.valid).toBe(false);
     // Shared module reports 'Chapter has no tools assigned' — chapter name is in the finding's chapterName field
@@ -157,7 +163,7 @@ describe('validateSkillForPublish', () => {
       // No tool result needed since condition-only skips tool check
     ]);
 
-    const result = await validateSkillForPublish({ db, tenantId: 't1' }, 'skill-1');
+    const result = await validateSkillForPublish({ db: db as never, tenantId: 't1' }, 'skill-1');
 
     // select called for: getBuiltSkill + getChapters only (no tool batch query)
     expect(db.select).toHaveBeenCalledTimes(2);
@@ -171,14 +177,14 @@ describe('validateSkillForPublish', () => {
 describe('setChapterTools', () => {
   it('calls db.insert exactly once for 3 toolIds (not 3 times)', async () => {
     const { db } = createMockDb();
-    await setChapterTools({ db, tenantId: 't1' }, 'ch-1', ['tool-a', 'tool-b', 'tool-c']);
+    await setChapterTools({ db: db as never, tenantId: 't1' }, 'ch-1', ['tool-a', 'tool-b', 'tool-c']);
     expect(db.delete).toHaveBeenCalledTimes(1);
     expect(db.insert).toHaveBeenCalledTimes(1);
   });
 
   it('calls db.delete but NOT db.insert when toolIds is empty', async () => {
     const { db } = createMockDb();
-    await setChapterTools({ db, tenantId: 't1' }, 'ch-1', []);
+    await setChapterTools({ db: db as never, tenantId: 't1' }, 'ch-1', []);
     expect(db.delete).toHaveBeenCalledTimes(1);
     expect(db.insert).not.toHaveBeenCalled();
   });
@@ -189,7 +195,7 @@ describe('setChapterTools', () => {
 describe('setAgentBuiltSkills', () => {
   it('calls db.insert exactly once for 3 skillIds (not 3 times)', async () => {
     const { db } = createMockDb();
-    await setAgentBuiltSkills({ db, tenantId: 't1' }, 'agent-1', 'server-1', [
+    await setAgentBuiltSkills({ db: db as never, tenantId: 't1' }, 'agent-1', 'server-1', [
       'skill-a',
       'skill-b',
       'skill-c',
@@ -200,7 +206,7 @@ describe('setAgentBuiltSkills', () => {
 
   it('calls db.delete but NOT db.insert when skillIds is empty', async () => {
     const { db } = createMockDb();
-    await setAgentBuiltSkills({ db, tenantId: 't1' }, 'agent-1', 'server-1', []);
+    await setAgentBuiltSkills({ db: db as never, tenantId: 't1' }, 'agent-1', 'server-1', []);
     expect(db.delete).toHaveBeenCalledTimes(1);
     expect(db.insert).not.toHaveBeenCalled();
   });

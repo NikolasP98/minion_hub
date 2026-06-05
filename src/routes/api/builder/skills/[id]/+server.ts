@@ -17,11 +17,11 @@ import {
   deleteChapterEdge,
   validateSkillForPublish,
 } from '$server/services/builder.service';
-import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
+import { requireCoreCtx } from '$server/auth/core-ctx';
 
 /** GET /api/builder/skills/:id — full skill with tools, chapters, edges */
 export const GET: RequestHandler = async ({ locals, params }) => {
-  const ctx = await getOrCreateTenantCtx(locals);
+  const ctx = await requireCoreCtx(locals);
   if (!ctx) throw error(401);
 
   const skill = await getBuiltSkill(ctx, params.id!);
@@ -38,7 +38,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 
 /** PUT /api/builder/skills/:id — update skill metadata */
 export const PUT: RequestHandler = async ({ locals, params, request }) => {
-  const ctx = await getOrCreateTenantCtx(locals);
+  const ctx = await requireCoreCtx(locals);
   if (!ctx) throw error(401);
 
   const body = await request.json();
@@ -102,7 +102,7 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
 
 /** DELETE /api/builder/skills/:id */
 export const DELETE: RequestHandler = async ({ locals, params }) => {
-  const ctx = await getOrCreateTenantCtx(locals);
+  const ctx = await requireCoreCtx(locals);
   if (!ctx) throw error(401);
   await deleteBuiltSkill(ctx, params.id!);
   return json({ ok: true });

@@ -1,6 +1,6 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
+import { requireCoreCtx } from '$server/auth/core-ctx';
 import {
   getBuiltTool,
   updateBuiltTool,
@@ -10,7 +10,7 @@ import {
 
 /** GET /api/builder/tools/:id — full tool record */
 export const GET: RequestHandler = async ({ locals, params }) => {
-  const ctx = await getOrCreateTenantCtx(locals);
+  const ctx = await requireCoreCtx(locals);
   if (!ctx) throw error(401);
 
   const tool = await getBuiltTool(ctx, params.id!);
@@ -21,7 +21,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 
 /** PUT /api/builder/tools/:id — update tool or publish */
 export const PUT: RequestHandler = async ({ locals, params, request }) => {
-  const ctx = await getOrCreateTenantCtx(locals);
+  const ctx = await requireCoreCtx(locals);
   if (!ctx) throw error(401);
 
   const body = await request.json();
@@ -50,7 +50,7 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
 
 /** DELETE /api/builder/tools/:id */
 export const DELETE: RequestHandler = async ({ locals, params }) => {
-  const ctx = await getOrCreateTenantCtx(locals);
+  const ctx = await requireCoreCtx(locals);
   if (!ctx) throw error(401);
   await deleteBuiltTool(ctx, params.id!);
   return json({ ok: true });

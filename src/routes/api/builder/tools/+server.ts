@@ -1,13 +1,12 @@
 import type { RequestHandler } from '@sveltejs/kit';
-import { json, error } from '@sveltejs/kit';
+import { json } from '@sveltejs/kit';
 import { eq, desc } from 'drizzle-orm';
-import { builtTools } from '@minion-stack/db/schema';
-import { newId, nowMs } from '$server/db/utils';
-import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
+import { builtTools } from '@minion-stack/db/pg';
+import { newId } from '$server/db/utils';
+import { requireCoreCtx } from '$server/auth/core-ctx';
 
 export const GET: RequestHandler = async ({ locals }) => {
-  const ctx = await getOrCreateTenantCtx(locals);
-  if (!ctx) throw error(401);
+  const ctx = await requireCoreCtx(locals);
   const tools = await ctx.db
     .select()
     .from(builtTools)
@@ -17,10 +16,8 @@ export const GET: RequestHandler = async ({ locals }) => {
 };
 
 export const POST: RequestHandler = async ({ locals, request }) => {
-  const ctx = await getOrCreateTenantCtx(locals);
-  if (!ctx) throw error(401);
+  const ctx = await requireCoreCtx(locals);
   const body = await request.json();
-  const now = nowMs();
   const id = newId();
   await ctx.db.insert(builtTools).values({
     id,
@@ -30,8 +27,6 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     scriptLang: body.scriptLang ?? 'javascript',
     status: 'draft',
     tenantId: ctx.tenantId,
-    createdAt: now,
-    updatedAt: now,
   });
   return json({ id }, { status: 201 });
 };

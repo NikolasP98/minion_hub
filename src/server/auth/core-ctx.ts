@@ -1,3 +1,4 @@
+import { error } from '@sveltejs/kit';
 import { and, eq } from 'drizzle-orm';
 import { userGateway } from '@minion-stack/db/pg';
 import { getCoreDb } from '$server/db/pg-client';
@@ -23,6 +24,13 @@ export async function getCoreCtx(locals: App.Locals): Promise<CoreCtx | null> {
   const base = await getTenantCtx(locals);
   if (!base) return null;
   return { db: getCoreDb(), tenantId: base.tenantId };
+}
+
+/** getCoreCtx, but throws a 401 instead of returning null. Mirrors requireTenantCtx. */
+export async function requireCoreCtx(locals: App.Locals): Promise<CoreCtx> {
+  const ctx = await getCoreCtx(locals);
+  if (!ctx) throw error(401, 'Authentication required');
+  return ctx;
 }
 
 /**

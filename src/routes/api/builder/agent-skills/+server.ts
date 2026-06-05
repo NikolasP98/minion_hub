@@ -1,10 +1,10 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { setAgentBuiltSkills } from '$server/services/builder.service';
-import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
+import { requireCoreCtx } from '$server/auth/core-ctx';
 
 export const POST: RequestHandler = async ({ locals, request }) => {
-  const ctx = await getOrCreateTenantCtx(locals);
+  const ctx = await requireCoreCtx(locals);
   if (!ctx) throw error(401);
   const { gatewayAgentId, serverId, skillIds } = await request.json();
   if (!gatewayAgentId || !serverId || !Array.isArray(skillIds)) {
