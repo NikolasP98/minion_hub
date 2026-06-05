@@ -27,7 +27,7 @@ describe('uploadFile', () => {
   it('calls uploadToB2 and db.insert', async () => {
     const { db } = createMockDb();
     const id = await uploadFile(
-      { db, tenantId: 't1' },
+      { db: db as never, tenantId: 't1' },
       { fileName: 'test.pdf', contentType: 'application/pdf', data: Buffer.from('hi') },
     );
     expect(id).toBe('mock-file-id-0000000001');
@@ -42,7 +42,7 @@ describe('uploadFile', () => {
   it('defaults category to general', async () => {
     const { db } = createMockDb();
     await uploadFile(
-      { db, tenantId: 't1' },
+      { db: db as never, tenantId: 't1' },
       { fileName: 'x.txt', contentType: 'text/plain', data: Buffer.from('data') },
     );
     // Verify the b2FileKey includes 'general'
@@ -58,14 +58,14 @@ describe('getFileUrl', () => {
   it('returns null when file not found', async () => {
     const { db, resolve } = createMockDb();
     resolve([]); // no rows
-    const result = await getFileUrl({ db, tenantId: 't1' }, 'no-such-id');
+    const result = await getFileUrl({ db: db as never, tenantId: 't1' }, 'no-such-id');
     expect(result).toBe(null);
   });
 
   it('returns file with signed URL when found', async () => {
     const { db, resolve } = createMockDb();
     resolve([{ id: 'f1', b2FileKey: 'key', fileName: 'test.pdf' }]);
-    const result = await getFileUrl({ db, tenantId: 't1' }, 'f1');
+    const result = await getFileUrl({ db: db as never, tenantId: 't1' }, 'f1');
     expect(result).not.toBe(null);
     expect(result!.url).toBe('https://signed-url.example.com/file');
     expect(mockGetSignedDownloadUrl).toHaveBeenCalledWith('key');
@@ -76,14 +76,14 @@ describe('deleteFile', () => {
   it('does nothing when file not found', async () => {
     const { db, resolve } = createMockDb();
     resolve([]); // no rows
-    await deleteFile({ db, tenantId: 't1' }, 'no-such-id');
+    await deleteFile({ db: db as never, tenantId: 't1' }, 'no-such-id');
     expect(mockDeleteFromB2).not.toHaveBeenCalled();
   });
 
   it('calls deleteFromB2 then db.delete when found', async () => {
     const { db, resolve } = createMockDb();
     resolve([{ b2FileKey: 'some/key' }]);
-    await deleteFile({ db, tenantId: 't1' }, 'f1');
+    await deleteFile({ db: db as never, tenantId: 't1' }, 'f1');
     expect(mockDeleteFromB2).toHaveBeenCalledWith('some/key');
     expect(db.delete).toHaveBeenCalled();
   });

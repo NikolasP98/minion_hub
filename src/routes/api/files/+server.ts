@@ -1,17 +1,20 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { uploadFile, listFiles } from '$server/services/file.service';
+import { getCoreCtx } from '$server/auth/core-ctx';
 
 export const GET: RequestHandler = async ({ locals, url }) => {
-  if (!locals.tenantCtx) throw error(401);
+  const ctx = await getCoreCtx(locals);
+  if (!ctx) throw error(401);
 
   const category = url.searchParams.get('category') ?? undefined;
-  const files = await listFiles(locals.tenantCtx, category);
+  const files = await listFiles(ctx, category);
   return json({ files });
 };
 
 export const POST: RequestHandler = async ({ locals, request }) => {
-  if (!locals.tenantCtx) throw error(401);
+  const ctx = await getCoreCtx(locals);
+  if (!ctx) throw error(401);
 
   const formData = await request.formData();
   const file = formData.get('file') as File | null;
@@ -20,12 +23,13 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   if (!file) throw error(400, 'file is required');
 
   const data = new Uint8Array(await file.arrayBuffer());
-  const id = await uploadFile(locals.tenantCtx, {
+  const id = await uploadFile(ctx, {
     fileName: file.name,
     contentType: file.type || 'application/octet-stream',
     data,
     category,
-    uploadedBy: locals.user?.id,
+    // uploaded_by is a uuid → profiles.id; use the Supabase identity or null.
+    uploadedBy: locals.user?.supabaseId,
   });
 
   return json({ ok: true, id });

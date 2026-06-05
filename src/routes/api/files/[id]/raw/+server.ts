@@ -1,6 +1,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { redirect, error } from '@sveltejs/kit';
 import { getFileUrl } from '$server/services/file.service';
+import { getCoreCtx } from '$server/auth/core-ctx';
 
 /**
  * GET /api/files/[id]/raw
@@ -12,8 +13,9 @@ import { getFileUrl } from '$server/services/file.service';
  * locals.tenantCtx is present for same-origin image requests.
  */
 export const GET: RequestHandler = async ({ locals, params }) => {
-  if (!locals.tenantCtx) throw error(401);
-  const file = await getFileUrl(locals.tenantCtx, params.id!);
+  const ctx = await getCoreCtx(locals);
+  if (!ctx) throw error(401);
+  const file = await getFileUrl(ctx, params.id!);
   if (!file?.url) throw error(404);
   throw redirect(302, file.url);
 };

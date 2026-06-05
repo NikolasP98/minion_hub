@@ -1,9 +1,10 @@
 import { eq, and, desc } from 'drizzle-orm';
-import { files } from '@minion-stack/db/schema';
+import { files } from '@minion-stack/db/pg';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
-import { newId, nowMs } from '$server/db/utils';
+import { newId } from '$server/db/utils';
 import { uploadToB2, getSignedDownloadUrl, deleteFromB2 } from '$server/storage/b2';
-import { scopeData, type TenantContext } from './base';
+import { scopeData } from './base';
+import type { CoreCtx } from '$server/auth/core-ctx';
 
 export interface FileUploadInput {
   fileName: string;
@@ -13,7 +14,7 @@ export interface FileUploadInput {
   uploadedBy?: string;
 }
 
-export async function uploadFile(ctx: TenantContext, input: FileUploadInput) {
+export async function uploadFile(ctx: CoreCtx, input: FileUploadInput) {
   const id = newId();
   const category = input.category ?? 'general';
   const b2FileKey = `${ctx.tenantId}/${category}/${id}/${input.fileName}`;
@@ -29,14 +30,13 @@ export async function uploadFile(ctx: TenantContext, input: FileUploadInput) {
     contentType: input.contentType,
     sizeBytes: input.data.byteLength,
     category,
-    createdAt: nowMs(),
   });
 
   await invalidateTags(tags.tenantDomain(ctx.tenantId, 'files'));
   return id;
 }
 
-export async function getFileUrl(ctx: TenantContext, id: string) {
+export async function getFileUrl(ctx: CoreCtx, id: string) {
   const rows = await ctx.db
     .select()
     .from(files)
@@ -49,7 +49,7 @@ export async function getFileUrl(ctx: TenantContext, id: string) {
   return { ...file, url };
 }
 
-export async function deleteFile(ctx: TenantContext, id: string) {
+export async function deleteFile(ctx: CoreCtx, id: string) {
   const rows = await ctx.db
     .select({ b2FileKey: files.b2FileKey })
     .from(files)
@@ -66,7 +66,7 @@ export async function deleteFile(ctx: TenantContext, id: string) {
   ]);
 }
 
-export async function listFiles(ctx: TenantContext, category?: string) {
+export async function listFiles(ctx: CoreCtx, category?: string) {
   return cached(
     keys.hub('files', { t: ctx.tenantId, d: scopeData({ category }) }),
     {

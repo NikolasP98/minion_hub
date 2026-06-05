@@ -1,7 +1,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { requireAuth } from '$server/auth/authorize';
-import { getTenantCtx } from '$server/auth/tenant-ctx';
+import { getCoreCtx } from '$server/auth/core-ctx';
 import { assertSafeUrl, SsrfBlockedError } from '$server/services/ssrf-guard';
 import { uploadFile } from '$server/services/file.service';
 
@@ -22,7 +22,7 @@ const TIMEOUT_MS = 8_000;
  */
 export const POST: RequestHandler = async ({ locals, request }) => {
   requireAuth(locals);
-  const ctx = await getTenantCtx(locals);
+  const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
 
   const { url } = (await request.json().catch(() => ({}))) as { url?: string };
@@ -42,7 +42,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     contentType: fetched.contentType,
     data: fetched.data,
     category: 'notes',
-    uploadedBy: locals.user?.id,
+    uploadedBy: locals.user?.supabaseId,
   });
 
   return json({ fileId, w: 0, h: 0 });

@@ -13,8 +13,8 @@ vi.mock('$server/services/file.service', () => ({
   uploadFile: () => uploadFile(),
 }));
 
-vi.mock('$server/auth/tenant-ctx', () => ({
-  getTenantCtx: () => Promise.resolve({ db: {}, tenantId: 'org-1' }),
+vi.mock('$server/auth/core-ctx', () => ({
+  getCoreCtx: () => Promise.resolve({ db: {}, tenantId: 'org-1' }),
 }));
 
 function makeLocals(): App.Locals {
