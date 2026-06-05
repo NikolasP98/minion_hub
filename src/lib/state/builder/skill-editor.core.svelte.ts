@@ -3,6 +3,7 @@ import { conn } from '$lib/state/gateway';
 import { toastSuccess, toastError, toastAsync } from '$lib/state/ui/toast.svelte';
 import type { ToolStatusEntry, ToolsStatusReport } from '$lib/types/tools';
 import { validateSkill } from '$lib/utils/skill-validation';
+import * as skillRemote from '$lib/remote/skill-editor.remote';
 import posthog from 'posthog-js';
 import * as m from '$lib/paraglide/messages';
 import type { ChapterEntry, StagedChapter, StagedEdge, StagedProposal } from './skill-editor.types';
@@ -176,29 +177,22 @@ export async function loadSkill(skillId: string) {
   skillEditorState.skillId = skillId;
   skillEditorState.loading = true;
   try {
-    const res = await fetch(`/api/builder/skills/${skillId}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    const data = await skillRemote.getSkillDetail(skillId);
     skillEditorState.name = data.skill.name;
     skillEditorState.description = data.skill.description ?? '';
     skillEditorState.emoji = data.skill.emoji ?? '📘';
     skillEditorState.status = data.skill.status;
     skillEditorState.maxCycles = data.skill.maxCycles ?? 3;
-    skillEditorState.chapters = data.chapters;
+    skillEditorState.chapters = data.chapters as ChapterEntry[];
     skillEditorState.chapterEdges = data.edges;
 
-    // Load chapter tools into map
+    // Load chapter tools into map. getChapterTools is a query.batch, so these
+    // per-chapter calls collapse into a single round-trip (was 1 + N fetches).
     const toolMap: Record<string, string[]> = {};
     await Promise.all(
-      data.chapters.map(async (ch: ChapterEntry) => {
+      data.chapters.map(async (ch) => {
         try {
-          const toolRes = await fetch(`/api/builder/skills/${skillId}/chapter-tools/${ch.id}`);
-          if (toolRes.ok) {
-            const toolData = await toolRes.json();
-            toolMap[ch.id] = toolData.toolIds ?? [];
-          } else {
-            toolMap[ch.id] = [];
-          }
+          toolMap[ch.id] = await skillRemote.getChapterTools(ch.id);
         } catch {
           toolMap[ch.id] = [];
         }
@@ -221,15 +215,12 @@ export function scheduleSave() {
 export async function saveSkill() {
   skillEditorState.saving = true;
   try {
-    await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: skillEditorState.name,
-        description: skillEditorState.description,
-        emoji: skillEditorState.emoji,
-        maxCycles: skillEditorState.maxCycles,
-      }),
+    await skillRemote.updateSkillMeta({
+      skillId: skillEditorState.skillId,
+      name: skillEditorState.name,
+      description: skillEditorState.description,
+      emoji: skillEditorState.emoji,
+      maxCycles: skillEditorState.maxCycles,
     });
     skillEditorState.dirty = false;
   } catch (e) {
@@ -259,20 +250,13 @@ export async function publishSkill() {
   skillEditorState.publishing = true;
   try {
     await toastAsync(
-      fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'publish' }),
-      }).then(async (res) => {
-        if (!res.ok) {
-          const data = await res.json();
-          if (data.errors?.length) {
-            throw new Error(data.errors.join('; '));
-          }
-          throw new Error(`HTTP ${res.status}`);
+      (async () => {
+        const result = await skillRemote.publishSkill(skillEditorState.skillId);
+        if (!result.ok) {
+          throw new Error(result.errors?.length ? result.errors.join('; ') : 'publish failed');
         }
-        return res.json();
-      }),
+        return result;
+      })(),
       {
         loading: m.builder_publishing(),
         getOutcome: () => ({ type: 'success', title: m.builder_skillPublished() }),
@@ -456,42 +440,27 @@ export async function generateGhostChapter(chapterName: string) {
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 
-    const createRes = await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'add-chapter',
-        name: data.name || chapterName,
-        type: 'chapter',
-        positionX: 300,
-        positionY: skillEditorState.chapters.length * 180,
-      }),
+    const { id } = await skillRemote.addChapter({
+      skillId: skillEditorState.skillId,
+      name: data.name || chapterName,
+      type: 'chapter',
+      positionX: 300,
+      positionY: skillEditorState.chapters.length * 180,
     });
-    if (!createRes.ok) throw new Error('Failed to create chapter');
-    const { id } = await createRes.json();
 
-    await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'update-chapter',
-        chapterId: id,
-        data: {
-          description: data.description ?? '',
-          guide: data.guide ?? '',
-          context: data.context ?? '',
-          outputDef: data.outputDef ?? '',
-        },
-      }),
+    await skillRemote.updateChapterFields({
+      chapterId: id,
+      data: {
+        description: data.description ?? '',
+        guide: data.guide ?? '',
+        context: data.context ?? '',
+        outputDef: data.outputDef ?? '',
+      },
     });
 
     const toolIds = (data.suggestedToolIds ?? []).filter((t: string) => _allToolIds.includes(t));
     if (toolIds.length > 0) {
-      await fetch(`/api/builder/skills/${skillEditorState.skillId}/chapter-tools/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ toolIds }),
-      });
+      await skillRemote.setChapterTools({ chapterId: id, toolIds });
     }
 
     skillEditorState.chapters = [
@@ -543,21 +512,15 @@ export async function addCondition() {
 export async function saveCondition() {
   if (!_conditionValidation.valid) return;
   try {
-    const res = await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'add-chapter',
+    {
+      const { id } = await skillRemote.addChapter({
+        skillId: skillEditorState.skillId,
         name: skillEditorState.conditionName || 'Condition',
         type: 'condition',
         conditionText: skillEditorState.conditionText,
         positionX: 300,
         positionY: 100 + skillEditorState.chapters.length * 180,
-      }),
-    });
-
-    if (res.ok) {
-      const { id } = await res.json();
+      });
       skillEditorState.chapters = [
         ...skillEditorState.chapters,
         {
@@ -599,17 +562,12 @@ export async function updateCondition() {
   )
     return;
   try {
-    await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'update-chapter',
-        chapterId: skillEditorState.editingCondition.id,
-        data: {
-          name: skillEditorState.conditionName,
-          conditionText: skillEditorState.conditionText,
-        },
-      }),
+    await skillRemote.updateChapterFields({
+      chapterId: skillEditorState.editingCondition.id,
+      data: {
+        name: skillEditorState.conditionName,
+        conditionText: skillEditorState.conditionText,
+      },
     });
 
     skillEditorState.chapters = skillEditorState.chapters.map((c) =>
@@ -631,18 +589,13 @@ export async function addChapter() {
   dismissGhostSuggestions();
   try {
     const chapterName = `Chapter ${skillEditorState.chapters.length + 1}`;
-    const res = await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'add-chapter',
+    {
+      const { id } = await skillRemote.addChapter({
+        skillId: skillEditorState.skillId,
         name: chapterName,
         positionX: 100 + skillEditorState.chapters.length * 200,
         positionY: 100,
-      }),
-    });
-    if (res.ok) {
-      const { id } = await res.json();
+      });
       skillEditorState.chapters = [
         ...skillEditorState.chapters,
         {
@@ -665,11 +618,7 @@ export async function addChapter() {
 
 export async function removeChapter(chapterId: string) {
   try {
-    await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'delete-chapter', chapterId }),
-    });
+    await skillRemote.removeChapter(chapterId);
     skillEditorState.chapters = skillEditorState.chapters.filter((c) => c.id !== chapterId);
     skillEditorState.chapterEdges = skillEditorState.chapterEdges.filter(
       (e) => e.sourceChapterId !== chapterId && e.targetChapterId !== chapterId,
@@ -686,15 +635,7 @@ export async function updateChapterPosition(chapterId: string, x: number, y: num
     skillEditorState.chapters = skillEditorState.chapters.map((c) =>
       c.id === chapterId ? { ...c, positionX: x, positionY: y } : c,
     );
-    await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'update-chapter',
-        chapterId,
-        data: { positionX: x, positionY: y },
-      }),
-    });
+    await skillRemote.updateChapterFields({ chapterId, data: { positionX: x, positionY: y } });
   } catch (e) {
     console.error('[skill-editor] updateChapterPosition failed:', e);
   }
@@ -702,18 +643,13 @@ export async function updateChapterPosition(chapterId: string, x: number, y: num
 
 export async function connectChapters(sourceId: string, targetId: string, label?: string) {
   try {
-    const res = await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'add-edge',
+    {
+      const { id } = await skillRemote.addChapterEdge({
+        skillId: skillEditorState.skillId,
         sourceChapterId: sourceId,
         targetChapterId: targetId,
         label: label ?? null,
-      }),
-    });
-    if (res.ok) {
-      const { id } = await res.json();
+      });
       skillEditorState.chapterEdges = [
         ...skillEditorState.chapterEdges,
         {
@@ -731,11 +667,7 @@ export async function connectChapters(sourceId: string, targetId: string, label?
 
 export async function deleteEdge(edgeId: string) {
   try {
-    await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'delete-edge', edgeId }),
-    });
+    await skillRemote.removeChapterEdge(edgeId);
     skillEditorState.chapterEdges = skillEditorState.chapterEdges.filter((e) => e.id !== edgeId);
   } catch (e) {
     console.error('[skill-editor] deleteEdge failed:', e);
@@ -771,28 +703,19 @@ export async function saveChapterEdits(data: {
   skillEditorState.saving = true;
   try {
     // Save chapter metadata
-    await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'update-chapter',
-        chapterId,
-        data: {
-          name: data.name,
-          description: data.description,
-          guide: data.guide,
-          context: data.context,
-          outputDef: data.outputDef,
-        },
-      }),
+    await skillRemote.updateChapterFields({
+      chapterId,
+      data: {
+        name: data.name,
+        description: data.description,
+        guide: data.guide,
+        context: data.context,
+        outputDef: data.outputDef,
+      },
     });
 
     // Save chapter tools
-    await fetch(`/api/builder/skills/${skillEditorState.skillId}/chapter-tools/${chapterId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ toolIds: data.toolIds }),
-    });
+    await skillRemote.setChapterTools({ chapterId, toolIds: data.toolIds });
 
     // Update local state
     skillEditorState.chapters = skillEditorState.chapters.map((c) =>
