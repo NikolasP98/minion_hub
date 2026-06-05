@@ -89,7 +89,7 @@ Routes left as-is: `internal/*`, `messages/ingest`, `metrics/*` push,
 
 ## Status — 2026-06-04 (branch `feature/remote-functions`, off `dev`)
 
-**Done & verified** (check 0/0, build clean — all 7 `*.remote.js` chunks generate;
+**Done & verified** (check 0/0, build clean — all 8 `*.remote.js` chunks generate;
 tests 574/575, the 1 failure = pre-existing `aci-backend.test.ts` git/GPG flake,
 unrelated). Each phase = one commit.
 
@@ -102,6 +102,7 @@ unrelated). Each phase = one commit.
 | 4 | marketplace | `marketplace.remote.ts` | marketplace.svelte.ts | 4 (WS handoff kept) |
 | 5 | workshop saves | `workshop.remote.ts` | workshop.svelte.ts | 5 |
 | 6 | agent-groups | `agent-groups.remote.ts` | agent-groups.svelte.ts | 6 (CachedStore kept) |
+| 7 | **skill editor** | `skill-editor.remote.ts` | skill-editor.core.svelte.ts | 13 (+ **N+1 → `query.batch`**) |
 
 Foundation: `kit.experimental.remoteFunctions` + `compilerOptions.experimental.async`
 in `svelte.config.js`; `$server/remote/guard.ts` exposes `currentUser`,
@@ -120,10 +121,10 @@ in `svelte.config.js`; `$server/remote/guard.ts` exposes `currentUser`,
   callers, e.g. `/join`, mobile). No routes deleted.
 
 **Remaining (mechanical follow-ups, same recipe):**
-- **builder detail** — `/api/builder/{agents,skills,tools}/[id]` + the skill-editor
-  (19 fetches) incl. the **chapter-tools N+1 → `query.batch`** win. Deferred because
-  the `[id]` routes carry inline action-dispatch DB logic (publish / add-skill /
-  reorder), not service calls — needs careful porting.
+- **builder skill editor — DONE** (phase 7): `skill-editor.remote.ts` mirrors the
+  `/api/builder/skills/[id]` action-dispatch PUT + GET + chapter-tools; the
+  chapter-tools N+1 is now a **`query.batch`**. The `agents/[id]` and `tools/[id]`
+  detail routes are still un-migrated (same action-dispatch shape, low priority).
 - **channels** CRUD (`/api/servers/[id]/channels*`) — server-scoped; QR/assignments.
 - **servers/gateways write** ops — `servers.status`/add/remove; SSRF guard →
   zod `.refine`. Keep `hosts` *read* in the layout bundle.
