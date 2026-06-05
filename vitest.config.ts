@@ -16,6 +16,11 @@ export default defineConfig({
       '$env/dynamic/private': path.resolve('src/server/test-utils/env-stubs/dynamic-private.ts'),
       '$env/dynamic/public': path.resolve('src/server/test-utils/env-stubs/dynamic-public.ts'),
       '$env/static/public': path.resolve('src/server/test-utils/env-stubs/static-public.ts'),
+      // `$app/server` (remote-functions runtime) is provided by the SvelteKit
+      // plugin, absent under vitest. State modules transitively import the
+      // `*.remote.ts` files; this stub lets them load (mock to invoke).
+      '$app/server': path.resolve('src/server/test-utils/env-stubs/app-server.ts'),
+      '$app/environment': path.resolve('src/server/test-utils/env-stubs/app-environment.ts'),
     },
   },
 });
