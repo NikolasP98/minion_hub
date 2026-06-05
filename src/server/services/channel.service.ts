@@ -1,8 +1,8 @@
 import { eq, and } from 'drizzle-orm';
-import { channels, channelAssignments } from '@minion-stack/db/schema';
-import { newId, nowMs } from '$server/db/utils';
+import { channels, channelAssignments } from '@minion-stack/db/pg';
+import { newId } from '$server/db/utils';
 import { encrypt, decrypt } from '$server/auth/crypto';
-import type { TenantContext } from './base';
+import type { ServerCtx } from '$server/auth/core-ctx';
 
 export type ChannelType = 'discord' | 'whatsapp' | 'telegram';
 export type ChannelStatus = 'active' | 'inactive' | 'pairing';
@@ -51,16 +51,16 @@ function parseMeta(raw: string): Record<string, string> {
   }
 }
 
-export async function listChannels(ctx: TenantContext, serverId: string) {
+export async function listChannels(ctx: ServerCtx) {
   const rows = await ctx.db
     .select()
     .from(channels)
-    .where(and(eq(channels.tenantId, ctx.tenantId), eq(channels.serverId, serverId)))
+    .where(and(eq(channels.tenantId, ctx.tenantId), eq(channels.gatewayId, ctx.gatewayId)))
     .orderBy(channels.createdAt);
 
   return rows.map((r) => ({
     id: r.id,
-    serverId: r.serverId,
+    serverId: ctx.serverId,
     type: r.type as ChannelType,
     label: r.label,
     credentialsMeta: parseMeta(r.credentialsMeta),
@@ -70,20 +70,23 @@ export async function listChannels(ctx: TenantContext, serverId: string) {
   }));
 }
 
-export async function getChannel(ctx: TenantContext, channelId: string, serverId?: string) {
-  const conditions = [eq(channels.id, channelId), eq(channels.tenantId, ctx.tenantId)];
-  if (serverId) conditions.push(eq(channels.serverId, serverId));
-
+export async function getChannel(ctx: ServerCtx, channelId: string) {
   const [row] = await ctx.db
     .select()
     .from(channels)
-    .where(and(...conditions));
+    .where(
+      and(
+        eq(channels.id, channelId),
+        eq(channels.tenantId, ctx.tenantId),
+        eq(channels.gatewayId, ctx.gatewayId),
+      ),
+    );
 
   if (!row) return null;
 
   return {
     id: row.id,
-    serverId: row.serverId,
+    serverId: ctx.serverId,
     type: row.type as ChannelType,
     label: row.label,
     credentials: decryptCredentials(row.credentials, row.credentialsIv),
@@ -94,9 +97,8 @@ export async function getChannel(ctx: TenantContext, channelId: string, serverId
   };
 }
 
-export async function createChannel(ctx: TenantContext, serverId: string, input: ChannelInput) {
+export async function createChannel(ctx: ServerCtx, input: ChannelInput) {
   const id = newId();
-  const now = nowMs();
 
   const { ciphertext, iv } = input.credentials
     ? encryptCredentials(input.credentials)
@@ -105,28 +107,24 @@ export async function createChannel(ctx: TenantContext, serverId: string, input:
   await ctx.db.insert(channels).values({
     id,
     tenantId: ctx.tenantId,
-    serverId,
+    gatewayId: ctx.gatewayId,
     type: input.type,
     label: input.label,
     credentials: ciphertext,
     credentialsIv: iv,
     credentialsMeta: JSON.stringify(input.credentialsMeta ?? {}),
     status: input.status ?? 'inactive',
-    createdAt: now,
-    updatedAt: now,
   });
 
   return id;
 }
 
 export async function updateChannel(
-  ctx: TenantContext,
+  ctx: ServerCtx,
   channelId: string,
   input: Partial<ChannelInput>,
-  serverId?: string,
 ) {
-  const now = nowMs();
-  const set: Record<string, unknown> = { updatedAt: now };
+  const set: Record<string, unknown> = { updatedAt: new Date() };
 
   if (input.label !== undefined) set.label = input.label;
   if (input.status !== undefined) set.status = input.status;
@@ -139,23 +137,31 @@ export async function updateChannel(
     set.credentialsIv = iv;
   }
 
-  const conditions = [eq(channels.id, channelId), eq(channels.tenantId, ctx.tenantId)];
-  if (serverId) conditions.push(eq(channels.serverId, serverId));
-
   await ctx.db
     .update(channels)
     .set(set)
-    .where(and(...conditions));
+    .where(
+      and(
+        eq(channels.id, channelId),
+        eq(channels.tenantId, ctx.tenantId),
+        eq(channels.gatewayId, ctx.gatewayId),
+      ),
+    );
 }
 
-export async function deleteChannel(ctx: TenantContext, channelId: string, serverId?: string) {
-  const conditions = [eq(channels.id, channelId), eq(channels.tenantId, ctx.tenantId)];
-  if (serverId) conditions.push(eq(channels.serverId, serverId));
-
-  await ctx.db.delete(channels).where(and(...conditions));
+export async function deleteChannel(ctx: ServerCtx, channelId: string) {
+  await ctx.db
+    .delete(channels)
+    .where(
+      and(
+        eq(channels.id, channelId),
+        eq(channels.tenantId, ctx.tenantId),
+        eq(channels.gatewayId, ctx.gatewayId),
+      ),
+    );
 }
 
-export async function listChannelAssignments(ctx: TenantContext, channelId: string) {
+export async function listChannelAssignments(ctx: ServerCtx, channelId: string) {
   return ctx.db
     .select()
     .from(channelAssignments)
@@ -169,23 +175,22 @@ export async function listChannelAssignments(ctx: TenantContext, channelId: stri
 }
 
 export async function assignChannel(
-  ctx: TenantContext,
+  ctx: ServerCtx,
   channelId: string,
   targetType: 'user' | 'session',
   targetId: string,
 ) {
   const id = newId();
-  const now = nowMs();
 
   await ctx.db
     .insert(channelAssignments)
-    .values({ id, tenantId: ctx.tenantId, channelId, targetType, targetId, createdAt: now })
+    .values({ id, tenantId: ctx.tenantId, channelId, targetType, targetId })
     .onConflictDoNothing();
 
   return id;
 }
 
-export async function unassignChannel(ctx: TenantContext, assignmentId: string) {
+export async function unassignChannel(ctx: ServerCtx, assignmentId: string) {
   await ctx.db
     .delete(channelAssignments)
     .where(

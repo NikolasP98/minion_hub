@@ -45,6 +45,9 @@ export async function getCoreCtx(locals: App.Locals): Promise<CoreCtx | null> {
  */
 export interface ServerCtx extends CoreCtx {
   gatewayId: string;
+  /** The original (legacy Turso) server id from the route param — preserved so
+   *  services can echo it in API responses where the client keys by serverId. */
+  serverId: string;
 }
 
 export async function getServerCtx(
@@ -64,5 +67,5 @@ export async function getServerCtx(
     .where(and(eq(userGateway.profileId, profileId), eq(userGateway.gatewayId, gatewayId)))
     .limit(1);
   if (!link) return null;
-  return { ...base, gatewayId };
+  return { ...base, gatewayId, serverId };
 }

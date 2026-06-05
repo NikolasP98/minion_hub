@@ -6,11 +6,13 @@ import {
   unassignChannel,
   isValidTargetType,
 } from '$server/services/channel.service';
+import { getServerCtx } from '$server/auth/core-ctx';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
-  if (!locals.tenantCtx) throw error(401);
+  const ctx = await getServerCtx(locals, params.id!);
+  if (!ctx) throw error(401);
   try {
-    const assignments = await listChannelAssignments(locals.tenantCtx, params.channelId!);
+    const assignments = await listChannelAssignments(ctx, params.channelId!);
     return json({ assignments });
   } catch (e) {
     console.error(`[GET /api/servers/${params.id}/channels/${params.channelId}/assignments]`, e);
@@ -22,19 +24,15 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 };
 
 export const POST: RequestHandler = async ({ locals, params, request }) => {
-  if (!locals.tenantCtx) throw error(401);
+  const ctx = await getServerCtx(locals, params.id!);
+  if (!ctx) throw error(401);
   try {
     const body = await request.json();
     if (!body.targetType || !body.targetId) throw error(400, 'targetType and targetId required');
     if (!isValidTargetType(body.targetType))
       throw error(400, `Invalid targetType: ${body.targetType}`);
 
-    const id = await assignChannel(
-      locals.tenantCtx,
-      params.channelId!,
-      body.targetType,
-      body.targetId,
-    );
+    const id = await assignChannel(ctx, params.channelId!, body.targetType, body.targetId);
     return json({ ok: true, id });
   } catch (e) {
     if (e && typeof e === 'object' && 'status' in e) throw e;
@@ -46,13 +44,14 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
   }
 };
 
-export const DELETE: RequestHandler = async ({ locals, url }) => {
-  if (!locals.tenantCtx) throw error(401);
+export const DELETE: RequestHandler = async ({ locals, params, url }) => {
+  const ctx = await getServerCtx(locals, params.id!);
+  if (!ctx) throw error(401);
   const assignmentId = url.searchParams.get('assignmentId');
   if (!assignmentId) throw error(400, 'assignmentId query param required');
 
   try {
-    await unassignChannel(locals.tenantCtx, assignmentId);
+    await unassignChannel(ctx, assignmentId);
     return json({ ok: true });
   } catch (e) {
     console.error(`[DELETE channel assignment ${assignmentId}]`, e);

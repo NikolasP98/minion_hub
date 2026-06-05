@@ -6,11 +6,13 @@ import {
   deleteChannel,
   isValidChannelStatus,
 } from '$server/services/channel.service';
+import { getServerCtx } from '$server/auth/core-ctx';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
-  if (!locals.tenantCtx) throw error(401);
+  const ctx = await getServerCtx(locals, params.id!);
+  if (!ctx) throw error(401);
   try {
-    const channel = await getChannel(locals.tenantCtx, params.channelId!, params.id!);
+    const channel = await getChannel(ctx, params.channelId!);
     if (!channel) throw error(404, 'Channel not found');
     return json({ channel });
   } catch (e) {
@@ -24,9 +26,10 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 };
 
 export const PUT: RequestHandler = async ({ locals, params, request }) => {
-  if (!locals.tenantCtx) throw error(401);
+  const ctx = await getServerCtx(locals, params.id!);
+  if (!ctx) throw error(401);
   try {
-    const existing = await getChannel(locals.tenantCtx, params.channelId!, params.id!);
+    const existing = await getChannel(ctx, params.channelId!);
     if (!existing) throw error(404, 'Channel not found');
 
     const body = await request.json();
@@ -40,7 +43,7 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
     if (body.credentials !== undefined) input.credentials = body.credentials;
     if (body.credentialsMeta !== undefined) input.credentialsMeta = body.credentialsMeta;
 
-    await updateChannel(locals.tenantCtx, params.channelId!, input, params.id!);
+    await updateChannel(ctx, params.channelId!, input);
     return json({ ok: true });
   } catch (e) {
     if (e && typeof e === 'object' && 'status' in e) throw e;
@@ -53,9 +56,10 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
 };
 
 export const DELETE: RequestHandler = async ({ locals, params }) => {
-  if (!locals.tenantCtx) throw error(401);
+  const ctx = await getServerCtx(locals, params.id!);
+  if (!ctx) throw error(401);
   try {
-    await deleteChannel(locals.tenantCtx, params.channelId!, params.id!);
+    await deleteChannel(ctx, params.channelId!);
     return json({ ok: true });
   } catch (e) {
     console.error(`[DELETE /api/servers/${params.id}/channels/${params.channelId}]`, e);

@@ -1,12 +1,13 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { listChannels, createChannel, isValidChannelType } from '$server/services/channel.service';
-import { requireTenantCtx } from '$server/auth/authorize';
+import { getServerCtx } from '$server/auth/core-ctx';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
-  const ctx = requireTenantCtx(locals);
+  const ctx = await getServerCtx(locals, params.id!);
+  if (!ctx) throw error(401);
   try {
-    const items = await listChannels(ctx, params.id!);
+    const items = await listChannels(ctx);
     return json({ channels: items });
   } catch (e) {
     console.error(`[GET /api/servers/${params.id}/channels]`, e);
@@ -18,14 +19,15 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 };
 
 export const POST: RequestHandler = async ({ locals, params, request }) => {
-  const ctx = requireTenantCtx(locals);
+  const ctx = await getServerCtx(locals, params.id!);
+  if (!ctx) throw error(401);
 
   try {
     const body = await request.json();
     if (!body.type || !body.label) throw error(400, 'type and label required');
     if (!isValidChannelType(body.type)) throw error(400, `Invalid channel type: ${body.type}`);
 
-    const id = await createChannel(ctx, params.id!, {
+    const id = await createChannel(ctx, {
       type: body.type,
       label: body.label,
       credentials: body.credentials,
