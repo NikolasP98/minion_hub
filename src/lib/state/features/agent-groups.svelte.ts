@@ -1,6 +1,14 @@
 import { ui } from '$lib/state/ui/ui.svelte';
 import { createCachedStore, type CachedStore } from '$lib/state/cached-store.svelte';
 import { userState } from '$lib/state/features/user.svelte';
+import {
+  getAgentGroups,
+  createAgentGroup as createAgentGroupRemote,
+  updateAgentGroup as updateAgentGroupRemote,
+  deleteAgentGroup as deleteAgentGroupRemote,
+  addAgentToGroupRemote,
+  removeAgentFromGroupRemote,
+} from '$lib/remote/agent-groups.remote';
 
 export interface AgentGroup {
   id: string;
@@ -112,10 +120,7 @@ function getOrCreateGroupsStore(sid: string): CachedStore<AgentGroup[]> {
     key,
     tags: buildCacheTags(sid, userId, tenantId),
     fetcher: async () => {
-      const res = await fetch(`/api/servers/${sid}/agent-groups`);
-      if (!res.ok) throw new Error(`agent-groups fetch failed: ${res.status}`);
-      const { groups } = await res.json();
-      const data: AgentGroup[] = groups ?? [];
+      const data = (await getAgentGroups()) as AgentGroup[];
       // Keep module-scope state in sync so existing consumers see the update.
       agentGroupsState.groups = data;
       agentGroupsState.loading = false;
@@ -162,16 +167,7 @@ export async function createAgentGroup(name: string) {
   agentGroupsState.groups = [...agentGroupsState.groups, optimistic];
 
   try {
-    const res = await fetch(`/api/servers/${sid}/agent-groups`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
-    });
-    if (!res.ok) {
-      agentGroupsState.groups = agentGroupsState.groups.filter((g) => g.id !== tempId);
-      return;
-    }
-    const { group } = await res.json();
+    const { group } = await createAgentGroupRemote({ name });
     agentGroupsState.groups = agentGroupsState.groups.map((g) =>
       g.id === tempId ? { ...g, id: group.id } : g,
     );
@@ -187,12 +183,11 @@ export async function updateAgentGroup(
   const sid = getServerId();
   if (!sid) return;
 
-  const res = await fetch(`/api/servers/${sid}/agent-groups/${groupId}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) return;
+  try {
+    await updateAgentGroupRemote({ groupId, ...data });
+  } catch {
+    return;
+  }
 
   agentGroupsState.groups = agentGroupsState.groups.map((g) =>
     g.id === groupId ? { ...g, ...data } : g,
@@ -203,8 +198,11 @@ export async function deleteAgentGroup(groupId: string) {
   const sid = getServerId();
   if (!sid) return;
 
-  const res = await fetch(`/api/servers/${sid}/agent-groups/${groupId}`, { method: 'DELETE' });
-  if (!res.ok) return;
+  try {
+    await deleteAgentGroupRemote(groupId);
+  } catch {
+    return;
+  }
 
   agentGroupsState.groups = agentGroupsState.groups.filter((g) => g.id !== groupId);
   const next = new Set(agentGroupsState.collapsedGroupIds);
@@ -234,18 +232,10 @@ export async function moveAgentToGroup(
 
   try {
     if (fromGroupId) {
-      await fetch(`/api/servers/${sid}/agent-groups/${fromGroupId}/members`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agentId }),
-      });
+      await removeAgentFromGroupRemote({ groupId: fromGroupId, agentId });
     }
     if (toGroupId) {
-      await fetch(`/api/servers/${sid}/agent-groups/${toGroupId}/members`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agentId }),
-      });
+      await addAgentToGroupRemote({ groupId: toGroupId, agentId });
     }
   } catch {
     // Rollback on error
