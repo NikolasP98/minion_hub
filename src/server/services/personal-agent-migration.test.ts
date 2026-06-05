@@ -9,6 +9,13 @@ vi.mock('$server/db/utils', () => ({
   nowMs: () => 1_700_000_000_000,
 }));
 
+vi.mock('$server/services/gateway.pg.service', () => ({
+  resolveGatewayId: () => Promise.resolve('gw-1'),
+  resolveServerId: () => Promise.resolve('srv-1'),
+}));
+
+vi.mock('$server/db/client', () => ({ getDb: () => ({ __turso: true }) }));
+
 const mockAssignAgentToUser =
   vi.fn<(ctx: unknown, userId: string, agentId: string, serverId: string) => Promise<void>>();
 vi.mock('./user-agents.service', () => ({
@@ -20,22 +27,16 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-// The mock DB sequence for createMigratedPersonalAgent:
-// provisionPersonalAgent:
-//   1. await db.insert(personalAgents)...onConflictDoNothing()   [index 0]
-//   2. await db.update(user).set(...)...                         [index 1]
-//   3. assignAgentToUser → MOCKED (no DB call)
-//   4. const [existing] = await db.select()...from(personalAgents)... [index 2] ← must be array
-// updateProvisioningStatus:
-//   5. await db.update(personalAgents)...                        [index 3]
-// updatePersonalAgent:
-//   6. await db.update(personalAgents)...                        [index 4]
-
+// pg mock DB sequence for createMigratedPersonalAgent:
+// provisionPersonalAgent: select profiles (resolveProfileId) → insert → update
+//   profiles → select personal_agents (return); updateProvisioningStatus: update.
+const TS = new Date(1_700_000_000_000);
 const mockRow = {
   id: 'mock-migration-id-000001',
-  userId: 'user-922286663',
+  profileId: 'prof-1',
   agentId: 'personal-user-922286663',
-  serverId: 'srv-1',
+  gatewayId: 'gw-1',
+  displayName: '',
   conversationName: null,
   avatarUrl: null,
   personalityPreset: null,
@@ -45,20 +46,23 @@ const mockRow = {
   provisioningError: null,
   lastRetryAt: null,
   retryCount: 0,
-  createdAt: 1_700_000_000_000,
-  updatedAt: 1_700_000_000_000,
+  createdAt: TS,
+  updatedAt: TS,
 };
 
 function setupMockSequence() {
   const mock = createMockDb();
   mock.resolveSequence([
-    undefined, // 1: insert personalAgents
-    undefined, // 2: update user.personalAgentId
-    [mockRow], // 3: select from personalAgents (provisionPersonalAgent return)
-    undefined, // 4: update provisioningStatus to 'active'
+    [{ id: 'prof-1' }], // resolveProfileId select profiles
+    undefined, // insert personal_agents
+    undefined, // update profiles.personalAgentId
+    [mockRow], // select personal_agents (provisionPersonalAgent return)
+    undefined, // updateProvisioningStatus -> 'active'
   ]);
   return mock;
 }
+
+const ctx = (db: unknown) => ({ db: db as never, tenantId: 't1' });
 
 describe('createMigratedPersonalAgent', () => {
   const baseParams = {
@@ -71,21 +75,15 @@ describe('createMigratedPersonalAgent', () => {
 
   it('creates personal_agents row via provisionPersonalAgent', async () => {
     const { db } = setupMockSequence();
-    const result = await createMigratedPersonalAgent({ db, tenantId: 't1' }, baseParams);
-    expect(result).toBeDefined();
+    const result = await createMigratedPersonalAgent(ctx(db), baseParams);
     expect(result.agentId).toBe('personal-user-922286663');
     expect(db.insert).toHaveBeenCalled();
   });
 
   it('sets status to active (not pending) after creation', async () => {
     const { db } = setupMockSequence();
-    const result = await createMigratedPersonalAgent({ db, tenantId: 't1' }, baseParams);
+    const result = await createMigratedPersonalAgent(ctx(db), baseParams);
     expect(result.provisioningStatus).toBe('active');
-    // At least 2 update calls: user.personalAgentId + provisioningStatus 'active'
     expect(db.update).toHaveBeenCalled();
   });
-
-  // Phase 3c — `conversationName` no longer lives in the hub DB. The
-  // gateway-side migration runner is responsible for preserving the
-  // original agent name into `agents.list[].personality.conversationName`.
 });

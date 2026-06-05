@@ -1,6 +1,6 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
-import { getTenantCtx } from '$server/auth/tenant-ctx';
+import { getCoreCtx } from '$server/auth/core-ctx';
 import { createMigratedPersonalAgent } from '$server/services/personal-agent-migration';
 
 /**
@@ -35,7 +35,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     return json({ error: 'Admin access required' }, { status: 403 });
   }
 
-  const ctx = await getTenantCtx(locals);
+  const ctx = await getCoreCtx(locals);
   if (!ctx) {
     return json({ error: 'Authentication required' }, { status: 401 });
   }

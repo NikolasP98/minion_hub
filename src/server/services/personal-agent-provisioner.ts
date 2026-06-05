@@ -1,6 +1,6 @@
 import type { PersonalAgentRow } from './personal-agent.service';
 import { getPersonalAgent, updateProvisioningStatus } from './personal-agent.service';
-import type { TenantContext } from './base';
+import type { CoreCtx } from '$server/auth/core-ctx';
 
 const MAX_RETRIES = 5;
 // Backoff: 5s, 30s, 2min, 10min, 10min
@@ -48,7 +48,7 @@ export function getProvisioningPayload(agent: PersonalAgentRow): {
  * trigger provisioning via sendRequest('agents.create').
  */
 export async function getPendingProvisioningForUser(
-  ctx: TenantContext,
+  ctx: CoreCtx,
   userId: string,
 ): Promise<{ agent: PersonalAgentRow; payload: ReturnType<typeof getProvisioningPayload> } | null> {
   const agent = await getPersonalAgent(ctx, userId);
@@ -60,20 +60,20 @@ export async function getPendingProvisioningForUser(
 /**
  * Mark an agent as provisioning (called server-side before client makes the gateway call).
  */
-export async function markProvisioning(ctx: TenantContext, userId: string): Promise<void> {
+export async function markProvisioning(ctx: CoreCtx, userId: string): Promise<void> {
   await updateProvisioningStatus(ctx, userId, 'provisioning');
 }
 
 /**
  * Mark an agent as active (called from client-side API after successful agents.create).
  */
-export async function markActive(ctx: TenantContext, userId: string): Promise<void> {
+export async function markActive(ctx: CoreCtx, userId: string): Promise<void> {
   await updateProvisioningStatus(ctx, userId, 'active');
 }
 
 /**
  * Mark an agent as error (called from client-side API after failed agents.create).
  */
-export async function markError(ctx: TenantContext, userId: string, error: string): Promise<void> {
+export async function markError(ctx: CoreCtx, userId: string, error: string): Promise<void> {
   await updateProvisioningStatus(ctx, userId, 'error', error);
 }

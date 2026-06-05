@@ -8,6 +8,12 @@ vi.mock('$server/auth/tenant-ctx', () => ({
   getTenantCtx: (locals: unknown) => mockGetTenantCtx(locals),
 }));
 
+// PATCH resolves the core (Supabase) ctx via getCoreCtx now.
+const mockGetCoreCtx = vi.fn<(locals: unknown) => Promise<unknown>>();
+vi.mock('$server/auth/core-ctx', () => ({
+  getCoreCtx: (locals: unknown) => mockGetCoreCtx(locals),
+}));
+
 const mockGetPersonalAgent = vi.fn<(ctx: unknown, userId: string) => Promise<unknown>>();
 const mockUpdatePersonalAgent =
   vi.fn<(ctx: unknown, userId: string, updates: unknown) => Promise<void>>();
@@ -120,7 +126,7 @@ describe('PATCH /api/personal-agent', () => {
   it('silently ignores deprecated fields (displayName, personality*, conversationName)', async () => {
     const { db } = createMockDb();
     const ctx = { db, tenantId: 'org-1' };
-    mockGetTenantCtx.mockResolvedValue(ctx);
+    mockGetCoreCtx.mockResolvedValue(ctx);
     mockUpdatePersonalAgent.mockResolvedValue(undefined);
 
     const locals = makeLocals();
@@ -151,7 +157,7 @@ describe('PATCH /api/personal-agent', () => {
   it('with valid partial update (only avatarUrl) succeeds', async () => {
     const { db } = createMockDb();
     const ctx = { db, tenantId: 'org-1' };
-    mockGetTenantCtx.mockResolvedValue(ctx);
+    mockGetCoreCtx.mockResolvedValue(ctx);
     mockUpdatePersonalAgent.mockResolvedValue(undefined);
 
     const locals = makeLocals();

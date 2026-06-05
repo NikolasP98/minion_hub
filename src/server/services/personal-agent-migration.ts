@@ -11,7 +11,7 @@ import {
   provisionPersonalAgent,
   updateProvisioningStatus,
 } from './personal-agent.service';
-import type { TenantContext } from './base';
+import type { CoreCtx } from '$server/auth/core-ctx';
 
 /**
  * Create hub DB entries for a migrated personal agent.
@@ -27,7 +27,7 @@ import type { TenantContext } from './base';
  * config by the gateway-side migration runner.
  */
 export async function createMigratedPersonalAgent(
-  ctx: TenantContext,
+  ctx: CoreCtx,
   params: {
     userId: string;
     email: string;

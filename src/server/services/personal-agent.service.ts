@@ -1,20 +1,69 @@
-import { eq, and, inArray, lt, sql } from 'drizzle-orm';
+import { eq, and, inArray, lt, or, sql } from 'drizzle-orm';
 import { error as httpError } from '@sveltejs/kit';
-import { personalAgents } from '@minion-stack/db/schema';
-import { user } from '@minion-stack/db/schema';
-import { newId, nowMs } from '$server/db/utils';
+import { personalAgents, profiles } from '@minion-stack/db/pg';
+import { newId } from '$server/db/utils';
+import { getDb } from '$server/db/client';
 import { assignAgentToUser } from './user-agents.service';
-import type { TenantContext } from './base';
+import { resolveGatewayId, resolveServerId } from '$server/services/gateway.pg.service';
+import type { CoreCtx } from '$server/auth/core-ctx';
 import type { LoadCtx } from './types';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type PersonalAgentRow = typeof personalAgents.$inferSelect;
 export type ProvisioningStatus = 'pending' | 'provisioning' | 'active' | 'error';
 export type PersonalityPreset = 'professional' | 'casual' | 'creative' | 'technical';
 
+/**
+ * Public (reshaped) personal-agent shape. pg keys on `profile_id` (profiles.id)
+ * + `gateway_id` and stores timestamps as Date, but this service keeps the
+ * Turso-era shape — `userId` (echoed: the legacy id the caller passed),
+ * `serverId` (reverse-resolved), epoch-number timestamps — so the provisioner
+ * (which does `lastRetryAt + backoff`) and the frontend are unaffected.
+ */
+export interface PersonalAgentRow {
+  id: string;
+  userId: string;
+  agentId: string;
+  serverId: string | null;
+  displayName: string;
+  conversationName: string | null;
+  avatarUrl: string | null;
+  personalityPreset: PersonalityPreset | null;
+  personalityText: string | null;
+  personalityConfigured: boolean;
+  provisioningStatus: ProvisioningStatus;
+  provisioningError: string | null;
+  lastRetryAt: number | null;
+  retryCount: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface PersonalAgentUpdate {
   avatarUrl: string | null;
+}
+
+type PgRow = typeof personalAgents.$inferSelect;
+
+async function reshape(row: PgRow, userId: string): Promise<PersonalAgentRow> {
+  return {
+    id: row.id,
+    userId,
+    agentId: row.agentId,
+    serverId: row.gatewayId ? await resolveServerId(row.gatewayId) : null,
+    displayName: row.displayName,
+    conversationName: row.conversationName,
+    avatarUrl: row.avatarUrl,
+    personalityPreset: row.personalityPreset,
+    personalityText: row.personalityText,
+    personalityConfigured: row.personalityConfigured,
+    provisioningStatus: row.provisioningStatus,
+    provisioningError: row.provisioningError,
+    lastRetryAt: row.lastRetryAt ? row.lastRetryAt.getTime() : null,
+    retryCount: row.retryCount,
+    createdAt: row.createdAt.getTime(),
+    updatedAt: row.updatedAt.getTime(),
+  };
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -23,107 +72,112 @@ export function derivePersonalAgentId(userId: string): string {
   return `personal-${userId}`;
 }
 
+/**
+ * Rows are read by `agent_id` (= `personal-<legacy userId>`, derivable from the
+ * caller's userId), so reads never need the supabase profile id. Only the
+ * provision INSERT needs `profile_id` (FK → profiles.id); resolve it from the
+ * legacy userId via `profiles.legacy_user_id` (or `id` for native users).
+ */
+async function resolveProfileId(ctx: CoreCtx, userId: string): Promise<string | null> {
+  const [row] = await ctx.db
+    .select({ id: profiles.id })
+    .from(profiles)
+    .where(or(eq(profiles.legacyUserId, userId), sql`${profiles.id}::text = ${userId}`))
+    .limit(1);
+  return row?.id ?? null;
+}
+
 // ── Service Functions ────────────────────────────────────────────────────────
 
 export async function provisionPersonalAgent(
-  ctx: TenantContext,
+  ctx: CoreCtx,
   params: { userId: string; email: string; serverId: string },
 ): Promise<PersonalAgentRow> {
   const agentId = derivePersonalAgentId(params.userId);
-  const now = nowMs();
 
-  // NOTE: The schema in packages/db is dropping `display_name` (Phase 2b),
-  // `personality_preset`, `personality_text`, `personality_configured`,
-  // and `conversation_name` (Phase 3c) — all of those now live in the
-  // gateway config. Until @minion-stack/db v0.3.0 ships on npm, the
-  // pinned `$inferInsert` type still requires the deprecated columns.
-  // We pass empty / default placeholders which the 0012 + 0013 migrations
-  // drop from the table entirely.
-  // TODO(post-publish): remove this cast and the placeholder fields once
-  // @minion-stack/db v0.3.0 ships without the deprecated columns.
-  const row: typeof personalAgents.$inferInsert = {
-    id: newId(),
-    userId: params.userId,
-    agentId,
-    // Coerce empty string to null — the column is FK→servers.id and nullable.
-    // Callers like hooks.server.ts pass '' when no default server is known
-    // (e.g. fresh local DB with no configured host), which would trigger
-    // SQLITE_CONSTRAINT_FOREIGNKEY since '' isn't a valid server id.
-    serverId: params.serverId === '' ? null : params.serverId,
-    displayName: '',
-    personalityConfigured: false,
-    provisioningStatus: 'pending',
-    retryCount: 0,
-    createdAt: now,
-    updatedAt: now,
-  } as typeof personalAgents.$inferInsert;
-
-  // Insert with onConflictDoNothing for idempotency (userId is unique)
-  await ctx.db.insert(personalAgents).values(row).onConflictDoNothing();
-
-  // Update user.personalAgentId for fast lookup
-  await ctx.db.update(user).set({ personalAgentId: agentId }).where(eq(user.id, params.userId));
-
-  // Also insert into user_agents for JWT agentIds compatibility.
-  // user_agents.server_id is NOT NULL + FK→servers.id, so skip when no
-  // server is configured (e.g. fresh local DB). The assignment will
-  // happen later when a host is added through the UI.
-  if (params.serverId) {
-    await assignAgentToUser(ctx, params.userId, agentId, params.serverId);
+  const profileId = await resolveProfileId(ctx, params.userId);
+  if (!profileId) {
+    throw new Error(`No profile found for user ${params.userId} — cannot provision personal agent`);
   }
 
-  // Return the row (either newly created or existing)
+  const gatewayId = params.serverId ? await resolveGatewayId(params.serverId) : null;
+
+  // Insert with onConflictDoNothing for idempotency (profile_id is unique).
+  await ctx.db
+    .insert(personalAgents)
+    .values({
+      id: newId(),
+      profileId,
+      agentId,
+      gatewayId,
+      displayName: '',
+      personalityConfigured: false,
+      provisioningStatus: 'pending',
+      retryCount: 0,
+    })
+    .onConflictDoNothing();
+
+  // Denormalised fast-lookup pointer (read by the login backfill gate).
+  await ctx.db.update(profiles).set({ personalAgentId: agentId }).where(eq(profiles.id, profileId));
+
+  // user_agents stays on Turso (separate user-owned domain); only the migration
+  // path passes a serverId, so this cross-store write is migration-only.
+  if (params.serverId) {
+    await assignAgentToUser(
+      { db: getDb(), tenantId: ctx.tenantId },
+      params.userId,
+      agentId,
+      params.serverId,
+    );
+  }
+
   const [existing] = await ctx.db
     .select()
     .from(personalAgents)
-    .where(eq(personalAgents.userId, params.userId))
+    .where(eq(personalAgents.profileId, profileId))
     .limit(1);
 
-  return existing ?? row;
+  return reshape(existing, params.userId);
 }
 
 export async function getPersonalAgent(
-  ctx: TenantContext,
+  ctx: CoreCtx,
   userId: string,
 ): Promise<PersonalAgentRow | null> {
   const rows = await ctx.db
     .select()
     .from(personalAgents)
-    .where(eq(personalAgents.userId, userId))
+    .where(eq(personalAgents.agentId, derivePersonalAgentId(userId)))
     .limit(1);
 
-  return rows[0] ?? null;
+  return rows[0] ? reshape(rows[0], userId) : null;
 }
 
 export async function updatePersonalAgent(
-  ctx: TenantContext,
+  ctx: CoreCtx,
   userId: string,
   updates: Partial<PersonalAgentUpdate>,
 ): Promise<void> {
   await ctx.db
     .update(personalAgents)
-    .set({
-      ...updates,
-      updatedAt: nowMs(),
-    })
-    .where(eq(personalAgents.userId, userId));
+    .set({ ...updates, updatedAt: new Date() })
+    .where(eq(personalAgents.agentId, derivePersonalAgentId(userId)));
 }
 
 export async function updateProvisioningStatus(
-  ctx: TenantContext,
+  ctx: CoreCtx,
   userId: string,
   status: ProvisioningStatus,
   error?: string,
 ): Promise<void> {
-  const now = nowMs();
   const setData: Record<string, unknown> = {
     provisioningStatus: status,
-    updatedAt: now,
+    updatedAt: new Date(),
   };
 
   if (status === 'error') {
     setData.provisioningError = error ?? null;
-    setData.lastRetryAt = now;
+    setData.lastRetryAt = new Date();
     setData.retryCount = sql`${personalAgents.retryCount} + 1`;
   }
 
@@ -131,11 +185,14 @@ export async function updateProvisioningStatus(
     setData.provisioningError = null;
   }
 
-  await ctx.db.update(personalAgents).set(setData).where(eq(personalAgents.userId, userId));
+  await ctx.db
+    .update(personalAgents)
+    .set(setData)
+    .where(eq(personalAgents.agentId, derivePersonalAgentId(userId)));
 }
 
 export async function ensurePersonalAgentOnLogin(
-  ctx: TenantContext,
+  ctx: CoreCtx,
   params: { userId: string; email: string; serverId: string },
 ): Promise<PersonalAgentRow> {
   const existing = await getPersonalAgent(ctx, params.userId);
@@ -144,40 +201,45 @@ export async function ensurePersonalAgentOnLogin(
 }
 
 export async function listPendingAgents(
-  ctx: TenantContext,
+  ctx: CoreCtx,
   maxRetries: number = 5,
 ): Promise<PersonalAgentRow[]> {
-  return ctx.db
-    .select()
+  // Join profiles to recover the legacy userId for the echoed `userId` field.
+  const rows = await ctx.db
+    .select({ pa: personalAgents, legacyUserId: profiles.legacyUserId })
     .from(personalAgents)
+    .innerJoin(profiles, eq(profiles.id, personalAgents.profileId))
     .where(
       and(
         inArray(personalAgents.provisioningStatus, ['pending', 'error']),
         lt(personalAgents.retryCount, maxRetries),
       ),
     );
+  return Promise.all(rows.map((r) => reshape(r.pa, r.legacyUserId ?? r.pa.profileId)));
 }
 
-export async function deletePersonalAgent(ctx: TenantContext, userId: string): Promise<void> {
-  await ctx.db.delete(personalAgents).where(eq(personalAgents.userId, userId));
+export async function deletePersonalAgent(ctx: CoreCtx, userId: string): Promise<void> {
+  await ctx.db
+    .delete(personalAgents)
+    .where(eq(personalAgents.agentId, derivePersonalAgentId(userId)));
 }
 
 /**
- * List personal agents of users in the tenant, labeled by username.
- * Tenant scoping matches listUsers(ctx) (route-level via tenantCtx). Inner-join
- * means only users WITH a personal agent are returned. Label = name ?? email.
+ * List personal agents of users in the org, labeled by username. pg join of
+ * personal_agents ⋈ profiles (replaces the Turso `personalAgents ⋈ user` join).
+ * Label = displayName ?? email.
  */
 export async function listOrgPersonalAgents(
-  ctx: TenantContext,
+  ctx: CoreCtx,
 ): Promise<Array<{ agentId: string; userName: string }>> {
   return ctx.db
     .select({
       agentId: personalAgents.agentId,
-      userName: sql<string>`coalesce(${user.name}, ${user.email})`,
+      userName: sql<string>`coalesce(${profiles.displayName}, ${profiles.email})`,
     })
     .from(personalAgents)
-    .innerJoin(user, eq(user.id, personalAgents.userId))
-    .orderBy(user.createdAt);
+    .innerJoin(profiles, eq(profiles.id, personalAgents.profileId))
+    .orderBy(profiles.createdAt);
 }
 
 // ── Load helper (callable from +server.ts AND +layout.server.ts) ────────────
@@ -190,21 +252,17 @@ export interface PersonalAgentLoadResult {
  * Load the authenticated user's personal agent row, shaped exactly like
  * `GET /api/personal-agent` (`{ agent }`).
  *
- * Resolves the tenant context internally (matching the endpoint behavior:
- * fall back to the first organization if `locals.tenantCtx` is unset).
- * Throws 401 if no tenant has been seeded yet.
- *
- * Implementation note: `getTenantCtx` is imported dynamically because it
- * pulls in `$server/db/client` (and through it `$env/dynamic/private`),
- * which the existing unit tests for this module don't stub. Keeping the
- * top-level import surface unchanged preserves test isolation.
+ * Resolves the core (Supabase) tenant context internally, matching the endpoint
+ * behavior. Throws 401 if no tenant has been seeded yet. `getCoreCtx` is
+ * imported dynamically to keep the top-level import surface unchanged for the
+ * existing unit tests.
  */
 export async function loadPersonalAgentForUser(
   locals: LoadCtx,
   userId: string,
 ): Promise<PersonalAgentLoadResult> {
-  const { getTenantCtx } = await import('$server/auth/tenant-ctx');
-  const ctx = await getTenantCtx(locals as App.Locals);
+  const { getCoreCtx } = await import('$server/auth/core-ctx');
+  const ctx = await getCoreCtx(locals as App.Locals);
   if (!ctx) throw httpError(401, 'Authentication required');
   const agent = await getPersonalAgent(ctx, userId);
   return { agent };

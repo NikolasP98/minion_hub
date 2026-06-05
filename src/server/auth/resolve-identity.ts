@@ -16,6 +16,7 @@ import type { RequestEvent } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
 import { servers, organization, user as userTable, jwks } from '@minion-stack/db/schema';
 import { getDb } from '$server/db/client';
+import { getCoreDb } from '$server/db/pg-client';
 import { getAuth } from '$lib/auth/auth';
 import { decryptToken } from '$server/auth/crypto';
 import { resolveSupabaseUser } from '$server/auth/supabase-bridge.runtime';
@@ -169,11 +170,14 @@ async function resolveViaBetterAuth(event: RequestEvent): Promise<IdentityResolu
   });
 
   // Login-time backfill: create personal agent for existing users without one.
-  // Fire-and-forget; once user.personalAgentId is set this won't trigger again.
+  // Fire-and-forget + idempotent (ensurePersonalAgentOnLogin checks existence
+  // first). personal_agents lives on Supabase (pg) now; the Turso
+  // `user.personalAgentId` gate is best-effort (may re-attempt harmlessly for
+  // pg-provisioned self-host users). This is the Better-Auth branch only —
+  // the cloud-default Supabase branch does not run login backfill.
   if (!dbUser?.personalAgentId) {
-    const backfillDb = getDb();
     ensurePersonalAgentOnLogin(
-      { db: backfillDb, tenantId: tenant?.orgId ?? 'default' },
+      { db: getCoreDb(), tenantId: tenant?.orgId ?? 'default' },
       { userId: session.user.id, email: session.user.email, serverId: '' },
     ).catch((err) => console.error('[personal-agent] Login backfill failed:', err));
   }

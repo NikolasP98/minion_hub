@@ -2,6 +2,7 @@ import { createAuth, type AuthInstance } from '@minion-stack/auth';
 import { oidcProvider, organization } from 'better-auth/plugins';
 import { createAuthMiddleware } from 'better-auth/api';
 import { getDb } from '$server/db/client';
+import { getCoreDb } from '$server/db/pg-client';
 import * as schema from '@minion-stack/db/schema';
 import { env } from '$env/dynamic/private';
 import { sendInvitationEmail } from '$server/services/email.service';
@@ -65,9 +66,11 @@ export function getAuth(): AuthInstance {
 							// Create pending personal agent row synchronously (fast DB insert).
 							// Gateway provisioning is async and handled separately (Plan 04).
 							try {
-								const db = getDb();
-								const tenantCtx = { db, tenantId: 'default' };
-								await provisionPersonalAgent(tenantCtx, {
+								// personal_agents lives on Supabase (pg). If no profile row
+								// exists yet for this signup, provisionPersonalAgent throws and
+								// the catch below keeps signup unblocked.
+								const coreCtx = { db: getCoreDb(), tenantId: 'default' };
+								await provisionPersonalAgent(coreCtx, {
 									userId: newSession.user.id,
 									email: newSession.user.email,
 									serverId: '',
