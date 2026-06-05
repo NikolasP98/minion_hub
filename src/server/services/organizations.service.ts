@@ -1,13 +1,14 @@
 import { eq } from 'drizzle-orm';
 import { getDb } from '$server/db/client';
 import { member, organization } from '@minion-stack/db/schema';
+import { supabaseAdmin } from '$server/supabase';
 import type { LoadCtx } from './types';
 
 export interface OrganizationEntry {
   id: string;
   name: string;
   slug: string | null;
-  /** The user's role WITHIN this organization (best-effort). */
+  /** The user's role WITHIN this organization. */
   role: string;
 }
 
@@ -21,21 +22,48 @@ export interface OrganizationsBundle {
  * Load the organizations available to the authenticated user, plus the active
  * one — powering the sidebar org picker.
  *
- * Keyed by the RESOLVED active-org id (`tenantCtx.tenantId`), not the user id:
- * the better-auth → supabase identity migration left Supabase profile ids and
- * legacy Turso `member.user_id`s divergent, so a `member`-by-userId query misses
- * for migrated users. The active org id is already resolved upstream (the
- * supabase→legacy bridge in resolve-identity), so we read the org row by that id
- * — which works in every auth mode. Membership rows are added best-effort on top
- * (populated for non-migrated / better-auth sessions, where switching applies).
+ * Source of truth = Supabase `organization_members` ⋈ `organizations`, keyed by
+ * the SUPABASE profile id (`auth.uid()` = `user.supabaseId`). This deliberately
+ * avoids the legacy id bridge: membership is keyed by profile id, not the
+ * better-auth/Turso `member.user_id`. Falls back to the legacy `getDb` org/member
+ * tables only when there is no supabase identity (self-host / better-auth mode).
  */
 export async function loadOrganizationsForUser(
   ctx: LoadCtx,
   userId: string,
 ): Promise<OrganizationsBundle> {
-  const db = getDb();
   const activeOrgId = ctx.session?.activeOrganizationId ?? ctx.tenantCtx?.tenantId ?? null;
+  const supabaseId = ctx.user?.supabaseId;
 
+  if (supabaseId) {
+    try {
+      const admin = supabaseAdmin();
+      const { data, error } = await admin
+        .from('organization_members')
+        .select('role, organizations(id, name, slug)')
+        .eq('profile_id', supabaseId);
+      if (!error && data) {
+        type OrgRow = { id: string; name: string; slug: string | null };
+        type MemRow = { role: string; organizations: OrgRow | OrgRow[] | null };
+        const organizations: OrganizationEntry[] = (data as unknown as MemRow[])
+          .map((row) => {
+            const org = Array.isArray(row.organizations) ? row.organizations[0] : row.organizations;
+            if (!org) return null;
+            return { id: org.id, name: org.name, slug: org.slug, role: row.role };
+          })
+          .filter((o): o is OrganizationEntry => o !== null)
+          .sort((a, b) => a.name.localeCompare(b.name));
+        if (organizations.length > 0) {
+          return { organizations, activeOrgId: activeOrgId ?? organizations[0].id };
+        }
+      }
+    } catch {
+      // Fall through to the legacy path below.
+    }
+  }
+
+  // Legacy fallback (better-auth / no supabase identity): read org/member from getDb.
+  const db = getDb();
   const byMembership: OrganizationEntry[] = await db
     .select({
       id: organization.id,
@@ -48,8 +76,6 @@ export async function loadOrganizationsForUser(
     .where(eq(member.userId, userId));
 
   const orgs = [...byMembership];
-
-  // Guarantee the active org is present even when membership-by-userId missed.
   if (activeOrgId && !orgs.some((o) => o.id === activeOrgId)) {
     const [active] = await db
       .select({ id: organization.id, name: organization.name, slug: organization.slug })
