@@ -225,9 +225,13 @@
         <!-- Name -->
         <span class="text-[13px] font-medium text-foreground truncate flex-1 text-left">{agentDisplayName(agent)}</span>
 
-        <!-- Sparkline (subtle, only on hover or when active) -->
+        <!-- Sparkline: only takes layout space when active or hovered, so the
+             agent name renders in full width otherwise. Toggling `display`
+             (not opacity) is what frees the reserved width. -->
         <div
-            class="w-12 h-4 shrink-0 transition-opacity duration-150 {hasActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-60'}"
+            class="w-12 h-4 shrink-0 {hasActive
+                ? 'block opacity-100'
+                : 'hidden group-hover:block opacity-60'}"
         >
             <EChartsSparkline
                 bins={rotatedBins}
