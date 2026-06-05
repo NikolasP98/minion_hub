@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const envObj: Record<string, string> = { OPENAI_API_KEY: 'sk-test' };
+const envObj: Record<string, string> = {};
 vi.mock('$env/dynamic/private', () => ({ env: new Proxy(envObj, { get: (t, p) => t[p as string] }) }));
+
+const gatewayCall = vi.fn<() => Promise<{ text?: string }>>();
+vi.mock('$lib/server/gateway-rpc', () => ({ gatewayCall: () => gatewayCall() }));
 
 function makeLocals(auth = true): App.Locals {
   return {
@@ -35,42 +38,36 @@ async function statusOf(p: Promise<unknown>): Promise<number> {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  envObj.OPENAI_API_KEY = 'sk-test';
 });
 
 describe('POST /api/notes/transcribe', () => {
-  it('forwards audio to OpenAI and returns the text', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(new Response(JSON.stringify({ text: 'hello world' }), { status: 200 })),
-    );
+  it('forwards audio to the gateway media.transcribe and returns the text', async () => {
+    gatewayCall.mockResolvedValue({ text: 'hello world' });
     const res = await callForm(audioForm());
     expect(await res.json()).toEqual({ text: 'hello world' });
-  });
-
-  it('503s when no transcription key is configured', async () => {
-    delete envObj.OPENAI_API_KEY;
-    vi.stubGlobal('fetch', vi.fn());
-    expect(await statusOf(callForm(audioForm()))).toBe(503);
+    expect(gatewayCall).toHaveBeenCalledTimes(1);
   });
 
   it('400s when no file is provided', async () => {
-    vi.stubGlobal('fetch', vi.fn());
     expect(await statusOf(callForm(new FormData()))).toBe(400);
+    expect(gatewayCall).not.toHaveBeenCalled();
   });
 
   it('401s when unauthenticated', async () => {
-    vi.stubGlobal('fetch', vi.fn());
     expect(await statusOf(callForm(audioForm(), false))).toBe(401);
+    expect(gatewayCall).not.toHaveBeenCalled();
   });
 
-  it('returns empty text for an empty chunk without calling OpenAI', async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
+  it('returns empty text for an empty chunk without calling the gateway', async () => {
     const fd = new FormData();
     fd.append('file', new File([], 'chunk.webm', { type: 'audio/webm' }));
     const res = await callForm(fd);
     expect(await res.json()).toEqual({ text: '' });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(gatewayCall).not.toHaveBeenCalled();
+  });
+
+  it('502s when the gateway transcription is unavailable', async () => {
+    gatewayCall.mockRejectedValue(new Error('gateway down'));
+    expect(await statusOf(callForm(audioForm()))).toBe(502);
   });
 });

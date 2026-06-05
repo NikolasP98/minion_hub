@@ -2,8 +2,8 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { requireAuth } from '$server/auth/authorize';
+import { gatewayCall } from '$lib/server/gateway-rpc';
 
-const OPENAI_TRANSCRIBE_URL = 'https://api.openai.com/v1/audio/transcriptions';
 const MODEL = env.NOTES_TRANSCRIBE_MODEL || 'whisper-1';
 const MAX_BYTES = 25 * 1024 * 1024; // OpenAI's per-file limit
 
@@ -12,20 +12,15 @@ const MAX_BYTES = 25 * 1024 * 1024; // OpenAI's per-file limit
  *
  * Server-side speech-to-text for the "include machine/tab audio" path, where the
  * browser's Web Speech API can't help (it only listens to the default mic). The
- * client mixes mic + captured tab audio and posts short chunks here; we forward
- * each to OpenAI's transcription API and return the text to append.
+ * client mixes mic + captured tab audio and posts short chunks here.
  *
- * Mic-only transcription does NOT hit this route — it runs fully in-browser via
- * the Web Speech API (no key needed). This route is gated on a transcription key
- * and degrades gracefully (503) when it isn't configured.
+ * The hub holds no STT key — it forwards each chunk (base64) to the gateway's
+ * `media.transcribe` RPC, which runs whisper over the gateway's own OpenAI
+ * credentials. Mic-only transcription does NOT hit this route (it's in-browser
+ * Web Speech). Degrades gracefully (502) when the gateway/STT is unavailable.
  */
 export const POST: RequestHandler = async ({ locals, request }) => {
   requireAuth(locals);
-
-  const apiKey = env.OPENAI_API_KEY || env.NOTES_TRANSCRIBE_API_KEY;
-  if (!apiKey) {
-    throw error(503, 'System-audio transcription needs OPENAI_API_KEY set on the hub.');
-  }
 
   const inForm = await request.formData();
   const file = inForm.get('file');
@@ -33,24 +28,21 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   if (file.size > MAX_BYTES) throw error(413, 'Audio chunk too large.');
   if (file.size === 0) return json({ text: '' });
 
-  const out = new FormData();
-  out.append('file', file, file.name || 'audio.webm');
-  out.append('model', MODEL);
-  out.append('response_format', 'json');
+  const audioBase64 = Buffer.from(await file.arrayBuffer()).toString('base64');
 
-  let res: Response;
   try {
-    res = await fetch(OPENAI_TRANSCRIBE_URL, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}` },
-      body: out,
-    });
+    const res = await gatewayCall<{ text?: string }>(
+      'media.transcribe',
+      {
+        audioBase64,
+        mimeType: file.type || 'audio/webm',
+        fileName: file.name || 'audio.webm',
+        model: MODEL,
+      },
+      { timeoutMs: 60_000 },
+    );
+    return json({ text: (res.text ?? '').trim() });
   } catch {
-    throw error(502, 'Transcription service unreachable.');
+    throw error(502, 'Transcription is unavailable right now.');
   }
-  if (!res.ok) {
-    throw error(502, `Transcription failed (${res.status}).`);
-  }
-  const data = (await res.json().catch(() => ({}))) as { text?: string };
-  return json({ text: (data.text ?? '').trim() });
 };
