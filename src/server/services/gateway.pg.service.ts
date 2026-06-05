@@ -1,7 +1,31 @@
-import { eq, and } from 'drizzle-orm';
+import { eq, and, or, sql } from 'drizzle-orm';
 import { getCoreDb } from '$server/db/pg-client';
 import { encrypt, decrypt } from '$server/auth/crypto';
 import { gateway, userGateway } from '@minion-stack/db/pg';
+
+/**
+ * Resolve a server identifier — the legacy Turso server id carried in
+ * `/api/servers/[id]/*` URLs (or already a gateway uuid) — to the Supabase
+ * `gateway.id`. The bridge is `gateway.legacy_server_id` (populated from the
+ * canonical cloud-Turso server ids during the gateway data migration).
+ * Returns null if nothing bridges that id. Cached for the process lifetime —
+ * gateway↔server mappings are effectively immutable.
+ */
+const _gatewayIdCache = new Map<string, string>();
+
+export async function resolveGatewayId(serverId: string): Promise<string | null> {
+  const hit = _gatewayIdCache.get(serverId);
+  if (hit) return hit;
+  const [row] = await getCoreDb()
+    .select({ id: gateway.id })
+    .from(gateway)
+    // id::text so a non-uuid serverId can't raise an invalid-uuid error.
+    .where(or(eq(gateway.legacyServerId, serverId), sql`${gateway.id}::text = ${serverId}`))
+    .limit(1);
+  if (!row) return null;
+  _gatewayIdCache.set(serverId, row.id);
+  return row.id;
+}
 
 export interface GatewayInput {
   name: string;
