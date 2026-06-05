@@ -24,13 +24,16 @@
 		X,
 		Search,
 		Palette,
-		Maximize2
+		Maximize2,
+		LayoutDashboard,
+		Image as ImageIcon
 	} from 'lucide-svelte';
 	import NoteImageStrip from './NoteImageStrip.svelte';
 	import ImageLightbox from './ImageLightbox.svelte';
 	import NoteEditor from './NoteEditor.svelte';
 	import TodoChecklist from './TodoChecklist.svelte';
 	import ZenMode from './ZenMode.svelte';
+	import EaselBoard from './EaselBoard.svelte';
 
 	const list = $derived(sortedNotes());
 
@@ -40,6 +43,8 @@
 	let lightboxSrc = $state<string | null>(null);
 	// The note open in fullscreen focus ("zen") mode, if any.
 	let zenNote = $state<AgentNote | null>(null);
+	// The easel board open fullscreen, if any.
+	let easelNote = $state<AgentNote | null>(null);
 
 	// Paste an image straight onto a card (Ctrl+V while editing it).
 	async function onCardPaste(e: ClipboardEvent, note: AgentNote) {
@@ -77,6 +82,14 @@
 		</button>
 		<button type="button" class="add-btn" onclick={() => addNote('todo')}>
 			<ListTodo size={14} /> Todo
+		</button>
+		<button
+			type="button"
+			class="add-btn"
+			title="Freeform image board"
+			onclick={() => (easelNote = addNote('easel'))}
+		>
+			<LayoutDashboard size={14} /> Easel
 		</button>
 	</div>
 
@@ -132,9 +145,9 @@
 					<button
 						type="button"
 						class="pin-btn focus-btn"
-						title="Focus mode"
-						aria-label="Open in focus mode"
-						onclick={() => (zenNote = note)}
+						title={note.kind === 'easel' ? 'Open board' : 'Focus mode'}
+						aria-label="Open fullscreen"
+						onclick={() => (note.kind === 'easel' ? (easelNote = note) : (zenNote = note))}
 					>
 						<Maximize2 size={13} />
 					</button>
@@ -153,8 +166,17 @@
 					<div class="card-body">
 						<NoteEditor {note} />
 					</div>
-				{:else}
+				{:else if note.kind === 'todo'}
 					<TodoChecklist {note} />
+				{:else}
+					<button type="button" class="easel-card" onclick={() => (easelNote = note)}>
+						{#if note.easel.items.length > 0}
+							<span class="easel-count"><ImageIcon size={13} /> {note.easel.items.length} items</span>
+						{:else}
+							<span class="easel-count"><LayoutDashboard size={13} /> Empty board</span>
+						{/if}
+						<span class="easel-open">Open board</span>
+					</button>
 				{/if}
 
 				{#if note.kind !== 'easel'}
@@ -209,6 +231,10 @@
 <ImageLightbox src={lightboxSrc} onclose={() => (lightboxSrc = null)} />
 
 <ZenMode note={zenNote} onclose={() => (zenNote = null)} />
+
+{#if easelNote}
+	<EaselBoard note={easelNote} onclose={() => (easelNote = null)} />
+{/if}
 
 <style>
 	.notes-panel {
@@ -461,5 +487,37 @@
 	.icon-btn.danger:hover {
 		color: #e87d6a;
 		background: rgba(232, 125, 106, 0.1);
+	}
+
+	.easel-card {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+		width: 100%;
+		padding: 14px 12px;
+		border-radius: 10px;
+		cursor: pointer;
+		color: rgba(255, 255, 255, 0.7);
+		background:
+			linear-gradient(135deg, rgba(167, 139, 250, 0.08), rgba(96, 165, 250, 0.06)),
+			repeating-linear-gradient(45deg, transparent, transparent 9px, rgba(255, 255, 255, 0.02) 9px, rgba(255, 255, 255, 0.02) 10px);
+		border: 1px dashed rgba(255, 255, 255, 0.14);
+		transition: border-color 120ms ease, color 120ms ease;
+		font-family: inherit;
+	}
+	.easel-card:hover {
+		color: #fff;
+		border-color: rgba(167, 139, 250, 0.5);
+	}
+	.easel-count {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 12px;
+	}
+	.easel-open {
+		font-size: 11px;
+		color: rgba(167, 139, 250, 0.85);
 	}
 </style>
