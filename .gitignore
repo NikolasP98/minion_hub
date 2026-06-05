@@ -38,3 +38,6 @@ posthog-setup-report.md
 infisical-dev.sh
 .paperclip-mock.local.ts
 .paperclip-mock-probe.local.ts
+
+# Migration artifacts (one-time Turso→Supabase dumps — may contain real data)
+.migration-backup/
