@@ -1,30 +1,26 @@
 import { eq, and } from 'drizzle-orm';
-import { settings } from '@minion-stack/db/schema';
+import { settings } from '@minion-stack/db/pg';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
-import { nowMs } from '$server/db/utils';
-import type { TenantContext } from './base';
+import type { ServerCtx } from '$server/auth/core-ctx';
 
-export async function upsertSettings(
-  ctx: TenantContext,
-  serverId: string,
-  section: string,
-  value: unknown,
-) {
-  const now = nowMs();
+/**
+ * Per-gateway config settings, in Supabase Postgres. Keyed by `gateway_id`
+ * (resolved from the route serverId by getServerCtx) + `tenant_id`.
+ */
+export async function upsertSettings(ctx: ServerCtx, section: string, value: unknown) {
   await ctx.db
     .insert(settings)
     .values({
       tenantId: ctx.tenantId,
-      serverId,
+      gatewayId: ctx.gatewayId,
       section,
       value: JSON.stringify(value),
-      updatedAt: now,
     })
     .onConflictDoUpdate({
-      target: [settings.serverId, settings.section],
+      target: [settings.gatewayId, settings.section],
       set: {
         value: JSON.stringify(value),
-        updatedAt: now,
+        updatedAt: new Date(),
       },
     });
 
@@ -33,12 +29,9 @@ export async function upsertSettings(
   await invalidateTags(tags.tenantDomain(ctx.tenantId, 'settings'));
 }
 
-export async function getSettings(
-  ctx: TenantContext,
-  serverId: string,
-): Promise<Record<string, unknown>> {
+export async function getSettings(ctx: ServerCtx): Promise<Record<string, unknown>> {
   return cached(
-    keys.hub('settings', { t: ctx.tenantId, d: { serverId } }),
+    keys.hub('settings', { t: ctx.tenantId, d: { gatewayId: ctx.gatewayId } }),
     {
       ttl: '30m',
       swr: '5m',
@@ -48,20 +41,16 @@ export async function getSettings(
       const rows = await ctx.db
         .select({ section: settings.section, value: settings.value })
         .from(settings)
-        .where(and(eq(settings.serverId, serverId), eq(settings.tenantId, ctx.tenantId)));
+        .where(and(eq(settings.gatewayId, ctx.gatewayId), eq(settings.tenantId, ctx.tenantId)));
 
       return Object.fromEntries(rows.map((r) => [r.section, JSON.parse(r.value)]));
     },
   );
 }
 
-export async function getSettingsSection(
-  ctx: TenantContext,
-  serverId: string,
-  section: string,
-): Promise<unknown> {
+export async function getSettingsSection(ctx: ServerCtx, section: string): Promise<unknown> {
   return cached(
-    keys.hub('settings', { t: ctx.tenantId, d: { serverId, section } }),
+    keys.hub('settings', { t: ctx.tenantId, d: { gatewayId: ctx.gatewayId, section } }),
     {
       ttl: '30m',
       swr: '5m',
@@ -73,7 +62,7 @@ export async function getSettingsSection(
         .from(settings)
         .where(
           and(
-            eq(settings.serverId, serverId),
+            eq(settings.gatewayId, ctx.gatewayId),
             eq(settings.section, section),
             eq(settings.tenantId, ctx.tenantId),
           ),
