@@ -19,5 +19,15 @@ export interface AgentDisplayInput {
 
 export function agentDisplayName(agent: AgentDisplayInput | null | undefined): string {
     if (!agent) return '';
-    return agent.identity?.name?.trim() || agent.name?.trim() || agent.id;
+    const curated = agent.identity?.name?.trim() || agent.name?.trim();
+    if (curated) return curated;
+
+    // Personal agents have machine ids like `personal-<40-char user hash>` and
+    // usually no curated name — rendering the raw id is unreadable and overflows
+    // any compact surface. Show a tidy, honest label keyed by a short hash prefix
+    // (no fabricated owner name) so multiple personal agents stay distinguishable.
+    const personal = /^personal-(.+)$/.exec(agent.id);
+    if (personal) return `Personal · ${personal[1].slice(0, 6)}`;
+
+    return agent.id;
 }
