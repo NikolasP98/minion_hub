@@ -7,8 +7,9 @@ import { requireAuth } from '$server/auth/authorize';
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 // Fast/cheap model for inline ghost text; override via env if a different model
-// is provisioned on the OpenRouter key.
-const DEFAULT_MODEL = env.NOTES_AUTOCOMPLETE_MODEL || 'anthropic/claude-3.5-haiku';
+// is provisioned on the OpenRouter key. Gemini Flash has very low time-to-first-
+// token, which matters most for snappy Tab-to-accept autocomplete.
+const DEFAULT_MODEL = env.NOTES_AUTOCOMPLETE_MODEL || 'google/gemini-2.0-flash-001';
 const MAX_CONTEXT = 4000;
 
 /**

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { Editor } from '@tiptap/core';
 	import StarterKit from '@tiptap/starter-kit';
 	import { Markdown } from 'tiptap-markdown';
@@ -26,24 +27,33 @@
 	// Create the editor once the container is mounted (browser-only). Content is
 	// the note's Markdown body — the Markdown extension parses the string on the
 	// way in and serializes back out via storage.markdown.getMarkdown().
+	//
+	// This effect must depend on ONLY `element`. Everything else (note.body,
+	// note.id, autofocus) is read inside untrack() — otherwise onUpdate's
+	// updateNote() mutates note.body, which would re-run this effect, destroy the
+	// editor, and recreate it on every keystroke (severe lag + dropped chars).
 	$effect(() => {
-		if (!element || editor) return;
-		editor = new Editor({
-			element,
-			extensions: [
-				StarterKit,
-				Markdown.configure({ html: false, transformPastedText: true, transformCopiedText: true }),
-				createAutofill({ kind: 'note', getContext: () => note.body })
-			],
-			content: note.body || '',
-			autofocus: autofocus ? 'end' : false,
-			editorProps: { attributes: { class: 'note-prose', 'aria-label': 'Note body' } },
-			onUpdate({ editor: ed }) {
-				const md =
-					(ed.storage as unknown as Record<string, { getMarkdown?: () => string }>).markdown?.getMarkdown?.() ??
-					'';
-				updateNote(note.id, { body: md });
-			}
+		if (!element) return;
+		const el = element;
+		untrack(() => {
+			if (editor) return;
+			editor = new Editor({
+				element: el,
+				extensions: [
+					StarterKit,
+					Markdown.configure({ html: false, transformPastedText: true, transformCopiedText: true }),
+					createAutofill({ kind: 'note', getContext: () => note.body })
+				],
+				content: note.body || '',
+				autofocus: autofocus ? 'end' : false,
+				editorProps: { attributes: { class: 'note-prose', 'aria-label': 'Note body' } },
+				onUpdate({ editor: ed }) {
+					const md =
+						(ed.storage as unknown as Record<string, { getMarkdown?: () => string }>).markdown?.getMarkdown?.() ??
+						'';
+					updateNote(note.id, { body: md });
+				}
+			});
 		});
 
 		return () => {

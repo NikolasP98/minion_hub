@@ -45,6 +45,7 @@
 				ow: number;
 				oh: number;
 		  }
+		| { mode: 'rotate'; id: string; cx: number; cy: number }
 		| null;
 	let drag: Drag = null;
 
@@ -92,6 +93,18 @@
 		stage?.setPointerCapture(e.pointerId);
 	}
 
+	function onRotatePointerDown(e: PointerEvent, item: EaselItem) {
+		e.stopPropagation();
+		selectedId = item.id;
+		// Capture the item's centre in screen coords; cam + geometry are fixed
+		// for the duration of the rotate gesture, so this stays accurate.
+		const rect = stage?.getBoundingClientRect();
+		const cx = (rect?.left ?? 0) + cam.x + (item.x + item.w / 2) * cam.zoom;
+		const cy = (rect?.top ?? 0) + cam.y + (item.y + item.h / 2) * cam.zoom;
+		drag = { mode: 'rotate', id: item.id, cx, cy };
+		stage?.setPointerCapture(e.pointerId);
+	}
+
 	function onPointerMove(e: PointerEvent) {
 		if (!drag) return;
 		if (drag.mode === 'pan') {
@@ -111,6 +124,12 @@
 				w: Math.max(40, drag.ow + dw),
 				h: Math.max(30, drag.oh + dh)
 			});
+		} else if (drag.mode === 'rotate') {
+			// Angle from item centre to pointer; +90 so the handle (which sits
+			// directly above the item) maps to 0°. Hold Shift to snap to 15°.
+			let deg = (Math.atan2(e.clientY - drag.cy, e.clientX - drag.cx) * 180) / Math.PI + 90;
+			if (e.shiftKey) deg = Math.round(deg / 15) * 15;
+			updateEaselItem(note.id, drag.id, { rotation: Math.round(deg) });
 		}
 	}
 
@@ -364,6 +383,13 @@
 					{#if selectedId === item.id}
 						<button
 							type="button"
+							class="handle rotate"
+							title="Rotate (hold Shift to snap)"
+							aria-label="Rotate"
+							onpointerdown={(e) => onRotatePointerDown(e, item)}
+						></button>
+						<button
+							type="button"
 							class="handle resize"
 							title="Resize"
 							aria-label="Resize"
@@ -585,6 +611,33 @@
 		border: 2px solid #1a1a1a;
 		cursor: nwse-resize;
 		padding: 0;
+	}
+	.handle.rotate {
+		position: absolute;
+		top: -22px;
+		left: 50%;
+		width: 13px;
+		height: 13px;
+		margin-left: -6.5px;
+		border-radius: 50%;
+		background: var(--color-accent);
+		border: 2px solid #1a1a1a;
+		cursor: grab;
+		padding: 0;
+	}
+	/* Stem connecting the rotate handle to the item's top edge. */
+	.handle.rotate::before {
+		content: '';
+		position: absolute;
+		left: 50%;
+		top: 11px;
+		width: 1px;
+		height: 9px;
+		margin-left: -0.5px;
+		background: color-mix(in srgb, var(--color-accent) 60%, transparent);
+	}
+	.handle.rotate:active {
+		cursor: grabbing;
 	}
 	.item-tools {
 		position: absolute;
