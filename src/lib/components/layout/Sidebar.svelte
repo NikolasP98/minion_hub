@@ -3,6 +3,7 @@
   import { page } from '$app/state';
   import { Activity, Settings, PanelLeftClose, PanelLeft } from 'lucide-svelte';
   import NavIcon from './NavIcon.svelte';
+  import Tooltip from './Tooltip.svelte';
   import {
     getSections,
     gateSections,
@@ -33,13 +34,25 @@
   // Expanded affordances are all gated on lg+, so md–lg always renders the rail
   // regardless of preference; the toggle is hidden below lg (see .collapse-toggle).
   let collapsed = $state(false);
+  // Track the lg breakpoint so we can show hover tooltips whenever the rail is in
+  // icon-only mode — that's `collapsed` (lg+ preference) OR the md–lg forced rail.
+  let isLg = $state(true);
   onMount(() => {
     collapsed = localStorage.getItem('hub-sidebar-collapsed') === '1';
+    const mq = window.matchMedia('(min-width: 64rem)');
+    const sync = () => (isLg = mq.matches);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
   });
   function toggle() {
     collapsed = !collapsed;
     localStorage.setItem('hub-sidebar-collapsed', collapsed ? '1' : '0');
   }
+
+  // Labels are hidden (so a tooltip earns its keep) whenever we're not in the
+  // lg+ expanded state.
+  const showTooltips = $derived(collapsed || !isLg);
 
   // Expanded width/labels/heads unlock only at lg+; below that we stay a mini rail.
   const widthCls = $derived(collapsed ? 'w-14' : 'w-14 lg:w-[224px]');
@@ -78,15 +91,19 @@
 
   <nav class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 py-2 flex flex-col gap-0.5">
     {#if showReliability}
-      <a
-        href="/reliability"
-        class="nav-row {rowJustify} {isReliability ? 'nav-active accent' : ''}"
-        aria-label={m.nav_reliability()}
-        title={m.nav_reliability()}
-      >
-        <Activity size={18} class="nav-icon shrink-0" />
-        <span class="nav-label {labelCls}">{m.nav_reliability()}</span>
-      </a>
+      <Tooltip label={m.nav_reliability()} id="nav-tip-reliability" placement="right" disabled={!showTooltips} openDelay={150}>
+        {#snippet children(trigger)}
+          <a
+            href="/reliability"
+            {...trigger}
+            class="nav-row {rowJustify} {isReliability ? 'nav-active accent' : ''}"
+            aria-label={m.nav_reliability()}
+          >
+            <Activity size={18} class="nav-icon shrink-0" />
+            <span class="nav-label {labelCls}">{m.nav_reliability()}</span>
+          </a>
+        {/snippet}
+      </Tooltip>
       <div class="h-px bg-[var(--hairline)] my-1.5 mx-1"></div>
     {/if}
 
@@ -101,20 +118,24 @@
         {/if}
         {#each items as item (item.href)}
           {@const active = item.matcher(page.url.pathname)}
-          <a
-            href={item.href}
-            class="nav-row {rowJustify} {active
-              ? section.tone === 'brand'
-                ? 'nav-active brand'
-                : 'nav-active accent'
-              : ''}"
-            aria-label={item.label}
-            aria-current={active ? 'page' : undefined}
-            title={item.label}
-          >
-            <NavIcon icon={item.icon} size={18} class="nav-icon shrink-0" />
-            <span class="nav-label {labelCls}">{item.label}</span>
-          </a>
+          <Tooltip label={item.label} id={`nav-tip-${item.href}`} placement="right" disabled={!showTooltips} openDelay={150}>
+            {#snippet children(trigger)}
+              <a
+                href={item.href}
+                {...trigger}
+                class="nav-row {rowJustify} {active
+                  ? section.tone === 'brand'
+                    ? 'nav-active brand'
+                    : 'nav-active accent'
+                  : ''}"
+                aria-label={item.label}
+                aria-current={active ? 'page' : undefined}
+              >
+                <NavIcon icon={item.icon} size={18} class="nav-icon shrink-0" />
+                <span class="nav-label {labelCls}">{item.label}</span>
+              </a>
+            {/snippet}
+          </Tooltip>
         {/each}
         <div class="h-px bg-[var(--hairline)] my-1.5 mx-1"></div>
       {/if}
@@ -123,29 +144,43 @@
 
   <!-- Pinned footer: Settings + collapse toggle -->
   <div class="shrink-0 px-2 py-2 border-t border-[var(--hairline)] flex flex-col gap-0.5">
-    <a
-      href="/settings"
-      class="nav-row {rowJustify} {isSettings ? 'nav-active accent' : ''}"
-      aria-label={m.nav_settings()}
-      title={m.nav_settings()}
+    <Tooltip label={m.nav_settings()} id="nav-tip-settings" placement="right" disabled={!showTooltips} openDelay={150}>
+      {#snippet children(trigger)}
+        <a
+          href="/settings"
+          {...trigger}
+          class="nav-row {rowJustify} {isSettings ? 'nav-active accent' : ''}"
+          aria-label={m.nav_settings()}
+        >
+          <Settings size={18} class="nav-icon shrink-0" />
+          <span class="nav-label {labelCls}">{m.nav_settings()}</span>
+        </a>
+      {/snippet}
+    </Tooltip>
+    <Tooltip
+      label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+      id="nav-tip-collapse"
+      placement="right"
+      disabled={!showTooltips}
+      openDelay={150}
     >
-      <Settings size={18} class="nav-icon shrink-0" />
-      <span class="nav-label {labelCls}">{m.nav_settings()}</span>
-    </a>
-    <button
-      type="button"
-      onclick={toggle}
-      class="nav-row collapse-toggle {rowJustify} text-muted-foreground"
-      aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-      title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-    >
-      {#if collapsed}
-        <PanelLeft size={18} class="nav-icon shrink-0" />
-      {:else}
-        <PanelLeftClose size={18} class="nav-icon shrink-0" />
-      {/if}
-      <span class="nav-label {labelCls}">Collapse</span>
-    </button>
+      {#snippet children(trigger)}
+        <button
+          type="button"
+          onclick={toggle}
+          {...trigger}
+          class="nav-row collapse-toggle {rowJustify} text-muted-foreground"
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {#if collapsed}
+            <PanelLeft size={18} class="nav-icon shrink-0" />
+          {:else}
+            <PanelLeftClose size={18} class="nav-icon shrink-0" />
+          {/if}
+          <span class="nav-label {labelCls}">Collapse</span>
+        </button>
+      {/snippet}
+    </Tooltip>
   </div>
 </aside>
 

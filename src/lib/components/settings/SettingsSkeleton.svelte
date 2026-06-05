@@ -11,7 +11,12 @@
 </script>
 
 {#if visible}
-    <div class="max-w-2xl mx-auto space-y-4 p-6 md:p-10">
+    <!-- Mirror the loaded settings layout: a full-width padded shell with the
+         content centered at max-w-3xl. `w-full` is required because this root is
+         a flex-item child of `.tab-panel` (flex-col) and `mx-auto` would otherwise
+         cancel `align-items: stretch`, collapsing it to a narrow sliver. -->
+    <div class="w-full px-6 py-5">
+        <div class="w-full max-w-3xl mx-auto space-y-2.5">
         {#each { length: 4 } as _, i}
             <div class="surface-2 rounded-lg px-5 py-4 overflow-hidden">
                 <!-- Fake header -->
@@ -27,6 +32,7 @@
                 </div>
             </div>
         {/each}
+        </div>
     </div>
 {/if}
 

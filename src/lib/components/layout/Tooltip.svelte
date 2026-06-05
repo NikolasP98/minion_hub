@@ -7,17 +7,22 @@
         label,
         id,
         placement = "bottom",
+        disabled = false,
+        openDelay = 0,
         children,
     }: {
         label: string;
         id: string;
         placement?: "top" | "bottom" | "left" | "right";
+        /** When true, render the trigger plainly — no hover tooltip. */
+        disabled?: boolean;
+        openDelay?: number;
         children: Snippet<[Record<string, unknown>]>;
     } = $props();
 
     const service = useMachine(tooltip.machine, () => ({
         id,
-        openDelay: 0,
+        openDelay,
         closeDelay: 0,
         positioning: {
             placement: placement as "top" | "bottom" | "left" | "right",
@@ -27,9 +32,13 @@
     const tip = $derived(tooltip.connect(service, normalizeProps));
 </script>
 
-{@render children(tip.getTriggerProps() as Record<string, unknown>)}
+{#if disabled}
+    {@render children({})}
+{:else}
+    {@render children(tip.getTriggerProps() as Record<string, unknown>)}
+{/if}
 
-{#if tip.open}
+{#if !disabled && tip.open}
     <div {...tip.getPositionerProps()} class="!z-[9999]">
         <div
             {...tip.getContentProps()}
