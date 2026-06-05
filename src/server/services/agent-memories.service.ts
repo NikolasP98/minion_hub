@@ -13,10 +13,14 @@ import { pca2d } from './pca';
 
 export type AgentMemoryInsert = typeof agentMemories.$inferInsert;
 
+/** Allowed memory categories — enforced on ingest (untyped gateway JSON). */
+export const CATEGORIES = ['preference', 'fact', 'decision', 'entity', 'other'] as const;
+export type MemoryCategory = (typeof CATEGORIES)[number];
+
 export interface MemoryInput {
   agentId: string;
   content: string;
-  category?: 'preference' | 'fact' | 'decision' | 'entity' | 'other';
+  category?: MemoryCategory;
   importance?: number;
   source?: string;
   sourceId?: string | null;
@@ -60,7 +64,9 @@ function toInsertValues(orgId: string, m: MemoryInput): AgentMemoryInsert {
     profileId: m.profileId ?? null,
     content: m.content,
     embedding: m.embedding ?? null,
-    category: m.category ?? 'other',
+    category: (CATEGORIES as readonly string[]).includes(m.category as string)
+      ? (m.category as MemoryCategory)
+      : 'other',
     importance: m.importance ?? 0.5,
     source: m.source ?? 'manual',
     sourceId: m.sourceId ?? null,

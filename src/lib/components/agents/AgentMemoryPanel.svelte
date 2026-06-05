@@ -125,7 +125,7 @@
       trigger: 'item',
       formatter: (p: unknown) => {
         const d = (p as { data: { name: string; cat: string } }).data;
-        return `<b>${d.cat}</b><br/>${escapeHtml(d.name).slice(0, 120)}`;
+        return `<b>${escapeHtml(d.cat)}</b><br/>${escapeHtml(d.name).slice(0, 120)}`;
       },
     },
     series: CATEGORIES.filter((c) => activeCategories.has(c)).map((c) => ({
@@ -144,7 +144,10 @@
   });
 
   function escapeHtml(s: string): string {
-    return s.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch] ?? ch);
+    return s.replace(
+      /[&<>"']/g,
+      (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch] ?? ch,
+    );
   }
   function fmtDate(iso: string): string {
     const d = new Date(iso);
