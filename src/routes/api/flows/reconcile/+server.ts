@@ -14,11 +14,13 @@ const PREF_SECTION = 'pluginFlowInstalls';
 
 export const POST: RequestHandler = async ({ locals, request }) => {
   const user = requireAuth(locals);
-  // Flows/groups live in Supabase Postgres (fctx). The plugin-install bookkeeping
-  // lives in Turso user_preferences (tctx) — keep that handle separate.
+  // Flows/groups AND plugin-install bookkeeping (user_preferences) now both live
+  // in Supabase Postgres (fctx.db = getCoreDb). user_preferences is keyed by
+  // profile_id (Supabase auth uuid = user.supabaseId), not the legacy user id.
   const fctx = await getFlowsCtx(locals);
   const tctx = await getTenantCtx(locals);
   if (!fctx || !tctx) throw error(401);
+  const profileId = user.supabaseId;
 
   const { plugins: incoming } = (await request.json()) as { plugins?: ReconcilePlugin[] };
   const plugins = Array.isArray(incoming) ? incoming : [];
@@ -45,7 +47,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     id: f.id, pluginId: flowSourceFrom(f.config)?.pluginId ?? null,
   }));
 
-  const prefs = await getUserPreferences(tctx.db, user.id);
+  const prefs = profileId ? await getUserPreferences(fctx.db, profileId) : {};
   const recorded = prefs[PREF_SECTION] as { keys?: string[] } | undefined;
   const installedKeys = Array.isArray(recorded?.keys) ? recorded!.keys! : [];
 
@@ -83,8 +85,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   for (const gid of plan.groupsToRelease) {
     await fctx.db.update(flowGroups).set({ pluginId: null, disabled: false, updatedAt: now }).where(eq(flowGroups.id, gid));
   }
-  if (plan.keysToAdd.length > 0) {
-    await upsertUserPreference(tctx.db, user.id, PREF_SECTION, { keys: [...installedKeys, ...plan.keysToAdd] });
+  if (plan.keysToAdd.length > 0 && profileId) {
+    await upsertUserPreference(fctx.db, profileId, PREF_SECTION, { keys: [...installedKeys, ...plan.keysToAdd] });
   }
 
   return json({

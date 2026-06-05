@@ -5,5 +5,5 @@ import { loadUserPreferences } from '$server/services/preferences.service';
 
 export const GET: RequestHandler = async ({ locals }) => {
   const user = requireAuth(locals);
-  return json(await loadUserPreferences(locals, user.id));
+  return json(await loadUserPreferences(locals, user.supabaseId));
 };

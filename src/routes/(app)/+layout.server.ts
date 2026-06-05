@@ -91,7 +91,7 @@ export const load: LayoutServerLoad = async ({ locals, depends, url }) => {
       loadOrganizationsForUser(locals, user.id),
       loadPersonalAgentForUser(locals, user.id),
       loadHostsForUser(locals, user.id, user.role),
-      loadUserPreferences(locals, user.id),
+      loadUserPreferences(locals, user.supabaseId),
     ]);
 
   // Redirect to onboarding if user hasn't completed it yet

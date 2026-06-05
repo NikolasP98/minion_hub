@@ -20,6 +20,12 @@ vi.mock('$server/services/hosts.service', () => ({
 vi.mock('$server/services/preferences.service', () => ({
   loadUserPreferences: vi.fn(async () => ({ preferences: {} })),
 }));
+vi.mock('$server/services/organizations.service', () => ({
+  loadOrganizationsForUser: vi.fn(async () => ({
+    organizations: [{ id: 'org-1', name: 'Org', slug: null, role: 'admin' }],
+    activeOrgId: 'org-1',
+  })),
+}));
 
 // Defensive org-activation pulls in db + schema; mock these so vitest doesn't
 // try to resolve $env/dynamic/private in the test environment.
@@ -81,12 +87,15 @@ describe('(app)/+layout.server load', () => {
       },
       hosts: { servers: [], authoritative: true },
       preferences: { preferences: {} },
+      organizations: [{ id: 'org-1', name: 'Org', slug: null, role: 'admin' }],
+      activeOrgId: 'org-1',
     });
-    // depends() should register all six keys
+    // depends() should register all seven keys
     expect(ev.depends).toHaveBeenCalledWith(
       'app:user',
       'app:permissions',
       'app:workspaces',
+      'app:organizations',
       'app:personalAgent',
       'app:hosts',
       'app:preferences',

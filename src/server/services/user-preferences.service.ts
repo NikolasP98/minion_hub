@@ -1,37 +1,44 @@
 import { eq } from 'drizzle-orm';
-import { userPreferences } from '@minion-stack/db/schema';
-import { nowMs } from '$server/db/utils';
-import type { Db } from '$server/db/client';
+import { userPreferences } from '@minion-stack/db/pg';
+import type { getCoreDb } from '$server/db/pg-client';
 
-export async function getUserPreferences(db: Db, userId: string): Promise<Record<string, unknown>> {
+type CoreDb = ReturnType<typeof getCoreDb>;
+
+/**
+ * User preferences live in Supabase Postgres. They are keyed by `profile_id`
+ * (profiles.id — the Supabase auth uuid), NOT the legacy bridged user id, so
+ * callers must pass `locals.user.supabaseId`.
+ */
+export async function getUserPreferences(
+  db: CoreDb,
+  profileId: string,
+): Promise<Record<string, unknown>> {
   const rows = await db
     .select({ section: userPreferences.section, value: userPreferences.value })
     .from(userPreferences)
-    .where(eq(userPreferences.userId, userId));
+    .where(eq(userPreferences.profileId, profileId));
 
   return Object.fromEntries(rows.map((r) => [r.section, JSON.parse(r.value)]));
 }
 
 export async function upsertUserPreference(
-  db: Db,
-  userId: string,
+  db: CoreDb,
+  profileId: string,
   section: string,
   value: unknown,
 ): Promise<void> {
-  const now = nowMs();
   await db
     .insert(userPreferences)
     .values({
-      userId,
+      profileId,
       section,
       value: JSON.stringify(value),
-      updatedAt: now,
     })
     .onConflictDoUpdate({
-      target: [userPreferences.userId, userPreferences.section],
+      target: [userPreferences.profileId, userPreferences.section],
       set: {
         value: JSON.stringify(value),
-        updatedAt: now,
+        updatedAt: new Date(),
       },
     });
 }

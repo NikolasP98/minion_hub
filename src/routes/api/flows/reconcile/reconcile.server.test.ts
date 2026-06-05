@@ -18,7 +18,7 @@ vi.mock('$server/services/user-preferences.service', () => ({
 }));
 
 function makeLocals(): App.Locals {
-  return { user: { id: 'user-1', email: 't@t.com', displayName: 'T', role: 'user' },
+  return { user: { id: 'user-1', supabaseId: 'supa-1', email: 't@t.com', displayName: 'T', role: 'user' },
     session: { userId: 'user-1' } as App.Locals['session'], orgId: 'org-1', tenantCtx: undefined } as App.Locals;
 }
 beforeEach(() => vi.clearAllMocks());
