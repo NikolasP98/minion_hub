@@ -839,15 +839,35 @@ function onHelloOk(hello: HelloOk) {
     })
     .catch((e) => console.error('[hub] agents.list error:', e));
 
-  // Re-register active trigger flows
+  // Re-register active trigger flows. Triggers live in-memory on the gateway, so
+  // they're wiped on every gateway restart and must be re-pushed whenever a hub
+  // client (re)connects — otherwise a restarted gateway silently stops firing
+  // flows until each is re-activated. The list endpoint returns summaries
+  // WITHOUT nodes (nodeCount only), so fetch each active flow's full definition
+  // to read its trigger node.
   fetch('/api/flows?active=true')
     .then((r) => r.json())
     .then(
       async (body: {
-        flows?: Array<{ id: string; nodes: Array<{ type: string; data: unknown }>; active: boolean }>;
+        flows?: Array<{ id: string; nodes?: Array<{ type: string; data: unknown }>; active: boolean }>;
       }) => {
-        for (const flow of body.flows ?? []) {
-          const triggerNode = flow.nodes.find(
+        for (const summary of body.flows ?? []) {
+          let nodes = summary.nodes;
+          if (!Array.isArray(nodes)) {
+            // Summary lacked nodes — pull the full flow.
+            try {
+              const full = (await fetch(`/api/flows/${summary.id}`).then((r) => r.json())) as {
+                flow?: { nodes?: Array<{ type: string; data: unknown }> };
+                nodes?: Array<{ type: string; data: unknown }>;
+              };
+              nodes = full.flow?.nodes ?? full.nodes;
+            } catch {
+              continue;
+            }
+          }
+          if (!Array.isArray(nodes)) continue;
+          const flow = { id: summary.id };
+          const triggerNode = nodes.find(
             (n) => n.type === 'trigger' || n.type === 'pluginTrigger',
           );
           if (!triggerNode) continue;
