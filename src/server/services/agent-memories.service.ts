@@ -82,6 +82,11 @@ export async function upsertMemories(orgId: string, memories: MemoryInput[]): Pr
       .values(values)
       .onConflictDoUpdate({
         target: [agentMemories.orgId, agentMemories.source, agentMemories.sourceId],
+        // Matches the partial unique index `agent_memories_source_uniq`
+        // (WHERE source_id IS NOT NULL). Without this predicate Postgres can't
+        // use the partial index as the ON CONFLICT arbiter. Rows with a null
+        // source_id simply insert (they have no idempotency key).
+        targetWhere: sql`${agentMemories.sourceId} is not null`,
         set: {
           content: sql`excluded.content`,
           embedding: sql`excluded.embedding`,
