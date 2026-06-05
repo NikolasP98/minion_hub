@@ -23,7 +23,7 @@
     backupBasePath?: string | null;
     schedule?: string | null;
     retentionCount?: number | null;
-    enabled?: number | null;
+    enabled?: boolean | null;
   }
   interface Props {
     initialConfig?: BackupConfigShape | null;
@@ -57,10 +57,11 @@
     id: string;
     serverId: string;
     snapshotPath: string;
-    timestamp: number;
+    // Postgres timestamps arrive as ISO strings over the API.
+    timestamp: string;
     sizeBytes: number | null;
     status: string;
-    createdAt: number;
+    createdAt: string;
   }
   let snapshots = $state<Snapshot[]>([]);
   let loadingSnapshots = $state(false);
@@ -260,7 +261,7 @@
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
   }
 
-  function formatDate(ts: number): string {
+  function formatDate(ts: string | number): string {
     return new Date(ts).toLocaleString();
   }
 

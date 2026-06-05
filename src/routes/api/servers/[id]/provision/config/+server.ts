@@ -1,6 +1,6 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
-import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
+import { requireCoreCtx } from '$server/auth/core-ctx';
 import { requireAdmin } from '$server/auth/authorize';
 import {
   getProvisionConfig,
@@ -10,7 +10,7 @@ import {
 
 export const GET: RequestHandler = async ({ locals, params }) => {
   requireAdmin(locals);
-  const ctx = await getOrCreateTenantCtx(locals);
+  const ctx = await requireCoreCtx(locals);
   try {
     const config = await getProvisionConfig(ctx, params.id!);
     if (!config) return json({ ok: true, config: null });
@@ -34,7 +34,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 
 export const PUT: RequestHandler = async ({ locals, params, request }) => {
   requireAdmin(locals);
-  const ctx = await getOrCreateTenantCtx(locals);
+  const ctx = await requireCoreCtx(locals);
   try {
     const body = await request.json();
     const id = await upsertProvisionConfig(ctx, params.id!, body);
@@ -50,7 +50,7 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
 
 export const DELETE: RequestHandler = async ({ locals, params }) => {
   requireAdmin(locals);
-  const ctx = await getOrCreateTenantCtx(locals);
+  const ctx = await requireCoreCtx(locals);
   try {
     await deleteProvisionConfig(ctx, params.id!);
     return json({ ok: true });

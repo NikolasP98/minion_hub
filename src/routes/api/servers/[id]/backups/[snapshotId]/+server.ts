@@ -2,8 +2,8 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
 import { requireAdmin } from '$server/auth/authorize';
-import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
-import { serverBackups } from '@minion-stack/db/schema';
+import { requireCoreCtx } from '$server/auth/core-ctx';
+import { serverBackups } from '@minion-stack/db/pg';
 import {
   getBackupConfig,
   deleteRemoteSnapshot,
@@ -12,7 +12,7 @@ import {
 
 export const DELETE: RequestHandler = async ({ locals, params }) => {
   requireAdmin(locals);
-  const ctx = await getOrCreateTenantCtx(locals);
+  const ctx = await requireCoreCtx(locals);
 
   const [snapshot] = await ctx.db
     .select()

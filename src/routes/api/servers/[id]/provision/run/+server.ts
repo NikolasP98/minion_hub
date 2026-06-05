@@ -1,20 +1,19 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
-import { eq } from 'drizzle-orm';
-import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
-import { serverProvisionConfigs } from '@minion-stack/db/schema';
+import { requireCoreCtx } from '$server/auth/core-ctx';
 import { requireAdmin } from '$server/auth/authorize';
 import {
   getProvisionConfig,
   runSetupPhase,
   savePhaseStatuses,
+  markProvisionRun,
   type PhaseStatus,
 } from '$server/services/provision.service';
 import { getPostHogClient } from '$lib/server/posthog';
 
 export const POST: RequestHandler = async ({ locals, params, request }) => {
   requireAdmin(locals);
-  const ctx = await getOrCreateTenantCtx(locals);
+  const ctx = await requireCoreCtx(locals);
   try {
     const config = await getProvisionConfig(ctx, params.id!);
     if (!config?.sshHost) {
@@ -95,12 +94,8 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
           }
 
           // Save updated phase statuses and timestamp
-          const now = Date.now();
           await savePhaseStatuses(ctx, params.id!, liveStatuses);
-          await ctx.db
-            .update(serverProvisionConfigs)
-            .set({ lastProvisionAt: now, updatedAt: now })
-            .where(eq(serverProvisionConfigs.serverId, params.id!));
+          await markProvisionRun(ctx, params.id!);
 
           sseController.enqueue(encoder.encode(`event: done\ndata: {}\n\n`));
           sseController.close();

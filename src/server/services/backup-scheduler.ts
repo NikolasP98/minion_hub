@@ -1,5 +1,5 @@
-import { getDb } from '$server/db/client';
-import { backupConfigs, serverProvisionConfigs } from '@minion-stack/db/schema';
+import { getCoreDb } from '$server/db/pg-client';
+import { backupConfigs, serverProvisionConfigs } from '@minion-stack/db/pg';
 import { eq } from 'drizzle-orm';
 import {
   getBackupConfig,
@@ -12,7 +12,7 @@ import {
   deleteSnapshotRecord,
 } from './backup.service';
 import { getProvisionConfig } from './provision.service';
-import type { TenantContext } from './base';
+import type { CoreCtx } from '$server/auth/core-ctx';
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -32,8 +32,8 @@ async function tick() {
   const dateKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${now.getHours()}-${now.getMinutes()}`;
   if (dateKey === lastRunDate) return;
 
-  const db = getDb();
-  const configs = await db.select().from(backupConfigs).where(eq(backupConfigs.enabled, 1));
+  const db = getCoreDb();
+  const configs = await db.select().from(backupConfigs).where(eq(backupConfigs.enabled, true));
 
   for (const config of configs) {
     if (!config.schedule || !config.backupHost) continue;
@@ -42,7 +42,7 @@ async function tick() {
     if (now.getHours() !== cron.hour || now.getMinutes() !== cron.minute) continue;
 
     lastRunDate = dateKey;
-    const ctx: TenantContext = { db, tenantId: config.tenantId };
+    const ctx: CoreCtx = { db, tenantId: config.tenantId };
 
     const provConfigs = await db
       .select()
@@ -51,23 +51,25 @@ async function tick() {
 
     for (const pc of provConfigs) {
       if (!pc.sshHost) continue;
-      const provisionConfig = await getProvisionConfig(ctx, pc.serverId);
+      // pg rows key on gateway_id; the service's serverId param accepts a raw
+      // gateway uuid too (resolveGatewayId matches `id::text`), so pass gatewayId.
+      const sid = pc.gatewayId;
+      const provisionConfig = await getProvisionConfig(ctx, sid);
       if (!provisionConfig) continue;
       const backupConfig = await getBackupConfig(ctx);
       if (!backupConfig?.backupHost) continue;
 
-      const existing = await listSnapshots(ctx, pc.serverId);
+      const existing = await listSnapshots(ctx, sid);
       const latestComplete = existing.find((s) => s.status === 'complete');
       const latestPath = latestComplete?.snapshotPath ?? null;
 
       const timestamp = Date.now();
-      const serverName =
-        provisionConfig.agentName?.toLowerCase().replace(/\s+/g, '-') ?? pc.serverId;
+      const serverName = provisionConfig.agentName?.toLowerCase().replace(/\s+/g, '-') ?? sid;
       const basePath = backupConfig.backupBasePath ?? '/mnt/agent-data/backups';
       const tsStr = new Date(timestamp).toISOString().replace(/[:.]/g, '-');
       const snapshotPath = `${basePath}/${serverName}/${tsStr}`;
 
-      const snapshotId = await createSnapshotRecord(ctx, pc.serverId, snapshotPath, timestamp);
+      const snapshotId = await createSnapshotRecord(ctx, sid, snapshotPath, timestamp);
 
       const controller = new AbortController();
       const stream = runBackup(provisionConfig, backupConfig, latestPath, controller.signal);
@@ -90,7 +92,7 @@ async function tick() {
 
       // Retention: delete old snapshots beyond retentionCount
       if (status === 'complete' && backupConfig.retentionCount) {
-        const all = await listSnapshots(ctx, pc.serverId);
+        const all = await listSnapshots(ctx, sid);
         const completed = all.filter((s) => s.status === 'complete');
         if (completed.length > backupConfig.retentionCount) {
           const toDelete = completed.slice(backupConfig.retentionCount);

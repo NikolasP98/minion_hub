@@ -1,8 +1,9 @@
 import { eq, and } from 'drizzle-orm';
-import { serverProvisionConfigs } from '@minion-stack/db/schema';
-import { newId, nowMs } from '$server/db/utils';
+import { serverProvisionConfigs } from '@minion-stack/db/pg';
+import { newId } from '$server/db/utils';
 import { encrypt, decrypt } from '$server/auth/crypto';
-import type { TenantContext } from './base';
+import type { CoreCtx } from '$server/auth/core-ctx';
+import { resolveGatewayId } from '$server/services/gateway.pg.service';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { buildRemotePermissionCommand } from '$server/auth/secure-permissions';
@@ -32,11 +33,11 @@ export interface ProvisionConfig {
   pkgManager: string | null;
   gatewayPort: number | null;
   gatewayBind: string | null;
-  enableWhatsapp: number | null;
-  enableTelegram: number | null;
-  enableDiscord: number | null;
+  enableWhatsapp: boolean | null;
+  enableTelegram: boolean | null;
+  enableDiscord: boolean | null;
   phaseStatuses: Record<string, PhaseStatus>;
-  lastProvisionAt: number | null;
+  lastProvisionAt: Date | null;
 }
 
 export interface ProvisionConfigInput {
@@ -76,11 +77,12 @@ const activeProvisions = new Set<string>();
 // ─── CRUD ───────────────────────────────────────────────────────────────
 
 export async function upsertProvisionConfig(
-  ctx: TenantContext,
+  ctx: CoreCtx,
   serverId: string,
   input: ProvisionConfigInput,
 ): Promise<string> {
-  const now = nowMs();
+  const gatewayId = await resolveGatewayId(serverId);
+  if (!gatewayId) throw new Error(`No gateway found for server ${serverId}`);
 
   // Encrypt API key if provided
   let apiKeyEncrypted: string | undefined;
@@ -95,11 +97,11 @@ export async function upsertProvisionConfig(
   const [existing] = await ctx.db
     .select({ id: serverProvisionConfigs.id })
     .from(serverProvisionConfigs)
-    .where(eq(serverProvisionConfigs.serverId, serverId));
+    .where(eq(serverProvisionConfigs.gatewayId, gatewayId));
 
   if (existing) {
     const updates: Record<string, unknown> = {
-      updatedAt: now,
+      updatedAt: new Date(),
     };
     if (input.sshHost !== undefined) updates.sshHost = input.sshHost;
     if (input.sshUser !== undefined) updates.sshUser = input.sshUser;
@@ -115,9 +117,9 @@ export async function upsertProvisionConfig(
     if (input.pkgManager !== undefined) updates.pkgManager = input.pkgManager;
     if (input.gatewayPort !== undefined) updates.gatewayPort = input.gatewayPort;
     if (input.gatewayBind !== undefined) updates.gatewayBind = input.gatewayBind;
-    if (input.enableWhatsapp !== undefined) updates.enableWhatsapp = input.enableWhatsapp ? 1 : 0;
-    if (input.enableTelegram !== undefined) updates.enableTelegram = input.enableTelegram ? 1 : 0;
-    if (input.enableDiscord !== undefined) updates.enableDiscord = input.enableDiscord ? 1 : 0;
+    if (input.enableWhatsapp !== undefined) updates.enableWhatsapp = input.enableWhatsapp;
+    if (input.enableTelegram !== undefined) updates.enableTelegram = input.enableTelegram;
+    if (input.enableDiscord !== undefined) updates.enableDiscord = input.enableDiscord;
 
     await ctx.db
       .update(serverProvisionConfigs)
@@ -130,7 +132,7 @@ export async function upsertProvisionConfig(
   const id = newId();
   await ctx.db.insert(serverProvisionConfigs).values({
     id,
-    serverId,
+    gatewayId,
     tenantId: ctx.tenantId,
     sshHost: input.sshHost ?? null,
     sshUser: input.sshUser ?? 'root',
@@ -144,26 +146,27 @@ export async function upsertProvisionConfig(
     pkgManager: (input.pkgManager ?? 'npm') as 'npm' | 'bun',
     gatewayPort: input.gatewayPort ?? 18789,
     gatewayBind: (input.gatewayBind ?? 'loopback') as 'loopback' | 'all',
-    enableWhatsapp: input.enableWhatsapp ? 1 : 0,
-    enableTelegram: input.enableTelegram ? 1 : 0,
-    enableDiscord: input.enableDiscord ? 1 : 0,
-    createdAt: now,
-    updatedAt: now,
+    enableWhatsapp: input.enableWhatsapp ?? false,
+    enableTelegram: input.enableTelegram ?? false,
+    enableDiscord: input.enableDiscord ?? false,
   });
 
   return id;
 }
 
 export async function getProvisionConfig(
-  ctx: TenantContext,
+  ctx: CoreCtx,
   serverId: string,
 ): Promise<ProvisionConfig | null> {
+  const gatewayId = await resolveGatewayId(serverId);
+  if (!gatewayId) return null;
+
   const [row] = await ctx.db
     .select()
     .from(serverProvisionConfigs)
     .where(
       and(
-        eq(serverProvisionConfigs.serverId, serverId),
+        eq(serverProvisionConfigs.gatewayId, gatewayId),
         eq(serverProvisionConfigs.tenantId, ctx.tenantId),
       ),
     );
@@ -188,7 +191,8 @@ export async function getProvisionConfig(
 
   return {
     id: row.id,
-    serverId: row.serverId,
+    // Echo the caller's (legacy Turso) serverId — pg rows key on gateway_id.
+    serverId,
     sshHost: row.sshHost,
     sshUser: row.sshUser,
     sshPort: row.sshPort,
@@ -208,12 +212,30 @@ export async function getProvisionConfig(
   };
 }
 
-export async function deleteProvisionConfig(ctx: TenantContext, serverId: string): Promise<void> {
+export async function deleteProvisionConfig(ctx: CoreCtx, serverId: string): Promise<void> {
+  const gatewayId = await resolveGatewayId(serverId);
+  if (!gatewayId) return;
   await ctx.db
     .delete(serverProvisionConfigs)
     .where(
       and(
-        eq(serverProvisionConfigs.serverId, serverId),
+        eq(serverProvisionConfigs.gatewayId, gatewayId),
+        eq(serverProvisionConfigs.tenantId, ctx.tenantId),
+      ),
+    );
+}
+
+/** Mark a provision run as completed (sets last_provision_at to now). */
+export async function markProvisionRun(ctx: CoreCtx, serverId: string): Promise<void> {
+  const gatewayId = await resolveGatewayId(serverId);
+  if (!gatewayId) return;
+  const now = new Date();
+  await ctx.db
+    .update(serverProvisionConfigs)
+    .set({ lastProvisionAt: now, updatedAt: now })
+    .where(
+      and(
+        eq(serverProvisionConfigs.gatewayId, gatewayId),
         eq(serverProvisionConfigs.tenantId, ctx.tenantId),
       ),
     );
@@ -367,19 +389,21 @@ export async function enforceRemoteProfilePermissions(
 // ─── Save phase statuses to DB ──────────────────────────────────────────
 
 export async function savePhaseStatuses(
-  ctx: TenantContext,
+  ctx: CoreCtx,
   serverId: string,
   statuses: Record<string, PhaseStatus>,
 ): Promise<void> {
+  const gatewayId = await resolveGatewayId(serverId);
+  if (!gatewayId) return;
   await ctx.db
     .update(serverProvisionConfigs)
     .set({
       phaseStatuses: JSON.stringify(statuses),
-      updatedAt: nowMs(),
+      updatedAt: new Date(),
     })
     .where(
       and(
-        eq(serverProvisionConfigs.serverId, serverId),
+        eq(serverProvisionConfigs.gatewayId, gatewayId),
         eq(serverProvisionConfigs.tenantId, ctx.tenantId),
       ),
     );

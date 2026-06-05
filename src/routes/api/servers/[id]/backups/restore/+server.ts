@@ -1,13 +1,13 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { requireAdmin } from '$server/auth/authorize';
-import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
+import { requireCoreCtx } from '$server/auth/core-ctx';
 import { getProvisionConfig } from '$server/services/provision.service';
 import { getBackupConfig, runRestore } from '$server/services/backup.service';
 
 export const POST: RequestHandler = async ({ locals, params, request }) => {
   requireAdmin(locals);
-  const ctx = await getOrCreateTenantCtx(locals);
+  const ctx = await requireCoreCtx(locals);
 
   const { snapshotPath } = await request.json();
   if (!snapshotPath) {

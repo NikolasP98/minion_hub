@@ -1,7 +1,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { requireAdmin } from '$server/auth/authorize';
-import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
+import { requireCoreCtx } from '$server/auth/core-ctx';
 import { getProvisionConfig } from '$server/services/provision.service';
 import {
   getBackupConfig,
@@ -14,7 +14,7 @@ import {
 
 export const POST: RequestHandler = async ({ locals, params }) => {
   requireAdmin(locals);
-  const ctx = await getOrCreateTenantCtx(locals);
+  const ctx = await requireCoreCtx(locals);
 
   const provisionConfig = await getProvisionConfig(ctx, params.id!);
   if (!provisionConfig?.sshHost) {

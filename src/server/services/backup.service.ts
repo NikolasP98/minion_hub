@@ -1,7 +1,8 @@
 import { eq, and, desc } from 'drizzle-orm';
-import { backupConfigs, serverBackups } from '@minion-stack/db/schema';
-import { newId, nowMs } from '$server/db/utils';
-import type { TenantContext } from './base';
+import { backupConfigs, serverBackups } from '@minion-stack/db/pg';
+import { newId } from '$server/db/utils';
+import type { CoreCtx } from '$server/auth/core-ctx';
+import { resolveGatewayId } from '$server/services/gateway.pg.service';
 import type { ProvisionConfig } from './provision.service';
 import { sshExec } from './provision.service';
 import { spawn } from 'node:child_process';
@@ -17,17 +18,17 @@ export interface BackupConfig {
   backupBasePath: string | null;
   schedule: string | null;
   retentionCount: number | null;
-  enabled: number | null;
+  enabled: boolean | null;
 }
 
 export interface Snapshot {
   id: string;
   serverId: string;
   snapshotPath: string;
-  timestamp: number;
+  timestamp: Date;
   sizeBytes: number | null;
   status: string;
-  createdAt: number;
+  createdAt: Date;
 }
 
 // ─── In-memory lock ─────────────────────────────────────────────────
@@ -36,7 +37,7 @@ const activeBackups = new Set<string>();
 
 // ─── Backup Config CRUD ─────────────────────────────────────────────
 
-export async function getBackupConfig(ctx: TenantContext): Promise<BackupConfig | null> {
+export async function getBackupConfig(ctx: CoreCtx): Promise<BackupConfig | null> {
   const [row] = await ctx.db
     .select()
     .from(backupConfigs)
@@ -45,14 +46,13 @@ export async function getBackupConfig(ctx: TenantContext): Promise<BackupConfig 
 }
 
 export async function upsertBackupConfig(
-  ctx: TenantContext,
+  ctx: CoreCtx,
   input: Partial<Omit<BackupConfig, 'id'>>,
 ): Promise<string> {
-  const now = nowMs();
   const existing = await getBackupConfig(ctx);
 
   if (existing) {
-    const updates: Record<string, unknown> = { updatedAt: now };
+    const updates: Record<string, unknown> = { updatedAt: new Date() };
     if (input.backupHost !== undefined) updates.backupHost = input.backupHost;
     if (input.backupUser !== undefined) updates.backupUser = input.backupUser;
     if (input.backupPort !== undefined) updates.backupPort = input.backupPort;
@@ -75,44 +75,59 @@ export async function upsertBackupConfig(
     backupBasePath: input.backupBasePath ?? '/mnt/agent-data/backups',
     schedule: input.schedule ?? null,
     retentionCount: input.retentionCount ?? 7,
-    enabled: input.enabled ?? 0,
-    createdAt: now,
-    updatedAt: now,
+    enabled: input.enabled ?? false,
   });
   return id;
 }
 
 // ─── Snapshot CRUD ──────────────────────────────────────────────────
 
-export async function listSnapshots(ctx: TenantContext, serverId: string): Promise<Snapshot[]> {
-  return ctx.db
+/**
+ * Lists snapshots for a server. `serverId` is the legacy Turso id; rows key on
+ * gateway_id (resolved via resolveGatewayId). The returned Snapshot echoes the
+ * caller's serverId (the frontend keys snapshots by serverId).
+ */
+export async function listSnapshots(ctx: CoreCtx, serverId: string): Promise<Snapshot[]> {
+  const gatewayId = await resolveGatewayId(serverId);
+  if (!gatewayId) return [];
+  const rows = await ctx.db
     .select()
     .from(serverBackups)
-    .where(and(eq(serverBackups.serverId, serverId), eq(serverBackups.tenantId, ctx.tenantId)))
+    .where(and(eq(serverBackups.gatewayId, gatewayId), eq(serverBackups.tenantId, ctx.tenantId)))
     .orderBy(desc(serverBackups.timestamp));
+  return rows.map((r) => ({
+    id: r.id,
+    serverId,
+    snapshotPath: r.snapshotPath,
+    timestamp: r.timestamp,
+    sizeBytes: r.sizeBytes,
+    status: r.status,
+    createdAt: r.createdAt,
+  }));
 }
 
 export async function createSnapshotRecord(
-  ctx: TenantContext,
+  ctx: CoreCtx,
   serverId: string,
   snapshotPath: string,
   timestamp: number,
 ): Promise<string> {
+  const gatewayId = await resolveGatewayId(serverId);
+  if (!gatewayId) throw new Error(`No gateway found for server ${serverId}`);
   const id = newId();
   await ctx.db.insert(serverBackups).values({
     id,
-    serverId,
+    gatewayId,
     tenantId: ctx.tenantId,
     snapshotPath,
-    timestamp,
+    timestamp: new Date(timestamp),
     status: 'running',
-    createdAt: nowMs(),
   });
   return id;
 }
 
 export async function updateSnapshotStatus(
-  ctx: TenantContext,
+  ctx: CoreCtx,
   snapshotId: string,
   status: 'complete' | 'failed',
   sizeBytes?: number,
@@ -122,7 +137,7 @@ export async function updateSnapshotStatus(
   await ctx.db.update(serverBackups).set(updates).where(eq(serverBackups.id, snapshotId));
 }
 
-export async function deleteSnapshotRecord(ctx: TenantContext, snapshotId: string): Promise<void> {
+export async function deleteSnapshotRecord(ctx: CoreCtx, snapshotId: string): Promise<void> {
   await ctx.db.delete(serverBackups).where(eq(serverBackups.id, snapshotId));
 }
 
