@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { requireAuth } from '$server/auth/authorize';
 import { loadPermissionsForUser } from '$server/services/permissions.service';
 import { loadWorkspacesForUser } from '$server/services/workspaces.service';
+import { loadOrganizationsForUser } from '$server/services/organizations.service';
 import { loadPersonalAgentForUser } from '$server/services/personal-agent.service';
 import { loadHostsForUser } from '$server/services/hosts.service';
 import { loadUserPreferences } from '$server/services/preferences.service';
@@ -37,6 +38,7 @@ export const load: LayoutServerLoad = async ({ locals, depends, url }) => {
     'app:user',
     'app:permissions',
     'app:workspaces',
+    'app:organizations',
     'app:personalAgent',
     'app:hosts',
     'app:preferences',
@@ -82,13 +84,15 @@ export const load: LayoutServerLoad = async ({ locals, depends, url }) => {
     }
   }
 
-  const [permissions, workspaces, personalAgent, hosts, preferences] = await Promise.all([
-    loadPermissionsForUser(locals, user.id),
-    loadWorkspacesForUser(locals, user.id),
-    loadPersonalAgentForUser(locals, user.id),
-    loadHostsForUser(locals, user.id, user.role),
-    loadUserPreferences(locals, user.id),
-  ]);
+  const [permissions, workspaces, organizations, personalAgent, hosts, preferences] =
+    await Promise.all([
+      loadPermissionsForUser(locals, user.id),
+      loadWorkspacesForUser(locals, user.id),
+      loadOrganizationsForUser(locals, user.id),
+      loadPersonalAgentForUser(locals, user.id),
+      loadHostsForUser(locals, user.id, user.role),
+      loadUserPreferences(locals, user.id),
+    ]);
 
   // Redirect to onboarding if user hasn't completed it yet
   if (
@@ -102,6 +106,8 @@ export const load: LayoutServerLoad = async ({ locals, depends, url }) => {
     user,
     permissions,
     workspaces,
+    organizations: organizations.organizations,
+    activeOrgId: organizations.activeOrgId,
     personalAgent,
     hosts,
     preferences,

@@ -1,15 +1,13 @@
 <script lang="ts">
   import ProfileMenu from './ProfileMenu.svelte';
   import NotificationsPopup from './NotificationsPopup.svelte';
+  import HostPill from '../hosts/HostPill.svelte';
   import { Search, Bug, Bell } from 'lucide-svelte';
   import { togglePalette } from '$lib/state/ui/command-palette.svelte';
   import { captureSnapshot, bugReporter } from '$lib/state/ui/bug-reporter.svelte';
-  import { conn } from '$lib/state/gateway/connection.svelte';
   import { notifications, refreshNotifications } from '$lib/state/features/notifications.svelte';
   import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
-
-  const connected = $derived(conn.connected);
 
   let notificationsOpen = $state(false);
 
@@ -26,18 +24,12 @@
          transition-[box-shadow,border-color] duration-[200ms] ease-[cubic-bezier(0.2,0,0,1)]"
   aria-label="Quick actions"
 >
-  <span
-    class="flex items-center justify-center w-5 h-7"
-    title={connected ? 'Gateway connected' : 'Gateway disconnected'}
-  >
-    <span
-      class="w-1.5 h-1.5 rounded-full transition-colors duration-[250ms] {connected
-        ? 'bg-success shadow-[0_0_5px_var(--color-success)]'
-        : 'bg-warning shadow-[0_0_5px_var(--color-warning)] animate-pulse'}"
-      aria-hidden="true"
-    ></span>
-    <span class="sr-only">{connected ? 'Gateway connected' : 'Gateway disconnected'}</span>
-  </span>
+  <!-- Gateway switcher (admins) / read-only status pill (others). This is the
+       single source of gateway/connection status — the old standalone dot here
+       and on the sidebar were redundant. -->
+  <HostPill align="right" />
+
+  <div class="w-px h-4 bg-[var(--hairline)] mx-0.5"></div>
 
   <button
     type="button"

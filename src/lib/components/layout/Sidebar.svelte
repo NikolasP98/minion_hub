@@ -12,7 +12,7 @@
     type Section,
   } from './sections';
   import MinionLogo from './MinionLogo.svelte';
-  import HostPill from '../hosts/HostPill.svelte';
+  import OrgPicker from './OrgPicker.svelte';
   import { pluginNavState } from '$lib/state/plugin-nav.svelte';
   import { canClient } from '$lib/access/can.svelte';
   import * as m from '$lib/paraglide/messages';
@@ -84,7 +84,7 @@
       {/if}
     </a>
     <div class={collapsed ? 'hidden' : 'hidden lg:block'}>
-      <HostPill />
+      <OrgPicker />
     </div>
   </div>
   <div class="h-px bg-[var(--hairline)] mx-2 mb-1"></div>

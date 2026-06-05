@@ -7,6 +7,8 @@
   import { fmtTimeAgo } from '$lib/utils/format';
   import * as m from '$lib/paraglide/messages';
 
+  let { align = 'left' }: { align?: 'left' | 'right' } = $props();
+
   function selectHost(id: string) {
     if (hostsState.activeHostId === id) { ui.dropdownOpen = false; return; }
     wsDisconnect();
@@ -22,7 +24,7 @@
   }
 </script>
 
-<div class="absolute top-[calc(100%+4px)] left-0 z-50 bg-bg2 border border-border rounded-lg shadow-md min-w-[200px] max-w-[320px] overflow-hidden" role="menu" tabindex="0" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
+<div class="absolute top-[calc(100%+4px)] {align === 'right' ? 'right-0' : 'left-0'} z-50 bg-bg2 border border-border rounded-lg shadow-md min-w-[200px] max-w-[320px] overflow-hidden" role="menu" tabindex="0" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
   {#each hostsState.hosts as host (host.id)}
     <div
       class="flex items-center gap-2 py-[9px] px-[14px] cursor-pointer text-[13px] text-foreground border-b border-[rgba(42,53,72,0.5)] transition-colors hover:bg-bg3"

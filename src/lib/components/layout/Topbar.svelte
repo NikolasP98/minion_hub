@@ -15,7 +15,6 @@
     import { Activity, Settings, Menu, X, Search, Bell, LogOut, User } from "lucide-svelte";
     import NavIcon from "./NavIcon.svelte";
     import { notifications, refreshNotifications } from "$lib/state/features/notifications.svelte";
-    import { conn } from "$lib/state/gateway/connection.svelte";
     import { onMount } from "svelte";
     import { userState, logout } from "$lib/state/features/user.svelte";
     import { DOMAIN_LABEL, type NavDomain } from "./sections";
@@ -29,7 +28,6 @@
     function toggleMobileMenu() { mobileMenuOpen = !mobileMenuOpen; }
     function closeMobileMenu() { mobileMenuOpen = false; }
 
-    const connected = $derived(conn.connected);
     let notificationsOpen = $state(false);
 
     // Group sections by domain for the mobile nav
@@ -77,19 +75,6 @@
         <div class="shrink-0 min-w-0"><HostPill /></div>
 
         <div class="flex-1 min-w-0"></div>
-
-        <span
-            class="flex items-center justify-center w-5 h-7"
-            title={connected ? 'Gateway connected' : 'Gateway disconnected'}
-        >
-            <span
-                class="w-1.5 h-1.5 rounded-full transition-colors duration-[250ms] {connected
-                    ? 'bg-success shadow-[0_0_5px_var(--color-success)]'
-                    : 'bg-warning shadow-[0_0_5px_var(--color-warning)] animate-pulse'}"
-                aria-hidden="true"
-            ></span>
-            <span class="sr-only">{connected ? 'Gateway connected' : 'Gateway disconnected'}</span>
-        </span>
 
         <button
             type="button"
