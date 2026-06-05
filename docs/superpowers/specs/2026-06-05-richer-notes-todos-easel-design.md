@@ -21,6 +21,8 @@ arrangement, no cross-device sync. The user wants:
 6. **Tab-to-autofill** AI suggestions while typing (subtle ghost text):
    - *note* → completes the current paragraph; **Tab again accepts**.
    - *todo* → suggests further checklist items from the existing content; **Tab again accepts**.
+7. **Transcription mode** — speak into a note and have it transcribed in real-time, with an
+   option to **also transcribe a chosen browser tab's audio** (machine/system audio).
 
 ## Decisions (from brainstorming)
 
@@ -233,6 +235,24 @@ store + autosave, just a different chrome.
 5. **AI Tab-autofill** — `/api/notes/autocomplete` route, `tiptap-autofill.ts` ghost-text
    extension (note completion), todo ghost-row suggester.
 6. **Easel board** — `EaselBoard.svelte` freeform canvas + persistence + launcher card.
+7. **Transcription mode** — `TranscribeButton.svelte` in the note editor; `/api/notes/transcribe`.
+
+### Transcription (phase 7)
+
+Browser reality dictates a **hybrid**: the Web Speech API only transcribes the default mic
+(it can't take a custom `MediaStream`), so machine/tab audio needs server STT.
+
+- **Mic only (default)** — Web Speech API (`SpeechRecognition`), real-time interim+final, **no
+  key, no server** (same approach as the hub's existing `voice-call.svelte.ts`). Final results
+  insert into the Tiptap editor at the caret.
+- **"Tab audio" toggle** — `getUserMedia` (mic) + `getDisplayMedia({video:true,audio:true})`
+  (Chrome's tab picker with "share tab audio"); the two are mixed via `AudioContext` →
+  `MediaStreamDestination`. A `MediaRecorder` records full, independently-decodable ~5 s webm
+  clips (stop/restart cycle — timeslice chunks aren't separately decodable), each POSTed to
+  `/api/notes/transcribe`. That route forwards to OpenAI's transcription API — **gated on
+  `OPENAI_API_KEY`** (or `NOTES_TRANSCRIBE_API_KEY`); 503 + a clear hint when unset (the hub
+  has no STT key today, so this path is graceful-degraded until one is added). The mic path
+  works with zero configuration.
 
 Release: apply the `notes` migration to prod Supabase (`fsdaqawhzvlphcbxzzji`), then ship the
 hub to Vercel (dev → master).

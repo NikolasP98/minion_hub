@@ -164,7 +164,7 @@
 
 				{#if note.kind === 'note'}
 					<div class="card-body">
-						<NoteEditor {note} />
+						<NoteEditor {note} compactTools />
 					</div>
 				{:else if note.kind === 'todo'}
 					<TodoChecklist {note} />

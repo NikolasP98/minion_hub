@@ -3,13 +3,22 @@
 	import StarterKit from '@tiptap/starter-kit';
 	import { Markdown } from 'tiptap-markdown';
 	import { createAutofill } from '$lib/components/my-agent/tiptap-autofill';
+	import TranscribeButton from './TranscribeButton.svelte';
 	import { updateNote, type AgentNote } from '$lib/state/features/agent-notes.svelte';
 
 	let {
 		note,
 		placeholder = 'Take a note…',
-		autofocus = false
-	}: { note: AgentNote; placeholder?: string; autofocus?: boolean } = $props();
+		autofocus = false,
+		compactTools = false
+	}: { note: AgentNote; placeholder?: string; autofocus?: boolean; compactTools?: boolean } =
+		$props();
+
+	// Insert finalized transcript text at the caret (or end).
+	function insertTranscript(text: string) {
+		if (!editor) return;
+		editor.chain().focus().insertContent(text).run();
+	}
 
 	let element = $state<HTMLDivElement | null>(null);
 	let editor: Editor | null = null;
@@ -44,9 +53,23 @@
 	});
 </script>
 
-<div class="note-editor" bind:this={element} data-placeholder={placeholder}></div>
+<div class="note-editor-wrap">
+	<div class="transcribe-row" class:compact={compactTools}>
+		<TranscribeButton onfinal={insertTranscript} compact={compactTools} />
+	</div>
+	<div class="note-editor" bind:this={element} data-placeholder={placeholder}></div>
+</div>
 
 <style>
+	.note-editor-wrap {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+	.transcribe-row {
+		display: flex;
+		justify-content: flex-end;
+	}
 	.note-editor {
 		width: 100%;
 		font-size: 12.5px;
