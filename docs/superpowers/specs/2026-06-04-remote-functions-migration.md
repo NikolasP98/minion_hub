@@ -90,8 +90,15 @@ Routes left as-is: `internal/*`, `messages/ingest`, `metrics/*` push,
 ## Status — 2026-06-04 (branch `feature/remote-functions`, off `dev`)
 
 **Done & verified** (check 0/0, build clean — all 10 `*.remote.js` chunks generate;
-tests 574/575, the 1 failure = pre-existing `aci-backend.test.ts` git/GPG flake,
-unrelated). Each phase = one commit.
+tests **575/575**). Each phase = one commit.
+
+**Vitest gotcha (fixed):** state modules now transitively import `*.remote.ts`,
+which import `$app/server` (+ services that read `$app/environment`). Those are
+SvelteKit-plugin virtuals, absent under vitest → any test importing such a state
+module failed with `Cannot find module '$app/server'`. Fix: runtime stubs in
+`src/server/test-utils/env-stubs/{app-server,app-environment}.ts` aliased in
+`vitest.config.ts` (mirrors the `$env/*` stubs). The `$app/server` stub's remote
+resources throw if actually invoked — mock with `vi.mock` if a test needs to.
 
 | # | Domain | Module | Consumers rewired | fetches removed |
 |---|---|---|---|---|
