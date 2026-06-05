@@ -1,6 +1,13 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { invalidate } from '$app/navigation';
+  import {
+    getRoles,
+    getPermissionsCatalog,
+    createRole as createRoleRemote,
+    updateRole as updateRoleRemote,
+    deleteRole as deleteRoleRemote,
+  } from '$lib/remote/roles.remote';
   import { Plus, Trash2, ShieldCheck, Users, Pencil, Check, X } from 'lucide-svelte';
   import PermissionGrid from './PermissionGrid.svelte';
   import ModuleToggles from './ModuleToggles.svelte';
@@ -50,12 +57,9 @@
   const selected = $derived(roles.find((r) => r.id === selectedId) ?? null);
 
   async function load() {
-    const [rRes, cRes] = await Promise.all([
-      fetch('/api/roles'),
-      fetch('/api/roles/permissions-catalog'),
-    ]);
-    if (rRes.ok) roles = ((await rRes.json()) as { roles: Role[] }).roles;
-    if (cRes.ok) catalog = ((await cRes.json()) as { catalog: Record<string, string[]> }).catalog;
+    const [r, c] = await Promise.all([getRoles(), getPermissionsCatalog()]);
+    roles = r as Role[];
+    catalog = c;
     if (!selectedId && roles[0]) selectedId = roles[0].id;
   }
 
@@ -68,14 +72,10 @@
   async function persistPerms(role: Role, perms: string[]) {
     const prev = role.permissions;
     roles = roles.map((r) => (r.id === role.id ? { ...r, permissions: perms } : r));
-    const res = await fetch(`/api/roles/${role.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ permissions: perms }),
-    });
-    if (res.ok) {
+    try {
+      await updateRoleRemote({ id: role.id, permissions: perms });
       void invalidate('settings:roles');
-    } else {
+    } catch {
       roles = roles.map((r) => (r.id === role.id ? { ...r, permissions: prev } : r));
       toastError('Save failed');
     }
@@ -103,38 +103,32 @@
 
   async function createDraft() {
     if (!draftName.trim()) return;
-    const res = await fetch('/api/roles', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    try {
+      const { id } = await createRoleRemote({
         name: draftName.trim(),
         description: draftDesc.trim() || null,
         permissions: draftPerms,
-      }),
-    });
-    if (res.ok) {
-      const body = (await res.json().catch(() => ({}))) as { id?: string };
+      });
       creating = false;
       await load();
       void invalidate('settings:roles');
       toastSuccess('Role created');
-      if (body.id) selectedId = body.id;
-    } else {
-      const d = await res.json().catch(() => ({}));
-      toastError((d as { message?: string }).message ?? 'create failed');
+      if (id) selectedId = id;
+    } catch (e) {
+      toastError((e as Error).message ?? 'create failed');
     }
   }
 
   async function removeRole(role: Role) {
     if (role.isSystem) return;
     if (!confirm(`Delete role "${role.name}"?`)) return;
-    const res = await fetch(`/api/roles/${role.id}`, { method: 'DELETE' });
-    if (res.ok) {
+    try {
+      await deleteRoleRemote(role.id);
       roles = roles.filter((r) => r.id !== role.id);
       if (selectedId === role.id) selectedId = roles[0]?.id ?? null;
       void invalidate('settings:roles');
       toastSuccess('Role deleted');
-    } else {
+    } catch {
       toastError('Delete failed');
     }
   }
@@ -148,12 +142,12 @@
 
   async function saveMeta() {
     if (!selected) return;
-    const res = await fetch(`/api/roles/${selected.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: metaName.trim(), description: metaDesc.trim() || null }),
-    });
-    if (res.ok) {
+    try {
+      await updateRoleRemote({
+        id: selected.id,
+        name: metaName.trim(),
+        description: metaDesc.trim() || null,
+      });
       roles = roles.map((r) =>
         r.id === selected!.id
           ? { ...r, name: metaName.trim(), description: metaDesc.trim() || null }
@@ -161,7 +155,7 @@
       );
       editingMeta = false;
       void invalidate('settings:roles');
-    } else {
+    } catch {
       toastError('Save failed');
     }
   }
