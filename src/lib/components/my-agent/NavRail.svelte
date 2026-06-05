@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { Home, Users, Wrench, Settings } from 'lucide-svelte';
+	import Tooltip from '$lib/components/layout/Tooltip.svelte';
 
 	const items = [
 		{ href: '/my-agent', label: 'My Agent', icon: Home },
@@ -28,15 +29,20 @@
 	{#each items as item (item.href)}
 		{@const Icon = item.icon}
 		{@const active = item.href === activeHref}
-		<a
-			href={item.href}
-			class="nav-rail-item"
-			class:active
-			aria-label={item.label}
-			aria-current={active ? 'page' : undefined}
-		>
-			<Icon size={18} />
-		</a>
+		<Tooltip label={item.label} id={`agent-nav-tip-${item.href}`} placement="right" openDelay={150}>
+			{#snippet children(trigger)}
+				<a
+					href={item.href}
+					{...trigger}
+					class="nav-rail-item"
+					class:active
+					aria-label={item.label}
+					aria-current={active ? 'page' : undefined}
+				>
+					<Icon size={18} />
+				</a>
+			{/snippet}
+		</Tooltip>
 	{/each}
 </nav>
 
