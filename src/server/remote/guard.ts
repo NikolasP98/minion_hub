@@ -11,6 +11,7 @@
  */
 import { getRequestEvent } from '$app/server';
 import { requireAuth, requireAdmin, requireTenantCtx } from '$server/auth/authorize';
+import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
 import type { TenantContext } from '$server/services/base';
 
 type AuthUser = NonNullable<App.Locals['user']>;
@@ -28,6 +29,15 @@ export function currentAdmin(): AuthUser {
 /** The current tenant context (db + tenantId), or throw 401. */
 export function currentCtx(): TenantContext {
   return requireTenantCtx(getRequestEvent().locals);
+}
+
+/**
+ * Tenant context, auto-provisioning a default org if none exists. Mirrors the
+ * `getOrCreateTenantCtx` fallback the builder/* and similar routes use for
+ * local-dev ergonomics.
+ */
+export function currentOrCreateCtx(): Promise<TenantContext> {
+  return getOrCreateTenantCtx(getRequestEvent().locals);
 }
 
 /** Raw request locals — for the rare case a handler needs more than the above. */

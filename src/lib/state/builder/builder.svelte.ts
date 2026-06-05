@@ -1,3 +1,11 @@
+import {
+  getBuiltSkills,
+  getBuiltAgents,
+  getBuiltTools,
+  createSkill as createSkillRemote,
+  createAgent as createAgentRemote,
+} from '$lib/remote/builder.remote';
+
 export interface BuiltSkillSummary {
   id: string;
   name: string;
@@ -42,10 +50,7 @@ export async function loadBuiltSkills() {
   builderState.loading = true;
   builderState.error = null;
   try {
-    const res = await fetch('/api/builder/skills');
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    builderState.skills = data.skills;
+    builderState.skills = (await getBuiltSkills()) as BuiltSkillSummary[];
   } catch (e) {
     builderState.error = e instanceof Error ? e.message : 'Failed to load skills';
   } finally {
@@ -55,10 +60,7 @@ export async function loadBuiltSkills() {
 
 export async function loadBuiltAgents() {
   try {
-    const res = await fetch('/api/builder/agents');
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    builderState.agents = data.agents;
+    builderState.agents = (await getBuiltAgents()) as BuiltAgentSummary[];
   } catch (e) {
     console.error('[builder] Failed to load agents:', e);
   }
@@ -66,10 +68,7 @@ export async function loadBuiltAgents() {
 
 export async function loadBuiltTools() {
   try {
-    const res = await fetch('/api/builder/tools');
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    builderState.tools = data.tools;
+    builderState.tools = (await getBuiltTools()) as unknown as BuiltToolSummary[];
   } catch (e) {
     console.error('[builder] Failed to load tools:', e);
   }
@@ -81,15 +80,9 @@ export async function createSkill(input: {
   emoji?: string;
 }): Promise<string | null> {
   try {
-    const res = await fetch('/api/builder/skills', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(input),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    const { id } = await createSkillRemote(input);
     await loadBuiltSkills();
-    return data.id;
+    return id;
   } catch (e) {
     console.error('[builder] Failed to create skill:', e);
     return null;
@@ -103,15 +96,9 @@ export async function createAgent(input: {
   model?: string;
 }): Promise<string | null> {
   try {
-    const res = await fetch('/api/builder/agents', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(input),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    const { id } = await createAgentRemote(input);
     await loadBuiltAgents();
-    return data.id;
+    return id;
   } catch (e) {
     console.error('[builder] Failed to create agent:', e);
     return null;
