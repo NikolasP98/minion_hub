@@ -87,6 +87,52 @@ Routes left as-is: `internal/*`, `messages/ingest`, `metrics/*` push,
    needs it; otherwise remove once no consumer references it.
 7. `bun run check` + targeted `bun run test` green; commit.
 
+## Status — 2026-06-04 (branch `feature/remote-functions`, off `dev`)
+
+**Done & verified** (check 0/0, build clean — all 7 `*.remote.js` chunks generate;
+tests 574/575, the 1 failure = pre-existing `aci-backend.test.ts` git/GPG flake,
+unrelated). Each phase = one commit.
+
+| # | Domain | Module | Consumers rewired | fetches removed |
+|---|---|---|---|---|
+| 0 | profile | `profile.remote.ts` | ProfileCard, AvatarUpload | 3 |
+| 1 | join-requests | `join.remote.ts` | join-requests page (+load) | 5 + **4× invalidateAll** |
+| 2 | roles | `roles.remote.ts` | RolesSection | 5 |
+| 3 | builder list/create | `builder.remote.ts` | builder.svelte.ts | 5 |
+| 4 | marketplace | `marketplace.remote.ts` | marketplace.svelte.ts | 4 (WS handoff kept) |
+| 5 | workshop saves | `workshop.remote.ts` | workshop.svelte.ts | 5 |
+| 6 | agent-groups | `agent-groups.remote.ts` | agent-groups.svelte.ts | 6 (CachedStore kept) |
+
+Foundation: `kit.experimental.remoteFunctions` + `compilerOptions.experimental.async`
+in `svelte.config.js`; `$server/remote/guard.ts` exposes `currentUser`,
+`currentAdmin`, `currentCtx`, `currentTenantCtx` (first-org fallback),
+`currentOrCreateCtx` (auto-provision), `currentLocals`.
+
+**Revisions to the original plan (CLAUDE.md canonical-load-flow wins):**
+- Did NOT split the `(app)` layout auth bundle into client queries, nor migrate
+  `settings/gateways` (= `hosts`, auth-derived). Client-loading those reintroduces
+  the OAuth-callback 401 race. The layout stays the server-load source of truth.
+- `chat-history` has **no client consumer** → nothing to migrate.
+- Kept `agent-groups` `CachedStore` (sessionStorage + tag invalidation are part of
+  the cross-cutting cache layer — only the inner fetches were swapped). The recon's
+  "delete CachedStore" was descoped to avoid diverging from that architecture.
+- All migrated REST `+server.ts` routes were **left in place** (non-browser / public
+  callers, e.g. `/join`, mobile). No routes deleted.
+
+**Remaining (mechanical follow-ups, same recipe):**
+- **builder detail** — `/api/builder/{agents,skills,tools}/[id]` + the skill-editor
+  (19 fetches) incl. the **chapter-tools N+1 → `query.batch`** win. Deferred because
+  the `[id]` routes carry inline action-dispatch DB logic (publish / add-skill /
+  reorder), not service calls — needs careful porting.
+- **channels** CRUD (`/api/servers/[id]/channels*`) — server-scoped; QR/assignments.
+- **servers/gateways write** ops — `servers.status`/add/remove; SSRF guard →
+  zod `.refine`. Keep `hosts` *read* in the layout bundle.
+- Long tail of simple `/api/servers/[id]/*` CRUD (missions, sessions, settings,
+  backups, skills) — pure service calls, low risk.
+
+Experimental-API watch: pin the SvelteKit minor; the remote-functions API may
+change. If it does, fix call sites before bumping SvelteKit (owner's directive).
+
 ## Verification
 
 Per phase: `bun run check` (0/0), relevant vitest, `bun run build`. Manual smoke
