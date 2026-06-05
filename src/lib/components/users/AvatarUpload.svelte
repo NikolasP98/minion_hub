@@ -1,6 +1,7 @@
 <script lang="ts">
   import { invalidate } from '$app/navigation';
   import UserAvatar from './UserAvatar.svelte';
+  import { updateProfile } from '$lib/remote/profile.remote';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import { Camera, Loader2, Trash2 } from 'lucide-svelte';
 
@@ -41,13 +42,7 @@
       if (!up.ok) throw new Error('upload failed');
       const { id } = (await up.json()) as { id: string };
 
-      const res = await fetch('/api/me', {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ avatarFileId: id }),
-      });
-      if (!res.ok) throw new Error('save failed');
-
+      await updateProfile({ avatarFileId: id });
       toastSuccess('Avatar updated');
       await invalidate('app:user');
     } catch (err) {
@@ -60,12 +55,7 @@
   async function removeAvatar() {
     busy = true;
     try {
-      const res = await fetch('/api/me', {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ avatarUrl: null }),
-      });
-      if (!res.ok) throw new Error('remove failed');
+      await updateProfile({ removeAvatar: true });
       toastSuccess('Avatar removed');
       await invalidate('app:user');
     } catch (err) {

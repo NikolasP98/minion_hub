@@ -21,6 +21,17 @@ const config = {
     paths: {
       relative: false,
     },
+    // Experimental: typed client↔server remote functions (`*.remote.ts`, $app/server).
+    // See docs/superpowers/specs/2026-06-04-remote-functions-migration.md.
+    experimental: {
+      remoteFunctions: true,
+    },
+  },
+  compilerOptions: {
+    // Enables `await` in markup / $derived, used by remote `query` consumers.
+    experimental: {
+      async: true,
+    },
   },
 };
 

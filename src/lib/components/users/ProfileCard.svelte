@@ -1,6 +1,7 @@
 <script lang="ts">
   import { invalidate } from '$app/navigation';
   import AvatarUpload from './AvatarUpload.svelte';
+  import { updateProfile } from '$lib/remote/profile.remote';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import { Check, Pencil, X, ShieldCheck, Mail, CalendarDays } from 'lucide-svelte';
 
@@ -28,12 +29,7 @@
     if (!name) return;
     saving = true;
     try {
-      const res = await fetch('/api/me', {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ displayName: name }),
-      });
-      if (!res.ok) throw new Error('save failed');
+      await updateProfile({ displayName: name });
       toastSuccess('Name updated');
       editing = false;
       await invalidate('app:user');
