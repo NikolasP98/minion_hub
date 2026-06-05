@@ -87,7 +87,7 @@ export const load: LayoutServerLoad = async ({ locals, depends, url }) => {
   const [permissions, workspaces, organizations, personalAgent, hosts, preferences] =
     await Promise.all([
       loadPermissionsForUser(locals, user.id),
-      loadWorkspacesForUser(locals, user.id),
+      loadWorkspacesForUser(locals, user.supabaseId),
       loadOrganizationsForUser(locals, user.id),
       loadPersonalAgentForUser(locals, user.id),
       loadHostsForUser(locals, user.id, user.role),

@@ -1,8 +1,8 @@
 import { eq } from 'drizzle-orm';
 import { createPaperclipClient } from '@minion-stack/paperclip-client';
 import { env } from '$env/dynamic/private';
-import { getDb } from '$server/db/client';
-import { workspaceMembership } from '$server/db/schema/workspace-membership';
+import { getCoreDb } from '$server/db/pg-client';
+import { workspaceMembership } from '@minion-stack/db/pg';
 import type { LoadCtx } from './types';
 
 export interface WorkspaceLoadEntry {
@@ -24,9 +24,12 @@ function paperclipBaseUrl(): string {
  */
 export async function loadWorkspacesForUser(
   ctx: LoadCtx,
-  userId: string,
+  userId: string | undefined,
 ): Promise<WorkspaceLoadEntry[]> {
-  const db = getDb();
+  // workspace_membership.user_id is profiles.id (Supabase uuid) — pass
+  // user.supabaseId. No identity → no memberships (avoid a uuid query that throws).
+  if (!userId) return [];
+  const db = getCoreDb();
   const memberships = await db
     .select()
     .from(workspaceMembership)

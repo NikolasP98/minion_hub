@@ -1,23 +1,25 @@
 import { json, error } from '@sveltejs/kit';
-import { getDb } from '$server/db/client';
-import { workspaceMembership } from '$server/db/schema/workspace-membership';
+import { getCoreDb } from '$server/db/pg-client';
+import { workspaceMembership } from '@minion-stack/db/pg';
 import { and, eq } from 'drizzle-orm';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ request, locals, cookies }) => {
 	const user = locals.user;
 	if (!user) throw error(401, 'unauthenticated');
+	// workspace_membership.user_id is profiles.id (Supabase uuid).
+	if (!user.supabaseId) throw error(403, 'not a member');
 
 	const { companyId } = (await request.json()) as { companyId?: string };
 	if (!companyId) throw error(400, 'companyId required');
 
-	const db = getDb();
+	const db = getCoreDb();
 	const [row] = await db
 		.select()
 		.from(workspaceMembership)
 		.where(
 			and(
-				eq(workspaceMembership.userId, user.id),
+				eq(workspaceMembership.userId, user.supabaseId),
 				eq(workspaceMembership.paperclipCompanyId, companyId),
 			),
 		)
