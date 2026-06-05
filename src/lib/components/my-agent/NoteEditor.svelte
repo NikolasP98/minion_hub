@@ -136,13 +136,13 @@
 		padding: 0;
 	}
 	:global(.note-editor .ProseMirror blockquote) {
-		border-left: 2px solid rgba(232, 125, 106, 0.5);
+		border-left: 2px solid color-mix(in srgb, var(--color-accent) 50%, transparent);
 		margin: 0.3em 0;
 		padding-left: 0.8em;
 		color: rgba(255, 255, 255, 0.65);
 	}
 	:global(.note-editor .ProseMirror a) {
-		color: #e87d6a;
+		color: var(--color-accent);
 		text-decoration: underline;
 	}
 	/* Ghost-text autocomplete suggestion (set by the autofill extension). */

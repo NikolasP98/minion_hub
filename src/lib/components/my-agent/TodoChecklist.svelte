@@ -161,8 +161,8 @@
 		border-color: rgba(255, 255, 255, 0.6);
 	}
 	.check.checked {
-		background: #e87d6a;
-		border-color: #e87d6a;
+		background: var(--color-accent);
+		border-color: var(--color-accent);
 	}
 	.check.checked::after {
 		content: '';
@@ -202,7 +202,7 @@
 	}
 	.ghost-check {
 		border-style: dashed;
-		border-color: rgba(232, 125, 106, 0.5);
+		border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
 		cursor: default;
 	}
 	.item-del {
@@ -221,7 +221,7 @@
 		opacity: 1;
 	}
 	.item-del:hover {
-		color: #e87d6a;
+		color: var(--color-accent);
 	}
 	.todo-add {
 		display: flex;

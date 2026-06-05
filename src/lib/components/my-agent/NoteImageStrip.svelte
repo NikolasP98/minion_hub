@@ -187,7 +187,7 @@
 		transition: box-shadow 120ms ease;
 	}
 	.img-strip.drag {
-		box-shadow: inset 0 0 0 2px rgba(232, 125, 106, 0.5);
+		box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--color-accent) 50%, transparent);
 	}
 	.thumbs {
 		display: grid;
@@ -235,7 +235,7 @@
 		opacity: 1;
 	}
 	.thumb-del:hover {
-		color: #e87d6a;
+		color: var(--color-accent);
 	}
 	.add-row {
 		display: flex;
@@ -256,7 +256,7 @@
 	}
 	.img-add:hover:not(:disabled) {
 		color: rgba(255, 255, 255, 0.85);
-		border-color: rgba(232, 125, 106, 0.35);
+		border-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
 	}
 	.img-add:disabled {
 		opacity: 0.6;
@@ -285,8 +285,8 @@
 		border-radius: 6px;
 		cursor: pointer;
 		color: rgba(255, 255, 255, 0.85);
-		background: rgba(232, 125, 106, 0.18);
-		border: 1px solid rgba(232, 125, 106, 0.35);
+		background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+		border: 1px solid color-mix(in srgb, var(--color-accent) 35%, transparent);
 	}
 	.url-row button.ghost {
 		background: transparent;
@@ -296,7 +296,7 @@
 	.err {
 		margin: 0;
 		font-size: 11px;
-		color: #e87d6a;
+		color: var(--color-accent);
 	}
 	.hidden-file {
 		display: none;

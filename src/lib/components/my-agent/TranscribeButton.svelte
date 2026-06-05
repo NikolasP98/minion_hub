@@ -317,8 +317,8 @@
 	}
 	.mic-btn.on {
 		color: #fff;
-		background: rgba(232, 125, 106, 0.2);
-		border-color: rgba(232, 125, 106, 0.5);
+		background: color-mix(in srgb, var(--color-accent) 20%, transparent);
+		border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
 	}
 	.mic-btn.on :global(svg) {
 		animation: pulse 1.4s ease-in-out infinite;
@@ -336,7 +336,7 @@
 	}
 	.terr {
 		font-size: 11px;
-		color: #e87d6a;
+		color: var(--color-accent);
 		flex-basis: 100%;
 	}
 	:global(.transcribe .spin) {

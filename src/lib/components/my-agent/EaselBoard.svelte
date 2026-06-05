@@ -473,8 +473,8 @@
 	}
 	.tools button:hover:not(:disabled) {
 		color: #fff;
-		background: rgba(232, 125, 106, 0.14);
-		border-color: rgba(232, 125, 106, 0.3);
+		background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+		border-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
 	}
 	.tools button.close:hover {
 		background: rgba(255, 255, 255, 0.12);
@@ -510,8 +510,8 @@
 		border-radius: 7px;
 		cursor: pointer;
 		color: #fff;
-		background: rgba(232, 125, 106, 0.22);
-		border: 1px solid rgba(232, 125, 106, 0.4);
+		background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+		border: 1px solid color-mix(in srgb, var(--color-accent) 40%, transparent);
 	}
 	.stage {
 		position: relative;
@@ -558,7 +558,7 @@
 		box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
 	}
 	.item.selected {
-		outline: 2px solid #e87d6a;
+		outline: 2px solid var(--color-accent);
 		outline-offset: 2px;
 	}
 	.text-item {
@@ -581,7 +581,7 @@
 		width: 14px;
 		height: 14px;
 		border-radius: 50%;
-		background: #e87d6a;
+		background: var(--color-accent);
 		border: 2px solid #1a1a1a;
 		cursor: nwse-resize;
 		padding: 0;
@@ -612,7 +612,7 @@
 		background: rgba(255, 255, 255, 0.1);
 	}
 	.item-tools button.del:hover {
-		color: #e87d6a;
+		color: var(--color-accent);
 	}
 	.empty-hint {
 		position: absolute;
