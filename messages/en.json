@@ -1008,6 +1008,7 @@
   "agent_tabFiles": "Files",
   "agent_tabPrompt": "Prompt",
   "agent_tabGraph": "Graph",
+  "agent_tabMemory": "Memory",
   "agent_tabTools": "Tools",
   "agent_tabSkills": "Skills",
   "agent_tabPiAgent": "Pi-Agent",
