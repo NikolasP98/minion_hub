@@ -7,10 +7,6 @@
 		deleteNote,
 		togglePin,
 		setColor,
-		addTodoItem,
-		setTodoItemText,
-		toggleTodoItem,
-		deleteTodoItem,
 		todoProgress,
 		setPanelOpen,
 		uploadNoteImage,
@@ -27,10 +23,14 @@
 		Trash2,
 		X,
 		Search,
-		Palette
+		Palette,
+		Maximize2
 	} from 'lucide-svelte';
 	import NoteImageStrip from './NoteImageStrip.svelte';
 	import ImageLightbox from './ImageLightbox.svelte';
+	import NoteEditor from './NoteEditor.svelte';
+	import TodoChecklist from './TodoChecklist.svelte';
+	import ZenMode from './ZenMode.svelte';
 
 	const list = $derived(sortedNotes());
 
@@ -38,6 +38,8 @@
 	let colorMenuFor = $state<string | null>(null);
 	// Fullscreen image preview source (null = closed).
 	let lightboxSrc = $state<string | null>(null);
+	// The note open in fullscreen focus ("zen") mode, if any.
+	let zenNote = $state<AgentNote | null>(null);
 
 	// Paste an image straight onto a card (Ctrl+V while editing it).
 	async function onCardPaste(e: ClipboardEvent, note: AgentNote) {
@@ -54,34 +56,6 @@
 			} catch {
 				/* surfaced by the strip on next interaction */
 			}
-		}
-	}
-
-	// Autosize a textarea to its content (Svelte 5 attachment).
-	function autoGrow(el: Element) {
-		const ta = el as HTMLTextAreaElement;
-		const grow = () => {
-			ta.style.height = 'auto';
-			ta.style.height = ta.scrollHeight + 'px';
-		};
-		grow();
-		ta.addEventListener('input', grow);
-		return () => ta.removeEventListener('input', grow);
-	}
-
-	function onTodoItemKey(e: KeyboardEvent, note: AgentNote, itemIndex: number) {
-		if (e.key === 'Enter') {
-			e.preventDefault();
-			// Enter on the last item adds a new one and focuses it.
-			if (itemIndex === note.items.length - 1) {
-				addTodoItem(note.id);
-			}
-			// Focus next item on the next tick.
-			queueMicrotask(() => {
-				const root = document.getElementById(`note-${note.id}`);
-				const inputs = root?.querySelectorAll<HTMLInputElement>('.todo-text');
-				inputs?.[itemIndex + 1]?.focus();
-			});
 		}
 	}
 </script>
@@ -157,6 +131,15 @@
 					/>
 					<button
 						type="button"
+						class="pin-btn focus-btn"
+						title="Focus mode"
+						aria-label="Open in focus mode"
+						onclick={() => (zenNote = note)}
+					>
+						<Maximize2 size={13} />
+					</button>
+					<button
+						type="button"
 						class="pin-btn"
 						class:on={note.pinned}
 						title={note.pinned ? 'Unpin' : 'Pin to top'}
@@ -167,51 +150,11 @@
 				</div>
 
 				{#if note.kind === 'note'}
-					<textarea
-						class="card-body"
-						placeholder="Take a note…"
-						value={note.body}
-						oninput={(e) => updateNote(note.id, { body: e.currentTarget.value })}
-						{@attach autoGrow}
-						aria-label="Note body"
-					></textarea>
+					<div class="card-body">
+						<NoteEditor {note} />
+					</div>
 				{:else}
-					<ul class="todo-list">
-						{#each note.items as item, i (item.id)}
-							<li class="todo-item" class:done={item.done}>
-								<button
-									type="button"
-									class="check"
-									class:checked={item.done}
-									title={item.done ? 'Mark not done' : 'Mark done'}
-									aria-label="Toggle item"
-									onclick={() => toggleTodoItem(note.id, item.id)}
-								></button>
-								<input
-									class="todo-text"
-									placeholder="List item"
-									value={item.text}
-									oninput={(e) => setTodoItemText(note.id, item.id, e.currentTarget.value)}
-									onkeydown={(e) => onTodoItemKey(e, note, i)}
-									aria-label="List item"
-								/>
-								<button
-									type="button"
-									class="item-del"
-									title="Remove item"
-									aria-label="Remove item"
-									onclick={() => deleteTodoItem(note.id, item.id)}
-								>
-									<X size={12} />
-								</button>
-							</li>
-						{/each}
-						<li class="todo-add">
-							<button type="button" class="add-item" onclick={() => addTodoItem(note.id)}>
-								<Plus size={12} /> Add item
-							</button>
-						</li>
-					</ul>
+					<TodoChecklist {note} />
 				{/if}
 
 				{#if note.kind !== 'easel'}
@@ -264,6 +207,8 @@
 </aside>
 
 <ImageLightbox src={lightboxSrc} onclose={() => (lightboxSrc = null)} />
+
+<ZenMode note={zenNote} onclose={() => (zenNote = null)} />
 
 <style>
 	.notes-panel {
@@ -455,101 +400,6 @@
 	}
 	.card-body::placeholder {
 		color: rgba(255, 255, 255, 0.28);
-	}
-
-	.todo-list {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-	}
-	.todo-item {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-	}
-	.check {
-		flex-shrink: 0;
-		width: 16px;
-		height: 16px;
-		border-radius: 5px;
-		border: 1.5px solid rgba(255, 255, 255, 0.3);
-		background: transparent;
-		cursor: pointer;
-		position: relative;
-		transition: border-color 120ms ease, background 120ms ease;
-	}
-	.check:hover {
-		border-color: rgba(255, 255, 255, 0.6);
-	}
-	.check.checked {
-		background: #e87d6a;
-		border-color: #e87d6a;
-	}
-	.check.checked::after {
-		content: '';
-		position: absolute;
-		left: 4.5px;
-		top: 1.5px;
-		width: 4px;
-		height: 8px;
-		border: solid #1a1a1a;
-		border-width: 0 2px 2px 0;
-		transform: rotate(45deg);
-	}
-	.todo-text {
-		flex: 1;
-		min-width: 0;
-		background: transparent;
-		border: none;
-		outline: none;
-		color: rgba(255, 255, 255, 0.85);
-		font-size: 12.5px;
-		font-family: inherit;
-		padding: 2px 0;
-	}
-	.todo-text::placeholder {
-		color: rgba(255, 255, 255, 0.28);
-	}
-	.todo-item.done .todo-text {
-		text-decoration: line-through;
-		color: rgba(255, 255, 255, 0.4);
-	}
-	.item-del {
-		flex-shrink: 0;
-		display: inline-flex;
-		padding: 2px;
-		border-radius: 5px;
-		cursor: pointer;
-		background: transparent;
-		border: none;
-		color: rgba(255, 255, 255, 0.25);
-		opacity: 0;
-		transition: opacity 120ms ease, color 120ms ease;
-	}
-	.todo-item:hover .item-del {
-		opacity: 1;
-	}
-	.item-del:hover {
-		color: #e87d6a;
-	}
-	.add-item {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		padding: 3px 4px;
-		font-size: 11.5px;
-		border-radius: 6px;
-		cursor: pointer;
-		background: transparent;
-		border: none;
-		color: rgba(255, 255, 255, 0.4);
-		transition: color 120ms ease;
-	}
-	.add-item:hover {
-		color: rgba(255, 255, 255, 0.75);
 	}
 
 	.card-foot {
