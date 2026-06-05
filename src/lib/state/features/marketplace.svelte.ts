@@ -1,3 +1,10 @@
+import {
+  getMarketplaceAgents,
+  getMarketplaceAgent,
+  syncMarketplace,
+  installMarketplaceAgent,
+} from '$lib/remote/marketplace.remote';
+
 export interface MarketplaceAgent {
   id: string;
   name: string;
@@ -45,14 +52,7 @@ export function parseTags(tagsJson: string): string[] {
 export async function loadAgents(category?: string, search?: string) {
   marketplaceState.loading = true;
   try {
-    const params = new URLSearchParams();
-    if (category) params.set('category', category);
-    if (search) params.set('search', search);
-
-    const res = await fetch(`/api/marketplace/agents?${params.toString()}`);
-    if (!res.ok) return;
-    const { agents } = await res.json();
-    marketplaceState.agents = agents;
+    marketplaceState.agents = (await getMarketplaceAgents({ category, search })) as MarketplaceAgent[];
   } catch {
     // non-critical
   } finally {
@@ -62,10 +62,7 @@ export async function loadAgents(category?: string, search?: string) {
 
 export async function loadAgent(id: string): Promise<MarketplaceAgent | null> {
   try {
-    const res = await fetch(`/api/marketplace/agents/${id}`);
-    if (!res.ok) return null;
-    const { agent } = await res.json();
-    return agent;
+    return (await getMarketplaceAgent(id)) as MarketplaceAgent;
   } catch {
     return null;
   }
@@ -75,13 +72,7 @@ export async function syncFromGitHub(): Promise<{ synced: number; errors: string
   marketplaceState.syncing = true;
   marketplaceState.syncError = null;
   try {
-    const res = await fetch('/api/marketplace/sync', { method: 'POST' });
-    if (!res.ok) {
-      const text = await res.text();
-      marketplaceState.syncError = text || 'Sync failed';
-      return { synced: 0, errors: [marketplaceState.syncError] };
-    }
-    const data = await res.json();
+    const data = await syncMarketplace();
     // Reload agents after sync
     await loadAgents(
       marketplaceState.selectedCategory ?? undefined,
@@ -89,7 +80,7 @@ export async function syncFromGitHub(): Promise<{ synced: number; errors: string
     );
     return data;
   } catch (err) {
-    marketplaceState.syncError = (err as Error).message;
+    marketplaceState.syncError = (err as Error).message || 'Sync failed';
     return { synced: 0, errors: [marketplaceState.syncError] };
   } finally {
     marketplaceState.syncing = false;
@@ -105,18 +96,7 @@ export async function installAgent(
   marketplaceState.installing = true;
   marketplaceState.installError = null;
   try {
-    const res = await fetch('/api/marketplace/install', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agentId, serverId, serverName, serverUrl }),
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      marketplaceState.installError = text || 'Install failed';
-      return false;
-    }
-
-    const data = (await res.json()) as { ok: boolean; files?: Record<string, string> };
+    const data = await installMarketplaceAgent({ agentId, serverId, serverName, serverUrl });
 
     // Push agent files to the gateway filesystem via the active WebSocket connection
     if (data.files && Object.keys(data.files).length > 0) {

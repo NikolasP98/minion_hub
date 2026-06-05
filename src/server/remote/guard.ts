@@ -10,8 +10,9 @@
  * bodies, which the SvelteKit compiler strips from the client bundle.
  */
 import { getRequestEvent } from '$app/server';
+import { error } from '@sveltejs/kit';
 import { requireAuth, requireAdmin, requireTenantCtx } from '$server/auth/authorize';
-import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
+import { getTenantCtx, getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
 import type { TenantContext } from '$server/services/base';
 
 type AuthUser = NonNullable<App.Locals['user']>;
@@ -29,6 +30,17 @@ export function currentAdmin(): AuthUser {
 /** The current tenant context (db + tenantId), or throw 401. */
 export function currentCtx(): TenantContext {
   return requireTenantCtx(getRequestEvent().locals);
+}
+
+/**
+ * Tenant context with first-organization fallback (no auto-create); throws 401
+ * if no organization exists. Mirrors the `getTenantCtx` pattern used by routes
+ * like marketplace/install.
+ */
+export async function currentTenantCtx(): Promise<TenantContext> {
+  const ctx = await getTenantCtx(getRequestEvent().locals);
+  if (!ctx) error(401, 'No tenant configured');
+  return ctx;
 }
 
 /**
