@@ -1,19 +1,22 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { listSessionTasks, createSessionTask } from '$server/services/session-task.service';
+import { getCoreCtx } from '$server/auth/core-ctx';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
-  if (!locals.tenantCtx) throw error(401);
+  const ctx = await getCoreCtx(locals);
+  if (!ctx) throw error(401);
 
   const serverId = params.id!;
   const sessionKey = decodeURIComponent(params.sessionKey!);
 
-  const tasks = await listSessionTasks(locals.tenantCtx, serverId, sessionKey);
+  const tasks = await listSessionTasks(ctx, serverId, sessionKey);
   return json({ tasks });
 };
 
 export const POST: RequestHandler = async ({ locals, params, request }) => {
-  if (!locals.tenantCtx) throw error(401);
+  const ctx = await getCoreCtx(locals);
+  if (!ctx) throw error(401);
 
   const serverId = params.id!;
   const sessionKey = decodeURIComponent(params.sessionKey!);
@@ -23,7 +26,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
     throw error(400, 'title is required');
   }
 
-  const id = await createSessionTask(locals.tenantCtx, {
+  const id = await createSessionTask(ctx, {
     serverId,
     sessionKey,
     title: body.title,

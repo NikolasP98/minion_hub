@@ -27,6 +27,27 @@ export async function resolveGatewayId(serverId: string): Promise<string | null>
   return row.id;
 }
 
+/**
+ * Reverse of `resolveGatewayId`: a gateway.id → the legacy Turso server id it
+ * bridges (gateway.legacy_server_id), falling back to the gateway id itself.
+ * For services that read a pg row keyed by gateway_id but must echo the
+ * serverId the frontend keys by (when the caller didn't supply it).
+ */
+const _serverIdCache = new Map<string, string>();
+
+export async function resolveServerId(gatewayId: string): Promise<string> {
+  const hit = _serverIdCache.get(gatewayId);
+  if (hit) return hit;
+  const [row] = await getCoreDb()
+    .select({ legacyServerId: gateway.legacyServerId })
+    .from(gateway)
+    .where(eq(gateway.id, gatewayId))
+    .limit(1);
+  const serverId = row?.legacyServerId ?? gatewayId;
+  _serverIdCache.set(gatewayId, serverId);
+  return serverId;
+}
+
 export interface GatewayInput {
   name: string;
   url: string;

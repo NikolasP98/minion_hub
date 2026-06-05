@@ -5,10 +5,10 @@ import {
   bulkInsertChatMessages,
 } from '$server/services/chat.service';
 import type { ChatMessageInput } from '$server/services/chat.service';
-import { requireTenantCtx } from '$server/auth/authorize';
+import { requireCoreCtx } from '$server/auth/core-ctx';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
-  const ctx = requireTenantCtx(locals);
+  const ctx = await requireCoreCtx(locals);
 
   const sessionKey = decodeURIComponent(params.sessionKey!);
   const messages = await listChatMessagesBySessionKey(ctx, params.id!, sessionKey);
@@ -16,7 +16,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 };
 
 export const POST: RequestHandler = async ({ locals, params, request }) => {
-  const ctx = requireTenantCtx(locals);
+  const ctx = await requireCoreCtx(locals);
 
   const body = await request.json();
   const incoming: unknown[] = Array.isArray(body.messages) ? body.messages : [];

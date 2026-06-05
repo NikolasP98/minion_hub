@@ -1,10 +1,10 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { listMissions, createMission } from '$server/services/mission.service';
-import { requireTenantCtx } from '$server/auth/authorize';
+import { requireCoreCtx } from '$server/auth/core-ctx';
 
 export const GET: RequestHandler = async ({ locals, params, url }) => {
-  const ctx = requireTenantCtx(locals);
+  const ctx = await requireCoreCtx(locals);
 
   const sessionId = url.searchParams.get('sessionId') ?? undefined;
   const missions = await listMissions(ctx, {
@@ -15,7 +15,7 @@ export const GET: RequestHandler = async ({ locals, params, url }) => {
 };
 
 export const POST: RequestHandler = async ({ locals, params, request }) => {
-  const ctx = requireTenantCtx(locals);
+  const ctx = await requireCoreCtx(locals);
 
   const body = await request.json();
   if (!body.sessionId || !body.title) throw error(400, 'sessionId and title required');

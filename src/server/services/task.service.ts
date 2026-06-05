@@ -1,7 +1,7 @@
 import { eq, and, asc } from 'drizzle-orm';
-import { tasks } from '@minion-stack/db/schema';
-import { newId, nowMs } from '$server/db/utils';
-import type { TenantContext } from './base';
+import { tasks } from '@minion-stack/db/pg';
+import { newId } from '$server/db/utils';
+import type { CoreCtx } from '$server/auth/core-ctx';
 
 export interface TaskInput {
   missionId: string;
@@ -12,8 +12,26 @@ export interface TaskInput {
   metadata?: string;
 }
 
-export async function createTask(ctx: TenantContext, input: TaskInput) {
-  const now = nowMs();
+// `tasks` keys on mission_id + tenant_id (no gateway scope). pg stores
+// timestamps as Date; keep the Turso-era epoch-number public shape.
+type TaskRow = typeof tasks.$inferSelect;
+
+function reshape(row: TaskRow) {
+  return {
+    id: row.id,
+    tenantId: row.tenantId,
+    missionId: row.missionId,
+    title: row.title,
+    description: row.description,
+    status: row.status,
+    sortOrder: row.sortOrder,
+    metadata: row.metadata,
+    createdAt: row.createdAt.getTime(),
+    updatedAt: row.updatedAt.getTime(),
+  };
+}
+
+export async function createTask(ctx: CoreCtx, input: TaskInput) {
   const id = newId();
 
   await ctx.db.insert(tasks).values({
@@ -25,32 +43,32 @@ export async function createTask(ctx: TenantContext, input: TaskInput) {
     status: input.status ?? 'backlog',
     sortOrder: input.sortOrder ?? 0,
     metadata: input.metadata ?? null,
-    createdAt: now,
-    updatedAt: now,
   });
 
   return id;
 }
 
-export async function listTasks(ctx: TenantContext, missionId: string) {
-  return ctx.db
+export async function listTasks(ctx: CoreCtx, missionId: string) {
+  const rows = await ctx.db
     .select()
     .from(tasks)
     .where(and(eq(tasks.tenantId, ctx.tenantId), eq(tasks.missionId, missionId)))
     .orderBy(asc(tasks.sortOrder), asc(tasks.createdAt));
+  return rows.map(reshape);
 }
 
-export async function getTask(ctx: TenantContext, id: string) {
+export async function getTask(ctx: CoreCtx, id: string) {
   const rows = await ctx.db
     .select()
     .from(tasks)
     .where(and(eq(tasks.id, id), eq(tasks.tenantId, ctx.tenantId)));
 
-  return rows[0] ?? null;
+  const row = rows[0];
+  return row ? reshape(row) : null;
 }
 
 export async function updateTask(
-  ctx: TenantContext,
+  ctx: CoreCtx,
   id: string,
   data: Partial<
     Pick<typeof tasks.$inferInsert, 'title' | 'description' | 'status' | 'sortOrder' | 'metadata'>
@@ -58,10 +76,10 @@ export async function updateTask(
 ) {
   await ctx.db
     .update(tasks)
-    .set({ ...data, updatedAt: nowMs() })
+    .set({ ...data, updatedAt: new Date() })
     .where(and(eq(tasks.id, id), eq(tasks.tenantId, ctx.tenantId)));
 }
 
-export async function deleteTask(ctx: TenantContext, id: string) {
+export async function deleteTask(ctx: CoreCtx, id: string) {
   await ctx.db.delete(tasks).where(and(eq(tasks.id, id), eq(tasks.tenantId, ctx.tenantId)));
 }

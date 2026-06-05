@@ -1,8 +1,9 @@
 import { eq, and, desc } from 'drizzle-orm';
-import { sessions } from '@minion-stack/db/schema';
+import { sessions } from '@minion-stack/db/pg';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
-import { newId, nowMs } from '$server/db/utils';
-import type { TenantContext } from './base';
+import { newId } from '$server/db/utils';
+import type { CoreCtx } from '$server/auth/core-ctx';
+import { resolveGatewayId, resolveServerId } from '$server/services/gateway.pg.service';
 
 export interface SessionInput {
   id?: string;
@@ -15,31 +16,57 @@ export interface SessionInput {
   endedAt?: number;
 }
 
-export async function upsertSession(ctx: TenantContext, input: SessionInput) {
-  const now = nowMs();
+/**
+ * pg rows key on gateway_id and store timestamps as `timestamptz` (Date). The
+ * public shape of this service stays exactly as it was on Turso — `serverId`
+ * (echoed) + epoch-number timestamps — so every caller (session monitors,
+ * dropdowns, viewers that do `Date.now() - updatedAt`) is unaffected.
+ */
+type SessionRow = typeof sessions.$inferSelect;
+const toEpoch = (d: Date | null): number | null => (d ? d.getTime() : null);
+
+function reshape(row: SessionRow, serverId: string) {
+  return {
+    id: row.id,
+    tenantId: row.tenantId,
+    serverId,
+    agentId: row.agentId,
+    sessionKey: row.sessionKey,
+    status: row.status,
+    metadata: row.metadata,
+    startedAt: toEpoch(row.startedAt),
+    endedAt: toEpoch(row.endedAt),
+    createdAt: row.createdAt.getTime(),
+    updatedAt: row.updatedAt.getTime(),
+  };
+}
+
+export async function upsertSession(ctx: CoreCtx, input: SessionInput) {
+  const gatewayId = await resolveGatewayId(input.serverId);
+  if (!gatewayId) throw new Error(`No gateway found for server ${input.serverId}`);
   const id = input.id ?? newId();
+  const now = new Date();
 
   await ctx.db
     .insert(sessions)
     .values({
       id,
       tenantId: ctx.tenantId,
-      serverId: input.serverId,
+      gatewayId,
       agentId: input.agentId,
       sessionKey: input.sessionKey,
       status: input.status ?? 'idle',
       metadata: input.metadata ?? null,
-      startedAt: input.startedAt ?? null,
-      endedAt: input.endedAt ?? null,
-      createdAt: now,
+      startedAt: input.startedAt ? new Date(input.startedAt) : null,
+      endedAt: input.endedAt ? new Date(input.endedAt) : null,
       updatedAt: now,
     })
     .onConflictDoUpdate({
-      target: [sessions.tenantId, sessions.serverId, sessions.sessionKey],
+      target: [sessions.tenantId, sessions.gatewayId, sessions.sessionKey],
       set: {
         status: input.status ?? 'idle',
         metadata: input.metadata ?? null,
-        endedAt: input.endedAt ?? null,
+        endedAt: input.endedAt ? new Date(input.endedAt) : null,
         updatedAt: now,
       },
     });
@@ -52,7 +79,9 @@ export async function upsertSession(ctx: TenantContext, input: SessionInput) {
   return id;
 }
 
-export async function listSessions(ctx: TenantContext, serverId: string) {
+export async function listSessions(ctx: CoreCtx, serverId: string) {
+  const gatewayId = await resolveGatewayId(serverId);
+  if (!gatewayId) return [];
   return cached(
     keys.hub('sessions', { t: ctx.tenantId, d: { serverId } }),
     {
@@ -60,16 +89,20 @@ export async function listSessions(ctx: TenantContext, serverId: string) {
       swr: '30s',
       tags: tags.tenantDomain(ctx.tenantId, 'sessions'),
     },
-    () =>
-      ctx.db
+    async () => {
+      const rows = await ctx.db
         .select()
         .from(sessions)
-        .where(and(eq(sessions.serverId, serverId), eq(sessions.tenantId, ctx.tenantId)))
-        .orderBy(desc(sessions.updatedAt)),
+        .where(and(eq(sessions.gatewayId, gatewayId), eq(sessions.tenantId, ctx.tenantId)))
+        .orderBy(desc(sessions.updatedAt));
+      return rows.map((r) => reshape(r, serverId));
+    },
   );
 }
 
-export async function listSessionsByServer(ctx: TenantContext, serverId: string, agentId?: string) {
+export async function listSessionsByServer(ctx: CoreCtx, serverId: string, agentId?: string) {
+  const gatewayId = await resolveGatewayId(serverId);
+  if (!gatewayId) return [];
   return cached(
     keys.hub('sessions', { t: ctx.tenantId, d: { agentId: agentId ?? '', serverId } }),
     {
@@ -77,26 +110,29 @@ export async function listSessionsByServer(ctx: TenantContext, serverId: string,
       swr: '30s',
       tags: tags.tenantDomain(ctx.tenantId, 'sessions'),
     },
-    () => {
+    async () => {
       const conditions = [
-        eq(sessions.serverId, serverId),
+        eq(sessions.gatewayId, gatewayId),
         eq(sessions.tenantId, ctx.tenantId),
         ...(agentId ? [eq(sessions.agentId, agentId)] : []),
       ];
-      return ctx.db
+      const rows = await ctx.db
         .select()
         .from(sessions)
         .where(and(...conditions))
         .orderBy(desc(sessions.updatedAt));
+      return rows.map((r) => reshape(r, serverId));
     },
   );
 }
 
-export async function getSession(ctx: TenantContext, id: string) {
+export async function getSession(ctx: CoreCtx, id: string) {
   const rows = await ctx.db
     .select()
     .from(sessions)
     .where(and(eq(sessions.id, id), eq(sessions.tenantId, ctx.tenantId)));
 
-  return rows[0] ?? null;
+  const row = rows[0];
+  if (!row) return null;
+  return reshape(row, await resolveServerId(row.gatewayId));
 }

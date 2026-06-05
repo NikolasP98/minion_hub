@@ -5,10 +5,11 @@ import {
   listSkillStats,
   getSkillStatsSummary,
 } from '$server/services/skill-stats.service';
-import { requireTenantCtx } from '$server/auth/authorize';
+import { getCoreCtx, requireCoreCtx } from '$server/auth/core-ctx';
 
 export const POST: RequestHandler = async ({ locals, request }) => {
-  if (!locals.tenantCtx) throw error(401, 'Unauthorized');
+  const ctx = await getCoreCtx(locals);
+  if (!ctx) throw error(401, 'Unauthorized');
 
   const serverId = (locals as Record<string, unknown>).serverId as string | undefined;
   if (!serverId) throw error(401, 'Server identity required');
@@ -18,7 +19,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   if (stats.length === 0) return json({ ok: true });
 
   await insertSkillStats(
-    locals.tenantCtx,
+    ctx,
     stats.map((s: Record<string, unknown>) => ({ ...s, serverId })),
   );
 
@@ -26,7 +27,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 };
 
 export const GET: RequestHandler = async ({ locals, url }) => {
-  const ctx = requireTenantCtx(locals);
+  const ctx = await requireCoreCtx(locals);
 
   const serverId = url.searchParams.get('serverId') ?? undefined;
   const skillName = url.searchParams.get('skillName') ?? undefined;

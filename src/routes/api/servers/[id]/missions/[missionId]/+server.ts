@@ -1,10 +1,10 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { getMission, updateMission, deleteMission } from '$server/services/mission.service';
-import { requireTenantCtx } from '$server/auth/authorize';
+import { requireCoreCtx } from '$server/auth/core-ctx';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
-  const ctx = requireTenantCtx(locals);
+  const ctx = await requireCoreCtx(locals);
 
   const mission = await getMission(ctx, params.missionId!);
   if (!mission) throw error(404);
@@ -12,7 +12,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 };
 
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
-  const ctx = requireTenantCtx(locals);
+  const ctx = await requireCoreCtx(locals);
 
   const body = await request.json();
   await updateMission(ctx, params.missionId!, body);
@@ -20,7 +20,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 };
 
 export const DELETE: RequestHandler = async ({ locals, params }) => {
-  const ctx = requireTenantCtx(locals);
+  const ctx = await requireCoreCtx(locals);
 
   await deleteMission(ctx, params.missionId!);
   return json({ ok: true });

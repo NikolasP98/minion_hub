@@ -1,7 +1,7 @@
 import { eq, and, asc } from 'drizzle-orm';
-import { chatMessages } from '@minion-stack/db/schema';
-import { nowMs } from '$server/db/utils';
-import type { TenantContext } from './base';
+import { chatMessages } from '@minion-stack/db/pg';
+import type { CoreCtx } from '$server/auth/core-ctx';
+import { resolveGatewayId } from '$server/services/gateway.pg.service';
 
 export interface ChatMessageInput {
   serverId: string;
@@ -13,22 +13,43 @@ export interface ChatMessageInput {
   timestamp: number;
 }
 
-export async function insertChatMessage(ctx: TenantContext, msg: ChatMessageInput) {
+// pg keys on gateway_id, id is bigserial, timestamps are Date. This service
+// keeps the Turso-era public shape (serverId echoed, epoch-number timestamps).
+type ChatRow = typeof chatMessages.$inferSelect;
+
+function reshape(row: ChatRow, serverId: string) {
+  return {
+    id: row.id,
+    tenantId: row.tenantId,
+    serverId,
+    agentId: row.agentId,
+    sessionKey: row.sessionKey,
+    role: row.role,
+    content: row.content,
+    runId: row.runId,
+    timestamp: row.timestamp.getTime(),
+    createdAt: row.createdAt.getTime(),
+  };
+}
+
+export async function insertChatMessage(ctx: CoreCtx, msg: ChatMessageInput) {
+  const gatewayId = await resolveGatewayId(msg.serverId);
+  if (!gatewayId) throw new Error(`No gateway found for server ${msg.serverId}`);
   await ctx.db.insert(chatMessages).values({
     tenantId: ctx.tenantId,
-    serverId: msg.serverId,
+    gatewayId,
     agentId: msg.agentId,
     sessionKey: msg.sessionKey,
     role: msg.role,
     content: msg.content,
     runId: msg.runId ?? null,
-    timestamp: msg.timestamp,
-    createdAt: nowMs(),
+    timestamp: new Date(msg.timestamp),
   });
 }
 
-export async function listChatMessages(ctx: TenantContext, agentId: string, limit = 200) {
-  return ctx.db
+export async function listChatMessages(ctx: CoreCtx, agentId: string, limit = 200) {
+  // Keyed by agent_id + tenant_id (no gateway scope) — matches the Turso query.
+  const rows = await ctx.db
     .select({
       role: chatMessages.role,
       content: chatMessages.content,
@@ -39,44 +60,53 @@ export async function listChatMessages(ctx: TenantContext, agentId: string, limi
     .where(and(eq(chatMessages.agentId, agentId), eq(chatMessages.tenantId, ctx.tenantId)))
     .orderBy(asc(chatMessages.timestamp))
     .limit(limit);
+  return rows.map((r) => ({
+    role: r.role,
+    content: r.content,
+    runId: r.runId,
+    timestamp: r.timestamp.getTime(),
+  }));
 }
 
 export async function listChatMessagesBySessionKey(
-  ctx: TenantContext,
+  ctx: CoreCtx,
   serverId: string,
   sessionKey: string,
   limit = 2000,
 ) {
-  return ctx.db
+  const gatewayId = await resolveGatewayId(serverId);
+  if (!gatewayId) return [];
+  const rows = await ctx.db
     .select()
     .from(chatMessages)
     .where(
       and(
-        eq(chatMessages.serverId, serverId),
+        eq(chatMessages.gatewayId, gatewayId),
         eq(chatMessages.sessionKey, sessionKey),
         eq(chatMessages.tenantId, ctx.tenantId),
       ),
     )
     .orderBy(asc(chatMessages.timestamp))
     .limit(limit);
+  return rows.map((r) => reshape(r, serverId));
 }
 
-export async function bulkInsertChatMessages(ctx: TenantContext, messages: ChatMessageInput[]) {
+export async function bulkInsertChatMessages(ctx: CoreCtx, messages: ChatMessageInput[]) {
   if (messages.length === 0) return;
-  const now = nowMs();
   for (const msg of messages) {
+    const gatewayId = await resolveGatewayId(msg.serverId);
+    if (!gatewayId) continue;
     await ctx.db
       .insert(chatMessages)
       .values({
         tenantId: ctx.tenantId,
-        serverId: msg.serverId,
+        gatewayId,
         agentId: msg.agentId,
         sessionKey: msg.sessionKey,
         role: msg.role,
         content: msg.content,
         runId: msg.runId ?? null,
-        timestamp: msg.timestamp,
-        createdAt: now,
+        timestamp: new Date(msg.timestamp),
       })
       .onConflictDoNothing();
   }

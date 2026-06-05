@@ -1,7 +1,8 @@
 import { eq, and, asc } from 'drizzle-orm';
-import { sessionTasks } from '@minion-stack/db/schema';
-import { newId, nowMs } from '$server/db/utils';
-import type { TenantContext } from './base';
+import { sessionTasks } from '@minion-stack/db/pg';
+import { newId } from '$server/db/utils';
+import type { CoreCtx } from '$server/auth/core-ctx';
+import { resolveGatewayId } from '$server/services/gateway.pg.service';
 
 export interface SessionTaskInput {
   serverId: string;
@@ -13,29 +14,50 @@ export interface SessionTaskInput {
   metadata?: string;
 }
 
-export async function createSessionTask(ctx: TenantContext, input: SessionTaskInput) {
-  const now = nowMs();
+// pg keys on gateway_id + stores timestamps as Date; this service keeps the
+// Turso-era public shape (serverId echoed, epoch-number timestamps).
+type SessionTaskRow = typeof sessionTasks.$inferSelect;
+
+function reshape(row: SessionTaskRow, serverId: string) {
+  return {
+    id: row.id,
+    tenantId: row.tenantId,
+    serverId,
+    sessionKey: row.sessionKey,
+    title: row.title,
+    description: row.description,
+    status: row.status,
+    sortOrder: row.sortOrder,
+    metadata: row.metadata,
+    createdAt: row.createdAt.getTime(),
+    updatedAt: row.updatedAt.getTime(),
+  };
+}
+
+export async function createSessionTask(ctx: CoreCtx, input: SessionTaskInput) {
+  const gatewayId = await resolveGatewayId(input.serverId);
+  if (!gatewayId) throw new Error(`No gateway found for server ${input.serverId}`);
   const id = newId();
 
   await ctx.db.insert(sessionTasks).values({
     id,
     tenantId: ctx.tenantId,
-    serverId: input.serverId,
+    gatewayId,
     sessionKey: input.sessionKey,
     title: input.title,
     description: input.description ?? null,
     status: input.status ?? 'backlog',
     sortOrder: input.sortOrder ?? 0,
     metadata: input.metadata ?? null,
-    createdAt: now,
-    updatedAt: now,
   });
 
   return id;
 }
 
-export async function listSessionTasks(ctx: TenantContext, serverId: string, sessionKey: string) {
-  const cutoff = nowMs() - 24 * 60 * 60 * 1000;
+export async function listSessionTasks(ctx: CoreCtx, serverId: string, sessionKey: string) {
+  const gatewayId = await resolveGatewayId(serverId);
+  if (!gatewayId) return [];
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
 
   const rows = await ctx.db
     .select()
@@ -43,18 +65,20 @@ export async function listSessionTasks(ctx: TenantContext, serverId: string, ses
     .where(
       and(
         eq(sessionTasks.tenantId, ctx.tenantId),
-        eq(sessionTasks.serverId, serverId),
+        eq(sessionTasks.gatewayId, gatewayId),
         eq(sessionTasks.sessionKey, sessionKey),
       ),
     )
     .orderBy(asc(sessionTasks.sortOrder), asc(sessionTasks.createdAt));
 
   // Filter out done tasks older than 24h
-  return rows.filter((t) => !(t.status === 'done' && t.updatedAt < cutoff));
+  return rows
+    .map((r) => reshape(r, serverId))
+    .filter((t) => !(t.status === 'done' && t.updatedAt < cutoff));
 }
 
 export async function updateSessionTask(
-  ctx: TenantContext,
+  ctx: CoreCtx,
   id: string,
   data: Partial<
     Pick<
@@ -65,11 +89,11 @@ export async function updateSessionTask(
 ) {
   await ctx.db
     .update(sessionTasks)
-    .set({ ...data, updatedAt: nowMs() })
+    .set({ ...data, updatedAt: new Date() })
     .where(and(eq(sessionTasks.id, id), eq(sessionTasks.tenantId, ctx.tenantId)));
 }
 
-export async function deleteSessionTask(ctx: TenantContext, id: string) {
+export async function deleteSessionTask(ctx: CoreCtx, id: string) {
   await ctx.db
     .delete(sessionTasks)
     .where(and(eq(sessionTasks.id, id), eq(sessionTasks.tenantId, ctx.tenantId)));
