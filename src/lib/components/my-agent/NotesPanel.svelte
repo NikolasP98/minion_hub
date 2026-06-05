@@ -12,7 +12,7 @@
 		toggleTodoItem,
 		deleteTodoItem,
 		todoProgress,
-		setPanelOpen,
+		togglePanel,
 		NOTE_COLORS,
 		COLOR_STYLES,
 		type AgentNote
@@ -25,10 +25,13 @@
 		Trash2,
 		X,
 		Search,
-		Palette
+		Palette,
+		ChevronRight,
+		ChevronLeft
 	} from 'lucide-svelte';
 
 	const list = $derived(sortedNotes());
+	const noteCount = $derived(notesState.notes.length);
 
 	// Which card has its colour palette popover open.
 	let colorMenuFor = $state<string | null>(null);
@@ -62,13 +65,27 @@
 	}
 </script>
 
-<aside class="notes-panel" aria-label="Notes and todos">
+<aside class="notes-panel" class:collapsed={!notesState.open} aria-label="Notes and todos">
+	<!-- Drawer handle: the panel never fully unmounts — it collapses to a slim
+	     rail and this little tab toggles it open/closed. -->
+	<button
+		type="button"
+		class="panel-tab"
+		onclick={togglePanel}
+		title={notesState.open ? 'Collapse notes' : 'Expand notes'}
+		aria-label="Toggle notes and todos panel"
+		aria-expanded={notesState.open}
+	>
+		{#if notesState.open}<ChevronRight size={15} />{:else}<ChevronLeft size={15} />{/if}
+	</button>
+
+	{#if notesState.open}
 	<header class="panel-head">
 		<div class="head-title">
 			<StickyNote size={15} />
 			<span>Notes &amp; Todos</span>
 		</div>
-		<button type="button" class="icon-btn" title="Close panel" onclick={() => setPanelOpen(false)}>
+		<button type="button" class="icon-btn" title="Collapse panel" onclick={togglePanel}>
 			<X size={16} />
 		</button>
 	</header>
@@ -232,18 +249,114 @@
 			</article>
 		{/each}
 	</div>
+	{:else}
+		<!-- Collapsed: a slim discoverable rail. Click anywhere to expand. -->
+		<button type="button" class="rail" onclick={togglePanel} aria-label="Open notes and todos">
+			<span class="rail-icon">
+				<StickyNote size={18} />
+				{#if noteCount > 0}<span class="rail-badge">{noteCount}</span>{/if}
+			</span>
+			<span class="rail-label">Notes &amp; Todos</span>
+		</button>
+	{/if}
 </aside>
 
 <style>
 	.notes-panel {
+		position: relative;
 		width: 320px;
 		flex-shrink: 0;
 		height: 100%;
 		display: flex;
 		flex-direction: column;
 		min-height: 0;
-		background: var(--color-bg, #0d0d0d);
-		border-left: 1px solid rgba(255, 255, 255, 0.06);
+		background: var(--color-bg);
+		border-left: 1px solid var(--color-border);
+		transition: width 180ms cubic-bezier(0.4, 0, 0.2, 1);
+	}
+	.notes-panel.collapsed {
+		width: 46px;
+	}
+
+	/* Drawer handle protruding from the panel's left edge. */
+	.panel-tab {
+		position: absolute;
+		top: 50%;
+		left: 0;
+		transform: translate(-100%, -50%);
+		z-index: 6;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 18px;
+		height: 52px;
+		padding: 0;
+		cursor: pointer;
+		color: var(--color-muted);
+		background: var(--color-bg2);
+		border: 1px solid var(--color-border);
+		border-right: none;
+		border-radius: 8px 0 0 8px;
+		transition: color 120ms ease, background 120ms ease;
+	}
+	.panel-tab:hover {
+		color: var(--color-accent);
+		background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+	}
+	.panel-tab:focus-visible {
+		outline: 2px solid var(--color-accent);
+		outline-offset: 2px;
+	}
+
+	/* Collapsed rail: vertical, discoverable, click-to-expand. */
+	.rail {
+		flex: 1;
+		min-height: 0;
+		width: 100%;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 12px;
+		padding: 16px 0;
+		cursor: pointer;
+		background: transparent;
+		border: none;
+		color: var(--color-muted);
+		transition: color 120ms ease, background 120ms ease;
+	}
+	.rail:hover {
+		color: var(--color-foreground);
+		background: color-mix(in srgb, var(--color-foreground) 4%, transparent);
+	}
+	.rail-icon {
+		position: relative;
+		display: inline-flex;
+		color: var(--color-accent);
+	}
+	.rail-badge {
+		position: absolute;
+		top: -7px;
+		right: -9px;
+		min-width: 15px;
+		height: 15px;
+		padding: 0 4px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 9px;
+		font-weight: 700;
+		font-variant-numeric: tabular-nums;
+		border-radius: 999px;
+		color: var(--color-accent-foreground);
+		background: var(--color-accent);
+	}
+	.rail-label {
+		writing-mode: vertical-rl;
+		text-orientation: mixed;
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		color: var(--color-muted-foreground);
 	}
 
 	.panel-head {
@@ -259,10 +372,10 @@
 		gap: 8px;
 		font-size: 13px;
 		font-weight: 600;
-		color: rgba(255, 255, 255, 0.85);
+		color: color-mix(in srgb, var(--color-foreground) 85%, transparent);
 	}
 	.head-title :global(svg) {
-		color: #e87d6a;
+		color: var(--color-accent);
 	}
 
 	.panel-actions {
@@ -282,15 +395,15 @@
 		font-weight: 500;
 		border-radius: 8px;
 		cursor: pointer;
-		color: rgba(255, 255, 255, 0.8);
-		background: rgba(255, 255, 255, 0.04);
-		border: 1px solid rgba(255, 255, 255, 0.08);
+		color: color-mix(in srgb, var(--color-foreground) 80%, transparent);
+		background: color-mix(in srgb, var(--color-foreground) 4%, transparent);
+		border: 1px solid color-mix(in srgb, var(--color-foreground) 8%, transparent);
 		transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 	}
 	.add-btn:hover {
-		color: #fff;
-		background: rgba(232, 125, 106, 0.1);
-		border-color: rgba(232, 125, 106, 0.35);
+		color: var(--color-foreground);
+		background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+		border-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
 	}
 
 	.search {
@@ -300,10 +413,10 @@
 		margin: 0 14px 10px;
 		padding: 7px 10px;
 		border-radius: 8px;
-		background: rgba(255, 255, 255, 0.03);
-		border: 1px solid rgba(255, 255, 255, 0.07);
+		background: color-mix(in srgb, var(--color-foreground) 3%, transparent);
+		border: 1px solid color-mix(in srgb, var(--color-foreground) 7%, transparent);
 		flex-shrink: 0;
-		color: rgba(255, 255, 255, 0.4);
+		color: color-mix(in srgb, var(--color-foreground) 40%, transparent);
 	}
 	.search input {
 		flex: 1;
@@ -311,12 +424,12 @@
 		background: transparent;
 		border: none;
 		outline: none;
-		color: rgba(255, 255, 255, 0.9);
+		color: color-mix(in srgb, var(--color-foreground) 90%, transparent);
 		font-size: 12.5px;
 		font-family: inherit;
 	}
 	.search input::placeholder {
-		color: rgba(255, 255, 255, 0.3);
+		color: color-mix(in srgb, var(--color-foreground) 30%, transparent);
 	}
 
 	.cards {
@@ -337,7 +450,7 @@
 		gap: 10px;
 		text-align: center;
 		padding: 36px 12px;
-		color: rgba(255, 255, 255, 0.3);
+		color: color-mix(in srgb, var(--color-foreground) 30%, transparent);
 	}
 	.empty p {
 		margin: 0;
@@ -347,7 +460,7 @@
 	}
 
 	.card {
-		border: 1px solid rgba(255, 255, 255, 0.1);
+		border: 1px solid color-mix(in srgb, var(--color-foreground) 10%, transparent);
 		border-radius: 12px;
 		padding: 10px 10px 8px;
 		display: flex;
@@ -355,7 +468,7 @@
 		gap: 8px;
 	}
 	.card.pinned {
-		box-shadow: 0 0 0 1px rgba(232, 125, 106, 0.18);
+		box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 18%, transparent);
 	}
 
 	.card-top {
@@ -370,7 +483,7 @@
 		flex-shrink: 0;
 		font-size: 10px;
 		font-variant-numeric: tabular-nums;
-		color: rgba(255, 255, 255, 0.5);
+		color: color-mix(in srgb, var(--color-foreground) 50%, transparent);
 	}
 	.card-title {
 		flex: 1;
@@ -378,14 +491,14 @@
 		background: transparent;
 		border: none;
 		outline: none;
-		color: rgba(255, 255, 255, 0.92);
+		color: color-mix(in srgb, var(--color-foreground) 92%, transparent);
 		font-size: 13px;
 		font-weight: 600;
 		font-family: inherit;
 		padding: 0;
 	}
 	.card-title::placeholder {
-		color: rgba(255, 255, 255, 0.3);
+		color: color-mix(in srgb, var(--color-foreground) 30%, transparent);
 		font-weight: 500;
 	}
 
@@ -397,14 +510,14 @@
 		cursor: pointer;
 		background: transparent;
 		border: none;
-		color: rgba(255, 255, 255, 0.3);
+		color: color-mix(in srgb, var(--color-foreground) 30%, transparent);
 		transition: color 120ms ease, transform 120ms ease;
 	}
 	.pin-btn:hover {
-		color: rgba(255, 255, 255, 0.7);
+		color: color-mix(in srgb, var(--color-foreground) 70%, transparent);
 	}
 	.pin-btn.on {
-		color: #e87d6a;
+		color: var(--color-accent);
 		transform: rotate(20deg);
 	}
 
@@ -416,14 +529,14 @@
 		background: transparent;
 		border: none;
 		outline: none;
-		color: rgba(255, 255, 255, 0.82);
+		color: color-mix(in srgb, var(--color-foreground) 82%, transparent);
 		font-size: 12.5px;
 		line-height: 1.55;
 		font-family: inherit;
 		padding: 0;
 	}
 	.card-body::placeholder {
-		color: rgba(255, 255, 255, 0.28);
+		color: color-mix(in srgb, var(--color-foreground) 28%, transparent);
 	}
 
 	.todo-list {
@@ -444,18 +557,18 @@
 		width: 16px;
 		height: 16px;
 		border-radius: 5px;
-		border: 1.5px solid rgba(255, 255, 255, 0.3);
+		border: 1.5px solid color-mix(in srgb, var(--color-foreground) 30%, transparent);
 		background: transparent;
 		cursor: pointer;
 		position: relative;
 		transition: border-color 120ms ease, background 120ms ease;
 	}
 	.check:hover {
-		border-color: rgba(255, 255, 255, 0.6);
+		border-color: color-mix(in srgb, var(--color-foreground) 60%, transparent);
 	}
 	.check.checked {
-		background: #e87d6a;
-		border-color: #e87d6a;
+		background: var(--color-accent);
+		border-color: var(--color-accent);
 	}
 	.check.checked::after {
 		content: '';
@@ -464,7 +577,7 @@
 		top: 1.5px;
 		width: 4px;
 		height: 8px;
-		border: solid #1a1a1a;
+		border: solid var(--color-accent-foreground);
 		border-width: 0 2px 2px 0;
 		transform: rotate(45deg);
 	}
@@ -474,17 +587,17 @@
 		background: transparent;
 		border: none;
 		outline: none;
-		color: rgba(255, 255, 255, 0.85);
+		color: color-mix(in srgb, var(--color-foreground) 85%, transparent);
 		font-size: 12.5px;
 		font-family: inherit;
 		padding: 2px 0;
 	}
 	.todo-text::placeholder {
-		color: rgba(255, 255, 255, 0.28);
+		color: color-mix(in srgb, var(--color-foreground) 28%, transparent);
 	}
 	.todo-item.done .todo-text {
 		text-decoration: line-through;
-		color: rgba(255, 255, 255, 0.4);
+		color: color-mix(in srgb, var(--color-foreground) 40%, transparent);
 	}
 	.item-del {
 		flex-shrink: 0;
@@ -494,7 +607,7 @@
 		cursor: pointer;
 		background: transparent;
 		border: none;
-		color: rgba(255, 255, 255, 0.25);
+		color: color-mix(in srgb, var(--color-foreground) 25%, transparent);
 		opacity: 0;
 		transition: opacity 120ms ease, color 120ms ease;
 	}
@@ -502,7 +615,7 @@
 		opacity: 1;
 	}
 	.item-del:hover {
-		color: #e87d6a;
+		color: var(--color-accent);
 	}
 	.add-item {
 		display: inline-flex;
@@ -514,11 +627,11 @@
 		cursor: pointer;
 		background: transparent;
 		border: none;
-		color: rgba(255, 255, 255, 0.4);
+		color: color-mix(in srgb, var(--color-foreground) 40%, transparent);
 		transition: color 120ms ease;
 	}
 	.add-item:hover {
-		color: rgba(255, 255, 255, 0.75);
+		color: color-mix(in srgb, var(--color-foreground) 75%, transparent);
 	}
 
 	.card-foot {
@@ -539,8 +652,8 @@
 		gap: 5px;
 		padding: 7px 8px;
 		border-radius: 9px;
-		background: #1a1a1a;
-		border: 1px solid rgba(255, 255, 255, 0.1);
+		background: var(--color-bg2);
+		border: 1px solid color-mix(in srgb, var(--color-foreground) 10%, transparent);
 		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 	}
 	.swatch {
@@ -548,14 +661,14 @@
 		height: 18px;
 		border-radius: 50%;
 		cursor: pointer;
-		border: 1px solid rgba(255, 255, 255, 0.15);
+		border: 1px solid color-mix(in srgb, var(--color-foreground) 15%, transparent);
 		transition: transform 100ms ease;
 	}
 	.swatch:hover {
 		transform: scale(1.15);
 	}
 	.swatch.active {
-		box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.7);
+		box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-foreground) 70%, transparent);
 	}
 
 	.icon-btn {
@@ -567,18 +680,18 @@
 		cursor: pointer;
 		background: transparent;
 		border: none;
-		color: rgba(255, 255, 255, 0.45);
+		color: color-mix(in srgb, var(--color-foreground) 45%, transparent);
 		transition: color 120ms ease, background 120ms ease;
 	}
 	.icon-btn:hover {
-		color: rgba(255, 255, 255, 0.85);
-		background: rgba(255, 255, 255, 0.05);
+		color: color-mix(in srgb, var(--color-foreground) 85%, transparent);
+		background: color-mix(in srgb, var(--color-foreground) 5%, transparent);
 	}
 	.icon-btn.sm {
 		padding: 4px;
 	}
 	.icon-btn.danger:hover {
-		color: #e87d6a;
-		background: rgba(232, 125, 106, 0.1);
+		color: var(--color-accent);
+		background: color-mix(in srgb, var(--color-accent) 10%, transparent);
 	}
 </style>

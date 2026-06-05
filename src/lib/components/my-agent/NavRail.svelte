@@ -49,8 +49,8 @@
 		align-items: center;
 		gap: 4px;
 		padding: 12px 0;
-		background: var(--color-bg, #0d0d0d);
-		border-right: 1px solid rgba(255, 255, 255, 0.06);
+		background: var(--color-bg);
+		border-right: 1px solid var(--color-border);
 		flex-shrink: 0;
 	}
 
@@ -60,24 +60,24 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		border-radius: 8px;
-		color: rgba(255, 255, 255, 0.55);
+		border-radius: var(--theme-radius, 8px);
+		color: var(--color-muted);
 		text-decoration: none;
 		transition: color 120ms ease, background 120ms ease;
 	}
 
 	.nav-rail-item:hover {
-		color: rgba(255, 255, 255, 0.85);
-		background: rgba(255, 255, 255, 0.04);
+		color: var(--color-foreground);
+		background: color-mix(in srgb, var(--color-foreground) 5%, transparent);
 	}
 
 	.nav-rail-item.active {
-		color: #e87d6a;
-		background: rgba(232, 125, 106, 0.08);
+		color: var(--color-accent);
+		background: color-mix(in srgb, var(--color-accent) 10%, transparent);
 	}
 
 	.nav-rail-item:focus-visible {
-		outline: 2px solid #e87d6a;
+		outline: 2px solid var(--color-accent);
 		outline-offset: 2px;
 	}
 </style>

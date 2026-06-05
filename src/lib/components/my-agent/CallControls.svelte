@@ -28,10 +28,11 @@
 		class="call-btn start"
 		{disabled}
 		onclick={onstart}
+		aria-label="Call your agent"
 		title={disabled ? 'Connect a gateway first' : 'Call your agent'}
 	>
 		<Phone size={14} />
-		<span>Call agent</span>
+		<span class="label">Call agent</span>
 	</button>
 {:else}
 	<div class="call-live" role="group" aria-label="Call controls">
@@ -65,18 +66,22 @@
 		font-size: 12px;
 		font-weight: 600;
 		cursor: pointer;
-		border: 1px solid rgba(232, 125, 106, 0.45);
-		background: rgba(232, 125, 106, 0.12);
-		color: #f0a594;
+		border: 1px solid color-mix(in srgb, var(--color-accent) 45%, transparent);
+		background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+		color: var(--color-accent);
 		transition: background 120ms ease, border-color 120ms ease;
 	}
 	.call-btn:hover:not(:disabled) {
-		background: rgba(232, 125, 106, 0.2);
-		border-color: rgba(232, 125, 106, 0.7);
+		background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+		border-color: color-mix(in srgb, var(--color-accent) 70%, transparent);
 	}
 	.call-btn:disabled {
 		opacity: 0.4;
 		cursor: not-allowed;
+	}
+	.call-btn:focus-visible {
+		outline: 2px solid var(--color-accent);
+		outline-offset: 2px;
 	}
 
 	.call-live {
@@ -90,15 +95,16 @@
 		align-items: center;
 		gap: 6px;
 		font-size: 12px;
-		color: rgba(255, 255, 255, 0.7);
+		color: var(--color-muted);
 		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
 	}
 
 	.pulse {
 		width: 7px;
 		height: 7px;
 		border-radius: 50%;
-		background: rgba(255, 255, 255, 0.3);
+		background: color-mix(in srgb, var(--color-foreground) 30%, transparent);
 	}
 	.pulse.on {
 		background: #4ade80;
@@ -114,18 +120,18 @@
 		justify-content: center;
 		border-radius: 999px;
 		cursor: pointer;
-		border: 1px solid rgba(255, 255, 255, 0.12);
-		background: rgba(255, 255, 255, 0.04);
-		color: rgba(255, 255, 255, 0.8);
+		border: 1px solid var(--color-border);
+		background: color-mix(in srgb, var(--color-foreground) 4%, transparent);
+		color: var(--color-foreground);
 		transition: background 120ms ease;
 	}
 	.icon-btn:hover {
-		background: rgba(255, 255, 255, 0.1);
+		background: color-mix(in srgb, var(--color-foreground) 10%, transparent);
 	}
 	.icon-btn.muted {
-		color: #f0a594;
-		border-color: rgba(232, 125, 106, 0.5);
-		background: rgba(232, 125, 106, 0.12);
+		color: var(--color-accent);
+		border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
+		background: color-mix(in srgb, var(--color-accent) 12%, transparent);
 	}
 	.icon-btn.end {
 		color: #f87171;
@@ -134,6 +140,19 @@
 	}
 	.icon-btn.end:hover {
 		background: rgba(248, 113, 113, 0.2);
+	}
+
+	/* When the agent column gets narrow (e.g. the notes panel is open), drop the
+	   "Call agent" label so the control stays a compact icon button instead of
+	   squeezing the greeting. The container is declared on .inner in +page.svelte. */
+	@container agentcol (max-width: 460px) {
+		.call-btn {
+			padding: 8px;
+			gap: 0;
+		}
+		.call-btn .label {
+			display: none;
+		}
 	}
 
 	@keyframes pulse {
