@@ -1,8 +1,8 @@
 import crypto from 'node:crypto';
 import { eq } from 'drizzle-orm';
-import { deviceIdentities } from '@minion-stack/db/schema';
-import { newId, nowMs } from '$server/db/utils';
-import type { TenantContext } from './base';
+import { deviceIdentities } from '@minion-stack/db/pg';
+import { newId } from '$server/db/utils';
+import type { CoreCtx } from '$server/auth/core-ctx';
 
 const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
 
@@ -38,7 +38,7 @@ export interface DeviceIdentity {
   publicKeyB64: string;
 }
 
-export async function getOrCreateIdentity(ctx: TenantContext): Promise<DeviceIdentity> {
+export async function getOrCreateIdentity(ctx: CoreCtx): Promise<DeviceIdentity> {
   const rows = await ctx.db
     .select({
       deviceId: deviceIdentities.deviceId,
@@ -66,7 +66,6 @@ export async function getOrCreateIdentity(ctx: TenantContext): Promise<DeviceIde
     deviceId: identity.deviceId,
     publicKeyPem: identity.publicKeyPem,
     privateKeyPem: identity.privateKeyPem,
-    createdAt: nowMs(),
   });
 
   return {

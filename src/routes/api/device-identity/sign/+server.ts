@@ -1,11 +1,12 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
-import { getTenantCtx, getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
+import { getCoreCtx } from '$server/auth/core-ctx';
 import { getOrCreateIdentity, signDeviceAuth } from '$server/services/device-identity.service';
 
 export const POST: RequestHandler = async ({ locals, request }) => {
   try {
-    const ctx = (await getTenantCtx(locals)) ?? (await getOrCreateTenantCtx(locals));
+    const ctx = await getCoreCtx(locals);
+    if (!ctx) return json({ error: 'no tenant' }, { status: 401 });
     const body = await request.json();
     const { nonce, token, role, scopes, clientId, clientMode } = body as {
       nonce?: string;
