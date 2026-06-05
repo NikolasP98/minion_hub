@@ -10,7 +10,7 @@
     "@libsql/client": "^0.17.3",
     "@minion-stack/auth": "^0.2.0",
     "@minion-stack/cache": "^0.2.0",
-    "@minion-stack/db": "file:deps/minion-stack-db-0.5.0-pg.tgz",
+    "@minion-stack/db": "file:deps/minion-stack-db-0.5.1-pg.tgz",
     "@minion-stack/paperclip-client": "^0.1.0",
     "@minion-stack/shared": "^0.5.0",
     "@node-rs/argon2": "^2.0.2",
