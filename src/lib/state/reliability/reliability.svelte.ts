@@ -65,6 +65,8 @@ export interface ActivityAggregate {
     created: number;
     updated: number;
     deleted: number;
+    /** memory.recall events — reads/retrievals (distinguishes "no writes" from "no memory activity"). */
+    reads?: number;
     total: number;
     byType: { key: string; value: number }[];
     lastTs: number;

@@ -72,22 +72,28 @@
 		if (activity) return activity.memory;
 		let created = 0,
 			updated = 0,
-			deleted = 0;
+			deleted = 0,
+			reads = 0;
 		const byType = new Map<string, number>();
 		let lastTs = 0;
 		for (const e of events) {
 			if (e.category !== 'memory' || !scoped(e)) continue;
+			if (e.timestamp > lastTs) lastTs = e.timestamp;
+			if (e.event === 'memory.recall') {
+				reads += 1;
+				continue;
+			}
 			if (e.event === 'memory.node_created') created += 1;
 			else if (e.event === 'memory.node_updated') updated += 1;
 			else if (e.event === 'memory.node_deleted') deleted += 1;
 			const t = str(parseMetadata(e.metadata)?.objectType) ?? 'other';
 			byType.set(t, (byType.get(t) ?? 0) + 1);
-			if (e.timestamp > lastTs) lastTs = e.timestamp;
 		}
 		return {
 			created,
 			updated,
 			deleted,
+			reads,
 			total: created + updated + deleted,
 			byType: [...byType.entries()].map(([key, value]) => ({ key, value })),
 			lastTs,
@@ -286,7 +292,7 @@
 					<Brain size={12} class="text-violet-400" />
 					<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Memory &amp; Knowledge Graph</span>
 				</div>
-				<div class="grid grid-cols-3 gap-2 text-center">
+				<div class="grid grid-cols-4 gap-2 text-center">
 					<div class="rounded bg-bg3/40 py-2">
 						<div class="text-base font-bold text-success tabular-nums">{fmt(memory.created)}</div>
 						<div class="text-[9px] uppercase tracking-wide text-muted-strong">created</div>
@@ -299,6 +305,10 @@
 						<div class="text-base font-bold text-muted-foreground tabular-nums">{fmt(memory.deleted)}</div>
 						<div class="text-[9px] uppercase tracking-wide text-muted-strong">deleted</div>
 					</div>
+					<div class="rounded bg-bg3/40 py-2">
+						<div class="text-base font-bold text-cyan-400 tabular-nums">{fmt(memory.reads ?? 0)}</div>
+						<div class="text-[9px] uppercase tracking-wide text-muted-strong">reads</div>
+					</div>
 				</div>
 				{#if memory.byType.length > 0}
 					<div class="flex flex-wrap gap-1.5 mt-2.5">
@@ -310,10 +320,16 @@
 						{/each}
 					</div>
 				{/if}
-				{#if memory.lastTs > 0}
-					<p class="text-[10px] text-muted-strong mt-2">Last write {relTime(memory.lastTs)}</p>
+				{#if memory.total > 0}
+					<p class="text-[10px] text-muted-strong mt-2">
+						Last activity {relTime(memory.lastTs)}{#if (memory.reads ?? 0) > 0} · {fmt(memory.reads ?? 0)} read(s){/if}
+					</p>
+				{:else if (memory.reads ?? 0) > 0}
+					<p class="text-[10px] text-muted-strong mt-2">
+						{fmt(memory.reads ?? 0)} read(s), no writes — memory is being recalled but not curated.
+					</p>
 				{:else}
-					<p class="text-[10px] text-warning mt-2">No memory writes in range — agents may not be curating memory.</p>
+					<p class="text-[10px] text-warning mt-2">No memory activity in range — agents aren't reading or writing memory.</p>
 				{/if}
 			</div>
 
