@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { getDb } from '$server/db/client';
 import { member, organization } from '@minion-stack/db/schema';
 import { supabaseAdmin } from '$server/supabase';
@@ -86,4 +86,68 @@ export async function loadOrganizationsForUser(
   }
 
   return { organizations: orgs, activeOrgId };
+}
+
+export interface OrgSummary {
+  id: string;
+  name: string;
+  slug: string | null;
+}
+
+/**
+ * All organizations (admin-only callers gate access). Supabase `organizations`
+ * is the source of truth; falls back to the Turso `organization` table during
+ * the cutover bake. Used by the join-requests org dropdown.
+ */
+export async function listAllOrganizations(): Promise<OrgSummary[]> {
+  try {
+    const admin = supabaseAdmin();
+    const { data, error } = await admin.from('organizations').select('id, name, slug');
+    if (!error && data) {
+      return (data as OrgSummary[])
+        .map((o) => ({ id: o.id, name: o.name, slug: o.slug }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    }
+  } catch {
+    // fall through to Turso
+  }
+  const db = getDb();
+  return db
+    .select({ id: organization.id, name: organization.name, slug: organization.slug })
+    .from(organization);
+}
+
+/**
+ * All organizations + their member counts (admin org-management page). Supabase
+ * first (organizations + organization_members), Turso fallback during bake.
+ */
+export async function listAllOrganizationsWithMemberCounts(): Promise<
+  Array<OrgSummary & { members: number }>
+> {
+  try {
+    const admin = supabaseAdmin();
+    const { data: orgs, error: orgErr } = await admin.from('organizations').select('id, name, slug');
+    if (!orgErr && orgs) {
+      const { data: mems } = await admin.from('organization_members').select('organization_id');
+      const counts = new Map<string, number>();
+      for (const m of (mems ?? []) as Array<{ organization_id: string }>) {
+        counts.set(m.organization_id, (counts.get(m.organization_id) ?? 0) + 1);
+      }
+      return (orgs as OrgSummary[])
+        .map((o) => ({ id: o.id, name: o.name, slug: o.slug, members: counts.get(o.id) ?? 0 }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    }
+  } catch {
+    // fall through to Turso
+  }
+  const db = getDb();
+  const orgs = await db
+    .select({ id: organization.id, name: organization.name, slug: organization.slug })
+    .from(organization);
+  const counts = await db
+    .select({ orgId: member.organizationId, c: sql<number>`count(*)` })
+    .from(member)
+    .groupBy(member.organizationId);
+  const countMap = new Map(counts.map((c) => [c.orgId, Number(c.c)]));
+  return orgs.map((o) => ({ ...o, members: countMap.get(o.id) ?? 0 }));
 }
