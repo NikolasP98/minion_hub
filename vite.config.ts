@@ -18,6 +18,9 @@ process.on('unhandledRejection', (reason) => {
 });
 
 export default defineConfig({
+  // Allow Tailscale `.ts.net` hostnames only when explicitly opted in
+  // (VITE_TS_DEV=1) — a no-op for normal localhost dev servers.
+  server: process.env.VITE_TS_DEV ? { allowedHosts: ['.ts.net'] } : {},
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
