@@ -116,7 +116,6 @@
                       text: personalityText(),
                     },
                     contextMode: 'personal',
-                    systemPromptUserAwareness: 'full',
                   },
                 ],
               },
