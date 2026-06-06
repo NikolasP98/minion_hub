@@ -19,7 +19,7 @@ import { getDb } from '$server/db/client';
 import { getCoreDb } from '$server/db/pg-client';
 import { getAuth } from '$lib/auth/auth';
 import { decryptToken } from '$server/auth/crypto';
-import { resolveSupabaseUser } from '$server/auth/supabase-bridge.runtime';
+import { resolveSupabaseUser, resolveSupabaseTenant } from '$server/auth/supabase-bridge.runtime';
 import { resolveUserTenant } from '$server/auth/tenant';
 import { ensurePersonalAgentOnLogin } from '$server/services/personal-agent.service';
 import { env } from '$env/dynamic/private';
@@ -99,10 +99,20 @@ async function resolveViaSupabase(event: RequestEvent): Promise<IdentityResoluti
   const bridged = await resolveSupabaseUser(event);
   if (!bridged) return ANON;
   const db = getDb();
-  const tenant = await resolveUserTenant(db, {
-    userId: bridged.id,
-    fallbackToMembership: true,
-  });
+
+  // Tenancy source of truth = Supabase organization_members (keyed by profile
+  // uuid). Falls back to the legacy Turso `member` lookup during bake-in so a
+  // user with no Supabase membership row still resolves exactly as before.
+  // (On prod both stores agree on the same org id, so this is behavior-
+  // preserving; the Supabase read is what lets Turso be dropped from tenancy.)
+  const supaOrgId = bridged.supabaseId
+    ? (await resolveSupabaseTenant(bridged.supabaseId))?.orgId
+    : undefined;
+  const orgId =
+    supaOrgId ??
+    (await resolveUserTenant(db, { userId: bridged.id, fallbackToMembership: true }))?.orgId;
+  const tenantCtx = orgId ? { db, tenantId: orgId } : undefined;
+
   return {
     locals: {
       user: {
@@ -114,8 +124,8 @@ async function resolveViaSupabase(event: RequestEvent): Promise<IdentityResoluti
         supabaseId: bridged.supabaseId,
         createdAt: bridged.createdAt,
       },
-      orgId: tenant?.orgId,
-      tenantCtx: tenant?.ctx,
+      orgId,
+      tenantCtx,
     },
     bypassGate: false,
   };

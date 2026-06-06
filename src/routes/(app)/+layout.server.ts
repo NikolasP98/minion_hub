@@ -10,6 +10,7 @@ import { loadHostsForUser } from '$server/services/hosts.service';
 import { loadUserPreferences } from '$server/services/preferences.service';
 import { getDb } from '$server/db/client';
 import { member, session as sessionTable } from '@minion-stack/db/schema';
+import { resolveSupabaseTenant } from '$server/auth/supabase-bridge.runtime';
 
 /**
  * Authenticated (app)/* layout server load.
@@ -51,16 +52,27 @@ export const load: LayoutServerLoad = async ({ locals, depends, url }) => {
   // up first org membership and activate, OR fail clearly if no memberships.
   if (!locals.session?.activeOrganizationId || !locals.tenantCtx) {
     const db = getDb();
-    const memberships = await db
-      .select({ orgId: member.organizationId })
-      .from(member)
-      .where(eq(member.userId, user.id))
-      .limit(1);
 
-    if (memberships.length === 0) {
+    // Tenancy source of truth = Supabase organization_members (keyed by profile
+    // uuid). Fall back to the legacy Turso `member` table only when there is no
+    // Supabase membership (better-auth/self-host, or bake-in lag). On prod both
+    // stores resolve the same org id, so this is behavior-preserving.
+    const supaOrgId = user.supabaseId
+      ? (await resolveSupabaseTenant(user.supabaseId))?.orgId
+      : undefined;
+    const orgId =
+      supaOrgId ??
+      (
+        await db
+          .select({ orgId: member.organizationId })
+          .from(member)
+          .where(eq(member.userId, user.id))
+          .limit(1)
+      )[0]?.orgId;
+
+    if (!orgId) {
       throw redirect(303, '/join');
     } else {
-      const orgId = memberships[0].orgId;
 
       // Persist activeOrganizationId on the session row so subsequent requests
       // see it via hooks.server.ts. Direct DB update because Better Auth's

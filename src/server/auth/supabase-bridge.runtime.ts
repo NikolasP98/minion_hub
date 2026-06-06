@@ -66,3 +66,47 @@ export async function resolveSupabaseUser(event: RequestEvent): Promise<BridgedU
     user.id,
   );
 }
+
+/**
+ * Resolve a user's active tenant (org id) from the canonical Supabase
+ * `organization_members` ⋈ `organizations`, keyed by the SUPABASE profile id
+ * (`auth.uid()` = profiles.id = user.supabaseId). This is the Turso-free
+ * tenancy source: it does NOT touch the better-auth/Turso `member` table or the
+ * legacy id bridge.
+ *
+ * Ordering matches `loadOrganizationsForUser` (alphabetical by name) so the
+ * resolved active org is consistent with the sidebar org picker's default.
+ * If `preferredOrgId` is one of the user's memberships it wins (honors an
+ * explicit org selection); otherwise the alphabetical-first org is the default.
+ *
+ * Returns null (never throws) when Supabase is unreachable or the user has no
+ * membership, so callers can fall back to the legacy Turso path during bake-in.
+ */
+export async function resolveSupabaseTenant(
+  supabaseId: string,
+  preferredOrgId?: string | null,
+): Promise<{ orgId: string } | null> {
+  try {
+    const admin = supabaseAdmin();
+    const { data, error } = await admin
+      .from('organization_members')
+      .select('organizations(id, name)')
+      .eq('profile_id', supabaseId);
+    if (error || !data) return null;
+
+    type OrgRow = { id: string; name: string | null };
+    type MemRow = { organizations: OrgRow | OrgRow[] | null };
+    const orgs = (data as unknown as MemRow[])
+      .map((row) => (Array.isArray(row.organizations) ? row.organizations[0] : row.organizations))
+      .filter((o): o is OrgRow => o != null)
+      .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
+
+    if (orgs.length === 0) return null;
+    if (preferredOrgId && orgs.some((o) => o.id === preferredOrgId)) {
+      return { orgId: preferredOrgId };
+    }
+    return { orgId: orgs[0].id };
+  } catch {
+    return null;
+  }
+}
