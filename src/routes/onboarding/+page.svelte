@@ -85,8 +85,17 @@
             throw new Error('No pending personal agent was found for this user. Refresh and try again.');
           }
           const createPayload = provision.payload;
-          const createResult = (await sendRequest('agents.create', createPayload)) as { agentId?: string } | null;
-          const agentId = createResult?.agentId ?? createPayload.name;
+          let agentId = createPayload.name;
+          try {
+            const createResult = (await sendRequest('agents.create', createPayload)) as { agentId?: string } | null;
+            agentId = createResult?.agentId ?? createPayload.name;
+          } catch (err) {
+            // A prior partial attempt may have already created the agent on the
+            // gateway (agents.create persists config immediately, then a later
+            // step failed). Tolerate the duplicate and continue to enrich it via
+            // config.patch below; re-throw anything else.
+            if (!(err instanceof Error && /already exists/i.test(err.message))) throw err;
+          }
 
           // config.patch requires the current config's base hash (optimistic
           // concurrency) — fetch it fresh right before patching.
