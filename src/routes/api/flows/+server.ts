@@ -1,10 +1,11 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { flows, flowGroups } from '$server/db/pg-schema/flows';
-import { and, desc, eq, isNull, or } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { requireAuth } from '$server/auth/authorize';
 import { getFlowsCtx } from '$server/auth/flows-ctx';
+import { withOrgCore } from '$server/db/with-org-core';
 import { flowPluginId } from '$lib/flows/plugin-source';
 
 export const GET: RequestHandler = async ({ locals, url }) => {
@@ -14,18 +15,16 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 
   const activeOnly = url.searchParams.get('active') === 'true';
 
-  // Org-scoped: every member of the org sees the org's flows (plus legacy
-  // null-tenant rows). Per-user scoping was removed so plugin-seeded org
-  // automations are visible to all members, not just whoever first imported them.
-  const orgFilter = or(eq(flows.tenantId, ctx.tenantId), isNull(flows.tenantId));
+  // Org-shared: every member of the org sees the org's flows, scoped strictly by
+  // tenant (RLS also enforces this). Per-user scoping was removed so plugin-seeded
+  // org automations are visible to all members, not just whoever first imported them.
+  const orgFilter = eq(flows.tenantId, ctx.tenantId);
 
   const whereClause = activeOnly ? and(orgFilter, eq(flows.active, true)) : orgFilter;
 
-  const rows = await ctx.db
-    .select()
-    .from(flows)
-    .where(whereClause)
-    .orderBy(desc(flows.updatedAt));
+  const rows = await withOrgCore(ctx, async (tx) =>
+    tx.select().from(flows).where(whereClause).orderBy(desc(flows.updatedAt)),
+  );
 
   const result = rows.map((row) => {
     let nodeCount = 0;
@@ -63,16 +62,6 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 
   if (!name || typeof name !== 'string') throw error(400, 'name is required');
 
-  // SECURITY (IDOR): when a target group is specified, it must belong to the
-  // caller's org (or be a legacy null-tenant row). Flows are org-scoped, so any
-  // member may file into the org's groups — but never into another org's group.
-  if (groupId) {
-    const [group] = await ctx.db.select().from(flowGroups).where(eq(flowGroups.id, groupId));
-    if (!group) throw error(404, 'Group not found');
-    const sameOrg = group.tenantId === ctx.tenantId || group.tenantId === null;
-    if (!sameOrg) throw error(403, 'Forbidden');
-  }
-
   // Optional nodes/edges let a plugin-shipped flow template be imported as a new
   // flow in one call. Stored as JSON; the editor/runner validate concrete shapes.
   const nodesJson = Array.isArray(nodes) ? JSON.stringify(nodes) : '[]';
@@ -87,17 +76,28 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   const id = randomUUID();
   const now = Date.now();
 
-  await ctx.db.insert(flows).values({
-    id,
-    name,
-    nodes: nodesJson,
-    edges: edgesJson,
-    userId: user.id,
-    tenantId: ctx.tenantId,
-    createdAt: now,
-    updatedAt: now,
-    groupId: groupId ?? null,
-    config,
+  await withOrgCore(ctx, async (tx) => {
+    // SECURITY (IDOR): when a target group is specified, it must belong to the
+    // caller's org. Flows are org-shared, so any member may file into the org's
+    // groups — but never into another org's group.
+    if (groupId) {
+      const [group] = await tx.select().from(flowGroups).where(eq(flowGroups.id, groupId));
+      if (!group) throw error(404, 'Group not found');
+      if (group.tenantId !== ctx.tenantId) throw error(403, 'Forbidden');
+    }
+
+    await tx.insert(flows).values({
+      id,
+      name,
+      nodes: nodesJson,
+      edges: edgesJson,
+      userId: user.id,
+      tenantId: ctx.tenantId,
+      createdAt: now,
+      updatedAt: now,
+      groupId: groupId ?? null,
+      config,
+    });
   });
 
   return json({ id }, { status: 201 });

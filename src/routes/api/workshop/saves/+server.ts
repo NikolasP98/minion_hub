@@ -1,31 +1,26 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { workshopSaves } from '@minion-stack/db/pg';
-import { and, desc, eq, isNull, or } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { requireAuth } from '$server/auth/authorize';
 import { getCoreCtx } from '$server/auth/core-ctx';
+import { withOrgCore } from '$server/db/with-org-core';
 
 export const GET: RequestHandler = async ({ locals }) => {
-  const user = requireAuth(locals);
+  requireAuth(locals);
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
-  const profileId = user.supabaseId ?? null;
 
-  // Saves owned by this user (by profile uuid) OR legacy ownerless rows
-  // (admin-visible only), scoped to the active tenant.
-  const rows = await ctx.db
-    .select()
-    .from(workshopSaves)
-    .where(
-      and(
-        profileId
-          ? or(eq(workshopSaves.profileId, profileId), isNull(workshopSaves.profileId))
-          : isNull(workshopSaves.profileId),
-        or(eq(workshopSaves.tenantId, ctx.tenantId), isNull(workshopSaves.tenantId)),
-      ),
-    )
-    .orderBy(desc(workshopSaves.updatedAt));
+  // Workshop saves are org-shared: every member of the active org sees them all.
+  // Visibility is scoped purely by the org tenant_id (no per-user gate).
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .select()
+      .from(workshopSaves)
+      .where(eq(workshopSaves.tenantId, ctx.tenantId))
+      .orderBy(desc(workshopSaves.updatedAt)),
+  );
 
   const saves = rows.map((row) => {
     let agentCount = 0;
@@ -72,14 +67,17 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   const id = randomUUID();
 
   try {
-    await ctx.db.insert(workshopSaves).values({
-      id,
-      name,
-      state,
-      thumbnail: typeof thumbnail === 'string' ? thumbnail : null,
-      profileId: user.supabaseId ?? null,
-      tenantId: ctx.tenantId,
-    });
+    await withOrgCore(ctx, (tx) =>
+      tx.insert(workshopSaves).values({
+        id,
+        name,
+        state,
+        thumbnail: typeof thumbnail === 'string' ? thumbnail : null,
+        // created-by audit field only — does not gate org-shared visibility
+        profileId: user.supabaseId ?? null,
+        tenantId: ctx.tenantId,
+      }),
+    );
   } catch (err) {
     console.error('[workshop saves POST] db insert failed:', err);
     throw error(

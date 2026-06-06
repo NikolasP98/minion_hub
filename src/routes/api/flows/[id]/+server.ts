@@ -1,23 +1,26 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { flows } from '$server/db/pg-schema/flows';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { requireAuth } from '$server/auth/authorize';
 import { getFlowsCtx, type FlowsCtx } from '$server/auth/flows-ctx';
+import { withOrgCore } from '$server/db/with-org-core';
 import { flowPluginId } from '$lib/flows/plugin-source';
 
 /**
- * Resolve a flow and verify it belongs to the caller's org. Org-scoped: any
- * member of the org may read/edit/delete the org's flows (plus legacy
- * null-tenant rows). Throws 403/404 as appropriate.
+ * Resolve a flow and verify it belongs to the caller's org. Org-shared: any
+ * member of the org may read/edit/delete the org's flows. Strictly scoped by
+ * tenant — no legacy null-tenant allowance. Throws 404 if not found in-org.
  */
 async function requireFlowInOrg(tenantId: string, flowId: string, ctx: FlowsCtx) {
-  const [flow] = await ctx.db.select().from(flows).where(eq(flows.id, flowId));
+  const [flow] = await withOrgCore(ctx, (tx) =>
+    tx
+      .select()
+      .from(flows)
+      .where(and(eq(flows.id, flowId), eq(flows.tenantId, tenantId))),
+  );
 
   if (!flow) throw error(404, 'Flow not found');
-
-  const sameOrg = flow.tenantId === tenantId || flow.tenantId === null;
-  if (!sameOrg) throw error(403, 'Forbidden');
 
   return flow;
 }
@@ -57,7 +60,7 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
   if (edges !== undefined) updates.edges = JSON.stringify(edges);
   if (active !== undefined) updates.active = active;
 
-  await ctx.db.update(flows).set(updates).where(eq(flows.id, existing.id));
+  await withOrgCore(ctx, (tx) => tx.update(flows).set(updates).where(eq(flows.id, existing.id)));
 
   return json({ ok: true });
 };
@@ -71,7 +74,7 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
 
   // Instances (incl. plugin-template duplicates) are deletable by any org member.
   // The plugin's group container is what's protected — see /api/flow-groups/[id].
-  await ctx.db.delete(flows).where(eq(flows.id, existing.id));
+  await withOrgCore(ctx, (tx) => tx.delete(flows).where(eq(flows.id, existing.id)));
 
   return json({ ok: true });
 };
