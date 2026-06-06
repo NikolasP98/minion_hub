@@ -168,8 +168,25 @@ export interface MemorySearchHit extends MemoryRow {
 }
 
 /**
- * Semantic nearest-neighbour search via pgvector cosine distance (`<=>`).
- * `queryEmbedding` must be a 1536-dim vector from the same embedding model.
+ * Composite retrieval weights (Generative Agents, Park et al. 2023): rank by
+ * recency + importance + relevance rather than cosine similarity alone, so the
+ * corpus surfaces salient, fresh memories — not just the closest restatement.
+ * Sum to 1; relevance dominates, recency breaks ties, importance nudges.
+ */
+const W_RELEVANCE = 0.5;
+const W_RECENCY = 0.3;
+const W_IMPORTANCE = 0.2;
+/** Recency half-life in days (memory salience halves every N days). */
+const RECENCY_HALFLIFE_DAYS = 14;
+
+/**
+ * Semantic nearest-neighbour search via pgvector cosine distance (`<=>`),
+ * re-ranked by a recency × importance × relevance composite. `queryEmbedding`
+ * must be a 1536-dim vector from the same embedding model.
+ *
+ * Note: ordering by the composite (not the raw distance) means the HNSW ANN
+ * index isn't used as the sort — fine at per-agent corpus sizes (tens–hundreds
+ * of rows). If a corpus grows large, switch to ANN candidate-fetch + re-rank.
  */
 export async function searchMemories(
   orgId: string,
@@ -177,15 +194,15 @@ export async function searchMemories(
 ): Promise<MemorySearchHit[]> {
   const limit = Math.min(opts.limit ?? 20, 200);
   const lit = toVectorLiteral(opts.queryEmbedding);
+  const relevance = sql<number>`(1 - (${agentMemories.embedding} <=> ${lit}::vector))`;
+  const recency = sql<number>`power(0.5, (extract(epoch from (now() - ${agentMemories.createdAt})) / 86400.0) / ${RECENCY_HALFLIFE_DAYS})`;
+  const composite = sql<number>`(${W_RELEVANCE} * (1 - (${agentMemories.embedding} <=> ${lit}::vector)) + ${W_RECENCY} * power(0.5, (extract(epoch from (now() - ${agentMemories.createdAt})) / 86400.0) / ${RECENCY_HALFLIFE_DAYS}) + ${W_IMPORTANCE} * coalesce(${agentMemories.importance}, 0.5))`;
   const rows = await withOrg(orgId, (tx) =>
     tx
-      .select({
-        ...ROW_SELECT,
-        score: sql<number>`1 - (${agentMemories.embedding} <=> ${lit}::vector)`,
-      })
+      .select({ ...ROW_SELECT, score: composite, relevance })
       .from(agentMemories)
       .where(and(eq(agentMemories.agentId, opts.agentId), sql`${agentMemories.embedding} is not null`))
-      .orderBy(sql`${agentMemories.embedding} <=> ${lit}::vector`)
+      .orderBy(sql`${composite} desc`)
       .limit(limit),
   );
   return rows.map((r) => ({ ...serializeRow(r), score: Number(r.score) }));
