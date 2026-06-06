@@ -10,10 +10,10 @@ const base: ProfileRow = {
 };
 
 describe('mapProfileToUser', () => {
-  it('uses legacy_user_id as the hub user id (so Turso loads match)', () => {
+  it('uses the canonical supabase uuid as the hub user id (legacy bridge retired)', () => {
     const u = mapProfileToUser(base, 'supa-uuid-1');
     expect(u).toEqual({
-      id: 'better-auth-id-1',
+      id: 'supa-uuid-1',
       email: 'nik@example.com',
       displayName: 'Nik P',
       avatarUrl: null,
@@ -23,7 +23,7 @@ describe('mapProfileToUser', () => {
     });
   });
 
-  it('falls back to the supabase id when no legacy id (native signup)', () => {
+  it('id == supabaseId regardless of legacy_user_id presence', () => {
     const u = mapProfileToUser({ ...base, legacy_user_id: null }, 'supa-uuid-1');
     expect(u.id).toBe('supa-uuid-1');
     expect(u.supabaseId).toBe('supa-uuid-1');
