@@ -70,6 +70,24 @@ export async function createRequest(
 	return data as { id: string; status: string };
 }
 
+/**
+ * Returns the user's outstanding pending request (if any), keyed by the hub
+ * user id (== profile uuid post bridge-flip). Used by the /join load to send a
+ * user who has already requested access to the "waiting on approval" screen
+ * instead of re-showing the request form.
+ */
+export async function getPendingRequestForUser(
+	userId: string,
+): Promise<{ id: string; status: string } | null> {
+	const { data } = await supabaseAdmin()
+		.from('join_request')
+		.select('id,status')
+		.eq('user_id', userId)
+		.eq('status', 'pending')
+		.maybeSingle();
+	return (data as { id: string; status: string } | null) ?? null;
+}
+
 export async function listPendingRequests(): Promise<JoinRequestRow[]> {
 	const { data, error } = await supabaseAdmin()
 		.from('join_request')
@@ -91,7 +109,7 @@ export async function approveRequest(
 
 	await createMembership(
 		getDb(),
-		{ id: row.user_id, email: row.email, displayName: row.display_name },
+		{ id: row.user_id, email: row.email, displayName: row.display_name, supabaseId: row.supabase_id },
 		opts.organizationId,
 		opts.role,
 	);

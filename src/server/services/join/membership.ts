@@ -2,16 +2,26 @@ import { randomUUID } from 'node:crypto';
 import { eq, and } from 'drizzle-orm';
 import { member, user, organization } from '@minion-stack/db/schema';
 import type { Db } from '$server/db/client';
+import { supabaseAdmin } from '$server/supabase';
 
 export interface MembershipUser {
   id: string;
   email: string;
   displayName: string | null;
+  /**
+   * The user's Supabase profile uuid. When present, membership is ALSO written
+   * to Supabase `organization_members` — the tenancy source-of-truth that
+   * `(app)/+layout.server.ts` reads via `resolveSupabaseTenant`. Without it an
+   * approved user gets a Turso `member` row but NO Supabase org access, so they
+   * stay bounced to /join. (Turso writes are kept as legacy dual-write.)
+   */
+  supabaseId?: string | null;
 }
 
 /**
- * Ensure a Turso `user` row exists and the user is a `member` of `orgId`.
- * Idempotent: re-running with the same user/org is a no-op.
+ * Ensure a Turso `user` row + `member` of `orgId`, AND (when `u.supabaseId` is
+ * set) a Supabase `organization_members` row. Idempotent: re-running with the
+ * same user/org is a no-op on both stores.
  *
  * Note: `createdAt`/`updatedAt` are timestamp columns (mode: 'timestamp')
  * and therefore expect Date objects, not raw epoch numbers.
@@ -58,6 +68,22 @@ export async function createMembership(
       role: role === 'admin' ? 'admin' : 'member',
       createdAt: now,
     });
+  }
+
+  // Supabase tenancy source-of-truth. This is the row that actually grants the
+  // user org access (read by resolveSupabaseTenant). Upsert keeps it idempotent.
+  if (u.supabaseId) {
+    const { error } = await supabaseAdmin()
+      .from('organization_members')
+      .upsert(
+        {
+          organization_id: orgId,
+          profile_id: u.supabaseId,
+          role: role === 'admin' ? 'admin' : 'member',
+        },
+        { onConflict: 'organization_id,profile_id' },
+      );
+    if (error) throw new Error(`createMembership: supabase org_members upsert failed: ${error.message}`);
   }
 
   void organization; // imported for schema clarity / future org validation
