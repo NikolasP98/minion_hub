@@ -198,6 +198,41 @@ export async function userHasGatewayAccess(
   return !!row;
 }
 
+/**
+ * Onboarding default-server policy. Until more gateways are provisioned and
+ * load management exists, every new user connects to the single shared
+ * `netcup` gateway. If the user has no gateway link yet, link netcup as their
+ * default so onboarding (channel setup + agent creation, which run over the
+ * gateway WS) has a live connection to establish.
+ *
+ * Idempotent: no-op when the user already has any gateway link (don't override
+ * an explicit selection) or when no `netcup` gateway is configured. Replace the
+ * name match with real load-balancing once multiple gateways exist.
+ */
+export async function ensureDefaultGatewayForUser(profileId: string): Promise<void> {
+  if (!profileId) return;
+  const db = getCoreDb();
+
+  const [existing] = await db
+    .select({ profileId: userGateway.profileId })
+    .from(userGateway)
+    .where(eq(userGateway.profileId, profileId))
+    .limit(1);
+  if (existing) return;
+
+  const [netcup] = await db
+    .select({ id: gateway.id })
+    .from(gateway)
+    .where(sql`lower(${gateway.name}) = 'netcup'`)
+    .limit(1);
+  if (!netcup) return;
+
+  await db
+    .insert(userGateway)
+    .values({ profileId, gatewayId: netcup.id, isDefault: true })
+    .onConflictDoNothing();
+}
+
 export async function linkGatewayToUser(profileId: string, gatewayId: string): Promise<void> {
   const db = getCoreDb();
   await db
