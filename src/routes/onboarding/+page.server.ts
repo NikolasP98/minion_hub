@@ -3,7 +3,7 @@ import { redirect } from '@sveltejs/kit';
 import { requireAuth } from '$server/auth/authorize';
 import { getTenantCtx } from '$server/auth/tenant-ctx';
 import { getCoreDb } from '$server/db/pg-client';
-import { getPersonalAgent } from '$server/services/personal-agent.service';
+import { getPersonalAgent, provisionPersonalAgent } from '$server/services/personal-agent.service';
 import { listChannelIdentitiesFromSupabase } from '$server/services/supabase-credential';
 import { ensureDefaultGatewayForUser } from '$server/services/gateway.pg.service';
 import { loadHostsForUser } from '$server/services/hosts.service';
@@ -18,6 +18,23 @@ export const load: PageServerLoad = async ({ locals }) => {
   const existing = await getPersonalAgent(coreCtx, user.id);
   if (existing && existing.provisioningStatus === 'active') {
     throw redirect(303, '/');
+  }
+
+  // Ensure a `pending` personal_agent row exists so the CONNECT step's provision
+  // check (GET /api/personal-agent/provision) returns a payload and "Create my
+  // agent" can fire agents.create. Supabase-auth users never get the login-time
+  // backfill (that runs only in the Better-Auth branch of resolve-identity), so
+  // create it here. Idempotent: profile_id is unique + onConflictDoNothing.
+  if (!existing) {
+    try {
+      await provisionPersonalAgent(coreCtx, {
+        userId: user.id,
+        email: user.email ?? '',
+        serverId: '',
+      });
+    } catch (err) {
+      console.error('[onboarding] provisionPersonalAgent failed:', err);
+    }
   }
 
   // Default-server policy: link the shared netcup gateway so the CONNECT step
