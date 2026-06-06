@@ -88,6 +88,10 @@
           const createResult = (await sendRequest('agents.create', createPayload)) as { agentId?: string } | null;
           const agentId = createResult?.agentId ?? createPayload.name;
 
+          // config.patch requires the current config's base hash (optimistic
+          // concurrency) — fetch it fresh right before patching.
+          const cfgSnapshot = (await sendRequest('config.get', {})) as { hash?: string } | null;
+
           await sendRequest('config.patch', {
             raw: JSON.stringify({
               agents: {
@@ -108,6 +112,7 @@
                 ],
               },
             }),
+            baseHash: cfgSnapshot?.hash,
             note: `Create personal agent ${agentId} from onboarding`,
           });
 
