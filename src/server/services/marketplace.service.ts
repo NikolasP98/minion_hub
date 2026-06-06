@@ -4,6 +4,7 @@ import { marketplaceAgents, marketplaceInstalls } from '@minion-stack/db/pg';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { newId } from '$server/db/utils';
 import { getCoreDb } from '$server/db/pg-client';
+import { withOrgCore } from '$server/db/with-org-core';
 import { resolveGatewayId } from '$server/services/gateway.pg.service';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { scopeData } from './base';
@@ -396,14 +397,20 @@ export async function recordInstall(
 
   const id = newId();
 
-  await ctx.db.insert(marketplaceInstalls).values({
-    id,
-    tenantId: ctx.tenantId,
-    agentId,
-    gatewayId,
-  });
+  // marketplace_installs is RLS-enforced + org-scoped → run under withOrgCore so
+  // the `app_ledger` role + org GUC enforce isolation server-side.
+  await withOrgCore(ctx, (tx) =>
+    tx.insert(marketplaceInstalls).values({
+      id,
+      tenantId: ctx.tenantId,
+      agentId,
+      gatewayId,
+    }),
+  );
 
-  // Increment install count
+  // Increment install count on the GLOBAL catalog (marketplace_agents has no
+  // tenant_id / `*_org_guc` policy) — must stay on ctx.db; under app_ledger the
+  // catalog would be invisible and this update would silently affect zero rows.
   await ctx.db
     .update(marketplaceAgents)
     .set({ installCount: sql`${marketplaceAgents.installCount} + 1` })
@@ -416,11 +423,16 @@ export async function recordInstall(
 }
 
 export async function getInstallCountForTenant(ctx: CoreCtx, agentId: string) {
-  const rows = await ctx.db
-    .select({ id: marketplaceInstalls.id })
-    .from(marketplaceInstalls)
-    .where(
-      and(eq(marketplaceInstalls.tenantId, ctx.tenantId), eq(marketplaceInstalls.agentId, agentId)),
-    );
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .select({ id: marketplaceInstalls.id })
+      .from(marketplaceInstalls)
+      .where(
+        and(
+          eq(marketplaceInstalls.tenantId, ctx.tenantId),
+          eq(marketplaceInstalls.agentId, agentId),
+        ),
+      ),
+  );
   return rows.length;
 }

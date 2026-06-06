@@ -1,6 +1,7 @@
 import { eq, and } from 'drizzle-orm';
 import { channels, channelAssignments } from '@minion-stack/db/pg';
 import { newId } from '$server/db/utils';
+import { withOrgCore } from '$server/db/with-org-core';
 import { encrypt, decrypt } from '$server/auth/crypto';
 import type { ServerCtx } from '$server/auth/core-ctx';
 
@@ -52,11 +53,13 @@ function parseMeta(raw: string): Record<string, string> {
 }
 
 export async function listChannels(ctx: ServerCtx) {
-  const rows = await ctx.db
-    .select()
-    .from(channels)
-    .where(and(eq(channels.tenantId, ctx.tenantId), eq(channels.gatewayId, ctx.gatewayId)))
-    .orderBy(channels.createdAt);
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .select()
+      .from(channels)
+      .where(and(eq(channels.tenantId, ctx.tenantId), eq(channels.gatewayId, ctx.gatewayId)))
+      .orderBy(channels.createdAt),
+  );
 
   return rows.map((r) => ({
     id: r.id,
@@ -71,16 +74,18 @@ export async function listChannels(ctx: ServerCtx) {
 }
 
 export async function getChannel(ctx: ServerCtx, channelId: string) {
-  const [row] = await ctx.db
-    .select()
-    .from(channels)
-    .where(
-      and(
-        eq(channels.id, channelId),
-        eq(channels.tenantId, ctx.tenantId),
-        eq(channels.gatewayId, ctx.gatewayId),
+  const [row] = await withOrgCore(ctx, (tx) =>
+    tx
+      .select()
+      .from(channels)
+      .where(
+        and(
+          eq(channels.id, channelId),
+          eq(channels.tenantId, ctx.tenantId),
+          eq(channels.gatewayId, ctx.gatewayId),
+        ),
       ),
-    );
+  );
 
   if (!row) return null;
 
@@ -104,17 +109,19 @@ export async function createChannel(ctx: ServerCtx, input: ChannelInput) {
     ? encryptCredentials(input.credentials)
     : { ciphertext: '', iv: '' };
 
-  await ctx.db.insert(channels).values({
-    id,
-    tenantId: ctx.tenantId,
-    gatewayId: ctx.gatewayId,
-    type: input.type,
-    label: input.label,
-    credentials: ciphertext,
-    credentialsIv: iv,
-    credentialsMeta: JSON.stringify(input.credentialsMeta ?? {}),
-    status: input.status ?? 'inactive',
-  });
+  await withOrgCore(ctx, (tx) =>
+    tx.insert(channels).values({
+      id,
+      tenantId: ctx.tenantId,
+      gatewayId: ctx.gatewayId,
+      type: input.type,
+      label: input.label,
+      credentials: ciphertext,
+      credentialsIv: iv,
+      credentialsMeta: JSON.stringify(input.credentialsMeta ?? {}),
+      status: input.status ?? 'inactive',
+    }),
+  );
 
   return id;
 }
@@ -137,41 +144,47 @@ export async function updateChannel(
     set.credentialsIv = iv;
   }
 
-  await ctx.db
-    .update(channels)
-    .set(set)
-    .where(
-      and(
-        eq(channels.id, channelId),
-        eq(channels.tenantId, ctx.tenantId),
-        eq(channels.gatewayId, ctx.gatewayId),
+  await withOrgCore(ctx, (tx) =>
+    tx
+      .update(channels)
+      .set(set)
+      .where(
+        and(
+          eq(channels.id, channelId),
+          eq(channels.tenantId, ctx.tenantId),
+          eq(channels.gatewayId, ctx.gatewayId),
+        ),
       ),
-    );
+  );
 }
 
 export async function deleteChannel(ctx: ServerCtx, channelId: string) {
-  await ctx.db
-    .delete(channels)
-    .where(
-      and(
-        eq(channels.id, channelId),
-        eq(channels.tenantId, ctx.tenantId),
-        eq(channels.gatewayId, ctx.gatewayId),
+  await withOrgCore(ctx, (tx) =>
+    tx
+      .delete(channels)
+      .where(
+        and(
+          eq(channels.id, channelId),
+          eq(channels.tenantId, ctx.tenantId),
+          eq(channels.gatewayId, ctx.gatewayId),
+        ),
       ),
-    );
+  );
 }
 
 export async function listChannelAssignments(ctx: ServerCtx, channelId: string) {
-  return ctx.db
-    .select()
-    .from(channelAssignments)
-    .where(
-      and(
-        eq(channelAssignments.channelId, channelId),
-        eq(channelAssignments.tenantId, ctx.tenantId),
-      ),
-    )
-    .orderBy(channelAssignments.createdAt);
+  return withOrgCore(ctx, (tx) =>
+    tx
+      .select()
+      .from(channelAssignments)
+      .where(
+        and(
+          eq(channelAssignments.channelId, channelId),
+          eq(channelAssignments.tenantId, ctx.tenantId),
+        ),
+      )
+      .orderBy(channelAssignments.createdAt),
+  );
 }
 
 export async function assignChannel(
@@ -182,18 +195,22 @@ export async function assignChannel(
 ) {
   const id = newId();
 
-  await ctx.db
-    .insert(channelAssignments)
-    .values({ id, tenantId: ctx.tenantId, channelId, targetType, targetId })
-    .onConflictDoNothing();
+  await withOrgCore(ctx, (tx) =>
+    tx
+      .insert(channelAssignments)
+      .values({ id, tenantId: ctx.tenantId, channelId, targetType, targetId })
+      .onConflictDoNothing(),
+  );
 
   return id;
 }
 
 export async function unassignChannel(ctx: ServerCtx, assignmentId: string) {
-  await ctx.db
-    .delete(channelAssignments)
-    .where(
-      and(eq(channelAssignments.id, assignmentId), eq(channelAssignments.tenantId, ctx.tenantId)),
-    );
+  await withOrgCore(ctx, (tx) =>
+    tx
+      .delete(channelAssignments)
+      .where(
+        and(eq(channelAssignments.id, assignmentId), eq(channelAssignments.tenantId, ctx.tenantId)),
+      ),
+  );
 }

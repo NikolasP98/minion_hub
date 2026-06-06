@@ -11,6 +11,7 @@ import {
   agentBuiltSkills,
 } from '@minion-stack/db/pg';
 import { newId } from '$server/db/utils';
+import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { resolveGatewayId } from '$server/services/gateway.pg.service';
 import { validateSkill } from '$lib/utils/skill-validation';
@@ -27,16 +28,19 @@ export interface CreateSkillInput {
 
 export async function createBuiltSkill(ctx: CoreCtx, input: CreateSkillInput) {
   const id = newId();
-  await ctx.db.insert(builtSkills).values({
-    id,
-    name: input.name,
-    description: input.description ?? '',
-    emoji: input.emoji ?? '📖',
-    status: 'draft',
-    gatewayId: input.serverId ? await resolveGatewayId(input.serverId) : null,
-    tenantId: ctx.tenantId,
-    createdBy: null,
-  });
+  const gatewayId = input.serverId ? await resolveGatewayId(input.serverId) : null;
+  await withOrgCore(ctx, (tx) =>
+    tx.insert(builtSkills).values({
+      id,
+      name: input.name,
+      description: input.description ?? '',
+      emoji: input.emoji ?? '📖',
+      status: 'draft',
+      gatewayId,
+      tenantId: ctx.tenantId,
+      createdBy: null,
+    }),
+  );
   return { id };
 }
 
@@ -46,19 +50,23 @@ export async function listBuiltSkills(
 ) {
   const conditions = [eq(builtSkills.tenantId, ctx.tenantId)];
   if (opts?.status) conditions.push(eq(builtSkills.status, opts.status));
-  return ctx.db
-    .select()
-    .from(builtSkills)
-    .where(and(...conditions))
-    .orderBy(desc(builtSkills.updatedAt));
+  return withOrgCore(ctx, (tx) =>
+    tx
+      .select()
+      .from(builtSkills)
+      .where(and(...conditions))
+      .orderBy(desc(builtSkills.updatedAt)),
+  );
 }
 
 export async function getBuiltSkill(ctx: CoreCtx, skillId: string) {
-  const rows = await ctx.db
-    .select()
-    .from(builtSkills)
-    .where(and(eq(builtSkills.id, skillId), eq(builtSkills.tenantId, ctx.tenantId)))
-    .limit(1);
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .select()
+      .from(builtSkills)
+      .where(and(eq(builtSkills.id, skillId), eq(builtSkills.tenantId, ctx.tenantId)))
+      .limit(1),
+  );
   return rows[0] ?? null;
 }
 
@@ -70,24 +78,30 @@ export async function updateBuiltSkill(
   const { serverId, ...rest } = data;
   const set: Record<string, unknown> = { ...rest, updatedAt: new Date() };
   if (serverId !== undefined) set.gatewayId = serverId ? await resolveGatewayId(serverId) : null;
-  await ctx.db
-    .update(builtSkills)
-    .set(set)
-    .where(and(eq(builtSkills.id, skillId), eq(builtSkills.tenantId, ctx.tenantId)));
+  await withOrgCore(ctx, (tx) =>
+    tx
+      .update(builtSkills)
+      .set(set)
+      .where(and(eq(builtSkills.id, skillId), eq(builtSkills.tenantId, ctx.tenantId))),
+  );
 }
 
 export async function deleteBuiltSkill(ctx: CoreCtx, skillId: string) {
-  await ctx.db
-    .delete(builtSkills)
-    .where(and(eq(builtSkills.id, skillId), eq(builtSkills.tenantId, ctx.tenantId)));
+  await withOrgCore(ctx, (tx) =>
+    tx
+      .delete(builtSkills)
+      .where(and(eq(builtSkills.id, skillId), eq(builtSkills.tenantId, ctx.tenantId))),
+  );
 }
 
 export async function publishBuiltSkill(ctx: CoreCtx, skillId: string) {
   const now = new Date();
-  await ctx.db
-    .update(builtSkills)
-    .set({ status: 'published', publishedAt: now, updatedAt: now })
-    .where(and(eq(builtSkills.id, skillId), eq(builtSkills.tenantId, ctx.tenantId)));
+  await withOrgCore(ctx, (tx) =>
+    tx
+      .update(builtSkills)
+      .set({ status: 'published', publishedAt: now, updatedAt: now })
+      .where(and(eq(builtSkills.id, skillId), eq(builtSkills.tenantId, ctx.tenantId))),
+  );
 }
 
 // ── Publish Validation ────────────────────────────────────────────────
@@ -112,10 +126,12 @@ export async function validateSkillForPublish(
   const chapterOnlyNodes = chapters.filter((c) => c.type === 'chapter');
   if (chapterOnlyNodes.length > 0) {
     const chapterIds = chapterOnlyNodes.map((c) => c.id);
-    const allTools = await ctx.db
-      .select({ chapterId: builtChapterTools.chapterId, toolId: builtChapterTools.toolId })
-      .from(builtChapterTools)
-      .where(inArray(builtChapterTools.chapterId, chapterIds));
+    const allTools = await withOrgCore(ctx, (tx) =>
+      tx
+        .select({ chapterId: builtChapterTools.chapterId, toolId: builtChapterTools.toolId })
+        .from(builtChapterTools)
+        .where(inArray(builtChapterTools.chapterId, chapterIds)),
+    );
     for (const t of allTools) {
       if (!chapterToolMap[t.chapterId]) chapterToolMap[t.chapterId] = [];
       chapterToolMap[t.chapterId].push(t.toolId);
@@ -151,23 +167,31 @@ export async function validateSkillForPublish(
 // ── Skill Tools (pool) ───────────────────────────────────────────────
 
 export async function getSkillTools(ctx: CoreCtx, skillId: string) {
-  return ctx.db.select().from(builtSkillTools).where(eq(builtSkillTools.skillId, skillId));
+  return withOrgCore(ctx, (tx) =>
+    tx.select().from(builtSkillTools).where(eq(builtSkillTools.skillId, skillId)),
+  );
 }
 
 export async function addSkillTool(ctx: CoreCtx, skillId: string, toolId: string) {
-  await ctx.db.insert(builtSkillTools).values({ id: newId(), skillId, toolId });
+  await withOrgCore(ctx, (tx) =>
+    tx.insert(builtSkillTools).values({ id: newId(), skillId, toolId }),
+  );
 }
 
 export async function removeSkillTool(ctx: CoreCtx, skillId: string, toolId: string) {
-  await ctx.db
-    .delete(builtSkillTools)
-    .where(and(eq(builtSkillTools.skillId, skillId), eq(builtSkillTools.toolId, toolId)));
+  await withOrgCore(ctx, (tx) =>
+    tx
+      .delete(builtSkillTools)
+      .where(and(eq(builtSkillTools.skillId, skillId), eq(builtSkillTools.toolId, toolId))),
+  );
 }
 
 // ── Chapters ─────────────────────────────────────────────────────────
 
 export async function getChapters(ctx: CoreCtx, skillId: string) {
-  return ctx.db.select().from(builtChapters).where(eq(builtChapters.skillId, skillId));
+  return withOrgCore(ctx, (tx) =>
+    tx.select().from(builtChapters).where(eq(builtChapters.skillId, skillId)),
+  );
 }
 
 export async function createChapter(
@@ -182,15 +206,17 @@ export async function createChapter(
   },
 ) {
   const id = newId();
-  await ctx.db.insert(builtChapters).values({
-    id,
-    skillId,
-    name: data.name,
-    type: (data.type as 'chapter' | 'condition') ?? 'chapter',
-    conditionText: data.conditionText ?? '',
-    positionX: data.positionX ?? 0,
-    positionY: data.positionY ?? 0,
-  });
+  await withOrgCore(ctx, (tx) =>
+    tx.insert(builtChapters).values({
+      id,
+      skillId,
+      name: data.name,
+      type: (data.type as 'chapter' | 'condition') ?? 'chapter',
+      conditionText: data.conditionText ?? '',
+      positionX: data.positionX ?? 0,
+      positionY: data.positionY ?? 0,
+    }),
+  );
   return { id };
 }
 
@@ -208,20 +234,26 @@ export async function updateChapter(
     positionY: number;
   }>,
 ) {
-  await ctx.db
-    .update(builtChapters)
-    .set({ ...data, updatedAt: new Date() })
-    .where(eq(builtChapters.id, chapterId));
+  await withOrgCore(ctx, (tx) =>
+    tx
+      .update(builtChapters)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(builtChapters.id, chapterId)),
+  );
 }
 
 export async function deleteChapter(ctx: CoreCtx, chapterId: string) {
-  await ctx.db.delete(builtChapters).where(eq(builtChapters.id, chapterId));
+  await withOrgCore(ctx, (tx) =>
+    tx.delete(builtChapters).where(eq(builtChapters.id, chapterId)),
+  );
 }
 
 // ── Chapter Edges ────────────────────────────────────────────────────
 
 export async function getChapterEdges(ctx: CoreCtx, skillId: string) {
-  return ctx.db.select().from(builtChapterEdges).where(eq(builtChapterEdges.skillId, skillId));
+  return withOrgCore(ctx, (tx) =>
+    tx.select().from(builtChapterEdges).where(eq(builtChapterEdges.skillId, skillId)),
+  );
 }
 
 export async function createChapterEdge(
@@ -232,39 +264,49 @@ export async function createChapterEdge(
   label?: string,
 ) {
   const id = newId();
-  await ctx.db
-    .insert(builtChapterEdges)
-    .values({ id, skillId, sourceChapterId, targetChapterId, label: label ?? null });
+  await withOrgCore(ctx, (tx) =>
+    tx
+      .insert(builtChapterEdges)
+      .values({ id, skillId, sourceChapterId, targetChapterId, label: label ?? null }),
+  );
   return { id };
 }
 
 export async function deleteChapterEdge(ctx: CoreCtx, edgeId: string) {
-  await ctx.db.delete(builtChapterEdges).where(eq(builtChapterEdges.id, edgeId));
+  await withOrgCore(ctx, (tx) =>
+    tx.delete(builtChapterEdges).where(eq(builtChapterEdges.id, edgeId)),
+  );
 }
 
 // ── Chapter Tools ────────────────────────────────────────────────────
 
 export async function getChapterTools(ctx: CoreCtx, chapterId: string) {
-  return ctx.db.select().from(builtChapterTools).where(eq(builtChapterTools.chapterId, chapterId));
+  return withOrgCore(ctx, (tx) =>
+    tx.select().from(builtChapterTools).where(eq(builtChapterTools.chapterId, chapterId)),
+  );
 }
 
 export async function setChapterTools(ctx: CoreCtx, chapterId: string, toolIds: string[]) {
-  await ctx.db.delete(builtChapterTools).where(eq(builtChapterTools.chapterId, chapterId));
-  if (toolIds.length > 0) {
-    await ctx.db
-      .insert(builtChapterTools)
-      .values(toolIds.map((toolId) => ({ id: newId(), chapterId, toolId })));
-  }
+  await withOrgCore(ctx, async (tx) => {
+    await tx.delete(builtChapterTools).where(eq(builtChapterTools.chapterId, chapterId));
+    if (toolIds.length > 0) {
+      await tx
+        .insert(builtChapterTools)
+        .values(toolIds.map((toolId) => ({ id: newId(), chapterId, toolId })));
+    }
+  });
 }
 
 // ── Built Agents ─────────────────────────────────────────────────────
 
 export async function listBuiltAgents(ctx: CoreCtx) {
-  return ctx.db
-    .select()
-    .from(builtAgents)
-    .where(eq(builtAgents.tenantId, ctx.tenantId))
-    .orderBy(desc(builtAgents.updatedAt));
+  return withOrgCore(ctx, (tx) =>
+    tx
+      .select()
+      .from(builtAgents)
+      .where(eq(builtAgents.tenantId, ctx.tenantId))
+      .orderBy(desc(builtAgents.updatedAt)),
+  );
 }
 
 export async function createBuiltAgent(
@@ -279,36 +321,43 @@ export async function createBuiltAgent(
   },
 ) {
   const id = newId();
-  await ctx.db.insert(builtAgents).values({
-    id,
-    name: input.name,
-    emoji: input.emoji ?? '🤖',
-    description: input.description ?? '',
-    model: input.model ?? null,
-    systemPrompt: input.systemPrompt ?? '',
-    status: 'draft',
-    gatewayId: input.serverId ? await resolveGatewayId(input.serverId) : null,
-    tenantId: ctx.tenantId,
-  });
+  const gatewayId = input.serverId ? await resolveGatewayId(input.serverId) : null;
+  await withOrgCore(ctx, (tx) =>
+    tx.insert(builtAgents).values({
+      id,
+      name: input.name,
+      emoji: input.emoji ?? '🤖',
+      description: input.description ?? '',
+      model: input.model ?? null,
+      systemPrompt: input.systemPrompt ?? '',
+      status: 'draft',
+      gatewayId,
+      tenantId: ctx.tenantId,
+    }),
+  );
   return { id };
 }
 
 // ── Built Tools ──────────────────────────────────────────────────────
 
 export async function listBuiltTools(ctx: CoreCtx) {
-  return ctx.db
-    .select()
-    .from(builtTools)
-    .where(eq(builtTools.tenantId, ctx.tenantId))
-    .orderBy(desc(builtTools.updatedAt));
+  return withOrgCore(ctx, (tx) =>
+    tx
+      .select()
+      .from(builtTools)
+      .where(eq(builtTools.tenantId, ctx.tenantId))
+      .orderBy(desc(builtTools.updatedAt)),
+  );
 }
 
 export async function getBuiltTool(ctx: CoreCtx, toolId: string) {
-  const rows = await ctx.db
-    .select()
-    .from(builtTools)
-    .where(and(eq(builtTools.id, toolId), eq(builtTools.tenantId, ctx.tenantId)))
-    .limit(1);
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .select()
+      .from(builtTools)
+      .where(and(eq(builtTools.id, toolId), eq(builtTools.tenantId, ctx.tenantId)))
+      .limit(1),
+  );
   return rows[0] ?? null;
 }
 
@@ -325,24 +374,30 @@ export async function updateBuiltTool(
     executionConfig: string;
   }>,
 ) {
-  await ctx.db
-    .update(builtTools)
-    .set({ ...data, updatedAt: new Date() })
-    .where(and(eq(builtTools.id, toolId), eq(builtTools.tenantId, ctx.tenantId)));
+  await withOrgCore(ctx, (tx) =>
+    tx
+      .update(builtTools)
+      .set({ ...data, updatedAt: new Date() })
+      .where(and(eq(builtTools.id, toolId), eq(builtTools.tenantId, ctx.tenantId))),
+  );
 }
 
 export async function deleteBuiltTool(ctx: CoreCtx, toolId: string) {
-  await ctx.db
-    .delete(builtTools)
-    .where(and(eq(builtTools.id, toolId), eq(builtTools.tenantId, ctx.tenantId)));
+  await withOrgCore(ctx, (tx) =>
+    tx
+      .delete(builtTools)
+      .where(and(eq(builtTools.id, toolId), eq(builtTools.tenantId, ctx.tenantId))),
+  );
 }
 
 export async function publishBuiltTool(ctx: CoreCtx, toolId: string) {
   const now = new Date();
-  await ctx.db
-    .update(builtTools)
-    .set({ status: 'published', publishedAt: now, updatedAt: now })
-    .where(and(eq(builtTools.id, toolId), eq(builtTools.tenantId, ctx.tenantId)));
+  await withOrgCore(ctx, (tx) =>
+    tx
+      .update(builtTools)
+      .set({ status: 'published', publishedAt: now, updatedAt: now })
+      .where(and(eq(builtTools.id, toolId), eq(builtTools.tenantId, ctx.tenantId))),
+  );
 }
 
 // ── Agent Built Skills (gateway agent → built skill mapping) ─────────
@@ -355,25 +410,27 @@ export async function setAgentBuiltSkills(
 ) {
   const gatewayId = await resolveGatewayId(serverId);
   if (!gatewayId) return;
-  await ctx.db
-    .delete(agentBuiltSkills)
-    .where(
-      and(
-        eq(agentBuiltSkills.gatewayAgentId, gatewayAgentId),
-        eq(agentBuiltSkills.gatewayId, gatewayId),
-        eq(agentBuiltSkills.tenantId, ctx.tenantId),
-      ),
-    );
-  if (skillIds.length > 0) {
-    await ctx.db.insert(agentBuiltSkills).values(
-      skillIds.map((skillId, i) => ({
-        id: newId(),
-        gatewayAgentId,
-        gatewayId,
-        tenantId: ctx.tenantId,
-        skillId,
-        position: i,
-      })),
-    );
-  }
+  await withOrgCore(ctx, async (tx) => {
+    await tx
+      .delete(agentBuiltSkills)
+      .where(
+        and(
+          eq(agentBuiltSkills.gatewayAgentId, gatewayAgentId),
+          eq(agentBuiltSkills.gatewayId, gatewayId),
+          eq(agentBuiltSkills.tenantId, ctx.tenantId),
+        ),
+      );
+    if (skillIds.length > 0) {
+      await tx.insert(agentBuiltSkills).values(
+        skillIds.map((skillId, i) => ({
+          id: newId(),
+          gatewayAgentId,
+          gatewayId,
+          tenantId: ctx.tenantId,
+          skillId,
+          position: i,
+        })),
+      );
+    }
+  });
 }

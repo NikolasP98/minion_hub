@@ -3,6 +3,7 @@ import { skillExecutionStats } from '@minion-stack/db/pg';
 import { cached, keys, tags } from '@minion-stack/cache';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { resolveGatewayId, resolveServerId } from '$server/services/gateway.pg.service';
+import { withOrgCore } from '$server/db/with-org-core';
 import { scopeData } from './base';
 
 export interface SkillStatInput {
@@ -61,7 +62,7 @@ export async function insertSkillStats(ctx: CoreCtx, stats: SkillStatInput[]) {
     });
   }
   if (rows.length === 0) return;
-  await ctx.db.insert(skillExecutionStats).values(rows);
+  await withOrgCore(ctx, (tx) => tx.insert(skillExecutionStats).values(rows));
 }
 
 export async function listSkillStats(
@@ -102,12 +103,14 @@ export async function listSkillStats(
         conditions.push(gte(skillExecutionStats.occurredAt, new Date(filters.from)));
       if (filters.to) conditions.push(lte(skillExecutionStats.occurredAt, new Date(filters.to)));
 
-      const rows = await ctx.db
-        .select()
-        .from(skillExecutionStats)
-        .where(and(...conditions))
-        .orderBy(desc(skillExecutionStats.occurredAt))
-        .limit(filters.limit ?? 200);
+      const rows = await withOrgCore(ctx, (tx) =>
+        tx
+          .select()
+          .from(skillExecutionStats)
+          .where(and(...conditions))
+          .orderBy(desc(skillExecutionStats.occurredAt))
+          .limit(filters.limit ?? 200),
+      );
       return Promise.all(rows.map(reshape));
     },
   );
@@ -143,19 +146,21 @@ export async function getSkillStatsSummary(
 
       const where = and(...conditions);
 
-      const bySkill = await ctx.db
-        .select({
-          skillName: skillExecutionStats.skillName,
-          status: skillExecutionStats.status,
-          count: sql<number>`count(*)`.as('count'),
-          avgDurationMs: sql<number>`avg(${skillExecutionStats.durationMs})`.as('avg_duration'),
-          minDurationMs: sql<number>`min(${skillExecutionStats.durationMs})`.as('min_duration'),
-          maxDurationMs: sql<number>`max(${skillExecutionStats.durationMs})`.as('max_duration'),
-        })
-        .from(skillExecutionStats)
-        .where(where)
-        .groupBy(skillExecutionStats.skillName, skillExecutionStats.status)
-        .orderBy(sql`count(*) desc`);
+      const bySkill = await withOrgCore(ctx, (tx) =>
+        tx
+          .select({
+            skillName: skillExecutionStats.skillName,
+            status: skillExecutionStats.status,
+            count: sql<number>`count(*)`.as('count'),
+            avgDurationMs: sql<number>`avg(${skillExecutionStats.durationMs})`.as('avg_duration'),
+            minDurationMs: sql<number>`min(${skillExecutionStats.durationMs})`.as('min_duration'),
+            maxDurationMs: sql<number>`max(${skillExecutionStats.durationMs})`.as('max_duration'),
+          })
+          .from(skillExecutionStats)
+          .where(where)
+          .groupBy(skillExecutionStats.skillName, skillExecutionStats.status)
+          .orderBy(sql`count(*) desc`),
+      );
 
       return { bySkill };
     },

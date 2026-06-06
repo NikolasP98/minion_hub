@@ -2,6 +2,7 @@ import { eq, and, desc } from 'drizzle-orm';
 import { sessions } from '@minion-stack/db/pg';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { newId } from '$server/db/utils';
+import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { resolveGatewayId, resolveServerId } from '$server/services/gateway.pg.service';
 
@@ -47,29 +48,31 @@ export async function upsertSession(ctx: CoreCtx, input: SessionInput) {
   const id = input.id ?? newId();
   const now = new Date();
 
-  await ctx.db
-    .insert(sessions)
-    .values({
-      id,
-      tenantId: ctx.tenantId,
-      gatewayId,
-      agentId: input.agentId,
-      sessionKey: input.sessionKey,
-      status: input.status ?? 'idle',
-      metadata: input.metadata ?? null,
-      startedAt: input.startedAt ? new Date(input.startedAt) : null,
-      endedAt: input.endedAt ? new Date(input.endedAt) : null,
-      updatedAt: now,
-    })
-    .onConflictDoUpdate({
-      target: [sessions.tenantId, sessions.gatewayId, sessions.sessionKey],
-      set: {
+  await withOrgCore(ctx, (tx) =>
+    tx
+      .insert(sessions)
+      .values({
+        id,
+        tenantId: ctx.tenantId,
+        gatewayId,
+        agentId: input.agentId,
+        sessionKey: input.sessionKey,
         status: input.status ?? 'idle',
         metadata: input.metadata ?? null,
+        startedAt: input.startedAt ? new Date(input.startedAt) : null,
         endedAt: input.endedAt ? new Date(input.endedAt) : null,
         updatedAt: now,
-      },
-    });
+      })
+      .onConflictDoUpdate({
+        target: [sessions.tenantId, sessions.gatewayId, sessions.sessionKey],
+        set: {
+          status: input.status ?? 'idle',
+          metadata: input.metadata ?? null,
+          endedAt: input.endedAt ? new Date(input.endedAt) : null,
+          updatedAt: now,
+        },
+      }),
+  );
 
   await invalidateTags([
     ...tags.tenantDomain(ctx.tenantId, 'sessions'),
@@ -89,14 +92,15 @@ export async function listSessions(ctx: CoreCtx, serverId: string) {
       swr: '30s',
       tags: tags.tenantDomain(ctx.tenantId, 'sessions'),
     },
-    async () => {
-      const rows = await ctx.db
-        .select()
-        .from(sessions)
-        .where(and(eq(sessions.gatewayId, gatewayId), eq(sessions.tenantId, ctx.tenantId)))
-        .orderBy(desc(sessions.updatedAt));
-      return rows.map((r) => reshape(r, serverId));
-    },
+    async () =>
+      withOrgCore(ctx, async (tx) => {
+        const rows = await tx
+          .select()
+          .from(sessions)
+          .where(and(eq(sessions.gatewayId, gatewayId), eq(sessions.tenantId, ctx.tenantId)))
+          .orderBy(desc(sessions.updatedAt));
+        return rows.map((r) => reshape(r, serverId));
+      }),
   );
 }
 
@@ -110,27 +114,30 @@ export async function listSessionsByServer(ctx: CoreCtx, serverId: string, agent
       swr: '30s',
       tags: tags.tenantDomain(ctx.tenantId, 'sessions'),
     },
-    async () => {
-      const conditions = [
-        eq(sessions.gatewayId, gatewayId),
-        eq(sessions.tenantId, ctx.tenantId),
-        ...(agentId ? [eq(sessions.agentId, agentId)] : []),
-      ];
-      const rows = await ctx.db
-        .select()
-        .from(sessions)
-        .where(and(...conditions))
-        .orderBy(desc(sessions.updatedAt));
-      return rows.map((r) => reshape(r, serverId));
-    },
+    async () =>
+      withOrgCore(ctx, async (tx) => {
+        const conditions = [
+          eq(sessions.gatewayId, gatewayId),
+          eq(sessions.tenantId, ctx.tenantId),
+          ...(agentId ? [eq(sessions.agentId, agentId)] : []),
+        ];
+        const rows = await tx
+          .select()
+          .from(sessions)
+          .where(and(...conditions))
+          .orderBy(desc(sessions.updatedAt));
+        return rows.map((r) => reshape(r, serverId));
+      }),
   );
 }
 
 export async function getSession(ctx: CoreCtx, id: string) {
-  const rows = await ctx.db
-    .select()
-    .from(sessions)
-    .where(and(eq(sessions.id, id), eq(sessions.tenantId, ctx.tenantId)));
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .select()
+      .from(sessions)
+      .where(and(eq(sessions.id, id), eq(sessions.tenantId, ctx.tenantId))),
+  );
 
   const row = rows[0];
   if (!row) return null;

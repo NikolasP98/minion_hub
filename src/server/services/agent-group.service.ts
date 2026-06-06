@@ -9,7 +9,7 @@ import type { CoreCtx } from '$server/auth/core-ctx';
 // user.supabaseId): agent_groups is keyed by profile_id in Postgres, not the
 // legacy bridged user id.
 //
-// All DB access runs through `withOrgCore(ctx.tenantId, …)`: the txn switches to
+// All DB access runs through `withOrgCore(ctx, …)`: the txn switches to
 // the non-bypass `app_ledger` role + sets the org GUC, so the agent_groups /
 // agent_group_members `*_org_guc` RLS policies enforce org isolation server-side.
 // The explicit tenant_id / profile_id filters below are kept as defence-in-depth
@@ -24,7 +24,7 @@ export async function listGroups(ctx: CoreCtx, userId: string) {
       tags: [...tags.tenantDomain(ctx.tenantId, 'agent-groups'), ...tags.user(userId)],
     },
     async () =>
-      withOrgCore(ctx.tenantId, async (tx) => {
+      withOrgCore(ctx, async (tx) => {
         const groups = await tx
           .select()
           .from(agentGroups)
@@ -54,7 +54,7 @@ export async function listGroups(ctx: CoreCtx, userId: string) {
 
 export async function createGroup(ctx: CoreCtx, userId: string, name: string) {
   const id = newId();
-  await withOrgCore(ctx.tenantId, (tx) =>
+  await withOrgCore(ctx, (tx) =>
     tx.insert(agentGroups).values({
       id,
       profileId: userId,
@@ -78,7 +78,7 @@ export async function updateGroup(
   if (data.sortOrder !== undefined) set.sortOrder = data.sortOrder;
   if (Object.keys(set).length === 0) return;
 
-  await withOrgCore(ctx.tenantId, (tx) =>
+  await withOrgCore(ctx, (tx) =>
     tx
       .update(agentGroups)
       .set(set)
@@ -98,7 +98,7 @@ export async function updateGroup(
 }
 
 export async function deleteGroup(ctx: CoreCtx, userId: string, groupId: string) {
-  await withOrgCore(ctx.tenantId, (tx) =>
+  await withOrgCore(ctx, (tx) =>
     tx
       .delete(agentGroups)
       .where(
@@ -122,7 +122,7 @@ export async function setGroupMembers(
   groupId: string,
   agentIds: string[],
 ) {
-  await withOrgCore(ctx.tenantId, async (tx) => {
+  await withOrgCore(ctx, async (tx) => {
     // Verify the group belongs to this user (and, via RLS, this org)
     const [group] = await tx
       .select({ id: agentGroups.id })
@@ -163,7 +163,7 @@ export async function addAgentToGroup(
   groupId: string,
   agentId: string,
 ) {
-  await withOrgCore(ctx.tenantId, (tx) =>
+  await withOrgCore(ctx, (tx) =>
     tx.insert(agentGroupMembers).values({ groupId, agentId, sortOrder: 0 }).onConflictDoNothing(),
   );
   await invalidateTags([
@@ -179,7 +179,7 @@ export async function removeAgentFromGroup(
   groupId: string,
   agentId: string,
 ) {
-  await withOrgCore(ctx.tenantId, (tx) =>
+  await withOrgCore(ctx, (tx) =>
     tx
       .delete(agentGroupMembers)
       .where(and(eq(agentGroupMembers.groupId, groupId), eq(agentGroupMembers.agentId, agentId))),

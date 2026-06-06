@@ -1,4 +1,5 @@
 import { getCoreDb } from '$server/db/pg-client';
+import { withOrgCore } from '$server/db/with-org-core';
 import { backupConfigs, serverProvisionConfigs } from '@minion-stack/db/pg';
 import { eq } from 'drizzle-orm';
 import {
@@ -33,6 +34,12 @@ async function tick() {
   if (dateKey === lastRunDate) return;
 
   const db = getCoreDb();
+  // CROSS-TENANT SCAN — system/cron path. This scheduler runs out-of-band of any
+  // request, so there is no single org in scope here: it must enumerate every
+  // tenant's enabled backup_configs to decide what to run. `withOrgCore` scopes
+  // to ONE org and would hide all other tenants' rows, so it is NOT appropriate.
+  // This scan legitimately needs the bypass-RLS `getCoreDb()` connection (like
+  // telemetry/cron paths). Per-tenant work below is re-scoped per `config.tenantId`.
   const configs = await db.select().from(backupConfigs).where(eq(backupConfigs.enabled, true));
 
   for (const config of configs) {
@@ -44,10 +51,15 @@ async function tick() {
     lastRunDate = dateKey;
     const ctx: CoreCtx = { db, tenantId: config.tenantId };
 
-    const provConfigs = await db
-      .select()
-      .from(serverProvisionConfigs)
-      .where(eq(serverProvisionConfigs.tenantId, config.tenantId));
+    // Per-tenant: a single org (config.tenantId) is now in scope, so this read
+    // runs through `withOrgCore` (non-bypass `app_ledger` role + org GUC) and the
+    // server_provision_configs `*_org_guc` RLS policy enforces isolation server-side.
+    const provConfigs = await withOrgCore({ db, tenantId: config.tenantId }, (tx) =>
+      tx
+        .select()
+        .from(serverProvisionConfigs)
+        .where(eq(serverProvisionConfigs.tenantId, config.tenantId)),
+    );
 
     for (const pc of provConfigs) {
       if (!pc.sshHost) continue;

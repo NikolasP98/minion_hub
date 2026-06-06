@@ -1,6 +1,7 @@
 import { eq, and, asc } from 'drizzle-orm';
 import { sessionTasks } from '@minion-stack/db/pg';
 import { newId } from '$server/db/utils';
+import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { resolveGatewayId } from '$server/services/gateway.pg.service';
 
@@ -39,17 +40,19 @@ export async function createSessionTask(ctx: CoreCtx, input: SessionTaskInput) {
   if (!gatewayId) throw new Error(`No gateway found for server ${input.serverId}`);
   const id = newId();
 
-  await ctx.db.insert(sessionTasks).values({
-    id,
-    tenantId: ctx.tenantId,
-    gatewayId,
-    sessionKey: input.sessionKey,
-    title: input.title,
-    description: input.description ?? null,
-    status: input.status ?? 'backlog',
-    sortOrder: input.sortOrder ?? 0,
-    metadata: input.metadata ?? null,
-  });
+  await withOrgCore(ctx, (tx) =>
+    tx.insert(sessionTasks).values({
+      id,
+      tenantId: ctx.tenantId,
+      gatewayId,
+      sessionKey: input.sessionKey,
+      title: input.title,
+      description: input.description ?? null,
+      status: input.status ?? 'backlog',
+      sortOrder: input.sortOrder ?? 0,
+      metadata: input.metadata ?? null,
+    }),
+  );
 
   return id;
 }
@@ -59,17 +62,19 @@ export async function listSessionTasks(ctx: CoreCtx, serverId: string, sessionKe
   if (!gatewayId) return [];
   const cutoff = Date.now() - 24 * 60 * 60 * 1000;
 
-  const rows = await ctx.db
-    .select()
-    .from(sessionTasks)
-    .where(
-      and(
-        eq(sessionTasks.tenantId, ctx.tenantId),
-        eq(sessionTasks.gatewayId, gatewayId),
-        eq(sessionTasks.sessionKey, sessionKey),
-      ),
-    )
-    .orderBy(asc(sessionTasks.sortOrder), asc(sessionTasks.createdAt));
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .select()
+      .from(sessionTasks)
+      .where(
+        and(
+          eq(sessionTasks.tenantId, ctx.tenantId),
+          eq(sessionTasks.gatewayId, gatewayId),
+          eq(sessionTasks.sessionKey, sessionKey),
+        ),
+      )
+      .orderBy(asc(sessionTasks.sortOrder), asc(sessionTasks.createdAt)),
+  );
 
   // Filter out done tasks older than 24h
   return rows
@@ -87,14 +92,18 @@ export async function updateSessionTask(
     >
   >,
 ) {
-  await ctx.db
-    .update(sessionTasks)
-    .set({ ...data, updatedAt: new Date() })
-    .where(and(eq(sessionTasks.id, id), eq(sessionTasks.tenantId, ctx.tenantId)));
+  await withOrgCore(ctx, (tx) =>
+    tx
+      .update(sessionTasks)
+      .set({ ...data, updatedAt: new Date() })
+      .where(and(eq(sessionTasks.id, id), eq(sessionTasks.tenantId, ctx.tenantId))),
+  );
 }
 
 export async function deleteSessionTask(ctx: CoreCtx, id: string) {
-  await ctx.db
-    .delete(sessionTasks)
-    .where(and(eq(sessionTasks.id, id), eq(sessionTasks.tenantId, ctx.tenantId)));
+  await withOrgCore(ctx, (tx) =>
+    tx
+      .delete(sessionTasks)
+      .where(and(eq(sessionTasks.id, id), eq(sessionTasks.tenantId, ctx.tenantId))),
+  );
 }

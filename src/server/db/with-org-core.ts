@@ -1,10 +1,19 @@
 import { sql } from 'drizzle-orm';
-import { getCoreDb } from './pg-client';
+import type { getCoreDb } from './pg-client';
 
 type CoreDb = ReturnType<typeof getCoreDb>;
 
 /** The transaction handle handed to `withOrgCore` callbacks. */
 export type CoreTx = Parameters<Parameters<CoreDb['transaction']>[0]>[0];
+
+/** Minimal shape `withOrgCore` needs — satisfied by CoreCtx / ServerCtx, or any
+ *  `{ db, tenantId }`. Taking the context (not a bare org id) means the txn runs
+ *  on the caller's db handle, so tests that inject a mock db exercise the same
+ *  path. */
+export interface OrgScope {
+  db: CoreDb;
+  tenantId: string;
+}
 
 /**
  * Run `fn` in a core-db transaction scoped to one org, with RLS ENFORCED.
@@ -19,18 +28,18 @@ export type CoreTx = Parameters<Parameters<CoreDb['transaction']>[0]>[0];
  * A forgotten filter can no longer leak across orgs. Both the role and the GUC
  * reset at commit — nothing leaks across pooled connections.
  *
- * This mirrors `withOrg` (the messages/agent_memories ledger client) but runs
- * on the relational-core client (`getCoreDb`). Use it for every org-scoped core
- * table once that table has its `*_org_guc` policy + `force row level security`.
+ * Mirrors `withOrg` (the messages/agent_memories ledger client) but runs on the
+ * relational-core client carried by the context. Use it for every org-scoped
+ * core table once that table has its `*_org_guc` policy + `force row level
+ * security`.
  *
- * `orgId` MUST be the canonical org id (organizations.id as text — the value
- * carried by `CoreCtx.tenantId`).
+ * `scope.tenantId` MUST be the canonical org id (organizations.id as text).
  */
-export function withOrgCore<T>(orgId: string, fn: (tx: CoreTx) => Promise<T>): Promise<T> {
-  if (!orgId) throw new Error('withOrgCore requires a non-empty orgId');
-  return getCoreDb().transaction(async (tx) => {
+export function withOrgCore<T>(scope: OrgScope, fn: (tx: CoreTx) => Promise<T>): Promise<T> {
+  if (!scope.tenantId) throw new Error('withOrgCore requires a non-empty tenantId');
+  return scope.db.transaction(async (tx) => {
     await tx.execute(sql`set local role app_ledger`);
-    await tx.execute(sql`select set_config('app.current_org_id', ${orgId}, true)`);
+    await tx.execute(sql`select set_config('app.current_org_id', ${scope.tenantId}, true)`);
     return fn(tx);
   });
 }

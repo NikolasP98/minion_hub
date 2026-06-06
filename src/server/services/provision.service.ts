@@ -1,6 +1,7 @@
 import { eq, and } from 'drizzle-orm';
 import { serverProvisionConfigs } from '@minion-stack/db/pg';
 import { newId } from '$server/db/utils';
+import { withOrgCore } from '$server/db/with-org-core';
 import { encrypt, decrypt } from '$server/auth/crypto';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { resolveGatewayId } from '$server/services/gateway.pg.service';
@@ -93,65 +94,67 @@ export async function upsertProvisionConfig(
     apiKeyIv = iv;
   }
 
-  // Check for existing config
-  const [existing] = await ctx.db
-    .select({ id: serverProvisionConfigs.id })
-    .from(serverProvisionConfigs)
-    .where(eq(serverProvisionConfigs.gatewayId, gatewayId));
+  return withOrgCore(ctx, async (tx) => {
+    // Check for existing config
+    const [existing] = await tx
+      .select({ id: serverProvisionConfigs.id })
+      .from(serverProvisionConfigs)
+      .where(eq(serverProvisionConfigs.gatewayId, gatewayId));
 
-  if (existing) {
-    const updates: Record<string, unknown> = {
-      updatedAt: new Date(),
-    };
-    if (input.sshHost !== undefined) updates.sshHost = input.sshHost;
-    if (input.sshUser !== undefined) updates.sshUser = input.sshUser;
-    if (input.sshPort !== undefined) updates.sshPort = input.sshPort;
-    if (apiKeyEncrypted !== undefined) {
-      updates.apiKey = apiKeyEncrypted;
-      updates.apiKeyIv = apiKeyIv;
+    if (existing) {
+      const updates: Record<string, unknown> = {
+        updatedAt: new Date(),
+      };
+      if (input.sshHost !== undefined) updates.sshHost = input.sshHost;
+      if (input.sshUser !== undefined) updates.sshUser = input.sshUser;
+      if (input.sshPort !== undefined) updates.sshPort = input.sshPort;
+      if (apiKeyEncrypted !== undefined) {
+        updates.apiKey = apiKeyEncrypted;
+        updates.apiKeyIv = apiKeyIv;
+      }
+      if (input.agentName !== undefined) updates.agentName = input.agentName;
+      if (input.sandboxMode !== undefined) updates.sandboxMode = input.sandboxMode;
+      if (input.dmPolicy !== undefined) updates.dmPolicy = input.dmPolicy;
+      if (input.installMethod !== undefined) updates.installMethod = input.installMethod;
+      if (input.pkgManager !== undefined) updates.pkgManager = input.pkgManager;
+      if (input.gatewayPort !== undefined) updates.gatewayPort = input.gatewayPort;
+      if (input.gatewayBind !== undefined) updates.gatewayBind = input.gatewayBind;
+      if (input.enableWhatsapp !== undefined) updates.enableWhatsapp = input.enableWhatsapp;
+      if (input.enableTelegram !== undefined) updates.enableTelegram = input.enableTelegram;
+      if (input.enableDiscord !== undefined) updates.enableDiscord = input.enableDiscord;
+
+      await tx
+        .update(serverProvisionConfigs)
+        .set(updates)
+        .where(eq(serverProvisionConfigs.id, existing.id));
+
+      return existing.id;
     }
-    if (input.agentName !== undefined) updates.agentName = input.agentName;
-    if (input.sandboxMode !== undefined) updates.sandboxMode = input.sandboxMode;
-    if (input.dmPolicy !== undefined) updates.dmPolicy = input.dmPolicy;
-    if (input.installMethod !== undefined) updates.installMethod = input.installMethod;
-    if (input.pkgManager !== undefined) updates.pkgManager = input.pkgManager;
-    if (input.gatewayPort !== undefined) updates.gatewayPort = input.gatewayPort;
-    if (input.gatewayBind !== undefined) updates.gatewayBind = input.gatewayBind;
-    if (input.enableWhatsapp !== undefined) updates.enableWhatsapp = input.enableWhatsapp;
-    if (input.enableTelegram !== undefined) updates.enableTelegram = input.enableTelegram;
-    if (input.enableDiscord !== undefined) updates.enableDiscord = input.enableDiscord;
 
-    await ctx.db
-      .update(serverProvisionConfigs)
-      .set(updates)
-      .where(eq(serverProvisionConfigs.id, existing.id));
+    const id = newId();
+    await tx.insert(serverProvisionConfigs).values({
+      id,
+      gatewayId,
+      tenantId: ctx.tenantId,
+      sshHost: input.sshHost ?? null,
+      sshUser: input.sshUser ?? 'root',
+      sshPort: input.sshPort ?? 22,
+      apiKey: apiKeyEncrypted ?? null,
+      apiKeyIv: apiKeyIv ?? null,
+      agentName: input.agentName ?? null,
+      sandboxMode: (input.sandboxMode ?? 'non-main') as 'non-main' | 'always' | 'never',
+      dmPolicy: (input.dmPolicy ?? 'pairing') as 'pairing' | 'solo' | 'disabled',
+      installMethod: (input.installMethod ?? 'package') as 'package' | 'source',
+      pkgManager: (input.pkgManager ?? 'npm') as 'npm' | 'bun',
+      gatewayPort: input.gatewayPort ?? 18789,
+      gatewayBind: (input.gatewayBind ?? 'loopback') as 'loopback' | 'all',
+      enableWhatsapp: input.enableWhatsapp ?? false,
+      enableTelegram: input.enableTelegram ?? false,
+      enableDiscord: input.enableDiscord ?? false,
+    });
 
-    return existing.id;
-  }
-
-  const id = newId();
-  await ctx.db.insert(serverProvisionConfigs).values({
-    id,
-    gatewayId,
-    tenantId: ctx.tenantId,
-    sshHost: input.sshHost ?? null,
-    sshUser: input.sshUser ?? 'root',
-    sshPort: input.sshPort ?? 22,
-    apiKey: apiKeyEncrypted ?? null,
-    apiKeyIv: apiKeyIv ?? null,
-    agentName: input.agentName ?? null,
-    sandboxMode: (input.sandboxMode ?? 'non-main') as 'non-main' | 'always' | 'never',
-    dmPolicy: (input.dmPolicy ?? 'pairing') as 'pairing' | 'solo' | 'disabled',
-    installMethod: (input.installMethod ?? 'package') as 'package' | 'source',
-    pkgManager: (input.pkgManager ?? 'npm') as 'npm' | 'bun',
-    gatewayPort: input.gatewayPort ?? 18789,
-    gatewayBind: (input.gatewayBind ?? 'loopback') as 'loopback' | 'all',
-    enableWhatsapp: input.enableWhatsapp ?? false,
-    enableTelegram: input.enableTelegram ?? false,
-    enableDiscord: input.enableDiscord ?? false,
+    return id;
   });
-
-  return id;
 }
 
 export async function getProvisionConfig(
@@ -161,15 +164,17 @@ export async function getProvisionConfig(
   const gatewayId = await resolveGatewayId(serverId);
   if (!gatewayId) return null;
 
-  const [row] = await ctx.db
-    .select()
-    .from(serverProvisionConfigs)
-    .where(
-      and(
-        eq(serverProvisionConfigs.gatewayId, gatewayId),
-        eq(serverProvisionConfigs.tenantId, ctx.tenantId),
+  const [row] = await withOrgCore(ctx, (tx) =>
+    tx
+      .select()
+      .from(serverProvisionConfigs)
+      .where(
+        and(
+          eq(serverProvisionConfigs.gatewayId, gatewayId),
+          eq(serverProvisionConfigs.tenantId, ctx.tenantId),
+        ),
       ),
-    );
+  );
 
   if (!row) return null;
 
@@ -215,14 +220,16 @@ export async function getProvisionConfig(
 export async function deleteProvisionConfig(ctx: CoreCtx, serverId: string): Promise<void> {
   const gatewayId = await resolveGatewayId(serverId);
   if (!gatewayId) return;
-  await ctx.db
-    .delete(serverProvisionConfigs)
-    .where(
-      and(
-        eq(serverProvisionConfigs.gatewayId, gatewayId),
-        eq(serverProvisionConfigs.tenantId, ctx.tenantId),
+  await withOrgCore(ctx, (tx) =>
+    tx
+      .delete(serverProvisionConfigs)
+      .where(
+        and(
+          eq(serverProvisionConfigs.gatewayId, gatewayId),
+          eq(serverProvisionConfigs.tenantId, ctx.tenantId),
+        ),
       ),
-    );
+  );
 }
 
 /** Mark a provision run as completed (sets last_provision_at to now). */
@@ -230,15 +237,17 @@ export async function markProvisionRun(ctx: CoreCtx, serverId: string): Promise<
   const gatewayId = await resolveGatewayId(serverId);
   if (!gatewayId) return;
   const now = new Date();
-  await ctx.db
-    .update(serverProvisionConfigs)
-    .set({ lastProvisionAt: now, updatedAt: now })
-    .where(
-      and(
-        eq(serverProvisionConfigs.gatewayId, gatewayId),
-        eq(serverProvisionConfigs.tenantId, ctx.tenantId),
+  await withOrgCore(ctx, (tx) =>
+    tx
+      .update(serverProvisionConfigs)
+      .set({ lastProvisionAt: now, updatedAt: now })
+      .where(
+        and(
+          eq(serverProvisionConfigs.gatewayId, gatewayId),
+          eq(serverProvisionConfigs.tenantId, ctx.tenantId),
+        ),
       ),
-    );
+  );
 }
 
 // ─── SSH Status Checks ──────────────────────────────────────────────────
@@ -395,18 +404,20 @@ export async function savePhaseStatuses(
 ): Promise<void> {
   const gatewayId = await resolveGatewayId(serverId);
   if (!gatewayId) return;
-  await ctx.db
-    .update(serverProvisionConfigs)
-    .set({
-      phaseStatuses: JSON.stringify(statuses),
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(serverProvisionConfigs.gatewayId, gatewayId),
-        eq(serverProvisionConfigs.tenantId, ctx.tenantId),
+  await withOrgCore(ctx, (tx) =>
+    tx
+      .update(serverProvisionConfigs)
+      .set({
+        phaseStatuses: JSON.stringify(statuses),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(serverProvisionConfigs.gatewayId, gatewayId),
+          eq(serverProvisionConfigs.tenantId, ctx.tenantId),
+        ),
       ),
-    );
+  );
 }
 
 // ─── Run Setup ──────────────────────────────────────────────────────────

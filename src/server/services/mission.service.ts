@@ -1,6 +1,7 @@
 import { eq, and, desc } from 'drizzle-orm';
 import { missions } from '@minion-stack/db/pg';
 import { newId } from '$server/db/utils';
+import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { resolveGatewayId, resolveServerId } from '$server/services/gateway.pg.service';
 
@@ -36,16 +37,18 @@ export async function createMission(ctx: CoreCtx, input: MissionInput) {
   if (!gatewayId) throw new Error(`No gateway found for server ${input.serverId}`);
   const id = newId();
 
-  await ctx.db.insert(missions).values({
-    id,
-    tenantId: ctx.tenantId,
-    gatewayId,
-    sessionId: input.sessionId,
-    title: input.title,
-    description: input.description ?? null,
-    status: 'active',
-    metadata: input.metadata ?? null,
-  });
+  await withOrgCore(ctx, (tx) =>
+    tx.insert(missions).values({
+      id,
+      tenantId: ctx.tenantId,
+      gatewayId,
+      sessionId: input.sessionId,
+      title: input.title,
+      description: input.description ?? null,
+      status: 'active',
+      metadata: input.metadata ?? null,
+    }),
+  );
 
   return id;
 }
@@ -63,21 +66,25 @@ export async function listMissions(
     ...(filters.sessionId ? [eq(missions.sessionId, filters.sessionId)] : []),
   ];
 
-  const rows = await ctx.db
-    .select()
-    .from(missions)
-    .where(and(...conditions))
-    .orderBy(desc(missions.createdAt))
-    .limit(200);
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .select()
+      .from(missions)
+      .where(and(...conditions))
+      .orderBy(desc(missions.createdAt))
+      .limit(200),
+  );
 
   return rows.map((r) => reshape(r, filters.serverId));
 }
 
 export async function getMission(ctx: CoreCtx, id: string) {
-  const rows = await ctx.db
-    .select()
-    .from(missions)
-    .where(and(eq(missions.id, id), eq(missions.tenantId, ctx.tenantId)));
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .select()
+      .from(missions)
+      .where(and(eq(missions.id, id), eq(missions.tenantId, ctx.tenantId))),
+  );
 
   const row = rows[0];
   if (!row) return null;
@@ -91,14 +98,16 @@ export async function updateMission(
     Pick<typeof missions.$inferInsert, 'title' | 'description' | 'status' | 'metadata'>
   >,
 ) {
-  await ctx.db
-    .update(missions)
-    .set({ ...data, updatedAt: new Date() })
-    .where(and(eq(missions.id, id), eq(missions.tenantId, ctx.tenantId)));
+  await withOrgCore(ctx, (tx) =>
+    tx
+      .update(missions)
+      .set({ ...data, updatedAt: new Date() })
+      .where(and(eq(missions.id, id), eq(missions.tenantId, ctx.tenantId))),
+  );
 }
 
 export async function deleteMission(ctx: CoreCtx, id: string) {
-  await ctx.db
-    .delete(missions)
-    .where(and(eq(missions.id, id), eq(missions.tenantId, ctx.tenantId)));
+  await withOrgCore(ctx, (tx) =>
+    tx.delete(missions).where(and(eq(missions.id, id), eq(missions.tenantId, ctx.tenantId))),
+  );
 }

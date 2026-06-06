@@ -1,6 +1,7 @@
 import { eq, and, desc } from 'drizzle-orm';
 import { backupConfigs, serverBackups } from '@minion-stack/db/pg';
 import { newId } from '$server/db/utils';
+import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { resolveGatewayId } from '$server/services/gateway.pg.service';
 import type { ProvisionConfig } from './provision.service';
@@ -38,11 +39,13 @@ const activeBackups = new Set<string>();
 // ─── Backup Config CRUD ─────────────────────────────────────────────
 
 export async function getBackupConfig(ctx: CoreCtx): Promise<BackupConfig | null> {
-  const [row] = await ctx.db
-    .select()
-    .from(backupConfigs)
-    .where(eq(backupConfigs.tenantId, ctx.tenantId));
-  return row ?? null;
+  return withOrgCore(ctx, async (tx) => {
+    const [row] = await tx
+      .select()
+      .from(backupConfigs)
+      .where(eq(backupConfigs.tenantId, ctx.tenantId));
+    return row ?? null;
+  });
 }
 
 export async function upsertBackupConfig(
@@ -61,22 +64,26 @@ export async function upsertBackupConfig(
     if (input.retentionCount !== undefined) updates.retentionCount = input.retentionCount;
     if (input.enabled !== undefined) updates.enabled = input.enabled;
 
-    await ctx.db.update(backupConfigs).set(updates).where(eq(backupConfigs.id, existing.id));
+    await withOrgCore(ctx, (tx) =>
+      tx.update(backupConfigs).set(updates).where(eq(backupConfigs.id, existing.id)),
+    );
     return existing.id;
   }
 
   const id = newId();
-  await ctx.db.insert(backupConfigs).values({
-    id,
-    tenantId: ctx.tenantId,
-    backupHost: input.backupHost ?? null,
-    backupUser: input.backupUser ?? 'root',
-    backupPort: input.backupPort ?? 22,
-    backupBasePath: input.backupBasePath ?? '/mnt/agent-data/backups',
-    schedule: input.schedule ?? null,
-    retentionCount: input.retentionCount ?? 7,
-    enabled: input.enabled ?? false,
-  });
+  await withOrgCore(ctx, (tx) =>
+    tx.insert(backupConfigs).values({
+      id,
+      tenantId: ctx.tenantId,
+      backupHost: input.backupHost ?? null,
+      backupUser: input.backupUser ?? 'root',
+      backupPort: input.backupPort ?? 22,
+      backupBasePath: input.backupBasePath ?? '/mnt/agent-data/backups',
+      schedule: input.schedule ?? null,
+      retentionCount: input.retentionCount ?? 7,
+      enabled: input.enabled ?? false,
+    }),
+  );
   return id;
 }
 
@@ -90,11 +97,13 @@ export async function upsertBackupConfig(
 export async function listSnapshots(ctx: CoreCtx, serverId: string): Promise<Snapshot[]> {
   const gatewayId = await resolveGatewayId(serverId);
   if (!gatewayId) return [];
-  const rows = await ctx.db
-    .select()
-    .from(serverBackups)
-    .where(and(eq(serverBackups.gatewayId, gatewayId), eq(serverBackups.tenantId, ctx.tenantId)))
-    .orderBy(desc(serverBackups.timestamp));
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .select()
+      .from(serverBackups)
+      .where(and(eq(serverBackups.gatewayId, gatewayId), eq(serverBackups.tenantId, ctx.tenantId)))
+      .orderBy(desc(serverBackups.timestamp)),
+  );
   return rows.map((r) => ({
     id: r.id,
     serverId,
@@ -115,14 +124,16 @@ export async function createSnapshotRecord(
   const gatewayId = await resolveGatewayId(serverId);
   if (!gatewayId) throw new Error(`No gateway found for server ${serverId}`);
   const id = newId();
-  await ctx.db.insert(serverBackups).values({
-    id,
-    gatewayId,
-    tenantId: ctx.tenantId,
-    snapshotPath,
-    timestamp: new Date(timestamp),
-    status: 'running',
-  });
+  await withOrgCore(ctx, (tx) =>
+    tx.insert(serverBackups).values({
+      id,
+      gatewayId,
+      tenantId: ctx.tenantId,
+      snapshotPath,
+      timestamp: new Date(timestamp),
+      status: 'running',
+    }),
+  );
   return id;
 }
 
@@ -134,11 +145,15 @@ export async function updateSnapshotStatus(
 ): Promise<void> {
   const updates: Record<string, unknown> = { status };
   if (sizeBytes !== undefined) updates.sizeBytes = sizeBytes;
-  await ctx.db.update(serverBackups).set(updates).where(eq(serverBackups.id, snapshotId));
+  await withOrgCore(ctx, (tx) =>
+    tx.update(serverBackups).set(updates).where(eq(serverBackups.id, snapshotId)),
+  );
 }
 
 export async function deleteSnapshotRecord(ctx: CoreCtx, snapshotId: string): Promise<void> {
-  await ctx.db.delete(serverBackups).where(eq(serverBackups.id, snapshotId));
+  await withOrgCore(ctx, (tx) =>
+    tx.delete(serverBackups).where(eq(serverBackups.id, snapshotId)),
+  );
 }
 
 // ─── Helper: derive minion user from provision config ───────────────

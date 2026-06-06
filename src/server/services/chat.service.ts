@@ -1,6 +1,7 @@
 import { eq, and, asc } from 'drizzle-orm';
 import { chatMessages } from '@minion-stack/db/pg';
 import type { CoreCtx } from '$server/auth/core-ctx';
+import { withOrgCore } from '$server/db/with-org-core';
 import { resolveGatewayId } from '$server/services/gateway.pg.service';
 
 export interface ChatMessageInput {
@@ -35,31 +36,35 @@ function reshape(row: ChatRow, serverId: string) {
 export async function insertChatMessage(ctx: CoreCtx, msg: ChatMessageInput) {
   const gatewayId = await resolveGatewayId(msg.serverId);
   if (!gatewayId) throw new Error(`No gateway found for server ${msg.serverId}`);
-  await ctx.db.insert(chatMessages).values({
-    tenantId: ctx.tenantId,
-    gatewayId,
-    agentId: msg.agentId,
-    sessionKey: msg.sessionKey,
-    role: msg.role,
-    content: msg.content,
-    runId: msg.runId ?? null,
-    timestamp: new Date(msg.timestamp),
-  });
+  await withOrgCore(ctx, (tx) =>
+    tx.insert(chatMessages).values({
+      tenantId: ctx.tenantId,
+      gatewayId,
+      agentId: msg.agentId,
+      sessionKey: msg.sessionKey,
+      role: msg.role,
+      content: msg.content,
+      runId: msg.runId ?? null,
+      timestamp: new Date(msg.timestamp),
+    }),
+  );
 }
 
 export async function listChatMessages(ctx: CoreCtx, agentId: string, limit = 200) {
   // Keyed by agent_id + tenant_id (no gateway scope) — matches the Turso query.
-  const rows = await ctx.db
-    .select({
-      role: chatMessages.role,
-      content: chatMessages.content,
-      runId: chatMessages.runId,
-      timestamp: chatMessages.timestamp,
-    })
-    .from(chatMessages)
-    .where(and(eq(chatMessages.agentId, agentId), eq(chatMessages.tenantId, ctx.tenantId)))
-    .orderBy(asc(chatMessages.timestamp))
-    .limit(limit);
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .select({
+        role: chatMessages.role,
+        content: chatMessages.content,
+        runId: chatMessages.runId,
+        timestamp: chatMessages.timestamp,
+      })
+      .from(chatMessages)
+      .where(and(eq(chatMessages.agentId, agentId), eq(chatMessages.tenantId, ctx.tenantId)))
+      .orderBy(asc(chatMessages.timestamp))
+      .limit(limit),
+  );
   return rows.map((r) => ({
     role: r.role,
     content: r.content,
@@ -76,38 +81,49 @@ export async function listChatMessagesBySessionKey(
 ) {
   const gatewayId = await resolveGatewayId(serverId);
   if (!gatewayId) return [];
-  const rows = await ctx.db
-    .select()
-    .from(chatMessages)
-    .where(
-      and(
-        eq(chatMessages.gatewayId, gatewayId),
-        eq(chatMessages.sessionKey, sessionKey),
-        eq(chatMessages.tenantId, ctx.tenantId),
-      ),
-    )
-    .orderBy(asc(chatMessages.timestamp))
-    .limit(limit);
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .select()
+      .from(chatMessages)
+      .where(
+        and(
+          eq(chatMessages.gatewayId, gatewayId),
+          eq(chatMessages.sessionKey, sessionKey),
+          eq(chatMessages.tenantId, ctx.tenantId),
+        ),
+      )
+      .orderBy(asc(chatMessages.timestamp))
+      .limit(limit),
+  );
   return rows.map((r) => reshape(r, serverId));
 }
 
 export async function bulkInsertChatMessages(ctx: CoreCtx, messages: ChatMessageInput[]) {
   if (messages.length === 0) return;
+  // Resolve gateway ids outside the txn (resolveGatewayId reads non-RLS/global
+  // tables on ctx.db); skip messages with no gateway as before.
+  const resolved: { gatewayId: string; msg: ChatMessageInput }[] = [];
   for (const msg of messages) {
     const gatewayId = await resolveGatewayId(msg.serverId);
     if (!gatewayId) continue;
-    await ctx.db
-      .insert(chatMessages)
-      .values({
-        tenantId: ctx.tenantId,
-        gatewayId,
-        agentId: msg.agentId,
-        sessionKey: msg.sessionKey,
-        role: msg.role,
-        content: msg.content,
-        runId: msg.runId ?? null,
-        timestamp: new Date(msg.timestamp),
-      })
-      .onConflictDoNothing();
+    resolved.push({ gatewayId, msg });
   }
+  if (resolved.length === 0) return;
+  await withOrgCore(ctx, async (tx) => {
+    for (const { gatewayId, msg } of resolved) {
+      await tx
+        .insert(chatMessages)
+        .values({
+          tenantId: ctx.tenantId,
+          gatewayId,
+          agentId: msg.agentId,
+          sessionKey: msg.sessionKey,
+          role: msg.role,
+          content: msg.content,
+          runId: msg.runId ?? null,
+          timestamp: new Date(msg.timestamp),
+        })
+        .onConflictDoNothing();
+    }
+  });
 }

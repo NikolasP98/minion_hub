@@ -97,6 +97,21 @@ export function createMockDb() {
       if (prop === 'then') return undefined; // db itself is NOT thenable
       if (typeof prop === 'symbol') return undefined;
 
+      // `withOrgCore` runs queries inside `db.transaction(tx => …)`. The mock tx
+      // IS this same db, so the existing db.select/insert/… spies + resolveSequence
+      // keep working transparently.
+      if (prop === 'transaction') {
+        return (cb: (tx: unknown) => unknown) => cb(db);
+      }
+      // `withOrgCore` issues `tx.execute(SET ROLE …)` + `tx.execute(set_config …)`.
+      // These must NOT consume a resolveSequence slot, so resolve to undefined.
+      if (prop === 'execute') {
+        if (!target['execute']) {
+          target['execute'] = vi.fn((..._args: unknown[]) => Promise.resolve(undefined));
+        }
+        return target['execute'];
+      }
+
       // Cache top-level methods so we can assert on them (e.g. db.insert)
       if (!target[prop as string]) {
         target[prop as string] = vi.fn((..._args: unknown[]) => createChain());
