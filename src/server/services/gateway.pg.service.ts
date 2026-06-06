@@ -105,6 +105,54 @@ export async function deleteGateway(id: string): Promise<void> {
   await getCoreDb().delete(gateway).where(eq(gateway.id, id));
 }
 
+/** Host row in the shape the frontend + still-Turso `/api/servers/[id]/*` routes
+ * expect: `id` is the legacy Turso server id (bridged via gateway.legacy_server_id)
+ * so server-scoped routes keep resolving, and `lastConnectedAt` is epoch-ms. */
+export interface UserHostRow {
+  id: string;
+  name: string;
+  url: string;
+  lastConnectedAt: number | null;
+}
+
+/**
+ * List the hosts visible to a user, from Supabase `gateway` (+ `user_gateway`
+ * for non-admins). Replaces the Turso `servers`/`user_servers` read in
+ * `loadHostsForUser` — keyed by the profile uuid, never the legacy id.
+ *   - admin → all gateways in the project
+ *   - non-admin → only gateways linked via `user_gateway` (by profile id)
+ *   - non-admin with no profile id → []
+ */
+export async function listGatewayHostsForUser(
+  profileId: string | null,
+  isAdmin: boolean,
+): Promise<UserHostRow[]> {
+  const db = getCoreDb();
+  const cols = {
+    id: gateway.id,
+    legacyServerId: gateway.legacyServerId,
+    name: gateway.name,
+    url: gateway.url,
+    lastConnectedAt: gateway.lastConnectedAt,
+  };
+  const rows = isAdmin
+    ? await db.select(cols).from(gateway).orderBy(gateway.createdAt)
+    : profileId
+      ? await db
+          .select(cols)
+          .from(gateway)
+          .innerJoin(userGateway, eq(userGateway.gatewayId, gateway.id))
+          .where(eq(userGateway.profileId, profileId))
+          .orderBy(gateway.createdAt)
+      : [];
+  return rows.map((r) => ({
+    id: r.legacyServerId ?? r.id,
+    name: r.name,
+    url: r.url,
+    lastConnectedAt: r.lastConnectedAt ? r.lastConnectedAt.getTime() : null,
+  }));
+}
+
 /**
  * Return the URL + decrypted token for a user's default (or first) linked gateway.
  * Called by gateway-rpc to resolve per-user credentials from Postgres.

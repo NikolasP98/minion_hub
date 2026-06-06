@@ -57,6 +57,7 @@ function setupMockSequence() {
     undefined, // insert personal_agents
     undefined, // update profiles.personalAgentId
     [mockRow], // select personal_agents (provisionPersonalAgent return)
+    [{ id: 'prof-1' }], // resolveProfileId select (updateProvisioningStatus)
     undefined, // updateProvisioningStatus -> 'active'
   ]);
   return mock;

@@ -144,10 +144,16 @@ export async function getPersonalAgent(
   ctx: CoreCtx,
   userId: string,
 ): Promise<PersonalAgentRow | null> {
+  // Key by profile_id (resolved from legacy id OR supabase uuid) rather than the
+  // legacy-derived agent_id, so this is identity-format-agnostic and survives the
+  // legacy→uuid bridge flip. Behavior-preserving: profile_id of the row whose
+  // agent_id is `personal-<legacyId>` is the same profile.
+  const profileId = await resolveProfileId(ctx, userId);
+  if (!profileId) return null;
   const rows = await ctx.db
     .select()
     .from(personalAgents)
-    .where(eq(personalAgents.agentId, derivePersonalAgentId(userId)))
+    .where(eq(personalAgents.profileId, profileId))
     .limit(1);
 
   return rows[0] ? reshape(rows[0], userId) : null;
@@ -158,10 +164,12 @@ export async function updatePersonalAgent(
   userId: string,
   updates: Partial<PersonalAgentUpdate>,
 ): Promise<void> {
+  const profileId = await resolveProfileId(ctx, userId);
+  if (!profileId) return;
   await ctx.db
     .update(personalAgents)
     .set({ ...updates, updatedAt: new Date() })
-    .where(eq(personalAgents.agentId, derivePersonalAgentId(userId)));
+    .where(eq(personalAgents.profileId, profileId));
 }
 
 export async function updateProvisioningStatus(
@@ -185,10 +193,12 @@ export async function updateProvisioningStatus(
     setData.provisioningError = null;
   }
 
+  const profileId = await resolveProfileId(ctx, userId);
+  if (!profileId) return;
   await ctx.db
     .update(personalAgents)
     .set(setData)
-    .where(eq(personalAgents.agentId, derivePersonalAgentId(userId)));
+    .where(eq(personalAgents.profileId, profileId));
 }
 
 export async function ensurePersonalAgentOnLogin(
@@ -219,9 +229,9 @@ export async function listPendingAgents(
 }
 
 export async function deletePersonalAgent(ctx: CoreCtx, userId: string): Promise<void> {
-  await ctx.db
-    .delete(personalAgents)
-    .where(eq(personalAgents.agentId, derivePersonalAgentId(userId)));
+  const profileId = await resolveProfileId(ctx, userId);
+  if (!profileId) return;
+  await ctx.db.delete(personalAgents).where(eq(personalAgents.profileId, profileId));
 }
 
 /**

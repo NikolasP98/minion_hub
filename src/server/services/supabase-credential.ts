@@ -138,6 +138,57 @@ export async function listOAuthIdentitiesFromSupabase(
   }
 }
 
+export type SupabaseChannelIdentity = {
+  id: string;
+  userId: string;
+  channel: string;
+  channelUserId: string;
+  displayName: string | null;
+  verifiedAt: number | null;
+  createdAt: number;
+};
+
+/**
+ * List a user's CHANNEL identities (kind='channel') from the canonical Supabase
+ * `user_identities` vault — the cutover target replacing the Turso channel read
+ * in channel-identity.service + the account page. Keyed by the resolved profile
+ * id (accepts legacy id or supabase uuid). Returns [] (never throws) on error or
+ * missing profile. Shape mirrors the legacy ChannelIdentityEntry.
+ */
+export async function listChannelIdentitiesFromSupabase(
+  userId: string,
+): Promise<SupabaseChannelIdentity[]> {
+  try {
+    const admin = supabaseAdmin();
+    const profileId = await resolveProfileId(admin, userId);
+    if (!profileId) return [];
+
+    const { data, error } = await admin
+      .from('user_identities')
+      .select('id, provider, external_id, display_name, verified_at, created_at')
+      .eq('user_id', profileId)
+      .eq('kind', 'channel');
+    if (error || !data) return [];
+
+    return data.map((r) => ({
+      id: r.id as string,
+      userId: profileId,
+      channel: r.provider as string,
+      channelUserId: r.external_id as string,
+      displayName: (r.display_name as string | null) ?? null,
+      verifiedAt: r.verified_at == null ? null : Number(r.verified_at),
+      createdAt:
+        r.created_at == null
+          ? 0
+          : typeof r.created_at === 'number'
+            ? r.created_at
+            : Date.parse(r.created_at as string),
+    }));
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Unlink an OAuth identity from the Supabase vault. Scoped to the resolved
  * profile so a user can only remove their own identity. Returns true on

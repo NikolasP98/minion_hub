@@ -1,8 +1,9 @@
 import { listServers } from './server.service';
+import { listGatewayHostsForUser, type UserHostRow } from './gateway.pg.service';
 import type { LoadCtx } from './types';
 
 export interface HostsLoadResult {
-  servers: Awaited<ReturnType<typeof listServers>>;
+  servers: UserHostRow[];
   authoritative: true;
 }
 
@@ -28,11 +29,21 @@ export async function loadHostsForUser(
   userId: string | undefined,
   userRole: string | undefined,
 ): Promise<HostsLoadResult> {
-  const { getTenantCtx } = await import('$server/auth/tenant-ctx');
-  const tenantCtx = await getTenantCtx(ctx as App.Locals);
-  if (!tenantCtx) {
-    return { servers: [], authoritative: true };
+  const isAdmin = userRole === 'admin';
+  const profileId = (ctx as App.Locals).user?.supabaseId ?? null;
+
+  // Source of truth = Supabase `gateway`/`user_gateway` keyed by profile uuid.
+  // Falls back to the legacy Turso `servers`/`user_servers` read only if the
+  // Supabase read throws (bake-in safety); an empty list is a valid result.
+  try {
+    const servers = await listGatewayHostsForUser(profileId, isAdmin);
+    return { servers, authoritative: true };
+  } catch (err) {
+    console.error('[hosts] Supabase host list failed, falling back to Turso:', err);
+    const { getTenantCtx } = await import('$server/auth/tenant-ctx');
+    const tenantCtx = await getTenantCtx(ctx as App.Locals);
+    if (!tenantCtx) return { servers: [], authoritative: true };
+    const servers = await listServers(tenantCtx, userId, userRole);
+    return { servers, authoritative: true };
   }
-  const servers = await listServers(tenantCtx, userId, userRole);
-  return { servers, authoritative: true };
 }

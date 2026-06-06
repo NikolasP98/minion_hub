@@ -149,7 +149,8 @@ describe('getPersonalAgent', () => {
 
 describe('updatePersonalAgent', () => {
   it('updates avatarUrl (the only remaining hub-DB-owned field)', async () => {
-    const { db } = createMockDb();
+    const { db, resolve } = createMockDb();
+    resolve([{ id: 'prof-1' }]); // resolveProfileId → profile
     await updatePersonalAgent(ctx(db), 'user-1', { avatarUrl: 'https://example.com/a.png' });
     expect(db.update).toHaveBeenCalled();
   });
@@ -157,19 +158,22 @@ describe('updatePersonalAgent', () => {
 
 describe('updateProvisioningStatus', () => {
   it('transitions pending -> provisioning', async () => {
-    const { db } = createMockDb();
+    const { db, resolve } = createMockDb();
+    resolve([{ id: 'prof-1' }]); // resolveProfileId → profile
     await updateProvisioningStatus(ctx(db), 'user-1', 'provisioning');
     expect(db.update).toHaveBeenCalled();
   });
 
   it('transitions provisioning -> active', async () => {
-    const { db } = createMockDb();
+    const { db, resolve } = createMockDb();
+    resolve([{ id: 'prof-1' }]); // resolveProfileId → profile
     await updateProvisioningStatus(ctx(db), 'user-1', 'active');
     expect(db.update).toHaveBeenCalled();
   });
 
   it('transitions provisioning -> error with error message', async () => {
-    const { db } = createMockDb();
+    const { db, resolve } = createMockDb();
+    resolve([{ id: 'prof-1' }]); // resolveProfileId → profile
     await updateProvisioningStatus(ctx(db), 'user-1', 'error', 'Gateway unreachable');
     expect(db.update).toHaveBeenCalled();
   });
@@ -229,7 +233,8 @@ describe('listPendingAgents', () => {
 
 describe('deletePersonalAgent', () => {
   it('deletes personal agent row', async () => {
-    const { db } = createMockDb();
+    const { db, resolve } = createMockDb();
+    resolve([{ id: 'prof-1' }]); // resolveProfileId → profile
     await deletePersonalAgent(ctx(db), 'user-1');
     expect(db.delete).toHaveBeenCalled();
   });

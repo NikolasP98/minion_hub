@@ -43,16 +43,17 @@ export async function listChannelIdentities(ctx: TenantContext): Promise<Channel
 }
 
 /**
- * Get channel identities for a specific user.
+ * Get channel identities for a specific user — from the canonical Supabase
+ * `user_identities` vault (keyed by profile uuid, resolved from the passed
+ * legacy id or uuid). The Turso `ctx` is no longer read here; the param is kept
+ * for call-site compatibility. Dynamic import avoids a service import cycle.
  */
 export async function getChannelIdentitiesForUser(
-  ctx: TenantContext,
+  _ctx: TenantContext,
   userId: string,
 ): Promise<ChannelIdentityEntry[]> {
-  return ctx.db
-    .select(channelProjection)
-    .from(userIdentities)
-    .where(and(eq(userIdentities.userId, userId), eq(userIdentities.kind, 'channel')));
+  const { listChannelIdentitiesFromSupabase } = await import('./supabase-credential');
+  return listChannelIdentitiesFromSupabase(userId);
 }
 
 /** A channel identity enriched with the owning hub user's name (for pickers). */
