@@ -21,6 +21,13 @@ export interface ServerInput {
  * Update an existing server row by id. Avoids the PK-conflict that upsertServer
  * hits when the row's tenantId was migrated to a Supabase UUID but the row still
  * carries the legacy Better-Auth UUID as its primary key.
+ *
+ * SECURITY: IDOR is gated at the call site via assertOwnsOrAdmin() (which checks
+ * userHasGatewayAccess + userServers link) — not here. We intentionally omit a
+ * tenantId scope from the WHERE because ctx.tenantId carries the post-migration
+ * Supabase UUID while the stored Turso row still carries the old Better-Auth UUID;
+ * adding eq(servers.tenantId, ctx.tenantId) would silently no-op every update.
+ * TODO: add tenantId scope once Turso server rows are re-keyed to the Supabase UUID.
  */
 export async function updateServer(ctx: TenantContext, id: string, updates: Partial<ServerInput>) {
   const now = nowMs();
