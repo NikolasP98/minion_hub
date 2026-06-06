@@ -4,13 +4,13 @@ import { requireAuth } from '$server/auth/authorize';
 import { getTenantCtx } from '$server/auth/tenant-ctx';
 import { getCoreDb } from '$server/db/pg-client';
 import { getPersonalAgent } from '$server/services/personal-agent.service';
-import { listIdentities } from '$server/services/identity.service';
+import { listChannelIdentitiesFromSupabase } from '$server/services/supabase-credential';
 
 export const load: PageServerLoad = async ({ locals }) => {
   const user = requireAuth(locals);
   const ctx = await getTenantCtx(locals as App.Locals);
   if (!ctx) throw redirect(303, '/login');
-  // personal_agents is on Supabase (pg); identities still on Turso (ctx).
+  // personal_agents + identities both on Supabase (pg). coreCtx for the agent.
   const coreCtx = { db: getCoreDb(), tenantId: ctx.tenantId };
 
   const existing = await getPersonalAgent(coreCtx, user.id);
@@ -18,17 +18,17 @@ export const load: PageServerLoad = async ({ locals }) => {
     throw redirect(303, '/');
   }
 
-  const identities = (await listIdentities(ctx, user.id))
-    .filter((i) => i.kind === 'channel')
-    .map((i) => ({
-      id: i.id,
-      source: 'turso' as const,
-      provider: i.provider,
-      kind: 'channel' as const,
-      externalId: i.externalId,
-      displayName: i.displayName,
-      verifiedAt: i.verifiedAt,
-    }));
+  const identities = (
+    await listChannelIdentitiesFromSupabase(user.supabaseId ?? user.id)
+  ).map((i) => ({
+    id: i.id,
+    source: 'supabase' as const,
+    provider: i.channel,
+    kind: 'channel' as const,
+    externalId: i.channelUserId,
+    displayName: i.displayName,
+    verifiedAt: i.verifiedAt,
+  }));
 
   return {
     user: {
