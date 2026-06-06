@@ -6,6 +6,29 @@
 
 ---
 
+## 0. Execution log (2026-06-05) — corrected facts + what shipped
+
+> Stages 0–2 + permissions executed this session. Reversible, dev-only, no drops, no Vercel promotion. Pre-cutover rollback tag: `pre-turso-cutover-2026-06-05` @ `e8dfadd`.
+
+**Corrected facts (the §1 table below was partly wrong):**
+- **Tenant ids already converged on PROD.** Prod Turso `organization` has a single org `21e0601b` ("Default"); prod Supabase `organizations` has FACES=`21e0601b` + MINION=`c9e8dc46`; `agent_memories` + all data under `21e0601b`. **Both stores already agree on `21e0601b`.** The `d6caa342` mismatch was a **local-dev Supabase artifact only** (`.env.local` → 127.0.0.1 Supabase + SQLite Turso file). So **no data migration was needed** (Stage 1 already satisfied on prod).
+- **`role_permissions` is empty on prod** → permissions are already a pure function of `user.role` (Supabase `profiles.role`).
+- Prod Supabase `gateway` (netcup `legacy_server_id=1cf319d2`) + `user_gateway` (3 rows) already exist — but **no hub code reads them yet**.
+
+**Shipped to `origin/dev` (behavior-preserving, dual-read fallback, check 0/0, test 609/609):**
+- `b0a8ae5` **Stage 2 — tenancy resolution → Supabase.** `resolveViaSupabase` + `(app)/+layout.server.ts` now resolve the active org from Supabase `organization_members` (by profile uuid) via new `resolveSupabaseTenant()`, Turso `member` fallback retained. Verified: all 4 prod users resolve to FACES `21e0601b` (= today's Turso result).
+- `8b37e4f` **Stage 4a — permissions → Supabase role-derived.** `loadPermissionsForUser` derives perms from `ctx.user.role` in cloud mode (off Turso); Turso path kept for self-host.
+
+**BLOCKED — do NOT flip `bridged.id` (legacy→uuid) blind.** It breaks, each needing coordinated Supabase re-keying:
+- **personal-agent** — keyed by `agent_id = "personal-" + userId`; prod rows are `personal-<legacyId>`. New uuid → no match → users trapped in the onboarding redirect.
+- **hosts** — `listServers` non-admin branch joins Turso `userServers` by legacy id → empty host list.
+- **channels / account identities** — Turso `user_identities` keyed by legacy id → empty.
+- These overlap the **migration agent's** in-flight pg-tenancy work and require a **prod login smoke test** (cannot be tested by an agent that can't log in). Sequence with the migration agent; flip the bridge only after personal-agent/hosts/channels/account are re-keyed to profile uuid with dual-read.
+
+**Decoupling insight:** gateway token-auth (`resolveServerTokenAuth`, `cache.ts`) is keyed by **token, not legacy_user_id** → it does **not** block legacy removal. It can stay on Turso `servers` as telemetry-adjacent (this plan's §2 allows it).
+
+---
+
 ## 1. Current state (what's still wrong)
 
 | Concern | Today |
