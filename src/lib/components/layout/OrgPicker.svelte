@@ -3,7 +3,8 @@
     import { page } from "$app/state";
     import { isAdmin } from "$lib/state/features/user.svelte";
     import { authClient } from "$lib/auth";
-    import { Building2 } from "lucide-svelte";
+    import { toastSuccess, toastError } from "$lib/state/ui/toast.svelte";
+    import { Building2, Loader2, Check } from "lucide-svelte";
 
     type OrgEntry = { id: string; name: string; slug: string | null; role: string };
 
@@ -26,10 +27,15 @@
     const canSwitch = $derived(isAdmin.value && organizations.length > 1);
 
     let open = $state(false);
+    // The org id currently being switched to (non-null = a switch is in flight).
+    // Drives the inline spinner + disables further clicks until it settles.
+    let switchingTo = $state<string | null>(null);
 
     async function select(orgId: string) {
         open = false;
-        if (orgId === activeOrgId) return;
+        if (orgId === activeOrgId || switchingTo) return;
+        const target = organizations.find((o) => o.id === orgId);
+        switchingTo = orgId;
         try {
             // Supabase mode: persist via the active_org cookie (resolveIdentity
             // honors it). This is the switch that actually takes effect on cloud.
@@ -43,9 +49,19 @@
             await authClient.organization
                 .setActive({ organizationId: orgId })
                 .catch(() => {});
+            // Re-runs every load fn so layout data (active org, permissions, …)
+            // reflects the new org. Pages that fetch client-side react to the
+            // changed activeOrgId in page.data.
             await invalidateAll();
+            toastSuccess(`Switched to ${target?.name ?? "organization"}`);
         } catch (err) {
             console.error("[org-picker] switch failed", err);
+            toastError(
+                "Couldn't switch organization",
+                err instanceof Error ? err.message : undefined,
+            );
+        } finally {
+            switchingTo = null;
         }
     }
 </script>
@@ -56,20 +72,26 @@
     <div class="relative w-full">
         <button
             type="button"
-            class="relative w-full flex items-center gap-1.5 h-6 px-1.5 rounded-[var(--radius-sm)] text-[12px] font-medium transition-colors whitespace-nowrap select-none text-muted-foreground {canSwitch
+            disabled={!!switchingTo}
+            class="relative w-full flex items-center gap-1.5 h-6 px-1.5 rounded-[var(--radius-sm)] text-[12px] font-medium transition-colors whitespace-nowrap select-none text-muted-foreground {canSwitch && !switchingTo
                 ? 'cursor-pointer hover:text-foreground hover:bg-white/[0.04]'
-                : 'cursor-default'}"
+                : 'cursor-default'} {switchingTo ? 'opacity-70' : ''}"
             onclick={(e) => {
                 e.stopPropagation();
-                if (canSwitch) open = !open;
+                if (canSwitch && !switchingTo) open = !open;
             }}
             aria-haspopup={canSwitch ? "menu" : undefined}
+            aria-busy={!!switchingTo}
             aria-label={currentName}
-            title={currentName}
+            title={switchingTo ? "Switching organization…" : currentName}
         >
-            <Building2 size={12} class="shrink-0 opacity-70" />
+            {#if switchingTo}
+                <Loader2 size={12} class="shrink-0 animate-spin opacity-80" />
+            {:else}
+                <Building2 size={12} class="shrink-0 opacity-70" />
+            {/if}
             <span class="flex-1 overflow-hidden text-ellipsis text-left">{currentName}</span>
-            {#if canSwitch}
+            {#if canSwitch && !switchingTo}
                 <span class="opacity-40 text-[9px] shrink-0">▾</span>
             {/if}
         </button>
@@ -84,15 +106,19 @@
             >
                 {#each organizations as o (o.id)}
                     <div
-                        class="flex items-center gap-2 py-[9px] px-[14px] cursor-pointer text-[13px] text-foreground transition-colors hover:bg-bg3"
+                        class="flex items-center gap-2 py-[9px] px-[14px] cursor-pointer text-[13px] text-foreground transition-colors hover:bg-bg3 {switchingTo
+                            ? 'pointer-events-none opacity-60'
+                            : ''}"
                         role="menuitem"
                         tabindex="0"
                         onclick={() => select(o.id)}
                         onkeydown={(e) => e.key === "Enter" && select(o.id)}
                     >
                         <span class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{o.name}</span>
-                        {#if o.id === activeOrgId}
-                            <span class="text-accent text-[11px] shrink-0">✓</span>
+                        {#if switchingTo === o.id}
+                            <Loader2 size={12} class="text-accent shrink-0 animate-spin" />
+                        {:else if o.id === activeOrgId}
+                            <Check size={12} class="text-accent shrink-0" />
                         {/if}
                     </div>
                 {/each}

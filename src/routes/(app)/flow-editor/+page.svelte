@@ -1,5 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
+  import { page } from '$app/state';
   import { onMount } from 'svelte';
   import { GitBranch, Plus, BookOpen } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
@@ -25,6 +26,21 @@
   onMount(async () => {
     await loadAll();
     await reconcile();
+  });
+
+  // Refresh the flow list when the active org changes (org switcher). Flows are
+  // org-scoped, so a switch must re-fetch — invalidateAll() re-runs load fns but
+  // this page loads client-side, so it'd otherwise show the previous org's list.
+  // Seeded from the initial active org so the first effect run is a no-op (onMount
+  // owns the initial load); subsequent changes trigger a reload.
+  let activeOrgId = $state((page.data as { activeOrgId?: string | null }).activeOrgId ?? null);
+  $effect(() => {
+    const org = (page.data as { activeOrgId?: string | null }).activeOrgId ?? null;
+    if (org !== activeOrgId) {
+      activeOrgId = org;
+      loadAll();
+      reconcile();
+    }
   });
 
   async function loadAll() {
