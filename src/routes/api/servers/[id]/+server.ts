@@ -1,6 +1,6 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
-import { upsertServer, deleteServer } from '$server/services/server.service';
+import { updateServer, deleteServer } from '$server/services/server.service';
 import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
 import { requireAuth } from '$server/auth/authorize';
 import { userServers } from '@minion-stack/db/schema';
@@ -35,7 +35,7 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
       return json({ ok: false, error: 'Not found' }, { status: 404 });
     }
     const body = await request.json();
-    await upsertServer(ctx, { id, name: '', url: '', ...body }, user.id);
+    await updateServer(ctx, id, body);
     return json({ ok: true });
   } catch (e) {
     console.error(`[PUT /api/servers/${params.id}]`, e);

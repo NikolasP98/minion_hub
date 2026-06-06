@@ -17,6 +17,25 @@ export interface ServerInput {
   lastConnectedAt?: number | null;
 }
 
+/**
+ * Update an existing server row by id. Avoids the PK-conflict that upsertServer
+ * hits when the row's tenantId was migrated to a Supabase UUID but the row still
+ * carries the legacy Better-Auth UUID as its primary key.
+ */
+export async function updateServer(ctx: TenantContext, id: string, updates: Partial<ServerInput>) {
+  const now = nowMs();
+  const set: Record<string, unknown> = { updatedAt: now };
+  if (updates.name != null) set.name = updates.name;
+  if (updates.url != null) set.url = updates.url;
+  if (updates.lastConnectedAt !== undefined) set.lastConnectedAt = updates.lastConnectedAt;
+  if (typeof updates.token === 'string' && updates.token.length > 0) {
+    const enc = encryptToken(updates.token);
+    set.token = enc.encrypted;
+    set.tokenIv = enc.iv;
+  }
+  await ctx.db.update(servers).set(set).where(eq(servers.id, id));
+}
+
 export async function upsertServer(ctx: TenantContext, s: ServerInput, userId?: string) {
   const now = nowMs();
   const id = s.id ?? newId();

@@ -2,6 +2,7 @@ import { and, eq, ne, inArray } from 'drizzle-orm';
 import { user, member, organization } from '../db/schema/auth';
 import type { TenantContext } from './base';
 import { getAuth } from '$lib/auth/auth';
+import { supabaseAdmin } from '$server/supabase';
 
 export async function listUsers(ctx: TenantContext) {
   const users = await ctx.db
@@ -90,6 +91,13 @@ export async function updateUserRole(ctx: TenantContext, userId: string, role: '
 
 export async function deleteUser(ctx: TenantContext, userId: string) {
   await ctx.db.delete(user).where(eq(user.id, userId));
+  // userId post-flip = Supabase profile UUID. Remove from Supabase
+  // organization_members so the session-time tenancy check (resolveSupabaseTenant)
+  // returns null on the next request and the user loses access immediately.
+  await supabaseAdmin()
+    .from('organization_members')
+    .delete()
+    .match({ profile_id: userId, organization_id: ctx.tenantId });
 }
 
 export type UserProfileUpdate = {
