@@ -177,6 +177,27 @@ export async function getUserGatewayCredentials(
   return { url, token };
 }
 
+/**
+ * True if the profile is linked (via `user_gateway`) to the gateway behind the
+ * given server id (legacy Turso id or gateway uuid). The Supabase-native
+ * replacement for the Turso `user_servers` access check on `/api/servers/[id]/*`.
+ * Returns false for a null profile or an unbridged server id.
+ */
+export async function userHasGatewayAccess(
+  profileId: string | null,
+  serverId: string,
+): Promise<boolean> {
+  if (!profileId) return false;
+  const gatewayId = await resolveGatewayId(serverId);
+  if (!gatewayId) return false;
+  const [row] = await getCoreDb()
+    .select({ profileId: userGateway.profileId })
+    .from(userGateway)
+    .where(and(eq(userGateway.profileId, profileId), eq(userGateway.gatewayId, gatewayId)))
+    .limit(1);
+  return !!row;
+}
+
 export async function linkGatewayToUser(profileId: string, gatewayId: string): Promise<void> {
   const db = getCoreDb();
   await db

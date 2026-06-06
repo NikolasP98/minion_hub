@@ -5,6 +5,7 @@ import { userServers } from '@minion-stack/db/schema';
 import { requireAuth } from '$server/auth/authorize';
 import { getTenantCtx } from '$server/auth/tenant-ctx';
 import { getServerToken } from '$server/services/server.service';
+import { userHasGatewayAccess } from '$server/services/gateway.pg.service';
 
 /**
  * Returns the decrypted gateway token for a single server.
@@ -29,11 +30,17 @@ export const POST: RequestHandler = async ({ locals, params }) => {
   const id = params.id!;
 
   if (user.role !== 'admin') {
-    const [link] = await ctx.db
-      .select({ serverId: userServers.serverId })
-      .from(userServers)
-      .where(and(eq(userServers.userId, user.id), eq(userServers.serverId, id)));
-    if (!link) {
+    // Access source of truth = Supabase user_gateway (by profile uuid); fall
+    // back to the legacy Turso user_servers link during bake-in so no one loses
+    // access mid-cutover.
+    const allowed =
+      (await userHasGatewayAccess(user.supabaseId ?? null, id)) ||
+      (await ctx.db
+        .select({ serverId: userServers.serverId })
+        .from(userServers)
+        .where(and(eq(userServers.userId, user.id), eq(userServers.serverId, id)))
+        .then((rows) => rows.length > 0));
+    if (!allowed) {
       console.log('[token-ep] non-admin without link -> 404');
       return json({ error: 'Not found' }, { status: 404 });
     }

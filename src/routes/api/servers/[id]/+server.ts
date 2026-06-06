@@ -5,14 +5,20 @@ import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
 import { requireAuth } from '$server/auth/authorize';
 import { userServers } from '@minion-stack/db/schema';
 import { and, eq } from 'drizzle-orm';
+import { userHasGatewayAccess } from '$server/services/gateway.pg.service';
 
-/** Non-admins must be linked to the server via `user_servers`. */
+/**
+ * Non-admins must be linked to the server. Access source of truth = Supabase
+ * `user_gateway` (by profile uuid); falls back to the legacy Turso `user_servers`
+ * link during bake-in so no one loses access mid-cutover.
+ */
 async function assertOwnsOrAdmin(
   ctx: import('$server/services/base').TenantContext,
-  user: { id: string; role: 'user' | 'admin' },
+  user: { id: string; role: 'user' | 'admin'; supabaseId?: string },
   serverId: string,
 ): Promise<boolean> {
   if (user.role === 'admin') return true;
+  if (await userHasGatewayAccess(user.supabaseId ?? null, serverId)) return true;
   const [link] = await ctx.db
     .select({ serverId: userServers.serverId })
     .from(userServers)
