@@ -1,128 +1,189 @@
-import { and, eq, ne, inArray } from 'drizzle-orm';
-import { user, member, organization } from '../db/schema/auth';
 import type { TenantContext } from './base';
-import { getAuth } from '$lib/auth/auth';
 import { supabaseAdmin } from '$server/supabase';
 
-export async function listUsers(ctx: TenantContext) {
-  const users = await ctx.db
-    .select({
-      id: user.id,
-      email: user.email,
-      displayName: user.name,
-      role: user.role,
-      alias: user.alias,
-      roleId: user.roleId,
-      createdAt: user.createdAt,
-    })
-    .from(user)
-    .orderBy(user.createdAt);
+/**
+ * User-admin surface — Supabase system-of-record.
+ *
+ * Identity is keyed by the Supabase profile uuid (= auth.users.id). This is the
+ * post-cutover replacement for the legacy Turso `user`/`member` tables, whose
+ * ids diverged from the auth identity and caused a delete-doesn't-revoke leak:
+ * the admin list was Turso-keyed, so a delete removed the Turso row but never
+ * the Supabase auth user that actually gates login. Reading + mutating profiles
+ * directly makes the id unambiguous, so deletes revoke and the list shows the
+ * real users (including Supabase-only / OAuth signups that never got a Turso row).
+ *
+ * `ctx.tenantId` is the active org; the team list is scoped to that org's members.
+ */
 
-  if (users.length === 0) return [];
+interface ProfileRow {
+  id: string;
+  email: string | null;
+  display_name: string | null;
+  role: string | null;
+  alias: string | null;
+  role_id: string | null;
+  created_at: string | null;
+}
 
-  const userIds = users.map((u) => u.id);
-  const memberships = await ctx.db
-    .select({
-      userId: member.userId,
-      orgId: member.organizationId,
-      orgName: organization.name,
-      orgRole: member.role,
-    })
-    .from(member)
-    .innerJoin(organization, eq(member.organizationId, organization.id))
-    .where(inArray(member.userId, userIds));
+export interface UserEntry {
+  id: string;
+  email: string | null;
+  displayName: string | null;
+  role: string | null;
+  alias: string | null;
+  roleId: string | null;
+  createdAt: string | null;
+  organizations: Array<{ id: string; name: string; role: string }>;
+}
 
+/**
+ * Members of the active org, each with the full set of orgs they belong to (the
+ * org-assignment editor reads the per-user list). Scoped to `ctx.tenantId` — an
+ * admin's team page shows their org's people, not every user in the system.
+ */
+export async function listUsers(ctx: TenantContext): Promise<UserEntry[]> {
+  const admin = supabaseAdmin();
+
+  // 1. Profile ids that belong to the active org.
+  const { data: orgMembers, error: omErr } = await admin
+    .from('organization_members')
+    .select('profile_id')
+    .eq('organization_id', ctx.tenantId);
+  if (omErr) throw omErr;
+  const ids = [...new Set((orgMembers ?? []).map((m) => (m as { profile_id: string }).profile_id))];
+  if (ids.length === 0) return [];
+
+  // 2. The profiles themselves.
+  const { data: profiles, error: pErr } = await admin
+    .from('profiles')
+    .select('id, email, display_name, role, alias, role_id, created_at')
+    .in('id', ids);
+  if (pErr) throw pErr;
+
+  // 3. Every org each of those users belongs to (for the assignment editor).
+  const { data: allMemberships, error: amErr } = await admin
+    .from('organization_members')
+    .select('profile_id, role, organizations(id, name)')
+    .in('profile_id', ids);
+  if (amErr) throw amErr;
+
+  type Org = { id: string; name: string };
+  type Mem = { profile_id: string; role: string; organizations: Org | Org[] | null };
   const orgsByUser = new Map<string, Array<{ id: string; name: string; role: string }>>();
-  for (const m of memberships) {
-    const list = orgsByUser.get(m.userId) ?? [];
-    list.push({ id: m.orgId, name: m.orgName, role: m.orgRole });
-    orgsByUser.set(m.userId, list);
+  for (const m of (allMemberships ?? []) as unknown as Mem[]) {
+    const org = Array.isArray(m.organizations) ? m.organizations[0] : m.organizations;
+    if (!org) continue;
+    const list = orgsByUser.get(m.profile_id) ?? [];
+    list.push({ id: org.id, name: org.name, role: m.role });
+    orgsByUser.set(m.profile_id, list);
   }
 
-  return users.map((u) => ({
-    ...u,
-    organizations: orgsByUser.get(u.id) ?? [],
-  }));
+  return ((profiles ?? []) as unknown as ProfileRow[])
+    .map((p) => ({
+      id: p.id,
+      email: p.email,
+      displayName: p.display_name,
+      role: p.role,
+      alias: p.alias,
+      roleId: p.role_id,
+      createdAt: p.created_at,
+      organizations: orgsByUser.get(p.id) ?? [],
+    }))
+    .sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''));
 }
 
-export async function getUser(ctx: TenantContext, userId: string) {
-  const rows = await ctx.db
-    .select({
-      id: user.id,
-      email: user.email,
-      displayName: user.name,
-      role: user.role,
-      alias: user.alias,
-      roleId: user.roleId,
-    })
-    .from(user)
-    .where(eq(user.id, userId));
-
-  return rows[0] ?? null;
+export async function getUser(_ctx: TenantContext, userId: string) {
+  const admin = supabaseAdmin();
+  const { data, error } = await admin
+    .from('profiles')
+    .select('id, email, display_name, role, alias, role_id')
+    .eq('id', userId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const p = data as unknown as ProfileRow;
+  return {
+    id: p.id,
+    email: p.email,
+    displayName: p.display_name,
+    role: p.role,
+    alias: p.alias,
+    roleId: p.role_id,
+  };
 }
 
+/**
+ * Admin-create a user: provision the Supabase auth identity (email pre-confirmed)
+ * and add them to the active org so they can use the hub immediately. Role is
+ * written to the profile (auto-created by the auth trigger; upsert as a fallback).
+ */
 export async function createUser(
   ctx: TenantContext,
   data: { email: string; displayName?: string; password: string; role?: 'user' | 'admin' },
 ) {
-  const result = await getAuth().api.signUpEmail({
-    body: {
-      email: data.email,
-      password: data.password,
-      name: data.displayName ?? data.email.split('@')[0],
-    },
+  const admin = supabaseAdmin();
+  const displayName = data.displayName ?? data.email.split('@')[0];
+
+  const { data: created, error } = await admin.auth.admin.createUser({
+    email: data.email,
+    password: data.password,
+    email_confirm: true,
+    user_metadata: { full_name: displayName },
   });
+  if (error || !created.user) throw error ?? new Error('Failed to create user');
+  const userId = created.user.id;
 
-  const userId = result.user.id;
+  // Ensure a profile row with the right role/name (the handle_new_user trigger
+  // may create a bare row; upsert reconciles it either way).
+  await admin
+    .from('profiles')
+    .upsert(
+      { id: userId, email: data.email, display_name: displayName, role: data.role ?? 'user' },
+      { onConflict: 'id' },
+    );
 
-  if (data.role && data.role !== 'user') {
-    await ctx.db
-      .update(user)
-      .set({ role: data.role, updatedAt: new Date() })
-      .where(eq(user.id, userId));
-  }
+  // Membership in the active org — without it the new user resolves no tenancy
+  // and gets bounced to /join.
+  await admin
+    .from('organization_members')
+    .upsert(
+      { profile_id: userId, organization_id: ctx.tenantId, role: 'member' },
+      { onConflict: 'profile_id,organization_id' },
+    );
 
   return userId;
 }
 
-export async function updateUserRole(ctx: TenantContext, userId: string, role: 'user' | 'admin') {
-  await ctx.db.update(user).set({ role, updatedAt: new Date() }).where(eq(user.id, userId));
+export async function updateUserRole(_ctx: TenantContext, userId: string, role: 'user' | 'admin') {
+  const admin = supabaseAdmin();
+  const { error } = await admin.from('profiles').update({ role }).eq('id', userId);
+  if (error) throw error;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export async function deleteUser(ctx: TenantContext, userId: string) {
-  // Legacy Turso user row (best-effort — admin list is still Turso-keyed).
-  await ctx.db.delete(user).where(eq(user.id, userId));
-
+/**
+ * Delete a user account entirely: revoke every org membership, then delete the
+ * Supabase auth identity (profiles cascades). The auth delete is the actual
+ * revocation — login is gated on auth.users, so removing only memberships would
+ * leave the account able to sign back in.
+ *
+ * NOTE: this removes the account globally, including from other orgs. (A future
+ * "remove from this org only" action would just delete the org_members row.)
+ */
+export async function deleteUser(_ctx: TenantContext, userId: string) {
   const admin = supabaseAdmin();
-
-  // Resolve the Supabase profile/auth id. The admin Users list returns Turso
-  // ids, so `userId` is usually the LEGACY id — map it via profiles.legacy_user_id.
-  // (It may already be the profile uuid for newer rows.) Without this mapping the
-  // revocation below matches nothing and the deleted user keeps their session —
-  // access is gated on Supabase auth.users, NOT on the Turso row we just removed.
-  let profileId: string | undefined;
-  const byLegacy = await admin
-    .from('profiles')
-    .select('id')
-    .eq('legacy_user_id', userId)
-    .maybeSingle();
-  profileId = (byLegacy.data as { id?: string } | null)?.id;
-  if (!profileId && UUID_RE.test(userId)) {
-    const byId = await admin.from('profiles').select('id').eq('id', userId).maybeSingle();
-    profileId = (byId.data as { id?: string } | null)?.id ?? userId;
+  // Defensive: callers pass the profile uuid. Bail on a non-uuid (e.g. a stray
+  // legacy Turso id) rather than feeding garbage to the auth admin API.
+  if (!UUID_RE.test(userId)) {
+    console.error('[user.service] deleteUser called with non-uuid id, skipping:', userId);
+    return;
   }
-  if (!profileId) return;
-
-  // Revoke EVERY org membership (not just the admin's current org)…
-  await admin.from('organization_members').delete().eq('profile_id', profileId);
-  // …and delete the Supabase auth identity so the session can no longer
-  // authenticate. This is the actual access revocation; profiles cascades on
-  // auth.users delete. Best-effort: log but don't fail the request if it errors.
-  const { error: authErr } = await admin.auth.admin.deleteUser(profileId);
-  if (authErr) {
-    console.error('[user.service] auth.admin.deleteUser failed for', profileId, authErr);
+  await admin.from('organization_members').delete().eq('profile_id', userId);
+  const { error } = await admin.auth.admin.deleteUser(userId);
+  if (error) {
+    console.error('[user.service] auth.admin.deleteUser failed for', userId, error);
+    throw error;
   }
 }
 
@@ -134,87 +195,102 @@ export type UserProfileUpdate = {
 };
 
 export async function updateUserProfile(
-  ctx: TenantContext,
+  _ctx: TenantContext,
   userId: string,
   patch: UserProfileUpdate,
 ) {
-  const updates: Record<string, unknown> = { updatedAt: new Date() };
-  if (patch.displayName !== undefined) updates.name = patch.displayName;
+  const admin = supabaseAdmin();
+  const updates: Record<string, unknown> = {};
+  if (patch.displayName !== undefined) updates.display_name = patch.displayName;
   if (patch.email !== undefined) updates.email = patch.email;
   if (patch.alias !== undefined) updates.alias = patch.alias;
-  if (patch.roleId !== undefined) updates.roleId = patch.roleId;
-
-  await ctx.db.update(user).set(updates).where(eq(user.id, userId));
+  if (patch.roleId !== undefined) updates.role_id = patch.roleId;
+  if (Object.keys(updates).length > 0) {
+    const { error } = await admin.from('profiles').update(updates).eq('id', userId);
+    if (error) throw error;
+  }
+  // Keep the login email in sync with the profile email (best-effort — the
+  // profile update above is the source of truth the UI reads).
+  if (patch.email !== undefined) {
+    const { error: authErr } = await admin.auth.admin.updateUserById(userId, { email: patch.email });
+    if (authErr) console.warn('[user.service] auth email sync failed for', userId, authErr);
+  }
 }
 
 export async function isAliasTaken(
-  ctx: TenantContext,
+  _ctx: TenantContext,
   alias: string,
   excludeUserId?: string,
 ): Promise<boolean> {
-  const rows = await ctx.db
-    .select({ id: user.id })
-    .from(user)
-    .where(
-      excludeUserId
-        ? and(eq(user.alias, alias), ne(user.id, excludeUserId))
-        : eq(user.alias, alias),
-    )
-    .limit(1);
-  return rows.length > 0;
+  const admin = supabaseAdmin();
+  let query = admin.from('profiles').select('id').eq('alias', alias);
+  if (excludeUserId) query = query.neq('id', excludeUserId);
+  const { data, error } = await query.limit(1);
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
 }
 
-export async function listAliases(ctx: TenantContext): Promise<Record<string, string>> {
-  const rows = await ctx.db
-    .select({ id: user.id, alias: user.alias })
-    .from(user);
-  return Object.fromEntries(rows.filter((r) => r.alias).map((r) => [r.id, r.alias!]));
+export async function listAliases(_ctx: TenantContext): Promise<Record<string, string>> {
+  const admin = supabaseAdmin();
+  const { data, error } = await admin
+    .from('profiles')
+    .select('id, alias')
+    .not('alias', 'is', null);
+  if (error) throw error;
+  return Object.fromEntries(
+    ((data ?? []) as Array<{ id: string; alias: string | null }>)
+      .filter((r) => r.alias)
+      .map((r) => [r.id, r.alias as string]),
+  );
 }
 
-export async function listOrganizations(ctx: TenantContext) {
-  return ctx.db
-    .select({ id: organization.id, name: organization.name })
-    .from(organization)
-    .orderBy(organization.name);
+export async function listOrganizations(_ctx: TenantContext) {
+  const admin = supabaseAdmin();
+  const { data, error } = await admin.from('organizations').select('id, name').order('name');
+  if (error) throw error;
+  return ((data ?? []) as Array<{ id: string; name: string }>).map((o) => ({
+    id: o.id,
+    name: o.name,
+  }));
 }
 
+/**
+ * Reconcile a user's org memberships to exactly `orgIds` (add missing, remove
+ * extra). Org-shared admin action: the caller (requireAdmin) decides the set.
+ */
 export async function updateUserOrganizations(
-  ctx: TenantContext,
+  _ctx: TenantContext,
   userId: string,
   orgIds: string[],
 ) {
-  // Get current memberships
-  const current = await ctx.db
-    .select({ orgId: member.organizationId })
-    .from(member)
-    .where(eq(member.userId, userId));
+  const admin = supabaseAdmin();
+  const { data: current, error } = await admin
+    .from('organization_members')
+    .select('organization_id')
+    .eq('profile_id', userId);
+  if (error) throw error;
 
-  const currentIds = new Set(current.map((c) => c.orgId));
+  const currentIds = new Set(
+    ((current ?? []) as Array<{ organization_id: string }>).map((c) => c.organization_id),
+  );
   const desiredIds = new Set(orgIds);
 
-  // Remove memberships that are no longer desired
-  for (const cid of currentIds) {
-    if (!desiredIds.has(cid)) {
-      await ctx.db
-        .delete(member)
-        .where(and(eq(member.userId, userId), eq(member.organizationId, cid)));
-    }
-  }
+  const toRemove = [...currentIds].filter((id) => !desiredIds.has(id));
+  const toAdd = [...desiredIds].filter((id) => !currentIds.has(id));
 
-  // Add new memberships
-  const now = new Date();
-  for (const did of desiredIds) {
-    if (!currentIds.has(did)) {
-      await ctx.db
-        .insert(member)
-        .values({
-          id: crypto.randomUUID(),
-          organizationId: did,
-          userId,
-          role: 'member',
-          createdAt: now,
-        })
-        .onConflictDoNothing();
-    }
+  if (toRemove.length > 0) {
+    const { error: delErr } = await admin
+      .from('organization_members')
+      .delete()
+      .eq('profile_id', userId)
+      .in('organization_id', toRemove);
+    if (delErr) throw delErr;
+  }
+  if (toAdd.length > 0) {
+    const { error: insErr } = await admin.from('organization_members').upsert(
+      toAdd.map((organization_id) => ({ profile_id: userId, organization_id, role: 'member' })),
+      { onConflict: 'profile_id,organization_id' },
+    );
+    if (insErr) throw insErr;
   }
 }

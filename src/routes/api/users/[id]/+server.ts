@@ -87,8 +87,12 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
   const userId = params.id;
   if (!userId) throw error(400, 'missing id');
 
-  // Prevent self-deletion
-  if (userId === locals.user?.id) throw error(400, 'cannot delete your own account');
+  // Prevent self-deletion. The admin list is keyed by the Supabase profile uuid,
+  // but locals.user.id is still the legacy bridge id — compare against supabaseId
+  // (and id) so the guard holds across the id-space divergence.
+  if (userId === locals.user?.supabaseId || userId === locals.user?.id) {
+    throw error(400, 'cannot delete your own account');
+  }
 
   const existing = await getUser(ctx, userId);
   if (!existing) throw error(404, 'user not found');

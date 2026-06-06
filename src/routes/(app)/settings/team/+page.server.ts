@@ -41,6 +41,8 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
 
   const users = rawUsers.map((u) => ({
     ...u,
+    email: u.email ?? '',
+    role: (u.role === 'admin' ? 'admin' : 'user') as 'user' | 'admin',
     displayName: u.displayName ?? null,
     createdAt: u.createdAt ? new Date(u.createdAt).toISOString() : null,
   }));
