@@ -227,7 +227,8 @@ export async function resolveIdentity(event: RequestEvent): Promise<IdentityReso
     path.startsWith('/api/metrics/') ||
     path === '/api/messages/ingest' ||
     path === '/api/agent-memories/ingest' ||
-    path === '/api/agent-memories/recall';
+    path === '/api/agent-memories/recall' ||
+    path === '/api/agent-memories/delete';
 
   if (env.AUTH_PROVIDER === 'supabase' && !isServerTokenPath) {
     return resolveViaSupabase(event);

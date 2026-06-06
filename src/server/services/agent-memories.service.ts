@@ -105,6 +105,31 @@ export async function upsertMemories(orgId: string, memories: MemoryInput[]): Pr
   return values.length;
 }
 
+/**
+ * Delete corpus rows by (source, source_id) for an agent — the cascade target
+ * for a Knowledge-Graph `forget` so a deleted KG node doesn't leave an orphaned
+ * vector in the corpus. Org isolation via RLS; narrows by agentId + source +
+ * source_id. No-op (0) when source_id is empty.
+ */
+export async function deleteMemoriesBySource(
+  orgId: string,
+  opts: { agentId: string; source: string; sourceId: string },
+): Promise<number> {
+  if (!opts.sourceId) return 0;
+  const res = await withOrg(orgId, (tx) =>
+    tx
+      .delete(agentMemories)
+      .where(
+        and(
+          eq(agentMemories.agentId, opts.agentId),
+          eq(agentMemories.source, opts.source),
+          eq(agentMemories.sourceId, opts.sourceId),
+        ),
+      ),
+  );
+  return (res as unknown as { rowCount?: number })?.rowCount ?? 0;
+}
+
 /** List recent memories for an agent (newest first). No embedding payload. */
 export async function listMemories(
   orgId: string,
