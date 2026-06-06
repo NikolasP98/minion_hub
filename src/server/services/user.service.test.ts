@@ -24,12 +24,19 @@ vi.mock('$lib/auth/auth', () => ({
   }),
 }));
 
-// deleteUser also removes the org membership via the Supabase admin client.
-// Stub it so the unit test stays hermetic (the real client needs SUPABASE_URL +
-// service-role key, and createClient throws without them).
+// deleteUser revokes access via the Supabase admin client (resolve profile →
+// delete memberships → delete auth user). Stub it so the unit test stays
+// hermetic (the real client needs SUPABASE_URL + service-role key).
 vi.mock('$server/supabase', () => ({
   supabaseAdmin: () => ({
-    from: () => ({ delete: () => ({ match: () => Promise.resolve({ error: null }) }) }),
+    from: () => ({
+      select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: null }) }) }),
+      delete: () => ({
+        eq: () => Promise.resolve({ error: null }),
+        match: () => Promise.resolve({ error: null }),
+      }),
+    }),
+    auth: { admin: { deleteUser: () => Promise.resolve({ error: null }) } },
   }),
 }));
 

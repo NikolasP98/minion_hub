@@ -34,7 +34,7 @@ import { resolveSupabaseTenant } from '$server/auth/supabase-bridge.runtime';
  * sessions that bypass the login/callback/invite client-side
  * `setActive()` flows (legacy users, session-table drift, manual SQL).
  */
-export const load: LayoutServerLoad = async ({ locals, depends, url }) => {
+export const load: LayoutServerLoad = async ({ locals, depends, url, cookies }) => {
   depends(
     'app:user',
     'app:permissions',
@@ -57,8 +57,9 @@ export const load: LayoutServerLoad = async ({ locals, depends, url }) => {
     // uuid). Fall back to the legacy Turso `member` table only when there is no
     // Supabase membership (better-auth/self-host, or bake-in lag). On prod both
     // stores resolve the same org id, so this is behavior-preserving.
+    const preferredOrgId = cookies.get('active_org') ?? null;
     const supaOrgId = user.supabaseId
-      ? (await resolveSupabaseTenant(user.supabaseId))?.orgId
+      ? (await resolveSupabaseTenant(user.supabaseId, preferredOrgId))?.orgId
       : undefined;
     const orgId =
       supaOrgId ??

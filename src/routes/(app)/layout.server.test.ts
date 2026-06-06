@@ -61,7 +61,7 @@ function makeEvent(overrides: Partial<{ user: unknown; session: unknown }> = {})
     route: { id: '/(app)' },
     fetch: globalThis.fetch,
     setHeaders: vi.fn(),
-    cookies: {} as never,
+    cookies: { get: () => undefined } as never,
     getClientAddress: () => '127.0.0.1',
     isDataRequest: false,
     isSubRequest: false,

@@ -31,10 +31,21 @@
         open = false;
         if (orgId === activeOrgId) return;
         try {
-            await authClient.organization.setActive({ organizationId: orgId });
+            // Supabase mode: persist via the active_org cookie (resolveIdentity
+            // honors it). This is the switch that actually takes effect on cloud.
+            const res = await fetch("/api/active-org", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ orgId }),
+            });
+            if (!res.ok) throw new Error(`active-org ${res.status}`);
+            // Best-effort for self-host/better-auth (mutates the session row).
+            await authClient.organization
+                .setActive({ organizationId: orgId })
+                .catch(() => {});
             await invalidateAll();
         } catch (err) {
-            console.error("[org-picker] setActive failed", err);
+            console.error("[org-picker] switch failed", err);
         }
     }
 </script>

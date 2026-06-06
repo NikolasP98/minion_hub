@@ -1,3 +1,4 @@
+import { error } from '@sveltejs/kit';
 import { getDb } from '$server/db/client';
 import { organization } from '@minion-stack/db/schema';
 import type { TenantContext } from '$server/services/base';
@@ -15,19 +16,15 @@ export async function getTenantCtx(locals: App.Locals): Promise<TenantContext | 
 }
 
 /**
- * Resolve tenant context, auto-creating a default organization if none exists.
+ * Resolve tenant context or fail. Previously this auto-created a phantom
+ * "Default" org in Turso when none could be resolved — but on cloud the orgs
+ * live in Supabase, so the fabricated Turso org had no data and the UI showed a
+ * non-existent "Default". Now we fail closed (403) instead: the caller's request
+ * needs a real, resolved org, and a missing one means the session's tenancy
+ * didn't resolve (handled upstream by resolveIdentity / the (app) layout).
  */
 export async function getOrCreateTenantCtx(locals: App.Locals): Promise<TenantContext> {
   const ctx = await getTenantCtx(locals);
   if (ctx) return ctx;
-  const db = getDb();
-  const orgId = crypto.randomUUID();
-  const now = new Date();
-  await db
-    .insert(organization)
-    .values({ id: orgId, name: 'Default', slug: 'default', createdAt: now })
-    .onConflictDoNothing();
-  // Re-read in case the onConflictDoNothing fired
-  const rows = await db.select({ id: organization.id }).from(organization).limit(1);
-  return { db, tenantId: rows[0].id };
+  throw error(403, 'No active organization for this request');
 }

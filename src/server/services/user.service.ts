@@ -89,15 +89,41 @@ export async function updateUserRole(ctx: TenantContext, userId: string, role: '
   await ctx.db.update(user).set({ role, updatedAt: new Date() }).where(eq(user.id, userId));
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function deleteUser(ctx: TenantContext, userId: string) {
+  // Legacy Turso user row (best-effort — admin list is still Turso-keyed).
   await ctx.db.delete(user).where(eq(user.id, userId));
-  // userId post-flip = Supabase profile UUID. Remove from Supabase
-  // organization_members so the session-time tenancy check (resolveSupabaseTenant)
-  // returns null on the next request and the user loses access immediately.
-  await supabaseAdmin()
-    .from('organization_members')
-    .delete()
-    .match({ profile_id: userId, organization_id: ctx.tenantId });
+
+  const admin = supabaseAdmin();
+
+  // Resolve the Supabase profile/auth id. The admin Users list returns Turso
+  // ids, so `userId` is usually the LEGACY id — map it via profiles.legacy_user_id.
+  // (It may already be the profile uuid for newer rows.) Without this mapping the
+  // revocation below matches nothing and the deleted user keeps their session —
+  // access is gated on Supabase auth.users, NOT on the Turso row we just removed.
+  let profileId: string | undefined;
+  const byLegacy = await admin
+    .from('profiles')
+    .select('id')
+    .eq('legacy_user_id', userId)
+    .maybeSingle();
+  profileId = (byLegacy.data as { id?: string } | null)?.id;
+  if (!profileId && UUID_RE.test(userId)) {
+    const byId = await admin.from('profiles').select('id').eq('id', userId).maybeSingle();
+    profileId = (byId.data as { id?: string } | null)?.id ?? userId;
+  }
+  if (!profileId) return;
+
+  // Revoke EVERY org membership (not just the admin's current org)…
+  await admin.from('organization_members').delete().eq('profile_id', profileId);
+  // …and delete the Supabase auth identity so the session can no longer
+  // authenticate. This is the actual access revocation; profiles cascades on
+  // auth.users delete. Best-effort: log but don't fail the request if it errors.
+  const { error: authErr } = await admin.auth.admin.deleteUser(profileId);
+  if (authErr) {
+    console.error('[user.service] auth.admin.deleteUser failed for', profileId, authErr);
+  }
 }
 
 export type UserProfileUpdate = {

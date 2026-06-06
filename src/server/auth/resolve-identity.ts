@@ -139,8 +139,12 @@ async function resolveViaSupabase(event: RequestEvent): Promise<IdentityResoluti
   // user with no Supabase membership row still resolves exactly as before.
   // (On prod both stores agree on the same org id, so this is behavior-
   // preserving; the Supabase read is what lets Turso be dropped from tenancy.)
+  // Honor the org switcher: the active_org cookie (set by /api/active-org) is the
+  // preferred org. resolveSupabaseTenant only returns it if the user is actually a
+  // member, else it falls back to the alphabetical-first org (its default).
+  const preferredOrgId = event.cookies.get('active_org') ?? null;
   const supaOrgId = bridged.supabaseId
-    ? (await resolveSupabaseTenant(bridged.supabaseId))?.orgId
+    ? (await resolveSupabaseTenant(bridged.supabaseId, preferredOrgId))?.orgId
     : undefined;
   const orgId =
     supaOrgId ??
