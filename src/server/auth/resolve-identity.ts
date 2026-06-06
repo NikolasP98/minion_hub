@@ -13,8 +13,9 @@
 // version. See `bypassGate` and `fallbackToMembership` below.
 
 import type { RequestEvent } from '@sveltejs/kit';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { servers, organization, user as userTable, jwks } from '@minion-stack/db/schema';
+import { gateway } from '@minion-stack/db/pg';
 import { getDb } from '$server/db/client';
 import { getCoreDb } from '$server/db/pg-client';
 import { getAuth } from '$lib/auth/auth';
@@ -55,6 +56,39 @@ export async function resolveServerTokenAuth(
   const token = authorization.slice(7).trim();
   if (!token) return null;
 
+  // Primary: Supabase `gateway` (system-of-record). org_id supplies the tenant
+  // (the Turso `servers.tenant_id` equivalent). getCoreDb runs as the bypass role
+  // — correct here: this is a system auth path with no user context, resolving
+  // WHICH org a gateway token belongs to. A Supabase miss (or any error) falls
+  // through to the Turso `servers` path below (dual-read bake; reversible).
+  try {
+    const gwRows = await getCoreDb()
+      .select({
+        id: gateway.id,
+        legacyServerId: gateway.legacyServerId,
+        // org_id is newer than the vendored @minion-stack/db tarball's gateway
+        // type, so select it via a raw column expression (see 20260606230000).
+        orgId: sql<string | null>`org_id`,
+        token: gateway.tokenCiphertext,
+        tokenIv: gateway.tokenIv,
+      })
+      .from(gateway);
+    for (const row of gwRows) {
+      if (!row.token || !row.orgId) continue;
+      const stored = row.tokenIv ? decryptToken(row.token, row.tokenIv) : row.token;
+      if (stored === token) {
+        return { tenantId: row.orgId, serverId: row.legacyServerId ?? row.id };
+      }
+    }
+  } catch (err) {
+    console.error(
+      '[resolve-identity] Supabase gateway token lookup failed; falling back to Turso servers:',
+      err,
+    );
+  }
+
+  // Fallback: legacy Turso `servers` (telemetry-adjacent) during the gateway-token
+  // cutover bake. Remove once the Supabase path is proven for a full bake cycle.
   const db = getDb();
   const rows = await db
     .select({
