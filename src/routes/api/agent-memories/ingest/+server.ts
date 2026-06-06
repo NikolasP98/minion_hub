@@ -27,10 +27,17 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   if (embeddingsEnabled()) {
     const needEmbed = rows.filter((r) => !r.embedding);
     if (needEmbed.length > 0) {
-      const vecs = await embedTexts(needEmbed.map((r) => r.content));
-      needEmbed.forEach((r, i) => {
-        r.embedding = vecs[i];
-      });
+      // Best-effort: a failing embeddings provider (bad/expired key, rate limit)
+      // must NOT fail the ingest — store the memories without a vector and let a
+      // later backfill embed them. Otherwise gateway memory-sink writes 500.
+      try {
+        const vecs = await embedTexts(needEmbed.map((r) => r.content));
+        needEmbed.forEach((r, i) => {
+          r.embedding = vecs[i];
+        });
+      } catch (err) {
+        console.error('[agent-memories/ingest] embedding failed, storing vectorless:', err);
+      }
     }
   }
 
