@@ -1,23 +1,27 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { workshopSaves } from '@minion-stack/db/schema';
+import { workshopSaves } from '@minion-stack/db/pg';
 import { and, desc, eq, isNull, or } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { requireAuth } from '$server/auth/authorize';
-import { getTenantCtx } from '$server/auth/tenant-ctx';
+import { getCoreCtx } from '$server/auth/core-ctx';
 
 export const GET: RequestHandler = async ({ locals }) => {
   const user = requireAuth(locals);
-  const ctx = await getTenantCtx(locals);
+  const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
+  const profileId = user.supabaseId ?? null;
 
-  // Return saves owned by this user OR legacy saves with no owner (admin-visible only)
+  // Saves owned by this user (by profile uuid) OR legacy ownerless rows
+  // (admin-visible only), scoped to the active tenant.
   const rows = await ctx.db
     .select()
     .from(workshopSaves)
     .where(
       and(
-        or(eq(workshopSaves.userId, user.id), isNull(workshopSaves.userId)),
+        profileId
+          ? or(eq(workshopSaves.profileId, profileId), isNull(workshopSaves.profileId))
+          : isNull(workshopSaves.profileId),
         or(eq(workshopSaves.tenantId, ctx.tenantId), isNull(workshopSaves.tenantId)),
       ),
     )
@@ -36,8 +40,8 @@ export const GET: RequestHandler = async ({ locals }) => {
     return {
       id: row.id,
       name: row.name,
-      updatedAt: row.updatedAt,
-      createdAt: row.createdAt,
+      updatedAt: row.updatedAt.getTime(),
+      createdAt: row.createdAt.getTime(),
       thumbnail: row.thumbnail ?? null,
       agentCount,
       elementCount,
@@ -49,7 +53,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 
 export const POST: RequestHandler = async ({ locals, request }) => {
   const user = requireAuth(locals);
-  const ctx = await getTenantCtx(locals);
+  const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
 
   const body = await request.json();
@@ -66,7 +70,6 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   }
 
   const id = randomUUID();
-  const now = Date.now();
 
   try {
     await ctx.db.insert(workshopSaves).values({
@@ -74,10 +77,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       name,
       state,
       thumbnail: typeof thumbnail === 'string' ? thumbnail : null,
-      userId: user.id,
+      profileId: user.supabaseId ?? null,
       tenantId: ctx.tenantId,
-      createdAt: now,
-      updatedAt: now,
     });
   } catch (err) {
     console.error('[workshop saves POST] db insert failed:', err);
