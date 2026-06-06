@@ -27,20 +27,19 @@
   const isReliability = $derived(page.url.pathname.startsWith('/reliability'));
   const isSettings = $derived(page.url.pathname.startsWith('/settings'));
 
-  // Three responsive tiers:
-  //   <md   : sidebar hidden — the mobile hamburger (Topbar) takes over.
-  //   md–lg : forced mini icon rail (56px) — the "midpoint" before the hamburger.
-  //   lg+   : honors the user's collapse preference (expanded 224px / mini 56px).
-  // Expanded affordances are all gated on lg+, so md–lg always renders the rail
-  // regardless of preference; the toggle is hidden below lg (see .collapse-toggle).
+  // Two responsive tiers:
+  //   <md  : sidebar hidden — the mobile hamburger (Topbar) takes over.
+  //   md+  : honors the user's collapse preference (expanded 224px / mini 56px).
+  // The collapse toggle is available across the whole md+ range, so the user can
+  // expand/retract at the "in-between" widths too, not just lg+.
   let collapsed = $state(false);
-  // Track the lg breakpoint so we can show hover tooltips whenever the rail is in
-  // icon-only mode — that's `collapsed` (lg+ preference) OR the md–lg forced rail.
-  let isLg = $state(true);
+  // Track the md breakpoint so hover tooltips appear whenever the rail is in
+  // icon-only mode — that's `collapsed` (md+ preference) OR below md.
+  let isMd = $state(true);
   onMount(() => {
     collapsed = localStorage.getItem('hub-sidebar-collapsed') === '1';
-    const mq = window.matchMedia('(min-width: 64rem)');
-    const sync = () => (isLg = mq.matches);
+    const mq = window.matchMedia('(min-width: 48rem)');
+    const sync = () => (isMd = mq.matches);
     sync();
     mq.addEventListener('change', sync);
     return () => mq.removeEventListener('change', sync);
@@ -51,15 +50,15 @@
   }
 
   // Labels are hidden (so a tooltip earns its keep) whenever we're not in the
-  // lg+ expanded state.
-  const showTooltips = $derived(collapsed || !isLg);
+  // md+ expanded state.
+  const showTooltips = $derived(collapsed || !isMd);
 
-  // Expanded width/labels/heads unlock only at lg+; below that we stay a mini rail.
-  const widthCls = $derived(collapsed ? 'w-14' : 'w-14 lg:w-[224px]');
-  const labelCls = $derived(collapsed ? 'hidden' : 'hidden lg:inline');
-  const headCls = $derived(collapsed ? 'hidden' : 'hidden lg:block');
-  // Center icons in the mini rail; left-align with labels only in the lg+ expanded state.
-  const rowJustify = $derived(collapsed ? 'justify-center' : 'justify-center lg:justify-start');
+  // Expanded width/labels/heads unlock at md+; collapsed stays a mini rail.
+  const widthCls = $derived(collapsed ? 'w-14' : 'w-14 md:w-[224px]');
+  const labelCls = $derived(collapsed ? 'hidden' : 'hidden md:inline');
+  const headCls = $derived(collapsed ? 'hidden' : 'hidden md:block');
+  // Center icons in the mini rail; left-align with labels only in the md+ expanded state.
+  const rowJustify = $derived(collapsed ? 'justify-center' : 'justify-center md:justify-start');
 </script>
 
 <aside
@@ -70,20 +69,20 @@
   <div class="shrink-0 px-2 pt-3 pb-2 flex flex-col gap-2">
     <a
       href="/"
-      class="flex items-center {collapsed ? 'justify-center' : 'justify-center lg:justify-start'} gap-2 h-9 px-1.5 rounded-[var(--radius-md)] hover:bg-white/[0.05] transition-colors duration-[150ms] group"
+      class="flex items-center {collapsed ? 'justify-center' : 'justify-center md:justify-start'} gap-2 h-9 px-1.5 rounded-[var(--radius-md)] hover:bg-white/[0.05] transition-colors duration-[150ms] group"
       aria-label="Minion Hub"
     >
       {#if collapsed}
         <MinionLogo size="sm" />
       {:else}
-        <span class="hidden lg:flex items-center leading-none">
+        <span class="hidden md:flex items-center leading-none">
           <span class="font-black text-sm tracking-wide uppercase text-brand-pink group-hover:text-brand-pink/90 transition-colors">MINION</span>
           <span class="font-semibold text-sm text-foreground/80 ml-1 group-hover:text-foreground transition-colors">hub</span>
         </span>
-        <span class="lg:hidden"><MinionLogo size="sm" /></span>
+        <span class="md:hidden"><MinionLogo size="sm" /></span>
       {/if}
     </a>
-    <div class={collapsed ? 'hidden' : 'hidden lg:block'}>
+    <div class={collapsed ? 'hidden' : 'hidden md:block'}>
       <OrgPicker />
     </div>
   </div>
@@ -167,8 +166,8 @@
       {#snippet children(trigger)}
         <button
           type="button"
-          onclick={toggle}
           {...trigger}
+          onclick={toggle}
           class="nav-row collapse-toggle {rowJustify} text-muted-foreground"
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
@@ -202,15 +201,15 @@
       color var(--duration-fast) var(--ease-standard),
       background-color var(--duration-fast) var(--ease-standard);
   }
-  /* The collapse toggle is only meaningful at lg+ (md–lg is a forced mini rail).
-     Hidden here via scoped CSS rather than Tailwind `hidden lg:flex`, because the
-     scoped `.nav-row { display: flex }` rule outranks Tailwind's `.hidden` utility
-     and would otherwise leave the button visible — but inert — in the rail band.
-     64rem is the default Tailwind `lg` breakpoint. */
+  /* The collapse toggle is available across the whole md+ range (the sidebar is
+     hidden below md). Hidden here via scoped CSS rather than Tailwind
+     `hidden md:flex`, because the scoped `.nav-row { display: flex }` rule
+     outranks Tailwind's `.hidden` utility and would otherwise leave the button
+     visible in the <md band. 48rem is the default Tailwind `md` breakpoint. */
   .collapse-toggle {
     display: none;
   }
-  @media (min-width: 64rem) {
+  @media (min-width: 48rem) {
     .collapse-toggle {
       display: flex;
     }
