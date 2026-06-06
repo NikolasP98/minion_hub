@@ -211,6 +211,25 @@ export async function deleteOAuthIdentityFromSupabase(
 }
 
 /**
+ * Delete any identity (oauth OR channel) from the canonical Supabase vault by
+ * its row id. Admin/owner-gated at the route layer; the id is a uuid pk. Returns
+ * true only when a row was actually deleted, so callers can fall back to the
+ * legacy Turso store on a miss.
+ */
+export async function deleteIdentityByIdFromSupabase(identityId: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabaseAdmin()
+      .from('user_identities')
+      .delete()
+      .eq('id', identityId)
+      .select('id');
+    return !error && (data?.length ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Update the current user's own canonical Supabase profile. Keyed by the
  * supabase uuid (profiles.id). Only the fields present in `patch` are written.
  * Returns true on success.

@@ -14,11 +14,14 @@ vi.mock('$server/db/utils', () => ({
   nowMs: () => 1_700_000_000_000,
 }));
 
-// getGoogleCredential consults the Supabase vault first; these tests exercise
-// the legacy Turso fallback, so stub Supabase to "no credential found".
+// getGoogleCredential + listIdentities consult the Supabase vault first; these
+// tests exercise the legacy Turso fallback, so stub Supabase to "nothing found"
+// (null credential, empty identity lists) → the code falls back to Turso.
 const getGoogleCredentialFromSupabase = vi.fn().mockResolvedValue(null);
 vi.mock('./supabase-credential', () => ({
   getGoogleCredentialFromSupabase: (...args: unknown[]) => getGoogleCredentialFromSupabase(...args),
+  listOAuthIdentitiesFromSupabase: vi.fn().mockResolvedValue([]),
+  listChannelIdentitiesFromSupabase: vi.fn().mockResolvedValue([]),
 }));
 
 beforeEach(() => vi.clearAllMocks());

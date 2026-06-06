@@ -15,6 +15,44 @@ export type AttachIdentityInput = {
 };
 
 export async function listIdentities(ctx: TenantContext, userId: string) {
+  // Canonical source = Supabase `user_identities` vault (oauth + channel),
+  // resolved from the passed legacy id OR supabase uuid. The bridge now keys
+  // locals.user.id by profile uuid, so a Turso read (keyed by legacy id) would
+  // return nothing; read Supabase first and only fall back to the legacy Turso
+  // vault when Supabase yields nothing (bake-in / self-host). Never worse than
+  // the pre-cutover behavior.
+  const { listOAuthIdentitiesFromSupabase, listChannelIdentitiesFromSupabase } = await import(
+    './supabase-credential'
+  );
+  const [oauth, channel] = await Promise.all([
+    listOAuthIdentitiesFromSupabase(userId),
+    listChannelIdentitiesFromSupabase(userId),
+  ]);
+  const supa = [
+    ...oauth.map((r) => ({
+      id: r.id,
+      provider: r.provider,
+      channel: r.provider,
+      externalId: r.externalId,
+      channelUserId: r.externalId,
+      displayName: r.displayName,
+      kind: 'oauth' as const,
+      verifiedAt: r.verifiedAt,
+    })),
+    ...channel.map((r) => ({
+      id: r.id,
+      provider: r.channel,
+      channel: r.channel,
+      externalId: r.channelUserId,
+      channelUserId: r.channelUserId,
+      displayName: r.displayName,
+      kind: 'channel' as const,
+      verifiedAt: r.verifiedAt,
+    })),
+  ];
+  if (supa.length > 0) return supa;
+
+  // Legacy fallback: Turso user_identities (keyed by legacy userId).
   const rows = await ctx.db
     .select()
     .from(userIdentities)
@@ -168,6 +206,11 @@ export async function markVerified(ctx: TenantContext, identityId: string) {
 }
 
 export async function removeIdentity(ctx: TenantContext, identityId: string) {
+  // Canonical vault first — listIdentities now serves Supabase rows (Supabase
+  // ids), so a Turso-only delete would no-op on them. Fall back to Turso when
+  // the id isn't in Supabase (legacy rows / bake-in).
+  const { deleteIdentityByIdFromSupabase } = await import('./supabase-credential');
+  if (await deleteIdentityByIdFromSupabase(identityId)) return;
   await ctx.db.delete(userIdentities).where(eq(userIdentities.id, identityId));
 }
 
