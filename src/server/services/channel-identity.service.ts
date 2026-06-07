@@ -1,6 +1,5 @@
 import { eq, and } from 'drizzle-orm';
 import { userIdentities } from '../db/schema/user-identities';
-import { user } from '../db/schema/auth';
 import { newId, nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
 
@@ -82,17 +81,16 @@ export async function listChannelIdentitiesForPicker(
       channel: userIdentities.provider,
       channelUserId: userIdentities.externalId,
       displayName: userIdentities.displayName,
-      userName: user.name,
       verifiedAt: userIdentities.verifiedAt,
     })
     .from(userIdentities)
-    .leftJoin(user, eq(userIdentities.userId, user.id))
     .where(eq(userIdentities.kind, 'channel'));
 
-  // Fallback name source: in Supabase-primary setups the Better Auth `user`
-  // table is empty, but a user's OAuth identity usually carries their name or
-  // email in display_name. Resolve a best-effort name per user from any
-  // identity so the picker shows a person, not a raw channel id.
+  // Name source: a user's OAuth/channel identity carries their name or email in
+  // display_name. Resolve a best-effort name per user from any identity so the
+  // picker shows a person, not a raw channel id. (The legacy Turso `user` join
+  // was removed — Supabase is the identity store; this display_name fallback is
+  // what was already powering names in Supabase-primary mode anyway.)
   const all = await ctx.db
     .select({
       userId: userIdentities.userId,
@@ -113,7 +111,7 @@ export async function listChannelIdentitiesForPicker(
     channel: r.channel,
     channelUserId: r.channelUserId,
     displayName: r.displayName,
-    userName: r.userName ?? nameByUser.get(r.userId) ?? null,
+    userName: nameByUser.get(r.userId) ?? null,
     verifiedAt: r.verifiedAt,
   }));
 }

@@ -19,7 +19,10 @@ describe('createMembership', () => {
     );
     expect(from).toHaveBeenCalledWith('organization_members');
     expect(upsert).toHaveBeenCalledTimes(1);
-    const [row, opts] = upsert.mock.calls[0] as [Record<string, unknown>, Record<string, unknown>];
+    const [row, opts] = upsert.mock.calls[0] as unknown as [
+      Record<string, unknown>,
+      Record<string, unknown>,
+    ];
     expect(row).toEqual({ organization_id: 'org1', profile_id: 'p-uuid', role: 'admin' });
     expect(opts).toEqual({ onConflict: 'organization_id,profile_id' });
   });
@@ -31,7 +34,7 @@ describe('createMembership', () => {
       'org1',
       'user',
     );
-    const [row] = upsert.mock.calls[0] as [Record<string, unknown>];
+    const [row] = upsert.mock.calls[0] as unknown as [Record<string, unknown>];
     expect(row.role).toBe('member');
   });
 
