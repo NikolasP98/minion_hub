@@ -76,7 +76,12 @@ describe('(app)/+layout.server load', () => {
 
   it('returns the full auth bundle for an authenticated user', async () => {
     const user = { id: 'u-1', email: 'a@b.com', role: 'admin', name: 'A' };
-    const ev = makeEvent({ user }) as unknown as Parameters<typeof load>[0];
+    // tenantCtx + an active org on the session skip the defensive org-activation
+    // block (which now resolves tenancy only via Supabase organization_members).
+    const ev = makeEvent({
+      user,
+      session: { activeOrganizationId: 'tenant-x', id: 's1' },
+    }) as unknown as Parameters<typeof load>[0];
     const out = await load(ev);
     expect(out).toEqual({
       user,

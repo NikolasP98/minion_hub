@@ -14,11 +14,12 @@
 
 import type { RequestEvent } from '@sveltejs/kit';
 import { eq, sql } from 'drizzle-orm';
-import { servers, organization, user as userTable, jwks } from '@minion-stack/db/schema';
+import { servers, user as userTable, jwks } from '@minion-stack/db/schema';
 import { gateway } from '@minion-stack/db/pg';
 import { getDb } from '$server/db/client';
 import { getCoreDb } from '$server/db/pg-client';
 import { getAuth } from '$lib/auth/auth';
+import { supabaseAdmin } from '$server/supabase';
 import { decryptToken } from '$server/auth/crypto';
 import { resolveSupabaseUser, resolveSupabaseTenant } from '$server/auth/supabase-bridge.runtime';
 import { resolveUserTenant } from '$server/auth/tenant';
@@ -112,9 +113,8 @@ export async function resolveServerTokenAuth(
 
 /** AUTH_DISABLED dev mode: fabricate a local admin and grab the first org. */
 async function resolveAuthDisabled(): Promise<IdentityResolution> {
-  const db = getDb();
-  const rows = await db.select({ id: organization.id }).from(organization).limit(1);
-  const tenantCtx = rows.length > 0 ? { db, tenantId: rows[0].id } : undefined;
+  const { data } = await supabaseAdmin().from('organizations').select('id').limit(1).maybeSingle();
+  const tenantCtx = data ? { db: getDb(), tenantId: (data as { id: string }).id } : undefined;
   return {
     locals: {
       tenantCtx,

@@ -1,8 +1,7 @@
 import type { Actions, PageServerLoad } from './$types';
 import { redirect, error } from '@sveltejs/kit';
 import { requireAuth } from '$server/auth/authorize';
-import { getDb } from '$server/db/client';
-import { organization } from '@minion-stack/db/schema';
+import { listAllOrganizations } from '$server/services/organizations.service';
 import { createRequest, getPendingRequestForUser } from '$server/services/join/requests.service';
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -27,13 +26,9 @@ export const actions: Actions = {
     const fd = await request.formData();
     const message = String(fd.get('message') ?? '').trim();
 
-    // Default tenant the request is filed against. The Turso `organization`
-    // table mirrors the Supabase org id (FACES 21e0601b), so this resolves the
-    // same org the access is actually granted in.
-    const [org] = await getDb()
-      .select({ id: organization.id })
-      .from(organization)
-      .limit(1);
+    // Default tenant the request is filed against — the first Supabase org
+    // (the same store the approve→organization_members grant writes to).
+    const [org] = await listAllOrganizations();
     if (!org) throw error(500, 'No organization configured on this hub.');
 
     // Supabase `join_request` is the system-of-record (read by the admin

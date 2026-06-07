@@ -1,18 +1,20 @@
 import { error } from '@sveltejs/kit';
 import { getDb } from '$server/db/client';
-import { organization } from '@minion-stack/db/schema';
+import { supabaseAdmin } from '$server/supabase';
 import type { TenantContext } from '$server/services/base';
 
 /**
- * Resolve tenant context: use existing locals, fall back to first organization in DB.
- * Returns null only if no organization exists at all.
+ * Resolve tenant context: use existing locals, else fall back to the first
+ * Supabase organization. Returns null only if no organization exists at all.
+ * The fallback is rare — resolveIdentity normally sets locals.tenantCtx. The
+ * Turso `db` handle is kept on the ctx for telemetry/servers reads; only the
+ * tenantId needs to be the canonical Supabase org id.
  */
 export async function getTenantCtx(locals: App.Locals): Promise<TenantContext | null> {
   if (locals.tenantCtx) return locals.tenantCtx;
-  const db = getDb();
-  const rows = await db.select({ id: organization.id }).from(organization).limit(1);
-  if (rows.length === 0) return null;
-  return { db, tenantId: rows[0].id };
+  const { data } = await supabaseAdmin().from('organizations').select('id').limit(1).maybeSingle();
+  if (!data) return null;
+  return { db: getDb(), tenantId: (data as { id: string }).id };
 }
 
 /**

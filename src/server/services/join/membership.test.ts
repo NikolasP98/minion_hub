@@ -1,39 +1,44 @@
-import { describe, test, expect } from 'vitest';
-import { drizzle } from 'drizzle-orm/libsql';
-import { createClient } from '@libsql/client';
-import { eq } from 'drizzle-orm';
-import { member, user, organization } from '@minion-stack/db/schema';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// createMembership now writes only the Supabase `organization_members` row.
+const upsert = vi.fn(async () => ({ error: null }));
+const from = vi.fn(() => ({ upsert }));
+vi.mock('$server/supabase', () => ({ supabaseAdmin: () => ({ from }) }));
+
 import { createMembership } from './membership';
 
-function freshDb() {
-  const client = createClient({ url: ':memory:' });
-  const db = drizzle(client);
-  return { db, client };
-}
+beforeEach(() => vi.clearAllMocks());
 
 describe('createMembership', () => {
-  test('inserts member + ensures user row; idempotent', async () => {
-    const { db } = freshDb();
-    await db.run(
-      `create table organization (id text primary key, name text not null, slug text, logo text, created_at integer not null, metadata text)`,
+  it('upserts organization_members for a user with a supabaseId', async () => {
+    await createMembership(
+      {} as never,
+      { id: 'u1', email: 'a@b.c', displayName: 'A', supabaseId: 'p-uuid' },
+      'org1',
+      'admin',
     );
-    await db.run(
-      `create table "user" (id text primary key, name text not null, email text not null unique, email_verified integer not null, image text, created_at integer not null, updated_at integer not null, role text not null default 'user', personal_agent_id text)`,
-    );
-    await db.run(
-      `create table member (id text primary key, organization_id text not null, user_id text not null, role text not null, created_at integer not null)`,
-    );
-    await db
-      .insert(organization)
-      .values({ id: 'org1', name: 'Org', slug: 'org', createdAt: new Date(0) });
+    expect(from).toHaveBeenCalledWith('organization_members');
+    expect(upsert).toHaveBeenCalledTimes(1);
+    const [row, opts] = upsert.mock.calls[0] as [Record<string, unknown>, Record<string, unknown>];
+    expect(row).toEqual({ organization_id: 'org1', profile_id: 'p-uuid', role: 'admin' });
+    expect(opts).toEqual({ onConflict: 'organization_id,profile_id' });
+  });
 
-    await createMembership(db as any, { id: 'u1', email: 'a@b.c', displayName: 'A' }, 'org1', 'user');
-    // idempotent — second call must not throw or duplicate
-    await createMembership(db as any, { id: 'u1', email: 'a@b.c', displayName: 'A' }, 'org1', 'user');
+  it('maps any non-admin role to member', async () => {
+    await createMembership(
+      {} as never,
+      { id: 'u1', email: 'a@b.c', displayName: 'A', supabaseId: 'p-uuid' },
+      'org1',
+      'user',
+    );
+    const [row] = upsert.mock.calls[0] as [Record<string, unknown>];
+    expect(row.role).toBe('member');
+  });
 
-    const members = await db.select().from(member).where(eq(member.userId, 'u1'));
-    const users = await db.select().from(user).where(eq(user.id, 'u1'));
-    expect(members.length).toBe(1);
-    expect(users.length).toBe(1);
+  it('throws when supabaseId is missing (Supabase is the sole auth store)', async () => {
+    await expect(
+      createMembership({} as never, { id: 'u1', email: 'a@b.c', displayName: 'A' }, 'org1', 'user'),
+    ).rejects.toThrow(/supabaseId is required/);
+    expect(upsert).not.toHaveBeenCalled();
   });
 });

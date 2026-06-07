@@ -1,9 +1,19 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { roles, rolePermissions } from '../db/schema/roles';
-import { user } from '../db/schema/auth/index';
+import { supabaseAdmin } from '$server/supabase';
 import type { TenantContext } from './base';
 import { randomUUID } from 'node:crypto';
 import { PERMISSIONS, MODULE_PERMISSIONS } from '$lib/permissions';
+
+/** Count profiles per role_id (Supabase = the user identity store). */
+async function roleMemberCounts(): Promise<Map<string | null, number>> {
+  const { data } = await supabaseAdmin().from('profiles').select('role_id');
+  const counts = new Map<string | null, number>();
+  for (const p of (data ?? []) as Array<{ role_id: string | null }>) {
+    counts.set(p.role_id, (counts.get(p.role_id) ?? 0) + 1);
+  }
+  return counts;
+}
 
 export type RoleInput = {
   name: string;
@@ -27,13 +37,7 @@ export async function listRoles(ctx: TenantContext): Promise<RoleRow[]> {
     .from(roles)
     .where(eq(roles.tenantId, ctx.tenantId));
   const permRows = await ctx.db.select().from(rolePermissions);
-  const memberRows = await ctx.db
-    .select({ roleId: user.roleId, c: sql<number>`count(*)` })
-    .from(user)
-    .groupBy(user.roleId);
-  const memberMap = new Map<string | null, number>(
-    memberRows.map((m) => [m.roleId, Number(m.c)]),
-  );
+  const memberMap = await roleMemberCounts();
   return roleRows.map((r) => ({
     id: r.id,
     name: r.name,
@@ -99,7 +103,8 @@ export async function deleteRole(ctx: TenantContext, roleId: string) {
   const existing = (await ctx.db.select().from(roles).where(and(eq(roles.id, roleId), eq(roles.tenantId, ctx.tenantId))))[0];
   if (!existing) throw new Error('role not found');
   if (existing.isSystem) throw new Error('cannot delete system role');
-  await ctx.db.update(user).set({ roleId: null }).where(eq(user.roleId, roleId));
+  // Unassign the role from any profiles holding it (Supabase identity store).
+  await supabaseAdmin().from('profiles').update({ role_id: null }).eq('role_id', roleId);
   await ctx.db.delete(roles).where(eq(roles.id, roleId));
 }
 
@@ -107,18 +112,18 @@ export async function getPermissionsForUser(
   ctx: TenantContext,
   userId: string,
 ): Promise<Set<string>> {
-  const u = (
-    await ctx.db
-      .select({ role: user.role, roleId: user.roleId })
-      .from(user)
-      .where(eq(user.id, userId))
-  )[0];
+  const { data } = await supabaseAdmin()
+    .from('profiles')
+    .select('role, role_id')
+    .eq('id', userId)
+    .maybeSingle();
+  const u = data as { role: string | null; role_id: string | null } | null;
   if (!u) return new Set();
-  if (u.roleId) {
+  if (u.role_id) {
     const rows = await ctx.db
       .select()
       .from(rolePermissions)
-      .where(eq(rolePermissions.roleId, u.roleId));
+      .where(eq(rolePermissions.roleId, u.role_id));
     return new Set(rows.map((r) => r.permission));
   }
   // Legacy fallback: admin = all perms, user = all *:view

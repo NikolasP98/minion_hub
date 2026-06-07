@@ -1,7 +1,8 @@
 import { eq, desc } from 'drizzle-orm';
 import { SignJWT, importJWK } from 'jose';
-import { user, userAgents, jwks } from '@minion-stack/db/schema';
+import { userAgents, jwks } from '@minion-stack/db/schema';
 import { getDb } from '$server/db/client';
+import { supabaseAdmin } from '$server/supabase';
 import { env } from '$env/dynamic/private';
 import type { TenantContext } from './base';
 
@@ -27,16 +28,17 @@ export async function issueGatewayJwt(
   ctx: TenantContext,
   userId: string,
 ): Promise<{ token: string; expiresAt: number }> {
-  // 1. Look up user to get role
-  const [dbUser] = await ctx.db
-    .select({ id: user.id, role: user.role })
-    .from(user)
-    .where(eq(user.id, userId))
-    .limit(1);
+  // 1. Look up role from the Supabase profile (the auth system-of-record).
+  const { data: profile } = await supabaseAdmin()
+    .from('profiles')
+    .select('role')
+    .eq('id', userId)
+    .maybeSingle();
 
-  if (!dbUser) {
+  if (!profile) {
     throw new Error(`User not found: ${userId}`);
   }
+  const dbUser = { id: userId, role: (profile as { role: string | null }).role ?? 'user' };
 
   // 2. Fetch agent IDs assigned to this user (across all servers in the tenant)
   const agentRows = await ctx.db

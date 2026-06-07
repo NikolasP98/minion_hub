@@ -28,13 +28,17 @@ describe('resolveUserTenant', () => {
     expect(select).not.toHaveBeenCalled();
   });
 
-  it('falls back to first membership when allowed and no active org', async () => {
-    const db = fakeDb([{ orgId: 'org-member' }]);
+  it('no longer queries Turso membership — returns null without an active org', async () => {
+    // Membership-based tenancy moved to Supabase (resolveSupabaseTenant); the
+    // Turso `member` fallback was removed. fallbackToMembership is now a no-op.
+    const select = vi.fn();
+    const db = { select } as unknown as Db;
     const result = await resolveUserTenant(db, {
       userId: 'u1',
       fallbackToMembership: true,
     });
-    expect(result).toEqual({ orgId: 'org-member', ctx: { db, tenantId: 'org-member' } });
+    expect(result).toBeNull();
+    expect(select).not.toHaveBeenCalled();
   });
 
   it('returns null when fallback is disabled and no active org (Better Auth branch)', async () => {

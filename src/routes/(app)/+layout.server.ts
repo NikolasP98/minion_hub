@@ -1,6 +1,5 @@
 import type { LayoutServerLoad } from './$types';
 import { redirect } from '@sveltejs/kit';
-import { eq } from 'drizzle-orm';
 import { requireAuth } from '$server/auth/authorize';
 import { loadPermissionsForUser } from '$server/services/permissions.service';
 import { loadWorkspacesForUser } from '$server/services/workspaces.service';
@@ -9,7 +8,6 @@ import { loadPersonalAgentForUser } from '$server/services/personal-agent.servic
 import { loadHostsForUser } from '$server/services/hosts.service';
 import { loadUserPreferences } from '$server/services/preferences.service';
 import { getDb } from '$server/db/client';
-import { member, session as sessionTable } from '@minion-stack/db/schema';
 import { resolveSupabaseTenant } from '$server/auth/supabase-bridge.runtime';
 
 /**
@@ -51,50 +49,22 @@ export const load: LayoutServerLoad = async ({ locals, depends, url, cookies }) 
   // session has an activeOrganizationId. If the session is missing one, look
   // up first org membership and activate, OR fail clearly if no memberships.
   if (!locals.session?.activeOrganizationId || !locals.tenantCtx) {
-    const db = getDb();
-
     // Tenancy source of truth = Supabase organization_members (keyed by profile
-    // uuid). Fall back to the legacy Turso `member` table only when there is no
-    // Supabase membership (better-auth/self-host, or bake-in lag). On prod both
-    // stores resolve the same org id, so this is behavior-preserving.
+    // uuid). The active_org cookie carries an explicit org selection.
     const preferredOrgId = cookies.get('active_org') ?? null;
-    const supaOrgId = user.supabaseId
+    const orgId = user.supabaseId
       ? (await resolveSupabaseTenant(user.supabaseId, preferredOrgId))?.orgId
       : undefined;
-    const orgId =
-      supaOrgId ??
-      (
-        await db
-          .select({ orgId: member.organizationId })
-          .from(member)
-          .where(eq(member.userId, user.id))
-          .limit(1)
-      )[0]?.orgId;
 
     if (!orgId) {
       throw redirect(303, '/join');
-    } else {
-
-      // Persist activeOrganizationId on the session row so subsequent requests
-      // see it via hooks.server.ts. Direct DB update because Better Auth's
-      // organization plugin doesn't expose `setActiveOrganization` as a typed
-      // server-callable endpoint; the plugin's `setActive` client method
-      // resolves to the same row mutation under the hood.
-      if (locals.session?.id) {
-        try {
-          await db
-            .update(sessionTable)
-            .set({ activeOrganizationId: orgId })
-            .where(eq(sessionTable.id, locals.session.id));
-        } catch (err) {
-          console.warn('[layout-load] session.activeOrganizationId update failed:', err);
-        }
-      }
-
-      // Seed locals for THIS request so the bundle queries below see the org.
-      locals.orgId = orgId;
-      locals.tenantCtx = { db, tenantId: orgId };
     }
+    // Seed locals for THIS request so the bundle queries below see the org. The
+    // Turso db handle stays on the ctx for telemetry/servers reads; tenantId is
+    // the canonical Supabase org id. (Better-Auth session.activeOrganizationId
+    // persistence was removed — Supabase mode has no Turso session row.)
+    locals.orgId = orgId;
+    locals.tenantCtx = { db: getDb(), tenantId: orgId };
   }
 
   const [permissions, workspaces, organizations, personalAgent, hosts, preferences] =

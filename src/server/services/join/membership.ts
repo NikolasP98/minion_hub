@@ -1,6 +1,3 @@
-import { randomUUID } from 'node:crypto';
-import { eq, and } from 'drizzle-orm';
-import { member, user, organization } from '@minion-stack/db/schema';
 import type { Db } from '$server/db/client';
 import { supabaseAdmin } from '$server/supabase';
 
@@ -9,82 +6,41 @@ export interface MembershipUser {
   email: string;
   displayName: string | null;
   /**
-   * The user's Supabase profile uuid. When present, membership is ALSO written
-   * to Supabase `organization_members` — the tenancy source-of-truth that
-   * `(app)/+layout.server.ts` reads via `resolveSupabaseTenant`. Without it an
-   * approved user gets a Turso `member` row but NO Supabase org access, so they
-   * stay bounced to /join. (Turso writes are kept as legacy dual-write.)
+   * The user's Supabase profile uuid — REQUIRED. Membership is granted by the
+   * Supabase `organization_members` row (the tenancy source-of-truth read by
+   * `resolveSupabaseTenant`). The legacy Turso `user`/`member` dual-write was
+   * removed (Supabase is the single auth store).
    */
   supabaseId?: string | null;
 }
 
 /**
- * Ensure a Turso `user` row + `member` of `orgId`, AND (when `u.supabaseId` is
- * set) a Supabase `organization_members` row. Idempotent: re-running with the
- * same user/org is a no-op on both stores.
+ * Grant `u` membership of `orgId` by upserting a Supabase `organization_members`
+ * row (idempotent on (organization_id, profile_id)). Requires `u.supabaseId`.
  *
- * Note: `createdAt`/`updatedAt` are timestamp columns (mode: 'timestamp')
- * and therefore expect Date objects, not raw epoch numbers.
+ * `_db` is retained for call-site compatibility (callers still pass the Turso
+ * handle) but is no longer used — membership lives entirely in Supabase.
  */
 export async function createMembership(
-  db: Db,
+  _db: Db,
   u: MembershipUser,
   orgId: string,
   role: string,
 ): Promise<void> {
-  const now = new Date();
-
-  const existingUser = await db
-    .select({ id: user.id })
-    .from(user)
-    .where(eq(user.id, u.id))
-    .limit(1);
-
-  if (existingUser.length === 0) {
-    await db.insert(user).values({
-      id: u.id,
-      name: u.displayName ?? u.email.split('@')[0],
-      email: u.email,
-      emailVerified: true,
-      image: null,
-      createdAt: now,
-      updatedAt: now,
-      personalAgentId: `personal-${u.id}`,
-      role: 'user',
-    });
+  if (!u.supabaseId) {
+    throw new Error('createMembership: supabaseId is required (Supabase is the sole auth store)');
   }
-
-  const existingMember = await db
-    .select({ id: member.id })
-    .from(member)
-    .where(and(eq(member.userId, u.id), eq(member.organizationId, orgId)))
-    .limit(1);
-
-  if (existingMember.length === 0) {
-    await db.insert(member).values({
-      id: randomUUID(),
-      organizationId: orgId,
-      userId: u.id,
-      role: role === 'admin' ? 'admin' : 'member',
-      createdAt: now,
-    });
+  const { error } = await supabaseAdmin()
+    .from('organization_members')
+    .upsert(
+      {
+        organization_id: orgId,
+        profile_id: u.supabaseId,
+        role: role === 'admin' ? 'admin' : 'member',
+      },
+      { onConflict: 'organization_id,profile_id' },
+    );
+  if (error) {
+    throw new Error(`createMembership: supabase org_members upsert failed: ${error.message}`);
   }
-
-  // Supabase tenancy source-of-truth. This is the row that actually grants the
-  // user org access (read by resolveSupabaseTenant). Upsert keeps it idempotent.
-  if (u.supabaseId) {
-    const { error } = await supabaseAdmin()
-      .from('organization_members')
-      .upsert(
-        {
-          organization_id: orgId,
-          profile_id: u.supabaseId,
-          role: role === 'admin' ? 'admin' : 'member',
-        },
-        { onConflict: 'organization_id,profile_id' },
-      );
-    if (error) throw new Error(`createMembership: supabase org_members upsert failed: ${error.message}`);
-  }
-
-  void organization; // imported for schema clarity / future org validation
 }
