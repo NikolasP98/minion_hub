@@ -65,6 +65,7 @@ import {
 // Internal: event handlers below call loadChatHistory on stream errors. The
 // function now lives in the chat-rpc sub-module — function-only cycle, ESM-safe.
 import { loadChatHistory } from './gateway/chat-rpc';
+import { env as publicEnv } from '$env/dynamic/public';
 
 // ─── Pi-Agent Notification Preferences ────────────────────────────────────────
 
@@ -131,6 +132,37 @@ let pollPresenceTimer: ReturnType<typeof setInterval> | null = null;
 // fatal close halts the reconnect loop and surfaces a CTA instead of letting
 // the shared client autoReconnect with the same stale credential forever.
 let notPairedRefetchAttempted = false;
+
+// ─── Gateway JWT (multi-tenant org identity) ────────────────────────────────
+// When PUBLIC_GATEWAY_JWT_AUTH is enabled the dashboard additionally presents a
+// hub-issued JWT (orgId/agentIds claims) on connect, so the gateway can org-scope
+// the agent roster server-side. The shared-secret token still rides along as the
+// operator credential — the JWT only adds identity. Self-healing: if the gateway
+// ever rejects the JWT, disable it for the rest of the session and fall back to
+// shared-token auth so the dashboard can never be locked out by a JWT problem.
+// (Harmless when the gateway has no oidcIssuers configured — it ignores the jwt.)
+let jwtAuthDisabled = false;
+
+function isJwtAuthEnabled(): boolean {
+  return publicEnv.PUBLIC_GATEWAY_JWT_AUTH === 'true' && !jwtAuthDisabled;
+}
+
+/** Best-effort fetch of the hub-issued gateway JWT. Null on any failure. */
+async function fetchGatewayJwt(): Promise<string | null> {
+  try {
+    const res = await fetch('/api/gateway/jwt', { credentials: 'same-origin' });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { token?: unknown };
+    return typeof data.token === 'string' ? data.token : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A 1008 close whose reason implicates JWT validation (issuer/audience/exp/sig). */
+function isJwtAuthClose(code: number, reason: string): boolean {
+  return code === 1008 && /jwt/i.test(reason);
+}
 
 function isAuthFatalClose(code: number, reason: string): boolean {
   if (code !== 1008) return false;
@@ -245,6 +277,11 @@ export async function wsConnect() {
       // as the secret itself. See `message-handler.ts` proxy-userId block.
       const userId = userState.user?.id;
 
+      // Best-effort org-identity JWT (gated). Only included when fetched OK; a
+      // failed fetch falls back to shared-token auth (orgId undefined => full
+      // roster) rather than sending a known-bad credential.
+      const jwt = isJwtAuthEnabled() ? await fetchGatewayJwt() : null;
+
       return {
         minProtocol: 3,
         maxProtocol: 3,
@@ -253,6 +290,7 @@ export async function wsConnect() {
         scopes,
         caps: [],
         auth: token ? { token } : undefined,
+        jwt: jwt ?? undefined,
         userId,
         userAgent: navigator.userAgent,
         locale: navigator.language,
@@ -275,6 +313,21 @@ export async function wsConnect() {
       conn.connecting = false;
       conn.particleHue = 'red';
       // Binary listeners: raw socket is gone, no cleanup needed for Uint8Array listeners
+
+      // JWT rejected by the gateway (e.g. oidcIssuers not yet configured, or an
+      // expired/invalid token): disable the JWT for the rest of the session and
+      // reconnect on shared-token auth alone. Self-healing — the dashboard is
+      // never locked out by a JWT problem; it just loses org-scoping.
+      if (isJwtAuthEnabled() && isJwtAuthClose(code, reason)) {
+        jwtAuthDisabled = true;
+        console.warn('[hub] gateway rejected JWT — falling back to shared-token auth:', reason);
+        if (client) {
+          client.close();
+          client = null;
+        }
+        void wsConnect();
+        return;
+      }
 
       // Auth-fatal closes (NOT_PAIRED / "device identity required") will never
       // recover by retrying the same token, so handle them out-of-band: one
