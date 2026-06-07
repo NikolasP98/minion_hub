@@ -1,5 +1,7 @@
 import type { Agent, Session, PresenceEntry, HelloOk } from '@minion-stack/shared';
+import { page } from '$app/state';
 import { userState } from '$lib/state/features/user.svelte';
+import { filterAgentsByOrg, type OrgRef } from './agent-org';
 
 /**
  * Non-reactive index for O(1) session lookup by sessionKey.
@@ -39,14 +41,22 @@ export const gw = $state({
 });
 
 /**
- * Agents filtered by user's allowed agent IDs.
- * Admins (allowedAgentIds === null) see all agents.
+ * Agents visible in the current context, after two layers of scoping:
+ *   1. Org scope — agents are partitioned between the FACES SCULPTORS and MINION
+ *      orgs by the name rule (see `agent-org.ts`); only those belonging to the
+ *      active org are shown. Applies to everyone, admins included.
+ *   2. User scope — non-admins are further limited to their `allowedAgentIds`.
+ *      Admins (allowedAgentIds === null) see everything in the active org.
  */
 export const visibleAgents = {
   get value(): Agent[] {
+    const orgs = ((page.data as { organizations?: OrgRef[] })?.organizations ?? []) as OrgRef[];
+    const activeOrgId = (page.data as { activeOrgId?: string | null })?.activeOrgId ?? null;
+    const scoped = filterAgentsByOrg(gw.agents, activeOrgId, orgs);
+
     const allowed = userState.allowedAgentIds;
-    if (allowed === null) return gw.agents;
-    return gw.agents.filter((a) => allowed.has(a.id));
+    if (allowed === null) return scoped;
+    return scoped.filter((a) => allowed.has(a.id));
   },
 };
 
