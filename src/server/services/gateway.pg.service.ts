@@ -168,6 +168,8 @@ export async function getGatewayTokenByServerId(serverId: string): Promise<strin
     .where(eq(gateway.id, gatewayId))
     .limit(1);
   if (!row?.tokenCiphertext) return null;
+  // token_iv='' means the ciphertext IS the plaintext token (legacy unencrypted row).
+  if (!row.tokenIv) return row.tokenCiphertext;
   return decrypt(row.tokenCiphertext, row.tokenIv);
 }
 
