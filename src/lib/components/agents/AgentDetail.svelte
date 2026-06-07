@@ -10,8 +10,7 @@
   import AgentFiles from './AgentFiles.svelte';
   import AgentMemoryPanel from './AgentMemoryPanel.svelte';
   import AgentPromptSimulator from './AgentPromptSimulator.svelte';
-  import AgentToolsPanel from './AgentToolsPanel.svelte';
-  import AgentSkillsPanel from './AgentSkillsPanel.svelte';
+  import AgentCapabilitiesPanel from './AgentCapabilitiesPanel.svelte';
   import PiAgentTab from './PiAgentTab.svelte';
   import { ui } from '$lib/state/ui/ui.svelte';
   import * as m from '$lib/paraglide/messages';
@@ -112,32 +111,22 @@
     <button
       type="button"
       class="px-4 py-2 text-[11px] font-semibold border-b-2 transition-colors cursor-pointer
-        {ui.activeAgentTab === 'tools'
+        {ui.activeAgentTab === 'capabilities'
         ? 'border-accent text-accent'
         : 'border-transparent text-muted hover:text-foreground'}"
-      onclick={() => (ui.activeAgentTab = 'tools')}
+      onclick={() => (ui.activeAgentTab = 'capabilities')}
     >
-      {m.agent_tabTools()}
+      Capabilities
     </button>
     <button
       type="button"
       class="px-4 py-2 text-[11px] font-semibold border-b-2 transition-colors cursor-pointer
-        {ui.activeAgentTab === 'skills'
+        {ui.activeAgentTab === 'orchestration'
         ? 'border-accent text-accent'
         : 'border-transparent text-muted hover:text-foreground'}"
-      onclick={() => (ui.activeAgentTab = 'skills')}
+      onclick={() => (ui.activeAgentTab = 'orchestration')}
     >
-      {m.agent_tabSkills()}
-    </button>
-    <button
-      type="button"
-      class="px-4 py-2 text-[11px] font-semibold border-b-2 transition-colors cursor-pointer
-        {ui.activeAgentTab === 'pi-agent'
-        ? 'border-accent text-accent'
-        : 'border-transparent text-muted hover:text-foreground'}"
-      onclick={() => (ui.activeAgentTab = 'pi-agent')}
-    >
-      {m.agent_tabPiAgent()}
+      Orchestration
     </button>
   </div>
 
@@ -159,11 +148,9 @@
         <AgentPromptSimulator {agentId} sessionKey={mainSessionKey} />
       {:else if ui.activeAgentTab === 'memory'}
         <AgentMemoryPanel {agentId} />
-      {:else if ui.activeAgentTab === 'tools'}
-        <AgentToolsPanel {agentId} />
-      {:else if ui.activeAgentTab === 'skills'}
-        <AgentSkillsPanel {agentId} />
-      {:else if ui.activeAgentTab === 'pi-agent'}
+      {:else if ui.activeAgentTab === 'capabilities'}
+        <AgentCapabilitiesPanel {agentId} />
+      {:else if ui.activeAgentTab === 'orchestration'}
         <PiAgentTab {agentId} />
       {:else}
         {#if !isMainSession && ui.selectedSessionKey}

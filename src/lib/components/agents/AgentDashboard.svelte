@@ -225,8 +225,8 @@
         <div
             role="button"
             tabindex="0"
-            onclick={() => go('tools')}
-            onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go('tools'); } }}
+            onclick={() => go('capabilities')}
+            onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go('capabilities'); } }}
             class="group cursor-pointer text-left bg-card border border-border rounded-xl p-4 hover:border-accent/40 hover:bg-bg3 transition-all"
         >
             <div class="flex items-center justify-between mb-3">
@@ -258,19 +258,19 @@
             <div class="border-t border-border/60 pt-2 mt-2 flex items-center gap-3">
                 <button
                     type="button"
-                    onclick={(e) => { e.stopPropagation(); go('skills'); }}
+                    onclick={(e) => { e.stopPropagation(); go('capabilities'); }}
                     class="text-[11px] text-muted-foreground hover:text-accent transition-colors"
                 >
-                    Skills →
+                    Capabilities →
                 </button>
                 <span class="text-muted-strong">·</span>
                 <button
                     type="button"
-                    onclick={(e) => { e.stopPropagation(); go('pi-agent'); }}
+                    onclick={(e) => { e.stopPropagation(); go('orchestration'); }}
                     class="text-[11px] text-muted-foreground hover:text-accent transition-colors flex items-center gap-1.5"
                 >
                     <span class="w-1.5 h-1.5 rounded-full bg-muted-foreground/50"></span>
-                    Pi-Agent →
+                    Orchestration →
                 </button>
             </div>
         </div>

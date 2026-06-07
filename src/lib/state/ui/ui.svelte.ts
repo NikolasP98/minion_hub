@@ -8,9 +8,8 @@ export const ui = $state({
     | 'files'
     | 'prompt'
     | 'memory'
-    | 'tools'
-    | 'skills'
-    | 'pi-agent',
+    | 'capabilities'
+    | 'orchestration',
   selectedMissionId: null as string | null,
   selectedServerId: null as string | null,
   sessionStatus: {} as Record<string, 'running' | 'thinking' | 'idle' | 'aborted'>,
