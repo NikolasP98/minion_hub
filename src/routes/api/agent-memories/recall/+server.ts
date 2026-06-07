@@ -20,6 +20,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     agentId?: string;
     query?: string;
     limit?: number;
+    /** Exact metadata key/value filter (e.g. {key:'dni', value:'10728921'}) */
+    metadataFilter?: { key: string; value: string };
   };
   const agentId = typeof body.agentId === 'string' ? body.agentId.trim() : '';
   const query = typeof body.query === 'string' ? body.query.trim() : '';
@@ -36,6 +38,12 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   }
 
   const limit = typeof body.limit === 'number' && body.limit > 0 ? Math.min(body.limit, 50) : 5;
-  const hits = await searchMemories(orgId, { agentId, queryEmbedding, limit });
+  const metadataFilter =
+    body.metadataFilter &&
+    typeof body.metadataFilter.key === 'string' &&
+    typeof body.metadataFilter.value === 'string'
+      ? { key: body.metadataFilter.key.trim(), value: body.metadataFilter.value.trim() }
+      : undefined;
+  const hits = await searchMemories(orgId, { agentId, queryEmbedding, limit, metadataFilter });
   return json({ hits });
 };

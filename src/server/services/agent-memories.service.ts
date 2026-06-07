@@ -190,22 +190,51 @@ const RECENCY_HALFLIFE_DAYS = 14;
  */
 export async function searchMemories(
   orgId: string,
-  opts: { agentId: string; queryEmbedding: number[]; limit?: number },
+  opts: {
+    agentId: string;
+    queryEmbedding: number[];
+    limit?: number;
+    /** Optional exact metadata key/value filter (e.g. {key:'dni', value:'10728921'}).
+     *  Matching rows are prepended to vector results (deduped by id). */
+    metadataFilter?: { key: string; value: string };
+  },
 ): Promise<MemorySearchHit[]> {
   const limit = Math.min(opts.limit ?? 20, 200);
   const lit = toVectorLiteral(opts.queryEmbedding);
-  const relevance = sql<number>`(1 - (${agentMemories.embedding} <=> ${lit}::vector))`;
-  const recency = sql<number>`power(0.5, (extract(epoch from (now() - ${agentMemories.createdAt})) / 86400.0) / ${RECENCY_HALFLIFE_DAYS})`;
   const composite = sql<number>`(${W_RELEVANCE} * (1 - (${agentMemories.embedding} <=> ${lit}::vector)) + ${W_RECENCY} * power(0.5, (extract(epoch from (now() - ${agentMemories.createdAt})) / 86400.0) / ${RECENCY_HALFLIFE_DAYS}) + ${W_IMPORTANCE} * coalesce(${agentMemories.importance}, 0.5))`;
+
+  // Exact metadata match — prepend before vector results so a specific DNI/name
+  // lookup always surfaces the right row even if vector similarity ranks it low.
+  let exactRows: MemorySearchHit[] = [];
+  if (opts.metadataFilter) {
+    const { key, value } = opts.metadataFilter;
+    const exactHits = await withOrg(orgId, (tx) =>
+      tx
+        .select({ ...ROW_SELECT, score: sql<number>`1.0`, relevance: sql<number>`1.0` })
+        .from(agentMemories)
+        .where(and(
+          eq(agentMemories.agentId, opts.agentId),
+          sql`${agentMemories.metadata}->>${key} = ${value}`,
+        ))
+        .limit(5),
+    );
+    exactRows = exactHits.map((r) => ({ ...serializeRow(r), score: 1.0 }));
+  }
+
   const rows = await withOrg(orgId, (tx) =>
     tx
-      .select({ ...ROW_SELECT, score: composite, relevance })
+      .select({ ...ROW_SELECT, score: composite, relevance: sql<number>`1.0` })
       .from(agentMemories)
       .where(and(eq(agentMemories.agentId, opts.agentId), sql`${agentMemories.embedding} is not null`))
       .orderBy(sql`${composite} desc`)
       .limit(limit),
   );
-  return rows.map((r) => ({ ...serializeRow(r), score: Number(r.score) }));
+  const vectorHits = rows.map((r) => ({ ...serializeRow(r), score: Number(r.score) }));
+
+  // Merge: exact rows first, then vector results (skip any already in exactRows by id)
+  const exactIds = new Set(exactRows.map((r) => r.id));
+  const merged = [...exactRows, ...vectorHits.filter((r) => !exactIds.has(r.id))];
+  return merged.slice(0, limit);
 }
 
 export interface ScatterPoint {
