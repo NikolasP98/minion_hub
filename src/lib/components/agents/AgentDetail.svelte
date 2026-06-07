@@ -8,7 +8,6 @@
   import AgentDashboard from './AgentDashboard.svelte';
   import SessionMonitor from '../sessions/SessionMonitor.svelte';
   import AgentFiles from './AgentFiles.svelte';
-  import AgentKnowledgeGraph from './AgentKnowledgeGraph.svelte';
   import AgentMemoryPanel from './AgentMemoryPanel.svelte';
   import AgentPromptSimulator from './AgentPromptSimulator.svelte';
   import AgentToolsPanel from './AgentToolsPanel.svelte';
@@ -103,16 +102,6 @@
     <button
       type="button"
       class="px-4 py-2 text-[11px] font-semibold border-b-2 transition-colors cursor-pointer
-        {ui.activeAgentTab === 'graph'
-        ? 'border-accent text-accent'
-        : 'border-transparent text-muted hover:text-foreground'}"
-      onclick={() => (ui.activeAgentTab = 'graph')}
-    >
-      {m.agent_tabGraph()}
-    </button>
-    <button
-      type="button"
-      class="px-4 py-2 text-[11px] font-semibold border-b-2 transition-colors cursor-pointer
         {ui.activeAgentTab === 'memory'
         ? 'border-accent text-accent'
         : 'border-transparent text-muted hover:text-foreground'}"
@@ -168,8 +157,6 @@
         <AgentFiles {agentId} />
       {:else if ui.activeAgentTab === 'prompt'}
         <AgentPromptSimulator {agentId} sessionKey={mainSessionKey} />
-      {:else if ui.activeAgentTab === 'graph'}
-        <AgentKnowledgeGraph {agentId} />
       {:else if ui.activeAgentTab === 'memory'}
         <AgentMemoryPanel {agentId} />
       {:else if ui.activeAgentTab === 'tools'}

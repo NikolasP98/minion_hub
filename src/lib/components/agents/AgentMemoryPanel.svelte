@@ -2,9 +2,11 @@
   import { SvelteSet } from 'svelte/reactivity';
   import type { EChartsOption } from 'echarts';
   import Chart from '$lib/components/charts/Chart.svelte';
+  import { fetchKGSnapshot } from '$lib/services/gateway.svelte';
 
   let { agentId }: { agentId: string } = $props();
 
+  // ── pgvector memory types ───────────────────────────────────────────────────
   type MemoryRow = {
     id: string;
     agentId: string;
@@ -19,31 +21,57 @@
   type ScatterPoint = { id: string; content: string; category: string; importance: number; x: number; y: number };
   type SearchHit = MemoryRow & { score: number };
 
-  const CATEGORIES = ['preference', 'fact', 'decision', 'entity', 'other'] as const;
-  type Category = (typeof CATEGORIES)[number];
+  // ── KG node types ───────────────────────────────────────────────────────────
+  type KGNode = {
+    id: string;
+    type: string;
+    label: string;
+    data: Record<string, unknown>;
+    createdAt: number;
+    updatedAt: number;
+  };
+
+  // ── Unified list row ────────────────────────────────────────────────────────
+  type UnifiedRow =
+    | { kind: 'memory'; row: MemoryRow; sortMs: number }
+    | { kind: 'kg'; node: KGNode; sortMs: number };
+
+  const MEMORY_CATEGORIES = ['preference', 'fact', 'decision', 'entity', 'other'] as const;
+  type Category = (typeof MEMORY_CATEGORIES)[number];
+
+  const KG_TYPES = ['entity', 'fact', 'event', 'preference', 'task', 'belief', 'interaction', 'skill'] as const;
+
   const CATEGORY_COLORS: Record<string, string> = {
     preference: '#ec4899',
     fact: '#22c55e',
     decision: '#f59e0b',
     entity: '#3b82f6',
     other: '#a1a1aa',
+    event: '#a855f7',
+    task: '#f59e0b',
+    belief: '#06b6d4',
+    interaction: '#ef4444',
+    skill: '#10b981',
+    client: '#f97316',
   };
   const colorFor = (c: string) => CATEGORY_COLORS[c] ?? CATEGORY_COLORS.other;
 
-  // ── State ──────────────────────────────────────────────────────────────────
+  // ── State ───────────────────────────────────────────────────────────────────
   let memories = $state<MemoryRow[]>([]);
   let stats = $state<{ category: string; count: number }[]>([]);
   let points = $state<ScatterPoint[]>([]);
+  let kgNodes = $state<KGNode[]>([]);
   let loading = $state(false);
+  let kgLoading = $state(false);
   let error = $state<string | null>(null);
 
-  let activeCategories = new SvelteSet<Category>(CATEGORIES);
+  let activeCategories = new SvelteSet<string>([...MEMORY_CATEGORIES, ...KG_TYPES]);
   let query = $state('');
   let hits = $state<SearchHit[] | null>(null);
   let searching = $state(false);
   let searchError = $state<string | null>(null);
 
-  // ── Load ───────────────────────────────────────────────────────────────────
+  // ── Load pgvector memories ──────────────────────────────────────────────────
   async function load(id: string) {
     loading = true;
     error = null;
@@ -64,18 +92,31 @@
     }
   }
 
+  // ── Load KG nodes ───────────────────────────────────────────────────────────
+  async function loadKG(id: string) {
+    kgLoading = true;
+    try {
+      const res = (await fetchKGSnapshot(id)) as { nodes?: KGNode[] } | null;
+      kgNodes = res?.nodes ?? [];
+    } catch {
+      kgNodes = [];
+    } finally {
+      kgLoading = false;
+    }
+  }
+
   $effect(() => {
     const id = agentId;
-    if (id) void load(id);
+    if (id) {
+      void load(id);
+      void loadKG(id);
+    }
   });
 
-  // ── Semantic search ──────────────────────────────────────────────────────────
+  // ── Semantic search ─────────────────────────────────────────────────────────
   async function runSearch() {
     const q = query.trim();
-    if (!q) {
-      hits = null;
-      return;
-    }
+    if (!q) { hits = null; return; }
     searching = true;
     searchError = null;
     try {
@@ -97,13 +138,9 @@
       searching = false;
     }
   }
-  function clearSearch() {
-    query = '';
-    hits = null;
-    searchError = null;
-  }
+  function clearSearch() { query = ''; hits = null; searchError = null; }
 
-  function toggleCategory(c: Category) {
+  function toggleCategory(c: string) {
     if (activeCategories.has(c)) activeCategories.delete(c);
     else activeCategories.add(c);
   }
@@ -111,12 +148,21 @@
   const countFor = (c: string) => stats.find((s) => s.category === c)?.count ?? 0;
   const totalCount = $derived(stats.reduce((a, s) => a + s.count, 0));
 
-  // Rows shown in the table: search hits take precedence, else category-filtered list.
-  const visibleRows = $derived(
-    hits ?? memories.filter((mrow) => activeCategories.has(mrow.category as Category)),
-  );
+  // ── Unified sorted list ─────────────────────────────────────────────────────
+  const unifiedRows = $derived.by((): UnifiedRow[] => {
+    if (hits !== null) {
+      return hits.map((h) => ({ kind: 'memory' as const, row: h, sortMs: new Date(h.createdAt).getTime() }));
+    }
+    const memRows: UnifiedRow[] = memories
+      .filter((r) => activeCategories.has(r.category))
+      .map((r) => ({ kind: 'memory' as const, row: r, sortMs: new Date(r.createdAt).getTime() }));
+    const kgRows: UnifiedRow[] = kgNodes
+      .filter((n) => activeCategories.has(n.type))
+      .map((n) => ({ kind: 'kg' as const, node: n, sortMs: n.createdAt }));
+    return [...memRows, ...kgRows].sort((a, b) => b.sortMs - a.sortMs);
+  });
 
-  // ── Scatter chart options ────────────────────────────────────────────────────
+  // ── Scatter (pgvector only) ─────────────────────────────────────────────────
   const scatterOptions = $derived<EChartsOption>({
     grid: { left: 8, right: 8, top: 8, bottom: 8 },
     xAxis: { show: false, scale: true },
@@ -128,7 +174,7 @@
         return `<b>${escapeHtml(d.cat)}</b><br/>${escapeHtml(d.name).slice(0, 120)}`;
       },
     },
-    series: CATEGORIES.filter((c) => activeCategories.has(c)).map((c) => ({
+    series: MEMORY_CATEGORIES.filter((c) => activeCategories.has(c)).map((c) => ({
       name: c,
       type: 'scatter',
       itemStyle: { color: colorFor(c), opacity: 0.8 },
@@ -144,19 +190,17 @@
   });
 
   function escapeHtml(s: string): string {
-    return s.replace(
-      /[&<>"']/g,
-      (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch] ?? ch,
-    );
+    return s.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch] ?? ch);
   }
-  function fmtDate(iso: string): string {
-    const d = new Date(iso);
+  function fmtDate(ms: number | string): string {
+    const d = typeof ms === 'number' ? new Date(ms) : new Date(ms);
     return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString();
   }
+  function truncate(s: string, n = 120) { return s.length > n ? s.slice(0, n) + '…' : s; }
 </script>
 
 <div class="flex-1 min-h-0 flex flex-col overflow-hidden p-3 gap-3">
-  <!-- Toolbar: search + category pills -->
+  <!-- Toolbar -->
   <div class="flex flex-wrap items-center gap-2">
     <div class="flex items-center gap-1">
       <input
@@ -181,8 +225,9 @@
       {/if}
     </div>
     <div class="flex-1"></div>
+    <!-- Category pills: memory categories + KG source badge -->
     <div class="flex flex-wrap items-center gap-1">
-      {#each CATEGORIES as c (c)}
+      {#each MEMORY_CATEGORIES as c (c)}
         <button
           type="button"
           onclick={() => toggleCategory(c)}
@@ -194,6 +239,19 @@
           {c} {countFor(c)}
         </button>
       {/each}
+      <!-- KG toggle -->
+      {#if kgNodes.length > 0}
+        <button
+          type="button"
+          onclick={() => KG_TYPES.forEach((t) => toggleCategory(t))}
+          class="px-2 py-0.5 text-[10px] font-semibold rounded-full border transition-colors cursor-pointer
+            {KG_TYPES.some((t) => activeCategories.has(t)) ? 'text-foreground' : 'text-muted opacity-50'}"
+          style="border-color: #7c3aed; background: {KG_TYPES.some((t) => activeCategories.has(t)) ? '#7c3aed22' : 'transparent'}"
+        >
+          <span class="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle" style="background:#7c3aed"></span>
+          graph {kgNodes.length}
+        </button>
+      {/if}
     </div>
   </div>
 
@@ -201,10 +259,10 @@
     <div class="text-[11px] text-amber-400">{searchError}</div>
   {/if}
 
-  <!-- Semantic scatter -->
-  <div class="rounded-lg border border-border bg-card/40 relative" style="height: 260px">
+  <!-- Semantic scatter (pgvector only) -->
+  <div class="rounded-lg border border-border bg-card/40 relative" style="height: 200px">
     {#if points.length > 1}
-      <Chart options={scatterOptions} height="260px" />
+      <Chart options={scatterOptions} height="200px" />
     {:else}
       <div class="absolute inset-0 flex items-center justify-center text-[11px] text-muted">
         {loading ? 'Loading…' : 'Not enough embedded memories to plot yet.'}
@@ -212,42 +270,61 @@
     {/if}
   </div>
 
-  <!-- Table -->
+  <!-- Unified list: KG nodes + pgvector memories, sorted most recent first -->
   <div class="flex-1 min-h-0 overflow-auto rounded-lg border border-border">
-    {#if loading && memories.length === 0}
-      <div class="p-6 text-center text-[12px] text-muted">Loading memories…</div>
+    {#if (loading || kgLoading) && unifiedRows.length === 0}
+      <div class="p-6 text-center text-[12px] text-muted">Loading…</div>
     {:else if error}
       <div class="p-6 text-center text-[12px] text-red-400">{error}</div>
-    {:else if visibleRows.length === 0}
+    {:else if unifiedRows.length === 0}
       <div class="p-6 text-center text-[12px] text-muted">
-        {hits !== null ? 'No matches.' : totalCount === 0 ? 'No memories captured yet.' : 'No memories in the selected categories.'}
+        {hits !== null ? 'No matches.' : totalCount === 0 && kgNodes.length === 0 ? 'No memories captured yet.' : 'No memories in the selected categories.'}
       </div>
     {:else}
       <table class="w-full text-[12px] border-collapse">
         <thead class="sticky top-0 bg-card text-muted">
           <tr class="text-left">
             <th class="px-3 py-2 font-semibold">Memory</th>
-            <th class="px-3 py-2 font-semibold w-24">Category</th>
-            <th class="px-3 py-2 font-semibold w-16">Imp.</th>
-            <th class="px-3 py-2 font-semibold w-20">Source</th>
+            <th class="px-3 py-2 font-semibold w-24">Type</th>
+            <th class="px-3 py-2 font-semibold w-16">Source</th>
             {#if hits !== null}<th class="px-3 py-2 font-semibold w-16">Score</th>{/if}
             <th class="px-3 py-2 font-semibold w-24">Date</th>
           </tr>
         </thead>
         <tbody>
-          {#each visibleRows as row (row.id)}
-            <tr class="border-t border-border/60 hover:bg-card/60">
-              <td class="px-3 py-2 text-foreground">{row.content}</td>
-              <td class="px-3 py-2">
-                <span class="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style="background:{colorFor(row.category)}22; color:{colorFor(row.category)}">
-                  {row.category}
-                </span>
-              </td>
-              <td class="px-3 py-2 text-muted">{row.importance.toFixed(2)}</td>
-              <td class="px-3 py-2 text-muted">{row.source}</td>
-              {#if hits !== null}<td class="px-3 py-2 text-accent">{(row as SearchHit).score?.toFixed(2)}</td>{/if}
-              <td class="px-3 py-2 text-muted">{fmtDate(row.createdAt)}</td>
-            </tr>
+          {#each unifiedRows as item (item.kind === 'memory' ? item.row.id : item.node.id)}
+            {#if item.kind === 'memory'}
+              {@const row = item.row}
+              <tr class="border-t border-border/60 hover:bg-card/60">
+                <td class="px-3 py-2 text-foreground">{truncate(row.content)}</td>
+                <td class="px-3 py-2">
+                  <span class="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style="background:{colorFor(row.category)}22; color:{colorFor(row.category)}">
+                    {row.category}
+                  </span>
+                </td>
+                <td class="px-3 py-2 text-muted">{row.source}</td>
+                {#if hits !== null}<td class="px-3 py-2 text-accent">{(row as SearchHit).score?.toFixed(2)}</td>{/if}
+                <td class="px-3 py-2 text-muted">{fmtDate(row.createdAt)}</td>
+              </tr>
+            {:else}
+              {@const node = item.node}
+              <tr class="border-t border-border/60 hover:bg-card/60 opacity-90">
+                <td class="px-3 py-2 text-foreground">
+                  <span class="font-medium">{node.label}</span>
+                  {#if Object.keys(node.data).length > 0}
+                    <span class="ml-2 text-muted text-[11px]">{truncate(JSON.stringify(node.data), 80)}</span>
+                  {/if}
+                </td>
+                <td class="px-3 py-2">
+                  <span class="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style="background:#7c3aed22; color:#a78bfa">
+                    {node.type}
+                  </span>
+                </td>
+                <td class="px-3 py-2 text-muted">kg</td>
+                {#if hits !== null}<td class="px-3 py-2"></td>{/if}
+                <td class="px-3 py-2 text-muted">{fmtDate(node.createdAt)}</td>
+              </tr>
+            {/if}
           {/each}
         </tbody>
       </table>

@@ -202,14 +202,14 @@
                 </div>
             </div>
 
-            <!-- Sub-links to graph + prompt -->
+            <!-- Sub-links to memory + prompt -->
             <div class="border-t border-border/60 pt-2 mt-2 flex gap-3">
                 <button
                     type="button"
-                    onclick={(e) => { e.stopPropagation(); go('graph'); }}
+                    onclick={(e) => { e.stopPropagation(); go('memory'); }}
                     class="text-[11px] text-muted-foreground hover:text-accent transition-colors"
                 >
-                    Graph →
+                    Memory →
                 </button>
                 <button
                     type="button"

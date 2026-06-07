@@ -7,7 +7,6 @@ export const ui = $state({
     | 'monitor'
     | 'files'
     | 'prompt'
-    | 'graph'
     | 'memory'
     | 'tools'
     | 'skills'
