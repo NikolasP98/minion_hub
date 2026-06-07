@@ -39,7 +39,8 @@
   const MEMORY_CATEGORIES = ['preference', 'fact', 'decision', 'entity', 'other'] as const;
   type Category = (typeof MEMORY_CATEGORIES)[number];
 
-  const KG_TYPES = ['entity', 'fact', 'event', 'preference', 'task', 'belief', 'interaction', 'skill'] as const;
+  // KG types that don't overlap with MEMORY_CATEGORIES — only shown when data exists
+  const KG_EXTRA_TYPES = ['event', 'task', 'belief', 'interaction', 'skill'] as const;
 
   const CATEGORY_COLORS: Record<string, string> = {
     preference: '#ec4899',
@@ -65,7 +66,7 @@
   let kgLoading = $state(false);
   let error = $state<string | null>(null);
 
-  let activeCategories = new SvelteSet<string>([...MEMORY_CATEGORIES, ...KG_TYPES]);
+  let activeCategories = new SvelteSet<string>([...MEMORY_CATEGORIES, ...KG_EXTRA_TYPES]);
   let query = $state('');
   let hits = $state<SearchHit[] | null>(null);
   let searching = $state(false);
@@ -145,8 +146,15 @@
     else activeCategories.add(c);
   }
 
-  const countFor = (c: string) => stats.find((s) => s.category === c)?.count ?? 0;
+  const countFor = (c: string) =>
+    (stats.find((s) => s.category === c)?.count ?? 0) +
+    kgNodes.filter((n) => n.type === c).length;
   const totalCount = $derived(stats.reduce((a, s) => a + s.count, 0));
+
+  // KG-only types that actually have data (drives extra pills)
+  const activeKgExtraTypes = $derived(
+    KG_EXTRA_TYPES.filter((t) => kgNodes.some((n) => n.type === t)),
+  );
 
   // ── Unified sorted list ─────────────────────────────────────────────────────
   const unifiedRows = $derived.by((): UnifiedRow[] => {
@@ -225,7 +233,7 @@
       {/if}
     </div>
     <div class="flex-1"></div>
-    <!-- Category pills: memory categories + KG source badge -->
+    <!-- Category pills: pgvector + KG-extra types unified -->
     <div class="flex flex-wrap items-center gap-1">
       {#each MEMORY_CATEGORIES as c (c)}
         <button
@@ -239,19 +247,19 @@
           {c} {countFor(c)}
         </button>
       {/each}
-      <!-- KG toggle -->
-      {#if kgNodes.length > 0}
+      <!-- KG-exclusive types (event, task, belief, etc.) — only when data exists -->
+      {#each activeKgExtraTypes as t (t)}
         <button
           type="button"
-          onclick={() => KG_TYPES.forEach((t) => toggleCategory(t))}
+          onclick={() => toggleCategory(t)}
           class="px-2 py-0.5 text-[10px] font-semibold rounded-full border transition-colors cursor-pointer
-            {KG_TYPES.some((t) => activeCategories.has(t)) ? 'text-foreground' : 'text-muted opacity-50'}"
-          style="border-color: #7c3aed; background: {KG_TYPES.some((t) => activeCategories.has(t)) ? '#7c3aed22' : 'transparent'}"
+            {activeCategories.has(t) ? 'text-foreground' : 'text-muted opacity-50'}"
+          style="border-color: {colorFor(t)}; background: {activeCategories.has(t) ? colorFor(t) + '22' : 'transparent'}"
         >
-          <span class="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle" style="background:#7c3aed"></span>
-          graph {kgNodes.length}
+          <span class="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle" style="background:{colorFor(t)}"></span>
+          {t} {countFor(t)}
         </button>
-      {/if}
+      {/each}
     </div>
   </div>
 
