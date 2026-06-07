@@ -5,7 +5,7 @@ import { userServers } from '@minion-stack/db/schema';
 import { requireAuth } from '$server/auth/authorize';
 import { getTenantCtx } from '$server/auth/tenant-ctx';
 import { getServerToken } from '$server/services/server.service';
-import { userHasGatewayAccess } from '$server/services/gateway.pg.service';
+import { userHasGatewayAccess, getGatewayTokenByServerId } from '$server/services/gateway.pg.service';
 
 /**
  * Returns the decrypted gateway token for a single server.
@@ -46,15 +46,24 @@ export const POST: RequestHandler = async ({ locals, params }) => {
     }
   }
 
-  let token: string | null;
+  // Try Supabase gateway table first (post-cutover source of truth), then fall
+  // back to Turso servers table for legacy rows that haven't migrated yet.
+  let token: string | null = null;
   try {
-    token = await getServerToken(ctx, id);
+    token = await getGatewayTokenByServerId(id);
   } catch (err) {
-    console.error('[token-ep] getServerToken threw:', err);
-    return json({ error: 'decrypt failed', message: err instanceof Error ? err.message : String(err) }, { status: 500 });
+    console.warn('[token-ep] Supabase gateway lookup threw (will try Turso):', err);
+  }
+  if (!token) {
+    try {
+      token = await getServerToken(ctx, id);
+    } catch (err) {
+      console.error('[token-ep] getServerToken threw:', err);
+      return json({ error: 'decrypt failed', message: err instanceof Error ? err.message : String(err) }, { status: 500 });
+    }
   }
   if (token === null) {
-    console.log('[token-ep] getServerToken returned null -> 404');
+    console.log('[token-ep] token not found in Supabase or Turso -> 404');
     return json({ error: 'Not found' }, { status: 404 });
   }
   console.log('[token-ep] OK token len=', token.length);

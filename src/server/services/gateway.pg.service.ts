@@ -154,6 +154,24 @@ export async function listGatewayHostsForUser(
 }
 
 /**
+ * Return the decrypted token for a gateway identified by a server id (legacy
+ * Turso id or gateway uuid). Used by the /api/servers/[id]/token endpoint so
+ * it reads from Supabase after the Turso→Supabase cutover.
+ * Returns null when the id doesn't resolve or the gateway has no token.
+ */
+export async function getGatewayTokenByServerId(serverId: string): Promise<string | null> {
+  const gatewayId = await resolveGatewayId(serverId);
+  if (!gatewayId) return null;
+  const [row] = await getCoreDb()
+    .select({ tokenCiphertext: gateway.tokenCiphertext, tokenIv: gateway.tokenIv })
+    .from(gateway)
+    .where(eq(gateway.id, gatewayId))
+    .limit(1);
+  if (!row?.tokenCiphertext) return null;
+  return decrypt(row.tokenCiphertext, row.tokenIv);
+}
+
+/**
  * Return the URL + decrypted token for a user's default (or first) linked gateway.
  * Called by gateway-rpc to resolve per-user credentials from Postgres.
  */
