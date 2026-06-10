@@ -127,7 +127,10 @@ const finishApp: Handle = async ({ event, resolve }) => {
   // Redirect unauthenticated browser requests to /login
   const isUnprotected = UNPROTECTED_PREFIXES.some((p) => path.startsWith(p));
   if (!event.locals.user && !isUnprotected) {
-    const redirectTo = path !== '/' ? `?redirectTo=${encodeURIComponent(path)}` : '';
+    // Preserve the full path + query so e.g. a `/join?token=…` invite link
+    // survives the round-trip through sign-in.
+    const target = path + event.url.search;
+    const redirectTo = path !== '/' ? `?redirectTo=${encodeURIComponent(target)}` : '';
     return new Response(null, {
       status: 302,
       headers: { location: `/login${redirectTo}` },
