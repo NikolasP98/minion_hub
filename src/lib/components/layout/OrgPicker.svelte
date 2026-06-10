@@ -2,7 +2,6 @@
     import { invalidateAll } from "$app/navigation";
     import { page } from "$app/state";
     import { isAdmin } from "$lib/state/features/user.svelte";
-    import { authClient } from "$lib/auth";
     import { toastSuccess, toastError } from "$lib/state/ui/toast.svelte";
     import { Building2, Loader2, Check } from "lucide-svelte";
 
@@ -45,10 +44,6 @@
                 body: JSON.stringify({ orgId }),
             });
             if (!res.ok) throw new Error(`active-org ${res.status}`);
-            // Best-effort for self-host/better-auth (mutates the session row).
-            await authClient.organization
-                .setActive({ organizationId: orgId })
-                .catch(() => {});
             // Re-runs every load fn so layout data (active org, permissions, …)
             // reflects the new org. Pages that fetch client-side react to the
             // changed activeOrgId in page.data.
