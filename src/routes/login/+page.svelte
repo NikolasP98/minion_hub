@@ -1,7 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import { authClient } from '$lib/auth';
   import * as m from '$lib/paraglide/messages';
   import { loadHosts, hostsState } from '$lib/state/features/hosts.svelte';
   import { wsConnect } from '$lib/services/gateway.svelte';
@@ -42,19 +41,17 @@
     loading = true;
     error = null;
 
-    const result = await authClient.signIn.email({ email, password });
-    if (result.error) {
-      error = result.error.message ?? m.login_invalidCredentials();
+    // Supabase Auth (GoTrue) is the sole provider. signInWithPassword sets the
+    // SSR session cookie; the server (resolveViaSupabase) resolves the active org
+    // from organization_members + the active_org cookie — no client-side org
+    // activation needed (the Better Auth organization plugin is retired).
+    const supabase = supabaseBrowser();
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+    if (signInError) {
+      error = signInError.message ?? m.login_invalidCredentials();
       loading = false;
       return;
     }
-
-    // Activate first org so server hook picks up tenantCtx via activeOrganizationId
-    try {
-      const orgs = await authClient.organization.list();
-      const firstOrg = orgs.data?.[0];
-      if (firstOrg) await authClient.organization.setActive({ organizationId: firstOrg.id });
-    } catch { /* non-fatal */ }
 
     await loadHosts();
     if (hostsState.activeHostId) wsConnect();
