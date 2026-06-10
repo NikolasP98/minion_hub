@@ -20,15 +20,14 @@ export async function resolveSupabaseUser(event: RequestEvent): Promise<BridgedU
 
   const admin = supabaseAdmin();
 
-  // CORE identity columns only. These must resolve for org-membership lookup to
-  // work (legacy_user_id keys the Turso member rows). NEVER add additive columns
-  // here: if a not-yet-migrated column is requested, PostgREST errors the whole
-  // query, profile comes back null, and we'd fall back to legacy_user_id:null —
-  // which silently breaks login (user gets bounced to /join). Enrichment columns
-  // are fetched best-effort below.
+  // CORE identity columns only. NEVER add additive columns here: if a
+  // not-yet-migrated column is requested, PostgREST errors the whole query,
+  // profile comes back null, and login silently breaks (user bounced to /join).
+  // Enrichment columns are fetched best-effort below. (legacy_user_id was dropped
+  // in S7 — GoTrue principal id == profile uuid, no bridge needed.)
   const { data: profile } = await admin
     .from('profiles')
-    .select('id, email, display_name, role, legacy_user_id')
+    .select('id, email, display_name, role')
     .eq('id', user.id)
     .single();
 
@@ -60,7 +59,6 @@ export async function resolveSupabaseUser(event: RequestEvent): Promise<BridgedU
           display_name: (user.user_metadata?.full_name as string) ?? null,
           avatar_url,
           role: null,
-          legacy_user_id: null,
           created_at,
         },
     user.id,

@@ -9,7 +9,7 @@ import { i18n } from '$lib/i18n';
 import { getPostHogClient } from '$lib/server/posthog';
 import { building } from '$app/environment';
 import { getDb } from '$server/db/client';
-import { organization } from '@minion-stack/db/schema';
+import { supabaseAdmin } from '$server/supabase';
 import { resolveIdentity } from '$server/auth/resolve-identity';
 import { env } from '$env/dynamic/private';
 import { startBackupScheduler } from '$server/services/backup-scheduler';
@@ -102,9 +102,15 @@ const finishApp: Handle = async ({ event, resolve }) => {
       (p) => path === p || path.startsWith(`${p}/`),
     );
     if (allowFallback) {
-      const db = getDb();
-      const rows = await db.select({ id: organization.id }).from(organization).limit(1);
-      if (rows.length > 0) event.locals.tenantCtx = { db, tenantId: rows[0].id };
+      // Tenancy source of truth = Supabase organizations (Turso `organization`
+      // was dropped in S7). The Turso db handle stays on the ctx for telemetry/
+      // servers reads; tenantId is the canonical Supabase org id.
+      const { data: org } = await supabaseAdmin()
+        .from('organizations')
+        .select('id')
+        .limit(1)
+        .maybeSingle();
+      if (org) event.locals.tenantCtx = { db: getDb(), tenantId: (org as { id: string }).id };
       return resolve(event);
     }
     // Internal server-to-server routes (e.g. /api/internal/*) do their own

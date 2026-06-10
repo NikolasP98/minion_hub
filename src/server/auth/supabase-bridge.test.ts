@@ -6,7 +6,6 @@ const base: ProfileRow = {
   email: 'nik@example.com',
   display_name: 'Nik P',
   role: 'admin',
-  legacy_user_id: 'better-auth-id-1',
 };
 
 describe('mapProfileToUser', () => {
@@ -23,8 +22,8 @@ describe('mapProfileToUser', () => {
     });
   });
 
-  it('id == supabaseId regardless of legacy_user_id presence', () => {
-    const u = mapProfileToUser({ ...base, legacy_user_id: null }, 'supa-uuid-1');
+  it('id == supabaseId (GoTrue principal id is the profile uuid)', () => {
+    const u = mapProfileToUser(base, 'supa-uuid-1');
     expect(u.id).toBe('supa-uuid-1');
     expect(u.supabaseId).toBe('supa-uuid-1');
   });

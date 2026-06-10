@@ -11,7 +11,6 @@ export interface ProfileRow {
   display_name: string | null;
   avatar_url?: string | null;
   role: UserRole | null;
-  legacy_user_id: string | null;
   created_at?: string | null;
 }
 
@@ -28,11 +27,9 @@ export interface BridgedUser {
 /**
  * Pure: profiles row + supabase uuid -> hub locals.user shape.
  *
- * `id` is the canonical Supabase profile uuid — the legacy_user_id bridge is
- * RETIRED (the Turso-keyed reads it existed for have all moved to Supabase,
- * keyed by profile uuid). `profile.legacy_user_id` is no longer read here; it
- * survives in the DB only so the gateway can still map its channel/legacy ids
- * via `resolveProfileId` until the gateway is cut over too.
+ * `id` is the canonical Supabase profile uuid. The legacy_user_id bridge was
+ * fully removed in S7 (GoTrue: auth.users.id == profiles.id), so every principal
+ * id is already the profile uuid.
  */
 export function mapProfileToUser(profile: ProfileRow, supabaseId: string): BridgedUser {
   const role = profile.role === 'admin' ? 'admin' : 'user';

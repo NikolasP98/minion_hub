@@ -25,19 +25,16 @@ export async function getGoogleCredentialFromSupabase(
 ): Promise<{ email: string; adc: GoogleAdc } | null> {
   const admin = supabaseAdmin();
 
-  // Map legacy id (gateway) OR supabase uuid (hub) -> profile id. Avoid
-  // comparing a non-uuid against the uuid `id` column (Postgres would throw).
-  let profileId: string | null = null;
-  const byLegacy = await admin
+  // Post-GoTrue: the principal id IS the profile uuid (legacy_user_id bridge
+  // dropped in S7). Guard the uuid shape so a non-uuid can't raise on the
+  // uuid `id` column.
+  if (!UUID_RE.test(userId)) return null;
+  const { data: profileRow } = await admin
     .from('profiles')
     .select('id')
-    .eq('legacy_user_id', userId)
+    .eq('id', userId)
     .maybeSingle();
-  profileId = byLegacy.data?.id ?? null;
-  if (!profileId && UUID_RE.test(userId)) {
-    const byId = await admin.from('profiles').select('id').eq('id', userId).maybeSingle();
-    profileId = byId.data?.id ?? null;
-  }
+  const profileId = profileRow?.id ?? null;
   if (!profileId) return null;
 
   const { data: identity } = await admin
@@ -75,25 +72,17 @@ export async function getGoogleCredentialFromSupabase(
 }
 
 /**
- * Map a caller's `userId` → Supabase `profiles.id` (uuid). The uuid is canonical;
- * uuid-shaped callers resolve directly (and skip the legacy query). The
- * `legacy_user_id` match is the fallback for Better Auth session ids — TRACK C:
- * drop it once Better Auth issues uuid principals.
+ * Map a caller's `userId` → Supabase `profiles.id` (uuid). Post-GoTrue the
+ * principal id IS the profile uuid (auth.users.id == profiles.id), so a direct
+ * match is the only path — the legacy_user_id bridge was dropped in S7.
  */
 async function resolveProfileId(
   admin: ReturnType<typeof supabaseAdmin>,
   userId: string,
 ): Promise<string | null> {
-  if (UUID_RE.test(userId)) {
-    const byId = await admin.from('profiles').select('id').eq('id', userId).maybeSingle();
-    if (byId.data?.id) return byId.data.id;
-  }
-  const byLegacy = await admin
-    .from('profiles')
-    .select('id')
-    .eq('legacy_user_id', userId)
-    .maybeSingle();
-  return byLegacy.data?.id ?? null;
+  if (!UUID_RE.test(userId)) return null;
+  const byId = await admin.from('profiles').select('id').eq('id', userId).maybeSingle();
+  return byId.data?.id ?? null;
 }
 
 export type SupabaseOAuthIdentity = {

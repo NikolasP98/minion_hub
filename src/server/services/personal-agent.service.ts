@@ -1,4 +1,4 @@
-import { eq, and, inArray, lt, or, sql } from 'drizzle-orm';
+import { eq, and, inArray, lt, sql } from 'drizzle-orm';
 import { error as httpError } from '@sveltejs/kit';
 import { personalAgents, profiles } from '@minion-stack/db/pg';
 import { newId } from '$server/db/utils';
@@ -73,17 +73,15 @@ export function derivePersonalAgentId(userId: string): string {
 }
 
 /**
- * Resolve the Supabase `profiles.id` (uuid) for a caller's `userId`. The uuid is
- * canonical: cloud callers pass the profile uuid directly. The `legacy_user_id`
- * match is a fallback for Better Auth session ids (which are not yet the profile
- * uuid) — TRACK C: drop the legacy operand once Better Auth issues uuid
- * principals. Kept as a single `or()` so the hot path stays one query.
+ * Resolve the Supabase `profiles.id` (uuid) for a caller's `userId`. Post-GoTrue
+ * cutover the principal id IS the profile uuid (auth.users.id == profiles.id), so
+ * a direct match is the only path — the legacy_user_id bridge was dropped in S7.
  */
 async function resolveProfileId(ctx: CoreCtx, userId: string): Promise<string | null> {
   const [row] = await ctx.db
     .select({ id: profiles.id })
     .from(profiles)
-    .where(or(sql`${profiles.id}::text = ${userId}`, eq(profiles.legacyUserId, userId)))
+    .where(sql`${profiles.id}::text = ${userId}`)
     .limit(1);
   return row?.id ?? null;
 }
@@ -215,18 +213,17 @@ export async function listPendingAgents(
   ctx: CoreCtx,
   maxRetries: number = 5,
 ): Promise<PersonalAgentRow[]> {
-  // Join profiles to recover the legacy userId for the echoed `userId` field.
+  // Post-GoTrue: the echoed `userId` IS the profile uuid (no legacy_user_id join).
   const rows = await ctx.db
-    .select({ pa: personalAgents, legacyUserId: profiles.legacyUserId })
+    .select()
     .from(personalAgents)
-    .innerJoin(profiles, eq(profiles.id, personalAgents.profileId))
     .where(
       and(
         inArray(personalAgents.provisioningStatus, ['pending', 'error']),
         lt(personalAgents.retryCount, maxRetries),
       ),
     );
-  return Promise.all(rows.map((r) => reshape(r.pa, r.legacyUserId ?? r.pa.profileId)));
+  return Promise.all(rows.map((r) => reshape(r, r.profileId)));
 }
 
 export async function deletePersonalAgent(ctx: CoreCtx, userId: string): Promise<void> {

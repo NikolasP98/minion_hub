@@ -214,12 +214,13 @@ describe('ensurePersonalAgentOnLogin', () => {
 describe('listPendingAgents', () => {
   it('returns reshaped agents with status pending or error', async () => {
     const { db, resolve } = createMockDb();
+    // Post-GoTrue: rows are plain personalAgents rows; echoed userId = profileId.
     resolve([
-      { pa: pgRow({ id: 'pa-1', provisioningStatus: 'pending' }), legacyUserId: 'u1' },
-      { pa: pgRow({ id: 'pa-2', provisioningStatus: 'error', retryCount: 2 }), legacyUserId: 'u2' },
+      pgRow({ id: 'pa-1', provisioningStatus: 'pending', profileId: 'prof-1' }),
+      pgRow({ id: 'pa-2', provisioningStatus: 'error', retryCount: 2, profileId: 'prof-2' }),
     ]);
     const result = await listPendingAgents(ctx(db));
-    expect(result.map((r) => r.userId)).toEqual(['u1', 'u2']);
+    expect(result.map((r) => r.userId)).toEqual(['prof-1', 'prof-2']);
     expect(db.select).toHaveBeenCalled();
   });
 
