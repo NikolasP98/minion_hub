@@ -1,4 +1,5 @@
-import { conn } from '$lib/state/gateway/connection.svelte';
+import { conn, setConnectError, clearConnectError } from '$lib/state/gateway/connection.svelte';
+import { describeGatewayError } from '$lib/services/gateway-errors';
 import { dispatchCacheInvalidate } from '$lib/state/cache-invalidate-listener.svelte';
 import {
   type DebugStepEvent,
@@ -182,9 +183,9 @@ async function handleAuthFatalClose(reason: string): Promise<void> {
   }
 
   if (notPairedRefetchAttempted) {
-    conn.connectError =
-      `Gateway rejected the token (${reason}). Rotate this host's token in Hosts → Edit, then reconnect.`;
-    toastError('Authentication failed', conn.connectError, {
+    const info = describeGatewayError(reason);
+    setConnectError(reason);
+    toastError(info.title, info.hint, {
       id: 'gateway-not-paired',
       duration: Infinity,
     });
@@ -230,13 +231,9 @@ export async function wsConnect() {
   if (fetched === null) {
     conn.connecting = false;
     conn.particleHue = 'red';
-    conn.connectError =
-      'Could not load gateway token. Log in to the hub, then try again.';
-    toastError(
-      'Cannot connect',
-      conn.connectError,
-      { id: 'gateway-token-unavailable' },
-    );
+    const info = describeGatewayError('could not load gateway token');
+    setConnectError('could not load gateway token');
+    toastError(info.title, info.hint, { id: 'gateway-token-unavailable' });
     return;
   }
   const token = fetched.trim();
@@ -357,7 +354,7 @@ export async function wsConnect() {
     conn.connecting = false;
     conn.particleHue = 'blue';
     conn.connectedAt = Date.now();
-    conn.connectError = null;
+    clearConnectError();
     // Successful handshake — clear the one-shot NOT_PAIRED refetch guard so a
     // future stale-token incident gets its own retry budget.
     notPairedRefetchAttempted = false;
@@ -403,8 +400,10 @@ export async function wsConnect() {
     resolveServerId();
   }).catch((err) => {
     console.error('[hub] connect failed:', err);
-    conn.connectError = String((err as Error)?.message ?? err);
-    toastError('Connection failed', conn.connectError, { id: 'gateway-connect-failed' });
+    const raw = String((err as Error)?.message ?? err);
+    const info = describeGatewayError(raw);
+    setConnectError(raw);
+    toastError(info.title, info.hint, { id: 'gateway-connect-failed' });
   });
 
   void rawWs; // suppress unused warning
@@ -452,7 +451,7 @@ export function wsDisconnect() {
   for (const k of Object.keys(agentActivity)) delete (agentActivity as Record<string, unknown>)[k];
 
   ui.shutdownReason = null;
-  conn.connectError = null;
+  clearConnectError();
   conn.backoffMs = 800;
 }
 
