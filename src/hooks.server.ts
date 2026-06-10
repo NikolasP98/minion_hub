@@ -22,19 +22,45 @@ function isBetterAuthPath(pathname: string): boolean {
   return pathname.startsWith('/api/auth/') || pathname.startsWith('/api/auth');
 }
 
-const authHandle: Handle = async ({ event, resolve }) => {
-  // Proxy the standard OIDC discovery endpoint to Better Auth's path
-  if (!building && event.url.pathname === '/.well-known/openid-configuration') {
-    const internalUrl = new URL('/api/auth/.well-known/openid-configuration', event.url.origin);
-    const response = await getAuth().handler(new Request(internalUrl, event.request));
-    const body = await response.arrayBuffer();
-    return new Response(body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: response.headers,
+/**
+ * Hand-serve OIDC discovery + JWKS for the gateway JWT (S5: standalone jose
+ * keypair, decoupled from Better Auth). The issuer is unchanged so the gateway's
+ * `oidcIssuers` keeps validating; `jwks_uri` now points at our own endpoint
+ * which serves the standalone public key(s). Reachable unauthenticated (the
+ * `/.well-known/` prefix is in UNPROTECTED_PREFIXES).
+ */
+const wellKnownHandle: Handle = async ({ event, resolve }) => {
+  if (building) return resolve(event);
+  const path = event.url.pathname;
+
+  if (path === '/.well-known/jwks.json') {
+    const { getJwksPublicKeys } = await import('$server/services/gateway-jwt.service');
+    const keys = await getJwksPublicKeys();
+    return new Response(JSON.stringify({ keys }), {
+      headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=300' },
     });
   }
 
+  if (path === '/.well-known/openid-configuration') {
+    const { gatewayJwtIssuer } = await import('$server/services/gateway-jwt.service');
+    const issuer = gatewayJwtIssuer();
+    const config = {
+      issuer,
+      jwks_uri: `${issuer}/.well-known/jwks.json`,
+      response_types_supported: ['code'],
+      subject_types_supported: ['public'],
+      id_token_signing_alg_values_supported: ['EdDSA'],
+      claims_supported: ['sub', 'iss', 'aud', 'exp', 'nbf', 'iat', 'jti', 'role', 'agentIds', 'orgId'],
+    };
+    return new Response(JSON.stringify(config), {
+      headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=300' },
+    });
+  }
+
+  return resolve(event);
+};
+
+const authHandle: Handle = async ({ event, resolve }) => {
   if (building || !isBetterAuthPath(event.url.pathname)) {
     return resolve(event);
   }
@@ -219,7 +245,7 @@ const paperclipIdentityHandle: Handle = async ({ event, resolve }) => {
   return resolve(event);
 };
 
-export const handle = sequence(i18n.handle(), posthogProxyHandle, authHandle, appHandle, paperclipIdentityHandle);
+export const handle = sequence(i18n.handle(), posthogProxyHandle, wellKnownHandle, authHandle, appHandle, paperclipIdentityHandle);
 
 import type { HandleServerError } from '@sveltejs/kit';
 
