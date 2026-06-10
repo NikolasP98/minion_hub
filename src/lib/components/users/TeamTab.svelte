@@ -2,7 +2,6 @@
   import { onMount } from 'svelte';
   import { invalidate } from '$app/navigation';
   import * as m from '$lib/paraglide/messages';
-  import { authClient } from '$lib/auth';
   import { toastSuccess, toastError } from '$lib/state/ui/toast.svelte';
   import { ensureAliases, invalidateAliases } from '$lib/state/features/aliases.svelte';
   import { can } from '$lib/state/features/permissions.svelte';
@@ -23,12 +22,14 @@
     organizations?: OrgRef[];
   };
 
-  type PendingInvite = {
+  type JoinLink = {
     id: string;
-    email: string;
+    token: string;
+    organization_id: string;
     role: string;
-    status: string;
-    expiresAt: Date | string;
+    uses_count: number;
+    max_uses: number | null;
+    url: string;
   };
 
   type PendingRequest = {
@@ -64,7 +65,7 @@
 
   // svelte-ignore state_referenced_locally
   let users = $state<UserRow[]>(initialUsers);
-  let invitations = $state<PendingInvite[]>([]);
+  let joinLinks = $state<JoinLink[]>([]);
   // svelte-ignore state_referenced_locally
   let pendingRequests = $state<PendingRequest[]>(initialPendingRequests);
   let loading = $state(false);
@@ -95,12 +96,14 @@
     void invalidate('settings:team');
   }
 
-  // Invite form state
+  // Join-link form state (Better Auth email invitations were retired in favour
+  // of shareable join-links — see the Supabase join_link flow).
   let showInvite = $state(false);
-  let inviteEmail = $state('');
   let inviteRole = $state('member');
+  let inviteOrg = $state('');
   let inviting = $state(false);
   let inviteError = $state<string | null>(null);
+  let lastLinkUrl = $state<string | null>(null);
 
   async function load() {
     loading = true;
@@ -117,20 +120,15 @@
     }
   }
 
-  async function loadInvitations() {
+  async function loadJoinLinks() {
     try {
-      const result = await authClient.organization.listInvitations();
-      if (result.data) {
-        invitations = result.data
-          .filter((inv) => inv.status === 'pending')
-          .map((inv) => ({
-            id: inv.id,
-            email: inv.email,
-            role: inv.role ?? 'member',
-            status: inv.status as string,
-            expiresAt: inv.expiresAt,
-          }));
-      }
+      const res = await fetch('/api/join-links');
+      if (!res.ok) return;
+      const data = (await res.json()) as { links: Omit<JoinLink, 'url'>[] };
+      joinLinks = data.links.map((l) => ({
+        ...l,
+        url: `${location.origin}/join?token=${l.token}`,
+      }));
     } catch {
       // non-fatal
     }
@@ -185,38 +183,50 @@
     }
   }
 
-  async function sendInvite() {
-    if (!inviteEmail) return;
+  async function createJoinLink() {
+    const organizationId = inviteOrg || organizations[0]?.id;
+    if (!organizationId) {
+      inviteError = 'No organization to invite to.';
+      return;
+    }
     inviting = true;
     inviteError = null;
     try {
-      const result = await authClient.organization.inviteMember({
-        email: inviteEmail,
-        role: inviteRole as 'member' | 'admin',
+      const res = await fetch('/api/join-links', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ organizationId, role: inviteRole }),
       });
-      if (result.error) {
-        throw new Error(result.error.message ?? 'Unknown error');
-      }
-      toastSuccess(m.invite_sent(), m.invite_sentTo({ email: inviteEmail }));
-      showInvite = false;
-      inviteEmail = '';
-      inviteRole = 'member';
-      await loadInvitations();
+      const data = (await res.json().catch(() => ({}))) as { url?: string; message?: string };
+      if (!res.ok || !data.url) throw new Error(data.message ?? `HTTP ${res.status}`);
+      lastLinkUrl = data.url;
+      void copyLink(data.url);
+      toastSuccess('Join link created', 'Copied to clipboard — share it to invite a member.');
+      await loadJoinLinks();
     } catch (e) {
       inviteError = (e as Error).message;
-      toastError(m.invite_errorSending());
+      toastError('Could not create join link');
     } finally {
       inviting = false;
     }
   }
 
-  async function cancelInvite(invitationId: string) {
+  async function copyLink(url: string) {
     try {
-      await authClient.organization.cancelInvitation({ invitationId });
-      invitations = invitations.filter((i) => i.id !== invitationId);
-      toastSuccess(m.invite_cancelled());
+      await navigator.clipboard.writeText(url);
     } catch {
-      toastError(m.invite_errorCancelling());
+      // clipboard may be unavailable (insecure context) — non-fatal
+    }
+  }
+
+  async function revokeLink(id: string) {
+    try {
+      const res = await fetch(`/api/join-links/${id}/revoke`, { method: 'POST' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      joinLinks = joinLinks.filter((l) => l.id !== id);
+      toastSuccess('Join link revoked');
+    } catch {
+      toastError('Could not revoke join link');
     }
   }
 
@@ -245,7 +255,8 @@
       load();
       loadCustomRoles();
     }
-    loadInvitations();
+    inviteOrg = organizations[0]?.id ?? '';
+    loadJoinLinks();
   });
 </script>
 
@@ -425,76 +436,96 @@
       {#if showInvite}
         <form
           class="bg-card border border-border rounded-lg p-4 mt-3 space-y-3"
-          onsubmit={(e) => { e.preventDefault(); sendInvite(); }}
+          onsubmit={(e) => { e.preventDefault(); createJoinLink(); }}
         >
-          <p class="text-xs font-semibold text-foreground">{m.users_invite()}</p>
+          <p class="text-xs font-semibold text-foreground">Create a shareable join link</p>
           <div class="grid grid-cols-2 gap-3">
-            <input
-              class="bg-bg2 border border-border rounded-md text-foreground px-2.5 py-1.5 text-xs font-[inherit] outline-none focus:border-accent placeholder:text-muted"
-              type="email"
-              placeholder={m.users_inviteEmail()}
-              bind:value={inviteEmail}
-              required
-            />
+            {#if organizations.length > 1}
+              <Select bind:value={inviteOrg} size="sm">
+                {#each organizations as o (o.id)}
+                  <option value={o.id}>{o.name}</option>
+                {/each}
+              </Select>
+            {/if}
             <Select bind:value={inviteRole} size="sm">
               {#each INVITE_ROLES as r (r)}
                 <option value={r}>{r}</option>
               {/each}
             </Select>
           </div>
+          {#if lastLinkUrl}
+            <div class="flex items-center gap-2">
+              <input
+                readonly
+                value={lastLinkUrl}
+                class="flex-1 bg-bg2 border border-border rounded-md text-foreground px-2.5 py-1.5 text-[11px] font-mono outline-none"
+              />
+              <button
+                type="button"
+                class="text-xs px-2.5 py-1.5 rounded-md bg-bg2 border border-border text-foreground cursor-pointer hover:border-accent/40"
+                onclick={() => copyLink(lastLinkUrl ?? '')}
+              >
+                Copy
+              </button>
+            </div>
+          {/if}
           {#if inviteError}
             <p class="text-xs text-destructive">{inviteError}</p>
           {/if}
           <button
             type="submit"
             class="text-xs px-3 py-1.5 rounded-md bg-accent text-white border-none cursor-pointer font-[inherit] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
-            disabled={inviting || !inviteEmail}
+            disabled={inviting}
           >
-            {inviting ? m.users_creating() : m.users_inviteSubmit()}
+            {inviting ? m.users_creating() : 'Generate link'}
           </button>
         </form>
       {/if}
     {/if}
 
-    <!-- Pending Invitations & Requests -->
-    {#if invitations.length > 0 || pendingRequests.length > 0}
+    <!-- Active join links & pending requests -->
+    {#if joinLinks.length > 0 || pendingRequests.length > 0}
       <div class="mt-6">
         <h3 class="text-xs font-semibold text-muted uppercase tracking-wider mb-3">
           Pending Access
-          {#if invitations.length + pendingRequests.length > 0}
-            <span class="ml-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-accent/20 text-accent text-[9px] font-bold">{invitations.length + pendingRequests.length}</span>
+          {#if joinLinks.length + pendingRequests.length > 0}
+            <span class="ml-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-accent/20 text-accent text-[9px] font-bold">{joinLinks.length + pendingRequests.length}</span>
           {/if}
         </h3>
 
-        {#if invitations.length > 0}
+        {#if joinLinks.length > 0}
           <div class="mb-3">
-            <h4 class="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">Invitations</h4>
+            <h4 class="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">Join Links</h4>
             <div class="bg-card border border-border rounded-lg overflow-hidden">
               <table class="w-full text-xs border-collapse">
                 <thead>
                   <tr class="border-b border-border bg-bg2">
-                    <th class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[10px]">{m.users_email()}</th>
+                    <th class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[10px]">Link</th>
                     <th class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[10px]">{m.users_role()}</th>
-                    <th class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[10px]">{m.users_status()}</th>
+                    <th class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[10px]">Uses</th>
                     <th class="px-4 py-2"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {#each invitations as inv (inv.id)}
+                  {#each joinLinks as link (link.id)}
                     <tr class="border-b border-border/50 last:border-0 hover:bg-bg2/50 transition-colors">
-                      <td class="px-4 py-2.5 text-foreground">{inv.email}</td>
-                      <td class="px-4 py-2.5 text-muted">{inv.role}</td>
                       <td class="px-4 py-2.5">
-                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">
-                          {m.invite_statusPending()}
-                        </span>
+                        <button
+                          class="text-accent hover:underline bg-transparent border-none cursor-pointer text-[11px] font-mono p-0 max-w-[220px] truncate inline-block align-bottom"
+                          title="Copy link"
+                          onclick={() => copyLink(link.url)}
+                        >
+                          {link.url}
+                        </button>
                       </td>
+                      <td class="px-4 py-2.5 text-muted">{link.role}</td>
+                      <td class="px-4 py-2.5 text-muted">{link.uses_count}{link.max_uses != null ? `/${link.max_uses}` : ''}</td>
                       <td class="px-4 py-2.5 text-right">
                         <button
                           class="text-muted hover:text-destructive transition-colors bg-transparent border-none cursor-pointer text-xs font-[inherit]"
-                          onclick={() => cancelInvite(inv.id)}
+                          onclick={() => revokeLink(link.id)}
                         >
-                          {m.invite_cancelInvite()}
+                          Revoke
                         </button>
                       </td>
                     </tr>
