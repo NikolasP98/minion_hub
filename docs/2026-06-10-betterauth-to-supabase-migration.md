@@ -12,6 +12,44 @@
 
 ---
 
+## ✅ Progress + next-session scope (2026-06-10)
+
+All shipped to hub `origin/dev` only — `master`/Vercel untouched, `check 0/0`, `test 627` throughout. **S0 verified all 5 prod users are in GoTrue with profiles; the 2 password users (admin@facesculptors.net, renzo) already have GoTrue bcrypt passwords → no reset needed.**
+
+| Step | State | Commit |
+|---|---|---|
+| S0 verify prod users | ✅ done | (mcp query) |
+| S1 login email→`signInWithPassword` | ✅ done | `efabed7` |
+| S2 social→`linkIdentity` | ✅ done | `7a0eabe` |
+| S3 OrgPicker drop `org.setActive` | ✅ done | `7f52bea` |
+| S4 p1 wire `/join?token=` consume | ✅ done | `f882c0f` |
+| S4 p2 TeamTab → join-links | ✅ done | `85427f1` |
+
+`authClient.organization.*` is **fully gone**. Remaining `authClient` consumers: `invite/accept/+page.svelte` (S4 p3), `state/features/user.svelte.ts` (unused import), `routes/auth/google-callback/+page.svelte` (legacy BA OAuth callback — verify dead → delete).
+
+### NEXT SESSION — exact remaining work (in order)
+
+**0. SMOKE TEST FIRST (you).** Deploy `dev` to a preview; verify the already-shipped S1–S4: (a) password login for admin@faces / renzo; (b) Google login still works; (c) generate a join-link in Settings → Team, open it in another session, click "Join {org}", confirm membership lands in `organization_members`. If any fail, fix before proceeding. (Manual identity linking for S2 needs **"Manual linking" enabled** in the Supabase project's auth settings.)
+
+**1. S4 p3 — retire `/invite/accept`.** It still uses `authClient.getSession`/`organization.acceptInvitation`/`signUp.email` (Better Auth invitations, now retired). Replace the page with a redirect to `/join` (invitations are join-links now). Decide what to do with the Turso `invitation` table reads in `/api/invitations/[id]` (likely delete the endpoint + route). Removes the last UI `authClient` usage.
+
+**2. S4 p4 — `auth.users → profiles` trigger.** No trigger exists today (profiles created app-side via `syncGoogleLogin`). Add a Supabase trigger `on auth.users insert → insert public.profiles (id, email, display_name) on conflict do nothing` (SECURITY DEFINER). Needed so a **brand-new** join-link user (signs up via GoTrue) gets a profile — `consumeLink`→`createMembership` requires the profile uuid (`supabaseId`). Apply via `mcp__supabase apply_migration` to prod gxv + local. **New-user email signup UI** is still a gap (only Google signup exists post-BA) — either add a Supabase email-signup form on `/login` (or `/join?token=`), or accept Google-only signup for now.
+
+**3. Cleanups.** Remove the unused `authClient` import in `state/features/user.svelte.ts`; verify `routes/auth/google-callback/+page.svelte` is dead (legacy BA OAuth) and delete it; check `api/active-org/+server.ts`.
+
+**4. S5 — gateway JWT → standalone jose (the hard one).** `gateway-jwt.service.ts` signs with the Better-Auth `jwks` keypair (`symmetricDecrypt` w/ `BETTER_AUTH_SECRET`). Move to a standalone EdDSA keypair (env `GATEWAY_JWT_PRIVATE_JWK` or a dedicated table), hand-serve `/.well-known/jwks.json` + minimal openid-config, keep **issuer = hub URL** + **audience = `openclaw-gateway`** stable so the gateway's `oidcIssuers` keeps validating (it re-fetches JWKS on TTL; verify a token validates before removing the BA path). Remove the `jwks`-heal logic.
+
+**5. S6 — delete Better Auth.** `hooks.server.ts` drop the `/api/auth/*` handler (keep the S5 hand-served JWKS/openid-config); `resolveIdentity` drop the `AUTH_PROVIDER` branch + `resolveViaBetterAuth` + jwks-heal (always Supabase); delete `auth.ts`/`auth-client.ts`/`lib/auth/index.ts`, `seed.ts` BA usage; remove `@minion-stack/auth` dep; move the after-signup `provisionPersonalAgent` hook to the S4-p4 trigger or a post-signup call; `permissions.service.ts` → role from `profiles.role` only.
+
+**6. S7 — irreversible drops (after bake + smoke).** Remove the Track A1 legacy branch in `resolveProfileId`; `ALTER TABLE profiles DROP COLUMN legacy_user_id`; drop Turso `user`/`session`/`account`/`verification`/`jwks`/`organization`/`member`/`invitation`/`oauth_*`; flip `GATEWAY_TURSO_FALLBACK=false` + delete the Track A2 fallback + drop Turso `servers`; strip sqlite-schema/`@libsql` imports from non-telemetry code.
+
+### Carryover facts
+- B1/B2 (db@0.8.0 pg-BA-schema + auth@0.4.0 provider param) are **published but unused** — they assumed keeping BA; `@minion-stack/auth` is retired from the hub in S6. Harmless.
+- `SUPABASE_DB_URL` split risk: it has been LOCAL `127.0.0.1` while `PUBLIC_SUPABASE_URL` = prod gxv — verify target before any data op.
+- Canonical org ids: FACES `21e0601b`, MINION `c9e8dc46`.
+
+---
+
 ## Current state (already GoTrue — do not rebuild)
 - **Google login:** `supabase.auth.signInWithOAuth` → `/auth/callback` → `exchangeCodeForSession` + `syncGoogleLogin()` (upserts `profiles` + `user_identities`). `src/routes/auth/callback/+server.ts`, `src/server/auth/identity-sync.ts`.
 - **Session (cloud):** `resolveIdentity` → `resolveViaSupabase` → `resolveSupabaseUser` → `supabase.auth.getUser()`. Gated by `AUTH_PROVIDER==='supabase'` (`resolve-identity.ts:274`).
