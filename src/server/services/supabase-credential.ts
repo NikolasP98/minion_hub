@@ -74,22 +74,26 @@ export async function getGoogleCredentialFromSupabase(
   };
 }
 
-/** Map a hub user id (legacy_user_id) OR supabase uuid -> profile id. */
+/**
+ * Map a caller's `userId` → Supabase `profiles.id` (uuid). The uuid is canonical;
+ * uuid-shaped callers resolve directly (and skip the legacy query). The
+ * `legacy_user_id` match is the fallback for Better Auth session ids — TRACK C:
+ * drop it once Better Auth issues uuid principals.
+ */
 async function resolveProfileId(
   admin: ReturnType<typeof supabaseAdmin>,
   userId: string,
 ): Promise<string | null> {
+  if (UUID_RE.test(userId)) {
+    const byId = await admin.from('profiles').select('id').eq('id', userId).maybeSingle();
+    if (byId.data?.id) return byId.data.id;
+  }
   const byLegacy = await admin
     .from('profiles')
     .select('id')
     .eq('legacy_user_id', userId)
     .maybeSingle();
-  if (byLegacy.data?.id) return byLegacy.data.id;
-  if (UUID_RE.test(userId)) {
-    const byId = await admin.from('profiles').select('id').eq('id', userId).maybeSingle();
-    if (byId.data?.id) return byId.data.id;
-  }
-  return null;
+  return byLegacy.data?.id ?? null;
 }
 
 export type SupabaseOAuthIdentity = {

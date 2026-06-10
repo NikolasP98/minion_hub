@@ -73,16 +73,17 @@ export function derivePersonalAgentId(userId: string): string {
 }
 
 /**
- * Rows are read by `agent_id` (= `personal-<legacy userId>`, derivable from the
- * caller's userId), so reads never need the supabase profile id. Only the
- * provision INSERT needs `profile_id` (FK → profiles.id); resolve it from the
- * legacy userId via `profiles.legacy_user_id` (or `id` for native users).
+ * Resolve the Supabase `profiles.id` (uuid) for a caller's `userId`. The uuid is
+ * canonical: cloud callers pass the profile uuid directly. The `legacy_user_id`
+ * match is a fallback for Better Auth session ids (which are not yet the profile
+ * uuid) — TRACK C: drop the legacy operand once Better Auth issues uuid
+ * principals. Kept as a single `or()` so the hot path stays one query.
  */
 async function resolveProfileId(ctx: CoreCtx, userId: string): Promise<string | null> {
   const [row] = await ctx.db
     .select({ id: profiles.id })
     .from(profiles)
-    .where(or(eq(profiles.legacyUserId, userId), sql`${profiles.id}::text = ${userId}`))
+    .where(or(sql`${profiles.id}::text = ${userId}`, eq(profiles.legacyUserId, userId)))
     .limit(1);
   return row?.id ?? null;
 }
