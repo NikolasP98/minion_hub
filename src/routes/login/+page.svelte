@@ -13,13 +13,26 @@
 
   let email = $state('');
   let password = $state('');
+  let displayName = $state('');
   let loading = $state(false);
   let error = $state<string | null>(null);
+  let notice = $state<string | null>(null);
   let supabaseGoogleLoading = $state(false);
+  // 'signin' (default) | 'signup'. Sign-up exists so a brand-new invited user
+  // (arriving via a `/join?token=` link, bounced here by the auth gate) can
+  // create a GoTrue account. The `on_auth_user_created` DB trigger then makes
+  // their `profiles` row so `consumeLink → createMembership` can find the uuid.
+  let mode = $state<'signin' | 'signup'>('signin');
 
   const SUPABASE_AUTH_ENABLED = publicEnv.PUBLIC_AUTH_PROVIDER === 'supabase';
 
   const redirectTo = $derived((page.url.searchParams.get('redirectTo') ?? '/') || '/');
+
+  function toggleMode() {
+    mode = mode === 'signin' ? 'signup' : 'signin';
+    error = null;
+    notice = null;
+  }
 
   async function signInWithGoogleSupabase() {
     if (supabaseGoogleLoading) return;
@@ -35,29 +48,63 @@
     });
   }
 
+  async function enterApp(method: string) {
+    await loadHosts();
+    if (hostsState.activeHostId) wsConnect();
+    posthog.identify(email, { email });
+    posthog.capture('user_signed_in', { method });
+    goto(redirectTo, { replaceState: true });
+  }
+
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
     if (loading) return;
     loading = true;
     error = null;
+    notice = null;
 
-    // Supabase Auth (GoTrue) is the sole provider. signInWithPassword sets the
-    // SSR session cookie; the server (resolveViaSupabase) resolves the active org
-    // from organization_members + the active_org cookie — no client-side org
-    // activation needed (the Better Auth organization plugin is retired).
+    // Supabase Auth (GoTrue) is the sole provider. signInWithPassword /
+    // signUp set the SSR session cookie; the server (resolveViaSupabase)
+    // resolves the active org from organization_members + the active_org
+    // cookie — no client-side org activation (the Better Auth organization
+    // plugin is retired).
     const supabase = supabaseBrowser();
+
+    if (mode === 'signup') {
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { full_name: displayName || undefined },
+          emailRedirectTo: `${window.location.origin}/login?redirectTo=${encodeURIComponent(redirectTo)}`,
+        },
+      });
+      if (signUpError) {
+        error = signUpError.message ?? m.login_invalidCredentials();
+        loading = false;
+        return;
+      }
+      // Email-confirmation ON → no session yet; user must confirm via email.
+      if (!data.session) {
+        notice = `Account created. Check ${email} for a confirmation link, then sign in.`;
+        mode = 'signin';
+        loading = false;
+        return;
+      }
+      // Email-confirmation OFF → session is live; the on_auth_user_created
+      // trigger has already provisioned the profiles row.
+      posthog.capture('user_signed_up', { method: 'email' });
+      await enterApp('email_signup');
+      return;
+    }
+
     const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
     if (signInError) {
       error = signInError.message ?? m.login_invalidCredentials();
       loading = false;
       return;
     }
-
-    await loadHosts();
-    if (hostsState.activeHostId) wsConnect();
-    posthog.identify(email, { email });
-    posthog.capture('user_signed_in', { method: 'email' });
-    goto(redirectTo, { replaceState: true });
+    await enterApp('email');
   }
 </script>
 
@@ -79,10 +126,25 @@
           <span class="bg-brand-pink text-black font-black text-[13px] tracking-wide px-2 py-0.5 rounded-l-md uppercase">MINION</span>
           <span class="text-white font-bold text-[13px] px-1.5 py-0.5">hub</span>
         </div>
-        <p class="text-[11px] text-muted font-mono">{m.login_subtitle()}</p>
+        <p class="text-[11px] text-muted font-mono">
+          {mode === 'signup' ? 'Create your account' : m.login_subtitle()}
+        </p>
       </div>
 
       <form onsubmit={handleSubmit} class="px-5 pb-6 space-y-3">
+        {#if mode === 'signup'}
+          <div class="space-y-1.5">
+            <label class="block text-[10px] font-mono text-muted uppercase tracking-wider" for="login-name">
+              Name
+            </label>
+            <input
+              id="login-name" type="text" autocomplete="name"
+              bind:value={displayName} placeholder="Your name"
+              class="w-full bg-bg border border-border rounded px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/60 focus:ring-1 focus:ring-accent/30 transition-colors"
+            />
+          </div>
+        {/if}
+
         <div class="space-y-1.5">
           <label class="block text-[10px] font-mono text-muted uppercase tracking-wider" for="login-email">
             {m.login_emailLabel()}
@@ -99,7 +161,8 @@
             {m.login_passwordLabel()}
           </label>
           <input
-            id="login-password" type="password" autocomplete="current-password" required
+            id="login-password" type="password"
+            autocomplete={mode === 'signup' ? 'new-password' : 'current-password'} required
             bind:value={password} placeholder="••••••••"
             class="w-full bg-bg border border-border rounded px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/60 focus:ring-1 focus:ring-accent/30 transition-colors"
           />
@@ -108,6 +171,9 @@
         {#if error}
           <div class="text-[11px] font-mono text-red-400 bg-red-400/8 border border-red-400/20 rounded px-3 py-2">{error}</div>
         {/if}
+        {#if notice}
+          <div class="text-[11px] font-mono text-accent bg-accent/8 border border-accent/20 rounded px-3 py-2">{notice}</div>
+        {/if}
 
         <button
           type="submit" disabled={loading}
@@ -115,8 +181,21 @@
                  {loading ? 'bg-accent/10 border-accent/20 text-accent/60 cursor-not-allowed'
                           : 'bg-accent/20 border-accent/30 text-accent hover:bg-accent/30 hover:border-accent/50'}"
         >
-          {loading ? m.login_signingIn() : m.login_submit()}
+          {#if loading}
+            {mode === 'signup' ? 'Creating account…' : m.login_signingIn()}
+          {:else}
+            {mode === 'signup' ? 'Create account' : m.login_submit()}
+          {/if}
         </button>
+
+        {#if SUPABASE_AUTH_ENABLED}
+          <p class="text-center text-[11px] font-mono text-muted pt-1">
+            {mode === 'signup' ? 'Already have an account?' : "Don't have an account?"}
+            <button type="button" onclick={toggleMode} class="text-accent hover:text-accent/80 transition-colors">
+              {mode === 'signup' ? 'Sign in' : 'Sign up'}
+            </button>
+          </p>
+        {/if}
       </form>
 
       {#if SUPABASE_AUTH_ENABLED}

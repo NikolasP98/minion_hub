@@ -94,7 +94,6 @@ const finishApp: Handle = async ({ event, resolve }) => {
     '/api/gateway',
     '/api/device-identity',
     '/api/admin',
-    '/api/invitations',
     // Self-serve join: a no-org (no tenantCtx) but authenticated user must be
     // able to POST a join request. Handlers enforce their own auth (requireAuth
     // / requireAdmin), so falling through here is safe — mirrors /api/invitations.
