@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { goto, invalidate } from '$app/navigation';
   import { page } from '$app/state';
-  import { authClient } from '$lib/auth/auth-client';
+  import { supabaseBrowser } from '$lib/supabase/client';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
 
   type Identity = {
@@ -38,7 +38,16 @@
   }
 
   async function connectGoogle() {
-    await authClient.linkSocial({ provider: 'google', callbackURL: '/account?linked=google' });
+    // Supabase Auth manual identity linking (requires "Manual linking" enabled in
+    // the Supabase project's auth settings). Returns through /auth/callback, which
+    // exchanges the code (linking the Google identity to the current user) +
+    // syncs user_identities, then redirects to /account?linked=google.
+    const supabase = supabaseBrowser();
+    const next = encodeURIComponent('/account?linked=google');
+    await supabase.auth.linkIdentity({
+      provider: 'google',
+      options: { redirectTo: `${window.location.origin}/auth/callback?next=${next}` },
+    });
   }
 
   onMount(async () => {
