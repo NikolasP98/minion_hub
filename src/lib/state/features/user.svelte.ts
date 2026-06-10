@@ -1,7 +1,5 @@
 import { page } from '$app/state';
 import { invalidate } from '$app/navigation';
-import { authClient } from '$lib/auth';
-import { env as publicEnv } from '$env/dynamic/public';
 import { supabaseBrowser } from '$lib/supabase/client';
 
 type UserRole = 'user' | 'admin';
@@ -91,14 +89,9 @@ export async function invalidatePersonalAgent(): Promise<void> {
 
 export async function logout(): Promise<void> {
   try {
-    // Clear the active provider's session. In supabase mode the session is a
-    // Supabase cookie — signing out of Better Auth alone leaves it intact, so
-    // the /login redirect would bounce straight back to the app.
-    if (publicEnv.PUBLIC_AUTH_PROVIDER === 'supabase') {
-      await supabaseBrowser().auth.signOut();
-    } else {
-      await authClient.signOut();
-    }
+    // Supabase Auth (GoTrue) is the sole provider — clear the Supabase session
+    // cookie. (Better Auth's signOut was removed in the GoTrue migration.)
+    await supabaseBrowser().auth.signOut();
   } finally {
     window.location.href = '/login';
   }

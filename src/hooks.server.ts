@@ -7,7 +7,6 @@ import { sequence } from '@sveltejs/kit/hooks';
 import type { Handle } from '@sveltejs/kit';
 import { i18n } from '$lib/i18n';
 import { getPostHogClient } from '$lib/server/posthog';
-import { getAuth } from '$lib/auth/auth';
 import { building } from '$app/environment';
 import { getDb } from '$server/db/client';
 import { organization } from '@minion-stack/db/schema';
@@ -16,11 +15,6 @@ import { env } from '$env/dynamic/private';
 import { startBackupScheduler } from '$server/services/backup-scheduler';
 import { mintPaperclipIdentity } from '$lib/server/paperclip-identity';
 import { initCache } from '$lib/server/cache';
-
-/** Paths handled by Better Auth (auth API + OIDC provider endpoints). */
-function isBetterAuthPath(pathname: string): boolean {
-  return pathname.startsWith('/api/auth/') || pathname.startsWith('/api/auth');
-}
 
 /**
  * Hand-serve OIDC discovery + JWKS for the gateway JWT (S5: standalone jose
@@ -58,29 +52,6 @@ const wellKnownHandle: Handle = async ({ event, resolve }) => {
   }
 
   return resolve(event);
-};
-
-const authHandle: Handle = async ({ event, resolve }) => {
-  if (building || !isBetterAuthPath(event.url.pathname)) {
-    return resolve(event);
-  }
-  try {
-    const response = await getAuth().handler(event.request);
-
-    // Re-create the response so Set-Cookie headers are preserved on Vercel.
-    const body = await response.arrayBuffer();
-    return new Response(body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: response.headers,
-    });
-  } catch (err) {
-    console.error('[authHandle]', event.url.pathname, err);
-    return new Response(JSON.stringify({ error: 'Internal auth error' }), {
-      status: 500,
-      headers: { 'content-type': 'application/json' },
-    });
-  }
 };
 
 const UNPROTECTED_PREFIXES = ['/login', '/api/', '/invite/', '/.well-known/', '/auth/'];
@@ -125,7 +96,6 @@ const finishApp: Handle = async ({ event, resolve }) => {
     // / requireAdmin), so falling through here is safe — mirrors /api/invitations.
     '/api/join-requests',
     '/api/gateways',
-    '/api/auth',
   ];
   if (!event.locals.tenantCtx && path.startsWith('/api/')) {
     const allowFallback = API_UNAUTH_FALLBACK_PATHS.some(
@@ -245,7 +215,7 @@ const paperclipIdentityHandle: Handle = async ({ event, resolve }) => {
   return resolve(event);
 };
 
-export const handle = sequence(i18n.handle(), posthogProxyHandle, wellKnownHandle, authHandle, appHandle, paperclipIdentityHandle);
+export const handle = sequence(i18n.handle(), posthogProxyHandle, wellKnownHandle, appHandle, paperclipIdentityHandle);
 
 import type { HandleServerError } from '@sveltejs/kit';
 

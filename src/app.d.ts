@@ -1,4 +1,3 @@
-import type { auth } from '$lib/auth/auth';
 import type { TenantContext } from '$server/services/base';
 
 declare global {
@@ -17,7 +16,11 @@ declare global {
         role: 'user' | 'admin';
         createdAt?: string | null;
       };
-      session?: typeof auth.$Infer.Session.session;
+      // Legacy session slot — Better Auth set this; Supabase mode leaves it
+      // unset. Kept (minimally typed) for the defensive org-activation read in
+      // (app)/+layout.server.ts, which treats "no activeOrganizationId" as the
+      // always-true Supabase case.
+      session?: { activeOrganizationId?: string | null };
       orgId?: string;
       tenantCtx?: TenantContext;
       // serverId is set for metrics Bearer-token auth

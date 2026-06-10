@@ -41,17 +41,25 @@ beforeEach(() => {
 // ── permissions.service ──────────────────────────────────────────────────────
 
 describe('loadPermissionsForUser', () => {
-  it('returns { permissions: string[] }', async () => {
-    mockGetPermissionsForUser.mockResolvedValue(new Set(['agents:read', 'agents:write']));
-    const { loadPermissionsForUser } = await import('../permissions.service');
-
-    const result = await loadPermissionsForUser(
-      { tenantCtx: { db: {}, tenantId: 't1' } as never },
-      'u1',
+  it('derives permissions from the Supabase profile role (no Turso roles read)', async () => {
+    const { loadPermissionsForUser, derivePermissionsFromRole } = await import(
+      '../permissions.service'
     );
 
-    expect(result).toEqual({ permissions: ['agents:read', 'agents:write'] });
-    expect(mockGetPermissionsForUser).toHaveBeenCalledWith({ db: {}, tenantId: 't1' }, 'u1');
+    const admin = await loadPermissionsForUser(
+      { tenantCtx: { db: {}, tenantId: 't1' } as never, user: { role: 'admin' } as never },
+      'u1',
+    );
+    expect(new Set(admin.permissions)).toEqual(derivePermissionsFromRole('admin'));
+
+    const member = await loadPermissionsForUser(
+      { tenantCtx: { db: {}, tenantId: 't1' } as never, user: { role: 'user' } as never },
+      'u1',
+    );
+    expect(new Set(member.permissions)).toEqual(derivePermissionsFromRole('user'));
+
+    // GoTrue migration removed the self-host roles.service read entirely.
+    expect(mockGetPermissionsForUser).not.toHaveBeenCalled();
   });
 
   it('throws 401 when tenantCtx is absent', async () => {

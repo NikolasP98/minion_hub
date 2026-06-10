@@ -1,5 +1,4 @@
 import { error } from '@sveltejs/kit';
-import { getPermissionsForUser } from './roles.service';
 import { PERMISSIONS } from '$lib/permissions';
 import type { LoadCtx } from './types';
 
@@ -28,20 +27,14 @@ export function derivePermissionsFromRole(role: string | undefined): Set<string>
  */
 export async function loadPermissionsForUser(
   ctx: LoadCtx,
-  userId: string,
+  _userId: string,
 ): Promise<PermissionsLoadResult> {
   if (!ctx.tenantCtx) throw error(401, 'Authentication required');
 
-  // Cloud/Supabase mode: permissions are derived from the Supabase profile role
-  // (`ctx.user.role`), keeping the login bundle off Turso. Custom roles are a
-  // self-host/better-auth feature (`role_permissions` is empty in cloud), so the
-  // Turso `getPermissionsForUser` read only runs when there's no supabase
-  // identity. Behavior-preserving: the role-derived set matches the legacy
-  // fallback path that the cloud users already hit.
-  if (ctx.user?.supabaseId) {
-    return { permissions: [...derivePermissionsFromRole(ctx.user.role)] };
-  }
-
-  const perms = await getPermissionsForUser(ctx.tenantCtx, userId);
-  return { permissions: [...perms] };
+  // Supabase Auth (GoTrue) is the sole provider: permissions are derived from the
+  // Supabase profile role (`ctx.user.role`), keeping the login bundle off Turso.
+  // Custom roles (`role_permissions`) were a self-host/Better-Auth feature, removed
+  // in the GoTrue migration; the AUTH_DISABLED dev admin (no supabaseId) also lands
+  // here with role 'admin' → all permissions.
+  return { permissions: [...derivePermissionsFromRole(ctx.user?.role)] };
 }
