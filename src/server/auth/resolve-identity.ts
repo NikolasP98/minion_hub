@@ -89,21 +89,24 @@ export async function resolveServerTokenAuth(
   }
 
   // Fallback: legacy Turso `servers` (telemetry-adjacent) during the gateway-token
-  // cutover bake. Remove once the Supabase path is proven for a full bake cycle.
-  const db = getDb();
-  const rows = await db
-    .select({
-      id: servers.id,
-      tenantId: servers.tenantId,
-      token: servers.token,
-      tokenIv: servers.tokenIv,
-    })
-    .from(servers);
+  // cutover bake. Track A2 kill-switch: set GATEWAY_TURSO_FALLBACK=false to go
+  // Supabase-only once proven; the branch is removed entirely in Track C.
+  if (env.GATEWAY_TURSO_FALLBACK !== 'false') {
+    const db = getDb();
+    const rows = await db
+      .select({
+        id: servers.id,
+        tenantId: servers.tenantId,
+        token: servers.token,
+        tokenIv: servers.tokenIv,
+      })
+      .from(servers);
 
-  for (const row of rows) {
-    const stored = row.tokenIv ? decryptToken(row.token, row.tokenIv) : row.token;
-    if (stored === token) {
-      return { tenantId: row.tenantId, serverId: row.id };
+    for (const row of rows) {
+      const stored = row.tokenIv ? decryptToken(row.token, row.tokenIv) : row.token;
+      if (stored === token) {
+        return { tenantId: row.tenantId, serverId: row.id };
+      }
     }
   }
   return null;

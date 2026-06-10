@@ -75,12 +75,15 @@ export async function resolveCredentialsForUser(
       console.warn('[gateway-rpc] PG per-user lookup failed, falling back to Turso', err);
     }
   }
-  // 2. Turso system-wide fallback (Wave 1 transition — removed in Wave 2).
-  try {
-    const creds = await getSystemGatewayCredentials(getDb(), env.MINION_GATEWAY_PRIMARY_URL);
-    if (creds) return { url: toWsUrl(creds.url), token: creds.token };
-  } catch (err) {
-    console.warn('[gateway-rpc] Turso credential lookup failed, trying env fallback', err);
+  // 2. Turso system-wide fallback. Track A2 kill-switch: set GATEWAY_TURSO_FALLBACK=false
+  //    to disable once the PG path is proven; the branch is removed entirely in Track C.
+  if (env.GATEWAY_TURSO_FALLBACK !== 'false') {
+    try {
+      const creds = await getSystemGatewayCredentials(getDb(), env.MINION_GATEWAY_PRIMARY_URL);
+      if (creds) return { url: toWsUrl(creds.url), token: creds.token };
+    } catch (err) {
+      console.warn('[gateway-rpc] Turso credential lookup failed, trying env fallback', err);
+    }
   }
   // 3. Bootstrap env fallback.
   const fallbackUrl = env.MINION_GATEWAY_URL ?? env.OPENCLAW_GATEWAY_URL ?? '';
