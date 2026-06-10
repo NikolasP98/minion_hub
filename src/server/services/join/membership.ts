@@ -1,4 +1,3 @@
-import type { Db } from '$server/db/client';
 import { supabaseAdmin } from '$server/supabase';
 
 export interface MembershipUser {
@@ -17,12 +16,9 @@ export interface MembershipUser {
 /**
  * Grant `u` membership of `orgId` by upserting a Supabase `organization_members`
  * row (idempotent on (organization_id, profile_id)). Requires `u.supabaseId`.
- *
- * `_db` is retained for call-site compatibility (callers still pass the Turso
- * handle) but is no longer used — membership lives entirely in Supabase.
+ * Membership lives entirely in Supabase — no Turso handle needed.
  */
 export async function createMembership(
-  _db: Db,
   u: MembershipUser,
   orgId: string,
   role: string,

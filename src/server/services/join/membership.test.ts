@@ -12,7 +12,6 @@ beforeEach(() => vi.clearAllMocks());
 describe('createMembership', () => {
   it('upserts organization_members for a user with a supabaseId', async () => {
     await createMembership(
-      {} as never,
       { id: 'u1', email: 'a@b.c', displayName: 'A', supabaseId: 'p-uuid' },
       'org1',
       'admin',
@@ -29,7 +28,6 @@ describe('createMembership', () => {
 
   it('maps any non-admin role to member', async () => {
     await createMembership(
-      {} as never,
       { id: 'u1', email: 'a@b.c', displayName: 'A', supabaseId: 'p-uuid' },
       'org1',
       'user',
@@ -40,7 +38,7 @@ describe('createMembership', () => {
 
   it('throws when supabaseId is missing (Supabase is the sole auth store)', async () => {
     await expect(
-      createMembership({} as never, { id: 'u1', email: 'a@b.c', displayName: 'A' }, 'org1', 'user'),
+      createMembership({ id: 'u1', email: 'a@b.c', displayName: 'A' }, 'org1', 'user'),
     ).rejects.toThrow(/supabaseId is required/);
     expect(upsert).not.toHaveBeenCalled();
   });

@@ -1,5 +1,4 @@
 import { supabaseAdmin } from '$server/supabase';
-import { getDb } from '$server/db/client';
 import { createMembership, type MembershipUser } from './membership';
 import { generateOpaqueToken, isLinkUsable } from './helpers';
 
@@ -70,7 +69,7 @@ export async function consumeLink(token: string, u: MembershipUser): Promise<{ o
     await sb.from('join_link').update({ uses_count: link.uses_count + 1 }).eq('token', token);
   }
 
-  await createMembership(getDb(), u, link.organization_id, link.role);
+  await createMembership(u, link.organization_id, link.role);
   return { organizationId: link.organization_id };
 }
 

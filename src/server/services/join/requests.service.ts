@@ -1,5 +1,4 @@
 import { supabaseAdmin } from '$server/supabase';
-import { getDb } from '$server/db/client';
 import { createMembership } from './membership';
 import { sendJoinRequestEmail } from '$server/services/email.service';
 
@@ -108,7 +107,6 @@ export async function approveRequest(
 	if (row.status !== 'pending') return; // no-op for already-resolved requests
 
 	await createMembership(
-		getDb(),
 		{ id: row.user_id, email: row.email, displayName: row.display_name, supabaseId: row.supabase_id },
 		opts.organizationId,
 		opts.role,
