@@ -1,5 +1,11 @@
 # Turso → Supabase: Track B3–B5 Execution (Better Auth → Postgres)
 
+> ⚠️ **SUPERSEDED (2026-06-10) — DO NOT EXECUTE.** This doc planned moving Better
+> Auth's *store* to Postgres (keeping Better Auth). The actual goal is to **remove
+> Better Auth entirely and use Supabase Auth (GoTrue)**. See
+> **`2026-06-10-betterauth-to-supabase-migration.md`**. Kept only for history /
+> the jwks-continuity + smoke-test notes, which partly carry over.
+
 **Companion to** `docs/2026-06-09-turso-cutover-stage5-plan.md`. Covers the **login-critical** half of Track B: moving the Better Auth store off Turso onto Postgres/Supabase, plus the Turso auth-table drop. **Every step here touches the prod login hot path** — run B3/B4 against a preview or `dev` first and gate `master` on the smoke test (§B-smoke).
 
 ## Foundation already shipped (do not redo)
