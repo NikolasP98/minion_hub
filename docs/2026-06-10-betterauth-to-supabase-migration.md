@@ -24,24 +24,35 @@ All shipped to hub `origin/dev` only — `master`/Vercel untouched, `check 0/0`,
 | S3 OrgPicker drop `org.setActive` | ✅ done | `7f52bea` |
 | S4 p1 wire `/join?token=` consume | ✅ done | `f882c0f` |
 | S4 p2 TeamTab → join-links | ✅ done | `85427f1` |
+| S4 p3 retire `/invite/accept` + delete dead routes | ✅ done | `2c6c72d` |
+| S4 p4 `auth.users→profiles` trigger + email signup UI | ✅ done | `2c6c72d` |
+| S5 gateway JWT → standalone jose + hand-served JWKS | ✅ done | `37e77c4` |
+| S6 **delete Better Auth** (sole provider = GoTrue) | ✅ done | `6227f3b` |
 
-`authClient.organization.*` is **fully gone**. Remaining `authClient` consumers: `invite/accept/+page.svelte` (S4 p3), `state/features/user.svelte.ts` (unused import), `routes/auth/google-callback/+page.svelte` (legacy BA OAuth callback — verify dead → delete).
+**Better Auth is fully removed.** No `authClient`, no `getAuth`, no `better-auth`/`@minion-stack/auth` deps. `check 0/0`, `test 627`, `build` clean throughout; all on `origin/dev` (latest `6227f3b`), `master`/Vercel untouched.
 
-### NEXT SESSION — exact remaining work (in order)
+**Prod gxv migrations applied this session:** `on_auth_user_created` trigger (+ EXECUTE lockdown), `gateway_signing_keys` table (RLS forced, service-role-only).
 
-**0. SMOKE TEST FIRST (you).** Deploy `dev` to a preview; verify the already-shipped S1–S4: (a) password login for admin@faces / renzo; (b) Google login still works; (c) generate a join-link in Settings → Team, open it in another session, click "Join {org}", confirm membership lands in `organization_members`. If any fail, fix before proceeding. (Manual identity linking for S2 needs **"Manual linking" enabled** in the Supabase project's auth settings.)
+### NEXT SESSION — what's left
 
-**1. S4 p3 — retire `/invite/accept`.** It still uses `authClient.getSession`/`organization.acceptInvitation`/`signUp.email` (Better Auth invitations, now retired). Replace the page with a redirect to `/join` (invitations are join-links now). Decide what to do with the Turso `invitation` table reads in `/api/invitations/[id]` (likely delete the endpoint + route). Removes the last UI `authClient` usage.
+**0. SMOKE TEST FIRST (you — I can't log in / browser-test).** Deploy `dev` to a preview and verify S1–S6 end-to-end:
+- (a) **password login** for admin@facesculptors.net / renzo.gt03@gmail.com — session persists, `/my-agent` + hosts load.
+- (b) **Google login** still works; identity linked.
+- (c) **email sign-up** (new toggle on `/login`) → new GoTrue user → `profiles` row auto-created by the trigger → onboarding provisions the personal agent.
+- (d) **join-link** round-trip: Settings → Team → generate link → open in another session → "Join {org}" → membership in `organization_members`.
+- (e) **gateway JWT** (`PUBLIC_GATEWAY_JWT_AUTH=true`): dashboard connects; the gateway validates the standalone-signed JWT against the new `/.well-known/jwks.json` — **no `JWT rejected`** in gateway logs. First token issuance lazily mints + persists the standalone key in `gateway_signing_keys`. (S2 social-linking needs **"Manual linking" enabled** in Supabase auth settings.)
 
-**2. S4 p4 — `auth.users → profiles` trigger.** No trigger exists today (profiles created app-side via `syncGoogleLogin`). Add a Supabase trigger `on auth.users insert → insert public.profiles (id, email, display_name) on conflict do nothing` (SECURITY DEFINER). Needed so a **brand-new** join-link user (signs up via GoTrue) gets a profile — `consumeLink`→`createMembership` requires the profile uuid (`supabaseId`). Apply via `mcp__supabase apply_migration` to prod gxv + local. **New-user email signup UI** is still a gap (only Google signup exists post-BA) — either add a Supabase email-signup form on `/login` (or `/join?token=`), or accept Google-only signup for now.
+If all pass → merge `dev` → `master` (the S1–S6 cutover goes to Vercel prod). Bake.
 
-**3. Cleanups.** Remove the unused `authClient` import in `state/features/user.svelte.ts`; verify `routes/auth/google-callback/+page.svelte` is dead (legacy BA OAuth) and delete it; check `api/active-org/+server.ts`.
+**1. S7 — irreversible drops (ONLY after smoke + bake + your explicit go-ahead).** Destructive, prod-affecting, NOT reversible — left undone deliberately:
+- Remove the Track A1 legacy branch in `resolveProfileId` (`personal-agent.service.ts` + `supabase-credential.ts`); `ALTER TABLE profiles DROP COLUMN legacy_user_id` (now safe: GoTrue `auth.users.id == profiles.id`).
+- Drop Turso `user`/`session`/`account`/`verification`/`jwks`/`organization`/`member`/`invitation`/`oauth_*`.
+- Flip `GATEWAY_TURSO_FALLBACK=false`, delete the Track A2 `servers` fallback in `resolveServerTokenAuth`, drop Turso `servers`.
+- Set `GATEWAY_JWT_INCLUDE_LEGACY_JWKS=false` (stop serving the old BA public key once no live token is signed by it) — verify the gateway only sees the standalone key first.
+- Strip `@minion-stack/db/schema` (sqlite) + `@libsql` imports from non-telemetry code; `getDb()` survives only for `/api/metrics/*`.
+- **Done =** `grep legacy` → 0 non-telemetry; `grep getDb/@libsql` → telemetry only; one provider (GoTrue), one id space (profile uuid).
 
-**4. S5 — gateway JWT → standalone jose (the hard one).** `gateway-jwt.service.ts` signs with the Better-Auth `jwks` keypair (`symmetricDecrypt` w/ `BETTER_AUTH_SECRET`). Move to a standalone EdDSA keypair (env `GATEWAY_JWT_PRIVATE_JWK` or a dedicated table), hand-serve `/.well-known/jwks.json` + minimal openid-config, keep **issuer = hub URL** + **audience = `openclaw-gateway`** stable so the gateway's `oidcIssuers` keeps validating (it re-fetches JWKS on TTL; verify a token validates before removing the BA path). Remove the `jwks`-heal logic.
-
-**5. S6 — delete Better Auth.** `hooks.server.ts` drop the `/api/auth/*` handler (keep the S5 hand-served JWKS/openid-config); `resolveIdentity` drop the `AUTH_PROVIDER` branch + `resolveViaBetterAuth` + jwks-heal (always Supabase); delete `auth.ts`/`auth-client.ts`/`lib/auth/index.ts`, `seed.ts` BA usage; remove `@minion-stack/auth` dep; move the after-signup `provisionPersonalAgent` hook to the S4-p4 trigger or a post-signup call; `permissions.service.ts` → role from `profiles.role` only.
-
-**6. S7 — irreversible drops (after bake + smoke).** Remove the Track A1 legacy branch in `resolveProfileId`; `ALTER TABLE profiles DROP COLUMN legacy_user_id`; drop Turso `user`/`session`/`account`/`verification`/`jwks`/`organization`/`member`/`invitation`/`oauth_*`; flip `GATEWAY_TURSO_FALLBACK=false` + delete the Track A2 fallback + drop Turso `servers`; strip sqlite-schema/`@libsql` imports from non-telemetry code.
+**Loose ends (optional):** the unused `sendInvitationEmail` export in `email.service.ts` (harmless); `roles.service.ts` is no longer on the login path (kept for any custom-roles UI).
 
 ### Carryover facts
 - B1/B2 (db@0.8.0 pg-BA-schema + auth@0.4.0 provider param) are **published but unused** — they assumed keeping BA; `@minion-stack/auth` is retired from the hub in S6. Harmless.
