@@ -6,6 +6,8 @@
   import { hostsState } from '$lib/state/features/hosts.svelte';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import WhatsAppQrPairing from '$lib/components/channels/WhatsAppQrPairing.svelte';
+  import WhatsAppClaimCard from '$lib/components/users/WhatsAppClaimCard.svelte';
+  import TelegramClaimCard from '$lib/components/users/TelegramClaimCard.svelte';
   import PluginSlotHost from '$lib/plugins/PluginSlotHost.svelte';
   import type { Theme } from '$lib/plugins/bridge-protocol';
   import type { ChannelPluginInfo } from '$lib/types/channel-link';
@@ -27,6 +29,17 @@
   let { userId, identities }: { userId: string; identities: Identity[] } = $props();
 
   const channelIdentities = $derived(identities.filter((i) => i.kind === 'channel'));
+
+  // WhatsApp + Telegram get dedicated claim cards (OTP / deep-link); they are
+  // rendered separately from the generic gateway-plugin link list below.
+  const claimedWhatsapp = $derived(channelIdentities.some((i) => i.provider === 'whatsapp'));
+  const claimedTelegram = $derived(channelIdentities.some((i) => i.provider === 'telegram'));
+  const serverId = $derived(hostsState.activeHostId ?? '');
+
+  function isClaimChannel(p: ChannelPluginInfo): boolean {
+    const hay = `${p.pluginId} ${p.icon ?? ''} ${p.label}`.toLowerCase();
+    return hay.includes('whatsapp') || hay.includes('telegram');
+  }
 
   const CHANNEL_ICON: Record<string, string> = {
     whatsapp: '📱',
@@ -58,6 +71,9 @@
   let loading = $state(false);
   let loadError = $state<string | null>(null);
   let openPluginId = $state<string | null>(null);
+
+  // Everything except WhatsApp/Telegram, which have dedicated claim cards.
+  const otherPlugins = $derived(plugins.filter((p) => !isClaimChannel(p)));
 
   // Per-plugin form state for `mode: 'form'` descriptors.
   let formValues = $state<Record<string, Record<string, string>>>({});
@@ -163,16 +179,24 @@
     </div>
   {/if}
 
+  <!-- Claim cards: WhatsApp (OTP + QR) & Telegram (deep link). Always shown — the
+       hub reaches the gateway with system creds, so no browser WS is required. -->
+  <div class="space-y-2 pt-1">
+    <div class="text-[10px] uppercase tracking-wider text-muted font-semibold">Claim a channel</div>
+    <WhatsAppClaimCard {userId} {serverId} claimed={claimedWhatsapp} />
+    <TelegramClaimCard {userId} claimed={claimedTelegram} />
+  </div>
+
   <!-- Per-plugin link subsections (driven by the gateway's channels.plugins.list) -->
   {#if !conn.connected}
-    <p class="text-xs text-muted-strong">Connect to a gateway to link channels.</p>
+    <p class="text-xs text-muted-strong">Connect to a gateway to link more channels.</p>
   {:else if loadError}
     <p class="text-xs text-destructive">{loadError}</p>
-  {:else if plugins.length === 0 && !loading}
-    <p class="text-xs text-muted-strong">No channel plugins are active on this gateway.</p>
+  {:else if otherPlugins.length === 0 && !loading}
+    <p class="text-xs text-muted-strong">No other channel plugins are active on this gateway.</p>
   {:else}
     <div class="space-y-2 pt-1">
-      {#each plugins as p (p.pluginId)}
+      {#each otherPlugins as p (p.pluginId)}
         {@const isOpen = openPluginId === p.pluginId}
         <div class="border border-border rounded-md overflow-hidden">
           <button
