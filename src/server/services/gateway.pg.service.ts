@@ -198,6 +198,30 @@ export async function getUserGatewayCredentials(
 }
 
 /**
+ * System-wide gateway credentials (no user context) from Supabase `gateway` —
+ * the Supabase-native replacement for the Turso `getSystemGatewayCredentials`.
+ * Picks the gateway whose `url` matches `preferredUrl`, else the first row.
+ * Used by the cache broadcaster + gateway-rpc system fallback. `token_iv=''`
+ * means the ciphertext IS the plaintext token (legacy unencrypted row).
+ */
+export async function getSystemGatewayCredentials(
+  preferredUrl?: string,
+): Promise<{ url: string; token: string } | null> {
+  const rows = await getCoreDb()
+    .select({
+      url: gateway.url,
+      tokenCiphertext: gateway.tokenCiphertext,
+      tokenIv: gateway.tokenIv,
+    })
+    .from(gateway);
+  if (!rows.length) return null;
+  const row = preferredUrl ? (rows.find((r) => r.url === preferredUrl) ?? rows[0]) : rows[0];
+  if (!row.tokenCiphertext) return null;
+  const token = row.tokenIv ? decrypt(row.tokenCiphertext, row.tokenIv) : row.tokenCiphertext;
+  return { url: row.url, token };
+}
+
+/**
  * True if the profile is linked (via `user_gateway`) to the gateway behind the
  * given server id (legacy Turso id or gateway uuid). The Supabase-native
  * replacement for the Turso `user_servers` access check on `/api/servers/[id]/*`.

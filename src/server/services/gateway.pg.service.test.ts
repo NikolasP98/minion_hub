@@ -91,6 +91,35 @@ describe('gateway.pg.service', () => {
     expect(cred).toBeNull();
   });
 
+  test('getSystemGatewayCredentials picks preferredUrl and decrypts', async () => {
+    const { getSystemGatewayCredentials } = await import('./gateway.pg.service');
+    selectFrom.mockReturnValueOnce(
+      Promise.resolve([
+        { url: 'ws://other', tokenCiphertext: 'enc:nope', tokenIv: 'iv1' },
+        { url: 'ws://primary', tokenCiphertext: 'enc:secret', tokenIv: 'iv1' },
+      ]),
+    );
+    const cred = await getSystemGatewayCredentials('ws://primary');
+    expect(cred?.url).toBe('ws://primary');
+    expect(cred?.token).toBe('secret');
+  });
+
+  test('getSystemGatewayCredentials returns plaintext token when token_iv empty', async () => {
+    const { getSystemGatewayCredentials } = await import('./gateway.pg.service');
+    selectFrom.mockReturnValueOnce(
+      Promise.resolve([{ url: 'ws://gw', tokenCiphertext: 'rawtoken', tokenIv: '' }]),
+    );
+    const cred = await getSystemGatewayCredentials();
+    expect(cred?.token).toBe('rawtoken');
+  });
+
+  test('getSystemGatewayCredentials returns null when no gateways', async () => {
+    const { getSystemGatewayCredentials } = await import('./gateway.pg.service');
+    selectFrom.mockReturnValueOnce(Promise.resolve([]));
+    const cred = await getSystemGatewayCredentials();
+    expect(cred).toBeNull();
+  });
+
   test('deleteGateway calls delete with eq', async () => {
     const { deleteGateway } = await import('./gateway.pg.service');
     await deleteGateway('g1');

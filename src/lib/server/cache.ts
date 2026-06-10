@@ -12,6 +12,7 @@ import { env } from '$env/dynamic/private';
 import { randomUUID } from 'node:crypto';
 import { getDb } from '$server/db/client';
 import { getSystemGatewayCredentials } from '$server/services/server.service';
+import { getSystemGatewayCredentials as getSystemGatewayCredentialsPg } from '$server/services/gateway.pg.service';
 
 let initialized = false;
 
@@ -57,18 +58,24 @@ export async function initCache(): Promise<void> {
   }
 
   const broadcastUrl = env.MINION_GATEWAY_BROADCAST_URL;
-  // Token comes from the encrypted DB row (single source of truth) — not
-  // from a duplicated env var. Falls back to env.OPENCLAW_GATEWAY_TOKEN
-  // only when the DB has no servers yet (initial bootstrap).
+  // Token comes from the encrypted DB row (single source of truth) — not from a
+  // duplicated env var. Primary: Supabase `gateway` (system-of-record). Fallback:
+  // legacy Turso `servers` (Track A2 kill-switch GATEWAY_TURSO_FALLBACK). Last:
+  // env.OPENCLAW_GATEWAY_TOKEN for a fresh deploy with no gateway row yet.
   let broadcastToken: string | null = null;
   try {
-    const creds = await getSystemGatewayCredentials(
-      getDb(),
-      env.MINION_GATEWAY_PRIMARY_URL,
-    );
+    const creds = await getSystemGatewayCredentialsPg(env.MINION_GATEWAY_PRIMARY_URL);
     broadcastToken = creds?.token ?? null;
   } catch (err) {
-    console.warn('[cache] could not resolve gateway token from DB', err);
+    console.warn('[cache] Supabase gateway token lookup failed', err);
+  }
+  if (!broadcastToken && env.GATEWAY_TURSO_FALLBACK !== 'false') {
+    try {
+      const creds = await getSystemGatewayCredentials(getDb(), env.MINION_GATEWAY_PRIMARY_URL);
+      broadcastToken = creds?.token ?? null;
+    } catch (err) {
+      console.warn('[cache] Turso servers token lookup failed', err);
+    }
   }
   if (!broadcastToken && env.OPENCLAW_GATEWAY_TOKEN) {
     console.warn(
