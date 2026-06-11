@@ -24,6 +24,7 @@ import {
     Settings,
     MessagesSquare,
     Bell,
+    Network,
 } from "lucide-svelte";
 import type { ComponentType, SvelteComponent } from "svelte";
 import * as m from "$lib/paraglide/messages";
@@ -153,6 +154,17 @@ export const ROUTES: RouteMeta[] = [
     },
 
     // ── Gateway ────────────────────────────────────────────────────────────
+    {
+        path: "/overview",
+        title: () => "Overview",
+        icon: Network,
+        matcher: startsWith("/overview"),
+        section: "gateway",
+        inNav: true,
+        inPalette: true,
+        keywords: "overview graph org areas agents users map network",
+        paletteIcon: "git-branch",
+    },
     {
         path: "/my-agent",
         title: () => m.nav_agents(),
