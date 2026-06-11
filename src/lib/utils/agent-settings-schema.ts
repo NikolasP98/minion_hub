@@ -251,6 +251,20 @@ export const AGENT_SETTINGS: AgentSettingDef[] = [
     },
   },
   {
+    key: 'archetype',
+    group: 'identity',
+    order: 1.5,
+    schema: {
+      type: 'string',
+      title: 'Archetype',
+      enum: ['copilot', 'brain', 'autonomous'],
+    },
+    hint: {
+      label: 'Archetype',
+      help: 'How this agent is meant to be used. copilot: works side-by-side with the user (own skills, tools, integrations). brain: reads and interprets scoped data for users or other agents. autonomous: runs on a trigger or cron to automate a reasoning task end-to-end. Sets smart defaults for permission tier, context and session mode; explicit settings always win.',
+    },
+  },
+  {
     key: 'identity.name',
     group: 'identity',
     order: 2,
