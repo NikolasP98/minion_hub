@@ -4,6 +4,7 @@
   import { page } from '$app/state';
   import { supabaseBrowser } from '$lib/supabase/client';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
+  import { Check, X } from 'lucide-svelte';
 
   type Identity = {
     id: string;
@@ -62,32 +63,48 @@
   });
 </script>
 
-<div class="bg-bg2 border border-border rounded-md p-3 space-y-3">
-  <section class="space-y-2">
-    <div class="text-[10px] uppercase tracking-wider text-muted font-semibold">Connected Accounts</div>
-    {#if oauthIdentities.length === 0}
-      <div class="text-muted text-xs">No connected accounts.</div>
-    {:else}
-      <div class="space-y-1">
-        {#each oauthIdentities as id (id.id)}
-          <div class="flex items-center gap-2 text-xs">
-            <span>{id.provider === 'google' ? 'G' : '🔗'}</span>
-            <span class="text-muted w-20">{id.provider}</span>
-            <span class="text-foreground flex-1">{id.externalId}</span>
-            {#if id.verifiedAt}
-              <span class="text-green-400" title="verified">✓</span>
-            {/if}
-            {#if canRemoveOauth}
-              <button class="text-muted hover:text-destructive bg-transparent border-none cursor-pointer" onclick={() => unlink(id)}>✕</button>
-            {/if}
-          </div>
-        {/each}
-      </div>
-    {/if}
-    {#if !hasGoogle}
-      <button class="text-xs px-2 py-1 rounded bg-transparent border border-border text-foreground hover:bg-muted/30" onclick={connectGoogle}>
+<div class="bg-bg2 border border-border rounded-md overflow-hidden">
+  <div class="px-3 py-2.5 border-b border-border">
+    <div class="text-[10px] uppercase tracking-wider text-muted font-semibold">Sign-in accounts</div>
+  </div>
+
+  {#if oauthIdentities.length === 0}
+    <div class="text-muted text-xs px-3 py-2.5">No sign-in accounts.</div>
+  {:else}
+    <div class="divide-y divide-border/60">
+      {#each oauthIdentities as id (id.id)}
+        <div class="flex items-center gap-3 px-3 py-2.5">
+          <span class="grid place-items-center h-6 w-6 rounded-full bg-bg3/50 text-[11px] font-semibold text-foreground shrink-0">
+            {id.provider === 'google' ? 'G' : id.provider.charAt(0).toUpperCase()}
+          </span>
+          <span class="flex-1 min-w-0">
+            <span class="block text-sm text-foreground capitalize">{id.provider}</span>
+            <span class="block text-[11px] text-muted-foreground truncate">{id.externalId}</span>
+          </span>
+          {#if id.verifiedAt}
+            <span class="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-green-500/12 text-green-400 border border-green-500/20 shrink-0">
+              <Check size={10} /> Verified
+            </span>
+          {/if}
+          {#if canRemoveOauth}
+            <button
+              class="grid place-items-center h-6 w-6 rounded text-muted hover:text-destructive hover:bg-bg3/40 bg-transparent border-none cursor-pointer shrink-0"
+              title="Disconnect"
+              onclick={() => unlink(id)}
+            >
+              <X size={13} />
+            </button>
+          {/if}
+        </div>
+      {/each}
+    </div>
+  {/if}
+
+  {#if !hasGoogle}
+    <div class="px-3 py-2.5 border-t border-border/60">
+      <button class="text-xs px-2.5 py-1.5 rounded-md bg-transparent border border-border text-foreground hover:bg-muted/30 cursor-pointer" onclick={connectGoogle}>
         Connect Google
       </button>
-    {/if}
-  </section>
+    </div>
+  {/if}
 </div>

@@ -3,9 +3,31 @@
   import { invalidate } from '$app/navigation';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
-  import { Send } from 'lucide-svelte';
+  import { Check, ChevronDown, Send } from 'lucide-svelte';
 
-  let { userId, claimed }: { userId: string; claimed: boolean } = $props();
+  type Identity = {
+    id: string;
+    source?: 'turso' | 'supabase';
+    provider: string;
+    kind: 'oauth' | 'channel';
+    externalId: string;
+    displayName: string | null;
+    verifiedAt: number | null;
+  };
+
+  let {
+    userId,
+    identity,
+    onDisconnect,
+  }: {
+    userId: string;
+    identity: Identity | null;
+    onDisconnect: (identity: Identity) => void;
+  } = $props();
+
+  const connected = $derived(!!identity);
+
+  let open = $state(false);
 
   type Phase = 'idle' | 'starting' | 'awaiting' | 'done' | 'error';
   let phase = $state<Phase>('idle');
@@ -31,7 +53,7 @@
       if (data.status === 'done') {
         stopPolling();
         phase = 'done';
-        toastSuccess('Telegram claimed');
+        toastSuccess('Telegram connected');
         await invalidate('app:identities');
       } else if (data.status === 'expired') {
         stopPolling();
@@ -40,7 +62,7 @@
       } else if (data.status === 'taken') {
         stopPolling();
         phase = 'error';
-        errorMsg = 'This Telegram account is already claimed by another user.';
+        errorMsg = 'This Telegram account is already connected to another user.';
       }
     } catch {
       /* transient — keep polling */
@@ -82,53 +104,82 @@
   }
 </script>
 
-<div class="border border-border rounded-md overflow-hidden">
-  <div class="flex items-center gap-2 px-3 py-2 bg-bg/40">
-    <ChannelBrandIcon channel="telegram" class="h-4 w-4" />
+<div>
+  <button
+    class="w-full flex items-center gap-3 px-3 py-2.5 bg-transparent border-none cursor-pointer text-left hover:bg-bg3/30 transition-colors"
+    onclick={() => (open = !open)}
+  >
+    <ChannelBrandIcon channel="telegram" class="h-4 w-4 shrink-0" />
     <span class="flex-1 min-w-0">
-      <span class="block text-sm text-foreground">Telegram {claimed ? '(claimed)' : ''}</span>
-      <span class="block text-[11px] text-muted-foreground">Open a one-tap link — the bot confirms it's you. No code to type.</span>
+      <span class="block text-sm text-foreground">Telegram</span>
+      <span class="block text-[11px] text-muted-foreground truncate">
+        {connected ? (identity?.displayName ?? identity?.externalId ?? 'Connected') : 'One-tap link — the bot confirms it’s you'}
+      </span>
     </span>
-  </div>
-
-  <div class="px-3 py-3 border-t border-border space-y-2">
-    {#if phase === 'idle' || (phase === 'done' && claimed)}
-      <button
-        class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-accent text-accent-foreground border-none cursor-pointer hover:opacity-90"
-        onclick={start}
-      >
-        <Send size={12} /> {claimed ? 'Re-claim Telegram' : 'Claim Telegram'}
-      </button>
-    {:else if phase === 'starting'}
-      <div class="flex items-center gap-2 text-sm text-muted-foreground">
-        <div class="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
-        Preparing link…
-      </div>
-    {:else if phase === 'awaiting' && deepLink}
-      <a
-        href={deepLink}
-        target="_blank"
-        rel="noopener noreferrer"
-        class="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-accent text-accent-foreground no-underline hover:opacity-90"
-      >
-        <Send size={12} /> Open Telegram
-      </a>
-      <div class="flex items-center gap-2 text-xs text-muted-foreground">
-        <div class="w-3.5 h-3.5 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
-        Waiting for you to open the bot and press Start…
-      </div>
-      <button class="text-[11px] text-muted hover:text-foreground bg-transparent border-none cursor-pointer" onclick={reset}>
-        Cancel
-      </button>
-    {:else if phase === 'done'}
-      <div class="flex items-center gap-2 text-sm text-green-400">
-        <span class="w-2 h-2 rounded-full bg-green-400"></span> Telegram claimed
-      </div>
-    {:else if phase === 'error'}
-      <div class="text-sm text-destructive">{errorMsg}</div>
-      <button class="text-xs text-accent hover:underline bg-transparent border-none cursor-pointer" onclick={start}>
-        Try again
-      </button>
+    {#if connected}
+      <span class="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-green-500/12 text-green-400 border border-green-500/20 shrink-0">
+        <Check size={10} /> Connected
+      </span>
+    {:else}
+      <span class="text-[11px] text-muted-foreground shrink-0">Connect</span>
     {/if}
-  </div>
+    <ChevronDown size={14} class="text-muted shrink-0 transition-transform {open ? 'rotate-180' : ''}" />
+  </button>
+
+  {#if open}
+    <div class="px-3 pb-3 pt-1 space-y-2">
+      {#if connected}
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-xs text-muted-foreground">
+            Connected as <span class="text-foreground">{identity?.displayName ?? identity?.externalId}</span>
+          </span>
+          {#if identity}
+            <button
+              class="text-[11px] text-muted hover:text-destructive bg-transparent border-none cursor-pointer"
+              onclick={() => onDisconnect(identity!)}
+            >
+              Disconnect
+            </button>
+          {/if}
+        </div>
+      {:else if phase === 'idle'}
+        <button
+          class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-accent text-accent-foreground border-none cursor-pointer hover:opacity-90"
+          onclick={start}
+        >
+          <Send size={12} /> Connect Telegram
+        </button>
+      {:else if phase === 'starting'}
+        <div class="flex items-center gap-2 text-sm text-muted-foreground">
+          <div class="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+          Preparing link…
+        </div>
+      {:else if phase === 'awaiting' && deepLink}
+        <a
+          href={deepLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-accent text-accent-foreground no-underline hover:opacity-90"
+        >
+          <Send size={12} /> Open Telegram
+        </a>
+        <div class="flex items-center gap-2 text-xs text-muted-foreground">
+          <div class="w-3.5 h-3.5 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+          Waiting for you to open the bot and press Start…
+        </div>
+        <button class="text-[11px] text-muted hover:text-foreground bg-transparent border-none cursor-pointer" onclick={reset}>
+          Cancel
+        </button>
+      {:else if phase === 'done'}
+        <div class="flex items-center gap-2 text-sm text-green-400">
+          <span class="w-2 h-2 rounded-full bg-green-400"></span> Telegram connected
+        </div>
+      {:else if phase === 'error'}
+        <div class="text-sm text-destructive">{errorMsg}</div>
+        <button class="text-xs text-accent hover:underline bg-transparent border-none cursor-pointer" onclick={start}>
+          Try again
+        </button>
+      {/if}
+    </div>
+  {/if}
 </div>

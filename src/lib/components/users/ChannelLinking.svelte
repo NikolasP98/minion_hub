@@ -11,7 +11,7 @@
   import PluginSlotHost from '$lib/plugins/PluginSlotHost.svelte';
   import type { Theme } from '$lib/plugins/bridge-protocol';
   import type { ChannelPluginInfo } from '$lib/types/channel-link';
-  import { Plug, RefreshCw, Settings as SettingsIcon } from 'lucide-svelte';
+  import { Plug, RefreshCw, Settings as SettingsIcon, ChevronDown } from 'lucide-svelte';
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
   import { BRAND_ICON_SET, PLUGIN_ICON_MAP } from '$lib/plugins/icon-map';
   import { Puzzle } from 'lucide-svelte';
@@ -30,23 +30,16 @@
 
   const channelIdentities = $derived(identities.filter((i) => i.kind === 'channel'));
 
-  // WhatsApp + Telegram get dedicated claim cards (OTP / deep-link); they are
-  // rendered separately from the generic gateway-plugin link list below.
-  const claimedWhatsapp = $derived(channelIdentities.some((i) => i.provider === 'whatsapp'));
-  const claimedTelegram = $derived(channelIdentities.some((i) => i.provider === 'telegram'));
+  // WhatsApp + Telegram get dedicated connect cards (OTP / deep-link). The card
+  // itself shows the connected identity, so there is no separate linked list.
+  const whatsappIdentity = $derived(channelIdentities.find((i) => i.provider === 'whatsapp') ?? null);
+  const telegramIdentity = $derived(channelIdentities.find((i) => i.provider === 'telegram') ?? null);
   const serverId = $derived(hostsState.activeHostId ?? '');
 
   function isClaimChannel(p: ChannelPluginInfo): boolean {
     const hay = `${p.pluginId} ${p.icon ?? ''} ${p.label}`.toLowerCase();
     return hay.includes('whatsapp') || hay.includes('telegram');
   }
-
-  const CHANNEL_ICON: Record<string, string> = {
-    whatsapp: '📱',
-    telegram: '✈️',
-    discord: '🎮',
-    email: '✉️',
-  };
 
   function resolveChannelIcon(icon?: string) {
     if (!icon) return Puzzle;
@@ -72,7 +65,7 @@
   let loadError = $state<string | null>(null);
   let openPluginId = $state<string | null>(null);
 
-  // Everything except WhatsApp/Telegram, which have dedicated claim cards.
+  // Everything except WhatsApp/Telegram, which have dedicated connect cards.
   const otherPlugins = $derived(plugins.filter((p) => !isClaimChannel(p)));
 
   // Per-plugin form state for `mode: 'form'` descriptors.
@@ -99,15 +92,16 @@
     if (conn.connected && plugins.length === 0 && !loading) loadPlugins();
   });
 
-  async function unlink(identity: Identity) {
-    if (!confirm('Unlink this channel?')) return;
+  async function disconnect(identity: Identity) {
+    const label = identity.provider.charAt(0).toUpperCase() + identity.provider.slice(1);
+    if (!confirm(`Disconnect ${label}?`)) return;
     const qs = identity.source ? `?source=${identity.source}` : '';
     const res = await fetch(`/api/users/${userId}/identities/${identity.id}${qs}`, { method: 'DELETE' });
     if (res.ok) {
-      toastSuccess('Channel removed');
+      toastSuccess(`${label} disconnected`);
       await invalidate('app:identities');
     } else {
-      toastError('Remove failed');
+      toastError('Disconnect failed');
     }
   }
 
@@ -127,20 +121,20 @@
     submitting = p.pluginId;
     try {
       await sendRequest(p.link.submitMethod, formValues[p.pluginId] ?? {});
-      toastSuccess(`${p.label} linked`);
+      toastSuccess(`${p.label} connected`);
       formValues[p.pluginId] = {};
       openPluginId = null;
       await invalidate('app:identities');
     } catch (e) {
-      toastError(e instanceof Error ? e.message : 'Link failed');
+      toastError(e instanceof Error ? e.message : 'Connect failed');
     } finally {
       submitting = null;
     }
   }
 </script>
 
-<div class="bg-bg2 border border-border rounded-md p-3 space-y-3">
-  <div class="flex items-center justify-between">
+<div class="bg-bg2 border border-border rounded-md overflow-hidden">
+  <div class="flex items-center justify-between px-3 py-2.5 border-b border-border">
     <div class="text-[10px] uppercase tracking-wider text-muted font-semibold">Channels</div>
     {#if conn.connected}
       <button
@@ -153,73 +147,38 @@
     {/if}
   </div>
 
-  <!-- Linked channels -->
-  {#if channelIdentities.length === 0}
-    <div class="text-muted text-xs">No linked channels.</div>
-  {:else}
-    <div class="space-y-1">
-      {#each channelIdentities as id (id.id)}
-        <div class="flex items-center gap-2 text-xs">
-          {#if id.provider && BRAND_ICON_SET.has(id.provider)}
-            <ChannelBrandIcon channel={id.provider} class="h-4 w-4" />
-          {:else}
-            {@const IconComp = resolveChannelIcon(id.provider)}
-            <IconComp class="h-4 w-4" />
-          {/if}
-          <span class="text-muted w-20">{id.provider}</span>
-          <span class="text-foreground flex-1">{id.displayName ?? id.externalId}</span>
-          {#if id.verifiedAt}
-            <span class="text-green-400" title="verified">✓</span>
-          {:else}
-            <span class="text-yellow-400" title="pending">⏳</span>
-          {/if}
-          <button class="text-muted hover:text-destructive bg-transparent border-none cursor-pointer" onclick={() => unlink(id)}>✕</button>
-        </div>
-      {/each}
-    </div>
-  {/if}
+  <!-- One row per channel. Each card shows its own connected state + manage
+       controls, so there is no separate "linked channels" list. -->
+  <div class="divide-y divide-border/60">
+    <WhatsAppClaimCard {userId} {serverId} identity={whatsappIdentity} onDisconnect={disconnect} />
+    <TelegramClaimCard {userId} identity={telegramIdentity} onDisconnect={disconnect} />
 
-  <!-- Claim cards: WhatsApp (OTP + QR) & Telegram (deep link). Always shown — the
-       hub reaches the gateway with system creds, so no browser WS is required. -->
-  <div class="space-y-2 pt-1">
-    <div class="text-[10px] uppercase tracking-wider text-muted font-semibold">Claim a channel</div>
-    <WhatsAppClaimCard {userId} {serverId} claimed={claimedWhatsapp} />
-    <TelegramClaimCard {userId} claimed={claimedTelegram} />
-  </div>
-
-  <!-- Per-plugin link subsections (driven by the gateway's channels.plugins.list) -->
-  {#if !conn.connected}
-    <p class="text-xs text-muted-strong">Connect to a gateway to link more channels.</p>
-  {:else if loadError}
-    <p class="text-xs text-destructive">{loadError}</p>
-  {:else if otherPlugins.length === 0 && !loading}
-    <p class="text-xs text-muted-strong">No other channel plugins are active on this gateway.</p>
-  {:else}
-    <div class="space-y-2 pt-1">
+    {#if conn.connected}
       {#each otherPlugins as p (p.pluginId)}
         {@const isOpen = openPluginId === p.pluginId}
-        <div class="border border-border rounded-md overflow-hidden">
+        <div>
           <button
-            class="w-full flex items-center gap-2 px-3 py-2 bg-bg/40 hover:bg-bg3/40 transition-colors cursor-pointer border-none text-left"
+            class="w-full flex items-center gap-3 px-3 py-2.5 bg-transparent hover:bg-bg3/30 transition-colors cursor-pointer border-none text-left"
             onclick={() => toggle(p.pluginId)}
           >
-            <span class="text-base">
-            {#if p.icon && BRAND_ICON_SET.has(p.icon)}
-              <ChannelBrandIcon channel={p.icon} class="h-4 w-4" />
-            {:else}
-              {@const IconComp = resolveChannelIcon(p.icon)}
-              <IconComp class="h-4 w-4" />
-            {/if}
-          </span>
+            <span class="shrink-0">
+              {#if p.icon && BRAND_ICON_SET.has(p.icon)}
+                <ChannelBrandIcon channel={p.icon} class="h-4 w-4" />
+              {:else}
+                {@const IconComp = resolveChannelIcon(p.icon)}
+                <IconComp class="h-4 w-4" />
+              {/if}
+            </span>
             <span class="flex-1 min-w-0">
               <span class="block text-sm text-foreground">{p.label}</span>
               {#if p.description}<span class="block text-[11px] text-muted-foreground truncate">{p.description}</span>{/if}
             </span>
-            <span class="text-[10px] text-muted-foreground">{isOpen ? 'Close' : 'Link'}</span>
+            <span class="text-[11px] text-muted-foreground shrink-0">Connect</span>
+            <ChevronDown size={14} class="text-muted shrink-0 transition-transform {isOpen ? 'rotate-180' : ''}" />
           </button>
 
           {#if isOpen}
-            <div class="px-3 py-3 border-t border-border">
+            <div class="px-3 pb-3 pt-1">
               {#if p.link.mode === 'qr'}
                 <WhatsAppQrPairing
                   channelId="pending"
@@ -242,7 +201,7 @@
                     onclick={() => submitForm(p)}
                     disabled={submitting === p.pluginId}
                   >
-                    <Plug size={12} /> {p.link.submitLabel ?? `Link ${p.label}`}
+                    <Plug size={12} /> {p.link.submitLabel ?? `Connect ${p.label}`}
                   </button>
                 </div>
               {:else if p.link.mode === 'iframe'}
@@ -276,6 +235,13 @@
           {/if}
         </div>
       {/each}
-    </div>
+    {/if}
+  </div>
+
+  <!-- Footnotes -->
+  {#if !conn.connected}
+    <p class="text-[11px] text-muted-strong px-3 py-2.5 border-t border-border/60">Connect to a gateway to link more channels.</p>
+  {:else if loadError}
+    <p class="text-[11px] text-destructive px-3 py-2.5 border-t border-border/60">{loadError}</p>
   {/if}
 </div>
