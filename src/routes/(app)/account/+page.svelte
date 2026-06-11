@@ -15,6 +15,7 @@
     <h1 class="text-lg font-semibold text-foreground">Account</h1>
 
     <ProfileCard
+      userId={data.userId}
       displayName={u?.displayName ?? null}
       email={u?.email ?? null}
       avatarUrl={u?.avatarUrl ?? null}
