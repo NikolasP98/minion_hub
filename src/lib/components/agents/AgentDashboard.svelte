@@ -104,7 +104,7 @@
     }
 </script>
 
-<div class="flex-1 min-h-0 overflow-y-auto p-6">
+<div class="flex-1 min-h-0 overflow-y-auto p-6 @container">
     <!-- Greeting strip -->
     <div class="mb-6 flex items-baseline justify-between gap-4">
         <div>
@@ -127,7 +127,7 @@
     </div>
 
     <!-- 3-card grid -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <div class="grid grid-cols-1 @[540px]:grid-cols-3 gap-4">
         <!-- Card 1: Activity -->
         <div
             role="button"
@@ -255,11 +255,11 @@
             </div>
 
             <!-- Pi-Agent status row -->
-            <div class="border-t border-border/60 pt-2 mt-2 flex items-center gap-3">
+            <div class="border-t border-border/60 pt-2 mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
                 <button
                     type="button"
                     onclick={(e) => { e.stopPropagation(); go('capabilities'); }}
-                    class="text-[11px] text-muted-foreground hover:text-accent transition-colors"
+                    class="text-[11px] text-muted-foreground hover:text-accent transition-colors whitespace-nowrap"
                 >
                     Capabilities →
                 </button>
@@ -267,7 +267,7 @@
                 <button
                     type="button"
                     onclick={(e) => { e.stopPropagation(); go('orchestration'); }}
-                    class="text-[11px] text-muted-foreground hover:text-accent transition-colors flex items-center gap-1.5"
+                    class="text-[11px] text-muted-foreground hover:text-accent transition-colors flex items-center gap-1.5 whitespace-nowrap"
                 >
                     <span class="w-1.5 h-1.5 rounded-full bg-muted-foreground/50"></span>
                     Orchestration →
