@@ -282,7 +282,16 @@ export async function wsConnect() {
       return {
         minProtocol: 3,
         maxProtocol: 3,
-        client: { id: 'minion-control-ui', version: '1.0', platform: 'web', mode: 'ui' },
+        // `displayName` is the human user's name (not the UI's) — the gateway
+        // surfaces it as SenderName so a personal agent greets the user by name
+        // instead of asking what to call them during onboarding.
+        client: {
+          id: 'minion-control-ui',
+          version: '1.0',
+          platform: 'web',
+          mode: 'ui',
+          displayName: userState.user?.displayName ?? undefined
+        },
         role,
         scopes,
         caps: [],

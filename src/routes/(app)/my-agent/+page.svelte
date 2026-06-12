@@ -129,6 +129,23 @@
 	const toolResultsById = $derived.by<Record<string, { content: string; isError: boolean }>>(() => {
 		const map: Record<string, { content: string; isError: boolean }> = {};
 		const scan = (m: ChatMessage | null | undefined) => {
+			if (!m) return;
+			// Gateway-native schema: a whole message with role 'toolResult'
+			// (`{role:'toolResult', toolCallId, toolName, content:[{type:'text'}], isError}`).
+			const mm = m as unknown as {
+				role?: string;
+				content?: unknown;
+				toolCallId?: string;
+				isError?: boolean;
+			};
+			if (mm.role === 'toolResult' && typeof mm.toolCallId === 'string') {
+				map[mm.toolCallId] = {
+					content: stringifyToolResult(mm.content),
+					isError: !!mm.isError
+				};
+				return;
+			}
+			// Anthropic-style: tool_result blocks inside a (user-role) message.
 			for (const b of contentBlocks(m)) {
 				if (b?.type === 'tool_result' && typeof b.tool_use_id === 'string') {
 					map[b.tool_use_id] = {
@@ -146,6 +163,8 @@
 	// A message is "tool-result only" (a tool-output carrier turn) → folded into
 	// the tool cards rather than shown as its own bubble.
 	function isToolResultOnly(m: ChatMessage): boolean {
+		// Gateway-native carrier: a whole message with role 'toolResult'.
+		if ((m as { role?: string }).role === 'toolResult') return true;
 		const blocks = contentBlocks(m);
 		if (blocks.length === 0) return false;
 		return blocks.every((b) => b?.type === 'tool_result');
@@ -153,7 +172,7 @@
 	function assistantHasContent(m: ChatMessage): boolean {
 		if (typeof m.content === 'string') return m.content.trim().length > 0;
 		return contentBlocks(m).some((b) =>
-			['text', 'thinking', 'redacted_thinking', 'tool_use', 'image', 'image_url'].includes(
+			['text', 'thinking', 'redacted_thinking', 'tool_use', 'toolCall', 'image', 'image_url'].includes(
 				b?.type ?? ''
 			)
 		);
@@ -165,7 +184,7 @@
 	function rowKey(m: ChatMessage): string {
 		const t = stripVoiceTurnPrefix(extractText(m) ?? '');
 		const toolNames = contentBlocks(m)
-			.filter((b) => b?.type === 'tool_use')
+			.filter((b) => b?.type === 'tool_use' || b?.type === 'toolCall')
 			.map((b) => b.name)
 			.join(',');
 		return `${msgRole(m)}|${t.length}|${t.slice(0, 32)}|${t.slice(-24)}|${toolNames}`;

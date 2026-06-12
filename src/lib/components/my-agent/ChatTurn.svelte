@@ -51,12 +51,14 @@
 								? '(reasoning hidden)'
 								: '';
 				if (txt) out.push({ kind: 'thinking', text: txt });
-			} else if (t === 'tool_use') {
+			} else if (t === 'tool_use' || t === 'toolCall') {
+				// `tool_use` = Anthropic-style; `toolCall` = gateway-native schema
+				// (chat.history returns `{type:'toolCall', id, name, arguments}`).
 				out.push({
 					kind: 'tool',
 					id: typeof b.id === 'string' ? b.id : '',
 					name: typeof b.name === 'string' ? b.name : 'tool',
-					input: b.input
+					input: t === 'toolCall' ? b.arguments : b.input
 				});
 			} else if (t === 'image' || t === 'image_url') {
 				out.push({ kind: 'image' });
