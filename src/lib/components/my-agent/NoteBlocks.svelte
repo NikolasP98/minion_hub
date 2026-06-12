@@ -119,28 +119,32 @@
 	/>
 {/snippet}
 
-{#snippet embedBlock(block: TodoBlock | EaselBlock, i: number)}
+{#snippet embedBlock(block: TodoBlock | EaselBlock, i: number, showTitle: boolean)}
 	{#if block.type === 'todo'}
-		<input
-			class="nb-title"
-			class:committed={justFilled.has(block.id)}
-			placeholder="Checklist title"
-			value={block.title ?? ''}
-			oninput={(e) => setBlockTitle(note.id, block.id, e.currentTarget.value)}
-			aria-label="Checklist title"
-		/>
+		{#if showTitle}
+			<input
+				class="nb-title"
+				class:committed={justFilled.has(block.id)}
+				placeholder="Title"
+				value={block.title ?? ''}
+				oninput={(e) => setBlockTitle(note.id, block.id, e.currentTarget.value)}
+				aria-label="Checklist title"
+			/>
+		{/if}
 		<div class="nb-embed-body">
 			<TodoChecklist {note} {block} large={!compact} />
 		</div>
 	{:else}
-		<input
-			class="nb-title"
-			class:committed={justFilled.has(block.id)}
-			placeholder="Board title"
-			value={block.title ?? ''}
-			oninput={(e) => setBlockTitle(note.id, block.id, e.currentTarget.value)}
-			aria-label="Board title"
-		/>
+		{#if showTitle}
+			<input
+				class="nb-title"
+				class:committed={justFilled.has(block.id)}
+				placeholder="Title"
+				value={block.title ?? ''}
+				oninput={(e) => setBlockTitle(note.id, block.id, e.currentTarget.value)}
+				aria-label="Board title"
+			/>
+		{/if}
 		<button type="button" class="easel-card" onclick={() => onopeneasel?.(block)}>
 			{#if block.items.length > 0}
 				<div class="easel-thumbs" aria-hidden="true">
@@ -158,9 +162,9 @@
 				{#if block.items.length > 0}
 					<span class="easel-count"><ImageIcon size={13} /> {block.items.length} items</span>
 				{:else}
-					<span class="easel-count"><LayoutDashboard size={13} /> Empty board</span>
+					<span class="easel-count"><LayoutDashboard size={13} /> Nothing here yet</span>
 				{/if}
-				<span class="easel-open">Open board</span>
+				<span class="easel-open">Open</span>
 			</div>
 		</button>
 	{/if}
@@ -208,14 +212,25 @@
 				{#if block.type !== 'text'}
 					{@const count = block.type === 'todo' ? block.items.filter((x) => x.text.trim()).length : block.items.length}
 					<div class="nb-summary" class:open={expanded.has(block.id)}>
-						<button type="button" class="nb-sum-head" onclick={() => toggleExpand(block.id)}>
-							{#if block.type === 'todo'}<ListTodo size={14} />{:else}<LayoutDashboard size={14} />{/if}
-							<span class="nb-sum-title">{block.title?.trim() || (block.type === 'todo' ? 'Checklist' : 'Board')}</span>
+						<div class="nb-sum-head">
+							<button type="button" class="nb-sum-toggle" aria-label="Expand block" onclick={() => toggleExpand(block.id)}>
+								{#if block.type === 'todo'}<ListTodo size={14} />{:else}<LayoutDashboard size={14} />{/if}
+							</button>
+							<input
+								class="nb-sum-title"
+								class:committed={justFilled.has(block.id)}
+								placeholder={block.type === 'todo' ? 'Checklist' : 'Board'}
+								value={block.title ?? ''}
+								oninput={(e) => setBlockTitle(note.id, block.id, e.currentTarget.value)}
+								aria-label="Block title"
+							/>
 							<span class="nb-sum-count">{count} {count === 1 ? 'item' : 'items'}</span>
-							<ChevronDown class="nb-sum-chev {expanded.has(block.id) ? 'rot' : ''}" size={14} />
-						</button>
+							<button type="button" class="nb-sum-toggle" aria-label="Expand block" onclick={() => toggleExpand(block.id)}>
+								<ChevronDown class="nb-sum-chev {expanded.has(block.id) ? 'rot' : ''}" size={14} />
+							</button>
+						</div>
 						{#if expanded.has(block.id)}
-							<div class="nb-sum-body">{@render embedBlock(block, i)}</div>
+							<div class="nb-sum-body">{@render embedBlock(block, i, false)}</div>
 						{/if}
 					</div>
 				{/if}
@@ -229,7 +244,7 @@
 			<!-- Zen: blocks rendered inline, in order. -->
 			{#each note.blocks as block, i (block.id)}
 				<div class="nb-block" class:embed={block.type !== 'text'}>
-					{#if block.type === 'text'}{@render textBlock(block, i)}{:else}{@render embedBlock(block, i)}{/if}
+					{#if block.type === 'text'}{@render textBlock(block, i)}{:else}{@render embedBlock(block, i, true)}{/if}
 				</div>
 			{/each}
 		{/if}
@@ -252,43 +267,55 @@
 	.nb-sum-head {
 		display: flex;
 		align-items: center;
-		gap: 8px;
+		gap: 6px;
 		width: 100%;
-		padding: 9px 10px;
-		font-family: inherit;
-		font-size: 12.5px;
+		padding: 7px 8px;
+	}
+	.nb-sum-toggle {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: 3px;
+		border-radius: 6px;
 		cursor: pointer;
 		background: transparent;
 		border: none;
-		color: color-mix(in srgb, var(--color-foreground) 85%, transparent);
+		flex-shrink: 0;
 		transition: background 120ms ease;
 	}
-	.nb-sum-head:hover {
-		background: color-mix(in srgb, var(--color-foreground) 4%, transparent);
+	.nb-sum-toggle:hover {
+		background: color-mix(in srgb, var(--color-foreground) 7%, transparent);
 	}
-	.nb-sum-head :global(svg) {
+	.nb-sum-toggle :global(svg) {
 		color: var(--color-accent);
-		flex-shrink: 0;
 	}
 	.nb-sum-title {
 		flex: 1;
 		min-width: 0;
+		font-family: inherit;
+		font-size: 12.5px;
 		font-weight: 600;
 		text-align: left;
-		overflow: hidden;
+		background: transparent;
+		border: none;
+		outline: none;
+		color: color-mix(in srgb, var(--color-foreground) 88%, transparent);
 		text-overflow: ellipsis;
-		white-space: nowrap;
+	}
+	.nb-sum-title::placeholder {
+		color: color-mix(in srgb, var(--color-foreground) 35%, transparent);
+		font-weight: 500;
 	}
 	.nb-sum-count {
 		font-size: 11px;
 		color: color-mix(in srgb, var(--color-foreground) 45%, transparent);
 		flex-shrink: 0;
 	}
-	.nb-sum-head :global(.nb-sum-chev) {
+	.nb-sum-toggle :global(.nb-sum-chev) {
 		color: color-mix(in srgb, var(--color-foreground) 40%, transparent);
 		transition: transform 160ms ease;
 	}
-	.nb-sum-head :global(.nb-sum-chev.rot) {
+	.nb-sum-toggle :global(.nb-sum-chev.rot) {
 		transform: rotate(180deg);
 	}
 	.nb-sum-body {
@@ -319,7 +346,8 @@
 		font-weight: 500;
 	}
 	/* Provisional → committed: a one-shot accent flash when AI fills a title. */
-	.nb-title.committed {
+	.nb-title.committed,
+	.nb-sum-title.committed {
 		animation: nb-commit 1.3s ease-out;
 	}
 	@keyframes nb-commit {

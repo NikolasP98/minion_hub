@@ -275,7 +275,7 @@
 	// ── Slash menu: type "/" in a block to embed a to-do or easel ──────────────
 	const SLASH_ITEMS: { type: 'todo' | 'easel'; label: string; kw: string[] }[] = [
 		{ type: 'todo', label: 'To-do list', kw: ['todo', 'task', 'tasks', 'check', 'list', 'checklist'] },
-		{ type: 'easel', label: 'Easel / moodboard', kw: ['easel', 'board', 'moodboard', 'whiteboard', 'draw', 'image'] }
+		{ type: 'easel', label: 'Board / moodboard', kw: ['easel', 'board', 'moodboard', 'whiteboard', 'draw', 'image'] }
 	];
 	let slashOpen = $state(false);
 	let slashPos = $state<{ left: number; top: number } | null>(null);

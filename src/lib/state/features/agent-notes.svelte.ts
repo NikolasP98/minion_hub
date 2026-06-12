@@ -568,6 +568,61 @@ export function deleteNote(id: string): void {
   else void deleteRemote(id);
 }
 
+// ─── Auto-prune empty notes/blocks (on nav-away) ───
+
+function isBlockEmpty(b: NoteBlock): boolean {
+  if (b.type === 'text') return !b.md.trim();
+  if (b.type === 'todo') return b.items.every((it) => !it.text.trim());
+  return b.items.length === 0; // easel
+}
+
+/** A note with no title and no content at all (empty check "bubbles up"). */
+function noteIsEmpty(n: AgentNote): boolean {
+  if (n.title.trim()) return false;
+  if (n.kind === 'todo') return n.items.every((it) => !it.text.trim());
+  if (n.kind === 'easel') return n.easel.items.length === 0;
+  // note kind: empty body + no attachments + every embedded block empty
+  if (n.attachments.length > 0) return false;
+  if (n.body.trim()) return false;
+  return n.blocks.every(isBlockEmpty);
+}
+
+/**
+ * Drop empty embedded blocks (boards/todos) and, if the whole note is then empty,
+ * delete it. Called when the user navigates away without adding content.
+ */
+export function pruneEmptyNote(id: string): void {
+  const n = find(id);
+  if (!n) return;
+  if (n.kind === 'note') {
+    // Remove empty to-do/easel blocks (keep text blocks).
+    const kept = n.blocks.filter((b) => b.type === 'text' || !isBlockEmpty(b));
+    if (kept.length !== n.blocks.length) {
+      n.blocks = kept.length > 0 ? kept : [{ id: uid(), type: 'text', md: '', attachments: [] }];
+    }
+  }
+  if (noteIsEmpty(n)) deleteNote(n.id);
+  else if (n.kind === 'note' && n.blocks.length === 0) {
+    n.blocks.push({ id: uid(), type: 'text', md: '', attachments: [] });
+    touch(n);
+  } else if (n.kind === 'note') {
+    touch(n);
+  }
+}
+
+/** Prune every note (e.g. when the notes view unmounts / page navigates away). */
+export function pruneEmptyNotes(): void {
+  for (const n of [...notesState.notes]) pruneEmptyNote(n.id);
+}
+
+/**
+ * The first empty `note`-kind note, if any. Used to keep at most one empty note:
+ * the "+" button focuses it instead of creating another.
+ */
+export function firstEmptyNote(): AgentNote | undefined {
+  return notesState.notes.find((n) => n.kind === 'note' && noteIsEmpty(n));
+}
+
 export function togglePin(id: string): void {
   const n = find(id);
   if (!n) return;

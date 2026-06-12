@@ -10,6 +10,9 @@
 		setNoteIcon,
 		todoProgress,
 		togglePanel,
+		pruneEmptyNote,
+		pruneEmptyNotes,
+		firstEmptyNote,
 		uploadNoteImage,
 		addAttachment,
 		NOTE_COLORS,
@@ -58,15 +61,26 @@
 	// Which note's Polish options popover is open (footer).
 	let polishMenuFor = $state<string | null>(null);
 
-	// Provisional polish proposals are discarded when the page is navigated away.
-	$effect(() => () => clearAllProposals());
+	// On nav-away: discard provisional polish proposals and delete empty notes.
+	$effect(() => () => {
+		clearAllProposals();
+		pruneEmptyNotes();
+	});
 
-	// Create a note/todo and immediately focus its title for a quick add.
+	// Collapsing the panel counts as navigating away from the notes.
+	function collapsePanel() {
+		pruneEmptyNotes();
+		togglePanel();
+	}
+
+	// "+" — keep at most one empty note: reuse the existing empty note (focus it)
+	// instead of creating another, so we never prune a note the user means to fill.
 	async function addAndFocus(kind: 'note' | 'todo') {
-		const n = addNote(kind);
+		const n = kind === 'note' ? (firstEmptyNote() ?? addNote('note')) : addNote(kind);
 		await tick();
-		const input = document.querySelector<HTMLInputElement>(`#note-${n.id} .card-title`);
-		input?.focus();
+		const card = document.getElementById(`note-${n.id}`);
+		card?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+		card?.querySelector<HTMLInputElement>('.card-title')?.focus();
 	}
 
 	// Render URL for a stored image (easel thumbnails).
@@ -351,7 +365,7 @@
 
 	<!-- Inner-bottom collapse, mirroring the main nav's collapse control. -->
 	<footer class="panel-foot">
-		<button type="button" class="collapse-row" onclick={togglePanel} aria-label="Collapse notes and todos">
+		<button type="button" class="collapse-row" onclick={collapsePanel} aria-label="Collapse notes and todos">
 			<PanelRightClose size={16} />
 			<span>Collapse</span>
 		</button>
@@ -370,7 +384,14 @@
 
 <ImageLightbox src={lightboxSrc} onclose={() => (lightboxSrc = null)} />
 
-<ZenMode note={zenNote} onclose={() => (zenNote = null)} />
+<ZenMode
+	note={zenNote}
+	onclose={() => {
+		const id = zenNote?.id;
+		zenNote = null;
+		if (id) pruneEmptyNote(id);
+	}}
+/>
 
 {#if easelNote}
 	<EaselBoard note={easelNote} onclose={() => (easelNote = null)} />
