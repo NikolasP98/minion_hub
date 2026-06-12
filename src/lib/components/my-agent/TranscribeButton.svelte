@@ -1,17 +1,55 @@
 <script lang="ts">
-	import { Mic, MicOff, MonitorSpeaker, Loader2 } from 'lucide-svelte';
+	import { fly } from 'svelte/transition';
+	import {
+		Mic,
+		MicOff,
+		ChevronDown,
+		MonitorSpeaker,
+		Loader2,
+		Sparkles,
+		Check,
+		X,
+		Trash2
+	} from 'lucide-svelte';
+	import {
+		txPrefs,
+		TX_INTENTS,
+		setAutoPolish,
+		setIntent,
+		type TxIntent
+	} from '$lib/state/features/transcription-prefs.svelte';
 
-	// Emits finalized transcript text to insert into the note.
+	// Emits transcript text to the parent. `onfinal` fires with each finalized
+	// segment; `oninterim` streams the live (not-yet-final) phrase. The parent owns
+	// buffering/commit; it may also pass polish/discard actions for the dropdown.
 	let {
 		onfinal,
-		compact = false
-	}: { onfinal: (text: string) => void; compact?: boolean } = $props();
+		oninterim,
+		onpolish,
+		ondiscard,
+		hasPending,
+		compact = false,
+		allowTab = true
+	}: {
+		onfinal: (text: string) => void;
+		oninterim?: (text: string) => void;
+		/** Polish the parent's pending buffer (dropdown action). */
+		onpolish?: () => void;
+		/** Discard the parent's pending buffer (dropdown action). */
+		ondiscard?: () => void;
+		/** Whether the parent currently holds an uncommitted transcript. */
+		hasPending?: () => boolean;
+		compact?: boolean;
+		/** Whether to offer the audio-sources picker (advanced). */
+		allowTab?: boolean;
+	} = $props();
 
 	let active = $state(false);
-	let includeTab = $state(false);
-	let interim = $state('');
 	let busy = $state(false);
 	let error = $state('');
+	let menuOpen = $state(false);
+	// A pre-picked tab/computer audio source (armed but not started).
+	let armedDisp = $state<MediaStream | null>(null);
 
 	// ── Web Speech API (mic-only, real-time, no key) ───────────────────────────
 	interface SRResult {
@@ -66,7 +104,7 @@
 					live += text;
 				}
 			}
-			interim = live;
+			oninterim?.(live);
 		};
 		recog.onerror = (e) => {
 			const err = e as Event & { error?: string };
@@ -75,7 +113,7 @@
 		};
 		recog.onend = () => {
 			// Web Speech stops itself periodically — restart while active.
-			if (active && !includeTab) {
+			if (active && !armedDisp) {
 				try {
 					recog?.start();
 				} catch {
@@ -100,9 +138,8 @@
 		}
 	}
 
-	// ── Server STT on mixed (mic + tab) audio ──────────────────────────────────
+	// ── Server STT on mixed (mic + pre-picked source) audio ────────────────────
 	let micStream: MediaStream | null = null;
-	let dispStream: MediaStream | null = null;
 	let audioCtx: AudioContext | null = null;
 	let recorder: MediaRecorder | null = null;
 	let cycleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -113,41 +150,32 @@
 		error = '';
 		try {
 			micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-			// Chrome requires video:true to offer the tab picker + "share tab audio".
-			dispStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-			const tabAudio = dispStream.getAudioTracks();
-			// We only need audio — drop the video track to save resources.
-			dispStream.getVideoTracks().forEach((t) => t.stop());
+			const tabAudio = armedDisp?.getAudioTracks() ?? [];
 			if (tabAudio.length === 0) {
-				error = 'No tab audio shared — pick a tab and enable "Share tab audio".';
-				await stopServerStt();
-				active = false;
+				// Armed source was lost — fall back to mic-only Web Speech.
 				busy = false;
+				startWebSpeech();
+				void startMeter(micStream);
 				return;
 			}
-			// If the user ends the share, stop transcribing.
-			tabAudio[0].addEventListener('ended', () => void stop());
-
 			audioCtx = new AudioContext();
 			const dest = audioCtx.createMediaStreamDestination();
 			audioCtx.createMediaStreamSource(micStream).connect(dest);
 			audioCtx.createMediaStreamSource(new MediaStream(tabAudio)).connect(dest);
-
 			busy = false;
+			void startMeter(micStream);
 			recordCycle(dest.stream);
 		} catch (e) {
 			error =
 				e instanceof DOMException && e.name === 'NotAllowedError'
-					? 'Permission denied for mic or screen audio.'
-					: 'Could not start system-audio transcription.';
+					? 'Permission denied for the microphone.'
+					: 'Could not start audio-source transcription.';
 			await stopServerStt();
 			active = false;
 			busy = false;
 		}
 	}
 
-	// Record a full, independently-decodable webm clip every CHUNK_MS, post it,
-	// then start the next clip (timeslice chunks aren't separately decodable).
 	function recordCycle(stream: MediaStream) {
 		if (!active) return;
 		const mime = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
@@ -200,8 +228,7 @@
 		}
 		recorder = null;
 		micStream?.getTracks().forEach((t) => t.stop());
-		dispStream?.getTracks().forEach((t) => t.stop());
-		micStream = dispStream = null;
+		micStream = null;
 		try {
 			await audioCtx?.close();
 		} catch {
@@ -210,19 +237,72 @@
 		audioCtx = null;
 	}
 
+	// ── Live audio meter (for the recording island) ────────────────────────────
+	const BARS = 28;
+	let levels = $state<number[]>(new Array(BARS).fill(0));
+	let analyser: AnalyserNode | null = null;
+	let meterCtx: AudioContext | null = null;
+	let meterStream: MediaStream | null = null;
+	let rafId = 0;
+
+	async function startMeter(existing?: MediaStream) {
+		try {
+			meterStream = existing ?? (await navigator.mediaDevices.getUserMedia({ audio: true }));
+			meterCtx = new AudioContext();
+			const src = meterCtx.createMediaStreamSource(meterStream);
+			analyser = meterCtx.createAnalyser();
+			analyser.fftSize = 64;
+			analyser.smoothingTimeConstant = 0.7;
+			src.connect(analyser);
+			const data = new Uint8Array(analyser.frequencyBinCount);
+			const tick = () => {
+				if (!analyser) return;
+				analyser.getByteFrequencyData(data);
+				const next = new Array(BARS);
+				const step = Math.max(1, Math.floor(data.length / BARS));
+				for (let i = 0; i < BARS; i++) next[i] = Math.min(1, (data[i * step] ?? 0) / 190);
+				levels = next;
+				rafId = requestAnimationFrame(tick);
+			};
+			rafId = requestAnimationFrame(tick);
+		} catch {
+			/* meter is best-effort; transcription still works */
+		}
+	}
+
+	function stopMeter() {
+		if (rafId) cancelAnimationFrame(rafId);
+		rafId = 0;
+		analyser = null;
+		// Only stop a stream we opened ourselves (not the shared server-STT mic).
+		if (meterStream && meterStream !== micStream) meterStream.getTracks().forEach((t) => t.stop());
+		meterStream = null;
+		try {
+			meterCtx?.close();
+		} catch {
+			/* ignore */
+		}
+		meterCtx = null;
+		levels = new Array(BARS).fill(0);
+	}
+
 	// ── Public control ─────────────────────────────────────────────────────────
 	function start() {
 		error = '';
-		interim = '';
+		oninterim?.('');
 		active = true;
-		if (includeTab) void startServerStt();
-		else startWebSpeech();
+		if (armedDisp) void startServerStt();
+		else {
+			startWebSpeech();
+			void startMeter();
+		}
 	}
 
 	async function stop() {
 		active = false;
-		interim = '';
+		oninterim?.('');
 		stopWebSpeech();
+		stopMeter();
 		await stopServerStt();
 	}
 
@@ -231,12 +311,35 @@
 		else start();
 	}
 
-	function onToggleTab() {
-		includeTab = !includeTab;
-		if (active) {
-			// Restart in the new mode.
-			void stop().then(() => start());
+	// ── Audio sources — pre-pick a tab/computer source (does NOT start) ────────
+	async function pickAudioSource() {
+		menuOpen = false;
+		try {
+			// Chrome requires video:true to offer the tab picker + "share tab audio".
+			const disp = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+			disp.getVideoTracks().forEach((t) => t.stop());
+			if (disp.getAudioTracks().length === 0) {
+				disp.getTracks().forEach((t) => t.stop());
+				error = 'No tab audio shared — pick a tab and enable "Share tab audio".';
+				return;
+			}
+			armedDisp?.getTracks().forEach((t) => t.stop());
+			armedDisp = disp;
+			disp.getAudioTracks()[0].addEventListener('ended', () => {
+				if (armedDisp === disp) armedDisp = null;
+			});
+		} catch {
+			/* user cancelled the picker */
 		}
+	}
+
+	function clearAudioSource() {
+		armedDisp?.getTracks().forEach((t) => t.stop());
+		armedDisp = null;
+	}
+
+	function chooseIntent(i: TxIntent) {
+		setIntent(i);
 	}
 
 	$effect(() => {
@@ -244,102 +347,295 @@
 		return () => {
 			active = false;
 			stopWebSpeech();
+			stopMeter();
 			void stopServerStt();
+			armedDisp?.getTracks().forEach((t) => t.stop());
 		};
 	});
 </script>
 
-<div class="transcribe" class:compact>
-	<button
-		type="button"
-		class="mic-btn"
-		class:on={active}
-		title={active ? 'Stop transcription' : 'Transcribe speech into this note'}
-		aria-label={active ? 'Stop transcription' : 'Start transcription'}
-		aria-pressed={active}
-		onclick={toggle}
-	>
-		{#if busy}<Loader2 size={compact ? 13 : 15} class="spin" />
-		{:else if active}<Mic size={compact ? 13 : 15} />
-		{:else}<MicOff size={compact ? 13 : 15} />{/if}
-		{#if !compact}<span>{active ? 'Listening…' : 'Transcribe'}</span>{/if}
-	</button>
+<div class="tx" class:compact class:menuparent={menuOpen}>
+	<div class="tx-split" class:on={active}>
+		<button
+			type="button"
+			class="tx-main"
+			title={active ? 'Stop transcription' : 'Transcribe speech into this note'}
+			aria-label={active ? 'Stop transcription' : 'Start transcription'}
+			aria-pressed={active}
+			onclick={toggle}
+		>
+			{#if busy}<Loader2 size={compact ? 13 : 15} class="spin" />
+			{:else if active}<Mic size={compact ? 13 : 15} />
+			{:else}<MicOff size={compact ? 13 : 15} />{/if}
+			{#if !compact}<span>{active ? 'Listening…' : 'Transcribe'}</span>{/if}
+		</button>
+		{#if !compact}
+			<button
+				type="button"
+				class="tx-caret"
+				class:open={menuOpen}
+				title="Transcription options"
+				aria-label="Transcription options"
+				aria-haspopup="menu"
+				aria-expanded={menuOpen}
+				onclick={() => (menuOpen = !menuOpen)}
+			>
+				<ChevronDown size={13} />
+			</button>
+		{/if}
+	</div>
 
-	<button
-		type="button"
-		class="tab-toggle"
-		class:on={includeTab}
-		title="Also transcribe a browser tab's audio (you'll pick the tab)"
-		aria-label="Include tab audio"
-		aria-pressed={includeTab}
-		onclick={onToggleTab}
-	>
-		<MonitorSpeaker size={compact ? 12 : 14} />
-		{#if !compact}<span>Tab audio</span>{/if}
-	</button>
+	{#if menuOpen}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="tx-menu" role="menu" tabindex="-1" onmousedown={(e) => e.preventDefault()}>
+			<!-- Actions (top) -->
+			{#if hasPending?.()}
+				<button type="button" role="menuitem" class="tx-mi" onclick={() => { menuOpen = false; onpolish?.(); }}>
+					<Sparkles size={13} /> Polish transcript now
+				</button>
+				<button type="button" role="menuitem" class="tx-mi" onclick={() => { menuOpen = false; ondiscard?.(); }}>
+					<Trash2 size={13} /> Discard pending
+				</button>
+				<div class="tx-sep"></div>
+			{/if}
 
-	{#if interim}
-		<span class="interim" aria-live="polite">{interim}</span>
+			<!-- Toggles / settings (bottom) -->
+			<button
+				type="button"
+				role="menuitemcheckbox"
+				aria-checked={txPrefs.autoPolish}
+				class="tx-mi"
+				onclick={() => setAutoPolish(!txPrefs.autoPolish)}
+			>
+				<span class="tx-check" class:on={txPrefs.autoPolish}>{#if txPrefs.autoPolish}<Check size={11} />{/if}</span>
+				Auto-polish dictation
+			</button>
+
+			<div class="tx-group-label">Intent</div>
+			{#each TX_INTENTS as it (it.id)}
+				<button
+					type="button"
+					role="menuitemradio"
+					aria-checked={txPrefs.intent === it.id}
+					class="tx-mi intent"
+					title={it.hint}
+					onclick={() => chooseIntent(it.id)}
+				>
+					<span class="tx-radio" class:on={txPrefs.intent === it.id}></span>
+					{it.label}
+				</button>
+			{/each}
+
+			{#if allowTab}
+				<div class="tx-sep"></div>
+				<button type="button" role="menuitem" class="tx-mi" onclick={pickAudioSource}>
+					<MonitorSpeaker size={13} /> {armedDisp ? 'Change audio source…' : 'Audio sources…'}
+				</button>
+				{#if armedDisp}
+					<button type="button" role="menuitem" class="tx-mi sub" onclick={clearAudioSource}>
+						<X size={12} /> Remove source (tab/computer audio armed)
+					</button>
+				{/if}
+			{/if}
+		</div>
 	{/if}
+
 	{#if error}
 		<span class="terr" role="alert">{error}</span>
 	{/if}
 </div>
 
+{#if menuOpen}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="tx-scrim" onpointerdown={() => (menuOpen = false)}></div>
+{/if}
+
+{#if active}
+	<!-- Recording island — slides in from the top with live audio + a pulsing dot. -->
+	<div class="rec-island" transition:fly={{ y: -40, duration: 220 }} role="status" aria-label="Recording">
+		<span class="rec-dot"></span>
+		<span class="rec-label">{armedDisp ? 'Recording (mic + source)' : 'Recording'}</span>
+		<div class="rec-bars" aria-hidden="true">
+			{#each levels as lv, i (i)}
+				<span class="rec-bar" style:height="{Math.max(8, lv * 100)}%"></span>
+			{/each}
+		</div>
+	</div>
+{/if}
+
 <style>
-	.transcribe {
+	.tx {
+		position: relative;
 		display: flex;
 		align-items: center;
 		flex-wrap: wrap;
 		gap: 6px;
 	}
-	.mic-btn,
-	.tab-toggle {
+
+	/* Split button: [ mic | ▼ ] */
+	.tx-split {
 		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		padding: 4px 8px;
-		font-size: 11.5px;
-		border-radius: 7px;
-		cursor: pointer;
-		color: rgba(255, 255, 255, 0.55);
+		align-items: stretch;
+		border-radius: 8px;
+		overflow: hidden;
+		border: 1px solid rgba(255, 255, 255, 0.1);
 		background: rgba(255, 255, 255, 0.04);
-		border: 1px solid rgba(255, 255, 255, 0.08);
-		transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+		transition: border-color 120ms ease, background 120ms ease;
 	}
-	.compact .mic-btn,
-	.compact .tab-toggle {
-		padding: 4px;
-	}
-	.mic-btn:hover,
-	.tab-toggle:hover {
-		color: rgba(255, 255, 255, 0.9);
-	}
-	.mic-btn.on {
-		color: #fff;
-		background: color-mix(in srgb, var(--color-accent) 20%, transparent);
+	.tx-split.on {
+		background: color-mix(in srgb, var(--color-accent) 18%, transparent);
 		border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
 	}
-	.mic-btn.on :global(svg) {
+	.tx-main {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 5px 10px;
+		font-size: 12px;
+		font-family: inherit;
+		cursor: pointer;
+		background: transparent;
+		border: none;
+		color: rgba(255, 255, 255, 0.7);
+		transition: color 120ms ease;
+	}
+	.compact .tx-main {
+		padding: 4px 6px;
+	}
+	.tx-main:hover {
+		color: #fff;
+	}
+	.tx-split.on .tx-main {
+		color: #fff;
+	}
+	.tx-split.on .tx-main :global(svg) {
 		animation: pulse 1.4s ease-in-out infinite;
 	}
-	.tab-toggle.on {
-		color: rgba(167, 139, 250, 1);
-		background: rgba(167, 139, 250, 0.16);
-		border-color: rgba(167, 139, 250, 0.45);
+	.tx-caret {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 24px;
+		cursor: pointer;
+		background: transparent;
+		border: none;
+		border-left: 1px solid rgba(255, 255, 255, 0.1);
+		color: rgba(255, 255, 255, 0.5);
+		transition: color 120ms ease, background 120ms ease;
 	}
-	.interim {
+	.tx-caret:hover,
+	.tx-caret.open {
+		color: #fff;
+		background: rgba(255, 255, 255, 0.06);
+	}
+
+	/* Dropdown menu */
+	.tx-menu {
+		position: absolute;
+		top: calc(100% + 6px);
+		right: 0;
+		z-index: 96;
+		min-width: 230px;
+		display: flex;
+		flex-direction: column;
+		padding: 5px;
+		border-radius: 10px;
+		background: var(--color-bg2, #1b1b1f);
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+	}
+	.tx-scrim {
+		position: fixed;
+		inset: 0;
+		z-index: 95;
+	}
+	.tx-mi {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 7px 9px;
+		font-size: 12.5px;
+		font-family: inherit;
+		text-align: left;
+		border-radius: 6px;
+		cursor: pointer;
+		background: transparent;
+		border: none;
+		color: rgba(255, 255, 255, 0.82);
+		transition: background 120ms ease, color 120ms ease;
+	}
+	.tx-mi:hover {
+		color: #fff;
+		background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+	}
+	.tx-mi.sub {
 		font-size: 11.5px;
-		font-style: italic;
-		color: rgba(255, 255, 255, 0.45);
-		max-width: 100%;
+		color: rgba(255, 255, 255, 0.5);
+		padding-left: 14px;
 	}
+	.tx-mi.intent {
+		padding-left: 12px;
+	}
+	.tx-mi :global(svg) {
+		color: var(--color-accent);
+		flex-shrink: 0;
+	}
+	.tx-sep {
+		height: 1px;
+		margin: 5px 4px;
+		background: rgba(255, 255, 255, 0.1);
+	}
+	.tx-group-label {
+		padding: 6px 9px 3px;
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: rgba(255, 255, 255, 0.35);
+	}
+	.tx-check {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 15px;
+		height: 15px;
+		border-radius: 4px;
+		border: 1.5px solid rgba(255, 255, 255, 0.3);
+		color: #1a1a1a;
+		flex-shrink: 0;
+	}
+	.tx-check.on {
+		background: var(--color-accent);
+		border-color: var(--color-accent);
+	}
+	.tx-check :global(svg) {
+		color: #1a1a1a;
+	}
+	.tx-radio {
+		width: 13px;
+		height: 13px;
+		border-radius: 50%;
+		border: 1.5px solid rgba(255, 255, 255, 0.3);
+		flex-shrink: 0;
+		position: relative;
+	}
+	.tx-radio.on {
+		border-color: var(--color-accent);
+	}
+	.tx-radio.on::after {
+		content: '';
+		position: absolute;
+		inset: 2.5px;
+		border-radius: 50%;
+		background: var(--color-accent);
+	}
+
 	.terr {
 		font-size: 11px;
 		color: var(--color-accent);
 		flex-basis: 100%;
 	}
-	:global(.transcribe .spin) {
+	:global(.tx .spin) {
 		animation: spin 0.8s linear infinite;
 	}
 	@keyframes spin {
@@ -355,5 +651,63 @@
 		50% {
 			opacity: 0.4;
 		}
+	}
+
+	/* Recording island (top-center overlay) */
+	.rec-island {
+		position: fixed;
+		top: 14px;
+		left: 50%;
+		transform: translateX(-50%);
+		z-index: 120;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 8px 16px;
+		border-radius: 999px;
+		background: rgba(20, 20, 24, 0.92);
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+		backdrop-filter: blur(8px);
+	}
+	.rec-dot {
+		width: 9px;
+		height: 9px;
+		border-radius: 50%;
+		background: #ff4d4d;
+		box-shadow: 0 0 0 0 rgba(255, 77, 77, 0.6);
+		animation: rec-pulse 1.3s ease-out infinite;
+		flex-shrink: 0;
+	}
+	@keyframes rec-pulse {
+		0% {
+			box-shadow: 0 0 0 0 rgba(255, 77, 77, 0.6);
+		}
+		70% {
+			box-shadow: 0 0 0 8px rgba(255, 77, 77, 0);
+		}
+		100% {
+			box-shadow: 0 0 0 0 rgba(255, 77, 77, 0);
+		}
+	}
+	.rec-label {
+		font-size: 12px;
+		font-weight: 600;
+		color: rgba(255, 255, 255, 0.85);
+		white-space: nowrap;
+	}
+	.rec-bars {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		height: 22px;
+		width: 130px;
+	}
+	.rec-bar {
+		flex: 1;
+		min-height: 8%;
+		border-radius: 2px;
+		background: linear-gradient(to top, var(--color-accent), color-mix(in srgb, var(--color-accent) 50%, #fff));
+		transition: height 70ms linear;
 	}
 </style>

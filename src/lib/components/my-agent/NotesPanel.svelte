@@ -7,6 +7,7 @@
 		deleteNote,
 		togglePin,
 		setColor,
+		setNoteIcon,
 		todoProgress,
 		togglePanel,
 		uploadNoteImage,
@@ -21,26 +22,51 @@
 		Plus,
 		Pin,
 		Trash2,
-		X,
 		Search,
 		Palette,
 		Maximize2,
 		LayoutDashboard,
 		Image as ImageIcon,
-		ChevronRight,
-		ChevronLeft,
+		PanelRightClose,
+		Wand2,
 		GripVertical
 	} from 'lucide-svelte';
+	import { tick } from 'svelte';
 	import { setDragContext, type DragContext } from '$lib/utils/drag-context';
 	import NoteImageStrip from './NoteImageStrip.svelte';
 	import ImageLightbox from './ImageLightbox.svelte';
-	import NoteEditor from './NoteEditor.svelte';
+	import NoteBlocks from './NoteBlocks.svelte';
+	import NoteIconButton from './NoteIconButton.svelte';
 	import TodoChecklist from './TodoChecklist.svelte';
+	import TranscribeButton from './TranscribeButton.svelte';
 	import ZenMode from './ZenMode.svelte';
 	import EaselBoard from './EaselBoard.svelte';
+	import type { EaselBlock } from '$lib/types/notes';
 
 	const list = $derived(sortedNotes());
 	const noteCount = $derived(notesState.notes.length);
+
+	// Per-note NoteEditor instances — the footer mic feeds transcript text into the
+	// matching editor's buffer (the pending ghost renders inside that editor).
+	type EditorRef = {
+		handleFinal: (t: string) => void;
+		handleInterim: (t: string) => void;
+		togglePolish: () => void;
+	};
+	const editorRefs = $state<Record<string, EditorRef | undefined>>({});
+
+	// Create a note/todo and immediately focus its title for a quick add.
+	async function addAndFocus(kind: 'note' | 'todo') {
+		const n = addNote(kind);
+		await tick();
+		const input = document.querySelector<HTMLInputElement>(`#note-${n.id} .card-title`);
+		input?.focus();
+	}
+
+	// Render URL for a stored image (easel thumbnails).
+	function rawSrc(fileId: string): string {
+		return `/api/files/${fileId}/raw`;
+	}
 
 	// Which card has its colour palette popover open.
 	let colorMenuFor = $state<string | null>(null);
@@ -50,6 +76,8 @@
 	let zenNote = $state<AgentNote | null>(null);
 	// The easel board open fullscreen, if any.
 	let easelNote = $state<AgentNote | null>(null);
+	// An embedded easel BLOCK open fullscreen, if any.
+	let easelBlock = $state<{ note: AgentNote; block: EaselBlock } | null>(null);
 
 	// Build a draggable context payload for a note/todo (folded into chat on drop).
 	function noteDragStart(e: DragEvent, note: AgentNote) {
@@ -92,55 +120,33 @@
 </script>
 
 <aside class="notes-panel" class:collapsed={!notesState.open} aria-label="Notes and todos">
-	<!-- Drawer handle: the panel never fully unmounts — it collapses to a slim
-	     rail and this little tab toggles it open/closed. -->
-	<button
-		type="button"
-		class="panel-tab"
-		onclick={togglePanel}
-		title={notesState.open ? 'Collapse notes' : 'Expand notes'}
-		aria-label="Toggle notes and todos panel"
-		aria-expanded={notesState.open}
-	>
-		{#if notesState.open}<ChevronRight size={15} />{:else}<ChevronLeft size={15} />{/if}
-	</button>
-
 	{#if notesState.open}
 	<header class="panel-head">
 		<div class="head-title">
 			<StickyNote size={15} />
 			<span>Notes &amp; Todos</span>
 		</div>
-		<button type="button" class="icon-btn" title="Collapse panel" onclick={togglePanel}>
-			<X size={16} />
-		</button>
 	</header>
 
-	<div class="panel-actions">
-		<button type="button" class="add-btn" onclick={() => addNote('note')}>
-			<Plus size={14} /> Note
-		</button>
-		<button type="button" class="add-btn" onclick={() => addNote('todo')}>
-			<ListTodo size={14} /> Todo
-		</button>
+	<div class="search-row">
+		<div class="search">
+			<Search size={13} />
+			<input
+				type="text"
+				placeholder="Search…"
+				bind:value={notesState.query}
+				aria-label="Search notes and todos"
+			/>
+		</div>
 		<button
 			type="button"
-			class="add-btn"
-			title="Freeform image board"
-			onclick={() => (easelNote = addNote('easel'))}
+			class="add-fab"
+			title="New note  ·  type / inside to embed a to-do or easel"
+			aria-label="New note"
+			onclick={() => void addAndFocus('note')}
 		>
-			<LayoutDashboard size={14} /> Easel
+			<Plus size={17} />
 		</button>
-	</div>
-
-	<div class="search">
-		<Search size={13} />
-		<input
-			type="text"
-			placeholder="Search…"
-			bind:value={notesState.query}
-			aria-label="Search notes and todos"
-		/>
 	</div>
 
 	<div class="cards" role="list">
@@ -150,7 +156,7 @@
 				{#if notesState.query.trim()}
 					<p>No matches for “{notesState.query}”.</p>
 				{:else}
-					<p>Capture a thought or a checklist. Add a Note or Todo above.</p>
+					<p>Capture a thought or a checklist. Tap <strong>+</strong> to start.</p>
 				{/if}
 			</div>
 		{/if}
@@ -184,8 +190,10 @@
 						<span class="kind-badge todo" title="Checklist">
 							<ListTodo size={12} /> {p.done}/{p.total}
 						</span>
+					{:else if note.kind === 'note'}
+						<NoteIconButton icon={note.icon ?? ''} size={15} onpick={(v) => setNoteIcon(note.id, v)} />
 					{:else}
-						<span class="kind-badge note" title="Note"><StickyNote size={12} /></span>
+						<span class="kind-badge note" title="Easel"><LayoutDashboard size={12} /></span>
 					{/if}
 					<input
 						class="card-title"
@@ -216,18 +224,40 @@
 
 				{#if note.kind === 'note'}
 					<div class="card-body">
-						<NoteEditor {note} compactTools />
+						<NoteBlocks
+							bind:this={editorRefs[note.id]}
+							{note}
+							compact
+							onopeneasel={(block) => (easelBlock = { note, block })}
+						/>
 					</div>
 				{:else if note.kind === 'todo'}
 					<TodoChecklist {note} />
 				{:else}
+					{@const items = note.easel.items}
 					<button type="button" class="easel-card" onclick={() => (easelNote = note)}>
-						{#if note.easel.items.length > 0}
-							<span class="easel-count"><ImageIcon size={13} /> {note.easel.items.length} items</span>
-						{:else}
-							<span class="easel-count"><LayoutDashboard size={13} /> Empty board</span>
+						{#if items.length > 0}
+							<div class="easel-thumbs" aria-hidden="true">
+								{#each items.slice(0, 3) as it (it.id)}
+									{#if it.type === 'image'}
+										<img class="easel-thumb" src={rawSrc(it.fileId)} alt="" loading="lazy" />
+									{:else}
+										<span class="easel-thumb easel-thumb-text">{it.text || 'Text'}</span>
+									{/if}
+								{/each}
+								{#if items.length > 3}
+									<span class="easel-more">+{items.length - 3}</span>
+								{/if}
+							</div>
 						{/if}
-						<span class="easel-open">Open board</span>
+						<div class="easel-meta">
+							{#if items.length > 0}
+								<span class="easel-count"><ImageIcon size={13} /> {items.length} items</span>
+							{:else}
+								<span class="easel-count"><LayoutDashboard size={13} /> Empty board</span>
+							{/if}
+							<span class="easel-open">Open board</span>
+						</div>
 					</button>
 				{/if}
 
@@ -236,33 +266,54 @@
 					{/if}
 
 					<footer class="card-foot">
-					<div class="color-wrap">
-						<button
-							type="button"
-							class="icon-btn sm"
-							title="Colour"
-							aria-label="Change colour"
-							onclick={() => (colorMenuFor = colorMenuFor === note.id ? null : note.id)}
-						>
-							<Palette size={14} />
-						</button>
-						{#if colorMenuFor === note.id}
-							<div class="color-menu">
-								{#each NOTE_COLORS as c (c.id)}
-									<button
-										type="button"
-										class="swatch"
-										class:active={note.color === c.id}
-										style:background={c.swatch}
-										title={c.label}
-										aria-label={c.label}
-										onclick={() => {
-											setColor(note.id, c.id);
-											colorMenuFor = null;
-										}}
-									></button>
-								{/each}
-							</div>
+					<div class="foot-actions">
+						<div class="color-wrap">
+							<button
+								type="button"
+								class="icon-btn sm"
+								title="Colour"
+								aria-label="Change colour"
+								onclick={() => (colorMenuFor = colorMenuFor === note.id ? null : note.id)}
+							>
+								<Palette size={14} />
+							</button>
+							{#if colorMenuFor === note.id}
+								<div class="color-menu">
+									{#each NOTE_COLORS as c (c.id)}
+										<button
+											type="button"
+											class="swatch"
+											class:active={note.color === c.id}
+											style:background={c.swatch}
+											title={c.label}
+											aria-label={c.label}
+											onclick={() => {
+												setColor(note.id, c.id);
+												colorMenuFor = null;
+											}}
+										></button>
+									{/each}
+								</div>
+							{/if}
+						</div>
+						{#if note.kind === 'note'}
+							<button
+								type="button"
+								class="icon-btn sm polish"
+								title="Polish — AI-fill empty titles"
+								aria-label="Polish note"
+								onclick={() => editorRefs[note.id]?.togglePolish()}
+							>
+								<Wand2 size={14} />
+							</button>
+							<span class="foot-sep" aria-hidden="true"></span>
+							<!-- Device-mic transcription only here; tab audio + polish live in zen. -->
+							<TranscribeButton
+								compact
+								allowTab={false}
+								onfinal={(t) => editorRefs[note.id]?.handleFinal(t)}
+								oninterim={(t) => editorRefs[note.id]?.handleInterim(t)}
+							/>
 						{/if}
 					</div>
 					<button
@@ -278,6 +329,14 @@
 			</article>
 		{/each}
 	</div>
+
+	<!-- Inner-bottom collapse, mirroring the main nav's collapse control. -->
+	<footer class="panel-foot">
+		<button type="button" class="collapse-row" onclick={togglePanel} aria-label="Collapse notes and todos">
+			<PanelRightClose size={16} />
+			<span>Collapse</span>
+		</button>
+	</footer>
 	{:else}
 		<!-- Collapsed: a slim discoverable rail. Click anywhere to expand. -->
 		<button type="button" class="rail" onclick={togglePanel} aria-label="Open notes and todos">
@@ -298,6 +357,14 @@
 	<EaselBoard note={easelNote} onclose={() => (easelNote = null)} />
 {/if}
 
+{#if easelBlock}
+	<EaselBoard
+		note={easelBlock.note}
+		block={easelBlock.block}
+		onclose={() => (easelBlock = null)}
+	/>
+{/if}
+
 <style>
 	.notes-panel {
 		position: relative;
@@ -315,34 +382,32 @@
 		width: 46px;
 	}
 
-	/* Drawer handle protruding from the panel's left edge. */
-	.panel-tab {
-		position: absolute;
-		top: 50%;
-		left: 0;
-		transform: translate(-100%, -50%);
-		z-index: 6;
-		display: inline-flex;
+	/* Inner-bottom collapse control, mirroring the main nav's collapse button. */
+	.panel-foot {
+		flex-shrink: 0;
+		padding: 8px;
+		border-top: 1px solid var(--color-border);
+	}
+	.collapse-row {
+		display: flex;
 		align-items: center;
-		justify-content: center;
-		width: 18px;
-		height: 52px;
-		padding: 0;
+		gap: 0.75rem;
+		width: 100%;
+		height: 2.25rem;
+		padding: 0 0.625rem;
+		border-radius: var(--radius-md, 8px);
+		font-size: 12.5px;
+		font-weight: 500;
 		cursor: pointer;
+		background: transparent;
+		border: none;
 		color: var(--color-muted);
-		background: var(--color-bg2);
-		border: 1px solid var(--color-border);
-		border-right: none;
-		border-radius: 8px 0 0 8px;
+		font-family: inherit;
 		transition: color 120ms ease, background 120ms ease;
 	}
-	.panel-tab:hover {
-		color: var(--color-accent);
-		background: color-mix(in srgb, var(--color-accent) 10%, transparent);
-	}
-	.panel-tab:focus-visible {
-		outline: 2px solid var(--color-accent);
-		outline-offset: 2px;
+	.collapse-row:hover {
+		color: var(--color-foreground);
+		background: color-mix(in srgb, var(--color-foreground) 5%, transparent);
 	}
 
 	/* Collapsed rail: vertical, discoverable, click-to-expand. */
@@ -415,44 +480,43 @@
 		color: var(--color-accent);
 	}
 
-	.panel-actions {
+	.search-row {
 		display: flex;
+		align-items: stretch;
 		gap: 8px;
-		padding: 0 14px 10px;
+		margin: 0 14px 10px;
 		flex-shrink: 0;
 	}
-	.add-btn {
-		flex: 1;
+	.add-fab {
+		flex-shrink: 0;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		gap: 6px;
-		padding: 7px 10px;
-		font-size: 12.5px;
-		font-weight: 500;
+		width: 36px;
 		border-radius: 8px;
 		cursor: pointer;
-		color: color-mix(in srgb, var(--color-foreground) 80%, transparent);
-		background: color-mix(in srgb, var(--color-foreground) 4%, transparent);
-		border: 1px solid color-mix(in srgb, var(--color-foreground) 8%, transparent);
-		transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+		color: var(--color-accent-foreground, #fff);
+		background: var(--color-accent);
+		border: 1px solid color-mix(in srgb, var(--color-accent) 70%, transparent);
+		transition: filter 120ms ease, transform 120ms ease;
 	}
-	.add-btn:hover {
-		color: var(--color-foreground);
-		background: color-mix(in srgb, var(--color-accent) 10%, transparent);
-		border-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
+	.add-fab:hover {
+		filter: brightness(1.08);
+	}
+	.add-fab:active {
+		transform: scale(0.95);
 	}
 
 	.search {
+		flex: 1;
+		min-width: 0;
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		margin: 0 14px 10px;
 		padding: 7px 10px;
 		border-radius: 8px;
 		background: color-mix(in srgb, var(--color-foreground) 3%, transparent);
 		border: 1px solid color-mix(in srgb, var(--color-foreground) 7%, transparent);
-		flex-shrink: 0;
 		color: color-mix(in srgb, var(--color-foreground) 40%, transparent);
 	}
 	.search input {
@@ -597,6 +661,16 @@
 		justify-content: space-between;
 		margin-top: 2px;
 	}
+	.foot-actions {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+	.foot-sep {
+		width: 1px;
+		height: 16px;
+		background: color-mix(in srgb, var(--color-foreground) 14%, transparent);
+	}
 	.color-wrap {
 		position: relative;
 	}
@@ -651,14 +725,17 @@
 		color: var(--color-accent);
 		background: color-mix(in srgb, var(--color-accent) 10%, transparent);
 	}
+	.icon-btn.polish:hover {
+		color: rgba(167, 139, 250, 1);
+		background: rgba(167, 139, 250, 0.12);
+	}
 
 	.easel-card {
 		display: flex;
-		align-items: center;
-		justify-content: space-between;
+		flex-direction: column;
 		gap: 8px;
 		width: 100%;
-		padding: 14px 12px;
+		padding: 10px;
 		border-radius: 10px;
 		cursor: pointer;
 		color: rgba(255, 255, 255, 0.7);
@@ -672,6 +749,44 @@
 	.easel-card:hover {
 		color: #fff;
 		border-color: rgba(167, 139, 250, 0.5);
+	}
+	.easel-thumbs {
+		display: flex;
+		gap: 6px;
+		align-items: center;
+	}
+	.easel-thumb {
+		width: 56px;
+		height: 42px;
+		flex-shrink: 0;
+		object-fit: cover;
+		border-radius: 6px;
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		background: rgba(0, 0, 0, 0.25);
+	}
+	.easel-thumb-text {
+		display: -webkit-box;
+		-webkit-line-clamp: 3;
+		line-clamp: 3;
+		-webkit-box-orient: vertical;
+		padding: 4px 6px;
+		font-size: 10px;
+		line-height: 1.25;
+		color: rgba(255, 255, 255, 0.6);
+		overflow: hidden;
+		white-space: normal;
+		word-break: break-word;
+	}
+	.easel-more {
+		font-size: 11px;
+		font-variant-numeric: tabular-nums;
+		color: rgba(255, 255, 255, 0.6);
+	}
+	.easel-meta {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
 	}
 	.easel-count {
 		display: inline-flex;

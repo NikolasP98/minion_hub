@@ -1,16 +1,21 @@
 <script lang="ts">
 	import {
-		addEaselItem,
-		updateEaselItem,
-		deleteEaselItem,
-		setEaselCamera,
-		topEaselZ,
+		addEaselItem as _addEasel,
+		updateEaselItem as _updEasel,
+		deleteEaselItem as _delEasel,
+		setEaselCamera as _setCam,
+		topEaselZ as _topZ,
+		addBlockEaselItem,
+		updateBlockEaselItem,
+		deleteBlockEaselItem,
+		setBlockEaselCamera,
+		topBlockEaselZ,
 		uploadNoteImage,
 		fetchImageFromUrl,
 		updateNote,
 		type AgentNote
 	} from '$lib/state/features/agent-notes.svelte';
-	import type { EaselItem } from '$lib/types/notes';
+	import type { EaselItem, EaselBlock } from '$lib/types/notes';
 	import {
 		X,
 		ImagePlus,
@@ -22,7 +27,9 @@
 		SendToBack
 	} from 'lucide-svelte';
 
-	let { note, onclose }: { note: AgentNote; onclose: () => void } = $props();
+	// `block` set → editing an embedded easel block; otherwise a legacy standalone easel.
+	let { note, block, onclose }: { note: AgentNote; block?: EaselBlock; onclose: () => void } =
+		$props();
 
 	let stage = $state<HTMLDivElement | null>(null);
 	let selectedId = $state<string | null>(null);
@@ -31,7 +38,18 @@
 	let fileInput = $state<HTMLInputElement | null>(null);
 	let busy = $state(false);
 
-	const cam = $derived(note.easel.camera ?? { x: 0, y: 0, zoom: 1 });
+	// Source data + op wrappers — route to block-scoped or legacy mutations.
+	const easelItems = $derived(block ? block.items : note.easel.items);
+	const cam = $derived((block ? block.camera : note.easel.camera) ?? { x: 0, y: 0, zoom: 1 });
+	const addItem = (it: EaselItem) =>
+		block ? addBlockEaselItem(note.id, block.id, it) : _addEasel(note.id, it);
+	const updateItem = (id: string, patch: Partial<EaselItem>) =>
+		block ? updateBlockEaselItem(note.id, block.id, id, patch) : _updEasel(note.id, id, patch);
+	const deleteItem = (id: string) =>
+		block ? deleteBlockEaselItem(note.id, block.id, id) : _delEasel(note.id, id);
+	const setCamera = (c: { x: number; y: number; zoom: number }) =>
+		block ? setBlockEaselCamera(note.id, block.id, c) : _setCam(note.id, c);
+	const topZ = () => (block ? topBlockEaselZ(block) : _topZ(note));
 
 	// Active pointer gesture.
 	type Drag =
@@ -66,7 +84,7 @@
 		// Keep the point under the cursor stationary.
 		const wx = (px - cam.x) / cam.zoom;
 		const wy = (py - cam.y) / cam.zoom;
-		setEaselCamera(note.id, { x: px - wx * newZoom, y: py - wy * newZoom, zoom: newZoom });
+		setCamera({ x: px - wx * newZoom, y: py - wy * newZoom, zoom: newZoom });
 	}
 
 	function onStagePointerDown(e: PointerEvent) {
@@ -81,7 +99,7 @@
 		e.stopPropagation();
 		selectedId = item.id;
 		// Bring to front on grab.
-		updateEaselItem(note.id, item.id, { z: topEaselZ(note) + 1 });
+		updateItem(item.id, { z: topZ() + 1 });
 		drag = { mode: 'move', id: item.id, sx: e.clientX, sy: e.clientY, ox: item.x, oy: item.y };
 		stage?.setPointerCapture(e.pointerId);
 	}
@@ -108,7 +126,7 @@
 	function onPointerMove(e: PointerEvent) {
 		if (!drag) return;
 		if (drag.mode === 'pan') {
-			setEaselCamera(note.id, {
+			setCamera({
 				x: drag.camx + (e.clientX - drag.sx),
 				y: drag.camy + (e.clientY - drag.sy),
 				zoom: cam.zoom
@@ -116,11 +134,11 @@
 		} else if (drag.mode === 'move') {
 			const dx = (e.clientX - drag.sx) / cam.zoom;
 			const dy = (e.clientY - drag.sy) / cam.zoom;
-			updateEaselItem(note.id, drag.id, { x: drag.ox + dx, y: drag.oy + dy });
+			updateItem(drag.id, { x: drag.ox + dx, y: drag.oy + dy });
 		} else if (drag.mode === 'resize') {
 			const dw = (e.clientX - drag.sx) / cam.zoom;
 			const dh = (e.clientY - drag.sy) / cam.zoom;
-			updateEaselItem(note.id, drag.id, {
+			updateItem(drag.id, {
 				w: Math.max(40, drag.ow + dw),
 				h: Math.max(30, drag.oh + dh)
 			});
@@ -129,7 +147,7 @@
 			// directly above the item) maps to 0°. Hold Shift to snap to 15°.
 			let deg = (Math.atan2(e.clientY - drag.cy, e.clientX - drag.cx) * 180) / Math.PI + 90;
 			if (e.shiftKey) deg = Math.round(deg / 15) * 15;
-			updateEaselItem(note.id, drag.id, { rotation: Math.round(deg) });
+			updateItem(drag.id, { rotation: Math.round(deg) });
 		}
 	}
 
@@ -171,9 +189,9 @@
 			w: 160,
 			h: 48,
 			rotation: 0,
-			z: topEaselZ(note) + 1
+			z: topZ() + 1
 		};
-		addEaselItem(note.id, item);
+		addItem(item);
 		selectedId = item.id;
 	}
 
@@ -188,9 +206,9 @@
 			w,
 			h,
 			rotation: 0,
-			z: topEaselZ(note) + 1
+			z: topZ() + 1
 		};
-		addEaselItem(note.id, item);
+		addItem(item);
 		selectedId = item.id;
 	}
 
@@ -238,7 +256,7 @@
 		} else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
 			const active = document.activeElement as HTMLElement | null;
 			if (active?.isContentEditable || active?.tagName === 'INPUT') return;
-			deleteEaselItem(note.id, selectedId);
+			deleteItem(selectedId);
 			selectedId = null;
 		}
 	}
@@ -262,12 +280,12 @@
 	}
 
 	function fitToContent() {
-		const items = note.easel.items;
+		const items = easelItems;
 		const rect = stage?.getBoundingClientRect();
 		const vw = rect?.width ?? 800;
 		const vh = rect?.height ?? 600;
 		if (items.length === 0) {
-			setEaselCamera(note.id, { x: vw / 2, y: vh / 2, zoom: 1 });
+			setCamera({ x: vw / 2, y: vh / 2, zoom: 1 });
 			return;
 		}
 		let minX = Infinity,
@@ -285,7 +303,7 @@
 			4,
 			Math.max(0.1, Math.min(vw / (maxX - minX + pad * 2), vh / (maxY - minY + pad * 2)))
 		);
-		setEaselCamera(note.id, {
+		setCamera({
 			x: vw / 2 - ((minX + maxX) / 2) * zoom,
 			y: vh / 2 - ((minY + maxY) / 2) * zoom,
 			zoom
@@ -355,7 +373,7 @@
 	>
 		<div class="bg-grid" data-bg="1"></div>
 		<div class="world" style:transform={`translate(${cam.x}px, ${cam.y}px) scale(${cam.zoom})`}>
-			{#each note.easel.items as item (item.id)}
+			{#each easelItems as item (item.id)}
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div
 					class="item"
@@ -375,7 +393,7 @@
 							class="text-item"
 							contenteditable="plaintext-only"
 							onpointerdown={(e) => e.stopPropagation()}
-							onblur={(e) => updateEaselItem(note.id, item.id, { text: e.currentTarget.textContent ?? '' })}
+							onblur={(e) => updateItem(item.id, { text: e.currentTarget.textContent ?? '' })}
 							style:color={item.color ?? 'rgba(255,255,255,0.92)'}
 						>{item.text}</div>
 					{/if}
@@ -400,7 +418,7 @@
 								type="button"
 								title="Bring to front"
 								aria-label="Bring to front"
-								onclick={() => updateEaselItem(note.id, item.id, { z: topEaselZ(note) + 1 })}
+								onclick={() => updateItem(item.id, { z: topZ() + 1 })}
 							>
 								<BringToFront size={13} />
 							</button>
@@ -408,7 +426,7 @@
 								type="button"
 								title="Send to back"
 								aria-label="Send to back"
-								onclick={() => updateEaselItem(note.id, item.id, { z: 0 })}
+								onclick={() => updateItem(item.id, { z: 0 })}
 							>
 								<SendToBack size={13} />
 							</button>
@@ -418,7 +436,7 @@
 								title="Delete"
 								aria-label="Delete"
 								onclick={() => {
-									deleteEaselItem(note.id, item.id);
+									deleteItem(item.id);
 									selectedId = null;
 								}}
 							>
@@ -430,7 +448,7 @@
 			{/each}
 		</div>
 
-		{#if note.easel.items.length === 0}
+		{#if easelItems.length === 0}
 			<div class="empty-hint" data-bg="1">
 				Drop images, paste, or use the toolbar. Scroll to zoom, drag to pan.
 			</div>

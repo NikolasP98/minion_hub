@@ -59,11 +59,55 @@ export const easelItemSchema = z.discriminatedUnion('type', [
 ]);
 export type EaselItem = z.infer<typeof easelItemSchema>;
 
+export const cameraSchema = z.object({ x: z.number(), y: z.number(), zoom: z.number().positive() });
+
+// ─── Note blocks ───
+//
+// A `note`-kind note is a unified document: an ordered list of blocks. A block is
+// a Markdown text segment, an embedded checklist, or an embedded easel board.
+// Todos and easels are thus "elements embedded into a note" while still being
+// structured data (a future task view can aggregate todo blocks across notes).
+
+export const textBlockSchema = z.object({
+  id: z.string(),
+  type: z.literal('text'),
+  md: z.string().default(''),
+  attachments: z.array(attachmentSchema).default([]),
+});
+export const todoBlockSchema = z.object({
+  id: z.string(),
+  type: z.literal('todo'),
+  title: z.string().optional(),
+  items: z.array(todoItemSchema).default([]),
+});
+export const easelBlockSchema = z.object({
+  id: z.string(),
+  type: z.literal('easel'),
+  title: z.string().optional(),
+  items: z.array(easelItemSchema).default([]),
+  camera: cameraSchema.optional(),
+});
+export const noteBlockSchema = z.discriminatedUnion('type', [
+  textBlockSchema,
+  todoBlockSchema,
+  easelBlockSchema,
+]);
+export type TextBlock = z.infer<typeof textBlockSchema>;
+export type TodoBlock = z.infer<typeof todoBlockSchema>;
+export type EaselBlock = z.infer<typeof easelBlockSchema>;
+export type NoteBlock = z.infer<typeof noteBlockSchema>;
+export type NoteBlockType = NoteBlock['type'];
+
 // ─── Per-kind `data` documents ───
 
 export const noteDataSchema = z.object({
-  body: z.string().default(''), // Markdown (Tiptap output)
+  body: z.string().default(''), // Markdown (Tiptap output) — legacy single-text note
   attachments: z.array(attachmentSchema).default([]),
+  // Unified block document. When present it is the source of truth; `body` is kept
+  // as a legacy/back-compat mirror of the first text block.
+  blocks: z.array(noteBlockSchema).optional(),
+  // Note icon: an emoji char, or `lucide:<Name>` for a built-in icon.
+  icon: z.string().optional(),
 });
 
 export const todoDataSchema = z.object({

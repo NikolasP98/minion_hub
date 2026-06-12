@@ -9,7 +9,7 @@ const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 // Fast/cheap model for inline ghost text; override via env if a different model
 // is provisioned on the OpenRouter key. Gemini Flash has very low time-to-first-
 // token, which matters most for snappy Tab-to-accept autocomplete.
-const DEFAULT_MODEL = env.NOTES_AUTOCOMPLETE_MODEL || 'google/gemini-2.0-flash-001';
+const DEFAULT_MODEL = env.NOTES_AUTOCOMPLETE_MODEL || 'google/gemini-2.5-flash';
 const MAX_CONTEXT = 4000;
 
 /**
@@ -38,37 +38,45 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   });
   const model = openrouter(DEFAULT_MODEL);
 
-  if (kind === 'todo') {
+  try {
+    if (kind === 'todo') {
+      const { text } = await generateText({
+        model,
+        maxOutputTokens: 160,
+        temperature: 0.7,
+        system:
+          'You extend a user\'s todo checklist. Given the existing items, suggest 3 to 5 additional, ' +
+          'concrete, relevant items. Reply with ONLY the new items, one per line, no numbering, ' +
+          'no bullets, no commentary. Keep each item short.',
+        prompt: context || '(empty checklist)',
+      });
+      const items = text
+        .split('\n')
+        .map((l) => l.replace(/^\s*([-*•]|\d+[.)])\s*/, '').trim())
+        .filter((l) => l.length > 0)
+        .slice(0, 5);
+      return json({ items });
+    }
+
     const { text } = await generateText({
       model,
-      maxOutputTokens: 160,
-      temperature: 0.7,
+      maxOutputTokens: 90,
+      temperature: 0.6,
       system:
-        'You extend a user\'s todo checklist. Given the existing items, suggest 3 to 5 additional, ' +
-        'concrete, relevant items. Reply with ONLY the new items, one per line, no numbering, ' +
-        'no bullets, no commentary. Keep each item short.',
-      prompt: context || '(empty checklist)',
+        'You are an inline autocomplete for a notes app. Continue the user\'s note naturally from ' +
+        'exactly where it ends. Reply with ONLY the continuation text — no preamble, no quotes, no ' +
+        'restating what they wrote. At most about 30 words. If the text ends mid-word, complete it.',
+      prompt: context || '(empty note)',
     });
-    const items = text
-      .split('\n')
-      .map((l) => l.replace(/^\s*([-*•]|\d+[.)])\s*/, '').trim())
-      .filter((l) => l.length > 0)
-      .slice(0, 5);
-    return json({ items });
+    let suggestion = text.trim();
+    // If the note ends with a word char and the suggestion starts with one, add a space.
+    if (context && /\w$/.test(context) && /^\w/.test(suggestion)) suggestion = ' ' + suggestion;
+    return json({ suggestion });
+  } catch (e) {
+    // A model/transport failure shouldn't surface as an opaque 500 — log it and
+    // return a clean 502 so the client can show a retry affordance.
+    const msg = e instanceof Error ? e.message : 'unknown error';
+    console.error('[notes/autocomplete] model call failed:', msg);
+    throw error(502, `Autocomplete failed: ${msg}`);
   }
-
-  const { text } = await generateText({
-    model,
-    maxOutputTokens: 90,
-    temperature: 0.6,
-    system:
-      'You are an inline autocomplete for a notes app. Continue the user\'s note naturally from ' +
-      'exactly where it ends. Reply with ONLY the continuation text — no preamble, no quotes, no ' +
-      'restating what they wrote. At most about 30 words. If the text ends mid-word, complete it.',
-    prompt: context || '(empty note)',
-  });
-  let suggestion = text.trim();
-  // If the note ends with a word char and the suggestion starts with one, add a space.
-  if (context && /\w$/.test(context) && /^\w/.test(suggestion)) suggestion = ' ' + suggestion;
-  return json({ suggestion });
 };

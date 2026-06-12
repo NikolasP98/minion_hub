@@ -4,21 +4,46 @@
 		setTodoItemText,
 		toggleTodoItem,
 		deleteTodoItem,
+		addBlockTodoItem,
+		setBlockTodoItemText,
+		toggleBlockTodoItem,
+		deleteBlockTodoItem,
 		type AgentNote
 	} from '$lib/state/features/agent-notes.svelte';
+	import type { TodoBlock } from '$lib/types/notes';
 	import { fetchAutocomplete } from '$lib/state/features/notes-autocomplete';
 	import { Plus, X, Sparkles } from 'lucide-svelte';
 
-	let { note, large = false }: { note: AgentNote; large?: boolean } = $props();
+	// When `block` is set the checklist is an embedded note block; otherwise it is a
+	// legacy standalone todo record (operates on note.items).
+	let { note, block, large = false }: { note: AgentNote; block?: TodoBlock; large?: boolean } =
+		$props();
 
-	// AI Tab-suggest: dimmed ghost rows the user can accept with another Tab.
+	const items = $derived(block ? block.items : note.items);
+
+	// Op wrappers — route to block-scoped or legacy state mutations.
+	const addItem = (text = '') =>
+		block ? addBlockTodoItem(note.id, block.id, text) : addTodoItem(note.id, text);
+	const setItemText = (itemId: string, text: string) =>
+		block ? setBlockTodoItemText(note.id, block.id, itemId, text) : setTodoItemText(note.id, itemId, text);
+	const toggleItem = (itemId: string) =>
+		block ? toggleBlockTodoItem(note.id, block.id, itemId) : toggleTodoItem(note.id, itemId);
+	const deleteItem = (itemId: string) =>
+		block ? deleteBlockTodoItem(note.id, block.id, itemId) : deleteTodoItem(note.id, itemId);
+
+	// Container that scopes item-input focus (per block, or the whole note card).
+	const rootId = $derived(block ? `todoblock-${block.id}` : `note-${note.id}`);
+
+	// AI suggest: dimmed ghost rows. Accept all with Tab, or click a row (or
+	// "Add all") to accept with the mouse.
 	let ghost = $state<string[]>([]);
 	let busy = $state(false);
+	let err = $state('');
 	let inflight: AbortController | null = null;
 
 	function focusItem(index: number) {
 		queueMicrotask(() => {
-			const root = document.getElementById(`note-${note.id}`);
+			const root = document.getElementById(rootId);
 			const inputs = root?.querySelectorAll<HTMLInputElement>('.todo-text');
 			inputs?.[index]?.focus();
 		});
@@ -31,21 +56,33 @@
 	}
 
 	function acceptGhost() {
-		for (const text of ghost) addTodoItem(note.id, text);
+		for (const text of ghost) addItem(text);
 		ghost = [];
 	}
 
+	// Accept a single suggested row (click), removing it from the ghost set.
+	function acceptOne(index: number) {
+		const text = ghost[index];
+		if (text === undefined) return;
+		addItem(text);
+		ghost = ghost.filter((_, i) => i !== index);
+	}
+
 	async function requestSuggest() {
-		const context = [note.title, ...note.items.map((i) => i.text)].filter(Boolean).join('\n');
+		const context = [note.title, ...items.map((i) => i.text)].filter(Boolean).join('\n');
 		inflight?.abort();
 		inflight = new AbortController();
 		const signal = inflight.signal;
 		busy = true;
+		err = '';
 		try {
 			const res = await fetchAutocomplete({ kind: 'todo', context }, signal);
-			if (!signal.aborted && 'items' in res) ghost = res.items;
+			if (!signal.aborted && 'items' in res) {
+				ghost = res.items;
+				if (res.items.length === 0) err = 'No suggestions right now.';
+			}
 		} catch {
-			/* silent */
+			if (!signal.aborted) err = 'Could not get suggestions.';
 		} finally {
 			busy = false;
 		}
@@ -54,7 +91,7 @@
 	function onItemKey(e: KeyboardEvent, itemIndex: number) {
 		if (e.key === 'Enter') {
 			e.preventDefault();
-			if (itemIndex === note.items.length - 1) addTodoItem(note.id);
+			if (itemIndex === items.length - 1) addItem();
 			focusItem(itemIndex + 1);
 		} else if (e.key === 'Tab' && !e.shiftKey) {
 			e.preventDefault();
@@ -66,8 +103,8 @@
 	}
 </script>
 
-<ul class="todo-list" class:large>
-	{#each note.items as item, i (item.id)}
+<ul class="todo-list" class:large id={block ? rootId : undefined}>
+	{#each items as item, i (item.id)}
 		<li class="todo-item" class:done={item.done}>
 			<button
 				type="button"
@@ -75,13 +112,13 @@
 				class:checked={item.done}
 				title={item.done ? 'Mark not done' : 'Mark done'}
 				aria-label="Toggle item"
-				onclick={() => toggleTodoItem(note.id, item.id)}
+				onclick={() => toggleItem(item.id)}
 			></button>
 			<input
 				class="todo-text"
 				placeholder="List item"
 				value={item.text}
-				oninput={(e) => setTodoItemText(note.id, item.id, e.currentTarget.value)}
+				oninput={(e) => setItemText(item.id, e.currentTarget.value)}
 				onkeydown={(e) => onItemKey(e, i)}
 				aria-label="List item"
 			/>
@@ -90,7 +127,7 @@
 				class="item-del"
 				title="Remove item"
 				aria-label="Remove item"
-				onclick={() => deleteTodoItem(note.id, item.id)}
+				onclick={() => deleteItem(item.id)}
 			>
 				<X size={12} />
 			</button>
@@ -100,16 +137,26 @@
 	{#each ghost as g, gi (gi)}
 		<li class="todo-item ghost">
 			<span class="check ghost-check"></span>
-			<span class="todo-text ghost-text">{g}</span>
+			<button
+				type="button"
+				class="todo-text ghost-text"
+				title="Add this item"
+				onclick={() => acceptOne(gi)}
+			>{g}</button>
 		</li>
 	{/each}
 
 	<li class="todo-add">
-		<button type="button" class="add-item" onclick={() => addTodoItem(note.id)}>
+		<button type="button" class="add-item" onclick={() => addItem()}>
 			<Plus size={12} /> Add item
 		</button>
 		{#if ghost.length}
-			<span class="ghost-hint"><Sparkles size={11} /> Tab to add {ghost.length}, Esc to dismiss</span>
+			<span class="ghost-actions">
+				<button type="button" class="add-item suggest" onclick={acceptGhost}>
+					<Sparkles size={11} /> Add all {ghost.length}
+				</button>
+				<button type="button" class="add-item" onclick={clearGhost}>Dismiss</button>
+			</span>
 		{:else}
 			<button
 				type="button"
@@ -118,10 +165,14 @@
 				disabled={busy}
 				onclick={() => void requestSuggest()}
 			>
-				<Sparkles size={11} /> {busy ? 'Thinking…' : 'Suggest'}
+				<Sparkles size={11} /> {busy ? 'Thinking…' : err ? 'Retry' : 'Suggest'}
 			</button>
 		{/if}
 	</li>
+
+	{#if err && !ghost.length}
+		<li class="todo-err" role="alert">{err}</li>
+	{/if}
 </ul>
 
 <style>
@@ -197,8 +248,20 @@
 		color: rgba(255, 255, 255, 0.4);
 	}
 	.todo-item.ghost .ghost-text {
+		flex: 1;
+		min-width: 0;
+		text-align: left;
+		background: transparent;
+		border: none;
+		font-family: inherit;
+		cursor: pointer;
 		color: rgba(255, 255, 255, 0.4);
 		font-style: italic;
+		padding: 2px 0;
+		transition: color 120ms ease;
+	}
+	.todo-item.ghost .ghost-text:hover {
+		color: rgba(167, 139, 250, 0.95);
 	}
 	.ghost-check {
 		border-style: dashed;
@@ -255,11 +318,14 @@
 		opacity: 0.6;
 		cursor: default;
 	}
-	.ghost-hint {
+	.ghost-actions {
 		display: inline-flex;
 		align-items: center;
 		gap: 4px;
-		font-size: 10.5px;
-		color: rgba(167, 139, 250, 0.8);
+	}
+	.todo-err {
+		font-size: 11px;
+		color: var(--color-accent);
+		padding: 2px 0;
 	}
 </style>

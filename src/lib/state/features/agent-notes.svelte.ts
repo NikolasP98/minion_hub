@@ -15,15 +15,18 @@ import {
   type Attachment,
   type EaselData,
   type EaselItem,
+  type NoteBlock,
   type NoteColor,
   type NoteData,
   type NoteDocument,
   type NoteKind,
+  type TextBlock,
+  type EaselBlock,
   type TodoData,
   type TodoItem,
 } from '$lib/types/notes';
 
-export type { NoteColor, TodoItem, Attachment, EaselItem };
+export type { NoteColor, TodoItem, Attachment, EaselItem, NoteBlock };
 export type NoteKindClient = NoteKind;
 
 /** Client-side note: a flat, panel-friendly shape mapped to/from the server `data` doc. */
@@ -40,6 +43,10 @@ export interface AgentNote {
   attachments: Attachment[];
   /** Freeform board — `kind: 'easel'`. */
   easel: EaselData;
+  /** Unified block document — `kind: 'note'`. Text/todo/easel embedded in order. */
+  blocks: NoteBlock[];
+  /** Emoji char or `lucide:<Name>` — shown left of the title. */
+  icon?: string;
   color: NoteColor;
   pinned: boolean;
   createdAt: number;
@@ -120,6 +127,7 @@ function toClient(s: ServerNote): AgentNote {
     items: [],
     attachments: [],
     easel: { items: [] },
+    blocks: [],
   };
   if (s.kind === 'todo') {
     const d = s.data as TodoData;
@@ -131,6 +139,13 @@ function toClient(s: ServerNote): AgentNote {
     const d = s.data as NoteData;
     base.body = d.body ?? '';
     base.attachments = d.attachments ?? [];
+    base.icon = d.icon;
+    // Unified blocks are the source of truth when present; otherwise shim the
+    // legacy single-text note into one text block so it renders in the block UI.
+    base.blocks =
+      d.blocks && d.blocks.length > 0
+        ? d.blocks
+        : [{ id: uid(), type: 'text', md: d.body ?? '', attachments: d.attachments ?? [] }];
   }
   return base;
 }
@@ -138,7 +153,23 @@ function toClient(s: ServerNote): AgentNote {
 function toServerData(n: AgentNote): NoteDocument {
   if (n.kind === 'todo') return { items: n.items, attachments: n.attachments };
   if (n.kind === 'easel') return n.easel;
-  return { body: n.body, attachments: n.attachments };
+  // Mirror the first text block into legacy `body`/`attachments` so search and any
+  // older reader still work, and persist the full block document.
+  const firstText = n.blocks.find((b): b is TextBlock => b.type === 'text');
+  return {
+    body: firstText?.md ?? '',
+    attachments: firstText?.attachments ?? [],
+    blocks: n.blocks,
+    icon: n.icon,
+  };
+}
+
+/** Set (or clear, with '') the note's icon — an emoji char or `lucide:<Name>`. */
+export function setNoteIcon(id: string, icon: string): void {
+  const n = find(id);
+  if (!n) return;
+  n.icon = icon || undefined;
+  touch(n);
 }
 
 // ─── Save coordinator ───
@@ -340,6 +371,7 @@ function blankNote(kind: NoteKind): AgentNote {
     items: kind === 'todo' ? (d as TodoData).items : [],
     attachments: kind === 'easel' ? [] : ((d as NoteData | TodoData).attachments ?? []),
     easel: kind === 'easel' ? (d as EaselData) : { items: [] },
+    blocks: kind === 'note' ? [{ id: uid(), type: 'text', md: '', attachments: [] }] : [],
     color: 'default',
     pinned: false,
     createdAt: now(),
@@ -353,6 +385,161 @@ export function addNote(kind: NoteKind = 'note'): AgentNote {
   notesState.notes.unshift(n);
   void createRemote(n);
   return n;
+}
+
+// ─── Note blocks (kind: 'note') ───
+
+function findBlock(noteId: string, blockId: string): { note: AgentNote; index: number } | undefined {
+  const note = find(noteId);
+  if (!note) return;
+  const index = note.blocks.findIndex((b) => b.id === blockId);
+  if (index < 0) return;
+  return { note, index };
+}
+
+/** Insert a new block after `afterBlockId` (or at the end). Returns the new block. */
+export function addBlock(
+  noteId: string,
+  type: NoteBlock['type'],
+  afterBlockId?: string,
+): NoteBlock | undefined {
+  const note = find(noteId);
+  if (!note) return;
+  let block: NoteBlock;
+  if (type === 'todo') block = { id: uid(), type: 'todo', items: [{ id: uid(), text: '', done: false }] };
+  else if (type === 'easel') block = { id: uid(), type: 'easel', items: [] };
+  else block = { id: uid(), type: 'text', md: '', attachments: [] };
+
+  const at = afterBlockId ? note.blocks.findIndex((b) => b.id === afterBlockId) : -1;
+  if (at >= 0) note.blocks.splice(at + 1, 0, block);
+  else note.blocks.push(block);
+  touch(note);
+  return block;
+}
+
+export function removeBlock(noteId: string, blockId: string): void {
+  const hit = findBlock(noteId, blockId);
+  if (!hit) return;
+  hit.note.blocks.splice(hit.index, 1);
+  // Never leave a note with zero blocks — keep one empty text block.
+  if (hit.note.blocks.length === 0)
+    hit.note.blocks.push({ id: uid(), type: 'text', md: '', attachments: [] });
+  touch(hit.note);
+}
+
+export function moveBlock(noteId: string, blockId: string, dir: -1 | 1): void {
+  const hit = findBlock(noteId, blockId);
+  if (!hit) return;
+  const to = hit.index + dir;
+  if (to < 0 || to >= hit.note.blocks.length) return;
+  const [b] = hit.note.blocks.splice(hit.index, 1);
+  hit.note.blocks.splice(to, 0, b);
+  touch(hit.note);
+}
+
+export function setTextBlock(noteId: string, blockId: string, md: string): void {
+  const hit = findBlock(noteId, blockId);
+  if (!hit) return;
+  const b = hit.note.blocks[hit.index];
+  if (b.type !== 'text') return;
+  b.md = md;
+  touch(hit.note);
+}
+
+/** Set the title of a todo/easel block (text blocks have no title). */
+export function setBlockTitle(noteId: string, blockId: string, title: string): void {
+  const hit = findBlock(noteId, blockId);
+  if (!hit) return;
+  const b = hit.note.blocks[hit.index];
+  if (b.type === 'text') return;
+  b.title = title;
+  touch(hit.note);
+}
+
+function blockOfType<T extends NoteBlock['type']>(
+  noteId: string,
+  blockId: string,
+  type: T,
+): Extract<NoteBlock, { type: T }> | undefined {
+  const hit = findBlock(noteId, blockId);
+  if (!hit) return;
+  const b = hit.note.blocks[hit.index];
+  if (b.type !== type) return;
+  return b as Extract<NoteBlock, { type: T }>;
+}
+
+// Todo block items
+export function addBlockTodoItem(noteId: string, blockId: string, text = ''): TodoItem | undefined {
+  const b = blockOfType(noteId, blockId, 'todo');
+  const n = find(noteId);
+  if (!b || !n) return;
+  const it: TodoItem = { id: uid(), text, done: false };
+  b.items.push(it);
+  touch(n);
+  return it;
+}
+export function setBlockTodoItemText(noteId: string, blockId: string, itemId: string, text: string): void {
+  const b = blockOfType(noteId, blockId, 'todo');
+  const n = find(noteId);
+  const it = b?.items.find((i) => i.id === itemId);
+  if (!b || !n || !it) return;
+  it.text = text;
+  touch(n);
+}
+export function toggleBlockTodoItem(noteId: string, blockId: string, itemId: string): void {
+  const b = blockOfType(noteId, blockId, 'todo');
+  const n = find(noteId);
+  const it = b?.items.find((i) => i.id === itemId);
+  if (!b || !n || !it) return;
+  it.done = !it.done;
+  touch(n);
+}
+export function deleteBlockTodoItem(noteId: string, blockId: string, itemId: string): void {
+  const b = blockOfType(noteId, blockId, 'todo');
+  const n = find(noteId);
+  if (!b || !n) return;
+  const i = b.items.findIndex((it) => it.id === itemId);
+  if (i >= 0) {
+    b.items.splice(i, 1);
+    touch(n);
+  }
+}
+
+// Easel block items
+export function addBlockEaselItem(noteId: string, blockId: string, item: EaselItem): void {
+  const b = blockOfType(noteId, blockId, 'easel');
+  const n = find(noteId);
+  if (!b || !n) return;
+  b.items.push(item);
+  touch(n);
+}
+export function updateBlockEaselItem(noteId: string, blockId: string, itemId: string, patch: Partial<EaselItem>): void {
+  const b = blockOfType(noteId, blockId, 'easel');
+  const n = find(noteId);
+  const it = b?.items.find((i) => i.id === itemId);
+  if (!b || !n || !it) return;
+  Object.assign(it, patch);
+  touch(n);
+}
+export function deleteBlockEaselItem(noteId: string, blockId: string, itemId: string): void {
+  const b = blockOfType(noteId, blockId, 'easel');
+  const n = find(noteId);
+  if (!b || !n) return;
+  const i = b.items.findIndex((it) => it.id === itemId);
+  if (i >= 0) {
+    b.items.splice(i, 1);
+    touch(n);
+  }
+}
+export function setBlockEaselCamera(noteId: string, blockId: string, camera: { x: number; y: number; zoom: number }): void {
+  const b = blockOfType(noteId, blockId, 'easel');
+  const n = find(noteId);
+  if (!b || !n) return;
+  b.camera = camera;
+  scheduleSave(n.id);
+}
+export function topBlockEaselZ(b: EaselBlock): number {
+  return b.items.reduce((m, it) => Math.max(m, it.z), 0);
 }
 
 function find(id: string): AgentNote | undefined {
