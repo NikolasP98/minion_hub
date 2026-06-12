@@ -71,6 +71,7 @@ export interface RefineBlockInput {
 export interface RefineResult {
   title: string;
   blocks: { id: string; title: string }[];
+  textBlocks?: { id: string; body: string }[];
 }
 
 /** Ask the model for a note title + titles for its embedded blocks. */

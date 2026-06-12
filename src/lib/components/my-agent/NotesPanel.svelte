@@ -37,6 +37,8 @@
 	import ImageLightbox from './ImageLightbox.svelte';
 	import NoteBlocks from './NoteBlocks.svelte';
 	import NoteIconButton from './NoteIconButton.svelte';
+	import PolishMenu from './PolishMenu.svelte';
+	import { runPolish, clearAllProposals } from '$lib/state/features/note-polish.svelte';
 	import TodoChecklist from './TodoChecklist.svelte';
 	import TranscribeButton from './TranscribeButton.svelte';
 	import ZenMode from './ZenMode.svelte';
@@ -51,9 +53,13 @@
 	type EditorRef = {
 		handleFinal: (t: string) => void;
 		handleInterim: (t: string) => void;
-		togglePolish: () => void;
 	};
 	const editorRefs = $state<Record<string, EditorRef | undefined>>({});
+	// Which note's Polish options popover is open (footer).
+	let polishMenuFor = $state<string | null>(null);
+
+	// Provisional polish proposals are discarded when the page is navigated away.
+	$effect(() => () => clearAllProposals());
 
 	// Create a note/todo and immediately focus its title for a quick add.
 	async function addAndFocus(kind: 'note' | 'todo') {
@@ -297,15 +303,28 @@
 							{/if}
 						</div>
 						{#if note.kind === 'note'}
-							<button
-								type="button"
-								class="icon-btn sm polish"
-								title="Polish — AI-fill empty titles"
-								aria-label="Polish note"
-								onclick={() => editorRefs[note.id]?.togglePolish()}
-							>
-								<Wand2 size={14} />
-							</button>
+							<div class="polish-wrap">
+								<button
+									type="button"
+									class="icon-btn sm polish"
+									class:on={polishMenuFor === note.id}
+									title="Polish — AI clean-up & titles"
+									aria-label="Polish note"
+									aria-haspopup="menu"
+									aria-expanded={polishMenuFor === note.id}
+									onclick={() => (polishMenuFor = polishMenuFor === note.id ? null : note.id)}
+								>
+									<Wand2 size={14} />
+								</button>
+								{#if polishMenuFor === note.id}
+									<div class="polish-pop">
+										<PolishMenu
+											onpick={(intent) => void runPolish(note, intent)}
+											onclose={() => (polishMenuFor = null)}
+										/>
+									</div>
+								{/if}
+							</div>
 							<span class="foot-sep" aria-hidden="true"></span>
 							<!-- Device-mic transcription only here; tab audio + polish live in zen. -->
 							<TranscribeButton
@@ -364,6 +383,12 @@
 		onclose={() => (easelBlock = null)}
 	/>
 {/if}
+
+<svelte:window
+	onpointerdown={(e) => {
+		if (polishMenuFor && e.target instanceof Element && !e.target.closest('.polish-wrap')) polishMenuFor = null;
+	}}
+/>
 
 <style>
 	.notes-panel {
@@ -725,9 +750,20 @@
 		color: var(--color-accent);
 		background: color-mix(in srgb, var(--color-accent) 10%, transparent);
 	}
-	.icon-btn.polish:hover {
+	.icon-btn.polish:hover,
+	.icon-btn.polish.on {
 		color: rgba(167, 139, 250, 1);
 		background: rgba(167, 139, 250, 0.12);
+	}
+	.polish-wrap {
+		position: relative;
+		display: inline-flex;
+	}
+	.polish-pop {
+		position: absolute;
+		bottom: calc(100% + 8px);
+		left: 0;
+		z-index: 20;
 	}
 
 	.easel-card {

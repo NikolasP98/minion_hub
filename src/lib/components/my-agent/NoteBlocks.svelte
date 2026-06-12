@@ -5,17 +5,15 @@
 		removeBlock,
 		moveBlock,
 		setBlockTitle,
-		updateNote,
-		todoProgress,
 		type AgentNote
 	} from '$lib/state/features/agent-notes.svelte';
 	import type { EaselBlock, TextBlock, TodoBlock } from '$lib/types/notes';
 	import {
-		refineNote,
-		NOTE_POLISH_INTENTS,
-		type NotePolishIntent,
-		type RefineBlockInput
-	} from '$lib/state/features/notes-autocomplete';
+		getProposal,
+		applyProposal,
+		clearProposal
+	} from '$lib/state/features/note-polish.svelte';
+	import { wordDiff } from '$lib/utils/word-diff';
 	import NoteEditor from './NoteEditor.svelte';
 	import TodoChecklist from './TodoChecklist.svelte';
 	import {
@@ -25,22 +23,22 @@
 		ChevronUp,
 		ChevronDown,
 		Image as ImageIcon,
-		Loader2
+		Loader2,
+		Wand2,
+		Check,
+		X
 	} from 'lucide-svelte';
 
 	let {
 		note,
 		compact = false,
-		onopeneasel,
-		onpolishchange
+		onopeneasel
 	}: {
 		note: AgentNote;
 		/** Compact (panel) vs roomy (zen) rendering of text blocks. */
 		compact?: boolean;
 		/** Open an easel block fullscreen. */
 		onopeneasel?: (block: EaselBlock) => void;
-		/** Fires when the polish intent-chips open/close (for the trigger's highlight). */
-		onpolishchange?: (open: boolean) => void;
 	} = $props();
 
 	// Per-text-block editor instances; external transcription controls (panel
@@ -92,69 +90,21 @@
 		return `/api/files/${fileId}/raw`;
 	}
 
-	// ── Note "Polish": AI-fill empty titles, biased by an intent chip ──────────
-	let polishOpen = $state(false);
-	let polishing = $state(false);
-	let polishErr = $state('');
+	// ── Note "Polish" review ───────────────────────────────────────────────────
+	// The proposal is a shared (module-level) provisional change set, so it survives
+	// switching between the side-menu and zen views and is shown as a confirm/reject
+	// diff. The Polish *trigger* lives on the buttons (NotesPanel / ZenMode).
+	const proposal = $derived(getProposal(note.id));
 	// Titles just filled by polish → one-shot "committed" animation.
 	let justFilled = $state<Set<string>>(new Set());
 
-	export function togglePolish() {
-		polishOpen = !polishOpen;
-		polishErr = '';
-		onpolishchange?.(polishOpen);
+	function confirmPolish() {
+		const filled = applyProposal(note.id);
+		justFilled = new Set(filled);
+		setTimeout(() => (justFilled = new Set()), 1400);
 	}
-	export function isPolishOpen(): boolean {
-		return polishOpen;
-	}
-
-	function blockContent(b: AgentNote['blocks'][number]): string {
-		if (b.type === 'text') return b.md;
-		if (b.type === 'todo') {
-			const p = todoProgress({ ...note, items: b.items });
-			return `Checklist (${p.done}/${p.total} done): ` + b.items.map((i) => i.text).filter(Boolean).join(', ');
-		}
-		const imgs = b.items.filter((i) => i.type === 'image').length;
-		const txt = b.items.filter((i) => i.type === 'text').map((i) => (i.type === 'text' ? i.text : '')).join(' ');
-		return `Easel board with ${imgs} image(s). ${txt}`.trim();
-	}
-
-	async function runPolish(intent: NotePolishIntent) {
-		if (polishing) return;
-		polishing = true;
-		polishErr = '';
-		try {
-			const blocks: RefineBlockInput[] = note.blocks.map((b) => ({
-				id: b.id,
-				type: b.type,
-				title: b.type === 'text' ? undefined : b.title,
-				content: blockContent(b)
-			}));
-			const res = await refineNote({ intent, title: note.title, blocks });
-			const filled = new Set<string>();
-			// Fill the note title only if empty.
-			if (!note.title.trim() && res.title) {
-				updateNote(note.id, { title: res.title });
-				filled.add('note');
-			}
-			// Fill titleless todo/easel blocks only.
-			for (const bt of res.blocks) {
-				const b = note.blocks.find((x) => x.id === bt.id);
-				if (b && b.type !== 'text' && !(b.title ?? '').trim() && bt.title) {
-					setBlockTitle(note.id, bt.id, bt.title);
-					filled.add(bt.id);
-				}
-			}
-			justFilled = filled;
-			polishOpen = false;
-			onpolishchange?.(false);
-			// Clear the committed animation flag shortly after.
-			setTimeout(() => (justFilled = new Set()), 1400);
-		} catch {
-			polishErr = 'Could not polish this note.';
-		} finally {
-			polishing = false;
-		}
+	function rejectPolish() {
+		clearProposal(note.id);
 	}
 </script>
 
@@ -222,51 +172,67 @@
 {/snippet}
 
 <div class="note-blocks">
-	{#if compact}
-		<!-- Side-menu: embedded blocks hoisted to the top as collapsible summaries. -->
-		{#each note.blocks as block, i (block.id)}
-			{#if block.type !== 'text'}
-				{@const count = block.type === 'todo' ? block.items.filter((x) => x.text.trim()).length : block.items.length}
-				<div class="nb-summary" class:open={expanded.has(block.id)}>
-					<button type="button" class="nb-sum-head" onclick={() => toggleExpand(block.id)}>
-						{#if block.type === 'todo'}<ListTodo size={14} />{:else}<LayoutDashboard size={14} />{/if}
-						<span class="nb-sum-title">{block.title?.trim() || (block.type === 'todo' ? 'Checklist' : 'Board')}</span>
-						<span class="nb-sum-count">{count} {count === 1 ? 'item' : 'items'}</span>
-						<ChevronDown class="nb-sum-chev {expanded.has(block.id) ? 'rot' : ''}" size={14} />
-					</button>
-					{#if expanded.has(block.id)}
-						<div class="nb-sum-body">{@render embedBlock(block, i)}</div>
-					{/if}
-				</div>
+	{#if proposal?.status === 'ready'}
+		<!-- Polish review: provisional changes shown as a diff, confirm or reject. -->
+		<div class="nb-review" transition:slide={{ duration: 160 }}>
+			<div class="nb-review-head"><Wand2 size={13} /> Polished as <em>{proposal.intent}</em> — review changes</div>
+			{#if proposal.noteTitle}
+				<div class="nb-rv-row"><span class="nb-rv-label">Title</span><span class="d-add">{proposal.noteTitle.to}</span></div>
 			{/if}
-		{/each}
-		{#each note.blocks as block, i (block.id)}
-			{#if block.type === 'text'}
-				<div class="nb-block">{@render textBlock(block, i)}</div>
-			{/if}
-		{/each}
-	{:else}
-		<!-- Zen: blocks rendered inline, in order. -->
-		{#each note.blocks as block, i (block.id)}
-			<div class="nb-block" class:embed={block.type !== 'text'}>
-				{#if block.type === 'text'}{@render textBlock(block, i)}{:else}{@render embedBlock(block, i)}{/if}
-			</div>
-		{/each}
-	{/if}
-
-	<!-- Note Polish: choose an intent to AI-fill empty titles. Disappears on apply. -->
-	{#if polishOpen}
-		<div class="nb-polish" transition:slide={{ duration: 160 }}>
-			<span class="nb-polish-label">
-				{#if polishing}<Loader2 size={13} class="nb-spin" /> Polishing…{:else}Polish as:{/if}
-			</span>
-			{#each NOTE_POLISH_INTENTS as it (it.id)}
-				<button type="button" class="nb-intent" disabled={polishing} onclick={() => runPolish(it.id)}>
-					{it.label}
-				</button>
+			{#each proposal.blockTitles as bt (bt.id)}
+				<div class="nb-rv-row"><span class="nb-rv-label">Block title</span><span class="d-add">{bt.to}</span></div>
 			{/each}
-			{#if polishErr}<span class="nb-polish-err">{polishErr}</span>{/if}
+			{#each proposal.textBlocks as tb (tb.id)}
+				<div class="nb-diff">
+					{#each wordDiff(tb.from, tb.to) as s, si (si)}<span class={s.type === 'add' ? 'd-add' : s.type === 'del' ? 'd-del' : 'd-same'}>{s.text}</span>{/each}
+				</div>
+			{/each}
+			<div class="nb-rv-bar">
+				<button type="button" class="nb-rv-btn reject" onclick={rejectPolish}><X size={13} /> Reject</button>
+				<button type="button" class="nb-rv-btn confirm" onclick={confirmPolish}><Check size={13} /> Confirm changes</button>
+			</div>
 		</div>
+	{:else}
+		{#if proposal?.status === 'loading'}
+			<div class="nb-status" transition:slide={{ duration: 120 }}><Loader2 size={13} class="nb-spin" /> Polishing…</div>
+		{:else if proposal?.status === 'error'}
+			<div class="nb-status err" transition:slide={{ duration: 120 }}>
+				{proposal.error}
+				<button type="button" class="nb-status-dismiss" onclick={rejectPolish}>Dismiss</button>
+			</div>
+		{/if}
+
+		{#if compact}
+			<!-- Side-menu: embedded blocks hoisted to the top as collapsible summaries. -->
+			{#each note.blocks as block, i (block.id)}
+				{#if block.type !== 'text'}
+					{@const count = block.type === 'todo' ? block.items.filter((x) => x.text.trim()).length : block.items.length}
+					<div class="nb-summary" class:open={expanded.has(block.id)}>
+						<button type="button" class="nb-sum-head" onclick={() => toggleExpand(block.id)}>
+							{#if block.type === 'todo'}<ListTodo size={14} />{:else}<LayoutDashboard size={14} />{/if}
+							<span class="nb-sum-title">{block.title?.trim() || (block.type === 'todo' ? 'Checklist' : 'Board')}</span>
+							<span class="nb-sum-count">{count} {count === 1 ? 'item' : 'items'}</span>
+							<ChevronDown class="nb-sum-chev {expanded.has(block.id) ? 'rot' : ''}" size={14} />
+						</button>
+						{#if expanded.has(block.id)}
+							<div class="nb-sum-body">{@render embedBlock(block, i)}</div>
+						{/if}
+					</div>
+				{/if}
+			{/each}
+			{#each note.blocks as block, i (block.id)}
+				{#if block.type === 'text'}
+					<div class="nb-block">{@render textBlock(block, i)}</div>
+				{/if}
+			{/each}
+		{:else}
+			<!-- Zen: blocks rendered inline, in order. -->
+			{#each note.blocks as block, i (block.id)}
+				<div class="nb-block" class:embed={block.type !== 'text'}>
+					{#if block.type === 'text'}{@render textBlock(block, i)}{:else}{@render embedBlock(block, i)}{/if}
+				</div>
+			{/each}
+		{/if}
 	{/if}
 </div>
 
@@ -368,55 +334,130 @@
 	}
 
 	/* Note-polish intent chips (below the note). */
-	.nb-polish {
+	/* Polish status pill (loading / error). */
+	.nb-status {
 		display: flex;
-		flex-wrap: wrap;
 		align-items: center;
 		gap: 6px;
-		margin-top: 4px;
-		padding-top: 10px;
-		border-top: 1px solid color-mix(in srgb, var(--color-foreground) 8%, transparent);
-	}
-	.nb-polish-label {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		font-size: 11.5px;
-		color: color-mix(in srgb, var(--color-foreground) 45%, transparent);
-		margin-right: 2px;
-	}
-	.nb-intent {
-		padding: 4px 11px;
+		padding: 7px 10px;
 		font-size: 12px;
-		font-family: inherit;
-		font-style: italic;
-		border-radius: 999px;
-		cursor: pointer;
-		color: color-mix(in srgb, var(--color-accent) 90%, transparent);
+		border-radius: 8px;
+		color: color-mix(in srgb, var(--color-foreground) 70%, transparent);
 		background: color-mix(in srgb, var(--color-accent) 8%, transparent);
-		border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
-		transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+		border: 1px solid color-mix(in srgb, var(--color-accent) 22%, transparent);
 	}
-	.nb-intent:hover:not(:disabled) {
-		color: #fff;
-		background: color-mix(in srgb, var(--color-accent) 30%, transparent);
-		border-color: color-mix(in srgb, var(--color-accent) 60%, transparent);
-	}
-	.nb-intent:disabled {
-		opacity: 0.5;
-		cursor: default;
-	}
-	.nb-polish-err {
-		font-size: 11px;
+	.nb-status.err {
 		color: var(--color-accent);
 	}
-	:global(.nb-polish .nb-spin) {
+	.nb-status-dismiss {
+		margin-left: auto;
+		font-family: inherit;
+		font-size: 11px;
+		padding: 2px 7px;
+		border-radius: 5px;
+		cursor: pointer;
+		color: inherit;
+		background: transparent;
+		border: 1px solid color-mix(in srgb, var(--color-foreground) 18%, transparent);
+	}
+	:global(.nb-status .nb-spin) {
 		animation: nb-rot 0.8s linear infinite;
 	}
 	@keyframes nb-rot {
 		to {
 			transform: rotate(360deg);
 		}
+	}
+
+	/* Polish review (confirm/reject diff). */
+	.nb-review {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		padding: 12px;
+		border-radius: 10px;
+		background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+		border: 1px solid color-mix(in srgb, var(--color-accent) 28%, transparent);
+	}
+	.nb-review-head {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 11.5px;
+		color: color-mix(in srgb, var(--color-foreground) 60%, transparent);
+	}
+	.nb-review-head :global(svg) {
+		color: rgba(167, 139, 250, 0.95);
+	}
+	.nb-review-head em {
+		font-style: italic;
+		color: rgba(167, 139, 250, 0.95);
+	}
+	.nb-rv-row {
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
+		font-size: 13px;
+	}
+	.nb-rv-label {
+		flex-shrink: 0;
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: color-mix(in srgb, var(--color-foreground) 40%, transparent);
+	}
+	.nb-diff {
+		font-size: 13px;
+		line-height: 1.6;
+		color: color-mix(in srgb, var(--color-foreground) 85%, transparent);
+		white-space: pre-wrap;
+		word-break: break-word;
+	}
+	.d-del {
+		text-decoration: line-through;
+		color: rgba(232, 125, 106, 0.85);
+		background: rgba(232, 125, 106, 0.1);
+	}
+	.d-add {
+		color: rgba(52, 211, 153, 0.95);
+		background: rgba(52, 211, 153, 0.12);
+		border-radius: 3px;
+	}
+	.nb-rv-bar {
+		display: flex;
+		justify-content: flex-end;
+		gap: 8px;
+		margin-top: 2px;
+	}
+	.nb-rv-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		padding: 6px 12px;
+		font-size: 12.5px;
+		font-family: inherit;
+		font-weight: 500;
+		border-radius: 8px;
+		cursor: pointer;
+		transition: filter 120ms ease, background 120ms ease;
+	}
+	.nb-rv-btn.reject {
+		color: color-mix(in srgb, var(--color-foreground) 70%, transparent);
+		background: transparent;
+		border: 1px solid color-mix(in srgb, var(--color-foreground) 16%, transparent);
+	}
+	.nb-rv-btn.reject:hover {
+		color: var(--color-foreground);
+		background: color-mix(in srgb, var(--color-foreground) 6%, transparent);
+	}
+	.nb-rv-btn.confirm {
+		color: var(--color-accent-foreground, #fff);
+		background: var(--color-accent);
+		border: 1px solid var(--color-accent);
+	}
+	.nb-rv-btn.confirm:hover {
+		filter: brightness(1.08);
 	}
 	.nb-ctl {
 		display: flex;

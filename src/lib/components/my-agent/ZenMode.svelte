@@ -8,6 +8,8 @@
 	import EaselBoard from './EaselBoard.svelte';
 	import TranscribeButton from './TranscribeButton.svelte';
 	import NoteIconButton from './NoteIconButton.svelte';
+	import PolishMenu from './PolishMenu.svelte';
+	import { runPolish } from '$lib/state/features/note-polish.svelte';
 	import { Minimize2, Wand2 } from 'lucide-svelte';
 
 	let { note, onclose }: { note: AgentNote | null; onclose: () => void } = $props();
@@ -23,33 +25,51 @@
 		polishFocused: () => void;
 		discardFocused: () => void;
 		hasPendingFocused: () => boolean;
-		togglePolish: () => void;
 	};
 	let blocksRef = $state<BlocksRef | undefined>();
-	let polishOn = $state(false);
+	let polishMenuOpen = $state(false);
 
 	function onKey(e: KeyboardEvent) {
-		// Close on Esc only when no inline ghost/menu swallowed it first.
-		if (e.key === 'Escape' && !e.defaultPrevented) onclose();
+		if (e.key !== 'Escape' || e.defaultPrevented) return;
+		// Esc closes the polish menu first, then minimizes.
+		if (polishMenuOpen) polishMenuOpen = false;
+		else onclose();
 	}
 </script>
 
-<svelte:window onkeydown={onKey} />
+<svelte:window
+	onkeydown={onKey}
+	onpointerdown={(e) => {
+		if (polishMenuOpen && e.target instanceof Element && !e.target.closest('.zen-polish-wrap')) polishMenuOpen = false;
+	}}
+/>
 
 {#if note}
 	{@const current = note}
 	<div class="zen" role="dialog" aria-modal="true" aria-label="Focus mode">
 		<div class="zen-header">
 			{#if current.kind === 'note'}
-				<button
-					type="button"
-					class="zen-polish"
-					class:on={polishOn}
-					title="Polish — AI-fill empty titles with a chosen intent"
-					onclick={() => blocksRef?.togglePolish()}
-				>
-					<Wand2 size={14} /> Polish
-				</button>
+				<div class="zen-polish-wrap">
+					<button
+						type="button"
+						class="zen-polish"
+						class:on={polishMenuOpen}
+						title="Polish — AI clean-up & titles with a chosen intent"
+						aria-haspopup="menu"
+						aria-expanded={polishMenuOpen}
+						onclick={() => (polishMenuOpen = !polishMenuOpen)}
+					>
+						<Wand2 size={14} /> Polish
+					</button>
+					{#if polishMenuOpen}
+						<div class="zen-polish-pop">
+							<PolishMenu
+								onpick={(intent) => void runPolish(current, intent)}
+								onclose={() => (polishMenuOpen = false)}
+							/>
+						</div>
+					{/if}
+				</div>
 				<TranscribeButton
 					allowTab={true}
 					onfinal={(t) => blocksRef?.handleFinal(t)}
@@ -86,7 +106,6 @@
 						bind:this={blocksRef}
 						note={current}
 						onopeneasel={(block) => (easelBlock = { note: current, block })}
-						onpolishchange={(o) => (polishOn = o)}
 					/>
 				{/if}
 			</div>
@@ -182,6 +201,16 @@
 		gap: 8px;
 	}
 	/* Note-polish trigger. */
+	.zen-polish-wrap {
+		position: relative;
+		display: inline-flex;
+	}
+	.zen-polish-pop {
+		position: absolute;
+		top: calc(100% + 8px);
+		right: 0;
+		z-index: 3;
+	}
 	.zen-polish {
 		display: inline-flex;
 		align-items: center;

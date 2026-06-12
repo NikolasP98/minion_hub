@@ -37,6 +37,13 @@ const resultSchema = z.object({
   blocks: z
     .array(z.object({ id: z.string(), title: z.string() }))
     .describe('A short title for each titleless to-do/easel block, keyed by its id'),
+  textBlocks: z
+    .array(z.object({ id: z.string(), body: z.string() }))
+    .describe(
+      'A cleaned-up rewrite of each TEXT block (keyed by its id), in the same Markdown format — ' +
+        'fix grammar/flow/structure per the intent but keep ALL facts and meaning; return the ' +
+        'original text unchanged if it is already clean',
+    ),
 });
 
 /**
@@ -81,20 +88,26 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       model: openrouter(DEFAULT_MODEL),
       schema: resultSchema,
       temperature: 0.4,
-      maxOutputTokens: 400,
+      maxOutputTokens: 1500,
       system:
-        'You title notes. Given a note and its embedded to-do/easel blocks, write a concise, ' +
-        'specific title for the note and for each block, derived strictly from the content. ' +
-        'Do not invent facts. Keep titles short. Return a title for the note and one for every ' +
-        'block id provided. ' +
+        'You polish notes. Given a note and its embedded blocks, produce: (1) a concise, specific ' +
+        'title for the note and for each to-do/easel block, derived strictly from the content; and ' +
+        '(2) a cleaned-up rewrite of every TEXT block, in the same Markdown format — improve ' +
+        'grammar, flow and structure per the intent but KEEP all facts and meaning and do not add ' +
+        'new information. If a text block is already clean, return it unchanged. Reference each ' +
+        'block by the exact id given. ' +
         intentHint,
       prompt: doc,
     });
-    // Only return block titles for ids we were given.
+    // Only return entries for ids we were given.
     const ids = new Set(blocks.map((b) => b.id));
+    const textIds = new Set(blocks.filter((b) => b.type === 'text').map((b) => b.id));
     return json({
       title: object.title?.trim() ?? '',
       blocks: object.blocks.filter((b) => ids.has(b.id)).map((b) => ({ id: b.id, title: b.title.trim() })),
+      textBlocks: (object.textBlocks ?? [])
+        .filter((b) => textIds.has(b.id))
+        .map((b) => ({ id: b.id, body: b.body })),
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'unknown error';
