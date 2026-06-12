@@ -28,8 +28,10 @@
 		LayoutDashboard,
 		Image as ImageIcon,
 		ChevronRight,
-		ChevronLeft
+		ChevronLeft,
+		GripVertical
 	} from 'lucide-svelte';
+	import { setDragContext, type DragContext } from '$lib/utils/drag-context';
 	import NoteImageStrip from './NoteImageStrip.svelte';
 	import ImageLightbox from './ImageLightbox.svelte';
 	import NoteEditor from './NoteEditor.svelte';
@@ -48,6 +50,27 @@
 	let zenNote = $state<AgentNote | null>(null);
 	// The easel board open fullscreen, if any.
 	let easelNote = $state<AgentNote | null>(null);
+
+	// Build a draggable context payload for a note/todo (folded into chat on drop).
+	function noteDragStart(e: DragEvent, note: AgentNote) {
+		const parts: string[] = [];
+		if (note.kind === 'todo') {
+			parts.push(`Todo list: "${note.title || '(untitled)'}"`);
+			for (const it of note.items) {
+				parts.push(`${it.done ? '[x]' : '[ ]'} ${it.text}`);
+			}
+		} else {
+			parts.push(`Note: "${note.title || '(untitled)'}"`);
+			const body = note.body?.trim();
+			if (body) parts.push(body);
+		}
+		const ctx: DragContext = {
+			kind: note.kind === 'todo' ? 'todo' : 'note',
+			label: note.title || (note.kind === 'todo' ? 'Todo' : 'Note'),
+			text: parts.join('\n'),
+		};
+		setDragContext(e, ctx);
+	}
 
 	// Paste an image straight onto a card (Ctrl+V while editing it).
 	async function onCardPaste(e: ClipboardEvent, note: AgentNote) {
@@ -144,6 +167,18 @@
 					onpaste={(e) => onCardPaste(e, note)}
 			>
 				<div class="card-top">
+					{#if note.kind !== 'easel'}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<span
+							class="drag-grip"
+							draggable="true"
+							ondragstart={(e) => noteDragStart(e, note)}
+							title="Drag into chat as context"
+							aria-hidden="true"
+						>
+							<GripVertical size={13} />
+						</span>
+					{/if}
 					{#if note.kind === 'todo'}
 						{@const p = todoProgress(note)}
 						<span class="kind-badge todo" title="Checklist">
@@ -477,6 +512,21 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
+	}
+	.drag-grip {
+		flex-shrink: 0;
+		display: inline-flex;
+		align-items: center;
+		margin: 0 -2px 0 -4px;
+		cursor: grab;
+		color: color-mix(in srgb, var(--color-foreground) 22%, transparent);
+		transition: color 120ms ease;
+	}
+	.drag-grip:hover {
+		color: color-mix(in srgb, var(--color-foreground) 55%, transparent);
+	}
+	.drag-grip:active {
+		cursor: grabbing;
 	}
 	.kind-badge {
 		display: inline-flex;

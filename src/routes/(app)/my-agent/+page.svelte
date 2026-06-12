@@ -3,6 +3,10 @@
 	import AgentGreeting from '$lib/components/my-agent/AgentGreeting.svelte';
 	import FeedSection from '$lib/components/my-agent/FeedSection.svelte';
 	import FeedCard from '$lib/components/my-agent/FeedCard.svelte';
+	import EventCard from '$lib/components/my-agent/EventCard.svelte';
+	import EmailCard from '$lib/components/my-agent/EmailCard.svelte';
+	import EventModal from '$lib/components/my-agent/EventModal.svelte';
+	import EmailModal from '$lib/components/my-agent/EmailModal.svelte';
 	import ChatInput from '$lib/components/my-agent/ChatInput.svelte';
 	import OpenHumanAvatar from '$lib/components/my-agent/OpenHumanAvatar.svelte';
 	import CallControls from '$lib/components/my-agent/CallControls.svelte';
@@ -27,7 +31,12 @@
 		toggleMute,
 	} from '$lib/state/features/voice-call.svelte';
 	import { extractText } from '$lib/utils/text';
-	import { getFeedToday, type ObservationRow } from '$lib/services/my-agent-rpc';
+	import {
+		getFeedToday,
+		type ObservationRow,
+		type CalendarItem,
+		type EmailItem,
+	} from '$lib/services/my-agent-rpc';
 	import { createConnectedFetch } from '$lib/state/async.svelte';
 	import { tick } from 'svelte';
 	import type { PageData } from './$types';
@@ -35,9 +44,74 @@
 	const { data }: { data: PageData } = $props();
 
 	let observations = $state<ObservationRow[]>([]);
+	let calendarItems = $state<CalendarItem[]>([]);
+	let emailItems = $state<EmailItem[]>([]);
 	let loading = $state(false);
 	let errorMsg = $state<string | null>(null);
 	let lastFetchedAt = $state<number | null>(null);
+
+	// Shared "now" for the feed cards — one ticking value so every event/email card
+	// re-derives its relative time + proximity tier together (cheap, 30s cadence).
+	let nowMs = $state(Date.now());
+	$effect(() => {
+		const id = setInterval(() => (nowMs = Date.now()), 30_000);
+		return () => clearInterval(id);
+	});
+
+	// "New since last view" highlight for emails. We persist the newest receivedAt
+	// the user has already seen in localStorage; anything newer renders with the
+	// fresh accent until the next visit re-baselines it.
+	const LAST_SEEN_KEY = 'minion:my-agent:emails-last-seen';
+	let emailsLastSeen = $state(0);
+	$effect(() => {
+		if (typeof localStorage === 'undefined') return;
+		const raw = localStorage.getItem(LAST_SEEN_KEY);
+		emailsLastSeen = raw ? Number(raw) || 0 : 0;
+	});
+	function emailReceivedMs(item: EmailItem): number {
+		if (!item.receivedAt) return 0;
+		const ts = Date.parse(item.receivedAt);
+		return Number.isNaN(ts) ? 0 : ts;
+	}
+	const isEmailNew = (item: EmailItem) => {
+		const ms = emailReceivedMs(item);
+		return ms > 0 && ms > emailsLastSeen;
+	};
+	// Re-baseline the "seen" marker shortly after emails render, so the green
+	// accents persist for the current view but clear on the next visit.
+	$effect(() => {
+		if (emailItems.length === 0 || typeof localStorage === 'undefined') return;
+		const newest = emailItems.reduce((max, m) => Math.max(max, emailReceivedMs(m)), 0);
+		if (newest <= emailsLastSeen) return;
+		const id = setTimeout(() => {
+			localStorage.setItem(LAST_SEEN_KEY, String(newest));
+		}, 4000);
+		return () => clearTimeout(id);
+	});
+
+	// ─── Feed item modals (open in-place instead of navigating to Google) ───
+	let selectedEvent = $state<CalendarItem | null>(null);
+	let eventModalOpen = $state(false);
+	let selectedEmail = $state<EmailItem | null>(null);
+	let emailModalOpen = $state(false);
+
+	function openEvent(ev: CalendarItem) {
+		selectedEvent = ev;
+		eventModalOpen = true;
+	}
+	function openEmail(mail: EmailItem) {
+		selectedEmail = mail;
+		emailModalOpen = true;
+	}
+	// Route a modal action through the personal-agent chat (it holds gws tools).
+	function askAgent(prompt: string) {
+		handleSubmit(prompt, 'ask');
+	}
+
+	// True when there's nothing at all to show — drives the empty-state copy.
+	const feedEmpty = $derived(
+		observations.length === 0 && calendarItems.length === 0 && emailItems.length === 0,
+	);
 
 	// Channel → human label for grouped sections. Unknown channels surface under "Other".
 	const CHANNEL_LABEL: Record<string, string> = {
@@ -77,6 +151,8 @@
 		try {
 			const res = await getFeedToday();
 			observations = res.observations;
+			calendarItems = res.calendarItems;
+			emailItems = res.emailItems;
 			lastFetchedAt = Date.now();
 		} catch (err) {
 			errorMsg = err instanceof Error ? err.message : String(err);
@@ -365,16 +441,46 @@
 				<section class="agenda" aria-label="Today">
 					{#if !conn.connected}
 						<p class="state-note">Connect a gateway to see your feed.</p>
-					{:else if loading && observations.length === 0}
+					{:else if loading && feedEmpty}
 						<p class="state-note">Loading…</p>
 					{:else if errorMsg}
 						<p class="state-note error">Feed failed: {errorMsg}</p>
 						<button type="button" class="retry" onclick={loadFeed}>Retry</button>
-					{:else if observations.length === 0}
+					{:else if feedEmpty}
 						<p class="state-note">
 							Quiet so far today. As you exchange messages with your agents, they'll surface here.
 						</p>
 					{:else}
+						<!-- Calendar events + emails sit side-by-side (events | emails) while the
+						     agenda runs as a band at the top, and stack vertically when the
+						     agenda becomes a narrow column during a call. A lone section (only
+						     events OR only emails) spans the full width via :only-child. -->
+						<div class="feed-grid">
+							<!-- Upcoming calendar events (next 24h across linked Google calendars). -->
+							{#if calendarItems.length > 0}
+								<FeedSection label="Upcoming" count={calendarItems.length} scrollable>
+									{#each calendarItems as ev (ev.sourceEmail + ':' + ev.id)}
+										<EventCard item={ev} {nowMs} onopen={() => openEvent(ev)} />
+									{/each}
+								</FeedSection>
+							{/if}
+
+							<!-- Unread inbox emails across linked Google identities. -->
+							{#if emailItems.length > 0}
+								<FeedSection label="Relevant emails" count={emailItems.length} scrollable>
+									{#each emailItems as mail (mail.sourceEmail + ':' + mail.id)}
+										<EmailCard
+											item={mail}
+											{nowMs}
+											isNew={isEmailNew(mail)}
+											onopen={() => openEmail(mail)}
+										/>
+									{/each}
+								</FeedSection>
+							{/if}
+						</div>
+
+						<!-- Recent cross-channel agent activity, grouped by channel. -->
 						{#each grouped as group (group.channel)}
 							<FeedSection label={group.label} count={group.items.length}>
 								{#each group.items as obs (obs.id)}
@@ -461,6 +567,19 @@
 
 	<NotesPanel />
 </div>
+
+<EventModal
+	bind:open={eventModalOpen}
+	item={selectedEvent}
+	onask={askAgent}
+	onclose={() => (selectedEvent = null)}
+/>
+<EmailModal
+	bind:open={emailModalOpen}
+	item={selectedEmail}
+	onask={askAgent}
+	onclose={() => (selectedEmail = null)}
+/>
 
 <style>
 	.layout {
@@ -552,9 +671,11 @@
 		flex-shrink: 0;
 	}
 
-	/* Agenda stays compact by default, but expands with content (capped, scrolls). */
+	/* Agenda stays compact by default, but expands with content (capped, scrolls).
+	   The events/emails columns own their own 28vh scroll (FeedSection.scrollable),
+	   so this outer cap mainly bounds the channel-observation groups below them. */
 	.stage:not(.in-call) .agenda {
-		max-height: 30vh;
+		max-height: 46vh;
 		overflow-y: auto;
 		scrollbar-width: thin;
 	}
@@ -617,6 +738,38 @@
 		overflow-y: auto;
 		max-height: 100%;
 		padding-right: 4px;
+	}
+
+	/* Feed grid: events + emails as two columns while the agenda is a band at
+	   the top. align-items:start so a short column doesn't stretch to match a
+	   tall one. */
+	.feed-grid {
+		display: grid;
+		/* minmax(0, 1fr) — NOT 1fr — so the columns stay equal and the card
+		   titles (white-space:nowrap) ellipsis-truncate instead of forcing the
+		   email column wide on their min-content. */
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+		gap: 0 20px;
+		align-items: start;
+	}
+
+	/* A single present section (only events OR only emails) spans full width
+	   rather than hugging the left half. */
+	.feed-grid > :global(.feed-section:only-child) {
+		grid-column: 1 / -1;
+	}
+
+	/* Vertical agenda (during a call): stack events over emails. */
+	.stage.in-call .feed-grid {
+		grid-template-columns: 1fr;
+	}
+
+	/* Narrow column (notes panel open / small viewport): stack as well — two
+	   columns get too cramped under ~520px of column width. */
+	@container agentcol (max-width: 520px) {
+		.feed-grid {
+			grid-template-columns: 1fr;
+		}
 	}
 
 	/* Chat section grows to fill the space between the agenda and the input. */

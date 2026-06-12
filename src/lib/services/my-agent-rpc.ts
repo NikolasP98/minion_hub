@@ -31,8 +31,64 @@ export interface ObservationRow {
   createdAt: number;
 }
 
+/**
+ * Upcoming calendar event surfaced in the feed. Mirrors the gateway
+ * `CalendarItem` (personal-agent/sources/calendar-puller.ts).
+ */
+export interface CalendarItem {
+  id: string;
+  /** Which linked Google identity surfaced this event. */
+  sourceEmail: string;
+  title: string;
+  /** ISO start — dateTime (timed) or date (all-day). */
+  startsAt: string;
+  /** ISO end. */
+  endsAt: string;
+  isAllDay: boolean;
+  location: string | null;
+  /** Google Calendar web href. */
+  htmlLink: string | null;
+  /** True for recurring (repeating) events, false/undefined for one-offs. */
+  recurring?: boolean;
+  /** The authenticated user's RSVP state, when they're an attendee. */
+  responseStatus?: 'accepted' | 'declined' | 'tentative' | 'needsAction' | null;
+}
+
+/**
+ * Unread inbox email surfaced in the feed. Mirrors the gateway
+ * `EmailItem` (personal-agent/sources/email-puller.ts).
+ */
+export interface EmailItem {
+  id: string;
+  /** Which linked Google identity surfaced this message. */
+  sourceEmail: string;
+  /** Raw `From` header — `"Display Name <addr>"`. */
+  from: string;
+  /** Display name parsed from `from`, or the bare address. */
+  fromName: string;
+  subject: string;
+  /** Raw RFC 2822 `Date` header. */
+  date: string;
+  /** ISO timestamp parsed from `date`; null when unparseable. */
+  receivedAt: string | null;
+  /** Gmail web deep-link. */
+  htmlLink: string;
+  /**
+   * Whether the message is unread. The feed currently pulls `is:unread` only,
+   * so this is effectively always true server-side; kept optional so the card
+   * can render read/unread envelopes once the puller widens its query.
+   */
+  unread?: boolean;
+  /** Short preview snippet, when the puller can supply one. */
+  snippet?: string | null;
+}
+
 export interface FeedTodayResponse {
   observations: ObservationRow[];
+  /** Upcoming events (next 24h) across linked Google calendars. */
+  calendarItems: CalendarItem[];
+  /** Unread inbox emails across linked Google identities. */
+  emailItems: EmailItem[];
   sinceMs: number;
   total: number;
 }
@@ -49,5 +105,14 @@ export async function getFeedToday(
   const params: Record<string, number> = {};
   if (opts.sinceMs !== undefined) params.sinceMs = opts.sinceMs;
   if (opts.limit !== undefined) params.limit = opts.limit;
-  return (await sendRequest('myAgent.feedToday', params)) as FeedTodayResponse;
+  const res = (await sendRequest('myAgent.feedToday', params)) as Partial<FeedTodayResponse>;
+  // Default the Google-sourced arrays so an older gateway (pre calendar/email
+  // pullers) or a partial response can't crash the consumer.
+  return {
+    observations: res.observations ?? [],
+    calendarItems: res.calendarItems ?? [],
+    emailItems: res.emailItems ?? [],
+    sinceMs: res.sinceMs ?? 0,
+    total: res.total ?? res.observations?.length ?? 0,
+  };
 }
