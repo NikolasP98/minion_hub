@@ -47,7 +47,12 @@
     const next = encodeURIComponent('/account?linked=google');
     await supabase.auth.linkIdentity({
       provider: 'google',
-      options: { redirectTo: `${window.location.origin}/auth/callback?next=${next}` },
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback?next=${next}`,
+        queryParams: { access_type: 'offline', prompt: 'consent' },
+        scopes:
+          'email profile https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/calendar.events',
+      },
     });
   }
 
