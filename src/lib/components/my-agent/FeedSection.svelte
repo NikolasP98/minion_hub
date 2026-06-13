@@ -1,6 +1,9 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { ChevronDown } from 'lucide-svelte';
+	import { slide } from 'svelte/transition';
+	import { cubicOut } from 'svelte/easing';
+	import { prefersReducedMotion } from 'svelte/motion';
 	import ProviderIcon from './ProviderIcon.svelte';
 	import type { ProviderKey } from './provider';
 
@@ -36,6 +39,14 @@
 	// whether THIS section owns the visible chevron, so one toggle can fold a
 	// sibling column that binds the same state.
 	const isCollapsed = $derived(collapsed && !!summary);
+
+	// Slide the body open/closed on toggle. Honour the OS reduced-motion setting by
+	// zeroing the duration (the panes still swap, just instantly).
+	const slideParams = $derived(
+		prefersReducedMotion.current
+			? { duration: 0 }
+			: { duration: 220, easing: cubicOut },
+	);
 </script>
 
 <section class="feed-section" class:scrollable={scrollable && !isCollapsed} class:collapsed={isCollapsed}>
@@ -67,10 +78,14 @@
 	</div>
 	<div class="body" id={sectionId}>
 		{#if isCollapsed && summary}
-			{@render summary()}
+			<div class="pane" transition:slide={slideParams}>
+				{@render summary()}
+			</div>
 		{:else}
-			<div class="items">
-				{@render children()}
+			<div class="pane" transition:slide={slideParams}>
+				<div class="items">
+					{@render children()}
+				</div>
 			</div>
 		{/if}
 	</div>
@@ -167,6 +182,12 @@
 		min-height: 0;
 		display: flex;
 		flex-direction: column;
+	}
+
+	/* Wrapper the slide transition animates (height/opacity) on toggle. min-width:0
+	   keeps the truncating card titles from forcing the column wide mid-animation. */
+	.pane {
+		min-width: 0;
 	}
 
 	.items {
