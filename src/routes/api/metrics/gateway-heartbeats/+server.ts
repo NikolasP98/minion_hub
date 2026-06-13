@@ -1,11 +1,13 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { eq, and, desc, gte, lte } from 'drizzle-orm';
-import { gatewayHeartbeats, servers } from '@minion-stack/db/schema';
-import { requireTenantCtx } from '$server/auth/authorize';
+import { gatewayHeartbeats, servers, userServers } from '@minion-stack/db/schema';
+import { requireAuth, requireTenantCtx } from '$server/auth/authorize';
+import { userHasGatewayAccess } from '$server/services/gateway.pg.service';
 
 export const GET: RequestHandler = async ({ locals, url }) => {
   const { db, tenantId } = requireTenantCtx(locals);
+  const user = requireAuth(locals);
   const serverId = url.searchParams.get('serverId') ?? undefined;
   const from = url.searchParams.get('from') ? Number(url.searchParams.get('from')) : undefined;
   const to = url.searchParams.get('to') ? Number(url.searchParams.get('to')) : undefined;
@@ -14,11 +16,26 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   // The gateway records heartbeats under the tenant_id it reads from the telemetry
   // `servers` table (turso-sync auto-discovers `SELECT tenant_id FROM servers
   // WHERE id = serverId`). That id can differ from the hub's Supabase org id
-  // (Turso↔Supabase divergence), which previously left this query empty ("No
-  // heartbeat data"). Resolve the host's recorded telemetry tenant so the read
-  // matches the write; fall back to the request tenant when the host is unknown.
+  // (Turso↔Supabase divergence), so we read under the host's recorded telemetry
+  // tenant. Because that bypasses the org-scoped read, we FIRST authorize the
+  // caller for this host the canonical way (admin / Supabase user_gateway link /
+  // legacy user_servers) — mirroring api/servers/[id] — so a forged serverId
+  // can't pull another tenant's heartbeats. (We must NOT gate on
+  // servers.tenant_id == tenantId, which no-ops under the divergence.)
   let heartbeatTenant = tenantId;
   if (serverId) {
+    const allowed =
+      user.role === 'admin' ||
+      (await userHasGatewayAccess(user.supabaseId ?? null, serverId)) ||
+      (
+        await db
+          .select({ serverId: userServers.serverId })
+          .from(userServers)
+          .where(and(eq(userServers.userId, user.id), eq(userServers.serverId, serverId)))
+          .limit(1)
+      ).length > 0;
+    if (!allowed) return json({ error: 'Not found' }, { status: 404 });
+
     const [row] = await db
       .select({ tenantId: servers.tenantId })
       .from(servers)
