@@ -2,11 +2,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDynamicPluginsSection } from "$lib/components/layout/sections";
 
 describe("getDynamicPluginsSection", () => {
-  it("returns null when no control centers", () => {
-    expect(getDynamicPluginsSection([])).toBe(null);
+  it("returns a section with just the built-in Kanban entry when no control centers", () => {
+    const section = getDynamicPluginsSection([]);
+    expect(section?.id).toBe("plugins");
+    expect(section?.items).toHaveLength(1);
+    expect(section?.items[0]?.href).toBe("/workforce");
+    expect(section?.items[0]?.label).toBe("Kanban");
   });
 
-  it("returns a section with one item per control center", () => {
+  it("prepends the built-in Kanban entry, then one item per control center", () => {
     const section = getDynamicPluginsSection([
       {
         pluginId: "x",
@@ -16,8 +20,9 @@ describe("getDynamicPluginsSection", () => {
         entrypoint: "c.html",
       },
     ]);
-    expect(section?.items).toHaveLength(1);
-    expect(section?.items[0]?.href).toBe("/plugins/x");
+    expect(section?.items).toHaveLength(2);
+    expect(section?.items[0]?.href).toBe("/workforce");
+    expect(section?.items[1]?.href).toBe("/plugins/x");
     expect(section?.id).toBe("plugins");
   });
 });

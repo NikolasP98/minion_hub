@@ -85,14 +85,19 @@ export const SECTION_ORDER: SectionId[] = ["workforce", "gateway", "creative"];
 const startsWith = (prefix: string) => (p: string) => p.startsWith(prefix);
 
 export const ROUTES: RouteMeta[] = [
-    // ── Workforce ──────────────────────────────────────────────────────────
+    // ── Workforce (the "Kanban" plugin) ────────────────────────────────────
+    // Reframed as a standalone plugin: the primary sidebar shows a single
+    // Plugins → Kanban entry (see getDynamicPluginsSection); these detail views
+    // are reached via the KANBAN icon sub-nav (KanbanNavRail) inside the
+    // /workforce shell. inNav:false keeps them out of the primary rail but
+    // inPalette:true keeps them as ⌘K page commands.
     {
         path: "/workforce",
         title: () => "Dashboard",
         icon: LayoutDashboard,
         matcher: (p) => p === "/workforce",
         section: "workforce",
-        inNav: true,
+        inNav: false,
         inPalette: true,
         keywords: "workforce home overview",
         paletteIcon: "layout-dashboard",
@@ -103,7 +108,7 @@ export const ROUTES: RouteMeta[] = [
         icon: Inbox,
         matcher: startsWith("/workforce/issues"),
         section: "workforce",
-        inNav: true,
+        inNav: false,
         inPalette: true,
         keywords: "tasks bugs work",
         paletteIcon: "inbox",
@@ -114,7 +119,7 @@ export const ROUTES: RouteMeta[] = [
         icon: CheckCircle2,
         matcher: startsWith("/workforce/approvals"),
         section: "workforce",
-        inNav: true,
+        inNav: false,
         inPalette: true,
         keywords: "review pending approve",
         paletteIcon: "check",
@@ -125,7 +130,7 @@ export const ROUTES: RouteMeta[] = [
         icon: Target,
         matcher: startsWith("/workforce/goals"),
         section: "workforce",
-        inNav: true,
+        inNav: false,
         inPalette: true,
         keywords: "objectives okr targets",
         paletteIcon: "target",
@@ -136,7 +141,7 @@ export const ROUTES: RouteMeta[] = [
         icon: FolderKanban,
         matcher: startsWith("/workforce/projects"),
         section: "workforce",
-        inNav: true,
+        inNav: false,
         inPalette: true,
         keywords: "kanban board",
         paletteIcon: "folder",
@@ -147,7 +152,7 @@ export const ROUTES: RouteMeta[] = [
         icon: Users,
         matcher: startsWith("/workforce/org"),
         section: "workforce",
-        inNav: true,
+        inNav: false,
         inPalette: true,
         keywords: "organization team structure",
         paletteIcon: "users",

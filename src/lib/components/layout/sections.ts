@@ -1,5 +1,5 @@
 import type { ComponentType, SvelteComponent } from "svelte";
-import { Puzzle } from "lucide-svelte";
+import { Puzzle, FolderKanban } from "lucide-svelte";
 import {
     ROUTES,
     SECTION_META,
@@ -95,25 +95,42 @@ export function findActiveSection(
 }
 
 /**
- * Build a dynamic "Plugins" section from the list of installed plugin
- * control centers. Returns null when no plugin opts in, so the Browse-menu
- * column can be hidden until at least one entry is available.
+ * Built-in plugin entries surfaced in the Plugins section regardless of which
+ * gateway plugins are installed. KANBAN is the hub-native paperclip integration
+ * (the /workforce subtree) reframed as a standalone plugin: it links to its own
+ * shell, which carries the /my-agent-style icon sub-nav for its detail views.
+ */
+const BUILTIN_PLUGIN_ITEMS: SectionItem[] = [
+    {
+        href: "/workforce",
+        label: "Kanban",
+        icon: FolderKanban,
+        matcher: (p: string) => p.startsWith("/workforce"),
+    },
+];
+
+/**
+ * Build the "Plugins" section: the built-in entries (Kanban) followed by any
+ * installed plugin control centers. Always returns a section — the built-ins
+ * guarantee at least one entry.
  */
 export function getDynamicPluginsSection(
     entries: PluginUiManifestOccupant[],
 ): Section | null {
-    if (entries.length === 0) return null;
+    const dynamicItems: SectionItem[] = entries.map((e) => ({
+        href: `/plugins/${e.pluginId}`,
+        label: e.title,
+        icon: resolvePluginIcon(e.icon),
+        matcher: (p: string) => p.startsWith(`/plugins/${e.pluginId}`),
+    }));
+    const items = [...BUILTIN_PLUGIN_ITEMS, ...dynamicItems];
+    if (items.length === 0) return null;
     return {
         id: "plugins",
         label: "Plugins",
         icon: Puzzle,
         tone: "accent",
         domain: "gateway",
-        items: entries.map((e) => ({
-            href: `/plugins/${e.pluginId}`,
-            label: e.title,
-            icon: resolvePluginIcon(e.icon),
-            matcher: (p: string) => p.startsWith(`/plugins/${e.pluginId}`),
-        })),
+        items,
     };
 }
