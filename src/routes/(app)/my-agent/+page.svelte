@@ -39,6 +39,7 @@
 	} from '$lib/services/my-agent-rpc';
 	import { createConnectedFetch } from '$lib/state/async.svelte';
 	import { distinctProviders } from '$lib/components/my-agent/provider';
+	import { ChevronDown } from 'lucide-svelte';
 	import { tick } from 'svelte';
 	import type { PageData } from './$types';
 
@@ -230,9 +231,8 @@
 		if (typeof localStorage === 'undefined') return;
 		localStorage.setItem(COLLAPSE_KEY, feedCollapsed ? '1' : '0');
 	});
-	// The lone visible chevron rides on whichever column renders first (events when
-	// present, else emails), but both columns bind the same state.
-	const toggleOnEvents = $derived(calendarItems.length > 0);
+	// A single bottom-center handle (below both columns) drives the shared state.
+	const hasFeed = $derived(calendarItems.length > 0 || emailItems.length > 0);
 
 	async function loadFeed() {
 		loading = true;
@@ -548,10 +548,9 @@
 							<!-- Upcoming calendar events (next 24h across linked Google calendars). -->
 							{#if calendarItems.length > 0}
 								<FeedSection
-									label="Upcoming"
+									label="Events"
 									count={calendarItems.length}
 									providers={eventProviders}
-									collapsible={toggleOnEvents}
 									bind:collapsed={feedCollapsed}
 									scrollable
 								>
@@ -590,7 +589,6 @@
 									label="Emails"
 									count={emailItems.length}
 									providers={emailProviders}
-									collapsible={!toggleOnEvents}
 									bind:collapsed={feedCollapsed}
 									scrollable
 								>
@@ -633,6 +631,21 @@
 								</FeedSection>
 							{/if}
 						</div>
+
+						{#if hasFeed}
+							<div class="feed-toggle-bar">
+								<button
+									type="button"
+									class="feed-toggle"
+									class:open={!feedCollapsed}
+									aria-expanded={!feedCollapsed}
+									title={feedCollapsed ? 'Expand feed' : 'Collapse feed'}
+									onclick={() => (feedCollapsed = !feedCollapsed)}
+								>
+									<ChevronDown size={14} />
+								</button>
+							</div>
+						{/if}
 
 						<!-- Recent cross-channel agent activity, grouped by channel. -->
 						{#each grouped as group (group.channel)}
@@ -1076,6 +1089,53 @@
 		border-radius: var(--theme-radius, 4px);
 		cursor: pointer;
 		font-size: 12px;
+	}
+
+	/* Single feed collapse/expand handle, centered on a hairline across both
+	   columns. Subtle + small — a pill that "cuts" the divider line. */
+	.feed-toggle-bar {
+		position: relative;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		height: 18px;
+		margin: 6px 0 2px;
+	}
+	.feed-toggle-bar::before {
+		content: '';
+		position: absolute;
+		left: 4px;
+		right: 4px;
+		top: 50%;
+		height: 1px;
+		background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
+	}
+	.feed-toggle {
+		position: relative;
+		z-index: 1;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 46px;
+		height: 18px;
+		padding: 0;
+		border-radius: 999px;
+		border: 1px solid color-mix(in srgb, var(--color-foreground) 9%, transparent);
+		background: var(--color-bg);
+		color: color-mix(in srgb, var(--color-foreground) 38%, transparent);
+		cursor: pointer;
+		transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+	}
+	.feed-toggle:hover {
+		color: color-mix(in srgb, var(--color-foreground) 75%, transparent);
+		border-color: color-mix(in srgb, var(--color-foreground) 18%, transparent);
+		background: color-mix(in srgb, var(--color-foreground) 4%, var(--color-bg));
+	}
+	.feed-toggle :global(svg) {
+		transition: transform 160ms ease;
+	}
+	.feed-toggle.open :global(svg) {
+		transform: rotate(180deg);
 	}
 
 	/* "+N more" affordance shown under a collapsed section's single preview card. */
