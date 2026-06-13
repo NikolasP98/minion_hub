@@ -978,13 +978,16 @@
 	}
 
 	/* Chat section grows to fill the space between the agenda and the input. */
+	/* Butts directly against the feed group's bottom border (no margin/padding) so
+	   the messages start right under it; the thread's top padding leaves exactly
+	   the hanging toggle's lower half worth of clearance — no dead space. */
 	.chat-section {
 		flex: 1;
 		min-height: 220px;
 		display: flex;
 		flex-direction: column;
-		margin-top: 8px;
-		padding-top: 4px;
+		margin-top: 0;
+		padding-top: 0;
 	}
 
 	.thread {
@@ -994,7 +997,7 @@
 		flex-direction: column;
 		overflow-y: auto;
 		scrollbar-width: thin;
-		padding: 4px 2px;
+		padding: 11px 2px 4px;
 	}
 
 	/* Pin messages to the bottom when short, but stay fully scrollable when the
