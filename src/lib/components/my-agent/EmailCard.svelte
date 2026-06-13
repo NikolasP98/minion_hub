@@ -19,6 +19,9 @@
 	const { item, onopen, nowMs, isNew = false }: Props = $props();
 
 	const unread = $derived(item.unread !== false);
+	// Status tier drives the card's whole treatment: a brand-new arrival reads
+	// loud (green), an unread-but-seen message reads normal, an opened one recedes.
+	const opened = $derived(!unread);
 
 	const received = $derived(item.receivedAt ? new Date(item.receivedAt) : null);
 	const relative = $derived.by(() => {
@@ -65,6 +68,7 @@
 <div
 	class="email-card"
 	class:unread
+	class:opened
 	class:is-new={isNew}
 	role="button"
 	tabindex="0"
@@ -113,6 +117,13 @@
 		border-color: color-mix(in srgb, var(--color-foreground) 6%, transparent);
 		outline: none;
 	}
+	.email-card.opened {
+		opacity: 0.78;
+	}
+	.email-card.opened:hover,
+	.email-card.opened:focus-visible {
+		opacity: 1;
+	}
 
 	.icon {
 		position: relative;
@@ -126,6 +137,14 @@
 	}
 	.email-card.unread .icon {
 		color: color-mix(in srgb, var(--color-accent) 85%, transparent);
+	}
+	/* New arrival — green, loud. Overrides the unread accent. */
+	.email-card.is-new .icon {
+		color: #4ade80;
+	}
+	/* Opened — recede the envelope further. */
+	.email-card.opened .icon {
+		color: color-mix(in srgb, var(--color-foreground) 28%, transparent);
 	}
 	.icon .dot {
 		position: absolute;
@@ -164,6 +183,14 @@
 	.email-card.unread .sender {
 		color: color-mix(in srgb, var(--color-foreground) 92%, transparent);
 	}
+	.email-card.is-new .sender {
+		color: color-mix(in srgb, #4ade80 85%, var(--color-foreground));
+		font-weight: 700;
+	}
+	.email-card.opened .sender {
+		font-weight: 500;
+		color: color-mix(in srgb, var(--color-foreground) 58%, transparent);
+	}
 	.time {
 		flex-shrink: 0;
 		font-size: 11px;
@@ -186,6 +213,10 @@
 	.email-card.unread .subject {
 		color: color-mix(in srgb, var(--color-foreground) 82%, transparent);
 		font-weight: 500;
+	}
+	.email-card.opened .subject {
+		color: color-mix(in srgb, var(--color-foreground) 48%, transparent);
+		font-weight: 400;
 	}
 	.snippet {
 		font-size: 12px;

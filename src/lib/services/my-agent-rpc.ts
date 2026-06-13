@@ -116,3 +116,69 @@ export async function getFeedToday(
     total: res.total ?? res.observations?.length ?? 0,
   };
 }
+
+/** Decoded full body of a single email (gateway `myAgent.emailBody`). */
+export interface EmailBodyResponse {
+  id: string;
+  /** Decoded plain-text body. Empty string when the message couldn't be read. */
+  body: string;
+  /** Authoritative headers from `+read --headers`, when available. */
+  from: string | null;
+  subject: string | null;
+  date: string | null;
+}
+
+/**
+ * Fetch the decoded full body of a single email so the modal can render real
+ * content (the feed list carries only triage metadata, no body).
+ *
+ * `sourceEmail` selects which linked Google identity to read from. Returns an
+ * empty-body shape rather than throwing when the message can't be read.
+ */
+export async function getEmailBody(
+  messageId: string,
+  sourceEmail?: string,
+): Promise<EmailBodyResponse> {
+  const params: Record<string, string> = { messageId };
+  if (sourceEmail) params.sourceEmail = sourceEmail;
+  const res = (await sendRequest('myAgent.emailBody', params)) as Partial<EmailBodyResponse>;
+  return {
+    id: res.id ?? messageId,
+    body: res.body ?? '',
+    from: res.from ?? null,
+    subject: res.subject ?? null,
+    date: res.date ?? null,
+  };
+}
+
+/**
+ * Fetch a cached 1-2 sentence AI summary of a single email. The gateway caches
+ * the summary per (user, message), so re-opening the same email doesn't
+ * re-spend tokens. Returns `null` when the body couldn't be read or the model
+ * errored — the modal then just shows the body without a summary banner.
+ */
+export async function getEmailSummary(
+  messageId: string,
+  sourceEmail?: string,
+): Promise<string | null> {
+  const params: Record<string, string> = { messageId };
+  if (sourceEmail) params.sourceEmail = sourceEmail;
+  const res = (await sendRequest('myAgent.emailSummary', params)) as { summary?: string | null };
+  return res.summary ?? null;
+}
+
+/**
+ * Draft a suggested reply body for a single email. Not cached — optional
+ * `instructions` lets the user steer tone/content, so each call regenerates.
+ * Returns `null` when the body couldn't be read or the model errored.
+ */
+export async function draftEmailReply(
+  messageId: string,
+  opts: { sourceEmail?: string; instructions?: string } = {},
+): Promise<string | null> {
+  const params: Record<string, string> = { messageId };
+  if (opts.sourceEmail) params.sourceEmail = opts.sourceEmail;
+  if (opts.instructions) params.instructions = opts.instructions;
+  const res = (await sendRequest('myAgent.emailDraftReply', params)) as { draft?: string | null };
+  return res.draft ?? null;
+}

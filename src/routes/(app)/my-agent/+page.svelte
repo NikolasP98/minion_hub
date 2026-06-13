@@ -38,6 +38,7 @@
 		type EmailItem,
 	} from '$lib/services/my-agent-rpc';
 	import { createConnectedFetch } from '$lib/state/async.svelte';
+	import { distinctProviders } from '$lib/components/my-agent/provider';
 	import { tick } from 'svelte';
 	import type { PageData } from './$types';
 
@@ -144,6 +145,94 @@
 		}
 		return Array.from(map.values());
 	});
+
+	// Group upcoming events by calendar day so the list carries sleek day dividers
+	// instead of repeating "Today" on every card.
+	type EventDay = { key: string; label: string; items: CalendarItem[] };
+	const eventGroups = $derived.by<EventDay[]>(() => {
+		const now = new Date(nowMs);
+		const todayKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
+		const tomorrow = new Date(now);
+		tomorrow.setDate(now.getDate() + 1);
+		const tomorrowKey = `${tomorrow.getFullYear()}-${tomorrow.getMonth()}-${tomorrow.getDate()}`;
+
+		const groups: EventDay[] = [];
+		for (const ev of calendarItems) {
+			const d = new Date(ev.startsAt);
+			const valid = !Number.isNaN(d.getTime());
+			const key = valid ? `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}` : 'tba';
+			let g = groups.find((x) => x.key === key);
+			if (!g) {
+				let label = 'Scheduled';
+				if (valid) {
+					if (key === todayKey) label = 'Today';
+					else if (key === tomorrowKey) label = 'Tomorrow';
+					else label = d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+				}
+				g = { key, label, items: [] };
+				groups.push(g);
+			}
+			g.items.push(ev);
+		}
+		return groups;
+	});
+
+	// Group emails by calendar day (Today / Yesterday / date) so the inbox carries
+	// the same sleek day dividers the events column has. Emails arrive newest-first.
+	type EmailDay = { key: string; label: string; items: EmailItem[] };
+	const emailGroups = $derived.by<EmailDay[]>(() => {
+		const now = new Date(nowMs);
+		const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+		const todayKey = dayKey(now);
+		const yesterday = new Date(now);
+		yesterday.setDate(now.getDate() - 1);
+		const yesterdayKey = dayKey(yesterday);
+
+		const groups: EmailDay[] = [];
+		for (const mail of emailItems) {
+			const ms = mail.receivedAt ? Date.parse(mail.receivedAt) : NaN;
+			const valid = !Number.isNaN(ms);
+			const d = valid ? new Date(ms) : now;
+			const key = valid ? dayKey(d) : 'unknown';
+			let g = groups.find((x) => x.key === key);
+			if (!g) {
+				let label = 'Earlier';
+				if (valid) {
+					if (key === todayKey) label = 'Today';
+					else if (key === yesterdayKey) label = 'Yesterday';
+					else label = d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+				}
+				g = { key, label, items: [] };
+				groups.push(g);
+			}
+			g.items.push(mail);
+		}
+		return groups;
+	});
+
+	// Provider badges per section (derived from the linked-identity source emails).
+	const eventProviders = $derived(distinctProviders(calendarItems.map((e) => e.sourceEmail)));
+	const emailProviders = $derived(distinctProviders(emailItems.map((m) => m.sourceEmail)));
+
+	// Next upcoming event + newest email power the collapsed-section summaries.
+	const nextEvent = $derived(calendarItems[0] ?? null);
+	const latestEmail = $derived(emailItems[0] ?? null);
+
+	// One shared collapse state drives BOTH feed columns together (a single toggle),
+	// persisted so the layout the user prefers sticks across visits.
+	const COLLAPSE_KEY = 'minion:my-agent:feed-collapsed';
+	let feedCollapsed = $state(false);
+	$effect(() => {
+		if (typeof localStorage === 'undefined') return;
+		feedCollapsed = localStorage.getItem(COLLAPSE_KEY) === '1';
+	});
+	$effect(() => {
+		if (typeof localStorage === 'undefined') return;
+		localStorage.setItem(COLLAPSE_KEY, feedCollapsed ? '1' : '0');
+	});
+	// The lone visible chevron rides on whichever column renders first (events when
+	// present, else emails), but both columns bind the same state.
+	const toggleOnEvents = $derived(calendarItems.length > 0);
 
 	async function loadFeed() {
 		loading = true;
@@ -458,24 +547,90 @@
 						<div class="feed-grid">
 							<!-- Upcoming calendar events (next 24h across linked Google calendars). -->
 							{#if calendarItems.length > 0}
-								<FeedSection label="Upcoming" count={calendarItems.length} scrollable>
-									{#each calendarItems as ev (ev.sourceEmail + ':' + ev.id)}
-										<EventCard item={ev} {nowMs} onopen={() => openEvent(ev)} />
+								<FeedSection
+									label="Upcoming"
+									count={calendarItems.length}
+									providers={eventProviders}
+									providerVariant="calendar"
+									collapsible={toggleOnEvents}
+									bind:collapsed={feedCollapsed}
+									scrollable
+								>
+									{#each eventGroups as day (day.key)}
+										<div class="day-divider">
+											<span class="day-label">{day.label}</span>
+											<span class="day-rule"></span>
+											<span class="day-count">{day.items.length}</span>
+										</div>
+										{#each day.items as ev (ev.sourceEmail + ':' + ev.id)}
+											<EventCard item={ev} {nowMs} onopen={() => openEvent(ev)} />
+										{/each}
 									{/each}
+
+									{#snippet summary()}
+										{#if nextEvent}
+											{@const ev = nextEvent}
+											<EventCard item={ev} {nowMs} onopen={() => openEvent(ev)} />
+											{#if calendarItems.length > 1}
+												<button
+													type="button"
+													class="more-row"
+													onclick={() => (feedCollapsed = false)}
+												>
+													+{calendarItems.length - 1} more
+												</button>
+											{/if}
+										{/if}
+									{/snippet}
 								</FeedSection>
 							{/if}
 
-							<!-- Unread inbox emails across linked Google identities. -->
+							<!-- Inbox emails across linked Google identities. -->
 							{#if emailItems.length > 0}
-								<FeedSection label="Relevant emails" count={emailItems.length} scrollable>
-									{#each emailItems as mail (mail.sourceEmail + ':' + mail.id)}
-										<EmailCard
-											item={mail}
-											{nowMs}
-											isNew={isEmailNew(mail)}
-											onopen={() => openEmail(mail)}
-										/>
+								<FeedSection
+									label="Emails"
+									count={emailItems.length}
+									providers={emailProviders}
+									collapsible={!toggleOnEvents}
+									bind:collapsed={feedCollapsed}
+									scrollable
+								>
+									{#each emailGroups as day (day.key)}
+										<div class="day-divider">
+											<span class="day-label">{day.label}</span>
+											<span class="day-rule"></span>
+											<span class="day-count">{day.items.length}</span>
+										</div>
+										{#each day.items as mail (mail.sourceEmail + ':' + mail.id)}
+											<EmailCard
+												item={mail}
+												{nowMs}
+												isNew={isEmailNew(mail)}
+												onopen={() => openEmail(mail)}
+											/>
+										{/each}
 									{/each}
+
+									{#snippet summary()}
+										{#if latestEmail}
+											{@const mail = latestEmail}
+											<EmailCard
+												item={mail}
+												{nowMs}
+												isNew={isEmailNew(mail)}
+												onopen={() => openEmail(mail)}
+											/>
+											{#if emailItems.length > 1}
+												<button
+													type="button"
+													class="more-row"
+													onclick={() => (feedCollapsed = false)}
+												>
+													+{emailItems.length - 1} more
+												</button>
+											{/if}
+										{/if}
+									{/snippet}
 								</FeedSection>
 							{/if}
 						</div>
@@ -499,11 +654,6 @@
 						{/each}
 					{/if}
 				</section>
-			</div>
-
-			<div class="history">
-				<hr />
-				<p class="history-note">Yesterday and earlier · history tray lands in a later phase</p>
 			</div>
 
 			<!-- Chat section: typed messages AND the live call transcript land here.
@@ -743,6 +893,36 @@
 	/* Feed grid: events + emails as two columns while the agenda is a band at
 	   the top. align-items:start so a short column doesn't stretch to match a
 	   tall one. */
+	/* Sleek day separators inside the Upcoming column. */
+	.day-divider {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 10px 4px 4px 13px;
+	}
+	.day-divider:first-child {
+		padding-top: 2px;
+	}
+	.day-label {
+		font-size: 10.5px;
+		font-weight: 700;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: color-mix(in srgb, var(--color-foreground) 60%, transparent);
+		white-space: nowrap;
+	}
+	.day-rule {
+		flex: 1;
+		height: 1px;
+		background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
+	}
+	.day-count {
+		font-size: 10px;
+		font-weight: 600;
+		color: color-mix(in srgb, var(--color-foreground) 32%, transparent);
+		font-variant-numeric: tabular-nums;
+	}
+
 	.feed-grid {
 		display: grid;
 		/* minmax(0, 1fr) — NOT 1fr — so the columns stay equal and the card
@@ -751,6 +931,8 @@
 		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 		gap: 0 20px;
 		align-items: start;
+		/* Breathing room above the section titles so they don't crowd the greeting. */
+		padding-top: 14px;
 	}
 
 	/* A single present section (only events OR only emails) spans full width
@@ -897,20 +1079,24 @@
 		font-size: 12px;
 	}
 
-	.history {
-		opacity: 0.6;
-		margin-top: 16px;
-		flex-shrink: 0;
-	}
-	.history hr {
+	/* "+N more" affordance shown under a collapsed section's single preview card. */
+	.more-row {
+		align-self: flex-start;
+		margin: 2px 0 2px 10px;
+		padding: 2px 8px;
+		background: transparent;
 		border: none;
-		border-top: 1px solid var(--color-border);
-		margin: 0 0 16px;
+		border-radius: 6px;
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.02em;
+		color: color-mix(in srgb, var(--color-accent) 75%, transparent);
+		cursor: pointer;
+		transition: background 120ms ease, color 120ms ease;
 	}
-	.history-note {
-		font-size: 12px;
-		color: var(--color-muted-foreground);
-		margin: 0;
+	.more-row:hover {
+		background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+		color: var(--color-accent);
 	}
 
 	@media (max-width: 640px) {

@@ -76,7 +76,24 @@
 	}
 </script>
 
-<Modal bind:open {title} size="md" {onclose}>
+<Modal bind:open size="md" {onclose}>
+	{#snippet header()}
+		<div class="hdr">
+			<h2 class="hdr-title" title={title}>{title}</h2>
+			{#if item?.htmlLink}
+				<button
+					type="button"
+					class="hdr-open"
+					onclick={openInGoogle}
+					title="Open in Google Calendar"
+					aria-label="Open in Google Calendar"
+				>
+					<ExternalLink size={14} />
+				</button>
+			{/if}
+		</div>
+	{/snippet}
+
 	{#if item}
 		<div class="body">
 			<div class="row">
@@ -141,20 +158,26 @@
 	{/if}
 
 	{#snippet footer()}
-		<button
-			type="button"
-			class="act"
-			onclick={() => ask(`Edit my calendar event "${title}" (${whenLabel}). Ask me what to change.`)}
-		>
-			<Pencil size={14} /> Edit
-		</button>
-		<button
-			type="button"
-			class="act danger"
-			onclick={() => ask(`Cancel my calendar event "${title}" (${whenLabel}). Confirm with me first.`)}
-		>
-			<Trash2 size={14} /> Cancel event
-		</button>
+		<div class="footer-actions">
+			<button
+				type="button"
+				class="icon-act"
+				onclick={() => ask(`Edit my calendar event "${title}" (${whenLabel}). Ask me what to change.`)}
+				title="Edit event"
+				aria-label="Edit event"
+			>
+				<Pencil size={16} />
+			</button>
+			<button
+				type="button"
+				class="icon-act danger"
+				onclick={() => ask(`Cancel my calendar event "${title}" (${whenLabel}). Confirm with me first.`)}
+				title="Cancel event"
+				aria-label="Cancel event"
+			>
+				<Trash2 size={16} />
+			</button>
+		</div>
 		<button
 			type="button"
 			class="act primary"
@@ -162,15 +185,48 @@
 		>
 			<Sparkles size={14} /> Ask agent
 		</button>
-		{#if item?.htmlLink}
-			<button type="button" class="act" onclick={openInGoogle}>
-				<ExternalLink size={14} /> Open
-			</button>
-		{/if}
 	{/snippet}
 </Modal>
 
 <style>
+	/* Header (corner Open icon) */
+	.hdr {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		min-width: 0;
+	}
+	.hdr-title {
+		flex: 1;
+		min-width: 0;
+		font-size: 15px;
+		font-weight: 650;
+		color: var(--color-foreground);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.hdr-open {
+		flex-shrink: 0;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 26px;
+		height: 26px;
+		border-radius: var(--radius-md, 6px);
+		border: none;
+		background: transparent;
+		color: var(--color-muted-foreground);
+		cursor: pointer;
+		opacity: 0.55;
+		transition: opacity 120ms ease, background 120ms ease, color 120ms ease;
+	}
+	.hdr-open:hover {
+		opacity: 1;
+		color: var(--color-accent);
+		background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+	}
+
 	.body {
 		display: flex;
 		flex-direction: column;
@@ -245,12 +301,43 @@
 		background: color-mix(in srgb, #f87171 12%, transparent);
 	}
 
+	/* Icon footer cluster (left-aligned) */
+	.footer-actions {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		margin-right: auto;
+	}
+	.icon-act {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 34px;
+		height: 34px;
+		border-radius: var(--radius-md, 8px);
+		border: 1px solid transparent;
+		background: transparent;
+		color: var(--color-muted-foreground);
+		cursor: pointer;
+		transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+	}
+	.icon-act:hover {
+		color: var(--color-foreground);
+		background: color-mix(in srgb, var(--color-foreground) 7%, transparent);
+		border-color: var(--color-border);
+	}
+	.icon-act.danger:hover {
+		color: #f87171;
+		background: color-mix(in srgb, #f87171 12%, transparent);
+		border-color: color-mix(in srgb, #f87171 40%, transparent);
+	}
+
 	.act {
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
 		font-size: 13px;
-		padding: 6px 12px;
+		padding: 7px 14px;
 		border-radius: var(--theme-radius, 6px);
 		border: 1px solid var(--color-border);
 		background: transparent;
@@ -267,12 +354,5 @@
 	}
 	.act.primary:hover {
 		background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-	}
-	.act.danger {
-		color: #f87171;
-		border-color: color-mix(in srgb, #f87171 40%, transparent);
-	}
-	.act.danger:hover {
-		background: color-mix(in srgb, #f87171 12%, transparent);
 	}
 </style>
