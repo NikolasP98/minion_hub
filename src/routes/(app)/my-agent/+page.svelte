@@ -532,6 +532,7 @@
 						     agenda runs as a band at the top, and stack vertically when the
 						     agenda becomes a narrow column during a call. A lone section (only
 						     events OR only emails) spans the full width via :only-child. -->
+						<div class="feed-group">
 						<div class="feed-grid">
 							<!-- Upcoming calendar events (next 24h across linked Google calendars). -->
 							{#if calendarItems.length > 0}
@@ -620,8 +621,7 @@
 							{/if}
 						</div>
 
-						{#if hasFeed}
-							<div class="feed-toggle-bar">
+							{#if hasFeed}
 								<button
 									type="button"
 									class="feed-toggle"
@@ -632,8 +632,8 @@
 								>
 									<ChevronDown size={14} />
 								</button>
-							</div>
-						{/if}
+							{/if}
+						</div>
 
 						<!-- Recent cross-channel agent activity, grouped by channel. -->
 						{#each grouped as group (group.channel)}
@@ -1102,34 +1102,21 @@
 		font-size: 12px;
 	}
 
-	/* Single feed collapse/expand handle, centered on a hairline across both
-	   columns. Subtle + small — a pill that "cuts" the divider line. */
-	.feed-toggle-bar {
+	/* The events/emails columns live inside this group; its bottom border IS the
+	   divider, and the collapse handle hangs halfway out of it. */
+	.feed-group {
 		position: relative;
-		display: flex;
-		justify-content: center;
-		/* Zero-height: the bar sits exactly on the feed group's bottom border; the
-		   button overflows equally up + down so it's halfway in the group and
-		   halfway over the messages section below. */
-		height: 0;
-		margin: 0;
-		z-index: 2;
+		border-bottom: 1px solid color-mix(in srgb, var(--color-foreground) 13%, transparent);
 	}
-	.feed-toggle-bar::before {
-		content: '';
+
+	/* Single feed collapse/expand handle — a small subtle pill pinned to the
+	   group's bottom border, hanging half out (below) and half in (above). */
+	.feed-toggle {
 		position: absolute;
-		left: 4px;
-		right: 4px;
-		top: 0;
-		height: 1px;
-		background: color-mix(in srgb, var(--color-foreground) 13%, transparent);
-	}
-	.feed-toggle {
-		transform: translateY(-50%);
-	}
-	.feed-toggle {
-		position: relative;
-		z-index: 1;
+		left: 50%;
+		bottom: 0;
+		transform: translate(-50%, 50%);
+		z-index: 2;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
@@ -1137,7 +1124,7 @@
 		height: 18px;
 		padding: 0;
 		border-radius: 999px;
-		border: 1px solid color-mix(in srgb, var(--color-foreground) 9%, transparent);
+		border: 1px solid color-mix(in srgb, var(--color-foreground) 13%, transparent);
 		background: var(--color-bg);
 		color: color-mix(in srgb, var(--color-foreground) 38%, transparent);
 		cursor: pointer;
@@ -1145,7 +1132,7 @@
 	}
 	.feed-toggle:hover {
 		color: color-mix(in srgb, var(--color-foreground) 75%, transparent);
-		border-color: color-mix(in srgb, var(--color-foreground) 18%, transparent);
+		border-color: color-mix(in srgb, var(--color-foreground) 22%, transparent);
 		background: color-mix(in srgb, var(--color-foreground) 4%, var(--color-bg));
 	}
 	.feed-toggle :global(svg) {
