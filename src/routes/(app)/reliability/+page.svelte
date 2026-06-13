@@ -9,6 +9,7 @@
 	import PluginHealthPanel from '$lib/components/reliability/PluginHealthPanel.svelte';
 	import ConnectionEventsPanel from '$lib/components/reliability/ConnectionEventsPanel.svelte';
 	import AgentLlmAnalytics from '$lib/components/reliability/AgentLlmAnalytics.svelte';
+	import KpiSparkline from '$lib/components/reliability/KpiSparkline.svelte';
 	import ScanLine from '$lib/components/decorations/ScanLine.svelte';
 	import {
 		reliability,
@@ -177,6 +178,26 @@
 		persistFilters();
 	}
 
+	// ── Per-tab filter scope ──────────────────────────────────────────────────
+	// Filters only show — and only apply — where they mean something. Overview
+	// sees all three; Agents & LLM drops Category (everything there is the
+	// agent/LLM category, so it's monotone); Plugins has no event filters at all
+	// (it renders from its own per-plugin snapshot RPC, not the event stream).
+	const tabFilterVis = $derived({
+		severity: activeTab === 'overview' || activeTab === 'agents',
+		category: activeTab === 'overview',
+		mode: activeTab === 'overview' || activeTab === 'agents',
+	});
+	const anyFilterVisible = $derived(tabFilterVis.severity || tabFilterVis.category || tabFilterVis.mode);
+
+	const EMPTY_SET: ReadonlySet<string> = new Set();
+	// Effective selections = the persisted picks, but only for dimensions visible
+	// on the active tab. A Category pinned on Overview therefore stops filtering
+	// when you switch to Agents, instead of silently narrowing a hidden dimension.
+	const effSeverities = $derived(tabFilterVis.severity ? selectedSeverities : EMPTY_SET);
+	const effCategories = $derived(tabFilterVis.category ? selectedCategories : EMPTY_SET);
+	const effModes = $derived(tabFilterVis.mode ? selectedFailureModes : EMPTY_SET);
+
 	function toggleCategory(cat: string) {
 		const next = new Set(selectedCategories);
 		if (next.has(cat)) next.delete(cat); else next.add(cat);
@@ -227,23 +248,23 @@
 	}
 
 	const hasActiveFilters = $derived(
-		selectedCategories.size > 0 || selectedSeverities.size > 0 || selectedFailureModes.size > 0,
+		effCategories.size > 0 || effSeverities.size > 0 || effModes.size > 0,
 	);
 
 	// Events filtered by category + severity only — the failure-mode dropdown
 	// derives its option list from this set so picking a mode never collapses
-	// the list of available modes.
+	// the list of available modes. Uses the per-tab effective sets.
 	let categorySeverityFiltered = $derived.by(() => {
 		let evts = reliability.events;
-		if (selectedCategories.size > 0) evts = evts.filter(e => selectedCategories.has(e.category));
-		if (selectedSeverities.size > 0) evts = evts.filter(e => selectedSeverities.has(e.severity));
+		if (effCategories.size > 0) evts = evts.filter(e => effCategories.has(e.category));
+		if (effSeverities.size > 0) evts = evts.filter(e => effSeverities.has(e.severity));
 		return evts;
 	});
 
 	let filteredEvents = $derived.by(() => {
-		if (selectedFailureModes.size === 0) return categorySeverityFiltered;
+		if (effModes.size === 0) return categorySeverityFiltered;
 		return categorySeverityFiltered.filter(e =>
-			selectedFailureModes.has(parseEventName(e.event).failureMode),
+			effModes.has(parseEventName(e.event).failureMode),
 		);
 	});
 
@@ -325,11 +346,32 @@
 	// formula with the live numbers substituted, both as LaTeX, plus an optional
 	// note (data source / sample-floor caveat). Rendered on hover so the user can
 	// see exactly how the headline number was reached and which values fed it.
+	// Threshold + sparkline payload for the *core* KPIs (health/error/critical/
+	// heartbeat/tool). Carries the per-bucket series, its rolling average, the
+	// 6-sigma control stats, and the derived good/bad status of the live value.
+	interface SparkData {
+		series: number[];
+		rollAvg: number[];
+		mean: number;
+		sigma: number;
+		color: string;
+		current: number;
+		rollAvgVal: number;
+		vsRollGood: boolean;
+		ucl: number;
+		lcl: number;
+		z: number;
+		statusLabel: string;
+		statusColor: string;
+		trendLabel: string;
+	}
+
 	interface KpiDetail {
 		label: string;
 		texFormula: string;
 		texValues: string;
 		note?: string;
+		spark?: SparkData;
 	}
 
 	// Health / tool / heartbeat thresholds → sentiment colour. high% = healthy.
@@ -343,6 +385,104 @@
 		if (p === null) return C.muted;
 		const v = Number(p);
 		return v <= warn ? C.success : v <= bad ? C.warning : C.destructive;
+	}
+
+	// ── KPI trend buckets (for sparklines + rolling-avg / 6σ thresholds) ──────
+	// Bucket the filtered events into ~24 equal time slices across the active
+	// range, accumulating exactly the counts each core KPI needs. One pass feeds
+	// every sparkline. Reactive to filters (built from `filteredEvents`).
+	const SPARK_BUCKETS = 24;
+	interface KpiBucket {
+		total: number; crit: number; high: number; med: number;
+		hbOk: number; hbTot: number; toolOk: number; toolTot: number;
+	}
+	let kpiBuckets = $derived.by((): KpiBucket[] => {
+		// Bucket over the span the loaded events ACTUALLY cover, not the whole
+		// selected range. The 2k-event cap returns the most-recent slice, which on a
+		// wide range would otherwise pile into one or two buckets and leave the
+		// sparkline with too few points; spreading across the real min→max span keeps
+		// every sparkline populated (it's a trend of the available sample).
+		const evts = filteredEvents;
+		let from = reliability.dateRange.from;
+		let to = reliability.dateRange.to;
+		if (evts.length > 1) {
+			let lo = Infinity, hi = -Infinity;
+			for (const e of evts) { if (e.timestamp < lo) lo = e.timestamp; if (e.timestamp > hi) hi = e.timestamp; }
+			if (Number.isFinite(lo) && Number.isFinite(hi) && hi > lo) { from = lo; to = hi; }
+		}
+		const bw = Math.max((to - from) / SPARK_BUCKETS, 1);
+		const B: KpiBucket[] = Array.from({ length: SPARK_BUCKETS }, () => ({
+			total: 0, crit: 0, high: 0, med: 0, hbOk: 0, hbTot: 0, toolOk: 0, toolTot: 0,
+		}));
+		for (const e of filteredEvents) {
+			let idx = Math.floor((e.timestamp - from) / bw);
+			if (idx < 0) idx = 0;
+			if (idx >= SPARK_BUCKETS) idx = SPARK_BUCKETS - 1;
+			const b = B[idx];
+			b.total++;
+			if (e.severity === 'critical') b.crit++;
+			else if (e.severity === 'high') b.high++;
+			else if (e.severity === 'medium') b.med++;
+			const { type, failureMode } = parseEventName(e.event);
+			if (type === 'heartbeat') {
+				if (failureMode === 'ok') { b.hbOk++; b.hbTot++; }
+				else if (failureMode === 'failed') b.hbTot++;
+			}
+			if (e.event === 'exec.ok') { b.toolOk++; b.toolTot++; }
+			else if (e.event === 'exec.error') b.toolTot++;
+		}
+		return B;
+	});
+
+	// Mean / σ / trailing rolling-average over a value series.
+	function seriesStats(vals: number[]) {
+		const n = vals.length;
+		if (n === 0) return { series: [] as number[], rollAvg: [] as number[], mean: 0, sigma: 0 };
+		const mean = vals.reduce((a, b) => a + b, 0) / n;
+		const variance = vals.reduce((a, b) => a + (b - mean) ** 2, 0) / n;
+		const sigma = Math.sqrt(variance);
+		const w = Math.max(2, Math.round(n / 4));
+		const rollAvg = vals.map((_, i) => {
+			const slice = vals.slice(Math.max(0, i - w + 1), i + 1);
+			return slice.reduce((a, b) => a + b, 0) / slice.length;
+		});
+		return { series: vals, rollAvg, mean, sigma };
+	}
+
+	// Build the SparkData for one core KPI. `vals` = per-bucket KPI values (only
+	// buckets with a denominator), `dir` = +1 when higher is better (health/
+	// heartbeat/tool), −1 when higher is worse (error/critical). Everything is
+	// computed on ONE population (the per-bucket series): `current` is the latest
+	// bucket, compared against the established rolling average and the 6σ control
+	// limits — so it never mixes the sample series with the summary headline.
+	function buildSpark(vals: number[], dir: 1 | -1): SparkData | undefined {
+		if (vals.length < 2) return undefined;
+		const st = seriesStats(vals);
+		const current = vals[vals.length - 1];
+		// Established average = rolling avg up to (but not dominated by) the latest
+		// point, so "above/below" reflects a real move, not self-comparison.
+		const rollAvgVal = st.rollAvg[st.rollAvg.length - 2] ?? st.mean;
+		const deltaRoll = current - rollAvgVal;
+		const vsRollGood = dir > 0 ? deltaRoll >= 0 : deltaRoll <= 0;
+		const z = st.sigma > 0 ? (current - st.mean) / st.sigma : 0;
+		// badMag = how many σ the current value sits in the *unhealthy* direction.
+		const badMag = dir > 0 ? -z : z;
+		const ucl = Math.min(100, st.mean + 3 * st.sigma);
+		const lcl = Math.max(0, st.mean - 3 * st.sigma);
+
+		let statusColor: string;
+		let statusLabel: string;
+		if (st.series.length < 4) { statusColor = C.muted; statusLabel = m.reliability_tipInsufficient(); }
+		else if (badMag > 3) { statusColor = C.destructive; statusLabel = m.reliability_tipOOC(); }
+		else if (badMag > 2) { statusColor = C.warning; statusLabel = m.reliability_tipNearLimit(); }
+		else if (!vsRollGood && badMag > 0.5) { statusColor = C.warning; statusLabel = m.reliability_tipDrift(); }
+		else { statusColor = C.success; statusLabel = m.reliability_tipInControl(); }
+
+		const trendLabel = vsRollGood ? m.reliability_tipTrendGood() : m.reliability_tipTrendBad();
+		return {
+			series: st.series, rollAvg: st.rollAvg, mean: st.mean, sigma: st.sigma, color: statusColor,
+			current, rollAvgVal, vsRollGood, ucl, lcl, z, statusColor, statusLabel, trendLabel,
+		};
 	}
 
 	// Heartbeat / tool success need event-name granularity (absent from the server
@@ -394,7 +534,7 @@
 
 		// When a single category is pinned the "top category" cell is redundant
 		// (always 100% that one) — swap it for the dominant failure-mode in view.
-		const singleCategory = selectedCategories.size === 1;
+		const singleCategory = effCategories.size === 1;
 		let topModeName = ''; let topModeCount = 0;
 		if (singleCategory) {
 			const counts = new Map<string, number>();
@@ -431,6 +571,21 @@
 		const hbPct = pct(hb.ok, hb.total);
 		const toolPct = pct(tl.ok, tl.total);
 
+		// ── Per-bucket KPI series → threshold sparks (core KPIs only) ────────────
+		const bk = kpiBuckets;
+		const withTotal = bk.filter((b) => b.total > 0);
+		const healthSeries = withTotal.map((b) => Math.max(0, Math.min(100, (1 - (W_CRIT * b.crit + W_HIGH * b.high + W_MED * b.med) / b.total) * 100)));
+		const errorSeries = withTotal.map((b) => ((b.crit + b.high) / b.total) * 100);
+		const critSeries = withTotal.map((b) => (b.crit / b.total) * 100);
+		const hbSeries = bk.filter((b) => b.hbTot > 0).map((b) => (b.hbOk / b.hbTot) * 100);
+		const toolSeries = bk.filter((b) => b.toolTot > 0).map((b) => (b.toolOk / b.toolTot) * 100);
+
+		const healthSpark = buildSpark(healthSeries, 1);
+		const errorSpark = buildSpark(errorSeries, -1);
+		const critSpark = buildSpark(critSeries, -1);
+		const hbSpark = buildSpark(hbSeries, 1);
+		const toolSpark = buildSpark(toolSeries, 1);
+
 		// LaTeX result token (percent or em-dash) for the hover breakdown.
 		const resPct = (p: string | null) => (p === null ? '\\text{\\textemdash}' : `${p}\\%`);
 		// Heartbeat / tool numbers come from the fleet aggregate when unfiltered, else
@@ -465,7 +620,7 @@
 
 		return [
 			{
-				key: 'health', Icon: Gauge, color: rampGood(healthPct), label: m.reliability_kpiHealth(),
+				key: 'health', Icon: Gauge, color: healthSpark?.statusColor ?? rampGood(healthPct), label: m.reliability_kpiHealth(),
 				value: healthPct ?? '—', unit: healthPct ? '%' : '',
 				subtext: total ? m.reliability_kpiHealthSub({ crit: compact(crit), high: compact(high), med: compact(med) }) : '',
 				detail: {
@@ -475,26 +630,29 @@
 					note: total < HEALTH_MIN_SAMPLE
 						? m.reliability_tipSampleFloor({ n: HEALTH_MIN_SAMPLE })
 						: m.reliability_tipWeights(),
+					spark: healthSpark,
 				} as KpiDetail,
 			},
 			{
-				key: 'error', Icon: TrendingDown, color: rampBad(errorPct), label: m.reliability_kpiErrorRate(),
+				key: 'error', Icon: TrendingDown, color: errorSpark?.statusColor ?? rampBad(errorPct), label: m.reliability_kpiErrorRate(),
 				value: errorPct ?? '—', unit: errorPct ? '%' : '',
 				subtext: total ? `${compact(fail)} ${m.reliability_kpiOfTotal({ total: compact(total) })}` : '',
 				detail: {
 					label: m.reliability_kpiErrorRate(),
 					texFormula: '\\dfrac{\\text{high}+\\text{critical}}{\\text{total}}',
 					texValues: `\\dfrac{${fmt(high)}+${fmt(crit)}}{${fmt(total)}} = ${resPct(errorPct)}`,
+					spark: errorSpark,
 				} as KpiDetail,
 			},
 			{
-				key: 'critical', Icon: AlertCircle, color: crit > 0 ? C.destructive : C.success, label: m.reliability_kpiCriticalRate(),
+				key: 'critical', Icon: AlertCircle, color: critSpark?.statusColor ?? (crit > 0 ? C.destructive : C.success), label: m.reliability_kpiCriticalRate(),
 				value: critPct ?? '—', unit: critPct ? '%' : '',
 				subtext: total ? compact(crit) : '',
 				detail: {
 					label: m.reliability_kpiCriticalRate(),
 					texFormula: '\\dfrac{\\text{critical}}{\\text{total}}',
 					texValues: `\\dfrac{${fmt(crit)}}{${fmt(total)}} = ${resPct(critPct)}`,
+					spark: critSpark,
 				} as KpiDetail,
 			},
 			{
@@ -508,7 +666,7 @@
 				} as KpiDetail,
 			},
 			{
-				key: 'heartbeat', Icon: HeartPulse, color: rampGood(hbPct), label: m.reliability_kpiHeartbeat(),
+				key: 'heartbeat', Icon: HeartPulse, color: hbSpark?.statusColor ?? rampGood(hbPct), label: m.reliability_kpiHeartbeat(),
 				value: hbPct ?? '—', unit: hbPct ? '%' : '',
 				subtext: hb.total ? `${compact(hb.ok)}/${compact(hb.total)}` : '',
 				detail: {
@@ -516,10 +674,11 @@
 					texFormula: '\\dfrac{\\text{ok}}{\\text{ok}+\\text{failed}}',
 					texValues: `\\dfrac{${fmt(hb.ok)}}{${fmt(hb.ok)}+${fmt(hbFailed)}} = ${resPct(hbPct)}`,
 					note: `${m.reliability_tipSource()}: ${dataSrc}`,
+					spark: hbSpark,
 				} as KpiDetail,
 			},
 			{
-				key: 'tool', Icon: Wrench, color: rampGood(toolPct), label: m.reliability_kpiToolSuccess(),
+				key: 'tool', Icon: Wrench, color: toolSpark?.statusColor ?? rampGood(toolPct), label: m.reliability_kpiToolSuccess(),
 				value: toolPct ?? '—', unit: toolPct ? '%' : '',
 				subtext: tl.total ? `${compact(tl.ok)}/${compact(tl.total)}` : '',
 				detail: {
@@ -527,6 +686,7 @@
 					texFormula: '\\dfrac{\\text{exec.ok}}{\\text{exec.ok}+\\text{exec.error}}',
 					texValues: `\\dfrac{${fmt(tl.ok)}}{${fmt(tl.ok)}+${fmt(toolErr)}} = ${resPct(toolPct)}`,
 					note: `${m.reliability_tipSource()}: ${dataSrc}`,
+					spark: toolSpark,
 				} as KpiDetail,
 			},
 			concentration,
@@ -577,11 +737,26 @@
 		const { from, to } = reliability.dateRange;
 		await Promise.all([
 			loadReliabilitySummary(serverId, from, to),
-			loadReliabilityEvents(serverId, { from, to, limit: 10_000 }),
 			loadReliabilityTimeline(from, to),
 			loadReliabilityUsage(from, to),
 			loadReliabilityActivity(from, to)
 		]);
+	}
+
+	// Events are fetched WITH the active severity/category filters applied
+	// server-side, so rare-severity events surface instead of being filtered out
+	// of a recent-only sample (the gateway returns newest rows up to a cap). Mode
+	// stays a CLIENT filter so its dropdown keeps the full option list for the
+	// current severity/category scope — hence the effect below ignores effModes.
+	async function loadEventsFiltered() {
+		if (!serverId) return;
+		const { from, to } = reliability.dateRange;
+		await loadReliabilityEvents(serverId, {
+			from,
+			to,
+			severities: effSeverities.size ? [...effSeverities] : undefined,
+			categories: effCategories.size ? [...effCategories] : undefined,
+		});
 	}
 
 	function handleDateChange(from: number, to: number) {
@@ -602,17 +777,37 @@
 			reliability.dateRange.from = now - 86_400_000;
 			reliability.dateRange.to = now;
 		}
-		// Explicit initial load — the $effect handles subsequent reactive updates
-		if (serverId && conn.connected) loadData();
+		// Explicit initial load — the $effects handle subsequent reactive updates
+		if (serverId && conn.connected) {
+			loadData();
+			loadEventsFiltered();
+		}
 	});
 
+	// Aggregates (summary / timeline / usage / activity) — reload on date/host change.
 	$effect(() => {
 		const _from = reliability.dateRange.from;
 		const _to = reliability.dateRange.to;
 		const _sid = serverId;
 		const _connected = conn.connected;
+		void _from; void _to;
 		if (_sid && _connected) {
 			untrack(() => loadData());
+		}
+	});
+
+	// Events — reload when the date range OR the server-side filters (severity /
+	// category) change, so the loaded set actually contains the filtered events.
+	$effect(() => {
+		const _from = reliability.dateRange.from;
+		const _to = reliability.dateRange.to;
+		const _sev = effSeverities;
+		const _cat = effCategories;
+		const _sid = serverId;
+		const _connected = conn.connected;
+		void _from; void _to; void _sev; void _cat;
+		if (_sid && _connected) {
+			untrack(() => loadEventsFiltered());
 		}
 	});
 
@@ -633,10 +828,12 @@
 	}
 
 	let timelineOptions: EChartsOption = $derived.by(() => {
-		// Prefer the server-aggregated timeline (full range, cheap GROUP BY); fall
-		// back to client-side bucketing of the (capped) events when the gateway
-		// predates reliability.timeline.
-		const rpc = reliability.timeline;
+		// Prefer the server-aggregated timeline (full range, cheap GROUP BY) ONLY
+		// when no non-date filters are active — that aggregate is bucketed by
+		// category and can't honour severity/mode filters. The moment any filter is
+		// on we bucket the filtered events client-side so the timeline matches every
+		// other panel (the user's "timeline must react to severity too").
+		const rpc = hasActiveFilters ? null : reliability.timeline;
 		const counts = new Map<string, Map<number, number>>();
 		let bucketMs: number;
 
@@ -676,8 +873,8 @@
 			buckets.push(t);
 		}
 
-		const visibleCategories = selectedCategories.size > 0
-			? CATEGORIES.filter(c => selectedCategories.has(c))
+		const visibleCategories = effCategories.size > 0
+			? CATEGORIES.filter(c => effCategories.has(c))
 			: CATEGORIES;
 
 		const series = visibleCategories
@@ -813,11 +1010,34 @@
 		if (name) toggleFailureMode(parseEventName(name).failureMode);
 	}
 
+	// Click a timeline bar → toggle that category (series name = category).
+	function handleTimelineClick(params: unknown) {
+		const name = (params as { seriesName?: string })?.seriesName;
+		if (name && (CATEGORIES as readonly string[]).includes(name)) toggleCategory(name);
+	}
+
+	// Click a severity donut slice → toggle that severity.
+	function handleSeverityClick(params: unknown) {
+		const name = (params as { name?: string })?.name;
+		if (name && (SEVERITIES as readonly string[]).includes(name)) toggleSeverity(name);
+	}
+
+	// Click a Sankey node → toggle the matching filter by its column prefix
+	// (m:=mode, c:=category, s:=severity). Edges (no prefixed name) are ignored.
+	function handleSankeyClick(params: unknown) {
+		const p = params as { dataType?: string; name?: string };
+		if (p?.dataType !== 'node' || !p.name) return;
+		const id = p.name;
+		if (id.startsWith('m:')) toggleFailureMode(id.slice(2));
+		else if (id.startsWith('c:')) { const c = id.slice(2); if ((CATEGORIES as readonly string[]).includes(c)) toggleCategory(c); }
+		else if (id.startsWith('s:')) { const s = id.slice(2); if ((SEVERITIES as readonly string[]).includes(s)) toggleSeverity(s); }
+	}
+
 	// ── Severity pie ──────────────────────────────────────────────────────────
 	let severityOptions: EChartsOption = $derived.by(() => {
 		const bySeverity = overviewStats.bySeverity;
 		const data = Object.entries(bySeverity)
-			.filter(([name, count]) => count > 0 && (selectedSeverities.size === 0 || selectedSeverities.has(name)))
+			.filter(([name, count]) => count > 0 && (effSeverities.size === 0 || effSeverities.has(name)))
 			.map(([name, value]) => ({
 				name,
 				value,
@@ -987,32 +1207,38 @@
 			aria-label={m.reliability_title()}
 			onValueChange={handleTabChange}
 		/>
-		{#if summary}
+		{#if summary && anyFilterVisible}
 			<div class="flex items-center gap-2 flex-wrap px-4 pt-2 pb-2.5 border-t border-border/60">
-				<MultiSelectFilter
-					label={m.reliability_severity()}
-					options={severityFilterOptions}
-					selected={selectedSeverities}
-					onToggle={toggleSeverity}
-					onClear={() => { selectedSeverities = new Set(); persistFilters(); }}
-					allLabel={m.reliability_filterAll()}
-				/>
-				<MultiSelectFilter
-					label={m.reliability_category()}
-					options={categoryFilterOptions}
-					selected={selectedCategories}
-					onToggle={toggleCategory}
-					onClear={() => { selectedCategories = new Set(); persistFilters(); }}
-					allLabel={m.reliability_filterAll()}
-				/>
-				<MultiSelectFilter
-					label={m.reliability_failureMode()}
-					options={failureModeFilterOptions}
-					selected={selectedFailureModes}
-					onToggle={toggleFailureMode}
-					onClear={() => { selectedFailureModes = new Set(); persistFilters(); }}
-					allLabel={m.reliability_filterAll()}
-				/>
+				{#if tabFilterVis.severity}
+					<MultiSelectFilter
+						label={m.reliability_severity()}
+						options={severityFilterOptions}
+						selected={selectedSeverities}
+						onToggle={toggleSeverity}
+						onClear={() => { selectedSeverities = new Set(); persistFilters(); }}
+						allLabel={m.reliability_filterAll()}
+					/>
+				{/if}
+				{#if tabFilterVis.category}
+					<MultiSelectFilter
+						label={m.reliability_category()}
+						options={categoryFilterOptions}
+						selected={selectedCategories}
+						onToggle={toggleCategory}
+						onClear={() => { selectedCategories = new Set(); persistFilters(); }}
+						allLabel={m.reliability_filterAll()}
+					/>
+				{/if}
+				{#if tabFilterVis.mode}
+					<MultiSelectFilter
+						label={m.reliability_failureMode()}
+						options={failureModeFilterOptions}
+						selected={selectedFailureModes}
+						onToggle={toggleFailureMode}
+						onClear={() => { selectedFailureModes = new Set(); persistFilters(); }}
+						allLabel={m.reliability_filterAll()}
+					/>
+				{/if}
 				{#if hasActiveFilters}
 					<button
 						type="button"
@@ -1087,7 +1313,7 @@
 				</div>
 				<div class="relative overflow-hidden">
 					<ScanLine speed={10} opacity={0.018} />
-					<Chart options={timelineOptions} height="300px" />
+					<Chart options={timelineOptions} height="300px" onItemClick={handleTimelineClick} />
 				</div>
 			</div>
 
@@ -1107,7 +1333,7 @@
 				</div>
 				<div class="relative overflow-hidden">
 					<ScanLine speed={12} opacity={0.018} />
-					<Chart options={sankeyOptions} height="380px" />
+					<Chart options={sankeyOptions} height="380px" onItemClick={handleSankeyClick} />
 				</div>
 			</div>
 
@@ -1145,7 +1371,7 @@
 					</div>
 					<div class="relative overflow-hidden">
 						<ScanLine speed={8} opacity={0.018} />
-						<Chart options={severityOptions} height="300px" />
+						<Chart options={severityOptions} height="300px" onItemClick={handleSeverityClick} />
 					</div>
 				</div>
 			</div>
@@ -1178,20 +1404,46 @@
 		{/if}
 	</main>
 
-	<!-- ── KPI hover breakdown tooltip (fixed → escapes card overflow clipping) ── -->
+	<!-- ── KPI hover breakdown tooltip (fixed → escapes card overflow clipping) ──
+	     Width is standardised with clamp() so every KPI's tooltip is the same
+	     size regardless of formula/sparkline content (no per-cell jitter). -->
 	{#if hoveredKpi && kpiTipPos}
 		<div
 			bind:this={tipEl}
-			class="fixed z-[100] pointer-events-none w-max max-w-[90vw] rounded-lg border border-border bg-bg2 shadow-[0_8px_28px_rgba(0,0,0,0.55)] px-3 py-2.5"
-			style="left:{kpiTipPos.left}px; top:{kpiTipPos.top}px"
+			class="fixed z-[100] pointer-events-none rounded-lg border border-border bg-bg2 shadow-[0_8px_28px_rgba(0,0,0,0.55)] px-3 py-2.5"
+			style="left:{kpiTipPos.left}px; top:{kpiTipPos.top}px; width:clamp(256px, 22vw, 320px)"
 		>
 			<div class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">{hoveredKpi.label}</div>
 			<div class="text-[10px] text-muted-strong uppercase tracking-wide mb-0.5">{m.reliability_tipFormula()}</div>
-			<div class="text-foreground text-[13px] mb-2"><MathFormula tex={hoveredKpi.texFormula} /></div>
+			<div class="text-foreground text-[13px] mb-2 overflow-hidden"><MathFormula tex={hoveredKpi.texFormula} /></div>
 			<div class="text-[10px] text-muted-strong uppercase tracking-wide mb-0.5">{m.reliability_tipResult()}</div>
-			<div class="text-foreground text-[13px]"><MathFormula tex={hoveredKpi.texValues} /></div>
+			<div class="text-foreground text-[13px] overflow-hidden"><MathFormula tex={hoveredKpi.texValues} /></div>
+
+			{#if hoveredKpi.spark}
+				{@const s = hoveredKpi.spark}
+				<div class="mt-2.5 pt-2 border-t border-border/60">
+					<div class="flex items-center justify-between mb-1">
+						<span class="text-[10px] text-muted-strong uppercase tracking-wide">{m.reliability_tipTrend()}</span>
+						<span class="text-[9px] font-semibold uppercase tracking-wide" style:color={s.statusColor}>{s.statusLabel}</span>
+					</div>
+					<KpiSparkline series={s.series} rollAvg={s.rollAvg} mean={s.mean} sigma={s.sigma} color={s.color} />
+					<!-- legend: raw line · rolling-avg line · μ±3σ band -->
+					<div class="flex items-center gap-3 mt-1 text-[8px] text-muted-strong">
+						<span class="flex items-center gap-1"><span class="inline-block w-3 h-[2px] opacity-40" style:background={s.color}></span>{m.reliability_tipRaw()}</span>
+						<span class="flex items-center gap-1"><span class="inline-block w-3 h-[2px]" style:background={s.color}></span>{m.reliability_tipRollingShort()}</span>
+						<span class="flex items-center gap-1"><span class="inline-block w-3 border-t border-dashed opacity-60" style:border-color={s.color}></span>μ±3σ</span>
+					</div>
+					<div class="grid grid-cols-2 gap-x-3 gap-y-0.5 mt-1.5 text-[9px] tabular-nums">
+						<div class="flex justify-between gap-2"><span class="text-muted-strong">{m.reliability_tipRolling()}</span><span>{s.rollAvgVal.toFixed(0)}%</span></div>
+						<div class="flex justify-between gap-2"><span class="text-muted-strong">{m.reliability_tipVsAvg()}</span><span class="font-semibold" style:color={s.vsRollGood ? C.success : C.warning}>{s.current - s.rollAvgVal >= 0 ? '+' : ''}{(s.current - s.rollAvgVal).toFixed(1)} · {s.trendLabel}</span></div>
+						<div class="flex justify-between gap-2"><span class="text-muted-strong">μ±3σ</span><span>{s.lcl.toFixed(0)}–{s.ucl.toFixed(0)}%</span></div>
+						<div class="flex justify-between gap-2"><span class="text-muted-strong">z</span><span>{s.z >= 0 ? '+' : ''}{s.z.toFixed(1)}σ</span></div>
+					</div>
+				</div>
+			{/if}
+
 			{#if hoveredKpi.note}
-				<div class="mt-2 pt-1.5 border-t border-border/60 text-[9px] text-muted-strong leading-snug whitespace-normal max-w-[240px]">{hoveredKpi.note}</div>
+				<div class="mt-2 pt-1.5 border-t border-border/60 text-[9px] text-muted-strong leading-snug whitespace-normal">{hoveredKpi.note}</div>
 			{/if}
 		</div>
 	{/if}

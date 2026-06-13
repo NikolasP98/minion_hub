@@ -257,13 +257,27 @@ export async function loadReliabilitySummary(_serverId: string, from?: number, _
  */
 export async function loadReliabilityEvents(
   _serverId: string,
-  opts?: { category?: string; from?: number; to?: number; limit?: number },
+  opts?: {
+    category?: string;
+    from?: number;
+    to?: number;
+    limit?: number;
+    /** Server-side multi-select filters so rare-severity/mode events surface
+     *  past the per-request row cap (instead of filtering a recent sample). */
+    severities?: string[];
+    categories?: string[];
+    eventModes?: string[];
+  },
 ) {
   reliability.loading = true;
   try {
     const params: Record<string, unknown> = { limit: PAGE_SIZE };
     if (opts?.category) params.category = opts.category;
+    if (opts?.severities && opts.severities.length) params.severities = opts.severities;
+    if (opts?.categories && opts.categories.length) params.categories = opts.categories;
+    if (opts?.eventModes && opts.eventModes.length) params.eventModes = opts.eventModes;
     if (opts?.from) params.since = opts.from;
+    if (opts?.to) params.until = opts.to;
 
     const data = (await sendRequest('reliability.events', params)) as {
       events?: ReliabilityEvent[];

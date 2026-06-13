@@ -99,17 +99,27 @@
       class="absolute left-0 top-full mt-1.5 z-50 min-w-[180px] max-h-[280px] overflow-y-auto
         rounded-lg border border-border bg-bg2 shadow-[0_8px_24px_rgba(0,0,0,0.5)] p-1"
     >
-      {#if count > 0}
-        <button
-          type="button"
-          class="flex items-center w-full gap-2 px-2 py-1.5 rounded text-[11px] text-muted-foreground hover:text-foreground hover:bg-bg3 cursor-pointer transition-colors"
-          onclick={onClear}
+      <!-- "All" = the empty-selection state (everything shown). Mutually exclusive
+           with individual picks: choosing it clears specific selections, and
+           picking any option drops out of "All" automatically. -->
+      <button
+        type="button"
+        role="option"
+        aria-selected={count === 0}
+        class="flex items-center w-full gap-2 px-2 py-1.5 rounded text-[11px] cursor-pointer transition-colors
+          {count === 0 ? 'text-foreground bg-bg3/60' : 'text-muted-foreground hover:text-foreground hover:bg-bg3'}"
+        onclick={onClear}
+      >
+        <span
+          class="flex items-center justify-center w-3.5 h-3.5 rounded-sm border shrink-0 {count === 0
+            ? 'bg-accent border-accent'
+            : 'border-border'}"
         >
-          <X size={12} class="shrink-0" />
-          {allLabel}
-        </button>
-        <div class="my-1 h-px bg-border"></div>
-      {/if}
+          {#if count === 0}<Check size={10} class="text-bg" />{/if}
+        </span>
+        <span class="flex-1 text-left font-medium">{allLabel}</span>
+      </button>
+      <div class="my-1 h-px bg-border"></div>
       {#each options as opt (opt.value)}
         {@const isSel = selected.has(opt.value)}
         <button
