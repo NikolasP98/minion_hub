@@ -32,7 +32,9 @@ export type SectionItem = {
 };
 
 export type Section = {
-    id: SectionId | "plugins";
+    // SectionId for static sections; `plugins:<category>` for the dynamic,
+    // category-grouped plugin sections built by getDynamicPluginsSections().
+    id: SectionId | "plugins" | string;
     label: string;
     icon: LucideIcon;
     tone: SectionTone;
@@ -95,42 +97,91 @@ export function findActiveSection(
 }
 
 /**
- * Built-in plugin entries surfaced in the Plugins section regardless of which
- * gateway plugins are installed. KANBAN is the hub-native paperclip integration
- * (the /workforce subtree) reframed as a standalone plugin: it links to its own
- * shell, which carries the /my-agent-style icon sub-nav for its detail views.
+ * Built-in plugin entries surfaced regardless of which gateway plugins are
+ * installed. KANBAN is the hub-native paperclip integration (the /workforce
+ * subtree) reframed as a standalone plugin. Each builtin carries the category
+ * that decides which nav group it lands in.
  */
-const BUILTIN_PLUGIN_ITEMS: SectionItem[] = [
+const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: SectionItem }> = [
     {
-        href: "/workforce",
-        label: "Kanban",
-        icon: FolderKanban,
-        matcher: (p: string) => p.startsWith("/workforce"),
+        category: "tool",
+        item: {
+            href: "/workforce",
+            label: "Kanban",
+            icon: FolderKanban,
+            matcher: (p: string) => p.startsWith("/workforce"),
+        },
     },
 ];
 
+type PluginNavCategory = "channel" | "automation" | "creative" | "tool" | "dashboard";
+
 /**
- * Build the "Plugins" section: the built-in entries (Kanban) followed by any
- * installed plugin control centers. Always returns a section — the built-ins
- * guarantee at least one entry.
+ * Plugin nav groups, in display order. Plugins are bucketed by their manifest
+ * `category` (channel plugins like whatsapp/telegram, automation like
+ * alert-watcher, creative like studio, tools like kanban) so the sidebar no
+ * longer dumps every plugin into one flat "Plugins" list. Unknown/absent
+ * categories fall back to "tool".
  */
-export function getDynamicPluginsSection(
+const PLUGIN_NAV_GROUPS: ReadonlyArray<{ category: PluginNavCategory; label: string }> = [
+    { category: "channel", label: "Channels" },
+    { category: "automation", label: "Automation" },
+    { category: "creative", label: "Creative" },
+    { category: "tool", label: "Tools" },
+    { category: "dashboard", label: "Dashboards" },
+];
+
+function normalizePluginCategory(raw: string | undefined): PluginNavCategory {
+    switch (raw) {
+        case "channel":
+        case "automation":
+        case "creative":
+        case "tool":
+        case "dashboard":
+            return raw;
+        default:
+            return "tool";
+    }
+}
+
+/**
+ * Build the plugin nav sections, one per non-empty category group (Channels,
+ * Automation, Creative, Tools, Dashboards). Built-in entries (Kanban) and
+ * installed plugin control centers are bucketed by category. Returns [] when
+ * no group has any entries.
+ */
+export function getDynamicPluginsSections(
     entries: PluginUiManifestOccupant[],
-): Section | null {
-    const dynamicItems: SectionItem[] = entries.map((e) => ({
-        href: `/plugins/${e.pluginId}`,
-        label: e.title,
-        icon: resolvePluginIcon(e.icon),
-        matcher: (p: string) => p.startsWith(`/plugins/${e.pluginId}`),
-    }));
-    const items = [...BUILTIN_PLUGIN_ITEMS, ...dynamicItems];
-    if (items.length === 0) return null;
-    return {
-        id: "plugins",
-        label: "Plugins",
-        icon: Puzzle,
-        tone: "accent",
-        domain: "gateway",
-        items,
+): Section[] {
+    const byCategory = new Map<PluginNavCategory, SectionItem[]>();
+    const push = (category: PluginNavCategory, item: SectionItem) => {
+        const list = byCategory.get(category) ?? [];
+        list.push(item);
+        byCategory.set(category, list);
     };
+
+    for (const { category, item } of BUILTIN_PLUGIN_ITEMS) push(category, item);
+    for (const e of entries) {
+        push(normalizePluginCategory(e.category), {
+            href: `/plugins/${e.pluginId}`,
+            label: e.title,
+            icon: resolvePluginIcon(e.icon),
+            matcher: (p: string) => p.startsWith(`/plugins/${e.pluginId}`),
+        });
+    }
+
+    const sections: Section[] = [];
+    for (const group of PLUGIN_NAV_GROUPS) {
+        const items = byCategory.get(group.category);
+        if (!items || items.length === 0) continue;
+        sections.push({
+            id: `plugins:${group.category}`,
+            label: group.label,
+            icon: Puzzle,
+            tone: "accent",
+            domain: "gateway",
+            items,
+        });
+    }
+    return sections;
 }

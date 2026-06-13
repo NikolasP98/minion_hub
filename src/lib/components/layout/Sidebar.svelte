@@ -7,7 +7,7 @@
   import {
     getSections,
     gateSections,
-    getDynamicPluginsSection,
+    getDynamicPluginsSections,
     DOMAIN_LABEL,
     type Section,
   } from './sections';
@@ -18,10 +18,8 @@
   import * as m from '$lib/paraglide/messages';
 
   const staticSections = $derived(gateSections(getSections(), pluginNavState.enabledByPluginId));
-  const pluginsSection = $derived(getDynamicPluginsSection(pluginNavState.controlCenters));
-  const navSections = $derived<Section[]>(
-    pluginsSection ? [...staticSections, pluginsSection] : staticSections
-  );
+  const pluginsSections = $derived(getDynamicPluginsSections(pluginNavState.controlCenters));
+  const navSections = $derived<Section[]>([...staticSections, ...pluginsSections]);
 
   const showReliability = $derived(canClient('reliability.monitor'));
   const isReliability = $derived(page.url.pathname.startsWith('/reliability'));

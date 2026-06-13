@@ -1,17 +1,50 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { getDynamicPluginsSection } from "$lib/components/layout/sections";
+import { getDynamicPluginsSections } from "$lib/components/layout/sections";
 
-describe("getDynamicPluginsSection", () => {
-  it("returns a section with just the built-in Kanban entry when no control centers", () => {
-    const section = getDynamicPluginsSection([]);
-    expect(section?.id).toBe("plugins");
-    expect(section?.items).toHaveLength(1);
-    expect(section?.items[0]?.href).toBe("/workforce");
-    expect(section?.items[0]?.label).toBe("Kanban");
+describe("getDynamicPluginsSections", () => {
+  it("returns just the Tools group (built-in Kanban) when no control centers", () => {
+    const sections = getDynamicPluginsSections([]);
+    expect(sections).toHaveLength(1);
+    expect(sections[0]?.id).toBe("plugins:tool");
+    expect(sections[0]?.label).toBe("Tools");
+    expect(sections[0]?.items).toHaveLength(1);
+    expect(sections[0]?.items[0]?.href).toBe("/workforce");
+    expect(sections[0]?.items[0]?.label).toBe("Kanban");
   });
 
-  it("prepends the built-in Kanban entry, then one item per control center", () => {
-    const section = getDynamicPluginsSection([
+  it("buckets plugins into category groups (channel vs creative), Kanban under Tools", () => {
+    const sections = getDynamicPluginsSections([
+      {
+        pluginId: "whatsapp",
+        slot: "plugins.controlCenter",
+        title: "WhatsApp",
+        description: "",
+        entrypoint: "c.html",
+        category: "channel",
+      },
+      {
+        pluginId: "studio",
+        slot: "plugins.controlCenter",
+        title: "Studio",
+        description: "",
+        entrypoint: "c.html",
+        category: "creative",
+      },
+    ]);
+    // Display order: Channels, Creative, Tools.
+    expect(sections.map((s) => s.id)).toEqual([
+      "plugins:channel",
+      "plugins:creative",
+      "plugins:tool",
+    ]);
+    const channels = sections.find((s) => s.id === "plugins:channel");
+    expect(channels?.items[0]?.href).toBe("/plugins/whatsapp");
+    const tools = sections.find((s) => s.id === "plugins:tool");
+    expect(tools?.items[0]?.href).toBe("/workforce");
+  });
+
+  it("falls back to the Tools group for entries with no category", () => {
+    const sections = getDynamicPluginsSections([
       {
         pluginId: "x",
         slot: "plugins.controlCenter",
@@ -20,10 +53,8 @@ describe("getDynamicPluginsSection", () => {
         entrypoint: "c.html",
       },
     ]);
-    expect(section?.items).toHaveLength(2);
-    expect(section?.items[0]?.href).toBe("/workforce");
-    expect(section?.items[1]?.href).toBe("/plugins/x");
-    expect(section?.id).toBe("plugins");
+    const tools = sections.find((s) => s.id === "plugins:tool");
+    expect(tools?.items.map((i) => i.href)).toEqual(["/workforce", "/plugins/x"]);
   });
 });
 

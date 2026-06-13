@@ -136,11 +136,17 @@
   // have happened. If `plugin:ready` doesn't arrive within HANDSHAKE_TIMEOUT_MS
   // we render a diagnostic overlay instead of leaving the user staring at the
   // plugin's "Loading…" screen with no actionable info.
-  const HANDSHAKE_TIMEOUT_MS = 2500;
+  // A cold remote gateway (Tailscale) parsing a Svelte/PixiJS bundle can take a
+  // few seconds; 2.5s was too tight and produced false "timed out" overlays.
+  const HANDSHAKE_TIMEOUT_MS = 6000;
   let iframeLoaded = $state(false);
   let pluginReady = $state(false);
   let handshakeTimedOut = $state(false);
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  // HTTP status of the plugin UI URL, probed server-side on timeout. A 404 here
+  // is the most common real failure (plugin not deployed/enabled on this
+  // gateway) and was previously misreported as a bridge/Referrer/WS problem.
+  let diagnosticHttpStatus = $state<number | null>(null);
   // Populated on timeout by a HEAD fetch of the iframe URL. Surfaces the
   // single most common silent-failure mode: gateway sets
   // `Content-Security-Policy: frame-ancestors 'none'` (the historical default
@@ -239,9 +245,19 @@
             pluginReady,
           });
           handshakeTimedOut = true;
-          void fetch(src, { method: "GET", mode: "cors", credentials: "omit" })
-            .then((r) => {
-              const csp = r.headers.get("content-security-policy");
+          // Probe the plugin UI URL from the hub server (no CORS) so we get the
+          // true HTTP status + CSP. A 4xx/5xx here means the gateway isn't
+          // serving the plugin (not deployed/enabled) — the real cause, which a
+          // cross-origin client fetch could never read.
+          const probeUrl = `/api/plugins/probe?pluginId=${encodeURIComponent(
+            pluginId,
+          )}&subpath=${encodeURIComponent(subpath)}`;
+          void fetch(probeUrl)
+            .then((r) => (r.ok ? r.json() : null))
+            .then((info: { status?: number; csp?: string | null } | null) => {
+              if (!info) return;
+              if (typeof info.status === "number") diagnosticHttpStatus = info.status;
+              const csp = info.csp;
               if (!csp) return;
               diagnosticCsp = csp;
               const m = /frame-ancestors\s+([^;]+)/i.exec(csp);
@@ -352,7 +368,20 @@
         <header class="font-semibold text-destructive">
           Plugin handshake timed out ({HANDSHAKE_TIMEOUT_MS / 1000}s)
         </header>
-        {#if diagnosticCspBlocks}
+        {#if diagnosticHttpStatus !== null && diagnosticHttpStatus >= 400}
+          <p class="text-foreground">
+            <strong>The gateway returned HTTP {diagnosticHttpStatus} for this plugin's UI.</strong>
+            The plugin is not being served by this gateway — its UI assets are missing or the
+            plugin isn't enabled/registered here. The iframe loaded the gateway's error page (no
+            plugin JS), so <code>plugin:ready</code> was never sent. This is a deployment gap, not a
+            bridge bug.
+          </p>
+          <p class="text-muted-foreground">
+            Fix on the gateway: ensure the <code>{pluginId}</code> plugin is enabled in
+            <code>gateway.json</code> and its <code>ui/dist</code> assets are deployed, then restart
+            the gateway. Verify with <code>curl -I {src.split("#")[0]}</code> (expect 200).
+          </p>
+        {:else if diagnosticCspBlocks}
           <p class="text-foreground">
             <strong>Gateway CSP blocks this hub from embedding the plugin.</strong> The plugin
             served a <code>frame-ancestors</code> directive that excludes
@@ -391,6 +420,10 @@
           <dd>{iframeLoaded ? "yes" : "no"}</dd>
           <dt class="text-muted-foreground">plugin:ready</dt>
           <dd>{pluginReady ? "yes" : "no"}</dd>
+          {#if diagnosticHttpStatus !== null}
+            <dt class="text-muted-foreground">UI http status</dt>
+            <dd>{diagnosticHttpStatus}</dd>
+          {/if}
         </dl>
         <p class="text-muted-foreground">
           Open the iframe URL directly in a new tab and check its console for errors. If the page
