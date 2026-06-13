@@ -117,6 +117,7 @@
 			</div>
 		{/if}
 		<div class="input-row">
+			<span class="prompt" aria-hidden="true">❯</span>
 			<textarea
 				bind:this={textarea}
 				bind:value
@@ -143,6 +144,8 @@
 		background: var(--color-bg);
 	}
 
+	/* TUI feel: the box blends into the page background (no raised fill); a thin
+	   subtle outline + a terminal-style accent prompt do the framing. */
 	.chat-input {
 		position: relative;
 		display: flex;
@@ -150,15 +153,27 @@
 		gap: 8px;
 		padding: 12px 16px;
 		min-height: 52px;
-		background: var(--color-bg2);
-		border: 1px solid color-mix(in srgb, var(--color-foreground) 8%, transparent);
-		border-left-width: 3px;
+		background: transparent;
+		border: 1px solid color-mix(in srgb, var(--color-foreground) 10%, transparent);
+		border-left-width: 2px;
 		border-radius: 12px;
-		transition: border-color 120ms ease, box-shadow 120ms ease;
+		transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
 	}
 
 	.chat-input.focused {
-		box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 25%, transparent);
+		background: color-mix(in srgb, var(--color-foreground) 2.5%, transparent);
+		box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 22%, transparent);
+	}
+
+	/* Terminal prompt glyph. */
+	.prompt {
+		flex-shrink: 0;
+		font-family: ui-monospace, 'SF Mono', monospace;
+		font-size: 14px;
+		line-height: 1.5;
+		color: color-mix(in srgb, var(--color-accent) 80%, transparent);
+		user-select: none;
+		margin-bottom: 1px;
 	}
 
 	.chat-input.drag-over {

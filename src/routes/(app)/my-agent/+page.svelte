@@ -847,14 +847,11 @@
 		flex-shrink: 0;
 	}
 
-	/* Agenda stays compact by default, but expands with content (capped, scrolls).
-	   The events/emails columns own their own 28vh scroll (FeedSection.scrollable),
-	   so this outer cap mainly bounds the channel-observation groups below them. */
-	.stage:not(.in-call) .agenda {
-		max-height: 46vh;
-		overflow-y: auto;
-		scrollbar-width: thin;
-	}
+	/* The events/emails columns own their own 28vh scroll (FeedSection.scrollable),
+	   so the agenda itself must NOT also scroll — an outer overflow here produced a
+	   second scrollbar over the columns AND clipped the overflowing toggle handle.
+	   It grows with its (self-bounded) content instead; the chat thread takes the
+	   rest of the column height. */
 
 	/* During a call: avatar beside the agenda, majority width, full height. */
 	.stage.in-call {
@@ -1125,7 +1122,7 @@
 		right: 4px;
 		top: 0;
 		height: 1px;
-		background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
+		background: color-mix(in srgb, var(--color-foreground) 13%, transparent);
 	}
 	.feed-toggle {
 		transform: translateY(-50%);
