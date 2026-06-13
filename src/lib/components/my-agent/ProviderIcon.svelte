@@ -1,39 +1,21 @@
 <script lang="ts">
-	import { Mail, CalendarDays } from 'lucide-svelte';
+	import { Mail } from 'lucide-svelte';
 	import { providerMeta, type ProviderKey } from './provider';
 
 	interface Props {
 		provider: ProviderKey;
 		size?: number;
-		/** 'mail' → inbox brand mark; 'calendar' → the provider's calendar mark. */
-		variant?: 'mail' | 'calendar';
 	}
-	const { provider, size = 13, variant = 'mail' }: Props = $props();
+	const { provider, size = 13 }: Props = $props();
 	const meta = $derived(providerMeta(provider));
-	// Calendar brand accents differ from the mail ones (Gmail red → Google blue).
-	const CAL_COLOR: Record<ProviderKey, string> = {
-		gmail: '#4285F4',
-		outlook: '#0078D4',
-		apple: '#A2AAAD',
-		mail: 'var(--color-accent)',
-	};
-	const color = $derived(variant === 'calendar' ? CAL_COLOR[provider] : meta.color);
-	const label = $derived(
-		variant === 'calendar'
-			? provider === 'gmail'
-				? 'Google Calendar'
-				: `${meta.label} Calendar`
-			: meta.label,
-	);
 </script>
 
-<span class="prov" title={label} style="--brand:{color}; width:{size}px; height:{size}px;">
-	{#if variant === 'calendar'}
-		<CalendarDays size={size} />
-	{:else if provider === 'gmail'}
+<span class="prov" title={meta.label} style="--brand:{meta.color}; width:{size}px; height:{size}px;">
+	{#if provider === 'gmail'}
+		<!-- Google "G" — serves both Gmail and Google Calendar. -->
 		<svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
 			<path
-				d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.91 1.528-1.145C21.69 2.28 24 3.434 24 5.457z"
+				d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"
 			/>
 		</svg>
 	{:else if provider === 'apple'}

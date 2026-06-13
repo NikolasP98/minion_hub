@@ -18,8 +18,6 @@
 		summary?: Snippet;
 		/** Provider badges shown beside the count (linked account sources). */
 		providers?: ProviderKey[];
-		/** Render the provider badges as mail vs. calendar marks. */
-		providerVariant?: 'mail' | 'calendar';
 	}
 
 	let {
@@ -31,7 +29,6 @@
 		collapsed = $bindable(false),
 		summary,
 		providers = [],
-		providerVariant = 'mail',
 	}: Props = $props();
 
 	const sectionId = `feed-sec-${Math.random().toString(36).slice(2, 8)}`;
@@ -63,7 +60,7 @@
 		{#if providers.length > 0}
 			<span class="providers" aria-hidden="true">
 				{#each providers as p (p)}
-					<ProviderIcon provider={p} size={12} variant={providerVariant} />
+					<ProviderIcon provider={p} size={12} />
 				{/each}
 			</span>
 		{/if}

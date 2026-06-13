@@ -17,7 +17,7 @@ export interface ProviderMeta {
 }
 
 const PROVIDERS: Record<ProviderKey, ProviderMeta> = {
-	gmail: { key: 'gmail', label: 'Gmail', color: '#EA4335' },
+	gmail: { key: 'gmail', label: 'Google', color: '#4285F4' },
 	outlook: { key: 'outlook', label: 'Outlook', color: '#0078D4' },
 	apple: { key: 'apple', label: 'Apple', color: '#A2AAAD' },
 	mail: { key: 'mail', label: 'Mail', color: 'var(--color-accent)' },

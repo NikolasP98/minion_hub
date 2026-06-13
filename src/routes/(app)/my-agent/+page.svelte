@@ -551,7 +551,6 @@
 									label="Upcoming"
 									count={calendarItems.length}
 									providers={eventProviders}
-									providerVariant="calendar"
 									collapsible={toggleOnEvents}
 									bind:collapsed={feedCollapsed}
 									scrollable
