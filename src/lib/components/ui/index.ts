@@ -15,6 +15,7 @@ export { default as MultiSelectFilter } from './MultiSelectFilter.svelte';
 export { default as Toggle } from './Toggle.svelte';
 export { default as Tabs } from './Tabs.svelte';
 export { default as EmptyState } from './EmptyState.svelte';
+export { default as MathFormula } from './MathFormula.svelte';
 export type { ButtonVariant, ButtonSize } from './Button.svelte';
 export type { CardElevation, CardPadding } from './Card.svelte';
 export type { ModalSize } from './Modal.svelte';
