@@ -997,7 +997,7 @@
 		flex-direction: column;
 		overflow-y: auto;
 		scrollbar-width: thin;
-		padding: 11px 2px 4px;
+		padding: 18px 2px 4px;
 	}
 
 	/* Pin messages to the bottom when short, but stay fully scrollable when the
@@ -1109,6 +1109,9 @@
 	   divider, and the collapse handle hangs halfway out of it. */
 	.feed-group {
 		position: relative;
+		/* Clear space below the columns (and the "+N more" row when collapsed) so the
+		   hanging toggle doesn't crowd the content above the border. */
+		padding-bottom: 14px;
 		border-bottom: 1px solid color-mix(in srgb, var(--color-foreground) 13%, transparent);
 	}
 
