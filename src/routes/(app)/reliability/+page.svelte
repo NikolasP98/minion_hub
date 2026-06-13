@@ -12,8 +12,10 @@
 	import {
 		reliability,
 		loadReliabilitySummary,
+		loadReliabilitySummaryAll,
 		loadReliabilityEvents,
 		loadReliabilityTimeline,
+		loadReliabilityFlow,
 		loadReliabilityUsage,
 		loadReliabilityActivity
 	} from '$lib/state/reliability/reliability.svelte';
@@ -143,6 +145,8 @@
 	const CATEGORIES = ['gateway', 'agent', 'channel', 'message', 'tool', 'orchestration', 'skill', 'connection', 'auth', 'cron', 'crash', 'browser', 'timezone', 'general'] as const;
 
 	let summary = $derived(reliability.summary);
+	// Unfiltered summary → filter-dropdown facet counts (true totals per option).
+	let summaryAll = $derived(reliability.summaryAll);
 	let loading = $derived(reliability.loading);
 	let serverId = $derived(hostsState.activeHostId);
 
@@ -225,7 +229,7 @@
 			value: c,
 			label: c,
 			color: CATEGORY_COLORS[c],
-			count: summary?.byCategory[c] ?? 0,
+			count: summaryAll?.byCategory[c] ?? 0,
 		})),
 	);
 	const severityFilterOptions = $derived<MultiSelectOption[]>(
@@ -233,7 +237,7 @@
 			value: s,
 			label: s,
 			color: SEVERITY_COLORS[s],
-			count: summary?.bySeverity[s] ?? 0,
+			count: summaryAll?.bySeverity[s] ?? 0,
 		})),
 	);
 
@@ -288,11 +292,13 @@
 	// Overview stat cells — use server-side summary (SQL aggregation) for accurate totals,
 	// fall back to client-side counting from the paginated events list.
 	let overviewStats = $derived.by(() => {
-		if (summary && !hasActiveFilters) {
-			// No filters active — use the server-side summary (covers ALL events, not just the page)
+		// The summary is server-aggregated AND filter-aware (severity/category/mode
+		// sent with the request), so it gives the exact filtered totals over the FULL
+		// population — not the row-capped, recency-biased raw-event sample. Use it
+		// whenever present; fall back to client counts only before it has loaded.
+		if (summary) {
 			return { total: summary.total, byCategory: summary.byCategory, bySeverity: summary.bySeverity };
 		}
-		// Filters active — compute from the (possibly paginated) event list
 		const evts = filteredEvents;
 		const byCategory: Record<string, number> = {};
 		const bySeverity: Record<string, number> = {};
@@ -729,31 +735,38 @@
 		tipEl.style.left = `${left}px`;
 	});
 
+	// Date-only aggregates (usage / activity) + the UNFILTERED summary that drives
+	// the filter-dropdown facet counts (every severity/category shows its true
+	// total regardless of the active selection).
 	async function loadData() {
 		if (!serverId) return;
 		const { from, to } = reliability.dateRange;
 		await Promise.all([
-			loadReliabilitySummary(serverId, from, to),
-			loadReliabilityTimeline(from, to),
+			loadReliabilitySummaryAll(serverId, from, to),
 			loadReliabilityUsage(from, to),
 			loadReliabilityActivity(from, to)
 		]);
 	}
 
-	// Events are fetched WITH the active severity/category filters applied
-	// server-side, so rare-severity events surface instead of being filtered out
-	// of a recent-only sample (the gateway returns newest rows up to a cap). Mode
-	// stays a CLIENT filter so its dropdown keeps the full option list for the
-	// current severity/category scope — hence the effect below ignores effModes.
-	async function loadEventsFiltered() {
+	// Summary, timeline AND events all reload WITH the active filters. Summary +
+	// timeline are server-aggregated over the FULL filtered population, so the KPI
+	// numbers and the timeline are exact under any severity/category/mode combo —
+	// fixing the row-capped raw-event sample that was biased toward high-volume
+	// severities (e.g. low+high showed 1 high instead of 214). Events get
+	// severity+category only — mode stays a CLIENT filter so its dropdown keeps the
+	// full option list for the current scope.
+	async function loadFiltered() {
 		if (!serverId) return;
 		const { from, to } = reliability.dateRange;
-		await loadReliabilityEvents(serverId, {
-			from,
-			to,
-			severities: effSeverities.size ? [...effSeverities] : undefined,
-			categories: effCategories.size ? [...effCategories] : undefined,
-		});
+		const severities = effSeverities.size ? [...effSeverities] : undefined;
+		const categories = effCategories.size ? [...effCategories] : undefined;
+		const eventModes = effModes.size ? [...effModes] : undefined;
+		await Promise.all([
+			loadReliabilitySummary(serverId, from, to, { severities, categories, eventModes }),
+			loadReliabilityTimeline(from, to, { severities, categories, eventModes }),
+			loadReliabilityFlow(from, to, { severities, categories, eventModes }),
+			loadReliabilityEvents(serverId, { from, to, severities, categories }),
+		]);
 	}
 
 	function handleDateChange(from: number, to: number) {
@@ -777,11 +790,11 @@
 		// Explicit initial load — the $effects handle subsequent reactive updates
 		if (serverId && conn.connected) {
 			loadData();
-			loadEventsFiltered();
+			loadFiltered();
 		}
 	});
 
-	// Aggregates (summary / timeline / usage / activity) — reload on date/host change.
+	// Date-only aggregates (usage / activity) — reload on date/host change.
 	$effect(() => {
 		const _from = reliability.dateRange.from;
 		const _to = reliability.dateRange.to;
@@ -793,18 +806,20 @@
 		}
 	});
 
-	// Events — reload when the date range OR the server-side filters (severity /
-	// category) change, so the loaded set actually contains the filtered events.
+	// Summary + timeline + events — reload when the date range OR the active
+	// filters (severity / category / mode) change, so all server-aggregated data
+	// reflects the current filter selection.
 	$effect(() => {
 		const _from = reliability.dateRange.from;
 		const _to = reliability.dateRange.to;
 		const _sev = effSeverities;
 		const _cat = effCategories;
+		const _mode = effModes;
 		const _sid = serverId;
 		const _connected = conn.connected;
-		void _from; void _to; void _sev; void _cat;
+		void _from; void _to; void _sev; void _cat; void _mode;
 		if (_sid && _connected) {
-			untrack(() => loadEventsFiltered());
+			untrack(() => loadFiltered());
 		}
 	});
 
@@ -825,12 +840,11 @@
 	}
 
 	let timelineOptions: EChartsOption = $derived.by(() => {
-		// Prefer the server-aggregated timeline (full range, cheap GROUP BY) ONLY
-		// when no non-date filters are active — that aggregate is bucketed by
-		// category and can't honour severity/mode filters. The moment any filter is
-		// on we bucket the filtered events client-side so the timeline matches every
-		// other panel (the user's "timeline must react to severity too").
-		const rpc = hasActiveFilters ? null : reliability.timeline;
+		// The server-aggregated timeline is now FILTER-AWARE (severity/category/mode
+		// sent with the request — see loadFiltered), so it covers the full range AND
+		// honours every filter exactly. Use it whenever present; the client-bucketing
+		// fallback below only runs before it loads or on a gateway that predates it.
+		const rpc = reliability.timeline;
 		const counts = new Map<string, Map<number, number>>();
 		let bucketMs: number;
 
@@ -1086,14 +1100,18 @@
 	const FLOW_MODE_CAP = 12;
 
 	let sankeyOptions: EChartsOption = $derived.by(() => {
-		const evts = filteredEvents;
-		if (evts.length === 0) return { backgroundColor: 'transparent', series: [] };
+		// Prefer the server-aggregated flow breakdown (FULL filtered population, exact
+		// counts) over the row-capped event sample. Fall back to the loaded events
+		// (count 1 each) only when the gateway predates reliability.flow.
+		const flowRows = reliability.flow
+			?? filteredEvents.map((e) => ({ event: e.event, category: e.category, severity: e.severity, count: 1 }));
+		if (flowRows.length === 0) return { backgroundColor: 'transparent', series: [] };
 
 		// Rank modes by volume → decide which keep their own node.
 		const modeTotals = new Map<string, number>();
-		for (const e of evts) {
-			const mode = parseEventName(e.event).failureMode;
-			modeTotals.set(mode, (modeTotals.get(mode) ?? 0) + 1);
+		for (const r of flowRows) {
+			const mode = parseEventName(r.event).failureMode;
+			modeTotals.set(mode, (modeTotals.get(mode) ?? 0) + r.count);
 		}
 		const topModes = new Set(
 			[...modeTotals.entries()].sort((a, b) => b[1] - a[1]).slice(0, FLOW_MODE_CAP).map(([md]) => md),
@@ -1107,15 +1125,15 @@
 		const catsUsed = new Set<string>();
 		const sevsUsed = new Set<string>();
 
-		for (const e of evts) {
-			const { type, failureMode } = parseEventName(e.event);
+		for (const r of flowRows) {
+			const { type, failureMode } = parseEventName(r.event);
 			const mode = topModes.has(failureMode) ? failureMode : OTHER;
 			if (mode !== OTHER && !modeType.has(mode)) modeType.set(mode, type);
-			const cat = e.category || 'general';
-			const sevKey = e.severity || 'info';
+			const cat = r.category || 'general';
+			const sevKey = r.severity || 'info';
 			modesUsed.add(mode); catsUsed.add(cat); sevsUsed.add(sevKey);
-			mc.set(`${mode} ${cat}`, (mc.get(`${mode} ${cat}`) ?? 0) + 1);
-			cs.set(`${cat} ${sevKey}`, (cs.get(`${cat} ${sevKey}`) ?? 0) + 1);
+			mc.set(`${mode} ${cat}`, (mc.get(`${mode} ${cat}`) ?? 0) + r.count);
+			cs.set(`${cat} ${sevKey}`, (cs.get(`${cat} ${sevKey}`) ?? 0) + r.count);
 		}
 
 		// Prefix node ids per column so a label shared across columns never merges.
@@ -1173,6 +1191,10 @@
 	});
 </script>
 
+<!-- Height-constrained flex column so the toolbar + filter bar stay pinned while
+     only <main> scrolls (the (app) shell scrolls an ancestor otherwise, carrying
+     the filters off-screen). -->
+<div class="flex flex-col h-full min-h-0">
 <!-- Toolbar -->
 	<PageHeader title={m.reliability_title()}>
 		{#snippet leading()}
@@ -1433,3 +1455,4 @@
 			{/if}
 		</div>
 	{/if}
+</div>

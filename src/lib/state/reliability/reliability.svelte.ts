@@ -94,8 +94,15 @@ export interface ActivityAggregate {
 export const reliability = $state({
   /** Recent events from the live WS stream */
   recentEvents: [] as ReliabilityEvent[],
-  /** Summary from gateway */
+  /** Filter-aware summary (counts for the active severity/category/mode) → KPIs. */
   summary: null as ReliabilitySummary | null,
+  /** UNFILTERED (date-only) summary → drives the filter dropdown facet counts, so
+   *  every severity/category shows its true total regardless of what's selected. */
+  summaryAll: null as ReliabilitySummary | null,
+  /** Mode→category→severity flow breakdown (reliability.flow RPC) — server-
+   *  aggregated over the FULL filtered population so the Event Flow sankey isn't
+   *  truncated by the raw-event row cap. null → fall back to client events. */
+  flow: null as { event: string; category: string; severity: string; count: number }[] | null,
   /** Events from gateway query */
   events: [] as ReliabilityEvent[],
   /** Server-aggregated stacked timeline (reliability.timeline RPC). null → fall
@@ -122,12 +129,17 @@ export const reliability = $state({
  * populates cheaply (instead of bucketing a capped raw-event dump). Falls back
  * to null (→ client bucketing) when the gateway predates reliability.timeline.
  */
-export async function loadReliabilityTimeline(from: number, to: number) {
+export async function loadReliabilityTimeline(
+  from: number,
+  to: number,
+  filters?: { severities?: string[]; categories?: string[]; eventModes?: string[] },
+) {
   try {
-    const data = (await sendRequest('reliability.timeline', {
-      since: from,
-      until: to,
-    })) as {
+    const params: Record<string, unknown> = { since: from, until: to };
+    if (filters?.severities && filters.severities.length) params.severities = filters.severities;
+    if (filters?.categories && filters.categories.length) params.categories = filters.categories;
+    if (filters?.eventModes && filters.eventModes.length) params.eventModes = filters.eventModes;
+    const data = (await sendRequest('reliability.timeline', params)) as {
       buckets?: { bucket: number; category: string; count: number }[];
       bucketMs?: number;
     } | null;
@@ -229,11 +241,22 @@ const PAGE_SIZE = 2000;
  * The summary is computed server-side via SQL aggregation — lightweight
  * regardless of how many events exist.
  */
-export async function loadReliabilitySummary(_serverId: string, from?: number, _to?: number) {
+export async function loadReliabilitySummary(
+  _serverId: string,
+  from?: number,
+  to?: number,
+  filters?: { severities?: string[]; categories?: string[]; eventModes?: string[] },
+) {
   reliability.loading = true;
   try {
     const params: Record<string, unknown> = {};
     if (from) params.since = from;
+    if (to) params.until = to;
+    // Filter-aware counts so the KPI numbers stay correct under any filter combo
+    // (the raw-event sample is row-capped and biased toward high-volume severities).
+    if (filters?.severities && filters.severities.length) params.severities = filters.severities;
+    if (filters?.categories && filters.categories.length) params.categories = filters.categories;
+    if (filters?.eventModes && filters.eventModes.length) params.eventModes = filters.eventModes;
 
     const data = (await sendRequest('reliability.summary', params)) as ReliabilitySummary | null;
     if (data) {
@@ -248,6 +271,56 @@ export async function loadReliabilitySummary(_serverId: string, from?: number, _
     // Gateway not connected or method not supported — non-critical
   } finally {
     reliability.loading = false;
+  }
+}
+
+/**
+ * Load the UNFILTERED (date-only) summary used for the filter-dropdown facet
+ * counts — so every severity/category shows its true total regardless of which
+ * filters are applied. Separate from the filter-aware `summary` (which drives the
+ * KPI numbers).
+ */
+export async function loadReliabilitySummaryAll(_serverId: string, from?: number, to?: number) {
+  try {
+    const params: Record<string, unknown> = {};
+    if (from) params.since = from;
+    if (to) params.until = to;
+    const data = (await sendRequest('reliability.summary', params)) as ReliabilitySummary | null;
+    if (data) {
+      reliability.summaryAll = {
+        total: data.total ?? 0,
+        uptimeSinceMs: data.uptimeSinceMs,
+        byCategory: data.byCategory ?? {},
+        bySeverity: data.bySeverity ?? {},
+      };
+    }
+  } catch {
+    // non-critical
+  }
+}
+
+/**
+ * Load the server-aggregated mode→category→severity flow breakdown (filter-aware)
+ * so the Event Flow sankey reflects the FULL filtered population instead of the
+ * row-capped raw-event sample. Sets `flow = null` on older gateways → the UI falls
+ * back to deriving the sankey from the (capped) loaded events.
+ */
+export async function loadReliabilityFlow(
+  from: number,
+  to: number,
+  filters?: { severities?: string[]; categories?: string[]; eventModes?: string[] },
+) {
+  try {
+    const params: Record<string, unknown> = { since: from, until: to };
+    if (filters?.severities && filters.severities.length) params.severities = filters.severities;
+    if (filters?.categories && filters.categories.length) params.categories = filters.categories;
+    if (filters?.eventModes && filters.eventModes.length) params.eventModes = filters.eventModes;
+    const data = (await sendRequest('reliability.flow', params)) as {
+      rows?: { event: string; category: string; severity: string; count: number }[];
+    } | null;
+    reliability.flow = Array.isArray(data?.rows) ? data.rows : null;
+  } catch {
+    reliability.flow = null;
   }
 }
 
