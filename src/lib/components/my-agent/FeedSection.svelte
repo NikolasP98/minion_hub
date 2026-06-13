@@ -1,9 +1,9 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { ChevronDown } from 'lucide-svelte';
-	import { slide } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import { prefersReducedMotion } from 'svelte/motion';
+	import type { TransitionConfig } from 'svelte/transition';
 	import ProviderIcon from './ProviderIcon.svelte';
 	import type { ProviderKey } from './provider';
 
@@ -40,16 +40,29 @@
 	// sibling column that binds the same state.
 	const isCollapsed = $derived(collapsed && !!summary);
 
-	// Slide the body open/closed on toggle. Honour the OS reduced-motion setting by
-	// zeroing the duration (the panes still swap, just instantly).
-	const slideParams = $derived(
-		prefersReducedMotion.current
-			? { duration: 0 }
-			: { duration: 220, easing: cubicOut },
-	);
+	const SLIDE_MS = 240;
+
+	// Collapse/expand the body by animating its *clamped* height. The built-in
+	// `slide` uses the pane's full natural height (the long email list is ~1200px),
+	// but the body clips at 28vh (~280px) — so a naive slide races to the clamp in a
+	// fraction of the duration and the expand feels rigid/abrupt. Capping the target
+	// at the same 28vh the body enforces means the visible motion uses the WHOLE
+	// duration in both directions, so open and close read symmetrically smooth.
+	function clampSlide(node: Element, { duration = SLIDE_MS } = {}): TransitionConfig {
+		const maxH = typeof window !== 'undefined' ? window.innerHeight * 0.28 : 280;
+		const natural = (node as HTMLElement).scrollHeight || (node as HTMLElement).offsetHeight;
+		const target = Math.min(natural, maxH);
+		return {
+			duration,
+			easing: cubicOut,
+			css: (t) => `height:${t * target}px; overflow:hidden;`,
+		};
+	}
+	// Honour the OS reduced-motion setting by zeroing the duration.
+	const slideParams = $derived(prefersReducedMotion.current ? { duration: 0 } : {});
 </script>
 
-<section class="feed-section" class:scrollable={scrollable && !isCollapsed} class:collapsed={isCollapsed}>
+<section class="feed-section" class:scrollable={scrollable} class:collapsed={isCollapsed}>
 	<div class="header">
 		{#if collapsible}
 			<button
@@ -78,11 +91,11 @@
 	</div>
 	<div class="body" id={sectionId}>
 		{#if isCollapsed && summary}
-			<div class="pane" transition:slide={slideParams}>
+			<div class="pane" transition:clampSlide={slideParams}>
 				{@render summary()}
 			</div>
 		{:else}
-			<div class="pane" transition:slide={slideParams}>
+			<div class="pane" transition:clampSlide={slideParams}>
 				<div class="items">
 					{@render children()}
 				</div>
@@ -196,13 +209,22 @@
 		gap: 4px;
 	}
 
+	/* The 28vh clamp is present in BOTH states (expanded + collapsed). Keeping it
+	   while collapsed is what bounds the slide transition: the outgoing full-list
+	   pane can never balloon past 28vh, so the body height changes monotonically
+	   between 28vh and the summary height — no overshoot that thrashes the chat
+	   section below. */
 	.feed-section.scrollable .body {
 		min-height: 0;
 		max-height: 28vh;
+		overflow: hidden;
+	}
+
+	/* Expanded: the items scroll, with a faded bottom edge hinting more content. */
+	.feed-section.scrollable:not(.collapsed) .body {
 		overflow-y: auto;
 		scrollbar-width: thin;
 		padding-right: 4px;
-		/* fade the bottom edge to hint more content */
 		-webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent);
 		mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent);
 	}
