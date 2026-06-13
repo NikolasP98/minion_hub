@@ -40,6 +40,9 @@
 		title,
 		icon,
 		showTimeline = false,
+		timelineOptions,
+		timelineHeight = '160px',
+		onTimelineClick,
 		searchable = true,
 		emptyMessage,
 		class: className = '',
@@ -55,8 +58,16 @@
 		title?: string;
 		/** Header icon component (lucide). Defaults to Activity. */
 		icon?: IconComponent;
-		/** Render the severity-over-time scatter timeline above the table. */
+		/** Render a chart above the table. With `timelineOptions` it renders that
+		 *  (e.g. the Event Timeline); otherwise it falls back to the built-in
+		 *  severity-over-time scatter. */
 		showTimeline?: boolean;
+		/** When provided, replaces the scatter with this chart (the Event Timeline). */
+		timelineOptions?: EChartsOption;
+		/** Height for the chart above the table (taller for the bar timeline). */
+		timelineHeight?: string;
+		/** Click handler for the supplied timeline chart (e.g. filter by category). */
+		onTimelineClick?: (params: unknown) => void;
 		searchable?: boolean;
 		emptyMessage?: string;
 		class?: string;
@@ -520,8 +531,12 @@
 			</p>
 		{/if}
 		{#if showTimeline}
-			<!-- Scatter timeline -->
-			<Chart options={chartOptions} height="160px" />
+			<!-- Prefer the supplied chart (Event Timeline) over the built-in scatter. -->
+			{#if timelineOptions}
+				<Chart options={timelineOptions} height={timelineHeight} onItemClick={onTimelineClick} />
+			{:else}
+				<Chart options={chartOptions} height="160px" />
+			{/if}
 		{/if}
 
 		{#if filteredData.length === 0}

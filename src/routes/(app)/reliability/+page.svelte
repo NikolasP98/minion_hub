@@ -3,8 +3,6 @@
 	import { PageHeader, Tabs, MultiSelectFilter, MathFormula } from '$lib/components/ui';
 	import type { MultiSelectOption } from '$lib/components/ui';
 	import DateRangePicker from '$lib/components/reliability/DateRangePicker.svelte';
-	import CredentialHealthPanel from '$lib/components/reliability/CredentialHealthPanel.svelte';
-	import SkillStatsPanel from '$lib/components/reliability/SkillStatsPanel.svelte';
 	import GatewayHealthPanel from '$lib/components/reliability/GatewayHealthPanel.svelte';
 	import PluginHealthPanel from '$lib/components/reliability/PluginHealthPanel.svelte';
 	import ConnectionEventsPanel from '$lib/components/reliability/ConnectionEventsPanel.svelte';
@@ -29,7 +27,6 @@
 		Activity,
 		AlertCircle,
 		Radio,
-		TrendingUp,
 		BarChart2,
 		PieChart,
 		RefreshCw,
@@ -1305,18 +1302,6 @@
 				</div>
 			</div>
 
-			<!-- ── Event Timeline Widget ───────────────────────────────────────── -->
-			<div class="bg-card border border-border rounded-lg overflow-hidden">
-				<div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20">
-					<TrendingUp size={11} class="text-accent shrink-0" />
-					<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{m.reliability_eventTimeline()}</span>
-				</div>
-				<div class="relative overflow-hidden">
-					<ScanLine speed={10} opacity={0.018} />
-					<Chart options={timelineOptions} height="300px" onItemClick={handleTimelineClick} />
-				</div>
-			</div>
-
 			<!-- ── Event Flow ribbon (Sankey: mode → category → severity) ──────── -->
 			<div class="bg-card border border-border rounded-lg overflow-hidden">
 				<div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20">
@@ -1376,18 +1361,19 @@
 				</div>
 			</div>
 
-			<!-- ── Health Panels ────────────────────────────────────────────────── -->
-			<div class="grid grid-cols-3 gap-3 max-[900px]:grid-cols-1">
-				<GatewayHealthPanel {serverId} />
-				<CredentialHealthPanel {serverId} />
-				<SkillStatsPanel {serverId} />
-			</div>
+			<!-- ── Gateway Health ───────────────────────────────────────────────── -->
+			<GatewayHealthPanel {serverId} />
 
-			<!-- ── Activity Log (consolidated: scatter + tabs + sortable/searchable/paginated table) ── -->
+			<!-- ── Activity Log — the Event Timeline (stacked bars) now headlines the
+			     log, replacing the per-event scatter; tabs + sortable/searchable/
+			     paginated table below. Generous height so the timeline reads clearly. ── -->
 			<ConnectionEventsPanel
 				events={filteredEvents}
 				total={overviewStats.total}
 				byCategory={overviewStats.byCategory}
+				timelineOptions={timelineOptions}
+				timelineHeight="320px"
+				onTimelineClick={handleTimelineClick}
 			/>
 			{:else if activeTab === 'agents'}
 			<!-- ── Agents & LLM: token cost + origin analytics + agent-activity log ── -->
