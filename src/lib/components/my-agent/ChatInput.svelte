@@ -128,19 +128,12 @@
 				rows="1"
 				aria-label="Chat with your agent"
 			></textarea>
-			<span class="kbd" aria-hidden="true">⌘K</span>
+			<span class="kbd" aria-hidden="true">↵</span>
 		</div>
 		{#if dragOver}
 			<span class="drop-hint" aria-hidden="true">Drop to add as context</span>
 		{/if}
 	</div>
-	<p class="hint" aria-live="polite">
-		{#if mode === 'capture'}
-			Memory capture · ⌘↵ or # prefix
-		{:else}
-			Ask · ↵ to send
-		{/if}
-	</p>
 </div>
 
 <style>
@@ -279,10 +272,4 @@
 		margin-bottom: 2px;
 	}
 
-	.hint {
-		font-size: 11px;
-		color: color-mix(in srgb, var(--color-foreground) 30%, transparent);
-		margin: 6px 4px 0;
-		text-align: right;
-	}
 </style>

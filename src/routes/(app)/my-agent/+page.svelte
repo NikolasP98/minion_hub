@@ -824,7 +824,9 @@
 	}
 	.composer-call {
 		flex-shrink: 0;
-		margin-top: 22px;
+		/* Clear ChatInput's 12px top padding so the call button's top edge lines up
+		   with the input box (both are now 52px tall, 12px radius). */
+		margin-top: 12px;
 	}
 
 	.mini-avatar {
@@ -1108,12 +1110,12 @@
 	.feed-toggle-bar {
 		position: relative;
 		display: flex;
-		align-items: center;
 		justify-content: center;
-		height: 18px;
-		/* Pull up by half the handle height so the pill straddles the group's
-		   bottom edge — half inside the feed, half out. No bottom padding. */
-		margin: -9px 0 0;
+		/* Zero-height: the bar sits exactly on the feed group's bottom border; the
+		   button overflows equally up + down so it's halfway in the group and
+		   halfway over the messages section below. */
+		height: 0;
+		margin: 0;
 		z-index: 2;
 	}
 	.feed-toggle-bar::before {
@@ -1121,9 +1123,12 @@
 		position: absolute;
 		left: 4px;
 		right: 4px;
-		top: 50%;
+		top: 0;
 		height: 1px;
 		background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
+	}
+	.feed-toggle {
+		transform: translateY(-50%);
 	}
 	.feed-toggle {
 		position: relative;

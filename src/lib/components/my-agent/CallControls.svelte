@@ -31,8 +31,7 @@
 		aria-label="Call your agent"
 		title={disabled ? 'Connect a gateway first' : 'Call your agent'}
 	>
-		<Phone size={14} />
-		<span class="label">Call agent</span>
+		<Phone size={16} />
 	</button>
 {:else}
 	<div class="call-live" role="group" aria-label="Call controls">
@@ -60,9 +59,12 @@
 	.call-btn {
 		display: inline-flex;
 		align-items: center;
-		gap: 7px;
-		padding: 7px 14px;
-		border-radius: 999px;
+		justify-content: center;
+		/* Icon-only, square — matches the chat input box height + corner radius. */
+		width: 52px;
+		height: 52px;
+		padding: 0;
+		border-radius: 12px;
 		font-size: 12px;
 		font-weight: 600;
 		cursor: pointer;
@@ -140,19 +142,6 @@
 	}
 	.icon-btn.end:hover {
 		background: rgba(248, 113, 113, 0.2);
-	}
-
-	/* When the agent column gets narrow (e.g. the notes panel is open), drop the
-	   "Call agent" label so the control stays a compact icon button instead of
-	   squeezing the greeting. The container is declared on .inner in +page.svelte. */
-	@container agentcol (max-width: 460px) {
-		.call-btn {
-			padding: 8px;
-			gap: 0;
-		}
-		.call-btn .label {
-			display: none;
-		}
 	}
 
 	@keyframes pulse {
