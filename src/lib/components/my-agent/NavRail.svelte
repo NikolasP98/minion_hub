@@ -1,13 +1,12 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { Home, Users, Wrench, Settings } from 'lucide-svelte';
+	import { Home, Users, Wrench } from 'lucide-svelte';
 	import Tooltip from '$lib/components/layout/Tooltip.svelte';
 
 	const items = [
 		{ href: '/my-agent', label: 'My Agent', icon: Home },
 		{ href: '/agents', label: 'Agents', icon: Users },
 		{ href: '/agents/workshop', label: 'Workshop', icon: Wrench },
-		{ href: '/settings', label: 'Settings', icon: Settings },
 	];
 
 	const currentPath = $derived(page.url.pathname);
