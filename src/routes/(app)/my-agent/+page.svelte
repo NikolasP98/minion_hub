@@ -494,18 +494,6 @@
 						<AgentGreeting greeting={data.greeting} userName={data.userName} />
 					</div>
 				</div>
-
-				<div class="actions" role="group" aria-label="Agent actions">
-					<CallControls
-						active={voiceCall.active}
-						muted={voiceCall.muted}
-						status={voiceCall.status}
-						disabled={!canCall}
-						onstart={handleStartCall}
-						onend={endCall}
-						ontoggleMute={toggleMute}
-					/>
-				</div>
 			</header>
 
 			{#if voiceCall.error}
@@ -723,7 +711,22 @@
 				{/if}
 			</section>
 
-			<ChatInput onsubmit={handleSubmit} />
+			<div class="composer">
+				<div class="composer-input">
+					<ChatInput onsubmit={handleSubmit} />
+				</div>
+				<div class="composer-call">
+					<CallControls
+						active={voiceCall.active}
+						muted={voiceCall.muted}
+						status={voiceCall.status}
+						disabled={!canCall}
+						onstart={handleStartCall}
+						onend={endCall}
+						ontoggleMute={toggleMute}
+					/>
+				</div>
+			</div>
 		</div>
 	</main>
 
@@ -808,11 +811,20 @@
 		min-width: 0;
 	}
 
-	.actions {
+	/* Composer row: chat input grows, "Call agent" sits to its right, centered on
+	   the input box (the +22px offset clears the input's top padding). */
+	.composer {
 		display: flex;
-		align-items: center;
-		gap: 8px;
+		align-items: flex-start;
+		gap: 10px;
+	}
+	.composer-input {
+		flex: 1;
+		min-width: 0;
+	}
+	.composer-call {
 		flex-shrink: 0;
+		margin-top: 22px;
 	}
 
 	.mini-avatar {
@@ -1099,7 +1111,10 @@
 		align-items: center;
 		justify-content: center;
 		height: 18px;
-		margin: 6px 0 2px;
+		/* Pull up by half the handle height so the pill straddles the group's
+		   bottom edge — half inside the feed, half out. No bottom padding. */
+		margin: -9px 0 0;
+		z-index: 2;
 	}
 	.feed-toggle-bar::before {
 		content: '';
@@ -1138,24 +1153,24 @@
 		transform: rotate(180deg);
 	}
 
-	/* "+N more" affordance shown under a collapsed section's single preview card. */
+	/* "+N more" affordance shown under a collapsed section's single preview card —
+	   right-aligned, small and subtle. */
 	.more-row {
-		align-self: flex-start;
-		margin: 2px 0 2px 10px;
-		padding: 2px 8px;
+		align-self: flex-end;
+		margin: 2px 4px 0 0;
+		padding: 1px 4px;
 		background: transparent;
 		border: none;
 		border-radius: 6px;
-		font-size: 11px;
-		font-weight: 600;
+		font-size: 10px;
+		font-weight: 500;
 		letter-spacing: 0.02em;
-		color: color-mix(in srgb, var(--color-accent) 75%, transparent);
+		color: color-mix(in srgb, var(--color-foreground) 38%, transparent);
 		cursor: pointer;
-		transition: background 120ms ease, color 120ms ease;
+		transition: color 120ms ease;
 	}
 	.more-row:hover {
-		background: color-mix(in srgb, var(--color-accent) 10%, transparent);
-		color: var(--color-accent);
+		color: color-mix(in srgb, var(--color-foreground) 70%, transparent);
 	}
 
 	@media (max-width: 640px) {

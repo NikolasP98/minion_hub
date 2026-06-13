@@ -81,6 +81,12 @@
 		margin-bottom: 24px;
 	}
 
+	/* Collapsed: the summary is short — drop the trailing margin so the shared
+	   toggle handle sits right under the preview cards (no dead space). */
+	.feed-section.collapsed {
+		margin-bottom: 0;
+	}
+
 	/* Scrollable variant: header stays put, items get their own bounded scroll. */
 	.feed-section.scrollable {
 		display: flex;
