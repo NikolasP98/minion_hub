@@ -150,6 +150,7 @@
 		position: relative;
 		display: flex;
 		flex-direction: column;
+		justify-content: center;
 		gap: 8px;
 		padding: 12px 16px;
 		min-height: 52px;
@@ -173,7 +174,6 @@
 		line-height: 1.5;
 		color: color-mix(in srgb, var(--color-accent) 80%, transparent);
 		user-select: none;
-		margin-bottom: 1px;
 	}
 
 	.chat-input.drag-over {
@@ -184,7 +184,7 @@
 
 	.input-row {
 		display: flex;
-		align-items: flex-end;
+		align-items: center;
 		gap: 8px;
 	}
 
@@ -260,7 +260,7 @@
 
 	textarea {
 		flex: 1;
-		min-height: 28px;
+		min-height: 21px;
 		max-height: 96px;
 		resize: none;
 		background: transparent;
@@ -284,7 +284,6 @@
 		border: 1px solid color-mix(in srgb, var(--color-foreground) 10%, transparent);
 		border-radius: 4px;
 		font-family: ui-monospace, monospace;
-		margin-bottom: 2px;
 	}
 
 </style>
