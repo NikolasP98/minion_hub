@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import { invalidate } from '$app/navigation';
+	import * as m from '$lib/paraglide/messages';
 	import { ArrowLeft, Sparkles, Check, GitMerge, Users, Wand2 } from 'lucide-svelte';
 	import { PageHeader, Button } from '$lib/components/ui';
 	import { contactLabel } from '$lib/components/crm/crm-format';
@@ -105,7 +106,15 @@
 		if (!survivorId) return;
 		const loserIds = g.contacts.map((c) => c.id).filter((id) => id !== survivorId);
 		if (loserIds.length === 0) return;
-		if (!confirm(`Merge ${loserIds.length} contact(s) into "${contactLabel(g.contacts.find((c) => c.id === survivorId)?.name)}"? This deletes the others and folds their identities, history and tags into the survivor.`)) return;
+		if (
+			!confirm(
+				m.crm_merge_confirm({
+					count: loserIds.length,
+					name: contactLabel(g.contacts.find((c) => c.id === survivorId)?.name),
+				}),
+			)
+		)
+			return;
 		merging = gi;
 		try {
 			const res = await fetch('/api/crm/cleanup/duplicates', {
@@ -119,23 +128,29 @@
 		}
 	}
 
-	const issueLabel: Record<string, string> = {
-		email_as_name: 'email as name',
-		lowercase: 'lowercase',
-		uppercase: 'ALL CAPS',
-		whitespace: 'spacing',
-		casing: 'casing',
-		too_long: 'not a name?',
-		empty: 'blank',
-	};
+	function issueLabel(iss: string): string {
+		switch (iss) {
+			case 'email_as_name': return m.crm_issue_email_as_name();
+			case 'lowercase': return m.crm_issue_lowercase();
+			case 'uppercase': return m.crm_issue_uppercase();
+			case 'whitespace': return m.crm_issue_whitespace();
+			case 'casing': return m.crm_issue_casing();
+			case 'too_long': return m.crm_issue_too_long();
+			case 'empty': return m.crm_issue_empty();
+			default: return iss;
+		}
+	}
+	function actionLabel(a: string): string {
+		return a === 'keep' ? m.crm_action_keep() : a === 'adjust' ? m.crm_action_adjust() : a === 'flag' ? m.crm_action_flag() : a;
+	}
 </script>
 
-<svelte:head><title>Data Hygiene — CRM</title></svelte:head>
+<svelte:head><title>{m.crm_hygiene_title()} — {m.crm_title()}</title></svelte:head>
 
 <div class="flex flex-col h-full min-h-0">
-	<PageHeader title="Data Hygiene" subtitle="Standardize names and merge duplicate contacts">
+	<PageHeader title={m.crm_hygiene_title()} subtitle={m.crm_hygiene_subtitle()}>
 		{#snippet leading()}
-			<a href="/crm" class="p-1 -ml-1 rounded hover:bg-white/[0.06] inline-flex" aria-label="Back to contacts">
+			<a href="/crm" class="p-1 -ml-1 rounded hover:bg-white/[0.06] inline-flex" aria-label={m.crm_back_to_contacts()}>
 				<ArrowLeft size={16} />
 			</a>
 		{/snippet}
@@ -145,34 +160,34 @@
 		<!-- Standardization -->
 		<section class="card">
 			<header class="sec-h">
-				<div class="flex items-center gap-2"><Wand2 size={16} class="text-accent" /><span>Standardize names ({rows.length})</span></div>
+				<div class="flex items-center gap-2"><Wand2 size={16} class="text-accent" /><span>{m.crm_standardize_names()} ({rows.length})</span></div>
 				<div class="flex items-center gap-2">
 					<Button variant="outline" size="sm" onclick={runReview} disabled={reviewing || rows.length === 0}>
 						<Sparkles size={14} class={reviewing ? 'animate-pulse' : ''} />
-						{reviewing ? 'Reviewing…' : 'AI review'}
+						{reviewing ? m.crm_reviewing() : m.crm_ai_review()}
 					</Button>
 					<Button variant="primary" size="sm" onclick={applyAll} disabled={applying || selectedCount === 0}>
-						<Check size={14} /> Apply {selectedCount}
+						<Check size={14} /> {m.crm_apply()} {selectedCount}
 					</Button>
 				</div>
 			</header>
 
 			{#if rows.length === 0}
-				<p class="t-caption py-3">All names look clean. ✨</p>
+				<p class="t-caption py-3">{m.crm_all_clean()}</p>
 			{:else}
-				<p class="t-caption mb-2">Rule-based proposals. Run <strong>AI review</strong> to refine proper-noun casing, derive names from emails, and flag non-names — then apply.</p>
+				<p class="t-caption mb-2">{m.crm_standardize_hint()}</p>
 				<div class="rows">
 					{#each rows as r (r.contactId)}
 						<div class="row" class:flagged={r.agentAction === 'flag'}>
 							<input type="checkbox" bind:checked={r.apply} class="chk" />
 							<div class="names">
-								<div class="cur" title={r.current ?? ''}>{r.current || '(blank)'}</div>
+								<div class="cur" title={r.current ?? ''}>{r.current || m.crm_blank()}</div>
 								<div class="arrow">→</div>
-								<input bind:value={r.value} class="prop" placeholder="(clear)" />
+								<input bind:value={r.value} class="prop" placeholder={m.crm_clear()} />
 							</div>
 							<div class="meta">
-								{#each r.issues as iss (iss)}<span class="tag">{issueLabel[iss] ?? iss}</span>{/each}
-								{#if r.agentAction}<span class="tag ai" class:flag={r.agentAction === 'flag'}>AI: {r.agentAction}</span>{/if}
+								{#each r.issues as iss (iss)}<span class="tag">{issueLabel(iss)}</span>{/each}
+								{#if r.agentAction}<span class="tag ai" class:flag={r.agentAction === 'flag'}>{m.crm_ai_label()}: {actionLabel(r.agentAction)}</span>{/if}
 								{#if r.agentNote}<span class="note" title={r.agentNote}>{r.agentNote}</span>{/if}
 							</div>
 						</div>
@@ -184,19 +199,19 @@
 		<!-- Duplicates -->
 		<section class="card">
 			<header class="sec-h">
-				<div class="flex items-center gap-2"><Users size={16} class="text-accent" /><span>Possible duplicates ({data.groups.length})</span></div>
+				<div class="flex items-center gap-2"><Users size={16} class="text-accent" /><span>{m.crm_possible_duplicates()} ({data.groups.length})</span></div>
 			</header>
 			{#if data.groups.length === 0}
-				<p class="t-caption py-3">No duplicate contacts detected. ✨</p>
+				<p class="t-caption py-3">{m.crm_no_duplicates()}</p>
 			{:else}
-				<p class="t-caption mb-2">Grouped by identical DNI or matching name. Pick the contact to <strong>keep</strong>; the others fold into it.</p>
+				<p class="t-caption mb-2">{m.crm_duplicates_hint()}</p>
 				<div class="flex flex-col gap-3">
 					{#each data.groups as g, gi (g.key)}
 						<div class="group">
 							<div class="group-h">
-								<span class="reason">{g.reason === 'dni' ? `DNI ${g.key}` : 'Same name'}</span>
+								<span class="reason">{g.reason === 'dni' ? `DNI ${g.key}` : m.crm_dup_same_name()}</span>
 								<Button variant="secondary" size="sm" onclick={() => mergeGroup(gi)} disabled={merging === gi}>
-									<GitMerge size={14} /> {merging === gi ? 'Merging…' : 'Merge'}
+									<GitMerge size={14} /> {merging === gi ? m.crm_merging() : m.crm_merge()}
 								</Button>
 							</div>
 							{#each g.contacts as c (c.id)}
@@ -205,8 +220,8 @@
 									<span class="dup-name">{contactLabel(c.name)}</span>
 									{#if c.dni}<span class="t-caption">DNI {c.dni}</span>{/if}
 									{#if c.phone}<span class="t-caption">{c.phone}</span>{/if}
-									<span class="ml-auto t-caption">{c.messages} msgs</span>
-									{#if survivor[gi] === c.id}<span class="keep">keep</span>{/if}
+									<span class="ml-auto t-caption">{m.crm_msgs_n({ count: c.messages })}</span>
+									{#if survivor[gi] === c.id}<span class="keep">{m.crm_keep()}</span>{/if}
 								</label>
 							{/each}
 						</div>

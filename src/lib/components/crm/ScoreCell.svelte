@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as msg from '$lib/paraglide/messages';
 	import { scoreColor } from './crm-format';
 	import ScoreBadge from './ScoreBadge.svelte';
 	let {
@@ -9,9 +10,9 @@
 	}: { score: number; r: number; f: number; m: number } = $props();
 
 	const parts = $derived([
-		{ k: 'R', label: 'Recency', v: r, hint: 'how recently they interacted' },
-		{ k: 'F', label: 'Frequency', v: f, hint: 'how often they reach in' },
-		{ k: 'M', label: 'Engagement', v: m, hint: 'volume + channels + reciprocity' },
+		{ k: 'R', label: msg.crm_recency(), v: r, hint: msg.crm_score_recency_hint() },
+		{ k: 'F', label: msg.crm_frequency(), v: f, hint: msg.crm_score_frequency_hint() },
+		{ k: 'M', label: msg.crm_score_m_label(), v: m, hint: msg.crm_score_engagement_hint() },
 	]);
 </script>
 
@@ -20,7 +21,7 @@
 	<div class="tip" role="tooltip">
 		<div class="tip-head">
 			<span class="big" style:color={scoreColor(score)}>{Math.round(score)}</span>
-			<span class="tip-title">Engagement score</span>
+			<span class="tip-title">{msg.crm_engagement_score()}</span>
 		</div>
 		<div class="tip-formula">0.5·R + 0.3·F + 0.2·M</div>
 		{#each parts as p (p.k)}

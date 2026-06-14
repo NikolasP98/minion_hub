@@ -112,7 +112,7 @@
 			<Contact size={16} class="text-accent shrink-0" />
 		{/snippet}
 		{#snippet actions()}
-			<a href="/crm/cleanup" class="p-1.5 rounded hover:bg-white/[0.06] inline-flex" aria-label="Data Hygiene" title="Data Hygiene — standardize & merge">
+			<a href="/crm/cleanup" class="p-1.5 rounded hover:bg-white/[0.06] inline-flex" aria-label={m.crm_hygiene_title()} title={m.crm_hygiene_nav()}>
 				<Wand2 size={16} />
 			</a>
 			<a href="/crm/settings" class="p-1.5 rounded hover:bg-white/[0.06] inline-flex" aria-label={m.crm_tags_title()} title={m.crm_tags_title()}>
@@ -195,8 +195,8 @@
 							</td>
 							<td class="px-3 py-2">
 								<div class="msgs">
-									<span class="m-in" title="{c.inbound_msgs} inbound"><ArrowDown size={11} />{c.inbound_msgs}</span>
-									<span class="m-out" title="{c.total_msgs - c.inbound_msgs} outbound"><ArrowUp size={11} />{c.total_msgs - c.inbound_msgs}</span>
+									<span class="m-in" title={m.crm_inbound_value({ count: c.inbound_msgs })}><ArrowDown size={11} />{c.inbound_msgs}</span>
+									<span class="m-out" title={m.crm_outbound_value({ count: c.total_msgs - c.inbound_msgs })}><ArrowUp size={11} />{c.total_msgs - c.inbound_msgs}</span>
 								</div>
 							</td>
 							<td class="px-4 py-2 text-right t-caption">{relativeTime(c.last_contact_at)}</td>
