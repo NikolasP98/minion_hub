@@ -6,8 +6,7 @@
     import NotificationsPopup from "./NotificationsPopup.svelte";
     import MinionLogo from "./MinionLogo.svelte";
     import CompanySwitcher from "./CompanySwitcher.svelte";
-    import { getSections, gateSections } from "./sections";
-    import { pluginNavState } from "$lib/state/plugin-nav.svelte";
+    import { getSections } from "./sections";
     import { canClient } from "$lib/access/can.svelte";
     import { togglePalette } from "$lib/state/ui/command-palette.svelte";
     import { page } from "$app/state";
@@ -19,7 +18,7 @@
     import { userState, logout } from "$lib/state/features/user.svelte";
     import { DOMAIN_LABEL, type NavDomain } from "./sections";
 
-    const sections = $derived(gateSections(getSections(), pluginNavState.enabledByPluginId));
+    const sections = $derived(getSections());
     const isReliability = $derived(page.url.pathname.startsWith("/reliability"));
     const isSettings = $derived(page.url.pathname.startsWith("/settings"));
     const isWorkforce = $derived(page.url.pathname.startsWith("/workforce"));

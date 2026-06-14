@@ -5,7 +5,6 @@ import {
     SECTION_META,
     SECTION_ORDER,
     DOMAIN_LABEL,
-    isFlowsNavVisible,
     type SectionId,
     type SectionTone,
     type NavDomain,
@@ -42,8 +41,6 @@ export type Section = {
     items: SectionItem[];
 };
 
-export { isFlowsNavVisible };
-
 /**
  * Build the static nav sections from the canonical route registry
  * (`$lib/nav/routes`). Section grouping/labels/tones come from SECTION_META;
@@ -68,23 +65,6 @@ export function getSections(): Section[] {
             })),
         };
     });
-}
-
-/**
- * Apply plugin enable-state gates to the static sections. Currently: drops the
- * Gateway-section `/flow-editor` item when the flows plugin is explicitly
- * disabled. Returns new section/item arrays (does not mutate the input).
- */
-export function gateSections(
-    sections: Section[],
-    enabledByPluginId: Record<string, boolean>,
-): Section[] {
-    if (isFlowsNavVisible(enabledByPluginId)) return sections;
-    return sections.map((s) =>
-        s.id === "gateway"
-            ? { ...s, items: s.items.filter((it) => it.href !== "/flow-editor") }
-            : s,
-    );
 }
 
 export function findActiveSection(

@@ -11,8 +11,8 @@ export const pluginNavState = $state<{
   settingsByPluginId: Record<string, PluginUiManifestOccupant>;
   /**
    * Whether each plugin is enabled, keyed by pluginId. Absent configEnabled
-   * on an entry is treated as true (back-compat). Used by gateSections() to
-   * conditionally show/hide plugin-contributed nav items (e.g. /flow-editor).
+   * on an entry is treated as true (back-compat). Available for plugin-specific
+   * UI that wants to reflect a plugin's enabled state.
    */
   enabledByPluginId: Record<string, boolean>;
   loaded: boolean;
