@@ -2,7 +2,7 @@
 	import type { PageData } from './$types';
 	import { goto, invalidate } from '$app/navigation';
 	import * as m from '$lib/paraglide/messages';
-	import { Contact, RefreshCw, Plus, Tags } from 'lucide-svelte';
+	import { Contact, RefreshCw, Plus, Tags, Wand2 } from 'lucide-svelte';
 	import { PageHeader, Button } from '$lib/components/ui';
 	import ScoreBadge from '$lib/components/crm/ScoreBadge.svelte';
 	import StagePill from '$lib/components/crm/StagePill.svelte';
@@ -92,6 +92,9 @@
 			<Contact size={16} class="text-accent shrink-0" />
 		{/snippet}
 		{#snippet actions()}
+			<a href="/crm/cleanup" class="p-1.5 rounded hover:bg-white/[0.06] inline-flex" aria-label="Data Hygiene" title="Data Hygiene — standardize & merge">
+				<Wand2 size={16} />
+			</a>
 			<a href="/crm/settings" class="p-1.5 rounded hover:bg-white/[0.06] inline-flex" aria-label={m.crm_tags_title()} title={m.crm_tags_title()}>
 				<Tags size={16} />
 			</a>
