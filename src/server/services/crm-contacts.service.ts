@@ -128,13 +128,18 @@ export interface RankedContact {
 }
 
 // RFM expressions, parameterised by the shared weights/constants so SQL and the
-// UI explainability tooltip stay in lockstep.
+// UI explainability tooltip stay in lockstep. The constants MUST be inlined as
+// SQL literals via `lit()` (sql.raw), NOT interpolated as `${HL}` — Drizzle turns
+// a JS number into a bound parameter ($1), so `${HL}.0` would emit the malformed
+// `$1.0` ("syntax error at or near .0"). lit() is safe here: these are trusted
+// internal numeric constants, never user input.
 const { recencyHalfLifeDays: HL, freqSaturationMsgs: FS, volSaturationMsgs: VS, channelTarget: CT } =
   RFM_CONST;
-const R_EXPR = sql`(100 * exp(- last_days / ${HL}.0))`;
-const F_EXPR = sql`(100 * least(1, ln(1 + inbound_msgs) / ln(1 + ${FS}.0)))`;
-const M_EXPR = sql`(100 * (0.60 * least(1, ln(1 + total_msgs) / ln(1 + ${VS}.0))
-                        + 0.25 * least(1, channels_used / ${CT}.0)
+const lit = (n: number) => sql.raw(String(n));
+const R_EXPR = sql`(100 * exp(- last_days / ${lit(HL)}.0))`;
+const F_EXPR = sql`(100 * least(1, ln(1 + inbound_msgs) / ln(1 + ${lit(FS)}.0)))`;
+const M_EXPR = sql`(100 * (0.60 * least(1, ln(1 + total_msgs) / ln(1 + ${lit(VS)}.0))
+                        + 0.25 * least(1, channels_used / ${lit(CT)}.0)
                         + 0.15 * reciprocity))`;
 
 /**
@@ -211,7 +216,7 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
                round(${R_EXPR}::numeric, 1) as r_score,
                round(${F_EXPR}::numeric, 1) as f_score,
                round(${M_EXPR}::numeric, 1) as m_score,
-               round((${RFM_WEIGHTS.r} * ${R_EXPR} + ${RFM_WEIGHTS.f} * ${F_EXPR} + ${RFM_WEIGHTS.m} * ${M_EXPR})::numeric, 0) as score,
+               round((${lit(RFM_WEIGHTS.r)} * ${R_EXPR} + ${lit(RFM_WEIGHTS.f)} * ${F_EXPR} + ${lit(RFM_WEIGHTS.m)} * ${M_EXPR})::numeric, 0) as score,
                coalesce(lifecycle_override,
                  case
                    when total_msgs = 0 then 'New'
