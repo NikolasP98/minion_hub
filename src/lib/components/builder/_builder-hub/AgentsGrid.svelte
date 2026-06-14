@@ -1,4 +1,5 @@
 <script lang="ts">
+    import * as m from '$lib/paraglide/messages';
     import { Trash2 } from "lucide-svelte";
     import { goto } from "$app/navigation";
     import { builderState } from "$lib/state/builder";
@@ -18,7 +19,7 @@
                 <div class="item-card-header">
                     <span class="item-emoji">{agent.emoji || '🤖'}</span>
                     <span class="item-name">{agent.name}</span>
-                    <button type="button" class="item-delete" onclick={(e) => { e.stopPropagation(); onDelete(agent.id, agent.name); }} title="Delete agent">
+                    <button type="button" class="item-delete" onclick={(e) => { e.stopPropagation(); onDelete(agent.id, agent.name); }} title={m.common_delete()}>
                         <Trash2 size={12} />
                     </button>
                 </div>

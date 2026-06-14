@@ -4,6 +4,7 @@
   import type { FileWriteNodeData } from '$lib/state/features/flow-editor.svelte';
   import { openNodeContextMenu, openNodeConfig } from '$lib/state/features/flow-editor.svelte';
   import { FileText, Settings2 } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let { data, id }: NodeProps & { data: FileWriteNodeData } = $props();
 
@@ -23,11 +24,11 @@
     <div class="w-6 h-6 rounded-md bg-slate-500/20 flex items-center justify-center shrink-0">
       <FileText size={12} class="text-slate-300" />
     </div>
-    <span class="text-xs font-semibold text-foreground truncate flex-1">{data.label || 'Write File'}</span>
+    <span class="text-xs font-semibold text-foreground truncate flex-1">{data.label || m.flownode_writeFile()}</span>
     <button
       class="shrink-0 text-muted/60 hover:text-foreground transition-colors"
-      title="Configure file path"
-      aria-label="Configure file path"
+      title={m.flownode_configureFilePath()}
+      aria-label={m.flownode_configureFilePath()}
       onclick={(e) => { e.stopPropagation(); openNodeConfig(id); }}
     >
       <Settings2 size={12} />
@@ -36,9 +37,9 @@
   {#if target}
     <div class="flex items-center gap-1.5">
       <code class="text-[10px] text-slate-300/90 truncate max-w-[170px]">{target}</code>
-      <span class="text-[9px] text-muted shrink-0">· {data.mode === 'append' ? 'append' : 'overwrite'}</span>
+      <span class="text-[9px] text-muted shrink-0">· {data.mode === 'append' ? m.flownode_append() : m.flownode_overwrite()}</span>
     </div>
   {:else}
-    <p class="text-[9px] text-amber-400/80">Double-click to set a path</p>
+    <p class="text-[9px] text-amber-400/80">{m.flownode_doubleClickSetPath()}</p>
   {/if}
 </div>

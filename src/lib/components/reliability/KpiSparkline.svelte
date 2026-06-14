@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages';
 	// Tiny inline-SVG sparkline for a KPI's per-bucket series over the selected
 	// range. Overlays three things so the hover tooltip tells the whole story:
 	//   • raw series      — the KPI value in each time bucket (faint, in `color`)
@@ -71,7 +72,7 @@
 	class="w-full block"
 	style="height:{H}px"
 	role="img"
-	aria-label="KPI trend sparkline"
+	aria-label={m.kpi_sparklineLabel()}
 >
 	<!-- ±3σ control band -->
 	<rect x={PAD} y={uclY} width={W - 2 * PAD} height={Math.max(0, lclY - uclY)} fill={color} opacity="0.06" />

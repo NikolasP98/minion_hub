@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages';
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import {
 		Calendar,
@@ -53,13 +54,13 @@
 	const rsvpLabel = $derived.by(() => {
 		switch (rsvp) {
 			case 'accepted':
-				return 'You replied: Going';
+				return m.event_repliedGoing();
 			case 'declined':
-				return 'You replied: Declined';
+				return m.event_repliedDeclined();
 			case 'tentative':
-				return 'You replied: Maybe';
+				return m.event_repliedMaybe();
 			case 'needsAction':
-				return 'Awaiting your RSVP';
+				return m.event_awaitingRsvp();
 			default:
 				return null;
 		}
@@ -85,8 +86,8 @@
 					type="button"
 					class="hdr-open"
 					onclick={openInGoogle}
-					title="Open in Google Calendar"
-					aria-label="Open in Google Calendar"
+					title={m.event_openInGoogleCalendar()}
+					aria-label={m.event_openInGoogleCalendar()}
 				>
 					<ExternalLink size={14} />
 				</button>
@@ -104,7 +105,7 @@
 			{#if item.recurring}
 				<div class="row">
 					<Repeat size={15} class="ic" />
-					<span class="val muted">Repeating event</span>
+					<span class="val muted">{m.event_repeatingEvent()}</span>
 				</div>
 			{/if}
 
@@ -126,7 +127,7 @@
 
 			<!-- RSVP — handed to the agent (gws attendee-patch) until a direct RPC lands. -->
 			<div class="section">
-				<span class="section-label">RSVP</span>
+				<span class="section-label">{m.event_rsvp()}</span>
 				<div class="btn-row">
 					<button
 						type="button"
@@ -134,7 +135,7 @@
 						class:active={rsvp === 'accepted'}
 						onclick={() => ask(`RSVP "Yes / Going" to my calendar event "${title}" (${whenLabel}).`)}
 					>
-						<Check size={14} /> Going
+						<Check size={14} /> {m.event_going()}
 					</button>
 					<button
 						type="button"
@@ -142,7 +143,7 @@
 						class:active={rsvp === 'tentative'}
 						onclick={() => ask(`RSVP "Maybe / Tentative" to my calendar event "${title}" (${whenLabel}).`)}
 					>
-						<HelpCircle size={14} /> Maybe
+						<HelpCircle size={14} /> {m.event_maybe()}
 					</button>
 					<button
 						type="button"
@@ -150,7 +151,7 @@
 						class:active={rsvp === 'declined'}
 						onclick={() => ask(`RSVP "No / Decline" to my calendar event "${title}" (${whenLabel}).`)}
 					>
-						<X size={14} /> Decline
+						<X size={14} /> {m.event_decline()}
 					</button>
 				</div>
 			</div>
@@ -163,8 +164,8 @@
 				type="button"
 				class="icon-act"
 				onclick={() => ask(`Edit my calendar event "${title}" (${whenLabel}). Ask me what to change.`)}
-				title="Edit event"
-				aria-label="Edit event"
+				title={m.event_editEvent()}
+				aria-label={m.event_editEvent()}
 			>
 				<Pencil size={16} />
 			</button>
@@ -172,8 +173,8 @@
 				type="button"
 				class="icon-act danger"
 				onclick={() => ask(`Cancel my calendar event "${title}" (${whenLabel}). Confirm with me first.`)}
-				title="Cancel event"
-				aria-label="Cancel event"
+				title={m.event_cancelEvent()}
+				aria-label={m.event_cancelEvent()}
 			>
 				<Trash2 size={16} />
 			</button>
@@ -183,7 +184,7 @@
 			class="act primary"
 			onclick={() => ask(`Tell me about my event "${title}" (${whenLabel}) and what I should prepare.`)}
 		>
-			<Sparkles size={14} /> Ask agent
+			<Sparkles size={14} /> {m.event_askAgent()}
 		</button>
 	{/snippet}
 </Modal>

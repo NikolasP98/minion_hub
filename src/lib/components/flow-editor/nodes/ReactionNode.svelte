@@ -4,6 +4,7 @@
   import type { ReactionNodeData } from '$lib/state/features/flow-editor.svelte';
   import { openNodeContextMenu, openNodeConfig } from '$lib/state/features/flow-editor.svelte';
   import { SmilePlus, Settings2 } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let { data, id }: NodeProps & { data: ReactionNodeData } = $props();
   const emoji = $derived((data.emoji ?? '').trim());
@@ -22,11 +23,11 @@
     <div class="w-6 h-6 rounded-md bg-pink-500/20 flex items-center justify-center shrink-0">
       <SmilePlus size={12} class="text-pink-400" />
     </div>
-    <span class="text-xs font-semibold text-foreground truncate flex-1">{data.label || 'Set Reaction'}</span>
+    <span class="text-xs font-semibold text-foreground truncate flex-1">{data.label || m.flownode_setReaction()}</span>
     <button
       class="shrink-0 text-muted/60 hover:text-foreground transition-colors"
-      title="Configure reaction"
-      aria-label="Configure reaction"
+      title={m.flownode_configureReaction()}
+      aria-label={m.flownode_configureReaction()}
       onclick={(e) => { e.stopPropagation(); openNodeConfig(id); }}
     >
       <Settings2 size={12} />
@@ -35,9 +36,9 @@
   <div class="flex items-center gap-1.5">
     {#if emoji}
       <span class="text-sm leading-none">{emoji}</span>
-      <span class="text-[10px] text-muted">on trigger message</span>
+      <span class="text-[10px] text-muted">{m.flownode_onTriggerMessage()}</span>
     {:else}
-      <span class="text-[9px] text-amber-400/80">Double-click to pick an emoji</span>
+      <span class="text-[9px] text-amber-400/80">{m.flownode_doubleClickPickEmoji()}</span>
     {/if}
   </div>
 </div>

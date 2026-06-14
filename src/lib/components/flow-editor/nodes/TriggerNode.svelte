@@ -4,12 +4,13 @@
   import type { TriggerNodeData } from '$lib/state/features/flow-editor.svelte';
   import { openNodeContextMenu, openNodeConfig, triggerSources } from '$lib/state/features/flow-editor.svelte';
   import { Zap, Settings2, Reply } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let { data, id }: NodeProps & { data: TriggerNodeData } = $props();
 
   const EVENT_LABELS: Record<string, string> = {
-    'message:received': 'Message received',
-    'message:sent': 'Message sent',
+    'message:received': m.flownode_messageReceived(),
+    'message:sent': m.flownode_messageSent(),
   };
 
   const sources = $derived(triggerSources(data));
@@ -35,11 +36,11 @@
     <div class="w-6 h-6 rounded-md bg-amber-500/20 flex items-center justify-center shrink-0">
       <Zap size={12} class="text-amber-400" />
     </div>
-    <span class="text-xs font-semibold text-foreground truncate flex-1">Channel Trigger</span>
+    <span class="text-xs font-semibold text-foreground truncate flex-1">{m.flownode_channelTrigger()}</span>
     <button
       class="shrink-0 text-muted/60 hover:text-foreground transition-colors"
-      title="Configure trigger"
-      aria-label="Configure trigger"
+      title={m.flownode_configureTrigger()}
+      aria-label={m.flownode_configureTrigger()}
       onclick={(e) => { e.stopPropagation(); openNodeConfig(id); }}
     >
       <Settings2 size={12} />
@@ -52,7 +53,7 @@
     <div class="flex flex-wrap items-center gap-1">
       {#if selectedChannels.length === 0}
         <span class="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300">
-          All channels
+          {m.flownode_allChannels()}
         </span>
       {:else}
         {#each selectedChannels as ch (ch)}
@@ -66,7 +67,7 @@
 
   {#if data.deliverResponse}
     <div class="flex items-center gap-1 mt-1.5 text-[10px] text-muted">
-      <Reply size={10} class="text-amber-400/80" /> Replies to channel
+      <Reply size={10} class="text-amber-400/80" /> {m.flownode_repliesToChannel()}
     </div>
   {/if}
 </div>

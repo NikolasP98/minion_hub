@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages';
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import {
 		Reply,
@@ -198,8 +199,8 @@
 					type="button"
 					class="hdr-open"
 					onclick={openInGmail}
-					title="Open in Gmail"
-					aria-label="Open in Gmail"
+					title={m.email_openInGmail()}
+					aria-label={m.email_openInGmail()}
 				>
 					<ExternalLink size={14} />
 				</button>
@@ -222,7 +223,7 @@
 			{#if summaryLoading}
 				<div class="summary loading">
 					<Sparkles size={13} />
-					<span class="shimmer">Summarizing…</span>
+					<span class="shimmer">{m.email_summarizing()}</span>
 				</div>
 			{:else if summary}
 				<div class="summary">
@@ -236,11 +237,11 @@
 				{#if bodyLoading}
 					<div class="loading-body">
 						<Loader2 size={16} class="spin" />
-						<span>Loading message…</span>
+						<span>{m.email_loadingMessage()}</span>
 					</div>
 				{:else if bodyError || !body}
 					<p class="empty">
-						Couldn't load the message body. Open in Gmail to read the full email.
+						{m.email_couldntLoadBody()}
 					</p>
 				{:else}
 					<pre class="msg">{body}</pre>
@@ -252,29 +253,29 @@
 				<div class="composer">
 					<div class="composer-head">
 						<span class="composer-title">
-							{composeMode === 'replyAll' ? 'Reply all' : 'Reply'} to {sender}
+							{composeMode === 'replyAll' ? m.email_replyAll() : m.email_reply()} to {sender}
 						</span>
-						<button type="button" class="composer-x" onclick={resetComposer} aria-label="Discard draft">
+						<button type="button" class="composer-x" onclick={resetComposer} aria-label={m.email_discardDraft()}>
 							<X size={14} />
 						</button>
 					</div>
 					{#if draftLoading && !draft}
 						<div class="loading-body">
 							<Loader2 size={16} class="spin" />
-							<span>Drafting a reply…</span>
+							<span>{m.email_draftingReply()}</span>
 						</div>
 					{:else}
 						<textarea
 							class="draft"
 							bind:value={draft}
 							rows="6"
-							placeholder="Your reply…"
+							placeholder={m.email_yourReply()}
 						></textarea>
 						<div class="composer-tools">
 							<input
 								class="steer"
 								bind:value={steer}
-								placeholder="Steer the draft (e.g. 'shorter, more formal')…"
+								placeholder={m.email_steerDraft()}
 								onkeydown={(e) => e.key === 'Enter' && regenerate()}
 							/>
 							<button
@@ -282,10 +283,10 @@
 								class="ghost-btn"
 								onclick={regenerate}
 								disabled={draftLoading}
-								title="Regenerate draft"
+								title={m.email_regenerateDraft()}
 							>
 								{#if draftLoading}<Loader2 size={14} class="spin" />{:else}<RefreshCw size={14} />{/if}
-								Redraft
+								{m.email_redraft()}
 							</button>
 						</div>
 					{/if}
@@ -296,29 +297,29 @@
 
 	{#snippet footer()}
 		{#if composeMode}
-			<button type="button" class="act" onclick={resetComposer}>Cancel</button>
+			<button type="button" class="act" onclick={resetComposer}>{m.common_cancel()}</button>
 			<button
 				type="button"
 				class="act send"
 				onclick={sendDraft}
 				disabled={!draft.trim() || draftLoading}
 			>
-				<Send size={14} /> Send
+				<Send size={14} /> {m.common_save()}
 			</button>
 		{:else}
 			<div class="footer-actions">
-				<button type="button" class="icon-act" onclick={() => startReply('reply')} title="Reply" aria-label="Reply">
+				<button type="button" class="icon-act" onclick={() => startReply('reply')} title={m.email_reply()} aria-label={m.email_reply()}>
 					<Reply size={16} />
 				</button>
-				<button type="button" class="icon-act" onclick={() => startReply('replyAll')} title="Reply all" aria-label="Reply all">
+				<button type="button" class="icon-act" onclick={() => startReply('replyAll')} title={m.email_replyAll()} aria-label={m.email_replyAll()}>
 					<ReplyAll size={16} />
 				</button>
 				<button
 					type="button"
 					class="icon-act"
 					onclick={() => ask(`Forward this ${ref}. Ask me the recipient.`)}
-					title="Forward"
-					aria-label="Forward"
+					title={m.email_forward()}
+					aria-label={m.email_forward()}
 				>
 					<Forward size={16} />
 				</button>
@@ -327,8 +328,8 @@
 					type="button"
 					class="icon-act"
 					onclick={() => ask(`Add a label to this ${ref}. Ask me which label.`)}
-					title="Label"
-					aria-label="Label"
+					title={m.email_label()}
+					aria-label={m.email_label()}
 				>
 					<Tag size={16} />
 				</button>
@@ -336,8 +337,8 @@
 					type="button"
 					class="icon-act"
 					onclick={() => ask(`Archive this ${ref}.`)}
-					title="Archive"
-					aria-label="Archive"
+					title={m.email_archive()}
+					aria-label={m.email_archive()}
 				>
 					<Archive size={16} />
 				</button>
@@ -345,8 +346,8 @@
 					type="button"
 					class="icon-act danger"
 					onclick={() => ask(`Move this ${ref} to trash. Confirm with me first.`)}
-					title="Delete"
-					aria-label="Delete"
+					title={m.common_delete()}
+					aria-label={m.common_delete()}
 				>
 					<Trash2 size={16} />
 				</button>

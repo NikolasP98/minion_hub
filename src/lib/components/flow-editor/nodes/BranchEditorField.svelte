@@ -4,6 +4,7 @@
   import { sendRequest } from '$lib/services/gateway.svelte';
   import { Plus, X, Sparkles } from 'lucide-svelte';
   import { onMount } from 'svelte';
+  import * as m from '$lib/paraglide/messages';
 
   // Shared branch editor — drives the built-in Router node AND the
   // `type: 'branch-editor'` plugin config field. The parent owns the value and
@@ -82,18 +83,18 @@
   <button
     class="flex-1 text-[9px] font-semibold rounded px-1 py-0.5 transition-colors {value.mode === 'rule' ? 'bg-amber-500/25 text-amber-300 border border-amber-500/40' : 'text-muted/60 border border-transparent'}"
     onclick={(e) => { e.stopPropagation(); setMode('rule'); }}
-    title="Match by text rule (contains / equals / regex)"
-  >Rule</button>
+    title={m.flowcfg_ruleModeTip()}
+  >{m.flowcfg_rule()}</button>
   <button
     class="flex-1 text-[9px] font-semibold rounded px-1 py-0.5 transition-colors {value.mode === 'llm' ? 'bg-amber-500/25 text-amber-300 border border-amber-500/40' : 'text-muted/60 border border-transparent'}"
     onclick={(e) => { e.stopPropagation(); setMode('llm'); }}
-    title="Classify by LLM using each branch's rubric"
-  >LLM</button>
+    title={m.flowcfg_llmModeTip()}
+  >{m.flowcfg_llm()}</button>
   <button
     class="flex-1 text-[9px] font-semibold rounded px-1 py-0.5 transition-colors {value.mode === 'hybrid' ? 'bg-amber-500/25 text-amber-300 border border-amber-500/40' : 'text-muted/60 border border-transparent'}"
     onclick={(e) => { e.stopPropagation(); setMode('hybrid'); }}
-    title="Rule fast-path first, then LLM rubric fallback"
-  >Hybrid</button>
+    title={m.flowcfg_hybridModeTip()}
+  >{m.flowcfg_hybrid()}</button>
 </div>
 
 {#if value.mode === 'llm' || value.mode === 'hybrid'}
@@ -118,11 +119,11 @@
         <input
           class="flex-1 text-[10px] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground"
           value={branch.label}
-          placeholder="label (the value the LLM outputs)"
+          placeholder={m.flowcfg_branchLabelPlaceholder()}
           onclick={(e) => e.stopPropagation()}
           oninput={(e) => updateBranch(branch.id, { label: (e.target as HTMLInputElement).value })}
         />
-        <button class="text-muted/60 hover:text-red-400 shrink-0" onclick={(e) => { e.stopPropagation(); removeBranch(branch.id); }} title="Remove branch" aria-label="Remove branch">
+        <button class="text-muted/60 hover:text-red-400 shrink-0" onclick={(e) => { e.stopPropagation(); removeBranch(branch.id); }} title={m.flowcfg_removeBranch()} aria-label={m.flowcfg_removeBranch()}>
           <X size={11} />
         </button>
       </div>
@@ -139,7 +140,7 @@
           <input
             class="flex-1 text-[10px] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground"
             value={branch.rule?.value ?? ''}
-            placeholder={value.mode === 'hybrid' ? 'rule (optional fast-path)' : 'value'}
+            placeholder={value.mode === 'hybrid' ? m.flowcfg_hybridRulePlaceholder() : m.flowcfg_ruleValue()}
             onclick={(e) => e.stopPropagation()}
             oninput={(e) => updateRule(branch.id, { value: (e.target as HTMLInputElement).value })}
           />
@@ -149,7 +150,7 @@
         <textarea
           class="mt-1 w-full text-[9px] bg-bg3 border border-border rounded px-1 py-0.5 text-muted/90 resize-none leading-snug"
           rows="2"
-          placeholder="when to choose this branch (rubric / conditions)"
+          placeholder={m.flowcfg_branchDescriptionPlaceholder()}
           value={branch.description ?? ''}
           onclick={(e) => e.stopPropagation()}
           oninput={(e) => updateBranch(branch.id, { description: (e.target as HTMLTextAreaElement).value })}
@@ -162,7 +163,7 @@
 
 <div class="mt-1.5 flex items-center gap-2.5 flex-wrap">
   <button class="flex items-center gap-1 text-[10px] text-amber-400/80 hover:text-amber-300" onclick={(e) => { e.stopPropagation(); addBranch(); }}>
-    <Plus size={11} /> Add branch
+    <Plus size={11} /> {m.flowcfg_addBranch()}
   </button>
   {#if isFresh}
     {#each presets as p (p.pluginId + ':' + p.id)}

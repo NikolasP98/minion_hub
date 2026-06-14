@@ -1,6 +1,7 @@
 <script lang="ts">
   import { flowEditorState, updateNodeData } from '$lib/state/features/flow-editor.svelte';
   import type { ReactionNodeData } from '$lib/state/features/flow-editor.svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let { nodeId }: { nodeId: string } = $props();
 
@@ -33,7 +34,7 @@
   <div class="flex flex-col gap-1.5">
     <span class="text-[11px] font-medium text-foreground">Status emoji</span>
     <p class="text-[10px] text-muted/80 -mt-0.5">
-      Set on the message that triggered this flow (e.g. mark a complaint received → handled).
+      {m.flowcfg_setReactionDesc()}
     </p>
     <div class="flex flex-wrap gap-1">
       {#each PRESETS as p (p.emoji)}
@@ -54,7 +55,7 @@
     </div>
     <input
       class="mt-1 text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground"
-      placeholder="Or type any emoji…"
+      placeholder={m.flowcfg_typeEmoji()}
       value={current}
       oninput={(e) => setEmoji((e.target as HTMLInputElement).value)}
     />
@@ -64,7 +65,7 @@
     <span class="text-[11px] font-medium text-foreground">Label</span>
     <input
       class="text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground"
-      placeholder="Set Reaction"
+      placeholder={m.flowcfg_setReaction()}
       value={data.label ?? ''}
       oninput={(e) => setLabel((e.target as HTMLInputElement).value)}
     />

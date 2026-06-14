@@ -6,6 +6,7 @@
 	import Highlight from '@tiptap/extension-highlight';
 	import Image from '@tiptap/extension-image';
 	import { Markdown } from 'tiptap-markdown';
+	import * as m from '$lib/paraglide/messages';
 	import {
 		Bold,
 		Italic,
@@ -273,9 +274,9 @@
 	}
 
 	// ── Slash menu: type "/" in a block to embed a to-do or easel ──────────────
-	const SLASH_ITEMS: { type: 'todo' | 'easel'; label: string; kw: string[] }[] = [
-		{ type: 'todo', label: 'To-do list', kw: ['todo', 'task', 'tasks', 'check', 'list', 'checklist'] },
-		{ type: 'easel', label: 'Board / moodboard', kw: ['easel', 'board', 'moodboard', 'whiteboard', 'draw', 'image'] }
+	const SLASH_ITEMS: { type: 'todo' | 'easel'; label: () => string; kw: string[] }[] = [
+		{ type: 'todo', label: () => m.note_slashMenuTodo(), kw: ['todo', 'task', 'tasks', 'check', 'list', 'checklist'] },
+		{ type: 'easel', label: () => m.note_slashMenuBoard(), kw: ['easel', 'board', 'moodboard', 'whiteboard', 'draw', 'image'] }
 	];
 	let slashOpen = $state(false);
 	let slashPos = $state<{ left: number; top: number } | null>(null);
@@ -439,7 +440,7 @@
 				content: sourceMd() || '',
 				autofocus: autofocus ? 'end' : false,
 				editorProps: {
-					attributes: { class: 'note-prose', 'aria-label': 'Note body' },
+					attributes: { class: 'note-prose', 'aria-label': m.a11y1_noteBody() },
 					handleKeyDown: (_view, event) => slashKeydown(event),
 					handlePaste: onEditorPaste,
 					handleDrop: onEditorDrop
@@ -498,19 +499,19 @@
 		onmousedown={(e) => e.preventDefault()}
 		role="toolbar"
 		tabindex="-1"
-		aria-label="Text formatting"
+		aria-label={m.a11y1_textFormatting()}
 	>
-		<button type="button" class="fmt-btn" class:on={active.bold} title="Bold" aria-label="Bold" onclick={() => run((c) => c.toggleBold())}><Bold size={14} /></button>
-		<button type="button" class="fmt-btn" class:on={active.italic} title="Italic" aria-label="Italic" onclick={() => run((c) => c.toggleItalic())}><Italic size={14} /></button>
-		<button type="button" class="fmt-btn" class:on={active.strike} title="Strikethrough" aria-label="Strikethrough" onclick={() => run((c) => c.toggleStrike())}><Strikethrough size={14} /></button>
-		<button type="button" class="fmt-btn" class:on={active.code} title="Inline code" aria-label="Inline code" onclick={() => run((c) => c.toggleCode())}><Code size={14} /></button>
-		<button type="button" class="fmt-btn" class:on={active.highlight} title="Highlight" aria-label="Highlight" onclick={() => run((c) => c.toggleHighlight())}><Highlighter size={14} /></button>
+		<button type="button" class="fmt-btn" class:on={active.bold} title={m.note_formatBold()} aria-label={m.note_formatBold()} onclick={() => run((c) => c.toggleBold())}><Bold size={14} /></button>
+		<button type="button" class="fmt-btn" class:on={active.italic} title={m.note_formatItalic()} aria-label={m.note_formatItalic()} onclick={() => run((c) => c.toggleItalic())}><Italic size={14} /></button>
+		<button type="button" class="fmt-btn" class:on={active.strike} title={m.note_formatStrikethrough()} aria-label={m.note_formatStrikethrough()} onclick={() => run((c) => c.toggleStrike())}><Strikethrough size={14} /></button>
+		<button type="button" class="fmt-btn" class:on={active.code} title={m.note_formatCode()} aria-label={m.note_formatCode()} onclick={() => run((c) => c.toggleCode())}><Code size={14} /></button>
+		<button type="button" class="fmt-btn" class:on={active.highlight} title={m.note_formatHighlight()} aria-label={m.note_formatHighlight()} onclick={() => run((c) => c.toggleHighlight())}><Highlighter size={14} /></button>
 		<span class="fmt-sep"></span>
-		<button type="button" class="fmt-btn" class:on={active.h1} title="Heading 1" aria-label="Heading 1" onclick={() => run((c) => c.toggleHeading({ level: 1 }))}><Heading1 size={14} /></button>
-		<button type="button" class="fmt-btn" class:on={active.h2} title="Heading 2" aria-label="Heading 2" onclick={() => run((c) => c.toggleHeading({ level: 2 }))}><Heading2 size={14} /></button>
-		<button type="button" class="fmt-btn" class:on={active.bullet} title="Bullet list" aria-label="Bullet list" onclick={() => run((c) => c.toggleBulletList())}><List size={14} /></button>
+		<button type="button" class="fmt-btn" class:on={active.h1} title={m.note_formatHeading1()} aria-label={m.note_formatHeading1()} onclick={() => run((c) => c.toggleHeading({ level: 1 }))}><Heading1 size={14} /></button>
+		<button type="button" class="fmt-btn" class:on={active.h2} title={m.note_formatHeading2()} aria-label={m.note_formatHeading2()} onclick={() => run((c) => c.toggleHeading({ level: 2 }))}><Heading2 size={14} /></button>
+		<button type="button" class="fmt-btn" class:on={active.bullet} title={m.note_formatBulletList()} aria-label={m.note_formatBulletList()} onclick={() => run((c) => c.toggleBulletList())}><List size={14} /></button>
 		<span class="fmt-sep"></span>
-		<button type="button" class="fmt-btn" title="Clear formatting" aria-label="Clear formatting" onclick={() => run((c) => c.unsetAllMarks().clearNodes())}><RemoveFormatting size={14} /></button>
+		<button type="button" class="fmt-btn" title={m.note_formatClear()} aria-label={m.note_formatClear()} onclick={() => run((c) => c.unsetAllMarks().clearNodes())}><RemoveFormatting size={14} /></button>
 	</div>
 {/if}
 
@@ -523,7 +524,7 @@
 		onmousedown={(e) => e.preventDefault()}
 		role="menu"
 		tabindex="-1"
-		aria-label="Insert block"
+		aria-label={m.a11y1_insertBlock()}
 	>
 		{#each slashMatches as item, idx (item.type)}
 			<button
@@ -535,7 +536,7 @@
 				onclick={() => chooseSlash(item.type)}
 			>
 				{#if item.type === 'todo'}<ListTodo size={14} />{:else}<LayoutDashboard size={14} />{/if}
-				{item.label}
+				{item.label()}
 			</button>
 		{/each}
 	</div>

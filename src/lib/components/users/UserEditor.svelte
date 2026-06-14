@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
   import { validateAlias, normalizeAlias } from '$lib/utils/alias';
   import { Select } from '$lib/components/ui';
   import IdentityList from './IdentityList.svelte';
@@ -91,31 +92,31 @@
 
 <div class="space-y-3">
   <div class="bg-bg2 border border-border rounded-md p-3 space-y-2">
-    <div class="text-[10px] uppercase tracking-wider text-muted font-semibold">Identity</div>
+    <div class="text-[10px] uppercase tracking-wider text-muted font-semibold">{m.usersui_identity()}</div>
     <label class="grid grid-cols-[80px_1fr] gap-2 items-center text-xs">
-      <span class="text-muted">Name</span>
+      <span class="text-muted">{m.usersui_name()}</span>
       <input class="bg-bg border border-border rounded px-2 py-1 outline-none focus:border-accent" bind:value={displayName} />
     </label>
     <label class="grid grid-cols-[80px_1fr] gap-2 items-center text-xs">
-      <span class="text-muted">Email</span>
+      <span class="text-muted">{m.usersui_email()}</span>
       <input type="email" class="bg-bg border border-border rounded px-2 py-1 outline-none focus:border-accent" bind:value={email} />
     </label>
     <label class="grid grid-cols-[80px_1fr_auto] gap-2 items-center text-xs">
-      <span class="text-muted">Alias</span>
+      <span class="text-muted">{m.usersui_alias()}</span>
       <div class="flex items-center gap-1 bg-bg border border-border rounded px-2 py-1 focus-within:border-accent">
         <span class="text-muted">@</span>
-        <input class="flex-1 bg-transparent outline-none" bind:value={alias} placeholder="nikolas" />
+        <input class="flex-1 bg-transparent outline-none" bind:value={alias} placeholder={m.usersui_aliasPlaceholder()} />
       </div>
       <span class="text-[10px] w-20 text-right">
-        {#if availability === 'checking'}<span class="text-muted">checking…</span>
-        {:else if availability === 'available'}<span class="text-green-400">✓ available</span>
-        {:else if availability === 'taken'}<span class="text-destructive">✗ taken</span>
-        {:else if availability === 'invalid'}<span class="text-destructive">⚠ invalid</span>
+        {#if availability === 'checking'}<span class="text-muted">{m.usersui_checking()}</span>
+        {:else if availability === 'available'}<span class="text-green-400">✓ {m.usersui_available()}</span>
+        {:else if availability === 'taken'}<span class="text-destructive">✗ {m.usersui_taken()}</span>
+        {:else if availability === 'invalid'}<span class="text-destructive">⚠ {m.usersui_invalid()}</span>
         {/if}
       </span>
     </label>
     <label class="grid grid-cols-[80px_1fr] gap-2 items-center text-xs">
-      <span class="text-muted">Role</span>
+      <span class="text-muted">{m.usersui_role()}</span>
       <Select
         size="sm"
         value={roleId ?? `legacy:${role}`}
@@ -129,12 +130,12 @@
           }
         }}
       >
-        <optgroup label="Built-in">
-          <option value="legacy:user">user</option>
-          <option value="legacy:admin">admin</option>
+        <optgroup label={m.usersui_builtIn()}>
+          <option value="legacy:user">{m.usersui_roleUser()}</option>
+          <option value="legacy:admin">{m.usersui_roleAdmin()}</option>
         </optgroup>
         {#if customRoles.filter((r) => !r.isSystem).length > 0}
-          <optgroup label="Custom">
+          <optgroup label={m.usersui_custom()}>
             {#each customRoles.filter((r) => !r.isSystem) as r (r.id)}
               <option value={r.id}>{r.name}</option>
             {/each}
@@ -147,12 +148,12 @@
   <IdentityList userId={user.id} />
 
   <div class="flex justify-end gap-2">
-    <button type="button" class="text-xs px-3 py-1.5 rounded-md bg-transparent border border-border text-foreground hover:bg-muted/30" onclick={onCancel}>Cancel</button>
+    <button type="button" class="text-xs px-3 py-1.5 rounded-md bg-transparent border border-border text-foreground hover:bg-muted/30" onclick={onCancel}>{m.common_cancel()}</button>
     <button type="button"
       class="text-xs px-3 py-1.5 rounded-md bg-accent text-white border-none font-semibold disabled:opacity-50"
       disabled={!dirty || !aliasValid || saving}
       onclick={handleSave}>
-      {saving ? 'Saving…' : 'Save'}
+      {saving ? m.usersui_saving() : m.common_save()}
     </button>
   </div>
 </div>

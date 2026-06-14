@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
   import { provisionShell, type ShellsProvisionResponse } from '$lib/services/shells-rpc';
   import { Select, Button } from '$lib/components/ui';
 
@@ -18,7 +19,7 @@
   async function submit(evt: SubmitEvent): Promise<void> {
     evt.preventDefault();
     if (!displayName.trim()) {
-      error = 'Display name is required';
+      error = m.provisionForm_nameRequired();
       return;
     }
     submitting = true;
@@ -53,7 +54,7 @@
 </script>
 
 <form onsubmit={submit} class="flex flex-col gap-4 p-6 max-w-2xl">
-  <h2 class="t-heading">Spin up a shell</h2>
+  <h2 class="t-heading">{m.provisionForm_title()}</h2>
 
   {#if error}
     <div
@@ -65,23 +66,23 @@
   {/if}
 
   <label class="flex flex-col gap-1.5 text-[0.75rem] text-muted">
-    Display name
+    {m.provisionForm_displayName()}
     <input
       bind:value={displayName}
       type="text"
-      placeholder="e.g. research assistant"
+      placeholder={m.provisionForm_displayNamePlaceholder()}
       required
       class="h-9 {fieldCls}"
     />
   </label>
 
   <div class="grid grid-cols-2 gap-3">
-    <Select label="Harness" size="sm" bind:value={harness}>
+    <Select label={m.provisionForm_harness()} size="sm" bind:value={harness}>
       <option value="hermes">HERMES</option>
       <option value="claude-code">Claude Code</option>
       <option value="codex">Codex</option>
     </Select>
-    <Select label="Region" size="sm" bind:value={region}>
+    <Select label={m.provisionForm_region()} size="sm" bind:value={region}>
       <option value="lax">LAX (Los Angeles)</option>
       <option value="lon">LON (London)</option>
       <option value="fra">FRA (Frankfurt)</option>
@@ -89,13 +90,13 @@
   </div>
 
   <div class="grid grid-cols-2 gap-3">
-    <Select label="Disk" size="sm" bind:value={diskGB}>
+    <Select label={m.provisionForm_disk()} size="sm" bind:value={diskGB}>
       <option value={2}>2 GB</option>
       <option value={4}>4 GB</option>
       <option value={8}>8 GB</option>
       <option value={10}>10 GB</option>
     </Select>
-    <Select label="Memory" size="sm" bind:value={memoryMB}>
+    <Select label={m.provisionForm_memory()} size="sm" bind:value={memoryMB}>
       <option value={256}>256 MB</option>
       <option value={512}>512 MB</option>
       <option value={1024}>1 GB</option>
@@ -104,29 +105,29 @@
   </div>
 
   <div class="grid grid-cols-2 gap-3">
-    <Select label="Auto-archive" size="sm" bind:value={archivePolicy}>
-      <option value="24h">After 24h idle</option>
-      <option value="always-on">Always on</option>
+    <Select label={m.provisionForm_archive()} size="sm" bind:value={archivePolicy}>
+      <option value="24h">{m.provisionForm_archive24h()}</option>
+      <option value="always-on">{m.provisionForm_alwaysOn()}</option>
     </Select>
-    <Select label="Backups" size="sm" bind:value={backupCadence}>
-      <option value="hourly">Hourly</option>
-      <option value="daily">Daily</option>
-      <option value="weekly">Weekly</option>
-      <option value="manual">Manual only</option>
+    <Select label={m.provisionForm_backups()} size="sm" bind:value={backupCadence}>
+      <option value="hourly">{m.provisionForm_hourly()}</option>
+      <option value="daily">{m.provisionForm_daily()}</option>
+      <option value="weekly">{m.provisionForm_weekly()}</option>
+      <option value="manual">{m.provisionForm_manualOnly()}</option>
     </Select>
   </div>
 
   <label class="flex flex-col gap-1.5 text-[0.75rem] text-muted">
-    Initial prompt (optional)
+    {m.provisionForm_initialPrompt()}
     <textarea
       bind:value={initialPrompt}
       rows="3"
-      placeholder="First instruction sent to the agent on boot…"
+      placeholder={m.provisionForm_initialPromptPlaceholder()}
       class="resize-y py-2 {fieldCls}"
     ></textarea>
   </label>
 
   <Button type="submit" variant="primary" size="lg" loading={submitting} class="self-start"
-    >Spin up shell</Button
+    >{m.provisionForm_spinUpButton()}</Button
   >
 </form>

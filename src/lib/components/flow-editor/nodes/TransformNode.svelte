@@ -4,6 +4,7 @@
   import type { TransformNodeData } from '$lib/state/features/flow-editor.svelte';
   import { flowEditorState, setNodes, openNodeContextMenu } from '$lib/state/features/flow-editor.svelte';
   import { Braces } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let { data, id }: NodeProps & { data: TransformNodeData } = $props();
 
@@ -28,11 +29,11 @@
     <div class="w-6 h-6 rounded-md bg-slate-500/20 flex items-center justify-center shrink-0">
       <Braces size={12} class="text-slate-300" />
     </div>
-    <span class="text-xs font-semibold text-foreground truncate">{data.label || 'Transform'}</span>
+    <span class="text-xs font-semibold text-foreground truncate">{data.label || m.flownode_transform()}</span>
   </div>
   <textarea
     class="w-full text-[10px] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground resize-y min-h-12"
-    placeholder="Template — use {'{input}'} for the upstream output"
+    placeholder={m.flownode_templatePlaceholder({ input: '{input}' })}
     value={data.template}
     onclick={(e) => e.stopPropagation()}
     oninput={handleTemplate}

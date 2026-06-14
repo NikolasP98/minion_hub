@@ -1,5 +1,6 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
+  import * as m from '$lib/paraglide/messages';
   import type { PageData } from './$types';
   let { data, form }: { data: PageData; form: any } = $props();
   let message = $state('');
@@ -14,35 +15,34 @@
     {#if data.mode === 'link'}
       {#if data.linkError}
         <div class="icon">⚠️</div>
-        <h1>Invite Unavailable</h1>
+        <h1>{m.join_inviteUnavailable()}</h1>
         <p class="subtitle">{data.linkError}</p>
-        <a href="/join" class="btn-primary linklike">Request access instead</a>
+        <a href="/join" class="btn-primary linklike">{m.join_requestAccessInstead()}</a>
       {:else}
         <div class="icon">🎟️</div>
-        <h1>Join {data.orgName}</h1>
+        <h1>{m.join_joinOrg({ org: data.orgName ?? '' })}</h1>
         <p class="subtitle">
-          You've been invited to join <strong>{data.orgName}</strong> as <strong>{data.role}</strong>.
+          {m.join_invitedToJoin({ org: data.orgName ?? '', role: data.role ?? '' })}
         </p>
         <form method="POST" action="?/consume" use:enhance>
           <input type="hidden" name="token" value={data.token} />
-          <button type="submit" class="btn-primary">Join {data.orgName}</button>
+          <button type="submit" class="btn-primary">{m.join_joinOrgButton({ org: data.orgName ?? '' })}</button>
         </form>
         {#if form?.error}<p class="error">{form.error}</p>{/if}
       {/if}
     {:else}
       <div class="icon">🔐</div>
-      <h1>Request Access</h1>
+      <h1>{m.join_requestAccess()}</h1>
       <p class="subtitle">
-        Your account <strong>{data.email}</strong> isn't a member of any organization yet.
-        Submit a request and the admin will review it.
+        {m.join_notMemberSubtitle({ email: data.email })}
       </p>
       <form method="POST" action="?/request" use:enhance>
         <div class="field">
-          <label for="msg">Message (optional)</label>
-          <textarea id="msg" name="message" bind:value={message} placeholder="Tell the admin who you are and why you need access..." rows={4} maxlength={500}></textarea>
+          <label for="msg">{m.join_messageLabel()}</label>
+          <textarea id="msg" name="message" bind:value={message} placeholder={m.join_messagePlaceholder()} rows={4} maxlength={500}></textarea>
           <span class="charcount">{message.length}/500</span>
         </div>
-        <button type="submit" class="btn-primary">Submit Request</button>
+        <button type="submit" class="btn-primary">{m.join_submitRequest()}</button>
       </form>
       {#if form?.error}<p class="error">{form.error}</p>{/if}
     {/if}

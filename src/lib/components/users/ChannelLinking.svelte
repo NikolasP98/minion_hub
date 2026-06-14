@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
   import { onMount } from 'svelte';
   import { invalidate } from '$app/navigation';
   import { sendRequest } from '$lib/services/gateway.svelte';
@@ -94,14 +95,14 @@
 
   async function disconnect(identity: Identity) {
     const label = identity.provider.charAt(0).toUpperCase() + identity.provider.slice(1);
-    if (!confirm(`Disconnect ${label}?`)) return;
+    if (!confirm(m.usersui_disconnectChannelConfirm({ label }))) return;
     const qs = identity.source ? `?source=${identity.source}` : '';
     const res = await fetch(`/api/users/${userId}/identities/${identity.id}${qs}`, { method: 'DELETE' });
     if (res.ok) {
-      toastSuccess(`${label} disconnected`);
+      toastSuccess(m.usersui_channelDisconnected({ label }));
       await invalidate('app:identities');
     } else {
-      toastError('Disconnect failed');
+      toastError(m.usersui_disconnectFailed());
     }
   }
 
@@ -121,12 +122,12 @@
     submitting = p.pluginId;
     try {
       await sendRequest(p.link.submitMethod, formValues[p.pluginId] ?? {});
-      toastSuccess(`${p.label} connected`);
+      toastSuccess(m.usersui_channelConnected({ label: p.label }));
       formValues[p.pluginId] = {};
       openPluginId = null;
       await invalidate('app:identities');
     } catch (e) {
-      toastError(e instanceof Error ? e.message : 'Connect failed');
+      toastError(e instanceof Error ? e.message : m.usersui_connectFailed());
     } finally {
       submitting = null;
     }
@@ -135,14 +136,14 @@
 
 <div class="bg-bg2 border border-border rounded-md overflow-hidden">
   <div class="flex items-center justify-between px-3 py-2.5 border-b border-border">
-    <div class="text-[10px] uppercase tracking-wider text-muted font-semibold">Channels</div>
+    <div class="text-[10px] uppercase tracking-wider text-muted font-semibold">{m.usersui_channels()}</div>
     {#if conn.connected}
       <button
         class="flex items-center gap-1 text-[10px] text-muted hover:text-foreground bg-transparent border-none cursor-pointer"
         onclick={loadPlugins}
-        title="Refresh"
+        title={m.usersui_refresh()}
       >
-        <RefreshCw size={11} class={loading ? 'animate-spin' : ''} /> Refresh
+        <RefreshCw size={11} class={loading ? 'animate-spin' : ''} /> {m.usersui_refresh()}
       </button>
     {/if}
   </div>
@@ -201,7 +202,7 @@
                     onclick={() => submitForm(p)}
                     disabled={submitting === p.pluginId}
                   >
-                    <Plug size={12} /> {p.link.submitLabel ?? `Connect ${p.label}`}
+                    <Plug size={12} /> {p.link.submitLabel ?? m.usersui_connectChannel({ label: p.label })}
                   </button>
                 </div>
               {:else if p.link.mode === 'iframe'}
@@ -221,13 +222,13 @@
                 </div>
               {:else}
                 <!-- managed -->
-                <p class="text-xs text-muted-foreground mb-2">{p.link.note ?? 'This channel is configured on the gateway.'}</p>
+                <p class="text-xs text-muted-foreground mb-2">{p.link.note ?? m.usersui_configuredOnGateway()}</p>
                 {#if p.link.settingsHref}
                   <a
                     href={p.link.settingsHref}
                     class="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-transparent border border-border text-foreground hover:bg-muted/30 no-underline"
                   >
-                    <SettingsIcon size={12} /> Open settings
+                    <SettingsIcon size={12} /> {m.usersui_openSettings()}
                   </a>
                 {/if}
               {/if}
@@ -240,7 +241,7 @@
 
   <!-- Footnotes -->
   {#if !conn.connected}
-    <p class="text-[11px] text-muted-strong px-3 py-2.5 border-t border-border/60">Connect to a gateway to link more channels.</p>
+    <p class="text-[11px] text-muted-strong px-3 py-2.5 border-t border-border/60">{m.usersui_connectGatewayToLinkChannels()}</p>
   {:else if loadError}
     <p class="text-[11px] text-destructive px-3 py-2.5 border-t border-border/60">{loadError}</p>
   {/if}

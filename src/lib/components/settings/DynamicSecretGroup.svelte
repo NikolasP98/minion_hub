@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
   import type { SecretsSummary } from '$lib/types/secrets';
   import { Button } from '$lib/components/ui';
   import SecretStatusPill from './SecretStatusPill.svelte';
@@ -26,7 +27,7 @@
   }
 
   async function handleClear(instanceId: string) {
-    if (!confirm(`Clear secret for ${instanceId}?`)) return;
+    if (!confirm(m.dynamicSecretGroup_clearConfirm({ id: instanceId }))) return;
     busy[instanceId] = 'clear';
     try {
       await onClear(instanceId);
@@ -62,14 +63,14 @@
       href={`/settings/plugins?plugin=${encodeURIComponent(ownerPlugin)}`}
       class="text-[11px] text-accent hover:underline whitespace-nowrap"
     >
-      Manage {ownerPlugin} →
+      {m.dynamicSecretGroup_manage({ plugin: ownerPlugin })} →
     </a>
   </header>
 
   {#if instances.length === 0}
     <div class="px-5 py-6 text-center">
       <p class="text-xs text-muted-foreground">
-        No instances yet. Add accounts in the {ownerPlugin} plugin to create entries here.
+        {m.dynamicSecretGroup_noInstances({ plugin: ownerPlugin })}
       </p>
     </div>
   {:else}
@@ -79,7 +80,7 @@
           <div class="flex-1 min-w-0">
             <p class="text-xs font-mono text-foreground truncate">{inst.instanceId}</p>
             <p class="text-[10px] text-muted-foreground mt-0.5">
-              Last checked: {fmtTime(inst.lastProbeAt)}
+              {m.dynamicSecretGroup_lastChecked()}: {fmtTime(inst.lastProbeAt)}
             </p>
           </div>
           <SecretStatusPill status={inst.probeStatus} message={inst.probeMessage} />
@@ -89,26 +90,26 @@
               size="sm"
               loading={busy[inst.instanceId!] === 'probe'}
               onclick={() => handleProbe(inst.instanceId!)}
-              title="Re-probe this credential"
+              title={m.dynamicSecretGroup_probeTitle()}
             >
-              Probe
+              {m.dynamicSecretGroup_probe()}
             </Button>
             <Button
               variant="outline"
               size="sm"
               onclick={() => onRotate(inst.instanceId!)}
-              title="Set a new value"
+              title={m.dynamicSecretGroup_rotateTitle()}
             >
-              Rotate
+              {m.dynamicSecretGroup_rotate()}
             </Button>
             <Button
               variant="danger"
               size="sm"
               loading={busy[inst.instanceId!] === 'clear'}
               onclick={() => handleClear(inst.instanceId!)}
-              title="Clear this credential"
+              title={m.dynamicSecretGroup_clearTitle()}
             >
-              Clear
+              {m.common_delete()}
             </Button>
           </div>
         </li>

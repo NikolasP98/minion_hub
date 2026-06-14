@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
   import { onDestroy } from "svelte";
   import { Loader2, Check, AlertTriangle, RotateCw } from "lucide-svelte";
   import { mountHostBridge, type MountedHostBridge } from "./bridge-host";
@@ -307,18 +308,18 @@
       <div class="flex items-center gap-2 text-sm">
         {#if saving}
           <Loader2 size={14} class="animate-spin text-muted-foreground" />
-          <span class="text-muted-foreground">Saving…</span>
+          <span class="text-muted-foreground">{m.pluginIframe_saving()}</span>
         {:else if saveError}
           <AlertTriangle size={14} class="text-destructive" />
           <span class="text-destructive">{saveError}</span>
         {:else if saveOk}
           <Check size={14} class="text-emerald-500" />
           <span class="text-foreground">
-            Saved{restartRequired ? " — gateway restart required" : ""}.
+            {restartRequired ? m.pluginIframe_savedRestartRequired() : m.pluginIframe_saved()}.
           </span>
         {:else if dirty}
           <span class="inline-block h-1.5 w-1.5 rounded-full bg-accent" aria-hidden="true"></span>
-          <span class="text-muted-foreground">Unsaved changes</span>
+          <span class="text-muted-foreground">{m.pluginIframe_unsavedChanges()}</span>
         {/if}
       </div>
       <button
@@ -330,7 +331,7 @@
         {#if saving}
           <RotateCw size={12} class="animate-spin" />
         {/if}
-        {saving ? "Saving…" : "Save changes"}
+        {saving ? m.pluginIframe_saving() : m.pluginIframe_saveChanges()}
       </button>
     </div>
   {/if}
@@ -338,7 +339,7 @@
     <div class="relative flex-1 min-h-0">
       <iframe
         bind:this={iframeEl}
-        title="Plugin: {pluginId}"
+        title={m.pluginIframe_pluginTitle({id: pluginId})}
         {src}
         referrerpolicy="strict-origin"
         onload={() => {
@@ -350,7 +351,7 @@
   {:else}
     <iframe
       bind:this={iframeEl}
-      title="Plugin: {pluginId}"
+      title={m.pluginIframe_pluginTitle({id: pluginId})}
       {src}
       referrerpolicy="strict-origin"
       onload={() => {

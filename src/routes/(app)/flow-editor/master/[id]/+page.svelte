@@ -3,6 +3,7 @@
   import MasterFlowCanvas from '$lib/components/flow-editor/MasterFlowCanvas.svelte';
   import { getMasterFlow } from '$lib/flows/master-flows';
   import { ArrowLeft, Workflow, BookOpen } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
 
   const flow = $derived(getMasterFlow(page.params.id ?? ''));
 </script>
@@ -17,7 +18,7 @@
     <a
       href="/flow-editor"
       class="flex items-center justify-center w-7 h-7 rounded text-muted hover:text-foreground hover:bg-bg3 transition-colors"
-      title="Back to flows"
+      title={m.flow_backToFlows()}
     >
       <ArrowLeft size={14} />
     </a>
@@ -26,15 +27,15 @@
 
     <div class="flex items-center gap-1.5 min-w-0">
       <Workflow size={13} class="text-accent shrink-0" />
-      <span class="text-sm font-semibold text-foreground truncate">{flow?.name ?? 'Master flow'}</span>
+      <span class="text-sm font-semibold text-foreground truncate">{flow?.name ?? m.flow_masterFlowLabel()}</span>
     </div>
 
     <div
       class="flex items-center gap-1 px-2 py-1 rounded-full bg-accent/15 text-accent text-[10px] font-mono uppercase tracking-wider ring-1 ring-accent/25 shrink-0"
-      title="Read-only reference diagram of a standard gateway behavior"
+      title={m.flow_masterFlowDesc()}
     >
       <BookOpen size={11} />
-      Master flow · read-only
+      {m.misc_masterFlowReadOnly()}
     </div>
 
     <div class="flex-1"></div>
@@ -51,8 +52,8 @@
     {:else}
       <div class="flex-1 flex items-center justify-center">
         <div class="text-center">
-          <p class="text-muted mb-4 text-sm">That master flow doesn't exist.</p>
-          <a href="/flow-editor" class="text-xs text-accent hover:underline">Back to flows</a>
+          <p class="text-muted mb-4 text-sm">{m.misc_masterFlowNotExist()}</p>
+          <a href="/flow-editor" class="text-xs text-accent hover:underline">{m.misc_backToFlows()}</a>
         </div>
       </div>
     {/if}

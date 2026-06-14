@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages';
 	import { Users, AlignLeft, AlignJustify, Briefcase, ListChecks, Wand2 } from 'lucide-svelte';
 	import { NOTE_POLISH_INTENTS, type NotePolishIntent } from '$lib/state/features/notes-autocomplete';
 
@@ -14,8 +15,8 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="pm" role="menu" tabindex="-1" onmousedown={(e) => e.stopPropagation()} aria-label="Polish options">
-	<div class="pm-head"><Wand2 size={13} /> Polish as…</div>
+<div class="pm" role="menu" tabindex="-1" onmousedown={(e) => e.stopPropagation()} aria-label={m.polishMenu_polishOptions()}>
+	<div class="pm-head"><Wand2 size={13} /> {m.polishMenu_polishAs()}</div>
 	{#each NOTE_POLISH_INTENTS as it (it.id)}
 		{@const Icon = ICONS[it.id]}
 		<button type="button" role="menuitem" class="pm-item" onclick={() => { onpick(it.id); onclose(); }}>

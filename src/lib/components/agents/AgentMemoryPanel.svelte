@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
   import { SvelteSet } from 'svelte/reactivity';
   import type { EChartsOption } from 'echarts';
   import Chart from '$lib/components/charts/Chart.svelte';
@@ -215,7 +216,7 @@
         type="text"
         bind:value={query}
         onkeydown={(e) => e.key === 'Enter' && runSearch()}
-        placeholder="Search memories semantically…"
+        placeholder={m.memory_searchPlaceholder()}
         class="px-2 py-1 text-[12px] rounded bg-card border border-border text-foreground w-56 focus:outline-none focus:border-accent"
       />
       <button
@@ -224,11 +225,11 @@
         disabled={searching}
         class="px-2 py-1 text-[11px] font-semibold rounded bg-accent/15 text-accent border border-accent/30 cursor-pointer hover:bg-accent/25 disabled:opacity-50"
       >
-        {searching ? '…' : 'Search'}
+        {searching ? '…' : m.memory_search()}
       </button>
       {#if hits !== null}
         <button type="button" onclick={clearSearch} class="px-2 py-1 text-[11px] text-muted hover:text-foreground cursor-pointer">
-          Clear
+          {m.memory_clear()}
         </button>
       {/if}
     </div>
@@ -273,7 +274,7 @@
       <Chart options={scatterOptions} height="200px" />
     {:else}
       <div class="absolute inset-0 flex items-center justify-center text-[11px] text-muted">
-        {loading ? 'Loading…' : 'Not enough embedded memories to plot yet.'}
+        {loading ? m.common_loading() : m.memory_notEnough()}
       </div>
     {/if}
   </div>
@@ -281,12 +282,12 @@
   <!-- Unified list: KG nodes + pgvector memories, sorted most recent first -->
   <div class="flex-1 min-h-0 overflow-auto rounded-lg border border-border">
     {#if (loading || kgLoading) && unifiedRows.length === 0}
-      <div class="p-6 text-center text-[12px] text-muted">Loading…</div>
+      <div class="p-6 text-center text-[12px] text-muted">{m.common_loading()}</div>
     {:else if error}
       <div class="p-6 text-center text-[12px] text-red-400">{error}</div>
     {:else if unifiedRows.length === 0}
       <div class="p-6 text-center text-[12px] text-muted">
-        {hits !== null ? 'No matches.' : totalCount === 0 && kgNodes.length === 0 ? 'No memories captured yet.' : 'No memories in the selected categories.'}
+        {hits !== null ? m.common_noMatches() : totalCount === 0 && kgNodes.length === 0 ? m.memory_noCaptures() : m.memory_noCategories()}
       </div>
     {:else}
       <table class="w-full text-[12px] border-collapse">

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages';
 	import {
 		removeAttachment,
 		setAttachmentSize,
@@ -30,8 +31,8 @@
 					<button
 						type="button"
 						class="thumb-btn"
-						title="View image"
-						aria-label="View image"
+						title={m.noteImageStrip_viewImage()}
+						aria-label={m.noteImageStrip_viewImage()}
 						onclick={() => onopen(rawSrc(att.fileId))}
 					>
 						<img
@@ -44,8 +45,8 @@
 					<button
 						type="button"
 						class="thumb-del"
-						title="Remove image"
-						aria-label="Remove image"
+						title={m.noteImageStrip_removeImage()}
+						aria-label={m.noteImageStrip_removeImage()}
 						onclick={() => removeAttachment(note.id, att.id)}
 					>
 						<X size={11} />

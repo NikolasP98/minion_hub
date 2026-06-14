@@ -5,6 +5,7 @@
     type RunnerEvent,
   } from '$lib/state/features/flow-editor.svelte';
   import { X, History, CheckCircle2, AlertCircle, Loader } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
 
   type Run = {
     id: string;
@@ -72,7 +73,7 @@
       <div class="flex items-center gap-1.5">
         <History size={13} class="text-muted" />
         <span class="font-mono text-[10px] font-semibold uppercase tracking-widest text-muted"
-          >Run history</span
+          >{m.flownode_runHistory()}</span
         >
         {#if runs.length > 0}
           <span class="rounded bg-bg3 px-1.5 py-0.5 font-mono text-[9px] text-muted/60">{runs.length}</span>
@@ -81,7 +82,7 @@
       <button
         onclick={() => (flowEditorState.historyOpen = false)}
         class="flex h-5 w-5 items-center justify-center rounded text-muted/60 transition-colors hover:bg-bg3 hover:text-foreground"
-        title="Close history"
+        title={m.flownode_closeHistory()}
       >
         <X size={12} />
       </button>
@@ -91,13 +92,13 @@
     <div class="flex-1 overflow-y-auto p-2">
       {#if loading}
         <div class="flex items-center justify-center gap-2 py-8 text-[11px] text-muted/60">
-          <Loader size={13} class="animate-spin" /> Loading…
+          <Loader size={13} class="animate-spin" /> {m.common_loading()}
         </div>
       {:else if loadError}
         <p class="px-2 py-4 text-[11px] text-red-400">{loadError}</p>
       {:else if runs.length === 0}
         <p class="px-2 py-4 text-[11px] italic text-muted/40">
-          No runs yet — hit Test Run to record one.
+          {m.flownode_noRunsYetHitTestRun()}
         </p>
       {:else}
         <div class="space-y-1">
@@ -123,11 +124,11 @@
                       ? 'bg-violet-500/20 text-violet-300 ring-1 ring-violet-500/30'
                       : 'bg-bg3 text-muted/70'}"
                   >
-                    {run.source === 'production' ? 'Live' : 'Test'}
+                    {run.source === 'production' ? m.flownode_live() : m.flownode_test()}
                   </span>
                 </div>
                 <div class="font-mono text-[10px] text-muted/60">
-                  {nodeCount(run.events)} node{nodeCount(run.events) === 1 ? '' : 's'} ·
+                  {nodeCount(run.events)} {m.flownode_node({ count: nodeCount(run.events) })} ·
                   {(run.durationMs / 1000).toFixed(1)}s
                 </div>
               </div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
   import type { SearchResult } from '$lib/schemas/structured-response';
   import PartialField from './PartialField.svelte';
 
@@ -19,18 +20,18 @@
       <span class="error-icon">⚠</span>
       <span>{error}</span>
       {#if partial}
-        <span class="error-hint">Partial result shown below</span>
+        <span class="error-hint">{m.search_partialResultShownBelow()}</span>
       {/if}
     </div>
   {/if}
 
   <div class="card-header">
-    <span class="card-label">Search Results</span>
+    <span class="card-label">{m.search_results()}</span>
     {#if partial?.query}
       <span class="query-chip">"{partial.query}"</span>
     {/if}
     {#if !done}
-      <span class="generating-badge">generating…</span>
+      <span class="generating-badge">{m.search_generating()}</span>
     {/if}
   </div>
 
@@ -65,7 +66,7 @@
       {/each}
     </ul>
   {:else if !done}
-    <div class="results-placeholder" aria-label="Loading results">
+    <div class="results-placeholder" aria-label={m.search_loadingResults()}>
       {#each { length: 3 } as _, i (i)}
         <div class="result-skeleton">
           <span class="title-skeleton" style="width: {100 + i * 20}px"></span>

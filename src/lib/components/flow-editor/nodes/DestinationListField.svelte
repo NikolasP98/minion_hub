@@ -10,6 +10,7 @@
     identitiesFor,
   } from '$lib/state/features/channel-sources.svelte';
   import { Plus, Trash2, User, Pencil } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
 
   // Controlled field: parent owns the value (node data for the built-in Channel
   // node, or a `config[key]` slot for a `destination-list` plugin field).
@@ -78,7 +79,7 @@
       value={channel}
       onchange={(e) => setChannel((e.target as HTMLSelectElement).value)}
     >
-      <option value="" disabled>Select a channel…</option>
+      <option value="" disabled>{m.flowcfg_selectChannel()}</option>
       {#each channels as c (c.id)}
         <option value={c.id}>{c.label}</option>
       {/each}
@@ -98,7 +99,7 @@
       disabled={!channel}
       onchange={(e) => setAccount((e.target as HTMLSelectElement).value)}
     >
-      <option value="">Any linked account</option>
+      <option value="">{m.flowcfg_anyLinkedAccount()}</option>
       {#each accounts as a (a.accountId)}
         <option value={a.accountId}>{a.label}{a.phone && a.phone !== a.label ? ` · ${a.phone}` : ''}{a.connected ? '' : ' — offline'}</option>
       {/each}
@@ -120,16 +121,16 @@
       class="flex items-center gap-1 text-[10px] text-accent hover:text-accent/80 transition-colors disabled:opacity-40"
       onclick={addDest}
       disabled={!channel}
-      title={channel ? 'Add a destination' : 'Pick a channel first'}
+      title={channel ? m.flowcfg_addDestination() : m.flowcfg_pickChannelFirst()}
     >
-      <Plus size={12} /> Add
+      <Plus size={12} /> {m.common_add()}
     </button>
   </div>
 
   {#if !channel}
-    <p class="text-[10px] text-muted">Choose a channel to add destinations.</p>
+    <p class="text-[10px] text-muted">{m.flowcfg_chooseChannelToAdd()}</p>
   {:else if destinations.length === 0}
-    <p class="text-[10px] text-muted">No destinations yet — click <span class="text-foreground">Add</span>.</p>
+    <p class="text-[10px] text-muted">{m.flowcfg_noDestinationsYet()}</p>
   {/if}
 
   <div class="flex flex-col gap-2">
@@ -141,23 +142,23 @@
             <button
               class="flex items-center gap-1 px-2 py-0.5 text-[10px] {d.kind === 'user' ? 'bg-cyan-500/25 text-cyan-200' : 'text-muted hover:text-foreground'}"
               onclick={() => patchDest(i, { kind: 'user', to: '' })}
-              title="Pick a user who linked this channel to their account"
+              title={m.flowcfg_pickLinkedUser()}
             >
-              <User size={10} /> Registered
+              <User size={10} /> {m.flowcfg_registered()}
             </button>
             <button
               class="flex items-center gap-1 px-2 py-0.5 text-[10px] {d.kind === 'custom' ? 'bg-cyan-500/25 text-cyan-200' : 'text-muted hover:text-foreground'}"
               onclick={() => patchDest(i, { kind: 'custom' })}
-              title="Enter an address manually"
+              title={m.flowcfg_enterAddressManually()}
             >
-              <Pencil size={10} /> Custom
+              <Pencil size={10} /> {m.flowcfg_custom()}
             </button>
           </div>
           <button
             class="text-muted/60 hover:text-red-400 transition-colors"
             onclick={() => removeDest(i)}
-            title="Remove destination"
-            aria-label="Remove destination"
+            title={m.flowcfg_removeDestination()}
+            aria-label={m.flowcfg_removeDestination()}
           >
             <Trash2 size={12} />
           </button>
@@ -174,7 +175,7 @@
               value={d.to}
               onchange={(e) => pickRegistered(i, (e.target as HTMLSelectElement).value)}
             >
-              <option value="" disabled>Select a registered user…</option>
+              <option value="" disabled>{m.flowcfg_selectRegisteredUser()}</option>
               {#each registered as e (e.id)}
                 <option value={e.to}>{e.label}{e.verified ? '' : ' (unverified)'}</option>
               {/each}
@@ -191,7 +192,7 @@
           <input
             type="text"
             class="w-full text-[11px] bg-bg3 border border-border rounded px-2 py-1 text-foreground"
-            placeholder="label (optional)"
+            placeholder={m.flowcfg_labelOptional()}
             value={d.label ?? ''}
             oninput={(e) => patchDest(i, { label: (e.target as HTMLInputElement).value || undefined })}
           />

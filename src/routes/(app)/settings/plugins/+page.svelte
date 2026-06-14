@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
   import { invalidateAll } from '$app/navigation';
   import { page } from '$app/state';
   import {
@@ -233,10 +234,10 @@
     <header class="space-y-1">
       <div class="flex items-center gap-2">
         <PlugZap size={20} class="text-muted-foreground" />
-        <h1 class="text-2xl font-semibold">Plugins</h1>
+        <h1 class="text-2xl font-semibold">{m.pluginsPage_title()}</h1>
       </div>
       <p class="text-sm text-muted-foreground">
-        Plugins that ship a UI appear here. Their configuration is owned by the plugin itself.
+        {m.pluginsPage_subtitle()}
       </p>
     </header>
 
@@ -255,11 +256,11 @@
             <div>
               <p class="font-medium text-destructive">
                 {#if data.errorKind === 'originNotAllowed'}
-                  Gateway rejected this origin
+                  {m.pluginsPage_originNotAllowed()}
                 {:else if data.errorKind === 'unreachable'}
-                  Gateway unreachable
+                  {m.pluginsPage_unreachable()}
                 {:else}
-                  Failed to load plugin manifest
+                  {m.pluginsPage_loadFailed()}
                 {/if}
               </p>
               <p class="mt-1 break-all text-muted-foreground">{data.error}</p>
@@ -286,17 +287,17 @@
                     type="button"
                     onclick={copySnippet}
                     class="absolute right-2 top-2 inline-flex items-center gap-1 rounded border border-border bg-card px-2 py-1 text-xs hover:bg-muted"
-                    aria-label="Copy snippet"
+                    aria-label={m.a11y0_copySnippet()}
                   >
                     {#if copied}
-                      <Check size={12} /> Copied
+                      <Check size={12} /> {m.pluginsPage_copied()}
                     {:else}
-                      <Copy size={12} /> Copy
+                      <Copy size={12} /> {m.pluginsPage_copy()}
                     {/if}
                   </button>
                 </div>
                 <p class="text-xs text-muted-foreground">
-                  Then restart the gateway and click <em>Retry</em>.
+                  {m.pluginsPage_restartMessage()}
                 </p>
               </div>
             {/if}
@@ -309,7 +310,7 @@
                 class="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium hover:bg-muted disabled:opacity-50"
               >
                 <RefreshCw size={12} class={refreshing ? 'animate-spin' : ''} />
-                {refreshing ? 'Retrying…' : 'Retry'}
+                {refreshing ? m.pluginsPage_retrying() : m.common_retry()}
               </button>
             </div>
           </div>
@@ -325,17 +326,16 @@
           <Puzzle size={22} class="text-muted-foreground" />
         </div>
         <div class="space-y-1">
-          <p class="text-sm font-medium">No plugins installed</p>
+          <p class="text-sm font-medium">{m.pluginsPage_empty()}</p>
           <p class="max-w-sm text-xs text-muted-foreground">
-            Plugins extend the hub with new pages, widgets, and integrations. Browse the marketplace
-            to find one.
+            {m.pluginsPage_emptyDescription()}
           </p>
         </div>
         <a
           href="/marketplace/plugins"
           class="mt-1 inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium hover:bg-muted"
         >
-          Browse marketplace <ArrowUpRight size={12} />
+          {m.pluginsPage_browseMarketplace()} <ArrowUpRight size={12} />
         </a>
       </div>
     {/if}
@@ -345,7 +345,7 @@
         <div class="grid min-h-0 w-full grid-cols-1 md:grid-cols-[16rem_1fr]">
           <nav
             class="min-h-0 overflow-y-auto border-b border-border md:border-b-0 md:border-r"
-            aria-label="Installed plugins"
+            aria-label={m.pluginsPage_navLabel()}
           >
             <ul class="flex flex-row overflow-x-auto md:flex-col md:overflow-x-visible">
               {#each data.entries as entry, i (entry.pluginId + ':' + entry.entrypoint)}
@@ -447,7 +447,7 @@
               >
                 {#if tokenLoading}
                   <span class="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <RefreshCw size={12} class="animate-spin" /> Authenticating…
+                    <RefreshCw size={12} class="animate-spin" /> {m.pluginsPage_authenticating()}
                   </span>
                 {:else if tokenError}
                   <span class="text-xs text-destructive">Auth: {tokenError}</span>
@@ -455,7 +455,7 @@
                 {#if saveSaving}
                   <span class="flex items-center gap-1.5 text-xs">
                     <Loader2 size={12} class="animate-spin text-muted-foreground" />
-                    <span class="text-muted-foreground">Saving…</span>
+                    <span class="text-muted-foreground">{m.pluginsPage_saving()}</span>
                   </span>
                 {:else if saveError}
                   <span class="flex items-center gap-1.5 text-xs">
@@ -466,7 +466,7 @@
                   <span class="flex items-center gap-1.5 text-xs">
                     <Check size={12} class="text-success" />
                     <span class="text-foreground"
-                      >Saved{saveRestart ? ' — restart required' : ''}.</span
+                      >{saveRestart ? m.pluginsPage_savedRestart() : m.pluginsPage_saved()}</span
                     >
                   </span>
                 {:else if saveDirty}
@@ -475,7 +475,7 @@
                       class="inline-block h-1.5 w-1.5 rounded-full bg-accent"
                       aria-hidden="true"
                     ></span>
-                    <span class="text-muted-foreground">Unsaved changes</span>
+                    <span class="text-muted-foreground">{m.pluginsPage_unsavedChanges()}</span>
                   </span>
                 {/if}
                 {#if saveDirty || saveSaving}
@@ -488,7 +488,7 @@
                     {#if saveSaving}
                       <RotateCw size={12} class="animate-spin" />
                     {/if}
-                    {saveSaving ? 'Saving…' : 'Save changes'}
+                    {saveSaving ? m.pluginsPage_saving() : m.pluginsPage_saveButton()}
                   </button>
                 {/if}
                 <button
@@ -497,12 +497,12 @@
                   aria-checked={on}
                   disabled={busy}
                   onclick={() => toggleEnabled(current)}
-                  title={on ? 'Disable plugin' : 'Enable plugin'}
+                  title={on ? m.pluginsPage_disablePlugin() : m.pluginsPage_enablePlugin()}
                   class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border border-border transition-colors disabled:cursor-wait disabled:opacity-60"
                   class:bg-success={on}
                   class:bg-muted={!on}
                 >
-                  <span class="sr-only">{on ? 'Disable' : 'Enable'} {current.title}</span>
+                  <span class="sr-only">{on ? m.pluginsPage_disable() : m.pluginsPage_enable()} {current.title}</span>
                   <span
                     class="inline-flex size-5 items-center justify-center rounded-full bg-card shadow-sm transition-transform"
                     class:translate-x-5={on}
@@ -521,7 +521,7 @@
                   class="border-b border-destructive/40 bg-destructive/5 px-4 py-2 text-xs text-destructive"
                   role="alert"
                 >
-                  Toggle failed: {toggleError}
+                  {m.pluginsPage_toggleFailed()}: {toggleError}
                 </div>
               {/if}
               {#if restartRequired}
@@ -529,17 +529,17 @@
                   class="flex items-center gap-2 border-b border-warning/40 bg-warning/5 px-4 py-2 text-xs text-warning"
                 >
                   <AlertTriangle size={12} />
-                  Gateway restart required for the change to take effect.
+                  {m.pluginsPage_restartRequired()}
                 </div>
               {/if}
               {#if tokenLoading}
                 <div class="flex items-center gap-2 px-4 py-6 text-sm text-muted-foreground">
                   <RefreshCw size={14} class="animate-spin" />
-                  Fetching gateway token…
+                  {m.pluginsPage_fetchingToken()}
                 </div>
               {:else if !authToken && !tokenError}
                 <div class="px-4 py-6 text-sm text-muted-foreground">
-                  No active host. Pick one in the host switcher to load this plugin.
+                  {m.pluginsPage_noHost()}
                 </div>
               {:else}
                 <div class="flex min-h-0 flex-1 flex-col">

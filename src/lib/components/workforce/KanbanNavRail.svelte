@@ -1,17 +1,18 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { LayoutDashboard, Inbox, CheckCircle2, Target, FolderKanban, Users } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages';
 	import Tooltip from '$lib/components/layout/Tooltip.svelte';
 
 	// The KANBAN plugin's detail views — mirrors the /my-agent icon rail. Order +
 	// icons match the canonical route registry ($lib/nav/routes.ts workforce block).
 	const items = [
-		{ href: '/workforce', label: 'Dashboard', icon: LayoutDashboard },
-		{ href: '/workforce/issues', label: 'Issues', icon: Inbox },
-		{ href: '/workforce/approvals', label: 'Approvals', icon: CheckCircle2 },
-		{ href: '/workforce/goals', label: 'Goals', icon: Target },
-		{ href: '/workforce/projects', label: 'Projects', icon: FolderKanban },
-		{ href: '/workforce/org', label: 'Org', icon: Users },
+		{ href: '/workforce', label: m.workforce_dashboard(), icon: LayoutDashboard },
+		{ href: '/workforce/issues', label: m.workforce_issues(), icon: Inbox },
+		{ href: '/workforce/approvals', label: m.workforce_approvals(), icon: CheckCircle2 },
+		{ href: '/workforce/goals', label: m.workforce_goals(), icon: Target },
+		{ href: '/workforce/projects', label: m.workforce_projects(), icon: FolderKanban },
+		{ href: '/workforce/org', label: m.workforce_org(), icon: Users },
 	];
 
 	const currentPath = $derived(page.url.pathname);
@@ -32,7 +33,7 @@
 	});
 </script>
 
-<nav class="nav-rail" aria-label="Kanban">
+<nav class="nav-rail" aria-label={m.a11y3_kanbanNav()}>
 	{#each items as item (item.href)}
 		{@const Icon = item.icon}
 		{@const active = item.href === activeHref}

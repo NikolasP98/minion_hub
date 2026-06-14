@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages';
 	import { Phone, PhoneOff, Mic, MicOff } from 'lucide-svelte';
 	import type { AgentVoiceState } from '$lib/voice/visemeMap';
 
@@ -15,10 +16,10 @@
 	const { active, muted, status, disabled = false, onstart, onend, ontoggleMute }: Props = $props();
 
 	const STATUS_LABEL: Record<AgentVoiceState, string> = {
-		idle: 'Muted',
-		listening: 'Listening…',
-		thinking: 'Thinking…',
-		speaking: 'Speaking…',
+		idle: m.call_muted(),
+		listening: m.call_listening(),
+		thinking: m.call_thinking(),
+		speaking: m.call_speaking(),
 	};
 </script>
 
@@ -28,13 +29,13 @@
 		class="call-btn start"
 		{disabled}
 		onclick={onstart}
-		aria-label="Call your agent"
-		title={disabled ? 'Connect a gateway first' : 'Call your agent'}
+		aria-label={m.call_callYourAgent()}
+		title={disabled ? m.call_connectGatewayFirst() : m.call_callYourAgent()}
 	>
 		<Phone size={16} />
 	</button>
 {:else}
-	<div class="call-live" role="group" aria-label="Call controls">
+	<div class="call-live" role="group" aria-label={m.call_callControls()}>
 		<span class="status" data-status={status}>
 			<span class="pulse" class:on={status === 'listening' || status === 'speaking'}></span>
 			{STATUS_LABEL[status]}
@@ -44,12 +45,12 @@
 			class="icon-btn"
 			class:muted
 			onclick={ontoggleMute}
-			title={muted ? 'Unmute' : 'Mute'}
+			title={muted ? m.call_unmute() : m.call_mute()}
 			aria-pressed={muted}
 		>
 			{#if muted}<MicOff size={14} />{:else}<Mic size={14} />{/if}
 		</button>
-		<button type="button" class="icon-btn end" onclick={onend} title="End call">
+		<button type="button" class="icon-btn end" onclick={onend} title={m.call_endCall()}>
 			<PhoneOff size={14} />
 		</button>
 	</div>

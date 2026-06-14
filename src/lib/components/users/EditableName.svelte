@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
   import * as editable from '@zag-js/editable';
   import { useMachine, normalizeProps } from '@zag-js/svelte';
   import { Pencil, Check, X } from 'lucide-svelte';
@@ -8,7 +9,7 @@
 
   let {
     value,
-    placeholder = 'Your name',
+    placeholder = m.usersui_yourName(),
     onCommit,
   }: {
     value: string;
@@ -61,14 +62,14 @@
       {...api.getSubmitTriggerProps()}
       class="grid place-items-center h-6 w-6 rounded text-accent hover:bg-accent/15 bg-transparent border-none cursor-pointer shrink-0 disabled:opacity-50"
       disabled={saving}
-      aria-label="Save name"
+      aria-label={m.usersui_saveName()}
     >
       <Check size={14} />
     </button>
     <button
       {...api.getCancelTriggerProps()}
       class="grid place-items-center h-6 w-6 rounded text-muted hover:text-foreground hover:bg-white/[0.06] bg-transparent border-none cursor-pointer shrink-0"
-      aria-label="Cancel"
+      aria-label={m.common_cancel()}
     >
       <X size={14} />
     </button>
@@ -76,7 +77,7 @@
     <button
       {...api.getEditTriggerProps()}
       class="grid place-items-center h-6 w-6 rounded text-muted hover:text-foreground hover:bg-white/[0.06] bg-transparent border-none cursor-pointer shrink-0 opacity-0 group-hover/name:opacity-100 focus-visible:opacity-100 transition-opacity"
-      aria-label="Edit name"
+      aria-label={m.usersui_editName()}
     >
       <Pencil size={13} />
     </button>

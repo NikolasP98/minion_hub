@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { PageData } from './$types';
+	import * as m from '$lib/paraglide/messages';
 	import { startPolling } from '$lib/utils/live-polling';
 	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
 	import { PageHeader } from '$lib/components/ui';
@@ -85,10 +86,10 @@
 
 	function relativeTime(iso: string | Date): string {
 		const diff = Date.now() - new Date(iso).getTime();
-		if (diff < 60_000) return 'just now';
-		if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-		if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-		return `${Math.floor(diff / 86_400_000)}d ago`;
+		if (diff < 60_000) return m.common_justNow();
+		if (diff < 3_600_000) return m.common_minutesAgo({ count: Math.floor(diff / 60_000) });
+		if (diff < 86_400_000) return m.common_hoursAgo({ count: Math.floor(diff / 3_600_000) });
+		return m.common_daysAgo({ count: Math.floor(diff / 86_400_000) });
 	}
 
 	function agentName(id: string): string {
@@ -98,14 +99,14 @@
 	onMount(() => startPolling('app:reliability', 8000));
 </script>
 
-<PageHeader title="Reliability">
+<PageHeader title={m.workforce_reliability()}>
 	{#snippet leading()}
 		<Gauge size={16} class="text-accent shrink-0" />
 	{/snippet}
 	{#snippet actions()}
 		<LiveIndicator intervalMs={8000} />
 		<div class="hidden sm:block text-xs text-muted-foreground">
-			{grandTotal} events across {heatmap.agents.length} agents · last 24 hours
+			{grandTotal} {m.reliability_eventsAcross()} {heatmap.agents.length} {m.reliability_agents()} · {m.reliability_last24Hours()}
 		</div>
 	{/snippet}
 </PageHeader>
@@ -113,7 +114,7 @@
 	<!-- Heatmap -->
 	<section>
 		<h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-			Activity heatmap <span class="font-normal normal-case tracking-normal text-xs text-muted-strong">(agent × hour-of-day)</span>
+			{m.reliability_activityHeatmap()} <span class="font-normal normal-case tracking-normal text-xs text-muted-strong">{m.reliability_agentByHourOfDay()}</span>
 		</h2>
 		<div class="rounded-lg border border-border bg-card p-4 overflow-x-auto">
 			<table class="w-full text-xs border-separate" style="border-spacing: 2px">
@@ -167,7 +168,7 @@
 
 		<!-- Color scale legend -->
 		<div class="mt-3 flex items-center gap-3 text-xs text-muted-foreground">
-			<span>Less</span>
+			<span>{m.reliability_less()}</span>
 			<div class="flex gap-1">
 				{#each [0, 0.2, 0.4, 0.6, 0.8, 1] as t (t)}
 					<span
@@ -176,8 +177,8 @@
 					></span>
 				{/each}
 			</div>
-			<span>More</span>
-			<span class="ml-auto">Peak hour: {hourTotals.indexOf(Math.max(...hourTotals)).toString().padStart(2, '0')}:00</span>
+			<span>{m.reliability_more()}</span>
+			<span class="ml-auto">{m.reliability_peakHour()}: {hourTotals.indexOf(Math.max(...hourTotals)).toString().padStart(2, '0')}:00</span>
 		</div>
 	</section>
 
@@ -185,11 +186,11 @@
 	<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 		<section>
 			<h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-				Recent failures <span class="font-medium normal-case tracking-normal text-xs">({failedRuns.length})</span>
+				{m.reliability_recentFailures()} <span class="font-medium normal-case tracking-normal text-xs">({failedRuns.length})</span>
 			</h2>
 			{#if failedRuns.length === 0}
 				<div class="rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground">
-					No recent failures.
+					{m.reliability_noRecentFailures()}
 				</div>
 			{:else}
 				<ul class="rounded-lg border border-border bg-card divide-y divide-border">
@@ -215,11 +216,11 @@
 
 		<section>
 			<h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-				In flight <span class="font-medium normal-case tracking-normal text-xs">({runningRuns.length})</span>
+				{m.reliability_inFlight()} <span class="font-medium normal-case tracking-normal text-xs">({runningRuns.length})</span>
 			</h2>
 			{#if runningRuns.length === 0}
 				<div class="rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground">
-					No runs currently in flight.
+					{m.reliability_noRunsCurrentlyInFlight()}
 				</div>
 			{:else}
 				<ul class="rounded-lg border border-border bg-card divide-y divide-border">

@@ -4,6 +4,7 @@
   import type { HandoffNodeData } from '$lib/state/features/flow-editor.svelte';
   import { openNodeContextMenu, openNodeConfig } from '$lib/state/features/flow-editor.svelte';
   import { Headset, Settings2 } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let { data, id }: NodeProps & { data: HandoffNodeData } = $props();
   const count = $derived(Array.isArray(data.destinations) ? data.destinations.length : 0);
@@ -21,17 +22,17 @@
     <div class="w-6 h-6 rounded-md bg-rose-500/20 flex items-center justify-center shrink-0">
       <Headset size={12} class="text-rose-400" />
     </div>
-    <span class="text-xs font-semibold text-foreground truncate flex-1">{data.label || 'Human Handoff'}</span>
+    <span class="text-xs font-semibold text-foreground truncate flex-1">{data.label || m.flownode_humanHandoff()}</span>
     <button
       class="shrink-0 text-muted/60 hover:text-foreground transition-colors"
-      title="Configure handoff"
-      aria-label="Configure handoff"
+      title={m.flownode_configureHandoff()}
+      aria-label={m.flownode_configureHandoff()}
       onclick={(e) => { e.stopPropagation(); openNodeConfig(id); }}
     >
       <Settings2 size={12} />
     </button>
   </div>
   <div class="text-[9px] text-muted/70">
-    {data.priority ? `${data.priority} · ` : ''}{count} owner{count === 1 ? '' : 's'} · relay until /end
+    {data.priority ? `${data.priority} · ` : ''}{count} {m.flownode_owner({ count })} · {m.flownode_relayUntilEnd()}
   </div>
 </div>

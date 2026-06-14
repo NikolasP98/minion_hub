@@ -11,6 +11,7 @@
 
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import * as m from '$lib/paraglide/messages';
   import { X } from 'lucide-svelte';
 
   interface Props {
@@ -93,7 +94,7 @@
               type="button"
               onclick={close}
               class="flex items-center justify-center w-7 h-7 -mr-1 rounded-[var(--radius-md)] text-muted-foreground hover:text-foreground hover:bg-white/[0.06] transition-colors duration-[150ms]"
-              aria-label="Close"
+              aria-label={m.common_close()}
             >
               <X size={16} />
             </button>

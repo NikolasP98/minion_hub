@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { PageData } from './$types';
+	import * as m from '$lib/paraglide/messages';
 	import { startPolling } from '$lib/utils/live-polling';
 	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
 	import Sparkline from '$lib/components/Sparkline.svelte';
@@ -49,14 +50,14 @@
 	onMount(() => startPolling('app:costs', 8000));
 </script>
 
-<PageHeader title="Costs">
+<PageHeader title={m.workforce_costs()}>
 	{#snippet leading()}
 		<Receipt size={16} class="text-accent shrink-0" />
 	{/snippet}
 	{#snippet actions()}
 		<LiveIndicator intervalMs={8000} />
 		<div class="hidden sm:block text-xs text-muted-foreground">
-			Trailing 14 days · projected month-end {formatBig(kpis.projectedMonthEndCents)}
+			{m.costs_trailing14Days()} · {m.costs_projectedMonthEnd()} {formatBig(kpis.projectedMonthEndCents)}
 		</div>
 	{/snippet}
 </PageHeader>
@@ -64,23 +65,23 @@
 	<!-- KPI row: today / last 7 / month / projected -->
 	<section class="grid grid-cols-2 sm:grid-cols-4 gap-4">
 		<div class="rounded-lg border border-border bg-card p-4 space-y-1">
-			<h2 class="text-xs font-medium text-muted-foreground uppercase tracking-wider">Today</h2>
+			<h2 class="text-xs font-medium text-muted-foreground uppercase tracking-wider">{m.common_today()}</h2>
 			<div class="text-2xl font-semibold tabular-nums">{formatCents(kpis.todayCents)}</div>
 		</div>
 		<div class="rounded-lg border border-border bg-card p-4 space-y-1">
-			<h2 class="text-xs font-medium text-muted-foreground uppercase tracking-wider">Last 7 days</h2>
+			<h2 class="text-xs font-medium text-muted-foreground uppercase tracking-wider">{m.costs_last7Days()}</h2>
 			<div class="text-2xl font-semibold tabular-nums">{formatBig(kpis.last7Cents)}</div>
 		</div>
 		<div class="rounded-lg border border-border bg-card p-4 space-y-1">
-			<h2 class="text-xs font-medium text-muted-foreground uppercase tracking-wider">This period</h2>
+			<h2 class="text-xs font-medium text-muted-foreground uppercase tracking-wider">{m.costs_thisPeriod()}</h2>
 			<div class="text-2xl font-semibold tabular-nums">{formatBig(kpis.monthCents)}</div>
-			<div class="text-xs text-muted-foreground">of {formatBig(kpis.budgetCents)} budget</div>
+			<div class="text-xs text-muted-foreground">{m.costs_of()} {formatBig(kpis.budgetCents)} {m.costs_budget()}</div>
 		</div>
 		<div class="rounded-lg border border-border bg-card p-4 space-y-1">
-			<h2 class="text-xs font-medium text-muted-foreground uppercase tracking-wider">Projected EOM</h2>
+			<h2 class="text-xs font-medium text-muted-foreground uppercase tracking-wider">{m.costs_projectedEOM()}</h2>
 			<div class="text-2xl font-semibold tabular-nums">{formatBig(kpis.projectedMonthEndCents)}</div>
 			<div class="text-xs {projectedUtilization > 100 ? 'text-destructive' : 'text-muted-foreground'}">
-				{projectedUtilization.toFixed(0)}% of budget
+				{projectedUtilization.toFixed(0)}% {m.costs_ofBudget()}
 			</div>
 		</div>
 	</section>
@@ -89,10 +90,10 @@
 	<section>
 		<div class="flex items-center justify-between mb-2">
 			<h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-				Daily spend
+				{m.costs_dailySpend()}
 			</h2>
 			<div class="text-xs text-muted-foreground tabular-nums">
-				min {formatCents(Math.min(...trendValues))} · max {formatCents(Math.max(...trendValues))} · avg {formatCents(Math.round(trendValues.reduce((s, n) => s + n, 0) / trendValues.length))}
+				{m.costs_min()} {formatCents(Math.min(...trendValues))} · {m.costs_max()} {formatCents(Math.max(...trendValues))} · {m.costs_avg()} {formatCents(Math.round(trendValues.reduce((s, n) => s + n, 0) / trendValues.length))}
 			</div>
 		</div>
 		<div class="rounded-lg border border-border bg-card p-4 space-y-3">
@@ -115,7 +116,7 @@
 	<!-- Budget bar (large) -->
 	<section>
 		<h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-			Budget pacing
+			{m.costs_budgetPacing()}
 		</h2>
 		<div class="rounded-lg border border-border bg-card p-4 space-y-2">
 			<div class="relative h-6 rounded-md bg-muted overflow-hidden">
@@ -123,23 +124,23 @@
 				<div
 					class="h-full bg-primary transition-all"
 					style="width: {utilization}%"
-					title="Current spend"
+					title={m.costs_currentSpend()}
 				></div>
 				<!-- Projected overlay (lighter) -->
 				{#if projectedUtilization > utilization}
 					<div
 						class="absolute top-0 h-full bg-primary/30"
 						style="left: {utilization}%; width: {projectedUtilization - utilization}%"
-						title="Projected end-of-month"
+						title={m.costs_projectedEndOfMonth()}
 					></div>
 				{/if}
 			</div>
 			<div class="flex justify-between text-xs text-muted-foreground tabular-nums">
-				<span>{formatBig(kpis.monthCents)} <span class="text-muted-strong">spent</span></span>
+				<span>{formatBig(kpis.monthCents)} <span class="text-muted-strong">{m.costs_spent()}</span></span>
 				<span>
-					{formatBig(kpis.projectedMonthEndCents)} <span class="text-muted-strong">projected</span>
+					{formatBig(kpis.projectedMonthEndCents)} <span class="text-muted-strong">{m.costs_projected()}</span>
 				</span>
-				<span>{formatBig(kpis.budgetCents)} <span class="text-muted-strong">budget</span></span>
+				<span>{formatBig(kpis.budgetCents)} <span class="text-muted-strong">{m.costs_budget()}</span></span>
 			</div>
 		</div>
 	</section>
@@ -149,7 +150,7 @@
 		<!-- By agent (horizontal bars) -->
 		<section>
 			<h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-				By agent <span class="font-medium normal-case tracking-normal text-xs">({byAgent.length})</span>
+				{m.costs_byAgent()} <span class="font-medium normal-case tracking-normal text-xs">({byAgent.length})</span>
 			</h2>
 			<div class="rounded-lg border border-border bg-card divide-y divide-border">
 				{#each byAgent as row (row.agentId)}
@@ -179,7 +180,7 @@
 		<!-- By provider/model (horizontal bars with tint per provider) -->
 		<section>
 			<h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-				By provider / model
+				{m.costs_byProviderModel()}
 			</h2>
 			<div class="rounded-lg border border-border bg-card divide-y divide-border">
 				{#each byProvider as row (row.model)}
@@ -198,7 +199,7 @@
 							></div>
 						</div>
 						<div class="text-[10px] text-muted-strong mt-1 font-mono">
-							{row.requests} requests
+							{row.requests} {m.costs_requests()}
 						</div>
 					</div>
 				{/each}

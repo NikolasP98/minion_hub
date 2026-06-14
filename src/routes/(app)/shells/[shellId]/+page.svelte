@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
   import { onMount } from 'svelte';
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
@@ -59,7 +60,7 @@
   subtitle={shell ? `${shell.harness} · ${shell.vmName} · ${shell.region}` : undefined}
 >
   {#snippet leading()}
-    <a class="back" href="/shells" aria-label="All shells">
+    <a class="back" href="/shells" aria-label={m.shellDetail_allShells()}>
       <ArrowLeft size={16} class="text-accent shrink-0" />
     </a>
   {/snippet}
@@ -71,27 +72,27 @@
           disabled={actionRunning !== null}
           onclick={() => void doAction('backup', () => backupNow(shell!.shellId))}
         >
-          {actionRunning === 'backup' ? 'Backing up…' : 'Back up now'}
+          {actionRunning === 'backup' ? m.shellDetail_backingUp() : m.shellDetail_backupNow()}
         </button>
         <button
           disabled={actionRunning !== null}
           onclick={() => void doAction('archive', () => archiveShell(shell!.shellId))}
         >
-          {actionRunning === 'archive' ? 'Archiving…' : 'Sleep (archive)'}
+          {actionRunning === 'archive' ? m.shellDetail_archiving() : m.shellDetail_sleep()}
         </button>
       {/if}
       <button
         class="danger"
         disabled={actionRunning !== null}
         onclick={async () => {
-          if (!confirm(`Permanently destroy ${shell!.displayName}? This deletes the VM and all backups.`)) {
+          if (!confirm(m.shellDetail_destroyConfirm({ name: shell!.displayName }))) {
             return;
           }
           await doAction('destroy', () => destroyShell(shell!.shellId));
           await goto('/shells');
         }}
       >
-        Destroy
+        {m.shellDetail_destroy()}
       </button>
     {/if}
   {/snippet}
@@ -103,7 +104,7 @@
   {/if}
 
   {#if loading}
-    <div class="empty">Loading…</div>
+    <div class="empty">{m.common_loading()}</div>
   {:else if shell}
     {#if shell.errorMessage}
       <div class="alert">
@@ -113,41 +114,41 @@
 
     <div class="grid">
       <div class="field">
-        <span class="key">Disk</span>
+        <span class="key">{m.shellDetail_disk()}</span>
         <span class="val">{shell.diskGB} GB</span>
       </div>
       <div class="field">
-        <span class="key">Memory</span>
+        <span class="key">{m.shellDetail_memory()}</span>
         <span class="val">{shell.memoryMB} MB</span>
       </div>
       <div class="field">
-        <span class="key">Image</span>
+        <span class="key">{m.shellDetail_image()}</span>
         <span class="val mono">{shell.image}</span>
       </div>
       <div class="field">
-        <span class="key">Auto-archive</span>
+        <span class="key">{m.shellDetail_autoArchive()}</span>
         <span class="val">
-          {shell.archiveIdleMs == null ? 'Always on' : `After ${Math.round(shell.archiveIdleMs / 3_600_000)}h idle`}
+          {shell.archiveIdleMs == null ? m.shellDetail_alwaysOn() : m.shellDetail_afterHoursIdle({ hours: Math.round(shell.archiveIdleMs / 3_600_000) })}
         </span>
       </div>
       <div class="field">
-        <span class="key">Backups</span>
+        <span class="key">{m.shellDetail_backups()}</span>
         <span class="val">{shell.backupCadence}</span>
       </div>
       <div class="field">
-        <span class="key">Backup target</span>
+        <span class="key">{m.shellDetail_backupTarget()}</span>
         <span class="val mono">{shell.backupTarget}</span>
       </div>
       <div class="field">
-        <span class="key">Created</span>
+        <span class="key">{m.shellDetail_created()}</span>
         <span class="val">{fmtDate(shell.createdAt)}</span>
       </div>
       <div class="field">
-        <span class="key">Last invoke</span>
+        <span class="key">{m.shellDetail_lastInvoke()}</span>
         <span class="val">{fmtDate(shell.lastInvokeAt)}</span>
       </div>
       <div class="field">
-        <span class="key">Last backup</span>
+        <span class="key">{m.shellDetail_lastBackup()}</span>
         <span class="val">
           {fmtDate(shell.lastBackupAt)}
           {#if shell.lastBackupBytes}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from "$lib/paraglide/messages";
   import type { SectionFull, SectionMeta } from "@minion-stack/shared";
   import { promptSections, clearSelection } from "$lib/state/features/prompt-sections.svelte";
   import { colorForLayer } from "$lib/utils/layer-colors";
@@ -104,7 +105,7 @@
 
   async function handleDelete() {
     if (!editorActive || !promptSections.agentId) return;
-    if (!confirm(`Delete section "${editorActive.id}"? This cannot be undone.`)) return;
+    if (!confirm(m.sel_deleteConfirm({ id: editorActive.id }))) return;
     deleting = true;
     try {
       await deleteSection(promptSections.agentId, editorActive.id);
@@ -155,11 +156,11 @@
   <div class="shrink-0 border-b border-border px-3 py-2 flex items-center justify-between text-xs">
     <span class="uppercase tracking-wider text-muted font-medium">
       {#if selected.size === 0}
-        Selection
+        {m.sel_selection()}
       {:else if selected.size === 1}
-        Section · {[...selected][0]}
+        {m.sel_section()} · {[...selected][0]}
       {:else}
-        Selection · {selected.size} sections
+        {m.sel_selection()} · {selected.size} {m.sel_sections()}
       {/if}
     </span>
     {#if selected.size > 0}
@@ -168,14 +169,14 @@
         class="text-[10px] text-muted hover:text-fg transition-colors"
         onclick={clearSelection}
       >
-        Clear
+        {m.sel_clear()}
       </button>
     {/if}
   </div>
 
   {#if selected.size === 0}
     <div class="flex-1 flex items-center justify-center text-xs text-muted px-4 text-center">
-      Tick one or more sections in the tree above to inspect their content.
+      {m.sel_tickSections()}
     </div>
   {:else if isSingleCustom && editorActive}
     {@const color = colorForLayer(editorActive.layer)}
@@ -195,9 +196,9 @@
           disabled={!promptSections.isDirty || saving}
           onclick={handleSave}
           class="px-2 py-0.5 rounded border border-accent bg-accent/15 text-accent text-[10px] disabled:opacity-40"
-          title="Cmd/Ctrl+S"
+          title={m.sel_saveHint()}
         >
-          {saving ? "Saving…" : "Save"}
+          {saving ? m.sel_saving() : m.common_save()}
         </button>
         <button
           type="button"
@@ -205,7 +206,7 @@
           onclick={handleDelete}
           class="px-2 py-0.5 rounded border border-destructive/60 bg-destructive/10 text-destructive text-[10px] disabled:opacity-40"
         >
-          {deleting ? "Deleting…" : "Delete"}
+          {deleting ? m.sel_deleting() : m.common_delete()}
         </button>
       </div>
       <textarea
@@ -242,7 +243,7 @@
             <span class="text-muted font-mono tabular-nums">{formatBytes(row.bytes)}</span>
             <span class="text-muted-strong">·</span>
             <span class="text-muted font-mono tabular-nums">{row.tokens.toLocaleString("en-US")} tok</span>
-            {#if row.cacheable}<span class="text-warning" title="Cacheable">⚡</span>{/if}
+            {#if row.cacheable}<span class="text-warning" title={m.sel_cacheable()}>⚡</span>{/if}
             <span class="ml-2">
               <AgentAvatarStack
                 agents={promptSections.usage[meta.id] ?? []}
@@ -251,18 +252,18 @@
               />
             </span>
             {#if meta.source === "builtin"}
-              <span class="text-zinc-400">builtin</span>
+              <span class="text-zinc-400">{m.sel_builtin()}</span>
               {#if promptSections.disabledOverrides.includes(meta.id)}
                 <button
                   type="button"
                   class="ml-auto px-2 py-0.5 rounded border border-border text-[10px] hover:bg-bg2"
                   onclick={() => handleResetOverride(meta.id)}
                 >
-                  Reset override
+                  {m.sel_resetOverride()}
                 </button>
               {/if}
             {:else}
-              <span class="text-rose-300">custom</span>
+              <span class="text-rose-300">{m.sel_custom()}</span>
             {/if}
           </header>
           {#if row.rendered}

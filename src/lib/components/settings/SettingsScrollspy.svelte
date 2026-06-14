@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
   import { onDestroy } from 'svelte';
   import type { ConfigGroup } from '$lib/types/config';
 
@@ -82,7 +83,7 @@
 </script>
 
 {#if groups.length > 1}
-  <nav class="scrollspy-container hidden lg:flex" aria-label="Section navigation">
+  <nav class="scrollspy-container hidden lg:flex" aria-label={m.a11y4_sectionNavigation()}>
     {#each groups as group (group.id)}
       {@const isActive = activeGroupId === group.id}
       {@const isDirty = dirtyGroupIds.has(group.id)}

@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import type { PageData } from './$types';
 	import type { Goal, GoalStatus, GoalLevel } from '@minion-stack/paperclip-client';
+	import * as m from '$lib/paraglide/messages';
 	import { startPolling } from '$lib/utils/live-polling';
 	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
 	import { PageHeader } from '$lib/components/ui';
@@ -88,7 +89,7 @@
 	onMount(() => startPolling('app:goals', 8000));
 </script>
 
-<PageHeader title="Goals">
+<PageHeader title={m.workforce_goals()}>
 	{#snippet leading()}
 		<Target size={16} class="text-accent shrink-0" />
 	{/snippet}
@@ -108,7 +109,7 @@
 <main class="flex-1 min-h-0 overflow-y-auto p-6 space-y-6 max-w-5xl">
 	{#if goals.length === 0}
 		<div class="rounded-lg border border-border bg-card p-12 flex flex-col items-center justify-center text-center">
-			<p class="text-muted-foreground text-sm">No goals defined.</p>
+			<p class="text-muted-foreground text-sm">{m.goals_noGoalsDefined()}</p>
 		</div>
 	{:else}
 		<ul class="space-y-2">

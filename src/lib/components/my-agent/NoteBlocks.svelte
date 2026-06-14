@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { slide } from 'svelte/transition';
+	import * as m from '$lib/paraglide/messages';
 	import {
 		addBlock,
 		removeBlock,
@@ -113,7 +114,7 @@
 		bind:this={editors[block.id]}
 		{note}
 		{block}
-		placeholder={i === 0 ? 'Take a note… (type / to embed)' : 'Type / to embed…'}
+		placeholder={i === 0 ? m.note_placeholderFirstBlock() : m.note_placeholderSubsequentBlock()}
 		onfocus={() => (focusedTextId = block.id)}
 		oninsertblock={(type) => addBlock(note.id, type, block.id)}
 	/>
@@ -125,10 +126,10 @@
 			<input
 				class="nb-title"
 				class:committed={justFilled.has(block.id)}
-				placeholder="Title"
+				placeholder={m.common_title?.()}
 				value={block.title ?? ''}
 				oninput={(e) => setBlockTitle(note.id, block.id, e.currentTarget.value)}
-				aria-label="Checklist title"
+				aria-label={m.note_checklistTitleAria()}
 			/>
 		{/if}
 		<div class="nb-embed-body">
@@ -139,10 +140,10 @@
 			<input
 				class="nb-title"
 				class:committed={justFilled.has(block.id)}
-				placeholder="Title"
+				placeholder={m.common_title?.()}
 				value={block.title ?? ''}
 				oninput={(e) => setBlockTitle(note.id, block.id, e.currentTarget.value)}
-				aria-label="Board title"
+				aria-label={m.note_boardTitleAria()}
 			/>
 		{/if}
 		<button type="button" class="easel-card" onclick={() => onopeneasel?.(block)}>
@@ -152,7 +153,7 @@
 						{#if it.type === 'image'}
 							<img class="easel-thumb" src={rawSrc(it.fileId)} alt="" loading="lazy" />
 						{:else}
-							<span class="easel-thumb easel-thumb-text">{it.text || 'Text'}</span>
+							<span class="easel-thumb easel-thumb-text">{it.text || m.note_textDefault()}</span>
 						{/if}
 					{/each}
 					{#if block.items.length > 3}<span class="easel-more">+{block.items.length - 3}</span>{/if}
@@ -160,18 +161,18 @@
 			{/if}
 			<div class="easel-meta">
 				{#if block.items.length > 0}
-					<span class="easel-count"><ImageIcon size={13} /> {block.items.length} items</span>
+					<span class="easel-count"><ImageIcon size={13} /> {block.items.length} {block.items.length === 1 ? m.note_itemSingular() : m.note_itemPlural()}</span>
 				{:else}
-					<span class="easel-count"><LayoutDashboard size={13} /> Nothing here yet</span>
+					<span class="easel-count"><LayoutDashboard size={13} /> {m.note_easelEmpty()}</span>
 				{/if}
-				<span class="easel-open">Open</span>
+				<span class="easel-open">{m.note_openBoard()}</span>
 			</div>
 		</button>
 	{/if}
 	<div class="nb-ctl">
-		<button type="button" title="Move up" aria-label="Move block up" disabled={i === 0} onclick={() => moveBlock(note.id, block.id, -1)}><ChevronUp size={13} /></button>
-		<button type="button" title="Move down" aria-label="Move block down" disabled={i === note.blocks.length - 1} onclick={() => moveBlock(note.id, block.id, 1)}><ChevronDown size={13} /></button>
-		<button type="button" class="del" title="Remove block" aria-label="Remove block" onclick={() => removeBlock(note.id, block.id)}><Trash2 size={13} /></button>
+		<button type="button" title={m.note_moveUp()} aria-label={m.note_moveUp()} disabled={i === 0} onclick={() => moveBlock(note.id, block.id, -1)}><ChevronUp size={13} /></button>
+		<button type="button" title={m.note_moveDown()} aria-label={m.note_moveDown()} disabled={i === note.blocks.length - 1} onclick={() => moveBlock(note.id, block.id, 1)}><ChevronDown size={13} /></button>
+		<button type="button" class="del" title={m.common_remove()} aria-label={m.common_remove()} onclick={() => removeBlock(note.id, block.id)}><Trash2 size={13} /></button>
 	</div>
 {/snippet}
 
@@ -179,12 +180,12 @@
 	{#if proposal?.status === 'ready'}
 		<!-- Polish review: provisional changes shown as a diff, confirm or reject. -->
 		<div class="nb-review" transition:slide={{ duration: 160 }}>
-			<div class="nb-review-head"><Wand2 size={13} /> Polished as <em>{proposal.intent}</em> — review changes</div>
+			<div class="nb-review-head"><Wand2 size={13} /> {m.note_polishedAs({ intent: proposal.intent })} — {m.note_reviewChanges()}</div>
 			{#if proposal.noteTitle}
 				<div class="nb-rv-row"><span class="nb-rv-label">Title</span><span class="d-add">{proposal.noteTitle.to}</span></div>
 			{/if}
 			{#each proposal.blockTitles as bt (bt.id)}
-				<div class="nb-rv-row"><span class="nb-rv-label">Block title</span><span class="d-add">{bt.to}</span></div>
+				<div class="nb-rv-row"><span class="nb-rv-label">{m.note_blockTitle()}</span><span class="d-add">{bt.to}</span></div>
 			{/each}
 			{#each proposal.textBlocks as tb (tb.id)}
 				<div class="nb-diff">
@@ -192,17 +193,17 @@
 				</div>
 			{/each}
 			<div class="nb-rv-bar">
-				<button type="button" class="nb-rv-btn reject" onclick={rejectPolish}><X size={13} /> Reject</button>
-				<button type="button" class="nb-rv-btn confirm" onclick={confirmPolish}><Check size={13} /> Confirm changes</button>
+				<button type="button" class="nb-rv-btn reject" onclick={rejectPolish}><X size={13} /> {m.note_rejectPolish()}</button>
+				<button type="button" class="nb-rv-btn confirm" onclick={confirmPolish}><Check size={13} /> {m.note_confirmChanges()}</button>
 			</div>
 		</div>
 	{:else}
 		{#if proposal?.status === 'loading'}
-			<div class="nb-status" transition:slide={{ duration: 120 }}><Loader2 size={13} class="nb-spin" /> Polishing…</div>
+			<div class="nb-status" transition:slide={{ duration: 120 }}><Loader2 size={13} class="nb-spin" /> {m.note_polishStatus()}</div>
 		{:else if proposal?.status === 'error'}
 			<div class="nb-status err" transition:slide={{ duration: 120 }}>
 				{proposal.error}
-				<button type="button" class="nb-status-dismiss" onclick={rejectPolish}>Dismiss</button>
+				<button type="button" class="nb-status-dismiss" onclick={rejectPolish}>{m.note_dismissPolish()}</button>
 			</div>
 		{/if}
 
@@ -213,19 +214,19 @@
 					{@const count = block.type === 'todo' ? block.items.filter((x) => x.text.trim()).length : block.items.length}
 					<div class="nb-summary" class:open={expanded.has(block.id)}>
 						<div class="nb-sum-head">
-							<button type="button" class="nb-sum-toggle" aria-label="Expand block" onclick={() => toggleExpand(block.id)}>
+							<button type="button" class="nb-sum-toggle" aria-label={m.note_expandBlock()} onclick={() => toggleExpand(block.id)}>
 								{#if block.type === 'todo'}<ListTodo size={14} />{:else}<LayoutDashboard size={14} />{/if}
 							</button>
 							<input
 								class="nb-sum-title"
 								class:committed={justFilled.has(block.id)}
-								placeholder={block.type === 'todo' ? 'Checklist' : 'Board'}
+								placeholder={block.type === 'todo' ? m.note_checklistDefault() : m.note_boardDefault()}
 								value={block.title ?? ''}
 								oninput={(e) => setBlockTitle(note.id, block.id, e.currentTarget.value)}
-								aria-label="Block title"
+								aria-label={m.note_blockTitleSummary()}
 							/>
-							<span class="nb-sum-count">{count} {count === 1 ? 'item' : 'items'}</span>
-							<button type="button" class="nb-sum-toggle" aria-label="Expand block" onclick={() => toggleExpand(block.id)}>
+							<span class="nb-sum-count">{count} {count === 1 ? m.note_itemCountSingular() : m.note_itemCountPlural()}</span>
+							<button type="button" class="nb-sum-toggle" aria-label={m.note_collapseBlock()} onclick={() => toggleExpand(block.id)}>
 								<ChevronDown class="nb-sum-chev {expanded.has(block.id) ? 'rot' : ''}" size={14} />
 							</button>
 						</div>
@@ -415,10 +416,6 @@
 		color: color-mix(in srgb, var(--color-foreground) 60%, transparent);
 	}
 	.nb-review-head :global(svg) {
-		color: rgba(167, 139, 250, 0.95);
-	}
-	.nb-review-head em {
-		font-style: italic;
 		color: rgba(167, 139, 250, 0.95);
 	}
 	.nb-rv-row {

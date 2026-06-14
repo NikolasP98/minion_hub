@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { PageData } from './$types';
+	import * as m from '$lib/paraglide/messages';
 	type OrgNode = { id: string; name: string; role: string; status: string; reports: OrgNode[] };
 	import { startPolling } from '$lib/utils/live-polling';
 	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
@@ -196,19 +197,36 @@
 		return STATUS_DOT[status] ?? '#6b7280';
 	}
 
+	function statusLabel(status: string): string {
+		switch (status) {
+			case 'active':
+				return m.workforce_status_active();
+			case 'running':
+				return m.workforce_status_running();
+			case 'paused':
+				return m.workforce_status_paused();
+			case 'error':
+				return m.workforce_status_error();
+			case 'idle':
+				return m.workforce_status_idle();
+			default:
+				return status;
+		}
+	}
+
 	function roleLabel(role: string): string {
 		return role.charAt(0).toUpperCase() + role.slice(1).replaceAll('_', ' ');
 	}
 </script>
 
-<PageHeader title="Org chart">
+<PageHeader title={m.workforce_orgChart()}>
 	{#snippet leading()}
 		<Network size={16} class="text-accent shrink-0" />
 	{/snippet}
 	{#snippet actions()}
 		<LiveIndicator intervalMs={8000} />
 		<div class="hidden md:block text-xs text-muted-foreground">
-			{allNodes.length} agent{allNodes.length !== 1 ? 's' : ''} · drag to pan · scroll to zoom
+			{m.workforce_orgChartInfo({ count: allNodes.length })}
 		</div>
 	{/snippet}
 </PageHeader>
@@ -230,7 +248,7 @@
 			<button
 				class="w-7 h-7 flex items-center justify-center bg-background border border-border rounded text-sm hover:bg-muted transition-colors"
 				onclick={zoomIn}
-				aria-label="Zoom in"
+				aria-label={m.workforce_zoomIn()}
 				type="button"
 			>
 				+
@@ -238,7 +256,7 @@
 			<button
 				class="w-7 h-7 flex items-center justify-center bg-background border border-border rounded text-sm hover:bg-muted transition-colors"
 				onclick={zoomOut}
-				aria-label="Zoom out"
+				aria-label={m.workforce_zoomOut()}
 				type="button"
 			>
 				−
@@ -246,11 +264,11 @@
 			<button
 				class="w-7 h-7 flex items-center justify-center bg-background border border-border rounded text-[10px] hover:bg-muted transition-colors"
 				onclick={fitToScreen}
-				title="Fit to screen"
-				aria-label="Fit chart to screen"
+				title={m.workforce_fitToScreen()}
+				aria-label={m.workforce_fitChartToScreen()}
 				type="button"
 			>
-				Fit
+				{m.workforce_fit()}
 			</button>
 		</div>
 
@@ -325,7 +343,7 @@
 		{#each Object.entries(STATUS_DOT) as [status, color] (status)}
 			<span class="inline-flex items-center gap-1.5">
 				<span class="h-2 w-2 rounded-full" style="background:{color}"></span>
-				{status}
+				{statusLabel(status)}
 			</span>
 		{/each}
 	</footer>

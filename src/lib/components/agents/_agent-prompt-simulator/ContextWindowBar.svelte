@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
   import { fmtChars, type BarSegment } from './types';
 
   let {
@@ -53,10 +54,10 @@
           type="button"
           class="lg:hidden shrink-0 text-[10px] px-1.5 py-0.5 rounded border border-border text-muted hover:text-foreground transition-colors cursor-pointer"
           onclick={onToggleRail}
-          title="Toggle sections"
-          aria-label="Toggle sections rail"
+          title={m.ctx_toggleSections()}
+          aria-label={m.ctx_toggleSectionsRail()}
         >
-          ☰ Sections
+          ☰ {m.ctx_sections()}
         </button>
       {/if}
       {#each segments as seg (seg.label)}
@@ -72,9 +73,9 @@
         class="text-[10px] font-mono whitespace-nowrap"
         class:text-amber-400={cachedPct > 0}
         class:text-muted={cachedPct === 0}
-        title="Share of the prompt that is cacheable"
+        title={m.ctx_cacheableShare()}
       >
-        ⚡ {cachedLabel} cached
+        ⚡ {cachedLabel} {m.ctx_cached()}
       </span>
       <span
         class="text-[10px] font-mono whitespace-nowrap"

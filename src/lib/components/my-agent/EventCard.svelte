@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Repeat, Check, X, HelpCircle, MapPin } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages';
 	import type { CalendarItem } from '$lib/services/my-agent-rpc';
 	import { setDragContext, type DragContext } from '$lib/utils/drag-context';
 
@@ -63,8 +64,8 @@
 
 	// "starting soon" / "in progress" pill text.
 	const statusPill = $derived.by(() => {
-		if (inProgress) return 'Now';
-		if (tier === 'soon') return minutesUntil <= 1 ? 'Starting' : `${minutesUntil}m`;
+		if (inProgress) return m.event_statusNow();
+		if (tier === 'soon') return minutesUntil <= 1 ? m.event_statusStarting() : `${minutesUntil}m`;
 		return '';
 	});
 
@@ -74,11 +75,11 @@
 	const rsvpMeta = $derived.by(() => {
 		switch (rsvp) {
 			case 'accepted':
-				return { icon: Check, cls: 'rsvp-yes', label: 'Going' };
+				return { icon: Check, cls: 'rsvp-yes', label: m.event_rsvpGoing() };
 			case 'declined':
-				return { icon: X, cls: 'rsvp-no', label: 'Declined' };
+				return { icon: X, cls: 'rsvp-no', label: m.event_rsvpDeclined() };
 			case 'tentative':
-				return { icon: HelpCircle, cls: 'rsvp-maybe', label: 'Maybe' };
+				return { icon: HelpCircle, cls: 'rsvp-maybe', label: m.event_rsvpMaybe() };
 			default:
 				return null;
 		}
@@ -86,11 +87,11 @@
 
 	function dragStart(e: DragEvent) {
 		const when = item.isAllDay
-			? 'All day'
+			? m.event_allDay()
 			: `${startTime} ${startMeridiem}${endTime ? ` – ${endTime}` : ''}`.trim();
 		const parts = [`Event: "${title}"`, `When: ${when}`];
 		if (item.location) parts.push(`Location: ${item.location}`);
-		if (item.recurring) parts.push('Recurring event');
+		if (item.recurring) parts.push(m.event_recurringLabel());
 		if (rsvpMeta) parts.push(`RSVP: ${rsvpMeta.label}`);
 		if (item.htmlLink) parts.push(`Link: ${item.htmlLink}`);
 		const ctx: DragContext = { kind: 'event', label: title, text: parts.join('\n') };
@@ -141,7 +142,7 @@
 
 	<div class="markers" aria-hidden={!item.recurring && !rsvpMeta}>
 		{#if item.recurring}
-			<Repeat size={13} class="marker recur" aria-label="Recurring event" />
+			<Repeat size={13} class="marker recur" aria-label={m.event_recurringLabel()} />
 		{/if}
 		{#if rsvpMeta}
 			{@const Icon = rsvpMeta.icon}

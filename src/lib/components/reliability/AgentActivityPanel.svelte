@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages';
 	import { Brain, HeartPulse, Sparkles, Wrench } from 'lucide-svelte';
 	import PanelHeader from './PanelHeader.svelte';
 	import MetricCard from './MetricCard.svelte';
@@ -245,41 +246,40 @@
 </script>
 
 <div class="surface-2 rounded-lg overflow-hidden">
-	<PanelHeader label="Agent Activity" labelClass="flex-1">
+	<PanelHeader label={m.reliability_agentActivity()} labelClass="flex-1">
 		{#snippet icon()}
 			<Sparkles size={11} class="text-accent shrink-0" />
 		{/snippet}
 		{#snippet actions()}
 			{#if usingActivity}
-				<span class="text-[10px] text-muted-strong">Fleet-wide · full coverage</span>
+				<span class="text-[10px] text-muted-strong">{m.reliability_fleetWideFullCoverage()}</span>
 			{/if}
 		{/snippet}
 	</PanelHeader>
 
 	{#if !hasAny}
 		<div class="flex flex-col items-center justify-center gap-1 py-8 px-4 text-center">
-			<span class="text-muted-foreground text-[13px]">No agent-activity signals in range</span>
+			<span class="text-muted-foreground text-[13px]">{m.reliability_noActivitySignals()}</span>
 			<span class="text-muted-strong text-[11px] max-w-md">
 				{#if usingActivity}
-					No memory writes, heartbeats or tool calls in this range yet — they accrue as agents act.
+					{m.reliability_noActivityYetHint()}
 				{:else}
-					Memory writes, heartbeats and tool calls appear here once the gateway is emitting them
-					(requires the activity-telemetry gateway build).
+					{m.reliability_activityTelemetryRequired()}
 				{/if}
 			</span>
 		</div>
 	{:else}
 		<!-- KPI strip -->
 		<div class="grid grid-cols-2 md:grid-cols-4 gap-px bg-border border-b border-border">
-			<MetricCard label="Memories saved" value={fmt(memory.created)} valueClass="text-violet-400 tabular-nums" />
+			<MetricCard label={m.reliability_memoriesSaved()} value={fmt(memory.created)} valueClass="text-violet-400 tabular-nums" />
 			<MetricCard
-				label="Heartbeat health"
+				label={m.reliability_heartbeatHealth()}
 				value={heartbeat.total > 0 ? pct(heartbeat.successRate) : '—'}
 				valueClass="{heartbeat.failed > 0 ? 'text-warning' : 'text-success'} tabular-nums"
 			/>
-			<MetricCard label="Proactive runs" value={pct(proactivity.ratio)} valueClass="text-rose-400 tabular-nums" />
+			<MetricCard label={m.reliability_proactiveRuns()} value={pct(proactivity.ratio)} valueClass="text-rose-400 tabular-nums" />
 			<MetricCard
-				label="Tool error rate"
+				label={m.reliability_toolErrorRate()}
 				value={tools.total > 0 ? pct(tools.errorRate) : '—'}
 				valueClass="{tools.err > 0 ? 'text-warning' : 'text-success'} tabular-nums"
 			/>
@@ -290,24 +290,24 @@
 			<div class="bg-bg2 p-3">
 				<div class="flex items-center gap-1.5 pb-2">
 					<Brain size={12} class="text-violet-400" />
-					<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Memory &amp; Knowledge Graph</span>
+					<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{m.reliability_memoryKnowledgeGraph()}</span>
 				</div>
 				<div class="grid grid-cols-4 gap-2 text-center">
 					<div class="rounded bg-bg3/40 py-2">
 						<div class="text-base font-bold text-success tabular-nums">{fmt(memory.created)}</div>
-						<div class="text-[9px] uppercase tracking-wide text-muted-strong">created</div>
+						<div class="text-[9px] uppercase tracking-wide text-muted-strong">{m.reliability_created()}</div>
 					</div>
 					<div class="rounded bg-bg3/40 py-2">
 						<div class="text-base font-bold text-accent tabular-nums">{fmt(memory.updated)}</div>
-						<div class="text-[9px] uppercase tracking-wide text-muted-strong">updated</div>
+						<div class="text-[9px] uppercase tracking-wide text-muted-strong">{m.reliability_updated()}</div>
 					</div>
 					<div class="rounded bg-bg3/40 py-2">
 						<div class="text-base font-bold text-muted-foreground tabular-nums">{fmt(memory.deleted)}</div>
-						<div class="text-[9px] uppercase tracking-wide text-muted-strong">deleted</div>
+						<div class="text-[9px] uppercase tracking-wide text-muted-strong">{m.reliability_deleted()}</div>
 					</div>
 					<div class="rounded bg-bg3/40 py-2">
 						<div class="text-base font-bold text-cyan-400 tabular-nums">{fmt(memory.reads ?? 0)}</div>
-						<div class="text-[9px] uppercase tracking-wide text-muted-strong">reads</div>
+						<div class="text-[9px] uppercase tracking-wide text-muted-strong">{m.reliability_reads()}</div>
 					</div>
 				</div>
 				{#if memory.byType.length > 0}
@@ -322,14 +322,14 @@
 				{/if}
 				{#if memory.total > 0}
 					<p class="text-[10px] text-muted-strong mt-2">
-						Last activity {relTime(memory.lastTs)}{#if (memory.reads ?? 0) > 0} · {fmt(memory.reads ?? 0)} read(s){/if}
+						{m.reliability_lastActivity({ time: relTime(memory.lastTs), reads: (memory.reads ?? 0) > 0 ? ` · ${fmt(memory.reads ?? 0)} ${m.reliability_readCount()}` : '' })}
 					</p>
 				{:else if (memory.reads ?? 0) > 0}
 					<p class="text-[10px] text-muted-strong mt-2">
-						{fmt(memory.reads ?? 0)} read(s), no writes — memory is being recalled but not curated.
+						{m.reliability_readsNoWrites({ count: fmt(memory.reads ?? 0) })}
 					</p>
 				{:else}
-					<p class="text-[10px] text-warning mt-2">No memory activity in range — agents aren't reading or writing memory.</p>
+					<p class="text-[10px] text-warning mt-2">{m.reliability_noMemoryActivity()}</p>
 				{/if}
 			</div>
 
@@ -337,30 +337,29 @@
 			<div class="bg-bg2 p-3">
 				<div class="flex items-center gap-1.5 pb-2">
 					<HeartPulse size={12} class="text-rose-400" />
-					<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Heartbeats (liveness)</span>
+					<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{m.reliability_heartbeatsLiveness()}</span>
 				</div>
 				{#if heartbeat.total > 0}
 					<div class="grid grid-cols-3 gap-2 text-center">
 						<div class="rounded bg-bg3/40 py-2">
 							<div class="text-base font-bold text-success tabular-nums">{fmt(heartbeat.ok)}</div>
-							<div class="text-[9px] uppercase tracking-wide text-muted-strong">ok</div>
+							<div class="text-[9px] uppercase tracking-wide text-muted-strong">{m.reliability_ok()}</div>
 						</div>
 						<div class="rounded bg-bg3/40 py-2">
 							<div class="text-base font-bold {heartbeat.failed > 0 ? 'text-destructive' : 'text-muted-foreground'} tabular-nums">{fmt(heartbeat.failed)}</div>
-							<div class="text-[9px] uppercase tracking-wide text-muted-strong">failed</div>
+							<div class="text-[9px] uppercase tracking-wide text-muted-strong">{m.reliability_failed()}</div>
 						</div>
 						<div class="rounded bg-bg3/40 py-2">
 							<div class="text-base font-bold text-muted-foreground tabular-nums">{fmt(heartbeat.skipped)}</div>
-							<div class="text-[9px] uppercase tracking-wide text-muted-strong">skipped</div>
+							<div class="text-[9px] uppercase tracking-wide text-muted-strong">{m.reliability_skipped()}</div>
 						</div>
 					</div>
 					<p class="text-[10px] text-muted-strong mt-2">
-						Last beat {relTime(heartbeat.lastTs)}
-						{#if heartbeat.lastStatus}<span class="text-muted-foreground"> · {heartbeat.lastStatus}</span>{/if}
+						{m.reliability_lastBeat({ time: relTime(heartbeat.lastTs), status: heartbeat.lastStatus ? ` · ${heartbeat.lastStatus}` : '' })}
 					</p>
 				{:else}
 					<div class="flex items-center justify-center h-[96px] text-center">
-						<span class="text-[11px] text-warning">No heartbeats recorded — proactive check-ins may be disabled or not firing.</span>
+						<span class="text-[11px] text-warning">{m.reliability_noHeartbeats()}</span>
 					</div>
 				{/if}
 			</div>
@@ -369,12 +368,12 @@
 			<div class="bg-bg2 p-1">
 				<div class="flex items-center gap-1.5 px-2 pt-2 pb-1">
 					<Sparkles size={12} class="text-rose-400" />
-					<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Proactive vs reactive runs</span>
+					<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{m.reliability_proactiveVsReactiveRuns()}</span>
 				</div>
 				{#if proactivity.total > 0}
 					<Chart options={proactivityChart} height="180px" />
 				{:else}
-					<div class="flex items-center justify-center h-[180px] text-muted-strong text-[11px]">No run data</div>
+					<div class="flex items-center justify-center h-[180px] text-muted-strong text-[11px]">{m.reliability_noRunData()}</div>
 				{/if}
 			</div>
 
@@ -382,12 +381,12 @@
 			<div class="bg-bg2 p-1">
 				<div class="flex items-center gap-1.5 px-2 pt-2 pb-1">
 					<Wrench size={12} class="text-purple" />
-					<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Tool usage ({fmt(tools.total)})</span>
+					<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{m.reliability_toolUsage({ count: fmt(tools.total) })}</span>
 				</div>
 				{#if tools.top.length > 0}
 					<Chart options={toolChart} height="180px" />
 				{:else}
-					<div class="flex items-center justify-center h-[180px] text-muted-strong text-[11px]">No tool calls in range</div>
+					<div class="flex items-center justify-center h-[180px] text-muted-strong text-[11px]">{m.reliability_noToolCalls()}</div>
 				{/if}
 			</div>
 		</div>

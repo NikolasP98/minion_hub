@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { invalidate } from '$app/navigation';
   import { Plus, Trash2, ShieldCheck, Users, Pencil, Check, X } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
   import PermissionGrid from './PermissionGrid.svelte';
   import ModuleToggles from './ModuleToggles.svelte';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
@@ -77,7 +78,7 @@
       void invalidate('settings:roles');
     } else {
       roles = roles.map((r) => (r.id === role.id ? { ...r, permissions: prev } : r));
-      toastError('Save failed');
+      toastError(m.usersui_saveFailed());
     }
   }
 
@@ -117,25 +118,25 @@
       creating = false;
       await load();
       void invalidate('settings:roles');
-      toastSuccess('Role created');
+      toastSuccess(m.usersui_roleCreated());
       if (body.id) selectedId = body.id;
     } else {
       const d = await res.json().catch(() => ({}));
-      toastError((d as { message?: string }).message ?? 'create failed');
+      toastError((d as { message?: string }).message ?? m.usersui_createFailed());
     }
   }
 
   async function removeRole(role: Role) {
     if (role.isSystem) return;
-    if (!confirm(`Delete role "${role.name}"?`)) return;
+    if (!confirm(m.usersui_deleteRoleConfirm({ name: role.name }))) return;
     const res = await fetch(`/api/roles/${role.id}`, { method: 'DELETE' });
     if (res.ok) {
       roles = roles.filter((r) => r.id !== role.id);
       if (selectedId === role.id) selectedId = roles[0]?.id ?? null;
       void invalidate('settings:roles');
-      toastSuccess('Role deleted');
+      toastSuccess(m.usersui_roleDeleted());
     } else {
-      toastError('Delete failed');
+      toastError(m.usersui_deleteFailed());
     }
   }
 
@@ -162,7 +163,7 @@
       editingMeta = false;
       void invalidate('settings:roles');
     } else {
-      toastError('Save failed');
+      toastError(m.usersui_saveFailed());
     }
   }
 
@@ -182,9 +183,9 @@
 <section class="max-w-6xl mx-auto pt-6 px-4 flex-1 min-h-0 overflow-y-auto">
   <header class="flex items-baseline justify-between mb-5">
     <div>
-      <h2 class="text-base font-semibold text-foreground">Roles</h2>
+      <h2 class="text-base font-semibold text-foreground">{m.usersui_roles()}</h2>
       <p class="text-[12px] text-muted mt-0.5">
-        Group permissions and pages members can see. Built-in roles are read-only.
+        {m.usersui_rolesDescription()}
       </p>
     </div>
   </header>
@@ -193,12 +194,12 @@
     <!-- Sidebar -->
     <aside class="bg-card border border-border rounded-lg overflow-hidden">
       <div class="flex items-center justify-between px-3 py-2.5 border-b border-border/60">
-        <span class="text-[11px] uppercase tracking-wider text-muted font-semibold">All roles</span>
+        <span class="text-[11px] uppercase tracking-wider text-muted font-semibold">{m.usersui_allRoles()}</span>
         <button
           class="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-md bg-accent text-white hover:bg-accent/90 font-medium"
           onclick={startCreate}
         >
-          <Plus class="h-3 w-3" /> New
+          <Plus class="h-3 w-3" /> {m.common_add()}
         </button>
       </div>
       <ul class="divide-y divide-border/40">
@@ -232,7 +233,7 @@
           </li>
         {/each}
         {#if roles.length === 0}
-          <li class="px-3 py-6 text-center text-[12px] text-muted">No roles yet</li>
+          <li class="px-3 py-6 text-center text-[12px] text-muted">{m.usersui_noRolesYet()}</li>
         {/if}
       </ul>
     </aside>
@@ -242,10 +243,10 @@
       {#if creating}
         <div class="p-5 space-y-5">
           <div class="flex items-center justify-between">
-            <h3 class="text-sm font-semibold text-foreground">New role</h3>
+            <h3 class="text-sm font-semibold text-foreground">{m.usersui_newRole()}</h3>
             <button
               class="text-muted hover:text-foreground p-1 rounded"
-              aria-label="Cancel"
+              aria-label={m.common_cancel()}
               onclick={() => (creating = false)}
             >
               <X class="h-4 w-4" />
@@ -253,24 +254,24 @@
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <label class="block">
-              <span class="block text-[11px] uppercase tracking-wider text-muted font-semibold mb-1">Name</span>
+              <span class="block text-[11px] uppercase tracking-wider text-muted font-semibold mb-1">{m.usersui_name()}</span>
               <input
                 class="bg-bg2 border border-border rounded-md px-2.5 py-1.5 text-[13px] w-full focus:outline-none focus:border-accent"
-                placeholder="e.g. Support"
+                placeholder={m.usersui_exampleSupport()}
                 bind:value={draftName}
               />
             </label>
             <label class="block">
-              <span class="block text-[11px] uppercase tracking-wider text-muted font-semibold mb-1">Description</span>
+              <span class="block text-[11px] uppercase tracking-wider text-muted font-semibold mb-1">{m.usersui_description()}</span>
               <input
                 class="bg-bg2 border border-border rounded-md px-2.5 py-1.5 text-[13px] w-full focus:outline-none focus:border-accent"
-                placeholder="What this role is for"
+                placeholder={m.usersui_roleDescriptionPlaceholder()}
                 bind:value={draftDesc}
               />
             </label>
           </div>
           <div>
-            <h4 class="text-[11px] uppercase tracking-wider text-muted font-semibold mb-2">Modules</h4>
+            <h4 class="text-[11px] uppercase tracking-wider text-muted font-semibold mb-2">{m.usersui_modules()}</h4>
             <ModuleToggles
               {modules}
               selected={new Set(draftPerms)}
@@ -278,7 +279,7 @@
             />
           </div>
           <div>
-            <h4 class="text-[11px] uppercase tracking-wider text-muted font-semibold mb-2">Permissions</h4>
+            <h4 class="text-[11px] uppercase tracking-wider text-muted font-semibold mb-2">{m.usersui_permissions()}</h4>
             <div class="bg-bg2/40 border border-border rounded-md p-3">
               <PermissionGrid {catalog} selected={new Set(draftPerms)} onChange={(p) => (draftPerms = p)} />
             </div>
@@ -289,13 +290,13 @@
               disabled={!draftName.trim()}
               onclick={createDraft}
             >
-              <Check class="h-3.5 w-3.5" /> Create role
+              <Check class="h-3.5 w-3.5" /> {m.usersui_createRole()}
             </button>
             <button
               class="text-[12px] px-3 py-1.5 rounded-md border border-border text-muted hover:text-foreground"
               onclick={() => (creating = false)}
             >
-              Cancel
+              {m.common_cancel()}
             </button>
           </div>
         </div>
@@ -311,12 +312,12 @@
                   />
                   <input
                     class="bg-bg2 border border-border rounded-md px-2.5 py-1.5 text-[12px] w-full"
-                    placeholder="Description"
+                    placeholder={m.usersui_description()}
                     bind:value={metaDesc}
                   />
                   <div class="flex gap-2">
-                    <button class="text-[11px] px-2.5 py-1 rounded bg-accent text-white" onclick={saveMeta}>Save</button>
-                    <button class="text-[11px] px-2.5 py-1 rounded border border-border text-muted" onclick={() => (editingMeta = false)}>Cancel</button>
+                    <button class="text-[11px] px-2.5 py-1 rounded bg-accent text-white" onclick={saveMeta}>{m.common_save()}</button>
+                    <button class="text-[11px] px-2.5 py-1 rounded border border-border text-muted" onclick={() => (editingMeta = false)}>{m.common_cancel()}</button>
                   </div>
                 </div>
               {:else}
@@ -324,11 +325,11 @@
                   <h3 class="text-[15px] font-semibold text-foreground">{selected.name}</h3>
                   {#if selected.isSystem}
                     <span class="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-muted/20 text-muted">
-                      <ShieldCheck class="h-3 w-3" /> Built-in
+                      <ShieldCheck class="h-3 w-3" /> {m.usersui_builtIn()}
                     </span>
                   {/if}
                   <span class="inline-flex items-center gap-1 text-[11px] text-muted ml-auto">
-                    <Users class="h-3 w-3" /> {selected.memberCount} member{selected.memberCount === 1 ? '' : 's'}
+                    <Users class="h-3 w-3" /> {selected.memberCount} {m.usersui_memberCount()}
                   </span>
                 </div>
                 {#if selected.description}
@@ -340,14 +341,14 @@
               <div class="flex items-center gap-1">
                 <button
                   class="p-1.5 rounded text-muted hover:text-foreground hover:bg-muted/20"
-                  aria-label="Edit role"
+                  aria-label={m.usersui_editRole()}
                   onclick={startEditMeta}
                 >
                   <Pencil class="h-3.5 w-3.5" />
                 </button>
                 <button
                   class="p-1.5 rounded text-muted hover:text-destructive hover:bg-destructive/10"
-                  aria-label="Delete role"
+                  aria-label={m.usersui_deleteRole()}
                   onclick={() => removeRole(selected!)}
                 >
                   <Trash2 class="h-3.5 w-3.5" />
@@ -358,8 +359,8 @@
 
           <section>
             <div class="flex items-baseline justify-between mb-2">
-              <h4 class="text-[11px] uppercase tracking-wider text-muted font-semibold">Modules</h4>
-              <span class="text-[10px] text-muted">Which sections this role can see</span>
+              <h4 class="text-[11px] uppercase tracking-wider text-muted font-semibold">{m.usersui_modules()}</h4>
+              <span class="text-[10px] text-muted">{m.usersui_modulesHelpText()}</span>
             </div>
             <ModuleToggles
               {modules}
@@ -371,8 +372,8 @@
 
           <section>
             <div class="flex items-baseline justify-between mb-2">
-              <h4 class="text-[11px] uppercase tracking-wider text-muted font-semibold">Permissions</h4>
-              <span class="text-[10px] text-muted">Per-action capabilities within visible modules</span>
+              <h4 class="text-[11px] uppercase tracking-wider text-muted font-semibold">{m.usersui_permissions()}</h4>
+              <span class="text-[10px] text-muted">{m.usersui_permissionsHelpText()}</span>
             </div>
             <div class="bg-bg2/40 border border-border rounded-md p-3">
               <PermissionGrid
@@ -386,7 +387,7 @@
         </div>
       {:else}
         <div class="p-10 text-center text-[12px] text-muted">
-          Select a role to edit, or create a new one.
+          {m.usersui_selectRoleOrCreate()}
         </div>
       {/if}
     </div>

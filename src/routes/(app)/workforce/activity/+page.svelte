@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { PageData } from './$types';
+	import * as m from '$lib/paraglide/messages';
 	import { startPolling } from '$lib/utils/live-polling';
 	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
 	import JsonView from '$lib/components/workforce/JsonView.svelte';
@@ -32,21 +33,25 @@
 			minute: '2-digit',
 		});
 	}
+
+	function eventCountLabel(count: number): string {
+		return count === 1 ? `${count} ${m.workforce_event()}` : `${count} ${m.workforce_events()}`;
+	}
 </script>
 
-<PageHeader title="Activity">
+<PageHeader title={m.workforce_activity()}>
 	{#snippet leading()}
 		<Activity size={16} class="text-accent shrink-0" />
 	{/snippet}
 	{#snippet actions()}
 		<LiveIndicator intervalMs={5000} />
-		<span class="text-sm text-muted-foreground">{items.length} event{items.length !== 1 ? 's' : ''}</span>
+		<span class="text-sm text-muted-foreground">{eventCountLabel(items.length)}</span>
 	{/snippet}
 </PageHeader>
 <main class="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
 	{#if items.length === 0}
 		<div class="rounded-lg border border-border bg-card p-12 flex flex-col items-center justify-center text-center">
-			<p class="text-muted-foreground text-sm">No activity yet.</p>
+			<p class="text-muted-foreground text-sm">{m.workforce_noActivityYet()}</p>
 		</div>
 	{:else}
 		<ul class="divide-y divide-border rounded-lg border border-border bg-card">
