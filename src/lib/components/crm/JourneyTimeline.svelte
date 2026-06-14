@@ -49,7 +49,7 @@
 						<span class="grp-name">{g.channel}</span>
 					{:else}
 						<StickyNote size={14} />
-						<span class="grp-name">Activity</span>
+						<span class="grp-name">{m.crm_activity()}</span>
 					{/if}
 					<span class="grp-count">{g.items.length}</span>
 				</header>

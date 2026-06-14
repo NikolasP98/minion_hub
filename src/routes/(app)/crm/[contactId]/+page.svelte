@@ -116,13 +116,13 @@
 		{/snippet}
 		{#snippet actions()}
 			<div class="menu-wrap">
-				<button class="kebab" onclick={() => (menuOpen = !menuOpen)} aria-label="Actions" disabled={busy}>
+				<button class="kebab" onclick={() => (menuOpen = !menuOpen)} aria-label={m.crm_actions()} disabled={busy}>
 					<MoreVertical size={18} />
 				</button>
 				{#if menuOpen}
 					<button class="backdrop" aria-label="close" onclick={() => (menuOpen = false)}></button>
 					<div class="menu">
-						<button class="mi" onclick={startEdit}><Pencil size={14} /> Edit name</button>
+						<button class="mi" onclick={startEdit}><Pencil size={14} /> {m.crm_edit_name()}</button>
 						<div class="msep"></div>
 						<button class="mi danger" onclick={() => { menuOpen = false; forget(); }}><Trash2 size={14} /> {m.crm_forget()}</button>
 					</div>
@@ -137,11 +137,11 @@
 			<input
 				bind:value={editName}
 				class="edit-input"
-				placeholder="Contact name"
+				placeholder={m.crm_contact_name()}
 				onkeydown={(e) => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') (editing = false); }}
 			/>
-			<Button variant="primary" size="sm" onclick={saveName} disabled={busy}><Check size={14} /> Save</Button>
-			<Button variant="ghost" size="sm" onclick={() => (editing = false)}>Cancel</Button>
+			<Button variant="primary" size="sm" onclick={saveName} disabled={busy}><Check size={14} /> {m.crm_save()}</Button>
+			<Button variant="ghost" size="sm" onclick={() => (editing = false)}>{m.crm_cancel()}</Button>
 		</div>
 	{/if}
 

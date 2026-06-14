@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages';
 	import { ChevronDown } from 'lucide-svelte';
 	import type { Snippet } from 'svelte';
 
@@ -45,7 +46,7 @@
 		<div class="pop" class:right={align === 'right'}>
 			<button class="row" class:sel={!active} onclick={clearAll}>
 				<span class="box" class:on={!active}></span>
-				<span class="lbl">All</span>
+				<span class="lbl">{m.crm_filter_all()}</span>
 			</button>
 			<div class="sep"></div>
 			{#each options as o (o.value)}
