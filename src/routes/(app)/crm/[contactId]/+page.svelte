@@ -2,7 +2,7 @@
 	import type { PageData } from './$types';
 	import { goto, invalidate } from '$app/navigation';
 	import * as m from '$lib/paraglide/messages';
-	import { ArrowLeft, Trash2, Plus, X } from 'lucide-svelte';
+	import { ArrowLeft, Trash2, Plus, X, MoreVertical, Pencil, Check } from 'lucide-svelte';
 	import { PageHeader, Button } from '$lib/components/ui';
 	import MathFormula from '$lib/components/ui/MathFormula.svelte';
 	import ScoreBadge from '$lib/components/crm/ScoreBadge.svelte';
@@ -23,6 +23,20 @@
 	const STAGES = ['New', 'Engaged', 'Active', 'Dormant', 'Churned'];
 	let noteBody = $state('');
 	let busy = $state(false);
+	let menuOpen = $state(false);
+	let editing = $state(false);
+	let editName = $state('');
+
+	function startEdit() {
+		menuOpen = false;
+		editName = c.displayName ?? '';
+		editing = true;
+	}
+	async function saveName() {
+		const name = editName.trim();
+		await patch({ displayName: name || null });
+		editing = false;
+	}
 
 	const texSymbolic = '\\text{Score} = 0.5\\,R + 0.3\\,F + 0.2\\,M';
 	const texValues = $derived(
@@ -101,11 +115,35 @@
 			</button>
 		{/snippet}
 		{#snippet actions()}
-			<Button variant="danger" size="sm" onclick={forget} disabled={busy}>
-				<Trash2 size={14} /> {m.crm_forget()}
-			</Button>
+			<div class="menu-wrap">
+				<button class="kebab" onclick={() => (menuOpen = !menuOpen)} aria-label="Actions" disabled={busy}>
+					<MoreVertical size={18} />
+				</button>
+				{#if menuOpen}
+					<button class="backdrop" aria-label="close" onclick={() => (menuOpen = false)}></button>
+					<div class="menu">
+						<button class="mi" onclick={startEdit}><Pencil size={14} /> Edit name</button>
+						<div class="msep"></div>
+						<button class="mi danger" onclick={() => { menuOpen = false; forget(); }}><Trash2 size={14} /> {m.crm_forget()}</button>
+					</div>
+				{/if}
+			</div>
 		{/snippet}
 	</PageHeader>
+
+	{#if editing}
+		<div class="edit-bar">
+			<Pencil size={14} class="text-muted-foreground" />
+			<input
+				bind:value={editName}
+				class="edit-input"
+				placeholder="Contact name"
+				onkeydown={(e) => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') (editing = false); }}
+			/>
+			<Button variant="primary" size="sm" onclick={saveName} disabled={busy}><Check size={14} /> Save</Button>
+			<Button variant="ghost" size="sm" onclick={() => (editing = false)}>Cancel</Button>
+		</div>
+	{/if}
 
 	<div class="flex-1 min-h-0 overflow-auto p-4 grid gap-4 lg:grid-cols-[1fr_1.4fr]">
 		<!-- Left: identity, score, tags -->
@@ -114,11 +152,17 @@
 			<section class="card">
 				<header class="card-h">
 					<span>{m.crm_engagement_score()}</span>
-					{#if score}<ScoreBadge score={score.score} r={score.r_score} f={score.f_score} m={score.m_score} />{/if}
+					{#if score}
+						<div class="score-hover">
+							<ScoreBadge score={score.score} r={score.r_score} f={score.f_score} m={score.m_score} />
+							<div class="formula-pop" role="tooltip">
+								<div class="formula"><MathFormula tex={texSymbolic} /></div>
+								<div class="formula sub"><MathFormula tex={texValues} /></div>
+							</div>
+						</div>
+					{/if}
 				</header>
 				{#if score}
-					<div class="formula"><MathFormula tex={texSymbolic} /></div>
-					<div class="formula sub"><MathFormula tex={texValues} /></div>
 					<dl class="kv">
 						<div><dt>{m.crm_recency()}</dt><dd>{m.crm_recency_value({ days: score.last_days })}</dd></div>
 						<div><dt>{m.crm_frequency()}</dt><dd>{m.crm_inbound_value({ count: score.inbound_msgs })}</dd></div>
@@ -196,6 +240,33 @@
 </div>
 
 <style>
+	/* kebab menu */
+	.menu-wrap { position: relative; display: inline-flex; }
+	.kebab { display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: var(--radius-md); color: var(--color-foreground); }
+	.kebab:hover { background: rgba(255, 255, 255, 0.06); }
+	.backdrop { position: fixed; inset: 0; z-index: 40; background: transparent; }
+	.menu {
+		position: absolute; top: calc(100% + 4px); right: 0; z-index: 41; min-width: 11rem;
+		background: var(--color-card); border: 1px solid var(--hairline); border-radius: var(--radius-md);
+		box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35); padding: 0.25rem;
+	}
+	.mi { display: flex; align-items: center; gap: 0.5rem; width: 100%; padding: 0.4rem 0.5rem; border-radius: var(--radius-sm, 6px); font-size: 0.84rem; text-align: left; color: var(--color-foreground); }
+	.mi:hover { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
+	.mi.danger { color: var(--color-destructive); }
+	.mi.danger:hover { background: color-mix(in srgb, var(--color-destructive) 12%, transparent); }
+	.msep { height: 1px; background: var(--hairline); margin: 0.2rem 0; }
+	/* inline name editor */
+	.edit-bar { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; border-bottom: 1px solid var(--hairline); background: color-mix(in srgb, var(--color-accent) 5%, transparent); }
+	.edit-input { flex: 1; max-width: 28rem; height: 2rem; padding: 0 0.6rem; font-size: 0.9rem; border-radius: var(--radius-md); background: var(--color-bg3); border: 1px solid var(--hairline); }
+	/* formula on hover of the score */
+	.score-hover { position: relative; display: inline-flex; }
+	.formula-pop {
+		position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; width: 16rem;
+		padding: 0.55rem 0.7rem; background: var(--color-card); border: 1px solid var(--hairline);
+		border-radius: var(--radius-md); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+		opacity: 0; transform: translateY(-3px); pointer-events: none; transition: opacity 0.12s, transform 0.12s;
+	}
+	.score-hover:hover .formula-pop { opacity: 1; transform: translateY(0); }
 	.card {
 		border: 1px solid var(--hairline);
 		border-radius: var(--radius-lg);

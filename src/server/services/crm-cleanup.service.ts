@@ -100,7 +100,7 @@ export async function findDuplicates(ctx: CoreCtx): Promise<DupGroup[]> {
       with msgs as (
         select ci.contact_id, count(*) n
         from crm_contact_identities ci
-        join messages m on m.org_id = ci.org_id and m.channel = ci.channel and m.sender_id = ci.external_id
+        join messages m on m.org_id = ci.org_id and m.channel = ci.channel and m.chat_id = ci.external_id
         where m.is_bot is not true group by ci.contact_id
       )
       select c.id, c.display_name,
