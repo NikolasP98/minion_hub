@@ -199,7 +199,8 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
                count(distinct m.channel) as channels_used
         from crm_contact_identities ci
         join messages m
-          on m.org_id = ci.org_id and m.channel = ci.channel and m.sender_id = ci.external_id
+          -- match the whole conversation (chat_id), not just msgs the contact sent
+          on m.org_id = ci.org_id and m.channel = ci.channel and m.chat_id = ci.external_id
         where m.is_bot is not true
         group by ci.contact_id
       ),
