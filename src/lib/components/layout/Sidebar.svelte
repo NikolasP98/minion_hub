@@ -6,7 +6,6 @@
   import Tooltip from './Tooltip.svelte';
   import {
     getSections,
-    gateSections,
     getDynamicPluginsSections,
     DOMAIN_LABEL,
     type Section,
@@ -17,7 +16,7 @@
   import { canClient } from '$lib/access/can.svelte';
   import * as m from '$lib/paraglide/messages';
 
-  const staticSections = $derived(gateSections(getSections(), pluginNavState.enabledByPluginId));
+  const staticSections = $derived(getSections());
   const pluginsSections = $derived(getDynamicPluginsSections(pluginNavState.controlCenters));
   const navSections = $derived<Section[]>([...staticSections, ...pluginsSections]);
 

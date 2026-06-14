@@ -1,8 +1,7 @@
 import { goto } from '$app/navigation';
 import { visibleAgents } from '$lib/state/gateway/gateway-data.svelte';
-import { palettePageRoutes, isFlowsNavVisible } from '$lib/nav/routes';
+import { palettePageRoutes } from '$lib/nav/routes';
 import { canClient } from '$lib/access/can.svelte';
-import { pluginNavState } from '$lib/state/plugin-nav.svelte';
 
 export interface Command {
   id: string;
@@ -37,10 +36,8 @@ export function closePalette() {
 // ($lib/nav/routes) so the palette stays in sync with the sidebar — add a
 // route there and it appears here automatically.
 function pageCommands(): Command[] {
-  const flowsVisible = isFlowsNavVisible(pluginNavState.enabledByPluginId);
   return palettePageRoutes()
     .filter((r) => !r.requires || canClient(r.requires))
-    .filter((r) => flowsVisible || r.path !== '/flow-editor')
     .map((r) => ({
       id: `page:${r.path}`,
       label: r.title(),

@@ -183,13 +183,13 @@ export const ROUTES: RouteMeta[] = [
     },
     {
         path: "/flow-editor",
-        title: () => m.nav_flows(),
+        title: () => m.nav_agentBuilder(),
         icon: GitBranch,
         matcher: startsWith("/flow-editor"),
         section: "gateway",
         inNav: true,
         inPalette: true,
-        keywords: "flows graph editor automation",
+        keywords: "agent builder flows skills graph editor automation",
         paletteIcon: "git-branch",
     },
     {
@@ -275,11 +275,6 @@ export const ROUTES: RouteMeta[] = [
         paletteIcon: "settings",
     },
 ];
-
-/** Flows nav item is visible unless an explicit `false` exists for pluginId "flows". */
-export function isFlowsNavVisible(enabledByPluginId: Record<string, boolean>): boolean {
-    return enabledByPluginId.flows !== false;
-}
 
 /**
  * Resolve the most specific route title for a pathname. Returns the title of
