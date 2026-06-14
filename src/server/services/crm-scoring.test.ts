@@ -61,8 +61,14 @@ describe('deriveLifecycleStage', () => {
     ).toBe('New');
   });
 
-  it('null last-contact → Churned (Infinity days)', () => {
-    expect(deriveLifecycleStage(stats({}), NOW)).toBe('Churned');
+  it('zero tracked messages → New (imported/manual contact, not Churned)', () => {
+    expect(deriveLifecycleStage(stats({}), NOW)).toBe('New');
+  });
+
+  it('previously-engaged then silent (has messages) → Churned', () => {
+    expect(
+      deriveLifecycleStage(stats({ lastContactAt: daysAgo(200), messageCount: 5 }), NOW),
+    ).toBe('Churned');
   });
 });
 
@@ -71,8 +77,9 @@ describe('effectiveStage', () => {
     expect(effectiveStage('VIP', stats({ lastContactAt: daysAgo(200) }), NOW)).toBe('VIP');
   });
   it('falls back to derived when override empty/null', () => {
-    expect(effectiveStage(null, stats({ lastContactAt: daysAgo(200) }), NOW)).toBe('Churned');
-    expect(effectiveStage('', stats({ lastContactAt: daysAgo(200) }), NOW)).toBe('Churned');
+    const churned = stats({ lastContactAt: daysAgo(200), messageCount: 5, inboundCount: 3 });
+    expect(effectiveStage(null, churned, NOW)).toBe('Churned');
+    expect(effectiveStage('', churned, NOW)).toBe('Churned');
   });
 });
 

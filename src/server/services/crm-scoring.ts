@@ -47,6 +47,11 @@ function daysSince(from: Date | null, now: Date): number {
  * Dormant 30–90d · Churned >90d. Order matters — first match wins.
  */
 export function deriveLifecycleStage(stats: ContactStats, now: Date = new Date()): LifecycleStage {
+  // No tracked interactions yet (manual/imported contact) → New, not Churned.
+  // "Churned" means previously engaged then went silent; a zero-message contact
+  // was never engaged via a tracked channel.
+  if (stats.messageCount === 0) return 'New';
+
   const lastDays = daysSince(stats.lastContactAt, now);
   const firstDays = daysSince(stats.firstContactAt, now);
   const outbound = stats.messageCount - stats.inboundCount;

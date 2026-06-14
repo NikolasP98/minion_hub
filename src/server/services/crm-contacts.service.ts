@@ -167,12 +167,12 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
 
     const orderBy =
       f.sort === 'recent'
-        ? sql`last_contact_at desc nulls last`
+        ? sql`last_contact_at desc nulls last, display_name asc nulls last`
         : f.sort === 'frequency'
-          ? sql`total_msgs desc`
+          ? sql`total_msgs desc, display_name asc nulls last`
           : f.sort === 'name'
             ? sql`display_name asc nulls last`
-            : sql`score desc`;
+            : sql`score desc, display_name asc nulls last`;
 
     const limit = Math.min(f.limit ?? 100, 500);
     const offset = f.offset ?? 0;
@@ -214,6 +214,7 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
                round((${RFM_WEIGHTS.r} * ${R_EXPR} + ${RFM_WEIGHTS.f} * ${F_EXPR} + ${RFM_WEIGHTS.m} * ${M_EXPR})::numeric, 0) as score,
                coalesce(lifecycle_override,
                  case
+                   when total_msgs = 0 then 'New'
                    when last_days > 90 then 'Churned'
                    when last_days > 30 then 'Dormant'
                    when last_days <= 30 and total_msgs >= 10 then 'Active'
