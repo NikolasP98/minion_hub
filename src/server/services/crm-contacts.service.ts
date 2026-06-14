@@ -1,4 +1,5 @@
 import { and, eq, desc, sql } from 'drizzle-orm';
+import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import {
@@ -35,7 +36,7 @@ export interface SyncResult {
  * IS the reconciliation), no locks (ON CONFLICT makes concurrent runs no-ops).
  */
 export async function syncContactsFromLedger(ctx: CoreCtx): Promise<SyncResult> {
-  return withOrgCore(ctx, async (tx) => {
+  const result = await withOrgCore(ctx, async (tx) => {
     // 1. Anti-join: senders in the ledger with no crm identity yet. Newest
     //    name/handle wins (distinct on … order by created_at desc).
     const eligible = (await tx.execute(sql`
@@ -88,6 +89,8 @@ export async function syncContactsFromLedger(ctx: CoreCtx): Promise<SyncResult> 
 
     return { created };
   });
+  if (result.created > 0) await bustCrmList(ctx.tenantId);
+  return result;
 }
 
 // ── Ranking (spec §6): on-read RFM over the ledger ───────────────────────────
@@ -118,6 +121,8 @@ export interface RankedContact {
   channels_used: number;
   /** Distinct channels the contact has an identity on (for branded icons). */
   channels: string[];
+  /** Applied manual-tag ids (for client-side tag filtering). */
+  tag_ids: string[];
   first_contact_at: string | null;
   last_contact_at: string | null;
   last_days: number;
@@ -205,6 +210,8 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
                coalesce(a.channels_used, 0) as channels_used,
                (select coalesce(array_agg(distinct ci.channel order by ci.channel), array[]::text[])
                   from crm_contact_identities ci where ci.contact_id = c.id) as channels,
+               (select coalesce(array_agg(ct.tag_id::text), array[]::text[])
+                  from crm_contact_tags ct where ct.contact_id = c.id) as tag_ids,
                a.first_contact_at, a.last_contact_at,
                coalesce(extract(epoch from (now() - a.last_contact_at)) / 86400.0, 1e9) as last_days,
                coalesce(extract(epoch from (now() - a.first_contact_at)) / 86400.0, 1e9) as first_days,
@@ -214,7 +221,7 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
         where ${and(...conds)}
       ),
       scored as (
-        select contact_id, display_name, owner_id, source, channels,
+        select contact_id, display_name, owner_id, source, channels, tag_ids,
                total_msgs, inbound_msgs, channels_used, first_contact_at, last_contact_at,
                round(last_days::numeric, 1) as last_days, round(reciprocity::numeric, 3) as reciprocity,
                round(${R_EXPR}::numeric, 1) as r_score,
@@ -241,6 +248,29 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
     `);
     return rows as unknown as RankedContact[];
   });
+}
+
+/** Cache tag for an org's CRM contact list — bust on any contact/tag mutation. */
+function crmListTags(tenantId: string) {
+  return tags.tenantDomain(tenantId, 'crm');
+}
+/** Invalidate the cached ranked list (call after any mutation that changes it). */
+function bustCrmList(tenantId: string) {
+  return invalidateTags([...crmListTags(tenantId)]);
+}
+
+/**
+ * The full ranked roster for the list page, Valkey-cached. The page does all
+ * search/stage/tag/sort filtering CLIENT-SIDE over this list (instant, no Apply,
+ * no per-keystroke server round-trip), so we cache one unfiltered payload per org.
+ * RFM recency is day-scaled, so a 2m TTL is imperceptible; mutations bust the tag.
+ */
+export function listContactsCached(ctx: CoreCtx): Promise<RankedContact[]> {
+  return cached(
+    keys.hub('crm-contacts', { t: ctx.tenantId }),
+    { ttl: '2m', swr: '30s', tags: [...crmListTags(ctx.tenantId)] },
+    () => rankContacts(ctx, { limit: 5000 }),
+  );
 }
 
 // ── Single contact + journey ──────────────────────────────────────────────────
@@ -284,8 +314,8 @@ export async function createContact(
   ctx: CoreCtx,
   data: { displayName?: string | null; customFields?: Record<string, unknown> },
 ) {
-  return withOrgCore(ctx, async (tx) => {
-    const [row] = await tx
+  const row = await withOrgCore(ctx, async (tx) => {
+    const [r] = await tx
       .insert(crmContacts)
       .values({
         orgId: ctx.tenantId,
@@ -294,8 +324,10 @@ export async function createContact(
         customFields: data.customFields ?? {},
       })
       .returning();
-    return row;
+    return r;
   });
+  await bustCrmList(ctx.tenantId);
+  return row;
 }
 
 export async function updateContact(
@@ -313,32 +345,36 @@ export async function updateContact(
   if (data.ownerId !== undefined) set.ownerId = data.ownerId;
   if (data.lifecycleOverride !== undefined) set.lifecycleOverride = data.lifecycleOverride;
   if (data.customFields !== undefined) set.customFields = data.customFields;
-  return withOrgCore(ctx, async (tx) => {
-    const [row] = await tx
+  const row = await withOrgCore(ctx, async (tx) => {
+    const [r] = await tx
       .update(crmContacts)
       .set(set)
       .where(and(eq(crmContacts.id, id), eq(crmContacts.orgId, ctx.tenantId)))
       .returning();
-    return row ?? null;
+    return r ?? null;
   });
+  await bustCrmList(ctx.tenantId);
+  return row;
 }
 
 /** Soft-delete (right-to-erasure first step). */
 export async function softDeleteContact(ctx: CoreCtx, id: string) {
-  return withOrgCore(ctx, (tx) =>
+  await withOrgCore(ctx, (tx) =>
     tx
       .update(crmContacts)
       .set({ deletedAt: new Date() })
       .where(and(eq(crmContacts.id, id), eq(crmContacts.orgId, ctx.tenantId))),
   );
+  await bustCrmList(ctx.tenantId);
 }
 
 /** Hard-delete ("Forget this contact" — removes contact + identities + activities
  *  via FK cascade). The underlying ledger rows are a separate retention domain. */
 export async function hardDeleteContact(ctx: CoreCtx, id: string) {
-  return withOrgCore(ctx, (tx) =>
+  await withOrgCore(ctx, (tx) =>
     tx.delete(crmContacts).where(and(eq(crmContacts.id, id), eq(crmContacts.orgId, ctx.tenantId))),
   );
+  await bustCrmList(ctx.tenantId);
 }
 
 export async function addNote(ctx: CoreCtx, contactId: string, body: string, actorId: string | null) {
@@ -390,20 +426,22 @@ export async function deleteTag(ctx: CoreCtx, tagId: string) {
 }
 
 export async function applyTag(ctx: CoreCtx, contactId: string, tagId: string, appliedBy: string | null) {
-  return withOrgCore(ctx, (tx) =>
+  await withOrgCore(ctx, (tx) =>
     tx
       .insert(crmContactTags)
       .values({ orgId: ctx.tenantId, contactId, tagId, appliedBy })
       .onConflictDoNothing(),
   );
+  await bustCrmList(ctx.tenantId);
 }
 
 export async function removeTag(ctx: CoreCtx, contactId: string, tagId: string) {
-  return withOrgCore(ctx, (tx) =>
+  await withOrgCore(ctx, (tx) =>
     tx
       .delete(crmContactTags)
       .where(and(eq(crmContactTags.contactId, contactId), eq(crmContactTags.tagId, tagId))),
   );
+  await bustCrmList(ctx.tenantId);
 }
 
 /** Manual tags currently applied to a contact (for the detail panel). */
