@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages';
 	import {
 		addEaselItem as _addEasel,
 		updateEaselItem as _updEasel,
@@ -317,30 +318,30 @@
 
 <svelte:window onkeydown={onWindowKey} onpaste={onPaste} />
 
-<div class="easel" role="dialog" aria-modal="true" aria-label="Easel board">
+<div class="easel" role="dialog" aria-modal="true" aria-label={m.a11y4_easelBoard()}>
 	<!-- Toolbar -->
 	<div class="toolbar">
 		<span class="board-name">
 			<input
 				value={note.title}
-				placeholder="Untitled board"
+				placeholder={m.easel_untitledBoard()}
 				oninput={(e) => updateNote(note.id, { title: e.currentTarget.value })}
-				aria-label="Board title"
+				aria-label={m.easel_boardTitle()}
 			/>
 		</span>
 		<div class="tools">
-			<button type="button" disabled={busy} title="Add image" onclick={() => fileInput?.click()}>
-				<ImagePlus size={15} /> Image
+			<button type="button" disabled={busy} title={m.easel_addImage()} onclick={() => fileInput?.click()}>
+				<ImagePlus size={15} /> {m.easel_image()}
 			</button>
-			<button type="button" title="Add image from URL" onclick={() => (urlOpen = !urlOpen)}>
-				<Link2 size={15} /> URL
+			<button type="button" title={m.easel_addImageFromUrl()} onclick={() => (urlOpen = !urlOpen)}>
+				<Link2 size={15} /> {m.easel_url()}
 			</button>
-			<button type="button" title="Add text" onclick={addText}><Type size={15} /> Text</button>
-			<button type="button" title="Fit to content" onclick={fitToContent}>
+			<button type="button" title={m.easel_addText()} onclick={addText}><Type size={15} /> {m.easel_text()}</button>
+			<button type="button" title={m.easel_fitToContent()} onclick={fitToContent}>
 				<Maximize size={15} />
 			</button>
 			<span class="zoom">{Math.round(cam.zoom * 100)}%</span>
-			<button type="button" class="close" title="Close board (Esc)" aria-label="Close" onclick={onclose}>
+			<button type="button" class="close" title={m.easel_closeBoardEsc()} aria-label={m.common_close()} onclick={onclose}>
 				<X size={17} />
 			</button>
 		</div>
@@ -354,8 +355,8 @@
 				void submitUrl();
 			}}
 		>
-			<input type="url" placeholder="Paste image URL…" bind:value={urlValue} aria-label="Image URL" />
-			<button type="submit" disabled={busy}>Add</button>
+			<input type="url" placeholder={m.easel_pasteImageUrl()} bind:value={urlValue} aria-label={m.easel_imageUrl()} />
+			<button type="submit" disabled={busy}>{m.common_add()}</button>
 		</form>
 	{/if}
 
@@ -402,30 +403,30 @@
 						<button
 							type="button"
 							class="handle rotate"
-							title="Rotate (hold Shift to snap)"
-							aria-label="Rotate"
+							title={m.easel_rotateHoldShiftSnap()}
+							aria-label={m.easel_rotate()}
 							onpointerdown={(e) => onRotatePointerDown(e, item)}
 						></button>
 						<button
 							type="button"
 							class="handle resize"
-							title="Resize"
-							aria-label="Resize"
+							title={m.easel_resize()}
+							aria-label={m.easel_resize()}
 							onpointerdown={(e) => onResizePointerDown(e, item)}
 						></button>
 						<div class="item-tools" onpointerdown={(e) => e.stopPropagation()}>
 							<button
 								type="button"
-								title="Bring to front"
-								aria-label="Bring to front"
+								title={m.easel_bringToFront()}
+								aria-label={m.easel_bringToFront()}
 								onclick={() => updateItem(item.id, { z: topZ() + 1 })}
 							>
 								<BringToFront size={13} />
 							</button>
 							<button
 								type="button"
-								title="Send to back"
-								aria-label="Send to back"
+								title={m.easel_sendToBack()}
+								aria-label={m.easel_sendToBack()}
 								onclick={() => updateItem(item.id, { z: 0 })}
 							>
 								<SendToBack size={13} />
@@ -433,8 +434,8 @@
 							<button
 								type="button"
 								class="del"
-								title="Delete"
-								aria-label="Delete"
+								title={m.common_delete()}
+								aria-label={m.common_delete()}
 								onclick={() => {
 									deleteItem(item.id);
 									selectedId = null;
@@ -450,7 +451,7 @@
 
 		{#if easelItems.length === 0}
 			<div class="empty-hint" data-bg="1">
-				Drop images, paste, or use the toolbar. Scroll to zoom, drag to pan.
+				{m.easel_emptyHint()}
 			</div>
 		{/if}
 	</div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages';
 	import { X } from 'lucide-svelte';
 
 	let { src, onclose }: { src: string | null; onclose: () => void } = $props();
@@ -17,10 +18,10 @@
 		onclick={onclose}
 		role="dialog"
 		aria-modal="true"
-		aria-label="Image preview"
+		aria-label={m.imageLightbox_preview()}
 		tabindex="-1"
 	>
-		<button type="button" class="close" title="Close" aria-label="Close" onclick={onclose}>
+		<button type="button" class="close" title={m.common_close()} aria-label={m.common_close()} onclick={onclose}>
 			<X size={20} />
 		</button>
 		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
   import { toastError } from '$lib/state/ui/toast.svelte';
   import { Select } from '$lib/components/ui';
 
@@ -76,37 +77,37 @@
 
 <div class="absolute top-full left-0 mt-1 z-10 bg-card border border-border rounded-md p-3 w-80 shadow-lg space-y-2">
   <div class="flex gap-2 text-[10px] uppercase tracking-wider">
-    <button class="px-2 py-1 rounded {tab === 'manual' ? 'bg-accent text-white' : 'text-muted'}" onclick={() => (tab = 'manual')}>Manual</button>
-    <button class="px-2 py-1 rounded {tab === 'verify' ? 'bg-accent text-white' : 'text-muted'}" onclick={() => (tab = 'verify')}>Verify code</button>
+    <button class="px-2 py-1 rounded {tab === 'manual' ? 'bg-accent text-white' : 'text-muted'}" onclick={() => (tab = 'manual')}>{m.usersui_manual()}</button>
+    <button class="px-2 py-1 rounded {tab === 'verify' ? 'bg-accent text-white' : 'text-muted'}" onclick={() => (tab = 'verify')}>{m.usersui_verifyCode()}</button>
     <button class="ml-auto text-muted text-xs" onclick={onCancel}>✕</button>
   </div>
 
   <label class="grid grid-cols-[80px_1fr] gap-2 items-center text-xs">
-    <span class="text-muted">Channel</span>
+    <span class="text-muted">{m.usersui_channel()}</span>
     <Select bind:value={channel} size="sm">
       {#each CHANNELS as c (c)}<option value={c}>{c}</option>{/each}
     </Select>
   </label>
   <label class="grid grid-cols-[80px_1fr] gap-2 items-center text-xs">
-    <span class="text-muted">User ID</span>
-    <input class="bg-bg border border-border rounded px-2 py-1" bind:value={channelUserId} placeholder="@handle or numeric id" />
+    <span class="text-muted">{m.usersui_userId()}</span>
+    <input class="bg-bg border border-border rounded px-2 py-1" bind:value={channelUserId} placeholder={m.usersui_userIdPlaceholder()} />
   </label>
 
   {#if tab === 'manual'}
     <label class="grid grid-cols-[80px_1fr] gap-2 items-center text-xs">
-      <span class="text-muted">Display</span>
+      <span class="text-muted">{m.usersui_display()}</span>
       <input class="bg-bg border border-border rounded px-2 py-1" bind:value={displayName} />
     </label>
-    <button class="w-full text-xs px-3 py-1.5 rounded bg-accent text-white disabled:opacity-50" disabled={busy || !channelUserId} onclick={attachManual}>Attach</button>
+    <button class="w-full text-xs px-3 py-1.5 rounded bg-accent text-white disabled:opacity-50" disabled={busy || !channelUserId} onclick={attachManual}>{m.usersui_attach()}</button>
   {:else}
     {#if !requestId}
-      <button class="w-full text-xs px-3 py-1.5 rounded bg-accent text-white disabled:opacity-50" disabled={busy || !channelUserId} onclick={sendCode}>Send code</button>
+      <button class="w-full text-xs px-3 py-1.5 rounded bg-accent text-white disabled:opacity-50" disabled={busy || !channelUserId} onclick={sendCode}>{m.usersui_sendCode()}</button>
     {:else}
       <label class="grid grid-cols-[80px_1fr] gap-2 items-center text-xs">
-        <span class="text-muted">Code</span>
+        <span class="text-muted">{m.usersui_code()}</span>
         <input class="bg-bg border border-border rounded px-2 py-1 tracking-widest" bind:value={code} placeholder="000000" />
       </label>
-      <button class="w-full text-xs px-3 py-1.5 rounded bg-accent text-white disabled:opacity-50" disabled={busy || code.length !== 6} onclick={confirmCode}>Confirm</button>
+      <button class="w-full text-xs px-3 py-1.5 rounded bg-accent text-white disabled:opacity-50" disabled={busy || code.length !== 6} onclick={confirmCode}>{m.usersui_confirmCode()}</button>
     {/if}
   {/if}
 </div>

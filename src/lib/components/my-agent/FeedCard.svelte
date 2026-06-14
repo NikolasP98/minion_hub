@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages';
 	import { Reply, Clock, X } from 'lucide-svelte';
 
 	interface Props {
@@ -39,12 +40,12 @@
 			{/if}
 		</div>
 	</div>
-	<div class="actions" aria-label="Item actions">
+	<div class="actions" aria-label={m.feed_itemActions()}>
 		{#if onreply}
 			<button
 				type="button"
 				class="action"
-				aria-label="Reply"
+				aria-label={m.feed_reply()}
 				onclick={(e) => {
 					e.stopPropagation();
 					onreply?.();
@@ -57,7 +58,7 @@
 			<button
 				type="button"
 				class="action"
-				aria-label="Snooze 24h"
+				aria-label={m.feed_snooze24h()}
 				onclick={(e) => {
 					e.stopPropagation();
 					onsnooze?.();
@@ -70,7 +71,7 @@
 			<button
 				type="button"
 				class="action"
-				aria-label="Dismiss"
+				aria-label={m.feed_dismiss()}
 				onclick={(e) => {
 					e.stopPropagation();
 					ondismiss?.();

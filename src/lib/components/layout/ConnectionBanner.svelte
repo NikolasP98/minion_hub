@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
   import { conn } from '$lib/state/gateway/connection.svelte';
   import { getActiveHost } from '$lib/state/features/hosts.svelte';
   import { ui } from '$lib/state/ui/ui.svelte';
@@ -35,19 +36,19 @@
     {#if reconnecting}
       <div class="flex items-center gap-2.5">
         <Spinner size="xs" class="!text-warning shrink-0" />
-        <span class="font-medium">Reconnecting to {activeHost?.name}…</span>
+        <span class="font-medium">{m.connectionBanner_reconnecting({ host: activeHost?.name ?? '' })}</span>
       </div>
     {:else}
       <!-- Row 1: headline + raw-reason chip -->
       <div class="flex items-center gap-2.5 flex-wrap">
         <AlertTriangle size={14} class="shrink-0" />
-        <span class="font-medium">{conn.connectError ?? 'Gateway disconnected'}</span>
+        <span class="font-medium">{conn.connectError ?? m.connectionBanner_disconnected()}</span>
         {#if conn.connectErrorRaw}
           <button
             type="button"
             onclick={() => (showDetail = !showDetail)}
             class="font-mono text-[10px] px-1.5 py-0.5 rounded bg-destructive/10 border border-destructive/25 text-destructive/70 hover:text-destructive transition-colors"
-            title="Show the raw gateway reason"
+            title={m.a11y0_showRawReason()}
           >
             {conn.connectErrorRaw}
           </button>
@@ -64,7 +65,7 @@
               onclick={retry}
               class="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-destructive/30 text-destructive hover:bg-destructive/10 transition-colors"
             >
-              <RotateCw size={11} /> Retry
+              <RotateCw size={11} /> {m.common_retry()}
             </button>
             {#if conn.connectErrorCta === 'hosts-edit'}
               <button
@@ -72,20 +73,20 @@
                 onclick={manageHosts}
                 class="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-destructive/30 text-destructive hover:bg-destructive/10 transition-colors"
               >
-                <Settings2 size={11} /> Manage hosts
+                <Settings2 size={11} /> {m.connectionBanner_manageHosts()}
               </button>
             {/if}
           </div>
         </div>
       {:else}
         <div class="pl-[1.55rem]">
-          <span class="text-destructive/80">retrying automatically…</span>
+          <span class="text-destructive/80">{m.connectionBanner_retrying()}</span>
         </div>
       {/if}
 
       {#if showDetail && conn.connectErrorRaw}
         <div class="pl-[1.55rem] font-mono text-[10px] text-destructive/60">
-          raw gateway reason: <span class="text-destructive/80">{conn.connectErrorRaw}</span>
+          {m.connectionBanner_rawReason()}: <span class="text-destructive/80">{conn.connectErrorRaw}</span>
         </div>
       {/if}
     {/if}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
   import type { SecretsProbeStatus } from '$lib/types/secrets';
   import { Button } from '$lib/components/ui';
   import SecretStatusPill from './SecretStatusPill.svelte';
@@ -71,7 +72,7 @@
       <p class="text-[11px] text-muted-foreground mb-4 font-mono">{secretKey}</p>
 
       <label class="block">
-        <span class="text-xs text-muted-foreground mb-1.5 block">Value</span>
+        <span class="text-xs text-muted-foreground mb-1.5 block">{m.secretEditModal_value()}</span>
         <input
           bind:this={inputEl}
           bind:value
@@ -79,7 +80,7 @@
           autocomplete="off"
           spellcheck="false"
           disabled={saving}
-          placeholder="Paste secret value"
+          placeholder={m.secretEditModal_placeholder()}
           class="w-full bg-background border border-border rounded-[5px] px-3 py-2 text-sm font-mono text-foreground focus:outline-none focus:border-accent disabled:opacity-50"
         />
       </label>
@@ -99,7 +100,7 @@
 
       <div class="flex gap-2 justify-end mt-5">
         <Button variant="ghost" size="sm" disabled={saving} onclick={onClose}>
-          {result ? 'Close' : 'Cancel'}
+          {result ? m.common_close() : m.common_cancel()}
         </Button>
         <Button
           variant="primary"
@@ -108,7 +109,7 @@
           disabled={!value}
           onclick={handleSave}
         >
-          Save & probe
+          {m.secretEditModal_saveAndProbe()}
         </Button>
       </div>
     </div>

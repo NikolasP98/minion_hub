@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages';
 	import { Search, Smile, Shapes, X } from 'lucide-svelte';
 	import { EMOJI_SET, ICON_SET } from './note-icons';
 
@@ -24,25 +25,25 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="ip" onmousedown={(e) => e.stopPropagation()} role="dialog" tabindex="-1" aria-label="Pick an icon">
+<div class="ip" onmousedown={(e) => e.stopPropagation()} role="dialog" tabindex="-1" aria-label={m.iconPicker_pickIcon()}>
 	<div class="ip-head">
 		<div class="ip-tabs" role="tablist">
 			<button type="button" role="tab" class="ip-tab" class:on={tab === 'emoji'} aria-selected={tab === 'emoji'} onclick={() => (tab = 'emoji')}>
-				<Smile size={14} /> Emoji
+				<Smile size={14} /> {m.iconPicker_emoji()}
 			</button>
 			<button type="button" role="tab" class="ip-tab" class:on={tab === 'icons'} aria-selected={tab === 'icons'} onclick={() => (tab = 'icons')}>
-				<Shapes size={14} /> Icons
+				<Shapes size={14} /> {m.iconPicker_icons()}
 			</button>
 		</div>
-		<button type="button" class="ip-close" title="Close" aria-label="Close" onclick={onclose}><X size={14} /></button>
+		<button type="button" class="ip-close" title={m.common_close()} aria-label={m.common_close()} onclick={onclose}><X size={14} /></button>
 	</div>
 
 	<div class="ip-search">
 		<Search size={13} />
 		<!-- svelte-ignore a11y_autofocus -->
-		<input type="text" placeholder="Search…" bind:value={query} aria-label="Search icons" autofocus />
+		<input type="text" placeholder={m.iconPicker_search()} bind:value={query} aria-label={m.iconPicker_searchIcons()} autofocus />
 		{#if current}
-			<button type="button" class="ip-clear" onclick={() => pick('')}>Remove</button>
+			<button type="button" class="ip-clear" onclick={() => pick('')}>{m.iconPicker_remove()}</button>
 		{/if}
 	</div>
 
@@ -51,7 +52,7 @@
 			{#each emojis as e (e.char)}
 				<button type="button" class="ip-cell emoji" class:sel={current === e.char} title={e.keywords} onclick={() => pick(e.char)}>{e.char}</button>
 			{/each}
-			{#if emojis.length === 0}<p class="ip-empty">No matches</p>{/if}
+			{#if emojis.length === 0}<p class="ip-empty">{m.common_noMatches()}</p>{/if}
 		{:else}
 			{#each icons as ic (ic.name)}
 				{@const Comp = ic.comp}
@@ -59,7 +60,7 @@
 					<Comp size={18} />
 				</button>
 			{/each}
-			{#if icons.length === 0}<p class="ip-empty">No matches</p>{/if}
+			{#if icons.length === 0}<p class="ip-empty">{m.common_noMatches()}</p>{/if}
 		{/if}
 	</div>
 </div>

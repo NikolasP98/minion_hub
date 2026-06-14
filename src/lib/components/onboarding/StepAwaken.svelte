@@ -1,33 +1,35 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
+
   interface Props { agentName: string; personality: string; next: () => void; }
   let { agentName = $bindable(''), personality = $bindable('casual'), next }: Props = $props();
 
   const vibes = [
-    { id: 'professional', label: 'Pro', icon: '💼', desc: 'Precise, formal, business-ready' },
-    { id: 'casual', label: 'Casual', icon: '✌️', desc: 'Relaxed, friendly, conversational' },
-    { id: 'creative', label: 'Creative', icon: '🎨', desc: 'Inventive, bold, outside-the-box' },
-    { id: 'technical', label: 'Technical', icon: '⚡', desc: 'Blunt, efficient, no fluff' },
+    { id: 'professional', label: m.awaken_pro(), icon: '💼', desc: m.awaken_proDesc() },
+    { id: 'casual', label: m.awaken_casual(), icon: '✌️', desc: m.awaken_casualDesc() },
+    { id: 'creative', label: m.awaken_creative(), icon: '🎨', desc: m.awaken_creativeDesc() },
+    { id: 'technical', label: m.awaken_technical(), icon: '⚡', desc: m.awaken_technicalDesc() },
   ];
   let nameError = $state('');
 
   function handleNext() {
-    if (!agentName.trim()) { nameError = 'Give your agent a name.'; return; }
+    if (!agentName.trim()) { nameError = m.awaken_nameError(); return; }
     nameError = ''; next();
   }
   function handleKeydown(e: KeyboardEvent) { if (e.key === 'Enter') handleNext(); }
 </script>
 
 <div class="step">
-  <h2>Name Your Agent</h2>
-  <p class="subtitle">This is the entity that will work for you. Give it a name that resonates.</p>
+  <h2>{m.awaken_nameTitle()}</h2>
+  <p class="subtitle">{m.awaken_nameSubtitle()}</p>
 
   <div class="field">
-    <input type="text" bind:value={agentName} placeholder="e.g. Aria, Nexus, Panik..." maxlength={32} onkeydown={handleKeydown} class="name-input" />
+    <input type="text" bind:value={agentName} placeholder={m.awaken_namePlaceholder()} maxlength={32} onkeydown={handleKeydown} class="name-input" />
     {#if nameError}<span class="error">{nameError}</span>{/if}
   </div>
 
-  <h2>Choose Its Nature</h2>
-  <p class="subtitle">This shapes how your agent thinks and responds.</p>
+  <h2>{m.awaken_natureTitle()}</h2>
+  <p class="subtitle">{m.awaken_natureSubtitle()}</p>
 
   <div class="vibes">
     {#each vibes as vibe}
@@ -39,7 +41,7 @@
     {/each}
   </div>
 
-  <button class="btn-primary" onclick={handleNext}>Continue →</button>
+  <button class="btn-primary" onclick={handleNext}>{m.awaken_continue()}</button>
 </div>
 
 <style>

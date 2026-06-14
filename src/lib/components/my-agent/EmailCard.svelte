@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages';
 	import { Mail, MailOpen } from 'lucide-svelte';
 	import type { EmailItem } from '$lib/services/my-agent-rpc';
 	import { setDragContext, type DragContext } from '$lib/utils/drag-context';
@@ -28,27 +29,27 @@
 		if (!received || Number.isNaN(received.getTime())) return '';
 		const diffMs = nowMs - received.getTime();
 		const mins = Math.round(diffMs / 60000);
-		if (mins < 1) return 'just now';
-		if (mins < 60) return `${mins}m ago`;
+		if (mins < 1) return m.email_justNow();
+		if (mins < 60) return m.email_minsAgo({mins});
 		const hours = Math.round(mins / 60);
-		if (hours < 24) return `${hours}h ago`;
+		if (hours < 24) return m.email_hoursAgo({hours});
 		const days = Math.round(hours / 24);
-		if (days < 7) return `${days}d ago`;
+		if (days < 7) return m.email_daysAgo({days});
 		return received.toLocaleDateString([], { month: 'short', day: 'numeric' });
 	});
 
-	const sender = $derived(item.fromName?.trim() || item.from?.trim() || 'Unknown sender');
-	const subject = $derived(item.subject?.trim() || '(no subject)');
+	const sender = $derived(item.fromName?.trim() || item.from?.trim() || m.email_unknownSender());
+	const subject = $derived(item.subject?.trim() || m.email_noSubject());
 	const snippet = $derived(item.snippet?.trim() || '');
 
 	function dragStart(e: DragEvent) {
 		const parts = [
-			`Email from ${sender}`,
-			`Subject: ${subject}`,
+			m.email_dragFrom({sender}),
+			m.email_dragSubject({subject}),
 		];
-		if (relative) parts.push(`Received: ${relative}`);
-		if (snippet) parts.push(`Preview: ${snippet}`);
-		if (item.htmlLink) parts.push(`Link: ${item.htmlLink}`);
+		if (relative) parts.push(m.email_dragReceived({relative}));
+		if (snippet) parts.push(m.email_dragPreview({snippet}));
+		if (item.htmlLink) parts.push(m.email_dragLink({link: item.htmlLink}));
 		const ctx: DragContext = {
 			kind: 'email',
 			label: subject,
@@ -84,7 +85,7 @@
 		{:else}
 			<MailOpen size={17} />
 		{/if}
-		{#if isNew}<span class="dot" aria-label="New since last view"></span>{/if}
+		{#if isNew}<span class="dot" aria-label={m.email_newIndicator()}></span>{/if}
 	</div>
 
 	<div class="text">

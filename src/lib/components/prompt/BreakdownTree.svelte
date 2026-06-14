@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from "$lib/paraglide/messages";
   import type { SectionMeta } from "@minion-stack/shared";
   import { promptSections, patchUsage, toggleSelected, toggleGroupSelected, toggleLayerCollapsed } from "$lib/state/features/prompt-sections.svelte";
   import { colorForLayer, LAYER_ORDER, layerLabel } from "$lib/utils/layer-colors";
@@ -175,7 +176,7 @@
 
 <div class="flex flex-col h-full overflow-hidden">
   <div class="shrink-0 px-3 py-2 border-b border-border flex items-center justify-between text-xs">
-    <span class="uppercase tracking-wider text-muted font-medium">Sections</span>
+    <span class="uppercase tracking-wider text-muted font-medium">{m.prompt_sections()}</span>
     <span class="font-mono text-muted">
       {selected.size}/{promptSections.sections.length}
     </span>
@@ -189,7 +190,7 @@
         {/each}
       </div>
     {:else if grouped.length === 0}
-      <div class="p-4 text-xs text-muted">No sections.</div>
+      <div class="p-4 text-xs text-muted">{m.prompt_noSections()}</div>
     {:else}
       {#each grouped as group (group.key)}
         {@const color = colorForLayer(group.key)}
@@ -203,7 +204,7 @@
           <button
             type="button"
             class="w-4 h-4 flex items-center justify-center text-muted hover:text-fg shrink-0"
-            aria-label={isOpen ? "Collapse" : "Expand"}
+            aria-label={isOpen ? m.prompt_collapse() : m.prompt_expand()}
             onclick={() => toggleLayerCollapsed(group.key)}
           >
             <svg viewBox="0 0 12 12" class="w-3 h-3 transition-transform {isOpen ? 'rotate-90' : ''}">
@@ -212,7 +213,7 @@
           </button>
           <SectionCheckbox
             state={checkboxState(group.items)}
-            label={`Select all ${layerLabel(group.key)}`}
+            label={m.prompt_selectAll({ layer: layerLabel(group.key) })}
             onchange={() => toggleGroupSelected(group.key, group.items.map((s) => s.id))}
           />
           <span class="w-1.5 h-1.5 rounded-full shrink-0 {color.dot}"></span>
@@ -226,7 +227,7 @@
             {group.bytes > 0 ? formatBytes(group.bytes) : ""}
           </span>
           <span class="w-3 shrink-0" aria-hidden="true"></span>
-          <span class="text-[10px] text-muted font-mono shrink-0 tabular-nums w-8 text-right" title="active / total">
+          <span class="text-[10px] text-muted font-mono shrink-0 tabular-nums w-8 text-right" title={m.prompt_activeTotal()}>
             {activeCount}/{group.items.length}
           </span>
         </div>
@@ -253,7 +254,7 @@
               <span data-no-toggle>
                 <SectionCheckbox
                   state={isSelected ? "on" : "off"}
-                  label={`Select ${section.id}`}
+                  label={m.prompt_selectSection({ id: section.id })}
                   onchange={() => toggleSelected(section.id)}
                 />
               </span>
@@ -269,7 +270,7 @@
               <span class="text-[10px] text-muted-strong font-mono shrink-0 tabular-nums w-12 text-right">
                 {meta ? formatBytes(meta.bytes) : ""}
               </span>
-              <span class="text-[10px] text-muted-strong shrink-0 w-3 text-center" title={meta?.cacheable ? "Cacheable" : ""}>
+              <span class="text-[10px] text-muted-strong shrink-0 w-3 text-center" title={meta?.cacheable ? m.prompt_cacheable() : ""}>
                 {meta?.cacheable ? "⚡" : ""}
               </span>
               <span data-no-toggle class="shrink-0">

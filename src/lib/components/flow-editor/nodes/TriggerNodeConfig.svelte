@@ -9,6 +9,7 @@
     accountsFor,
   } from '$lib/state/features/channel-sources.svelte';
   import { Plus, Trash2 } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let { nodeId }: { nodeId: string } = $props();
 
@@ -68,7 +69,7 @@
       {/each}
     </select>
     <p class="text-[10px] text-muted leading-snug">
-      {eventHint} The event applies to every source below — add another trigger node for a different event.
+      {eventHint} {m.flowcfg_eventAppliesToSources()}
     </p>
   </div>
 
@@ -78,16 +79,15 @@
     <button
       class="flex items-center gap-1 text-[10px] text-amber-300 hover:text-amber-200 transition-colors"
       onclick={addSource}
-      title="Listen on another channel"
+      title={m.flowcfg_listenOnAnotherChannel()}
     >
-      <Plus size={12} /> Add
+      <Plus size={12} /> {m.common_add()}
     </button>
   </div>
 
   {#if sources.length === 0}
     <p class="text-[10px] text-muted leading-snug">
-      No sources — this trigger fires on <span class="text-foreground">every</span> channel. Add one to
-      scope it to a specific channel / account.
+      {m.flowcfg_noSourcesDesc()}
     </p>
   {/if}
 
@@ -102,7 +102,7 @@
             value={s.channel}
             onchange={(e) => patchSource(i, { channel: (e.target as HTMLSelectElement).value, accountId: undefined })}
           >
-            <option value="" disabled>Select channel…</option>
+            <option value="" disabled>{m.flowcfg_selectChannel()}</option>
             {#each channels as c (c.id)}
               <option value={c.id}>{c.label}</option>
             {/each}
@@ -113,8 +113,8 @@
           <button
             class="shrink-0 text-muted/60 hover:text-red-400 transition-colors"
             onclick={() => removeSource(i)}
-            title="Remove source"
-            aria-label="Remove source"
+            title={m.flowcfg_removeSource()}
+            aria-label={m.flowcfg_removeSource()}
           >
             <Trash2 size={12} />
           </button>
@@ -127,7 +127,7 @@
             value={s.accountId ?? ''}
             onchange={(e) => patchSource(i, { accountId: (e.target as HTMLSelectElement).value || undefined })}
           >
-            <option value="">Any linked account</option>
+            <option value="">{m.flowcfg_anyLinkedAccount()}</option>
             {#each accounts as a (a.accountId)}
               <option value={a.accountId}>{a.label}{a.phone && a.phone !== a.label ? ` · ${a.phone}` : ''}{a.connected ? '' : ' — offline'}</option>
             {/each}
@@ -150,10 +150,10 @@
       checked={data.deliverResponse}
       onchange={(e) => updateNodeData(nodeId, { deliverResponse: (e.target as HTMLInputElement).checked })}
     />
-    <span class="text-xs font-medium text-foreground">Reply to channel</span>
+    <span class="text-xs font-medium text-foreground">{m.flowcfg_replyToChannel()}</span>
   </label>
   <p class="text-[10px] text-muted leading-snug -mt-1.5">
-    Send the flow's final output back to the originating chat.
+    {m.flowcfg_sendOutputBack()}
   </p>
 
   <!-- Optional agent filter -->
@@ -165,7 +165,7 @@
       id="tr-agent"
       type="text"
       class="w-full text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground font-mono"
-      placeholder="agent id (blank = any agent)"
+      placeholder={m.flowcfg_agentIdPlaceholder()}
       value={data.filterAgentId ?? ''}
       oninput={(e) => setAgentFilter((e.target as HTMLInputElement).value)}
     />

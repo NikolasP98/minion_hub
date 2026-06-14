@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import type { PageData } from './$types';
 	import type { IssueStatus } from '@minion-stack/paperclip-client';
+	import * as m from '$lib/paraglide/messages';
 	import { startPolling } from '$lib/utils/live-polling';
 	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
 	import { PageHeader } from '$lib/components/ui';
@@ -60,7 +61,7 @@
 	}
 </script>
 
-<PageHeader title="Issues">
+<PageHeader title={m.workforce_issues()}>
 	{#snippet leading()}
 		<ListTodo size={16} class="text-accent shrink-0" />
 	{/snippet}
@@ -70,19 +71,19 @@
 			<a
 				href="/workforce/issues"
 				class="inline-flex items-center gap-1.5 rounded-full bg-primary/10 text-primary px-2.5 py-0.5 text-xs font-medium hover:bg-primary/15"
-				title="Clear filter"
+				title={m.a11y3_clearFilter()}
 			>
-				status: {STATUS_LABELS[status as IssueStatus] ?? status}
+				{m.issues_status()}: {STATUS_LABELS[status as IssueStatus] ?? status}
 				<span aria-hidden="true">×</span>
 			</a>
 		{/if}
-		<span class="text-sm text-muted-foreground">{items.length} issue{items.length !== 1 ? 's' : ''}</span>
+		<span class="text-sm text-muted-foreground">{items.length} {m.issues_issue({count: items.length})}</span>
 	{/snippet}
 </PageHeader>
 <main class="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
 	{#if items.length === 0}
 		<div class="rounded-lg border border-border bg-card p-12 flex flex-col items-center justify-center text-center">
-			<p class="text-muted-foreground text-sm">No issues found.</p>
+			<p class="text-muted-foreground text-sm">{m.issues_noIssuesFound()}</p>
 		</div>
 	{:else}
 		{#each grouped() as group (group.status)}

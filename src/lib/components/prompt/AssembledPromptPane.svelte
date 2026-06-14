@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from "$lib/paraglide/messages";
   import { promptSections } from "$lib/state/features/prompt-sections.svelte";
   import { colorForLayer } from "$lib/utils/layer-colors";
   import { formatBytes, formatTokens } from "$lib/utils/format";
@@ -48,7 +49,7 @@
     class="shrink-0 border-b border-border px-4 py-2 flex items-center justify-between bg-bg1/80 backdrop-blur-sm"
   >
     <div class="text-xs uppercase tracking-wider text-muted font-medium">
-      Assembled Prompt
+      {m.prompt_assembledPrompt()}
     </div>
     <div class="flex items-center gap-3 text-xs">
       {#if preview}
@@ -62,7 +63,7 @@
         {#if loading}
           <span
             class="inline-block w-3 h-3 rounded-full border-2 border-accent/40 border-t-accent animate-spin"
-            aria-label="Refreshing"
+            aria-label={m.prompt_refreshing()}
           ></span>
         {/if}
       {:else}
@@ -75,12 +76,12 @@
     <div class="flex-1 flex items-center justify-center text-sm text-muted">
       <div class="flex items-center gap-2">
         <span class="inline-block w-4 h-4 rounded-full border-2 border-accent/40 border-t-accent animate-spin"></span>
-        <span>Assembling…</span>
+        <span>{m.prompt_assembling()}</span>
       </div>
     </div>
   {:else if !preview}
     <div class="flex-1 flex items-center justify-center text-xs text-muted px-4 text-center">
-      Select an agent to preview the assembled prompt.
+      {m.prompt_selectAgentToPreview()}
     </div>
   {:else}
     <div bind:this={scrollHost} class="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-3">

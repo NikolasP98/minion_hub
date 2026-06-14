@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages';
 	import { X } from 'lucide-svelte';
 	import {
 		readDragContext,
@@ -12,7 +13,7 @@
 		placeholder?: string;
 	}
 
-	const { onsubmit, placeholder = 'Ask your agent…' }: Props = $props();
+	const { onsubmit, placeholder = m.chat_askYourAgent() }: Props = $props();
 
 	let value = $state('');
 	let focused = $state(false);
@@ -107,7 +108,7 @@
 						<button
 							type="button"
 							class="chip-x"
-							aria-label="Remove context"
+							aria-label={m.chat_removeContext()}
 							onclick={() => removeChip(i)}
 						>
 							<X size={11} />
@@ -125,14 +126,14 @@
 				onblur={() => (focused = false)}
 				onkeydown={handleKeyDown}
 				oninput={autoGrow}
-				placeholder={chips.length > 0 ? 'Add a note, or just send the context…' : placeholder}
+				placeholder={chips.length > 0 ? m.chat_addNoteOrSend() : placeholder}
 				rows="1"
-				aria-label="Chat with your agent"
+				aria-label={m.chat_chatWithYourAgent()}
 			></textarea>
 			<span class="kbd" aria-hidden="true">↵</span>
 		</div>
 		{#if dragOver}
-			<span class="drop-hint" aria-hidden="true">Drop to add as context</span>
+			<span class="drop-hint" aria-hidden="true">{m.chat_dropToAddContext()}</span>
 		{/if}
 	</div>
 </div>

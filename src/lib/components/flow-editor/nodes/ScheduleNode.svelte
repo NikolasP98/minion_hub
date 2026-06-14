@@ -4,6 +4,7 @@
   import type { ScheduleNodeData } from '$lib/state/features/flow-editor.svelte';
   import { openNodeContextMenu, openNodeConfig } from '$lib/state/features/flow-editor.svelte';
   import { Clock, Settings2 } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let { data, id }: NodeProps & { data: ScheduleNodeData } = $props();
 
@@ -30,11 +31,11 @@
     <div class="w-6 h-6 rounded-md bg-amber-500/20 flex items-center justify-center shrink-0">
       <Clock size={12} class="text-amber-400" />
     </div>
-    <span class="text-xs font-semibold text-foreground truncate flex-1">Schedule</span>
+    <span class="text-xs font-semibold text-foreground truncate flex-1">{m.flownode_schedule()}</span>
     <button
       class="shrink-0 text-muted/60 hover:text-foreground transition-colors"
-      title="Configure schedule"
-      aria-label="Configure schedule"
+      title={m.flownode_configureSchedule()}
+      aria-label={m.flownode_configureSchedule()}
       onclick={(e) => { e.stopPropagation(); openNodeConfig(id); }}
     >
       <Settings2 size={12} />

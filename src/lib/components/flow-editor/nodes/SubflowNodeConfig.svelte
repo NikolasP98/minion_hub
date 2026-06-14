@@ -1,6 +1,7 @@
 <script lang="ts">
   import { flowEditorState, updateNodeData } from '$lib/state/features/flow-editor.svelte';
   import type { SubflowNodeData } from '$lib/state/features/flow-editor.svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let { nodeId }: { nodeId: string } = $props();
 
@@ -51,7 +52,7 @@
       value={data.flowId ?? ''}
       onchange={(e) => setFlow((e.target as HTMLSelectElement).value)}
     >
-      <option value="">Select a flow…</option>
+      <option value="">{m.flowcfg_selectFlow()}</option>
       {#each flows as f (f.id)}
         <option value={f.id}>{f.name}</option>
       {/each}
@@ -61,12 +62,12 @@
       {/if}
     </select>
     {#if loadError}
-      <p class="text-[10px] text-amber-400/80 leading-snug">Couldn't load flows — type is saved, but pick again once flows load.</p>
+      <p class="text-[10px] text-amber-400/80 leading-snug">{m.flowcfg_couldntLoadFlows()}</p>
     {:else if loaded && flows.length === 0}
-      <p class="text-[10px] text-muted leading-snug">No other flows yet. Create one first, then reference it here.</p>
+      <p class="text-[10px] text-muted leading-snug">{m.flowcfg_noOtherFlows()}</p>
     {:else}
       <p class="text-[10px] text-muted leading-snug">
-        Runs the chosen flow with this node's input; its final output continues downstream.
+        {m.flowcfg_subflowRunsDesc()}
       </p>
     {/if}
   </div>
@@ -77,7 +78,7 @@
       id="sf-label"
       type="text"
       class="w-full text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground"
-      placeholder="Subflow"
+      placeholder={m.flowcfg_subflow()}
       value={data.label ?? ''}
       oninput={(e) => setLabel((e.target as HTMLInputElement).value)}
     />

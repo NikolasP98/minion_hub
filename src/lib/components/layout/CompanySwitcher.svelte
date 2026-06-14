@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages';
 	import { onMount } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
@@ -43,7 +44,7 @@
 		class="switcher"
 		value={currentCompanyId}
 		onchange={(e) => select((e.currentTarget as HTMLSelectElement).value)}
-		aria-label="Select company"
+		aria-label={m.companySwitcher_label()}
 	>
 		{#each workspaces as w (w.companyId)}
 			<option value={w.companyId}>{w.name}</option>

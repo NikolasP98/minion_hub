@@ -1,4 +1,5 @@
 <script lang="ts">
+    import * as m from '$lib/paraglide/messages';
     interface Props {
         value: string;
         onSelect: (emoji: string) => void;
@@ -22,12 +23,12 @@
 </script>
 
 <div class="picker-wrap">
-    <button type="button" class="picker-trigger {size}" onclick={() => { open = !open; }} title="Change icon">
+    <button type="button" class="picker-trigger {size}" onclick={() => { open = !open; }} title={m.emoji_changeIcon()}>
         <span class="picker-current">{value}</span>
     </button>
 
     {#if open}
-        <button type="button" class="picker-backdrop" aria-label="Close icon picker" onclick={() => { open = false; }}></button>
+        <button type="button" class="picker-backdrop" aria-label={m.emoji_closePickerLabel()} onclick={() => { open = false; }}></button>
         <div class="picker-dropdown">
             {#each emojis as emoji (emoji)}
                 <button

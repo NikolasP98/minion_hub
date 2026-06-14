@@ -6,6 +6,7 @@
   import { sendRequest } from '$lib/services/gateway.svelte';
   import { Wrench, Plus, X } from 'lucide-svelte';
   import { onMount } from 'svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let { data, id }: NodeProps & { data: ToolAgentNodeData } = $props();
 
@@ -85,7 +86,7 @@
     <div class="w-6 h-6 rounded-md bg-violet-500/20 flex items-center justify-center shrink-0">
       <Wrench size={12} class="text-violet-400" />
     </div>
-    <span class="text-xs font-semibold text-foreground truncate">{data.label || 'Tool Agent'}</span>
+    <span class="text-xs font-semibold text-foreground truncate">{data.label || m.flowcfg_toolAgent()}</span>
   </div>
 
   <select
@@ -101,7 +102,7 @@
 
   <textarea
     class="w-full text-[10px] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground resize-y min-h-12 mb-2"
-    placeholder="System prompt…"
+    placeholder={m.flowcfg_systemPrompt()}
     value={data.systemPrompt ?? ''}
     onclick={(e) => e.stopPropagation()}
     oninput={(e) => patch({ systemPrompt: (e.target as HTMLTextAreaElement).value })}
@@ -132,8 +133,8 @@
           <button
             class="text-muted/60 hover:text-red-400"
             onclick={(e) => { e.stopPropagation(); removeGatewayTool(tool.method); }}
-            title="Remove tool"
-            aria-label="Remove tool"
+            title={m.flowcfg_removeTool()}
+            aria-label={m.flowcfg_removeTool()}
           >
             <X size={11} />
           </button>
@@ -145,7 +146,7 @@
   <div class="flex items-center gap-1">
     <input
       class="flex-1 text-[10px] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground"
-      placeholder="plugin.method"
+      placeholder={m.flowcfg_pluginMethod()}
       value={methodInput}
       onclick={(e) => e.stopPropagation()}
       oninput={(e) => (methodInput = (e.target as HTMLInputElement).value)}
@@ -155,7 +156,7 @@
       class="flex items-center gap-1 text-[10px] text-violet-400/80 hover:text-violet-300 shrink-0"
       onclick={(e) => { e.stopPropagation(); addGatewayTool(); }}
     >
-      <Plus size={11} /> Add
+      <Plus size={11} /> {m.common_add()}
     </button>
   </div>
 </div>

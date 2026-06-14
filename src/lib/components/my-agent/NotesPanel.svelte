@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages';
 	import {
 		notesState,
 		sortedNotes,
@@ -139,7 +140,7 @@
 	}
 </script>
 
-<aside class="notes-panel" class:collapsed={!notesState.open} aria-label="Notes and todos">
+<aside class="notes-panel" class:collapsed={!notesState.open} aria-label={m.note_ariaLabel()}>
 	{#if notesState.open}
 	<header class="panel-head">
 		<div class="head-title">
@@ -153,16 +154,16 @@
 			<Search size={13} />
 			<input
 				type="text"
-				placeholder="Search…"
+				placeholder={m.note_searchPlaceholder()}
 				bind:value={notesState.query}
-				aria-label="Search notes and todos"
+				aria-label={m.note_searchLabel()}
 			/>
 		</div>
 		<button
 			type="button"
 			class="add-fab"
-			title="New note  ·  type / inside to embed a to-do or easel"
-			aria-label="New note"
+			title={m.note_addNoteTitle()}
+			aria-label={m.note_addNote()}
 			onclick={() => void addAndFocus('note')}
 		>
 			<Plus size={17} />
@@ -174,9 +175,9 @@
 			<div class="empty">
 				<StickyNote size={26} />
 				{#if notesState.query.trim()}
-					<p>No matches for “{notesState.query}”.</p>
+					<p>{m.note_noMatches({ query: notesState.query })}</p>
 				{:else}
-					<p>Capture a thought or a checklist. Tap <strong>+</strong> to start.</p>
+					<p>{m.note_emptyState()}</p>
 				{/if}
 			</div>
 		{/if}
@@ -199,7 +200,7 @@
 							class="drag-grip"
 							draggable="true"
 							ondragstart={(e) => noteDragStart(e, note)}
-							title="Drag into chat as context"
+							title={m.note_dragIntoChat()}
 							aria-hidden="true"
 						>
 							<GripVertical size={13} />
@@ -207,26 +208,26 @@
 					{/if}
 					{#if note.kind === 'todo'}
 						{@const p = todoProgress(note)}
-						<span class="kind-badge todo" title="Checklist">
+						<span class="kind-badge todo" title={m.note_checklist()}>
 							<ListTodo size={12} /> {p.done}/{p.total}
 						</span>
 					{:else if note.kind === 'note'}
 						<NoteIconButton icon={note.icon ?? ''} size={15} onpick={(v) => setNoteIcon(note.id, v)} />
 					{:else}
-						<span class="kind-badge note" title="Easel"><LayoutDashboard size={12} /></span>
+						<span class="kind-badge note" title={m.note_easel()}><LayoutDashboard size={12} /></span>
 					{/if}
 					<input
 						class="card-title"
-						placeholder={note.kind === 'todo' ? 'Checklist title' : 'Title'}
+						placeholder={note.kind === 'todo' ? m.note_placeholderChecklistTitle() : m.common_title?.()}
 						value={note.title}
 						oninput={(e) => updateNote(note.id, { title: e.currentTarget.value })}
-						aria-label="Title"
+						aria-label={m.common_title?.()}
 					/>
 					<button
 						type="button"
 						class="pin-btn focus-btn"
-						title={note.kind === 'easel' ? 'Open board' : 'Focus mode'}
-						aria-label="Open fullscreen"
+						title={note.kind === 'easel' ? m.note_openBoard() : m.note_focusMode()}
+						aria-label={m.note_openFullscreen()}
 						onclick={() => (note.kind === 'easel' ? (easelNote = note) : (zenNote = note))}
 					>
 						<Maximize2 size={13} />
@@ -235,7 +236,7 @@
 						type="button"
 						class="pin-btn"
 						class:on={note.pinned}
-						title={note.pinned ? 'Unpin' : 'Pin to top'}
+						title={note.pinned ? m.note_unpin() : m.note_pinToTop()}
 						onclick={() => togglePin(note.id)}
 					>
 						<Pin size={14} />
@@ -262,7 +263,7 @@
 									{#if it.type === 'image'}
 										<img class="easel-thumb" src={rawSrc(it.fileId)} alt="" loading="lazy" />
 									{:else}
-										<span class="easel-thumb easel-thumb-text">{it.text || 'Text'}</span>
+										<span class="easel-thumb easel-thumb-text">{it.text || m.note_textDefault()}</span>
 									{/if}
 								{/each}
 								{#if items.length > 3}
@@ -272,11 +273,11 @@
 						{/if}
 						<div class="easel-meta">
 							{#if items.length > 0}
-								<span class="easel-count"><ImageIcon size={13} /> {items.length} items</span>
+								<span class="easel-count"><ImageIcon size={13} /> {items.length} {items.length === 1 ? m.note_itemSingular() : m.note_itemPlural()}</span>
 							{:else}
-								<span class="easel-count"><LayoutDashboard size={13} /> Empty board</span>
+								<span class="easel-count"><LayoutDashboard size={13} /> {m.note_emptyBoard()}</span>
 							{/if}
-							<span class="easel-open">Open board</span>
+							<span class="easel-open">{m.note_openBoard()}</span>
 						</div>
 					</button>
 				{/if}
@@ -291,8 +292,8 @@
 							<button
 								type="button"
 								class="icon-btn sm"
-								title="Colour"
-								aria-label="Change colour"
+								title={m.note_colorLabel()}
+								aria-label={m.note_changeColor()}
 								onclick={() => (colorMenuFor = colorMenuFor === note.id ? null : note.id)}
 							>
 								<Palette size={14} />
@@ -322,8 +323,8 @@
 									type="button"
 									class="icon-btn sm polish"
 									class:on={polishMenuFor === note.id}
-									title="Polish — AI clean-up & titles"
-									aria-label="Polish note"
+									title={m.note_polishTitle()}
+									aria-label={m.note_polish()}
 									aria-haspopup="menu"
 									aria-expanded={polishMenuFor === note.id}
 									onclick={() => (polishMenuFor = polishMenuFor === note.id ? null : note.id)}
@@ -352,8 +353,8 @@
 					<button
 						type="button"
 						class="icon-btn sm danger"
-						title="Delete"
-						aria-label="Delete"
+						title={m.common_delete()}
+						aria-label={m.common_delete()}
 						onclick={() => deleteNote(note.id)}
 					>
 						<Trash2 size={14} />
@@ -365,19 +366,19 @@
 
 	<!-- Inner-bottom collapse, mirroring the main nav's collapse control. -->
 	<footer class="panel-foot">
-		<button type="button" class="collapse-row" onclick={collapsePanel} aria-label="Collapse notes and todos">
+		<button type="button" class="collapse-row" onclick={collapsePanel} aria-label={m.note_collapsePanel()}>
 			<PanelRightClose size={16} />
-			<span>Collapse</span>
+			<span>{m.note_collapse()}</span>
 		</button>
 	</footer>
 	{:else}
 		<!-- Collapsed: a slim discoverable rail. Click anywhere to expand. -->
-		<button type="button" class="rail" onclick={togglePanel} aria-label="Open notes and todos">
+		<button type="button" class="rail" onclick={togglePanel} aria-label={m.note_openPanel()}>
 			<span class="rail-icon">
 				<StickyNote size={18} />
 				{#if noteCount > 0}<span class="rail-badge">{noteCount}</span>{/if}
 			</span>
-			<span class="rail-label">Notes &amp; Todos</span>
+			<span class="rail-label">{m.note_panelLabel()}</span>
 		</button>
 	{/if}
 </aside>

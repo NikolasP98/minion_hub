@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { PageData } from './$types';
+	import * as m from '$lib/paraglide/messages';
 	import { startPolling } from '$lib/utils/live-polling';
 	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
 	import Sparkline from '$lib/components/Sparkline.svelte';
@@ -35,67 +36,67 @@
 
 	const tiles = $derived<WorkforceTile[]>([
 		{
-			label: 'Issues',
+			label: m.workforce_issues(),
 			href: '/workforce/issues',
 			icon: ListTodo,
-			description: `${summary.tasks.open + summary.tasks.inProgress} open`,
+			description: `${summary.tasks.open + summary.tasks.inProgress} ${m.workforce_open()}`,
 		},
 		{
-			label: 'Approvals',
+			label: m.workforce_approvals(),
 			href: '/workforce/approvals',
 			icon: ClipboardCheck,
-			description: 'pending decisions',
+			description: m.workforce_pendingDecisions(),
 			badge: badges.approvals > 0 ? { text: String(badges.approvals), tone: 'amber' } : undefined,
 		},
 		{
-			label: 'Activity',
+			label: m.workforce_activity(),
 			href: '/workforce/activity',
 			icon: ActivityIcon,
-			description: 'recent events',
+			description: m.workforce_recentEvents(),
 		},
 		{
-			label: 'Org',
+			label: m.workforce_org(),
 			href: '/workforce/org',
 			icon: Network,
-			description: 'reporting tree',
+			description: m.workforce_reportingTree(),
 		},
 		{
-			label: 'Goals',
+			label: m.workforce_goals(),
 			href: '/workforce/goals',
 			icon: Target,
-			description: 'company → agent',
+			description: m.workforce_companyToAgent(),
 		},
 		{
-			label: 'Projects',
+			label: m.workforce_projects(),
 			href: '/workforce/projects',
 			icon: FolderKanban,
-			description: 'workspaces + scope',
+			description: m.workforce_workspacesAndScope(),
 		},
 		{
-			label: 'Reliability',
+			label: m.workforce_reliability(),
 			href: '/workforce/reliability',
 			icon: Gauge,
-			description: 'activity heatmap',
+			description: m.workforce_activityHeatmap(),
 			badge: badges.failedRuns > 0 ? { text: String(badges.failedRuns), tone: 'destructive' } : undefined,
 		},
 		{
-			label: 'Inbox',
+			label: m.workforce_inbox(),
 			href: '/workforce/inbox',
 			icon: Inbox,
-			description: 'notifications',
+			description: m.workforce_notifications(),
 			badge: badges.inbox > 0 ? { text: String(badges.inbox), tone: 'primary' } : undefined,
 		},
 		{
-			label: 'Costs',
+			label: m.workforce_costs(),
 			href: '/workforce/costs',
 			icon: Receipt,
-			description: `${summary.costs.monthUtilizationPercent.toFixed(0)}% of budget`,
+			description: `${summary.costs.monthUtilizationPercent.toFixed(0)}% ${m.workforce_ofBudget()}`,
 		},
 		{
-			label: 'Settings',
+			label: m.workforce_settings(),
 			href: '/workforce/settings',
 			icon: Settings,
-			description: 'company + agents',
+			description: m.workforce_companyAndAgents(),
 		},
 	]);
 
@@ -113,7 +114,7 @@
 	onMount(() => startPolling('app:dashboard', 5000));
 </script>
 
-<PageHeader title="Dashboard">
+<PageHeader title={m.workforce_dashboard()}>
 	{#snippet leading()}
 		<LayoutDashboard size={16} class="text-accent shrink-0" />
 	{/snippet}
@@ -147,31 +148,31 @@
 </PageHeader>
 <main class="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
 	<!-- Summary cards -->
-	<section aria-label="Summary" class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+	<section aria-label={m.a11y0_summary()} class="grid grid-cols-1 gap-4 sm:grid-cols-3">
 		<!-- Agents -->
 		<div class="surface-2 rounded-lg p-4 space-y-2">
-			<h2 class="text-sm font-medium text-muted-foreground">Agents</h2>
+			<h2 class="text-sm font-medium text-muted-foreground">{m.workforce_agents()}</h2>
 			<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-				<span class="text-muted-foreground">Active</span>
+				<span class="text-muted-foreground">{m.workforce_active()}</span>
 				<span class="font-medium tabular-nums">{summary.agents.active}</span>
-				<span class="text-muted-foreground">Running</span>
+				<span class="text-muted-foreground">{m.workforce_running()}</span>
 				<span class="font-medium tabular-nums">{summary.agents.running}</span>
-				<span class="text-muted-foreground">Paused</span>
+				<span class="text-muted-foreground">{m.workforce_paused()}</span>
 				<span class="font-medium tabular-nums">{summary.agents.paused}</span>
-				<span class="text-muted-foreground">Error</span>
+				<span class="text-muted-foreground">{m.workforce_error()}</span>
 				<span class="font-medium tabular-nums text-destructive">{summary.agents.error}</span>
 			</div>
 		</div>
 
 		<!-- Tasks (clickable, drills into filtered issues) -->
 		<div class="surface-2 rounded-lg p-4 space-y-2">
-			<h2 class="text-sm font-medium text-muted-foreground">Tasks</h2>
+			<h2 class="text-sm font-medium text-muted-foreground">{m.workforce_tasks()}</h2>
 			<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
 				<a
 					href="/workforce/issues?status=todo"
 					class="text-muted-foreground hover:text-foreground hover:underline underline-offset-2"
 				>
-					Open
+					{m.workforce_open()}
 				</a>
 				<a
 					href="/workforce/issues?status=todo"
@@ -183,7 +184,7 @@
 					href="/workforce/issues?status=in_progress"
 					class="text-muted-foreground hover:text-foreground hover:underline underline-offset-2"
 				>
-					In progress
+					{m.workforce_inProgress()}
 				</a>
 				<a
 					href="/workforce/issues?status=in_progress"
@@ -195,7 +196,7 @@
 					href="/workforce/issues?status=blocked"
 					class="text-muted-foreground hover:text-foreground hover:underline underline-offset-2"
 				>
-					Blocked
+					{m.workforce_blocked()}
 				</a>
 				<a
 					href="/workforce/issues?status=blocked"
@@ -207,7 +208,7 @@
 					href="/workforce/issues?status=done"
 					class="text-muted-foreground hover:text-foreground hover:underline underline-offset-2"
 				>
-					Done
+					{m.workforce_done()}
 				</a>
 				<a
 					href="/workforce/issues?status=done"
@@ -222,18 +223,17 @@
 		<div class="surface-2 rounded-lg p-4 space-y-2">
 			<div class="flex items-start justify-between gap-2">
 				<div class="space-y-1">
-					<h2 class="text-sm font-medium text-muted-foreground">Monthly spend</h2>
+					<h2 class="text-sm font-medium text-muted-foreground">{m.workforce_monthlySpend()}</h2>
 					<div class="text-2xl font-semibold tabular-nums">{formatCents(summary.costs.monthSpendCents)}</div>
 				</div>
 				{#if trendValues.length > 1}
-					<div class="text-primary shrink-0 mt-1" title="Daily spend over the last 14 days">
+					<div class="text-primary shrink-0 mt-1" title={m.a11y0_dailySpendTrend()}>
 						<Sparkline values={trendValues} width={120} height={32} />
 					</div>
 				{/if}
 			</div>
 			<div class="text-xs text-muted-foreground">
-				of {formatCents(summary.costs.monthBudgetCents)} budget
-				({summary.costs.monthUtilizationPercent.toFixed(1)}%)
+				{m.workforce_ofBudgetWithPercent({ budget: formatCents(summary.costs.monthBudgetCents), percent: summary.costs.monthUtilizationPercent.toFixed(1) })}
 			</div>
 			{#if summary.costs.monthUtilizationPercent > 0}
 				<div class="h-1.5 w-full rounded-full bg-muted overflow-hidden">
@@ -248,7 +248,7 @@
 
 	<!-- Budget / incidents row -->
 	{#if summary.budgets.activeIncidents > 0 || summary.pendingApprovals > 0}
-		<section aria-label="Alerts" class="flex flex-wrap gap-3">
+		<section aria-label={m.a11y0_alerts()} class="flex flex-wrap gap-3">
 			{#if summary.budgets.activeIncidents > 0}
 				<div class="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-2 text-sm">
 					<span class="font-medium text-destructive">{summary.budgets.activeIncidents}</span>
@@ -280,9 +280,9 @@
 	{/if}
 
 	<!-- Workforce nav tiles (bento grid) -->
-	<section aria-label="Workforce navigation">
+	<section aria-label={m.a11y0_workforceNavigation()}>
 		<h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-			Explore workforce
+			{m.workforce_exploreWorkforce()}
 		</h2>
 		<ul class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
 			{#each tiles as tile (tile.href)}
@@ -316,15 +316,15 @@
 	</section>
 
 	<!-- Activity feed -->
-	<section aria-label="Recent activity">
+	<section aria-label={m.a11y0_recentActivity()}>
 		<div class="flex items-center justify-between mb-2">
-			<h2 class="text-lg font-semibold">Recent activity</h2>
+			<h2 class="text-lg font-semibold">{m.workforce_recentActivity()}</h2>
 			<a href="/workforce/activity" class="text-xs text-muted-foreground hover:text-foreground hover:underline">
-				view all →
+				{m.workforce_viewAll()}
 			</a>
 		</div>
 		{#if activity.length === 0}
-			<p class="text-muted-foreground text-sm">No recent activity yet.</p>
+			<p class="text-muted-foreground text-sm">{m.workforce_noRecentActivity()}</p>
 		{:else}
 			<ul class="surface-2 divide-hairline rounded-lg overflow-hidden">
 				{#each activity.slice(0, 8) as item (item.id)}

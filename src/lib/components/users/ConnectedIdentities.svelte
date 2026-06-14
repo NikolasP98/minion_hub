@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
   import { onMount } from 'svelte';
   import { goto, invalidate } from '$app/navigation';
   import { page } from '$app/state';
@@ -27,14 +28,14 @@
   const hasGoogle = $derived(oauthIdentities.some((i) => i.provider === 'google'));
 
   async function unlink(identity: Identity) {
-    if (!confirm('Unlink this identity?')) return;
+    if (!confirm(m.usersui_unlinkIdentityConfirm())) return;
     const qs = identity.source ? `?source=${identity.source}` : '';
     const res = await fetch(`/api/users/${userId}/identities/${identity.id}${qs}`, { method: 'DELETE' });
     if (res.ok) {
-      toastSuccess('Identity removed');
+      toastSuccess(m.usersui_identityRemoved());
       await invalidate('app:identities');
     } else {
-      toastError('Remove failed');
+      toastError(m.usersui_removeFailed());
     }
   }
 
@@ -70,11 +71,11 @@
 
 <div class="bg-bg2 border border-border rounded-md overflow-hidden">
   <div class="px-3 py-2.5 border-b border-border">
-    <div class="text-[10px] uppercase tracking-wider text-muted font-semibold">Sign-in accounts</div>
+    <div class="text-[10px] uppercase tracking-wider text-muted font-semibold">{m.usersui_signInAccounts()}</div>
   </div>
 
   {#if oauthIdentities.length === 0}
-    <div class="text-muted text-xs px-3 py-2.5">No sign-in accounts.</div>
+    <div class="text-muted text-xs px-3 py-2.5">{m.usersui_noSignInAccounts()}</div>
   {:else}
     <div class="divide-y divide-border/60">
       {#each oauthIdentities as id (id.id)}
@@ -88,13 +89,13 @@
           </span>
           {#if id.verifiedAt}
             <span class="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-green-500/12 text-green-400 border border-green-500/20 shrink-0">
-              <Check size={10} /> Verified
+              <Check size={10} /> {m.usersui_verified()}
             </span>
           {/if}
           {#if canRemoveOauth}
             <button
               class="grid place-items-center h-6 w-6 rounded text-muted hover:text-destructive hover:bg-bg3/40 bg-transparent border-none cursor-pointer shrink-0"
-              title="Disconnect"
+              title={m.usersui_disconnect()}
               onclick={() => unlink(id)}
             >
               <X size={13} />
@@ -108,7 +109,7 @@
   {#if !hasGoogle}
     <div class="px-3 py-2.5 border-t border-border/60">
       <button class="text-xs px-2.5 py-1.5 rounded-md bg-transparent border border-border text-foreground hover:bg-muted/30 cursor-pointer" onclick={connectGoogle}>
-        Connect Google
+        {m.usersui_connectGoogle()}
       </button>
     </div>
   {/if}

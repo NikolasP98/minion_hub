@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
   interface Props {
     userName: string; timezone: string; language: string;
     userContext: string; next: () => void; prev: () => void;
@@ -24,35 +25,35 @@
 </script>
 
 <div class="step">
-  <h2>Tell Your Agent About You</h2>
-  <p class="subtitle">This helps your agent understand who you are and how to work with you.</p>
+  <h2>{m.step_title()}</h2>
+  <p class="subtitle">{m.step_subtitle()}</p>
 
   <div class="field">
-    <label for="uname">Your Name</label>
-    <input id="uname" type="text" bind:value={userName} placeholder="How should your agent call you?" maxlength={64} class="input" />
+    <label for="uname">{m.step_yourName()}</label>
+    <input id="uname" type="text" bind:value={userName} placeholder={m.step_namePlaceholder()} maxlength={64} class="input" />
   </div>
   <div class="row">
     <div class="field">
-      <label for="tz">Timezone</label>
+      <label for="tz">{m.step_timezone()}</label>
       <select id="tz" bind:value={timezone} class="input">
         {#each timezones as tz}<option value={tz}>{tz.replace('America/','').replace('Europe/','').replace('Asia/','').replace('_',' ')}</option>{/each}
       </select>
     </div>
     <div class="field">
-      <label for="lang">Language</label>
+      <label for="lang">{m.step_language()}</label>
       <select id="lang" bind:value={language} class="input">
         {#each languages as lang}<option value={lang.id}>{lang.label}</option>{/each}
       </select>
     </div>
   </div>
   <div class="field">
-    <label for="ctx">Context (optional)</label>
-    <textarea id="ctx" bind:value={userContext} placeholder="I run a clinic and multiple businesses. I need help with scheduling, client follow-ups, financial tracking..." rows={4} maxlength={500} class="input textarea" onkeydown={handleKeydown}></textarea>
+    <label for="ctx">{m.step_context()}</label>
+    <textarea id="ctx" bind:value={userContext} placeholder={m.step_contextPlaceholder()} rows={4} maxlength={500} class="input textarea" onkeydown={handleKeydown}></textarea>
     <span class="charcount">{userContext.length}/500</span>
   </div>
   <div class="buttons">
-    <button class="btn-secondary" onclick={prev}>← Back</button>
-    <button class="btn-primary" onclick={next}>Continue →</button>
+    <button class="btn-secondary" onclick={prev}>← {m.common_back()}</button>
+    <button class="btn-primary" onclick={next}>{m.step_continue()} →</button>
   </div>
 </div>
 

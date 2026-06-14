@@ -1,6 +1,7 @@
 <script lang="ts">
   import { flowEditorState, updateNodeData } from '$lib/state/features/flow-editor.svelte';
   import type { ScheduleNodeData } from '$lib/state/features/flow-editor.svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let { nodeId }: { nodeId: string } = $props();
 
@@ -39,8 +40,7 @@
       </select>
     </div>
     <p class="text-[10px] text-muted leading-snug">
-      The flow fires on this interval once activated. A scheduled run has no inbound
-      message — fetch what you need inside the flow (e.g. a DB Query node).
+      {m.flowcfg_scheduleDesc()}
     </p>
   </div>
 
@@ -53,7 +53,7 @@
         value={data.atTime ?? ''}
         oninput={(e) => set({ atTime: (e.target as HTMLInputElement).value || undefined })}
       />
-      <p class="text-[10px] text-muted leading-snug">Fire at or after this local time on its scheduled day.</p>
+      <p class="text-[10px] text-muted leading-snug">{m.flowcfg_atTimeDesc()}</p>
     </label>
   {/if}
 
@@ -61,7 +61,7 @@
     <span class="text-[11px] font-medium text-foreground">Label</span>
     <input
       class="text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground"
-      placeholder="Schedule"
+      placeholder={m.flowcfg_schedule()}
       value={data.label ?? ''}
       oninput={(e) => set({ label: (e.target as HTMLInputElement).value })}
     />

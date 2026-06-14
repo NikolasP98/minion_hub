@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages';
 	import {
 		addTodoItem,
 		setTodoItemText,
@@ -79,10 +80,10 @@
 			const res = await fetchAutocomplete({ kind: 'todo', context }, signal);
 			if (!signal.aborted && 'items' in res) {
 				ghost = res.items;
-				if (res.items.length === 0) err = 'No suggestions right now.';
+				if (res.items.length === 0) err = m.note_noSuggestionsRight();
 			}
 		} catch {
-			if (!signal.aborted) err = 'Could not get suggestions.';
+			if (!signal.aborted) err = m.note_couldNotSuggest();
 		} finally {
 			busy = false;
 		}
@@ -110,23 +111,23 @@
 				type="button"
 				class="check"
 				class:checked={item.done}
-				title={item.done ? 'Mark not done' : 'Mark done'}
-				aria-label="Toggle item"
+				title={item.done ? m.note_markNotDone() : m.note_markDone()}
+				aria-label={m.note_toggleItem()}
 				onclick={() => toggleItem(item.id)}
 			></button>
 			<input
 				class="todo-text"
-				placeholder="List item"
+				placeholder={m.note_listItem()}
 				value={item.text}
 				oninput={(e) => setItemText(item.id, e.currentTarget.value)}
 				onkeydown={(e) => onItemKey(e, i)}
-				aria-label="List item"
+				aria-label={m.note_listItem()}
 			/>
 			<button
 				type="button"
 				class="item-del"
-				title="Remove item"
-				aria-label="Remove item"
+				title={m.common_remove()}
+				aria-label={m.common_remove()}
 				onclick={() => deleteItem(item.id)}
 			>
 				<X size={12} />
@@ -140,7 +141,7 @@
 			<button
 				type="button"
 				class="todo-text ghost-text"
-				title="Add this item"
+				title={m.note_addThisItem()}
 				onclick={() => acceptOne(gi)}
 			>{g}</button>
 		</li>
@@ -148,24 +149,24 @@
 
 	<li class="todo-add">
 		<button type="button" class="add-item" onclick={() => addItem()}>
-			<Plus size={12} /> Add item
+			<Plus size={12} /> {m.note_addItem()}
 		</button>
 		{#if ghost.length}
 			<span class="ghost-actions">
 				<button type="button" class="add-item suggest" onclick={acceptGhost}>
-					<Sparkles size={11} /> Add all {ghost.length}
+					<Sparkles size={11} /> {m.note_addAllSuggestions({ count: ghost.length })}
 				</button>
-				<button type="button" class="add-item" onclick={clearGhost}>Dismiss</button>
+				<button type="button" class="add-item" onclick={clearGhost}>{m.note_dismissSuggestions()}</button>
 			</span>
 		{:else}
 			<button
 				type="button"
 				class="add-item suggest"
-				title="Suggest items (Tab)"
+				title={m.note_suggestItemsTitle()}
 				disabled={busy}
 				onclick={() => void requestSuggest()}
 			>
-				<Sparkles size={11} /> {busy ? 'Thinking…' : err ? 'Retry' : 'Suggest'}
+				<Sparkles size={11} /> {busy ? m.note_suggestThinking() : err ? m.common_retry() : m.note_suggest()}
 			</button>
 		{/if}
 	</li>

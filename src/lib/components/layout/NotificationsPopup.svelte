@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
   import { Bell, ArrowRight } from 'lucide-svelte';
   import { scale } from 'svelte/transition';
 
@@ -53,7 +54,7 @@
   <button
     class="fixed inset-0 z-40 cursor-default"
     onclick={close}
-    aria-label="Close notifications"
+    aria-label={m.common_close()}
     tabindex="-1"
   ></button>
 
@@ -63,7 +64,7 @@
   >
     <!-- Header -->
     <div class="flex items-center justify-between px-4 py-3 border-b border-[var(--hairline)]">
-      <h3 class="text-sm font-semibold text-foreground">Notifications</h3>
+      <h3 class="text-sm font-semibold text-foreground">{m.notificationsPopup_title()}</h3>
       {#if requests.length > 0}
         <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-accent/15 text-accent">
           {requests.length}
@@ -80,7 +81,7 @@
       {:else if requests.length === 0}
         <div class="flex flex-col items-center justify-center py-8 gap-2 text-muted-foreground">
           <Bell size={24} class="opacity-40" />
-          <p class="text-xs">No pending notifications</p>
+          <p class="text-xs">{m.notificationsPopup_noPending()}</p>
         </div>
       {:else}
         {#each requests as req (req.id)}
@@ -92,7 +93,7 @@
             {#if req.message}
               <p class="text-xs text-muted mt-0.5 line-clamp-2">{req.message}</p>
             {/if}
-            <span class="text-[10px] text-accent mt-1 font-medium">Access request pending</span>
+            <span class="text-[10px] text-accent mt-1 font-medium">{m.notificationsPopup_pending()}</span>
           </div>
         {/each}
       {/if}
@@ -104,7 +105,7 @@
       onclick={close}
       class="flex items-center justify-center gap-1.5 px-4 py-2.5 border-t border-[var(--hairline)] text-xs font-medium text-accent hover:bg-bg3 transition-colors duration-100 no-underline"
     >
-      See all notifications
+      {m.notificationsPopup_seeAll()}
       <ArrowRight size={12} />
     </a>
   </div>

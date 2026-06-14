@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import type { PageData } from './$types';
 	import type { ProjectStatus } from '@minion-stack/paperclip-client';
+	import * as m from '$lib/paraglide/messages';
 	import { startPolling } from '$lib/utils/live-polling';
 	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
 	import { PageHeader } from '$lib/components/ui';
@@ -35,10 +36,10 @@
 		if (!iso) return '';
 		const diff = new Date(iso).getTime() - Date.now();
 		const days = Math.round(diff / (1000 * 60 * 60 * 24));
-		if (days < 0) return `${Math.abs(days)}d overdue`;
-		if (days === 0) return 'today';
-		if (days === 1) return 'tomorrow';
-		return `${days}d`;
+		if (days < 0) return `${Math.abs(days)}${m.projects_daysOverdue()}`;
+		if (days === 0) return m.common_today();
+		if (days === 1) return m.projects_tomorrow();
+		return `${days}${m.projects_daysUnit()}`;
 	}
 
 	const counts = $derived.by(() => {
@@ -52,7 +53,7 @@
 	onMount(() => startPolling('app:projects', 8000));
 </script>
 
-<PageHeader title="Projects">
+<PageHeader title={m.workforce_projects()}>
 	{#snippet leading()}
 		<FolderKanban size={16} class="text-accent shrink-0" />
 	{/snippet}
@@ -72,7 +73,7 @@
 <main class="flex-1 min-h-0 overflow-y-auto p-6 space-y-6 max-w-5xl">
 	{#if projects.length === 0}
 		<div class="rounded-lg border border-border bg-card p-12 text-center">
-			<p class="text-muted-foreground text-sm">No projects yet.</p>
+			<p class="text-muted-foreground text-sm">{m.projects_noProjectsYet()}</p>
 		</div>
 	{:else}
 		<ul class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -111,7 +112,7 @@
 							</div>
 
 							<div class="flex items-center gap-3 flex-wrap text-[11px] text-muted-foreground pt-1">
-								<span title="Lead agent">
+								<span title={m.projects_leadAgent()}>
 									<span class="text-muted-strong">lead</span> {agentLabel(p.leadAgentId)}
 								</span>
 								{#if p.goals.length > 0}

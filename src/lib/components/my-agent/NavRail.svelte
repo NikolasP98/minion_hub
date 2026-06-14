@@ -1,12 +1,13 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages';
 	import { page } from '$app/state';
 	import { Home, Users, Wrench } from 'lucide-svelte';
 	import Tooltip from '$lib/components/layout/Tooltip.svelte';
 
 	const items = [
-		{ href: '/my-agent', label: 'My Agent', icon: Home },
-		{ href: '/agents', label: 'Agents', icon: Users },
-		{ href: '/agents/workshop', label: 'Workshop', icon: Wrench },
+		{ href: '/my-agent', label: m.nav_myAgent(), icon: Home },
+		{ href: '/agents', label: m.nav_agents(), icon: Users },
+		{ href: '/agents/workshop', label: m.nav_workshop(), icon: Wrench },
 	];
 
 	const currentPath = $derived(page.url.pathname);
@@ -24,7 +25,7 @@
 	});
 </script>
 
-<nav class="nav-rail" aria-label="Primary">
+<nav class="nav-rail" aria-label={m.nav_primaryAria()}>
 	{#each items as item (item.href)}
 		{@const Icon = item.icon}
 		{@const active = item.href === activeHref}

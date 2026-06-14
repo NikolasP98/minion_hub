@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
   import { invalidate } from '$app/navigation';
   import * as imageCropper from '@zag-js/image-cropper';
   import * as fileUpload from '@zag-js/file-upload';
@@ -52,7 +53,7 @@
     maxFileSize: 5 * 1024 * 1024,
     onFileChange({ acceptedFiles, rejectedFiles }: fileUpload.FileChangeDetails) {
       if (rejectedFiles.length) {
-        toastError('Image must be under 5 MB');
+        toastError(m.usersui_imageTooLarge());
         return;
       }
       const file = acceptedFiles[0];
@@ -106,8 +107,8 @@
       } else if (presetUrl) {
         ok = await persistUrl(presetUrl);
       }
-      if (!ok) throw new Error('Could not save avatar');
-      toastSuccess('Avatar updated');
+      if (!ok) throw new Error(m.usersui_avatarSaveFailed());
+      toastSuccess(m.usersui_avatarUpdated());
       await invalidate('app:user');
       close();
     } catch (e) {
@@ -120,8 +121,8 @@
   async function remove() {
     busy = true;
     try {
-      if (!(await persistUrl(null))) throw new Error('Could not remove avatar');
-      toastSuccess('Avatar removed');
+      if (!(await persistUrl(null))) throw new Error(m.usersui_avatarRemoveFailed());
+      toastSuccess(m.usersui_avatarRemoved());
       await invalidate('app:user');
       close();
     } catch (e) {
@@ -138,7 +139,7 @@
   }
 </script>
 
-<Modal bind:open title="Edit avatar" size="md" onclose={close}>
+<Modal bind:open title={m.usersui_editAvatar()} size="md" onclose={close}>
   <div class="space-y-4">
     <!-- Stage: cropper, preset preview, or the drop zone -->
     {#if cropSrc}
@@ -161,17 +162,17 @@
           class="mx-auto flex items-center gap-1.5 text-[11px] text-muted hover:text-foreground bg-transparent border-none cursor-pointer"
           onclick={resetPending}
         >
-          <RotateCcw size={12} /> Choose a different image
+          <RotateCcw size={12} /> {m.usersui_chooseDifferentImage()}
         </button>
       </div>
     {:else if presetUrl}
       <div class="flex flex-col items-center gap-2 py-2">
-        <img src={presetUrl} alt="Selected avatar" class="h-28 w-28 rounded-full object-cover bg-bg3 border border-border" />
+        <img src={presetUrl} alt={m.usersui_selectedAvatar()} class="h-28 w-28 rounded-full object-cover bg-bg3 border border-border" />
         <button
           class="flex items-center gap-1.5 text-[11px] text-muted hover:text-foreground bg-transparent border-none cursor-pointer"
           onclick={resetPending}
         >
-          <RotateCcw size={12} /> Clear selection
+          <RotateCcw size={12} /> {m.usersui_clearSelection()}
         </button>
       </div>
     {:else}
@@ -182,14 +183,14 @@
       >
         <div {...up.getDropzoneProps()} class="flex flex-col items-center gap-2">
           <UserAvatar {name} {email} {src} size={64} />
-          <p class="text-xs text-muted-foreground">Drag an image here, or</p>
+          <p class="text-xs text-muted-foreground">{m.usersui_dragImageHere()}</p>
           <button
             {...up.getTriggerProps()}
             class="inline-flex items-center gap-1.5 text-sm text-accent hover:underline bg-transparent border-none cursor-pointer"
           >
-            <UploadCloud size={15} /> Upload
+            <UploadCloud size={15} /> {m.usersui_upload()}
           </button>
-          <p class="text-[11px] text-muted-strong">PNG, JPG or GIF, up to 5 MB</p>
+          <p class="text-[11px] text-muted-strong">{m.usersui_imageLimitNote()}</p>
         </div>
         <input {...up.getHiddenInputProps()} />
       </div>
@@ -197,7 +198,7 @@
 
     <!-- Horizontal preset picker -->
     <div class="space-y-1.5">
-      <p class="text-[10px] uppercase tracking-wider text-muted font-semibold">Or pick a generated avatar</p>
+      <p class="text-[10px] uppercase tracking-wider text-muted font-semibold">{m.usersui_orPickGeneratedAvatar()}</p>
       <div class="flex gap-2 overflow-x-auto pb-1.5 -mx-0.5 px-0.5">
         {#each presets as p (p.style)}
           <button
@@ -223,20 +224,20 @@
       onclick={remove}
       disabled={busy || !src}
     >
-      <Trash2 size={13} /> Remove
+      <Trash2 size={13} /> {m.common_remove()}
     </button>
     <button
       class="text-xs px-3 py-1.5 rounded-md bg-transparent border border-border text-foreground hover:bg-muted/30 cursor-pointer"
       onclick={close}
     >
-      Cancel
+      {m.common_cancel()}
     </button>
     <button
       class="text-xs px-3 py-1.5 rounded-md bg-accent text-accent-foreground border-none cursor-pointer hover:opacity-90 disabled:opacity-50"
       onclick={save}
       disabled={busy || !hasPending}
     >
-      {busy ? 'Saving…' : 'Save'}
+      {busy ? m.usersui_saving() : m.common_save()}
     </button>
   {/snippet}
 </Modal>

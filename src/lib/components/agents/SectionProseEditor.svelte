@@ -10,6 +10,7 @@
    *   override at <workspaceDir>/prompts/<id>.md). Server derives the
    *   workspace path from agentId — client never sends a path.
    */
+  import * as m from '$lib/paraglide/messages';
   import {
     listSectionWorkspaceFiles,
     ProseConflictError,
@@ -260,7 +261,7 @@
   }
 
   function variantLabel(v: string | undefined): string {
-    return v ?? 'default';
+    return v ?? m.prose_variantDefault();
   }
 </script>
 
@@ -286,10 +287,10 @@
       <div class="px-4 py-3 border-b border-border flex items-center justify-between gap-3">
         <div class="min-w-0">
           <h2 id="prose-editor-title" class="text-sm font-semibold text-foreground">
-            {mode === 'fileInspector' ? 'Workspace files' : 'Edit prose'} — {sectionLabel}
+            {mode === 'fileInspector' ? m.prose_workspaceFiles() : m.prose_editProse()} — {sectionLabel}
           </h2>
           <p class="text-[10px] text-muted mt-0.5 font-mono truncate">
-            {mode === 'fileInspector' ? 'read-only' : scope} · {layer}/{sectionId}
+            {mode === 'fileInspector' ? m.prose_readOnly() : scope} · {layer}/{sectionId}
           </p>
         </div>
         <!-- Scope toggle (prose mode only) -->
@@ -304,7 +305,7 @@
               onclick={() => (scope = 'global')}
               disabled={saving}
             >
-              Global
+              {m.prose_global()}
             </button>
             <button
               type="button"
@@ -314,9 +315,9 @@
               class:text-muted={scope !== 'agent'}
               onclick={() => (scope = 'agent')}
               disabled={saving}
-              title="Per-agent override at <workspaceDir>/prompts/"
+              title={m.prose_agentOverrideTitle()}
             >
-              Agent
+              {m.prose_agent()}
             </button>
           </div>
         {/if}
@@ -324,7 +325,7 @@
           type="button"
           class="text-muted hover:text-foreground transition-colors shrink-0"
           onclick={close}
-          aria-label="Close"
+          aria-label={m.common_close()}
         >
           ✕
         </button>
@@ -345,7 +346,7 @@
             >
               {variantLabel(slot.variant)}
               {#if !slot.exists}
-                <span class="text-muted-strong" title="Not yet initialized">○</span>
+                <span class="text-muted-strong" title={m.prose_notYetInitialized()}>○</span>
               {/if}
               {#if slot.dirty !== null}
                 <span class="text-accent">•</span>
@@ -359,16 +360,14 @@
       <div class="flex-1 overflow-auto px-4 py-3">
         {#if mode === 'fileInspector'}
           {#if inspectorLoading}
-            <p class="text-muted text-xs">Loading workspace files…</p>
+            <p class="text-muted text-xs">{m.prose_loadingWorkspaceFiles()}</p>
           {:else if inspectorError}
             <p class="text-red-400 text-xs font-mono">{inspectorError}</p>
           {:else if inspectorFiles.length === 0}
-            <p class="text-muted text-xs">No workspace files embedded by this section.</p>
+            <p class="text-muted text-xs">{m.prose_noWorkspaceFiles()}</p>
           {:else}
             <p class="text-[10px] text-muted mb-3">
-              These files are embedded verbatim into the prompt by this section. To edit
-              them, use your agent's file tools or workspace editor — they're agent-owned
-              content, not prompt-template prose.
+              {m.prose_workspaceFilesInfo()}
             </p>
             <!-- File list -->
             <div class="space-y-1 mb-3">
@@ -389,10 +388,10 @@
                     {file.chars.toLocaleString()} chars
                   </span>
                   {#if !file.exists && !file.synthetic}
-                    <span class="text-[9px] text-red-400 font-mono shrink-0" title="File not found on disk">missing</span>
+                    <span class="text-[9px] text-red-400 font-mono shrink-0" title={m.prose_fileNotFound()}>{m.prose_missing()}</span>
                   {/if}
                   {#if file.synthetic}
-                    <span class="text-[9px] text-amber-400 font-mono shrink-0" title="Synthetic entry (e.g. onboarding gate)">synthetic</span>
+                    <span class="text-[9px] text-amber-400 font-mono shrink-0" title={m.prose_syntheticEntry()}>{m.prose_synthetic()}</span>
                   {/if}
                 </button>
               {/each}
@@ -402,7 +401,7 @@
             {#if active}
               <div class="border border-border/50 rounded">
                 <div class="px-3 py-1.5 border-b border-border/30 text-[9px] font-mono text-muted">
-                  Preview · {active.path}
+                  {m.prose_preview()} · {active.path}
                 </div>
                 <pre
                   class="px-3 py-2 text-[11px] font-mono text-foreground whitespace-pre-wrap break-words max-h-[40vh] overflow-auto"
@@ -411,22 +410,21 @@
             {/if}
           {/if}
         {:else if loading}
-          <p class="text-muted text-xs">Loading…</p>
+          <p class="text-muted text-xs">{m.common_loading()}…</p>
         {:else if error}
           <p class="text-red-400 text-xs font-mono">{error}</p>
         {:else if conflict}
           <!-- D-0g-2: write conflict resolution UI -->
           <div class="space-y-3">
             <div class="rounded border border-amber-500/50 bg-amber-500/10 px-3 py-2">
-              <p class="text-amber-300 text-xs font-semibold">File changed since you opened it</p>
+              <p class="text-amber-300 text-xs font-semibold">{m.prose_fileChangedTitle()}</p>
               <p class="text-amber-200/80 text-[11px] mt-1">
-                Another save (from another operator or external edit) landed before yours.
-                Your unsaved edits are preserved — choose how to proceed.
+                {m.prose_fileChangedDesc()}
               </p>
             </div>
             <div>
               <p class="text-[10px] font-bold uppercase tracking-wide text-muted mb-1">
-                Current server content
+                {m.prose_currentServerContent()}
               </p>
               <pre
                 class="px-3 py-2 text-[11px] font-mono text-foreground whitespace-pre-wrap break-words max-h-[25vh] overflow-auto bg-bg2 border border-border/50 rounded"
@@ -438,26 +436,24 @@
                 class="text-[11px] px-2.5 py-1 rounded border border-border text-muted hover:text-foreground transition-colors"
                 onclick={resolveConflictDiscardMine}
               >
-                Discard my changes
+                {m.prose_discardMyChanges()}
               </button>
               <button
                 type="button"
                 class="text-[11px] px-2.5 py-1 rounded border border-amber-500/50 text-amber-300 hover:bg-amber-500/10 transition-colors"
                 onclick={resolveConflictOverwrite}
               >
-                Keep my changes (overwrite on next save)
+                {m.prose_keepMyChanges()}
               </button>
             </div>
           </div>
         {:else if slots.length === 0}
           <div class="space-y-2">
             <p class="text-muted text-xs">
-              This section hasn't been migrated to editable prose yet.
+              {m.prose_notMigrated()}
             </p>
             <p class="text-muted-strong text-[10px]">
-              Pure-prose sections will become editable in the D-0f-2 sweep. Sections with
-              conditional rendering logic (e.g. tool-availability branches) stay rendered
-              at runtime.
+              {m.prose_migrationNote()}
             </p>
           </div>
         {:else}
@@ -484,9 +480,9 @@
           {#if !slot.exists && slot.dirty === null}
             <div class="space-y-2 mb-3">
               <p class="text-muted text-xs">
-                No file yet. {slot.templateDefault
-                  ? 'Initialize from the section default to start editing.'
-                  : 'This variant has no default template — type below to create one.'}
+                {slot.templateDefault
+                  ? m.prose_initFromDefault()
+                  : m.prose_noDefaultTemplate()}
               </p>
               {#if slot.templateDefault}
                 <button
@@ -494,7 +490,7 @@
                   class="text-[11px] px-2.5 py-1 rounded border border-accent/50 text-accent hover:bg-accent/10 transition-colors"
                   onclick={initFromDefault}
                 >
-                  Initialize from default
+                  {m.prose_initializeButton()}
                 </button>
               {/if}
             </div>
@@ -516,7 +512,7 @@
           onclick={close}
           disabled={saving}
         >
-          {mode === 'fileInspector' ? 'Close' : 'Cancel'}
+          {mode === 'fileInspector' ? m.common_close() : m.common_cancel()}
         </button>
         {#if mode === 'prose'}
           <button
@@ -530,7 +526,7 @@
               slots[activeIdx]?.dirty === null
             }
           >
-            {saving ? 'Saving…' : 'Save'}
+            {saving ? m.prose_saving() : m.common_save()}
           </button>
         {/if}
       </div>

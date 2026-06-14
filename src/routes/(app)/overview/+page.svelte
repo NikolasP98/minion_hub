@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
   import { invalidate } from '$app/navigation';
   import { page } from '$app/state';
   import OverviewGraph from '$lib/components/overview/OverviewGraph.svelte';
@@ -75,8 +76,8 @@
       <EntityChip ref={orgRef(org)} size="md" link={false} />
       <span class="text-muted">·</span>
       <span class="text-muted">
-        {data.areas.length} areas · {agents.length + virtualCount} agents · {members.length}
-        users · {integrationCount} integrations
+        {data.areas.length} {m.overview_areas()} · {agents.length + virtualCount} {m.overview_agents()} · {members.length}
+        {m.overview_users()} · {integrationCount} {m.overview_integrations()}
       </span>
     </div>
     {#if data.isAdmin}
@@ -86,12 +87,12 @@
             type="button"
             class="px-2.5 py-1 rounded text-xs bg-accent text-white cursor-pointer disabled:opacity-50"
             disabled={busy}
-            onclick={seed}>Seed default areas</button>
+            onclick={seed}>{m.overview_seedDefault()}</button>
         {/if}
         <button
           type="button"
           class="px-2.5 py-1 rounded text-xs border border-border hover:border-accent text-foreground cursor-pointer transition-colors {editing ? 'bg-accent/20 border-accent text-accent' : ''}"
-          onclick={() => (editing = !editing)}>{editing ? 'Done' : 'Edit areas'}</button>
+          onclick={() => (editing = !editing)}>{editing ? m.overview_done() : m.overview_editAreas()}</button>
       </div>
     {/if}
   </div>
@@ -106,14 +107,14 @@
       <aside class="w-[320px] shrink-0 border-l border-border bg-bg2 overflow-y-auto text-[12px] p-3 flex flex-col gap-3">
         <!-- Create -->
         <div class="rounded-lg border border-border p-2.5 flex flex-col gap-2">
-          <div class="text-xs font-semibold text-foreground">New area</div>
+          <div class="text-xs font-semibold text-foreground">{m.overview_newArea()}</div>
           <input
             class="w-full bg-bg1 border border-border rounded px-2 py-1 text-foreground"
-            placeholder="Area name (e.g. Sales)"
+            placeholder={m.overview_areaNamePlaceholder()}
             bind:value={newName} />
           <div class="flex flex-wrap gap-1">
             {#each AREA_COLORS as c (c)}
-              <button type="button" aria-label="color" class="w-5 h-5 rounded-full border-2 cursor-pointer {newColor === c ? 'border-foreground' : 'border-transparent'}" style="background-color: {c}" onclick={() => (newColor = c)}></button>
+              <button type="button" aria-label={m.overview_selectColor()} class="w-5 h-5 rounded-full border-2 cursor-pointer {newColor === c ? 'border-foreground' : 'border-transparent'}" style="background-color: {c}" onclick={() => (newColor = c)}></button>
             {/each}
           </div>
           <div class="flex flex-wrap gap-1">
@@ -124,7 +125,7 @@
               </button>
             {/each}
           </div>
-          <button type="button" class="px-2 py-1 rounded text-xs bg-accent text-white cursor-pointer disabled:opacity-50" disabled={busy || !newName.trim()} onclick={createArea}>Create area</button>
+          <button type="button" class="px-2 py-1 rounded text-xs bg-accent text-white cursor-pointer disabled:opacity-50" disabled={busy || !newName.trim()} onclick={createArea}>{m.overview_createArea()}</button>
         </div>
 
         <!-- Existing areas + assignment -->
@@ -132,10 +133,10 @@
           <div class="rounded-lg border border-border p-2.5 flex flex-col gap-2">
             <div class="flex items-center justify-between">
               <EntityChip ref={areaRef(area)} size="md" link={false} />
-              <button type="button" class="text-muted hover:text-destructive cursor-pointer" title="Delete area" onclick={() => removeArea(area.id)}>&times;</button>
+              <button type="button" class="text-muted hover:text-destructive cursor-pointer" title={m.overview_deleteArea()} onclick={() => removeArea(area.id)}>&times;</button>
             </div>
             <details>
-              <summary class="cursor-pointer text-muted hover:text-foreground">Agents ({area.agentIds.length})</summary>
+              <summary class="cursor-pointer text-muted hover:text-foreground">{m.overview_agents()} ({area.agentIds.length})</summary>
               <div class="mt-1 flex flex-col gap-0.5 max-h-40 overflow-y-auto">
                 {#each agents as a (a.id)}
                   <label class="flex items-center gap-1.5 cursor-pointer">
@@ -146,7 +147,7 @@
               </div>
             </details>
             <details>
-              <summary class="cursor-pointer text-muted hover:text-foreground">Users ({area.userIds.length})</summary>
+              <summary class="cursor-pointer text-muted hover:text-foreground">{m.overview_users()} ({area.userIds.length})</summary>
               <div class="mt-1 flex flex-col gap-0.5 max-h-40 overflow-y-auto">
                 {#each members as u (u.id)}
                   <label class="flex items-center gap-1.5 cursor-pointer">

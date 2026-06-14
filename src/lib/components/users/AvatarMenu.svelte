@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
   import * as menu from '@zag-js/menu';
   import { useMachine, normalizeProps } from '@zag-js/svelte';
   import { Eye, Pencil } from 'lucide-svelte';
@@ -40,7 +41,7 @@
 <button
   {...api.getTriggerProps()}
   class="relative group rounded-full bg-transparent border-none p-0 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg2"
-  aria-label="Avatar options"
+  aria-label={m.usersui_avatarOptions()}
 >
   <UserAvatar {name} {email} {src} {size} />
   <span
@@ -59,19 +60,19 @@
       {...api.getItemProps({ value: 'view' })}
       class="flex w-full items-center gap-2 px-2.5 py-1.5 rounded text-sm text-foreground data-[highlighted]:bg-white/[0.06] cursor-pointer bg-transparent border-none text-left"
     >
-      <Eye size={14} class="text-muted-foreground" /> View
+      <Eye size={14} class="text-muted-foreground" /> {m.usersui_view()}
     </button>
     <button
       {...api.getItemProps({ value: 'edit' })}
       class="flex w-full items-center gap-2 px-2.5 py-1.5 rounded text-sm text-foreground data-[highlighted]:bg-white/[0.06] cursor-pointer bg-transparent border-none text-left"
     >
-      <Pencil size={14} class="text-muted-foreground" /> Edit
+      <Pencil size={14} class="text-muted-foreground" /> {m.common_edit()}
     </button>
   </div>
 </div>
 
 <!-- View: enlarged avatar -->
-<Modal bind:open={viewing} title={name ?? email ?? 'Avatar'} size="sm">
+<Modal bind:open={viewing} title={name ?? email ?? m.usersui_avatar()} size="sm">
   <div class="grid place-items-center py-2">
     <UserAvatar {name} {email} {src} size={240} />
   </div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages';
 	import { StickyNote } from 'lucide-svelte';
 	import IconPicker from './IconPicker.svelte';
 	import { iconComp } from './note-icons';
@@ -23,8 +24,8 @@
 	<button
 		type="button"
 		class="ni-btn"
-		title="Choose an icon"
-		aria-label="Choose an icon"
+		title={m.noteIconButton_chooseIcon()}
+		aria-label={m.noteIconButton_chooseIcon()}
 		aria-haspopup="dialog"
 		aria-expanded={open}
 		onclick={() => (open = !open)}

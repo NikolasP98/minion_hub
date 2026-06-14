@@ -5,6 +5,7 @@
     updateNodeConfig,
     closeNodeConfig,
   } from '$lib/state/features/flow-editor.svelte';
+  import * as m from '$lib/paraglide/messages';
   import type { DestinationListValue, BranchConfig } from '$lib/state/features/flow-editor.svelte';
   import { X, Settings2 } from 'lucide-svelte';
   import ChannelNodeConfig from './ChannelNodeConfig.svelte';
@@ -40,26 +41,26 @@
   const fields = $derived(descriptor?.config ?? []);
   const config = $derived(((node?.data as { config?: Record<string, unknown> })?.config ?? {}) as Record<string, unknown>);
   const nodeLabel = $derived(
-    isTrigger ? 'Channel Trigger' : ((node?.data as { label?: string })?.label ?? descriptor?.label ?? 'Node'),
+    isTrigger ? m.flowcfg_channelTrigger() : ((node?.data as { label?: string })?.label ?? descriptor?.label ?? m.flowcfg_node()),
   );
   const subtitle = $derived(
     isChannel
-      ? 'channel · destinations'
+      ? m.flowcfg_subtitleChannel()
       : isHandoff
-        ? 'claim · suggest · relay'
+        ? m.flowcfg_subtitleHandoff()
         : isReaction
-          ? 'emoji · trigger message'
+          ? m.flowcfg_subtitleReaction()
           : isSubflow
-            ? 'run another flow'
+            ? m.flowcfg_subtitleSubflow()
             : isDatabase
-              ? 'read · write (CRUD)'
+              ? m.flowcfg_subtitleDatabase()
               : isFileWrite
-                ? 'path · content'
+                ? m.flowcfg_subtitleFileWrite()
                 : isSchedule
-                  ? 'recurring interval'
+                  ? m.flowcfg_subtitleSchedule()
                   : isTrigger
-                    ? 'event · channels'
-                    : `${descriptor?.pluginId} · configure`,
+                    ? m.flowcfg_subtitleTrigger()
+                    : `${descriptor?.pluginId} · ${m.flowcfg_configure()}`,
   );
 
   function set(key: string, value: unknown) {
@@ -78,7 +79,7 @@
     class="absolute top-3 right-3 z-30 {isChannel || isHandoff || isTrigger ? 'w-80' : 'w-72'} max-h-[calc(100%-1.5rem)] overflow-y-auto bg-bg2 border border-border rounded-xl shadow-xl flex flex-col"
     role="dialog"
     tabindex="-1"
-    aria-label="Node configuration"
+    aria-label={m.flowcfg_nodeConfig()}
   >
     <div class="flex items-center justify-between px-3 py-2.5 border-b border-border shrink-0">
       <div class="flex items-center gap-2 min-w-0">
@@ -91,8 +92,8 @@
       <button
         onclick={closeNodeConfig}
         class="p-1 rounded text-muted hover:text-foreground hover:bg-bg3 transition-colors shrink-0"
-        title="Close"
-        aria-label="Close configuration"
+        title={m.common_close()}
+        aria-label={m.common_close()}
       >
         <X size={14} />
       </button>
@@ -192,7 +193,7 @@
                 value={disp(field)}
                 onchange={(e) => set(field.key, (e.target as HTMLSelectElement).value)}
               >
-                <option value="">Select a channel…</option>
+                <option value="">{m.flowcfg_selectChannel()}</option>
                 {#each channels as c (c.id)}
                   <option value={c.id}>{c.label}</option>
                 {/each}

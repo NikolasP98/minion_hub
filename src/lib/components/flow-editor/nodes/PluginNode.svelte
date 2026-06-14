@@ -4,6 +4,7 @@
   import type { PluginTriggerNodeData, PluginActionNodeData } from '$lib/state/features/flow-editor.svelte';
   import { flowEditorState, setNodes, openNodeContextMenu, openNodeConfig, descriptorForNode, branchFieldFor } from '$lib/state/features/flow-editor.svelte';
   import { Puzzle, Settings2, Split } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let { data, id }: NodeProps & { data: PluginTriggerNodeData | PluginActionNodeData } = $props();
 
@@ -55,8 +56,8 @@
     {#if configurable}
       <button
         class="shrink-0 text-muted/60 hover:text-foreground transition-colors"
-        title="Configure"
-        aria-label="Configure node"
+        title={m.common_configure()}
+        aria-label={m.flownode_configureNode()}
         onclick={(e) => { e.stopPropagation(); openNodeConfig(id); }}
       >
         <Settings2 size={12} />
@@ -76,14 +77,14 @@
         onclick={(e) => e.stopPropagation()}
         onchange={handleDeliverChange}
       />
-      <span class="text-[10px] text-muted">Reply to channel</span>
+      <span class="text-[10px] text-muted">{m.flownode_replyToChannel()}</span>
     </label>
   {/if}
 
   {#if branch}
     <!-- Branch outputs: edit the rules in the config panel; wire them here. -->
     <div class="mt-1.5 flex items-center gap-1 text-[9px] text-amber-400/80">
-      <Split size={10} /> routes on output
+      <Split size={10} /> {m.flownode_routesOnOutput()}
     </div>
     <div class="flex flex-col gap-1 mt-1">
       {#each branches as b (b.id)}
@@ -93,10 +94,10 @@
         </div>
       {/each}
       {#if branches.length === 0}
-        <p class="text-[9px] text-muted/70">No branches yet — add them in Configure.</p>
+        <p class="text-[9px] text-muted/70">{m.flownode_noBranchesYetAddInConfigure()}</p>
       {/if}
       <div class="relative pt-1 mt-0.5 border-t border-border/50 text-[9px] text-muted">
-        default
+        {m.flownode_default()}
         <Handle type="source" position={Position.Right} id="default" style="top: 50%; right: -21px;" class="!w-3 !h-3 !border-2 !border-slate-400 !bg-slate-900" />
       </div>
     </div>

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import type { ApprovalStatus } from '@minion-stack/paperclip-client';
+	import * as m from '$lib/paraglide/messages';
 	import ApprovalPayload from '$lib/components/workforce/ApprovalPayload.svelte';
 	import { PageHeader } from '$lib/components/ui';
 	import { ClipboardCheck } from 'lucide-svelte';
@@ -52,14 +53,14 @@
 	}
 </script>
 
-<PageHeader title="Approvals">
+<PageHeader title={m.workforce_approvals()}>
 	{#snippet leading()}
 		<ClipboardCheck size={16} class="text-accent shrink-0" />
 	{/snippet}
 	{#snippet actions()}
 		{#if pendingCount > 0}
 			<span class="rounded-full bg-amber-500/20 px-2.5 py-0.5 text-xs font-medium text-amber-600">
-				{pendingCount} pending
+				{pendingCount} {m.approvals_pending()}
 			</span>
 		{/if}
 	{/snippet}
@@ -67,7 +68,7 @@
 <main class="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
 	{#if items.length === 0}
 		<div class="rounded-lg border border-border bg-card p-12 flex flex-col items-center justify-center text-center">
-			<p class="text-muted-foreground text-sm">No approvals yet.</p>
+			<p class="text-muted-foreground text-sm">{m.approvals_noApprovalsYet()}</p>
 		</div>
 	{:else}
 		<ul class="space-y-3">
@@ -111,11 +112,11 @@
 					<!-- Requester info -->
 					<div class="flex items-center gap-2 text-xs text-muted-foreground pl-0">
 						{#if approval.requestedByAgentId}
-							<span>Agent: <span class="font-mono">{approval.requestedByAgentId.slice(0, 8)}…</span></span>
+							<span>{m.approvals_agent()}: <span class="font-mono">{approval.requestedByAgentId.slice(0, 8)}…</span></span>
 						{:else if approval.requestedByUserId}
-							<span>User: <span class="font-mono">{approval.requestedByUserId.slice(0, 8)}…</span></span>
+							<span>{m.approvals_user()}: <span class="font-mono">{approval.requestedByUserId.slice(0, 8)}…</span></span>
 						{:else}
-							<span>Requester unknown</span>
+							<span>{m.approvals_requesterUnknown()}</span>
 						{/if}
 
 						{#if approval.decisionNote}

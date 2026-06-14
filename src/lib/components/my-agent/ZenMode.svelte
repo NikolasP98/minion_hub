@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages';
 	import { updateNote, setNoteIcon, type AgentNote } from '$lib/state/features/agent-notes.svelte';
 	import type { EaselBlock } from '$lib/types/notes';
 	import NoteBlocks from './NoteBlocks.svelte';
@@ -46,7 +47,7 @@
 
 {#if note}
 	{@const current = note}
-	<div class="zen" role="dialog" aria-modal="true" aria-label="Focus mode">
+	<div class="zen" role="dialog" aria-modal="true" aria-label={m.note_focusMode()}>
 		<div class="zen-header">
 			{#if current.kind === 'note'}
 				<div class="zen-polish-wrap">
@@ -54,12 +55,12 @@
 						type="button"
 						class="zen-polish"
 						class:on={polishMenuOpen}
-						title="Polish — AI clean-up & titles with a chosen intent"
+						title={m.note_polishTitle()}
 						aria-haspopup="menu"
 						aria-expanded={polishMenuOpen}
 						onclick={() => (polishMenuOpen = !polishMenuOpen)}
 					>
-						<Wand2 size={14} /> Polish
+						<Wand2 size={14} /> {m.note_polish()}
 					</button>
 					{#if polishMenuOpen}
 						<div class="zen-polish-pop">
@@ -79,7 +80,7 @@
 					hasPending={() => blocksRef?.hasPendingFocused() ?? false}
 				/>
 			{/if}
-			<button type="button" class="zen-min" title="Minimize (Esc)" aria-label="Minimize" onclick={onclose}>
+			<button type="button" class="zen-min" title={m.note_minimizeTitle()} aria-label={m.note_minimize()} onclick={onclose}>
 				<Minimize2 size={18} />
 			</button>
 		</div>
@@ -91,10 +92,10 @@
 				{/if}
 				<input
 					class="zen-title"
-					placeholder="Title"
+					placeholder={m.common_title?.()}
 					value={current.title}
 					oninput={(e) => updateNote(current.id, { title: e.currentTarget.value })}
-					aria-label="Title"
+					aria-label={m.common_title?.()}
 				/>
 			</div>
 

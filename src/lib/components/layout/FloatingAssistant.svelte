@@ -1,4 +1,5 @@
 <script lang="ts">
+    import * as m from '$lib/paraglide/messages';
     import { Sparkles, X, Send, ChevronDown, AlertCircle, Mic, MicOff, PhoneOff } from 'lucide-svelte';
     import { voiceCall, mouth, toggleMute, endCall } from '$lib/state/features/voice-call.svelte';
     import OpenHumanAvatar from '$lib/components/my-agent/OpenHumanAvatar.svelte';
@@ -149,10 +150,10 @@
     // live status + controls so the call is never interrupted by navigation.
     const callElsewhere = $derived(voiceCall.active && !onMyAgentPage);
     const CALL_STATUS_LABEL: Record<string, string> = {
-        idle: 'Muted',
-        listening: 'Listening…',
-        thinking: 'Thinking…',
-        speaking: 'Speaking…',
+        idle: m.floatingAssistant_muted(),
+        listening: m.floatingAssistant_listening(),
+        thinking: m.floatingAssistant_thinking(),
+        speaking: m.floatingAssistant_speaking(),
     };
 </script>
 
@@ -168,20 +169,20 @@
             type="button"
             onclick={() => (assistant.open = true)}
             class="flex items-center gap-2 group"
-            title="Open call transcript"
+            title={m.a11y3_openCallTranscript()}
         >
             <span class="w-7 h-7 rounded-full overflow-hidden bg-black/40 ring-1 ring-accent/50 shrink-0">
                 <OpenHumanAvatar mouthRef={mouth} status={voiceCall.status} />
             </span>
             <span class="text-xs font-medium text-foreground tabular-nums">
-                {CALL_STATUS_LABEL[voiceCall.status] ?? 'On call'}
+                {CALL_STATUS_LABEL[voiceCall.status] ?? m.floatingAssistant_onCall()}
             </span>
         </button>
         <button
             type="button"
             onclick={toggleMute}
             class="w-7 h-7 flex items-center justify-center rounded-full border border-border hover:bg-bg3 transition-colors {voiceCall.muted ? 'text-accent border-accent/50' : 'text-foreground'}"
-            title={voiceCall.muted ? 'Unmute' : 'Mute'}
+            title={voiceCall.muted ? m.a11y3_unmute() : m.a11y3_mute()}
             aria-pressed={voiceCall.muted}
         >
             {#if voiceCall.muted}<MicOff size={13} />{:else}<Mic size={13} />{/if}
@@ -190,7 +191,7 @@
             type="button"
             onclick={endCall}
             class="w-7 h-7 flex items-center justify-center rounded-full border border-destructive/40 text-destructive hover:bg-destructive/15 transition-colors"
-            title="End call"
+            title={m.a11y3_endCall()}
         >
             <PhoneOff size={13} />
         </button>
@@ -200,13 +201,13 @@
         type="button"
         onclick={toggleAssistant}
         class="fixed bottom-5 right-5 z-50 flex items-center gap-2 px-4 py-2.5 rounded-full bg-bg2 border border-border shadow-lg hover:border-accent/50 hover:bg-bg3 transition-all group"
-        aria-label="Open assistant"
-        title="Open assistant (⌘K)"
+        aria-label={m.floatingAssistant_openLabel()}
+        title={m.floatingAssistant_openTitle()}
     >
         <span class="relative flex items-center justify-center w-5 h-5">
             <Sparkles size={14} class="text-accent" />
         </span>
-        <span class="text-xs font-medium text-foreground">Ask anything</span>
+        <span class="text-xs font-medium text-foreground">{m.floatingAssistant_askAnything()}</span>
         <kbd class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-bg3 text-muted-foreground border border-border">⌘K</kbd>
     </button>
 {:else}
@@ -218,15 +219,15 @@
         <!-- Header -->
         <div class="shrink-0 flex items-center gap-2 px-3 py-2.5 border-b border-border bg-bg3/40">
             <Sparkles size={14} class="text-accent" />
-            <span class="text-xs font-semibold text-foreground flex-1">Assistant</span>
+            <span class="text-xs font-semibold text-foreground flex-1">{m.floatingAssistant_title()}</span>
             {#if !conn.connected}
-                <span class="text-[9px] text-muted-foreground px-1.5 py-0.5 rounded bg-bg3 border border-border">offline</span>
+                <span class="text-[9px] text-muted-foreground px-1.5 py-0.5 rounded bg-bg3 border border-border">{m.floatingAssistant_offline()}</span>
             {/if}
             <button
                 type="button"
                 onclick={closeAssistant}
                 class="w-6 h-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-bg3 transition-colors"
-                aria-label="Close assistant"
+                aria-label={m.common_close()}
             >
                 <X size={14} />
             </button>
@@ -246,7 +247,7 @@
                     type="button"
                     onclick={toggleMute}
                     class="w-6 h-6 flex items-center justify-center rounded-md border border-border hover:bg-bg3 transition-colors {voiceCall.muted ? 'text-accent border-accent/50' : 'text-foreground'}"
-                    title={voiceCall.muted ? 'Unmute' : 'Mute'}
+                    title={voiceCall.muted ? m.a11y3_unmute() : m.a11y3_mute()}
                     aria-pressed={voiceCall.muted}
                 >
                     {#if voiceCall.muted}<MicOff size={12} />{:else}<Mic size={12} />{/if}
@@ -255,7 +256,7 @@
                     type="button"
                     onclick={endCall}
                     class="w-6 h-6 flex items-center justify-center rounded-md border border-destructive/40 text-destructive hover:bg-destructive/15 transition-colors"
-                    title="End call"
+                    title={m.a11y3_endCall()}
                 >
                     <PhoneOff size={12} />
                 </button>
@@ -270,7 +271,7 @@
         >
             {#if assistant.loading}
                 <div class="h-full flex items-center justify-center text-[11px] text-muted-foreground">
-                    Loading assistant…
+                    {m.floatingAssistant_loading()}
                 </div>
             {:else if assistant.error}
                 <div class="h-full flex flex-col items-center justify-center text-center px-6">
@@ -279,7 +280,7 @@
                 </div>
             {:else if !assistant.personalAgentId}
                 <div class="h-full flex items-center justify-center text-[11px] text-muted-foreground">
-                    Connecting…
+                    {m.floatingAssistant_connecting()}
                 </div>
             {:else if messages.length === 0 && !chat?.loading && !stream}
                 <div class="h-full flex flex-col items-center justify-center text-center px-6">
@@ -288,7 +289,7 @@
                     </div>
                     <h3 class="text-sm font-semibold text-foreground mb-1">{greeting}</h3>
                     <p class="text-[11px] text-muted-foreground leading-relaxed">
-                        Ask anything about the hub. I'll see what you're viewing and can run tools and skills your personal agent has enabled.
+                        {m.floatingAssistant_greeting()}
                     </p>
                 </div>
             {:else}
@@ -330,7 +331,7 @@
                             <span class="w-1 h-1 rounded-full bg-accent animate-pulse" style="animation-delay: 100ms"></span>
                             <span class="w-1 h-1 rounded-full bg-accent animate-pulse" style="animation-delay: 200ms"></span>
                         </span>
-                        Thinking…
+                        {m.floatingAssistant_thinking()}
                     </div>
                 {/if}
 
@@ -346,7 +347,7 @@
         <!-- Scope badge + input -->
         <div class="shrink-0 border-t border-border bg-bg3/40">
             <div class="flex items-center gap-1.5 px-3 py-1.5 text-[10px] text-muted-foreground border-b border-border/60">
-                <span class="font-semibold uppercase tracking-wider">Viewing:</span>
+                <span class="font-semibold uppercase tracking-wider">{m.floatingAssistant_viewing()}:</span>
                 <span class="truncate flex-1">{scopeLabel}</span>
                 <ChevronDown size={10} class="opacity-50" />
             </div>
@@ -357,7 +358,7 @@
                         bind:value={draft}
                         onkeydown={onInputKey}
                         rows="1"
-                        placeholder={canSend ? 'Ask anything…' : conn.connected ? 'Loading…' : 'Gateway offline'}
+                        placeholder={canSend ? m.floatingAssistant_askAnything() : conn.connected ? m.common_loading() : m.floatingAssistant_offline()}
                         disabled={!canSend && !!assistant.personalAgentId}
                         class="flex-1 min-w-0 resize-none bg-bg border border-border rounded-md px-2.5 py-1.5 text-[12px] text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/50 max-h-[120px] disabled:opacity-50"
                     ></textarea>
@@ -366,7 +367,7 @@
                         onclick={send}
                         disabled={!draft.trim() || !canSend}
                         class="shrink-0 w-7 h-7 flex items-center justify-center rounded-md bg-accent text-bg hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                        aria-label="Send"
+                        aria-label={m.floatingAssistant_send()}
                     >
                         <Send size={12} />
                     </button>

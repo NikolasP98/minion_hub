@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages';
 	import NavRail from '$lib/components/my-agent/NavRail.svelte';
 	import AgentGreeting from '$lib/components/my-agent/AgentGreeting.svelte';
 	import FeedSection from '$lib/components/my-agent/FeedSection.svelte';
@@ -463,10 +464,10 @@
 	});
 
 	const STATUS_CAPTION: Record<string, string> = {
-		idle: 'Mic muted',
-		listening: 'Listening — go ahead',
-		thinking: 'Thinking…',
-		speaking: 'Speaking…',
+		idle: m.page_micMuted(),
+		listening: m.page_listening(),
+		thinking: m.call_thinking(),
+		speaking: m.call_speaking(),
 	};
 </script>
 
@@ -504,7 +505,7 @@
 			     SIDE-BY-SIDE, taking the majority of the width and the agenda's full height. -->
 			<div class="stage" class:in-call={voiceCall.active}>
 				{#if voiceCall.active}
-					<section class="avatar-stage" aria-label="Agent avatar">
+					<section class="avatar-stage" aria-label={m.a11y1_agentAvatar()}>
 						<div class="avatar-big">
 							<OpenHumanAvatar mouthRef={mouth} status={voiceCall.status} />
 						</div>
@@ -515,17 +516,17 @@
 					</section>
 				{/if}
 
-				<section class="agenda" aria-label="Today">
+				<section class="agenda" aria-label={m.common_today()}>
 					{#if !conn.connected}
-						<p class="state-note">Connect a gateway to see your feed.</p>
+						<p class="state-note">{m.feed_connectGateway()}</p>
 					{:else if loading && feedEmpty}
-						<p class="state-note">Loading…</p>
+						<p class="state-note">{m.common_loading()}</p>
 					{:else if errorMsg}
-						<p class="state-note error">Feed failed: {errorMsg}</p>
-						<button type="button" class="retry" onclick={loadFeed}>Retry</button>
+						<p class="state-note error">{m.feed_failed({ error: errorMsg })}</p>
+						<button type="button" class="retry" onclick={loadFeed}>{m.common_retry()}</button>
 					{:else if feedEmpty}
 						<p class="state-note">
-							Quiet so far today. As you exchange messages with your agents, they'll surface here.
+							{m.feed_quiet()}
 						</p>
 					{:else}
 						<!-- Calendar events + emails sit side-by-side (events | emails) while the
@@ -537,7 +538,7 @@
 							<!-- Upcoming calendar events (next 24h across linked Google calendars). -->
 							{#if calendarItems.length > 0}
 								<FeedSection
-									label="Events"
+									label={m.feed_eventsLabel()}
 									count={calendarItems.length}
 									providers={eventProviders}
 									bind:collapsed={feedCollapsed}
@@ -564,7 +565,7 @@
 													class="more-row"
 													onclick={() => (feedCollapsed = false)}
 												>
-													+{calendarItems.length - 1} more
+													{m.feed_more({ count: calendarItems.length - 1 })}
 												</button>
 											{/if}
 										{/if}
@@ -575,7 +576,7 @@
 							<!-- Inbox emails across linked Google identities. -->
 							{#if emailItems.length > 0}
 								<FeedSection
-									label="Emails"
+									label={m.feed_emailsLabel()}
 									count={emailItems.length}
 									providers={emailProviders}
 									bind:collapsed={feedCollapsed}
@@ -612,7 +613,7 @@
 													class="more-row"
 													onclick={() => (feedCollapsed = false)}
 												>
-													+{emailItems.length - 1} more
+													{m.feed_more({ count: emailItems.length - 1 })}
 												</button>
 											{/if}
 										{/if}
@@ -627,7 +628,7 @@
 									class="feed-toggle"
 									class:open={!feedCollapsed}
 									aria-expanded={!feedCollapsed}
-									title={feedCollapsed ? 'Expand feed' : 'Collapse feed'}
+									title={feedCollapsed ? m.feed_expand() : m.feed_collapse()}
 									onclick={() => (feedCollapsed = !feedCollapsed)}
 								>
 									<ChevronDown size={14} />
@@ -658,7 +659,7 @@
 
 			<!-- Chat section: typed messages AND the live call transcript land here.
 			     Grows to fill the space between the agenda and the input. -->
-			<section class="chat-section" aria-label="Conversation">
+			<section class="chat-section" aria-label={m.feed_conversationAria()}>
 				{#if renderedMessages.length > 0 || streamMessage || stream || sending}
 					<div class="thread" bind:this={threadEl} onscroll={onThreadScroll}>
 						<div class="thread-inner">

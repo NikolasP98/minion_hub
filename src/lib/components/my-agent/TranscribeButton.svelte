@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages';
 	import { fly } from 'svelte/transition';
 	import {
 		Mic,
@@ -84,7 +85,7 @@
 	function startWebSpeech() {
 		const Ctor = srCtor();
 		if (!Ctor) {
-			error = 'Live transcription is not supported in this browser.';
+			error = m.tx_notSupported();
 			active = false;
 			return;
 		}
@@ -109,7 +110,7 @@
 		recog.onerror = (e) => {
 			const err = e as Event & { error?: string };
 			if (err.error === 'no-speech' || err.error === 'aborted') return;
-			error = `Transcription error: ${err.error ?? 'unknown'}`;
+			error = m.tx_error({ error: err.error ?? 'unknown' });
 		};
 		recog.onend = () => {
 			// Web Speech stops itself periodically — restart while active.
@@ -168,8 +169,8 @@
 		} catch (e) {
 			error =
 				e instanceof DOMException && e.name === 'NotAllowedError'
-					? 'Permission denied for the microphone.'
-					: 'Could not start audio-source transcription.';
+					? m.tx_permissionDenied()
+					: m.tx_couldNotStart();
 			await stopServerStt();
 			active = false;
 			busy = false;
@@ -207,7 +208,7 @@
 		try {
 			const res = await fetch('/api/notes/transcribe', { method: 'POST', body: fd });
 			if (res.status === 503) {
-				error = 'Set OPENAI_API_KEY on the hub to transcribe system audio.';
+				error = m.tx_setOpenaiApiKey();
 				return;
 			}
 			if (!res.ok) return;
@@ -320,7 +321,7 @@
 			disp.getVideoTracks().forEach((t) => t.stop());
 			if (disp.getAudioTracks().length === 0) {
 				disp.getTracks().forEach((t) => t.stop());
-				error = 'No tab audio shared — pick a tab and enable "Share tab audio".';
+				error = m.tx_noTabAudio();
 				return;
 			}
 			armedDisp?.getTracks().forEach((t) => t.stop());
@@ -359,23 +360,23 @@
 		<button
 			type="button"
 			class="tx-main"
-			title={active ? 'Stop transcription' : 'Transcribe speech into this note'}
-			aria-label={active ? 'Stop transcription' : 'Start transcription'}
+			title={active ? m.tx_stopTranscription() : m.tx_transcribeSpeech()}
+			aria-label={active ? m.tx_stopTranscription() : m.tx_startTranscription()}
 			aria-pressed={active}
 			onclick={toggle}
 		>
 			{#if busy}<Loader2 size={compact ? 13 : 15} class="spin" />
 			{:else if active}<Mic size={compact ? 13 : 15} />
 			{:else}<MicOff size={compact ? 13 : 15} />{/if}
-			{#if !compact}<span>{active ? 'Listening…' : 'Transcribe'}</span>{/if}
+			{#if !compact}<span>{active ? m.tx_listening() : m.tx_transcribe()}</span>{/if}
 		</button>
 		{#if !compact}
 			<button
 				type="button"
 				class="tx-caret"
 				class:open={menuOpen}
-				title="Transcription options"
-				aria-label="Transcription options"
+				title={m.tx_options()}
+				aria-label={m.tx_options()}
 				aria-haspopup="menu"
 				aria-expanded={menuOpen}
 				onclick={() => (menuOpen = !menuOpen)}
@@ -391,10 +392,10 @@
 			<!-- Actions (top) -->
 			{#if hasPending?.()}
 				<button type="button" role="menuitem" class="tx-mi" onclick={() => { menuOpen = false; onpolish?.(); }}>
-					<Sparkles size={13} /> Polish transcript now
+					<Sparkles size={13} /> {m.tx_polishNow()}
 				</button>
 				<button type="button" role="menuitem" class="tx-mi" onclick={() => { menuOpen = false; ondiscard?.(); }}>
-					<Trash2 size={13} /> Discard pending
+					<Trash2 size={13} /> {m.tx_discardPending()}
 				</button>
 				<div class="tx-sep"></div>
 			{/if}
@@ -408,10 +409,10 @@
 				onclick={() => setAutoPolish(!txPrefs.autoPolish)}
 			>
 				<span class="tx-check" class:on={txPrefs.autoPolish}>{#if txPrefs.autoPolish}<Check size={11} />{/if}</span>
-				Auto-polish dictation
+				{m.tx_autoPolish()}
 			</button>
 
-			<div class="tx-group-label">Intent</div>
+			<div class="tx-group-label">{m.tx_intent()}</div>
 			{#each TX_INTENTS as it (it.id)}
 				<button
 					type="button"
@@ -429,11 +430,11 @@
 			{#if allowTab}
 				<div class="tx-sep"></div>
 				<button type="button" role="menuitem" class="tx-mi" onclick={pickAudioSource}>
-					<MonitorSpeaker size={13} /> {armedDisp ? 'Change audio source…' : 'Audio sources…'}
+					<MonitorSpeaker size={13} /> {armedDisp ? m.tx_changeAudioSource() : m.tx_audioSources()}
 				</button>
 				{#if armedDisp}
 					<button type="button" role="menuitem" class="tx-mi sub" onclick={clearAudioSource}>
-						<X size={12} /> Remove source (tab/computer audio armed)
+						<X size={12} /> {m.tx_removeSource()}
 					</button>
 				{/if}
 			{/if}
@@ -452,9 +453,9 @@
 
 {#if active}
 	<!-- Recording island — slides in from the top with live audio + a pulsing dot. -->
-	<div class="rec-island" transition:fly={{ y: -40, duration: 220 }} role="status" aria-label="Recording">
+	<div class="rec-island" transition:fly={{ y: -40, duration: 220 }} role="status" aria-label={m.tx_recording()}>
 		<span class="rec-dot"></span>
-		<span class="rec-label">{armedDisp ? 'Recording (mic + source)' : 'Recording'}</span>
+		<span class="rec-label">{armedDisp ? m.tx_recordingWithSource() : m.tx_recording()}</span>
 		<div class="rec-bars" aria-hidden="true">
 			{#each levels as lv, i (i)}
 				<span class="rec-bar" style:height="{Math.max(8, lv * 100)}%"></span>

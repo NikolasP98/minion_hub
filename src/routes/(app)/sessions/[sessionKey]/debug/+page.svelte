@@ -1,5 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
+  import * as m from '$lib/paraglide/messages';
   import StepView from '$lib/components/debug/StepView.svelte';
   import StepStateView from '$lib/components/debug/StepStateView.svelte';
   import {
@@ -47,7 +48,7 @@
       await debugSetSteppedBuild(sessionKey, enabled);
       setSessionSteppedBuildEnabled(sessionKey, enabled);
     } catch (e) {
-      error = `Failed to ${enabled ? 'enable' : 'disable'} stepping: ${e instanceof Error ? e.message : String(e)}`;
+      error = `${m.debug_failedToggleStepping()}: ${e instanceof Error ? e.message : String(e)}`;
     } finally {
       busy = false;
     }
@@ -59,7 +60,7 @@
     try {
       await debugStepContinue(sessionKey, step);
     } catch (e) {
-      error = `Continue failed: ${e instanceof Error ? e.message : String(e)}`;
+      error = `${m.debug_continueFailed()}: ${e instanceof Error ? e.message : String(e)}`;
     }
   }
 
@@ -69,7 +70,7 @@
     try {
       await debugSkipAll(sessionKey);
     } catch (e) {
-      error = `Skip all failed: ${e instanceof Error ? e.message : String(e)}`;
+      error = `${m.debug_skipAllFailed()}: ${e instanceof Error ? e.message : String(e)}`;
     }
   }
 
@@ -82,15 +83,15 @@
   <title>Debug · {sessionKey} · Minion Hub</title>
 </svelte:head>
 
-<PageHeader title="Stepped build debug" subtitle={sessionKey || undefined}>
+<PageHeader title={m.debug_steppedBuildTitle()} subtitle={sessionKey || undefined}>
   {#snippet leading()}
     <Bug size={16} class="text-accent shrink-0" />
   {/snippet}
   {#snippet actions()}
     <div class="status">
-      Gateway:
+      {m.debug_gateway()}:
       <span class:on={conn.connected}>
-        {conn.connected ? 'connected' : conn.connecting ? 'connecting' : 'disconnected'}
+        {conn.connected ? m.debug_statusConnected() : conn.connecting ? m.debug_statusConnecting() : m.debug_statusDisconnected()}
       </span>
     </div>
   {/snippet}
@@ -98,7 +99,7 @@
 <main class="flex-1 min-h-0 overflow-y-auto">
 <div class="page">
   {#if !sessionKey}
-    <p class="error">No sessionKey in URL.</p>
+    <p class="error">{m.debug_noSessionKeyInUrl()}</p>
   {:else}
     <section class="controls">
       <label class="toggle">
@@ -108,7 +109,7 @@
           disabled={busy || !conn.connected}
           onchange={(e) => handleToggle((e.currentTarget as HTMLInputElement).checked)}
         />
-        <span>Stepped build {session?.steppedBuildEnabled ? 'ON' : 'OFF'}</span>
+        <span>{m.debug_steppedBuild()} {session?.steppedBuildEnabled ? m.debug_statusOn() : m.debug_statusOff()}</span>
       </label>
       <button
         type="button"
@@ -116,10 +117,10 @@
         onclick={handleSkipAll}
         disabled={!session?.pausedStep}
       >
-        ⏭ Skip all gates this turn
+        ⏭ {m.debug_skipAllGates()}
       </button>
       {#if session && session.timeoutCount > 0}
-        <span class="timeout-badge">⚠ {session.timeoutCount} auto-resume(s)</span>
+        <span class="timeout-badge">⚠ {m.debug_autoResumes({ count: session.timeoutCount })}</span>
       {/if}
     </section>
 

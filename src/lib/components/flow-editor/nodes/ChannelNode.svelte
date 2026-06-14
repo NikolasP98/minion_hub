@@ -4,6 +4,7 @@
   import type { ChannelNodeData } from '$lib/state/features/flow-editor.svelte';
   import { openNodeContextMenu, openNodeConfig } from '$lib/state/features/flow-editor.svelte';
   import { Send, Settings2 } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let { data, id }: NodeProps & { data: ChannelNodeData } = $props();
 
@@ -24,11 +25,11 @@
     <div class="w-6 h-6 rounded-md bg-cyan-500/20 flex items-center justify-center shrink-0">
       <Send size={12} class="text-cyan-400" />
     </div>
-    <span class="text-xs font-semibold text-foreground truncate flex-1">{data.label || 'Channel'}</span>
+    <span class="text-xs font-semibold text-foreground truncate flex-1">{data.label || m.flownode_channel()}</span>
     <button
       class="shrink-0 text-muted/60 hover:text-foreground transition-colors"
-      title="Configure destinations"
-      aria-label="Configure destinations"
+      title={m.flownode_configureDestinations()}
+      aria-label={m.flownode_configureDestinations()}
       onclick={(e) => { e.stopPropagation(); openNodeConfig(id); }}
     >
       <Settings2 size={12} />
@@ -39,10 +40,10 @@
       {channelLabel}
     </span>
     <span class="text-[10px] text-muted">
-      {destCount} {destCount === 1 ? 'destination' : 'destinations'}
+      {destCount} {m.flownode_destination({ count: destCount })}
     </span>
   </div>
   {#if destCount === 0 || !data.channel}
-    <p class="text-[9px] text-amber-400/80 mt-1">Double-click to pick a channel & destinations</p>
+    <p class="text-[9px] text-amber-400/80 mt-1">{m.flownode_doubleClickPickChannelDestinations()}</p>
   {/if}
 </div>

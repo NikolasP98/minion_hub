@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import {
@@ -47,15 +48,15 @@
 </script>
 
 <PageHeader
-  title="Shells"
-  subtitle="Long-lived exe.dev VMs, each hosting one autonomous agent with full admin."
+  title={m.shellsPage_title()}
+  subtitle={m.shellsPage_subtitle()}
 >
   {#snippet leading()}
     <Terminal size={16} class="text-accent shrink-0" />
   {/snippet}
   {#snippet actions()}
     <button class="primary" onclick={() => (showProvision = !showProvision)}>
-      {showProvision ? 'Cancel' : '+ Spin up shell'}
+      {showProvision ? m.common_cancel() : m.shellsPage_spinupButton()}
     </button>
   {/snippet}
 </PageHeader>
@@ -71,22 +72,22 @@
   {#if error}
     <div class="error">{error}</div>
   {:else if loading}
-    <div class="empty">Loading…</div>
+    <div class="empty">{m.common_loading()}</div>
   {:else if shells.length === 0}
     <div class="empty">
-      <h2>No shells yet</h2>
-      <p>Spin one up to get started. Each shell gets its own exe.dev VM.</p>
+      <h2>{m.shellsPage_empty()}</h2>
+      <p>{m.shellsPage_emptyDescription()}</p>
     </div>
   {:else}
     <div class="list">
       <div class="list-header">
         <span></span>
-        <span>Name</span>
-        <span>Harness</span>
-        <span>Region</span>
-        <span>Resources</span>
-        <span>Last invoke</span>
-        <span style="text-align:right">Status</span>
+        <span>{m.shellsPage_name()}</span>
+        <span>{m.shellsPage_harness()}</span>
+        <span>{m.shellsPage_region()}</span>
+        <span>{m.shellsPage_resources()}</span>
+        <span>{m.shellsPage_lastInvoke()}</span>
+        <span style="text-align:right">{m.shellsPage_status()}</span>
       </div>
       {#each shells as shell (shell.shellId)}
         <ShellRow {shell} onSelect={(id) => goto(`/shells/${id}`)} />

@@ -7,6 +7,7 @@
     ChannelDestination,
   } from '$lib/state/features/flow-editor.svelte';
   import DestinationListField from './DestinationListField.svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let { nodeId }: { nodeId: string } = $props();
   const node = $derived(flowEditorState.nodes.find((n) => n.id === nodeId));
@@ -52,7 +53,7 @@
   <label class="flex flex-col gap-1">
     <span class="text-[11px] font-medium text-foreground">Priority label</span>
     <input class="text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground"
-      placeholder="MEDIA / ALTA" value={data.priority ?? ''}
+      placeholder={m.flowcfg_priorityLabelPlaceholder()} value={data.priority ?? ''}
       oninput={(e) => set('priority', (e.target as HTMLInputElement).value || undefined)} />
   </label>
   <label class="flex flex-col gap-1">

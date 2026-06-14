@@ -4,6 +4,7 @@
   import type { SubflowNodeData } from '$lib/state/features/flow-editor.svelte';
   import { openNodeContextMenu, openNodeConfig } from '$lib/state/features/flow-editor.svelte';
   import { Workflow, Settings2 } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let { data, id }: NodeProps & { data: SubflowNodeData } = $props();
 
@@ -23,11 +24,11 @@
     <div class="w-6 h-6 rounded-md bg-fuchsia-500/20 flex items-center justify-center shrink-0">
       <Workflow size={12} class="text-fuchsia-400" />
     </div>
-    <span class="text-xs font-semibold text-foreground truncate flex-1">{data.label || 'Subflow'}</span>
+    <span class="text-xs font-semibold text-foreground truncate flex-1">{data.label || m.flownode_subflow()}</span>
     <button
       class="shrink-0 text-muted/60 hover:text-foreground transition-colors"
-      title="Pick the flow to run"
-      aria-label="Pick the flow to run"
+      title={m.flownode_pickFlowToRun()}
+      aria-label={m.flownode_pickFlowToRun()}
       onclick={(e) => { e.stopPropagation(); openNodeConfig(id); }}
     >
       <Settings2 size={12} />
@@ -38,6 +39,6 @@
       ↳ {flowLabel}
     </span>
   {:else}
-    <p class="text-[9px] text-amber-400/80">Double-click to pick a flow</p>
+    <p class="text-[9px] text-amber-400/80">{m.flownode_doubleClickPickFlow()}</p>
   {/if}
 </div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
   import type { ActionPlan } from '$lib/schemas/structured-response';
   import PartialField from './PartialField.svelte';
 
@@ -19,20 +20,20 @@
       <span class="error-icon">⚠</span>
       <span>{error}</span>
       {#if partial}
-        <span class="error-hint">Partial result shown below</span>
+        <span class="error-hint">{m.action_partialResultShownBelow()}</span>
       {/if}
     </div>
   {/if}
 
   <div class="card-header">
-    <span class="card-label">Action Plan</span>
+    <span class="card-label">{m.action_plan()}</span>
     {#if !done}
-      <span class="generating-badge">generating…</span>
+      <span class="generating-badge">{m.action_generating()}</span>
     {/if}
   </div>
 
   <div class="goal-row">
-    <span class="field-label">Goal</span>
+    <span class="field-label">{m.action_goal()}</span>
     <PartialField
       value={partial?.goal}
       class="goal-text"
@@ -66,7 +67,7 @@
       {/each}
     </ol>
   {:else if !done}
-    <div class="steps-placeholder" aria-label="Loading steps">
+    <div class="steps-placeholder" aria-label={m.action_loadingSteps()}>
       {#each { length: 3 } as _, i (i)}
         <div class="step-skeleton">
           <span class="step-num-skeleton"></span>
