@@ -3,8 +3,10 @@ import { json, error } from '@sveltejs/kit';
 import { flowGroups } from '$server/db/pg-schema/flows';
 import { desc, eq } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
+import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { requireAuth } from '$server/auth/authorize';
 import { getFlowsCtx } from '$server/auth/flows-ctx';
+import { scopeData } from '$server/services/base';
 import { withOrgCore } from '$server/db/with-org-core';
 
 export const GET: RequestHandler = async ({ locals }) => {
@@ -12,25 +14,33 @@ export const GET: RequestHandler = async ({ locals }) => {
   const ctx = await getFlowsCtx(locals);
   if (!ctx) throw error(401);
 
-  // Org-shared: all members see the org's groups, scoped strictly by tenant.
-  const rows = await withOrgCore(ctx, (tx) =>
-    tx
-      .select()
-      .from(flowGroups)
-      .where(eq(flowGroups.tenantId, ctx.tenantId))
-      .orderBy(desc(flowGroups.createdAt)),
+  // Groups and flows render together; share the 'flows' tag so any mutation on
+  // either side invalidates both cached lists. Short TTL as a backstop.
+  const groups = await cached(
+    keys.hub('flows', { t: ctx.tenantId, d: scopeData({ resource: 'groups' }) }),
+    { ttl: '2m', tags: tags.tenantDomain(ctx.tenantId, 'flows') },
+    async () => {
+      // Org-shared: all members see the org's groups, scoped strictly by tenant.
+      const rows = await withOrgCore(ctx, (tx) =>
+        tx
+          .select()
+          .from(flowGroups)
+          .where(eq(flowGroups.tenantId, ctx.tenantId))
+          .orderBy(desc(flowGroups.createdAt)),
+      );
+
+      return rows.map((g) => ({
+        id: g.id,
+        name: g.name,
+        pluginId: g.pluginId,
+        disabled: g.disabled,
+        createdAt: g.createdAt,
+        updatedAt: g.updatedAt,
+      }));
+    },
   );
 
-  return json({
-    groups: rows.map((g) => ({
-      id: g.id,
-      name: g.name,
-      pluginId: g.pluginId,
-      disabled: g.disabled,
-      createdAt: g.createdAt,
-      updatedAt: g.updatedAt,
-    })),
-  });
+  return json({ groups });
 };
 
 export const POST: RequestHandler = async ({ locals, request }) => {
@@ -57,6 +67,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       updatedAt: now,
     }),
   );
+
+  await invalidateTags(tags.tenantDomain(ctx.tenantId, 'flows'));
 
   return json({ id }, { status: 201 });
 };

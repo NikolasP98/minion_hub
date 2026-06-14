@@ -116,6 +116,8 @@ export interface RankedContact {
   total_msgs: number;
   inbound_msgs: number;
   channels_used: number;
+  /** Distinct channels the contact has an identity on (for branded icons). */
+  channels: string[];
   first_contact_at: string | null;
   last_contact_at: string | null;
   last_days: number;
@@ -179,7 +181,7 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
             ? sql`display_name asc nulls last`
             : sql`score desc, display_name asc nulls last`;
 
-    const limit = Math.min(f.limit ?? 100, 500);
+    const limit = Math.min(f.limit ?? 100, 5000);
     const offset = f.offset ?? 0;
 
     const rows = await tx.execute(sql`
@@ -201,6 +203,8 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
                coalesce(a.total_msgs, 0) as total_msgs,
                coalesce(a.inbound_msgs, 0) as inbound_msgs,
                coalesce(a.channels_used, 0) as channels_used,
+               (select coalesce(array_agg(distinct ci.channel order by ci.channel), array[]::text[])
+                  from crm_contact_identities ci where ci.contact_id = c.id) as channels,
                a.first_contact_at, a.last_contact_at,
                coalesce(extract(epoch from (now() - a.last_contact_at)) / 86400.0, 1e9) as last_days,
                coalesce(extract(epoch from (now() - a.first_contact_at)) / 86400.0, 1e9) as first_days,
@@ -210,7 +214,7 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
         where ${and(...conds)}
       ),
       scored as (
-        select contact_id, display_name, owner_id, source,
+        select contact_id, display_name, owner_id, source, channels,
                total_msgs, inbound_msgs, channels_used, first_contact_at, last_contact_at,
                round(last_days::numeric, 1) as last_days, round(reciprocity::numeric, 3) as reciprocity,
                round(${R_EXPR}::numeric, 1) as r_score,

@@ -2,6 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { flows } from '$server/db/pg-schema/flows';
 import { and, eq } from 'drizzle-orm';
+import { invalidateTags, tags } from '@minion-stack/cache';
 import { requireAuth } from '$server/auth/authorize';
 import { getFlowsCtx, type FlowsCtx } from '$server/auth/flows-ctx';
 import { withOrgCore } from '$server/db/with-org-core';
@@ -62,6 +63,8 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
 
   await withOrgCore(ctx, (tx) => tx.update(flows).set(updates).where(eq(flows.id, existing.id)));
 
+  await invalidateTags(tags.tenantDomain(ctx.tenantId, 'flows'));
+
   return json({ ok: true });
 };
 
@@ -75,6 +78,8 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
   // Instances (incl. plugin-template duplicates) are deletable by any org member.
   // The plugin's group container is what's protected — see /api/flow-groups/[id].
   await withOrgCore(ctx, (tx) => tx.delete(flows).where(eq(flows.id, existing.id)));
+
+  await invalidateTags(tags.tenantDomain(ctx.tenantId, 'flows'));
 
   return json({ ok: true });
 };

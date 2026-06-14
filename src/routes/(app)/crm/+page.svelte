@@ -6,6 +6,7 @@
 	import { PageHeader, Button } from '$lib/components/ui';
 	import ScoreBadge from '$lib/components/crm/ScoreBadge.svelte';
 	import StagePill from '$lib/components/crm/StagePill.svelte';
+	import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
 	import { relativeTime, contactLabel } from '$lib/components/crm/crm-format';
 	import { stageLabel } from '$lib/components/crm/crm-i18n';
 
@@ -131,7 +132,17 @@
 							<td class="px-3 py-2">
 								<StagePill stage={c.stage} overridden={false} />
 							</td>
-							<td class="px-3 py-2 text-right tabular-nums">{c.channels_used}</td>
+							<td class="px-3 py-2">
+								{#if c.channels && c.channels.length > 0}
+									<div class="flex items-center justify-end gap-1.5 text-muted-foreground">
+										{#each c.channels as ch (ch)}
+											<ChannelBrandIcon channel={ch} size={15} />
+										{/each}
+									</div>
+								{:else}
+									<div class="text-right text-muted-foreground">—</div>
+								{/if}
+							</td>
 							<td class="px-3 py-2 text-right tabular-nums">{c.inbound_msgs}/{c.total_msgs}</td>
 							<td class="px-4 py-2 text-right t-caption">{relativeTime(c.last_contact_at)}</td>
 						</tr>

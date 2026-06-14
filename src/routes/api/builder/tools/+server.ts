@@ -2,16 +2,25 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { eq, desc } from 'drizzle-orm';
 import { builtTools } from '@minion-stack/db/pg';
+import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { newId } from '$server/db/utils';
 import { requireCoreCtx } from '$server/auth/core-ctx';
 
 export const GET: RequestHandler = async ({ locals }) => {
   const ctx = await requireCoreCtx(locals);
-  const tools = await ctx.db
-    .select()
-    .from(builtTools)
-    .where(eq(builtTools.tenantId, ctx.tenantId))
-    .orderBy(desc(builtTools.updatedAt));
+  // Built tools rarely change; cache the org's list for 30m. The 'builder' tag
+  // is invalidated by every builtTools mutation (POST here + the service-layer
+  // update/delete/publish used by /tools/[id]).
+  const tools = await cached(
+    keys.hub('builder', { t: ctx.tenantId, d: { resource: 'tools' } }),
+    { ttl: '30m', tags: tags.tenantDomain(ctx.tenantId, 'builder') },
+    () =>
+      ctx.db
+        .select()
+        .from(builtTools)
+        .where(eq(builtTools.tenantId, ctx.tenantId))
+        .orderBy(desc(builtTools.updatedAt)),
+  );
   return json({ tools });
 };
 
@@ -28,5 +37,6 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     status: 'draft',
     tenantId: ctx.tenantId,
   });
+  await invalidateTags(tags.tenantDomain(ctx.tenantId, 'builder'));
   return json({ id }, { status: 201 });
 };

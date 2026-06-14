@@ -3,8 +3,10 @@ import { json, error } from '@sveltejs/kit';
 import { flows, flowGroups } from '$server/db/pg-schema/flows';
 import { and, desc, eq } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
+import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { requireAuth } from '$server/auth/authorize';
 import { getFlowsCtx } from '$server/auth/flows-ctx';
+import { scopeData } from '$server/services/base';
 import { withOrgCore } from '$server/db/with-org-core';
 import { flowPluginId } from '$lib/flows/plugin-source';
 
@@ -15,36 +17,46 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 
   const activeOnly = url.searchParams.get('active') === 'true';
 
-  // Org-shared: every member of the org sees the org's flows, scoped strictly by
-  // tenant (RLS also enforces this). Per-user scoping was removed so plugin-seeded
-  // org automations are visible to all members, not just whoever first imported them.
-  const orgFilter = eq(flows.tenantId, ctx.tenantId);
+  // Org-shared list read, cached per (tenant, activeOnly). Short TTL + the
+  // shared 'flows' tag — every flows/flow-groups mutation calls invalidateTags
+  // on this tag, so stale entries are dropped immediately rather than waiting
+  // out the TTL.
+  const result = await cached(
+    keys.hub('flows', { t: ctx.tenantId, d: scopeData({ resource: 'list', activeOnly: activeOnly ? 1 : 0 }) }),
+    { ttl: '2m', tags: tags.tenantDomain(ctx.tenantId, 'flows') },
+    async () => {
+      // Org-shared: every member of the org sees the org's flows, scoped strictly by
+      // tenant (RLS also enforces this). Per-user scoping was removed so plugin-seeded
+      // org automations are visible to all members, not just whoever first imported them.
+      const orgFilter = eq(flows.tenantId, ctx.tenantId);
 
-  const whereClause = activeOnly ? and(orgFilter, eq(flows.active, true)) : orgFilter;
+      const whereClause = activeOnly ? and(orgFilter, eq(flows.active, true)) : orgFilter;
 
-  const rows = await withOrgCore(ctx, async (tx) =>
-    tx.select().from(flows).where(whereClause).orderBy(desc(flows.updatedAt)),
+      const rows = await withOrgCore(ctx, async (tx) =>
+        tx.select().from(flows).where(whereClause).orderBy(desc(flows.updatedAt)),
+      );
+
+      return rows.map((row) => {
+        let nodeCount = 0;
+        try {
+          nodeCount = JSON.parse(row.nodes).length;
+        } catch {
+          // leave at 0
+        }
+        return {
+          id: row.id,
+          name: row.name,
+          active: row.active,
+          nodeCount,
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
+          // Owning plugin id when this flow was imported from a plugin, else null.
+          pluginId: flowPluginId(row.config),
+          groupId: row.groupId ?? null,
+        };
+      });
+    },
   );
-
-  const result = rows.map((row) => {
-    let nodeCount = 0;
-    try {
-      nodeCount = JSON.parse(row.nodes).length;
-    } catch {
-      // leave at 0
-    }
-    return {
-      id: row.id,
-      name: row.name,
-      active: row.active,
-      nodeCount,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      // Owning plugin id when this flow was imported from a plugin, else null.
-      pluginId: flowPluginId(row.config),
-      groupId: row.groupId ?? null,
-    };
-  });
 
   return json({ flows: result });
 };
@@ -99,6 +111,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       config,
     });
   });
+
+  await invalidateTags(tags.tenantDomain(ctx.tenantId, 'flows'));
 
   return json({ id }, { status: 201 });
 };
