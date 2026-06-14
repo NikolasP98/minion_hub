@@ -17,7 +17,9 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
     search: q.get('search') ?? undefined,
     minScore: num('minScore'),
     sort: (q.get('sort') as RankFilters['sort']) ?? undefined,
-    limit: 200,
+    // Show the full roster (FACES alone is ~1.6k). Service caps at 5000; if an
+    // org ever exceeds that we add pagination, but a flat list is fine at this scale.
+    limit: 5000,
   };
 
   const [contacts, tags] = await Promise.all([rankContacts(ctx, filters), listTags(ctx)]);
