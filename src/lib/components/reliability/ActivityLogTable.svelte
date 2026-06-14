@@ -87,6 +87,7 @@
 		skill: '#22d3ee',
 		crash: '#fb7185',
 		connection: '#14b8a6',
+		session: '#818cf8',
 		auth: '#34d399',
 		cron: '#60a5fa',
 		memory: '#8b5cf6',
