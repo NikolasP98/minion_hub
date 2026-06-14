@@ -2,14 +2,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDynamicPluginsSections } from "$lib/components/layout/sections";
 
 describe("getDynamicPluginsSections", () => {
-  it("returns just the Tools group (built-in Kanban) when no control centers", () => {
+  it("returns just the Tools group (built-in Kanban + CRM) when no control centers", () => {
     const sections = getDynamicPluginsSections([]);
     expect(sections).toHaveLength(1);
     expect(sections[0]?.id).toBe("plugins:tool");
     expect(sections[0]?.label).toBe("Tools");
-    expect(sections[0]?.items).toHaveLength(1);
-    expect(sections[0]?.items[0]?.href).toBe("/workforce");
+    expect(sections[0]?.items.map((i) => i.href)).toEqual(["/workforce", "/crm"]);
     expect(sections[0]?.items[0]?.label).toBe("Kanban");
+    expect(sections[0]?.items[1]?.label).toBe("CRM");
   });
 
   it("buckets plugins into category groups (channel vs creative), Kanban under Tools", () => {
@@ -54,7 +54,7 @@ describe("getDynamicPluginsSections", () => {
       },
     ]);
     const tools = sections.find((s) => s.id === "plugins:tool");
-    expect(tools?.items.map((i) => i.href)).toEqual(["/workforce", "/plugins/x"]);
+    expect(tools?.items.map((i) => i.href)).toEqual(["/workforce", "/crm", "/plugins/x"]);
   });
 });
 

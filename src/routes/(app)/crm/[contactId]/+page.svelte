@@ -1,0 +1,299 @@
+<script lang="ts">
+	import type { PageData } from './$types';
+	import { goto, invalidate } from '$app/navigation';
+	import { ArrowLeft, Trash2, Plus, X } from 'lucide-svelte';
+	import { PageHeader, Button } from '$lib/components/ui';
+	import MathFormula from '$lib/components/ui/MathFormula.svelte';
+	import ScoreBadge from '$lib/components/crm/ScoreBadge.svelte';
+	import StagePill from '$lib/components/crm/StagePill.svelte';
+	import JourneyTimeline from '$lib/components/crm/JourneyTimeline.svelte';
+	import { contactLabel, relativeTime } from '$lib/components/crm/crm-format';
+
+	let { data }: { data: PageData } = $props();
+	const c = $derived(data.contact);
+	const score = $derived(data.score);
+	const stats = $derived(data.stats as Record<string, unknown> | null);
+	const contactTags = $derived(data.contactTags);
+	const availableTags = $derived(
+		data.allTags.filter((t) => !data.contactTags.some((ct) => ct.id === t.id)),
+	);
+
+	const STAGES = ['New', 'Engaged', 'Active', 'Dormant', 'Churned'];
+	let noteBody = $state('');
+	let busy = $state(false);
+
+	const texSymbolic = '\\text{Score} = 0.5\\,R + 0.3\\,F + 0.2\\,M';
+	const texValues = $derived(
+		score
+			? `= 0.5(${score.r_score}) + 0.3(${score.f_score}) + 0.2(${score.m_score}) = ${score.score}`
+			: '',
+	);
+
+	async function patch(body: Record<string, unknown>) {
+		busy = true;
+		try {
+			const res = await fetch(`/api/crm/contacts/${c.id}`, {
+				method: 'PATCH',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify(body),
+			});
+			if (res.ok) await invalidate('crm:contact');
+		} finally {
+			busy = false;
+		}
+	}
+
+	async function setStage(e: Event) {
+		const v = (e.currentTarget as HTMLSelectElement).value;
+		await patch({ lifecycleOverride: v === 'auto' ? null : v });
+	}
+
+	async function addTag(tagId: string) {
+		if (!tagId) return;
+		await fetch(`/api/crm/contacts/${c.id}/tags`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ tagId }),
+		});
+		await invalidate('crm:contact');
+	}
+
+	async function removeTag(tagId: string) {
+		await fetch(`/api/crm/contacts/${c.id}/tags?tagId=${tagId}`, { method: 'DELETE' });
+		await invalidate('crm:contact');
+	}
+
+	async function addNote() {
+		const body = noteBody.trim();
+		if (!body) return;
+		busy = true;
+		try {
+			const res = await fetch(`/api/crm/contacts/${c.id}/notes`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ body }),
+			});
+			if (res.ok) {
+				noteBody = '';
+				await invalidate('crm:contact');
+			}
+		} finally {
+			busy = false;
+		}
+	}
+
+	async function forget() {
+		if (!confirm('Forget this contact? This permanently deletes the CRM record (the message ledger is unaffected).')) return;
+		const res = await fetch(`/api/crm/contacts/${c.id}?hard=true`, { method: 'DELETE' });
+		if (res.ok) await goto('/crm');
+	}
+</script>
+
+<svelte:head><title>{contactLabel(c.displayName)} — CRM</title></svelte:head>
+
+<div class="flex flex-col h-full min-h-0">
+	<PageHeader title={contactLabel(c.displayName)} subtitle={c.source === 'manual' ? 'Manual contact' : 'Harvested from comms'}>
+		{#snippet leading()}
+			<button class="p-1 -ml-1 rounded hover:bg-white/[0.06]" onclick={() => goto('/crm')} aria-label="Back">
+				<ArrowLeft size={16} />
+			</button>
+		{/snippet}
+		{#snippet actions()}
+			<Button variant="danger" size="sm" onclick={forget} disabled={busy}>
+				<Trash2 size={14} /> Forget
+			</Button>
+		{/snippet}
+	</PageHeader>
+
+	<div class="flex-1 min-h-0 overflow-auto p-4 grid gap-4 lg:grid-cols-[1fr_1.4fr]">
+		<!-- Left: identity, score, tags -->
+		<div class="flex flex-col gap-4">
+			<!-- Score breakdown -->
+			<section class="card">
+				<header class="card-h">
+					<span>Engagement score</span>
+					{#if score}<ScoreBadge score={score.score} r={score.r_score} f={score.f_score} m={score.m_score} />{/if}
+				</header>
+				{#if score}
+					<div class="formula"><MathFormula tex={texSymbolic} /></div>
+					<div class="formula sub"><MathFormula tex={texValues} /></div>
+					<dl class="kv">
+						<div><dt>Recency</dt><dd>{score.last_days}d ago</dd></div>
+						<div><dt>Frequency</dt><dd>{score.inbound_msgs} inbound</dd></div>
+						<div><dt>Reciprocity</dt><dd>{Math.round(score.reciprocity * 100)}%</dd></div>
+						<div><dt>Channels</dt><dd>{score.channels_used}</dd></div>
+					</dl>
+				{:else}
+					<p class="t-caption">No interactions to score yet.</p>
+				{/if}
+			</section>
+
+			<!-- Lifecycle + tags -->
+			<section class="card">
+				<header class="card-h"><span>Lifecycle</span>{#if score}<StagePill stage={score.stage} overridden={!!c.lifecycleOverride} />{/if}</header>
+				<label class="field">
+					<span class="t-caption">Stage</span>
+					<select value={c.lifecycleOverride ?? 'auto'} onchange={setStage} disabled={busy} class="h-8 px-2 text-sm rounded-[var(--radius-md)] bg-bg3 border border-[var(--hairline)]">
+						<option value="auto">Auto (derived)</option>
+						{#each STAGES as s (s)}<option value={s}>{s}</option>{/each}
+					</select>
+				</label>
+
+				<div class="tags">
+					{#each contactTags as t (t.id)}
+						<span class="tag" style:--c={t.color ?? 'var(--color-accent)'}>
+							{t.name}
+							<button onclick={() => removeTag(t.id)} aria-label="Remove tag"><X size={11} /></button>
+						</span>
+					{/each}
+					{#if availableTags.length > 0}
+						<select class="addtag" onchange={(e) => { addTag((e.currentTarget as HTMLSelectElement).value); e.currentTarget.value = ''; }}>
+							<option value="">+ tag</option>
+							{#each availableTags as t (t.id)}<option value={t.id}>{t.name}</option>{/each}
+						</select>
+					{/if}
+				</div>
+			</section>
+
+			<!-- Identities -->
+			<section class="card">
+				<header class="card-h"><span>Identities</span></header>
+				<ul class="ids">
+					{#each data.identities as id (id.id)}
+						<li><span class="chan">{id.channel}</span><span class="ext">{id.handle ?? id.externalId}</span></li>
+					{:else}
+						<li class="t-caption">No linked channel identities.</li>
+					{/each}
+				</ul>
+			</section>
+		</div>
+
+		<!-- Right: journey timeline + notes -->
+		<div class="flex flex-col gap-4 min-h-0">
+			<section class="card">
+				<header class="card-h">
+					<span>Add note</span>
+				</header>
+				<div class="note-row">
+					<input bind:value={noteBody} placeholder="Log a note…" class="flex-1 h-8 px-3 text-sm rounded-[var(--radius-md)] bg-bg3 border border-[var(--hairline)]" onkeydown={(e) => e.key === 'Enter' && addNote()} />
+					<Button variant="secondary" size="sm" onclick={addNote} disabled={busy || !noteBody.trim()}><Plus size={14} /></Button>
+				</div>
+			</section>
+
+			<section class="card flex-1 min-h-0 flex flex-col">
+				<header class="card-h">
+					<span>Journey</span>
+					<span class="t-caption">{stats ? `${stats.message_count} messages · first ${relativeTime(stats.first_contact_at as string)}` : ''}</span>
+				</header>
+				<div class="flex-1 min-h-0 overflow-auto">
+					<JourneyTimeline rows={data.timeline as never} />
+				</div>
+			</section>
+		</div>
+	</div>
+</div>
+
+<style>
+	.card {
+		border: 1px solid var(--hairline);
+		border-radius: var(--radius-lg);
+		background: var(--color-card);
+		padding: 0.85rem 1rem;
+	}
+	.card-h {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+		font-size: 0.78rem;
+		font-weight: 600;
+		color: var(--color-muted-foreground);
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		margin-bottom: 0.6rem;
+	}
+	.formula {
+		padding: 0.2rem 0;
+	}
+	.formula.sub {
+		color: var(--color-muted-foreground);
+		font-size: 0.9em;
+	}
+	.kv {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 0.4rem 1rem;
+		margin-top: 0.75rem;
+	}
+	.kv dt {
+		font-size: 0.7rem;
+		color: var(--color-muted-foreground);
+	}
+	.kv dd {
+		font-size: 0.9rem;
+		font-weight: 600;
+		font-variant-numeric: tabular-nums;
+	}
+	.field {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		margin-bottom: 0.75rem;
+	}
+	.tags {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.35rem;
+		align-items: center;
+	}
+	.tag {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+		padding: 0.1rem 0.5rem;
+		border-radius: 999px;
+		font-size: 0.74rem;
+		color: var(--c);
+		background: color-mix(in srgb, var(--c) 14%, transparent);
+		border: 1px solid color-mix(in srgb, var(--c) 30%, transparent);
+	}
+	.tag button {
+		display: grid;
+		place-items: center;
+		opacity: 0.7;
+	}
+	.tag button:hover {
+		opacity: 1;
+	}
+	.addtag {
+		height: 1.6rem;
+		font-size: 0.74rem;
+		border-radius: 999px;
+		background: var(--color-bg3);
+		border: 1px dashed var(--hairline);
+		padding: 0 0.4rem;
+	}
+	.ids {
+		display: flex;
+		flex-direction: column;
+		gap: 0.3rem;
+	}
+	.ids li {
+		display: flex;
+		justify-content: space-between;
+		gap: 0.5rem;
+		font-size: 0.84rem;
+	}
+	.ids .chan {
+		font-weight: 600;
+		text-transform: capitalize;
+	}
+	.ids .ext {
+		color: var(--color-muted-foreground);
+		font-variant-numeric: tabular-nums;
+	}
+	.note-row {
+		display: flex;
+		gap: 0.5rem;
+	}
+</style>
