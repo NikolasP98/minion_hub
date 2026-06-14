@@ -1,5 +1,5 @@
 import type { ComponentType, SvelteComponent } from "svelte";
-import { Puzzle, FolderKanban } from "lucide-svelte";
+import { Puzzle, FolderKanban, Contact } from "lucide-svelte";
 import {
     ROUTES,
     SECTION_META,
@@ -110,6 +110,15 @@ const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: SectionIt
             label: "Kanban",
             icon: FolderKanban,
             matcher: (p: string) => p.startsWith("/workforce"),
+        },
+    },
+    {
+        category: "tool",
+        item: {
+            href: "/crm",
+            label: "CRM",
+            icon: Contact,
+            matcher: (p: string) => p.startsWith("/crm"),
         },
     },
 ];
