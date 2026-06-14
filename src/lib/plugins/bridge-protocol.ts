@@ -3,6 +3,9 @@
 
 export type Theme = "light" | "dark";
 
+/** UI locale the host is rendering in; plugins mirror it. */
+export type Locale = "en" | "es";
+
 export type HostToPlugin =
   | {
       type: "host:hello";
@@ -10,11 +13,17 @@ export type HostToPlugin =
       tokens: Record<string, string>;
       gatewayUrl: string;
       authToken: string;
+      /** Host UI locale; optional for backward-compat (plugins fall back to "en"). */
+      locale?: Locale;
     }
   | {
       type: "host:theme-change";
       theme: Theme;
       tokens: Record<string, string>;
+    }
+  | {
+      type: "host:locale-change";
+      locale: Locale;
     }
   | {
       type: "host:rpc-response";
@@ -88,6 +97,8 @@ export class HostBridge {
   // targetOrigin mismatch (about:blank inherits the parent's origin). Hold the
   // latest payload and flush after plugin:ready.
   private pendingThemePayload: { theme: Theme; tokens: Record<string, string> } | null = null;
+  // Locale-change buffered the same way as theme-change (see above).
+  private pendingLocalePayload: { locale: Locale } | null = null;
   // Buffer the plugin:ready signal in case it arrives before sendHelloOnReady
   // has been called. Without this, hello is silently dropped and the plugin
   // hangs waiting for host:hello forever (race when the iframe's notifyReady()
@@ -114,6 +125,7 @@ export class HostBridge {
       this.pluginReady = true;
       this.flushHello();
       this.flushTheme();
+      this.flushLocale();
       if (!wasReady) for (const h of this.readyHandlers) h();
     } else if (ev.data.type === "plugin:resize") {
       const { height } = ev.data;
@@ -182,6 +194,18 @@ export class HostBridge {
     const msg: HostToPlugin = { type: "host:theme-change", ...this.pendingThemePayload };
     this.opts.target.postMessage(msg, this.opts.pluginOrigin);
     this.pendingThemePayload = null;
+  }
+
+  sendLocaleChange(locale: Locale): void {
+    this.pendingLocalePayload = { locale };
+    this.flushLocale();
+  }
+
+  private flushLocale(): void {
+    if (!this.pluginReady || !this.pendingLocalePayload) return;
+    const msg: HostToPlugin = { type: "host:locale-change", ...this.pendingLocalePayload };
+    this.opts.target.postMessage(msg, this.opts.pluginOrigin);
+    this.pendingLocalePayload = null;
   }
 
   onResize(fn: (height: number) => void): void {

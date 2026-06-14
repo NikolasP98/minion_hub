@@ -3,7 +3,11 @@
   import { onDestroy } from "svelte";
   import { Loader2, Check, AlertTriangle, RotateCw } from "lucide-svelte";
   import { mountHostBridge, type MountedHostBridge } from "./bridge-host";
-  import type { Theme } from "./bridge-protocol";
+  import type { Theme, Locale } from "./bridge-protocol";
+  // Read the live UI language straight from the paraglide runtime (already in
+  // the module graph via the messages import) rather than the locale store,
+  // which transitively pulls SvelteKit-only modules and breaks test rendering.
+  import { languageTag } from "$lib/paraglide/runtime";
 
   // Lazy import to keep this component test-renderable without pulling
   // SvelteKit-only modules (gateway service transitively imports $app/state).
@@ -191,7 +195,7 @@
       self: window,
       target: iframeEl.contentWindow,
       pluginOrigin,
-      hello: { theme, tokens, gatewayUrl: wsGatewayUrl, authToken },
+      hello: { theme, tokens, gatewayUrl: wsGatewayUrl, authToken, locale: languageTag() as Locale },
       onResize: (h) => {
         if (!fillContainer) height = h;
       },
@@ -281,6 +285,10 @@
 
   $effect(() => {
     mounted?.sendThemeChange(theme, tokens);
+  });
+
+  $effect(() => {
+    mounted?.sendLocaleChange(languageTag() as Locale);
   });
 
   onDestroy(() => {

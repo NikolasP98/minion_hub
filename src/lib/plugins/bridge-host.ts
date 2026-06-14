@@ -1,4 +1,4 @@
-import { HostBridge, type Theme } from "./bridge-protocol";
+import { HostBridge, type Theme, type Locale } from "./bridge-protocol";
 
 export interface MountHostBridgeOptions {
   self: Window;
@@ -9,6 +9,7 @@ export interface MountHostBridgeOptions {
     tokens: Record<string, string>;
     gatewayUrl: string;
     authToken: string;
+    locale?: Locale;
   };
   onResize?: (height: number) => void;
   onNotify?: (level: "info" | "warn" | "error", message: string) => void;
@@ -22,6 +23,7 @@ export interface MountedHostBridge {
   bridge: HostBridge;
   dispose: () => void;
   sendThemeChange: (theme: Theme, tokens: Record<string, string>) => void;
+  sendLocaleChange: (locale: Locale) => void;
   requestSave: () => string;
 }
 
@@ -42,6 +44,7 @@ export function mountHostBridge(opts: MountHostBridgeOptions): MountedHostBridge
     bridge,
     dispose: () => bridge.dispose(),
     sendThemeChange: (theme, tokens) => bridge.sendThemeChange({ theme, tokens }),
+    sendLocaleChange: (locale) => bridge.sendLocaleChange(locale),
     requestSave: () => bridge.requestSave(),
   };
 }

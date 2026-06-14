@@ -2,7 +2,12 @@ import { describe, it, expect, vi } from "vitest";
 import PluginIframe from "./PluginIframe.svelte";
 
 vi.mock("./bridge-host", () => ({
-  mountHostBridge: vi.fn(() => ({ dispose: vi.fn(), sendThemeChange: vi.fn(), bridge: {} })),
+  mountHostBridge: vi.fn(() => ({
+    dispose: vi.fn(),
+    sendThemeChange: vi.fn(),
+    sendLocaleChange: vi.fn(),
+    bridge: {},
+  })),
 }));
 
 describe("PluginIframe", () => {
