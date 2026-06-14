@@ -4,6 +4,7 @@
 	import type { MultiSelectOption } from '$lib/components/ui';
 	import DateRangePicker from '$lib/components/reliability/DateRangePicker.svelte';
 	import GatewayHealthPanel from '$lib/components/reliability/GatewayHealthPanel.svelte';
+	import LatencyPanel from '$lib/components/reliability/LatencyPanel.svelte';
 	import PluginHealthPanel from '$lib/components/reliability/PluginHealthPanel.svelte';
 	import ConnectionEventsPanel from '$lib/components/reliability/ConnectionEventsPanel.svelte';
 	import AgentLlmAnalytics from '$lib/components/reliability/AgentLlmAnalytics.svelte';
@@ -17,7 +18,8 @@
 		loadReliabilityTimeline,
 		loadReliabilityFlow,
 		loadReliabilityUsage,
-		loadReliabilityActivity
+		loadReliabilityActivity,
+		loadReliabilityPerf
 	} from '$lib/state/reliability/reliability.svelte';
 	import { hostsState } from '$lib/state/features/hosts.svelte';
 	import { conn } from '$lib/state/gateway';
@@ -744,7 +746,8 @@
 		await Promise.all([
 			loadReliabilitySummaryAll(serverId, from, to),
 			loadReliabilityUsage(from, to),
-			loadReliabilityActivity(from, to)
+			loadReliabilityActivity(from, to),
+			loadReliabilityPerf(from, to)
 		]);
 	}
 
@@ -1385,6 +1388,11 @@
 
 			<!-- ── Gateway Health ───────────────────────────────────────────────── -->
 			<GatewayHealthPanel {serverId} />
+
+			<!-- ── Gateway Latency (handler p50/p95/p99 + event-loop delay) ──────── -->
+			{#if reliability.perf}
+				<LatencyPanel perf={reliability.perf} />
+			{/if}
 
 			<!-- ── Activity Log — the Event Timeline (stacked bars) now headlines the
 			     log, replacing the per-event scatter; tabs + sortable/searchable/

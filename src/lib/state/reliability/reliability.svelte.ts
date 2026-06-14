@@ -91,6 +91,31 @@ export interface ActivityAggregate {
   generatedAt: number;
 }
 
+/** One gateway perf snapshot (parsed from a gateway.perf_snapshot event). */
+export interface PerfSnapshot {
+  ts: number;
+  windowMs: number;
+  requests: number;
+  throughputPerSec: number;
+  errorRate: number;
+  latencyMs: { p50: number; p95: number; p99: number; max: number };
+  slowestMethods: {
+    method: string;
+    count: number;
+    errors: number;
+    p50: number;
+    p95: number;
+    max: number;
+  }[];
+  eventLoopDelayMs: { mean: number; p50: number; p99: number; max: number };
+}
+
+/** Gateway perf time series (reliability.perf RPC). */
+export interface PerfSeries {
+  snapshots: PerfSnapshot[];
+  latest: PerfSnapshot | null;
+}
+
 export const reliability = $state({
   /** Recent events from the live WS stream */
   recentEvents: [] as ReliabilityEvent[],
@@ -117,6 +142,9 @@ export const reliability = $state({
   /** Server-side agent-activity aggregate (reliability.activity RPC). null → fall
    *  back to client-side derivation over the (capped) loaded events. */
   activity: null as ActivityAggregate | null,
+  /** Gateway request-handler perf series (reliability.perf RPC). null → older
+   *  gateway without the RPC, or not connected → latency panel hidden. */
+  perf: null as PerfSeries | null,
   loading: false,
   dateRange: {
     from: Date.now() - 86400000,
@@ -188,6 +216,25 @@ export async function loadReliabilityActivity(from: number, to: number) {
     reliability.activity = data && data.memory && data.heartbeat ? data : null;
   } catch {
     reliability.activity = null;
+  }
+}
+
+/**
+ * Fetch the gateway perf time series (per-method latency p50/p95/p99/max,
+ * throughput, error rate, slowest methods, event-loop delay) parsed from the
+ * `gateway.perf_snapshot` events the gateway emits every 60s. Sets `perf = null`
+ * on older gateways that lack the RPC → the latency panel hides itself.
+ */
+export async function loadReliabilityPerf(from: number, to: number) {
+  try {
+    const data = (await sendRequest('reliability.perf', {
+      since: from,
+      until: to,
+    })) as PerfSeries | null;
+    reliability.perf =
+      data && Array.isArray(data.snapshots) && data.snapshots.length > 0 ? data : null;
+  } catch {
+    reliability.perf = null;
   }
 }
 
