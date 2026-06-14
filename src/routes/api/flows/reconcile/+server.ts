@@ -3,6 +3,7 @@ import { json, error } from '@sveltejs/kit';
 import { flows, flowGroups } from '$server/db/pg-schema/flows';
 import { and, eq, isNull } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
+import { invalidateTags, tags } from '@minion-stack/cache';
 import { requireAuth } from '$server/auth/authorize';
 import { getFlowsCtx } from '$server/auth/flows-ctx';
 import { getTenantCtx } from '$server/auth/tenant-ctx';
@@ -94,6 +95,17 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   if (plan.keysToAdd.length > 0 && profileId) {
     await upsertUserPreference(fctx.db, profileId, PREF_SECTION, { keys: [...installedKeys, ...plan.keysToAdd] });
   }
+
+  // Reconcile may create/update groups and seed/reassign flows — drop the org's
+  // cached flow/group lists whenever it actually mutated something.
+  const mutated =
+    plan.groupsToCreate.length +
+      plan.groupsToUpdate.length +
+      plan.flowsToSeed.length +
+      plan.flowsToReassign.length +
+      plan.groupsToRelease.length >
+    0;
+  if (mutated) await invalidateTags(tags.tenantDomain(fctx.tenantId, 'flows'));
 
   return json({
     groupsCreated: plan.groupsToCreate.length,

@@ -10,6 +10,7 @@ import {
   builtTools,
   agentBuiltSkills,
 } from '@minion-stack/db/pg';
+import { invalidateTags, tags } from '@minion-stack/cache';
 import { newId } from '$server/db/utils';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
@@ -380,6 +381,8 @@ export async function updateBuiltTool(
       .set({ ...data, updatedAt: new Date() })
       .where(and(eq(builtTools.id, toolId), eq(builtTools.tenantId, ctx.tenantId))),
   );
+  // Drop the cached tools list (GET /api/builder/tools) so the edit shows up.
+  await invalidateTags(tags.tenantDomain(ctx.tenantId, 'builder'));
 }
 
 export async function deleteBuiltTool(ctx: CoreCtx, toolId: string) {
@@ -388,6 +391,7 @@ export async function deleteBuiltTool(ctx: CoreCtx, toolId: string) {
       .delete(builtTools)
       .where(and(eq(builtTools.id, toolId), eq(builtTools.tenantId, ctx.tenantId))),
   );
+  await invalidateTags(tags.tenantDomain(ctx.tenantId, 'builder'));
 }
 
 export async function publishBuiltTool(ctx: CoreCtx, toolId: string) {
@@ -398,6 +402,7 @@ export async function publishBuiltTool(ctx: CoreCtx, toolId: string) {
       .set({ status: 'published', publishedAt: now, updatedAt: now })
       .where(and(eq(builtTools.id, toolId), eq(builtTools.tenantId, ctx.tenantId))),
   );
+  await invalidateTags(tags.tenantDomain(ctx.tenantId, 'builder'));
 }
 
 // ── Agent Built Skills (gateway agent → built skill mapping) ─────────

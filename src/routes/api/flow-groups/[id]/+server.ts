@@ -2,6 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { flowGroups, flows } from '$server/db/pg-schema/flows';
 import { and, eq } from 'drizzle-orm';
+import { invalidateTags, tags } from '@minion-stack/cache';
 import { requireAuth } from '$server/auth/authorize';
 import { getFlowsCtx, type FlowsCtx } from '$server/auth/flows-ctx';
 import { withOrgCore } from '$server/db/with-org-core';
@@ -32,6 +33,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
   await withOrgCore(ctx, (tx) =>
     tx.update(flowGroups).set({ name: name.trim(), updatedAt: Date.now() }).where(eq(flowGroups.id, group.id)),
   );
+  await invalidateTags(tags.tenantDomain(ctx.tenantId, 'flows'));
   return json({ ok: true });
 };
 
@@ -55,5 +57,6 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
     );
     await tx.delete(flowGroups).where(eq(flowGroups.id, group.id));
   });
+  await invalidateTags(tags.tenantDomain(ctx.tenantId, 'flows'));
   return json({ ok: true });
 };

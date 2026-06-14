@@ -2,7 +2,9 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { eq, and, desc, gte, lte } from 'drizzle-orm';
 import { gatewayHeartbeats, servers, userServers } from '@minion-stack/db/schema';
+import { cached, keys, tags } from '@minion-stack/cache';
 import { requireAuth, requireTenantCtx } from '$server/auth/authorize';
+import { scopeData } from '$server/services/base';
 import { userHasGatewayAccess } from '$server/services/gateway.pg.service';
 
 export const GET: RequestHandler = async ({ locals, url }) => {
@@ -44,17 +46,33 @@ export const GET: RequestHandler = async ({ locals, url }) => {
     if (row?.tenantId) heartbeatTenant = row.tenantId;
   }
 
-  const conditions = [eq(gatewayHeartbeats.tenantId, heartbeatTenant)];
-  if (serverId) conditions.push(eq(gatewayHeartbeats.serverId, serverId));
-  if (from) conditions.push(gte(gatewayHeartbeats.capturedAt, from));
-  if (to) conditions.push(lte(gatewayHeartbeats.capturedAt, to));
+  // Read-only telemetry time-series. Cache under the host's recorded telemetry
+  // tenant (heartbeatTenant) with a short TTL — no invalidation needed; new
+  // heartbeats simply surface after the TTL lapses. Auth above runs every
+  // request, so the cache never bypasses the per-host ownership check.
+  const heartbeats = await cached(
+    keys.hub('metrics', {
+      t: heartbeatTenant,
+      d: scopeData({ resource: 'heartbeats', serverId, from, to, limit }),
+    }),
+    {
+      ttl: '30s',
+      tags: tags.tenantDomain(heartbeatTenant, 'metrics'),
+    },
+    async () => {
+      const conditions = [eq(gatewayHeartbeats.tenantId, heartbeatTenant)];
+      if (serverId) conditions.push(eq(gatewayHeartbeats.serverId, serverId));
+      if (from) conditions.push(gte(gatewayHeartbeats.capturedAt, from));
+      if (to) conditions.push(lte(gatewayHeartbeats.capturedAt, to));
 
-  const heartbeats = await db
-    .select()
-    .from(gatewayHeartbeats)
-    .where(and(...conditions))
-    .orderBy(desc(gatewayHeartbeats.capturedAt))
-    .limit(limit);
+      return db
+        .select()
+        .from(gatewayHeartbeats)
+        .where(and(...conditions))
+        .orderBy(desc(gatewayHeartbeats.capturedAt))
+        .limit(limit);
+    },
+  );
 
   return json({ heartbeats });
 };
