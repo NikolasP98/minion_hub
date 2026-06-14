@@ -1,13 +1,15 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import { goto, invalidate } from '$app/navigation';
+	import * as m from '$lib/paraglide/messages';
 	import { ArrowLeft, Trash2, Plus, X } from 'lucide-svelte';
 	import { PageHeader, Button } from '$lib/components/ui';
 	import MathFormula from '$lib/components/ui/MathFormula.svelte';
 	import ScoreBadge from '$lib/components/crm/ScoreBadge.svelte';
 	import StagePill from '$lib/components/crm/StagePill.svelte';
 	import JourneyTimeline from '$lib/components/crm/JourneyTimeline.svelte';
-	import { contactLabel, relativeTime } from '$lib/components/crm/crm-format';
+	import { contactLabel } from '$lib/components/crm/crm-format';
+	import { stageLabel } from '$lib/components/crm/crm-i18n';
 
 	let { data }: { data: PageData } = $props();
 	const c = $derived(data.contact);
@@ -83,24 +85,24 @@
 	}
 
 	async function forget() {
-		if (!confirm('Forget this contact? This permanently deletes the CRM record (the message ledger is unaffected).')) return;
+		if (!confirm(m.crm_forget_confirm())) return;
 		const res = await fetch(`/api/crm/contacts/${c.id}?hard=true`, { method: 'DELETE' });
 		if (res.ok) await goto('/crm');
 	}
 </script>
 
-<svelte:head><title>{contactLabel(c.displayName)} — CRM</title></svelte:head>
+<svelte:head><title>{contactLabel(c.displayName)} — {m.crm_title()}</title></svelte:head>
 
 <div class="flex flex-col h-full min-h-0">
-	<PageHeader title={contactLabel(c.displayName)} subtitle={c.source === 'manual' ? 'Manual contact' : 'Harvested from comms'}>
+	<PageHeader title={contactLabel(c.displayName)} subtitle={c.source === 'manual' ? m.crm_manual_contact() : m.crm_harvested()}>
 		{#snippet leading()}
-			<button class="p-1 -ml-1 rounded hover:bg-white/[0.06]" onclick={() => goto('/crm')} aria-label="Back">
+			<button class="p-1 -ml-1 rounded hover:bg-white/[0.06]" onclick={() => goto('/crm')} aria-label={m.crm_back_to_contacts()}>
 				<ArrowLeft size={16} />
 			</button>
 		{/snippet}
 		{#snippet actions()}
 			<Button variant="danger" size="sm" onclick={forget} disabled={busy}>
-				<Trash2 size={14} /> Forget
+				<Trash2 size={14} /> {m.crm_forget()}
 			</Button>
 		{/snippet}
 	</PageHeader>
@@ -111,31 +113,31 @@
 			<!-- Score breakdown -->
 			<section class="card">
 				<header class="card-h">
-					<span>Engagement score</span>
+					<span>{m.crm_engagement_score()}</span>
 					{#if score}<ScoreBadge score={score.score} r={score.r_score} f={score.f_score} m={score.m_score} />{/if}
 				</header>
 				{#if score}
 					<div class="formula"><MathFormula tex={texSymbolic} /></div>
 					<div class="formula sub"><MathFormula tex={texValues} /></div>
 					<dl class="kv">
-						<div><dt>Recency</dt><dd>{score.last_days}d ago</dd></div>
-						<div><dt>Frequency</dt><dd>{score.inbound_msgs} inbound</dd></div>
-						<div><dt>Reciprocity</dt><dd>{Math.round(score.reciprocity * 100)}%</dd></div>
-						<div><dt>Channels</dt><dd>{score.channels_used}</dd></div>
+						<div><dt>{m.crm_recency()}</dt><dd>{m.crm_recency_value({ days: score.last_days })}</dd></div>
+						<div><dt>{m.crm_frequency()}</dt><dd>{m.crm_inbound_value({ count: score.inbound_msgs })}</dd></div>
+						<div><dt>{m.crm_reciprocity()}</dt><dd>{Math.round(score.reciprocity * 100)}%</dd></div>
+						<div><dt>{m.crm_channels()}</dt><dd>{score.channels_used}</dd></div>
 					</dl>
 				{:else}
-					<p class="t-caption">No interactions to score yet.</p>
+					<p class="t-caption">{m.crm_no_score()}</p>
 				{/if}
 			</section>
 
 			<!-- Lifecycle + tags -->
 			<section class="card">
-				<header class="card-h"><span>Lifecycle</span>{#if score}<StagePill stage={score.stage} overridden={!!c.lifecycleOverride} />{/if}</header>
+				<header class="card-h"><span>{m.crm_lifecycle()}</span>{#if score}<StagePill stage={score.stage} overridden={!!c.lifecycleOverride} />{/if}</header>
 				<label class="field">
-					<span class="t-caption">Stage</span>
+					<span class="t-caption">{m.crm_stage_label()}</span>
 					<select value={c.lifecycleOverride ?? 'auto'} onchange={setStage} disabled={busy} class="h-8 px-2 text-sm rounded-[var(--radius-md)] bg-bg3 border border-[var(--hairline)]">
-						<option value="auto">Auto (derived)</option>
-						{#each STAGES as s (s)}<option value={s}>{s}</option>{/each}
+						<option value="auto">{m.crm_stage_auto()}</option>
+						{#each STAGES as s (s)}<option value={s}>{stageLabel(s)}</option>{/each}
 					</select>
 				</label>
 
@@ -143,12 +145,12 @@
 					{#each contactTags as t (t.id)}
 						<span class="tag" style:--c={t.color ?? 'var(--color-accent)'}>
 							{t.name}
-							<button onclick={() => removeTag(t.id)} aria-label="Remove tag"><X size={11} /></button>
+							<button onclick={() => removeTag(t.id)} aria-label={m.crm_delete()}><X size={11} /></button>
 						</span>
 					{/each}
 					{#if availableTags.length > 0}
 						<select class="addtag" onchange={(e) => { addTag((e.currentTarget as HTMLSelectElement).value); e.currentTarget.value = ''; }}>
-							<option value="">+ tag</option>
+							<option value="">{m.crm_add_tag()}</option>
 							{#each availableTags as t (t.id)}<option value={t.id}>{t.name}</option>{/each}
 						</select>
 					{/if}
@@ -157,12 +159,12 @@
 
 			<!-- Identities -->
 			<section class="card">
-				<header class="card-h"><span>Identities</span></header>
+				<header class="card-h"><span>{m.crm_identities()}</span></header>
 				<ul class="ids">
 					{#each data.identities as id (id.id)}
 						<li><span class="chan">{id.channel}</span><span class="ext">{id.handle ?? id.externalId}</span></li>
 					{:else}
-						<li class="t-caption">No linked channel identities.</li>
+						<li class="t-caption">{m.crm_no_identities()}</li>
 					{/each}
 				</ul>
 			</section>
@@ -172,18 +174,18 @@
 		<div class="flex flex-col gap-4 min-h-0">
 			<section class="card">
 				<header class="card-h">
-					<span>Add note</span>
+					<span>{m.crm_add_note()}</span>
 				</header>
 				<div class="note-row">
-					<input bind:value={noteBody} placeholder="Log a note…" class="flex-1 h-8 px-3 text-sm rounded-[var(--radius-md)] bg-bg3 border border-[var(--hairline)]" onkeydown={(e) => e.key === 'Enter' && addNote()} />
+					<input bind:value={noteBody} placeholder={m.crm_note_placeholder()} class="flex-1 h-8 px-3 text-sm rounded-[var(--radius-md)] bg-bg3 border border-[var(--hairline)]" onkeydown={(e) => e.key === 'Enter' && addNote()} />
 					<Button variant="secondary" size="sm" onclick={addNote} disabled={busy || !noteBody.trim()}><Plus size={14} /></Button>
 				</div>
 			</section>
 
 			<section class="card flex-1 min-h-0 flex flex-col">
 				<header class="card-h">
-					<span>Journey</span>
-					<span class="t-caption">{stats ? `${stats.message_count} messages · first ${relativeTime(stats.first_contact_at as string)}` : ''}</span>
+					<span>{m.crm_journey()}</span>
+					<span class="t-caption">{stats ? m.crm_journey_messages({ count: stats.message_count as number }) : ''}</span>
 				</header>
 				<div class="flex-1 min-h-0 overflow-auto">
 					<JourneyTimeline rows={data.timeline as never} />

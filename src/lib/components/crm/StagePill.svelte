@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { stageColor } from './crm-format';
+	import { stageLabel } from './crm-i18n';
 	let { stage, overridden = false }: { stage: string; overridden?: boolean } = $props();
 </script>
 
-<span class="pill" style:--c={stageColor(stage)} title={overridden ? 'Manually set' : 'Derived from activity'}>
-	{stage}
+<span class="pill" style:--c={stageColor(stage)}>
+	{stageLabel(stage)}
 	{#if overridden}<span class="dot" aria-hidden="true"></span>{/if}
 </span>
 

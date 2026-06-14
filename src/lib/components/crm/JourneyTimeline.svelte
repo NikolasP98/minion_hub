@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages';
 	import { MessageSquare, StickyNote, ArrowRightLeft, Tag } from 'lucide-svelte';
 	import { relativeTime } from './crm-format';
 
@@ -21,7 +22,7 @@
 </script>
 
 {#if rows.length === 0}
-	<p class="t-caption px-1 py-4">No interactions yet.</p>
+	<p class="t-caption px-1 py-4">{m.crm_no_interactions()}</p>
 {:else}
 	<ol class="timeline">
 		{#each rows as r (r.source_id)}
