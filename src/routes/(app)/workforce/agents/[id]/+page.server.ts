@@ -19,7 +19,7 @@ type AgentRun = {
 export const load: PageServerLoad = async (event) => {
 	if (!event.locals.user) throw redirect(302, '/login');
 	if (!event.locals.paperclipIdentity?.companyId) {
-		throw redirect(302, '/workforce/welcome');
+		throw redirect(302, '/workforce/welcome?reason=no-company');
 	}
 	event.depends('app:agent');
 	const companyId = event.locals.paperclipIdentity.companyId;
