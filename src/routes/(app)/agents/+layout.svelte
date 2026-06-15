@@ -1,5 +1,4 @@
 <script lang="ts">
-	import NavRail from '$lib/components/my-agent/NavRail.svelte';
 	import { type Snippet } from 'svelte';
 
 	let { children }: { children: Snippet } = $props();
@@ -7,12 +6,13 @@
 
 <!--
 	Shared shell for everything under /agents (index, builder, workshop, …).
-	The NavRail side-menu stays mounted across sub-pages. `.agents-shell-main`
-	is a column flex that mirrors the (app) layout the pages were authored
-	against, so toolbar+content pages and the splitter page render unchanged.
+	Navigation to these surfaces now lives in the primary Sidebar (Agents group:
+	Copilots / AI Brains / Autonomous / Workshop / …), so the old icon NavRail
+	was removed. `.agents-shell-main` mirrors the (app) layout the pages were
+	authored against, so toolbar+content pages and the splitter page render
+	unchanged.
 -->
 <div class="agents-shell">
-	<NavRail />
 	<div class="agents-shell-main">
 		{@render children()}
 	</div>

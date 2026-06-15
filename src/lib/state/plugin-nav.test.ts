@@ -2,17 +2,21 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDynamicPluginsSections } from "$lib/components/layout/sections";
 
 describe("getDynamicPluginsSections", () => {
-  it("returns just the Tools group (built-in Kanban + CRM) when no control centers", () => {
+  it("surfaces built-in CRM under Marketing and Kanban under Operations when no control centers", () => {
     const sections = getDynamicPluginsSections([]);
-    expect(sections).toHaveLength(1);
-    expect(sections[0]?.id).toBe("plugins:tool");
-    expect(sections[0]?.label).toBe("Tools");
-    expect(sections[0]?.items.map((i) => i.href)).toEqual(["/workforce", "/crm"]);
-    expect(sections[0]?.items[0]?.label).toBe("Kanban");
-    expect(sections[0]?.items[1]?.label).toBe("CRM");
+    // Display order: Marketing (CRM), Operations (Kanban).
+    expect(sections.map((s) => s.id)).toEqual(["plugins:marketing", "plugins:operations"]);
+    const marketing = sections.find((s) => s.id === "plugins:marketing");
+    expect(marketing?.label).toBe("Marketing");
+    expect(marketing?.items.map((i) => i.href)).toEqual(["/crm"]);
+    expect(marketing?.items[0]?.label).toBe("CRM");
+    const operations = sections.find((s) => s.id === "plugins:operations");
+    expect(operations?.label).toBe("Operations");
+    expect(operations?.items.map((i) => i.href)).toEqual(["/workforce"]);
+    expect(operations?.items[0]?.label).toBe("Kanban");
   });
 
-  it("buckets plugins into category groups (channel vs creative), Kanban under Tools", () => {
+  it("folds channel plugins into a Channels subsection under Customer Support, Studio under Branding/Creative", () => {
     const sections = getDynamicPluginsSections([
       {
         pluginId: "whatsapp",
@@ -30,17 +34,30 @@ describe("getDynamicPluginsSections", () => {
         entrypoint: "c.html",
         category: "creative",
       },
+      {
+        pluginId: "alerts",
+        slot: "plugins.controlCenter",
+        title: "Alert Watcher",
+        description: "",
+        entrypoint: "c.html",
+        category: "customer-support",
+      },
     ]);
-    // Display order: Channels, Creative, Tools.
+    // Display order: Marketing, Operations, Branding/Creative, Customer Support.
     expect(sections.map((s) => s.id)).toEqual([
-      "plugins:channel",
+      "plugins:marketing",
+      "plugins:operations",
       "plugins:creative",
-      "plugins:tool",
+      "plugins:customer-support",
     ]);
-    const channels = sections.find((s) => s.id === "plugins:channel");
-    expect(channels?.items[0]?.href).toBe("/plugins/whatsapp");
-    const tools = sections.find((s) => s.id === "plugins:tool");
-    expect(tools?.items[0]?.href).toBe("/workforce");
+    const creative = sections.find((s) => s.id === "plugins:creative");
+    expect(creative?.items[0]?.href).toBe("/plugins/studio");
+    const cs = sections.find((s) => s.id === "plugins:customer-support");
+    expect(cs?.items.map((i) => i.href)).toEqual(["/plugins/alerts"]);
+    // Channel plugins are NOT a top-level group — they live in a subsection.
+    expect(sections.some((s) => s.id === "plugins:channel")).toBe(false);
+    expect(cs?.subsections?.[0]?.id).toBe("channels");
+    expect(cs?.subsections?.[0]?.items.map((i) => i.href)).toEqual(["/plugins/whatsapp"]);
   });
 
   it("falls back to the Tools group for entries with no category", () => {
@@ -54,7 +71,7 @@ describe("getDynamicPluginsSections", () => {
       },
     ]);
     const tools = sections.find((s) => s.id === "plugins:tool");
-    expect(tools?.items.map((i) => i.href)).toEqual(["/workforce", "/crm", "/plugins/x"]);
+    expect(tools?.items.map((i) => i.href)).toEqual(["/plugins/x"]);
   });
 });
 

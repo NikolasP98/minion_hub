@@ -2,16 +2,13 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import { onMount } from 'svelte';
-  import { GitBranch, Plus, BookOpen } from 'lucide-svelte';
+  import { Plus } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
-  import BuilderHub from '$lib/components/builder/BuilderHub.svelte';
   import FlowGroupSection from '$lib/components/flow-editor/FlowGroupSection.svelte';
   import MasterFlowsSection from '$lib/components/flow-editor/MasterFlowsSection.svelte';
   import { sendRequest } from '$lib/services/gateway.svelte';
   import { sortGroups, type FlowGroupMeta } from '$lib/flows/groups';
   import { SvelteMap } from 'svelte/reactivity';
-
-  let view = $state<'flows' | 'skills'>('flows');
 
   type FlowMeta = { id: string; name: string; nodeCount: number; createdAt: number; updatedAt: number; pluginId?: string | null; groupId?: string | null };
   type Template = { id: string; name: string; nodes: unknown[]; edges: unknown[] };
@@ -142,68 +139,42 @@
 </script>
 
   <div class="flex flex-col flex-1 min-h-0">
-    <!-- Header: Flows / Skills view toggle -->
-    <div class="flex items-center justify-between px-6 pt-6 pb-4 shrink-0">
-      <div class="flex items-center gap-1 p-0.5 rounded-lg border border-border bg-bg2">
-        <button
-          type="button"
-          onclick={() => (view = 'flows')}
-          class="flex items-center gap-1.5 h-7 px-3 text-[10px] font-mono uppercase tracking-wider rounded transition-colors {view === 'flows' ? 'bg-accent/[0.12] text-accent' : 'text-muted hover:text-foreground'}"
-        >
-          <GitBranch size={12} />
-          {m.flow_title()}
-        </button>
-        <button
-          type="button"
-          onclick={() => (view = 'skills')}
-          class="flex items-center gap-1.5 h-7 px-3 text-[10px] font-mono uppercase tracking-wider rounded transition-colors {view === 'skills' ? 'bg-accent/[0.12] text-accent' : 'text-muted hover:text-foreground'}"
-        >
-          <BookOpen size={12} />
-          Skills
+    <div class="flex-1 overflow-y-auto px-6 pt-6 pb-6">
+      {#if createError}
+        <div class="mb-4 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-xs text-red-400 font-mono">{createError}</div>
+      {/if}
+
+      <div class="flex items-center justify-end mb-4">
+        <button onclick={handleNewGroup} class="flex items-center gap-1.5 h-7 px-3 text-[10px] font-mono uppercase tracking-wider rounded border border-border text-muted hover:bg-bg3 hover:text-foreground transition-colors">
+          <Plus size={12} /> {m.flow_newGroup()}
         </button>
       </div>
-    </div>
 
-    {#if view === 'flows'}
-      <div class="flex-1 overflow-y-auto px-6 pb-6">
-        {#if createError}
-          <div class="mb-4 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-xs text-red-400 font-mono">{createError}</div>
-        {/if}
+      <MasterFlowsSection />
 
-        <div class="flex items-center justify-end mb-4">
-          <button onclick={handleNewGroup} class="flex items-center gap-1.5 h-7 px-3 text-[10px] font-mono uppercase tracking-wider rounded border border-border text-muted hover:bg-bg3 hover:text-foreground transition-colors">
-            <Plus size={12} /> {m.flow_newGroup()}
-          </button>
-        </div>
-
-        <MasterFlowsSection />
-
-        {#if loading}
-          <p class="text-muted text-xs font-mono">{m.common_loading()}</p>
-        {:else}
+      {#if loading}
+        <p class="text-muted text-xs font-mono">{m.common_loading()}</p>
+      {:else}
+        <FlowGroupSection
+          title={m.flow_myFlows()} kind="my" flows={ungrouped}
+          onNewBlank={() => handleCreate(null)} onDeleteFlow={handleDeleteFlow}
+        />
+        {#each orderedGroups as group (group.id)}
           <FlowGroupSection
-            title={m.flow_myFlows()} kind="my" flows={ungrouped}
-            onNewBlank={() => handleCreate(null)} onDeleteFlow={handleDeleteFlow}
+            title={group.name}
+            kind={group.pluginId ? 'plugin' : 'user'}
+            pluginId={group.pluginId}
+            groupId={group.id}
+            disabled={group.disabled}
+            flows={flowsIn(group.id)}
+            templates={group.pluginId ? (pluginTemplates[group.pluginId] ?? []) : []}
+            onNewBlank={group.pluginId ? undefined : () => handleCreate(group.id)}
+            onDeleteFlow={handleDeleteFlow}
+            onRenameGroup={() => handleRenameGroup(group)}
+            onDeleteGroup={() => handleDeleteGroup(group)}
+            onChanged={loadAll}
           />
-          {#each orderedGroups as group (group.id)}
-            <FlowGroupSection
-              title={group.name}
-              kind={group.pluginId ? 'plugin' : 'user'}
-              pluginId={group.pluginId}
-              groupId={group.id}
-              disabled={group.disabled}
-              flows={flowsIn(group.id)}
-              templates={group.pluginId ? (pluginTemplates[group.pluginId] ?? []) : []}
-              onNewBlank={group.pluginId ? undefined : () => handleCreate(group.id)}
-              onDeleteFlow={handleDeleteFlow}
-              onRenameGroup={() => handleRenameGroup(group)}
-              onDeleteGroup={() => handleDeleteGroup(group)}
-              onChanged={loadAll}
-            />
-          {/each}
-        {/if}
-      </div>
-    {:else}
-      <BuilderHub only="skills" />
-    {/if}
+        {/each}
+      {/if}
+    </div>
   </div>

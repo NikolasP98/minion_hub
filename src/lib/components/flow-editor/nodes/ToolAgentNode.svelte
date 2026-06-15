@@ -124,7 +124,7 @@
     {/each}
   </div>
 
-  <div class="text-[9px] font-semibold text-muted uppercase tracking-wide mb-1">Gateway tools</div>
+  <div class="text-[9px] font-semibold text-muted uppercase tracking-wide mb-1">Server tools</div>
   {#if gatewayTools.length}
     <div class="flex flex-col gap-1 mb-1.5">
       {#each gatewayTools as tool (tool.method)}

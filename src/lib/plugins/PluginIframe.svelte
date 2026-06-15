@@ -392,7 +392,7 @@
           </p>
         {:else if diagnosticCspBlocks}
           <p class="text-foreground">
-            <strong>Gateway CSP blocks this hub from embedding the plugin.</strong> The plugin
+            <strong>Server CSP blocks this hub from embedding the plugin.</strong> The plugin
             served a <code>frame-ancestors</code> directive that excludes
             <code>{hostOrigin}</code>. The iframe request succeeded, but Chrome refuses to render —
             so the plugin's JS never runs and <code>plugin:ready</code> is never sent.

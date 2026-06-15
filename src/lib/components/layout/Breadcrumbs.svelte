@@ -3,6 +3,9 @@
   // are resolved in the component using message functions.
   const SEG_KEYS: Record<string, keyof typeof import('$lib/paraglide/messages')> = {
     'my-agent': 'breadcrumb_myAgent',
+    home: 'nav_home',
+    team: 'nav_team',
+    capabilities: 'nav_capabilities',
     agents: 'breadcrumb_agents',
     builder: 'breadcrumb_builder',
     workshop: 'breadcrumb_workshop',

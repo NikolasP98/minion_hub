@@ -46,7 +46,7 @@
         })(),
         {
           loading: m.hosts_adding(),
-          getOutcome: () => ({ type: 'success', title: 'Gateway added' }),
+          getOutcome: () => ({ type: 'success', title: 'Server added' }),
           onError: (err: unknown) => ({
             title: 'Failed to add gateway',
             description: err instanceof Error ? err.message : 'Could not add gateway.',
@@ -67,7 +67,7 @@
         }),
         {
           loading: 'Removing gateway…',
-          getOutcome: () => ({ type: 'success', title: 'Gateway removed' }),
+          getOutcome: () => ({ type: 'success', title: 'Server removed' }),
           onError: (err: unknown) => ({
             title: 'Failed to remove gateway',
             description: err instanceof Error ? err.message : 'Delete failed',

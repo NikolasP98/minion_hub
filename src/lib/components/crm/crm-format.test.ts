@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { scoreColor, stageColor, relativeTime, contactLabel } from './crm-format';
+import {
+  scoreColor,
+  stageColor,
+  relativeTime,
+  contactLabel,
+  isRecencyNever,
+  identityValue,
+  formatPhoneLike,
+} from './crm-format';
 
 const NOW = new Date('2026-06-13T12:00:00Z');
 
@@ -38,5 +46,32 @@ describe('contactLabel', () => {
   it('falls back on empty', () => {
     expect(contactLabel('  ')).toBe('Unknown');
     expect(contactLabel('Ana')).toBe('Ana');
+  });
+});
+
+describe('isRecencyNever', () => {
+  it('detects the cold sentinel', () => {
+    expect(isRecencyNever(1e9)).toBe(true);
+    expect(isRecencyNever(null)).toBe(true);
+    expect(isRecencyNever(undefined)).toBe(true);
+    expect(isRecencyNever(NaN)).toBe(true);
+    expect(isRecencyNever(0)).toBe(false);
+    expect(isRecencyNever(45.2)).toBe(false);
+  });
+});
+
+describe('identityValue', () => {
+  it('prefers the external id (number) over the handle (name)', () => {
+    expect(identityValue('+51924375271', 'Fiorella Andrea')).toBe('+51 924 375 271');
+    expect(identityValue(null, 'Some Name')).toBe('Some Name');
+    expect(identityValue('  ', '  ')).toBe('—');
+  });
+});
+
+describe('formatPhoneLike', () => {
+  it('groups phone numbers and leaves other ids alone', () => {
+    expect(formatPhoneLike('+51924375271')).toBe('+51 924 375 271');
+    expect(formatPhoneLike('51924375271')).toBe('51 924 375 271');
+    expect(formatPhoneLike('user_abc123')).toBe('user_abc123');
   });
 });

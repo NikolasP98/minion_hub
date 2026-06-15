@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { invalidateTags, tags } from '@minion-stack/cache';
+import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { proposeName, nameKey, type NameIssue } from './crm-standardize';
@@ -12,6 +12,28 @@ import { proposeName, nameKey, type NameIssue } from './crm-standardize';
 
 function bust(tenantId: string) {
   return invalidateTags([...tags.tenantDomain(tenantId, 'crm')]);
+}
+
+/**
+ * Cached variants for the hygiene page loads. Both scans are pure functions of
+ * the contact roster, so they ride the same `crm` cache tag — any contact
+ * mutation (sync / merge / standardize) busts them. Makes repeat navigation to
+ * /crm/cleanup instant instead of re-scanning every contact each visit.
+ */
+export function scanStandardizationCached(ctx: CoreCtx): Promise<NameFix[]> {
+  return cached(
+    keys.hub('crm-standardize', { t: ctx.tenantId }),
+    { ttl: '2m', swr: '30s', tags: [...tags.tenantDomain(ctx.tenantId, 'crm')] },
+    () => scanStandardization(ctx),
+  );
+}
+
+export function findDuplicatesCached(ctx: CoreCtx): Promise<DupGroup[]> {
+  return cached(
+    keys.hub('crm-duplicates', { t: ctx.tenantId }),
+    { ttl: '2m', swr: '30s', tags: [...tags.tenantDomain(ctx.tenantId, 'crm')] },
+    () => findDuplicates(ctx),
+  );
 }
 
 // ── Standardization ───────────────────────────────────────────────────────────

@@ -49,3 +49,38 @@ export function contactLabel(displayName: string | null | undefined, fallback = 
   const n = displayName?.trim();
   return n && n.length > 0 ? n : fallback;
 }
+
+/**
+ * The ranking query coalesces a never-contacted recency to a 1e9-day sentinel
+ * (so cold contacts sort last). Anything in that ballpark means "no contact on
+ * record" — callers should render `crm_recency_never` rather than "1000000000.0d".
+ */
+const RECENCY_SENTINEL_DAYS = 100_000;
+export function isRecencyNever(days: number | null | undefined): boolean {
+  return days == null || !Number.isFinite(days) || days >= RECENCY_SENTINEL_DAYS;
+}
+
+/**
+ * Present a contact identity's value: the channel-native IDENTIFIER (phone /
+ * external id), NOT the friendly handle — the handle is usually the person's
+ * name, which is already shown as the contact title. Phone-like ids are spaced
+ * for readability ("+51924375271" → "+51 924 375 271").
+ */
+export function identityValue(externalId: string | null | undefined, handle?: string | null): string {
+  const id = externalId?.trim();
+  if (id && id.length > 0) return formatPhoneLike(id);
+  const h = handle?.trim();
+  return h && h.length > 0 ? h : '—';
+}
+
+/** Group a "+<digits>" phone-like string into readable triplets. Non-phone ids pass through. */
+export function formatPhoneLike(value: string): string {
+  if (!/^\+?\d{7,15}$/.test(value)) return value;
+  const plus = value.startsWith('+');
+  const digits = plus ? value.slice(1) : value;
+  // Country code (first 1–3 digits) + remaining grouped in threes.
+  const cc = digits.length > 9 ? digits.slice(0, digits.length - 9) : '';
+  const rest = digits.slice(cc.length);
+  const grouped = rest.replace(/(\d{3})(?=\d)/g, '$1 ');
+  return `${plus ? '+' : ''}${cc}${cc ? ' ' : ''}${grouped}`.trim();
+}

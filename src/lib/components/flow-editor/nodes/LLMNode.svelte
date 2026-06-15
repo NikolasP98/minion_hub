@@ -77,7 +77,7 @@
   </div>
 
   {#if defaultFallback}
-    <p class="text-[9px] text-amber-400/80 mb-1">Gateway offline — showing defaults</p>
+    <p class="text-[9px] text-amber-400/80 mb-1">Server offline — showing defaults</p>
   {/if}
 
   <select

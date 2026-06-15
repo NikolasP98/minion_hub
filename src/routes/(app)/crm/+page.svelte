@@ -2,7 +2,7 @@
 	import type { PageData } from './$types';
 	import { goto, invalidate } from '$app/navigation';
 	import * as m from '$lib/paraglide/messages';
-	import { Contact, RefreshCw, Plus, Tags, Wand2, ArrowUp, ArrowDown, ChevronsUpDown } from 'lucide-svelte';
+	import { Contact, RefreshCw, Plus, Settings, Wand2, ArrowUp, ArrowDown, ChevronsUpDown } from 'lucide-svelte';
 	import { PageHeader, Button } from '$lib/components/ui';
 	import ScoreCell from '$lib/components/crm/ScoreCell.svelte';
 	import StagePill from '$lib/components/crm/StagePill.svelte';
@@ -111,24 +111,10 @@
 		{#snippet leading()}
 			<Contact size={16} class="text-accent shrink-0" />
 		{/snippet}
-		{#snippet actions()}
-			<a href="/crm/cleanup" class="p-1.5 rounded hover:bg-white/[0.06] inline-flex" aria-label={m.crm_hygiene_title()} title={m.crm_hygiene_nav()}>
-				<Wand2 size={16} />
-			</a>
-			<a href="/crm/settings" class="p-1.5 rounded hover:bg-white/[0.06] inline-flex" aria-label={m.crm_tags_title()} title={m.crm_tags_title()}>
-				<Tags size={16} />
-			</a>
-			<Button variant="outline" size="sm" onclick={syncNow} disabled={syncing}>
-				<RefreshCw size={14} class={syncing ? 'animate-spin' : ''} />
-				{syncing ? m.crm_syncing() : m.crm_sync_now()}
-			</Button>
-			<Button variant="primary" size="sm" onclick={newContact} disabled={creating}>
-				<Plus size={14} /> {m.crm_new_contact()}
-			</Button>
-		{/snippet}
 	</PageHeader>
 
-	<!-- Filter bar — instant, client-side -->
+	<!-- Filter + actions bar — instant, client-side filtering; actions live here
+	     (not in the header) so they don't collide with the floating profile notch. -->
 	<div class="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--hairline)]">
 		<input
 			bind:value={search}
@@ -139,7 +125,23 @@
 			<option value="">{m.crm_all_tags()}</option>
 			{#each tags as t (t.id)}<option value={t.id}>{t.name}</option>{/each}
 		</select>
-		<span class="ml-auto t-caption">{m.crm_contact_count({ count: view.length })}</span>
+		<span class="t-caption">{m.crm_contact_count({ count: view.length })}</span>
+
+		<div class="ml-auto flex items-center gap-2">
+			<a href="/crm/cleanup" class="p-1.5 rounded hover:bg-white/[0.06] inline-flex" aria-label={m.crm_hygiene_title()} title={m.crm_hygiene_nav()}>
+				<Wand2 size={16} />
+			</a>
+			<a href="/crm/settings" class="p-1.5 rounded hover:bg-white/[0.06] inline-flex" aria-label={m.crm_settings_title()} title={m.crm_settings_title()}>
+				<Settings size={16} />
+			</a>
+			<Button variant="outline" size="sm" onclick={syncNow} disabled={syncing}>
+				<RefreshCw size={14} class={syncing ? 'animate-spin' : ''} />
+				{syncing ? m.crm_syncing() : m.crm_sync_now()}
+			</Button>
+			<Button variant="primary" size="sm" onclick={newContact} disabled={creating}>
+				<Plus size={14} /> {m.crm_new_contact()}
+			</Button>
+		</div>
 	</div>
 
 	<!-- Ranked list -->

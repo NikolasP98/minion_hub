@@ -7,10 +7,6 @@
  * (`<PageHeader>`). Adding a top-level page here wires it into all three.
  */
 import {
-    Briefcase,
-    Zap,
-    Sparkles,
-    LayoutDashboard,
     Users,
     GitBranch,
     Wrench,
@@ -25,6 +21,11 @@ import {
     MessagesSquare,
     Bell,
     Network,
+    LayoutDashboard,
+    Home,
+    Bot,
+    Building2,
+    UsersRound,
 } from "lucide-svelte";
 import type { ComponentType, SvelteComponent } from "svelte";
 import * as m from "$lib/paraglide/messages";
@@ -34,18 +35,11 @@ export type LucideIcon = ComponentType<
     SvelteComponent<{ size?: number | string; class?: string }>
 >;
 
-export type SectionId = "workforce" | "gateway" | "creative";
+// Core sidebar sections (always present). Plugin-driven sections (Marketing,
+// Operations, Branding/Creative, Customer Support) are built separately in
+// `components/layout/sections.ts` from the live plugin manifest categories.
+export type SectionId = "organization" | "agents";
 export type SectionTone = "accent" | "brand";
-
-// Top-level product domain. The hub spans two surfaces — the agent-company
-// control plane (Workforce) and the live gateway dashboard (Gateway/Creative/
-// Plugins). Super-labels in the sidebar keep them legible as distinct domains
-// without hiding either (council #12, "clarify grouping").
-export type NavDomain = "control-plane" | "gateway";
-export const DOMAIN_LABEL: Record<NavDomain, string> = {
-    "control-plane": "Control plane",
-    gateway: "Gateway",
-};
 
 export interface RouteMeta {
     /** Canonical path (sidebar href + palette goto target). */
@@ -72,166 +66,103 @@ export interface RouteMeta {
 
 export const SECTION_META: Record<
     SectionId,
-    { label: string; icon: LucideIcon; tone: SectionTone; domain: NavDomain }
+    { label: () => string; icon: LucideIcon; tone: SectionTone }
 > = {
-    workforce: { label: "Workforce", icon: Briefcase, tone: "accent", domain: "control-plane" },
-    gateway: { label: "Gateway", icon: Zap, tone: "accent", domain: "gateway" },
-    creative: { label: "Creative", icon: Sparkles, tone: "brand", domain: "gateway" },
+    organization: { label: () => m.nav_organization(), icon: Building2, tone: "accent" },
+    agents: { label: () => m.nav_agentsGroup(), icon: Bot, tone: "accent" },
 };
 
-/** Display order of nav sections. */
-export const SECTION_ORDER: SectionId[] = ["workforce", "gateway", "creative"];
+/** Display order of the core nav sections. */
+export const SECTION_ORDER: SectionId[] = ["organization", "agents"];
 
 const startsWith = (prefix: string) => (p: string) => p.startsWith(prefix);
 
 export const ROUTES: RouteMeta[] = [
-    // ── Workforce (the "Kanban" plugin) ────────────────────────────────────
-    // Reframed as a standalone plugin: the primary sidebar shows a single
-    // Plugins → Kanban entry (see getDynamicPluginsSection); these detail views
-    // are reached via the KANBAN icon sub-nav (KanbanNavRail) inside the
-    // /workforce shell. inNav:false keeps them out of the primary rail but
-    // inPalette:true keeps them as ⌘K page commands.
+    // ── Organization ─────────────────────────────────────────────────────────
     {
-        path: "/workforce",
-        title: () => "Dashboard",
-        icon: LayoutDashboard,
-        matcher: (p) => p === "/workforce",
-        section: "workforce",
-        inNav: false,
+        path: "/home",
+        title: () => m.nav_home(),
+        icon: Home,
+        matcher: (p) => p === "/home" || p.startsWith("/home/"),
+        section: "organization",
+        inNav: true,
         inPalette: true,
-        keywords: "workforce home overview",
-        paletteIcon: "layout-dashboard",
+        keywords: "home personal agent assistant feed dashboard",
+        paletteIcon: "user",
     },
-    {
-        path: "/workforce/issues",
-        title: () => "Issues",
-        icon: Inbox,
-        matcher: startsWith("/workforce/issues"),
-        section: "workforce",
-        inNav: false,
-        inPalette: true,
-        keywords: "tasks bugs work",
-        paletteIcon: "inbox",
-    },
-    {
-        path: "/workforce/approvals",
-        title: () => "Approvals",
-        icon: CheckCircle2,
-        matcher: startsWith("/workforce/approvals"),
-        section: "workforce",
-        inNav: false,
-        inPalette: true,
-        keywords: "review pending approve",
-        paletteIcon: "check",
-    },
-    {
-        path: "/workforce/goals",
-        title: () => "Goals",
-        icon: Target,
-        matcher: startsWith("/workforce/goals"),
-        section: "workforce",
-        inNav: false,
-        inPalette: true,
-        keywords: "objectives okr targets",
-        paletteIcon: "target",
-    },
-    {
-        path: "/workforce/projects",
-        title: () => "Projects",
-        icon: FolderKanban,
-        matcher: startsWith("/workforce/projects"),
-        section: "workforce",
-        inNav: false,
-        inPalette: true,
-        keywords: "kanban board",
-        paletteIcon: "folder",
-    },
-    {
-        path: "/workforce/org",
-        title: () => "Org",
-        icon: Users,
-        matcher: startsWith("/workforce/org"),
-        section: "workforce",
-        inNav: false,
-        inPalette: true,
-        keywords: "organization team structure",
-        paletteIcon: "users",
-    },
-
-    // ── Gateway ────────────────────────────────────────────────────────────
     {
         path: "/overview",
-        title: () => "Overview",
+        title: () => m.nav_overview(),
         icon: Network,
         matcher: startsWith("/overview"),
-        section: "gateway",
+        section: "organization",
         inNav: true,
         inPalette: true,
         keywords: "overview graph org areas agents users map network",
         paletteIcon: "git-branch",
     },
     {
-        path: "/my-agent",
-        title: () => m.nav_agents(),
-        icon: Users,
-        matcher: (p) => p.startsWith("/my-agent") || p.startsWith("/agents"),
-        section: "gateway",
+        path: "/team",
+        title: () => m.nav_team(),
+        icon: UsersRound,
+        matcher: startsWith("/team"),
+        section: "organization",
+        requires: "users.manage",
         inNav: true,
         inPalette: true,
-        keywords: "personal agent assistant",
+        keywords: "team members people users invite roles seats",
+        paletteIcon: "users",
+    },
+
+    // ── Agents ───────────────────────────────────────────────────────────────
+    // The Copilots / AI Brains / Autonomous archetype filters and Capabilities
+    // are assembled in sections.ts (query-param-aware active state); /agents is
+    // here for title + palette resolution.
+    {
+        path: "/agents",
+        title: () => m.nav_agents(),
+        icon: Bot,
+        matcher: (p) => p === "/agents" || p.startsWith("/agents/"),
+        inNav: false,
+        inPalette: true,
+        keywords: "agents roster copilots brains autonomous list",
         paletteIcon: "user",
+    },
+    {
+        path: "/capabilities",
+        title: () => m.nav_capabilities(),
+        icon: Wrench,
+        matcher: (p) => p.startsWith("/capabilities") || p.startsWith("/tools"),
+        section: "agents",
+        inNav: true,
+        inPalette: true,
+        keywords: "capabilities tools skills gateway custom create edit",
+        paletteIcon: "wrench",
     },
     {
         path: "/flow-editor",
         title: () => m.nav_agentBuilder(),
         icon: GitBranch,
         matcher: startsWith("/flow-editor"),
-        section: "gateway",
+        section: "agents",
         inNav: true,
         inPalette: true,
-        keywords: "agent builder flows skills graph editor automation",
+        keywords: "agent builder flows graph editor automation",
         paletteIcon: "git-branch",
-    },
-    {
-        path: "/tools",
-        title: () => m.nav_tools(),
-        icon: Wrench,
-        matcher: startsWith("/tools"),
-        section: "gateway",
-        inNav: true,
-        inPalette: true,
-        keywords: "tools gateway custom create edit",
-        paletteIcon: "wrench",
-    },
-
-    // ── Creative ───────────────────────────────────────────────────────────
-    {
-        path: "/marketplace",
-        title: () => m.nav_marketplace(),
-        icon: Store,
-        matcher: startsWith("/marketplace"),
-        section: "creative",
-        inNav: true,
-        inPalette: true,
-        keywords: "plugins tools browse install",
-        paletteIcon: "store",
     },
     {
         path: "/prompt",
         title: () => m.nav_prompt(),
         icon: Wand2,
         matcher: startsWith("/prompt"),
-        section: "creative",
+        section: "agents",
         inNav: true,
         inPalette: true,
         keywords: "prompt builder craft",
         paletteIcon: "wand",
     },
-    // /studio is now a gateway plugin (extensions/studio). It self-registers in
-    // the sidebar via its `plugins.controlCenter` UI slot (getDynamicPluginsSection)
-    // and in Settings → Plugins via its `settings.plugins` slot — no static route.
 
-    // ── Standalone (rendered specially in the sidebar / palette-only) ───────
+    // ── Top icon row (rendered specially in the sidebar) ─────────────────────
     {
         path: "/reliability",
         title: () => m.reliability_title(),
@@ -243,6 +174,83 @@ export const ROUTES: RouteMeta[] = [
         keywords: "health monitoring events uptime",
         paletteIcon: "activity",
     },
+    {
+        path: "/marketplace",
+        title: () => m.nav_marketplace(),
+        icon: Store,
+        matcher: startsWith("/marketplace"),
+        inNav: false,
+        inPalette: true,
+        keywords: "plugins tools browse install marketplace",
+        paletteIcon: "store",
+    },
+
+    // ── Workforce (the "Kanban" plugin) — palette + titles only ──────────────
+    // Reached via the Operations → Kanban plugin entry and the KanbanNavRail
+    // icon sub-nav inside the /workforce shell. inNav:false keeps them out of
+    // the primary rail; inPalette:true keeps them as ⌘K page commands.
+    {
+        path: "/workforce",
+        title: () => "Dashboard",
+        icon: LayoutDashboard,
+        matcher: (p) => p === "/workforce",
+        inNav: false,
+        inPalette: true,
+        keywords: "workforce home overview kanban",
+        paletteIcon: "layout-dashboard",
+    },
+    {
+        path: "/workforce/issues",
+        title: () => "Issues",
+        icon: Inbox,
+        matcher: startsWith("/workforce/issues"),
+        inNav: false,
+        inPalette: true,
+        keywords: "tasks bugs work",
+        paletteIcon: "inbox",
+    },
+    {
+        path: "/workforce/approvals",
+        title: () => "Approvals",
+        icon: CheckCircle2,
+        matcher: startsWith("/workforce/approvals"),
+        inNav: false,
+        inPalette: true,
+        keywords: "review pending approve",
+        paletteIcon: "check",
+    },
+    {
+        path: "/workforce/goals",
+        title: () => "Goals",
+        icon: Target,
+        matcher: startsWith("/workforce/goals"),
+        inNav: false,
+        inPalette: true,
+        keywords: "objectives okr targets",
+        paletteIcon: "target",
+    },
+    {
+        path: "/workforce/projects",
+        title: () => "Projects",
+        icon: FolderKanban,
+        matcher: startsWith("/workforce/projects"),
+        inNav: false,
+        inPalette: true,
+        keywords: "kanban board",
+        paletteIcon: "folder",
+    },
+    {
+        path: "/workforce/org",
+        title: () => "Org",
+        icon: Users,
+        matcher: startsWith("/workforce/org"),
+        inNav: false,
+        inPalette: true,
+        keywords: "organization team structure",
+        paletteIcon: "users",
+    },
+
+    // ── Standalone (palette-only / footer) ───────────────────────────────────
     {
         path: "/sessions",
         title: () => "Sessions",

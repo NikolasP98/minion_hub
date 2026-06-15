@@ -1,59 +1,10 @@
 <script lang="ts">
     import { conn } from "$lib/state/gateway/connection.svelte";
-    import { gw } from "$lib/state/gateway/gateway-data.svelte";
     import { ui } from "$lib/state/ui/ui.svelte";
     import { hostsState } from "$lib/state/features/hosts.svelte";
     import MinionLogo from "./MinionLogo.svelte";
-    import {
-        Plus,
-        Store,
-        Activity,
-        Users,
-        Zap,
-        Plug,
-        Server,
-    } from "lucide-svelte";
+    import { Plus, Zap, Plug, Server } from "lucide-svelte";
     import * as m from "$lib/paraglide/messages";
-
-    const hasAgents = $derived(gw.agents.length > 0);
-    const hasHosts = $derived(hostsState.hosts.length > 0);
-
-    const quickActions = $derived([
-        {
-            icon: Plus,
-            label: m.agent_add(),
-            description: m.welcome_actionAddAgentDesc(),
-            action: () => (ui.agentAddOpen = true),
-            primary: true,
-        },
-        {
-            icon: Store,
-            label: m.nav_marketplace(),
-            description: m.welcome_actionMarketplaceDesc(),
-            href: "/marketplace",
-            primary: false,
-        },
-        {
-            icon: Users,
-            label: m.nav_users(),
-            description: m.welcome_actionUsersDesc(),
-            href: "/users",
-            primary: false,
-        },
-        {
-            icon: Activity,
-            label: m.nav_reliability(),
-            description: m.welcome_actionReliabilityDesc(),
-            href: "/reliability",
-            primary: false,
-        },
-    ]);
-
-    const connectionSteps = $derived([
-        { label: m.welcome_step1(), done: hasHosts },
-        { label: m.welcome_step2(), done: conn.connected },
-        { label: m.welcome_step3(), done: hasAgents },
-    ]);
 </script>
 
 <div
@@ -89,7 +40,7 @@
         <div
             class="bg-card/50 backdrop-blur-sm border border-border rounded-xl p-6 max-w-md mx-auto"
         >
-            <div class="flex items-center gap-3 mb-4">
+            <div class="flex items-center gap-3">
                 <div
                     class="w-10 h-10 rounded-lg bg-bg3 flex items-center justify-center"
                 >
@@ -128,72 +79,17 @@
                     </button>
                 {/if}
             </div>
-
-            <!-- Progress steps -->
-            <div class="space-y-2">
-                {#each connectionSteps as step, i}
-                    <div class="flex items-center gap-3 text-sm">
-                        <div
-                            class="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0
-              {step.done
-                                ? 'bg-success/20 text-success'
-                                : 'bg-bg3 text-muted-foreground'}"
-                        >
-                            {#if step.done}
-                                ✓
-                            {:else}
-                                {i + 1}
-                            {/if}
-                        </div>
-                        <span
-                            class={step.done
-                                ? "text-foreground"
-                                : "text-muted-foreground"}
-                        >
-                            {step.label}
-                        </span>
-                    </div>
-                {/each}
-            </div>
         </div>
 
-        <!-- Quick actions grid -->
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-lg mx-auto">
-            {#each quickActions as action}
-                {#if action.href}
-                    <a
-                        href={action.href}
-                        class="group flex flex-col items-center gap-2 p-4 rounded-xl border transition-all duration-200
-              {action.primary
-                            ? 'bg-accent/10 border-accent/30 text-accent hover:bg-accent/20'
-                            : 'bg-card border-border text-foreground hover:border-muted-foreground hover:bg-bg3'}"
-                    >
-                        <action.icon
-                            size={20}
-                            class={action.primary
-                                ? "text-accent"
-                                : "text-muted-foreground group-hover:text-foreground"}
-                        />
-                        <span class="text-xs font-medium">{action.label}</span>
-                    </a>
-                {:else}
-                    <button
-                        onclick={action.action}
-                        class="group flex flex-col items-center gap-2 p-4 rounded-xl border transition-all duration-200
-              {action.primary
-                            ? 'bg-accent/10 border-accent/30 text-accent hover:bg-accent/20'
-                            : 'bg-card border-border text-foreground hover:border-muted-foreground hover:bg-bg3'}"
-                    >
-                        <action.icon
-                            size={20}
-                            class={action.primary
-                                ? "text-accent"
-                                : "text-muted-foreground group-hover:text-foreground"}
-                        />
-                        <span class="text-xs font-medium">{action.label}</span>
-                    </button>
-                {/if}
-            {/each}
+        <!-- Primary action: add an agent -->
+        <div class="flex justify-center">
+            <button
+                onclick={() => (ui.agentAddOpen = true)}
+                class="group flex flex-col items-center gap-2 p-4 w-40 rounded-xl border transition-all duration-200 bg-accent/10 border-accent/30 text-accent hover:bg-accent/20"
+            >
+                <Plus size={20} class="text-accent" />
+                <span class="text-xs font-medium">{m.agent_add()}</span>
+            </button>
         </div>
 
         <!-- Tip -->
