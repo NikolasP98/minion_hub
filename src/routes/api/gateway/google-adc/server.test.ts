@@ -13,10 +13,10 @@ vi.mock('$server/services/identity.service', () => ({
 
 import { GET } from './+server';
 
-function makeEvent(userId: string | null) {
+function makeEvent(userId: string | null, locals: Record<string, unknown> = { serverId: 'srv1' }) {
   const u = new URL('http://localhost/api/gateway/google-adc');
   if (userId !== null) u.searchParams.set('userId', userId);
-  return { locals: {}, url: u } as never;
+  return { locals, url: u } as never;
 }
 
 beforeEach(() => vi.clearAllMocks());
@@ -52,5 +52,23 @@ describe('GET /api/gateway/google-adc', () => {
     mockGetGoogleCredential.mockResolvedValue(null);
     const res = await GET(makeEvent('stranger'));
     expect(res.status).toBe(404);
+  });
+
+  it('403 when a non-admin session requests another user (no IDOR)', async () => {
+    mockGetTenantCtx.mockResolvedValue({ db: {}, tenantId: 't1' });
+    await expect(
+      GET(makeEvent('victim', { user: { id: 'attacker', role: 'user' } })),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(mockGetGoogleCredential).not.toHaveBeenCalled();
+  });
+
+  it('allows a user to fetch their OWN credential', async () => {
+    mockGetTenantCtx.mockResolvedValue({ db: {}, tenantId: 't1' });
+    mockGetGoogleCredential.mockResolvedValue({
+      email: 'me@example.com',
+      adc: { client_id: 'c', client_secret: 's', refresh_token: 'r', type: 'authorized_user' },
+    });
+    const res = await GET(makeEvent('me', { user: { id: 'me', role: 'user' } }));
+    expect(res.status).toBe(200);
   });
 });
