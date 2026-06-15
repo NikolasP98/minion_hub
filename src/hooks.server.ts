@@ -14,6 +14,7 @@ import { resolveIdentity } from '$server/auth/resolve-identity';
 import { env } from '$env/dynamic/private';
 import { startBackupScheduler } from '$server/services/backup-scheduler';
 import { mintPaperclipIdentity } from '$lib/server/paperclip-identity';
+import { getOrgCompanyId } from '$lib/server/paperclip-company';
 import { initCache } from '$lib/server/cache';
 import { getCoreDb } from '$server/db/pg-client';
 import { getUserPreferences } from '$server/services/user-preferences.service';
@@ -217,12 +218,22 @@ const posthogProxyHandle: Handle = async ({ event, resolve }) => {
 
 const paperclipIdentityHandle: Handle = async ({ event, resolve }) => {
   if (event.locals.user) {
-    const companyId = event.cookies.get('pc_company_id') ?? null;
-    // Bearer board-key auth mode (Phase 2). Per-user identity is not preserved —
-    // paperclip sees all requests as the same board principal. Trade-off accepted
-    // to avoid deploying the hub-identity middleware on the Netcup instance.
-    // Restore mintPaperclipIdentity() when HUB_PAPERCLIP_SHARED_SECRET is set
-    // on both sides.
+    // Company is scoped to the active hub org. Only resolve it for routes that
+    // actually consume it (the workforce UI + the paperclip proxy) so we don't
+    // pay a Supabase read on every request. The pc_company_id cookie is no
+    // longer the carrier (org is the source of truth); read it only as a
+    // legacy fallback when no org mapping exists.
+    const path = event.url.pathname;
+    const needsCompany = path.startsWith('/workforce') || path.startsWith('/api/pc');
+    const orgId = event.locals.orgId ?? event.locals.tenantCtx?.tenantId ?? null;
+    let companyId: string | null = null;
+    if (needsCompany) {
+      companyId =
+        (orgId ? await getOrgCompanyId(orgId) : null) ??
+        event.cookies.get('pc_company_id') ??
+        null;
+    }
+
     const boardKey = env.HUB_PAPERCLIP_BOARD_KEY ?? null;
     if (boardKey) {
       event.locals.paperclipIdentity = {
@@ -231,7 +242,6 @@ const paperclipIdentityHandle: Handle = async ({ event, resolve }) => {
         userId: event.locals.user.id,
       };
     } else {
-      // Try JWT mint as the legacy/dev fallback when board key isn't configured.
       try {
         const token = await mintPaperclipIdentity({
           userId: event.locals.user.id,
@@ -245,7 +255,6 @@ const paperclipIdentityHandle: Handle = async ({ event, resolve }) => {
           userId: event.locals.user.id,
         };
       } catch (err) {
-        // Don't block the request if neither auth mode is configured.
         console.warn('[paperclipIdentityHandle] no auth configured:', err);
       }
     }
