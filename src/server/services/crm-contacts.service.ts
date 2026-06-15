@@ -37,15 +37,18 @@ export interface SyncResult {
  * IS the reconciliation), no locks (ON CONFLICT makes concurrent runs no-ops).
  */
 export async function syncContactsFromLedger(ctx: CoreCtx): Promise<SyncResult> {
-  // Harvest gate: accounts paused in CRM settings never create new contacts.
-  const { disabledAccounts } = await getCrmSettings(ctx);
-  const accountGate =
-    disabledAccounts.length > 0
-      ? sql`and (m.channel, coalesce(m.account_id, '')) not in (${sql.join(
-          disabledAccounts.map((a) => sql`(${a.channel}, ${a.accountId})`),
+  // Harvest gate: only accounts the user has added to the CRM scope (and not
+  // paused) create new contacts. `all` = legacy/unconfigured → harvest every
+  // account; an explicit but empty scope harvests nothing.
+  const scope = await getHarvestScope(ctx);
+  const accountGate = scope.all
+    ? sql``
+    : scope.accounts.length === 0
+      ? sql`and false`
+      : sql`and (m.channel, coalesce(m.account_id, '')) in (${sql.join(
+          scope.accounts.map((a) => sql`(${a.channel}, ${a.accountId})`),
           sql`, `,
-        )})`
-      : sql``;
+        )})`;
   const result = await withOrgCore(ctx, async (tx) => {
     // 1. Anti-join: senders in the ledger with no crm identity yet. Newest
     //    name/handle wins (distinct on … order by created_at desc).
@@ -482,32 +485,48 @@ export interface AccountRef {
 }
 
 export interface CrmSettings {
-  /** Channel accounts the harvest skips (won't create new contacts). */
-  disabledAccounts: AccountRef[];
+  /**
+   * Accounts explicitly added to the CRM scope. `null` = not yet configured
+   * (legacy: every linked account is implicitly in scope). The first
+   * add/remove/config action materializes the array (snapshotting the current
+   * linked set) so nothing silently drops out.
+   */
+  accounts: AccountConfig[] | null;
 }
 
 /** Stable comparison key for an account ref. */
 const accountKey = (channel: string, accountId: string) => `${channel} ${accountId}`;
 
-function parseAccountRefs(raw: unknown): AccountRef[] {
-  if (!Array.isArray(raw)) return [];
-  const out: AccountRef[] = [];
+function parseAccountConfigs(raw: unknown): AccountConfig[] | null {
+  if (!Array.isArray(raw)) return null;
+  const out: AccountConfig[] = [];
   for (const r of raw) {
     if (r && typeof r === 'object') {
-      const channel = (r as Record<string, unknown>).channel;
-      const accountId = (r as Record<string, unknown>).accountId;
-      if (typeof channel === 'string' && typeof accountId === 'string') {
-        out.push({ channel, accountId });
+      const o = r as Record<string, unknown>;
+      if (typeof o.channel === 'string' && typeof o.accountId === 'string') {
+        out.push({
+          channel: o.channel,
+          accountId: o.accountId,
+          label: typeof o.label === 'string' ? o.label : null,
+          paused: o.paused === true,
+        });
       }
     }
   }
   return out;
 }
 
+/** An account the user has explicitly added to the CRM scope, plus its config. */
+export interface AccountConfig extends AccountRef {
+  label?: string | null;
+  paused?: boolean;
+}
+
 /**
  * Per-org CRM preferences. Resilient by design: if the `crm_settings` table or
- * the org's row is absent, returns the safe default (nothing disabled), so the
- * harvest gate and account manager work even before the migration applies.
+ * the org's row is absent, returns `accounts: null` (legacy — all linked
+ * accounts in scope), so harvest + the account manager work even before the
+ * migration applies.
  */
 export async function getCrmSettings(ctx: CoreCtx): Promise<CrmSettings> {
   try {
@@ -519,53 +538,40 @@ export async function getCrmSettings(ctx: CoreCtx): Promise<CrmSettings> {
         .limit(1);
       return (row?.value ?? {}) as Record<string, unknown>;
     });
-    return { disabledAccounts: parseAccountRefs(value.disabledAccounts) };
+    return { accounts: parseAccountConfigs(value.accounts) };
   } catch {
-    return { disabledAccounts: [] };
+    return { accounts: null };
   }
 }
 
-/** Enable/disable one channel account for harvesting; upserts the settings row. */
-export async function setAccountEnabled(
-  ctx: CoreCtx,
-  channel: string,
-  accountId: string,
-  enabled: boolean,
-): Promise<CrmSettings> {
-  const current = await getCrmSettings(ctx);
-  const map = new Map(current.disabledAccounts.map((a) => [accountKey(a.channel, a.accountId), a]));
-  if (enabled) map.delete(accountKey(channel, accountId));
-  else map.set(accountKey(channel, accountId), { channel, accountId });
-  const value = { disabledAccounts: [...map.values()] };
-  await withOrgCore(ctx, (tx) =>
-    tx
-      .insert(crmSettings)
-      .values({ orgId: ctx.tenantId, value })
-      .onConflictDoUpdate({ target: crmSettings.orgId, set: { value, updatedAt: new Date() } }),
-  );
-  await bustCrmList(ctx.tenantId);
-  return value;
-}
-
-export interface CrmAccountInfo {
+export interface LedgerAccount {
   channel: string;
   accountId: string;
   /** Distinct eligible inbound senders this account has produced (harvestable). */
   contacts: number;
   lastActive: string | null;
-  enabled: boolean;
+}
+
+export interface ManagedAccount extends LedgerAccount {
+  label: string | null;
+  paused: boolean;
+}
+
+export interface AccountScope {
+  /** Accounts in the CRM scope, enriched with ledger stats + config. */
+  added: ManagedAccount[];
+  /** Linked accounts not yet added (offered by the "Add" picker). */
+  available: LedgerAccount[];
+  /** True until the user has explicitly configured the scope. */
+  legacy: boolean;
 }
 
 /**
- * The connected channel ACCOUNTS feeding this org, derived from the ledger
- * (one row per distinct `(channel, account_id)`), with the count of distinct
- * inbound senders and whether the harvest is enabled. This is the authoritative
- * "which inbox" granularity — an org may run several WhatsApp numbers or
- * Telegram bots, and the user picks which ones become CRM contacts.
+ * Every connected channel ACCOUNT the org has, derived from the ledger (one row
+ * per distinct `(channel, account_id)`) with its distinct-inbound-sender count.
+ * This is the universe of linked accounts the user can add to the CRM scope.
  */
-export async function listCrmAccounts(ctx: CoreCtx): Promise<CrmAccountInfo[]> {
-  const { disabledAccounts } = await getCrmSettings(ctx);
-  const disabled = new Set(disabledAccounts.map((a) => accountKey(a.channel, a.accountId)));
+export async function listLedgerAccounts(ctx: CoreCtx): Promise<LedgerAccount[]> {
   const rows = (await withOrgCore(ctx, (tx) =>
     tx.execute(sql`
       select channel,
@@ -588,6 +594,110 @@ export async function listCrmAccounts(ctx: CoreCtx): Promise<CrmAccountInfo[]> {
     accountId: r.account_id,
     contacts: Number(r.contacts),
     lastActive: r.last_active,
-    enabled: !disabled.has(accountKey(r.channel, r.account_id)),
   }));
+}
+
+/** The account manager's full view: what's added (with config) + what can be added. */
+export async function getAccountScope(ctx: CoreCtx): Promise<AccountScope> {
+  const [{ accounts }, ledger] = await Promise.all([getCrmSettings(ctx), listLedgerAccounts(ctx)]);
+  const byKey = new Map(ledger.map((l) => [accountKey(l.channel, l.accountId), l]));
+
+  if (accounts === null) {
+    return {
+      added: ledger.map((l) => ({ ...l, label: null, paused: false })),
+      available: [],
+      legacy: true,
+    };
+  }
+
+  const addedKeys = new Set(accounts.map((a) => accountKey(a.channel, a.accountId)));
+  const added: ManagedAccount[] = accounts.map((a) => {
+    const l = byKey.get(accountKey(a.channel, a.accountId));
+    return {
+      channel: a.channel,
+      accountId: a.accountId,
+      label: a.label ?? null,
+      paused: !!a.paused,
+      contacts: l?.contacts ?? 0,
+      lastActive: l?.lastActive ?? null,
+    };
+  });
+  const available = ledger.filter((l) => !addedKeys.has(accountKey(l.channel, l.accountId)));
+  return { added, available, legacy: false };
+}
+
+/** Current explicit configs, materializing the legacy "all linked" set on first write. */
+async function currentConfigs(ctx: CoreCtx): Promise<AccountConfig[]> {
+  const { accounts } = await getCrmSettings(ctx);
+  if (accounts !== null) return accounts;
+  const ledger = await listLedgerAccounts(ctx);
+  return ledger.map((l) => ({ channel: l.channel, accountId: l.accountId, label: null, paused: false }));
+}
+
+async function persistConfigs(ctx: CoreCtx, accounts: AccountConfig[]): Promise<void> {
+  const value = { accounts };
+  await withOrgCore(ctx, (tx) =>
+    tx
+      .insert(crmSettings)
+      .values({ orgId: ctx.tenantId, value })
+      .onConflictDoUpdate({ target: crmSettings.orgId, set: { value, updatedAt: new Date() } }),
+  );
+  await bustCrmList(ctx.tenantId);
+}
+
+/** Add a linked account to the CRM scope (idempotent). */
+export async function addCrmAccount(ctx: CoreCtx, channel: string, accountId: string): Promise<void> {
+  const configs = await currentConfigs(ctx);
+  const k = accountKey(channel, accountId);
+  if (!configs.some((c) => accountKey(c.channel, c.accountId) === k)) {
+    configs.push({ channel, accountId, label: null, paused: false });
+  }
+  await persistConfigs(ctx, configs);
+}
+
+/** Remove an account from the CRM scope (stops harvesting; existing contacts stay). */
+export async function removeCrmAccount(
+  ctx: CoreCtx,
+  channel: string,
+  accountId: string,
+): Promise<void> {
+  const configs = await currentConfigs(ctx);
+  const k = accountKey(channel, accountId);
+  await persistConfigs(
+    ctx,
+    configs.filter((c) => accountKey(c.channel, c.accountId) !== k),
+  );
+}
+
+/** Patch a scoped account's config (rename / pause). */
+export async function updateCrmAccount(
+  ctx: CoreCtx,
+  channel: string,
+  accountId: string,
+  patch: { label?: string | null; paused?: boolean },
+): Promise<void> {
+  const configs = await currentConfigs(ctx);
+  const k = accountKey(channel, accountId);
+  const next = configs.map((c) =>
+    accountKey(c.channel, c.accountId) === k
+      ? {
+          ...c,
+          ...(patch.label !== undefined ? { label: patch.label } : {}),
+          ...(patch.paused !== undefined ? { paused: patch.paused } : {}),
+        }
+      : c,
+  );
+  await persistConfigs(ctx, next);
+}
+
+/** Accounts the harvest should pull from. `all=true` = legacy (every account). */
+async function getHarvestScope(ctx: CoreCtx): Promise<{ all: boolean; accounts: AccountRef[] }> {
+  const { accounts } = await getCrmSettings(ctx);
+  if (accounts === null) return { all: true, accounts: [] };
+  return {
+    all: false,
+    accounts: accounts
+      .filter((a) => !a.paused)
+      .map((a) => ({ channel: a.channel, accountId: a.accountId })),
+  };
 }
