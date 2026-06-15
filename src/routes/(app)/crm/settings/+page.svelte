@@ -2,27 +2,31 @@
 	import type { PageData } from './$types';
 	import { invalidate } from '$app/navigation';
 	import * as m from '$lib/paraglide/messages';
-	import { ArrowLeft, Plus, Trash2, Tag as TagIcon, Tags, Radio } from 'lucide-svelte';
+	import {
+		ArrowLeft,
+		Plus,
+		Trash2,
+		Tag as TagIcon,
+		Tags,
+		Radio,
+		Settings2,
+		Pause,
+		Play,
+		Check,
+	} from 'lucide-svelte';
 	import { PageHeader, Button } from '$lib/components/ui';
 	import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
 	import { formatPhoneLike, relativeTime } from '$lib/components/crm/crm-format';
 
-	type Account = { channel: string; accountId: string; contacts: number; lastActive: string | null; enabled: boolean };
+	type Ledger = { channel: string; accountId: string; contacts: number; lastActive: string | null };
+	type Managed = Ledger & { label: string | null; paused: boolean };
+	type Scope = { added: Managed[]; available: Ledger[]; legacy: boolean };
 
 	let { data }: { data: PageData } = $props();
 	const tags = $derived(data.tags);
-	const accounts = $derived(data.accounts as Account[]);
-
-	// Group accounts under their channel ("1 of 2 WhatsApp numbers" mental model).
-	const grouped = $derived.by(() => {
-		const map = new Map<string, Account[]>();
-		for (const a of accounts) {
-			const list = map.get(a.channel) ?? [];
-			list.push(a);
-			map.set(a.channel, list);
-		}
-		return [...map.entries()].map(([channel, list]) => ({ channel, accounts: list }));
-	});
+	const scope = $derived(data.scope as Scope);
+	const added = $derived(scope.added);
+	const available = $derived(scope.available);
 
 	type Tab = 'tags' | 'channels';
 	let tab = $state<Tab>('tags');
@@ -92,30 +96,88 @@
 	}
 
 	// ── Account manager ──────────────────────────────────────────────────────
-	let togglingKey = $state<string | null>(null);
-	const keyOf = (a: Account) => `${a.channel} ${a.accountId}`;
+	const keyOf = (a: { channel: string; accountId: string }) => `${a.channel} ${a.accountId}`;
 
-	async function toggleAccount(a: Account) {
-		togglingKey = keyOf(a);
-		try {
-			const res = await fetch('/api/crm/accounts', {
-				method: 'PATCH',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ channel: a.channel, accountId: a.accountId, enabled: !a.enabled }),
-			});
-			if (res.ok) await invalidate('crm:accounts');
-		} finally {
-			togglingKey = null;
-		}
-	}
+	let addOpen = $state(false);
+	let menuKey = $state<string | null>(null);
+	let renameKey = $state<string | null>(null);
+	let renameValue = $state('');
+	let busyKey = $state<string | null>(null);
 
 	function channelLabel(ch: string): string {
 		return ch.charAt(0).toUpperCase() + ch.slice(1);
 	}
-
-	function accountLabel(a: Account): string {
+	function accountName(a: { accountId: string; label?: string | null }): string {
+		if (a.label && a.label.trim()) return a.label;
 		if (!a.accountId || a.accountId === 'default') return m.crm_account_default();
 		return formatPhoneLike(a.accountId);
+	}
+
+	// Group a list under its channel ("1 of 2 WhatsApp numbers" mental model).
+	function groupByChannel<T extends { channel: string }>(list: T[]) {
+		const map = new Map<string, T[]>();
+		for (const a of list) {
+			const arr = map.get(a.channel) ?? [];
+			arr.push(a);
+			map.set(a.channel, arr);
+		}
+		return [...map.entries()].map(([channel, items]) => ({ channel, items }));
+	}
+	const groupedAvailable = $derived(groupByChannel(available));
+
+	async function addAccount(a: Ledger) {
+		busyKey = keyOf(a);
+		try {
+			const res = await fetch('/api/crm/accounts', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ channel: a.channel, accountId: a.accountId }),
+			});
+			if (res.ok) await invalidate('crm:accounts');
+		} finally {
+			busyKey = null;
+			addOpen = false;
+		}
+	}
+
+	async function patchAccount(a: Managed, patch: { label?: string | null; paused?: boolean }) {
+		busyKey = keyOf(a);
+		try {
+			const res = await fetch('/api/crm/accounts', {
+				method: 'PATCH',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ channel: a.channel, accountId: a.accountId, ...patch }),
+			});
+			if (res.ok) await invalidate('crm:accounts');
+		} finally {
+			busyKey = null;
+		}
+	}
+
+	async function removeAccount(a: Managed) {
+		busyKey = keyOf(a);
+		menuKey = null;
+		try {
+			const q = new URLSearchParams({ channel: a.channel, accountId: a.accountId });
+			const res = await fetch(`/api/crm/accounts?${q}`, { method: 'DELETE' });
+			if (res.ok) await invalidate('crm:accounts');
+		} finally {
+			busyKey = null;
+		}
+	}
+
+	function startRename(a: Managed) {
+		renameKey = keyOf(a);
+		renameValue = a.label ?? '';
+	}
+	async function saveRename(a: Managed) {
+		await patchAccount(a, { label: renameValue.trim() || null });
+		renameKey = null;
+		menuKey = null;
+	}
+	async function togglePause(a: Managed) {
+		menuKey = null;
+		await patchAccount(a, { paused: !a.paused });
 	}
 </script>
 
@@ -213,47 +275,93 @@
 			</div>
 		{:else}
 			<section class="card max-w-2xl">
-				<header class="card-h"><span>{m.crm_channels_title()}</span></header>
-				<p class="t-caption mb-3">{m.crm_channels_subtitle()}</p>
-				{#if accounts.length === 0}
-					<p class="t-caption">{m.crm_channels_none()}</p>
-				{:else}
-					<div class="groups">
-						{#each grouped as g (g.channel)}
-							<div class="group">
-								<div class="grouphead">
-									<ChannelBrandIcon channel={g.channel} size={16} />
-									<span>{channelLabel(g.channel)}</span>
-								</div>
-								<ul class="chanlist">
-									{#each g.accounts as a (keyOf(a))}
-										<li class="chanrow">
-											<div class="chaninfo">
-												<span class="channame">{accountLabel(a)}</span>
-												<span class="t-caption">
-													{m.crm_channel_contacts({ count: a.contacts })}{#if a.lastActive} · {m.crm_channel_last_active({ when: relativeTime(a.lastActive) })}{/if}
-												</span>
-											</div>
-											<span class="state" class:on={a.enabled}>
-												{a.enabled ? m.crm_channel_enabled() : m.crm_channel_disabled()}
-											</span>
-											<button
-												class="switch"
-												class:on={a.enabled}
-												role="switch"
-												aria-checked={a.enabled}
-												aria-label={accountLabel(a)}
-												disabled={togglingKey === keyOf(a)}
-												onclick={() => toggleAccount(a)}
-											>
-												<span class="knob"></span>
-											</button>
-										</li>
-									{/each}
-								</ul>
-							</div>
-						{/each}
+				<header class="acc-head">
+					<div>
+						<div class="card-h" style="margin:0">{m.crm_channels_title()}</div>
+						<p class="t-caption mt-1">{m.crm_channels_subtitle()}</p>
 					</div>
+					<div class="add-wrap">
+						<Button variant="outline" size="sm" onclick={() => (addOpen = !addOpen)}>
+							<Plus size={14} /> {m.crm_accounts_add()}
+						</Button>
+						{#if addOpen}
+							<button class="backdrop" aria-label="close" onclick={() => (addOpen = false)}></button>
+							<div class="add-menu">
+								<div class="add-menu-h">{m.crm_accounts_add_heading()}</div>
+								{#if available.length === 0}
+									<p class="t-caption add-empty">{m.crm_accounts_available_none()}</p>
+								{:else}
+									{#each groupedAvailable as g (g.channel)}
+										<div class="add-group">
+											<div class="add-group-h"><ChannelBrandIcon channel={g.channel} size={13} /> {channelLabel(g.channel)}</div>
+											{#each g.items as a (keyOf(a))}
+												<button class="add-item" disabled={busyKey === keyOf(a)} onclick={() => addAccount(a)}>
+													<span class="add-item-name">{accountName(a)}</span>
+													<span class="t-caption">{m.crm_channel_contacts({ count: a.contacts })}</span>
+												</button>
+											{/each}
+										</div>
+									{/each}
+								{/if}
+							</div>
+						{/if}
+					</div>
+				</header>
+
+				{#if added.length === 0}
+					<p class="t-caption empty-added">{m.crm_accounts_none_added()}</p>
+				{:else}
+					<ul class="acclist">
+						{#each added as a (keyOf(a))}
+							<li class="accrow" class:paused={a.paused}>
+								<ChannelBrandIcon channel={a.channel} size={18} />
+								<div class="accinfo">
+									{#if renameKey === keyOf(a)}
+										<div class="rename">
+											<input
+												class="rename-inp"
+												bind:value={renameValue}
+												placeholder={accountName(a)}
+												onkeydown={(e) => { if (e.key === 'Enter') saveRename(a); if (e.key === 'Escape') (renameKey = null); }}
+											/>
+											<button class="icon-btn" aria-label={m.crm_save()} onclick={() => saveRename(a)}><Check size={14} /></button>
+										</div>
+									{:else}
+										<span class="accname">{accountName(a)}</span>
+										<span class="t-caption">
+											{m.crm_channel_contacts({ count: a.contacts })}{#if a.lastActive} · {m.crm_channel_last_active({ when: relativeTime(a.lastActive) })}{/if}
+										</span>
+									{/if}
+								</div>
+
+								<span class="state" class:on={!a.paused}>
+									{a.paused ? m.crm_account_status_paused() : m.crm_account_status_active()}
+								</span>
+
+								<div class="menu-wrap">
+									<button
+										class="icon-btn"
+										aria-label={m.crm_account_manage()}
+										disabled={busyKey === keyOf(a)}
+										onclick={() => (menuKey = menuKey === keyOf(a) ? null : keyOf(a))}
+									>
+										<Settings2 size={16} />
+									</button>
+									{#if menuKey === keyOf(a)}
+										<button class="backdrop" aria-label="close" onclick={() => (menuKey = null)}></button>
+										<div class="menu">
+											<button class="mi" onclick={() => { startRename(a); menuKey = null; }}>{m.crm_account_rename()}</button>
+											<button class="mi" onclick={() => togglePause(a)}>
+												{#if a.paused}<Play size={14} /> {m.crm_account_resume()}{:else}<Pause size={14} /> {m.crm_account_pause()}{/if}
+											</button>
+											<div class="msep"></div>
+											<button class="mi danger" onclick={() => removeAccount(a)}><Trash2 size={14} /> {m.crm_account_remove()}</button>
+										</div>
+									{/if}
+								</div>
+							</li>
+						{/each}
+					</ul>
 				{/if}
 			</section>
 		{/if}
@@ -374,27 +482,28 @@
 		opacity: 1;
 		color: var(--color-destructive);
 	}
+
 	/* account manager */
-	.groups {
+	.acc-head {
 		display: flex;
-		flex-direction: column;
+		align-items: flex-start;
+		justify-content: space-between;
 		gap: 1rem;
+		margin-bottom: 0.9rem;
 	}
-	.grouphead {
-		display: flex;
-		align-items: center;
-		gap: 0.45rem;
-		font-size: 0.8rem;
-		font-weight: 600;
-		margin-bottom: 0.4rem;
-		text-transform: capitalize;
+	.add-wrap {
+		position: relative;
+		flex-shrink: 0;
 	}
-	.chanlist {
+	.empty-added {
+		padding: 0.5rem 0;
+	}
+	.acclist {
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
 	}
-	.chanrow {
+	.accrow {
 		display: flex;
 		align-items: center;
 		gap: 0.75rem;
@@ -403,18 +512,36 @@
 		border-radius: var(--radius-md);
 		background: var(--color-bg3);
 	}
-	.chaninfo {
+	.accrow.paused {
+		opacity: 0.62;
+	}
+	.accinfo {
 		display: flex;
 		flex-direction: column;
 		gap: 0.05rem;
 		min-width: 0;
+		flex: 1;
 	}
-	.channame {
+	.accname {
 		font-size: 0.9rem;
 		font-weight: 600;
 	}
+	.rename {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+	}
+	.rename-inp {
+		height: 1.8rem;
+		flex: 1;
+		max-width: 16rem;
+		padding: 0 0.5rem;
+		font-size: 0.85rem;
+		border-radius: var(--radius-md);
+		background: var(--color-bg);
+		border: 1px solid var(--hairline);
+	}
 	.state {
-		margin-left: auto;
 		font-size: 0.72rem;
 		text-transform: uppercase;
 		letter-spacing: 0.03em;
@@ -423,32 +550,112 @@
 	.state.on {
 		color: var(--color-success, var(--color-emerald));
 	}
-	.switch {
-		position: relative;
-		width: 38px;
-		height: 22px;
-		border-radius: 999px;
-		background: color-mix(in srgb, var(--color-foreground) 18%, transparent);
-		transition: background 0.15s;
+	.icon-btn {
+		display: grid;
+		place-items: center;
+		width: 1.9rem;
+		height: 1.9rem;
+		border-radius: var(--radius-md);
+		color: var(--color-muted-foreground);
 		flex-shrink: 0;
 	}
-	.switch.on {
-		background: var(--color-accent);
+	.icon-btn:hover {
+		background: rgba(255, 255, 255, 0.06);
+		color: var(--color-foreground);
 	}
-	.switch:disabled {
+	.icon-btn:disabled {
 		opacity: 0.5;
 	}
-	.knob {
-		position: absolute;
-		top: 2px;
-		left: 2px;
-		width: 18px;
-		height: 18px;
-		border-radius: 999px;
-		background: #fff;
-		transition: transform 0.15s;
+
+	/* dropdowns (add picker + per-account config menu) */
+	.menu-wrap {
+		position: relative;
+		display: inline-flex;
 	}
-	.switch.on .knob {
-		transform: translateX(16px);
+	.backdrop {
+		position: fixed;
+		inset: 0;
+		z-index: 40;
+		background: transparent;
+	}
+	.menu,
+	.add-menu {
+		position: absolute;
+		top: calc(100% + 4px);
+		right: 0;
+		z-index: 41;
+		min-width: 12rem;
+		background: var(--color-card);
+		border: 1px solid var(--hairline);
+		border-radius: var(--radius-md);
+		box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+		padding: 0.3rem;
+	}
+	.add-menu {
+		width: 17rem;
+		max-height: 20rem;
+		overflow: auto;
+	}
+	.add-menu-h,
+	.add-group-h {
+		font-size: 0.7rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		color: var(--color-muted-foreground);
+		padding: 0.3rem 0.4rem;
+	}
+	.add-group-h {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+	}
+	.add-empty {
+		padding: 0.4rem;
+	}
+	.add-item {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+		width: 100%;
+		padding: 0.4rem 0.5rem;
+		border-radius: var(--radius-sm, 6px);
+		text-align: left;
+	}
+	.add-item:hover {
+		background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+	}
+	.add-item:disabled {
+		opacity: 0.5;
+	}
+	.add-item-name {
+		font-size: 0.86rem;
+		font-weight: 500;
+	}
+	.mi {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		width: 100%;
+		padding: 0.4rem 0.5rem;
+		border-radius: var(--radius-sm, 6px);
+		font-size: 0.84rem;
+		text-align: left;
+		color: var(--color-foreground);
+	}
+	.mi:hover {
+		background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+	}
+	.mi.danger {
+		color: var(--color-destructive);
+	}
+	.mi.danger:hover {
+		background: color-mix(in srgb, var(--color-destructive) 12%, transparent);
+	}
+	.msep {
+		height: 1px;
+		background: var(--hairline);
+		margin: 0.2rem 0;
 	}
 </style>
