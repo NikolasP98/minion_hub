@@ -8,7 +8,8 @@
 	import ScoreBadge from '$lib/components/crm/ScoreBadge.svelte';
 	import StagePill from '$lib/components/crm/StagePill.svelte';
 	import JourneyTimeline from '$lib/components/crm/JourneyTimeline.svelte';
-	import { contactLabel } from '$lib/components/crm/crm-format';
+	import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
+	import { contactLabel, isRecencyNever, identityValue } from '$lib/components/crm/crm-format';
 	import { stageLabel } from '$lib/components/crm/crm-i18n';
 
 	let { data }: { data: PageData } = $props();
@@ -164,7 +165,7 @@
 				</header>
 				{#if score}
 					<dl class="kv">
-						<div><dt>{m.crm_recency()}</dt><dd>{m.crm_recency_value({ days: score.last_days })}</dd></div>
+						<div><dt>{m.crm_recency()}</dt><dd>{isRecencyNever(score.last_days) ? m.crm_recency_never() : m.crm_recency_value({ days: score.last_days })}</dd></div>
 						<div><dt>{m.crm_frequency()}</dt><dd>{m.crm_inbound_value({ count: score.inbound_msgs })}</dd></div>
 						<div><dt>{m.crm_reciprocity()}</dt><dd>{Math.round(score.reciprocity * 100)}%</dd></div>
 						<div><dt>{m.crm_channels()}</dt><dd>{score.channels_used}</dd></div>
@@ -206,7 +207,10 @@
 				<header class="card-h"><span>{m.crm_identities()}</span></header>
 				<ul class="ids">
 					{#each data.identities as id (id.id)}
-						<li><span class="chan">{id.channel}</span><span class="ext">{id.handle ?? id.externalId}</span></li>
+						<li>
+							<span class="chan"><ChannelBrandIcon channel={id.channel} size={14} />{id.channel}</span>
+							<span class="ext">{identityValue(id.externalId, id.handle)}</span>
+						</li>
 					{:else}
 						<li class="t-caption">{m.crm_no_identities()}</li>
 					{/each}
@@ -358,8 +362,12 @@
 		font-size: 0.84rem;
 	}
 	.ids .chan {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
 		font-weight: 600;
 		text-transform: capitalize;
+		color: var(--color-muted-foreground);
 	}
 	.ids .ext {
 		color: var(--color-muted-foreground);

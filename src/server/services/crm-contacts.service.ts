@@ -8,6 +8,7 @@ import {
   crmActivities,
   crmTags,
   crmContactTags,
+  crmSettings,
 } from '$server/db/pg-crm-schema';
 import { RFM_WEIGHTS, RFM_CONST, tryCompileTagRule } from './crm-scoring';
 
@@ -36,6 +37,15 @@ export interface SyncResult {
  * IS the reconciliation), no locks (ON CONFLICT makes concurrent runs no-ops).
  */
 export async function syncContactsFromLedger(ctx: CoreCtx): Promise<SyncResult> {
+  // Harvest gate: accounts paused in CRM settings never create new contacts.
+  const { disabledAccounts } = await getCrmSettings(ctx);
+  const accountGate =
+    disabledAccounts.length > 0
+      ? sql`and (m.channel, coalesce(m.account_id, '')) not in (${sql.join(
+          disabledAccounts.map((a) => sql`(${a.channel}, ${a.accountId})`),
+          sql`, `,
+        )})`
+      : sql``;
   const result = await withOrgCore(ctx, async (tx) => {
     // 1. Anti-join: senders in the ledger with no crm identity yet. Newest
     //    name/handle wins (distinct on … order by created_at desc).
@@ -50,6 +60,7 @@ export async function syncContactsFromLedger(ctx: CoreCtx): Promise<SyncResult> 
        and ci.external_id = m.sender_id
       where m.org_id = ${ctx.tenantId}
         and ${ELIGIBLE}
+        ${accountGate}
         and ci.id is null
       order by m.channel, m.sender_id, m.created_at desc
     `)) as unknown as Array<{
@@ -189,6 +200,12 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
     const limit = Math.min(f.limit ?? 100, 5000);
     const offset = f.offset ?? 0;
 
+    // When scoring a single contact (detail page), push its id into the agg CTE
+    // so we aggregate only that contact's conversation — not the whole roster.
+    const aggWhere = f.contactId
+      ? sql`where m.is_bot is not true and ci.contact_id = ${f.contactId}`
+      : sql`where m.is_bot is not true`;
+
     const rows = await tx.execute(sql`
       with agg as (
         select ci.contact_id,
@@ -201,7 +218,7 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
         join messages m
           -- match the whole conversation (chat_id), not just msgs the contact sent
           on m.org_id = ci.org_id and m.channel = ci.channel and m.chat_id = ci.external_id
-        where m.is_bot is not true
+        ${aggWhere}
         group by ci.contact_id
       ),
       base as (
@@ -454,4 +471,123 @@ export async function getContactTags(ctx: CoreCtx, contactId: string) {
       .innerJoin(crmTags, eq(crmTags.id, crmContactTags.tagId))
       .where(eq(crmContactTags.contactId, contactId)),
   );
+}
+
+// ── Settings & accounts ─────────────────────────────────────────────────────
+
+/** A connected channel account, identified by (channel, accountId). */
+export interface AccountRef {
+  channel: string;
+  accountId: string;
+}
+
+export interface CrmSettings {
+  /** Channel accounts the harvest skips (won't create new contacts). */
+  disabledAccounts: AccountRef[];
+}
+
+/** Stable comparison key for an account ref. */
+const accountKey = (channel: string, accountId: string) => `${channel} ${accountId}`;
+
+function parseAccountRefs(raw: unknown): AccountRef[] {
+  if (!Array.isArray(raw)) return [];
+  const out: AccountRef[] = [];
+  for (const r of raw) {
+    if (r && typeof r === 'object') {
+      const channel = (r as Record<string, unknown>).channel;
+      const accountId = (r as Record<string, unknown>).accountId;
+      if (typeof channel === 'string' && typeof accountId === 'string') {
+        out.push({ channel, accountId });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Per-org CRM preferences. Resilient by design: if the `crm_settings` table or
+ * the org's row is absent, returns the safe default (nothing disabled), so the
+ * harvest gate and account manager work even before the migration applies.
+ */
+export async function getCrmSettings(ctx: CoreCtx): Promise<CrmSettings> {
+  try {
+    const value = await withOrgCore(ctx, async (tx) => {
+      const [row] = await tx
+        .select({ value: crmSettings.value })
+        .from(crmSettings)
+        .where(eq(crmSettings.orgId, ctx.tenantId))
+        .limit(1);
+      return (row?.value ?? {}) as Record<string, unknown>;
+    });
+    return { disabledAccounts: parseAccountRefs(value.disabledAccounts) };
+  } catch {
+    return { disabledAccounts: [] };
+  }
+}
+
+/** Enable/disable one channel account for harvesting; upserts the settings row. */
+export async function setAccountEnabled(
+  ctx: CoreCtx,
+  channel: string,
+  accountId: string,
+  enabled: boolean,
+): Promise<CrmSettings> {
+  const current = await getCrmSettings(ctx);
+  const map = new Map(current.disabledAccounts.map((a) => [accountKey(a.channel, a.accountId), a]));
+  if (enabled) map.delete(accountKey(channel, accountId));
+  else map.set(accountKey(channel, accountId), { channel, accountId });
+  const value = { disabledAccounts: [...map.values()] };
+  await withOrgCore(ctx, (tx) =>
+    tx
+      .insert(crmSettings)
+      .values({ orgId: ctx.tenantId, value })
+      .onConflictDoUpdate({ target: crmSettings.orgId, set: { value, updatedAt: new Date() } }),
+  );
+  await bustCrmList(ctx.tenantId);
+  return value;
+}
+
+export interface CrmAccountInfo {
+  channel: string;
+  accountId: string;
+  /** Distinct eligible inbound senders this account has produced (harvestable). */
+  contacts: number;
+  lastActive: string | null;
+  enabled: boolean;
+}
+
+/**
+ * The connected channel ACCOUNTS feeding this org, derived from the ledger
+ * (one row per distinct `(channel, account_id)`), with the count of distinct
+ * inbound senders and whether the harvest is enabled. This is the authoritative
+ * "which inbox" granularity — an org may run several WhatsApp numbers or
+ * Telegram bots, and the user picks which ones become CRM contacts.
+ */
+export async function listCrmAccounts(ctx: CoreCtx): Promise<CrmAccountInfo[]> {
+  const { disabledAccounts } = await getCrmSettings(ctx);
+  const disabled = new Set(disabledAccounts.map((a) => accountKey(a.channel, a.accountId)));
+  const rows = (await withOrgCore(ctx, (tx) =>
+    tx.execute(sql`
+      select channel,
+             coalesce(account_id, '') as account_id,
+             count(distinct sender_id) filter (where ${ELIGIBLE})::int as contacts,
+             max(coalesce(occurred_at, created_at)) as last_active
+      from messages m
+      where org_id = ${ctx.tenantId}
+      group by channel, coalesce(account_id, '')
+      order by channel asc, contacts desc, account_id asc
+    `),
+  )) as unknown as Array<{
+    channel: string;
+    account_id: string;
+    contacts: number;
+    last_active: string | null;
+  }>;
+  return rows.map((r) => ({
+    channel: r.channel,
+    accountId: r.account_id,
+    contacts: Number(r.contacts),
+    lastActive: r.last_active,
+    enabled: !disabled.has(accountKey(r.channel, r.account_id)),
+  }));
 }

@@ -174,6 +174,16 @@ export const crmContactTags = pgTable(
   }),
 );
 
+/**
+ * Per-org CRM preferences (one row per org). v1 holds `disabled_channels`
+ * (channels the harvest skips). A missing row = all channels enabled.
+ */
+export const crmSettings = pgTable('crm_settings', {
+  orgId: text('org_id').primaryKey(),
+  value: jsonb('value').notNull().default({}),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type CrmContact = typeof crmContacts.$inferSelect;
 export type NewCrmContact = typeof crmContacts.$inferInsert;
 export type CrmContactIdentity = typeof crmContactIdentities.$inferSelect;
