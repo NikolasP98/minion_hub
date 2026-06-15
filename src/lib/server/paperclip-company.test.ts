@@ -86,4 +86,13 @@ describe('provisionOrgCompany', () => {
     companiesCreate.mockRejectedValueOnce(new Error('paperclip 403'));
     await expect(provisionOrgCompany(fakeEvent, 'org-1', 'Acme')).rejects.toThrow(/403/);
   });
+
+  it('archives the orphan and throws when the persist errors (non-race)', async () => {
+    maybeSingle.mockResolvedValueOnce({ data: { paperclip_company_id: null }, error: null });
+    companiesCreate.mockResolvedValueOnce({ id: 'co-new', name: 'Acme' });
+    updSelect.mockResolvedValueOnce({ data: null, error: { message: 'violates rls' } });
+    companiesArchive.mockResolvedValueOnce({});
+    await expect(provisionOrgCompany(fakeEvent, 'org-1', 'Acme')).rejects.toThrow(/rls/);
+    expect(companiesArchive).toHaveBeenCalledWith('co-new');
+  });
 });

@@ -45,14 +45,24 @@ export async function provisionOrgCompany(
     .is('paperclip_company_id', null)
     .select('paperclip_company_id');
 
-  if (!error && Array.isArray(data) && data.length > 0) {
+  if (error) {
+    // Persist failed for a non-race reason. Archive the orphan company we just
+    // created so we don't leak it, then surface the error.
+    await client.companies.archive(company.id).catch(() => {});
+    throw new Error(`failed to persist paperclip company mapping: ${error.message}`);
+  }
+
+  if (Array.isArray(data) && data.length > 0) {
     return company.id; // we won the race
   }
 
+  // 0 rows updated → a concurrent request mapped the org first.
   const winner = await getOrgCompanyId(orgId);
-  if (winner && winner !== company.id) {
-    await client.companies.archive(company.id).catch(() => {});
-    return winner;
+  if (!winner) {
+    throw new Error('paperclip company persist updated no rows but no existing mapping found');
   }
-  return winner ?? company.id;
+  if (winner !== company.id) {
+    await client.companies.archive(company.id).catch(() => {});
+  }
+  return winner;
 }
