@@ -12,6 +12,13 @@ import type { LayoutServerLoad } from './$types';
 export const load: LayoutServerLoad = async (event) => {
   if (!event.locals.user) throw redirect(302, '/login');
 
+  // The welcome page is itself under this layout and is the redirect target for
+  // the gate below — it must render WITHOUT being gated, or a no-org /
+  // provision-failed user loops welcome → welcome forever.
+  if (event.url.pathname === '/workforce/welcome') {
+    return { companyId: null };
+  }
+
   const orgId = event.locals.orgId ?? event.locals.tenantCtx?.tenantId ?? null;
   if (!orgId) throw redirect(302, '/workforce/welcome?reason=no-org');
 
