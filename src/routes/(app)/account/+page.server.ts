@@ -4,9 +4,11 @@ import {
   listOAuthIdentitiesFromSupabase,
   listChannelIdentitiesFromSupabase,
 } from '$server/services/supabase-credential';
+import { listAvailableSharedIdentities } from '$server/services/shared-identity.service';
 
 export const load: PageServerLoad = async ({ locals, depends }) => {
   depends('app:identities');
+  depends('app:shared-identities');
   if (!locals.tenantCtx || !locals.user) throw error(401, 'authentication required');
 
   const supabaseId = locals.user.supabaseId ?? locals.user.id;
@@ -36,8 +38,13 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     verifiedAt: i.verifiedAt,
   }));
 
+  // Shared inboxes this user may opt into (empty until an admin marks an
+  // account 'service' and flags one of its identities shareable).
+  const sharedIdentities = await listAvailableSharedIdentities(supabaseId).catch(() => []);
+
   return {
     userId: locals.user.id,
     identities: [...oauthIdentities, ...channelIdentities],
+    sharedIdentities,
   };
 };

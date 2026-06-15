@@ -4,12 +4,14 @@
   // hosts. Access is gated in the sidebar by `users.manage`; the underlying
   // /api/users endpoints enforce authorization server-side.
   import TeamTab from '$lib/components/users/TeamTab.svelte';
+  import SharedAccountsPanel from '$lib/components/users/SharedAccountsPanel.svelte';
 </script>
 
 <svelte:head>
   <title>Team · Minion</title>
 </svelte:head>
 
-<div class="flex-1 min-h-0 flex flex-col overflow-hidden">
+<div class="flex-1 min-h-0 flex flex-col overflow-y-auto">
   <TeamTab />
+  <SharedAccountsPanel />
 </div>

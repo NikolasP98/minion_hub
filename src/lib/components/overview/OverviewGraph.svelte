@@ -30,6 +30,8 @@
     id: string;
     displayName?: string | null;
     email?: string | null;
+    /** 'person' (default) or 'service' — a shared/business account. */
+    accountType?: string | null;
   }
 
   interface Props {
@@ -37,13 +39,15 @@
     areas: OrgArea[];
     agents: AgentLike[];
     members: MemberLike[];
+    /** Subscriber → owning-service-account edges (shared-inbox opt-ins). */
+    subscriptions?: Array<{ subscriberProfileId: string; ownerProfileId: string }>;
   }
 
-  let { org, areas, agents, members }: Props = $props();
+  let { org, areas, agents, members, subscriptions = [] }: Props = $props();
 
   type GNode = {
     id: string;
-    kind: EntityKind | 'integration';
+    kind: EntityKind | 'integration' | 'shared';
     label: string;
     color: string;
     areaId: string | null;
@@ -65,7 +69,7 @@
     unassigned: '#52525b',
   };
 
-  const RADII = { org: 0, area: 300, skill: 600, integration: 900, agent: 1200, user: 1500 };
+  const RADII = { org: 0, shared: 150, area: 300, skill: 600, integration: 900, agent: 1200, user: 1500 };
   const RING_SEGMENTS = 72;
 
   const prettify = (key: string) =>
@@ -78,7 +82,11 @@
   // ── Build the layered graph from props ──────────────────────────────────────
   const graph = $derived.by(() => {
     const agentById = new Map(agents.map((a) => [a.id, a]));
-    const memberById = new Map(members.map((mm) => [mm.id, mm]));
+    // Service accounts are NOT people — they never populate the user ring; they
+    // get their own `shared` band near the center (built after the sectors).
+    const serviceMembers = members.filter((m) => (m.accountType ?? 'person') === 'service');
+    const personMembers = members.filter((m) => (m.accountType ?? 'person') !== 'service');
+    const memberById = new Map(personMembers.map((mm) => [mm.id, mm]));
 
     const claimedAgents = new Set<string>();
     const claimedUsers = new Set<string>();
@@ -87,7 +95,7 @@
       for (const id of ar.userIds) if (memberById.has(id)) claimedUsers.add(id);
     }
     const looseAgents = agents.filter((a) => !claimedAgents.has(a.id));
-    const looseUsers = members.filter((u) => !claimedUsers.has(u.id));
+    const looseUsers = personMembers.filter((u) => !claimedUsers.has(u.id));
 
     type AreaBucket = {
       id: string;
@@ -128,6 +136,8 @@
     const nodes: Array<Record<string, unknown>> = [];
     const edges: Array<Record<string, unknown>> = [];
     const meta = new Map<string, GNode>();
+    // person id → their user-node ids (one per sector), for subscription edges.
+    const userNodeIdsByPerson = new Map<string, string[]>();
 
     type NodeOpts = {
       symbolSize: number;
@@ -437,6 +447,9 @@
       ];
       b.users.forEach((u, j) => {
         const id = `user:${b.id}:${u.id}`;
+        const ulist = userNodeIdsByPerson.get(u.id) ?? [];
+        ulist.push(id);
+        userNodeIdsByPerson.set(u.id, ulist);
         pushNode(
           {
             id,
@@ -472,6 +485,57 @@
         }
       });
     });
+
+    // ── Shared / service accounts ────────────────────────────────────────────
+    // A business inbox (e.g. admin@…), not a teammate: rendered in its own band
+    // near the center with a neutral building glyph. Members who opted it into
+    // their feed get a dashed tether from their user node(s) to it.
+    serviceMembers.forEach((sa, j) => {
+      const sharedId = `shared:${sa.id}`;
+      const ang =
+        serviceMembers.length === 1 ? -Math.PI / 2 : (2 * Math.PI * j) / serviceMembers.length;
+      pushNode(
+        {
+          id: sharedId,
+          kind: 'shared',
+          label: `${sa.displayName ?? sa.email ?? 'Shared'} (shared)`,
+          color: '#3f3f46',
+          areaId: null,
+          role: 'Shared account',
+          ...at(RADII.shared, ang),
+        },
+        {
+          symbolSize: 46,
+          image: areaIconDataUri('Building2', '#a1a1aa', '#52525b'),
+          label: {
+            show: true,
+            position: 'bottom',
+            distance: 8,
+            color: C.dim,
+            fontSize: 10.5,
+            fontWeight: 600,
+          },
+        },
+      );
+      edges.push({
+        source: org.id,
+        target: sharedId,
+        lineStyle: { color: C.faint, opacity: 0.25, width: 1, curveness: 0 },
+      });
+    });
+
+    const sharedIds = new Set(serviceMembers.map((s) => `shared:${s.id}`));
+    for (const sub of subscriptions) {
+      const sharedId = `shared:${sub.ownerProfileId}`;
+      if (!sharedIds.has(sharedId)) continue;
+      for (const un of userNodeIdsByPerson.get(sub.subscriberProfileId) ?? []) {
+        edges.push({
+          source: sharedId,
+          target: un,
+          lineStyle: { color: '#a1a1aa', opacity: 0.4, width: 1, type: 'dashed', curveness: 0 },
+        });
+      }
+    }
 
     return { nodes, edges, meta };
   });
