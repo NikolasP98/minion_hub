@@ -197,7 +197,11 @@ export async function resolveIdentity(event: RequestEvent): Promise<IdentityReso
     path === '/api/messages/ingest' ||
     path === '/api/agent-memories/ingest' ||
     path === '/api/agent-memories/recall' ||
-    path === '/api/agent-memories/delete';
+    path === '/api/agent-memories/delete' ||
+    // gateway credential-resolve endpoints (return decrypted ADC; each handler
+    // additionally requires locals.serverId / admin / self — see the routes).
+    path === '/api/gateway/google-identities' ||
+    path === '/api/gateway/google-adc';
 
   if (isServerTokenPath) {
     const bearer = await resolveViaMetricsBearer(event);

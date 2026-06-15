@@ -20,6 +20,7 @@
   import type { OrgArea, VirtualAgent } from '$server/services/org-areas.service';
   import { INTEGRATIONS, integrationIconUrl } from '$lib/types/entities';
   import type { EntityKind } from '$lib/types/entities';
+  import { areaIconDataUri } from '$lib/utils/lucide-svg';
 
   interface AgentLike {
     id: string;
@@ -29,6 +30,8 @@
     id: string;
     displayName?: string | null;
     email?: string | null;
+    /** 'person' (default) or 'service' — a shared/business account. */
+    accountType?: string | null;
   }
 
   interface Props {
@@ -36,13 +39,15 @@
     areas: OrgArea[];
     agents: AgentLike[];
     members: MemberLike[];
+    /** Subscriber → owning-service-account edges (shared-inbox opt-ins). */
+    subscriptions?: Array<{ subscriberProfileId: string; ownerProfileId: string }>;
   }
 
-  let { org, areas, agents, members }: Props = $props();
+  let { org, areas, agents, members, subscriptions = [] }: Props = $props();
 
   type GNode = {
     id: string;
-    kind: EntityKind | 'integration';
+    kind: EntityKind | 'integration' | 'shared';
     label: string;
     color: string;
     areaId: string | null;
@@ -64,7 +69,7 @@
     unassigned: '#52525b',
   };
 
-  const RADII = { org: 0, area: 190, skill: 330, integration: 460, agent: 600, user: 750 };
+  const RADII = { org: 0, shared: 150, area: 300, skill: 600, integration: 900, agent: 1200, user: 1500 };
   const RING_SEGMENTS = 72;
 
   const prettify = (key: string) =>
@@ -77,7 +82,11 @@
   // ── Build the layered graph from props ──────────────────────────────────────
   const graph = $derived.by(() => {
     const agentById = new Map(agents.map((a) => [a.id, a]));
-    const memberById = new Map(members.map((mm) => [mm.id, mm]));
+    // Service accounts are NOT people — they never populate the user ring; they
+    // get their own `shared` band near the center (built after the sectors).
+    const serviceMembers = members.filter((m) => (m.accountType ?? 'person') === 'service');
+    const personMembers = members.filter((m) => (m.accountType ?? 'person') !== 'service');
+    const memberById = new Map(personMembers.map((mm) => [mm.id, mm]));
 
     const claimedAgents = new Set<string>();
     const claimedUsers = new Set<string>();
@@ -86,12 +95,13 @@
       for (const id of ar.userIds) if (memberById.has(id)) claimedUsers.add(id);
     }
     const looseAgents = agents.filter((a) => !claimedAgents.has(a.id));
-    const looseUsers = members.filter((u) => !claimedUsers.has(u.id));
+    const looseUsers = personMembers.filter((u) => !claimedUsers.has(u.id));
 
     type AreaBucket = {
       id: string;
       name: string;
       color: string;
+      icon: string;
       skills: string[];
       integrations: string[];
       realAgents: AgentLike[];
@@ -102,6 +112,7 @@
       id: ar.id,
       name: ar.name,
       color: ar.color,
+      icon: ar.icon,
       skills: ar.skillKeys,
       integrations: ar.integrationKeys.filter((k) => INTEGRATIONS[k]),
       realAgents: ar.agentIds.map((id) => agentById.get(id)).filter((a): a is AgentLike => !!a),
@@ -113,6 +124,7 @@
         id: '__unassigned__',
         name: 'Unassigned',
         color: C.unassigned,
+        icon: 'Boxes',
         skills: [],
         integrations: [],
         realAgents: looseAgents,
@@ -124,12 +136,15 @@
     const nodes: Array<Record<string, unknown>> = [];
     const edges: Array<Record<string, unknown>> = [];
     const meta = new Map<string, GNode>();
+    // person id → their user-node ids (one per sector), for subscription edges.
+    const userNodeIdsByPerson = new Map<string, string[]>();
 
     type NodeOpts = {
       symbolSize: number;
       image?: string;
       label?: Record<string, unknown>;
       itemStyle?: Record<string, unknown>;
+      silent?: boolean;
     };
     const pushNode = (n: GNode, opts: NodeOpts) => {
       meta.set(n.id, n);
@@ -143,6 +158,7 @@
         symbolSize: opts.symbolSize,
         itemStyle: opts.itemStyle ?? { color: n.color },
         label: opts.label ?? { show: false },
+        silent: opts.silent ?? false,
         value: n.kind,
       });
     };
@@ -215,27 +231,16 @@
       pushNode(
         { id: b.id, kind: 'area', label: b.name, color: b.color, areaId: b.id, ...ap },
         {
-          symbolSize: 46,
+          symbolSize: 54,
+          image: areaIconDataUri(b.icon, b.color, shade(b.color, -0.35)),
           itemStyle: {
-            color: {
-              type: 'radial',
-              x: 0.5,
-              y: 0.5,
-              r: 0.85,
-              colorStops: [
-                { offset: 0, color: b.color },
-                { offset: 1, color: shade(b.color, -0.35) },
-              ],
-            },
-            borderColor: b.color,
-            borderWidth: 1.5,
             shadowBlur: 26,
             shadowColor: hexToRgba(b.color, 0.45),
           },
           label: {
             show: true,
             position: 'bottom',
-            distance: 8,
+            distance: 10,
             color: C.fg,
             fontSize: 12,
             fontWeight: 700,
@@ -262,42 +267,73 @@
             ...at(RADII.skill, spread(b.skills.length, j)),
           },
           {
-            symbolSize: 14,
+            symbolSize: 16,
             itemStyle: {
-              color: hexToRgba(b.color, 0.22),
-              borderColor: b.color,
+              color: b.color,
+              borderColor: shade(b.color, 0.35),
               borderWidth: 1.2,
+              shadowBlur: 10,
+              shadowColor: hexToRgba(b.color, 0.4),
             },
-            label: { show: true, position: 'bottom', distance: 4, color: C.dim, fontSize: 9 },
+            label: { show: true, position: 'bottom', distance: 5, color: C.dim, fontSize: 9 },
           },
         );
         edges.push({
           source: b.id,
           target: id,
-          lineStyle: { color: b.color, opacity: 0.28, width: 1, curveness: 0.1 },
+          lineStyle: { color: b.color, opacity: 0.32, width: 1, curveness: 0 },
         });
       });
 
-      // ring 3: integrations (branded logos)
+      // ring 3: integrations — a solid neutral disc with the brand logo on top.
+      // The logo is its OWN image node (not a label): graph symbols always
+      // paint, whereas labels get culled by `labelLayout.hideOverlap` at zoom
+      // levels where nodes crowd, which would make icons blink out.
       b.integrations.forEach((ik, j) => {
         const def = INTEGRATIONS[ik];
         const id = `integration:${b.id}:${ik}`;
+        const iconUrl = integrationIconUrl(ik);
+        const pos = at(RADII.integration, spread(b.integrations.length, j));
+        // Background disc (silent — clicks/tooltips belong to the icon node).
         pushNode(
           {
-            id,
+            id: `integration-bg:${b.id}:${ik}`,
             kind: 'integration',
             label: def.name,
             color: def.color,
             areaId: b.id,
             areaName,
-            ...at(RADII.integration, spread(b.integrations.length, j)),
+            ...pos,
           },
           {
-            symbolSize: 24,
-            image: integrationIconUrl(ik) ?? undefined,
+            symbolSize: 34,
+            itemStyle: {
+              color: '#f4f4f5',
+              borderColor: def.color,
+              borderWidth: 2,
+              shadowBlur: 12,
+              shadowColor: hexToRgba(def.color, 0.5),
+            },
+            label: { show: false },
+            silent: true,
+          },
+        );
+        // Brand logo on top.
+        pushNode(
+          { id, kind: 'integration', label: def.name, color: def.color, areaId: b.id, areaName, ...pos },
+          {
+            symbolSize: 20,
+            image: iconUrl ?? undefined,
             label: { show: false },
           },
         );
+        // Zero-length invisible tie so the disc stays lit with its logo on hover.
+        edges.push({
+          source: `integration-bg:${b.id}:${ik}`,
+          target: id,
+          __tie: true,
+          lineStyle: { opacity: 0, width: 0 },
+        });
       });
 
       // skill → integration edges, derived from the agents that use both.
@@ -316,7 +352,7 @@
         edges.push({
           source: `skill:${b.id}:${sk}`,
           target: `integration:${b.id}:${ik}`,
-          lineStyle: { color: b.color, opacity: 0.22, width: 1, curveness: 0.12 },
+          lineStyle: { color: b.color, opacity: 0.28, width: 1, curveness: 0 },
         });
       }
 
@@ -351,7 +387,7 @@
         edges.push({
           source: b.id,
           target: id,
-          lineStyle: { color: b.color, opacity: 0.25, width: 1, curveness: 0.15 },
+          lineStyle: { color: b.color, opacity: 0.28, width: 1, curveness: 0 },
         });
       });
       b.virtualAgents.forEach((va, j) => {
@@ -385,7 +421,7 @@
             edges.push({
               source: `integration:${b.id}:${ik}`,
               target: id,
-              lineStyle: { color: INTEGRATIONS[ik].color, opacity: 0.3, width: 1, curveness: 0.12 },
+              lineStyle: { color: INTEGRATIONS[ik].color, opacity: 0.35, width: 1, curveness: 0 },
             });
           }
         } else {
@@ -394,16 +430,26 @@
             edges.push({
               source: `skill:${b.id}:${sk}`,
               target: id,
-              lineStyle: { color: b.color, opacity: 0.22, width: 1, curveness: 0.12 },
+              lineStyle: { color: b.color, opacity: 0.28, width: 1, curveness: 0 },
             });
           }
         }
       });
 
       // ring 5: users — one node per (area, user), so Renzo can sit in every
-      // sector he works in.
+      // sector he works in. A user is one ring level below the agents, so they
+      // tether to the agents they oversee (assignment is area-level, so a user
+      // links to every agent in their sector) — never straight to the area,
+      // skills or integrations.
+      const sectorAgentIds = [
+        ...b.realAgents.map((a) => `agent:${b.id}:${a.id}`),
+        ...b.virtualAgents.map((va) => `agent:${b.id}:${va.id}`),
+      ];
       b.users.forEach((u, j) => {
         const id = `user:${b.id}:${u.id}`;
+        const ulist = userNodeIdsByPerson.get(u.id) ?? [];
+        ulist.push(id);
+        userNodeIdsByPerson.set(u.id, ulist);
         pushNode(
           {
             id,
@@ -421,13 +467,75 @@
             label: { show: true, position: 'bottom', distance: 4, color: C.dim, fontSize: 10 },
           },
         );
-        edges.push({
-          source: b.id,
-          target: id,
-          lineStyle: { color: b.color, opacity: 0.16, width: 1, curveness: 0.22 },
-        });
+        if (sectorAgentIds.length) {
+          for (const aId of sectorAgentIds) {
+            edges.push({
+              source: aId,
+              target: id,
+              lineStyle: { color: b.color, opacity: 0.2, width: 1, curveness: 0 },
+            });
+          }
+        } else {
+          // No agents in the sector — tether to the area so the user isn't orphaned.
+          edges.push({
+            source: b.id,
+            target: id,
+            lineStyle: { color: b.color, opacity: 0.2, width: 1, curveness: 0 },
+          });
+        }
       });
     });
+
+    // ── Shared / service accounts ────────────────────────────────────────────
+    // A business inbox (e.g. admin@…), not a teammate: rendered in its own band
+    // near the center with a neutral building glyph. Members who opted it into
+    // their feed get a dashed tether from their user node(s) to it.
+    serviceMembers.forEach((sa, j) => {
+      const sharedId = `shared:${sa.id}`;
+      const ang =
+        serviceMembers.length === 1 ? -Math.PI / 2 : (2 * Math.PI * j) / serviceMembers.length;
+      pushNode(
+        {
+          id: sharedId,
+          kind: 'shared',
+          label: `${sa.displayName ?? sa.email ?? 'Shared'} (shared)`,
+          color: '#3f3f46',
+          areaId: null,
+          role: 'Shared account',
+          ...at(RADII.shared, ang),
+        },
+        {
+          symbolSize: 46,
+          image: areaIconDataUri('Building2', '#a1a1aa', '#52525b'),
+          label: {
+            show: true,
+            position: 'bottom',
+            distance: 8,
+            color: C.dim,
+            fontSize: 10.5,
+            fontWeight: 600,
+          },
+        },
+      );
+      edges.push({
+        source: org.id,
+        target: sharedId,
+        lineStyle: { color: C.faint, opacity: 0.25, width: 1, curveness: 0 },
+      });
+    });
+
+    const sharedIds = new Set(serviceMembers.map((s) => `shared:${s.id}`));
+    for (const sub of subscriptions) {
+      const sharedId = `shared:${sub.ownerProfileId}`;
+      if (!sharedIds.has(sharedId)) continue;
+      for (const un of userNodeIdsByPerson.get(sub.subscriberProfileId) ?? []) {
+        edges.push({
+          source: sharedId,
+          target: un,
+          lineStyle: { color: '#a1a1aa', opacity: 0.4, width: 1, type: 'dashed', curveness: 0 },
+        });
+      }
+    }
 
     return { nodes, edges, meta };
   });
@@ -455,10 +563,43 @@
   let chart: echarts.ECharts | null = null;
   let selected = $state<GNode | null>(null);
 
-  const HOME_VIEW = { center: [0, 0] as [number, number], zoom: 0.68 };
+  const HOME_VIEW = { center: [0, 0] as [number, number], zoom: 0.46 };
   let view = { center: [...HOME_VIEW.center] as [number, number], zoom: HOME_VIEW.zoom };
   let baseScale = 0; // px per data-unit at zoom=1, measured after first render
   let raf = 0;
+
+  const ZOOM_MIN = 0.12;
+  const ZOOM_MAX = 5;
+  const clampZoom = (z: number) => Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
+
+  // Coalesce rapid pan/zoom updates: mousemove can fire far faster than the
+  // chart can repaint, so we keep only the latest view and flush it once per
+  // animation frame. Without this, setOption calls backlog and the graph lags
+  // seconds behind the cursor.
+  let viewRaf = 0;
+  let pendingView: { center: [number, number]; zoom: number } | null = null;
+  function flushView() {
+    viewRaf = 0;
+    if (pendingView && chart) {
+      chart.setOption({ series: [{ id: 'overview', center: pendingView.center, zoom: pendingView.zoom }] });
+      pendingView = null;
+    }
+  }
+  /** Apply a view (center+zoom); painted on the next frame (coalesced). */
+  function setView(center: [number, number], zoom: number) {
+    view = { center, zoom };
+    pendingView = { center, zoom };
+    if (!viewRaf) viewRaf = requestAnimationFrame(flushView);
+  }
+
+  /** Signed px-per-data-unit for each axis at the current view. */
+  function axisScale(): { sx: number; sy: number } {
+    if (!chart) return { sx: 1, sy: 1 };
+    const p0 = chart.convertToPixel({ seriesIndex: 0 }, [0, 0]) as number[];
+    const px = chart.convertToPixel({ seriesIndex: 0 }, [100, 0]) as number[];
+    const py = chart.convertToPixel({ seriesIndex: 0 }, [0, 100]) as number[];
+    return { sx: (px[0] - p0[0]) / 100, sy: (py[1] - p0[1]) / 100 };
+  }
 
   function measureView(): { center: [number, number]; zoom: number } {
     if (!chart) return view;
@@ -519,7 +660,7 @@
       };
     };
     const dimEdge = (e: Record<string, unknown>) => {
-      if (e.__ring || !focus) return e;
+      if (e.__ring || e.__tie || !focus) return e;
       const lit = focus.has(e.source as string) && focus.has(e.target as string);
       if (lit) {
         const ls = e.lineStyle as Record<string, unknown>;
@@ -549,10 +690,12 @@
           id: 'overview',
           type: 'graph',
           layout: 'none',
-          roam: true,
+          // Built-in roam only grabs inside the rendered nodes' bounding box,
+          // leaving the canvas corners as dead zones. We drive pan/zoom from
+          // custom zrender handlers (see onMount) so it works anywhere.
+          roam: false,
           zoom: view.zoom,
           center: view.center,
-          scaleLimit: { min: 0.25, max: 5 },
           labelLayout: { hideOverlap: true },
           emphasis: {
             focus: 'adjacency',
@@ -572,8 +715,23 @@
   onMount(() => {
     if (!canvasEl) return;
     chart = echarts.init(canvasEl);
+
+    // ── Custom pan/zoom across the WHOLE canvas ────────────────────────────
+    // zrender root events fire for every pixel (including corners outside the
+    // node bounding box, where built-in roam goes dead), so we grab the data
+    // point under the cursor on mousedown and keep it pinned there as we drag.
+    // `dragMoved` lets the click handlers ignore the release that ends a drag.
+    type ZrPoint = { offsetX: number; offsetY: number };
+    type ZrWheel = ZrPoint & { wheelDelta: number; event?: Event };
+    const zr = chart.getZr();
+    let panning = false;
+    let dragMoved = false;
+    let anchor: [number, number] = [0, 0];
+    let sx = 1;
+    let sy = 1;
+
     chart.on('click', (params: echarts.ECElementEvent) => {
-      if (params.dataType !== 'node') return;
+      if (dragMoved || params.dataType !== 'node') return;
       const id = (params.data as { id?: string })?.id;
       if (!id || id.startsWith('__ring')) return;
       const m = graph.meta.get(id) ?? null;
@@ -590,17 +748,61 @@
         animateTo([m.x, m.y], 1.55);
       }
     });
-    // click on empty canvas → clear focus and glide home
-    chart.getZr().on('click', (e: { target?: unknown }) => {
+
+    zr.on('mousedown', (e: ZrPoint) => {
+      panning = true;
+      dragMoved = false;
+      cancelAnimationFrame(raf);
+      const d = chart?.convertFromPixel({ seriesIndex: 0 }, [e.offsetX, e.offsetY]) as number[];
+      anchor = [d[0], d[1]];
+      ({ sx, sy } = axisScale());
+    });
+    zr.on('mousemove', (e: ZrPoint) => {
+      if (!panning || !chart || !sx || !sy) return;
+      dragMoved = true;
+      const w = chart.getWidth();
+      const h = chart.getHeight();
+      setView([anchor[0] - (e.offsetX - w / 2) / sx, anchor[1] - (e.offsetY - h / 2) / sy], view.zoom);
+    });
+    const endPan = () => {
+      panning = false;
+    };
+    zr.on('mouseup', endPan);
+    zr.on('globalout', endPan);
+    window.addEventListener('mouseup', endPan);
+
+    // Wheel zoom toward the cursor — anywhere on the canvas.
+    zr.on('mousewheel', (e: ZrWheel) => {
+      if (!chart) return;
+      e.event?.preventDefault?.();
+      const factor = e.wheelDelta > 0 ? 1.12 : 1 / 1.12;
+      const nextZoom = clampZoom(view.zoom * factor);
+      if (nextZoom === view.zoom) return;
+      const d = chart.convertFromPixel({ seriesIndex: 0 }, [e.offsetX, e.offsetY]) as number[];
+      const s = axisScale();
+      const k = nextZoom / view.zoom;
+      const nsx = s.sx * k;
+      const nsy = s.sy * k;
+      const w = chart.getWidth();
+      const h = chart.getHeight();
+      setView([d[0] - (e.offsetX - w / 2) / nsx, d[1] - (e.offsetY - h / 2) / nsy], nextZoom);
+    });
+
+    // Click on empty canvas → clear focus and glide home (ignore drag-release).
+    zr.on('click', (e: { target?: unknown }) => {
+      if (dragMoved) return;
       if (!e.target && selected) {
         selected = null;
         animateTo(HOME_VIEW.center, HOME_VIEW.zoom);
       }
     });
+
     const ro = new ResizeObserver(() => chart?.resize());
     ro.observe(canvasEl);
     return () => {
       cancelAnimationFrame(raf);
+      cancelAnimationFrame(viewRaf);
+      window.removeEventListener('mouseup', endPan);
       ro.disconnect();
       chart?.dispose();
       chart = null;

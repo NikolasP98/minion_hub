@@ -6,11 +6,9 @@ type CostTrendPoint = { date: string; cents: number };
 
 export const load: PageServerLoad = async (event) => {
 	if (!event.locals.user) throw redirect(302, '/login');
-	if (!event.locals.paperclipIdentity?.companyId) {
-		throw redirect(302, '/workforce/welcome');
-	}
 	event.depends('app:dashboard');
-	const companyId = event.locals.paperclipIdentity.companyId;
+	const companyId = event.locals.paperclipIdentity?.companyId;
+	if (!companyId) throw redirect(302, '/workforce/welcome?reason=no-company');
 	const client = paperclipServerClient(event);
 	try {
 		const [summary, badges, activity, costTrend] = await Promise.all([

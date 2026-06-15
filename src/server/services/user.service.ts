@@ -22,6 +22,7 @@ interface ProfileRow {
   role: string | null;
   alias: string | null;
   role_id: string | null;
+  account_type: string | null;
   created_at: string | null;
 }
 
@@ -32,6 +33,8 @@ export interface UserEntry {
   role: string | null;
   alias: string | null;
   roleId: string | null;
+  /** 'person' (default) or 'service' — a shared/business account, not a human. */
+  accountType: string;
   createdAt: string | null;
   organizations: Array<{ id: string; name: string; role: string }>;
 }
@@ -56,7 +59,7 @@ export async function listUsers(ctx: TenantContext): Promise<UserEntry[]> {
   // 2. The profiles themselves.
   const { data: profiles, error: pErr } = await admin
     .from('profiles')
-    .select('id, email, display_name, role, alias, role_id, created_at')
+    .select('id, email, display_name, role, alias, role_id, account_type, created_at')
     .in('id', ids);
   if (pErr) throw pErr;
 
@@ -86,6 +89,7 @@ export async function listUsers(ctx: TenantContext): Promise<UserEntry[]> {
       role: p.role,
       alias: p.alias,
       roleId: p.role_id,
+      accountType: p.account_type ?? 'person',
       createdAt: p.created_at,
       organizations: orgsByUser.get(p.id) ?? [],
     }))

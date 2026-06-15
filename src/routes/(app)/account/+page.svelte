@@ -4,6 +4,7 @@
   import ProfileCard from '$lib/components/users/ProfileCard.svelte';
   import ConnectedIdentities from '$lib/components/users/ConnectedIdentities.svelte';
   import ChannelLinking from '$lib/components/users/ChannelLinking.svelte';
+  import SharedInboxes from '$lib/components/users/SharedInboxes.svelte';
 
   let { data }: { data: PageData } = $props();
 
@@ -24,6 +25,8 @@
     />
 
     <ConnectedIdentities userId={data.userId} identities={data.identities} />
+
+    <SharedInboxes sharedIdentities={data.sharedIdentities} />
 
     <ChannelLinking userId={data.userId} identities={data.identities} />
   </div>

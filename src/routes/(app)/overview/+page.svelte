@@ -100,7 +100,7 @@
   <!-- Body -->
   <div class="flex-1 min-h-0 flex overflow-hidden">
     <div class="flex-1 min-w-0">
-      <OverviewGraph {org} areas={data.areas} {agents} {members} />
+      <OverviewGraph {org} areas={data.areas} {agents} {members} subscriptions={data.subscriptions} />
     </div>
 
     {#if editing && data.isAdmin}

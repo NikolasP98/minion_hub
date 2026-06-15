@@ -8,6 +8,12 @@
   // the module graph via the messages import) rather than the locale store,
   // which transitively pulls SvelteKit-only modules and breaks test rendering.
   import { languageTag } from "$lib/paraglide/runtime";
+  // Plugin UI asset origin override (Phase 2 decoupling seam). When set, plugin
+  // iframe assets load from this base (e.g. a public Cloudflare-fronted host)
+  // instead of the gateway. Aliased to a vitest stub in test, so importing it
+  // here keeps the component test-renderable. See
+  // specs/2026-06-14-plugin-ui-cdn-caching-design.md.
+  import { env as publicEnv } from "$env/dynamic/public";
 
   // Lazy import to keep this component test-renderable without pulling
   // SvelteKit-only modules (gateway service transitively imports $app/state).
@@ -171,11 +177,21 @@
   // stripped under strict Referrer-Policy for cross-origin iframes — that
   // failure mode silently bricks the plugin's bridge handshake).
   const hostOrigin = typeof window !== "undefined" ? window.location.origin : "";
-  const srcBase = $derived(`${gatewayUrl}/plugins/${pluginId}/ui/${subpath}`);
+  // Asset origin: PUBLIC_PLUGIN_UI_BASE_URL overrides only the iframe asset base
+  // and the postMessage target origin (pluginOrigin) — NOT wsGatewayUrl, which
+  // must stay on the real gateway. Defaults to gatewayUrl so behavior is
+  // identical when unset. The CDN origin must serve the same
+  // /plugins/<id>/ui/<subpath> paths and set its own CSP frame-ancestors.
+  const uiBaseUrl = $derived(
+    (publicEnv.PUBLIC_PLUGIN_UI_BASE_URL || gatewayUrl).replace(/\/+$/, ""),
+  );
+  const srcBase = $derived(`${uiBaseUrl}/plugins/${pluginId}/ui/${subpath}`);
   const src = $derived(
     hostOrigin ? `${srcBase}#hostOrigin=${encodeURIComponent(hostOrigin)}` : srcBase,
   );
-  const pluginOrigin = $derived(new URL(gatewayUrl).origin);
+  // Derive from uiBaseUrl: the iframe's real origin is wherever it loaded from,
+  // so postMessage targeting must follow the asset origin, not the gateway.
+  const pluginOrigin = $derived(new URL(uiBaseUrl).origin);
   // hello.gatewayUrl is consumed by the plugin's WebSocket client. The hub
   // surfaces gatewayUrl as HTTP(S) because it's also used to derive the
   // pluginOrigin for postMessage targeting; the plugin needs the ws(s):
