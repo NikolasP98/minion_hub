@@ -1,6 +1,5 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages';
-	import NavRail from '$lib/components/my-agent/NavRail.svelte';
 	import AgentGreeting from '$lib/components/my-agent/AgentGreeting.svelte';
 	import FeedSection from '$lib/components/my-agent/FeedSection.svelte';
 	import FeedCard from '$lib/components/my-agent/FeedCard.svelte';
@@ -476,8 +475,6 @@
 </svelte:head>
 
 <div class="layout">
-	<NavRail />
-
 	<main class="column" aria-labelledby="my-agent-greeting">
 		<div class="inner">
 			<!-- Reserve the top-right notch clearance ONLY when the notes panel is

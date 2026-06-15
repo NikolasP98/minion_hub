@@ -106,7 +106,7 @@
     <!-- GATEWAY (admin): config sections via ?s= -->
     {#if gwItems.length}
       <div class="set-divider"></div>
-      <div class="set-head t-label hidden lg:flex items-center gap-1.5">Gateway<span class="admin-badge">admin</span></div>
+      <div class="set-head t-label hidden lg:flex items-center gap-1.5">Server<span class="admin-badge">admin</span></div>
       {#each gwItems as tab (tab.id)}
         {@const Icon = ICON_MAP[tab.icon]}
         {@const active = isGatewayActive(tab.id)}

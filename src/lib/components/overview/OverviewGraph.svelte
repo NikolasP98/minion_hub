@@ -332,7 +332,7 @@
             color: b.color,
             areaId: b.id,
             areaName,
-            role: 'Gateway agent',
+            role: 'Server agent',
             ...at(RADII.agent, spread(agentCount, j)),
           },
           {

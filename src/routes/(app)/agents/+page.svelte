@@ -15,7 +15,7 @@
     let splitterApi = $state<SplitterApiHandle | null>(null);
 </script>
 
-<!-- NavRail is provided by /agents/+layout.svelte -->
+<!-- Navigation lives in the primary Sidebar (Agents group). -->
 <Splitter
     storageKey="sidebar-main-v2"
     defaultSize={5}

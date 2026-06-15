@@ -22,8 +22,31 @@
     import AgentSettingsNav from "./AgentSettingsNav.svelte";
     import * as m from "$lib/paraglide/messages";
     import { agentDisplayName } from "$lib/utils/agent-display";
+    import { UserRound, BrainCircuit, Zap } from "lucide-svelte";
 
     let { agentId }: { agentId: string } = $props();
+
+    // ─── Archetype-driven UI ─────────────────────────────────────────────
+    // The archetype picker tailors which setting groups are shown so each kind
+    // of agent surfaces only its relevant configuration.
+    type ArchetypeId = "copilot" | "brain" | "autonomous";
+    const ARCHETYPES: ReadonlyArray<{
+        id: ArchetypeId;
+        label: () => string;
+        desc: () => string;
+        icon: typeof UserRound;
+    }> = [
+        { id: "copilot", label: () => m.nav_copilots(), desc: () => m.archetype_copilotDesc(), icon: UserRound },
+        { id: "brain", label: () => m.nav_brains(), desc: () => m.archetype_brainDesc(), icon: BrainCircuit },
+        { id: "autonomous", label: () => m.nav_autonomous(), desc: () => m.archetype_autonomousDesc(), icon: Zap },
+    ];
+    // Groups shown for every archetype; the rest are gated per archetype below.
+    const ALWAYS_GROUPS = new Set(["identity", "model", "behavior", "advanced"]);
+    const ARCHETYPE_GROUPS: Record<ArchetypeId, Set<string>> = {
+        copilot: new Set(["workspace", "tools"]),
+        brain: new Set(["memory", "context", "compaction"]),
+        autonomous: new Set(["session", "sandbox"]),
+    };
 
     // ─── Active section state ────────────────────────────────────────────
     let activeSection = $state('identity');
@@ -82,15 +105,40 @@
         });
     });
 
-    // ─── Visibility: always show identity + model; show others if they have values
-    const visibleGroups = $derived(
-        resolvedGroups.filter(
-            (g) =>
-                g.group.id === "identity" ||
-                g.group.id === "model" ||
-                g.hasValues,
-        ),
+    // ─── Current archetype (from this agent's config) + its config path ──
+    const archetypeField = $derived(
+        resolvedGroups.flatMap((g) => g.fields).find((f) => f.key === "archetype") ?? null,
     );
+    const archetypePath = $derived(archetypeField?.path ?? null);
+    const currentArchetype = $derived(
+        (typeof archetypeField?.value === "string"
+            ? archetypeField.value
+            : "copilot") as ArchetypeId,
+    );
+    function pickArchetype(id: ArchetypeId) {
+        if (archetypePath) setField(archetypePath, id);
+    }
+
+    // ─── Visibility: always-on groups + the current archetype's groups, plus
+    // any group the user has explicitly overridden (so nothing configured is
+    // ever hidden when switching archetype).
+    const visibleGroups = $derived(
+        resolvedGroups.filter((g) => {
+            const id = g.group.id;
+            if (ALWAYS_GROUPS.has(id)) return true;
+            if (ARCHETYPE_GROUPS[currentArchetype]?.has(id)) return true;
+            return g.fields.some((f) => f.isOverridden);
+        }),
+    );
+
+    // If the active section gets hidden by an archetype switch, fall back to Identity.
+    $effect(() => {
+        if (!configState.loaded) return;
+        if (activeSection === "skills" || activeSection === "bindings") return;
+        if (!visibleGroups.some((g) => g.group.id === activeSection)) {
+            activeSection = "identity";
+        }
+    });
 
     // ─── Active group (the group currently shown in the right column) ──
     const activeGroup = $derived(
@@ -99,9 +147,12 @@
 
     // ─── Search filtering for right column ──────────────────────────────
     const searchFilteredFields = $derived.by(() => {
-        if (!activeGroup || !searchQuery.trim()) return activeGroup?.fields ?? [];
+        // The archetype field is rendered as the dedicated picker bar, not as a
+        // plain dropdown in the Identity group.
+        const fields = (activeGroup?.fields ?? []).filter((f) => f.key !== "archetype");
+        if (!searchQuery.trim()) return fields;
         const q = searchQuery.toLowerCase();
-        return activeGroup.fields.filter(
+        return fields.filter(
             (f) =>
                 (f.hint?.label ?? f.key).toLowerCase().includes(q) ||
                 (f.hint?.help ?? '').toLowerCase().includes(q) ||
@@ -259,6 +310,36 @@
                 </p>
             </div>
         {:else}
+            <!-- Archetype picker — tailors which setting groups show below -->
+            {#if archetypePath}
+                <div class="shrink-0 px-4 py-3 border-b border-border">
+                    <div class="flex items-baseline justify-between mb-2">
+                        <span class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{m.settings_archetype()}</span>
+                        <span class="text-[10px] text-muted-foreground/70">{m.settings_archetypeHint()}</span>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2">
+                        {#each ARCHETYPES as a (a.id)}
+                            {@const active = currentArchetype === a.id}
+                            {@const Icon = a.icon}
+                            <button
+                                type="button"
+                                onclick={() => pickArchetype(a.id)}
+                                aria-pressed={active}
+                                class="flex flex-col items-start gap-1 p-2.5 rounded-lg border text-left transition-colors {active
+                                    ? 'border-accent bg-accent/10'
+                                    : 'border-border hover:border-muted-foreground hover:bg-bg3'}"
+                            >
+                                <span class="flex items-center gap-1.5">
+                                    <Icon size={14} class={active ? 'text-accent' : 'text-muted-foreground'} />
+                                    <span class="text-xs font-semibold {active ? 'text-accent' : 'text-foreground'}">{a.label()}</span>
+                                </span>
+                                <span class="text-[10px] text-muted-foreground leading-tight">{a.desc()}</span>
+                            </button>
+                        {/each}
+                    </div>
+                </div>
+            {/if}
+
             <!-- Two-column layout -->
             <div class="flex-1 flex min-h-0">
                 <!-- Left nav -->

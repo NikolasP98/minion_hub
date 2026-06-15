@@ -1,9 +1,7 @@
 <script lang="ts">
     import AgentRow from "./AgentRow.svelte";
     import AgentGroupHeader from "./AgentGroupHeader.svelte";
-    import GatewayInfo from "$lib/components/layout/GatewayInfo.svelte";
     import HudBorder from "$lib/components/decorations/HudBorder.svelte";
-    import DotMatrix from "$lib/components/decorations/DotMatrix.svelte";
     import { gw, visibleAgents } from "$lib/state/gateway/gateway-data.svelte";
     import { conn } from "$lib/state/gateway/connection.svelte";
     import { ui } from "$lib/state/ui/ui.svelte";
@@ -30,6 +28,8 @@
     import { agentDisplayName } from "$lib/utils/agent-display";
     import { loadPersonalAgentNames } from "$lib/state/features/personal-agent-names.svelte";
     import { goto } from "$app/navigation";
+    import { page } from "$app/state";
+    import { configState, loadConfig, getField } from "$lib/state/config/config.svelte";
     import { onMount, onDestroy } from "svelte";
 
     interface Props {
@@ -45,6 +45,27 @@
     onMount(() => {
         loadBuiltAgents();
         loadPersonalAgentNames();
+        // Archetype roster filters (Copilots / AI Brains / Autonomous) read the
+        // per-agent archetype from gateway config, so make sure it's loaded.
+        if (conn.connected && !configState.loaded && !configState.loading) loadConfig();
+    });
+
+    // ── Archetype roster filter ───────────────────────────────────────────────
+    // The sidebar's Agents group links to /agents?archetype=copilot|brain|
+    // autonomous. When such a param is present, narrow the roster to agents of
+    // that archetype. Archetype lives in gateway config (agents.list[].archetype).
+    const archetypeFilter = $derived(page.url.searchParams.get("archetype"));
+    const archetypeById = $derived.by(() => {
+        const list = getField("agents.list");
+        const map: Record<string, string> = {};
+        if (Array.isArray(list)) {
+            for (const a of list as Array<{ id?: string; archetype?: string }>) {
+                if (a && typeof a.id === "string" && typeof a.archetype === "string") {
+                    map[a.id] = a.archetype;
+                }
+            }
+        }
+        return map;
     });
 
     onDestroy(() => {
@@ -66,17 +87,20 @@
         "#ef4444",
     ];
 
-    const activityData = $derived(
-        conn.connected
-            ? Array.from({ length: 16 }, () => Math.random() * 0.8 + 0.2)
-            : new Array(16).fill(0),
+
+    // Uncategorized agents (no archetype set in gateway config) are treated as
+    // "copilot" — the baseline archetype — so the existing roster shows up under
+    // Copilots instead of vanishing until each agent is explicitly classified.
+    const gatewayAgents = $derived(
+        archetypeFilter
+            ? visibleAgents.value.filter((a) => (archetypeById[a.id] ?? "copilot") === archetypeFilter)
+            : visibleAgents.value,
     );
 
-    const gatewayAgents = $derived(visibleAgents.value);
-
-    // Merge gateway + builder agents into unified list
+    // Merge gateway + builder agents into unified list. Builder agents carry no
+    // archetype, so they default to "copilot" too (hidden under brain/autonomous).
     const builderAgentsMapped: SidebarAgent[] = $derived(
-        builderState.agents.map((a) => ({
+        (!archetypeFilter || archetypeFilter === "copilot" ? builderState.agents : []).map((a) => ({
             id: `builder:${a.id}`,
             name: a.name,
             emoji: a.emoji || undefined,
@@ -477,30 +501,4 @@
         {/if}
     </div>
 
-    <!-- Footer -->
-    {#if collapsed}
-        <div
-            class="shrink-0 px-2 py-3 border-t border-border flex flex-col items-center gap-2"
-        >
-            <div
-                class="w-2 h-2 rounded-full {conn.connected
-                    ? 'bg-success shadow-[0_0_6px_var(--color-success)]'
-                    : 'bg-destructive shadow-[0_0_6px_var(--color-destructive)]'}"
-            ></div>
-            {#if conn.connected && activeAgentCount > 0}
-                <div
-                    class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse"
-                ></div>
-            {/if}
-        </div>
-    {:else}
-        <div
-            class="shrink-0 px-3 py-3 border-t border-border flex flex-col gap-3"
-        >
-            <GatewayInfo />
-            <div class="flex items-center justify-center py-1">
-                <DotMatrix data={activityData} cols={8} />
-            </div>
-        </div>
-    {/if}
 </HudBorder>

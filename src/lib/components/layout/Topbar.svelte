@@ -6,7 +6,8 @@
     import NotificationsPopup from "./NotificationsPopup.svelte";
     import MinionLogo from "./MinionLogo.svelte";
     import CompanySwitcher from "./CompanySwitcher.svelte";
-    import { getSections } from "./sections";
+    import { getSections, getDynamicPluginsSections, type Section, type SectionItem } from "./sections";
+    import { pluginNavState } from "$lib/state/plugin-nav.svelte";
     import { canClient } from "$lib/access/can.svelte";
     import { togglePalette } from "$lib/state/ui/command-palette.svelte";
     import { page } from "$app/state";
@@ -16,9 +17,14 @@
     import { notifications, refreshNotifications } from "$lib/state/features/notifications.svelte";
     import { onMount } from "svelte";
     import { userState, logout } from "$lib/state/features/user.svelte";
-    import { DOMAIN_LABEL, type NavDomain } from "./sections";
 
-    const sections = $derived(getSections());
+    const allSections = $derived<Section[]>([
+        ...getSections(),
+        ...getDynamicPluginsSections(pluginNavState.controlCenters),
+    ]);
+    function isActive(item: SectionItem): boolean {
+        return item.activeWhen ? item.activeWhen(page.url) : item.matcher(page.url.pathname);
+    }
     const isReliability = $derived(page.url.pathname.startsWith("/reliability"));
     const isSettings = $derived(page.url.pathname.startsWith("/settings"));
     const isWorkforce = $derived(page.url.pathname.startsWith("/workforce"));
@@ -28,17 +34,6 @@
     function closeMobileMenu() { mobileMenuOpen = false; }
 
     let notificationsOpen = $state(false);
-
-    // Group sections by domain for the mobile nav
-    const domainGroups = $derived.by(() => {
-        const map = new Map<NavDomain, typeof sections>();
-        for (const s of sections) {
-            const list = map.get(s.domain) ?? [];
-            list.push(s);
-            map.set(s.domain, list);
-        }
-        return [...map.entries()];
-    });
 
     const displayName = $derived(userState.user?.displayName ?? userState.user?.email ?? '');
     const email = $derived(userState.user?.email ?? '');
@@ -123,34 +118,45 @@
         <div class="mobile-menu-panel absolute top-full left-0 right-0 z-50 bg-bg2/98 backdrop-blur-xl border-b border-border shadow-xl">
             <!-- Scroll body: domains + sections -->
             <nav class="flex flex-col sm:flex-row sm:gap-4 max-h-[calc(70vh-3.5rem)] sm:max-h-[calc(75vh-3.5rem)] overflow-y-auto px-2 pt-2 pb-1">
-                {#each domainGroups as [domain, domainSections] (domain)}
-                    <div class="flex-1 min-w-0">
-                        <!-- Domain super-header -->
-                        <div class="px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-foreground/50">
-                            {DOMAIN_LABEL[domain]}
-                        </div>
-
-                        {#each domainSections as section (section.id)}
-                            {@const items = section.items.filter((i) => !i.requires || canClient(i.requires))}
-                            {#if items.length}
-                                <div class="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-strong mt-1">
-                                    {section.label}
-                                </div>
-                                {#each items as item (item.href)}
-                                    {@const isActive = item.matcher(page.url.pathname)}
-                                    <a
-                                        href={item.href}
-                                        class="mobile-nav-link {section.tone === 'brand' ? 'brand' : ''} {isActive ? (section.tone === 'brand' ? 'active-brand' : 'active') : ''}"
-                                        onclick={closeMobileMenu}
-                                    >
-                                        <NavIcon icon={item.icon} size={16} />
-                                        <span>{item.label}</span>
-                                    </a>
-                                {/each}
-                            {/if}
-                        {/each}
-                    </div>
-                {/each}
+                <div class="flex-1 min-w-0">
+                    {#each allSections as section (section.id)}
+                        {@const items = section.items.filter((i) => !i.requires || canClient(i.requires))}
+                        {@const hasSubs = (section.subsections?.length ?? 0) > 0}
+                        {#if items.length || hasSubs}
+                            <div class="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-strong mt-1">
+                                {section.label}
+                            </div>
+                            {#each items as item (item.href)}
+                                <a
+                                    href={item.href}
+                                    class="mobile-nav-link {section.tone === 'brand' ? 'brand' : ''} {isActive(item) ? (section.tone === 'brand' ? 'active-brand' : 'active') : ''}"
+                                    onclick={closeMobileMenu}
+                                >
+                                    <NavIcon icon={item.icon} size={16} />
+                                    <span>{item.label}</span>
+                                </a>
+                            {/each}
+                            {#each section.subsections ?? [] as sub (sub.id)}
+                                {@const subItems = sub.items.filter((i) => !i.requires || canClient(i.requires))}
+                                {#if subItems.length}
+                                    <div class="px-5 py-1 text-[10px] font-medium uppercase tracking-wider text-muted mt-0.5">
+                                        {sub.label}
+                                    </div>
+                                    {#each subItems as item (item.href)}
+                                        <a
+                                            href={item.href}
+                                            class="mobile-nav-link {isActive(item) ? 'active' : ''}"
+                                            onclick={closeMobileMenu}
+                                        >
+                                            <NavIcon icon={item.icon} size={16} />
+                                            <span>{item.label}</span>
+                                        </a>
+                                    {/each}
+                                {/if}
+                            {/each}
+                        {/if}
+                    {/each}
+                </div>
 
                 <!-- Standalone items (reliability, notifications) -->
                 <div class="sm:hidden mt-1 pt-1 border-t border-[var(--hairline)]">

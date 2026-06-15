@@ -22,7 +22,7 @@
 <div class="relative">
   <button
     onclick={() => (open = !open)}
-    class="rounded-full p-0 border-none bg-transparent cursor-pointer hover:opacity-90 transition-opacity duration-150"
+    class="flex items-center justify-center rounded-full p-0 border-none bg-transparent cursor-pointer hover:opacity-90 transition-opacity duration-150 leading-none"
     aria-label="Profile menu"
     aria-expanded={open}
     aria-haspopup="menu"

@@ -143,7 +143,7 @@
     // On /my-agent the user is already in a full chat with this same personal
     // agent (same thread, same AI), so the floating assistant is redundant
     // there — hide it entirely on that route.
-    const onMyAgentPage = $derived(page.url.pathname === '/my-agent');
+    const onMyAgentPage = $derived(page.url.pathname === '/home');
 
     // A call lives at the app level (module singleton). When it's running and
     // the user has navigated off the call UI, this anchored popup surfaces the

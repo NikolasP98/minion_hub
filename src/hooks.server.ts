@@ -15,6 +15,37 @@ import { env } from '$env/dynamic/private';
 import { startBackupScheduler } from '$server/services/backup-scheduler';
 import { mintPaperclipIdentity } from '$lib/server/paperclip-identity';
 import { initCache } from '$lib/server/cache';
+import { getCoreDb } from '$server/db/pg-client';
+import { getUserPreferences } from '$server/services/user-preferences.service';
+
+/**
+ * Resolve the landing page for a signed-in user hitting "/". Defaults to
+ * `/home`; honors the per-user `landingPage` preference (set via right-click →
+ * "Set as home page" in the sidebar). Best-effort — any lookup failure falls
+ * back to the default so the root redirect never 500s.
+ */
+async function resolveLandingPage(supabaseId: string | undefined): Promise<string> {
+  const DEFAULT = '/home';
+  if (!supabaseId) return DEFAULT;
+  try {
+    const prefs = await getUserPreferences(getCoreDb(), supabaseId);
+    const choice = prefs.landingPage;
+    // Same-origin guard: must be a root-relative path, NOT a protocol-relative
+    // (`//evil.com`) or backslash-tricked (`/\evil.com`) URL that the browser
+    // would resolve off-site. Prevents open-redirect via a poisoned preference.
+    if (
+      typeof choice === 'string' &&
+      choice.startsWith('/') &&
+      !choice.startsWith('//') &&
+      !choice.startsWith('/\\')
+    ) {
+      return choice;
+    }
+  } catch {
+    /* fall through to default */
+  }
+  return DEFAULT;
+}
 
 /**
  * Hand-serve OIDC discovery + JWKS for the gateway JWT (S5: standalone jose
@@ -143,11 +174,12 @@ const finishApp: Handle = async ({ event, resolve }) => {
     return new Response(null, { status: 302, headers: { location: '/' } });
   }
 
-  // All authenticated users land on /my-agent by default. The legacy admin
-  // landing (agents list) now lives at /agents. Per-user override picker
-  // ships in Phase 1.5 (DB-backed users.home_page_choice).
+  // Authenticated users landing on "/" go to their chosen home page (default
+  // /home). The destination is user-configurable via the sidebar right-click
+  // "Set as home page" action (stored in the `landingPage` preference).
   if (event.locals.user && path === '/') {
-    return new Response(null, { status: 307, headers: { location: '/my-agent' } });
+    const location = await resolveLandingPage(event.locals.user.supabaseId);
+    return new Response(null, { status: 307, headers: { location } });
   }
 
   return resolve(event);

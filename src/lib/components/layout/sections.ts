@@ -1,99 +1,138 @@
 import type { ComponentType, SvelteComponent } from "svelte";
-import { Puzzle, FolderKanban, Contact } from "lucide-svelte";
+import { FolderKanban, Contact, UserRound, BrainCircuit, Zap, Boxes } from "lucide-svelte";
 import {
     ROUTES,
     SECTION_META,
-    SECTION_ORDER,
-    DOMAIN_LABEL,
     type SectionId,
     type SectionTone,
-    type NavDomain,
 } from "$lib/nav/routes";
 import { resolvePluginIcon } from "$lib/plugins/icon-map";
 import type { PluginUiManifestOccupant } from "$lib/plugins/plugin-types";
+import * as m from "$lib/paraglide/messages";
 
 // lucide-svelte still ships legacy SvelteComponentTyped types; widen for Svelte 5 mixed code.
 type LucideIcon = ComponentType<SvelteComponent<{ size?: number | string; class?: string }>>;
 
-export type { SectionTone, NavDomain };
-export { DOMAIN_LABEL };
+export type { SectionTone };
+
+/** Agent archetypes the roster nav filters by (mirrors gateway agents.list[].archetype). */
+export type AgentArchetype = "copilot" | "brain" | "autonomous";
 
 export type SectionItem = {
     href: string;
     label: string;
     icon: LucideIcon | string;
+    /** Path-based active matcher. */
     matcher: (path: string) => boolean;
+    // Query-aware active matcher (archetype roster filters live at /agents
+    // with a ?archetype= param). When set it overrides `matcher` for active
+    // state so e.g. /agents?archetype=brain lights up "AI Brains" only.
+    activeWhen?: (url: URL) => boolean;
     // Optional access-policy key (see $lib/access/policy). When set, the nav
-    // item is only rendered for users who satisfy it (admin-only "plugin"
-    // views). Filtered in the sidebar via canClient(); routes are also guarded
-    // server-side, so hiding here is UX only.
+    // item is only rendered for users who satisfy it. Filtered in the sidebar
+    // via canClient(); routes are also guarded server-side, so hiding here is
+    // UX only.
     requires?: string;
 };
 
-export type Section = {
-    // SectionId for static sections; `plugins:<category>` for the dynamic,
-    // category-grouped plugin sections built by getDynamicPluginsSections().
-    id: SectionId | "plugins" | string;
+export type SubSection = {
+    id: string;
     label: string;
-    icon: LucideIcon;
-    tone: SectionTone;
-    domain: NavDomain;
     items: SectionItem[];
 };
 
-/**
- * Build the static nav sections from the canonical route registry
- * (`$lib/nav/routes`). Section grouping/labels/tones come from SECTION_META;
- * items are the registry entries flagged `inNav` for that section, in
- * registry order.
- */
-export function getSections(): Section[] {
-    return SECTION_ORDER.map((id) => {
-        const meta = SECTION_META[id];
-        return {
-            id,
-            label: meta.label,
-            icon: meta.icon,
-            tone: meta.tone,
-            domain: meta.domain,
-            items: ROUTES.filter((r) => r.inNav && r.section === id).map((r) => ({
-                href: r.path,
-                label: r.title(),
-                icon: r.icon,
-                matcher: r.matcher,
-                requires: r.requires,
-            })),
-        };
-    });
+export type Section = {
+    // SectionId for core sections; `plugins:<category>` for the dynamic,
+    // category-grouped plugin sections built by getDynamicPluginsSections().
+    id: SectionId | string;
+    label: string;
+    tone: SectionTone;
+    items: SectionItem[];
+    // Collapsible nested groups (Customer Support → Channels). Optional.
+    subsections?: SubSection[];
+};
+
+/** Map the core route registry entries flagged inNav for a section → SectionItem[]. */
+function routeItems(section: SectionId): SectionItem[] {
+    return ROUTES.filter((r) => r.inNav && r.section === section).map((r) => ({
+        href: r.path,
+        label: r.title(),
+        icon: r.icon,
+        matcher: r.matcher,
+        requires: r.requires,
+    }));
 }
 
-export function findActiveSection(
-    sections: Section[],
-    pathname: string,
-): Section | null {
-    return (
-        sections.find((s) => s.items.some((it) => it.matcher(pathname))) ?? null
-    );
+/** Build a roster-filter nav item that lights up only for its ?archetype= value. */
+function archetypeItem(archetype: AgentArchetype, label: string, icon: LucideIcon): SectionItem {
+    return {
+        href: `/agents?archetype=${archetype}`,
+        label,
+        icon,
+        // Never active by path alone — the three archetype items share /agents.
+        matcher: () => false,
+        activeWhen: (url) =>
+            (url.pathname === "/agents" || url.pathname.startsWith("/agents/")) &&
+            url.searchParams.get("archetype") === archetype,
+    };
 }
+
+/**
+ * Build the static core nav sections (always present): Organization (Home,
+ * Overview, Team) and Agents (Copilots / AI Brains / Autonomous archetype
+ * filters, then Capabilities / Agent Builder / Prompt authoring tools).
+ */
+export function getSections(): Section[] {
+    const agentItems: SectionItem[] = [
+        archetypeItem("copilot", m.nav_copilots(), UserRound),
+        archetypeItem("brain", m.nav_brains(), BrainCircuit),
+        archetypeItem("autonomous", m.nav_autonomous(), Zap),
+        {
+            href: "/agents/workshop",
+            label: m.nav_workshop(),
+            icon: Boxes,
+            matcher: (p) => p.startsWith("/agents/workshop"),
+        },
+        ...routeItems("agents"),
+    ];
+    return [
+        {
+            id: "organization",
+            label: SECTION_META.organization.label(),
+            tone: SECTION_META.organization.tone,
+            items: routeItems("organization"),
+        },
+        {
+            id: "agents",
+            label: SECTION_META.agents.label(),
+            tone: SECTION_META.agents.tone,
+            items: agentItems,
+        },
+    ];
+}
+
+export function findActiveSection(sections: Section[], pathname: string): Section | null {
+    return sections.find((s) => s.items.some((it) => it.matcher(pathname))) ?? null;
+}
+
+/** Plugin manifest taxonomy → business-domain nav buckets. */
+type PluginNavCategory =
+    | "marketing"
+    | "operations"
+    | "creative"
+    | "customer-support"
+    | "channel"
+    | "tool";
 
 /**
  * Built-in plugin entries surfaced regardless of which gateway plugins are
  * installed. KANBAN is the hub-native paperclip integration (the /workforce
- * subtree) reframed as a standalone plugin. Each builtin carries the category
- * that decides which nav group it lands in.
+ * subtree); CRM is the hub-native contacts surface. Each builtin carries the
+ * business category that decides which nav group it lands in.
  */
 const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: SectionItem }> = [
     {
-        category: "tool",
-        item: {
-            href: "/workforce",
-            label: "Kanban",
-            icon: FolderKanban,
-            matcher: (p: string) => p.startsWith("/workforce"),
-        },
-    },
-    {
-        category: "tool",
+        category: "marketing",
         item: {
             href: "/crm",
             label: "CRM",
@@ -101,57 +140,95 @@ const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: SectionIt
             matcher: (p: string) => p.startsWith("/crm"),
         },
     },
+    {
+        category: "operations",
+        item: {
+            href: "/workforce",
+            label: "Kanban",
+            icon: FolderKanban,
+            matcher: (p: string) => p.startsWith("/workforce"),
+        },
+    },
 ];
-
-type PluginNavCategory = "channel" | "automation" | "creative" | "tool" | "dashboard";
 
 /**
  * Plugin nav groups, in display order. Plugins are bucketed by their manifest
- * `category` (channel plugins like whatsapp/telegram, automation like
- * alert-watcher, creative like studio, tools like kanban) so the sidebar no
- * longer dumps every plugin into one flat "Plugins" list. Unknown/absent
- * categories fall back to "tool".
+ * `category` into business domains. `channel` plugins (whatsapp/telegram/…) are
+ * NOT a top-level group — they render as a collapsible "Channels" subsection
+ * under Customer Support. `tool` is the catch-all for anything unmapped.
  */
-const PLUGIN_NAV_GROUPS: ReadonlyArray<{ category: PluginNavCategory; label: string }> = [
-    { category: "channel", label: "Channels" },
-    { category: "automation", label: "Automation" },
-    { category: "creative", label: "Creative" },
-    { category: "tool", label: "Tools" },
-    { category: "dashboard", label: "Dashboards" },
+const PLUGIN_NAV_GROUPS: ReadonlyArray<{ category: PluginNavCategory; label: () => string }> = [
+    { category: "marketing", label: () => m.nav_marketing() },
+    { category: "operations", label: () => m.nav_operations() },
+    { category: "creative", label: () => m.nav_branding() },
+    { category: "customer-support", label: () => m.nav_customerSupport() },
+    { category: "tool", label: () => m.nav_tools_group() },
 ];
 
+/**
+ * First-party plugin → category overrides. The running gateway may predate the
+ * business-domain manifest categories (it would then report "tool"/"automation"/
+ * "channel"), so we pin known first-party plugins to their intended group here.
+ * This keeps the sidebar correct without waiting on a gateway redeploy; unknown
+ * plugins still fall through to their manifest-reported category. Keyed by
+ * pluginId (a few carry legacy ids — e.g. alert-watcher ships as "alerts").
+ */
+const PLUGIN_CATEGORY_OVERRIDES: Record<string, PluginNavCategory> = {
+    'alert-watcher': 'customer-support',
+    alerts: 'customer-support',
+    'voice-call': 'customer-support',
+    voicecall: 'customer-support',
+    studio: 'creative',
+    crm: 'marketing',
+    paperclip: 'operations',
+    kanban: 'operations',
+};
+
+/** Coerce a raw manifest category string into a known nav bucket. */
 function normalizePluginCategory(raw: string | undefined): PluginNavCategory {
     switch (raw) {
-        case "channel":
-        case "automation":
+        case "marketing":
+        case "operations":
         case "creative":
+        case "customer-support":
+        case "channel":
         case "tool":
-        case "dashboard":
             return raw;
+        // Legacy taxonomy → business-domain remap.
+        case "automation":
+            return "customer-support";
+        case "dashboard":
+            return "tool";
         default:
             return "tool";
     }
 }
 
 /**
- * Build the plugin nav sections, one per non-empty category group (Channels,
- * Automation, Creative, Tools, Dashboards). Built-in entries (Kanban) and
- * installed plugin control centers are bucketed by category. Returns [] when
- * no group has any entries.
+ * Build the plugin nav sections from live plugin control-center manifests,
+ * bucketed by business category (Marketing, Operations, Branding/Creative,
+ * Customer Support, Tools). Channel plugins are folded into a collapsible
+ * Channels subsection under Customer Support. Returns [] when nothing maps.
  */
-export function getDynamicPluginsSections(
-    entries: PluginUiManifestOccupant[],
-): Section[] {
+export function getDynamicPluginsSections(entries: PluginUiManifestOccupant[]): Section[] {
     const byCategory = new Map<PluginNavCategory, SectionItem[]>();
-    const push = (category: PluginNavCategory, item: SectionItem) => {
+    const channelItems: SectionItem[] = [];
+
+    const place = (category: PluginNavCategory, item: SectionItem) => {
+        if (category === "channel") {
+            channelItems.push(item);
+            return;
+        }
         const list = byCategory.get(category) ?? [];
         list.push(item);
         byCategory.set(category, list);
     };
 
-    for (const { category, item } of BUILTIN_PLUGIN_ITEMS) push(category, item);
+    for (const { category, item } of BUILTIN_PLUGIN_ITEMS) place(category, item);
     for (const e of entries) {
-        push(normalizePluginCategory(e.category), {
+        const category =
+            PLUGIN_CATEGORY_OVERRIDES[e.pluginId] ?? normalizePluginCategory(e.category);
+        place(category, {
             href: `/plugins/${e.pluginId}`,
             label: e.title,
             icon: resolvePluginIcon(e.icon),
@@ -161,15 +238,19 @@ export function getDynamicPluginsSections(
 
     const sections: Section[] = [];
     for (const group of PLUGIN_NAV_GROUPS) {
-        const items = byCategory.get(group.category);
-        if (!items || items.length === 0) continue;
+        const items = byCategory.get(group.category) ?? [];
+        const isCustomerSupport = group.category === "customer-support";
+        const subsections: SubSection[] | undefined =
+            isCustomerSupport && channelItems.length
+                ? [{ id: "channels", label: m.nav_channels(), items: channelItems }]
+                : undefined;
+        if (items.length === 0 && !subsections) continue;
         sections.push({
             id: `plugins:${group.category}`,
-            label: group.label,
-            icon: Puzzle,
+            label: group.label(),
             tone: "accent",
-            domain: "gateway",
             items,
+            subsections,
         });
     }
     return sections;

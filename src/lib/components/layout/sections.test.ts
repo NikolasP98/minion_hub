@@ -1,14 +1,30 @@
 import { describe, it, expect } from 'vitest';
 import { getSections } from './sections';
 
-describe('getSections — Agent Builder is a core nav item', () => {
-  it('always includes /flow-editor in the Gateway section', () => {
-    const gateway = getSections().find((s) => s.id === 'gateway');
-    expect(gateway?.items.some((i) => i.href === '/flow-editor')).toBe(true);
+describe('getSections — core nav taxonomy', () => {
+  it('exposes Organization (Home/Overview/Team) and Agents groups', () => {
+    const ids = getSections().map((s) => s.id);
+    expect(ids).toEqual(['organization', 'agents']);
+    const org = getSections().find((s) => s.id === 'organization');
+    expect(org?.items.map((i) => i.href)).toEqual(['/home', '/overview', '/team']);
   });
-  it('exposes the Agent Builder label (i18n) for /flow-editor', () => {
-    const gateway = getSections().find((s) => s.id === 'gateway');
-    const item = gateway?.items.find((i) => i.href === '/flow-editor');
+
+  it('includes Agent Builder (/flow-editor) in the Agents section', () => {
+    const agents = getSections().find((s) => s.id === 'agents');
+    const item = agents?.items.find((i) => i.href === '/flow-editor');
+    expect(item).toBeTruthy();
     expect(item?.label).toBeTruthy();
+  });
+
+  it('puts the archetype roster filters (Copilots/AI Brains/Autonomous) under Agents', () => {
+    const agents = getSections().find((s) => s.id === 'agents');
+    const archetypeHrefs = agents?.items
+      .map((i) => i.href)
+      .filter((h) => h.startsWith('/agents?archetype='));
+    expect(archetypeHrefs).toEqual([
+      '/agents?archetype=copilot',
+      '/agents?archetype=brain',
+      '/agents?archetype=autonomous',
+    ]);
   });
 });
