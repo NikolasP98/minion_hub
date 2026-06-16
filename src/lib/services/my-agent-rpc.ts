@@ -39,6 +39,10 @@ export interface CalendarItem {
   id: string;
   /** Which linked Google identity surfaced this event. */
   sourceEmail: string;
+  /** True when surfaced from a subscribed SHARED account, not the user's own. */
+  shared?: boolean;
+  /** Display name of the shared account's owner, for the "(shared)" badge. */
+  sharedOwnerName?: string | null;
   title: string;
   /** ISO start — dateTime (timed) or date (all-day). */
   startsAt: string;
@@ -62,6 +66,10 @@ export interface EmailItem {
   id: string;
   /** Which linked Google identity surfaced this message. */
   sourceEmail: string;
+  /** True when surfaced from a subscribed SHARED inbox, not the user's own. */
+  shared?: boolean;
+  /** Display name of the shared account's owner, for the "(shared)" badge. */
+  sharedOwnerName?: string | null;
   /** Raw `From` header — `"Display Name <addr>"`. */
   from: string;
   /** Display name parsed from `from`, or the bare address. */

@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import { Building2, User, ChevronDown, ChevronRight } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
 
   type Member = {
     id: string;
@@ -30,26 +31,26 @@
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       members = ((await res.json()) as { users: Member[] }).users;
     } catch (e) {
-      toastError(e instanceof Error ? e.message : 'Failed to load members');
+      toastError(e instanceof Error ? e.message : m.shared_loadMembersFailed());
     } finally {
       loading = false;
     }
   }
 
-  async function setAccountType(m: Member, accountType: 'person' | 'service') {
-    busy = m.id;
+  async function setAccountType(member: Member, accountType: 'person' | 'service') {
+    busy = member.id;
     try {
       const res = await fetch('/api/shared-identities/manage', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ kind: 'account_type', profileId: m.id, accountType }),
+        body: JSON.stringify({ kind: 'account_type', profileId: member.id, accountType }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message ?? 'failed');
-      members = members.map((x) => (x.id === m.id ? { ...x, accountType } : x));
-      toastSuccess(accountType === 'service' ? 'Marked as shared account' : 'Marked as personal');
-      if (accountType === 'service' && expanded !== m.id) toggle(m);
+      members = members.map((x) => (x.id === member.id ? { ...x, accountType } : x));
+      toastSuccess(accountType === 'service' ? m.shared_markedShared() : m.shared_markedPersonal());
+      if (accountType === 'service' && expanded !== member.id) toggle(member);
     } catch (e) {
-      toastError(e instanceof Error ? e.message : 'Could not update');
+      toastError(e instanceof Error ? e.message : m.shared_toastError());
     } finally {
       busy = null;
     }
@@ -62,13 +63,13 @@
     }
   }
 
-  function toggle(m: Member) {
-    if (expanded === m.id) {
+  function toggle(member: Member) {
+    if (expanded === member.id) {
       expanded = null;
       return;
     }
-    expanded = m.id;
-    if (!identitiesByUser[m.id]) void loadIdentities(m.id);
+    expanded = member.id;
+    if (!identitiesByUser[member.id]) void loadIdentities(member.id);
   }
 
   async function setShareable(userId: string, identity: AdminIdentity, shareable: boolean) {
@@ -83,9 +84,9 @@
       identitiesByUser[userId] = (identitiesByUser[userId] ?? []).map((i) =>
         i.id === identity.id ? { ...i, shareable } : i,
       );
-      toastSuccess(shareable ? 'Shared with the org' : 'Sharing revoked');
+      toastSuccess(shareable ? m.shared_sharedWithOrg() : m.shared_sharingRevoked());
     } catch (e) {
-      toastError(e instanceof Error ? e.message : 'Could not update');
+      toastError(e instanceof Error ? e.message : m.shared_toastError());
     } finally {
       busy = null;
     }
@@ -95,69 +96,75 @@
 </script>
 
 <div class="max-w-3xl mx-auto mt-8">
-  <h3 class="text-xs font-semibold text-muted uppercase tracking-wider mb-1">Shared accounts</h3>
-  <p class="text-[11px] text-muted-foreground mb-3">
-    Mark a business account (e.g. a shared inbox) as <b>shared</b>, then expose its identities so
-    org members can opt them into their own feed.
-  </p>
+  <h3 class="text-xs font-semibold text-muted uppercase tracking-wider mb-1">
+    {m.shared_accountsTitle()}
+  </h3>
+  <p class="text-[11px] text-muted-foreground mb-3">{m.shared_accountsDesc()}</p>
 
   {#if loading}
-    <div class="text-muted text-xs py-6 text-center">Loading…</div>
+    <div class="text-muted text-xs py-6 text-center">{m.common_loading()}</div>
   {:else}
     <div class="bg-card border border-border rounded-lg divide-y divide-border/60">
-      {#each members as m (m.id)}
-        {@const isService = m.accountType === 'service'}
+      {#each members as member (member.id)}
+        {@const isService = member.accountType === 'service'}
         <div>
           <div class="flex items-center gap-3 px-4 py-3">
             <button
               class="grid place-items-center h-7 w-7 rounded-full shrink-0 bg-transparent border-none cursor-pointer
                 {isService ? 'text-accent' : 'text-muted'}"
-              title={isService ? 'Shared account' : 'Personal account'}
-              onclick={() => toggle(m)}
+              title={isService ? m.shared_accountTypeShared() : m.shared_accountTypePersonal()}
+              onclick={() => toggle(member)}
             >
               {#if isService}<Building2 size={15} />{:else}<User size={15} />{/if}
             </button>
             <span class="flex-1 min-w-0">
-              <span class="block text-sm text-foreground truncate">{m.displayName ?? m.email}</span>
-              <span class="block text-[11px] text-muted-foreground truncate">{m.email}</span>
+              <span class="block text-sm text-foreground truncate"
+                >{member.displayName ?? member.email}</span
+              >
+              <span class="block text-[11px] text-muted-foreground truncate">{member.email}</span>
             </span>
             <select
               class="bg-transparent border border-border rounded-md text-foreground px-2 py-1 text-[11px] outline-none cursor-pointer focus:border-accent disabled:opacity-50"
               value={isService ? 'service' : 'person'}
-              disabled={busy === m.id}
+              disabled={busy === member.id}
               onchange={(e) =>
-                setAccountType(m, (e.currentTarget as HTMLSelectElement).value as 'person' | 'service')}
+                setAccountType(
+                  member,
+                  (e.currentTarget as HTMLSelectElement).value as 'person' | 'service',
+                )}
             >
-              <option value="person">Personal</option>
-              <option value="service">Shared</option>
+              <option value="person">{m.shared_optionPersonal()}</option>
+              <option value="service">{m.shared_optionShared()}</option>
             </select>
             {#if isService}
               <button
                 class="grid place-items-center h-6 w-6 rounded text-muted hover:text-foreground bg-transparent border-none cursor-pointer"
-                onclick={() => toggle(m)}
-                title="Manage shared identities"
+                onclick={() => toggle(member)}
+                title={m.shared_manageIdentities()}
               >
-                {#if expanded === m.id}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
+                {#if expanded === member.id}<ChevronDown size={14} />{:else}<ChevronRight
+                    size={14}
+                  />{/if}
               </button>
             {/if}
           </div>
 
-          {#if expanded === m.id && isService}
+          {#if expanded === member.id && isService}
             <div class="px-4 pb-3 pl-14">
-              {#if !identitiesByUser[m.id]}
-                <div class="text-muted text-[11px] py-1">Loading identities…</div>
-              {:else if identitiesByUser[m.id].length === 0}
-                <div class="text-muted text-[11px] py-1">No identities to share.</div>
+              {#if !identitiesByUser[member.id]}
+                <div class="text-muted text-[11px] py-1">{m.shared_loadingIdentities()}</div>
+              {:else if identitiesByUser[member.id].length === 0}
+                <div class="text-muted text-[11px] py-1">{m.shared_noIdentities()}</div>
               {:else}
                 <div class="flex flex-col gap-1.5">
-                  {#each identitiesByUser[m.id] as id (id.id)}
+                  {#each identitiesByUser[member.id] as id (id.id)}
                     <label class="flex items-center gap-2 text-[11px] cursor-pointer">
                       <input
                         type="checkbox"
                         checked={id.shareable}
                         disabled={busy === id.id}
                         onchange={(e) =>
-                          setShareable(m.id, id, (e.currentTarget as HTMLInputElement).checked)}
+                          setShareable(member.id, id, (e.currentTarget as HTMLInputElement).checked)}
                       />
                       <span class="capitalize text-foreground">{id.provider}</span>
                       <span class="text-muted-foreground truncate">{id.externalId}</span>

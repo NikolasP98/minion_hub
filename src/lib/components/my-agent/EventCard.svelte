@@ -71,6 +71,15 @@
 
 	const title = $derived(item.title?.trim() || '(untitled event)');
 
+	// Surfaced from a subscribed shared account rather than the user's own.
+	const sharedTitle = $derived(
+		item.shared
+			? item.sharedOwnerName
+				? m.shared_feedBadgeFrom({ owner: item.sharedOwnerName })
+				: m.shared_feedBadgeFromGeneric()
+			: '',
+	);
+
 	const rsvp = $derived(item.responseStatus ?? null);
 	const rsvpMeta = $derived.by(() => {
 		switch (rsvp) {
@@ -133,6 +142,8 @@
 	<div class="text">
 		<div class="title-row">
 			<span class="title">{title}</span>
+			{#if item.shared}<span class="shared-badge" title={sharedTitle}>{m.shared_feedBadge()}</span
+				>{/if}
 			{#if statusPill}<span class="pill">{statusPill}</span>{/if}
 		</div>
 		{#if item.location}
@@ -293,6 +304,18 @@
 		color: var(--rail);
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
+	}
+	.shared-badge {
+		flex-shrink: 0;
+		font-size: 9px;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		padding: 1px 5px;
+		border-radius: 5px;
+		color: color-mix(in srgb, var(--color-accent) 90%, var(--color-foreground));
+		background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+		white-space: nowrap;
 	}
 	.loc {
 		display: inline-flex;
