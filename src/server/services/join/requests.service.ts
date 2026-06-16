@@ -19,6 +19,7 @@ export interface JoinRequestRow {
 	status: 'pending' | 'approved' | 'denied';
 	organization_id: string;
 	requested_role: string;
+	created_at: string;
 }
 
 export async function createRequest(
