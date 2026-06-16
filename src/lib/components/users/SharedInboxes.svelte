@@ -2,6 +2,7 @@
   import { invalidate } from '$app/navigation';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import { Check, Building2 } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
 
   type SharedIdentity = {
     identityId: string;
@@ -28,10 +29,10 @@
             body: JSON.stringify({ identityId: s.identityId }),
           });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message ?? 'failed');
-      toastSuccess(s.subscribed ? 'Removed from your feed' : 'Added to your feed');
+      toastSuccess(s.subscribed ? m.shared_toastRemoved() : m.shared_toastAdded());
       await invalidate('app:shared-identities');
     } catch (e) {
-      toastError(e instanceof Error ? e.message : 'Could not update');
+      toastError(e instanceof Error ? e.message : m.shared_toastError());
     } finally {
       busy = null;
     }
@@ -41,10 +42,10 @@
 {#if sharedIdentities.length > 0}
   <div class="bg-bg2 border border-border rounded-md overflow-hidden">
     <div class="px-3 py-2.5 border-b border-border">
-      <div class="text-[10px] uppercase tracking-wider text-muted font-semibold">Shared inboxes</div>
-      <div class="text-[11px] text-muted-foreground mt-0.5">
-        Business accounts you can add to your feed (emails &amp; events).
+      <div class="text-[10px] uppercase tracking-wider text-muted font-semibold">
+        {m.shared_inboxesTitle()}
       </div>
+      <div class="text-[11px] text-muted-foreground mt-0.5">{m.shared_inboxesSubtitle()}</div>
     </div>
     <div class="divide-y divide-border/60">
       {#each sharedIdentities as s (s.identityId)}
@@ -66,7 +67,7 @@
             disabled={busy === s.identityId}
             onclick={() => toggle(s)}
           >
-            {#if s.subscribed}<Check size={12} /> In your feed{:else}Add to feed{/if}
+            {#if s.subscribed}<Check size={12} /> {m.shared_inFeed()}{:else}{m.shared_addToFeed()}{/if}
           </button>
         </div>
       {/each}

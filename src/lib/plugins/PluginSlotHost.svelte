@@ -88,6 +88,8 @@
           {authToken}
           {theme}
           {tokens}
+          compat={current.compat}
+          pluginStatus={current.status}
         />
       </div>
     {/if}

@@ -42,6 +42,15 @@
 	const subject = $derived(item.subject?.trim() || m.email_noSubject());
 	const snippet = $derived(item.snippet?.trim() || '');
 
+	// Surfaced from a subscribed shared inbox rather than the user's own account.
+	const sharedTitle = $derived(
+		item.shared
+			? item.sharedOwnerName
+				? m.shared_feedBadgeFrom({ owner: item.sharedOwnerName })
+				: m.shared_feedBadgeFromGeneric()
+			: '',
+	);
+
 	function dragStart(e: DragEvent) {
 		const parts = [
 			m.email_dragFrom({sender}),
@@ -91,6 +100,8 @@
 	<div class="text">
 		<div class="top">
 			<span class="sender">{sender}</span>
+			{#if item.shared}<span class="shared-badge" title={sharedTitle}>{m.shared_feedBadge()}</span
+				>{/if}
 			{#if relative}<span class="time">{relative}</span>{/if}
 		</div>
 		<div class="subject">{subject}</div>
@@ -191,6 +202,18 @@
 	.email-card.opened .sender {
 		font-weight: 500;
 		color: color-mix(in srgb, var(--color-foreground) 58%, transparent);
+	}
+	.shared-badge {
+		flex-shrink: 0;
+		font-size: 9px;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		padding: 1px 5px;
+		border-radius: 5px;
+		color: color-mix(in srgb, var(--color-accent) 90%, var(--color-foreground));
+		background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+		white-space: nowrap;
 	}
 	.time {
 		flex-shrink: 0;

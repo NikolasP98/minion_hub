@@ -103,6 +103,8 @@
           {authToken}
           {theme}
           {tokens}
+          compat={data.entry.compat}
+          pluginStatus={data.entry.status}
           fillContainer
         />
       {/key}
