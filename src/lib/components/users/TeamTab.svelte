@@ -6,7 +6,7 @@
   import { ensureAliases, invalidateAliases } from '$lib/state/features/aliases.svelte';
   import { can } from '$lib/state/features/permissions.svelte';
   import { Select } from '$lib/components/ui';
-  import { MoreVertical } from 'lucide-svelte';
+  import { MoreVertical, Check, X } from 'lucide-svelte';
   import UserEditor from './UserEditor.svelte';
 
   type OrgRef = { id: string; name: string; role: string };
@@ -36,6 +36,8 @@
     id: string;
     email: string;
     message?: string | null;
+    organizationId?: string | null;
+    requestedRole?: string | null;
     createdAt: string;
   };
 
@@ -227,6 +229,43 @@
       toastSuccess('Join link revoked');
     } catch {
       toastError('Could not revoke join link');
+    }
+  }
+
+  // Approve / deny a pending join request. The Team tab's pending list is the
+  // Supabase `join_request` system-of-record, so this hits the Supabase-backed
+  // approve/deny endpoints (not the Turso-backed /api/join-requests/[id] path).
+  let reviewingId = $state<string | null>(null);
+
+  async function reviewRequest(req: PendingRequest, action: 'approve' | 'deny') {
+    reviewingId = req.id;
+    try {
+      let res: Response;
+      if (action === 'approve') {
+        const organizationId = req.organizationId ?? organizations[0]?.id;
+        if (!organizationId) {
+          toastError('No organization to grant access to.');
+          return;
+        }
+        res = await fetch(`/api/join-requests/${req.id}/approve`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ organizationId, role: req.requestedRole ?? 'user' }),
+        });
+      } else {
+        res = await fetch(`/api/join-requests/${req.id}/deny`, { method: 'POST' });
+      }
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error((d as { message?: string }).message ?? `HTTP ${res.status}`);
+      }
+      pendingRequests = pendingRequests.filter((r) => r.id !== req.id);
+      toastSuccess(action === 'approve' ? m.notif_approved() : m.notif_denied());
+      void invalidate('settings:team');
+    } catch (e) {
+      toastError((e as Error).message);
+    } finally {
+      reviewingId = null;
     }
   }
 
@@ -559,8 +598,30 @@
                           Awaiting review
                         </span>
                       </td>
-                      <td class="px-4 py-2.5 text-right text-muted text-[10px]">
-                        {new Date(req.createdAt).toLocaleDateString()}
+                      <td class="px-4 py-2.5">
+                        <div class="flex items-center justify-end gap-2">
+                          <span class="text-muted text-[10px] mr-1">{new Date(req.createdAt).toLocaleDateString()}</span>
+                          <button
+                            type="button"
+                            class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold bg-success/10 text-success border border-success/20 hover:bg-success/15 transition-colors cursor-pointer disabled:opacity-50"
+                            disabled={reviewingId === req.id}
+                            onclick={() => reviewRequest(req, 'approve')}
+                            title={m.notif_approve()}
+                          >
+                            <Check size={13} />
+                            {m.notif_approve()}
+                          </button>
+                          <button
+                            type="button"
+                            class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold bg-destructive/10 text-destructive border border-destructive/20 hover:bg-destructive/15 transition-colors cursor-pointer disabled:opacity-50"
+                            disabled={reviewingId === req.id}
+                            onclick={() => reviewRequest(req, 'deny')}
+                            title={m.notif_deny()}
+                          >
+                            <X size={13} />
+                            {m.notif_deny()}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   {/each}

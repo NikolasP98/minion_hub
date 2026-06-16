@@ -5,6 +5,7 @@ import { listAllOrganizations } from '$server/services/organizations.service';
 import { createRequest, getPendingRequestForUser } from '$server/services/join/requests.service';
 import { resolveLink, consumeLink } from '$server/services/join/links.service';
 import { isLinkUsable } from '$server/services/join/helpers';
+import { isOrgMember, hasAnyMembership } from '$server/services/join/membership';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
   const user = requireAuth(locals);
@@ -15,6 +16,11 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const token = url.searchParams.get('token');
   if (token) {
     const link = await resolveLink(token);
+    // Already a member of this org (e.g. approved out-of-band, or they already
+    // consumed the link) → don't strand them on the invite card. Send them home.
+    if (link && user.supabaseId && (await isOrgMember(user.supabaseId, link.organization_id))) {
+      throw redirect(303, '/');
+    }
     const usable =
       link &&
       isLinkUsable(
@@ -45,9 +51,11 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     };
   }
 
-  // No token → request-access flow. If the user already has a pending request,
-  // send them to the "waiting on approval" screen instead of the request form.
+  // No token → request-access flow. Already-approved members have access, so
+  // bounce them home rather than re-showing the request form. Otherwise, if a
+  // pending request exists, send them to the "waiting on approval" screen.
   if (user.supabaseId) {
+    if (await hasAnyMembership(user.supabaseId)) throw redirect(303, '/');
     const pending = await getPendingRequestForUser(user.id);
     if (pending) throw redirect(303, '/join/sent');
   }

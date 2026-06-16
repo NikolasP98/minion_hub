@@ -53,6 +53,10 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
       id: r.id,
       email: r.email,
       message: r.message,
+      // The org the requester asked to join (system-of-record for the grant on
+      // approval). Carried through so the Team tab can approve without a picker.
+      organizationId: r.organization_id ?? null,
+      requestedRole: r.requested_role ?? 'user',
       createdAt: createdRaw ? new Date(createdRaw).toISOString() : new Date().toISOString(),
     };
   });

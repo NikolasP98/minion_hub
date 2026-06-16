@@ -6,7 +6,6 @@
   import StepRemember from '$lib/components/onboarding/StepRemember.svelte';
   import StepConnect from '$lib/components/onboarding/StepConnect.svelte';
   import StepIndicator from '$lib/components/onboarding/StepIndicator.svelte';
-  import { sendRequest } from '$lib/services/gateway.svelte';
   import { conn } from '$lib/state/gateway/connection.svelte';
   import { toastAsync } from '$lib/state/ui/toast.svelte';
 
@@ -73,62 +72,20 @@
     try {
       await toastAsync(
         (async () => {
-          const provisionRes = await fetch('/api/personal-agent/provision');
-          if (!provisionRes.ok) {
-            throw new Error(`Provisioning check failed (${provisionRes.status})`);
-          }
-          const provision = (await provisionRes.json()) as {
-            needsProvisioning?: boolean;
-            payload?: { name: string; workspace: string };
-          };
-          if (!provision.needsProvisioning || !provision.payload) {
-            throw new Error('No pending personal agent was found for this user. Refresh and try again.');
-          }
-          const createPayload = provision.payload;
-          let agentId = createPayload.name;
-          try {
-            const createResult = (await sendRequest('agents.create', createPayload)) as { agentId?: string } | null;
-            agentId = createResult?.agentId ?? createPayload.name;
-          } catch (err) {
-            // A prior partial attempt may have already created the agent on the
-            // gateway (agents.create persists config immediately, then a later
-            // step failed). Tolerate the duplicate and continue to enrich it via
-            // config.patch below; re-throw anything else.
-            if (!(err instanceof Error && /already exists/i.test(err.message))) throw err;
-          }
-
-          // config.patch requires the current config's base hash (optimistic
-          // concurrency) — fetch it fresh right before patching.
-          const cfgSnapshot = (await sendRequest('config.get', {})) as { hash?: string } | null;
-
-          await sendRequest('config.patch', {
-            raw: JSON.stringify({
-              agents: {
-                list: [
-                  {
-                    id: agentId,
-                    name,
-                    identity: { name },
-                    personality: {
-                      preset: personality,
-                      configured: true,
-                      conversationName: name,
-                      text: personalityText(),
-                    },
-                    contextMode: 'personal',
-                  },
-                ],
-              },
-            }),
-            baseHash: cfgSnapshot?.hash,
-            note: `Create personal agent ${agentId} from onboarding`,
-          });
-
-          await fetch('/api/personal-agent/provision', {
+          // Provisioning (agents.create + config.patch) requires the
+          // operator.admin gateway scope, which member users don't have. The
+          // hub performs those privileged calls server-side with the system
+          // gateway credentials, gated to this user's own pending personal
+          // agent — see POST /api/personal-agent/create.
+          const res = await fetch('/api/personal-agent/create', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: 'active' }),
+            body: JSON.stringify({ name, personality, personalityText: personalityText() }),
           });
+          if (!res.ok) {
+            const d = (await res.json().catch(() => ({}))) as { error?: string };
+            throw new Error(d.error ?? `Provisioning failed (${res.status})`);
+          }
           await invalidate('app:personalAgent');
           goto(`/onboarding/complete?name=${encodeURIComponent(name)}&vibe=${encodeURIComponent(personality)}`);
         })(),
