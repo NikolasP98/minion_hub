@@ -11,7 +11,7 @@
         "@dimforge/rapier2d-compat": "^0.19.3",
         "@inlang/paraglide-sveltekit": "^0.16.1",
         "@libsql/client": "^0.17.3",
-        "@minion-stack/cache": "^0.2.0",
+        "@minion-stack/cache": "^0.2.1",
         "@minion-stack/db": "file:deps/minion-stack-db-0.5.1-pg.tgz",
         "@minion-stack/paperclip-client": "^0.1.0",
         "@minion-stack/shared": "^0.5.0",
@@ -357,7 +357,7 @@
 
     "@mapbox/node-pre-gyp": ["@mapbox/node-pre-gyp@2.0.3", "", { "dependencies": { "consola": "^3.2.3", "detect-libc": "^2.0.0", "https-proxy-agent": "^7.0.5", "node-fetch": "^2.6.7", "nopt": "^8.0.0", "semver": "^7.5.3", "tar": "^7.4.0" }, "bin": { "node-pre-gyp": "bin/node-pre-gyp" } }, "sha512-uwPAhccfFJlsfCxMYTwOdVfOz3xqyj8xYL3zJj8f0pb30tLohnnFPhLuqp4/qoEz8sNxe4SESZedcBojRefIzg=="],
 
-    "@minion-stack/cache": ["@minion-stack/cache@0.2.0", "", { "dependencies": { "ioredis": "^5.4.1" } }, "sha512-1G/BBM8dIVZElkv3kPG64lG8FMRw7bosFC5SVaahBbu36W7KnXz0rfkqvYJn7SiTi9GiI+a/wfkx64GbaU4isQ=="],
+    "@minion-stack/cache": ["@minion-stack/cache@0.2.1", "", { "dependencies": { "ioredis": "^5.4.1" } }, "sha512-APaC2VyDLA4jkPa1e2vVrHR3KgCcIqGN5lmCy3+nx1pw5+3QrmXNIKifhrxcASW/uudefPW0VTIsqeERIdq0lw=="],
 
     "@minion-stack/db": ["@minion-stack/db@deps/minion-stack-db-0.5.1-pg.tgz", { "peerDependencies": { "drizzle-orm": ">=0.45.0" } }],
 
