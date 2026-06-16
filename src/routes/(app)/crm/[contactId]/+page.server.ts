@@ -8,6 +8,7 @@ import {
   rankContacts,
   listTags,
 } from '$server/services/crm-contacts.service';
+import { evaluateTagRule } from '$server/services/crm-scoring';
 
 export const load: PageServerLoad = async ({ locals, params, depends }) => {
   const ctx = await getCoreCtx(locals);
@@ -25,13 +26,22 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
     rankContacts(ctx, { contactId: id, limit: 1 }),
   ]);
 
+  // Auto-tags are derived live from the scored row (never stored as contact_tags).
+  const score = ranked[0] ?? null;
+  const autoTags = score
+    ? allTags.filter(
+        (t) => t.kind === 'auto' && t.rule != null && evaluateTagRule(t.rule, score as never),
+      )
+    : [];
+
   return {
     contact: record.contact,
     identities: record.identities,
     stats: record.stats,
-    score: ranked[0] ?? null,
+    score,
     timeline,
     contactTags,
     allTags,
+    autoTags,
   };
 };

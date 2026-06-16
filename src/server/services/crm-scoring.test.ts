@@ -4,6 +4,8 @@ import {
   effectiveStage,
   compileTagRule,
   tryCompileTagRule,
+  evaluateTagRule,
+  matchingAutoTagIds,
   TagRuleError,
   type ContactStats,
 } from './crm-scoring';
@@ -142,5 +144,61 @@ describe('compileTagRule', () => {
   it('tryCompileTagRule returns null instead of throwing', () => {
     expect(tryCompileTagRule({ field: 'bogus', op: '=', value: 1 })).toBeNull();
     expect(tryCompileTagRule({ field: 'score', op: '>=', value: 80 })).toBe('(score >= 80)');
+  });
+});
+
+describe('evaluateTagRule', () => {
+  it('matches a numeric leaf at/above the threshold (the score>=80 case)', () => {
+    expect(evaluateTagRule({ field: 'score', op: '>=', value: 80 }, { score: 82 })).toBe(true);
+    expect(evaluateTagRule({ field: 'score', op: '>=', value: 80 }, { score: 80 })).toBe(true);
+    expect(evaluateTagRule({ field: 'score', op: '>=', value: 80 }, { score: 79 })).toBe(false);
+  });
+
+  it('handles string fields with = / !=', () => {
+    expect(evaluateTagRule({ field: 'stage', op: '=', value: 'Churned' }, { stage: 'Churned' })).toBe(true);
+    expect(evaluateTagRule({ field: 'stage', op: '=', value: 'Churned' }, { stage: 'Active' })).toBe(false);
+    expect(evaluateTagRule({ field: 'stage', op: '!=', value: 'New' }, { stage: 'Active' })).toBe(true);
+  });
+
+  it('coerces numeric strings (ranking rows can arrive as text from raw SQL)', () => {
+    expect(evaluateTagRule({ field: 'score', op: '>=', value: 80 }, { score: '82' as never })).toBe(true);
+  });
+
+  it('evaluates all / any groups', () => {
+    const row = { score: 75, reciprocity: 0.5 };
+    expect(
+      evaluateTagRule({ all: [{ field: 'score', op: '>=', value: 70 }, { field: 'reciprocity', op: '>=', value: 0.4 }] }, row),
+    ).toBe(true);
+    expect(
+      evaluateTagRule({ all: [{ field: 'score', op: '>=', value: 70 }, { field: 'reciprocity', op: '>=', value: 0.6 }] }, row),
+    ).toBe(false);
+    expect(evaluateTagRule({ any: [{ field: 'score', op: '>=', value: 90 }, { field: 'reciprocity', op: '>=', value: 0.4 }] }, row)).toBe(true);
+  });
+
+  it('never matches a malformed / non-whitelisted rule (no throw)', () => {
+    expect(evaluateTagRule({ field: 'bogus', op: '=', value: 1 }, { score: 99 } as never)).toBe(false);
+    expect(evaluateTagRule({ all: [] }, { score: 99 })).toBe(false);
+    expect(evaluateTagRule(null, { score: 99 })).toBe(false);
+    expect(evaluateTagRule({ field: 'stage', op: '>', value: 'x' }, { stage: 'Active' })).toBe(false);
+  });
+
+  it('missing field on the row → no match', () => {
+    expect(evaluateTagRule({ field: 'score', op: '>=', value: 80 }, {})).toBe(false);
+  });
+});
+
+describe('matchingAutoTagIds', () => {
+  const tags = [
+    { id: 'caliente', kind: 'auto', rule: { field: 'score', op: '>=', value: 80 } },
+    { id: 'dormant', kind: 'auto', rule: { field: 'last_days', op: '>', value: 30 } },
+    { id: 'manual', kind: 'manual', rule: null },
+    { id: 'broken', kind: 'auto', rule: { field: 'nope', op: '=', value: 1 } },
+  ];
+
+  it('returns only the auto-tags whose rule matches (manual + broken excluded)', () => {
+    expect(matchingAutoTagIds({ score: 82, last_days: 5 }, tags)).toEqual(['caliente']);
+    expect(matchingAutoTagIds({ score: 50, last_days: 90 }, tags)).toEqual(['dormant']);
+    expect(matchingAutoTagIds({ score: 90, last_days: 90 }, tags)).toEqual(['caliente', 'dormant']);
+    expect(matchingAutoTagIds({ score: 10, last_days: 1 }, tags)).toEqual([]);
   });
 });

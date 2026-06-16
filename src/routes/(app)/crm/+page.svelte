@@ -1,8 +1,9 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import { goto, invalidate } from '$app/navigation';
+	import { browser } from '$app/environment';
 	import * as m from '$lib/paraglide/messages';
-	import { Contact, RefreshCw, Plus, Settings, Wand2, ArrowUp, ArrowDown, ChevronsUpDown } from 'lucide-svelte';
+	import { Contact, RefreshCw, Plus, Settings, Wand2, ArrowUp, ArrowDown, ChevronsUpDown, Columns3, Check } from 'lucide-svelte';
 	import { PageHeader, Button } from '$lib/components/ui';
 	import ScoreCell from '$lib/components/crm/ScoreCell.svelte';
 	import StagePill from '$lib/components/crm/StagePill.svelte';
@@ -11,10 +12,33 @@
 	import Highlight from '$lib/components/crm/Highlight.svelte';
 	import { relativeTime, contactLabel } from '$lib/components/crm/crm-format';
 	import { stageLabel } from '$lib/components/crm/crm-i18n';
+	import { collectMetaKeys, metaLabel, metaValue } from '$lib/components/crm/crm-meta';
 
 	let { data }: { data: PageData } = $props();
 	const contacts = $derived(data.contacts);
 	const tags = $derived(data.tags);
+
+	// ── Column editor (custom-field metadata columns) ──────────────────────────
+	// The roster carries each contact's jsonb metadata; the viewer chooses which
+	// keys become table columns. Selection persists per-org in localStorage.
+	const metaKeys = $derived(collectMetaKeys(contacts));
+	const colStorageKey = $derived(`crm:cols:${data.orgId ?? 'default'}`);
+	let metaCols = $state<string[]>([]);
+	let colMenuOpen = $state(false);
+
+	// Load persisted column selection once we know the org (client only).
+	$effect(() => {
+		if (!browser) return;
+		const raw = localStorage.getItem(colStorageKey);
+		const saved: string[] = raw ? (JSON.parse(raw) as string[]) : [];
+		// Drop saved keys no longer present in the data.
+		metaCols = saved.filter((k) => metaKeys.includes(k));
+	});
+
+	function toggleCol(key: string) {
+		metaCols = metaCols.includes(key) ? metaCols.filter((k) => k !== key) : [...metaCols, key];
+		if (browser) localStorage.setItem(colStorageKey, JSON.stringify(metaCols));
+	}
 
 	let search = $state('');
 	let tagId = $state('');
@@ -47,7 +71,7 @@
 		const q = search.trim().toLowerCase();
 		let list = contacts;
 		if (q) list = list.filter((c) => (c.display_name ?? '').toLowerCase().includes(q));
-		if (tagId) list = list.filter((c) => c.tag_ids?.includes(tagId));
+		if (tagId) list = list.filter((c) => c.tag_ids?.includes(tagId) || c.auto_tag_ids?.includes(tagId));
 		if (stageFilter.size) list = list.filter((c) => stageFilter.has(c.stage));
 		if (channelFilter.size) list = list.filter((c) => c.channels?.some((ch) => channelFilter.has(ch)));
 
@@ -128,6 +152,25 @@
 		<span class="t-caption">{m.crm_contact_count({ count: view.length })}</span>
 
 		<div class="ml-auto flex items-center gap-2">
+			{#if metaKeys.length > 0}
+				<div class="col-wrap">
+					<button class="p-1.5 rounded hover:bg-white/[0.06] inline-flex" class:active-col={metaCols.length > 0} aria-label={m.crm_columns()} title={m.crm_columns()} onclick={() => (colMenuOpen = !colMenuOpen)}>
+						<Columns3 size={16} />
+					</button>
+					{#if colMenuOpen}
+						<button class="backdrop" aria-label="close" onclick={() => (colMenuOpen = false)}></button>
+						<div class="col-menu">
+							<div class="col-menu-h">{m.crm_columns_heading()}</div>
+							{#each metaKeys as key (key)}
+								<button class="col-item" onclick={() => toggleCol(key)}>
+									<span class="col-check" class:on={metaCols.includes(key)}>{#if metaCols.includes(key)}<Check size={12} />{/if}</span>
+									<span class="col-label">{metaLabel(key)}</span>
+								</button>
+							{/each}
+						</div>
+					{/if}
+				</div>
+			{/if}
 			<a href="/crm/cleanup" class="p-1.5 rounded hover:bg-white/[0.06] inline-flex" aria-label={m.crm_hygiene_title()} title={m.crm_hygiene_nav()}>
 				<Wand2 size={16} />
 			</a>
@@ -161,6 +204,9 @@
 						<th class="px-3 py-2 font-medium">
 							<ColumnFilter label={m.crm_col_stage()} options={stageOptions} bind:selected={stageFilter} />
 						</th>
+						{#each metaCols as key (key)}
+							<th class="px-3 py-2 font-medium meta-col">{metaLabel(key)}</th>
+						{/each}
 						<th class="px-3 py-2 font-medium text-right w-28">
 							<div class="flex justify-end">
 								<ColumnFilter label={m.crm_col_channels()} options={channelOptions} bind:selected={channelFilter} align="right">
@@ -186,6 +232,9 @@
 							</td>
 							<td class="px-3 py-2"><ScoreCell score={c.score} r={c.r_score} f={c.f_score} m={c.m_score} /></td>
 							<td class="px-3 py-2"><StagePill stage={c.stage} overridden={false} /></td>
+							{#each metaCols as key (key)}
+								<td class="px-3 py-2 meta-cell" title={metaValue(c.custom_fields?.[key])}>{metaValue(c.custom_fields?.[key])}</td>
+							{/each}
 							<td class="px-3 py-2">
 								{#if c.channels && c.channels.length > 0}
 									<div class="flex items-center justify-end gap-1.5 text-muted-foreground">
@@ -220,4 +269,22 @@
 	.msgs { display: flex; align-items: center; justify-content: flex-end; gap: 0.6rem; font-variant-numeric: tabular-nums; }
 	.m-in { display: inline-flex; align-items: center; gap: 0.1rem; color: var(--color-emerald, var(--color-success)); }
 	.m-out { display: inline-flex; align-items: center; gap: 0.1rem; color: var(--color-muted-foreground); }
+
+	/* column editor */
+	.col-wrap { position: relative; display: inline-flex; }
+	.active-col { color: var(--color-accent); }
+	.backdrop { position: fixed; inset: 0; z-index: 40; background: transparent; }
+	.col-menu {
+		position: absolute; top: calc(100% + 4px); right: 0; z-index: 41; min-width: 12rem; max-height: 20rem; overflow: auto;
+		background: var(--color-card); border: 1px solid var(--hairline); border-radius: var(--radius-md);
+		box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4); padding: 0.3rem;
+	}
+	.col-menu-h { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-muted-foreground); padding: 0.3rem 0.4rem; }
+	.col-item { display: flex; align-items: center; gap: 0.5rem; width: 100%; padding: 0.35rem 0.4rem; border-radius: var(--radius-sm, 6px); text-align: left; }
+	.col-item:hover { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
+	.col-check { display: grid; place-items: center; width: 1rem; height: 1rem; border-radius: 4px; border: 1px solid var(--hairline); flex-shrink: 0; }
+	.col-check.on { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-bg, #000); }
+	.col-label { font-size: 0.84rem; text-transform: capitalize; }
+	.meta-col { font-weight: 500; text-transform: capitalize; white-space: nowrap; }
+	.meta-cell { max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-muted-foreground); }
 </style>

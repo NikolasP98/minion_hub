@@ -2,7 +2,7 @@
 	import type { PageData } from './$types';
 	import { goto, invalidate } from '$app/navigation';
 	import * as m from '$lib/paraglide/messages';
-	import { ArrowLeft, Trash2, Plus, X, MoreVertical, Pencil, Check } from 'lucide-svelte';
+	import { ArrowLeft, Trash2, Plus, X, MoreVertical, Pencil, Check, Sparkles } from 'lucide-svelte';
 	import { PageHeader, Button } from '$lib/components/ui';
 	import MathFormula from '$lib/components/ui/MathFormula.svelte';
 	import ScoreBadge from '$lib/components/crm/ScoreBadge.svelte';
@@ -11,15 +11,42 @@
 	import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
 	import { contactLabel, isRecencyNever, identityValue } from '$lib/components/crm/crm-format';
 	import { stageLabel } from '$lib/components/crm/crm-i18n';
+	import { metaLabel, metaValue, metaEntries } from '$lib/components/crm/crm-meta';
 
 	let { data }: { data: PageData } = $props();
 	const c = $derived(data.contact);
 	const score = $derived(data.score);
 	const stats = $derived(data.stats as Record<string, unknown> | null);
 	const contactTags = $derived(data.contactTags);
+	const autoTags = $derived(data.autoTags ?? []);
 	const availableTags = $derived(
 		data.allTags.filter((t) => !data.contactTags.some((ct) => ct.id === t.id)),
 	);
+
+	// ── Custom-field metadata (jsonb) ──────────────────────────────────────────
+	const fields = $derived((c.customFields ?? {}) as Record<string, unknown>);
+	const fieldEntries = $derived(metaEntries(fields));
+	let editingMeta = $state(false);
+	let metaDraft = $state<[string, string][]>([]);
+	let newKey = $state('');
+	let newVal = $state('');
+
+	function startEditMeta() {
+		metaDraft = Object.entries(fields).map(([k, v]) => [k, metaValue(v) === '—' ? '' : String(v)]);
+		newKey = '';
+		newVal = '';
+		editingMeta = true;
+	}
+	async function saveMeta() {
+		const next: Record<string, unknown> = {};
+		for (const [k, v] of metaDraft) if (k.trim()) next[k.trim()] = v;
+		if (newKey.trim()) next[newKey.trim()] = newVal;
+		await patch({ customFields: next });
+		editingMeta = false;
+	}
+	function removeDraftRow(i: number) {
+		metaDraft = metaDraft.filter((_, idx) => idx !== i);
+	}
 
 	const STAGES = ['New', 'Engaged', 'Active', 'Dormant', 'Churned'];
 	let noteBody = $state('');
@@ -193,6 +220,11 @@
 							<button onclick={() => removeTag(t.id)} aria-label={m.crm_delete()}><X size={11} /></button>
 						</span>
 					{/each}
+					{#each autoTags as t (t.id)}
+						<span class="tag auto" style:--c={t.color ?? 'var(--color-accent)'} title={m.crm_auto_badge()}>
+							<Sparkles size={10} />{t.name}
+						</span>
+					{/each}
 					{#if availableTags.length > 0}
 						<select class="addtag" onchange={(e) => { addTag((e.currentTarget as HTMLSelectElement).value); e.currentTarget.value = ''; }}>
 							<option value="">{m.crm_add_tag()}</option>
@@ -215,6 +247,44 @@
 						<li class="t-caption">{m.crm_no_identities()}</li>
 					{/each}
 				</ul>
+			</section>
+
+			<!-- Custom-field metadata (imported patient attributes etc.) -->
+			<section class="card">
+				<header class="card-h">
+					<span>{m.crm_details()}</span>
+					{#if !editingMeta}
+						<button class="icon-btn" aria-label={m.crm_edit_properties()} onclick={startEditMeta}><Pencil size={13} /></button>
+					{/if}
+				</header>
+				{#if editingMeta}
+					<div class="meta-edit">
+						{#each metaDraft as row, i (i)}
+							<div class="meta-row">
+								<input class="meta-key" bind:value={row[0]} placeholder={m.crm_meta_key()} />
+								<input class="meta-val" bind:value={row[1]} placeholder={m.crm_meta_value()} />
+								<button class="icon-btn" aria-label={m.crm_delete()} onclick={() => removeDraftRow(i)}><X size={13} /></button>
+							</div>
+						{/each}
+						<div class="meta-row new">
+							<input class="meta-key" bind:value={newKey} placeholder={m.crm_meta_new_key()} />
+							<input class="meta-val" bind:value={newVal} placeholder={m.crm_meta_value()} />
+							<span class="icon-btn ghost"><Plus size={13} /></span>
+						</div>
+						<div class="meta-actions">
+							<Button variant="primary" size="sm" onclick={saveMeta} disabled={busy}><Check size={14} /> {m.crm_save()}</Button>
+							<Button variant="ghost" size="sm" onclick={() => (editingMeta = false)}>{m.crm_cancel()}</Button>
+						</div>
+					</div>
+				{:else if fieldEntries.length > 0}
+					<dl class="meta">
+						{#each fieldEntries as [k, v] (k)}
+							<div><dt>{metaLabel(k)}</dt><dd>{metaValue(v)}</dd></div>
+						{/each}
+					</dl>
+				{:else}
+					<p class="t-caption">{m.crm_no_details()}</p>
+				{/if}
 			</section>
 		</div>
 
@@ -376,5 +446,79 @@
 	.note-row {
 		display: flex;
 		gap: 0.5rem;
+	}
+	.tag.auto {
+		border-style: dashed;
+		opacity: 0.92;
+	}
+	/* custom-field metadata */
+	.icon-btn {
+		display: grid;
+		place-items: center;
+		width: 1.6rem;
+		height: 1.6rem;
+		border-radius: var(--radius-md);
+		color: var(--color-muted-foreground);
+		flex-shrink: 0;
+	}
+	.icon-btn:hover {
+		background: rgba(255, 255, 255, 0.06);
+		color: var(--color-foreground);
+	}
+	.icon-btn.ghost {
+		opacity: 0.4;
+	}
+	.meta {
+		display: grid;
+		grid-template-columns: minmax(6rem, auto) 1fr;
+		gap: 0.35rem 1rem;
+	}
+	.meta div {
+		display: contents;
+	}
+	.meta dt {
+		font-size: 0.74rem;
+		color: var(--color-muted-foreground);
+		text-transform: capitalize;
+	}
+	.meta dd {
+		font-size: 0.85rem;
+		word-break: break-word;
+	}
+	.meta-edit {
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+	}
+	.meta-row {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+	}
+	.meta-key,
+	.meta-val {
+		height: 1.8rem;
+		padding: 0 0.5rem;
+		font-size: 0.82rem;
+		border-radius: var(--radius-md);
+		background: var(--color-bg3);
+		border: 1px solid var(--hairline);
+	}
+	.meta-key {
+		width: 8rem;
+		flex-shrink: 0;
+		text-transform: capitalize;
+	}
+	.meta-val {
+		flex: 1;
+		min-width: 0;
+	}
+	.meta-row.new {
+		opacity: 0.85;
+	}
+	.meta-actions {
+		display: flex;
+		gap: 0.5rem;
+		margin-top: 0.3rem;
 	}
 </style>

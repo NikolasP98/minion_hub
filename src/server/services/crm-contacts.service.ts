@@ -137,6 +137,8 @@ export interface RankedContact {
   channels: string[];
   /** Applied manual-tag ids (for client-side tag filtering). */
   tag_ids: string[];
+  /** Custom-field metadata (jsonb) — drives the user-configurable list columns. */
+  custom_fields: Record<string, unknown>;
   first_contact_at: string | null;
   last_contact_at: string | null;
   last_days: number;
@@ -146,6 +148,8 @@ export interface RankedContact {
   m_score: number;
   score: number;
   stage: string;
+  /** Auto-tag ids whose rule matches this row (computed in the page load, not SQL). */
+  auto_tag_ids?: string[];
 }
 
 // RFM expressions, parameterised by the shared weights/constants so SQL and the
@@ -226,6 +230,7 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
       ),
       base as (
         select c.id as contact_id, c.display_name, c.owner_id, c.source, c.lifecycle_override,
+               c.custom_fields as custom_fields,
                coalesce(a.total_msgs, 0) as total_msgs,
                coalesce(a.inbound_msgs, 0) as inbound_msgs,
                coalesce(a.channels_used, 0) as channels_used,
@@ -243,6 +248,7 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
       ),
       scored as (
         select contact_id, display_name, owner_id, source, channels, tag_ids,
+               coalesce(custom_fields, '{}'::jsonb) as custom_fields,
                total_msgs, inbound_msgs, channels_used, first_contact_at, last_contact_at,
                round(last_days::numeric, 1) as last_days, round(reciprocity::numeric, 3) as reciprocity,
                round(${R_EXPR}::numeric, 1) as r_score,
@@ -425,8 +431,8 @@ export async function createTag(
   if (data.kind === 'auto' && tryCompileTagRule(data.rule) == null) {
     throw new Error('Invalid auto-tag rule');
   }
-  return withOrgCore(ctx, async (tx) => {
-    const [row] = await tx
+  const row = await withOrgCore(ctx, async (tx) => {
+    const [r] = await tx
       .insert(crmTags)
       .values({
         orgId: ctx.tenantId,
@@ -436,14 +442,19 @@ export async function createTag(
         rule: (data.rule as object) ?? null,
       })
       .returning();
-    return row;
+    return r;
   });
+  // An auto-tag is evaluated against the (cached) ranked roster, so a new/removed
+  // tag definition must bust the list cache to surface immediately.
+  await bustCrmList(ctx.tenantId);
+  return row;
 }
 
 export async function deleteTag(ctx: CoreCtx, tagId: string) {
-  return withOrgCore(ctx, (tx) =>
+  await withOrgCore(ctx, (tx) =>
     tx.delete(crmTags).where(and(eq(crmTags.id, tagId), eq(crmTags.orgId, ctx.tenantId))),
   );
+  await bustCrmList(ctx.tenantId);
 }
 
 export async function applyTag(ctx: CoreCtx, contactId: string, tagId: string, appliedBy: string | null) {
@@ -550,6 +561,10 @@ export interface LedgerAccount {
   /** Distinct eligible inbound senders this account has produced (harvestable). */
   contacts: number;
   lastActive: string | null;
+  /** Canonical account name from the live gateway catalog (null if unmatched). */
+  name?: string | null;
+  /** Linked phone/identity from the gateway catalog (null if unmatched). */
+  phone?: string | null;
 }
 
 export interface ManagedAccount extends LedgerAccount {
@@ -564,6 +579,22 @@ export interface AccountScope {
   available: LedgerAccount[];
   /** True until the user has explicitly configured the scope. */
   legacy: boolean;
+}
+
+/** A live, org-visible channel account from the gateway `channels.status` catalog. */
+export interface CatalogAccount {
+  channel: string;
+  accountId: string;
+  name: string | null;
+  phone: string | null;
+  enabled: boolean;
+}
+
+/** The gateway's canonical channel-account catalog, org-scoped. */
+export interface ChannelCatalog {
+  accounts: CatalogAccount[];
+  /** channel → default accountId */
+  defaults: Record<string, string>;
 }
 
 /**
@@ -597,33 +628,93 @@ export async function listLedgerAccounts(ctx: CoreCtx): Promise<LedgerAccount[]>
   }));
 }
 
-/** The account manager's full view: what's added (with config) + what can be added. */
-export async function getAccountScope(ctx: CoreCtx): Promise<AccountScope> {
+/** Digits-only key for matching ledger account ids to gateway catalog phones. */
+const normPhone = (v: string | null | undefined): string => (v ?? '').replace(/\D/g, '');
+
+/**
+ * The account manager's full view: what's added (with config) + what can be
+ * added. The optional live `catalog` (gateway `channels.status`, org-scoped) is
+ * merged so accounts show their CANONICAL gateway name/phone instead of a raw
+ * id or the generic "Default account", and so freshly-linked accounts that have
+ * not yet produced a message still appear in the "Add" picker. When `catalog`
+ * is null (gateway unreachable) this degrades to the previous ledger-only view.
+ */
+export async function getAccountScope(
+  ctx: CoreCtx,
+  catalog?: ChannelCatalog | null,
+): Promise<AccountScope> {
   const [{ accounts }, ledger] = await Promise.all([getCrmSettings(ctx), listLedgerAccounts(ctx)]);
   const byKey = new Map(ledger.map((l) => [accountKey(l.channel, l.accountId), l]));
 
-  if (accounts === null) {
-    return {
-      added: ledger.map((l) => ({ ...l, label: null, paused: false })),
-      available: [],
-      legacy: true,
-    };
-  }
+  const catAccounts = catalog?.accounts ?? [];
+  const defaults = catalog?.defaults ?? {};
+  const catByKey = new Map(catAccounts.map((a) => [accountKey(a.channel, a.accountId), a]));
 
-  const addedKeys = new Set(accounts.map((a) => accountKey(a.channel, a.accountId)));
-  const added: ManagedAccount[] = accounts.map((a) => {
+  // Resolve a (channel, accountId) to its canonical catalog account, trying:
+  // exact id → the channel default (for the 'default'/'' sentinel) → phone match.
+  const resolveCanonical = (channel: string, accountId: string): CatalogAccount | undefined => {
+    const direct = catByKey.get(accountKey(channel, accountId));
+    if (direct) return direct;
+    if (!accountId || accountId === 'default') {
+      const def = defaults[channel];
+      const d = def ? catByKey.get(accountKey(channel, def)) : undefined;
+      if (d) return d;
+    }
+    const digits = normPhone(accountId);
+    if (digits) {
+      const byPhone = catAccounts.find(
+        (c) => c.channel === channel && normPhone(c.phone ?? c.accountId) === digits,
+      );
+      if (byPhone) return byPhone;
+    }
+    return undefined;
+  };
+
+  // Every catalog account already represented by an added/ledger account, so the
+  // "Add" picker doesn't re-offer it under its raw catalog id.
+  const coveredCatalogKeys = new Set<string>();
+  const enrich = <T extends { channel: string; accountId: string }>(a: T): T & { name: string | null; phone: string | null } => {
+    const c = resolveCanonical(a.channel, a.accountId);
+    if (c) coveredCatalogKeys.add(accountKey(c.channel, c.accountId));
+    return { ...a, name: c?.name ?? null, phone: c?.phone ?? null };
+  };
+
+  // Materialize the in-scope set: explicit config, or (legacy) every ledger account.
+  const legacy = accounts === null;
+  const addedRefs: AccountConfig[] = legacy
+    ? ledger.map((l) => ({ channel: l.channel, accountId: l.accountId, label: null, paused: false }))
+    : accounts;
+
+  const addedKeys = new Set(addedRefs.map((a) => accountKey(a.channel, a.accountId)));
+  const added: ManagedAccount[] = addedRefs.map((a) => {
     const l = byKey.get(accountKey(a.channel, a.accountId));
-    return {
+    return enrich({
       channel: a.channel,
       accountId: a.accountId,
       label: a.label ?? null,
       paused: !!a.paused,
       contacts: l?.contacts ?? 0,
       lastActive: l?.lastActive ?? null,
-    };
+    });
   });
-  const available = ledger.filter((l) => !addedKeys.has(accountKey(l.channel, l.accountId)));
-  return { added, available, legacy: false };
+
+  // Available = ledger accounts not yet added + catalog accounts not yet covered
+  // (the live source for never-messaged accounts like a freshly-linked number).
+  const available: LedgerAccount[] = [];
+  const availKeys = new Set<string>();
+  const pushAvail = (channel: string, accountId: string, contacts: number, lastActive: string | null) => {
+    const k = accountKey(channel, accountId);
+    if (addedKeys.has(k) || availKeys.has(k)) return;
+    availKeys.add(k);
+    available.push(enrich({ channel, accountId, contacts, lastActive }));
+  };
+  for (const l of ledger) pushAvail(l.channel, l.accountId, l.contacts, l.lastActive);
+  for (const c of catAccounts) {
+    if (coveredCatalogKeys.has(accountKey(c.channel, c.accountId))) continue;
+    pushAvail(c.channel, c.accountId, 0, null);
+  }
+
+  return { added, available, legacy };
 }
 
 /** Current explicit configs, materializing the legacy "all linked" set on first write. */
