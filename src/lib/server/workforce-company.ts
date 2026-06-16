@@ -1,73 +1,46 @@
 import type { RequestEvent } from '@sveltejs/kit';
 import { supabaseAdmin } from '$server/supabase';
-import { workforceServerClient } from '$lib/server/workforce-fetch';
+import { workforceRawFetch } from '$lib/server/workforce-fetch';
 
 /**
- * org → workforce company bridge. The active hub org (Supabase `organizations`)
- * owns exactly one workforce company via `organizations.workforce_company_id`.
- *
- * During the paperclip→workforce rename this uses the expand/contract pattern:
- * `workforce_company_id` is canonical, but we still read the legacy
- * `paperclip_company_id` as a fallback until the contract migration drops it.
+ * Native single-id model: a hub org's Workforce company id IS the org id
+ * (`company.id === organizations.id`). There is no separate mapping
+ * table/column — the hub passes `orgId` as the `companyId` everywhere, and the
+ * Workforce backend stores companies keyed by the org id (see backend migration
+ * 0103 + create-with-id support).
  */
 
-/** Read the workforce company id mapped to a hub org. null if unmapped. */
-export async function getOrgCompanyId(orgId: string): Promise<string | null> {
-  const { data, error } = await supabaseAdmin()
+/**
+ * Ensure a Workforce company exists with `id === orgId`, creating one named
+ * after the org if missing. Idempotent. Returns the company id (== orgId).
+ *
+ * Throws if the backend is unreachable or rejects creation (e.g. 403 when the
+ * hub board key is not an instance admin). Callers should catch and route to
+ * /workforce/welcome.
+ */
+export async function ensureWorkforceCompany(event: RequestEvent, orgId: string): Promise<string> {
+  // Fast path: company already exists at the org id.
+  try {
+    await workforceRawFetch(event, `/api/companies/${orgId}`);
+    return orgId;
+  } catch (e: any) {
+    // Only a 404 means "not provisioned yet" — anything else (auth, backend
+    // down) must bubble so the gate surfaces the right failure.
+    if (e?.status !== 404) throw e;
+  }
+
+  const { data: org } = await supabaseAdmin()
     .from('organizations')
-    .select('workforce_company_id, paperclip_company_id')
+    .select('name')
     .eq('id', orgId)
     .maybeSingle();
-  if (error || !data) return null;
-  const row = data as { workforce_company_id: string | null; paperclip_company_id: string | null };
-  return row.workforce_company_id ?? row.paperclip_company_id ?? null;
-}
+  const name = (org as { name: string } | null)?.name ?? 'Workspace';
 
-/**
- * Ensure the org has a workforce company, creating one named after the org if
- * not. Idempotent and race-safe: the persist is a conditional update gated on
- * `workforce_company_id is null`; if a concurrent request won, we archive the
- * company we just created and return the winner.
- *
- * Throws if workforce company creation fails (e.g. 403 when the hub board key is
- * not an instance admin). Callers should catch and route to /workforce/welcome.
- */
-export async function provisionOrgCompany(
-  event: RequestEvent,
-  orgId: string,
-  orgName: string,
-): Promise<string> {
-  const existing = await getOrgCompanyId(orgId);
-  if (existing) return existing;
-
-  const client = workforceServerClient(event);
-  const company = await client.companies.create({ name: orgName });
-
-  const { data, error } = await supabaseAdmin()
-    .from('organizations')
-    .update({ workforce_company_id: company.id })
-    .eq('id', orgId)
-    .is('workforce_company_id', null)
-    .select('workforce_company_id');
-
-  if (error) {
-    // Persist failed for a non-race reason. Archive the orphan company we just
-    // created so we don't leak it, then surface the error.
-    await client.companies.archive(company.id).catch(() => {});
-    throw new Error(`failed to persist workforce company mapping: ${error.message}`);
-  }
-
-  if (Array.isArray(data) && data.length > 0) {
-    return company.id; // we won the race
-  }
-
-  // 0 rows updated → a concurrent request mapped the org first.
-  const winner = await getOrgCompanyId(orgId);
-  if (!winner) {
-    throw new Error('workforce company persist updated no rows but no existing mapping found');
-  }
-  if (winner !== company.id) {
-    await client.companies.archive(company.id).catch(() => {});
-  }
-  return winner;
+  // Create with id === orgId (backend createCompanySchema accepts an optional
+  // id; restricted to instance-admin callers, which the hub board key is).
+  await workforceRawFetch(event, '/api/companies', {
+    method: 'POST',
+    body: JSON.stringify({ id: orgId, name }),
+  });
+  return orgId;
 }

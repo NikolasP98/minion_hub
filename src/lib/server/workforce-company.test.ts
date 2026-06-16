@@ -1,98 +1,59 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const maybeSingle = vi.fn();
-const selectRead = vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle })) }));
-
-// update().eq().is().select() chain → resolves to { data, error }
-const updSelect = vi.fn();
-const updIs = vi.fn(() => ({ select: updSelect }));
-const updEq = vi.fn(() => ({ is: updIs }));
-const update = vi.fn(() => ({ eq: updEq }));
-
-const from = vi.fn((table: string) => {
-  if (table !== 'organizations') throw new Error(`unexpected table ${table}`);
-  return { select: selectRead, update };
-});
-vi.mock('$server/supabase', () => ({ supabaseAdmin: () => ({ from }) }));
-
-const companiesCreate = vi.fn();
-const companiesArchive = vi.fn();
+const rawFetch = vi.fn();
 vi.mock('$lib/server/workforce-fetch', () => ({
-  workforceServerClient: () => ({
-    companies: { create: companiesCreate, archive: companiesArchive },
-  }),
+  workforceRawFetch: (...args: unknown[]) => rawFetch(...args),
 }));
 
-import { getOrgCompanyId, provisionOrgCompany } from './workforce-company';
+const maybeSingle = vi.fn();
+const from = vi.fn(() => ({ select: () => ({ eq: () => ({ maybeSingle }) }) }));
+vi.mock('$server/supabase', () => ({ supabaseAdmin: () => ({ from }) }));
 
+import { ensureWorkforceCompany } from './workforce-company';
+
+const event = {} as any;
 beforeEach(() => vi.clearAllMocks());
 
-describe('getOrgCompanyId', () => {
-  it('returns the mapped company id', async () => {
-    maybeSingle.mockResolvedValueOnce({ data: { paperclip_company_id: 'co-1' }, error: null });
-    const id = await getOrgCompanyId('org-1');
-    expect(from).toHaveBeenCalledWith('organizations');
-    expect(id).toBe('co-1');
+const notFound = () => Object.assign(new Error('not found'), { status: 404 });
+
+describe('ensureWorkforceCompany', () => {
+  it('returns orgId when the company already exists (no create, no supabase read)', async () => {
+    rawFetch.mockResolvedValueOnce({ id: 'org-1' }); // GET ok
+    const id = await ensureWorkforceCompany(event, 'org-1');
+    expect(id).toBe('org-1');
+    expect(rawFetch).toHaveBeenCalledTimes(1);
+    expect(rawFetch).toHaveBeenCalledWith(event, '/api/companies/org-1');
+    expect(from).not.toHaveBeenCalled();
   });
 
-  it('returns null when unmapped', async () => {
-    maybeSingle.mockResolvedValueOnce({ data: { paperclip_company_id: null }, error: null });
-    expect(await getOrgCompanyId('org-1')).toBeNull();
+  it('creates the company with id=orgId named after the org when missing (404)', async () => {
+    rawFetch.mockRejectedValueOnce(notFound()); // GET → 404
+    maybeSingle.mockResolvedValueOnce({ data: { name: 'Acme' } });
+    rawFetch.mockResolvedValueOnce({ id: 'org-1', name: 'Acme' }); // POST create
+    const id = await ensureWorkforceCompany(event, 'org-1');
+    expect(id).toBe('org-1');
+    expect(rawFetch).toHaveBeenCalledTimes(2);
+    expect(rawFetch).toHaveBeenLastCalledWith(event, '/api/companies', {
+      method: 'POST',
+      body: JSON.stringify({ id: 'org-1', name: 'Acme' }),
+    });
   });
 
-  it('returns null on error', async () => {
-    maybeSingle.mockResolvedValueOnce({ data: null, error: { message: 'boom' } });
-    expect(await getOrgCompanyId('org-1')).toBeNull();
-  });
-});
-
-const fakeEvent = {} as any;
-
-describe('provisionOrgCompany', () => {
-  it('returns the existing mapping without creating', async () => {
-    maybeSingle.mockResolvedValueOnce({ data: { paperclip_company_id: 'co-existing' }, error: null });
-    const id = await provisionOrgCompany(fakeEvent, 'org-1', 'Acme');
-    expect(id).toBe('co-existing');
-    expect(companiesCreate).not.toHaveBeenCalled();
+  it('falls back to "Workspace" when the org row has no name', async () => {
+    rawFetch.mockRejectedValueOnce(notFound());
+    maybeSingle.mockResolvedValueOnce({ data: null });
+    rawFetch.mockResolvedValueOnce({});
+    await ensureWorkforceCompany(event, 'org-2');
+    expect(rawFetch).toHaveBeenLastCalledWith(event, '/api/companies', {
+      method: 'POST',
+      body: JSON.stringify({ id: 'org-2', name: 'Workspace' }),
+    });
   });
 
-  it('creates + persists when unmapped and wins the race', async () => {
-    maybeSingle.mockResolvedValueOnce({ data: { paperclip_company_id: null }, error: null });
-    companiesCreate.mockResolvedValueOnce({ id: 'co-new', name: 'Acme' });
-    updSelect.mockResolvedValueOnce({ data: [{ paperclip_company_id: 'co-new' }], error: null });
-    const id = await provisionOrgCompany(fakeEvent, 'org-1', 'Acme');
-    expect(companiesCreate).toHaveBeenCalledWith({ name: 'Acme' });
-    expect(update).toHaveBeenCalledWith({ workforce_company_id: 'co-new' });
-    expect(updEq).toHaveBeenCalledWith('id', 'org-1');
-    expect(updIs).toHaveBeenCalledWith('workforce_company_id', null);
-    expect(id).toBe('co-new');
-    expect(companiesArchive).not.toHaveBeenCalled();
-  });
-
-  it('archives the duplicate and returns the winner on a lost race', async () => {
-    maybeSingle
-      .mockResolvedValueOnce({ data: { paperclip_company_id: null }, error: null })
-      .mockResolvedValueOnce({ data: { paperclip_company_id: 'co-winner' }, error: null });
-    companiesCreate.mockResolvedValueOnce({ id: 'co-dup', name: 'Acme' });
-    updSelect.mockResolvedValueOnce({ data: [], error: null });
-    companiesArchive.mockResolvedValueOnce({});
-    const id = await provisionOrgCompany(fakeEvent, 'org-1', 'Acme');
-    expect(id).toBe('co-winner');
-    expect(companiesArchive).toHaveBeenCalledWith('co-dup');
-  });
-
-  it('propagates create failures (e.g. 403 not instance-admin)', async () => {
-    maybeSingle.mockResolvedValueOnce({ data: { paperclip_company_id: null }, error: null });
-    companiesCreate.mockRejectedValueOnce(new Error('paperclip 403'));
-    await expect(provisionOrgCompany(fakeEvent, 'org-1', 'Acme')).rejects.toThrow(/403/);
-  });
-
-  it('archives the orphan and throws when the persist errors (non-race)', async () => {
-    maybeSingle.mockResolvedValueOnce({ data: { paperclip_company_id: null }, error: null });
-    companiesCreate.mockResolvedValueOnce({ id: 'co-new', name: 'Acme' });
-    updSelect.mockResolvedValueOnce({ data: null, error: { message: 'violates rls' } });
-    companiesArchive.mockResolvedValueOnce({});
-    await expect(provisionOrgCompany(fakeEvent, 'org-1', 'Acme')).rejects.toThrow(/rls/);
-    expect(companiesArchive).toHaveBeenCalledWith('co-new');
+  it('rethrows non-404 errors (auth/backend) without creating', async () => {
+    rawFetch.mockRejectedValueOnce(Object.assign(new Error('forbidden'), { status: 403 }));
+    await expect(ensureWorkforceCompany(event, 'org-1')).rejects.toThrow(/forbidden/);
+    expect(rawFetch).toHaveBeenCalledTimes(1); // GET only, no POST
+    expect(from).not.toHaveBeenCalled();
   });
 });

@@ -1,13 +1,12 @@
-import { redirect } from '@sveltejs/kit';
-import { supabaseAdmin } from '$server/supabase';
-import { provisionOrgCompany } from '$lib/server/workforce-company';
+import { redirect, error } from '@sveltejs/kit';
+import { ensureWorkforceCompany } from '$lib/server/workforce-company';
 import type { LayoutServerLoad } from './$types';
 
 /**
- * Single gate for the /workforce subtree. The active hub org owns one paperclip
- * company; if the org has none yet, lazily provision one named after the org and
- * expose its id to child loads via locals.workforceIdentity.companyId (set in
- * the same request so child +page.server.ts loads see it).
+ * Single gate for the /workforce subtree. Native single-id model: the active
+ * hub org's Workforce company id IS the org id (company.id === org.id). Ensure
+ * the company exists (lazily create it on first visit, named after the org) and
+ * expose the id to child loads.
  */
 export const load: LayoutServerLoad = async (event) => {
   if (!event.locals.user) throw redirect(302, '/login');
@@ -22,27 +21,27 @@ export const load: LayoutServerLoad = async (event) => {
   const orgId = event.locals.orgId ?? event.locals.tenantCtx?.tenantId ?? null;
   if (!orgId) throw redirect(302, '/workforce/welcome?reason=no-org');
 
-  // Hook already resolved it for an existing mapping.
-  let companyId = event.locals.workforceIdentity?.companyId ?? null;
-
-  if (!companyId) {
-    const { data: org } = await supabaseAdmin()
-      .from('organizations')
-      .select('name')
-      .eq('id', orgId)
-      .maybeSingle();
-    const orgName = (org as { name: string } | null)?.name ?? 'Workspace';
-    try {
-      companyId = await provisionOrgCompany(event, orgId, orgName);
-    } catch (err) {
-      console.warn('[workforce] provisioning failed', err);
-      throw redirect(302, '/workforce/welcome?reason=provision-failed');
+  // company.id === orgId. ensureWorkforceCompany is idempotent: it returns fast
+  // when the company exists and creates it (with id=orgId) on first visit.
+  try {
+    await ensureWorkforceCompany(event, orgId);
+  } catch (err) {
+    const status = (err as { status?: number })?.status;
+    // 5xx / network (no status) = backend unreachable → surface via +error.svelte
+    // ("Workforce backend unavailable"). 4xx (e.g. 403 not instance-admin) = a
+    // real provisioning problem → reason-aware welcome.
+    if (!status || status >= 500) {
+      console.warn('[workforce] backend unreachable', err);
+      throw error(status && status >= 500 ? status : 502, 'Workforce backend unavailable');
     }
-    // Make the freshly-provisioned id visible to child page loads this request.
-    if (event.locals.workforceIdentity) {
-      event.locals.workforceIdentity.companyId = companyId;
-    }
+    console.warn('[workforce] provisioning failed', err);
+    throw redirect(302, '/workforce/welcome?reason=provision-failed');
   }
 
-  return { companyId };
+  // Make the id visible to child +page.server.ts loads this request.
+  if (event.locals.workforceIdentity) {
+    event.locals.workforceIdentity.companyId = orgId;
+  }
+
+  return { companyId: orgId };
 };

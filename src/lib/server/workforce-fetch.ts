@@ -45,11 +45,18 @@ export function workforceServerClient(event: RequestEvent): WorkforceClient {
  * Ad-hoc fetch with the same auth headers as workforceServerClient. Use for
  * endpoints not in the typed client (e.g. mock-only routes during dev).
  */
-export async function workforceRawFetch<T = unknown>(event: RequestEvent, path: string): Promise<T> {
+export async function workforceRawFetch<T = unknown>(
+	event: RequestEvent,
+	path: string,
+	init?: RequestInit,
+): Promise<T> {
 	const token = event.locals.workforceIdentity?.token;
 	if (!token) throw new Error('workforceIdentity not populated by hooks');
+	const headers: Record<string, string> = { ...authHeaders(token) };
+	if (init?.body) headers['content-type'] = 'application/json';
 	const r = await fetch(`${baseUrl()}${path}`, {
-		headers: authHeaders(token),
+		...init,
+		headers: { ...headers, ...((init?.headers as Record<string, string>) ?? {}) },
 	});
 	if (!r.ok) {
 		const err = new Error(`workforce ${path} returned ${r.status}`);
