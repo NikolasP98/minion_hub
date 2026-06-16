@@ -84,6 +84,25 @@ describe('gateway.pg.service', () => {
     expect(cred?.token).toBe('secret');
   });
 
+  test('getUserGatewayCredentials returns plaintext token without decrypt when token_iv empty', async () => {
+    const crypto = await import('$server/auth/crypto');
+    const { getUserGatewayCredentials } = await import('./gateway.pg.service');
+    selectFrom.mockReturnValueOnce({
+      innerJoin: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          limit: vi.fn().mockResolvedValue([
+            { url: 'ws://gw', tokenCiphertext: 'rawtoken', tokenIv: '' },
+          ]),
+        }),
+      }),
+    });
+    const cred = await getUserGatewayCredentials('p1');
+    expect(cred?.token).toBe('rawtoken');
+    // Real openSecret throws ERR_CRYPTO_INVALID_IV on an empty iv — the plaintext
+    // row must bypass decrypt entirely (regression guard for the token-mismatch bug).
+    expect(crypto.decrypt).not.toHaveBeenCalled();
+  });
+
   test('getUserGatewayCredentials returns null when no rows', async () => {
     const { getUserGatewayCredentials } = await import('./gateway.pg.service');
     // Default mock returns []

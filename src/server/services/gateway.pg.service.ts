@@ -193,7 +193,12 @@ export async function getUserGatewayCredentials(
     .limit(1);
   if (!rows.length) return null;
   const { url, tokenCiphertext, tokenIv } = rows[0];
-  const token = decrypt(tokenCiphertext, tokenIv);
+  if (!tokenCiphertext) return null;
+  // token_iv='' means the ciphertext IS the plaintext token (legacy unencrypted
+  // row). Mirror getGatewayTokenByServerId/getSystemGatewayCredentials — without
+  // this guard, decrypt() throws ERR_CRYPTO_INVALID_IV on a plaintext row and the
+  // caller silently falls back to a stale Turso token ("gateway token mismatch").
+  const token = tokenIv ? decrypt(tokenCiphertext, tokenIv) : tokenCiphertext;
   return { url, token };
 }
 
