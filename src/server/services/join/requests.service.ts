@@ -106,7 +106,14 @@ export async function approveRequest(
 	opts: { reviewerId: string; role: string; organizationId: string },
 ): Promise<void> {
 	const sb = supabaseAdmin();
-	const { data: row, error: readErr } = await sb.from('join_request').select('*').eq('id', id).single();
+	// Tenant-scope the read: an admin can only act on a request that belongs to
+	// the org they're approving into (else cross-tenant approve-by-id IDOR).
+	const { data: row, error: readErr } = await sb
+		.from('join_request')
+		.select('*')
+		.eq('id', id)
+		.eq('organization_id', opts.organizationId)
+		.single();
 	if (readErr || !row) throw new Error('request not found');
 	if (row.status !== 'pending') return; // no-op for already-resolved requests
 
@@ -123,11 +130,17 @@ export async function approveRequest(
 	if (error) throw new Error(error.message);
 }
 
-export async function denyRequest(id: string, reviewerId: string): Promise<void> {
+export async function denyRequest(
+	id: string,
+	opts: { reviewerId: string; organizationId: string },
+): Promise<void> {
+	// Tenant-scope the update: an admin of one org cannot deny another org's
+	// request by id (cross-tenant IDOR). No-match → no-op (0 rows), not an error.
 	const { error } = await supabaseAdmin()
 		.from('join_request')
-		.update({ status: 'denied', reviewed_by: reviewerId, reviewed_at: new Date().toISOString() })
-		.eq('id', id);
+		.update({ status: 'denied', reviewed_by: opts.reviewerId, reviewed_at: new Date().toISOString() })
+		.eq('id', id)
+		.eq('organization_id', opts.organizationId);
 	if (error) throw new Error(error.message);
 }
 

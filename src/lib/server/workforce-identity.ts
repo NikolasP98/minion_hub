@@ -1,4 +1,4 @@
-import { mintIdentity, type IdentityClaims } from '@minion-stack/paperclip-client/identity-jwt';
+import { mintIdentity, type IdentityClaims } from '@minion-stack/workforce-client/identity-jwt';
 import { env } from '$env/dynamic/private';
 
 export async function mintWorkforceIdentity(claims: IdentityClaims): Promise<string> {

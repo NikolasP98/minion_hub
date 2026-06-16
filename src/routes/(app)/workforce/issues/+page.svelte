@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { PageData } from './$types';
-	import type { IssueStatus } from '@minion-stack/paperclip-client';
+	import type { IssueStatus } from '@minion-stack/workforce-client';
 	import * as m from '$lib/paraglide/messages';
 	import { startPolling } from '$lib/utils/live-polling';
 	import LiveIndicator from '$lib/components/LiveIndicator.svelte';

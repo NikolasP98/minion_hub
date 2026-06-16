@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { PageData } from './$types';
-	import type { ApprovalStatus } from '@minion-stack/paperclip-client';
+	import type { ApprovalStatus } from '@minion-stack/workforce-client';
 	import * as m from '$lib/paraglide/messages';
 	import ApprovalPayload from '$lib/components/workforce/ApprovalPayload.svelte';
 	import { PageHeader } from '$lib/components/ui';

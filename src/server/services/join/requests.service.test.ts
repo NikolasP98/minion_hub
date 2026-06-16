@@ -7,7 +7,10 @@ vi.mock('$server/supabase', () => ({
       insert: (row: any) => ({ select: () => ({ single: async () => ((calls.inserted = row), { data: { id: 'r1', ...row }, error: null }) }) }),
       select: () => ({
         eq: () => ({
-          eq: () => ({ maybeSingle: async () => ({ data: calls.pending ?? null, error: null }) }),
+          eq: () => ({
+            maybeSingle: async () => ({ data: calls.pending ?? null, error: null }),
+            single: async () => ({ data: calls.row ?? null, error: calls.row ? null : { message: 'not found' } }),
+          }),
           single: async () => ({ data: calls.row ?? null, error: calls.row ? null : { message: 'not found' } }),
           order: () => ({ /* listPending unused here */ }),
         }),

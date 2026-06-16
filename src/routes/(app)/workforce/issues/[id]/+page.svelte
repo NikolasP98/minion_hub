@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { PageData } from './$types';
-	import type { IssueStatus } from '@minion-stack/paperclip-client';
+	import type { IssueStatus } from '@minion-stack/workforce-client';
 	import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
 	import ApprovalPayload from '$lib/components/workforce/ApprovalPayload.svelte';
 

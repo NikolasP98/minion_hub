@@ -13,8 +13,8 @@
         "@libsql/client": "^0.17.3",
         "@minion-stack/cache": "^0.2.1",
         "@minion-stack/db": "file:deps/minion-stack-db-0.5.1-pg.tgz",
-        "@minion-stack/paperclip-client": "^0.1.0",
         "@minion-stack/shared": "^0.5.0",
+        "@minion-stack/workforce-client": "^0.2.0",
         "@nikolasp98/plugin-ui-bridge": "^0.4.0",
         "@node-rs/argon2": "^2.0.2",
         "@paralleldrive/cuid2": "^3.3.0",
@@ -363,11 +363,11 @@
 
     "@minion-stack/lint-config": ["@minion-stack/lint-config@0.1.1", "", { "peerDependencies": { "@eslint/js": ">=9.0.0", "eslint": ">=9.0.0", "oxlint": ">=0.15.0", "prettier": ">=3.0.0", "typescript-eslint": ">=8.0.0" }, "optionalPeers": ["@eslint/js", "eslint", "oxlint", "prettier", "typescript-eslint"] }, "sha512-/hbtiD6cnwu56yCoqqTDmHWBD9JLL3aph49h5XhTG4lPQe06WNMxkNKA4FlXM9xnCDd2eKaf7y9TwPhQ30Nqug=="],
 
-    "@minion-stack/paperclip-client": ["@minion-stack/paperclip-client@0.1.0", "", { "dependencies": { "jose": "^5.9.6" } }, "sha512-zQqh79BMTbPTEvZVUQFzDKp3AF8GhjbENmIlJgpak64x8FDg2pJ6hC9nM7O5nvlX+ryTznDVtsxXlCc98mm6Pw=="],
-
     "@minion-stack/shared": ["@minion-stack/shared@0.5.0", "", { "peerDependencies": { "ws": "^8.0.0" }, "optionalPeers": ["ws"] }, "sha512-RTDQps8H4+lhWz6YzS55+3eDwTeqXOTgsa/avP5Le9aL/KMwPxQlKSI4U3VD5uJPZWLuB5sEo9EhzPJ8+LBPfg=="],
 
     "@minion-stack/tsconfig": ["@minion-stack/tsconfig@0.1.0", "", {}, "sha512-Luq2w1k9b7WuJkrAiowFMLcUnNhqo2kct4u+eYXqq8nmjMIs2P9FRtz/XLD+UWkJgx16tQUUWBR+DZjD3TVgfw=="],
+
+    "@minion-stack/workforce-client": ["@minion-stack/workforce-client@0.2.0", "", { "dependencies": { "jose": "^5.9.6" } }, "sha512-UG5pnKIe3+W0DqTni1lbeP4qhICBsyRecrRJoVr/e261L3eOLLigk6WDCZr3daY/Ma2Fxdy03GVv4q1dYGTTLg=="],
 
     "@napi-rs/wasm-runtime": ["@napi-rs/wasm-runtime@0.2.12", "", { "dependencies": { "@emnapi/core": "^1.4.3", "@emnapi/runtime": "^1.4.3", "@tybys/wasm-util": "^0.10.0" } }, "sha512-ZVWUcfwY4E/yPitQJl481FjFo3K22D6qF0DuFH6Y/nbnE11GY5uguDxZMGXPQ8WQ0128MXQD7TnfHyK4oWoIJQ=="],
 

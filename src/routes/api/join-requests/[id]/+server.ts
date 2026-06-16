@@ -22,7 +22,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
   if (status === 'approved') {
     await approveRequest(params.id, { reviewerId: user.id, role: 'user', organizationId: ctx.tenantId });
   } else {
-    await denyRequest(params.id, user.id);
+    await denyRequest(params.id, { reviewerId: user.id, organizationId: ctx.tenantId });
   }
 
   return json({ ok: true });

@@ -1,4 +1,4 @@
-import { createPaperclipClient, type PaperclipClient } from '@minion-stack/paperclip-client';
+import { createWorkforceClient, type WorkforceClient } from '@minion-stack/workforce-client';
 import { env } from '$env/dynamic/private';
 import type { RequestEvent } from '@sveltejs/kit';
 
@@ -31,10 +31,10 @@ function authHeaders(token: string): Record<string, string> {
 		: { 'x-hub-identity': token };
 }
 
-export function workforceServerClient(event: RequestEvent): PaperclipClient {
+export function workforceServerClient(event: RequestEvent): WorkforceClient {
 	const token = event.locals.workforceIdentity?.token;
 	if (!token) throw new Error('workforceIdentity not populated by hooks');
-	return createPaperclipClient({
+	return createWorkforceClient({
 		baseUrl: baseUrl(),
 		fetch: globalThis.fetch,
 		headers: authHeaders(token),

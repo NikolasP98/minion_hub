@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { createPaperclipClient } from '@minion-stack/paperclip-client';
+import { createWorkforceClient } from '@minion-stack/workforce-client';
 import { env } from '$env/dynamic/private';
 import { getCoreDb } from '$server/db/pg-client';
 import { workspaceMembership } from '@minion-stack/db/pg';
@@ -44,7 +44,7 @@ export async function loadWorkspacesForUser(
     const headers: Record<string, string> = token.startsWith('pcli_')
       ? { Authorization: `Bearer ${token}` }
       : { 'x-hub-identity': token };
-    const client = createPaperclipClient({
+    const client = createWorkforceClient({
       baseUrl: paperclipBaseUrl(),
       fetch: globalThis.fetch,
       headers,

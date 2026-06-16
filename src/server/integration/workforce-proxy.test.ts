@@ -1,5 +1,5 @@
 /**
- * Integration test: paperclip proxy + hub-identity middleware contract.
+ * Integration test: workforce proxy + hub-identity middleware contract.
  *
  * Path A implementation — the middleware logic is inlined as a local fixture
  * because `express` is not installed in minion_hub's node_modules (the
@@ -21,7 +21,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { jwtVerify } from 'jose';
-import { mintIdentity } from '@minion-stack/paperclip-client/identity-jwt';
+import { mintIdentity } from '@minion-stack/workforce-client/identity-jwt';
 
 // ---------------------------------------------------------------------------
 // Pinned fixture: hub-identity middleware contract
