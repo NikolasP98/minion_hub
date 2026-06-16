@@ -11,7 +11,8 @@
 	import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
 	import { contactLabel, isRecencyNever, identityValue } from '$lib/components/crm/crm-format';
 	import { stageLabel } from '$lib/components/crm/crm-i18n';
-	import { metaLabel, metaValue, metaEntries } from '$lib/components/crm/crm-meta';
+	import { metaLabel, metaValue, metaDisplay, isEmailKey, metaEntries } from '$lib/components/crm/crm-meta';
+	import { IdCard, Cake, Phone, Mail, MapPin, Home, Stethoscope, Megaphone, Briefcase, Flag, Hash, User } from 'lucide-svelte';
 
 	let { data }: { data: PageData } = $props();
 	const c = $derived(data.contact);
@@ -250,6 +251,22 @@
 			</section>
 
 			<!-- Custom-field metadata (imported patient attributes etc.) -->
+			{#snippet metaIcon(k: string)}
+				{#if k === 'dni'}<IdCard size={14} />
+				{:else if k === 'edad' || k === 'fecha_nacimiento'}<Cake size={14} />
+				{:else if k === 'sexo'}<User size={14} />
+				{:else if k === 'telefono' || k === 'celular' || k === 'movil' || k === 'tel'}<Phone size={14} />
+				{:else if k === 'email' || k === 'correo'}<Mail size={14} />
+				{:else if k === 'distrito'}<MapPin size={14} />
+				{:else if k === 'domicilio' || k === 'direccion'}<Home size={14} />
+				{:else if k === 'motivo'}<Stethoscope size={14} />
+				{:else if k === 'referencia'}<Megaphone size={14} />
+				{:else if k === 'ocupacion'}<Briefcase size={14} />
+				{:else if k === 'nacionalidad'}<Flag size={14} />
+				{:else if k === 'nombre'}<User size={14} />
+				{:else}<Hash size={14} />
+				{/if}
+			{/snippet}
 			<section class="card">
 				<header class="card-h">
 					<span>{m.crm_details()}</span>
@@ -277,11 +294,19 @@
 						</div>
 					</div>
 				{:else if fieldEntries.length > 0}
-					<dl class="meta">
+					<ul class="meta">
 						{#each fieldEntries as [k, v] (k)}
-							<div><dt>{metaLabel(k)}</dt><dd>{metaValue(v)}</dd></div>
+							<li class="meta-item">
+								<span class="meta-ic">{@render metaIcon(k.toLowerCase())}</span>
+								<span class="meta-k">{metaLabel(k)}</span>
+								{#if isEmailKey(k)}
+									<a class="meta-v link" href={`mailto:${metaValue(v)}`} title={metaValue(v)}>{metaValue(v)}</a>
+								{:else}
+									<span class="meta-v" title={metaDisplay(k, v)}>{metaDisplay(k, v)}</span>
+								{/if}
+							</li>
 						{/each}
-					</dl>
+					</ul>
 				{:else}
 					<p class="t-caption">{m.crm_no_details()}</p>
 				{/if}
@@ -469,21 +494,44 @@
 		opacity: 0.4;
 	}
 	.meta {
+		display: flex;
+		flex-direction: column;
+	}
+	.meta-item {
 		display: grid;
-		grid-template-columns: minmax(6rem, auto) 1fr;
-		gap: 0.35rem 1rem;
+		grid-template-columns: 1.1rem minmax(4.5rem, max-content) 1fr;
+		align-items: center;
+		gap: 0.55rem;
+		padding: 0.42rem 0;
 	}
-	.meta div {
-		display: contents;
+	.meta-item + .meta-item {
+		border-top: 1px solid var(--hairline);
 	}
-	.meta dt {
-		font-size: 0.74rem;
+	.meta-ic {
+		display: grid;
+		place-items: center;
 		color: var(--color-muted-foreground);
-		text-transform: capitalize;
+		opacity: 0.85;
 	}
-	.meta dd {
-		font-size: 0.85rem;
-		word-break: break-word;
+	.meta-k {
+		font-size: 0.76rem;
+		color: var(--color-muted-foreground);
+	}
+	.meta-v {
+		min-width: 0;
+		text-align: right;
+		font-size: 0.86rem;
+		font-weight: 500;
+		font-variant-numeric: tabular-nums;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.meta-v.link {
+		color: var(--color-accent);
+	}
+	.meta-v.link:hover {
+		text-decoration: underline;
 	}
 	.meta-edit {
 		display: flex;
