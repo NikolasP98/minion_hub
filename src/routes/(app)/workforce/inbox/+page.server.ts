@@ -1,5 +1,5 @@
 import { redirect, error } from '@sveltejs/kit';
-import { paperclipServerClient, paperclipRawFetch } from '$lib/server/paperclip-fetch';
+import { workforceServerClient, workforceRawFetch } from '$lib/server/workforce-fetch';
 import type { PageServerLoad } from './$types';
 
 export type InboxItem = {
@@ -18,15 +18,15 @@ export type InboxItem = {
 
 export const load: PageServerLoad = async (event) => {
 	if (!event.locals.user) throw redirect(302, '/login');
-	if (!event.locals.paperclipIdentity?.companyId) {
+	if (!event.locals.workforceIdentity?.companyId) {
 		throw redirect(302, '/workforce/welcome?reason=no-company');
 	}
 	event.depends('app:inbox');
-	const companyId = event.locals.paperclipIdentity.companyId;
-	const client = paperclipServerClient(event);
+	const companyId = event.locals.workforceIdentity.companyId;
+	const client = workforceServerClient(event);
 	try {
 		const [items, agents] = await Promise.all([
-			paperclipRawFetch<InboxItem[]>(event, `/api/companies/${companyId}/inbox`),
+			workforceRawFetch<InboxItem[]>(event, `/api/companies/${companyId}/inbox`),
 			client.agents.list(companyId),
 		]);
 		const agentNames: Record<string, string> = {};

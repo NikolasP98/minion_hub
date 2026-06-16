@@ -25,8 +25,8 @@ declare global {
       tenantCtx?: TenantContext;
       // serverId is set for metrics Bearer-token auth
       serverId?: string;
-      // paperclipIdentity is minted per-request by paperclipIdentityHandle in hooks.server.ts
-      paperclipIdentity?: {
+      // workforceIdentity is minted per-request by workforceIdentityHandle in hooks.server.ts
+      workforceIdentity?: {
         token: string;
         userId: string;
         companyId: string | null;

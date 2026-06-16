@@ -27,7 +27,7 @@ export const POST: RequestHandler = async ({ request, locals, cookies }) => {
 
 	if (!row) throw error(403, 'not a member');
 
-	cookies.set('pc_company_id', companyId, {
+	cookies.set('workforce_company_id', companyId, {
 		path: '/',
 		httpOnly: true,
 		sameSite: 'lax',

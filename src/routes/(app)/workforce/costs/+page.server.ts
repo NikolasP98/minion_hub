@@ -1,5 +1,5 @@
 import { redirect, error } from '@sveltejs/kit';
-import { paperclipRawFetch } from '$lib/server/paperclip-fetch';
+import { workforceRawFetch } from '$lib/server/workforce-fetch';
 import type { PageServerLoad } from './$types';
 
 export type CostKpis = {
@@ -31,18 +31,18 @@ type DailyCost = { date: string; cents: number };
 
 export const load: PageServerLoad = async (event) => {
 	if (!event.locals.user) throw redirect(302, '/login');
-	if (!event.locals.paperclipIdentity?.companyId) {
+	if (!event.locals.workforceIdentity?.companyId) {
 		throw redirect(302, '/workforce/welcome?reason=no-company');
 	}
 	event.depends('app:costs');
-	const companyId = event.locals.paperclipIdentity.companyId;
+	const companyId = event.locals.workforceIdentity.companyId;
 
 	try {
 		const [kpis, byAgent, byProvider, trend] = await Promise.all([
-			paperclipRawFetch<CostKpis>(event, `/api/companies/${companyId}/costs/kpis`),
-			paperclipRawFetch<CostByAgent[]>(event, `/api/companies/${companyId}/costs/by-agent`),
-			paperclipRawFetch<CostByProvider[]>(event, `/api/companies/${companyId}/costs/by-provider`),
-			paperclipRawFetch<DailyCost[]>(event, `/api/companies/${companyId}/costs/trend`),
+			workforceRawFetch<CostKpis>(event, `/api/companies/${companyId}/costs/kpis`),
+			workforceRawFetch<CostByAgent[]>(event, `/api/companies/${companyId}/costs/by-agent`),
+			workforceRawFetch<CostByProvider[]>(event, `/api/companies/${companyId}/costs/by-provider`),
+			workforceRawFetch<DailyCost[]>(event, `/api/companies/${companyId}/costs/trend`),
 		]);
 		return { kpis, byAgent, byProvider, trend };
 	} catch (e: any) {

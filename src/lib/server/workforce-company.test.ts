@@ -17,13 +17,13 @@ vi.mock('$server/supabase', () => ({ supabaseAdmin: () => ({ from }) }));
 
 const companiesCreate = vi.fn();
 const companiesArchive = vi.fn();
-vi.mock('$lib/server/paperclip-fetch', () => ({
-  paperclipServerClient: () => ({
+vi.mock('$lib/server/workforce-fetch', () => ({
+  workforceServerClient: () => ({
     companies: { create: companiesCreate, archive: companiesArchive },
   }),
 }));
 
-import { getOrgCompanyId, provisionOrgCompany } from './paperclip-company';
+import { getOrgCompanyId, provisionOrgCompany } from './workforce-company';
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -62,9 +62,9 @@ describe('provisionOrgCompany', () => {
     updSelect.mockResolvedValueOnce({ data: [{ paperclip_company_id: 'co-new' }], error: null });
     const id = await provisionOrgCompany(fakeEvent, 'org-1', 'Acme');
     expect(companiesCreate).toHaveBeenCalledWith({ name: 'Acme' });
-    expect(update).toHaveBeenCalledWith({ paperclip_company_id: 'co-new' });
+    expect(update).toHaveBeenCalledWith({ workforce_company_id: 'co-new' });
     expect(updEq).toHaveBeenCalledWith('id', 'org-1');
-    expect(updIs).toHaveBeenCalledWith('paperclip_company_id', null);
+    expect(updIs).toHaveBeenCalledWith('workforce_company_id', null);
     expect(id).toBe('co-new');
     expect(companiesArchive).not.toHaveBeenCalled();
   });

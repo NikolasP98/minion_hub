@@ -5,10 +5,10 @@ import type { RequestHandler } from './$types';
 const HOP_BY_HOP = new Set(['cookie', 'host', 'connection', 'content-length', 'transfer-encoding', 'te', 'trailer', 'upgrade']);
 
 const handler: RequestHandler = async ({ request, params, locals, url }) => {
-	const identity = locals.paperclipIdentity;
+	const identity = locals.workforceIdentity;
 	if (!identity) throw error(401, 'unauthenticated');
 
-	const base = env.PAPERCLIP_INTERNAL_URL ?? 'http://paperclip:3200';
+	const base = env.WORKFORCE_INTERNAL_URL ?? env.PAPERCLIP_INTERNAL_URL ?? 'http://workforce:3200';
 	const target = new URL(`${base}/api/${params.path ?? ''}`);
 	for (const [k, v] of url.searchParams) target.searchParams.set(k, v);
 

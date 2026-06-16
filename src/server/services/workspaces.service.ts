@@ -36,7 +36,7 @@ export async function loadWorkspacesForUser(
     .where(eq(workspaceMembership.userId, userId));
 
   // Hydrate display name per company from paperclip. Graceful on outage.
-  const token = ctx.paperclipIdentity?.token;
+  const token = ctx.workforceIdentity?.token;
   let companies: Array<{ id: string; name: string }> = [];
   if (token) {
     // Board-key tokens (pcli_*) go via `Authorization: Bearer`; JWT identity
