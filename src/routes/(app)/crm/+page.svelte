@@ -12,7 +12,7 @@
 	import Highlight from '$lib/components/crm/Highlight.svelte';
 	import { relativeTime, contactLabel } from '$lib/components/crm/crm-format';
 	import { stageLabel } from '$lib/components/crm/crm-i18n';
-	import { collectMetaKeys, metaLabel, metaValue } from '$lib/components/crm/crm-meta';
+	import { collectMetaKeys, metaLabel, metaDisplay } from '$lib/components/crm/crm-meta';
 
 	let { data }: { data: PageData } = $props();
 	const contacts = $derived(data.contacts);
@@ -233,7 +233,7 @@
 							<td class="px-3 py-2"><ScoreCell score={c.score} r={c.r_score} f={c.f_score} m={c.m_score} /></td>
 							<td class="px-3 py-2"><StagePill stage={c.stage} overridden={false} /></td>
 							{#each metaCols as key (key)}
-								<td class="px-3 py-2 meta-cell" title={metaValue(c.custom_fields?.[key])}>{metaValue(c.custom_fields?.[key])}</td>
+								<td class="px-3 py-2 meta-cell" title={metaDisplay(key, c.custom_fields?.[key])}>{metaDisplay(key, c.custom_fields?.[key])}</td>
 							{/each}
 							<td class="px-3 py-2">
 								{#if c.channels && c.channels.length > 0}
