@@ -14,9 +14,17 @@ import { getDb } from '$server/db/client';
 import { getSystemGatewayCredentials } from '$server/services/server.service';
 import { getSystemGatewayCredentials as getSystemGatewayCredentialsPg } from '$server/services/gateway.pg.service';
 
-let initialized = false;
+let initPromise: Promise<void> | null = null;
 
 const sourceId = env.VERCEL_DEPLOYMENT_ID ?? randomUUID();
+
+/** Env values can carry stray whitespace/newlines (e.g. `echo x | vercel env add`
+ *  appends a trailing \n). An untrimmed CACHE_BACKEND="valkey\n" silently fails
+ *  the `=== 'valkey'` check and crashes init. Always trim; empty → undefined. */
+const cleanEnv = (v: string | undefined): string | undefined => {
+  const t = v?.trim();
+  return t ? t : undefined;
+};
 
 /**
  * One-time cache initialization. Idempotent — safe to call from multiple
@@ -33,31 +41,43 @@ const sourceId = env.VERCEL_DEPLOYMENT_ID ?? randomUUID();
  * Valkey is selected via createBackendAsync since it dynamically imports
  * ioredis. We block on it once at boot.
  */
-export async function initCache(): Promise<void> {
-  if (initialized) return;
-  initialized = true;
+export function initCache(): Promise<void> {
+  // Share a single in-flight init across concurrent callers; on failure, reset
+  // so a later request can retry (previously `initialized = true` was set before
+  // the await, so one failed init permanently wedged the cache as "configured
+  // never called" → every cached() read 500'd).
+  if (!initPromise) {
+    initPromise = doInitCache().catch((err) => {
+      initPromise = null;
+      throw err;
+    });
+  }
+  return initPromise;
+}
 
-  const explicit = env.CACHE_BACKEND as Backend | undefined;
+async function doInitCache(): Promise<void> {
+  const explicit = cleanEnv(env.CACHE_BACKEND) as Backend | undefined;
   const isProd = env.NODE_ENV === 'production';
   const backendName: Backend = explicit ?? (isProd ? 'noop' : 'memory');
 
   let backend: CacheBackend;
   if (backendName === 'valkey') {
-    if (!env.VALKEY_URL) {
+    const valkeyUrl = cleanEnv(env.VALKEY_URL);
+    if (!valkeyUrl) {
       console.warn('[cache] CACHE_BACKEND=valkey but VALKEY_URL unset — falling back to noop');
       backend = createBackend({ backend: 'noop' });
     } else {
       backend = await createBackendAsync({
         backend: 'valkey',
-        url: env.VALKEY_URL,
-        password: env.VALKEY_PASSWORD,
+        url: valkeyUrl,
+        password: cleanEnv(env.VALKEY_PASSWORD),
       });
     }
   } else {
     backend = createBackend({ backend: backendName });
   }
 
-  const broadcastUrl = env.MINION_GATEWAY_BROADCAST_URL;
+  const broadcastUrl = cleanEnv(env.MINION_GATEWAY_BROADCAST_URL);
   // Token comes from the encrypted DB row (single source of truth) — not from a
   // duplicated env var. Primary: Supabase `gateway` (system-of-record). Fallback:
   // legacy Turso `servers` (Track A2 kill-switch GATEWAY_TURSO_FALLBACK). Last:
