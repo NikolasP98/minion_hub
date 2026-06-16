@@ -19,17 +19,17 @@
 		'no-company': {
 			title: 'Workforce workspace not connected',
 			body:
-				"This organization isn't linked to a Workforce (Paperclip) workspace yet, or the hub's " +
-				'Paperclip credentials are missing in this environment. An instance admin should confirm ' +
-				'HUB_PAPERCLIP_BOARD_KEY is set and that this org has a company mapping, then reload.',
+				"This organization isn't linked to a Workforce workspace yet, or the hub's " +
+				'Workforce credentials are missing in this environment. An instance admin should confirm ' +
+				'HUB_WORKFORCE_BOARD_KEY is set and that this org has a company mapping, then reload.',
 			tone: 'warning',
 		},
 		'provision-failed': {
 			title: "Couldn't set up the Workforce workspace",
 			body:
-				'We tried to create a Workforce workspace for this organization but the Paperclip backend ' +
+				'We tried to create a Workforce workspace for this organization but the Workforce backend ' +
 				"rejected it. This usually means the hub's board key is missing or isn't an instance admin. " +
-				'Ask an instance admin to confirm HUB_PAPERCLIP_BOARD_KEY, then reload.',
+				'Ask an instance admin to confirm HUB_WORKFORCE_BOARD_KEY, then reload.',
 			tone: 'warning',
 		},
 	};
@@ -38,7 +38,7 @@
 		title: 'Workforce unavailable',
 		body:
 			"Workforce isn't available for this organization right now. If this keeps happening, an " +
-			"instance admin should check the hub's Paperclip configuration.",
+			"instance admin should check the hub's Workforce configuration.",
 		tone: 'warning',
 	};
 

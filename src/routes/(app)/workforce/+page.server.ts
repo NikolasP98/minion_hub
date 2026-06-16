@@ -22,9 +22,9 @@ export const load: PageServerLoad = async (event) => {
 		return { summary, badges, activity, costTrend };
 	} catch (e: any) {
 		const status = e?.status ?? 502;
-		// 404 = the org's mapped Paperclip company no longer exists on the backend
+		// 404 = the org's mapped Workforce company no longer exists on the backend
 		// (stale mapping) — surface the reason-aware welcome instead of a raw error.
 		if (status === 404) throw redirect(302, '/workforce/welcome?reason=no-company');
-		throw error(status, 'Workforce backend (Paperclip) is unavailable');
+		throw error(status, 'Workforce backend is unavailable');
 	}
 };

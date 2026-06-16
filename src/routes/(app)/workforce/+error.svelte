@@ -4,14 +4,14 @@
 	import { toastError } from '$lib/state/ui/toast.svelte';
 
 	const status = $derived(page.status);
-	// 502/503/504 from the workforce loads mean the Paperclip backend was
+	// 502/503/504 from the workforce loads mean the Workforce backend was
 	// unreachable or errored — distinct from a real app bug.
 	const isBackend = $derived(status === 502 || status === 503 || status === 504);
 
 	const title = $derived(isBackend ? 'Workforce backend unavailable' : 'Something went wrong');
 	const detail = $derived(
 		isBackend
-			? 'Couldn’t reach the Workforce backend (Paperclip). It may be starting up, restarting, or temporarily unreachable — retry in a moment.'
+			? 'Couldn’t reach the Workforce backend. It may be starting up, restarting, or temporarily unreachable — retry in a moment.'
 			: (page.error?.message ?? 'An unexpected error occurred.'),
 	);
 
