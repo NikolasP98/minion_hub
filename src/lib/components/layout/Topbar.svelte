@@ -20,7 +20,7 @@
 
     const allSections = $derived<Section[]>([
         ...getSections(),
-        ...getDynamicPluginsSections(pluginNavState.controlCenters),
+        ...getDynamicPluginsSections(pluginNavState.controlCenters, pluginNavState.enabledByPluginId),
     ]);
     function isActive(item: SectionItem): boolean {
         return item.activeWhen ? item.activeWhen(page.url) : item.matcher(page.url.pathname);

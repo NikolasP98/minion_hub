@@ -73,6 +73,20 @@ describe("getDynamicPluginsSections", () => {
     const tools = sections.find((s) => s.id === "plugins:tool");
     expect(tools?.items.map((i) => i.href)).toEqual(["/plugins/x"]);
   });
+
+  it("marks a plugin item disabled when enabledByPluginId says it's off for the org", () => {
+    const entries = [
+      { pluginId: "studio", slot: "plugins.controlCenter" as const, title: "Studio", description: "", entrypoint: "c.html", category: "creative" as const },
+      { pluginId: "x", slot: "plugins.controlCenter" as const, title: "X", description: "", entrypoint: "c.html" },
+    ];
+    const sections = getDynamicPluginsSections(entries, { studio: false, x: true });
+    const studio = sections.find((s) => s.id === "plugins:creative")?.items[0];
+    const x = sections.find((s) => s.id === "plugins:tool")?.items[0];
+    expect(studio?.disabled).toBe(true);
+    expect(x?.disabled).toBe(false);
+    // Built-ins (CRM/Kanban) are never marked disabled by org state.
+    expect(sections.find((s) => s.id === "plugins:marketing")?.items[0]?.disabled).toBeFalsy();
+  });
 });
 
 describe("hydratePluginNav — enabledByPluginId", () => {
@@ -115,5 +129,45 @@ describe("hydratePluginNav — enabledByPluginId", () => {
     await hydratePluginNav();
     expect(pluginNavState.enabledByPluginId.flows).toBe(false);
     expect(pluginNavState.enabledByPluginId.whatsapp).toBe(true);
+  });
+});
+
+describe("hydratePluginNav — orgEnabled precedence + setPluginEnabled", () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          entries: [
+            // orgEnabled=false must win even though globally configEnabled=true.
+            { pluginId: "discord", slot: "settings.plugins", configEnabled: true, orgEnabled: false, title: "Discord", entrypoint: "d.html" },
+            { pluginId: "telegram", slot: "settings.plugins", configEnabled: true, orgEnabled: true, title: "Telegram", entrypoint: "t.html" },
+          ],
+        }),
+      }),
+    );
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("prefers per-org orgEnabled over global configEnabled", async () => {
+    const { pluginNavState, hydratePluginNav } = await import("$lib/state/plugin-nav.svelte");
+    pluginNavState.loaded = false;
+    await hydratePluginNav();
+    expect(pluginNavState.enabledByPluginId.discord).toBe(false);
+    expect(pluginNavState.enabledByPluginId.telegram).toBe(true);
+  });
+
+  it("setPluginEnabled flips state reactively (new object identity)", async () => {
+    const { pluginNavState, hydratePluginNav, setPluginEnabled } = await import(
+      "$lib/state/plugin-nav.svelte"
+    );
+    pluginNavState.loaded = false;
+    await hydratePluginNav();
+    const before = pluginNavState.enabledByPluginId;
+    setPluginEnabled("discord", true);
+    expect(pluginNavState.enabledByPluginId.discord).toBe(true);
+    // Reassigned (not mutated) so Svelte $derived consumers re-run.
+    expect(pluginNavState.enabledByPluginId).not.toBe(before);
   });
 });

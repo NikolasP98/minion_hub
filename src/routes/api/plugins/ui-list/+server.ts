@@ -6,7 +6,10 @@ import { pluginsUiList } from '$lib/server/gateway-rpc';
 export const GET: RequestHandler = async ({ locals }) => {
   requireAuth(locals);
   try {
-    const entries = await pluginsUiList(locals.user?.supabaseId);
+    // Pass the acting org so each entry carries per-org `orgEnabled` — the nav
+    // store dims plugins this org has disabled (vs the global configEnabled).
+    const orgId = locals.orgId ?? locals.tenantCtx?.tenantId;
+    const entries = await pluginsUiList(locals.user?.supabaseId, orgId);
     return json({ entries });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

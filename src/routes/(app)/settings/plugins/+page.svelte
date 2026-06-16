@@ -20,6 +20,7 @@
   import PluginIframe from '$lib/plugins/PluginIframe.svelte';
   import type { Theme } from '$lib/plugins/bridge-protocol';
   import { hostsState, fetchHostToken } from '$lib/state/features/hosts.svelte';
+  import { setPluginEnabled } from '$lib/state/plugin-nav.svelte';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -178,6 +179,9 @@
         return;
       }
       enabledOverrides = { ...enabledOverrides, [entry.pluginId]: next };
+      // Reflect the per-org change in the shared nav store so the side-menu
+      // dims/undims this plugin reactively — no reload, no gateway restart.
+      setPluginEnabled(entry.pluginId, next);
       if (body.restartRequired) restartRequired = true;
     } catch (err) {
       toggleError = err instanceof Error ? err.message : String(err);

@@ -33,6 +33,10 @@ export type SectionItem = {
     // via canClient(); routes are also guarded server-side, so hiding here is
     // UX only.
     requires?: string;
+    // True when the plugin behind this item is disabled FOR THE ACTING ORG
+    // (per-org toggle). The item stays visible+navigable but renders dimmed so
+    // the side-menu reactively reflects the org's enable/disable state.
+    disabled?: boolean;
 };
 
 export type SubSection = {
@@ -210,7 +214,10 @@ function normalizePluginCategory(raw: string | undefined): PluginNavCategory {
  * Customer Support, Tools). Channel plugins are folded into a collapsible
  * Channels subsection under Customer Support. Returns [] when nothing maps.
  */
-export function getDynamicPluginsSections(entries: PluginUiManifestOccupant[]): Section[] {
+export function getDynamicPluginsSections(
+    entries: PluginUiManifestOccupant[],
+    enabledByPluginId: Record<string, boolean> = {},
+): Section[] {
     const byCategory = new Map<PluginNavCategory, SectionItem[]>();
     const channelItems: SectionItem[] = [];
 
@@ -233,6 +240,7 @@ export function getDynamicPluginsSections(entries: PluginUiManifestOccupant[]): 
             label: e.title,
             icon: resolvePluginIcon(e.icon),
             matcher: (p: string) => p.startsWith(`/plugins/${e.pluginId}`),
+            disabled: enabledByPluginId[e.pluginId] === false,
         });
     }
 

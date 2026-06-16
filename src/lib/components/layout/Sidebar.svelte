@@ -28,7 +28,11 @@
   const serverVersion = $derived(gw.hello?.server?.version ?? null);
 
   const staticSections = $derived(getSections());
-  const pluginsSections = $derived(getDynamicPluginsSections(pluginNavState.controlCenters));
+  // Pass per-org enabled map so the derive re-runs when a plugin is toggled —
+  // disabled-for-org plugin items render dimmed, reactively, with no reload.
+  const pluginsSections = $derived(
+    getDynamicPluginsSections(pluginNavState.controlCenters, pluginNavState.enabledByPluginId),
+  );
   const navSections = $derived<Section[]>([...staticSections, ...pluginsSections]);
 
   const showReliability = $derived(canClient('reliability.monitor'));
@@ -189,13 +193,14 @@
               <a
                 href={item.href}
                 {...trigger}
-                class="nav-row {rowJustify} {active
+                class="nav-row {rowJustify} {item.disabled ? 'is-disabled' : ''} {active
                   ? section.tone === 'brand'
                     ? 'nav-active brand'
                     : 'nav-active accent'
                   : ''}"
                 aria-label={item.label}
                 aria-current={active ? 'page' : undefined}
+                title={item.disabled ? `${item.label} — disabled for this org` : undefined}
                 oncontextmenu={(e) => openCtx(e, item.href, item.label)}
               >
                 <NavIcon icon={item.icon} size={18} class="nav-icon shrink-0" />
@@ -234,9 +239,10 @@
                     <a
                       href={item.href}
                       {...trigger}
-                      class="nav-row sub-item {rowJustify} {active ? 'nav-active accent' : ''}"
+                      class="nav-row sub-item {rowJustify} {item.disabled ? 'is-disabled' : ''} {active ? 'nav-active accent' : ''}"
                       aria-label={item.label}
                       aria-current={active ? 'page' : undefined}
+                      title={item.disabled ? `${item.label} — disabled for this org` : undefined}
                       oncontextmenu={(e) => openCtx(e, item.href, item.label)}
                     >
                       <NavIcon icon={item.icon} size={18} class="nav-icon shrink-0" />
@@ -341,6 +347,17 @@
   }
   .nav-row.sub-item {
     margin-left: 0.5rem;
+  }
+  /* Plugin disabled for the acting org: dimmed but still navigable. Reactively
+     toggled via pluginNavState.enabledByPluginId (no reload / no gw restart). */
+  .nav-row.is-disabled {
+    opacity: 0.4;
+  }
+  .nav-row.is-disabled :global(.nav-icon) {
+    opacity: 0.5;
+  }
+  .nav-row.is-disabled:hover {
+    opacity: 0.7;
   }
   .collapse-toggle {
     display: none;

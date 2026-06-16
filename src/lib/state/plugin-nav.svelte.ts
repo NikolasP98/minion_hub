@@ -10,9 +10,11 @@ export const pluginNavState = $state<{
    */
   settingsByPluginId: Record<string, PluginUiManifestOccupant>;
   /**
-   * Whether each plugin is enabled, keyed by pluginId. Absent configEnabled
-   * on an entry is treated as true (back-compat). Available for plugin-specific
-   * UI that wants to reflect a plugin's enabled state.
+   * Whether each plugin is enabled FOR THE ACTING ORG, keyed by pluginId.
+   * Prefers per-org `orgEnabled`, falling back to global `configEnabled`, then
+   * true (back-compat / older gateway). The sidebar dims plugins that are off
+   * for this org; updated optimistically by `setPluginEnabled` on toggle so the
+   * nav reacts without a reload.
    */
   enabledByPluginId: Record<string, boolean>;
   loaded: boolean;
@@ -36,11 +38,28 @@ export async function hydratePluginNav(): Promise<void> {
     }
     pluginNavState.settingsByPluginId = byId;
     const enabled: Record<string, boolean> = {};
-    for (const e of entries) enabled[e.pluginId] = e.configEnabled !== false;
+    for (const e of entries) {
+      // Per-org state wins; fall back to global soft-master, then enabled.
+      const on = e.orgEnabled ?? e.configEnabled ?? true;
+      enabled[e.pluginId] = on !== false;
+    }
     pluginNavState.enabledByPluginId = enabled;
     pluginNavState.loaded = true;
   } catch (err) {
     pluginNavState.error = err instanceof Error ? err.message : String(err);
     pluginNavState.loaded = true;
   }
+}
+
+/**
+ * Optimistically reflect a per-org plugin enable/disable in the nav store so the
+ * sidebar reacts immediately after a toggle — no reload, no gateway restart.
+ * Reassigns the record (not in-place mutation) so Svelte 5 `$derived` consumers
+ * re-run.
+ */
+export function setPluginEnabled(pluginId: string, enabled: boolean): void {
+  pluginNavState.enabledByPluginId = {
+    ...pluginNavState.enabledByPluginId,
+    [pluginId]: enabled,
+  };
 }
