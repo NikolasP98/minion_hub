@@ -14,6 +14,33 @@ export interface MembershipUser {
 }
 
 /**
+ * True if the Supabase profile is already a member of `orgId`. Used by the
+ * `/join` load to bounce already-approved users off the invite/request screens
+ * (a refreshed join-link must not strand a now-member on the join page).
+ */
+export async function isOrgMember(supabaseId: string, orgId: string): Promise<boolean> {
+  const { data, error } = await supabaseAdmin()
+    .from('organization_members')
+    .select('profile_id')
+    .eq('profile_id', supabaseId)
+    .eq('organization_id', orgId)
+    .maybeSingle();
+  if (error) return false;
+  return !!data;
+}
+
+/** True if the Supabase profile belongs to any organization at all. */
+export async function hasAnyMembership(supabaseId: string): Promise<boolean> {
+  const { data, error } = await supabaseAdmin()
+    .from('organization_members')
+    .select('profile_id')
+    .eq('profile_id', supabaseId)
+    .limit(1);
+  if (error) return false;
+  return (data?.length ?? 0) > 0;
+}
+
+/**
  * Grant `u` membership of `orgId` by upserting a Supabase `organization_members`
  * row (idempotent on (organization_id, profile_id)). Requires `u.supabaseId`.
  * Membership lives entirely in Supabase — no Turso handle needed.
