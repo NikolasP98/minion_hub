@@ -32,6 +32,13 @@ export interface PluginUiManifestOccupant {
   pluginError?: string;
   configEnabled?: boolean;
   /**
+   * Per-org enabled state for the acting user's org (gateway computes this from
+   * `plugins.orgDisabled`). Plugins install globally on the shared gateway but
+   * each org enables/disables them independently — this is what the toggle
+   * reflects and writes. Absent ⇒ older gateway; fall back to `configEnabled`.
+   */
+  orgEnabled?: boolean;
+  /**
    * Compatibility constraints declared in the plugin manifest. Used to gate the
    * UI against the connected gateway's advertised capabilities
    * (`gw.hello.features.methods` / `server.version`) and the host bridge

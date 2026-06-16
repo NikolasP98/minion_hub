@@ -147,10 +147,12 @@
     pluginId: string;
     enabled?: boolean;
     configEnabled?: boolean;
+    orgEnabled?: boolean;
   }): boolean {
     if (entry.pluginId in enabledOverrides) return enabledOverrides[entry.pluginId];
-    // Soft master is the source of truth. Falls back to load-level enabled
-    // only when the gateway hasn't populated configEnabled (older gateway).
+    // Per-org state is the source of truth (the toggle is org-scoped). Fall back
+    // to the global soft master, then load-level enabled, for older gateways.
+    if (typeof entry.orgEnabled === 'boolean') return entry.orgEnabled;
     if (typeof entry.configEnabled === 'boolean') return entry.configEnabled;
     return entry.enabled !== false;
   }

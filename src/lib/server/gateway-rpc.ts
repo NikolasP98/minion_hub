@@ -242,14 +242,22 @@ export async function gatewayCallAsUser<T = unknown>(
   return gatewayCallWithCreds<T>(method, params, url, token, opts);
 }
 
-/** Convenience: list plugin UI manifest occupants for a specific user. */
+/**
+ * Convenience: list plugin UI manifest occupants for a specific user.
+ *
+ * `orgId` scopes the per-plugin `orgEnabled` flag: the hub's gateway connection
+ * authenticates with an admin/system token (no org claim), so the acting user's
+ * org must be passed explicitly for the gateway to compute org-scoped enable
+ * state. Omit for a global/unscoped view.
+ */
 export async function pluginsUiList(
   profileId?: string | undefined,
+  orgId?: string | undefined,
 ): Promise<PluginUiManifestOccupant[]> {
   const res = await gatewayCallAsUser<
     | { entries?: PluginUiManifestOccupant[]; occupants?: PluginUiManifestOccupant[] }
     | PluginUiManifestOccupant[]
-  >('plugins.ui.list', {}, profileId);
+  >('plugins.ui.list', orgId ? { orgId } : {}, profileId);
   if (Array.isArray(res)) return res;
   return res?.entries ?? res?.occupants ?? [];
 }
