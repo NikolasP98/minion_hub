@@ -495,7 +495,7 @@ export interface CrmSettings {
 }
 
 /** Stable comparison key for an account ref. */
-const accountKey = (channel: string, accountId: string) => `${channel} ${accountId}`;
+const accountKey = (channel: string, accountId: string) => `${channel}\u0000${accountId}`;
 
 function parseAccountConfigs(raw: unknown): AccountConfig[] | null {
   if (!Array.isArray(raw)) return null;
