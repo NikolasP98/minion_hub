@@ -2,7 +2,10 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { requireAuth } from '$server/auth/authorize';
 import { getTenantCtx } from '$server/auth/tenant-ctx';
-import { countPendingRequests } from '$server/services/join-request.service';
+// Supabase `join_request` is the system-of-record (same source the Team
+// approve/deny flow uses). The legacy Turso `joinRequests` table is unused in
+// prod, so the old Turso countPendingRequests 500'd this badge endpoint.
+import { countPendingRequests } from '$server/services/join/requests.service';
 
 /** GET /api/join-requests/count — returns { count } of pending join requests for the org. */
 export const GET: RequestHandler = async ({ locals }) => {
@@ -12,6 +15,6 @@ export const GET: RequestHandler = async ({ locals }) => {
     return json({ count: 0 });
   }
 
-  const count = await countPendingRequests(ctx.db, ctx.tenantId);
+  const count = await countPendingRequests(ctx.tenantId);
   return json({ count });
 };

@@ -126,3 +126,16 @@ export async function denyRequest(id: string, reviewerId: string): Promise<void>
 		.eq('id', id);
 	if (error) throw new Error(error.message);
 }
+
+/** Count an org's pending join requests. Supabase `join_request` is the
+ *  system-of-record — the legacy Turso `joinRequests` table is unused in prod
+ *  (querying it 500'd the /api/join-requests/count badge). */
+export async function countPendingRequests(organizationId: string): Promise<number> {
+	const { count, error } = await supabaseAdmin()
+		.from('join_request')
+		.select('id', { count: 'exact', head: true })
+		.eq('organization_id', organizationId)
+		.eq('status', 'pending');
+	if (error) throw new Error(`countPendingRequests failed: ${error.message}`);
+	return count ?? 0;
+}
