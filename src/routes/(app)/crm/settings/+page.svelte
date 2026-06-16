@@ -31,9 +31,9 @@
 
 	let { data }: { data: PageData } = $props();
 	const tags = $derived(data.tags);
-	const scope = $derived(data.scope as Scope);
-	const added = $derived(scope.added);
-	const available = $derived(scope.available);
+	// `data.scope` is STREAMED (a promise) so the page never blocks on the gateway
+	// RPC behind the account manager; it's unwrapped via {#await} in the Channels
+	// tab, where `added`/`available`/`groupedAvailable` are derived locally.
 
 	type Tab = 'tags' | 'channels';
 	let tab = $state<Tab>('tags');
@@ -137,7 +137,6 @@
 		}
 		return [...map.entries()].map(([channel, items]) => ({ channel, items }));
 	}
-	const groupedAvailable = $derived(groupByChannel(available));
 
 	async function addAccount(a: Ledger) {
 		busyKey = keyOf(a);
@@ -288,7 +287,21 @@
 				</section>
 			</div>
 		{:else}
-			<section class="card max-w-2xl">
+			{#await data.scope}
+				<section class="card max-w-2xl">
+					<div class="card-h" style="margin:0">{m.crm_channels_title()}</div>
+					<p class="t-caption mt-1">{m.crm_channels_subtitle()}</p>
+					<ul class="acclist" aria-busy="true">
+						<li class="accrow skel"></li>
+						<li class="accrow skel"></li>
+						<li class="accrow skel"></li>
+					</ul>
+				</section>
+			{:then scope}
+				{@const added = scope.added}
+				{@const available = scope.available}
+				{@const groupedAvailable = groupByChannel(available)}
+				<section class="card max-w-2xl">
 				<header class="acc-head">
 					<div>
 						<div class="card-h" style="margin:0">{m.crm_channels_title()}</div>
@@ -378,6 +391,7 @@
 					</ul>
 				{/if}
 			</section>
+			{/await}
 		{/if}
 	</div>
 </div>
@@ -528,6 +542,15 @@
 	}
 	.accrow.paused {
 		opacity: 0.62;
+	}
+	.accrow.skel {
+		height: 2.6rem;
+		border-style: dashed;
+		animation: skel-pulse 1.2s ease-in-out infinite;
+	}
+	@keyframes skel-pulse {
+		0%, 100% { opacity: 0.35; }
+		50% { opacity: 0.7; }
 	}
 	.accinfo {
 		display: flex;

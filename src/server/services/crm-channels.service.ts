@@ -51,7 +51,7 @@ export async function getChannelCatalog(ctx: CoreCtx): Promise<ChannelCatalog | 
     const res = await gatewayCall<{
       channelAccounts?: Record<string, RawAccountSnapshot[]>;
       channelDefaultAccountId?: Record<string, string>;
-    }>('channels.status', {}, { timeoutMs: 6000 });
+    }>('channels.status', {}, { timeoutMs: 2500 });
     const defaults = res?.channelDefaultAccountId ?? {};
     const accounts: CatalogAccount[] = [];
     for (const [channel, list] of Object.entries(res?.channelAccounts ?? {})) {

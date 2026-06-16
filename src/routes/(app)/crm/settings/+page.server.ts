@@ -9,6 +9,15 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   if (!ctx) throw error(401, 'Authentication required');
   depends('crm:tags');
   depends('crm:accounts');
-  const [tags, scope] = await Promise.all([listTags(ctx), getAccountScopeLive(ctx)]);
+  // `tags` drives the DEFAULT tab — await it so the page is interactive at once.
+  // `scope` needs a live gateway RPC (channels.status) and only feeds the
+  // non-default "Channels" tab, so we STREAM it (return the promise unawaited):
+  // the page paints immediately and the account manager resolves in the
+  // background instead of blocking every settings visit on the gateway. Kept
+  // resilient (never rejects) so a slow/down gateway degrades, not errors.
+  const tags = await listTags(ctx);
+  const scope = getAccountScopeLive(ctx).catch(
+    () => ({ added: [], available: [], legacy: true }) as Awaited<ReturnType<typeof getAccountScopeLive>>,
+  );
   return { tags, scope };
 };
