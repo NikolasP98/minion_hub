@@ -32,7 +32,7 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     // Supabase join_request is the system-of-record (the /join form + the
     // approve→organization_members grant both use it).
     safe(
-      listPendingRequests(),
+      listPendingRequests(ctx.tenantId),
       [] as Awaited<ReturnType<typeof listPendingRequests>>,
       'listPendingRequests',
     ),

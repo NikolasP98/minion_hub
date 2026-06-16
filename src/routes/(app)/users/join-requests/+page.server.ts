@@ -7,10 +7,12 @@ import { listAllOrganizations } from '$server/services/organizations.service';
 
 export const load: PageServerLoad = async ({ locals }) => {
   if (!can('users.manage', locals.user)) throw error(403, 'Admin access required');
+  if (!locals.tenantCtx) throw error(401, 'tenant context required');
   // Supabase organizations (Turso fallback during bake).
   const orgs = await listAllOrganizations();
   return {
-    requests: await listPendingRequests(),
+    // Org-scoped: an admin only sees their own org's pending requests.
+    requests: await listPendingRequests(locals.tenantCtx.tenantId),
     links: await listLinks(),
     orgs,
   };

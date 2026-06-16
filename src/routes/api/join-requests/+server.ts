@@ -20,5 +20,6 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 
 export const GET: RequestHandler = async ({ locals }) => {
 	requireAdmin(locals);
-	return json({ requests: await listPendingRequests() });
+	if (!locals.tenantCtx) throw error(401, 'tenant context required');
+	return json({ requests: await listPendingRequests(locals.tenantCtx.tenantId) });
 };

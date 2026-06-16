@@ -87,10 +87,13 @@ export async function getPendingRequestForUser(
 	return (data as { id: string; status: string } | null) ?? null;
 }
 
-export async function listPendingRequests(): Promise<JoinRequestRow[]> {
+/** An org's pending join requests. MUST be org-scoped — every caller is an
+ *  org-level admin, so an unscoped list leaks other orgs' requesters. */
+export async function listPendingRequests(organizationId: string): Promise<JoinRequestRow[]> {
 	const { data, error } = await supabaseAdmin()
 		.from('join_request')
 		.select('*')
+		.eq('organization_id', organizationId)
 		.eq('status', 'pending')
 		.order('created_at', { ascending: true });
 	if (error) throw new Error(error.message);
