@@ -551,6 +551,8 @@
                       {authToken}
                       {theme}
                       {tokens}
+                      compat={current.compat}
+                      pluginStatus={current.status}
                       externalSaveBar
                       fillContainer
                       bind:dirty={saveDirty}

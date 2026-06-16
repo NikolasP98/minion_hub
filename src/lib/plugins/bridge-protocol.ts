@@ -6,6 +6,14 @@ export type Theme = "light" | "dark";
 /** UI locale the host is rendering in; plugins mirror it. */
 export type Locale = "en" | "es";
 
+/**
+ * postMessage bridge protocol version. Mirrors BRIDGE_PROTOCOL_VERSION in
+ * @nikolasp98/plugin-ui-bridge — distinct from the gateway WS frame protocol
+ * (`hello-ok.protocol`). Advertised both ways in the handshake so a peer can
+ * detect a mismatch; absent ⇒ treated as 1 (backward-compatible).
+ */
+export const BRIDGE_PROTOCOL_VERSION = 1 as const;
+
 export type HostToPlugin =
   | {
       type: "host:hello";
@@ -15,6 +23,8 @@ export type HostToPlugin =
       authToken: string;
       /** Host UI locale; optional for backward-compat (plugins fall back to "en"). */
       locale?: Locale;
+      /** Host's bridge protocol version; optional (absent ⇒ 1). */
+      protocolVersion?: number;
     }
   | {
       type: "host:theme-change";
@@ -41,7 +51,7 @@ export type HostToPlugin =
     };
 
 export type PluginToHost =
-  | { type: "plugin:ready" }
+  | { type: "plugin:ready"; protocolVersion?: number }
   | { type: "plugin:resize"; height: number }
   | { type: "plugin:notify"; level: "info" | "warn" | "error"; message: string }
   | {
@@ -104,6 +114,9 @@ export class HostBridge {
   // hangs waiting for host:hello forever (race when the iframe's notifyReady()
   // fires before the host registers its message listener / sets the payload).
   private pluginReady = false;
+  // Plugin's advertised bridge protocol version, captured from plugin:ready.
+  // Null until ready; a pre-versioning plugin omits it and is reported as 1.
+  private _pluginProtocolVersion: number | null = null;
   private resizeHandlers: Array<(height: number) => void> = [];
   private notifyHandlers: Array<(level: "info" | "warn" | "error", message: string) => void> = [];
   private readyHandlers: Array<() => void> = [];
@@ -123,6 +136,7 @@ export class HostBridge {
     if (ev.data.type === "plugin:ready") {
       const wasReady = this.pluginReady;
       this.pluginReady = true;
+      this._pluginProtocolVersion = ev.data.protocolVersion ?? 1;
       this.flushHello();
       this.flushTheme();
       this.flushLocale();
@@ -171,6 +185,14 @@ export class HostBridge {
     this.opts.target.postMessage(msg, this.opts.pluginOrigin);
   }
 
+  /**
+   * The plugin's advertised bridge protocol version, or null before
+   * plugin:ready. A plugin that predates versioning omits it and reports as 1.
+   */
+  get pluginProtocolVersion(): number | null {
+    return this._pluginProtocolVersion;
+  }
+
   sendHelloOnReady(
     payload: Omit<Extract<HostToPlugin, { type: "host:hello" }>, "type">,
   ): void {
@@ -180,7 +202,13 @@ export class HostBridge {
 
   private flushHello(): void {
     if (!this.pluginReady || !this.pendingHelloPayload) return;
-    const msg: HostToPlugin = { type: "host:hello", ...this.pendingHelloPayload };
+    // Advertise the host's bridge protocol version unless the caller already
+    // set one explicitly in the payload.
+    const msg: HostToPlugin = {
+      type: "host:hello",
+      protocolVersion: BRIDGE_PROTOCOL_VERSION,
+      ...this.pendingHelloPayload,
+    };
     this.opts.target.postMessage(msg, this.opts.pluginOrigin);
   }
 

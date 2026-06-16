@@ -4,6 +4,8 @@
   import { Loader2, Check, AlertTriangle, RotateCw } from "lucide-svelte";
   import { mountHostBridge, type MountedHostBridge } from "./bridge-host";
   import type { Theme, Locale } from "./bridge-protocol";
+  import { checkPluginCompat, type CompatVerdict } from "./compat";
+  import type { PluginCompat } from "./plugin-types";
   // Read the live UI language straight from the paraglide runtime (already in
   // the module graph via the messages import) rather than the locale store,
   // which transitively pulls SvelteKit-only modules and breaks test rendering.
@@ -96,6 +98,15 @@
      * modal at the middle of the long content instead of the visible area.
      */
     fillContainer?: boolean;
+    /**
+     * Compat constraints declared in the plugin manifest (from plugins.ui.list).
+     * When set, the iframe is gated against the connected gateway's advertised
+     * capabilities before mounting — an unmet constraint renders an explanatory
+     * "needs newer gateway" panel instead of an iframe whose RPCs would fail.
+     */
+    compat?: PluginCompat;
+    /** Load-level status from plugins.ui.list; "incompatible" blocks the mount. */
+    pluginStatus?: "loaded" | "disabled" | "error" | "incompatible";
   }
 
   let {
@@ -113,7 +124,45 @@
     restartRequired = $bindable(false),
     bindTriggerSave,
     fillContainer = false,
+    compat,
+    pluginStatus,
   }: Props = $props();
+
+  // Connected gateway's advertised capabilities (hello-ok.features.methods /
+  // server.version). Read lazily via dynamic import so this component stays
+  // test-renderable — a static `import { gw }` would pull SvelteKit-only
+  // modules ($app/state) at module-eval time. gw.hello is populated before any
+  // plugin page renders and is stable for the view's lifetime, so a one-shot
+  // read on mount is sufficient (a mid-view gateway swap re-gates on remount).
+  let gatewayMethods = $state<string[]>([]);
+  let gatewayVersion = $state<string | null>(null);
+  let capsLoaded = $state(false);
+
+  $effect(() => {
+    if (capsLoaded) return;
+    let cancelled = false;
+    void import("$lib/state/gateway/gateway-data.svelte").then((mod) => {
+      if (cancelled) return;
+      gatewayMethods = mod.gw.hello?.features?.methods ?? [];
+      gatewayVersion = mod.gw.hello?.server?.version ?? null;
+      capsLoaded = true;
+    });
+    return () => {
+      cancelled = true;
+    };
+  });
+
+  const compatVerdict = $derived.by((): CompatVerdict => {
+    // The gateway already refused to load this plugin (e.g. minGatewayVersion
+    // gate) — surface that verbatim without waiting on a capabilities read.
+    if (pluginStatus === "incompatible") {
+      return { ok: false, reasons: ["This plugin is incompatible with the connected gateway."] };
+    }
+    // Nothing to check, or capabilities not read yet → permissive (avoids a
+    // flash from iframe → warning → iframe while caps load).
+    if (!compat || !capsLoaded) return { ok: true };
+    return checkPluginCompat(compat, { methods: gatewayMethods, version: gatewayVersion });
+  });
 
   let iframeEl: HTMLIFrameElement | null = $state(null);
   // Plain `let` (not $state) — the bridge-mount $effect both reads
@@ -205,6 +254,9 @@
   // its loading screen forever. Binding-time mount + the buffered hello in
   // HostBridge.flushHello cover both ordering races.
   $effect(() => {
+    // Don't mount the bridge for an incompatible plugin — the warning panel
+    // renders instead of the iframe, so there's no contentWindow to bridge to.
+    if (!compatVerdict.ok) return;
     if (!iframeEl?.contentWindow) return;
     mounted?.dispose();
     mounted = mountHostBridge({
@@ -359,7 +411,27 @@
       </button>
     </div>
   {/if}
-  {#if fillContainer}
+  {#if !compatVerdict.ok}
+    <div class="p-6">
+      <div
+        class="flex max-w-prose items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/5 p-4 text-sm"
+      >
+        <AlertTriangle size={18} class="mt-0.5 shrink-0 text-amber-500" />
+        <div class="space-y-1">
+          <p class="font-medium text-foreground">This plugin needs a newer gateway</p>
+          <p class="text-muted-foreground">
+            It isn't compatible with the gateway you're connected to. Update the gateway, then
+            reconnect.
+          </p>
+          <ul class="list-disc space-y-0.5 pl-5 text-muted-foreground">
+            {#each compatVerdict.reasons as reason (reason)}
+              <li>{reason}</li>
+            {/each}
+          </ul>
+        </div>
+      </div>
+    </div>
+  {:else if fillContainer}
     <div class="relative flex-1 min-h-0">
       <iframe
         bind:this={iframeEl}
