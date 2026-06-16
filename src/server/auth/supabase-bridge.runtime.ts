@@ -1,67 +1,84 @@
 // Runtime helper — imports $server/supabase (which needs $env shims).
 // Kept separate from supabase-bridge.ts so the pure mapper stays unit-testable.
 import type { RequestEvent } from '@sveltejs/kit';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabaseServer, supabaseAdmin } from '$server/supabase';
-import { mapProfileToUser, type BridgedUser } from './supabase-bridge.js';
+import { mapProfileToUser, type BridgedUser, type ProfileRow } from './supabase-bridge.js';
 
 export type { BridgedUser } from './supabase-bridge.js';
 
 /**
  * Runtime: resolve the current Supabase user (if any) into the hub user shape.
- * Returns null when unauthenticated. Reads role/legacy id from public.profiles
- * via the service-role client (RLS-independent, server-side).
+ * Returns null when unauthenticated. Reads role/id from public.profiles via the
+ * service-role client (RLS-independent, server-side).
+ *
+ * Performance: identity is established with `getClaims()`, which verifies the
+ * access-token signature LOCALLY (no GoTrue round-trip) when the project uses
+ * asymmetric JWT signing keys, and transparently falls back to a `getUser()`
+ * network call for legacy HS256 tokens — so this is never less correct than the
+ * old `getUser()`, just faster on the common path.
+ *
+ * Optional `client` / `accessToken` let the caller (resolve-identity) reuse the
+ * request-scoped client and the token it already read for cache keying, avoiding
+ * a duplicate `getSession()`.
  */
-export async function resolveSupabaseUser(event: RequestEvent): Promise<BridgedUser | null> {
-  const supabase = supabaseServer(event);
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
+export async function resolveSupabaseUser(
+  event: RequestEvent,
+  client?: SupabaseClient,
+  accessToken?: string,
+): Promise<BridgedUser | null> {
+  const supabase = client ?? supabaseServer(event);
+  const { data: claimsData, error } = accessToken
+    ? await supabase.auth.getClaims(accessToken)
+    : await supabase.auth.getClaims();
+  const claims = claimsData?.claims as
+    | { sub?: string; email?: string | null; user_metadata?: Record<string, unknown> | null }
+    | undefined;
+  if (error || !claims?.sub) return null;
+  const userId = claims.sub;
 
   const admin = supabaseAdmin();
 
-  // CORE identity columns only. NEVER add additive columns here: if a
-  // not-yet-migrated column is requested, PostgREST errors the whole query,
-  // profile comes back null, and login silently breaks (user bounced to /join).
-  // Enrichment columns are fetched best-effort below. (legacy_user_id was dropped
-  // in S7 — GoTrue principal id == profile uuid, no bridge needed.)
-  const { data: profile } = await admin
+  // Single round-trip: pull core identity + enrichment columns together. If an
+  // enrichment column isn't migrated yet PostgREST errors the whole select, so
+  // we retry with the CORE-only column set — login must never break on
+  // migration lag. (legacy_user_id was dropped in S7: GoTrue principal id ==
+  // profile uuid, no bridge needed.)
+  let profile: ProfileRow | null = null;
+  const full = await admin
     .from('profiles')
-    .select('id, email, display_name, role')
-    .eq('id', user.id)
+    .select('id, email, display_name, role, avatar_url, created_at')
+    .eq('id', userId)
     .single();
-
-  // Best-effort enrichment (avatar_url, created_at). Tolerates the columns not
-  // existing yet (migration lag): on error `extra` is null and we degrade to the
-  // Google metadata avatar / null — login is unaffected.
-  const metadataAvatar =
-    (user.user_metadata?.avatar_url as string) ??
-    (user.user_metadata?.picture as string) ??
-    null;
-  let avatar_url: string | null = metadataAvatar;
-  let created_at: string | null = null;
-  const { data: extra } = await admin
-    .from('profiles')
-    .select('avatar_url, created_at')
-    .eq('id', user.id)
-    .single();
-  if (extra) {
-    avatar_url = (extra.avatar_url as string | null) ?? metadataAvatar;
-    created_at = (extra.created_at as string | null) ?? null;
+  if (!full.error && full.data) {
+    profile = full.data as ProfileRow;
+  } else {
+    const core = await admin
+      .from('profiles')
+      .select('id, email, display_name, role')
+      .eq('id', userId)
+      .single();
+    profile = (core.data as ProfileRow | null) ?? null;
   }
+
+  // Fall back to the Google OAuth metadata avatar when the profile row has none.
+  const metadataAvatar =
+    (claims.user_metadata?.avatar_url as string) ??
+    (claims.user_metadata?.picture as string) ??
+    null;
 
   return mapProfileToUser(
     profile
-      ? { ...profile, avatar_url, created_at }
+      ? { ...profile, avatar_url: profile.avatar_url ?? metadataAvatar }
       : {
-          id: user.id,
-          email: user.email ?? null,
-          display_name: (user.user_metadata?.full_name as string) ?? null,
-          avatar_url,
+          id: userId,
+          email: claims.email ?? null,
+          display_name: (claims.user_metadata?.full_name as string) ?? null,
+          avatar_url: metadataAvatar,
           role: null,
-          created_at,
+          created_at: null,
         },
-    user.id,
+    userId,
   );
 }
 

@@ -45,10 +45,13 @@ export const load: LayoutServerLoad = async ({ locals, depends, url, cookies }) 
 
   const user = requireAuth(locals);
 
-  // Defensive org-activation: hooks.server.ts only seeds tenantCtx when the
-  // session has an activeOrganizationId. If the session is missing one, look
-  // up first org membership and activate, OR fail clearly if no memberships.
-  if (!locals.session?.activeOrganizationId || !locals.tenantCtx) {
+  // Defensive org-activation: hooks.server.ts seeds locals.tenantCtx + orgId
+  // whenever the user has a resolvable org. Only when it COULDN'T (no tenantCtx)
+  // do we look one up here, or fail clearly if the user has no memberships.
+  // (The old `!locals.session?.activeOrganizationId` guard was Better-Auth cruft:
+  // Supabase mode never sets a session row, so it was always true and forced a
+  // redundant resolveSupabaseTenant round-trip on every app page load.)
+  if (!locals.tenantCtx) {
     // Tenancy source of truth = Supabase organization_members (keyed by profile
     // uuid). The active_org cookie carries an explicit org selection.
     const preferredOrgId = cookies.get('active_org') ?? null;
