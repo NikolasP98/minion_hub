@@ -18,7 +18,14 @@
 	import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
 	import { formatPhoneLike, relativeTime } from '$lib/components/crm/crm-format';
 
-	type Ledger = { channel: string; accountId: string; contacts: number; lastActive: string | null };
+	type Ledger = {
+		channel: string;
+		accountId: string;
+		contacts: number;
+		lastActive: string | null;
+		name?: string | null;
+		phone?: string | null;
+	};
 	type Managed = Ledger & { label: string | null; paused: boolean };
 	type Scope = { added: Managed[]; available: Ledger[]; legacy: boolean };
 
@@ -107,8 +114,15 @@
 	function channelLabel(ch: string): string {
 		return ch.charAt(0).toUpperCase() + ch.slice(1);
 	}
-	function accountName(a: { accountId: string; label?: string | null }): string {
-		if (a.label && a.label.trim()) return a.label;
+	function accountName(a: {
+		accountId: string;
+		label?: string | null;
+		name?: string | null;
+		phone?: string | null;
+	}): string {
+		if (a.label && a.label.trim()) return a.label; // user-set CRM label wins
+		if (a.name && a.name.trim()) return a.name; // canonical gateway account name
+		if (a.phone && a.phone.trim()) return formatPhoneLike(a.phone);
 		if (!a.accountId || a.accountId === 'default') return m.crm_account_default();
 		return formatPhoneLike(a.accountId);
 	}

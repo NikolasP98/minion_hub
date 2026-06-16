@@ -2724,5 +2724,22 @@
   "shared_sharingRevoked": "Uso compartido revocado",
   "shared_feedBadge": "Compartida",
   "shared_feedBadgeFrom": "Bandeja compartida · {owner}",
-  "shared_feedBadgeFromGeneric": "Bandeja compartida"
+  "shared_feedBadgeFromGeneric": "Bandeja compartida",
+  "crm_details": "Detalles",
+  "crm_no_details": "Aún no hay detalles adicionales.",
+  "crm_edit_properties": "Editar propiedades",
+  "crm_meta_key": "Propiedad",
+  "crm_meta_new_key": "Nueva propiedad…",
+  "crm_meta_value": "Valor",
+  "crm_columns": "Columnas",
+  "crm_columns_heading": "Mostrar columnas de datos",
+  "crm_meta_dni": "DNI",
+  "crm_meta_edad": "Edad",
+  "crm_meta_sexo": "Sexo",
+  "crm_meta_email": "Correo",
+  "crm_meta_telefono": "Teléfono",
+  "crm_meta_distrito": "Distrito",
+  "crm_meta_motivo": "Motivo",
+  "crm_meta_referencia": "Referencia",
+  "crm_meta_nombre": "Nombre"
 }

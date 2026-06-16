@@ -2724,5 +2724,22 @@
   "shared_sharingRevoked": "Sharing revoked",
   "shared_feedBadge": "Shared",
   "shared_feedBadgeFrom": "Shared inbox · {owner}",
-  "shared_feedBadgeFromGeneric": "Shared inbox"
+  "shared_feedBadgeFromGeneric": "Shared inbox",
+  "crm_details": "Details",
+  "crm_no_details": "No additional details yet.",
+  "crm_edit_properties": "Edit properties",
+  "crm_meta_key": "Property",
+  "crm_meta_new_key": "New property…",
+  "crm_meta_value": "Value",
+  "crm_columns": "Columns",
+  "crm_columns_heading": "Show data columns",
+  "crm_meta_dni": "DNI",
+  "crm_meta_edad": "Age",
+  "crm_meta_sexo": "Sex",
+  "crm_meta_email": "Email",
+  "crm_meta_telefono": "Phone",
+  "crm_meta_distrito": "District",
+  "crm_meta_motivo": "Reason",
+  "crm_meta_referencia": "Referral",
+  "crm_meta_nombre": "Name"
 }

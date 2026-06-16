@@ -168,3 +168,71 @@ export function tryCompileTagRule(rule: unknown): string | null {
     return null;
   }
 }
+
+// ── Auto-tag rule evaluation (in-process mirror of the SQL compiler) ──────────
+// The SQL compiler above evaluates rules LIVE inside the ranking query. But the
+// list/detail pages already hold the fully-scored ranking ROW in memory, so we
+// also evaluate the same rule shape directly against that row — this is what
+// actually surfaces an auto-tag as "applied" in the UI (chips on the detail
+// panel, the tag filter on the list). Same whitelist + operator set as the
+// compiler, so the two never disagree; an invalid rule simply never matches.
+
+const NUMERIC_CMP: Record<string, (a: number, b: number) => boolean> = {
+  '=': (a, b) => a === b,
+  '!=': (a, b) => a !== b,
+  '>': (a, b) => a > b,
+  '>=': (a, b) => a >= b,
+  '<': (a, b) => a < b,
+  '<=': (a, b) => a <= b,
+};
+
+/** A scored ranking row (the fields a rule may read). */
+export type RankingRow = Partial<Record<RuleField, number | string | null>>;
+
+function evalLeaf(rule: LeafRule, row: RankingRow): boolean {
+  const type = RULE_FIELDS[rule.field];
+  if (!type) return false;
+  const ops = type === 'number' ? NUMERIC_OPS : STRING_OPS;
+  if (typeof rule.op !== 'string' || !ops.has(rule.op)) return false;
+  const actual = row[rule.field];
+  if (type === 'number') {
+    const a = typeof actual === 'number' ? actual : Number(actual);
+    const b = typeof rule.value === 'number' ? rule.value : Number(rule.value);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
+    return NUMERIC_CMP[rule.op](a, b);
+  }
+  const a = actual == null ? '' : String(actual);
+  const b = typeof rule.value === 'string' ? rule.value : String(rule.value ?? '');
+  return rule.op === '=' ? a === b : a !== b;
+}
+
+/**
+ * Evaluate an auto-tag rule against a scored ranking row. Returns false for any
+ * malformed / out-of-whitelist rule (never throws) — mirrors `tryCompileTagRule`.
+ */
+export function evaluateTagRule(rule: unknown, row: RankingRow, depth = 0): boolean {
+  if (depth > 8 || !rule || typeof rule !== 'object') return false;
+  const r = rule as Record<string, unknown>;
+  if ('all' in r) {
+    return Array.isArray(r.all) && r.all.length > 0 && r.all.every((x) => evaluateTagRule(x, row, depth + 1));
+  }
+  if ('any' in r) {
+    return Array.isArray(r.any) && r.any.length > 0 && r.any.some((x) => evaluateTagRule(x, row, depth + 1));
+  }
+  if ('field' in r) return evalLeaf(r as unknown as LeafRule, row);
+  return false;
+}
+
+/** A tag definition with an optional auto-rule (the shape `listTags` returns). */
+export interface TagWithRule {
+  id: string;
+  kind?: string | null;
+  rule?: unknown;
+}
+
+/** The ids of every auto-tag whose rule matches the given scored row. */
+export function matchingAutoTagIds(row: RankingRow, tags: TagWithRule[]): string[] {
+  return tags
+    .filter((t) => t.kind === 'auto' && t.rule != null && evaluateTagRule(t.rule, row))
+    .map((t) => t.id);
+}
