@@ -104,19 +104,19 @@
 		view;
 		renderLimit = PAGE;
 	});
-	// Grow the window when the sentinel near the list bottom scrolls into view.
-	function infiniteScroll(node: HTMLElement) {
-		const root = node.closest('[data-scroll-root]') as Element | null;
-		const io = new IntersectionObserver(
-			(entries) => {
-				if (entries[0]?.isIntersecting && renderLimit < view.length) {
-					renderLimit = Math.min(renderLimit + PAGE, view.length);
-				}
-			},
-			{ root, rootMargin: '600px 0px' },
-		);
-		io.observe(node);
-		return { destroy: () => io.disconnect() };
+	// Grow the window as the user scrolls near the bottom. A scroll listener on
+	// the list container (not an IntersectionObserver sentinel) so growth fires
+	// reliably across browsers and programmatic scrolls; cheap — it only bumps a
+	// counter when within 600px of the end.
+	function infiniteScroll(root: HTMLElement) {
+		const onScroll = () => {
+			if (renderLimit >= view.length) return;
+			if (root.scrollTop + root.clientHeight >= root.scrollHeight - 600) {
+				renderLimit = Math.min(renderLimit + PAGE, view.length);
+			}
+		};
+		root.addEventListener('scroll', onScroll, { passive: true });
+		return { destroy: () => root.removeEventListener('scroll', onScroll) };
 	}
 
 	async function syncNow() {
@@ -218,7 +218,7 @@
 	</div>
 
 	<!-- Ranked list -->
-	<div class="flex-1 min-h-0 overflow-auto" data-scroll-root>
+	<div class="flex-1 min-h-0 overflow-auto" use:infiniteScroll>
 		{#if contacts.length === 0}
 			<div class="flex flex-col items-center justify-center h-full gap-2 text-center p-8">
 				<Contact size={32} class="text-muted-foreground" />
@@ -285,9 +285,6 @@
 					{/each}
 				</tbody>
 			</table>
-			{#if renderLimit < view.length}
-				<div use:infiniteScroll class="h-1" aria-hidden="true"></div>
-			{/if}
 		{/if}
 	</div>
 </div>
