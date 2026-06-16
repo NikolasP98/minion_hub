@@ -1,73 +1,18 @@
-// Inlined from @minion-stack/plugin-ui-bridge until that package is published.
-// Phase B can refactor to import from the npm package.
+// The shared postMessage protocol (message types + BRIDGE_PROTOCOL_VERSION) is
+// owned by @nikolasp98/plugin-ui-bridge — the same package the plugin UIs use,
+// so the two sides can't drift. This module keeps only the *host* side: the
+// richer HostBridge class (RPC forwarding, dirty/save buffering, hello/theme/
+// locale flush) that the hub needs and the package intentionally doesn't ship.
+import {
+  BRIDGE_PROTOCOL_VERSION,
+  type Theme,
+  type Locale,
+  type HostToPlugin,
+  type PluginToHost,
+} from "@nikolasp98/plugin-ui-bridge";
 
-export type Theme = "light" | "dark";
-
-/** UI locale the host is rendering in; plugins mirror it. */
-export type Locale = "en" | "es";
-
-/**
- * postMessage bridge protocol version. Mirrors BRIDGE_PROTOCOL_VERSION in
- * @nikolasp98/plugin-ui-bridge — distinct from the gateway WS frame protocol
- * (`hello-ok.protocol`). Advertised both ways in the handshake so a peer can
- * detect a mismatch; absent ⇒ treated as 1 (backward-compatible).
- */
-export const BRIDGE_PROTOCOL_VERSION = 1 as const;
-
-export type HostToPlugin =
-  | {
-      type: "host:hello";
-      theme: Theme;
-      tokens: Record<string, string>;
-      gatewayUrl: string;
-      authToken: string;
-      /** Host UI locale; optional for backward-compat (plugins fall back to "en"). */
-      locale?: Locale;
-      /** Host's bridge protocol version; optional (absent ⇒ 1). */
-      protocolVersion?: number;
-    }
-  | {
-      type: "host:theme-change";
-      theme: Theme;
-      tokens: Record<string, string>;
-    }
-  | {
-      type: "host:locale-change";
-      locale: Locale;
-    }
-  | {
-      type: "host:rpc-response";
-      id: string;
-      ok: boolean;
-      payload?: unknown;
-      error?: { code?: string; message?: string };
-    }
-  | {
-      // Hub-rendered Save click. Plugin runs save flow + replies with
-      // plugin:save-result echoing the same id. See bridge-protocol notes
-      // in @nikolasp98/plugin-ui-bridge v0.2.0.
-      type: "host:save";
-      id: string;
-    };
-
-export type PluginToHost =
-  | { type: "plugin:ready"; protocolVersion?: number }
-  | { type: "plugin:resize"; height: number }
-  | { type: "plugin:notify"; level: "info" | "warn" | "error"; message: string }
-  | {
-      type: "plugin:rpc-request";
-      id: string;
-      method: string;
-      params?: unknown;
-    }
-  | { type: "plugin:dirty-changed"; dirty: boolean }
-  | {
-      type: "plugin:save-result";
-      id: string;
-      ok: boolean;
-      error?: string;
-      restartRequired?: boolean;
-    };
+export { BRIDGE_PROTOCOL_VERSION };
+export type { Theme, Locale, HostToPlugin, PluginToHost };
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;

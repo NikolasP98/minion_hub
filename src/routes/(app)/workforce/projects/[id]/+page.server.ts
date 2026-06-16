@@ -1,16 +1,16 @@
 import { redirect, error } from '@sveltejs/kit';
-import { paperclipServerClient } from '$lib/server/paperclip-fetch';
+import { workforceServerClient } from '$lib/server/workforce-fetch';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
 	if (!event.locals.user) throw redirect(302, '/login');
-	if (!event.locals.paperclipIdentity?.companyId) {
+	if (!event.locals.workforceIdentity?.companyId) {
 		throw redirect(302, '/workforce/welcome?reason=no-company');
 	}
 	event.depends('app:project');
-	const companyId = event.locals.paperclipIdentity.companyId;
+	const companyId = event.locals.workforceIdentity.companyId;
 	const projectId = event.params.id;
-	const client = paperclipServerClient(event);
+	const client = workforceServerClient(event);
 
 	try {
 		const [project, issues, agents] = await Promise.all([

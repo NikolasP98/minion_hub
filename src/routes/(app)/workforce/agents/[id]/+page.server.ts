@@ -1,5 +1,5 @@
 import { redirect, error } from '@sveltejs/kit';
-import { paperclipServerClient, paperclipRawFetch } from '$lib/server/paperclip-fetch';
+import { workforceServerClient, workforceRawFetch } from '$lib/server/workforce-fetch';
 import type { PageServerLoad } from './$types';
 
 type DailyCost = { date: string; cents: number };
@@ -18,19 +18,19 @@ type AgentRun = {
 
 export const load: PageServerLoad = async (event) => {
 	if (!event.locals.user) throw redirect(302, '/login');
-	if (!event.locals.paperclipIdentity?.companyId) {
+	if (!event.locals.workforceIdentity?.companyId) {
 		throw redirect(302, '/workforce/welcome?reason=no-company');
 	}
 	event.depends('app:agent');
-	const companyId = event.locals.paperclipIdentity.companyId;
+	const companyId = event.locals.workforceIdentity.companyId;
 	const agentId = event.params.id;
-	const client = paperclipServerClient(event);
+	const client = workforceServerClient(event);
 
 	try {
 		const [agent, costTrend, runs, issues] = await Promise.all([
 			client.agents.get(agentId, companyId),
-			paperclipRawFetch<DailyCost[]>(event, `/api/agents/${agentId}/cost-trend`).catch(() => [] as DailyCost[]),
-			paperclipRawFetch<AgentRun[]>(event, `/api/agents/${agentId}/runs`).catch(() => [] as AgentRun[]),
+			workforceRawFetch<DailyCost[]>(event, `/api/agents/${agentId}/cost-trend`).catch(() => [] as DailyCost[]),
+			workforceRawFetch<AgentRun[]>(event, `/api/agents/${agentId}/runs`).catch(() => [] as AgentRun[]),
 			client.issues.list(companyId, { assigneeAgentId: agentId }),
 		]);
 		return { agent, costTrend, runs, issues };

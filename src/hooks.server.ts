@@ -13,8 +13,8 @@ import { supabaseAdmin } from '$server/supabase';
 import { resolveIdentity } from '$server/auth/resolve-identity';
 import { env } from '$env/dynamic/private';
 import { startBackupScheduler } from '$server/services/backup-scheduler';
-import { mintPaperclipIdentity } from '$lib/server/paperclip-identity';
-import { getOrgCompanyId } from '$lib/server/paperclip-company';
+import { mintWorkforceIdentity } from '$lib/server/workforce-identity';
+import { getOrgCompanyId } from '$lib/server/workforce-company';
 import { initCache } from '$lib/server/cache';
 import { getCoreDb } from '$server/db/pg-client';
 import { getUserPreferences } from '$server/services/user-preferences.service';
@@ -216,53 +216,57 @@ const posthogProxyHandle: Handle = async ({ event, resolve }) => {
   return resolve(event);
 };
 
-const paperclipIdentityHandle: Handle = async ({ event, resolve }) => {
+const workforceIdentityHandle: Handle = async ({ event, resolve }) => {
   if (event.locals.user) {
     // Company is scoped to the active hub org. Only resolve it for routes that
-    // actually consume it (the workforce UI + the paperclip proxy) so we don't
-    // pay a Supabase read on every request. The pc_company_id cookie is no
+    // actually consume it (the workforce UI + the workforce backend proxy) so we
+    // don't pay a Supabase read on every request. The company cookie is no
     // longer the carrier (org is the source of truth); read it only as a
     // legacy fallback when no org mapping exists.
     const path = event.url.pathname;
-    const needsCompany = path.startsWith('/workforce') || path.startsWith('/api/pc');
+    const needsCompany =
+      path.startsWith('/workforce') ||
+      path.startsWith('/api/workforce') ||
+      path.startsWith('/api/pc');
     const orgId = event.locals.orgId ?? event.locals.tenantCtx?.tenantId ?? null;
     let companyId: string | null = null;
     if (needsCompany) {
       companyId =
         (orgId ? await getOrgCompanyId(orgId) : null) ??
+        event.cookies.get('workforce_company_id') ??
         event.cookies.get('pc_company_id') ??
         null;
     }
 
-    const boardKey = env.HUB_PAPERCLIP_BOARD_KEY ?? null;
+    const boardKey = env.HUB_WORKFORCE_BOARD_KEY ?? env.HUB_PAPERCLIP_BOARD_KEY ?? null;
     if (boardKey) {
-      event.locals.paperclipIdentity = {
+      event.locals.workforceIdentity = {
         token: boardKey,
         companyId,
         userId: event.locals.user.id,
       };
     } else {
       try {
-        const token = await mintPaperclipIdentity({
+        const token = await mintWorkforceIdentity({
           userId: event.locals.user.id,
           email: event.locals.user.email ?? null,
           name: event.locals.user.displayName ?? null,
           companyId,
         });
-        event.locals.paperclipIdentity = {
+        event.locals.workforceIdentity = {
           token,
           companyId,
           userId: event.locals.user.id,
         };
       } catch (err) {
-        console.warn('[paperclipIdentityHandle] no auth configured:', err);
+        console.warn('[workforceIdentityHandle] no auth configured:', err);
       }
     }
   }
   return resolve(event);
 };
 
-export const handle = sequence(i18n.handle(), posthogProxyHandle, wellKnownHandle, appHandle, paperclipIdentityHandle);
+export const handle = sequence(i18n.handle(), posthogProxyHandle, wellKnownHandle, appHandle, workforceIdentityHandle);
 
 import type { HandleServerError } from '@sveltejs/kit';
 

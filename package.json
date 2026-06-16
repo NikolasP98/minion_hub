@@ -12,6 +12,7 @@
     "@minion-stack/db": "file:deps/minion-stack-db-0.5.1-pg.tgz",
     "@minion-stack/paperclip-client": "^0.1.0",
     "@minion-stack/shared": "^0.5.0",
+    "@nikolasp98/plugin-ui-bridge": "^0.4.0",
     "@node-rs/argon2": "^2.0.2",
     "@paralleldrive/cuid2": "^3.3.0",
     "@supabase/ssr": "^0.10.3",

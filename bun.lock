@@ -15,6 +15,7 @@
         "@minion-stack/db": "file:deps/minion-stack-db-0.5.1-pg.tgz",
         "@minion-stack/paperclip-client": "^0.1.0",
         "@minion-stack/shared": "^0.5.0",
+        "@nikolasp98/plugin-ui-bridge": "^0.4.0",
         "@node-rs/argon2": "^2.0.2",
         "@paralleldrive/cuid2": "^3.3.0",
         "@supabase/ssr": "^0.10.3",
@@ -371,6 +372,8 @@
     "@napi-rs/wasm-runtime": ["@napi-rs/wasm-runtime@0.2.12", "", { "dependencies": { "@emnapi/core": "^1.4.3", "@emnapi/runtime": "^1.4.3", "@tybys/wasm-util": "^0.10.0" } }, "sha512-ZVWUcfwY4E/yPitQJl481FjFo3K22D6qF0DuFH6Y/nbnE11GY5uguDxZMGXPQ8WQ0128MXQD7TnfHyK4oWoIJQ=="],
 
     "@neon-rs/load": ["@neon-rs/load@0.0.4", "", {}, "sha512-kTPhdZyTQxB+2wpiRcFWrDcejc4JI6tkPuS7UZCG4l6Zvc5kU/gGQ/ozvHTh1XR5tS+UlfAfGuPajjzQjCiHCw=="],
+
+    "@nikolasp98/plugin-ui-bridge": ["@nikolasp98/plugin-ui-bridge@0.4.0", "", {}, "sha512-RYar1wdDaoST8Ms0DJKKsEEbE8uh4qPnHI2G0aTZEy5lTUqt2jT/5V+Dxm+gsr7bIEQMQc/o8RN0jOt+0t/Vig=="],
 
     "@noble/hashes": ["@noble/hashes@2.0.1", "", {}, "sha512-XlOlEbQcE9fmuXxrVTXCTlG2nlRXa9Rj3rr5Ue/+tX+nmkgbX720YHh0VR3hBF9xDvwnb8D2shVGOwNx+ulArw=="],
 

@@ -124,7 +124,7 @@
 					<div class="font-medium">Feedback data sharing</div>
 					<div class="text-xs text-muted-foreground mt-0.5">
 						{#if company.feedbackDataSharingEnabled}
-							Sharing anonymized feedback traces with Paperclip Labs.
+							Sharing anonymized feedback traces with Minion Workforce.
 							{#if company.feedbackDataSharingConsentAt}
 								Consented {formatDate(company.feedbackDataSharingConsentAt)}
 								{#if company.feedbackDataSharingTermsVersion}
