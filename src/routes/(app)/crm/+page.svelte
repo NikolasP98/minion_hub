@@ -89,6 +89,36 @@
 		return [...list].sort((a, b) => dir * cmp[sortKey](a, b) || byName(a, b));
 	});
 
+	// ── Windowed rendering ──────────────────────────────────────────────────────
+	// At ~1.6k contacts, painting every row at once builds an 8 MB DOM (thousands
+	// of icon SVGs) and costs ~3 s on each visit. Filtering/sorting still run over
+	// the FULL `view` (UX unchanged — instant, complete results); we only cap how
+	// many top rows are mounted, growing the window as the user scrolls. Any change
+	// to the filter/sort result resets the window to the top.
+	const PAGE = 60;
+	let renderLimit = $state(PAGE);
+	const windowed = $derived(view.slice(0, renderLimit));
+	// Reset to the top whenever the filtered/sorted set changes (new search, tag,
+	// stage, channel, or sort). Reading `view` (not `renderLimit`) avoids a loop.
+	$effect(() => {
+		view;
+		renderLimit = PAGE;
+	});
+	// Grow the window when the sentinel near the list bottom scrolls into view.
+	function infiniteScroll(node: HTMLElement) {
+		const root = node.closest('[data-scroll-root]') as Element | null;
+		const io = new IntersectionObserver(
+			(entries) => {
+				if (entries[0]?.isIntersecting && renderLimit < view.length) {
+					renderLimit = Math.min(renderLimit + PAGE, view.length);
+				}
+			},
+			{ root, rootMargin: '600px 0px' },
+		);
+		io.observe(node);
+		return { destroy: () => io.disconnect() };
+	}
+
 	async function syncNow() {
 		syncing = true;
 		try {
@@ -188,7 +218,7 @@
 	</div>
 
 	<!-- Ranked list -->
-	<div class="flex-1 min-h-0 overflow-auto">
+	<div class="flex-1 min-h-0 overflow-auto" data-scroll-root>
 		{#if contacts.length === 0}
 			<div class="flex flex-col items-center justify-center h-full gap-2 text-center p-8">
 				<Contact size={32} class="text-muted-foreground" />
@@ -219,7 +249,7 @@
 					</tr>
 				</thead>
 				<tbody>
-					{#each view as c (c.contact_id)}
+					{#each windowed as c (c.contact_id)}
 						<tr
 							class="border-b border-[var(--hairline)] hover:bg-white/[0.03] cursor-pointer transition-colors"
 							onclick={() => goto(`/crm/${c.contact_id}`)}
@@ -255,6 +285,9 @@
 					{/each}
 				</tbody>
 			</table>
+			{#if renderLimit < view.length}
+				<div use:infiniteScroll class="h-1" aria-hidden="true"></div>
+			{/if}
 		{/if}
 	</div>
 </div>
