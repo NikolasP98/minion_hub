@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { getTableColumns } from 'drizzle-orm';
-import { finInvoices, finInvoiceItems, finPayments, finClients, finSources, finSyncJobs } from './pg-finance-schema';
+import { finInvoices, finInvoiceItems, finPayments, finClients, finSources, finSyncJobs, finProducts } from './pg-finance-schema';
 
 describe('pg-finance-schema', () => {
   it('fin_invoices has the CORE columns + metadata', () => {
@@ -27,5 +27,20 @@ describe('finSyncJobs schema', () => {
     for (const c of ['id','orgId','provider','status','total','processed','pageCursor','error','cancelRequested','startedAt','finishedAt','heartbeatAt','createdAt','updatedAt']) {
       expect(cols).toContain(c);
     }
+  });
+});
+
+describe('catalog + relational FKs', () => {
+  it('finProducts has canonical columns', () => {
+    const cols = Object.keys(getTableColumns(finProducts));
+    for (const c of ['id','orgId','code','name','category','unitPrice','active','metadata','createdAt','updatedAt']) expect(cols).toContain(c);
+  });
+  it('invoice items carry a product_id FK column', () => {
+    const cols = Object.keys(getTableColumns(finInvoiceItems));
+    expect(cols).toContain('productId');
+  });
+  it('invoices carry a client_id FK column', () => {
+    const cols = Object.keys(getTableColumns(finInvoices));
+    expect(cols).toContain('clientId');
   });
 });

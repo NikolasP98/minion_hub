@@ -18,6 +18,7 @@ export const finInvoices = pgTable(
     number: text('number'),                         // human sale number
     documentId: text('document_id'),                // e.g. 'BE01-2164'
     issuedAt: timestamp('issued_at', { withTimezone: true }),
+    clientId: uuid('client_id').references(() => finClients.id, { onDelete: 'set null' }),
     clientName: text('client_name'),
     clientDocType: text('client_doc_type'),
     clientDocNumber: text('client_doc_number'),     // RUC/DNI — the CRM link key
@@ -38,6 +39,7 @@ export const finInvoices = pgTable(
     uniq: uniqueIndex('fin_invoices_provider_ref_uniq').on(t.orgId, t.provider, t.providerRef),
     dniIdx: index('fin_invoices_org_dni_idx').on(t.orgId, t.clientDocNumber),
     issuedIdx: index('fin_invoices_org_issued_idx').on(t.orgId, t.issuedAt),
+    clientIdx: index('fin_invoices_client_idx').on(t.clientId),
   }),
 );
 
@@ -47,6 +49,7 @@ export const finInvoiceItems = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     orgId: text('org_id').notNull(),
     invoiceId: uuid('invoice_id').notNull().references(() => finInvoices.id, { onDelete: 'cascade' }),
+    productId: uuid('product_id').references(() => finProducts.id, { onDelete: 'set null' }),
     code: text('code'),
     description: text('description'),
     category: text('category'),
@@ -57,7 +60,10 @@ export const finInvoiceItems = pgTable(
     total: numeric('total'),
     metadata: jsonb('metadata').notNull().default({}),
   },
-  (t) => ({ invoiceIdx: index('fin_invoice_items_invoice_idx').on(t.invoiceId) }),
+  (t) => ({
+    invoiceIdx: index('fin_invoice_items_invoice_idx').on(t.invoiceId),
+    productIdx: index('fin_invoice_items_product_idx').on(t.productId),
+  }),
 );
 
 export const finPayments = pgTable(
@@ -97,6 +103,23 @@ export const finClients = pgTable(
     uniq: uniqueIndex('fin_clients_provider_ref_uniq').on(t.orgId, t.provider, t.providerRef),
     dniIdx: index('fin_clients_org_dni_idx').on(t.orgId, t.docNumber),
   }),
+);
+
+export const finProducts = pgTable(
+  'fin_products',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: text('org_id').notNull(),
+    code: text('code').notNull(),
+    name: text('name').notNull(),
+    category: text('category'),
+    unitPrice: numeric('unit_price'),
+    active: boolean('active').notNull().default(true),
+    metadata: jsonb('metadata').notNull().default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ uniq: uniqueIndex('fin_products_org_code_uniq').on(t.orgId, t.code) }),
 );
 
 /** Per-org billing connector config + sync watermark. */
@@ -148,5 +171,6 @@ export type FinInvoice = typeof finInvoices.$inferSelect;
 export type FinInvoiceItem = typeof finInvoiceItems.$inferSelect;
 export type FinPayment = typeof finPayments.$inferSelect;
 export type FinClient = typeof finClients.$inferSelect;
+export type FinProduct = typeof finProducts.$inferSelect;
 export type FinSource = typeof finSources.$inferSelect;
 export type FinSyncJob = typeof finSyncJobs.$inferSelect;
