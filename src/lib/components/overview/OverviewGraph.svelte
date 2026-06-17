@@ -38,7 +38,7 @@
   // Module-scope refs assigned from onMount so the top-level $effect can read them.
   let _renderer: Renderer | null = null;
   let _sim: Simulation | null = null;
-  let _ready = $state(false);
+  let _ready = false;
 
   const HOME: { center: [number, number]; zoom: number } = { center: [0, 0], zoom: 0.46 };
 
@@ -70,6 +70,12 @@
     const { nodes, edges } = buildGraph({ org, areas, agents, members, subscriptions });
     nodeCount = nodes.length;
     metaById = new Map(nodes.map((nd) => [nd.id, nd]));
+
+    // Clear stale selection — the node may have been removed since last render.
+    if (selected && !metaById.has(selected.id)) {
+      selected = null;
+      _renderer?.setFocus(null);
+    }
 
     // Precompute adjacency: each id → set of neighbor ids (plus itself)
     adjacencyMap = new Map<string, Set<string>>();

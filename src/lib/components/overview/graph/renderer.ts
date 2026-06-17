@@ -322,7 +322,6 @@ export async function createRenderer(
 		let best: string | null = null;
 		let bestD = Infinity;
 		for (const v of views) {
-			if (v.node.id.startsWith('__ring')) continue;
 			const rad = (v.node.symbolSize / 2) * zoom;
 			const d = Math.hypot(screenX - v.screenX, screenY - v.screenY);
 			if (d <= rad && d < bestD) {
