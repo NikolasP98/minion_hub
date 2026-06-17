@@ -115,6 +115,6 @@ export function dashboardRows(ctx: CoreCtx) {
       from fin_invoices where org_id = ${ctx.tenantId} and issued_at is not null
       group by 1 order by 1 desc limit 24
     `)) as unknown as Array<{ month: string; invoices: number; revenue: number }>;
-    return { monthly };
+    return { monthly: monthly.map((r) => ({ month: String(r.month), invoices: Number(r.invoices), revenue: Number(r.revenue) })) };
   });
 }
