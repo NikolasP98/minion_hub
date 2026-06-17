@@ -804,7 +804,7 @@ export async function listLedgerAccounts(ctx: CoreCtx): Promise<LedgerAccount[]>
 }
 
 /** Digits-only key for matching ledger account ids to gateway catalog phones. */
-const normPhone = (v: string | null | undefined): string => (v ?? '').replace(/\D/g, '');
+export const normPhone = (v: string | null | undefined): string => (v ?? '').replace(/\D/g, '');
 
 /**
  * The account manager's full view: what's added (with config) + what can be
