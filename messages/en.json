@@ -2859,5 +2859,17 @@
   "fin_module_crm": "CRM",
   "fin_module_crm_desc": "Contact management and auto-tags",
   "fin_module_saving": "Saving…",
-  "fin_module_error": "Failed to update module"
+  "fin_module_error": "Failed to update module",
+  "fin_nav_products": "Products",
+  "fin_products_title": "Product Catalog",
+  "fin_products_subtitle": "Billed products and catalog coverage",
+  "fin_products_import": "Import from billing",
+  "fin_products_coverage": "{n} billed products not in catalog",
+  "fin_products_empty": "No products in catalog yet.",
+  "fin_col_code": "Code",
+  "fin_col_name": "Name",
+  "fin_col_category": "Category",
+  "fin_col_ref_price": "Ref. price",
+  "fin_col_active": "Active",
+  "fin_col_billed": "#Billed"
 }

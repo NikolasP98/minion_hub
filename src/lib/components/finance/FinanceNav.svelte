@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { LayoutDashboard, FileText, CreditCard, Users, Settings } from 'lucide-svelte';
+  import { LayoutDashboard, FileText, CreditCard, Users, Package, Settings } from 'lucide-svelte';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
 
@@ -9,6 +9,7 @@
     { id: 'invoices', label: () => m.fin_nav_invoices(), icon: FileText, href: '/finances/invoices' },
     { id: 'payments', label: () => m.fin_nav_payments(), icon: CreditCard, href: '/finances/payments' },
     { id: 'clients', label: () => m.fin_nav_clients(), icon: Users, href: '/finances/clients' },
+    { id: 'products', label: () => m.fin_nav_products(), icon: Package, href: '/finances/products' },
     { id: 'settings', label: () => m.nav_settings(), icon: Settings, href: '/finances/settings' },
   ];
 

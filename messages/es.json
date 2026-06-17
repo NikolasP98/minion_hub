@@ -2859,5 +2859,17 @@
   "fin_module_crm": "CRM",
   "fin_module_crm_desc": "Gestión de contactos y etiquetas automáticas",
   "fin_module_saving": "Guardando…",
-  "fin_module_error": "Error al actualizar el módulo"
+  "fin_module_error": "Error al actualizar el módulo",
+  "fin_nav_products": "Productos",
+  "fin_products_title": "Catálogo de Productos",
+  "fin_products_subtitle": "Productos facturados y cobertura del catálogo",
+  "fin_products_import": "Importar desde facturación",
+  "fin_products_coverage": "{n} productos facturados no están en el catálogo",
+  "fin_products_empty": "Aún no hay productos en el catálogo.",
+  "fin_col_code": "Código",
+  "fin_col_name": "Nombre",
+  "fin_col_category": "Categoría",
+  "fin_col_ref_price": "Precio ref.",
+  "fin_col_active": "Activo",
+  "fin_col_billed": "#Facturado"
 }
