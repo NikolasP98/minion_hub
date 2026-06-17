@@ -12,17 +12,13 @@
 	let businessId = $state(
 		// svelte-ignore state_referenced_locally
 		typeof (src?.config as Record<string, unknown> | null | undefined)?.businessId === 'number'
-			? String((src.config as Record<string, unknown>).businessId)
+			? String((src?.config as Record<string, unknown>).businessId)
 			: '',
 	);
-	let secretUsername = $state(
-		// svelte-ignore state_referenced_locally
-		(src?.secretRefs as Record<string, string> | null | undefined)?.username ?? 'SUSII_USERNAME',
-	);
-	let secretPassword = $state(
-		// svelte-ignore state_referenced_locally
-		(src?.secretRefs as Record<string, string> | null | undefined)?.password ?? 'SUSII_PASSWORD',
-	);
+	// svelte-ignore state_referenced_locally
+	const hasCredentials = $state(src?.hasCredentials ?? false);
+	let secretUsername = $state('');
+	let secretPassword = $state('');
 	let connectorEnabled = $state(
 		// svelte-ignore state_referenced_locally
 		src?.enabled ?? true,
@@ -40,7 +36,8 @@
 				body: JSON.stringify({
 					provider: 'susii',
 					config: { businessId: businessId ? Number(businessId) : null },
-					secretRefs: { username: secretUsername, password: secretPassword },
+					username: secretUsername,
+					password: secretPassword,
 					enabled: connectorEnabled,
 				}),
 			});
@@ -119,14 +116,18 @@
 					/>
 				</label>
 
+				{#if hasCredentials}
+					<p class="t-caption cred-hint">{m.fin_connector_credentials_hint()}</p>
+				{/if}
+
 				<label class="field">
 					<span class="t-caption">{m.fin_connector_secret_username()}</span>
-					<input class="inp font-mono" type="text" bind:value={secretUsername} />
+					<input class="inp" type="text" autocomplete="username" bind:value={secretUsername} />
 				</label>
 
 				<label class="field">
 					<span class="t-caption">{m.fin_connector_secret_password()}</span>
-					<input class="inp font-mono" type="text" bind:value={secretPassword} />
+					<input class="inp" type="password" autocomplete="new-password" bind:value={secretPassword} />
 				</label>
 
 				<div class="field">
@@ -253,5 +254,11 @@
 		font-size: 0.8rem;
 		color: var(--color-destructive);
 		margin-bottom: 0.4rem;
+	}
+	.cred-hint {
+		font-size: 0.78rem;
+		color: var(--color-muted-foreground);
+		margin-bottom: 0.5rem;
+		font-style: italic;
 	}
 </style>

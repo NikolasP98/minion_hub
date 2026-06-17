@@ -88,9 +88,15 @@ export async function getSource(ctx: CoreCtx, provider: string) {
   });
 }
 
+/** Returns true when the source row already has encrypted credentials stored. */
+export function sourceHasCredentials(source: { secretRefs?: unknown } | null | undefined): boolean {
+  const refs = source?.secretRefs as Record<string, unknown> | null | undefined;
+  return !!(refs?.ciphertext && refs?.iv);
+}
+
 export async function upsertSource(
   ctx: CoreCtx, provider: string,
-  data: { config: Record<string, unknown>; secretRefs: Record<string, string>; enabled: boolean },
+  data: { config: Record<string, unknown>; secretRefs: Record<string, unknown>; enabled: boolean },
 ) {
   await withOrgCore(ctx, (tx) =>
     tx.insert(finSources).values({ orgId: ctx.tenantId, provider, ...data, updatedAt: new Date() })

@@ -1,19 +1,9 @@
-import { env } from '$env/dynamic/private';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { getConnector } from '$server/finance/connector';
 import '$server/finance/connectors/susii-connector'; // self-registers the 'susii' connector
 import { getSource, upsertInvoice, setSourceSync } from './finance.service';
+import { decryptCreds } from './finance-secrets';
 import { overlapSince, nowIso } from './finance-sync.helpers';
-
-/** Resolve a source's secret-name map to actual values from server env. */
-function resolveSecrets(refs: Record<string, string>): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [k, name] of Object.entries(refs)) {
-    const v = (env as Record<string, string | undefined>)[name];
-    if (v) out[k] = v;
-  }
-  return out;
-}
 
 export async function syncSource(ctx: CoreCtx, provider: string) {
   const source = await getSource(ctx, provider);
@@ -22,8 +12,15 @@ export async function syncSource(ctx: CoreCtx, provider: string) {
   const connector = getConnector(provider);
   if (!connector) throw new Error(`no connector registered for provider ${provider}`);
 
+  const refs = (source.secretRefs ?? {}) as Record<string, unknown>;
+  if (!refs.ciphertext || !refs.iv) {
+    await setSourceSync(ctx, provider, { watermark: source.watermark ?? '', status: 'failed' });
+    return { provider, count: 0, status: 'failed' as const, error: 'no credentials configured' };
+  }
+  const { username, password } = decryptCreds(String(refs.ciphertext), String(refs.iv));
+  const secrets: Record<string, string> = { username, password };
+
   const startedAt = nowIso();
-  const secrets = resolveSecrets((source.secretRefs ?? {}) as Record<string, string>);
   let count = 0;
   let consecutiveFailures = 0;
   try {
