@@ -511,12 +511,21 @@ export async function listTags(ctx: CoreCtx) {
 
 export async function createTag(
   ctx: CoreCtx,
-  data: { name: string; color?: string | null; kind?: 'manual' | 'auto'; rule?: unknown },
+  data: { name: string; color?: string | null; kind?: 'manual' | 'auto' | 'ai'; rule?: unknown },
   createdBy: string | null,
 ) {
   // Reject an auto-tag whose rule won't compile (fail fast, not silently).
   if (data.kind === 'auto' && tryCompileTagRule(data.rule) == null) {
     throw new Error('Invalid auto-tag rule');
+  }
+  // An AI tag stores its qualification criteria as a free-text description in
+  // the `rule` jsonb ({ description }); an agent later evaluates it (see
+  // evaluateAiTag) and applies the tag to qualifying contacts.
+  if (data.kind === 'ai') {
+    const desc = (data.rule as { description?: unknown } | null)?.description;
+    if (typeof desc !== 'string' || !desc.trim()) {
+      throw new Error('AI tag needs a description of who qualifies');
+    }
   }
   const row = await withOrgCore(ctx, async (tx) => {
     const [r] = await tx
@@ -561,6 +570,85 @@ export async function removeTag(ctx: CoreCtx, contactId: string, tagId: string) 
       .where(and(eq(crmContactTags.contactId, contactId), eq(crmContactTags.tagId, tagId))),
   );
   await bustCrmList(ctx.tenantId);
+}
+
+// ── AI tags ─────────────────────────────────────────────────────────────────
+// kind='ai' tags carry a free-text qualification description (rule.description).
+// An agent (api/crm/tags/[id]/evaluate) reads each candidate's recent inbound
+// messages and applies the tag to those that match. Applications are stored
+// like manual tags, so they ride tag_ids / chips / filters with no extra work.
+
+export async function getTag(ctx: CoreCtx, tagId: string) {
+  return withOrgCore(ctx, async (tx) => {
+    const [t] = await tx
+      .select()
+      .from(crmTags)
+      .where(and(eq(crmTags.id, tagId), eq(crmTags.orgId, ctx.tenantId)))
+      .limit(1);
+    return t ?? null;
+  });
+}
+
+export interface AiTagCandidate {
+  contactId: string;
+  name: string | null;
+  snippets: string[];
+}
+
+/**
+ * Candidates for AI-tag evaluation: contacts with at least one inbound message,
+ * each with their most-recent inbound snippets, capped (cost bound). Two bounded
+ * queries (candidate ids, then their snippets) instead of N per-contact fetches.
+ */
+export async function getAiTagCandidates(
+  ctx: CoreCtx,
+  opts: { cap?: number; perContact?: number } = {},
+): Promise<AiTagCandidate[]> {
+  const cap = Math.min(opts.cap ?? 120, 300);
+  const perContact = Math.min(opts.perContact ?? 3, 8);
+  return withOrgCore(ctx, async (tx) => {
+    const heads = (await tx.execute(sql`
+      select c.id, c.display_name as name
+      from crm_contacts c
+      join crm_contact_stats s on s.contact_id = c.id
+      where c.org_id = ${ctx.tenantId} and c.deleted_at is null and s.inbound_count > 0
+      order by s.last_contact_at desc nulls last
+      limit ${cap}
+    `)) as unknown as Array<{ id: string; name: string | null }>;
+    if (heads.length === 0) return [];
+
+    const ids = heads.map((h) => h.id);
+    const rows = (await tx.execute(sql`
+      select contact_id, body, occurred_at
+      from crm_contact_timeline
+      where contact_id = any(${ids}) and direction = 'inbound'
+        and body is not null and btrim(body) <> ''
+      order by occurred_at desc
+    `)) as unknown as Array<{ contact_id: string; body: string }>;
+
+    const byContact = new Map<string, string[]>();
+    for (const r of rows) {
+      const arr = byContact.get(r.contact_id) ?? [];
+      if (arr.length < perContact) arr.push(r.body.trim().slice(0, 400));
+      byContact.set(r.contact_id, arr);
+    }
+    return heads.map((h) => ({ contactId: h.id, name: h.name, snippets: byContact.get(h.id) ?? [] }));
+  });
+}
+
+/** Apply one tag to many contacts at once (idempotent); busts the list once. */
+export async function applyTagBulk(ctx: CoreCtx, tagId: string, contactIds: string[]): Promise<number> {
+  if (contactIds.length === 0) return 0;
+  const inserted = await withOrgCore(ctx, async (tx) => {
+    const rows = await tx
+      .insert(crmContactTags)
+      .values(contactIds.map((contactId) => ({ orgId: ctx.tenantId, contactId, tagId, appliedBy: null })))
+      .onConflictDoNothing()
+      .returning({ contactId: crmContactTags.contactId });
+    return rows.length;
+  });
+  if (inserted > 0) await bustCrmList(ctx.tenantId);
+  return inserted;
 }
 
 /** Manual tags currently applied to a contact (for the detail panel). */

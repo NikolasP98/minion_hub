@@ -14,6 +14,7 @@
 		Play,
 		Check,
 		Wand2,
+		Sparkles,
 	} from 'lucide-svelte';
 	import { PageHeader, Button } from '$lib/components/ui';
 	import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
@@ -61,10 +62,11 @@
 
 	let name = $state('');
 	let color = $state(COLORS[0]);
-	let kind = $state<'manual' | 'auto'>('manual');
+	let kind = $state<'manual' | 'auto' | 'ai'>('manual');
 	let field = $state('score');
 	let op = $state('>=');
 	let value = $state('80');
+	let description = $state('');
 	let busy = $state(false);
 	let err = $state('');
 
@@ -75,11 +77,16 @@
 
 	async function createTag() {
 		if (!name.trim()) return;
+		if (kind === 'ai' && !description.trim()) {
+			err = m.crm_ai_desc_required();
+			return;
+		}
 		busy = true;
 		err = '';
 		try {
 			const body: Record<string, unknown> = { name: name.trim(), color, kind };
 			if (kind === 'auto') body.rule = { field, op, value: ruleValue() };
+			if (kind === 'ai') body.description = description.trim();
 			const res = await fetch('/api/crm/tags', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
@@ -87,6 +94,7 @@
 			});
 			if (res.ok) {
 				name = '';
+				description = '';
 				await invalidate('crm:tags');
 			} else {
 				const j = await res.json().catch(() => ({}));
@@ -100,6 +108,32 @@
 	async function deleteTag(id: string) {
 		await fetch(`/api/crm/tags/${id}`, { method: 'DELETE' });
 		await invalidate('crm:tags');
+	}
+
+	// ── AI-tag evaluation ("Find matches") ──────────────────────────────────
+	let evaluating = $state<string | null>(null);
+	let evalResult = $state<Record<string, string>>({});
+	function aiDescription(rule: unknown): string {
+		if (rule && typeof rule === 'object' && typeof (rule as { description?: unknown }).description === 'string') {
+			return (rule as { description: string }).description;
+		}
+		return '';
+	}
+	async function evaluateTag(id: string) {
+		evaluating = id;
+		try {
+			const res = await fetch(`/api/crm/tags/${id}/evaluate`, { method: 'POST' });
+			if (res.ok) {
+				const r = await res.json();
+				evalResult = { ...evalResult, [id]: m.crm_ai_eval_result({ applied: r.applied ?? 0, evaluated: r.evaluated ?? 0 }) };
+				await invalidate('crm:contacts');
+			} else {
+				const j = await res.json().catch(() => ({}));
+				evalResult = { ...evalResult, [id]: j.message ?? 'Error' };
+			}
+		} finally {
+			evaluating = null;
+		}
 	}
 
 	function ruleSummary(rule: unknown): string {
@@ -248,6 +282,7 @@
 						<select bind:value={kind} class="inp">
 							<option value="manual">{m.crm_tag_kind_manual()}</option>
 							<option value="auto">{m.crm_tag_kind_auto()}</option>
+							<option value="ai">{m.crm_tag_kind_ai()}</option>
 						</select>
 					</label>
 
@@ -264,6 +299,12 @@
 								<input bind:value class="inp w-24" placeholder={m.crm_rule_value()} />
 							</div>
 						</div>
+					{:else if kind === 'ai'}
+						<label class="field rule ai-rule">
+							<span class="t-caption ai-head"><Sparkles size={12} /> {m.crm_ai_criteria()}</span>
+							<textarea bind:value={description} class="inp ta" rows="3" placeholder={m.crm_ai_criteria_ph()}></textarea>
+							<span class="ai-hint">{m.crm_ai_criteria_hint()}</span>
+						</label>
 					{/if}
 
 					{#if err}<p class="err">{err}</p>{/if}
@@ -280,12 +321,19 @@
 					{:else}
 						<ul class="taglist">
 							{#each tags as t (t.id)}
-								<li>
+								<li class:ai-row={t.kind === 'ai'}>
 									<span class="chip" style:--c={t.color ?? 'var(--color-accent)'}>
-										<TagIcon size={11} />{t.name}
+										{#if t.kind === 'ai'}<Sparkles size={11} />{:else}<TagIcon size={11} />{/if}{t.name}
 									</span>
 									{#if t.kind === 'auto'}
 										<span class="auto">{m.crm_auto_badge()}: {ruleSummary(t.rule)}</span>
+									{:else if t.kind === 'ai'}
+										<span class="ai-desc" title={aiDescription(t.rule)}>{aiDescription(t.rule)}</span>
+										<button class="find" onclick={() => evaluateTag(t.id)} disabled={evaluating === t.id}>
+											<Sparkles size={12} class={evaluating === t.id ? 'animate-pulse' : ''} />
+											{evaluating === t.id ? m.crm_ai_finding() : m.crm_ai_find_matches()}
+										</button>
+										{#if evalResult[t.id]}<span class="ai-result">{evalResult[t.id]}</span>{/if}
 									{/if}
 									<button class="del" onclick={() => deleteTag(t.id)} aria-label={m.crm_delete()}><Trash2 size={13} /></button>
 								</li>
@@ -719,4 +767,40 @@
 		background: var(--hairline);
 		margin: 0.2rem 0;
 	}
+
+	/* AI tag — criteria editor + list row */
+	.ta {
+		min-height: 4.5rem;
+		padding: 0.45rem 0.6rem;
+		line-height: 1.4;
+		resize: vertical;
+		font-family: inherit;
+	}
+	.ai-rule { gap: 0.4rem; }
+	.ai-head { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--color-accent); }
+	.ai-hint { font-size: 0.7rem; color: var(--color-muted-foreground); }
+	.taglist li.ai-row { flex-wrap: wrap; }
+	.ai-desc {
+		font-size: 0.74rem;
+		color: var(--color-muted-foreground);
+		max-width: 18rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.find {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+		font-size: 0.72rem;
+		font-weight: 500;
+		color: var(--color-accent);
+		padding: 0.15rem 0.45rem;
+		border-radius: var(--radius-md);
+		border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
+		background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+	}
+	.find:hover { background: color-mix(in srgb, var(--color-accent) 16%, transparent); }
+	.find:disabled { opacity: 0.6; }
+	.ai-result { font-size: 0.72rem; color: var(--color-success, var(--color-emerald)); }
 </style>

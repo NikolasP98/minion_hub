@@ -5,6 +5,7 @@
 	import { LayoutDashboard, Users, UserPlus, Activity, TrendingDown } from 'lucide-svelte';
 	import { PageHeader } from '$lib/components/ui';
 	import StagePill from '$lib/components/crm/StagePill.svelte';
+	import CrmFunnelRibbon from '$lib/components/crm/CrmFunnelRibbon.svelte';
 	import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
 	import { relativeTime, contactLabel } from '$lib/components/crm/crm-format';
 	import { stageLabel } from '$lib/components/crm/crm-i18n';
@@ -41,6 +42,12 @@
 	</PageHeader>
 
 	<div class="flex-1 min-h-0 overflow-auto p-4 flex flex-col gap-4 max-w-6xl">
+		<!-- Marketing-funnel ribbon (breakdown across stages) -->
+		<section class="card">
+			<header class="card-h">{m.crm_funnel_title()}</header>
+			<CrmFunnelRibbon counts={s.funnelCounts} />
+		</section>
+
 		<!-- KPI cards -->
 		<div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
 			{#each kpis as k (k.label)}

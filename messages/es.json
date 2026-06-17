@@ -2770,5 +2770,13 @@
   "crm_funnel_analyze": "Re-analizar",
   "crm_funnel_analyzing": "Analizando…",
   "crm_funnel_set_to": "Marcar como {stage}",
-  "crm_funnel_suggested": "El agente sugiere {stage}"
+  "crm_funnel_suggested": "El agente sugiere {stage}",
+  "crm_tag_kind_ai": "IA (sentimiento)",
+  "crm_ai_criteria": "Criterios de calificación",
+  "crm_ai_criteria_ph": "Describe quién califica — p. ej. \"clientes que preguntaron por Botox o rellenos\"",
+  "crm_ai_criteria_hint": "Un agente de IA lee los mensajes de cada contacto y aplica esta etiqueta a quienes coincidan.",
+  "crm_ai_desc_required": "Añade una descripción de quién califica.",
+  "crm_ai_find_matches": "Buscar coincidencias",
+  "crm_ai_finding": "Buscando…",
+  "crm_ai_eval_result": "Aplicada a {applied} de {evaluated}"
 }

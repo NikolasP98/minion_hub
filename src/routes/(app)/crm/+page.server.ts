@@ -2,6 +2,7 @@ import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { listContactsCached } from '$server/services/crm-contacts.service';
+import { FUNNEL_ORDER, effectiveFunnelStage } from '$lib/components/crm/crm-funnel';
 
 const STAGES = ['New', 'Engaged', 'Active', 'Dormant', 'Churned'] as const;
 
@@ -32,6 +33,10 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   let newCount = 0;
   let activeWeek = 0; // contacted within the last 7 days
 
+  // Marketing-funnel breakdown (drives the dashboard ribbon). Counts the
+  // effective stage per contact (stored _funnel else baseline lead).
+  const funnelCounts: Record<string, number> = Object.fromEntries(FUNNEL_ORDER.map((s) => [s, 0]));
+
   for (const c of all) {
     if (c.stage in stageCounts) stageCounts[c.stage]++;
     const b = Math.min(9, Math.max(0, Math.floor(c.score / 10)));
@@ -40,6 +45,8 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     for (const ch of c.channels ?? []) channelMix[ch] = (channelMix[ch] ?? 0) + 1;
     if (c.first_contact_at && now - Date.parse(c.first_contact_at) <= THIRTY_DAYS) newCount++;
     if (c.last_contact_at && now - Date.parse(c.last_contact_at) <= SEVEN_DAYS) activeWeek++;
+    const fs = effectiveFunnelStage(c.custom_fields, { inbound: c.inbound_msgs });
+    if (fs) funnelCounts[fs]++;
   }
 
   const channels = Object.entries(channelMix)
@@ -68,6 +75,7 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
       churned: stageCounts.Churned ?? 0,
       avgScore: total ? Math.round(scoreSum / total) : 0,
       stageCounts,
+      funnelCounts,
       scoreBuckets,
       channels,
       recent,
