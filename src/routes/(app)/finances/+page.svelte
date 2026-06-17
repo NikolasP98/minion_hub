@@ -79,9 +79,8 @@
 	const periodGrowth = $derived((() => {
 		const s = data.series;
 		if (s.length < 2) return null;
-		const half = Math.floor(s.length / 2);
-		const prev = s.slice(0, half).reduce((a, r) => a + r.revenue, 0);
-		const curr = s.slice(half).reduce((a, r) => a + r.revenue, 0);
+		const curr = s[s.length - 1].revenue;
+		const prev = s[s.length - 2].revenue;
 		return prev > 0 ? ((curr - prev) / prev) * 100 : null;
 	})());
 
