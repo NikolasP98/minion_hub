@@ -187,10 +187,11 @@ export function dashboardRows(ctx: CoreCtx) {
 
 // ── Period-scoped, Valkey-cached dashboard aggregates ──────────────────────
 
-function periodWhere(p: Period) {
-  const conds = [sql`org_id = current_setting('app.current_org_id', true)`];
-  if (p.from) conds.push(sql`issued_at >= ${p.from}`);
-  if (p.to) conds.push(sql`issued_at < ${p.to}`);
+function periodWhere(p: Period, alias = '') {
+  const c = alias ? `${alias}.` : '';
+  const conds = [sql`${sql.raw(c)}org_id = current_setting('app.current_org_id', true)`];
+  if (p.from) conds.push(sql`${sql.raw(c)}issued_at >= ${p.from}`);
+  if (p.to) conds.push(sql`${sql.raw(c)}issued_at < ${p.to}`);
   return sql.join(conds, sql` and `);
 }
 
@@ -249,7 +250,7 @@ export function revenueSeries(ctx: CoreCtx, p: Period) {
 
 export function topProducts(ctx: CoreCtx, p: Period, opts: { limit?: number } = {}) {
   const limit = opts.limit ?? 15;
-  return cached(ck(ctx.tenantId, 'products', p), { ttl: '2m', swr: '30s', tags: ctags(ctx.tenantId) }, () =>
+  return cached(ck(ctx.tenantId, `products-${limit}`, p), { ttl: '2m', swr: '30s', tags: ctags(ctx.tenantId) }, () =>
     withOrgCore(ctx, async (tx) => {
       const rows = (await tx.execute(sql`
         select ii.product_id, max(ii.code) code,
@@ -260,7 +261,7 @@ export function topProducts(ctx: CoreCtx, p: Period, opts: { limit?: number } = 
         from fin_invoice_items ii
         join fin_invoices inv on inv.id = ii.invoice_id
         left join fin_products p on p.id = ii.product_id
-        where ${periodWhere(p)}
+        where ${periodWhere(p, 'inv')}
           and (ii.product_id is not null or ii.code is not null)
         group by ii.product_id
         order by revenue desc
@@ -280,7 +281,7 @@ export function topProducts(ctx: CoreCtx, p: Period, opts: { limit?: number } = 
 
 export function topClients(ctx: CoreCtx, p: Period, opts: { limit?: number } = {}) {
   const limit = opts.limit ?? 10;
-  return cached(ck(ctx.tenantId, 'clients', p), { ttl: '2m', swr: '30s', tags: ctags(ctx.tenantId) }, () =>
+  return cached(ck(ctx.tenantId, `clients-${limit}`, p), { ttl: '2m', swr: '30s', tags: ctags(ctx.tenantId) }, () =>
     withOrgCore(ctx, async (tx) => {
       const rows = (await tx.execute(sql`
         select coalesce(client_doc_number, client_id::text) doc_number,
