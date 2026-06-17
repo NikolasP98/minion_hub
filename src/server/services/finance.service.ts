@@ -106,6 +106,26 @@ export async function setSourceSync(ctx: CoreCtx, provider: string, s: { waterma
   );
 }
 
+/** Per-client revenue aggregate (for the Clients list page). */
+export async function clientRevenueRows(ctx: CoreCtx) {
+  return withOrgCore(ctx, async (tx) => {
+    const rows = (await tx.execute(sql`
+      select client_doc_number, max(client_name) as name, count(*)::int as invoices,
+             coalesce(sum(total), 0)::float8 as revenue, max(issued_at) as last
+      from fin_invoices
+      where org_id = ${ctx.tenantId} and client_doc_number is not null
+      group by client_doc_number order by revenue desc limit 500
+    `)) as unknown as Array<{ client_doc_number: unknown; name: unknown; invoices: unknown; revenue: unknown; last: unknown }>;
+    return rows.map((r) => ({
+      docNumber: String(r.client_doc_number),
+      name: r.name != null ? String(r.name) : null,
+      invoices: Number(r.invoices),
+      revenue: Number(r.revenue),
+      last: r.last != null ? String(r.last) : null,
+    }));
+  });
+}
+
 /** Raw aggregate rows for the dashboard (revenue per month, etc.). */
 export function dashboardRows(ctx: CoreCtx) {
   return withOrgCore(ctx, async (tx) => {

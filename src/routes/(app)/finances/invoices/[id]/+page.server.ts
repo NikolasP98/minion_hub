@@ -1,0 +1,15 @@
+import type { PageServerLoad } from './$types';
+import { error } from '@sveltejs/kit';
+import { getCoreCtx } from '$server/auth/core-ctx';
+import { isModuleEnabled } from '$server/services/modules.service';
+import { getInvoice } from '$server/services/finance.service';
+
+export const load: PageServerLoad = async ({ locals, params, depends }) => {
+  const ctx = await getCoreCtx(locals);
+  if (!ctx) throw error(401, 'Authentication required');
+  if (!(await isModuleEnabled(ctx, 'finances'))) throw error(404, 'Finances module disabled');
+  depends('finances:data');
+  const data = await getInvoice(ctx, params.id);
+  if (!data) throw error(404, 'Invoice not found');
+  return data;
+};
