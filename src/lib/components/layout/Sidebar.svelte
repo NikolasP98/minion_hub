@@ -22,6 +22,8 @@
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
   import { canClient } from '$lib/access/can.svelte';
   import * as m from '$lib/paraglide/messages';
+  import FinanceSyncBadge from '$lib/components/finance/FinanceSyncBadge.svelte';
+  import { financeSync } from '$lib/state/features/finance-sync.svelte';
 
   // Full version of the connected server (e.g. 2026.6.14-dev), shown beside the
   // brand. Relocated from the agents-sidebar footer.
@@ -62,6 +64,7 @@
   let collapsed = $state(false);
   let isMd = $state(true);
   onMount(() => {
+    financeSync.refresh('susii');
     collapsed = localStorage.getItem('hub-sidebar-collapsed') === '1';
     const mq = window.matchMedia('(min-width: 48rem)');
     const sync = () => (isMd = mq.matches);
@@ -204,6 +207,9 @@
               >
                 <NavIcon icon={item.icon} size={18} class="nav-icon shrink-0" />
                 <span class="nav-label {labelCls}">{item.label}</span>
+                {#if item.href === '/finances'}
+                  <FinanceSyncBadge />
+                {/if}
                 {#if currentHome === item.href}
                   <Star size={11} class="home-pin {labelCls}" />
                 {/if}
