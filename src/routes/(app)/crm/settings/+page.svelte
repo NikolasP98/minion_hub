@@ -1,9 +1,9 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import { invalidate } from '$app/navigation';
+	import { page } from '$app/state';
 	import * as m from '$lib/paraglide/messages';
 	import {
-		ArrowLeft,
 		Plus,
 		Trash2,
 		Tag as TagIcon,
@@ -13,9 +13,11 @@
 		Pause,
 		Play,
 		Check,
+		Wand2,
 	} from 'lucide-svelte';
 	import { PageHeader, Button } from '$lib/components/ui';
 	import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
+	import CrmHygiene from '$lib/components/crm/CrmHygiene.svelte';
 	import { formatPhoneLike, relativeTime } from '$lib/components/crm/crm-format';
 
 	type Ledger = {
@@ -35,8 +37,13 @@
 	// RPC behind the account manager; it's unwrapped via {#await} in the Channels
 	// tab, where `added`/`available`/`groupedAvailable` are derived locally.
 
-	type Tab = 'tags' | 'channels';
-	let tab = $state<Tab>('tags');
+	// Active tab is URL-driven (`?tab=`) so the CRM sidebar and the legacy
+	// /crm/cleanup redirect can deep-link straight to a section. The load doesn't
+	// read `url`, so switching tabs changes only the query string — no refetch.
+	type Tab = 'tags' | 'channels' | 'hygiene';
+	const tab = $derived<Tab>(
+		((t) => (t === 'channels' || t === 'hygiene' ? t : 'tags'))(page.url.searchParams.get('tab')),
+	);
 
 	// ── Tag manager ──────────────────────────────────────────────────────────
 	// Auto-tag rule fields (must match RULE_FIELDS in crm-scoring.ts).
@@ -199,20 +206,21 @@
 <div class="flex flex-col h-full min-h-0">
 	<PageHeader title={m.crm_settings_title()} subtitle={m.crm_settings_subtitle()}>
 		{#snippet leading()}
-			<a href="/crm" class="p-1 -ml-1 rounded hover:bg-white/[0.06] inline-flex" aria-label={m.crm_back_to_contacts()}>
-				<ArrowLeft size={16} />
-			</a>
+			<Settings2 size={16} class="text-accent shrink-0" />
 		{/snippet}
 	</PageHeader>
 
-	<!-- Tabs -->
+	<!-- Tabs (URL-driven, deep-linkable) -->
 	<div class="flex items-center gap-1 px-4 pt-3 border-b border-[var(--hairline)]">
-		<button class="tab" class:active={tab === 'tags'} onclick={() => (tab = 'tags')}>
+		<a class="tab" class:active={tab === 'tags'} href="/crm/settings?tab=tags">
 			<Tags size={14} /> {m.crm_tab_tags()}
-		</button>
-		<button class="tab" class:active={tab === 'channels'} onclick={() => (tab = 'channels')}>
+		</a>
+		<a class="tab" class:active={tab === 'channels'} href="/crm/settings?tab=channels">
 			<Radio size={14} /> {m.crm_tab_channels()}
-		</button>
+		</a>
+		<a class="tab" class:active={tab === 'hygiene'} href="/crm/settings?tab=hygiene">
+			<Wand2 size={14} /> {m.crm_tab_hygiene()}
+		</a>
 	</div>
 
 	<div class="flex-1 min-h-0 overflow-auto p-4">
@@ -286,7 +294,7 @@
 					{/if}
 				</section>
 			</div>
-		{:else}
+		{:else if tab === 'channels'}
 			{#await data.scope}
 				<section class="card max-w-2xl">
 					<div class="card-h" style="margin:0">{m.crm_channels_title()}</div>
@@ -392,6 +400,15 @@
 				{/if}
 			</section>
 			{/await}
+		{:else}
+			{#await data.cleanup}
+				<div class="flex flex-col gap-6 max-w-5xl">
+					<section class="card-skel"></section>
+					<section class="card-skel"></section>
+				</div>
+			{:then cleanup}
+				<CrmHygiene fixes={cleanup.fixes} groups={cleanup.groups} />
+			{/await}
 		{/if}
 	</div>
 </div>
@@ -413,6 +430,13 @@
 	.tab.active {
 		color: var(--color-accent);
 		border-bottom-color: var(--color-accent);
+	}
+	.card-skel {
+		height: 7rem;
+		border: 1px dashed var(--hairline);
+		border-radius: var(--radius-lg);
+		background: var(--color-card);
+		animation: skel-pulse 1.2s ease-in-out infinite;
 	}
 	.card {
 		border: 1px solid var(--hairline);

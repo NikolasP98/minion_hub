@@ -3,12 +3,17 @@ import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { listTags } from '$server/services/crm-contacts.service';
 import { getAccountScopeLive } from '$server/services/crm-channels.service';
+import {
+  scanStandardizationCached,
+  findDuplicatesCached,
+} from '$server/services/crm-cleanup.service';
 
 export const load: PageServerLoad = async ({ locals, depends }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
   depends('crm:tags');
   depends('crm:accounts');
+  depends('crm:cleanup');
   // `tags` drives the DEFAULT tab — await it so the page is interactive at once.
   // `scope` needs a live gateway RPC (channels.status) and only feeds the
   // non-default "Channels" tab, so we STREAM it (return the promise unawaited):
@@ -19,5 +24,10 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   const scope = getAccountScopeLive(ctx).catch(
     () => ({ added: [], available: [], legacy: true }) as Awaited<ReturnType<typeof getAccountScopeLive>>,
   );
-  return { tags, scope };
+  // `cleanup` feeds the non-default "Hygiene" tab and runs two cached scans;
+  // STREAM it too (unawaited promise) so it never blocks the default Tags tab.
+  const cleanup = Promise.all([scanStandardizationCached(ctx), findDuplicatesCached(ctx)])
+    .then(([fixes, groups]) => ({ fixes, groups }))
+    .catch(() => ({ fixes: [], groups: [] }) as { fixes: never[]; groups: never[] });
+  return { tags, scope, cleanup };
 };

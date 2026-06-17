@@ -7,11 +7,12 @@
 	import MathFormula from '$lib/components/ui/MathFormula.svelte';
 	import ScoreBadge from '$lib/components/crm/ScoreBadge.svelte';
 	import StagePill from '$lib/components/crm/StagePill.svelte';
+	import CrmFunnel from '$lib/components/crm/CrmFunnel.svelte';
 	import JourneyTimeline from '$lib/components/crm/JourneyTimeline.svelte';
 	import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
 	import { contactLabel, isRecencyNever, identityValue } from '$lib/components/crm/crm-format';
 	import { stageLabel } from '$lib/components/crm/crm-i18n';
-	import { metaLabel, metaValue, metaDisplay, isEmailKey, metaEntries } from '$lib/components/crm/crm-meta';
+	import { metaLabel, metaValue, metaDisplay, isEmailKey, metaEntries, isReservedMetaKey } from '$lib/components/crm/crm-meta';
 	import { IdCard, Cake, Phone, Mail, MapPin, Home, Stethoscope, Megaphone, Briefcase, Flag, Hash, User } from 'lucide-svelte';
 
 	let { data }: { data: PageData } = $props();
@@ -33,15 +34,19 @@
 	let newVal = $state('');
 
 	function startEditMeta() {
-		metaDraft = Object.entries(fields).map(([k, v]) => [k, metaValue(v) === '—' ? '' : String(v)]);
+		// Only user-facing entries are editable; reserved `_`-prefixed system keys
+		// (e.g. `_funnel`) are hidden here and preserved untouched on save.
+		metaDraft = metaEntries(fields).map(([k, v]) => [k, metaValue(v) === '—' ? '' : String(v)]);
 		newKey = '';
 		newVal = '';
 		editingMeta = true;
 	}
 	async function saveMeta() {
 		const next: Record<string, unknown> = {};
-		for (const [k, v] of metaDraft) if (k.trim()) next[k.trim()] = v;
-		if (newKey.trim()) next[newKey.trim()] = newVal;
+		// Preserve reserved system keys (not shown in the editor).
+		for (const [k, v] of Object.entries(fields)) if (isReservedMetaKey(k)) next[k] = v;
+		for (const [k, v] of metaDraft) if (k.trim() && !isReservedMetaKey(k.trim())) next[k.trim()] = v;
+		if (newKey.trim() && !isReservedMetaKey(newKey.trim())) next[newKey.trim()] = newVal;
 		await patch({ customFields: next });
 		editingMeta = false;
 	}
@@ -130,7 +135,7 @@
 	async function forget() {
 		if (!confirm(m.crm_forget_confirm())) return;
 		const res = await fetch(`/api/crm/contacts/${c.id}?hard=true`, { method: 'DELETE' });
-		if (res.ok) await goto('/crm');
+		if (res.ok) await goto('/crm/customers');
 	}
 </script>
 
@@ -139,7 +144,7 @@
 <div class="flex flex-col h-full min-h-0">
 	<PageHeader title={contactLabel(c.displayName)} subtitle={c.source === 'manual' ? m.crm_manual_contact() : m.crm_harvested()}>
 		{#snippet leading()}
-			<button class="p-1 -ml-1 rounded hover:bg-white/[0.06]" onclick={() => goto('/crm')} aria-label={m.crm_back_to_contacts()}>
+			<button class="p-1 -ml-1 rounded hover:bg-white/[0.06]" onclick={() => goto('/crm/customers')} aria-label={m.crm_back_to_contacts()}>
 				<ArrowLeft size={16} />
 			</button>
 		{/snippet}
@@ -234,6 +239,9 @@
 					{/if}
 				</div>
 			</section>
+
+			<!-- Marketing funnel (acquisition axis; separate from lifecycle) -->
+			<CrmFunnel contactId={c.id} customFields={fields} inbound={score?.inbound_msgs ?? 0} />
 
 			<!-- Identities -->
 			<section class="card">

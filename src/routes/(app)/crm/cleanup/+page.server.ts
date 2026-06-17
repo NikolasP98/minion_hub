@@ -1,18 +1,9 @@
 import type { PageServerLoad } from './$types';
-import { error } from '@sveltejs/kit';
-import { getCoreCtx } from '$server/auth/core-ctx';
-import {
-  scanStandardizationCached,
-  findDuplicatesCached,
-} from '$server/services/crm-cleanup.service';
+import { redirect } from '@sveltejs/kit';
 
-export const load: PageServerLoad = async ({ locals, depends }) => {
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
-  depends('crm:cleanup');
-  const [fixes, groups] = await Promise.all([
-    scanStandardizationCached(ctx),
-    findDuplicatesCached(ctx),
-  ]);
-  return { fixes, groups };
+// Data Hygiene moved into CRM Settings as the "Hygiene" tab. Keep this legacy
+// route as a permanent redirect so any bookmarks / external links still land
+// on the right place.
+export const load: PageServerLoad = () => {
+  throw redirect(308, '/crm/settings?tab=hygiene');
 };

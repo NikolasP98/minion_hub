@@ -11,6 +11,7 @@ import {
   crmSettings,
 } from '$server/db/pg-crm-schema';
 import { RFM_WEIGHTS, RFM_CONST, tryCompileTagRule } from './crm-scoring';
+import { isFunnelStage, readFunnelMeta, funnelStageIndex } from '$lib/components/crm/crm-funnel';
 
 /**
  * CRM service (spec §4–8). Contacts = inbound senders to the org's registered
@@ -412,6 +413,92 @@ export async function addNote(ctx: CoreCtx, contactId: string, body: string, act
       .returning();
     return row;
   });
+}
+
+// ── Marketing funnel (acquisition axis; separate from RFM lifecycle) ──────────
+// The current stage lives on custom_fields._funnel (reserved key, hidden from
+// the Details UI — see crm-meta.isReservedMetaKey). Transitions are logged to
+// crm_activities (kind='funnel'). Auto sources only ADVANCE; a human override
+// (by='user') may set any stage. See crm-funnel.ts for the pure helpers.
+
+/**
+ * Count distinct appointment/payment dates for a contact → the "Loyal" signal
+ * (≥2 ⇒ returned & billed again). STUB: billing/appointments are a follow-up
+ * feature with no data source wired yet, so this always returns 0 and Loyal is
+ * reachable only via manual override for now. The real impl will count distinct
+ * dates from billing/appointment events.
+ */
+export async function distinctVisitDates(_ctx: CoreCtx, _contactId: string): Promise<number> {
+  return 0;
+}
+
+/**
+ * Set a contact's marketing-funnel stage. `by`:
+ *  - 'user'  → manual override; pins the stage (auto=false), may move up OR down.
+ *  - 'auto'/'agent' → detection; ADVANCE-ONLY (ignored if it wouldn't move the
+ *    contact forward) and skipped entirely when a human has pinned the stage.
+ * Merges custom_fields._funnel, logs a crm_activities funnel row, busts caches.
+ * Returns { applied, stage } — `stage` is the resulting effective stage.
+ */
+export async function setFunnelStage(
+  ctx: CoreCtx,
+  contactId: string,
+  stage: string,
+  opts: { by: 'user' | 'auto' | 'agent'; reason?: string; confidence?: number },
+): Promise<{ applied: boolean; stage: string }> {
+  if (!isFunnelStage(stage)) throw new Error(`invalid funnel stage: ${stage}`);
+  const nowIso = new Date().toISOString();
+
+  const result = await withOrgCore(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ customFields: crmContacts.customFields })
+      .from(crmContacts)
+      .where(and(eq(crmContacts.id, contactId), eq(crmContacts.orgId, ctx.tenantId)))
+      .limit(1);
+    if (!row) return null;
+
+    const fields = (row.customFields ?? {}) as Record<string, unknown>;
+    const prev = readFunnelMeta(fields);
+    const fromStage = prev?.stage ?? null;
+
+    // Respect a human pin: auto/agent never overwrite a manually-set stage.
+    if (opts.by !== 'user' && prev && prev.auto === false) {
+      return { applied: false, stage: prev.stage };
+    }
+    // Advance-only for auto/agent.
+    if (opts.by !== 'user' && fromStage && funnelStageIndex(stage) <= funnelStageIndex(fromStage)) {
+      return { applied: false, stage: fromStage };
+    }
+
+    const nextMeta = {
+      stage,
+      auto: opts.by !== 'user',
+      ...(opts.reason != null ? { reason: opts.reason } : {}),
+      ...(opts.confidence != null ? { confidence: opts.confidence } : {}),
+      ...(opts.by !== 'user' ? { analyzedAt: nowIso } : {}),
+      updatedAt: nowIso,
+    };
+    const nextFields = { ...fields, _funnel: nextMeta };
+
+    await tx
+      .update(crmContacts)
+      .set({ customFields: nextFields, updatedAt: new Date() })
+      .where(and(eq(crmContacts.id, contactId), eq(crmContacts.orgId, ctx.tenantId)));
+
+    await tx.insert(crmActivities).values({
+      orgId: ctx.tenantId,
+      contactId,
+      kind: 'funnel',
+      body: null,
+      actorId: null,
+      data: { from: fromStage, to: stage, by: opts.by, reason: opts.reason ?? null, confidence: opts.confidence ?? null },
+    });
+
+    return { applied: true, stage };
+  });
+
+  if (result?.applied) await bustCrmList(ctx.tenantId);
+  return result ?? { applied: false, stage };
 }
 
 // ── Tags ──────────────────────────────────────────────────────────────────────

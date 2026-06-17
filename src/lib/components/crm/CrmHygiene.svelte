@@ -1,12 +1,21 @@
 <script lang="ts">
-	import type { PageData } from './$types';
 	import { invalidate } from '$app/navigation';
 	import * as m from '$lib/paraglide/messages';
-	import { ArrowLeft, Sparkles, Check, GitMerge, Users, Wand2 } from 'lucide-svelte';
-	import { PageHeader, Button } from '$lib/components/ui';
+	import { Sparkles, Check, GitMerge, Users, Wand2 } from 'lucide-svelte';
+	import { Button } from '$lib/components/ui';
 	import { contactLabel } from '$lib/components/crm/crm-format';
 
-	let { data }: { data: PageData } = $props();
+	type Fix = {
+		contactId: string;
+		current: string | null;
+		proposed: string | null;
+		issues: string[];
+		needsReview: boolean;
+	};
+	type DupContact = { id: string; name: string | null; dni?: string | null; phone?: string | null; messages: number };
+	type DupGroup = { key: string; reason: string; contacts: DupContact[] };
+
+	let { fixes, groups }: { fixes: Fix[]; groups: DupGroup[] } = $props();
 
 	// ── Standardization rows (local editable state) ──
 	type Row = {
@@ -19,10 +28,10 @@
 		agentAction?: 'keep' | 'adjust' | 'flag';
 		agentNote?: string;
 	};
-	// Seed editable rows once from the load data (a fresh load re-runs this module).
+	// Seed editable rows once from the prop (a fresh load re-runs this module).
 	// svelte-ignore state_referenced_locally
 	let rows = $state<Row[]>(
-		data.fixes.map((f) => ({
+		fixes.map((f) => ({
 			contactId: f.contactId,
 			current: f.current,
 			value: f.proposed ?? '',
@@ -69,14 +78,14 @@
 	async function applyAll() {
 		applying = true;
 		try {
-			const fixes = rows
+			const fixesToApply = rows
 				.filter((r) => r.apply && r.value.trim() && r.value.trim() !== (r.current ?? ''))
 				.map((r) => ({ contactId: r.contactId, name: r.value.trim() }));
-			if (fixes.length === 0) return;
+			if (fixesToApply.length === 0) return;
 			const res = await fetch('/api/crm/cleanup/standardize', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ fixes }),
+				body: JSON.stringify({ fixes: fixesToApply }),
 			});
 			if (res.ok) {
 				await invalidate('crm:cleanup');
@@ -93,7 +102,7 @@
 	// default survivor = the member with the most messages (most history)
 	$effect(() => {
 		const next: Record<number, string> = {};
-		data.groups.forEach((g, i) => {
+		groups.forEach((g, i) => {
 			if (survivor[i] && g.contacts.some((c) => c.id === survivor[i])) next[i] = survivor[i];
 			else next[i] = [...g.contacts].sort((a, b) => b.messages - a.messages)[0]?.id ?? '';
 		});
@@ -101,7 +110,7 @@
 	});
 
 	async function mergeGroup(gi: number) {
-		const g = data.groups[gi];
+		const g = groups[gi];
 		const survivorId = survivor[gi];
 		if (!survivorId) return;
 		const loserIds = g.contacts.map((c) => c.id).filter((id) => id !== survivorId);
@@ -145,91 +154,79 @@
 	}
 </script>
 
-<svelte:head><title>{m.crm_hygiene_title()} — {m.crm_title()}</title></svelte:head>
+<div class="flex flex-col gap-6 max-w-5xl">
+	<!-- Standardization -->
+	<section class="card">
+		<header class="sec-h">
+			<div class="flex items-center gap-2"><Wand2 size={16} class="text-accent" /><span>{m.crm_standardize_names()} ({rows.length})</span></div>
+			<div class="flex items-center gap-2">
+				<Button variant="outline" size="sm" onclick={runReview} disabled={reviewing || rows.length === 0}>
+					<Sparkles size={14} class={reviewing ? 'animate-pulse' : ''} />
+					{reviewing ? m.crm_reviewing() : m.crm_ai_review()}
+				</Button>
+				<Button variant="primary" size="sm" onclick={applyAll} disabled={applying || selectedCount === 0}>
+					<Check size={14} /> {m.crm_apply()} {selectedCount}
+				</Button>
+			</div>
+		</header>
 
-<div class="flex flex-col h-full min-h-0">
-	<PageHeader title={m.crm_hygiene_title()} subtitle={m.crm_hygiene_subtitle()}>
-		{#snippet leading()}
-			<a href="/crm" class="p-1 -ml-1 rounded hover:bg-white/[0.06] inline-flex" aria-label={m.crm_back_to_contacts()}>
-				<ArrowLeft size={16} />
-			</a>
-		{/snippet}
-	</PageHeader>
-
-	<div class="flex-1 min-h-0 overflow-auto p-4 flex flex-col gap-6 max-w-5xl">
-		<!-- Standardization -->
-		<section class="card">
-			<header class="sec-h">
-				<div class="flex items-center gap-2"><Wand2 size={16} class="text-accent" /><span>{m.crm_standardize_names()} ({rows.length})</span></div>
-				<div class="flex items-center gap-2">
-					<Button variant="outline" size="sm" onclick={runReview} disabled={reviewing || rows.length === 0}>
-						<Sparkles size={14} class={reviewing ? 'animate-pulse' : ''} />
-						{reviewing ? m.crm_reviewing() : m.crm_ai_review()}
-					</Button>
-					<Button variant="primary" size="sm" onclick={applyAll} disabled={applying || selectedCount === 0}>
-						<Check size={14} /> {m.crm_apply()} {selectedCount}
-					</Button>
-				</div>
-			</header>
-
-			{#if rows.length === 0}
-				<p class="t-caption py-3">{m.crm_all_clean()}</p>
-			{:else}
-				<p class="t-caption mb-2">{m.crm_standardize_hint()}</p>
-				<div class="rows">
-					{#each rows as r (r.contactId)}
-						<div class="row" class:flagged={r.agentAction === 'flag'}>
-							<input type="checkbox" bind:checked={r.apply} class="chk" />
-							<div class="names">
-								<div class="cur" title={r.current ?? ''}>{r.current || m.crm_blank()}</div>
-								<div class="arrow">→</div>
-								<input bind:value={r.value} class="prop" placeholder={m.crm_clear()} />
-							</div>
-							<div class="meta">
-								{#each r.issues as iss (iss)}<span class="tag">{issueLabel(iss)}</span>{/each}
-								{#if r.agentAction}<span class="tag ai" class:flag={r.agentAction === 'flag'}>{m.crm_ai_label()}: {actionLabel(r.agentAction)}</span>{/if}
-								{#if r.agentNote}<span class="note" title={r.agentNote}>{r.agentNote}</span>{/if}
-							</div>
+		{#if rows.length === 0}
+			<p class="t-caption py-3">{m.crm_all_clean()}</p>
+		{:else}
+			<p class="t-caption mb-2">{m.crm_standardize_hint()}</p>
+			<div class="rows">
+				{#each rows as r (r.contactId)}
+					<div class="row" class:flagged={r.agentAction === 'flag'}>
+						<input type="checkbox" bind:checked={r.apply} class="chk" />
+						<div class="names">
+							<div class="cur" title={r.current ?? ''}>{r.current || m.crm_blank()}</div>
+							<div class="arrow">→</div>
+							<input bind:value={r.value} class="prop" placeholder={m.crm_clear()} />
 						</div>
-					{/each}
-				</div>
-			{/if}
-		</section>
-
-		<!-- Duplicates -->
-		<section class="card">
-			<header class="sec-h">
-				<div class="flex items-center gap-2"><Users size={16} class="text-accent" /><span>{m.crm_possible_duplicates()} ({data.groups.length})</span></div>
-			</header>
-			{#if data.groups.length === 0}
-				<p class="t-caption py-3">{m.crm_no_duplicates()}</p>
-			{:else}
-				<p class="t-caption mb-2">{m.crm_duplicates_hint()}</p>
-				<div class="flex flex-col gap-3">
-					{#each data.groups as g, gi (g.key)}
-						<div class="group">
-							<div class="group-h">
-								<span class="reason">{g.reason === 'dni' ? `DNI ${g.key}` : m.crm_dup_same_name()}</span>
-								<Button variant="secondary" size="sm" onclick={() => mergeGroup(gi)} disabled={merging === gi}>
-									<GitMerge size={14} /> {merging === gi ? m.crm_merging() : m.crm_merge()}
-								</Button>
-							</div>
-							{#each g.contacts as c (c.id)}
-								<label class="dup">
-									<input type="radio" name={`surv-${gi}`} value={c.id} checked={survivor[gi] === c.id} onchange={() => (survivor = { ...survivor, [gi]: c.id })} />
-									<span class="dup-name">{contactLabel(c.name)}</span>
-									{#if c.dni}<span class="t-caption">DNI {c.dni}</span>{/if}
-									{#if c.phone}<span class="t-caption">{c.phone}</span>{/if}
-									<span class="ml-auto t-caption">{m.crm_msgs_n({ count: c.messages })}</span>
-									{#if survivor[gi] === c.id}<span class="keep">{m.crm_keep()}</span>{/if}
-								</label>
-							{/each}
+						<div class="meta">
+							{#each r.issues as iss (iss)}<span class="tag">{issueLabel(iss)}</span>{/each}
+							{#if r.agentAction}<span class="tag ai" class:flag={r.agentAction === 'flag'}>{m.crm_ai_label()}: {actionLabel(r.agentAction)}</span>{/if}
+							{#if r.agentNote}<span class="note" title={r.agentNote}>{r.agentNote}</span>{/if}
 						</div>
-					{/each}
-				</div>
-			{/if}
-		</section>
-	</div>
+					</div>
+				{/each}
+			</div>
+		{/if}
+	</section>
+
+	<!-- Duplicates -->
+	<section class="card">
+		<header class="sec-h">
+			<div class="flex items-center gap-2"><Users size={16} class="text-accent" /><span>{m.crm_possible_duplicates()} ({groups.length})</span></div>
+		</header>
+		{#if groups.length === 0}
+			<p class="t-caption py-3">{m.crm_no_duplicates()}</p>
+		{:else}
+			<p class="t-caption mb-2">{m.crm_duplicates_hint()}</p>
+			<div class="flex flex-col gap-3">
+				{#each groups as g, gi (g.key)}
+					<div class="group">
+						<div class="group-h">
+							<span class="reason">{g.reason === 'dni' ? `DNI ${g.key}` : m.crm_dup_same_name()}</span>
+							<Button variant="secondary" size="sm" onclick={() => mergeGroup(gi)} disabled={merging === gi}>
+								<GitMerge size={14} /> {merging === gi ? m.crm_merging() : m.crm_merge()}
+							</Button>
+						</div>
+						{#each g.contacts as c (c.id)}
+							<label class="dup">
+								<input type="radio" name={`surv-${gi}`} value={c.id} checked={survivor[gi] === c.id} onchange={() => (survivor = { ...survivor, [gi]: c.id })} />
+								<span class="dup-name">{contactLabel(c.name)}</span>
+								{#if c.dni}<span class="t-caption">DNI {c.dni}</span>{/if}
+								{#if c.phone}<span class="t-caption">{c.phone}</span>{/if}
+								<span class="ml-auto t-caption">{m.crm_msgs_n({ count: c.messages })}</span>
+								{#if survivor[gi] === c.id}<span class="keep">{m.crm_keep()}</span>{/if}
+							</label>
+						{/each}
+					</div>
+				{/each}
+			</div>
+		{/if}
+	</section>
 </div>
 
 <style>

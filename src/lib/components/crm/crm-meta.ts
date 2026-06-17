@@ -92,10 +92,20 @@ const orderIndex = (k: string) => {
   return i === -1 ? Number.MAX_SAFE_INTEGER : i;
 };
 
+/**
+ * Reserved custom-field keys are system-owned (e.g. `_funnel` holds the
+ * marketing-funnel stage). They live in `custom_fields` to avoid a migration
+ * but must NEVER surface as user-facing "properties" — filtered out of the
+ * Details card and the Customers column editor by their `_` prefix.
+ */
+export const isReservedMetaKey = (k: string): boolean => k.startsWith('_');
+
 /** Non-empty custom-field entries, ordered (known keys first, then the rest). */
 export function metaEntries(fields: Record<string, unknown> | null | undefined): [string, unknown][] {
   if (!fields || typeof fields !== 'object') return [];
-  const entries = Object.entries(fields).filter(([, v]) => v != null && String(v).trim() !== '');
+  const entries = Object.entries(fields).filter(
+    ([k, v]) => !isReservedMetaKey(k) && v != null && String(v).trim() !== '',
+  );
   return entries.sort(([a], [b]) => orderIndex(a) - orderIndex(b) || a.localeCompare(b));
 }
 
@@ -106,7 +116,8 @@ export function collectMetaKeys(
   const seen = new Set<string>();
   for (const r of rows) {
     const f = r.custom_fields;
-    if (f && typeof f === 'object') for (const k of Object.keys(f)) if (k) seen.add(k);
+    if (f && typeof f === 'object')
+      for (const k of Object.keys(f)) if (k && !isReservedMetaKey(k)) seen.add(k);
   }
   return [...seen].sort((a, b) => orderIndex(a) - orderIndex(b) || a.localeCompare(b));
 }
