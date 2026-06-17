@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { finInvoices, finInvoiceItems, finPayments, finClients, finSources } from './pg-finance-schema';
+import { getTableColumns } from 'drizzle-orm';
+import { finInvoices, finInvoiceItems, finPayments, finClients, finSources, finSyncJobs } from './pg-finance-schema';
 
 describe('pg-finance-schema', () => {
   it('fin_invoices has the CORE columns + metadata', () => {
@@ -17,5 +18,14 @@ describe('pg-finance-schema', () => {
   it('finSources tracks per-org provider config + watermark', () => {
     for (const c of ['orgId', 'provider', 'config', 'secretRefs', 'enabled', 'watermark', 'lastSyncAt'])
       expect(Object.keys(finSources)).toContain(c);
+  });
+});
+
+describe('finSyncJobs schema', () => {
+  it('has the durable job columns', () => {
+    const cols = Object.keys(getTableColumns(finSyncJobs));
+    for (const c of ['id','orgId','provider','status','total','processed','pageCursor','error','cancelRequested','startedAt','finishedAt','heartbeatAt','createdAt','updatedAt']) {
+      expect(cols).toContain(c);
+    }
   });
 });

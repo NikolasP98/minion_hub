@@ -1,4 +1,5 @@
-import { pgTable, uuid, text, jsonb, numeric, timestamp, boolean, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, jsonb, numeric, timestamp, boolean, integer, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 /**
  * Hub-native Finances — canonical, provider-agnostic schema. CORE columns are
@@ -115,8 +116,37 @@ export const finSources = pgTable(
   (t) => ({ uniq: uniqueIndex('fin_sources_org_provider_uniq').on(t.orgId, t.provider) }),
 );
 
+/** Durable, resumable background sync job — one row per sync run. */
+export const finSyncJobs = pgTable(
+  'fin_sync_jobs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: text('org_id').notNull(),
+    provider: text('provider').notNull(),
+    status: text('status').notNull().default('queued'), // queued|running|succeeded|failed|cancelled
+    total: integer('total'),                              // DRF count baseline (null until known)
+    processed: integer('processed').notNull().default(0),
+    pageCursor: text('page_cursor'),                      // DRF `next` URL to resume from
+    error: text('error'),
+    cancelRequested: boolean('cancel_requested').notNull().default(false),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+    heartbeatAt: timestamp('heartbeat_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    activeUq: uniqueIndex('fin_sync_jobs_active_uq')
+      .on(t.orgId, t.provider)
+      .where(sql`status in ('queued','running')`),
+    latestIdx: index('fin_sync_jobs_org_provider_created_idx').on(t.orgId, t.provider, t.createdAt),
+    resumeIdx: index('fin_sync_jobs_status_heartbeat_idx').on(t.status, t.heartbeatAt),
+  }),
+);
+
 export type FinInvoice = typeof finInvoices.$inferSelect;
 export type FinInvoiceItem = typeof finInvoiceItems.$inferSelect;
 export type FinPayment = typeof finPayments.$inferSelect;
 export type FinClient = typeof finClients.$inferSelect;
 export type FinSource = typeof finSources.$inferSelect;
+export type FinSyncJob = typeof finSyncJobs.$inferSelect;
