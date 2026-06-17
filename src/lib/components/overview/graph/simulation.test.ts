@@ -17,7 +17,7 @@ const input = {
   subscriptions: [],
 };
 
-const settle = (sim: ReturnType<typeof createSimulation>, n = 1000) => {
+const settle = (sim: ReturnType<typeof createSimulation>, n = 400) => {
   for (let i = 0; i < n; i++) sim.tick();
 };
 

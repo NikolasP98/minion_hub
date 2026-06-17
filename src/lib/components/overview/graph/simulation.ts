@@ -82,7 +82,11 @@ export function createSimulation(
     .force('y', forceY<SimNode>((d) => d.ay).strength((d) => (d.pinned ? 0 : ANCHOR_STRENGTH)))
     .force('collide', forceCollide<SimNode>((d) => d.symbolSize / 2 + COLLIDE_PAD))
     .force('charge', forceManyBody<SimNode>().strength(WEAK_REPULSION))
-    .force('link', forceLink<SimNode, SimLink>(links).id((d) => d.id).distance(60).strength(LINK_STRENGTH))
+    .force('link', forceLink<SimNode, SimLink>(links).id((d) => d.id).distance((l) => {
+      const s = l.source as SimNode;
+      const t = l.target as SimNode;
+      return Math.abs(s.radius - t.radius) || 60;
+    }).strength(LINK_STRENGTH))
     .alphaTarget(reduced ? 0 : BREATHE_ALPHA)
     .stop(); // we own the loop — d3's internal timer must not run
 
