@@ -66,6 +66,25 @@ describe('upsertInvoicesBatch', () => {
     await upsertInvoicesBatch(ctx(db), []);
     expect(db.transaction).not.toHaveBeenCalled();
   });
+
+  it('dedupes duplicate providerRef invoices in a page (last-wins, one transaction, no throw)', async () => {
+    const { upsertInvoicesBatch } = await import('./finance.service');
+    const { db, resolveSequence } = createMockDb();
+    // Two invoices share providerRef 'r1' — after dedupe only one row reaches the DB insert.
+    // The mock returns a single invoice row (not two), which is the expected behaviour.
+    resolveSequence([
+      [{ providerRef: 'c1', id: 'cid1' }],  // clients upsert
+      [{ providerRef: 'r1', id: 'iid1' }],  // invoices upsert (deduped → 1 row)
+      [], [], [], [],                         // delete items, insert items, delete payments, insert payments
+    ]);
+    await expect(
+      upsertInvoicesBatch(ctx(db), [
+        inv({ providerRef: 'r1', number: 'N1' }),
+        inv({ providerRef: 'r1', number: 'N2' }), // duplicate — should be silently dropped
+      ]),
+    ).resolves.toBeUndefined();
+    expect(db.transaction).toHaveBeenCalledTimes(1);
+  });
 });
 
 // Helper: make mockWithOrgCore call fn with a controlled tx.execute

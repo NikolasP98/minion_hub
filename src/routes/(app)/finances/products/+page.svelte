@@ -49,10 +49,10 @@
 				editingId = null;
 				await invalidate('finances:data');
 			} else {
-				editMsg = { ok: false, text: 'Save failed' };
+				editMsg = { ok: false, text: m.fin_products_save_failed() };
 			}
 		} catch {
-			editMsg = { ok: false, text: 'Save failed' };
+			editMsg = { ok: false, text: m.fin_products_save_failed() };
 		} finally {
 			editBusy = false;
 		}
@@ -69,13 +69,13 @@
 			const res = await fetch('/api/finances/products/import', { method: 'POST' });
 			if (res.ok) {
 				const d = await res.json() as { created: number; linked: number };
-				importMsg = { ok: true, text: `Imported ${d.created} products, linked ${d.linked} items` };
+				importMsg = { ok: true, text: m.fin_products_import_done({ created: d.created, items: d.linked }) };
 				await invalidate('finances:data');
 			} else {
-				importMsg = { ok: false, text: 'Import failed' };
+				importMsg = { ok: false, text: m.fin_products_import_failed() };
 			}
 		} catch {
-			importMsg = { ok: false, text: 'Import failed' };
+			importMsg = { ok: false, text: m.fin_products_import_failed() };
 		} finally {
 			importBusy = false;
 		}

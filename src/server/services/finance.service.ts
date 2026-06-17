@@ -26,10 +26,15 @@ export async function upsertInvoicesBatch(
   ctx: CoreCtx, invoices: CanonicalInvoice[], productMap: Map<string, string> = new Map(),
 ): Promise<void> {
   if (invoices.length === 0) return;
+  // Dedupe invoices by providerRef (last-wins) to prevent ON CONFLICT DO UPDATE
+  // from seeing the same conflict target twice in one statement (Postgres error).
+  const invMap = new Map<string, CanonicalInvoice>();
+  for (const inv of invoices) invMap.set(inv.providerRef, inv);
+  const deduped = [...invMap.values()];
   await withOrgCore(ctx, async (tx) => {
     // 1. Clients (dedupe by providerRef within the page).
     const clients = new Map<string, CanonicalInvoice['client']>();
-    for (const inv of invoices) if (inv.client) clients.set(inv.client.providerRef, inv.client);
+    for (const inv of deduped) if (inv.client) clients.set(inv.client.providerRef, inv.client);
     const clientIdByRef = new Map<string, string>();
     if (clients.size) {
       const rows = await tx.insert(finClients).values([...clients.values()].map((c) => ({
@@ -44,7 +49,7 @@ export async function upsertInvoicesBatch(
     }
 
     // 2. Invoices (resolve client_id from step 1).
-    const invRows = await tx.insert(finInvoices).values(invoices.map((inv) => ({
+    const invRows = await tx.insert(finInvoices).values(deduped.map((inv) => ({
       orgId: ctx.tenantId, provider: inv.provider, providerRef: inv.providerRef, number: inv.number,
       documentId: inv.documentId, issuedAt: inv.issuedAt ? new Date(inv.issuedAt) : null,
       clientId: inv.client ? clientIdByRef.get(inv.client.providerRef) ?? null : null,
@@ -67,7 +72,7 @@ export async function upsertInvoicesBatch(
 
     // 3. Replace children for these invoices (set-based delete + multi-row insert).
     await tx.delete(finInvoiceItems).where(inArray(finInvoiceItems.invoiceId, invoiceIds));
-    const itemRows = invoices.flatMap((inv) => {
+    const itemRows = deduped.flatMap((inv) => {
       const invoiceId = invIdByRef.get(inv.providerRef); if (!invoiceId) return [];
       return inv.items.map((it) => ({
         orgId: ctx.tenantId, invoiceId, productId: it.code ? productMap.get(it.code) ?? null : null,
@@ -78,7 +83,7 @@ export async function upsertInvoicesBatch(
     if (itemRows.length) await tx.insert(finInvoiceItems).values(itemRows);
 
     await tx.delete(finPayments).where(inArray(finPayments.invoiceId, invoiceIds));
-    const payRows = invoices.flatMap((inv) => {
+    const payRows = deduped.flatMap((inv) => {
       const invoiceId = invIdByRef.get(inv.providerRef); if (!invoiceId) return [];
       return inv.payments.map((p) => ({
         orgId: ctx.tenantId, invoiceId, providerRef: p.providerRef, method: p.method,
@@ -171,20 +176,6 @@ export async function clientRevenueRows(ctx: CoreCtx) {
   });
 }
 
-/** Raw aggregate rows for the dashboard (revenue per month, etc.).
- *  @deprecated Use revenueSeries(ctx, period) instead. Kept for +page.server.ts compat until Task 7. */
-export function dashboardRows(ctx: CoreCtx) {
-  return withOrgCore(ctx, async (tx) => {
-    const monthly = (await tx.execute(sql`
-      select to_char(date_trunc('month', issued_at), 'YYYY-MM') as month,
-             count(*)::int as invoices, coalesce(sum(total), 0)::float8 as revenue
-      from fin_invoices where org_id = ${ctx.tenantId} and issued_at is not null
-      group by 1 order by 1 desc limit 24
-    `)) as unknown as Array<{ month: string; invoices: number; revenue: number }>;
-    return { monthly: monthly.map((r) => ({ month: String(r.month), invoices: Number(r.invoices), revenue: Number(r.revenue) })) };
-  });
-}
-
 // ── Period-scoped, Valkey-cached dashboard aggregates ──────────────────────
 
 function periodWhere(p: Period, alias = '') {
@@ -253,7 +244,7 @@ export function topProducts(ctx: CoreCtx, p: Period, opts: { limit?: number } = 
   return cached(ck(ctx.tenantId, `products-${limit}`, p), { ttl: '2m', swr: '30s', tags: ctags(ctx.tenantId) }, () =>
     withOrgCore(ctx, async (tx) => {
       const rows = (await tx.execute(sql`
-        select ii.product_id, max(ii.code) code,
+        select max(ii.product_id::text) product_id, max(ii.code) code,
                coalesce(max(p.name), max(ii.description)) name,
                coalesce(sum(ii.total::numeric), 0)::float8 revenue,
                coalesce(sum(ii.quantity::numeric), 0)::float8 qty,
@@ -263,7 +254,7 @@ export function topProducts(ctx: CoreCtx, p: Period, opts: { limit?: number } = 
         left join fin_products p on p.id = ii.product_id
         where ${periodWhere(p, 'inv')}
           and (ii.product_id is not null or ii.code is not null)
-        group by ii.product_id
+        group by coalesce(ii.product_id::text, ii.code)
         order by revenue desc
         limit ${limit}
       `)) as unknown as Array<Record<string, unknown>>;
