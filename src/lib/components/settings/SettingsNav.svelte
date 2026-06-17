@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Brain, Bot, Radio, Shield, Server, Palette, DatabaseBackup, Puzzle, Users, KeyRound, Phone, Search } from "lucide-svelte";
+  import { Brain, Bot, Radio, Shield, Server, Palette, DatabaseBackup, Puzzle, Users, KeyRound, Phone, Search, Blocks } from "lucide-svelte";
   import { page } from "$app/state";
   import { isAdmin } from "$lib/state/features/user.svelte";
   import { TABS } from "$lib/utils/config-schema";
@@ -13,7 +13,7 @@
   let { dirtyTabIds = new Set<string>(), onselect }: Props = $props();
 
   const ICON_MAP: Record<string, typeof Brain> = {
-    Brain, Bot, Radio, Shield, Server, Palette, DatabaseBackup, Puzzle, Users, KeyRound, Phone,
+    Brain, Bot, Radio, Shield, Server, Palette, DatabaseBackup, Puzzle, Users, KeyRound, Phone, Blocks,
   };
 
   type HubTab = { id: string; label: string; icon: string; href: string; adminOnly: boolean };
@@ -26,6 +26,7 @@
   const HUB_TABS: HubTab[] = [
     { id: 'gateways', label: 'Gateways', icon: 'Server', href: '/settings/gateways', adminOnly: true },
     { id: 'backups', label: 'Backups', icon: 'DatabaseBackup', href: '/settings/backups', adminOnly: true },
+    { id: 'modules', label: 'Modules', icon: 'Blocks', href: '/settings/modules', adminOnly: true },
   ];
   // "Team" group — admin route tabs.
   const TEAM_TABS: HubTab[] = [

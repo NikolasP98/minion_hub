@@ -1133,6 +1133,8 @@
   "settings_copied": "¡Copiado!",
   "settings_noFieldsMatching": "Sin campos que coincidan con \"{query}\"",
   "settings_plugins": "Plugins",
+  "settings_modules": "Módulos",
+  "settings_modules_subtitle": "Activar o desactivar módulos del hub para tu organización",
   "skills_searchPlaceholder": "Buscar habilidades…",
   "skills_enabledCount": "{enabled}/{total} habilitadas",
   "skills_filterAll": "Todas",

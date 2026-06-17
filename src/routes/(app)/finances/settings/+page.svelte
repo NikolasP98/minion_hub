@@ -1,9 +1,8 @@
 <script lang="ts">
 	import type { PageData } from './$types';
-	import { Settings2, RefreshCw, Plug, ToggleLeft } from 'lucide-svelte';
+	import { Settings2, RefreshCw, Plug } from 'lucide-svelte';
 	import { PageHeader, Button, Toggle } from '$lib/components/ui';
 	import * as m from '$lib/paraglide/messages';
-	import { setPluginEnabled } from '$lib/state/plugin-nav.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -81,46 +80,6 @@
 			syncMsg = { ok: false, text: m.fin_sync_error() };
 		} finally {
 			syncBusy = false;
-		}
-	}
-
-	// ── Modules card ──────────────────────────────────────────────────────────
-	// Default true when absent (absent = enabled per modules.service.ts)
-	let finEnabled = $state(
-		// svelte-ignore state_referenced_locally
-		data.modules['finances'] ?? true,
-	);
-	let crmEnabled = $state(
-		// svelte-ignore state_referenced_locally
-		data.modules['crm'] ?? true,
-	);
-	let moduleBusy = $state<string | null>(null);
-	let moduleMsg = $state<{ id: string; ok: boolean; text: string } | null>(null);
-
-	async function setModule(moduleId: string, enabled: boolean) {
-		moduleBusy = moduleId;
-		moduleMsg = null;
-		try {
-			const res = await fetch('/api/modules', {
-				method: 'PUT',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ moduleId, enabled }),
-			});
-			if (res.ok) {
-				// Optimistic nav update so sidebar reacts immediately.
-				setPluginEnabled(moduleId, enabled);
-			} else {
-				moduleMsg = { id: moduleId, ok: false, text: m.fin_module_error() };
-				// Revert the local toggle on failure.
-				if (moduleId === 'finances') finEnabled = !enabled;
-				if (moduleId === 'crm') crmEnabled = !enabled;
-			}
-		} catch {
-			moduleMsg = { id: moduleId, ok: false, text: m.fin_module_error() };
-			if (moduleId === 'finances') finEnabled = !enabled;
-			if (moduleId === 'crm') crmEnabled = !enabled;
-		} finally {
-			moduleBusy = null;
 		}
 	}
 </script>
@@ -228,44 +187,6 @@
 				</div>
 			</section>
 
-			<!-- ── Modules card ───────────────────────────────────────────────── -->
-			<section class="card">
-				<header class="card-h">
-					<ToggleLeft size={14} />
-					<span>{m.fin_modules_card()}</span>
-				</header>
-
-				<div class="mod-row">
-					<div class="mod-info">
-						<span class="mod-label">{m.fin_module_finances()}</span>
-						<span class="t-caption">{m.fin_module_finances_desc()}</span>
-					</div>
-					<Toggle
-						bind:checked={finEnabled}
-						disabled={moduleBusy === 'finances'}
-						onchange={(v) => setModule('finances', v)}
-						size="md"
-					/>
-				</div>
-
-				<div class="mod-row">
-					<div class="mod-info">
-						<span class="mod-label">{m.fin_module_crm()}</span>
-						<span class="t-caption">{m.fin_module_crm_desc()}</span>
-					</div>
-					<Toggle
-						bind:checked={crmEnabled}
-						disabled={moduleBusy === 'crm'}
-						onchange={(v) => setModule('crm', v)}
-						size="md"
-					/>
-				</div>
-
-				{#if moduleMsg && !moduleMsg.ok}
-					<p class="err-msg mt-2">{moduleMsg.text}</p>
-				{/if}
-			</section>
-
 		</div>
 	</div>
 </div>
@@ -332,25 +253,5 @@
 		font-size: 0.8rem;
 		color: var(--color-destructive);
 		margin-bottom: 0.4rem;
-	}
-	.mod-row {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 1rem;
-		padding: 0.55rem 0;
-		border-bottom: 1px solid var(--hairline);
-	}
-	.mod-row:last-of-type {
-		border-bottom: none;
-	}
-	.mod-info {
-		display: flex;
-		flex-direction: column;
-		gap: 0.1rem;
-	}
-	.mod-label {
-		font-size: 0.9rem;
-		font-weight: 500;
 	}
 </style>

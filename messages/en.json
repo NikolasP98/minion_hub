@@ -1182,6 +1182,8 @@
   "settings_copied": "Copied!",
   "settings_noFieldsMatching": "No fields matching \"{query}\"",
   "settings_plugins": "Plugins",
+  "settings_modules": "Modules",
+  "settings_modules_subtitle": "Enable or disable hub modules for your organisation",
   "skills_searchPlaceholder": "Search skills…",
   "skills_enabledCount": "{enabled}/{total} enabled",
   "skills_filterAll": "All",
