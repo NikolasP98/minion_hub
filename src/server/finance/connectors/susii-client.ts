@@ -28,18 +28,32 @@ export class SusiiClient {
     return res;
   }
 
-  async *salesPages(opts: { businessId: number; since?: string; pageSize?: number }): AsyncIterable<unknown[]> {
+  private buildSalesUrl(opts: { businessId: number; since?: string; pageSize?: number }): string {
     const u = new URL(`${this.base}/v1/sales/sales/`);
     u.searchParams.set('business', String(opts.businessId));
     u.searchParams.set('page_size', String(opts.pageSize ?? 100));
     if (opts.since) u.searchParams.set('modified_after', opts.since);
-    let next: string | null = u.toString();
+    return u.toString();
+  }
+
+  async *salesPages(
+    opts: { businessId: number; since?: string; pageSize?: number; cursor?: string | null },
+  ): AsyncIterable<{ results: unknown[]; next: string | null }> {
+    let next: string | null = opts.cursor ?? this.buildSalesUrl(opts);
     while (next) {
       const res = await this.authedGet(next);
       if (!res.ok) throw new Error(`susii sales fetch failed: ${res.status}`);
       const body = (await res.json()) as { results?: unknown[]; next?: string | null };
-      yield body.results ?? [];
+      yield { results: body.results ?? [], next: body.next ?? null };
       next = body.next ?? null;
     }
+  }
+
+  async count(opts: { businessId: number; since?: string }): Promise<number | null> {
+    const url = this.buildSalesUrl({ ...opts, pageSize: 1 });
+    const res = await this.authedGet(url);
+    if (!res.ok) return null;
+    const body = (await res.json()) as { count?: number };
+    return typeof body.count === 'number' ? body.count : null;
   }
 }

@@ -60,9 +60,19 @@ export interface PullOpts {
   since?: string;
 }
 
+export interface PullPage {
+  invoices: CanonicalInvoice[];
+  cursor: string | null; // resume token for the *next* page; null = drained
+}
+export interface PullPagesOpts extends PullOpts {
+  cursor?: string | null; // resume from here instead of building the first page
+}
+
 export interface FinanceConnector {
   provider: string;
-  pull(opts: PullOpts): AsyncIterable<CanonicalInvoice>;
+  pull(opts: PullOpts): AsyncIterable<CanonicalInvoice>;        // convenience wrapper over pullPages
+  pullPages(opts: PullPagesOpts): AsyncIterable<PullPage>;      // resumable, batch + cursor
+  count?(opts: PullOpts): Promise<number | null>;              // optional % baseline
 }
 
 const REGISTRY = new Map<string, FinanceConnector>();
