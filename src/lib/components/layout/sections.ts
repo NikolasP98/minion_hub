@@ -1,5 +1,5 @@
 import type { ComponentType, SvelteComponent } from "svelte";
-import { FolderKanban, Contact, UserRound, BrainCircuit, Zap, Boxes } from "lucide-svelte";
+import { FolderKanban, Contact, UserRound, BrainCircuit, Zap, Boxes, Wallet } from "lucide-svelte";
 import {
     ROUTES,
     SECTION_META,
@@ -119,6 +119,7 @@ export function findActiveSection(sections: Section[], pathname: string): Sectio
 type PluginNavCategory =
     | "marketing"
     | "operations"
+    | "finance"
     | "creative"
     | "customer-support"
     | "channel"
@@ -149,6 +150,15 @@ const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: SectionIt
             matcher: (p: string) => p.startsWith("/workforce"),
         },
     },
+    {
+        category: "finance",
+        item: {
+            href: "/finances",
+            label: "Finances",
+            icon: Wallet,
+            matcher: (p: string) => p.startsWith("/finances"),
+        },
+    },
 ];
 
 /**
@@ -160,6 +170,7 @@ const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: SectionIt
 const PLUGIN_NAV_GROUPS: ReadonlyArray<{ category: PluginNavCategory; label: () => string }> = [
     { category: "marketing", label: () => m.nav_marketing() },
     { category: "operations", label: () => m.nav_operations() },
+    { category: "finance", label: () => m.nav_finance() },
     { category: "creative", label: () => m.nav_branding() },
     { category: "customer-support", label: () => m.nav_customerSupport() },
     { category: "tool", label: () => m.nav_tools_group() },
@@ -189,6 +200,7 @@ function normalizePluginCategory(raw: string | undefined): PluginNavCategory {
     switch (raw) {
         case "marketing":
         case "operations":
+        case "finance":
         case "creative":
         case "customer-support":
         case "channel":
@@ -227,7 +239,11 @@ export function getDynamicPluginsSections(
         byCategory.set(category, list);
     };
 
-    for (const { category, item } of BUILTIN_PLUGIN_ITEMS) place(category, item);
+    for (const { category, item } of BUILTIN_PLUGIN_ITEMS) {
+        const moduleId = item.href.replace(/^\//, '').split('/')[0]; // 'crm' | 'finances' | 'workforce'
+        if (enabledByPluginId[moduleId] === false) continue;          // per-org module gate
+        place(category, item);
+    }
     for (const e of entries) {
         // Per-org gate: a plugin disabled for the acting org is removed from the
         // nav entirely (its route also 404s). Reactive — re-runs when the toggle
