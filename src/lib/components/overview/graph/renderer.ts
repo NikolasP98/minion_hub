@@ -71,6 +71,7 @@ export async function createRenderer(
 		backgroundAlpha: 0,
 		resolution: window.devicePixelRatio || 1,
 		autoDensity: true,
+		autoStart: false,
 		// resizeTo only accepts Window | HTMLElement — canvas.parentElement is HTMLElement | null;
 		// fall back to canvas itself (HTMLCanvasElement extends HTMLElement) if no parent.
 		resizeTo: (canvas.parentElement ?? canvas) as HTMLElement
@@ -138,22 +139,26 @@ export async function createRenderer(
 		if (node.image) {
 			const sprite = new Sprite();
 			sprite.anchor.set(0.5);
-			sprite.width = size;
-			sprite.height = size;
 			container.addChild(sprite);
 			loadTexture(node.image).then((tex) => {
-				if (tex) sprite.texture = tex;
+				if (tex) {
+					sprite.texture = tex;
+					sprite.width = size;
+					sprite.height = size;
+				}
 			});
 		}
 		// Integration brand logo overlay.
 		if (node.logoImage && node.logoSize) {
 			const logo = new Sprite();
 			logo.anchor.set(0.5);
-			logo.width = node.logoSize;
-			logo.height = node.logoSize;
 			container.addChild(logo);
 			loadTexture(node.logoImage).then((tex) => {
-				if (tex) logo.texture = tex;
+				if (tex) {
+					logo.texture = tex;
+					logo.width = node.logoSize!;
+					logo.height = node.logoSize!;
+				}
 			});
 		}
 
@@ -180,7 +185,7 @@ export async function createRenderer(
 	}
 
 	function setGraph(nodes: SimNode[], nextEdges: GraphEdge[]) {
-		nodeLayer.removeChildren();
+		for (const child of nodeLayer.removeChildren()) child.destroy({ children: true, texture: false });
 		byId.clear();
 		views = nodes.map((nd) => {
 			const v = buildNodeView(nd);
