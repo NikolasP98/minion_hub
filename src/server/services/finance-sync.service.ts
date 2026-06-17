@@ -1,7 +1,7 @@
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { getConnector } from '$server/finance/connector';
 import '$server/finance/connectors/susii-connector'; // self-registers the 'susii' connector
-import { getSource, upsertInvoice, setSourceSync } from './finance.service';
+import { getSource, upsertInvoicesBatch, loadProductMap, bustFinanceCache, setSourceSync } from './finance.service';
 import { decryptCreds } from './finance-secrets';
 import { overlapSince, nowIso } from './finance-sync.helpers';
 import { claimJob, getJobById, heartbeat, isCancelRequested, finishJob, enqueueJob } from './finance-sync-jobs.service';
@@ -44,7 +44,6 @@ export async function advanceJob(ctx: CoreCtx, jobId: string, opts: { budgetMs: 
   let processed = job.processed;
   let total = job.total;
   let cursor: string | null = job.pageCursor ?? null;
-  let consecutiveFailures = 0;
   const deadline = Date.now() + opts.budgetMs;
 
   // Seed the % baseline once.
@@ -53,33 +52,30 @@ export async function advanceJob(ctx: CoreCtx, jobId: string, opts: { budgetMs: 
     if (total != null) await heartbeat(ctx, jobId, { processed, total, pageCursor: cursor });
   }
 
+  const productMap = await loadProductMap(ctx);
+
   try {
     for await (const page of connector.pullPages({ config, secrets, since, cursor })) {
-      if (await isCancelRequested(ctx, jobId)) {
-        await finishJob(ctx, jobId, 'cancelled');
-        return;
-      }
-      for (const inv of page.invoices) {
-        try {
-          await upsertInvoice(ctx, inv);
-          processed++;
-          consecutiveFailures = 0;
-        } catch {
-          if (++consecutiveFailures >= 5) throw new Error('aborted: 5 consecutive invoice failures');
-        }
+      if (await isCancelRequested(ctx, jobId)) { await finishJob(ctx, jobId, 'cancelled'); return; }
+      try {
+        await upsertInvoicesBatch(ctx, page.invoices, productMap); // one tx for the whole page (atomic)
+        processed += page.invoices.length;
+      } catch (e) {
+        throw e instanceof Error ? e : new Error('batch upsert failed'); // page tx rolled back; cursor preserved
       }
       cursor = page.cursor;
       await heartbeat(ctx, jobId, { processed, total, pageCursor: cursor });
       if (cursor == null) {
         await setSourceSync(ctx, provider, { watermark: watermarkTarget, status: 'success' });
         await finishJob(ctx, jobId, 'succeeded');
+        await bustFinanceCache(ctx);
         return;
       }
-      if (Date.now() > deadline) return; // leave 'running' with cursor persisted; next tick resumes
+      if (Date.now() > deadline) return;
     }
-    // Generator ended without a final null-cursor page (e.g. zero pages) → success.
     await setSourceSync(ctx, provider, { watermark: watermarkTarget, status: 'success' });
     await finishJob(ctx, jobId, 'succeeded');
+    await bustFinanceCache(ctx);
   } catch (e) {
     await setSourceSync(ctx, provider, { watermark: source.watermark ?? '', status: 'failed' });
     await finishJob(ctx, jobId, 'failed', { error: e instanceof Error ? e.message : 'sync failed' });

@@ -18,11 +18,15 @@ vi.mock('./finance-sync-jobs.service', () => ({
 
 const getSource = vi.fn();
 const setSourceSync = vi.fn<() => Promise<void>>(async () => {});
-const upsertInvoice = vi.fn<() => Promise<void>>(async () => {});
+const upsertInvoicesBatch = vi.fn<() => Promise<void>>(async () => {});
+const loadProductMap = vi.fn(async () => new Map());
+const bustFinanceCache = vi.fn(async () => {});
 vi.mock('./finance.service', () => ({
   getSource: (...a: unknown[]) => getSource(),
   setSourceSync: (...a: unknown[]) => setSourceSync(),
-  upsertInvoice: (...a: unknown[]) => upsertInvoice(),
+  upsertInvoicesBatch: (...a: unknown[]) => upsertInvoicesBatch(),
+  loadProductMap: (...a: unknown[]) => loadProductMap(),
+  bustFinanceCache: (...a: unknown[]) => bustFinanceCache(),
 }));
 
 vi.mock('./finance-secrets', () => ({ decryptCreds: () => ({ username: 'u', password: 'p' }) }));
@@ -58,7 +62,7 @@ describe('advanceJob', () => {
     getJobById.mockResolvedValue({ id: 'j1', provider: 'fake', processed: 0, total: null, pageCursor: null, startedAt: new Date() });
     pages.push({ invoices: [{}, {}], cursor: 'c1' }, { invoices: [{}], cursor: null });
     await advanceJob(ctx, 'j1', { budgetMs: Infinity });
-    expect(upsertInvoice).toHaveBeenCalledTimes(3);
+    expect(upsertInvoicesBatch).toHaveBeenCalledTimes(2);
     expect(setSourceSync).toHaveBeenCalled();
     expect(finishJob).toHaveBeenCalledWith(ctx, 'j1', 'succeeded', undefined);
   });
@@ -66,7 +70,7 @@ describe('advanceJob', () => {
   it('does nothing when the job cannot be claimed', async () => {
     claimJob.mockResolvedValue(false);
     await advanceJob(ctx, 'j1', { budgetMs: Infinity });
-    expect(upsertInvoice).not.toHaveBeenCalled();
+    expect(upsertInvoicesBatch).not.toHaveBeenCalled();
     expect(finishJob).not.toHaveBeenCalled();
   });
 
@@ -83,7 +87,7 @@ describe('advanceJob', () => {
     pages.push({ invoices: [{}], cursor: 'c1' });
     await advanceJob(ctx, 'j1', { budgetMs: Infinity });
     expect(finishJob).toHaveBeenCalledWith(ctx, 'j1', 'cancelled', undefined);
-    expect(upsertInvoice).not.toHaveBeenCalled();
+    expect(upsertInvoicesBatch).not.toHaveBeenCalled();
   });
 
   it('budget-exhaustion: persists cursor after first page and does not call finishJob', async () => {
@@ -95,13 +99,13 @@ describe('advanceJob', () => {
     expect(heartbeat).toHaveBeenCalledWith(expect.anything(), 'j1', expect.objectContaining({ pageCursor: 'c1' }));
     // Job left in 'running' state — finishJob must NOT have been called
     expect(finishJob).not.toHaveBeenCalled();
-    // Only the first page's invoice was upserted (budget expired before page 2)
-    expect(upsertInvoice).toHaveBeenCalledTimes(1);
+    // Only the first page's batch was upserted (budget expired before page 2)
+    expect(upsertInvoicesBatch).toHaveBeenCalledTimes(1);
   });
 
-  it('5-consecutive-failure abort: calls finishJob with status failed', async () => {
+  it('batch upsert failure: calls finishJob with status failed', async () => {
     getJobById.mockResolvedValue({ id: 'j1', provider: 'fake', processed: 0, total: null, pageCursor: null, startedAt: new Date() });
-    upsertInvoice.mockRejectedValue(new Error('boom'));
+    upsertInvoicesBatch.mockRejectedValueOnce(new Error('boom'));
     pages.push({ invoices: [{}, {}, {}, {}, {}], cursor: 'c1' });
     await advanceJob(ctx, 'j1', { budgetMs: Infinity });
     expect(finishJob).toHaveBeenCalledWith(

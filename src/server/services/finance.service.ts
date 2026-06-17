@@ -2,10 +2,22 @@
 import { and, eq, desc, sql, inArray } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
-import { finInvoices, finInvoiceItems, finPayments, finClients, finSources } from '$server/db/pg-finance-schema';
+import { finInvoices, finInvoiceItems, finPayments, finClients, finSources, finProducts } from '$server/db/pg-finance-schema';
 import type { CanonicalInvoice } from '$server/finance/connector';
+import { invalidateTags, tags } from '@minion-stack/cache';
 
 const numStr = (n: number | null) => (n == null ? null : String(n));
+
+export function financeCacheTags(orgId: string) { return tags.tenantDomain(orgId, 'finances'); }
+export function bustFinanceCache(ctx: CoreCtx) { return invalidateTags([...financeCacheTags(ctx.tenantId)]); }
+
+export function loadProductMap(ctx: CoreCtx): Promise<Map<string, string>> {
+  return withOrgCore(ctx, async (tx) => {
+    const rows = await tx.select({ code: finProducts.code, id: finProducts.id })
+      .from(finProducts).where(eq(finProducts.orgId, ctx.tenantId));
+    return new Map(rows.map((r) => [r.code, r.id]));
+  });
+}
 
 /** Upsert a whole page of canonical invoices in ONE org-scoped transaction using
  *  set-based multi-row statements. ~100× fewer round-trips than per-invoice. */
