@@ -278,5 +278,24 @@ export function buildGraph(input: BuildInput): { nodes: GraphNode[]; edges: Grap
       edges.push({ source: sharedId, target: un, color: '#a1a1aa', baseOpacity: 0.4, width: 1, dashed: true });
   }
 
+  // ── Degree-aware sizing ──────────────────────────────────────────────────
+  const degree = new Map<string, number>();
+  for (const nd of nodes) degree.set(nd.id, 0);
+  for (const e of edges) {
+    degree.set(e.source, (degree.get(e.source) ?? 0) + 1);
+    degree.set(e.target, (degree.get(e.target) ?? 0) + 1);
+  }
+  const BASE: Record<NodeKind, number> = {
+    org: 88, area: 66, shared: 56, integration: 46, agent: 50, user: 46, skill: 26,
+  };
+  for (const nd of nodes) {
+    const deg = degree.get(nd.id) ?? 0;
+    const base = BASE[nd.kind];
+    nd.symbolSize = Math.round(base * (1 + Math.min(0.6, 0.06 * deg)));
+    if (nd.kind === 'integration' && nd.logoSize != null) {
+      nd.logoSize = Math.round(nd.symbolSize * 0.58);
+    }
+  }
+
   return { nodes, edges };
 }

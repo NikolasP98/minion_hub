@@ -10,8 +10,9 @@
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity';
   import type { OrgArea } from '$server/services/org-areas.service';
-  import { buildGraph, RADII, type GraphNode } from './graph/build-graph';
+  import { buildGraph, RADII, type GraphNode, type NodeKind } from './graph/build-graph';
   import { createSimulation, type Simulation, type SimNode } from './graph/simulation';
   import { createRenderer, type Renderer } from './graph/renderer';
 
@@ -35,12 +36,15 @@
   let selected = $state<GraphNode | null>(null);
   let nodeCount = $state(0);
 
+  // Legend counts by kind — $state tracks reference reassignments; SvelteMap tracks mutations
+  let kindCounts = $state(new SvelteMap<NodeKind, number>());
+  // Active legend level for highlight
+  let activeLegendKind = $state<NodeKind | null>(null);
+
   // Module-scope refs assigned from onMount so the top-level $effect can read them.
   let _renderer: Renderer | null = null;
   let _sim: Simulation | null = null;
   let _ready = false;
-
-  const HOME: { center: [number, number]; zoom: number } = { center: [0, 0], zoom: 0.46 };
 
   // ── Top-level effect: rebuild when props change after the renderer is ready ──
   $effect(() => {
@@ -51,16 +55,16 @@
   });
 
   // adjacency map — precomputed in rebuild(), never called per-event
-  let adjacencyMap = new Map<string, Set<string>>();
+  let adjacencyMap = new SvelteMap<string, SvelteSet<string>>();
   let metaById = new Map<string, GraphNode>();
 
-  function adjacency(id: string): Set<string> {
-    return adjacencyMap.get(id) ?? new Set([id]);
+  function adjacency(id: string): SvelteSet<string> {
+    return adjacencyMap.get(id) ?? new SvelteSet([id]);
   }
 
-  function focusSetFor(node: GraphNode | null): Set<string> | null {
+  function focusSetFor(node: GraphNode | null): SvelteSet<string> | null {
     if (!node || node.kind === 'org') return null;
-    const ids = new Set<string>([org.id]);
+    const ids = new SvelteSet<string>([org.id]);
     for (const [id, m] of metaById) if (m.areaId === node.areaId) ids.add(id);
     return ids;
   }
@@ -71,20 +75,31 @@
     nodeCount = nodes.length;
     metaById = new Map(nodes.map((nd) => [nd.id, nd]));
 
+    // Recompute kind counts
+    const counts = new SvelteMap<NodeKind, number>();
+    for (const nd of nodes) counts.set(nd.kind, (counts.get(nd.kind) ?? 0) + 1);
+    kindCounts = counts;
+
     // Clear stale selection — the node may have been removed since last render.
     if (selected && !metaById.has(selected.id)) {
       selected = null;
       _renderer?.setFocus(null);
     }
 
+    // If a legend level is active, reapply the focus set for the new nodes.
+    if (activeLegendKind) {
+      const ids = new SvelteSet(nodes.filter((n) => n.kind === activeLegendKind).map((n) => n.id));
+      _renderer?.setFocus(ids.size > 0 ? ids : null);
+    }
+
     // Precompute adjacency: each id → set of neighbor ids (plus itself)
-    adjacencyMap = new Map<string, Set<string>>();
+    adjacencyMap = new SvelteMap<string, SvelteSet<string>>();
     for (const nd of nodes) {
-      if (!adjacencyMap.has(nd.id)) adjacencyMap.set(nd.id, new Set([nd.id]));
+      if (!adjacencyMap.has(nd.id)) adjacencyMap.set(nd.id, new SvelteSet([nd.id]));
     }
     for (const e of edges) {
-      if (!adjacencyMap.has(e.source)) adjacencyMap.set(e.source, new Set([e.source]));
-      if (!adjacencyMap.has(e.target)) adjacencyMap.set(e.target, new Set([e.target]));
+      if (!adjacencyMap.has(e.source)) adjacencyMap.set(e.source, new SvelteSet([e.source]));
+      if (!adjacencyMap.has(e.target)) adjacencyMap.set(e.target, new SvelteSet([e.target]));
       adjacencyMap.get(e.source)!.add(e.target);
       adjacencyMap.get(e.target)!.add(e.source);
     }
@@ -95,6 +110,25 @@
       window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     _sim = createSimulation(nodes, edges, { reducedMotion });
     _renderer.setGraph(_sim.nodes() as SimNode[], edges);
+  }
+
+  function toggleLegendKind(kind: NodeKind) {
+    if (!_renderer) return;
+    if (activeLegendKind === kind) {
+      // Deactivate
+      activeLegendKind = null;
+      selected = null;
+      _renderer.setFocus(null);
+    } else {
+      activeLegendKind = kind;
+      selected = null;
+      const ids = new SvelteSet(
+        Array.from(metaById.values())
+          .filter((n) => n.kind === kind)
+          .map((n) => n.id)
+      );
+      _renderer.setFocus(ids.size > 0 ? ids : null);
+    }
   }
 
   onMount(() => {
@@ -120,20 +154,27 @@
       nodeCount = nodes.length;
       metaById = new Map(nodes.map((nd) => [nd.id, nd]));
 
+      // Compute kind counts for initial graph
+      const counts = new SvelteMap<NodeKind, number>();
+      for (const nd of nodes) counts.set(nd.kind, (counts.get(nd.kind) ?? 0) + 1);
+      kindCounts = counts;
+
       // Precompute adjacency for the initial graph
-      adjacencyMap = new Map<string, Set<string>>();
+      adjacencyMap = new SvelteMap<string, SvelteSet<string>>();
       for (const nd of nodes) {
-        if (!adjacencyMap.has(nd.id)) adjacencyMap.set(nd.id, new Set([nd.id]));
+        if (!adjacencyMap.has(nd.id)) adjacencyMap.set(nd.id, new SvelteSet([nd.id]));
       }
       for (const e of edges) {
-        if (!adjacencyMap.has(e.source)) adjacencyMap.set(e.source, new Set([e.source]));
-        if (!adjacencyMap.has(e.target)) adjacencyMap.set(e.target, new Set([e.target]));
+        if (!adjacencyMap.has(e.source)) adjacencyMap.set(e.source, new SvelteSet([e.source]));
+        if (!adjacencyMap.has(e.target)) adjacencyMap.set(e.target, new SvelteSet([e.target]));
         adjacencyMap.get(e.source)!.add(e.target);
         adjacencyMap.get(e.target)!.add(e.source);
       }
 
       _sim = createSimulation(nodes, edges, { reducedMotion });
       renderer.setGraph(_sim.nodes() as SimNode[], edges);
+      // Auto-fit the whole graph on initial load instead of a fixed zoom
+      renderer.fitView();
 
       // Signal that renderer + sim are ready so the top-level $effect can run.
       _ready = true;
@@ -179,7 +220,7 @@
         const p = local(e);
         if (mode === 'none') {
           const id = r.nodeAt(p.x, p.y);
-          if (!selected) r.setFocus(id ? adjacency(id) : null);
+          if (!selected && !activeLegendKind) r.setFocus(id ? adjacency(id) : null);
           el.style.cursor = id ? 'pointer' : 'default';
           return;
         }
@@ -197,10 +238,11 @@
         if (!moved && mode === 'node' && dragId) {
           clickNode(dragId, r);
         } else if (!moved && mode === 'pan') {
-          if (selected) {
+          if (selected || activeLegendKind) {
             selected = null;
+            activeLegendKind = null;
             r.setFocus(null);
-            r.animateTo(HOME.center, HOME.zoom);
+            r.fitView();
           }
         }
         if (mode === 'node' && dragId) _sim?.release(dragId);
@@ -229,10 +271,12 @@
     function clickNode(id: string, r: Renderer) {
       const m = metaById.get(id) ?? null;
       selected = m;
+      // Clicking a node clears any active legend level
+      activeLegendKind = null;
       if (!m) return;
       r.setFocus(focusSetFor(m));
       if (m.kind === 'org') {
-        r.animateTo(HOME.center, HOME.zoom);
+        r.fitView();
       } else if (m.kind === 'area') {
         const ang = Math.atan2(m.ay, m.ax);
         const rr = (RADII.area + RADII.user) / 2;
@@ -242,7 +286,10 @@
       }
     }
 
-    const ro = new ResizeObserver(() => _renderer?.resize());
+    const ro = new ResizeObserver(() => {
+      _renderer?.resize();
+      _renderer?.fitView();
+    });
     ro.observe(canvasEl!);
 
     return () => {
@@ -256,6 +303,15 @@
       _ready = false;
     };
   });
+
+  // Legend rows: label → kind mapping
+  const LEGEND_ROWS: Array<{ label: string; glyph: string; kind: NodeKind }> = [
+    { label: 'Areas',        glyph: '●', kind: 'area' },
+    { label: 'Skills',       glyph: '◦', kind: 'skill' },
+    { label: 'Integrations', glyph: '◆', kind: 'integration' },
+    { label: 'Agents',       glyph: '◉', kind: 'agent' },
+    { label: 'Users',        glyph: '◎', kind: 'user' },
+  ];
 </script>
 
 <div class="relative w-full h-full overview-stage">
@@ -269,10 +325,23 @@
     </div>
   {/if}
 
-  <!-- Ring legend -->
-  <div class="absolute bottom-3 left-3 z-10 flex flex-col gap-1 text-[10px] text-muted bg-bg2/80 backdrop-blur-sm border border-border rounded-lg px-2.5 py-2 pointer-events-none">
-    {#each [['Areas', '●'], ['Skills', '◦'], ['Integrations', '◆'], ['Agents', '◉'], ['Users', '◎']] as [name, glyph] (name)}
-      <div class="flex items-center gap-1.5"><span class="opacity-60">{glyph}</span><span>{name}</span></div>
+  <!-- Ring legend (clickable) -->
+  <div class="absolute bottom-3 left-3 z-10 flex flex-col gap-0.5 text-[10px] text-muted bg-bg2/80 backdrop-blur-sm border border-border rounded-lg px-2 py-1.5">
+    {#each LEGEND_ROWS as row (row.kind)}
+      {@const count = kindCounts.get(row.kind) ?? 0}
+      {@const active = activeLegendKind === row.kind}
+      <button
+        type="button"
+        class="flex items-center gap-1.5 px-1 py-0.5 rounded transition-colors cursor-pointer text-left w-full {active ? 'bg-accent/20 text-accent' : 'hover:text-foreground'}"
+        onclick={() => toggleLegendKind(row.kind)}
+        aria-pressed={active}
+      >
+        <span class="opacity-60">{row.glyph}</span>
+        <span>{row.label}</span>
+        {#if count > 0}
+          <span class="ml-auto opacity-60 tabular-nums">{count}</span>
+        {/if}
+      </button>
     {/each}
   </div>
 

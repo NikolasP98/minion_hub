@@ -12,6 +12,7 @@ export interface Renderer {
 	frame(): void;
 	setFocus(ids: Set<string> | null): void;
 	animateTo(center: [number, number], zoom: number, ms?: number): void;
+	fitView(padding?: number): void;
 	panBy(dxScreen: number, dyScreen: number): void;
 	zoomAt(screenX: number, screenY: number, factor: number): void;
 	screenToWorld(sx: number, sy: number): [number, number];
@@ -39,7 +40,23 @@ function loadTexture(url: string): Promise<Texture | null> {
 		img.crossOrigin = 'anonymous';
 		img.onload = () => {
 			try {
-				resolve(Texture.from(img));
+				// Rasterize onto a concretely-sized canvas before making the texture.
+				// Remote SVGs (dicebear avatars, simpleicons logos) ship only a
+				// viewBox with no intrinsic width/height, so Chrome reports a 150×150
+				// fallback and Pixi's WebGL upload of that <img> yields a BLACK
+				// texture. Drawing to a sized canvas first gives a real raster that
+				// uploads correctly — inline data-URI SVGs still work the same way.
+				const N = 128;
+				const off = document.createElement('canvas');
+				off.width = N;
+				off.height = N;
+				const ctx = off.getContext('2d');
+				if (!ctx) {
+					resolve(null);
+					return;
+				}
+				ctx.drawImage(img, 0, 0, N, N);
+				resolve(Texture.from(off));
 			} catch {
 				resolve(null);
 			}
@@ -332,6 +349,25 @@ export async function createRenderer(
 		return best;
 	}
 
+	function fitView(padding = 1.15) {
+		if (views.length === 0) return;
+		let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+		for (const v of views) {
+			const half = v.node.symbolSize / 2 + 36;
+			const x = v.node.x, y = v.node.y;
+			if (x - half < minX) minX = x - half;
+			if (x + half > maxX) maxX = x + half;
+			if (y - half < minY) minY = y - half;
+			if (y + half > maxY) maxY = y + half;
+		}
+		const bboxW = maxX - minX;
+		const bboxH = maxY - minY;
+		if (bboxW <= 0 || bboxH <= 0) return;
+		camCenter = [(minX + maxX) / 2, (minY + maxY) / 2];
+		zoom = clampZoom(Math.min(W() / (bboxW * padding), H() / (bboxH * padding)));
+		anim = null;
+	}
+
 	function resize() {
 		app.resize();
 		applyCamera();
@@ -351,6 +387,7 @@ export async function createRenderer(
 		frame,
 		setFocus,
 		animateTo,
+		fitView,
 		panBy,
 		zoomAt,
 		screenToWorld,
