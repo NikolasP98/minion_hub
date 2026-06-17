@@ -1,19 +1,26 @@
-# Finances — Analytics + Product Catalog + CRM↔Finance Bridge
+# Finances — Analytics + Catalog + Sync Perf + List Perf + Caching + CRM↔Finance Bridge
 
 **Date:** 2026-06-17
 **Repo:** `minion_hub` · branch `dev`
-**Status:** Design approved (incl. DRY/relational schema steer). Follows the Phase-1 module + bg-sync work.
+**Status:** Design approved (incl. DRY/relational steer + a 2nd round of additions: sync perf, dashboard period
+filters/avg-ticket/KPIs, list windowing, Valkey caching). Follows the Phase-1 module + bg-sync work.
 
 ## Problem / goals
 
-Four additions to the hub-native Finances module, in build order C → A → B:
+Build order **C-schema → S → C-rest → A → P → B** (see Rollout):
 
 - **C. Product catalog** — a canonical product table so billed line items reconcile against one standardized
   product list (all 2,962 items carry a `code`; 58 distinct codes, but **5 codes have drifted to multiple name
   variants** — the catalog pins one canonical name + reference price per code).
-- **A. Dashboard analytics** — replace the CSS bar chart with ECharts: a KPI row, a revenue **area chart**
-  (toggle cumulative ↔ per-month, with discounts surfaced), a **Top Products** chart (toggle revenue ↔ quantity,
-  using catalog names), and **Top Clients**.
+- **S. Sync performance** — the current per-invoice-transaction sync takes ~30–60 min and barely updates the
+  UI; replace it with a batched, set-based idempotent upsert (~100× fewer DB round-trips) + smooth heartbeats.
+- **A. Dashboard analytics** — replace the CSS bar with ECharts: **date/period filters** (range + day/week/month
+  granularity), an industry-standard **KPI** row, a revenue **area chart** (toggle cumulative ↔ per-period, with
+  discounts surfaced), an **avg-ticket** chart, **Top Products** (toggle revenue ↔ quantity, catalog names), and
+  **Top Clients** — all period-scoped and Valkey-cached.
+- **P. List performance** — windowed/infinite-scroll render on the invoices/payments/clients lists (the pattern
+  `/crm` uses).
+- **Caching** — Valkey-cache the finance aggregates (busted on sync); Cloudflare is N/A for per-org authed data.
 - **B. CRM↔Finance bridge** — surface a contact's finance summary in `/crm/customers` and on the contact detail
   page, additively and without coupling the two modules.
 
@@ -114,32 +121,52 @@ null and c.org_id = i.org_id and c.provider = i.provider and c.doc_number = i.cl
 c.doc_number is not null`. `upsertInvoice` sets `client_id` from the client upsert's returned id going forward.
 The denormalized `client_name`/`client_doc_number`/`client_email` stay (as-billed snapshot).
 
-### Service aggregates (`finance.service.ts`)
+### Period filter (drives every aggregate)
 
-- Extend `dashboardRows` → monthly `{ month, invoices, revenue (net total), discount, gross (subtotal) }`
-  (add `sum(discount)`, `sum(subtotal)` per month; coerce to Number).
-- `financeSummary(ctx)` → `{ totalNet, totalDiscount, totalGross, invoiceCount, avgInvoice, uniqueClients,
-  paidCount, voidCount, currency }` (currency = mode of `fin_invoices.currency`, default `PEN`).
-- `topProducts(ctx, { limit = 15 })` → group `fin_invoice_items` by `product_id`, left join `fin_products`
-  for the canonical `name` (coalesce to `max(description)` when `product_id` null), returning
-  `{ productId, code, name, revenue, qty, lines }`. One query serves both toggle modes (client sorts/relabels).
-- `topClients(ctx, limit = 10)` — reuse `clientRevenueRows`, slice top 10.
+The dashboard takes a **period**: `{ from?: ISO, to?: ISO, bucket: 'day'|'week'|'month' }`, parsed from the
+page URL query (`?from=&to=&bucket=`). Default = last 12 months, `bucket=month`. Every aggregate below is
+parameterized by this period and filters `fin_invoices.issued_at` to `[from, to)`; series bucket via
+`date_trunc(bucket, issued_at)`. Validate/clamp inputs server-side (valid ISO, `from<=to`, bucket in the
+enum) → fall back to defaults on bad input. A `parsePeriod(url)` helper (pure, tested) builds the period.
+
+### Service aggregates (`finance.service.ts`) — all take `(ctx, period)`
+
+- `financeSummary(ctx, period)` → `{ totalNet, totalGross, totalDiscount, discountRate (discount/gross),
+  invoiceCount, avgTicket (net/invoiceCount), uniqueClients, newClients (clients whose FIRST-EVER invoice
+  falls in the period), voidCount, voidRate, currency }`. These are the industry-standard sales KPIs the data
+  supports (revenue, AOV/avg-ticket, discount rate, unique/new customers, void rate). MoM/period growth is
+  derived in the UI from the series (last bucket vs previous).
+- `revenueSeries(ctx, period)` → rows `{ bucket, invoices, revenue (net), discount, gross }` over the bucketed
+  range (replaces the old fixed `dashboardRows`; keep `dashboardRows` only if another caller needs it — it has
+  none, so rename to `revenueSeries`). Coerce all aggregates to Number.
+- `topProducts(ctx, period, { limit = 15 })` → group `fin_invoice_items` by `product_id` (joined to invoices
+  for the date filter), left join `fin_products` for canonical `name` (coalesce `max(description)` when
+  `product_id` null), returning `{ productId, code, name, revenue, qty, lines }`. One query serves both
+  Revenue/Quantity toggle modes (UI sorts/relabels).
+- `topClients(ctx, period, { limit = 10 })` → per-client net revenue within the period (group by `client_id`,
+  join `fin_clients` for name), top 10.
+- Every aggregate is **Valkey-cached** keyed by `(org, from, to, bucket)` and busted on sync completion — see
+  the Caching section.
 
 ### UI (`/finances/+page.{server.ts,svelte}`)
 
-- Load: `financeSummary`, `dashboardRows`, `topProducts`, `topClients` in parallel (all gated by
-  `isModuleEnabled('finances')`).
-- **KPI row:** Net revenue · Discounts given · Invoices · Avg invoice (AOV) · Unique clients · Paid/void.
-- **Revenue area chart** (ECharts via `src/lib/components/charts/Chart.svelte`): x = month; a **toggle**
-  ([Per month ↔ Cumulative]) switches the net-revenue series between monthly value and running total. A second
-  **discount** series (per-month, or cumulative to match) is overlaid so discounts are visible. *"Includes
-  discounts"* = net area (already discount-adjusted) + a visible discount series + the Discounts KPI.
-- **Top Products** bar (ECharts) with a **toggle** ([Revenue ↔ Quantity]); labels use catalog names.
+- Load reads the period from `url`, calls the four cached aggregates in parallel (gated by
+  `isModuleEnabled('finances')`), and `depends('finances:data')`.
+- **Period controls** (top of page): a date-range picker (from/to) + a `[Day | Week | Month]` granularity
+  segmented control. Changing them updates the URL query (`goto(\`?from=…&to=…&bucket=…\`, { keepFocus,
+  noScroll })`) → reruns the load. Presets (Last 30d / 12m / YTD / All) set the range.
+- **KPI row:** Net revenue · Avg ticket · Invoices · Unique clients · New clients · Discount rate · Period
+  growth % · Void rate.
+- **Revenue area chart** (ECharts via `src/lib/components/charts/Chart.svelte`): x = bucket; **toggle**
+  ([Per period ↔ Cumulative]) switches the net series between bucket value and running total; a **discount**
+  series overlaid (matching mode) so discounts are visible. *"Includes discounts"* = net area + visible
+  discount series + Discount KPI.
+- **Avg-ticket chart** (ECharts line): avg ticket (net/invoices) per bucket over the range.
+- **Top Products** bar with a **toggle** ([Revenue ↔ Quantity]); labels use catalog names.
 - **Top Clients** horizontal bar (top 10).
-- Toggles are local Svelte `$state` (no Zag needed for a 2-option segmented control; a simple button pair).
-- **Explicitly NOT built** (data empty): payment-method donut, seller chart, status pie. Noted in the page as
-  out of scope until that data exists.
-- i18n keys for all labels/toggles in `messages/{en,es}.json`.
+- Toggles + presets are local Svelte `$state`; period lives in the URL (shareable/back-button friendly).
+- **Explicitly NOT built** (data empty): payment-method donut, seller chart, status pie — noted in the page.
+- i18n keys for all labels/toggles/presets in `messages/{en,es}.json`.
 
 ---
 
@@ -147,29 +174,90 @@ The denormalized `client_name`/`client_doc_number`/`client_email` stay (as-bille
 
 ### Service — `src/server/services/crm-finance.service.ts`
 
-- Pure helper `normPhone(raw): string | null` — strip non-digits; return last 9 digits (Peru mobile length),
-  or null if < 8 digits. Unit-tested.
-- `contactFinanceByPhone(ctx)` → `Map<normPhone, { revenue, invoices, lastPurchaseAt, currency }>`. Built by
-  joining `fin_invoices` → `fin_clients` (on `client_id`, the new FK), grouping by `normPhone(fin_clients.phone)`
-  where phone is present. **Returns empty unless `bothEnabled(ctx, 'crm', 'finances')`.** This service is the
-  ONLY place the two domains meet; neither `crm-*` nor `finance.service` imports the other.
+- Reuse the EXISTING `normPhone` (digits-only) already in `crm-contacts.service.ts` (export it) — do NOT add a
+  second phone-normalizer (DRY). The cross-org-safe matching is done IN SQL via
+  `right(regexp_replace(coalesce(x,''),'\D','','g'), 9)` (last-9 digits, Peru) on both sides.
+- `contactFinanceMap(ctx)` → `Record<contactId, { revenue, invoices, lastPurchaseAt }>`. ONE org-scoped SQL
+  query: `crm_contact_identities` (channel='whatsapp') → `right(digits,9)` → join `fin_clients` on matching
+  `right(digits(phone),9)` → join `fin_invoices` on `client_id` → group by `contact_id`. Returns `{}` unless
+  `bothEnabled(ctx,'crm','finances')`. Keyed by `contact_id` (the roster already has it — no need to expose
+  phones to the client). This service is the ONLY place the two domains meet; neither imports the other.
+- `contactFinanceSummary(ctx, contactId)` → `{ revenue, invoices, lastPurchaseAt, recentInvoices: [{ id,
+  documentId, issuedAt, total, status }] }` (recent limit 10) via the same join scoped to one contact; `null`
+  unless `bothEnabled` and a match exists.
 
 ### `/crm/customers`
 
-- After the existing `listContactsCached(ctx)` read (cache stays finance-free), if `bothEnabled`, fetch
-  `contactFinanceByPhone(ctx)` and merge `{ revenue, invoices, lastPurchase }` onto each roster row by
-  `normPhone` of the contact's WhatsApp identity (the roster row's phone identity). Pass a `financeEnabled`
-  flag to the page.
+- After the existing `listContactsCached(ctx)` read (the roster cache stays finance-free), if `bothEnabled`
+  fetch `contactFinanceMap(ctx)` and merge `{ revenue, invoices, lastPurchase }` onto each roster row by
+  `contact_id`. Pass a `financeEnabled` flag to the page.
 - Table: three new optional columns (Revenue · Invoices · Last purchase), shown only when `financeEnabled`;
-  sortable (revenue desc is a natural new sort). ~332 rows populate; the rest render blank (additive).
+  the existing client-side sort gains a `revenue` key. ~332 rows populate; the rest render blank (additive).
 
 ### `/crm/[contactId]` detail
 
-- Load: if `bothEnabled` and the contact has a phone identity, fetch that contact's finance summary
-  (revenue, invoice count, last purchase) + recent invoices (limit ~10) via the phone → `fin_clients` →
-  `fin_invoices` join.
+- Load: if `bothEnabled`, call `contactFinanceSummary(ctx, id)`; add `finance` to the returned object (null
+  when no match).
 - UI: a **Financials card** (revenue, # invoices, last purchase, recent invoices each linking to
-  `/finances/invoices/[id]`). Rendered only when a match exists. No card when finances is disabled or no match.
+  `/finances/invoices/[id]`). Rendered only when `data.finance` is non-null. No card when finances is disabled
+  or no match.
+
+---
+
+## Part S — Sync performance (idempotent batch upsert)
+
+**Problem (root-caused on the live data):** `upsertInvoice` opens ONE `withOrgCore` transaction PER invoice
+(`SET LOCAL ROLE` + `set_config` = 2 statements) and runs 6 per-row statements inside (client upsert, invoice
+upsert, delete+insert items, delete+insert payments) — ~8 sequential round-trips **per invoice**. From Peru to
+the us-east-2 pooler (~80–150ms RTT) that is ~0.6–1.2s/invoice → **~30–60 min for 2,391 invoices**, and the
+progress bar only advances once per 100-item page. This is the "takes forever / doesn't reflect in the UI"
+report.
+
+**Fix — `upsertInvoicesBatch(ctx, invoices: CanonicalInvoice[], productMap: Map<code,id>)`:** one `withOrgCore`
+transaction per **page** (not per invoice), with **set-based** statements:
+1. Multi-row upsert all clients in the page → `insert … values (…N rows) on conflict (org,provider,
+   provider_ref) do update …` returning `(provider_ref → id)`.
+2. Multi-row upsert all invoices (resolving `client_id` from step 1's map, `product_id` not here) → returning
+   `(provider_ref → invoice id)`.
+3. `delete from fin_invoice_items where invoice_id = any($invoiceIds)` (one statement for the whole page).
+4. Multi-row insert all items (resolving `product_id` from `productMap` by `code`).
+5. `delete from fin_payments where invoice_id = any($invoiceIds)` + multi-row insert all payments.
+→ ~6 statements + 2 tx-overhead **per page** instead of per invoice: **~100× fewer round-trips**. A 100-row
+page goes from ~100s to ~1s; full backfill from ~30–60 min to ~½–1 min.
+
+- `advanceJob` calls `upsertInvoicesBatch(page.invoices, productMap)` once per page (replacing the per-invoice
+  loop), builds `productMap` once per run (`select code,id from fin_products`), and `heartbeat`s after each page
+  — now fast, so `processed/total` advances smoothly (also fixes the "doesn't reflect in UI").
+- **Idempotency preserved:** all writes are `on conflict do update` / delete-then-insert keyed on the same
+  natural keys; re-running a page is a no-op-equivalent. A page is one transaction → atomic: a bad row rolls
+  back the page, `advanceJob` marks the job `failed` with the cursor preserved, and the resume re-pulls that
+  page. The old per-invoice "5 consecutive failures" rule is replaced by page-level atomic failure.
+- Keep a thin `upsertInvoice(ctx, inv)` = `upsertInvoicesBatch(ctx, [inv], map)` for any single-item caller/test.
+- Chunk guard: if SUSII `page_size` is ever raised far above 100, cap the batch (e.g. 200/tx) so parameter
+  counts stay sane; at `page_size=100` one page = one batch.
+
+## Part P — List performance (windowed render)
+
+The `/finances/invoices`, `/finances/payments`, and `/finances/clients` pages currently render EVERY row
+(`listInvoices` returns up to 500; invoices alone are 2,391+). Apply the **same windowing pattern `/crm` uses**
+(`crm/+page.svelte` / `customers`): keep the full filtered/sorted list in memory but render only a window
+(`PAGE = 60`), growing on scroll. Use a **scroll listener** on the scroll container (NOT IntersectionObserver —
+the CRM work found IO unreliable under programmatic scroll), incrementing `renderLimit` by `PAGE`; reset
+`renderLimit` to `PAGE` whenever the filtered/sorted set changes. Raise the server `limit` to cover the full
+set (e.g. 5000) so client-side search/sort is complete. This mirrors `crm-slowness-rootcause-windowing`.
+
+## Caching (Valkey; not Cloudflare)
+
+- **Valkey-cache the finance aggregates** (`financeSummary`, `revenueSeries`, `topProducts`, `topClients`, and
+  `clientRevenueRows`) with the existing `cached(key, {ttl,swr,tags}, fn)` + `keys.hub(name,{t,…})` helper
+  (same pattern as `listContactsCached`). Key includes the org AND the period `(from,to,bucket)` so each range
+  is cached independently. TTL ~2m + short SWR. Define `financeCacheTags(orgId)`; **bust them on sync
+  completion** (in `advanceJob` on success/finish) and on catalog/source writes, so a finished sync
+  immediately reflects fresh numbers.
+- **Cloudflare is NOT applicable here:** these are per-org, authenticated, dynamic API/page responses — CF edge
+  caching is for public/static assets (it can't safely cache per-tenant authed data, and would risk
+  cross-tenant leakage). The only CF-cacheable finance surface is none; the static plugin-UI asset caching is
+  already handled separately. So the caching layer is Valkey only.
 
 ---
 
@@ -178,24 +266,36 @@ The denormalized `client_name`/`client_doc_number`/`client_email` stay (as-bille
 - Catalog import is idempotent (`onConflictDoNothing` + null-guarded backfill); safe to re-run.
 - `product_id`/`client_id` are nullable — uncatalogued codes / unmatched clients simply don't resolve; UI
   falls back (description / blank). No hard failures.
+- Batch sync: a page is atomic; on any row error the page tx rolls back, the job ends `failed` with the cursor
+  preserved, and the resume re-pulls the page idempotently.
 - Bridge degrades to empty when either module is disabled or no phone match — never errors.
-- Charts render only their available data; empty series are omitted, not shown as zero noise.
+- Bad period query params clamp to defaults; charts render only available data (empty series omitted).
+- Cache miss/failure falls back to a live query (the `cached` helper degrades, per the cache-backend hardening).
 
 ## Testing
 
-- `normPhone` unit tests (country code, spaces, short numbers → null, last-9 extraction).
+- `parsePeriod(url)` unit tests (defaults, clamping, bad ISO, bucket enum).
 - `finance-products.service`: import creates+links, re-import is a no-op, coverage counts; `topProducts`
   groups by product and resolves catalog name with description fallback (mock-db).
-- `financeSummary`/extended `dashboardRows` coerce aggregates to Number (no string concatenation).
-- `contactFinanceByPhone` returns empty when `bothEnabled` is false; groups by normalized phone when true.
+- `financeSummary` / `revenueSeries` coerce aggregates to Number (no string concatenation) and respect the
+  period.
+- `upsertInvoicesBatch`: a multi-invoice page issues set-based statements (assert via mock-db call shape) and
+  is idempotent; the single-item `upsertInvoice` wrapper still works.
+- `contactFinanceMap` / `contactFinanceSummary` return empty/null when `bothEnabled` is false; group by
+  contact when true.
 - `bun run check` 0/0; Svelte files validated via the autofixer.
 
 ## Rollout (plan sequence)
 
-1. **C** — `fin_products` + `product_id` FK migrations → apply to gxv; service; sync integration; page + nav +
-   endpoints; tests.
-2. **A** — `client_id` FK migration → apply to gxv + backfill; aggregates; ECharts dashboard; tests.
-3. **B** — `crm-finance.service` + `normPhone`; customers columns; detail Financials card; tests.
+1. **C-schema** — `fin_products` + `product_id` FK + `client_id` FK migrations → apply to gxv + backfills.
+2. **S — batch sync** (highest user pain): `upsertInvoicesBatch` + `advanceJob` rewrite + cache-bust on finish.
+   Unblocks fast, visible re-syncs.
+3. **C-rest** — catalog service (`importFromBilling`/`catalogCoverage`), `/finances/products` page + nav +
+   endpoints; product_id resolution in the batch.
+4. **A** — `parsePeriod`, parameterized cached aggregates, ECharts dashboard (period controls, KPIs, revenue
+   area + avg-ticket charts, top products/clients).
+5. **P** — windowed render on invoices/payments/clients lists.
+6. **B** — `crm-finance.service` (reuse `normPhone`); `/crm/customers` columns; detail Financials card.
 
 Subagent-driven execution (fresh implementer per task + task review + final whole-branch review), same as the
 bg-sync build. Migrations and gxv applies are orchestrator-handled (Supabase MCP).
