@@ -4,8 +4,8 @@ import { getDynamicPluginsSections } from "$lib/components/layout/sections";
 describe("getDynamicPluginsSections", () => {
   it("surfaces built-in CRM under Marketing and Kanban under Operations when no control centers", () => {
     const sections = getDynamicPluginsSections([]);
-    // Display order: Marketing (CRM), Operations (Kanban).
-    expect(sections.map((s) => s.id)).toEqual(["plugins:marketing", "plugins:operations"]);
+    // Display order: Marketing (CRM), Operations (Kanban), Finance (builtin Finances).
+    expect(sections.map((s) => s.id)).toEqual(["plugins:marketing", "plugins:operations", "plugins:finance"]);
     const marketing = sections.find((s) => s.id === "plugins:marketing");
     expect(marketing?.label).toBe("Marketing");
     expect(marketing?.items.map((i) => i.href)).toEqual(["/crm"]);
@@ -14,6 +14,8 @@ describe("getDynamicPluginsSections", () => {
     expect(operations?.label).toBe("Operations");
     expect(operations?.items.map((i) => i.href)).toEqual(["/workforce"]);
     expect(operations?.items[0]?.label).toBe("Kanban");
+    const finance = sections.find((s) => s.id === "plugins:finance");
+    expect(finance?.items.map((i) => i.href)).toEqual(["/finances"]);
   });
 
   it("folds channel plugins into a Channels subsection under Customer Support, Studio under Branding/Creative", () => {
@@ -43,10 +45,11 @@ describe("getDynamicPluginsSections", () => {
         category: "customer-support",
       },
     ]);
-    // Display order: Marketing, Operations, Branding/Creative, Customer Support.
+    // Display order: Marketing, Operations, Finance (builtin), Branding/Creative, Customer Support.
     expect(sections.map((s) => s.id)).toEqual([
       "plugins:marketing",
       "plugins:operations",
+      "plugins:finance",
       "plugins:creative",
       "plugins:customer-support",
     ]);
