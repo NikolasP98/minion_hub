@@ -44,6 +44,22 @@ export async function hydratePluginNav(): Promise<void> {
       enabled[e.pluginId] = on !== false;
     }
     pluginNavState.enabledByPluginId = enabled;
+    // Also merge native module states (finances, crm) so the Task-11 nav gate
+    // sees them alongside plugin-enabled flags. A failure here must not prevent
+    // nav hydration from completing — modules just stay at their default (enabled).
+    try {
+      const modRes = await fetch('/api/modules', { credentials: 'same-origin' });
+      if (modRes.ok) {
+        const { modules } = (await modRes.json()) as { modules: Record<string, boolean> };
+        for (const [id, on] of Object.entries(modules)) {
+          enabled[id] = on;
+        }
+        // Re-assign so Svelte 5 $derived consumers re-run after the merge.
+        pluginNavState.enabledByPluginId = { ...enabled };
+      }
+    } catch {
+      // Non-fatal: modules stay at default (enabled).
+    }
     pluginNavState.loaded = true;
   } catch (err) {
     pluginNavState.error = err instanceof Error ? err.message : String(err);
