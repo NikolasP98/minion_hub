@@ -8,6 +8,25 @@
 	let { data }: { data: PageData } = $props();
 	const invoices = $derived(data.invoices);
 
+	// ── Windowed rendering ────────────────────────────────────────────────────
+	const PAGE = 60;
+	let renderLimit = $state(PAGE);
+	const windowed = $derived(invoices.slice(0, renderLimit));
+	$effect(() => {
+		invoices.length;
+		renderLimit = PAGE;
+	});
+	function infiniteScroll(root: HTMLElement) {
+		const onScroll = () => {
+			if (renderLimit >= invoices.length) return;
+			if (root.scrollTop + root.clientHeight >= root.scrollHeight - 400) {
+				renderLimit += PAGE;
+			}
+		};
+		root.addEventListener('scroll', onScroll, { passive: true });
+		return { destroy: () => root.removeEventListener('scroll', onScroll) };
+	}
+
 	function fmtDate(d: Date | null) {
 		if (!d) return '—';
 		return new Date(d).toLocaleDateString();
@@ -26,7 +45,7 @@
 		{#snippet leading()}<FileText size={16} class="text-accent shrink-0" />{/snippet}
 	</PageHeader>
 
-	<div class="flex-1 min-h-0 overflow-auto">
+	<div class="flex-1 min-h-0 overflow-auto" use:infiniteScroll>
 		{#if invoices.length === 0}
 			<div class="flex flex-col items-center justify-center h-full gap-2 p-8 text-center">
 				<FileText size={32} class="text-muted-foreground" />
@@ -45,7 +64,7 @@
 					</tr>
 				</thead>
 				<tbody>
-					{#each invoices as inv (inv.id)}
+					{#each windowed as inv (inv.id)}
 						<tr
 							class="border-b border-[var(--hairline)] hover:bg-white/[0.03] cursor-pointer transition-colors"
 							onclick={() => goto(`/finances/invoices/${inv.id}`)}

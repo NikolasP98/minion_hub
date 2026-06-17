@@ -7,6 +7,25 @@
 	let { data }: { data: PageData } = $props();
 	const clients = $derived(data.clients);
 
+	// ── Windowed rendering ────────────────────────────────────────────────────
+	const PAGE = 60;
+	let renderLimit = $state(PAGE);
+	const windowed = $derived(clients.slice(0, renderLimit));
+	$effect(() => {
+		clients.length;
+		renderLimit = PAGE;
+	});
+	function infiniteScroll(root: HTMLElement) {
+		const onScroll = () => {
+			if (renderLimit >= clients.length) return;
+			if (root.scrollTop + root.clientHeight >= root.scrollHeight - 400) {
+				renderLimit += PAGE;
+			}
+		};
+		root.addEventListener('scroll', onScroll, { passive: true });
+		return { destroy: () => root.removeEventListener('scroll', onScroll) };
+	}
+
 	function fmtDate(d: string | null) {
 		if (!d) return '—';
 		return new Date(d).toLocaleDateString();
@@ -20,7 +39,7 @@
 		{#snippet leading()}<Users size={16} class="text-accent shrink-0" />{/snippet}
 	</PageHeader>
 
-	<div class="flex-1 min-h-0 overflow-auto">
+	<div class="flex-1 min-h-0 overflow-auto" use:infiniteScroll>
 		{#if clients.length === 0}
 			<div class="flex flex-col items-center justify-center h-full gap-2 p-8 text-center">
 				<Users size={32} class="text-muted-foreground" />
@@ -38,7 +57,7 @@
 					</tr>
 				</thead>
 				<tbody>
-					{#each clients as cl (cl.docNumber)}
+					{#each windowed as cl (cl.docNumber)}
 						<tr class="border-b border-[var(--hairline)] hover:bg-white/[0.03] transition-colors">
 							<td class="px-4 py-2 font-medium truncate max-w-[20rem]">{cl.name ?? '—'}</td>
 							<td class="px-3 py-2 t-caption">{cl.docNumber}</td>

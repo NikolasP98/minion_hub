@@ -9,6 +9,6 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   if (!ctx) throw error(401, 'Authentication required');
   if (!(await isModuleEnabled(ctx, 'finances'))) throw error(404, 'Finances module disabled');
   depends('finances:data');
-  const payments = await listPayments(ctx, { limit: 500 });
+  const payments = await listPayments(ctx, { limit: 5000 });
   return { payments };
 };
