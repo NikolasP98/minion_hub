@@ -74,18 +74,32 @@ describe("getDynamicPluginsSections", () => {
     expect(tools?.items.map((i) => i.href)).toEqual(["/plugins/x"]);
   });
 
-  it("marks a plugin item disabled when enabledByPluginId says it's off for the org", () => {
+  it("hides a plugin item entirely when disabled for the org", () => {
     const entries = [
       { pluginId: "studio", slot: "plugins.controlCenter" as const, title: "Studio", description: "", entrypoint: "c.html", category: "creative" as const },
       { pluginId: "x", slot: "plugins.controlCenter" as const, title: "X", description: "", entrypoint: "c.html" },
     ];
     const sections = getDynamicPluginsSections(entries, { studio: false, x: true });
-    const studio = sections.find((s) => s.id === "plugins:creative")?.items[0];
-    const x = sections.find((s) => s.id === "plugins:tool")?.items[0];
-    expect(studio?.disabled).toBe(true);
-    expect(x?.disabled).toBe(false);
-    // Built-ins (CRM/Kanban) are never marked disabled by org state.
-    expect(sections.find((s) => s.id === "plugins:marketing")?.items[0]?.disabled).toBeFalsy();
+    // studio is disabled → its category section is gone entirely (no item).
+    expect(sections.some((s) => s.id === "plugins:creative")).toBe(false);
+    // x stays visible.
+    expect(sections.find((s) => s.id === "plugins:tool")?.items.map((i) => i.href)).toEqual([
+      "/plugins/x",
+    ]);
+    // Built-in items (CRM/Kanban) are unaffected by per-org plugin state.
+    expect(sections.find((s) => s.id === "plugins:marketing")?.items[0]?.href).toBe("/crm");
+  });
+
+  it("hides a disabled channel plugin from the Channels subsection", () => {
+    const entries = [
+      { pluginId: "whatsapp", slot: "plugins.controlCenter" as const, title: "WhatsApp", description: "", entrypoint: "c.html", category: "channel" as const },
+      { pluginId: "telegram", slot: "plugins.controlCenter" as const, title: "Telegram", description: "", entrypoint: "c.html", category: "channel" as const },
+    ];
+    const sections = getDynamicPluginsSections(entries, { whatsapp: false });
+    const channels = sections
+      .find((s) => s.id === "plugins:customer-support")
+      ?.subsections?.find((sub) => sub.id === "channels");
+    expect(channels?.items.map((i) => i.href)).toEqual(["/plugins/telegram"]);
   });
 });
 

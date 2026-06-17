@@ -33,10 +33,6 @@ export type SectionItem = {
     // via canClient(); routes are also guarded server-side, so hiding here is
     // UX only.
     requires?: string;
-    // True when the plugin behind this item is disabled FOR THE ACTING ORG
-    // (per-org toggle). The item stays visible+navigable but renders dimmed so
-    // the side-menu reactively reflects the org's enable/disable state.
-    disabled?: boolean;
 };
 
 export type SubSection = {
@@ -233,6 +229,11 @@ export function getDynamicPluginsSections(
 
     for (const { category, item } of BUILTIN_PLUGIN_ITEMS) place(category, item);
     for (const e of entries) {
+        // Per-org gate: a plugin disabled for the acting org is removed from the
+        // nav entirely (its route also 404s). Reactive — re-runs when the toggle
+        // updates pluginNavState.enabledByPluginId, so the link appears/vanishes
+        // with no reload.
+        if (enabledByPluginId[e.pluginId] === false) continue;
         const category =
             PLUGIN_CATEGORY_OVERRIDES[e.pluginId] ?? normalizePluginCategory(e.category);
         place(category, {
@@ -240,7 +241,6 @@ export function getDynamicPluginsSections(
             label: e.title,
             icon: resolvePluginIcon(e.icon),
             matcher: (p: string) => p.startsWith(`/plugins/${e.pluginId}`),
-            disabled: enabledByPluginId[e.pluginId] === false,
         });
     }
 

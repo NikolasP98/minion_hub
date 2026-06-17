@@ -40,4 +40,27 @@ describe('/plugins/[id] load', () => {
     if (!result) throw new Error('expected load to return page data');
     expect(result.entry.entrypoint).toBe('c.html');
   });
+
+  it('throws 404 when the plugin is disabled for the org (non-navigable by direct URL)', async () => {
+    const { pluginsUiList } = await import('$lib/server/gateway-rpc');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (pluginsUiList as any).mockResolvedValueOnce([
+      {
+        pluginId: 'studio',
+        slot: 'plugins.controlCenter',
+        title: 'Studio',
+        description: 'd',
+        entrypoint: 'c.html',
+        orgEnabled: false,
+      },
+    ]);
+    await expect(
+      load({
+        params: { id: 'studio' },
+        url: new URL('http://h/plugins/studio'),
+        locals: { orgId: 'org-faces' },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any),
+    ).rejects.toMatchObject({ status: 404 });
+  });
 });
