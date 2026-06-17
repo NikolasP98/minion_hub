@@ -43,7 +43,7 @@ export interface Simulation {
 }
 
 // Tuning constants — keep anchors dominant so structure holds.
-const ANCHOR_STRENGTH = 0.15;
+const ANCHOR_STRENGTH = 0.08;
 const COLLIDE_PAD = 6;
 const LINK_STRENGTH = 0.05;
 const WEAK_REPULSION = -12;
