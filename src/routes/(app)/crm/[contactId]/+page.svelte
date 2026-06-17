@@ -10,7 +10,7 @@
 	import CrmFunnel from '$lib/components/crm/CrmFunnel.svelte';
 	import JourneyTimeline from '$lib/components/crm/JourneyTimeline.svelte';
 	import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
-	import { contactLabel, isRecencyNever, identityValue } from '$lib/components/crm/crm-format';
+	import { contactLabel, isRecencyNever, identityValue, relativeTime } from '$lib/components/crm/crm-format';
 	import { stageLabel } from '$lib/components/crm/crm-i18n';
 	import { metaLabel, metaValue, metaDisplay, isEmailKey, metaEntries, isReservedMetaKey } from '$lib/components/crm/crm-meta';
 	import { IdCard, Cake, Phone, Mail, MapPin, Home, Stethoscope, Megaphone, Briefcase, Flag, Hash, User } from 'lucide-svelte';
@@ -319,6 +319,31 @@
 					<p class="t-caption">{m.crm_no_details()}</p>
 				{/if}
 			</section>
+
+			<!-- Financials card (only when both CRM + Finances modules are on) -->
+			{#if data.finance}
+				<section class="card">
+					<header class="card-h"><span>{m.crm_financials_title()}</span></header>
+					<dl class="kv">
+						<div><dt>{m.crm_col_revenue()}</dt><dd>{data.finance.revenue.toLocaleString()}</dd></div>
+						<div><dt>{m.crm_col_invoices()}</dt><dd>{data.finance.invoices}</dd></div>
+						<div><dt>{m.crm_col_last_purchase()}</dt><dd>{data.finance.lastPurchaseAt ? relativeTime(data.finance.lastPurchaseAt) : '—'}</dd></div>
+					</dl>
+					{#if data.finance.recentInvoices.length > 0}
+						<p class="fin-recent-h">{m.crm_financials_recent()}</p>
+						<ul class="fin-list">
+							{#each data.finance.recentInvoices as inv (inv.id)}
+								<li class="fin-row">
+									<a href="/finances/invoices/{inv.id}" class="fin-doc">{inv.documentId ?? inv.id}</a>
+									<span class="fin-date t-caption">{inv.issuedAt ? relativeTime(inv.issuedAt) : '—'}</span>
+									<span class="fin-total">{inv.total.toLocaleString()}</span>
+									{#if inv.status}<span class="fin-status t-caption">{inv.status}</span>{/if}
+								</li>
+							{/each}
+						</ul>
+					{/if}
+				</section>
+			{/if}
 		</div>
 
 		<!-- Right: journey timeline + notes -->
@@ -576,5 +601,45 @@
 		display: flex;
 		gap: 0.5rem;
 		margin-top: 0.3rem;
+	}
+
+	/* Financials card */
+	.fin-recent-h {
+		font-size: 0.7rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		color: var(--color-muted-foreground);
+		margin: 0.6rem 0 0.35rem;
+	}
+	.fin-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.1rem;
+	}
+	.fin-row {
+		display: grid;
+		grid-template-columns: 1fr auto auto auto;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.3rem 0;
+		font-size: 0.82rem;
+		border-top: 1px solid var(--hairline);
+	}
+	.fin-doc {
+		color: var(--color-accent);
+		font-variant-numeric: tabular-nums;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.fin-doc:hover { text-decoration: underline; }
+	.fin-date { color: var(--color-muted-foreground); }
+	.fin-total { font-variant-numeric: tabular-nums; font-weight: 500; }
+	.fin-status {
+		padding: 0.1rem 0.4rem;
+		border-radius: 999px;
+		background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+		border: 1px solid color-mix(in srgb, var(--color-accent) 25%, transparent);
 	}
 </style>

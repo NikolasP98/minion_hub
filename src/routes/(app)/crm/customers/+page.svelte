@@ -44,7 +44,7 @@
 
 	let search = $state('');
 	let tagId = $state('');
-	type SortKey = 'name' | 'score' | 'frequency' | 'recent';
+	type SortKey = 'name' | 'score' | 'frequency' | 'recent' | 'revenue';
 	let sortKey = $state<SortKey>('score');
 	let sortDir = $state<'asc' | 'desc'>('desc');
 	let stageFilter = $state<Set<string>>(new Set());
@@ -92,6 +92,7 @@
 			score: (a, b) => a.score - b.score,
 			frequency: (a, b) => a.total_msgs - b.total_msgs,
 			recent: (a, b) => t(a) - t(b),
+			revenue: (a, b) => ((a as { finance?: { revenue: number } | null }).finance?.revenue ?? -Infinity) - ((b as { finance?: { revenue: number } | null }).finance?.revenue ?? -Infinity),
 		};
 		const dir = sortDir === 'asc' ? 1 : -1;
 		return [...list].sort((a, b) => dir * cmp[sortKey](a, b) || byName(a, b));
@@ -242,6 +243,11 @@
 						{#each metaCols as key (key)}
 							<th class="px-3 py-2 font-medium meta-col">{metaLabel(key)}</th>
 						{/each}
+						{#if data.financeEnabled}
+							<th class="px-3 py-2 font-medium text-right w-28">{@render sortHead('revenue', m.crm_col_revenue(), true)}</th>
+							<th class="px-3 py-2 font-medium text-right w-20">{m.crm_col_invoices()}</th>
+							<th class="px-3 py-2 font-medium text-right w-28">{m.crm_col_last_purchase()}</th>
+						{/if}
 						<th class="px-3 py-2 font-medium text-right w-28">
 							<div class="flex justify-end">
 								<ColumnFilter label={m.crm_col_channels()} options={channelOptions} bind:selected={channelFilter} align="right">
@@ -271,6 +277,12 @@
 							{#each metaCols as key (key)}
 								<td class="px-3 py-2 meta-cell" title={metaDisplay(key, c.custom_fields?.[key])}>{metaDisplay(key, c.custom_fields?.[key])}</td>
 							{/each}
+							{#if data.financeEnabled}
+								{@const fin = (c as { finance?: { revenue: number; invoices: number; lastPurchaseAt: string | null } | null }).finance}
+								<td class="px-3 py-2 text-right t-caption font-variant-numeric">{fin ? fin.revenue.toLocaleString() : '—'}</td>
+								<td class="px-3 py-2 text-right t-caption">{fin ? fin.invoices : '—'}</td>
+								<td class="px-3 py-2 text-right t-caption">{fin?.lastPurchaseAt ? relativeTime(fin.lastPurchaseAt) : '—'}</td>
+							{/if}
 							<td class="px-3 py-2">
 								{#if c.channels && c.channels.length > 0}
 									<div class="flex items-center justify-end gap-1.5 text-muted-foreground">

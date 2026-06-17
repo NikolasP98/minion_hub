@@ -9,6 +9,7 @@ import {
   listTags,
 } from '$server/services/crm-contacts.service';
 import { evaluateTagRule } from '$server/services/crm-scoring';
+import { contactFinanceSummary } from '$server/services/crm-finance.service';
 
 export const load: PageServerLoad = async ({ locals, params, depends }) => {
   const ctx = await getCoreCtx(locals);
@@ -34,6 +35,8 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
       )
     : [];
 
+  const finance = await contactFinanceSummary(ctx, id);
+
   return {
     contact: record.contact,
     identities: record.identities,
@@ -43,5 +46,6 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
     contactTags,
     allTags,
     autoTags,
+    finance,
   };
 };
