@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildGraph, RADII } from './build-graph';
+import { buildGraph, RADII, hexToRgba, shade } from './build-graph';
 import type { OrgArea } from '$server/services/org-areas.service';
 
 const area = (over: Partial<OrgArea> = {}): OrgArea => ({
@@ -88,5 +88,59 @@ describe('buildGraph', () => {
     };
     const { nodes } = buildGraph(input);
     expect(nodes.some((n) => n.kind === 'agent' && n.id.includes('__unassigned__'))).toBe(true);
+  });
+});
+
+describe('helpers', () => {
+  describe('hexToRgba', () => {
+    it('converts hex with leading # to rgba with alpha', () => {
+      expect(hexToRgba('#6366f1', 0.5)).toBe('rgba(99,102,241,0.5)');
+    });
+
+    it('converts hex without leading # to rgba with alpha', () => {
+      expect(hexToRgba('6366f1', 0.5)).toBe('rgba(99,102,241,0.5)');
+    });
+
+    it('returns input unchanged for malformed hex', () => {
+      expect(hexToRgba('nope', 0.5)).toBe('nope');
+      expect(hexToRgba('fff', 0.5)).toBe('fff');
+      expect(hexToRgba('#gggggg', 0.5)).toBe('#gggggg');
+    });
+
+    it('passes through alpha value correctly', () => {
+      expect(hexToRgba('#ffffff', 0)).toBe('rgba(255,255,255,0)');
+      expect(hexToRgba('#ffffff', 1)).toBe('rgba(255,255,255,1)');
+      expect(hexToRgba('#000000', 0.75)).toBe('rgba(0,0,0,0.75)');
+    });
+  });
+
+  describe('shade', () => {
+    it('keeps pure black unchanged (multiplicative formula cannot lift 0)', () => {
+      expect(shade('#000000', 0.5)).toBe('#000000');
+    });
+
+    it('darkens gray by reducing channels multiplicatively', () => {
+      expect(shade('#808080', -0.5)).toBe('#404040');
+    });
+
+    it('clamps white to white (cannot brighten beyond 255)', () => {
+      expect(shade('#ffffff', 0.5)).toBe('#ffffff');
+    });
+
+    it('returns input unchanged for malformed hex', () => {
+      expect(shade('nope', 0.5)).toBe('nope');
+      expect(shade('fff', 0.5)).toBe('fff');
+      expect(shade('#gggggg', 0.5)).toBe('#gggggg');
+    });
+
+    it('brightens color with positive amount', () => {
+      // #404040 (64,64,64) * 1.5 = (96,96,96) = #606060
+      expect(shade('#404040', 0.5)).toBe('#606060');
+    });
+
+    it('darkens color with negative amount', () => {
+      // #c0c0c0 (192,192,192) * 0.5 = (96,96,96) = #606060
+      expect(shade('#c0c0c0', -0.5)).toBe('#606060');
+    });
   });
 });
