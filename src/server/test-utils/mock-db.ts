@@ -99,9 +99,12 @@ export function createMockDb() {
 
       // `withOrgCore` runs queries inside `db.transaction(tx => …)`. The mock tx
       // IS this same db, so the existing db.select/insert/… spies + resolveSequence
-      // keep working transparently.
+      // keep working transparently. Stored as vi.fn() so tests can assert call count.
       if (prop === 'transaction') {
-        return (cb: (tx: unknown) => unknown) => cb(db);
+        if (!target['transaction']) {
+          target['transaction'] = vi.fn((cb: (tx: unknown) => unknown) => cb(db));
+        }
+        return target['transaction'];
       }
       // `withOrgCore` issues `tx.execute(SET ROLE …)` + `tx.execute(set_config …)`.
       // These must NOT consume a resolveSequence slot, so resolve to undefined.

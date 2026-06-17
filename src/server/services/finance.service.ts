@@ -1,5 +1,5 @@
 // src/server/services/finance.service.ts
-import { and, eq, desc, sql } from 'drizzle-orm';
+import { and, eq, desc, sql, inArray } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { finInvoices, finInvoiceItems, finPayments, finClients, finSources } from '$server/db/pg-finance-schema';
@@ -7,52 +7,78 @@ import type { CanonicalInvoice } from '$server/finance/connector';
 
 const numStr = (n: number | null) => (n == null ? null : String(n));
 
-/** Upsert one canonical invoice + replace its children. Single org-scoped tx. */
-export async function upsertInvoice(ctx: CoreCtx, inv: CanonicalInvoice): Promise<void> {
+/** Upsert a whole page of canonical invoices in ONE org-scoped transaction using
+ *  set-based multi-row statements. ~100× fewer round-trips than per-invoice. */
+export async function upsertInvoicesBatch(
+  ctx: CoreCtx, invoices: CanonicalInvoice[], productMap: Map<string, string> = new Map(),
+): Promise<void> {
+  if (invoices.length === 0) return;
   await withOrgCore(ctx, async (tx) => {
-    if (inv.client) {
-      await tx.insert(finClients).values({
-        orgId: ctx.tenantId, provider: inv.client.provider, providerRef: inv.client.providerRef,
-        name: inv.client.name, docType: inv.client.docType, docNumber: inv.client.docNumber,
-        email: inv.client.email, phone: inv.client.phone, metadata: inv.client.metadata,
-      }).onConflictDoUpdate({
+    // 1. Clients (dedupe by providerRef within the page).
+    const clients = new Map<string, CanonicalInvoice['client']>();
+    for (const inv of invoices) if (inv.client) clients.set(inv.client.providerRef, inv.client);
+    const clientIdByRef = new Map<string, string>();
+    if (clients.size) {
+      const rows = await tx.insert(finClients).values([...clients.values()].map((c) => ({
+        orgId: ctx.tenantId, provider: c!.provider, providerRef: c!.providerRef, name: c!.name,
+        docType: c!.docType, docNumber: c!.docNumber, email: c!.email, phone: c!.phone, metadata: c!.metadata,
+      }))).onConflictDoUpdate({
         target: [finClients.orgId, finClients.provider, finClients.providerRef],
-        set: { name: inv.client.name, docType: inv.client.docType, docNumber: inv.client.docNumber,
-               email: inv.client.email, phone: inv.client.phone, metadata: inv.client.metadata },
-      });
+        set: { name: sql`excluded.name`, docType: sql`excluded.doc_type`, docNumber: sql`excluded.doc_number`,
+               email: sql`excluded.email`, phone: sql`excluded.phone`, metadata: sql`excluded.metadata` },
+      }).returning({ providerRef: finClients.providerRef, id: finClients.id });
+      for (const r of rows) clientIdByRef.set(r.providerRef, r.id);
     }
-    const [row] = await tx.insert(finInvoices).values({
+
+    // 2. Invoices (resolve client_id from step 1).
+    const invRows = await tx.insert(finInvoices).values(invoices.map((inv) => ({
       orgId: ctx.tenantId, provider: inv.provider, providerRef: inv.providerRef, number: inv.number,
       documentId: inv.documentId, issuedAt: inv.issuedAt ? new Date(inv.issuedAt) : null,
+      clientId: inv.client ? clientIdByRef.get(inv.client.providerRef) ?? null : null,
       clientName: inv.clientName, clientDocType: inv.clientDocType, clientDocNumber: inv.clientDocNumber,
       clientEmail: inv.clientEmail, currency: inv.currency, subtotal: numStr(inv.subtotal), tax: numStr(inv.tax),
       discount: numStr(inv.discount), total: numStr(inv.total), status: inv.status, seller: inv.seller,
       note: inv.note, metadata: inv.metadata, syncedAt: new Date(),
-    }).onConflictDoUpdate({
+    }))).onConflictDoUpdate({
       target: [finInvoices.orgId, finInvoices.provider, finInvoices.providerRef],
-      set: { number: inv.number, documentId: inv.documentId, issuedAt: inv.issuedAt ? new Date(inv.issuedAt) : null,
-             clientName: inv.clientName, clientDocType: inv.clientDocType, clientDocNumber: inv.clientDocNumber,
-             clientEmail: inv.clientEmail, currency: inv.currency, subtotal: numStr(inv.subtotal), tax: numStr(inv.tax),
-             discount: numStr(inv.discount), total: numStr(inv.total), status: inv.status, seller: inv.seller,
-             note: inv.note, metadata: inv.metadata, syncedAt: new Date() },
-    }).returning({ id: finInvoices.id });
-    const invoiceId = row.id;
-    await tx.delete(finInvoiceItems).where(eq(finInvoiceItems.invoiceId, invoiceId));
-    if (inv.items.length) {
-      await tx.insert(finInvoiceItems).values(inv.items.map((it) => ({
-        orgId: ctx.tenantId, invoiceId, code: it.code, description: it.description, category: it.category,
-        quantity: numStr(it.quantity), unitPrice: numStr(it.unitPrice), discount: numStr(it.discount),
-        tax: numStr(it.tax), total: numStr(it.total), metadata: it.metadata,
-      })));
-    }
-    await tx.delete(finPayments).where(eq(finPayments.invoiceId, invoiceId));
-    if (inv.payments.length) {
-      await tx.insert(finPayments).values(inv.payments.map((p) => ({
+      set: { number: sql`excluded.number`, documentId: sql`excluded.document_id`, issuedAt: sql`excluded.issued_at`,
+             clientId: sql`excluded.client_id`, clientName: sql`excluded.client_name`,
+             clientDocType: sql`excluded.client_doc_type`, clientDocNumber: sql`excluded.client_doc_number`,
+             clientEmail: sql`excluded.client_email`, currency: sql`excluded.currency`, subtotal: sql`excluded.subtotal`,
+             tax: sql`excluded.tax`, discount: sql`excluded.discount`, total: sql`excluded.total`,
+             status: sql`excluded.status`, seller: sql`excluded.seller`, note: sql`excluded.note`,
+             metadata: sql`excluded.metadata`, syncedAt: sql`excluded.synced_at` },
+    }).returning({ providerRef: finInvoices.providerRef, id: finInvoices.id });
+    const invIdByRef = new Map(invRows.map((r) => [r.providerRef, r.id]));
+    const invoiceIds = [...invIdByRef.values()];
+
+    // 3. Replace children for these invoices (set-based delete + multi-row insert).
+    await tx.delete(finInvoiceItems).where(inArray(finInvoiceItems.invoiceId, invoiceIds));
+    const itemRows = invoices.flatMap((inv) => {
+      const invoiceId = invIdByRef.get(inv.providerRef); if (!invoiceId) return [];
+      return inv.items.map((it) => ({
+        orgId: ctx.tenantId, invoiceId, productId: it.code ? productMap.get(it.code) ?? null : null,
+        code: it.code, description: it.description, category: it.category, quantity: numStr(it.quantity),
+        unitPrice: numStr(it.unitPrice), discount: numStr(it.discount), tax: numStr(it.tax), total: numStr(it.total), metadata: it.metadata,
+      }));
+    });
+    if (itemRows.length) await tx.insert(finInvoiceItems).values(itemRows);
+
+    await tx.delete(finPayments).where(inArray(finPayments.invoiceId, invoiceIds));
+    const payRows = invoices.flatMap((inv) => {
+      const invoiceId = invIdByRef.get(inv.providerRef); if (!invoiceId) return [];
+      return inv.payments.map((p) => ({
         orgId: ctx.tenantId, invoiceId, providerRef: p.providerRef, method: p.method,
         paidAt: p.paidAt ? new Date(p.paidAt) : null, amount: numStr(p.amount), status: p.status, metadata: p.metadata,
-      })));
-    }
+      }));
+    });
+    if (payRows.length) await tx.insert(finPayments).values(payRows);
   });
+}
+
+/** Single-invoice convenience (tests / any non-batch caller). */
+export async function upsertInvoice(ctx: CoreCtx, inv: CanonicalInvoice): Promise<void> {
+  await upsertInvoicesBatch(ctx, [inv]);
 }
 
 export function listInvoices(ctx: CoreCtx, opts: { limit?: number } = {}) {
