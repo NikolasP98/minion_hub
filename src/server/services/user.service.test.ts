@@ -90,6 +90,7 @@ describe('listUsers', () => {
         email: 'a@b.com',
         displayName: 'A',
         role: 'admin',
+        accountType: 'person',
         alias: null,
         roleId: null,
         createdAt: '2026-01-01T00:00:00Z',
