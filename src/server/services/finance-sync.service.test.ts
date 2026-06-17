@@ -3,14 +3,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Mock the collaborating services so advanceJob's control flow is isolated.
 const claimJob = vi.fn<() => Promise<boolean>>();
 const getJobById = vi.fn();
-const heartbeat = vi.fn<() => Promise<void>>(async () => {});
+const heartbeat = vi.fn<(c: unknown, id: string, patch: { processed: number; total?: number | null; pageCursor: string | null }) => Promise<void>>(async () => {});
 const isCancelRequested = vi.fn<() => Promise<boolean>>(async () => false);
 const finishJob = vi.fn<(c: unknown, id: string, status: string, o?: unknown) => Promise<void>>(async () => {});
 vi.mock('./finance-sync-jobs.service', () => ({
   STALE_MS: 90_000,
   claimJob: (...a: unknown[]) => claimJob(),
   getJobById: (...a: unknown[]) => getJobById(),
-  heartbeat: (...a: unknown[]) => heartbeat(),
+  heartbeat: (c: unknown, id: string, patch: { processed: number; total?: number | null; pageCursor: string | null }) => heartbeat(c, id, patch),
   isCancelRequested: (...a: unknown[]) => isCancelRequested(),
   finishJob: (c: unknown, id: string, status: string, o?: unknown) => finishJob(c, id, status, o),
   enqueueJob: vi.fn(),
@@ -49,6 +49,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   pages.length = 0;
   claimJob.mockResolvedValue(true);
+  isCancelRequested.mockResolvedValue(false);
   getSource.mockResolvedValue({ provider: 'fake', enabled: true, watermark: null, config: {}, secretRefs: { ciphertext: 'c', iv: 'i' } });
 });
 
@@ -83,5 +84,29 @@ describe('advanceJob', () => {
     await advanceJob(ctx, 'j1', { budgetMs: Infinity });
     expect(finishJob).toHaveBeenCalledWith(ctx, 'j1', 'cancelled', undefined);
     expect(upsertInvoice).not.toHaveBeenCalled();
+  });
+
+  it('budget-exhaustion: persists cursor after first page and does not call finishJob', async () => {
+    getJobById.mockResolvedValue({ id: 'j1', provider: 'fake', processed: 0, total: null, pageCursor: null, startedAt: new Date() });
+    pages.push({ invoices: [{}], cursor: 'c1' }, { invoices: [{}], cursor: 'c2' });
+    // budgetMs: -1 → deadline = Date.now() - 1, guaranteed in the past so the deadline check fires after page 1
+    await advanceJob(ctx, 'j1', { budgetMs: -1 });
+    // The per-page heartbeat after page 1 must carry pageCursor:'c1'
+    expect(heartbeat).toHaveBeenCalledWith(expect.anything(), 'j1', expect.objectContaining({ pageCursor: 'c1' }));
+    // Job left in 'running' state — finishJob must NOT have been called
+    expect(finishJob).not.toHaveBeenCalled();
+    // Only the first page's invoice was upserted (budget expired before page 2)
+    expect(upsertInvoice).toHaveBeenCalledTimes(1);
+  });
+
+  it('5-consecutive-failure abort: calls finishJob with status failed', async () => {
+    getJobById.mockResolvedValue({ id: 'j1', provider: 'fake', processed: 0, total: null, pageCursor: null, startedAt: new Date() });
+    upsertInvoice.mockRejectedValue(new Error('boom'));
+    pages.push({ invoices: [{}, {}, {}, {}, {}], cursor: 'c1' });
+    await advanceJob(ctx, 'j1', { budgetMs: Infinity });
+    expect(finishJob).toHaveBeenCalledWith(
+      expect.anything(), 'j1', 'failed',
+      expect.objectContaining({ error: expect.any(String) }),
+    );
   });
 });

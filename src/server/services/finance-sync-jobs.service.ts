@@ -4,9 +4,9 @@ import { getCoreDb } from '$server/db/pg-client';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { finSyncJobs, type FinSyncJob } from '$server/db/pg-finance-schema';
 
-export const STALE_MS = 90_000;
+export const STALE_MS = 5 * 60_000; // 5min — wide enough that a slow page (per-page heartbeat) is never mistaken for a dead worker; cron still resumes truly-dead jobs
 const ACTIVE = ['queued', 'running'];
-const staleClause = sql`now() - interval '90 seconds'`;
+const staleClause = sql`now() - interval '5 minutes'`;
 
 export function getActiveJob(ctx: CoreCtx, provider: string): Promise<FinSyncJob | null> {
   return withOrgCore(ctx, async (tx) => {
@@ -37,12 +37,21 @@ export function getJobById(ctx: CoreCtx, jobId: string): Promise<FinSyncJob | nu
 export async function enqueueJob(ctx: CoreCtx, provider: string): Promise<FinSyncJob> {
   const active = await getActiveJob(ctx, provider);
   if (active) return active;
-  return withOrgCore(ctx, async (tx) => {
-    const [row] = await tx.insert(finSyncJobs)
-      .values({ orgId: ctx.tenantId, provider, status: 'queued', processed: 0 })
-      .returning();
-    return row;
-  });
+  try {
+    return await withOrgCore(ctx, async (tx) => {
+      const [row] = await tx.insert(finSyncJobs)
+        .values({ orgId: ctx.tenantId, provider, status: 'queued', processed: 0 })
+        .returning();
+      return row;
+    });
+  } catch (e) {
+    // Lost a race against the partial-unique active-job index → an active job now exists; return it.
+    if (e && typeof e === 'object' && 'code' in e && (e as { code?: string }).code === '23505') {
+      const existing = await getActiveJob(ctx, provider);
+      if (existing) return existing;
+    }
+    throw e;
+  }
 }
 
 /** Flip queued→running, or re-claim a running job whose heartbeat is stale. */

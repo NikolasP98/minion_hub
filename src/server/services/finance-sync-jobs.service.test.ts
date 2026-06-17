@@ -23,6 +23,18 @@ describe('enqueueJob', () => {
     expect(db.insert).toHaveBeenCalled();
     expect(job.status).toBe('queued');
   });
+
+  it('returns the racing active job when insert throws a unique-violation (23505)', async () => {
+    // Simulate: getActiveJob → none (check), insert → unique-violation, getActiveJob → now exists
+    const raceJob = { id: 'job-race', orgId: 'org-1', provider: 'susii', status: 'running' };
+    const { db, resolveSequence } = createMockDb();
+    // Sequence: [] for the initial getActiveJob select, [raceJob] for the catch-path getActiveJob select
+    resolveSequence([[], [raceJob]]);
+    const uniqueViolation = Object.assign(new Error('unique violation'), { code: '23505' });
+    (db.insert as ReturnType<typeof vi.fn>).mockImplementation(() => { throw uniqueViolation; });
+    const job = await enqueueJob(ctx(db), 'susii');
+    expect(job.id).toBe('job-race');
+  });
 });
 
 describe('claimJob', () => {
