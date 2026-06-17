@@ -4,7 +4,8 @@ import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { finInvoices, finInvoiceItems, finPayments, finClients, finSources, finProducts } from '$server/db/pg-finance-schema';
 import type { CanonicalInvoice } from '$server/finance/connector';
-import { invalidateTags, tags } from '@minion-stack/cache';
+import { cached, keys, invalidateTags, tags } from '@minion-stack/cache';
+import type { Period } from '$lib/finance/period';
 
 const numStr = (n: number | null) => (n == null ? null : String(n));
 
@@ -170,7 +171,8 @@ export async function clientRevenueRows(ctx: CoreCtx) {
   });
 }
 
-/** Raw aggregate rows for the dashboard (revenue per month, etc.). */
+/** Raw aggregate rows for the dashboard (revenue per month, etc.).
+ *  @deprecated Use revenueSeries(ctx, period) instead. Kept for +page.server.ts compat until Task 7. */
 export function dashboardRows(ctx: CoreCtx) {
   return withOrgCore(ctx, async (tx) => {
     const monthly = (await tx.execute(sql`
@@ -181,4 +183,125 @@ export function dashboardRows(ctx: CoreCtx) {
     `)) as unknown as Array<{ month: string; invoices: number; revenue: number }>;
     return { monthly: monthly.map((r) => ({ month: String(r.month), invoices: Number(r.invoices), revenue: Number(r.revenue) })) };
   });
+}
+
+// ── Period-scoped, Valkey-cached dashboard aggregates ──────────────────────
+
+function periodWhere(p: Period) {
+  const conds = [sql`org_id = current_setting('app.current_org_id', true)`];
+  if (p.from) conds.push(sql`issued_at >= ${p.from}`);
+  if (p.to) conds.push(sql`issued_at < ${p.to}`);
+  return sql.join(conds, sql` and `);
+}
+
+const ck = (org: string, name: string, p: Period) =>
+  keys.hub(`fin-${name}`, { t: org, d: { f: p.from ?? '', e: p.to ?? '', b: p.bucket } });
+
+const ctags = (org: string) => [...financeCacheTags(org)];
+
+export function financeSummary(ctx: CoreCtx, p: Period) {
+  return cached(ck(ctx.tenantId, 'summary', p), { ttl: '2m', swr: '30s', tags: ctags(ctx.tenantId) }, () =>
+    withOrgCore(ctx, async (tx) => {
+      const [r] = (await tx.execute(sql`
+        select coalesce(sum(total),0)::float8 net, coalesce(sum(subtotal),0)::float8 gross,
+               coalesce(sum(discount),0)::float8 discount, count(*)::int invoices,
+               count(distinct coalesce(client_id::text, client_doc_number))::int clients,
+               count(*) filter (where status='void')::int voids,
+               mode() within group (order by currency) currency
+        from fin_invoices where ${periodWhere(p)}
+      `)) as unknown as Array<Record<string, unknown>>;
+      const net = Number(r.net), gross = Number(r.gross), discount = Number(r.discount), invoices = Number(r.invoices), voids = Number(r.voids);
+      const [nc] = (await tx.execute(sql`
+        select count(*)::int n from (
+          select client_doc_number, min(issued_at) first from fin_invoices
+          where org_id = current_setting('app.current_org_id', true) and client_doc_number is not null group by client_doc_number
+        ) f where ${p.from ? sql`f.first >= ${p.from}` : sql`true`} and ${p.to ? sql`f.first < ${p.to}` : sql`true`}
+      `)) as unknown as Array<{ n: number }>;
+      return {
+        totalNet: net, totalGross: gross, totalDiscount: discount,
+        discountRate: gross > 0 ? discount / gross : 0,
+        invoiceCount: invoices, avgTicket: invoices > 0 ? net / invoices : 0,
+        uniqueClients: Number(r.clients), newClients: Number(nc.n),
+        voidCount: voids, voidRate: invoices > 0 ? voids / invoices : 0,
+        currency: r.currency != null ? String(r.currency) : 'PEN',
+      };
+    }),
+  );
+}
+
+export function revenueSeries(ctx: CoreCtx, p: Period) {
+  return cached(ck(ctx.tenantId, 'series', p), { ttl: '2m', swr: '30s', tags: ctags(ctx.tenantId) }, () =>
+    withOrgCore(ctx, async (tx) => {
+      const rows = (await tx.execute(sql`
+        select to_char(date_trunc(${p.bucket}, issued_at), 'YYYY-MM-DD') bucket,
+               count(*)::int invoices, coalesce(sum(total),0)::float8 revenue,
+               coalesce(sum(discount),0)::float8 discount, coalesce(sum(subtotal),0)::float8 gross
+        from fin_invoices where ${periodWhere(p)} and issued_at is not null
+        group by 1 order by 1
+      `)) as unknown as Array<Record<string, unknown>>;
+      return rows.map((r) => ({
+        bucket: String(r.bucket), invoices: Number(r.invoices),
+        revenue: Number(r.revenue), discount: Number(r.discount), gross: Number(r.gross),
+      }));
+    }),
+  );
+}
+
+export function topProducts(ctx: CoreCtx, p: Period, opts: { limit?: number } = {}) {
+  const limit = opts.limit ?? 15;
+  return cached(ck(ctx.tenantId, 'products', p), { ttl: '2m', swr: '30s', tags: ctags(ctx.tenantId) }, () =>
+    withOrgCore(ctx, async (tx) => {
+      const rows = (await tx.execute(sql`
+        select ii.product_id, max(ii.code) code,
+               coalesce(max(p.name), max(ii.description)) name,
+               coalesce(sum(ii.total::numeric), 0)::float8 revenue,
+               coalesce(sum(ii.quantity::numeric), 0)::float8 qty,
+               count(*)::int lines
+        from fin_invoice_items ii
+        join fin_invoices inv on inv.id = ii.invoice_id
+        left join fin_products p on p.id = ii.product_id
+        where ${periodWhere(p)}
+          and (ii.product_id is not null or ii.code is not null)
+        group by ii.product_id
+        order by revenue desc
+        limit ${limit}
+      `)) as unknown as Array<Record<string, unknown>>;
+      return rows.map((r) => ({
+        productId: r.product_id != null ? String(r.product_id) : null,
+        code: r.code != null ? String(r.code) : null,
+        name: r.name != null ? String(r.name) : null,
+        revenue: Number(r.revenue),
+        qty: Number(r.qty),
+        lines: Number(r.lines),
+      }));
+    }),
+  );
+}
+
+export function topClients(ctx: CoreCtx, p: Period, opts: { limit?: number } = {}) {
+  const limit = opts.limit ?? 10;
+  return cached(ck(ctx.tenantId, 'clients', p), { ttl: '2m', swr: '30s', tags: ctags(ctx.tenantId) }, () =>
+    withOrgCore(ctx, async (tx) => {
+      const rows = (await tx.execute(sql`
+        select coalesce(client_doc_number, client_id::text) doc_number,
+               max(client_name) name,
+               count(*)::int invoices,
+               coalesce(sum(total::numeric), 0)::float8 revenue,
+               max(issued_at) last
+        from fin_invoices
+        where ${periodWhere(p)}
+          and (client_doc_number is not null or client_id is not null)
+        group by coalesce(client_doc_number, client_id::text)
+        order by revenue desc
+        limit ${limit}
+      `)) as unknown as Array<Record<string, unknown>>;
+      return rows.map((r) => ({
+        docNumber: r.doc_number != null ? String(r.doc_number) : null,
+        name: r.name != null ? String(r.name) : null,
+        invoices: Number(r.invoices),
+        revenue: Number(r.revenue),
+        last: r.last != null ? String(r.last) : null,
+      }));
+    }),
+  );
 }
