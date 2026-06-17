@@ -107,10 +107,14 @@ export function createMockDb() {
         return target['transaction'];
       }
       // `withOrgCore` issues `tx.execute(SET ROLE …)` + `tx.execute(set_config …)`.
-      // These must NOT consume a resolveSequence slot, so resolve to undefined.
+      // In sequential mode these must NOT consume a resolveSequence slot, so resolve
+      // to undefined. In non-sequential (resolve) mode, execute returns nextResult()
+      // so raw-SQL services (e.g. finance-products) can be tested with resolve([...]).
       if (prop === 'execute') {
         if (!target['execute']) {
-          target['execute'] = vi.fn((..._args: unknown[]) => Promise.resolve(undefined));
+          target['execute'] = vi.fn((..._args: unknown[]) =>
+            _sequential ? Promise.resolve(undefined) : Promise.resolve(nextResult()),
+          );
         }
         return target['execute'];
       }
