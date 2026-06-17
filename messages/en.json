@@ -2779,5 +2779,12 @@
   "crm_ai_desc_required": "Add a description of who qualifies.",
   "crm_ai_find_matches": "Find matches",
   "crm_ai_finding": "Finding…",
-  "crm_ai_eval_result": "Applied to {applied} of {evaluated}"
+  "crm_ai_eval_result": "Applied to {applied} of {evaluated}",
+  "fin_nav_invoices": "Invoices",
+  "fin_nav_payments": "Payments",
+  "fin_nav_clients": "Clients",
+  "fin_dashboard_subtitle": "Revenue overview",
+  "fin_empty": "No invoices synced yet.",
+  "fin_total_revenue": "Total revenue",
+  "fin_revenue_by_month": "Revenue by month"
 }

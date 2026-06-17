@@ -2779,5 +2779,12 @@
   "crm_ai_desc_required": "Añade una descripción de quién califica.",
   "crm_ai_find_matches": "Buscar coincidencias",
   "crm_ai_finding": "Buscando…",
-  "crm_ai_eval_result": "Aplicada a {applied} de {evaluated}"
+  "crm_ai_eval_result": "Aplicada a {applied} de {evaluated}",
+  "fin_nav_invoices": "Facturas",
+  "fin_nav_payments": "Pagos",
+  "fin_nav_clients": "Clientes",
+  "fin_dashboard_subtitle": "Resumen de ingresos",
+  "fin_empty": "Aún no hay facturas sincronizadas.",
+  "fin_total_revenue": "Ingresos totales",
+  "fin_revenue_by_month": "Ingresos por mes"
 }
