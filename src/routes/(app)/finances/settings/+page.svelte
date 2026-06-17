@@ -3,6 +3,10 @@
 	import { Settings2, RefreshCw, Plug } from 'lucide-svelte';
 	import { PageHeader, Button, Toggle } from '$lib/components/ui';
 	import * as m from '$lib/paraglide/messages';
+	import { financeSync } from '$lib/state/features/finance-sync.svelte';
+	import * as progress from '@zag-js/progress';
+	import { useMachine, normalizeProps } from '@zag-js/svelte';
+	import { onMount } from 'svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -52,31 +56,26 @@
 	}
 
 	// ── Sync card ─────────────────────────────────────────────────────────────
-	let syncBusy = $state(false);
-	let syncMsg = $state<{ ok: boolean; text: string } | null>(null);
+	const progressSvc = useMachine(progress.machine as any, () => ({
+		id: 'fin-sync-progress',
+		value: financeSync.total == null ? null : financeSync.processed,
+		max: financeSync.total ?? 100,
+	}));
+	const prog = $derived(progress.connect(progressSvc as progress.Service, normalizeProps));
 
-	async function syncNow() {
-		syncBusy = true;
-		syncMsg = null;
-		try {
-			const res = await fetch('/api/finances/sync', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ provider: 'susii' }),
-			});
-			if (res.ok) {
-				const r = (await res.json()) as { count?: number; status?: string };
-				syncMsg = {
-					ok: true,
-					text: m.fin_sync_result({ count: r.count ?? 0, status: r.status ?? 'ok' }),
-				};
-			} else {
-				syncMsg = { ok: false, text: m.fin_sync_error() };
-			}
-		} catch {
-			syncMsg = { ok: false, text: m.fin_sync_error() };
-		} finally {
-			syncBusy = false;
+	onMount(() => {
+		financeSync.refresh('susii');
+		return () => financeSync.stop();
+	});
+
+	function syncStatusLabel(): string {
+		switch (financeSync.status) {
+			case 'running':
+			case 'queued': return m.fin_sync_status_running();
+			case 'succeeded': return m.fin_sync_status_succeeded();
+			case 'failed': return m.fin_sync_status_failed();
+			case 'cancelled': return m.fin_sync_status_cancelled();
+			default: return '';
 		}
 	}
 </script>
@@ -176,15 +175,34 @@
 
 				<p class="t-caption mb-3">{m.fin_sync_description()}</p>
 
-				{#if syncMsg}
-					<p class={syncMsg.ok ? 'ok-msg' : 'err-msg'}>{syncMsg.text}</p>
+				{#if financeSync.active || financeSync.status}
+					<div {...prog.getRootProps()} class="prog">
+						<div class="prog-meta">
+							<span class="t-caption">{syncStatusLabel()}</span>
+							{#if financeSync.total != null}
+								<span class="mono-val">{m.fin_sync_progress({ processed: financeSync.processed, total: financeSync.total })} · {financeSync.percent}%</span>
+							{:else}
+								<span class="mono-val">{financeSync.processed}</span>
+							{/if}
+						</div>
+						<div {...prog.getTrackProps()} class="prog-track">
+							<div {...prog.getRangeProps()} class="prog-range" style={financeSync.total != null ? `width:${financeSync.percent}%` : 'width:40%'}></div>
+						</div>
+					</div>
 				{/if}
 
-				<div class="actions">
-					<Button variant="outline" size="sm" onclick={syncNow} disabled={syncBusy}>
-						<RefreshCw size={14} class={syncBusy ? 'animate-spin' : ''} />
-						{syncBusy ? m.fin_sync_running() : m.fin_sync_now()}
+				{#if financeSync.status === 'failed' && financeSync.error}
+					<p class="err-msg">{financeSync.error}</p>
+				{/if}
+
+				<div class="actions sync-actions">
+					<Button variant="outline" size="sm" onclick={() => financeSync.start('susii')} disabled={financeSync.active}>
+						<RefreshCw size={14} class={financeSync.active ? 'animate-spin' : ''} />
+						{financeSync.active ? m.fin_sync_running() : m.fin_sync_now()}
 					</Button>
+					{#if financeSync.active}
+						<Button variant="ghost" size="sm" onclick={() => financeSync.cancel('susii')}>{m.fin_sync_cancel()}</Button>
+					{/if}
 				</div>
 			</section>
 
@@ -261,4 +279,9 @@
 		margin-bottom: 0.5rem;
 		font-style: italic;
 	}
+	.prog { margin-bottom: 0.75rem; }
+	.prog-meta { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.35rem; }
+	.prog-track { height: 6px; border-radius: 999px; background: var(--color-bg3); overflow: hidden; }
+	.prog-range { height: 100%; background: var(--color-accent); border-radius: 999px; transition: width 0.4s ease; }
+	.sync-actions { display: flex; gap: 0.5rem; align-items: center; }
 </style>

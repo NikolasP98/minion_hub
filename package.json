@@ -33,6 +33,7 @@
     "@zag-js/image-cropper": "^1.41.0",
     "@zag-js/menu": "^1.41.0",
     "@zag-js/popover": "^1.41.0",
+    "@zag-js/progress": "^1.41.0",
     "@zag-js/qr-code": "^1.41.0",
     "@zag-js/radio-group": "^1.41.0",
     "@zag-js/select": "^1.41.0",
