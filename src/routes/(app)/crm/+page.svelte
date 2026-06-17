@@ -42,12 +42,6 @@
 	</PageHeader>
 
 	<div class="flex-1 min-h-0 overflow-auto p-4 flex flex-col gap-4 max-w-6xl">
-		<!-- Marketing-funnel ribbon (breakdown across stages) -->
-		<section class="card">
-			<header class="card-h">{m.crm_funnel_title()}</header>
-			<CrmFunnelRibbon counts={s.funnelCounts} />
-		</section>
-
 		<!-- KPI cards -->
 		<div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
 			{#each kpis as k (k.label)}
@@ -59,6 +53,12 @@
 				</div>
 			{/each}
 		</div>
+
+		<!-- Marketing-funnel ribbon (breakdown across stages) -->
+		<section class="card">
+			<header class="card-h">{m.crm_funnel_title()}</header>
+			<CrmFunnelRibbon counts={s.funnelCounts} />
+		</section>
 
 		<div class="grid gap-4 lg:grid-cols-2">
 			<!-- Stage funnel -->
