@@ -25,6 +25,8 @@ const RING_COLOR = 0x26262b;
 const ZOOM_MIN = 0.12;
 const ZOOM_MAX = 5;
 const LABEL_ZOOM_THRESHOLD = 0.3;
+/** Labels scale with zoom but never shrink below this on-screen px (legible from afar). */
+const MIN_LABEL_PX = 11;
 const RADII = [300, 600, 900, 1200, 1500];
 
 const hexNum = (hex: string): number => {
@@ -183,10 +185,9 @@ export async function createRenderer(
 		if (node.showLabel) {
 			label = new Text({
 				text: node.label,
-				// Oversample the glyph atlas so text stays crisp; the per-frame
-				// 1/zoom counter-scale (see frame()) then keeps it at a constant
-				// on-screen size instead of being magnified blurry by the world zoom.
-				resolution: Math.max(2, (window.devicePixelRatio || 1) * 2),
+				// Initial glyph-atlas resolution; frame() re-tunes it to the current
+				// zoom so the world-scaled label stays crisp at any magnification.
+				resolution: Math.max(2, window.devicePixelRatio || 1),
 				style: {
 					fill: node.labelColor,
 					fontSize: node.labelSize,
@@ -238,6 +239,7 @@ export async function createRenderer(
 		applyCamera();
 
 		const showLabels = zoom >= LABEL_ZOOM_THRESHOLD;
+		const dpr = window.devicePixelRatio || 1;
 
 		// Nodes: position + alpha lerp + cache screen coords for hit-testing.
 		for (const v of views) {
@@ -247,9 +249,17 @@ export async function createRenderer(
 			v.container.alpha = v.displayAlpha;
 			if (v.label) {
 				v.label.visible = showLabels && (!focus || focus.has(v.node.id));
-				// Counter-scale so labels keep a constant on-screen size and are
-				// never upscaled by the world zoom (which is what blurred them).
-				v.label.scale.set(1 / zoom);
+				if (v.label.visible) {
+					// Scale with the world (proportional/large up close) but never
+					// below MIN_LABEL_PX on screen (readable from a distance).
+					const fs = v.node.labelSize;
+					const screenPx = Math.max(MIN_LABEL_PX, fs * zoom);
+					v.label.scale.set(screenPx / (fs * zoom));
+					// Re-raster the atlas to match the actual on-screen size so it
+					// stays crisp in both regimes — only when it changes (cheap).
+					const res = Math.min(8, Math.max(1, Math.ceil((screenPx * dpr) / fs)));
+					if (v.label.resolution !== res) v.label.resolution = res;
+				}
 			}
 			v.screenX = v.node.x * zoom + world.position.x;
 			v.screenY = v.node.y * zoom + world.position.y;
