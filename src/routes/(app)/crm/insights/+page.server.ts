@@ -2,6 +2,7 @@ import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { wordFrequency, sentimentByMonth, currentSentiment } from '$server/services/crm-insights.service';
+import { winIndexStatus } from '$server/services/crm-similarity.service';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RANGE_DAYS: Record<string, number> = { '30d': 30, '90d': 90, '365d': 365 };
@@ -16,11 +17,12 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const fromIso = (range === 'all' || !days ? new Date(0) : new Date(now - days * DAY_MS)).toISOString();
   const toIso = new Date(now).toISOString();
 
-  const [words, sentiment, current] = await Promise.all([
+  const [words, sentiment, current, winIndex] = await Promise.all([
     wordFrequency(ctx, { fromIso, toIso, limit: 60 }),
     sentimentByMonth(ctx),
     currentSentiment(ctx),
+    winIndexStatus(ctx),
   ]);
 
-  return { words, sentiment, current, range: RANGE_DAYS[range] ? range : 'all' };
+  return { words, sentiment, current, winIndex, range: RANGE_DAYS[range] ? range : 'all' };
 };

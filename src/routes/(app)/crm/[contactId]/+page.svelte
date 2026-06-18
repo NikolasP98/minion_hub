@@ -10,6 +10,7 @@
 	import CrmFunnel from '$lib/components/crm/CrmFunnel.svelte';
 	import { financeFloorStage } from '$lib/components/crm/crm-funnel';
 	import JourneyTimeline from '$lib/components/crm/JourneyTimeline.svelte';
+	import CrmSimilarWins from '$lib/components/crm/CrmSimilarWins.svelte';
 	import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
 	import { contactLabel, isRecencyNever, identityValue, relativeTime } from '$lib/components/crm/crm-format';
 	import { stageLabel } from '$lib/components/crm/crm-i18n';
@@ -345,6 +346,11 @@
 						</ul>
 					{/if}
 				</section>
+			{/if}
+
+			<!-- C3 — similar past wins (finance-gated; self-handles empty/disabled) -->
+			{#if data.finance}
+				<CrmSimilarWins contactId={c.id} />
 			{/if}
 		</div>
 

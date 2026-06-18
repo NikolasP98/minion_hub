@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { PageData } from './$types';
   import { goto, invalidateAll } from '$app/navigation';
+  import { Trophy } from 'lucide-svelte';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
   import { Sparkles, RefreshCw } from 'lucide-svelte';
@@ -44,6 +45,18 @@
       analyzing = false;
     }
   }
+
+  let rebuilding = $state(false);
+  async function rebuildWins() {
+    if (rebuilding) return;
+    rebuilding = true;
+    try {
+      const res = await fetch('/api/crm/insights/win-index', { method: 'POST' });
+      if (res.ok) await invalidateAll();
+    } finally {
+      rebuilding = false;
+    }
+  }
 </script>
 
 <svelte:head><title>{m.crm_insights_title()} — {m.crm_title()}</title></svelte:head>
@@ -77,6 +90,23 @@
         </Button>
       </header>
       <CrmSentimentTrend points={data.sentiment} current={data.current} />
+    </section>
+
+    <!-- C3 — learning from winning conversations -->
+    <section class="card">
+      <header class="card-h">
+        <span class="flex items-center gap-1.5"><Trophy size={13} /> {m.crm_wins_title()}</span>
+        <Button variant="outline" size="sm" onclick={rebuildWins} disabled={rebuilding}>
+          <RefreshCw size={14} class={rebuilding ? 'animate-spin' : ''} />
+          {rebuilding ? m.crm_wins_rebuilding() : m.crm_wins_rebuild()}
+        </Button>
+      </header>
+      {#if data.winIndex.count > 0}
+        <p class="t-body">{m.crm_wins_status({ count: data.winIndex.count })}</p>
+        {#if data.winIndex.thin}<p class="t-caption">{m.crm_wins_thin()}</p>{/if}
+      {:else}
+        <p class="t-caption">{m.crm_wins_never()}</p>
+      {/if}
     </section>
   </div>
 </div>
