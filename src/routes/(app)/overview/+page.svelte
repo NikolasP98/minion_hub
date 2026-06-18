@@ -66,13 +66,15 @@
 </script>
 
 <div class="flex h-full min-h-0 overflow-hidden relative">
-  <!-- Graph fills full height -->
-  <div class="flex-1 min-w-0 relative">
+  <!-- Graph fills full height; overflow-hidden keeps the canvas clipped to this
+       column so it can never overlap the editing aside. -->
+  <div class="flex-1 min-w-0 relative overflow-hidden">
     <OverviewGraph {org} areas={data.areas} {agents} {members} subscriptions={data.subscriptions} />
 
-    <!-- Floating admin controls — top-right of graph stage, admin-only -->
+    <!-- Floating admin controls — top-LEFT of graph stage (top-right is occupied
+         by the global profile/topbar notch), admin-only -->
     {#if data.isAdmin}
-      <div class="absolute top-3 right-3 z-10 flex items-center gap-2 bg-bg2/80 backdrop-blur border border-border rounded px-2 py-1.5">
+      <div class="absolute top-3 left-3 z-10 flex items-center gap-2 bg-bg2/80 backdrop-blur border border-border rounded px-2 py-1.5">
         {#if data.areas.length === 0}
           <button
             type="button"
@@ -89,7 +91,7 @@
   </div>
 
   {#if editing && data.isAdmin}
-    <aside class="w-[320px] shrink-0 border-l border-border bg-bg2 overflow-y-auto text-[12px] p-3 flex flex-col gap-3">
+    <aside class="relative z-20 w-[320px] shrink-0 border-l border-border bg-bg2 overflow-y-auto text-[12px] p-3 flex flex-col gap-3">
       <!-- Create -->
       <div class="rounded-lg border border-border p-2.5 flex flex-col gap-2">
         <div class="text-xs font-semibold text-foreground">{m.overview_newArea()}</div>
