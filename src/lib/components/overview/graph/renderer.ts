@@ -265,6 +265,33 @@ export async function createRenderer(
 			v.screenY = v.node.y * zoom + world.position.y;
 		}
 
+		// Screen-space label de-overlap: keep higher-priority (bigger-node) labels
+		// and hide any whose box would collide with one already kept. This mainly
+		// declutters the zoomed-out / fit view where labels crowd; up close or
+		// under a focus set there are few candidates so most survive. Ties broken
+		// by id so the keep/hide decision is stable frame-to-frame.
+		const placedBoxes: Array<[number, number, number, number]> = [];
+		const labelCandidates = views
+			.filter((v) => v.label?.visible)
+			.sort((a, b) => b.node.symbolSize - a.node.symbolSize || (a.node.id < b.node.id ? -1 : 1));
+		for (const v of labelCandidates) {
+			const lbl = v.label!;
+			// lbl.width/height already include the label's own scale; ×zoom → screen px.
+			const w = lbl.width * zoom;
+			const h = lbl.height * zoom;
+			const x = v.screenX - w / 2;
+			const y = v.screenY + (v.node.symbolSize / 2 + 4) * zoom;
+			let collides = false;
+			for (const [px, py, pw, ph] of placedBoxes) {
+				if (x < px + pw && x + w > px && y < py + ph && y + h > py) {
+					collides = true;
+					break;
+				}
+			}
+			if (collides) lbl.visible = false;
+			else placedBoxes.push([x, y, w, h]);
+		}
+
 		// Edges.
 		edgeLayer.clear();
 		for (const e of edges) {

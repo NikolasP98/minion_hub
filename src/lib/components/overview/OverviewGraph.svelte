@@ -12,6 +12,7 @@
   import { onMount } from 'svelte';
   import { SvelteMap, SvelteSet } from 'svelte/reactivity';
   import type { OrgArea } from '$server/services/org-areas.service';
+  import { INTEGRATIONS } from '$lib/types/entities';
   import { buildGraph, RADII, type GraphNode, type NodeKind } from './graph/build-graph';
   import { createSimulation, type Simulation, type SimNode } from './graph/simulation';
   import { createRenderer, type Renderer } from './graph/renderer';
@@ -36,8 +37,20 @@
   let selected = $state<GraphNode | null>(null);
   let nodeCount = $state(0);
 
-  // Legend counts by kind — $state tracks reference reassignments; SvelteMap tracks mutations
-  let kindCounts = $state(new SvelteMap<NodeKind, number>());
+  // Legend counts = DISTINCT entities per level (what the org has), derived from
+  // props — not rendered-node counts (skills/integrations/agents/users are placed
+  // per-area, so node counts over-count). Matches the old header semantics.
+  const legendCounts = $derived.by<Partial<Record<NodeKind, number>>>(() => {
+    const persons = members.filter((m) => (m.accountType ?? 'person') !== 'service');
+    const virtual = areas.reduce((s, a) => s + a.virtualAgents.length, 0);
+    return {
+      area: areas.length,
+      skill: new Set(areas.flatMap((a) => a.skillKeys)).size,
+      integration: new Set(areas.flatMap((a) => a.integrationKeys).filter((k) => INTEGRATIONS[k])).size,
+      agent: agents.length + virtual,
+      user: persons.length
+    };
+  });
   // Active legend level for highlight
   let activeLegendKind = $state<NodeKind | null>(null);
 
@@ -74,11 +87,6 @@
     const { nodes, edges } = buildGraph({ org, areas, agents, members, subscriptions });
     nodeCount = nodes.length;
     metaById = new Map(nodes.map((nd) => [nd.id, nd]));
-
-    // Recompute kind counts
-    const counts = new SvelteMap<NodeKind, number>();
-    for (const nd of nodes) counts.set(nd.kind, (counts.get(nd.kind) ?? 0) + 1);
-    kindCounts = counts;
 
     // Clear stale selection — the node may have been removed since last render.
     if (selected && !metaById.has(selected.id)) {
@@ -153,11 +161,6 @@
       const { nodes, edges } = buildGraph({ org, areas, agents, members, subscriptions });
       nodeCount = nodes.length;
       metaById = new Map(nodes.map((nd) => [nd.id, nd]));
-
-      // Compute kind counts for initial graph
-      const counts = new SvelteMap<NodeKind, number>();
-      for (const nd of nodes) counts.set(nd.kind, (counts.get(nd.kind) ?? 0) + 1);
-      kindCounts = counts;
 
       // Precompute adjacency for the initial graph
       adjacencyMap = new SvelteMap<string, SvelteSet<string>>();
@@ -328,7 +331,7 @@
   <!-- Ring legend (clickable) -->
   <div class="absolute bottom-3 left-3 z-10 flex flex-col gap-0.5 text-[10px] text-muted bg-bg2/80 backdrop-blur-sm border border-border rounded-lg px-2 py-1.5">
     {#each LEGEND_ROWS as row (row.kind)}
-      {@const count = kindCounts.get(row.kind) ?? 0}
+      {@const count = legendCounts[row.kind] ?? 0}
       {@const active = activeLegendKind === row.kind}
       <button
         type="button"
