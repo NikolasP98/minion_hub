@@ -8,6 +8,23 @@ export function scoreColor(score: number): string {
   return 'var(--color-muted-foreground)';
 }
 
+/**
+ * Score (0–100) → engagement temperature. Mirrors the {@link scoreColor} ramp's
+ * top breakpoints so the dashboard's hot/warm/cold split reads the same as the
+ * per-contact score color: hot ≥ 75, warm 50–74, cold < 50.
+ */
+export type Temperature = 'hot' | 'warm' | 'cold';
+export function temperatureOf(score: number): Temperature {
+  if (score >= 75) return 'hot';
+  if (score >= 50) return 'warm';
+  return 'cold';
+}
+
+/** Temperature → color, sharing the score ramp's palette. */
+export function temperatureColor(t: Temperature): string {
+  return t === 'hot' ? 'var(--color-success)' : t === 'warm' ? 'var(--color-emerald)' : 'var(--color-muted-foreground)';
+}
+
 /** Lifecycle stage → color, mirroring the journey progression. */
 export function stageColor(stage: string): string {
   switch (stage) {

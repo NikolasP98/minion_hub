@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   scoreColor,
   stageColor,
+  temperatureOf,
   relativeTime,
   contactLabel,
   isRecencyNever,
@@ -10,6 +11,17 @@ import {
 } from './crm-format';
 
 const NOW = new Date('2026-06-13T12:00:00Z');
+
+describe('temperatureOf', () => {
+  it('splits hot/warm/cold at the score-ramp breakpoints', () => {
+    expect(temperatureOf(0)).toBe('cold');
+    expect(temperatureOf(49)).toBe('cold');
+    expect(temperatureOf(50)).toBe('warm');
+    expect(temperatureOf(74)).toBe('warm');
+    expect(temperatureOf(75)).toBe('hot');
+    expect(temperatureOf(100)).toBe('hot');
+  });
+});
 
 describe('scoreColor', () => {
   it('ramps from cold to hot', () => {

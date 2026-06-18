@@ -2,7 +2,9 @@ import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { listContactsCached } from '$server/services/crm-contacts.service';
+import { crmRevenueSummary } from '$server/services/crm-finance.service';
 import { FUNNEL_ORDER, effectiveFunnelStage } from '$lib/components/crm/crm-funnel';
+import { temperatureOf } from '$lib/components/crm/crm-format';
 
 const STAGES = ['New', 'Engaged', 'Active', 'Dormant', 'Churned'] as const;
 
@@ -37,11 +39,16 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   // effective stage per contact (stored _funnel else baseline lead).
   const funnelCounts: Record<string, number> = Object.fromEntries(FUNNEL_ORDER.map((s) => [s, 0]));
 
+  // Engagement temperature split (hot/warm/cold) derived from the RFM score —
+  // the dashboard's at-a-glance "who's worth chasing right now".
+  const temperature = { hot: 0, warm: 0, cold: 0 };
+
   for (const c of all) {
     if (c.stage in stageCounts) stageCounts[c.stage]++;
     const b = Math.min(9, Math.max(0, Math.floor(c.score / 10)));
     scoreBuckets[b]++;
     scoreSum += c.score;
+    temperature[temperatureOf(c.score)]++;
     for (const ch of c.channels ?? []) channelMix[ch] = (channelMix[ch] ?? 0) + 1;
     if (c.first_contact_at && now - Date.parse(c.first_contact_at) <= THIRTY_DAYS) newCount++;
     if (c.last_contact_at && now - Date.parse(c.last_contact_at) <= SEVEN_DAYS) activeWeek++;
@@ -53,19 +60,9 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     .map(([channel, count]) => ({ channel, count }))
     .sort((a, b) => b.count - a.count);
 
-  // Most-recently-contacted customers (compact slice for the activity feed).
-  const recent = [...all]
-    .filter((c) => c.last_contact_at)
-    .sort((a, b) => Date.parse(b.last_contact_at!) - Date.parse(a.last_contact_at!))
-    .slice(0, 8)
-    .map((c) => ({
-      contact_id: c.contact_id,
-      display_name: c.display_name,
-      last_contact_at: c.last_contact_at,
-      channels: c.channels ?? [],
-      stage: c.stage,
-      score: c.score,
-    }));
+  // Addressable revenue inside the CRM (null unless both CRM + Finances are
+  // enabled). The bridge keeps the two modules decoupled — purely additive.
+  const revenue = await crmRevenueSummary(ctx);
 
   return {
     stats: {
@@ -78,7 +75,8 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
       funnelCounts,
       scoreBuckets,
       channels,
-      recent,
+      temperature,
+      revenue,
     },
   };
 };

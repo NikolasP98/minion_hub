@@ -29,6 +29,42 @@ export async function contactFinanceMap(ctx: CoreCtx): Promise<Record<string, { 
   });
 }
 
+/**
+ * Org-wide revenue rollup for CRM-linked contacts — the addressable revenue
+ * sitting inside the CRM (invoices joined to a contact through the WhatsApp
+ * phone bridge). Powers the dashboard's Revenue summary widget. Returns null
+ * when either module is disabled so the widget stays hidden.
+ */
+export async function crmRevenueSummary(
+  ctx: CoreCtx,
+): Promise<{ revenue: number; invoices: number; buyers: number; avgTicket: number } | null> {
+  if (!(await bothEnabled(ctx, 'crm', 'finances'))) return null;
+  return withOrgCore(ctx, async (tx) => {
+    const [agg] = (await tx.execute(sql`
+      with phones as (
+        select distinct ci.contact_id, ${PHONE9('ci.external_id')} as p9
+        from crm_contact_identities ci
+        where ci.org_id = current_setting('app.current_org_id', true) and ci.channel = 'whatsapp'
+          and length(${PHONE9('ci.external_id')}) >= 8
+      ),
+      linked as (
+        select ph.contact_id, fi.id as invoice_id, coalesce(fi.total,0)::float8 as total
+        from phones ph
+        join fin_clients fc on fc.org_id = current_setting('app.current_org_id', true) and ${PHONE9('fc.phone')} = ph.p9
+        join fin_invoices fi on fi.client_id = fc.id
+      )
+      select coalesce(sum(total),0)::float8 revenue,
+             count(invoice_id)::int invoices,
+             count(distinct contact_id)::int buyers
+      from linked
+    `)) as unknown as Array<{ revenue: number; invoices: number; buyers: number }>;
+    const revenue = Number(agg?.revenue ?? 0);
+    const invoices = Number(agg?.invoices ?? 0);
+    const buyers = Number(agg?.buyers ?? 0);
+    return { revenue, invoices, buyers, avgTicket: invoices ? revenue / invoices : 0 };
+  });
+}
+
 export async function contactFinanceSummary(ctx: CoreCtx, contactId: string) {
   if (!(await bothEnabled(ctx, 'crm', 'finances'))) return null;
   return withOrgCore(ctx, async (tx) => {

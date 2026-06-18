@@ -2,12 +2,12 @@
 	import type { PageData } from './$types';
 	import { goto } from '$app/navigation';
 	import * as m from '$lib/paraglide/messages';
-	import { LayoutDashboard, Users, UserPlus, Activity, TrendingDown } from 'lucide-svelte';
+	import { LayoutDashboard, Users, UserPlus, Activity, TrendingDown, Info, Flame, Wallet } from 'lucide-svelte';
 	import { PageHeader } from '$lib/components/ui';
 	import StagePill from '$lib/components/crm/StagePill.svelte';
 	import CrmFunnelRibbon from '$lib/components/crm/CrmFunnelRibbon.svelte';
 	import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
-	import { relativeTime, contactLabel } from '$lib/components/crm/crm-format';
+	import { temperatureColor, type Temperature } from '$lib/components/crm/crm-format';
 	import { stageLabel } from '$lib/components/crm/crm-i18n';
 
 	let { data }: { data: PageData } = $props();
@@ -18,12 +18,34 @@
 	const bucketMax = $derived(Math.max(1, ...s.scoreBuckets));
 	const channelTotal = $derived(s.channels.reduce((acc, c) => acc + c.count, 0));
 
+	// Per-stage definition tooltips (transparency: "what makes someone Active?").
+	const STAGE_HELP: Record<string, string> = {
+		New: m.crm_stage_help_New(),
+		Engaged: m.crm_stage_help_Engaged(),
+		Active: m.crm_stage_help_Active(),
+		Dormant: m.crm_stage_help_Dormant(),
+		Churned: m.crm_stage_help_Churned(),
+	};
+
 	const kpis = $derived([
-		{ label: m.crm_dash_total(), value: s.total, icon: Users },
-		{ label: m.crm_dash_active(), value: s.activeWeek, icon: Activity },
-		{ label: m.crm_dash_new(), value: s.newCount, icon: UserPlus },
-		{ label: m.crm_dash_churned(), value: s.churned, icon: TrendingDown },
+		{ label: m.crm_dash_total(), value: s.total, icon: Users, help: m.crm_dash_total_help() },
+		{ label: m.crm_dash_active(), value: s.activeWeek, icon: Activity, help: m.crm_dash_active_help() },
+		{ label: m.crm_dash_new(), value: s.newCount, icon: UserPlus, help: m.crm_dash_new_help() },
+		{ label: m.crm_dash_churned(), value: s.churned, icon: TrendingDown, help: m.crm_dash_churned_help() },
 	]);
+
+	// Engagement-temperature breakdown (hot/warm/cold), computed server-side.
+	const tempRows = $derived(
+		(['hot', 'warm', 'cold'] as Temperature[]).map((t) => ({
+			key: t,
+			label: t === 'hot' ? m.crm_temp_hot() : t === 'warm' ? m.crm_temp_warm() : m.crm_temp_cold(),
+			count: s.temperature[t],
+			color: temperatureColor(t),
+		})),
+	);
+	const tempTotal = $derived(s.temperature.hot + s.temperature.warm + s.temperature.cold);
+
+	const fmtMoney = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 0 });
 
 	// Score-bucket bar accent: low scores muted → high scores accent.
 	function bucketColor(i: number): string {
@@ -49,7 +71,10 @@
 				<div class="kpi">
 					<div class="kpi-icon"><Icon size={16} /></div>
 					<div class="kpi-val">{k.value.toLocaleString()}</div>
-					<div class="kpi-label">{k.label}</div>
+					<div class="kpi-label">
+						<span>{k.label}</span>
+						<span class="kpi-help" title={k.help}><Info size={12} /></span>
+					</div>
 				</div>
 			{/each}
 		</div>
@@ -67,7 +92,7 @@
 				<div class="funnel">
 					{#each STAGES as st (st)}
 						{@const n = s.stageCounts[st] ?? 0}
-						<button class="funnel-row" onclick={() => goto(`/crm/customers`)} title={stageLabel(st)}>
+						<button class="funnel-row" onclick={() => goto(`/crm/customers`)} title={`${stageLabel(st)} — ${STAGE_HELP[st]}`}>
 							<span class="funnel-label"><StagePill stage={st} overridden={false} /></span>
 							<span class="funnel-bar-wrap">
 								<span class="funnel-bar" style:width={`${(n / funnelMax) * 100}%`}></span>
@@ -112,28 +137,50 @@
 				{/if}
 			</section>
 
-			<!-- Recent activity -->
+			<!-- Engagement temperature (hot/warm/cold by RFM score) -->
 			<section class="card">
-				<header class="card-h">{m.crm_dash_recent()}</header>
-				{#if s.recent.length === 0}
-					<p class="t-caption py-2">{m.crm_no_interactions()}</p>
-				{:else}
-					<ul class="recent">
-						{#each s.recent as c (c.contact_id)}
-							<li>
-								<button class="rec-row" onclick={() => goto(`/crm/${c.contact_id}`)}>
-									<span class="rec-name" title={contactLabel(c.display_name)}>{contactLabel(c.display_name)}</span>
-									<span class="rec-channels">
-										{#each c.channels.slice(0, 3) as ch (ch)}<ChannelBrandIcon channel={ch} size={13} />{/each}
-									</span>
-									<StagePill stage={c.stage} overridden={false} />
-									<span class="rec-when t-caption">{relativeTime(c.last_contact_at)}</span>
-								</button>
-							</li>
-						{/each}
-					</ul>
-				{/if}
+				<header class="card-h">
+					<span class="flex items-center gap-1.5"><Flame size={13} /> {m.crm_dash_temperature()}</span>
+					<span class="kpi-help" title={m.crm_dash_temperature_help()}><Info size={12} /></span>
+				</header>
+				<ul class="chmix">
+					{#each tempRows as t (t.key)}
+						{@const pct = tempTotal ? Math.round((t.count / tempTotal) * 100) : 0}
+						<li class="chrow">
+							<span class="temp-dot" style:background={t.color}></span>
+							<span class="ch-name">{t.label}</span>
+							<span class="ch-bar-wrap"><span class="ch-bar" style:width={`${pct}%`} style:background={t.color}></span></span>
+							<span class="ch-n">{t.count.toLocaleString()}</span>
+							<span class="ch-pct">{pct}%</span>
+						</li>
+					{/each}
+				</ul>
 			</section>
+
+			<!-- Revenue from CRM (only when CRM + Finances are both enabled) -->
+			{#if s.revenue}
+				<section class="card">
+					<header class="card-h"><span class="flex items-center gap-1.5"><Wallet size={13} /> {m.crm_dash_revenue_title()}</span></header>
+					<div class="rev-grid">
+						<div class="rev-stat">
+							<span class="rev-val">{fmtMoney(s.revenue.revenue)}</span>
+							<span class="rev-label">{m.crm_rev_total()}</span>
+						</div>
+						<div class="rev-stat">
+							<span class="rev-val">{fmtMoney(s.revenue.avgTicket)}</span>
+							<span class="rev-label">{m.crm_rev_avg_ticket()}</span>
+						</div>
+						<div class="rev-stat">
+							<span class="rev-val">{s.revenue.buyers.toLocaleString()}</span>
+							<span class="rev-label">{m.crm_rev_buyers()}</span>
+						</div>
+						<div class="rev-stat">
+							<span class="rev-val">{s.revenue.invoices.toLocaleString()}</span>
+							<span class="rev-label">{m.crm_rev_invoices()}</span>
+						</div>
+					</div>
+				</section>
+			{/if}
 		</div>
 	</div>
 </div>
@@ -163,8 +210,21 @@
 		font-variant-numeric: tabular-nums;
 	}
 	.kpi-label {
+		display: flex;
+		align-items: center;
+		gap: 0.3rem;
 		font-size: 0.78rem;
 		color: var(--color-muted-foreground);
+	}
+	.kpi-help {
+		display: inline-flex;
+		color: var(--color-muted-foreground);
+		opacity: 0.5;
+		cursor: help;
+		transition: opacity var(--duration-fast) var(--ease-standard);
+	}
+	.kpi-help:hover {
+		opacity: 1;
 	}
 	.card {
 		border: 1px solid var(--hairline);
@@ -222,21 +282,12 @@
 	.ch-n { font-variant-numeric: tabular-nums; text-align: right; min-width: 2.5rem; }
 	.ch-pct { font-variant-numeric: tabular-nums; color: var(--color-muted-foreground); min-width: 2.5rem; text-align: right; }
 
-	/* recent activity */
-	.recent { display: flex; flex-direction: column; }
-	.rec-row {
-		display: grid;
-		grid-template-columns: 1fr auto auto auto;
-		align-items: center;
-		gap: 0.6rem;
-		width: 100%;
-		padding: 0.45rem 0;
-		border-top: 1px solid var(--hairline);
-		text-align: left;
-	}
-	.recent li:first-child .rec-row { border-top: none; }
-	.rec-row:hover { color: var(--color-accent); }
-	.rec-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.rec-channels { display: inline-flex; align-items: center; gap: 0.3rem; color: var(--color-muted-foreground); }
-	.rec-when { min-width: 4rem; text-align: right; }
+	/* temperature breakdown (reuses .chmix/.chrow grid) */
+	.temp-dot { width: 0.7rem; height: 0.7rem; border-radius: 999px; }
+
+	/* revenue summary */
+	.rev-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem 1rem; }
+	.rev-stat { display: flex; flex-direction: column; gap: 0.1rem; }
+	.rev-val { font-size: 1.3rem; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+	.rev-label { font-size: 0.74rem; color: var(--color-muted-foreground); }
 </style>
