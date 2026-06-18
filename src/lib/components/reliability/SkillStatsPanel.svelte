@@ -7,6 +7,7 @@
 	import type { EChartsOption } from 'echarts';
 	import PanelHeader from './PanelHeader.svelte';
 	import MetricCard from './MetricCard.svelte';
+	import { chartColors, statusColor } from '$lib/utils/chart-colors';
 
 	interface Props {
 		serverId: string;
@@ -18,13 +19,6 @@
 	let skills = $derived(state.aggregate());
 
 	const STATUS_ORDER: SkillStatus[] = ['ok', 'error', 'auth_error', 'timeout'];
-
-	const STATUS_COLORS: Record<SkillStatus, string> = {
-		ok: '#22c55e',
-		error: '#ef4444',
-		auth_error: '#f59e0b',
-		timeout: '#a855f7',
-	};
 
 	const STATUS_LABELS: Record<SkillStatus, string> = {
 		ok: m.reliability_skillStatusOk(),
@@ -44,6 +38,13 @@
 		if (ms == null) return '-';
 		if (ms < 1000) return `${Math.round(ms)}ms`;
 		return `${(ms / 1000).toFixed(1)}s`;
+	}
+
+	/** Per-skill success-rate bar color: 100%→success, ≥80%→warning, else destructive. */
+	function successBarColor(okPct: number): string {
+		const c = chartColors();
+		if (okPct === 100) return c.success;
+		return okPct >= 80 ? c.warning : c.destructive;
 	}
 
 	let chartHeight = $derived(`${Math.max(200, skills.length * 32)}px`);
@@ -68,6 +69,7 @@
 	);
 
 	let chartOptions: EChartsOption = $derived.by(() => {
+		const c = chartColors();
 		const skillNames = skills.map((s) => formatSkillName(s.skillName));
 
 		const statusSeries = STATUS_ORDER.map((status) => ({
@@ -75,7 +77,7 @@
 			type: 'bar' as const,
 			stack: 'count',
 			barMaxWidth: 20,
-			itemStyle: { color: STATUS_COLORS[status] },
+			itemStyle: { color: statusColor(status) },
 			data: skills.map((s) => s.byStatus[status] ?? 0),
 		}));
 
@@ -99,24 +101,24 @@
 						{
 							type: 'rect',
 							shape: { x: minX, y: yCenter - 1.5, width: Math.max(maxX - minX, 1), height: 3 },
-							style: { fill: 'rgba(255, 255, 255, 0.35)' },
+							style: { fill: c.foreground, opacity: 0.35 },
 						},
 						{
 							type: 'rect',
 							shape: { x: minX - 1, y: yCenter - 5, width: 2, height: 10 },
-							style: { fill: 'rgba(255, 255, 255, 0.5)' },
+							style: { fill: c.foreground, opacity: 0.5 },
 						},
 						{
 							type: 'rect',
 							shape: { x: maxX - 1, y: yCenter - 5, width: 2, height: 10 },
-							style: { fill: 'rgba(255, 255, 255, 0.5)' },
+							style: { fill: c.foreground, opacity: 0.5 },
 						},
 					);
 				}
 				children.push({
 					type: 'circle',
 					shape: { cx: avgX, cy: yCenter, r: 5 },
-					style: { fill: '#ffffff', stroke: '#0f172a', lineWidth: 2 },
+					style: { fill: c.foreground, stroke: c.neutral, lineWidth: 2 },
 				});
 				return { type: 'group' as const, children };
 			},
@@ -225,7 +227,7 @@
 								<span class="text-foreground/80 truncate flex-1 min-w-0" title={skill.skillName}>{formatSkillName(skill.skillName)}</span>
 								<span class="text-muted-foreground tabular-nums shrink-0">{skill.total}×</span>
 								<div class="w-16 h-1.5 rounded-full bg-border shrink-0 overflow-hidden">
-									<div class="h-full rounded-full" style="width:{okPct}%;background:{okPct === 100 ? '#22c55e' : okPct >= 80 ? '#f59e0b' : '#ef4444'}"></div>
+									<div class="h-full rounded-full" style="width:{okPct}%;background:{successBarColor(okPct)}"></div>
 								</div>
 								<span class="text-muted-strong tabular-nums shrink-0 w-12 text-right">{formatDuration(skill.avgDurationMs)}</span>
 							</div>

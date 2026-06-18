@@ -75,7 +75,7 @@
   }
 </script>
 
-<div class="absolute top-full left-0 mt-1 z-10 bg-card border border-border rounded-md p-3 w-80 shadow-lg space-y-2">
+<div class="bg-card border border-border rounded-md p-3 w-80 shadow-lg space-y-2">
   <div class="flex gap-2 text-[10px] uppercase tracking-wider">
     <button class="px-2 py-1 rounded {tab === 'manual' ? 'bg-accent text-white' : 'text-muted'}" onclick={() => (tab = 'manual')}>{m.usersui_manual()}</button>
     <button class="px-2 py-1 rounded {tab === 'verify' ? 'bg-accent text-white' : 'text-muted'}" onclick={() => (tab = 'verify')}>{m.usersui_verifyCode()}</button>

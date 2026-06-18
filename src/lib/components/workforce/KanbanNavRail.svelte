@@ -2,7 +2,7 @@
 	import { page } from '$app/state';
 	import { LayoutDashboard, Inbox, CheckCircle2, Target, FolderKanban, Users } from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages';
-	import Tooltip from '$lib/components/layout/Tooltip.svelte';
+	import { Tooltip } from '$lib/components/ui';
 
 	// The KANBAN plugin's detail views — mirrors the /my-agent icon rail. Order +
 	// icons match the canonical route registry ($lib/nav/routes.ts workforce block).
@@ -37,7 +37,7 @@
 	{#each items as item (item.href)}
 		{@const Icon = item.icon}
 		{@const active = item.href === activeHref}
-		<Tooltip label={item.label} id={`kanban-nav-tip-${item.href}`} placement="right" openDelay={150}>
+		<Tooltip label={item.label} id={`kanban-nav-tip-${item.href}`} placement="right" openDelay={150} asChild>
 			{#snippet children(trigger)}
 				<a
 					href={item.href}

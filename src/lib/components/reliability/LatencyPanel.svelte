@@ -5,6 +5,7 @@
 	import type { EChartsOption } from 'echarts';
 	import PanelHeader from './PanelHeader.svelte';
 	import type { PerfSeries } from '$lib/state/reliability';
+	import { chartColors } from '$lib/utils/chart-colors';
 
 	interface Props {
 		perf: PerfSeries | null;
@@ -21,6 +22,7 @@
 	}
 
 	let chartOptions: EChartsOption = $derived.by(() => {
+		const c = chartColors();
 		const times = snapshots.map((s) => {
 			const d = new Date(s.ts);
 			return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
@@ -54,8 +56,8 @@
 					data: p95,
 					smooth: true,
 					symbol: 'none',
-					lineStyle: { color: '#f59e0b', width: 2 },
-					itemStyle: { color: '#f59e0b' }
+					lineStyle: { color: c.warning, width: 2 },
+					itemStyle: { color: c.warning }
 				},
 				{
 					name: 'p99',
@@ -63,8 +65,8 @@
 					data: p99,
 					smooth: true,
 					symbol: 'none',
-					lineStyle: { color: '#ef4444', width: 2 },
-					itemStyle: { color: '#ef4444' }
+					lineStyle: { color: c.destructive, width: 2 },
+					itemStyle: { color: c.destructive }
 				},
 				{
 					name: m.reliability_eventLoop(),
@@ -72,8 +74,8 @@
 					data: evloop,
 					smooth: true,
 					symbol: 'none',
-					lineStyle: { color: '#14b8a6', width: 2, type: 'dashed' },
-					itemStyle: { color: '#14b8a6' }
+					lineStyle: { color: c.cyan, width: 2, type: 'dashed' },
+					itemStyle: { color: c.cyan }
 				}
 			]
 		} satisfies EChartsOption;

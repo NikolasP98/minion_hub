@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { Brain, Bot, Radio, Shield, Server, Palette, DatabaseBackup, Puzzle, Users, KeyRound, Phone, Search, Blocks } from "lucide-svelte";
+  import { Brain, Bot, Radio, Shield, Server, Palette, DatabaseBackup, Puzzle, Users, KeyRound, Phone, Blocks } from "lucide-svelte";
   import { page } from "$app/state";
   import { isAdmin } from "$lib/state/features/user.svelte";
   import { TABS } from "$lib/utils/config-schema";
   import * as m from "$lib/paraglide/messages";
+  import { SideNav, type SideNavGroup, type SideNavItem } from "$lib/components/ui";
 
   interface Props {
     dirtyTabIds?: Set<string>;
@@ -59,155 +60,44 @@
     return fallback;
   }
 
-  // Live filter across all items.
-  let q = $state('');
-  const ql = $derived(q.trim().toLowerCase());
-  function match(label: string): boolean {
-    return !ql || label.toLowerCase().includes(ql);
+  function hubItem(t: HubTab): SideNavItem {
+    return { id: t.id, label: hubLabel(t.id, t.label), icon: ICON_MAP[t.icon], href: t.href };
   }
 
-  const generalItems = $derived(GENERAL_TABS.filter((t) => match(hubLabel(t.id, t.label))));
-  const gwItems = $derived(visibleGatewayTabs.filter((t) => match(t.label)));
-  const hubItems = $derived(visibleHubTabs.filter((t) => match(t.label)));
-  const teamItems = $derived(visibleTeamTabs.filter((t) => match(t.label)));
+  // Build grouped sections; SideNav handles search filtering + empty-group culling.
+  const groups = $derived.by<SideNavGroup[]>(() => {
+    const out: SideNavGroup[] = [];
+    out.push({ label: 'General', items: GENERAL_TABS.map(hubItem) });
+    if (visibleGatewayTabs.length) {
+      out.push({
+        label: 'Server',
+        adminOnly: true,
+        items: visibleGatewayTabs.map((t) => ({
+          id: t.id,
+          label: t.label,
+          icon: ICON_MAP[t.icon],
+          dot: dirtyTabIds.has(t.id),
+        })),
+      });
+    }
+    if (visibleHubTabs.length) out.push({ label: 'Hub', items: visibleHubTabs.map(hubItem) });
+    if (visibleTeamTabs.length) out.push({ label: 'Team', adminOnly: true, items: visibleTeamTabs.map(hubItem) });
+    return out;
+  });
+
+  // A single active id across all sections (href-based for routes, ?s= for gateway).
+  const activeId = $derived.by(() => {
+    const gw = visibleGatewayTabs.find((t) => isGatewayActive(t.id));
+    if (gw) return gw.id;
+    const hubActive = [...GENERAL_TABS, ...HUB_TABS, ...TEAM_TABS].find(isHubActive);
+    return hubActive?.id;
+  });
 </script>
 
-<aside
-  class="surface-1 shrink-0 w-14 lg:w-[208px] h-full border-r border-[var(--hairline)] flex flex-col overflow-hidden"
-  aria-label="Settings"
->
-  <!-- Search -->
-  <div class="shrink-0 p-2 hidden lg:block">
-    <div class="relative">
-      <Search size={13} class="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-      <input
-        type="text"
-        bind:value={q}
-        placeholder="Search settings"
-        class="focus-ring-none w-full h-8 pl-7 pr-2 text-xs rounded-[var(--radius-md)] bg-bg2 border border-[var(--hairline)] text-foreground placeholder:text-muted-foreground focus:border-accent/60 transition-colors duration-[150ms]"
-        aria-label="Search settings"
-      />
-    </div>
-  </div>
-
-  <nav class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 pb-3 flex flex-col gap-0.5">
-    <!-- GENERAL -->
-    {#if generalItems.length}
-      <div class="set-head t-label hidden lg:block">General</div>
-      {#each generalItems as tab (tab.id)}
-        {@const Icon = ICON_MAP[tab.icon]}
-        {@const active = isHubActive(tab)}
-        <a href={tab.href} class="set-row {active ? 'set-active' : ''}" aria-current={active ? 'page' : undefined} title={hubLabel(tab.id, tab.label)}>
-          <Icon size={16} class="set-icon shrink-0" />
-          <span class="hidden lg:inline">{hubLabel(tab.id, tab.label)}</span>
-        </a>
-      {/each}
-    {/if}
-
-    <!-- GATEWAY (admin): config sections via ?s= -->
-    {#if gwItems.length}
-      <div class="set-divider"></div>
-      <div class="set-head t-label hidden lg:flex items-center gap-1.5">Server<span class="admin-badge">admin</span></div>
-      {#each gwItems as tab (tab.id)}
-        {@const Icon = ICON_MAP[tab.icon]}
-        {@const active = isGatewayActive(tab.id)}
-        <button type="button" class="set-row text-left {active ? 'set-active' : ''}" aria-current={active ? 'page' : undefined} title={tab.label} onclick={() => onselect?.(tab.id)}>
-          {#if Icon}<Icon size={16} class="set-icon shrink-0" />{/if}
-          <span class="hidden lg:inline flex-1">{tab.label}</span>
-          {#if dirtyTabIds.has(tab.id) && !active}
-            <span class="w-1.5 h-1.5 rounded-full bg-accent shrink-0" aria-label="unsaved changes"></span>
-          {/if}
-        </button>
-      {/each}
-    {/if}
-
-    <!-- HUB (admin) -->
-    {#if hubItems.length}
-      <div class="set-divider"></div>
-      <div class="set-head t-label hidden lg:block">Hub</div>
-      {#each hubItems as tab (tab.id)}
-        {@const Icon = ICON_MAP[tab.icon]}
-        {@const active = isHubActive(tab)}
-        <a href={tab.href} class="set-row {active ? 'set-active' : ''}" aria-current={active ? 'page' : undefined} title={tab.label}>
-          <Icon size={16} class="set-icon shrink-0" />
-          <span class="hidden lg:inline">{tab.label}</span>
-        </a>
-      {/each}
-    {/if}
-
-    <!-- TEAM (admin) -->
-    {#if teamItems.length}
-      <div class="set-divider"></div>
-      <div class="set-head t-label hidden lg:flex items-center gap-1.5">Team<span class="admin-badge">admin</span></div>
-      {#each teamItems as tab (tab.id)}
-        {@const Icon = ICON_MAP[tab.icon]}
-        {@const active = isHubActive(tab)}
-        <a href={tab.href} class="set-row {active ? 'set-active' : ''}" aria-current={active ? 'page' : undefined} title={tab.label}>
-          <Icon size={16} class="set-icon shrink-0" />
-          <span class="hidden lg:inline">{tab.label}</span>
-        </a>
-      {/each}
-    {/if}
-  </nav>
-</aside>
-
-<style>
-  .set-row {
-    display: flex;
-    align-items: center;
-    gap: 0.625rem;
-    min-height: 2rem;
-    padding: 0.375rem 0.625rem;
-    border-radius: var(--radius-md);
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: var(--color-muted);
-    text-decoration: none;
-    white-space: nowrap;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    width: 100%;
-    transition:
-      color var(--duration-fast) var(--ease-standard),
-      background-color var(--duration-fast) var(--ease-standard);
-  }
-  .set-row :global(.set-icon) {
-    opacity: 0.7;
-    transition: opacity var(--duration-fast) var(--ease-standard);
-  }
-  .set-row:hover {
-    color: var(--color-foreground);
-    background: rgba(255, 255, 255, 0.05);
-  }
-  .set-row:hover :global(.set-icon) {
-    opacity: 1;
-  }
-  .set-active {
-    color: var(--color-accent);
-    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-    font-weight: 600;
-  }
-  .set-active :global(.set-icon) {
-    opacity: 1;
-    color: var(--color-accent);
-  }
-  .set-head {
-    padding: 0.5rem 0.625rem 0.25rem;
-  }
-  .set-divider {
-    height: 1px;
-    background: var(--hairline);
-    margin: 0.375rem 0.375rem;
-  }
-  .admin-badge {
-    font-size: 0.5rem;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    padding: 0.0625rem 0.25rem;
-    border-radius: var(--radius-xs);
-    color: var(--color-warning);
-    background: color-mix(in srgb, var(--color-warning) 14%, transparent);
-  }
-</style>
+<SideNav
+  items={groups}
+  {activeId}
+  ariaLabel="Settings"
+  search={{ enabled: true, placeholder: 'Search settings' }}
+  onSelect={(id) => onselect?.(id)}
+/>

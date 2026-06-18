@@ -6,41 +6,75 @@
   import { conn } from '$lib/state/gateway/connection.svelte';
   import { fmtTimeAgo } from '$lib/utils/format';
   import * as m from '$lib/paraglide/messages';
+  import type { DropdownItem } from '$lib/components/ui';
 
   let { align = 'left' }: { align?: 'left' | 'right' } = $props();
 
-  function selectHost(id: string) {
-    if (hostsState.activeHostId === id) { ui.dropdownOpen = false; return; }
+  // Host rows + a separator + the trailing "Manage" action, expressed in the
+  // shared DropdownItem vocabulary. Visibility/open-state stays owned by the
+  // parent (HostPill toggles `ui.dropdownOpen` and closes on document click),
+  // so this renders the menu panel directly rather than wiring the Zag-trigger
+  // `<Dropdown>` machine (which would need to own the trigger button too).
+  const items = $derived<DropdownItem[]>([
+    ...hostsState.hosts.map((h) => ({ value: h.id, label: h.name })),
+    { value: '__sep', label: '', divider: true },
+    { value: '__manage', label: m.hosts_manage() },
+  ]);
+
+  function onSelect(value: string) {
+    if (value === '__manage') {
+      ui.dropdownOpen = false;
+      goto('/settings/gateways');
+      return;
+    }
+    if (hostsState.activeHostId === value) {
+      ui.dropdownOpen = false;
+      return;
+    }
     wsDisconnect();
-    hostsState.activeHostId = id;
+    hostsState.activeHostId = value;
     ui.dropdownOpen = false;
     wsConnect();
   }
-
-  function openManage(e: MouseEvent) {
-    e.stopPropagation();
-    ui.dropdownOpen = false;
-    goto('/settings/gateways');
-  }
 </script>
 
-<div class="absolute top-[calc(100%+4px)] {align === 'right' ? 'right-0' : 'left-0'} z-50 bg-bg2 border border-border rounded-lg shadow-md min-w-[200px] max-w-[320px] overflow-hidden" role="menu" tabindex="0" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
-  {#each hostsState.hosts as host (host.id)}
-    <div
-      class="flex items-center gap-2 py-[9px] px-[14px] cursor-pointer text-[13px] text-foreground border-b border-[rgba(42,53,72,0.5)] transition-colors hover:bg-bg3"
-      role="menuitem"
-      tabindex="0"
-      onclick={() => selectHost(host.id)}
-      onkeydown={(e) => e.key === 'Enter' && selectHost(host.id)}
-    >
-      <span class="w-[7px] h-[7px] rounded-full shrink-0 {host.id === hostsState.activeHostId && conn.connected ? 'bg-success shadow-[0_0_5px_var(--color-success)]' : 'bg-muted-foreground'}"></span>
-      <span class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{host.name}</span>
-      <span class="text-[10px] text-muted-foreground shrink-0">{fmtTimeAgo(host.lastConnectedAt)}</span>
-    </div>
+<div
+  class="absolute top-[calc(100%+4px)] {align === 'right' ? 'right-0' : 'left-0'} z-50 surface-3 rounded-[var(--radius-md)] min-w-[200px] max-w-[320px] overflow-hidden p-1"
+  role="menu"
+  tabindex="0"
+  onclick={(e) => e.stopPropagation()}
+  onkeydown={(e) => e.stopPropagation()}
+>
+  {#each items as it (it.value)}
+    {#if it.divider}
+      <div class="my-1 h-px bg-[var(--hairline)]" role="separator"></div>
+    {:else if it.value === '__manage'}
+      <button
+        type="button"
+        class="flex w-full items-center px-2.5 py-1.5 rounded-[var(--radius-sm)] text-xs text-muted-foreground bg-transparent border-none cursor-pointer text-left transition-colors hover:bg-white/[0.06] hover:text-muted"
+        role="menuitem"
+        onclick={() => onSelect(it.value)}
+        onkeydown={(e) => e.key === 'Enter' && onSelect(it.value)}
+      >
+        {it.label}
+      </button>
+    {:else}
+      {@const host = hostsState.hosts.find((h) => h.id === it.value)!}
+      <button
+        type="button"
+        class="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-[var(--radius-sm)] text-[13px] text-foreground bg-transparent border-none cursor-pointer text-left transition-colors hover:bg-white/[0.06]"
+        role="menuitem"
+        onclick={() => onSelect(it.value)}
+        onkeydown={(e) => e.key === 'Enter' && onSelect(it.value)}
+      >
+        <span
+          class="w-[7px] h-[7px] rounded-full shrink-0 {host.id === hostsState.activeHostId && conn.connected
+            ? 'bg-success shadow-[0_0_5px_var(--color-success)]'
+            : 'bg-muted-foreground'}"
+        ></span>
+        <span class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{host.name}</span>
+        <span class="text-[10px] text-muted-foreground shrink-0">{fmtTimeAgo(host.lastConnectedAt)}</span>
+      </button>
+    {/if}
   {/each}
-
-  <div class="h-px bg-border"></div>
-  <div class="py-2 px-[14px] text-xs text-muted-foreground cursor-pointer transition-colors hover:bg-bg3 hover:text-muted" role="menuitem" tabindex="0" onclick={openManage} onkeydown={(e) => e.key === 'Enter' && openManage(e as unknown as MouseEvent)}>
-    {m.hosts_manage()}
-  </div>
 </div>

@@ -20,6 +20,7 @@
 		pickMoneyUnit,
 	} from '$lib/utils/model-pricing';
 	import { deriveOrigin } from '$lib/utils/event-origin';
+	import { chartColors } from '$lib/utils/chart-colors';
 
 	let {
 		events = [],
@@ -277,13 +278,16 @@
 		return (v: number) => formatMoney(v, unit);
 	}
 
-	const ACCENT = '#6366f1';
-	const SOURCE_COLORS: Record<string, string> = {
-		channel: '#06b6d4',
-		system: '#f43f5e',
-		agent: '#a855f7',
-		unknown: '#64748b',
-	};
+	// Resolved from theme tokens at build time so charts recolor with the active
+	// theme instead of freezing to one hardcoded palette.
+	let palette = $derived(chartColors());
+	let ACCENT = $derived(palette.accent);
+	let sourceColors = $derived<Record<string, string>>({
+		channel: palette.cyan,
+		system: palette.pink,
+		agent: palette.purple,
+		unknown: palette.neutral,
+	});
 
 	function hBar(data: Agg[], color: string): EChartsOption {
 		const values = data.map(metricValue);
@@ -323,8 +327,8 @@
 	}
 
 	let modelChart = $derived(hBar(byModel, ACCENT));
-	let channelChart = $derived(hBar(byChannel, '#06b6d4'));
-	let agentChart = $derived(hBar(byAgent, '#ec4899'));
+	let channelChart = $derived(hBar(byChannel, palette.cyan));
+	let agentChart = $derived(hBar(byAgent, palette.pink));
 
 	// Provider chart stays a token-type breakdown (input/output/cache) regardless of
 	// the cost/tokens toggle — that distinction only exists for tokens.
@@ -346,7 +350,7 @@
 				type: 'bar',
 				stack: 'tokens',
 				barMaxWidth: 16,
-				itemStyle: { color: '#3b82f6' },
+				itemStyle: { color: palette.info },
 				data: byProvider.map((p) => p.input),
 			},
 			{
@@ -354,7 +358,7 @@
 				type: 'bar',
 				stack: 'tokens',
 				barMaxWidth: 16,
-				itemStyle: { color: '#f59e0b' },
+				itemStyle: { color: palette.warning },
 				data: byProvider.map((p) => p.output),
 			},
 			{
@@ -362,7 +366,7 @@
 				type: 'bar',
 				stack: 'tokens',
 				barMaxWidth: 16,
-				itemStyle: { color: '#10b981' },
+				itemStyle: { color: palette.emerald },
 				data: byProvider.map((p) => p.cacheRead),
 			},
 		],
@@ -385,7 +389,7 @@
 					data: bySource.map((s) => ({
 						name: s.key,
 						value: metricValue(s),
-						itemStyle: { color: SOURCE_COLORS[s.key] ?? '#64748b' },
+						itemStyle: { color: sourceColors[s.key] ?? palette.neutral },
 					})),
 				},
 			],

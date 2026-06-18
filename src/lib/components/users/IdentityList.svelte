@@ -3,6 +3,7 @@
   import { onMount } from 'svelte';
   import IdentityLinkPopover from './IdentityLinkPopover.svelte';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
+  import { Popover } from '$lib/components/ui';
 
   type Identity = {
     id: string;
@@ -16,7 +17,7 @@
 
   let identities = $state<Identity[]>([]);
   let loading = $state(false);
-  let showPopover = $state(false);
+  let linkOpen = $state(false);
 
   const ICON: Record<string, string> = {
     whatsapp: '📱',
@@ -51,7 +52,7 @@
   }
 
   function onLinked() {
-    showPopover = false;
+    linkOpen = false;
     load();
   }
 
@@ -81,12 +82,12 @@
       {/each}
     </div>
   {/if}
-  <div class="relative">
-    <button class="text-xs px-2 py-1 rounded bg-transparent border border-border text-foreground hover:bg-muted/30" onclick={() => (showPopover = !showPopover)}>
-      + {m.usersui_linkIdentity()}
-    </button>
-    {#if showPopover}
-      <IdentityLinkPopover {userId} onCancel={() => (showPopover = false)} onLinked={onLinked} />
-    {/if}
-  </div>
+  <Popover bind:open={linkOpen} placement="bottom" bare>
+    {#snippet trigger()}
+      <span class="text-xs px-2 py-1 rounded bg-transparent border border-border text-foreground hover:bg-muted/30">
+        + {m.usersui_linkIdentity()}
+      </span>
+    {/snippet}
+    <IdentityLinkPopover {userId} onCancel={() => (linkOpen = false)} onLinked={onLinked} />
+  </Popover>
 </div>

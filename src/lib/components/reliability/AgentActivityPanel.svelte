@@ -7,6 +7,7 @@
 	import type { EChartsOption } from 'echarts';
 	import type { ReliabilityEvent, ActivityAggregate } from '$lib/state/reliability/reliability.svelte';
 	import { deriveOrigin } from '$lib/utils/event-origin';
+	import { chartColors } from '$lib/utils/chart-colors';
 
 	// "What are the agents actually DOING?" — derived purely from the unified event
 	// stream the Hub already loads. Surfaces: memory/KG curation, heartbeat liveness,
@@ -202,47 +203,53 @@
 	);
 
 	// ── Charts ──────────────────────────────────────────────────────────────────────
-	let proactivityChart: EChartsOption = $derived.by(() => ({
-		backgroundColor: 'transparent',
-		tooltip: { trigger: 'item' },
-		legend: { bottom: 0, left: 'center', textStyle: { fontSize: 10 } },
-		series: [
-			{
-				type: 'pie',
-				radius: ['45%', '70%'],
-				center: ['50%', '44%'],
-				itemStyle: { borderColor: 'var(--color-bg2)', borderWidth: 2 },
-				label: { show: false },
-				data: [
-					{ name: 'reactive', value: proactivity.reactive, itemStyle: { color: '#06b6d4' } },
-					{ name: 'proactive', value: proactivity.proactive, itemStyle: { color: '#f43f5e' } },
-					{ name: 'inter-agent', value: proactivity.interAgent, itemStyle: { color: '#a855f7' } },
-					{ name: 'other', value: proactivity.other, itemStyle: { color: '#64748b' } },
-				].filter((d) => d.value > 0),
-			},
-		],
-	}));
+	let proactivityChart: EChartsOption = $derived.by(() => {
+		const c = chartColors();
+		return {
+			backgroundColor: 'transparent',
+			tooltip: { trigger: 'item' },
+			legend: { bottom: 0, left: 'center', textStyle: { fontSize: 10 } },
+			series: [
+				{
+					type: 'pie',
+					radius: ['45%', '70%'],
+					center: ['50%', '44%'],
+					itemStyle: { borderColor: 'var(--color-bg2)', borderWidth: 2 },
+					label: { show: false },
+					data: [
+						{ name: 'reactive', value: proactivity.reactive, itemStyle: { color: c.cyan } },
+						{ name: 'proactive', value: proactivity.proactive, itemStyle: { color: c.pink } },
+						{ name: 'inter-agent', value: proactivity.interAgent, itemStyle: { color: c.purple } },
+						{ name: 'other', value: proactivity.other, itemStyle: { color: c.neutral } },
+					].filter((d) => d.value > 0),
+				},
+			],
+		};
+	});
 
-	let toolChart: EChartsOption = $derived.by(() => ({
-		backgroundColor: 'transparent',
-		tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-		grid: { left: 100, right: 24, top: 8, bottom: 24 },
-		xAxis: { type: 'value', axisLabel: { fontSize: 10 } },
-		yAxis: {
-			type: 'category',
-			data: tools.top.map((t) => t.key),
-			inverse: true,
-			axisLabel: { fontSize: 10, width: 84, overflow: 'truncate' },
-		},
-		series: [
-			{
-				type: 'bar',
-				barMaxWidth: 14,
-				itemStyle: { color: '#a855f7' },
-				data: tools.top.map((t) => t.value),
+	let toolChart: EChartsOption = $derived.by(() => {
+		const c = chartColors();
+		return {
+			backgroundColor: 'transparent',
+			tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+			grid: { left: 100, right: 24, top: 8, bottom: 24 },
+			xAxis: { type: 'value', axisLabel: { fontSize: 10 } },
+			yAxis: {
+				type: 'category',
+				data: tools.top.map((t) => t.key),
+				inverse: true,
+				axisLabel: { fontSize: 10, width: 84, overflow: 'truncate' },
 			},
-		],
-	}));
+			series: [
+				{
+					type: 'bar',
+					barMaxWidth: 14,
+					itemStyle: { color: c.purple },
+					data: tools.top.map((t) => t.value),
+				},
+			],
+		};
+	});
 </script>
 
 <div class="surface-2 rounded-lg overflow-hidden">

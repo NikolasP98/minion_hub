@@ -4,86 +4,67 @@
   import * as m from '$lib/paraglide/messages';
   import { LogOut, Globe, User } from 'lucide-svelte';
   import UserAvatar from '$lib/components/users/UserAvatar.svelte';
-
-  let open = $state(false);
-
-  function handleKeydown(e: KeyboardEvent) {
-    if (open && e.key === 'Escape') open = false;
-  }
+  import { Dropdown } from '$lib/components/ui';
+  import type { DropdownItem } from '$lib/components/ui';
 
   const displayName = $derived(userState.user?.displayName ?? userState.user?.email ?? '');
   const email = $derived(userState.user?.email ?? '');
   const avatarUrl = $derived(userState.user?.avatarUrl ?? null);
   const role = $derived(userState.role ?? '');
+
+  // Account header + account link + language toggle + logout. The language
+  // toggle keeps the menu open (`closeOnSelect: false`) and renders a live
+  // locale badge via the custom item snippet below; account rows use `href`.
+  const items = $derived<DropdownItem[]>([
+    { value: 'header', label: displayName, href: '/account' },
+    { value: 'account', label: m.nav_account(), icon: User, href: '/account' },
+    { value: 'language', label: m.settings_language(), icon: Globe, closeOnSelect: false },
+    { value: 'logout', label: m.profile_logout(), icon: LogOut, danger: true },
+  ]);
+
+  function onSelect(value: string) {
+    if (value === 'language') locale.toggle();
+    else if (value === 'logout') logout();
+    // 'header' / 'account' navigate via their href.
+  }
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
+<Dropdown {items} {onSelect} placement="bottom" class="w-56 right-0">
+  {#snippet trigger()}
+    <span
+      class="flex items-center justify-center rounded-full hover:opacity-90 transition-opacity duration-150 leading-none"
+      aria-label="Profile menu"
+    >
+      <UserAvatar name={displayName} {email} src={avatarUrl} size={28} />
+    </span>
+  {/snippet}
 
-<div class="relative">
-  <button
-    onclick={() => (open = !open)}
-    class="flex items-center justify-center rounded-full p-0 border-none bg-transparent cursor-pointer hover:opacity-90 transition-opacity duration-150 leading-none"
-    aria-label="Profile menu"
-    aria-expanded={open}
-    aria-haspopup="menu"
-  >
-    <UserAvatar name={displayName} {email} src={avatarUrl} size={28} />
-  </button>
-
-  {#if open}
-    <button
-      class="fixed inset-0 z-40 cursor-default"
-      onclick={() => (open = false)}
-      aria-label="Close menu"
-      tabindex="-1"
-    ></button>
-
-    <div id="profile-dropdown" role="menu" class="absolute right-0 top-full mt-1.5 z-50 w-56 bg-bg2 border border-border rounded-lg shadow-lg overflow-hidden">
-      <a
-        href="/account"
-        role="menuitem"
-        onclick={() => (open = false)}
-        class="block px-3.5 py-3 border-b border-border no-underline hover:bg-bg3 transition-colors duration-100"
-      >
-        <div class="flex items-center justify-between gap-2">
-          <div class="min-w-0">
-            <p class="text-sm font-semibold text-foreground truncate">{displayName}</p>
-            <p class="text-[11px] text-muted truncate">{email}</p>
-          </div>
-          {#if role}
-            <span class="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded bg-accent/15 text-accent border border-accent/20 uppercase tracking-wide">
-              {role}
-            </span>
-          {/if}
-        </div>
-      </a>
-
-      <div class="py-1">
-        <a
-          href="/account"
-          role="menuitem"
-          onclick={() => (open = false)}
-          class="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-muted hover:text-foreground hover:bg-bg3 transition-colors duration-100 no-underline"
-        >
-          <User size={14} />
-          <span class="flex-1 text-left">{m.nav_account()}</span>
-        </a>
-        <button
-          onclick={locale.toggle}
-          class="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-muted hover:text-foreground hover:bg-bg3 transition-colors duration-100"
-        >
-          <Globe size={14} />
-          <span class="flex-1 text-left">{m.settings_language()}</span>
-          <span class="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-bg3 border border-border">{locale.current.toUpperCase()}</span>
-        </button>
-        <button
-          onclick={logout}
-          class="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-muted hover:text-red-400 hover:bg-bg3 transition-colors duration-100"
-        >
-          <LogOut size={14} />
-          {m.profile_logout()}
-        </button>
-      </div>
-    </div>
-  {/if}
-</div>
+  {#snippet item({ item: it })}
+    {#if it.value === 'header'}
+      <span class="flex items-center justify-between gap-2 w-full">
+        <span class="min-w-0">
+          <span class="block text-sm font-semibold text-foreground truncate">{displayName}</span>
+          <span class="block text-[11px] text-muted truncate">{email}</span>
+        </span>
+        {#if role}
+          <span
+            class="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded bg-accent/15 text-accent border border-accent/20 uppercase tracking-wide"
+          >
+            {role}
+          </span>
+        {/if}
+      </span>
+    {:else if it.value === 'language'}
+      {@const Icon = it.icon}
+      <Icon size={14} class="text-muted-foreground" />
+      <span class="flex-1">{it.label}</span>
+      <span class="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-bg3 border border-border">
+        {locale.current.toUpperCase()}
+      </span>
+    {:else}
+      {@const Icon = it.icon}
+      {#if Icon}<Icon size={14} class={it.danger ? 'text-destructive' : 'text-muted-foreground'} />{/if}
+      <span class="flex-1">{it.label}</span>
+    {/if}
+  {/snippet}
+</Dropdown>

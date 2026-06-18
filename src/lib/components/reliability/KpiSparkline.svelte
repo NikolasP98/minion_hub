@@ -12,7 +12,7 @@
 		rollAvg = [],
 		mean,
 		sigma,
-		color = '#3b82f6',
+		color = 'var(--color-accent)',
 		height = 38,
 	}: {
 		series: number[];

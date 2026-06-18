@@ -15,6 +15,7 @@
   } from 'lucide-svelte';
   import type { ResolvedGroup, ResolvedField } from '$lib/utils/agent-settings-schema';
   import * as m from '$lib/paraglide/messages';
+  import { SideNav, type SideNavGroup } from '$lib/components/ui';
 
   const GROUP_ICONS: Record<string, typeof User> = {
     identity: User,
@@ -52,107 +53,49 @@
     return fields.filter((f) => f.isOverridden).length;
   }
 
-  /** Critical groups always shown at full opacity */
-  const CRITICAL_GROUPS = new Set(['identity', 'model']);
-
-  const filteredGroups = $derived.by(() => {
-    if (!searchQuery.trim()) return groups;
-    const q = searchQuery.toLowerCase();
-    return groups.filter((g) => {
-      if (g.group.label.toLowerCase().includes(q)) return true;
-      return g.fields.some(
-        (f) =>
-          (f.hint?.label ?? f.key).toLowerCase().includes(q) ||
-          (f.hint?.help ?? '').toLowerCase().includes(q),
-      );
+  // Skills (top), the dynamic settings groups (middle), Bindings (bottom) — each its
+  // own section so SideNav draws the dividers between them.
+  const navGroups = $derived.by<SideNavGroup[]>(() => {
+    const out: SideNavGroup[] = [];
+    out.push({
+      items: [
+        {
+          id: 'skills',
+          label: m.skills_title(),
+          icon: Blocks,
+          badge: totalSkillCount > 0 ? `${enabledSkillCount}/${totalSkillCount}` : undefined,
+        },
+      ],
     });
+    out.push({
+      label: m.settings_title(),
+      items: groups.map(({ group, fields }) => {
+        const overrides = countOverrides(fields);
+        return {
+          id: group.id,
+          label: group.label,
+          icon: GROUP_ICONS[group.id] ?? Settings,
+          badge: overrides > 0 ? overrides : undefined,
+          // Surface a group when a nested field label/help matches the search.
+          keywords: fields.map((f) => `${f.hint?.label ?? f.key} ${f.hint?.help ?? ''}`).join(' '),
+        };
+      }),
+    });
+    if (bindingCount > 0) {
+      out.push({
+        items: [{ id: 'bindings', label: m.config_bindingsSection(), icon: Link, badge: bindingCount }],
+      });
+    }
+    return out;
   });
 </script>
 
-<nav class="w-[200px] shrink-0 border-r border-border overflow-y-auto bg-bg2/50 flex flex-col">
-  <!-- Search -->
-  <div class="px-3 pt-3 pb-2">
-    <div class="relative">
-      <Search
-        size={13}
-        class="absolute left-2 top-1/2 -translate-y-1/2 text-muted-strong pointer-events-none"
-      />
-      <input
-        type="text"
-        bind:value={searchQuery}
-        placeholder={m.settings_searchPlaceholder()}
-        class="w-full bg-bg3 border border-border rounded-md text-[11px] text-foreground
-          pl-7 pr-2 py-1.5 outline-none placeholder:text-muted-strong
-          focus:border-accent/50 transition-colors"
-      />
-    </div>
-  </div>
-
-  <!-- Skills nav item -->
-  <div class="px-2 pb-1">
-    <button
-      type="button"
-      class="w-full text-left px-2.5 py-[7px] rounded-md text-xs transition-colors flex items-center gap-2.5 cursor-pointer border-none
-        {activeSection === 'skills'
-          ? 'bg-accent/10 text-accent font-medium border-l-2 border-l-accent -ml-px'
-          : 'bg-transparent text-muted-foreground hover:bg-bg3 hover:text-foreground'}"
-      onclick={() => onselect('skills')}
-    >
-      <Blocks size={14} class="shrink-0" />
-      <span class="flex-1 truncate">{m.skills_title()}</span>
-      {#if totalSkillCount > 0}
-        <span class="text-[9px] text-muted-strong">{enabledSkillCount}/{totalSkillCount}</span>
-      {/if}
-    </button>
-  </div>
-
-  <!-- Divider -->
-  <div class="mx-3 border-t border-border/50 my-1"></div>
-
-  <!-- Settings groups -->
-  <div class="px-2 py-1 flex-1 space-y-px">
-    <div class="px-2.5 pt-1 pb-1.5 text-[9px] font-semibold uppercase tracking-widest text-muted-strong select-none">
-      {m.settings_title()}
-    </div>
-    {#each filteredGroups as { group, fields } (group.id)}
-      {@const overrides = countOverrides(fields)}
-      {@const isCritical = CRITICAL_GROUPS.has(group.id)}
-      {@const Icon = GROUP_ICONS[group.id] ?? Settings}
-      <button
-        type="button"
-        class="w-full text-left px-2.5 py-[7px] rounded-md text-xs transition-colors flex items-center gap-2.5 cursor-pointer border-none
-          {activeSection === group.id
-            ? 'bg-accent/10 text-accent font-medium border-l-2 border-l-accent -ml-px'
-            : isCritical
-              ? 'bg-transparent text-muted-foreground hover:bg-bg3 hover:text-foreground'
-              : 'bg-transparent text-muted-strong hover:bg-bg3 hover:text-muted-foreground'}"
-        onclick={() => onselect(group.id)}
-      >
-        <Icon size={14} class="shrink-0" />
-        <span class="flex-1 truncate">{group.label}</span>
-        {#if overrides > 0}
-          <span class="text-[9px] text-accent font-medium">{overrides}</span>
-        {/if}
-      </button>
-    {/each}
-  </div>
-
-  <!-- Bindings nav item -->
-  {#if bindingCount > 0}
-    <div class="px-2 pb-2">
-      <div class="mx-1 border-t border-border/50 mb-1.5"></div>
-      <button
-        type="button"
-        class="w-full text-left px-2.5 py-[7px] rounded-md text-xs transition-colors flex items-center gap-2.5 cursor-pointer border-none
-          {activeSection === 'bindings'
-            ? 'bg-accent/10 text-accent font-medium border-l-2 border-l-accent -ml-px'
-            : 'bg-transparent text-muted-foreground hover:bg-bg3 hover:text-foreground'}"
-        onclick={() => onselect('bindings')}
-      >
-        <Link size={14} class="shrink-0" />
-        <span class="flex-1 truncate">{m.config_bindingsSection()}</span>
-        <span class="text-[9px] text-muted-strong">{bindingCount}</span>
-      </button>
-    </div>
-  {/if}
-</nav>
+<SideNav
+  items={navGroups}
+  activeId={activeSection}
+  ariaLabel={m.settings_title()}
+  search={{ enabled: true, placeholder: m.settings_searchPlaceholder() }}
+  bind:searchQuery
+  onSelect={onselect}
+  leftBorder
+/>

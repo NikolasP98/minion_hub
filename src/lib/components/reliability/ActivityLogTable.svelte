@@ -23,6 +23,7 @@
 	import type { ReliabilityEvent } from '$lib/state/reliability/reliability.svelte';
 	import { SvelteMap } from 'svelte/reactivity';
 	import PanelHeader from './PanelHeader.svelte';
+	import { chartColors } from '$lib/utils/chart-colors';
 
 	type IconComponent = typeof Activity;
 
@@ -77,22 +78,26 @@
 	let searchQuery = $state('');
 	let expandedId = $state<string | null>(null);
 
-	const CATEGORY_COLORS: Record<string, string> = {
-		gateway: '#4ade80',
-		agent: '#f472b6',
-		tool: '#a855f7',
-		message: '#06b6d4',
-		channel: '#f59e0b',
-		orchestration: '#ec4899',
-		skill: '#22d3ee',
-		crash: '#fb7185',
-		connection: '#14b8a6',
-		session: '#818cf8',
-		auth: '#34d399',
-		cron: '#60a5fa',
-		memory: '#8b5cf6',
-		heartbeat: '#f43f5e',
-	};
+	// Scatter-timeline series colors, resolved from theme tokens at build time so
+	// the chart recolors with the active theme. Mirrors the `categoryClasses`
+	// badge palette below.
+	let palette = $derived(chartColors());
+	let CATEGORY_COLORS = $derived<Record<string, string>>({
+		gateway: palette.emerald,
+		agent: palette.pink,
+		tool: palette.purple,
+		message: palette.cyan,
+		channel: palette.warning,
+		orchestration: palette.pink,
+		skill: palette.cyan,
+		crash: palette.destructive,
+		connection: palette.cyan,
+		session: palette.accent,
+		auth: palette.success,
+		cron: palette.info,
+		memory: palette.purple,
+		heartbeat: palette.pink,
+	});
 
 	const SEVERITY_Y: Record<string, number> = {
 		critical: 3,
@@ -291,7 +296,7 @@
 			type: 'scatter' as const,
 			symbolSize: 8,
 			data: evts.map((ev) => [ev.timestamp, SEVERITY_Y[ev.severity] ?? 0]),
-			itemStyle: { color: CATEGORY_COLORS[cat] ?? '#64748b' },
+			itemStyle: { color: CATEGORY_COLORS[cat] ?? palette.neutral },
 		}));
 
 		return {

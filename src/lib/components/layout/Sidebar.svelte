@@ -14,7 +14,7 @@
     Check,
   } from 'lucide-svelte';
   import NavIcon from './NavIcon.svelte';
-  import Tooltip from './Tooltip.svelte';
+  import { Tooltip } from '$lib/components/ui';
   import { getSections, getDynamicPluginsSections, type Section, type SectionItem } from './sections';
   import MinionLogo from './MinionLogo.svelte';
   import OrgPicker from './OrgPicker.svelte';
@@ -162,7 +162,7 @@
       {#each topItems as t (t.href)}
         {@const active = page.url.pathname.startsWith(t.href)}
         {@const showLabel = !collapsed && isMd && active}
-        <Tooltip label={t.label} id={`nav-tip-top-${t.href}`} placement="bottom" disabled={showLabel} openDelay={150}>
+        <Tooltip label={t.label} id={`nav-tip-top-${t.href}`} placement="bottom" disabled={showLabel} openDelay={150} asChild>
           {#snippet children(trigger)}
             {@const Icon = t.icon}
             <a
@@ -191,7 +191,7 @@
         <div class="nav-group-head t-label {headCls}">{section.label}</div>
         {#each items as item (item.href)}
           {@const active = isActive(item)}
-          <Tooltip label={item.label} id={`nav-tip-${item.href}`} placement="right" disabled={!showTooltips} openDelay={150}>
+          <Tooltip label={item.label} id={`nav-tip-${item.href}`} placement="right" disabled={!showTooltips} openDelay={150} asChild>
             {#snippet children(trigger)}
               <a
                 href={item.href}
@@ -239,7 +239,7 @@
             {#if open || collapsed}
               {#each subItems as item (item.href)}
                 {@const active = isActive(item)}
-                <Tooltip label={item.label} id={`nav-tip-${item.href}`} placement="right" disabled={!showTooltips} openDelay={150}>
+                <Tooltip label={item.label} id={`nav-tip-${item.href}`} placement="right" disabled={!showTooltips} openDelay={150} asChild>
                   {#snippet children(trigger)}
                     <a
                       href={item.href}
@@ -269,7 +269,7 @@
 
   <!-- Pinned footer: Settings + collapse toggle -->
   <div class="shrink-0 px-2 py-2 border-t border-[var(--hairline)] flex flex-col gap-0.5">
-    <Tooltip label={m.nav_settings()} id="nav-tip-settings" placement="right" disabled={!showTooltips} openDelay={150}>
+    <Tooltip label={m.nav_settings()} id="nav-tip-settings" placement="right" disabled={!showTooltips} openDelay={150} asChild>
       {#snippet children(trigger)}
         <a
           href="/settings"
@@ -289,6 +289,7 @@
       placement="right"
       disabled={!showTooltips}
       openDelay={150}
+      asChild
     >
       {#snippet children(trigger)}
         <button

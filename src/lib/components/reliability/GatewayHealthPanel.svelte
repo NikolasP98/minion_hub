@@ -7,6 +7,7 @@
 	import Chart from '$lib/components/charts/Chart.svelte';
 	import type { EChartsOption } from 'echarts';
 	import PanelHeader from './PanelHeader.svelte';
+	import { chartColors } from '$lib/utils/chart-colors';
 
 	interface Props {
 		serverId: string;
@@ -52,6 +53,7 @@
 	let chronological = $derived([...heartbeats].reverse());
 
 	let chartOptions: EChartsOption = $derived.by(() => {
+		const c = chartColors();
 		const timestamps = chronological.map((hb) => {
 			const d = new Date(hb.capturedAt);
 			return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
@@ -100,21 +102,9 @@
 					data: memoryData,
 					smooth: true,
 					symbol: 'none',
-					lineStyle: { color: '#3b82f6', width: 2 },
-					itemStyle: { color: '#3b82f6' },
-					areaStyle: {
-						color: {
-							type: 'linear',
-							x: 0,
-							y: 0,
-							x2: 0,
-							y2: 1,
-							colorStops: [
-								{ offset: 0, color: 'rgba(59,130,246,0.25)' },
-								{ offset: 1, color: 'rgba(59,130,246,0.02)' }
-							]
-						}
-					}
+					lineStyle: { color: c.info, width: 2 },
+					itemStyle: { color: c.info },
+					areaStyle: { color: c.info, opacity: 0.18 }
 				},
 				{
 					name: m.reliability_gatewaySessions(),
@@ -123,8 +113,8 @@
 					data: sessionsData,
 					smooth: true,
 					symbol: 'none',
-					lineStyle: { color: '#22c55e', width: 2 },
-					itemStyle: { color: '#22c55e' }
+					lineStyle: { color: c.success, width: 2 },
+					itemStyle: { color: c.success }
 				},
 				{
 					name: m.reliability_gatewayAgents(),
@@ -133,8 +123,8 @@
 					data: agentsData,
 					smooth: true,
 					symbol: 'none',
-					lineStyle: { color: '#f59e0b', width: 2 },
-					itemStyle: { color: '#f59e0b' }
+					lineStyle: { color: c.warning, width: 2 },
+					itemStyle: { color: c.warning }
 				}
 			]
 		} satisfies EChartsOption;
@@ -165,10 +155,11 @@
 	});
 
 	function getChannelDotColor(s: ChannelAccountStatus): string {
-		if (!s.enabled || !s.configured) return '#71717a'; // gray
-		if (s.running && s.connected) return '#22c55e'; // green
-		if (s.running && !s.connected) return '#f59e0b'; // yellow
-		return '#ef4444'; // red
+		const c = chartColors();
+		if (!s.enabled || !s.configured) return c.mutedForeground; // gray
+		if (s.running && s.connected) return c.success; // green
+		if (s.running && !s.connected) return c.warning; // yellow
+		return c.destructive; // red
 	}
 
 	function getChannelDotLabel(s: ChannelAccountStatus): string {

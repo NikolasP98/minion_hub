@@ -187,8 +187,8 @@
 			{ key: 'hooks', Icon: Webhook, label: m.reliability_capHooks(), value: c.hooks, color: 'var(--color-cyan)' },
 			{ key: 'channels', Icon: Radio, label: m.reliability_capChannels(), value: c.channels, color: 'var(--color-warning)' },
 			{ key: 'providers', Icon: Cpu, label: m.reliability_capProviders(), value: c.providers, color: 'var(--color-success)' },
-			{ key: 'methods', Icon: Code2, label: m.reliability_capMethods(), value: c.gatewayMethods, color: '#60a5fa' },
-			{ key: 'flows', Icon: Workflow, label: m.reliability_capFlows(), value: c.flows + c.flowNodes, color: '#f472b6' }
+			{ key: 'methods', Icon: Code2, label: m.reliability_capMethods(), value: c.gatewayMethods, color: 'var(--color-info)' },
+			{ key: 'flows', Icon: Workflow, label: m.reliability_capFlows(), value: c.flows + c.flowNodes, color: 'var(--color-pink)' }
 		];
 		return out;
 	}

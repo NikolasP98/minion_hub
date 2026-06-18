@@ -43,8 +43,20 @@
 		const mutedFg = getCSSVar('--color-muted-foreground', '#71717a');
 		const bg2 = getCSSVar('--color-bg2', '#18181b');
 
+		// Default ECharts auto-color palette, resolved from theme tokens so series
+		// without an explicit color follow the active theme. Order matches the prior
+		// hardcoded ramp: info, success, warning, destructive, purple, pink.
+		const palette = [
+			getCSSVar('--color-info', '#3b82f6'),
+			getCSSVar('--color-success', '#22c55e'),
+			getCSSVar('--color-warning', '#f59e0b'),
+			getCSSVar('--color-destructive', '#ef4444'),
+			getCSSVar('--color-purple', '#a855f7'),
+			getCSSVar('--color-pink', '#ec4899'),
+		];
+
 		return {
-			color: ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#ec4899'],
+			color: palette,
 			backgroundColor: 'transparent',
 			textStyle: { color: fg },
 			title: {

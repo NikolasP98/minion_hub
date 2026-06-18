@@ -1,6 +1,6 @@
 <script lang="ts">
     import HostDropdown from "./HostDropdown.svelte";
-    import Tooltip from "$lib/components/layout/Tooltip.svelte";
+    import { Tooltip } from "$lib/components/ui";
     import { getActiveHost } from "$lib/state/features/hosts.svelte";
     import { ui } from "$lib/state/ui/ui.svelte";
     import { conn } from "$lib/state/gateway/connection.svelte";
@@ -63,6 +63,7 @@
     id="server-status-tip"
     placement={align === "right" ? "left" : "bottom"}
     openDelay={250}
+    asChild
 >
     {#snippet children(trigger)}
         <button

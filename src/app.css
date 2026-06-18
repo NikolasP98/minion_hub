@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import '@minion-stack/design-tokens/tokens.css';
 
 /* ── Inter ── */
 @font-face {
@@ -60,103 +61,19 @@
   font-display: swap;
 }
 
-/* ── Theme tokens ── */
+/* ── Theme tokens ──
+   The full token set (fonts, colors, radius, shadows, elevation, motion) is the
+   single source of truth in @minion-stack/design-tokens (imported above). Only
+   hub-specific tokens the shared package doesn't carry live here. Runtime theme
+   presets still override the shared tokens on :root via applyTheme(). */
 @theme {
-  /* Font families */
-  --font-sans:
-    'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-    'Helvetica Neue', Arial, sans-serif;
-  --font-mono:
-    'JetBrains Mono NF', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
-    'Liberation Mono', monospace;
-
-  /* Backgrounds */
-  --color-bg: #09090b;
-  --color-bg2: #18181b;
-  --color-bg3: #27272a;
-
-  /* Card / surface */
-  --color-card: #0c0c0e;
-  --color-card-foreground: #fafafa;
-
-  /* Borders — white-alpha hairline depth cue (matches .surface-*); themes may
-     override at runtime via applyTheme(). Council #2. */
-  --color-border: rgba(255, 255, 255, 0.08);
-
-  /* Text hierarchy */
-  --color-foreground: #fafafa;
-  --color-muted: #a1a1aa;
-  --color-muted-foreground: #71717a;
-  /* AA-passing dim text — use instead of opacity-suffixed muted (e.g.
-     text-muted-foreground/50, which computes ~2:1 and fails WCAG AA). #13 */
-  --color-muted-strong: #9ca3af;
-
-  /* Accent — overridden by theme presets */
-  --color-accent: #3b82f6;
-  --color-accent-foreground: #fafafa;
-
-  /* Semantic status colors */
-  --color-success: #22c55e;
-  --color-destructive: #ef4444;
-  --color-warning: #f59e0b;
-  --color-purple: #a855f7;
-  --color-pink: #ec4899;
-  --color-cyan: #06b6d4;
-  --color-emerald: #10b981;
-
-  /* Agent status */
-  --color-status-running: #22c55e;
-  --color-status-thinking: #a855f7;
-  --color-status-idle: #71717a;
-  --color-status-aborted: #f59e0b;
-
-  /* Brand */
-  --color-brand-pink: #e8547a;
-
-  /* Radius — shadcn NY uses tight radius */
-  --radius-xs: 2px;
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 12px;
-  --radius-full: 9999px;
-
-  /* Shadows */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
-  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.6);
-
-  /* ── Elevation: white-alpha borders are the PRIMARY depth cue in dark UI ── */
-  /* Compound surfaces (bg + hairline border + shadow). Use the .surface-* utilities. */
-  --elevation-1-bg: #131316; /* sits just above page bg */
-  --elevation-1-border: rgba(255, 255, 255, 0.06);
-  --elevation-2-bg: #18181b; /* cards, list rows, panels */
-  --elevation-2-border: rgba(255, 255, 255, 0.08);
-  --elevation-3-bg: #1e1e22; /* popovers, dropdowns, floating */
-  --elevation-3-border: rgba(255, 255, 255, 0.1);
-  --elevation-4-bg: #232327; /* modals, dialogs */
-  --elevation-4-border: rgba(255, 255, 255, 0.12);
-  /* Hairline divider — reads as intentional structure, not floating gaps */
-  --hairline: rgba(255, 255, 255, 0.07);
-
   /* Top-right "notch" — the global utility cluster (status/⌘K/bug/profile) is
      carved into the top-right corner. EVERY page's top row reserves this width
      on the right (md:pr-[var(--notch-clearance)]) so content carves around the
      notch instead of colliding with a floating island. One contract, all pages. */
   --notch-clearance: 200px;
 
-  /* ── Motion tokens (single rhythm across the app) ── */
-  --duration-instant: 75ms; /* press depression, tactile feedback */
-  --duration-fast: 150ms; /* hover, focus, color change */
-  --duration-normal: 250ms; /* panels/toasts/modals entering */
-  --duration-slow: 400ms; /* status transitions, large moves */
-  --ease-standard: cubic-bezier(0.2, 0, 0, 1); /* general UI */
-  --ease-out: cubic-bezier(0, 0, 0.2, 1); /* entering */
-  --ease-in: cubic-bezier(0.4, 0, 1, 1); /* exiting */
-  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1); /* success-pop, card-expand */
-
-  /* Animations */
+  /* Animations (keyframes defined in @layer utilities below) */
   --animate-typing-bounce: typing-bounce 0.6s ease infinite;
   --animate-spin: spin 0.7s linear infinite;
   --animate-loading-slide: loading-slide 1.2s ease-in-out infinite;

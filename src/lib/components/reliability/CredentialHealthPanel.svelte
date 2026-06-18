@@ -7,6 +7,7 @@
 	import { createCredentialHealthState } from '$lib/state/reliability/credential-health.svelte';
 	import PanelHeader from './PanelHeader.svelte';
 	import MetricCard from './MetricCard.svelte';
+	import { chartColors, statusColor } from '$lib/utils/chart-colors';
 
 	interface Props {
 		serverId: string;
@@ -16,14 +17,6 @@
 
 	const state = createCredentialHealthState();
 	let parsed = $derived(state.parseLatest());
-
-	const statusEchartsColors: Record<string, string> = {
-		ok: '#22c55e',
-		expiring: '#f59e0b',
-		expired: '#ef4444',
-		static: '#64748b',
-		missing: '#a855f7'
-	};
 
 	/** Group profiles by status for the summary row. */
 	let statusCounts = $derived.by(() => {
@@ -42,7 +35,7 @@
 			.map(([status, count]) => ({
 				name: status,
 				value: count,
-				itemStyle: { color: statusEchartsColors[status] ?? '#64748b' }
+				itemStyle: { color: statusColor(status) }
 			}));
 
 		return {
@@ -94,6 +87,13 @@
 		const diff = expiresAt - Date.now();
 		const windowMs = 30 * 86_400_000;
 		return Math.max(0, Math.min(100, (diff / windowMs) * 100));
+	}
+
+	/** Timeline bar / label color: expired→destructive, <20%→warning, else success. */
+	function expiryColor(expired: boolean, pct: number): string {
+		const c = chartColors();
+		if (expired) return c.destructive;
+		return pct < 20 ? c.warning : c.success;
 	}
 
 	onMount(() => {
@@ -164,12 +164,12 @@
 								<div class="flex-1 h-1.5 rounded-full bg-border overflow-hidden">
 									<div
 										class="h-full rounded-full transition-all"
-										style="width:{pct}%;background:{expired ? '#ef4444' : pct < 20 ? '#f59e0b' : '#22c55e'}"
+										style="width:{pct}%;background:{expiryColor(expired, pct)}"
 									></div>
 								</div>
 								<span
 									class="tabular-nums shrink-0 w-24 text-right font-medium"
-									style:color={expired ? '#ef4444' : pct < 20 ? '#f59e0b' : '#22c55e'}
+									style:color={expiryColor(expired, pct)}
 								>
 									{formatExpiry(profile.expiresAt!)}
 								</span>

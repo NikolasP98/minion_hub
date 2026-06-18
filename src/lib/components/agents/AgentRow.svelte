@@ -10,8 +10,7 @@
     import { diceBearAvatarUrl } from "$lib/utils/avatar";
     import { agentDisplayName } from "$lib/utils/agent-display";
     import * as m from "$lib/paraglide/messages";
-    import * as tooltip from "@zag-js/tooltip";
-    import { normalizeProps, useMachine } from "@zag-js/svelte";
+    import { Tooltip } from "$lib/components/ui";
 
     let {
         agent,
@@ -119,24 +118,13 @@
         };
     });
 
-    // Instant tooltip for compact mode
-    const tipService = useMachine(tooltip.machine, () => ({
-        id: `tip-${agent.id}`,
-        openDelay: 0,
-        closeDelay: 0,
-        positioning: {
-            placement: "right" as const,
-            strategy: "fixed" as const,
-        },
-    }));
-    const tip = $derived(tooltip.connect(tipService, normalizeProps));
 </script>
 
 {#if compact}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div draggable="true" ondragstart={handleDragStart} ondragend={handleDragEnd} role="listitem">
+    <Tooltip id={`tip-${agent.id}`} placement="right" openDelay={0}>
     <button
-        {...tip.getTriggerProps() as Record<string, unknown>}
         type="button"
         class="w-full flex flex-col items-center justify-center py-2 px-1 border-l-3 border-b border-b-[rgba(42,53,72,0.5)] cursor-pointer transition-[background] duration-120 hover:bg-white/3 bg-transparent text-inherit {selected
             ? 'bg-bg3'
@@ -165,21 +153,14 @@
                 {/if}
             </div>
         </button>
-    </div>
-
-    {#if tip.open}
-        <div {...tip.getPositionerProps()} class="!z-[9999]">
-            <div
-                {...tip.getContentProps()}
-                class="bg-bg2 border border-border rounded px-2.5 py-1.5 shadow-lg whitespace-nowrap"
-            >
-                <div class="text-xs font-semibold text-foreground">
-                    {agentDisplayName(agent)}
-                </div>
-                <div class="text-[10px] text-muted mt-0.5">{statusText}</div>
+        {#snippet content()}
+            <div class="text-xs font-semibold text-foreground">
+                {agentDisplayName(agent)}
             </div>
-        </div>
-    {/if}
+            <div class="text-[10px] text-muted mt-0.5">{statusText}</div>
+        {/snippet}
+    </Tooltip>
+    </div>
 {:else}
     <!-- Compact full row: single line — status dot + avatar + name + sparkline -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->

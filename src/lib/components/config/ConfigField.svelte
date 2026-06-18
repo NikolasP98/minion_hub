@@ -10,7 +10,7 @@
     } from "$lib/state/config/config.svelte";
     import ConfigJsonEditor from "./ConfigJsonEditor.svelte";
     import ConfigField from "./ConfigField.svelte";
-    import ConfigTooltip from "./ConfigTooltip.svelte";
+    import { Tooltip } from "$lib/components/ui";
     import ToggleSwitch from "./ToggleSwitch.svelte";
     import { Button } from "$lib/components/ui";
     import * as m from "$lib/paraglide/messages";
@@ -234,12 +234,12 @@
     <span class="inline-flex items-center gap-1.5">
         <span class={labelClass}>{text}</span>
         {#if tip}
-            <ConfigTooltip content={tip}>
+            <Tooltip label={tip} openDelay={300}>
                 <span
                     class="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-border text-[9px] text-muted-foreground cursor-help leading-none hover:text-foreground hover:border-muted transition-colors"
                     >?</span
                 >
-            </ConfigTooltip>
+            </Tooltip>
         {/if}
     </span>
 {/snippet}
@@ -276,12 +276,12 @@
                     >{countProperties(schema) === 1 ? m.config_fieldCount({ count: countProperties(schema) }) : m.config_fieldCountPlural({ count: countProperties(schema) })}</span
                 >
                 {#if tooltipContent}
-                    <ConfigTooltip content={tooltipContent}>
+                    <Tooltip label={tooltipContent} openDelay={300}>
                         <span
                             class="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-border text-[9px] text-muted-foreground cursor-help leading-none hover:text-foreground hover:border-muted transition-colors"
                             >?</span
                         >
-                    </ConfigTooltip>
+                    </Tooltip>
                 {/if}
             </button>
 
