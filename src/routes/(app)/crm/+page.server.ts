@@ -8,16 +8,51 @@ import { temperatureOf } from '$lib/components/crm/crm-format';
 
 const STAGES = ['New', 'Engaged', 'Active', 'Dormant', 'Churned'] as const;
 
-export const load: PageServerLoad = async ({ locals, depends }) => {
+// Date-range presets for the dashboard cohort filter (acquisition window).
+const RANGE_DAYS: Record<string, number> = { '7d': 7, '30d': 30, '90d': 90, '365d': 365 };
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Resolve the dashboard's acquisition-date window from query params. Presets
+ * ('7d'|'30d'|'90d'|'365d') count back from now; 'custom' reads from/to
+ * (YYYY-MM-DD, inclusive); anything else ('all' / unknown) means no window.
+ */
+function resolveRange(params: URLSearchParams, now: number): { range: string; fromTs: number; toTs: number } {
+  const range = params.get('range') ?? 'all';
+  if (range === 'custom') {
+    const from = params.get('from');
+    const to = params.get('to');
+    const fromTs = from ? Date.parse(`${from}T00:00:00`) : -Infinity;
+    const toTs = to ? Date.parse(`${to}T23:59:59`) : now;
+    return { range, fromTs: Number.isFinite(fromTs) ? fromTs : -Infinity, toTs: Number.isFinite(toTs) ? toTs : now };
+  }
+  const days = RANGE_DAYS[range];
+  if (days) return { range, fromTs: now - days * DAY_MS, toTs: now };
+  return { range: 'all', fromTs: -Infinity, toTs: Infinity };
+}
+
+export const load: PageServerLoad = async ({ locals, url, depends }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
   depends('crm:contacts');
 
   // Reuse the same Valkey-cached roster the Customers list loads, then aggregate
   // server-side into a COMPACT summary — the dashboard never ships the full
-  // roster (that 941 KB payload is what makes the list page heavy), only counts
-  // and a short recent-activity slice.
-  const all = await listContactsCached(ctx);
+  // roster (that 941 KB payload is what makes the list page heavy), only counts.
+  const roster = await listContactsCached(ctx);
+
+  // Acquisition-date cohort filter: scope the contact-derived widgets to people
+  // first seen within the selected window (default 'all' = today's behaviour).
+  // Revenue stays an all-time rollup (it's invoice-keyed, a different axis).
+  const nowMs = Date.now();
+  const { range, fromTs, toTs } = resolveRange(url.searchParams, nowMs);
+  const all =
+    range === 'all'
+      ? roster
+      : roster.filter((c) => {
+          const t = c.first_contact_at ? Date.parse(c.first_contact_at) : NaN;
+          return Number.isFinite(t) && t >= fromTs && t <= toTs;
+        });
   const total = all.length;
 
   // Lifecycle stage breakdown (drives the funnel).
@@ -77,6 +112,7 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
       channels,
       temperature,
       revenue,
+      range,
     },
   };
 };

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import * as m from '$lib/paraglide/messages';
 	import { LayoutDashboard, Users, UserPlus, Activity, TrendingDown, Info, Flame, Wallet } from 'lucide-svelte';
 	import { PageHeader } from '$lib/components/ui';
@@ -47,6 +48,23 @@
 
 	const fmtMoney = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 0 });
 
+	// Acquisition-date range filter (server-side cohort scoping).
+	const RANGES = [
+		{ id: 'all', label: () => m.crm_dash_range_all() },
+		{ id: '7d', label: () => m.crm_dash_range_7d() },
+		{ id: '30d', label: () => m.crm_dash_range_30d() },
+		{ id: '90d', label: () => m.crm_dash_range_90d() },
+		{ id: '365d', label: () => m.crm_dash_range_365d() },
+	];
+	function setRange(r: string) {
+		const url = new URL(page.url);
+		if (r === 'all') url.searchParams.delete('range');
+		else url.searchParams.set('range', r);
+		url.searchParams.delete('from');
+		url.searchParams.delete('to');
+		goto(`${url.pathname}${url.search}`, { replaceState: true, keepFocus: true, noScroll: true });
+	}
+
 	// Score-bucket bar accent: low scores muted → high scores accent.
 	function bucketColor(i: number): string {
 		const pct = i / 9;
@@ -64,6 +82,16 @@
 	</PageHeader>
 
 	<div class="flex-1 min-h-0 overflow-auto p-4 flex flex-col gap-4 max-w-6xl">
+		<!-- Date-range cohort filter -->
+		<div class="flex items-center gap-2 flex-wrap">
+			<div class="seg" role="group" title={m.crm_dash_range_hint()}>
+				{#each RANGES as r (r.id)}
+					<button class="seg-btn" class:active={s.range === r.id} onclick={() => setRange(r.id)}>{r.label()}</button>
+				{/each}
+			</div>
+			<span class="t-caption">{m.crm_dash_range_hint()}</span>
+		</div>
+
 		<!-- KPI cards -->
 		<div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
 			{#each kpis as k (k.label)}
@@ -281,6 +309,33 @@
 	.ch-bar { display: block; height: 100%; border-radius: 999px; background: var(--color-accent); }
 	.ch-n { font-variant-numeric: tabular-nums; text-align: right; min-width: 2.5rem; }
 	.ch-pct { font-variant-numeric: tabular-nums; color: var(--color-muted-foreground); min-width: 2.5rem; text-align: right; }
+
+	/* date-range segmented control */
+	.seg {
+		display: inline-flex;
+		gap: 0.15rem;
+		padding: 0.2rem;
+		border: 1px solid var(--hairline);
+		border-radius: var(--radius-md);
+		background: var(--color-card);
+	}
+	.seg-btn {
+		padding: 0.25rem 0.65rem;
+		border-radius: var(--radius-sm, 6px);
+		font-size: 0.78rem;
+		font-weight: 500;
+		color: var(--color-muted-foreground);
+		font-variant-numeric: tabular-nums;
+		transition:
+			color var(--duration-fast) var(--ease-standard),
+			background-color var(--duration-fast) var(--ease-standard);
+	}
+	.seg-btn:hover { color: var(--color-foreground); }
+	.seg-btn.active {
+		color: var(--color-accent);
+		background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+		font-weight: 600;
+	}
 
 	/* temperature breakdown (reuses .chmix/.chrow grid) */
 	.temp-dot { width: 0.7rem; height: 0.7rem; border-radius: 999px; }
