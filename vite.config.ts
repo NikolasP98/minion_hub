@@ -34,6 +34,12 @@ export default defineConfig({
     exclude: ['@dimforge/rapier2d-compat'],
   },
   ssr: {
-    noExternal: ['@zag-js/popover', '@zag-js/combobox', '@zag-js/slider', '@zag-js/svelte'],
+    noExternal: [
+      '@zag-js/popover',
+      '@zag-js/combobox',
+      '@zag-js/slider',
+      '@zag-js/svelte',
+      '@minion-stack/ui',
+    ],
   },
 });

@@ -6,7 +6,7 @@
   import type { Snippet } from 'svelte';
   import { AlertTriangle } from 'lucide-svelte';
   import Modal from './Modal.svelte';
-  import Button from './Button.svelte';
+  import { Button } from '@minion-stack/ui';
 
   interface Props {
     open?: boolean;

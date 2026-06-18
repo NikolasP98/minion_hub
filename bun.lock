@@ -15,6 +15,7 @@
         "@minion-stack/db": "file:deps/minion-stack-db-0.5.1-pg.tgz",
         "@minion-stack/design-tokens": "^0.1.0",
         "@minion-stack/shared": "^0.5.0",
+        "@minion-stack/ui": "^0.1.0",
         "@minion-stack/workforce-client": "^0.2.0",
         "@nikolasp98/plugin-ui-bridge": "^0.4.0",
         "@node-rs/argon2": "^2.0.2",
@@ -378,6 +379,8 @@
     "@minion-stack/shared": ["@minion-stack/shared@0.5.0", "", { "peerDependencies": { "ws": "^8.0.0" }, "optionalPeers": ["ws"] }, "sha512-RTDQps8H4+lhWz6YzS55+3eDwTeqXOTgsa/avP5Le9aL/KMwPxQlKSI4U3VD5uJPZWLuB5sEo9EhzPJ8+LBPfg=="],
 
     "@minion-stack/tsconfig": ["@minion-stack/tsconfig@0.1.0", "", {}, "sha512-Luq2w1k9b7WuJkrAiowFMLcUnNhqo2kct4u+eYXqq8nmjMIs2P9FRtz/XLD+UWkJgx16tQUUWBR+DZjD3TVgfw=="],
+
+    "@minion-stack/ui": ["@minion-stack/ui@0.1.0", "", { "peerDependencies": { "lucide-svelte": ">=0.400.0", "svelte": "^5.0.0" } }, "sha512-Z/LHSNvQUBsw1X9ZurCnUNSn82SVsUeFiEPlQd77kB4pX/alT/VG25KToAhrwbZA3m1AfzvRYseQJbbIQEwqcw=="],
 
     "@minion-stack/workforce-client": ["@minion-stack/workforce-client@0.2.0", "", { "dependencies": { "jose": "^5.9.6" } }, "sha512-UG5pnKIe3+W0DqTni1lbeP4qhICBsyRecrRJoVr/e261L3eOLLigk6WDCZr3daY/Ma2Fxdy03GVv4q1dYGTTLg=="],
 

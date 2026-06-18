@@ -1,6 +1,9 @@
 @import 'tailwindcss';
 @import '@minion-stack/design-tokens/tokens.css';
 
+/* Generate the Tailwind utilities used inside @minion-stack/ui components. */
+@source '../node_modules/@minion-stack/ui/dist';
+
 /* ── Inter ── */
 @font-face {
   font-family: 'Inter';
