@@ -175,48 +175,61 @@ export interface ResourceRevenue {
  */
 export async function revenueByResource(ctx: CoreCtx, from: Date, to: Date): Promise<ResourceRevenue[]> {
   return withOrgCore(ctx, async (tx) => {
-    try {
-      const rows = (await tx.execute(sql`
-        with seen as (
-          select b.resource_id, b.crm_contact_id, count(*)::int as bookings
-          from sched_bookings b
-          where b.org_id = ${ctx.tenantId} and b.start_time >= ${from} and b.start_time <= ${to}
-            and b.status in ('accepted','completed')
-          group by b.resource_id, b.crm_contact_id
-        ),
-        phones as (
-          select ci.contact_id,
-                 right(regexp_replace(coalesce(ci.external_id,''),'\\D','','g'), 9) as p9
-          from crm_contact_identities ci
-          where ci.org_id = ${ctx.tenantId} and ci.channel = 'whatsapp'
-            and length(regexp_replace(coalesce(ci.external_id,''),'\\D','','g')) >= 8
-        ),
-        contact_rev as (
-          select ph.contact_id, coalesce(sum(fi.total),0)::float8 as revenue
-          from phones ph
-          join fin_invoices fi
-            on fi.org_id = ${ctx.tenantId}
-           and right(regexp_replace(coalesce(fi.client_doc_number,''),'\\D','','g'), 9) = ph.p9
-          group by ph.contact_id
-        )
-        select r.id as resource_id, r.name,
-               coalesce(sum(seen.bookings),0)::int as bookings,
-               coalesce(sum(case when seen.crm_contact_id is not null then cr.revenue else 0 end),0)::float8 as revenue
-        from sched_resources r
-        left join seen on seen.resource_id = r.id
-        left join contact_rev cr on cr.contact_id = seen.crm_contact_id
-        where r.org_id = ${ctx.tenantId} and r.active
-        group by r.id, r.name
-        order by revenue desc, r.name
-      `)) as unknown as Array<Record<string, unknown>>;
-      return rows.map((r) => ({
-        resourceId: String(r.resource_id),
-        name: String(r.name),
-        bookings: Number(r.bookings ?? 0),
-        linkedRevenue: Number(r.revenue ?? 0),
-      }));
-    } catch {
-      return [];
-    }
+    // Cheap gate first: if no bookings in range carry a CRM link, there is no
+    // overlay to compute — skip the (potentially expensive) phone×invoice join
+    // entirely. This keeps the dashboard fast when scheduling is fresh/empty.
+    const gate = (await tx.execute(sql`
+      select count(*)::int as n from sched_bookings
+      where org_id = ${ctx.tenantId} and start_time >= ${from} and start_time <= ${to}
+        and status in ('accepted','completed') and crm_contact_id is not null
+    `)) as unknown as Array<{ n: number }>;
+    if (!gate.length || Number(gate[0].n) === 0) return [];
+
+    // Gate the phone/invoice join to ONLY the contacts that actually have
+    // bookings in range (via `seen`), so cost scales with bookings — not with
+    // the whole crm_contact_identities × fin_invoices product.
+    const rows = (await tx.execute(sql`
+      with seen as (
+        select b.resource_id, b.crm_contact_id, count(*)::int as bookings
+        from sched_bookings b
+        where b.org_id = ${ctx.tenantId} and b.start_time >= ${from} and b.start_time <= ${to}
+          and b.status in ('accepted','completed') and b.crm_contact_id is not null
+        group by b.resource_id, b.crm_contact_id
+      ),
+      phones as (
+        select ci.contact_id,
+               right(regexp_replace(coalesce(ci.external_id,''),'\\D','','g'), 9) as p9
+        from crm_contact_identities ci
+        where ci.org_id = ${ctx.tenantId} and ci.channel = 'whatsapp'
+          and ci.contact_id in (select distinct crm_contact_id from seen)
+          and length(regexp_replace(coalesce(ci.external_id,''),'\\D','','g')) >= 8
+      ),
+      contact_rev as (
+        select ph.contact_id, coalesce(sum(fi.total),0)::float8 as revenue
+        from phones ph
+        join fin_invoices fi
+          on fi.org_id = ${ctx.tenantId}
+         and right(regexp_replace(coalesce(fi.client_doc_number,''),'\\D','','g'), 9) = ph.p9
+        group by ph.contact_id
+      )
+      select r.id as resource_id, r.name,
+             coalesce(sum(seen.bookings),0)::int as bookings,
+             coalesce(sum(case when seen.crm_contact_id is not null then cr.revenue else 0 end),0)::float8 as revenue
+      from sched_resources r
+      left join seen on seen.resource_id = r.id
+      left join contact_rev cr on cr.contact_id = seen.crm_contact_id
+      where r.org_id = ${ctx.tenantId} and r.active
+      group by r.id, r.name
+      order by revenue desc, r.name
+    `)) as unknown as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      resourceId: String(r.resource_id),
+      name: String(r.name),
+      bookings: Number(r.bookings ?? 0),
+      linkedRevenue: Number(r.revenue ?? 0),
+    }));
+    // NOTE: no try/catch here — a thrown statement-timeout must roll the txn
+    // back cleanly (returning [] inside the aborted txn would fail at COMMIT).
+    // The dashboard load wraps this call in .catch(() => []) for graceful degrade.
   });
 }

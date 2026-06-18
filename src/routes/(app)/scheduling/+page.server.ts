@@ -18,10 +18,21 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   const from = new Date(todayStart.getTime() - 7 * DAY);
   const to = new Date(todayStart.getTime() + 21 * DAY);
 
+  // Each analytic degrades independently: a slow/failed optional panel (e.g. the
+  // revenue overlay's cross-module join hitting a statement timeout) must never
+  // 500 the whole dashboard — it just renders without that panel.
+  const EMPTY_SUMMARY = {
+    upcoming: 0,
+    bookedThisRange: 0,
+    cancelled: 0,
+    noShow: 0,
+    resourceCount: 0,
+    eventTypeCount: 0,
+  };
   const [summary, utilization, revenue] = await Promise.all([
-    schedulingSummary(ctx, from, to),
-    utilizationHeatmap(ctx, from, to),
-    revenueByResource(ctx, from, to),
+    schedulingSummary(ctx, from, to).catch(() => EMPTY_SUMMARY),
+    utilizationHeatmap(ctx, from, to).catch(() => []),
+    revenueByResource(ctx, from, to).catch(() => []),
   ]);
 
   return {
