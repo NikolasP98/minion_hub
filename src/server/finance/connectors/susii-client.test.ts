@@ -4,7 +4,7 @@ import { SusiiClient } from './susii-client';
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 }
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe('SusiiClient', () => {
   it('logs in (DRF Token) and paginates sales following .next, yielding {results,next}', async () => {
@@ -39,5 +39,31 @@ describe('SusiiClient', () => {
       .mockResolvedValueOnce(jsonResponse({ count: 1234, next: null, results: [] }));
     const c = new SusiiClient({ username: 'u', password: 'p' });
     expect(await c.count({ businessId: 5922 })).toBe(1234);
+  });
+
+  it('retries a 429 (rate-limit) with backoff, then succeeds', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(jsonResponse({ key: 'TOK' }))   // login
+      .mockResolvedValueOnce(jsonResponse({}, 429))          // GET attempt 1 → rate-limited
+      .mockResolvedValueOnce(jsonResponse({ count: 5 }));     // GET attempt 2 → ok
+    const c = new SusiiClient({ username: 'u', password: 'p' });
+    const p = c.count({ businessId: 5922 });
+    await vi.runAllTimersAsync(); // flush abort-timers + the 1s backoff sleep
+    await expect(p).resolves.toBe(5);
+    expect(fetchMock).toHaveBeenCalledTimes(3); // login + 2 GET attempts
+  });
+
+  it('retries a hung/failed request (timeout → AbortError) then succeeds', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(jsonResponse({ key: 'TOK' }))   // login
+      .mockRejectedValueOnce(new Error('The operation was aborted')) // GET attempt 1 → timeout
+      .mockResolvedValueOnce(jsonResponse({ count: 9 }));     // GET attempt 2 → ok
+    const c = new SusiiClient({ username: 'u', password: 'p' });
+    const p = c.count({ businessId: 5922 });
+    await vi.runAllTimersAsync();
+    await expect(p).resolves.toBe(9);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });

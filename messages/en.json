@@ -2852,7 +2852,7 @@
   "fin_sync_running": "Syncing…",
   "fin_sync_result": "Synced {count} records — {status}",
   "fin_sync_error": "Sync failed",
-  "fin_sync_progress": "{processed} / {total}",
+  "fin_sync_progress": "{processed} of {total} synced",
   "fin_sync_cancel": "Cancel sync",
   "fin_sync_status_running": "Syncing…",
   "fin_sync_status_succeeded": "Sync complete",
