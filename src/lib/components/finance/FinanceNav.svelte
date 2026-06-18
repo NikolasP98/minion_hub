@@ -1,14 +1,13 @@
 <script lang="ts">
-  import { LayoutDashboard, FileText, CreditCard, Users, Package, Settings } from 'lucide-svelte';
+  import { LayoutDashboard, FileText, CreditCard, Package, Settings } from 'lucide-svelte';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
 
-  type FinanceTab = { id: string; label: () => string; icon: typeof Users; href: string };
+  type FinanceTab = { id: string; label: () => string; icon: typeof FileText; href: string };
   const TABS: FinanceTab[] = [
     { id: 'dashboard', label: () => m.nav_finance(), icon: LayoutDashboard, href: '/finances' },
     { id: 'invoices', label: () => m.fin_nav_invoices(), icon: FileText, href: '/finances/invoices' },
     { id: 'payments', label: () => m.fin_nav_payments(), icon: CreditCard, href: '/finances/payments' },
-    { id: 'clients', label: () => m.fin_nav_clients(), icon: Users, href: '/finances/clients' },
     { id: 'products', label: () => m.fin_nav_products(), icon: Package, href: '/finances/products' },
     { id: 'settings', label: () => m.nav_settings(), icon: Settings, href: '/finances/settings' },
   ];

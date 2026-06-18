@@ -44,7 +44,7 @@
 
 	let search = $state('');
 	let tagId = $state('');
-	type SortKey = 'name' | 'score' | 'frequency' | 'recent' | 'revenue';
+	type SortKey = 'name' | 'score' | 'frequency' | 'recent' | 'revenue' | 'invoices' | 'lastPurchase';
 	let sortKey = $state<SortKey>('score');
 	let sortDir = $state<'asc' | 'desc'>('desc');
 	let stageFilter = $state<Set<string>>(new Set());
@@ -87,12 +87,21 @@
 		const byName = (a: (typeof contacts)[number], b: (typeof contacts)[number]) =>
 			name(a) < name(b) ? -1 : name(a) > name(b) ? 1 : 0;
 		const t = (c: (typeof contacts)[number]) => (c.last_contact_at ? Date.parse(c.last_contact_at) : -Infinity);
+		type FinShape = { finance?: { revenue: number; invoices: number; lastPurchaseAt: string | null } | null };
+		const rev = (c: (typeof contacts)[number]) => (c as FinShape).finance?.revenue ?? -Infinity;
+		const inv = (c: (typeof contacts)[number]) => (c as FinShape).finance?.invoices ?? -Infinity;
+		const lastBuy = (c: (typeof contacts)[number]) => {
+			const at = (c as FinShape).finance?.lastPurchaseAt;
+			return at ? Date.parse(at) : -Infinity;
+		};
 		const cmp: Record<SortKey, (a: (typeof contacts)[number], b: (typeof contacts)[number]) => number> = {
 			name: byName,
 			score: (a, b) => a.score - b.score,
 			frequency: (a, b) => a.total_msgs - b.total_msgs,
 			recent: (a, b) => t(a) - t(b),
-			revenue: (a, b) => ((a as { finance?: { revenue: number } | null }).finance?.revenue ?? -Infinity) - ((b as { finance?: { revenue: number } | null }).finance?.revenue ?? -Infinity),
+			revenue: (a, b) => rev(a) - rev(b),
+			invoices: (a, b) => inv(a) - inv(b),
+			lastPurchase: (a, b) => lastBuy(a) - lastBuy(b),
 		};
 		const dir = sortDir === 'asc' ? 1 : -1;
 		return [...list].sort((a, b) => dir * cmp[sortKey](a, b) || byName(a, b));
@@ -245,8 +254,8 @@
 						{/each}
 						{#if data.financeEnabled}
 							<th class="px-3 py-2 font-medium text-right w-28">{@render sortHead('revenue', m.crm_col_revenue(), true)}</th>
-							<th class="px-3 py-2 font-medium text-right w-20">{m.crm_col_invoices()}</th>
-							<th class="px-3 py-2 font-medium text-right w-28">{m.crm_col_last_purchase()}</th>
+							<th class="px-3 py-2 font-medium text-right w-20">{@render sortHead('invoices', m.crm_col_invoices(), true)}</th>
+							<th class="px-3 py-2 font-medium text-right w-28">{@render sortHead('lastPurchase', m.crm_col_last_purchase(), true)}</th>
 						{/if}
 						<th class="px-3 py-2 font-medium text-right w-28">
 							<div class="flex justify-end">
