@@ -13,6 +13,7 @@ export interface Renderer {
 	setFocus(ids: Set<string> | null): void;
 	animateTo(center: [number, number], zoom: number, ms?: number): void;
 	fitView(padding?: number): void;
+	fitParams(padding?: number): { center: [number, number]; zoom: number } | null;
 	panBy(dxScreen: number, dyScreen: number): void;
 	zoomAt(screenX: number, screenY: number, factor: number): void;
 	screenToWorld(sx: number, sy: number): [number, number];
@@ -395,8 +396,9 @@ export async function createRenderer(
 		return best;
 	}
 
-	function fitView(padding = 1.15) {
-		if (views.length === 0) return;
+	/** Compute the camera center+zoom that fits all nodes — without applying it. */
+	function fitParams(padding = 1.15): { center: [number, number]; zoom: number } | null {
+		if (views.length === 0) return null;
 		let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
 		for (const v of views) {
 			const half = v.node.symbolSize / 2 + 36;
@@ -408,9 +410,18 @@ export async function createRenderer(
 		}
 		const bboxW = maxX - minX;
 		const bboxH = maxY - minY;
-		if (bboxW <= 0 || bboxH <= 0) return;
-		camCenter = [(minX + maxX) / 2, (minY + maxY) / 2];
-		zoom = clampZoom(Math.min(W() / (bboxW * padding), H() / (bboxH * padding)));
+		if (bboxW <= 0 || bboxH <= 0) return null;
+		return {
+			center: [(minX + maxX) / 2, (minY + maxY) / 2],
+			zoom: clampZoom(Math.min(W() / (bboxW * padding), H() / (bboxH * padding)))
+		};
+	}
+
+	function fitView(padding = 1.15) {
+		const p = fitParams(padding);
+		if (!p) return;
+		camCenter = p.center;
+		zoom = p.zoom;
 		anim = null;
 	}
 
@@ -434,6 +445,7 @@ export async function createRenderer(
 		setFocus,
 		animateTo,
 		fitView,
+		fitParams,
 		panBy,
 		zoomAt,
 		screenToWorld,
