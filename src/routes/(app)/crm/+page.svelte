@@ -207,6 +207,9 @@
 							<span class="rev-label">{m.crm_rev_invoices()}</span>
 						</div>
 					</div>
+					{#if s.revenue.reserved > 0}
+						<a class="rev-cta" href="/crm/customers?reserved=1">{m.crm_dash_reserved_cta({ count: s.revenue.reserved })}</a>
+					{/if}
 				</section>
 			{/if}
 		</div>
@@ -345,4 +348,9 @@
 	.rev-stat { display: flex; flex-direction: column; gap: 0.1rem; }
 	.rev-val { font-size: 1.3rem; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
 	.rev-label { font-size: 0.74rem; color: var(--color-muted-foreground); }
+	.rev-cta {
+		display: inline-block; margin-top: 0.8rem; font-size: 0.78rem; font-weight: 600;
+		color: var(--color-warning); text-decoration: none;
+	}
+	.rev-cta:hover { text-decoration: underline; }
 </style>

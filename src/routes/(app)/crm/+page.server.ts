@@ -2,8 +2,8 @@ import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { listContactsCached } from '$server/services/crm-contacts.service';
-import { crmRevenueSummary } from '$server/services/crm-finance.service';
-import { FUNNEL_ORDER, effectiveFunnelStage } from '$lib/components/crm/crm-funnel';
+import { crmRevenueSummary, contactFinanceMap } from '$server/services/crm-finance.service';
+import { FUNNEL_ORDER, effectiveFunnelStage, maxFunnelStage, financeFloorStage } from '$lib/components/crm/crm-funnel';
 import { temperatureOf } from '$lib/components/crm/crm-format';
 
 const STAGES = ['New', 'Engaged', 'Active', 'Dormant', 'Churned'] as const;
@@ -78,6 +78,10 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   // the dashboard's at-a-glance "who's worth chasing right now".
   const temperature = { hot: 0, warm: 0, cold: 0 };
 
+  // Per-contact billing classification (empty unless CRM + Finances both on) so
+  // the funnel counts reflect real purchases, not just chat sentiment.
+  const financeMap = await contactFinanceMap(ctx);
+
   for (const c of all) {
     if (c.stage in stageCounts) stageCounts[c.stage]++;
     const b = Math.min(9, Math.max(0, Math.floor(c.score / 10)));
@@ -87,7 +91,10 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
     for (const ch of c.channels ?? []) channelMix[ch] = (channelMix[ch] ?? 0) + 1;
     if (c.first_contact_at && now - Date.parse(c.first_contact_at) <= THIRTY_DAYS) newCount++;
     if (c.last_contact_at && now - Date.parse(c.last_contact_at) <= SEVEN_DAYS) activeWeek++;
-    const fs = effectiveFunnelStage(c.custom_fields, { inbound: c.inbound_msgs });
+    const fs = maxFunnelStage(
+      effectiveFunnelStage(c.custom_fields, { inbound: c.inbound_msgs }),
+      financeFloorStage(financeMap[c.contact_id] ?? null),
+    );
     if (fs) funnelCounts[fs]++;
   }
 

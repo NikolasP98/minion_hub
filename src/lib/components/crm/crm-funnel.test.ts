@@ -5,7 +5,29 @@ import {
   isFunnelStage,
   readFunnelMeta,
   effectiveFunnelStage,
+  maxFunnelStage,
+  financeFloorStage,
 } from './crm-funnel';
+
+describe('maxFunnelStage', () => {
+  it('returns the deeper stage, ignoring nulls', () => {
+    expect(maxFunnelStage('lead', 'customer')).toBe('customer');
+    expect(maxFunnelStage('loyal', 'intent')).toBe('loyal');
+    expect(maxFunnelStage(null, 'intent')).toBe('intent');
+    expect(maxFunnelStage('lead', null)).toBe('lead');
+    expect(maxFunnelStage(null, null)).toBeNull();
+  });
+});
+
+describe('financeFloorStage', () => {
+  it('maps billing classification to a funnel floor', () => {
+    expect(financeFloorStage({ purchased: true, reservedOnly: false, loyal: true })).toBe('loyal');
+    expect(financeFloorStage({ purchased: true, reservedOnly: false, loyal: false })).toBe('customer');
+    expect(financeFloorStage({ purchased: false, reservedOnly: true, loyal: false })).toBe('intent');
+    expect(financeFloorStage({ purchased: false, reservedOnly: false, loyal: false })).toBeNull();
+    expect(financeFloorStage(null)).toBeNull();
+  });
+});
 
 describe('crm-funnel helpers', () => {
   it('orders stages lead → loyal', () => {

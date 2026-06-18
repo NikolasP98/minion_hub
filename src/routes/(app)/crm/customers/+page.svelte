@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import { goto, invalidate } from '$app/navigation';
+	import { page } from '$app/state';
 	import { browser } from '$app/environment';
 	import * as m from '$lib/paraglide/messages';
 	import { Contact, RefreshCw, Plus, ArrowUp, ArrowDown, ChevronsUpDown, Columns3, Check } from 'lucide-svelte';
@@ -13,7 +14,7 @@
 	import Highlight from '$lib/components/crm/Highlight.svelte';
 	import { relativeTime, contactLabel } from '$lib/components/crm/crm-format';
 	import { stageLabel, funnelStageLabel } from '$lib/components/crm/crm-i18n';
-	import { FUNNEL_ORDER, effectiveFunnelStage } from '$lib/components/crm/crm-funnel';
+	import { FUNNEL_ORDER, effectiveFunnelStage, maxFunnelStage, financeFloorStage } from '$lib/components/crm/crm-funnel';
 	import { collectMetaKeys, metaLabel, metaDisplay } from '$lib/components/crm/crm-meta';
 
 	let { data }: { data: PageData } = $props();
@@ -50,10 +51,18 @@
 	let stageFilter = $state<Set<string>>(new Set());
 	let funnelFilter = $state<Set<string>>(new Set());
 	let channelFilter = $state<Set<string>>(new Set());
+	let reservedFilter = $state(page.url.searchParams.get('reserved') === '1');
 
 	const funnelOptions = FUNNEL_ORDER.map((id) => ({ value: id, label: funnelStageLabel(id) }));
+	// Finance bridge: a contact's billing classification (present only when both
+	// CRM + Finances are enabled). Drives the funnel floor + the Reserved segment.
+	type ContactFin = { revenue: number; invoices: number; lastPurchaseAt: string | null; purchased: boolean; reservedOnly: boolean; loyal: boolean };
+	const finOf = (c: (typeof contacts)[number]) => (c as { finance?: ContactFin | null }).finance ?? null;
+	const reservedOnly = (c: (typeof contacts)[number]) => finOf(c)?.reservedOnly === true;
+	// Effective funnel stage = chat-derived stage advanced by the finance floor
+	// (purchase → customer, repeat → loyal, deposit-only → intent).
 	const funnelOf = (c: (typeof contacts)[number]) =>
-		effectiveFunnelStage(c.custom_fields, { inbound: c.inbound_msgs });
+		maxFunnelStage(effectiveFunnelStage(c.custom_fields, { inbound: c.inbound_msgs }), financeFloorStage(finOf(c)));
 
 	let syncing = $state(false);
 	let creating = $state(false);
@@ -82,16 +91,16 @@
 		if (stageFilter.size) list = list.filter((c) => stageFilter.has(c.stage));
 		if (funnelFilter.size) list = list.filter((c) => { const f = funnelOf(c); return f != null && funnelFilter.has(f); });
 		if (channelFilter.size) list = list.filter((c) => c.channels?.some((ch) => channelFilter.has(ch)));
+		if (reservedFilter) list = list.filter(reservedOnly);
 
 		const name = (c: (typeof contacts)[number]) => (c.display_name ?? '￿').toLowerCase();
 		const byName = (a: (typeof contacts)[number], b: (typeof contacts)[number]) =>
 			name(a) < name(b) ? -1 : name(a) > name(b) ? 1 : 0;
 		const t = (c: (typeof contacts)[number]) => (c.last_contact_at ? Date.parse(c.last_contact_at) : -Infinity);
-		type FinShape = { finance?: { revenue: number; invoices: number; lastPurchaseAt: string | null } | null };
-		const rev = (c: (typeof contacts)[number]) => (c as FinShape).finance?.revenue ?? -Infinity;
-		const inv = (c: (typeof contacts)[number]) => (c as FinShape).finance?.invoices ?? -Infinity;
+		const rev = (c: (typeof contacts)[number]) => finOf(c)?.revenue ?? -Infinity;
+		const inv = (c: (typeof contacts)[number]) => finOf(c)?.invoices ?? -Infinity;
 		const lastBuy = (c: (typeof contacts)[number]) => {
-			const at = (c as FinShape).finance?.lastPurchaseAt;
+			const at = finOf(c)?.lastPurchaseAt;
 			return at ? Date.parse(at) : -Infinity;
 		};
 		const cmp: Record<SortKey, (a: (typeof contacts)[number], b: (typeof contacts)[number]) => number> = {
@@ -198,6 +207,16 @@
 			{#each tags as t (t.id)}<option value={t.id}>{t.name}</option>{/each}
 		</select>
 		<span class="t-caption">{m.crm_contact_count({ count: view.length })}</span>
+		{#if data.financeEnabled}
+			<button
+				class="res-toggle"
+				class:active={reservedFilter}
+				onclick={() => (reservedFilter = !reservedFilter)}
+				title={m.crm_reserved_only()}
+			>
+				{m.crm_reserved_badge()}
+			</button>
+		{/if}
 
 		<div class="ml-auto flex items-center gap-2">
 			{#if metaKeys.length > 0}
@@ -282,7 +301,12 @@
 							</td>
 							<td class="px-3 py-2"><ScoreCell score={c.score} r={c.r_score} f={c.f_score} m={c.m_score} /></td>
 							<td class="px-3 py-2"><StagePill stage={c.stage} overridden={false} /></td>
-							<td class="px-3 py-2"><FunnelStagePill stage={funnelOf(c)} /></td>
+							<td class="px-3 py-2">
+								<div class="flex items-center gap-1">
+									<FunnelStagePill stage={funnelOf(c)} />
+									{#if reservedOnly(c)}<span class="res-pill" title={m.crm_reserved_only()}>{m.crm_reserved_badge()}</span>{/if}
+								</div>
+							</td>
 							{#each metaCols as key (key)}
 								<td class="px-3 py-2 meta-cell" title={metaDisplay(key, c.custom_fields?.[key])}>{metaDisplay(key, c.custom_fields?.[key])}</td>
 							{/each}
@@ -322,6 +346,21 @@
 		font: inherit; color: inherit; cursor: pointer;
 	}
 	.sort-h.active { color: var(--color-accent); }
+	.res-toggle {
+		display: inline-flex; align-items: center; height: 1.6rem; padding: 0 0.6rem;
+		font-size: 0.74rem; font-weight: 600; border-radius: 999px;
+		border: 1px solid var(--color-warning); color: var(--color-warning);
+		background: transparent; cursor: pointer; white-space: nowrap;
+		transition: background-color var(--duration-fast) var(--ease-standard);
+	}
+	.res-toggle:hover { background: color-mix(in srgb, var(--color-warning) 12%, transparent); }
+	.res-toggle.active { background: color-mix(in srgb, var(--color-warning) 20%, transparent); }
+	.res-pill {
+		display: inline-flex; align-items: center; padding: 0.05rem 0.4rem;
+		font-size: 0.66rem; font-weight: 600; border-radius: 999px;
+		color: var(--color-warning); background: color-mix(in srgb, var(--color-warning) 15%, transparent);
+		white-space: nowrap;
+	}
 	:global(.sort-h .dim) { opacity: 0.35; }
 	.msgs { display: flex; align-items: center; justify-content: flex-end; gap: 0.6rem; font-variant-numeric: tabular-nums; }
 	.m-in { display: inline-flex; align-items: center; gap: 0.1rem; color: var(--color-emerald, var(--color-success)); }

@@ -82,3 +82,33 @@ export function effectiveFunnelStage(
   if (stored) return stored.stage;
   return opts.inbound > 0 ? 'lead' : null;
 }
+
+/** The deeper (further-along) of two funnel stages; nulls are ignored. */
+export function maxFunnelStage(a: FunnelStage | null, b: FunnelStage | null): FunnelStage | null {
+  if (!a) return b;
+  if (!b) return a;
+  return funnelStageIndex(a) >= funnelStageIndex(b) ? a : b;
+}
+
+/**
+ * Finance-derived funnel FLOOR for a contact, from billing classification.
+ * This is the additive CRM↔Finance bridge: when Finances is enabled, real
+ * money advances the funnel (read-time, never persisted, so it stays decoupled
+ * and reverts cleanly if the module is turned off).
+ *  - a repeat procedure buyer → loyal
+ *  - any procedure purchase → customer
+ *  - only a reservation deposit (the 50-soles "reservó pero no compró") → intent
+ *  - nothing billable → null (funnel stays chat-driven)
+ */
+export interface FinanceClass {
+  purchased: boolean;
+  reservedOnly: boolean;
+  loyal: boolean;
+}
+export function financeFloorStage(c: FinanceClass | null | undefined): FunnelStage | null {
+  if (!c) return null;
+  if (c.loyal) return 'loyal';
+  if (c.purchased) return 'customer';
+  if (c.reservedOnly) return 'intent';
+  return null;
+}
