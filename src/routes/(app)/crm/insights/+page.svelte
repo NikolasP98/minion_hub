@@ -101,9 +101,9 @@
           {rebuilding ? m.crm_wins_rebuilding() : m.crm_wins_rebuild()}
         </Button>
       </header>
-      {#if data.winIndex.count > 0}
+      {#if (data.winIndex?.count ?? 0) > 0}
         <p class="t-body">{m.crm_wins_status({ count: data.winIndex.count })}</p>
-        {#if data.winIndex.thin}<p class="t-caption">{m.crm_wins_thin()}</p>{/if}
+        {#if data.winIndex?.thin}<p class="t-caption">{m.crm_wins_thin()}</p>{/if}
       {:else}
         <p class="t-caption">{m.crm_wins_never()}</p>
       {/if}
