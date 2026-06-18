@@ -22,19 +22,30 @@ export function wordFrequency(
   opts: { fromIso: string; toIso: string; limit?: number },
 ): Promise<{ word: string; count: number }[]> {
   const limit = Math.min(200, Math.max(10, Math.floor(opts.limit ?? 80)));
+  // Normalize the date bounds to canonical ISO before they're inlined into the
+  // ts_stat() literal below — a parsed-and-reserialized timestamp cannot carry
+  // SQL metacharacters, so this closes the injection surface even if a future
+  // caller passes an untrusted string.
+  const from = new Date(opts.fromIso);
+  const to = new Date(opts.toIso);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+    throw new Error('wordFrequency: invalid date range');
+  }
+  const fromIso = from.toISOString();
+  const toIso = to.toISOString();
   return cached(
-    keys.hub('crm-wordfreq', { t: ctx.tenantId, d: scopeData({ from: opts.fromIso, to: opts.toIso, limit }) }),
+    keys.hub('crm-wordfreq', { t: ctx.tenantId, d: scopeData({ from: fromIso, to: toIso, limit }) }),
     { ttl: '5m', swr: '1m', tags: [...insightsTags(ctx.tenantId)] },
     () =>
       withOrgCore(ctx, async (tx) => {
         // ts_stat's argument is a literal SQL string; the org is scoped by the GUC
-        // inside the withOrgCore tx, and from/to/limit are app-validated (ISO + int),
-        // so inlining them here is safe (no user free-text reaches this string).
+        // inside the withOrgCore tx. fromIso/toIso are canonical ISO strings
+        // (parsed+reserialized above) and limit is a clamped int — safe to inline.
         const inner = `select to_tsvector('spanish', coalesce(content,'')) from messages
           where org_id = current_setting('app.current_org_id', true)
             and direction = 'inbound' and is_bot is not true
-            and coalesce(occurred_at, created_at) >= '${opts.fromIso}'::timestamptz
-            and coalesce(occurred_at, created_at) <= '${opts.toIso}'::timestamptz`;
+            and coalesce(occurred_at, created_at) >= '${fromIso}'::timestamptz
+            and coalesce(occurred_at, created_at) <= '${toIso}'::timestamptz`;
         const rows = (await tx.execute(sql`
           select word, nentry::int as count
           from ts_stat(${inner})
