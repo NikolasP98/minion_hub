@@ -40,8 +40,10 @@ export interface Simulation {
   drag(id: string, x: number, y: number): void;
   release(id: string): void;
   reheat(): void;
-  /** Rotate the whole layout by `theta` radians around the origin (springs animate into it). */
+  /** Absolute instant rigid rotation from the original layout (snaps; for rebuild restore). */
   setRotation(theta: number): void;
+  /** Incremental rigid rotation around the origin (drive from an eased tween for smooth pivots). */
+  rotateBy(delta: number): void;
   stop(): void;
 }
 
@@ -154,18 +156,45 @@ export function createSimulation(
       sim.alpha(0.5);
     },
     setRotation(theta) {
+      // Absolute, INSTANT rigid rotation from the original layout: snap both
+      // anchors and positions so there's no spring chase. Used to restore the
+      // current angle after a rebuild. (Smooth pivots use rotateBy via a tween.)
       const c = Math.cos(theta);
       const s = Math.sin(theta);
       for (const nd of simNodes) {
         if (nd.pinned) continue;
         nd.bax = nd.oax * c - nd.oay * s;
         nd.bay = nd.oax * s + nd.oay * c;
-        // Update the live anchor too so the force target moves immediately
-        // (covers reduced-motion, where tick() doesn't re-derive ax/ay).
         nd.ax = nd.bax;
         nd.ay = nd.bay;
+        nd.x = nd.bax;
+        nd.y = nd.bay;
+        nd.vx = 0;
+        nd.vy = 0;
       }
-      sim.alpha(Math.max(sim.alpha(), 0.6)); // reheat so springs animate into the new angle
+    },
+    rotateBy(delta) {
+      // Incremental RIGID rotation around the origin: rotate each node's current
+      // position (preserving its settled spread) AND its base anchor together,
+      // zeroing velocity. No springs involved → no overshoot/shake. The caller
+      // drives this from an eased tween and skips tick() while rotating.
+      const c = Math.cos(delta);
+      const s = Math.sin(delta);
+      for (const nd of simNodes) {
+        if (nd.pinned) continue;
+        const x = nd.x;
+        const y = nd.y;
+        nd.x = x * c - y * s;
+        nd.y = x * s + y * c;
+        const bx = nd.bax;
+        const by = nd.bay;
+        nd.bax = bx * c - by * s;
+        nd.bay = bx * s + by * c;
+        nd.ax = nd.bax;
+        nd.ay = nd.bay;
+        nd.vx = 0;
+        nd.vy = 0;
+      }
     },
     stop() {
       sim.stop();

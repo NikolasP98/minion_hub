@@ -77,10 +77,12 @@
   }
   function stepRotation() {
     if (!_rotTween || !_sim) return;
+    const prev = _rotation;
     const t = Math.min(1, (performance.now() - _rotTween.start) / _rotTween.ms);
     const k = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; // easeInOutCubic
     _rotation = _rotTween.from + (_rotTween.to - _rotTween.from) * k;
-    _sim.setRotation(_rotation);
+    // Rigid incremental rotation — no spring chase, so no overshoot/shake.
+    _sim.rotateBy(_rotation - prev);
     if (t >= 1) {
       _rotation = _rotTween.to;
       _rotTween = null;
@@ -219,8 +221,13 @@
       _ready = true;
 
       const loop = () => {
-        stepRotation();
-        _sim?.tick();
+        // While a rotation tween runs, do a pure rigid rotation (no physics) so
+        // nothing overshoots; resume normal physics (breathing/collision) after.
+        if (_rotTween) {
+          stepRotation();
+        } else {
+          _sim?.tick();
+        }
         renderer.frame();
         raf = requestAnimationFrame(loop);
       };
