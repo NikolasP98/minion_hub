@@ -1,10 +1,9 @@
 <script lang="ts">
   import type { PageData } from './$types';
   import { goto, invalidateAll } from '$app/navigation';
-  import { Trophy } from 'lucide-svelte';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
-  import { Sparkles, RefreshCw } from 'lucide-svelte';
+  import { Sparkles, RefreshCw, Trophy } from 'lucide-svelte';
   import { PageHeader, Button } from '$lib/components/ui';
   import CrmWordCloud from '$lib/components/crm/CrmWordCloud.svelte';
   import CrmSentimentTrend from '$lib/components/crm/CrmSentimentTrend.svelte';
