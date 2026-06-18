@@ -85,7 +85,7 @@ const wellKnownHandle: Handle = async ({ event, resolve }) => {
   return resolve(event);
 };
 
-const UNPROTECTED_PREFIXES = ['/login', '/api/', '/invite/', '/.well-known/', '/auth/'];
+const UNPROTECTED_PREFIXES = ['/login', '/api/', '/invite/', '/.well-known/', '/auth/', '/book'];
 
 const appHandle: Handle = async ({ event, resolve }) => {
   // Identity resolution (provider selection + tenant context) lives in

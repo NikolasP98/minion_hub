@@ -16,6 +16,10 @@
 		// svelte-ignore state_referenced_locally
 		data.modules['crm'] ?? true,
 	);
+	let schedEnabled = $state(
+		// svelte-ignore state_referenced_locally
+		data.modules['scheduling'] ?? true,
+	);
 	let moduleBusy = $state<string | null>(null);
 	let moduleMsg = $state<{ id: string; ok: boolean; text: string } | null>(null);
 
@@ -34,11 +38,13 @@
 				moduleMsg = { id: moduleId, ok: false, text: m.fin_module_error() };
 				if (moduleId === 'finances') finEnabled = !enabled;
 				if (moduleId === 'crm') crmEnabled = !enabled;
+				if (moduleId === 'scheduling') schedEnabled = !enabled;
 			}
 		} catch {
 			moduleMsg = { id: moduleId, ok: false, text: m.fin_module_error() };
 			if (moduleId === 'finances') finEnabled = !enabled;
 			if (moduleId === 'crm') crmEnabled = !enabled;
+			if (moduleId === 'scheduling') schedEnabled = !enabled;
 		} finally {
 			moduleBusy = null;
 		}
@@ -84,6 +90,19 @@
 						bind:checked={crmEnabled}
 						disabled={moduleBusy === 'crm'}
 						onchange={(v) => setModule('crm', v)}
+						size="md"
+					/>
+				</div>
+
+				<div class="mod-row">
+					<div class="mod-info">
+						<span class="mod-label">{m.sched_module_scheduling()}</span>
+						<span class="t-caption">{m.sched_module_scheduling_desc()}</span>
+					</div>
+					<Toggle
+						bind:checked={schedEnabled}
+						disabled={moduleBusy === 'scheduling'}
+						onchange={(v) => setModule('scheduling', v)}
 						size="md"
 					/>
 				</div>

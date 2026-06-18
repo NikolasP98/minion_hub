@@ -1,0 +1,61 @@
+import { json, error } from '@sveltejs/kit';
+import type { RequestHandler } from '@sveltejs/kit';
+import { getCoreCtx } from '$server/auth/core-ctx';
+import { requireAdmin } from '$server/auth/authorize';
+import { isModuleEnabled } from '$server/services/modules.service';
+import { getEventType, upsertEventType, deleteEventType } from '$server/services/scheduling.service';
+
+export const GET: RequestHandler = async ({ locals, params }) => {
+  const ctx = await getCoreCtx(locals);
+  if (!ctx) throw error(401);
+  if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
+  const et = await getEventType(ctx, params.id!);
+  if (!et) throw error(404);
+  return json({ eventType: et });
+};
+
+export const PATCH: RequestHandler = async ({ locals, request, params }) => {
+  requireAdmin(locals);
+  const ctx = await getCoreCtx(locals);
+  if (!ctx) throw error(401);
+  if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
+  const b = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+  if (typeof b.slug !== 'string' || !b.slug.trim()) throw error(400, 'slug required');
+  if (typeof b.title !== 'string' || !b.title.trim()) throw error(400, 'title required');
+  const len = Number(b.length);
+  if (!Number.isFinite(len) || len <= 0) throw error(400, 'length must be a positive number');
+  const num = (v: unknown) => (v == null || v === '' ? null : Number(v));
+  await upsertEventType(
+    ctx,
+    {
+      slug: String(b.slug).trim(),
+      title: String(b.title).trim(),
+      description: b.description ? String(b.description) : null,
+      length: len,
+      slotInterval: num(b.slotInterval),
+      beforeBuffer: Number(b.beforeBuffer ?? 0),
+      afterBuffer: Number(b.afterBuffer ?? 0),
+      minimumBookingNotice: Number(b.minimumBookingNotice ?? 120),
+      periodType: typeof b.periodType === 'string' ? b.periodType : 'rolling',
+      periodDays: num(b.periodDays),
+      schedulingType: b.schedulingType ? String(b.schedulingType) : null,
+      requiresConfirmation: b.requiresConfirmation === true,
+      public: b.public !== false,
+      color: b.color ? String(b.color) : null,
+      productId: b.productId ? String(b.productId) : null,
+      active: b.active !== false,
+      resourceIds: Array.isArray(b.resourceIds) ? b.resourceIds.map(String) : [],
+    },
+    params.id!,
+  );
+  return json({ ok: true });
+};
+
+export const DELETE: RequestHandler = async ({ locals, params }) => {
+  requireAdmin(locals);
+  const ctx = await getCoreCtx(locals);
+  if (!ctx) throw error(401);
+  if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
+  await deleteEventType(ctx, params.id!);
+  return json({ ok: true });
+};

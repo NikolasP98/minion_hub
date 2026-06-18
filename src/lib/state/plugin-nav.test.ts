@@ -12,8 +12,9 @@ describe("getDynamicPluginsSections", () => {
     expect(marketing?.items[0]?.label).toBe("CRM");
     const operations = sections.find((s) => s.id === "plugins:operations");
     expect(operations?.label).toBe("Operations");
-    expect(operations?.items.map((i) => i.href)).toEqual(["/workforce"]);
+    expect(operations?.items.map((i) => i.href)).toEqual(["/workforce", "/scheduling"]);
     expect(operations?.items[0]?.label).toBe("Kanban");
+    expect(operations?.items[1]?.label).toBe("Scheduling");
     const finance = sections.find((s) => s.id === "plugins:finance");
     expect(finance?.items.map((i) => i.href)).toEqual(["/finances"]);
   });
