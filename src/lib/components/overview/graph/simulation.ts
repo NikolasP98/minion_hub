@@ -1,7 +1,5 @@
 import {
   forceSimulation,
-  forceX,
-  forceY,
   forceCollide,
   forceManyBody,
   forceLink,
@@ -100,9 +98,19 @@ export function createSimulation(
     .filter((e) => byId.has(e.source) && byId.has(e.target))
     .map((e) => ({ source: e.source, target: e.target }));
 
+  // Pull each node toward its CURRENT anchor. A custom force, not forceX/forceY:
+  // those cache the target at initialize(), but we mutate ax/ay every tick
+  // (wander) and on rotation, so the force must read the live anchor each tick.
+  function anchorForce(alpha: number) {
+    for (const nd of simNodes) {
+      if (nd.pinned || nd.fx != null) continue;
+      nd.vx += (nd.ax - nd.x) * ANCHOR_STRENGTH * alpha;
+      nd.vy += (nd.ay - nd.y) * ANCHOR_STRENGTH * alpha;
+    }
+  }
+
   const sim: D3Sim<SimNode, SimLink> = forceSimulation<SimNode>(simNodes)
-    .force('x', forceX<SimNode>((d) => d.ax).strength((d) => (d.pinned ? 0 : ANCHOR_STRENGTH)))
-    .force('y', forceY<SimNode>((d) => d.ay).strength((d) => (d.pinned ? 0 : ANCHOR_STRENGTH)))
+    .force('anchor', anchorForce)
     .force('collide', forceCollide<SimNode>((d) => collideRadius(d)))
     .force('charge', forceManyBody<SimNode>().strength(WEAK_REPULSION))
     .force('link', forceLink<SimNode, SimLink>(links).id((d) => d.id).distance((l) => {

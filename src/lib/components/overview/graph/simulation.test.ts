@@ -55,4 +55,25 @@ describe('createSimulation', () => {
     expect(Math.hypot(u.x - u.ax, u.y - u.ay)).toBeLessThan(120);
     sim.stop();
   });
+
+  it('setRotation moves nodes to the rotated anchor (regression: anchor force must read live ax/ay)', () => {
+    const { nodes, edges } = buildGraph(input);
+    const sim = createSimulation(nodes, edges, { reducedMotion: true });
+    settle(sim);
+    const areaId = nodes.find((nd) => nd.kind === 'area')!.id;
+    const start = sim.nodes().find((nd) => nd.id === areaId)!;
+    const ox = start.x;
+    const oy = start.y;
+
+    sim.setRotation(Math.PI / 2);
+    settle(sim, 600);
+    const end = sim.nodes().find((nd) => nd.id === areaId)!;
+
+    // Settles near its NEW (rotated) anchor — would fail if the force cached the
+    // original target (the bug this guards against).
+    expect(Math.hypot(end.x - end.ax, end.y - end.ay)).toBeLessThan(80);
+    // And it genuinely moved away from where it started.
+    expect(Math.hypot(end.x - ox, end.y - oy)).toBeGreaterThan(100);
+    sim.stop();
+  });
 });
