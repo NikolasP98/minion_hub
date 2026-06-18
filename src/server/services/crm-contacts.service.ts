@@ -142,6 +142,8 @@ export interface RankedContact {
   custom_fields: Record<string, unknown>;
   first_contact_at: string | null;
   last_contact_at: string | null;
+  /** true when the latest message is inbound with no later reply — we owe them. */
+  awaiting_reply: boolean;
   last_days: number;
   reciprocity: number;
   r_score: number;
@@ -219,6 +221,8 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
         select ci.contact_id,
                max(coalesce(m.occurred_at, m.created_at)) as last_contact_at,
                min(coalesce(m.occurred_at, m.created_at)) as first_contact_at,
+               max(coalesce(m.occurred_at, m.created_at)) filter (where m.direction = 'inbound') as last_inbound_at,
+               max(coalesce(m.occurred_at, m.created_at)) filter (where m.direction = 'outbound') as last_outbound_at,
                count(*) as total_msgs,
                count(*) filter (where m.direction = 'inbound') as inbound_msgs,
                count(distinct m.channel) as channels_used
@@ -240,6 +244,7 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
                (select coalesce(array_agg(ct.tag_id::text), array[]::text[])
                   from crm_contact_tags ct where ct.contact_id = c.id) as tag_ids,
                a.first_contact_at, a.last_contact_at,
+               (a.last_inbound_at is not null and (a.last_outbound_at is null or a.last_inbound_at > a.last_outbound_at)) as awaiting_reply,
                coalesce(extract(epoch from (now() - a.last_contact_at)) / 86400.0, 1e9) as last_days,
                coalesce(extract(epoch from (now() - a.first_contact_at)) / 86400.0, 1e9) as first_days,
                coalesce(a.inbound_msgs::numeric / nullif(a.total_msgs, 0), 0) as reciprocity
@@ -250,7 +255,7 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
       scored as (
         select contact_id, display_name, owner_id, source, channels, tag_ids,
                coalesce(custom_fields, '{}'::jsonb) as custom_fields,
-               total_msgs, inbound_msgs, channels_used, first_contact_at, last_contact_at,
+               total_msgs, inbound_msgs, channels_used, first_contact_at, last_contact_at, awaiting_reply,
                round(last_days::numeric, 1) as last_days, round(reciprocity::numeric, 3) as reciprocity,
                round(${R_EXPR}::numeric, 1) as r_score,
                round(${F_EXPR}::numeric, 1) as f_score,

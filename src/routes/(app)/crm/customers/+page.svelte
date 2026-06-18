@@ -52,6 +52,7 @@
 	let funnelFilter = $state<Set<string>>(new Set());
 	let channelFilter = $state<Set<string>>(new Set());
 	let reservedFilter = $state(page.url.searchParams.get('reserved') === '1');
+	let awaitingFilter = $state(page.url.searchParams.get('awaiting') === '1');
 
 	const funnelOptions = FUNNEL_ORDER.map((id) => ({ value: id, label: funnelStageLabel(id) }));
 	// Finance bridge: a contact's billing classification (present only when both
@@ -92,6 +93,7 @@
 		if (funnelFilter.size) list = list.filter((c) => { const f = funnelOf(c); return f != null && funnelFilter.has(f); });
 		if (channelFilter.size) list = list.filter((c) => c.channels?.some((ch) => channelFilter.has(ch)));
 		if (reservedFilter) list = list.filter(reservedOnly);
+		if (awaitingFilter) list = list.filter((c) => c.awaiting_reply);
 
 		const name = (c: (typeof contacts)[number]) => (c.display_name ?? '￿').toLowerCase();
 		const byName = (a: (typeof contacts)[number], b: (typeof contacts)[number]) =>
@@ -217,6 +219,14 @@
 				{m.crm_reserved_badge()}
 			</button>
 		{/if}
+		<button
+			class="await-toggle"
+			class:active={awaitingFilter}
+			onclick={() => (awaitingFilter = !awaitingFilter)}
+			title={m.crm_awaiting_hint()}
+		>
+			{m.crm_awaiting_filter()}
+		</button>
 
 		<div class="ml-auto flex items-center gap-2">
 			{#if metaKeys.length > 0}
@@ -327,6 +337,7 @@
 							</td>
 							<td class="px-3 py-2">
 								<div class="msgs">
+									{#if c.awaiting_reply}<span class="await-dot" title={m.crm_awaiting_hint()}></span>{/if}
 									<span class="m-in" title={m.crm_inbound_value({ count: c.inbound_msgs })}><ArrowDown size={11} />{c.inbound_msgs}</span>
 									<span class="m-out" title={m.crm_outbound_value({ count: c.total_msgs - c.inbound_msgs })}><ArrowUp size={11} />{c.total_msgs - c.inbound_msgs}</span>
 								</div>
@@ -360,6 +371,19 @@
 		font-size: 0.66rem; font-weight: 600; border-radius: 999px;
 		color: var(--color-warning); background: color-mix(in srgb, var(--color-warning) 15%, transparent);
 		white-space: nowrap;
+	}
+	.await-toggle {
+		display: inline-flex; align-items: center; height: 1.6rem; padding: 0 0.6rem;
+		font-size: 0.74rem; font-weight: 600; border-radius: 999px;
+		border: 1px solid var(--color-accent); color: var(--color-accent);
+		background: transparent; cursor: pointer; white-space: nowrap;
+		transition: background-color var(--duration-fast) var(--ease-standard);
+	}
+	.await-toggle:hover { background: color-mix(in srgb, var(--color-accent) 12%, transparent); }
+	.await-toggle.active { background: color-mix(in srgb, var(--color-accent) 20%, transparent); }
+	.await-dot {
+		width: 0.45rem; height: 0.45rem; border-radius: 999px; flex-shrink: 0;
+		background: var(--color-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 25%, transparent);
 	}
 	:global(.sort-h .dim) { opacity: 0.35; }
 	.msgs { display: flex; align-items: center; justify-content: flex-end; gap: 0.6rem; font-variant-numeric: tabular-nums; }

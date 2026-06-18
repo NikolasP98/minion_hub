@@ -82,6 +82,16 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   // the funnel counts reflect real purchases, not just chat sentiment.
   const financeMap = await contactFinanceMap(ctx);
 
+  // B5 — message responsiveness: of contacts who wrote in, how many are still
+  // awaiting our reply (last message inbound), split by temperature.
+  let inboundContacts = 0;
+  let awaiting = 0;
+  const awaitingByTemp = { hot: 0, warm: 0, cold: 0 };
+  // B6 — conversion funnel (acquisition cohort): leads → booked (any reservation
+  // /invoice) → bought (a real procedure). Reservation = the "cita agendada".
+  let booked = 0;
+  let bought = 0;
+
   for (const c of all) {
     if (c.stage in stageCounts) stageCounts[c.stage]++;
     const b = Math.min(9, Math.max(0, Math.floor(c.score / 10)));
@@ -91,12 +101,41 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
     for (const ch of c.channels ?? []) channelMix[ch] = (channelMix[ch] ?? 0) + 1;
     if (c.first_contact_at && now - Date.parse(c.first_contact_at) <= THIRTY_DAYS) newCount++;
     if (c.last_contact_at && now - Date.parse(c.last_contact_at) <= SEVEN_DAYS) activeWeek++;
+    const fin = financeMap[c.contact_id] ?? null;
     const fs = maxFunnelStage(
       effectiveFunnelStage(c.custom_fields, { inbound: c.inbound_msgs }),
-      financeFloorStage(financeMap[c.contact_id] ?? null),
+      financeFloorStage(fin),
     );
     if (fs) funnelCounts[fs]++;
+    if (c.inbound_msgs > 0) {
+      inboundContacts++;
+      if (c.awaiting_reply) {
+        awaiting++;
+        awaitingByTemp[temperatureOf(c.score)]++;
+      }
+    }
+    if (fin) booked++;
+    if (fin?.purchased) bought++;
   }
+
+  // B5 response stats. answered = inbound contacts we've replied to most recently.
+  const answered = inboundContacts - awaiting;
+  const response = {
+    inboundContacts,
+    awaiting,
+    answered,
+    awaitingByTemp,
+    responseRate: inboundContacts ? Math.round((answered / inboundContacts) * 100) : 0,
+  };
+  // B6 conversion rates (guarded against the rare booked-without-inbound case).
+  const leads = inboundContacts;
+  const conversion = {
+    leads,
+    booked,
+    bought,
+    bookedRate: leads ? Math.round((Math.min(booked, leads) / leads) * 100) : 0,
+    boughtRate: booked ? Math.round((bought / booked) * 100) : 0,
+  };
 
   const channels = Object.entries(channelMix)
     .map(([channel, count]) => ({ channel, count }))
@@ -119,6 +158,8 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
       channels,
       temperature,
       revenue,
+      response,
+      conversion,
       range,
     },
   };

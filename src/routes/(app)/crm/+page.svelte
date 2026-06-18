@@ -9,6 +9,7 @@
 	import CrmFunnelRibbon from '$lib/components/crm/CrmFunnelRibbon.svelte';
 	import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
 	import { temperatureColor, type Temperature } from '$lib/components/crm/crm-format';
+	import { funnelStageColor } from '$lib/components/crm/crm-funnel';
 	import { stageLabel } from '$lib/components/crm/crm-i18n';
 
 	let { data }: { data: PageData } = $props();
@@ -45,6 +46,13 @@
 		})),
 	);
 	const tempTotal = $derived(s.temperature.hot + s.temperature.warm + s.temperature.cold);
+
+	// Conversion funnel rows (leads → booked → bought), coloured by funnel stage.
+	const convRows = $derived([
+		{ key: 'leads', label: m.crm_conv_leads(), count: s.conversion.leads, color: funnelStageColor('lead') },
+		{ key: 'booked', label: m.crm_conv_booked(), count: s.conversion.booked, color: funnelStageColor('intent') },
+		{ key: 'bought', label: m.crm_conv_bought(), count: s.conversion.bought, color: funnelStageColor('customer') },
+	]);
 
 	const fmtMoney = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 0 });
 
@@ -212,6 +220,47 @@
 					{/if}
 				</section>
 			{/if}
+
+			<!-- B5 — message responsiveness -->
+			<section class="card">
+				<header class="card-h">
+					<span>{m.crm_dash_response()}</span>
+					<span class="kpi-help" title={m.crm_resp_help()}><Info size={12} /></span>
+				</header>
+				<div class="rev-grid">
+					<div class="rev-stat">
+						<span class="rev-val">{s.response.awaiting.toLocaleString()}</span>
+						<span class="rev-label">{m.crm_resp_awaiting()}</span>
+					</div>
+					<div class="rev-stat">
+						<span class="rev-val">{s.response.responseRate}%</span>
+						<span class="rev-label">{m.crm_resp_rate()}</span>
+					</div>
+				</div>
+				{#if s.response.awaitingByTemp.hot > 0}
+					<a class="rev-cta" href="/crm/customers?awaiting=1">{m.crm_resp_hot_awaiting({ count: s.response.awaitingByTemp.hot })}</a>
+				{/if}
+			</section>
+
+			<!-- B6 — conversion funnel (leads → booked → bought) -->
+			<section class="card">
+				<header class="card-h">
+					<span>{m.crm_dash_conversion()}</span>
+					<span class="kpi-help" title={m.crm_dash_conversion_help()}><Info size={12} /></span>
+				</header>
+				<ul class="chmix">
+					{#each convRows as r (r.key)}
+						{@const pct = s.conversion.leads ? Math.round((r.count / s.conversion.leads) * 100) : 0}
+						<li class="chrow">
+							<span class="temp-dot" style:background={r.color}></span>
+							<span class="ch-name">{r.label}</span>
+							<span class="ch-bar-wrap"><span class="ch-bar" style:width={`${pct}%`} style:background={r.color}></span></span>
+							<span class="ch-n">{r.count.toLocaleString()}</span>
+							<span class="ch-pct">{pct}%</span>
+						</li>
+					{/each}
+				</ul>
+			</section>
 		</div>
 	</div>
 </div>
