@@ -1,12 +1,21 @@
 /** Pure helpers for CRM Insights (word cloud + sentiment). No I/O, no paraglide. */
 
-/** Common Spanish/English chat noise that `ts_stat('spanish')` does not strip. */
+/**
+ * Common Spanish/English chat noise that `ts_stat('spanish')` does not strip.
+ * NOTE: ts_stat returns STEMMED tokens, so the denylist holds stems too
+ * (e.g. "hola"→"hol", "hacer"→"hac", "día"→"dia").
+ */
 export const EXTRA_STOPWORDS = new Set<string>([
-  'hola', 'buenas', 'buenos', 'dias', 'tardes', 'noches', 'gracias', 'ok', 'okay',
-  'si', 'no', 'porfa', 'porfavor', 'favor', 'saludos', 'hello', 'hi', 'yes', 'please', 'thanks',
+  'hola', 'hol', 'buenas', 'buenos', 'dias', 'dia', 'tardes', 'noches', 'gracias', 'ok', 'okay',
+  'si', 'no', 'porfa', 'porfavor', 'favor', 'saludos', 'hac', 'hello', 'hi', 'yes', 'please', 'thanks',
 ]);
 export function isStopword(word: string): boolean {
   return EXTRA_STOPWORDS.has(word.trim().toLowerCase());
+}
+
+/** Keep only real words: drops slash-commands (/new, /end), numbers, and punctuation tokens. */
+export function isWordlike(word: string): boolean {
+  return /^\p{L}+$/u.test(word);
 }
 
 /** UTC year-month key, e.g. '2026-06'. */

@@ -1,11 +1,21 @@
 import { describe, it, expect } from 'vitest';
-import { isStopword, monthKey, scoreToLabel, wordSize } from './crm-insights';
+import { isStopword, isWordlike, monthKey, scoreToLabel, wordSize } from './crm-insights';
 
 describe('isStopword', () => {
   it('filters common chat noise (case-insensitive)', () => {
     expect(isStopword('Hola')).toBe(true);
     expect(isStopword('gracias')).toBe(true);
     expect(isStopword('rinoplastia')).toBe(false);
+  });
+});
+
+describe('isWordlike', () => {
+  it('keeps real words, drops commands/numbers/punctuation', () => {
+    expect(isWordlike('dolor')).toBe(true);
+    expect(isWordlike('rinoplastia')).toBe(true);
+    expect(isWordlike('/new')).toBe(false);
+    expect(isWordlike('123')).toBe(false);
+    expect(isWordlike('p2p')).toBe(false);
   });
 });
 
