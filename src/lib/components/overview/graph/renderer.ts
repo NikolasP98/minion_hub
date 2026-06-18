@@ -183,6 +183,10 @@ export async function createRenderer(
 		if (node.showLabel) {
 			label = new Text({
 				text: node.label,
+				// Oversample the glyph atlas so text stays crisp; the per-frame
+				// 1/zoom counter-scale (see frame()) then keeps it at a constant
+				// on-screen size instead of being magnified blurry by the world zoom.
+				resolution: Math.max(2, (window.devicePixelRatio || 1) * 2),
 				style: {
 					fill: node.labelColor,
 					fontSize: node.labelSize,
@@ -241,7 +245,12 @@ export async function createRenderer(
 			v.targetAlpha = focusFactor(v.node.id);
 			v.displayAlpha += (v.targetAlpha - v.displayAlpha) * 0.18;
 			v.container.alpha = v.displayAlpha;
-			if (v.label) v.label.visible = showLabels && (!focus || focus.has(v.node.id));
+			if (v.label) {
+				v.label.visible = showLabels && (!focus || focus.has(v.node.id));
+				// Counter-scale so labels keep a constant on-screen size and are
+				// never upscaled by the world zoom (which is what blurred them).
+				v.label.scale.set(1 / zoom);
+			}
 			v.screenX = v.node.x * zoom + world.position.x;
 			v.screenY = v.node.y * zoom + world.position.y;
 		}
