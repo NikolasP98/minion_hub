@@ -2802,6 +2802,7 @@
   "crm_funnel_now": "now",
   "crm_funnel_current": "Current stage:",
   "crm_funnel_pinned": "pinned",
+  "crm_funnel_by_billing": "Advanced by billing — real purchase on record.",
   "crm_funnel_none": "No funnel stage yet — no first contact recorded.",
   "crm_funnel_analyze": "Re-analyze",
   "crm_funnel_analyzing": "Analyzing…",

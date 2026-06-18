@@ -128,7 +128,10 @@ export async function contactFinanceSummary(ctx: CoreCtx, contactId: string) {
         select ${PHONE9('ci.external_id')} p9 from crm_contact_identities ci
         where ci.org_id = current_setting('app.current_org_id', true) and ci.contact_id = ${contactId} and ci.channel='whatsapp'
       )
-      select fi.id, fi.document_id, fi.issued_at, coalesce(fi.total,0)::float8 total, fi.status
+      select fi.id, fi.document_id, fi.issued_at, coalesce(fi.total,0)::float8 total, fi.status,
+             -- the "what was done": a representative line, procedures first (reserva last), priciest first.
+             (select ii.description from fin_invoice_items ii where ii.invoice_id = fi.id and ii.description is not null
+                order by (ii.description ilike '%reserva%') asc, ii.total desc nulls last limit 1) as item
       from fin_invoices fi
       join fin_clients fc on fc.id = fi.client_id
       where fc.org_id = current_setting('app.current_org_id', true) and ${PHONE9('fc.phone')} in (select p9 from phones)
@@ -136,14 +139,33 @@ export async function contactFinanceSummary(ctx: CoreCtx, contactId: string) {
     `)) as unknown as Array<Record<string, unknown>>;
     if (invoices.length === 0) return null;
     const all = invoices.map((r) => ({ id: String(r.id), documentId: r.document_id != null ? String(r.document_id) : null,
-      issuedAt: r.issued_at != null ? String(r.issued_at) : null, total: Number(r.total), status: r.status != null ? String(r.status) : null }));
+      issuedAt: r.issued_at != null ? String(r.issued_at) : null, total: Number(r.total), status: r.status != null ? String(r.status) : null,
+      item: r.item != null ? String(r.item) : null }));
     const [agg] = (await tx.execute(sql`
       with phones as (select ${PHONE9('ci.external_id')} p9 from crm_contact_identities ci
-        where ci.org_id = current_setting('app.current_org_id', true) and ci.contact_id = ${contactId} and ci.channel='whatsapp')
-      select coalesce(sum(fi.total),0)::float8 revenue, count(fi.id)::int invoices, max(fi.issued_at) last
-      from fin_invoices fi join fin_clients fc on fc.id = fi.client_id
-      where fc.org_id = current_setting('app.current_org_id', true) and ${PHONE9('fc.phone')} in (select p9 from phones)
-    `)) as unknown as Array<{ revenue: number; invoices: number; last: string | null }>;
-    return { revenue: Number(agg.revenue), invoices: Number(agg.invoices), lastPurchaseAt: agg.last != null ? String(agg.last) : null, recentInvoices: all };
+        where ci.org_id = current_setting('app.current_org_id', true) and ci.contact_id = ${contactId} and ci.channel='whatsapp'),
+      inv as (
+        select fi.id, coalesce(fi.total,0)::float8 total, fi.issued_at,
+               bool_or(${IS_RESERVA}) has_reserva, bool_or(${IS_PROCEDURE}) has_proc
+        from fin_invoices fi join fin_clients fc on fc.id = fi.client_id
+        left join fin_invoice_items ii on ii.invoice_id = fi.id
+        where fc.org_id = current_setting('app.current_org_id', true) and ${PHONE9('fc.phone')} in (select p9 from phones)
+        group by fi.id, fi.total, fi.issued_at
+      )
+      select coalesce(sum(total),0)::float8 revenue, count(*)::int invoices, max(issued_at) last,
+             bool_or(has_proc) purchased, bool_or(has_reserva) has_reserva,
+             count(distinct case when has_proc then issued_at::date end)::int proc_dates
+      from inv
+    `)) as unknown as Array<{ revenue: number; invoices: number; last: string | null; purchased: boolean; has_reserva: boolean; proc_dates: number }>;
+    const purchased = Boolean(agg?.purchased);
+    return {
+      revenue: Number(agg?.revenue ?? 0),
+      invoices: Number(agg?.invoices ?? 0),
+      lastPurchaseAt: agg?.last != null ? String(agg.last) : null,
+      purchased,
+      reservedOnly: !purchased && Boolean(agg?.has_reserva),
+      loyal: Number(agg?.proc_dates ?? 0) >= 2,
+      recentInvoices: all,
+    };
   });
 }

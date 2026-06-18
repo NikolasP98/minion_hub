@@ -8,6 +8,7 @@
 	import ScoreBadge from '$lib/components/crm/ScoreBadge.svelte';
 	import StagePill from '$lib/components/crm/StagePill.svelte';
 	import CrmFunnel from '$lib/components/crm/CrmFunnel.svelte';
+	import { financeFloorStage } from '$lib/components/crm/crm-funnel';
 	import JourneyTimeline from '$lib/components/crm/JourneyTimeline.svelte';
 	import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
 	import { contactLabel, isRecencyNever, identityValue, relativeTime } from '$lib/components/crm/crm-format';
@@ -240,8 +241,9 @@
 				</div>
 			</section>
 
-			<!-- Marketing funnel (acquisition axis; separate from lifecycle) -->
-			<CrmFunnel contactId={c.id} customFields={fields} inbound={score?.inbound_msgs ?? 0} />
+			<!-- Marketing funnel (acquisition axis; separate from lifecycle).
+			     financeFloor advances it with real purchase history when Finances is on. -->
+			<CrmFunnel contactId={c.id} customFields={fields} inbound={score?.inbound_msgs ?? 0} financeFloor={financeFloorStage(data.finance)} />
 
 			<!-- Identities -->
 			<section class="card">
@@ -334,7 +336,7 @@
 						<ul class="fin-list">
 							{#each data.finance.recentInvoices as inv (inv.id)}
 								<li class="fin-row">
-									<a href="/finances/invoices/{inv.id}" class="fin-doc">{inv.documentId ?? inv.id}</a>
+									<a href="/finances/invoices/{inv.id}" class="fin-doc" title={inv.documentId ?? inv.id}>{inv.item ?? inv.documentId ?? inv.id}</a>
 									<span class="fin-date t-caption">{inv.issuedAt ? relativeTime(inv.issuedAt) : '—'}</span>
 									<span class="fin-total">{inv.total.toLocaleString()}</span>
 									{#if inv.status}<span class="fin-status t-caption">{inv.status}</span>{/if}

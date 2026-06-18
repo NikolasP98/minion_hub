@@ -8,6 +8,7 @@
 		funnelStageIndex,
 		readFunnelMeta,
 		effectiveFunnelStage,
+		maxFunnelStage,
 		type FunnelStage,
 	} from './crm-funnel';
 	import { funnelStageLabel } from './crm-i18n';
@@ -16,12 +17,22 @@
 		contactId,
 		customFields,
 		inbound,
-	}: { contactId: string; customFields: Record<string, unknown> | null; inbound: number } = $props();
+		financeFloor = null,
+	}: { contactId: string; customFields: Record<string, unknown> | null; inbound: number; financeFloor?: FunnelStage | null } = $props();
 
 	const meta = $derived(readFunnelMeta(customFields));
-	const current = $derived(effectiveFunnelStage(customFields, { inbound }));
+	// Chat-derived stage, advanced by the finance floor (real purchases beat
+	// sentiment). Read-time only — never persisted, so it stays decoupled.
+	const chatStage = $derived(effectiveFunnelStage(customFields, { inbound }));
+	const current = $derived(maxFunnelStage(chatStage, financeFloor));
 	const curIdx = $derived(current ? funnelStageIndex(current) : -1);
 	const overridden = $derived(meta ? !meta.auto : false);
+	// True when billing pushed the contact past whatever chat/sentiment found.
+	const byBilling = $derived(
+		!!financeFloor &&
+			current === financeFloor &&
+			(!chatStage || funnelStageIndex(financeFloor) > funnelStageIndex(chatStage)),
+	);
 
 	let busy = $state(false);
 	let analyzing = $state(false);
@@ -124,7 +135,9 @@
 				<strong style:color={funnelStageColor(current)}>{funnelStageLabel(current)}</strong>
 				{#if overridden}<span class="badge">{m.crm_funnel_pinned()}</span>{/if}
 			</span>
-			{#if meta?.reason}
+			{#if byBilling}
+				<span class="reason">{m.crm_funnel_by_billing()}</span>
+			{:else if meta?.reason}
 				<span class="reason">{meta.reason}</span>
 			{/if}
 		{:else}

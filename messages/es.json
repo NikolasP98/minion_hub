@@ -2802,6 +2802,7 @@
   "crm_funnel_now": "actual",
   "crm_funnel_current": "Etapa actual:",
   "crm_funnel_pinned": "fijada",
+  "crm_funnel_by_billing": "Avanzado por facturación — compra real registrada.",
   "crm_funnel_none": "Aún sin etapa — no hay primer contacto registrado.",
   "crm_funnel_analyze": "Re-analizar",
   "crm_funnel_analyzing": "Analizando…",
