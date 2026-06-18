@@ -184,6 +184,24 @@ export const crmSettings = pgTable('crm_settings', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * Per-message sentiment (C2 groundwork). One row per scored inbound `messages`
+ * row; accumulates so the monthly sentiment trend fills in over time. org_id
+ * matches messages.org_id so it rides the same withOrgCore() GUC transaction.
+ */
+export const crmMessageSentiment = pgTable(
+  'crm_message_sentiment',
+  {
+    orgId: text('org_id').notNull(),
+    messageId: uuid('message_id').notNull(),
+    score: doublePrecision('score').notNull(), // -1.0 (neg) … +1.0 (pos)
+    label: text('label').notNull(), // 'positive' | 'neutral' | 'negative'
+    model: text('model'),
+    analyzedAt: timestamp('analyzed_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.orgId, t.messageId] })],
+);
+
 export type CrmContact = typeof crmContacts.$inferSelect;
 export type NewCrmContact = typeof crmContacts.$inferInsert;
 export type CrmContactIdentity = typeof crmContactIdentities.$inferSelect;
