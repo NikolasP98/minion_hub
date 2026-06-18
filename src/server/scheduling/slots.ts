@@ -159,6 +159,29 @@ function sliceSlots(interval: Interval, lengthMin: number, stepMin: number, wind
   return starts;
 }
 
+/** Expand a resource's availability (weekly rules + overrides) into merged UTC
+ *  working intervals spanning [windowStart, windowEnd] (ms). Padded ±1 day so a
+ *  slot near a timezone boundary isn't missed. */
+function expandFreeIntervals(res: ResourceAvailability, windowStart: number, windowEnd: number): Interval[] {
+  const startKey = zonedDateKey(new Date(windowStart - MS_PER_DAY), res.timezone);
+  const endKey = zonedDateKey(new Date(windowEnd + MS_PER_DAY), res.timezone);
+  const free: Interval[] = [];
+  for (const dateKey of dateKeysBetween(startKey, endKey)) free.push(...intervalsForDate(res, dateKey));
+  return mergeIntervals(free);
+}
+
+/** Total working minutes for a resource within [from, to] — drives utilization. */
+export function availableMinutes(res: ResourceAvailability, from: Date, to: Date): number {
+  const intervals = expandFreeIntervals(res, from.getTime(), to.getTime());
+  let total = 0;
+  for (const iv of intervals) {
+    const s = Math.max(iv.start, from.getTime());
+    const e = Math.min(iv.end, to.getTime());
+    if (e > s) total += (e - s) / MS_PER_MIN;
+  }
+  return total;
+}
+
 export function computeSlots(input: ComputeSlotsInput): Slot[] {
   const { eventType, resources, bookings, rangeStart, rangeEnd, now } = input;
   const length = eventType.length;
@@ -178,15 +201,7 @@ export function computeSlots(input: ComputeSlotsInput): Slot[] {
   // 2-4. Per-resource slot starts.
   const perResource = new Map<string, Set<number>>();
   for (const res of resources) {
-    // Local date span (pad ±1 day so a slot near a tz boundary isn't missed).
-    const startKey = zonedDateKey(new Date(windowStart - MS_PER_DAY), res.timezone);
-    const endKey = zonedDateKey(new Date(windowEnd + MS_PER_DAY), res.timezone);
-
-    let free: Interval[] = [];
-    for (const dateKey of dateKeysBetween(startKey, endKey)) {
-      free.push(...intervalsForDate(res, dateKey));
-    }
-    free = mergeIntervals(free);
+    let free = expandFreeIntervals(res, windowStart, windowEnd);
 
     // Subtract this resource's bookings, padded by buffers.
     const busy: Interval[] = bookings
