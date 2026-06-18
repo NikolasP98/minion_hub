@@ -58,6 +58,8 @@
   let _renderer: Renderer | null = null;
   let _sim: Simulation | null = null;
   let _ready = false;
+  // Current layout rotation (radians); set when an area is selected, 0 otherwise.
+  let _rotation = 0;
 
   // ── Top-level effect: rebuild when props change after the renderer is ready ──
   $effect(() => {
@@ -118,10 +120,18 @@
       window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     _sim = createSimulation(nodes, edges, { reducedMotion });
     _renderer.setGraph(_sim.nodes() as SimNode[], edges);
+    // Preserve any active rotation across rebuilds (a fresh sim starts at 0).
+    if (_rotation) _sim.setRotation(_rotation);
   }
 
   function toggleLegendKind(kind: NodeKind) {
     if (!_renderer) return;
+    // Legend highlighting uses the default orientation, not an area pivot.
+    if (_rotation) {
+      _rotation = 0;
+      _sim?.setRotation(0);
+      _renderer.fitView();
+    }
     if (activeLegendKind === kind) {
       // Deactivate
       activeLegendKind = null;
@@ -245,6 +255,9 @@
             selected = null;
             activeLegendKind = null;
             r.setFocus(null);
+            // Recover the original orientation when nothing is selected.
+            _rotation = 0;
+            _sim?.setRotation(0);
             r.fitView();
           }
         }
@@ -279,13 +292,27 @@
       if (!m) return;
       r.setFocus(focusSetFor(m));
       if (m.kind === 'org') {
+        // Org = whole graph: recover the original orientation and fit.
+        _rotation = 0;
+        _sim?.setRotation(0);
         r.fitView();
       } else if (m.kind === 'area') {
-        const ang = Math.atan2(m.ay, m.ax);
+        // Rotate the layout so this sector points along the canvas's long axis
+        // (right on wide screens, down on tall ones), then frame it.
+        const el = canvasEl!;
+        const targetAngle = el.clientWidth >= el.clientHeight ? 0 : Math.PI / 2;
+        const sectorAngle = Math.atan2(m.ay, m.ax);
+        _rotation = targetAngle - sectorAngle;
+        _sim?.setRotation(_rotation);
         const rr = (RADII.area + RADII.user) / 2;
-        r.animateTo([rr * Math.cos(ang), rr * Math.sin(ang)], 1.0);
+        const longPx = Math.max(el.clientWidth, el.clientHeight);
+        const fitZoom = longPx / (RADII.user * 1.5);
+        r.animateTo([rr * Math.cos(targetAngle), rr * Math.sin(targetAngle)], fitZoom);
       } else {
-        r.animateTo([m.ax, m.ay], 1.55);
+        // Leaf node: camera target must follow the current rotation.
+        const c = Math.cos(_rotation);
+        const s = Math.sin(_rotation);
+        r.animateTo([m.ax * c - m.ay * s, m.ax * s + m.ay * c], 1.55);
       }
     }
 
