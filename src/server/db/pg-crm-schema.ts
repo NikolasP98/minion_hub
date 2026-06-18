@@ -5,6 +5,7 @@ import {
   jsonb,
   timestamp,
   doublePrecision,
+  integer,
   index,
   uniqueIndex,
   primaryKey,
@@ -200,6 +201,25 @@ export const crmMessageSentiment = pgTable(
     analyzedAt: timestamp('analyzed_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.orgId, t.messageId] })],
+);
+
+/**
+ * C3 — winning-conversation embeddings (dormant RAG groundwork). One row per
+ * buyer (procedure-purchaser) conversation. The `embedding vector(1536)` column
+ * is managed via raw SQL (pgvector, mirrors agent_memories) and is NOT modeled
+ * here. similarWins() cosine-searches it for an active contact's nearest wins.
+ */
+export const crmWinEmbeddings = pgTable(
+  'crm_win_embeddings',
+  {
+    orgId: text('org_id').notNull(),
+    contactId: uuid('contact_id').notNull(),
+    msgCount: integer('msg_count').notNull().default(0),
+    bought: text('bought').array().notNull().default([]),
+    snippet: text('snippet'),
+    builtAt: timestamp('built_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.orgId, t.contactId] })],
 );
 
 export type CrmContact = typeof crmContacts.$inferSelect;
