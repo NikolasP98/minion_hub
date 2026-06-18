@@ -1,6 +1,3 @@
 {
-  "crons": [
-    { "path": "/api/finances/sync/tick", "schedule": "* * * * *" },
-    { "path": "/api/scheduling/reminders/tick", "schedule": "* * * * *" }
-  ]
+  "crons": []
 }
