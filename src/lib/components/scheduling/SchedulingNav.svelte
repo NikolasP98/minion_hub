@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { LayoutDashboard, CalendarDays, Users, Sparkles, CalendarClock, Link2, Settings } from 'lucide-svelte';
+	import { LayoutDashboard, CalendarDays, Users, Sparkles, CalendarClock, Link2, Settings, BellRing } from 'lucide-svelte';
 	import { page } from '$app/state';
 	import * as m from '$lib/paraglide/messages';
 
@@ -11,6 +11,7 @@
 		{ id: 'resources', label: () => m.sched_nav_resources(), icon: Users, href: '/scheduling/resources' },
 		{ id: 'eventTypes', label: () => m.sched_nav_eventTypes(), icon: Sparkles, href: '/scheduling/event-types' },
 		{ id: 'links', label: () => m.sched_nav_links(), icon: Link2, href: '/scheduling/links' },
+		{ id: 'reminders', label: () => m.sched_nav_reminders(), icon: BellRing, href: '/scheduling/reminders' },
 		{ id: 'settings', label: () => m.sched_nav_settings(), icon: Settings, href: '/scheduling/settings' },
 	];
 
