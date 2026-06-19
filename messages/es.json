@@ -3111,5 +3111,8 @@
   "autonomous_manage": "Gestionar",
   "autonomous_status_active": "Activo",
   "autonomous_status_disabled": "Inactivo",
-  "autonomous_status_attention": "Requiere atención"
+  "autonomous_status_attention": "Requiere atención",
+  "autonomous_page_title": "Agentes autónomos",
+  "autonomous_page_subtitle": "Automatizaciones activadas que se ejecutan solas — sin chat, solo una tarea.",
+  "autonomous_empty": "Aún no hay agentes autónomos. Activa un módulo (como Agenda) para agregar uno."
 }
