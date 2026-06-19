@@ -3107,5 +3107,9 @@
   "sysagent_reminders_role": "Appointment Reminders",
   "sysagent_reminders_desc": "Sends WhatsApp confirmation and pre-appointment reminders automatically.",
   "sysagent_reminders_trigger": "On booking · 24h before · 2h before",
-  "sysagent_status_no_account": "No WhatsApp account set"
+  "sysagent_status_no_account": "No WhatsApp account set",
+  "autonomous_manage": "Manage",
+  "autonomous_status_active": "Active",
+  "autonomous_status_disabled": "Disabled",
+  "autonomous_status_attention": "Needs attention"
 }
