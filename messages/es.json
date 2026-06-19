@@ -3111,6 +3111,7 @@
   "sysagent_reminders_trigger": "Al reservar · 24h antes · 2h antes",
   "sysagent_status_no_account": "Sin cuenta de WhatsApp configurada",
   "autonomous_manage": "Gestionar",
+  "autonomous_view_flow": "Ver flujo",
   "autonomous_status_active": "Activo",
   "autonomous_status_disabled": "Inactivo",
   "autonomous_status_attention": "Requiere atención",
