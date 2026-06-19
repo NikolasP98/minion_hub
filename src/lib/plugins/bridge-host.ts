@@ -4,6 +4,8 @@ export interface MountHostBridgeOptions {
   self: Window;
   target: Window;
   pluginOrigin: string;
+  /** Peer iframe is sandboxed (opaque origin) — see HostBridgeOptions.sandboxed. */
+  sandboxed?: boolean;
   hello: {
     theme: Theme;
     tokens: Record<string, string>;
@@ -32,6 +34,7 @@ export function mountHostBridge(opts: MountHostBridgeOptions): MountedHostBridge
     self: opts.self,
     target: opts.target,
     pluginOrigin: opts.pluginOrigin,
+    sandboxed: opts.sandboxed,
     forwardRpc: opts.forwardRpc,
   });
   bridge.sendHelloOnReady(opts.hello);

@@ -54,6 +54,9 @@
       self: window,
       target: iframeEl.contentWindow,
       pluginOrigin: origin,
+      // Artifacts run in a sandbox="allow-scripts" iframe (opaque origin): they
+      // post with origin "null" and are reached via "*". Validate by source window.
+      sandboxed: true,
       hello: { theme, tokens, gatewayUrl: '', authToken: '' },
       forwardRpc: (method, _params) => forwardRpc(method),
     });
@@ -73,6 +76,7 @@
         {src}
         title={descriptor.title}
         referrerpolicy="strict-origin"
+        sandbox="allow-scripts"
         class="min-h-0 w-full flex-1 border-0"
       ></iframe>
     {/if}
@@ -84,6 +88,7 @@
     {src}
     title={descriptor.title}
     referrerpolicy="strict-origin"
+    sandbox="allow-scripts"
     class="h-full w-full border-0"
   ></iframe>
 {/if}

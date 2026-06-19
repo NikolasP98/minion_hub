@@ -16,11 +16,19 @@ const BUNDLES: Record<string, Record<string, { body: string; type: string }>> = 
   },
 };
 
-function serve(body: string, type: string): Response {
+// `sandbox` forces the document into an opaque origin (no same-origin DOM /
+// cookie / API access) — defense-in-depth for untrusted, user-authored DB
+// bundles, on top of the iframe's `sandbox="allow-scripts"` attribute. It also
+// protects direct navigation to the artifact URL (outside the iframe).
+function serve(body: string, type: string, sandbox = false): Response {
+  const csp = sandbox
+    ? "sandbox allow-scripts; frame-ancestors 'self'"
+    : "frame-ancestors 'self'";
   return new Response(body, {
     headers: {
       'content-type': type,
-      'content-security-policy': "frame-ancestors 'self'",
+      'content-security-policy': csp,
+      'x-content-type-options': 'nosniff',
       'cache-control': 'no-store',
     },
   });
@@ -34,5 +42,5 @@ export const GET: RequestHandler = async ({ params, locals }) => {
   const ctx = await requireCoreCtx(locals);
   const row = await getArtifactRow(ctx, params.artifactId).catch(() => null);
   if (!row) throw error(404, 'artifact not found');
-  return serve(row.html, 'text/html; charset=utf-8');
+  return serve(row.html, 'text/html; charset=utf-8', true);
 };

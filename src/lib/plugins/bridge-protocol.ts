@@ -42,9 +42,23 @@ export interface HostBridgeOptions {
    * messages are dropped (legacy plugins that don't use bridge.call still work).
    */
   forwardRpc?: (method: string, params: unknown) => Promise<unknown>;
+  /**
+   * The peer iframe is sandboxed (cross-origin, opaque origin) — e.g. an
+   * untrusted artifact bundle served with `sandbox="allow-scripts"`. Its
+   * messages arrive with `origin === "null"` and it can only be reached with
+   * targetOrigin `"*"`. When set, inbound messages are validated by source
+   * window identity (`ev.source === target`) instead of origin, and outbound
+   * posts use `"*"`. Leave false for first-party same-origin plugins.
+   */
+  sandboxed?: boolean;
 }
 
 export class HostBridge {
+  // targetOrigin for outbound posts: a sandboxed (opaque-origin) peer can only
+  // be reached with "*"; same-origin plugins are pinned to their exact origin.
+  private get targetOrigin(): string {
+    return this.opts.sandboxed ? "*" : this.opts.pluginOrigin;
+  }
   private pendingHelloPayload: Omit<Extract<HostToPlugin, { type: "host:hello" }>, "type"> | null =
     null;
   // Theme-change is buffered the same way as hello: posting before the iframe
@@ -76,7 +90,14 @@ export class HostBridge {
   }
 
   private handle = (ev: MessageEvent): void => {
-    if (ev.origin !== this.opts.pluginOrigin) return;
+    // Sandboxed peers post with an opaque origin ("null"); validate them by
+    // source-window identity instead (stronger than origin). Same-origin
+    // plugins keep strict origin validation.
+    if (this.opts.sandboxed) {
+      if (ev.source !== this.opts.target) return;
+    } else if (ev.origin !== this.opts.pluginOrigin) {
+      return;
+    }
     if (!isPluginToHost(ev.data)) return;
     if (ev.data.type === "plugin:ready") {
       const wasReady = this.pluginReady;
@@ -127,7 +148,7 @@ export class HostBridge {
     error?: { code?: string; message?: string },
   ): void {
     const msg: HostToPlugin = { type: "host:rpc-response", id, ok, payload, error };
-    this.opts.target.postMessage(msg, this.opts.pluginOrigin);
+    this.opts.target.postMessage(msg, this.targetOrigin);
   }
 
   /**
@@ -154,7 +175,7 @@ export class HostBridge {
       protocolVersion: BRIDGE_PROTOCOL_VERSION,
       ...this.pendingHelloPayload,
     };
-    this.opts.target.postMessage(msg, this.opts.pluginOrigin);
+    this.opts.target.postMessage(msg, this.targetOrigin);
   }
 
   sendThemeChange(payload: { theme: Theme; tokens: Record<string, string> }): void {
@@ -165,7 +186,7 @@ export class HostBridge {
   private flushTheme(): void {
     if (!this.pluginReady || !this.pendingThemePayload) return;
     const msg: HostToPlugin = { type: "host:theme-change", ...this.pendingThemePayload };
-    this.opts.target.postMessage(msg, this.opts.pluginOrigin);
+    this.opts.target.postMessage(msg, this.targetOrigin);
     this.pendingThemePayload = null;
   }
 
@@ -177,7 +198,7 @@ export class HostBridge {
   private flushLocale(): void {
     if (!this.pluginReady || !this.pendingLocalePayload) return;
     const msg: HostToPlugin = { type: "host:locale-change", ...this.pendingLocalePayload };
-    this.opts.target.postMessage(msg, this.opts.pluginOrigin);
+    this.opts.target.postMessage(msg, this.targetOrigin);
     this.pendingLocalePayload = null;
   }
 
@@ -211,7 +232,7 @@ export class HostBridge {
   requestSave(): string {
     const id = `save-${++this.saveSeq}-${Date.now()}`;
     const msg: HostToPlugin = { type: "host:save", id };
-    this.opts.target.postMessage(msg, this.opts.pluginOrigin);
+    this.opts.target.postMessage(msg, this.targetOrigin);
     return id;
   }
 
