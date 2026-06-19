@@ -9,6 +9,7 @@ export interface ArtifactDescriptor {
   icon: string;        // lucide icon name (resolved via resolvePluginIcon)
   kind: 'static';      // 'live' reserved for later
   entrypoint: string;  // bundle path, e.g. "index.html"
+  deletable?: boolean; // whether the artifact can be deleted (only true for user artifacts, false/absent for built-ins)
 }
 
 export interface ArtifactContext {
