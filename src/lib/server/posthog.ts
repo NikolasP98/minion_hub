@@ -10,8 +10,13 @@ export async function getPostHogClient() {
     const { PostHog } = await import('posthog-node');
     posthogClient = new PostHog(env.PUBLIC_POSTHOG_KEY, {
       host: env.PUBLIC_POSTHOG_HOST,
-      flushAt: 1,
-      flushInterval: 0,
+      // M8: flushAt:1/flushInterval:0 made every capture a synchronous HTTP
+      // round-trip — during an error storm that fans out one request per error.
+      // Batch instead: send when 20 events queue OR every 10s, whichever first.
+      // The posthog-node client flushes its queue on shutdown, so batching does
+      // not drop events on a clean exit.
+      flushAt: 20,
+      flushInterval: 10_000,
       requestTimeout: 3000,
       fetchRetryCount: 0,
       fetchRetryDelay: 0,

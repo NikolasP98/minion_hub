@@ -6,7 +6,7 @@
 import { ensureAgentChat, pushChatMessage } from '$lib/state/chat/chat.svelte';
 import { conn } from '$lib/state/gateway/connection.svelte';
 import { uuid } from '@minion-stack/shared';
-import { sendRequest } from '../gateway.svelte';
+import { sendRequest } from '../gateway-rpc';
 
 export function loadChatHistory(agentId: string): Promise<void> {
   const chat = ensureAgentChat(agentId);
@@ -59,17 +59,21 @@ export function sendChatMsg(agentId: string) {
     if (chat.runId === runId) chat.sending = false;
   }, 120_000);
 
-  sendRequest('chat.send', { sessionKey, message: msg, deliver: false, idempotencyKey: runId })
-    .catch((e) => {
-      clearTimeout(guard);
-      chat.runId = null;
-      chat.stream = null;
-      chat.streamMessage = null;
-      chat.sending = false;
-      chat.lastError = String(e);
-      // Sync in case the message was processed despite the error
-      loadChatHistory(agentId);
-    });
+  sendRequest('chat.send', {
+    sessionKey,
+    message: msg,
+    deliver: false,
+    idempotencyKey: runId,
+  }).catch((e) => {
+    clearTimeout(guard);
+    chat.runId = null;
+    chat.stream = null;
+    chat.streamMessage = null;
+    chat.sending = false;
+    chat.lastError = String(e);
+    // Sync in case the message was processed despite the error
+    loadChatHistory(agentId);
+  });
 }
 
 /**

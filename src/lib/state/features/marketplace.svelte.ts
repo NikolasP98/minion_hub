@@ -1,3 +1,5 @@
+import { sendInstall } from '$lib/services/gateway-rpc';
+
 export interface MarketplaceAgent {
   id: string;
   name: string;
@@ -121,7 +123,6 @@ export async function installAgent(
 
     // Push agent files to the gateway filesystem via the active WebSocket connection
     if (data.files && Object.keys(data.files).length > 0) {
-      const { sendInstall } = await import('$lib/services/gateway.svelte');
       try {
         await sendInstall(agentId, data.files);
       } catch (wsErr) {

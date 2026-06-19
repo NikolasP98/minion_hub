@@ -27,6 +27,9 @@ export const unifiedEvents = sqliteTable(
     index('idx_unified_events_tenant').on(t.tenantId),
     index('idx_unified_events_server_cat_time').on(t.serverId, t.category, t.occurredAt),
     index('idx_unified_events_server_time').on(t.serverId, t.occurredAt),
+    // Covers the severity-filtered event list (events.service.ts listEvents):
+    // server_id + severity, ordered by occurred_at desc.
+    index('idx_unified_events_server_sev_time').on(t.serverId, t.severity, t.occurredAt),
     index('idx_unified_events_correlation').on(t.correlationId),
     uniqueIndex('idx_unified_events_dedup').on(t.tenantId, t.serverId, t.localEventId),
   ],

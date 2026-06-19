@@ -10,8 +10,6 @@ import {
 } from '@minion-stack/cache';
 import { env } from '$env/dynamic/private';
 import { randomUUID } from 'node:crypto';
-import { getDb } from '$server/db/client';
-import { getSystemGatewayCredentials } from '$server/services/server.service';
 import { getSystemGatewayCredentials as getSystemGatewayCredentialsPg } from '$server/services/gateway.pg.service';
 
 let initPromise: Promise<void> | null = null;
@@ -60,6 +58,17 @@ async function doInitCache(): Promise<void> {
   const isProd = env.NODE_ENV === 'production';
   const backendName: Backend = explicit ?? (isProd ? 'noop' : 'memory');
 
+  // H9: the `memory` backend is per-instance. Its broadcaster only emits to the
+  // gateway, never to peer hub Lambdas — so on a multi-instance host (Vercel)
+  // a tenant-data invalidation on one warm function never reaches the others,
+  // and they serve stale data for the full TTL. Warn loudly; memory is only
+  // correct on a single long-lived instance.
+  if (backendName === 'memory' && cleanEnv(env.VERCEL)) {
+    console.warn(
+      '[cache] CACHE_BACKEND=memory on Vercel (multi-instance): invalidations are NOT propagated to peer instances — tenant data can be stale for the full TTL. Set CACHE_BACKEND=valkey (with VALKEY_URL) or =noop for correct cross-instance behavior.',
+    );
+  }
+
   let backend: CacheBackend;
   if (backendName === 'valkey') {
     const valkeyUrl = cleanEnv(env.VALKEY_URL);
@@ -78,24 +87,15 @@ async function doInitCache(): Promise<void> {
   }
 
   const broadcastUrl = cleanEnv(env.MINION_GATEWAY_BROADCAST_URL);
-  // Token comes from the encrypted DB row (single source of truth) — not from a
-  // duplicated env var. Primary: Supabase `gateway` (system-of-record). Fallback:
-  // legacy Turso `servers` (Track A2 kill-switch GATEWAY_TURSO_FALLBACK). Last:
-  // env.OPENCLAW_GATEWAY_TOKEN for a fresh deploy with no gateway row yet.
+  // Token comes from the encrypted Supabase `gateway` row (system-of-record) —
+  // not from a duplicated env var. Last-resort env.OPENCLAW_GATEWAY_TOKEN for a
+  // fresh deploy with no gateway row yet.
   let broadcastToken: string | null = null;
   try {
     const creds = await getSystemGatewayCredentialsPg(env.MINION_GATEWAY_PRIMARY_URL);
     broadcastToken = creds?.token ?? null;
   } catch (err) {
     console.warn('[cache] Supabase gateway token lookup failed', err);
-  }
-  if (!broadcastToken && env.GATEWAY_TURSO_FALLBACK !== 'false') {
-    try {
-      const creds = await getSystemGatewayCredentials(getDb(), env.MINION_GATEWAY_PRIMARY_URL);
-      broadcastToken = creds?.token ?? null;
-    } catch (err) {
-      console.warn('[cache] Turso servers token lookup failed', err);
-    }
   }
   if (!broadcastToken && env.OPENCLAW_GATEWAY_TOKEN) {
     console.warn(
@@ -113,7 +113,9 @@ async function doInitCache(): Promise<void> {
   } else {
     broadcaster = new NoopBroadcaster();
     if (!broadcastUrl) {
-      console.warn('[cache] MINION_GATEWAY_BROADCAST_URL unset — invalidations not broadcast to gateway');
+      console.warn(
+        '[cache] MINION_GATEWAY_BROADCAST_URL unset — invalidations not broadcast to gateway',
+      );
     } else if (!broadcastToken) {
       console.warn('[cache] no gateway token available — invalidations not broadcast');
     }

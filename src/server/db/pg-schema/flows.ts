@@ -10,20 +10,27 @@ import { pgTable, text, boolean, bigint, integer, index } from 'drizzle-orm/pg-c
  * the org's flows, including plugin-seeded automations (alert-watcher, weekly-recon).
  * `user_id` is kept for provenance only — it no longer gates visibility.
  */
-export const flows = pgTable('flows', {
-  id: text('id').primaryKey(),
-  name: text('name').notNull(),
-  nodes: text('nodes').notNull().default('[]'), // JSON string of FlowNode[]
-  edges: text('edges').notNull().default('[]'), // JSON string of FlowEdge[]
-  userId: text('user_id'), // creator (provenance) — null for legacy/shared
-  tenantId: text('tenant_id'), // org scope (cross-DB ref to Turso organization.id)
-  createdAt: bigint('created_at', { mode: 'number' }).notNull(),
-  updatedAt: bigint('updated_at', { mode: 'number' }).notNull(),
-  active: boolean('active').notNull().default(false),
-  config: text('config').notNull().default('{}'),
-  // FK→flow_groups.id; null ⇒ "My Flows" (ungrouped).
-  groupId: text('group_id'),
-});
+export const flows = pgTable(
+  'flows',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    nodes: text('nodes').notNull().default('[]'), // JSON string of FlowNode[]
+    edges: text('edges').notNull().default('[]'), // JSON string of FlowEdge[]
+    userId: text('user_id'), // creator (provenance) — null for legacy/shared
+    tenantId: text('tenant_id'), // org scope (cross-DB ref to Turso organization.id)
+    createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+    updatedAt: bigint('updated_at', { mode: 'number' }).notNull(),
+    active: boolean('active').notNull().default(false),
+    config: text('config').notNull().default('{}'),
+    // FK→flow_groups.id; null ⇒ "My Flows" (ungrouped).
+    groupId: text('group_id'),
+  },
+  // Covers the org-scoped flow list: where tenant_id = ? order by updated_at desc
+  // (api/flows/+server.ts). The single point-ish group filter (group_id + tenant_id)
+  // is satisfied by this leading column too, so no separate group_id index.
+  (t) => [index('flows_tenant_updated_idx').on(t.tenantId, t.updatedAt)],
+);
 
 export const flowGroups = pgTable(
   'flow_groups',

@@ -1,4 +1,4 @@
-import { eq, and, asc } from 'drizzle-orm';
+import { eq, and, asc, inArray } from 'drizzle-orm';
 import { agentGroups, agentGroupMembers } from '@minion-stack/db/pg';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { newId } from '$server/db/utils';
@@ -37,9 +37,8 @@ export async function listGroups(ctx: CoreCtx, userId: string) {
           members = await tx
             .select()
             .from(agentGroupMembers)
+            .where(inArray(agentGroupMembers.groupId, groupIds))
             .orderBy(asc(agentGroupMembers.sortOrder));
-          const groupIdSet = new Set(groupIds);
-          members = members.filter((m) => groupIdSet.has(m.groupId));
         }
 
         return groups.map((g) => ({

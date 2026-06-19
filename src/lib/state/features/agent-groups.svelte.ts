@@ -10,7 +10,8 @@ export interface AgentGroup {
 }
 
 interface AgentGroupsState {
-  groups: AgentGroup[];
+  /** Read-only — sourced from the cached store (single source of truth). */
+  readonly groups: AgentGroup[];
   loading: boolean;
   viewMode: 'list' | 'gallery';
   collapsedGroupIds: Set<string>;
@@ -68,13 +69,46 @@ function persistUngroupedCollapsed(collapsed: boolean) {
   }
 }
 
-export const agentGroupsState: AgentGroupsState = $state({
-  groups: [],
+// Mutable UI fields stay in $state. `groups` is intentionally NOT here — it is
+// a read-through getter over the cached store below (single source of truth).
+const _ui = $state({
   loading: false,
   viewMode: loadPersistedViewMode(),
   collapsedGroupIds: loadPersistedCollapsed(),
   ungroupedCollapsed: loadPersistedUngroupedCollapsed(),
 });
+
+export const agentGroupsState: AgentGroupsState = {
+  // Read-through: the cached store's `data` is the only copy of the groups.
+  // Reading it also drives the store's lazy SWR refetch when stale.
+  get groups() {
+    return _groupsStore?.data ?? [];
+  },
+  get loading() {
+    return _ui.loading;
+  },
+  set loading(v: boolean) {
+    _ui.loading = v;
+  },
+  get viewMode() {
+    return _ui.viewMode;
+  },
+  set viewMode(v: 'list' | 'gallery') {
+    _ui.viewMode = v;
+  },
+  get collapsedGroupIds() {
+    return _ui.collapsedGroupIds;
+  },
+  set collapsedGroupIds(v: Set<string>) {
+    _ui.collapsedGroupIds = v;
+  },
+  get ungroupedCollapsed() {
+    return _ui.ungroupedCollapsed;
+  },
+  set ungroupedCollapsed(v: boolean) {
+    _ui.ungroupedCollapsed = v;
+  },
+};
 
 function getServerId(): string | null {
   return ui.selectedServerId ?? null;
@@ -116,8 +150,8 @@ function getOrCreateGroupsStore(sid: string): CachedStore<AgentGroup[]> {
       if (!res.ok) throw new Error(`agent-groups fetch failed: ${res.status}`);
       const { groups } = await res.json();
       const data: AgentGroup[] = groups ?? [];
-      // Keep module-scope state in sync so existing consumers see the update.
-      agentGroupsState.groups = data;
+      // No hand-mirror: `agentGroupsState.groups` reads straight from this
+      // store's `data`. Just clear the loading flag.
       agentGroupsState.loading = false;
       return data;
     },
@@ -133,9 +167,9 @@ export async function loadAgentGroups(serverId?: string) {
 
   agentGroupsState.loading = true;
   const store = getOrCreateGroupsStore(sid);
-  // If sessionStorage already has fresh data, data is non-null immediately.
+  // If sessionStorage already has fresh data, `store.data` is non-null and
+  // `agentGroupsState.groups` reflects it immediately (read-through getter).
   if (store.data !== null) {
-    agentGroupsState.groups = store.data;
     agentGroupsState.loading = store.loading;
   }
   // Always kick a background refresh so data stays current.
@@ -152,6 +186,15 @@ export function destroyGroupsStore(): void {
   _groupsStoreKey = '';
 }
 
+/**
+ * Optimistically patch the cached store's groups in place. Single write path now
+ * that `agentGroupsState.groups` reads through to the store — no hand-mirror.
+ * No-op if the store doesn't exist yet (nothing is displaying groups anyway).
+ */
+function mutateGroups(updater: (groups: AgentGroup[]) => AgentGroup[]): void {
+  _groupsStore?.mutate((cur) => updater(cur ?? []));
+}
+
 export async function createAgentGroup(name: string) {
   const sid = getServerId();
   if (!sid) return;
@@ -159,7 +202,7 @@ export async function createAgentGroup(name: string) {
   // Optimistic: generate temp ID, add to state immediately
   const tempId = `temp-${Date.now()}`;
   const optimistic: AgentGroup = { id: tempId, name, sortOrder: 0, memberAgentIds: [] };
-  agentGroupsState.groups = [...agentGroupsState.groups, optimistic];
+  mutateGroups((groups) => [...groups, optimistic]);
 
   try {
     const res = await fetch(`/api/servers/${sid}/agent-groups`, {
@@ -168,15 +211,13 @@ export async function createAgentGroup(name: string) {
       body: JSON.stringify({ name }),
     });
     if (!res.ok) {
-      agentGroupsState.groups = agentGroupsState.groups.filter((g) => g.id !== tempId);
+      mutateGroups((groups) => groups.filter((g) => g.id !== tempId));
       return;
     }
     const { group } = await res.json();
-    agentGroupsState.groups = agentGroupsState.groups.map((g) =>
-      g.id === tempId ? { ...g, id: group.id } : g,
-    );
+    mutateGroups((groups) => groups.map((g) => (g.id === tempId ? { ...g, id: group.id } : g)));
   } catch {
-    agentGroupsState.groups = agentGroupsState.groups.filter((g) => g.id !== tempId);
+    mutateGroups((groups) => groups.filter((g) => g.id !== tempId));
   }
 }
 
@@ -194,9 +235,7 @@ export async function updateAgentGroup(
   });
   if (!res.ok) return;
 
-  agentGroupsState.groups = agentGroupsState.groups.map((g) =>
-    g.id === groupId ? { ...g, ...data } : g,
-  );
+  mutateGroups((groups) => groups.map((g) => (g.id === groupId ? { ...g, ...data } : g)));
 }
 
 export async function deleteAgentGroup(groupId: string) {
@@ -206,7 +245,7 @@ export async function deleteAgentGroup(groupId: string) {
   const res = await fetch(`/api/servers/${sid}/agent-groups/${groupId}`, { method: 'DELETE' });
   if (!res.ok) return;
 
-  agentGroupsState.groups = agentGroupsState.groups.filter((g) => g.id !== groupId);
+  mutateGroups((groups) => groups.filter((g) => g.id !== groupId));
   const next = new Set(agentGroupsState.collapsedGroupIds);
   next.delete(groupId);
   agentGroupsState.collapsedGroupIds = next;
@@ -222,15 +261,17 @@ export async function moveAgentToGroup(
   if (!sid) return;
 
   // Optimistic update
-  agentGroupsState.groups = agentGroupsState.groups.map((g) => {
-    if (g.id === fromGroupId) {
-      return { ...g, memberAgentIds: g.memberAgentIds.filter((id) => id !== agentId) };
-    }
-    if (g.id === toGroupId) {
-      return { ...g, memberAgentIds: [...g.memberAgentIds, agentId] };
-    }
-    return g;
-  });
+  mutateGroups((groups) =>
+    groups.map((g) => {
+      if (g.id === fromGroupId) {
+        return { ...g, memberAgentIds: g.memberAgentIds.filter((id) => id !== agentId) };
+      }
+      if (g.id === toGroupId) {
+        return { ...g, memberAgentIds: [...g.memberAgentIds, agentId] };
+      }
+      return g;
+    }),
+  );
 
   try {
     if (fromGroupId) {

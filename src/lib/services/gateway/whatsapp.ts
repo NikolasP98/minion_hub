@@ -1,6 +1,6 @@
 // WhatsApp QR pairing RPC (split from gateway.svelte.ts).
 
-import { sendRequest } from '../gateway.svelte';
+import { sendRequest } from '../gateway-rpc';
 
 export interface WhatsAppPairResult {
   ok: boolean;

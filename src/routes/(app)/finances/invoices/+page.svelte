@@ -7,20 +7,31 @@
 
 	let { data }: { data: PageData } = $props();
 	const invoices = $derived(data.invoices);
+	const total = $derived(data.total);
+	const loadedLimit = $derived(data.limit);
 
-	// ── Windowed rendering ────────────────────────────────────────────────────
+	// ── Server-side pagination ────────────────────────────────────────────────
+	// Rows are already a server page; when the user scrolls near the bottom and the
+	// server has more, bump `?show=` so the loader fetches the next page (lazy SSR,
+	// keepFocus/noScroll so the scroll position is preserved across the navigation).
 	const PAGE = 60;
-	let renderLimit = $state(PAGE);
-	const windowed = $derived(invoices.slice(0, renderLimit));
-	$effect(() => {
-		invoices.length;
-		renderLimit = PAGE;
-	});
+	let loadingMore = $state(false);
+	const hasMore = $derived(invoices.length < total);
+	async function loadMore() {
+		if (loadingMore || !hasMore) return;
+		loadingMore = true;
+		await goto(`?show=${loadedLimit + PAGE}`, {
+			keepFocus: true,
+			noScroll: true,
+			invalidateAll: false,
+		});
+		loadingMore = false;
+	}
 	function infiniteScroll(root: HTMLElement) {
 		const onScroll = () => {
-			if (renderLimit >= invoices.length) return;
+			if (!hasMore || loadingMore) return;
 			if (root.scrollTop + root.clientHeight >= root.scrollHeight - 400) {
-				renderLimit += PAGE;
+				void loadMore();
 			}
 		};
 		root.addEventListener('scroll', onScroll, { passive: true });
@@ -64,7 +75,7 @@
 					</tr>
 				</thead>
 				<tbody>
-					{#each windowed as inv (inv.id)}
+					{#each invoices as inv (inv.id)}
 						<tr
 							class="border-b border-[var(--hairline)] hover:bg-white/[0.03] cursor-pointer transition-colors"
 							onclick={() => goto(`/finances/invoices/${inv.id}`)}

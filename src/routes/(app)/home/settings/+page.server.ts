@@ -13,8 +13,11 @@ export const load: PageServerLoad = async ({ locals }) => {
   const coreCtx = { db: getCoreDb(), tenantId };
   const tenantCtx = { db: getDb(), tenantId };
 
-  const agent = await getPersonalAgent(coreCtx, locals.user.id);
-  const channelIdentities = await getChannelIdentitiesForUser(tenantCtx, locals.user.id);
+  // Independent reads on separate db handles (pg + Turso) — run them in parallel.
+  const [agent, channelIdentities] = await Promise.all([
+    getPersonalAgent(coreCtx, locals.user.id),
+    getChannelIdentitiesForUser(tenantCtx, locals.user.id),
+  ]);
 
   return {
     agent,

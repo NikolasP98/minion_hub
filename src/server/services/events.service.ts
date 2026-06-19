@@ -1,4 +1,4 @@
-import { eq, and, desc, gte, lte, sql } from 'drizzle-orm';
+import { eq, and, desc, gte, lte, lt, sql } from 'drizzle-orm';
 import { unifiedEvents } from '@minion-stack/db/schema';
 import { nowMs } from '$server/db/utils';
 import type { TenantContext } from './base';
@@ -125,27 +125,51 @@ export async function eventsSummary(
 
   const where = and(...conditions);
 
-  const byCategoryRows = await ctx.db
-    .select({
-      category: unifiedEvents.category,
-      count: sql<number>`count(*)`.as('count'),
-    })
-    .from(unifiedEvents)
-    .where(where)
-    .groupBy(unifiedEvents.category);
-
-  const bySeverityRows = await ctx.db
-    .select({
-      severity: unifiedEvents.severity,
-      count: sql<number>`count(*)`.as('count'),
-    })
-    .from(unifiedEvents)
-    .where(where)
-    .groupBy(unifiedEvents.severity);
+  // The two aggregations are independent (same filter, different group-by) — run
+  // them concurrently.
+  const [byCategoryRows, bySeverityRows] = await Promise.all([
+    ctx.db
+      .select({
+        category: unifiedEvents.category,
+        count: sql<number>`count(*)`.as('count'),
+      })
+      .from(unifiedEvents)
+      .where(where)
+      .groupBy(unifiedEvents.category),
+    ctx.db
+      .select({
+        severity: unifiedEvents.severity,
+        count: sql<number>`count(*)`.as('count'),
+      })
+      .from(unifiedEvents)
+      .where(where)
+      .groupBy(unifiedEvents.severity),
+  ]);
 
   const total = byCategoryRows.reduce((sum, r) => sum + r.count, 0);
   const byCategory = Object.fromEntries(byCategoryRows.map((r) => [r.category, r.count]));
   const bySeverity = Object.fromEntries(bySeverityRows.map((r) => [r.severity, r.count]));
 
   return { total, byCategory, bySeverity };
+}
+
+/**
+ * Prune events older than `olderThan` (epoch ms) for one server. unified_events
+ * is an unbounded append-only table; this caps its growth. Mirrors
+ * pruneOldActivityBins (same absolute-timestamp arg style).
+ */
+export async function pruneOldEvents(
+  ctx: TenantContext,
+  serverId: string,
+  olderThan: number,
+): Promise<void> {
+  await ctx.db
+    .delete(unifiedEvents)
+    .where(
+      and(
+        eq(unifiedEvents.tenantId, ctx.tenantId),
+        eq(unifiedEvents.serverId, serverId),
+        lt(unifiedEvents.occurredAt, olderThan),
+      ),
+    );
 }

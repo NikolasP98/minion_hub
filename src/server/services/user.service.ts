@@ -56,18 +56,21 @@ export async function listUsers(ctx: TenantContext): Promise<UserEntry[]> {
   const ids = [...new Set((orgMembers ?? []).map((m) => (m as { profile_id: string }).profile_id))];
   if (ids.length === 0) return [];
 
+  // 2 & 3 both depend only on `ids` and are independent — run them in parallel.
   // 2. The profiles themselves.
-  const { data: profiles, error: pErr } = await admin
-    .from('profiles')
-    .select('id, email, display_name, role, alias, role_id, account_type, created_at')
-    .in('id', ids);
-  if (pErr) throw pErr;
-
   // 3. Every org each of those users belongs to (for the assignment editor).
-  const { data: allMemberships, error: amErr } = await admin
-    .from('organization_members')
-    .select('profile_id, role, organizations(id, name)')
-    .in('profile_id', ids);
+  const [{ data: profiles, error: pErr }, { data: allMemberships, error: amErr }] =
+    await Promise.all([
+      admin
+        .from('profiles')
+        .select('id, email, display_name, role, alias, role_id, account_type, created_at')
+        .in('id', ids),
+      admin
+        .from('organization_members')
+        .select('profile_id, role, organizations(id, name)')
+        .in('profile_id', ids),
+    ]);
+  if (pErr) throw pErr;
   if (amErr) throw amErr;
 
   type Org = { id: string; name: string };
@@ -216,7 +219,9 @@ export async function updateUserProfile(
   // Keep the login email in sync with the profile email (best-effort — the
   // profile update above is the source of truth the UI reads).
   if (patch.email !== undefined) {
-    const { error: authErr } = await admin.auth.admin.updateUserById(userId, { email: patch.email });
+    const { error: authErr } = await admin.auth.admin.updateUserById(userId, {
+      email: patch.email,
+    });
     if (authErr) console.warn('[user.service] auth email sync failed for', userId, authErr);
   }
 }
@@ -236,10 +241,7 @@ export async function isAliasTaken(
 
 export async function listAliases(_ctx: TenantContext): Promise<Record<string, string>> {
   const admin = supabaseAdmin();
-  const { data, error } = await admin
-    .from('profiles')
-    .select('id, alias')
-    .not('alias', 'is', null);
+  const { data, error } = await admin.from('profiles').select('id, alias').not('alias', 'is', null);
   if (error) throw error;
   return Object.fromEntries(
     ((data ?? []) as Array<{ id: string; alias: string | null }>)

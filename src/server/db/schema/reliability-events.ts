@@ -23,10 +23,9 @@ export const reliabilityEvents = sqliteTable(
     occurredAt: integer('occurred_at').notNull(),
     createdAt: integer('created_at').notNull(),
   },
-  (t) => [
-    index('idx_rel_events_server_cat_time').on(t.serverId, t.category, t.occurredAt),
-    index('idx_rel_events_server_time').on(t.serverId, t.occurredAt),
-    index('idx_rel_events_server_sev_time').on(t.serverId, t.severity, t.occurredAt),
-    index('idx_rel_events_tenant').on(t.tenantId),
-  ],
+  // No service reads or writes this table (the reliability dashboard streams live
+  // data over WS from the gateway, not from the DB). The three server_* composite
+  // indexes were pure write-tax for query patterns that never run — dropped. The
+  // tenant index is retained so the organization onDelete: cascade stays cheap.
+  (t) => [index('idx_rel_events_tenant').on(t.tenantId)],
 );

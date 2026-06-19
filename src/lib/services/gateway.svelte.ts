@@ -66,6 +66,11 @@ import {
 // Internal: event handlers below call loadChatHistory on stream errors. The
 // function now lives in the chat-rpc sub-module — function-only cycle, ESM-safe.
 import { loadChatHistory } from './gateway/chat-rpc';
+// RPC primitives (client + sendRequest/sendInstall) live in the leaf
+// `gateway-rpc` module so config/reliability/chat-rpc can import them without
+// forming a static import cycle back through this file. We re-export them below
+// to preserve the `$lib/services/gateway.svelte` import paths consumers use.
+import { getClient, setClient, sendRequest, sendInstall } from './gateway-rpc';
 import { env as publicEnv } from '$env/dynamic/public';
 
 // ─── Pi-Agent Notification Preferences ────────────────────────────────────────
@@ -124,8 +129,10 @@ function mapGatewaySessionRows(raw: unknown[]): Session[] {
     .filter((s) => s.sessionKey);
 }
 
-// Internal state — plain vars, not $state
-let client: GatewayClient | null = null;
+// Internal state — plain vars, not $state.
+// The GatewayClient instance lives in the `gateway-rpc` leaf (accessed via
+// getClient()/setClient()) so RPC consumers can import `sendRequest` without a
+// cycle. This file still owns the client *lifecycle*.
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let pollPresenceTimer: ReturnType<typeof setInterval> | null = null;
 // One-shot guard: when the gateway closes with NOT_PAIRED / "device identity
@@ -177,9 +184,10 @@ async function handleAuthFatalClose(reason: string): Promise<void> {
   // Tear down the dead client so its autoReconnect timer is cancelled
   // (GatewayClient.close() sets `closed = true`, which short-circuits
   // scheduleReconnect on the way back up the close handler).
-  if (client) {
-    client.close();
-    client = null;
+  const c = getClient();
+  if (c) {
+    c.close();
+    setClient(null);
   }
 
   if (notPairedRefetchAttempted) {
@@ -211,10 +219,12 @@ export async function wsConnect() {
   gw.lastSeq = null;
 
   // Close existing client before creating a new one
-  if (client) {
-    client.close();
-    client = null;
+  const existing = getClient();
+  if (existing) {
+    existing.close();
+    setClient(null);
   }
+  teardownBinaryWiring();
 
   const capturedHostId = hostsState.activeHostId;
 
@@ -246,12 +256,17 @@ export async function wsConnect() {
     'operator.pairing',
   ];
 
-  client = new GatewayClient({
+  const newClient = new GatewayClient({
     url: host.url,
     autoReconnect: true,
 
     onOpen() {
-      // Wait for connect.challenge event — no action needed here
+      // Wire the binary (Yjs workshop sync) listener onto the freshly-opened
+      // socket. This fires on EVERY (re)connect — GatewayClient.scheduleReconnect
+      // calls connect() internally, which creates a new socket and re-fires
+      // onOpen. Wiring here (rather than only in the one-shot `.connect().then`)
+      // is what keeps binary sync alive across auto-reconnects.
+      wireBinaryListener();
     },
 
     async onChallenge(_nonce: string): Promise<Record<string, unknown>> {
@@ -290,7 +305,7 @@ export async function wsConnect() {
           version: '1.0',
           platform: 'web',
           mode: 'ui',
-          displayName: userState.user?.displayName ?? undefined
+          displayName: userState.user?.displayName ?? undefined,
         },
         role,
         scopes,
@@ -318,7 +333,10 @@ export async function wsConnect() {
       conn.connected = false;
       conn.connecting = false;
       conn.particleHue = 'red';
-      // Binary listeners: raw socket is gone, no cleanup needed for Uint8Array listeners
+      // The underlying socket is gone; detach the binary listener bound to it so
+      // it doesn't leak or fire against a dead socket. onOpen re-wires the next
+      // socket on reconnect.
+      teardownBinaryWiring();
 
       // JWT rejected by the gateway (e.g. oidcIssuers not yet configured, or an
       // expired/invalid token): disable the JWT for the rest of the session and
@@ -327,9 +345,10 @@ export async function wsConnect() {
       if (isJwtAuthEnabled() && isJwtAuthClose(code, reason)) {
         jwtAuthDisabled = true;
         console.warn('[hub] gateway rejected JWT — falling back to shared-token auth:', reason);
-        if (client) {
-          client.close();
-          client = null;
+        const c = getClient();
+        if (c) {
+          c.close();
+          setClient(null);
         }
         void wsConnect();
         return;
@@ -350,72 +369,66 @@ export async function wsConnect() {
     },
   });
 
-  // Wire binary frame listener for Yjs workshop sync.
-  // TODO(phase-8): upstream proper binary channel API to GatewayClient.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const rawWs = (client as unknown as { ws: WebSocket | null }).ws;
+  // Register the client in the leaf BEFORE connect() so onOpen (which fires the
+  // moment the socket opens, and again on every auto-reconnect) sees it and can
+  // wire the binary listener via getClient().
+  setClient(newClient);
 
-  // Attach binary listener after connect resolves so we have a socket reference.
-  void client.connect().then((hello) => {
-    const wasReconnect = conn.backoffMs > 800;
-    conn.backoffMs = 800;
-    conn.connected = true;
-    conn.connecting = false;
-    conn.particleHue = 'blue';
-    conn.connectedAt = Date.now();
-    clearConnectError();
-    // Successful handshake — clear the one-shot NOT_PAIRED refetch guard so a
-    // future stale-token incident gets its own retry budget.
-    notPairedRefetchAttempted = false;
+  void newClient
+    .connect()
+    .then((hello) => {
+      const wasReconnect = conn.backoffMs > 800;
+      conn.backoffMs = 800;
+      conn.connected = true;
+      conn.connecting = false;
+      conn.particleHue = 'blue';
+      conn.connectedAt = Date.now();
+      clearConnectError();
+      // Successful handshake — clear the one-shot NOT_PAIRED refetch guard so a
+      // future stale-token incident gets its own retry budget.
+      notPairedRefetchAttempted = false;
 
-    if (wasReconnect) {
-      const activeHost = getActiveHost();
-      toastSuccess('Reconnected', activeHost?.name ?? activeHost?.url);
-    }
-
-    gw.hello = hello as HelloOk;
-    gw.presence = (hello as HelloOk).snapshot?.presence ?? [];
-
-    if (capturedHostId) {
-      const h = hostsState.hosts.find((x) => x.id === capturedHostId);
-      if (h) {
-        h.lastConnectedAt = conn.connectedAt;
-        // Don't send `token` — the server preserves the existing token
-        // when token is omitted (or empty). Tokens never round-trip
-        // through the client cache.
-        updateHost(capturedHostId, {
-          name: h.name,
-          url: h.url,
-          lastConnectedAt: conn.connectedAt,
-        }, { silent: true });
-        saveLastActiveHost(capturedHostId);
+      if (wasReconnect) {
+        const activeHost = getActiveHost();
+        toastSuccess('Reconnected', activeHost?.name ?? activeHost?.url);
       }
-    }
 
-    // Wire binary message handler onto the underlying socket.
-    // TODO(phase-8): upstream proper binary channel API to GatewayClient.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sock = (client as unknown as { ws: unknown }).ws as { binaryType?: string; addEventListener?: (ev: string, fn: (e: MessageEvent) => void) => void } | null;
-    if (sock && typeof sock.addEventListener === 'function') {
-      sock.binaryType = 'arraybuffer';
-      sock.addEventListener('message', (ev: MessageEvent) => {
-        if (ev.data instanceof ArrayBuffer) {
-          notifyBinaryListeners(new Uint8Array(ev.data));
+      gw.hello = hello as HelloOk;
+      gw.presence = (hello as HelloOk).snapshot?.presence ?? [];
+
+      if (capturedHostId) {
+        const h = hostsState.hosts.find((x) => x.id === capturedHostId);
+        if (h) {
+          h.lastConnectedAt = conn.connectedAt;
+          // Don't send `token` — the server preserves the existing token
+          // when token is omitted (or empty). Tokens never round-trip
+          // through the client cache.
+          updateHost(
+            capturedHostId,
+            {
+              name: h.name,
+              url: h.url,
+              lastConnectedAt: conn.connectedAt,
+            },
+            { silent: true },
+          );
+          saveLastActiveHost(capturedHostId);
         }
-      });
-    }
+      }
 
-    onHelloOk(hello as HelloOk);
-    resolveServerId();
-  }).catch((err) => {
-    console.error('[hub] connect failed:', err);
-    const raw = String((err as Error)?.message ?? err);
-    const info = describeGatewayError(raw);
-    setConnectError(raw);
-    toastError(info.title, info.hint, { id: 'gateway-connect-failed' });
-  });
+      // Binary (Yjs workshop sync) listener is wired in onOpen — see
+      // wireBinaryListener() — so it survives auto-reconnects.
 
-  void rawWs; // suppress unused warning
+      onHelloOk(hello as HelloOk);
+      resolveServerId();
+    })
+    .catch((err) => {
+      console.error('[hub] connect failed:', err);
+      const raw = String((err as Error)?.message ?? err);
+      const info = describeGatewayError(raw);
+      setConnectError(raw);
+      toastError(info.title, info.hint, { id: 'gateway-connect-failed' });
+    });
 }
 
 export function wsDisconnect() {
@@ -425,10 +438,12 @@ export function wsDisconnect() {
 
   conn.particleHue = 'red';
 
-  if (client) {
-    client.close();
-    client = null;
+  const c = getClient();
+  if (c) {
+    c.close();
+    setClient(null);
   }
+  teardownBinaryWiring();
 
   stopPolling();
   stopSqliteFlush();
@@ -464,19 +479,10 @@ export function wsDisconnect() {
   conn.backoffMs = 800;
 }
 
-export function sendRequest(method: string, params?: unknown, timeoutMs = 15000): Promise<unknown> {
-  if (!client) return Promise.reject(new Error('not connected'));
-  return client.request<unknown>(method, params, { timeoutMs });
-}
-
-/**
- * Push agent files to the gateway filesystem via the WebSocket connection.
- * The gateway will write files to `.minion/marketplace/agents/<agentId>/`.
- * Throws if the connection is not open.
- */
-export async function sendInstall(agentId: string, files: Record<string, string>): Promise<void> {
-  await sendRequest('agent.install', { agentId, files });
-}
+// `sendRequest` / `sendInstall` now live in the `gateway-rpc` leaf (to break the
+// import cycle). Re-exported here so the many `$lib/services/gateway.svelte`
+// consumers keep their existing import paths.
+export { sendRequest, sendInstall };
 
 // ─── Internal ─────────────────────────────────────────────────────────────────
 
@@ -648,9 +654,7 @@ function handleEvent(evt: Record<string, unknown>) {
         evtName.startsWith('prompt.section.') &&
         typeof window !== 'undefined'
       ) {
-        window.dispatchEvent(
-          new CustomEvent('prompt.sections.changed', { detail: evt.payload }),
-        );
+        window.dispatchEvent(new CustomEvent('prompt.sections.changed', { detail: evt.payload }));
       }
       // Phase D-0c: debug.step.* (admin-only) — push to debug rune store
       if (typeof evtName === 'string' && evtName.startsWith('debug.step.')) {
@@ -783,7 +787,11 @@ function onChatEvent(payload: ChatEvent) {
     const finalMsg: ChatMessage =
       fm && fm.role === 'assistant' && (Array.isArray(fm.content) || typeof fm.content === 'string')
         ? (fm as ChatMessage)
-        : { role: 'assistant', content: [{ type: 'text', text: chat.stream ?? '' }], timestamp: Date.now() };
+        : {
+            role: 'assistant',
+            content: [{ type: 'text', text: chat.stream ?? '' }],
+            timestamp: Date.now(),
+          };
     chat.runId = null;
     finishStreamMessage(agentId, finalMsg, () => {
       if (sk === `agent:${agentId}:main`) {
@@ -873,6 +881,39 @@ function parseAgentId(sessionKey: string): string | null {
   return gw.defaultAgentId;
 }
 
+/**
+ * Apply a fresh agents.list result to `gw`. Single source of truth for the
+ * agent roster so EVERY path that replaces `gw.agents` (initial onHelloOk AND
+ * the 30s poller) gets identical scaffolding: defaultAgentId resolution + a
+ * chat store, activity store, and `main` session row per agent. Without this,
+ * an agent first seen by the poller would have no chat/activity scaffold and
+ * would render broken until the next full reconnect.
+ *
+ * Does NOT load chat history — that's a heavier initial-load concern owned by
+ * onHelloOk (the poller must stay cheap).
+ */
+function applyAgentsList(agents: unknown[] | undefined, defaultId: string | undefined): void {
+  gw.agents = (agents ?? []) as typeof gw.agents;
+  // Prefer the gateway-declared default; else keep whatever we already had
+  // (poller refresh shouldn't reset it); else fall back to the first agent
+  // (initial connect).
+  gw.defaultAgentId =
+    defaultId ??
+    gw.defaultAgentId ??
+    (gw.agents.length > 0 ? (gw.agents[0] as { id: string }).id : null);
+  for (const agent of gw.agents) {
+    const a = agent as { id: string };
+    ensureAgentChat(a.id);
+    ensureAgentActivity(a.id);
+    upsertSession({
+      sessionKey: `agent:${a.id}:main`,
+      agentId: a.id,
+      label: 'main',
+      status: 'idle',
+    });
+  }
+}
+
 function onHelloOk(hello: HelloOk) {
   // If gateway was restarting after a config save, signal reconnection
   if (restartState.phase === 'restarting') {
@@ -882,20 +923,7 @@ function onHelloOk(hello: HelloOk) {
   sendRequest('agents.list', {})
     .then((r) => {
       const res = r as { agents?: never[]; defaultId?: string } | null;
-      gw.agents = res?.agents ?? [];
-      gw.defaultAgentId =
-        res?.defaultId ?? (gw.agents.length > 0 ? (gw.agents[0] as { id: string }).id : null);
-      for (const agent of gw.agents) {
-        const a = agent as { id: string };
-        ensureAgentChat(a.id);
-        ensureAgentActivity(a.id);
-        upsertSession({
-          sessionKey: `agent:${a.id}:main`,
-          agentId: a.id,
-          label: 'main',
-          status: 'idle',
-        });
-      }
+      applyAgentsList(res?.agents, res?.defaultId);
       for (const agent of gw.agents) loadChatHistory((agent as { id: string }).id);
     })
     .catch((e) => console.error('[hub] agents.list error:', e));
@@ -905,7 +933,11 @@ function onHelloOk(hello: HelloOk) {
     .then((r) => r.json())
     .then(
       async (body: {
-        flows?: Array<{ id: string; nodes: Array<{ type: string; data: unknown }>; active: boolean }>;
+        flows?: Array<{
+          id: string;
+          nodes: Array<{ type: string; data: unknown }>;
+          active: boolean;
+        }>;
       }) => {
         for (const flow of body.flows ?? []) {
           const triggerNode = flow.nodes.find(
@@ -985,36 +1017,47 @@ function onHelloOk(hello: HelloOk) {
   setTimeout(startPolling, 3000);
 }
 
-
-
-
+// In-flight guards: on a slow link a poll can take longer than its interval.
+// Without these, ticks would stack requests (and racing responses could apply
+// stale data out of order). We keep the `conn.connected` check rather than
+// clearing the timer because the GatewayClient auto-reconnects — the interval
+// must survive a transient drop and resume once reconnected.
+let agentsPollInFlight = false;
+let presencePollInFlight = false;
 
 function startPolling() {
   stopPolling();
   pollTimer = setInterval(() => {
-    if (!conn.connected) return;
+    if (!conn.connected || agentsPollInFlight) return;
+    agentsPollInFlight = true;
     Promise.allSettled([sendRequest('agents.list', {}), sendRequest('sessions.list', {})])
       .then((results) => {
         if (results[0].status === 'fulfilled' && results[0].value) {
           const r = results[0].value as { agents?: never[]; defaultId?: string };
-          gw.agents = r.agents ?? [];
-          gw.defaultAgentId = r.defaultId ?? gw.defaultAgentId;
+          applyAgentsList(r.agents, r.defaultId);
         }
         if (results[1].status === 'fulfilled' && results[1].value) {
           const raw = (results[1].value as { sessions?: unknown[] })?.sessions ?? [];
           mergeSessions(mapGatewaySessionRows(raw));
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        agentsPollInFlight = false;
+      });
   }, 30000);
 
   pollPresenceTimer = setInterval(() => {
-    if (!conn.connected) return;
+    if (!conn.connected || presencePollInFlight) return;
+    presencePollInFlight = true;
     sendRequest('system-presence', {})
       .then((res) => {
         if (Array.isArray(res)) gw.presence = res;
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        presencePollInFlight = false;
+      });
   }, 60000);
 }
 
@@ -1027,6 +1070,10 @@ function stopPolling() {
     clearInterval(pollPresenceTimer);
     pollPresenceTimer = null;
   }
+  // Clear in-flight guards so a poll that was mid-flight when we stopped can't
+  // block the first tick after the next startPolling().
+  agentsPollInFlight = false;
+  presencePollInFlight = false;
 }
 
 // ─── Binary Frame API ──────────────────────────────────────────────────────
@@ -1043,13 +1090,68 @@ function notifyBinaryListeners(data: Uint8Array) {
   }
 }
 
+// TODO(phase-8): upstream a proper binary channel API to GatewayClient. Until
+// then we reach into its private `ws` to attach a raw 'message' listener for
+// the Yjs workshop sync channel.
+type RawSocket = {
+  binaryType?: string;
+  readyState?: number;
+  send?: (d: Uint8Array) => void;
+  addEventListener?: (ev: string, fn: (e: MessageEvent) => void) => void;
+  removeEventListener?: (ev: string, fn: (e: MessageEvent) => void) => void;
+} | null;
+
+function rawSocket(): RawSocket {
+  const c = getClient();
+  if (!c) return null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (c as unknown as { ws: RawSocket }).ws;
+}
+
+// The binary listener is bound per-socket. We track the socket + handler we
+// wired so we can detach exactly that pair across reconnects (the socket is
+// swapped on every reconnect, so a stale binding would leak / never fire).
+let wiredBinarySocket: RawSocket = null;
+let wiredBinaryHandler: ((e: MessageEvent) => void) | null = null;
+
+/** Attach the binary message listener onto the current (freshly-opened) socket. */
+function wireBinaryListener(): void {
+  const sock = rawSocket();
+  if (!sock || typeof sock.addEventListener !== 'function') return;
+  // Already wired to this exact socket — nothing to do.
+  if (wiredBinarySocket === sock && wiredBinaryHandler) return;
+  // A different socket was wired before (shouldn't normally happen — onClose
+  // tears down — but be defensive against double-open).
+  teardownBinaryWiring();
+
+  const handler = (ev: MessageEvent) => {
+    if (ev.data instanceof ArrayBuffer) {
+      notifyBinaryListeners(new Uint8Array(ev.data));
+    }
+  };
+  sock.binaryType = 'arraybuffer';
+  sock.addEventListener('message', handler);
+  wiredBinarySocket = sock;
+  wiredBinaryHandler = handler;
+}
+
+/** Detach the binary listener from the socket it was bound to. */
+function teardownBinaryWiring(): void {
+  if (
+    wiredBinarySocket &&
+    wiredBinaryHandler &&
+    typeof wiredBinarySocket.removeEventListener === 'function'
+  ) {
+    wiredBinarySocket.removeEventListener('message', wiredBinaryHandler);
+  }
+  wiredBinarySocket = null;
+  wiredBinaryHandler = null;
+}
+
 /** Send raw binary data through the WebSocket. */
 export function sendBinary(data: Uint8Array): void {
-  if (!client) return;
-  // TODO(phase-8): upstream proper binary channel API to GatewayClient.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const sock = (client as unknown as { ws: { readyState: number; send: (d: Uint8Array) => void } | null }).ws;
-  if (!sock || sock.readyState !== 1 /* OPEN */) return;
+  const sock = rawSocket();
+  if (!sock || sock.readyState !== 1 /* OPEN */ || typeof sock.send !== 'function') return;
   sock.send(data);
 }
 
@@ -1063,9 +1165,7 @@ export function onBinaryMessage(handler: BinaryMessageHandler): () => void {
 
 /** Get whether the WebSocket is currently connected and ready. */
 export function isWsReady(): boolean {
-  if (!client) return false;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const sock = (client as unknown as { ws: { readyState: number } | null }).ws;
+  const sock = rawSocket();
   return sock !== null && sock.readyState === 1 /* OPEN */;
 }
 

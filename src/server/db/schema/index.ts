@@ -33,9 +33,15 @@ export { marketplaceAgents } from './marketplace-agents';
 export { marketplaceInstalls } from './marketplace-installs';
 export { workshopSaves } from './workshop-saves';
 export { deviceIdentities } from './device-identities';
-export { flows } from './flows';
-export { flowRuns } from './flow-runs';
-export { flowGroups } from './flow-groups';
+// DEAD: the flows family is superseded by the Postgres tables in
+// `$server/db/pg-schema/flows.ts` — every flows route imports from there. The
+// SQLite copies stay only as un-exported definitions so a stray
+// `import { flows } from '@minion-stack/db/schema'` can't silently query the
+// (empty) Turso table instead of Postgres. Physical-file deletion is a deploy
+// decision (see report).
+// export { flows } from './flows';
+// export { flowRuns } from './flow-runs';
+// export { flowGroups } from './flow-groups';
 export { userServers } from './user-servers';
 export { userAgents } from './user-agents';
 export { channels } from './channels';

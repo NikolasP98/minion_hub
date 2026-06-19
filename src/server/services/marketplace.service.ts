@@ -320,54 +320,74 @@ export async function getMarketplaceAgent(db: CoreDb, id: string) {
 
 export async function upsertMarketplaceAgents(db: CoreDb, agents: MarketplaceAgentUpsert[]) {
   const now = new Date();
-  const results: { id: string; ok: boolean }[] = [];
 
-  for (const a of agents) {
+  const valuesFor = (a: MarketplaceAgentUpsert) => ({
+    id: a.id,
+    name: a.name,
+    role: a.role,
+    category: a.category,
+    tags: JSON.stringify(a.tags),
+    description: a.description,
+    catchphrase: a.catchphrase ?? null,
+    version: a.version,
+    model: a.model ?? null,
+    avatarSeed: a.avatarSeed,
+    githubPath: a.githubPath,
+    // Markdown is null on initial insert; lazily populated on first detail view
+    soulMd: null,
+    identityMd: null,
+    userMd: null,
+    contextMd: null,
+    skillsMd: null,
+    installCount: 0,
+    syncedAt: now,
+    filesLoadedAt: null,
+  });
+
+  // Conflict update touches metadata only — never markdown or filesLoadedAt. Uses
+  // `excluded.*` so the same statement works for a multi-row insert; the value is
+  // identical to the per-row `set` it replaces.
+  const conflictUpdate = {
+    target: marketplaceAgents.id,
+    set: {
+      name: sql`excluded.name`,
+      role: sql`excluded.role`,
+      category: sql`excluded.category`,
+      tags: sql`excluded.tags`,
+      description: sql`excluded.description`,
+      catchphrase: sql`excluded.catchphrase`,
+      version: sql`excluded.version`,
+      model: sql`excluded.model`,
+      avatarSeed: sql`excluded.avatar_seed`,
+      githubPath: sql`excluded.github_path`,
+      syncedAt: now,
+      updatedAt: now,
+    },
+  };
+
+  // Fast path: one multi-row upsert. The rows are pre-validated upstream and the
+  // conflict target is the PK, so a row-level failure is not expected; if the
+  // batch does fail, fall back to the per-row loop to isolate the bad row(s) and
+  // preserve the original "one bad agent doesn't sink the sync" semantics.
+  if (agents.length > 0) {
     try {
       await db
         .insert(marketplaceAgents)
-        .values({
-          id: a.id,
-          name: a.name,
-          role: a.role,
-          category: a.category,
-          tags: JSON.stringify(a.tags),
-          description: a.description,
-          catchphrase: a.catchphrase ?? null,
-          version: a.version,
-          model: a.model ?? null,
-          avatarSeed: a.avatarSeed,
-          githubPath: a.githubPath,
-          // Markdown is null on initial insert; lazily populated on first detail view
-          soulMd: null,
-          identityMd: null,
-          userMd: null,
-          contextMd: null,
-          skillsMd: null,
-          installCount: 0,
-          syncedAt: now,
-          filesLoadedAt: null,
-        })
-        .onConflictDoUpdate({
-          target: marketplaceAgents.id,
-          set: {
-            // Update metadata fields only; do NOT touch markdown or filesLoadedAt
-            name: a.name,
-            role: a.role,
-            category: a.category,
-            tags: JSON.stringify(a.tags),
-            description: a.description,
-            catchphrase: a.catchphrase ?? null,
-            version: a.version,
-            model: a.model ?? null,
-            avatarSeed: a.avatarSeed,
-            githubPath: a.githubPath,
-            syncedAt: now,
-            updatedAt: now,
-          },
-        });
+        .values(agents.map(valuesFor))
+        .onConflictDoUpdate(conflictUpdate);
+      await invalidateTags(MARKETPLACE_TAGS);
+      return agents.map((a) => ({ id: a.id, ok: true }));
+    } catch {
+      // fall through to per-row isolation
+    }
+  }
+
+  const results: { id: string; ok: boolean }[] = [];
+  for (const a of agents) {
+    try {
+      await db.insert(marketplaceAgents).values(valuesFor(a)).onConflictDoUpdate(conflictUpdate);
       results.push({ id: a.id, ok: true });
-    } catch (err) {
+    } catch {
       results.push({ id: a.id, ok: false });
     }
   }
@@ -416,8 +436,10 @@ export async function recordInstall(
     .set({ installCount: sql`${marketplaceAgents.installCount} + 1` })
     .where(eq(marketplaceAgents.id, agentId));
 
-  // installCount feeds the listing (and its ordering) — refresh the catalog cache.
-  await invalidateTags(MARKETPLACE_TAGS);
+  // installCount feeds the listing's ordering, but sort-by-installCount tolerates
+  // the cache's 10m staleness; busting the global catalog on every install is
+  // self-defeating (each install evicts the whole catalog). The sync path
+  // (upsertMarketplaceAgents) still busts the tag, so the catalog refreshes there.
 
   return id;
 }

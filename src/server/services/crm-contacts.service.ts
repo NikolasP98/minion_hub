@@ -75,22 +75,36 @@ export async function syncContactsFromLedger(ctx: CoreCtx): Promise<SyncResult> 
     }>;
 
     let created = 0;
-    // 2. Per-row create: contact shell + identity in one statement (contact
-    //    exists before its identity FK is checked). ON CONFLICT DO NOTHING makes
-    //    a concurrent run that already created the identity a harmless no-op.
-    for (const e of eligible) {
+    // 2. Set-based create: one contact shell + one identity per eligible row in a
+    //    single statement. A contact-id is minted per source row (gen_random_uuid,
+    //    same default the table uses) so the shell insert and the identity insert
+    //    share a stable join key — no reliance on RETURNING order. Both inserts
+    //    run in one CTE so the contact exists before its identity FK is checked.
+    //    ON CONFLICT DO NOTHING keeps a concurrent run that already created the
+    //    identity a harmless no-op (its orphan shell is swept in step 3).
+    if (eligible.length > 0) {
+      const rows = sql.join(
+        eligible.map(
+          (e) => sql`(${e.channel}, ${e.sender_id}, ${e.sender_name}, ${e.sender_handle})`,
+        ),
+        sql`, `,
+      );
       const res = await tx.execute(sql`
-        with c as (
-          insert into crm_contacts (org_id, display_name, source)
-          values (${ctx.tenantId}, ${e.sender_name}, 'harvested')
-          returning id
+        with src as (
+          select gen_random_uuid() as cid, channel, sender_id, sender_name, sender_handle
+          from (values ${rows})
+            as v(channel, sender_id, sender_name, sender_handle)
+        ),
+        shells as (
+          insert into crm_contacts (id, org_id, display_name, source)
+          select cid, ${ctx.tenantId}, sender_name, 'harvested' from src
         )
         insert into crm_contact_identities (org_id, contact_id, channel, external_id, handle)
-        select ${ctx.tenantId}, c.id, ${e.channel}, ${e.sender_id}, ${e.sender_handle} from c
+        select ${ctx.tenantId}, cid, channel, sender_id, sender_handle from src
         on conflict (org_id, channel, external_id) do nothing
         returning contact_id
       `);
-      if ((res as unknown as unknown[]).length > 0) created++;
+      created = (res as unknown as unknown[]).length;
     }
 
     // 3. Sweep orphan shells (the rare concurrent-loser: contact inserted but its
@@ -161,8 +175,12 @@ export interface RankedContact {
 // a JS number into a bound parameter ($1), so `${HL}.0` would emit the malformed
 // `$1.0` ("syntax error at or near .0"). lit() is safe here: these are trusted
 // internal numeric constants, never user input.
-const { recencyHalfLifeDays: HL, freqSaturationMsgs: FS, volSaturationMsgs: VS, channelTarget: CT } =
-  RFM_CONST;
+const {
+  recencyHalfLifeDays: HL,
+  freqSaturationMsgs: FS,
+  volSaturationMsgs: VS,
+  channelTarget: CT,
+} = RFM_CONST;
 const lit = (n: number) => sql.raw(String(n));
 const R_EXPR = sql`(100 * exp(- last_days / ${lit(HL)}.0))`;
 const F_EXPR = sql`(100 * least(1, ln(1 + inbound_msgs) / ln(1 + ${lit(FS)}.0)))`;
@@ -410,7 +428,12 @@ export async function hardDeleteContact(ctx: CoreCtx, id: string) {
   await bustCrmList(ctx.tenantId);
 }
 
-export async function addNote(ctx: CoreCtx, contactId: string, body: string, actorId: string | null) {
+export async function addNote(
+  ctx: CoreCtx,
+  contactId: string,
+  body: string,
+  actorId: string | null,
+) {
   return withOrgCore(ctx, async (tx) => {
     const [row] = await tx
       .insert(crmActivities)
@@ -496,7 +519,13 @@ export async function setFunnelStage(
       kind: 'funnel',
       body: null,
       actorId: null,
-      data: { from: fromStage, to: stage, by: opts.by, reason: opts.reason ?? null, confidence: opts.confidence ?? null },
+      data: {
+        from: fromStage,
+        to: stage,
+        by: opts.by,
+        reason: opts.reason ?? null,
+        confidence: opts.confidence ?? null,
+      },
     });
 
     return { applied: true, stage };
@@ -510,7 +539,11 @@ export async function setFunnelStage(
 
 export async function listTags(ctx: CoreCtx) {
   return withOrgCore(ctx, (tx) =>
-    tx.select().from(crmTags).where(eq(crmTags.orgId, ctx.tenantId)).orderBy(desc(crmTags.position)),
+    tx
+      .select()
+      .from(crmTags)
+      .where(eq(crmTags.orgId, ctx.tenantId))
+      .orderBy(desc(crmTags.position)),
   );
 }
 
@@ -558,7 +591,12 @@ export async function deleteTag(ctx: CoreCtx, tagId: string) {
   await bustCrmList(ctx.tenantId);
 }
 
-export async function applyTag(ctx: CoreCtx, contactId: string, tagId: string, appliedBy: string | null) {
+export async function applyTag(
+  ctx: CoreCtx,
+  contactId: string,
+  tagId: string,
+  appliedBy: string | null,
+) {
   await withOrgCore(ctx, (tx) =>
     tx
       .insert(crmContactTags)
@@ -637,17 +675,27 @@ export async function getAiTagCandidates(
       if (arr.length < perContact) arr.push(r.body.trim().slice(0, 400));
       byContact.set(r.contact_id, arr);
     }
-    return heads.map((h) => ({ contactId: h.id, name: h.name, snippets: byContact.get(h.id) ?? [] }));
+    return heads.map((h) => ({
+      contactId: h.id,
+      name: h.name,
+      snippets: byContact.get(h.id) ?? [],
+    }));
   });
 }
 
 /** Apply one tag to many contacts at once (idempotent); busts the list once. */
-export async function applyTagBulk(ctx: CoreCtx, tagId: string, contactIds: string[]): Promise<number> {
+export async function applyTagBulk(
+  ctx: CoreCtx,
+  tagId: string,
+  contactIds: string[],
+): Promise<number> {
   if (contactIds.length === 0) return 0;
   const inserted = await withOrgCore(ctx, async (tx) => {
     const rows = await tx
       .insert(crmContactTags)
-      .values(contactIds.map((contactId) => ({ orgId: ctx.tenantId, contactId, tagId, appliedBy: null })))
+      .values(
+        contactIds.map((contactId) => ({ orgId: ctx.tenantId, contactId, tagId, appliedBy: null })),
+      )
       .onConflictDoNothing()
       .returning({ contactId: crmContactTags.contactId });
     return rows.length;
@@ -853,7 +901,9 @@ export async function getAccountScope(
   // Every catalog account already represented by an added/ledger account, so the
   // "Add" picker doesn't re-offer it under its raw catalog id.
   const coveredCatalogKeys = new Set<string>();
-  const enrich = <T extends { channel: string; accountId: string }>(a: T): T & { name: string | null; phone: string | null } => {
+  const enrich = <T extends { channel: string; accountId: string }>(
+    a: T,
+  ): T & { name: string | null; phone: string | null } => {
     const c = resolveCanonical(a.channel, a.accountId);
     if (c) coveredCatalogKeys.add(accountKey(c.channel, c.accountId));
     return { ...a, name: c?.name ?? null, phone: c?.phone ?? null };
@@ -862,7 +912,12 @@ export async function getAccountScope(
   // Materialize the in-scope set: explicit config, or (legacy) every ledger account.
   const legacy = accounts === null;
   const addedRefs: AccountConfig[] = legacy
-    ? ledger.map((l) => ({ channel: l.channel, accountId: l.accountId, label: null, paused: false }))
+    ? ledger.map((l) => ({
+        channel: l.channel,
+        accountId: l.accountId,
+        label: null,
+        paused: false,
+      }))
     : accounts;
 
   const addedKeys = new Set(addedRefs.map((a) => accountKey(a.channel, a.accountId)));
@@ -882,7 +937,12 @@ export async function getAccountScope(
   // (the live source for never-messaged accounts like a freshly-linked number).
   const available: LedgerAccount[] = [];
   const availKeys = new Set<string>();
-  const pushAvail = (channel: string, accountId: string, contacts: number, lastActive: string | null) => {
+  const pushAvail = (
+    channel: string,
+    accountId: string,
+    contacts: number,
+    lastActive: string | null,
+  ) => {
     const k = accountKey(channel, accountId);
     if (addedKeys.has(k) || availKeys.has(k)) return;
     availKeys.add(k);
@@ -902,7 +962,12 @@ async function currentConfigs(ctx: CoreCtx): Promise<AccountConfig[]> {
   const { accounts } = await getCrmSettings(ctx);
   if (accounts !== null) return accounts;
   const ledger = await listLedgerAccounts(ctx);
-  return ledger.map((l) => ({ channel: l.channel, accountId: l.accountId, label: null, paused: false }));
+  return ledger.map((l) => ({
+    channel: l.channel,
+    accountId: l.accountId,
+    label: null,
+    paused: false,
+  }));
 }
 
 async function persistConfigs(ctx: CoreCtx, accounts: AccountConfig[]): Promise<void> {
@@ -917,7 +982,11 @@ async function persistConfigs(ctx: CoreCtx, accounts: AccountConfig[]): Promise<
 }
 
 /** Add a linked account to the CRM scope (idempotent). */
-export async function addCrmAccount(ctx: CoreCtx, channel: string, accountId: string): Promise<void> {
+export async function addCrmAccount(
+  ctx: CoreCtx,
+  channel: string,
+  accountId: string,
+): Promise<void> {
   const configs = await currentConfigs(ctx);
   const k = accountKey(channel, accountId);
   if (!configs.some((c) => accountKey(c.channel, c.accountId) === k)) {

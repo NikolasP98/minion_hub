@@ -1,4 +1,3 @@
-import { listServers } from './server.service';
 import { listGatewayHostsForUser, type UserHostRow } from './gateway.pg.service';
 import type { LoadCtx } from './types';
 
@@ -11,43 +10,21 @@ export interface HostsLoadResult {
  * Load the host list as seen by the given user. Mirrors `GET /api/servers`
  * on the success path: returns `{ servers, authoritative: true }`.
  *
- * Per-user scoping is delegated to `listServers`:
+ * Source of truth = Supabase `gateway`/`user_gateway` keyed by profile uuid.
+ * Per-user scoping is delegated to `listGatewayHostsForUser`:
  *   - anonymous → []
  *   - non-admin → only linked hosts
  *   - admin → all in tenant
  *
- * If no tenant has been seeded yet, returns an authoritative empty list
- * (same as the existing endpoint's "no org seeded yet" branch).
- *
- * Note: this helper does NOT swallow `listServers` errors. The
- * non-authoritative error response (HTTP 500 with `{ ok:false, error }`)
- * lives in the `+server.ts` wrapper because it is HTTP-specific. Callers
- * from `+layout.server.ts` should decide their own error policy.
+ * Returns an authoritative empty list when no gateways are seeded.
  */
 export async function loadHostsForUser(
   ctx: LoadCtx,
-  userId: string | undefined,
+  _userId: string | undefined,
   userRole: string | undefined,
 ): Promise<HostsLoadResult> {
   const isAdmin = userRole === 'admin';
   const profileId = (ctx as App.Locals).user?.supabaseId ?? null;
-
-  // Source of truth = Supabase `gateway`/`user_gateway` keyed by profile uuid.
-  // Falls back to the legacy Turso `servers`/`user_servers` read when the
-  // Supabase read throws OR returns no hosts — the latter covers local dev (where
-  // the Supabase gateway table is unseeded) and any not-yet-migrated tenant, so a
-  // user never loses their host list during bake-in. On prod the Supabase tables
-  // are populated, so the primary path wins.
-  try {
-    const servers = await listGatewayHostsForUser(profileId, isAdmin);
-    if (servers.length > 0) return { servers, authoritative: true };
-  } catch (err) {
-    console.error('[hosts] Supabase host list failed, falling back to Turso:', err);
-  }
-
-  const { getTenantCtx } = await import('$server/auth/tenant-ctx');
-  const tenantCtx = await getTenantCtx(ctx as App.Locals);
-  if (!tenantCtx) return { servers: [], authoritative: true };
-  const servers = await listServers(tenantCtx, userId, userRole);
+  const servers = await listGatewayHostsForUser(profileId, isAdmin);
   return { servers, authoritative: true };
 }

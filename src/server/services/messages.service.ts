@@ -32,7 +32,11 @@ export interface RoutingPatch {
 export type MessageInsert = typeof messages.$inferInsert;
 
 /** Pure mapping from an ingest row → Drizzle insert values (testable without a DB). */
-export function toInsertValues(row: IngestRow, orgId: string, gatewayId: string | null): MessageInsert {
+export function toInsertValues(
+  row: IngestRow,
+  orgId: string,
+  gatewayId: string | null,
+): MessageInsert {
   return {
     clientId: row.clientId,
     orgId,
@@ -85,13 +89,22 @@ export async function insertMessages(
 /** Apply late routing backfills, keyed by client_id. */
 export async function applyRoutingPatches(orgId: string, patches: RoutingPatch[]): Promise<void> {
   if (patches.length === 0) return;
-  await withOrg(orgId, async (tx) => {
-    for (const p of patches) {
-      await tx
-        .update(messages)
-        .set({ agentId: p.agentId, sessionKey: p.sessionKey })
-        .where(eq(messages.clientId, p.clientId));
-    }
+  await withOrg(orgId, (tx) => {
+    // Single set-based update from an inline VALUES table, keyed on client_id.
+    // First row is cast so Postgres infers the column types (agent_id is nullable).
+    const rows = sql.join(
+      patches.map((p, i) =>
+        i === 0
+          ? sql`(${p.clientId}::text, ${p.agentId}::text, ${p.sessionKey}::text)`
+          : sql`(${p.clientId}, ${p.agentId}, ${p.sessionKey})`,
+      ),
+      sql`, `,
+    );
+    return tx.execute(sql`
+      update messages m set agent_id = v.agent_id, session_key = v.session_key
+      from (values ${rows}) as v(client_id, agent_id, session_key)
+      where m.client_id = v.client_id
+    `);
   });
 }
 

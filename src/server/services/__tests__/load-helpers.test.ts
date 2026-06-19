@@ -15,23 +15,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
-const mockGetPermissionsForUser =
-  vi.fn<(ctx: unknown, userId: string) => Promise<Set<string>>>();
+const mockGetPermissionsForUser = vi.fn<(ctx: unknown, userId: string) => Promise<Set<string>>>();
 vi.mock('../roles.service', () => ({
-  getPermissionsForUser: (ctx: unknown, userId: string) =>
-    mockGetPermissionsForUser(ctx, userId),
+  getPermissionsForUser: (ctx: unknown, userId: string) => mockGetPermissionsForUser(ctx, userId),
 }));
 
-const mockListServers =
-  vi.fn<(ctx: unknown, userId?: string, role?: string) => Promise<unknown[]>>();
-vi.mock('../server.service', () => ({
-  listServers: (ctx: unknown, userId?: string, role?: string) =>
-    mockListServers(ctx, userId, role),
-}));
-
-const mockGetTenantCtx = vi.fn<(locals: unknown) => Promise<unknown>>();
-vi.mock('$server/auth/tenant-ctx', () => ({
-  getTenantCtx: (locals: unknown) => mockGetTenantCtx(locals),
+const mockListGatewayHostsForUser =
+  vi.fn<(profileId: string | null, isAdmin: boolean) => Promise<unknown[]>>();
+vi.mock('../gateway.pg.service', () => ({
+  listGatewayHostsForUser: (profileId: string | null, isAdmin: boolean) =>
+    mockListGatewayHostsForUser(profileId, isAdmin),
 }));
 
 beforeEach(() => {
@@ -42,9 +35,8 @@ beforeEach(() => {
 
 describe('loadPermissionsForUser', () => {
   it('derives permissions from the Supabase profile role (no Turso roles read)', async () => {
-    const { loadPermissionsForUser, derivePermissionsFromRole } = await import(
-      '../permissions.service'
-    );
+    const { loadPermissionsForUser, derivePermissionsFromRole } =
+      await import('../permissions.service');
 
     const admin = await loadPermissionsForUser(
       { tenantCtx: { db: {}, tenantId: 't1' } as never, user: { role: 'admin' } as never },
@@ -71,26 +63,24 @@ describe('loadPermissionsForUser', () => {
 // ── hosts.service ────────────────────────────────────────────────────────────
 
 describe('loadHostsForUser', () => {
-  it('returns authoritative empty list when no tenant seeded', async () => {
-    mockGetTenantCtx.mockResolvedValue(null);
+  it('returns the Supabase gateway host list as authoritative', async () => {
+    mockListGatewayHostsForUser.mockResolvedValue([{ id: 's1', name: 'host-1' }]);
     const { loadHostsForUser } = await import('../hosts.service');
 
-    const result = await loadHostsForUser({}, 'u1', 'user');
-    expect(result).toEqual({ servers: [], authoritative: true });
-    expect(mockListServers).not.toHaveBeenCalled();
-  });
-
-  it('delegates to listServers when tenant exists', async () => {
-    const ctx = { db: {}, tenantId: 't1' };
-    mockGetTenantCtx.mockResolvedValue(ctx);
-    mockListServers.mockResolvedValue([{ id: 's1', name: 'host-1' }]);
-    const { loadHostsForUser } = await import('../hosts.service');
-
-    const result = await loadHostsForUser({}, 'u1', 'admin');
+    const result = await loadHostsForUser({ user: { supabaseId: 'p1' } } as never, 'u1', 'admin');
     expect(result).toEqual({
       servers: [{ id: 's1', name: 'host-1' }],
       authoritative: true,
     });
-    expect(mockListServers).toHaveBeenCalledWith(ctx, 'u1', 'admin');
+    expect(mockListGatewayHostsForUser).toHaveBeenCalledWith('p1', true);
+  });
+
+  it('returns authoritative empty list when no gateways seeded', async () => {
+    mockListGatewayHostsForUser.mockResolvedValue([]);
+    const { loadHostsForUser } = await import('../hosts.service');
+
+    const result = await loadHostsForUser({ user: { supabaseId: 'p1' } } as never, 'u1', 'user');
+    expect(result).toEqual({ servers: [], authoritative: true });
+    expect(mockListGatewayHostsForUser).toHaveBeenCalledWith('p1', false);
   });
 });

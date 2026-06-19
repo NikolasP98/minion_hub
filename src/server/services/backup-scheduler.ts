@@ -1,6 +1,7 @@
 import { getCoreDb } from '$server/db/pg-client';
 import { withOrgCore } from '$server/db/with-org-core';
 import { backupConfigs, serverProvisionConfigs } from '@minion-stack/db/pg';
+import { unifiedEvents } from '@minion-stack/db/schema';
 import { eq } from 'drizzle-orm';
 import {
   getBackupConfig,
@@ -13,9 +14,23 @@ import {
   deleteSnapshotRecord,
 } from './backup.service';
 import { getProvisionConfig } from './provision.service';
+import { getDb } from '$server/db/client';
+import { pruneOldEvents } from './events.service';
+import { pruneOldChatMessages } from './chat.service';
 import type { CoreCtx } from '$server/auth/core-ctx';
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
+
+// Retention windows for the unbounded append-only tables, pruned on the backup
+// tick. Mirrors the activity-bins call-site style (a literal window subtracted
+// from `Date.now()`). Override via env so retention is tunable without a deploy.
+const DAY_MS = 86_400_000;
+const num = (v: string | undefined, fallback: number) => {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+};
+const EVENT_RETENTION_MS = num(process.env.HUB_EVENT_RETENTION_DAYS, 30) * DAY_MS;
+const CHAT_RETENTION_MS = num(process.env.HUB_CHAT_RETENTION_DAYS, 90) * DAY_MS;
 
 function parseCron(expr: string): { minute: number; hour: number } | null {
   const parts = expr.trim().split(/\s+/);
@@ -60,6 +75,32 @@ async function tick() {
         .from(serverProvisionConfigs)
         .where(eq(serverProvisionConfigs.tenantId, config.tenantId)),
     );
+
+    // Retention: prune the org's two unbounded append-only tables. Best-effort —
+    // a prune failure must not abort the backup run.
+    //  - chat_messages (pg, org-scoped, no serverId) → one call.
+    //  - unified_events (Turso, per-server) → one call per server the tenant has
+    //    events for. The event serverId is the legacy Turso id (not the pg
+    //    gateway uuid in provConfigs), so we read the distinct ids straight from
+    //    the events table rather than reusing pc.gatewayId.
+    try {
+      await pruneOldChatMessages(ctx, now.getTime() - CHAT_RETENTION_MS);
+    } catch (e) {
+      console.error('[backup-scheduler] prune chat_messages failed', e);
+    }
+    try {
+      const tursoCtx = { db: getDb(), tenantId: config.tenantId };
+      const serverIds = await tursoCtx.db
+        .selectDistinct({ serverId: unifiedEvents.serverId })
+        .from(unifiedEvents)
+        .where(eq(unifiedEvents.tenantId, config.tenantId));
+      const eventCutoff = now.getTime() - EVENT_RETENTION_MS;
+      for (const { serverId } of serverIds) {
+        await pruneOldEvents(tursoCtx, serverId, eventCutoff);
+      }
+    } catch (e) {
+      console.error('[backup-scheduler] prune unified_events failed', e);
+    }
 
     for (const pc of provConfigs) {
       if (!pc.sshHost) continue;

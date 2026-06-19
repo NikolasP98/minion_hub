@@ -2,7 +2,7 @@
 //  - debug stepped-build (admin-only, Phase D-0c)
 //  - session/prompt/memory fetches used by inspector panels
 
-import { sendRequest } from '../gateway.svelte';
+import { sendRequest } from '../gateway-rpc';
 
 // ─── Misc fetches ─────────────────────────────────────────────────────
 

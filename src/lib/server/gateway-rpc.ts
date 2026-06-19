@@ -10,17 +10,13 @@
  * raw operator token in the `connect` request; the gateway treats
  * token/password auth without a JWT as `role: "admin"`.
  *
- * Credentials come from the encrypted DB row (`servers` table), not from
- * env vars. Resolution: if `MINION_GATEWAY_PRIMARY_URL` env is set, look
- * up the matching server row; otherwise pick the oldest server. The
+ * Credentials come from the encrypted Supabase `gateway` row (per-user via
+ * `user_gateway`, else system-wide), not from env vars. The
  * `OPENCLAW_GATEWAY_TOKEN` / `MINION_GATEWAY_URL` env vars remain only as
  * a one-time bootstrap fallback for fresh deployments with an empty DB.
  */
 import { WebSocket } from 'ws';
 import { randomUUID } from 'node:crypto';
-
-import { getDb } from '$server/db/client';
-import { getSystemGatewayCredentials } from '$server/services/server.service';
 
 const env = process.env;
 
@@ -56,7 +52,7 @@ export async function getGatewayHttpUrlForUser(profileId: string | undefined): P
 
 /**
  * Resolve gateway credentials for a specific user.
- * Priority: PG per-user → Turso system-wide → env fallback.
+ * Priority: PG per-user → PG system-wide → env bootstrap fallback.
  */
 export async function resolveCredentialsForUser(
   profileId: string | undefined,
@@ -75,15 +71,13 @@ export async function resolveCredentialsForUser(
       console.warn('[gateway-rpc] PG per-user lookup failed, falling back to Turso', err);
     }
   }
-  // 2. Turso system-wide fallback. Track A2 kill-switch: set GATEWAY_TURSO_FALLBACK=false
-  //    to disable once the PG path is proven; the branch is removed entirely in Track C.
-  if (env.GATEWAY_TURSO_FALLBACK !== 'false') {
-    try {
-      const creds = await getSystemGatewayCredentials(getDb(), env.MINION_GATEWAY_PRIMARY_URL);
-      if (creds) return { url: toWsUrl(creds.url), token: creds.token };
-    } catch (err) {
-      console.warn('[gateway-rpc] Turso credential lookup failed, trying env fallback', err);
-    }
+  // 2. PG system-wide fallback (no per-user link or no profile context).
+  try {
+    const { getSystemGatewayCredentials } = await import('$server/services/gateway.pg.service');
+    const creds = await getSystemGatewayCredentials(env.MINION_GATEWAY_PRIMARY_URL);
+    if (creds) return { url: toWsUrl(creds.url), token: creds.token };
+  } catch (err) {
+    console.warn('[gateway-rpc] PG system credential lookup failed, trying env fallback', err);
   }
   // 3. Bootstrap env fallback.
   const fallbackUrl = env.MINION_GATEWAY_URL ?? env.OPENCLAW_GATEWAY_URL ?? '';
@@ -217,7 +211,7 @@ async function gatewayCallWithCreds<T = unknown>(
 
 /**
  * Call a gateway RPC over a one-shot WebSocket and return the result.
- * Uses system-wide credentials (Turso fallback → env).
+ * Uses system-wide credentials (PG `gateway` row → env bootstrap fallback).
  */
 export async function gatewayCall<T = unknown>(
   method: string,

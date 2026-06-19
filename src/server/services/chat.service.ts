@@ -1,4 +1,4 @@
-import { eq, and, asc } from 'drizzle-orm';
+import { eq, and, asc, lt } from 'drizzle-orm';
 import { chatMessages } from '@minion-stack/db/pg';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { withOrgCore } from '$server/db/with-org-core';
@@ -109,21 +109,34 @@ export async function bulkInsertChatMessages(ctx: CoreCtx, messages: ChatMessage
     resolved.push({ gatewayId, msg });
   }
   if (resolved.length === 0) return;
-  await withOrgCore(ctx, async (tx) => {
-    for (const { gatewayId, msg } of resolved) {
-      await tx
-        .insert(chatMessages)
-        .values({
-          tenantId: ctx.tenantId,
-          gatewayId,
-          agentId: msg.agentId,
-          sessionKey: msg.sessionKey,
-          role: msg.role,
-          content: msg.content,
-          runId: msg.runId ?? null,
-          timestamp: new Date(msg.timestamp),
-        })
-        .onConflictDoNothing();
-    }
-  });
+  const rows = resolved.map(({ gatewayId, msg }) => ({
+    tenantId: ctx.tenantId,
+    gatewayId,
+    agentId: msg.agentId,
+    sessionKey: msg.sessionKey,
+    role: msg.role,
+    content: msg.content,
+    runId: msg.runId ?? null,
+    timestamp: new Date(msg.timestamp),
+  }));
+  await withOrgCore(ctx, (tx) => tx.insert(chatMessages).values(rows).onConflictDoNothing());
+}
+
+/**
+ * Prune chat messages older than `olderThan` (epoch ms) for this org. chat_messages
+ * is an unbounded append-only transcript; this caps its growth. Mirrors
+ * pruneOldActivityBins (same absolute-timestamp arg style). Org-scoped via
+ * withOrgCore so the chat_messages RLS policy enforces isolation server-side.
+ */
+export async function pruneOldChatMessages(ctx: CoreCtx, olderThan: number): Promise<void> {
+  await withOrgCore(ctx, (tx) =>
+    tx
+      .delete(chatMessages)
+      .where(
+        and(
+          eq(chatMessages.tenantId, ctx.tenantId),
+          lt(chatMessages.timestamp, new Date(olderThan)),
+        ),
+      ),
+  );
 }

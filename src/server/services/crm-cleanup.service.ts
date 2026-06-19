@@ -78,21 +78,26 @@ export async function applyStandardization(
   fixes: Array<{ contactId: string; name: string }>,
 ): Promise<number> {
   if (fixes.length === 0) return 0;
-  const n = await withOrgCore(ctx, async (tx) => {
-    let count = 0;
-    for (const f of fixes) {
-      const name = f.name.trim();
-      if (!name) continue;
-      await tx.execute(sql`
-        update crm_contacts set display_name = ${name}, updated_at = now()
-        where id = ${f.contactId} and org_id = ${ctx.tenantId}
-      `);
-      count++;
-    }
-    return count;
+  // Trim + drop empties first (same skip the per-row loop did); count = number of
+  // valid fixes submitted (unchanged from the loop, which incremented per attempt).
+  const valid = fixes.map((f) => ({ id: f.contactId, name: f.name.trim() })).filter((f) => f.name);
+  if (valid.length === 0) {
+    await bust(ctx.tenantId);
+    return 0;
+  }
+  await withOrgCore(ctx, (tx) => {
+    const rows = sql.join(
+      valid.map((f) => sql`(${f.id}::uuid, ${f.name})`),
+      sql`, `,
+    );
+    return tx.execute(sql`
+      update crm_contacts c set display_name = v.name, updated_at = now()
+      from (values ${rows}) as v(id, name)
+      where c.id = v.id and c.org_id = ${ctx.tenantId}
+    `);
   });
   await bust(ctx.tenantId);
-  return n;
+  return valid.length;
 }
 
 // ── Duplicate detection ───────────────────────────────────────────────────────
@@ -190,7 +195,10 @@ export async function mergeContacts(
 
   await withOrgCore(ctx, async (tx) => {
     const org = ctx.tenantId;
-    const loserArr = sql`(${sql.join(losers.map((id) => sql`${id}`), sql`, `)})`;
+    const loserArr = sql`(${sql.join(
+      losers.map((id) => sql`${id}`),
+      sql`, `,
+    )})`;
 
     // 1. Drop loser identities that would collide with one the survivor already has.
     await tx.execute(sql`

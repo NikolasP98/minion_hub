@@ -199,6 +199,13 @@ export const schedBookings = pgTable(
     uidUniq: uniqueIndex('sched_bookings_org_uid_uniq').on(t.orgId, t.uid),
     orgStartIdx: index('sched_bookings_org_start_idx').on(t.orgId, t.startTime),
     resourceStartIdx: index('sched_bookings_resource_start_idx').on(t.resourceId, t.startTime),
+    // Covers the conflict/busy-interval probe (loadBusyInTx): filters by
+    // resource_id + status, ranges on start_time — see scheduling-bookings.service.ts.
+    resourceStatusStartIdx: index('sched_bookings_resource_status_start_idx').on(
+      t.resourceId,
+      t.status,
+      t.startTime,
+    ),
     statusIdx: index('sched_bookings_org_status_idx').on(t.orgId, t.status),
     crmIdx: index('sched_bookings_crm_idx').on(t.crmContactId),
   }),

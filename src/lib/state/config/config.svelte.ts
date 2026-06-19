@@ -2,7 +2,7 @@
  * Reactive config state — loads remote config + schema via WS,
  * tracks edits, computes patches, and saves.
  */
-import { sendRequest } from '$lib/services/gateway.svelte';
+import { sendRequest } from '$lib/services/gateway-rpc';
 import { toaster, toastError, toastSuccess, toastWarning } from '$lib/state/ui/toast.svelte';
 import * as m from '$lib/paraglide/messages';
 import { isAdmin } from '$lib/state/features/user.svelte';

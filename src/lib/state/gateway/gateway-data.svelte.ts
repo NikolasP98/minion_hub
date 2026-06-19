@@ -48,15 +48,25 @@ export const gw = $state({
  *   2. User scope — non-admins are further limited to their `allowedAgentIds`.
  *      Admins (allowedAgentIds === null) see everything in the active org.
  */
+// Memoized via $derived so it recomputes only when its real inputs change
+// (gw.agents, page.data org scope, userState.allowedAgentIds) — NOT on every
+// gw.lastSeq/health/presence bump. Svelte 5 tracks per-property, so reading
+// `gw.agents` here does not subscribe to other `gw` fields. Exposed through the
+// existing `.value` getter so all consumers keep working (you can't export a
+// bare $derived).
+const _visibleAgents = $derived.by((): Agent[] => {
+  const orgs = ((page.data as { organizations?: OrgRef[] })?.organizations ?? []) as OrgRef[];
+  const activeOrgId = (page.data as { activeOrgId?: string | null })?.activeOrgId ?? null;
+  const scoped = filterAgentsByOrg(gw.agents, activeOrgId, orgs);
+
+  const allowed = userState.allowedAgentIds;
+  if (allowed === null) return scoped;
+  return scoped.filter((a) => allowed.has(a.id));
+});
+
 export const visibleAgents = {
   get value(): Agent[] {
-    const orgs = ((page.data as { organizations?: OrgRef[] })?.organizations ?? []) as OrgRef[];
-    const activeOrgId = (page.data as { activeOrgId?: string | null })?.activeOrgId ?? null;
-    const scoped = filterAgentsByOrg(gw.agents, activeOrgId, orgs);
-
-    const allowed = userState.allowedAgentIds;
-    if (allowed === null) return scoped;
-    return scoped.filter((a) => allowed.has(a.id));
+    return _visibleAgents;
   },
 };
 

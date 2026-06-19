@@ -1,3 +1,5 @@
+import { sendRequest } from '$lib/services/gateway-rpc';
+
 interface PersonalAgentState {
   agent: PersonalAgentData | null;
   loading: boolean;
@@ -73,7 +75,6 @@ export const personalAgent = {
       if (!data.needsProvisioning) return;
 
       // Call gateway to create the agent workspace
-      const { sendRequest } = await import('$lib/services/gateway.svelte');
       try {
         await sendRequest('agents.create', data.payload);
         // Mark as active

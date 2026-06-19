@@ -1,7 +1,7 @@
 // Phase D-0f — externalized section prose read/write (split from gateway.svelte.ts).
 // Pure leaf RPCs: just wraps `sendRequest`. Imported through the gateway facade.
 
-import { sendRequest } from '../gateway.svelte';
+import { sendRequest } from '../gateway-rpc';
 
 export interface ProseReadParams {
   layer: 'platform' | 'agent-type' | 'identity' | 'user' | 'session';
@@ -65,7 +65,11 @@ export async function writeSectionProse(
   } catch (err: unknown) {
     // The shared GatewayClient surfaces ErrorShape via a thrown Error whose
     // message/code carry the CONFLICT label. Extract details when possible.
-    const anyErr = err as { code?: string; details?: { expectedMtimeMs?: number; actualMtimeMs?: number }; message?: string };
+    const anyErr = err as {
+      code?: string;
+      details?: { expectedMtimeMs?: number; actualMtimeMs?: number };
+      message?: string;
+    };
     if (anyErr?.code === 'CONFLICT') {
       throw new ProseConflictError(
         anyErr.message ?? 'prose file changed since last read',

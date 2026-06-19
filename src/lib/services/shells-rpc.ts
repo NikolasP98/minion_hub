@@ -8,7 +8,7 @@
  * Spec: specs/2026-05-20-shells-golden-agents.md (in meta-repo).
  */
 
-import { sendRequest } from './gateway.svelte';
+import { sendRequest } from './gateway-rpc';
 
 // ---------------------------------------------------------------------------
 // Types (mirror @minion-stack/shared/gateway/shells.ts byte-for-byte)

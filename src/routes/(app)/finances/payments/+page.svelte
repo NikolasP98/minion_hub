@@ -1,25 +1,37 @@
 <script lang="ts">
 	import type { PageData } from './$types';
+	import { goto } from '$app/navigation';
 	import * as m from '$lib/paraglide/messages';
 	import { CreditCard } from 'lucide-svelte';
 	import { PageHeader } from '$lib/components/ui';
 
 	let { data }: { data: PageData } = $props();
 	const payments = $derived(data.payments);
+	const total = $derived(data.total);
+	const loadedLimit = $derived(data.limit);
 
-	// ── Windowed rendering ────────────────────────────────────────────────────
+	// ── Server-side pagination ────────────────────────────────────────────────
+	// Rows are already a server page; when the user scrolls near the bottom and the
+	// server has more, bump `?show=` so the loader fetches the next page (lazy SSR,
+	// keepFocus/noScroll so the scroll position is preserved across the navigation).
 	const PAGE = 60;
-	let renderLimit = $state(PAGE);
-	const windowed = $derived(payments.slice(0, renderLimit));
-	$effect(() => {
-		payments.length;
-		renderLimit = PAGE;
-	});
+	let loadingMore = $state(false);
+	const hasMore = $derived(payments.length < total);
+	async function loadMore() {
+		if (loadingMore || !hasMore) return;
+		loadingMore = true;
+		await goto(`?show=${loadedLimit + PAGE}`, {
+			keepFocus: true,
+			noScroll: true,
+			invalidateAll: false,
+		});
+		loadingMore = false;
+	}
 	function infiniteScroll(root: HTMLElement) {
 		const onScroll = () => {
-			if (renderLimit >= payments.length) return;
+			if (!hasMore || loadingMore) return;
 			if (root.scrollTop + root.clientHeight >= root.scrollHeight - 400) {
-				renderLimit += PAGE;
+				void loadMore();
 			}
 		};
 		root.addEventListener('scroll', onScroll, { passive: true });
@@ -61,7 +73,7 @@
 					</tr>
 				</thead>
 				<tbody>
-					{#each windowed as p (p.id)}
+					{#each payments as p (p.id)}
 						<tr class="border-b border-[var(--hairline)] hover:bg-white/[0.03] transition-colors">
 							<td class="px-4 py-2 t-caption">{fmtDate(p.paidAt)}</td>
 							<td class="px-3 py-2 capitalize">{p.method ?? '—'}</td>

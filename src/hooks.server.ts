@@ -18,6 +18,16 @@ import { initCache } from '$lib/server/cache';
 import { getCoreDb } from '$server/db/pg-client';
 import { getUserPreferences } from '$server/services/user-preferences.service';
 
+// M5: `resolveLandingPage` runs a PG SELECT on every `/` hit. The landing-page
+// preference is per-user and changes rarely (a deliberate "Set as home page"
+// action), so a short-TTL per-user cache collapses the repeated SELECT. Bounded
+// so it can't leak; per-instance only — a stale entry self-corrects within the
+// TTL, and the worst case is one extra redirect to the old home page.
+// ponytail: cap at 1000 users; FIFO-evict at capacity.
+const LANDING_CACHE_TTL_MS = 60_000;
+const LANDING_CACHE_MAX = 1000;
+const landingCache = new Map<string, { value: string; expires: number }>();
+
 /**
  * Resolve the landing page for a signed-in user hitting "/". Defaults to
  * `/home`; honors the per-user `landingPage` preference (set via right-click →
@@ -27,6 +37,9 @@ import { getUserPreferences } from '$server/services/user-preferences.service';
 async function resolveLandingPage(supabaseId: string | undefined): Promise<string> {
   const DEFAULT = '/home';
   if (!supabaseId) return DEFAULT;
+  const now = Date.now();
+  const hit = landingCache.get(supabaseId);
+  if (hit && hit.expires > now) return hit.value;
   try {
     const prefs = await getUserPreferences(getCoreDb(), supabaseId);
     const choice = prefs.landingPage;
@@ -39,12 +52,26 @@ async function resolveLandingPage(supabaseId: string | undefined): Promise<strin
       !choice.startsWith('//') &&
       !choice.startsWith('/\\')
     ) {
+      cacheLanding(supabaseId, choice, now);
       return choice;
     }
   } catch {
-    /* fall through to default */
+    /* fall through to default — and don't cache, so a transient PG error
+       doesn't pin the default for the whole TTL */
+    return DEFAULT;
   }
+  // Valid lookup with no (or an unsafe) preference: cache the default so the
+  // common "no custom home page" case stops re-querying PG every `/` hit.
+  cacheLanding(supabaseId, DEFAULT, now);
   return DEFAULT;
+}
+
+function cacheLanding(supabaseId: string, value: string, now: number): void {
+  if (landingCache.size >= LANDING_CACHE_MAX) {
+    const oldest = landingCache.keys().next().value;
+    if (oldest !== undefined) landingCache.delete(oldest);
+  }
+  landingCache.set(supabaseId, { value, expires: now + LANDING_CACHE_TTL_MS });
 }
 
 /**
@@ -75,7 +102,18 @@ const wellKnownHandle: Handle = async ({ event, resolve }) => {
       response_types_supported: ['code'],
       subject_types_supported: ['public'],
       id_token_signing_alg_values_supported: ['EdDSA'],
-      claims_supported: ['sub', 'iss', 'aud', 'exp', 'nbf', 'iat', 'jti', 'role', 'agentIds', 'orgId'],
+      claims_supported: [
+        'sub',
+        'iss',
+        'aud',
+        'exp',
+        'nbf',
+        'iat',
+        'jti',
+        'role',
+        'agentIds',
+        'orgId',
+      ],
     };
     return new Response(JSON.stringify(config), {
       headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=300' },
@@ -264,23 +302,39 @@ const workforceIdentityHandle: Handle = async ({ event, resolve }) => {
   return resolve(event);
 };
 
-export const handle = sequence(i18n.handle(), posthogProxyHandle, wellKnownHandle, appHandle, workforceIdentityHandle);
+export const handle = sequence(
+  i18n.handle(),
+  posthogProxyHandle,
+  wellKnownHandle,
+  appHandle,
+  workforceIdentityHandle,
+);
 
 import type { HandleServerError } from '@sveltejs/kit';
 
-export const handleError: HandleServerError = async ({ error, event, status, message }) => {
+export const handleError: HandleServerError = ({ error, event, status, message }) => {
   console.error(`[handleError] ${event.request.method} ${event.url.pathname}`, error);
-  const posthog = await getPostHogClient();
-  posthog?.capture({
-    distinctId: 'server',
-    event: 'server_error',
-    properties: {
-      error: error instanceof Error ? error.message : String(error),
-      status,
-      message,
-      path: event.url.pathname,
-    },
-  });
+  // M8: fire-and-forget. Never await the capture (or the client's dynamic
+  // import) on the error path — an error storm must not fan out into synchronous
+  // HTTP round-trips that block each failing request's response. The capture
+  // enqueues into the batched client (flushAt/flushInterval); a `flush()` nudges
+  // it out without blocking. Errors here are swallowed so telemetry can't mask
+  // the original error.
+  void getPostHogClient()
+    .then((posthog) => {
+      posthog?.capture({
+        distinctId: 'server',
+        event: 'server_error',
+        properties: {
+          error: error instanceof Error ? error.message : String(error),
+          status,
+          message,
+          path: event.url.pathname,
+        },
+      });
+      void posthog?.flush?.();
+    })
+    .catch(() => {});
   return { message: 'Internal Error' };
 };
 

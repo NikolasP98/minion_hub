@@ -19,6 +19,14 @@ export interface CachedStore<T> {
   readonly tags: readonly string[];
   refresh(): Promise<void>;
   invalidate(): void;
+  /**
+   * Optimistically patch the in-memory `data` (e.g. before a server roundtrip).
+   * The updater receives the current value (or null) and returns the next one.
+   * NOT persisted to storage — the next successful `refresh()` reconciles from
+   * the server, so this is the SWR-correct way to do optimistic writes without a
+   * second hand-mirrored copy of the data.
+   */
+  mutate(updater: (current: T | null) => T): void;
   destroy(): void;
 }
 
@@ -62,7 +70,11 @@ function readIndex(storage: Storage): string[] {
 }
 
 function writeIndex(storage: Storage, idx: string[]): void {
-  try { storage.setItem(INDEX_KEY, JSON.stringify(idx)); } catch { /* ignore */ }
+  try {
+    storage.setItem(INDEX_KEY, JSON.stringify(idx));
+  } catch {
+    /* ignore */
+  }
 }
 
 function bumpIndex(storage: Storage, key: string): void {
@@ -123,7 +135,11 @@ export function createCachedStore<T>(opts: CachedStoreOptions<T>): CachedStore<T
         stale = false;
         if (storage) {
           const now = Date.now();
-          writeStorage(opts.key, { value, expiresAt: now + ttl, staleUntil: now + ttl + swr }, storage);
+          writeStorage(
+            opts.key,
+            { value, expiresAt: now + ttl, staleUntil: now + ttl + swr },
+            storage,
+          );
         }
       } catch (e) {
         error = e instanceof Error ? e : new Error(String(e));
@@ -135,9 +151,24 @@ export function createCachedStore<T>(opts: CachedStoreOptions<T>): CachedStore<T
     return inFlight;
   }
 
+  function mutate(updater: (current: T | null) => T): void {
+    data = updater(data);
+  }
+
   function invalidate(): void {
+    // Hard bust — explicit user-driven cache clear. Blanks the UI on purpose.
     data = null;
     stale = false;
+    if (storage) storage.removeItem(STORAGE_PREFIX + opts.key);
+  }
+
+  // Soft bust — keeps the (now stale) data visible and lazily refetches on the
+  // next read of `data`. Used for tag/key-driven invalidation so a broad
+  // invalidate doesn't blank the UI or stampede an eager refetch across every
+  // tagged store at once (defeating SWR). The first read after this triggers a
+  // single background refresh (guarded by `inFlight`), then `stale` clears.
+  function markStale(): void {
+    stale = true;
     if (storage) storage.removeItem(STORAGE_PREFIX + opts.key);
   }
 
@@ -145,14 +176,18 @@ export function createCachedStore<T>(opts: CachedStoreOptions<T>): CachedStore<T
     key: opts.key,
     tags: (opts.tags ?? []) as readonly string[],
     invalidate: () => {
-      // Bust + refetch to keep UI live.
-      invalidate();
-      void refresh();
+      // SWR: mark stale + lazy refetch on next read (no blank, no stampede).
+      markStale();
+      // If nothing is currently displaying this store, nothing will read `data`
+      // to trigger the lazy refresh — but that's fine: a stale store that no one
+      // reads costs nothing, and the next reader refetches.
     },
   });
 
   return {
     get data() {
+      // Lazy SWR refetch: a read of a stale store kicks one background refresh.
+      if (stale && !inFlight) void refresh();
       return data;
     },
     get loading() {
@@ -172,6 +207,9 @@ export function createCachedStore<T>(opts: CachedStoreOptions<T>): CachedStore<T
     },
     refresh,
     invalidate,
-    destroy() { unregisterStore(handle); },
+    mutate,
+    destroy() {
+      unregisterStore(handle);
+    },
   };
 }

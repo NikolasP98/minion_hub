@@ -1,4 +1,4 @@
-import { sendRequest } from '$lib/services/gateway.svelte';
+import { sendRequest } from '$lib/services/gateway-rpc';
 
 export interface ReliabilityEvent {
   id?: number;
@@ -193,8 +193,7 @@ export async function loadReliabilityUsage(from: number, to: number) {
       since: from,
       until: to,
     })) as UsageAggregate | null;
-    reliability.usage =
-      data && Array.isArray(data.buckets) && data.total ? data : null;
+    reliability.usage = data && Array.isArray(data.buckets) && data.total ? data : null;
   } catch {
     // Method not supported (older gateway) or not connected — fall back to events.
     reliability.usage = null;

@@ -19,8 +19,8 @@ export const connectionEvents = sqliteTable(
     reason: text('reason'),
     occurredAt: integer('occurred_at').notNull(),
   },
-  (t) => [
-    index('idx_conn_events_tenant').on(t.tenantId),
-    index('idx_conn_events_server').on(t.serverId),
-  ],
+  // No service reads or writes this table. The server index was pure write-tax for
+  // a query pattern that never runs — dropped. The tenant index is retained so the
+  // organization onDelete: cascade stays cheap.
+  (t) => [index('idx_conn_events_tenant').on(t.tenantId)],
 );

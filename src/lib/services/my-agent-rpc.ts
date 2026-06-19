@@ -10,7 +10,7 @@
  * via a single source of truth.
  */
 
-import { sendRequest } from './gateway.svelte';
+import { sendRequest } from './gateway-rpc';
 
 export type ObservationDirection = 'inbound' | 'outbound';
 
