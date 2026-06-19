@@ -1,3 +1,9 @@
+<script lang="ts" module>
+  // Module-scoped so every instance gets a unique id — multiple windows coexist
+  // (non-modal), so a per-instance counter would collide on `agent-window-0`.
+  let nextId = 0;
+</script>
+
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import * as dialog from '@zag-js/dialog';
@@ -29,7 +35,6 @@
     children: Snippet;
   } = $props();
 
-  let nextId = 0;
   const dialogId = `agent-window-${nextId++}`;
   // Non-modal: multiple coexist, background interactive, no scroll-block; we own
   // positioning + drag, Zag handles open/escape/aria.
