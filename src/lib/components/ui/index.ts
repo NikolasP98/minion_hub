@@ -7,7 +7,6 @@ export { default as Spinner } from './Spinner.svelte';
 export { default as Skeleton } from './Skeleton.svelte';
 export { default as Combobox } from './Combobox.svelte';
 export { default as Modal } from './Modal.svelte';
-export { default as DangerModal } from './DangerModal.svelte';
 export { default as PageHeader } from './PageHeader.svelte';
 export { default as Select } from './Select.svelte';
 export { default as MultiSelectFilter } from './MultiSelectFilter.svelte';
@@ -27,7 +26,6 @@ export type {
   InputSize,
 } from '@minion-stack/ui';
 export type { ModalSize } from './Modal.svelte';
-export type { DangerMode } from './DangerModal.svelte';
 export type { SelectSize, SelectOption, SelectValue } from './Select.svelte';
 export type { MultiSelectOption } from './MultiSelectFilter.svelte';
 export type { ToggleSize } from './Toggle.svelte';

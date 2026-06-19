@@ -41,3 +41,6 @@ infisical-dev.sh
 
 # Migration artifacts (one-time Turso→Supabase dumps — may contain real data)
 .migration-backup/
+
+# bun is the package manager; npm lockfile is redundant
+package-lock.json

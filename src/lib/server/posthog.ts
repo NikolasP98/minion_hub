@@ -20,13 +20,3 @@ export async function getPostHogClient() {
   }
   return posthogClient;
 }
-
-export async function shutdownPostHog() {
-  if (posthogClient) {
-    try {
-      await posthogClient.shutdown(3000);
-    } catch {
-      // ignore
-    }
-  }
-}
