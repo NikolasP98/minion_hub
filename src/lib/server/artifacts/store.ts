@@ -25,7 +25,11 @@ export function listArtifactRows(ctx: CoreCtx, agentId: string): Promise<AgentAr
 
 export function getArtifactRow(ctx: CoreCtx, id: string): Promise<AgentArtifactRow | null> {
   return withOrgCore(scope(ctx), async (tx) => {
-    const rows = await tx.select().from(agentArtifacts).where(eq(agentArtifacts.id, id)).limit(1);
+    const rows = await tx
+      .select()
+      .from(agentArtifacts)
+      .where(and(eq(agentArtifacts.id, id), eq(agentArtifacts.orgId, ctx.tenantId)))
+      .limit(1);
     return rows[0] ?? null;
   });
 }
@@ -46,6 +50,6 @@ export function createArtifactRow(
 
 export function deleteArtifactRow(ctx: CoreCtx, id: string): Promise<void> {
   return withOrgCore(scope(ctx), async (tx) => {
-    await tx.delete(agentArtifacts).where(eq(agentArtifacts.id, id));
+    await tx.delete(agentArtifacts).where(and(eq(agentArtifacts.id, id), eq(agentArtifacts.orgId, ctx.tenantId)));
   });
 }
