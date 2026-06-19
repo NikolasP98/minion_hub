@@ -232,6 +232,11 @@ export async function listPendingAgents(
         lt(personalAgents.retryCount, maxRetries),
       ),
     );
+  // Pre-resolve distinct gateways once so the per-row reshape hits the
+  // resolveServerId cache instead of a query per row (was N+1).
+  await Promise.all(
+    [...new Set(rows.map((r) => r.gatewayId).filter((g): g is string => !!g))].map(resolveServerId),
+  );
   return Promise.all(rows.map((r) => reshape(r, r.profileId)));
 }
 

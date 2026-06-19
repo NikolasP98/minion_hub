@@ -111,6 +111,9 @@ export async function listSkillStats(
           .orderBy(desc(skillExecutionStats.occurredAt))
           .limit(filters.limit ?? 200),
       );
+      // Pre-resolve distinct gateways once so the per-row reshape hits the
+      // resolveServerId cache instead of a query per row (was N+1).
+      await Promise.all([...new Set(rows.map((r) => r.gatewayId))].map(resolveServerId));
       return Promise.all(rows.map(reshape));
     },
   );
