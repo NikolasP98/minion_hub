@@ -89,6 +89,9 @@
   );
 </script>
 
+<!-- `style={frameStyle}` MUST stay after the spread: with modal:false Zag's
+     positioner sets style:{pointer-events:none}; the later literal style wins and
+     we own positioning (drag/fullscreen), keeping the window interactive. Don't reorder. -->
 <div {...api.getPositionerProps()} style={frameStyle} onpointerdowncapture={() => onfocus()}>
   <!-- Mirror ui/Modal.svelte's look: surface-4 + radius-xl + hairline borders +
        t-heading title + the same close-button styling (the dialog in the
