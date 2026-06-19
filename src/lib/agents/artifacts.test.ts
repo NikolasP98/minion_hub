@@ -8,12 +8,14 @@ import {
 import type { AutonomousAgentVM } from './autonomous';
 
 describe('overviewDescriptorFor', () => {
-  it('builds the overview descriptor for an agent', () => {
-    expect(overviewDescriptorFor('scheduling.reminders', 'Overview')).toEqual({
+  it('builds the overview descriptor with icon + description', () => {
+    expect(overviewDescriptorFor('scheduling.reminders', 'Overview', 'Live status & activity.')).toEqual({
       id: 'overview',
       agentId: 'scheduling.reminders',
       slot: 'detail',
       title: 'Overview',
+      description: 'Live status & activity.',
+      icon: 'LayoutDashboard',
       kind: 'static',
       entrypoint: 'index.html',
     });
