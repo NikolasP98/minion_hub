@@ -35,7 +35,6 @@
           <div class="max-w-56 p-1">
             <p class="text-xs font-semibold text-white">{a.title}</p>
             <p class="mt-0.5 text-[11px] leading-snug text-white/60">{a.description}</p>
-            <p class="mt-1 text-[10px] uppercase tracking-wide text-white/35">{m.artifact_kind_static()}</p>
           </div>
       </Popover>
     {/each}

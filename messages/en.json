@@ -3123,6 +3123,5 @@
   "autonomous_detail_manage": "Open settings",
   "artifacts_label": "Artifacts",
   "artifact_add": "Add artifact",
-  "artifact_add_soon": "Custom artifacts are coming soon (admin).",
-  "artifact_kind_static": "Static"
+  "artifact_add_soon": "Custom artifacts are coming soon (admin)."
 }
