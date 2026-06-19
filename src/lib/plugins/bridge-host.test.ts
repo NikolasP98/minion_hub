@@ -11,8 +11,8 @@ class FakeWindow {
   postMessage = vi.fn((data: unknown, targetOrigin: string) => {
     this.posted.push({ data, origin: targetOrigin });
   });
-  emit(data: unknown, origin: string) {
-    for (const l of this.listeners) l({ data, origin } as MessageEvent);
+  emit(data: unknown, origin: string, source?: unknown) {
+    for (const l of this.listeners) l({ data, origin, source } as MessageEvent);
   }
 }
 
@@ -39,6 +39,35 @@ describe("mountHostBridge", () => {
     });
     hostWin.emit({ type: "plugin:ready" }, "https://gw.example.com");
     expect(iframeWin.posted).toHaveLength(1);
+    bridge.dispose();
+  });
+
+  it("sandboxed: accepts opaque-origin peer by source identity + posts with '*'", () => {
+    const bridge = mountHostBridge({
+      self: hostWin as unknown as Window,
+      target: iframeWin as unknown as Window,
+      pluginOrigin: "https://hub.example.com",
+      sandboxed: true,
+      hello: { theme: "dark", tokens: {}, gatewayUrl: "", authToken: "" },
+    });
+    // opaque-origin sandboxed iframe posts with origin "null" but is the real target window
+    hostWin.emit({ type: "plugin:ready" }, "null", iframeWin);
+    expect(iframeWin.posted).toHaveLength(1);
+    expect(iframeWin.posted[0].origin).toBe("*"); // reaches the opaque-origin peer
+    bridge.dispose();
+  });
+
+  it("sandboxed: ignores a message from a window that is not the target", () => {
+    const bridge = mountHostBridge({
+      self: hostWin as unknown as Window,
+      target: iframeWin as unknown as Window,
+      pluginOrigin: "https://hub.example.com",
+      sandboxed: true,
+      hello: { theme: "dark", tokens: {}, gatewayUrl: "", authToken: "" },
+    });
+    const otherWin = new FakeWindow();
+    hostWin.emit({ type: "plugin:ready" }, "null", otherWin);
+    expect(iframeWin.posted).toHaveLength(0);
     bridge.dispose();
   });
 
