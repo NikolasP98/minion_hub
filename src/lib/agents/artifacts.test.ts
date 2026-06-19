@@ -48,7 +48,7 @@ describe('agentVmToArtifactContext', () => {
 
 describe('artifactSrc', () => {
   it('builds a same-origin /artifacts URL with the hostOrigin hash', () => {
-    const d: ArtifactDescriptor = { id: 'overview', agentId: 'a', slot: 'detail', title: 'Overview', kind: 'static', entrypoint: 'index.html' };
+    const d: ArtifactDescriptor = { id: 'overview', agentId: 'a', slot: 'detail', title: 'Overview', description: 'Overview', icon: 'LayoutDashboard', kind: 'static', entrypoint: 'index.html' };
     expect(artifactSrc(d, 'https://hub.example.com')).toBe(
       'https://hub.example.com/artifacts/overview/ui/index.html#hostOrigin=https%3A%2F%2Fhub.example.com',
     );
