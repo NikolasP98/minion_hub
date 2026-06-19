@@ -11,6 +11,7 @@
   "nav_prompt": "Prompt",
   "nav_home": "Inicio",
   "nav_overview": "Resumen",
+  "artifact_overview_title": "Resumen",
   "nav_team": "Equipo",
   "nav_capabilities": "Capacidades",
   "nav_copilots": "Copilotos",
@@ -3115,5 +3116,7 @@
   "autonomous_page_title": "Agentes autónomos",
   "autonomous_page_subtitle": "Automatizaciones activadas que se ejecutan solas — sin chat, solo una tarea.",
   "autonomous_empty": "Aún no hay agentes autónomos. Activa un módulo (como Agenda) para agregar uno.",
-  "autonomous_activity": "{sent} enviados · {failed} fallidos · 30d"
+  "autonomous_activity": "{sent} enviados · {failed} fallidos · 30d",
+  "autonomous_detail_back": "Volver a agentes autónomos",
+  "autonomous_detail_manage": "Abrir ajustes"
 }

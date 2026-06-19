@@ -68,15 +68,13 @@
         {m.autonomous_activity({ sent: stats.sent, failed: stats.failed })}
       {/if}
     </span>
-    {#if agent.managePath}
-      <button
-        type="button"
-        onclick={() => goto(agent.managePath!)}
-        class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-white/80 transition-colors hover:bg-white/10"
-      >
-        <Settings2 size={13} />
-        {m.autonomous_manage()}
-      </button>
-    {/if}
+    <button
+      type="button"
+      onclick={() => goto(`/agents/autonomous/${encodeURIComponent(agent.id)}`)}
+      class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-white/80 transition-colors hover:bg-white/10"
+    >
+      <Settings2 size={13} />
+      {m.autonomous_manage()}
+    </button>
   </footer>
 </article>

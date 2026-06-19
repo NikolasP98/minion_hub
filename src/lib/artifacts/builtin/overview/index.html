@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Agent Overview</title>
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 1rem;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--color-background, #0b0b0f);
+      color: var(--color-foreground, #e7e7ea);
+    }
+    .hdr { display: flex; align-items: center; gap: .75rem; margin-bottom: 1rem; }
+    .hdr h1 { font-size: 1rem; margin: 0; }
+    .hdr p { font-size: .8rem; margin: .1rem 0 0; opacity: .6; }
+    .pill { margin-left: auto; font-size: .7rem; padding: .15rem .5rem; border-radius: 999px;
+      border: 1px solid var(--color-border, #2a2a31); }
+    .pill.active { color: var(--color-success, #34d399); border-color: var(--color-success, #34d39955); }
+    .pill.attention { color: var(--color-warning, #fbbf24); border-color: var(--color-warning, #fbbf2455); }
+    .pill.disabled { opacity: .5; }
+    section { border: 1px solid var(--color-border, #2a2a31); border-radius: var(--radius, 12px);
+      padding: .75rem .9rem; margin-bottom: .6rem; background: var(--color-card, transparent); }
+    section h2 { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em;
+      opacity: .55; margin: 0 0 .35rem; }
+    section p { margin: 0; font-size: .85rem; line-height: 1.4; }
+    .stats { display: flex; gap: 1rem; }
+    .stat b { display: block; font-size: 1.1rem; }
+    .stat span { font-size: .72rem; opacity: .55; }
+    #state { font-size: .85rem; opacity: .6; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <div id="state">Loading…</div>
+  <main id="app" hidden>
+    <div class="hdr">
+      <div>
+        <h1 id="name"></h1>
+        <p id="role"></p>
+      </div>
+      <span id="pill" class="pill"></span>
+    </div>
+    <section><h2>What I do</h2><p id="desc"></p></section>
+    <section><h2>How I'm doing</h2><p id="how"></p></section>
+    <section><h2>What I've done</h2><div class="stats" id="stats"></div></section>
+    <section><h2>How I work</h2><p id="trigger"></p></section>
+  </main>
+  <script>
+    (function () {
+      var hostOrigin = new URLSearchParams(location.hash.slice(1)).get('hostOrigin');
+      var rpcId = 0, pending = {};
+      function applyTokens(theme, tokens) {
+        if (tokens) for (var k in tokens) document.documentElement.style.setProperty(k, tokens[k]);
+        document.documentElement.classList.toggle('dark', theme === 'dark');
+      }
+      function call(method) {
+        return new Promise(function (resolve, reject) {
+          var id = 'rpc-' + ++rpcId;
+          pending[id] = { resolve: resolve, reject: reject };
+          parent.postMessage({ type: 'plugin:rpc-request', id: id, method: method, params: {} }, hostOrigin);
+        });
+      }
+      function render(c) {
+        document.getElementById('state').hidden = true;
+        document.getElementById('app').hidden = false;
+        document.getElementById('name').textContent = c.agentName || '';
+        document.getElementById('role').textContent = c.agentRole || '';
+        document.getElementById('desc').textContent = c.agentDescription || '—';
+        var st = (c.status && c.status.state) || 'disabled';
+        var pill = document.getElementById('pill');
+        pill.textContent = st;
+        pill.className = 'pill ' + st;
+        document.getElementById('how').textContent =
+          (c.status && c.status.detail) ? c.status.detail :
+          st === 'active' ? 'Running normally.' : st === 'attention' ? 'Needs attention.' : 'Disabled.';
+        var s = (c.status && c.status.stats) || null;
+        document.getElementById('stats').innerHTML = s
+          ? '<div class="stat"><b>' + s.sent + '</b><span>sent</span></div>' +
+            '<div class="stat"><b>' + s.failed + '</b><span>failed</span></div>' +
+            '<div class="stat"><b>' + s.skipped + '</b><span>skipped</span></div>'
+          : '<span style="opacity:.55;font-size:.8rem">No activity yet.</span>';
+        document.getElementById('trigger').textContent = c.trigger || '—';
+      }
+      function fail(msg) {
+        var el = document.getElementById('state');
+        el.hidden = false;
+        el.textContent = 'Could not load: ' + msg;
+      }
+      window.addEventListener('message', function (ev) {
+        if (ev.origin !== hostOrigin) return;
+        var d = ev.data || {};
+        if (d.type === 'host:hello') {
+          applyTokens(d.theme, d.tokens);
+          call('hub.artifact.context.get').then(render).catch(function (e) { fail(String(e)); });
+        } else if (d.type === 'host:rpc-response') {
+          var p = pending[d.id];
+          if (!p) return;
+          delete pending[d.id];
+          if (d.ok) p.resolve(d.payload); else p.reject(new Error((d.error && d.error.message) || 'rpc failed'));
+        }
+      });
+      if (!hostOrigin) { fail('no host origin'); return; }
+      parent.postMessage({ type: 'plugin:ready', protocolVersion: 1 }, hostOrigin);
+    })();
+  </script>
+</body>
+</html>
