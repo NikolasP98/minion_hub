@@ -11,12 +11,16 @@ import {
 } from '$lib/agents/artifacts';
 import * as m from '$lib/paraglide/messages';
 import { gatewayCallAsUser } from '$lib/server/gateway-rpc';
+import { listArtifactRows, getArtifactRow, artifactRowToDescriptor } from '$lib/server/artifacts/store';
 
-/** Built-in artifacts for an agent. Phase 1: every agent gets the Overview. */
-export function getArtifactsForAgent(agentId: string): ArtifactDescriptor[] {
-  if (agentId === 'alert-watcher')
-    return [triageDescriptorFor(agentId, m.artifact_triage_title(), m.artifact_triage_desc())];
-  return [overviewDescriptorFor(agentId, m.artifact_overview_title(), m.artifact_overview_desc())];
+/** Built-in + DB artifacts for an agent. */
+export async function getArtifactsForAgent(ctx: CoreCtx, agentId: string): Promise<ArtifactDescriptor[]> {
+  const builtins =
+    agentId === 'alert-watcher'
+      ? [triageDescriptorFor(agentId, m.artifact_triage_title(), m.artifact_triage_desc())]
+      : [overviewDescriptorFor(agentId, m.artifact_overview_title(), m.artifact_overview_desc())];
+  const dbRows = await listArtifactRows(ctx, agentId).catch(() => []);
+  return [...builtins, ...dbRows.map(artifactRowToDescriptor)];
 }
 
 /** Resolve a (agentId, artifactId) instance's data, or null if unknown. */
@@ -46,5 +50,8 @@ export async function getArtifactContext(
     const counts = summary?.counts ?? { total: 0, high: 0, med: 0, low: 0, notified: 0, responded: 0 };
     return { ...base, data: { counts, recent: mapRecentRows(recent?.rows ?? []) } };
   }
+  // DB (dynamic) artifact: base context (per-artifact data providers come with 5b)
+  const row = await getArtifactRow(ctx, artifactId).catch(() => null);
+  if (row && row.agentId === agentId) return base;
   return null;
 }

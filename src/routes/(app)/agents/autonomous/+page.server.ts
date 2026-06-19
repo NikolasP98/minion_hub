@@ -9,7 +9,7 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   const systemAgents = await loadSystemAgentVMs(ctx).catch(() => []);
   const isAdmin = locals.user?.role === 'admin';
   const artifactsByAgent = Object.fromEntries(
-    systemAgents.map((agent) => [agent.id, getArtifactsForAgent(agent.id)]),
+    await Promise.all(systemAgents.map(async (agent) => [agent.id, await getArtifactsForAgent(ctx, agent.id)] as const)),
   );
   return { systemAgents, isAdmin, artifactsByAgent };
 };
