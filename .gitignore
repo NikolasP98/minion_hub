@@ -44,3 +44,6 @@ infisical-dev.sh
 
 # bun is the package manager; npm lockfile is redundant
 package-lock.json
+
+# SDD process artifacts (subagent-driven-development reports)
+sdd/
