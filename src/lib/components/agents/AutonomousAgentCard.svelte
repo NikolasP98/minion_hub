@@ -1,10 +1,18 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { Zap, Settings2 } from 'lucide-svelte';
+  import { Zap, Settings2, Workflow } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import type { AutonomousAgentVM } from '$lib/agents/autonomous';
+  import type { ArtifactDescriptor } from '$lib/agents/artifacts';
+  import ArtifactGallery from '$lib/components/artifacts/ArtifactGallery.svelte';
+  import ArtifactHost from '$lib/components/artifacts/ArtifactHost.svelte';
+  import { Modal } from '$lib/components/ui';
 
-  let { agent }: { agent: AutonomousAgentVM } = $props();
+  let {
+    agent,
+    artifacts = [],
+    canAdd = false,
+  }: { agent: AutonomousAgentVM; artifacts?: ArtifactDescriptor[]; canAdd?: boolean } = $props();
 
   const statusLabel = $derived(
     agent.status.state === 'active'
@@ -24,6 +32,8 @@
   );
 
   const stats = $derived(agent.status.stats);
+
+  let openArtifact = $state<ArtifactDescriptor | null>(null);
 </script>
 
 <article
@@ -68,13 +78,37 @@
         {m.autonomous_activity({ sent: stats.sent, failed: stats.failed })}
       {/if}
     </span>
-    <button
-      type="button"
-      onclick={() => goto(`/agents/autonomous/${encodeURIComponent(agent.id)}`)}
-      class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-white/80 transition-colors hover:bg-white/10"
-    >
-      <Settings2 size={13} />
-      {m.autonomous_manage()}
-    </button>
+    <div class="flex items-center gap-2">
+      {#if agent.flowId}
+        <button
+          type="button"
+          onclick={() => goto(`/flow-editor/master/${agent.flowId}`)}
+          class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-white/80 transition-colors hover:bg-white/10"
+        >
+          <Workflow size={13} />
+          {m.autonomous_view_flow()}
+        </button>
+      {/if}
+      <button
+        type="button"
+        onclick={() => goto(`/agents/autonomous/${encodeURIComponent(agent.id)}`)}
+        class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-white/80 transition-colors hover:bg-white/10"
+      >
+        <Settings2 size={13} />
+        {m.autonomous_manage()}
+      </button>
+    </div>
   </footer>
+
+  {#if artifacts.length}
+    <ArtifactGallery {artifacts} {canAdd} onopen={(a) => (openArtifact = a)} />
+  {/if}
 </article>
+
+{#if openArtifact}
+  <Modal open title={openArtifact.title} onclose={() => (openArtifact = null)}>
+    <div class="h-[28rem]">
+      <ArtifactHost descriptor={openArtifact} />
+    </div>
+  </Modal>
+{/if}

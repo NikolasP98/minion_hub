@@ -23,6 +23,7 @@ export interface SystemAgentMeta {
   avatarSeed: string;
   trigger: string;
   managePath: string;
+  flowId?: string;
 }
 
 export interface AutonomousAgentVM {
@@ -34,6 +35,7 @@ export interface AutonomousAgentVM {
   avatarUrl: string;
   trigger: string | null;
   managePath: string | null;
+  flowId?: string;
   status: SystemAgentStatus;
 }
 
@@ -65,6 +67,7 @@ export function systemMetaToVM(meta: SystemAgentMeta, status: SystemAgentStatus)
     avatarUrl: diceBearAvatarUrl(meta.avatarSeed),
     trigger: meta.trigger,
     managePath: meta.managePath,
+    flowId: meta.flowId,
     status,
   };
 }

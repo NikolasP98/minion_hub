@@ -1,13 +1,14 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
+  import type { ArtifactDescriptor } from '$lib/agents/artifacts';
   import AutonomousAgentCard from '$lib/components/agents/AutonomousAgentCard.svelte';
   import { gatewayAgentToVM, type AutonomousAgentVM } from '$lib/agents/autonomous';
   import { visibleAgents } from '$lib/state/gateway/gateway-data.svelte';
   import { conn } from '$lib/state/gateway/connection.svelte';
   import { configState, loadConfig, getField } from '$lib/state/config/config.svelte';
 
-  let { data }: { data: { systemAgents: AutonomousAgentVM[] } } = $props();
+  let { data }: { data: { systemAgents: AutonomousAgentVM[]; isAdmin: boolean; artifactsByAgent: Record<string, ArtifactDescriptor[]> } } = $props();
 
   onMount(() => {
     // Archetype lives in gateway config (agents.list[].archetype); ensure loaded.
@@ -48,7 +49,7 @@
   {:else}
     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
       {#each agents as agent (agent.id)}
-        <AutonomousAgentCard {agent} />
+        <AutonomousAgentCard {agent} artifacts={data.artifactsByAgent[agent.id] ?? []} canAdd={data.isAdmin} />
       {/each}
     </div>
   {/if}

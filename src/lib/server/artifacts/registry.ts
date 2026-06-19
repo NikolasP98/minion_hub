@@ -10,7 +10,7 @@ import * as m from '$lib/paraglide/messages';
 
 /** Built-in artifacts for an agent. Phase 1: every agent gets the Overview. */
 export function getArtifactsForAgent(agentId: string): ArtifactDescriptor[] {
-  return [overviewDescriptorFor(agentId, m.artifact_overview_title())];
+  return [overviewDescriptorFor(agentId, m.artifact_overview_title(), m.artifact_overview_desc())];
 }
 
 /** Resolve a (agentId, artifactId) instance's data, or null if unknown. */

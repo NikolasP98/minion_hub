@@ -8,12 +8,14 @@ import {
 import type { AutonomousAgentVM } from './autonomous';
 
 describe('overviewDescriptorFor', () => {
-  it('builds the overview descriptor for an agent', () => {
-    expect(overviewDescriptorFor('scheduling.reminders', 'Overview')).toEqual({
+  it('builds the overview descriptor with icon + description', () => {
+    expect(overviewDescriptorFor('scheduling.reminders', 'Overview', 'Live status & activity.')).toEqual({
       id: 'overview',
       agentId: 'scheduling.reminders',
       slot: 'detail',
       title: 'Overview',
+      description: 'Live status & activity.',
+      icon: 'LayoutDashboard',
       kind: 'static',
       entrypoint: 'index.html',
     });
@@ -46,7 +48,7 @@ describe('agentVmToArtifactContext', () => {
 
 describe('artifactSrc', () => {
   it('builds a same-origin /artifacts URL with the hostOrigin hash', () => {
-    const d: ArtifactDescriptor = { id: 'overview', agentId: 'a', slot: 'detail', title: 'Overview', kind: 'static', entrypoint: 'index.html' };
+    const d: ArtifactDescriptor = { id: 'overview', agentId: 'a', slot: 'detail', title: 'Overview', description: 'Overview', icon: 'LayoutDashboard', kind: 'static', entrypoint: 'index.html' };
     expect(artifactSrc(d, 'https://hub.example.com')).toBe(
       'https://hub.example.com/artifacts/overview/ui/index.html#hostOrigin=https%3A%2F%2Fhub.example.com',
     );

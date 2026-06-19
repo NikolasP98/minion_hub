@@ -12,6 +12,7 @@
   "nav_home": "Home",
   "nav_overview": "Overview",
   "artifact_overview_title": "Overview",
+  "artifact_overview_desc": "Live status, role, and recent activity.",
   "nav_team": "Team",
   "nav_capabilities": "Capabilities",
   "nav_copilots": "Copilots",
@@ -3110,6 +3111,7 @@
   "sysagent_reminders_trigger": "On booking · 24h before · 2h before",
   "sysagent_status_no_account": "No WhatsApp account set",
   "autonomous_manage": "Manage",
+  "autonomous_view_flow": "View flow",
   "autonomous_status_active": "Active",
   "autonomous_status_disabled": "Disabled",
   "autonomous_status_attention": "Needs attention",
@@ -3118,5 +3120,8 @@
   "autonomous_empty": "No autonomous agents yet. Enable a module (like Scheduling) to add one.",
   "autonomous_activity": "{sent} sent · {failed} failed · 30d",
   "autonomous_detail_back": "Back to autonomous agents",
-  "autonomous_detail_manage": "Open settings"
+  "autonomous_detail_manage": "Open settings",
+  "artifacts_label": "Artifacts",
+  "artifact_add": "Add artifact",
+  "artifact_add_soon": "Custom artifacts are coming soon (admin)."
 }

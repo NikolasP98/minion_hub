@@ -519,6 +519,43 @@ export const MASTER_FLOWS: MasterFlow[] = [
   humanHandoffRelay,
 ];
 
+// ── Representative per-autonomous-agent flows ────────────────────────────────
+// Read-only diagrams of what each system agent actually does. Resolvable via
+// /flow-editor/master/<id> but intentionally NOT in MASTER_FLOWS (so they don't
+// clutter the master-flows roster). True to the real implementation.
+const remindersAgentFlow: MasterFlow = {
+  id: 'agent-reminders',
+  name: 'Reminders agent',
+  description:
+    'How the Reminders autonomous agent works: an external cron tick scans upcoming bookings, finds due reminder stages (confirmation / 24h / 2h), composes a personalized Spanish WhatsApp message, sends it via the gateway, and mirrors it into the CRM messages ledger. Reconstructed from the hub reminders service.',
+  tags: ['autonomous', 'scheduling', 'whatsapp'],
+  nodes: [
+    { id: 'tick', kind: 'schedule', title: 'Cron tick (every minute)', subtitle: 'external scheduler → /api/scheduling/reminders/tick (CRON_SECRET)', position: at(0) },
+    { id: 'enabled', kind: 'guard', title: 'Reminders enabled for org?', subtitle: 'sched_reminder_config.enabled · else skip', position: at(1), branches: [{ id: 'on', label: 'Enabled' }, { id: 'off', label: 'Disabled' }] },
+    { id: 'due', kind: 'process', title: 'Find due stages', subtitle: '60-day booking horizon · dueStages(confirmation/24h/2h) · claim-first dedupe', position: at(2) },
+    { id: 'optout', kind: 'guard', title: 'Recipient opted out?', subtitle: 'crm_contacts.custom_fields._reminders_opt_out', position: at(3), branches: [{ id: 'ok', label: 'OK' }, { id: 'skip', label: 'Opted out' }] },
+    { id: 'compose', kind: 'llm', title: 'Compose reminder (LLM)', subtitle: 'OpenRouter · personalized Spanish · template fallback', position: at(4) },
+    { id: 'send', kind: 'channel', title: 'Send WhatsApp', subtitle: "gatewayCall('channels.send') · idempotencyKey rem-{booking}-{stage}", position: at(5) },
+    { id: 'ledger', kind: 'memory', title: 'Mirror to messages ledger', subtitle: 'insertMessages → shows in CRM timeline', position: at(6) },
+    { id: 'done', kind: 'end', title: 'Recorded', subtitle: 'sched_reminders row: sent / failed / skipped', position: at(7) },
+    { id: 'skip-disabled', kind: 'end', title: 'Skipped', subtitle: 'reminders disabled for org', position: at(1, -2) },
+    { id: 'skip-optout', kind: 'end', title: 'Skipped', subtitle: 'recipient opted out', position: at(3, -2) },
+  ],
+  edges: [
+    { id: 'e-tick-enabled', source: 'tick', target: 'enabled' },
+    { id: 'e-enabled-on', source: 'enabled', sourceHandle: 'on', target: 'due' },
+    { id: 'e-enabled-off', source: 'enabled', sourceHandle: 'off', target: 'skip-disabled' },
+    { id: 'e-due-optout', source: 'due', target: 'optout' },
+    { id: 'e-optout-ok', source: 'optout', sourceHandle: 'ok', target: 'compose' },
+    { id: 'e-optout-skip', source: 'optout', sourceHandle: 'skip', target: 'skip-optout' },
+    { id: 'e-compose-send', source: 'compose', target: 'send' },
+    { id: 'e-send-ledger', source: 'send', target: 'ledger' },
+    { id: 'e-ledger-done', source: 'ledger', target: 'done' },
+  ],
+};
+
+export const AGENT_FLOWS: MasterFlow[] = [remindersAgentFlow];
+
 export function getMasterFlow(id: string): MasterFlow | undefined {
-  return MASTER_FLOWS.find((f) => f.id === id);
+  return MASTER_FLOWS.find((f) => f.id === id) ?? AGENT_FLOWS.find((f) => f.id === id);
 }

@@ -5,6 +5,8 @@ export interface ArtifactDescriptor {
   agentId: string;     // owning agent id (e.g. "scheduling.reminders")
   slot: 'detail';      // render surface (phase 1: the agent detail page)
   title: string;       // shown in the host shell header
+  description: string; // shown in the gallery tile popover
+  icon: string;        // lucide icon name (resolved via resolvePluginIcon)
   kind: 'static';      // 'live' reserved for later
   entrypoint: string;  // bundle path, e.g. "index.html"
 }
@@ -18,9 +20,9 @@ export interface ArtifactContext {
   trigger: string | null;
 }
 
-/** The built-in "overview" artifact, attached to any agent. `title` is localized by the caller. */
-export function overviewDescriptorFor(agentId: string, title: string): ArtifactDescriptor {
-  return { id: 'overview', agentId, slot: 'detail', title, kind: 'static', entrypoint: 'index.html' };
+/** The built-in "overview" artifact, attached to any agent. Strings are localized by the caller. */
+export function overviewDescriptorFor(agentId: string, title: string, description: string): ArtifactDescriptor {
+  return { id: 'overview', agentId, slot: 'detail', title, description, icon: 'LayoutDashboard', kind: 'static', entrypoint: 'index.html' };
 }
 
 export function agentVmToArtifactContext(vm: AutonomousAgentVM): ArtifactContext {

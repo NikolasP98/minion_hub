@@ -1,6 +1,6 @@
 <script lang="ts">
   import * as m from '$lib/paraglide/messages';
-  import { ArrowLeft, Settings2, Zap } from 'lucide-svelte';
+  import { ArrowLeft, Settings2, Workflow, Zap } from 'lucide-svelte';
   import ArtifactHost from '$lib/components/artifacts/ArtifactHost.svelte';
   import type { AutonomousAgentVM } from '$lib/agents/autonomous';
   import type { ArtifactDescriptor } from '$lib/agents/artifacts';
@@ -23,6 +23,11 @@
         <p class="mt-1 inline-flex items-center gap-1.5 text-[11px] text-white/45"><Zap size={12} /> {agent.trigger}</p>
       {/if}
     </div>
+    {#if agent.flowId}
+      <a href={`/flow-editor/master/${agent.flowId}`} class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-white/80 hover:bg-white/10">
+        <Workflow size={13} /> {m.autonomous_view_flow()}
+      </a>
+    {/if}
     {#if agent.managePath}
       <a href={agent.managePath} class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-white/80 hover:bg-white/10">
         <Settings2 size={13} /> {m.autonomous_detail_manage()}
