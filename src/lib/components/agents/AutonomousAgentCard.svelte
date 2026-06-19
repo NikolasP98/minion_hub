@@ -5,8 +5,7 @@
   import type { AutonomousAgentVM } from '$lib/agents/autonomous';
   import type { ArtifactDescriptor } from '$lib/agents/artifacts';
   import ArtifactGallery from '$lib/components/artifacts/ArtifactGallery.svelte';
-  import ArtifactHost from '$lib/components/artifacts/ArtifactHost.svelte';
-  import { Modal } from '$lib/components/ui';
+  import { agentWindows } from '$lib/state/ui/agent-windows.svelte';
 
   let {
     agent,
@@ -32,8 +31,6 @@
   );
 
   const stats = $derived(agent.status.stats);
-
-  let openArtifact = $state<ArtifactDescriptor | null>(null);
 </script>
 
 <article
@@ -82,7 +79,7 @@
       {#if agent.flowId}
         <button
           type="button"
-          onclick={() => goto(`/flow-editor/master/${agent.flowId}`)}
+          onclick={() => agentWindows.openFlow(agent.flowId!, agent.name)}
           class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-white/80 transition-colors hover:bg-white/10"
         >
           <Workflow size={13} />
@@ -101,14 +98,6 @@
   </footer>
 
   {#if artifacts.length}
-    <ArtifactGallery {artifacts} {canAdd} onopen={(a) => (openArtifact = a)} />
+    <ArtifactGallery {artifacts} {canAdd} onopen={(a) => agentWindows.openArtifact(a)} />
   {/if}
 </article>
-
-{#if openArtifact}
-  <Modal open title={openArtifact.title} onclose={() => (openArtifact = null)}>
-    <div class="h-[28rem]">
-      <ArtifactHost descriptor={openArtifact} />
-    </div>
-  </Modal>
-{/if}
