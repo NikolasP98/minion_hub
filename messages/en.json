@@ -3114,5 +3114,6 @@
   "autonomous_status_attention": "Needs attention",
   "autonomous_page_title": "Autonomous agents",
   "autonomous_page_subtitle": "Triggered, self-running automations — no chat, just a job.",
-  "autonomous_empty": "No autonomous agents yet. Enable a module (like Scheduling) to add one."
+  "autonomous_empty": "No autonomous agents yet. Enable a module (like Scheduling) to add one.",
+  "autonomous_activity": "{sent} sent · {failed} failed · 30d"
 }

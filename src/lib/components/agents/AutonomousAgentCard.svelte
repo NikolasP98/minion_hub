@@ -65,7 +65,7 @@
       {#if agent.status.detail}
         {agent.status.detail}
       {:else if stats}
-        {stats.sent} sent · {stats.failed} failed · 30d
+        {m.autonomous_activity({ sent: stats.sent, failed: stats.failed })}
       {/if}
     </span>
     {#if agent.managePath}
