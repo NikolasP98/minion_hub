@@ -199,8 +199,6 @@ const PLUGIN_NAV_GROUPS: ReadonlyArray<{ category: PluginNavCategory; label: () 
  * pluginId (a few carry legacy ids — e.g. alert-watcher ships as "alerts").
  */
 const PLUGIN_CATEGORY_OVERRIDES: Record<string, PluginNavCategory> = {
-    'alert-watcher': 'customer-support',
-    alerts: 'customer-support',
     'voice-call': 'customer-support',
     voicecall: 'customer-support',
     studio: 'creative',
