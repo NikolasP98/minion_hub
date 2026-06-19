@@ -4,6 +4,7 @@
   import ArtifactHost from '$lib/components/artifacts/ArtifactHost.svelte';
   import type { AutonomousAgentVM } from '$lib/agents/autonomous';
   import type { ArtifactDescriptor } from '$lib/agents/artifacts';
+  import { agentWindows } from '$lib/state/ui/agent-windows.svelte';
 
   let { data }: { data: { agent: AutonomousAgentVM; artifacts: ArtifactDescriptor[] } } = $props();
   const agent = $derived(data.agent);
@@ -24,9 +25,9 @@
       {/if}
     </div>
     {#if agent.flowId}
-      <a href={`/flow-editor/master/${agent.flowId}`} class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-white/80 hover:bg-white/10">
+      <button type="button" onclick={() => agentWindows.openFlow(agent.flowId!, agent.name)} class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-white/80 hover:bg-white/10">
         <Workflow size={13} /> {m.autonomous_view_flow()}
-      </a>
+      </button>
     {/if}
     {#if agent.managePath}
       <a href={agent.managePath} class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-white/80 hover:bg-white/10">

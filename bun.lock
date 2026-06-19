@@ -32,6 +32,7 @@
         "@vercel/speed-insights": "^1.3.1",
         "@xyflow/svelte": "^1.5.2",
         "@zag-js/combobox": "^1.41.0",
+        "@zag-js/dialog": "^1.41.0",
         "@zag-js/editable": "^1.41.0",
         "@zag-js/file-upload": "^1.41.0",
         "@zag-js/image-cropper": "^1.41.0",
@@ -835,13 +836,15 @@
 
     "@zag-js/anatomy": ["@zag-js/anatomy@1.41.0", "", {}, "sha512-0M/bWcYbWgM09HEhfU0GvpKgPt3I4vakjr21FHcjTNK2vYRC1oz2GHc/y9ArJa4jXe0piTiPbACzMK1/z2ukRw=="],
 
-    "@zag-js/aria-hidden": ["@zag-js/aria-hidden@1.41.0", "", { "dependencies": { "@zag-js/dom-query": "1.41.0" } }, "sha512-Jxzceqd29Bq35h/pu7qHaPcE8lWf/NFLJR7hNPqKUde+VBSsuiZXsy8U3xhvTkFi5lE3j6rcN5Mx8a11gAj7Sg=="],
+    "@zag-js/aria-hidden": ["@zag-js/aria-hidden@1.41.2", "", { "dependencies": { "@zag-js/dom-query": "1.41.2" } }, "sha512-qEcYmwlQr3qjA0T/IZ5a/o7fRUxfQ14tXjAFhR3GXCtxBKaqS+wnq/LN09Xw4bin3QWTINU+Z0oXFs9spWtNwA=="],
 
     "@zag-js/collection": ["@zag-js/collection@1.41.0", "", { "dependencies": { "@zag-js/utils": "1.41.0" } }, "sha512-rCkN6uCMPhnf9Mc7Yav1ZRdJtxprjlWPybXL37dZRNPPd7G3mTwCuETbZdUSlE7lf8DKsP7jilA2P4l47BJxQg=="],
 
     "@zag-js/combobox": ["@zag-js/combobox@1.41.0", "", { "dependencies": { "@zag-js/anatomy": "1.41.0", "@zag-js/collection": "1.41.0", "@zag-js/core": "1.41.0", "@zag-js/dismissable": "1.41.0", "@zag-js/dom-query": "1.41.0", "@zag-js/focus-visible": "1.41.0", "@zag-js/live-region": "1.41.0", "@zag-js/popper": "1.41.0", "@zag-js/types": "1.41.0", "@zag-js/utils": "1.41.0" } }, "sha512-51PBJKyl2OXtJvvlBAwZ1La5Bl40KCdNxL0u67niP0+vEZaCFkIXzwTmNyVDPXnJCWcWVWZ4dD+Cxj0V4pCIKQ=="],
 
     "@zag-js/core": ["@zag-js/core@1.41.0", "", { "dependencies": { "@zag-js/dom-query": "1.41.0", "@zag-js/utils": "1.41.0" } }, "sha512-CkX9xjNCTlOLwJNRZs4+Rse+bPVQWaNmfSTGa7m0FRR4XWf66/bx5YTpHNTKKmPL8KWjHCvlvSeN6uHDeSBs/w=="],
+
+    "@zag-js/dialog": ["@zag-js/dialog@1.41.2", "", { "dependencies": { "@zag-js/anatomy": "1.41.2", "@zag-js/aria-hidden": "1.41.2", "@zag-js/core": "1.41.2", "@zag-js/dismissable": "1.41.2", "@zag-js/dom-query": "1.41.2", "@zag-js/focus-trap": "1.41.2", "@zag-js/remove-scroll": "1.41.2", "@zag-js/types": "1.41.2", "@zag-js/utils": "1.41.2" } }, "sha512-t1N72snpFGiKj7cg2PivPdsy+X1YdgXPv7bzovpqjMLy0kN+gYTPoV1Iy/hQA+g021dz9XGgXzkDuU45sJqsFA=="],
 
     "@zag-js/dismissable": ["@zag-js/dismissable@1.41.0", "", { "dependencies": { "@zag-js/dom-query": "1.41.0", "@zag-js/interact-outside": "1.41.0", "@zag-js/utils": "1.41.0" } }, "sha512-M9YBC6MyySHyTrbiTeP+5RdvMCbIg6Yac5gda9glRBD7njjqeVFoFT61V0aHJK4Pcni5rFjCMO7u4Wn+WBr6Hg=="],
 
@@ -853,7 +856,7 @@
 
     "@zag-js/file-utils": ["@zag-js/file-utils@1.41.0", "", { "dependencies": { "@zag-js/i18n-utils": "1.41.0" } }, "sha512-ZNdMOFt6+pSB0dl4fbepWPDJX1KUqDxRTIDz78obzpdLdIrQazsRqdGDN3WG71ul6hYDXMuzphEj9HYyRENzaA=="],
 
-    "@zag-js/focus-trap": ["@zag-js/focus-trap@1.41.0", "", { "dependencies": { "@zag-js/dom-query": "1.41.0" } }, "sha512-6J1xcmbyY1Y9blmhdaUDByW7vlm0OIKtvh65J/9VojoPD0mLsKh6bHn9ti9M/MdSsTRV4uC5l4zv5RO3JihtCw=="],
+    "@zag-js/focus-trap": ["@zag-js/focus-trap@1.41.2", "", { "dependencies": { "@zag-js/dom-query": "1.41.2" } }, "sha512-3QTtGUjFU2OLbyrDlyoYWvKZecCmtn/+bsfsHW159jJHiEGHVYK6CY8AI1ePsMk9gVay48bXh008j+lVli7gAw=="],
 
     "@zag-js/focus-visible": ["@zag-js/focus-visible@1.41.0", "", { "dependencies": { "@zag-js/dom-query": "1.41.0" } }, "sha512-N1QT1SVCVe5GhZBiab/ByfzSz4C3JlOKDAUr6kKSr/9GSSBugdIYgOpYamyNmGTO377TV7swPnrz5Vb1+KxgRA=="],
 
@@ -877,7 +880,7 @@
 
     "@zag-js/rect-utils": ["@zag-js/rect-utils@1.41.2", "", {}, "sha512-GWBTamaMLMG1p7Fe6V0dsXeTEmk+tqG3ciovzmjxURCJ3Yq2EkAMRhS0v5DG0oo+PyrPEIzEWukGBQkh/XRgYQ=="],
 
-    "@zag-js/remove-scroll": ["@zag-js/remove-scroll@1.41.0", "", { "dependencies": { "@zag-js/dom-query": "1.41.0" } }, "sha512-xC5xdmtJ9zObhfeWyZoI1nBmGtmb9Vb4njEQae3g7b2rolQK8QQieGMR35T/aTv+ZgIeoTFyk2o1cZOb2p+rPw=="],
+    "@zag-js/remove-scroll": ["@zag-js/remove-scroll@1.41.2", "", { "dependencies": { "@zag-js/dom-query": "1.41.2" } }, "sha512-ieIrOgPKlCikAGEBIboQJoU7oxrL5BEY670tDOu7Eg7rNOdAwGXLEKPX2A/q+lREhOiVYjx0D3//vHTvdte80Q=="],
 
     "@zag-js/slider": ["@zag-js/slider@1.41.0", "", { "dependencies": { "@zag-js/anatomy": "1.41.0", "@zag-js/core": "1.41.0", "@zag-js/dom-query": "1.41.0", "@zag-js/types": "1.41.0", "@zag-js/utils": "1.41.0" } }, "sha512-QGrhMzJWwxwqNVnHtGzYwi3kDSblWTC1DMYRn1wrqABSpGgnYvyGA+4DBT5j6zJMHtBnV+YweujM6EU2vlXCTA=="],
 
@@ -1889,6 +1892,20 @@
 
     "@vitest/mocker/estree-walker": ["estree-walker@3.0.3", "", { "dependencies": { "@types/estree": "^1.0.0" } }, "sha512-7RUKfXgSMMkzt6ZuXmqapOurLGPPfgj6l9uRZ7lRGolvk0y2yocc35LdcxKC5PQZdn2DMqioAQ2NoWcrTKmm6g=="],
 
+    "@zag-js/aria-hidden/@zag-js/dom-query": ["@zag-js/dom-query@1.41.2", "", { "dependencies": { "@zag-js/types": "1.41.2" } }, "sha512-+eBk1nlJA312mNmY/GSThLRwcCRqMIL+A1pLsWvTlQLQjmH1/UxoAuv6l2yvRCT33XmC8FBlBIKnXhOCpDvIZA=="],
+
+    "@zag-js/dialog/@zag-js/anatomy": ["@zag-js/anatomy@1.41.2", "", {}, "sha512-Fm9hqdrvaCzCsdcf19G8WZxYtHElKltkGHdhqMEt4XU+ULTr1DK7KbOtDDv9J27CuzqSLALUz5QfRjPftoKHwg=="],
+
+    "@zag-js/dialog/@zag-js/core": ["@zag-js/core@1.41.2", "", { "dependencies": { "@zag-js/dom-query": "1.41.2", "@zag-js/utils": "1.41.2" } }, "sha512-xXTN3zKwOtMI4+5dG2cG+T1B4WR3X9alXiYaPJKaGd4N2eYRj9JEPte3Hv9gtFm+RM0b9VIwksHEg25rqE4apw=="],
+
+    "@zag-js/dialog/@zag-js/dismissable": ["@zag-js/dismissable@1.41.2", "", { "dependencies": { "@zag-js/dom-query": "1.41.2", "@zag-js/interact-outside": "1.41.2", "@zag-js/utils": "1.41.2" } }, "sha512-hO/tFhRZ7S+LOOljGOQJIubbc3MXg41+iWR1yUXKl76cAenbxaCit1LZmUCwQPvRN0GndK6bDQo5ETjHZz/k7A=="],
+
+    "@zag-js/dialog/@zag-js/dom-query": ["@zag-js/dom-query@1.41.2", "", { "dependencies": { "@zag-js/types": "1.41.2" } }, "sha512-+eBk1nlJA312mNmY/GSThLRwcCRqMIL+A1pLsWvTlQLQjmH1/UxoAuv6l2yvRCT33XmC8FBlBIKnXhOCpDvIZA=="],
+
+    "@zag-js/dialog/@zag-js/types": ["@zag-js/types@1.41.2", "", { "dependencies": { "csstype": "3.2.3" } }, "sha512-L6CNvK06lIVpy0X8eG3kbDIx8Uuv+3KHElxXYSzRXSJ7/OLCv1sTRgEvnxNtdIWOrksGgxF4JtT7PXtoClGqNQ=="],
+
+    "@zag-js/dialog/@zag-js/utils": ["@zag-js/utils@1.41.2", "", {}, "sha512-Yj8FSrR7vGA6ahUhjrThfHAF+PM2Y1Yv2lkXkqZZd60mPBhixcot1+SHOfEMV63JimQcWrmQ8QbeYYMmF+ZpLQ=="],
+
     "@zag-js/dismissable/@zag-js/interact-outside": ["@zag-js/interact-outside@1.41.0", "", { "dependencies": { "@zag-js/dom-query": "1.41.0", "@zag-js/utils": "1.41.0" } }, "sha512-nmqgOM8w3YEO3OXXpS2ycA7waYYBeeaSwoh+dUJFKFPViWBzHQ6AFupsobq5K9MejCl7LIV8fDmmB3BAF/0xXg=="],
 
     "@zag-js/editable/@zag-js/anatomy": ["@zag-js/anatomy@1.41.2", "", {}, "sha512-Fm9hqdrvaCzCsdcf19G8WZxYtHElKltkGHdhqMEt4XU+ULTr1DK7KbOtDDv9J27CuzqSLALUz5QfRjPftoKHwg=="],
@@ -1900,6 +1917,8 @@
     "@zag-js/editable/@zag-js/types": ["@zag-js/types@1.41.2", "", { "dependencies": { "csstype": "3.2.3" } }, "sha512-L6CNvK06lIVpy0X8eG3kbDIx8Uuv+3KHElxXYSzRXSJ7/OLCv1sTRgEvnxNtdIWOrksGgxF4JtT7PXtoClGqNQ=="],
 
     "@zag-js/editable/@zag-js/utils": ["@zag-js/utils@1.41.2", "", {}, "sha512-Yj8FSrR7vGA6ahUhjrThfHAF+PM2Y1Yv2lkXkqZZd60mPBhixcot1+SHOfEMV63JimQcWrmQ8QbeYYMmF+ZpLQ=="],
+
+    "@zag-js/focus-trap/@zag-js/dom-query": ["@zag-js/dom-query@1.41.2", "", { "dependencies": { "@zag-js/types": "1.41.2" } }, "sha512-+eBk1nlJA312mNmY/GSThLRwcCRqMIL+A1pLsWvTlQLQjmH1/UxoAuv6l2yvRCT33XmC8FBlBIKnXhOCpDvIZA=="],
 
     "@zag-js/image-cropper/@zag-js/anatomy": ["@zag-js/anatomy@1.41.2", "", {}, "sha512-Fm9hqdrvaCzCsdcf19G8WZxYtHElKltkGHdhqMEt4XU+ULTr1DK7KbOtDDv9J27CuzqSLALUz5QfRjPftoKHwg=="],
 
@@ -1931,6 +1950,12 @@
 
     "@zag-js/menu/@zag-js/utils": ["@zag-js/utils@1.41.2", "", {}, "sha512-Yj8FSrR7vGA6ahUhjrThfHAF+PM2Y1Yv2lkXkqZZd60mPBhixcot1+SHOfEMV63JimQcWrmQ8QbeYYMmF+ZpLQ=="],
 
+    "@zag-js/popover/@zag-js/aria-hidden": ["@zag-js/aria-hidden@1.41.0", "", { "dependencies": { "@zag-js/dom-query": "1.41.0" } }, "sha512-Jxzceqd29Bq35h/pu7qHaPcE8lWf/NFLJR7hNPqKUde+VBSsuiZXsy8U3xhvTkFi5lE3j6rcN5Mx8a11gAj7Sg=="],
+
+    "@zag-js/popover/@zag-js/focus-trap": ["@zag-js/focus-trap@1.41.0", "", { "dependencies": { "@zag-js/dom-query": "1.41.0" } }, "sha512-6J1xcmbyY1Y9blmhdaUDByW7vlm0OIKtvh65J/9VojoPD0mLsKh6bHn9ti9M/MdSsTRV4uC5l4zv5RO3JihtCw=="],
+
+    "@zag-js/popover/@zag-js/remove-scroll": ["@zag-js/remove-scroll@1.41.0", "", { "dependencies": { "@zag-js/dom-query": "1.41.0" } }, "sha512-xC5xdmtJ9zObhfeWyZoI1nBmGtmb9Vb4njEQae3g7b2rolQK8QQieGMR35T/aTv+ZgIeoTFyk2o1cZOb2p+rPw=="],
+
     "@zag-js/progress/@zag-js/anatomy": ["@zag-js/anatomy@1.41.2", "", {}, "sha512-Fm9hqdrvaCzCsdcf19G8WZxYtHElKltkGHdhqMEt4XU+ULTr1DK7KbOtDDv9J27CuzqSLALUz5QfRjPftoKHwg=="],
 
     "@zag-js/progress/@zag-js/core": ["@zag-js/core@1.41.2", "", { "dependencies": { "@zag-js/dom-query": "1.41.2", "@zag-js/utils": "1.41.2" } }, "sha512-xXTN3zKwOtMI4+5dG2cG+T1B4WR3X9alXiYaPJKaGd4N2eYRj9JEPte3Hv9gtFm+RM0b9VIwksHEg25rqE4apw=="],
@@ -1940,6 +1965,8 @@
     "@zag-js/progress/@zag-js/types": ["@zag-js/types@1.41.2", "", { "dependencies": { "csstype": "3.2.3" } }, "sha512-L6CNvK06lIVpy0X8eG3kbDIx8Uuv+3KHElxXYSzRXSJ7/OLCv1sTRgEvnxNtdIWOrksGgxF4JtT7PXtoClGqNQ=="],
 
     "@zag-js/progress/@zag-js/utils": ["@zag-js/utils@1.41.2", "", {}, "sha512-Yj8FSrR7vGA6ahUhjrThfHAF+PM2Y1Yv2lkXkqZZd60mPBhixcot1+SHOfEMV63JimQcWrmQ8QbeYYMmF+ZpLQ=="],
+
+    "@zag-js/remove-scroll/@zag-js/dom-query": ["@zag-js/dom-query@1.41.2", "", { "dependencies": { "@zag-js/types": "1.41.2" } }, "sha512-+eBk1nlJA312mNmY/GSThLRwcCRqMIL+A1pLsWvTlQLQjmH1/UxoAuv6l2yvRCT33XmC8FBlBIKnXhOCpDvIZA=="],
 
     "d3-cloud/d3-dispatch": ["d3-dispatch@1.0.6", "", {}, "sha512-fVjoElzjhCEy+Hbn8KygnmMS7Or0a9sI2UzGwoB7cCtvI1XpVN9GpoYlnb3xt2YV66oXYb1fLJ8GMvP4hdU1RA=="],
 
@@ -2051,7 +2078,13 @@
 
     "@tailwindcss/node/lightningcss/lightningcss-win32-x64-msvc": ["lightningcss-win32-x64-msvc@1.32.0", "", { "os": "win32", "cpu": "x64" }, "sha512-Amq9B/SoZYdDi1kFrojnoqPLxYhQ4Wo5XiL8EVJrVsB8ARoC1PWW6VGtT0WKCemjy8aC+louJnjS7U18x3b06Q=="],
 
+    "@zag-js/aria-hidden/@zag-js/dom-query/@zag-js/types": ["@zag-js/types@1.41.2", "", { "dependencies": { "csstype": "3.2.3" } }, "sha512-L6CNvK06lIVpy0X8eG3kbDIx8Uuv+3KHElxXYSzRXSJ7/OLCv1sTRgEvnxNtdIWOrksGgxF4JtT7PXtoClGqNQ=="],
+
+    "@zag-js/focus-trap/@zag-js/dom-query/@zag-js/types": ["@zag-js/types@1.41.2", "", { "dependencies": { "csstype": "3.2.3" } }, "sha512-L6CNvK06lIVpy0X8eG3kbDIx8Uuv+3KHElxXYSzRXSJ7/OLCv1sTRgEvnxNtdIWOrksGgxF4JtT7PXtoClGqNQ=="],
+
     "@zag-js/interact-outside/@zag-js/dom-query/@zag-js/types": ["@zag-js/types@1.41.2", "", { "dependencies": { "csstype": "3.2.3" } }, "sha512-L6CNvK06lIVpy0X8eG3kbDIx8Uuv+3KHElxXYSzRXSJ7/OLCv1sTRgEvnxNtdIWOrksGgxF4JtT7PXtoClGqNQ=="],
+
+    "@zag-js/remove-scroll/@zag-js/dom-query/@zag-js/types": ["@zag-js/types@1.41.2", "", { "dependencies": { "csstype": "3.2.3" } }, "sha512-L6CNvK06lIVpy0X8eG3kbDIx8Uuv+3KHElxXYSzRXSJ7/OLCv1sTRgEvnxNtdIWOrksGgxF4JtT7PXtoClGqNQ=="],
 
     "node-fetch/whatwg-url/tr46": ["tr46@0.0.3", "", {}, "sha512-N3WMsuqV66lT30CrXNbEjx4GEwlow3v6rr4mCcv6prnfwhS01rkgyFdjPNBYd9br7LpXV1+Emh01fHnq2Gdgrw=="],
 
