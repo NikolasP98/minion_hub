@@ -21,7 +21,7 @@
     onmove={(x, y) => agentWindows.setPosition(w.id, x, y)}
   >
     {#if w.kind === 'artifact' && w.artifact}
-      <ArtifactHost descriptor={w.artifact} />
+      <ArtifactHost descriptor={w.artifact} chrome={false} />
     {:else if w.kind === 'flow' && w.flowId}
       {@const flow = getMasterFlow(w.flowId)}
       {#if flow}

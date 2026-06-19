@@ -3,7 +3,10 @@
   import { mountHostBridge, type MountedHostBridge } from '$lib/plugins/bridge-host';
   import { artifactSrc, type ArtifactDescriptor } from '$lib/agents/artifacts';
 
-  let { descriptor }: { descriptor: ArtifactDescriptor } = $props();
+  // `chrome` = render the framed card + title header around the iframe (the detail
+  // page). In a DraggableDialog window the dialog already supplies frame + header,
+  // so the host renders bare (just the iframe) to avoid a duplicate header / shell.
+  let { descriptor, chrome = true }: { descriptor: ArtifactDescriptor; chrome?: boolean } = $props();
 
   let iframeEl = $state<HTMLIFrameElement | null>(null);
   let mounted: MountedHostBridge | null = null;
@@ -59,17 +62,28 @@
   onDestroy(() => mounted?.dispose());
 </script>
 
-<div class="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-white/[0.02]">
-  <div class="flex items-center gap-2 border-b border-white/10 px-3 py-2 text-xs font-medium text-white/70">
-    {descriptor.title}
+{#if chrome}
+  <div class="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-white/[0.02]">
+    <div class="flex items-center gap-2 border-b border-white/10 px-3 py-2 text-xs font-medium text-white/70">
+      {descriptor.title}
+    </div>
+    {#if src}
+      <iframe
+        bind:this={iframeEl}
+        {src}
+        title={descriptor.title}
+        referrerpolicy="strict-origin"
+        class="min-h-0 w-full flex-1 border-0"
+      ></iframe>
+    {/if}
   </div>
-  {#if src}
-    <iframe
-      bind:this={iframeEl}
-      {src}
-      title={descriptor.title}
-      referrerpolicy="strict-origin"
-      class="min-h-0 w-full flex-1 border-0"
-    ></iframe>
-  {/if}
-</div>
+{:else if src}
+  <!-- bare: the dialog provides the frame + header -->
+  <iframe
+    bind:this={iframeEl}
+    {src}
+    title={descriptor.title}
+    referrerpolicy="strict-origin"
+    class="h-full w-full border-0"
+  ></iframe>
+{/if}

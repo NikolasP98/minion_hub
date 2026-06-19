@@ -112,11 +112,11 @@
       onpointerdown={onPointerDown}
       onpointermove={onPointerMove}
       onpointerup={onPointerUp}
-      class="flex shrink-0 items-center gap-3 border-b border-[var(--hairline)] px-5 py-3.5 {fullscreen
+      class="flex shrink-0 items-center gap-2 border-b border-[var(--hairline)] px-3 py-2 {fullscreen
         ? ''
         : 'cursor-move'} select-none"
     >
-      <h2 {...api.getTitleProps()} class="t-heading min-w-0 flex-1 truncate">{title}</h2>
+      <h2 {...api.getTitleProps()} class="min-w-0 flex-1 truncate text-xs font-semibold text-foreground">{title}</h2>
       <button
         type="button"
         onpointerdown={(e) => e.stopPropagation()}
