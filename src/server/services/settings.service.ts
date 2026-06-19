@@ -53,27 +53,9 @@ export async function getSettings(ctx: ServerCtx): Promise<Record<string, unknow
 }
 
 export async function getSettingsSection(ctx: ServerCtx, section: string): Promise<unknown> {
-  return cached(
-    keys.hub('settings', { t: ctx.tenantId, d: { gatewayId: ctx.gatewayId, section } }),
-    {
-      ttl: '30m',
-      swr: '5m',
-      tags: tags.tenantDomain(ctx.tenantId, 'settings'),
-    },
-    async () =>
-      withOrgCore(ctx, async (tx) => {
-        const rows = await tx
-          .select({ value: settings.value })
-          .from(settings)
-          .where(
-            and(
-              eq(settings.gatewayId, ctx.gatewayId),
-              eq(settings.section, section),
-              eq(settings.tenantId, ctx.tenantId),
-            ),
-          );
-
-        return rows[0] ? JSON.parse(rows[0].value) : null;
-      }),
-  );
+  // Derive from the aggregate map (single cache entry + single query). The map
+  // already parses every section's JSON, so this is behavior-equivalent to the
+  // old per-section query (`null` when the section is absent).
+  const all = await getSettings(ctx);
+  return all[section] ?? null;
 }

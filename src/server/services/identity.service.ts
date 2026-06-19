@@ -173,13 +173,21 @@ export async function syncGoogleIdentityFromAccount(
   }
 
   const accountRows = await ctx.db
-    .select()
+    .select({
+      accountId: account.accountId,
+      refreshToken: account.refreshToken,
+      scope: account.scope,
+      refreshTokenExpiresAt: account.refreshTokenExpiresAt,
+    })
     .from(account)
     .where(and(eq(account.userId, userId), eq(account.providerId, 'google')));
   const acct = accountRows[0];
   if (!acct || !acct.refreshToken) return null;
 
-  const userRows = await ctx.db.select().from(user).where(eq(user.id, userId));
+  const userRows = await ctx.db
+    .select({ email: user.email })
+    .from(user)
+    .where(eq(user.id, userId));
   const email = userRows[0]?.email ?? acct.accountId;
 
   await attachGoogleIdentity(ctx, userId, {

@@ -26,7 +26,35 @@ export interface SessionInput {
 type SessionRow = typeof sessions.$inferSelect;
 const toEpoch = (d: Date | null): number | null => (d ? d.getTime() : null);
 
-function reshape(row: SessionRow, serverId: string) {
+/** Only the columns `reshape` reads — avoids hauling the whole wide row. */
+const sessionCols = {
+  id: sessions.id,
+  tenantId: sessions.tenantId,
+  agentId: sessions.agentId,
+  sessionKey: sessions.sessionKey,
+  status: sessions.status,
+  metadata: sessions.metadata,
+  startedAt: sessions.startedAt,
+  endedAt: sessions.endedAt,
+  createdAt: sessions.createdAt,
+  updatedAt: sessions.updatedAt,
+} as const;
+
+type ReshapeRow = Pick<
+  SessionRow,
+  | 'id'
+  | 'tenantId'
+  | 'agentId'
+  | 'sessionKey'
+  | 'status'
+  | 'metadata'
+  | 'startedAt'
+  | 'endedAt'
+  | 'createdAt'
+  | 'updatedAt'
+>;
+
+function reshape(row: ReshapeRow, serverId: string) {
   return {
     id: row.id,
     tenantId: row.tenantId,
@@ -95,7 +123,7 @@ export async function listSessions(ctx: CoreCtx, serverId: string) {
     async () =>
       withOrgCore(ctx, async (tx) => {
         const rows = await tx
-          .select()
+          .select(sessionCols)
           .from(sessions)
           .where(and(eq(sessions.gatewayId, gatewayId), eq(sessions.tenantId, ctx.tenantId)))
           .orderBy(desc(sessions.updatedAt));
@@ -122,7 +150,7 @@ export async function listSessionsByServer(ctx: CoreCtx, serverId: string, agent
           ...(agentId ? [eq(sessions.agentId, agentId)] : []),
         ];
         const rows = await tx
-          .select()
+          .select(sessionCols)
           .from(sessions)
           .where(and(...conditions))
           .orderBy(desc(sessions.updatedAt));
@@ -134,7 +162,7 @@ export async function listSessionsByServer(ctx: CoreCtx, serverId: string, agent
 export async function getSession(ctx: CoreCtx, id: string) {
   const rows = await withOrgCore(ctx, (tx) =>
     tx
-      .select()
+      .select({ ...sessionCols, gatewayId: sessions.gatewayId })
       .from(sessions)
       .where(and(eq(sessions.id, id), eq(sessions.tenantId, ctx.tenantId))),
   );

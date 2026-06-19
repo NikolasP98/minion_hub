@@ -8,14 +8,16 @@ import { gateway, userGateway } from '@minion-stack/db/pg';
  * `/api/servers/[id]/*` URLs (or already a gateway uuid) — to the Supabase
  * `gateway.id`. The bridge is `gateway.legacy_server_id` (populated from the
  * canonical cloud-Turso server ids during the gateway data migration).
- * Returns null if nothing bridges that id. Cached for the process lifetime —
- * gateway↔server mappings are effectively immutable.
+ * Returns null if nothing bridges that id. Cached with a 24h TTL —
+ * gateway↔server mappings are effectively immutable, but a TTL keeps a deleted
+ * or remapped gateway from resolving to a stale id forever.
  */
-const _gatewayIdCache = new Map<string, string>();
+const _ID_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const _gatewayIdCache = new Map<string, { value: string; expires: number }>();
 
 export async function resolveGatewayId(serverId: string): Promise<string | null> {
   const hit = _gatewayIdCache.get(serverId);
-  if (hit) return hit;
+  if (hit && hit.expires > Date.now()) return hit.value;
   const [row] = await getCoreDb()
     .select({ id: gateway.id })
     .from(gateway)
@@ -23,7 +25,7 @@ export async function resolveGatewayId(serverId: string): Promise<string | null>
     .where(or(eq(gateway.legacyServerId, serverId), sql`${gateway.id}::text = ${serverId}`))
     .limit(1);
   if (!row) return null;
-  _gatewayIdCache.set(serverId, row.id);
+  _gatewayIdCache.set(serverId, { value: row.id, expires: Date.now() + _ID_CACHE_TTL_MS });
   return row.id;
 }
 
@@ -33,18 +35,18 @@ export async function resolveGatewayId(serverId: string): Promise<string | null>
  * For services that read a pg row keyed by gateway_id but must echo the
  * serverId the frontend keys by (when the caller didn't supply it).
  */
-const _serverIdCache = new Map<string, string>();
+const _serverIdCache = new Map<string, { value: string; expires: number }>();
 
 export async function resolveServerId(gatewayId: string): Promise<string> {
   const hit = _serverIdCache.get(gatewayId);
-  if (hit) return hit;
+  if (hit && hit.expires > Date.now()) return hit.value;
   const [row] = await getCoreDb()
     .select({ legacyServerId: gateway.legacyServerId })
     .from(gateway)
     .where(eq(gateway.id, gatewayId))
     .limit(1);
   const serverId = row?.legacyServerId ?? gatewayId;
-  _serverIdCache.set(gatewayId, serverId);
+  _serverIdCache.set(gatewayId, { value: serverId, expires: Date.now() + _ID_CACHE_TTL_MS });
   return serverId;
 }
 

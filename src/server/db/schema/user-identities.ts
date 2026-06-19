@@ -30,5 +30,8 @@ export const userIdentities = sqliteTable(
   (t) => [
     uniqueIndex('idx_user_identity_unique').on(t.provider, t.externalId),
     index('idx_user_identity_user').on(t.userId),
+    // Covers the (userId, provider) lookups in identity.service /
+    // channel-identity.service (Google credential read, channel-key filters).
+    index('idx_user_identity_user_provider').on(t.userId, t.provider),
   ],
 );

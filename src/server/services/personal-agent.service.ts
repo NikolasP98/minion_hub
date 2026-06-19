@@ -77,7 +77,15 @@ export function derivePersonalAgentId(userId: string): string {
  * cutover the principal id IS the profile uuid (auth.users.id == profiles.id), so
  * a direct match is the only path — the legacy_user_id bridge was dropped in S7.
  */
-async function resolveProfileId(ctx: CoreCtx, userId: string): Promise<string | null> {
+async function resolveProfileId(
+  ctx: CoreCtx,
+  userId: string,
+  supabaseId?: string,
+): Promise<string | null> {
+  // Post-GoTrue the Supabase profile uuid IS profiles.id, so when the caller
+  // already has it (the (app) layout reads user.supabaseId) we skip the lookup
+  // round-trip entirely.
+  if (supabaseId) return supabaseId;
   const [row] = await ctx.db
     .select({ id: profiles.id })
     .from(profiles)
@@ -142,12 +150,13 @@ export async function provisionPersonalAgent(
 export async function getPersonalAgent(
   ctx: CoreCtx,
   userId: string,
+  supabaseId?: string,
 ): Promise<PersonalAgentRow | null> {
   // Key by profile_id (resolved from legacy id OR supabase uuid) rather than the
   // legacy-derived agent_id, so this is identity-format-agnostic and survives the
   // legacy→uuid bridge flip. Behavior-preserving: profile_id of the row whose
   // agent_id is `personal-<legacyId>` is the same profile.
-  const profileId = await resolveProfileId(ctx, userId);
+  const profileId = await resolveProfileId(ctx, userId, supabaseId);
   if (!profileId) return null;
   const rows = await ctx.db
     .select()
@@ -268,10 +277,11 @@ export interface PersonalAgentLoadResult {
 export async function loadPersonalAgentForUser(
   locals: LoadCtx,
   userId: string,
+  supabaseId?: string,
 ): Promise<PersonalAgentLoadResult> {
   const { getCoreCtx } = await import('$server/auth/core-ctx');
   const ctx = await getCoreCtx(locals as App.Locals);
   if (!ctx) throw httpError(401, 'Authentication required');
-  const agent = await getPersonalAgent(ctx, userId);
+  const agent = await getPersonalAgent(ctx, userId, supabaseId);
   return { agent };
 }

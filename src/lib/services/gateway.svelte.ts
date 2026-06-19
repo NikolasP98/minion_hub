@@ -728,7 +728,9 @@ function onAgentEvent(payload: Record<string, unknown>) {
     upsertSession({ sessionKey: sk, agentId: agentId, lastActiveAt: Date.now() });
     // Don't downgrade 'thinking' to 'running' — thinking is more specific
     if (ui.sessionStatus[sk] !== 'thinking') {
+      const isNew = !(sk in ui.sessionStatus);
       ui.sessionStatus[sk] = 'running';
+      if (isNew) capSessionStatus();
       if (ui.sessionStatusTimers[sk]) clearTimeout(ui.sessionStatusTimers[sk]);
       ui.sessionStatusTimers[sk] = setTimeout(() => {
         if (ui.sessionStatus[sk] === 'running') setSessionIdle(sk);
@@ -772,7 +774,9 @@ function onChatEvent(payload: ChatEvent) {
       if (!cur || text.length >= cur.length) chat.stream = text;
     }
     feedStreamMessage(agentId, m && typeof m === 'object' ? (m as ChatMessage) : null);
+    const isNew = !(sk in ui.sessionStatus);
     ui.sessionStatus[sk] = 'thinking';
+    if (isNew) capSessionStatus();
     if (ui.sessionStatusTimers[sk]) clearTimeout(ui.sessionStatusTimers[sk]);
     ui.sessionStatusTimers[sk] = setTimeout(() => {
       if (ui.sessionStatus[sk] === 'thinking') setSessionIdle(sk);
@@ -845,13 +849,60 @@ function onPresenceEvent(payload: unknown) {
   } else if (payload) {
     const p = payload as { instanceId?: string };
     const idx = gw.presence.findIndex((x) => x.instanceId === p.instanceId);
-    if (idx >= 0) gw.presence[idx] = payload as never;
-    else gw.presence.push(payload as never);
+    if (idx >= 0) {
+      // De-thrash: skip the reassignment (and the reactive invalidation it
+      // triggers) when this single-entry update is identical to what we hold.
+      if (presenceEntriesEqual(gw.presence[idx], payload as never)) return;
+      gw.presence[idx] = payload as never;
+    } else {
+      gw.presence.push(payload as never);
+    }
   }
+}
+
+/** Shallow structural equality for presence entries (cheap last-write-wins guard). */
+function presenceEntriesEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false;
+  const ao = a as Record<string, unknown>;
+  const bo = b as Record<string, unknown>;
+  const ak = Object.keys(ao);
+  if (ak.length !== Object.keys(bo).length) return false;
+  for (const k of ak) {
+    if (ao[k] !== bo[k]) return false;
+  }
+  return true;
 }
 
 /** 10-minute eviction timers for idle session status entries. */
 const sessionEvictTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/**
+ * Hard cap on live session-status entries. A churny roster (sessions that come
+ * and go faster than the 10-minute idle eviction) could otherwise grow
+ * `ui.sessionStatus` unbounded. When over cap, evict the oldest entries
+ * (insertion order) and tear down their timers.
+ */
+const SESSION_STATUS_CAP = 1000;
+
+function capSessionStatus(): void {
+  const keys = Object.keys(ui.sessionStatus);
+  if (keys.length <= SESSION_STATUS_CAP) return;
+  const overflow = keys.length - SESSION_STATUS_CAP;
+  for (let i = 0; i < overflow; i++) {
+    const sk = keys[i];
+    const evict = sessionEvictTimers.get(sk);
+    if (evict) {
+      clearTimeout(evict);
+      sessionEvictTimers.delete(sk);
+    }
+    if (ui.sessionStatusTimers[sk]) {
+      clearTimeout(ui.sessionStatusTimers[sk]);
+      delete ui.sessionStatusTimers[sk];
+    }
+    delete ui.sessionStatus[sk];
+  }
+}
 
 /**
  * Mark a session as idle and schedule eviction of its status entry after 10 minutes.

@@ -24,6 +24,9 @@ const HABBO_TEX_SIZE = 64;
 
 const textureCache = new Map<string, PIXI.Texture>();
 
+/** Max cached textures before the oldest-inserted entry is evicted + destroyed. */
+const MAX_CACHED_TEXTURES = 256;
+
 /** Incremented on clearTextureCache(). Used to detect stale async work. */
 let generation = 0;
 
@@ -80,6 +83,16 @@ export async function getAvatarTexture(
       const blob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
       img.src = URL.createObjectURL(blob);
     });
+
+    // Evict the oldest-inserted entry once the cache is full (Map preserves
+    // insertion order). Destroy it the same way clearTextureCache() does.
+    if (textureCache.size >= MAX_CACHED_TEXTURES) {
+      const oldestKey = textureCache.keys().next().value;
+      if (oldestKey !== undefined) {
+        textureCache.get(oldestKey)?.destroy(true);
+        textureCache.delete(oldestKey);
+      }
+    }
 
     textureCache.set(key, texture);
     return texture;

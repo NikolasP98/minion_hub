@@ -1,18 +1,23 @@
 import type { AgentChatState, AgentActivityState, ChatMessage } from '$lib/types/chat';
 
 const MAX_CHAT_MESSAGES = 500;
+// Only trim once we're meaningfully over the cap, then slice back to the cap in
+// one batch. This amortises the O(n) copy across ~100 pushes instead of paying
+// it on every push past the cap.
+const CHAT_TRIM_AT = Math.ceil(MAX_CHAT_MESSAGES * 1.2);
 
 export const SPARK_BIN_COUNT = 144;
 export const SPARK_BIN_MS = 600_000; // 10 minutes
 
 /**
  * Append a message to chat.messages using mutation (avoids full array copy).
- * Trims to MAX_CHAT_MESSAGES if needed.
+ * Trims back to MAX_CHAT_MESSAGES only once length exceeds CHAT_TRIM_AT, so the
+ * O(n) copy is amortised instead of paid on every push past the cap.
  */
 export function pushChatMessage(chat: AgentChatState, msg: ChatMessage): void {
   chat.messages.push(msg);
-  if (chat.messages.length > MAX_CHAT_MESSAGES) {
-    chat.messages.splice(0, chat.messages.length - MAX_CHAT_MESSAGES);
+  if (chat.messages.length > CHAT_TRIM_AT) {
+    chat.messages = chat.messages.slice(-MAX_CHAT_MESSAGES);
   }
 }
 

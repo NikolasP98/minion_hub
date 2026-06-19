@@ -101,24 +101,35 @@ export async function listChatMessagesBySessionKey(
 export async function bulkInsertChatMessages(ctx: CoreCtx, messages: ChatMessageInput[]) {
   if (messages.length === 0) return;
   // Resolve gateway ids outside the txn (resolveGatewayId reads non-RLS/global
-  // tables on ctx.db); skip messages with no gateway as before.
-  const resolved: { gatewayId: string; msg: ChatMessageInput }[] = [];
-  for (const msg of messages) {
-    const gatewayId = await resolveGatewayId(msg.serverId);
-    if (!gatewayId) continue;
-    resolved.push({ gatewayId, msg });
-  }
-  if (resolved.length === 0) return;
-  const rows = resolved.map(({ gatewayId, msg }) => ({
-    tenantId: ctx.tenantId,
-    gatewayId,
-    agentId: msg.agentId,
-    sessionKey: msg.sessionKey,
-    role: msg.role,
-    content: msg.content,
-    runId: msg.runId ?? null,
-    timestamp: new Date(msg.timestamp),
-  }));
+  // tables on ctx.db). Resolve each distinct serverId once, then build all rows
+  // and do a single batched insert. Skip messages with no gateway as before.
+  const distinctServerIds = [...new Set(messages.map((m) => m.serverId))];
+  const gatewayByServer = new Map<string, string>();
+  await Promise.all(
+    distinctServerIds.map(async (serverId) => {
+      const gatewayId = await resolveGatewayId(serverId);
+      if (gatewayId) gatewayByServer.set(serverId, gatewayId);
+    }),
+  );
+
+  const rows = messages.flatMap((msg) => {
+    const gatewayId = gatewayByServer.get(msg.serverId);
+    if (!gatewayId) return [];
+    return [
+      {
+        tenantId: ctx.tenantId,
+        gatewayId,
+        agentId: msg.agentId,
+        sessionKey: msg.sessionKey,
+        role: msg.role,
+        content: msg.content,
+        runId: msg.runId ?? null,
+        timestamp: new Date(msg.timestamp),
+      },
+    ];
+  });
+  if (rows.length === 0) return;
+
   await withOrgCore(ctx, (tx) => tx.insert(chatMessages).values(rows).onConflictDoNothing());
 }
 

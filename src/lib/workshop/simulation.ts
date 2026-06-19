@@ -277,8 +277,26 @@ function tick(now: number): void {
   wanderTimer += dt;
   banterTimer += dt;
 
+  // Hoist per-tick: avoid re-walking these maps in every loop below.
+  const agentList = Object.values(workshopState.agents);
+  const convList = Object.values(workshopState.conversations);
+
+  // Precompute conversations grouped by participant instanceId once per tick,
+  // replacing repeated O(n*m) Object.values(...).filter(...) scans in the loops.
+  const convsByAgent = new Map<string, typeof convList>();
+  for (const convo of convList) {
+    for (const pid of convo.participantInstanceIds) {
+      let list = convsByAgent.get(pid);
+      if (!list) {
+        list = [];
+        convsByAgent.set(pid, list);
+      }
+      list.push(convo);
+    }
+  }
+
   // --- Heartbeat timers (idle agents only) ---
-  for (const agent of Object.values(workshopState.agents)) {
+  for (const agent of agentList) {
     const id = agent.instanceId;
     const state = getAgentState(id);
 
@@ -304,7 +322,7 @@ function tick(now: number): void {
   }
 
   // --- Seek-info timers ---
-  for (const agent of Object.values(workshopState.agents)) {
+  for (const agent of agentList) {
     const id = agent.instanceId;
     const state = getAgentState(id);
     if (state === 'dragged' || state === 'conversing' || state === 'reading') continue;
@@ -333,15 +351,13 @@ function tick(now: number): void {
   }
 
   // --- Compaction check ---
-  for (const agent of Object.values(workshopState.agents)) {
+  for (const agent of agentList) {
     const id = agent.instanceId;
     const state = getAgentState(id);
     if (state === 'dragged' || state === 'conversing' || state === 'reading') continue;
 
     // Find the most recent conversation session key for this agent
-    const agentConvs = Object.values(workshopState.conversations).filter(
-      (c) => c.participantInstanceIds.includes(id) && c.sessionKey,
-    );
+    const agentConvs = (convsByAgent.get(id) ?? []).filter((c) => c.sessionKey);
     if (agentConvs.length === 0) continue;
 
     const latestConv = agentConvs.sort((a, b) => b.startedAt - a.startedAt)[0];
@@ -354,7 +370,7 @@ function tick(now: number): void {
   }
 
   // --- Drain action queue for idle agents ---
-  for (const agent of Object.values(workshopState.agents)) {
+  for (const agent of agentList) {
     const id = agent.instanceId;
     const state = getAgentState(id);
 
@@ -364,9 +380,7 @@ function tick(now: number): void {
     const action = peek(id);
     if (!action) continue;
 
-    const agentConvs = Object.values(workshopState.conversations).filter((c) =>
-      c.participantInstanceIds.includes(id),
-    );
+    const agentConvs = convsByAgent.get(id) ?? [];
     const sessionKey =
       agentConvs.length > 0
         ? agentConvs.sort((a, b) => b.startedAt - a.startedAt)[0].sessionKey
@@ -411,7 +425,7 @@ function tick(now: number): void {
   }
 
   // --- Drain action queue for wandering/patrolling agents (walk to element first) ---
-  for (const agent of Object.values(workshopState.agents)) {
+  for (const agent of agentList) {
     const id = agent.instanceId;
     const state = getAgentState(id);
 
@@ -421,9 +435,7 @@ function tick(now: number): void {
     const action = peek(id);
     if (!action) continue;
 
-    const agentConvs = Object.values(workshopState.conversations).filter((c) =>
-      c.participantInstanceIds.includes(id),
-    );
+    const agentConvs = convsByAgent.get(id) ?? [];
     const sessionKey =
       agentConvs.length > 0
         ? agentConvs.sort((a, b) => b.startedAt - a.startedAt)[0].sessionKey
@@ -464,7 +476,7 @@ function tick(now: number): void {
   // --- Pick new wander targets every WANDER_INTERVAL (biased 60/40) ---
   if (wanderTimer >= WANDER_INTERVAL) {
     wanderTimer -= WANDER_INTERVAL;
-    for (const agent of Object.values(workshopState.agents)) {
+    for (const agent of agentList) {
       const fsm = getAgentFsm(agent.instanceId);
       if (fsm ? fsm.current !== 'wandering' : agent.behavior !== 'wander') continue;
       if (peek(agent.instanceId)) continue; // has queued tasks, don't override target
@@ -491,7 +503,7 @@ function tick(now: number): void {
   }
 
   // --- Move wander agents toward their targets (kinematic lerp) ---
-  for (const agent of Object.values(workshopState.agents)) {
+  for (const agent of agentList) {
     const fsmW = getAgentFsm(agent.instanceId);
     if (fsmW ? fsmW.current !== 'wandering' : agent.behavior !== 'wander') continue;
     let target = wanderTargets.get(agent.instanceId);
@@ -542,7 +554,7 @@ function tick(now: number): void {
   }
 
   // --- Patrol: smooth kinematic orbit around homePosition ---
-  for (const agent of Object.values(workshopState.agents)) {
+  for (const agent of agentList) {
     const fsmP = getAgentFsm(agent.instanceId);
     if (fsmP ? fsmP.current !== 'patrolling' : agent.behavior !== 'patrol') continue;
     const angle =
@@ -569,7 +581,7 @@ function tick(now: number): void {
 
   // Build set of active conversation participants
   const activeParticipants = new Set<string>();
-  for (const convo of Object.values(workshopState.conversations)) {
+  for (const convo of convList) {
     if (convo.status === 'active') {
       for (const pid of convo.participantInstanceIds) {
         activeParticipants.add(pid);
@@ -695,7 +707,7 @@ function tick(now: number): void {
   }
 
   // --- Element proximity reactions (moving agents) ---
-  for (const agent of Object.values(workshopState.agents)) {
+  for (const agent of agentList) {
     const state = getAgentState(agent.instanceId);
     if (state !== 'wandering' && state !== 'patrolling' && state !== 'heartbeat') continue;
 

@@ -63,7 +63,14 @@ function uid(): string {
 
 /** List the caller's notes, pinned-first then most-recently-updated. */
 export async function listNotes(ctx: NotesCtx): Promise<Note[]> {
-  const rows = await ctx.db.select().from(notes).where(owner(ctx)).orderBy(desc(notes.updatedAt));
+  // Ceiling at 1000 newest notes — the UI shows a flat list, nobody owns more
+  // than this, and it keeps the query bounded. Raise if a paging UI lands.
+  const rows = await ctx.db
+    .select()
+    .from(notes)
+    .where(owner(ctx))
+    .orderBy(desc(notes.updatedAt))
+    .limit(1000);
   // Pinned first (stable); DB already orders by updatedAt desc within each group.
   return rows.map(toNote).sort((a, b) => (a.pinned === b.pinned ? 0 : a.pinned ? -1 : 1));
 }

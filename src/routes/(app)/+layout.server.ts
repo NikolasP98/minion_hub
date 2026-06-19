@@ -75,7 +75,7 @@ export const load: LayoutServerLoad = async ({ locals, depends, url, cookies }) 
       loadPermissionsForUser(locals, user.id),
       loadWorkspacesForUser(locals, user.supabaseId),
       loadOrganizationsForUser(locals, user.id),
-      loadPersonalAgentForUser(locals, user.id),
+      loadPersonalAgentForUser(locals, user.id, user.supabaseId),
       loadHostsForUser(locals, user.id, user.role),
       loadUserPreferences(locals, user.supabaseId),
     ]);

@@ -49,7 +49,16 @@ export async function loadWorkspacesForUser(
       fetch: globalThis.fetch,
       headers,
     });
-    companies = await client.companies.list().catch(() => []);
+    // Paperclip is on the (app) layout's critical path. `.catch` already covers
+    // a failing call, but a SLOW/hanging paperclip would still block every page
+    // load — so race it against a short timeout. On timeout we return [] (names
+    // fall back to the company id below), exactly like the outage path.
+    companies = await Promise.race([
+      client.companies.list().catch(() => []),
+      new Promise<Array<{ id: string; name: string }>>((resolve) =>
+        setTimeout(() => resolve([]), 2_000),
+      ),
+    ]);
   }
   const byId = new Map(companies.map((c) => [c.id, c]));
 

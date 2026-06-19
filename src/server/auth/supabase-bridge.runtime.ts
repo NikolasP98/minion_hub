@@ -40,10 +40,14 @@ export async function resolveSupabaseUser(
   const admin = supabaseAdmin();
 
   // Single round-trip: pull core identity + enrichment columns together. If an
-  // enrichment column isn't migrated yet PostgREST errors the whole select, so
-  // we retry with the CORE-only column set — login must never break on
-  // migration lag. (legacy_user_id was dropped in S7: GoTrue principal id ==
-  // profile uuid, no bridge needed.)
+  // enrichment column isn't migrated yet PostgREST errors the whole select with
+  // Postgres `undefined_column` (code 42703), so ONLY in that case do we retry
+  // with the CORE-only column set — login must never break on migration lag.
+  // Any other error (row-not-found PGRST116, RLS, network) does NOT warrant a
+  // second round-trip: we fall through to claims-only mapping with profile=null,
+  // which is the same end state the old unconditional retry reached on those
+  // errors, minus the wasted query. (legacy_user_id was dropped in S7: GoTrue
+  // principal id == profile uuid, no bridge needed.)
   let profile: ProfileRow | null = null;
   const full = await admin
     .from('profiles')
@@ -52,7 +56,7 @@ export async function resolveSupabaseUser(
     .single();
   if (!full.error && full.data) {
     profile = full.data as ProfileRow;
-  } else {
+  } else if (full.error?.code === '42703') {
     const core = await admin
       .from('profiles')
       .select('id, email, display_name, role')
