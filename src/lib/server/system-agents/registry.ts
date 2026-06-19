@@ -10,6 +10,8 @@ import {
   type SystemAgentStatus,
 } from '$lib/agents/autonomous';
 import * as m from '$lib/paraglide/messages';
+import { gatewayCallAsUser } from '$lib/server/gateway-rpc';
+import { triageStatusDetail, type TriageArtifactData } from '$lib/agents/artifacts';
 
 interface SystemAgentDescriptor extends SystemAgentMeta {
   resolveStatus(ctx: CoreCtx): Promise<SystemAgentStatus>;
@@ -44,6 +46,26 @@ function getSystemAgentDescriptors(): SystemAgentDescriptor[] {
         // Localize the attention detail marker emitted by the pure helper.
         if (status.detail === 'no-account') status.detail = m.sysagent_status_no_account();
         return status;
+      },
+    },
+    {
+      id: 'alert-watcher',
+      moduleId: 'triage',
+      name: m.sysagent_triage_name(),
+      role: m.sysagent_triage_role(),
+      description: m.sysagent_triage_desc(),
+      avatarSeed: 'minion-alert-watcher',
+      trigger: m.sysagent_triage_trigger(),
+      managePath: null,
+      flowId: 'agent-alert-watcher',
+      async resolveStatus(ctx) {
+        const summary = await gatewayCallAsUser<{ counts?: TriageArtifactData['counts'] }>(
+          'plugins.alerts.summary',
+          { since: Date.now() - 30 * 24 * 60 * 60 * 1000 },
+          ctx.profileId,
+        ).catch(() => null);
+        if (!summary) return { enabled: true, state: 'attention', detail: 'Gateway unreachable' };
+        return { enabled: true, state: 'active', detail: triageStatusDetail(summary.counts ?? null) };
       },
     },
   ];
