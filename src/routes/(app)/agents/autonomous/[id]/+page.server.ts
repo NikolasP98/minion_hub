@@ -9,5 +9,5 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   const vms = await loadSystemAgentVMs(ctx).catch(() => []);
   const agent = vms.find((v) => v.id === params.id);
   if (!agent) throw error(404, 'Agent not found');
-  return { agent, artifacts: getArtifactsForAgent(agent.id) };
+  return { agent, artifacts: await getArtifactsForAgent(ctx, agent.id) };
 };

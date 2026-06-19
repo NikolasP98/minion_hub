@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Plus } from 'lucide-svelte';
+  import { Plus, Trash2 } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import { Popover } from '$lib/components/ui';
   import { resolvePluginIcon } from '$lib/plugins/icon-map';
@@ -9,10 +9,14 @@
     artifacts,
     canAdd = false,
     onopen,
+    oncreate,
+    ondelete,
   }: {
     artifacts: ArtifactDescriptor[];
     canAdd?: boolean;
     onopen: (a: ArtifactDescriptor) => void;
+    oncreate?: () => void;
+    ondelete?: (a: ArtifactDescriptor) => void;
   } = $props();
 </script>
 
@@ -35,24 +39,29 @@
           <div class="max-w-56 p-1">
             <p class="text-xs font-semibold text-white">{a.title}</p>
             <p class="mt-0.5 text-[11px] leading-snug text-white/60">{a.description}</p>
+            {#if a.deletable && canAdd}
+              <button
+                type="button"
+                onclick={() => ondelete?.(a)}
+                class="mt-1.5 flex items-center gap-1 text-[11px] text-red-400 hover:text-red-300 transition-colors"
+              >
+                <Trash2 size={11} />
+                {m.artifact_delete()}
+              </button>
+            {/if}
           </div>
       </Popover>
     {/each}
 
     {#if canAdd}
-      <Popover placement="top">
-        {#snippet trigger()}
-          <button
-            type="button"
-            aria-label={m.artifact_add()}
-            class="grid size-11 place-items-center rounded-lg border border-dashed border-white/20 text-white/40 transition-colors hover:border-white/40 hover:text-white/70"
-          >
-            <Plus size={18} />
-          </button>
-        {/snippet}
-          <p class="max-w-56 p-1 text-[11px] leading-snug text-white/60">{m.artifact_add_soon()}</p>
-      </Popover>
-      <!-- TODO: wire "+" to the artifact-builder system agent (#5, admin-only) -->
+      <button
+        type="button"
+        aria-label={m.artifact_add()}
+        onclick={() => oncreate?.()}
+        class="grid size-11 place-items-center rounded-lg border border-dashed border-white/20 text-white/40 transition-colors hover:border-white/40 hover:text-white/70"
+      >
+        <Plus size={18} />
+      </button>
     {/if}
   </div>
 </div>

@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
+  import { goto, invalidateAll } from '$app/navigation';
   import { Zap, Settings2, Workflow } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import type { AutonomousAgentVM } from '$lib/agents/autonomous';
   import type { ArtifactDescriptor } from '$lib/agents/artifacts';
   import ArtifactGallery from '$lib/components/artifacts/ArtifactGallery.svelte';
+  import ArtifactCreateModal from '$lib/components/artifacts/ArtifactCreateModal.svelte';
   import { agentWindows } from '$lib/state/ui/agent-windows.svelte';
 
   let {
@@ -12,6 +13,8 @@
     artifacts = [],
     canAdd = false,
   }: { agent: AutonomousAgentVM; artifacts?: ArtifactDescriptor[]; canAdd?: boolean } = $props();
+
+  let showCreate = $state(false);
 
   const statusLabel = $derived(
     agent.status.state === 'active'
@@ -97,7 +100,18 @@
     </div>
   </footer>
 
-  {#if artifacts.length}
-    <ArtifactGallery {artifacts} {canAdd} onopen={(a) => agentWindows.openArtifact(a)} />
+  {#if artifacts.length || canAdd}
+    <ArtifactGallery
+      {artifacts}
+      {canAdd}
+      onopen={(a) => agentWindows.openArtifact(a)}
+      oncreate={() => (showCreate = true)}
+      ondelete={async (a) => {
+        await fetch(`/api/artifacts/${a.id}`, { method: 'DELETE' });
+        await invalidateAll();
+      }}
+    />
   {/if}
 </article>
+
+<ArtifactCreateModal bind:open={showCreate} agentId={agent.id} oncreated={() => invalidateAll()} />
