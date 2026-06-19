@@ -30,6 +30,7 @@ function getSystemAgentDescriptors(): SystemAgentDescriptor[] {
       avatarSeed: 'minion-reminders-agent',
       trigger: m.sysagent_reminders_trigger(),
       managePath: '/scheduling/reminders',
+      flowId: 'agent-reminders',
       async resolveStatus(ctx) {
         const [config, activity] = await Promise.all([
           getReminderConfig(ctx).catch(() => null),
