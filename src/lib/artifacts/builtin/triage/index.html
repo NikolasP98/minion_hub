@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Triage</title>
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 1rem;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--color-background, #0b0b0f);
+      color: var(--color-foreground, #e7e7ea);
+    }
+    .kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: .6rem; margin-bottom: .8rem; }
+    .kpi { border: 1px solid var(--color-border, #2a2a31); border-radius: var(--radius, 12px);
+      padding: .65rem .8rem; background: var(--color-card, transparent); }
+    .kpi b { display: block; font-size: 1.4rem; line-height: 1.1; }
+    .kpi span { font-size: .7rem; opacity: .55; text-transform: uppercase; letter-spacing: .04em; }
+    .kpi.high b { color: var(--color-destructive, #f87171); }
+    .kpi.notified b { color: var(--color-warning, #fbbf24); }
+    .kpi.responded b { color: var(--color-success, #34d399); }
+    section { border: 1px solid var(--color-border, #2a2a31); border-radius: var(--radius, 12px);
+      padding: .75rem .9rem; margin-bottom: .6rem; background: var(--color-card, transparent); }
+    section h2 { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em;
+      opacity: .55; margin: 0 0 .5rem; }
+    .alert { display: flex; align-items: flex-start; gap: .55rem; padding: .45rem 0;
+      border-bottom: 1px solid var(--color-border, #2a2a31); }
+    .alert:last-child { border-bottom: none; padding-bottom: 0; }
+    .chip { flex-shrink: 0; font-size: .65rem; padding: .1rem .4rem; border-radius: 999px;
+      border: 1px solid; text-transform: uppercase; letter-spacing: .03em; line-height: 1.4; }
+    .chip.high { color: var(--color-destructive, #f87171); border-color: var(--color-destructive, #f8717155); }
+    .chip.med  { color: var(--color-warning, #fbbf24);    border-color: var(--color-warning, #fbbf2455); }
+    .chip.low  { color: var(--color-success, #34d399);    border-color: var(--color-success, #34d39955); }
+    .alert-body { flex: 1; min-width: 0; }
+    .alert-cat { font-size: .72rem; opacity: .6; margin-bottom: .1rem; }
+    .alert-summary { font-size: .83rem; line-height: 1.35; word-break: break-word; }
+    .alert-time { flex-shrink: 0; font-size: .68rem; opacity: .45; white-space: nowrap; }
+    .empty { font-size: .82rem; opacity: .5; text-align: center; padding: .5rem 0; }
+    #state { font-size: .85rem; opacity: .6; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <div id="state">Loading…</div>
+  <main id="app" hidden>
+    <div class="kpis">
+      <div class="kpi"><b id="cnt-total">—</b><span>Total alerts</span></div>
+      <div class="kpi high"><b id="cnt-high">—</b><span>High severity</span></div>
+      <div class="kpi notified"><b id="cnt-notified">—</b><span>Notified</span></div>
+      <div class="kpi responded"><b id="cnt-responded">—</b><span>Responded</span></div>
+    </div>
+    <section>
+      <h2>Recent alerts</h2>
+      <div id="alerts-list"></div>
+    </section>
+  </main>
+  <script>
+    (function () {
+      var hostOrigin = new URLSearchParams(location.hash.slice(1)).get('hostOrigin');
+      var rpcId = 0, pending = {};
+      function applyTokens(theme, tokens) {
+        if (tokens) for (var k in tokens) document.documentElement.style.setProperty(k, tokens[k]);
+        document.documentElement.classList.toggle('dark', theme === 'dark');
+      }
+      function call(method) {
+        return new Promise(function (resolve, reject) {
+          var id = 'rpc-' + ++rpcId;
+          pending[id] = { resolve: resolve, reject: reject };
+          parent.postMessage({ type: 'plugin:rpc-request', id: id, method: method, params: {} }, hostOrigin);
+        });
+      }
+      function relTime(ts) {
+        var diff = Math.floor((Date.now() - ts) / 1000);
+        if (diff < 60) return diff + 's ago';
+        if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+        if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+        return Math.floor(diff / 86400) + 'd ago';
+      }
+      function render(c) {
+        document.getElementById('state').hidden = true;
+        document.getElementById('app').hidden = false;
+        var d = (c && c.data) || null;
+        var counts = (d && d.counts) || { total: 0, high: 0, med: 0, low: 0, notified: 0, responded: 0 };
+        document.getElementById('cnt-total').textContent = counts.total;
+        document.getElementById('cnt-high').textContent = counts.high;
+        document.getElementById('cnt-notified').textContent = counts.notified;
+        document.getElementById('cnt-responded').textContent = counts.responded;
+        var recent = (d && d.recent) || [];
+        var list = document.getElementById('alerts-list');
+        if (recent.length === 0) {
+          list.innerHTML = '<p class="empty">No alerts in the last 30 days.</p>';
+        } else {
+          list.innerHTML = recent.map(function (a) {
+            var sev = a.severity === 'high' ? 'high' : a.severity === 'med' ? 'med' : 'low';
+            return '<div class="alert">' +
+              '<span class="chip ' + sev + '">' + sev + '</span>' +
+              '<div class="alert-body">' +
+                '<div class="alert-cat">' + esc(a.category) + '</div>' +
+                '<div class="alert-summary">' + esc(a.summary) + '</div>' +
+              '</div>' +
+              '<span class="alert-time">' + relTime(a.createdAt) + '</span>' +
+            '</div>';
+          }).join('');
+        }
+      }
+      function esc(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      }
+      function fail(msg) {
+        var el = document.getElementById('state');
+        el.hidden = false;
+        el.textContent = 'Could not load: ' + msg;
+      }
+      window.addEventListener('message', function (ev) {
+        if (ev.origin !== hostOrigin) return;
+        var d = ev.data || {};
+        if (d.type === 'host:hello') {
+          applyTokens(d.theme, d.tokens);
+          call('hub.artifact.context.get').then(render).catch(function (e) { fail(String(e)); });
+        } else if (d.type === 'host:rpc-response') {
+          var p = pending[d.id];
+          if (!p) return;
+          delete pending[d.id];
+          if (d.ok) p.resolve(d.payload); else p.reject(new Error((d.error && d.error.message) || 'rpc failed'));
+        }
+      });
+      if (!hostOrigin) { fail('no host origin'); return; }
+      parent.postMessage({ type: 'plugin:ready', protocolVersion: 1 }, hostOrigin);
+    })();
+  </script>
+</body>
+</html>
