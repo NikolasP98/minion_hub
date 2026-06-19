@@ -3,6 +3,9 @@ import {
   overviewDescriptorFor,
   agentVmToArtifactContext,
   artifactSrc,
+  triageDescriptorFor,
+  triageStatusDetail,
+  mapRecentRows,
   type ArtifactDescriptor,
 } from './artifacts';
 import type { AutonomousAgentVM } from './autonomous';
@@ -52,5 +55,32 @@ describe('artifactSrc', () => {
     expect(artifactSrc(d, 'https://hub.example.com')).toBe(
       'https://hub.example.com/artifacts/overview/ui/index.html#hostOrigin=https%3A%2F%2Fhub.example.com',
     );
+  });
+});
+
+describe('triageDescriptorFor', () => {
+  it('builds the triage descriptor with Megaphone icon', () => {
+    expect(triageDescriptorFor('alert-watcher', 'Triage', 'desc')).toEqual({
+      id: 'triage', agentId: 'alert-watcher', slot: 'detail', title: 'Triage',
+      description: 'desc', icon: 'Megaphone', kind: 'static', entrypoint: 'index.html',
+    });
+  });
+});
+
+describe('triageStatusDetail', () => {
+  it('summarizes counts', () => {
+    expect(triageStatusDetail({ total: 12, high: 3, med: 0, low: 0, notified: 0, responded: 0 })).toMatch(/12/);
+    expect(triageStatusDetail({ total: 0, high: 0, med: 0, low: 0, notified: 0, responded: 0 })).toMatch(/0|no/i);
+    expect(triageStatusDetail(null)).toMatch(/unavailable|—/i);
+  });
+});
+
+describe('mapRecentRows', () => {
+  it('maps ComplaintRow shape to recent[]', () => {
+    const out = mapRecentRows([{ severity: 'high', category: 'billing', summary: 's', created_at: 123 }]);
+    expect(out).toEqual([{ severity: 'high', category: 'billing', summary: 's', createdAt: 123 }]);
+  });
+  it('ignores malformed rows', () => {
+    expect(mapRecentRows([{}, { severity: 'low', category: 'x', summary: 'y', created_at: 1 }])).toHaveLength(1);
   });
 });
