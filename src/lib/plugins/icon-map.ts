@@ -12,6 +12,7 @@ import {
   MessageSquare,
   Hash,
   Send,
+  LayoutDashboard,
 } from "lucide-svelte";
 import type { ComponentType, SvelteComponent } from "svelte";
 
@@ -72,6 +73,7 @@ export const PLUGIN_ICON_MAP: Record<string, LucideIcon> = {
   MessageSquare,
   Hash,
   Send,
+  LayoutDashboard,
 };
 
 export function resolvePluginIcon(name?: string): LucideIcon | string {
