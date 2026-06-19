@@ -1,6 +1,6 @@
 # Alert-Watcher → Triage Autonomous Agent (Migration, Path C)
 
-**Date:** 2026-06-18
+**Date:** 2026-06-18 (reconciled 2026-06-19 for phase 1.5)
 **Status:** Approved design — ready for implementation plan
 **Scope:** Subsystem #2 of the agent-artifacts roadmap. Re-frame the
 `alert-watcher` gateway plugin as a canonical **Triage** autonomous agent on the
@@ -27,6 +27,29 @@ the **key new capability** this subsystem adds: the hub's artifact-context
 resolver calls the gateway server-side (`gatewayCall`) and hands the result to a
 hub-served artifact — the artifact never talks to the gateway directly, so the
 foundation's security model is unchanged.
+
+### Phase-1.5 reconciliation (shipped since this spec was written)
+
+Phase 1.5 (card artifact gallery + per-agent flow) is now merged. Three deltas:
+
+1. **`ArtifactDescriptor` now requires `icon` + `description`.** The triage
+   descriptor supplies them: `icon: 'Megaphone'` (in `PLUGIN_ICON_MAP`),
+   `description` = the localized triage-artifact summary. So
+   `triageDescriptorFor(agentId, title, description)`.
+2. **Every autonomous agent now has a representative flow.** Add a Triage flow
+   to `AGENT_FLOWS` in `src/lib/flows/master-flows.ts` (id `agent-alert-watcher`)
+   depicting the real kernel pipeline (inbound message → classify → severity
+   router → alert fan-out + claimable handoff; non-complaint → no edge / normal
+   agent loop), and set `flowId: 'agent-alert-watcher'` on the Triage descriptor.
+   The card/detail "View flow" action (phase 1.5) then opens it read-only.
+3. **The triage artifact surfaces via the card gallery.** The Alert Watcher
+   card's `ArtifactGallery` renders the triage artifact as a `Megaphone` icon
+   tile (popover = title/description) that opens it in the shared `Modal`
+   (`ArtifactHost`) — plus the detail page. The render mechanism is unchanged
+   (ArtifactHost → gated `hub.artifact.context.get` → the resolver below); the
+   roster load already feeds `artifactsByAgent` per system agent, so the triage
+   artifact appears automatically once `getArtifactsForAgent('alert-watcher')`
+   returns it.
 
 ## Architecture
 
@@ -121,7 +144,8 @@ Every gateway call is `.catch`-guarded; the page/route degrade gracefully.
 
 | File | Change |
 |---|---|
-| `src/lib/agents/artifacts.ts` | EDIT — add `data?` to `ArtifactContext`; add `TriageArtifactData` type; `triageDescriptorFor(agentId, title)` |
+| `src/lib/agents/artifacts.ts` | EDIT — add `data?` to `ArtifactContext`; add `TriageArtifactData` type; `triageDescriptorFor(agentId, title, description)` (supplies `icon:'Megaphone'`) |
+| `src/lib/flows/master-flows.ts` | EDIT — add `agent-alert-watcher` Triage flow to `AGENT_FLOWS` (classify→route→alert/handoff) |
 | `src/lib/agents/artifacts.test.ts` | EDIT — tests for the triage descriptor + `data` passthrough |
 | `src/lib/server/system-agents/registry.ts` | EDIT — add the Triage descriptor + gateway-summary `resolveStatus` |
 | `src/lib/server/artifacts/registry.ts` | EDIT — `getArtifactsForAgent` returns triage for `alert-watcher`; `getArtifactContext` resolves triage via `gatewayCall` |
