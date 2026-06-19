@@ -16,7 +16,7 @@ describe('getSections — core nav taxonomy', () => {
     expect(item?.label).toBeTruthy();
   });
 
-  it('puts the archetype roster filters (Copilots/AI Brains/Autonomous) under Agents', () => {
+  it('keeps Copilots/AI Brains as ?archetype= filters and routes Autonomous to its own page', () => {
     const agents = getSections().find((s) => s.id === 'agents');
     const archetypeHrefs = agents?.items
       .map((i) => i.href)
@@ -24,7 +24,10 @@ describe('getSections — core nav taxonomy', () => {
     expect(archetypeHrefs).toEqual([
       '/agents?archetype=copilot',
       '/agents?archetype=brain',
-      '/agents?archetype=autonomous',
     ]);
+    const autonomous = agents?.items.find((i) => i.href === '/agents/autonomous');
+    expect(autonomous).toBeTruthy();
+    expect(autonomous?.matcher('/agents/autonomous')).toBe(true);
+    expect(autonomous?.matcher('/agents')).toBe(false);
   });
 });
