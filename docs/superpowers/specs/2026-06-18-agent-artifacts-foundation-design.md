@@ -133,23 +133,26 @@ A SvelteKit server route serves built-in artifact bundles from a repo dir:
 
 ### 4. `ArtifactHost` component
 
-`src/lib/components/artifacts/ArtifactHost.svelte` — a thin wrapper over
-`PluginIframe` providing the design-spec shell:
+`src/lib/components/artifacts/ArtifactHost.svelte` — renders the artifact iframe
+and the design-spec shell, mounting the bridge **directly** via
+`mountHostBridge` (from `$lib/plugins/bridge-host`). It does **not** wrap
+`PluginIframe`: that component hardcodes the gateway `/plugins/{id}/ui/` src path
+and carries plugin-only concerns (gatewayUrl, authToken, compat, save bar) that
+artifacts don't have. Reusing the **bridge layer** (not the component) is the
+correct seam, and leaves `PluginIframe` untouched.
 
 - Props: `{ descriptor: ArtifactDescriptor }` (carries both `id` and `agentId`).
-- Computes the iframe src: `/artifacts/${descriptor.id}/ui/${entrypoint}#hostOrigin=...`
-  (reusing `PluginIframe`'s `uiBaseUrl` seam pointed at the hub's own origin).
-- Renders shell chrome (title + states). Delegates the iframe + bridge to
-  `PluginIframe` in `fillContainer` mode.
-- Supplies a hub-local RPC handler for `hub.artifact.context.get` (see §6).
-
-**Small required extension to `PluginIframe.svelte`:** today `forwardRpc` has a
-single hardcoded local branch (`plugins.users.list`). Add an optional prop
-`localHandlers?: Record<string, (params: unknown) => Promise<unknown>>` that
-`forwardRpc` checks **before** forwarding to the gateway WS. `ArtifactHost`
-passes `{ 'hub.artifact.context.get': fetchContext }`. This is additive and
-leaves the existing plugin-UI behavior unchanged (no `localHandlers` → current
-behavior).
+- Renders its own `<iframe>` at
+  `/artifacts/${descriptor.id}/ui/${descriptor.entrypoint}#hostOrigin=${origin}`
+  (same-origin: the hub serves both the page and the artifact, so origin checks
+  are trivially satisfied). `referrerpolicy="strict-origin"`, fills its container.
+- Snapshots the hub's CSS custom properties + `light|dark` theme (the same
+  routine the plugin pages use) and mounts the bridge:
+  `mountHostBridge({ self: window, target: iframe.contentWindow, pluginOrigin: origin, hello: { theme, tokens, gatewayUrl: '', authToken: '', locale }, forwardRpc: artifactForwardRpc })`.
+  `gatewayUrl`/`authToken` are empty — artifacts never use the gateway.
+- Renders shell chrome (title + agent identity + loading / empty / error states)
+  around the iframe; re-sends theme on change via `sendThemeChange`; disposes
+  the bridge on destroy.
 
 ### 5. Render surface — agent detail route
 
@@ -170,19 +173,22 @@ New route `src/routes/(app)/agents/autonomous/[id]/+page.server.ts` +
 
 ### 6. Artifact data via `forwardRpc`
 
-`ArtifactHost` registers a hub-local handler so the artifact's
-`bridge.call('hub.artifact.context.get', { artifactId })` is answered from a
-hub API route (not the gateway):
+`ArtifactHost`'s `forwardRpc` answers the artifact's data call from a hub API
+route (not the gateway). The artifact stays generic — it calls
+`bridge.call('hub.artifact.context.get')` with **no params**; `ArtifactHost`
+injects the ids from its descriptor (closure), so the artifact need not parse
+its own URL:
 
 - New route `src/routes/api/artifacts/[id]/context/+server.ts` (GET): `[id]`
   is the artifact bundle id; `agentId` is a required query param. Auth via the
   user session (`requireCoreCtx`), returns `getArtifactContext(ctx, agentId, id)`
   (404 on null).
-- `ArtifactHost`'s `localHandlers['hub.artifact.context.get']` receives
-  `{ artifactId, agentId }` from the artifact's `bridge.call(...)`, fetches
-  `/api/artifacts/${artifactId}/context?agentId=${agentId}`, and returns the
-  JSON over the bridge. The artifact never needs a gateway WS or auth token
-  (the fetch rides the user's hub session cookie).
+- `ArtifactHost`'s `forwardRpc(method)`: when
+  `method === 'hub.artifact.context.get'`, fetch
+  `/api/artifacts/${descriptor.id}/context?agentId=${descriptor.agentId}`
+  (`credentials: 'same-origin'`) and return the JSON; **throw** for any other
+  method (artifacts must not reach the gateway). The artifact never needs a
+  gateway WS or auth token — the fetch rides the user's hub session cookie.
 
 ## Security
 
@@ -205,8 +211,7 @@ hub API route (not the gateway):
 | `src/lib/artifacts/builtin/overview/index.html` (+ css) | NEW — reference artifact bundle |
 | `src/routes/artifacts/[artifactId]/ui/[...path]/+server.ts` | NEW — bundle serving + CSP + traversal guard |
 | `src/routes/api/artifacts/[id]/context/+server.ts` | NEW — artifact data (auth, org-scoped) |
-| `src/lib/components/artifacts/ArtifactHost.svelte` | NEW — shell + PluginIframe wrapper + local `hub.artifact.context.get` handler |
-| `src/lib/plugins/PluginIframe.svelte` | EDIT — add optional `localHandlers` prop checked in `forwardRpc` before gateway forwarding (additive) |
+| `src/lib/components/artifacts/ArtifactHost.svelte` | NEW — shell + own iframe + `mountHostBridge` + `forwardRpc` for `hub.artifact.context.get` (no `PluginIframe` edit) |
 | `src/routes/(app)/agents/autonomous/[id]/+page.server.ts` | NEW — agent detail load |
 | `src/routes/(app)/agents/autonomous/[id]/+page.svelte` | NEW — detail page + artifact slot |
 | `src/lib/components/agents/AutonomousAgentCard.svelte` | EDIT — card click/Manage routes to `/agents/autonomous/[id]` |
