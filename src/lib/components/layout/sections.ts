@@ -86,7 +86,12 @@ export function getSections(): Section[] {
     const agentItems: SectionItem[] = [
         archetypeItem("copilot", m.nav_copilots(), UserRound),
         archetypeItem("brain", m.nav_brains(), BrainCircuit),
-        archetypeItem("autonomous", m.nav_autonomous(), Zap),
+        {
+            href: "/agents/autonomous",
+            label: m.nav_autonomous(),
+            icon: Zap,
+            matcher: (p) => p === "/agents/autonomous" || p.startsWith("/agents/autonomous/"),
+        },
         {
             href: "/agents/workshop",
             label: m.nav_workshop(),

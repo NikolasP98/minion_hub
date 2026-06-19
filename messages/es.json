@@ -3102,5 +3102,18 @@
   "sched_rem_save": "Guardar",
   "sched_rem_saved": "Guardado",
   "sched_rem_needs_account": "Configura una cuenta de WhatsApp y activa el agente para empezar a enviar recordatorios.",
-  "sched_rem_stat_window": "últimos 30 días"
+  "sched_rem_stat_window": "últimos 30 días",
+  "sysagent_reminders_name": "Recordatorios",
+  "sysagent_reminders_role": "Recordatorios de citas",
+  "sysagent_reminders_desc": "Envía confirmaciones y recordatorios de cita por WhatsApp automáticamente.",
+  "sysagent_reminders_trigger": "Al reservar · 24h antes · 2h antes",
+  "sysagent_status_no_account": "Sin cuenta de WhatsApp configurada",
+  "autonomous_manage": "Gestionar",
+  "autonomous_status_active": "Activo",
+  "autonomous_status_disabled": "Inactivo",
+  "autonomous_status_attention": "Requiere atención",
+  "autonomous_page_title": "Agentes autónomos",
+  "autonomous_page_subtitle": "Automatizaciones activadas que se ejecutan solas — sin chat, solo una tarea.",
+  "autonomous_empty": "Aún no hay agentes autónomos. Activa un módulo (como Agenda) para agregar uno.",
+  "autonomous_activity": "{sent} enviados · {failed} fallidos · 30d"
 }

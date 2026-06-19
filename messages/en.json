@@ -3102,5 +3102,18 @@
   "sched_rem_save": "Save",
   "sched_rem_saved": "Saved",
   "sched_rem_needs_account": "Set a WhatsApp account and enable the agent to start sending reminders.",
-  "sched_rem_stat_window": "last 30 days"
+  "sched_rem_stat_window": "last 30 days",
+  "sysagent_reminders_name": "Reminders",
+  "sysagent_reminders_role": "Appointment Reminders",
+  "sysagent_reminders_desc": "Sends WhatsApp confirmation and pre-appointment reminders automatically.",
+  "sysagent_reminders_trigger": "On booking · 24h before · 2h before",
+  "sysagent_status_no_account": "No WhatsApp account set",
+  "autonomous_manage": "Manage",
+  "autonomous_status_active": "Active",
+  "autonomous_status_disabled": "Disabled",
+  "autonomous_status_attention": "Needs attention",
+  "autonomous_page_title": "Autonomous agents",
+  "autonomous_page_subtitle": "Triggered, self-running automations — no chat, just a job.",
+  "autonomous_empty": "No autonomous agents yet. Enable a module (like Scheduling) to add one.",
+  "autonomous_activity": "{sent} sent · {failed} failed · 30d"
 }
