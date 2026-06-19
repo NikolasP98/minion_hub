@@ -52,7 +52,7 @@
       target: iframeEl.contentWindow,
       pluginOrigin: origin,
       hello: { theme, tokens, gatewayUrl: '', authToken: '' },
-      forwardRpc: (method) => forwardRpc(method),
+      forwardRpc: (method, _params) => forwardRpc(method),
     });
   });
 
