@@ -64,8 +64,16 @@ function getSystemAgentDescriptors(): SystemAgentDescriptor[] {
           { since: Date.now() - 30 * 24 * 60 * 60 * 1000 },
           ctx.profileId,
         ).catch(() => null);
-        if (!summary) return { enabled: true, state: 'attention', detail: 'Gateway unreachable' };
-        return { enabled: true, state: 'active', detail: triageStatusDetail(summary.counts ?? null) };
+        if (!summary) return { enabled: true, state: 'attention', detail: m.sysagent_triage_unreachable() };
+        return {
+          enabled: true,
+          state: 'active',
+          detail: triageStatusDetail(summary.counts ?? null, {
+            unavailable: m.artifact_triage_status_unavailable(),
+            none: m.artifact_triage_status_none(),
+            count: (total, high) => m.artifact_triage_status_count({ total, high }),
+          }),
+        };
       },
     },
   ];

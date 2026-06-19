@@ -52,11 +52,18 @@ export function triageDescriptorFor(agentId: string, title: string, description:
   return { id: 'triage', agentId, slot: 'detail', title, description, icon: 'Megaphone', kind: 'static', entrypoint: 'index.html' };
 }
 
-/** Card-pill detail string from alert counts (pure; null = gateway unavailable). */
-export function triageStatusDetail(counts: TriageArtifactData['counts'] | null): string {
-  if (!counts) return 'Status unavailable';
-  if (counts.total === 0) return 'No alerts in 30d';
-  return `${counts.total} alerts · ${counts.high} high (30d)`;
+/**
+ * Card-pill detail string from alert counts. Pure: the caller supplies localized
+ * labels (the server resolveStatus passes paraglide messages), so this stays
+ * i18n-import-free and unit-testable. null counts = gateway unavailable.
+ */
+export function triageStatusDetail(
+  counts: TriageArtifactData['counts'] | null,
+  labels: { unavailable: string; none: string; count: (total: number, high: number) => string },
+): string {
+  if (!counts) return labels.unavailable;
+  if (counts.total === 0) return labels.none;
+  return labels.count(counts.total, counts.high);
 }
 
 /** Map gateway ComplaintRow records to the artifact's recent[] (pure; drops malformed). */
