@@ -3133,5 +3133,8 @@
   "autonomous_detail_manage": "Open settings",
   "artifacts_label": "Artifacts",
   "artifact_add": "Add artifact",
-  "artifact_add_soon": "Custom artifacts are coming soon (admin)."
+  "artifact_add_soon": "Custom artifacts are coming soon (admin).",
+  "window_fullscreen": "Fullscreen",
+  "window_restore": "Restore",
+  "window_close": "Close"
 }

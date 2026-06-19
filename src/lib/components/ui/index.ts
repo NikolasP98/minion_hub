@@ -18,6 +18,7 @@ export { default as SideNav } from './SideNav.svelte';
 export { default as Tooltip } from './Tooltip.svelte';
 export { default as Dropdown } from './Dropdown.svelte';
 export { default as Popover } from './Popover.svelte';
+export { default as DraggableDialog } from './DraggableDialog.svelte';
 export type {
   ButtonVariant,
   ButtonSize,

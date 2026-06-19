@@ -3133,5 +3133,8 @@
   "autonomous_detail_manage": "Abrir ajustes",
   "artifacts_label": "Artefactos",
   "artifact_add": "Agregar artefacto",
-  "artifact_add_soon": "Los artefactos personalizados llegarán pronto (admin)."
+  "artifact_add_soon": "Los artefactos personalizados llegarán pronto (admin).",
+  "window_fullscreen": "Pantalla completa",
+  "window_restore": "Restaurar",
+  "window_close": "Cerrar"
 }
