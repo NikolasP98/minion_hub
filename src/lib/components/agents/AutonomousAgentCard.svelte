@@ -100,7 +100,7 @@
     </div>
   </footer>
 
-  {#if artifacts.length}
+  {#if artifacts.length || canAdd}
     <ArtifactGallery
       {artifacts}
       {canAdd}
