@@ -68,10 +68,11 @@ describe('triageDescriptorFor', () => {
 });
 
 describe('triageStatusDetail', () => {
-  it('summarizes counts', () => {
-    expect(triageStatusDetail({ total: 12, high: 3, med: 0, low: 0, notified: 0, responded: 0 })).toMatch(/12/);
-    expect(triageStatusDetail({ total: 0, high: 0, med: 0, low: 0, notified: 0, responded: 0 })).toMatch(/0|no/i);
-    expect(triageStatusDetail(null)).toMatch(/unavailable|—/i);
+  const L = { unavailable: 'U', none: 'N', count: (t: number, h: number) => `${t}a/${h}h` };
+  it('selects the localized label by count state', () => {
+    expect(triageStatusDetail({ total: 12, high: 3, med: 0, low: 0, notified: 0, responded: 0 }, L)).toBe('12a/3h');
+    expect(triageStatusDetail({ total: 0, high: 0, med: 0, low: 0, notified: 0, responded: 0 }, L)).toBe('N');
+    expect(triageStatusDetail(null, L)).toBe('U');
   });
 });
 
