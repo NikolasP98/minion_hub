@@ -22,7 +22,7 @@ export interface SystemAgentMeta {
   description: string;
   avatarSeed: string;
   trigger: string;
-  managePath: string;
+  managePath: string | null;
   flowId?: string;
 }
 

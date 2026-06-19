@@ -196,11 +196,9 @@ const PLUGIN_NAV_GROUPS: ReadonlyArray<{ category: PluginNavCategory; label: () 
  * "channel"), so we pin known first-party plugins to their intended group here.
  * This keeps the sidebar correct without waiting on a gateway redeploy; unknown
  * plugins still fall through to their manifest-reported category. Keyed by
- * pluginId (a few carry legacy ids — e.g. alert-watcher ships as "alerts").
+ * pluginId (a few carry legacy ids — e.g. voice-call also ships as "voicecall").
  */
 const PLUGIN_CATEGORY_OVERRIDES: Record<string, PluginNavCategory> = {
-    'alert-watcher': 'customer-support',
-    alerts: 'customer-support',
     'voice-call': 'customer-support',
     voicecall: 'customer-support',
     studio: 'creative',

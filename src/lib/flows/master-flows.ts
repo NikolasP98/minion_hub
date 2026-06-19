@@ -554,7 +554,36 @@ const remindersAgentFlow: MasterFlow = {
   ],
 };
 
-export const AGENT_FLOWS: MasterFlow[] = [remindersAgentFlow];
+const alertWatcherAgentFlow: MasterFlow = {
+  id: 'agent-alert-watcher',
+  name: 'Alert Watcher (Triage)',
+  description:
+    'How the Alert Watcher triage agent works: it intercepts every inbound channel message, classifies it with one LLM call into is_complaint/severity/category, and for real complaints fans out an alert to the owner channels and opens a claimable handoff. Non-complaints take no edge and fall through to the normal agent loop. Runs in the gateway.',
+  tags: ['autonomous', 'triage', 'gateway'],
+  nodes: [
+    { id: 'inbound', kind: 'trigger', title: 'Inbound message', subtitle: 'every channel message (message_inbound/received hook)', position: at(0) },
+    { id: 'gate', kind: 'guard', title: 'Dedup + cooldown', subtitle: 'ring-LRU dedup · per-chat cooldown (escalation-aware)', position: at(1), branches: [{ id: 'pass', label: 'Pass' }, { id: 'drop', label: 'Suppressed' }] },
+    { id: 'classify', kind: 'llm', title: 'Classify (LLM)', subtitle: 'haiku · {is_complaint, severity, category, summary}', position: at(2) },
+    { id: 'route', kind: 'router', title: 'Severity router', subtitle: 'high / med / low / none', position: at(3), branches: [{ id: 'high', label: 'high' }, { id: 'med', label: 'med' }, { id: 'low', label: 'low' }, { id: 'none', label: 'none' }] },
+    { id: 'alert', kind: 'channel', title: 'Fan out alert', subtitle: 'parallel send to owner destinations · delivery-tracked', position: at(4) },
+    { id: 'handoff', kind: 'intercept', title: 'Claimable handoff', subtitle: 'first-reply-wins · owner reply → forwarded to customer', position: at(5) },
+    { id: 'ignore', kind: 'end', title: 'Normal agent loop', subtitle: 'not a complaint → no edge → conversational agent replies', position: at(3, -2) },
+    { id: 'done', kind: 'end', title: 'Logged', subtitle: 'alerts.db complaint row + pending_reply', position: at(6) },
+  ],
+  edges: [
+    { id: 'e-in-gate', source: 'inbound', target: 'gate' },
+    { id: 'e-gate-classify', source: 'gate', sourceHandle: 'pass', target: 'classify' },
+    { id: 'e-classify-route', source: 'classify', target: 'route' },
+    { id: 'e-route-high', source: 'route', sourceHandle: 'high', target: 'alert' },
+    { id: 'e-route-med', source: 'route', sourceHandle: 'med', target: 'alert' },
+    { id: 'e-route-low', source: 'route', sourceHandle: 'low', target: 'alert' },
+    { id: 'e-route-none', source: 'route', sourceHandle: 'none', target: 'ignore' },
+    { id: 'e-alert-handoff', source: 'alert', target: 'handoff' },
+    { id: 'e-handoff-done', source: 'handoff', target: 'done' },
+  ],
+};
+
+export const AGENT_FLOWS: MasterFlow[] = [remindersAgentFlow, alertWatcherAgentFlow];
 
 export function getMasterFlow(id: string): MasterFlow | undefined {
   return MASTER_FLOWS.find((f) => f.id === id) ?? AGENT_FLOWS.find((f) => f.id === id);

@@ -11,4 +11,10 @@ describe('agent representative flows', () => {
   it('does not list agent flows in the master-flows roster', () => {
     expect(MASTER_FLOWS.some((f) => f.id === 'agent-reminders')).toBe(false);
   });
+  it('resolves the Alert Watcher agent flow', () => {
+    const flow = getMasterFlow('agent-alert-watcher');
+    expect(flow).toBeTruthy();
+    expect(flow?.nodes.some((n) => n.kind === 'llm')).toBe(true);
+    expect(MASTER_FLOWS.some((f) => f.id === 'agent-alert-watcher')).toBe(false);
+  });
 });

@@ -236,6 +236,9 @@ export async function gatewayCallAsUser<T = unknown>(
   return gatewayCallWithCreds<T>(method, params, url, token, opts);
 }
 
+// alert-watcher is surfaced as the Triage autonomous agent, not a plugin.
+const HIDDEN_PLUGIN_IDS = new Set(['alert-watcher', 'alerts']);
+
 /**
  * Convenience: list plugin UI manifest occupants for a specific user.
  *
@@ -252,6 +255,6 @@ export async function pluginsUiList(
     | { entries?: PluginUiManifestOccupant[]; occupants?: PluginUiManifestOccupant[] }
     | PluginUiManifestOccupant[]
   >('plugins.ui.list', orgId ? { orgId } : {}, profileId);
-  if (Array.isArray(res)) return res;
-  return res?.entries ?? res?.occupants ?? [];
+  const raw = Array.isArray(res) ? res : (res?.entries ?? res?.occupants ?? []);
+  return raw.filter((e) => !HIDDEN_PLUGIN_IDS.has(e.pluginId));
 }

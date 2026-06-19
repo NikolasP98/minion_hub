@@ -18,12 +18,13 @@ import { resolveGatewayId } from '$server/services/gateway.pg.service';
 export interface CoreCtx {
   db: ReturnType<typeof getCoreDb>;
   tenantId: string;
+  profileId?: string;
 }
 
 export async function getCoreCtx(locals: App.Locals): Promise<CoreCtx | null> {
   const base = await getTenantCtx(locals);
   if (!base) return null;
-  return { db: getCoreDb(), tenantId: base.tenantId };
+  return { db: getCoreDb(), tenantId: base.tenantId, profileId: locals.user?.supabaseId };
 }
 
 /** getCoreCtx, but throws a 401 instead of returning null. Mirrors requireTenantCtx. */

@@ -38,12 +38,14 @@ describe("getDynamicPluginsSections", () => {
         category: "creative",
       },
       {
-        pluginId: "alerts",
+        // voice-call is pinned to customer-support via PLUGIN_CATEGORY_OVERRIDES
+        // even though its manifest category is "tool".
+        pluginId: "voice-call",
         slot: "plugins.controlCenter",
-        title: "Alert Watcher",
+        title: "Voice Call",
         description: "",
         entrypoint: "c.html",
-        category: "customer-support",
+        category: "tool",
       },
     ]);
     // Display order: Marketing, Operations, Finance (builtin), Branding/Creative, Customer Support.
@@ -57,7 +59,7 @@ describe("getDynamicPluginsSections", () => {
     const creative = sections.find((s) => s.id === "plugins:creative");
     expect(creative?.items[0]?.href).toBe("/plugins/studio");
     const cs = sections.find((s) => s.id === "plugins:customer-support");
-    expect(cs?.items.map((i) => i.href)).toEqual(["/plugins/alerts"]);
+    expect(cs?.items.map((i) => i.href)).toEqual(["/plugins/voice-call"]);
     // Channel plugins are NOT a top-level group — they live in a subsection.
     expect(sections.some((s) => s.id === "plugins:channel")).toBe(false);
     expect(cs?.subsections?.[0]?.id).toBe("channels");
