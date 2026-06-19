@@ -3119,5 +3119,9 @@
   "autonomous_empty": "Aún no hay agentes autónomos. Activa un módulo (como Agenda) para agregar uno.",
   "autonomous_activity": "{sent} enviados · {failed} fallidos · 30d",
   "autonomous_detail_back": "Volver a agentes autónomos",
-  "autonomous_detail_manage": "Abrir ajustes"
+  "autonomous_detail_manage": "Abrir ajustes",
+  "artifacts_label": "Artefactos",
+  "artifact_add": "Agregar artefacto",
+  "artifact_add_soon": "Los artefactos personalizados llegarán pronto (admin).",
+  "artifact_kind_static": "Estático"
 }
