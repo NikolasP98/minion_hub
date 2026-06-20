@@ -5,6 +5,7 @@ import {
   titleCaseName,
   proposeName,
   nameKey,
+  isUnnamed,
 } from './crm-standardize';
 
 describe('normalizeWhitespace', () => {
@@ -69,6 +70,63 @@ describe('proposeName', () => {
     const p = proposeName('Todos nuestros procedimientos son realizados exclusivamente por la Dra. Milagros Toribio Villalobos');
     expect(p.issues).toContain('too_long');
     expect(p.needsReview).toBe(true);
+  });
+  it('strips emoji, keeps the name', () => {
+    const p = proposeName('😎Yuri');
+    expect(p.proposed).toBe('Yuri');
+    expect(p.issues).toContain('emoji');
+    expect(p.needsReview).toBe(false);
+  });
+  it('pure-emoji name → empty + review', () => {
+    const p = proposeName('😎🙏🏾');
+    expect(p.issues).toContain('empty');
+    expect(p.proposed).toBeNull();
+    expect(p.needsReview).toBe(true);
+  });
+  it('unwraps bracketed names', () => {
+    const p = proposeName('(Joan Rojas)');
+    expect(p.proposed).toBe('Joan Rojas');
+    expect(p.issues).toContain('wrapped');
+  });
+  it('splits camelCase run-togethers, preserving acronyms', () => {
+    expect(proposeName('MelissaBastosM').proposed).toBe('Melissa Bastos M');
+    const qr = proposeName('PattyQR');
+    expect(qr.proposed).toBe('Patty QR');
+    expect(qr.issues).toContain('spacing');
+    expect(qr.needsReview).toBe(false);
+  });
+  it('flags lowercase run-together blobs for AI', () => {
+    const p = proposeName('fresiamurguiavilchez');
+    expect(p.issues).toContain('spacing');
+    expect(p.needsReview).toBe(true);
+  });
+  it('flags leetspeak / foreign glyphs / digits as symbols', () => {
+    expect(proposeName('Miigu£l').issues).toContain('symbols');
+    expect(proposeName('Ęţşøņ').issues).toContain('symbols');
+    expect(proposeName('Mateoarriola065').issues).toContain('symbols');
+    expect(proposeName('Miigu£l').needsReview).toBe(true);
+  });
+  it('strips vanity symbols to a clean baseline', () => {
+    expect(proposeName('~~Gabi~~').proposed).toBe('Gabi');
+    expect(proposeName('Shioko<3').proposed).toBe('Shioko');
+    expect(proposeName('~elsa').proposed).toBe('Elsa');
+  });
+  it('confidence: clean casing fix outranks an ambiguous flag', () => {
+    expect(proposeName('valenissa').confidence).toBeGreaterThan(proposeName('Miigu£l').confidence);
+  });
+});
+
+describe('isUnnamed (routes to manual section)', () => {
+  it('true for blank / single-char / punctuation / emoji-only', () => {
+    expect(isUnnamed('')).toBe(true);
+    expect(isUnnamed('  ')).toBe(true);
+    expect(isUnnamed('.')).toBe(true);
+    expect(isUnnamed('J')).toBe(true);
+    expect(isUnnamed('😎🙏')).toBe(true);
+  });
+  it('false for real names (≥2 alphanumerics)', () => {
+    expect(isUnnamed('Ana')).toBe(false);
+    expect(isUnnamed('Jo')).toBe(false);
   });
 });
 

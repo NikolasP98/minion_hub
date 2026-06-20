@@ -6,6 +6,7 @@ import { getAccountScopeLive } from '$server/services/crm-channels.service';
 import {
   scanStandardizationCached,
   findDuplicatesCached,
+  findBlanksCached,
 } from '$server/services/crm-cleanup.service';
 
 export const load: PageServerLoad = async ({ locals, depends }) => {
@@ -26,8 +27,8 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   );
   // `cleanup` feeds the non-default "Hygiene" tab and runs two cached scans;
   // STREAM it too (unawaited promise) so it never blocks the default Tags tab.
-  const cleanup = Promise.all([scanStandardizationCached(ctx), findDuplicatesCached(ctx)])
-    .then(([fixes, groups]) => ({ fixes, groups }))
-    .catch(() => ({ fixes: [], groups: [] }) as { fixes: never[]; groups: never[] });
+  const cleanup = Promise.all([scanStandardizationCached(ctx), findDuplicatesCached(ctx), findBlanksCached(ctx)])
+    .then(([fixes, groups, blanks]) => ({ fixes, groups, blanks }))
+    .catch(() => ({ fixes: [], groups: [], blanks: [] }) as { fixes: never[]; groups: never[]; blanks: never[] });
   return { tags, scope, cleanup };
 };

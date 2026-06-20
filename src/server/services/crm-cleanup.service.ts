@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
-import { proposeName, nameKey, type NameIssue } from './crm-standardize';
+import { proposeName, nameKey, isUnnamed, type NameIssue } from './crm-standardize';
 
 /**
  * CRM Data Hygiene service: name standardization (deterministic stage 1) +
@@ -36,6 +36,14 @@ export function findDuplicatesCached(ctx: CoreCtx): Promise<DupGroup[]> {
   );
 }
 
+export function findBlanksCached(ctx: CoreCtx): Promise<BlankContact[]> {
+  return cached(
+    keys.hub('crm-blanks', { t: ctx.tenantId }),
+    { ttl: '2m', swr: '30s', tags: [...tags.tenantDomain(ctx.tenantId, 'crm')] },
+    () => findBlanks(ctx),
+  );
+}
+
 // ── Standardization ───────────────────────────────────────────────────────────
 
 export interface NameFix {
@@ -44,9 +52,10 @@ export interface NameFix {
   proposed: string | null;
   issues: NameIssue[];
   needsReview: boolean;
+  confidence: number;
 }
 
-/** Scan all contacts; return only those whose name changes or has an issue. */
+/** Scan all contacts; return only those whose name changes or has an issue, most-confident first. */
 export async function scanStandardization(ctx: CoreCtx): Promise<NameFix[]> {
   const rows = (await withOrgCore(ctx, (tx) =>
     tx.execute(sql`
@@ -57,6 +66,7 @@ export async function scanStandardization(ctx: CoreCtx): Promise<NameFix[]> {
 
   const fixes: NameFix[] = [];
   for (const r of rows) {
+    if (isUnnamed(r.display_name)) continue; // blank/1-char/emoji-only → "Needs a name" section
     const p = proposeName(r.display_name);
     const changed = (p.proposed ?? '') !== (r.display_name ?? '');
     if (changed || p.issues.length > 0) {
@@ -66,42 +76,80 @@ export async function scanStandardization(ctx: CoreCtx): Promise<NameFix[]> {
         proposed: p.proposed,
         issues: p.issues,
         needsReview: p.needsReview,
+        confidence: p.confidence,
       });
     }
   }
+  // Highest-confidence fixes first (clear casing/emoji at top, ambiguous junk at bottom).
+  fixes.sort((a, b) => b.confidence - a.confidence);
   return fixes;
 }
 
-/** Apply chosen name fixes (each { contactId, name }). Returns count updated. */
+/** Apply chosen name fixes (each { contactId, name, before? }). Returns count updated. */
 export async function applyStandardization(
   ctx: CoreCtx,
-  fixes: Array<{ contactId: string; name: string }>,
+  fixes: Array<{ contactId: string; name: string; before?: string | null }>,
 ): Promise<number> {
   if (fixes.length === 0) return 0;
   // Trim + drop empties first (same skip the per-row loop did); count = number of
   // valid fixes submitted (unchanged from the loop, which incremented per attempt).
-  const valid = fixes.map((f) => ({ id: f.contactId, name: f.name.trim() })).filter((f) => f.name);
+  const valid = fixes
+    .map((f) => ({ id: f.contactId, name: f.name.trim(), before: (f.before ?? '').trim() }))
+    .filter((f) => f.name);
   if (valid.length === 0) {
     await bust(ctx.tenantId);
     return 0;
   }
-  await withOrgCore(ctx, (tx) => {
+  await withOrgCore(ctx, async (tx) => {
     const rows = sql.join(
       valid.map((f) => sql`(${f.id}::uuid, ${f.name})`),
       sql`, `,
     );
-    return tx.execute(sql`
+    await tx.execute(sql`
       update crm_contacts c set display_name = v.name, updated_at = now()
       from (values ${rows}) as v(id, name)
       where c.id = v.id and c.org_id = ${ctx.tenantId}
     `);
+    // Log the before→after pairs as training data for future AI reviews (reuses
+    // crm_activities; only real changes). Best-effort — never blocks the rename.
+    const examples = valid.filter((f) => f.before && f.before !== f.name);
+    if (examples.length > 0) {
+      await tx.execute(sql`
+        insert into crm_activities (org_id, contact_id, kind, data)
+        values ${sql.join(
+          examples.map(
+            (e) => sql`(${ctx.tenantId}, ${e.id}::uuid, 'name_fix', ${JSON.stringify({ before: e.before, after: e.name })}::jsonb)`,
+          ),
+          sql`, `,
+        )}
+      `);
+    }
   });
   await bust(ctx.tenantId);
   return valid.length;
 }
 
+/** Recent accepted before→after name fixes for this org — few-shot examples for AI review. */
+export async function recentNameFixes(ctx: CoreCtx, limit = 40): Promise<Array<{ before: string; after: string }>> {
+  const rows = (await withOrgCore(ctx, (tx) =>
+    tx.execute(sql`
+      select distinct on (data->>'before') data->>'before' as before, data->>'after' as after
+      from crm_activities
+      where org_id = ${ctx.tenantId} and kind = 'name_fix'
+        and nullif(data->>'before','') is not null and nullif(data->>'after','') is not null
+      order by data->>'before', occurred_at desc
+      limit ${limit}
+    `),
+  )) as unknown as Array<{ before: string; after: string }>;
+  return rows;
+}
+
 // ── Duplicate detection ───────────────────────────────────────────────────────
 
+export interface ContactIdentity {
+  channel: string;
+  value: string;
+}
 export interface DupContact {
   id: string;
   name: string | null;
@@ -109,17 +157,41 @@ export interface DupContact {
   phone: string | null;
   score: number;
   messages: number;
+  /** Channel identities (phone/handle) — lets a human confirm a name match is a real dupe. */
+  identities: ContactIdentity[];
 }
 export interface DupGroup {
   reason: 'dni' | 'name';
   key: string;
   contacts: DupContact[];
+  /** 0..1: identical DNI is strong; same-name with conflicting numbers is weak (likely NOT a dupe). */
+  confidence: number;
+}
+
+/** All distinct phone-like numbers a contact exposes (custom telefono + numeric identities). */
+function contactNumbers(c: DupContact): Set<string> {
+  const nums = new Set<string>();
+  const norm = (v: string) => v.replace(/\D/g, '');
+  if (c.phone && norm(c.phone).length >= 6) nums.add(norm(c.phone));
+  for (const id of c.identities) if (norm(id.value).length >= 6) nums.add(norm(id.value));
+  return nums;
+}
+
+/** Confidence for a same-name group: low when the key is junk or members hold different numbers. */
+function nameGroupConfidence(key: string, contacts: DupContact[]): number {
+  // Junk key (".", single char, all-punctuation) — same "name" means nothing.
+  if (key.replace(/[^\p{L}\p{N}]/gu, '').length < 2) return 0.15;
+  const distinct = new Set<string>();
+  for (const c of contacts) for (const n of contactNumbers(c)) distinct.add(n);
+  // ≥2 distinct numbers across members ⇒ different people who happen to share a name.
+  if (distinct.size > 1) return 0.3;
+  return 0.6;
 }
 
 /**
  * Find likely-duplicate groups. Strong signal = identical DNI (national id);
  * secondary = identical normalized name. Groups are deduped (a pair sharing both
- * DNI and name reports once, under DNI).
+ * DNI and name reports once, under DNI) and sorted most-confident first.
  */
 export async function findDuplicates(ctx: CoreCtx): Promise<DupGroup[]> {
   const rows = (await withOrgCore(ctx, (tx) =>
@@ -133,9 +205,15 @@ export async function findDuplicates(ctx: CoreCtx): Promise<DupGroup[]> {
       select c.id, c.display_name,
              nullif(c.custom_fields->>'dni','') as dni,
              nullif(c.custom_fields->>'telefono','') as phone,
-             coalesce(mm.n, 0) as messages
+             coalesce(mm.n, 0) as messages,
+             coalesce(ids.list, '[]'::json) as identities
       from crm_contacts c
       left join msgs mm on mm.contact_id = c.id
+      left join lateral (
+        select json_agg(json_build_object('channel', i.channel, 'value', coalesce(nullif(i.handle,''), i.external_id))) as list
+        from crm_contact_identities i
+        where i.org_id = c.org_id and i.contact_id = c.id
+      ) ids on true
       where c.org_id = ${ctx.tenantId} and c.deleted_at is null
     `),
   )) as unknown as Array<{
@@ -144,6 +222,7 @@ export async function findDuplicates(ctx: CoreCtx): Promise<DupGroup[]> {
     dni: string | null;
     phone: string | null;
     messages: number;
+    identities: ContactIdentity[] | null;
   }>;
 
   const mk = (r: (typeof rows)[number]): DupContact => ({
@@ -153,6 +232,7 @@ export async function findDuplicates(ctx: CoreCtx): Promise<DupGroup[]> {
     phone: r.phone,
     score: 0,
     messages: Number(r.messages) || 0,
+    identities: (Array.isArray(r.identities) ? r.identities : []).filter((i) => i && i.value),
   });
 
   const byDni = new Map<string, DupContact[]>();
@@ -167,17 +247,79 @@ export async function findDuplicates(ctx: CoreCtx): Promise<DupGroup[]> {
   const seen = new Set<string>(); // contact ids already grouped under DNI
   for (const [key, contacts] of byDni) {
     if (contacts.length > 1) {
-      groups.push({ reason: 'dni', key, contacts });
+      groups.push({ reason: 'dni', key, contacts, confidence: 0.9 });
       contacts.forEach((c) => seen.add(c.id));
     }
   }
   for (const [key, contacts] of byName) {
     const fresh = contacts.filter((c) => !seen.has(c.id));
-    if (fresh.length > 1) groups.push({ reason: 'name', key, contacts: fresh });
+    if (fresh.length > 1) {
+      groups.push({ reason: 'name', key, contacts: fresh, confidence: nameGroupConfidence(key, fresh) });
+    }
   }
-  // Most-actionable first: bigger groups, DNI before name.
-  groups.sort((a, b) => b.contacts.length - a.contacts.length);
+  // Most-confident first; tie-break on bigger groups.
+  groups.sort((a, b) => b.confidence - a.confidence || b.contacts.length - a.contacts.length);
   return groups;
+}
+
+// ── Blank / unnamed contacts (manual fixing) ────────────────────────────────────
+
+export interface BlankContact {
+  id: string;
+  name: string | null;
+  dni: string | null;
+  phone: string | null;
+  messages: number;
+  identities: ContactIdentity[];
+}
+
+/**
+ * Contacts with ≤1 alphanumeric char in their name (blank, ".", single letter,
+ * emoji-only) — un-auto-fixable, surfaced for MANUAL naming with cross-reference
+ * metadata (phone/DNI/channel identities). Most-active first.
+ */
+export async function findBlanks(ctx: CoreCtx): Promise<BlankContact[]> {
+  const rows = (await withOrgCore(ctx, (tx) =>
+    tx.execute(sql`
+      with msgs as (
+        select ci.contact_id, count(*) n
+        from crm_contact_identities ci
+        join messages m on m.org_id = ci.org_id and m.channel = ci.channel and m.chat_id = ci.external_id
+        where m.is_bot is not true group by ci.contact_id
+      )
+      select c.id, c.display_name,
+             nullif(c.custom_fields->>'dni','') as dni,
+             nullif(c.custom_fields->>'telefono','') as phone,
+             coalesce(mm.n, 0) as messages,
+             coalesce(ids.list, '[]'::json) as identities
+      from crm_contacts c
+      left join msgs mm on mm.contact_id = c.id
+      left join lateral (
+        select json_agg(json_build_object('channel', i.channel, 'value', coalesce(nullif(i.handle,''), i.external_id))) as list
+        from crm_contact_identities i
+        where i.org_id = c.org_id and i.contact_id = c.id
+      ) ids on true
+      where c.org_id = ${ctx.tenantId} and c.deleted_at is null
+        and char_length(regexp_replace(coalesce(c.display_name, ''), '[^[:alnum:]]+', '', 'g')) <= 1
+      order by coalesce(mm.n, 0) desc
+    `),
+  )) as unknown as Array<{
+    id: string;
+    display_name: string | null;
+    dni: string | null;
+    phone: string | null;
+    messages: number;
+    identities: ContactIdentity[] | null;
+  }>;
+
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.display_name,
+    dni: r.dni,
+    phone: r.phone,
+    messages: Number(r.messages) || 0,
+    identities: (Array.isArray(r.identities) ? r.identities : []).filter((i) => i && i.value),
+  }));
 }
 
 /**

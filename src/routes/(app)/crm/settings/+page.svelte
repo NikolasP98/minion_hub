@@ -455,7 +455,7 @@
 					<section class="card-skel"></section>
 				</div>
 			{:then cleanup}
-				<CrmHygiene fixes={cleanup.fixes} groups={cleanup.groups} />
+				<CrmHygiene fixes={cleanup.fixes} groups={cleanup.groups} blanks={cleanup.blanks} />
 			{/await}
 		{/if}
 	</div>

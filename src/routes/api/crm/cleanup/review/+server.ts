@@ -4,6 +4,7 @@ import { generateText } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 import { env } from '$env/dynamic/private';
 import { getCoreCtx } from '$server/auth/core-ctx';
+import { recentNameFixes } from '$server/services/crm-cleanup.service';
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 const MODEL = env.CRM_CLEANUP_MODEL || env.NOTES_POLISH_MODEL || 'google/gemini-2.5-flash';
@@ -43,14 +44,26 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     )
     .join('\n');
 
+  // Few-shot: the org's own previously-accepted before→after fixes (training data).
+  const examples = await recentNameFixes(ctx, 40).catch(() => []);
+  const examplesBlock = examples.length
+    ? `\nExamples of corrections THIS org has accepted before (mimic this style):\n${examples
+        .map((e) => `"${e.before}" → "${e.after}"`)
+        .join('\n')}\n`
+    : '';
+
   const prompt = `You are cleaning a CRM contact list for a Peruvian aesthetics clinic. Most names are Spanish.
 For each row, decide the best DISPLAY NAME. Rules:
 - Proper Spanish capitalization (particles de/la/del/los lowercase mid-name; accents kept).
+- Remove decorative/vanity symbols and emoji that are NOT part of the name ("~~Gabi~~"→"Gabi", "Shioko<3"→"Shioko", "K&ARA"→"Kara").
+- But REPLACE a symbol/digit that stands in for a letter ("Miigu£l"→"Miguel", "Ęţşøņ"→"Etson", "ALEX4NDER"→"Alexander", "A1dair"→"Aldair"). Do NOT strip legitimate Spanish accents.
+- Infer word boundaries in run-together names ("Melissabastosm"→"Melissa Bastos M.", "Fresiamurguiavilchez"→"Fresia Murguia Vilchez", "Mateoarriola065"→"Mateo Arriola"). Drop trailing digit noise.
+- Trim leading/trailing whitespace.
 - If the value is an email address, derive a plausible human name from the local-part ONLY (do not invent surnames); action="adjust".
-- If it clearly is NOT a person's name (a sentence, a company disclaimer, gibberish), set name to "" and action="flag".
+- If it clearly is NOT a person's name (a sentence, a company disclaimer, gibberish, or a note like "es su prima de la paciente" / "no tiene número"), set name to "" and action="flag". These need a human.
 - If the rule_proposed is already correct, action="keep" and name=rule_proposed.
 - Otherwise action="adjust" with your corrected name.
-Return ONLY a JSON array, one object per input index, shape:
+${examplesBlock}Return ONLY a JSON array, one object per input index, shape:
 [{"i":0,"name":"...","action":"keep|adjust|flag","note":"short reason"}]
 
 Rows (index\\tcurrent\\trule_proposed):
