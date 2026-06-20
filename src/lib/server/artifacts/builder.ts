@@ -7,7 +7,7 @@ import { getMasterFlow, flowExportedSpecs } from '$lib/flows/master-flows';
 import { flowVariableSchema } from '$lib/flows/flow-variables';
 import { listExportToggles } from '$lib/server/flows/exports-store';
 import overviewHtml from '$lib/artifacts/builtin/overview/index.html?raw';
-import { buildBuilderPrompt, extractHtml, validateBundle } from './builder-prompt';
+import { buildBuilderPrompt, buildRepairPrompt, extractHtml, validateBundle } from './builder-prompt';
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
@@ -35,8 +35,25 @@ export async function generateArtifactHtml(
 
   const BUILDER_MODEL = env.ARTIFACT_BUILDER_MODEL || 'anthropic/claude-3.7-sonnet';
   const openrouter = createOpenAI({ apiKey, baseURL: OPENROUTER_BASE_URL });
-  const res = await generateText({ model: openrouter(BUILDER_MODEL), prompt, temperature: 0.3 });
-  const html = extractHtml(res.text);
-  validateBundle(html);
-  return html;
+  const MAX_ATTEMPTS = 3;
+
+  const attempt = async (p: string): Promise<string> => {
+    const res = await generateText({ model: openrouter(BUILDER_MODEL), prompt: p, temperature: 0.3 });
+    return extractHtml(res.text);
+  };
+
+  let current = prompt;
+  let last = '';
+  let lastErr: Error | null = null;
+  for (let i = 0; i < MAX_ATTEMPTS; i++) {
+    last = await attempt(current);
+    try {
+      validateBundle(last);
+      return last;
+    } catch (e) {
+      lastErr = e as Error;
+      current = buildRepairPrompt(prompt, last, lastErr.message);
+    }
+  }
+  throw lastErr ?? new Error('artifact generation failed');
 }
