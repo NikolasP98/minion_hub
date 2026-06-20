@@ -128,7 +128,6 @@
     font-size: 10px;
     font-family: var(--font-mono, monospace);
     color: var(--color-text-muted, rgba(255 255 255 / 0.4));
-    display: none;
   }
 
   .flow-exports__type-chip {
