@@ -3161,5 +3161,8 @@
   "window_fullscreen": "Pantalla completa",
   "window_restore": "Restaurar",
   "window_close": "Cerrar",
-  "artifact_loading": "Cargando…"
+  "artifact_loading": "Cargando…",
+  "flow_exports_label": "Variables exportadas",
+  "flow_exports_badge": "{n} exportadas",
+  "flow_exports_none": "Sin variables exportadas"
 }
