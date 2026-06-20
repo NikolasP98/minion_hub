@@ -63,12 +63,18 @@ export interface MasterBranch {
 export type VariableType = 'int' | 'float' | 'string' | 'bool' | 'list' | 'object';
 
 export interface VariableSpec {
-  /** Dotted key: namespace.name (e.g., "reminders.sent"). */
+  /** Universal id — dotted key namespace.name (e.g., "reminders.sent"). */
   key: string;
   /** Type of the variable. */
   type: VariableType;
+  /** Human label for the export panel + the artifact builder. */
+  label: string;
   /** Optional one-line description. */
   description?: string;
+  /** Example value for the viewer + the artifact builder (5b.2). */
+  sample?: unknown;
+  /** Enabled state when no toggle row exists (default true). */
+  defaultExported?: boolean;
 }
 
 export interface MasterFlowNode {
@@ -551,9 +557,9 @@ const remindersAgentFlow: MasterFlow = {
     { id: 'send', kind: 'channel', title: 'Send WhatsApp', subtitle: "gatewayCall('channels.send') · idempotencyKey rem-{booking}-{stage}", position: at(5) },
     { id: 'ledger', kind: 'memory', title: 'Mirror to messages ledger', subtitle: 'insertMessages → shows in CRM timeline', position: at(6) },
     { id: 'done', kind: 'end', title: 'Recorded', subtitle: 'sched_reminders row: sent / failed / skipped', position: at(7), exports: [
-      { key: 'reminders.sent', type: 'int', description: 'Number of reminders sent successfully' },
-      { key: 'reminders.failed', type: 'int', description: 'Number of reminders that failed to send' },
-      { key: 'reminders.skipped', type: 'int', description: 'Number of reminders skipped (opted out)' },
+      { key: 'reminders.sent', type: 'int', label: 'Sent', description: 'Number of reminders sent successfully', sample: 42 },
+      { key: 'reminders.failed', type: 'int', label: 'Failed', description: 'Number of reminders that failed to send', sample: 1 },
+      { key: 'reminders.skipped', type: 'int', label: 'Skipped', description: 'Number of reminders skipped (opted out)', sample: 7 },
     ] },
     { id: 'skip-disabled', kind: 'end', title: 'Skipped', subtitle: 'reminders disabled for org', position: at(1, -2) },
     { id: 'skip-optout', kind: 'end', title: 'Skipped', subtitle: 'recipient opted out', position: at(3, -2) },
@@ -582,12 +588,12 @@ const alertWatcherAgentFlow: MasterFlow = {
     { id: 'gate', kind: 'guard', title: 'Dedup + cooldown', subtitle: 'ring-LRU dedup · per-chat cooldown (escalation-aware)', position: at(1), branches: [{ id: 'pass', label: 'Pass' }, { id: 'drop', label: 'Suppressed' }] },
     { id: 'classify', kind: 'llm', title: 'Classify (LLM)', subtitle: 'haiku · {is_complaint, severity, category, summary}', position: at(2) },
     { id: 'route', kind: 'router', title: 'Severity router', subtitle: 'high / med / low / none', position: at(3), branches: [{ id: 'high', label: 'high' }, { id: 'med', label: 'med' }, { id: 'low', label: 'low' }, { id: 'none', label: 'none' }], exports: [
-      { key: 'triage.counts.total', type: 'int', description: 'Total number of messages triaged' },
-      { key: 'triage.counts.high', type: 'int', description: 'Number of high-severity complaints' },
+      { key: 'triage.counts.total', type: 'int', label: 'Total alerts', description: 'Total number of messages triaged', sample: 12 },
+      { key: 'triage.counts.high', type: 'int', label: 'High severity', description: 'Number of high-severity complaints', sample: 3 },
     ] },
     { id: 'alert', kind: 'channel', title: 'Fan out alert', subtitle: 'parallel send to owner destinations · delivery-tracked', position: at(4) },
     { id: 'handoff', kind: 'intercept', title: 'Claimable handoff', subtitle: 'first-reply-wins · owner reply → forwarded to customer', position: at(5), exports: [
-      { key: 'triage.recent', type: 'list', description: 'Recent handoffs opened for this chat' },
+      { key: 'triage.recent', type: 'list', label: 'Recent alerts', description: 'Recent handoffs opened for this chat', sample: [] },
     ] },
     { id: 'ignore', kind: 'end', title: 'Normal agent loop', subtitle: 'not a complaint → no edge → conversational agent replies', position: at(3, -2) },
     { id: 'done', kind: 'end', title: 'Logged', subtitle: 'alerts.db complaint row + pending_reply', position: at(6) },
