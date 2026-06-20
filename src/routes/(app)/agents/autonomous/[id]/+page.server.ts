@@ -11,6 +11,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   const vms = await loadSystemAgentVMs(ctx).catch(() => []);
   const agent = vms.find((v) => v.id === params.id);
   if (!agent) throw error(404, 'Agent not found');
+  if (agent.adminOnly && locals.user?.role !== 'admin') throw error(404, 'not found');
   // Keyed by flowId so AgentWindowLayer can look up by w.flowId.
   const flowTogglesByFlow: Record<string, Record<string, boolean>> = {};
   if (agent.flowId) {

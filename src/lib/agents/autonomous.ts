@@ -25,6 +25,7 @@ export interface SystemAgentMeta {
   trigger: string;
   managePath: string | null;
   flowId?: string;
+  adminOnly?: boolean;
   resolveVariables?(ctx: CoreCtx, keys: string[]): Promise<Record<string, unknown>>;
 }
 
@@ -38,6 +39,7 @@ export interface AutonomousAgentVM {
   trigger: string | null;
   managePath: string | null;
   flowId?: string;
+  adminOnly?: boolean;
   status: SystemAgentStatus;
 }
 
@@ -70,6 +72,7 @@ export function systemMetaToVM(meta: SystemAgentMeta, status: SystemAgentStatus)
     trigger: meta.trigger,
     managePath: meta.managePath,
     flowId: meta.flowId,
+    adminOnly: meta.adminOnly,
     status,
   };
 }
