@@ -5,6 +5,7 @@
   import MasterFlowCanvas from '$lib/components/flow-editor/MasterFlowCanvas.svelte';
   import FlowExports from '$lib/components/flow-editor/FlowExports.svelte';
   import { getMasterFlow, flowExportedSpecs } from '$lib/flows/master-flows';
+  import { flowVariableSchema } from '$lib/flows/flow-variables';
   import { BookOpen, Share2 } from 'lucide-svelte';
   import { portal } from '$lib/actions/portal';
   import { page } from '$app/state';
@@ -47,6 +48,7 @@
       {@const flow = getMasterFlow(w.flowId)}
       {#if flow}
         {@const specs = flowExportedSpecs(flow)}
+        {@const enabledCount = flowVariableSchema(specs, flowTogglesByFlow[w.flowId] ?? {}).length}
         <div class="flex h-full flex-col">
           {#if w.fullscreen}
             <div class="flex shrink-0 items-center gap-2 border-b border-white/10 px-3 py-1.5 text-[11px] text-white/50">
@@ -58,7 +60,7 @@
                     onclick={() => toggleExports(w.id)}
                   >
                     <Share2 size={10} />
-                    {m.flow_exports_badge({ n: specs.length })}
+                    {m.flow_exports_badge({ n: enabledCount })}
                   </button>
                 </div>
               {/if}
@@ -70,7 +72,7 @@
                 onclick={() => toggleExports(w.id)}
               >
                 <Share2 size={9} />
-                {m.flow_exports_badge({ n: specs.length })}
+                {m.flow_exports_badge({ n: enabledCount })}
               </button>
             </div>
           {/if}
