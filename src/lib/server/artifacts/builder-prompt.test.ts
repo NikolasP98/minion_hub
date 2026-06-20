@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildBuilderPrompt, buildRepairPrompt, extractHtml, validateBundle } from './builder-prompt';
+import { buildBuilderPrompt, buildRegeneratePrompt, buildRepairPrompt, extractHtml, validateBundle } from './builder-prompt';
 import type { VariableSpec } from '$lib/flows/master-flows';
 
 describe('extractHtml', () => {
@@ -45,5 +45,13 @@ describe('buildBuilderPrompt', () => {
     expect(p).toContain('Reminders');
     expect(p).toContain('reminders.sent');
     expect(p).toContain('a sent/failed card');
+  });
+});
+describe('buildRegeneratePrompt', () => {
+  it('includes the refinement, the current html, and a schema key', () => {
+    const p = buildRegeneratePrompt({ agent: { name: 'Reminders', role: 'r', trigger: 't' }, schema: [{ key: 'reminders.sent', type: 'int', label: 'Sent' }], currentHtml: '<html>CUR</html>', refinement: 'make it a bar chart', reference: '<!doctype html>' });
+    expect(p).toContain('make it a bar chart');
+    expect(p).toContain('<html>CUR</html>');
+    expect(p).toContain('reminders.sent');
   });
 });

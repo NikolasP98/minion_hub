@@ -28,6 +28,25 @@ export function buildRepairPrompt(basePrompt: string, previous: string, error: s
   ].join('\n');
 }
 
+export function buildRegeneratePrompt(args: {
+  agent: { name: string; role: string; trigger: string };
+  schema: VariableSpec[];
+  currentHtml: string;
+  refinement: string;
+  reference: string;
+}): string {
+  const base = buildBuilderPrompt({ agent: args.agent, schema: args.schema, userPrompt: `Refine the existing artifact: ${args.refinement}`, reference: args.reference });
+  return [
+    base,
+    '',
+    'You are EDITING an existing artifact, not starting over. Apply this change and output the FULL updated HTML document:',
+    args.refinement,
+    '',
+    'CURRENT ARTIFACT:',
+    args.currentHtml,
+  ].join('\n');
+}
+
 export function buildBuilderPrompt(args: {
   agent: { name: string; role: string; trigger: string };
   schema: VariableSpec[];

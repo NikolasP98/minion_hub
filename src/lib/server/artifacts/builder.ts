@@ -7,9 +7,36 @@ import { getMasterFlow, flowExportedSpecs } from '$lib/flows/master-flows';
 import { flowVariableSchema } from '$lib/flows/flow-variables';
 import { listExportToggles } from '$lib/server/flows/exports-store';
 import overviewHtml from '$lib/artifacts/builtin/overview/index.html?raw';
-import { buildBuilderPrompt, buildRepairPrompt, extractHtml, validateBundle } from './builder-prompt';
+import { buildBuilderPrompt, buildRegeneratePrompt, buildRepairPrompt, extractHtml, validateBundle } from './builder-prompt';
+import { getArtifactRow } from './store';
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
+
+async function runBuildLoop(apiKey: string, basePrompt: string): Promise<string> {
+  const BUILDER_MODEL = env.ARTIFACT_BUILDER_MODEL || 'anthropic/claude-3.7-sonnet';
+  const openrouter = createOpenAI({ apiKey, baseURL: OPENROUTER_BASE_URL });
+  const MAX_ATTEMPTS = 3;
+
+  const attempt = async (p: string): Promise<string> => {
+    const res = await generateText({ model: openrouter(BUILDER_MODEL), prompt: p, temperature: 0.3 });
+    return extractHtml(res.text);
+  };
+
+  let current = basePrompt;
+  let last = '';
+  let lastErr: Error | null = null;
+  for (let i = 0; i < MAX_ATTEMPTS; i++) {
+    last = await attempt(current);
+    try {
+      validateBundle(last);
+      return last;
+    } catch (e) {
+      lastErr = e as Error;
+      current = buildRepairPrompt(basePrompt, last, lastErr.message);
+    }
+  }
+  throw lastErr ?? new Error('artifact generation failed');
+}
 
 export async function generateArtifactHtml(
   ctx: CoreCtx,
@@ -33,27 +60,26 @@ export async function generateArtifactHtml(
     reference: overviewHtml,
   });
 
-  const BUILDER_MODEL = env.ARTIFACT_BUILDER_MODEL || 'anthropic/claude-3.7-sonnet';
-  const openrouter = createOpenAI({ apiKey, baseURL: OPENROUTER_BASE_URL });
-  const MAX_ATTEMPTS = 3;
+  return runBuildLoop(apiKey, prompt);
+}
 
-  const attempt = async (p: string): Promise<string> => {
-    const res = await generateText({ model: openrouter(BUILDER_MODEL), prompt: p, temperature: 0.3 });
-    return extractHtml(res.text);
-  };
-
-  let current = prompt;
-  let last = '';
-  let lastErr: Error | null = null;
-  for (let i = 0; i < MAX_ATTEMPTS; i++) {
-    last = await attempt(current);
-    try {
-      validateBundle(last);
-      return last;
-    } catch (e) {
-      lastErr = e as Error;
-      current = buildRepairPrompt(prompt, last, lastErr.message);
-    }
-  }
-  throw lastErr ?? new Error('artifact generation failed');
+export async function regenerateArtifactHtml(
+  ctx: CoreCtx,
+  args: { artifactId: string; refinement: string },
+): Promise<{ html: string; agentId: string }> {
+  const apiKey = env.OPENROUTER_API_KEY;
+  if (!apiKey) throw new Error('artifact builder unavailable: OPENROUTER_API_KEY not set');
+  const row = await getArtifactRow(ctx, args.artifactId);
+  if (!row) throw new Error('artifact not found');
+  const desc = getSystemAgentDescriptors().find((d) => d.id === row.agentId);
+  const flow = desc?.flowId ? getMasterFlow(desc.flowId) : undefined;
+  const specs = flow ? flowExportedSpecs(flow) : [];
+  const toggles = desc?.flowId ? await listExportToggles(ctx, desc.flowId).catch(() => ({})) : {};
+  const schema = flowVariableSchema(specs, toggles);
+  const base = buildRegeneratePrompt({
+    agent: { name: desc?.name ?? row.agentId, role: desc?.role ?? '', trigger: desc?.trigger ?? '' },
+    schema, currentHtml: row.html, refinement: args.refinement, reference: overviewHtml,
+  });
+  const html = await runBuildLoop(apiKey, base);
+  return { html, agentId: row.agentId };
 }
