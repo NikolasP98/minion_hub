@@ -9,7 +9,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
   requireAdmin(locals);
   const ctx = await requireCoreCtx(locals);
   const body = (await request.json().catch(() => null)) as { refinement?: string } | null;
-  if (!body?.refinement) throw error(400, 'refinement required');
+  if (!body?.refinement?.trim()) throw error(400, 'refinement required');
   const current = await getArtifactRow(ctx, params.id);
   if (!current) throw error(404, 'artifact not found');
   let html: string;
