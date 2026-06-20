@@ -5,9 +5,13 @@
   import MasterFlowCanvas from '$lib/components/flow-editor/MasterFlowCanvas.svelte';
   import { getMasterFlow } from '$lib/flows/master-flows';
   import { BookOpen } from 'lucide-svelte';
+  import { portal } from '$lib/actions/portal';
   import * as m from '$lib/paraglide/messages';
 </script>
 
+<!-- Portaled to <body> so windows escape the app shell's z-10 stacking context
+     and can render above the sidebar / topbar / assistant pill (esp. fullscreen). -->
+<div use:portal>
 {#each agentWindows.windows as w (w.id)}
   <DraggableDialog
     title={w.title}
@@ -41,3 +45,4 @@
     {/if}
   </DraggableDialog>
 {/each}
+</div>

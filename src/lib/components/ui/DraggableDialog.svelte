@@ -82,10 +82,14 @@
     }
   }
 
+  // Base above the app chrome (sidebar/topbar/assistant ~z-50, command palette
+  // z-100) so portaled windows sit on top; `z` (store seq) orders windows among
+  // themselves. Stays below the always-on-top bug-reporter (z-9999+).
+  const Z_BASE = 1000;
   const frameStyle = $derived(
     fullscreen
-      ? `position:fixed;inset:0;z-index:${z};`
-      : `position:fixed;left:${x}px;top:${y}px;z-index:${z};width:min(760px,92vw);height:min(580px,82vh);`,
+      ? `position:fixed;inset:0;z-index:${Z_BASE + z};`
+      : `position:fixed;left:${x}px;top:${y}px;z-index:${Z_BASE + z};width:min(760px,92vw);height:min(580px,82vh);`,
   );
 </script>
 
