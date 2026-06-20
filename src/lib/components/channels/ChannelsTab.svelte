@@ -14,14 +14,36 @@
     import ChannelCard from './ChannelCard.svelte';
     import ChannelGroup from './ChannelGroup.svelte';
     import ChannelSetupWizard from './ChannelSetupWizard.svelte';
-    import { MessageSquare } from 'lucide-svelte';
+    import { MessageSquare, Download } from 'lucide-svelte';
+    import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
     import * as m from '$lib/paraglide/messages';
 
     let wizardType = $state<ChannelType | null>(null);
     let heartbeatChannels = $state<Channel[]>([]);
     let expandedChannelId = $state<string | null>(null);
+    let importing = $state(false);
 
     const serverId = $derived(hostsState.activeHostId);
+
+    // Pull the gateway's accounts for this org into the DB registry (idempotent upsert).
+    async function handleImport() {
+        if (!serverId || importing) return;
+        importing = true;
+        try {
+            const res = await fetch(`/api/servers/${serverId}/channels/sync`, { method: 'POST' });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || data.ok === false) {
+                toastError(m.channel_importFailed(), data.error ?? `HTTP ${res.status}`);
+                return;
+            }
+            toastSuccess(m.channel_importDone({ count: data.imported ?? 0 }));
+            await fetchChannels(serverId);
+        } catch (e) {
+            toastError(m.channel_importFailed(), e instanceof Error ? e.message : String(e));
+        } finally {
+            importing = false;
+        }
+    }
 
     /** Transform live WS channelAccounts (array-based) into Channel objects */
     const liveChannels = $derived.by((): Channel[] => {
@@ -111,15 +133,21 @@
     const mergedChannels = $derived.by((): Channel[] => {
         const hubChannels = channelState.channels.map((ch) => ({ ...ch, source: 'hub' as const }));
 
-        // Build a map of gateway channels by type+label for enrichment
+        // Index gateway channels by accountId (robust) and by label (fallback). The live
+        // gateway id is `gw:<type>:<accountId>`, so accountId is recoverable from it.
         const gwMap = new Map<string, Channel>();
+        const gwAccountOf = (c: Channel) => (c.id.startsWith('gw:') ? c.id.split(':')[2] : c.accountId) ?? null;
         for (const gwCh of gatewayChannels) {
+            const acct = gwAccountOf(gwCh);
+            if (acct) gwMap.set(`${gwCh.type}:acct:${acct}`, gwCh);
             gwMap.set(`${gwCh.type}:${gwCh.label.toLowerCase()}`, gwCh);
         }
 
-        // Enrich hub channels with live data from matching gateway channels
+        // Enrich hub channels with live data from matching gateway channels (accountId first).
         const enriched = hubChannels.map((ch) => {
-            const gwMatch = gwMap.get(`${ch.type}:${ch.label.toLowerCase()}`);
+            const gwMatch =
+                (ch.accountId ? gwMap.get(`${ch.type}:acct:${ch.accountId}`) : undefined) ??
+                gwMap.get(`${ch.type}:${ch.label.toLowerCase()}`);
             if (!gwMatch) return ch;
             return {
                 ...ch,
@@ -132,8 +160,16 @@
             };
         });
 
-        const hubKeys = new Set(hubChannels.map((ch) => `${ch.type}:${ch.label.toLowerCase()}`));
-        const extras = gatewayChannels.filter((gwCh) => !hubKeys.has(`${gwCh.type}:${gwCh.label.toLowerCase()}`));
+        const hubKeys = new Set<string>();
+        for (const ch of hubChannels) {
+            hubKeys.add(`${ch.type}:${ch.label.toLowerCase()}`);
+            if (ch.accountId) hubKeys.add(`${ch.type}:acct:${ch.accountId}`);
+        }
+        const extras = gatewayChannels.filter((gwCh) => {
+            const acct = gwAccountOf(gwCh);
+            return !hubKeys.has(`${gwCh.type}:${gwCh.label.toLowerCase()}`) &&
+                !(acct && hubKeys.has(`${gwCh.type}:acct:${acct}`));
+        });
         return [...enriched, ...extras];
     });
 
@@ -234,11 +270,30 @@
 
 <div class="space-y-4">
     <!-- Header -->
-    <div>
-        <h2 class="text-xs font-semibold text-foreground uppercase tracking-wider">{m.channel_accounts()}</h2>
-        <p class="text-[10px] text-muted-foreground mt-0.5">
-            {m.channel_accountsSubtitle()}
-        </p>
+    <div class="flex items-start justify-between gap-3">
+        <div>
+            <h2 class="text-xs font-semibold text-foreground uppercase tracking-wider">{m.channel_accounts()}</h2>
+            <p class="text-[10px] text-muted-foreground mt-0.5">
+                {m.channel_accountsSubtitle()}
+            </p>
+        </div>
+        {#if serverId}
+            <button
+                type="button"
+                class="shrink-0 flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-colors disabled:opacity-50"
+                onclick={handleImport}
+                disabled={importing}
+                title={m.channel_accountsSubtitle()}
+            >
+                {#if importing}
+                    <span class="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
+                    {m.channel_importing()}
+                {:else}
+                    <Download size={12} />
+                    {m.channel_import()}
+                {/if}
+            </button>
+        {/if}
     </div>
 
     {#if !serverId}

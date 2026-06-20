@@ -246,6 +246,16 @@
                 {/if}
             </div>
         </div>
+        {#if channel.replies}
+            <span
+                class="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full {channel.replies === 'bound'
+                    ? 'bg-accent/10 text-accent'
+                    : 'bg-muted text-muted-foreground'}"
+                title={channel.replies === 'bound' ? m.channel_modeBoundHint() : m.channel_modeReceiveOnlyHint()}
+            >
+                {channel.replies === 'bound' ? m.channel_modeBound() : m.channel_modeReceiveOnly()}
+            </span>
+        {/if}
         <ChannelStatusPill {channel} size="sm" />
         {#if !isGateway}
             <button
@@ -276,7 +286,7 @@
                 <!-- Compact details (status pill lives in the header) -->
                 <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
                     <dt class="text-muted-foreground">Account</dt>
-                    <dd class="text-foreground truncate">{gwAccountId ?? channel.label}</dd>
+                    <dd class="text-foreground truncate">{gwAccountId ?? channel.accountId ?? channel.label}</dd>
                     <dt class="text-muted-foreground">Transport</dt>
                     <dd class="text-foreground">{CHANNEL_TYPE_LABELS[channel.type]}</dd>
                     {#if channel.gwReconnectAttempts && channel.gwReconnectAttempts > 0}
