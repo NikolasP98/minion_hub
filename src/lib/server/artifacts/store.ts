@@ -97,3 +97,17 @@ export function getRevision(ctx: CoreCtx, revisionId: string): Promise<AgentArti
     return rows[0] ?? null;
   });
 }
+
+export function countArtifacts(ctx: CoreCtx): Promise<number> {
+  return withOrgCore(scope(ctx), async (tx) => {
+    const rows = await tx.select({ n: sql<number>`count(*)::int` }).from(agentArtifacts).where(eq(agentArtifacts.orgId, ctx.tenantId));
+    return rows[0]?.n ?? 0;
+  });
+}
+
+export function listRecentArtifacts(ctx: CoreCtx, limit = 8): Promise<Array<{ title: string; agentId: string; version: number; updatedAt: Date }>> {
+  return withOrgCore(scope(ctx), (tx) =>
+    tx.select({ title: agentArtifacts.title, agentId: agentArtifacts.agentId, version: agentArtifacts.version, updatedAt: agentArtifacts.updatedAt })
+      .from(agentArtifacts).where(eq(agentArtifacts.orgId, ctx.tenantId))
+      .orderBy(desc(agentArtifacts.updatedAt)).limit(limit));
+}
