@@ -14,6 +14,18 @@ export function validateBundle(html: string): void {
   if (!h.includes('<')) throw new Error('builder output is not HTML');
   if (!h.includes('hub.artifact.context.get'))
     throw new Error('builder output does not use the artifact context bridge');
+  if (!/<script/i.test(h)) throw new Error('builder output has no <script> (cannot use the bridge)');
+  if (!/<!doctype|<html/i.test(h)) throw new Error('builder output is a fragment (missing <!doctype>/<html>)');
+}
+
+export function buildRepairPrompt(basePrompt: string, previous: string, error: string): string {
+  return [
+    basePrompt,
+    '',
+    `Your previous attempt was REJECTED: ${error}`,
+    'Here is what you produced — fix it and output ONLY the corrected, complete HTML document:',
+    previous,
+  ].join('\n');
 }
 
 export function buildBuilderPrompt(args: {
