@@ -6,6 +6,8 @@
   import type { ArtifactDescriptor } from '$lib/agents/artifacts';
   import ArtifactGallery from '$lib/components/artifacts/ArtifactGallery.svelte';
   import ArtifactCreateModal from '$lib/components/artifacts/ArtifactCreateModal.svelte';
+  import ArtifactRegenerateModal from '$lib/components/artifacts/ArtifactRegenerateModal.svelte';
+  import ArtifactHistory from '$lib/components/artifacts/ArtifactHistory.svelte';
   import { agentWindows } from '$lib/state/ui/agent-windows.svelte';
 
   let {
@@ -15,6 +17,8 @@
   }: { agent: AutonomousAgentVM; artifacts?: ArtifactDescriptor[]; canAdd?: boolean } = $props();
 
   let showCreate = $state(false);
+  let regenFor = $state<ArtifactDescriptor | null>(null);
+  let historyFor = $state<ArtifactDescriptor | null>(null);
 
   const statusLabel = $derived(
     agent.status.state === 'active'
@@ -110,8 +114,34 @@
         await fetch(`/api/artifacts/${a.id}`, { method: 'DELETE' });
         await invalidateAll();
       }}
+      onregenerate={(a) => (regenFor = a)}
+      onhistory={(a) => (historyFor = a)}
     />
   {/if}
 </article>
 
 <ArtifactCreateModal bind:open={showCreate} agentId={agent.id} oncreated={() => invalidateAll()} />
+
+{#if regenFor}
+  {@const _artifactId = regenFor.id}
+  <ArtifactRegenerateModal
+    bind:open={
+      () => !!regenFor,
+      (v) => { if (!v) regenFor = null; }
+    }
+    artifactId={_artifactId}
+    ondone={async () => { regenFor = null; await invalidateAll(); }}
+  />
+{/if}
+
+{#if historyFor}
+  {@const _historyArtifactId = historyFor.id}
+  <ArtifactHistory
+    bind:open={
+      () => !!historyFor,
+      (v) => { if (!v) historyFor = null; }
+    }
+    artifactId={_historyArtifactId}
+    onreverted={async () => { await invalidateAll(); }}
+  />
+{/if}

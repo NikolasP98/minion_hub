@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Plus, Trash2 } from 'lucide-svelte';
+  import { Plus, Trash2, RefreshCw, History } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import { Popover } from '$lib/components/ui';
   import { resolvePluginIcon } from '$lib/plugins/icon-map';
@@ -11,12 +11,16 @@
     onopen,
     oncreate,
     ondelete,
+    onregenerate,
+    onhistory,
   }: {
     artifacts: ArtifactDescriptor[];
     canAdd?: boolean;
     onopen: (a: ArtifactDescriptor) => void;
     oncreate?: () => void;
     ondelete?: (a: ArtifactDescriptor) => void;
+    onregenerate?: (a: ArtifactDescriptor) => void;
+    onhistory?: (a: ArtifactDescriptor) => void;
   } = $props();
 </script>
 
@@ -40,14 +44,32 @@
             <p class="text-xs font-semibold text-white">{a.title}</p>
             <p class="mt-0.5 text-[11px] leading-snug text-white/60">{a.description}</p>
             {#if a.deletable && canAdd}
-              <button
-                type="button"
-                onclick={() => ondelete?.(a)}
-                class="mt-1.5 flex items-center gap-1 text-[11px] text-red-400 hover:text-red-300 transition-colors"
-              >
-                <Trash2 size={11} />
-                {m.artifact_delete()}
-              </button>
+              <div class="mt-1.5 flex flex-col gap-0.5">
+                <button
+                  type="button"
+                  onclick={() => onregenerate?.(a)}
+                  class="flex items-center gap-1 text-[11px] text-white/60 hover:text-white transition-colors"
+                >
+                  <RefreshCw size={11} />
+                  {m.artifact_regenerate()}
+                </button>
+                <button
+                  type="button"
+                  onclick={() => onhistory?.(a)}
+                  class="flex items-center gap-1 text-[11px] text-white/60 hover:text-white transition-colors"
+                >
+                  <History size={11} />
+                  {m.artifact_history()}
+                </button>
+                <button
+                  type="button"
+                  onclick={() => ondelete?.(a)}
+                  class="flex items-center gap-1 text-[11px] text-red-400 hover:text-red-300 transition-colors"
+                >
+                  <Trash2 size={11} />
+                  {m.artifact_delete()}
+                </button>
+              </div>
             {/if}
           </div>
       </Popover>
