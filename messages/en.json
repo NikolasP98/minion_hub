@@ -3160,5 +3160,6 @@
   "artifact_delete": "Delete",
   "window_fullscreen": "Fullscreen",
   "window_restore": "Restore",
-  "window_close": "Close"
+  "window_close": "Close",
+  "artifact_loading": "Loading…"
 }

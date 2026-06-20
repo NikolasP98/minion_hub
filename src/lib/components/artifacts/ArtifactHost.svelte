@@ -2,6 +2,8 @@
   import { onMount, onDestroy } from 'svelte';
   import { mountHostBridge, type MountedHostBridge } from '$lib/plugins/bridge-host';
   import { artifactSrc, type ArtifactDescriptor } from '$lib/agents/artifacts';
+  import Spinner from '$lib/components/ui/Spinner.svelte';
+  import * as m from '$lib/paraglide/messages';
 
   // `chrome` = render the framed card + title header around the iframe (the detail
   // page). In a DraggableDialog window the dialog already supplies frame + header,
@@ -10,6 +12,11 @@
 
   let iframeEl = $state<HTMLIFrameElement | null>(null);
   let mounted: MountedHostBridge | null = null;
+  // Show a styled loading overlay until the bundle completes the bridge handshake
+  // (plugin:ready). A timeout reveals the iframe anyway so a misbehaving bundle
+  // never leaves an infinite spinner.
+  let ready = $state(false);
+  let revealTimer: ReturnType<typeof setTimeout> | undefined;
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   const src = $derived(origin ? artifactSrc(descriptor, origin) : '');
 
@@ -59,36 +66,60 @@
       sandboxed: true,
       hello: { theme, tokens, gatewayUrl: '', authToken: '' },
       forwardRpc: (method, _params) => forwardRpc(method),
+      onPluginReady: () => {
+        ready = true;
+      },
     });
+    revealTimer = setTimeout(() => (ready = true), 12000);
   });
 
-  onDestroy(() => mounted?.dispose());
+  onDestroy(() => {
+    clearTimeout(revealTimer);
+    mounted?.dispose();
+  });
 </script>
+
+{#snippet loadingOverlay()}
+  {#if !ready}
+    <div class="absolute inset-0 grid place-items-center bg-bg2/90 backdrop-blur-sm">
+      <div class="flex flex-col items-center gap-2.5">
+        <Spinner size="lg" />
+        <span class="text-xs font-medium tracking-wide text-muted-foreground">{m.artifact_loading()}</span>
+      </div>
+    </div>
+  {/if}
+{/snippet}
 
 {#if chrome}
   <div class="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-white/[0.02]">
     <div class="flex items-center gap-2 border-b border-white/10 px-3 py-2 text-xs font-medium text-white/70">
       {descriptor.title}
     </div>
-    {#if src}
-      <iframe
-        bind:this={iframeEl}
-        {src}
-        title={descriptor.title}
-        referrerpolicy="strict-origin"
-        sandbox="allow-scripts"
-        class="min-h-0 w-full flex-1 border-0"
-      ></iframe>
-    {/if}
+    <div class="relative min-h-0 w-full flex-1">
+      {#if src}
+        <iframe
+          bind:this={iframeEl}
+          {src}
+          title={descriptor.title}
+          referrerpolicy="strict-origin"
+          sandbox="allow-scripts"
+          class="h-full w-full border-0"
+        ></iframe>
+      {/if}
+      {@render loadingOverlay()}
+    </div>
   </div>
 {:else if src}
   <!-- bare: the dialog provides the frame + header -->
-  <iframe
-    bind:this={iframeEl}
-    {src}
-    title={descriptor.title}
-    referrerpolicy="strict-origin"
-    sandbox="allow-scripts"
-    class="h-full w-full border-0"
-  ></iframe>
+  <div class="relative h-full w-full">
+    <iframe
+      bind:this={iframeEl}
+      {src}
+      title={descriptor.title}
+      referrerpolicy="strict-origin"
+      sandbox="allow-scripts"
+      class="h-full w-full border-0"
+    ></iframe>
+    {@render loadingOverlay()}
+  </div>
 {/if}
