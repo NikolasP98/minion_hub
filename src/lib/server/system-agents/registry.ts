@@ -11,7 +11,7 @@ import {
 } from '$lib/agents/autonomous';
 import * as m from '$lib/paraglide/messages';
 import { gatewayCallAsUser } from '$lib/server/gateway-rpc';
-import { triageStatusDetail, type TriageArtifactData } from '$lib/agents/artifacts';
+import { triageStatusDetail, mapRecentRows, type TriageArtifactData } from '$lib/agents/artifacts';
 
 interface SystemAgentDescriptor extends SystemAgentMeta {
   resolveStatus(ctx: CoreCtx): Promise<SystemAgentStatus>;
@@ -21,7 +21,7 @@ interface SystemAgentDescriptor extends SystemAgentMeta {
  * Per-request descriptor list. A function (not a const) so paraglide messages
  * resolve in the request's language, mirroring getSections().
  */
-function getSystemAgentDescriptors(): SystemAgentDescriptor[] {
+export function getSystemAgentDescriptors(): SystemAgentDescriptor[] {
   return [
     {
       id: 'scheduling.reminders',
@@ -46,6 +46,14 @@ function getSystemAgentDescriptors(): SystemAgentDescriptor[] {
         // Localize the attention detail marker emitted by the pure helper.
         if (status.detail === 'no-account') status.detail = m.sysagent_status_no_account();
         return status;
+      },
+      async resolveVariables(ctx, keys) {
+        const act = await getReminderActivity(ctx).catch(() => null);
+        const result: Record<string, unknown> = {};
+        if (keys.includes('reminders.sent')) result['reminders.sent'] = act?.counts.sent ?? 0;
+        if (keys.includes('reminders.failed')) result['reminders.failed'] = act?.counts.failed ?? 0;
+        if (keys.includes('reminders.skipped')) result['reminders.skipped'] = act?.counts.skipped ?? 0;
+        return result;
       },
     },
     {
@@ -74,6 +82,27 @@ function getSystemAgentDescriptors(): SystemAgentDescriptor[] {
             count: (total, high) => m.artifact_triage_status_count({ total, high }),
           }),
         };
+      },
+      async resolveVariables(ctx, keys) {
+        const result: Record<string, unknown> = {};
+        if (keys.includes('triage.counts.total') || keys.includes('triage.counts.high')) {
+          const summary = await gatewayCallAsUser<{ counts?: { total?: number; high?: number } }>(
+            'plugins.alerts.summary',
+            { since: Date.now() - 30 * 24 * 60 * 60 * 1000 },
+            ctx.profileId,
+          ).catch(() => null);
+          if (keys.includes('triage.counts.total')) result['triage.counts.total'] = summary?.counts?.total ?? 0;
+          if (keys.includes('triage.counts.high')) result['triage.counts.high'] = summary?.counts?.high ?? 0;
+        }
+        if (keys.includes('triage.recent')) {
+          const recent = await gatewayCallAsUser<{ rows?: Array<Record<string, unknown>> }>(
+            'plugins.alerts.recent',
+            { limit: 10 },
+            ctx.profileId,
+          ).catch(() => null);
+          result['triage.recent'] = mapRecentRows(recent?.rows ?? []);
+        }
+        return result;
       },
     },
   ];

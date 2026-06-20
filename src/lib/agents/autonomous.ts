@@ -1,4 +1,5 @@
 import { diceBearAvatarUrl } from '$lib/utils/avatar';
+import type { CoreCtx } from '$server/auth/core-ctx';
 
 export interface SystemAgentStats {
   sent: number;
@@ -24,6 +25,7 @@ export interface SystemAgentMeta {
   trigger: string;
   managePath: string | null;
   flowId?: string;
+  resolveVariables?(ctx: CoreCtx, keys: string[]): Promise<Record<string, unknown>>;
 }
 
 export interface AutonomousAgentVM {

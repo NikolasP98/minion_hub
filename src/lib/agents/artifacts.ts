@@ -20,6 +20,7 @@ export interface ArtifactContext {
   status: SystemAgentStatus;
   trigger: string | null;
   data?: TriageArtifactData;
+  vars?: Record<string, unknown>;
 }
 
 export interface TriageArtifactData {
