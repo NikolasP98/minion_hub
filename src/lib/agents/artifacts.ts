@@ -49,6 +49,11 @@ export function artifactSrc(descriptor: ArtifactDescriptor, origin: string): str
   return `${origin}/artifacts/${descriptor.id}/ui/${descriptor.entrypoint}#hostOrigin=${encodeURIComponent(origin)}`;
 }
 
+/** The artifact-builder dashboard artifact. Strings localized by the caller. */
+export function artifactBuilderDescriptorFor(agentId: string, title: string, description: string): ArtifactDescriptor {
+  return { id: 'builder', agentId, slot: 'detail', title, description, icon: 'Sparkles', kind: 'static', entrypoint: 'index.html' };
+}
+
 /** The triage artifact, attached to the alert-watcher (Triage) agent. Strings localized by the caller. */
 export function triageDescriptorFor(agentId: string, title: string, description: string): ArtifactDescriptor {
   return { id: 'triage', agentId, slot: 'detail', title, description, icon: 'Megaphone', kind: 'static', entrypoint: 'index.html' };

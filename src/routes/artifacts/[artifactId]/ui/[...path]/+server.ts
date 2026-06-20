@@ -2,6 +2,7 @@ import type { RequestHandler } from './$types';
 import { error } from '@sveltejs/kit';
 import overviewHtml from '$lib/artifacts/builtin/overview/index.html?raw';
 import triageHtml from '$lib/artifacts/builtin/triage/index.html?raw';
+import builderHtml from '$lib/artifacts/builtin/artifact-builder/index.html?raw';
 import { requireCoreCtx } from '$server/auth/core-ctx';
 import { getArtifactRow } from '$lib/server/artifacts/store';
 
@@ -13,6 +14,9 @@ const BUNDLES: Record<string, Record<string, { body: string; type: string }>> = 
   },
   triage: {
     'index.html': { body: triageHtml, type: 'text/html; charset=utf-8' },
+  },
+  builder: {
+    'index.html': { body: builderHtml, type: 'text/html; charset=utf-8' },
   },
 };
 

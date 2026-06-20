@@ -3140,6 +3140,8 @@
   "sysagent_triage_trigger": "Every inbound message",
   "artifact_triage_title": "Triage dashboard",
   "artifact_triage_desc": "Alert counts and recent complaints from the triage kernel.",
+  "artifact_builder_title": "Builder activity",
+  "artifact_builder_desc": "Artifacts built + recent generations.",
   "sysagent_triage_unreachable": "Gateway unreachable",
   "sysagent_builder_name": "Artifact Builder",
   "sysagent_builder_role": "Builds custom artifacts",

@@ -3,6 +3,7 @@ import { loadSystemAgentVMs, getSystemAgentDescriptors } from '$lib/server/syste
 import {
   overviewDescriptorFor,
   triageDescriptorFor,
+  artifactBuilderDescriptorFor,
   agentVmToArtifactContext,
   mapRecentRows,
   type ArtifactDescriptor,
@@ -32,6 +33,9 @@ async function withVars(ctx: CoreCtx, agentId: string, context: ArtifactContext)
 
 /** Built-in + DB artifacts for an agent. */
 export async function getArtifactsForAgent(ctx: CoreCtx, agentId: string): Promise<ArtifactDescriptor[]> {
+  if (agentId === 'artifact-builder') {
+    return [artifactBuilderDescriptorFor(agentId, m.artifact_builder_title(), m.artifact_builder_desc())];
+  }
   const builtins =
     agentId === 'alert-watcher'
       ? [triageDescriptorFor(agentId, m.artifact_triage_title(), m.artifact_triage_desc())]
@@ -51,6 +55,13 @@ export async function getArtifactContext(
   if (!vm) return null;
   const base = agentVmToArtifactContext(vm);
   if (artifactId === 'overview') return withVars(ctx, agentId, base);
+  if (artifactId === 'builder' && agentId === 'artifact-builder') {
+    const desc = getSystemAgentDescriptors().find((d) => d.id === agentId);
+    const vars = desc?.resolveVariables
+      ? await desc.resolveVariables(ctx, ['artifacts.builtCount', 'artifacts.recent']).catch(() => ({}))
+      : {};
+    return { ...base, vars };
+  }
   if (artifactId === 'triage' && agentId === 'alert-watcher') {
     const [summary, recent] = await Promise.all([
       gatewayCallAsUser<{ counts?: TriageArtifactData['counts'] }>(

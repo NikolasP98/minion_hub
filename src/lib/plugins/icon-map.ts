@@ -13,6 +13,7 @@ import {
   Hash,
   Send,
   LayoutDashboard,
+  Sparkles,
 } from "lucide-svelte";
 import type { ComponentType, SvelteComponent } from "svelte";
 
@@ -74,6 +75,7 @@ export const PLUGIN_ICON_MAP: Record<string, LucideIcon> = {
   Hash,
   Send,
   LayoutDashboard,
+  Sparkles,
 };
 
 export function resolvePluginIcon(name?: string): LucideIcon | string {

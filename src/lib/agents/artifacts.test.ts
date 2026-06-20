@@ -4,6 +4,7 @@ import {
   agentVmToArtifactContext,
   artifactSrc,
   triageDescriptorFor,
+  artifactBuilderDescriptorFor,
   triageStatusDetail,
   mapRecentRows,
   type ArtifactDescriptor,
@@ -55,6 +56,21 @@ describe('artifactSrc', () => {
     expect(artifactSrc(d, 'https://hub.example.com')).toBe(
       'https://hub.example.com/artifacts/overview/ui/index.html#hostOrigin=https%3A%2F%2Fhub.example.com',
     );
+  });
+});
+
+describe('artifactBuilderDescriptorFor', () => {
+  it('builds the builder descriptor with Sparkles icon and static kind', () => {
+    expect(artifactBuilderDescriptorFor('artifact-builder', 'Builder activity', 'Artifacts built + recent generations.')).toEqual({
+      id: 'builder',
+      agentId: 'artifact-builder',
+      slot: 'detail',
+      title: 'Builder activity',
+      description: 'Artifacts built + recent generations.',
+      icon: 'Sparkles',
+      kind: 'static',
+      entrypoint: 'index.html',
+    });
   });
 });
 

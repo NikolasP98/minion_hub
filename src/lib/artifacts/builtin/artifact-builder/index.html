@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Builder Activity</title>
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 1rem;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--color-background, #0b0b0f);
+      color: var(--color-foreground, #e7e7ea);
+    }
+    #state { font-size: .85rem; opacity: .6; }
+    [hidden] { display: none !important; }
+    section {
+      border: 1px solid var(--color-border, #2a2a31);
+      border-radius: var(--radius, 12px);
+      padding: .75rem .9rem;
+      margin-bottom: .6rem;
+      background: var(--color-card, transparent);
+    }
+    section h2 {
+      font-size: .72rem; text-transform: uppercase; letter-spacing: .04em;
+      opacity: .55; margin: 0 0 .35rem;
+    }
+    .stat-card {
+      display: inline-flex; flex-direction: column; align-items: flex-start;
+    }
+    .stat-card b { display: block; font-size: 1.6rem; line-height: 1; }
+    .stat-card span { font-size: .72rem; opacity: .55; margin-top: .2rem; }
+    .list { list-style: none; margin: 0; padding: 0; }
+    .list li {
+      display: flex; align-items: baseline; gap: .4rem;
+      font-size: .82rem; padding: .3rem 0;
+      border-bottom: 1px solid var(--color-border, #2a2a3122);
+    }
+    .list li:last-child { border-bottom: none; }
+    .list .title { font-weight: 500; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .list .meta { font-size: .72rem; opacity: .5; white-space: nowrap; flex-shrink: 0; }
+    .empty { font-size: .8rem; opacity: .45; }
+  </style>
+</head>
+<body>
+  <div id="state">Loading…</div>
+  <main id="app" hidden>
+    <section>
+      <h2>Artifacts built</h2>
+      <div class="stat-card">
+        <b id="built-count">—</b>
+        <span>total artifacts</span>
+      </div>
+    </section>
+    <section>
+      <h2>Recent generations</h2>
+      <ul class="list" id="recent-list"></ul>
+      <p class="empty" id="recent-empty" hidden>No recent generations.</p>
+    </section>
+  </main>
+  <script>
+    (function () {
+      var hostOrigin = new URLSearchParams(location.hash.slice(1)).get('hostOrigin');
+      var rpcId = 0, pending = {};
+      function applyTokens(theme, tokens) {
+        if (tokens) for (var k in tokens) document.documentElement.style.setProperty(k, tokens[k]);
+        document.documentElement.classList.toggle('dark', theme === 'dark');
+      }
+      function call(method) {
+        return new Promise(function (resolve, reject) {
+          var id = 'rpc-' + ++rpcId;
+          pending[id] = { resolve: resolve, reject: reject };
+          parent.postMessage({ type: 'plugin:rpc-request', id: id, method: method, params: {} }, hostOrigin);
+        });
+      }
+      function relTime(ts) {
+        if (!ts) return '';
+        var diff = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+        if (diff < 60) return diff + 's ago';
+        if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+        if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+        return Math.floor(diff / 86400) + 'd ago';
+      }
+      function render(c) {
+        document.getElementById('state').hidden = true;
+        document.getElementById('app').hidden = false;
+        var vars = (c && c.vars) || {};
+        var count = vars['artifacts.builtCount'];
+        document.getElementById('built-count').textContent = (count != null) ? String(count) : '—';
+        var recent = Array.isArray(vars['artifacts.recent']) ? vars['artifacts.recent'] : [];
+        var list = document.getElementById('recent-list');
+        var empty = document.getElementById('recent-empty');
+        if (recent.length === 0) {
+          list.hidden = true;
+          empty.hidden = false;
+        } else {
+          empty.hidden = true;
+          list.hidden = false;
+          list.innerHTML = recent.map(function (r) {
+            var title = r.title || '(untitled)';
+            var agent = r.agentId || '';
+            var ver = r.version != null ? 'v' + r.version : '';
+            var when = relTime(r.updatedAt);
+            var meta = [agent, ver, when].filter(Boolean).join(' · ');
+            return '<li><span class="title">' + esc(title) + '</span><span class="meta">' + esc(meta) + '</span></li>';
+          }).join('');
+        }
+      }
+      function fail(msg) {
+        var el = document.getElementById('state');
+        el.hidden = false;
+        el.textContent = 'Could not load: ' + msg;
+      }
+      function esc(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      }
+      window.addEventListener('message', function (ev) {
+        if (ev.origin !== hostOrigin) return;
+        var d = ev.data || {};
+        if (d.type === 'host:hello') {
+          applyTokens(d.theme, d.tokens);
+          call('hub.artifact.context.get').then(render).catch(function (e) { fail(String(e)); });
+        } else if (d.type === 'host:rpc-response') {
+          var p = pending[d.id];
+          if (!p) return;
+          delete pending[d.id];
+          if (d.ok) p.resolve(d.payload); else p.reject(new Error((d.error && d.error.message) || 'rpc failed'));
+        }
+      });
+      if (!hostOrigin) { fail('no host origin'); return; }
+      parent.postMessage({ type: 'plugin:ready', protocolVersion: 1 }, hostOrigin);
+    })();
+  </script>
+</body>
+</html>

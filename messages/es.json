@@ -3140,6 +3140,8 @@
   "sysagent_triage_trigger": "Cada mensaje entrante",
   "artifact_triage_title": "Panel de triaje",
   "artifact_triage_desc": "Conteo de alertas y quejas recientes del núcleo de triaje.",
+  "artifact_builder_title": "Actividad del constructor",
+  "artifact_builder_desc": "Artefactos creados y generaciones recientes.",
   "sysagent_triage_unreachable": "Gateway no disponible",
   "sysagent_builder_name": "Constructor de artefactos",
   "sysagent_builder_role": "Crea artefactos personalizados",
