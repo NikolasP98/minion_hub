@@ -117,7 +117,7 @@ export async function importGatewayChannels(ctx: ServerCtx): Promise<{ imported:
       const [upserted] = await tx
         .insert(channels)
         .values({
-          id: newId('chan'),
+          id: newId(),
           tenantId: ctx.tenantId,
           gatewayId: ctx.gatewayId,
           type: channel.type,
