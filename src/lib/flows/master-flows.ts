@@ -611,7 +611,31 @@ const alertWatcherAgentFlow: MasterFlow = {
   ],
 };
 
-export const AGENT_FLOWS: MasterFlow[] = [remindersAgentFlow, alertWatcherAgentFlow];
+const artifactBuilderFlow: MasterFlow = {
+  id: 'agent-artifact-builder',
+  name: 'Artifact Builder',
+  description:
+    'How the Artifact Builder admin-only agent works: an admin request triggers variable schema assembly, an LLM generates the full artifact bundle, a guard validates and self-repairs the output, and the result is stored as an org-scoped agent_artifact.',
+  tags: ['autonomous', 'artifacts', 'admin'],
+  nodes: [
+    { id: 'request', kind: 'trigger', title: 'Admin requests an artifact', subtitle: 'Admin selects agent + requests a custom dashboard build', position: at(0) },
+    { id: 'schema', kind: 'process', title: "Assemble the agent's exported variable schema", subtitle: 'Collect exported variable specs from the agent flow', position: at(1) },
+    { id: 'generate', kind: 'llm', title: 'OpenRouter · whole-bundle from the reference', subtitle: 'Generate full artifact HTML/CSS/JS bundle via LLM', position: at(2) },
+    { id: 'repair', kind: 'guard', title: 'Validate + self-repair retry', subtitle: 'Schema-validate output; branch pass or fail for retry', position: at(3), branches: [{ id: 'pass', label: 'Pass' }, { id: 'fail', label: 'Fail' }] },
+    { id: 'store', kind: 'memory', title: 'agent_artifacts (org-scoped)', subtitle: 'Persist artifact to the org-scoped agent_artifacts store', position: at(4) },
+    { id: 'done', kind: 'end', title: 'Done', subtitle: 'Artifact available in the agent detail view', position: at(5) },
+  ],
+  edges: [
+    { id: 'ab1', source: 'request', target: 'schema' },
+    { id: 'ab2', source: 'schema', target: 'generate' },
+    { id: 'ab3', source: 'generate', target: 'repair' },
+    { id: 'ab4', source: 'repair', sourceHandle: 'pass', target: 'store' },
+    { id: 'ab5', source: 'repair', sourceHandle: 'fail', target: 'generate', variant: 'loop' },
+    { id: 'ab6', source: 'store', target: 'done' },
+  ],
+};
+
+export const AGENT_FLOWS: MasterFlow[] = [remindersAgentFlow, alertWatcherAgentFlow, artifactBuilderFlow];
 
 export function getMasterFlow(id: string): MasterFlow | undefined {
   return MASTER_FLOWS.find((f) => f.id === id) ?? AGENT_FLOWS.find((f) => f.id === id);

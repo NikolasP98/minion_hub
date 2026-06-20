@@ -12,6 +12,7 @@ import {
 import * as m from '$lib/paraglide/messages';
 import { gatewayCallAsUser } from '$lib/server/gateway-rpc';
 import { triageStatusDetail, mapRecentRows, type TriageArtifactData } from '$lib/agents/artifacts';
+import { countArtifacts, listRecentArtifacts } from '$lib/server/artifacts/store';
 
 interface SystemAgentDescriptor extends SystemAgentMeta {
   resolveStatus(ctx: CoreCtx): Promise<SystemAgentStatus>;
@@ -103,6 +104,29 @@ export function getSystemAgentDescriptors(): SystemAgentDescriptor[] {
           result['triage.recent'] = mapRecentRows(recent?.rows ?? []);
         }
         return result;
+      },
+    },
+    {
+      id: 'artifact-builder',
+      moduleId: 'artifacts',
+      adminOnly: true,
+      name: m.sysagent_builder_name(),
+      role: m.sysagent_builder_role(),
+      description: m.sysagent_builder_desc(),
+      avatarSeed: 'minion-artifact-builder',
+      trigger: m.sysagent_builder_trigger(),
+      managePath: null,
+      flowId: 'agent-artifact-builder',
+      async resolveStatus(ctx) {
+        const n = await countArtifacts(ctx).catch(() => null);
+        if (n === null) return { enabled: true, state: 'attention', detail: 'Unavailable' };
+        return { enabled: true, state: 'active', detail: m.sysagent_builder_status({ n }) };
+      },
+      async resolveVariables(ctx, keys) {
+        const out: Record<string, unknown> = {};
+        if (keys.includes('artifacts.builtCount')) out['artifacts.builtCount'] = await countArtifacts(ctx).catch(() => 0);
+        if (keys.includes('artifacts.recent')) out['artifacts.recent'] = await listRecentArtifacts(ctx).catch(() => []);
+        return out;
       },
     },
   ];
