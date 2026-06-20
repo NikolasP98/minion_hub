@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, index, integer } from 'drizzle-orm/pg-core';
 
 /**
  * Hub-native dynamic artifacts — per-org, per-agent visual bundles (single
@@ -18,6 +18,8 @@ export const agentArtifacts = pgTable(
     description: text('description').notNull().default(''),
     icon: text('icon').notNull().default('LayoutDashboard'),
     html: text('html').notNull(),
+    version: integer('version').notNull().default(1),
+    prompt: text('prompt'),
     createdBy: text('created_by'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
