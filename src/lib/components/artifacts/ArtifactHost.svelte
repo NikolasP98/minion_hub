@@ -51,7 +51,13 @@
       { credentials: 'same-origin' },
     );
     if (!res.ok) throw new Error(`context ${res.status}`);
-    return res.json();
+    const data = await res.json();
+    // Context is on its way to the bundle, which renders on receipt. Hide the
+    // overlay a beat later so we never flash the bundle's own loading state.
+    // (Not on plugin:ready — that fires before the bundle has data to render.)
+    clearTimeout(revealTimer);
+    revealTimer = setTimeout(() => (ready = true), 250);
+    return data;
   }
 
   onMount(() => {
@@ -66,10 +72,8 @@
       sandboxed: true,
       hello: { theme, tokens, gatewayUrl: '', authToken: '' },
       forwardRpc: (method, _params) => forwardRpc(method),
-      onPluginReady: () => {
-        ready = true;
-      },
     });
+    // Fallback: reveal anyway if the bundle never requests context (12s).
     revealTimer = setTimeout(() => (ready = true), 12000);
   });
 
