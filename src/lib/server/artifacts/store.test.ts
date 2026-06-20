@@ -6,6 +6,7 @@ const row: AgentArtifactRow = {
   id: '11111111-1111-1111-1111-111111111111',
   orgId: 'org1', agentId: 'reminders', title: 'My Dash', description: 'desc',
   icon: 'BarChart3', html: '<!doctype html>', createdBy: 'u1',
+  version: 1, prompt: null,
   createdAt: new Date(0), updatedAt: new Date(0),
 };
 
