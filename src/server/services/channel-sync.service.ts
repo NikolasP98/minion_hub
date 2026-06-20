@@ -11,7 +11,7 @@ import { and, eq } from 'drizzle-orm';
 import { channels, channelBindings } from '@minion-stack/db/pg';
 import { newId } from '$server/db/utils';
 import { withOrgCore } from '$server/db/with-org-core';
-import { gatewayCall } from '$lib/server/gateway-rpc';
+import { gatewayCallAsUser } from '$lib/server/gateway-rpc';
 import type { ServerCtx } from '$server/auth/core-ctx';
 
 type ChannelType = 'whatsapp' | 'telegram' | 'discord';
@@ -109,7 +109,7 @@ export function gatewayConfigToChannelRows(
  * (tenant_id, gateway_id, type, account_id)). Returns the number of channels synced.
  */
 export async function importGatewayChannels(ctx: ServerCtx): Promise<{ imported: number }> {
-  const config = await gatewayCall<GatewayConfig>('config.get', {}, { timeoutMs: 5000 });
+  const config = await gatewayCallAsUser<GatewayConfig>('config.get', {}, ctx.profileId, { timeoutMs: 5000 });
   const rows = gatewayConfigToChannelRows(config, ctx.tenantId);
 
   await withOrgCore(ctx, async (tx) => {
@@ -284,13 +284,14 @@ export async function syncChannelToGateway(
     agentId: b.agentId,
   }));
 
-  const snapshot = await gatewayCall<ConfigSnapshot>('config.get', {}, { timeoutMs: 5000 });
+  const snapshot = await gatewayCallAsUser<ConfigSnapshot>('config.get', {}, ctx.profileId, { timeoutMs: 5000 });
   const currentBindings = snapshot.config?.bindings ?? [];
   const patch = buildGatewayChannelPatch(channel, dbBindings, currentBindings);
 
-  await gatewayCall(
+  await gatewayCallAsUser(
     'config.patch',
     { raw: JSON.stringify(patch), baseHash: snapshot.hash },
+    ctx.profileId,
     { timeoutMs: 5000 },
   );
   return patch;
