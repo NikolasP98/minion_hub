@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { gatewayConfigToChannelRows } from './channel-sync.service';
+import {
+  buildGatewayChannelPatch,
+  gatewayConfigToChannelRows,
+  type ChannelRow,
+} from './channel-sync.service';
 
 const ORG = '21e0601b-f632-43fd-8414-d644af4271f4';
 
@@ -70,5 +74,62 @@ describe('gatewayConfigToChannelRows', () => {
     const oficial = byId['+51906090526'];
     expect(oficial.channel.replies).toBe('none');
     expect(oficial.bindings).toEqual([{ matchKind: 'catchall', matchPeer: null, agentId: null }]);
+  });
+});
+
+describe('buildGatewayChannelPatch', () => {
+  const base: ChannelRow = {
+    type: 'whatsapp',
+    accountId: '+51906090526',
+    label: 'FACES OFICIAL',
+    enabled: true,
+    replies: 'none',
+    allowFrom: ['*'],
+    groupAllowFrom: [],
+    requireMention: true,
+    status: 'active',
+  };
+  // Another account's binding must survive the read-modify-write.
+  const otherBinding = {
+    agentId: 'faces_public',
+    match: { channel: 'whatsapp', accountId: '+51992376833' },
+  };
+
+  it('replies=none → open dmPolicy + a single noAgent catchall, preserving others', () => {
+    const patch = buildGatewayChannelPatch(base, [], [otherBinding]);
+    expect(patch.channels.whatsapp.accounts['+51906090526']).toMatchObject({
+      enabled: true,
+      dmPolicy: 'open',
+      allowFrom: ['*'],
+      groups: { '*': { requireMention: true } },
+    });
+    expect(patch.bindings).toEqual([
+      otherBinding,
+      { agentId: null, match: { channel: 'whatsapp', accountId: '+51906090526' } },
+    ]);
+  });
+
+  it('replies=bound → projects DB bindings (peer + catchall), allowlist when no *', () => {
+    const patch = buildGatewayChannelPatch(
+      { ...base, replies: 'bound', allowFrom: [] },
+      [
+        { matchKind: 'catchall', matchPeer: null, agentId: 'clinic' },
+        { matchKind: 'dm_peer', matchPeer: '+51923313093', agentId: 'leiva' },
+      ],
+      [otherBinding],
+    );
+    expect(patch.channels.whatsapp.accounts['+51906090526']).toMatchObject({ dmPolicy: 'allowlist' });
+    expect(patch.bindings).toEqual([
+      otherBinding,
+      { agentId: 'clinic', match: { channel: 'whatsapp', accountId: '+51906090526' } },
+      {
+        agentId: 'leiva',
+        match: {
+          channel: 'whatsapp',
+          accountId: '+51906090526',
+          peer: { kind: 'direct', id: '+51923313093' },
+        },
+      },
+    ]);
   });
 });
