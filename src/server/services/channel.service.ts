@@ -66,8 +66,13 @@ export async function listChannels(ctx: ServerCtx) {
     serverId: ctx.serverId,
     type: r.type as ChannelType,
     label: r.label,
+    accountId: r.accountId,
     credentialsMeta: parseMeta(r.credentialsMeta),
     status: r.status as ChannelStatus,
+    enabled: r.enabled,
+    // Derived reply mode (linked-channels restructure): 'none' = receive-only, 'bound' = auto-reply.
+    replies: r.replies as 'none' | 'bound',
+    lastError: r.lastError,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
   }));

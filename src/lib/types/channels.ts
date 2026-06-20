@@ -13,6 +13,14 @@ export interface Channel {
   createdAt: number;
   updatedAt: number;
   source?: 'hub' | 'gateway';
+  /** Account identity (phone/handle) — keys the DB row to its live gateway account. */
+  accountId?: string | null;
+  /** DB-stored enable flag (linked-channels restructure). */
+  enabled?: boolean;
+  /** Derived reply mode: 'none' = receive-only, 'bound' = auto-reply. */
+  replies?: 'none' | 'bound';
+  /** Last connection error recorded against the DB row. */
+  lastError?: string | null;
   gwConnected?: boolean;
   gwEnabled?: boolean;
   gwConfigured?: boolean;
