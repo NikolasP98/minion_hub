@@ -25,6 +25,8 @@ export interface SystemAgentMeta {
   trigger: string;
   managePath: string | null;
   flowId?: string;
+  /** Editable DB flow (flows table) backing this agent, if any. Gates EDIT + drives health metrics. System agents leave this undefined (code/master flows). */
+  dbFlowId?: string;
   adminOnly?: boolean;
   resolveVariables?(ctx: CoreCtx, keys: string[]): Promise<Record<string, unknown>>;
 }
@@ -39,6 +41,7 @@ export interface AutonomousAgentVM {
   trigger: string | null;
   managePath: string | null;
   flowId?: string;
+  dbFlowId?: string;
   adminOnly?: boolean;
   status: SystemAgentStatus;
 }
@@ -72,6 +75,7 @@ export function systemMetaToVM(meta: SystemAgentMeta, status: SystemAgentStatus)
     trigger: meta.trigger,
     managePath: meta.managePath,
     flowId: meta.flowId,
+    dbFlowId: meta.dbFlowId,
     adminOnly: meta.adminOnly,
     status,
   };

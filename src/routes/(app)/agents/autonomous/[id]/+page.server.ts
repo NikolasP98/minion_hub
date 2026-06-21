@@ -4,6 +4,7 @@ import { requireCoreCtx } from '$server/auth/core-ctx';
 import { loadSystemAgentVMs } from '$lib/server/system-agents/registry';
 import { getArtifactsForAgent } from '$lib/server/artifacts/registry';
 import { listExportToggles } from '$lib/server/flows/exports-store';
+import { getHealthMetrics } from '$lib/server/agents/health-metrics';
 
 export const load: PageServerLoad = async ({ locals, params }) => {
   const ctx = await requireCoreCtx(locals);
@@ -17,5 +18,6 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   if (agent.flowId) {
     flowTogglesByFlow[agent.flowId] = await listExportToggles(ctx, agent.flowId).catch(() => ({}));
   }
-  return { agent, artifacts: await getArtifactsForAgent(ctx, agent.id), isAdmin, flowTogglesByFlow };
+  const health = await getHealthMetrics(ctx, agent);
+  return { agent, artifacts: await getArtifactsForAgent(ctx, agent.id), isAdmin, flowTogglesByFlow, health };
 };

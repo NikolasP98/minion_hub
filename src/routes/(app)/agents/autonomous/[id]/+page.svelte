@@ -1,13 +1,27 @@
 <script lang="ts">
   import * as m from '$lib/paraglide/messages';
-  import { ArrowLeft, Settings2, Workflow, Zap } from 'lucide-svelte';
+  import { ArrowLeft, Settings2, Workflow, Zap, Pencil } from 'lucide-svelte';
   import ArtifactHost from '$lib/components/artifacts/ArtifactHost.svelte';
+  import AgentHealthMetrics from '$lib/components/agents/AgentHealthMetrics.svelte';
+  import MasterFlowCanvas from '$lib/components/flow-editor/MasterFlowCanvas.svelte';
+  import { getMasterFlow } from '$lib/flows/master-flows';
   import type { AutonomousAgentVM } from '$lib/agents/autonomous';
   import type { ArtifactDescriptor } from '$lib/agents/artifacts';
+  import type { HealthMetrics } from '$lib/server/agents/health-metrics';
   import { agentWindows } from '$lib/state/ui/agent-windows.svelte';
 
-  let { data }: { data: { agent: AutonomousAgentVM; artifacts: ArtifactDescriptor[] } } = $props();
+  let {
+    data,
+  }: {
+    data: {
+      agent: AutonomousAgentVM;
+      artifacts: ArtifactDescriptor[];
+      isAdmin: boolean;
+      health: HealthMetrics;
+    };
+  } = $props();
   const agent = $derived(data.agent);
+  const flow = $derived(agent.flowId ? getMasterFlow(agent.flowId) : undefined);
 </script>
 
 <div class="flex h-full flex-col overflow-hidden p-6">
@@ -36,7 +50,33 @@
     {/if}
   </header>
 
-  <div class="grid min-h-0 flex-1 grid-cols-1 gap-3">
+  <div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
+    <!-- Health metrics -->
+    <AgentHealthMetrics health={data.health} />
+
+    <!-- View-only flow -->
+    {#if flow}
+      <section class="rounded-xl border border-white/10 bg-white/[0.02]">
+        <div class="flex items-center justify-between border-b border-white/10 px-4 py-2.5">
+          <p class="text-[10px] font-medium uppercase tracking-wide text-white/40">
+            {m.autonomous_view_flow()}
+          </p>
+          {#if data.isAdmin && agent.dbFlowId}
+            <a
+              href={`/flow-editor/${agent.dbFlowId}`}
+              class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-white/80 hover:bg-white/10"
+            >
+              <Pencil size={13} /> {m.autonomous_edit_flow()}
+            </a>
+          {/if}
+        </div>
+        <div class="h-80">
+          <MasterFlowCanvas {flow} />
+        </div>
+      </section>
+    {/if}
+
+    <!-- Artifacts -->
     {#each data.artifacts as artifact (artifact.id)}
       <div class="min-h-[24rem]">
         <ArtifactHost descriptor={artifact} />
