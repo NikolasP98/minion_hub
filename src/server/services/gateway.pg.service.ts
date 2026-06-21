@@ -207,9 +207,14 @@ export async function getUserGatewayCredentials(
 /**
  * System-wide gateway credentials (no user context) from Supabase `gateway` —
  * the Supabase-native replacement for the Turso `getSystemGatewayCredentials`.
- * Picks the gateway whose `url` matches `preferredUrl`, else the first row.
- * Used by the cache broadcaster + gateway-rpc system fallback. `token_iv=''`
- * means the ciphertext IS the plaintext token (legacy unencrypted row).
+ * Picks the gateway whose `url` matches `preferredUrl`, else the first row that
+ * actually carries a token. Used by the cache broadcaster + gateway-rpc system
+ * fallback. `token_iv=''` means the ciphertext IS the plaintext token (legacy
+ * unencrypted row).
+ *
+ * Only token-bearing rows are eligible: the query has no ORDER BY, so `rows[0]`
+ * is non-deterministic heap order — a tokenless row (e.g. a `local_dev` entry)
+ * could otherwise win and return null, silently breaking the reminders cron.
  */
 export async function getSystemGatewayCredentials(
   preferredUrl?: string,
@@ -221,9 +226,9 @@ export async function getSystemGatewayCredentials(
       tokenIv: gateway.tokenIv,
     })
     .from(gateway);
-  if (!rows.length) return null;
-  const row = preferredUrl ? (rows.find((r) => r.url === preferredUrl) ?? rows[0]) : rows[0];
-  if (!row.tokenCiphertext) return null;
+  const tokened = rows.filter((r) => r.tokenCiphertext);
+  if (!tokened.length) return null;
+  const row = (preferredUrl && tokened.find((r) => r.url === preferredUrl)) || tokened[0];
   const token = row.tokenIv ? decrypt(row.tokenCiphertext, row.tokenIv) : row.tokenCiphertext;
   return { url: row.url, token };
 }

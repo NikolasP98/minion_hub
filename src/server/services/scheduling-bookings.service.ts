@@ -10,6 +10,7 @@ import {
   schedEventTypeResources,
   schedBookings,
 } from '$server/db/pg-scheduling-schema';
+import { crmContacts, crmContactIdentities } from '$server/db/pg-crm-schema';
 import type { SchedBooking } from '$server/db/pg-scheduling-schema';
 import { computeSlots } from '$server/scheduling/slots';
 import type { ResourceAvailability, BusyInterval } from '$server/scheduling/slots';
@@ -126,6 +127,49 @@ async function resolveCrmContact(tx: CoreTx, orgId: string, phone: string | null
   }
 }
 
+/**
+ * Resolve a CRM contact by phone/email, or CREATE one from the booking form so
+ * every booker lands in the CRM. The resolve-first step is the dedup guard:
+ * an existing customer is matched (last-9 phone or email) and reused, never
+ * duplicated. Identities are stored E.164 (`+digits`) to match the ledger
+ * harvest's `external_id` shape so a later WhatsApp message folds into the same
+ * contact via the unique (org, channel, external_id) index.
+ * ponytail: 9-digit local input (no country code) can still diverge from the
+ * harvest's `+51…`; resolve's last-9 match keeps future bookings deduped, the
+ * rare format-mismatch harvest dupe is the CRM cleanup tool's job.
+ */
+async function ensureCrmContact(
+  tx: CoreTx,
+  orgId: string,
+  name: string | null | undefined,
+  phone: string | null | undefined,
+  email: string | null | undefined,
+): Promise<string | null> {
+  const existing = await resolveCrmContact(tx, orgId, phone, email);
+  if (existing) return existing;
+  const digits = phone ? phone.replace(/\D/g, '') : '';
+  const em = email ? email.trim().toLowerCase() : '';
+  if (digits.length < 8 && !em) return null; // nothing to identify them by
+  try {
+    const [c] = await tx
+      .insert(crmContacts)
+      .values({ orgId, displayName: name?.trim() || null, source: 'booking' })
+      .returning({ id: crmContacts.id });
+    const identities: Array<typeof crmContactIdentities.$inferInsert> = [];
+    if (digits.length >= 8) identities.push({ orgId, contactId: c.id, channel: 'whatsapp', externalId: `+${digits}`, handle: name?.trim() || null });
+    if (em) identities.push({ orgId, contactId: c.id, channel: 'email', externalId: em, handle: name?.trim() || null });
+    if (identities.length)
+      await tx
+        .insert(crmContactIdentities)
+        .values(identities)
+        .onConflictDoNothing({ target: [crmContactIdentities.orgId, crmContactIdentities.channel, crmContactIdentities.externalId] });
+    return c.id;
+  } catch {
+    // CRM tables absent / disabled — booking still succeeds without the bridge.
+    return null;
+  }
+}
+
 export async function createBooking(ctx: CoreCtx, input: CreateBookingInput): Promise<SchedBooking> {
   return withOrgCore(ctx, async (tx) => {
     const [et] = await tx
@@ -187,7 +231,7 @@ export async function createBooking(ctx: CoreCtx, input: CreateBookingInput): Pr
       chosen = [...match.resourceIds].sort((a, b) => (loads.get(a) ?? 0) - (loads.get(b) ?? 0))[0];
     }
 
-    const crmContactId = await resolveCrmContact(tx, ctx.tenantId, input.attendeePhone, input.attendeeEmail);
+    const crmContactId = await ensureCrmContact(tx, ctx.tenantId, input.attendeeName, input.attendeePhone, input.attendeeEmail);
     const uid = input.uid ?? globalThis.crypto.randomUUID();
     const status = et.requiresConfirmation ? 'pending' : 'accepted';
 
