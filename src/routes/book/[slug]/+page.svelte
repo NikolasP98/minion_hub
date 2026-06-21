@@ -12,8 +12,8 @@
 	let eventTypeId = $state(data.eventTypes.length === 1 ? data.eventTypes[0].id : '');
 	let windowSlots = $state<Array<{ start: string; end: string }>>([]);
 	let selectedDay = $state('');
-	let showCustom = $state(false);
 	let customDate = $state('');
+	let dateEl = $state<HTMLInputElement>();
 	let slot = $state('');
 	let loading = $state(false);
 	let name = $state('');
@@ -43,10 +43,12 @@
 					{ k: 'service', label: m.sched_book_step_service() },
 					{ k: 'time', label: m.sched_book_step_time() },
 					{ k: 'details', label: m.sched_book_step_details() },
+					{ k: 'done', label: m.sched_book_step_done() },
 				]
 			: [
 					{ k: 'time', label: m.sched_book_step_time() },
 					{ k: 'details', label: m.sched_book_step_details() },
+					{ k: 'done', label: m.sched_book_step_done() },
 				]) as Array<{ k: Step; label: string }>,
 	);
 	const currentIdx = $derived(steps.findIndex((s) => s.k === step));
@@ -170,7 +172,7 @@
 		</div>
 	</div>
 
-	{#if step !== 'done' && data.eventTypes.length > 0}
+	{#if data.eventTypes.length > 0}
 		<!-- Process stepper -->
 		<ol class="stepper" aria-label="progress">
 			{#each steps as s, i (s.k)}
@@ -225,9 +227,8 @@
 						{#each quickDays as key (key)}
 							{@const d = fmtDayShort(key)}
 							<button
-								class="day {selectedDay === key && !showCustom ? 'day-on' : ''}"
+								class="day {selectedDay === key && selectedDay !== customDate ? 'day-on' : ''}"
 								onclick={() => {
-									showCustom = false;
 									selectedDay = key;
 									slot = '';
 								}}
@@ -236,20 +237,21 @@
 								<span class="day-num">{d.day}</span>
 							</button>
 						{/each}
-						<button
-							class="day day-custom {showCustom ? 'day-on' : ''}"
-							onclick={() => {
-								showCustom = true;
-							}}
-						>
+						<!-- "Other date" opens the native picker directly (no extra field). -->
+						<div class="day day-custom {customDate && selectedDay === customDate ? 'day-on' : ''}">
 							<span class="day-wd"><CalendarClock size={16} /></span>
-							<span class="day-num">{m.sched_book_other_date()}</span>
-						</button>
+							<span class="day-num">{customDate ? fmtDayShort(customDate).day : m.sched_book_other_date()}</span>
+							<input
+								class="day-date-overlay"
+								type="date"
+								aria-label={m.sched_book_other_date()}
+								bind:this={dateEl}
+								bind:value={customDate}
+								onclick={() => dateEl?.showPicker?.()}
+								onchange={loadCustomDay}
+							/>
+						</div>
 					</div>
-
-					{#if showCustom}
-						<input class="txt mt-3" type="date" bind:value={customDate} onchange={loadCustomDay} />
-					{/if}
 
 					{#if loading}
 						<div class="loading mt-3"><span class="spinner"></span></div>
@@ -493,6 +495,22 @@
 	.day-num {
 		font-size: 0.85rem;
 		font-weight: 600;
+	}
+	.day-custom {
+		position: relative;
+	}
+	/* Transparent date input fills the tile: one click opens the native picker. */
+	.day-date-overlay {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		margin: 0;
+		padding: 0;
+		border: 0;
+		opacity: 0;
+		cursor: pointer;
+		color-scheme: dark;
 	}
 	.day-on {
 		background: var(--accent);
