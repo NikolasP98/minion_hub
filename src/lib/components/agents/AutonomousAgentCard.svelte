@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto, invalidateAll } from '$app/navigation';
-  import { Zap, Settings2, Workflow } from 'lucide-svelte';
+  import { Zap, Settings2, Workflow, MoreVertical } from 'lucide-svelte';
+  import { StatusDot, Dropdown, type DropdownItem } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import type { AutonomousAgentVM } from '$lib/agents/autonomous';
   import type { ArtifactDescriptor } from '$lib/agents/artifacts';
@@ -28,16 +29,19 @@
         : m.autonomous_status_disabled(),
   );
 
-  // Tailwind tone per state.
-  const statusTone = $derived(
-    agent.status.state === 'active'
-      ? 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/30'
-      : agent.status.state === 'attention'
-        ? 'bg-amber-500/15 text-amber-300 ring-amber-500/30'
-        : 'bg-white/5 text-white/50 ring-white/10',
-  );
-
   const stats = $derived(agent.status.stats);
+
+  const menuItems = $derived<DropdownItem[]>([
+    ...(agent.flowId
+      ? [{ value: 'view-flow', label: m.autonomous_view_flow(), icon: Workflow }]
+      : []),
+    { value: 'manage', label: m.autonomous_manage(), icon: Settings2 },
+  ]);
+
+  function onMenu(value: string) {
+    if (value === 'view-flow' && agent.flowId) agentWindows.openFlow(agent.flowId, agent.name);
+    else if (value === 'manage') goto(`/agents/autonomous/${encodeURIComponent(agent.id)}`);
+  }
 </script>
 
 <article
@@ -56,11 +60,19 @@
         <p class="truncate text-xs text-white/50">{agent.role}</p>
       {/if}
     </div>
-    <span
-      class="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 {statusTone}"
-    >
-      {statusLabel}
-    </span>
+    <div class="flex shrink-0 items-center gap-1">
+      <StatusDot state={agent.status.state} label={statusLabel} />
+      <Dropdown items={menuItems} onSelect={onMenu} placement="bottom">
+        {#snippet trigger()}
+          <span
+            class="grid size-7 place-items-center rounded-lg text-white/50 transition-colors hover:bg-white/[0.06] hover:text-white"
+            aria-label={m.autonomous_manage()}
+          >
+            <MoreVertical size={15} />
+          </span>
+        {/snippet}
+      </Dropdown>
+    </div>
   </header>
 
   {#if agent.description}
@@ -74,35 +86,15 @@
     </div>
   {/if}
 
-  <footer class="mt-auto flex items-center justify-between gap-2 pt-1">
-    <span class="text-[11px] text-white/40">
+  {#if agent.status.detail || stats}
+    <footer class="mt-auto pt-1 text-[11px] text-white/40">
       {#if agent.status.detail}
         {agent.status.detail}
       {:else if stats}
         {m.autonomous_activity({ sent: stats.sent, failed: stats.failed })}
       {/if}
-    </span>
-    <div class="flex items-center gap-2">
-      {#if agent.flowId}
-        <button
-          type="button"
-          onclick={() => agentWindows.openFlow(agent.flowId!, agent.name)}
-          class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-white/80 transition-colors hover:bg-white/10"
-        >
-          <Workflow size={13} />
-          {m.autonomous_view_flow()}
-        </button>
-      {/if}
-      <button
-        type="button"
-        onclick={() => goto(`/agents/autonomous/${encodeURIComponent(agent.id)}`)}
-        class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-white/80 transition-colors hover:bg-white/10"
-      >
-        <Settings2 size={13} />
-        {m.autonomous_manage()}
-      </button>
-    </div>
-  </footer>
+    </footer>
+  {/if}
 
   {#if artifacts.length || canAdd}
     <ArtifactGallery
