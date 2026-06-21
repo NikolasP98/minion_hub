@@ -3,7 +3,12 @@
   import * as m from '$lib/paraglide/messages';
   import { Popover } from '$lib/components/ui';
   import { resolvePluginIcon } from '$lib/plugins/icon-map';
+  import { iconComp } from '$lib/components/my-agent/note-icons';
   import type { ArtifactDescriptor } from '$lib/agents/artifacts';
+
+  // Icon values can be: `lucide:<Name>` (shared picker), an emoji char (shared
+  // picker), or a bare lucide name (legacy / built-ins). Resolve all three.
+  const EMOJI_RE = /\p{Extended_Pictographic}/u;
 
   let {
     artifacts,
@@ -28,7 +33,9 @@
   <p class="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-white/35">{m.artifacts_label()}</p>
   <div class="flex flex-wrap items-center gap-2">
     {#each artifacts as a (a.id)}
-      {@const Icon = resolvePluginIcon(a.icon)}
+      {@const lucide = a.icon?.startsWith('lucide:') ? iconComp(a.icon.slice(7)) : null}
+      {@const isEmoji = !!a.icon && !a.icon.startsWith('lucide:') && EMOJI_RE.test(a.icon)}
+      {@const Icon = lucide ?? (isEmoji ? null : resolvePluginIcon(a.icon))}
       <Popover placement="top">
         {#snippet trigger()}
           <button
@@ -37,7 +44,7 @@
             aria-label={a.title}
             class="grid size-11 place-items-center rounded-lg border border-white/10 bg-white/[0.03] text-white/70 transition-colors hover:border-white/25 hover:bg-white/10 hover:text-white"
           >
-            {#if typeof Icon !== 'string'}<Icon size={18} />{/if}
+            {#if isEmoji}<span class="text-lg leading-none">{a.icon}</span>{:else if Icon && typeof Icon !== 'string'}<Icon size={18} />{/if}
           </button>
         {/snippet}
           <div class="max-w-56 p-1">

@@ -2,6 +2,7 @@
   import * as m from '$lib/paraglide/messages';
   import Modal from '$lib/components/ui/Modal.svelte';
   import Spinner from '$lib/components/ui/Spinner.svelte';
+  import NoteIconButton from '$lib/components/my-agent/NoteIconButton.svelte';
   import { readBuildStream, type BuildProgress } from './read-build-stream';
 
   interface Props {
@@ -12,21 +13,12 @@
 
   let { open = $bindable(false), agentId, oncreated }: Props = $props();
 
-  const ICON_OPTIONS = [
-    'LayoutDashboard',
-    'BarChart3',
-    'Activity',
-    'Megaphone',
-    'Bell',
-    'Gauge',
-    'LineChart',
-    'Table',
-  ] as const;
+  const DEFAULT_ICON = 'lucide:LayoutDashboard';
 
   let mode = $state<'generate' | 'paste'>('generate');
   let title = $state('');
   let description = $state('');
-  let icon = $state<string>('LayoutDashboard');
+  let icon = $state<string>(DEFAULT_ICON);
   let html = $state('');
   let prompt = $state('');
   let error = $state('');
@@ -47,7 +39,7 @@
   function reset() {
     title = '';
     description = '';
-    icon = 'LayoutDashboard';
+    icon = DEFAULT_ICON;
     html = '';
     prompt = '';
     error = '';
@@ -124,7 +116,21 @@
   }
 </script>
 
-<Modal bind:open title={m.artifact_create_title()}>
+<Modal bind:open>
+  {#snippet header()}
+    <div class="flex items-center gap-2.5">
+      <NoteIconButton {icon} onpick={(v) => (icon = v || DEFAULT_ICON)} size={20} />
+      <input
+        type="text"
+        bind:value={title}
+        placeholder={m.artifact_create_title()}
+        aria-label={m.artifact_create_name()}
+        autocomplete="off"
+        class="t-heading min-w-0 flex-1 border-0 bg-transparent p-0 text-foreground outline-none placeholder:text-white/30 focus:ring-0"
+      />
+    </div>
+  {/snippet}
+
   <div class="flex flex-col gap-4">
     <!-- Tab switch -->
     <div class="flex rounded-lg border border-white/10 bg-white/[0.04] p-0.5">
@@ -148,21 +154,6 @@
       </button>
     </div>
 
-    <!-- Shared: title -->
-    <div class="flex flex-col gap-1.5">
-      <label class="text-xs font-medium text-white/70" for="acm-title">
-        {m.artifact_create_name()}
-      </label>
-      <input
-        id="acm-title"
-        type="text"
-        bind:value={title}
-        class="w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm text-white placeholder-white/30 outline-none focus:border-white/30 focus:ring-0"
-        placeholder={m.artifact_create_name()}
-        autocomplete="off"
-      />
-    </div>
-
     <!-- Shared: description -->
     <div class="flex flex-col gap-1.5">
       <label class="text-xs font-medium text-white/70" for="acm-desc">
@@ -176,22 +167,6 @@
         placeholder={m.artifact_create_desc()}
         autocomplete="off"
       />
-    </div>
-
-    <!-- Shared: icon picker -->
-    <div class="flex flex-col gap-1.5">
-      <label class="text-xs font-medium text-white/70" for="acm-icon">
-        {m.artifact_create_icon()}
-      </label>
-      <select
-        id="acm-icon"
-        bind:value={icon}
-        class="w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm text-white outline-none focus:border-white/30"
-      >
-        {#each ICON_OPTIONS as name (name)}
-          <option value={name}>{name}</option>
-        {/each}
-      </select>
     </div>
 
     <!-- Generate tab: prompt textarea -->
