@@ -3182,6 +3182,8 @@
   "artifact_regenerate": "Regenerar",
   "artifact_regenerate_prompt": "¿Qué debe cambiar?",
   "artifact_regenerate_loading": "Regenerando…",
+  "artifact_build_generating": "Generando… (intento {attempt}/{max})",
+  "artifact_build_repairing": "Corrigiendo… (intento {attempt}/{max})",
   "artifact_history": "Historial",
   "artifact_revert": "Revertir",
   "artifact_history_empty": "Sin versiones previas",

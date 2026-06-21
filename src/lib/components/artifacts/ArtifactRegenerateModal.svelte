@@ -2,6 +2,7 @@
   import * as m from '$lib/paraglide/messages';
   import Modal from '$lib/components/ui/Modal.svelte';
   import Spinner from '$lib/components/ui/Spinner.svelte';
+  import { readBuildStream, type BuildProgress } from './read-build-stream';
 
   interface Props {
     open?: boolean;
@@ -14,19 +15,29 @@
   let refinement = $state('');
   let generating = $state(false);
   let errorMsg = $state('');
+  let progress = $state<BuildProgress | null>(null);
 
   const canSubmit = $derived(refinement.trim().length > 0);
+  const progressLabel = $derived(
+    progress
+      ? progress.phase === 'repairing'
+        ? m.artifact_build_repairing({ attempt: progress.attempt, max: progress.max })
+        : m.artifact_build_generating({ attempt: progress.attempt, max: progress.max })
+      : m.artifact_regenerate_loading(),
+  );
 
   function reset() {
     refinement = '';
     generating = false;
     errorMsg = '';
+    progress = null;
   }
 
   async function handleSubmit() {
     if (!canSubmit || generating) return;
     generating = true;
     errorMsg = '';
+    progress = null;
     try {
       const res = await fetch(`/api/artifacts/${artifactId}/regenerate`, {
         method: 'POST',
@@ -46,6 +57,7 @@
         errorMsg = msg;
         return;
       }
+      await readBuildStream(res, (p) => (progress = p));
       ondone?.();
       open = false;
       reset();
@@ -53,6 +65,7 @@
       errorMsg = e instanceof Error ? e.message : 'Unknown error';
     } finally {
       generating = false;
+      progress = null;
     }
   }
 </script>
@@ -87,7 +100,7 @@
     >
       {#if generating}
         <Spinner size="xs" />
-        {m.artifact_regenerate_loading()}
+        {progressLabel}
       {:else}
         {m.artifact_regenerate()}
       {/if}

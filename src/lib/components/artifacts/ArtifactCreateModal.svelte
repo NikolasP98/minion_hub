@@ -2,6 +2,7 @@
   import * as m from '$lib/paraglide/messages';
   import Modal from '$lib/components/ui/Modal.svelte';
   import Spinner from '$lib/components/ui/Spinner.svelte';
+  import { readBuildStream, type BuildProgress } from './read-build-stream';
 
   interface Props {
     open?: boolean;
@@ -31,9 +32,17 @@
   let error = $state('');
   let loading = $state(false);
   let generating = $state(false);
+  let progress = $state<BuildProgress | null>(null);
 
   const canSubmitPaste = $derived(title.trim().length > 0 && html.trim().length > 0);
   const canSubmitGenerate = $derived(title.trim().length > 0 && prompt.trim().length > 0);
+  const progressLabel = $derived(
+    progress
+      ? progress.phase === 'repairing'
+        ? m.artifact_build_repairing({ attempt: progress.attempt, max: progress.max })
+        : m.artifact_build_generating({ attempt: progress.attempt, max: progress.max })
+      : m.artifact_gen_loading(),
+  );
 
   function reset() {
     title = '';
@@ -44,6 +53,7 @@
     error = '';
     loading = false;
     generating = false;
+    progress = null;
   }
 
   async function handleCreate() {
@@ -75,6 +85,7 @@
     if (!canSubmitGenerate || generating) return;
     generating = true;
     error = '';
+    progress = null;
     try {
       const res = await fetch('/api/artifacts/generate', {
         method: 'POST',
@@ -100,6 +111,7 @@
         error = msg;
         return;
       }
+      await readBuildStream(res, (p) => (progress = p));
       oncreated?.();
       open = false;
       reset();
@@ -107,6 +119,7 @@
       error = e instanceof Error ? e.message : 'Unknown error';
     } finally {
       generating = false;
+      progress = null;
     }
   }
 </script>
@@ -229,7 +242,7 @@
       >
         {#if generating}
           <Spinner size="xs" />
-          {m.artifact_gen_loading()}
+          {progressLabel}
         {:else}
           {m.artifact_gen_submit()}
         {/if}
