@@ -75,14 +75,6 @@ export function updateNodeConfig(
   );
 }
 
-export function setNodeLabel(f: WorkingFlow, args: { nodeId: string; label: string }): WorkingFlow {
-  return mapNode(
-    f,
-    args.nodeId,
-    (n) => ({ ...n, data: { ...(n.data as object), label: args.label } }) as FlowNode,
-  );
-}
-
 export function removeNode(f: WorkingFlow, args: { nodeId: string }): WorkingFlow {
   if (!has(f, args.nodeId)) throw new Error(`unknown node: ${args.nodeId}`);
   const flow = clone(f);

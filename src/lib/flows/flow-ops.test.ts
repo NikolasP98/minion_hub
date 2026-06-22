@@ -3,7 +3,6 @@ import {
   addNode,
   connectNodes,
   updateNodeConfig,
-  setNodeLabel,
   removeNode,
   removeEdge,
   validateFlow,
@@ -39,11 +38,11 @@ describe('flow-ops', () => {
     expect(f.edges).toHaveLength(1);
   });
 
-  it('updateNodeConfig shallow-merges data; setNodeLabel sets label', () => {
+  it('updateNodeConfig shallow-merges data (incl. label)', () => {
     let f = addNode(empty, { type: 'llm', label: 'L', id: 'l1', data: { modelId: 'x' } }).flow;
     f = updateNodeConfig(f, { nodeId: 'l1', data: { modelId: 'y' } });
     expect(f.nodes[0].data).toMatchObject({ modelId: 'y', label: 'L' });
-    f = setNodeLabel(f, { nodeId: 'l1', label: 'New' });
+    f = updateNodeConfig(f, { nodeId: 'l1', data: { label: 'New' } });
     expect((f.nodes[0].data as { label: string }).label).toBe('New');
   });
 

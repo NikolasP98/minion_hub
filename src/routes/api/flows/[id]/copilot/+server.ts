@@ -71,14 +71,6 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
         return { ok: true };
       },
     }),
-    setNodeLabel: tool({
-      description: 'Rename a node.',
-      inputSchema: z.object({ nodeId: z.string(), label: z.string() }),
-      execute: async (a) => {
-        work = ops.setNodeLabel(work, a);
-        return { ok: true };
-      },
-    }),
     removeNode: tool({
       description: 'Remove a node and its edges.',
       inputSchema: z.object({ nodeId: z.string() }),
