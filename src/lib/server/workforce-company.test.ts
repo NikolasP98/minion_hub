@@ -42,11 +42,22 @@ describe('ensureWorkforceCompany', () => {
   it('falls back to "Workspace" when the org row has no name', async () => {
     rawFetch.mockRejectedValueOnce(notFound());
     maybeSingle.mockResolvedValueOnce({ data: null });
-    rawFetch.mockResolvedValueOnce({});
+    rawFetch.mockResolvedValueOnce({ id: 'org-2' });
     await ensureWorkforceCompany(event, 'org-2');
-    expect(rawFetch).toHaveBeenLastCalledWith(event, '/api/companies', {
+    expect(rawFetch).toHaveBeenNthCalledWith(2, event, '/api/companies', {
       method: 'POST',
       body: JSON.stringify({ id: 'org-2', name: 'Workspace' }),
+    });
+  });
+
+  it('deletes the orphan and throws 409 when the backend ignores the supplied id', async () => {
+    rawFetch.mockRejectedValueOnce(notFound()); // GET → 404
+    maybeSingle.mockResolvedValueOnce({ data: { name: 'Acme' } });
+    rawFetch.mockResolvedValueOnce({ id: 'random-uuid' }); // POST returns a DIFFERENT id
+    rawFetch.mockResolvedValueOnce(undefined); // DELETE cleanup
+    await expect(ensureWorkforceCompany(event, 'org-1')).rejects.toMatchObject({ status: 409 });
+    expect(rawFetch).toHaveBeenLastCalledWith(event, '/api/companies/random-uuid', {
+      method: 'DELETE',
     });
   });
 

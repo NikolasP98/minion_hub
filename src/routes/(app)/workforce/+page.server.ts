@@ -7,7 +7,11 @@ type CostTrendPoint = { date: string; cents: number };
 export const load: PageServerLoad = async (event) => {
 	if (!event.locals.user) throw redirect(302, '/login');
 	event.depends('app:dashboard');
-	const companyId = event.locals.workforceIdentity?.companyId;
+	// Wait for the +layout gate (ensureWorkforceCompany) rather than trusting the
+	// optimistic companyId hooks set on locals — otherwise this load races the
+	// gate and can redirect with the wrong reason (no-company) while the gate is
+	// still surfacing the real one (provision-failed / backend-unavailable).
+	const { companyId } = await event.parent();
 	if (!companyId) throw redirect(302, '/workforce/welcome?reason=no-company');
 	const client = workforceServerClient(event);
 	try {

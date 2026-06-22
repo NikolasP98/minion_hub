@@ -38,9 +38,27 @@ export async function ensureWorkforceCompany(event: RequestEvent, orgId: string)
 
   // Create with id === orgId (backend createCompanySchema accepts an optional
   // id; restricted to instance-admin callers, which the hub board key is).
-  await workforceRawFetch(event, '/api/companies', {
+  const created = await workforceRawFetch<{ id: string }>(event, '/api/companies', {
     method: 'POST',
     body: JSON.stringify({ id: orgId, name }),
   });
+
+  // Harden the single-id contract. A backend that silently ignores the
+  // caller-supplied id (e.g. a deploy predating create-with-id, which strips it
+  // and falls back to defaultRandom()) mints a fresh random-id company on EVERY
+  // visit — the GET fast-path then never matches, so the gate loops on
+  // no-company and leaks one orphan company per page load. Verify the id stuck;
+  // if not, delete the orphan we just made and fail loudly so the gate routes to
+  // provision-failed (a clear "backend rejected it" message) instead of leaking.
+  if (created?.id !== orgId) {
+    if (created?.id) {
+      await workforceRawFetch(event, `/api/companies/${created.id}`, { method: 'DELETE' }).catch(
+        () => {},
+      );
+    }
+    throw Object.assign(new Error('workforce backend ignored caller-supplied company id'), {
+      status: 409,
+    });
+  }
   return orgId;
 }
