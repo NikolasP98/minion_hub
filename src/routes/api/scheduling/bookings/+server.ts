@@ -40,6 +40,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       attendeeEmail: b.attendeeEmail ? String(b.attendeeEmail) : null,
       attendeePhone: b.attendeePhone ? String(b.attendeePhone) : null,
       notes: b.notes ? String(b.notes) : null,
+      crmContactId: b.crmContactId ? String(b.crmContactId) : null,
       preferredResourceId: b.resourceId ? String(b.resourceId) : null,
       source: 'internal',
       bypassRules: true,

@@ -11,14 +11,19 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
   if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(404, 'Scheduling module disabled');
   depends('scheduling:data');
 
+  // Default "today" in the ORG's timezone (resources carry it; the server runs
+  // in UTC, so a bare toISOString() would show tomorrow late at night).
+  const resources = await listResources(ctx);
+  const orgTz = resources.find((r) => r.active)?.timezone ?? 'America/Lima';
+  const todayInTz = new Intl.DateTimeFormat('en-CA', { timeZone: orgTz }).format(new Date()); // YYYY-MM-DD
+
   const dateParam = url.searchParams.get('date');
-  const day = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : new Date().toISOString().slice(0, 10);
+  const day = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : todayInTz;
   const from = new Date(`${day}T00:00:00`);
   const to = new Date(from.getTime() + 86_400_000);
 
-  const [bookings, resources, eventTypes] = await Promise.all([
+  const [bookings, eventTypes] = await Promise.all([
     listBookings(ctx, { from, to, status: ['accepted', 'pending', 'completed'], limit: 1000 }),
-    listResources(ctx),
     listEventTypes(ctx),
   ]);
 

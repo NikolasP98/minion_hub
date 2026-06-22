@@ -44,6 +44,28 @@
 	let nbLoading = $state(false);
 	let nbErr = $state<string | null>(null);
 
+	// Optional link to an existing CRM contact (better traceability than phone-match).
+	let nbContactId = $state<string | null>(null);
+	let nbSearch = $state('');
+	let nbResults = $state<Array<{ id: string; name: string }>>([]);
+	async function searchContacts() {
+		nbContactId = null; // typing a new query unpicks any prior choice
+		const q = nbSearch.trim();
+		if (q.length < 2) {
+			nbResults = [];
+			return;
+		}
+		const res = await fetch(`/api/crm/contacts?search=${encodeURIComponent(q)}&limit=8`);
+		const j = res.ok ? await res.json() : { contacts: [] };
+		nbResults = (j.contacts ?? []).map((c: { contact_id: string; display_name: string | null }) => ({ id: c.contact_id, name: c.display_name || '—' }));
+	}
+	function pickContact(c: { id: string; name: string }) {
+		nbContactId = c.id;
+		nbName = c.name;
+		nbSearch = c.name;
+		nbResults = [];
+	}
+
 	async function loadSlots() {
 		if (!nbEventType || !nbDate) return;
 		nbLoading = true;
@@ -75,7 +97,7 @@
 			const res = await fetch('/api/scheduling/bookings', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ eventTypeId: nbEventType, start: nbSlot, attendeeName: nbName, attendeePhone: nbPhone || null }),
+				body: JSON.stringify({ eventTypeId: nbEventType, start: nbSlot, attendeeName: nbName, attendeePhone: nbPhone || null, crmContactId: nbContactId }),
 			});
 			if (res.status === 409) {
 				nbErr = m.sched_book_unavailable();
@@ -87,6 +109,9 @@
 			nbName = '';
 			nbPhone = '';
 			nbSlot = '';
+			nbContactId = null;
+			nbSearch = '';
+			nbResults = [];
 			await invalidate('scheduling:data');
 		} catch (e) {
 			nbErr = e instanceof Error ? e.message : 'error';
@@ -180,14 +205,30 @@
 					{/each}
 				</div>
 			{/if}
+			<div class="field">
+				<span class="t-caption">{m.sched_book_find_client()}</span>
+				<div class="search-wrap">
+					<input class="txt" bind:value={nbSearch} oninput={searchContacts} placeholder={m.sched_book_find_client_ph()} />
+					{#if nbContactId}<span class="linked">✓ {m.sched_book_linked()}</span>{/if}
+					{#if nbResults.length}
+						<div class="results">
+							{#each nbResults as c (c.id)}
+								<button type="button" class="result" onclick={() => pickContact(c)}>{c.name}</button>
+							{/each}
+						</div>
+					{/if}
+				</div>
+			</div>
 			<label class="field">
 				<span class="t-caption">{m.sched_book_name()}</span>
 				<input class="txt" bind:value={nbName} />
 			</label>
-			<label class="field">
-				<span class="t-caption">{m.sched_book_phone()}</span>
-				<input class="txt" bind:value={nbPhone} />
-			</label>
+			{#if !nbContactId}
+				<label class="field">
+					<span class="t-caption">{m.sched_book_phone()}</span>
+					<input class="txt" bind:value={nbPhone} />
+				</label>
+			{/if}
 			{#if nbErr}<p class="t-caption" style="color:var(--color-destructive)">{nbErr}</p>{/if}
 		<div class="flex gap-2">
 			<Button onclick={book} disabled={nbLoading || !nbSlot || !nbName.trim()}>{m.sched_book_confirm()}</Button>
@@ -228,6 +269,37 @@
 		background: var(--accent);
 		color: var(--color-accent-foreground, #fff);
 		border-color: var(--accent);
+	}
+	.search-wrap {
+		position: relative;
+	}
+	.linked {
+		font-size: 0.72rem;
+		color: var(--accent);
+	}
+	.results {
+		position: absolute;
+		z-index: 10;
+		left: 0;
+		right: 0;
+		top: 100%;
+		margin-top: 2px;
+		background: var(--color-card);
+		border: 1px solid var(--hairline);
+		border-radius: 8px;
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+		max-height: 180px;
+		overflow: auto;
+	}
+	.result {
+		display: block;
+		width: 100%;
+		text-align: left;
+		padding: 0.4rem 0.6rem;
+		font-size: 0.85rem;
+	}
+	.result:hover {
+		background: var(--hairline);
 	}
 	.act {
 		display: inline-flex;

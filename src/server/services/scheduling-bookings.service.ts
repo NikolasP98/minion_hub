@@ -90,6 +90,9 @@ export interface CreateBookingInput {
   attendeeEmail?: string | null;
   attendeePhone?: string | null;
   notes?: string | null;
+  /** Link to a specific CRM contact (internal booking picked one). When set it's
+   *  used directly; otherwise the contact is resolved/created from phone/email. */
+  crmContactId?: string | null;
   source?: 'public_link' | 'internal' | 'import';
   /** Prefer this resource if it's free for the slot. */
   preferredResourceId?: string | null;
@@ -233,7 +236,7 @@ export async function createBooking(ctx: CoreCtx, input: CreateBookingInput): Pr
       chosen = [...match.resourceIds].sort((a, b) => (loads.get(a) ?? 0) - (loads.get(b) ?? 0))[0];
     }
 
-    const crmContactId = await ensureCrmContact(tx, ctx.tenantId, input.attendeeName, input.attendeePhone, input.attendeeEmail);
+    const crmContactId = input.crmContactId ?? (await ensureCrmContact(tx, ctx.tenantId, input.attendeeName, input.attendeePhone, input.attendeeEmail));
     const uid = input.uid ?? globalThis.crypto.randomUUID();
     const status = et.requiresConfirmation ? 'pending' : 'accepted';
 

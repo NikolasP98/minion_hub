@@ -15,13 +15,18 @@
 
 	const eventTitle = (id: string) => data.eventTypes.find((e) => e.id === id)?.title ?? '';
 
+	// LOCAL calendar date (not UTC) — toISOString() would roll a late-evening
+	// negative-UTC-offset day forward (e.g. 22:40 Sun in Lima is Mon in UTC).
+	const ymd = (d: Date) =>
+		`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
 	function shiftDay(delta: number) {
 		const d = new Date(`${data.day}T00:00:00`);
 		d.setDate(d.getDate() + delta);
-		goto(`?date=${d.toISOString().slice(0, 10)}`, { keepFocus: true, noScroll: true });
+		goto(`?date=${ymd(d)}`, { keepFocus: true, noScroll: true });
 	}
 	function goToday() {
-		goto(`?date=${new Date().toISOString().slice(0, 10)}`, { keepFocus: true, noScroll: true });
+		goto(`?date=${ymd(new Date())}`, { keepFocus: true, noScroll: true });
 	}
 
 	/** Vertical offset + height (px) for a booking within the day grid. */
@@ -55,16 +60,16 @@
 		{#snippet leading()}
 			<CalendarDays size={16} class="text-accent shrink-0" />
 		{/snippet}
-		{#snippet actions()}
-			<div class="flex items-center gap-1">
-				<button class="nav-btn" onclick={() => shiftDay(-1)} aria-label={m.sched_prev()}><ChevronLeft size={16} /></button>
-				<Button size="sm" variant="ghost" onclick={goToday}>{m.sched_today()}</Button>
-				<button class="nav-btn" onclick={() => shiftDay(1)} aria-label={m.sched_next()}><ChevronRight size={16} /></button>
-			</div>
-		{/snippet}
 	</PageHeader>
 
-	<div class="px-4 py-2 t-caption">{prettyDay}</div>
+	<!-- Centered date nav: the date sits in a fixed-width slot so the chevrons
+	     and Today button never shift as the selected date's label changes. -->
+	<div class="cal-nav">
+		<button class="nav-btn" onclick={() => shiftDay(-1)} aria-label={m.sched_prev()}><ChevronLeft size={18} /></button>
+		<div class="cal-date">{prettyDay}</div>
+		<button class="nav-btn" onclick={() => shiftDay(1)} aria-label={m.sched_next()}><ChevronRight size={18} /></button>
+		<div class="cal-today"><Button size="sm" variant="ghost" onclick={goToday}>{m.sched_today()}</Button></div>
+	</div>
 
 	<div class="flex-1 min-h-0 overflow-auto p-4 pt-0">
 		{#if data.resources.length === 0}
@@ -189,15 +194,39 @@
 	.evt-a {
 		color: var(--color-muted-foreground);
 	}
+	.cal-nav {
+		position: relative;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		padding: 0.6rem 1rem;
+	}
+	/* Today floats at the right edge so the prev/date/next group stays centered. */
+	.cal-today {
+		position: absolute;
+		right: 1rem;
+		top: 50%;
+		transform: translateY(-50%);
+	}
+	.cal-date {
+		/* Fixed slot so the flanking chevrons don't move when the date changes. */
+		min-width: 14rem;
+		text-align: center;
+		font-weight: 600;
+		font-size: 0.95rem;
+	}
 	.nav-btn {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
 		padding: 0.3rem;
+		border: 1px solid var(--hairline);
 		border-radius: 6px;
-		color: var(--color-muted-foreground);
+		color: var(--color-foreground, inherit);
 	}
 	.nav-btn:hover {
 		background: var(--hairline);
+		border-color: var(--accent);
 	}
 </style>
