@@ -1,8 +1,9 @@
 <script lang="ts">
 	import type { PageData } from './$types';
-	import { Users, Plus, Trash2, ChevronRight, CalendarPlus, Check, Clock } from 'lucide-svelte';
+	import { Users, Plus, Trash2, ChevronRight, CalendarPlus, Check, Clock, MoreVertical, Palmtree } from 'lucide-svelte';
 	import { invalidate } from '$app/navigation';
-	import { PageHeader, Card, Button, Input, EmptyState, Badge } from '$lib/components/ui';
+	import { PageHeader, Card, Button, Input, EmptyState, Badge, Dropdown } from '$lib/components/ui';
+	import type { DropdownItem } from '$lib/components/ui';
 	import * as m from '$lib/paraglide/messages';
 	import AvailabilityEditor from '$lib/components/scheduling/AvailabilityEditor.svelte';
 	import MemberCalendarStrip from '$lib/components/scheduling/MemberCalendarStrip.svelte';
@@ -83,6 +84,24 @@
 		await invalidate('scheduling:data');
 	}
 
+	// Per-resource kebab menu. `active` doubles as the vacation flag: available
+	// (active) ↔ on vacation (inactive, still enrolled). "Disable scheduling"
+	// removes the resource (un-enrols an org member).
+	function resourceMenu(active: boolean): DropdownItem[] {
+		return [
+			active
+				? { value: 'vacation', label: m.sched_team_set_vacation(), icon: Palmtree }
+				: { value: 'available', label: m.sched_team_set_available(), icon: Check },
+			{ value: 'd', label: '', divider: true },
+			{ value: 'remove', label: m.sched_team_disable(), icon: Trash2, danger: true },
+		];
+	}
+	async function onResourceAction(id: string, value: string) {
+		if (value === 'vacation') await toggleActive(id, false);
+		else if (value === 'available') await toggleActive(id, true);
+		else if (value === 'remove') await remove(id);
+	}
+
 	// ── Custom (non-user) resource: rooms / equipment ─────────────────────────────
 	let showAdd = $state(false);
 	let name = $state('');
@@ -118,11 +137,6 @@
 		{#snippet leading()}
 			<Users size={16} class="text-accent shrink-0" />
 		{/snippet}
-		{#snippet actions()}
-			<Button size="sm" variant="ghost" onclick={() => (showAdd = !showAdd)}>
-				<Plus size={14} /> {m.sched_team_add_custom()}
-			</Button>
-		{/snippet}
 	</PageHeader>
 
 	<div class="flex-1 min-h-0 overflow-auto p-4 flex flex-col gap-4">
@@ -151,7 +165,12 @@
 
 		<!-- ── Native org members ──────────────────────────────────────────────── -->
 		<section class="flex flex-col gap-2">
-			<div class="t-label">{m.sched_team_members_heading()}</div>
+			<div class="flex items-center justify-between gap-2">
+				<div class="t-label">{m.sched_team_members_heading()}</div>
+				<button class="add-link" onclick={() => (showAdd = !showAdd)}>
+					<Plus size={13} /> {m.sched_team_add_custom()}
+				</button>
+			</div>
 
 			{#if roster.length === 0}
 				<EmptyState title={m.sched_team_no_members()} />
@@ -189,20 +208,15 @@
 							</div>
 
 							{#if resource}
-								<Badge variant="semantic" value={resource.active ? 'success' : 'warning'} size="sm" dot>
-									{resource.active ? m.sched_team_enrolled() : m.sched_resource_active()}
+								{@const res = resource}
+								<Badge variant="semantic" value={res.active ? 'success' : 'warning'} size="sm" dot>
+									{res.active ? m.sched_team_enrolled() : m.sched_team_on_vacation()}
 								</Badge>
-								<label class="t-caption flex items-center gap-1 shrink-0">
-									<input
-										type="checkbox"
-										checked={resource.active}
-										onchange={(e) => toggleActive(resource.id, e.currentTarget.checked)}
-									/>
-									{m.sched_resource_active()}
-								</label>
-								<button class="icon-btn del" onclick={() => remove(resource.id)} aria-label={m.sched_delete()}>
-									<Trash2 size={15} />
-								</button>
+								<Dropdown items={resourceMenu(res.active)} onSelect={(v) => onResourceAction(res.id, v)} placement="left">
+									{#snippet trigger()}
+										<span class="icon-btn" aria-label={m.sched_team_actions()}><MoreVertical size={16} /></span>
+									{/snippet}
+								</Dropdown>
 							{:else}
 								<Button size="sm" onclick={() => enroll(member)} disabled={busy === member.id}>
 									<CalendarPlus size={14} /> {m.sched_team_enable()}
@@ -252,17 +266,14 @@
 								<div class="font-medium truncate">{r.name}</div>
 								<div class="t-caption truncate">{r.email ?? ''} · {r.timezone}</div>
 							</div>
-							<label class="t-caption flex items-center gap-1 shrink-0">
-								<input
-									type="checkbox"
-									checked={r.active}
-									onchange={(e) => toggleActive(r.id, e.currentTarget.checked)}
-								/>
-								{m.sched_resource_active()}
-							</label>
-							<button class="icon-btn del" onclick={() => remove(r.id)} aria-label={m.sched_delete()}>
-								<Trash2 size={15} />
-							</button>
+							<Badge variant="semantic" value={r.active ? 'success' : 'warning'} size="sm" dot>
+								{r.active ? m.sched_resource_active() : m.sched_team_on_vacation()}
+							</Badge>
+							<Dropdown items={resourceMenu(r.active)} onSelect={(v) => onResourceAction(r.id, v)} placement="left">
+								{#snippet trigger()}
+									<span class="icon-btn" aria-label={m.sched_team_actions()}><MoreVertical size={16} /></span>
+								{/snippet}
+							</Dropdown>
 						</div>
 						{#if expanded === r.id}
 							<div class="mt-3 pt-3 border-t border-[var(--hairline)] grid gap-4 lg:grid-cols-[1fr_auto]">
@@ -300,8 +311,15 @@
 	.icon-btn:hover {
 		background: var(--hairline);
 	}
-	.icon-btn.del:hover {
-		color: var(--color-destructive);
+	.add-link {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+		font-size: 0.7rem;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--accent);
 	}
 	.icon-btn-spacer {
 		width: 26px;
