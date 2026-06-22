@@ -54,6 +54,11 @@ export async function getHealthMetrics(
     });
   }
 
+  const pre = agent.status.health;
+  if (pre) {
+    return { state, lastRunAt: pre.lastRunAt, runs30d: pre.runs30d, successRate: pre.successRate };
+  }
+
   const stats = agent.status.stats;
   if (stats) {
     const denom = stats.sent + stats.failed;

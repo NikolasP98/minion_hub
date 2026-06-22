@@ -74,14 +74,19 @@ export function getSystemAgentDescriptors(): SystemAgentDescriptor[] {
           ctx.profileId,
         ).catch(() => null);
         if (!summary) return { enabled: true, state: 'attention', detail: m.sysagent_triage_unreachable() };
+        const c = summary.counts ?? null;
+        const total = c?.total ?? 0;
         return {
           enabled: true,
           state: 'active',
-          detail: triageStatusDetail(summary.counts ?? null, {
+          detail: triageStatusDetail(c, {
             unavailable: m.artifact_triage_status_unavailable(),
             none: m.artifact_triage_status_none(),
-            count: (total, high) => m.artifact_triage_status_count({ total, high }),
+            count: (t, high) => m.artifact_triage_status_count({ total: t, high }),
           }),
+          // Triage is a continuous kernel (no discrete flow_runs): surface alert
+          // volume + notify rate as the generic health metrics. lastRunAt N/A.
+          health: { lastRunAt: null, runs30d: c ? total : null, successRate: total > 0 ? c!.notified / total : null },
         };
       },
       async resolveVariables(ctx, keys) {

@@ -12,6 +12,9 @@ export interface SystemAgentStatus {
   state: 'active' | 'disabled' | 'attention';
   stats?: SystemAgentStats;
   detail?: string;
+  /** Pre-computed generic health metrics for agents whose activity isn't a flow_run
+   *  or reminders-style stats (e.g. the triage kernel). Wins over stats in getHealthMetrics. */
+  health?: { lastRunAt: number | null; runs30d: number | null; successRate: number | null };
 }
 
 /** DB-free description of a system agent — safe to import on the client. */
