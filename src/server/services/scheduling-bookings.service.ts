@@ -236,7 +236,19 @@ export async function createBooking(ctx: CoreCtx, input: CreateBookingInput): Pr
       chosen = [...match.resourceIds].sort((a, b) => (loads.get(a) ?? 0) - (loads.get(b) ?? 0))[0];
     }
 
-    const crmContactId = input.crmContactId ?? (await ensureCrmContact(tx, ctx.tenantId, input.attendeeName, input.attendeePhone, input.attendeeEmail));
+    // A client-supplied crmContactId must belong to THIS org — validate under the
+    // RLS-scoped tx (don't trust it as authoritative; ignore foreign/stale ids and
+    // fall back to resolve/create by phone/email).
+    let crmContactId: string | null = null;
+    if (input.crmContactId) {
+      const [hit] = await tx
+        .select({ id: crmContacts.id })
+        .from(crmContacts)
+        .where(and(eq(crmContacts.id, input.crmContactId), eq(crmContacts.orgId, ctx.tenantId)))
+        .limit(1);
+      if (hit) crmContactId = hit.id;
+    }
+    if (!crmContactId) crmContactId = await ensureCrmContact(tx, ctx.tenantId, input.attendeeName, input.attendeePhone, input.attendeeEmail);
     const uid = input.uid ?? globalThis.crypto.randomUUID();
     const status = et.requiresConfirmation ? 'pending' : 'accepted';
 
