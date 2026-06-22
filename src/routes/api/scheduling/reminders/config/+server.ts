@@ -4,7 +4,7 @@ import { getCoreCtx } from '$server/auth/core-ctx';
 import { requireAdmin } from '$server/auth/authorize';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { getReminderConfig, saveReminderConfig } from '$server/services/reminder-config.service';
-import type { ReminderStage } from '$server/db/pg-reminders-schema';
+import type { ReminderStage, ReminderChannel } from '$server/db/pg-reminders-schema';
 
 export const GET: RequestHandler = async ({ locals }) => {
   const ctx = await getCoreCtx(locals);
@@ -23,11 +23,19 @@ export const PUT: RequestHandler = async ({ locals, request }) => {
     ? (b.stages as Array<Record<string, unknown>>).map((s) => ({
         key: String(s.key),
         ...(s.minutesBefore != null ? { minutesBefore: Number(s.minutesBefore) } : {}),
+        ...(s.enabled !== undefined ? { enabled: s.enabled === true } : {}),
+        ...(s.recipients ? { recipients: String(s.recipients) as ReminderStage['recipients'] } : {}),
       }) as ReminderStage)
+    : undefined;
+  const channels = Array.isArray(b.channels)
+    ? (b.channels as Array<Record<string, unknown>>)
+        .filter((c) => c && c.channel)
+        .map((c) => ({ channel: String(c.channel), accountId: c.accountId ? String(c.accountId) : null }) as ReminderChannel)
     : undefined;
   await saveReminderConfig(ctx, {
     ...(b.enabled !== undefined ? { enabled: b.enabled === true } : {}),
     ...(stages ? { stages } : {}),
+    ...(channels ? { channels } : {}),
     ...(b.channel !== undefined ? { channel: String(b.channel) } : {}),
     ...(b.accountId !== undefined ? { accountId: b.accountId ? String(b.accountId) : null } : {}),
     ...(b.personalize !== undefined ? { personalize: b.personalize === true } : {}),

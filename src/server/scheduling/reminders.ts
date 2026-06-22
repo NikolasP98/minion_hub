@@ -68,3 +68,35 @@ export function maxLeadMinutes(stages: ReminderStage[]): number {
   for (const s of stages) if (s.minutesBefore != null && s.minutesBefore > max) max = s.minutesBefore;
   return max;
 }
+
+// ── Channel-agnostic recipient routing ──────────────────────────────────────
+
+export type RecipientRole = 'client' | 'team';
+
+/** Expand a stage's audience into the concrete roles to send to. */
+export function expandRoles(recipients: ReminderStage['recipients']): RecipientRole[] {
+  if (recipients === 'team') return ['team'];
+  if (recipients === 'both') return ['client', 'team'];
+  return ['client'];
+}
+
+/** Channels addressed by an email identity rather than a phone/jid one. */
+const EMAIL_CHANNELS = new Set(['email']);
+
+export interface RecipientContacts {
+  attendeePhone: string | null;
+  attendeeEmail: string | null;
+  staffPhone: string | null;
+  staffEmail: string | null;
+}
+
+/**
+ * Resolve the destination address for a (channel, role). Returns null when the
+ * party has no identity reachable on that channel (e.g. a phone-only channel for
+ * a staff member with only an email) → the caller records a graceful skip.
+ */
+export function resolveRecipient(channel: string, role: RecipientRole, c: RecipientContacts): string | null {
+  const byEmail = EMAIL_CHANNELS.has(channel);
+  const pick = role === 'client' ? (byEmail ? c.attendeeEmail : c.attendeePhone) : byEmail ? c.staffEmail : c.staffPhone;
+  return pick?.trim() || null;
+}

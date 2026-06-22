@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dueStages, maxLeadMinutes } from './reminders';
+import { dueStages, maxLeadMinutes, expandRoles, resolveRecipient } from './reminders';
 import type { ReminderStage } from '$server/db/pg-reminders-schema';
 
 const STAGES: ReminderStage[] = [
@@ -90,5 +90,25 @@ describe('dueStages', () => {
   it('maxLeadMinutes returns the widest time-based window', () => {
     expect(maxLeadMinutes(STAGES)).toBe(1440);
     expect(maxLeadMinutes([{ key: 'confirmation' }])).toBe(0);
+  });
+});
+
+describe('expandRoles', () => {
+  it('defaults to client, expands both', () => {
+    expect(expandRoles(undefined)).toEqual(['client']);
+    expect(expandRoles('client')).toEqual(['client']);
+    expect(expandRoles('team')).toEqual(['team']);
+    expect(expandRoles('both')).toEqual(['client', 'team']);
+  });
+});
+
+describe('resolveRecipient', () => {
+  const c = { attendeePhone: '+51999', attendeeEmail: 'a@x.com', staffPhone: null, staffEmail: 's@x.com' };
+  it('routes by channel identity and role', () => {
+    expect(resolveRecipient('whatsapp', 'client', c)).toBe('+51999');
+    expect(resolveRecipient('email', 'client', c)).toBe('a@x.com');
+    expect(resolveRecipient('email', 'team', c)).toBe('s@x.com');
+    // Staff has no phone → unreachable on phone channels → null (graceful skip).
+    expect(resolveRecipient('whatsapp', 'team', c)).toBeNull();
   });
 });

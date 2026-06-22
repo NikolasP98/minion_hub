@@ -22,8 +22,12 @@ export const schedReminderConfig = pgTable('sched_reminder_config', {
       { key: '24h', minutesBefore: 1440 },
       { key: '2h', minutesBefore: 120 },
     ]),
+  /** Channels to send on — `[{channel, accountId}]`. Empty falls back to the
+   *  legacy single `channel`/`accountId` pair below (back-compat). */
+  channels: jsonb('channels').notNull().default([]),
+  /** @deprecated legacy single channel — superseded by `channels`. */
   channel: text('channel').notNull().default('whatsapp'),
-  /** Which gateway channel account sends (e.g. the org's WhatsApp account id). */
+  /** @deprecated legacy single account — superseded by `channels`. */
   accountId: text('account_id'),
   personalize: boolean('personalize').notNull().default(true),
   locale: text('locale').notNull().default('es'),
@@ -41,6 +45,8 @@ export const schedReminders = pgTable(
     bookingId: uuid('booking_id').notNull(),
     stage: text('stage').notNull(), // 'confirmation' | '24h' | '2h' | …
     channel: text('channel').notNull(),
+    /** Audience this row targets: 'client' (the attendee) | 'team' (the staff). */
+    recipientRole: text('recipient_role').notNull().default('client'),
     recipient: text('recipient'),
     content: text('content'),
     status: text('status').notNull(), // 'sent' | 'failed' | 'skipped'
@@ -50,7 +56,15 @@ export const schedReminders = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    bookingStageUniq: uniqueIndex('sched_reminders_booking_stage_uniq').on(t.orgId, t.bookingId, t.stage),
+    // Dedup key now spans channel + role so a stage can fan out to several
+    // channels / audiences, each sent at most once.
+    bookingStageUniq: uniqueIndex('sched_reminders_booking_stage_chan_uniq').on(
+      t.orgId,
+      t.bookingId,
+      t.stage,
+      t.channel,
+      t.recipientRole,
+    ),
     orgCreatedIdx: index('sched_reminders_org_created_idx').on(t.orgId, t.createdAt),
     bookingIdx: index('sched_reminders_booking_idx').on(t.bookingId),
   }),
@@ -64,4 +78,14 @@ export interface ReminderStage {
   key: string;
   /** Minutes before startTime (omitted for the booking-time 'confirmation' stage). */
   minutesBefore?: number;
+  /** Stage on/off without deleting it. Treated as true when omitted. */
+  enabled?: boolean;
+  /** Who receives this stage. Defaults to 'client' when omitted. */
+  recipients?: 'client' | 'team' | 'both';
+}
+
+/** A configured send channel for notifications. */
+export interface ReminderChannel {
+  channel: string;
+  accountId: string | null;
 }

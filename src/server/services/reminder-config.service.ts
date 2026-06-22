@@ -3,13 +3,22 @@ import { withOrgCore } from '$server/db/with-org-core';
 import { getCoreDb } from '$server/db/pg-client';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { schedReminderConfig } from '$server/db/pg-reminders-schema';
-import type { SchedReminderConfig, ReminderStage } from '$server/db/pg-reminders-schema';
+import type { SchedReminderConfig, ReminderStage, ReminderChannel } from '$server/db/pg-reminders-schema';
 
 export const DEFAULT_STAGES: ReminderStage[] = [
-  { key: 'confirmation' },
-  { key: '24h', minutesBefore: 1440 },
-  { key: '2h', minutesBefore: 120 },
+  { key: 'confirmation', recipients: 'client' },
+  { key: '24h', minutesBefore: 1440, recipients: 'client' },
+  { key: '2h', minutesBefore: 120, recipients: 'client' },
 ];
+
+/** The channels to send on: the `channels` array, or the legacy single
+ *  channel/account pair when it's empty (back-compat for pre-rework configs). */
+export function effectiveChannels(config: Pick<SchedReminderConfig, 'channels' | 'channel' | 'accountId'>): ReminderChannel[] {
+  const list = (config.channels as ReminderChannel[] | null) ?? [];
+  if (list.length) return list.filter((c) => c && c.channel);
+  if (config.accountId || config.channel) return [{ channel: config.channel || 'whatsapp', accountId: config.accountId ?? null }];
+  return [];
+}
 
 /** Read the org's reminder config, or a default-off shape when absent. */
 export async function getReminderConfig(ctx: CoreCtx): Promise<SchedReminderConfig> {
@@ -21,6 +30,7 @@ export async function getReminderConfig(ctx: CoreCtx): Promise<SchedReminderConf
     orgId: ctx.tenantId,
     enabled: false,
     stages: DEFAULT_STAGES,
+    channels: [],
     channel: 'whatsapp',
     accountId: null,
     personalize: true,
@@ -33,6 +43,7 @@ export async function getReminderConfig(ctx: CoreCtx): Promise<SchedReminderConf
 export interface ReminderConfigPatch {
   enabled?: boolean;
   stages?: ReminderStage[];
+  channels?: ReminderChannel[];
   channel?: string;
   accountId?: string | null;
   personalize?: boolean;
@@ -48,6 +59,7 @@ export async function saveReminderConfig(ctx: CoreCtx, patch: ReminderConfigPatc
         orgId: ctx.tenantId,
         enabled: patch.enabled ?? false,
         stages: patch.stages ?? DEFAULT_STAGES,
+        channels: patch.channels ?? [],
         channel: patch.channel ?? 'whatsapp',
         accountId: patch.accountId ?? null,
         personalize: patch.personalize ?? true,
@@ -60,6 +72,7 @@ export async function saveReminderConfig(ctx: CoreCtx, patch: ReminderConfigPatc
         set: {
           ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
           ...(patch.stages !== undefined ? { stages: patch.stages } : {}),
+          ...(patch.channels !== undefined ? { channels: patch.channels } : {}),
           ...(patch.channel !== undefined ? { channel: patch.channel } : {}),
           ...(patch.accountId !== undefined ? { accountId: patch.accountId } : {}),
           ...(patch.personalize !== undefined ? { personalize: patch.personalize } : {}),

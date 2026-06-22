@@ -3,8 +3,9 @@ import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { schedReminders } from '$server/db/pg-reminders-schema';
 import type { ReminderStage } from '$server/db/pg-reminders-schema';
-import { dueStages } from '$server/scheduling/reminders';
-import { getReminderConfig } from './reminder-config.service';
+import { dueStages, expandRoles, resolveRecipient } from '$server/scheduling/reminders';
+import type { RecipientRole } from '$server/scheduling/reminders';
+import { getReminderConfig, effectiveChannels } from './reminder-config.service';
 import { composeReminder } from './reminder-compose';
 import type { ReminderContext } from './reminder-compose';
 import { gatewayCall } from '$lib/server/gateway-rpc';
@@ -23,9 +24,11 @@ interface CandidateRow {
   status: string;
   attendee_name: string | null;
   attendee_phone: string | null;
+  attendee_email: string | null;
   crm_contact_id: string | null;
   service_title: string;
   staff_name: string | null;
+  staff_email: string | null;
   timezone: string;
   opt_out: string;
 }
@@ -56,8 +59,11 @@ export async function processOrgReminders(ctx: CoreCtx, now: Date, cap = 25): Pr
   const config = await getReminderConfig(ctx);
   const result: ReminderRunResult = { sent: 0, failed: 0, skipped: 0 };
   if (!config.enabled) return result;
-  const stages = (config.stages as ReminderStage[]) ?? [];
+  // Only enabled stages fire; a stage is "enabled" unless explicitly turned off.
+  const stages = ((config.stages as ReminderStage[]) ?? []).filter((s) => s.enabled !== false);
   if (!stages.length) return result;
+  const channels = effectiveChannels(config);
+  if (!channels.length) return result;
 
   // Candidate = active future bookings within a 60-day horizon. The horizon must
   // exceed the widest lead window AND cover the confirmation stage, which fires
@@ -65,8 +71,8 @@ export async function processOrgReminders(ctx: CoreCtx, now: Date, cap = 25): Pr
   const candidates = (await withOrgCore(ctx, (tx) =>
     tx.execute(sql`
       select b.id, b.start_time, b.created_at, b.status,
-             b.attendee_name, b.attendee_phone, b.crm_contact_id,
-             et.title as service_title, r.name as staff_name, r.timezone,
+             b.attendee_name, b.attendee_phone, b.attendee_email, b.crm_contact_id,
+             et.title as service_title, r.name as staff_name, r.email as staff_email, r.timezone,
              coalesce(c.custom_fields->>'_reminders_opt_out','') as opt_out
       from sched_bookings b
       join sched_event_types et on et.id = b.event_type_id and et.org_id = b.org_id
@@ -80,114 +86,137 @@ export async function processOrgReminders(ctx: CoreCtx, now: Date, cap = 25): Pr
   )) as unknown as CandidateRow[];
   if (!candidates.length) return result;
 
-  // Already-recorded stage keys per booking (dedup).
+  // Already-recorded (stage, channel, role) combos per booking (dedup). With
+  // multi-channel/multi-audience fan-out the key spans all three.
   const ids = candidates.map((c) => c.id);
   const recorded = (await withOrgCore(ctx, (tx) =>
     tx
-      .select({ bookingId: schedReminders.bookingId, stage: schedReminders.stage })
+      .select({ bookingId: schedReminders.bookingId, stage: schedReminders.stage, channel: schedReminders.channel, role: schedReminders.recipientRole })
       .from(schedReminders)
       .where(and(eq(schedReminders.orgId, ctx.tenantId), inArray(schedReminders.bookingId, ids))),
-  )) as Array<{ bookingId: string; stage: string }>;
-  const sentByBooking = new Map<string, Set<string>>();
-  for (const r of recorded) {
-    const set = sentByBooking.get(r.bookingId) ?? new Set();
-    set.add(r.stage);
-    sentByBooking.set(r.bookingId, set);
-  }
+  )) as Array<{ bookingId: string; stage: string; channel: string; role: string }>;
+  const doneCombos = new Set<string>();
+  for (const r of recorded) doneCombos.add(`${r.bookingId}|${r.stage}|${r.channel}|${r.role}`);
 
   let budget = cap;
   for (const b of candidates) {
     if (budget <= 0) break;
+    // Timing eligibility is per-stage; per-combo dedup is the claim insert below,
+    // so pass an empty sent-set and let each (channel, role) claim guard itself.
     const due = dueStages({
       booking: { startTime: new Date(b.start_time), createdAt: new Date(b.created_at), status: b.status },
       stages,
       now,
-      sentStageKeys: sentByBooking.get(b.id) ?? new Set(),
+      sentStageKeys: [],
     });
+    const optedOut = Boolean(b.opt_out && b.opt_out !== 'false' && b.opt_out !== '0');
+    const contacts = {
+      attendeePhone: b.attendee_phone,
+      attendeeEmail: b.attendee_email,
+      staffPhone: null,
+      staffEmail: b.staff_email,
+    };
+
     for (const stage of due) {
       if (budget <= 0) break;
-      budget -= 1;
-      const optedOut = b.opt_out && b.opt_out !== 'false' && b.opt_out !== '0';
-      const recipient = b.attendee_phone?.trim() || null;
+      for (const chan of channels) {
+        if (budget <= 0) break;
+        for (const role of expandRoles(stage.recipients)) {
+          if (budget <= 0) break;
+          const comboKey = `${b.id}|${stage.key}|${chan.channel}|${role}`;
+          if (doneCombos.has(comboKey)) continue;
+          budget -= 1;
+          const recipient = resolveRecipient(chan.channel, role as RecipientRole, contacts);
 
-      // Claim the (booking, stage) slot — skip if another tick already took it.
-      const claimed = await withOrgCore(ctx, (tx) =>
-        tx
-          .insert(schedReminders)
-          .values({ orgId: ctx.tenantId, bookingId: b.id, stage: stage.key, channel: config.channel, recipient, status: 'sending' })
-          .onConflictDoNothing({ target: [schedReminders.orgId, schedReminders.bookingId, schedReminders.stage] })
-          .returning({ id: schedReminders.id }),
-      );
-      if (!claimed.length) continue; // already handled
+          // Claim the (booking, stage, channel, role) slot — skip on race.
+          const claimed = await withOrgCore(ctx, (tx) =>
+            tx
+              .insert(schedReminders)
+              .values({ orgId: ctx.tenantId, bookingId: b.id, stage: stage.key, channel: chan.channel, recipientRole: role, recipient, status: 'sending' })
+              .onConflictDoNothing({ target: [schedReminders.orgId, schedReminders.bookingId, schedReminders.stage, schedReminders.channel, schedReminders.recipientRole] })
+              .returning({ id: schedReminders.id }),
+          );
+          if (!claimed.length) continue; // already handled
 
-      const finalize = (status: string, fields: Partial<{ messageId: string; error: string; content: string }>) =>
-        withOrgCore(ctx, (tx) =>
-          tx
-            .update(schedReminders)
-            .set({ status, sentAt: status === 'sent' ? new Date() : null, ...fields })
-            .where(and(eq(schedReminders.orgId, ctx.tenantId), eq(schedReminders.bookingId, b.id), eq(schedReminders.stage, stage.key))),
-        );
+          const finalize = (status: string, fields: Partial<{ messageId: string; error: string; content: string }>) =>
+            withOrgCore(ctx, (tx) =>
+              tx
+                .update(schedReminders)
+                .set({ status, sentAt: status === 'sent' ? new Date() : null, ...fields })
+                .where(
+                  and(
+                    eq(schedReminders.orgId, ctx.tenantId),
+                    eq(schedReminders.bookingId, b.id),
+                    eq(schedReminders.stage, stage.key),
+                    eq(schedReminders.channel, chan.channel),
+                    eq(schedReminders.recipientRole, role),
+                  ),
+                ),
+            );
 
-      if (optedOut || !recipient) {
-        await finalize('skipped', { error: optedOut ? 'opted_out' : 'no_recipient' });
-        result.skipped += 1;
-        continue;
-      }
+          // Opt-out only silences the client; staff notifications still go out.
+          if ((optedOut && role === 'client') || !recipient) {
+            await finalize('skipped', { error: optedOut && role === 'client' ? 'opted_out' : 'no_recipient' });
+            result.skipped += 1;
+            continue;
+          }
 
-      const ctxMsg: ReminderContext = {
-        stage: stage.key,
-        attendeeName: b.attendee_name,
-        serviceTitle: b.service_title,
-        staffName: b.staff_name,
-        whenText: formatWhen(b.start_time, b.timezone, config.locale),
-        fromName: config.fromName || 'tu negocio',
-        locale: config.locale,
-      };
-      let text = '';
-      try {
-        text = await composeReminder(ctxMsg, config.personalize);
-        const res = await gatewayCall<{ messageId?: string; id?: string }>('channels.send', {
-          channel: config.channel,
-          to: recipient,
-          text,
-          ...(config.accountId ? { accountId: config.accountId } : {}),
-          idempotencyKey: `rem-${b.id}-${stage.key}`,
-        });
-        const messageId = res?.messageId ?? res?.id ?? null;
-        await finalize('sent', { content: text, ...(messageId ? { messageId } : {}) });
-        // Mirror into the messages ledger so the reminder shows in the CRM timeline.
-        try {
-          await insertMessages(ctx.tenantId, null, [
-            {
-              clientId: `rem-${b.id}-${stage.key}`,
-              direction: 'outbound',
-              channel: config.channel,
-              accountId: config.accountId ?? null,
-              chatId: null,
-              isGroup: false,
-              senderId: recipient,
-              senderName: b.attendee_name,
-              senderHandle: null,
-              isBot: true,
-              content: text,
-              messageId,
-              agentId: 'reminders-agent',
-              sessionKey: null,
-              success: true,
-              error: null,
-              occurredAt: Date.now(),
-              metadata: { bookingId: b.id, stage: stage.key, kind: 'reminder' },
-            },
-          ]);
-        } catch (e) {
-          console.error('[reminders] ledger insert failed', b.id, stage.key, e);
+          const ctxMsg: ReminderContext = {
+            stage: stage.key,
+            attendeeName: role === 'team' ? b.staff_name : b.attendee_name,
+            serviceTitle: b.service_title,
+            staffName: b.staff_name,
+            whenText: formatWhen(b.start_time, b.timezone, config.locale),
+            fromName: config.fromName || 'tu negocio',
+            locale: config.locale,
+          };
+          let text = '';
+          try {
+            text = await composeReminder(ctxMsg, config.personalize);
+            const res = await gatewayCall<{ messageId?: string; id?: string }>('channels.send', {
+              channel: chan.channel,
+              to: recipient,
+              text,
+              ...(chan.accountId ? { accountId: chan.accountId } : {}),
+              idempotencyKey: `rem-${b.id}-${stage.key}-${chan.channel}-${role}`,
+            });
+            const messageId = res?.messageId ?? res?.id ?? null;
+            await finalize('sent', { content: text, ...(messageId ? { messageId } : {}) });
+            // Mirror into the messages ledger so the reminder shows in the CRM timeline.
+            try {
+              await insertMessages(ctx.tenantId, null, [
+                {
+                  clientId: `rem-${b.id}-${stage.key}-${chan.channel}-${role}`,
+                  direction: 'outbound',
+                  channel: chan.channel,
+                  accountId: chan.accountId ?? null,
+                  chatId: null,
+                  isGroup: false,
+                  senderId: recipient,
+                  senderName: ctxMsg.attendeeName,
+                  senderHandle: null,
+                  isBot: true,
+                  content: text,
+                  messageId,
+                  agentId: 'reminders-agent',
+                  sessionKey: null,
+                  success: true,
+                  error: null,
+                  occurredAt: Date.now(),
+                  metadata: { bookingId: b.id, stage: stage.key, channel: chan.channel, role, kind: 'reminder' },
+                },
+              ]);
+            } catch (e) {
+              console.error('[reminders] ledger insert failed', b.id, stage.key, e);
+            }
+            result.sent += 1;
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            console.error('[reminders] send failed', b.id, stage.key, chan.channel, role, msg);
+            await finalize('failed', { error: msg.slice(0, 500), ...(text ? { content: text } : {}) });
+            result.failed += 1;
+          }
         }
-        result.sent += 1;
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        console.error('[reminders] send failed', b.id, stage.key, msg);
-        await finalize('failed', { error: msg.slice(0, 500), ...(text ? { content: text } : {}) });
-        result.failed += 1;
       }
     }
   }

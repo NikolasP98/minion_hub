@@ -23,6 +23,22 @@ export interface ReminderContext {
   locale: string;
 }
 
+/** A representative context for previewing a message in the settings UI. */
+export function sampleContext(opts: { stage?: string; fromName?: string | null; locale?: string }): ReminderContext {
+  const locale = opts.locale || 'es';
+  const whenText =
+    locale === 'es' ? 'martes, 24 de junio, 10:00 a. m.' : 'Tuesday, June 24, 10:00 AM';
+  return {
+    stage: opts.stage || 'confirmation',
+    attendeeName: locale === 'es' ? 'Ana' : 'Ana',
+    serviceTitle: locale === 'es' ? 'Consulta' : 'Consultation',
+    staffName: locale === 'es' ? 'Dra. López' : 'Dr. López',
+    whenText,
+    fromName: opts.fromName?.trim() || (locale === 'es' ? 'tu negocio' : 'your business'),
+    locale,
+  };
+}
+
 /** Deterministic Spanish template per stage. Always safe to send. */
 export function reminderTemplate(c: ReminderContext): string {
   const hi = c.attendeeName ? `Hola ${c.attendeeName} 👋` : 'Hola 👋';
