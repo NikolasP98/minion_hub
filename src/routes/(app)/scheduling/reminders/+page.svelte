@@ -3,6 +3,7 @@
 	import { BellRing, Check, X, MinusCircle, Plus, Trash2, RefreshCw, Sparkles } from 'lucide-svelte';
 	import { invalidate } from '$app/navigation';
 	import { PageHeader, Card, Button, Toggle, EmptyState, Badge } from '$lib/components/ui';
+	import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
 	import * as m from '$lib/paraglide/messages';
 
 	let { data }: { data: PageData } = $props();
@@ -157,9 +158,14 @@
 			{:else}
 				<div class="flex flex-wrap gap-2">
 					{#each catalog as c (chanKey(c))}
-						<button type="button" class="chip {chanSelected(c) ? 'chip-on' : ''}" onclick={() => toggleChannel(c)}>
-							<span class="font-medium">{c.channel}</span>
-							<span class="opacity-70">{c.name ?? c.phone ?? c.accountId}</span>
+						<button
+							type="button"
+							class="chip {chanSelected(c) ? 'chip-on' : ''}"
+							onclick={() => toggleChannel(c)}
+							title={`${c.channel} · ${c.name ?? c.phone ?? c.accountId}`}
+						>
+							<ChannelBrandIcon channel={c.channel} size={16} />
+							<span class="opacity-80">{c.name ?? c.phone ?? c.accountId}</span>
 						</button>
 					{/each}
 				</div>
