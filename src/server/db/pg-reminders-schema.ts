@@ -30,6 +30,9 @@ export const schedReminderConfig = pgTable('sched_reminder_config', {
   /** @deprecated legacy single account — superseded by `channels`. */
   accountId: text('account_id'),
   personalize: boolean('personalize').notNull().default(true),
+  /** When true, an LLM infers accept/decline from the contact's replies (the
+   *  "agent"); when false, the confirmation asks for SÍ/NO and we substring-match. */
+  inferConfirmation: boolean('infer_confirmation').notNull().default(false),
   locale: text('locale').notNull().default('es'),
   fromName: text('from_name'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

@@ -3,7 +3,7 @@ import { json, error } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { getCoreDb } from '$server/db/pg-client';
 import { listEnabledReminderOrgs } from '$server/services/reminder-config.service';
-import { processOrgReminders } from '$server/services/reminders.service';
+import { processOrgReminders, scanConfirmationReplies } from '$server/services/reminders.service';
 import { isModuleEnabled } from '$server/services/modules.service';
 
 /**
@@ -22,6 +22,8 @@ export const GET: RequestHandler = async ({ request }) => {
   let sent = 0;
   let failed = 0;
   let skipped = 0;
+  let confirmed = 0;
+  let declined = 0;
   for (const orgId of orgIds) {
     const ctx = { db: getCoreDb(), tenantId: orgId };
     try {
@@ -30,9 +32,13 @@ export const GET: RequestHandler = async ({ request }) => {
       sent += r.sent;
       failed += r.failed;
       skipped += r.skipped;
+      // Second pass: read replies to pending confirmations and flip their status.
+      const c = await scanConfirmationReplies(ctx, now);
+      confirmed += c.confirmed;
+      declined += c.declined;
     } catch (e) {
       console.error('[reminders] tick failed for org', orgId, e);
     }
   }
-  return json({ orgs: orgIds.length, sent, failed, skipped });
+  return json({ orgs: orgIds.length, sent, failed, skipped, confirmed, declined });
 };

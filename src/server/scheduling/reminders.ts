@@ -100,3 +100,41 @@ export function resolveRecipient(channel: string, role: RecipientRole, c: Recipi
   const pick = role === 'client' ? (byEmail ? c.attendeeEmail : c.attendeePhone) : byEmail ? c.staffEmail : c.staffPhone;
   return pick?.trim() || null;
 }
+
+// ── Confirmation replies (agent OFF: keyword match) ──────────────────────────
+
+/** The "reply SÍ/NO" call-to-action appended to a pending booking's confirmation
+ *  when AI inference is OFF (so the keyword scan has something deterministic). */
+export function confirmCta(locale: string): string {
+  return locale === 'en'
+    ? 'Reply YES to confirm or NO to cancel.'
+    : 'Responde SÍ para confirmar o NO para cancelar.';
+}
+
+const norm = (s: string) =>
+  s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '') // strip accents (sí → si)
+    .replace(/[^a-z0-9\s]/g, ' ');
+const YES_TOKENS = new Set(['si', 'yes', 'confirmo', 'confirmar', 'confirmado', 'confirma', 'ok', 'okay', 'dale', 'claro', 'listo', 'perfecto', 'va', 'asistire']);
+const NO_TOKENS = new Set(['no', 'nop', 'cancela', 'cancelar', 'cancelo', 'cancelado']);
+
+/**
+ * Keyword-match a message for a confirm/decline intent → 'yes' | 'no' | null
+ * (unclear). Conservative: if BOTH or NEITHER class of token appears it returns
+ * null, so an ambiguous reply never auto-changes a booking.
+ */
+export function parseYesNo(text: string | null | undefined): 'yes' | 'no' | null {
+  if (!text) return null;
+  const tokens = norm(text).split(/\s+/).filter(Boolean);
+  let yes = false;
+  let no = false;
+  for (const t of tokens) {
+    if (YES_TOKENS.has(t)) yes = true;
+    if (NO_TOKENS.has(t)) no = true;
+  }
+  if (yes && !no) return 'yes';
+  if (no && !yes) return 'no';
+  return null;
+}

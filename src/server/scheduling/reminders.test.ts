@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dueStages, maxLeadMinutes, expandRoles, resolveRecipient } from './reminders';
+import { dueStages, maxLeadMinutes, expandRoles, resolveRecipient, parseYesNo } from './reminders';
 import type { ReminderStage } from '$server/db/pg-reminders-schema';
 
 const STAGES: ReminderStage[] = [
@@ -99,6 +99,27 @@ describe('expandRoles', () => {
     expect(expandRoles('client')).toEqual(['client']);
     expect(expandRoles('team')).toEqual(['team']);
     expect(expandRoles('both')).toEqual(['client', 'team']);
+  });
+});
+
+describe('parseYesNo', () => {
+  it('detects affirmatives (accent-insensitive)', () => {
+    expect(parseYesNo('sí')).toBe('yes');
+    expect(parseYesNo('Si confirmo')).toBe('yes');
+    expect(parseYesNo('ok dale')).toBe('yes');
+    expect(parseYesNo('YES')).toBe('yes');
+  });
+  it('detects negatives', () => {
+    expect(parseYesNo('no')).toBe('no');
+    expect(parseYesNo('No puedo, cancelar')).toBe('no');
+  });
+  it('returns null when ambiguous, empty, or unrelated', () => {
+    expect(parseYesNo('no sé, tal vez sí')).toBeNull(); // both → unclear
+    expect(parseYesNo('¿a qué hora?')).toBeNull();
+    expect(parseYesNo('')).toBeNull();
+    expect(parseYesNo(null)).toBeNull();
+    // "no" must be a whole token, not a substring of another word.
+    expect(parseYesNo('nosotros llegamos')).toBeNull();
   });
 });
 

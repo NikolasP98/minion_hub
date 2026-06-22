@@ -39,6 +39,7 @@ export const PUT: RequestHandler = async ({ locals, request }) => {
     ...(b.channel !== undefined ? { channel: String(b.channel) } : {}),
     ...(b.accountId !== undefined ? { accountId: b.accountId ? String(b.accountId) : null } : {}),
     ...(b.personalize !== undefined ? { personalize: b.personalize === true } : {}),
+    ...(b.inferConfirmation !== undefined ? { inferConfirmation: b.inferConfirmation === true } : {}),
     ...(b.locale !== undefined ? { locale: String(b.locale) } : {}),
     ...(b.fromName !== undefined ? { fromName: b.fromName ? String(b.fromName) : null } : {}),
   });

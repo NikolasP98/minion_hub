@@ -23,6 +23,39 @@ export interface ReminderContext {
   locale: string;
 }
 
+/**
+ * Agent path: infer accept/decline from the contact's recent replies. Reads up
+ * to a handful of inbound messages (newest last) and the appointment summary,
+ * returns 'yes' | 'no' | 'unclear'. Falls back to 'unclear' on any error/no key,
+ * so the booking simply stays pending and is re-scanned next tick.
+ */
+export async function inferConfirmationReply(
+  messages: string[],
+  about: { serviceTitle: string; whenText: string; locale: string },
+): Promise<'yes' | 'no' | 'unclear'> {
+  const apiKey = env.OPENROUTER_API_KEY;
+  if (!apiKey || !messages.length) return 'unclear';
+  try {
+    const openrouter = createOpenAI({ apiKey, baseURL: OPENROUTER_BASE_URL });
+    const prompt = [
+      'A customer was asked to confirm an appointment. Read their recent messages and decide whether they are CONFIRMING attendance, DECLINING/cancelling, or it is UNCLEAR.',
+      'They may not address it directly — infer from intent. If they want to reschedule or are unsure, answer UNCLEAR (do not guess).',
+      `Appointment: ${about.serviceTitle} on ${about.whenText}.`,
+      'Recent messages (oldest first):',
+      ...messages.map((m, i) => `${i + 1}. ${m}`),
+      '',
+      'Answer with ONLY one word: YES, NO, or UNCLEAR.',
+    ].join('\n');
+    const res = await generateText({ model: openrouter(REMINDER_MODEL), prompt, temperature: 0 });
+    const a = res.text.trim().toUpperCase();
+    if (a.startsWith('YES')) return 'yes';
+    if (a.startsWith('NO')) return 'no';
+    return 'unclear';
+  } catch {
+    return 'unclear';
+  }
+}
+
 /** A representative context for previewing a message in the settings UI. */
 export function sampleContext(opts: { stage?: string; fromName?: string | null; locale?: string }): ReminderContext {
   const locale = opts.locale || 'es';

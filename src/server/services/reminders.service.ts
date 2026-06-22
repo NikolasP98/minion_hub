@@ -3,11 +3,12 @@ import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { schedReminders } from '$server/db/pg-reminders-schema';
 import type { ReminderStage } from '$server/db/pg-reminders-schema';
-import { dueStages, expandRoles, resolveRecipient } from '$server/scheduling/reminders';
+import { dueStages, expandRoles, resolveRecipient, parseYesNo, confirmCta } from '$server/scheduling/reminders';
 import type { RecipientRole } from '$server/scheduling/reminders';
 import { getReminderConfig, effectiveChannels } from './reminder-config.service';
-import { composeReminder } from './reminder-compose';
+import { composeReminder, inferConfirmationReply } from './reminder-compose';
 import type { ReminderContext } from './reminder-compose';
+import { setBookingStatus } from './scheduling-bookings.service';
 import { gatewayCall } from '$lib/server/gateway-rpc';
 import { insertMessages } from './messages.service';
 
@@ -173,6 +174,12 @@ export async function processOrgReminders(ctx: CoreCtx, now: Date, cap = 25): Pr
           let text = '';
           try {
             text = await composeReminder(ctxMsg, config.personalize);
+            // Pending booking + AI inference OFF + notifying the client → append a
+            // deterministic SÍ/NO CTA (after personalization so the keyword scan
+            // always has it). With inference ON the LLM reads natural replies.
+            if (stage.key === 'confirmation' && b.status === 'pending' && role === 'client' && !config.inferConfirmation) {
+              text = `${text}\n\n${confirmCta(config.locale)}`;
+            }
             const res = await gatewayCall<{ messageId?: string; id?: string }>('channels.send', {
               channel: chan.channel,
               to: recipient,
@@ -217,6 +224,111 @@ export async function processOrgReminders(ctx: CoreCtx, now: Date, cap = 25): Pr
             result.failed += 1;
           }
         }
+      }
+    }
+  }
+  return result;
+}
+
+export interface ConfirmScanResult {
+  confirmed: number;
+  declined: number;
+}
+
+interface PendingRow {
+  id: string;
+  start_time: string;
+  attendee_phone: string | null;
+  attendee_name: string | null;
+  crm_contact_id: string | null;
+  service_title: string;
+  timezone: string;
+  confirm_sent_at: string;
+}
+
+const phone9 = (raw: string): string => raw.replace(/\D/g, '').slice(-9);
+
+/**
+ * Scan inbound replies for PENDING bookings whose confirmation was sent, and flip
+ * the booking to accepted/cancelled. Agent OFF → keyword SÍ/NO match; ON → LLM
+ * infers intent from the contact's recent messages (not just the next one).
+ * Idempotent: only acts on still-pending bookings, so a re-scan is a no-op.
+ */
+export async function scanConfirmationReplies(ctx: CoreCtx, now: Date): Promise<ConfirmScanResult> {
+  const config = await getReminderConfig(ctx);
+  const result: ConfirmScanResult = { confirmed: 0, declined: 0 };
+  if (!config.enabled) return result;
+
+  const pending = (await withOrgCore(ctx, (tx) =>
+    tx.execute(sql`
+      select b.id, b.start_time, b.attendee_phone, b.attendee_name, b.crm_contact_id,
+             et.title as service_title, r.timezone, min(rem.sent_at) as confirm_sent_at
+      from sched_bookings b
+      join sched_reminders rem on rem.booking_id = b.id and rem.org_id = b.org_id
+        and rem.stage = 'confirmation' and rem.status = 'sent' and rem.recipient_role = 'client'
+      join sched_event_types et on et.id = b.event_type_id and et.org_id = b.org_id
+      join sched_resources r on r.id = b.resource_id and r.org_id = b.org_id
+      where b.org_id = ${ctx.tenantId} and b.status = 'pending' and b.start_time > now()
+        and b.attendee_phone is not null
+      group by b.id, b.start_time, b.attendee_phone, b.attendee_name, b.crm_contact_id, et.title, r.timezone
+      having min(rem.sent_at) > now() - interval '7 days'
+      order by b.start_time asc
+      limit 100
+    `),
+  )) as unknown as PendingRow[];
+  if (!pending.length) return result;
+
+  for (const b of pending) {
+    const p9 = b.attendee_phone ? phone9(b.attendee_phone) : '';
+    if (p9.length < 8) continue;
+    // Inbound replies from this contact since their confirmation went out.
+    const msgs = (await withOrgCore(ctx, (tx) =>
+      tx.execute(sql`
+        select content from messages
+        where org_id = ${ctx.tenantId} and direction = 'inbound' and channel = 'whatsapp'
+          and right(regexp_replace(coalesce(sender_id,''),'\\D','','g'), 9) = ${p9}
+          and occurred_at >= ${b.confirm_sent_at}::timestamptz
+        order by occurred_at asc
+        limit 20
+      `),
+    )) as unknown as Array<{ content: string | null }>;
+    const texts = msgs.map((m) => m.content?.trim()).filter((t): t is string => !!t);
+    if (!texts.length) continue;
+
+    let verdict: 'yes' | 'no' | null = null;
+    if (config.inferConfirmation) {
+      const v = await inferConfirmationReply(texts, {
+        serviceTitle: b.service_title,
+        whenText: formatWhen(b.start_time, b.timezone, config.locale),
+        locale: config.locale,
+      });
+      verdict = v === 'unclear' ? null : v;
+    } else {
+      // Keyword path: the most recent decisive reply wins (final intent).
+      for (const t of texts) {
+        const r = parseYesNo(t);
+        if (r) verdict = r;
+      }
+    }
+    if (!verdict) continue;
+
+    await setBookingStatus(ctx, b.id, verdict === 'yes' ? 'accepted' : 'cancelled');
+    if (verdict === 'yes') result.confirmed += 1;
+    else result.declined += 1;
+
+    // Log to the contact timeline (best-effort).
+    if (b.crm_contact_id) {
+      try {
+        await withOrgCore(ctx, (tx) =>
+          tx.execute(sql`
+            insert into crm_activities (org_id, contact_id, kind, body, data)
+            values (${ctx.tenantId}, ${b.crm_contact_id}, ${verdict === 'yes' ? 'booking_confirmed' : 'booking_declined'},
+              ${`Appointment ${verdict === 'yes' ? 'confirmed' : 'declined'} by reply`},
+              ${JSON.stringify({ bookingId: b.id, via: config.inferConfirmation ? 'ai_inference' : 'keyword' })}::jsonb)
+          `),
+        );
+      } catch (e) {
+        console.error('[reminders] confirm activity log failed', b.id, e);
       }
     }
   }

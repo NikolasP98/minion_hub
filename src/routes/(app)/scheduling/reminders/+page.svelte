@@ -34,6 +34,8 @@
 	// svelte-ignore state_referenced_locally
 	let personalize = $state(data.config?.personalize ?? true);
 	// svelte-ignore state_referenced_locally
+	let inferConfirmation = $state(data.config?.inferConfirmation ?? false);
+	// svelte-ignore state_referenced_locally
 	let fromName = $state(data.config?.fromName ?? '');
 	// svelte-ignore state_referenced_locally
 	let stages = $state<Stage[]>(seedStages());
@@ -42,11 +44,11 @@
 	let saving = $state(false);
 
 	// Dirty tracking — Save only appears when something changed.
-	const snapshot = (e: boolean, p: boolean, f: string, st: Stage[], ch: Chan[]) =>
-		JSON.stringify({ e, p, f: f.trim(), st, ch });
+	const snapshot = (e: boolean, p: boolean, inf: boolean, f: string, st: Stage[], ch: Chan[]) =>
+		JSON.stringify({ e, p, inf, f: f.trim(), st, ch });
 	// svelte-ignore state_referenced_locally
-	const original = snapshot(enabled, personalize, fromName, stages, channels);
-	const dirty = $derived(snapshot(enabled, personalize, fromName, stages, channels) !== original);
+	const original = snapshot(enabled, personalize, inferConfirmation, fromName, stages, channels);
+	const dirty = $derived(snapshot(enabled, personalize, inferConfirmation, fromName, stages, channels) !== original);
 
 	const counts = $derived(data.activity?.counts ?? { sent: 0, failed: 0, skipped: 0 });
 	const recent = $derived(data.activity?.recent ?? []);
@@ -110,7 +112,7 @@
 			const res = await fetch('/api/scheduling/reminders/config', {
 				method: 'PUT',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ enabled, personalize, fromName: fromName || null, stages, channels }),
+				body: JSON.stringify({ enabled, personalize, inferConfirmation, fromName: fromName || null, stages, channels }),
 			});
 			if (res.ok) await invalidate('scheduling:data');
 		} finally {
@@ -205,6 +207,18 @@
 				{/each}
 			</div>
 			<button class="add" onclick={addStage}><Plus size={14} /> {m.sched_rem_add_stage()}</button>
+		</Card>
+
+		<!-- Confirmations -->
+		<Card padding="lg">
+			<div class="t-label">{m.sched_rem_confirm_title()}</div>
+			<div class="mt-2 flex items-center justify-between gap-4">
+				<div>
+					<div class="font-medium text-sm flex items-center gap-1"><Sparkles size={14} class="text-accent" /> {m.sched_rem_infer()}</div>
+					<div class="t-caption">{inferConfirmation ? m.sched_rem_infer_on() : m.sched_rem_infer_off()}</div>
+				</div>
+				<Toggle bind:checked={inferConfirmation} size="sm" />
+			</div>
 		</Card>
 
 		<!-- Message + personalization -->

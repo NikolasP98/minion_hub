@@ -34,6 +34,7 @@ export async function getReminderConfig(ctx: CoreCtx): Promise<SchedReminderConf
     channel: 'whatsapp',
     accountId: null,
     personalize: true,
+    inferConfirmation: false,
     locale: 'es',
     fromName: null,
     updatedAt: new Date(),
@@ -47,6 +48,7 @@ export interface ReminderConfigPatch {
   channel?: string;
   accountId?: string | null;
   personalize?: boolean;
+  inferConfirmation?: boolean;
   locale?: string;
   fromName?: string | null;
 }
@@ -63,6 +65,7 @@ export async function saveReminderConfig(ctx: CoreCtx, patch: ReminderConfigPatc
         channel: patch.channel ?? 'whatsapp',
         accountId: patch.accountId ?? null,
         personalize: patch.personalize ?? true,
+        inferConfirmation: patch.inferConfirmation ?? false,
         locale: patch.locale ?? 'es',
         fromName: patch.fromName ?? null,
         updatedAt: new Date(),
@@ -76,6 +79,7 @@ export async function saveReminderConfig(ctx: CoreCtx, patch: ReminderConfigPatc
           ...(patch.channel !== undefined ? { channel: patch.channel } : {}),
           ...(patch.accountId !== undefined ? { accountId: patch.accountId } : {}),
           ...(patch.personalize !== undefined ? { personalize: patch.personalize } : {}),
+          ...(patch.inferConfirmation !== undefined ? { inferConfirmation: patch.inferConfirmation } : {}),
           ...(patch.locale !== undefined ? { locale: patch.locale } : {}),
           ...(patch.fromName !== undefined ? { fromName: patch.fromName } : {}),
           updatedAt: new Date(),
