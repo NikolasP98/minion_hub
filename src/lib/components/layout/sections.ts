@@ -150,7 +150,7 @@ const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: SectionIt
         category: "operations",
         item: {
             href: "/workforce",
-            label: "Kanban",
+            label: "Workforce",
             icon: FolderKanban,
             matcher: (p: string) => p.startsWith("/workforce"),
         },
