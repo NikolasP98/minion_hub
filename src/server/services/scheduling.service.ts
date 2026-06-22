@@ -214,6 +214,14 @@ export async function getEventType(ctx: CoreCtx, id: string): Promise<EventTypeW
   });
 }
 
+/** Normalize the per-service weekly windows payload → {days,startTime,endTime}[]. */
+export function parseScheduleRules(raw: unknown): Array<{ days: number[]; startTime: string; endTime: string }> {
+  if (!Array.isArray(raw)) return [];
+  return (raw as Array<Record<string, unknown>>)
+    .filter((r) => Array.isArray(r.days) && r.startTime && r.endTime)
+    .map((r) => ({ days: (r.days as unknown[]).map(Number), startTime: String(r.startTime), endTime: String(r.endTime) }));
+}
+
 export interface EventTypeInput {
   slug: string;
   title: string;

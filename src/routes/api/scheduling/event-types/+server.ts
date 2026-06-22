@@ -3,7 +3,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { requireAdmin } from '$server/auth/authorize';
 import { isModuleEnabled } from '$server/services/modules.service';
-import { listEventTypes, upsertEventType } from '$server/services/scheduling.service';
+import { listEventTypes, upsertEventType, parseScheduleRules } from '$server/services/scheduling.service';
 import type { EventTypeInput } from '$server/services/scheduling.service';
 
 function parseEventType(b: Record<string, unknown>): EventTypeInput {
@@ -33,14 +33,6 @@ function parseEventType(b: Record<string, unknown>): EventTypeInput {
     active: b.active !== false,
     resourceIds: Array.isArray(b.resourceIds) ? b.resourceIds.map(String) : [],
   };
-}
-
-/** Normalize the per-service weekly windows payload → {days,startTime,endTime}[]. */
-export function parseScheduleRules(raw: unknown): Array<{ days: number[]; startTime: string; endTime: string }> {
-  if (!Array.isArray(raw)) return [];
-  return (raw as Array<Record<string, unknown>>)
-    .filter((r) => Array.isArray(r.days) && r.startTime && r.endTime)
-    .map((r) => ({ days: (r.days as unknown[]).map(Number), startTime: String(r.startTime), endTime: String(r.endTime) }));
 }
 
 export const GET: RequestHandler = async ({ locals }) => {

@@ -3,8 +3,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { requireAdmin } from '$server/auth/authorize';
 import { isModuleEnabled } from '$server/services/modules.service';
-import { getEventType, upsertEventType, deleteEventType } from '$server/services/scheduling.service';
-import { parseScheduleRules } from '../+server';
+import { getEventType, upsertEventType, deleteEventType, parseScheduleRules } from '$server/services/scheduling.service';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
   const ctx = await getCoreCtx(locals);
