@@ -3077,6 +3077,7 @@
   "sched_link_slug": "Slug",
   "sched_link_title": "Title",
   "sched_link_services": "Services",
+  "sched_link_team_note": "Each service uses its own assigned team — set it on the Services page.",
   "sched_link_copy": "Copy link",
   "sched_link_open": "Open",
   "sched_link_copied": "Copied!",

@@ -11,10 +11,9 @@
 
 	let showNew = $state(false);
 	let title = $state('');
-	let slug = $state('');
-	let slugTouched = $state(false);
+	// Slug is derived from the title (view-only) — no manual entry, no redundancy.
+	const slug = $derived(slugify(title));
 	let chosen = $state<string[]>([]);
-	let resourceId = $state('');
 	let saving = $state(false);
 	let copied = $state<string | null>(null);
 
@@ -40,15 +39,12 @@
 			const res = await fetch('/api/scheduling/links', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ title, slug, eventTypeIds: chosen, resourceId: resourceId || null }),
+				body: JSON.stringify({ title, slug, eventTypeIds: chosen }),
 			});
 			if (res.ok) {
 				showNew = false;
 				title = '';
-				slug = '';
-				slugTouched = false;
 				chosen = [];
-				resourceId = '';
 				await invalidate('scheduling:data');
 			}
 		} finally {
@@ -81,19 +77,12 @@
 				<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
 					<label class="field">
 						<span class="t-caption">{m.sched_link_title()}</span>
-						<input
-							class="txt"
-							value={title}
-							oninput={(e) => {
-								title = e.currentTarget.value;
-								if (!slugTouched) slug = slugify(title);
-							}}
-						/>
+						<input class="txt" bind:value={title} />
 					</label>
-					<label class="field">
+					<div class="field">
 						<span class="t-caption">{m.sched_link_slug()}</span>
-						<input class="txt" bind:value={slug} oninput={() => (slugTouched = true)} />
-					</label>
+						<div class="txt slug-view" aria-readonly="true">{slug || '—'}</div>
+					</div>
 				</div>
 				<div class="mt-3">
 					<span class="t-caption">{m.sched_link_services()}</span>
@@ -104,16 +93,8 @@
 							</button>
 						{/each}
 					</div>
+					<p class="t-caption mt-1 opacity-70">{m.sched_link_team_note()}</p>
 				</div>
-				<label class="field mt-3 max-w-xs">
-					<span class="t-caption">{m.sched_nav_resources()}</span>
-					<select class="txt" bind:value={resourceId}>
-						<option value="">{m.sched_none()}</option>
-						{#each data.resources as r (r.id)}
-							<option value={r.id}>{r.name}</option>
-						{/each}
-					</select>
-				</label>
 				<div class="flex gap-2 mt-3">
 					<Button onclick={create} disabled={saving || !title.trim() || !slug.trim() || chosen.length === 0}>
 						{m.sched_save()}
@@ -162,6 +143,12 @@
 		background: var(--color-card);
 		font-size: 0.875rem;
 		width: 100%;
+	}
+	.slug-view {
+		color: var(--color-muted-foreground);
+		font-family: var(--font-mono, monospace);
+		background: transparent;
+		user-select: all;
 	}
 	.chip {
 		border: 1px solid var(--hairline);

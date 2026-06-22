@@ -3077,6 +3077,7 @@
   "sched_link_slug": "Identificador",
   "sched_link_title": "Título",
   "sched_link_services": "Servicios",
+  "sched_link_team_note": "Cada servicio usa su propio equipo asignado — configúralo en la página de Servicios.",
   "sched_link_copy": "Copiar enlace",
   "sched_link_open": "Abrir",
   "sched_link_copied": "¡Copiado!",
