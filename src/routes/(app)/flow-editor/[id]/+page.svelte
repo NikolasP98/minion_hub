@@ -4,6 +4,7 @@
   import { onMount } from 'svelte';
   import FlowCanvas from '$lib/components/flow-editor/FlowCanvas.svelte';
   import FlowSidebar from '$lib/components/flow-editor/FlowSidebar.svelte';
+  import FlowCopilotPanel from '$lib/components/flow-editor/FlowCopilotPanel.svelte';
   import {
     flowEditorState,
     loadFlow,
@@ -12,7 +13,12 @@
     openNodeConfig,
     nodeHasConfig,
     triggerChannelFilter,
+    setNodes,
+    setEdges,
   } from '$lib/state/features/flow-editor.svelte';
+  import { diffFlow } from '$lib/flows/flow-diff';
+  import type { WorkingFlow } from '$lib/flows/flow-ops';
+  import { isAdmin } from '$lib/state/features/user.svelte';
   import type { TriggerNodeData, ScheduleNodeData } from '$lib/state/features/flow-editor.svelte';
   import ConsolePanel from '$lib/components/flow-editor/ConsolePanel.svelte';
   import { sendRequest } from '$lib/services/gateway.svelte';
@@ -90,6 +96,52 @@
   function handleNameInput(e: Event) {
     flowEditorState.flowName = (e.target as HTMLInputElement).value;
     flowEditorState.isDirty = true;
+  }
+
+  // ── Flow copilot (admin or flow owner) ──────────────────────────────────────
+  const currentUserId = $derived((page.data as { user?: { id?: string } }).user?.id ?? null);
+  const canCopilot = $derived(
+    isAdmin.value ||
+      (!!flowEditorState.flowOwnerId && flowEditorState.flowOwnerId === currentUserId),
+  );
+
+  let backup: WorkingFlow | null = null;
+
+  function onPreview(proposed: WorkingFlow | null) {
+    if (!proposed) {
+      if (backup) {
+        setNodes(backup.nodes);
+        setEdges(backup.edges);
+        backup = null;
+      }
+      flowEditorState.previewDiff = null;
+      return;
+    }
+    if (!backup) backup = { nodes: [...flowEditorState.nodes], edges: [...flowEditorState.edges] };
+    flowEditorState.previewDiff = diffFlow(backup, proposed);
+    // Merge backup ∪ proposed so removed items still render (as red-ringed ghosts).
+    const nById = new Map(backup.nodes.map((n) => [n.id, n]));
+    for (const n of proposed.nodes) nById.set(n.id, n);
+    const eById = new Map(backup.edges.map((e) => [e.id, e]));
+    for (const e of proposed.edges) eById.set(e.id, e);
+    setNodes([...nById.values()]);
+    setEdges([...eById.values()]);
+  }
+
+  async function onApply(proposed: WorkingFlow) {
+    setNodes(proposed.nodes);
+    setEdges(proposed.edges);
+    flowEditorState.previewDiff = null;
+    backup = null;
+    await fetch(`/api/flows/${flowEditorState.flowId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nodes: proposed.nodes, edges: proposed.edges }),
+    });
+  }
+
+  function onReject() {
+    onPreview(null);
   }
 </script>
 
@@ -185,6 +237,14 @@
       <div class="flex flex-1 min-h-0 overflow-hidden">
         <FlowSidebar />
         <FlowCanvas />
+        {#if canCopilot && flowEditorState.flowId}
+          <FlowCopilotPanel
+            flowId={flowEditorState.flowId}
+            onpreview={onPreview}
+            onapply={onApply}
+            onreject={onReject}
+          />
+        {/if}
       </div>
       {#if flowEditorState.consoleOpen}
         <ConsolePanel />

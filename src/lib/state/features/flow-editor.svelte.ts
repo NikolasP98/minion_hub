@@ -364,6 +364,8 @@ export const flowEditorState = $state({
   flowActive: false,
   /** Owning plugin id when this flow was imported from a plugin; null otherwise. */
   flowPluginId: null as string | null,
+  /** Flow creator's profile id (for copilot owner-gating); null if unknown/shared. */
+  flowOwnerId: null as string | null,
   relationshipMode: false,
   consoleOpen: false,
   consoleLogs: [] as LogEntry[],
@@ -380,6 +382,8 @@ export const flowEditorState = $state({
   nodePresets: [] as FlowNodePreset[],
   /** Node currently open in the config panel (null = closed). */
   configNodeId: null as string | null,
+  /** Copilot diff overlay: per-node/edge status while previewing a proposed flow (null = no preview). */
+  previewDiff: null as import('$lib/flows/flow-diff').FlowDiff | null,
 });
 
 // ─── Plugin node config ─────────────────────────────────────────────────────
@@ -580,6 +584,7 @@ export async function loadFlow(id: string) {
 
   flowEditorState.flowActive = flow.active ?? false;
   flowEditorState.flowPluginId = flow.pluginId ?? null;
+  flowEditorState.flowOwnerId = flow.userId ?? null;
 }
 
 export async function saveFlow() {

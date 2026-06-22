@@ -102,10 +102,21 @@
     error: 'flow-status-error',
     skipped: 'flow-status-skipped',
   };
+  function diffRing(id: string): string {
+    const s = flowEditorState.previewDiff?.nodes[id];
+    return s === 'added'
+      ? 'ring-2 ring-emerald-400'
+      : s === 'changed'
+        ? 'ring-2 ring-amber-400'
+        : s === 'removed'
+          ? 'ring-2 ring-red-400 opacity-60'
+          : '';
+  }
   const decoratedNodes = $derived(
     flowEditorState.nodes.map((n) => {
       const status = flowEditorState.nodeRuns[n.id]?.status;
-      return status ? { ...n, class: statusClass[status] } : n;
+      const cls = [status ? statusClass[status] : '', diffRing(n.id)].filter(Boolean).join(' ');
+      return cls ? { ...n, class: cls } : n;
     }),
   );
 
