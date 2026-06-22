@@ -129,6 +129,14 @@ export const schedEventTypes = pgTable(
     periodType: text('period_type').notNull().default('rolling'), // 'rolling' | 'unlimited'
     periodDays: integer('period_days'), // rolling window in days
     schedulingType: text('scheduling_type'), // null (single) | 'round_robin' | 'collective'
+    /** When true, slots must also fall inside this service's own weekly windows
+     *  (`scheduleRules`), intersected with the assigned team's availability.
+     *  When false, the service inherits the assigned team's availability only. */
+    useCustomSchedule: boolean('use_custom_schedule').notNull().default(false),
+    /** Weekly windows for the service when `useCustomSchedule`: array of
+     *  `{ days:number[], startTime:'HH:MM', endTime:'HH:MM' }` (evaluated in each
+     *  assigned resource's timezone). */
+    scheduleRules: jsonb('schedule_rules').notNull().default([]),
     requiresConfirmation: boolean('requires_confirmation').notNull().default(false),
     public: boolean('public').notNull().default(true),
     color: text('color'),

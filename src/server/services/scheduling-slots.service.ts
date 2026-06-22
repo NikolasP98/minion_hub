@@ -11,13 +11,24 @@ import {
   schedBookings,
 } from '$server/db/pg-scheduling-schema';
 import { computeSlots } from '$server/scheduling/slots';
-import type { ResourceAvailability, BusyInterval, Slot, SlotEventType } from '$server/scheduling/slots';
+import type { ResourceAvailability, BusyInterval, Slot, SlotEventType, AvailabilityRule } from '$server/scheduling/slots';
 
 /**
  * Bridges the DB to the pure slot engine: loads the candidate resources'
  * availability + existing bookings for an event type over a window, then calls
  * computeSlots. Shared by the internal calendar and the public /book flow.
  */
+
+/** The service's own weekly windows when it opts into a custom schedule, else
+ *  undefined (inherit team availability). Normalizes the jsonb to AvailabilityRule. */
+export function serviceRulesOf(et: { useCustomSchedule?: boolean; scheduleRules?: unknown }): AvailabilityRule[] | undefined {
+  if (!et.useCustomSchedule) return undefined;
+  const raw = Array.isArray(et.scheduleRules) ? (et.scheduleRules as Array<Record<string, unknown>>) : [];
+  const rules = raw
+    .filter((r) => Array.isArray(r.days) && r.startTime && r.endTime)
+    .map((r) => ({ days: (r.days as number[]) ?? [], startTime: String(r.startTime), endTime: String(r.endTime), date: null }));
+  return rules.length ? rules : undefined;
+}
 
 // CoreTx is exported from with-org-core; re-import via core-ctx for callers that
 // already hold a transaction (createBooking re-checks availability in-txn).
@@ -145,6 +156,7 @@ export async function getSlotsForEventType(
       rangeStart: from,
       rangeEnd: to,
       now: opts.now ?? new Date(),
+      serviceRules: serviceRulesOf(et),
     });
     return { eventType: et, resourceIds, slots };
   });

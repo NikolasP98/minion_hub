@@ -4,6 +4,7 @@ import { getCoreCtx } from '$server/auth/core-ctx';
 import { requireAdmin } from '$server/auth/authorize';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { getEventType, upsertEventType, deleteEventType } from '$server/services/scheduling.service';
+import { parseScheduleRules } from '../+server';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
   const ctx = await getCoreCtx(locals);
@@ -39,6 +40,8 @@ export const PATCH: RequestHandler = async ({ locals, request, params }) => {
       periodType: typeof b.periodType === 'string' ? b.periodType : 'rolling',
       periodDays: num(b.periodDays),
       schedulingType: b.schedulingType ? String(b.schedulingType) : null,
+      useCustomSchedule: b.useCustomSchedule === true,
+      scheduleRules: parseScheduleRules(b.scheduleRules),
       requiresConfirmation: b.requiresConfirmation === true,
       public: b.public !== false,
       color: b.color ? String(b.color) : null,

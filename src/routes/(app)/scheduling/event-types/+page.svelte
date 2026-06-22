@@ -28,6 +28,8 @@
 			minimumBookingNotice: et.minimumBookingNotice,
 			periodDays: et.periodDays,
 			schedulingType: et.schedulingType,
+			useCustomSchedule: et.useCustomSchedule,
+			scheduleRules: (et.scheduleRules as Array<{ days: number[]; startTime: string; endTime: string }>) ?? [],
 			requiresConfirmation: et.requiresConfirmation,
 			public: et.public,
 			productId: et.productId,

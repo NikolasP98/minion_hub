@@ -3053,6 +3053,8 @@
   "sched_et_resources": "Equipo asignado",
   "sched_et_public": "Público",
   "sched_et_requiresConfirmation": "Requiere confirmación",
+  "sched_et_customSchedule": "Usar un horario propio para este servicio",
+  "sched_et_customSchedule_help": "Si está apagado, el servicio se ofrece cuando el equipo asignado está disponible. Si está activo, los horarios además deben caer dentro de estas ventanas semanales (y aún requiere un miembro libre).",
   "sched_et_schedulingType": "Asignación",
   "sched_et_single": "Individual",
   "sched_et_roundRobin": "Rotativo",

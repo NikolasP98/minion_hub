@@ -14,6 +14,8 @@
 		minimumBookingNotice: number;
 		periodDays: number | null;
 		schedulingType: string | null;
+		useCustomSchedule: boolean;
+		scheduleRules: Array<{ days: number[]; startTime: string; endTime: string }>;
 		requiresConfirmation: boolean;
 		public: boolean;
 		productId: string | null;
@@ -51,6 +53,8 @@
 					minimumBookingNotice: 120,
 					periodDays: 30,
 					schedulingType: null,
+					useCustomSchedule: false,
+					scheduleRules: [],
 					requiresConfirmation: false,
 					public: true,
 					productId: null,
@@ -61,6 +65,19 @@
 	let slugTouched = $state(!!eventType);
 	let saving = $state(false);
 	let err = $state<string | null>(null);
+
+	// Per-service weekly schedule (only used when f.useCustomSchedule). 0=Sun…6=Sat.
+	const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+	type DayState = { enabled: boolean; start: string; end: string };
+	function buildWeek(rules: EventType['scheduleRules']): DayState[] {
+		const week: DayState[] = DAY_LABELS.map(() => ({ enabled: false, start: '09:00', end: '17:00' }));
+		for (const r of rules ?? []) for (const d of r.days) if (d >= 0 && d <= 6) week[d] = { enabled: true, start: r.startTime, end: r.endTime };
+		return week;
+	}
+	const weekToRules = (w: DayState[]) =>
+		w.map((d, i) => ({ d, i })).filter((x) => x.d.enabled).map((x) => ({ days: [x.i], startTime: x.d.start, endTime: x.d.end }));
+	// svelte-ignore state_referenced_locally
+	let week = $state<DayState[]>(buildWeek(f.scheduleRules));
 
 	function onTitle(v: string) {
 		f.title = v;
@@ -77,6 +94,8 @@
 		}
 		saving = true;
 		err = null;
+		// Sync the weekly editor into the payload (empty when not using a custom schedule).
+		f.scheduleRules = f.useCustomSchedule ? weekToRules(week) : [];
 		try {
 			const url = eventType?.id ? `/api/scheduling/event-types/${eventType.id}` : '/api/scheduling/event-types';
 			const res = await fetch(url, {
@@ -173,6 +192,33 @@
 		</label>
 	</div>
 
+	<!-- Per-service schedule -->
+	<div class="mt-3 pt-3 border-t border-[var(--hairline)]">
+		<label class="t-caption flex items-center gap-2">
+			<Toggle bind:checked={f.useCustomSchedule} size="sm" /> {m.sched_et_customSchedule()}
+		</label>
+		<p class="t-caption mt-1 opacity-70">{m.sched_et_customSchedule_help()}</p>
+		{#if f.useCustomSchedule}
+			<div class="week mt-2">
+				{#each week as d, i (i)}
+					<div class="day-row">
+						<label class="day-toggle">
+							<input type="checkbox" bind:checked={d.enabled} />
+							<span>{DAY_LABELS[i]}</span>
+						</label>
+						{#if d.enabled}
+							<input type="time" bind:value={d.start} class="time-in" aria-label={m.sched_start()} />
+							<span class="dash">–</span>
+							<input type="time" bind:value={d.end} class="time-in" aria-label={m.sched_end()} />
+						{:else}
+							<span class="t-caption off">—</span>
+						{/if}
+					</div>
+				{/each}
+			</div>
+		{/if}
+	</div>
+
 	{#if err}<p class="t-caption mt-2" style="color:var(--color-destructive)">{err}</p>{/if}
 
 	<div class="flex gap-2 mt-3">
@@ -206,5 +252,37 @@
 		background: var(--accent);
 		color: var(--color-accent-foreground, #fff);
 		border-color: var(--accent);
+	}
+	.week {
+		display: flex;
+		flex-direction: column;
+		gap: 0.3rem;
+	}
+	.day-row {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		min-height: 28px;
+	}
+	.day-toggle {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+		width: 64px;
+		font-size: 0.85rem;
+		cursor: pointer;
+	}
+	.time-in {
+		border: 1px solid var(--hairline);
+		border-radius: 6px;
+		padding: 0.15rem 0.4rem;
+		background: var(--color-card);
+		font-size: 0.8rem;
+	}
+	.dash {
+		color: var(--color-muted-foreground);
+	}
+	.off {
+		opacity: 0.5;
 	}
 </style>

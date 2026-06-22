@@ -3053,6 +3053,8 @@
   "sched_et_resources": "Assigned team",
   "sched_et_public": "Public",
   "sched_et_requiresConfirmation": "Requires confirmation",
+  "sched_et_customSchedule": "Use a custom schedule for this service",
+  "sched_et_customSchedule_help": "When off, the service is offered whenever its assigned team is available. When on, slots must also fall inside these weekly windows (still requires an assigned member to be free).",
   "sched_et_schedulingType": "Assignment",
   "sched_et_single": "Single",
   "sched_et_roundRobin": "Round robin",

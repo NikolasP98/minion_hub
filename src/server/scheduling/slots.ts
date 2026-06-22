@@ -60,6 +60,10 @@ export interface ComputeSlotsInput {
   rangeEnd: Date;
   /** "Now" — for minimum-booking-notice + rolling-period math. */
   now: Date;
+  /** Optional per-service weekly windows. When present, a resource is only free
+   *  where its availability AND a service window overlap (evaluated in the
+   *  resource's own timezone). Empty/undefined = no service-level restriction. */
+  serviceRules?: AvailabilityRule[];
 }
 
 export interface Slot {
@@ -126,6 +130,23 @@ function intervalsForDate(res: ResourceAvailability, dateKey: string): Interval[
     out.push({ start, end });
   }
   return mergeIntervals(out);
+}
+
+/** Intersection of two interval sets (both will be merged first). */
+function intersectIntervals(a: Interval[], b: Interval[]): Interval[] {
+  const A = mergeIntervals(a);
+  const B = mergeIntervals(b);
+  const out: Interval[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < A.length && j < B.length) {
+    const start = Math.max(A[i].start, B[j].start);
+    const end = Math.min(A[i].end, B[j].end);
+    if (end > start) out.push({ start, end });
+    if (A[i].end < B[j].end) i++;
+    else j++;
+  }
+  return out;
 }
 
 /** Merge overlapping/adjacent intervals (sorted by start). */
@@ -199,9 +220,21 @@ export function computeSlots(input: ComputeSlotsInput): Slot[] {
   if (windowStart >= windowEnd) return [];
 
   // 2-4. Per-resource slot starts.
+  const serviceRules = input.serviceRules?.length ? input.serviceRules : null;
   const perResource = new Map<string, Set<number>>();
   for (const res of resources) {
     let free = expandFreeIntervals(res, windowStart, windowEnd);
+
+    // Intersect with the service's own weekly windows (in this resource's tz):
+    // a slot needs both the service to be offered AND the resource to be free.
+    if (serviceRules) {
+      const serviceFree = expandFreeIntervals(
+        { resourceId: res.resourceId, timezone: res.timezone, rules: serviceRules },
+        windowStart,
+        windowEnd,
+      );
+      free = intersectIntervals(free, serviceFree);
+    }
 
     // Subtract this resource's bookings, padded by buffers.
     const busy: Interval[] = bookings

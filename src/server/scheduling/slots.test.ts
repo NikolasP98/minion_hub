@@ -222,4 +222,33 @@ describe('computeSlots', () => {
     });
     expect(slots).toHaveLength(0);
   });
+
+  it('serviceRules intersect with resource availability (morning-only service)', () => {
+    // Resource free Mon 09:00–17:00 Lima; service offered only 09:00–12:00.
+    const slots = computeSlots({
+      eventType: { length: 60 },
+      resources: [weekday9to5()],
+      bookings: [],
+      rangeStart: iso('2026-06-22T00:00:00Z'),
+      rangeEnd: iso('2026-06-23T00:00:00Z'),
+      now: iso('2026-06-01T00:00:00Z'),
+      serviceRules: [{ days: [1, 2, 3, 4, 5], startTime: '09:00', endTime: '12:00', date: null }],
+    });
+    // 09:00–12:00 Lima == 14:00–17:00 UTC → 3 one-hour slots.
+    expect(isos(slots)).toEqual(['2026-06-22T14:00:00.000Z', '2026-06-22T15:00:00.000Z', '2026-06-22T16:00:00.000Z']);
+  });
+
+  it('serviceRules exclude a day the resource works', () => {
+    // Service offered only Wed; the Monday range yields nothing.
+    const slots = computeSlots({
+      eventType: { length: 60 },
+      resources: [weekday9to5()],
+      bookings: [],
+      rangeStart: iso('2026-06-22T00:00:00Z'), // Monday
+      rangeEnd: iso('2026-06-23T00:00:00Z'),
+      now: iso('2026-06-01T00:00:00Z'),
+      serviceRules: [{ days: [3], startTime: '09:00', endTime: '17:00', date: null }],
+    });
+    expect(slots).toHaveLength(0);
+  });
 });

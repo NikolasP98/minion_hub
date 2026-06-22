@@ -14,6 +14,7 @@ import { crmContacts, crmContactIdentities } from '$server/db/pg-crm-schema';
 import type { SchedBooking } from '$server/db/pg-scheduling-schema';
 import { computeSlots } from '$server/scheduling/slots';
 import type { ResourceAvailability, BusyInterval } from '$server/scheduling/slots';
+import { serviceRulesOf } from './scheduling-slots.service';
 
 const MS_PER_MIN = 60_000;
 const ACTIVE_STATUSES = ['accepted', 'pending'] as const;
@@ -217,6 +218,7 @@ export async function createBooking(ctx: CoreCtx, input: CreateBookingInput): Pr
       rangeStart: start,
       rangeEnd: end,
       now: input.now ?? new Date(),
+      serviceRules: serviceRulesOf(et),
     });
     const match = slots.find((s) => s.start.getTime() === start.getTime());
     if (!match || !match.resourceIds.length) throw new SlotUnavailableError();

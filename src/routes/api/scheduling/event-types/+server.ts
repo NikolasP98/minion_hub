@@ -24,6 +24,8 @@ function parseEventType(b: Record<string, unknown>): EventTypeInput {
     periodType: typeof b.periodType === 'string' ? b.periodType : 'rolling',
     periodDays: num(b.periodDays),
     schedulingType: b.schedulingType ? String(b.schedulingType) : null,
+    useCustomSchedule: b.useCustomSchedule === true,
+    scheduleRules: parseScheduleRules(b.scheduleRules),
     requiresConfirmation: b.requiresConfirmation === true,
     public: b.public !== false,
     color: b.color ? String(b.color) : null,
@@ -31,6 +33,14 @@ function parseEventType(b: Record<string, unknown>): EventTypeInput {
     active: b.active !== false,
     resourceIds: Array.isArray(b.resourceIds) ? b.resourceIds.map(String) : [],
   };
+}
+
+/** Normalize the per-service weekly windows payload → {days,startTime,endTime}[]. */
+export function parseScheduleRules(raw: unknown): Array<{ days: number[]; startTime: string; endTime: string }> {
+  if (!Array.isArray(raw)) return [];
+  return (raw as Array<Record<string, unknown>>)
+    .filter((r) => Array.isArray(r.days) && r.startTime && r.endTime)
+    .map((r) => ({ days: (r.days as unknown[]).map(Number), startTime: String(r.startTime), endTime: String(r.endTime) }));
 }
 
 export const GET: RequestHandler = async ({ locals }) => {

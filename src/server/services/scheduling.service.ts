@@ -226,6 +226,8 @@ export interface EventTypeInput {
   periodType?: string;
   periodDays?: number | null;
   schedulingType?: string | null;
+  useCustomSchedule?: boolean;
+  scheduleRules?: Array<{ days: number[]; startTime: string; endTime: string }>;
   requiresConfirmation?: boolean;
   public?: boolean;
   color?: string | null;
@@ -249,6 +251,8 @@ export async function upsertEventType(ctx: CoreCtx, input: EventTypeInput, id?: 
       periodType: input.periodType ?? 'rolling',
       periodDays: input.periodDays ?? null,
       schedulingType: input.schedulingType ?? null,
+      useCustomSchedule: input.useCustomSchedule ?? false,
+      scheduleRules: input.scheduleRules ?? [],
       requiresConfirmation: input.requiresConfirmation ?? false,
       public: input.public ?? true,
       color: input.color ?? null,
