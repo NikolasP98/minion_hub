@@ -10,6 +10,7 @@
 		SvelteFlow,
 		Background,
 		Controls,
+		Position,
 		type Node,
 		type Edge,
 		type NodeTypes,
@@ -17,9 +18,12 @@
 	} from '@xyflow/svelte';
 	import '@xyflow/svelte/dist/style.css';
 	import OrgChartNode from '$lib/components/workforce/OrgChartNode.svelte';
+	import OrgFitController from '$lib/components/workforce/OrgFitController.svelte';
 	import { theme } from '$lib/state/ui/theme.svelte';
+	import { diceBearAvatarUrl } from '$lib/utils/avatar';
 
 	type OrgNode = { id: string; name: string; role: string; status: string; reports: OrgNode[] };
+	type Orientation = 'vertical' | 'horizontal';
 
 	let { data }: { data: PageData } = $props();
 	const { tree, agents } = $derived(data);
@@ -29,28 +33,43 @@
 	const GAP_X = 36;
 	const GAP_Y = 72;
 
-	// Tidy top-down tree layout — give each subtree its own horizontal band so
-	// siblings never overlap, then center parents over their children. SvelteFlow
-	// owns pan/zoom/fit; we only supply absolute node positions.
-	function subtreeWidth(node: OrgNode): number {
-		if (node.reports.length === 0) return CARD_W;
-		const childrenW = node.reports.reduce((s, c) => s + subtreeWidth(c), 0);
-		return Math.max(CARD_W, childrenW + (node.reports.length - 1) * GAP_X);
-	}
+	// Responsive orientation: wide viewports get a top→bottom tree, tall/narrow
+	// ones get a left→right tree (better use of the dominant axis).
+	let containerEl = $state<HTMLDivElement>();
+	let orientation = $state<Orientation>('vertical');
 
 	const agentMap = $derived(new Map(agents.map((a) => [a.id, a])));
 
-	function buildGraph(roots: OrgNode[]): { nodes: Node[]; edges: Edge[] } {
+	// One generic tidy-tree layout parameterised by orientation. "main" axis =
+	// depth (root→leaves), "cross" axis = sibling spread.
+	function buildGraph(roots: OrgNode[], dir: Orientation): { nodes: Node[]; edges: Edge[] } {
+		const vertical = dir === 'vertical';
+		const CROSS = vertical ? CARD_W : CARD_H;
+		const CROSS_GAP = vertical ? GAP_X : GAP_Y;
+		const MAIN_STEP = vertical ? CARD_H + GAP_Y : CARD_W + GAP_X;
+
 		const nodes: Node[] = [];
 		const edges: Edge[] = [];
 
-		function place(node: OrgNode, x: number, y: number, isRoot: boolean) {
-			const totalW = subtreeWidth(node);
+		function extent(node: OrgNode): number {
+			if (node.reports.length === 0) return CROSS;
+			const c =
+				node.reports.reduce((s, ch) => s + extent(ch), 0) + (node.reports.length - 1) * CROSS_GAP;
+			return Math.max(CROSS, c);
+		}
+
+		function place(node: OrgNode, crossStart: number, depth: number, isRoot: boolean) {
+			const ext = extent(node);
+			const cross = crossStart + (ext - CROSS) / 2;
+			const main = depth * MAIN_STEP;
 			const a = agentMap.get(node.id);
 			nodes.push({
 				id: node.id,
 				type: 'org',
-				position: { x: x + (totalW - CARD_W) / 2, y },
+				position: vertical ? { x: cross, y: main } : { x: main, y: cross },
+				sourcePosition: vertical ? Position.Bottom : Position.Right,
+				targetPosition: vertical ? Position.Top : Position.Left,
+				draggable: false,
 				data: {
 					name: node.name,
 					role: node.role,
@@ -58,31 +77,31 @@
 					title: a?.title ?? null,
 					adapterType: a?.adapterType ?? null,
 					isRoot,
+					orientation: dir,
+					avatarUrl: diceBearAvatarUrl(node.id),
 				},
-				draggable: false,
 			});
 			if (node.reports.length > 0) {
-				const childrenW = node.reports.reduce((s, c) => s + subtreeWidth(c), 0);
-				const gaps = (node.reports.length - 1) * GAP_X;
-				let cx = x + (totalW - childrenW - gaps) / 2;
+				const childrenExt = node.reports.reduce((s, ch) => s + extent(ch), 0);
+				const gaps = (node.reports.length - 1) * CROSS_GAP;
+				let cs = crossStart + (ext - childrenExt - gaps) / 2;
 				for (const child of node.reports) {
-					const cw = subtreeWidth(child);
 					edges.push({
 						id: `${node.id}-${child.id}`,
 						source: node.id,
 						target: child.id,
 						type: 'smoothstep',
 					});
-					place(child, cx, y + CARD_H + GAP_Y, false);
-					cx += cw + GAP_X;
+					place(child, cs, depth + 1, false);
+					cs += extent(child) + CROSS_GAP;
 				}
 			}
 		}
 
-		let x = 0;
+		let cursor = 0;
 		for (const root of roots) {
-			place(root, x, 0, true);
-			x += subtreeWidth(root) + GAP_X;
+			place(root, cursor, 0, true);
+			cursor += extent(root) + CROSS_GAP;
 		}
 		return { nodes, edges };
 	}
@@ -93,15 +112,29 @@
 	let nodes = $state.raw<Node[]>([]);
 	let edges = $state.raw<Edge[]>([]);
 
-	// Rebuild on data change (8s poll). Node ids are stable, so SvelteFlow
-	// reconciles by id and keeps the viewport across status updates.
+	// Rebuild on data (8s poll) or orientation change. Stable node ids let
+	// SvelteFlow reconcile in place; the CSS transition animates the move.
 	$effect(() => {
-		const g = buildGraph(tree);
+		const g = buildGraph(tree, orientation);
 		nodes = g.nodes;
 		edges = g.edges;
 	});
 
-	onMount(() => startPolling('app:org', 8000));
+	onMount(() => {
+		const stopPoll = startPolling('app:org', 8000);
+		let ro: ResizeObserver | undefined;
+		if (containerEl) {
+			ro = new ResizeObserver((entries) => {
+				const r = entries[0]?.contentRect;
+				if (r) orientation = r.width >= r.height ? 'vertical' : 'horizontal';
+			});
+			ro.observe(containerEl);
+		}
+		return () => {
+			stopPoll();
+			ro?.disconnect();
+		};
+	});
 
 	const STATUS_DOT: Record<string, string> = {
 		active: '#10b981',
@@ -128,27 +161,33 @@
 	}
 </script>
 
-<!--
-	Explicit viewport height: the workforce layout's content <main> is
-	overflow-y-auto (not a flex column), so flex-1 here collapses to 0 and
-	SvelteFlow — which fills its parent's height — renders nothing. Pin the page
-	to viewport-minus-topbar (3.5rem) and flex inside it, per the layout contract.
--->
 <div class="flex h-[calc(100vh-3.5rem)] flex-col">
-<PageHeader title={m.workforce_orgChart()}>
-	{#snippet leading()}
-		<Network size={16} class="text-accent shrink-0" />
-	{/snippet}
-	{#snippet actions()}
-		<LiveIndicator intervalMs={8000} />
-		<div class="text-muted-foreground hidden text-xs md:block">
-			{m.workforce_orgChartInfo({ count: nodes.length })}
-		</div>
-	{/snippet}
-</PageHeader>
+	<PageHeader title={m.workforce_orgChart()}>
+		{#snippet leading()}
+			<Network size={16} class="text-accent shrink-0" />
+		{/snippet}
+	</PageHeader>
 
-<main class="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-6">
-	<div class="border-border bg-muted/20 relative min-h-0 flex-1 overflow-hidden rounded-lg border">
+	<!-- Toolbar: live status + instructions + legend, above the canvas (not the header). -->
+	<div
+		class="border-border flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b px-4 py-2 text-xs"
+	>
+		<LiveIndicator intervalMs={8000} />
+		<span class="text-muted-foreground">
+			{m.workforce_orgChartInfo({ count: nodes.length })}
+		</span>
+		<div class="text-muted-foreground ml-auto flex flex-wrap items-center gap-3">
+			{#each Object.entries(STATUS_DOT) as [status, color] (status)}
+				<span class="inline-flex items-center gap-1.5">
+					<span class="h-2 w-2 rounded-full" style="background:{color}"></span>
+					{statusLabel(status)}
+				</span>
+			{/each}
+		</div>
+	</div>
+
+	<!-- Maximized canvas: fills all remaining space, no padding. -->
+	<div bind:this={containerEl} class="bg-muted/10 relative min-h-0 flex-1">
 		{#if nodes.length === 0}
 			<div class="text-muted-foreground absolute inset-0 flex items-center justify-center text-sm">
 				{m.workforce_orgChartInfo({ count: 0 })}
@@ -172,17 +211,18 @@
 			>
 				<Background />
 				<Controls showLock={false} />
+				<OrgFitController trigger={orientation} />
 			</SvelteFlow>
 		{/if}
 	</div>
-
-	<footer class="text-muted-foreground flex flex-wrap items-center gap-4 text-xs">
-		{#each Object.entries(STATUS_DOT) as [status, color] (status)}
-			<span class="inline-flex items-center gap-1.5">
-				<span class="h-2 w-2 rounded-full" style="background:{color}"></span>
-				{statusLabel(status)}
-			</span>
-		{/each}
-	</footer>
-</main>
 </div>
+
+<style>
+	/* Graceful animation when nodes reposition (e.g. orientation flip). */
+	:global(.svelte-flow__node) {
+		transition:
+			transform 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+			box-shadow 0.15s ease,
+			border-color 0.15s ease;
+	}
+</style>
