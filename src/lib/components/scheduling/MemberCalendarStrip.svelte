@@ -1,8 +1,9 @@
 <script lang="ts">
 	/**
-	 * Compact 7-day (Mon–Sun) calendar strip for a single team member: shows their
-	 * bookings for the week as chips, grouped by day. Read-only overview used on
-	 * the scheduling Team page.
+	 * Compact 7-day calendar strip for a single team member, centred on today
+	 * (3 days behind + today + 3 ahead). Shows their bookings as chips grouped by
+	 * day. Read-only overview used on the scheduling Team page. `weekStart` is the
+	 * window's first day (today − 3), provided by the loader.
 	 */
 	interface StripBooking {
 		id: string;
@@ -19,8 +20,6 @@
 		color = 'var(--accent)',
 	}: { weekStart: string; bookings: StripBooking[]; color?: string } = $props();
 
-	const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
 	const days = $derived.by(() => {
 		const base = new Date(`${weekStart}T00:00:00`);
 		const todayKey = new Date().toDateString();
@@ -31,7 +30,9 @@
 			const dayBookings = bookings
 				.filter((b) => new Date(b.start).toDateString() === key)
 				.sort((a, b) => a.start.localeCompare(b.start));
-			return { label: DAY_LABELS[i], num: d.getDate(), isToday: key === todayKey, bookings: dayBookings };
+			// Label by the day's actual weekday so any 7-day window reads correctly.
+			const label = d.toLocaleDateString(undefined, { weekday: 'short' });
+			return { key, label, num: d.getDate(), isToday: key === todayKey, bookings: dayBookings };
 		});
 	});
 
@@ -39,7 +40,7 @@
 </script>
 
 <div class="week">
-	{#each days as day (day.num)}
+	{#each days as day (day.key)}
 		<div class="day" class:today={day.isToday}>
 			<div class="dh">
 				<span class="dl">{day.label}</span>

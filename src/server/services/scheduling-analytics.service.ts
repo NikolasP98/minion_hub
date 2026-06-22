@@ -133,13 +133,18 @@ export interface SchedulingSummary {
 }
 
 export async function schedulingSummary(ctx: CoreCtx, from: Date, to: Date): Promise<SchedulingSummary> {
+  // Bind dates as ISO strings with an explicit ::timestamptz cast: a bare JS
+  // Date inside a raw `sql` filter gives Postgres no type to infer for the
+  // param and the query throws ("could not determine data type of parameter").
+  const f = from.toISOString();
+  const t = to.toISOString();
   return withOrgCore(ctx, async (tx) => {
     const [row] = (await tx.execute(sql`
       select
         count(*) filter (where status in ('accepted','pending') and start_time >= now()) as upcoming,
-        count(*) filter (where status in ('accepted','completed') and start_time >= ${from} and start_time <= ${to}) as booked,
-        count(*) filter (where status = 'cancelled' and start_time >= ${from} and start_time <= ${to}) as cancelled,
-        count(*) filter (where status = 'no_show' and start_time >= ${from} and start_time <= ${to}) as no_show
+        count(*) filter (where status in ('accepted','completed') and start_time >= ${f}::timestamptz and start_time <= ${t}::timestamptz) as booked,
+        count(*) filter (where status = 'cancelled' and start_time >= ${f}::timestamptz and start_time <= ${t}::timestamptz) as cancelled,
+        count(*) filter (where status = 'no_show' and start_time >= ${f}::timestamptz and start_time <= ${t}::timestamptz) as no_show
       from sched_bookings where org_id = ${ctx.tenantId}
     `)) as unknown as Array<Record<string, unknown>>;
     const [counts] = (await tx.execute(sql`
@@ -174,13 +179,15 @@ export interface ResourceRevenue {
  * the CRM/finance tables aren't present.
  */
 export async function revenueByResource(ctx: CoreCtx, from: Date, to: Date): Promise<ResourceRevenue[]> {
+  const f = from.toISOString();
+  const t = to.toISOString();
   return withOrgCore(ctx, async (tx) => {
     // Cheap gate first: if no bookings in range carry a CRM link, there is no
     // overlay to compute — skip the (potentially expensive) phone×invoice join
     // entirely. This keeps the dashboard fast when scheduling is fresh/empty.
     const gate = (await tx.execute(sql`
       select count(*)::int as n from sched_bookings
-      where org_id = ${ctx.tenantId} and start_time >= ${from} and start_time <= ${to}
+      where org_id = ${ctx.tenantId} and start_time >= ${f}::timestamptz and start_time <= ${t}::timestamptz
         and status in ('accepted','completed') and crm_contact_id is not null
     `)) as unknown as Array<{ n: number }>;
     if (!gate.length || Number(gate[0].n) === 0) return [];
@@ -192,7 +199,7 @@ export async function revenueByResource(ctx: CoreCtx, from: Date, to: Date): Pro
       with seen as (
         select b.resource_id, b.crm_contact_id, count(*)::int as bookings
         from sched_bookings b
-        where b.org_id = ${ctx.tenantId} and b.start_time >= ${from} and b.start_time <= ${to}
+        where b.org_id = ${ctx.tenantId} and b.start_time >= ${f}::timestamptz and b.start_time <= ${t}::timestamptz
           and b.status in ('accepted','completed') and b.crm_contact_id is not null
         group by b.resource_id, b.crm_contact_id
       ),

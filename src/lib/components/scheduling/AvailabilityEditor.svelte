@@ -42,6 +42,12 @@
 	let saved = $state(false);
 	let err = $state<string | null>(null);
 
+	// Dirty tracking — the Save button only appears once the week is edited.
+	const serialize = (w: DayState[]) => JSON.stringify(w);
+	// svelte-ignore state_referenced_locally
+	let baseline = $state(serialize(week));
+	const dirty = $derived(serialize(week) !== baseline);
+
 	async function save() {
 		saving = true;
 		saved = false;
@@ -58,6 +64,7 @@
 			});
 			if (!res.ok) throw new Error(String(res.status));
 			saved = true;
+			baseline = serialize(week); // committed → clean again, hide Save
 			await invalidate('scheduling:data');
 		} catch (e) {
 			err = e instanceof Error ? e.message : 'error';
@@ -84,11 +91,14 @@
 			{/if}
 		</div>
 	{/each}
-	<div class="flex items-center gap-2 mt-2">
-		<Button size="sm" onclick={save} disabled={saving || !schedule}>{m.sched_save()}</Button>
-		{#if saved}<span class="t-caption text-accent">✓</span>{/if}
-		{#if err}<span class="t-caption" style="color:var(--color-destructive)">{err}</span>{/if}
-	</div>
+	{#if dirty || err}
+		<div class="flex items-center gap-2 mt-2">
+			{#if dirty}<Button size="sm" onclick={save} disabled={saving || !schedule}>{m.sched_save()}</Button>{/if}
+			{#if err}<span class="t-caption" style="color:var(--color-destructive)">{err}</span>{/if}
+		</div>
+	{:else if saved}
+		<div class="mt-2"><span class="t-caption text-accent">✓ {m.sched_rem_saved()}</span></div>
+	{/if}
 </div>
 
 <style>

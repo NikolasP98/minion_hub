@@ -6,12 +6,11 @@ import { listResources, getResourceSchedule, listEventTypes } from '$server/serv
 import { listBookings } from '$server/services/scheduling-bookings.service';
 import { listUsers } from '$server/services/user.service';
 
-/** Monday 00:00 of the week containing `d` (local server time). */
-function startOfWeek(d: Date): Date {
-  const s = new Date(d);
+/** Local midnight `n` days from today (negative = past). */
+function dayOffset(n: number): Date {
+  const s = new Date();
   s.setHours(0, 0, 0, 0);
-  const dow = s.getDay(); // 0=Sun … 6=Sat
-  s.setDate(s.getDate() - ((dow + 6) % 7));
+  s.setDate(s.getDate() + n);
   return s;
 }
 
@@ -21,7 +20,8 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(404, 'Scheduling module disabled');
   depends('scheduling:data');
 
-  const weekStart = startOfWeek(new Date());
+  // 7-day window centred on today: 3 days behind + today + 3 ahead.
+  const weekStart = dayOffset(-3);
   const weekEnd = new Date(weekStart.getTime() + 7 * 86_400_000);
 
   // Native org members (Supabase profiles via organization_members). Degrade to
