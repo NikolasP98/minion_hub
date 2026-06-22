@@ -268,7 +268,9 @@ const workforceIdentityHandle: Handle = async ({ event, resolve }) => {
     const needsCompany =
       path.startsWith('/workforce') ||
       path.startsWith('/api/workforce') ||
-      path.startsWith('/api/pc');
+      path.startsWith('/api/pc') ||
+      // The autonomous-agents page surfaces Workforce agents as a segregated group.
+      path.startsWith('/agents/autonomous');
     const orgId = event.locals.orgId ?? event.locals.tenantCtx?.tenantId ?? null;
     // Native single-id model: the Workforce company id IS the active org id
     // (company.id === organizations.id). No mapping lookup, no cookie carrier.

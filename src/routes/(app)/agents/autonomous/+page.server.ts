@@ -1,13 +1,18 @@
 import type { PageServerLoad } from './$types';
 import { requireCoreCtx } from '$server/auth/core-ctx';
 import { loadSystemAgentVMs } from '$lib/server/system-agents/registry';
+import { loadWorkforceAgentVMs } from '$lib/server/system-agents/workforce-agents';
 import { getArtifactsForAgent } from '$lib/server/artifacts/registry';
 import { listExportToggles } from '$lib/server/flows/exports-store';
 
-export const load: PageServerLoad = async ({ locals, depends }) => {
+export const load: PageServerLoad = async (event) => {
+  const { locals, depends } = event;
   const ctx = await requireCoreCtx(locals); // throws 401 if unauthenticated
   depends('agents:autonomous');
-  const allSystemAgents = await loadSystemAgentVMs(ctx).catch(() => []);
+  const [allSystemAgents, workforceAgents] = await Promise.all([
+    loadSystemAgentVMs(ctx).catch(() => []),
+    loadWorkforceAgentVMs(event).catch(() => []),
+  ]);
   const isAdmin = locals.user?.role === 'admin';
   const visibleAgents = allSystemAgents.filter((a) => !a.adminOnly || isAdmin);
   const artifactsByAgent = Object.fromEntries(
@@ -21,5 +26,5 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
         .map(async (a) => [a.flowId!, await listExportToggles(ctx, a.flowId!).catch(() => ({}))] as const),
     ),
   );
-  return { systemAgents: visibleAgents, isAdmin, artifactsByAgent, flowTogglesByFlow };
+  return { systemAgents: visibleAgents, workforceAgents, isAdmin, artifactsByAgent, flowTogglesByFlow };
 };

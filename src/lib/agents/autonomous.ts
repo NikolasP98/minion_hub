@@ -36,7 +36,7 @@ export interface SystemAgentMeta {
 
 export interface AutonomousAgentVM {
   id: string;
-  source: 'system' | 'gateway';
+  source: 'system' | 'gateway' | 'workforce';
   name: string;
   role: string;
   description: string;
@@ -110,5 +110,38 @@ export function gatewayAgentToVM(
     trigger: null,
     managePath: null,
     status: { enabled: true, state: 'active' },
+  };
+}
+
+/** Minimal shape of a Workforce agent needed to render an autonomous card. */
+export interface WorkforceAgentInput {
+  id: string;
+  name: string;
+  role: string;
+  title?: string | null;
+  status?: string | null;
+  capabilities?: string | null;
+}
+
+/**
+ * Map a Workforce-module agent into an autonomous-agent VM. Every workforce
+ * agent is event-driven (acts on issue create/update), so they belong on the
+ * autonomous page — segregated as their own module group. Status maps the
+ * backend agent state onto the shared active/attention/disabled vocabulary.
+ */
+export function workforceAgentToVM(agent: WorkforceAgentInput, triggerLabel: string): AutonomousAgentVM {
+  const s = (agent.status ?? '').toLowerCase();
+  const state: SystemAgentStatus['state'] =
+    s === 'error' ? 'attention' : s === 'paused' || s === 'disabled' ? 'disabled' : 'active';
+  return {
+    id: `workforce:${agent.id}`,
+    source: 'workforce',
+    name: agent.name,
+    role: agent.title || agent.role,
+    description: agent.capabilities?.trim() || '',
+    avatarUrl: diceBearAvatarUrl(agent.id),
+    trigger: triggerLabel,
+    managePath: `/workforce/agents/${agent.id}`,
+    status: { enabled: state !== 'disabled', state, detail: agent.status ?? undefined },
   };
 }
