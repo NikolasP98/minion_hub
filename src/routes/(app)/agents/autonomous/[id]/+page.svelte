@@ -1,6 +1,6 @@
 <script lang="ts">
   import * as m from '$lib/paraglide/messages';
-  import { ArrowLeft, Settings2, Zap, Pencil, Maximize2 } from 'lucide-svelte';
+  import { ArrowLeft, Settings2, Zap, Pencil, Maximize2, Minimize2 } from 'lucide-svelte';
   import ArtifactHost from '$lib/components/artifacts/ArtifactHost.svelte';
   import AgentHealthMetrics from '$lib/components/agents/AgentHealthMetrics.svelte';
   import MasterFlowCanvas from '$lib/components/flow-editor/MasterFlowCanvas.svelte';
@@ -8,7 +8,6 @@
   import type { AutonomousAgentVM } from '$lib/agents/autonomous';
   import type { ArtifactDescriptor } from '$lib/agents/artifacts';
   import type { HealthMetrics } from '$lib/server/agents/health-metrics';
-  import { agentWindows } from '$lib/state/ui/agent-windows.svelte';
 
   let {
     data,
@@ -22,7 +21,14 @@
   } = $props();
   const agent = $derived(data.agent);
   const flow = $derived(agent.flowId ? getMasterFlow(agent.flowId) : undefined);
+  let flowFullscreen = $state(false);
 </script>
+
+<svelte:window
+  onkeydown={(e) => {
+    if (e.key === 'Escape' && flowFullscreen) flowFullscreen = false;
+  }}
+/>
 
 <div class="flex h-full flex-col overflow-hidden p-6">
   <a href="/agents/autonomous" class="mb-4 inline-flex items-center gap-1.5 text-xs text-white/50 hover:text-white/80">
@@ -51,7 +57,11 @@
 
     <!-- View-only flow -->
     {#if flow}
-      <section class="rounded-xl border border-white/10 bg-white/[0.02]">
+      <section
+        class={flowFullscreen
+          ? 'surface-4 fixed inset-0 z-[1000] flex flex-col'
+          : 'flex flex-col rounded-xl border border-white/10 bg-white/[0.02]'}
+      >
         <div class="flex items-center justify-between border-b border-white/10 px-4 py-2.5">
           <p class="text-[10px] font-medium uppercase tracking-wide text-white/40">
             {m.autonomous_view_flow()}
@@ -69,16 +79,16 @@
             {/if}
             <button
               type="button"
-              onclick={() => agentWindows.openFlow(agent.flowId!, agent.name)}
+              onclick={() => (flowFullscreen = !flowFullscreen)}
               aria-label={m.autonomous_maximize_flow()}
               title={m.autonomous_maximize_flow()}
               class="grid size-7 place-items-center rounded-lg border border-white/10 bg-white/5 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
             >
-              <Maximize2 size={13} />
+              {#if flowFullscreen}<Minimize2 size={13} />{:else}<Maximize2 size={13} />{/if}
             </button>
           </div>
         </div>
-        <div class="h-80">
+        <div class={flowFullscreen ? 'min-h-0 flex-1' : 'h-80'}>
           <MasterFlowCanvas {flow} />
         </div>
       </section>

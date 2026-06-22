@@ -3194,7 +3194,7 @@
   "autonomous_manage": "Manage",
   "autonomous_view_flow": "View flow",
   "autonomous_edit_flow": "Edit",
-  "autonomous_maximize_flow": "Open in window",
+  "autonomous_maximize_flow": "Fullscreen",
   "flow_copilot_title": "Flow copilot",
   "flow_copilot_placeholder": "Describe the change you want…",
   "flow_copilot_thinking": "Thinking…",
