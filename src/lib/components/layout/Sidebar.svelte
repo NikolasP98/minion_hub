@@ -5,6 +5,7 @@
   import {
     Activity,
     Store,
+    SquareTerminal,
     Settings,
     PanelLeftClose,
     PanelLeft,
@@ -38,6 +39,7 @@
   const navSections = $derived<Section[]>([...staticSections, ...pluginsSections]);
 
   const showReliability = $derived(canClient('reliability.monitor'));
+  const showTerminal = $derived(canClient('terminal.shell'));
   const isSettings = $derived(page.url.pathname.startsWith('/settings'));
 
   // Top utility row: icon-only pills that expand inline to icon+label when the
@@ -47,6 +49,7 @@
     [
       { href: '/reliability', label: m.nav_reliability(), icon: Activity, show: showReliability },
       { href: '/marketplace', label: m.nav_marketplace(), icon: Store, show: true },
+      { href: '/terminal', label: m.nav_terminal(), icon: SquareTerminal, show: showTerminal },
     ].filter((t) => t.show),
   );
 
