@@ -4,8 +4,8 @@
   import * as m from '$lib/paraglide/messages';
   import { getActiveHost, fetchHostToken, loadHosts } from '$lib/state/features/hosts.svelte';
 
-  // Fixed grid — must match the gateway PTY (wterm's WebSocketTransport carries
-  // no resize frame). See minion/src/gateway/pty-ws.ts (PTY_COLS / PTY_ROWS).
+  // Fixed grid — must match the gateway PTY (no resize frame in raw WS mode).
+  // See minion/src/gateway/pty-ws.ts (PTY_COLS / PTY_ROWS).
   const COLS = 120;
   const ROWS = 34;
 
@@ -14,10 +14,10 @@
   let status = $state('Connecting…');
 
   /** gateway host.url is already ws:// or wss:// → reuse origin, swap path. */
-  function ptyUrl(hostUrl: string, token: string): string {
+  function ptyUrl(hostUrl: string): string {
     const u = new URL(hostUrl);
     u.pathname = '/pty';
-    u.search = `?token=${encodeURIComponent(token)}`;
+    u.search = '';
     u.hash = '';
     return u.toString();
   }
@@ -26,8 +26,6 @@
     let destroy: (() => void) | undefined;
     (async () => {
       try {
-        // Seed activeHostId from page.data + localStorage — the layout's init
-        // onMount races with this child onMount, so don't depend on it.
         loadHosts();
         const active = getActiveHost();
         if (!active?.url) {
@@ -40,30 +38,33 @@
           return;
         }
 
-        const [{ WTerm, WebSocketTransport }] = await Promise.all([import('@wterm/dom')]);
+        const [{ WTerm }] = await Promise.all([import('@wterm/dom')]);
         // @ts-expect-error CSS side-effect import has no type declaration
         await import('@wterm/dom/css');
 
         const term = new WTerm(host!, { cols: COLS, rows: ROWS, autoResize: false, cursorBlink: true });
         await term.init();
 
-        const ws = new WebSocketTransport({
-          url: ptyUrl(active.url, token),
-          onData: (data: Uint8Array | string) => term.write(data),
-          onOpen: () => (status = `Connected · ${active.name ?? active.url}`),
-          onClose: () => (status = 'Disconnected'),
-          onError: () => (status = 'Connection error'),
+        // Pass token as WS subprotocol — stays in Sec-WebSocket-Protocol header,
+        // not the URL, so it won't appear in proxy access logs.
+        const socket = new WebSocket(ptyUrl(active.url), [token]);
+        socket.binaryType = 'arraybuffer';
+
+        socket.addEventListener('open', () => {
+          status = `Connected · ${active.name ?? active.url}`;
+          term.onData = (d: string) => {
+            if (socket.readyState === WebSocket.OPEN) socket.send(d);
+          };
+          term.focus();
         });
-        ws.connect();
-        term.onData = (d: string) => ws.send(d);
-        term.focus();
+        socket.addEventListener('message', (e: MessageEvent) => {
+          term.write(e.data instanceof ArrayBuffer ? new Uint8Array(e.data) : (e.data as string));
+        });
+        socket.addEventListener('close', () => (status = 'Disconnected'));
+        socket.addEventListener('error', () => (status = 'Connection error'));
 
         destroy = () => {
-          try {
-            ws.close();
-          } catch {
-            /* ignore */
-          }
+          try { socket.close(); } catch { /* ignore */ }
           term.destroy();
         };
       } catch (e) {
