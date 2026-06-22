@@ -2,6 +2,12 @@
   // Shape of a single menu row. Exported so the barrel and consumers can type
   // their item arrays. A row is either a real selectable item, or — when
   // `divider` is true — a horizontal separator (other fields ignored).
+  // Module-scoped so every Dropdown instance gets a UNIQUE id. (Was an
+  // instance-level `let nextId = 0`, so all instances collided on
+  // `ui-dropdown-0` → Zag's positioner anchored to the wrong element and menus
+  // rendered at the page's top-left. Surfaces only with ≥2 dropdowns per page.)
+  let _dropdownSeq = 0;
+
   export interface DropdownItem {
     value: string;
     label: string;
@@ -47,8 +53,7 @@
     class: cls = '',
   }: Props = $props();
 
-  let nextId = 0;
-  const menuId = `ui-dropdown-${nextId++}`;
+  const menuId = `ui-dropdown-${_dropdownSeq++}`;
 
   const service = useMachine(menu.machine as any, () => ({
     id: menuId,

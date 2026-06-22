@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto, invalidateAll } from '$app/navigation';
-  import { Zap, Settings2, Workflow, MoreVertical } from 'lucide-svelte';
+  import { Zap, Settings2, Workflow, MoreVertical, ArrowUpRight } from 'lucide-svelte';
   import { StatusDot, Dropdown, type DropdownItem } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import type { AutonomousAgentVM } from '$lib/agents/autonomous';
@@ -38,14 +38,16 @@
     { value: 'manage', label: m.autonomous_manage(), icon: Settings2 },
   ]);
 
+  const detailHref = $derived(`/agents/autonomous/${encodeURIComponent(agent.id)}`);
+
   function onMenu(value: string) {
     if (value === 'view-flow' && agent.flowId) agentWindows.openFlow(agent.flowId, agent.name);
-    else if (value === 'manage') goto(`/agents/autonomous/${encodeURIComponent(agent.id)}`);
+    else if (value === 'manage') goto(detailHref);
   }
 </script>
 
 <article
-  class="flex flex-col gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-4 transition-colors hover:border-white/20"
+  class="group/card flex flex-col gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-4 transition-colors hover:border-white/20"
 >
   <header class="flex items-start gap-3">
     <img
@@ -55,7 +57,16 @@
       loading="lazy"
     />
     <div class="min-w-0 flex-1">
-      <h3 class="truncate text-sm font-semibold text-white">{agent.name}</h3>
+      <a
+        href={detailHref}
+        class="group/name inline-flex max-w-full items-center gap-1 text-sm font-semibold text-white hover:underline"
+      >
+        <span class="truncate">{agent.name}</span>
+        <ArrowUpRight
+          size={13}
+          class="shrink-0 opacity-0 transition-opacity group-hover/name:opacity-100"
+        />
+      </a>
       {#if agent.role}
         <p class="truncate text-xs text-white/50">{agent.role}</p>
       {/if}
