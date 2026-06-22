@@ -117,8 +117,8 @@ const norm = (s: string) =>
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '') // strip accents (sí → si)
     .replace(/[^a-z0-9\s]/g, ' ');
-const YES_TOKENS = new Set(['si', 'yes', 'confirmo', 'confirmar', 'confirmado', 'confirma', 'ok', 'okay', 'dale', 'claro', 'listo', 'perfecto', 'va', 'asistire']);
-const NO_TOKENS = new Set(['no', 'nop', 'cancela', 'cancelar', 'cancelo', 'cancelado']);
+const YES_TOKENS = new Set(['si', 'yes', 'confirmo', 'confirmar', 'confirmado', 'ok', 'dale', 'listo']);
+const NO_TOKENS = new Set(['no', 'cancela', 'cancelar', 'cancelo', 'cancelado']);
 
 /**
  * Keyword-match a message for a confirm/decline intent → 'yes' | 'no' | null

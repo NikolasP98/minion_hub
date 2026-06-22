@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Button, Toggle } from '$lib/components/ui';
+	import WeekHoursEditor from './WeekHoursEditor.svelte';
 	import * as m from '$lib/paraglide/messages';
 
 	interface EventType {
@@ -67,10 +68,9 @@
 	let err = $state<string | null>(null);
 
 	// Per-service weekly schedule (only used when f.useCustomSchedule). 0=Sun…6=Sat.
-	const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 	type DayState = { enabled: boolean; start: string; end: string };
 	function buildWeek(rules: EventType['scheduleRules']): DayState[] {
-		const week: DayState[] = DAY_LABELS.map(() => ({ enabled: false, start: '09:00', end: '17:00' }));
+		const week: DayState[] = Array.from({ length: 7 }, () => ({ enabled: false, start: '09:00', end: '17:00' }));
 		for (const r of rules ?? []) for (const d of r.days) if (d >= 0 && d <= 6) week[d] = { enabled: true, start: r.startTime, end: r.endTime };
 		return week;
 	}
@@ -199,23 +199,7 @@
 		</label>
 		<p class="t-caption mt-1 opacity-70">{m.sched_et_customSchedule_help()}</p>
 		{#if f.useCustomSchedule}
-			<div class="week mt-2">
-				{#each week as d, i (i)}
-					<div class="day-row">
-						<label class="day-toggle">
-							<input type="checkbox" bind:checked={d.enabled} />
-							<span>{DAY_LABELS[i]}</span>
-						</label>
-						{#if d.enabled}
-							<input type="time" bind:value={d.start} class="time-in" aria-label={m.sched_start()} />
-							<span class="dash">–</span>
-							<input type="time" bind:value={d.end} class="time-in" aria-label={m.sched_end()} />
-						{:else}
-							<span class="t-caption off">—</span>
-						{/if}
-					</div>
-				{/each}
-			</div>
+			<div class="mt-2"><WeekHoursEditor bind:week /></div>
 		{/if}
 	</div>
 
@@ -252,37 +236,5 @@
 		background: var(--accent);
 		color: var(--color-accent-foreground, #fff);
 		border-color: var(--accent);
-	}
-	.week {
-		display: flex;
-		flex-direction: column;
-		gap: 0.3rem;
-	}
-	.day-row {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		min-height: 28px;
-	}
-	.day-toggle {
-		display: flex;
-		align-items: center;
-		gap: 0.35rem;
-		width: 64px;
-		font-size: 0.85rem;
-		cursor: pointer;
-	}
-	.time-in {
-		border: 1px solid var(--hairline);
-		border-radius: 6px;
-		padding: 0.15rem 0.4rem;
-		background: var(--color-card);
-		font-size: 0.8rem;
-	}
-	.dash {
-		color: var(--color-muted-foreground);
-	}
-	.off {
-		opacity: 0.5;
 	}
 </style>
