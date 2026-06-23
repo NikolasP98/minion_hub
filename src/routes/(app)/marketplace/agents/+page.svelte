@@ -99,9 +99,9 @@
     }
 </script>
 
-<div class="flex flex-col min-h-full">
-    <!-- Compact sticky toolbar header -->
-    <header class="sticky top-0 z-10 shrink-0 flex flex-col border-b border-border bg-bg2/80 backdrop-blur-sm">
+<div class="flex flex-col h-full">
+    <!-- Compact toolbar header — fixed; only the content below scrolls -->
+    <header class="shrink-0 flex flex-col border-b border-border bg-bg2/80 backdrop-blur-sm">
         <!-- Primary row: title + controls -->
         <div class="flex items-center gap-3 px-4 py-2.5 md:pr-[var(--notch-clearance)]">
             <Bot size={13} class="text-[var(--color-brand-pink)] shrink-0" />
@@ -213,8 +213,8 @@
         </div>
     </header>
 
-    <!-- Content area -->
-    <div class="flex-1 p-4">
+    <!-- Content area — owns the scroll -->
+    <div class="flex-1 min-h-0 overflow-y-auto p-4">
         {#if marketplaceState.loading}
             <!-- Loading State -->
             <div class="flex flex-col items-center justify-center py-24 gap-3">
