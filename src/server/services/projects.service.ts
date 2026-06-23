@@ -161,7 +161,7 @@ export async function performAgentDispatch(
  * issue → the hub task (the task is the human-facing record). Add a webhook/poll
  * to reflect issue completion onto the task only if someone needs a live mirror.
  */
-async function dispatchToAgent(ctx: CoreCtx, task: ProjTask, agentId: string, actor: Actor): Promise<void> {
+async function dispatchToAgent(ctx: CoreCtx, task: ProjTask, agentId: string, actor: Actor): Promise<string | null> {
   await recordAudit(ctx, {
     refType: 'proj_task',
     refId: task.id,
@@ -171,18 +171,22 @@ async function dispatchToAgent(ctx: CoreCtx, task: ProjTask, agentId: string, ac
   });
   try {
     const client = await workforceClientForOrg(ctx.tenantId, actor);
-    const issueId = await performAgentDispatch(client, ctx.tenantId, task, agentId);
-    if (!issueId) return;
-    const meta = task.metadata && typeof task.metadata === 'object' ? (task.metadata as Record<string, unknown>) : {};
-    await withOrgCore(ctx, (tx) =>
-      tx
-        .update(projTasks)
-        .set({ metadata: { ...meta, workforceIssueId: issueId }, updatedAt: new Date() })
-        .where(and(eq(projTasks.id, task.id), eq(projTasks.orgId, ctx.tenantId))),
-    );
+    // Returns the workforce issue id; the CALLER persists it onto the task in its
+    // own (outer) tx — writing here via a nested withOrgCore can't see the
+    // not-yet-committed row, so the back-link was silently lost.
+    return await performAgentDispatch(client, ctx.tenantId, task, agentId);
   } catch {
-    // Swallowed by design — the assignment stands; the workforce run is best-effort delivery.
+    return null; // Swallowed by design — the assignment stands; the workforce run is best-effort.
   }
+}
+
+/** Merge the dispatched workforce issue id onto the task within the caller's tx. */
+function linkWorkforceIssue(tx: CoreTx, orgId: string, task: ProjTask, issueId: string) {
+  const meta = task.metadata && typeof task.metadata === 'object' ? (task.metadata as Record<string, unknown>) : {};
+  return tx
+    .update(projTasks)
+    .set({ metadata: { ...meta, workforceIssueId: issueId }, updatedAt: new Date() })
+    .where(and(eq(projTasks.id, task.id), eq(projTasks.orgId, orgId)));
 }
 
 export type PartyLite = { id: string; name: string | null; type: string; agentId: string | null };
@@ -369,7 +373,13 @@ export function createTask(ctx: CoreCtx, data: NewTaskInput, actor: Actor): Prom
     });
     if (row.assigneePartyId) {
       const agentId = await partyAgentId(tx, ctx.tenantId, row.assigneePartyId);
-      if (agentId) await dispatchToAgent(ctx, row, agentId, actor);
+      if (agentId) {
+        const issueId = await dispatchToAgent(ctx, row, agentId, actor);
+        if (issueId) {
+          const [linked] = await linkWorkforceIssue(tx, ctx.tenantId, row, issueId).returning();
+          return linked ?? row;
+        }
+      }
     }
     return row;
   });
@@ -406,7 +416,13 @@ export function updateTask(
     // Dispatch when assignee changed to an agent-party.
     if (row && patch.assigneePartyId && patch.assigneePartyId !== cur.assigneePartyId) {
       const agentId = await partyAgentId(tx, ctx.tenantId, patch.assigneePartyId);
-      if (agentId) await dispatchToAgent(ctx, row, agentId, actor);
+      if (agentId) {
+        const issueId = await dispatchToAgent(ctx, row, agentId, actor);
+        if (issueId) {
+          const [linked] = await linkWorkforceIssue(tx, ctx.tenantId, row, issueId).returning();
+          if (linked) return linked;
+        }
+      }
     }
     return row ?? null;
   });
