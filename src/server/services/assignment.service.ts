@@ -7,6 +7,7 @@ import { crmContacts } from '$server/db/pg-crm-schema';
 import { salesOrders } from '$server/db/pg-sales-schema';
 import { evaluateCondition, type Filter } from './notif.service';
 import { recordAudit } from './activity.service';
+import { listUsers } from './user.service';
 import type { CoreCtx } from '$server/auth/core-ctx';
 
 /**
@@ -131,14 +132,22 @@ export async function reassign(
   docType: string,
   docId: string,
   newOwner: string | null,
-  actor: { id: string | null; name: string | null },
-): Promise<boolean> {
-  if (!isDocTypeAllowed(docType)) return false;
+  actor: { id: string | null; name: string | null; isAdmin: boolean },
+): Promise<'ok' | 'not_found' | 'forbidden'> {
+  if (!isDocTypeAllowed(docType)) return 'not_found';
+  // newOwner (when set) must be a real member of the caller's org.
+  if (newOwner) {
+    const members = await listUsers({ tenantId: ctx.tenantId }).catch(() => []);
+    if (!members.some((m) => m.id === newOwner)) return 'forbidden';
+  }
   const t = DOC_META[docType].table;
   const [prev] = await withOrgCore(ctx, (tx) =>
     tx.select({ owner: t.ownerId }).from(t).where(and(eq(t.id, docId), eq(t.orgId, ctx.tenantId))),
   );
-  if (!prev) return false;
+  if (!prev) return 'not_found';
+  // Only an admin or the current owner may reassign — a non-owner can't grab or
+  // dump another user's work.
+  if (!actor.isAdmin && prev.owner !== actor.id) return 'forbidden';
   await withOrgCore(ctx, (tx) =>
     tx.update(t).set({ ownerId: newOwner }).where(and(eq(t.id, docId), eq(t.orgId, ctx.tenantId))),
   );
@@ -147,9 +156,9 @@ export async function reassign(
     refId: docId,
     op: 'reassign',
     changes: [{ field: 'owner_id', label: 'Owner', old: prev.owner ?? null, new: newOwner }],
-    actor,
+    actor: { id: actor.id, name: actor.name },
   });
-  return true;
+  return 'ok';
 }
 
 // ── Work queue (union read over owner_id columns) ─────────────────────────────

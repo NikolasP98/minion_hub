@@ -8,10 +8,12 @@ export const PATCH: RequestHandler = async ({ locals, request }) => {
   if (!ctx) throw error(401);
   const { docType, docId, newOwner } = await request.json();
   if (!docType || !docId) throw error(400, 'docType, docId required');
-  const ok = await reassign(ctx, docType, docId, newOwner ?? null, {
+  const res = await reassign(ctx, docType, docId, newOwner ?? null, {
     id: locals.user?.supabaseId ?? null,
     name: locals.user?.displayName ?? locals.user?.email ?? null,
+    isAdmin: locals.user?.role === 'admin',
   });
-  if (!ok) throw error(404);
+  if (res === 'not_found') throw error(404);
+  if (res === 'forbidden') throw error(403, 'Not allowed to reassign this item');
   return json({ ok: true });
 };
