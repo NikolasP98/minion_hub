@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
-import { env } from '$env/dynamic/private';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
+import { workforceClientForOrg } from '$lib/server/workforce-fetch';
 import {
   projProjects,
   projTasks,
@@ -91,10 +91,14 @@ async function partyAgentId(tx: CoreTx, orgId: string, partyId: string): Promise
  * endpoint never blocks the assignment — the assignee_party_id IS the record;
  * dispatch is delivery. Always records the intent in the audit log.
  *
- * ponytail ceiling: fire-and-forget POST, no retry/queue. The gateway endpoint
- * that turns this into a heartbeat run is the remaining integration; until it
- * exists this is the seam (intent recorded, payload shaped). Upgrade path: a
- * durable outbox row if delivery guarantees ever matter.
+ * Creates the corresponding workforce issue (assigned to the agent) over the
+ * existing bridge, then wakes the agent so its runtime picks it up, and links
+ * the workforce issue id back onto the task. Best-effort: any failure (no
+ * company, runtime down, no creds) is swallowed — the assignment still stands.
+ *
+ * ponytail ceiling: one-way create+wake, no status sync back from the workforce
+ * issue → the hub task (the task is the human-facing record). Add a webhook/poll
+ * to reflect issue completion onto the task only if someone needs live mirror.
  */
 async function dispatchToAgent(ctx: CoreCtx, task: ProjTask, agentId: string, actor: Actor): Promise<void> {
   await recordAudit(ctx, {
@@ -104,16 +108,33 @@ async function dispatchToAgent(ctx: CoreCtx, task: ProjTask, agentId: string, ac
     changes: [{ field: 'assignee', label: 'Dispatched to agent', old: null, new: agentId }],
     actor,
   });
-  const url = env.MINION_WORKFORCE_DISPATCH_URL?.trim();
-  if (!url) return;
   try {
-    await fetch(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ orgId: ctx.tenantId, agentId, taskId: task.id, title: task.title, description: task.description }),
+    const client = await workforceClientForOrg(ctx.tenantId, actor);
+    await client.companies.get(ctx.tenantId).catch(() => null); // tolerate not-yet-provisioned company
+    const issue = await client.issues.create(ctx.tenantId, {
+      title: task.title,
+      description: task.description ?? undefined,
+      assigneeAgentId: agentId,
     });
+    if (!issue?.id) return;
+    // Ensure the assignment even if create stripped the field, then wake the agent.
+    await client.issues.update(issue.id, { assigneeAgentId: agentId }).catch(() => null);
+    await client.agents
+      .wakeup(
+        agentId,
+        { source: 'assignment', triggerDetail: 'system', reason: `Projects task ${task.humanId ?? task.id}` },
+        ctx.tenantId,
+      )
+      .catch(() => null);
+    const meta = task.metadata && typeof task.metadata === 'object' ? (task.metadata as Record<string, unknown>) : {};
+    await withOrgCore(ctx, (tx) =>
+      tx
+        .update(projTasks)
+        .set({ metadata: { ...meta, workforceIssueId: issue.id }, updatedAt: new Date() })
+        .where(and(eq(projTasks.id, task.id), eq(projTasks.orgId, ctx.tenantId))),
+    );
   } catch {
-    // Swallowed by design — the assignment stands; delivery is best-effort.
+    // Swallowed by design — the assignment stands; the workforce run is best-effort delivery.
   }
 }
 

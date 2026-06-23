@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import { parties, type Party } from '$server/db/pg-party-schema';
 import { crmContacts } from '$server/db/pg-crm-schema';
@@ -216,6 +216,44 @@ export async function getParty(ctx: CoreCtx, id: string): Promise<Party | null> 
       .where(and(eq(parties.id, id), eq(parties.orgId, ctx.tenantId)))
       .limit(1);
     return row ?? null;
+  });
+}
+
+export type PartySearchRow = {
+  id: string;
+  name: string | null;
+  type: string;
+  email: string | null;
+  docNumber: string | null;
+};
+
+/**
+ * Typeahead search across the party spine (name / email / doc / phone), org-scoped.
+ * `types` narrows by nature (e.g. ['person','company'] for a customer picker,
+ * ['person','agent'] for an assignee/lead picker). Capped — this powers a picker,
+ * not a report.
+ */
+export async function searchParties(
+  ctx: CoreCtx,
+  q: string,
+  opts: { types?: string[]; limit?: number } = {},
+): Promise<PartySearchRow[]> {
+  const term = q.trim();
+  return withOrgCore(ctx, (tx) => {
+    const conds = [eq(parties.orgId, ctx.tenantId)];
+    if (opts.types?.length) conds.push(inArray(parties.type, opts.types));
+    if (term) {
+      const like = `%${term}%`;
+      conds.push(
+        sql`(${parties.name} ilike ${like} or ${parties.email} ilike ${like} or ${parties.docNumber} ilike ${like} or ${parties.phone9} like ${like})`,
+      );
+    }
+    return tx
+      .select({ id: parties.id, name: parties.name, type: parties.type, email: parties.email, docNumber: parties.docNumber })
+      .from(parties)
+      .where(and(...conds))
+      .orderBy(asc(parties.name))
+      .limit(Math.min(opts.limit ?? 20, 50));
   });
 }
 
