@@ -78,7 +78,11 @@ export async function workforceClientForOrg(
 	orgId: string,
 	actor?: { id?: string | null; name?: string | null; email?: string | null },
 ): Promise<WorkforceClient> {
-	const boardKey = env.HUB_WORKFORCE_BOARD_KEY?.trim();
+	// Same board-key fallback chain the hooks use (hooks.server workforceIdentityHandle):
+	// prod is configured with the compat HUB_PAPERCLIP_BOARD_KEY name, so checking
+	// only HUB_WORKFORCE_BOARD_KEY found nothing and fell back to a mint secret that
+	// isn't set — the bug that made the sync + dispatch silently no-op.
+	const boardKey = (env.HUB_WORKFORCE_BOARD_KEY ?? env.HUB_PAPERCLIP_BOARD_KEY)?.trim();
 	// Mint as the REAL acting user (matching the per-request identity the hooks
 	// mint for /workforce pages) — the backend authorizes the company-scoped
 	// endpoints against a known board member, so a synthetic 'system' user is
