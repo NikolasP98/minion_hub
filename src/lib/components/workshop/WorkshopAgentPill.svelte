@@ -1,7 +1,6 @@
 <script lang="ts">
   import { Tooltip } from '$lib/components/ui';
-  import { diceBearAvatarUrl } from '$lib/utils/avatar';
-  import { agentDisplayName } from '$lib/utils/agent-display';
+  import { agentDisplayName, agentAvatarUrl } from '$lib/utils/agent-display';
 
   let { agent, onDragStart, count }: {
     agent: { id: string; name?: string; emoji?: string; description?: string; identity?: { name?: string } | null };
@@ -24,7 +23,7 @@
         <span class="text-lg leading-none">{agent.emoji}</span>
       {:else}
         <img
-          src={diceBearAvatarUrl(displayName)}
+          src={agentAvatarUrl(agent.id)}
           alt={displayName}
           class="w-full h-full object-cover rounded-full"
           draggable="false"

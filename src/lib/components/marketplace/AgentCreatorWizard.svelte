@@ -58,7 +58,7 @@
   };
 
   const avatarUrl = $derived(
-    generated ? diceBearAvatarUrl(generated.agentJson.avatarSeed) : ''
+    generated ? diceBearAvatarUrl(generated.agentJson.avatarSeed, 'copilot') : ''
   );
 
   async function generate() {

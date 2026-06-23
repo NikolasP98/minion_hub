@@ -1,4 +1,5 @@
 import * as PIXI from 'pixi.js';
+import { agentArchetype } from '$lib/utils/agent-display';
 import {
   getAvatarTexture,
   seedToColor,
@@ -80,7 +81,11 @@ export async function createAgentSprite(
   container.addChild(bgCircle);
 
   // --- Avatar (loaded async, rendered on top of background) ---
-  const texture = await getAvatarTexture(info.avatarSeed, CLASSIC_TEXTURE_SIZE);
+  const texture = await getAvatarTexture(
+    info.avatarSeed,
+    CLASSIC_TEXTURE_SIZE,
+    agentArchetype(info.agentId),
+  );
 
   // If sprites were cleared while we were loading the texture, discard this container
   if (gen !== getGeneration()) {

@@ -78,7 +78,7 @@
 					adapterType: a?.adapterType ?? null,
 					isRoot,
 					orientation: dir,
-					avatarUrl: diceBearAvatarUrl(node.id),
+					avatarUrl: diceBearAvatarUrl(node.id, 'autonomous'),
 				},
 			});
 			if (node.reports.length > 0) {

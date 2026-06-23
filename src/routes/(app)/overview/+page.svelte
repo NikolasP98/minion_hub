@@ -5,6 +5,7 @@
   import EntityChip from '$lib/components/ui/EntityChip.svelte';
   import { visibleAgents } from '$lib/state/gateway/gateway-data.svelte';
   import { areaRef, AREA_COLORS, AREA_ICON_KEYS, iconByName } from '$lib/types/entities';
+  import { agentArchetype } from '$lib/utils/agent-display';
   import { page } from '$app/state';
   import type { OrgArea } from '$server/services/org-areas.service';
 
@@ -16,7 +17,9 @@
     return orgs.find((o) => o.id === active) ?? orgs[0] ?? { id: 'org', name: 'Organization' };
   });
 
-  const agents = $derived(visibleAgents.value.map((a) => ({ id: a.id, name: a.name })));
+  const agents = $derived(
+    visibleAgents.value.map((a) => ({ id: a.id, name: a.name, archetype: agentArchetype(a.id) })),
+  );
   const members = $derived(data.members);
 
   let editing = $state(false);

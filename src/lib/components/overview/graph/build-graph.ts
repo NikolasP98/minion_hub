@@ -1,6 +1,7 @@
 import type { OrgArea, VirtualAgent } from '$server/services/org-areas.service';
 import { INTEGRATIONS, integrationIconUrl } from '$lib/types/entities';
 import { areaIconDataUri } from '$lib/utils/lucide-svg';
+import { ARCHETYPE_AVATAR_STYLE } from '$lib/utils/avatar';
 
 export type NodeKind = 'org' | 'area' | 'skill' | 'integration' | 'agent' | 'user' | 'shared';
 
@@ -44,7 +45,7 @@ export interface GraphEdge {
 export interface BuildInput {
   org: { id: string; name: string };
   areas: OrgArea[];
-  agents: Array<{ id: string; name?: string | null }>;
+  agents: Array<{ id: string; name?: string | null; archetype?: string | null }>;
   members: Array<{
     id: string;
     displayName?: string | null;
@@ -69,9 +70,16 @@ const C = { fg: '#fafafa', dim: '#a1a1aa', faint: '#71717a', unassigned: '#52525
 const prettify = (key: string) =>
   key.replace(/[-_]/g, ' ').replace(/\b\w/g, (mm) => mm.toUpperCase());
 
-/** DiceBear avatar tinted with the area color so each sector reads as a unit. */
-const avatar = (seed: string, hex: string) =>
-  `https://api.dicebear.com/9.x/notionists/svg?seed=${encodeURIComponent(seed)}&backgroundColor=${hex.replace('#', '')}&radius=50`;
+/** DiceBear avatar tinted with the area color so each sector reads as a unit.
+ *  `archetype` selects the agent style (autonomous/brain/copilot); omit for
+ *  users → notionists. Archetype is resolved by the caller (config lives client-
+ *  side) and passed in as data, keeping this builder pure. Pinned to the 10.x
+ *  API since `disco` (AI brains) is 10.x-only. Rounding is done by a circular
+ *  mask in the renderer, not DiceBear's `radius` (unreliable on 10.x). */
+const avatar = (seed: string, hex: string, archetype?: string | null) => {
+  const style = (archetype && ARCHETYPE_AVATAR_STYLE[archetype]) || 'notionists';
+  return `https://api.dicebear.com/10.x/${style}/svg?seed=${encodeURIComponent(seed)}&backgroundColor=${hex.replace('#', '')}`;
+};
 
 export function hexToRgba(hex: string, alpha: number): string {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex);
@@ -111,7 +119,7 @@ export function buildGraph(input: BuildInput): { nodes: GraphNode[]; edges: Grap
   type AreaBucket = {
     id: string; name: string; color: string; icon: string;
     skills: string[]; integrations: string[];
-    realAgents: Array<{ id: string; name?: string | null }>;
+    realAgents: BuildInput['agents'];
     virtualAgents: VirtualAgent[];
     users: BuildInput['members'];
   };
@@ -119,7 +127,7 @@ export function buildGraph(input: BuildInput): { nodes: GraphNode[]; edges: Grap
     id: ar.id, name: ar.name, color: ar.color, icon: ar.icon,
     skills: ar.skillKeys,
     integrations: ar.integrationKeys.filter((k) => INTEGRATIONS[k]),
-    realAgents: ar.agentIds.map((id) => agentById.get(id)).filter((a): a is { id: string; name?: string | null } => !!a),
+    realAgents: ar.agentIds.map((id) => agentById.get(id)).filter((a): a is BuildInput['agents'][number] => !!a),
     virtualAgents: ar.virtualAgents,
     users: ar.userIds.map((id) => memberById.get(id)).filter((u): u is BuildInput['members'][number] => !!u),
   }));
@@ -205,7 +213,7 @@ export function buildGraph(input: BuildInput): { nodes: GraphNode[]; edges: Grap
       nodes.push({
         id, kind: 'agent', label: a.name ?? a.id, color: b.color, areaId: b.id, areaName,
         role: 'Server agent', radius: RADII.agent, ...at(RADII.agent, spread(agentCount, j)),
-        symbolSize: 40, image: avatar(a.id, b.color),
+        symbolSize: 40, image: avatar(a.id, b.color, a.archetype),
         labelColor: '#e4e4e7', labelSize: 10, showLabel: true,
       });
       edges.push({ source: b.id, target: id, color: b.color, baseOpacity: 0.28, width: 1 });
@@ -217,7 +225,7 @@ export function buildGraph(input: BuildInput): { nodes: GraphNode[]; edges: Grap
         skills: va.skillKeys.map(prettify),
         integrations: va.integrationKeys.filter((k) => INTEGRATIONS[k]).map((k) => INTEGRATIONS[k].name),
         radius: RADII.agent, ...at(RADII.agent, spread(agentCount, b.realAgents.length + j)),
-        symbolSize: 36, image: avatar(va.id, b.color),
+        symbolSize: 36, image: avatar(va.id, b.color, 'autonomous'),
         labelColor: C.dim, labelSize: 9.5, showLabel: true,
       });
       const ints = va.integrationKeys.filter((k) => INTEGRATIONS[k] && b.integrations.includes(k));

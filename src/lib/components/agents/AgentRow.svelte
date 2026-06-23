@@ -7,8 +7,7 @@
     import { ui } from "$lib/state/ui/ui.svelte";
     import { gw } from "$lib/state/gateway/gateway-data.svelte";
     import type { Agent } from "@minion-stack/shared";
-    import { diceBearAvatarUrl } from "$lib/utils/avatar";
-    import { agentDisplayName } from "$lib/utils/agent-display";
+    import { agentDisplayName, agentAvatarUrl } from "$lib/utils/agent-display";
     import * as m from "$lib/paraglide/messages";
     import { Tooltip } from "$lib/components/ui";
 
@@ -136,7 +135,7 @@
                 <span class="text-base leading-none">{agent.emoji}</span>
             {:else}
                 <img
-                    src={diceBearAvatarUrl(agentDisplayName(agent))}
+                    src={agentAvatarUrl(agent.id)}
                     alt=""
                     class="w-6 h-6 rounded-full"
                 />
@@ -197,7 +196,7 @@
             <span class="leading-none shrink-0 text-[13px]">{agent.emoji}</span>
         {:else}
             <img
-                src={diceBearAvatarUrl(agentDisplayName(agent))}
+                src={agentAvatarUrl(agent.id)}
                 alt=""
                 class="w-5 h-5 rounded-full shrink-0"
             />

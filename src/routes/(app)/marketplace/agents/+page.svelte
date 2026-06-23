@@ -282,7 +282,7 @@
                                     <span class="list-initials">{agent.name.slice(0, 2).toUpperCase()}</span>
                                 </div>
                                 <div class="list-photo">
-                                    <img src={diceBearAvatarUrl(agent.avatarSeed)} alt={agent.name} />
+                                    <img src={diceBearAvatarUrl(agent.avatarSeed, 'copilot')} alt={agent.name} />
                                 </div>
                                 <div class="list-card-footer">
                                     <span class="list-brand">MINION</span>

@@ -43,19 +43,21 @@ export function getGeneration(): number {
  * Fetch a DiceBear Notionists SVG, render to an offscreen canvas, and return
  * a PIXI.Texture. Results are cached by `seed`. Returns `null` on failure.
  *
- * @param seed  The avatarSeed string passed to DiceBear.
- * @param size  Canvas render size (defaults to classic sprite size).
+ * @param seed       The avatarSeed string passed to DiceBear.
+ * @param size       Canvas render size (defaults to classic sprite size).
+ * @param archetype  Agent archetype, selects the DiceBear style (see avatar.ts).
  */
 export async function getAvatarTexture(
   seed: string,
   size: number = CLASSIC_TEX_SIZE,
+  archetype?: string,
 ): Promise<PIXI.Texture | null> {
-  const key = `${seed}:${size}`;
+  const key = `${seed}:${size}:${archetype ?? ''}`;
   const cached = textureCache.get(key);
   if (cached) return cached;
 
   try {
-    const url = diceBearAvatarUrl(seed);
+    const url = diceBearAvatarUrl(seed, archetype);
     const res = await fetch(url);
     if (!res.ok) throw new Error(`DiceBear fetch failed: ${res.status}`);
 

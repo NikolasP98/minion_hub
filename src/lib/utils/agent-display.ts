@@ -12,11 +12,39 @@
  * shape with `id` + optional `name`.
  */
 import { personalAgentName } from '$lib/state/features/personal-agent-names.svelte';
+import { getField } from '$lib/state/config/config.svelte';
+import { diceBearAvatarUrl } from '$lib/utils/avatar';
 
 export interface AgentDisplayInput {
     id: string;
     name?: string;
     identity?: { name?: string } | null;
+}
+
+/**
+ * Resolve an agent's archetype (copilot/brain/autonomous) from gateway config
+ * (`agents.list[].archetype`). Uncategorized agents are copilots — the baseline
+ * archetype — so they get the copilot avatar style rather than a user one.
+ * Used to pick the agent's DiceBear avatar style; see `diceBearAvatarUrl`.
+ */
+export function agentArchetype(id: string): string {
+    const list = getField('agents.list');
+    if (Array.isArray(list)) {
+        for (const a of list as Array<{ id?: string; archetype?: string }>) {
+            if (a?.id === id && typeof a.archetype === 'string') return a.archetype;
+        }
+    }
+    return 'copilot';
+}
+
+/**
+ * Agent avatar URL: seeded by the agent's stable id, styled by its archetype
+ * (autonomous→glass, brain→disco, copilot→bottts-neutral). Use this for any
+ * agent surface so call sites never hard-code the style. Human users render
+ * with `diceBearAvatarUrl(userId)` directly (notionists default).
+ */
+export function agentAvatarUrl(id: string): string {
+    return diceBearAvatarUrl(id, agentArchetype(id));
 }
 
 export function agentDisplayName(agent: AgentDisplayInput | null | undefined): string {

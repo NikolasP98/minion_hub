@@ -2,8 +2,7 @@
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
   import { ui } from '$lib/state/ui/ui.svelte';
   import HudBorder from '$lib/components/decorations/HudBorder.svelte';
-  import { diceBearAvatarUrl } from '$lib/utils/avatar';
-  import { agentDisplayName } from '$lib/utils/agent-display';
+  import { agentDisplayName, agentAvatarUrl } from '$lib/utils/agent-display';
   import type { Agent } from '@minion-stack/shared';
   import * as m from '$lib/paraglide/messages';
 
@@ -37,7 +36,7 @@
       <span>{agent.emoji}</span>
     {:else}
       <img
-        src={diceBearAvatarUrl(agentDisplayName(agent) || agentId)}
+        src={agentAvatarUrl(agentId)}
         alt=""
         class="w-7 h-7 rounded-full inline-block shrink-0"
       />

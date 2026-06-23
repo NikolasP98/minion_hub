@@ -2,6 +2,7 @@
 // Creates a playful, game-like visualization with isometric projection
 
 import * as PIXI from 'pixi.js';
+import { agentArchetype } from '$lib/utils/agent-display';
 import {
   getAvatarTexture,
   clearTextureCache,
@@ -84,7 +85,7 @@ function getOrCreateShadowTexture(app: PIXI.Application): PIXI.Texture {
 // Create Habbo-style avatar with "big head" aesthetic
 export async function createHabboAvatarSprite(
   instanceId: string,
-  info: { name: string; avatarSeed: string; emoji?: string },
+  info: { agentId: string; name: string; avatarSeed: string; emoji?: string },
   app: PIXI.Application,
   container: PIXI.Container,
 ): Promise<PIXI.Container> {
@@ -117,7 +118,11 @@ export async function createHabboAvatarSprite(
   spriteContainer.addChild(body);
 
   // Load avatar texture from shared cache
-  const texture = await getAvatarTexture(info.avatarSeed, HABBO_TEXTURE_SIZE);
+  const texture = await getAvatarTexture(
+    info.avatarSeed,
+    HABBO_TEXTURE_SIZE,
+    agentArchetype(info.agentId),
+  );
   if (gen !== getGeneration()) return spriteContainer;
 
   // Avatar face (only if texture loaded successfully)

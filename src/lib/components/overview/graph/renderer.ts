@@ -160,6 +160,13 @@ export async function createRenderer(
 			const sprite = new Sprite();
 			sprite.anchor.set(0.5);
 			container.addChild(sprite);
+			// Avatars are square SVGs — clip to a circle here rather than relying on
+			// DiceBear's `radius` param (unreliable / per-style on the 10.x API).
+			if (node.kind === 'agent' || node.kind === 'user') {
+				const mask = new Graphics().circle(0, 0, size / 2).fill(0xffffff);
+				container.addChild(mask);
+				sprite.mask = mask;
+			}
 			loadTexture(node.image).then((tex) => {
 				if (tex) {
 					sprite.texture = tex;

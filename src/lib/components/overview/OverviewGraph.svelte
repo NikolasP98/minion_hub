@@ -17,7 +17,7 @@
   import { createSimulation, type Simulation, type SimNode } from './graph/simulation';
   import { createRenderer, type Renderer } from './graph/renderer';
 
-  interface AgentLike { id: string; name?: string | null }
+  interface AgentLike { id: string; name?: string | null; archetype?: string | null }
   interface MemberLike {
     id: string;
     displayName?: string | null;

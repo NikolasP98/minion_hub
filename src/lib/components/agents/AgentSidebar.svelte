@@ -24,8 +24,7 @@
     } from "$lib/state/features/agent-groups.svelte";
     import { builderState, loadBuiltAgents } from "$lib/state/builder/builder.svelte";
     import type { Agent } from "@minion-stack/shared";
-    import { diceBearAvatarUrl } from "$lib/utils/avatar";
-    import { agentDisplayName } from "$lib/utils/agent-display";
+    import { agentDisplayName, agentAvatarUrl } from "$lib/utils/agent-display";
     import { loadPersonalAgentNames } from "$lib/state/features/personal-agent-names.svelte";
     import { goto } from "$app/navigation";
     import { page } from "$app/state";
@@ -451,7 +450,7 @@
                                             {#if agent.emoji}
                                                 <span class="text-base leading-none">{agent.emoji}</span>
                                             {:else}
-                                                <img src={diceBearAvatarUrl(agentDisplayName(agent))} alt="" class="w-6 h-6 rounded-full" />
+                                                <img src={agentAvatarUrl(agent.id)} alt="" class="w-6 h-6 rounded-full" />
                                             {/if}
                                         </button>
                                     {/if}
@@ -490,7 +489,7 @@
                                     {#if agent.emoji}
                                         <span class="text-base leading-none">{agent.emoji}</span>
                                     {:else}
-                                        <img src={diceBearAvatarUrl(agentDisplayName(agent))} alt="" class="w-6 h-6 rounded-full" />
+                                        <img src={agentAvatarUrl(agent.id)} alt="" class="w-6 h-6 rounded-full" />
                                     {/if}
                                 </button>
                             {/each}
