@@ -23,7 +23,7 @@ describe("getDynamicPluginsSections", () => {
     expect(operations?.items[1]?.label).toBe("Workforce");
     expect(operations?.items[2]?.label).toBe("Scheduling");
     const finance = sections.find((s) => s.id === "plugins:finance");
-    expect(finance?.items.map((i) => i.href)).toEqual(["/finances", "/sales"]);
+    expect(finance?.items.map((i) => i.href)).toEqual(["/finances", "/sales", "/memberships"]);
     const support = sections.find((s) => s.id === "plugins:customer-support");
     expect(support?.items.map((i) => i.href)).toEqual(["/support"]);
   });
