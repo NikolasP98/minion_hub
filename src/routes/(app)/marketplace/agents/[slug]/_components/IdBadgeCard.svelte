@@ -11,7 +11,7 @@
 
     let lanyardEl = $state<HTMLElement | null>(null);
 
-    const avatarUrl = $derived(diceBearAvatarUrl(agent.avatarSeed, 'copilot'));
+    const avatarUrl = $derived(diceBearAvatarUrl(agent.avatarSeed, agent.archetype ?? 'copilot'));
 
     $effect(() => {
         if (agent && lanyardEl) startLanyardAnimation();

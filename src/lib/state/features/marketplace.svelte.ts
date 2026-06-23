@@ -10,6 +10,7 @@ export interface MarketplaceAgent {
   catchphrase: string | null;
   version: string;
   model: string | null;
+  archetype: string | null;
   avatarSeed: string;
   githubPath: string;
   soulMd?: string | null;

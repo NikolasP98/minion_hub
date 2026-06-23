@@ -87,6 +87,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       catchphrase: agent.catchphrase,
       version: agent.version,
       model: agent.model,
+      archetype: agent.archetype ?? 'copilot',
       avatarSeed: agent.avatarSeed,
     },
     null,

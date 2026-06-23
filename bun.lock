@@ -12,7 +12,7 @@
         "@inlang/paraglide-sveltekit": "^0.16.1",
         "@libsql/client": "^0.17.3",
         "@minion-stack/cache": "^0.2.1",
-        "@minion-stack/db": "file:deps/minion-stack-db-0.9.0.tgz",
+        "@minion-stack/db": "file:deps/minion-stack-db-0.9.1.tgz",
         "@minion-stack/design-tokens": "^0.1.0",
         "@minion-stack/shared": "^0.5.0",
         "@minion-stack/ui": "^0.1.0",
@@ -357,7 +357,7 @@
 
     "@minion-stack/cache": ["@minion-stack/cache@0.2.1", "", { "dependencies": { "ioredis": "^5.4.1" } }, "sha512-APaC2VyDLA4jkPa1e2vVrHR3KgCcIqGN5lmCy3+nx1pw5+3QrmXNIKifhrxcASW/uudefPW0VTIsqeERIdq0lw=="],
 
-    "@minion-stack/db": ["@minion-stack/db@deps/minion-stack-db-0.9.0.tgz", { "peerDependencies": { "drizzle-orm": ">=0.45.0" } }],
+    "@minion-stack/db": ["@minion-stack/db@deps/minion-stack-db-0.9.1.tgz", { "peerDependencies": { "drizzle-orm": ">=0.45.0" } }],
 
     "@minion-stack/design-tokens": ["@minion-stack/design-tokens@0.1.0", "", {}, "sha512-+3bEJrN4c8xMqo3Hi9m5Km8Zd4c8CIrA/cXidQ9KJHk0dDh9PfClBF4VjKRBbyT7pdZHuEV41//HalfQ245VIw=="],
 

@@ -23,9 +23,8 @@
 
     const tags = $derived(parseTags(agent.tags));
     const installCount = $derived(agent.installCount ?? 0);
-    // Marketplace agents carry no archetype — style them as the copilot baseline
-    // (bottts-neutral) so they read as agents, not human users.
-    const avatarUrl = $derived(diceBearAvatarUrl(agent.avatarSeed, 'copilot'));
+    // Marketplace agents are autonomous or copilot (default copilot baseline).
+    const avatarUrl = $derived(diceBearAvatarUrl(agent.avatarSeed, agent.archetype ?? 'copilot'));
 
     function getInitials(name: string): string {
         return name.slice(0, 2).toUpperCase();

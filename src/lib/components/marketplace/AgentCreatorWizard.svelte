@@ -18,6 +18,7 @@
       catchphrase: string;
       version: string;
       model: string;
+      archetype: 'autonomous' | 'copilot';
       avatarSeed: string;
     };
   }
@@ -39,6 +40,9 @@
   // Step 1 fields
   let role = $state('');
   let category = $state('engineering');
+  // Marketplace agents are either autonomous (runs on a trigger) or copilot
+  // (works side-by-side with the user). Brains aren't offered here.
+  let archetype = $state<'autonomous' | 'copilot'>('copilot');
 
   // Step 2 fields
   let agentName = $state('');
@@ -58,7 +62,7 @@
   };
 
   const avatarUrl = $derived(
-    generated ? diceBearAvatarUrl(generated.agentJson.avatarSeed, 'copilot') : ''
+    generated ? diceBearAvatarUrl(generated.agentJson.avatarSeed, generated.agentJson.archetype) : ''
   );
 
   async function generate() {
@@ -73,6 +77,7 @@
           name: agentName,
           role,
           category,
+          archetype,
           personality: { catchphrase, formalCasual, cautiousBold, technicalStrategic },
         }),
       });
@@ -81,7 +86,11 @@
         generateError = text || 'Generation failed';
         return;
       }
-      generated = await res.json();
+      const result = (await res.json()) as GeneratedAgent;
+      // The user's archetype choice is authoritative — stamp it on the result so
+      // the preview avatar and the downloaded agent.json both carry it.
+      result.agentJson.archetype = archetype;
+      generated = result;
       step = 4;
     } catch (err) {
       generateError = (err as Error).message;
@@ -193,6 +202,24 @@
                 <option value={cat}>{categoryLabels[cat]?.() ?? cat}</option>
               {/each}
             </select>
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <!-- ponytail: archetype labels hardcoded; i18n keys a follow-up -->
+            <span class="text-xs text-muted">Type</span>
+            <div class="grid grid-cols-2 gap-2">
+              {#each [{ id: 'copilot', label: 'Copilot', desc: 'Works side-by-side with the user' }, { id: 'autonomous', label: 'Autonomous', desc: 'Runs on a trigger or schedule' }] as opt (opt.id)}
+                <button
+                  type="button"
+                  onclick={() => (archetype = opt.id as 'autonomous' | 'copilot')}
+                  class="flex flex-col gap-0.5 px-3 py-2 rounded-lg border text-left transition-colors {archetype === opt.id
+                    ? 'border-brand-pink/60 bg-brand-pink/5'
+                    : 'border-border bg-bg3 hover:border-brand-pink/30'}"
+                >
+                  <span class="text-sm text-foreground">{opt.label}</span>
+                  <span class="text-[10px] text-muted">{opt.desc}</span>
+                </button>
+              {/each}
+            </div>
           </div>
         </div>
 

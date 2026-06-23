@@ -34,6 +34,7 @@ export interface MarketplaceAgentRecord {
   catchphrase: string | null;
   version: string;
   model: string | null;
+  archetype: string | null;
   avatarSeed: string;
   githubPath: string;
   soulMd: string | null;
@@ -61,6 +62,7 @@ export interface MarketplaceAgentUpsert {
   catchphrase?: string;
   version: string;
   model?: string;
+  archetype?: string;
   avatarSeed: string;
   githubPath: string;
 }
@@ -146,6 +148,7 @@ export async function syncMarketplaceAgents(
           catchphrase?: string;
           version: string;
           model?: string;
+          archetype?: string;
           avatarSeed: string;
         };
 
@@ -159,6 +162,9 @@ export async function syncMarketplaceAgents(
           catchphrase: agentJson.catchphrase,
           version: agentJson.version,
           model: agentJson.model,
+          // Marketplace agents are only autonomous or copilot — anything else
+          // (or missing) collapses to the copilot baseline.
+          archetype: agentJson.archetype === 'autonomous' ? 'autonomous' : 'copilot',
           avatarSeed: agentJson.avatarSeed,
           githubPath: `agents/${dir.name}`,
         });
@@ -283,6 +289,7 @@ export async function listMarketplaceAgents(db: CoreDb, filters: MarketplaceFilt
           catchphrase: marketplaceAgents.catchphrase,
           version: marketplaceAgents.version,
           model: marketplaceAgents.model,
+          archetype: marketplaceAgents.archetype,
           avatarSeed: marketplaceAgents.avatarSeed,
           githubPath: marketplaceAgents.githubPath,
           installCount: marketplaceAgents.installCount,
@@ -331,6 +338,7 @@ export async function upsertMarketplaceAgents(db: CoreDb, agents: MarketplaceAge
     catchphrase: a.catchphrase ?? null,
     version: a.version,
     model: a.model ?? null,
+    archetype: a.archetype ?? null,
     avatarSeed: a.avatarSeed,
     githubPath: a.githubPath,
     // Markdown is null on initial insert; lazily populated on first detail view
@@ -358,6 +366,7 @@ export async function upsertMarketplaceAgents(db: CoreDb, agents: MarketplaceAge
       catchphrase: sql`excluded.catchphrase`,
       version: sql`excluded.version`,
       model: sql`excluded.model`,
+      archetype: sql`excluded.archetype`,
       avatarSeed: sql`excluded.avatar_seed`,
       githubPath: sql`excluded.github_path`,
       syncedAt: now,
