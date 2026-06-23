@@ -4,6 +4,7 @@ import { salesOrders, type SalesOrder } from '$server/db/pg-sales-schema';
 import { schedBookings, schedEventTypes } from '$server/db/pg-scheduling-schema';
 import { finProducts } from '$server/db/pg-finance-schema';
 import { nextSerialId } from './naming-series';
+import { docAuditLog } from '$server/db/pg-activity-schema';
 import type { CoreCtx } from '$server/auth/core-ctx';
 
 export type OrderStatus = 'draft' | 'confirmed' | 'invoiced' | 'cancelled';
@@ -154,13 +155,31 @@ export async function setOrderStatus(
   ctx: CoreCtx,
   id: string,
   status: OrderStatus,
+  actor: { id: string | null; name: string | null } = { id: null, name: null },
 ): Promise<SalesOrder | null> {
-  const [row] = await withOrgCore(ctx, (tx) =>
-    tx
+  return withOrgCore(ctx, async (tx) => {
+    const [cur] = await tx
+      .select({ status: salesOrders.status })
+      .from(salesOrders)
+      .where(and(eq(salesOrders.id, id), eq(salesOrders.orgId, ctx.tenantId)))
+      .limit(1);
+    if (!cur) return null;
+    const [row] = await tx
       .update(salesOrders)
       .set({ status, updatedAt: new Date() })
       .where(and(eq(salesOrders.id, id), eq(salesOrders.orgId, ctx.tenantId)))
-      .returning(),
-  );
-  return row ?? null;
+      .returning();
+    if (cur.status !== status) {
+      await tx.insert(docAuditLog).values({
+        orgId: ctx.tenantId,
+        refType: 'sales_order',
+        refId: id,
+        op: 'status',
+        changes: [{ field: 'status', label: 'Status', old: cur.status, new: status }],
+        actorId: actor.id,
+        actorName: actor.name,
+      });
+    }
+    return row ?? null;
+  });
 }

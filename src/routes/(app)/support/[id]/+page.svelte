@@ -5,10 +5,20 @@
 	import { ArrowLeft, ExternalLink } from 'lucide-svelte';
 	import { STATUSES, PRIORITIES, statusLabel, priorityLabel, priorityColor, slaColor } from '$lib/components/support/support-format';
 	import { relativeTime } from '$lib/components/crm/crm-format';
+	import DocTimeline from '$lib/components/shared/DocTimeline.svelte';
 
 	let { data }: { data: PageData } = $props();
 	const i = $derived(data.issue);
 	let busy = $state(false);
+
+	async function postComment(body: string) {
+		const res = await fetch('/api/activity/comments', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ refType: 'support_issue', refId: i.id, body }),
+		});
+		if (res.ok) await invalidate('support:issue');
+	}
 
 	async function patch(body: Record<string, unknown>) {
 		busy = true;
@@ -37,11 +47,17 @@
 	</PageHeader>
 
 	<div class="flex-1 min-h-0 overflow-auto p-4 grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-		<!-- Left: body -->
-		<section class="card">
-			<header class="card-h"><span>Description</span></header>
-			<p class="desc">{i.description || 'No description.'}</p>
-		</section>
+		<!-- Left: body + activity -->
+		<div class="flex flex-col gap-4 min-h-0">
+			<section class="card">
+				<header class="card-h"><span>Description</span></header>
+				<p class="desc">{i.description || 'No description.'}</p>
+			</section>
+			<section class="card">
+				<header class="card-h"><span>Activity</span></header>
+				<DocTimeline items={data.timeline} onComment={postComment} />
+			</section>
+		</div>
 
 		<!-- Right: controls + SLA -->
 		<div class="flex flex-col gap-4">

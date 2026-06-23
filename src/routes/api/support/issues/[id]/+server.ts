@@ -17,7 +17,8 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   const body = (await request.json()) as UpdateIssueInput;
-  const issue = await updateIssue(ctx, params.id!, body);
+  const actor = { id: ctx.profileId ?? null, name: locals.user?.displayName ?? locals.user?.email ?? null };
+  const issue = await updateIssue(ctx, params.id!, body, actor);
   if (!issue) throw error(404);
   return json(issue);
 };

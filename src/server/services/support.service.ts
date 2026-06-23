@@ -7,6 +7,8 @@ import {
   type NewSupportIssue,
 } from '$server/db/pg-support-schema';
 import { nextSerialId } from './naming-series';
+import { computeChanges } from './activity.service';
+import { docAuditLog } from '$server/db/pg-activity-schema';
 import type { CoreCtx } from '$server/auth/core-ctx';
 
 export type Priority = 'low' | 'medium' | 'high' | 'urgent';
@@ -202,6 +204,7 @@ export async function updateIssue(
   ctx: CoreCtx,
   id: string,
   input: UpdateIssueInput,
+  actor: { id: string | null; name: string | null } = { id: null, name: null },
 ): Promise<SupportIssue | null> {
   return withOrgCore(ctx, async (tx) => {
     const [cur] = await tx
@@ -241,6 +244,24 @@ export async function updateIssue(
       .set(patch)
       .where(and(eq(supportIssues.id, id), eq(supportIssues.orgId, ctx.tenantId)))
       .returning();
+
+    // Audit trail (ERPNext Version): log field changes on the same tx.
+    const changes = computeChanges(cur, row, [
+      { field: 'status', label: 'Status' },
+      { field: 'priority', label: 'Priority' },
+      { field: 'ownerId', label: 'Owner' },
+    ]);
+    if (changes.length) {
+      await tx.insert(docAuditLog).values({
+        orgId: ctx.tenantId,
+        refType: 'support_issue',
+        refId: id,
+        op: 'update',
+        changes,
+        actorId: actor.id,
+        actorName: actor.name,
+      });
+    }
     return row;
   });
 }

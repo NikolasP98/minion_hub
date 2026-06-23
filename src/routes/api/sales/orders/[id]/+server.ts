@@ -10,7 +10,8 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
   const body = await request.json();
   const status = body?.status as OrderStatus;
   if (!ORDER_STATUSES.includes(status)) throw error(400, 'invalid status');
-  const order = await setOrderStatus(ctx, params.id!, status);
+  const actor = { id: ctx.profileId ?? null, name: locals.user?.displayName ?? locals.user?.email ?? null };
+  const order = await setOrderStatus(ctx, params.id!, status, actor);
   if (!order) throw error(404);
   return json(order);
 };
