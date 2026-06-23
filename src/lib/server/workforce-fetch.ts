@@ -1,6 +1,7 @@
 import { createWorkforceClient, type WorkforceClient } from '@minion-stack/workforce-client';
 import { env } from '$env/dynamic/private';
 import type { RequestEvent } from '@sveltejs/kit';
+import { mintWorkforceIdentity } from './workforce-identity';
 
 /**
  * Base URL of the Workforce backend. `WORKFORCE_INTERNAL_URL` is the canonical
@@ -64,4 +65,28 @@ export async function workforceRawFetch<T = unknown>(
 		throw err;
 	}
 	return (await r.json()) as T;
+}
+
+/**
+ * A workforce client for use OUTSIDE a request (e.g. the projects-module task
+ * dispatcher). Prefers the board key (prod auth mode); otherwise mints a short
+ * hub-identity JWT scoped to the org. Either header is selected by authHeaders.
+ * Throws if neither HUB_WORKFORCE_BOARD_KEY nor the mint secret is available —
+ * callers treat dispatch as best-effort and swallow.
+ */
+export async function workforceClientForOrg(
+	orgId: string,
+	actor?: { id?: string | null; name?: string | null },
+): Promise<WorkforceClient> {
+	const boardKey = env.HUB_WORKFORCE_BOARD_KEY?.trim();
+	const token =
+		boardKey && boardKey.length > 0
+			? boardKey
+			: await mintWorkforceIdentity({
+					userId: actor?.id ?? 'system',
+					email: null,
+					name: actor?.name ?? 'Projects',
+					companyId: orgId,
+				});
+	return createWorkforceClient({ baseUrl: baseUrl(), fetch: globalThis.fetch, headers: authHeaders(token) });
 }

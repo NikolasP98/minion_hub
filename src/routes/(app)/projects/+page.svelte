@@ -2,12 +2,15 @@
 	import type { PageData } from './$types';
 	import { invalidate, goto } from '$app/navigation';
 	import { PageHeader } from '$lib/components/ui';
+	import PartyPicker from '$lib/components/crm/PartyPicker.svelte';
 	import { GanttChartSquare, FolderPlus, Sparkles } from 'lucide-svelte';
 
 	let { data }: { data: PageData } = $props();
 	let name = $state('');
 	let targetDate = $state('');
 	let templateId = $state('');
+	let customerPartyId = $state<string | null>(null);
+	let leadPartyId = $state<string | null>(null);
 	let busy = $state(false);
 
 	const statusLabel: Record<string, string> = {
@@ -25,11 +28,18 @@
 			const res = await fetch('/api/projects', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ name: name.trim(), targetDate: targetDate || null }),
+				body: JSON.stringify({
+					name: name.trim(),
+					targetDate: targetDate || null,
+					customerPartyId,
+					leadPartyId,
+				}),
 			});
 			if (res.ok) {
 				name = '';
 				targetDate = '';
+				customerPartyId = null;
+				leadPartyId = null;
 				await invalidate('projects:list');
 			}
 		} finally {
@@ -73,6 +83,10 @@
 				<input class="in" placeholder="New project name…" bind:value={name} onkeydown={(e) => e.key === 'Enter' && create()} />
 				<input class="in date" type="date" bind:value={targetDate} title="Target date" />
 				<button class="btn" disabled={busy || !name.trim()} onclick={create}><FolderPlus size={15} /> Create</button>
+			</div>
+			<div class="create-row">
+				<PartyPicker bind:value={customerPartyId} label="Customer" placeholder="Search customer…" types="person,company" />
+				<PartyPicker bind:value={leadPartyId} label="Lead" placeholder="Search lead (person or agent)…" types="person,agent" />
 			</div>
 			{#if data.templates.length}
 				<div class="create-row">
