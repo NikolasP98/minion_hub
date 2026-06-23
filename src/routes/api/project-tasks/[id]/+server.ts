@@ -9,7 +9,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
   if (!ctx) throw error(401);
   const body = await request.json();
   if (body?.status && !TASK_STATUSES.includes(body.status)) throw error(400, 'invalid status');
-  const actor = { id: ctx.profileId ?? null, name: locals.user?.displayName ?? locals.user?.email ?? null };
+  const actor = { id: ctx.profileId ?? null, name: locals.user?.displayName ?? locals.user?.email ?? null, email: locals.user?.email ?? null };
   const task = await updateTask(ctx, params.id!, body, actor);
   if (!task) throw error(404);
   return json(task);

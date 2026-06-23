@@ -22,7 +22,8 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
   if (!project) throw error(404, 'Project not found');
 
   // Mirror workforce agents into the spine so the assignee picker lists them (best-effort).
-  await syncAgentParties(ctx);
+  // Authenticate as the real user — the backend rejects a synthetic identity.
+  await syncAgentParties(ctx, { id: ctx.profileId ?? null, name: locals.user?.displayName ?? null, email: locals.user?.email ?? null });
 
   const [tasks, progress, timesheets, agents] = await Promise.all([
     listTasks(ctx, { projectId: params.id, includeMilestones: true }),
