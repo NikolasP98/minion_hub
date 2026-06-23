@@ -252,7 +252,15 @@ export type NewProjectInput = {
   color?: string | null;
   icon?: string | null;
   targetDate?: string | null;
+  /** Links this project to a paperclip/workforce project (its execution layer). Stored in metadata. */
+  workforceProjectId?: string | null;
 };
+
+/** Read the linked paperclip/workforce project id off a project's jsonb metadata. */
+export function workforceProjectIdOf(p: Pick<ProjProject, 'metadata'>): string | null {
+  const m = p.metadata && typeof p.metadata === 'object' ? (p.metadata as Record<string, unknown>) : {};
+  return typeof m.workforceProjectId === 'string' ? m.workforceProjectId : null;
+}
 
 export function createProject(ctx: CoreCtx, data: NewProjectInput, actor: Actor): Promise<ProjProject> {
   return withOrgCore(ctx, async (tx) => {
@@ -270,6 +278,7 @@ export function createProject(ctx: CoreCtx, data: NewProjectInput, actor: Actor)
         color: data.color ?? null,
         icon: data.icon ?? null,
         targetDate: data.targetDate ?? null,
+        metadata: data.workforceProjectId ? { workforceProjectId: data.workforceProjectId } : {},
       })
       .returning();
     await recordAudit(ctx, {
@@ -300,6 +309,18 @@ export function updateProject(
     const changes = diffFields(cur as Record<string, unknown>, patch, ['name', 'description', 'status', 'customerPartyId', 'leadPartyId', 'targetDate', 'color', 'icon']);
     for (const c of changes) set[c.field] = (patch as Record<string, unknown>)[c.field];
     if (patch.status === 'completed' && cur.status !== 'completed') set.completedAt = new Date();
+    // Link/unlink the paperclip execution layer (stored in metadata, not a column).
+    if (patch.workforceProjectId !== undefined) {
+      const meta = cur.metadata && typeof cur.metadata === 'object' ? (cur.metadata as Record<string, unknown>) : {};
+      const old = typeof meta.workforceProjectId === 'string' ? meta.workforceProjectId : null;
+      if (old !== (patch.workforceProjectId ?? null)) {
+        const next = { ...meta };
+        if (patch.workforceProjectId) next.workforceProjectId = patch.workforceProjectId;
+        else delete next.workforceProjectId;
+        set.metadata = next;
+        changes.push({ field: 'workforceProjectId', label: 'Workforce link', old, new: patch.workforceProjectId ?? null });
+      }
+    }
     const [row] = await tx
       .update(projProjects)
       .set(set)

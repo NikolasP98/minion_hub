@@ -1,135 +1,197 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import type { PageData } from './$types';
-	import type { ProjectStatus } from '@minion-stack/workforce-client';
-	import * as m from '$lib/paraglide/messages';
-	import { startPolling } from '$lib/utils/live-polling';
-	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
+	import { invalidate, goto } from '$app/navigation';
 	import { PageHeader } from '$lib/components/ui';
-	import { FolderKanban } from 'lucide-svelte';
+	import PartyPicker from '$lib/components/crm/PartyPicker.svelte';
+	import { GanttChartSquare, FolderPlus, Sparkles, Boxes } from 'lucide-svelte';
 
 	let { data }: { data: PageData } = $props();
-	const { projects, agentNames } = $derived(data);
+	let name = $state('');
+	let targetDate = $state('');
+	let templateId = $state('');
+	let customerPartyId = $state<string | null>(null);
+	let leadPartyId = $state<string | null>(null);
+	let busy = $state(false);
 
-	const STATUS_BADGE: Record<ProjectStatus, string> = {
-		backlog: 'bg-muted text-muted-foreground',
-		planned: 'bg-muted text-muted-foreground',
-		in_progress: 'bg-accent/10 text-accent',
-		completed: 'bg-success/10 text-success',
-		cancelled: 'bg-muted text-muted-strong',
-	};
-
-	const STATUS_LABEL: Record<ProjectStatus, string> = {
-		backlog: 'Backlog',
-		planned: 'Planned',
-		in_progress: 'In Progress',
+	const statusLabel: Record<string, string> = {
+		open: 'Open',
+		active: 'Active',
+		on_hold: 'On hold',
 		completed: 'Completed',
 		cancelled: 'Cancelled',
 	};
 
-	function agentLabel(id: string | null): string {
-		if (!id) return '—';
-		return agentNames[id] ?? `${id.slice(0, 8)}…`;
+	// paperclip status → native status (import mapping).
+	const WF_TO_NATIVE: Record<string, string> = {
+		backlog: 'open',
+		planned: 'open',
+		in_progress: 'active',
+		completed: 'completed',
+		cancelled: 'cancelled',
+	};
+
+	async function create() {
+		if (!name.trim() || busy) return;
+		busy = true;
+		try {
+			const res = await fetch('/api/projects', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					name: name.trim(),
+					targetDate: targetDate || null,
+					customerPartyId,
+					leadPartyId,
+				}),
+			});
+			if (res.ok) {
+				name = '';
+				targetDate = '';
+				customerPartyId = null;
+				leadPartyId = null;
+				await invalidate('projects:list');
+			}
+		} finally {
+			busy = false;
+		}
 	}
 
-	function daysUntil(iso: string | null): string {
-		if (!iso) return '';
-		const diff = new Date(iso).getTime() - Date.now();
-		const days = Math.round(diff / (1000 * 60 * 60 * 24));
-		if (days < 0) return `${Math.abs(days)}${m.projects_daysOverdue()}`;
-		if (days === 0) return m.common_today();
-		if (days === 1) return m.projects_tomorrow();
-		return `${days}${m.projects_daysUnit()}`;
+	async function instantiate() {
+		if (!templateId || busy) return;
+		busy = true;
+		try {
+			const res = await fetch(`/api/project-templates/${templateId}/instantiate`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ baseDate: new Date().toISOString().slice(0, 10) }),
+			});
+			if (res.ok) {
+				const { project } = await res.json();
+				await goto(`/workforce/projects/${project.id}`);
+			}
+		} finally {
+			busy = false;
+		}
 	}
 
-	const counts = $derived.by(() => {
-		const out: Record<ProjectStatus, number> = {
-			backlog: 0, planned: 0, in_progress: 0, completed: 0, cancelled: 0,
-		};
-		for (const p of projects) out[p.status] = (out[p.status] ?? 0) + 1;
-		return out;
-	});
-
-	onMount(() => startPolling('app:projects', 8000));
+	// Import a paperclip project as a native project linked to its execution layer.
+	async function importWorkforce(p: { id: string; name: string; status: string; targetDate: string | null; color: string | null }) {
+		if (busy) return;
+		busy = true;
+		try {
+			const res = await fetch('/api/projects', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					name: p.name,
+					status: WF_TO_NATIVE[p.status] ?? 'open',
+					targetDate: p.targetDate,
+					color: p.color,
+					workforceProjectId: p.id,
+				}),
+			});
+			if (res.ok) {
+				const project = await res.json();
+				await goto(`/workforce/projects/${project.id}`);
+			}
+		} finally {
+			busy = false;
+		}
+	}
 </script>
 
-<PageHeader title={m.workforce_projects()}>
-	{#snippet leading()}
-		<FolderKanban size={16} class="text-accent shrink-0" />
-	{/snippet}
-	{#snippet actions()}
-		<LiveIndicator intervalMs={8000} />
-		<div class="flex flex-wrap gap-2 text-xs">
-			{#each (['in_progress', 'planned', 'completed', 'backlog', 'cancelled'] as ProjectStatus[]) as s (s)}
-				{#if counts[s] > 0}
-					<span class="rounded-full px-2 py-0.5 font-medium {STATUS_BADGE[s]}">
-						{counts[s]} {STATUS_LABEL[s].toLowerCase()}
-					</span>
-				{/if}
-			{/each}
+<svelte:head><title>Projects</title></svelte:head>
+
+<div class="flex flex-col h-full min-h-0">
+	<PageHeader title="Projects" subtitle="Where people and agents do the work — tasks, milestones, timesheets, execution" />
+
+	<div class="flex-1 min-h-0 overflow-auto p-4 flex flex-col gap-4">
+		<div class="kpis">
+			<div class="kpi"><GanttChartSquare size={16} /><span class="n">{data.stats.total}</span><span class="l">Projects</span></div>
+			<div class="kpi"><span class="n">{data.stats.active}</span><span class="l">Active</span></div>
+			<div class="kpi"><span class="n">{data.stats.open}</span><span class="l">Open</span></div>
 		</div>
-	{/snippet}
-</PageHeader>
-<main class="flex-1 min-h-0 overflow-y-auto p-6 space-y-6 max-w-5xl">
-	{#if projects.length === 0}
-		<div class="rounded-lg border border-border bg-card p-12 text-center">
-			<p class="text-muted-foreground text-sm">{m.projects_noProjectsYet()}</p>
-		</div>
-	{:else}
-		<ul class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-			{#each projects as p (p.id)}
-				<li>
-					<a
-						href="/workforce/projects/{p.id}"
-						class="relative block rounded-lg border border-border bg-card p-4 text-foreground no-underline transition-colors hover:bg-muted overflow-hidden"
-					>
-						<!-- Color stripe -->
-						{#if p.color}
-							<span
-								class="absolute left-0 top-0 bottom-0 w-1"
-								style="background:{p.color}"
-								aria-hidden="true"
-							></span>
-						{/if}
 
-						<div class="pl-2 space-y-2">
-							<div class="flex items-start justify-between gap-2 flex-wrap">
-								<span class="rounded px-1.5 py-0.5 text-[10px] font-medium {STATUS_BADGE[p.status]}">
-									{STATUS_LABEL[p.status]}
-								</span>
-								{#if p.targetDate}
-									<span class="text-[10px] text-muted-foreground font-mono">
-										target {p.targetDate} <span class="text-muted-strong">· {daysUntil(p.targetDate)}</span>
-									</span>
-								{/if}
-							</div>
+		<section class="card creator">
+			<div class="create-row">
+				<input class="in" placeholder="New project name…" bind:value={name} onkeydown={(e) => e.key === 'Enter' && create()} />
+				<input class="in date" type="date" bind:value={targetDate} title="Target date" />
+				<button class="btn" disabled={busy || !name.trim()} onclick={create}><FolderPlus size={15} /> Create</button>
+			</div>
+			<div class="create-row">
+				<PartyPicker bind:value={customerPartyId} label="Customer" placeholder="Search customer…" types="person,company" />
+				<PartyPicker bind:value={leadPartyId} label="Lead" placeholder="Search lead (person or agent)…" types="person,agent" />
+			</div>
+			{#if data.templates.length}
+				<div class="create-row">
+					<select class="in" bind:value={templateId}>
+						<option value="">From template…</option>
+						{#each data.templates as t (t.id)}<option value={t.id}>{t.name}</option>{/each}
+					</select>
+					<button class="btn ghost" disabled={busy || !templateId} onclick={instantiate}><Sparkles size={15} /> Instantiate</button>
+				</div>
+			{/if}
+		</section>
 
-							<div class="space-y-1">
-								<h2 class="text-base font-semibold leading-tight">{p.name}</h2>
-								{#if p.description}
-									<p class="text-xs text-muted-foreground line-clamp-2">{p.description}</p>
-								{/if}
-							</div>
-
-							<div class="flex items-center gap-3 flex-wrap text-[11px] text-muted-foreground pt-1">
-								<span title={m.projects_leadAgent()}>
-									<span class="text-muted-strong">lead</span> {agentLabel(p.leadAgentId)}
-								</span>
-								{#if p.goals.length > 0}
-									<span>
-										<span class="text-muted-strong">goal</span> {p.goals[0].title}
-									</span>
-								{/if}
-								{#if p.workspaces.length > 0}
-									<span class="font-mono">
-										{p.workspaces.length} workspace{p.workspaces.length !== 1 ? 's' : ''}
-									</span>
-								{/if}
-							</div>
-						</div>
-					</a>
-				</li>
+		<section class="card list">
+			{#each data.projects as p (p.id)}
+				<a class="row" href={`/workforce/projects/${p.id}`}>
+					<span class="name">{#if p.humanId}<span class="hid">{p.humanId}</span> {/if}{p.name}</span>
+					<span class="status s-{p.status}">{statusLabel[p.status] ?? p.status}</span>
+					<span class="target t-caption">{p.targetDate ?? '—'}</span>
+				</a>
+			{:else}
+				<p class="t-caption empty">No projects yet. Create one above, or instantiate a template.</p>
 			{/each}
-		</ul>
-	{/if}
-</main>
+		</section>
+
+		<!-- Paperclip execution-layer projects not yet linked to a native project. -->
+		{#if data.workforce.length}
+			<section class="card wf">
+				<header class="wf-head"><Boxes size={14} /> From the workforce backend (not linked)</header>
+				{#each data.workforce as p (p.id)}
+					<div class="wf-row">
+						<span class="name">
+							{#if p.color}<span class="dot" style="background:{p.color}"></span>{/if}{p.name}
+						</span>
+						<span class="status t-caption">{p.status}</span>
+						<button class="btn ghost sm" disabled={busy} onclick={() => importWorkforce(p)}>Import →</button>
+					</div>
+				{/each}
+			</section>
+		{/if}
+	</div>
+</div>
+
+<style>
+	.kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; max-width: 36rem; }
+	.kpi { display: flex; align-items: center; gap: 0.5rem; border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); padding: 0.75rem 1rem; color: var(--color-muted-foreground); }
+	.kpi .n { font-size: 1.3rem; font-weight: 700; color: var(--color-foreground); font-variant-numeric: tabular-nums; margin-left: auto; }
+	.kpi .l { font-size: 0.74rem; }
+	.card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); }
+	.creator { padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
+	.create-row { display: flex; gap: 0.5rem; align-items: center; }
+	.in { height: 2rem; font-size: 0.86rem; border-radius: var(--radius-md); background: var(--color-bg3); border: 1px solid var(--hairline); padding: 0 0.55rem; flex: 1; color: var(--color-foreground); }
+	.in.date { flex: 0 0 9rem; }
+	.btn { display: inline-flex; align-items: center; gap: 0.35rem; height: 2rem; padding: 0 0.7rem; border-radius: var(--radius-md); border: 1px solid var(--hairline); background: var(--color-primary); color: var(--color-primary-foreground); font-size: 0.84rem; cursor: pointer; }
+	.btn.ghost { background: var(--color-bg3); color: var(--color-foreground); }
+	.btn.sm { height: 1.7rem; font-size: 0.78rem; padding: 0 0.55rem; }
+	.btn:disabled { opacity: 0.5; cursor: default; }
+	.list { display: flex; flex-direction: column; padding: 0.25rem 0; }
+	.row { display: grid; grid-template-columns: 1fr 8rem 7rem; align-items: center; gap: 0.75rem; padding: 0.6rem 1rem; font-size: 0.88rem; color: var(--color-foreground); text-decoration: none; }
+	.row + .row { border-top: 1px solid var(--hairline); }
+	.row:hover { background: var(--color-bg3); }
+	.hid { font-variant-numeric: tabular-nums; color: var(--color-muted-foreground); font-size: 0.78rem; }
+	.status { font-size: 0.76rem; padding: 0.12rem 0.5rem; border-radius: 999px; border: 1px solid var(--hairline); justify-self: start; }
+	.s-active { color: var(--color-success, #16a34a); }
+	.s-completed { color: var(--color-muted-foreground); }
+	.s-cancelled { color: var(--color-muted-foreground); text-decoration: line-through; }
+	.target { justify-self: end; font-variant-numeric: tabular-nums; }
+	.empty { padding: 1.25rem 1rem; }
+	.wf { padding: 0.25rem 0; }
+	.wf-head { display: flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; color: var(--color-muted-foreground); padding: 0.6rem 1rem 0.4rem; }
+	.wf-row { display: grid; grid-template-columns: 1fr 8rem auto; align-items: center; gap: 0.75rem; padding: 0.5rem 1rem; font-size: 0.86rem; }
+	.wf-row + .wf-row { border-top: 1px solid var(--hairline); }
+	.name { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
+	.dot { width: 0.6rem; height: 0.6rem; border-radius: 999px; flex: 0 0 auto; }
+</style>

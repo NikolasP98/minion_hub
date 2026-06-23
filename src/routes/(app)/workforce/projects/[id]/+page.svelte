@@ -1,207 +1,302 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import type { PageData } from './$types';
-	import type { ProjectStatus } from '@minion-stack/workforce-client';
-	import { startPolling } from '$lib/utils/live-polling';
-	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
+	import { invalidate } from '$app/navigation';
+	import { PageHeader } from '$lib/components/ui';
+	import { Flag, Plus, Clock, Boxes, Link2, Unlink } from 'lucide-svelte';
 
 	let { data }: { data: PageData } = $props();
-	const { project, issues, agentNames } = $derived(data);
+	let busy = $state(false);
+	let newTaskTitle = $state('');
+	let tsMinutes = $state(60);
+	let tsDate = $state(new Date().toISOString().slice(0, 10));
+	let tsDesc = $state('');
+	let linkChoice = $state('');
 
-	const STATUS_BADGE: Record<ProjectStatus, string> = {
-		backlog: 'bg-muted text-muted-foreground',
-		planned: 'bg-muted text-muted-foreground',
-		in_progress: 'bg-accent/10 text-accent',
-		completed: 'bg-success/10 text-success',
+	const COLUMNS = ['backlog', 'todo', 'in_progress', 'in_review', 'blocked', 'done'] as const;
+	const colLabel: Record<string, string> = {
+		backlog: 'Backlog', todo: 'To do', in_progress: 'In progress', in_review: 'In review', blocked: 'Blocked', done: 'Done',
+	};
+	const projStatuses = ['open', 'active', 'on_hold', 'completed', 'cancelled'];
+
+	const ISSUE_BADGE: Record<string, string> = {
+		in_progress: 'bg-accent/10 text-accent', blocked: 'bg-warning/10 text-warning',
+		todo: 'bg-muted text-muted-foreground', backlog: 'bg-muted text-muted-foreground',
+		in_review: 'bg-purple-500/10 text-purple-600', done: 'bg-success/10 text-success',
 		cancelled: 'bg-muted text-muted-strong',
 	};
 
-	const STATUS_LABEL: Record<ProjectStatus, string> = {
-		backlog: 'Backlog',
-		planned: 'Planned',
-		in_progress: 'In Progress',
-		completed: 'Completed',
-		cancelled: 'Cancelled',
-	};
+	const milestones = $derived(data.tasks.filter((t) => t.isMilestone));
+	const workTasks = $derived(data.tasks.filter((t) => !t.isMilestone && t.status !== 'cancelled'));
+	const assignOptions = $derived([
+		...(data.selfPartyId ? [{ id: data.selfPartyId, label: 'Me' }] : []),
+		...data.agents.map((a) => ({ id: a.id, label: a.name ?? 'Agent' })),
+	]);
 
-	const ISSUE_STATUS_BADGE: Record<string, string> = {
-		in_progress: 'bg-accent/10 text-accent',
-		blocked: 'bg-warning/10 text-warning',
-		todo: 'bg-muted text-muted-foreground',
-		backlog: 'bg-muted text-muted-foreground',
-		in_review: 'bg-purple-500/10 text-purple-600',
-		done: 'bg-success/10 text-success',
-		cancelled: 'bg-muted text-muted-strong',
-	};
-
-	function agentLabel(id: string | null): string {
+	function partyName(id: string | null): string {
+		if (!id) return 'Unassigned';
+		if (id === data.selfPartyId) return 'Me';
+		const p = data.partyMap[id];
+		return p?.name ?? (p?.agentId ? 'Agent' : '—');
+	}
+	function wfAgent(id: string | null): string {
 		if (!id) return '—';
-		return agentNames[id] ?? `${id.slice(0, 8)}…`;
+		return data.execution?.agentNames[id] ?? `${id.slice(0, 8)}…`;
+	}
+	function hhmm(min: number): string {
+		return `${Math.floor(min / 60)}h ${min % 60}m`;
 	}
 
-	function formatDate(d: Date | string | null): string {
-		if (!d) return '—';
-		return new Date(d).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
+	async function patchTask(id: string, body: Record<string, unknown>) {
+		busy = true;
+		try {
+			const res = await fetch(`/api/project-tasks/${id}`, {
+				method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+			});
+			if (res.ok) await invalidate('projects:detail');
+		} finally { busy = false; }
 	}
-
-	function daysUntil(iso: string | null): string {
-		if (!iso) return '';
-		const diff = new Date(iso).getTime() - Date.now();
-		const days = Math.round(diff / (1000 * 60 * 60 * 24));
-		if (days < 0) return `${Math.abs(days)}d overdue`;
-		if (days === 0) return 'today';
-		return `in ${days}d`;
+	async function addTask(isMilestone = false) {
+		if (!newTaskTitle.trim() || busy) return;
+		busy = true;
+		try {
+			const res = await fetch(`/api/projects/${data.project.id}/tasks`, {
+				method: 'POST', headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ title: newTaskTitle.trim(), isMilestone, status: isMilestone ? 'todo' : 'backlog' }),
+			});
+			if (res.ok) { newTaskTitle = ''; await invalidate('projects:detail'); }
+		} finally { busy = false; }
 	}
-
-	onMount(() => startPolling('app:project', 6000));
+	async function patchProject(body: Record<string, unknown>) {
+		busy = true;
+		try {
+			await fetch(`/api/projects/${data.project.id}`, {
+				method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+			});
+			await invalidate('projects:detail');
+		} finally { busy = false; }
+	}
+	async function logTime() {
+		if (!data.selfPartyId || tsMinutes <= 0 || busy) return;
+		busy = true;
+		try {
+			const res = await fetch('/api/project-timesheets', {
+				method: 'POST', headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ partyId: data.selfPartyId, projectId: data.project.id, spentDate: tsDate, minutes: tsMinutes, description: tsDesc || null }),
+			});
+			if (res.ok) { tsDesc = ''; await invalidate('projects:detail'); }
+		} finally { busy = false; }
+	}
 </script>
 
-<div class="p-6 space-y-6 max-w-5xl">
-	<!-- Breadcrumb -->
-	<nav class="text-sm text-muted-foreground flex items-center gap-1">
-		<a href="/workforce/projects" class="hover:text-foreground">Projects</a>
-		<span>/</span>
-		<span class="text-foreground truncate">{project.name}</span>
-	</nav>
+<svelte:head><title>{data.project.name}</title></svelte:head>
 
-	<!-- Header -->
-	<header class="rounded-lg border border-border bg-card p-5 relative overflow-hidden">
-		{#if project.color}
-			<span
-				class="absolute left-0 top-0 bottom-0 w-1.5"
-				style="background:{project.color}"
-				aria-hidden="true"
-			></span>
-		{/if}
-		<div class="pl-3 space-y-3">
-			<div class="flex items-center gap-3 flex-wrap">
-				<span class="rounded px-1.5 py-0.5 text-xs font-medium {STATUS_BADGE[project.status]}">
-					{STATUS_LABEL[project.status]}
-				</span>
-				<span class="text-[10px] font-mono text-muted-foreground">{project.urlKey}</span>
-				<LiveIndicator intervalMs={6000} />
+<div class="flex flex-col h-full min-h-0">
+	<PageHeader title={data.project.name} subtitle={data.project.humanId ?? undefined} />
+
+	<div class="flex-1 min-h-0 overflow-auto p-4 flex flex-col gap-4">
+		<!-- summary -->
+		<section class="summary">
+			<div class="ring" style={`--pct:${data.progress.percent}`}>
+				<span>{data.progress.percent}%</span>
 			</div>
-			<h1 class="text-2xl font-semibold">{project.name}</h1>
-			{#if project.description}
-				<p class="text-sm text-muted-foreground leading-relaxed">{project.description}</p>
-			{/if}
-		</div>
-	</header>
-
-	<!-- KPI row -->
-	<section class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-		<div class="rounded-lg border border-border bg-card p-4 space-y-1">
-			<h2 class="text-xs font-medium text-muted-foreground uppercase tracking-wider">Lead</h2>
-			<div class="text-sm font-medium truncate">{agentLabel(project.leadAgentId)}</div>
-		</div>
-		<div class="rounded-lg border border-border bg-card p-4 space-y-1">
-			<h2 class="text-xs font-medium text-muted-foreground uppercase tracking-wider">Target</h2>
-			<div class="text-sm font-medium tabular-nums">{project.targetDate ?? '—'}</div>
-			{#if project.targetDate}
-				<div class="text-[10px] text-muted-foreground">{daysUntil(project.targetDate)}</div>
-			{/if}
-		</div>
-		<div class="rounded-lg border border-border bg-card p-4 space-y-1">
-			<h2 class="text-xs font-medium text-muted-foreground uppercase tracking-wider">Workspaces</h2>
-			<div class="text-2xl font-semibold tabular-nums">{project.workspaces.length}</div>
-		</div>
-		<div class="rounded-lg border border-border bg-card p-4 space-y-1">
-			<h2 class="text-xs font-medium text-muted-foreground uppercase tracking-wider">Issues</h2>
-			<div class="text-2xl font-semibold tabular-nums">{issues.length}</div>
-		</div>
-	</section>
-
-	<!-- Linked goals -->
-	{#if project.goals.length > 0}
-		<section>
-			<h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-				Linked goals
-			</h2>
-			<ul class="rounded-lg border border-border bg-card divide-y divide-border">
-				{#each project.goals as goal (goal.id)}
-					<li>
-						<a
-							href="/workforce/goals"
-							class="block px-4 py-3 text-sm text-foreground no-underline hover:bg-muted transition-colors"
-						>
-							{goal.title}
-						</a>
-					</li>
-				{/each}
-			</ul>
+			<div class="summary-meta">
+				<div class="line"><b>{data.progress.done}</b>/{data.progress.total} tasks done</div>
+				<div class="line">Customer: {partyName(data.project.customerPartyId)}</div>
+				<div class="line">Lead: {partyName(data.project.leadPartyId)}</div>
+				<label class="line">Status:
+					<select value={data.project.status} disabled={busy} onchange={(e) => patchProject({ status: (e.currentTarget as HTMLSelectElement).value })}>
+						{#each projStatuses as s (s)}<option value={s}>{s}</option>{/each}
+					</select>
+				</label>
+			</div>
 		</section>
-	{/if}
 
-	<!-- Workspaces -->
-	<section>
-		<h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-			Workspaces ({project.workspaces.length})
-		</h2>
-		{#if project.workspaces.length === 0}
-			<div class="rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground">
-				No workspaces configured.
-			</div>
-		{:else}
-			<ul class="rounded-lg border border-border bg-card divide-y divide-border">
-				{#each project.workspaces as ws (ws.id)}
-					<li class="px-4 py-3 text-sm space-y-1">
-						<div class="flex items-center gap-2 flex-wrap">
-							<span class="font-medium">{ws.name}</span>
-							{#if ws.isPrimary}
-								<span class="rounded px-1.5 py-0.5 text-[10px] font-medium bg-primary/10 text-primary">primary</span>
-							{/if}
-							<span class="font-mono text-[10px] text-muted-strong">{ws.sourceType}</span>
-						</div>
-						{#if ws.repoUrl}
-							<div class="font-mono text-xs text-muted-foreground truncate">{ws.repoUrl} · {ws.repoRef ?? 'main'}</div>
-						{:else if ws.cwd}
-							<div class="font-mono text-xs text-muted-foreground truncate">{ws.cwd}</div>
-						{/if}
-					</li>
+		<!-- milestones -->
+		<section class="card ms">
+			<header class="ms-head"><Flag size={14} /> Milestones</header>
+			<div class="ms-list">
+				{#each milestones as m (m.id)}
+					<span class="ms-chip" class:done={m.status === 'done'}>{m.title}</span>
+				{:else}
+					<span class="t-caption">No milestones</span>
 				{/each}
-			</ul>
-		{/if}
-	</section>
-
-	<!-- Linked issues -->
-	<section>
-		<h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-			Issues ({issues.length})
-		</h2>
-		{#if issues.length === 0}
-			<div class="rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground">
-				No issues linked to this project.
 			</div>
-		{:else}
-			<ul class="rounded-lg border border-border bg-card divide-y divide-border">
-				{#each issues as issue (issue.id)}
-					<li>
-						<a
-							href="/workforce/issues/{issue.id}"
-							class="flex items-center gap-3 px-4 py-2.5 text-sm text-foreground no-underline hover:bg-muted transition-colors"
-						>
-							<span class="shrink-0 rounded px-1.5 py-0.5 text-xs font-medium {ISSUE_STATUS_BADGE[issue.status]}">
-								{issue.status}
-							</span>
-							{#if issue.identifier}
-								<span class="shrink-0 text-xs font-mono text-muted-foreground">{issue.identifier}</span>
-							{/if}
-							<span class="flex-1 min-w-0 truncate font-medium">{issue.title}</span>
-							{#if issue.assigneeAgentId}
-								<span class="shrink-0 text-xs text-muted-foreground truncate max-w-[10rem]">
-									{agentLabel(issue.assigneeAgentId)}
-								</span>
-							{/if}
+		</section>
+
+		<!-- add task -->
+		<div class="add">
+			<input class="in" placeholder="Add a task…" bind:value={newTaskTitle} onkeydown={(e) => e.key === 'Enter' && addTask(false)} />
+			<button class="btn" disabled={busy || !newTaskTitle.trim()} onclick={() => addTask(false)}><Plus size={15} /> Task</button>
+			<button class="btn ghost" disabled={busy || !newTaskTitle.trim()} onclick={() => addTask(true)}><Flag size={14} /> Milestone</button>
+		</div>
+
+		<!-- board -->
+		<section class="board">
+			{#each COLUMNS as col (col)}
+				<div class="col">
+					<header class="col-head">{colLabel[col]} <span class="cnt">{workTasks.filter((t) => t.status === col).length}</span></header>
+					<div class="col-body">
+						{#each workTasks.filter((t) => t.status === col) as t (t.id)}
+							<div class="tcard p-{t.priority}">
+								<div class="tt">{t.title}</div>
+								<div class="tmeta">
+									{#if t.humanId}<span class="hid">{t.humanId}</span>{/if}
+									<select class="mini" value={t.assigneePartyId ?? ''} disabled={busy} onchange={(e) => patchTask(t.id, { assigneePartyId: (e.currentTarget as HTMLSelectElement).value || null })}>
+										<option value="">Unassigned</option>
+										{#if t.assigneePartyId && !assignOptions.some((o) => o.id === t.assigneePartyId)}
+											<option value={t.assigneePartyId}>{partyName(t.assigneePartyId)}</option>
+										{/if}
+										{#each assignOptions as o (o.id)}<option value={o.id}>{o.label}</option>{/each}
+									</select>
+								</div>
+								<select class="mini status" value={t.status} disabled={busy} onchange={(e) => patchTask(t.id, { status: (e.currentTarget as HTMLSelectElement).value })}>
+									{#each COLUMNS as s (s)}<option value={s}>{colLabel[s]}</option>{/each}
+								</select>
+							</div>
+						{/each}
+					</div>
+				</div>
+			{/each}
+		</section>
+
+		<!-- execution layer (paperclip / workforce) -->
+		<section class="card exec">
+			<header class="exec-head">
+				<span><Boxes size={14} /> Execution (workforce)</span>
+				{#if data.workforceProjectId}
+					<button class="btn ghost sm" disabled={busy} onclick={() => patchProject({ workforceProjectId: null })}><Unlink size={13} /> Unlink</button>
+				{/if}
+			</header>
+
+			{#if data.execution}
+				<div class="exec-meta">
+					<span class="font-mono t-caption">{data.execution.project.urlKey}</span>
+					<span class="t-caption">lead {wfAgent(data.execution.project.leadAgentId)}</span>
+					<span class="t-caption">{data.execution.project.workspaces.length} workspace{data.execution.project.workspaces.length !== 1 ? 's' : ''}</span>
+				</div>
+				<!-- workspaces -->
+				{#if data.execution.project.workspaces.length}
+					<div class="ws-list">
+						{#each data.execution.project.workspaces as ws (ws.id)}
+							<div class="ws">
+								<span class="ws-name">{ws.name}{#if ws.isPrimary}<span class="primary">primary</span>{/if}</span>
+								<span class="ws-src t-caption">{ws.repoUrl ?? ws.cwd ?? ws.sourceType}</span>
+							</div>
+						{/each}
+					</div>
+				{/if}
+				<!-- issues -->
+				<div class="iss-list">
+					{#each data.execution.issues as iss (iss.id)}
+						<a class="iss" href={`/workforce/issues/${iss.id}`}>
+							<span class="badge {ISSUE_BADGE[iss.status] ?? 'bg-muted text-muted-foreground'}">{iss.status}</span>
+							{#if iss.identifier}<span class="hid">{iss.identifier}</span>{/if}
+							<span class="iss-title">{iss.title}</span>
+							{#if iss.assigneeAgentId}<span class="iss-agent t-caption">{wfAgent(iss.assigneeAgentId)}</span>{/if}
 						</a>
-					</li>
-				{/each}
-			</ul>
-		{/if}
-	</section>
+					{:else}
+						<p class="t-caption empty">No issues in the linked workforce project.</p>
+					{/each}
+				</div>
+			{:else if data.workforceProjectId}
+				<p class="t-caption broken">Linked workforce project unavailable (backend down or project removed).</p>
+			{:else}
+				<div class="link-row">
+					<select class="in" bind:value={linkChoice}>
+						<option value="">Link a workforce project…</option>
+						{#each data.linkable as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
+					</select>
+					<button class="btn ghost sm" disabled={busy || !linkChoice} onclick={() => patchProject({ workforceProjectId: linkChoice })}><Link2 size={13} /> Link</button>
+				</div>
+				{#if data.linkable.length === 0}
+					<p class="t-caption empty">No workforce projects available to link.</p>
+				{/if}
+			{/if}
+		</section>
 
-	<!-- Metadata footer -->
-	<footer class="text-xs text-muted-foreground space-y-0.5 pt-2">
-		<div><span class="font-mono">{project.id}</span></div>
-		<div>created {formatDate(project.createdAt)} · updated {formatDate(project.updatedAt)}</div>
-	</footer>
+		<!-- timesheets -->
+		<section class="card ts">
+			<header class="ts-head"><Clock size={14} /> Timesheets</header>
+			<div class="ts-add">
+				<input class="in date" type="date" bind:value={tsDate} />
+				<input class="in mins" type="number" min="1" bind:value={tsMinutes} title="Minutes" />
+				<input class="in" placeholder="What did you work on?" bind:value={tsDesc} />
+				<button class="btn" disabled={busy || !data.selfPartyId} onclick={logTime}>Log</button>
+			</div>
+			<div class="ts-list">
+				{#each data.timesheets as ts (ts.id)}
+					<div class="ts-row">
+						<span>{ts.spentDate}</span>
+						<span class="mins-v">{hhmm(ts.minutes)}</span>
+						<span class="who t-caption">{partyName(ts.partyId)}</span>
+						<span class="desc">{ts.description ?? '—'}</span>
+						{#if ts.billable}<span class="bill">billable</span>{/if}
+					</div>
+				{:else}
+					<p class="t-caption empty">No time logged yet.</p>
+				{/each}
+			</div>
+		</section>
+	</div>
 </div>
+
+<style>
+	.summary { display: flex; gap: 1.25rem; align-items: center; border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); padding: 1rem 1.25rem; }
+	.ring { --size: 76px; width: var(--size); height: var(--size); border-radius: 50%; display: grid; place-items: center; background: conic-gradient(var(--color-primary) calc(var(--pct) * 1%), var(--color-bg3) 0); flex: 0 0 auto; }
+	.ring span { width: calc(var(--size) - 16px); height: calc(var(--size) - 16px); border-radius: 50%; background: var(--color-card); display: grid; place-items: center; font-weight: 700; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+	.summary-meta { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.86rem; }
+	.summary-meta .line { color: var(--color-muted-foreground); }
+	.summary-meta select { background: var(--color-bg3); border: 1px solid var(--hairline); border-radius: var(--radius-md); height: 1.7rem; margin-left: 0.3rem; }
+	.card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); }
+	.ms { padding: 0.6rem 0.9rem; }
+	.ms-head, .ts-head { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: var(--color-muted-foreground); margin-bottom: 0.5rem; }
+	.ms-list { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+	.ms-chip { font-size: 0.78rem; padding: 0.15rem 0.55rem; border-radius: 999px; border: 1px solid var(--hairline); background: var(--color-bg3); }
+	.ms-chip.done { color: var(--color-success, #16a34a); }
+	.add { display: flex; gap: 0.5rem; }
+	.in { height: 2rem; font-size: 0.86rem; border-radius: var(--radius-md); background: var(--color-bg3); border: 1px solid var(--hairline); padding: 0 0.55rem; flex: 1; color: var(--color-foreground); }
+	.in.date { flex: 0 0 9rem; } .in.mins { flex: 0 0 5rem; }
+	.btn { display: inline-flex; align-items: center; gap: 0.35rem; height: 2rem; padding: 0 0.7rem; border-radius: var(--radius-md); border: 1px solid var(--hairline); background: var(--color-primary); color: var(--color-primary-foreground); font-size: 0.84rem; cursor: pointer; white-space: nowrap; }
+	.btn.ghost { background: var(--color-bg3); color: var(--color-foreground); }
+	.btn.sm { height: 1.7rem; font-size: 0.78rem; padding: 0 0.55rem; }
+	.btn:disabled { opacity: 0.5; cursor: default; }
+	.board { display: grid; grid-template-columns: repeat(6, minmax(150px, 1fr)); gap: 0.6rem; align-items: start; }
+	.col { background: var(--color-bg2, var(--color-bg3)); border: 1px solid var(--hairline); border-radius: var(--radius-lg); min-height: 4rem; }
+	.col-head { font-size: 0.76rem; font-weight: 600; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--hairline); display: flex; justify-content: space-between; color: var(--color-muted-foreground); }
+	.cnt { font-variant-numeric: tabular-nums; }
+	.col-body { display: flex; flex-direction: column; gap: 0.4rem; padding: 0.5rem; }
+	.tcard { background: var(--color-card); border: 1px solid var(--hairline); border-left: 3px solid var(--color-muted-foreground); border-radius: var(--radius-md); padding: 0.5rem; display: flex; flex-direction: column; gap: 0.35rem; }
+	.tcard.p-high { border-left-color: #f59e0b; } .tcard.p-urgent { border-left-color: #ef4444; } .tcard.p-low { border-left-color: var(--hairline); }
+	.tt { font-size: 0.83rem; }
+	.tmeta { display: flex; align-items: center; gap: 0.35rem; }
+	.hid { font-size: 0.7rem; color: var(--color-muted-foreground); font-variant-numeric: tabular-nums; }
+	.mini { height: 1.6rem; font-size: 0.74rem; border-radius: var(--radius-sm, 4px); background: var(--color-bg3); border: 1px solid var(--hairline); padding: 0 0.25rem; max-width: 100%; flex: 1; }
+	.mini.status { width: 100%; }
+	.exec { padding: 0.6rem 0.9rem; display: flex; flex-direction: column; gap: 0.5rem; }
+	.exec-head { display: flex; align-items: center; justify-content: space-between; font-size: 0.8rem; color: var(--color-muted-foreground); }
+	.exec-head > span { display: inline-flex; align-items: center; gap: 0.4rem; }
+	.exec-meta { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+	.ws-list { display: flex; flex-direction: column; gap: 0.3rem; }
+	.ws { display: flex; flex-direction: column; gap: 0.1rem; border: 1px solid var(--hairline); border-radius: var(--radius-md); padding: 0.4rem 0.6rem; }
+	.ws-name { font-size: 0.82rem; display: flex; align-items: center; gap: 0.4rem; }
+	.primary { font-size: 0.66rem; border-radius: 999px; border: 1px solid var(--hairline); padding: 0 0.35rem; color: var(--color-primary); }
+	.ws-src { font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.iss-list { display: flex; flex-direction: column; }
+	.iss { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0; font-size: 0.83rem; color: var(--color-foreground); text-decoration: none; }
+	.iss + .iss { border-top: 1px solid var(--hairline); }
+	.iss:hover { background: var(--color-bg3); }
+	.badge { font-size: 0.7rem; padding: 0.1rem 0.4rem; border-radius: 999px; }
+	.iss-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.iss-agent { max-width: 9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.link-row { display: flex; gap: 0.5rem; align-items: center; }
+	.broken { color: var(--color-warning, #d97706); }
+	.ts { padding: 0.6rem 0.9rem; }
+	.ts-add { display: flex; gap: 0.5rem; margin-bottom: 0.6rem; }
+	.ts-list { display: flex; flex-direction: column; }
+	.ts-row { display: grid; grid-template-columns: 6rem 5rem 7rem 1fr auto; gap: 0.6rem; align-items: center; padding: 0.4rem 0; font-size: 0.84rem; }
+	.ts-row + .ts-row { border-top: 1px solid var(--hairline); }
+	.mins-v { font-variant-numeric: tabular-nums; font-weight: 600; }
+	.desc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.bill { font-size: 0.7rem; color: var(--color-success, #16a34a); border: 1px solid var(--hairline); border-radius: 999px; padding: 0 0.4rem; }
+	.empty { padding: 0.5rem 0; }
+</style>
