@@ -195,6 +195,8 @@ export const schedBookings = pgTable(
     attendeePhone: text('attendee_phone'),
     /** Soft bridge to crm_contacts (appointment → customer). */
     crmContactId: uuid('crm_contact_id'),
+    /** Soft bridge to the shared party spine (parties.id). See pg-party-schema.ts. */
+    partyId: uuid('party_id'),
     /** Snapshot of the event type's product at booking time. */
     productId: uuid('product_id'),
     source: text('source').notNull().default('internal'), // 'public_link' | 'internal' | 'import'
@@ -216,6 +218,7 @@ export const schedBookings = pgTable(
     ),
     statusIdx: index('sched_bookings_org_status_idx').on(t.orgId, t.status),
     crmIdx: index('sched_bookings_crm_idx').on(t.crmContactId),
+    partyIdx: index('sched_bookings_party_idx').on(t.partyId),
   }),
 );
 

@@ -20,6 +20,14 @@
 		// svelte-ignore state_referenced_locally
 		data.modules['scheduling'] ?? true,
 	);
+	let supportEnabled = $state(
+		// svelte-ignore state_referenced_locally
+		data.modules['support'] ?? true,
+	);
+	let salesEnabled = $state(
+		// svelte-ignore state_referenced_locally
+		data.modules['sales'] ?? true,
+	);
 	let moduleBusy = $state<string | null>(null);
 	let moduleMsg = $state<{ id: string; ok: boolean; text: string } | null>(null);
 
@@ -39,12 +47,16 @@
 				if (moduleId === 'finances') finEnabled = !enabled;
 				if (moduleId === 'crm') crmEnabled = !enabled;
 				if (moduleId === 'scheduling') schedEnabled = !enabled;
+				if (moduleId === 'support') supportEnabled = !enabled;
+				if (moduleId === 'sales') salesEnabled = !enabled;
 			}
 		} catch {
 			moduleMsg = { id: moduleId, ok: false, text: m.fin_module_error() };
 			if (moduleId === 'finances') finEnabled = !enabled;
 			if (moduleId === 'crm') crmEnabled = !enabled;
 			if (moduleId === 'scheduling') schedEnabled = !enabled;
+			if (moduleId === 'support') supportEnabled = !enabled;
+			if (moduleId === 'sales') salesEnabled = !enabled;
 		} finally {
 			moduleBusy = null;
 		}
@@ -103,6 +115,32 @@
 						bind:checked={schedEnabled}
 						disabled={moduleBusy === 'scheduling'}
 						onchange={(v) => setModule('scheduling', v)}
+						size="md"
+					/>
+				</div>
+
+				<div class="mod-row">
+					<div class="mod-info">
+						<span class="mod-label">Support</span>
+						<span class="t-caption">Customer support tickets with SLA tracking.</span>
+					</div>
+					<Toggle
+						bind:checked={supportEnabled}
+						disabled={moduleBusy === 'support'}
+						onchange={(v) => setModule('support', v)}
+						size="md"
+					/>
+				</div>
+
+				<div class="mod-row">
+					<div class="mod-info">
+						<span class="mod-label">Sales Orders</span>
+						<span class="t-caption">Commitments to bill, created from bookings.</span>
+					</div>
+					<Toggle
+						bind:checked={salesEnabled}
+						disabled={moduleBusy === 'sales'}
+						onchange={(v) => setModule('sales', v)}
 						size="md"
 					/>
 				</div>

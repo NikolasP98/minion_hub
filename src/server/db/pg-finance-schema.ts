@@ -97,11 +97,14 @@ export const finClients = pgTable(
     docNumber: text('doc_number'),
     email: text('email'),
     phone: text('phone'),
+    /** Soft bridge to the shared party spine (parties.id). See pg-party-schema.ts. */
+    partyId: uuid('party_id'),
     metadata: jsonb('metadata').notNull().default({}),
   },
   (t) => ({
     uniq: uniqueIndex('fin_clients_provider_ref_uniq').on(t.orgId, t.provider, t.providerRef),
     dniIdx: index('fin_clients_org_dni_idx').on(t.orgId, t.docNumber),
+    partyIdx: index('fin_clients_party_idx').on(t.partyId),
   }),
 );
 

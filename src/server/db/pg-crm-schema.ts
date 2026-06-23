@@ -48,6 +48,10 @@ export const crmContacts = pgTable(
     /** Assigned hub user (profiles.id) — modeled for future per-rep visibility;
      *  not yet enforced by RLS in v1. */
     ownerId: uuid('owner_id'),
+    /** Soft bridge to the shared party spine (parties.id). Null until backfilled
+     *  / linked by party.service.ts. No cross-concern FK — same pattern as
+     *  profile_id. See pg-party-schema.ts. */
+    partyId: uuid('party_id'),
     /** Pins a lifecycle stage, overriding the derived one (spec §5). */
     lifecycleOverride: text('lifecycle_override'),
     /** 'harvested' (from the ledger) | 'manual' (created in the UI). */
@@ -62,6 +66,7 @@ export const crmContacts = pgTable(
   (t) => ({
     orgRecentIdx: index('crm_contacts_org_recent_idx').on(t.orgId, t.updatedAt),
     profileIdx: index('crm_contacts_profile_idx').on(t.profileId),
+    partyIdx: index('crm_contacts_party_idx').on(t.partyId),
   }),
 );
 

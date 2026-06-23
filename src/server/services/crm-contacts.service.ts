@@ -11,6 +11,7 @@ import {
   crmSettings,
 } from '$server/db/pg-crm-schema';
 import { RFM_WEIGHTS, RFM_CONST, tryCompileTagRule } from './crm-scoring';
+import { reconcileParties } from './party.service';
 import { isFunnelStage, readFunnelMeta, funnelStageIndex } from '$lib/components/crm/crm-funnel';
 
 /**
@@ -119,6 +120,8 @@ export async function syncContactsFromLedger(ctx: CoreCtx): Promise<SyncResult> 
     return { created };
   });
   if (result.created > 0) await bustCrmList(ctx.tenantId);
+  // Keep the party spine in step with harvested contacts (idempotent, set-based).
+  await reconcileParties(ctx);
   return result;
 }
 

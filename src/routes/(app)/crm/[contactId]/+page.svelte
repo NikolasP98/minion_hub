@@ -11,6 +11,7 @@
 	import { financeFloorStage } from '$lib/components/crm/crm-funnel';
 	import JourneyTimeline from '$lib/components/crm/JourneyTimeline.svelte';
 	import CrmSimilarWins from '$lib/components/crm/CrmSimilarWins.svelte';
+	import Connections from '$lib/components/crm/Connections.svelte';
 	import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
 	import { contactLabel, isRecencyNever, identityValue, relativeTime } from '$lib/components/crm/crm-format';
 	import { stageLabel } from '$lib/components/crm/crm-i18n';
@@ -184,6 +185,11 @@
 	<div class="flex-1 min-h-0 overflow-auto p-4 grid gap-4 lg:grid-cols-[1fr_1.4fr]">
 		<!-- Left: identity, score, tags -->
 		<div class="flex flex-col gap-4">
+			<!-- Cross-module connections (ERPNext-style related-record counts) -->
+			{#if data.connections?.length}
+				<Connections groups={data.connections} />
+			{/if}
+
 			<!-- Score breakdown -->
 			<section class="card">
 				<header class="card-h">

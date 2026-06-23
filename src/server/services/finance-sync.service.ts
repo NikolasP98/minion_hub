@@ -5,6 +5,7 @@ import { getSource, upsertInvoicesBatch, loadProductMap, bustFinanceCache, setSo
 import { decryptCreds } from './finance-secrets';
 import { overlapSince, nowIso } from './finance-sync.helpers';
 import { claimJob, getJobById, heartbeat, isCancelRequested, finishJob, enqueueJob } from './finance-sync-jobs.service';
+import { reconcileParties } from './party.service';
 
 /**
  * Advance one sync job by pulling pages until the source is drained, the time
@@ -88,5 +89,9 @@ export async function syncSource(ctx: CoreCtx, provider: string) {
   await advanceJob(ctx, job.id, { budgetMs: Number.POSITIVE_INFINITY });
   const final = await getJobById(ctx, job.id);
   const status = final?.status === 'succeeded' ? 'success' : (final?.status ?? 'failed');
+  // Link freshly-synced fin_clients to the shared party spine (idempotent).
+  // ponytail: cron-resumed advanceJob() doesn't reconcile — the next harvest or
+  // manual sync catches up; acceptable for a soft analytics link.
+  if (status === 'success') await reconcileParties(ctx);
   return { provider, count: final?.processed ?? 0, status };
 }

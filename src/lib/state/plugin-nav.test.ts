@@ -4,8 +4,14 @@ import { getDynamicPluginsSections } from "$lib/components/layout/sections";
 describe("getDynamicPluginsSections", () => {
   it("surfaces built-in CRM under Marketing and Kanban under Operations when no control centers", () => {
     const sections = getDynamicPluginsSections([]);
-    // Display order: Marketing (CRM), Operations (Kanban), Finance (builtin Finances).
-    expect(sections.map((s) => s.id)).toEqual(["plugins:marketing", "plugins:operations", "plugins:finance"]);
+    // Display order: Marketing (CRM), Operations (Workforce, Scheduling), Finance
+    // (builtin Finances), Customer Support (builtin Support).
+    expect(sections.map((s) => s.id)).toEqual([
+      "plugins:marketing",
+      "plugins:operations",
+      "plugins:finance",
+      "plugins:customer-support",
+    ]);
     const marketing = sections.find((s) => s.id === "plugins:marketing");
     expect(marketing?.label).toBe("Marketing");
     expect(marketing?.items.map((i) => i.href)).toEqual(["/crm"]);
@@ -13,10 +19,12 @@ describe("getDynamicPluginsSections", () => {
     const operations = sections.find((s) => s.id === "plugins:operations");
     expect(operations?.label).toBe("Operations");
     expect(operations?.items.map((i) => i.href)).toEqual(["/workforce", "/scheduling"]);
-    expect(operations?.items[0]?.label).toBe("Kanban");
+    expect(operations?.items[0]?.label).toBe("Workforce");
     expect(operations?.items[1]?.label).toBe("Scheduling");
     const finance = sections.find((s) => s.id === "plugins:finance");
-    expect(finance?.items.map((i) => i.href)).toEqual(["/finances"]);
+    expect(finance?.items.map((i) => i.href)).toEqual(["/finances", "/sales"]);
+    const support = sections.find((s) => s.id === "plugins:customer-support");
+    expect(support?.items.map((i) => i.href)).toEqual(["/support"]);
   });
 
   it("folds channel plugins into a Channels subsection under Customer Support, Studio under Branding/Creative", () => {
@@ -59,7 +67,8 @@ describe("getDynamicPluginsSections", () => {
     const creative = sections.find((s) => s.id === "plugins:creative");
     expect(creative?.items[0]?.href).toBe("/plugins/studio");
     const cs = sections.find((s) => s.id === "plugins:customer-support");
-    expect(cs?.items.map((i) => i.href)).toEqual(["/plugins/voice-call"]);
+    // builtin Support is always present; voice-call is pinned in via overrides.
+    expect(cs?.items.map((i) => i.href)).toEqual(["/support", "/plugins/voice-call"]);
     // Channel plugins are NOT a top-level group — they live in a subsection.
     expect(sections.some((s) => s.id === "plugins:channel")).toBe(false);
     expect(cs?.subsections?.[0]?.id).toBe("channels");

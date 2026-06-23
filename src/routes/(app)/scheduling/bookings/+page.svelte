@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { PageData } from './$types';
-	import { CalendarClock, Plus, Check, X, UserX } from 'lucide-svelte';
-	import { invalidate } from '$app/navigation';
+	import { CalendarClock, Plus, Check, X, UserX, ClipboardList } from 'lucide-svelte';
+	import { invalidate, goto } from '$app/navigation';
 	import { PageHeader, Card, Button, Badge, EmptyState, Modal } from '$lib/components/ui';
 	import * as m from '$lib/paraglide/messages';
 
@@ -31,6 +31,19 @@
 			body: JSON.stringify({ status }),
 		});
 		await invalidate('scheduling:data');
+	}
+
+	// Booking → Sales Order: map this appointment into a commitment-to-bill and
+	// jump to the Sales view. Idempotent server-side (one order per booking).
+	let orderBusy = $state<string | null>(null);
+	async function createOrder(id: string) {
+		orderBusy = id;
+		try {
+			const res = await fetch(`/api/scheduling/bookings/${id}/order`, { method: 'POST' });
+			if (res.ok) await goto('/sales');
+		} finally {
+			orderBusy = null;
+		}
 	}
 
 	// ── New appointment modal ──
@@ -152,8 +165,8 @@
 								<div class="t-caption">{b.attendeePhone ?? ''}</div>
 							</div>
 							<Badge>{(STATUS_LABEL[b.status] ?? (() => b.status))()}</Badge>
-							{#if b.status === 'accepted' || b.status === 'pending'}
-								<div class="flex gap-1">
+							<div class="flex gap-1">
+								{#if b.status === 'accepted' || b.status === 'pending'}
 									<button class="act" title={m.sched_mark_complete()} onclick={() => setStatus(b.id, 'completed')}>
 										<Check size={15} />
 									</button>
@@ -163,8 +176,13 @@
 									<button class="act del" title={m.sched_cancel_booking()} onclick={() => setStatus(b.id, 'cancelled')}>
 										<X size={15} />
 									</button>
-								</div>
-							{/if}
+								{/if}
+								{#if b.status !== 'cancelled' && b.status !== 'rejected'}
+									<button class="act" title="Create sales order" disabled={orderBusy === b.id} onclick={() => createOrder(b.id)}>
+										<ClipboardList size={15} />
+									</button>
+								{/if}
+							</div>
 						</div>
 					</Card>
 				{/each}
