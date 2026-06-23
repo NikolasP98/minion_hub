@@ -7,6 +7,7 @@ import {
   type NewSupportIssue,
 } from '$server/db/pg-support-schema';
 import { nextSerialId } from './naming-series';
+import { autoAssign } from './assignment.service';
 import { computeChanges } from './activity.service';
 import { docAuditLog } from '$server/db/pg-activity-schema';
 import type { CoreCtx } from '$server/auth/core-ctx';
@@ -183,6 +184,11 @@ export async function createIssue(ctx: CoreCtx, input: CreateIssueInput): Promis
     const humanId = await nextSerialId(tx, ctx.tenantId, 'TKT-.YYYY.-', now);
     return tx.insert(supportIssues).values({ ...values, humanId }).returning();
   });
+  // Auto-assign via assignment rules (no-op if owner already set or no rule matches).
+  if (!row.ownerId) {
+    const assignee = await autoAssign(ctx, 'support_issue', row);
+    if (assignee) row.ownerId = assignee;
+  }
   return row;
 }
 

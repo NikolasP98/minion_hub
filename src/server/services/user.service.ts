@@ -44,7 +44,9 @@ export interface UserEntry {
  * org-assignment editor reads the per-user list). Scoped to `ctx.tenantId` — an
  * admin's team page shows their org's people, not every user in the system.
  */
-export async function listUsers(ctx: TenantContext): Promise<UserEntry[]> {
+// Only reads ctx.tenantId (data comes from Supabase admin), so accept any
+// context carrying a tenantId — lets the Core (pg) ctx call it too.
+export async function listUsers(ctx: { tenantId: string }): Promise<UserEntry[]> {
   const admin = supabaseAdmin();
 
   // 1. Profile ids that belong to the active org.

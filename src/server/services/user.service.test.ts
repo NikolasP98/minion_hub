@@ -83,7 +83,7 @@ describe('listUsers', () => {
       return { data: [], error: null };
     };
 
-    const result = await listUsers({ db: {} as never, tenantId: 't1' });
+    const result = await listUsers({ tenantId: 't1' });
     expect(result).toEqual([
       {
         id: 'u1',
@@ -101,7 +101,7 @@ describe('listUsers', () => {
 
   it('returns [] when the org has no members', async () => {
     resolver = () => ({ data: [], error: null });
-    const result = await listUsers({ db: {} as never, tenantId: 't1' });
+    const result = await listUsers({ tenantId: 't1' });
     expect(result).toEqual([]);
   });
 });

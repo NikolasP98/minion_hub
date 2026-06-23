@@ -1,5 +1,5 @@
 import type { ComponentType, SvelteComponent } from "svelte";
-import { FolderKanban, Contact, UserRound, BrainCircuit, Zap, Boxes, Wallet, CalendarClock, LifeBuoy, ClipboardList } from "lucide-svelte";
+import { FolderKanban, Contact, UserRound, BrainCircuit, Zap, Boxes, Wallet, CalendarClock, LifeBuoy, ClipboardList, Inbox } from "lucide-svelte";
 import {
     ROUTES,
     SECTION_META,
@@ -144,6 +144,15 @@ const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: SectionIt
             label: "CRM",
             icon: Contact,
             matcher: (p: string) => p.startsWith("/crm"),
+        },
+    },
+    {
+        category: "operations",
+        item: {
+            href: "/work",
+            label: "My Work",
+            icon: Inbox,
+            matcher: (p: string) => p === "/work" || p.startsWith("/work/"),
         },
     },
     {

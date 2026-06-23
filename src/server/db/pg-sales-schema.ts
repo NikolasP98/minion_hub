@@ -37,6 +37,8 @@ export const salesOrders = pgTable(
     partyId: uuid('party_id'),
     crmContactId: uuid('crm_contact_id'),
     customerName: text('customer_name'),
+    /** Assigned owner (profile uuid) — set by assignment rules / reassign. */
+    ownerId: uuid('owner_id'),
     /** Snapshot of the priced line at creation time. */
     eventTypeId: uuid('event_type_id'),
     productId: uuid('product_id'),
@@ -57,6 +59,7 @@ export const salesOrders = pgTable(
     orgStatusIdx: index('sales_orders_org_status_idx').on(t.orgId, t.status),
     orgCreatedIdx: index('sales_orders_org_created_idx').on(t.orgId, t.createdAt),
     contactIdx: index('sales_orders_contact_idx').on(t.crmContactId),
+    ownerIdx: index('sales_orders_owner_idx').on(t.orgId, t.ownerId),
     partyIdx: index('sales_orders_party_idx').on(t.partyId),
     // One order per booking — makes createOrderFromBooking idempotent.
     bookingUniq: uniqueIndex('sales_orders_booking_uniq')
