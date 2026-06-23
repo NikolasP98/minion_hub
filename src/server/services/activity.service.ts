@@ -14,6 +14,8 @@ const REF_TABLES: Record<string, string> = {
   support_issue: 'support_issues',
   sales_order: 'sales_orders',
   crm_contact: 'crm_contacts',
+  proj_project: 'proj_projects',
+  proj_task: 'proj_tasks',
 };
 
 /** True if refType is allowlisted AND the row exists in the caller's org. */
