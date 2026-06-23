@@ -24,7 +24,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
   const body = await request.json();
   if (!body?.title || typeof body.title !== 'string') throw error(400, 'title required');
   if (body.status && !TASK_STATUSES.includes(body.status)) throw error(400, 'invalid status');
-  const actor = { id: ctx.profileId ?? null, name: locals.user?.displayName ?? locals.user?.email ?? null };
+  const actor = { id: ctx.profileId ?? null, name: locals.user?.displayName ?? locals.user?.email ?? null, email: locals.user?.email ?? null };
   const task = await createTask(ctx, { ...body, projectId: params.id! }, actor);
   return json(task, { status: 201 });
 };

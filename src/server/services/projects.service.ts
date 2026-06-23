@@ -24,7 +24,7 @@ export type TaskStatus = 'backlog' | 'todo' | 'in_progress' | 'in_review' | 'don
 export const TASK_STATUSES: TaskStatus[] = ['backlog', 'todo', 'in_progress', 'in_review', 'done', 'blocked', 'cancelled'];
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
 
-type Actor = { id: string | null; name: string | null };
+type Actor = { id: string | null; name: string | null; email?: string | null };
 
 // ── parties: agents as parties ───────────────────────────────────────────────
 /**

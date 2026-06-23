@@ -76,15 +76,19 @@ export async function workforceRawFetch<T = unknown>(
  */
 export async function workforceClientForOrg(
 	orgId: string,
-	actor?: { id?: string | null; name?: string | null },
+	actor?: { id?: string | null; name?: string | null; email?: string | null },
 ): Promise<WorkforceClient> {
 	const boardKey = env.HUB_WORKFORCE_BOARD_KEY?.trim();
+	// Mint as the REAL acting user (matching the per-request identity the hooks
+	// mint for /workforce pages) — the backend authorizes the company-scoped
+	// endpoints against a known board member, so a synthetic 'system' user is
+	// rejected. Falls back to 'system' only when no actor is supplied.
 	const token =
 		boardKey && boardKey.length > 0
 			? boardKey
 			: await mintWorkforceIdentity({
 					userId: actor?.id ?? 'system',
-					email: null,
+					email: actor?.email ?? null,
 					name: actor?.name ?? 'Projects',
 					companyId: orgId,
 				});

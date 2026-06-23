@@ -10,7 +10,8 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   if (!(await isModuleEnabled(ctx, 'projects'))) throw error(404, 'Projects module disabled');
   depends('projects:list');
   // Mirror workforce agents into the spine so the Lead/assignee pickers list them (best-effort).
-  await syncAgentParties(ctx);
+  // Authenticate as the real user — the backend rejects a synthetic identity.
+  await syncAgentParties(ctx, { id: ctx.profileId ?? null, name: locals.user?.displayName ?? null, email: locals.user?.email ?? null });
   const [projects, templates] = await Promise.all([listProjects(ctx, {}), listTemplates(ctx)]);
   const byStatus = projects.reduce<Record<string, number>>((acc, p) => {
     acc[p.status] = (acc[p.status] ?? 0) + 1;
