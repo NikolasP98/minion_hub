@@ -45,7 +45,7 @@
 		<section class="card list">
 			{#each data.orders as o (o.id)}
 				<div class="row">
-					<span class="desc">{o.description ?? '—'}</span>
+					<span class="desc">{#if o.humanId}<span class="hid">{o.humanId}</span> {/if}{o.description ?? '—'}</span>
 					<span class="cust t-caption">{o.customerName ?? '—'}</span>
 					<span class="total">{o.total ? Number(o.total).toLocaleString() : '—'}</span>
 					<select class="status-sel" value={o.status} disabled={busy} onchange={(e) => setStatus(o.id, (e.currentTarget as HTMLSelectElement).value)}>
@@ -70,6 +70,7 @@
 	.row { display: grid; grid-template-columns: 1fr 8rem 6rem 8rem 6rem; align-items: center; gap: 0.75rem; padding: 0.55rem 1rem; font-size: 0.86rem; }
 	.row + .row { border-top: 1px solid var(--hairline); }
 	.desc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.hid { font-variant-numeric: tabular-nums; color: var(--color-muted-foreground); font-size: 0.78rem; }
 	.total { font-variant-numeric: tabular-nums; font-weight: 600; }
 	.status-sel { height: 1.8rem; font-size: 0.8rem; border-radius: var(--radius-md); background: var(--color-bg3); border: 1px solid var(--hairline); padding: 0 0.4rem; }
 	.when { justify-self: end; }

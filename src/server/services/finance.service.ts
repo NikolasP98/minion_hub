@@ -186,6 +186,9 @@ export async function upsertInvoice(ctx: CoreCtx, inv: CanonicalInvoice): Promis
 export interface PageOpts {
   limit?: number;
   offset?: number;
+  /** Filter to one CRM contact's records via the shared party spine (Connections
+   *  "count → filtered list"). Resolves contact → party → fin_clients. */
+  contactId?: string;
 }
 
 export interface InvoiceListRow {
@@ -210,6 +213,15 @@ export function listInvoices(
 ): Promise<{ rows: InvoiceListRow[]; total: number }> {
   const limit = Math.min(opts.limit ?? 60, 500);
   const offset = Math.max(opts.offset ?? 0, 0);
+  // Contact filter via the party spine: invoices whose client shares the
+  // contact's party. Null when no contact requested.
+  const contactCond = opts.contactId
+    ? sql`${finInvoices.clientId} in (
+        select fc.id from fin_clients fc
+        join crm_contacts c on c.party_id = fc.party_id and c.party_id is not null
+        where c.id = ${opts.contactId} and c.org_id = ${ctx.tenantId})`
+    : undefined;
+  const where = and(eq(finInvoices.orgId, ctx.tenantId), contactCond);
   return withOrgCore(ctx, async (tx) => {
     const rows = await tx
       .select({
@@ -223,14 +235,14 @@ export function listInvoices(
         status: finInvoices.status,
       })
       .from(finInvoices)
-      .where(eq(finInvoices.orgId, ctx.tenantId))
+      .where(where)
       .orderBy(desc(finInvoices.issuedAt))
       .limit(limit)
       .offset(offset);
     const [{ total }] = await tx
       .select({ total: sql<number>`count(*)::int` })
       .from(finInvoices)
-      .where(eq(finInvoices.orgId, ctx.tenantId));
+      .where(where);
     return { rows, total };
   });
 }
@@ -268,6 +280,16 @@ export function listPayments(
 ): Promise<{ rows: PaymentListRow[]; total: number }> {
   const limit = Math.min(opts.limit ?? 60, 500);
   const offset = Math.max(opts.offset ?? 0, 0);
+  // Contact filter via the party spine: payments on invoices whose client shares
+  // the contact's party.
+  const contactCond = opts.contactId
+    ? sql`${finPayments.invoiceId} in (
+        select fi.id from fin_invoices fi
+        join fin_clients fc on fc.id = fi.client_id
+        join crm_contacts c on c.party_id = fc.party_id and c.party_id is not null
+        where c.id = ${opts.contactId} and c.org_id = ${ctx.tenantId})`
+    : undefined;
+  const where = and(eq(finPayments.orgId, ctx.tenantId), contactCond);
   return withOrgCore(ctx, async (tx) => {
     const rows = await tx
       .select({
@@ -278,14 +300,14 @@ export function listPayments(
         status: finPayments.status,
       })
       .from(finPayments)
-      .where(eq(finPayments.orgId, ctx.tenantId))
+      .where(where)
       .orderBy(desc(finPayments.paidAt))
       .limit(limit)
       .offset(offset);
     const [{ total }] = await tx
       .select({ total: sql<number>`count(*)::int` })
       .from(finPayments)
-      .where(eq(finPayments.orgId, ctx.tenantId));
+      .where(where);
     return { rows, total };
   });
 }

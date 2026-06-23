@@ -6,6 +6,7 @@ import {
   type SupportIssue,
   type NewSupportIssue,
 } from '$server/db/pg-support-schema';
+import { nextSerialId } from './naming-series';
 import type { CoreCtx } from '$server/auth/core-ctx';
 
 export type Priority = 'low' | 'medium' | 'high' | 'urgent';
@@ -176,7 +177,10 @@ export async function createIssue(ctx: CoreCtx, input: CreateIssueInput): Promis
     responseBy,
     resolutionBy,
   };
-  const [row] = await withOrgCore(ctx, (tx) => tx.insert(supportIssues).values(values).returning());
+  const [row] = await withOrgCore(ctx, async (tx) => {
+    const humanId = await nextSerialId(tx, ctx.tenantId, 'TKT-.YYYY.-', now);
+    return tx.insert(supportIssues).values({ ...values, humanId }).returning();
+  });
   return row;
 }
 

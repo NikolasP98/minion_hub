@@ -28,7 +28,7 @@
 <svelte:head><title>{i.subject} — Support</title></svelte:head>
 
 <div class="flex flex-col h-full min-h-0">
-	<PageHeader title={i.subject} subtitle={`Ticket · opened ${relativeTime(i.createdAt)}`}>
+	<PageHeader title={i.subject} subtitle={`${i.humanId ?? 'Ticket'} · opened ${relativeTime(i.createdAt)}`}>
 		{#snippet leading()}
 			<button class="p-1 -ml-1 rounded hover:bg-white/[0.06]" onclick={() => goto('/support')} aria-label="Back to tickets">
 				<ArrowLeft size={16} />

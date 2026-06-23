@@ -23,6 +23,8 @@ export const supportIssues = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     orgId: text('org_id').notNull(),
+    /** Human-readable ID (TKT-2026-00042), stamped at create. See naming-series.ts. */
+    humanId: text('human_id'),
     subject: text('subject').notNull(),
     description: text('description'),
     /** open | replied | on_hold | resolved | closed */

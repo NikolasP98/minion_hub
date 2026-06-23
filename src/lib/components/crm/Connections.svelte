@@ -4,6 +4,7 @@
 	// rendered from a config the server builds (connections.service.ts). Purely
 	// presentational; no fetching here.
 	import type { ConnGroup } from '$server/services/connections.service';
+	import { Plus } from 'lucide-svelte';
 
 	let { groups }: { groups: ConnGroup[] } = $props();
 </script>
@@ -16,19 +17,26 @@
 				<span class="g-label">{g.label}</span>
 				<div class="items">
 					{#each g.items as it (it.key)}
-						{#if it.comingSoon}
-							<span class="chip soon" title="Coming soon">
-								<span class="n">—</span>{it.label}
-							</span>
-						{:else if it.href}
-							<a class="chip" href={it.href} class:zero={it.count === 0}>
-								<span class="n">{it.count}</span>{it.label}
-							</a>
-						{:else}
-							<span class="chip" class:zero={it.count === 0}>
-								<span class="n">{it.count}</span>{it.label}
-							</span>
-						{/if}
+						<span class="chip-wrap">
+							{#if it.comingSoon}
+								<span class="chip soon" title="Coming soon">
+									<span class="n">—</span>{it.label}
+								</span>
+							{:else if it.href}
+								<a class="chip" href={it.href} class:zero={it.count === 0}>
+									<span class="n">{it.count}</span>{it.label}
+								</a>
+							{:else}
+								<span class="chip" class:zero={it.count === 0}>
+									<span class="n">{it.count}</span>{it.label}
+								</span>
+							{/if}
+							{#if it.newHref}
+								<a class="new-btn" href={it.newHref} title="New {it.label}" aria-label="New {it.label}">
+									<Plus size={12} />
+								</a>
+							{/if}
+						</span>
 					{/each}
 				</div>
 			</div>
@@ -71,6 +79,25 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0.35rem;
+	}
+	.chip-wrap {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.15rem;
+	}
+	.new-btn {
+		display: inline-grid;
+		place-items: center;
+		width: 1.25rem;
+		height: 1.25rem;
+		border-radius: 999px;
+		color: var(--color-muted-foreground);
+		border: 1px dashed var(--hairline);
+	}
+	.new-btn:hover {
+		color: var(--color-accent);
+		border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+		background: color-mix(in srgb, var(--color-accent) 10%, transparent);
 	}
 	.chip {
 		display: inline-flex;

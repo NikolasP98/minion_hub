@@ -8,7 +8,9 @@
 
 	let { data }: { data: PageData } = $props();
 
-	let creating = $state(false);
+	// Opened pre-bound to a contact from the Connections "+New" action.
+	// svelte-ignore state_referenced_locally
+	let creating = $state(data.openCreate ?? false);
 	let subject = $state('');
 	let priority = $state('medium');
 	let busy = $state(false);
@@ -20,7 +22,7 @@
 			const res = await fetch('/api/support/issues', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ subject: subject.trim(), priority }),
+				body: JSON.stringify({ subject: subject.trim(), priority, crmContactId: data.contactId }),
 			});
 			if (res.ok) {
 				subject = '';
@@ -71,7 +73,7 @@
 			{#each data.issues as it (it.id)}
 				<button class="row" onclick={() => goto(`/support/${it.id}`)}>
 					<span class="pri" style:--c={priorityColor(it.priority)}>{priorityLabel[it.priority]}</span>
-					<span class="subj">{it.subject}</span>
+					<span class="subj">{#if it.humanId}<span class="hid">{it.humanId}</span> {/if}{it.subject}</span>
 					<span class="status">{it.status}</span>
 					<span class="sla" style:--c={slaColor(it.sla.state)} title={it.sla.dueBy ? `Due ${relativeTime(it.sla.dueBy)}` : ''}>
 						{it.sla.state === 'failed' ? 'Breached' : it.sla.state === 'fulfilled' ? 'Met' : it.sla.dueBy ? `Due ${relativeTime(it.sla.dueBy)}` : '—'}
@@ -112,6 +114,7 @@
 		color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); border: 1px solid color-mix(in srgb, var(--c) 30%, transparent);
 	}
 	.subj { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.hid { font-variant-numeric: tabular-nums; color: var(--color-muted-foreground); font-size: 0.78rem; }
 	.status { color: var(--color-muted-foreground); text-transform: capitalize; }
 	.sla { color: var(--c); font-weight: 600; font-size: 0.78rem; }
 	.when { justify-self: end; }

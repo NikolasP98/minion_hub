@@ -291,6 +291,7 @@ export interface ListBookingsOpts {
   to?: Date;
   status?: string[];
   resourceId?: string;
+  crmContactId?: string;
   limit?: number;
 }
 
@@ -301,6 +302,7 @@ export function listBookings(ctx: CoreCtx, opts: ListBookingsOpts = {}): Promise
     if (opts.to) conds.push(lte(schedBookings.startTime, opts.to));
     if (opts.status?.length) conds.push(inArray(schedBookings.status, opts.status));
     if (opts.resourceId) conds.push(eq(schedBookings.resourceId, opts.resourceId));
+    if (opts.crmContactId) conds.push(eq(schedBookings.crmContactId, opts.crmContactId));
     return tx
       .select()
       .from(schedBookings)

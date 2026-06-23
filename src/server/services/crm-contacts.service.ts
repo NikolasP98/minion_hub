@@ -349,6 +349,35 @@ export async function getContact(ctx: CoreCtx, id: string) {
   });
 }
 
+/**
+ * fetch_from source for a contact — the fields a form auto-fills when you pick a
+ * contact (ERPNext `fetch_from`). name from the contact, phone from its WhatsApp
+ * identity, email from custom_fields. Cheap; safe to call on selection.
+ */
+export async function getContactPrefill(
+  ctx: CoreCtx,
+  id: string,
+): Promise<{ name: string | null; phone: string | null; email: string | null } | null> {
+  return withOrgCore(ctx, async (tx) => {
+    const [c] = await tx
+      .select({ name: crmContacts.displayName, customFields: crmContacts.customFields })
+      .from(crmContacts)
+      .where(and(eq(crmContacts.id, id), eq(crmContacts.orgId, ctx.tenantId)))
+      .limit(1);
+    if (!c) return null;
+    const [wa] = await tx
+      .select({ externalId: crmContactIdentities.externalId })
+      .from(crmContactIdentities)
+      .where(and(eq(crmContactIdentities.contactId, id), eq(crmContactIdentities.channel, 'whatsapp')))
+      .limit(1);
+    // WhatsApp external_id is the phone (often `51999...@s.whatsapp.net`) — keep digits.
+    const phone = wa?.externalId ? wa.externalId.replace(/\D/g, '') || null : null;
+    const cf = (c.customFields ?? {}) as Record<string, unknown>;
+    const email = (cf.email ?? cf.correo ?? null) as string | null;
+    return { name: c.name ?? null, phone, email };
+  });
+}
+
 export async function getContactTimeline(ctx: CoreCtx, id: string, limit = 100) {
   return withOrgCore(ctx, async (tx) => {
     const rows = await tx.execute(sql`

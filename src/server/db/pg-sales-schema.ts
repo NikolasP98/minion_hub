@@ -29,6 +29,8 @@ export const salesOrders = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     orgId: text('org_id').notNull(),
+    /** Human-readable ID (SO-2026-00001), stamped at create. See naming-series.ts. */
+    humanId: text('human_id'),
     /** Backref to the originating document (the ERPNext prevdoc convention). */
     sourceBookingId: uuid('source_booking_id'),
     /** Shared party spine + CRM facet (soft refs). */

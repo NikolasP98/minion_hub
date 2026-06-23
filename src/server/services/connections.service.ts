@@ -5,6 +5,7 @@ import { crmActivities } from '$server/db/pg-crm-schema';
 import { listModuleStates } from './modules.service';
 import { issueCountForContact } from './support.service';
 import { orderCountForContact } from './sales.service';
+import { linkTo } from '$lib/nav/prefill';
 import type { CoreCtx } from '$server/auth/core-ctx';
 
 /**
@@ -29,6 +30,9 @@ export interface ConnItem {
   count: number;
   /** Click-through; omitted for comingSoon items. */
   href?: string;
+  /** "+New" target — create a linked record with the parent pre-filled (ERPNext
+   *  `make_new`). Only set for creatable modules. */
+  newHref?: string;
   /** Module/feature not built yet — render muted, no link. */
   comingSoon?: boolean;
 }
@@ -83,7 +87,8 @@ export async function contactConnections(ctx: CoreCtx, contactId: string): Promi
             key: 'bookings',
             label: 'Bookings',
             count: Number(bk?.n ?? 0),
-            href: `/scheduling/bookings?contact=${contactId}`,
+            href: linkTo('/scheduling/bookings', { contact: contactId }),
+            newHref: linkTo('/scheduling/bookings', { contact: contactId, new: 1 }),
           },
         ],
       });
@@ -152,7 +157,8 @@ export async function contactConnections(ctx: CoreCtx, contactId: string): Promi
           key: 'tickets',
           label: 'Open tickets',
           count: tickets,
-          href: `/support?contact=${contactId}`,
+          href: linkTo('/support', { contact: contactId }),
+          newHref: linkTo('/support', { contact: contactId, new: 1 }),
         },
       ],
     });

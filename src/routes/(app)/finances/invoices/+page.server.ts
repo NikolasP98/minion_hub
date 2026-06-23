@@ -17,6 +17,7 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
   // rows load lazily from the server instead of fetching all 5000 up front.
   const requested = Number(url.searchParams.get('show')) || PAGE;
   const limit = Math.min(Math.max(requested, PAGE), MAX_LIMIT);
-  const { rows, total } = await listInvoices(ctx, { limit });
+  const contactId = url.searchParams.get('contact') ?? undefined;
+  const { rows, total } = await listInvoices(ctx, { limit, contactId });
   return { invoices: rows, total, limit };
 };

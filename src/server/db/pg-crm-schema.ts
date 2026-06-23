@@ -39,6 +39,9 @@ export const crmContacts = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     orgId: text('org_id').notNull(),
+    /** Human-readable ID (CONT-2026-00001). Column ready; harvested contacts are
+     *  bulk-inserted so auto-stamp is deferred to a backfill. See naming-series.ts. */
+    humanId: text('human_id'),
     /** Best-known name; falls back to the ledger sender_name on read when null. */
     displayName: text('display_name'),
     /** Optional bridge to a hub user (profiles.id) once the contact claims a

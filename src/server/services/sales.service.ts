@@ -3,6 +3,7 @@ import { withOrgCore } from '$server/db/with-org-core';
 import { salesOrders, type SalesOrder } from '$server/db/pg-sales-schema';
 import { schedBookings, schedEventTypes } from '$server/db/pg-scheduling-schema';
 import { finProducts } from '$server/db/pg-finance-schema';
+import { nextSerialId } from './naming-series';
 import type { CoreCtx } from '$server/auth/core-ctx';
 
 export type OrderStatus = 'draft' | 'confirmed' | 'invoiced' | 'cancelled';
@@ -56,10 +57,12 @@ export async function createOrderFromBooking(ctx: CoreCtx, bookingId: string): P
       }
     }
 
+    const humanId = await nextSerialId(tx, ctx.tenantId, 'SO-.YYYY.-', new Date());
     const [order] = await tx
       .insert(salesOrders)
       .values({
         orgId: ctx.tenantId,
+        humanId,
         sourceBookingId: b.id,
         partyId: b.partyId ?? null,
         crmContactId: b.crmContactId ?? null,

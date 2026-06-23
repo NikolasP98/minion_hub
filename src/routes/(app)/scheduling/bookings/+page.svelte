@@ -46,20 +46,24 @@
 		}
 	}
 
-	// ── New appointment modal ──
-	let showNew = $state(false);
+	// ── New appointment modal ── (opened pre-bound from the Connections "+New")
+	// svelte-ignore state_referenced_locally
+	let showNew = $state(data.openNew ?? false);
 	let nbEventType = $state('');
 	let nbDate = $state(new Date().toISOString().slice(0, 10));
 	let nbSlots = $state<Array<{ start: string; end: string }>>([]);
 	let nbSlot = $state('');
-	let nbName = $state('');
+	// svelte-ignore state_referenced_locally
+	let nbName = $state(data.contactName ?? '');
 	let nbPhone = $state('');
 	let nbLoading = $state(false);
 	let nbErr = $state<string | null>(null);
 
 	// Optional link to an existing CRM contact (better traceability than phone-match).
-	let nbContactId = $state<string | null>(null);
-	let nbSearch = $state('');
+	// svelte-ignore state_referenced_locally
+	let nbContactId = $state<string | null>(data.contactId ?? null);
+	// svelte-ignore state_referenced_locally
+	let nbSearch = $state(data.contactName ?? '');
 	let nbResults = $state<Array<{ id: string; name: string }>>([]);
 	async function searchContacts() {
 		nbContactId = null; // typing a new query unpicks any prior choice
@@ -72,11 +76,22 @@
 		const j = res.ok ? await res.json() : { contacts: [] };
 		nbResults = (j.contacts ?? []).map((c: { contact_id: string; display_name: string | null }) => ({ id: c.contact_id, name: c.display_name || '—' }));
 	}
-	function pickContact(c: { id: string; name: string }) {
+	async function pickContact(c: { id: string; name: string }) {
 		nbContactId = c.id;
 		nbName = c.name;
 		nbSearch = c.name;
 		nbResults = [];
+		// fetch_from: pull the contact's phone/email and fill only what's empty.
+		try {
+			const res = await fetch(`/api/crm/contacts/${c.id}/prefill`);
+			if (res.ok) {
+				const p = await res.json();
+				if (!nbPhone && p.phone) nbPhone = p.phone;
+				if (!nbName && p.name) nbName = p.name;
+			}
+		} catch {
+			/* prefill is best-effort */
+		}
 	}
 
 	async function loadSlots() {
