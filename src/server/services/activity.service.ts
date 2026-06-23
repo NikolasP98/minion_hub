@@ -1,7 +1,32 @@
-import { and, eq, desc } from 'drizzle-orm';
+import { and, eq, desc, sql } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import { docComments, docAuditLog } from '$server/db/pg-activity-schema';
 import type { CoreCtx } from '$server/auth/core-ctx';
+
+/**
+ * Allowlist of commentable/auditable record types → their physical table.
+ * The polymorphic (ref_type, ref_id) write path is otherwise an IDOR vector:
+ * gate every ref_type here and confirm the row exists in this org before any
+ * write (the table name comes from this constant, NOT user input, so the raw
+ * SQL is safe). Add a new type = one line.
+ */
+const REF_TABLES: Record<string, string> = {
+  support_issue: 'support_issues',
+  sales_order: 'sales_orders',
+  crm_contact: 'crm_contacts',
+};
+
+/** True if refType is allowlisted AND the row exists in the caller's org. */
+export async function refExists(ctx: CoreCtx, refType: string, refId: string): Promise<boolean> {
+  const table = REF_TABLES[refType];
+  if (!table) return false;
+  return withOrgCore(ctx, async (tx) => {
+    const rows = (await tx.execute(
+      sql`select 1 from ${sql.raw(table)} where id = ${refId} and org_id = ${ctx.tenantId} limit 1`,
+    )) as unknown as unknown[];
+    return rows.length > 0;
+  });
+}
 
 export interface FieldChange {
   field: string;
