@@ -6,7 +6,7 @@ import { canClient } from '$lib/access/can.svelte';
 export interface Command {
   id: string;
   label: string;
-  category: 'page' | 'agent' | 'action';
+  category: 'page' | 'agent' | 'action' | 'record';
   icon?: string;
   keywords?: string;
   action: () => void;
@@ -30,6 +30,7 @@ export function closePalette() {
   palette.open = false;
   palette.query = '';
   palette.selectedIndex = 0;
+  recordResults.items = [];
 }
 
 // Page commands are generated from the canonical route registry
@@ -68,6 +69,38 @@ const actionCommands: Command[] = [
 ];
 
 const customCommands: Command[] = $state([]);
+
+// Live record search results (contacts/tickets/orders) from /api/search — the
+// "jump to any record" awesomebar half. Populated by runRecordSearch (debounced
+// in the palette component); already server-matched, so not re-filtered client-side.
+const recordResults = $state<{ items: Command[] }>({ items: [] });
+
+let recordSearchSeq = 0;
+export async function runRecordSearch(q: string): Promise<void> {
+  const query = q.trim();
+  if (query.length < 2) {
+    recordResults.items = [];
+    return;
+  }
+  const seq = ++recordSearchSeq;
+  try {
+    const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+    if (!res.ok) return;
+    const { hits } = (await res.json()) as {
+      hits: Array<{ type: string; id: string; label: string; sublabel: string | null; href: string; icon: string }>;
+    };
+    if (seq !== recordSearchSeq) return; // a newer query superseded this one
+    recordResults.items = hits.map((h) => ({
+      id: `record:${h.type}:${h.id}`,
+      label: h.sublabel ? `${h.label} · ${h.sublabel}` : h.label,
+      category: 'record' as const,
+      icon: h.icon,
+      action: () => goto(h.href),
+    }));
+  } catch {
+    /* search is best-effort */
+  }
+}
 
 export function registerCommand(cmd: Command) {
   customCommands.push(cmd);
@@ -118,7 +151,13 @@ export function getFilteredCommands(): { category: string; commands: Command[] }
   }
 
   const labels: Record<string, string> = { page: 'Pages', agent: 'Agents', action: 'Actions' };
-  return order
+  const out = order
     .filter((cat) => groups[cat]?.length)
     .map((cat) => ({ category: labels[cat] ?? cat, commands: groups[cat] }));
+
+  // Live records (server-matched) lead the list when present.
+  if (q && recordResults.items.length) {
+    return [{ category: 'Records', commands: recordResults.items }, ...out];
+  }
+  return out;
 }

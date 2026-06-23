@@ -5,6 +5,7 @@
         togglePalette,
         closePalette,
         getFilteredCommands,
+        runRecordSearch,
     } from '$lib/state/ui/command-palette.svelte';
     import {
         Search,
@@ -125,10 +126,13 @@
         }
     }
 
-    // Reset selection on query change
+    // Reset selection + run debounced live record search on query change.
+    let searchTimer: ReturnType<typeof setTimeout> | undefined;
     $effect(() => {
-        palette.query;
+        const q = palette.query;
         palette.selectedIndex = 0;
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => runRecordSearch(q), 150);
     });
 
     // Focus input when opened
