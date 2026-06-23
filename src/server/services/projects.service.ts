@@ -85,20 +85,54 @@ async function partyAgentId(tx: CoreTx, orgId: string, partyId: string): Promise
   return row?.agentId ?? null;
 }
 
+/** The slice of the workforce client the dispatcher uses (kept narrow so the
+ *  sequence is unit-testable with a tiny fake). The real WorkforceClient
+ *  satisfies it structurally. */
+export interface AgentDispatchClient {
+  companies: { get(id: string): Promise<unknown> };
+  issues: {
+    create(companyId: string, data: Record<string, unknown>): Promise<{ id: string }>;
+    update(id: string, data: Record<string, unknown>): Promise<unknown>;
+  };
+  agents: { wakeup(id: string, data: Record<string, unknown>, companyId?: string): Promise<unknown> };
+}
+
 /**
- * Notify the gateway/workforce runtime that a task is now assigned to an agent.
- * Best-effort + env-gated (MINION_WORKFORCE_DISPATCH_URL) so a missing/again
- * endpoint never blocks the assignment — the assignee_party_id IS the record;
- * dispatch is delivery. Always records the intent in the audit log.
- *
- * Creates the corresponding workforce issue (assigned to the agent) over the
- * existing bridge, then wakes the agent so its runtime picks it up, and links
- * the workforce issue id back onto the task. Best-effort: any failure (no
- * company, runtime down, no creds) is swallowed — the assignment still stands.
+ * The bridge sequence: create the workforce issue (assigned to the agent), make
+ * sure the assignee stuck, then wake the agent so its runtime picks it up.
+ * Returns the workforce issue id (or null if create yielded nothing). Pure of
+ * the hub DB so it can be tested with a fake client; companies.get + update +
+ * wakeup are best-effort (their failures don't abort the dispatch).
+ */
+export async function performAgentDispatch(
+  client: AgentDispatchClient,
+  orgId: string,
+  task: { id: string; title: string; description: string | null; humanId: string | null },
+  agentId: string,
+): Promise<string | null> {
+  await client.companies.get(orgId).catch(() => null); // tolerate not-yet-provisioned company
+  const issue = await client.issues.create(orgId, {
+    title: task.title,
+    description: task.description ?? undefined,
+    assigneeAgentId: agentId,
+  });
+  if (!issue?.id) return null;
+  await client.issues.update(issue.id, { assigneeAgentId: agentId }).catch(() => null);
+  await client.agents
+    .wakeup(agentId, { source: 'assignment', triggerDetail: 'system', reason: `Projects task ${task.humanId ?? task.id}` }, orgId)
+    .catch(() => null);
+  return issue.id;
+}
+
+/**
+ * Fires when a task is assigned to an agent-party: records the dispatch intent,
+ * runs the bridge sequence, and links the workforce issue id back onto the task.
+ * Best-effort — no company / runtime down / no creds is swallowed so the
+ * assignment always stands.
  *
  * ponytail ceiling: one-way create+wake, no status sync back from the workforce
  * issue → the hub task (the task is the human-facing record). Add a webhook/poll
- * to reflect issue completion onto the task only if someone needs live mirror.
+ * to reflect issue completion onto the task only if someone needs a live mirror.
  */
 async function dispatchToAgent(ctx: CoreCtx, task: ProjTask, agentId: string, actor: Actor): Promise<void> {
   await recordAudit(ctx, {
@@ -110,27 +144,13 @@ async function dispatchToAgent(ctx: CoreCtx, task: ProjTask, agentId: string, ac
   });
   try {
     const client = await workforceClientForOrg(ctx.tenantId, actor);
-    await client.companies.get(ctx.tenantId).catch(() => null); // tolerate not-yet-provisioned company
-    const issue = await client.issues.create(ctx.tenantId, {
-      title: task.title,
-      description: task.description ?? undefined,
-      assigneeAgentId: agentId,
-    });
-    if (!issue?.id) return;
-    // Ensure the assignment even if create stripped the field, then wake the agent.
-    await client.issues.update(issue.id, { assigneeAgentId: agentId }).catch(() => null);
-    await client.agents
-      .wakeup(
-        agentId,
-        { source: 'assignment', triggerDetail: 'system', reason: `Projects task ${task.humanId ?? task.id}` },
-        ctx.tenantId,
-      )
-      .catch(() => null);
+    const issueId = await performAgentDispatch(client, ctx.tenantId, task, agentId);
+    if (!issueId) return;
     const meta = task.metadata && typeof task.metadata === 'object' ? (task.metadata as Record<string, unknown>) : {};
     await withOrgCore(ctx, (tx) =>
       tx
         .update(projTasks)
-        .set({ metadata: { ...meta, workforceIssueId: issue.id }, updatedAt: new Date() })
+        .set({ metadata: { ...meta, workforceIssueId: issueId }, updatedAt: new Date() })
         .where(and(eq(projTasks.id, task.id), eq(projTasks.orgId, ctx.tenantId))),
     );
   } catch {
