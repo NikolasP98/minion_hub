@@ -130,11 +130,13 @@ export async function reconcileOrgConfig(gatewayId: string): Promise<{
   const accountOrgs = buildAccountOrgs(channelRows as never);
   const orgDisabled = buildPluginOrgDisabled(disabledRows);
 
-  // Read the gateway's current maps so we can null-out keys the DB dropped.
-  // config.get (server-side) returns the raw config object; tolerate a {config}
-  // wrapper defensively.
-  const raw = (await gatewayCall<{ config?: GatewayMaps } & GatewayMaps>('config.get', {})) ?? {};
-  const cur = (raw.config ?? raw) as GatewayMaps;
+  // Read the gateway's current snapshot: `config` for the maps we null-diff
+  // against, and `hash` — config.patch demands a matching baseHash (optimistic
+  // concurrency: "config base hash required; re-run config.get and retry").
+  const snap =
+    (await gatewayCall<{ config?: GatewayMaps; hash?: string } & GatewayMaps>('config.get', {})) ??
+    {};
+  const cur = (snap.config ?? snap) as GatewayMaps;
   const curOrgDisabled = (cur.plugins?.orgDisabled ?? {}) as Record<string, unknown>;
   const curAccountOrgs = (cur.channels?.accountOrgs ?? {}) as Record<string, Record<string, unknown>>;
 
@@ -143,6 +145,7 @@ export async function reconcileOrgConfig(gatewayId: string): Promise<{
       channels: { accountOrgs: replaceNested(curAccountOrgs, accountOrgs) },
       plugins: { orgDisabled: replaceFlat(curOrgDisabled, orgDisabled) },
     }),
+    baseHash: snap.hash,
     note: 'reconcileOrgConfig: DB-authoritative org maps',
   });
 
