@@ -79,8 +79,14 @@ export interface NewMembershipInput {
 /** Start a membership. First cycle spawns on the next tick (next_cycle_date = start). */
 export async function createMembership(ctx: CoreCtx, input: NewMembershipInput): Promise<Membership> {
   const started = input.startedAt ?? new Date();
-  const [row] = await withOrgCore(ctx, (tx) =>
-    tx
+  const [row] = await withOrgCore(ctx, async (tx) => {
+    // planId must be a real plan in the caller's org (no cross-tenant linkage).
+    const [plan] = await tx
+      .select({ id: membershipPlans.id })
+      .from(membershipPlans)
+      .where(and(eq(membershipPlans.id, input.planId), eq(membershipPlans.orgId, ctx.tenantId)));
+    if (!plan) throw new Error('invalid planId');
+    return tx
       .insert(memberships)
       .values({
         orgId: ctx.tenantId,
@@ -91,8 +97,8 @@ export async function createMembership(ctx: CoreCtx, input: NewMembershipInput):
         startedAt: started,
         nextCycleDate: started,
       })
-      .returning(),
-  );
+      .returning();
+  });
   return row;
 }
 
