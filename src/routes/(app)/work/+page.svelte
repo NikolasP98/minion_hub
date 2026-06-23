@@ -105,6 +105,7 @@
 	{/if}
 {:else if tab === 'rules'}
 	<div class="rules">
+		<p class="muted small"><a href="/settings/workflows">Configure workflows →</a> (role-gated state machines for tickets & orders)</p>
 		<div class="card new-rule">
 			<h3>New rule</h3>
 			<input class="inp" placeholder="Rule name" bind:value={newName} />

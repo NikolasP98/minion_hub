@@ -33,6 +33,20 @@
 			busy = false;
 		}
 	}
+
+	async function applyTransition(action: string) {
+		busy = true;
+		try {
+			const res = await fetch('/api/workflow/apply', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ docType: 'support_issue', docId: i.id, action }),
+			});
+			if (res.ok) await invalidate('support:issue');
+		} finally {
+			busy = false;
+		}
+	}
 </script>
 
 <svelte:head><title>{i.subject} — Support</title></svelte:head>
@@ -77,6 +91,16 @@
 
 			<section class="card">
 				<header class="card-h"><span>Manage</span></header>
+				{#if data.transitions.length}
+					<div class="field">
+						<span class="t-caption">Workflow</span>
+						<div class="wf-actions">
+							{#each data.transitions as t (t.action)}
+								<Button size="sm" disabled={busy} onclick={() => applyTransition(t.action)}>{t.action}</Button>
+							{/each}
+						</div>
+					</div>
+				{/if}
 				<label class="field">
 					<span class="t-caption">Status</span>
 					<select class="inp" value={i.status} disabled={busy} onchange={(e) => patch({ status: (e.currentTarget as HTMLSelectElement).value })}>
@@ -110,6 +134,7 @@
 	.kv dt { font-size: 0.7rem; color: var(--color-muted-foreground); }
 	.kv dd { font-size: 0.88rem; font-weight: 600; }
 	.field { display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.6rem; }
+	.wf-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 	.inp { height: 2rem; padding: 0 0.5rem; font-size: 0.86rem; border-radius: var(--radius-md); background: var(--color-bg3); border: 1px solid var(--hairline); }
 	.sla { color: var(--c); font-weight: 600; font-size: 0.78rem; text-transform: none; letter-spacing: 0; }
 	.pri { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.72rem; font-weight: 600; color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); border: 1px solid color-mix(in srgb, var(--c) 30%, transparent); }
