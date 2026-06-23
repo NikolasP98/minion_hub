@@ -186,7 +186,7 @@
     <div class="h-px bg-[var(--hairline)] my-1.5 mx-2"></div>
   {/if}
 
-  <nav class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 py-1 flex flex-col gap-0.5">
+  <nav class="sidebar-nav flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 py-1 flex flex-col gap-0.5">
     {#each navSections as section (section.id)}
       {@const items = section.items.filter((it) => !it.requires || canClient(it.requires))}
       {@const hasSubs = (section.subsections?.length ?? 0) > 0}
@@ -226,19 +226,21 @@
           {@const subItems = sub.items.filter((it) => !it.requires || canClient(it.requires))}
           {#if subItems.length}
             {@const open = !collapsedSubs[sub.id]}
-            <button
-              type="button"
-              class="nav-subhead {rowJustify} {headCls}"
-              onclick={() => toggleSub(sub.id)}
-              aria-expanded={open}
-            >
-              {#if open}
-                <ChevronDown size={13} class="shrink-0 opacity-60" />
-              {:else}
-                <ChevronRight size={13} class="shrink-0 opacity-60" />
-              {/if}
-              <span class="t-label">{sub.label}</span>
-            </button>
+            {#if !collapsed}
+              <button
+                type="button"
+                class="nav-subhead {rowJustify} {headCls}"
+                onclick={() => toggleSub(sub.id)}
+                aria-expanded={open}
+              >
+                {#if open}
+                  <ChevronDown size={13} class="shrink-0 opacity-60" />
+                {:else}
+                  <ChevronRight size={13} class="shrink-0 opacity-60" />
+                {/if}
+                <span class="t-label">{sub.label}</span>
+              </button>
+            {/if}
             {#if open || collapsed}
               {#each subItems as item (item.href)}
                 {@const active = isActive(item)}
@@ -336,11 +338,23 @@
 {/if}
 
 <style>
+  /* Rows keep their height and the nav scrolls instead of squishing them.
+     Scrollbar hidden (content still scrolls via wheel/trackpad). */
+  .sidebar-nav {
+    scrollbar-width: none; /* Firefox */
+  }
+  .sidebar-nav::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+  .sidebar-nav > :global(*) {
+    flex-shrink: 0;
+  }
   .nav-row {
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    height: 2.25rem;
+    min-height: 2.25rem;
     padding: 0 0.625rem;
     border-radius: var(--radius-md);
     font-size: 0.8125rem;

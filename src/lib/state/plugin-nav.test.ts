@@ -18,18 +18,17 @@ describe("getDynamicPluginsSections", () => {
     expect(marketing?.items[0]?.label).toBe("CRM");
     const operations = sections.find((s) => s.id === "plugins:operations");
     expect(operations?.label).toBe("Operations");
-    expect(operations?.items.map((i) => i.href)).toEqual(["/work", "/workforce", "/projects", "/scheduling"]);
+    expect(operations?.items.map((i) => i.href)).toEqual(["/work", "/workforce", "/scheduling"]);
     expect(operations?.items[0]?.label).toBe("My Work");
     expect(operations?.items[1]?.label).toBe("Workforce");
-    expect(operations?.items[2]?.label).toBe("Projects");
-    expect(operations?.items[3]?.label).toBe("Scheduling");
+    expect(operations?.items[2]?.label).toBe("Scheduling");
     const finance = sections.find((s) => s.id === "plugins:finance");
     expect(finance?.items.map((i) => i.href)).toEqual(["/finances", "/sales", "/memberships"]);
     const support = sections.find((s) => s.id === "plugins:customer-support");
     expect(support?.items.map((i) => i.href)).toEqual(["/support"]);
   });
 
-  it("folds channel plugins into a Channels subsection under Customer Support, Studio under Branding/Creative", () => {
+  it("folds channel plugins into a single Channels link under Customer Support, Studio under Branding/Creative", () => {
     const sections = getDynamicPluginsSections([
       {
         pluginId: "whatsapp",
@@ -69,12 +68,11 @@ describe("getDynamicPluginsSections", () => {
     const creative = sections.find((s) => s.id === "plugins:creative");
     expect(creative?.items[0]?.href).toBe("/plugins/studio");
     const cs = sections.find((s) => s.id === "plugins:customer-support");
-    // builtin Support is always present; voice-call is pinned in via overrides.
-    expect(cs?.items.map((i) => i.href)).toEqual(["/support", "/plugins/voice-call"]);
-    // Channel plugins are NOT a top-level group — they live in a subsection.
+    // builtin Support, then voice-call (pinned via overrides), then the single
+    // Channels link (the channels themselves live on the /channels side-menu).
+    expect(cs?.items.map((i) => i.href)).toEqual(["/support", "/plugins/voice-call", "/channels"]);
+    // Channel plugins are NOT a top-level group nor individual nav items.
     expect(sections.some((s) => s.id === "plugins:channel")).toBe(false);
-    expect(cs?.subsections?.[0]?.id).toBe("channels");
-    expect(cs?.subsections?.[0]?.items.map((i) => i.href)).toEqual(["/plugins/whatsapp"]);
   });
 
   it("falls back to the Tools group for entries with no category", () => {
@@ -107,16 +105,20 @@ describe("getDynamicPluginsSections", () => {
     expect(sections.find((s) => s.id === "plugins:marketing")?.items[0]?.href).toBe("/crm");
   });
 
-  it("hides a disabled channel plugin from the Channels subsection", () => {
+  it("shows the Channels link while any channel is enabled, drops it when all are disabled", () => {
     const entries = [
       { pluginId: "whatsapp", slot: "plugins.controlCenter" as const, title: "WhatsApp", description: "", entrypoint: "c.html", category: "channel" as const },
       { pluginId: "telegram", slot: "plugins.controlCenter" as const, title: "Telegram", description: "", entrypoint: "c.html", category: "channel" as const },
     ];
-    const sections = getDynamicPluginsSections(entries, { whatsapp: false });
-    const channels = sections
-      .find((s) => s.id === "plugins:customer-support")
-      ?.subsections?.find((sub) => sub.id === "channels");
-    expect(channels?.items.map((i) => i.href)).toEqual(["/plugins/telegram"]);
+    // whatsapp disabled, telegram still on → Channels link present.
+    const some = getDynamicPluginsSections(entries, { whatsapp: false });
+    const csSome = some.find((s) => s.id === "plugins:customer-support");
+    expect(csSome?.items.some((i) => i.href === "/channels")).toBe(true);
+
+    // all channels disabled → no Channels link.
+    const none = getDynamicPluginsSections(entries, { whatsapp: false, telegram: false });
+    const csNone = none.find((s) => s.id === "plugins:customer-support");
+    expect(csNone?.items.some((i) => i.href === "/channels")).toBe(false);
   });
 });
 

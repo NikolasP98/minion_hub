@@ -1,5 +1,5 @@
 import type { ComponentType, SvelteComponent } from "svelte";
-import { FolderKanban, Contact, UserRound, BrainCircuit, Zap, Boxes, Wallet, CalendarClock, LifeBuoy, ClipboardList, Inbox, RefreshCw, GanttChartSquare } from "lucide-svelte";
+import { FolderKanban, Contact, UserRound, BrainCircuit, Zap, Boxes, Wallet, CalendarClock, LifeBuoy, ClipboardList, Inbox, RefreshCw, MessagesSquare } from "lucide-svelte";
 import {
     ROUTES,
     SECTION_META,
@@ -167,15 +167,6 @@ const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: SectionIt
     {
         category: "operations",
         item: {
-            href: "/projects",
-            label: "Projects",
-            icon: GanttChartSquare,
-            matcher: (p: string) => p.startsWith("/projects"),
-        },
-    },
-    {
-        category: "operations",
-        item: {
             href: "/scheduling",
             label: "Scheduling",
             icon: CalendarClock,
@@ -252,6 +243,16 @@ const PLUGIN_CATEGORY_OVERRIDES: Record<string, PluginNavCategory> = {
     kanban: 'operations',
 };
 
+/**
+ * True when a plugin belongs in the Channels group (whatsapp/telegram/discord…).
+ * Applies the same first-party override → manifest-category resolution the nav
+ * uses, so the channels secondary menu stays in lockstep with the sidebar.
+ */
+export function isChannelPlugin(e: PluginUiManifestOccupant): boolean {
+    const category = PLUGIN_CATEGORY_OVERRIDES[e.pluginId] ?? normalizePluginCategory(e.category);
+    return category === "channel";
+}
+
 /** Coerce a raw manifest category string into a known nav bucket. */
 function normalizePluginCategory(raw: string | undefined): PluginNavCategory {
     switch (raw) {
@@ -317,21 +318,28 @@ export function getDynamicPluginsSections(
         });
     }
 
+    // Channels collapse into a single "Channels" link under Customer Support;
+    // the enabled channels themselves live on the /channels secondary side-menu.
+    if (channelItems.length) {
+        const cs = byCategory.get("customer-support") ?? [];
+        cs.push({
+            href: "/channels",
+            label: m.nav_channels(),
+            icon: MessagesSquare,
+            matcher: (p: string) => p.startsWith("/channels"),
+        });
+        byCategory.set("customer-support", cs);
+    }
+
     const sections: Section[] = [];
     for (const group of PLUGIN_NAV_GROUPS) {
         const items = byCategory.get(group.category) ?? [];
-        const isCustomerSupport = group.category === "customer-support";
-        const subsections: SubSection[] | undefined =
-            isCustomerSupport && channelItems.length
-                ? [{ id: "channels", label: m.nav_channels(), items: channelItems }]
-                : undefined;
-        if (items.length === 0 && !subsections) continue;
+        if (items.length === 0) continue;
         sections.push({
             id: `plugins:${group.category}`,
             label: group.label(),
             tone: "accent",
             items,
-            subsections,
         });
     }
     return sections;

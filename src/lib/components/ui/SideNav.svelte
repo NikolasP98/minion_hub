@@ -32,6 +32,7 @@
 
 <script lang="ts">
   import { Search } from 'lucide-svelte';
+  import NavIcon from '$lib/components/layout/NavIcon.svelte';
 
   interface Props {
     /** Accepts a flat item list or grouped sections (detected by `.items`). */
@@ -137,7 +138,7 @@
             aria-disabled={item.disabled ? 'true' : undefined}
             title={item.label}
           >
-            {#if Icon}<Icon size={16} class="set-icon shrink-0" />{/if}
+            {#if Icon}<NavIcon icon={Icon} size={16} class="set-icon shrink-0" />{/if}
             <span class="hidden lg:inline flex-1 truncate">{item.label}</span>
             {#if item.adminOnly}<span class="admin-badge hidden lg:inline-flex">admin</span>{/if}
             {#if item.badge != null}<span class="set-badge hidden lg:inline">{item.badge}</span>{/if}
@@ -154,7 +155,7 @@
             title={item.label}
             onclick={() => onSelect?.(item.id)}
           >
-            {#if Icon}<Icon size={16} class="set-icon shrink-0" />{/if}
+            {#if Icon}<NavIcon icon={Icon} size={16} class="set-icon shrink-0" />{/if}
             <span class="hidden lg:inline flex-1 truncate">{item.label}</span>
             {#if item.adminOnly}<span class="admin-badge hidden lg:inline-flex">admin</span>{/if}
             {#if item.badge != null}<span class="set-badge hidden lg:inline">{item.badge}</span>{/if}
