@@ -190,7 +190,12 @@ const finishApp: Handle = async ({ event, resolve }) => {
     // Cron tick endpoints (driven by Vercel cron or an external scheduler)
     // authenticate via CRON_SECRET Bearer in the handler, not a user session —
     // let them through so the handler can enforce its own auth.
-    if (path === '/api/scheduling/reminders/tick' || path === '/api/finances/sync/tick') {
+    if (
+      path === '/api/scheduling/reminders/tick' ||
+      path === '/api/finances/sync/tick' ||
+      path === '/api/notifications/tick' ||
+      path === '/api/memberships/tick'
+    ) {
       return resolve(event);
     }
     // All other unauthenticated API requests get an explicit 401
