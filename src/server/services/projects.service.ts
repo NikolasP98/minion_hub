@@ -75,6 +75,33 @@ export async function ensureSelfParty(
   });
 }
 
+/**
+ * Mirror this org's workforce agents into the party spine (type='agent', keyed
+ * by agent_id) so they show up in assignee/lead pickers and can be dispatched
+ * to. Best-effort: if the org has no workforce company, the runtime is down, or
+ * creds are absent, returns 0 and the page still loads. Terminated agents are
+ * skipped. Idempotent via ensureAgentParty's upsert.
+ *
+ * ponytail ceiling: one workforce agents.list roundtrip per call (the projects
+ * loads call it on view). Move behind a TTL/cron only if the roundtrip shows up
+ * in page latency — a handful of agents per org makes it a non-issue today.
+ */
+export async function syncAgentParties(ctx: CoreCtx, actor: Actor = { id: null, name: null }): Promise<number> {
+  try {
+    const client = await workforceClientForOrg(ctx.tenantId, actor);
+    const agents = (await client.agents.list(ctx.tenantId)) as Array<{ id: string; name?: string | null; status?: string }>;
+    let n = 0;
+    for (const a of agents) {
+      if (!a?.id || a.status === 'terminated') continue;
+      await ensureAgentParty(ctx, a.id, a.name ?? null);
+      n += 1;
+    }
+    return n;
+  } catch {
+    return 0; // workforce unreachable / no company / no creds — pickers just won't list agents
+  }
+}
+
 /** True when the party is an agent — used to decide whether to dispatch work. */
 async function partyAgentId(tx: CoreTx, orgId: string, partyId: string): Promise<string | null> {
   const [row] = await tx

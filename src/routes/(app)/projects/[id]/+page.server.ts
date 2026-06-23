@@ -9,6 +9,7 @@ import {
   listAgentParties,
   partiesByIds,
   ensureSelfParty,
+  syncAgentParties,
   type PartyLite,
 } from '$server/services/projects.service';
 
@@ -19,6 +20,9 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
 
   const project = await getProject(ctx, params.id);
   if (!project) throw error(404, 'Project not found');
+
+  // Mirror workforce agents into the spine so the assignee picker lists them (best-effort).
+  await syncAgentParties(ctx);
 
   const [tasks, progress, timesheets, agents] = await Promise.all([
     listTasks(ctx, { projectId: params.id, includeMilestones: true }),
