@@ -136,12 +136,16 @@ export async function performAgentDispatch(
   orgId: string,
   task: { id: string; title: string; description: string | null; humanId: string | null },
   agentId: string,
+  projectId: string | null = null,
 ): Promise<string | null> {
   await client.companies.get(orgId).catch(() => null); // tolerate not-yet-provisioned company
   const issue = await client.issues.create(orgId, {
     title: task.title,
     description: task.description ?? undefined,
     assigneeAgentId: agentId,
+    // Execute UNDER the ERPNext project's paperclip counterpart when known, so the
+    // structure (authored in proj_*) drives where the agent runs. Orphan issue otherwise.
+    ...(projectId ? { projectId } : {}),
   });
   if (!issue?.id) return null;
   await client.issues.update(issue.id, { assigneeAgentId: agentId }).catch(() => null);
@@ -161,7 +165,14 @@ export async function performAgentDispatch(
  * issue → the hub task (the task is the human-facing record). Add a webhook/poll
  * to reflect issue completion onto the task only if someone needs a live mirror.
  */
-async function dispatchToAgent(ctx: CoreCtx, task: ProjTask, agentId: string, actor: Actor): Promise<string | null> {
+async function dispatchToAgent(
+  ctx: CoreCtx,
+  task: ProjTask,
+  agentId: string,
+  actor: Actor,
+  wfProjectIdIn: string | null,
+  projectName: string | null,
+): Promise<{ issueId: string | null; wfProjectId: string | null }> {
   await recordAudit(ctx, {
     refType: 'proj_task',
     refId: task.id,
@@ -171,13 +182,72 @@ async function dispatchToAgent(ctx: CoreCtx, task: ProjTask, agentId: string, ac
   });
   try {
     const client = await workforceClientForOrg(ctx.tenantId, actor);
+    // Provision the ERPNext project's paperclip counterpart on first dispatch so the
+    // issue executes UNDER it (structure migration: proj_* is authoritative, the
+    // paperclip project is derived). The CALLER persists the new link in its tx.
+    let wfProjectId = wfProjectIdIn;
+    if (!wfProjectId && task.projectId) {
+      const created = await client.projects
+        .create(ctx.tenantId, { name: projectName ?? task.title, status: 'active' })
+        .catch(() => null);
+      wfProjectId = (created as { id?: string } | null)?.id ?? null;
+    }
     // Returns the workforce issue id; the CALLER persists it onto the task in its
     // own (outer) tx — writing here via a nested withOrgCore can't see the
     // not-yet-committed row, so the back-link was silently lost.
-    return await performAgentDispatch(client, ctx.tenantId, task, agentId);
+    const issueId = await performAgentDispatch(client, ctx.tenantId, task, agentId, wfProjectId);
+    return { issueId, wfProjectId };
   } catch {
-    return null; // Swallowed by design — the assignment stands; the workforce run is best-effort.
+    return { issueId: null, wfProjectId: null }; // Best-effort — the assignment stands; the workforce run is best-effort.
   }
+}
+
+/**
+ * Dispatch a task to its agent and persist BOTH back-links (issue id on the task,
+ * new paperclip project id on the project) in the CALLER's tx. Centralizes the
+ * tx-safe link-write both createTask and updateTask need.
+ */
+async function dispatchTaskToAgent(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  task: ProjTask,
+  agentId: string,
+  actor: Actor,
+): Promise<ProjTask> {
+  let wfProjectIdIn: string | null = null;
+  let projectName: string | null = null;
+  if (task.projectId) {
+    const [proj] = await tx
+      .select()
+      .from(projProjects)
+      .where(and(eq(projProjects.id, task.projectId), eq(projProjects.orgId, ctx.tenantId)))
+      .limit(1);
+    if (proj) {
+      wfProjectIdIn = workforceProjectIdOf(proj);
+      projectName = proj.name;
+    }
+  }
+  const { issueId, wfProjectId } = await dispatchToAgent(ctx, task, agentId, actor, wfProjectIdIn, projectName);
+  // Persist a newly-provisioned project link back onto the proj_project.
+  if (task.projectId && wfProjectId && wfProjectId !== wfProjectIdIn) {
+    const [proj] = await tx
+      .select()
+      .from(projProjects)
+      .where(and(eq(projProjects.id, task.projectId), eq(projProjects.orgId, ctx.tenantId)))
+      .limit(1);
+    if (proj) {
+      const meta = proj.metadata && typeof proj.metadata === 'object' ? (proj.metadata as Record<string, unknown>) : {};
+      await tx
+        .update(projProjects)
+        .set({ metadata: { ...meta, workforceProjectId: wfProjectId }, updatedAt: new Date() })
+        .where(and(eq(projProjects.id, task.projectId), eq(projProjects.orgId, ctx.tenantId)));
+    }
+  }
+  if (issueId) {
+    const [linked] = await linkWorkforceIssue(tx, ctx.tenantId, task, issueId).returning();
+    return linked ?? task;
+  }
+  return task;
 }
 
 /** Merge the dispatched workforce issue id onto the task within the caller's tx. */
@@ -394,13 +464,7 @@ export function createTask(ctx: CoreCtx, data: NewTaskInput, actor: Actor): Prom
     });
     if (row.assigneePartyId) {
       const agentId = await partyAgentId(tx, ctx.tenantId, row.assigneePartyId);
-      if (agentId) {
-        const issueId = await dispatchToAgent(ctx, row, agentId, actor);
-        if (issueId) {
-          const [linked] = await linkWorkforceIssue(tx, ctx.tenantId, row, issueId).returning();
-          return linked ?? row;
-        }
-      }
+      if (agentId) return await dispatchTaskToAgent(tx, ctx, row, agentId, actor);
     }
     return row;
   });
@@ -437,13 +501,7 @@ export function updateTask(
     // Dispatch when assignee changed to an agent-party.
     if (row && patch.assigneePartyId && patch.assigneePartyId !== cur.assigneePartyId) {
       const agentId = await partyAgentId(tx, ctx.tenantId, patch.assigneePartyId);
-      if (agentId) {
-        const issueId = await dispatchToAgent(ctx, row, agentId, actor);
-        if (issueId) {
-          const [linked] = await linkWorkforceIssue(tx, ctx.tenantId, row, issueId).returning();
-          if (linked) return linked;
-        }
-      }
+      if (agentId) return await dispatchTaskToAgent(tx, ctx, row, agentId, actor);
     }
     return row ?? null;
   });

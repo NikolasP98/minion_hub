@@ -67,6 +67,16 @@ describe('performAgentDispatch', () => {
     expect(issueId).toBe('issue-1');
   });
 
+  it('creates the issue UNDER the project when a projectId is given, omits it otherwise', async () => {
+    const withProj = fakeClient();
+    await performAgentDispatch(withProj.client, 'org-9', task, 'agent-7', 'wf-proj-3');
+    expect(withProj.calls.issuesCreate[0].data).toMatchObject({ projectId: 'wf-proj-3' });
+
+    const noProj = fakeClient();
+    await performAgentDispatch(noProj.client, 'org-9', task, 'agent-7');
+    expect('projectId' in noProj.calls.issuesCreate[0].data).toBe(false);
+  });
+
   it('returns null when issue creation yields no id', async () => {
     const { client, calls } = fakeClient({ createReturnsId: null });
     const issueId = await performAgentDispatch(client, 'org-9', task, 'agent-7');
