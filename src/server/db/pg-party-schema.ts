@@ -27,9 +27,13 @@ export const parties = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     orgId: text('org_id').notNull(),
-    /** 'person' | 'company' */
+    /** Intrinsic nature: 'person' | 'company' | 'agent'. Role (customer/worker/…)
+     *  is NOT here — it is emergent from which facet links the party. */
     type: text('type').notNull().default('person'),
     name: text('name'),
+    /** Set ⇔ type='agent': the backing gateway agent id. The agent's archetype
+     *  (copilot/brain/autonomous) is resolved from the gateway, never copied here. */
+    agentId: text('agent_id'),
     /** Normalized last-9-digits phone (Peru) — the dedup key shared with the CRM
      *  phone bridge. Null when a party is keyed only by document. */
     phone9: text('phone9'),
@@ -48,6 +52,8 @@ export const parties = pgTable(
     // BRIDGE not an identity — shared/reassigned in Peru, so NON-unique here.
     phoneIdx: index('parties_org_phone9_idx').on(t.orgId, t.phone9),
     docIdx: index('parties_org_doc_idx').on(t.orgId, t.docNumber),
+    // One party per gateway agent (partial-unique in the companion .sql).
+    agentIdx: index('parties_org_agent_idx').on(t.orgId, t.agentId),
   }),
 );
 
