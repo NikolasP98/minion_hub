@@ -12,24 +12,26 @@
  * only ADVANCES; manual override (by:'user') may set any stage.
  */
 
-export type FunnelStage = 'lead' | 'interest' | 'consideration' | 'intent' | 'customer' | 'loyal';
+// 4-stage funnel: each stage maps to a REAL signal. The old 'interest' and
+// 'consideration' stages had no data source (never auto-set, always 0%) and
+// were collapsed away; 'intent' was generalised to the industry-agnostic
+// 'opportunity' (showed buying intent — reserved/booked/quoted — but not yet
+// purchased). Legacy stored values are remapped on read (see normalizeStage).
+export type FunnelStage = 'lead' | 'opportunity' | 'customer' | 'loyal';
 
 /** Ordered stage ids — index == funnel depth. */
-export const FUNNEL_ORDER: FunnelStage[] = [
-  'lead',
-  'interest',
-  'consideration',
-  'intent',
-  'customer',
-  'loyal',
-];
+export const FUNNEL_ORDER: FunnelStage[] = ['lead', 'opportunity', 'customer', 'loyal'];
+
+/** Map a (possibly legacy 6-stage) id to the current funnel vocabulary. */
+function normalizeStage(id: string): FunnelStage | null {
+  if (id === 'interest' || id === 'consideration' || id === 'intent') return 'opportunity';
+  return (FUNNEL_ORDER as string[]).includes(id) ? (id as FunnelStage) : null;
+}
 
 /** Per-stage accent (mirrors the StagePill `--c` pattern). */
 const FUNNEL_COLORS: Record<FunnelStage, string> = {
   lead: '#64748b', // slate
-  interest: '#06b6d4', // cyan
-  consideration: '#a855f7', // violet
-  intent: '#f59e0b', // amber
+  opportunity: '#f59e0b', // amber
   customer: '#10b981', // emerald
   loyal: '#eab308', // gold
 };
@@ -49,6 +51,11 @@ export function isFunnelStage(v: unknown): v is FunnelStage {
   return typeof v === 'string' && (FUNNEL_ORDER as string[]).includes(v);
 }
 
+/** Accept a current OR legacy stage id, returning the normalized one (or null). */
+export function coerceFunnelStage(v: unknown): FunnelStage | null {
+  return typeof v === 'string' ? normalizeStage(v) : null;
+}
+
 export function funnelStageIndex(id: string): number {
   return FUNNEL_ORDER.indexOf(id as FunnelStage);
 }
@@ -64,8 +71,9 @@ export function readFunnelMeta(
   const raw = customFields?.['_funnel'];
   if (!raw || typeof raw !== 'object') return null;
   const obj = raw as Record<string, unknown>;
-  if (!isFunnelStage(obj.stage)) return null;
-  return { auto: true, ...obj, stage: obj.stage } as FunnelMeta;
+  const stage = coerceFunnelStage(obj.stage); // remap legacy interest/consideration/intent
+  if (!stage) return null;
+  return { auto: true, ...obj, stage } as FunnelMeta;
 }
 
 /**
@@ -97,7 +105,7 @@ export function maxFunnelStage(a: FunnelStage | null, b: FunnelStage | null): Fu
  * and reverts cleanly if the module is turned off).
  *  - a repeat procedure buyer → loyal
  *  - any procedure purchase → customer
- *  - only a reservation deposit (the 50-soles "reservó pero no compró") → intent
+ *  - only a reservation deposit (the "reservó pero no compró") → opportunity
  *  - nothing billable → null (funnel stays chat-driven)
  */
 export interface FinanceClass {
@@ -109,6 +117,6 @@ export function financeFloorStage(c: FinanceClass | null | undefined): FunnelSta
   if (!c) return null;
   if (c.loyal) return 'loyal';
   if (c.purchased) return 'customer';
-  if (c.reservedOnly) return 'intent';
+  if (c.reservedOnly) return 'opportunity';
   return null;
 }

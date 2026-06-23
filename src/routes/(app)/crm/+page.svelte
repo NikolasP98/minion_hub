@@ -50,7 +50,7 @@
 	// Conversion funnel rows (leads → booked → bought), coloured by funnel stage.
 	const convRows = $derived([
 		{ key: 'leads', label: m.crm_conv_leads(), count: s.conversion.leads, color: funnelStageColor('lead') },
-		{ key: 'booked', label: m.crm_conv_booked(), count: s.conversion.booked, color: funnelStageColor('intent') },
+		{ key: 'booked', label: m.crm_conv_booked(), count: s.conversion.booked, color: funnelStageColor('opportunity') },
 		{ key: 'bought', label: m.crm_conv_bought(), count: s.conversion.bought, color: funnelStageColor('customer') },
 	]);
 

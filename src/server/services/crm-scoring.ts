@@ -30,9 +30,12 @@ export const LIFECYCLE_STAGES: LifecycleStage[] = [
 export interface ContactStats {
   messageCount: number;
   inboundCount: number;
-  /** outbound is derived: messageCount - inboundCount */
+  /** Effective FIRST interaction = earliest of {first message, first purchase}. */
   firstContactAt: Date | null;
+  /** Effective LAST interaction = latest of {last message, last purchase}. */
   lastContactAt: Date | null;
+  /** Has a prior paying/booking relationship (any finance invoice). */
+  isBuyer?: boolean;
 }
 
 /** Days between `from` and `now` (fractional). Returns Infinity if `from` is null. */
@@ -42,27 +45,29 @@ function daysSince(from: Date | null, now: Date): number {
 }
 
 /**
- * Derive a lifecycle stage from ledger-rollup signals (spec §5). Thresholds:
- * New <7d & <3 msgs · Engaged ≤14d & two-way · Active ≤30d & ≥10 msgs ·
- * Dormant 30–90d · Churned >90d. Order matters — first match wins.
+ * Derive a lifecycle stage from EFFECTIVE interaction signals (spec §5) — recency
+ * is the latest of {message, purchase}, so a prior buyer is never mislabelled
+ * "New". Thresholds: New = first-ever <7d & <3 msgs & never bought · Engaged ≤14d
+ * & recent inbound · Active ≤30d & ≥10 msgs · Dormant 30–90d · Churned >90d.
+ * Order matters — first match wins. MUST mirror the SQL CASE in rankContacts.
  */
 export function deriveLifecycleStage(stats: ContactStats, now: Date = new Date()): LifecycleStage {
-  // No tracked interactions yet (manual/imported contact) → New, not Churned.
-  // "Churned" means previously engaged then went silent; a zero-message contact
-  // was never engaged via a tracked channel.
-  if (stats.messageCount === 0) return 'New';
+  const isBuyer = stats.isBuyer ?? false;
+  // Pure cold record: never messaged AND never bought → genuinely New (not Churned;
+  // "Churned" means previously engaged then went silent).
+  if (stats.messageCount === 0 && !isBuyer) return 'New';
 
   const lastDays = daysSince(stats.lastContactAt, now);
   const firstDays = daysSince(stats.firstContactAt, now);
-  const outbound = stats.messageCount - stats.inboundCount;
 
   if (lastDays > 90) return 'Churned';
   if (lastDays > 30) return 'Dormant';
   if (lastDays <= 30 && stats.messageCount >= 10) return 'Active';
-  if (lastDays <= 14 && stats.inboundCount >= 1 && outbound >= 1) return 'Engaged';
-  if (firstDays < 7 && stats.messageCount < 3) return 'New';
-  // Falls between buckets (e.g. recent but one-way, low volume) → treat as Engaged
-  // if contacted within 30d, else Dormant.
+  // Engaged: recent inbound. The two-way (outbound ≥ 1) requirement was dropped —
+  // when the org rarely replies in-channel it buried every one-message lead in New.
+  if (lastDays <= 14 && stats.inboundCount >= 1) return 'Engaged';
+  if (firstDays < 7 && stats.messageCount < 3 && !isBuyer) return 'New';
+  // Falls between buckets (e.g. a quiet recent contact) → Engaged if within 30d, else Dormant.
   return lastDays <= 30 ? 'Engaged' : 'Dormant';
 }
 

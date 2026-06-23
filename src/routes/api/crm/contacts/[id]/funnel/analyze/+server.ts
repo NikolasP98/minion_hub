@@ -9,7 +9,7 @@ import {
   setFunnelStage,
   distinctVisitDates,
 } from '$server/services/crm-contacts.service';
-import { isFunnelStage, type FunnelStage } from '$lib/components/crm/crm-funnel';
+import { coerceFunnelStage, type FunnelStage } from '$lib/components/crm/crm-funnel';
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 const MODEL =
@@ -60,15 +60,13 @@ export const POST: RequestHandler = async ({ locals, params }) => {
 
   const prompt = `You classify where a customer sits in the marketing funnel of a Peruvian aesthetics clinic, based on the contents of THEIR inbound messages (mostly Spanish). Pick exactly ONE stage:
 
-- "lead": generic first contact, greeting, or a vague "do you have info?" — interest not yet expressed.
-- "interest": expresses interest in a specific service/treatment or asks what the clinic offers.
-- "consideration": comparing options, asking about price, promos, or availability.
-- "intent": ready to act — wants to book, schedule, reserve, or pay.
+- "lead": generic first contact, greeting, an info request, or comparing/asking about services, price, promos, or availability — interest shown but not ready to act.
+- "opportunity": ready to act — wants to book, schedule, reserve, quote, or pay.
 - "customer": indicates they have already been treated / are an existing client.
 
 Do NOT output "loyal" (that is decided from billing, not messages). When unsure, choose the EARLIER stage. Base the decision only on what the messages actually say.
 
-Return ONLY a JSON object: {"stage":"lead|interest|consideration|intent|customer","confidence":0.0,"reason":"short reason"}
+Return ONLY a JSON object: {"stage":"lead|opportunity|customer","confidence":0.0,"reason":"short reason"}
 
 Customer's inbound messages (chronological):
 ${transcript}`;
@@ -89,9 +87,8 @@ ${transcript}`;
     parsed = {};
   }
 
-  const detected: FunnelStage | null = isFunnelStage(parsed.stage) && parsed.stage !== 'loyal'
-    ? (parsed.stage as FunnelStage)
-    : null;
+  const coerced = coerceFunnelStage(parsed.stage); // accepts legacy ids too
+  const detected: FunnelStage | null = coerced && coerced !== 'loyal' ? coerced : null;
   const confidence = typeof parsed.confidence === 'number' ? Math.max(0, Math.min(1, parsed.confidence)) : 0;
   const reason = typeof parsed.reason === 'string' ? parsed.reason.slice(0, 200) : '';
 

@@ -12,6 +12,7 @@ import {
 } from '$server/db/pg-crm-schema';
 import { RFM_WEIGHTS, RFM_CONST, tryCompileTagRule } from './crm-scoring';
 import { reconcileParties } from './party.service';
+import { bothEnabled } from './modules.service';
 import { isFunnelStage, readFunnelMeta, funnelStageIndex } from '$lib/components/crm/crm-funnel';
 
 /**
@@ -157,8 +158,12 @@ export interface RankedContact {
   tag_ids: string[];
   /** Custom-field metadata (jsonb) — drives the user-configurable list columns. */
   custom_fields: Record<string, unknown>;
+  /** Effective first interaction = earliest of {first message, first purchase}. */
   first_contact_at: string | null;
+  /** Effective last interaction = latest of {last message, last purchase}. */
   last_contact_at: string | null;
+  /** Has any finance invoice (a prior paying/booking relationship). */
+  is_buyer: boolean;
   /** true when the latest message is inbound with no later reply — we owe them. */
   awaiting_reply: boolean;
   last_days: number;
@@ -195,7 +200,9 @@ const M_EXPR = sql`(100 * (0.60 * least(1, ln(1 + total_msgs) / ln(1 + ${lit(VS)
  * Ranked contact list. Builds: agg (ledger rollups) → base (contact + derived
  * stats + stage) → scored (RFM columns) → filtered/sorted outer select. The
  * stage CASE here is the authoritative list stage; it MUST mirror
- * deriveLifecycleStage() in crm-scoring.ts.
+ * deriveLifecycleStage() in crm-scoring.ts. Lifecycle recency uses the EFFECTIVE
+ * anchors (messages bridged with finance purchases), so a long-time buyer who
+ * only messaged recently is not mislabelled "New".
  */
 export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<RankedContact[]> {
   return withOrgCore(ctx, async (tx) => {
@@ -237,6 +244,32 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
       ? sql`where m.is_bot is not true and ci.contact_id = ${f.contactId}`
       : sql`where m.is_bot is not true`;
 
+    // Finance bridge: a contact's purchase history (via the WhatsApp phone9 bridge,
+    // same as crm-finance.service) gives a TRUE first/last interaction that
+    // predates the message ledger — a 2024 buyer who messaged last week is not
+    // "New". Only joined when both CRM + Finances are on; otherwise an empty CTE
+    // so the lifecycle degrades cleanly to message-only signals.
+    const withFinance = await bothEnabled(ctx, 'crm', 'finances');
+    const finCte = withFinance
+      ? sql`fin as (
+          select ph.contact_id,
+                 min(fi.issued_at) as first_purchase_at,
+                 max(fi.issued_at) as last_purchase_at
+          from (
+            select ci.contact_id,
+                   right(regexp_replace(coalesce(ci.external_id,''),'\\D','','g'),9) as p9
+            from crm_contact_identities ci
+            where ci.org_id = ${ctx.tenantId} and ci.channel = 'whatsapp'
+              and length(right(regexp_replace(coalesce(ci.external_id,''),'\\D','','g'),9)) >= 8
+          ) ph
+          join fin_clients fc
+            on fc.org_id = ${ctx.tenantId}
+           and right(regexp_replace(coalesce(fc.phone,''),'\\D','','g'),9) = ph.p9
+          join fin_invoices fi on fi.client_id = fc.id
+          group by ph.contact_id
+        )`
+      : sql`fin as (select null::uuid as contact_id, null::timestamptz as first_purchase_at, null::timestamptz as last_purchase_at where false)`;
+
     const rows = await tx.execute(sql`
       with agg as (
         select ci.contact_id,
@@ -254,6 +287,7 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
         ${aggWhere}
         group by ci.contact_id
       ),
+      ${finCte},
       base as (
         select c.id as contact_id, c.display_name, c.owner_id, c.source, c.lifecycle_override,
                c.custom_fields as custom_fields,
@@ -264,19 +298,26 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
                   from crm_contact_identities ci where ci.contact_id = c.id) as channels,
                (select coalesce(array_agg(ct.tag_id::text), array[]::text[])
                   from crm_contact_tags ct where ct.contact_id = c.id) as tag_ids,
-               a.first_contact_at, a.last_contact_at,
+               -- effective first/last interaction = earliest/latest of {message, purchase}
+               least(a.first_contact_at, fn.first_purchase_at) as first_contact_at,
+               greatest(a.last_contact_at, fn.last_purchase_at) as last_contact_at,
+               (fn.first_purchase_at is not null) as is_buyer,
                (a.last_inbound_at is not null and (a.last_outbound_at is null or a.last_inbound_at > a.last_outbound_at)) as awaiting_reply,
+               -- message-only recency drives the RFM score (engagement is a messaging axis)
                coalesce(extract(epoch from (now() - a.last_contact_at)) / 86400.0, 1e9) as last_days,
-               coalesce(extract(epoch from (now() - a.first_contact_at)) / 86400.0, 1e9) as first_days,
+               -- effective recency (msgs + purchases) drives the lifecycle stage + New/Active KPIs
+               coalesce(extract(epoch from (now() - greatest(a.last_contact_at, fn.last_purchase_at))) / 86400.0, 1e9) as eff_last_days,
+               coalesce(extract(epoch from (now() - least(a.first_contact_at, fn.first_purchase_at))) / 86400.0, 1e9) as eff_first_days,
                coalesce(a.inbound_msgs::numeric / nullif(a.total_msgs, 0), 0) as reciprocity
         from crm_contacts c
         left join agg a on a.contact_id = c.id
+        left join fin fn on fn.contact_id = c.id
         where ${and(...conds)}
       ),
       scored as (
         select contact_id, display_name, owner_id, source, channels, tag_ids,
                coalesce(custom_fields, '{}'::jsonb) as custom_fields,
-               total_msgs, inbound_msgs, channels_used, first_contact_at, last_contact_at, awaiting_reply,
+               total_msgs, inbound_msgs, channels_used, first_contact_at, last_contact_at, awaiting_reply, is_buyer,
                round(last_days::numeric, 1) as last_days, round(reciprocity::numeric, 3) as reciprocity,
                round(${R_EXPR}::numeric, 1) as r_score,
                round(${F_EXPR}::numeric, 1) as f_score,
@@ -284,13 +325,17 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
                round((${lit(RFM_WEIGHTS.r)} * ${R_EXPR} + ${lit(RFM_WEIGHTS.f)} * ${F_EXPR} + ${lit(RFM_WEIGHTS.m)} * ${M_EXPR})::numeric, 0) as score,
                coalesce(lifecycle_override,
                  case
-                   when total_msgs = 0 then 'New'
-                   when last_days > 90 then 'Churned'
-                   when last_days > 30 then 'Dormant'
-                   when last_days <= 30 and total_msgs >= 10 then 'Active'
-                   when last_days <= 14 and inbound_msgs >= 1 and (total_msgs - inbound_msgs) >= 1 then 'Engaged'
-                   when first_days < 7 and total_msgs < 3 then 'New'
-                   when last_days <= 30 then 'Engaged'
+                   -- pure cold record: never messaged AND never bought → genuinely new
+                   when total_msgs = 0 and not is_buyer then 'New'
+                   when eff_last_days > 90 then 'Churned'
+                   when eff_last_days > 30 then 'Dormant'
+                   when eff_last_days <= 30 and total_msgs >= 10 then 'Active'
+                   -- Engaged: recent inbound (two-way requirement dropped — the org
+                   -- rarely replies in-channel, so requiring an outbound buried everyone in New)
+                   when eff_last_days <= 14 and inbound_msgs >= 1 then 'Engaged'
+                   -- genuinely new: first-ever interaction <7d, low activity, not a prior buyer
+                   when eff_first_days < 7 and total_msgs < 3 and not is_buyer then 'New'
+                   when eff_last_days <= 30 then 'Engaged'
                    else 'Dormant'
                  end) as stage
         from base

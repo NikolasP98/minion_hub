@@ -45,26 +45,47 @@ describe('deriveLifecycleStage', () => {
     ).toBe('Active');
   });
 
-  it('Engaged when recent two-way but low volume', () => {
+  it('Engaged on recent inbound even one-way (relaxed: no outbound required)', () => {
+    // one-way: 2 inbound, 0 outbound — was buried in New under the old two-way rule.
     expect(
       deriveLifecycleStage(
-        stats({ lastContactAt: daysAgo(3), messageCount: 4, inboundCount: 2 }),
+        stats({ firstContactAt: daysAgo(3), lastContactAt: daysAgo(3), messageCount: 2, inboundCount: 2 }),
         NOW,
       ),
     ).toBe('Engaged');
   });
 
-  it('New when just appeared with few messages', () => {
+  it('New when just appeared outbound-only (we reached out, no reply, never bought)', () => {
+    // 1 outbound msg, no inbound → not Engaged; recent & low-volume & non-buyer → New.
     expect(
       deriveLifecycleStage(
-        stats({ firstContactAt: daysAgo(2), lastContactAt: daysAgo(2), messageCount: 1, inboundCount: 1 }),
+        stats({ firstContactAt: daysAgo(2), lastContactAt: daysAgo(2), messageCount: 1, inboundCount: 0 }),
         NOW,
       ),
     ).toBe('New');
   });
 
-  it('zero tracked messages → New (imported/manual contact, not Churned)', () => {
+  it('zero messages, never bought → New (cold import, not Churned)', () => {
     expect(deriveLifecycleStage(stats({}), NOW)).toBe('New');
+  });
+
+  it('zero messages but a recent buyer → NOT New (recency from the purchase)', () => {
+    // effective lastContactAt = last purchase date; a buyer is never a cold "New".
+    expect(
+      deriveLifecycleStage(
+        stats({ messageCount: 0, lastContactAt: daysAgo(5), firstContactAt: daysAgo(400), isBuyer: true }),
+        NOW,
+      ),
+    ).toBe('Engaged');
+  });
+
+  it('a long-silent buyer → Churned (not New) by effective last interaction', () => {
+    expect(
+      deriveLifecycleStage(
+        stats({ messageCount: 0, lastContactAt: daysAgo(200), firstContactAt: daysAgo(400), isBuyer: true }),
+        NOW,
+      ),
+    ).toBe('Churned');
   });
 
   it('previously-engaged then silent (has messages) → Churned', () => {

@@ -27,12 +27,8 @@ export function funnelStageLabel(stage: string): string {
   switch (stage) {
     case 'lead':
       return m.crm_funnel_lead();
-    case 'interest':
-      return m.crm_funnel_interest();
-    case 'consideration':
-      return m.crm_funnel_consideration();
-    case 'intent':
-      return m.crm_funnel_intent();
+    case 'opportunity':
+      return m.crm_funnel_opportunity();
     case 'customer':
       return m.crm_funnel_customer();
     case 'loyal':
