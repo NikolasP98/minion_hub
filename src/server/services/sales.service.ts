@@ -105,6 +105,48 @@ export async function orderCountForContact(ctx: CoreCtx, contactId: string): Pro
   return Number(row?.n ?? 0);
 }
 
+/**
+ * Status rollup (ERPNext-style): flip open Sales Orders to 'invoiced' when a
+ * matching SUSII invoice appears. Matches by the shared party spine (the
+ * fin_client → party link the backfill established), an issue date at/after the
+ * order, and an amount within tolerance; the earliest unclaimed invoice wins.
+ * Idempotent — only touches still-open orders and never reuses an invoice ref.
+ *
+ * ponytail ceiling: a party+amount+window heuristic, not a line-item
+ * reconciliation. SUSII invoices bundle taxes/multiple procedures, so the 5%
+ * amount tolerance will miss some — those stay 'confirmed' and can be flipped by
+ * hand on /sales. Upgrade path: match on invoice line items once we map
+ * event-type products → SUSII product codes.
+ */
+export async function reconcileOrdersToInvoices(ctx: CoreCtx): Promise<void> {
+  await withOrgCore(ctx, async (tx) => {
+    await tx.execute(sql`
+      with match as (
+        select distinct on (so.id) so.id as order_id, fi.provider_ref
+        from sales_orders so
+        join fin_clients fc on fc.org_id = so.org_id and fc.party_id = so.party_id
+        join fin_invoices fi on fi.org_id = so.org_id and fi.client_id = fc.id
+        where so.org_id = current_setting('app.current_org_id', true)
+          and so.status in ('draft','confirmed') and so.party_id is not null
+          and fi.provider = 'susii'
+          and fi.issued_at >= so.created_at - interval '1 day'
+          and fi.issued_at <= so.created_at + interval '60 days'
+          and (so.total is null
+               or abs(coalesce(fi.total,0) - coalesce(so.total,0)) <= greatest(coalesce(so.total,0) * 0.05, 1))
+          and not exists (
+            select 1 from sales_orders s2
+            where s2.org_id = so.org_id and s2.invoice_provider_ref = fi.provider_ref
+          )
+        order by so.id, fi.issued_at asc
+      )
+      update sales_orders so
+      set status = 'invoiced', invoice_provider_ref = match.provider_ref, updated_at = now()
+      from match
+      where so.id = match.order_id
+    `);
+  });
+}
+
 export async function setOrderStatus(
   ctx: CoreCtx,
   id: string,

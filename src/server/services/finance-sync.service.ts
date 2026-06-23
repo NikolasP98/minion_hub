@@ -6,6 +6,7 @@ import { decryptCreds } from './finance-secrets';
 import { overlapSince, nowIso } from './finance-sync.helpers';
 import { claimJob, getJobById, heartbeat, isCancelRequested, finishJob, enqueueJob } from './finance-sync-jobs.service';
 import { reconcileParties } from './party.service';
+import { reconcileOrdersToInvoices } from './sales.service';
 
 /**
  * Advance one sync job by pulling pages until the source is drained, the time
@@ -92,6 +93,10 @@ export async function syncSource(ctx: CoreCtx, provider: string) {
   // Link freshly-synced fin_clients to the shared party spine (idempotent).
   // ponytail: cron-resumed advanceJob() doesn't reconcile — the next harvest or
   // manual sync catches up; acceptable for a soft analytics link.
-  if (status === 'success') await reconcileParties(ctx);
+  if (status === 'success') {
+    await reconcileParties(ctx);
+    // Status rollup: freshly-synced SUSII invoices may settle open Sales Orders.
+    await reconcileOrdersToInvoices(ctx);
+  }
   return { provider, count: final?.processed ?? 0, status };
 }
