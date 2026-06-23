@@ -10,16 +10,26 @@ import type { CoreCtx } from '$server/auth/core-ctx';
  * security gate: a rule's trigger_table MUST be a key here (the name is then
  * used in raw SQL, so it can never be user-controlled). Add a table = one line.
  */
-const TABLE_META: Record<string, { created: string; updated: string }> = {
-  support_issues: { created: 'created_at', updated: 'updated_at' },
-  sales_orders: { created: 'created_at', updated: 'updated_at' },
-  crm_contacts: { created: 'created_at', updated: 'updated_at' },
-  sched_bookings: { created: 'created_at', updated: 'updated_at' },
-  fin_invoices: { created: 'created_at', updated: 'synced_at' },
+const TABLE_META: Record<string, { created: string; updated: string; dateFields: string[] }> = {
+  support_issues: { created: 'created_at', updated: 'updated_at', dateFields: ['created_at', 'response_by', 'resolution_by', 'resolved_at'] },
+  sales_orders: { created: 'created_at', updated: 'updated_at', dateFields: ['created_at'] },
+  crm_contacts: { created: 'created_at', updated: 'updated_at', dateFields: ['created_at'] },
+  sched_bookings: { created: 'created_at', updated: 'updated_at', dateFields: ['created_at', 'start_time', 'end_time'] },
+  fin_invoices: { created: 'created_at', updated: 'synced_at', dateFields: ['issued_at', 'synced_at'] },
 };
+
+// Belt-and-suspenders: a column identifier can only ever be a plain snake_case name.
+const COL_RE = /^[a-z_][a-z0-9_]*$/;
 
 export function isTriggerTableAllowed(t: string): boolean {
   return Object.prototype.hasOwnProperty.call(TABLE_META, t);
+}
+
+/** A date_offset rule's dateField must be an allowlisted timestamp column for
+ *  its table (it is interpolated into raw SQL — never trust the rule value). */
+export function isDateFieldAllowed(table: string, field: string | null | undefined): boolean {
+  const meta = TABLE_META[table];
+  return !!field && !!meta && meta.dateFields.includes(field) && COL_RE.test(field);
 }
 
 export interface Filter {
@@ -97,6 +107,8 @@ export type NewRuleInput = Omit<
 
 export async function createRule(ctx: CoreCtx, input: NewRuleInput): Promise<NotifRule> {
   if (!isTriggerTableAllowed(input.triggerTable)) throw new Error('trigger_table not allowed');
+  if (input.triggerEvent === 'date_offset' && !isDateFieldAllowed(input.triggerTable, input.dateField))
+    throw new Error('date_field not allowed for this table');
   const [row] = await withOrgCore(ctx, (tx) =>
     // lastRunAt = now so the rule never fires on pre-existing rows.
     tx.insert(notifRules).values({ ...input, orgId: ctx.tenantId, lastRunAt: new Date() }).returning(),
@@ -110,6 +122,10 @@ export async function updateRule(
   patch: Partial<NewRuleInput>,
 ): Promise<NotifRule | null> {
   if (patch.triggerTable && !isTriggerTableAllowed(patch.triggerTable)) throw new Error('trigger_table not allowed');
+  // If a dateField is being set, it must be allowlisted for the (given) table.
+  // The getCandidates sink re-checks regardless, so this is defense-in-depth.
+  if (patch.dateField != null && patch.triggerTable && !isDateFieldAllowed(patch.triggerTable, patch.dateField))
+    throw new Error('date_field not allowed for this table');
   const [row] = await withOrgCore(ctx, (tx) =>
     tx
       .update(notifRules)
@@ -142,7 +158,9 @@ async function getCandidates(
   if (rule.triggerEvent === 'insert') instant = sql.raw(meta.created);
   else if (rule.triggerEvent === 'update') instant = sql.raw(meta.updated);
   else if (rule.triggerEvent === 'date_offset') {
-    if (!rule.dateField || rule.dateOffsetMins == null) return [];
+    // SQLi guard: dateField is interpolated into raw SQL — require it be an
+    // allowlisted column for this table (+ regex) before use.
+    if (!isDateFieldAllowed(rule.triggerTable, rule.dateField) || rule.dateOffsetMins == null) return [];
     // notify instant = date_field + offset minutes (offset negative = before).
     instant = sql.raw(`(${rule.dateField} + (${Number(rule.dateOffsetMins)} || ' minutes')::interval)`);
   } else return [];
