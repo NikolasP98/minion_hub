@@ -6,7 +6,21 @@ import {
   replaceNested,
   unwrapConfigSnapshot,
   isBaseHashRace,
+  isDangerousEmptyWipe,
 } from './org-config-sync.service';
+
+describe('isDangerousEmptyWipe (org-isolation safety valve)', () => {
+  it('blocks an empty DB view from wiping a populated gateway', () => {
+    expect(isDangerousEmptyWipe({}, {}, { whatsapp: { a: ['o1'] } }, {})).toBe(true);
+    expect(isDangerousEmptyWipe({}, {}, {}, { discord: ['o1'] })).toBe(true);
+  });
+  it('allows a real empty→empty (gateway already has nothing)', () => {
+    expect(isDangerousEmptyWipe({}, {}, {}, {})).toBe(false);
+  });
+  it('allows a non-empty DB view (normal reconcile)', () => {
+    expect(isDangerousEmptyWipe({ whatsapp: { a: ['o1'] } }, {}, { whatsapp: { a: ['o2'] } }, {})).toBe(false);
+  });
+});
 
 describe('isBaseHashRace (reconcile retry signal)', () => {
   it('matches both gateway baseHash rejections', () => {

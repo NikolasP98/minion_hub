@@ -20,7 +20,17 @@ export const GET: RequestHandler = async ({ request }) => {
   const secret = env.CRON_SECRET;
   if (!secret || request.headers.get('authorization') !== `Bearer ${secret}`) throw error(401);
 
-  const gateways = await listGatewaysForAdmin();
+  // gatewayCall targets the ONE system gateway (system creds), ignoring gw.id.
+  // So reconciling any other gateway row pushes ITS db-derived maps (empty for a
+  // gateway with no channel rows) to the system gateway — authoritative-replace
+  // then NULLS OUT the real accountOrgs (org-isolation loss). Until gatewayCall
+  // can route per-gateway, only reconcile reachable non-loopback gateways; in a
+  // single-gateway deploy that's exactly the system one.
+  // ponytail: replace the loopback filter with system-gateway matching when
+  // multi-gateway (per-gateway creds) lands.
+  const all = await listGatewaysForAdmin();
+  const gateways = all.filter((g) => !/127\.0\.0\.1|localhost|\[::1\]/.test(g.url));
+  const skipped = all.length - gateways.length;
   let reconciled = 0;
   let failed = 0;
   for (const gw of gateways) {
@@ -32,5 +42,5 @@ export const GET: RequestHandler = async ({ request }) => {
       failed += 1;
     }
   }
-  return json({ gateways: gateways.length, reconciled, failed });
+  return json({ gateways: gateways.length, reconciled, failed, skipped });
 };

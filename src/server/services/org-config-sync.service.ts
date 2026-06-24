@@ -160,6 +160,20 @@ export async function reconcileOrgConfig(gatewayId: string): Promise<{
       Record<string, unknown>
     >;
 
+    // Safety valve (org isolation): an EMPTY DB view for a gateway that still has
+    // org-scoping is the signature of reconciling the wrong gateway / an
+    // incomplete DB — authoritative-replace would null out every account's scope
+    // (= all accounts become globally visible). Never wipe a populated gateway
+    // from nothing; the real "org removed its last account" case leaves the
+    // gateway already empty, so this only blocks the dangerous anomaly.
+    if (isDangerousEmptyWipe(accountOrgs, orgDisabled, curAccountOrgs, curOrgDisabled)) {
+      console.warn(
+        '[org-config] refusing to wipe populated gateway from empty DB view',
+        gatewayId,
+      );
+      return { accountOrgs, orgDisabled };
+    }
+
     try {
       await gatewayCall('config.patch', {
         raw: JSON.stringify({
@@ -186,6 +200,22 @@ const RECONCILE_MAX_ATTEMPTS = 4;
  *  (both the missing-hash and changed-since-load cases). That's our retry signal. */
 export function isBaseHashRace(e: unknown): boolean {
   return /re-run config\.get and retry/i.test(String((e as Error)?.message ?? e));
+}
+
+/** True when the DB-derived maps are BOTH empty yet the gateway still has org
+ *  scoping — pushing would null every account's scope (org-isolation loss). The
+ *  signature of reconciling the wrong gateway / an incomplete DB, not a real
+ *  "org removed its last account" (which leaves the gateway already empty). */
+export function isDangerousEmptyWipe(
+  accountOrgs: AccountOrgsMap,
+  orgDisabled: OrgDisabledMap,
+  curAccountOrgs: Record<string, unknown>,
+  curOrgDisabled: Record<string, unknown>,
+): boolean {
+  const dbEmpty = !Object.keys(accountOrgs).length && !Object.keys(orgDisabled).length;
+  const gatewayPopulated =
+    !!Object.keys(curAccountOrgs).length || !!Object.keys(curOrgDisabled).length;
+  return dbEmpty && gatewayPopulated;
 }
 
 /**
