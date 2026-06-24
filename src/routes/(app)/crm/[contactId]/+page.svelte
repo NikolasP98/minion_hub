@@ -127,19 +127,6 @@
 	let noteBody = $state('');
 	let busy = $state(false);
 	let menuOpen = $state(false);
-	let editing = $state(false);
-	let editName = $state('');
-
-	function startEdit() {
-		menuOpen = false;
-		editName = c.displayName ?? '';
-		editing = true;
-	}
-	async function saveName() {
-		const name = editName.trim();
-		await patch({ displayName: name || null });
-		editing = false;
-	}
 
 	const texSymbolic = '\\text{Score} = 0.5\\,R + 0.3\\,F + 0.2\\,M';
 	const texValues = $derived(
@@ -250,7 +237,19 @@
 		<header class="card-h">
 			<span>{m.crm_details()}</span>
 			{#if !editingDetails}
-				<button class="icon-btn" aria-label={m.crm_edit_properties()} onclick={startEditDetails}><Pencil size={13} /></button>
+				<div class="menu-wrap">
+					<button class="kebab kebab-sm" onclick={() => (menuOpen = !menuOpen)} aria-label={m.crm_actions()} disabled={busy}>
+						<MoreVertical size={15} />
+					</button>
+					{#if menuOpen}
+						<button class="backdrop" aria-label="close" onclick={() => (menuOpen = false)}></button>
+						<div class="menu">
+							<button class="mi" onclick={() => { menuOpen = false; startEditDetails(); }}><Pencil size={14} /> {m.crm_edit_properties()}</button>
+							<div class="msep"></div>
+							<button class="mi danger" onclick={() => { menuOpen = false; forget(); }}><Trash2 size={14} /> {m.crm_forget()}</button>
+						</div>
+					{/if}
+				</div>
 			{/if}
 		</header>
 		{#if editingDetails}
@@ -425,36 +424,7 @@
 				<ArrowLeft size={16} />
 			</button>
 		{/snippet}
-		{#snippet actions()}
-			<div class="menu-wrap">
-				<button class="kebab" onclick={() => (menuOpen = !menuOpen)} aria-label={m.crm_actions()} disabled={busy}>
-					<MoreVertical size={18} />
-				</button>
-				{#if menuOpen}
-					<button class="backdrop" aria-label="close" onclick={() => (menuOpen = false)}></button>
-					<div class="menu">
-						<button class="mi" onclick={startEdit}><Pencil size={14} /> {m.crm_edit_name()}</button>
-						<div class="msep"></div>
-						<button class="mi danger" onclick={() => { menuOpen = false; forget(); }}><Trash2 size={14} /> {m.crm_forget()}</button>
-					</div>
-				{/if}
-			</div>
-		{/snippet}
 	</PageHeader>
-
-	{#if editing}
-		<div class="edit-bar">
-			<Pencil size={14} class="text-muted-foreground" />
-			<input
-				bind:value={editName}
-				class="edit-input"
-				placeholder={m.crm_contact_name()}
-				onkeydown={(e) => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') (editing = false); }}
-			/>
-			<Button variant="primary" size="sm" onclick={saveName} disabled={busy}><Check size={14} /> {m.crm_save()}</Button>
-			<Button variant="ghost" size="sm" onclick={() => (editing = false)}>{m.crm_cancel()}</Button>
-		</div>
-	{/if}
 
 	<!-- 2 columns at a 2:1 ratio: details (left, wide, scrollable + layout-editable,
 	     2 subcolumns) | journey + notes + channels (right, full height). Stacks on
@@ -547,6 +517,7 @@
 <style>
 	.menu-wrap { position: relative; display: inline-flex; }
 	.kebab { display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: var(--radius-md); color: var(--color-foreground); }
+	.kebab.kebab-sm { width: 1.6rem; height: 1.6rem; color: var(--color-muted-foreground); }
 	.kebab:hover { background: rgba(255, 255, 255, 0.06); }
 	.backdrop { position: fixed; inset: 0; z-index: 40; background: transparent; }
 	.menu {
@@ -559,8 +530,6 @@
 	.mi.danger { color: var(--color-destructive); }
 	.mi.danger:hover { background: color-mix(in srgb, var(--color-destructive) 12%, transparent); }
 	.msep { height: 1px; background: var(--hairline); margin: 0.2rem 0; }
-	.edit-bar { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; border-bottom: 1px solid var(--hairline); background: color-mix(in srgb, var(--color-accent) 5%, transparent); }
-	.edit-input { flex: 1; max-width: 28rem; height: 2rem; padding: 0 0.6rem; font-size: 0.9rem; border-radius: var(--radius-md); background: var(--color-bg3); border: 1px solid var(--hairline); }
 
 
 	.score-hover { position: relative; display: inline-flex; }
