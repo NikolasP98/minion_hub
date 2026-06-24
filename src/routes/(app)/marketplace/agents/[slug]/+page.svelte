@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount } from "svelte";
     import { page } from "$app/stores";
-    import { goto } from "$app/navigation";
+    import { createBackNav } from "$lib/nav/back-nav.svelte";
     import { hostsState } from "$lib/state/features/hosts.svelte";
     import {
         loadAgent,
@@ -47,9 +47,7 @@
         }
     });
 
-    function goBack() {
-        goto("/marketplace/agents");
-    }
+    const back = createBackNav("/marketplace/agents", m.marketplace_agentDetailBack);
 </script>
 
 <div class="flex flex-col min-h-0 flex-1">
@@ -57,7 +55,7 @@
         {#snippet leading()}
             <button
                 type="button"
-                onclick={goBack}
+                onclick={back.go}
                 aria-label={m.marketplace_agentDetailBack()}
                 class="flex items-center text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
             >
@@ -80,7 +78,7 @@
             <Search size={40} class="text-muted-strong mb-2" />
             <h2>{m.marketplace_agentDetailNotFound()}</h2>
             <p>{m.marketplace_agentDetailNotFoundHint()}</p>
-            <button type="button" onclick={goBack} class="back-btn">
+            <button type="button" onclick={back.go} class="back-btn">
                 {m.marketplace_agentDetailBack()}
             </button>
         </div>

@@ -12,7 +12,9 @@
   } from '$lib/services/shells-rpc';
   import { PageHeader } from '$lib/components/ui';
   import { ArrowLeft } from 'lucide-svelte';
+  import { createBackNav } from '$lib/nav/back-nav.svelte';
 
+  const back = createBackNav('/shells', m.shellDetail_allShells);
   let shell = $state<ShellSummary | null>(null);
   let loading = $state(true);
   let error = $state<string | null>(null);
@@ -60,9 +62,9 @@
   subtitle={shell ? `${shell.harness} · ${shell.vmName} · ${shell.region}` : undefined}
 >
   {#snippet leading()}
-    <a class="back" href="/shells" aria-label={m.shellDetail_allShells()}>
+    <button type="button" class="back" onclick={back.go} aria-label={m.shellDetail_allShells()}>
       <ArrowLeft size={16} class="text-accent shrink-0" />
-    </a>
+    </button>
   {/snippet}
   {#snippet actions()}
     {#if shell}
@@ -173,6 +175,10 @@
     align-items: center;
     color: var(--color-text-muted, #6b7280);
     text-decoration: none;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
   }
   .back:hover { color: var(--color-text, inherit); }
   .status {

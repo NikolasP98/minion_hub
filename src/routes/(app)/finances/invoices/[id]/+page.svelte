@@ -1,11 +1,12 @@
 <script lang="ts">
 	import type { PageData } from './$types';
-	import { goto } from '$app/navigation';
 	import * as m from '$lib/paraglide/messages';
 	import { ArrowLeft, FileText, Check, AlertTriangle, Ban, ExternalLink } from 'lucide-svelte';
 	import { PageHeader, Button } from '$lib/components/ui';
+	import { createBackNav } from '$lib/nav/back-nav.svelte';
 
 	let { data }: { data: PageData } = $props();
+	const back = createBackNav('/finances/invoices', m.fin_back_to_invoices);
 	const inv = $derived(data.invoice);
 	const items = $derived(data.items);
 	const payments = $derived(data.payments);
@@ -72,9 +73,9 @@
 	</PageHeader>
 
 	<div class="flex-1 min-h-0 overflow-auto p-4 flex flex-col gap-4 max-w-4xl">
-		<Button variant="outline" size="sm" onclick={() => goto('/finances/invoices')} class="self-start">
+		<Button variant="outline" size="sm" onclick={back.go} class="self-start">
 			<ArrowLeft size={14} />
-			{m.fin_back_to_invoices()}
+			{back.label}
 		</Button>
 
 		{#if isVoid}

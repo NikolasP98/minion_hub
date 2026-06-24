@@ -12,6 +12,9 @@
     } from "lucide-svelte";
     import type { ToolStatusEntry } from "$lib/types/tools";
     import * as m from '$lib/paraglide/messages';
+    import { createBackNav } from '$lib/nav/back-nav.svelte';
+
+    const back = createBackNav('/tools', () => 'Tools');
 
     type Lang = "javascript" | "python" | "bash";
     type Status = "draft" | "published";
@@ -57,9 +60,9 @@
 
 <div class="editor-toolbar">
     <div class="toolbar-left">
-        <a href="/tools" class="back-link" title="Back to Tools">
+        <button type="button" onclick={back.go} class="back-link" title="Back to Tools">
             <ArrowLeft size={16} />
-        </a>
+        </button>
 
         <div class="toolbar-divider"></div>
 
@@ -241,6 +244,9 @@
         color: var(--color-muted);
         transition: all var(--duration-fast) var(--ease-standard);
         flex-shrink: 0;
+        background: none;
+        border: none;
+        cursor: pointer;
     }
 
     .back-link:hover {

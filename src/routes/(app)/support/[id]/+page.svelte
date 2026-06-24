@@ -1,14 +1,16 @@
 <script lang="ts">
 	import type { PageData } from './$types';
-	import { goto, invalidate } from '$app/navigation';
+	import { invalidate } from '$app/navigation';
 	import { PageHeader, Button } from '$lib/components/ui';
 	import { ArrowLeft, ExternalLink } from 'lucide-svelte';
 	import { STATUSES, PRIORITIES, statusLabel, priorityLabel, priorityColor, slaColor } from '$lib/components/support/support-format';
 	import { relativeTime } from '$lib/components/crm/crm-format';
 	import DocTimeline from '$lib/components/shared/DocTimeline.svelte';
+	import { createBackNav } from '$lib/nav/back-nav.svelte';
 
 	let { data }: { data: PageData } = $props();
 	const i = $derived(data.issue);
+	const back = createBackNav('/support', () => 'Support');
 	let busy = $state(false);
 
 	async function postComment(body: string) {
@@ -54,7 +56,7 @@
 <div class="flex flex-col h-full min-h-0">
 	<PageHeader title={i.subject} subtitle={`${i.humanId ?? 'Ticket'} · opened ${relativeTime(i.createdAt)}`}>
 		{#snippet leading()}
-			<button class="p-1 -ml-1 rounded hover:bg-white/[0.06]" onclick={() => goto('/support')} aria-label="Back to tickets">
+			<button class="p-1 -ml-1 rounded hover:bg-white/[0.06]" onclick={back.go} aria-label="Back to tickets">
 				<ArrowLeft size={16} />
 			</button>
 		{/snippet}

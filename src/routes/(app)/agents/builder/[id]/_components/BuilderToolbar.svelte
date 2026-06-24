@@ -2,6 +2,9 @@
     import { onDestroy } from "svelte";
     import { ArrowLeft, Bot, Eye, Loader2, Check, Upload, Circle } from "lucide-svelte";
     import * as m from '$lib/paraglide/messages';
+    import { createBackNav } from '$lib/nav/back-nav.svelte';
+
+    const back = createBackNav('/agents', () => 'Agents');
 
     interface Props {
         name: string;
@@ -48,9 +51,9 @@
 
 <div class="editor-toolbar">
     <div class="flex items-center gap-3 min-w-0">
-        <a href="/agents" class="back-link" title="Back to Agents" aria-label="Back to Agents">
+        <button type="button" onclick={back.go} class="back-link" title="Back to Agents" aria-label="Back to Agents">
             <ArrowLeft size={16} />
-        </a>
+        </button>
 
         <div class="h-5 w-px bg-border/60 shrink-0"></div>
 
@@ -129,6 +132,9 @@
         border-radius: 0.375rem;
         color: var(--color-muted);
         transition: all var(--duration-fast) var(--ease-standard);
+        background: none;
+        border: none;
+        cursor: pointer;
     }
 
     .back-link:hover {

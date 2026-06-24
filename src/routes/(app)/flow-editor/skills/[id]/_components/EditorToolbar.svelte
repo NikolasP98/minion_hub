@@ -5,15 +5,18 @@
         scheduleSave, handlePublishClick, clearDryRun,
     } from '$lib/state/builder/skill-editor.svelte';
     import * as m from '$lib/paraglide/messages';
+    import { createBackNav } from '$lib/nav/back-nav.svelte';
+
+    const back = createBackNav('/flow-editor', () => 'Flows');
 
     let { showDryRun = $bindable() }: { showDryRun: boolean } = $props();
 </script>
 
 <div class="editor-toolbar">
     <div class="flex items-center gap-3 min-w-0">
-        <a href="/flow-editor" class="back-link" title="Back to Flows">
+        <button type="button" onclick={back.go} class="back-link" title="Back to Flows">
             <ArrowLeft size={16} />
-        </a>
+        </button>
 
         <div class="h-5 w-px bg-border/60 shrink-0"></div>
 
@@ -124,6 +127,9 @@
         border-radius: 0.375rem;
         color: var(--color-muted);
         transition: all var(--duration-fast) var(--ease-standard);
+        background: none;
+        border: none;
+        cursor: pointer;
     }
     .back-link:hover { color: var(--color-foreground); background: var(--color-bg3); }
 

@@ -19,8 +19,10 @@
 	import { stageLabel } from '$lib/components/crm/crm-i18n';
 	import { metaLabel, metaValue, metaDisplay, isEmailKey, metaEntries, isReservedMetaKey } from '$lib/components/crm/crm-meta';
 	import { IdCard, Cake, Phone, Mail, MapPin, Stethoscope, Megaphone, Hash, User } from 'lucide-svelte';
+	import { createBackNav } from '$lib/nav/back-nav.svelte';
 
 	let { data }: { data: PageData } = $props();
+	const back = createBackNav('/crm/customers', m.crm_back_to_contacts);
 	const c = $derived(data.contact);
 	const score = $derived(data.score);
 	const stats = $derived(data.stats as Record<string, unknown> | null);
@@ -420,7 +422,7 @@
 <div class="flex flex-col h-full min-h-0">
 	<PageHeader title={contactLabel(c.displayName)} subtitle={c.source === 'manual' ? m.crm_manual_contact() : m.crm_harvested()}>
 		{#snippet leading()}
-			<button class="p-1 -ml-1 rounded hover:bg-white/[0.06]" onclick={() => goto('/crm/customers')} aria-label={m.crm_back_to_contacts()}>
+			<button class="p-1 -ml-1 rounded hover:bg-white/[0.06]" onclick={back.go} aria-label={m.crm_back_to_contacts()}>
 				<ArrowLeft size={16} />
 			</button>
 		{/snippet}

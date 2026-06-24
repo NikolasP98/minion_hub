@@ -8,6 +8,9 @@
   import type { AutonomousAgentVM } from '$lib/agents/autonomous';
   import type { ArtifactDescriptor } from '$lib/agents/artifacts';
   import type { HealthMetrics } from '$lib/server/agents/health-metrics';
+  import { createBackNav } from '$lib/nav/back-nav.svelte';
+
+  const back = createBackNav('/agents/autonomous', m.autonomous_detail_back);
 
   let {
     data,
@@ -31,9 +34,9 @@
 />
 
 <div class="flex h-full flex-col overflow-hidden p-6">
-  <a href="/agents/autonomous" class="mb-4 inline-flex items-center gap-1.5 text-xs text-white/50 hover:text-white/80">
-    <ArrowLeft size={13} /> {m.autonomous_detail_back()}
-  </a>
+  <button type="button" onclick={back.go} class="mb-4 inline-flex items-center gap-1.5 text-xs text-white/50 hover:text-white/80">
+    <ArrowLeft size={13} /> {back.label}
+  </button>
 
   <header class="mb-5 flex items-start gap-3">
     <img src={agent.avatarUrl} alt="" class="size-12 shrink-0 rounded-lg bg-white/5 ring-1 ring-white/10" />

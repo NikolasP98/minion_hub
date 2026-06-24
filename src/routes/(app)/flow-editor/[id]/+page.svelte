@@ -2,6 +2,7 @@
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
+  import { createBackNav } from '$lib/nav/back-nav.svelte';
   import FlowCanvas from '$lib/components/flow-editor/FlowCanvas.svelte';
   import FlowSidebar from '$lib/components/flow-editor/FlowSidebar.svelte';
   import FlowCopilotPanel from '$lib/components/flow-editor/FlowCopilotPanel.svelte';
@@ -25,6 +26,7 @@
   import { ArrowLeft, GitBranch, Trash2, Copy, Settings2, Puzzle } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
 
+  const back = createBackNav('/flow-editor', m.flow_backToFlows);
   const flowId = $derived(page.params.id);
   let loadError = $state<string | null>(null);
   let isActivating = $state(false);
@@ -166,13 +168,14 @@
       class="shrink-0 h-10 border-b border-border bg-bg2/80 flex items-center px-3 gap-3 md:pr-[var(--notch-clearance)]"
     >
       <!-- Back -->
-      <a
-        href="/flow-editor"
+      <button
+        type="button"
+        onclick={back.go}
         class="flex items-center justify-center w-7 h-7 rounded text-muted hover:text-foreground hover:bg-bg3 transition-colors"
         title={m.flow_backToFlows()}
       >
         <ArrowLeft size={14} />
-      </a>
+      </button>
 
       <div class="w-px h-4 bg-border/60"></div>
 
