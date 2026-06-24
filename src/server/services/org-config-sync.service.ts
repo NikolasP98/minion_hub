@@ -33,6 +33,19 @@ export type OrgDisabledMap = Record<string, string[]>;
 
 const uniqSorted = (xs: string[]): string[] => [...new Set(xs)].sort();
 
+/**
+ * `config.get` returns a ConfigFileSnapshot `{ config, hash, … }` — the actual
+ * config lives at `.config`, NOT the top level. Reading the wrapper directly
+ * (e.g. `snapshot.channels`) silently yields undefined. Unwrap defensively in
+ * case a caller already passed the bare config.
+ */
+export function unwrapConfigSnapshot<T = Record<string, unknown>>(raw: unknown): T {
+  if (raw && typeof raw === 'object' && 'config' in raw) {
+    return ((raw as { config?: T }).config ?? {}) as T; // {config:null} on invalid → {}
+  }
+  return (raw ?? {}) as T;
+}
+
 /** Pure: PG-core channel rows → `accountOrgs[type][accountId] = [orgId,…]`. */
 export function buildAccountOrgs(
   rows: { type: ChannelType; accountId: string | null; tenantId: string }[],
@@ -136,7 +149,7 @@ export async function reconcileOrgConfig(gatewayId: string): Promise<{
   const snap =
     (await gatewayCall<{ config?: GatewayMaps; hash?: string } & GatewayMaps>('config.get', {})) ??
     {};
-  const cur = (snap.config ?? snap) as GatewayMaps;
+  const cur = unwrapConfigSnapshot<GatewayMaps>(snap);
   const curOrgDisabled = (cur.plugins?.orgDisabled ?? {}) as Record<string, unknown>;
   const curAccountOrgs = (cur.channels?.accountOrgs ?? {}) as Record<string, Record<string, unknown>>;
 
@@ -150,6 +163,20 @@ export async function reconcileOrgConfig(gatewayId: string): Promise<{
   });
 
   return { accountOrgs, orgDisabled };
+}
+
+/**
+ * Fire-and-forget reconcile for inline use after a channel mutation: pushes the
+ * fresh org maps to the gateway immediately (no waiting for the hourly tick) but
+ * never fails the caller — the DB is the source of truth, so a transient gateway
+ * error just means the next tick reconciles. Logs and swallows.
+ */
+export async function reconcileOrgConfigSafe(gatewayId: string): Promise<void> {
+  try {
+    await reconcileOrgConfig(gatewayId);
+  } catch (e) {
+    console.error('[org-config] inline reconcile failed for gateway', gatewayId, e);
+  }
 }
 
 type GatewayMaps = {

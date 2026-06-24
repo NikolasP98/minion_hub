@@ -12,6 +12,7 @@ import { channels, channelBindings } from '@minion-stack/db/pg';
 import { newId } from '$server/db/utils';
 import { withOrgCore } from '$server/db/with-org-core';
 import { gatewayCallAsUser } from '$lib/server/gateway-rpc';
+import { unwrapConfigSnapshot, reconcileOrgConfigSafe } from './org-config-sync.service';
 import type { ServerCtx } from '$server/auth/core-ctx';
 
 type ChannelType = 'whatsapp' | 'telegram' | 'discord';
@@ -109,7 +110,15 @@ export function gatewayConfigToChannelRows(
  * (tenant_id, gateway_id, type, account_id)). Returns the number of channels synced.
  */
 export async function importGatewayChannels(ctx: ServerCtx): Promise<{ imported: number }> {
-  const config = await gatewayCallAsUser<GatewayConfig>('config.get', {}, ctx.profileId, { timeoutMs: 5000 });
+  // config.get returns a ConfigFileSnapshot { config, hash, … } — the config is
+  // nested under `.config`, so unwrap before reading channels/accountOrgs.
+  const snap = await gatewayCallAsUser<{ config?: GatewayConfig } & GatewayConfig>(
+    'config.get',
+    {},
+    ctx.profileId,
+    { timeoutMs: 5000 },
+  );
+  const config = unwrapConfigSnapshot<GatewayConfig>(snap);
   const rows = gatewayConfigToChannelRows(config, ctx.tenantId);
 
   await withOrgCore(ctx, async (tx) => {
@@ -163,6 +172,10 @@ export async function importGatewayChannels(ctx: ServerCtx): Promise<{ imported:
       }
     }
   });
+
+  // Org→account ownership just changed in the DB — push it to the gateway now
+  // instead of waiting for the hourly tick (matters for multi-tenant isolation).
+  await reconcileOrgConfigSafe(ctx.gatewayId);
 
   return { imported: rows.length };
 }

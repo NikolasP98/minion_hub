@@ -4,7 +4,30 @@ import {
   buildPluginOrgDisabled,
   replaceFlat,
   replaceNested,
+  unwrapConfigSnapshot,
 } from './org-config-sync.service';
+
+describe('unwrapConfigSnapshot (config.get returns {config,hash} wrapper)', () => {
+  it('returns the nested .config, not the wrapper (the importGatewayChannels bug)', () => {
+    const snapshot = { config: { channels: { accountOrgs: { whatsapp: { a: ['o1'] } } } }, hash: 'h1' };
+    expect(unwrapConfigSnapshot(snapshot)).toEqual({
+      channels: { accountOrgs: { whatsapp: { a: ['o1'] } } },
+    });
+    // Reading the wrapper directly (the bug) would have been undefined:
+    expect((snapshot as { channels?: unknown }).channels).toBeUndefined();
+  });
+
+  it('passes through a bare config (no wrapper)', () => {
+    expect(unwrapConfigSnapshot({ channels: { accountOrgs: {} } })).toEqual({
+      channels: { accountOrgs: {} },
+    });
+  });
+
+  it('returns {} for null/undefined', () => {
+    expect(unwrapConfigSnapshot(null)).toEqual({});
+    expect(unwrapConfigSnapshot(undefined)).toEqual({});
+  });
+});
 
 describe('buildAccountOrgs', () => {
   it('groups orgIds per (type, accountId)', () => {

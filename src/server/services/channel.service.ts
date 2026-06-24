@@ -3,6 +3,7 @@ import { channels, channelAssignments } from '@minion-stack/db/pg';
 import { newId } from '$server/db/utils';
 import { withOrgCore } from '$server/db/with-org-core';
 import { encrypt, decrypt } from '$server/auth/crypto';
+import { reconcileOrgConfigSafe } from './org-config-sync.service';
 import type { ServerCtx } from '$server/auth/core-ctx';
 
 export type ChannelType = 'discord' | 'whatsapp' | 'telegram';
@@ -175,6 +176,9 @@ export async function deleteChannel(ctx: ServerCtx, channelId: string) {
         ),
       ),
   );
+  // Removing the row drops this account's org ownership — push the updated
+  // accountOrgs to the gateway now (don't wait for the hourly tick).
+  await reconcileOrgConfigSafe(ctx.gatewayId);
 }
 
 export async function listChannelAssignments(ctx: ServerCtx, channelId: string) {
