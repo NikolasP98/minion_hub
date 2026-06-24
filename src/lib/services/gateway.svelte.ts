@@ -150,6 +150,14 @@ let notPairedRefetchAttempted = false;
 // shared-token auth so the dashboard can never be locked out by a JWT problem.
 // (Harmless when the gateway has no oidcIssuers configured — it ignores the jwt.)
 let jwtAuthDisabled = false;
+// A JWT rejection is usually transient (JWKS rotation/cache lag, clock skew) now
+// that oidcIssuers IS configured. Permanently disabling the JWT would strand the
+// whole session on UNSCOPED shared-token auth, where channel/account scoping
+// fails open and other orgs' accounts leak in. So we re-enable the JWT after this
+// cooldown and reconnect — bounding the cross-org fail-open window to the cooldown
+// rather than "until page reload".
+const JWT_RETRY_COOLDOWN_MS = 60_000;
+let jwtRetryTimer: ReturnType<typeof setTimeout> | null = null;
 
 function isJwtAuthEnabled(): boolean {
   return publicEnv.PUBLIC_GATEWAY_JWT_AUTH === 'true' && !jwtAuthDisabled;
@@ -344,7 +352,21 @@ export async function wsConnect() {
       // never locked out by a JWT problem; it just loses org-scoping.
       if (isJwtAuthEnabled() && isJwtAuthClose(code, reason)) {
         jwtAuthDisabled = true;
-        console.warn('[hub] gateway rejected JWT — falling back to shared-token auth:', reason);
+        console.warn('[hub] gateway rejected JWT — temporarily falling back to shared-token auth:', reason);
+        // Re-enable the JWT after a cooldown and reconnect, so a transient
+        // rejection doesn't leave the session permanently unscoped (cross-org
+        // fail-open). If the next attempt fails too, this same path re-arms.
+        if (jwtRetryTimer) clearTimeout(jwtRetryTimer);
+        jwtRetryTimer = setTimeout(() => {
+          jwtRetryTimer = null;
+          jwtAuthDisabled = false;
+          const live = getClient();
+          if (live) {
+            live.close();
+            setClient(null);
+          }
+          void wsConnect();
+        }, JWT_RETRY_COOLDOWN_MS);
         const c = getClient();
         if (c) {
           c.close();
@@ -445,6 +467,10 @@ export function wsDisconnect() {
   }
   teardownBinaryWiring();
 
+  if (jwtRetryTimer) {
+    clearTimeout(jwtRetryTimer);
+    jwtRetryTimer = null;
+  }
   stopPolling();
   stopSqliteFlush();
 
