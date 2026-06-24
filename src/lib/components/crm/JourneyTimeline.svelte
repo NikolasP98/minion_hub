@@ -11,7 +11,9 @@
 		occurred_at: string;
 		source_id: string;
 	};
-	let { rows }: { rows: Row[] } = $props();
+	// hideHeaders: drop the per-channel header (the caller already labels the
+	// channel, e.g. via tabs) — used by the contact detail's per-channel view.
+	let { rows, hideHeaders = false }: { rows: Row[]; hideHeaders?: boolean } = $props();
 
 	// Render as a chat conversation: drop content-less rows (the empty "Activity"
 	// noise), group message rows by channel into a single thread each, oldest →
@@ -48,15 +50,17 @@
 	<div class="journey">
 		{#each groups as g (g.key)}
 			<section class="grp">
-				<header class="grp-h">
-					{#if g.channel}
-						<ChannelBrandIcon channel={g.channel} size={14} />
-						<span class="grp-name">{g.channel}</span>
-					{:else}
-						<span class="grp-name">{m.crm_activity()}</span>
-					{/if}
-					<span class="grp-count">{g.items.length}</span>
-				</header>
+				{#if !hideHeaders}
+					<header class="grp-h">
+						{#if g.channel}
+							<ChannelBrandIcon channel={g.channel} size={14} />
+							<span class="grp-name">{g.channel}</span>
+						{:else}
+							<span class="grp-name">{m.crm_activity()}</span>
+						{/if}
+						<span class="grp-count">{g.items.length}</span>
+					</header>
+				{/if}
 
 				{#if g.channel}
 					<ol class="thread">

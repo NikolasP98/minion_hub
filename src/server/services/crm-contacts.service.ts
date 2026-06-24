@@ -461,6 +461,11 @@ export async function updateContact(
     ownerId?: string | null;
     lifecycleOverride?: string | null;
     customFields?: Record<string, unknown>;
+    /** Standard "phone" field: mirrored to a `phone` channel identity so an
+     *  edited number shows up in the Identities list. '' / null removes it.
+     *  Does NOT touch the WhatsApp identity (its external_id is the message
+     *  join key). */
+    phone?: string | null;
   },
 ) {
   const set: Record<string, unknown> = { updatedAt: new Date() };
@@ -474,7 +479,20 @@ export async function updateContact(
       .set(set)
       .where(and(eq(crmContacts.id, id), eq(crmContacts.orgId, ctx.tenantId)))
       .returning();
-    return r ?? null;
+    if (!r) return null;
+    if (data.phone !== undefined) {
+      const digits = (data.phone ?? '').replace(/\D/g, '');
+      await tx
+        .delete(crmContactIdentities)
+        .where(
+          and(eq(crmContactIdentities.contactId, id), eq(crmContactIdentities.channel, 'phone')),
+        );
+      if (digits)
+        await tx
+          .insert(crmContactIdentities)
+          .values({ orgId: ctx.tenantId, contactId: id, channel: 'phone', externalId: digits });
+    }
+    return r;
   });
   await bustCrmList(ctx.tenantId);
   return row;

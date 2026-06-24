@@ -32,6 +32,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
     ownerId: body.ownerId,
     lifecycleOverride: body.lifecycleOverride,
     customFields: body.customFields,
+    phone: body.phone,
   });
   if (!contact) throw error(404, 'Contact not found');
   return json({ contact });

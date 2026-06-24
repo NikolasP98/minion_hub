@@ -41,9 +41,6 @@ export interface ConnGroup {
   items: ConnItem[];
 }
 
-// last-9-digits phone match (Peru), mirrors crm-finance.service's PHONE9.
-const P9 = (col: string) => sql.raw(`right(regexp_replace(coalesce(${col},''),'\\D','','g'), 9)`);
-
 /**
  * Build the Connections groups for a CRM contact. Groups whose module is
  * explicitly disabled (app_modules row enabled=false) are dropped.
@@ -94,23 +91,19 @@ export async function contactConnections(ctx: CoreCtx, contactId: string): Promi
       });
     }
 
-    // ── Finance (via the phone bridge) ──────────────────────────────────────
+    // ── Finance (via the party spine) ───────────────────────────────────────
     if (modules.finances !== false) {
-      // Payments are surfaced inside each invoice (no standalone payments view),
-      // so the Finance group links invoices only.
+      // Count this contact's invoices through the party spine (contact.party_id =
+      // fin_clients.party_id), matching crm-finance.service's rollup. The legacy
+      // WhatsApp-phone bridge undercounted finance-only payers (showed 0 here
+      // while FINANCIALS showed the real count).
       const [fin] = (await tx.execute(sql`
-        with phones as (
-          select ${P9('ci.external_id')} p9 from crm_contact_identities ci
-          where ci.org_id = current_setting('app.current_org_id', true)
-            and ci.contact_id = ${contactId} and ci.channel = 'whatsapp'
-            and length(${P9('ci.external_id')}) >= 8
-        ),
-        inv as (
-          select fi.id from fin_invoices fi join fin_clients fc on fc.id = fi.client_id
-          where fc.org_id = current_setting('app.current_org_id', true)
-            and ${P9('fc.phone')} in (select p9 from phones)
-        )
-        select (select count(*) from inv)::int invoices
+        select count(distinct fi.id)::int invoices
+        from crm_contacts c
+        join fin_clients fc on fc.party_id = c.party_id and c.party_id is not null
+          and fc.org_id = current_setting('app.current_org_id', true)
+        join fin_invoices fi on fi.client_id = fc.id
+        where c.id = ${contactId} and c.org_id = current_setting('app.current_org_id', true)
       `)) as unknown as Array<{ invoices: number }>;
       groups.push({
         label: 'Finance',

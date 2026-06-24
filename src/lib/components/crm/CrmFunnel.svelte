@@ -117,11 +117,12 @@
 					<span class="band" style:width={`${100 - i * 13}%`}></span>
 				</span>
 				<span class="label">
+					<span class="chk-slot">
+						{#if reached && !isCurrent}<Check size={13} class="chk" />{/if}
+					</span>
 					<span class="name">{funnelStageLabel(id)}</span>
 					{#if isCurrent}
 						<span class="now">◀ {m.crm_funnel_now()}</span>
-					{:else if reached}
-						<Check size={13} class="chk" />
 					{/if}
 				</span>
 			</button>
@@ -239,10 +240,17 @@
 		box-shadow: 0 0 0 1px var(--c);
 	}
 	.label {
-		display: inline-flex;
+		display: grid;
+		grid-template-columns: 0.9rem auto 1fr;
 		align-items: center;
 		gap: 0.4rem;
 		font-size: 0.84rem;
+	}
+	/* fixed slot so every stage's checkmark aligns vertically, left of the title */
+	.chk-slot {
+		display: grid;
+		place-items: center;
+		width: 0.9rem;
 	}
 	.name {
 		color: var(--color-muted-foreground);

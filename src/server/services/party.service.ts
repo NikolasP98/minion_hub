@@ -99,10 +99,19 @@ export async function ensureParty(ctx: CoreCtx, input: EnsurePartyInput): Promis
 // last-9-digits phone match (Peru). The cross-module BRIDGE (not the identity).
 // Mirrors crm-finance.service's PHONE9 and the JS phone9() above.
 const P9 = (col: string) => sql.raw(`right(regexp_replace(coalesce(${col},''),'\\D','','g'), 9)`);
+// A document is a usable identity key only if it's a real DNI/RUC. Placeholder
+// values — all-same-digit (e.g. '00000000') or too short (<8) — are NOT keys:
+// SUSII defaults a missing DNI to '00000000', and keying on it collapsed every
+// such payer into ONE party (229-invoice "Zoe Guillen" aggregate). Treat those
+// as null so they fall through to phone, then to a per-record standalone party.
+const cleanDoc = (col: string) =>
+  sql.raw(
+    `(case when nullif(trim(${col}),'') ~ '^(.)\\1*$' or length(nullif(trim(${col}),'')) < 8 then null else nullif(trim(${col}),'') end)`,
+  );
 // DNI/RUC pulled from a crm_contact's custom_fields (imported patients carry it).
 // Canonical key is lowercase 'dni' (crm-cleanup); tolerate the 'DNI' variant.
-const CRM_DOC = sql.raw(`nullif(trim(coalesce(c.custom_fields->>'dni', c.custom_fields->>'DNI')), '')`);
-const FIN_DOC = sql.raw(`nullif(trim(fc.doc_number), '')`);
+const CRM_DOC = cleanDoc(`coalesce(c.custom_fields->>'dni', c.custom_fields->>'DNI')`);
+const FIN_DOC = cleanDoc('fc.doc_number');
 
 /**
  * Idempotent, set-based party reconcile for one org. THE engine behind both
@@ -204,6 +213,27 @@ export async function reconcileParties(ctx: CoreCtx): Promise<void> {
       where b.org_id = ${org} and p.org_id = ${org}
         and length(${P9('b.attendee_phone')}) >= 8 and p.phone9 = ${P9('b.attendee_phone')}
         and b.party_id is distinct from p.id
+    `);
+
+    // 3.5. Standalone party per fin_client that's STILL unlinked (no usable doc
+    //      AND no phone — e.g. a placeholder-DNI walk-in). Each gets its OWN
+    //      party so they stay distinct customers instead of collapsing together.
+    //      Seeds phone9 when present so step 2 won't later mint a duplicate
+    //      phone-party. Correlates new party → source fin_client via metadata.
+    //      Idempotent: only fires for party_id IS NULL.
+    await tx.execute(sql`
+      with seed as (
+        insert into parties (org_id, type, name, phone9, doc_type, metadata)
+        select ${org}, 'person', fc.name,
+               case when length(${P9('fc.phone')}) >= 8 then ${P9('fc.phone')} else null end,
+               fc.doc_type,
+               jsonb_build_object('seed_fin_client', fc.id)
+        from fin_clients fc
+        where fc.org_id = ${org} and fc.party_id is null
+        returning id, (metadata->>'seed_fin_client')::uuid as fc_id
+      )
+      update fin_clients fc set party_id = seed.id
+      from seed where fc.id = seed.fc_id and fc.org_id = ${org}
     `);
 
     // 4. Mint a CRM contact for every PAYER (a party with a fin_client facet) that
