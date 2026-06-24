@@ -1,6 +1,7 @@
 <script lang="ts">
     import type { Channel, ChannelType } from '$lib/types/channels';
     import { CHANNEL_TYPE_LABELS } from '$lib/types/channels';
+    import { channelOrgVisible } from '$lib/utils/channel-display-state';
     import { hostsState } from '$lib/state/features/hosts.svelte';
     import {
         channelState,
@@ -33,8 +34,7 @@
     // account is hidden while an org is selected — this is what stops other orgs'
     // accounts (and the unscoped heartbeat snapshot) from bleeding into the list.
     // The org's OWN accounts still come through the DB-backed `enriched` path.
-    const orgOwnsExtra = (c: Channel): boolean =>
-        !activeOrgId || (c.orgIds?.includes(activeOrgId) ?? false);
+    const orgOwnsExtra = (c: Channel): boolean => channelOrgVisible(c.orgIds, activeOrgId);
 
     // Pull the gateway's accounts for this org into the DB registry (idempotent upsert).
     async function handleImport() {

@@ -1,6 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { deriveChannelDisplayState } from './channel-display-state';
+import { deriveChannelDisplayState, channelOrgVisible } from './channel-display-state';
 import type { Channel } from '$lib/types/channels';
+
+describe('channelOrgVisible (cross-org isolation)', () => {
+  it('hides a gateway account tagged to a different org', () => {
+    expect(channelOrgVisible(['orgB'], 'orgA')).toBe(false);
+  });
+  it('shows a gateway account tagged to the active org', () => {
+    expect(channelOrgVisible(['orgA', 'orgB'], 'orgA')).toBe(true);
+  });
+  it('hides an untagged account while an org is active (unscoped heartbeat snapshot)', () => {
+    expect(channelOrgVisible(undefined, 'orgA')).toBe(false);
+    expect(channelOrgVisible([], 'orgA')).toBe(false);
+  });
+  it('shows everything when no org is active (admin / single-tenant)', () => {
+    expect(channelOrgVisible(['orgB'], null)).toBe(true);
+    expect(channelOrgVisible(undefined, null)).toBe(true);
+  });
+});
 
 const base: Channel = {
   id: 'gw:telegram:default',

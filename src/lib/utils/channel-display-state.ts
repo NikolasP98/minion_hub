@@ -11,6 +11,21 @@ export type ChannelDisplayState =
   | 'degraded'
   | 'error';
 
+/**
+ * SECURITY (cross-org isolation): is a gateway-sourced channel account visible
+ * to the active org? Mirrors the gateway's orgScopeVisible but is STRICTER on
+ * the no-tag case — an account with no `orgIds` is hidden while an org is
+ * selected. The unscoped heartbeat snapshot carries no orgIds, so this is what
+ * stops other orgs' accounts (and that snapshot) from bleeding into the list.
+ * No active org (admin / single-tenant) sees everything.
+ */
+export function channelOrgVisible(
+  orgIds: string[] | undefined,
+  activeOrgId: string | null,
+): boolean {
+  return !activeOrgId || (orgIds?.includes(activeOrgId) ?? false);
+}
+
 export function deriveChannelDisplayState(c: Channel): ChannelDisplayState {
   if (c.gwEnabled === false) return 'disabled';
   if (c.gwConfigured === false) return 'pending-config';
