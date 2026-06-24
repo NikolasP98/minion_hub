@@ -200,6 +200,9 @@ export interface InvoiceListRow {
   clientDocNumber: string | null;
   total: string | null;
   status: string | null;
+  /** CRM contact resolved via the party spine (client → party → contact), so the
+   *  Client/DNI columns can deep-link to /crm/[id]. Null when unlinked. */
+  crmContactId: string | null;
 }
 
 /**
@@ -211,7 +214,9 @@ export function listInvoices(
   ctx: CoreCtx,
   opts: PageOpts = {},
 ): Promise<{ rows: InvoiceListRow[]; total: number }> {
-  const limit = Math.min(opts.limit ?? 60, 500);
+  // ponytail: 10k ceiling so the invoices view can client-side sort/filter the
+  // whole set (like CRM customers). Re-introduce server paging past that.
+  const limit = Math.min(opts.limit ?? 60, 10_000);
   const offset = Math.max(opts.offset ?? 0, 0);
   // Contact filter via the party spine: invoices whose client shares the
   // contact's party. Null when no contact requested.
@@ -233,6 +238,14 @@ export function listInvoices(
         clientDocNumber: finInvoices.clientDocNumber,
         total: finInvoices.total,
         status: finInvoices.status,
+        // Correlated subquery (not a join) so an invoice stays one row even if a
+        // party maps to >1 contact. Resolves client → party → CRM contact id.
+        crmContactId: sql<string | null>`(
+          select c.id from fin_clients fc
+          join crm_contacts c on c.party_id = fc.party_id
+            and c.party_id is not null and c.org_id = ${ctx.tenantId}
+          where fc.id = ${finInvoices.clientId}
+          limit 1)`,
       })
       .from(finInvoices)
       .where(where)
@@ -257,58 +270,17 @@ export async function getInvoice(ctx: CoreCtx, id: string) {
     if (!invoice) return null;
     const items = await tx.select().from(finInvoiceItems).where(eq(finInvoiceItems.invoiceId, id));
     const payments = await tx.select().from(finPayments).where(eq(finPayments.invoiceId, id));
-    return { invoice, items, payments };
-  });
-}
-
-export interface PaymentListRow {
-  id: string;
-  paidAt: Date | null;
-  method: string | null;
-  amount: string | null;
-  status: string | null;
-}
-
-/**
- * Paged payment list. Server-side limit/offset on the (org_id, paid_at) index;
- * projects only the columns the list table renders. Returns the page rows plus
- * the total row count so the UI can drive "load more" / pagination.
- */
-export function listPayments(
-  ctx: CoreCtx,
-  opts: PageOpts = {},
-): Promise<{ rows: PaymentListRow[]; total: number }> {
-  const limit = Math.min(opts.limit ?? 60, 500);
-  const offset = Math.max(opts.offset ?? 0, 0);
-  // Contact filter via the party spine: payments on invoices whose client shares
-  // the contact's party.
-  const contactCond = opts.contactId
-    ? sql`${finPayments.invoiceId} in (
-        select fi.id from fin_invoices fi
-        join fin_clients fc on fc.id = fi.client_id
-        join crm_contacts c on c.party_id = fc.party_id and c.party_id is not null
-        where c.id = ${opts.contactId} and c.org_id = ${ctx.tenantId})`
-    : undefined;
-  const where = and(eq(finPayments.orgId, ctx.tenantId), contactCond);
-  return withOrgCore(ctx, async (tx) => {
-    const rows = await tx
-      .select({
-        id: finPayments.id,
-        paidAt: finPayments.paidAt,
-        method: finPayments.method,
-        amount: finPayments.amount,
-        status: finPayments.status,
-      })
-      .from(finPayments)
-      .where(where)
-      .orderBy(desc(finPayments.paidAt))
-      .limit(limit)
-      .offset(offset);
-    const [{ total }] = await tx
-      .select({ total: sql<number>`count(*)::int` })
-      .from(finPayments)
-      .where(where);
-    return { rows, total };
+    // Resolve the CRM contact (client → party → contact) so the detail view can
+    // deep-link the client name to /crm/[id]. Null when unlinked.
+    const [link] = invoice.clientId
+      ? ((await tx.execute(sql`
+          select c.id from fin_clients fc
+          join crm_contacts c on c.party_id = fc.party_id
+            and c.party_id is not null and c.org_id = ${ctx.tenantId}
+          where fc.id = ${invoice.clientId}
+          limit 1`)) as unknown as Array<{ id: string }>)
+      : [];
+    return { invoice, items, payments, crmContactId: link?.id ?? null };
   });
 }
 
@@ -423,6 +395,9 @@ export function financeSummary(ctx: CoreCtx, p: Period) {
           discount = Number(r.discount),
           invoices = Number(r.invoices),
           voids = Number(r.voids);
+        // Some sources don't populate subtotal (gross); fall back to net + discount
+        // so the discount rate has a real denominator instead of dividing by zero.
+        const grossEff = gross > 0 ? gross : net + discount;
         const [nc] = (await tx.execute(sql`
         select count(*)::int n from (
           select client_doc_number, min(issued_at) first from fin_invoices
@@ -431,9 +406,9 @@ export function financeSummary(ctx: CoreCtx, p: Period) {
       `)) as unknown as Array<{ n: number }>;
         return {
           totalNet: net,
-          totalGross: gross,
+          totalGross: grossEff,
           totalDiscount: discount,
-          discountRate: gross > 0 ? discount / gross : 0,
+          discountRate: grossEff > 0 ? discount / grossEff : 0,
           invoiceCount: invoices,
           avgTicket: invoices > 0 ? net / invoices : 0,
           uniqueClients: Number(r.clients),
@@ -454,8 +429,11 @@ export function revenueSeries(ctx: CoreCtx, p: Period) {
       withOrgCore(ctx, async (tx) => {
         const rows = (await tx.execute(sql`
         select to_char(date_trunc(${p.bucket}, issued_at), 'YYYY-MM-DD') bucket,
-               count(*)::int invoices, coalesce(sum(total),0)::float8 revenue,
-               coalesce(sum(discount),0)::float8 discount, coalesce(sum(subtotal),0)::float8 gross
+               count(*)::int invoices,
+               coalesce(sum(total) filter (where status is distinct from 'void'),0)::float8 revenue,
+               coalesce(sum(discount) filter (where status is distinct from 'void'),0)::float8 discount,
+               coalesce(sum(subtotal),0)::float8 gross,
+               coalesce(sum(total) filter (where status = 'void'),0)::float8 voided
         from fin_invoices where ${periodWhere(p)} and issued_at is not null
         group by 1 order by 1
       `)) as unknown as Array<Record<string, unknown>>;
@@ -465,6 +443,7 @@ export function revenueSeries(ctx: CoreCtx, p: Period) {
           revenue: Number(r.revenue),
           discount: Number(r.discount),
           gross: Number(r.gross),
+          voided: Number(r.voided),
         }));
       }),
   );

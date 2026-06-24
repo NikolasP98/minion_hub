@@ -1,41 +1,75 @@
 <script lang="ts">
-  import { scaleTime, scaleLinear } from 'd3-scale';
-  import { line, curveMonotoneX } from 'd3-shape';
+  import type { EChartsOption } from 'echarts';
+  import Chart from '$lib/components/charts/Chart.svelte';
+  import { chartColors } from '$lib/utils/chart-colors';
   import * as m from '$lib/paraglide/messages';
 
   let {
     points,
     current,
   }: {
-    points: { month: string; avg: number; n: number }[];
+    points: { day: string; avg: number; n: number }[];
     current: { avg: number; n: number } | null;
   } = $props();
 
-  const W = 600;
-  const H = 200;
-  const PAD = { top: 16, right: 16, bottom: 24, left: 32 };
-
-  // month 'YYYY-MM' → Date at the 1st (UTC).
-  const data = $derived(
-    points.map((p) => ({ date: new Date(`${p.month}-01T00:00:00Z`), avg: p.avg, n: p.n })),
-  );
-
-  const x = $derived(
-    scaleTime()
-      .domain(data.length ? [data[0].date, data[data.length - 1].date] : [new Date(), new Date()])
-      .range([PAD.left, W - PAD.right]),
-  );
-  const y = $derived(scaleLinear().domain([-1, 1]).range([H - PAD.bottom, PAD.top]));
-  const path = $derived(
-    data.length
-      ? (line<{ date: Date; avg: number }>()
-          .x((d) => x(d.date))
-          .y((d) => y(d.avg))
-          .curve(curveMonotoneX)(data) ?? '')
-      : '',
-  );
-  const yTicks = $derived(y.ticks(5));
   const fmtScore = (v: number) => (v > 0 ? '+' : '') + v.toFixed(2);
+  const fmtDay = (iso: string) =>
+    new Date(`${iso}T00:00:00Z`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
+
+  const byDay = $derived(new Map(points.map((p) => [p.day, p])));
+  const c = $derived(chartColors());
+
+  const option = $derived<EChartsOption>({
+    grid: { left: 6, right: 14, top: 14, bottom: 22, containLabel: true },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'line', lineStyle: { color: c.accent } },
+      formatter: (raw: unknown) => {
+        const arr = Array.isArray(raw) ? raw : [raw];
+        const p = arr[0] as { axisValue?: string; data?: number };
+        const day = String(p?.axisValue ?? '');
+        const rec = byDay.get(day);
+        const score = typeof p?.data === 'number' ? p.data : 0;
+        const color = score >= 0 ? 'var(--color-success)' : 'var(--color-destructive)';
+        return `<div style="font-weight:600">${fmtDay(day)}</div>
+          <div style="color:${color};font-weight:700;font-variant-numeric:tabular-nums">${fmtScore(score)}</div>
+          <div style="opacity:0.7;font-size:0.72rem">${m.crm_insights_sentiment_n({ count: rec?.n ?? 0 })}</div>`;
+      },
+    },
+    xAxis: {
+      type: 'category',
+      boundaryGap: false,
+      data: points.map((p) => p.day),
+      axisLabel: { formatter: (v: string) => fmtDay(v), hideOverlap: true },
+      axisTick: { show: false },
+    },
+    yAxis: {
+      type: 'value',
+      min: -1,
+      max: 1,
+      interval: 0.5,
+      axisLabel: { formatter: (v: number) => fmtScore(v) },
+    },
+    series: [
+      {
+        type: 'line',
+        smooth: true,
+        showSymbol: points.length <= 60,
+        symbolSize: 5,
+        data: points.map((p) => p.avg),
+        lineStyle: { width: 2, color: c.accent },
+        itemStyle: { color: c.accent },
+        areaStyle: { color: c.accent, opacity: 0.14 },
+        markLine: {
+          silent: true,
+          symbol: 'none',
+          lineStyle: { color: c.border, type: 'dashed' },
+          label: { show: false },
+          data: [{ yAxis: 0 }],
+        },
+      },
+    ],
+  });
 </script>
 
 <header class="trend-head">
@@ -49,16 +83,6 @@
   {/if}
 </header>
 
-{#if data.length > 0}
-  <svg viewBox={`0 0 ${W} ${H}`} class="w-full h-auto" role="img" aria-label={m.crm_insights_sentiment_trend()}>
-    <!-- zero baseline -->
-    <line x1={PAD.left} x2={W - PAD.right} y1={y(0)} y2={y(0)} stroke="var(--hairline)" stroke-dasharray="3 3" />
-    {#each yTicks as t (t)}
-      <text x={PAD.left - 6} y={y(t)} text-anchor="end" dominant-baseline="middle" font-size="9" fill="var(--color-muted-foreground)">{fmtScore(t)}</text>
-    {/each}
-    <path d={path} fill="none" stroke="var(--color-accent)" stroke-width="2" />
-    {#each data as d (d.date.toISOString())}
-      <circle cx={x(d.date)} cy={y(d.avg)} r="3" fill="var(--color-accent)" />
-    {/each}
-  </svg>
+{#if points.length > 0}
+  <Chart options={option} height="220px" />
 {/if}

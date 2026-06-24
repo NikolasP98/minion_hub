@@ -8,6 +8,8 @@
 	import StagePill from '$lib/components/crm/StagePill.svelte';
 	import CrmFunnelRibbon from '$lib/components/crm/CrmFunnelRibbon.svelte';
 	import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
+	import EditableGrid from '$lib/components/dashboard/EditableGrid.svelte';
+	import { isAdmin } from '$lib/state/features/user.svelte';
 	import { temperatureColor, type Temperature } from '$lib/components/crm/crm-format';
 	import { funnelStageColor } from '$lib/components/crm/crm-funnel';
 	import { stageLabel } from '$lib/components/crm/crm-i18n';
@@ -20,6 +22,15 @@
 	const bucketMax = $derived(Math.max(1, ...s.scoreBuckets));
 	const channelTotal = $derived(s.channels.reduce((acc, c) => acc + c.count, 0));
 
+	// ── Click-through to the filtered customer list. Each chart segment links to
+	// /crm/customers with the matching filter as a query param (parsed there). ──
+	const C = '/crm/customers';
+	const stageHref = (st: string) => `${C}?stage=${encodeURIComponent(st)}`;
+	const funnelHref = (f: string) => `${C}?funnel=${encodeURIComponent(f)}`;
+	const channelHref = (ch: string) => `${C}?channel=${encodeURIComponent(ch)}`;
+	const tempHref = (t: string) => `${C}?temp=${encodeURIComponent(t)}`;
+	const bucketHref = (i: number) => `${C}?scoreMin=${i * 10}&scoreMax=${i * 10 + 9}`;
+
 	// Per-stage definition tooltips (transparency: "what makes someone Active?").
 	const STAGE_HELP: Record<string, string> = {
 		New: m.crm_stage_help_New(),
@@ -29,12 +40,16 @@
 		Churned: m.crm_stage_help_Churned(),
 	};
 
+	// KPI cards. `href` filters the customer list by the closest lifecycle stage
+	// (Total → no filter). Active(7d)/New(30d) are cohort counts, so the stage
+	// filter is an approximation of intent, not an exact reproduction of the KPI.
 	const kpis = $derived([
-		{ label: m.crm_dash_total(), value: s.total, icon: Users, help: m.crm_dash_total_help() },
-		{ label: m.crm_dash_active(), value: s.activeWeek, icon: Activity, help: m.crm_dash_active_help() },
-		{ label: m.crm_dash_new(), value: s.newCount, icon: UserPlus, help: m.crm_dash_new_help() },
-		{ label: m.crm_dash_churned(), value: s.churned, icon: TrendingDown, help: m.crm_dash_churned_help() },
+		{ id: 'k-total', label: m.crm_dash_total(), value: s.total, icon: Users, help: m.crm_dash_total_help(), href: C },
+		{ id: 'k-active', label: m.crm_dash_active(), value: s.activeWeek, icon: Activity, help: m.crm_dash_active_help(), href: stageHref('Active') },
+		{ id: 'k-new', label: m.crm_dash_new(), value: s.newCount, icon: UserPlus, help: m.crm_dash_new_help(), href: stageHref('New') },
+		{ id: 'k-churned', label: m.crm_dash_churned(), value: s.churned, icon: TrendingDown, help: m.crm_dash_churned_help(), href: stageHref('Churned') },
 	]);
+	const kpiById = $derived(new Map(kpis.map((k) => [k.id, k])));
 
 	// Engagement-temperature breakdown (hot/warm/cold), computed server-side.
 	const tempRows = $derived(
@@ -49,9 +64,9 @@
 
 	// Conversion funnel rows (leads → booked → bought), coloured by funnel stage.
 	const convRows = $derived([
-		{ key: 'leads', label: m.crm_conv_leads(), count: s.conversion.leads, color: funnelStageColor('lead') },
-		{ key: 'booked', label: m.crm_conv_booked(), count: s.conversion.booked, color: funnelStageColor('opportunity') },
-		{ key: 'bought', label: m.crm_conv_bought(), count: s.conversion.bought, color: funnelStageColor('customer') },
+		{ key: 'leads', label: m.crm_conv_leads(), count: s.conversion.leads, color: funnelStageColor('lead'), href: funnelHref('lead') },
+		{ key: 'booked', label: m.crm_conv_booked(), count: s.conversion.booked, color: funnelStageColor('opportunity'), href: funnelHref('opportunity') },
+		{ key: 'bought', label: m.crm_conv_bought(), count: s.conversion.bought, color: funnelStageColor('customer'), href: funnelHref('customer') },
 	]);
 
 	const fmtMoney = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -78,9 +93,179 @@
 		const pct = i / 9;
 		return `color-mix(in srgb, var(--color-accent) ${Math.round(25 + pct * 75)}%, var(--color-muted))`;
 	}
+
+	// Grid items. KPIs span 1 col / 1 row; the funnel ribbon spans full width;
+	// charts span 2 cols / 2 rows. Order + spans are user-editable (persisted).
+	// 12-col / 56px grid → fine resize steps (thirds, quarters, half-rows). Default
+	// spans reproduce the original 4-up KPIs + 2-up cards layout.
+	const items = $derived([
+		...kpis.map((k) => ({ id: k.id, w: 3, h: 2 })),
+		{ id: 'funnel', w: 12, h: 2 },
+		{ id: 'stage', w: 6, h: 4 },
+		{ id: 'score', w: 6, h: 4 },
+		{ id: 'channels', w: 6, h: 4 },
+		{ id: 'temp', w: 6, h: 4 },
+		...(s.revenue ? [{ id: 'revenue', w: 6, h: 4 }] : []),
+		{ id: 'response', w: 6, h: 4 },
+		{ id: 'conversion', w: 6, h: 4 },
+	]);
 </script>
 
 <svelte:head><title>{m.crm_nav_dashboard()} — {m.crm_title()}</title></svelte:head>
+
+<!-- One snippet keyed by item id — EditableGrid renders each cell by id. -->
+{#snippet cellBody(id: string)}
+	{#if id.startsWith('k-')}
+		{@const k = kpiById.get(id)}
+		{#if k}
+			{@const Icon = k.icon}
+			<a class="kpi" href={k.href}>
+				<div class="kpi-icon"><Icon size={16} /></div>
+				<div class="kpi-val">{k.value.toLocaleString()}</div>
+				<div class="kpi-label">
+					<span>{k.label}</span>
+					<span class="kpi-help" title={k.help}><Info size={12} /></span>
+				</div>
+			</a>
+		{/if}
+	{:else if id === 'funnel'}
+		<section class="card">
+			<header class="card-h">{m.crm_funnel_title()}</header>
+			<CrmFunnelRibbon counts={s.funnelCounts} hrefFor={funnelHref} />
+		</section>
+	{:else if id === 'stage'}
+		<section class="card">
+			<header class="card-h">{m.crm_dash_stage_funnel()}</header>
+			<div class="funnel">
+				{#each STAGES as st (st)}
+					{@const n = s.stageCounts[st] ?? 0}
+					<a class="funnel-row" href={stageHref(st)} title={`${stageLabel(st)} — ${STAGE_HELP[st]}`}>
+						<span class="funnel-label"><StagePill stage={st} overridden={false} /></span>
+						<span class="funnel-bar-wrap">
+							<span class="funnel-bar" style:width={`${(n / funnelMax) * 100}%`}></span>
+						</span>
+						<span class="funnel-n">{n.toLocaleString()}</span>
+					</a>
+				{/each}
+			</div>
+		</section>
+	{:else if id === 'score'}
+		<section class="card">
+			<header class="card-h">{m.crm_dash_score_dist()} <span class="avg">{m.crm_dash_avg_score({ score: s.avgScore })}</span></header>
+			<div class="dist">
+				{#each s.scoreBuckets as count, i (i)}
+					<a class="dist-col" href={bucketHref(i)} title={`${i * 10}–${i * 10 + 9}: ${count}`}>
+						<span class="dist-bar" style:height={`${Math.max(2, (count / bucketMax) * 100)}%`} style:background={bucketColor(i)}></span>
+					</a>
+				{/each}
+			</div>
+			<div class="dist-axis"><span>0</span><span>50</span><span>100</span></div>
+		</section>
+	{:else if id === 'channels'}
+		<section class="card">
+			<header class="card-h">{m.crm_dash_channels()}</header>
+			{#if s.channels.length === 0}
+				<p class="t-caption py-2">{m.crm_channels_none()}</p>
+			{:else}
+				<div class="chmix">
+					{#each s.channels as c (c.channel)}
+						{@const pct = channelTotal ? Math.round((c.count / channelTotal) * 100) : 0}
+						<a class="chrow" href={channelHref(c.channel)}>
+							<ChannelBrandIcon channel={c.channel} size={16} />
+							<span class="ch-name">{c.channel.charAt(0).toUpperCase() + c.channel.slice(1)}</span>
+							<span class="ch-bar-wrap"><span class="ch-bar" style:width={`${pct}%`}></span></span>
+							<span class="ch-n">{c.count.toLocaleString()}</span>
+							<span class="ch-pct">{pct}%</span>
+						</a>
+					{/each}
+				</div>
+			{/if}
+		</section>
+	{:else if id === 'temp'}
+		<section class="card">
+			<header class="card-h">
+				<span class="flex items-center gap-1.5"><Flame size={13} /> {m.crm_dash_temperature()}</span>
+				<span class="kpi-help" title={m.crm_dash_temperature_help()}><Info size={12} /></span>
+			</header>
+			<div class="chmix">
+				{#each tempRows as t (t.key)}
+					{@const pct = tempTotal ? Math.round((t.count / tempTotal) * 100) : 0}
+					<a class="chrow" href={tempHref(t.key)}>
+						<span class="temp-dot" style:background={t.color}></span>
+						<span class="ch-name">{t.label}</span>
+						<span class="ch-bar-wrap"><span class="ch-bar" style:width={`${pct}%`} style:background={t.color}></span></span>
+						<span class="ch-n">{t.count.toLocaleString()}</span>
+						<span class="ch-pct">{pct}%</span>
+					</a>
+				{/each}
+			</div>
+		</section>
+	{:else if id === 'revenue' && s.revenue}
+		<section class="card">
+			<header class="card-h"><span class="flex items-center gap-1.5"><Wallet size={13} /> {m.crm_dash_revenue_title()}</span></header>
+			<div class="rev-grid">
+				<div class="rev-stat">
+					<span class="rev-val">{fmtMoney(s.revenue.revenue)}</span>
+					<span class="rev-label">{m.crm_rev_total()}</span>
+				</div>
+				<div class="rev-stat">
+					<span class="rev-val">{fmtMoney(s.revenue.avgTicket)}</span>
+					<span class="rev-label">{m.crm_rev_avg_ticket()}</span>
+				</div>
+				<div class="rev-stat">
+					<span class="rev-val">{s.revenue.buyers.toLocaleString()}</span>
+					<span class="rev-label">{m.crm_rev_buyers()}</span>
+				</div>
+				<div class="rev-stat">
+					<span class="rev-val">{s.revenue.invoices.toLocaleString()}</span>
+					<span class="rev-label">{m.crm_rev_invoices()}</span>
+				</div>
+			</div>
+			{#if s.revenue.reserved > 0}
+				<a class="rev-cta" href="/crm/customers?reserved=1">{m.crm_dash_reserved_cta({ count: s.revenue.reserved })}</a>
+			{/if}
+		</section>
+	{:else if id === 'response'}
+		<section class="card">
+			<header class="card-h">
+				<span>{m.crm_dash_response()}</span>
+				<span class="kpi-help" title={m.crm_resp_help()}><Info size={12} /></span>
+			</header>
+			<div class="rev-grid">
+				<div class="rev-stat">
+					<span class="rev-val">{s.response.awaiting.toLocaleString()}</span>
+					<span class="rev-label">{m.crm_resp_awaiting()}</span>
+				</div>
+				<div class="rev-stat">
+					<span class="rev-val">{s.response.responseRate}%</span>
+					<span class="rev-label">{m.crm_resp_rate()}</span>
+				</div>
+			</div>
+			{#if s.response.awaitingByTemp.hot > 0}
+				<a class="rev-cta" href="/crm/customers?awaiting=1">{m.crm_resp_hot_awaiting({ count: s.response.awaitingByTemp.hot })}</a>
+			{/if}
+		</section>
+	{:else if id === 'conversion'}
+		<section class="card">
+			<header class="card-h">
+				<span>{m.crm_dash_conversion()}</span>
+				<span class="kpi-help" title={m.crm_dash_conversion_help()}><Info size={12} /></span>
+			</header>
+			<div class="chmix">
+				{#each convRows as r (r.key)}
+					{@const pct = s.conversion.leads ? Math.round((r.count / s.conversion.leads) * 100) : 0}
+					<a class="chrow" href={r.href}>
+						<span class="temp-dot" style:background={r.color}></span>
+						<span class="ch-name">{r.label}</span>
+						<span class="ch-bar-wrap"><span class="ch-bar" style:width={`${pct}%`} style:background={r.color}></span></span>
+						<span class="ch-n">{r.count.toLocaleString()}</span>
+						<span class="ch-pct">{pct}%</span>
+					</a>
+				{/each}
+			</div>
+		</section>
+	{/if}
+{/snippet}
 
 <div class="flex flex-col h-full min-h-0">
 	<PageHeader title={m.crm_nav_dashboard()} subtitle={m.crm_subtitle()}>
@@ -89,179 +274,20 @@
 		{/snippet}
 	</PageHeader>
 
-	<div class="flex-1 min-h-0 overflow-auto p-4 flex flex-col gap-4 max-w-6xl">
-		<!-- Date-range cohort filter -->
-		<div class="flex items-center gap-2 flex-wrap">
-			<div class="seg" role="group" title={m.crm_dash_range_hint()}>
-				{#each RANGES as r (r.id)}
-					<button class="seg-btn" class:active={s.range === r.id} onclick={() => setRange(r.id)}>{r.label()}</button>
-				{/each}
-			</div>
-			<span class="t-caption">{m.crm_dash_range_hint()}</span>
-		</div>
-
-		<!-- KPI cards -->
-		<div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-			{#each kpis as k (k.label)}
-				{@const Icon = k.icon}
-				<div class="kpi">
-					<div class="kpi-icon"><Icon size={16} /></div>
-					<div class="kpi-val">{k.value.toLocaleString()}</div>
-					<div class="kpi-label">
-						<span>{k.label}</span>
-						<span class="kpi-help" title={k.help}><Info size={12} /></span>
-					</div>
-				</div>
-			{/each}
-		</div>
-
-		<!-- Marketing-funnel ribbon (breakdown across stages) -->
-		<section class="card">
-			<header class="card-h">{m.crm_funnel_title()}</header>
-			<CrmFunnelRibbon counts={s.funnelCounts} />
-		</section>
-
-		<div class="grid gap-4 lg:grid-cols-2">
-			<!-- Stage funnel -->
-			<section class="card">
-				<header class="card-h">{m.crm_dash_stage_funnel()}</header>
-				<div class="funnel">
-					{#each STAGES as st (st)}
-						{@const n = s.stageCounts[st] ?? 0}
-						<button class="funnel-row" onclick={() => goto(`/crm/customers`)} title={`${stageLabel(st)} — ${STAGE_HELP[st]}`}>
-							<span class="funnel-label"><StagePill stage={st} overridden={false} /></span>
-							<span class="funnel-bar-wrap">
-								<span class="funnel-bar" style:width={`${(n / funnelMax) * 100}%`}></span>
-							</span>
-							<span class="funnel-n">{n.toLocaleString()}</span>
-						</button>
+	<!-- Full-width scroller so the scrollbar hugs the screen edge; content padded. -->
+	<div class="flex-1 min-h-0 overflow-auto p-4">
+		<EditableGrid id="crm-dashboard-v2" {items} cols={12} rowHeight={56} canSetDefault={isAdmin.value}>
+			<!-- Date-range cohort filter, inline with the Edit-layout button. -->
+			{#snippet toolbar()}
+				<div class="seg" role="group" title={m.crm_dash_range_hint()}>
+					{#each RANGES as r (r.id)}
+						<button class="seg-btn" class:active={s.range === r.id} onclick={() => setRange(r.id)}>{r.label()}</button>
 					{/each}
 				</div>
-			</section>
-
-			<!-- Score distribution -->
-			<section class="card">
-				<header class="card-h">{m.crm_dash_score_dist()} <span class="avg">{m.crm_dash_avg_score({ score: s.avgScore })}</span></header>
-				<div class="dist">
-					{#each s.scoreBuckets as count, i (i)}
-						<div class="dist-col" title={`${i * 10}–${i * 10 + 9}: ${count}`}>
-							<div class="dist-bar" style:height={`${Math.max(2, (count / bucketMax) * 100)}%`} style:background={bucketColor(i)}></div>
-						</div>
-					{/each}
-				</div>
-				<div class="dist-axis"><span>0</span><span>50</span><span>100</span></div>
-			</section>
-
-			<!-- Channel mix -->
-			<section class="card">
-				<header class="card-h">{m.crm_dash_channels()}</header>
-				{#if s.channels.length === 0}
-					<p class="t-caption py-2">{m.crm_channels_none()}</p>
-				{:else}
-					<ul class="chmix">
-						{#each s.channels as c (c.channel)}
-							{@const pct = channelTotal ? Math.round((c.count / channelTotal) * 100) : 0}
-							<li class="chrow">
-								<ChannelBrandIcon channel={c.channel} size={16} />
-								<span class="ch-name">{c.channel.charAt(0).toUpperCase() + c.channel.slice(1)}</span>
-								<span class="ch-bar-wrap"><span class="ch-bar" style:width={`${pct}%`}></span></span>
-								<span class="ch-n">{c.count.toLocaleString()}</span>
-								<span class="ch-pct">{pct}%</span>
-							</li>
-						{/each}
-					</ul>
-				{/if}
-			</section>
-
-			<!-- Engagement temperature (hot/warm/cold by RFM score) -->
-			<section class="card">
-				<header class="card-h">
-					<span class="flex items-center gap-1.5"><Flame size={13} /> {m.crm_dash_temperature()}</span>
-					<span class="kpi-help" title={m.crm_dash_temperature_help()}><Info size={12} /></span>
-				</header>
-				<ul class="chmix">
-					{#each tempRows as t (t.key)}
-						{@const pct = tempTotal ? Math.round((t.count / tempTotal) * 100) : 0}
-						<li class="chrow">
-							<span class="temp-dot" style:background={t.color}></span>
-							<span class="ch-name">{t.label}</span>
-							<span class="ch-bar-wrap"><span class="ch-bar" style:width={`${pct}%`} style:background={t.color}></span></span>
-							<span class="ch-n">{t.count.toLocaleString()}</span>
-							<span class="ch-pct">{pct}%</span>
-						</li>
-					{/each}
-				</ul>
-			</section>
-
-			<!-- Revenue from CRM (only when CRM + Finances are both enabled) -->
-			{#if s.revenue}
-				<section class="card">
-					<header class="card-h"><span class="flex items-center gap-1.5"><Wallet size={13} /> {m.crm_dash_revenue_title()}</span></header>
-					<div class="rev-grid">
-						<div class="rev-stat">
-							<span class="rev-val">{fmtMoney(s.revenue.revenue)}</span>
-							<span class="rev-label">{m.crm_rev_total()}</span>
-						</div>
-						<div class="rev-stat">
-							<span class="rev-val">{fmtMoney(s.revenue.avgTicket)}</span>
-							<span class="rev-label">{m.crm_rev_avg_ticket()}</span>
-						</div>
-						<div class="rev-stat">
-							<span class="rev-val">{s.revenue.buyers.toLocaleString()}</span>
-							<span class="rev-label">{m.crm_rev_buyers()}</span>
-						</div>
-						<div class="rev-stat">
-							<span class="rev-val">{s.revenue.invoices.toLocaleString()}</span>
-							<span class="rev-label">{m.crm_rev_invoices()}</span>
-						</div>
-					</div>
-					{#if s.revenue.reserved > 0}
-						<a class="rev-cta" href="/crm/customers?reserved=1">{m.crm_dash_reserved_cta({ count: s.revenue.reserved })}</a>
-					{/if}
-				</section>
-			{/if}
-
-			<!-- B5 — message responsiveness -->
-			<section class="card">
-				<header class="card-h">
-					<span>{m.crm_dash_response()}</span>
-					<span class="kpi-help" title={m.crm_resp_help()}><Info size={12} /></span>
-				</header>
-				<div class="rev-grid">
-					<div class="rev-stat">
-						<span class="rev-val">{s.response.awaiting.toLocaleString()}</span>
-						<span class="rev-label">{m.crm_resp_awaiting()}</span>
-					</div>
-					<div class="rev-stat">
-						<span class="rev-val">{s.response.responseRate}%</span>
-						<span class="rev-label">{m.crm_resp_rate()}</span>
-					</div>
-				</div>
-				{#if s.response.awaitingByTemp.hot > 0}
-					<a class="rev-cta" href="/crm/customers?awaiting=1">{m.crm_resp_hot_awaiting({ count: s.response.awaitingByTemp.hot })}</a>
-				{/if}
-			</section>
-
-			<!-- B6 — conversion funnel (leads → booked → bought) -->
-			<section class="card">
-				<header class="card-h">
-					<span>{m.crm_dash_conversion()}</span>
-					<span class="kpi-help" title={m.crm_dash_conversion_help()}><Info size={12} /></span>
-				</header>
-				<ul class="chmix">
-					{#each convRows as r (r.key)}
-						{@const pct = s.conversion.leads ? Math.round((r.count / s.conversion.leads) * 100) : 0}
-						<li class="chrow">
-							<span class="temp-dot" style:background={r.color}></span>
-							<span class="ch-name">{r.label}</span>
-							<span class="ch-bar-wrap"><span class="ch-bar" style:width={`${pct}%`} style:background={r.color}></span></span>
-							<span class="ch-n">{r.count.toLocaleString()}</span>
-							<span class="ch-pct">{pct}%</span>
-						</li>
-					{/each}
-				</ul>
-			</section>
-		</div>
+				<span class="t-caption">{m.crm_dash_range_hint()}</span>
+			{/snippet}
+			{#snippet cell(id)}{@render cellBody(id)}{/snippet}
+		</EditableGrid>
 	</div>
 </div>
 
@@ -275,7 +301,11 @@
 		border-radius: var(--radius-lg);
 		background: var(--color-card);
 		position: relative;
+		text-decoration: none;
+		color: inherit;
+		transition: border-color var(--duration-fast) var(--ease-standard);
 	}
+	.kpi:hover { border-color: color-mix(in srgb, var(--color-accent) 50%, var(--hairline)); }
 	.kpi-icon {
 		position: absolute;
 		top: 0.85rem;
@@ -340,6 +370,8 @@
 		gap: 0.6rem;
 		width: 100%;
 		text-align: left;
+		text-decoration: none;
+		color: inherit;
 	}
 	.funnel-label { display: inline-flex; }
 	.funnel-bar-wrap { height: 0.6rem; border-radius: 999px; background: var(--color-bg3); overflow: hidden; }
@@ -351,11 +383,13 @@
 	.dist { display: flex; align-items: flex-end; gap: 0.3rem; height: 7rem; }
 	.dist-col { flex: 1; display: flex; align-items: flex-end; height: 100%; }
 	.dist-bar { width: 100%; border-radius: var(--radius-sm, 4px) var(--radius-sm, 4px) 0 0; transition: height var(--duration-fast) var(--ease-standard); }
+	.dist-col:hover .dist-bar { filter: brightness(1.2); }
 	.dist-axis { display: flex; justify-content: space-between; font-size: 0.66rem; color: var(--color-muted-foreground); margin-top: 0.35rem; }
 
 	/* channel mix */
 	.chmix { display: flex; flex-direction: column; gap: 0.55rem; }
-	.chrow { display: grid; grid-template-columns: auto 5rem 1fr auto auto; align-items: center; gap: 0.55rem; font-size: 0.84rem; }
+	.chrow { display: grid; grid-template-columns: auto 5rem 1fr auto auto; align-items: center; gap: 0.55rem; font-size: 0.84rem; text-decoration: none; color: inherit; }
+	.chrow:hover .ch-bar { filter: brightness(1.2); }
 	.ch-name { font-weight: 500; }
 	.ch-bar-wrap { height: 0.55rem; border-radius: 999px; background: var(--color-bg3); overflow: hidden; }
 	.ch-bar { display: block; height: 100%; border-radius: 999px; background: var(--color-accent); }

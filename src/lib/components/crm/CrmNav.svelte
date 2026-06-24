@@ -14,10 +14,11 @@
     return pathname.startsWith('/crm/customers') || (pathname.startsWith('/crm/') && pathname !== '/crm' && !pathname.startsWith('/crm/settings') && !pathname.startsWith('/crm/cleanup') && !pathname.startsWith('/crm/insights'));
   }
 
+  // Insights is a subsection of the Dashboard → nested (indented) directly under it.
   const items = $derived<SideNavItem[]>([
     { id: 'dashboard', label: m.crm_nav_dashboard(), icon: LayoutDashboard, href: '/crm' },
+    { id: 'insights', label: m.crm_nav_insights(), icon: Sparkles, href: '/crm/insights', indent: 1 },
     { id: 'customers', label: m.crm_nav_customers(), icon: Users, href: '/crm/customers' },
-    { id: 'insights', label: m.crm_nav_insights(), icon: Sparkles, href: '/crm/insights' },
     { id: 'settings', label: m.crm_nav_settings(), icon: Settings, href: '/crm/settings' },
   ]);
 

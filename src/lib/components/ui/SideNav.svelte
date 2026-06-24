@@ -16,6 +16,8 @@
     disabled?: boolean;
     /** Renders a small "admin" tag next to the label (matches SettingsNav). */
     adminOnly?: boolean;
+    /** Tree nesting depth (1 = child) — indents the row + draws a tree guide. */
+    indent?: number;
   }
 
   export interface SideNavGroup {
@@ -132,8 +134,10 @@
           <a
             href={item.href}
             class="set-row"
+            class:set-child={!!item.indent}
             class:set-active={active && !leftBorder}
             class:set-active-border={active && leftBorder}
+            style:--indent={item.indent ?? 0}
             aria-current={active ? 'page' : undefined}
             aria-disabled={item.disabled ? 'true' : undefined}
             title={item.label}
@@ -148,8 +152,10 @@
           <button
             type="button"
             class="set-row text-left"
+            class:set-child={!!item.indent}
             class:set-active={active && !leftBorder}
             class:set-active-border={active && leftBorder}
+            style:--indent={item.indent ?? 0}
             aria-current={active ? 'page' : undefined}
             disabled={item.disabled}
             title={item.label}
@@ -207,6 +213,23 @@
   }
   .set-row:hover :global(.set-icon) {
     opacity: 1;
+  }
+  /* Tree-nested child row: indent + an elbow guide connecting it to the parent. */
+  .set-child {
+    padding-left: calc(0.625rem + var(--indent, 1) * 1.15rem);
+    position: relative;
+  }
+  .set-child::before {
+    content: '';
+    position: absolute;
+    left: calc(0.625rem + (var(--indent, 1) - 1) * 1.15rem + 0.45rem);
+    top: -0.25rem;
+    bottom: 50%;
+    width: 0.55rem;
+    border-left: 1px solid var(--hairline);
+    border-bottom: 1px solid var(--hairline);
+    border-bottom-left-radius: 5px;
+    pointer-events: none;
   }
   /* Background-tint active (CRM / Finance / Settings). */
   .set-active {

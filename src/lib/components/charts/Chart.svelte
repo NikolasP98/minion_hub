@@ -107,6 +107,11 @@
 			chart.setOption(applyDefaults(options));
 			if (onItemClick) chart.on('click', onItemClick);
 
+			// ECharts measures the container at init; inside a flex/grid that hasn't
+			// laid out yet that can be ~0, leaving the chart rendered tiny. Re-measure
+			// after the first frame so it fills its container.
+			requestAnimationFrame(() => chart?.resize());
+
 			resizeObs = new ResizeObserver(() => {
 				chart?.resize();
 			});

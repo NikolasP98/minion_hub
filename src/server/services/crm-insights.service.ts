@@ -41,7 +41,10 @@ export function wordFrequency(
         // ts_stat's argument is a literal SQL string; the org is scoped by the GUC
         // inside the withOrgCore tx. fromIso/toIso are canonical ISO strings
         // (parsed+reserialized above) and limit is a clamped int — safe to inline.
-        const inner = `select to_tsvector('spanish', coalesce(content,'')) from messages
+        // 'simple' (not 'spanish') = lowercase + tokenize but NO stemming, so words
+        // render in full ("relleno", not the stem "rellen"). Stopwords are stripped
+        // app-side via isStopword (simple keeps them). See crm-insights.ts.
+        const inner = `select to_tsvector('simple', coalesce(content,'')) from messages
           where org_id = current_setting('app.current_org_id', true)
             and direction = 'inbound' and is_bot is not true
             and coalesce(occurred_at, created_at) >= '${fromIso}'::timestamptz
@@ -142,17 +145,24 @@ ${transcript}`;
   return { scored: rows.length };
 }
 
-/** Monthly average sentiment (chronological). */
-export function sentimentByMonth(ctx: CoreCtx): Promise<{ month: string; avg: number; n: number }[]> {
+/**
+ * Daily average sentiment over MESSAGE history (chronological). Anchored to the
+ * message's own timestamp (occurred_at), NOT analyzed_at — so the trend reflects
+ * when customers actually wrote, even though scoring happens in later batches.
+ * One point per day that has ≥1 scored inbound message. Full history (the range
+ * selector scopes the word cloud, not this historic series).
+ */
+export function sentimentByDay(ctx: CoreCtx): Promise<{ day: string; avg: number; n: number }[]> {
   return withOrgCore(ctx, async (tx) => {
     const rows = (await tx.execute(sql`
-      select to_char(date_trunc('month', s.analyzed_at), 'YYYY-MM') as month,
+      select to_char(date_trunc('day', coalesce(m.occurred_at, m.created_at)), 'YYYY-MM-DD') as day,
              avg(s.score)::float8 as avg, count(*)::int as n
       from crm_message_sentiment s
+      join messages m on m.id = s.message_id and m.org_id = s.org_id
       where s.org_id = current_setting('app.current_org_id', true)
       group by 1 order by 1
-    `)) as unknown as Array<{ month: string; avg: number; n: number }>;
-    return rows.map((r) => ({ month: String(r.month), avg: Number(r.avg), n: Number(r.n) }));
+    `)) as unknown as Array<{ day: string; avg: number; n: number }>;
+    return rows.map((r) => ({ day: String(r.day), avg: Number(r.avg), n: Number(r.n) }));
   });
 }
 

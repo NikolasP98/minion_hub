@@ -3,7 +3,8 @@
 	import { funnelStageLabel } from './crm-i18n';
 
 	// counts: { lead: n, interest: n, … } — the marketing-funnel breakdown.
-	let { counts }: { counts: Record<string, number> } = $props();
+	// hrefFor (optional): make each segment a link to the filtered customer list.
+	let { counts, hrefFor }: { counts: Record<string, number>; hrefFor?: (id: string) => string } = $props();
 
 	const segments = $derived(FUNNEL_ORDER.map((id) => ({ id, count: counts[id] ?? 0 })));
 	const total = $derived(segments.reduce((a, s) => a + s.count, 0));
@@ -13,11 +14,14 @@
 <div class="ribbon" role="img" aria-label="Marketing funnel breakdown">
 	{#each segments as s, i (s.id)}
 		{@const color = funnelStageColor(s.id)}
-		<div
+		<svelte:element
+			this={hrefFor ? 'a' : 'div'}
+			href={hrefFor?.(s.id)}
 			class="seg"
 			class:first={i === 0}
 			class:last={i === segments.length - 1}
 			class:empty={s.count === 0}
+			class:link={!!hrefFor}
 			style:--c={color}
 			style:flex-grow={s.count}
 			title={`${funnelStageLabel(s.id)}: ${s.count} (${pct(s.count)}%)`}
@@ -26,7 +30,7 @@
 				<span class="seg-label">{funnelStageLabel(s.id)}</span>
 				<span class="seg-count">{s.count.toLocaleString()} · {pct(s.count)}%</span>
 			</span>
-		</div>
+		</svelte:element>
 	{/each}
 </div>
 
@@ -74,6 +78,7 @@
 		background: var(--color-bg3);
 		border-color: var(--hairline);
 	}
+	.seg.link { cursor: pointer; text-decoration: none; }
 	.seg:hover {
 		background: color-mix(in srgb, var(--c) 32%, transparent);
 	}

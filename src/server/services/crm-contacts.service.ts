@@ -12,6 +12,7 @@ import {
 } from '$server/db/pg-crm-schema';
 import { RFM_WEIGHTS, RFM_CONST, tryCompileTagRule } from './crm-scoring';
 import { reconcileParties } from './party.service';
+import { CONTACT_PARTY } from './crm-finance.service';
 import { bothEnabled } from './modules.service';
 import { isFunnelStage, readFunnelMeta, funnelStageIndex } from '$lib/components/crm/crm-funnel';
 
@@ -244,29 +245,22 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
       ? sql`where m.is_bot is not true and ci.contact_id = ${f.contactId}`
       : sql`where m.is_bot is not true`;
 
-    // Finance bridge: a contact's purchase history (via the WhatsApp phone9 bridge,
-    // same as crm-finance.service) gives a TRUE first/last interaction that
-    // predates the message ledger — a 2024 buyer who messaged last week is not
-    // "New". Only joined when both CRM + Finances are on; otherwise an empty CTE
-    // so the lifecycle degrades cleanly to message-only signals.
+    // Finance bridge: a contact's purchase history (via the PARTY SPINE — same
+    // CONTACT_PARTY map as crm-finance.service) gives a TRUE first/last
+    // interaction that predates the message ledger — a 2024 buyer who messaged
+    // last week is not "New", and a finance-only payer is a buyer, not "New".
+    // Only joined when both CRM + Finances are on; otherwise an empty CTE so the
+    // lifecycle degrades cleanly to message-only signals.
     const withFinance = await bothEnabled(ctx, 'crm', 'finances');
     const finCte = withFinance
       ? sql`fin as (
-          select ph.contact_id,
+          select cp.contact_id,
                  min(fi.issued_at) as first_purchase_at,
                  max(fi.issued_at) as last_purchase_at
-          from (
-            select ci.contact_id,
-                   right(regexp_replace(coalesce(ci.external_id,''),'\\D','','g'),9) as p9
-            from crm_contact_identities ci
-            where ci.org_id = ${ctx.tenantId} and ci.channel = 'whatsapp'
-              and length(right(regexp_replace(coalesce(ci.external_id,''),'\\D','','g'),9)) >= 8
-          ) ph
-          join fin_clients fc
-            on fc.org_id = ${ctx.tenantId}
-           and right(regexp_replace(coalesce(fc.phone,''),'\\D','','g'),9) = ph.p9
+          from contact_party cp
+          join fin_clients fc on fc.org_id = ${ctx.tenantId} and fc.party_id = cp.party_id
           join fin_invoices fi on fi.client_id = fc.id
-          group by ph.contact_id
+          group by cp.contact_id
         )`
       : sql`fin as (select null::uuid as contact_id, null::timestamptz as first_purchase_at, null::timestamptz as last_purchase_at where false)`;
 
@@ -287,6 +281,7 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
         ${aggWhere}
         group by ci.contact_id
       ),
+      ${withFinance ? sql`${CONTACT_PARTY},` : sql``}
       ${finCte},
       base as (
         select c.id as contact_id, c.display_name, c.owner_id, c.source, c.lifecycle_override,
@@ -1049,11 +1044,16 @@ async function currentConfigs(ctx: CoreCtx): Promise<AccountConfig[]> {
 
 async function persistConfigs(ctx: CoreCtx, accounts: AccountConfig[]): Promise<void> {
   const value = { accounts };
+  // Shallow jsonb MERGE (||), not replace — crm_settings is a per-org KV shared
+  // with other keys (e.g. winAnalysis); replacing `value` would wipe them.
   await withOrgCore(ctx, (tx) =>
     tx
       .insert(crmSettings)
       .values({ orgId: ctx.tenantId, value })
-      .onConflictDoUpdate({ target: crmSettings.orgId, set: { value, updatedAt: new Date() } }),
+      .onConflictDoUpdate({
+        target: crmSettings.orgId,
+        set: { value: sql`coalesce(${crmSettings.value}, '{}'::jsonb) || ${JSON.stringify(value)}::jsonb`, updatedAt: new Date() },
+      }),
   );
   await bustCrmList(ctx.tenantId);
 }

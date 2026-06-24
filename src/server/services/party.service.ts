@@ -205,6 +205,26 @@ export async function reconcileParties(ctx: CoreCtx): Promise<void> {
         and length(${P9('b.attendee_phone')}) >= 8 and p.phone9 = ${P9('b.attendee_phone')}
         and b.party_id is distinct from p.id
     `);
+
+    // 4. Mint a CRM contact for every PAYER (a party with a fin_client facet) that
+    //    has none yet — so all payers are tracked in the CRM and their invoices
+    //    attribute to revenue via the party spine (crm-finance.service). Without
+    //    this, finance-only payers (never messaged on WhatsApp) had a party but no
+    //    contact, so ~60% of finance revenue sat outside the CRM. Idempotent
+    //    (NOT EXISTS guard). Official billing name, casing normalized; DNI + phone
+    //    carried into custom_fields so the contact carries basic identity.
+    await tx.execute(sql`
+      insert into crm_contacts (org_id, display_name, party_id, source, custom_fields)
+      select ${org}, initcap(coalesce(max(fc.name), p.name)), p.id, 'finance',
+             jsonb_strip_nulls(jsonb_build_object('dni', p.doc_number, 'phone', max(fc.phone)))
+      from parties p
+      join fin_clients fc on fc.org_id = ${org} and fc.party_id = p.id
+      where p.org_id = ${org}
+        and not exists (
+          select 1 from crm_contacts c where c.org_id = ${org} and c.party_id = p.id
+        )
+      group by p.id, p.name, p.doc_number
+    `);
   });
 }
 

@@ -4,15 +4,17 @@
 	import { page } from '$app/state';
 	import { browser } from '$app/environment';
 	import * as m from '$lib/paraglide/messages';
-	import { Contact, RefreshCw, Plus, ArrowUp, ArrowDown, ChevronsUpDown, Columns3, Check } from 'lucide-svelte';
+	import { Contact, RefreshCw, Plus, ArrowUp, ArrowDown, ChevronsUpDown, Columns3, Check, Download, X } from 'lucide-svelte';
 	import { PageHeader, Button } from '$lib/components/ui';
 	import ScoreCell from '$lib/components/crm/ScoreCell.svelte';
 	import StagePill from '$lib/components/crm/StagePill.svelte';
 	import FunnelStagePill from '$lib/components/crm/FunnelStagePill.svelte';
 	import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
 	import ColumnFilter from '$lib/components/crm/ColumnFilter.svelte';
+	import ExportDialog from '$lib/components/crm/ExportDialog.svelte';
 	import Highlight from '$lib/components/crm/Highlight.svelte';
-	import { relativeTime, contactLabel } from '$lib/components/crm/crm-format';
+	import { relativeTime, contactLabel, temperatureOf } from '$lib/components/crm/crm-format';
+	import { downloadCsv, downloadXlsx, type Rows } from '$lib/export/table-export';
 	import { stageLabel, funnelStageLabel } from '$lib/components/crm/crm-i18n';
 	import { FUNNEL_ORDER, effectiveFunnelStage, maxFunnelStage, financeFloorStage } from '$lib/components/crm/crm-funnel';
 	import { collectMetaKeys, metaLabel, metaDisplay } from '$lib/components/crm/crm-meta';
@@ -48,11 +50,24 @@
 	type SortKey = 'name' | 'score' | 'frequency' | 'recent' | 'revenue' | 'invoices' | 'lastPurchase';
 	let sortKey = $state<SortKey>('score');
 	let sortDir = $state<'asc' | 'desc'>('desc');
-	let stageFilter = $state<Set<string>>(new Set());
-	let funnelFilter = $state<Set<string>>(new Set());
-	let channelFilter = $state<Set<string>>(new Set());
-	let reservedFilter = $state(page.url.searchParams.get('reserved') === '1');
-	let awaitingFilter = $state(page.url.searchParams.get('awaiting') === '1');
+
+	// Filters seed from the URL so dashboard charts can deep-link a filtered view
+	// (e.g. /crm/customers?stage=Active&channel=whatsapp). Comma-separated = OR.
+	const qp = page.url.searchParams;
+	const qpSet = (k: string) => new Set((qp.get(k) ?? '').split(',').map((s) => s.trim()).filter(Boolean));
+	let stageFilter = $state<Set<string>>(qpSet('stage'));
+	let funnelFilter = $state<Set<string>>(qpSet('funnel'));
+	let channelFilter = $state<Set<string>>(qpSet('channel'));
+	let reservedFilter = $state(qp.get('reserved') === '1');
+	let awaitingFilter = $state(qp.get('awaiting') === '1');
+	// Score-bucket / engagement-temperature deep links (no header control → shown
+	// as a dismissible chip in the filter bar).
+	let scoreMin = $state<number | null>(qp.has('scoreMin') ? Number(qp.get('scoreMin')) : null);
+	let scoreMax = $state<number | null>(qp.has('scoreMax') ? Number(qp.get('scoreMax')) : null);
+	let tempFilter = $state<string>(qp.get('temp') ?? '');
+	const scoreActive = $derived(scoreMin != null || scoreMax != null);
+
+	let exportOpen = $state(false);
 
 	const funnelOptions = FUNNEL_ORDER.map((id) => ({ value: id, label: funnelStageLabel(id) }));
 	// Finance bridge: a contact's billing classification (present only when both
@@ -94,6 +109,9 @@
 		if (channelFilter.size) list = list.filter((c) => c.channels?.some((ch) => channelFilter.has(ch)));
 		if (reservedFilter) list = list.filter(reservedOnly);
 		if (awaitingFilter) list = list.filter((c) => c.awaiting_reply);
+		if (scoreMin != null) list = list.filter((c) => c.score >= scoreMin!);
+		if (scoreMax != null) list = list.filter((c) => c.score <= scoreMax!);
+		if (tempFilter) list = list.filter((c) => temperatureOf(c.score) === tempFilter);
 
 		const name = (c: (typeof contacts)[number]) => (c.display_name ?? '￿').toLowerCase();
 		const byName = (a: (typeof contacts)[number], b: (typeof contacts)[number]) =>
@@ -174,6 +192,42 @@
 			creating = false;
 		}
 	}
+
+	// ── Export ──────────────────────────────────────────────────────────────────
+	// The full exportable column set (base + every meta key + finance). Defaults
+	// mirror what's visible in the table now: base columns + the meta columns the
+	// viewer toggled on + finance columns when the module is enabled.
+	type Row = (typeof contacts)[number];
+	type ExportCol = { key: string; label: string; default: boolean; get: (c: Row) => string | number };
+	const exportColumns = $derived.by<ExportCol[]>(() => {
+		const cols: ExportCol[] = [
+			{ key: 'name', label: m.crm_col_contact(), default: true, get: (c) => contactLabel(c.display_name) },
+			{ key: 'score', label: m.crm_col_score(), default: true, get: (c) => c.score },
+			{ key: 'stage', label: m.crm_col_stage(), default: true, get: (c) => stageLabel(c.stage) },
+			{ key: 'funnel', label: m.crm_funnel_col(), default: true, get: (c) => { const f = funnelOf(c); return f ? funnelStageLabel(f) : ''; } },
+		];
+		for (const k of metaKeys)
+			cols.push({ key: `meta:${k}`, label: metaLabel(k), default: metaCols.includes(k), get: (c) => metaDisplay(k, c.custom_fields?.[k]) });
+		if (data.financeEnabled) {
+			cols.push({ key: 'revenue', label: m.crm_col_revenue(), default: true, get: (c) => finOf(c)?.revenue ?? '' });
+			cols.push({ key: 'invoices', label: m.crm_col_invoices(), default: true, get: (c) => finOf(c)?.invoices ?? '' });
+			cols.push({ key: 'lastPurchase', label: m.crm_col_last_purchase(), default: true, get: (c) => finOf(c)?.lastPurchaseAt ?? '' });
+		}
+		cols.push({ key: 'channels', label: m.crm_col_channels(), default: true, get: (c) => (c.channels ?? []).join(', ') });
+		cols.push({ key: 'inbound', label: m.crm_export_inbound(), default: true, get: (c) => c.inbound_msgs });
+		cols.push({ key: 'outbound', label: m.crm_export_outbound(), default: true, get: (c) => c.total_msgs - c.inbound_msgs });
+		cols.push({ key: 'lastContact', label: m.crm_col_last_contact(), default: true, get: (c) => c.last_contact_at ?? '' });
+		return cols;
+	});
+
+	function handleExport(format: 'csv' | 'xlsx', keys: string[]) {
+		const cols = exportColumns.filter((c) => keys.includes(c.key));
+		const rows: Rows = [cols.map((c) => c.label), ...view.map((c) => cols.map((col) => col.get(c)))];
+		const stamp = new Date().toISOString().slice(0, 10);
+		const name = `customers-${stamp}.${format}`;
+		if (format === 'csv') downloadCsv(name, rows);
+		else downloadXlsx(name, rows);
+	}
 </script>
 
 <svelte:head><title>{m.crm_nav_customers()} — {m.crm_title()}</title></svelte:head>
@@ -228,7 +282,21 @@
 			{m.crm_awaiting_filter()}
 		</button>
 
+		{#if scoreActive}
+			<button class="chip" onclick={() => { scoreMin = null; scoreMax = null; }} title={m.crm_filter_clear()}>
+				{m.crm_filter_score({ min: scoreMin ?? 0, max: scoreMax ?? 100 })} <X size={11} />
+			</button>
+		{/if}
+		{#if tempFilter}
+			<button class="chip" onclick={() => (tempFilter = '')} title={m.crm_filter_clear()}>
+				{m.crm_filter_temp({ temp: tempFilter })} <X size={11} />
+			</button>
+		{/if}
+
 		<div class="ml-auto flex items-center gap-2">
+			<Button variant="outline" size="sm" onclick={() => (exportOpen = true)}>
+				<Download size={14} /> {m.crm_export_btn()}
+			</Button>
 			{#if metaKeys.length > 0}
 				<div class="col-wrap">
 					<button class="p-1.5 rounded hover:bg-white/[0.06] inline-flex" class:active-col={metaCols.length > 0} aria-label={m.crm_columns()} title={m.crm_columns()} onclick={() => (colMenuOpen = !colMenuOpen)}>
@@ -351,6 +419,13 @@
 	</div>
 </div>
 
+<ExportDialog
+	bind:open={exportOpen}
+	columns={exportColumns.map((c) => ({ key: c.key, label: c.label, default: c.default }))}
+	count={view.length}
+	onexport={handleExport}
+/>
+
 <style>
 	.sort-h {
 		display: inline-flex; align-items: center; gap: 0.25rem;
@@ -385,6 +460,14 @@
 		width: 0.45rem; height: 0.45rem; border-radius: 999px; flex-shrink: 0;
 		background: var(--color-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 25%, transparent);
 	}
+	.chip {
+		display: inline-flex; align-items: center; gap: 0.3rem; height: 1.6rem; padding: 0 0.5rem 0 0.6rem;
+		font-size: 0.74rem; font-weight: 600; border-radius: 999px;
+		border: 1px solid var(--color-accent); color: var(--color-accent);
+		background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+		white-space: nowrap; text-transform: capitalize;
+	}
+	.chip:hover { background: color-mix(in srgb, var(--color-accent) 24%, transparent); }
 	:global(.sort-h .dim) { opacity: 0.35; }
 	.msgs { display: flex; align-items: center; justify-content: flex-end; gap: 0.6rem; font-variant-numeric: tabular-nums; }
 	.m-in { display: inline-flex; align-items: center; gap: 0.1rem; color: var(--color-emerald, var(--color-success)); }

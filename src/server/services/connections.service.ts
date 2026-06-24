@@ -96,6 +96,8 @@ export async function contactConnections(ctx: CoreCtx, contactId: string): Promi
 
     // ── Finance (via the phone bridge) ──────────────────────────────────────
     if (modules.finances !== false) {
+      // Payments are surfaced inside each invoice (no standalone payments view),
+      // so the Finance group links invoices only.
       const [fin] = (await tx.execute(sql`
         with phones as (
           select ${P9('ci.external_id')} p9 from crm_contact_identities ci
@@ -108,9 +110,8 @@ export async function contactConnections(ctx: CoreCtx, contactId: string): Promi
           where fc.org_id = current_setting('app.current_org_id', true)
             and ${P9('fc.phone')} in (select p9 from phones)
         )
-        select (select count(*) from inv)::int invoices,
-               (select count(*) from fin_payments p where p.invoice_id in (select id from inv))::int payments
-      `)) as unknown as Array<{ invoices: number; payments: number }>;
+        select (select count(*) from inv)::int invoices
+      `)) as unknown as Array<{ invoices: number }>;
       groups.push({
         label: 'Finance',
         items: [
@@ -119,12 +120,6 @@ export async function contactConnections(ctx: CoreCtx, contactId: string): Promi
             label: 'Invoices',
             count: Number(fin?.invoices ?? 0),
             href: `/finances/invoices?contact=${contactId}`,
-          },
-          {
-            key: 'payments',
-            label: 'Payments',
-            count: Number(fin?.payments ?? 0),
-            href: `/finances/payments?contact=${contactId}`,
           },
         ],
       });

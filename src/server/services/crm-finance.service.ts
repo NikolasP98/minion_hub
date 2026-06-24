@@ -3,14 +3,29 @@ import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { bothEnabled } from './modules.service';
 
-// last-9-digit phone match (Peru), normalized in SQL on both sides.
-const PHONE9 = (col: string) => sql.raw(`right(regexp_replace(coalesce(${col},''),'\\D','','g'), 9)`);
-
 // A line item is a "reservation deposit" (the 50-soles "Reserva de Consulta")
 // rather than an actual procedure — the signal that splits "reservó pero no
 // compró" from real buyers.
 const IS_RESERVA = sql.raw(`ii.description ilike '%reserva%'`);
 const IS_PROCEDURE = sql.raw(`(ii.description is not null and ii.description not ilike '%reserva%')`);
+
+/**
+ * Canonical contact↔invoice bridge via the PARTY SPINE (contact.party_id =
+ * fin_client.party_id), replacing the legacy WhatsApp-phone bridge. The phone
+ * bridge only attributed invoices to contacts who messaged on WhatsApp, leaving
+ * ~60% of finance revenue unattributed; the party spine (keyed on DNI, then
+ * phone) reaches every payer once `reconcileParties` has minted a contact for
+ * each. `distinct on (party_id)` collapses duplicate contacts so a party with
+ * >1 contact can't double-count its invoices. Splice into a `with` running
+ * inside withOrgCore (org GUC set). See party.service.ts.
+ */
+export const CONTACT_PARTY = sql`contact_party as (
+  select distinct on (c.party_id) c.party_id, c.id as contact_id
+  from crm_contacts c
+  where c.org_id = current_setting('app.current_org_id', true)
+    and c.party_id is not null and c.deleted_at is null
+  order by c.party_id, c.created_at asc
+)`;
 
 export interface ContactFinance {
   revenue: number;
@@ -28,20 +43,15 @@ export async function contactFinanceMap(ctx: CoreCtx): Promise<Record<string, Co
   if (!(await bothEnabled(ctx, 'crm', 'finances'))) return {};
   return withOrgCore(ctx, async (tx) => {
     const rows = (await tx.execute(sql`
-      with phones as (
-        select ci.contact_id, ${PHONE9('ci.external_id')} as p9
-        from crm_contact_identities ci
-        where ci.org_id = current_setting('app.current_org_id', true) and ci.channel = 'whatsapp'
-          and length(${PHONE9('ci.external_id')}) >= 8
-      ),
+      with ${CONTACT_PARTY},
       inv as (
-        select ph.contact_id, fi.id invoice_id, coalesce(fi.total,0)::float8 total, fi.issued_at,
+        select cp.contact_id, fi.id invoice_id, coalesce(fi.total,0)::float8 total, fi.issued_at,
                bool_or(${IS_RESERVA}) has_reserva, bool_or(${IS_PROCEDURE}) has_proc
-        from phones ph
-        join fin_clients fc on fc.org_id = current_setting('app.current_org_id', true) and ${PHONE9('fc.phone')} = ph.p9
+        from contact_party cp
+        join fin_clients fc on fc.org_id = current_setting('app.current_org_id', true) and fc.party_id = cp.party_id
         join fin_invoices fi on fi.client_id = fc.id
         left join fin_invoice_items ii on ii.invoice_id = fi.id
-        group by ph.contact_id, fi.id, fi.total, fi.issued_at
+        group by cp.contact_id, fi.id, fi.total, fi.issued_at
       )
       select contact_id,
              coalesce(sum(total),0)::float8 revenue, count(*)::int invoices, max(issued_at) last,
@@ -77,20 +87,15 @@ export async function crmRevenueSummary(
   if (!(await bothEnabled(ctx, 'crm', 'finances'))) return null;
   return withOrgCore(ctx, async (tx) => {
     const [agg] = (await tx.execute(sql`
-      with phones as (
-        select ci.contact_id, ${PHONE9('ci.external_id')} as p9
-        from crm_contact_identities ci
-        where ci.org_id = current_setting('app.current_org_id', true) and ci.channel = 'whatsapp'
-          and length(${PHONE9('ci.external_id')}) >= 8
-      ),
+      with ${CONTACT_PARTY},
       inv as (
-        select ph.contact_id, fi.id invoice_id, coalesce(fi.total,0)::float8 total, fi.issued_at,
+        select cp.contact_id, fi.id invoice_id, coalesce(fi.total,0)::float8 total, fi.issued_at,
                bool_or(${IS_RESERVA}) has_reserva, bool_or(${IS_PROCEDURE}) has_proc
-        from phones ph
-        join fin_clients fc on fc.org_id = current_setting('app.current_org_id', true) and ${PHONE9('fc.phone')} = ph.p9
+        from contact_party cp
+        join fin_clients fc on fc.org_id = current_setting('app.current_org_id', true) and fc.party_id = cp.party_id
         join fin_invoices fi on fi.client_id = fc.id
         left join fin_invoice_items ii on ii.invoice_id = fi.id
-        group by ph.contact_id, fi.id, fi.total, fi.issued_at
+        group by cp.contact_id, fi.id, fi.total, fi.issued_at
       ),
       cls as (
         select contact_id, sum(total)::float8 revenue, count(*)::int invoices,
@@ -124,9 +129,9 @@ export async function contactFinanceSummary(ctx: CoreCtx, contactId: string) {
   if (!(await bothEnabled(ctx, 'crm', 'finances'))) return null;
   return withOrgCore(ctx, async (tx) => {
     const invoices = (await tx.execute(sql`
-      with phones as (
-        select ${PHONE9('ci.external_id')} p9 from crm_contact_identities ci
-        where ci.org_id = current_setting('app.current_org_id', true) and ci.contact_id = ${contactId} and ci.channel='whatsapp'
+      with cparty as (
+        select party_id from crm_contacts
+        where id = ${contactId} and org_id = current_setting('app.current_org_id', true) and party_id is not null
       )
       select fi.id, fi.document_id, fi.issued_at, coalesce(fi.total,0)::float8 total, fi.status,
              -- the "what was done": a representative line, procedures first (reserva last), priciest first.
@@ -134,7 +139,7 @@ export async function contactFinanceSummary(ctx: CoreCtx, contactId: string) {
                 order by (ii.description ilike '%reserva%') asc, ii.total desc nulls last limit 1) as item
       from fin_invoices fi
       join fin_clients fc on fc.id = fi.client_id
-      where fc.org_id = current_setting('app.current_org_id', true) and ${PHONE9('fc.phone')} in (select p9 from phones)
+      where fc.org_id = current_setting('app.current_org_id', true) and fc.party_id = (select party_id from cparty)
       order by fi.issued_at desc nulls last limit 10
     `)) as unknown as Array<Record<string, unknown>>;
     if (invoices.length === 0) return null;
@@ -142,14 +147,14 @@ export async function contactFinanceSummary(ctx: CoreCtx, contactId: string) {
       issuedAt: r.issued_at != null ? String(r.issued_at) : null, total: Number(r.total), status: r.status != null ? String(r.status) : null,
       item: r.item != null ? String(r.item) : null }));
     const [agg] = (await tx.execute(sql`
-      with phones as (select ${PHONE9('ci.external_id')} p9 from crm_contact_identities ci
-        where ci.org_id = current_setting('app.current_org_id', true) and ci.contact_id = ${contactId} and ci.channel='whatsapp'),
+      with cparty as (select party_id from crm_contacts
+        where id = ${contactId} and org_id = current_setting('app.current_org_id', true) and party_id is not null),
       inv as (
         select fi.id, coalesce(fi.total,0)::float8 total, fi.issued_at,
                bool_or(${IS_RESERVA}) has_reserva, bool_or(${IS_PROCEDURE}) has_proc
         from fin_invoices fi join fin_clients fc on fc.id = fi.client_id
         left join fin_invoice_items ii on ii.invoice_id = fi.id
-        where fc.org_id = current_setting('app.current_org_id', true) and ${PHONE9('fc.phone')} in (select p9 from phones)
+        where fc.org_id = current_setting('app.current_org_id', true) and fc.party_id = (select party_id from cparty)
         group by fi.id, fi.total, fi.issued_at
       )
       select coalesce(sum(total),0)::float8 revenue, count(*)::int invoices, max(issued_at) last,

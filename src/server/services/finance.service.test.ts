@@ -137,14 +137,14 @@ describe('revenueSeries', () => {
   it('returns an array of coerced series rows', async () => {
     const { revenueSeries } = await import('./finance.service');
     const execute = vi.fn().mockResolvedValueOnce([
-      { bucket: '2026-01-01', invoices: '5', revenue: '590.0', discount: '10.0', gross: '600.0' },
-      { bucket: '2026-02-01', invoices: '3', revenue: '354.0', discount: '6.0', gross: '360.0' },
+      { bucket: '2026-01-01', invoices: '5', revenue: '590.0', discount: '10.0', gross: '600.0', voided: '20.0' },
+      { bucket: '2026-02-01', invoices: '3', revenue: '354.0', discount: '6.0', gross: '360.0', voided: '0' },
     ]);
     useExecMock(execute);
 
     const result = await revenueSeries(ctx(), { from: null, to: null, bucket: 'month' });
     expect(result).toHaveLength(2);
-    expect(result[0]).toEqual({ bucket: '2026-01-01', invoices: 5, revenue: 590.0, discount: 10.0, gross: 600.0 });
+    expect(result[0]).toEqual({ bucket: '2026-01-01', invoices: 5, revenue: 590.0, discount: 10.0, gross: 600.0, voided: 20.0 });
     expect(result[1].revenue).toBe(354.0);
   });
 

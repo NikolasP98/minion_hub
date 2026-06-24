@@ -1,13 +1,29 @@
 /** Pure helpers for CRM Insights (word cloud + sentiment). No I/O, no paraglide. */
 
 /**
- * Common Spanish/English chat noise that `ts_stat('spanish')` does not strip.
- * NOTE: ts_stat returns STEMMED tokens, so the denylist holds stems too
- * (e.g. "hola"→"hol", "hacer"→"hac", "día"→"dia").
+ * Spanish/English stopwords + chat noise. The word cloud tokenizes with the
+ * `simple` ts config (lowercase, NO stemming) so words render in full ("relleno",
+ * not the stem "rellen") — but `simple` keeps stopwords, so we strip them here.
+ * Full surface forms (accents kept; `simple` lowercases but preserves accents).
  */
 export const EXTRA_STOPWORDS = new Set<string>([
-  'hola', 'hol', 'buenas', 'buenos', 'dias', 'dia', 'tardes', 'noches', 'gracias', 'ok', 'okay',
-  'si', 'no', 'porfa', 'porfavor', 'favor', 'saludos', 'hac', 'hello', 'hi', 'yes', 'please', 'thanks',
+  // chat noise / greetings
+  'hola', 'buenas', 'buenos', 'dia', 'dias', 'día', 'días', 'tarde', 'tardes', 'noche', 'noches',
+  'gracias', 'ok', 'okay', 'porfa', 'porfavor', 'favor', 'saludos', 'buen', 'hello', 'hi', 'yes',
+  'please', 'thanks', 'jaja', 'jajaja', 'jeje',
+  // Spanish function words
+  'que', 'qué', 'los', 'las', 'del', 'una', 'unos', 'unas', 'por', 'con', 'para', 'como', 'cómo',
+  'más', 'mas', 'pero', 'sus', 'este', 'esta', 'esto', 'estos', 'estas', 'ese', 'esa', 'eso', 'esos',
+  'esas', 'porque', 'cuando', 'cuándo', 'muy', 'sin', 'sobre', 'también', 'hasta', 'hay', 'donde',
+  'dónde', 'quien', 'quién', 'desde', 'todo', 'toda', 'todos', 'todas', 'nos', 'durante', 'uno',
+  'les', 'contra', 'otros', 'otro', 'otra', 'otras', 'ante', 'ellos', 'ellas', 'ella', 'esto',
+  'antes', 'algunos', 'algunas', 'algo', 'nada', 'mucho', 'mucha', 'muchos', 'muchas', 'cual',
+  'cuál', 'poco', 'poca', 'estar', 'tengo', 'tiene', 'tienen', 'tener', 'hacer', 'hace', 'puedo',
+  'puede', 'pueden', 'quiero', 'quiere', 'mis', 'tus', 'sus', 'una', 'son', 'fue', 'era', 'soy',
+  'estoy', 'está', 'están', 'estaba', 'ser', 'haber', 'según', 'entre', 'cada', 'aunque', 'asi',
+  'así', 'aqui', 'aquí', 'ahi', 'ahí', 'alli', 'allí', 'ya', 'pues', 'osea', 'okey', 'vale',
+  // English function words (mixed-language chats)
+  'the', 'and', 'for', 'you', 'are', 'with', 'this', 'that', 'have', 'was', 'but', 'not', 'can',
 ]);
 export function isStopword(word: string): boolean {
   return EXTRA_STOPWORDS.has(word.trim().toLowerCase());
