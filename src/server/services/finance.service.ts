@@ -199,6 +199,7 @@ export interface InvoiceListRow {
   clientName: string | null;
   clientDocNumber: string | null;
   total: string | null;
+  discount: string | null;
   status: string | null;
   /** CRM contact resolved via the party spine (client → party → contact), so the
    *  Client/DNI columns can deep-link to /crm/[id]. Null when unlinked. */
@@ -237,6 +238,7 @@ export function listInvoices(
         clientName: finInvoices.clientName,
         clientDocNumber: finInvoices.clientDocNumber,
         total: finInvoices.total,
+        discount: finInvoices.discount,
         status: finInvoices.status,
         // Correlated subquery (not a join) so an invoice stays one row even if a
         // party maps to >1 contact. Resolves client → party → CRM contact id.

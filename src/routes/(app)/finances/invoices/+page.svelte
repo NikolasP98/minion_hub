@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import * as m from '$lib/paraglide/messages';
 	import { FileText, ArrowUp, ArrowDown, ChevronsUpDown, ExternalLink } from 'lucide-svelte';
 	import { PageHeader } from '$lib/components/ui';
@@ -13,7 +14,13 @@
 	type SortKey = 'number' | 'issued' | 'client' | 'total';
 	let sortKey = $state<SortKey>('issued');
 	let sortDir = $state<'asc' | 'desc'>('desc');
-	let statusFilter = $state<Set<string>>(new Set());
+	// Filters seed from the URL so the finances dashboard KPIs can deep-link a
+	// pre-filtered view (?status=void → voided, ?discounted=1 → discounted).
+	const qp = page.url.searchParams;
+	let statusFilter = $state<Set<string>>(
+		new Set((qp.get('status') ?? '').split(',').map((s) => s.trim()).filter(Boolean)),
+	);
+	let discountedOnly = $state(qp.get('discounted') === '1');
 
 	type Row = (typeof invoices)[number];
 
@@ -52,6 +59,7 @@
 					(inv.clientDocNumber ?? '').toLowerCase().includes(q),
 			);
 		if (statusFilter.size) list = list.filter((inv) => inv.status != null && statusFilter.has(inv.status));
+		if (discountedOnly) list = list.filter((inv) => Number(inv.discount) > 0);
 
 		const byName = (a: Row, b: Row) => (nameOf(a) < nameOf(b) ? -1 : nameOf(a) > nameOf(b) ? 1 : 0);
 		const byLabel = (a: Row, b: Row) =>
@@ -127,6 +135,12 @@
 			placeholder={m.fin_invoices_search()}
 			class="h-8 px-3 text-sm rounded-[var(--radius-md)] bg-bg3 border border-[var(--hairline)] min-w-[14rem]"
 		/>
+		{#if discountedOnly}
+			<button class="chip" onclick={() => (discountedOnly = false)}>
+				{m.fin_kpi_discount_rate()}
+				<span class="chip-x">×</span>
+			</button>
+		{/if}
 		<span class="t-caption">{m.fin_invoices_count({ count: view.length })}</span>
 	</div>
 
@@ -194,6 +208,16 @@
 		font: inherit; color: inherit; cursor: pointer;
 	}
 	.sort-h.active { color: var(--color-accent); }
+	.chip {
+		display: inline-flex; align-items: center; gap: 0.3rem;
+		height: 1.6rem; padding: 0 0.5rem;
+		font-size: 0.74rem; cursor: pointer;
+		border-radius: 999px;
+		border: 1px solid var(--color-accent);
+		color: var(--color-accent);
+		background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+	}
+	.chip-x { font-size: 0.95rem; line-height: 1; opacity: 0.8; }
 	:global(.sort-h .dim) { opacity: 0.35; }
 	.link-cell {
 		display: inline-flex; align-items: center; gap: 0.3rem; max-width: 100%;

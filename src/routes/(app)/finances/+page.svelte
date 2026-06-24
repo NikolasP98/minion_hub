@@ -212,13 +212,13 @@
 		{ id: 'k-invoices', label: m.fin_kpi_invoices(), value: data.summary.invoiceCount.toLocaleString() },
 		{ id: 'k-clients', label: m.fin_kpi_unique_clients(), value: data.summary.uniqueClients.toLocaleString() },
 		{ id: 'k-newclients', label: m.fin_kpi_new_clients(), value: data.summary.newClients.toLocaleString() },
-		{ id: 'k-discount', label: m.fin_kpi_discount_rate(), value: `${(data.summary.discountRate * 100).toFixed(1)}%` },
+		{ id: 'k-discount', label: m.fin_kpi_discount_rate(), value: `${(data.summary.discountRate * 100).toFixed(1)}%`, href: '/finances/invoices?discounted=1' },
 		{
 			id: 'k-growth',
 			label: m.fin_kpi_growth(),
 			value: periodGrowth !== null ? `${periodGrowth >= 0 ? '+' : ''}${periodGrowth.toFixed(1)}%` : '—',
 		},
-		{ id: 'k-void', label: m.fin_kpi_void_rate(), value: `${(data.summary.voidRate * 100).toFixed(1)}%` },
+		{ id: 'k-void', label: m.fin_kpi_void_rate(), value: `${(data.summary.voidRate * 100).toFixed(1)}%`, href: '/finances/invoices?status=void' },
 	]);
 	const kpiById = $derived(new Map(kpis.map((k) => [k.id, k])));
 
@@ -277,10 +277,18 @@
 	{#if id.startsWith('k-')}
 		{@const k = kpiById.get(id)}
 		{#if k}
-			<div class="kpi">
-				<div class="kpi-val">{k.value}</div>
-				<div class="kpi-label">{k.label}</div>
-			</div>
+			{@const href = 'href' in k ? k.href : undefined}
+			{#if href}
+				<a class="kpi kpi-link" {href}>
+					<div class="kpi-val">{k.value}</div>
+					<div class="kpi-label">{k.label}</div>
+				</a>
+			{:else}
+				<div class="kpi">
+					<div class="kpi-val">{k.value}</div>
+					<div class="kpi-label">{k.label}</div>
+				</div>
+			{/if}
 		{/if}
 	{:else if id === 'revenue'}
 		<div class="card">
@@ -419,6 +427,16 @@
 		border-radius: var(--radius-lg);
 		background: var(--color-card);
 		height: 100%;
+	}
+	.kpi-link {
+		text-decoration: none;
+		color: inherit;
+		transition: border-color 0.12s, background 0.12s;
+		cursor: pointer;
+	}
+	.kpi-link:hover {
+		border-color: var(--color-accent);
+		background: color-mix(in srgb, var(--color-accent) 6%, var(--color-card));
 	}
 	.kpi-val {
 		font-size: 1.5rem;
