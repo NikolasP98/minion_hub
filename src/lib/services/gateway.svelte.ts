@@ -561,23 +561,25 @@ function handleEvent(evt: Record<string, unknown>) {
         }
       }
       break;
-    case 'channels.whatsapp.qr':
+    case 'channels.whatsapp.qr': {
+      const cid = (evt.payload as { channelId?: string })?.channelId;
+      if (cid && !gw.pairingChannelIds.includes(cid)) {
+        gw.pairingChannelIds = [...gw.pairingChannelIds, cid];
+      }
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('channels.whatsapp.qr', { detail: evt.payload }));
       }
       break;
+    }
     case 'channels.whatsapp.paired':
+    case 'channels.whatsapp.pairFailed': {
+      const cid = (evt.payload as { channelId?: string })?.channelId;
+      if (cid) gw.pairingChannelIds = gw.pairingChannelIds.filter((c) => c !== cid);
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('channels.whatsapp.paired', { detail: evt.payload }));
+        window.dispatchEvent(new CustomEvent(evt.event as string, { detail: evt.payload }));
       }
       break;
-    case 'channels.whatsapp.pairFailed':
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(
-          new CustomEvent('channels.whatsapp.pairFailed', { detail: evt.payload }),
-        );
-      }
-      break;
+    }
     case 'flows.run.event':
       // Live per-node Test Run feedback — flow-editor state listens on the window.
       if (typeof window !== 'undefined') {
@@ -1081,7 +1083,14 @@ function startPolling() {
   pollTimer = setInterval(() => {
     if (!conn.connected || agentsPollInFlight) return;
     agentsPollInFlight = true;
-    Promise.allSettled([sendRequest('agents.list', {}), sendRequest('sessions.list', {})])
+    // channels.status is event-driven (channels.status events), but events can be
+    // dropped on a flaky link — repoll it here so stale connection/pairing state
+    // self-heals within one interval instead of sticking until reconnect.
+    Promise.allSettled([
+      sendRequest('agents.list', {}),
+      sendRequest('sessions.list', {}),
+      sendRequest('channels.status', {}),
+    ])
       .then((results) => {
         if (results[0].status === 'fulfilled' && results[0].value) {
           const r = results[0].value as { agents?: never[]; defaultId?: string };
@@ -1090,6 +1099,9 @@ function startPolling() {
         if (results[1].status === 'fulfilled' && results[1].value) {
           const raw = (results[1].value as { sessions?: unknown[] })?.sessions ?? [];
           mergeSessions(mapGatewaySessionRows(raw));
+        }
+        if (results[2].status === 'fulfilled' && results[2].value) {
+          gw.channels = results[2].value as typeof gw.channels;
         }
       })
       .catch(() => {})

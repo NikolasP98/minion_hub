@@ -101,8 +101,9 @@
                 if (acct.tokenSource && acct.tokenSource !== 'none') meta.tokenSource = acct.tokenSource;
                 if (acct.dmPolicy) meta.dmPolicy = acct.dmPolicy;
 
+                const channelKey = `gw:${channelType}:${acct.accountId}`;
                 result.push({
-                    id: `gw:${channelType}:${acct.accountId}`,
+                    id: channelKey,
                     serverId: serverId ?? '',
                     type,
                     label: displayName,
@@ -120,6 +121,7 @@
                     gwReconnectAttempts: acct.reconnectAttempts ?? undefined,
                     gwExpectedIdentity: acct.expectedIdentity ?? undefined,
                     gwIdentityMismatch: acct.identityMismatch ?? undefined,
+                    gwPairing: gw.pairingChannelIds.includes(channelKey),
                 });
             }
         }

@@ -129,6 +129,11 @@ export async function createChannel(ctx: ServerCtx, input: ChannelInput) {
     }),
   );
 
+  // Adding the row sets this account's org ownership — push the updated
+  // accountOrgs to the gateway now so the account is org-scoped immediately,
+  // not cross-org-visible until the hourly tick. Mirrors deleteChannel.
+  await reconcileOrgConfigSafe(ctx.gatewayId);
+
   return id;
 }
 

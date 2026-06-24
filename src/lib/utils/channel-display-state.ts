@@ -14,6 +14,11 @@ export type ChannelDisplayState =
 export function deriveChannelDisplayState(c: Channel): ChannelDisplayState {
   if (c.gwEnabled === false) return 'disabled';
   if (c.gwConfigured === false) return 'pending-config';
+  // Active QR-pairing window (hub-tracked via channels.whatsapp.qr/paired events).
+  // Overrides the snapshot, which reads gwRunning=false during pairing (the gateway
+  // stops the provider to issue a fresh QR) and would otherwise derive "starting".
+  // Guarded by !gwConnected so a lost paired/pairFailed event can't pin it once live.
+  if (c.gwPairing === true && c.gwConnected !== true) return 'pairing';
   // An enabled account with no linked session is NOT an error — it just needs
   // pairing. Checked before gwLastError because the gateway sets a lastError
   // while it fails to bring up a credential-less account.

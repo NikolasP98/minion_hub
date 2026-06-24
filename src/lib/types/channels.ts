@@ -32,6 +32,8 @@ export interface Channel {
   gwExpectedIdentity?: string | null;
   /** True when the account is linked to a different number than expected. */
   gwIdentityMismatch?: boolean;
+  /** True while an active QR-pairing window is open for this account (hub-tracked). */
+  gwPairing?: boolean;
 }
 
 export interface ChannelAssignment {

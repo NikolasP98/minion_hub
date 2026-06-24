@@ -44,6 +44,16 @@ describe('deriveChannelDisplayState', () => {
   it('returns starting when not running', () => {
     expect(deriveChannelDisplayState({ ...base, gwEnabled: true, gwConfigured: true, gwRunning: false })).toBe('starting');
   });
+  it('returns pairing during an active QR window even though the provider is stopped (gwRunning=false)', () => {
+    expect(
+      deriveChannelDisplayState({ ...base, gwEnabled: true, gwConfigured: true, gwRunning: false, gwConnected: false, gwPairing: true }),
+    ).toBe('pairing');
+  });
+  it('does NOT pin pairing once connected (stale flag after a lost paired event)', () => {
+    expect(
+      deriveChannelDisplayState({ ...base, gwEnabled: true, gwConfigured: true, gwRunning: true, gwConnected: true, gwPairing: true }),
+    ).toBe('live');
+  });
   it('returns degraded when reconnectAttempts > 0', () => {
     expect(deriveChannelDisplayState({ ...base, gwEnabled: true, gwConfigured: true, gwRunning: true, gwConnected: true, gwReconnectAttempts: 3 })).toBe('degraded');
   });

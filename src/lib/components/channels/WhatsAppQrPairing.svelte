@@ -22,6 +22,24 @@
     let pairingStatus = $state<'idle' | 'waiting' | 'scanning' | 'connected' | 'error'>('idle');
     let errorMsg = $state<string | null>(null);
 
+    // Backstop watchdog. The gateway already broadcasts pairFailed at ~30s (no QR
+    // generated) and ~150s (no scan); these timers sit just PAST those deadlines so
+    // they only fire if the terminal event is lost/wedged (see obs 16742) and never
+    // preempt the gateway's own failure. Two handles: no-QR vs scanned-but-no-result.
+    let noQrTimer: ReturnType<typeof setTimeout> | null = null;
+    let scanTimer: ReturnType<typeof setTimeout> | null = null;
+    function clearTimers() {
+        if (noQrTimer) clearTimeout(noQrTimer);
+        if (scanTimer) clearTimeout(scanTimer);
+        noQrTimer = null;
+        scanTimer = null;
+    }
+    function failWith(msg: string) {
+        clearTimers();
+        pairingStatus = 'error';
+        errorMsg = msg;
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const service = useMachine(qrCode.machine as any, () => ({
         id: `qr-${channelId}`,
@@ -34,6 +52,14 @@
         const detail = (e as CustomEvent<{ qrData: string; expiresIn?: number }>).detail;
         qrData = detail.qrData;
         pairingStatus = 'waiting';
+        // QR arrived → cancel the no-QR backstop, arm the scan backstop.
+        if (noQrTimer) {
+            clearTimeout(noQrTimer);
+            noQrTimer = null;
+        }
+        scanTimer = setTimeout(() => {
+            if (pairingStatus === 'waiting') failWith('QR code expired. Tap Retry to get a new one.');
+        }, 160_000);
     }
 
     // `channelId === 'pending'` is a wizard sentinel (no account exists yet) — accept any matching event.
@@ -44,6 +70,7 @@
     function handlePairedEvent(e: Event) {
         const detail = (e as CustomEvent<{ channelId: string; phone?: string }>).detail;
         if (isForThisChannel(detail.channelId)) {
+            clearTimers();
             pairingStatus = 'connected';
             if (detail.phone) onpaired?.(detail.phone);
         }
@@ -52,8 +79,7 @@
     function handlePairFailedEvent(e: Event) {
         const detail = (e as CustomEvent<{ channelId: string; message?: string }>).detail;
         if (isForThisChannel(detail.channelId)) {
-            pairingStatus = 'error';
-            errorMsg = detail.message ?? 'Pairing failed';
+            failWith(detail.message ?? 'Pairing failed');
         }
     }
 
@@ -64,6 +90,7 @@
     });
 
     onDestroy(() => {
+        clearTimers();
         if (typeof window !== 'undefined') {
             window.removeEventListener('channels.whatsapp.qr', handleQrEvent);
             window.removeEventListener('channels.whatsapp.paired', handlePairedEvent);
@@ -72,23 +99,30 @@
     });
 
     async function startPairing() {
+        clearTimers();
         pairingStatus = 'waiting';
         errorMsg = null;
+        // Backstop the "gateway never pushed a QR" case (its own no-QR failure
+        // lands ~30s; fire a hair later only if that event is lost).
+        noQrTimer = setTimeout(() => {
+            if (pairingStatus === 'waiting' && !qrData)
+                failWith('No QR code received — the gateway may be starting up. Tap Retry.');
+        }, 35_000);
         try {
             // QR generation is driven entirely over the gateway WS connection: the
             // gateway starts a web login, then pushes `channels.whatsapp.qr` and the
             // terminal paired/pairFailed events. No per-server REST precondition.
             const res = await requestWhatsAppPair(channelId, accountId);
             if (!res.ok) {
-                pairingStatus = 'error';
-                errorMsg = res.alreadyLinked
-                    ? (res.message ?? 'This WhatsApp account is already linked.')
-                    : (res.message ?? 'Failed to start pairing');
+                failWith(
+                    res.alreadyLinked
+                        ? (res.message ?? 'This WhatsApp account is already linked.')
+                        : (res.message ?? 'Failed to start pairing'),
+                );
             }
             // On success we stay in `waiting` until the qr event arrives.
         } catch (e) {
-            pairingStatus = 'error';
-            errorMsg = e instanceof Error ? e.message : 'Failed to start pairing';
+            failWith(e instanceof Error ? e.message : 'Failed to start pairing');
         }
     }
 </script>

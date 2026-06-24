@@ -38,6 +38,11 @@ export const gw = $state({
   } | null,
   cronJobs: [] as unknown[],
   lastSeq: null as number | null,
+  // Channel ids (gw:<type>:<accountId>) in an active QR-pairing window. Set on
+  // channels.whatsapp.qr, cleared on paired/pairFailed. Lets the pill show
+  // "Pairing" during the scan, when the gateway has stopped the provider
+  // (gwRunning=false) and the snapshot alone would derive a misleading "Starting".
+  pairingChannelIds: [] as string[],
 });
 
 /**
