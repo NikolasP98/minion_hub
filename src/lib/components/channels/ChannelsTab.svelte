@@ -10,6 +10,7 @@
     } from '$lib/state/channels';
     import { gw } from '$lib/state/gateway';
     import { conn } from '$lib/state/gateway/connection.svelte';
+    import { page } from '$app/state';
     import { configState, loadConfig } from '$lib/state/config/config.svelte';
     import ChannelCard from './ChannelCard.svelte';
     import ChannelGroup from './ChannelGroup.svelte';
@@ -24,6 +25,16 @@
     let importing = $state(false);
 
     const serverId = $derived(hostsState.activeHostId);
+    // Active org for per-org channel scoping (mirrors filterAgentsByOrg for agents).
+    const activeOrgId = $derived((page.data as { activeOrgId?: string | null })?.activeOrgId ?? null);
+    // A gateway-only account (not in this org's DB rows) is shown ONLY when it's
+    // confirmed to belong to the active org. gw.channels carries orgIds (gateway
+    // accountOrgs tag); the heartbeat fallback does not, so an unattributable
+    // account is hidden while an org is selected — this is what stops other orgs'
+    // accounts (and the unscoped heartbeat snapshot) from bleeding into the list.
+    // The org's OWN accounts still come through the DB-backed `enriched` path.
+    const orgOwnsExtra = (c: Channel): boolean =>
+        !activeOrgId || (c.orgIds?.includes(activeOrgId) ?? false);
 
     // Pull the gateway's accounts for this org into the DB registry (idempotent upsert).
     async function handleImport() {
@@ -66,6 +77,7 @@
                     identityMismatch?: boolean;
                     tokenSource?: string;
                     dmPolicy?: string;
+                    orgIds?: string[];
                 };
                 // Don't show the synthesized "default" profile for a channel with no
                 // real account yet (no credentials, not connected/running). Comms
@@ -122,6 +134,7 @@
                     gwExpectedIdentity: acct.expectedIdentity ?? undefined,
                     gwIdentityMismatch: acct.identityMismatch ?? undefined,
                     gwPairing: gw.pairingChannelIds.includes(channelKey),
+                    orgIds: acct.orgIds,
                 });
             }
         }
@@ -170,7 +183,10 @@
         const extras = gatewayChannels.filter((gwCh) => {
             const acct = gwAccountOf(gwCh);
             return !hubKeys.has(`${gwCh.type}:${gwCh.label.toLowerCase()}`) &&
-                !(acct && hubKeys.has(`${gwCh.type}:acct:${acct}`));
+                !(acct && hubKeys.has(`${gwCh.type}:acct:${acct}`)) &&
+                // Org scope: a gateway-only account leaks across orgs unless it's
+                // confirmed to belong to the active org (the bleed this fixes).
+                orgOwnsExtra(gwCh);
         });
         return [...enriched, ...extras];
     });

@@ -34,6 +34,8 @@ export interface Channel {
   gwIdentityMismatch?: boolean;
   /** True while an active QR-pairing window is open for this account (hub-tracked). */
   gwPairing?: boolean;
+  /** Orgs this gateway account is scoped to (from the gateway's accountOrgs tag). */
+  orgIds?: string[];
 }
 
 export interface ChannelAssignment {
