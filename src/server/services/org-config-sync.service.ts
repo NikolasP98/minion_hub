@@ -143,26 +143,49 @@ export async function reconcileOrgConfig(gatewayId: string): Promise<{
   const accountOrgs = buildAccountOrgs(channelRows as never);
   const orgDisabled = buildPluginOrgDisabled(disabledRows);
 
-  // Read the gateway's current snapshot: `config` for the maps we null-diff
-  // against, and `hash` — config.patch demands a matching baseHash (optimistic
-  // concurrency: "config base hash required; re-run config.get and retry").
-  const snap =
-    (await gatewayCall<{ config?: GatewayMaps; hash?: string } & GatewayMaps>('config.get', {})) ??
-    {};
-  const cur = unwrapConfigSnapshot<GatewayMaps>(snap);
-  const curOrgDisabled = (cur.plugins?.orgDisabled ?? {}) as Record<string, unknown>;
-  const curAccountOrgs = (cur.channels?.accountOrgs ?? {}) as Record<string, Record<string, unknown>>;
+  // config.patch enforces optimistic concurrency: baseHash must equal the gateway's
+  // CURRENT snapshot, else it rejects with "…re-run config.get and retry". A
+  // concurrent gateway.json writer between our config.get and config.patch loses
+  // ~40% of the time, so retry: re-fetch the snapshot (fresh hash + current maps)
+  // and re-patch. DB-derived maps are stable across attempts; only `cur`/`hash` move.
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < RECONCILE_MAX_ATTEMPTS; attempt += 1) {
+    const snap =
+      (await gatewayCall<{ config?: GatewayMaps; hash?: string } & GatewayMaps>('config.get', {})) ??
+      {};
+    const cur = unwrapConfigSnapshot<GatewayMaps>(snap);
+    const curOrgDisabled = (cur.plugins?.orgDisabled ?? {}) as Record<string, unknown>;
+    const curAccountOrgs = (cur.channels?.accountOrgs ?? {}) as Record<
+      string,
+      Record<string, unknown>
+    >;
 
-  await gatewayCall('config.patch', {
-    raw: JSON.stringify({
-      channels: { accountOrgs: replaceNested(curAccountOrgs, accountOrgs) },
-      plugins: { orgDisabled: replaceFlat(curOrgDisabled, orgDisabled) },
-    }),
-    baseHash: snap.hash,
-    note: 'reconcileOrgConfig: DB-authoritative org maps',
-  });
+    try {
+      await gatewayCall('config.patch', {
+        raw: JSON.stringify({
+          channels: { accountOrgs: replaceNested(curAccountOrgs, accountOrgs) },
+          plugins: { orgDisabled: replaceFlat(curOrgDisabled, orgDisabled) },
+        }),
+        baseHash: snap.hash,
+        note: 'reconcileOrgConfig: DB-authoritative org maps',
+      });
+      return { accountOrgs, orgDisabled };
+    } catch (e) {
+      lastErr = e;
+      // Only the baseHash race is retryable. Anything else (network, invalid
+      // config) is real — surface it now instead of burning retries.
+      if (!isBaseHashRace(e)) throw e;
+    }
+  }
+  throw lastErr;
+}
 
-  return { accountOrgs, orgDisabled };
+const RECONCILE_MAX_ATTEMPTS = 4;
+
+/** The gateway rejects a stale baseHash with "…re-run config.get and retry"
+ *  (both the missing-hash and changed-since-load cases). That's our retry signal. */
+export function isBaseHashRace(e: unknown): boolean {
+  return /re-run config\.get and retry/i.test(String((e as Error)?.message ?? e));
 }
 
 /**

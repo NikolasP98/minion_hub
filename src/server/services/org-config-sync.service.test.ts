@@ -5,7 +5,20 @@ import {
   replaceFlat,
   replaceNested,
   unwrapConfigSnapshot,
+  isBaseHashRace,
 } from './org-config-sync.service';
+
+describe('isBaseHashRace (reconcile retry signal)', () => {
+  it('matches both gateway baseHash rejections', () => {
+    expect(isBaseHashRace(new Error('config base hash required; re-run config.get and retry'))).toBe(true);
+    expect(isBaseHashRace(new Error('config changed since last load; re-run config.get and retry'))).toBe(true);
+  });
+  it('does NOT match unrelated errors (no false retry)', () => {
+    expect(isBaseHashRace(new Error('fetch failed'))).toBe(false);
+    expect(isBaseHashRace(new Error('invalid config; fix before patching'))).toBe(false);
+    expect(isBaseHashRace(undefined)).toBe(false);
+  });
+});
 
 describe('unwrapConfigSnapshot (config.get returns {config,hash} wrapper)', () => {
   it('returns the nested .config, not the wrapper (the importGatewayChannels bug)', () => {
