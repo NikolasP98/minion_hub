@@ -11,7 +11,7 @@
 	import StagePill from '$lib/components/crm/StagePill.svelte';
 	import CrmFunnel from '$lib/components/crm/CrmFunnel.svelte';
 	import { financeFloorStage } from '$lib/components/crm/crm-funnel';
-	import JourneyTimeline from '$lib/components/crm/JourneyTimeline.svelte';
+	import ContactChat from '$lib/components/crm/ContactChat.svelte';
 	import CrmSimilarWins from '$lib/components/crm/CrmSimilarWins.svelte';
 	import Connections from '$lib/components/crm/Connections.svelte';
 	import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
@@ -214,6 +214,15 @@
 		if (!channelTab && data.identities.length) channelTab = data.identities[0].channel;
 	});
 	const channelMsgs = $derived(timeline.filter((r) => r.kind === 'message' && r.channel === channelTab));
+
+	// Near-realtime: refresh the contact timeline while the page is open and visible.
+	// ponytail: 12s poll over Supabase realtime/WS — simplest live-update that needs no new infra.
+	$effect(() => {
+		const iv = setInterval(() => {
+			if (!document.hidden) invalidate('crm:contact');
+		}, 12000);
+		return () => clearInterval(iv);
+	});
 
 	// ── Left-column layout (EditableGrid; one shared layout for the detail page) ─
 	// Default widths exploit the wider (2:1) left column: details spans full,
@@ -505,9 +514,12 @@
 							</button>
 						{/each}
 					</div>
-					<div class="flex-1 lg:min-h-0 overflow-auto">
-						<JourneyTimeline rows={channelMsgs as never} hideHeaders />
-					</div>
+					<ContactChat
+						rows={channelMsgs as never}
+						contactId={c.id}
+						channel={channelTab}
+						canSend={data.identities.some((i) => i.channel === channelTab)}
+					/>
 				{:else}
 					<p class="t-caption">{m.crm_no_channels()}</p>
 				{/if}
