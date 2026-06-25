@@ -1,9 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import {
-	runReadOnlyOrgQuery,
-	resolveQueryableTables,
-	QueryRejected,
-} from './assistant-query.service';
+import { runReadOnlyOrgQuery, canRunQuery, QueryRejected } from './assistant-query.service';
 import type { CoreCtx } from '$server/auth/core-ctx';
 
 // Validation throws BEFORE any DB access, so a db that explodes on use proves a
@@ -17,58 +13,39 @@ const ctx = {
 	tenantId: 'org-1',
 } as unknown as CoreCtx;
 
-const member = resolveQueryableTables('member')!; // business-data allowlist
-
-describe('resolveQueryableTables', () => {
-	test('admin/owner → unrestricted (null)', () => {
-		expect(resolveQueryableTables('admin')).toBeNull();
-		expect(resolveQueryableTables('owner')).toBeNull();
-	});
-	test('member → a non-empty business allowlist that excludes platform tables', () => {
-		expect(member.has('fin_invoices')).toBe(true);
-		expect(member.has('crm_contacts')).toBe(true);
-		expect(member.has('profiles')).toBe(false);
-		expect(member.has('organization_members')).toBe(false);
-		expect(member.has('settings')).toBe(false);
+describe('canRunQuery — admin/owner only', () => {
+	test('admin & owner allowed; everyone else denied', () => {
+		expect(canRunQuery('admin')).toBe(true);
+		expect(canRunQuery('owner')).toBe(true);
+		expect(canRunQuery('member')).toBe(false);
+		expect(canRunQuery(null)).toBe(false);
+		expect(canRunQuery(undefined)).toBe(false);
 	});
 });
 
 describe('runReadOnlyOrgQuery validation (security guards)', () => {
-	test('rejects writes / DDL (not SELECT)', async () => {
+	test('rejects writes / DDL (not SELECT) — incl. comma-join write attempts', async () => {
 		for (const q of [
 			'delete from fin_invoices',
 			'update fin_invoices set total = 0',
 			'drop table fin_invoices',
 			'insert into fin_invoices (id) values (1)',
 		]) {
-			await expect(runReadOnlyOrgQuery(ctx, q, member)).rejects.toBeInstanceOf(QueryRejected);
+			await expect(runReadOnlyOrgQuery(ctx, q)).rejects.toBeInstanceOf(QueryRejected);
 		}
 	});
 
 	test('rejects multiple statements', async () => {
-		await expect(
-			runReadOnlyOrgQuery(ctx, 'select 1; drop table fin_invoices', member),
-		).rejects.toThrow(/single statement/i);
-	});
-
-	test('rejects a non-admin querying a platform table', async () => {
-		await expect(runReadOnlyOrgQuery(ctx, 'select * from profiles', member)).rejects.toThrow(
-			/not permitted/i,
+		await expect(runReadOnlyOrgQuery(ctx, 'select 1; drop table fin_invoices')).rejects.toThrow(
+			/single statement/i,
 		);
-		await expect(
-			runReadOnlyOrgQuery(ctx, 'select email from organization_members', member),
-		).rejects.toThrow(/not permitted/i);
 	});
 
-	test('allows a business-table SELECT with CTEs through validation (then hits DB)', async () => {
-		// CTE name `t` must not be flagged as a forbidden table; the business table
-		// fin_invoices is allowed → validation passes → reaches the (exploding) db.
+	test('a valid SELECT passes validation and reaches the DB (admin path)', async () => {
+		// Including a comma-join: there is NO in-process table allowlist anymore
+		// (admin-only access makes it moot), so this passes validation → hits db.
 		await expect(
-			runReadOnlyOrgQuery(
-				ctx,
-				'with t as (select total from fin_invoices) select sum(total) from t',
-				member,
-			),
-		).rejects.toThrow(/DB MUST NOT BE TOUCHED|MUST NOT/);
+			runReadOnlyOrgQuery(ctx, 'select count(*) from fin_invoices, profiles'),
+		).rejects.toThrow(/MUST NOT BE TOUCHED/);
 	});
 });

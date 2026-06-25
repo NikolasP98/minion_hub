@@ -2,11 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { getCoreDb } from '$server/db/pg-client';
 import { resolveAssistantPrincipal } from '$server/auth/assistant-principal';
-import {
-	runReadOnlyOrgQuery,
-	resolveQueryableTables,
-	QueryRejected,
-} from '$server/services/assistant-query.service';
+import { runReadOnlyOrgQuery, canRunQuery, QueryRejected } from '$server/services/assistant-query.service';
 import type { CoreCtx } from '$server/auth/core-ctx';
 
 /**
@@ -20,6 +16,13 @@ import type { CoreCtx } from '$server/auth/core-ctx';
  */
 export const POST: RequestHandler = async ({ locals, url, request }) => {
 	const { principalId, orgId, role } = await resolveAssistantPrincipal(locals, url);
+	// Arbitrary read-only SQL is a full-org-read capability → admins/owners only.
+	if (!canRunQuery(role)) {
+		return json(
+			{ error: 'Running custom analytics queries requires an admin role on this organization.' },
+			{ status: 403 },
+		);
+	}
 	const ctx: CoreCtx = { db: getCoreDb(), tenantId: orgId, profileId: principalId };
 
 	const body = (await request.json().catch(() => ({}))) as { sql?: unknown };
@@ -27,7 +30,7 @@ export const POST: RequestHandler = async ({ locals, url, request }) => {
 	if (!querySql.trim()) throw error(400, 'sql body field required');
 
 	try {
-		const result = await runReadOnlyOrgQuery(ctx, querySql, resolveQueryableTables(role));
+		const result = await runReadOnlyOrgQuery(ctx, querySql);
 		return json({ orgId, ...result });
 	} catch (e) {
 		// Validation + SQL errors are the agent's to fix — surface the message at
