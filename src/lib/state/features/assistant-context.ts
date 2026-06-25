@@ -39,7 +39,11 @@ const ROUTE_MAP: Array<[string, string]> = [
 	['/marketplace', 'Agent + skill marketplace.'],
 	['/capabilities', 'Capabilities + MCPs.'],
 	['/home', 'Personal agent chat (this same assistant, full-screen).'],
-	['/', 'Overview / home dashboard.'],
+	[
+		'/overview',
+		'Overview dashboard — org map + key business metrics at a glance. Proactively look up live data (top customers, recent activity, revenue) before answering instead of describing the page.',
+	],
+	['/', 'Overview / home dashboard — proactively look up live data before answering.'],
 ];
 
 // Search params worth surfacing as "what's focused" — anything else is noise.
@@ -101,6 +105,14 @@ export function buildAssistantContext(): string {
 		// Only when the user belongs to >1 org: hand the active org id to data
 		// tools (crm_insight) so they scope to what's on screen, not the default org.
 		org.multi && org.id ? `active_org_id: ${org.id} (pass to data tools as orgId).` : '',
+		// Site-wide data access: the agent has read tools over the whole org DB, so it
+		// should answer from live data on ANY page rather than "I can't see the screen".
+		`You can read this org's live data — customers, invoices, payments, sales, ` +
+			`bookings, support tickets, memberships, projects, messages — with your tools ` +
+			`(crm_insight for top/recent customers, crm_query for any other sorting/grouping/ ` +
+			`date-range/percentage question, crm_search for a specific named person). When the ` +
+			`user asks about anything on this or any page, look it up and answer with specifics; ` +
+			`don't say you can't see the page.`,
 		`To take the user somewhere or cite evidence, write in-app markdown links [label](/path). ` +
 			`They render as clickable navigation — a click is the user's confirmation. ` +
 			`Always link a customer's name to /crm/{id}, and back up any figure with a link to the ` +

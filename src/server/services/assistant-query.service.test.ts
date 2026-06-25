@@ -13,13 +13,14 @@ const ctx = {
 	tenantId: 'org-1',
 } as unknown as CoreCtx;
 
-describe('canRunQuery — admin/owner only', () => {
-	test('admin & owner allowed; everyone else denied', () => {
+describe('canRunQuery — any resolved org member', () => {
+	test('any non-empty org role allowed; non-members denied', () => {
 		expect(canRunQuery('admin')).toBe(true);
 		expect(canRunQuery('owner')).toBe(true);
-		expect(canRunQuery('member')).toBe(false);
+		expect(canRunQuery('member')).toBe(true);
 		expect(canRunQuery(null)).toBe(false);
 		expect(canRunQuery(undefined)).toBe(false);
+		expect(canRunQuery('')).toBe(false);
 	});
 });
 

@@ -4,30 +4,39 @@ import type { CoreCtx } from '$server/auth/core-ctx';
 /**
  * Read-only, org-scoped SQL for the assistant's "any sorting/grouping" analytics
  * (crm_query tool). The agent writes a SELECT; we run it under HARD guards so an
- * LLM (or a crafted prompt) can't write, escape the org, or run away:
+ * LLM (or a crafted prompt) can't write, escape the org, reach a secret/PII table,
+ * or run away:
  *
- *  - SET TRANSACTION READ ONLY  → rejects every write/DDL, even though the
- *    app_ledger role itself CAN write (the hub writes through it). Authoritative.
- *  - SET LOCAL ROLE app_ledger + app.current_org_id GUC → forced RLS scopes
- *    every row to the caller's org (same as withOrgCore). No cross-org reads.
+ *  - SET LOCAL ROLE app_assistant_ro → a NOLOGIN role with SELECT grants on the
+ *    business-domain tables ONLY. PG itself rejects platform/secret/identity
+ *    tables (gateway tokens, settings, profiles, flows, …) with 42501, and the
+ *    role has no write grants, so writes are impossible at the engine level.
+ *    This is the authoritative table-scope + write guard (see migration
+ *    `assistant_ro_role`) — no in-process table allowlist needed (a regex can't
+ *    be trusted; comma-joins `from a, b` bypass it).
+ *  - + app.current_org_id GUC → the PUBLIC `*_org_guc` RLS policies scope every
+ *    row to the caller's org (same mechanism as withOrgCore). No cross-org reads.
+ *  - SET TRANSACTION READ ONLY → redundant belt-and-suspenders against the role
+ *    ever gaining a write grant.
  *  - statement_timeout → no runaway query.
  *  - single SELECT/WITH only; multi-statement rejected.
  *  - row cap → bounded result handed to the model.
  *
- * ADMIN/OWNER ONLY (enforced at the endpoint via canRunQuery): arbitrary SQL is
- * a full-org-read capability, so it's gated to org admins. Non-admins use the
- * curated crm_insight intents. A per-table-scoped non-admin variant would need a
- * dedicated read-only DB ROLE whose GRANTs cover only the business tables — an
- * in-process table allowlist can't be trusted (e.g. comma-joins,
- * `from a, b`, bypass any regex), so we don't attempt one here.
+ * Because the DB role enforces table-scope and read-only, ANY authenticated org
+ * member may run it (their reads are confined to their org's business data — what
+ * they already see in the UI). The endpoint only requires a resolved org role.
  */
 
 const MAX_ROWS = 200;
 const STATEMENT_TIMEOUT_MS = 5000;
 
-/** Whether a role may run arbitrary analytics SQL. Admin/owner only. */
+/**
+ * Whether a caller may run analytics SQL. Any resolved org member qualifies — the
+ * app_assistant_ro DB role (not this check) is what scopes the data, so there's no
+ * need to gate on admin/owner. A null role means "not a member" → denied.
+ */
 export function canRunQuery(role: string | null | undefined): boolean {
-	return role === 'admin' || role === 'owner';
+	return typeof role === 'string' && role.length > 0;
 }
 
 export interface QueryResult {
@@ -51,7 +60,7 @@ export async function runReadOnlyOrgQuery(ctx: CoreCtx, rawSql: string): Promise
 	return ctx.db.transaction(async (tx) => {
 		// READ ONLY must precede the first real query (set_config below is a SELECT).
 		await tx.execute(sql`set transaction read only`);
-		await tx.execute(sql`set local role app_ledger`);
+		await tx.execute(sql`set local role app_assistant_ro`);
 		await tx.execute(sql.raw(`set local statement_timeout = ${STATEMENT_TIMEOUT_MS}`));
 		await tx.execute(sql`select set_config('app.current_org_id', ${ctx.tenantId}, true)`);
 		const res = (await tx.execute(sql.raw(q))) as unknown as Record<string, unknown>[];

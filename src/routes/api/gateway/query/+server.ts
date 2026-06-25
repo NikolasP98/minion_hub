@@ -9,17 +9,18 @@ import type { CoreCtx } from '$server/auth/core-ctx';
  * POST /api/gateway/query?agentId=personal-<uuid>[&orgId=<org>]   body: { sql }
  *
  * Run the assistant's read-only analytics SQL ("any sorting/grouping") against
- * the caller's org. HARD guards live in assistant-query.service: READ-ONLY txn,
- * org RLS, statement_timeout, single SELECT, row cap, and a per-role table
- * allowlist (non-admins → business data only). Auth/identity is the same trusted
- * agentId→profile→org-membership resolution as /insight.
+ * the caller's org. HARD guards live in assistant-query.service: the
+ * app_assistant_ro DB role (SELECT on business tables only, no writes), org RLS,
+ * READ-ONLY txn, statement_timeout, single SELECT, row cap. Because the DB role
+ * enforces table-scope + read-only, ANY org member may run it. Auth/identity is
+ * the same trusted agentId→profile→org-membership resolution as /insight.
  */
 export const POST: RequestHandler = async ({ locals, url, request }) => {
 	const { principalId, orgId, role } = await resolveAssistantPrincipal(locals, url);
-	// Arbitrary read-only SQL is a full-org-read capability → admins/owners only.
+	// Any resolved org member may run it (the app_assistant_ro role scopes the data).
 	if (!canRunQuery(role)) {
 		return json(
-			{ error: 'Running custom analytics queries requires an admin role on this organization.' },
+			{ error: 'You must be a member of an organization to run analytics queries.' },
 			{ status: 403 },
 		);
 	}
