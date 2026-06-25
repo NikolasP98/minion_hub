@@ -2,7 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { supabaseAdmin } from '$server/supabase';
 import { getCoreDb } from '$server/db/pg-client';
-import { topCustomersByRevenue } from '$server/services/crm-finance.service';
+import { rankCustomers } from '$server/services/crm-finance.service';
 import type { CoreCtx } from '$server/auth/core-ctx';
 
 /**
@@ -81,8 +81,12 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   const limit = Number(url.searchParams.get('limit') ?? 5);
 
   try {
-    if (intent === 'top_customers') {
-      const customers = await topCustomersByRevenue(ctx, limit);
+    if (intent === 'top_customers' || intent === 'recent_buyers') {
+      const customers = await rankCustomers(
+        ctx,
+        intent === 'recent_buyers' ? 'recency' : 'revenue',
+        limit,
+      );
       return json({ orgId, intent, customers });
     }
     throw error(400, `unknown intent: ${intent}`);

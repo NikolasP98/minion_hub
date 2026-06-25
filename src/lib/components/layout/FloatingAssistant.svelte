@@ -141,6 +141,16 @@
         return (msg as { timestamp?: number }).timestamp;
     }
 
+    // A pure tool-result carrier (gateway role 'toolResult', or content that is
+    // only tool_result blocks). Its text is raw JSON the model consumes — never
+    // show it as a chat bubble. Mirrors /home's isToolResultOnly.
+    function isToolResultOnly(msg: unknown): boolean {
+        const m = msg as { role?: string; content?: unknown };
+        if (m.role === 'toolResult') return true;
+        const blocks = Array.isArray(m.content) ? (m.content as Array<{ type?: string }>) : [];
+        return blocks.length > 0 && blocks.every((b) => b?.type === 'tool_result');
+    }
+
     // On /my-agent the user is already in a full chat with this same personal
     // agent (same thread, same AI), so the floating assistant is redundant
     // there — hide it entirely on that route.
@@ -296,7 +306,7 @@
             {:else}
                 {#each messages as msg, i (`${msgTs(msg) ?? ''}_${i}`)}
                     {@const role = msgRole(msg)}
-                    {@const text = role === 'user' ? cleanInboundForDisplay(extractText(msg) ?? '') : (extractText(msg) ?? '')}
+                    {@const text = isToolResultOnly(msg) ? '' : role === 'user' ? cleanInboundForDisplay(extractText(msg) ?? '') : (extractText(msg) ?? '')}
                     {#if text}
                         <div class="flex flex-col gap-0.5 {role === 'user' ? 'items-end' : 'items-start'}">
                             <div

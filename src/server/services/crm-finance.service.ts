@@ -186,16 +186,29 @@ export interface TopCustomer {
   lastPurchaseAt: string | null;
 }
 
+/** What to rank customers by. `revenue` = biggest spenders; `recency` = who
+ *  bought most recently (by last invoice date). */
+export type CustomerRankBy = 'revenue' | 'recency';
+
 /**
- * Customers ranked by attributed revenue (party-spine bridge, same CTE as the
- * rollups). Powers the assistant's analytical answers ("who has the highest
- * ticket?"). Each row carries the figures + the top procedure + the activity
- * window so the agent can phrase a full answer with evidence links. Returns []
- * when either module is off.
+ * Customers ranked by attributed revenue OR purchase recency (party-spine
+ * bridge, same CTE as the rollups). Powers the assistant's analytical answers
+ * ("who has the highest ticket?" → revenue; "most recent buyers?" → recency).
+ * Each row carries the figures + top procedure + activity window so the agent
+ * can phrase a full answer with evidence links. Returns [] when either module
+ * is off. NOTE recency ranks ALL buyers, not just top-revenue ones.
  */
-export async function topCustomersByRevenue(ctx: CoreCtx, limit = 5): Promise<TopCustomer[]> {
+export async function rankCustomers(
+  ctx: CoreCtx,
+  by: CustomerRankBy = 'revenue',
+  limit = 5,
+): Promise<TopCustomer[]> {
   if (!(await bothEnabled(ctx, 'crm', 'finances'))) return [];
   const lim = Math.min(20, Math.max(1, Math.floor(limit)));
+  // `by` is a controlled enum (never raw user input), so these column choices
+  // are safe to inline.
+  const aggOrder = by === 'recency' ? sql`last_at` : sql`revenue`;
+  const finalOrder = by === 'recency' ? sql`a.last_at` : sql`a.revenue`;
   return withOrgCore(ctx, async (tx) => {
     const rows = (await tx.execute(sql`
       with ${CONTACT_PARTY},
@@ -209,7 +222,7 @@ export async function topCustomersByRevenue(ctx: CoreCtx, limit = 5): Promise<To
         select contact_id, party_id, sum(total)::float8 revenue, count(*)::int invoices,
                min(issued_at) first_at, max(issued_at) last_at
         from pinv group by contact_id, party_id
-        order by revenue desc nulls last
+        order by ${aggOrder} desc nulls last
         limit ${sql.raw(String(lim))}
       )
       select a.contact_id, c.display_name as name, a.revenue, a.invoices, a.first_at, a.last_at,
@@ -222,7 +235,7 @@ export async function topCustomersByRevenue(ctx: CoreCtx, limit = 5): Promise<To
                 group by ii.description order by sum(coalesce(ii.total,0)) desc nulls last limit 1) as top_product
       from agg a
       left join crm_contacts c on c.id = a.contact_id
-      order by a.revenue desc nulls last
+      order by ${finalOrder} desc nulls last
     `)) as unknown as Array<{
       contact_id: string;
       name: string | null;
