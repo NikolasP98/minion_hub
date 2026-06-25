@@ -174,3 +174,72 @@ export async function contactFinanceSummary(ctx: CoreCtx, contactId: string) {
     };
   });
 }
+
+export interface TopCustomer {
+  contactId: string;
+  name: string | null;
+  revenue: number;
+  invoices: number;
+  /** Best-selling procedure for this customer (excludes reservation deposits). */
+  topProduct: string | null;
+  firstPurchaseAt: string | null;
+  lastPurchaseAt: string | null;
+}
+
+/**
+ * Customers ranked by attributed revenue (party-spine bridge, same CTE as the
+ * rollups). Powers the assistant's analytical answers ("who has the highest
+ * ticket?"). Each row carries the figures + the top procedure + the activity
+ * window so the agent can phrase a full answer with evidence links. Returns []
+ * when either module is off.
+ */
+export async function topCustomersByRevenue(ctx: CoreCtx, limit = 5): Promise<TopCustomer[]> {
+  if (!(await bothEnabled(ctx, 'crm', 'finances'))) return [];
+  const lim = Math.min(20, Math.max(1, Math.floor(limit)));
+  return withOrgCore(ctx, async (tx) => {
+    const rows = (await tx.execute(sql`
+      with ${CONTACT_PARTY},
+      pinv as (
+        select cp.contact_id, cp.party_id, coalesce(fi.total,0)::float8 total, fi.issued_at
+        from contact_party cp
+        join fin_clients fc on fc.org_id = current_setting('app.current_org_id', true) and fc.party_id = cp.party_id
+        join fin_invoices fi on fi.client_id = fc.id
+      ),
+      agg as (
+        select contact_id, party_id, sum(total)::float8 revenue, count(*)::int invoices,
+               min(issued_at) first_at, max(issued_at) last_at
+        from pinv group by contact_id, party_id
+        order by revenue desc nulls last
+        limit ${sql.raw(String(lim))}
+      )
+      select a.contact_id, c.name, a.revenue, a.invoices, a.first_at, a.last_at,
+             (select ii.description
+                from fin_invoice_items ii
+                join fin_invoices fi on fi.id = ii.invoice_id
+                join fin_clients fc on fc.id = fi.client_id and fc.party_id = a.party_id
+                where fc.org_id = current_setting('app.current_org_id', true)
+                  and ii.description is not null and ii.description not ilike '%reserva%'
+                group by ii.description order by sum(coalesce(ii.total,0)) desc nulls last limit 1) as top_product
+      from agg a
+      left join crm_contacts c on c.id = a.contact_id
+      order by a.revenue desc nulls last
+    `)) as unknown as Array<{
+      contact_id: string;
+      name: string | null;
+      revenue: number;
+      invoices: number;
+      first_at: string | null;
+      last_at: string | null;
+      top_product: string | null;
+    }>;
+    return rows.map((r) => ({
+      contactId: String(r.contact_id),
+      name: r.name != null ? String(r.name) : null,
+      revenue: Number(r.revenue),
+      invoices: Number(r.invoices),
+      topProduct: r.top_product != null ? String(r.top_product) : null,
+      firstPurchaseAt: r.first_at != null ? String(r.first_at) : null,
+      lastPurchaseAt: r.last_at != null ? String(r.last_at) : null,
+    }));
+  });
+}

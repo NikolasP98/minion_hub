@@ -73,12 +73,14 @@ function describeFocus(pathname: string, params: URLSearchParams): string {
 	return bits.join('; ');
 }
 
-function activeOrgName(): string | null {
+function activeOrg(): { name: string | null; id: string | null; multi: boolean } {
 	const data = page.data as
 		| { organizations?: Array<{ id: string; name?: string }>; activeOrgId?: string | null }
 		| undefined;
-	if (!data?.organizations || !data.activeOrgId) return null;
-	return data.organizations.find((o) => o.id === data.activeOrgId)?.name ?? null;
+	const orgs = data?.organizations ?? [];
+	const id = data?.activeOrgId ?? null;
+	const name = id ? (orgs.find((o) => o.id === id)?.name ?? null) : null;
+	return { name, id, multi: orgs.length > 1 };
 }
 
 /**
@@ -89,13 +91,16 @@ export function buildAssistantContext(): string {
 	const pathname = page.url?.pathname ?? '/';
 	const params = page.url?.searchParams ?? new URLSearchParams();
 
-	const org = activeOrgName();
+	const org = activeOrg();
 	const focus = describeFocus(pathname, params);
 
 	const lines = [
-		`[In-app assistant context — the user is in the Minion dashboard${org ? ` for ${org}` : ''}.`,
+		`[In-app assistant context — the user is in the Minion dashboard${org.name ? ` for ${org.name}` : ''}.`,
 		`Current page: ${pathname} — ${describeRoute(pathname)}`,
 		focus ? `Focus: ${focus}.` : '',
+		// Only when the user belongs to >1 org: hand the active org id to data
+		// tools (crm_insight) so they scope to what's on screen, not the default org.
+		org.multi && org.id ? `active_org_id: ${org.id} (pass to data tools as orgId).` : '',
 		`To take the user somewhere or cite evidence, write in-app markdown links [label](/path). ` +
 			`They render as clickable navigation — a click is the user's confirmation. ` +
 			`Always link a customer's name to /crm/{id}, and back up any figure with a link to the ` +

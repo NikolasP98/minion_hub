@@ -52,6 +52,23 @@ describe('buildAssistantContext', () => {
 		expect(ctx).toContain('for MINION');
 	});
 
+	test('multi-org user gets a machine-readable active_org_id for data tools', () => {
+		const ctx = at('/crm', {
+			organizations: [{ id: 'o1', name: 'FACES' }, { id: 'o2', name: 'MINION' }],
+			activeOrgId: 'o2',
+		});
+		expect(ctx).toContain('active_org_id: o2');
+	});
+
+	test('single-org user gets NO active_org_id line (endpoint defaults)', () => {
+		const ctx = at('/crm', {
+			organizations: [{ id: 'o1', name: 'FACES' }],
+			activeOrgId: 'o1',
+		});
+		expect(ctx).toContain('for FACES');
+		expect(ctx).not.toContain('active_org_id');
+	});
+
 	test('always teaches the in-app-link navigation convention', () => {
 		const ctx = at('/');
 		expect(ctx).toContain('[label](/path)');
