@@ -26,6 +26,12 @@ describe('resolveInternalNav', () => {
 		expect(resolveInternalNav(targetWith(null), plain)).toBeNull();
 	});
 
+	test('protocol-relative / backslash variants → null (open-redirect guard)', () => {
+		expect(resolveInternalNav(targetWith({ href: '//evil.com' }), plain)).toBeNull();
+		expect(resolveInternalNav(targetWith({ href: '/\\evil.com' }), plain)).toBeNull();
+		expect(resolveInternalNav(targetWith({ href: '//evil.com/crm/1' }), plain)).toBeNull();
+	});
+
 	test('modified clicks (new tab / middle button) → null', () => {
 		const t = targetWith({ href: '/crm/1' });
 		expect(resolveInternalNav(t, { ...plain, metaKey: true })).toBeNull();

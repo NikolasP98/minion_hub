@@ -28,6 +28,10 @@ export function resolveInternalNav(target: unknown, e: ClickModifiers): string |
 	const a = (target as TargetLike | null)?.closest?.('a') ?? null;
 	const href = a?.getAttribute('href');
 	if (!href || !href.startsWith('/')) return null; // external, hash, or no link
+	// Protocol-relative (//evil.com) and backslash variants (/\evil.com, some
+	// browsers normalize to //) also start with '/' but resolve OFF-origin —
+	// reject them so an injected agent link can't open-redirect via goto().
+	if (href.startsWith('//') || href[1] === '\\' || href[1] === '/') return null;
 	if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return null; // new-tab / modified click
 	if (a?.getAttribute('target') === '_blank') return null;
 	return href;
