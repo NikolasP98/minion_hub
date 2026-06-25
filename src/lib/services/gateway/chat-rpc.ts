@@ -29,6 +29,19 @@ export function loadChatHistory(agentId: string): Promise<void> {
     });
 }
 
+/** New chat: reset the agent's session on the gateway and clear the local thread. */
+export async function resetChat(agentId: string): Promise<void> {
+  const chat = ensureAgentChat(agentId);
+  await sendRequest('sessions.reset', { key: `agent:${agentId}:main`, reason: 'new' }).catch(
+    () => {},
+  );
+  chat.messages.splice(0, chat.messages.length);
+  chat.stream = null;
+  chat.streamMessage = null;
+  chat.streamDisplay = '';
+  chat.lastError = null;
+}
+
 export function sendChatMsg(agentId: string) {
   const chat = ensureAgentChat(agentId);
   const msg = chat.inputText.trim();

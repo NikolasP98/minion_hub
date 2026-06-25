@@ -1,6 +1,6 @@
 <script lang="ts">
     import * as m from '$lib/paraglide/messages';
-    import { Sparkles, X, Send, ChevronDown, AlertCircle, Mic, MicOff, PhoneOff } from 'lucide-svelte';
+    import { Sparkles, Minus, SquarePen, Send, ChevronDown, AlertCircle, Mic, MicOff, PhoneOff } from 'lucide-svelte';
     import { voiceCall, mouth, toggleMute, endCall } from '$lib/state/features/voice-call.svelte';
     import OpenHumanAvatar from '$lib/components/my-agent/OpenHumanAvatar.svelte';
     import {
@@ -13,7 +13,12 @@
     import { ui } from '$lib/state/ui/ui.svelte';
     import { conn } from '$lib/state/gateway/connection.svelte';
     import { agentChat } from '$lib/state/chat/chat.svelte';
-    import { sendAssistantTurn, loadChatHistory, cleanInboundForDisplay } from '$lib/services/gateway.svelte';
+    import {
+        sendAssistantTurn,
+        loadChatHistory,
+        cleanInboundForDisplay,
+        resetChat,
+    } from '$lib/services/gateway.svelte';
     import { buildAssistantContext } from '$lib/state/features/assistant-context';
     import { extractText } from '$lib/utils/text';
     import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
@@ -111,20 +116,39 @@
         }
     }
 
+    function newChat() {
+        const id = assistant.personalAgentId;
+        if (!id) return;
+        void resetChat(id);
+        atBottom = true;
+        draft = '';
+        requestAnimationFrame(() => inputEl?.focus());
+    }
+
     // Auto-scroll
     function handleScroll() {
         if (!messagesEl) return;
         const { scrollTop, scrollHeight, clientHeight } = messagesEl;
         atBottom = scrollHeight - scrollTop - clientHeight < 40;
     }
+    function scrollToBottom() {
+        tick().then(() => {
+            if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
+        });
+    }
+    // Every open starts pinned to the newest message (the panel is re-mounted at
+    // scrollTop 0, and `atBottom` may be stale from a prior scroll-up) — and stays
+    // pinned as history streams in.
+    $effect(() => {
+        if (!assistant.open) return;
+        atBottom = true;
+        void messages.length;
+        scrollToBottom();
+    });
     $effect(() => {
         void messages.length;
         void stream;
-        if (atBottom) {
-            tick().then(() => {
-                if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
-            });
-        }
+        if (atBottom) scrollToBottom();
     });
 
     function fmtTime(ts: number | undefined): string {
@@ -435,25 +459,35 @@
             role="toolbar"
             tabindex="-1"
             aria-label={m.floatingAssistant_title()}
-            class="shrink-0 flex items-center gap-2 px-3 py-2.5 border-b border-border bg-bg3/40 select-none touch-none {panelDragging
+            class="shrink-0 flex items-center gap-1 px-2 py-1.5 border-b border-border bg-bg3/40 select-none touch-none {panelDragging
                 ? 'cursor-grabbing'
                 : 'cursor-grab'}"
             onpointerdown={onPanelHeaderPointerDown}
             onpointermove={onPanelHeaderPointerMove}
             onpointerup={onPanelHeaderPointerUp}
         >
-            <Sparkles size={14} class="text-accent" />
-            <span class="text-xs font-semibold text-foreground flex-1">{m.floatingAssistant_title()}</span>
+            <Sparkles size={13} class="text-accent shrink-0 ml-1" />
+            <span class="text-[11px] font-semibold text-foreground flex-1 truncate">{m.floatingAssistant_title()}</span>
             {#if !conn.connected}
-                <span class="text-[9px] text-muted-foreground px-1.5 py-0.5 rounded bg-bg3 border border-border">{m.floatingAssistant_offline()}</span>
+                <span class="shrink-0 w-1.5 h-1.5 rounded-full bg-amber-500" title={m.floatingAssistant_offline()}></span>
             {/if}
+            <button
+                type="button"
+                onclick={newChat}
+                class="w-6 h-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-bg3 transition-colors"
+                aria-label={m.floatingAssistant_newChat()}
+                title={m.floatingAssistant_newChat()}
+            >
+                <SquarePen size={14} />
+            </button>
             <button
                 type="button"
                 onclick={closeAssistant}
                 class="w-6 h-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-bg3 transition-colors"
-                aria-label={m.common_close()}
+                aria-label={m.floatingAssistant_minimize()}
+                title={m.floatingAssistant_minimize()}
             >
-                <X size={14} />
+                <Minus size={15} />
             </button>
         </div>
 

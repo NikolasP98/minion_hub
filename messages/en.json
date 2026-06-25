@@ -2046,6 +2046,8 @@
   "floatingAssistant_askAnything": "Ask anything",
   "floatingAssistant_title": "Assistant",
   "floatingAssistant_offline": "offline",
+  "floatingAssistant_newChat": "New chat",
+  "floatingAssistant_minimize": "Minimize",
   "floatingAssistant_loading": "Loading assistant…",
   "floatingAssistant_connecting": "Connecting…",
   "floatingAssistant_greeting": "Ask anything about the hub. I'll see what you're viewing and can run tools and skills your personal agent has enabled.",
