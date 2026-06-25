@@ -212,7 +212,7 @@ export async function topCustomersByRevenue(ctx: CoreCtx, limit = 5): Promise<To
         order by revenue desc nulls last
         limit ${sql.raw(String(lim))}
       )
-      select a.contact_id, c.name, a.revenue, a.invoices, a.first_at, a.last_at,
+      select a.contact_id, c.display_name as name, a.revenue, a.invoices, a.first_at, a.last_at,
              (select ii.description
                 from fin_invoice_items ii
                 join fin_invoices fi on fi.id = ii.invoice_id
