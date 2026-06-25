@@ -13,7 +13,8 @@
     import { ui } from '$lib/state/ui/ui.svelte';
     import { conn } from '$lib/state/gateway/connection.svelte';
     import { agentChat } from '$lib/state/chat/chat.svelte';
-    import { sendChatMsg, loadChatHistory } from '$lib/services/gateway.svelte';
+    import { sendAssistantTurn, loadChatHistory } from '$lib/services/gateway.svelte';
+    import { buildAssistantContext } from '$lib/state/features/assistant-context';
     import { extractText } from '$lib/utils/text';
     import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
     import { page } from '$app/state';
@@ -28,7 +29,8 @@
         loadPersonalAgent();
 
         function onKey(e: KeyboardEvent) {
-            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+            // ⌘J / Ctrl+J — ⌘K is owned by the command palette (CommandPalette.svelte).
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j') {
                 e.preventDefault();
                 toggleAssistant();
                 if (assistant.open) requestAnimationFrame(() => inputEl?.focus());
@@ -94,12 +96,11 @@
         if (!canSend) return;
         const id = assistant.personalAgentId;
         if (!id) return;
-        const c = agentChat[id];
-        if (!c) return;
         const text = draft.trim();
         if (!text) return;
-        c.inputText = text;
-        sendChatMsg(id); // pushes user message, sends RPC, clears inputText
+        // Prepend page-context envelope (route + focus + nav instructions) for the
+        // model; the clean text is what shows in the transcript.
+        sendAssistantTurn(id, text, buildAssistantContext());
         draft = '';
     }
 
@@ -208,7 +209,7 @@
             <Sparkles size={14} class="text-accent" />
         </span>
         <span class="text-xs font-medium text-foreground">{m.floatingAssistant_askAnything()}</span>
-        <kbd class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-bg3 text-muted-foreground border border-border">⌘K</kbd>
+        <kbd class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-bg3 text-muted-foreground border border-border">⌘J</kbd>
     </button>
 {:else}
     <!-- Expanded panel -->

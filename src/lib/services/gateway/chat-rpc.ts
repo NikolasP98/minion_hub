@@ -98,6 +98,54 @@ export function stripVoiceTurnPrefix(text: string): string {
   return text.replace(/^\s*\[Voice call[^\]]*\]\s*/, '');
 }
 
+/**
+ * Floating-assistant equivalent of sendChatMsg. Same agent + main session, but the
+ * message the gateway sees is prefixed with a page-context envelope (route, focus,
+ * navigation instructions) so the assistant is situationally aware. The clean user
+ * text — not the envelope — is what's stored in the visible transcript, exactly like
+ * the voice-turn path. `context` is built by buildAssistantContext() at the callsite
+ * (it needs `$app/state` page, which only resolves in the component tree).
+ */
+export function sendAssistantTurn(agentId: string, text: string, context: string) {
+  const chat = ensureAgentChat(agentId);
+  const clean = text.trim();
+  if (!clean || chat.sending || !conn.connected) return;
+
+  const sessionKey = `agent:${agentId}:main`;
+  const runId = uuid();
+
+  pushChatMessage(chat, {
+    role: 'user',
+    content: [{ type: 'text', text: clean }],
+    timestamp: Date.now(),
+  } as never);
+  chat.inputText = '';
+  chat.sending = true;
+  chat.streamMessage = null;
+  chat.runId = runId;
+  chat.stream = '';
+  chat.lastError = null;
+
+  const guard = setTimeout(() => {
+    if (chat.runId === runId) chat.sending = false;
+  }, 120_000);
+
+  sendRequest('chat.send', {
+    sessionKey,
+    message: context + clean,
+    deliver: false,
+    idempotencyKey: runId,
+  }).catch((e) => {
+    clearTimeout(guard);
+    chat.runId = null;
+    chat.stream = null;
+    chat.streamMessage = null;
+    chat.sending = false;
+    chat.lastError = String(e);
+    loadChatHistory(agentId);
+  });
+}
+
 export function sendVoiceTurn(agentId: string, transcript: string) {
   const chat = ensureAgentChat(agentId);
   const clean = transcript.trim();

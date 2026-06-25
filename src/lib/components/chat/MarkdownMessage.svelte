@@ -1,6 +1,8 @@
 <script lang="ts">
     import { Carta, Markdown } from 'carta-md';
     import DOMPurify from 'dompurify';
+    import { goto } from '$app/navigation';
+    import { resolveInternalNav } from '$lib/utils/internal-nav';
     import 'carta-md/default.css';
 
     interface Props {
@@ -15,9 +17,24 @@
     const carta = new Carta({
         sanitizer: (html) => DOMPurify.sanitize(html),
     });
+
+    // Internal links (the assistant cites pages as [label](/path)) navigate within
+    // the SPA instead of full-reloading. Event delegation on the wrapper — one
+    // listener covers every rendered <a>. External/hash/new-tab links fall through
+    // to default browser handling.
+    function onLinkClick(e: MouseEvent) {
+        const href = resolveInternalNav(e.target, e);
+        if (!href) return;
+        e.preventDefault();
+        goto(href);
+    }
 </script>
 
-<div class={`chat-md ${tone === 'user' ? 'chat-md--user' : 'chat-md--assistant'} ${className}`}>
+<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+<div
+    class={`chat-md ${tone === 'user' ? 'chat-md--user' : 'chat-md--assistant'} ${className}`}
+    onclick={onLinkClick}
+>
     <Markdown {carta} {value} />
 </div>
 
