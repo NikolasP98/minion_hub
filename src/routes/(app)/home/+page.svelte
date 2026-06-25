@@ -22,6 +22,7 @@
 		sendChatMsg,
 		loadChatHistory,
 		stripVoiceTurnPrefix,
+		cleanInboundForDisplay,
 	} from '$lib/services/gateway.svelte';
 	import {
 		voiceCall,
@@ -347,7 +348,10 @@
 	// server history into the optimistic thread reuses DOM instead of re-mounting
 	// every row (the old `${ts}_${i}` key was the "history flash" culprit).
 	function rowKey(m: ChatMessage): string {
-		const t = stripVoiceTurnPrefix(extractText(m) ?? '');
+		const t =
+			msgRole(m) === 'user'
+				? cleanInboundForDisplay(extractText(m) ?? '')
+				: stripVoiceTurnPrefix(extractText(m) ?? '');
 		const toolNames = contentBlocks(m)
 			.filter((b) => b?.type === 'tool_use' || b?.type === 'toolCall')
 			.map((b) => b.name)
@@ -369,7 +373,10 @@
 			const m = raw as ChatMessage;
 			if (isToolResultOnly(m)) continue;
 			const role = msgRole(m);
-			const text = stripVoiceTurnPrefix(extractText(m) ?? '');
+			const text =
+				role === 'user'
+					? cleanInboundForDisplay(extractText(m) ?? '')
+					: stripVoiceTurnPrefix(extractText(m) ?? '');
 			if (role === 'user' ? text.trim().length === 0 : !assistantHasContent(m)) continue;
 			const base = rowKey(m);
 			const n = seen.get(base) ?? 0;

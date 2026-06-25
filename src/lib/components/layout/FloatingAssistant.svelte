@@ -13,7 +13,7 @@
     import { ui } from '$lib/state/ui/ui.svelte';
     import { conn } from '$lib/state/gateway/connection.svelte';
     import { agentChat } from '$lib/state/chat/chat.svelte';
-    import { sendAssistantTurn, loadChatHistory, stripAssistantContext } from '$lib/services/gateway.svelte';
+    import { sendAssistantTurn, loadChatHistory, cleanInboundForDisplay } from '$lib/services/gateway.svelte';
     import { buildAssistantContext } from '$lib/state/features/assistant-context';
     import { extractText } from '$lib/utils/text';
     import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
@@ -295,8 +295,8 @@
                 </div>
             {:else}
                 {#each messages as msg, i (`${msgTs(msg) ?? ''}_${i}`)}
-                    {@const text = stripAssistantContext(extractText(msg) ?? '')}
                     {@const role = msgRole(msg)}
+                    {@const text = role === 'user' ? cleanInboundForDisplay(extractText(msg) ?? '') : (extractText(msg) ?? '')}
                     {#if text}
                         <div class="flex flex-col gap-0.5 {role === 'user' ? 'items-end' : 'items-start'}">
                             <div

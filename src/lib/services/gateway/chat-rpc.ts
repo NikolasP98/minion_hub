@@ -110,6 +110,40 @@ export function stripAssistantContext(text: string): string {
   return text.replace(/^\s*\[In-app assistant context[\s\S]*?Don't restate this context\.\]\s*/, '');
 }
 
+// Leading context blocks the gateway composes into the RECORDED user turn (for
+// the model, not the user): semantic-recall memories, the untrusted-metadata
+// JSON, the timestamp envelope, the page-context envelope, and the voice-turn
+// header. The transcript stores the full composed prompt, so on history reload
+// these reappear in the user bubble — strip them for display. Order-independent:
+// loop until no known leading block remains, then trim.
+const INBOUND_CONTEXT_BLOCKS: RegExp[] = [
+  /^\s*##\s*Relevant memories\n(?:.+\n)*\n?/, // semantic recall list
+  /^\s*[^\n]*\(untrusted metadata\):\s*\n```json\n[\s\S]*?\n```\s*/i, // metadata json fence
+  /^\s*\[(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[^\]]*\]\s*/, // [Thu 2026-06-25 12:00 …] timestamp
+  /^\s*\[In-app assistant context[\s\S]*?Don't restate this context\.\]\s*/, // page envelope
+  /^\s*\[Voice call[^\]]*\]\s*/, // voice turn
+];
+
+/**
+ * Clean a USER message for display: strip every leading gateway-injected context
+ * block so the bubble shows only what the user actually typed. Safe on already-
+ * clean text (no-op) and on assistant replies (they don't carry these blocks).
+ */
+export function cleanInboundForDisplay(text: string): string {
+  let t = text;
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const re of INBOUND_CONTEXT_BLOCKS) {
+      const next = t.replace(re, '');
+      if (next !== t) {
+        t = next;
+        changed = true;
+      }
+    }
+  }
+  return t.trimStart();
+}
+
 /**
  * Floating-assistant equivalent of sendChatMsg. Same agent + main session, but the
  * message the gateway sees is prefixed with a page-context envelope (route, focus,
