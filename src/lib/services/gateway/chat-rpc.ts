@@ -99,6 +99,18 @@ export function stripVoiceTurnPrefix(text: string): string {
 }
 
 /**
+ * Strip the page-context envelope (buildAssistantContext) from a stored user
+ * message so the transcript shows only the clean text. The gateway persists the
+ * full sent message (envelope + text), so it reappears on history reload — same
+ * problem stripVoiceTurnPrefix solves for voice turns. Anchored on the envelope's
+ * fixed closing sentence because the block itself contains `]` (markdown links),
+ * so a bracket-balanced match would stop early.
+ */
+export function stripAssistantContext(text: string): string {
+  return text.replace(/^\s*\[In-app assistant context[\s\S]*?Don't restate this context\.\]\s*/, '');
+}
+
+/**
  * Floating-assistant equivalent of sendChatMsg. Same agent + main session, but the
  * message the gateway sees is prefixed with a page-context envelope (route, focus,
  * navigation instructions) so the assistant is situationally aware. The clean user
