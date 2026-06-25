@@ -7,12 +7,17 @@ import { sendContactMessage } from '$server/services/crm-send.service';
 export const POST: RequestHandler = async ({ locals, params, request }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
-  const body = (await request.json().catch(() => ({}))) as { channel?: string; text?: string };
+  const body = (await request.json().catch(() => ({}))) as {
+    channel?: string;
+    text?: string;
+    clientId?: string;
+  };
   const channel = (body.channel ?? '').trim();
   const text = (body.text ?? '').trim();
+  const clientId = body.clientId?.trim() || undefined;
   if (!channel || !text) throw error(400, 'channel and text are required');
   try {
-    return json(await sendContactMessage(ctx, params.id!, channel, text));
+    return json(await sendContactMessage(ctx, params.id!, channel, text, clientId));
   } catch (e) {
     throw error(502, e instanceof Error ? e.message : 'Send failed');
   }

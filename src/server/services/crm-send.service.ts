@@ -13,11 +13,13 @@ export function buildOutboundRow(args: {
   accountId: string | null;
   text: string;
   occurredAt: number;
+  clientId?: string;
 }): IngestRow {
   return {
-    // Deterministic-ish id; channels.send does NOT record to the ledger, so this
-    // row is the single source of truth for the bubble (no dedup collision).
-    clientId: `crm-send:${args.contactId}:${args.occurredAt}`,
+    // channels.send does NOT record to the ledger, so this row is the single
+    // source of truth for the bubble. The clientId is supplied by the UI so its
+    // optimistic bubble and this row share one identity (dedup, no flicker).
+    clientId: args.clientId ?? `crm-send:${args.contactId}:${args.occurredAt}`,
     direction: 'outbound',
     channel: args.channel,
     accountId: args.accountId,
@@ -49,37 +51,43 @@ export async function sendContactMessage(
   contactId: string,
   channel: string,
   text: string,
+  clientId?: string,
 ): Promise<{ ok: true }> {
   const body = text.trim();
   if (!body) throw new Error('Message text is required');
 
-  const { to, accountId, gatewayId } = await withOrgCore(ctx, async (tx) => {
-    const ident = (await tx.execute(sql`
-      select external_id from crm_contact_identities
-      where contact_id = ${contactId} and channel = ${channel}
+  // Recipient + originating account resolved together in one round-trip.
+  const resolved = (await withOrgCore(ctx, (tx) =>
+    tx.execute(sql`
+      select i.external_id as to,
+             m.account_id  as account_id,
+             m.gateway_id  as gateway_id
+      from crm_contact_identities i
+      left join lateral (
+        select account_id, gateway_id from messages
+        where org_id = ${ctx.tenantId} and channel = ${channel} and chat_id = i.external_id
+        order by occurred_at desc nulls last limit 1
+      ) m on true
+      where i.contact_id = ${contactId} and i.channel = ${channel}
       limit 1
-    `)) as unknown as Array<{ external_id: string }>;
-    const to = ident[0]?.external_id;
-    if (!to) throw new Error(`Contact has no ${channel} identity`);
-    // Originate from the same account the thread is already on (FACES has >1 WA acct).
-    const last = (await tx.execute(sql`
-      select account_id, gateway_id from messages
-      where org_id = ${ctx.tenantId} and channel = ${channel} and chat_id = ${to}
-      order by occurred_at desc nulls last limit 1
-    `)) as unknown as Array<{ account_id: string | null; gateway_id: string | null }>;
-    return { to, accountId: last[0]?.account_id ?? null, gatewayId: last[0]?.gateway_id ?? null };
-  });
+    `),
+  )) as unknown as Array<{ to: string; account_id: string | null; gateway_id: string | null }>;
+
+  const to = resolved[0]?.to;
+  if (!to) throw new Error(`Contact has no ${channel} identity`);
+  const accountId = resolved[0]?.account_id ?? null;
+  const gatewayId = resolved[0]?.gateway_id ?? null;
 
   await gatewayCall('channels.send', {
     channel,
     to,
     text: body,
     ...(accountId ? { accountId } : {}),
-    idempotencyKey: randomUUID(),
+    idempotencyKey: clientId ?? randomUUID(),
   });
 
   await insertMessages(ctx.tenantId, gatewayId, [
-    buildOutboundRow({ contactId, channel, to, accountId, text: body, occurredAt: Date.now() }),
+    buildOutboundRow({ contactId, channel, to, accountId, text: body, occurredAt: Date.now(), clientId }),
   ]);
 
   return { ok: true };

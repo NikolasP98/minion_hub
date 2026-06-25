@@ -205,7 +205,7 @@
 		}
 	}
 	// ── Notes + channel messages (from the contact timeline) ──────────────────
-	type TRow = { kind?: string; channel?: string | null; body?: string | null; occurred_at?: string };
+	type TRow = { kind?: string; channel?: string | null; body?: string | null; occurred_at?: string; client_id?: string | null };
 	const timeline = $derived((data.timeline ?? []) as TRow[]);
 	const notes = $derived(timeline.filter((r) => r.kind === 'note' && (r.body ?? '').trim().length > 0)); // newest-first
 	// One tab per LINKED IDENTITY (channels never combine); no "All".

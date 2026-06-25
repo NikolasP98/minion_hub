@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { invalidate } from '$app/navigation';
-	import { ArrowDown, SendHorizontal } from 'lucide-svelte';
+	import { ArrowDown, SendHorizontal, Clock, CheckCheck } from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages';
 	import JourneyTimeline from './JourneyTimeline.svelte';
 
@@ -12,6 +12,7 @@
 		occurred_at?: string;
 		direction?: string | null;
 		source_id?: string;
+		client_id?: string | null;
 	};
 	let {
 		rows,
@@ -20,9 +21,21 @@
 		canSend = true,
 	}: { rows: TRow[]; contactId: string; channel: string; canSend?: boolean } = $props();
 
-	// Count only what JourneyTimeline actually renders (non-empty bodies) so the
-	// "new messages" detection matches the visible bubbles.
-	const shownCount = $derived(rows.filter((r) => (r.body ?? '').trim().length > 0).length);
+	// Optimistic queue: the input never blocks. A sent message lives as ONE bubble
+	// that flips pending → sent in place. The server's echo of that same message
+	// (matched by client_id) is hidden while its optimistic bubble exists, so the
+	// bubble never de-renders or duplicates — it just changes status.
+	type Pending = { clientId: string; text: string; status: 'pending' | 'sent' | 'failed' };
+	let pending = $state<Pending[]>([]);
+	const pendingIds = $derived(new Set(pending.map((p) => p.clientId)));
+	const visibleRows = $derived(
+		rows.filter((r) => !(r.client_id && pendingIds.has(r.client_id))),
+	);
+
+	// New-message detection (matches the visible bubbles + optimistic ones).
+	const shownCount = $derived(
+		visibleRows.filter((r) => (r.body ?? '').trim().length > 0).length + pending.length,
+	);
 
 	let scrollEl = $state<HTMLDivElement | null>(null);
 	// `stick` = keep the view pinned to the newest message. It flips ONLY from real
@@ -66,6 +79,7 @@
 	// new arrivals into the "jump to latest" pill.
 	$effect(() => {
 		void rows; // track the array identity (replaced every poll)
+		void pending.length; // …and optimistic bubbles
 		const n = shownCount;
 		if (channel !== prevChannel) return; // channel effect handles the switch
 		if (stick) void tick().then(toBottom);
@@ -73,36 +87,32 @@
 		prevCount = n;
 	});
 
-	// Optimistic queue: the input never blocks. Each send appends a pending bubble
-	// immediately and fires its POST independently; on success the real row arrives
-	// via invalidate and we drop the pending twin; on failure it stays with a retry.
-	type Pending = { id: number; text: string; failed: boolean };
-	let pending = $state<Pending[]>([]);
 	let draft = $state('');
 	let seq = 0;
+
+	function setStatus(clientId: string, status: Pending['status']) {
+		pending = pending.map((x) => (x.clientId === clientId ? { ...x, status } : x));
+	}
 
 	async function dispatch(p: Pending) {
 		try {
 			const res = await fetch(`/api/crm/contacts/${contactId}/message`, {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ channel, text: p.text }),
+				body: JSON.stringify({ channel, text: p.text, clientId: p.clientId }),
 			});
-			if (!res.ok) {
-				pending = pending.map((x) => (x.id === p.id ? { ...x, failed: true } : x));
-				return;
-			}
-			// Real row is committed before the 200; refresh, then drop the optimistic twin.
-			await invalidate('crm:contact');
-			pending = pending.filter((x) => x.id !== p.id);
+			setStatus(p.clientId, res.ok ? 'sent' : 'failed');
+			// Refresh other UI (counts/journey) in the background; the server's echo of
+			// this message is deduped against the bubble, so nothing flickers.
+			if (res.ok) void invalidate('crm:contact');
 		} catch {
-			pending = pending.map((x) => (x.id === p.id ? { ...x, failed: true } : x));
+			setStatus(p.clientId, 'failed');
 		}
 	}
 	function send() {
 		const text = draft.trim();
 		if (!text) return;
-		const p: Pending = { id: ++seq, text, failed: false };
+		const p: Pending = { clientId: `crm-send:${contactId}:${Date.now()}-${++seq}`, text, status: 'pending' };
 		pending = [...pending, p];
 		draft = '';
 		stick = true;
@@ -110,7 +120,7 @@
 		void dispatch(p);
 	}
 	function retry(p: Pending) {
-		pending = pending.map((x) => (x.id === p.id ? { ...x, failed: false } : x));
+		setStatus(p.clientId, 'pending');
 		void dispatch(p);
 	}
 	function onKey(e: KeyboardEvent) {
@@ -123,17 +133,19 @@
 
 <div class="chat">
 	<div class="scroll" bind:this={scrollEl} onscroll={onScroll}>
-		<JourneyTimeline rows={rows as never} hideHeaders />
+		<JourneyTimeline rows={visibleRows as never} hideHeaders />
 		{#if pending.length}
 			<ol class="pending-thread">
-				{#each pending as p (p.id)}
+				{#each pending as p (p.clientId)}
 					<li class="row out">
-						<div class="bubble" class:failed={p.failed}>
+						<div class="bubble" class:failed={p.status === 'failed'} class:sent={p.status === 'sent'}>
 							<p class="text">{p.text}</p>
-							{#if p.failed}
+							{#if p.status === 'failed'}
 								<button class="retry" onclick={() => retry(p)}>{m.crm_send_failed()}</button>
 							{:else}
-								<span class="time">···</span>
+								<span class="status" aria-label={p.status}>
+									{#if p.status === 'sent'}<CheckCheck size={12} />{:else}<Clock size={11} />{/if}
+								</span>
 							{/if}
 						</div>
 					</li>
@@ -257,7 +269,11 @@
 		border-bottom-right-radius: 0.2rem;
 		background: color-mix(in srgb, var(--color-emerald, var(--color-success)) 22%, var(--color-card));
 		color: var(--color-foreground);
-		opacity: 0.7;
+		opacity: 0.6;
+		transition: opacity 0.2s ease;
+	}
+	.bubble.sent {
+		opacity: 1;
 	}
 	.bubble.failed {
 		opacity: 1;
@@ -270,12 +286,15 @@
 		overflow-wrap: anywhere;
 		margin: 0;
 	}
-	.time {
-		display: block;
-		text-align: right;
-		font-size: 0.62rem;
+	.status {
+		display: flex;
+		justify-content: flex-end;
+		align-items: center;
 		color: var(--color-muted-foreground);
 		margin-top: 0.1rem;
+	}
+	.bubble.sent .status {
+		color: color-mix(in srgb, var(--color-emerald, var(--color-success)) 70%, var(--color-foreground));
 	}
 	.retry {
 		display: block;

@@ -422,7 +422,7 @@ export async function getContactPrefill(
 export async function getContactTimeline(ctx: CoreCtx, id: string, limit = 100) {
   return withOrgCore(ctx, async (tx) => {
     const rows = await tx.execute(sql`
-      select kind, direction, channel, body, agent_id, data, occurred_at, source_id
+      select kind, direction, channel, body, agent_id, data, occurred_at, source_id, client_id
       from crm_contact_timeline
       where contact_id = ${id}
       order by occurred_at desc
