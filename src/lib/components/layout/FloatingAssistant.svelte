@@ -237,13 +237,18 @@
         dragging = true;
     }
     function onLauncherPointerMove(e: PointerEvent) {
-        if (!dragging) return;
-        const dx = e.clientX - drag.px;
-        const dy = e.clientY - drag.py;
-        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) drag.moved = true;
+        if (!dragging || !launcherEl) return;
+        // Wait for a real drag before moving so a click never jumps the pill.
+        if (!drag.moved && Math.abs(e.clientX - drag.px) < 4 && Math.abs(e.clientY - drag.py) < 4)
+            return;
+        drag.moved = true;
+        // The pill collapses while dragging, so centre the (collapsed) pill on the
+        // cursor — it follows the pointer instead of floating off to one side.
+        const w = launcherEl.offsetWidth;
+        const h = launcherEl.offsetHeight;
         pos = {
-            left: clampN(drag.left + dx, LAUNCH_MARGIN, vw - launcherW() - LAUNCH_MARGIN),
-            top: clampN(drag.top + dy, LAUNCH_MARGIN, vh - launcherH() - LAUNCH_MARGIN),
+            left: clampN(e.clientX - w / 2, LAUNCH_MARGIN, vw - w - LAUNCH_MARGIN),
+            top: clampN(e.clientY - h / 2, LAUNCH_MARGIN, vh - h - LAUNCH_MARGIN),
         };
     }
     function onLauncherPointerUp(e: PointerEvent) {
@@ -265,6 +270,68 @@
             return;
         }
         toggleAssistant();
+    }
+
+    // ── Panel: opens from the launcher's corner, draggable by its header ─────
+    const PANEL_W = 380;
+    const PANEL_H = 560;
+    let panelPos = $state<{ left: number; top: number } | null>(null);
+    let panelDragging = $state(false);
+    let panelDrag = { px: 0, py: 0, left: 0, top: 0 };
+
+    // Re-origin from the bubble on every open (don't keep the last dragged spot).
+    $effect(() => {
+        if (assistant.open) panelPos = null;
+    });
+
+    // The corner nearest the launcher = where the panel docks and grows from.
+    const panelAnchor = $derived.by(() => {
+        const lw = launcherW();
+        const lh = launcherH();
+        const cx = pos ? pos.left + lw / 2 : vw - LAUNCH_MARGIN - lw / 2;
+        const cy = pos ? pos.top + lh / 2 : vh - LAUNCH_MARGIN - lh / 2;
+        const right = cx > vw / 2;
+        const bottom = cy > vh / 2;
+        return { right, bottom, origin: `${bottom ? 'bottom' : 'top'} ${right ? 'right' : 'left'}` };
+    });
+    const panelStyle = $derived.by(() => {
+        const a = panelAnchor;
+        if (panelDragging || panelPos) {
+            const p = panelPos!;
+            return `left:${p.left}px; top:${p.top}px; right:auto; bottom:auto; transform-origin:${a.origin};`;
+        }
+        const horiz = a.right ? 'right:20px; left:auto;' : 'left:20px; right:auto;';
+        const vert = a.bottom ? 'bottom:20px; top:auto;' : 'top:20px; bottom:auto;';
+        return `${horiz} ${vert} transform-origin:${a.origin}; animation: assistant-pop-in 240ms cubic-bezier(.2,.8,.2,1);`;
+    });
+
+    function onPanelHeaderPointerDown(e: PointerEvent) {
+        if (e.button !== 0) return;
+        if ((e.target as HTMLElement).closest('button')) return; // header buttons aren't drag handles
+        const header = e.currentTarget as HTMLElement;
+        const panel = header.parentElement as HTMLElement | null;
+        if (!panel) return;
+        const r = panel.getBoundingClientRect();
+        panelPos = { left: r.left, top: r.top }; // freeze current spot → no jump
+        panelDrag = { px: e.clientX, py: e.clientY, left: r.left, top: r.top };
+        header.setPointerCapture(e.pointerId);
+        panelDragging = true;
+    }
+    function onPanelHeaderPointerMove(e: PointerEvent) {
+        if (!panelDragging) return;
+        panelPos = {
+            left: clampN(panelDrag.left + (e.clientX - panelDrag.px), 8, vw - PANEL_W - 8),
+            top: clampN(panelDrag.top + (e.clientY - panelDrag.py), 8, vh - PANEL_H - 8),
+        };
+    }
+    function onPanelHeaderPointerUp(e: PointerEvent) {
+        if (!panelDragging) return;
+        panelDragging = false;
+        try {
+            (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+        } catch {
+            /* ignore */
+        }
     }
 
     // Anchor by the half it sits in so hover-expand grows inward (never off-screen).
@@ -327,31 +394,54 @@
         onpointermove={onLauncherPointerMove}
         onpointerup={onLauncherPointerUp}
         onclick={onLauncherClick}
-        class="fixed z-50 flex items-center rounded-full bg-bg2 border border-border shadow-lg hover:border-accent/50 hover:bg-bg3 group select-none touch-none {dragging ? 'cursor-grabbing shadow-2xl' : 'cursor-grab'} {pos ? '' : 'bottom-5 right-5'}"
+        class="fixed z-50 flex items-center gap-1.5 p-1.5 rounded-full bg-bg2 border border-border shadow-lg transition-colors hover:border-accent/50 hover:bg-bg3 group select-none touch-none {dragging ? 'cursor-grabbing shadow-2xl' : 'cursor-grab'} {pos ? '' : 'bottom-5 right-5'}"
         style={launcherStyle}
         aria-label={m.floatingAssistant_openLabel()}
         title={m.floatingAssistant_openTitle()}
     >
-        <span class="relative flex items-center justify-center w-11 h-11 shrink-0">
-            <Sparkles size={16} class="text-accent" />
-        </span>
+        <!-- Icon chip — pairs with the kbd as a balanced two-token collapsed pill. -->
         <span
-            class="flex items-center gap-2 overflow-hidden whitespace-nowrap pr-4 max-w-0 opacity-0 transition-all duration-200 ease-out {dragging
-                ? ''
-                : 'group-hover:max-w-[170px] group-hover:opacity-100'}"
+            class="flex items-center justify-center w-7 h-7 shrink-0 rounded-full bg-accent/10 text-accent transition-colors group-hover:bg-accent/15"
         >
-            <span class="text-xs font-medium text-foreground">{m.floatingAssistant_askAnything()}</span>
-            <kbd class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-bg3 text-muted-foreground border border-border">⌘J</kbd>
+            <Sparkles size={16} />
         </span>
+        <!-- Label reveals on hover. Grid 0fr→1fr animates to the text's exact width
+             (no hardcoded max-width, no clipping). Flex items-center handles vertical
+             centring; leading-tight + py-0.5 give descenders (g, y) room inside the clip. -->
+        <span
+            class="grid grid-cols-[0fr] transition-[grid-template-columns] duration-200 ease-out {dragging
+                ? ''
+                : 'group-hover:grid-cols-[1fr]'}"
+        >
+            <span class="overflow-hidden min-w-0">
+                <span class="block px-1 py-0.5 whitespace-nowrap text-[13px] font-medium leading-tight text-foreground"
+                    >{m.floatingAssistant_askAnything()}</span
+                >
+            </span>
+        </span>
+        <kbd
+            class="shrink-0 flex items-center h-5 px-1.5 rounded-md bg-bg3 text-[10px] font-medium font-mono leading-none text-muted-foreground border border-border"
+            >⌘J</kbd
+        >
     </button>
 {:else}
-    <!-- Expanded panel -->
+    <!-- Expanded panel — grows out of the launcher's corner, draggable by header -->
     <div
-        class="fixed bottom-5 right-5 z-50 w-[380px] h-[560px] flex flex-col bg-bg2 border border-border rounded-xl shadow-2xl overflow-hidden"
-        style="animation: assistant-pop-in 220ms cubic-bezier(.2,.8,.2,1)"
+        class="fixed z-50 w-[380px] h-[560px] flex flex-col bg-bg2 border border-border rounded-xl shadow-2xl overflow-hidden"
+        style={panelStyle}
     >
-        <!-- Header -->
-        <div class="shrink-0 flex items-center gap-2 px-3 py-2.5 border-b border-border bg-bg3/40">
+        <!-- Header (drag handle) -->
+        <div
+            role="toolbar"
+            tabindex="-1"
+            aria-label={m.floatingAssistant_title()}
+            class="shrink-0 flex items-center gap-2 px-3 py-2.5 border-b border-border bg-bg3/40 select-none touch-none {panelDragging
+                ? 'cursor-grabbing'
+                : 'cursor-grab'}"
+            onpointerdown={onPanelHeaderPointerDown}
+            onpointermove={onPanelHeaderPointerMove}
+            onpointerup={onPanelHeaderPointerUp}
+        >
             <Sparkles size={14} class="text-accent" />
             <span class="text-xs font-semibold text-foreground flex-1">{m.floatingAssistant_title()}</span>
             {#if !conn.connected}
@@ -512,14 +602,16 @@
 {/if}
 
 <style>
+    /* Grows out of the launcher: transform-origin is set inline to the bubble's
+       corner, so scaling up reads as the chat window emerging from the pill. */
     @keyframes assistant-pop-in {
         from {
             opacity: 0;
-            transform: translateY(8px) scale(0.96);
+            transform: scale(0.4);
         }
         to {
             opacity: 1;
-            transform: translateY(0) scale(1);
+            transform: scale(1);
         }
     }
 </style>
