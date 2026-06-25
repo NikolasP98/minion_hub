@@ -152,6 +152,7 @@
 	</div>
 </div>
 
+<div class="eg-wrap">
 <div
 	bind:this={gridEl}
 	class="eg-grid"
@@ -199,6 +200,7 @@
 		{/if}
 	{/each}
 </div>
+</div>
 
 <style>
 	.eg-bar {
@@ -238,6 +240,10 @@
 	.eg-btn:hover { color: var(--color-foreground); }
 	.eg-btn.on { color: var(--color-accent); border-color: color-mix(in srgb, var(--color-accent) 50%, transparent); }
 
+	/* Container so cards stack when the grid's own width shrinks (e.g. the CRM
+	   detail left column at 1:1 with both sidebars open), independent of viewport.
+	   Named container — Svelte prunes anonymous @container blocks. */
+	.eg-wrap { container: egwrap / inline-size; }
 	.eg-grid {
 		display: grid;
 		grid-template-columns: repeat(var(--eg-cols), minmax(0, 1fr));
@@ -246,6 +252,14 @@
 		grid-auto-rows: minmax(var(--eg-row), auto);
 		grid-auto-flow: row dense;
 		gap: var(--eg-gap);
+	}
+	/* Narrow container → single column, every card full-width. The cells carry
+	   inline grid-column/row spans, so !important is required to override them
+	   (else they land in 0px-wide tracks and overlap). ponytail: resize math still
+	   assumes `cols` — fine, resizing a stacked narrow grid is an edge case. */
+	@container egwrap (max-width: 620px) {
+		.eg-grid { grid-template-columns: 1fr; }
+		.eg-cell { grid-column: auto !important; grid-row: auto !important; }
 	}
 	.eg-cell {
 		position: relative;

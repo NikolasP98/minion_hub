@@ -93,11 +93,11 @@
 </script>
 
 <aside
-  class="surface-1 shrink-0 w-14 lg:w-[208px] h-full border-r border-[var(--hairline)] flex flex-col overflow-hidden {cls}"
+  class="surface-1 shrink-0 w-14 xl:w-[208px] h-full border-r border-[var(--hairline)] flex flex-col overflow-hidden {cls}"
   aria-label={ariaLabel}
 >
   {#if search?.enabled}
-    <div class="shrink-0 p-2 hidden lg:block">
+    <div class="shrink-0 p-2 hidden xl:block">
       <div class="relative">
         <Search size={13} class="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
         <input
@@ -113,7 +113,7 @@
 
   <nav class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 py-3 flex flex-col gap-0.5" class:no-search-pad={search?.enabled}>
     {#if header}
-      <div class="set-head t-label hidden lg:block">{header}</div>
+      <div class="set-head t-label hidden xl:block">{header}</div>
     {/if}
 
     {#each visibleGroups as group, gi (group.label ?? gi)}
@@ -121,7 +121,7 @@
         <div class="set-divider"></div>
       {/if}
       {#if group.label}
-        <div class="set-head t-label hidden lg:flex items-center gap-1.5">
+        <div class="set-head t-label hidden xl:flex items-center gap-1.5">
           {group.label}
           {#if group.adminOnly}<span class="admin-badge">admin</span>{/if}
         </div>
@@ -143,9 +143,9 @@
             title={item.label}
           >
             {#if Icon}<NavIcon icon={Icon} size={16} class="set-icon shrink-0" />{/if}
-            <span class="hidden lg:inline flex-1 truncate">{item.label}</span>
-            {#if item.adminOnly}<span class="admin-badge hidden lg:inline-flex">admin</span>{/if}
-            {#if item.badge != null}<span class="set-badge hidden lg:inline">{item.badge}</span>{/if}
+            <span class="hidden xl:inline flex-1 truncate">{item.label}</span>
+            {#if item.adminOnly}<span class="admin-badge hidden xl:inline-flex">admin</span>{/if}
+            {#if item.badge != null}<span class="set-badge hidden xl:inline">{item.badge}</span>{/if}
             {#if item.dot && !active}<span class="set-dot shrink-0" aria-label="unsaved changes"></span>{/if}
           </a>
         {:else}
@@ -162,9 +162,9 @@
             onclick={() => onSelect?.(item.id)}
           >
             {#if Icon}<NavIcon icon={Icon} size={16} class="set-icon shrink-0" />{/if}
-            <span class="hidden lg:inline flex-1 truncate">{item.label}</span>
-            {#if item.adminOnly}<span class="admin-badge hidden lg:inline-flex">admin</span>{/if}
-            {#if item.badge != null}<span class="set-badge hidden lg:inline">{item.badge}</span>{/if}
+            <span class="hidden xl:inline flex-1 truncate">{item.label}</span>
+            {#if item.adminOnly}<span class="admin-badge hidden xl:inline-flex">admin</span>{/if}
+            {#if item.badge != null}<span class="set-badge hidden xl:inline">{item.badge}</span>{/if}
             {#if item.dot && !active}<span class="set-dot shrink-0" aria-label="unsaved changes"></span>{/if}
           </button>
         {/if}
@@ -230,6 +230,12 @@
     border-bottom: 1px solid var(--hairline);
     border-bottom-left-radius: 5px;
     pointer-events: none;
+  }
+  /* Icon-only (collapsed, < xl): drop the indent + elbow so the child icon stays
+     aligned with its siblings — both only make sense beside a visible label. */
+  @media (max-width: 1279.98px) {
+    .set-child { padding-left: 0.625rem; }
+    .set-child::before { content: none; }
   }
   /* Background-tint active (CRM / Finance / Settings). */
   .set-active {

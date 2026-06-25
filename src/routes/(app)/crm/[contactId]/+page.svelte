@@ -428,10 +428,10 @@
 		{/snippet}
 	</PageHeader>
 
-	<!-- 2 columns at a 2:1 ratio: details (left, wide, scrollable + layout-editable,
-	     2 subcolumns) | journey + notes + channels (right, full height). Stacks on
-	     < lg with the journey/notes/channels below the details. -->
-	<div class="flex-1 min-h-0 p-4 grid gap-4 grid-cols-1 lg:grid-cols-[2fr_1fr] lg:overflow-hidden overflow-auto">
+	<!-- 2 columns at a 1:1 ratio: details (left, scrollable + layout-editable, whose
+	     inner cards stack via a container query as the column narrows) | journey +
+	     notes + channels (right, full height). Stacks on < lg. -->
+	<div class="flex-1 min-h-0 p-4 grid gap-4 grid-cols-1 lg:grid-cols-2 lg:overflow-hidden overflow-auto">
 		<div class="left-col min-w-0 lg:min-h-0 lg:overflow-auto">
 			<EditableGrid id="crm-contact-detail-v2" items={gridItems} cols={4} rowHeight={96} canSetDefault={isAdmin.value}>
 				{#snippet cell(idv)}{@render leftCell(idv)}{/snippet}
