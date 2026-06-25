@@ -166,6 +166,118 @@
         thinking: m.floatingAssistant_thinking(),
         speaking: m.floatingAssistant_speaking(),
     };
+
+    // ── Draggable, edge-snapping launcher ───────────────────────────────────
+    // The collapsed pill is icon-only and expands its label on hover. It can be
+    // dragged anywhere and snaps to the nearest screen edge on release (smooth),
+    // persisting its spot. Anchored by whichever half it lands in so the
+    // hover-expand always grows inward and never spills off-screen.
+    const LAUNCH_MARGIN = 20;
+    let launcherEl: HTMLButtonElement | null = $state(null);
+    let pos = $state<{ left: number; top: number } | null>(null);
+    let dragging = $state(false);
+    let vw = $state(typeof window !== 'undefined' ? window.innerWidth : 1280);
+    let vh = $state(typeof window !== 'undefined' ? window.innerHeight : 800);
+    let drag = { px: 0, py: 0, left: 0, top: 0, moved: false };
+    let suppressClick = false;
+
+    const clampN = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+    // Live collapsed size — hover-expand is disabled while dragging, so offsetWidth
+    // here is always the collapsed pill (no hardcoded guess to drift out of sync).
+    const launcherW = () => launcherEl?.offsetWidth ?? 56;
+    const launcherH = () => launcherEl?.offsetHeight ?? 44;
+
+    onMount(() => {
+        try {
+            const s = localStorage.getItem('assistant-launcher-pos');
+            if (s) pos = JSON.parse(s);
+        } catch {
+            /* ignore */
+        }
+        const onResize = () => {
+            vw = window.innerWidth;
+            vh = window.innerHeight;
+            if (pos) snapToEdge();
+        };
+        window.addEventListener('resize', onResize);
+        return () => window.removeEventListener('resize', onResize);
+    });
+
+    function snapToEdge() {
+        if (!pos) return;
+        const w = launcherW();
+        const h = launcherH();
+        let { left, top } = pos;
+        const dl = left;
+        const dr = vw - (left + w);
+        const dt = top;
+        const db = vh - (top + h);
+        const min = Math.min(dl, dr, dt, db);
+        if (min === dl) left = LAUNCH_MARGIN;
+        else if (min === dr) left = vw - w - LAUNCH_MARGIN;
+        else if (min === dt) top = LAUNCH_MARGIN;
+        else top = vh - h - LAUNCH_MARGIN;
+        pos = {
+            left: clampN(left, LAUNCH_MARGIN, vw - w - LAUNCH_MARGIN),
+            top: clampN(top, LAUNCH_MARGIN, vh - h - LAUNCH_MARGIN),
+        };
+        try {
+            localStorage.setItem('assistant-launcher-pos', JSON.stringify(pos));
+        } catch {
+            /* ignore */
+        }
+    }
+
+    function onLauncherPointerDown(e: PointerEvent) {
+        if (e.button !== 0 || !launcherEl) return;
+        const r = launcherEl.getBoundingClientRect();
+        pos = pos ?? { left: r.left, top: r.top };
+        drag = { px: e.clientX, py: e.clientY, left: pos.left, top: pos.top, moved: false };
+        launcherEl.setPointerCapture(e.pointerId);
+        dragging = true;
+    }
+    function onLauncherPointerMove(e: PointerEvent) {
+        if (!dragging) return;
+        const dx = e.clientX - drag.px;
+        const dy = e.clientY - drag.py;
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) drag.moved = true;
+        pos = {
+            left: clampN(drag.left + dx, LAUNCH_MARGIN, vw - launcherW() - LAUNCH_MARGIN),
+            top: clampN(drag.top + dy, LAUNCH_MARGIN, vh - launcherH() - LAUNCH_MARGIN),
+        };
+    }
+    function onLauncherPointerUp(e: PointerEvent) {
+        if (!dragging) return;
+        dragging = false;
+        try {
+            launcherEl?.releasePointerCapture(e.pointerId);
+        } catch {
+            /* ignore */
+        }
+        if (drag.moved) {
+            suppressClick = true; // a drag is not a click
+            snapToEdge();
+        }
+    }
+    function onLauncherClick() {
+        if (suppressClick) {
+            suppressClick = false;
+            return;
+        }
+        toggleAssistant();
+    }
+
+    // Anchor by the half it sits in so hover-expand grows inward (never off-screen).
+    const anchorRight = $derived(!!pos && pos.left + launcherW() / 2 > vw / 2);
+    const launcherStyle = $derived.by(() => {
+        if (!pos) return '';
+        if (dragging) return `left:${pos.left}px; right:auto; top:${pos.top}px;`;
+        const ease = 'transition: left .26s cubic-bezier(.2,.8,.2,1), top .26s cubic-bezier(.2,.8,.2,1), right .26s cubic-bezier(.2,.8,.2,1);';
+        const horiz = anchorRight
+            ? `right:${Math.max(LAUNCH_MARGIN, vw - pos.left - launcherW())}px; left:auto;`
+            : `left:${pos.left}px; right:auto;`;
+        return `${horiz} top:${pos.top}px; ${ease}`;
+    });
 </script>
 
 <!-- Pill (collapsed state) -->
@@ -209,17 +321,28 @@
     </div>
 {:else if !assistant.open}
     <button
+        bind:this={launcherEl}
         type="button"
-        onclick={toggleAssistant}
-        class="fixed bottom-5 right-5 z-50 flex items-center gap-2 px-4 py-2.5 rounded-full bg-bg2 border border-border shadow-lg hover:border-accent/50 hover:bg-bg3 transition-all group"
+        onpointerdown={onLauncherPointerDown}
+        onpointermove={onLauncherPointerMove}
+        onpointerup={onLauncherPointerUp}
+        onclick={onLauncherClick}
+        class="fixed z-50 flex items-center rounded-full bg-bg2 border border-border shadow-lg hover:border-accent/50 hover:bg-bg3 group select-none touch-none {dragging ? 'cursor-grabbing shadow-2xl' : 'cursor-grab'} {pos ? '' : 'bottom-5 right-5'}"
+        style={launcherStyle}
         aria-label={m.floatingAssistant_openLabel()}
         title={m.floatingAssistant_openTitle()}
     >
-        <span class="relative flex items-center justify-center w-5 h-5">
-            <Sparkles size={14} class="text-accent" />
+        <span class="relative flex items-center justify-center w-11 h-11 shrink-0">
+            <Sparkles size={16} class="text-accent" />
         </span>
-        <span class="text-xs font-medium text-foreground">{m.floatingAssistant_askAnything()}</span>
-        <kbd class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-bg3 text-muted-foreground border border-border">⌘J</kbd>
+        <span
+            class="flex items-center gap-2 overflow-hidden whitespace-nowrap pr-4 max-w-0 opacity-0 transition-all duration-200 ease-out {dragging
+                ? ''
+                : 'group-hover:max-w-[170px] group-hover:opacity-100'}"
+        >
+            <span class="text-xs font-medium text-foreground">{m.floatingAssistant_askAnything()}</span>
+            <kbd class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-bg3 text-muted-foreground border border-border">⌘J</kbd>
+        </span>
     </button>
 {:else}
     <!-- Expanded panel -->
