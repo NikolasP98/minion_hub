@@ -129,7 +129,7 @@ export function getFilteredCommands(): { category: string; commands: Command[] }
     category: 'agent' as const,
     icon: a.emoji ?? 'bot',
     keywords: `agent ${a.name ?? ''} ${a.id}`,
-    action: () => goto('/'),
+    action: () => goto('/agents'),
   }));
 
   const all = [...pageCommands(), ...agentCommands, ...actionCommands, ...customCommands];

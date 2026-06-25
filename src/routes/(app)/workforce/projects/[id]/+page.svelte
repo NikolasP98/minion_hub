@@ -3,8 +3,18 @@
 	import { invalidate } from '$app/navigation';
 	import { PageHeader } from '$lib/components/ui';
 	import { Flag, Plus, Clock, Boxes, Link2, Unlink } from 'lucide-svelte';
+	import DocTimeline from '$lib/components/shared/DocTimeline.svelte';
 
 	let { data }: { data: PageData } = $props();
+
+	async function postComment(body: string) {
+		const res = await fetch('/api/activity/comments', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ refType: 'proj_project', refId: data.project.id, body }),
+		});
+		if (res.ok) await invalidate('projects:detail');
+	}
 	let busy = $state(false);
 	let newTaskTitle = $state('');
 	let tsMinutes = $state(60);
@@ -236,6 +246,12 @@
 					<p class="t-caption empty">No time logged yet.</p>
 				{/each}
 			</div>
+		</section>
+
+		<!-- activity + audit -->
+		<section class="card">
+			<header class="ts-head"><Clock size={14} /> Activity</header>
+			<DocTimeline items={data.timeline} onComment={postComment} />
 		</section>
 	</div>
 </div>

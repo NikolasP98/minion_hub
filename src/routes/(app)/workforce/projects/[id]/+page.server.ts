@@ -14,6 +14,7 @@ import {
   type PartyLite,
 } from '$server/services/projects.service';
 import { workforceServerClient } from '$lib/server/workforce-fetch';
+import { listEntityTimeline } from '$server/services/activity.service';
 import type { Project, Issue } from '@minion-stack/workforce-client';
 
 export const load: PageServerLoad = async (event) => {
@@ -28,11 +29,12 @@ export const load: PageServerLoad = async (event) => {
   // Mirror workforce agents into the spine so the assignee picker lists them (best-effort).
   await syncAgentParties(ctx, { id: ctx.profileId ?? null, name: locals.user?.displayName ?? null, email: locals.user?.email ?? null });
 
-  const [tasks, progress, timesheets, agents] = await Promise.all([
+  const [tasks, progress, timesheets, agents, timeline] = await Promise.all([
     listTasks(ctx, { projectId: params.id, includeMilestones: true }),
     getProjectProgress(ctx, params.id),
     listTimesheets(ctx, { projectId: params.id }),
     listAgentParties(ctx),
+    listEntityTimeline(ctx, 'proj_project', params.id),
   ]);
 
   const selfPartyId = ctx.profileId
@@ -81,5 +83,5 @@ export const load: PageServerLoad = async (event) => {
     }
   }
 
-  return { project, tasks, progress, timesheets, agents, selfPartyId, partyMap, workforceProjectId, execution, linkable };
+  return { project, tasks, progress, timesheets, agents, selfPartyId, partyMap, workforceProjectId, execution, linkable, timeline };
 };

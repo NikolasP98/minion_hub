@@ -110,6 +110,45 @@ export async function applyTransition(
   return 'ok';
 }
 
+/**
+ * Pure: may `actor` set status `current → next` directly (bypassing the action
+ * buttons), given the workflow's transitions? A no-op (current===next) is always
+ * fine; otherwise `next` must be a reachable `to` for this actor from `current`.
+ */
+export function isStatusChangeAllowed(
+  transitions: Transition[],
+  current: string,
+  next: string,
+  actor: { role: string | null; id: string | null },
+  ownerId: string | null,
+): boolean {
+  if (current === next) return true;
+  return availableTransitions(transitions, current, actor, ownerId).some((x) => x.to === next);
+}
+
+/**
+ * Guard for the direct status-PATCH endpoints. Returns true when the change must
+ * be REJECTED. Inert (false) when no enabled workflow exists for the doc type —
+ * so status edits work exactly as before until an admin defines a workflow, at
+ * which point the engine becomes enforced instead of merely advisory.
+ */
+export async function statusChangeBlocked(
+  ctx: CoreCtx,
+  docType: string,
+  docId: string,
+  next: string,
+  actor: Actor,
+): Promise<boolean> {
+  const def = await getDef(ctx, docType);
+  if (!def) return false;
+  const t = WF_META[docType as WfDocType].table;
+  const [doc] = await withOrgCore(ctx, (tx) =>
+    tx.select({ status: t.status, owner: t.ownerId }).from(t).where(and(eq(t.id, docId), eq(t.orgId, ctx.tenantId))),
+  );
+  if (!doc) return false; // missing doc → let the caller 404
+  return !isStatusChangeAllowed((def.transitions as Transition[]) ?? [], doc.status, next, actor, doc.owner ?? null);
+}
+
 // ── Def CRUD (admin settings) ─────────────────────────────────────────────────
 export function listDefs(ctx: CoreCtx): Promise<WorkflowDef[]> {
   return withOrgCore(ctx, (tx) => tx.select().from(workflowDefs).where(eq(workflowDefs.orgId, ctx.tenantId)));

@@ -98,6 +98,18 @@ export function listOrders(
   });
 }
 
+/** Single order by id (detail page). */
+export async function getOrder(ctx: CoreCtx, id: string): Promise<SalesOrder | null> {
+  const [row] = await withOrgCore(ctx, (tx) =>
+    tx
+      .select()
+      .from(salesOrders)
+      .where(and(eq(salesOrders.id, id), eq(salesOrders.orgId, ctx.tenantId)))
+      .limit(1),
+  );
+  return row ?? null;
+}
+
 /** Open-order count for an entity — powers the Connections panel Sales group. */
 export async function orderCountForContact(ctx: CoreCtx, contactId: string): Promise<number> {
   const [row] = await withOrgCore(ctx, (tx) =>

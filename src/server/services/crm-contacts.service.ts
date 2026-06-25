@@ -14,6 +14,7 @@ import { RFM_WEIGHTS, RFM_CONST, tryCompileTagRule } from './crm-scoring';
 import { reconcileParties } from './party.service';
 import { CONTACT_PARTY } from './crm-finance.service';
 import { bothEnabled } from './modules.service';
+import { autoAssign } from './assignment.service';
 import { isFunnelStage, readFunnelMeta, funnelStageIndex } from '$lib/components/crm/crm-funnel';
 
 /**
@@ -449,6 +450,12 @@ export async function createContact(
       .returning();
     return r;
   });
+  // Auto-assign via assignment rules (no-op if no rule matches), mirroring
+  // support.createIssue — leads were the other owner_id holder left unwired.
+  if (!row.ownerId) {
+    const assignee = await autoAssign(ctx, 'crm_contact', row);
+    if (assignee) row.ownerId = assignee;
+  }
   await bustCrmList(ctx.tenantId);
   return row;
 }

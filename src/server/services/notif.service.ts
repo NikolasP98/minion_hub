@@ -25,6 +25,11 @@ export function isTriggerTableAllowed(t: string): boolean {
   return Object.prototype.hasOwnProperty.call(TABLE_META, t);
 }
 
+/** Allowlisted trigger tables + their date-offset columns — drives the rules UI. */
+export const NOTIF_TABLES: Array<{ table: string; dateFields: string[] }> = Object.entries(TABLE_META).map(
+  ([table, m]) => ({ table, dateFields: m.dateFields }),
+);
+
 /** A date_offset rule's dateField must be an allowlisted timestamp column for
  *  its table (it is interpolated into raw SQL — never trust the rule value). */
 export function isDateFieldAllowed(table: string, field: string | null | undefined): boolean {

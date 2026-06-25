@@ -47,7 +47,7 @@
 		<section class="card list">
 			{#each data.orders as o (o.id)}
 				<div class="row">
-					<span class="desc">{#if o.humanId}<span class="hid">{o.humanId}</span> {/if}{o.description ?? '—'}</span>
+					<a class="desc" href={`/sales/${o.id}`}>{#if o.humanId}<span class="hid">{o.humanId}</span> {/if}{o.description ?? '—'}</a>
 					<span class="cust t-caption">{o.customerName ?? '—'}</span>
 					<span class="total">{o.total ? Number(o.total).toLocaleString() : '—'}</span>
 					<select class="status-sel" value={o.status} disabled={busy} onchange={(e) => setStatus(o.id, (e.currentTarget as HTMLSelectElement).value)}>
