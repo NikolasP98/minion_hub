@@ -6,6 +6,7 @@
 	import { FileText, ArrowUp, ArrowDown, ChevronsUpDown, ExternalLink } from 'lucide-svelte';
 	import { PageHeader } from '$lib/components/ui';
 	import ColumnFilter from '$lib/components/crm/ColumnFilter.svelte';
+	import ScopeBanner from '$lib/components/crm/ScopeBanner.svelte';
 
 	let { data }: { data: PageData } = $props();
 	const invoices = $derived(data.invoices);
@@ -142,6 +143,7 @@
 			</button>
 		{/if}
 		<span class="t-caption">{m.fin_invoices_count({ count: view.length })}</span>
+		{#if data.contactName}<ScopeBanner name={data.contactName} contactId={data.contactId} noun="invoices" />{/if}
 	</div>
 
 	<div class="flex-1 min-h-0 overflow-auto" use:infiniteScroll>

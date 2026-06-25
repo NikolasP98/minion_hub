@@ -3,6 +3,7 @@ import type { PageServerLoad } from './$types';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { listIssues, issueStats, agreementStatus } from '$server/services/support.service';
+import { getContact } from '$server/services/crm-contacts.service';
 
 export const load: PageServerLoad = async ({ locals, depends, url }) => {
   const ctx = await getCoreCtx(locals);
@@ -15,13 +16,20 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
   const contact = url.searchParams.get('contact') ?? undefined;
   const openCreate = url.searchParams.get('new') === '1';
 
-  const [raw, stats] = await Promise.all([
+  const [raw, stats, contactRec] = await Promise.all([
     listIssues(ctx, { status: 'open_all', crmContactId: contact, limit: 200 }),
     issueStats(ctx),
+    contact ? getContact(ctx, contact) : Promise.resolve(null),
   ]);
   // SLA agreement state is derived (never stored) — compute it once here so the
   // client never imports the server-only service.
   const now = new Date();
   const issues = raw.map((i) => ({ ...i, sla: agreementStatus(i, now) }));
-  return { issues, stats, contactId: contact ?? null, openCreate };
+  return {
+    issues,
+    stats,
+    contactId: contact ?? null,
+    contactName: contactRec?.contact?.displayName ?? null,
+    openCreate,
+  };
 };

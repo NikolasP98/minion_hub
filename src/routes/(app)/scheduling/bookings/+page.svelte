@@ -4,6 +4,7 @@
 	import { invalidate, goto } from '$app/navigation';
 	import { PageHeader, Card, Button, Badge, EmptyState, Modal } from '$lib/components/ui';
 	import * as m from '$lib/paraglide/messages';
+	import ScopeBanner from '$lib/components/crm/ScopeBanner.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -164,6 +165,7 @@
 	</PageHeader>
 
 	<div class="flex-1 min-h-0 overflow-auto p-4">
+		{#if data.contactName}<div class="mb-3"><ScopeBanner name={data.contactName} contactId={data.contactId} noun="bookings" /></div>{/if}
 		{#if data.bookings.length === 0}
 			<EmptyState title={m.sched_empty_bookings()} />
 		{:else}

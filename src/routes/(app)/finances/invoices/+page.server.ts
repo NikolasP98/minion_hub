@@ -3,6 +3,7 @@ import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { listInvoices } from '$server/services/finance.service';
+import { getContact } from '$server/services/crm-contacts.service';
 
 export const load: PageServerLoad = async ({ locals, depends, url }) => {
   const ctx = await getCoreCtx(locals);
@@ -12,6 +13,9 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
   // Load the full set (capped) so the page can sort/filter client-side like the
   // CRM customers view; rendering is windowed on the client for paint cost.
   const contactId = url.searchParams.get('contact') ?? undefined;
-  const { rows, total } = await listInvoices(ctx, { limit: 10_000, contactId });
-  return { invoices: rows, total };
+  const [{ rows, total }, contactRec] = await Promise.all([
+    listInvoices(ctx, { limit: 10_000, contactId }),
+    contactId ? getContact(ctx, contactId) : Promise.resolve(null),
+  ]);
+  return { invoices: rows, total, contactId: contactId ?? null, contactName: contactRec?.contact?.displayName ?? null };
 };

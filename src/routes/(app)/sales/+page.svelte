@@ -4,6 +4,7 @@
 	import { PageHeader } from '$lib/components/ui';
 	import { ClipboardList, CircleDollarSign } from 'lucide-svelte';
 	import { relativeTime } from '$lib/components/crm/crm-format';
+	import ScopeBanner from '$lib/components/crm/ScopeBanner.svelte';
 
 	let { data }: { data: PageData } = $props();
 	let busy = $state(false);
@@ -37,6 +38,7 @@
 	<PageHeader title="Sales Orders" subtitle="Commitments to bill — created from bookings, reconciled against invoices" />
 
 	<div class="flex-1 min-h-0 overflow-auto p-4 flex flex-col gap-4">
+		{#if data.contactName}<div><ScopeBanner name={data.contactName} contactId={data.contactId} noun="orders" /></div>{/if}
 		<div class="kpis">
 			<div class="kpi"><ClipboardList size={16} /><span class="n">{data.stats.open}</span><span class="l">Open orders</span></div>
 			<div class="kpi"><CircleDollarSign size={16} /><span class="n">{data.stats.committed.toLocaleString()}</span><span class="l">Committed value</span></div>

@@ -5,6 +5,7 @@
 	import { Plus, AlertTriangle, Inbox, CheckCircle2 } from 'lucide-svelte';
 	import { priorityLabel, priorityColor, slaColor, PRIORITIES } from '$lib/components/support/support-format';
 	import { relativeTime } from '$lib/components/crm/crm-format';
+	import ScopeBanner from '$lib/components/crm/ScopeBanner.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -48,6 +49,7 @@
 	</PageHeader>
 
 	<div class="flex-1 min-h-0 overflow-auto p-4 flex flex-col gap-4">
+		{#if data.contactName}<div><ScopeBanner name={data.contactName} contactId={data.contactId} noun="tickets" /></div>{/if}
 		<!-- KPI row -->
 		<div class="kpis">
 			<div class="kpi"><Inbox size={16} /><span class="n">{data.stats.open}</span><span class="l">Open</span></div>
