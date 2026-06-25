@@ -32,12 +32,25 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export const GET: RequestHandler = async ({ locals, url }) => {
   const agentId = url.searchParams.get('agentId');
   const userIdParam = url.searchParams.get('userId');
-  // The principal is the Supabase profile uuid. From a gateway caller it's
-  // derived from the (trusted) personal agent id; for a self/admin browser
-  // caller it may be passed directly.
-  const principalId = agentId ? agentId.replace(/^personal-/, '') : userIdParam;
-  if (!principalId) throw error(400, 'agentId or userId query param required');
-  if (!UUID_RE.test(principalId)) throw error(400, 'unresolvable principal');
+  if (!agentId && !userIdParam) throw error(400, 'agentId or userId query param required');
+
+  // The principal is the Supabase profile uuid. A gateway caller passes the
+  // (trusted) personal agent id — resolve the owning profile by its stored
+  // personal_agent_id (authoritative; handles uuid-derived AND legacy agent ids,
+  // unlike stripping the `personal-` prefix). A self/admin browser caller may
+  // pass the profile uuid directly.
+  let principalId: string | null = null;
+  if (agentId) {
+    const { data } = await supabaseAdmin()
+      .from('profiles')
+      .select('id')
+      .eq('personal_agent_id', agentId)
+      .maybeSingle();
+    principalId = (data as { id: string } | null)?.id ?? null;
+  } else if (userIdParam && UUID_RE.test(userIdParam)) {
+    principalId = userIdParam;
+  }
+  if (!principalId) throw error(400, 'unresolvable principal');
 
   const isGateway = Boolean(locals.serverId);
   if (!isGateway) {
