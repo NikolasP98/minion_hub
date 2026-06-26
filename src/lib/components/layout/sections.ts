@@ -144,6 +144,7 @@ const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: SectionIt
             label: "CRM",
             icon: Contact,
             matcher: (p: string) => p.startsWith("/crm"),
+            requires: "crm.view",
         },
     },
     {
@@ -162,6 +163,7 @@ const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: SectionIt
             label: "Workforce",
             icon: FolderKanban,
             matcher: (p: string) => p.startsWith("/workforce"),
+            requires: "projects.view",
         },
     },
     {
@@ -171,6 +173,7 @@ const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: SectionIt
             label: "Scheduling",
             icon: CalendarClock,
             matcher: (p: string) => p.startsWith("/scheduling"),
+            requires: "scheduling.view",
         },
     },
     {
@@ -180,6 +183,7 @@ const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: SectionIt
             label: "Finances",
             icon: Wallet,
             matcher: (p: string) => p.startsWith("/finances"),
+            requires: "finance.view",
         },
     },
     {
@@ -189,6 +193,7 @@ const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: SectionIt
             label: "Sales Orders",
             icon: ClipboardList,
             matcher: (p: string) => p.startsWith("/sales"),
+            requires: "sales.view",
         },
     },
     {
@@ -198,6 +203,7 @@ const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: SectionIt
             label: "Memberships",
             icon: RefreshCw,
             matcher: (p: string) => p.startsWith("/memberships"),
+            requires: "memberships.view",
         },
     },
     {
@@ -207,6 +213,7 @@ const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: SectionIt
             label: "Support",
             icon: LifeBuoy,
             matcher: (p: string) => p.startsWith("/support"),
+            requires: "support.view",
         },
     },
 ];

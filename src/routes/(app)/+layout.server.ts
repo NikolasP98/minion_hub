@@ -1,7 +1,8 @@
 import type { LayoutServerLoad } from './$types';
-import { redirect } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
 import { requireAuth } from '$server/auth/authorize';
 import { loadPermissionsForUser } from '$server/services/permissions.service';
+import { requiredViewPermForPath } from '$lib/permissions';
 import { loadWorkspacesForUser } from '$server/services/workspaces.service';
 import { loadOrganizationsForUser } from '$server/services/organizations.service';
 import { loadPersonalAgentForUser } from '$server/services/personal-agent.service';
@@ -79,6 +80,16 @@ export const load: LayoutServerLoad = async ({ locals, depends, url, cookies }) 
       loadHostsForUser(locals, user.id, user.role),
       loadUserPreferences(locals, user.supabaseId),
     ]);
+
+  // Central RBAC route guard: business modules (crm/finances/sales/scheduling/
+  // support/memberships/workforce) require the matching `*:view` capability.
+  // Reuses the permission set already resolved above (no extra round-trip);
+  // platform admins get every business `*:view` so they pass. This is the real
+  // server-side enforcement — the nav `requires` keys only hide the links.
+  const requiredPerm = requiredViewPermForPath(url.pathname);
+  if (requiredPerm && !permissions.permissions.includes(requiredPerm)) {
+    throw error(403, 'You do not have access to this module.');
+  }
 
   // Redirect to onboarding if user hasn't completed it yet
   if (

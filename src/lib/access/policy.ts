@@ -8,6 +8,16 @@ const ROLE_RANK: Record<UserRole, number> = { user: 0, admin: 1 };
 const BASE_ACCESS: Record<string, Capability> = {
   'users.manage': { minRole: 'admin' },
   'agents.publish': { permission: 'marketplace:publish' },
+  // Business-module view gates (RBAC-driven). Permission-based so the matrix is
+  // authoritative; platform admins get every business `*:view` via the admin
+  // short-circuit in loadPermissionsForUser, so they always pass.
+  'crm.view': { permission: 'crm:view' },
+  'finance.view': { permission: 'finance:view' },
+  'sales.view': { permission: 'sales:view' },
+  'scheduling.view': { permission: 'scheduling:view' },
+  'support.view': { permission: 'support:view' },
+  'memberships.view': { permission: 'memberships:view' },
+  'projects.view': { permission: 'projects:view' },
 };
 
 /** Super-view keys auto-register as admin-only. */

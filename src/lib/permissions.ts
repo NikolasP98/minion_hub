@@ -35,7 +35,56 @@ export const MODULE_PERMISSIONS = (Object.keys(MODULES) as ModuleKey[]).map(
   (k) => `module:${k}` as const,
 );
 
-export const PERMISSIONS = [...RESOURCE_PERMISSIONS, ...MODULE_PERMISSIONS] as const;
+/**
+ * Business-data view permissions, emitted from the RBAC engine
+ * (`capsToLegacyPermissions`) so the nav + central route guard can gate the
+ * business modules the same way platform resources are gated. `finance:view`
+ * keeps the singular module key (route is /finances); `projects:view` backs the
+ * /workforce subtree.
+ */
+export const BUSINESS_PERMISSIONS = [
+  'crm:view',
+  'finance:view',
+  'sales:view',
+  'scheduling:view',
+  'support:view',
+  'projects:view',
+  'memberships:view',
+  'comms:view',
+] as const;
+
+export const PERMISSIONS = [
+  ...RESOURCE_PERMISSIONS,
+  ...BUSINESS_PERMISSIONS,
+  ...MODULE_PERMISSIONS,
+] as const;
+
+/**
+ * Map an (app) pathname to the business-module view permission it requires, or
+ * `null` if the route isn't a gated business module. Single source of truth for
+ * the central layout guard (server enforcement) and the nav `requires` keys (UX
+ * hiding) so they can never drift. Longest prefix wins.
+ */
+const BUSINESS_ROUTE_PERMS: ReadonlyArray<readonly [string, string]> = [
+  ['/crm', 'crm:view'],
+  ['/finances', 'finance:view'],
+  ['/sales', 'sales:view'],
+  ['/scheduling', 'scheduling:view'],
+  ['/support', 'support:view'],
+  ['/memberships', 'memberships:view'],
+  ['/workforce', 'projects:view'],
+];
+
+export function requiredViewPermForPath(pathname: string): string | null {
+  let best: readonly [string, string] | null = null;
+  for (const entry of BUSINESS_ROUTE_PERMS) {
+    const prefix = entry[0];
+    if ((pathname === prefix || pathname.startsWith(`${prefix}/`)) && (!best || prefix.length > best[0].length)) {
+      best = entry;
+    }
+  }
+  return best ? best[1] : null;
+}
 
 export type Permission = (typeof PERMISSIONS)[number];
 
