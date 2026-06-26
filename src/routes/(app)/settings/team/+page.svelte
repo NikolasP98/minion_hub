@@ -7,7 +7,7 @@
 
 <TeamTab
   initialUsers={data.users}
-  initialCustomRoles={data.customRoles}
+  rbacRoles={data.rbacRoles}
   initialPendingRequests={data.pendingRequests}
   organizations={data.organizations}
 />

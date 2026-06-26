@@ -2,14 +2,13 @@ import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { requireAdmin } from '$server/auth/authorize';
 import { listUsers, listOrganizations } from '$server/services/user.service';
-import { listRoles } from '$server/services/roles.service';
+import { listRoleCatalog, getOrgMemberRoles } from '$server/services/rbac.service';
 import { listPendingRequests } from '$server/services/join/requests.service';
 
 /**
- * Degrade a loader that hits an un-migrated Turso table to an empty result
- * instead of 500ing the whole admin page. Prod Turso never got the `roles`/
- * `rolePermissions`/`joinRequests` tables (that admin-team domain is still
- * mid-migration); join requests are read from Supabase below.
+ * Degrade a sub-loader to an empty result instead of 500ing the whole admin page
+ * (e.g. a transient Supabase hiccup resolving roles/members). Roles now come from
+ * the RBAC tables (member_roles / permission_roles); join requests from Supabase.
  */
 async function safe<T>(p: Promise<T>, fallback: T, label: string): Promise<T> {
   try {
@@ -26,9 +25,10 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   if (!locals.tenantCtx) throw error(401, 'tenant context required');
   const ctx = locals.tenantCtx;
 
-  const [rawUsers, customRoles, pending, organizations] = await Promise.all([
+  const [rawUsers, rbacRoles, memberRoles, pending, organizations] = await Promise.all([
     safe(listUsers(ctx), [] as Awaited<ReturnType<typeof listUsers>>, 'listUsers'),
-    safe(listRoles(ctx), [] as Awaited<ReturnType<typeof listRoles>>, 'listRoles'),
+    safe(listRoleCatalog(), [] as Awaited<ReturnType<typeof listRoleCatalog>>, 'listRoleCatalog'),
+    safe(getOrgMemberRoles(ctx.tenantId), new Map<string, string>(), 'getOrgMemberRoles'),
     // Supabase join_request is the system-of-record (the /join form + the
     // approve→organization_members grant both use it).
     safe(
@@ -43,6 +43,8 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     ...u,
     email: u.email ?? '',
     role: (u.role === 'admin' ? 'admin' : 'user') as 'user' | 'admin',
+    // RBAC role for THIS org (member_roles); falls back to viewer if unassigned.
+    memberRole: memberRoles.get(u.id) ?? 'viewer',
     displayName: u.displayName ?? null,
     createdAt: u.createdAt ? new Date(u.createdAt).toISOString() : null,
   }));
@@ -61,5 +63,5 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     };
   });
 
-  return { users, customRoles, pendingRequests, organizations };
+  return { users, rbacRoles, pendingRequests, organizations };
 };

@@ -10,7 +10,6 @@
     displayName: string | null;
     role: 'user' | 'admin';
     alias: string | null;
-    roleId: string | null;
   };
 
   type AvailabilityState = 'idle' | 'checking' | 'available' | 'taken' | 'invalid';
@@ -19,12 +18,10 @@
     user,
     onSave,
     onCancel,
-    customRoles = [],
   }: {
     user: UserRow;
     onSave: (patch: Partial<UserRow>) => Promise<void>;
     onCancel: () => void;
-    customRoles?: { id: string; name: string; isSystem: boolean }[];
   } = $props();
 
   // svelte-ignore state_referenced_locally
@@ -35,8 +32,6 @@
   let alias = $state(user.alias ?? '');
   // svelte-ignore state_referenced_locally
   let role = $state<'user' | 'admin'>(user.role);
-  // svelte-ignore state_referenced_locally
-  let roleId = $state<string | null>(user.roleId);
   let saving = $state(false);
   let availability = $state<AvailabilityState>('idle');
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
@@ -45,8 +40,7 @@
     displayName !== (user.displayName ?? '') ||
       email !== user.email ||
       alias !== (user.alias ?? '') ||
-      role !== user.role ||
-      roleId !== user.roleId,
+      role !== user.role,
   );
 
   const aliasValid = $derived(
@@ -82,7 +76,6 @@
         email: email.trim(),
         alias: normalizeAlias(alias),
         role,
-        roleId,
       });
     } finally {
       saving = false;
@@ -117,30 +110,9 @@
     </label>
     <label class="grid grid-cols-[80px_1fr] gap-2 items-center text-xs">
       <span class="text-muted">{m.usersui_role()}</span>
-      <Select
-        size="sm"
-        value={roleId ?? `legacy:${role}`}
-        onchange={(v) => {
-          const val = String(v);
-          if (val.startsWith('legacy:')) {
-            role = val.slice(7) as 'user' | 'admin';
-            roleId = null;
-          } else {
-            roleId = val;
-          }
-        }}
-      >
-        <optgroup label={m.usersui_builtIn()}>
-          <option value="legacy:user">{m.usersui_roleUser()}</option>
-          <option value="legacy:admin">{m.usersui_roleAdmin()}</option>
-        </optgroup>
-        {#if customRoles.filter((r) => !r.isSystem).length > 0}
-          <optgroup label={m.usersui_custom()}>
-            {#each customRoles.filter((r) => !r.isSystem) as r (r.id)}
-              <option value={r.id}>{r.name}</option>
-            {/each}
-          </optgroup>
-        {/if}
+      <Select size="sm" value={role} onchange={(v) => (role = String(v) as 'user' | 'admin')}>
+        <option value="user">{m.usersui_roleUser()}</option>
+        <option value="admin">{m.usersui_roleAdmin()}</option>
       </Select>
     </label>
   </div>

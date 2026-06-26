@@ -292,6 +292,62 @@ export async function listRbacRoles(orgId: string): Promise<RbacRoleView[]> {
 	}));
 }
 
+export const SYSTEM_ROLE_KEYS = ['owner', 'admin', 'manager', 'staff', 'viewer'] as const;
+export function isRoleKey(x: unknown): x is string {
+	return typeof x === 'string' && (SYSTEM_ROLE_KEYS as readonly string[]).includes(x);
+}
+
+export interface RoleCatalogEntry {
+	key: string;
+	name: string;
+	rank: number;
+	description: string | null;
+}
+
+/** The role catalog (for assignment dropdowns), highest rank first. */
+export async function listRoleCatalog(): Promise<RoleCatalogEntry[]> {
+	const { data } = await supabaseAdmin()
+		.from('permission_roles')
+		.select('key, name, rank, description')
+		.order('rank', { ascending: false });
+	return (data ?? []) as RoleCatalogEntry[];
+}
+
+/**
+ * Each member's primary (highest-rank) role in an org → { profileId: roleKey }.
+ * Used to show one role per user in the Team table.
+ */
+export async function getOrgMemberRoles(orgId: string): Promise<Map<string, string>> {
+	const { data } = await supabaseAdmin()
+		.from('member_roles')
+		.select('profile_id, role_key')
+		.eq('org_id', orgId);
+	const rank = new Map<string, number>(SYSTEM_ROLE_KEYS.map((k, i) => [k, SYSTEM_ROLE_KEYS.length - i]));
+	const out = new Map<string, string>();
+	for (const r of (data ?? []) as Array<{ profile_id: string; role_key: string }>) {
+		const cur = out.get(r.profile_id);
+		if (!cur || (rank.get(r.role_key) ?? 0) > (rank.get(cur) ?? 0)) out.set(r.profile_id, r.role_key);
+	}
+	return out;
+}
+
+/**
+ * Set a member's role in an org to exactly `roleKey` (single-role via the UI;
+ * replaces any existing assignments for that member in that org).
+ */
+export async function setMemberRole(
+	orgId: string,
+	profileId: string,
+	roleKey: string,
+	grantedBy: string | null = null,
+): Promise<void> {
+	const admin = supabaseAdmin();
+	await admin.from('member_roles').delete().eq('org_id', orgId).eq('profile_id', profileId);
+	await admin
+		.from('member_roles')
+		.insert({ org_id: orgId, profile_id: profileId, role_key: roleKey, granted_by: grantedBy });
+}
+
 /** Upsert a per-org capability override for (role, module). */
 export async function setRoleOverride(
 	orgId: string,

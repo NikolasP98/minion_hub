@@ -15,11 +15,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
-const mockGetPermissionsForUser = vi.fn<(ctx: unknown, userId: string) => Promise<Set<string>>>();
-vi.mock('../roles.service', () => ({
-  getPermissionsForUser: (ctx: unknown, userId: string) => mockGetPermissionsForUser(ctx, userId),
-}));
-
 const mockListGatewayHostsForUser =
   vi.fn<(profileId: string | null, isAdmin: boolean) => Promise<unknown[]>>();
 vi.mock('../gateway.pg.service', () => ({
@@ -49,9 +44,6 @@ describe('loadPermissionsForUser', () => {
       'u1',
     );
     expect(new Set(member.permissions)).toEqual(derivePermissionsFromRole('user'));
-
-    // GoTrue migration removed the self-host roles.service read entirely.
-    expect(mockGetPermissionsForUser).not.toHaveBeenCalled();
   });
 
   it('throws 401 when tenantCtx is absent', async () => {

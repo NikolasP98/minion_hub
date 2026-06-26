@@ -17,7 +17,8 @@
     displayName: string | null;
     role: 'user' | 'admin';
     alias: string | null;
-    roleId: string | null;
+    /** RBAC role in the active org (member_roles). */
+    memberRole: string;
     createdAt: string | null;
     organizations?: OrgRef[];
   };
@@ -41,29 +42,25 @@
     createdAt: string;
   };
 
-  const ROLES: UserRow['role'][] = ['user', 'admin'];
   const INVITE_ROLES = ['member', 'admin'];
 
-  type CustomRole = { id: string; name: string; isSystem: boolean; description?: string | null; permissions?: string[]; memberCount?: number };
+  type RbacRole = { key: string; name: string; rank: number; description: string | null };
 
   type OrgOption = { id: string; name: string };
 
   interface Props {
     initialUsers?: UserRow[];
-    initialCustomRoles?: CustomRole[];
+    rbacRoles?: RbacRole[];
     initialPendingRequests?: PendingRequest[];
     organizations?: OrgOption[];
   }
   let {
     initialUsers = [],
-    initialCustomRoles = [],
+    rbacRoles = [],
     initialPendingRequests = [],
     organizations = [],
   }: Props = $props();
-  const hasServerData = $derived(initialUsers.length > 0 || initialCustomRoles.length > 0);
-
-  // svelte-ignore state_referenced_locally
-  let customRoles = $state<CustomRole[]>(initialCustomRoles);
+  const hasServerData = $derived(initialUsers.length > 0);
 
   // svelte-ignore state_referenced_locally
   let users = $state<UserRow[]>(initialUsers);
@@ -136,36 +133,19 @@
     }
   }
 
-  async function loadCustomRoles() {
-    const res = await fetch('/api/roles');
-    if (res.ok) customRoles = ((await res.json()) as { roles: CustomRole[] }).roles;
-  }
-
-  async function changeRoleId(userId: string, roleId: string | null) {
-    const res = await fetch(`/api/users/${userId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ roleId }),
-    });
-    if (res.ok) {
-      users = users.map((u) => (u.id === userId ? { ...u, roleId } : u));
-      void invalidate('settings:team');
-    }
-  }
-
-  async function changeRole(userId: string, role: UserRow['role']) {
+  async function changeMemberRole(userId: string, roleKey: string) {
+    const prev = users.find((u) => u.id === userId)?.memberRole ?? 'viewer';
+    users = users.map((u) => (u.id === userId ? { ...u, memberRole: roleKey } : u));
     try {
-      const res = await fetch(`/api/users/${userId}`, {
+      const res = await fetch(`/api/users/${userId}/member-role`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role }),
+        body: JSON.stringify({ roleKey }),
       });
-      if (res.ok) {
-        users = users.map((u) => (u.id === userId ? { ...u, role } : u));
-      } else {
-        error = m.users_errorUpdateRole({ status: res.status });
-      }
+      if (!res.ok) throw new Error(String(res.status));
+      void invalidate('settings:team');
     } catch {
+      users = users.map((u) => (u.id === userId ? { ...u, memberRole: prev } : u));
       error = m.users_errorUpdateRole({ status: 'unknown' });
     }
   }
@@ -292,7 +272,6 @@
   onMount(() => {
     if (!hasServerData) {
       load();
-      loadCustomRoles();
     }
     inviteOrg = organizations[0]?.id ?? '';
     loadJoinLinks();
@@ -343,28 +322,15 @@
                 </td>
                 <td class="px-4 py-3" onclick={(e) => e.stopPropagation()}>
                   <select
-                    class="bg-transparent border border-border rounded-md text-foreground px-2 py-1 text-[11px] font-[inherit] outline-none cursor-pointer focus:border-accent"
-                    value={u.roleId ?? `legacy:${u.role}`}
-                    onchange={(e) => {
-                      const v = (e.currentTarget as HTMLSelectElement).value;
-                      if (v.startsWith('legacy:')) {
-                        changeRole(u.id, v.slice(7) as UserRow['role']);
-                      } else {
-                        changeRoleId(u.id, v);
-                      }
-                    }}
+                    class="bg-transparent border border-border rounded-md text-foreground px-2 py-1 text-[11px] font-[inherit] outline-none cursor-pointer focus:border-accent disabled:opacity-50"
+                    value={u.memberRole}
+                    disabled={u.role === 'admin'}
+                    title={u.role === 'admin' ? 'Platform admin — full access' : undefined}
+                    onchange={(e) => changeMemberRole(u.id, (e.currentTarget as HTMLSelectElement).value)}
                   >
-                    <optgroup label="Built-in">
-                      <option value="legacy:user">user</option>
-                      <option value="legacy:admin">admin</option>
-                    </optgroup>
-                    {#if customRoles.filter((r) => !r.isSystem).length > 0}
-                      <optgroup label="Custom">
-                        {#each customRoles.filter((r) => !r.isSystem) as r (r.id)}
-                          <option value={r.id}>{r.name}</option>
-                        {/each}
-                      </optgroup>
-                    {/if}
+                    {#each rbacRoles as r (r.key)}
+                      <option value={r.key}>{r.name}</option>
+                    {/each}
                   </select>
                 </td>
                 <td class="px-4 py-3" onclick={(e) => e.stopPropagation()}>
@@ -448,7 +414,6 @@
                   <td colspan="4" class="px-4 py-4">
                     <UserEditor
                       user={u}
-                      customRoles={customRoles}
                       onSave={(patch) => saveProfile(u.id, patch)}
                       onCancel={() => (expandedId = null)}
                     />

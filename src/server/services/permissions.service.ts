@@ -1,5 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { PERMISSIONS } from '$lib/permissions';
+import { resolveCapabilities, type Capabilities } from './rbac.service';
 import type { LoadCtx } from './types';
 
 export interface PermissionsLoadResult {
@@ -7,14 +8,55 @@ export interface PermissionsLoadResult {
 }
 
 /**
- * Role-derived permission set — the canonical mapping used when there are no
- * custom roles (the cloud/Supabase case; `role_permissions` is empty there).
- * Mirrors the legacy fallback in `getPermissionsForUser` exactly: admin → all
- * permissions, everyone else → the `*:view` read-only subset.
+ * Legacy fallback: derive the permission set straight from profiles.role. Only
+ * used now when there's no Supabase profile id to resolve RBAC caps from (admin →
+ * all, everyone else → `*:view`). The primary path is RBAC (capsToLegacyPermissions).
  */
 export function derivePermissionsFromRole(role: string | undefined): Set<string> {
   if (role === 'admin') return new Set(PERMISSIONS);
   return new Set(PERMISSIONS.filter((p) => p.endsWith(':view')));
+}
+
+/**
+ * Bridge the RBAC capability engine to the legacy `resource:action` + `module:*`
+ * permission vocabulary that the nav and page guards consume. Each legacy string
+ * is mapped to the closest RBAC (module, action). Verified to preserve current
+ * behaviour: owner/admin role → all perms (== old admin); manager → every `*:view`
+ * + business edit (== old `user`, which got all `*:view`); viewer/staff → narrower.
+ */
+export function capsToLegacyPermissions(caps: Capabilities): string[] {
+  const out: string[] = [];
+  const add = (perm: string, ok: boolean) => {
+    if (ok) out.push(perm);
+  };
+  add('agents:view', caps.can('agents', 'view'));
+  add('agents:edit', caps.can('agents', 'edit'));
+  add('agents:delete', caps.can('agents', 'delete'));
+  add('sessions:view', caps.can('agents', 'view'));
+  add('sessions:terminate', caps.can('agents', 'manage'));
+  add('channels:view', caps.can('channels', 'view'));
+  add('channels:configure', caps.can('channels', 'manage'));
+  add('skills:view', caps.can('agents', 'view'));
+  add('skills:install', caps.can('agents', 'manage'));
+  add('settings:view', caps.can('settings', 'view'));
+  add('settings:manage', caps.can('settings', 'manage'));
+  add('users:view', caps.can('users', 'view'));
+  add('users:invite', caps.can('users', 'create'));
+  add('users:edit', caps.can('users', 'edit'));
+  add('users:remove', caps.can('users', 'delete'));
+  add('roles:view', caps.can('users', 'view'));
+  add('roles:manage', caps.can('users', 'manage'));
+  add('billing:view', caps.can('settings', 'view'));
+  add('billing:manage', caps.can('settings', 'manage'));
+  add('hosts:view', caps.can('settings', 'view'));
+  add('hosts:manage', caps.can('settings', 'manage'));
+  add('workshop:view', caps.can('agents', 'view'));
+  add('workshop:edit', caps.can('agents', 'edit'));
+  // nav module groups
+  add('module:operations', caps.can('agents', 'view') || caps.can('channels', 'view'));
+  add('module:workspace', caps.can('agents', 'view'));
+  add('module:admin', caps.can('settings', 'view') || caps.can('users', 'view'));
+  return out;
 }
 
 /**
@@ -31,10 +73,16 @@ export async function loadPermissionsForUser(
 ): Promise<PermissionsLoadResult> {
   if (!ctx.tenantCtx) throw error(401, 'Authentication required');
 
-  // Supabase Auth (GoTrue) is the sole provider: permissions are derived from the
-  // Supabase profile role (`ctx.user.role`), keeping the login bundle off Turso.
-  // Custom roles (`role_permissions`) were a self-host/Better-Auth feature, removed
-  // in the GoTrue migration; the AUTH_DISABLED dev admin (no supabaseId) also lands
-  // here with role 'admin' → all permissions.
-  return { permissions: [...derivePermissionsFromRole(ctx.user?.role)] };
+  // Platform admins (profiles.role='admin', incl. the dev AUTH_DISABLED bypass
+  // which has no supabaseId) keep full access — superuser short-circuit.
+  if (ctx.user?.role === 'admin') return { permissions: [...PERMISSIONS] };
+
+  // RBAC is now authoritative: resolve the user's org roles → capabilities →
+  // legacy permission strings the nav + page guards consume. Falls back to the
+  // role-derived set only when there's no Supabase profile to resolve from.
+  const profileId = ctx.user?.supabaseId;
+  if (!profileId) return { permissions: [...derivePermissionsFromRole(ctx.user?.role)] };
+
+  const caps = await resolveCapabilities(ctx.tenantCtx.tenantId, profileId);
+  return { permissions: capsToLegacyPermissions(caps) };
 }
