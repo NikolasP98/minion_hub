@@ -3,13 +3,18 @@
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
   import { SideNav, type SideNavItem } from '$lib/components/ui';
+  import { canViewPath } from '$lib/access/can.svelte';
 
-  const items = $derived<SideNavItem[]>([
-    { id: 'dashboard', label: m.nav_finance(), icon: LayoutDashboard, href: '/finances' },
-    { id: 'invoices', label: m.fin_nav_invoices(), icon: FileText, href: '/finances/invoices' },
-    { id: 'products', label: m.fin_nav_products(), icon: Package, href: '/finances/products' },
-    { id: 'settings', label: m.nav_settings(), icon: Settings, href: '/finances/settings' },
-  ]);
+  // Hide subpage links the role can't view (sub-resource view caps) — same
+  // behaviour as the main sidebar hiding module links.
+  const items = $derived<SideNavItem[]>(
+    [
+      { id: 'dashboard', label: m.nav_finance(), icon: LayoutDashboard, href: '/finances' },
+      { id: 'invoices', label: m.fin_nav_invoices(), icon: FileText, href: '/finances/invoices' },
+      { id: 'products', label: m.fin_nav_products(), icon: Package, href: '/finances/products' },
+      { id: 'settings', label: m.nav_settings(), icon: Settings, href: '/finances/settings' },
+    ].filter((i) => canViewPath(i.href)),
+  );
 
   const pathname = $derived(page.url.pathname);
 
