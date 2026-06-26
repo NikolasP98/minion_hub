@@ -7,6 +7,7 @@ import {
   isValidChannelStatus,
 } from '$server/services/channel.service';
 import { getServerCtx } from '$server/auth/core-ctx';
+import { ensureGatewayWhatsappAccountSafe } from '$server/services/org-config-sync.service';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
   const ctx = await getServerCtx(locals, params.id!);
@@ -47,6 +48,15 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
     if (body.credentialsMeta !== undefined) input.credentialsMeta = body.credentialsMeta;
 
     await updateChannel(ctx, params.channelId!, input);
+
+    // On pair-persist (account_id bound to a phone), additively register the account
+    // in gateway.json so a non-wizard channel survives the next gateway restart.
+    // whatsapp only (token-less QR); no-op when the account is already configured.
+    if (existing.type === 'whatsapp' && typeof input.accountId === 'string') {
+      const label = typeof input.label === 'string' ? input.label : existing.label;
+      await ensureGatewayWhatsappAccountSafe(ctx.gatewayId, input.accountId, label);
+    }
+
     return json({ ok: true });
   } catch (e) {
     if (e && typeof e === 'object' && 'status' in e) throw e;

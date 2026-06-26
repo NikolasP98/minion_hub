@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   buildAccountOrgs,
   buildPluginOrgDisabled,
@@ -7,7 +7,12 @@ import {
   unwrapConfigSnapshot,
   isBaseHashRace,
   isDangerousEmptyWipe,
+  ensureGatewayWhatsappAccount,
 } from './org-config-sync.service';
+import { gatewayCall } from '$lib/server/gateway-rpc';
+
+vi.mock('$lib/server/gateway-rpc', () => ({ gatewayCall: vi.fn() }));
+const mockGatewayCall = vi.mocked(gatewayCall);
 
 describe('isDangerousEmptyWipe (org-isolation safety valve)', () => {
   it('blocks an empty DB view from wiping a populated gateway', () => {
@@ -113,6 +118,42 @@ describe('buildPluginOrgDisabled', () => {
       { pluginId: 'p', orgId: 'org-a', disabled: true },
     ]);
     expect(map).toEqual({ p: ['org-a', 'org-z'] });
+  });
+});
+
+describe('ensureGatewayWhatsappAccount (additive registration on pair)', () => {
+  beforeEach(() => mockGatewayCall.mockReset());
+
+  function withSnapshot(accounts: Record<string, unknown>) {
+    mockGatewayCall.mockImplementation(async (method: string) => {
+      if (method === 'config.get')
+        return { config: { channels: { whatsapp: { accounts } } }, hash: 'h1' };
+      return undefined; // config.patch
+    });
+  }
+
+  it('creates a missing account additively (name only → gateway defaults dmPolicy)', async () => {
+    withSnapshot({ '+51906090526': { name: 'OFFICIAL' } });
+    await ensureGatewayWhatsappAccount('gw', '+51992376833', 'FACES DEV');
+
+    const patch = mockGatewayCall.mock.calls.find((c) => c[0] === 'config.patch');
+    expect(patch).toBeTruthy();
+    expect(JSON.parse((patch![1] as { raw: string }).raw)).toEqual({
+      channels: { whatsapp: { accounts: { '+51992376833': { name: 'FACES DEV' } } } },
+    });
+    expect((patch![1] as { baseHash: string }).baseHash).toBe('h1');
+  });
+
+  it('is a no-op when the account already exists (never overwrites prod settings)', async () => {
+    withSnapshot({ '+51992376833': { name: 'DEV', dmPolicy: 'open', allowFrom: ['*'] } });
+    await ensureGatewayWhatsappAccount('gw', '+51992376833', 'whatever');
+
+    expect(mockGatewayCall.mock.calls.some((c) => c[0] === 'config.patch')).toBe(false);
+  });
+
+  it('skips an empty accountId without calling the gateway', async () => {
+    await ensureGatewayWhatsappAccount('gw', '   ', 'x');
+    expect(mockGatewayCall).not.toHaveBeenCalled();
   });
 });
 

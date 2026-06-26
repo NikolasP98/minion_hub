@@ -232,6 +232,77 @@ export async function reconcileOrgConfigSafe(gatewayId: string): Promise<void> {
   }
 }
 
+/**
+ * Additively ensure `channels.whatsapp.accounts[accountId]` exists in gateway.json
+ * after a channel is paired/bound to a phone. Only CREATES the entry when missing —
+ * never touches an existing account's settings (dmPolicy/allowFrom/selfChatMode/…,
+ * which the hub DB doesn't model, so an authoritative write would silently drop prod
+ * config). A new account is patched as just `{ name }`; the gateway schema defaults
+ * `dmPolicy` to "pairing" (won't auto-blast).
+ *
+ * Why this exists: the wizard path registers the account itself (its commit() patches
+ * accounts[phone]). A channel added DB-row-first (opaque id, no wizard) and paired via
+ * the card gets creds in whatsapp/<phone> + an account_id in the DB, but NO gateway.json
+ * account — so the freshly-linked number silently goes dark on the next gateway restart.
+ * whatsapp only: telegram/discord accounts need a token we don't have at pair time.
+ *
+ * Mirrors reconcileOrgConfig's optimistic-concurrency retry (baseHash race).
+ */
+export async function ensureGatewayWhatsappAccount(
+  gatewayId: string,
+  accountId: string,
+  label: string,
+): Promise<void> {
+  // ponytail: single-gateway deploy — gatewayId is accepted for parity with
+  // reconcileOrgConfig (future per-gateway creds routing), not yet used.
+  void gatewayId;
+  const phone = accountId.trim();
+  if (!phone) return;
+
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < RECONCILE_MAX_ATTEMPTS; attempt += 1) {
+    const snap =
+      (await gatewayCall<{ hash?: string } & GatewayWhatsappMaps>('config.get', {})) ?? {};
+    const cur = unwrapConfigSnapshot<GatewayWhatsappMaps>(snap);
+    const accounts = cur.channels?.whatsapp?.accounts ?? {};
+    // Additive: account already configured → leave its settings untouched.
+    if (accounts[phone]) return;
+
+    try {
+      await gatewayCall('config.patch', {
+        raw: JSON.stringify({
+          channels: { whatsapp: { accounts: { [phone]: { name: label } } } },
+        }),
+        baseHash: snap.hash,
+        note: `register whatsapp:${phone} on pair`,
+      });
+      return;
+    } catch (e) {
+      lastErr = e;
+      if (!isBaseHashRace(e)) throw e;
+    }
+  }
+  throw lastErr;
+}
+
+type GatewayWhatsappMaps = {
+  channels?: { whatsapp?: { accounts?: Record<string, unknown> } };
+};
+
+/** Fire-and-forget variant for inline use after a pair-persist: a transient gateway
+ *  error is non-fatal (wizard + manual edit still work; the DB row stays canonical). */
+export async function ensureGatewayWhatsappAccountSafe(
+  gatewayId: string,
+  accountId: string,
+  label: string,
+): Promise<void> {
+  try {
+    await ensureGatewayWhatsappAccount(gatewayId, accountId, label);
+  } catch (e) {
+    console.error('[gateway-config] register whatsapp account failed', accountId, e);
+  }
+}
+
 type GatewayMaps = {
   plugins?: { orgDisabled?: Record<string, unknown> };
   channels?: { accountOrgs?: Record<string, Record<string, unknown>> };
