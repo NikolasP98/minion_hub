@@ -6,7 +6,11 @@ type Capability = { minRole?: UserRole; permission?: string };
 const ROLE_RANK: Record<UserRole, number> = { user: 0, admin: 1 };
 
 const BASE_ACCESS: Record<string, Capability> = {
-  'users.manage': { minRole: 'admin' },
+  // Migrated off platform-admin-only onto RBAC: org owners/admins (and platform
+  // admins via the all-PERMISSIONS short-circuit) hold these; managers/staff/
+  // viewers per the matrix. Reliability moved out of SUPER_VIEWS for the same.
+  'users.manage': { permission: 'users:manage' },
+  'reliability.monitor': { permission: 'reliability:view' },
   'agents.publish': { permission: 'marketplace:publish' },
   // Business-module view gates (RBAC-driven). Permission-based so the matrix is
   // authoritative; platform admins get every business `*:view` via the admin

@@ -1,8 +1,7 @@
 import type { PageServerLoad } from './$types';
-import { error } from '@sveltejs/kit';
-import { can } from '$lib/access/policy';
 
-export const load: PageServerLoad = async ({ locals }) => {
-  if (!can('reliability.monitor', locals.user)) throw error(403, 'Admin access required');
+// Access is enforced by the central RBAC route guard in (app)/+layout.server.ts
+// (`reliability:view`), replacing the old admin-only super-view check.
+export const load: PageServerLoad = async () => {
   return {};
 };

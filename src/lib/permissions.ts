@@ -4,7 +4,7 @@ export const RESOURCE_PERMISSIONS = [
   'channels:view', 'channels:configure',
   'skills:view', 'skills:install',
   'settings:view', 'settings:manage',
-  'users:view', 'users:invite', 'users:edit', 'users:remove',
+  'users:view', 'users:invite', 'users:edit', 'users:remove', 'users:manage',
   'roles:view', 'roles:manage',
   'billing:view', 'billing:manage',
   'hosts:view', 'hosts:manage',
@@ -58,7 +58,7 @@ export const BUSINESS_PERMISSIONS = [
  * (agents/channels/settings/users live there). Emitted from caps so the agents
  * surface, Agent Builder, and Marketplace nav + routes gate off the matrix.
  */
-export const PLATFORM_VIEW_PERMISSIONS = ['flows:view', 'marketplace:view'] as const;
+export const PLATFORM_VIEW_PERMISSIONS = ['flows:view', 'marketplace:view', 'reliability:view'] as const;
 
 export const PERMISSIONS = [
   ...RESOURCE_PERMISSIONS,
@@ -74,9 +74,9 @@ export const PERMISSIONS = [
  * drift. Longest prefix wins.
  *
  * Deliberately NOT gated here: `/settings` (holds personal preferences everyone
- * needs; its org-config subroutes + write APIs gate themselves), `/reliability`
- * (admin super-view), `/team` + `/users` (own admin guards), `/home` + `/overview`
- * (universal).
+ * needs; its org-config subroutes + write APIs gate themselves), `/team` + `/users`
+ * (own RBAC guards via requireOrgCapability), `/home` + `/overview` (universal).
+ * `/terminal`, `/config`, `/orgs` stay platform-admin super-views.
  */
 const ROUTE_VIEW_PERMS: ReadonlyArray<readonly [string, string]> = [
   // business modules
@@ -96,6 +96,7 @@ const ROUTE_VIEW_PERMS: ReadonlyArray<readonly [string, string]> = [
   ['/flow-editor', 'flows:view'],
   ['/channels', 'channels:view'],
   ['/marketplace', 'marketplace:view'],
+  ['/reliability', 'reliability:view'],
 ];
 
 export function requiredViewPermForPath(pathname: string): string | null {

@@ -44,8 +44,10 @@ export function capsToLegacyPermissions(caps: Capabilities): string[] {
   add('users:invite', caps.can('users', 'create'));
   add('users:edit', caps.can('users', 'edit'));
   add('users:remove', caps.can('users', 'delete'));
+  add('users:manage', caps.can('users', 'manage'));
   add('roles:view', caps.can('users', 'view'));
   add('roles:manage', caps.can('users', 'manage'));
+  add('reliability:view', caps.can('reliability', 'view'));
   add('billing:view', caps.can('settings', 'view'));
   add('billing:manage', caps.can('settings', 'manage'));
   add('hosts:view', caps.can('settings', 'view'));

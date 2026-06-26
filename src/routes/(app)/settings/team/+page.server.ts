@@ -1,8 +1,7 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
-import { requireAdmin } from '$server/auth/authorize';
 import { listUsers, listOrganizations } from '$server/services/user.service';
-import { listRoleCatalog, getOrgMemberRoles } from '$server/services/rbac.service';
+import { listRoleCatalog, getOrgMemberRoles, requireOrgCapability } from '$server/services/rbac.service';
 import { listPendingRequests } from '$server/services/join/requests.service';
 
 /**
@@ -21,7 +20,7 @@ async function safe<T>(p: Promise<T>, fallback: T, label: string): Promise<T> {
 
 export const load: PageServerLoad = async ({ locals, depends }) => {
   depends('settings:team');
-  requireAdmin(locals);
+  await requireOrgCapability(locals, 'users', 'manage');
   if (!locals.tenantCtx) throw error(401, 'tenant context required');
   const ctx = locals.tenantCtx;
 

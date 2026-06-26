@@ -1,7 +1,15 @@
 import { describe, test, expect, vi } from 'vitest';
 
 vi.mock('$app/state', () => ({
-  page: { data: { user: { role: 'admin' }, permissions: { permissions: ['marketplace:publish'] } } },
+  // Platform admins receive the full PERMISSIONS set (loadPermissionsForUser
+  // short-circuit); users.manage + reliability.monitor are now permission-driven
+  // (RBAC-migrated off minRole/super-view), so the perm set must carry them.
+  page: {
+    data: {
+      user: { role: 'admin' },
+      permissions: { permissions: ['marketplace:publish', 'users:manage', 'reliability:view'] },
+    },
+  },
 }));
 
 describe('canClient', () => {

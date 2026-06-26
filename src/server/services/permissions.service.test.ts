@@ -80,9 +80,17 @@ describe('capsToLegacyPermissions — RBAC → legacy nav vocab', () => {
 
 	test('manager gets platform-module *:view (admin modules default to VIEW)', () => {
 		const p = permsFor('manager');
-		for (const v of ['agents:view', 'channels:view', 'flows:view', 'marketplace:view']) {
+		for (const v of ['agents:view', 'channels:view', 'flows:view', 'marketplace:view', 'reliability:view']) {
 			expect(p.has(v)).toBe(true);
 		}
+		// manager has admin-module VIEW only — NOT users:manage (owner/admin only)
+		expect(p.has('users:manage')).toBe(false);
+	});
+
+	test('owner gets users:manage + reliability:view (RBAC-migrated gates)', () => {
+		const p = permsFor('owner');
+		expect(p.has('users:manage')).toBe(true);
+		expect(p.has('reliability:view')).toBe(true);
 	});
 
 	test('per-org override disabling crm view strips crm:view (the reported bug)', () => {
@@ -119,6 +127,7 @@ describe('requiredViewPermForPath — central route guard mapping', () => {
 		expect(requiredViewPermForPath('/flow-editor')).toBe('flows:view');
 		expect(requiredViewPermForPath('/channels')).toBe('channels:view');
 		expect(requiredViewPermForPath('/marketplace')).toBe('marketplace:view');
+		expect(requiredViewPermForPath('/reliability')).toBe('reliability:view');
 	});
 
 	test('deliberately ungated routes stay open (personal/admin-own-guard/universal)', () => {
@@ -126,8 +135,7 @@ describe('requiredViewPermForPath — central route guard mapping', () => {
 		expect(requiredViewPermForPath('/home')).toBeNull();
 		expect(requiredViewPermForPath('/settings')).toBeNull();
 		expect(requiredViewPermForPath('/settings/roles')).toBeNull();
-		expect(requiredViewPermForPath('/reliability')).toBeNull();
-		expect(requiredViewPermForPath('/team')).toBeNull();
+		expect(requiredViewPermForPath('/team')).toBeNull(); // requireOrgCapability(users,manage) on the page
 		expect(requiredViewPermForPath('/crmfoo')).toBeNull(); // not a real prefix boundary
 	});
 });
