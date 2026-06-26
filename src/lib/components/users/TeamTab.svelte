@@ -321,17 +321,14 @@
                   {/if}
                 </td>
                 <td class="px-4 py-3" onclick={(e) => e.stopPropagation()}>
-                  <select
-                    class="bg-transparent border border-border rounded-md text-foreground px-2 py-1 text-[11px] font-[inherit] outline-none cursor-pointer focus:border-accent disabled:opacity-50"
+                  <Select
+                    size="sm"
                     value={u.memberRole}
                     disabled={u.role === 'admin'}
                     title={u.role === 'admin' ? 'Platform admin — full access' : undefined}
-                    onchange={(e) => changeMemberRole(u.id, (e.currentTarget as HTMLSelectElement).value)}
-                  >
-                    {#each rbacRoles as r (r.key)}
-                      <option value={r.key}>{r.name}</option>
-                    {/each}
-                  </select>
+                    options={rbacRoles.map((r) => ({ value: r.key, label: r.name }))}
+                    onchange={(v) => changeMemberRole(u.id, String(v))}
+                  />
                 </td>
                 <td class="px-4 py-3" onclick={(e) => e.stopPropagation()}>
                   {#if organizations.length === 0}
