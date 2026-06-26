@@ -1,7 +1,13 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
-import { requireAdmin } from '$server/auth/authorize';
-import { listRbacRoles, ACTIONS, BUSINESS_MODULES, MODULE_LABELS, MODULES } from '$server/services/rbac.service';
+import {
+	listRbacRoles,
+	requireOrgCapability,
+	ACTIONS,
+	BUSINESS_MODULES,
+	MODULE_LABELS,
+	MODULES,
+} from '$server/services/rbac.service';
 
 /**
  * Role Permission Manager — surfaces the RBAC system (rbac.service): the built-in
@@ -11,7 +17,7 @@ import { listRbacRoles, ACTIONS, BUSINESS_MODULES, MODULE_LABELS, MODULES } from
  */
 export const load: PageServerLoad = async ({ locals, depends }) => {
 	depends('settings:roles');
-	requireAdmin(locals);
+	await requireOrgCapability(locals, 'users', 'manage');
 	if (!locals.tenantCtx) throw error(401, 'tenant context required');
 
 	const roles = await listRbacRoles(locals.tenantCtx.tenantId);

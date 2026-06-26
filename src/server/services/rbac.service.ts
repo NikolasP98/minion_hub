@@ -1,3 +1,4 @@
+import { error } from '@sveltejs/kit';
 import { supabaseAdmin } from '$server/supabase';
 
 /**
@@ -329,4 +330,25 @@ export async function clearRoleOverride(orgId: string, roleKey: string, module: 
 
 export function isModule(x: unknown): x is Module {
 	return typeof x === 'string' && (MODULES as readonly string[]).includes(x);
+}
+
+/**
+ * Gate a request on an RBAC capability in the caller's active org. Platform admins
+ * (profiles.role='admin', incl. the dev AUTH_DISABLED bypass which has no
+ * supabaseId) always pass; otherwise the user must hold the capability via their
+ * org roles. Throws 401/403 SvelteKit errors. Returns the resolved caps on success.
+ */
+export async function requireOrgCapability(
+	locals: App.Locals,
+	module: Module,
+	action: PermAction,
+): Promise<Capabilities | null> {
+	const user = locals.user;
+	if (!user) throw error(401, 'Authentication required');
+	if (user.role === 'admin') return null; // platform-admin superuser
+	if (!locals.tenantCtx) throw error(401, 'tenant context required');
+	if (!user.supabaseId) throw error(403, 'You do not have permission to manage roles.');
+	const caps = await resolveCapabilities(locals.tenantCtx.tenantId, user.supabaseId);
+	if (!caps.can(module, action)) throw error(403, 'You do not have permission to manage roles.');
+	return caps;
 }

@@ -1,10 +1,10 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { requireAdmin } from '$server/auth/authorize';
 import {
 	setRoleOverride,
 	clearRoleOverride,
 	isModule,
+	requireOrgCapability,
 	ACTIONS,
 	type ActionSet,
 	type PermAction,
@@ -24,7 +24,7 @@ function parseCaps(raw: unknown): ActionSet {
 }
 
 export const POST: RequestHandler = async ({ locals, request }) => {
-	requireAdmin(locals);
+	await requireOrgCapability(locals, 'users', 'manage');
 	if (!locals.tenantCtx) throw error(401);
 	const b = (await request.json().catch(() => ({}))) as {
 		roleKey?: string;
@@ -37,7 +37,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 };
 
 export const DELETE: RequestHandler = async ({ locals, request }) => {
-	requireAdmin(locals);
+	await requireOrgCapability(locals, 'users', 'manage');
 	if (!locals.tenantCtx) throw error(401);
 	const b = (await request.json().catch(() => ({}))) as { roleKey?: string; module?: string };
 	if (!b.roleKey || !isModule(b.module)) throw error(400, 'roleKey and valid module required');
