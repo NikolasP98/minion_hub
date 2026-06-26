@@ -26,6 +26,10 @@ export function isValidTargetType(v: string): v is 'user' | 'session' {
 export interface ChannelInput {
   type: ChannelType;
   label: string;
+  /** Gateway account key (phone/handle, e.g. "+51992376833") — the join to the gateway's
+   * per-account config. Set after pairing discovers the phone so the channel stops being
+   * keyed by its opaque id (which otherwise orphans the row + spawns a duplicate on import). */
+  accountId?: string;
   credentials?: Record<string, string>;
   credentialsMeta?: Record<string, string>;
   status?: ChannelStatus;
@@ -121,6 +125,9 @@ export async function createChannel(ctx: ServerCtx, input: ChannelInput) {
       tenantId: ctx.tenantId,
       gatewayId: ctx.gatewayId,
       type: input.type,
+      // Phone/handle when already known (e.g. wizard pre-pair) so the row is keyed by
+      // the gateway account from birth; null for opaque-first channels that bind on pair.
+      accountId: input.accountId ?? null,
       label: input.label,
       credentials: ciphertext,
       credentialsIv: iv,
@@ -145,6 +152,7 @@ export async function updateChannel(
   const set: Record<string, unknown> = { updatedAt: new Date() };
 
   if (input.label !== undefined) set.label = input.label;
+  if (input.accountId !== undefined) set.accountId = input.accountId;
   if (input.status !== undefined) set.status = input.status;
   if (input.credentialsMeta !== undefined)
     set.credentialsMeta = JSON.stringify(input.credentialsMeta);

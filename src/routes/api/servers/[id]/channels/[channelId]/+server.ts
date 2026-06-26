@@ -36,6 +36,9 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
 
     const input: Record<string, unknown> = {};
     if (body.label !== undefined) input.label = body.label;
+    if (typeof body.accountId === 'string' && body.accountId.trim()) {
+      input.accountId = body.accountId.trim();
+    }
     if (body.status !== undefined) {
       if (!isValidChannelStatus(body.status)) throw error(400, `Invalid status: ${body.status}`);
       input.status = body.status;

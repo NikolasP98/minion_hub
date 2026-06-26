@@ -44,6 +44,31 @@
         }
     }
 
+    /**
+     * Persist the phone the gateway discovered during pairing onto the channel row's
+     * `account_id`. Without this the row stays keyed by its opaque id — orphaned on
+     * reconcile and duplicated on the next gateway import. Idempotent: skips when the
+     * account is already the phone.
+     */
+    async function persistPairedAccount(phone?: string) {
+        reauthing = false;
+        if (!phone || channel.accountId === phone) return;
+        try {
+            const res = await fetch(`/api/servers/${serverId}/channels/${channel.id}`, {
+                method: 'PUT',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ accountId: phone }),
+            });
+            if (!res.ok) throw new Error(await res.text());
+            toastSuccess(`Linked ${phone}`);
+            await loadConfig();
+        } catch (e) {
+            toastError(
+                `Linked, but couldn't save the number: ${e instanceof Error ? e.message : String(e)}`,
+            );
+        }
+    }
+
     // `username` is shown as @handle in the header — exclude it from the credentials grid
     // to avoid double-display.
     const metaEntries = $derived(
@@ -356,8 +381,8 @@
                             <WhatsAppQrPairing
                                 channelId={channel.id}
                                 {serverId}
-                                accountId={gwAccountId ?? undefined}
-                                onpaired={() => { reauthing = false; }}
+                                accountId={channel.accountId ?? gwAccountId ?? undefined}
+                                onpaired={(phone) => persistPairedAccount(phone)}
                             />
                         </div>
                     {:else}
