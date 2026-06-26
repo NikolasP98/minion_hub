@@ -1,6 +1,7 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
+import { ownerFilter } from '$server/services/rbac.service';
 import { listContactsCached, listTags } from '$server/services/crm-contacts.service';
 import { matchingAutoTagIds } from '$server/services/crm-scoring';
 import { contactFinanceMap } from '$server/services/crm-finance.service';
@@ -12,8 +13,12 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
 
   // The full roster is loaded ONCE (Valkey-cached) and all search/stage/tag/sort
   // filtering happens client-side — instant, no Apply button, no per-keystroke
-  // round-trip. Mutations bust the cache tag so the list refreshes.
-  const [cached, tags] = await Promise.all([listContactsCached(ctx), listTags(ctx)]);
+  // round-trip. Mutations bust the cache tag so the list refreshes. Record-level
+  // (if-owner) scope restricts the roster to the caller's own contacts.
+  const [cached, tags] = await Promise.all([
+    listContactsCached(ctx, await ownerFilter(locals, 'crm')),
+    listTags(ctx),
+  ]);
 
   // Auto-tags are evaluated LIVE against each scored row (never stored), so the
   // tag filter can match them just like manual tags. Cheap: a few rules × N rows.

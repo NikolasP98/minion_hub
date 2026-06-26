@@ -13,6 +13,9 @@ export type CoreTx = Parameters<Parameters<CoreDb['transaction']>[0]>[0];
 export interface OrgScope {
   db: CoreDb;
   tenantId: string;
+  /** Acting hub user (profiles.id). When set, exposed as the `app.current_profile_id`
+   *  GUC inside the txn — the basis for record-level (if-owner) scoping. */
+  profileId?: string | null;
 }
 
 /**
@@ -40,6 +43,9 @@ export function withOrgCore<T>(scope: OrgScope, fn: (tx: CoreTx) => Promise<T>):
   return scope.db.transaction(async (tx) => {
     await tx.execute(sql`set local role app_ledger`);
     await tx.execute(sql`select set_config('app.current_org_id', ${scope.tenantId}, true)`);
+    // Record-level scoping basis (if-owner). Always set (empty when unknown) so a
+    // pooled connection never inherits a previous request's profile id.
+    await tx.execute(sql`select set_config('app.current_profile_id', ${scope.profileId ?? ''}, true)`);
     return fn(tx);
   });
 }

@@ -1,6 +1,7 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
+import { ownerFilter } from '$server/services/rbac.service';
 import {
   getContact,
   getContactTimeline,
@@ -19,7 +20,10 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
   depends('crm:contact');
   const id = params.contactId;
 
-  const record = await getContact(ctx, id);
+  // Record-level (if-owner) scope: a scoped caller can only open contacts they
+  // own — a non-owned id 404s rather than leaking existence.
+  const ownerId = await ownerFilter(locals, 'crm');
+  const record = await getContact(ctx, id, ownerId);
   if (!record) throw error(404, 'Contact not found');
 
   const [timeline, contactTags, allTags, ranked] = await Promise.all([

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { invalidate } from '$app/navigation';
-	import { ShieldCheck, Users, RotateCcw, Lock, ChevronRight, ChevronDown } from 'lucide-svelte';
+	import { ShieldCheck, Users, RotateCcw, Lock, ChevronRight, ChevronDown, UserCheck } from 'lucide-svelte';
 	import { toastError } from '$lib/state/ui/toast.svelte';
 
 	type ActionSet = Record<string, boolean>;
@@ -11,6 +11,8 @@
 		caps: ActionSet;
 		overridden: boolean;
 		subResources: SubResourceCaps[];
+		ifOwner: boolean;
+		ownerScopable: boolean;
 	};
 	type Role = {
 		key: string;
@@ -56,11 +58,11 @@
 		return out;
 	}
 
-	async function saveOverride(moduleKey: string, caps: ActionSet) {
+	async function saveOverride(moduleKey: string, caps: ActionSet, ifOwner = false) {
 		const res = await fetch('/api/roles/overrides', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ roleKey: selected!.key, module: moduleKey, caps }),
+			body: JSON.stringify({ roleKey: selected!.key, module: moduleKey, caps, ifOwner }),
 		});
 		if (!res.ok) throw new Error(String(res.status));
 	}
@@ -97,11 +99,28 @@
 			s.overridden = false;
 		}
 		try {
-			await saveOverride(rm.module, caps);
+			await saveOverride(rm.module, caps, rm.ifOwner); // preserve owner-scope on cap edits
 			await Promise.all(dirtySubs.map((k) => clearOverride(k)));
 			void invalidate('settings:roles');
 		} catch {
 			toastError('Could not save permission change.');
+			void invalidate('settings:roles');
+		} finally {
+			saving = null;
+		}
+	}
+
+	// Record-level (if-owner) scope toggle for an owner-scopable module.
+	async function toggleOwnerScope(rm: RoleModuleCaps, next: boolean) {
+		if (!selected || !editable) return;
+		saving = rm.module;
+		rm.ifOwner = next;
+		rm.overridden = true;
+		try {
+			await saveOverride(rm.module, rm.caps, next);
+			void invalidate('settings:roles');
+		} catch {
+			toastError('Could not save scope change.');
 			void invalidate('settings:roles');
 		} finally {
 			saving = null;
@@ -198,6 +217,22 @@
 										{rm.label}
 										{#if rm.overridden}
 											<span class="h-1.5 w-1.5 rounded-full bg-accent" title="Customised for this organization"></span>
+										{/if}
+										{#if rm.ownerScopable}
+											<button
+												type="button"
+												class="ml-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] transition-colors {rm.ifOwner
+													? 'bg-accent/15 text-accent'
+													: 'text-muted hover:bg-muted/20'}"
+												title={rm.ifOwner
+													? 'Restricted to records this role owns — click for full access'
+													: 'Full access to all records — click to restrict to owned records'}
+												disabled={!editable || saving === rm.module}
+												onclick={() => toggleOwnerScope(rm, !rm.ifOwner)}
+											>
+												<UserCheck class="h-3 w-3" />
+												{rm.ifOwner ? 'Own only' : 'All records'}
+											</button>
 										{/if}
 									</span>
 								</td>

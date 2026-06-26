@@ -1,6 +1,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
+import { ownerFilter } from '$server/services/rbac.service';
 import { rankContacts, createContact, type RankFilters } from '$server/services/crm-contacts.service';
 
 /** GET /api/crm/contacts — ranked, filterable contact list (the core product). */
@@ -19,6 +20,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
     sort: (q.get('sort') as RankFilters['sort']) ?? undefined,
     limit: num('limit'),
     offset: num('offset'),
+    ownerId: await ownerFilter(locals, 'crm'),
   };
   const contacts = await rankContacts(ctx, filters);
   return json({ contacts });

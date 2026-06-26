@@ -30,9 +30,16 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		roleKey?: string;
 		module?: string;
 		caps?: unknown;
+		ifOwner?: unknown;
 	};
 	if (!b.roleKey || !isModuleOrSub(b.module)) throw error(400, 'roleKey and valid module required');
-	await setRoleOverride(locals.tenantCtx.tenantId, b.roleKey, b.module, parseCaps(b.caps));
+	await setRoleOverride(
+		locals.tenantCtx.tenantId,
+		b.roleKey,
+		b.module,
+		parseCaps(b.caps),
+		b.ifOwner === true,
+	);
 	return json({ ok: true });
 };
 

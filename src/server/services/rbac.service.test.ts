@@ -126,6 +126,30 @@ describe('sub-resource inheritance + view-dependency', () => {
 	});
 });
 
+describe('ownerScoped — record-level (if-owner)', () => {
+	test('a role restricted with if_owner is owner-scoped on that module', () => {
+		const caps = buildCapabilities(['viewer'], [ROW({ module: 'crm', can_view: true, if_owner: true })]);
+		expect(caps.can('crm', 'view')).toBe(true);
+		expect(caps.ownerScoped('crm')).toBe(true);
+	});
+	test('no if_owner → full visibility (not scoped)', () => {
+		const caps = buildCapabilities(['viewer'], []); // viewer default crm = VIEW, no if_owner
+		expect(caps.ownerScoped('crm')).toBe(false);
+	});
+	test('least-restrictive wins: any role with un-restricted view lifts the scope', () => {
+		// staff restricted-to-own on crm, but manager grants un-restricted crm view
+		const caps = buildCapabilities(
+			['staff', 'manager'],
+			[ROW({ role_key: 'staff', module: 'crm', can_view: true, if_owner: true })],
+		);
+		expect(caps.ownerScoped('crm')).toBe(false);
+	});
+	test('not scoped when the role cannot view at all', () => {
+		const caps = buildCapabilities(['viewer'], [ROW({ module: 'finance', can_view: false, if_owner: true })]);
+		expect(caps.ownerScoped('finance')).toBe(false);
+	});
+});
+
 describe('apiWriteCapability — central hooks write guard mapping', () => {
 	test('reads are never gated here', () => {
 		expect(apiWriteCapability('/api/crm/contacts', 'GET')).toBeNull();

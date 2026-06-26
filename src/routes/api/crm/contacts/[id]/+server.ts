@@ -1,6 +1,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
+import { ownerFilter } from '$server/services/rbac.service';
 import {
   getContact,
   getContactTimeline,
@@ -15,7 +16,7 @@ export const GET: RequestHandler = async ({ locals, params, url }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   const id = params.id!;
-  const record = await getContact(ctx, id);
+  const record = await getContact(ctx, id, await ownerFilter(locals, 'crm'));
   if (!record) throw error(404, 'Contact not found');
   const timeline = await getContactTimeline(ctx, id, Number(url.searchParams.get('timelineLimit') ?? 100));
   const tags = await getContactTags(ctx, id);

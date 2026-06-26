@@ -166,6 +166,13 @@ export interface Capabilities {
 	canRunAnalytics(): boolean;
 	/** Modules the member can at least view. */
 	visibleModules(): Module[];
+	/**
+	 * Record-level (if-owner) scope for a module: true when the member can view it
+	 * but EVERY role granting that view restricts to owned records — so reads must
+	 * be filtered to `owner_id = current profile`. False when any role grants
+	 * un-restricted view (least-restrictive wins) or when they can't view at all.
+	 */
+	ownerScoped(module: Module | string): boolean;
 }
 
 interface OverrideRow {
@@ -177,10 +184,12 @@ interface OverrideRow {
 	can_delete: boolean;
 	can_export: boolean;
 	can_manage: boolean;
+	if_owner?: boolean;
 }
 
 export function buildCapabilities(roles: string[], overrides: OverrideRow[]): Capabilities {
 	const ovr = new Map<string, ActionSet>();
+	const ifOwner = new Map<string, boolean>();
 	for (const r of overrides) {
 		ovr.set(`${r.role_key}:${r.module}`, {
 			view: r.can_view,
@@ -190,6 +199,7 @@ export function buildCapabilities(roles: string[], overrides: OverrideRow[]): Ca
 			export: r.can_export,
 			manage: r.can_manage,
 		});
+		if (r.if_owner) ifOwner.set(`${r.role_key}:${r.module}`, true);
 	}
 	// A dotted sub-resource key (`crm.insights`) with no explicit override inherits
 	// its parent module's effective caps (override-or-default), recursively.
@@ -200,15 +210,28 @@ export function buildCapabilities(roles: string[], overrides: OverrideRow[]): Ca
 		if (dot > 0) return effective(roleKey, mod.slice(0, dot));
 		return defaultCaps(roleKey, mod as Module);
 	};
+	// Owner-scope inherits parent module for sub-keys (same as caps).
+	const roleIfOwner = (roleKey: string, mod: string): boolean => {
+		if (ifOwner.has(`${roleKey}:${mod}`)) return true;
+		const dot = mod.indexOf('.');
+		return dot > 0 ? roleIfOwner(roleKey, mod.slice(0, dot)) : false;
+	};
 
 	const can = (module: string, action: PermAction): boolean =>
 		roles.some((rk) => effective(rk, module)[action]);
+
+	// Scoped when viewable AND no role grants un-restricted view (least-restrictive
+	// wins: a single full-access role lifts the restriction).
+	const ownerScoped = (module: string): boolean =>
+		can(module, 'view') &&
+		!roles.some((rk) => effective(rk, module).view && !roleIfOwner(rk, module));
 
 	return {
 		roles,
 		can,
 		canRunAnalytics: () => BUSINESS_MODULES.some((m) => can(m, 'view')),
 		visibleModules: () => MODULES.filter((m) => can(m, 'view')),
+		ownerScoped,
 	};
 }
 
@@ -240,11 +263,48 @@ export async function resolveCapabilities(orgId: string, profileId: string): Pro
 
 	const { data: rules } = await admin
 		.from('permission_rules')
-		.select('role_key, module, can_view, can_create, can_edit, can_delete, can_export, can_manage')
+		.select('role_key, module, can_view, can_create, can_edit, can_delete, can_export, can_manage, if_owner')
 		.eq('org_id', orgId)
 		.in('role_key', roles);
 
 	return buildCapabilities(roles, (rules ?? []) as OverrideRow[]);
+}
+
+/**
+ * Modules that support record-level (if-owner) scoping, mapped to the owner
+ * column on their primary table. Only these can be owner-restricted (the matrix
+ * toggle is hidden for the rest); enforcement happens in the owning service.
+ */
+export const OWNER_SCOPABLE_MODULES: Partial<Record<Module, string>> = {
+	crm: 'owner_id',
+};
+
+/**
+ * Resolve whether the acting user is owner-scoped on a module (and on what
+ * column). Returns `{ scoped, column, profileId }` — `scoped:false` means full
+ * org visibility. Platform admins are never owner-scoped.
+ */
+export async function resolveOwnerScope(
+	locals: App.Locals,
+	module: Module,
+): Promise<{ scoped: boolean; column: string | null; profileId: string | null }> {
+	const column = OWNER_SCOPABLE_MODULES[module] ?? null;
+	const user = locals.user;
+	if (!column || !user || user.role === 'admin' || !user.supabaseId || !locals.tenantCtx) {
+		return { scoped: false, column, profileId: user?.supabaseId ?? null };
+	}
+	const caps = await resolveCapabilities(locals.tenantCtx.tenantId, user.supabaseId);
+	return { scoped: caps.ownerScoped(module), column, profileId: user.supabaseId };
+}
+
+/**
+ * Convenience for service callers: the profile id to filter records by for
+ * record-level scoping, or `undefined` for full org visibility. Pass straight
+ * into a service's `ownerId` param.
+ */
+export async function ownerFilter(locals: App.Locals, module: Module): Promise<string | undefined> {
+	const { scoped, profileId } = await resolveOwnerScope(locals, module);
+	return scoped && profileId ? profileId : undefined;
 }
 
 // ── Role Permission Manager (settings/roles) ────────────────────────────────
@@ -275,6 +335,10 @@ export interface RoleModuleCaps {
 	overridden: boolean;
 	/** Gateable subpages nested under this module (expandable rows in the UI). */
 	subResources: SubResourceCaps[];
+	/** Record-level (if-owner) restriction active for this role×module. */
+	ifOwner: boolean;
+	/** Whether this module supports owner scoping at all (drives the UI toggle). */
+	ownerScopable: boolean;
 }
 export interface RbacRoleView {
 	key: string;
@@ -297,7 +361,7 @@ export async function listRbacRoles(orgId: string): Promise<RbacRoleView[]> {
 		admin.from('member_roles').select('role_key').eq('org_id', orgId),
 		admin
 			.from('permission_rules')
-			.select('role_key, module, can_view, can_create, can_edit, can_delete, can_export, can_manage')
+			.select('role_key, module, can_view, can_create, can_edit, can_delete, can_export, can_manage, if_owner')
 			.eq('org_id', orgId),
 	]);
 
@@ -306,7 +370,11 @@ export async function listRbacRoles(orgId: string): Promise<RbacRoleView[]> {
 		counts.set(r.role_key, (counts.get(r.role_key) ?? 0) + 1);
 	}
 	const ovr = new Map<string, ActionSet>();
-	for (const r of (orows.data ?? []) as OverrideRow[]) ovr.set(`${r.role_key}:${r.module}`, rowToActionSet(r));
+	const ifOwnerMap = new Map<string, boolean>();
+	for (const r of (orows.data ?? []) as OverrideRow[]) {
+		ovr.set(`${r.role_key}:${r.module}`, rowToActionSet(r));
+		if (r.if_owner) ifOwnerMap.set(`${r.role_key}:${r.module}`, true);
+	}
 
 	type CatRow = { key: string; name: string; rank: number; description: string | null; is_system: boolean };
 	return ((cat.data ?? []) as CatRow[]).map((c) => ({
@@ -325,6 +393,8 @@ export async function listRbacRoles(orgId: string): Promise<RbacRoleView[]> {
 				label: MODULE_LABELS[mod],
 				caps: parentCaps,
 				overridden: !!o,
+				ifOwner: ifOwnerMap.get(`${c.key}:${mod}`) ?? false,
+				ownerScopable: mod in OWNER_SCOPABLE_MODULES,
 				// Sub-resource caps: explicit override row if present, else inherit
 				// the parent module's effective caps.
 				subResources: subs.map((s) => {
@@ -402,6 +472,7 @@ export async function setRoleOverride(
 	roleKey: string,
 	module: string,
 	caps: ActionSet,
+	ifOwner = false,
 ): Promise<void> {
 	const admin = supabaseAdmin();
 	const c = normalizeViewDependency(caps);
@@ -416,6 +487,9 @@ export async function setRoleOverride(
 			can_delete: c.delete,
 			can_export: c.export,
 			can_manage: c.manage,
+			// Owner-scoping only applies where there's an owner column; ignore the
+			// flag for unsupported modules + sub-resources so it can't be set there.
+			if_owner: ifOwner && (module in OWNER_SCOPABLE_MODULES),
 			updated_at: new Date().toISOString(),
 		},
 		{ onConflict: 'org_id,role_key,module' },

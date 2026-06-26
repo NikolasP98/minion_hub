@@ -144,6 +144,8 @@ export interface RankFilters {
   sort?: 'score' | 'recent' | 'frequency' | 'name';
   limit?: number;
   offset?: number;
+  /** Record-level (if-owner) scope: restrict to contacts owned by this profile. */
+  ownerId?: string;
 }
 
 export interface RankedContact {
@@ -211,6 +213,8 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
     const ruleSql = f.ruleJson != null ? tryCompileTagRule(f.ruleJson) : null;
 
     const conds = [sql`c.deleted_at is null`];
+    // Record-level (if-owner) scoping: only the caller's own contacts.
+    if (f.ownerId) conds.push(sql`c.owner_id = ${f.ownerId}`);
     if (f.contactId) conds.push(sql`c.id = ${f.contactId}`);
     if (f.search) conds.push(sql`c.display_name ilike ${'%' + f.search + '%'}`);
     if (f.tagId)
@@ -360,22 +364,34 @@ function bustCrmList(tenantId: string) {
  * no per-keystroke server round-trip), so we cache one unfiltered payload per org.
  * RFM recency is day-scaled, so a 2m TTL is imperceptible; mutations bust the tag.
  */
-export function listContactsCached(ctx: CoreCtx): Promise<RankedContact[]> {
+export function listContactsCached(ctx: CoreCtx, ownerId?: string): Promise<RankedContact[]> {
   return cached(
-    keys.hub('crm-contacts', { t: ctx.tenantId }),
+    // Fold the owner into the tenant key so an if-owner-scoped caller gets a
+    // distinct cached payload (never reads/poisons the org-wide roster). The
+    // org-level invalidation tag still busts both on any mutation.
+    keys.hub('crm-contacts', { t: ownerId ? `${ctx.tenantId}:${ownerId}` : ctx.tenantId }),
     { ttl: '2m', swr: '30s', tags: [...crmListTags(ctx.tenantId)] },
-    () => rankContacts(ctx, { limit: 5000 }),
+    () => rankContacts(ctx, { limit: 5000, ownerId }),
   );
 }
 
 // ── Single contact + journey ──────────────────────────────────────────────────
 
-export async function getContact(ctx: CoreCtx, id: string) {
+export async function getContact(ctx: CoreCtx, id: string, ownerId?: string) {
   return withOrgCore(ctx, async (tx) => {
     const [contact] = await tx
       .select()
       .from(crmContacts)
-      .where(and(eq(crmContacts.id, id), eq(crmContacts.orgId, ctx.tenantId)))
+      // Record-level (if-owner) scoping: a scoped caller can only open contacts
+      // they own. Treated as not-found (404) rather than 403 to avoid leaking
+      // existence of other reps' contacts.
+      .where(
+        and(
+          eq(crmContacts.id, id),
+          eq(crmContacts.orgId, ctx.tenantId),
+          ...(ownerId ? [eq(crmContacts.ownerId, ownerId)] : []),
+        ),
+      )
       .limit(1);
     if (!contact) return null;
     const identities = await tx
