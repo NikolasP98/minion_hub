@@ -97,6 +97,19 @@ export const MODULE_SUBRESOURCES: Record<string, SubResource[]> = {
 /** Flat list of every sub-resource (parent-key agnostic). */
 export const ALL_SUBRESOURCES: SubResource[] = Object.values(MODULE_SUBRESOURCES).flat();
 
+/**
+ * Field-level (ERPNext "permission level") modules: those with a sensitive field
+ * tier that can be hidden from a role. A role's `field_level` on the module must
+ * be >= SENSITIVE_FIELD_LEVEL to read these fields; otherwise the owning service
+ * masks them. Default level is 1 for every role (full visibility preserved — the
+ * masking is opt-in by lowering a role to 0).
+ */
+export const SENSITIVE_FIELD_LEVEL = 1;
+export const FIELD_LEVEL_MODULES: Record<string, { label: string; hint: string }> = {
+  crm: { label: 'Contact PII', hint: 'phone numbers & email addresses' },
+  finance: { label: 'Cost & margin', hint: 'discount rate & margin figures' },
+};
+
 /** `<subkey>:view` for every sub-resource — emitted from caps + gated on routes. */
 export const SUBRESOURCE_VIEW_PERMISSIONS = ALL_SUBRESOURCES.map((s) => `${s.key}:view`);
 

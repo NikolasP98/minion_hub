@@ -31,6 +31,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		module?: string;
 		caps?: unknown;
 		ifOwner?: unknown;
+		fieldLevel?: unknown;
 	};
 	if (!b.roleKey || !isModuleOrSub(b.module)) throw error(400, 'roleKey and valid module required');
 	await setRoleOverride(
@@ -39,6 +40,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		b.module,
 		parseCaps(b.caps),
 		b.ifOwner === true,
+		typeof b.fieldLevel === 'number' ? b.fieldLevel : undefined,
 	);
 	return json({ ok: true });
 };

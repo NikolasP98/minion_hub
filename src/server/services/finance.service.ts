@@ -418,9 +418,23 @@ export function financeSummary(ctx: CoreCtx, p: Period) {
           voidCount: voids,
           voidRate: invoices > 0 ? voids / invoices : 0,
           currency: r.currency != null ? String(r.currency) : 'PEN',
+          // Field-level: set true by maskFinanceSummary when cost/margin redacted.
+          sensitiveMasked: false,
         };
       }),
   );
+}
+
+export type FinanceSummary = Awaited<ReturnType<typeof financeSummary>>;
+
+/**
+ * Field-level (Phase 4) redaction of the finance summary: null the cost/margin
+ * figures (discount, discount rate, gross) for callers below the finance
+ * sensitive field level. Revenue/ticket/client counts stay visible. Applied
+ * post-cache so the cache key stays role-agnostic.
+ */
+export function maskFinanceSummary(s: FinanceSummary): FinanceSummary {
+  return { ...s, totalGross: 0, totalDiscount: 0, discountRate: 0, sensitiveMasked: true };
 }
 
 export function revenueSeries(ctx: CoreCtx, p: Period) {

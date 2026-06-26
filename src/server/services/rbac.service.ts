@@ -1,6 +1,12 @@
 import { error } from '@sveltejs/kit';
 import { supabaseAdmin } from '$server/supabase';
-import { MODULE_SUBRESOURCES, ALL_SUBRESOURCES, type SubResource } from '$lib/permissions';
+import {
+	MODULE_SUBRESOURCES,
+	ALL_SUBRESOURCES,
+	FIELD_LEVEL_MODULES,
+	SENSITIVE_FIELD_LEVEL,
+	type SubResource,
+} from '$lib/permissions';
 
 /**
  * RBAC capability engine (ERPNext-inspired) — the single source of truth for
@@ -173,6 +179,12 @@ export interface Capabilities {
 	 * un-restricted view (least-restrictive wins) or when they can't view at all.
 	 */
 	ownerScoped(module: Module | string): boolean;
+	/**
+	 * Field-level (ERPNext permission level): the max sensitivity tier the member
+	 * may read on a module = MAX across their roles (least-restrictive). Compare
+	 * with SENSITIVE_FIELD_LEVEL to decide whether to mask PII / cost / margin.
+	 */
+	fieldLevel(module: Module | string): number;
 }
 
 interface OverrideRow {
@@ -185,11 +197,22 @@ interface OverrideRow {
 	can_export: boolean;
 	can_manage: boolean;
 	if_owner?: boolean;
+	field_level?: number;
+}
+
+/**
+ * Default field-level for a role on a module: 1 (full visibility) for every role
+ * on modules that HAVE a sensitive tier, else 0. So masking is opt-in — an org
+ * lowers a role to 0 to hide PII / cost / margin; nobody loses access by default.
+ */
+export function defaultFieldLevel(module: string): number {
+	return module in FIELD_LEVEL_MODULES ? SENSITIVE_FIELD_LEVEL : 0;
 }
 
 export function buildCapabilities(roles: string[], overrides: OverrideRow[]): Capabilities {
 	const ovr = new Map<string, ActionSet>();
 	const ifOwner = new Map<string, boolean>();
+	const fieldLvl = new Map<string, number>();
 	for (const r of overrides) {
 		ovr.set(`${r.role_key}:${r.module}`, {
 			view: r.can_view,
@@ -200,6 +223,7 @@ export function buildCapabilities(roles: string[], overrides: OverrideRow[]): Ca
 			manage: r.can_manage,
 		});
 		if (r.if_owner) ifOwner.set(`${r.role_key}:${r.module}`, true);
+		if (typeof r.field_level === 'number') fieldLvl.set(`${r.role_key}:${r.module}`, r.field_level);
 	}
 	// A dotted sub-resource key (`crm.insights`) with no explicit override inherits
 	// its parent module's effective caps (override-or-default), recursively.
@@ -226,12 +250,23 @@ export function buildCapabilities(roles: string[], overrides: OverrideRow[]): Ca
 		can(module, 'view') &&
 		!roles.some((rk) => effective(rk, module).view && !roleIfOwner(rk, module));
 
+	// Field level inherits parent for sub-keys; MAX across roles (least-restrictive).
+	const roleFieldLevel = (roleKey: string, mod: string): number => {
+		const o = fieldLvl.get(`${roleKey}:${mod}`);
+		if (o !== undefined) return o;
+		const dot = mod.indexOf('.');
+		return dot > 0 ? roleFieldLevel(roleKey, mod.slice(0, dot)) : defaultFieldLevel(mod);
+	};
+	const fieldLevel = (module: string): number =>
+		roles.reduce((max, rk) => Math.max(max, roleFieldLevel(rk, module)), 0);
+
 	return {
 		roles,
 		can,
 		canRunAnalytics: () => BUSINESS_MODULES.some((m) => can(m, 'view')),
 		visibleModules: () => MODULES.filter((m) => can(m, 'view')),
 		ownerScoped,
+		fieldLevel,
 	};
 }
 
@@ -263,11 +298,33 @@ export async function resolveCapabilities(orgId: string, profileId: string): Pro
 
 	const { data: rules } = await admin
 		.from('permission_rules')
-		.select('role_key, module, can_view, can_create, can_edit, can_delete, can_export, can_manage, if_owner')
+		.select(
+			'role_key, module, can_view, can_create, can_edit, can_delete, can_export, can_manage, if_owner, field_level',
+		)
 		.eq('org_id', orgId)
 		.in('role_key', roles);
 
 	return buildCapabilities(roles, (rules ?? []) as OverrideRow[]);
+}
+
+/**
+ * The acting user's effective field level on a module (PII / cost / margin
+ * gating). Platform admins always see everything. Pair with SENSITIVE_FIELD_LEVEL
+ * in the owning service: `level < SENSITIVE_FIELD_LEVEL` → mask the sensitive
+ * fields.
+ */
+export async function resolveFieldLevel(locals: App.Locals, module: Module): Promise<number> {
+	const user = locals.user;
+	if (!user) return 0;
+	if (user.role === 'admin') return Number.MAX_SAFE_INTEGER;
+	if (!locals.tenantCtx || !user.supabaseId) return defaultFieldLevel(module);
+	const caps = await resolveCapabilities(locals.tenantCtx.tenantId, user.supabaseId);
+	return caps.fieldLevel(module);
+}
+
+/** True when the acting user may NOT read the module's sensitive fields. */
+export async function shouldMaskSensitive(locals: App.Locals, module: Module): Promise<boolean> {
+	return (await resolveFieldLevel(locals, module)) < SENSITIVE_FIELD_LEVEL;
 }
 
 /**
@@ -339,6 +396,10 @@ export interface RoleModuleCaps {
 	ifOwner: boolean;
 	/** Whether this module supports owner scoping at all (drives the UI toggle). */
 	ownerScopable: boolean;
+	/** Effective field level for this role×module (>= SENSITIVE_FIELD_LEVEL = sees sensitive). */
+	fieldLevel: number;
+	/** Whether this module has a sensitive field tier (drives the UI toggle). */
+	fieldScopable: boolean;
 }
 export interface RbacRoleView {
 	key: string;
@@ -371,9 +432,11 @@ export async function listRbacRoles(orgId: string): Promise<RbacRoleView[]> {
 	}
 	const ovr = new Map<string, ActionSet>();
 	const ifOwnerMap = new Map<string, boolean>();
+	const fieldLvlMap = new Map<string, number>();
 	for (const r of (orows.data ?? []) as OverrideRow[]) {
 		ovr.set(`${r.role_key}:${r.module}`, rowToActionSet(r));
 		if (r.if_owner) ifOwnerMap.set(`${r.role_key}:${r.module}`, true);
+		if (typeof r.field_level === 'number') fieldLvlMap.set(`${r.role_key}:${r.module}`, r.field_level);
 	}
 
 	type CatRow = { key: string; name: string; rank: number; description: string | null; is_system: boolean };
@@ -395,6 +458,8 @@ export async function listRbacRoles(orgId: string): Promise<RbacRoleView[]> {
 				overridden: !!o,
 				ifOwner: ifOwnerMap.get(`${c.key}:${mod}`) ?? false,
 				ownerScopable: mod in OWNER_SCOPABLE_MODULES,
+				fieldLevel: fieldLvlMap.get(`${c.key}:${mod}`) ?? defaultFieldLevel(mod),
+				fieldScopable: mod in FIELD_LEVEL_MODULES,
 				// Sub-resource caps: explicit override row if present, else inherit
 				// the parent module's effective caps.
 				subResources: subs.map((s) => {
@@ -473,6 +538,7 @@ export async function setRoleOverride(
 	module: string,
 	caps: ActionSet,
 	ifOwner = false,
+	fieldLevel?: number,
 ): Promise<void> {
 	const admin = supabaseAdmin();
 	const c = normalizeViewDependency(caps);
@@ -490,6 +556,9 @@ export async function setRoleOverride(
 			// Owner-scoping only applies where there's an owner column; ignore the
 			// flag for unsupported modules + sub-resources so it can't be set there.
 			if_owner: ifOwner && (module in OWNER_SCOPABLE_MODULES),
+			// Field level only meaningful where the module has a sensitive tier;
+			// default (full visibility) elsewhere. Omitted → preserve default.
+			field_level: module in FIELD_LEVEL_MODULES ? (fieldLevel ?? defaultFieldLevel(module)) : 0,
 			updated_at: new Date().toISOString(),
 		},
 		{ onConflict: 'org_id,role_key,module' },

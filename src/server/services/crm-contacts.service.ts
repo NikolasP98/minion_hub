@@ -377,7 +377,19 @@ export function listContactsCached(ctx: CoreCtx, ownerId?: string): Promise<Rank
 
 // ── Single contact + journey ──────────────────────────────────────────────────
 
-export async function getContact(ctx: CoreCtx, id: string, ownerId?: string) {
+/**
+ * Field-level (PII) redaction: keep the last 4 chars of a phone/email/handle,
+ * mask the rest (`•••••6833`). Short values are fully masked. Used when the
+ * caller's `crm` field level is below the sensitive threshold.
+ */
+export function maskPii(value: string | null | undefined): string {
+  if (!value) return '';
+  const v = String(value);
+  const tail = v.slice(-4);
+  return v.length <= 4 ? '•'.repeat(v.length) : '•'.repeat(Math.min(v.length - 4, 8)) + tail;
+}
+
+export async function getContact(ctx: CoreCtx, id: string, ownerId?: string, maskSensitive = false) {
   return withOrgCore(ctx, async (tx) => {
     const [contact] = await tx
       .select()
@@ -394,15 +406,20 @@ export async function getContact(ctx: CoreCtx, id: string, ownerId?: string) {
       )
       .limit(1);
     if (!contact) return null;
-    const identities = await tx
+    const identitiesRaw = await tx
       .select()
       .from(crmContactIdentities)
       .where(eq(crmContactIdentities.contactId, id));
+    // Field-level (Phase 4): mask the PII (external_id = phone/email/handle) for
+    // callers below the crm sensitive field level.
+    const identities = maskSensitive
+      ? identitiesRaw.map((i) => ({ ...i, externalId: maskPii(i.externalId), masked: true }))
+      : identitiesRaw;
     const [stats] = (await tx.execute(sql`
       select message_count, inbound_count, channels_used, first_contact_at, last_contact_at
       from crm_contact_stats where contact_id = ${id}
     `)) as unknown as Array<Record<string, unknown>>;
-    return { contact, identities, stats: stats ?? null };
+    return { contact, identities, stats: stats ?? null, piiMasked: maskSensitive };
   });
 }
 

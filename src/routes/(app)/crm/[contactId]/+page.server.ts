@@ -1,7 +1,7 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
-import { ownerFilter } from '$server/services/rbac.service';
+import { ownerFilter, shouldMaskSensitive } from '$server/services/rbac.service';
 import {
   getContact,
   getContactTimeline,
@@ -21,9 +21,13 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
   const id = params.contactId;
 
   // Record-level (if-owner) scope: a scoped caller can only open contacts they
-  // own — a non-owned id 404s rather than leaking existence.
-  const ownerId = await ownerFilter(locals, 'crm');
-  const record = await getContact(ctx, id, ownerId);
+  // own — a non-owned id 404s rather than leaking existence. Field-level scope
+  // masks the contact's PII (phone/email) below the crm sensitive field level.
+  const [ownerId, maskPii] = await Promise.all([
+    ownerFilter(locals, 'crm'),
+    shouldMaskSensitive(locals, 'crm'),
+  ]);
+  const record = await getContact(ctx, id, ownerId, maskPii);
   if (!record) throw error(404, 'Contact not found');
 
   const [timeline, contactTags, allTags, ranked] = await Promise.all([

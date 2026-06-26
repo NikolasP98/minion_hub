@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { invalidate } from '$app/navigation';
-	import { ShieldCheck, Users, RotateCcw, Lock, ChevronRight, ChevronDown, UserCheck } from 'lucide-svelte';
+	import { ShieldCheck, Users, RotateCcw, Lock, ChevronRight, ChevronDown, UserCheck, EyeOff } from 'lucide-svelte';
 	import { toastError } from '$lib/state/ui/toast.svelte';
+	import { SENSITIVE_FIELD_LEVEL } from '$lib/permissions';
 
 	type ActionSet = Record<string, boolean>;
 	type SubResourceCaps = { key: string; label: string; caps: ActionSet; overridden: boolean };
@@ -13,6 +14,8 @@
 		subResources: SubResourceCaps[];
 		ifOwner: boolean;
 		ownerScopable: boolean;
+		fieldLevel: number;
+		fieldScopable: boolean;
 	};
 	type Role = {
 		key: string;
@@ -58,11 +61,11 @@
 		return out;
 	}
 
-	async function saveOverride(moduleKey: string, caps: ActionSet, ifOwner = false) {
+	async function saveOverride(moduleKey: string, caps: ActionSet, ifOwner = false, fieldLevel?: number) {
 		const res = await fetch('/api/roles/overrides', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ roleKey: selected!.key, module: moduleKey, caps, ifOwner }),
+			body: JSON.stringify({ roleKey: selected!.key, module: moduleKey, caps, ifOwner, fieldLevel }),
 		});
 		if (!res.ok) throw new Error(String(res.status));
 	}
@@ -99,7 +102,8 @@
 			s.overridden = false;
 		}
 		try {
-			await saveOverride(rm.module, caps, rm.ifOwner); // preserve owner-scope on cap edits
+			// preserve owner-scope + field-level on cap edits
+			await saveOverride(rm.module, caps, rm.ifOwner, rm.fieldLevel);
 			await Promise.all(dirtySubs.map((k) => clearOverride(k)));
 			void invalidate('settings:roles');
 		} catch {
@@ -117,10 +121,28 @@
 		rm.ifOwner = next;
 		rm.overridden = true;
 		try {
-			await saveOverride(rm.module, rm.caps, next);
+			await saveOverride(rm.module, rm.caps, next, rm.fieldLevel);
 			void invalidate('settings:roles');
 		} catch {
 			toastError('Could not save scope change.');
+			void invalidate('settings:roles');
+		} finally {
+			saving = null;
+		}
+	}
+
+	// Field-level (sensitive fields) toggle: visible = SENSITIVE_FIELD_LEVEL, hidden = 0.
+	async function toggleFieldVisible(rm: RoleModuleCaps, visible: boolean) {
+		if (!selected || !editable) return;
+		const level = visible ? SENSITIVE_FIELD_LEVEL : 0;
+		saving = rm.module;
+		rm.fieldLevel = level;
+		rm.overridden = true;
+		try {
+			await saveOverride(rm.module, rm.caps, rm.ifOwner, level);
+			void invalidate('settings:roles');
+		} catch {
+			toastError('Could not save field visibility.');
 			void invalidate('settings:roles');
 		} finally {
 			saving = null;
@@ -232,6 +254,23 @@
 											>
 												<UserCheck class="h-3 w-3" />
 												{rm.ifOwner ? 'Own only' : 'All records'}
+											</button>
+										{/if}
+										{#if rm.fieldScopable}
+											{@const hidden = rm.fieldLevel < SENSITIVE_FIELD_LEVEL}
+											<button
+												type="button"
+												class="ml-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] transition-colors {hidden
+													? 'bg-amber-500/15 text-amber-500'
+													: 'text-muted hover:bg-muted/20'}"
+												title={hidden
+													? 'Sensitive fields (PII / cost / margin) hidden — click to reveal'
+													: 'Sensitive fields visible — click to hide PII / cost / margin'}
+												disabled={!editable || saving === rm.module}
+												onclick={() => toggleFieldVisible(rm, hidden)}
+											>
+												<EyeOff class="h-3 w-3" />
+												{hidden ? 'Sensitive hidden' : 'Sensitive visible'}
 											</button>
 										{/if}
 									</span>

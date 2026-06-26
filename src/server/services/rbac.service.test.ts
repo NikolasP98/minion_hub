@@ -150,6 +150,33 @@ describe('ownerScoped — record-level (if-owner)', () => {
 	});
 });
 
+describe('fieldLevel — field-level (sensitive field) tier', () => {
+	test('default is 1 (visible) for modules with a sensitive tier', () => {
+		const caps = buildCapabilities(['viewer'], []);
+		expect(caps.fieldLevel('crm')).toBe(1);
+		expect(caps.fieldLevel('finance')).toBe(1);
+		// modules without a sensitive tier → 0
+		expect(caps.fieldLevel('agents')).toBe(0);
+	});
+	test('an override can lower a role below the sensitive threshold (mask)', () => {
+		const caps = buildCapabilities(
+			['viewer'],
+			[ROW({ module: 'crm', can_view: true, field_level: 0 })],
+		);
+		expect(caps.fieldLevel('crm')).toBe(0); // PII masked
+	});
+	test('MAX across roles — least-restrictive wins', () => {
+		const caps = buildCapabilities(
+			['staff', 'manager'],
+			[
+				ROW({ role_key: 'staff', module: 'crm', can_view: true, field_level: 0 }),
+				ROW({ role_key: 'manager', module: 'crm', can_view: true, field_level: 1 }),
+			],
+		);
+		expect(caps.fieldLevel('crm')).toBe(1);
+	});
+});
+
 describe('apiWriteCapability — central hooks write guard mapping', () => {
 	test('reads are never gated here', () => {
 		expect(apiWriteCapability('/api/crm/contacts', 'GET')).toBeNull();
