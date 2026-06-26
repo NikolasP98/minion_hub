@@ -61,7 +61,26 @@ export function toInsertValues(
   };
 }
 
-/** Insert ingested rows; idempotent on client_id. */
+const ON_CONFLICT = {
+  target: messages.clientId,
+  set: {
+    agentId: sql`excluded.agent_id`,
+    sessionKey: sql`excluded.session_key`,
+    success: sql`excluded.success`,
+    error: sql`excluded.error`,
+  },
+} as const;
+
+/**
+ * Insert ingested rows; idempotent on client_id.
+ *
+ * Fast path is one bulk insert. If ANY row is unpersistable (a constraint or
+ * encoding error), Postgres aborts the whole statement — which used to 500 the
+ * ingest endpoint, so the gateway flusher marked the entire batch failed and
+ * retried forever, clogging its outbox behind a single poison row. So on a bulk
+ * failure we fall back to per-row inserts (savepoint each) and drop only the
+ * rows that can't be stored. Bad rows never block the queue again.
+ */
 export async function insertMessages(
   orgId: string,
   gatewayId: string | null,
@@ -69,21 +88,34 @@ export async function insertMessages(
 ): Promise<number> {
   if (rows.length === 0) return 0;
   const values = rows.map((r) => toInsertValues(r, orgId, gatewayId));
-  await withOrg(orgId, async (tx) => {
-    await tx
-      .insert(messages)
-      .values(values)
-      .onConflictDoUpdate({
-        target: messages.clientId,
-        set: {
-          agentId: sql`excluded.agent_id`,
-          sessionKey: sql`excluded.session_key`,
-          success: sql`excluded.success`,
-          error: sql`excluded.error`,
-        },
-      });
-  });
-  return values.length;
+  try {
+    await withOrg(orgId, async (tx) => {
+      await tx.insert(messages).values(values).onConflictDoUpdate(ON_CONFLICT);
+    });
+    return values.length;
+  } catch (bulkErr) {
+    let accepted = 0;
+    await withOrg(orgId, async (tx) => {
+      for (const v of values) {
+        try {
+          // Nested tx = SAVEPOINT: a failed row rolls back to the savepoint and
+          // leaves the outer transaction usable for the rest of the batch.
+          await tx.transaction(async (sp) => {
+            await sp.insert(messages).values(v).onConflictDoUpdate(ON_CONFLICT);
+          });
+          accepted += 1;
+        } catch (rowErr) {
+          console.warn(
+            `[ingest] dropping unpersistable message client_id=${v.clientId}: ${String(rowErr)}`,
+          );
+        }
+      }
+    });
+    console.warn(
+      `[ingest] bulk insert failed (${String(bulkErr)}); per-row fallback accepted ${accepted}/${values.length}`,
+    );
+    return accepted;
+  }
 }
 
 /** Apply late routing backfills, keyed by client_id. */
