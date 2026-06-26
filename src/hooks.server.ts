@@ -17,6 +17,7 @@ import { mintWorkforceIdentity } from '$lib/server/workforce-identity';
 import { initCache } from '$lib/server/cache';
 import { getCoreDb } from '$server/db/pg-client';
 import { getUserPreferences } from '$server/services/user-preferences.service';
+import { apiWriteCapability, hasOrgCapability } from '$server/services/rbac.service';
 
 // M5: `resolveLandingPage` runs a PG SELECT on every `/` hit. The landing-page
 // preference is per-user and changes rarely (a deliberate "Set as home page"
@@ -230,6 +231,23 @@ const finishApp: Handle = async ({ event, resolve }) => {
   if (event.locals.user && path === '/') {
     const location = await resolveLandingPage(event.locals.user.supabaseId);
     return new Response(null, { status: 307, headers: { location } });
+  }
+
+  // Central RBAC write guard: business-data + org-config mutating API calls
+  // (/api/crm|finances|sales|scheduling|support|memberships|projects|work|
+  // workforce|modules|plugins) require the matching capability. Reads aren't
+  // gated here (pages gate their own view); only POST/PUT/PATCH/DELETE. The
+  // gateway server-token + cron-tick traffic targets other prefixes, and the
+  // anonymous /api/scheduling/public/* booking path is excluded — so only
+  // user-driven writes reach this. 403 (JSON) when the role lacks the cap.
+  if (event.locals.user) {
+    const need = apiWriteCapability(path, event.request.method);
+    if (need && !(await hasOrgCapability(event.locals, need.module, need.action))) {
+      return new Response(
+        JSON.stringify({ error: 'You do not have permission to perform this action.' }),
+        { status: 403, headers: { 'content-type': 'application/json' } },
+      );
+    }
   }
 
   return resolve(event);

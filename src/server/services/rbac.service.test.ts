@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { buildCapabilities, defaultCaps, legacyRoleKey } from './rbac.service';
+import { buildCapabilities, defaultCaps, legacyRoleKey, apiWriteCapability } from './rbac.service';
 
 describe('defaultCaps — role tiers', () => {
 	test('owner/admin get everything', () => {
@@ -74,5 +74,35 @@ describe('legacyRoleKey — back-compat mapping', () => {
 		expect(legacyRoleKey('admin')).toBe('admin');
 		expect(legacyRoleKey('member')).toBe('manager');
 		expect(legacyRoleKey(null)).toBe('viewer');
+	});
+});
+
+describe('apiWriteCapability — central hooks write guard mapping', () => {
+	test('reads are never gated here', () => {
+		expect(apiWriteCapability('/api/crm/contacts', 'GET')).toBeNull();
+		expect(apiWriteCapability('/api/crm/contacts', 'HEAD')).toBeNull();
+	});
+	test('business writes map to (module, edit); DELETE→delete', () => {
+		expect(apiWriteCapability('/api/crm/contacts', 'POST')).toEqual({ module: 'crm', action: 'edit' });
+		expect(apiWriteCapability('/api/crm/contacts/abc', 'PATCH')).toEqual({ module: 'crm', action: 'edit' });
+		expect(apiWriteCapability('/api/crm/tags/abc', 'DELETE')).toEqual({ module: 'crm', action: 'delete' });
+		expect(apiWriteCapability('/api/finances/products', 'PUT')).toEqual({ module: 'finance', action: 'edit' });
+		expect(apiWriteCapability('/api/sales/orders/x', 'PATCH')).toEqual({ module: 'sales', action: 'edit' });
+	});
+	test('work + workforce map to projects (no /api/work ↔ /api/workforce collision)', () => {
+		expect(apiWriteCapability('/api/work/reassign', 'PATCH')).toEqual({ module: 'projects', action: 'edit' });
+		expect(apiWriteCapability('/api/workforce/anything', 'POST')).toEqual({ module: 'projects', action: 'edit' });
+	});
+	test('org-config surfaces require settings:manage', () => {
+		expect(apiWriteCapability('/api/modules', 'PUT')).toEqual({ module: 'settings', action: 'manage' });
+		expect(apiWriteCapability('/api/plugins/whatsapp/toggle', 'POST')).toEqual({ module: 'settings', action: 'manage' });
+	});
+	test('anonymous public booking is excluded', () => {
+		expect(apiWriteCapability('/api/scheduling/public/my-slug/book', 'POST')).toBeNull();
+	});
+	test('ungated prefixes return null', () => {
+		expect(apiWriteCapability('/api/agents/x', 'POST')).toBeNull();
+		expect(apiWriteCapability('/api/gateway/query', 'POST')).toBeNull();
+		expect(apiWriteCapability('/api/messages/ingest', 'POST')).toBeNull();
 	});
 });

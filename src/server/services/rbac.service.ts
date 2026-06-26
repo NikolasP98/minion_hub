@@ -389,6 +389,72 @@ export function isModule(x: unknown): x is Module {
 }
 
 /**
+ * Non-throwing capability check (boolean) — for the central API write guard in
+ * hooks, which returns a 403 Response rather than throwing a SvelteKit error.
+ * Platform admins (profiles.role='admin', incl. dev AUTH_DISABLED) always pass;
+ * an unauthenticated / org-less / no-supabaseId caller is denied (false).
+ */
+export async function hasOrgCapability(
+	locals: App.Locals,
+	module: Module,
+	action: PermAction,
+): Promise<boolean> {
+	const user = locals.user;
+	if (!user) return false;
+	if (user.role === 'admin') return true;
+	if (!locals.tenantCtx || !user.supabaseId) return false;
+	const caps = await resolveCapabilities(locals.tenantCtx.tenantId, user.supabaseId);
+	return caps.can(module, action);
+}
+
+/**
+ * Map an /api/<module>/* write request to the (module, action) capability it
+ * requires, or `null` if the path isn't a gated business/config write. Single
+ * source of truth for the central hooks guard.
+ *
+ * Method→action: DELETE→delete, other mutations→edit; the org-config surfaces
+ * (modules + per-org plugin toggles) require `settings:manage`. Reads (GET/HEAD)
+ * are NOT gated here — pages gate their own view access; this tranche closes the
+ * write holes. `/api/scheduling/public/*` (anonymous booking) is excluded.
+ */
+const API_WRITE_PREFIXES: ReadonlyArray<readonly [string, Module]> = [
+	['/api/crm', 'crm'],
+	['/api/finances', 'finance'],
+	['/api/sales', 'sales'],
+	['/api/scheduling', 'scheduling'],
+	['/api/support', 'support'],
+	['/api/memberships', 'memberships'],
+	['/api/projects', 'projects'],
+	['/api/work', 'projects'],
+	['/api/workforce', 'projects'],
+	['/api/modules', 'settings'],
+	['/api/plugins', 'settings'],
+];
+const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+export function apiWriteCapability(
+	pathname: string,
+	method: string,
+): { module: Module; action: PermAction } | null {
+	if (!WRITE_METHODS.has(method)) return null;
+	if (pathname.startsWith('/api/scheduling/public/')) return null; // anonymous booking
+	let best: readonly [string, Module] | null = null;
+	for (const entry of API_WRITE_PREFIXES) {
+		const prefix = entry[0];
+		if (
+			(pathname === prefix || pathname.startsWith(`${prefix}/`)) &&
+			(!best || prefix.length > best[0].length)
+		) {
+			best = entry;
+		}
+	}
+	if (!best) return null;
+	const module = best[1];
+	const action: PermAction = module === 'settings' ? 'manage' : method === 'DELETE' ? 'delete' : 'edit';
+	return { module, action };
+}
+
+/**
  * Gate a request on an RBAC capability in the caller's active org. Platform admins
  * (profiles.role='admin', incl. the dev AUTH_DISABLED bypass which has no
  * supabaseId) always pass; otherwise the user must hold the capability via their
