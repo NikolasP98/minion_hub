@@ -1,12 +1,11 @@
 import type { PageServerLoad } from './$types';
-import { error } from '@sveltejs/kit';
-import { can } from '$lib/access/policy';
+import { requireOrgCapability } from '$server/services/rbac.service';
 import { listGatewaysForAdmin } from '$server/services/gateway.pg.service';
 import { listServers } from '$server/services/server.service';
 import type { TenantContext } from '$server/services/base';
 
 export const load: PageServerLoad = async ({ locals }) => {
-  if (!can('users.manage', locals.user)) throw error(403, 'Admin access required');
+  await requireOrgCapability(locals, 'settings', 'manage');
 
   const [pgGateways, tursoHosts] = await Promise.all([
     listGatewaysForAdmin(),

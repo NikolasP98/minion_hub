@@ -1,5 +1,6 @@
 import type { PageServerLoad } from './$types';
 import { pluginsUiList, getGatewayHttpUrl } from '$lib/server/gateway-rpc';
+import { requireOrgCapability } from '$server/services/rbac.service';
 import type { PluginUiManifestOccupant } from '$lib/plugins/plugin-types';
 
 export type PluginManifestErrorKind = 'originNotAllowed' | 'unreachable' | 'other';
@@ -11,6 +12,7 @@ function classifyError(message: string): PluginManifestErrorKind {
 }
 
 export const load: PageServerLoad = async ({ url, locals }) => {
+  await requireOrgCapability(locals, 'settings', 'manage');
   let entries: PluginUiManifestOccupant[] = [];
   let gatewayBaseUrl = '';
   let errorMessage: string | undefined;
