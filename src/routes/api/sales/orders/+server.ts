@@ -1,6 +1,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
+import { ownerFilter } from '$server/services/rbac.service';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { listOrders, type OrderStatus } from '$server/services/sales.service';
 
@@ -13,6 +14,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
     await listOrders(ctx, {
       status: (url.searchParams.get('status') as OrderStatus | 'open') ?? undefined,
       crmContactId: url.searchParams.get('contact') ?? undefined,
+      ownerId: await ownerFilter(locals, 'sales'),
     }),
   );
 };

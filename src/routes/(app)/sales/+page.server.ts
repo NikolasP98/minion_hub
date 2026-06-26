@@ -1,6 +1,7 @@
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { getCoreCtx } from '$server/auth/core-ctx';
+import { ownerFilter } from '$server/services/rbac.service';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { listOrders } from '$server/services/sales.service';
 import { getContact } from '$server/services/crm-contacts.service';
@@ -13,8 +14,9 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
 
   // Cross-module nav: ?contact= scopes the list to one contact (Connections panel).
   const contact = url.searchParams.get('contact') ?? undefined;
+  const ownerId = await ownerFilter(locals, 'sales');
   const [orders, contactRec] = await Promise.all([
-    listOrders(ctx, { crmContactId: contact, limit: 200 }),
+    listOrders(ctx, { crmContactId: contact, limit: 200, ownerId }),
     contact ? getContact(ctx, contact) : Promise.resolve(null),
   ]);
   const open = orders.filter((o) => o.status === 'draft' || o.status === 'confirmed');

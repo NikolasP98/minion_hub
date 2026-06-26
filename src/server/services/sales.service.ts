@@ -82,13 +82,15 @@ export async function createOrderFromBooking(ctx: CoreCtx, bookingId: string): P
 
 export function listOrders(
   ctx: CoreCtx,
-  f: { status?: OrderStatus | 'open'; crmContactId?: string; limit?: number } = {},
+  f: { status?: OrderStatus | 'open'; crmContactId?: string; limit?: number; ownerId?: string } = {},
 ): Promise<SalesOrder[]> {
   return withOrgCore(ctx, (tx) => {
     const conds = [eq(salesOrders.orgId, ctx.tenantId)];
     if (f.status === 'open') conds.push(OPEN_ORDER);
     else if (f.status) conds.push(eq(salesOrders.status, f.status));
     if (f.crmContactId) conds.push(eq(salesOrders.crmContactId, f.crmContactId));
+    // Record-level (if-owner) scoping: only orders this rep owns.
+    if (f.ownerId) conds.push(eq(salesOrders.ownerId, f.ownerId));
     return tx
       .select()
       .from(salesOrders)
@@ -98,13 +100,19 @@ export function listOrders(
   });
 }
 
-/** Single order by id (detail page). */
-export async function getOrder(ctx: CoreCtx, id: string): Promise<SalesOrder | null> {
+/** Single order by id (detail page). A scoped caller only opens orders they own. */
+export async function getOrder(ctx: CoreCtx, id: string, ownerId?: string): Promise<SalesOrder | null> {
   const [row] = await withOrgCore(ctx, (tx) =>
     tx
       .select()
       .from(salesOrders)
-      .where(and(eq(salesOrders.id, id), eq(salesOrders.orgId, ctx.tenantId)))
+      .where(
+        and(
+          eq(salesOrders.id, id),
+          eq(salesOrders.orgId, ctx.tenantId),
+          ...(ownerId ? [eq(salesOrders.ownerId, ownerId)] : []),
+        ),
+      )
       .limit(1),
   );
   return row ?? null;

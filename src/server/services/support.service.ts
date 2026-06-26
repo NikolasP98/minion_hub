@@ -104,6 +104,8 @@ export interface IssueFilters {
   crmContactId?: string;
   partyId?: string;
   limit?: number;
+  /** Record-level (if-owner) scope: restrict to issues owned by this profile. */
+  ownerId?: string;
 }
 
 export async function listIssues(ctx: CoreCtx, f: IssueFilters = {}): Promise<SupportIssue[]> {
@@ -114,6 +116,7 @@ export async function listIssues(ctx: CoreCtx, f: IssueFilters = {}): Promise<Su
     if (f.priority) conds.push(eq(supportIssues.priority, f.priority));
     if (f.crmContactId) conds.push(eq(supportIssues.crmContactId, f.crmContactId));
     if (f.partyId) conds.push(eq(supportIssues.partyId, f.partyId));
+    if (f.ownerId) conds.push(eq(supportIssues.ownerId, f.ownerId));
     return tx
       .select()
       .from(supportIssues)
@@ -140,12 +143,18 @@ export async function issueCountForContact(ctx: CoreCtx, contactId: string): Pro
   return Number(row?.n ?? 0);
 }
 
-export async function getIssue(ctx: CoreCtx, id: string): Promise<SupportIssue | null> {
+export async function getIssue(ctx: CoreCtx, id: string, ownerId?: string): Promise<SupportIssue | null> {
   const [row] = await withOrgCore(ctx, (tx) =>
     tx
       .select()
       .from(supportIssues)
-      .where(and(eq(supportIssues.id, id), eq(supportIssues.orgId, ctx.tenantId)))
+      .where(
+        and(
+          eq(supportIssues.id, id),
+          eq(supportIssues.orgId, ctx.tenantId),
+          ...(ownerId ? [eq(supportIssues.ownerId, ownerId)] : []),
+        ),
+      )
       .limit(1),
   );
   return row ?? null;

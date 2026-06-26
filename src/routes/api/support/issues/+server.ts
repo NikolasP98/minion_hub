@@ -1,6 +1,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
+import { ownerFilter } from '$server/services/rbac.service';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { listIssues, createIssue, type IssueFilters, type Priority } from '$server/services/support.service';
 
@@ -13,6 +14,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
     status: (url.searchParams.get('status') as IssueFilters['status']) ?? undefined,
     priority: (url.searchParams.get('priority') as Priority) ?? undefined,
     crmContactId: url.searchParams.get('contact') ?? undefined,
+    ownerId: await ownerFilter(locals, 'support'),
   };
   return json(await listIssues(ctx, f));
 };

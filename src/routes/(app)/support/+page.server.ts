@@ -1,6 +1,7 @@
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { getCoreCtx } from '$server/auth/core-ctx';
+import { ownerFilter } from '$server/services/rbac.service';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { listIssues, issueStats, agreementStatus } from '$server/services/support.service';
 import { getContact } from '$server/services/crm-contacts.service';
@@ -17,7 +18,12 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
   const openCreate = url.searchParams.get('new') === '1';
 
   const [raw, stats, contactRec] = await Promise.all([
-    listIssues(ctx, { status: 'open_all', crmContactId: contact, limit: 200 }),
+    listIssues(ctx, {
+      status: 'open_all',
+      crmContactId: contact,
+      limit: 200,
+      ownerId: await ownerFilter(locals, 'support'),
+    }),
     issueStats(ctx),
     contact ? getContact(ctx, contact) : Promise.resolve(null),
   ]);

@@ -1,6 +1,7 @@
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { getCoreCtx } from '$server/auth/core-ctx';
+import { ownerFilter } from '$server/services/rbac.service';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { getIssue, agreementStatus } from '$server/services/support.service';
 import { listEntityTimeline } from '$server/services/activity.service';
@@ -12,7 +13,8 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
   if (!(await isModuleEnabled(ctx, 'support'))) throw error(404, 'Support module disabled');
   depends('support:issue');
 
-  const issue = await getIssue(ctx, params.id);
+  // if-owner scope: a scoped caller only opens tickets they own (else 404).
+  const issue = await getIssue(ctx, params.id, await ownerFilter(locals, 'support'));
   if (!issue) throw error(404, 'Ticket not found');
   const [timeline, transitions] = await Promise.all([
     listEntityTimeline(ctx, 'support_issue', params.id),

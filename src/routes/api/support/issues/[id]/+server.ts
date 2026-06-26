@@ -1,13 +1,14 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
+import { ownerFilter } from '$server/services/rbac.service';
 import { getIssue, updateIssue, type UpdateIssueInput } from '$server/services/support.service';
 import { statusChangeBlocked } from '$server/services/workflow.service';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
-  const issue = await getIssue(ctx, params.id!);
+  const issue = await getIssue(ctx, params.id!, await ownerFilter(locals, 'support'));
   if (!issue) throw error(404);
   return json(issue);
 };

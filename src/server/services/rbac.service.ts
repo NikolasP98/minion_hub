@@ -334,6 +334,8 @@ export async function shouldMaskSensitive(locals: App.Locals, module: Module): P
  */
 export const OWNER_SCOPABLE_MODULES: Partial<Record<Module, string>> = {
 	crm: 'owner_id',
+	sales: 'owner_id',
+	support: 'owner_id',
 };
 
 /**
