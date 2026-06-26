@@ -53,6 +53,8 @@ export function capsToLegacyPermissions(caps: Capabilities): string[] {
   add('workshop:view', caps.can('agents', 'view'));
   add('workshop:edit', caps.can('agents', 'edit'));
   // business-module view gates (drive nav visibility + the central route guard)
+  add('flows:view', caps.can('flows', 'view'));
+  add('marketplace:view', caps.can('marketplace', 'view'));
   add('crm:view', caps.can('crm', 'view'));
   add('finance:view', caps.can('finance', 'view'));
   add('sales:view', caps.can('sales', 'view'));

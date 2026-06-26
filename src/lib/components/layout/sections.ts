@@ -74,6 +74,7 @@ function archetypeItem(archetype: AgentArchetype, label: string, icon: LucideIco
         activeWhen: (url) =>
             (url.pathname === "/agents" || url.pathname.startsWith("/agents/")) &&
             url.searchParams.get("archetype") === archetype,
+        requires: "agents.view",
     };
 }
 
@@ -91,12 +92,14 @@ export function getSections(): Section[] {
             label: m.nav_autonomous(),
             icon: Zap,
             matcher: (p) => p === "/agents/autonomous" || p.startsWith("/agents/autonomous/"),
+            requires: "agents.view",
         },
         {
             href: "/agents/workshop",
             label: m.nav_workshop(),
             icon: Boxes,
             matcher: (p) => p.startsWith("/agents/workshop"),
+            requires: "agents.view",
         },
         ...routeItems("agents"),
     ];
@@ -334,6 +337,7 @@ export function getDynamicPluginsSections(
             label: m.nav_channels(),
             icon: MessagesSquare,
             matcher: (p: string) => p.startsWith("/channels"),
+            requires: "channels.view",
         });
         byCategory.set("customer-support", cs);
     }

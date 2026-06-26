@@ -53,19 +53,33 @@ export const BUSINESS_PERMISSIONS = [
   'comms:view',
 ] as const;
 
+/**
+ * Platform-module view permissions not already in RESOURCE_PERMISSIONS
+ * (agents/channels/settings/users live there). Emitted from caps so the agents
+ * surface, Agent Builder, and Marketplace nav + routes gate off the matrix.
+ */
+export const PLATFORM_VIEW_PERMISSIONS = ['flows:view', 'marketplace:view'] as const;
+
 export const PERMISSIONS = [
   ...RESOURCE_PERMISSIONS,
   ...BUSINESS_PERMISSIONS,
+  ...PLATFORM_VIEW_PERMISSIONS,
   ...MODULE_PERMISSIONS,
 ] as const;
 
 /**
- * Map an (app) pathname to the business-module view permission it requires, or
- * `null` if the route isn't a gated business module. Single source of truth for
- * the central layout guard (server enforcement) and the nav `requires` keys (UX
- * hiding) so they can never drift. Longest prefix wins.
+ * Map an (app) pathname to the module view permission it requires, or `null` if
+ * the route isn't gated. Single source of truth for the central layout guard
+ * (server enforcement) and the nav `requires` keys (UX hiding) so they can never
+ * drift. Longest prefix wins.
+ *
+ * Deliberately NOT gated here: `/settings` (holds personal preferences everyone
+ * needs; its org-config subroutes + write APIs gate themselves), `/reliability`
+ * (admin super-view), `/team` + `/users` (own admin guards), `/home` + `/overview`
+ * (universal).
  */
-const BUSINESS_ROUTE_PERMS: ReadonlyArray<readonly [string, string]> = [
+const ROUTE_VIEW_PERMS: ReadonlyArray<readonly [string, string]> = [
+  // business modules
   ['/crm', 'crm:view'],
   ['/finances', 'finance:view'],
   ['/sales', 'sales:view'],
@@ -73,11 +87,20 @@ const BUSINESS_ROUTE_PERMS: ReadonlyArray<readonly [string, string]> = [
   ['/support', 'support:view'],
   ['/memberships', 'memberships:view'],
   ['/workforce', 'projects:view'],
+  // platform modules
+  ['/agents', 'agents:view'],
+  ['/capabilities', 'agents:view'],
+  ['/tools', 'agents:view'],
+  ['/prompt', 'agents:view'],
+  ['/sessions', 'agents:view'],
+  ['/flow-editor', 'flows:view'],
+  ['/channels', 'channels:view'],
+  ['/marketplace', 'marketplace:view'],
 ];
 
 export function requiredViewPermForPath(pathname: string): string | null {
   let best: readonly [string, string] | null = null;
-  for (const entry of BUSINESS_ROUTE_PERMS) {
+  for (const entry of ROUTE_VIEW_PERMS) {
     const prefix = entry[0];
     if ((pathname === prefix || pathname.startsWith(`${prefix}/`)) && (!best || prefix.length > best[0].length)) {
       best = entry;

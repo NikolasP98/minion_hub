@@ -72,6 +72,17 @@ describe('capsToLegacyPermissions — RBAC → legacy nav vocab', () => {
 		]) {
 			expect(p.has(v)).toBe(true);
 		}
+		// ...but NO platform-module view (admin modules default to NONE for viewer)
+		for (const v of ['agents:view', 'channels:view', 'flows:view', 'marketplace:view']) {
+			expect(p.has(v)).toBe(false);
+		}
+	});
+
+	test('manager gets platform-module *:view (admin modules default to VIEW)', () => {
+		const p = permsFor('manager');
+		for (const v of ['agents:view', 'channels:view', 'flows:view', 'marketplace:view']) {
+			expect(p.has(v)).toBe(true);
+		}
 	});
 
 	test('per-org override disabling crm view strips crm:view (the reported bug)', () => {
@@ -100,9 +111,23 @@ describe('requiredViewPermForPath — central route guard mapping', () => {
 		expect(requiredViewPermForPath('/workforce/projects')).toBe('projects:view');
 	});
 
-	test('non-business / platform routes are ungated here', () => {
+	test('platform routes map to their module view perm', () => {
+		expect(requiredViewPermForPath('/agents')).toBe('agents:view');
+		expect(requiredViewPermForPath('/agents/autonomous')).toBe('agents:view');
+		expect(requiredViewPermForPath('/capabilities')).toBe('agents:view');
+		expect(requiredViewPermForPath('/prompt')).toBe('agents:view');
+		expect(requiredViewPermForPath('/flow-editor')).toBe('flows:view');
+		expect(requiredViewPermForPath('/channels')).toBe('channels:view');
+		expect(requiredViewPermForPath('/marketplace')).toBe('marketplace:view');
+	});
+
+	test('deliberately ungated routes stay open (personal/admin-own-guard/universal)', () => {
 		expect(requiredViewPermForPath('/overview')).toBeNull();
+		expect(requiredViewPermForPath('/home')).toBeNull();
+		expect(requiredViewPermForPath('/settings')).toBeNull();
 		expect(requiredViewPermForPath('/settings/roles')).toBeNull();
+		expect(requiredViewPermForPath('/reliability')).toBeNull();
+		expect(requiredViewPermForPath('/team')).toBeNull();
 		expect(requiredViewPermForPath('/crmfoo')).toBeNull(); // not a real prefix boundary
 	});
 });

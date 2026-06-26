@@ -48,7 +48,7 @@
   const topItems = $derived<TopItem[]>(
     [
       { href: '/reliability', label: m.nav_reliability(), icon: Activity, show: showReliability },
-      { href: '/marketplace', label: m.nav_marketplace(), icon: Store, show: true },
+      { href: '/marketplace', label: m.nav_marketplace(), icon: Store, show: canClient('marketplace.view') },
       { href: '/terminal', label: m.nav_terminal(), icon: SquareTerminal, show: showTerminal },
     ].filter((t) => t.show),
   );

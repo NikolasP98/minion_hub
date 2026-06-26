@@ -18,6 +18,11 @@ const BASE_ACCESS: Record<string, Capability> = {
   'support.view': { permission: 'support:view' },
   'memberships.view': { permission: 'memberships:view' },
   'projects.view': { permission: 'projects:view' },
+  // Platform-module view gates (RBAC-driven).
+  'agents.view': { permission: 'agents:view' },
+  'channels.view': { permission: 'channels:view' },
+  'flows.view': { permission: 'flows:view' },
+  'marketplace.view': { permission: 'marketplace:view' },
 };
 
 /** Super-view keys auto-register as admin-only. */
