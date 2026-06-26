@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { PERMISSIONS } from '$lib/permissions';
+import { PERMISSIONS, ALL_SUBRESOURCES } from '$lib/permissions';
 import { resolveCapabilities, type Capabilities } from './rbac.service';
 import type { LoadCtx } from './types';
 
@@ -65,6 +65,8 @@ export function capsToLegacyPermissions(caps: Capabilities): string[] {
   add('projects:view', caps.can('projects', 'view'));
   add('memberships:view', caps.can('memberships', 'view'));
   add('comms:view', caps.can('comms', 'view'));
+  // section sub-resource view gates (inherit parent unless overridden)
+  for (const s of ALL_SUBRESOURCES) add(`${s.key}:view`, caps.can(s.key, 'view'));
   // nav module groups
   add('module:operations', caps.can('agents', 'view') || caps.can('channels', 'view'));
   add('module:workspace', caps.can('agents', 'view'));

@@ -3,7 +3,7 @@ import { json, error } from '@sveltejs/kit';
 import {
 	setRoleOverride,
 	clearRoleOverride,
-	isModule,
+	isModuleOrSub,
 	requireOrgCapability,
 	ACTIONS,
 	type ActionSet,
@@ -31,7 +31,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		module?: string;
 		caps?: unknown;
 	};
-	if (!b.roleKey || !isModule(b.module)) throw error(400, 'roleKey and valid module required');
+	if (!b.roleKey || !isModuleOrSub(b.module)) throw error(400, 'roleKey and valid module required');
 	await setRoleOverride(locals.tenantCtx.tenantId, b.roleKey, b.module, parseCaps(b.caps));
 	return json({ ok: true });
 };
@@ -40,7 +40,7 @@ export const DELETE: RequestHandler = async ({ locals, request }) => {
 	await requireOrgCapability(locals, 'users', 'manage');
 	if (!locals.tenantCtx) throw error(401);
 	const b = (await request.json().catch(() => ({}))) as { roleKey?: string; module?: string };
-	if (!b.roleKey || !isModule(b.module)) throw error(400, 'roleKey and valid module required');
+	if (!b.roleKey || !isModuleOrSub(b.module)) throw error(400, 'roleKey and valid module required');
 	await clearRoleOverride(locals.tenantCtx.tenantId, b.roleKey, b.module);
 	return json({ ok: true });
 };

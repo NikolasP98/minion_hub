@@ -60,10 +60,51 @@ export const BUSINESS_PERMISSIONS = [
  */
 export const PLATFORM_VIEW_PERMISSIONS = ['flows:view', 'marketplace:view', 'reliability:view'] as const;
 
+/**
+ * Section sub-resources: gateable subpages nested under a parent module in the
+ * Role Permission Manager. The `key` is a dotted module key (`crm.insights`) and
+ * is what gets stored in permission_rules + checked by the engine; a sub-resource
+ * INHERITS its parent module's caps unless explicitly overridden (see
+ * rbac.service `buildCapabilities`). Single source of truth for: the role-manager
+ * expandable rows, the sub view permission vocabulary, and the central route
+ * guard's subpage mapping below.
+ */
+export interface SubResource {
+  /** Dotted module key, e.g. `crm.insights`. */
+  key: string;
+  label: string;
+  /** Pathname prefix the sub-resource gates. */
+  route: string;
+}
+export const MODULE_SUBRESOURCES: Record<string, SubResource[]> = {
+  crm: [
+    { key: 'crm.insights', label: 'Insights', route: '/crm/insights' },
+    { key: 'crm.cleanup', label: 'Data Cleanup', route: '/crm/cleanup' },
+    { key: 'crm.settings', label: 'Settings', route: '/crm/settings' },
+  ],
+  finance: [
+    { key: 'finance.products', label: 'Products', route: '/finances/products' },
+    { key: 'finance.settings', label: 'Settings', route: '/finances/settings' },
+  ],
+  scheduling: [
+    { key: 'scheduling.event-types', label: 'Event Types', route: '/scheduling/event-types' },
+    { key: 'scheduling.resources', label: 'Resources', route: '/scheduling/resources' },
+    { key: 'scheduling.reminders', label: 'Reminders', route: '/scheduling/reminders' },
+    { key: 'scheduling.settings', label: 'Settings', route: '/scheduling/settings' },
+  ],
+};
+
+/** Flat list of every sub-resource (parent-key agnostic). */
+export const ALL_SUBRESOURCES: SubResource[] = Object.values(MODULE_SUBRESOURCES).flat();
+
+/** `<subkey>:view` for every sub-resource — emitted from caps + gated on routes. */
+export const SUBRESOURCE_VIEW_PERMISSIONS = ALL_SUBRESOURCES.map((s) => `${s.key}:view`);
+
 export const PERMISSIONS = [
   ...RESOURCE_PERMISSIONS,
   ...BUSINESS_PERMISSIONS,
   ...PLATFORM_VIEW_PERMISSIONS,
+  ...SUBRESOURCE_VIEW_PERMISSIONS,
   ...MODULE_PERMISSIONS,
 ] as const;
 
@@ -97,6 +138,9 @@ const ROUTE_VIEW_PERMS: ReadonlyArray<readonly [string, string]> = [
   ['/channels', 'channels:view'],
   ['/marketplace', 'marketplace:view'],
   ['/reliability', 'reliability:view'],
+  // section sub-resources (longest-prefix wins, so these override the parent
+  // module entry for their subpath — e.g. /crm/insights -> crm.insights:view)
+  ...ALL_SUBRESOURCES.map((s) => [s.route, `${s.key}:view`] as const),
 ];
 
 export function requiredViewPermForPath(pathname: string): string | null {

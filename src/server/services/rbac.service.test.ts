@@ -1,5 +1,23 @@
 import { describe, test, expect } from 'vitest';
-import { buildCapabilities, defaultCaps, legacyRoleKey, apiWriteCapability } from './rbac.service';
+import {
+	buildCapabilities,
+	defaultCaps,
+	legacyRoleKey,
+	apiWriteCapability,
+	normalizeViewDependency,
+} from './rbac.service';
+
+const ROW = (over: Record<string, unknown>) => ({
+	role_key: 'viewer',
+	module: 'crm',
+	can_view: false,
+	can_create: false,
+	can_edit: false,
+	can_delete: false,
+	can_export: false,
+	can_manage: false,
+	...over,
+});
 
 describe('defaultCaps — role tiers', () => {
 	test('owner/admin get everything', () => {
@@ -74,6 +92,37 @@ describe('legacyRoleKey — back-compat mapping', () => {
 		expect(legacyRoleKey('admin')).toBe('admin');
 		expect(legacyRoleKey('member')).toBe('manager');
 		expect(legacyRoleKey(null)).toBe('viewer');
+	});
+});
+
+describe('sub-resource inheritance + view-dependency', () => {
+	test('sub-resource inherits parent caps when no explicit override', () => {
+		// viewer default: crm = VIEW only → crm.insights inherits VIEW
+		const caps = buildCapabilities(['viewer'], []);
+		expect(caps.can('crm.insights', 'view')).toBe(true);
+		expect(caps.can('crm.insights', 'edit')).toBe(false);
+	});
+	test('explicit sub-resource override wins over parent', () => {
+		// parent crm has view; sub crm.insights explicitly denied view
+		const caps = buildCapabilities(['viewer'], [ROW({ module: 'crm.insights', can_view: false })]);
+		expect(caps.can('crm', 'view')).toBe(true); // parent default still view
+		expect(caps.can('crm.insights', 'view')).toBe(false); // sub overridden off
+	});
+	test('parent override propagates to inheriting sub-resources', () => {
+		// give viewer full crm via override → crm.cleanup (no own override) inherits it
+		const caps = buildCapabilities(
+			['viewer'],
+			[ROW({ module: 'crm', can_view: true, can_edit: true })],
+		);
+		expect(caps.can('crm.cleanup', 'edit')).toBe(true);
+	});
+	test('normalizeViewDependency: view off clears all; view on untouched', () => {
+		const offWithExtras = { view: false, create: true, edit: true, delete: false, export: false, manage: false };
+		expect(normalizeViewDependency(offWithExtras)).toEqual({
+			view: false, create: false, edit: false, delete: false, export: false, manage: false,
+		});
+		const onSet = { view: true, create: true, edit: false, delete: false, export: false, manage: false };
+		expect(normalizeViewDependency(onSet)).toBe(onSet);
 	});
 });
 

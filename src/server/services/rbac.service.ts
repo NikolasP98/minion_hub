@@ -1,5 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { supabaseAdmin } from '$server/supabase';
+import { MODULE_SUBRESOURCES, ALL_SUBRESOURCES, type SubResource } from '$lib/permissions';
 
 /**
  * RBAC capability engine (ERPNext-inspired) — the single source of truth for
@@ -110,6 +111,16 @@ const RWX = set({ view: true, create: true, edit: true });
 const VIEW = set({ view: true });
 
 /**
+ * Enforce the action-dependency invariant: every action (create/edit/delete/
+ * export/manage) requires `view`. So if `view` is off, nothing else can be on.
+ * Applied server-side on every override write so a hand-crafted POST can't store
+ * an impossible cell (create without view); the UI mirrors it for the cascade.
+ */
+export function normalizeViewDependency(caps: ActionSet): ActionSet {
+	return caps.view ? caps : { ...NONE };
+}
+
+/**
  * Global default capabilities per role per module. Org overrides take precedence
  * per (role, module). Unknown roles/modules default to NONE (fail-closed).
  */
@@ -145,8 +156,12 @@ export function legacyRoleKey(role: string | null | undefined): string {
 
 export interface Capabilities {
 	roles: string[];
-	/** Effective permission for a module+action across all of the member's roles. */
-	can(module: Module, action: PermAction): boolean;
+	/**
+	 * Effective permission for a module+action across all of the member's roles.
+	 * Accepts a dotted sub-resource key (e.g. `crm.insights`) which inherits its
+	 * parent module's caps unless an explicit override exists.
+	 */
+	can(module: Module | string, action: PermAction): boolean;
 	/** True if the member can read ANY business module — the bar for analytics SQL. */
 	canRunAnalytics(): boolean;
 	/** Modules the member can at least view. */
@@ -176,10 +191,17 @@ export function buildCapabilities(roles: string[], overrides: OverrideRow[]): Ca
 			manage: r.can_manage,
 		});
 	}
-	const effective = (roleKey: string, module: Module): ActionSet =>
-		ovr.get(`${roleKey}:${module}`) ?? defaultCaps(roleKey, module);
+	// A dotted sub-resource key (`crm.insights`) with no explicit override inherits
+	// its parent module's effective caps (override-or-default), recursively.
+	const effective = (roleKey: string, mod: string): ActionSet => {
+		const o = ovr.get(`${roleKey}:${mod}`);
+		if (o) return o;
+		const dot = mod.indexOf('.');
+		if (dot > 0) return effective(roleKey, mod.slice(0, dot));
+		return defaultCaps(roleKey, mod as Module);
+	};
 
-	const can = (module: Module, action: PermAction): boolean =>
+	const can = (module: string, action: PermAction): boolean =>
 		roles.some((rk) => effective(rk, module)[action]);
 
 	return {
@@ -238,12 +260,21 @@ function rowToActionSet(r: OverrideRow): ActionSet {
 	};
 }
 
+export interface SubResourceCaps {
+	key: string;
+	label: string;
+	caps: ActionSet;
+	/** True when this org stored an override for (role, sub-resource); else inherited from parent. */
+	overridden: boolean;
+}
 export interface RoleModuleCaps {
 	module: Module;
 	label: string;
 	caps: ActionSet;
 	/** True when this org has a stored override for (role, module) — else it's the code default. */
 	overridden: boolean;
+	/** Gateable subpages nested under this module (expandable rows in the UI). */
+	subResources: SubResourceCaps[];
 }
 export interface RbacRoleView {
 	key: string;
@@ -287,7 +318,20 @@ export async function listRbacRoles(orgId: string): Promise<RbacRoleView[]> {
 		memberCount: counts.get(c.key) ?? 0,
 		modules: MODULES.map((mod) => {
 			const o = ovr.get(`${c.key}:${mod}`);
-			return { module: mod, label: MODULE_LABELS[mod], caps: o ?? defaultCaps(c.key, mod), overridden: !!o };
+			const parentCaps = o ?? defaultCaps(c.key, mod);
+			const subs: SubResource[] = MODULE_SUBRESOURCES[mod] ?? [];
+			return {
+				module: mod,
+				label: MODULE_LABELS[mod],
+				caps: parentCaps,
+				overridden: !!o,
+				// Sub-resource caps: explicit override row if present, else inherit
+				// the parent module's effective caps.
+				subResources: subs.map((s) => {
+					const so = ovr.get(`${c.key}:${s.key}`);
+					return { key: s.key, label: s.label, caps: so ?? parentCaps, overridden: !!so };
+				}),
+			};
 		}),
 	}));
 }
@@ -348,33 +392,38 @@ export async function setMemberRole(
 		.insert({ org_id: orgId, profile_id: profileId, role_key: roleKey, granted_by: grantedBy });
 }
 
-/** Upsert a per-org capability override for (role, module). */
+/**
+ * Upsert a per-org capability override for (role, module-or-subresource). `module`
+ * may be a top-level Module or a dotted sub-resource key (`crm.insights`). Caps are
+ * normalized to the view-dependency invariant before storage.
+ */
 export async function setRoleOverride(
 	orgId: string,
 	roleKey: string,
-	module: Module,
+	module: string,
 	caps: ActionSet,
 ): Promise<void> {
 	const admin = supabaseAdmin();
+	const c = normalizeViewDependency(caps);
 	await admin.from('permission_rules').upsert(
 		{
 			org_id: orgId,
 			role_key: roleKey,
 			module,
-			can_view: caps.view,
-			can_create: caps.create,
-			can_edit: caps.edit,
-			can_delete: caps.delete,
-			can_export: caps.export,
-			can_manage: caps.manage,
+			can_view: c.view,
+			can_create: c.create,
+			can_edit: c.edit,
+			can_delete: c.delete,
+			can_export: c.export,
+			can_manage: c.manage,
 			updated_at: new Date().toISOString(),
 		},
 		{ onConflict: 'org_id,role_key,module' },
 	);
 }
 
-/** Remove a per-org override so (role, module) reverts to the code default. */
-export async function clearRoleOverride(orgId: string, roleKey: string, module: Module): Promise<void> {
+/** Remove a per-org override so (role, module-or-subresource) reverts to default/inherited. */
+export async function clearRoleOverride(orgId: string, roleKey: string, module: string): Promise<void> {
 	const admin = supabaseAdmin();
 	await admin
 		.from('permission_rules')
@@ -386,6 +435,12 @@ export async function clearRoleOverride(orgId: string, roleKey: string, module: 
 
 export function isModule(x: unknown): x is Module {
 	return typeof x === 'string' && (MODULES as readonly string[]).includes(x);
+}
+
+const SUBRESOURCE_KEYS = new Set(ALL_SUBRESOURCES.map((s) => s.key));
+/** True for a top-level Module OR a registered sub-resource key (`crm.insights`). */
+export function isModuleOrSub(x: unknown): x is string {
+	return isModule(x) || (typeof x === 'string' && SUBRESOURCE_KEYS.has(x));
 }
 
 /**

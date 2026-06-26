@@ -1,10 +1,17 @@
 <script lang="ts">
 	import { invalidate } from '$app/navigation';
-	import { ShieldCheck, Users, RotateCcw, Lock } from 'lucide-svelte';
+	import { ShieldCheck, Users, RotateCcw, Lock, ChevronRight, ChevronDown } from 'lucide-svelte';
 	import { toastError } from '$lib/state/ui/toast.svelte';
 
 	type ActionSet = Record<string, boolean>;
-	type RoleModuleCaps = { module: string; label: string; caps: ActionSet; overridden: boolean };
+	type SubResourceCaps = { key: string; label: string; caps: ActionSet; overridden: boolean };
+	type RoleModuleCaps = {
+		module: string;
+		label: string;
+		caps: ActionSet;
+		overridden: boolean;
+		subResources: SubResourceCaps[];
+	};
 	type Role = {
 		key: string;
 		name: string;
@@ -25,33 +32,73 @@
 
 	// svelte-ignore state_referenced_locally
 	let selectedKey = $state<string>(roles[0]?.key ?? '');
-	let saving = $state<string | null>(null); // `${roleKey}:${module}` currently saving
+	let saving = $state<string | null>(null); // override key currently saving
+	let expanded = $state<Record<string, boolean>>({});
 
 	const selected = $derived(roles.find((r) => r.key === selectedKey) ?? roles[0] ?? null);
 	// Owner is intentionally not editable — it must always retain full access (no self-lockout).
 	const editable = $derived(!!selected && selected.key !== 'owner');
+	const EMPTY: ActionSet = { view: false, create: false, edit: false, delete: false, export: false, manage: false };
 
 	function capsFor(role: Role, mod: string): RoleModuleCaps | undefined {
 		return role.modules.find((m) => m.module === mod);
 	}
 
-	async function toggleCell(mod: string, action: string, next: boolean) {
+	/**
+	 * Apply the action-dependency invariant locally for the optimistic update:
+	 * every action requires `view`, so unchecking view clears the row, and
+	 * checking any other action turns view on. Mirrors the server normalization.
+	 */
+	function applyViewDep(caps: ActionSet, action: string, next: boolean): ActionSet {
+		if (action === 'view' && !next) return { ...EMPTY };
+		const out = { ...caps, [action]: next };
+		if (action !== 'view' && next) out.view = true;
+		return out;
+	}
+
+	async function saveOverride(moduleKey: string, caps: ActionSet) {
+		const res = await fetch('/api/roles/overrides', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ roleKey: selected!.key, module: moduleKey, caps }),
+		});
+		if (!res.ok) throw new Error(String(res.status));
+	}
+	async function clearOverride(moduleKey: string) {
+		const res = await fetch('/api/roles/overrides', {
+			method: 'DELETE',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ roleKey: selected!.key, module: moduleKey }),
+		});
+		if (!res.ok) throw new Error(String(res.status));
+	}
+
+	// Aggregate state of a parent action across the module + its sub-resources:
+	// checked when ALL are on, indeterminate when they diverge.
+	function parentState(rm: RoleModuleCaps, action: string): { checked: boolean; indeterminate: boolean } {
+		const vals = [rm.caps[action] ?? false, ...rm.subResources.map((s) => s.caps[action] ?? false)];
+		const all = vals.every(Boolean);
+		const none = vals.every((v) => !v);
+		return { checked: all, indeterminate: !all && !none };
+	}
+
+	// Toggling the group header cascades to the parent module AND every child:
+	// the parent gets the new caps, child overrides are cleared so they inherit it.
+	async function toggleParent(rm: RoleModuleCaps, action: string, next: boolean) {
 		if (!selected || !editable) return;
-		const rm = capsFor(selected, mod);
-		if (!rm) return;
-		const caps = { ...rm.caps, [action]: next };
-		const tag = `${selected.key}:${mod}`;
-		saving = tag;
-		// optimistic
+		const caps = applyViewDep(rm.caps, action, next);
+		saving = rm.module;
+		const dirtySubs = rm.subResources.filter((s) => s.overridden).map((s) => s.key);
+		// optimistic: parent + all children follow
 		rm.caps = caps;
 		rm.overridden = true;
+		for (const s of rm.subResources) {
+			s.caps = caps;
+			s.overridden = false;
+		}
 		try {
-			const res = await fetch('/api/roles/overrides', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ roleKey: selected.key, module: mod, caps }),
-			});
-			if (!res.ok) throw new Error(String(res.status));
+			await saveOverride(rm.module, caps);
+			await Promise.all(dirtySubs.map((k) => clearOverride(k)));
 			void invalidate('settings:roles');
 		} catch {
 			toastError('Could not save permission change.');
@@ -61,23 +108,55 @@
 		}
 	}
 
-	async function resetModule(mod: string) {
+	async function toggleChild(rm: RoleModuleCaps, sub: SubResourceCaps, action: string, next: boolean) {
 		if (!selected || !editable) return;
-		const tag = `${selected.key}:${mod}`;
-		saving = tag;
+		const caps = applyViewDep(sub.caps, action, next);
+		saving = sub.key;
+		sub.caps = caps;
+		sub.overridden = true;
 		try {
-			const res = await fetch('/api/roles/overrides', {
-				method: 'DELETE',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ roleKey: selected.key, module: mod }),
-			});
-			if (!res.ok) throw new Error(String(res.status));
+			await saveOverride(sub.key, caps);
+			void invalidate('settings:roles');
+		} catch {
+			toastError('Could not save permission change.');
+			void invalidate('settings:roles');
+		} finally {
+			saving = null;
+		}
+	}
+
+	// Reset a whole module to defaults: clear its override and every child override.
+	async function resetModule(rm: RoleModuleCaps) {
+		if (!selected || !editable) return;
+		saving = rm.module;
+		try {
+			await clearOverride(rm.module);
+			await Promise.all(rm.subResources.filter((s) => s.overridden).map((s) => clearOverride(s.key)));
 		} catch {
 			toastError('Could not reset to default.');
 		} finally {
 			saving = null;
-			void invalidate('settings:roles'); // refresh to the code default
+			void invalidate('settings:roles');
 		}
+	}
+
+	async function resetSub(sub: SubResourceCaps) {
+		if (!selected || !editable) return;
+		saving = sub.key;
+		try {
+			await clearOverride(sub.key);
+		} catch {
+			toastError('Could not reset to default.');
+		} finally {
+			saving = null;
+			void invalidate('settings:roles');
+		}
+	}
+
+	// Set the DOM `indeterminate` property (not expressible as an attribute).
+	function indeterminate(node: HTMLInputElement, value: boolean) {
+		node.indeterminate = value;
+		return { update: (v: boolean) => (node.indeterminate = v) };
 	}
 </script>
 
@@ -99,41 +178,91 @@
 					{#each mods as mod (mod)}
 						{@const rm = selected ? capsFor(selected, mod) : undefined}
 						{#if rm}
+							{@const hasSubs = rm.subResources.length > 0}
+							{@const isOpen = !!expanded[mod]}
 							<tr class="border-b border-border/30 last:border-0">
 								<td class="px-3 py-1.5 text-foreground">
 									<span class="flex items-center gap-1.5">
+										{#if hasSubs}
+											<button
+												type="button"
+												class="rounded p-0.5 text-muted hover:bg-muted/20 hover:text-foreground"
+												title={isOpen ? 'Collapse sections' : 'Expand sections'}
+												onclick={() => (expanded[mod] = !isOpen)}
+											>
+												{#if isOpen}<ChevronDown class="h-3.5 w-3.5" />{:else}<ChevronRight class="h-3.5 w-3.5" />{/if}
+											</button>
+										{:else}
+											<span class="inline-block w-[18px]"></span>
+										{/if}
 										{rm.label}
 										{#if rm.overridden}
-											<span
-												class="h-1.5 w-1.5 rounded-full bg-accent"
-												title="Customised for this organization"
-											></span>
+											<span class="h-1.5 w-1.5 rounded-full bg-accent" title="Customised for this organization"></span>
 										{/if}
 									</span>
 								</td>
 								{#each actions as a (a)}
+									{@const st = parentState(rm, a)}
 									<td class="px-2 py-1.5 text-center">
 										<input
 											type="checkbox"
 											class="accent-accent disabled:opacity-40"
-											checked={rm.caps[a] ?? false}
-											disabled={!editable || saving === `${selected?.key}:${mod}`}
-											onchange={(e) => toggleCell(mod, a, e.currentTarget.checked)}
+											checked={st.checked}
+											use:indeterminate={st.indeterminate}
+											disabled={!editable || saving === mod}
+											onchange={(e) => toggleParent(rm, a, e.currentTarget.checked)}
 										/>
 									</td>
 								{/each}
 								<td class="px-1 py-1.5 text-center">
-									{#if editable && rm.overridden}
+									{#if editable && (rm.overridden || rm.subResources.some((s) => s.overridden))}
 										<button
 											class="rounded p-1 text-muted hover:bg-muted/20 hover:text-foreground"
-											title="Reset to default"
-											onclick={() => resetModule(mod)}
+											title="Reset module to default"
+											onclick={() => resetModule(rm)}
 										>
 											<RotateCcw class="h-3 w-3" />
 										</button>
 									{/if}
 								</td>
 							</tr>
+
+							{#if hasSubs && isOpen}
+								{#each rm.subResources as sub (sub.key)}
+									<tr class="border-b border-border/20 bg-bg2/30 last:border-0">
+										<td class="py-1.5 pl-9 pr-3 text-muted">
+											<span class="flex items-center gap-1.5">
+												<span class="text-[11px]">{sub.label}</span>
+												{#if sub.overridden}
+													<span class="h-1.5 w-1.5 rounded-full bg-accent" title="Set independently of the module"></span>
+												{/if}
+											</span>
+										</td>
+										{#each actions as a (a)}
+											<td class="px-2 py-1.5 text-center">
+												<input
+													type="checkbox"
+													class="accent-accent disabled:opacity-40"
+													checked={sub.caps[a] ?? false}
+													disabled={!editable || saving === sub.key}
+													onchange={(e) => toggleChild(rm, sub, a, e.currentTarget.checked)}
+												/>
+											</td>
+										{/each}
+										<td class="px-1 py-1.5 text-center">
+											{#if editable && sub.overridden}
+												<button
+													class="rounded p-1 text-muted hover:bg-muted/20 hover:text-foreground"
+													title="Reset section to inherit the module"
+													onclick={() => resetSub(sub)}
+												>
+													<RotateCcw class="h-3 w-3" />
+												</button>
+											{/if}
+										</td>
+									</tr>
+								{/each}
+							{/if}
 						{/if}
 					{/each}
 				</tbody>
@@ -147,8 +276,8 @@
 		<h2 class="text-base font-semibold text-foreground">Roles</h2>
 		<p class="mt-0.5 text-[12px] text-muted">
 			What each role can see and do across the dashboard. Built-in roles ship with sensible
-			defaults — customise any of them for this organization. The agent inherits the signed-in
-			user's permissions.
+			defaults — customise any of them for this organization. Expand a module to gate its sections
+			independently; every action requires View. The agent inherits the signed-in user's permissions.
 		</p>
 	</header>
 

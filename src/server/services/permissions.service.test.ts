@@ -130,6 +130,14 @@ describe('requiredViewPermForPath — central route guard mapping', () => {
 		expect(requiredViewPermForPath('/reliability')).toBe('reliability:view');
 	});
 
+	test('section sub-resources map to sub view perm (longest prefix beats parent)', () => {
+		expect(requiredViewPermForPath('/crm/insights')).toBe('crm.insights:view');
+		expect(requiredViewPermForPath('/finances/products')).toBe('finance.products:view');
+		expect(requiredViewPermForPath('/scheduling/event-types/x')).toBe('scheduling.event-types:view');
+		// a CRM subpath with no registered sub-resource falls back to the parent
+		expect(requiredViewPermForPath('/crm/customers')).toBe('crm:view');
+	});
+
 	test('deliberately ungated routes stay open (personal/admin-own-guard/universal)', () => {
 		expect(requiredViewPermForPath('/overview')).toBeNull();
 		expect(requiredViewPermForPath('/home')).toBeNull();
