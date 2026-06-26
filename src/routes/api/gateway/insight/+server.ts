@@ -28,7 +28,11 @@ import type { CoreCtx } from '$server/auth/core-ctx';
  * never a stranger's. withOrgCore then enforces RLS on the resolved org.
  */
 export const GET: RequestHandler = async ({ locals, url }) => {
-  const { principalId, orgId } = await resolveAssistantPrincipal(locals, url);
+  const { principalId, orgId, capabilities } = await resolveAssistantPrincipal(locals, url);
+  // RBAC: top customers / recent buyers read CRM + finance.
+  if (!capabilities.can('crm', 'view') && !capabilities.can('finance', 'view')) {
+    return json({ error: 'Your role does not permit reading customer data.' }, { status: 403 });
+  }
   const ctx: CoreCtx = { db: getCoreDb(), tenantId: orgId, profileId: principalId };
 
   const intent = url.searchParams.get('intent') ?? 'top_customers';

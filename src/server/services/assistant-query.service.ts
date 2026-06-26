@@ -30,14 +30,9 @@ import type { CoreCtx } from '$server/auth/core-ctx';
 const MAX_ROWS = 200;
 const STATEMENT_TIMEOUT_MS = 5000;
 
-/**
- * Whether a caller may run analytics SQL. Any resolved org member qualifies — the
- * app_assistant_ro DB role (not this check) is what scopes the data, so there's no
- * need to gate on admin/owner. A null role means "not a member" → denied.
- */
-export function canRunQuery(role: string | null | undefined): boolean {
-	return typeof role === 'string' && role.length > 0;
-}
+// Authorization moved to the RBAC engine: the /query endpoint gates on
+// capabilities.canRunAnalytics() (rbac.service) before calling this. This module
+// owns only the SQL safety guards below.
 
 export interface QueryResult {
 	columns: string[];

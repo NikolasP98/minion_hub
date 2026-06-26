@@ -1,5 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { supabaseAdmin } from '$server/supabase';
+import { resolveCapabilities, type Capabilities } from '$server/services/rbac.service';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -8,8 +9,10 @@ export interface AssistantPrincipal {
 	principalId: string;
 	/** Resolved org to scope to (membership-checked). */
 	orgId: string;
-	/** The principal's role in that org ('admin' | 'owner' | 'member' | …). */
+	/** The principal's legacy org role ('admin' | 'owner' | 'member' | …). */
 	role: string | null;
+	/** Effective RBAC capabilities in that org — what the agent is allowed to do. */
+	capabilities: Capabilities;
 }
 
 /**
@@ -66,5 +69,6 @@ export async function resolveAssistantPrincipal(
 
 	const requested = url.searchParams.get('orgId');
 	const chosen = (requested && rows.find((r) => r.organization_id === requested)) || rows[0];
-	return { principalId, orgId: chosen.organization_id, role: chosen.role };
+	const capabilities = await resolveCapabilities(chosen.organization_id, principalId);
+	return { principalId, orgId: chosen.organization_id, role: chosen.role, capabilities };
 }

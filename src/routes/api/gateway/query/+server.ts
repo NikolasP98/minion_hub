@@ -2,7 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { getCoreDb } from '$server/db/pg-client';
 import { resolveAssistantPrincipal } from '$server/auth/assistant-principal';
-import { runReadOnlyOrgQuery, canRunQuery, QueryRejected } from '$server/services/assistant-query.service';
+import { runReadOnlyOrgQuery, QueryRejected } from '$server/services/assistant-query.service';
 import type { CoreCtx } from '$server/auth/core-ctx';
 
 /**
@@ -16,11 +16,12 @@ import type { CoreCtx } from '$server/auth/core-ctx';
  * the same trusted agentId→profile→org-membership resolution as /insight.
  */
 export const POST: RequestHandler = async ({ locals, url, request }) => {
-	const { principalId, orgId, role } = await resolveAssistantPrincipal(locals, url);
-	// Any resolved org member may run it (the app_assistant_ro role scopes the data).
-	if (!canRunQuery(role)) {
+	const { principalId, orgId, capabilities } = await resolveAssistantPrincipal(locals, url);
+	// RBAC: needs read on at least one business module (the agent inherits the
+	// user's caps). The app_assistant_ro DB role then scopes the data itself.
+	if (!capabilities.canRunAnalytics()) {
 		return json(
-			{ error: 'You must be a member of an organization to run analytics queries.' },
+			{ error: 'Your role does not permit reading this organization’s business data.' },
 			{ status: 403 },
 		);
 	}

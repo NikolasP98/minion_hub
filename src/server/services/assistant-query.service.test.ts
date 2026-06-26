@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { runReadOnlyOrgQuery, canRunQuery, QueryRejected } from './assistant-query.service';
+import { runReadOnlyOrgQuery, QueryRejected } from './assistant-query.service';
 import type { CoreCtx } from '$server/auth/core-ctx';
 
 // Validation throws BEFORE any DB access, so a db that explodes on use proves a
@@ -12,17 +12,6 @@ const ctx = {
 	},
 	tenantId: 'org-1',
 } as unknown as CoreCtx;
-
-describe('canRunQuery — any resolved org member', () => {
-	test('any non-empty org role allowed; non-members denied', () => {
-		expect(canRunQuery('admin')).toBe(true);
-		expect(canRunQuery('owner')).toBe(true);
-		expect(canRunQuery('member')).toBe(true);
-		expect(canRunQuery(null)).toBe(false);
-		expect(canRunQuery(undefined)).toBe(false);
-		expect(canRunQuery('')).toBe(false);
-	});
-});
 
 describe('runReadOnlyOrgQuery validation (security guards)', () => {
 	test('rejects writes / DDL (not SELECT) — incl. comma-join write attempts', async () => {
