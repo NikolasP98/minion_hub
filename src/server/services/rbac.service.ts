@@ -424,7 +424,9 @@ export async function listRbacRoles(orgId: string): Promise<RbacRoleView[]> {
 		admin.from('member_roles').select('role_key').eq('org_id', orgId),
 		admin
 			.from('permission_rules')
-			.select('role_key, module, can_view, can_create, can_edit, can_delete, can_export, can_manage, if_owner')
+			.select(
+				'role_key, module, can_view, can_create, can_edit, can_delete, can_export, can_manage, if_owner, field_level',
+			)
 			.eq('org_id', orgId),
 	]);
 

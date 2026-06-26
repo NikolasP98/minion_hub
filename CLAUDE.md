@@ -168,6 +168,39 @@ appropriate `+layout.server.ts` or `+page.server.ts` load function.
 
 Spec/plan: `docs/superpowers/specs/2026-05-13-hub-canonical-load-flow-design.md`
 
+### RBAC gating: a REQUIRED build step (like i18n)
+
+Just as every user-facing string must go through Paraglide (`m.*()` + `i18n:compile`),
+**every new page, route, API endpoint, and section nav link must be wired into the
+RBAC engine** (`$server/services/rbac.service.ts`). Shipping an ungated surface is a
+bug, not a follow-up. The ERPNext-grade model is the single source of truth — UI, API,
+and the agent's data tools all gate through it.
+
+Checklist when adding a surface (do ALL that apply):
+
+1. **Module/route view gate.** If the page belongs to a business or platform module,
+   ensure its path is covered by `requiredViewPermForPath` (central guard in
+   `(app)/+layout.server.ts`). New top-level module → add a `ROUTE_VIEW_PERMS` entry +
+   emit its `*:view` from `capsToLegacyPermissions`. New subpage of an existing module →
+   add a `MODULE_SUBRESOURCES` entry (it auto-wires the route guard + role-manager row).
+2. **Nav visibility.** Sidebar/section-nav items carry `requires` (core/plugin nav) or
+   are filtered by `canViewPath(href)` (section side-menus: FinanceNav/CrmNav/…). A link
+   with no gate is a UX bug — it renders for roles that 403 on click.
+3. **Write-API gate.** Mutating API handlers (POST/PUT/PATCH/DELETE) under a business or
+   org-config prefix are gated centrally by `apiWriteCapability` in `hooks.server.ts`.
+   A new gated prefix → add it to `API_WRITE_PREFIXES`. Admin/config pages call
+   `requireOrgCapability(locals, module, action)` directly. NEVER gate a business write
+   with bare `requireAuth`/`requireAdmin` alone.
+4. **Record-level (if-owner).** If the table has an owner column and the module is in
+   `OWNER_SCOPABLE_MODULES`, thread `ownerFilter(locals, module)` into its list/detail
+   reads (`get*` should 404 a non-owned id, not 403 — no existence leak).
+5. **Field-level (sensitive fields).** If the read exposes PII / cost / margin and the
+   module is in `FIELD_LEVEL_MODULES`, mask those fields via `shouldMaskSensitive(locals,
+   module)` (use `maskPii` from `$lib/pii` for phone/email).
+
+Rule of thumb: if you wrote a `+page.server.ts` / `+server.ts` and it reads or writes
+org data without touching `rbac.service`, you are not done. Memory: `rbac-erpnext-framework`.
+
 
 ## Honesty & Accuracy Rules
 
