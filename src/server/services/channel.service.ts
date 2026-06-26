@@ -1,4 +1,4 @@
-import { eq, and } from 'drizzle-orm';
+import { eq, and, ne } from 'drizzle-orm';
 import { channels, channelAssignments } from '@minion-stack/db/pg';
 import { newId } from '$server/db/utils';
 import { withOrgCore } from '$server/db/with-org-core';
@@ -163,8 +163,25 @@ export async function updateChannel(
     set.credentialsIv = iv;
   }
 
-  await withOrgCore(ctx, (tx) =>
-    tx
+  await withOrgCore(ctx, async (tx) => {
+    // Binding account_id (phone) can collide with a row a prior gateway import
+    // already created for the same phone — the orphan/duplicate this whole fix
+    // targets. Fold it in: delete the duplicate (its bindings/assignments cascade)
+    // so this row becomes the single canonical one and the unique
+    // (tenant, gateway, type, account_id) index isn't violated.
+    if (typeof set.accountId === 'string' && set.accountId) {
+      await tx
+        .delete(channels)
+        .where(
+          and(
+            eq(channels.tenantId, ctx.tenantId),
+            eq(channels.gatewayId, ctx.gatewayId),
+            eq(channels.accountId, set.accountId as string),
+            ne(channels.id, channelId),
+          ),
+        );
+    }
+    await tx
       .update(channels)
       .set(set)
       .where(
@@ -173,8 +190,8 @@ export async function updateChannel(
           eq(channels.tenantId, ctx.tenantId),
           eq(channels.gatewayId, ctx.gatewayId),
         ),
-      ),
-  );
+      );
+  });
 }
 
 export async function deleteChannel(ctx: ServerCtx, channelId: string) {
