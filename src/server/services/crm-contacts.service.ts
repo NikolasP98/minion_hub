@@ -1,6 +1,7 @@
 import { and, eq, desc, sql } from 'drizzle-orm';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { withOrgCore } from '$server/db/with-org-core';
+import { maskPii } from '$lib/pii';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import {
   crmContacts,
@@ -376,18 +377,6 @@ export function listContactsCached(ctx: CoreCtx, ownerId?: string): Promise<Rank
 }
 
 // ── Single contact + journey ──────────────────────────────────────────────────
-
-/**
- * Field-level (PII) redaction: keep the last 4 chars of a phone/email/handle,
- * mask the rest (`•••••6833`). Short values are fully masked. Used when the
- * caller's `crm` field level is below the sensitive threshold.
- */
-export function maskPii(value: string | null | undefined): string {
-  if (!value) return '';
-  const v = String(value);
-  const tail = v.slice(-4);
-  return v.length <= 4 ? '•'.repeat(v.length) : '•'.repeat(Math.min(v.length - 4, 8)) + tail;
-}
 
 export async function getContact(ctx: CoreCtx, id: string, ownerId?: string, maskSensitive = false) {
   return withOrgCore(ctx, async (tx) => {

@@ -1,6 +1,7 @@
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { getCoreCtx } from '$server/auth/core-ctx';
+import { shouldMaskSensitive } from '$server/services/rbac.service';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { listBookings } from '$server/services/scheduling-bookings.service';
 import { listResources, listEventTypes } from '$server/services/scheduling.service';
@@ -20,9 +21,10 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
   const openNew = url.searchParams.get('new') === '1';
 
   const now = Date.now();
+  const maskAttendeePii = await shouldMaskSensitive(locals, 'scheduling');
   const bookingsOpts = contact
-    ? { crmContactId: contact, limit: 500 }
-    : { from: new Date(now - 30 * DAY), to: new Date(now + 90 * DAY), limit: 500 };
+    ? { crmContactId: contact, limit: 500, maskAttendeePii }
+    : { from: new Date(now - 30 * DAY), to: new Date(now + 90 * DAY), limit: 500, maskAttendeePii };
   const [bookings, resources, eventTypes, contactRec] = await Promise.all([
     listBookings(ctx, bookingsOpts),
     listResources(ctx),

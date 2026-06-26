@@ -108,6 +108,7 @@ export const SENSITIVE_FIELD_LEVEL = 1;
 export const FIELD_LEVEL_MODULES: Record<string, { label: string; hint: string }> = {
   crm: { label: 'Contact PII', hint: 'phone numbers & email addresses' },
   finance: { label: 'Cost & margin', hint: 'discount rate & margin figures' },
+  scheduling: { label: 'Attendee PII', hint: 'attendee phone numbers & emails' },
 };
 
 /** `<subkey>:view` for every sub-resource — emitted from caps + gated on routes. */

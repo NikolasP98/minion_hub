@@ -1,6 +1,7 @@
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { getCoreCtx } from '$server/auth/core-ctx';
+import { shouldMaskSensitive } from '$server/services/rbac.service';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { listBookings } from '$server/services/scheduling-bookings.service';
 import { listResources, listEventTypes } from '$server/services/scheduling.service';
@@ -23,7 +24,13 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
   const to = new Date(from.getTime() + 86_400_000);
 
   const [bookings, eventTypes] = await Promise.all([
-    listBookings(ctx, { from, to, status: ['accepted', 'pending', 'completed'], limit: 1000 }),
+    listBookings(ctx, {
+      from,
+      to,
+      status: ['accepted', 'pending', 'completed'],
+      limit: 1000,
+      maskAttendeePii: await shouldMaskSensitive(locals, 'scheduling'),
+    }),
     listEventTypes(ctx),
   ]);
 

@@ -2,6 +2,7 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { requireAdmin } from '$server/auth/authorize';
+import { shouldMaskSensitive } from '$server/services/rbac.service';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { listBookings, createBooking, SlotUnavailableError } from '$server/services/scheduling-bookings.service';
 
@@ -18,6 +19,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
     to: to ? new Date(to) : undefined,
     status: status ? status.split(',') : undefined,
     resourceId: resourceId ?? undefined,
+    maskAttendeePii: await shouldMaskSensitive(locals, 'scheduling'),
   });
   return json({ bookings });
 };

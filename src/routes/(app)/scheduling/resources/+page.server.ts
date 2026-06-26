@@ -1,6 +1,7 @@
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { getCoreCtx } from '$server/auth/core-ctx';
+import { shouldMaskSensitive } from '$server/services/rbac.service';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { listResources, getResourceSchedule, listEventTypes } from '$server/services/scheduling.service';
 import { listBookings } from '$server/services/scheduling-bookings.service';
@@ -42,6 +43,7 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
       to: weekEnd,
       status: ['accepted', 'pending', 'completed'],
       limit: 1000,
+      maskAttendeePii: await shouldMaskSensitive(locals, 'scheduling'),
     }),
   ]);
 

@@ -1,5 +1,6 @@
 import { and, eq, inArray, gte, lte, asc, desc, sql } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
+import { maskPii } from '$lib/pii';
 import type { CoreTx } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import {
@@ -293,10 +294,12 @@ export interface ListBookingsOpts {
   resourceId?: string;
   crmContactId?: string;
   limit?: number;
+  /** Field-level (Phase 4): redact attendee phone/email below the scheduling field level. */
+  maskAttendeePii?: boolean;
 }
 
-export function listBookings(ctx: CoreCtx, opts: ListBookingsOpts = {}): Promise<SchedBooking[]> {
-  return withOrgCore(ctx, (tx) => {
+export async function listBookings(ctx: CoreCtx, opts: ListBookingsOpts = {}): Promise<SchedBooking[]> {
+  const rows = await withOrgCore(ctx, (tx) => {
     const conds = [eq(schedBookings.orgId, ctx.tenantId)];
     if (opts.from) conds.push(gte(schedBookings.startTime, opts.from));
     if (opts.to) conds.push(lte(schedBookings.startTime, opts.to));
@@ -310,6 +313,12 @@ export function listBookings(ctx: CoreCtx, opts: ListBookingsOpts = {}): Promise
       .orderBy(desc(schedBookings.startTime))
       .limit(Math.min(opts.limit ?? 500, 2000));
   });
+  if (!opts.maskAttendeePii) return rows;
+  return rows.map((b) => ({
+    ...b,
+    attendeeEmail: b.attendeeEmail ? maskPii(b.attendeeEmail) : b.attendeeEmail,
+    attendeePhone: b.attendeePhone ? maskPii(b.attendeePhone) : b.attendeePhone,
+  }));
 }
 
 const SETTABLE = new Set(['accepted', 'pending', 'cancelled', 'rejected', 'completed', 'no_show']);
