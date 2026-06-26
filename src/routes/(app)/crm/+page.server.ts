@@ -1,7 +1,7 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
-import { ownerFilter } from '$server/services/rbac.service';
+import { ownerFilter, shouldMaskSensitive } from '$server/services/rbac.service';
 import { listContactsCached } from '$server/services/crm-contacts.service';
 import { crmRevenueSummary, contactFinanceMap } from '$server/services/crm-finance.service';
 import { FUNNEL_ORDER, effectiveFunnelStage, maxFunnelStage, financeFloorStage } from '$lib/components/crm/crm-funnel';
@@ -40,7 +40,13 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   // Reuse the same Valkey-cached roster the Customers list loads, then aggregate
   // server-side into a COMPACT summary — the dashboard never ships the full
   // roster (that 941 KB payload is what makes the list page heavy), only counts.
-  const roster = await listContactsCached(ctx, await ownerFilter(locals, 'crm'));
+  // Dashboard only aggregates counts (no PII shown), but pass the mask flag so it
+  // shares the same cache partition as the Customers list.
+  const roster = await listContactsCached(
+    ctx,
+    await ownerFilter(locals, 'crm'),
+    await shouldMaskSensitive(locals, 'crm'),
+  );
 
   // Acquisition-date cohort filter: scope the contact-derived widgets to people
   // first seen within the selected window (default 'all' = today's behaviour).

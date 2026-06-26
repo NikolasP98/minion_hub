@@ -1,7 +1,7 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
-import { ownerFilter } from '$server/services/rbac.service';
+import { ownerFilter, shouldMaskSensitive } from '$server/services/rbac.service';
 import { listContactsCached, listTags } from '$server/services/crm-contacts.service';
 import { matchingAutoTagIds } from '$server/services/crm-scoring';
 import { contactFinanceMap } from '$server/services/crm-finance.service';
@@ -15,8 +15,12 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   // filtering happens client-side — instant, no Apply button, no per-keystroke
   // round-trip. Mutations bust the cache tag so the list refreshes. Record-level
   // (if-owner) scope restricts the roster to the caller's own contacts.
+  const [ownerId, maskSensitive] = await Promise.all([
+    ownerFilter(locals, 'crm'),
+    shouldMaskSensitive(locals, 'crm'),
+  ]);
   const [cached, tags] = await Promise.all([
-    listContactsCached(ctx, await ownerFilter(locals, 'crm')),
+    listContactsCached(ctx, ownerId, maskSensitive),
     listTags(ctx),
   ]);
 

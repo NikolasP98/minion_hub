@@ -1,7 +1,7 @@
 import { and, eq, desc, sql } from 'drizzle-orm';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { withOrgCore } from '$server/db/with-org-core';
-import { maskPii } from '$lib/pii';
+import { maskPii, maskContactFields } from '$lib/pii';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import {
   crmContacts,
@@ -147,6 +147,8 @@ export interface RankFilters {
   offset?: number;
   /** Record-level (if-owner) scope: restrict to contacts owned by this profile. */
   ownerId?: string;
+  /** Field-level: redact PII in custom_fields (phone/email/dni) for low field level. */
+  maskSensitive?: boolean;
 }
 
 export interface RankedContact {
@@ -346,7 +348,11 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
       order by ${orderBy}
       limit ${limit} offset ${offset}
     `);
-    return rows as unknown as RankedContact[];
+    const out = rows as unknown as RankedContact[];
+    // Field-level (Phase 4): redact PII in custom_fields (phone/email/dni) — the
+    // Customers list renders these as Phone/ID columns.
+    if (!f.maskSensitive) return out;
+    return out.map((r) => ({ ...r, custom_fields: maskContactFields(r.custom_fields) }));
   });
 }
 
@@ -365,14 +371,20 @@ function bustCrmList(tenantId: string) {
  * no per-keystroke server round-trip), so we cache one unfiltered payload per org.
  * RFM recency is day-scaled, so a 2m TTL is imperceptible; mutations bust the tag.
  */
-export function listContactsCached(ctx: CoreCtx, ownerId?: string): Promise<RankedContact[]> {
+export function listContactsCached(
+  ctx: CoreCtx,
+  ownerId?: string,
+  maskSensitive = false,
+): Promise<RankedContact[]> {
   return cached(
-    // Fold the owner into the tenant key so an if-owner-scoped caller gets a
-    // distinct cached payload (never reads/poisons the org-wide roster). The
-    // org-level invalidation tag still busts both on any mutation.
-    keys.hub('crm-contacts', { t: ownerId ? `${ctx.tenantId}:${ownerId}` : ctx.tenantId }),
+    // Fold owner + mask into the tenant key so an if-owner-scoped or PII-masked
+    // caller gets a distinct cached payload (never reads/poisons the org-wide
+    // roster). The org-level invalidation tag still busts all on any mutation.
+    keys.hub('crm-contacts', {
+      t: `${ctx.tenantId}${ownerId ? `:${ownerId}` : ''}${maskSensitive ? ':m' : ''}`,
+    }),
     { ttl: '2m', swr: '30s', tags: [...crmListTags(ctx.tenantId)] },
-    () => rankContacts(ctx, { limit: 5000, ownerId }),
+    () => rankContacts(ctx, { limit: 5000, ownerId, maskSensitive }),
   );
 }
 
@@ -399,16 +411,20 @@ export async function getContact(ctx: CoreCtx, id: string, ownerId?: string, mas
       .select()
       .from(crmContactIdentities)
       .where(eq(crmContactIdentities.contactId, id));
-    // Field-level (Phase 4): mask the PII (external_id = phone/email/handle) for
-    // callers below the crm sensitive field level.
+    // Field-level (Phase 4): mask the PII below the crm field level — both the
+    // channel identities (external_id = phone/email/handle) AND the custom_fields
+    // (the detail page renders telefono/dni/email from there, same as the list).
     const identities = maskSensitive
       ? identitiesRaw.map((i) => ({ ...i, externalId: maskPii(i.externalId), masked: true }))
       : identitiesRaw;
+    const maskedContact = maskSensitive
+      ? { ...contact, customFields: maskContactFields(contact.customFields as Record<string, unknown>) }
+      : contact;
     const [stats] = (await tx.execute(sql`
       select message_count, inbound_count, channels_used, first_contact_at, last_contact_at
       from crm_contact_stats where contact_id = ${id}
     `)) as unknown as Array<Record<string, unknown>>;
-    return { contact, identities, stats: stats ?? null, piiMasked: maskSensitive };
+    return { contact: maskedContact, identities, stats: stats ?? null, piiMasked: maskSensitive };
   });
 }
 
