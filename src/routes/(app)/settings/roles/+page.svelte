@@ -1,12 +1,13 @@
 <script lang="ts">
-  import RolesSection from '$lib/components/users/RolesSection.svelte';
+  import RbacRolesSection from '$lib/components/users/RbacRolesSection.svelte';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
 </script>
 
-<RolesSection
-  initialRoles={data.roles}
-  initialCatalog={data.catalog}
-  modules={data.modules}
+<RbacRolesSection
+  roles={data.roles}
+  actions={data.actions}
+  businessModules={data.businessModules}
+  adminModules={data.adminModules}
 />

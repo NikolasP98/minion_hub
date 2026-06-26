@@ -53,6 +53,26 @@ export const ACTIONS = ['view', 'create', 'edit', 'delete', 'export', 'manage'] 
 export type PermAction = (typeof ACTIONS)[number];
 export type ActionSet = Record<PermAction, boolean>;
 
+/** Human labels + grouping for the Role Permission Manager UI. */
+export const MODULE_LABELS: Record<Module, string> = {
+	overview: 'Overview',
+	crm: 'CRM',
+	finance: 'Finances',
+	sales: 'Sales',
+	scheduling: 'Scheduling',
+	support: 'Support',
+	projects: 'Projects',
+	memberships: 'Memberships',
+	comms: 'Comms',
+	agents: 'Agents',
+	channels: 'Channels',
+	flows: 'Agent Builder',
+	marketplace: 'Marketplace',
+	reliability: 'Reliability',
+	settings: 'Settings',
+	users: 'Users & Team',
+};
+
 /** Modules that hold business data (vs platform/admin config). */
 export const BUSINESS_MODULES: readonly Module[] = [
 	'crm',
@@ -202,4 +222,111 @@ export async function resolveCapabilities(orgId: string, profileId: string): Pro
 		.in('role_key', roles);
 
 	return buildCapabilities(roles, (rules ?? []) as OverrideRow[]);
+}
+
+// ── Role Permission Manager (settings/roles) ────────────────────────────────
+
+function rowToActionSet(r: OverrideRow): ActionSet {
+	return {
+		view: r.can_view,
+		create: r.can_create,
+		edit: r.can_edit,
+		delete: r.can_delete,
+		export: r.can_export,
+		manage: r.can_manage,
+	};
+}
+
+export interface RoleModuleCaps {
+	module: Module;
+	label: string;
+	caps: ActionSet;
+	/** True when this org has a stored override for (role, module) — else it's the code default. */
+	overridden: boolean;
+}
+export interface RbacRoleView {
+	key: string;
+	name: string;
+	rank: number;
+	description: string | null;
+	isSystem: boolean;
+	memberCount: number;
+	modules: RoleModuleCaps[];
+}
+
+/**
+ * Full role catalog with each role's effective (default ⊕ org-override) capability
+ * matrix and member count for one org — powers the settings/roles UI.
+ */
+export async function listRbacRoles(orgId: string): Promise<RbacRoleView[]> {
+	const admin = supabaseAdmin();
+	const [cat, mrows, orows] = await Promise.all([
+		admin.from('permission_roles').select('key, name, rank, description, is_system').order('rank', { ascending: false }),
+		admin.from('member_roles').select('role_key').eq('org_id', orgId),
+		admin
+			.from('permission_rules')
+			.select('role_key, module, can_view, can_create, can_edit, can_delete, can_export, can_manage')
+			.eq('org_id', orgId),
+	]);
+
+	const counts = new Map<string, number>();
+	for (const r of (mrows.data ?? []) as Array<{ role_key: string }>) {
+		counts.set(r.role_key, (counts.get(r.role_key) ?? 0) + 1);
+	}
+	const ovr = new Map<string, ActionSet>();
+	for (const r of (orows.data ?? []) as OverrideRow[]) ovr.set(`${r.role_key}:${r.module}`, rowToActionSet(r));
+
+	type CatRow = { key: string; name: string; rank: number; description: string | null; is_system: boolean };
+	return ((cat.data ?? []) as CatRow[]).map((c) => ({
+		key: c.key,
+		name: c.name,
+		rank: c.rank,
+		description: c.description,
+		isSystem: c.is_system,
+		memberCount: counts.get(c.key) ?? 0,
+		modules: MODULES.map((mod) => {
+			const o = ovr.get(`${c.key}:${mod}`);
+			return { module: mod, label: MODULE_LABELS[mod], caps: o ?? defaultCaps(c.key, mod), overridden: !!o };
+		}),
+	}));
+}
+
+/** Upsert a per-org capability override for (role, module). */
+export async function setRoleOverride(
+	orgId: string,
+	roleKey: string,
+	module: Module,
+	caps: ActionSet,
+): Promise<void> {
+	const admin = supabaseAdmin();
+	await admin.from('permission_rules').upsert(
+		{
+			org_id: orgId,
+			role_key: roleKey,
+			module,
+			can_view: caps.view,
+			can_create: caps.create,
+			can_edit: caps.edit,
+			can_delete: caps.delete,
+			can_export: caps.export,
+			can_manage: caps.manage,
+			updated_at: new Date().toISOString(),
+		},
+		{ onConflict: 'org_id,role_key,module' },
+	);
+}
+
+/** Remove a per-org override so (role, module) reverts to the code default. */
+export async function clearRoleOverride(orgId: string, roleKey: string, module: Module): Promise<void> {
+	const admin = supabaseAdmin();
+	await admin
+		.from('permission_rules')
+		.delete()
+		.eq('org_id', orgId)
+		.eq('role_key', roleKey)
+		.eq('module', module);
+}
+
+export function isModule(x: unknown): x is Module {
+	return typeof x === 'string' && (MODULES as readonly string[]).includes(x);
 }
