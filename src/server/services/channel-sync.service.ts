@@ -11,7 +11,8 @@ import { and, eq } from 'drizzle-orm';
 import { channels, channelBindings } from '@minion-stack/db/pg';
 import { newId } from '$server/db/utils';
 import { withOrgCore } from '$server/db/with-org-core';
-import { gatewayCallAsUser } from '$lib/server/gateway-rpc';
+import { getCoreDb } from '$server/db/pg-client';
+import { gatewayCall, gatewayCallAsUser } from '$lib/server/gateway-rpc';
 import { unwrapConfigSnapshot, reconcileOrgConfigSafe } from './org-config-sync.service';
 import type { ServerCtx } from '$server/auth/core-ctx';
 
@@ -161,6 +162,71 @@ export function gatewayConfigToChannelRows(
   return out;
 }
 
+/** Upsert one org's resolved channel rows (+ replace their bindings). Shared by the
+ *  acting-org import (RLS tx) and the all-orgs backfill (RLS-bypass getCoreDb). The
+ *  caller supplies the db/tx and the org id; tenant_id is written explicitly so the
+ *  cross-org backfill can write rows for an org other than the connection's. */
+async function writeChannelRows(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tx: any,
+  tenantId: string,
+  gatewayId: string,
+  rows: Array<{ channel: ChannelRow; bindings: BindingRow[] }>,
+): Promise<void> {
+  for (const { channel, bindings: bRows } of rows) {
+    const [upserted] = await tx
+      .insert(channels)
+      .values({
+        id: newId(),
+        tenantId,
+        gatewayId,
+        type: channel.type,
+        accountId: channel.accountId,
+        label: channel.label,
+        status: channel.status,
+        enabled: channel.enabled,
+        replies: channel.replies,
+        allowFrom: channel.allowFrom,
+        groupAllowFrom: channel.groupAllowFrom,
+        requireMention: channel.requireMention,
+        authRef: channel.authRef,
+        settings: channel.settings,
+      })
+      .onConflictDoUpdate({
+        target: [channels.tenantId, channels.gatewayId, channels.type, channels.accountId],
+        set: {
+          label: channel.label,
+          status: channel.status,
+          enabled: channel.enabled,
+          replies: channel.replies,
+          allowFrom: channel.allowFrom,
+          groupAllowFrom: channel.groupAllowFrom,
+          requireMention: channel.requireMention,
+          authRef: channel.authRef,
+          settings: channel.settings,
+          updatedAt: new Date(),
+        },
+      })
+      .returning({ id: channels.id });
+
+    // Replace this channel's bindings (per-channel via FK → clear + reinsert).
+    if (upserted) {
+      await tx.delete(channelBindings).where(eq(channelBindings.channelId, upserted.id));
+      if (bRows.length > 0) {
+        await tx.insert(channelBindings).values(
+          bRows.map((b) => ({
+            tenantId,
+            channelId: upserted.id,
+            matchKind: b.matchKind,
+            matchPeer: b.matchPeer,
+            agentId: b.agentId,
+          })),
+        );
+      }
+    }
+  }
+}
+
 /**
  * Import the gateway's accounts for the acting org into the DB (idempotent upsert on
  * (tenant_id, gateway_id, type, account_id)). Returns the number of channels synced.
@@ -177,65 +243,51 @@ export async function importGatewayChannels(ctx: ServerCtx): Promise<{ imported:
   const config = unwrapConfigSnapshot<GatewayConfig>(snap);
   const rows = gatewayConfigToChannelRows(config, ctx.tenantId);
 
-  await withOrgCore(ctx, async (tx) => {
-    for (const { channel, bindings: bRows } of rows) {
-      const [upserted] = await tx
-        .insert(channels)
-        .values({
-          id: newId(),
-          tenantId: ctx.tenantId,
-          gatewayId: ctx.gatewayId,
-          type: channel.type,
-          accountId: channel.accountId,
-          label: channel.label,
-          status: channel.status,
-          enabled: channel.enabled,
-          replies: channel.replies,
-          allowFrom: channel.allowFrom,
-          groupAllowFrom: channel.groupAllowFrom,
-          requireMention: channel.requireMention,
-          authRef: channel.authRef,
-          settings: channel.settings,
-        })
-        .onConflictDoUpdate({
-          target: [channels.tenantId, channels.gatewayId, channels.type, channels.accountId],
-          set: {
-            label: channel.label,
-            status: channel.status,
-            enabled: channel.enabled,
-            replies: channel.replies,
-            allowFrom: channel.allowFrom,
-            groupAllowFrom: channel.groupAllowFrom,
-            requireMention: channel.requireMention,
-            authRef: channel.authRef,
-            settings: channel.settings,
-            updatedAt: new Date(),
-          },
-        })
-        .returning({ id: channels.id });
-
-      // Replace this channel's bindings (read-modify-write is unnecessary — bindings
-      // are per-channel via FK, so just clear + reinsert this channel's rows).
-      if (upserted) {
-        await tx.delete(channelBindings).where(eq(channelBindings.channelId, upserted.id));
-        if (bRows.length > 0) {
-          await tx.insert(channelBindings).values(
-            bRows.map((b) => ({
-              tenantId: ctx.tenantId,
-              channelId: upserted.id,
-              matchKind: b.matchKind,
-              matchPeer: b.matchPeer,
-              agentId: b.agentId,
-            })),
-          );
-        }
-      }
-    }
-  });
+  await withOrgCore(ctx, (tx) => writeChannelRows(tx, ctx.tenantId, ctx.gatewayId, rows));
 
   // Org→account ownership just changed in the DB — push it to the gateway now
   // instead of waiting for the hourly tick (matters for multi-tenant isolation).
   await reconcileOrgConfigSafe(ctx.gatewayId);
 
   return { imported: rows.length };
+}
+
+/** Collect every org id referenced by any account in channels.accountOrgs. */
+function allOrgIds(config: GatewayConfig): string[] {
+  const orgs = new Set<string>();
+  const accountOrgs = config.channels?.accountOrgs ?? {};
+  for (const type of CHANNEL_TYPES) {
+    for (const list of Object.values(accountOrgs[type] ?? {})) {
+      for (const o of list ?? []) orgs.add(o);
+    }
+  }
+  return [...orgs];
+}
+
+/**
+ * All-orgs backfill (consensus M4): import EVERY org's accounts on a gateway into the
+ * DB in one pass, not just the acting org. Reads the gateway config once (system creds
+ * — `config.get` returns the whole file regardless of caller; org filtering happens in
+ * `gatewayConfigToChannelRows`), then writes each org's rows via `getCoreDb`
+ * (RLS-bypass, cross-org). DB-only — does NOT mirror-push to gateway.json. Idempotent.
+ */
+export async function backfillAllGatewayChannels(
+  gatewayId: string,
+): Promise<{ orgs: number; imported: number; byOrg: Record<string, number> }> {
+  const snap = await gatewayCall<{ config?: GatewayConfig } & GatewayConfig>(
+    'config.get',
+    {},
+    { timeoutMs: 5000 },
+  );
+  const config = unwrapConfigSnapshot<GatewayConfig>(snap);
+  const db = getCoreDb();
+  const byOrg: Record<string, number> = {};
+  let imported = 0;
+  for (const org of allOrgIds(config)) {
+    const rows = gatewayConfigToChannelRows(config, org);
+    await writeChannelRows(db, org, gatewayId, rows);
+    byOrg[org] = rows.length;
+    imported += rows.length;
+  }
+  return { orgs: Object.keys(byOrg).length, imported, byOrg };
 }
