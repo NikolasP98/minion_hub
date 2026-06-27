@@ -22,19 +22,55 @@ interface GatewayAccount {
   name?: string;
   enabled?: boolean;
   dmPolicy?: string;
-  allowFrom?: string[];
-  groupAllowFrom?: string[];
+  allowFrom?: Array<string | number>;
+  groupAllowFrom?: Array<string | number>;
   groups?: Record<string, { requireMention?: boolean }>;
+  // Transport knobs + secrets live here too; read ONLY via the SETTINGS_KEYS pick.
+  [key: string]: unknown;
 }
+/** Root channel-type config = the per-account shape plus the `accounts` map. */
+type GatewayChannelTypeConfig = GatewayAccount & { accounts?: Record<string, GatewayAccount> };
 interface GatewayBinding {
   agentId?: string | null;
   match?: { channel?: string; accountId?: string; peer?: { kind?: string; id?: string } };
 }
 interface GatewayConfig {
-  channels?: Record<string, { accounts?: Record<string, GatewayAccount> }> & {
+  channels?: Record<string, GatewayChannelTypeConfig> & {
     accountOrgs?: Record<string, Record<string, string[]>>;
   };
   bindings?: GatewayBinding[];
+}
+
+/**
+ * Per-account transport knobs the gateway reads per-message (the spec's "B" set +
+ * audit-surfaced extras). STRICT allowlist: settings is built by PICKING these keys,
+ * never by spreading the account — so `botToken`/`token`/`accessToken`/`authDir` can
+ * never leak into the DB/Valkey (consensus M2). A key absent on a type is just omitted.
+ */
+const SETTINGS_KEYS = [
+  // whatsapp
+  'debounceMs',
+  'sendReadReceipts',
+  'selfChatMode',
+  'mediaMaxMb',
+  'messagePrefix',
+  'textChunkLimit',
+  'chunkMode',
+  'blockStreaming',
+  'ackReaction',
+  // telegram
+  'block',
+  'allowed',
+  'blockEmojiReactions',
+] as const;
+
+/** Pick the allowlisted transport knobs from a resolved account (never the secrets). */
+function extractSettings(merged: GatewayAccount): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of SETTINGS_KEYS) {
+    if (merged[k] !== undefined) out[k] = merged[k];
+  }
+  return out;
 }
 
 export interface ChannelRow {
@@ -47,6 +83,10 @@ export interface ChannelRow {
   groupAllowFrom: string[];
   requireMention: boolean;
   status: 'active' | 'inactive';
+  /** Explicit creds pointer (whatsapp: `whatsapp/<accountId>`; else null). Never creds. */
+  authRef: string | null;
+  /** Allowlisted transport knobs (resolved). */
+  settings: Record<string, unknown>;
 }
 export interface BindingRow {
   matchKind: 'catchall' | 'dm_peer' | 'group';
@@ -68,12 +108,21 @@ export function gatewayConfigToChannelRows(
   const bindings = config.bindings ?? [];
 
   for (const type of CHANNEL_TYPES) {
-    const accounts = config.channels?.[type]?.accounts ?? {};
+    const typeCfg = config.channels?.[type];
+    const accounts = typeCfg?.accounts ?? {};
+    // Root channel-type defaults the gateway resolvers fall through to
+    // (resolveWhatsAppAccount: `acc.X ?? root.X`; mergeTelegramAccountConfig:
+    // `{...root, ...acc}`). Both reduce to this shallow merge for the fields below.
+    const { accounts: _drop, ...rootDefaults } = typeCfg ?? {};
     for (const [accountId, acc] of Object.entries(accounts)) {
       const orgIds = accountOrgs[type]?.[accountId] ?? [];
       if (!orgIds.includes(tenantId)) {
         continue; // not this org's account
       }
+      // ★ Resolve, don't read raw (consensus C1): merge root-level defaults so an
+      // account relying on `channels.<type>.allowFrom` doesn't land as [] (→ silent
+      // DM block). open ⟺ allowFrom contains '*', so an open account backfills ['*'].
+      const merged: GatewayAccount = { ...rootDefaults, ...acc };
       const accBindings = bindings.filter(
         (b) => b.match?.channel === type && b.match?.accountId === accountId,
       );
@@ -86,17 +135,24 @@ export function gatewayConfigToChannelRows(
       const replies: 'none' | 'bound' = accBindings.some((b) => b.agentId != null)
         ? 'bound'
         : 'none';
+      const enabled = merged.enabled !== false;
+      const allowFrom =
+        merged.dmPolicy === 'open' ? ['*'] : (merged.allowFrom ?? []).map(String);
       out.push({
         channel: {
           type,
           accountId,
-          label: acc.name?.trim() || accountId,
-          enabled: acc.enabled !== false,
+          label: merged.name?.trim() || accountId,
+          enabled,
           replies,
-          allowFrom: acc.allowFrom ?? [],
-          groupAllowFrom: acc.groupAllowFrom ?? [],
-          requireMention: acc.groups?.['*']?.requireMention ?? true,
-          status: acc.enabled === false ? 'inactive' : 'active',
+          allowFrom,
+          groupAllowFrom: (merged.groupAllowFrom ?? []).map(String),
+          requireMention: merged.groups?.['*']?.requireMention ?? true,
+          status: enabled ? 'active' : 'inactive',
+          // whatsapp creds live on disk by accountId; telegram/discord tokens are
+          // inline secrets (no disk dir) → no pointer. Never the creds themselves.
+          authRef: type === 'whatsapp' ? `whatsapp/${accountId}` : null,
+          settings: extractSettings(merged),
         },
         bindings: bindingRows,
       });
@@ -138,6 +194,8 @@ export async function importGatewayChannels(ctx: ServerCtx): Promise<{ imported:
           allowFrom: channel.allowFrom,
           groupAllowFrom: channel.groupAllowFrom,
           requireMention: channel.requireMention,
+          authRef: channel.authRef,
+          settings: channel.settings,
         })
         .onConflictDoUpdate({
           target: [channels.tenantId, channels.gatewayId, channels.type, channels.accountId],
@@ -149,6 +207,8 @@ export async function importGatewayChannels(ctx: ServerCtx): Promise<{ imported:
             allowFrom: channel.allowFrom,
             groupAllowFrom: channel.groupAllowFrom,
             requireMention: channel.requireMention,
+            authRef: channel.authRef,
+            settings: channel.settings,
             updatedAt: new Date(),
           },
         })
