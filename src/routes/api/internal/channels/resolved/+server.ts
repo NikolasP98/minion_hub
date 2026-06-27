@@ -4,10 +4,7 @@ import { eq } from 'drizzle-orm';
 import { channels } from '@minion-stack/db/pg';
 import { getCoreDb } from '$server/db/pg-client';
 import { resolveGatewayId } from '$server/services/gateway.pg.service';
-import {
-  projectChannelRow,
-  type ChannelProjection,
-} from '$server/services/channel-publish.service';
+import { toResolvedChannels } from '$server/services/channel-publish.service';
 
 /**
  * Internal gateway→hub hydration (ticket P1-T1). The gateway PULLS its resolved
@@ -24,30 +21,6 @@ import {
  * (getCoreDb RLS-bypass, gateway-filtered — mirrors reconcileOrgConfig). Projection
  * is the allowlisted set only — never credentials.
  */
-
-interface ChannelRowLite {
-  type: string;
-  accountId: string | null;
-  enabled: boolean;
-  allowFrom: string[] | null;
-  groupAllowFrom: string[] | null;
-  requireMention: boolean;
-  replies: string;
-}
-export interface HydrationItem {
-  accountId: string;
-  type: string;
-  projection: ChannelProjection;
-}
-
-/** Pure: rows → hydration items. whatsapp + phone-keyed only (tracer scope). */
-export function toResolvedChannels(rows: ChannelRowLite[]): HydrationItem[] {
-  return rows
-    .filter((r): r is ChannelRowLite & { accountId: string } =>
-      r.type === 'whatsapp' && typeof r.accountId === 'string' && r.accountId.length > 0,
-    )
-    .map((r) => ({ accountId: r.accountId, type: r.type, projection: projectChannelRow(r) }));
-}
 
 export const GET: RequestHandler = async ({ locals }) => {
   const serverId = (locals as Record<string, unknown>).serverId as string | undefined;

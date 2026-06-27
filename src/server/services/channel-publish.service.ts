@@ -60,6 +60,34 @@ export function projectChannelRow(row: {
   };
 }
 
+/** A channels-table row reduced to the fields the hydration endpoint reads. */
+export interface ChannelRowLite {
+  type: string;
+  accountId: string | null;
+  enabled: boolean;
+  allowFrom: string[] | null;
+  groupAllowFrom: string[] | null;
+  requireMention: boolean;
+  replies: string;
+}
+export interface HydrationItem {
+  accountId: string;
+  type: string;
+  projection: ChannelProjection;
+}
+
+/** Pure: rows → hydration items for the gateway pull. whatsapp + phone-keyed only
+ *  (tracer scope); allowlisted projection (no secrets). Shared by the
+ *  /api/internal/channels/resolved route. */
+export function toResolvedChannels(rows: ChannelRowLite[]): HydrationItem[] {
+  return rows
+    .filter(
+      (r): r is ChannelRowLite & { accountId: string } =>
+        r.type === 'whatsapp' && typeof r.accountId === 'string' && r.accountId.length > 0,
+    )
+    .map((r) => ({ accountId: r.accountId, type: r.type, projection: projectChannelRow(r) }));
+}
+
 // Lazy raw Valkey client (mirrors the gateway's ttl-cache pattern). Best-effort:
 // no client → publish silently no-ops (the signal still fires via invalidateTags).
 type RawRedis = { set(k: string, v: string, mode: string, ttl: number): Promise<unknown> };
