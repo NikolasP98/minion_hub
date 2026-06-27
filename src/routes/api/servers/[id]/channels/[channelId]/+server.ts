@@ -8,6 +8,7 @@ import {
 } from '$server/services/channel.service';
 import { getServerCtx } from '$server/auth/core-ctx';
 import { ensureGatewayWhatsappAccountSafe } from '$server/services/org-config-sync.service';
+import { publishChannel } from '$server/services/channel-publish.service';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
   const ctx = await getServerCtx(locals, params.id!);
@@ -44,6 +45,7 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
       if (!isValidChannelStatus(body.status)) throw error(400, `Invalid status: ${body.status}`);
       input.status = body.status;
     }
+    if (typeof body.enabled === 'boolean') input.enabled = body.enabled;
     if (body.credentials !== undefined) input.credentials = body.credentials;
     if (body.credentialsMeta !== undefined) input.credentialsMeta = body.credentialsMeta;
 
@@ -56,6 +58,11 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
       const label = typeof input.label === 'string' ? input.label : existing.label;
       await ensureGatewayWhatsappAccountSafe(ctx.gatewayId, input.accountId, label);
     }
+
+    // Tracer (P1-T0): publish the account's resolved projection + fire the change
+    // signal so the gateway can mirror-compare. Fire-and-forget; self-gates to
+    // phone-keyed whatsapp rows. Observe-only on the gateway — no runtime effect yet.
+    void publishChannel(ctx, params.channelId!);
 
     return json({ ok: true });
   } catch (e) {

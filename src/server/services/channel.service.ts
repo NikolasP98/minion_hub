@@ -33,6 +33,10 @@ export interface ChannelInput {
   credentials?: Record<string, string>;
   credentialsMeta?: Record<string, string>;
   status?: ChannelStatus;
+  /** Runtime enable/disable. DB-authoritative under the gateway-config migration;
+   * the gateway does not yet read it (observe-only until Phase 3), so setting it
+   * has no runtime effect today — it drives the tracer's mirror-compare. */
+  enabled?: boolean;
 }
 
 function encryptCredentials(creds: Record<string, string>): { ciphertext: string; iv: string } {
@@ -154,6 +158,7 @@ export async function updateChannel(
   if (input.label !== undefined) set.label = input.label;
   if (input.accountId !== undefined) set.accountId = input.accountId;
   if (input.status !== undefined) set.status = input.status;
+  if (input.enabled !== undefined) set.enabled = input.enabled;
   if (input.credentialsMeta !== undefined)
     set.credentialsMeta = JSON.stringify(input.credentialsMeta);
 
