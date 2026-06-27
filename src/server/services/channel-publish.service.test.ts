@@ -8,21 +8,39 @@ describe('channelKey', () => {
 });
 
 describe('projectChannelRow (strict allowlist — no secret leak, consensus M2)', () => {
-  it('emits exactly the 5 projection fields', () => {
+  it('emits exactly the projection fields (incl. P3-T1 settings + authRef)', () => {
     const p = projectChannelRow({
       enabled: true,
       allowFrom: ['*'],
       groupAllowFrom: [],
       requireMention: true,
       replies: 'bound',
+      settings: { debounceMs: 500 },
+      authRef: 'whatsapp/+51906090526',
     });
     expect(Object.keys(p).sort()).toEqual([
       'allowFrom',
+      'authRef',
       'enabled',
       'groupAllowFrom',
       'replies',
       'requireMention',
+      'settings',
     ]);
+    expect(p.settings).toEqual({ debounceMs: 500 });
+    expect(p.authRef).toBe('whatsapp/+51906090526');
+  });
+
+  it('defaults settings to {} and authRef to null when absent', () => {
+    const p = projectChannelRow({
+      enabled: true,
+      allowFrom: [],
+      groupAllowFrom: [],
+      requireMention: true,
+      replies: 'none',
+    });
+    expect(p.settings).toEqual({});
+    expect(p.authRef).toBeNull();
   });
 
   it('NEVER carries a credential even if the row object smuggles one in', () => {
@@ -77,8 +95,10 @@ describe('toResolvedChannels (hub hydration mapper)', () => {
     replies: 'none',
   };
 
-  it('keeps whatsapp phone-keyed rows and projects the allowlisted set', () => {
-    expect(toResolvedChannels([waRow])).toEqual([
+  it('keeps account-keyed rows and projects the allowlisted set (incl. settings/authRef)', () => {
+    expect(
+      toResolvedChannels([{ ...waRow, settings: { debounceMs: 500 }, authRef: 'whatsapp/+51906090526' }]),
+    ).toEqual([
       {
         accountId: '+51906090526',
         type: 'whatsapp',
@@ -88,19 +108,22 @@ describe('toResolvedChannels (hub hydration mapper)', () => {
           groupAllowFrom: [],
           requireMention: true,
           replies: 'none',
+          settings: { debounceMs: 500 },
+          authRef: 'whatsapp/+51906090526',
         },
       },
     ]);
   });
 
-  it('drops non-whatsapp and null/empty accountId rows', () => {
-    expect(
-      toResolvedChannels([
-        { ...waRow, type: 'telegram', accountId: 'bot123' },
-        { ...waRow, accountId: null },
-        { ...waRow, accountId: '' },
-      ]),
-    ).toEqual([]);
+  it('keeps all migrated types (whatsapp/telegram/discord), drops unknown types + null/empty accountId', () => {
+    const out = toResolvedChannels([
+      { ...waRow, type: 'telegram', accountId: 'bot123' },
+      { ...waRow, type: 'discord', accountId: 'guild1' },
+      { ...waRow, type: 'slack', accountId: 'team1' }, // not migrated → dropped
+      { ...waRow, accountId: null },
+      { ...waRow, accountId: '' },
+    ]);
+    expect(out.map((c) => `${c.type}:${c.accountId}`)).toEqual(['telegram:bot123', 'discord:guild1']);
   });
 
   it('never leaks a credential-shaped field even if a row smuggles one in', () => {

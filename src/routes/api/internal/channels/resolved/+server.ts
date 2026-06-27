@@ -37,6 +37,8 @@ export const GET: RequestHandler = async ({ locals }) => {
       groupAllowFrom: channels.groupAllowFrom,
       requireMention: channels.requireMention,
       replies: channels.replies,
+      settings: channels.settings,
+      authRef: channels.authRef,
     })
     .from(channels)
     .where(eq(channels.gatewayId, gatewayId));

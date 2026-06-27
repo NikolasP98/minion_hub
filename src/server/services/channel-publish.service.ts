@@ -42,6 +42,10 @@ export interface ChannelProjection {
   groupAllowFrom: string[];
   requireMention: boolean;
   replies: 'none' | 'bound';
+  /** Allowlisted transport knobs (P1-T2 backfill); never secrets. */
+  settings: Record<string, unknown>;
+  /** Creds POINTER (whatsapp: `whatsapp/<accountId>`; else null). Never the creds. */
+  authRef: string | null;
 }
 
 export function projectChannelRow(row: {
@@ -50,6 +54,8 @@ export function projectChannelRow(row: {
   groupAllowFrom: string[] | null;
   requireMention: boolean;
   replies: string;
+  settings?: unknown;
+  authRef?: string | null;
 }): ChannelProjection {
   return {
     enabled: row.enabled,
@@ -57,6 +63,11 @@ export function projectChannelRow(row: {
     groupAllowFrom: row.groupAllowFrom ?? [],
     requireMention: row.requireMention,
     replies: row.replies === 'bound' ? 'bound' : 'none',
+    settings:
+      row.settings && typeof row.settings === 'object'
+        ? (row.settings as Record<string, unknown>)
+        : {},
+    authRef: row.authRef ?? null,
   };
 }
 
@@ -69,6 +80,8 @@ export interface ChannelRowLite {
   groupAllowFrom: string[] | null;
   requireMention: boolean;
   replies: string;
+  settings?: unknown;
+  authRef?: string | null;
 }
 export interface HydrationItem {
   accountId: string;
@@ -76,14 +89,17 @@ export interface HydrationItem {
   projection: ChannelProjection;
 }
 
-/** Pure: rows → hydration items for the gateway pull. whatsapp + phone-keyed only
- *  (tracer scope); allowlisted projection (no secrets). Shared by the
- *  /api/internal/channels/resolved route. */
+/** The channel types the gateway mirror covers (P3-T1: all three, not whatsapp-only). */
+const HYDRATABLE_TYPES = new Set(['whatsapp', 'telegram', 'discord']);
+
+/** Pure: rows → hydration items for the gateway pull. All migrated channel types,
+ *  account-keyed; allowlisted projection (settings/authRef pointer — never secrets).
+ *  Shared by the /api/internal/channels/resolved route. */
 export function toResolvedChannels(rows: ChannelRowLite[]): HydrationItem[] {
   return rows
     .filter(
       (r): r is ChannelRowLite & { accountId: string } =>
-        r.type === 'whatsapp' && typeof r.accountId === 'string' && r.accountId.length > 0,
+        HYDRATABLE_TYPES.has(r.type) && typeof r.accountId === 'string' && r.accountId.length > 0,
     )
     .map((r) => ({ accountId: r.accountId, type: r.type, projection: projectChannelRow(r) }));
 }
