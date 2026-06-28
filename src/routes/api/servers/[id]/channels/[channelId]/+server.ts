@@ -8,7 +8,7 @@ import {
 } from '$server/services/channel.service';
 import { getServerCtx } from '$server/auth/core-ctx';
 import { ensureGatewayWhatsappAccountSafe } from '$server/services/org-config-sync.service';
-import { publishChannel } from '$server/services/channel-publish.service';
+import { publishChannel, signalChannelChange } from '$server/services/channel-publish.service';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
   const ctx = await getServerCtx(locals, params.id!);
@@ -79,7 +79,14 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
   const ctx = await getServerCtx(locals, params.id!);
   if (!ctx) throw error(401);
   try {
+    // Capture type+accountId before the row is gone, so we can fire the change signal
+    // afterward (publishChannel can't — it reads the now-deleted row).
+    const existing = await getChannel(ctx, params.channelId!);
     await deleteChannel(ctx, params.channelId!);
+    // Signal the gateway to re-hydrate its mirror immediately (drop the deleted account
+    // + restart that channel type under CHANNEL_RUNTIME_APPLY) instead of waiting for
+    // the 5-min re-hydration tick. Fire-and-forget; self-gates to migrated types.
+    if (existing?.accountId) void signalChannelChange(existing.type, existing.accountId);
     return json({ ok: true });
   } catch (e) {
     console.error(`[DELETE /api/servers/${params.id}/channels/${params.channelId}]`, e);

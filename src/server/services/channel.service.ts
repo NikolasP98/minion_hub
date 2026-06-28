@@ -107,6 +107,7 @@ export async function getChannel(ctx: ServerCtx, channelId: string) {
     id: row.id,
     serverId: ctx.serverId,
     type: row.type as ChannelType,
+    accountId: row.accountId,
     label: row.label,
     credentials: decryptCredentials(row.credentials, row.credentialsIv),
     credentialsMeta: parseMeta(row.credentialsMeta),

@@ -187,3 +187,15 @@ export async function publishChannel(ctx: ServerCtx, channelId: string): Promise
   // gateway re-hydrates the whole mirror (so the edit reaches the runtime post-flip).
   await invalidateTags([key]);
 }
+
+/**
+ * Fire the change signal for a known type+accountId WITHOUT reading the row — for the
+ * delete path, where the row is already gone so `publishChannel` would no-op. The
+ * gateway re-hydrates its whole mirror on the signal, dropping the deleted account
+ * (and, with CHANNEL_RUNTIME_APPLY, restarting that channel type). Self-gates to
+ * migrated, account-keyed types. Best-effort.
+ */
+export async function signalChannelChange(type: string, accountId: string): Promise<void> {
+  if (!SIGNAL_TYPES.has(type) || !accountId) return;
+  await invalidateTags([channelKey(type, accountId)]);
+}
