@@ -138,10 +138,15 @@ function rawValkey(): Promise<RawRedis | null> {
   return redisP;
 }
 
+/** Migrated channel types whose mutations should signal the gateway to re-hydrate. */
+const SIGNAL_TYPES = new Set(['whatsapp', 'telegram', 'discord']);
+
 /**
- * Read the channel row by id, and if it's a phone-keyed whatsapp account, write its
- * projection to Valkey + broadcast the change signal. Self-gating (non-whatsapp /
- * no accountId → no-op), so callers fire it unconditionally. Fire-and-forget.
+ * Read the channel row by id and broadcast the change signal so the gateway re-pulls
+ * its mirror (the signal triggers a full re-hydrate, so any migrated-type edit
+ * propagates — needed post-P3-flip so a hub toggle/edit reaches the runtime). The
+ * Valkey projection write stays whatsapp-only (vestigial tracer cache). Self-gating
+ * (no accountId / non-migrated type → no-op); callers fire it unconditionally.
  */
 export async function publishChannel(ctx: ServerCtx, channelId: string): Promise<void> {
   const [row] = await withOrgCore(ctx, (tx) =>
@@ -164,18 +169,21 @@ export async function publishChannel(ctx: ServerCtx, channelId: string): Promise
         ),
       ),
   );
-  // Tracer scope: phone-keyed whatsapp only.
-  if (!row || row.type !== 'whatsapp' || !row.accountId) return;
+  // Any migrated, account-keyed channel signals; only whatsapp also warms Valkey.
+  if (!row || !SIGNAL_TYPES.has(row.type) || !row.accountId) return;
 
   const key = channelKey(row.type, row.accountId);
-  const redis = await rawValkey();
-  if (redis) {
-    try {
-      await redis.set(key, JSON.stringify(projectChannelRow(row)), 'PX', TTL_MS);
-    } catch {
-      // best-effort — the signal below still fires; gateway logs a cache miss
+  if (row.type === 'whatsapp') {
+    const redis = await rawValkey();
+    if (redis) {
+      try {
+        await redis.set(key, JSON.stringify(projectChannelRow(row)), 'PX', TTL_MS);
+      } catch {
+        // best-effort — the signal below still fires; gateway re-pulls on it
+      }
     }
   }
-  // Change signal → existing HttpBroadcaster → gateway /events/cache-invalidate.
+  // Change signal → existing HttpBroadcaster → gateway /events/cache-invalidate →
+  // gateway re-hydrates the whole mirror (so the edit reaches the runtime post-flip).
   await invalidateTags([key]);
 }
