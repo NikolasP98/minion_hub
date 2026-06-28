@@ -128,58 +128,26 @@
         const label = `${gwChannelType}:${gwAccountId}`;
         toggling = true;
         try {
-            if (!configState.baseHash) {
-                await loadConfig();
-            }
-            if (!configState.baseHash) {
-                toastError('Toggle failed', `Could not load config — try refreshing the page.`);
-                return;
-            }
-            const isDefault = gwAccountId === 'default';
-            const patch = isDefault
-                ? { channels: { [gwChannelType]: { enabled: newEnabled } } }
-                : { channels: { [gwChannelType]: { accounts: { [gwAccountId]: { enabled: newEnabled } } } } };
-            const result = await sendRequest('config.patch', {
-                raw: JSON.stringify(patch),
-                baseHash: configState.baseHash,
-                note: `${newEnabled ? 'Enable' : 'Disable'} ${label} via Hub`,
-            }) as { reloadMode?: string } | undefined;
-
-            const reloadMode = result?.reloadMode ?? 'restart';
-
-            if (reloadMode === 'hot' || reloadMode === 'noop') {
-                try { await loadConfig(); } catch { /* refresh baseHash */ }
-                // Wait for server-pushed confirmation or timeout
-                const confirmed = await waitForChannelState(gwChannelType, gwAccountId, newEnabled);
-                if (!confirmed) {
-                    // Fallback: poll manually
-                    try {
-                        const r = await sendRequest('channels.status', {});
-                        if (r) gw.channels = r as typeof gw.channels;
-                    } catch { /* best effort */ }
-                }
-                toastSuccess(`${newEnabled ? 'Enabled' : 'Disabled'} ${label}`);
-            } else {
-                // Full restart — wait for reconnect then refresh
+            // P3-T3b: write the DB (authoritative post-flip) instead of patching
+            // gateway.json. The PUT fires publishChannel → the gateway re-hydrates its
+            // mirror and (when CHANNEL_RUNTIME_APPLY is on) restarts the channel, then
+            // broadcasts status. A json config.patch here would be reverted on restart.
+            const res = await fetch(`/api/servers/${serverId}/channels/${channel.id}`, {
+                method: 'PUT',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ enabled: newEnabled }),
+            });
+            if (!res.ok) throw new Error(await res.text());
+            // Wait for the gateway's server-pushed confirmation, else poll once.
+            const confirmed = await waitForChannelState(gwChannelType, gwAccountId, newEnabled);
+            if (!confirmed) {
                 try {
-                    await loadConfig();
-                    const confirmed = await waitForChannelState(gwChannelType, gwAccountId, newEnabled);
-                    if (!confirmed) {
-                        try {
-                            const r = await sendRequest('channels.status', {});
-                            if (r) gw.channels = r as typeof gw.channels;
-                        } catch { /* best effort */ }
-                    }
-                    toastSuccess(`${newEnabled ? 'Enabled' : 'Disabled'} ${label}`);
-                } catch (reloadErr) {
-                    const msg = (reloadErr as Error).message ?? '';
-                    if (msg.includes('closed') || msg.includes('not connected')) {
-                        beginRestart();
-                    } else {
-                        toastError('Toggle failed', `Config saved but could not refresh: ${msg}`);
-                    }
-                }
+                    const r = await sendRequest('channels.status', {});
+                    if (r) gw.channels = r as typeof gw.channels;
+                } catch { /* best effort */ }
             }
+            await loadConfig().catch(() => {});
+            toastSuccess(`${newEnabled ? 'Enabled' : 'Disabled'} ${label}`);
         } catch (e) {
             const msg = (e as Error).message ?? '';
             if (msg.includes('closed') || msg.includes('not connected')) {
