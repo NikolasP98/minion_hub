@@ -95,13 +95,21 @@ describe('toResolvedChannels (hub hydration mapper)', () => {
     replies: 'none',
   };
 
-  it('keeps account-keyed rows and projects the allowlisted set (incl. settings/authRef)', () => {
+  it('keeps account-keyed rows and projects the allowlisted set (incl. settings/authRef/orgId)', () => {
     expect(
-      toResolvedChannels([{ ...waRow, settings: { debounceMs: 500 }, authRef: 'whatsapp/+51906090526' }]),
+      toResolvedChannels([
+        {
+          ...waRow,
+          tenantId: 'org-1',
+          settings: { debounceMs: 500 },
+          authRef: 'whatsapp/+51906090526',
+        },
+      ]),
     ).toEqual([
       {
         accountId: '+51906090526',
         type: 'whatsapp',
+        orgId: 'org-1',
         projection: {
           enabled: true,
           allowFrom: [],

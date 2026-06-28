@@ -82,10 +82,14 @@ export interface ChannelRowLite {
   replies: string;
   settings?: unknown;
   authRef?: string | null;
+  /** Owning org (channels.tenant_id) — the DB source of accountOrgs for P4. */
+  tenantId?: string;
 }
 export interface HydrationItem {
   accountId: string;
   type: string;
+  /** Owning org id — the gateway derives accountOrgs[type][accountId] from this (P4). */
+  orgId: string | null;
   projection: ChannelProjection;
 }
 
@@ -101,7 +105,12 @@ export function toResolvedChannels(rows: ChannelRowLite[]): HydrationItem[] {
       (r): r is ChannelRowLite & { accountId: string } =>
         HYDRATABLE_TYPES.has(r.type) && typeof r.accountId === 'string' && r.accountId.length > 0,
     )
-    .map((r) => ({ accountId: r.accountId, type: r.type, projection: projectChannelRow(r) }));
+    .map((r) => ({
+      accountId: r.accountId,
+      type: r.type,
+      orgId: r.tenantId ?? null,
+      projection: projectChannelRow(r),
+    }));
 }
 
 // Lazy raw Valkey client (mirrors the gateway's ttl-cache pattern). Best-effort:

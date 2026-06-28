@@ -32,6 +32,7 @@ export const GET: RequestHandler = async ({ locals }) => {
     .select({
       type: channels.type,
       accountId: channels.accountId,
+      tenantId: channels.tenantId,
       enabled: channels.enabled,
       allowFrom: channels.allowFrom,
       groupAllowFrom: channels.groupAllowFrom,
