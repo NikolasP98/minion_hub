@@ -91,8 +91,8 @@
   onpointerleave={cancelHold}
 >
   {#if holdToKill && live}
-    <svg class="ring" viewBox="0 0 100 100" aria-hidden="true">
-      <circle class="ring-fill" cx="50" cy="50" r="46" onanimationend={onHoldComplete} />
+    <svg class="holdring" viewBox="0 0 100 100" aria-hidden="true">
+      <circle class="holdring-fill" cx="50" cy="50" r="46" onanimationend={onHoldComplete} />
     </svg>
   {/if}
   {#if busy}
@@ -176,8 +176,10 @@
     opacity: 0.55;
   }
 
-  /* Hold-to-kill radial fill (master) */
-  .ring {
+  /* Hold-to-kill radial fill (master). NB: class is `holdring`, never `ring` —
+     Tailwind's `.ring` utility injects a box-shadow that, on this square SVG box,
+     paints a green rectangle around the round button. */
+  .holdring {
     position: absolute;
     inset: -5px;
     width: calc(100% + 10px);
@@ -185,7 +187,7 @@
     transform: rotate(-90deg);
     pointer-events: none;
   }
-  .ring-fill {
+  .holdring-fill {
     fill: none;
     stroke: var(--color-destructive, #ef4444);
     stroke-width: 4;
@@ -194,7 +196,7 @@
     stroke-dasharray: 289;
     stroke-dashoffset: 289;
   }
-  .holding .ring-fill {
+  .holding .holdring-fill {
     animation: ks-fill 1200ms linear forwards;
   }
   @keyframes ks-fill {
@@ -203,7 +205,7 @@
     }
   }
   @media (prefers-reduced-motion: reduce) {
-    .holding .ring-fill {
+    .holding .holdring-fill {
       animation-duration: 1200ms; /* keep the deliberate hold; just no easing flourish */
     }
     .power:not(:disabled):active {
