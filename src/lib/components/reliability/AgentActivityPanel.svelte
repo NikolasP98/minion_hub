@@ -198,8 +198,50 @@
 		};
 	});
 
+	// ── Tool outcomes by classified status (skill.* — ok/error/timeout/auth_error) ──
+	type Outcome = { ok: number; error: number; timeout: number; authError: number };
+	let toolOutcomes = $derived.by(() => {
+		if (activity?.toolOutcomes) return activity.toolOutcomes;
+		// Fallback: derive from the capped event slice (skill.<status> + skillName meta).
+		let ok = 0,
+			error = 0,
+			timeout = 0,
+			authError = 0;
+		const by = new Map<string, Outcome>();
+		for (const e of events) {
+			if (!e.event.startsWith('skill.') || !scoped(e)) continue;
+			const status = e.event.slice('skill.'.length);
+			const tool = str(parseMetadata(e.metadata)?.skillName) ?? 'tool';
+			let row = by.get(tool);
+			if (!row) {
+				row = { ok: 0, error: 0, timeout: 0, authError: 0 };
+				by.set(tool, row);
+			}
+			if (status === 'ok') (row.ok += 1), (ok += 1);
+			else if (status === 'timeout') (row.timeout += 1), (timeout += 1);
+			else if (status === 'auth_error') (row.authError += 1), (authError += 1);
+			else (row.error += 1), (error += 1);
+		}
+		const tot = (o: Outcome) => o.ok + o.error + o.timeout + o.authError;
+		return {
+			ok,
+			error,
+			timeout,
+			authError,
+			total: ok + error + timeout + authError,
+			byTool: [...by.entries()]
+				.map(([tool, c]) => ({ tool, ...c }))
+				.sort((a, b) => tot(b) - tot(a))
+				.slice(0, 10),
+		};
+	});
+
 	const hasAny = $derived(
-		memory.total > 0 || heartbeat.total > 0 || proactivity.total > 0 || tools.total > 0,
+		memory.total > 0 ||
+			heartbeat.total > 0 ||
+			proactivity.total > 0 ||
+			tools.total > 0 ||
+			toolOutcomes.total > 0,
 	);
 
 	// ── Charts ──────────────────────────────────────────────────────────────────────
@@ -397,5 +439,45 @@
 				{/if}
 			</div>
 		</div>
+
+		<!-- Tool outcomes by status — why tools fail, not just that they do -->
+		{#if toolOutcomes.total > 0}
+			<div class="bg-bg2 p-3 border-t border-border">
+				<div class="flex items-center gap-1.5 pb-2">
+					<Wrench size={12} class="text-purple" />
+					<span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{m.reliability_toolOutcomes()}</span>
+					<span class="ml-auto flex items-center gap-2 text-[10px] tabular-nums">
+						<span class="text-success">{fmt(toolOutcomes.ok)} {m.reliability_ok()}</span>
+						{#if toolOutcomes.error > 0}<span class="text-warning">{fmt(toolOutcomes.error)} {m.reliability_outcomeError()}</span>{/if}
+						{#if toolOutcomes.timeout > 0}<span class="text-amber-400">{fmt(toolOutcomes.timeout)} {m.reliability_outcomeTimeout()}</span>{/if}
+						{#if toolOutcomes.authError > 0}<span class="text-destructive">{fmt(toolOutcomes.authError)} {m.reliability_outcomeAuth()}</span>{/if}
+					</span>
+				</div>
+				<div class="overflow-x-auto">
+					<table class="w-full min-w-[360px] text-[11px]">
+						<thead>
+							<tr class="text-[9px] uppercase tracking-wide text-muted-strong">
+								<th class="text-left font-medium pb-1">{m.reliability_tool()}</th>
+								<th class="text-right font-medium pb-1 px-2 text-success">{m.reliability_ok()}</th>
+								<th class="text-right font-medium pb-1 px-2">{m.reliability_outcomeError()}</th>
+								<th class="text-right font-medium pb-1 px-2">{m.reliability_outcomeTimeout()}</th>
+								<th class="text-right font-medium pb-1 px-2">{m.reliability_outcomeAuth()}</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each toolOutcomes.byTool as t (t.tool)}
+								<tr class="border-t border-border/40">
+									<td class="text-left py-1 pr-2 truncate max-w-[160px] text-foreground">{t.tool}</td>
+									<td class="text-right py-1 px-2 tabular-nums text-success">{fmt(t.ok)}</td>
+									<td class="text-right py-1 px-2 tabular-nums {t.error > 0 ? 'text-warning' : 'text-muted-strong'}">{fmt(t.error)}</td>
+									<td class="text-right py-1 px-2 tabular-nums {t.timeout > 0 ? 'text-amber-400' : 'text-muted-strong'}">{fmt(t.timeout)}</td>
+									<td class="text-right py-1 px-2 tabular-nums {t.authError > 0 ? 'text-destructive' : 'text-muted-strong'}">{fmt(t.authError)}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			</div>
+		{/if}
 	{/if}
 </div>

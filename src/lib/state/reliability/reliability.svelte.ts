@@ -81,6 +81,15 @@ export interface ActivityAggregate {
     lastStatus: string;
   };
   tools: { ok: number; err: number; total: number; top: { key: string; value: number }[] };
+  /** Per-tool outcome breakdown by classified status (ok/error/timeout/auth_error). */
+  toolOutcomes?: {
+    ok: number;
+    error: number;
+    timeout: number;
+    authError: number;
+    total: number;
+    byTool: { tool: string; ok: number; error: number; timeout: number; authError: number }[];
+  };
   proactivity: {
     proactive: number;
     reactive: number;
