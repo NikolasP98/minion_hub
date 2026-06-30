@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { ArrowLeft, Loader2 } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
 
   type Row = {
     modelId: string;
@@ -32,31 +33,31 @@
 
 <div class="flex-1 overflow-y-auto p-6 space-y-4">
   <a href="/agents/workshop/compare" class="inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-muted hover:text-foreground">
-    <ArrowLeft size={12} /> Compare
+    <ArrowLeft size={12} /> {m.workshop_exp_compare()}
   </a>
-  <h2 class="font-mono text-sm uppercase tracking-widest text-muted">Model Leaderboard</h2>
+  <h2 class="font-mono text-sm uppercase tracking-widest text-muted">{m.workshop_exp_leaderboard_title()}</h2>
   <p class="text-[11px] font-mono text-muted-strong">
-    Win-rate from your comparison rankings, plus latency &amp; cost from comparison runs.
+    {m.workshop_exp_leaderboard_desc()}
   </p>
 
   {#if loading}
-    <p class="text-xs font-mono text-muted inline-flex items-center gap-1.5"><Loader2 size={13} class="animate-spin" /> loading…</p>
+    <p class="text-xs font-mono text-muted inline-flex items-center gap-1.5"><Loader2 size={13} class="animate-spin" /> {m.workshop_exp_loading()}</p>
   {:else if err}
     <p class="text-xs font-mono text-destructive">{err}</p>
   {:else if rows.length === 0}
-    <p class="text-xs font-mono text-muted italic">No comparison data yet — run a comparison and rank the outputs.</p>
+    <p class="text-xs font-mono text-muted italic">{m.workshop_exp_leaderboard_empty()}</p>
   {:else}
     <table class="w-full text-xs font-mono">
       <thead>
         <tr class="text-left text-muted-strong border-b border-border">
-          <th class="py-2 pr-3 font-normal">Model</th>
-          <th class="py-2 px-3 font-normal text-right">Win rate</th>
-          <th class="py-2 px-3 font-normal text-right">Wins</th>
-          <th class="py-2 px-3 font-normal text-right">Ranked</th>
-          <th class="py-2 px-3 font-normal text-right">Avg rank</th>
-          <th class="py-2 px-3 font-normal text-right">Runs</th>
-          <th class="py-2 px-3 font-normal text-right">Avg latency</th>
-          <th class="py-2 pl-3 font-normal text-right">Total cost</th>
+          <th class="py-2 pr-3 font-normal">{m.workshop_exp_col_model()}</th>
+          <th class="py-2 px-3 font-normal text-right">{m.workshop_exp_col_win_rate()}</th>
+          <th class="py-2 px-3 font-normal text-right">{m.workshop_exp_col_wins()}</th>
+          <th class="py-2 px-3 font-normal text-right">{m.workshop_exp_col_ranked()}</th>
+          <th class="py-2 px-3 font-normal text-right">{m.workshop_exp_col_avg_rank()}</th>
+          <th class="py-2 px-3 font-normal text-right">{m.workshop_exp_col_runs()}</th>
+          <th class="py-2 px-3 font-normal text-right">{m.workshop_exp_col_avg_latency()}</th>
+          <th class="py-2 pl-3 font-normal text-right">{m.workshop_exp_col_total_cost()}</th>
         </tr>
       </thead>
       <tbody>

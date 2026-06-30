@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { ArrowRight, Trophy } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
 
   type Row = { modelId: string; winRate: number; rankings: number };
 
@@ -36,7 +37,7 @@
     {#if !loaded}
       <span class="text-[10px] font-mono text-muted-strong">…</span>
     {:else if top.length === 0}
-      <span class="text-[10px] font-mono text-muted-strong">No rankings yet — rank a comparison to build the leaderboard.</span>
+      <span class="text-[10px] font-mono text-muted-strong">{m.workshop_exp_strip_empty()}</span>
     {:else}
       {#each top as r, i (r.modelId)}
         <span class="text-[11px] font-mono whitespace-nowrap">
@@ -51,6 +52,6 @@
     href="/agents/workshop/leaderboard"
     class="shrink-0 inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider text-muted hover:text-foreground transition-colors"
   >
-    Leaderboard <ArrowRight size={12} />
+    {m.workshop_exp_leaderboard()} <ArrowRight size={12} />
   </a>
 </div>

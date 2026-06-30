@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { Eye, EyeOff, Loader2, Trophy } from 'lucide-svelte';
   import LeaderboardStrip from './LeaderboardStrip.svelte';
+  import * as m from '$lib/paraglide/messages';
   import {
     loadModels,
     runComparison,
@@ -58,7 +59,7 @@
   }
 
   function labelFor(o: CompareOutput, i: number): string {
-    if (blindHidden) return `Model ${String.fromCharCode(65 + i)}`;
+    if (blindHidden) return m.workshop_exp_model_label({ letter: String.fromCharCode(65 + i) });
     return o.name;
   }
 
@@ -147,24 +148,24 @@
 
 <div class="flex-1 overflow-y-auto p-6 space-y-5">
   <header class="flex items-center justify-between">
-    <h2 class="font-mono text-sm uppercase tracking-widest text-muted">Model Output Comparison</h2>
+    <h2 class="font-mono text-sm uppercase tracking-widest text-muted">{m.workshop_exp_compare_title()}</h2>
     <label class="flex items-center gap-2 text-[11px] font-mono text-muted cursor-pointer select-none">
       <input type="checkbox" bind:checked={blind} class="accent-accent" />
       {#if blind}<EyeOff size={13} />{:else}<Eye size={13} />{/if}
-      Blind mode
+      {m.workshop_exp_blind_mode()}
     </label>
   </header>
 
   <LeaderboardStrip refresh={lbRefresh} />
 
   {#if modelsError}
-    <p class="text-xs font-mono text-destructive">Couldn't load models: {modelsError}</p>
+    <p class="text-xs font-mono text-destructive">{m.workshop_exp_models_load_error({ error: modelsError })}</p>
   {/if}
 
   <!-- Model picker -->
   <section class="space-y-2">
     <p class="text-[10px] font-mono uppercase tracking-wider text-muted-strong">
-      Models {#if role === 'admin'}<span class="text-accent/70">(admin — all providers)</span>{/if}
+      {m.workshop_exp_models_label()} {#if role === 'admin'}<span class="text-accent/70">{m.workshop_exp_models_admin()}</span>{/if}
     </p>
     <div class="flex flex-wrap gap-1.5">
       {#each models as mo (mo.id)}
@@ -180,12 +181,12 @@
         >
           {mo.name}
           {#if role === 'admin' && mo.enabled === false}
-            <span class="ml-1 text-muted-strong">·off</span>
+            <span class="ml-1 text-muted-strong">·{m.workshop_exp_off()}</span>
           {/if}
         </button>
       {/each}
       {#if models.length === 0 && !modelsError}
-        <p class="text-xs font-mono text-muted italic">No models available.</p>
+        <p class="text-xs font-mono text-muted italic">{m.workshop_exp_no_models()}</p>
       {/if}
     </div>
   </section>
@@ -194,24 +195,24 @@
   <section class="space-y-2">
     <textarea
       bind:value={prompt}
-      placeholder="Prompt to send to every selected model…"
+      placeholder={m.workshop_exp_prompt_placeholder()}
       rows="4"
       class="w-full rounded border border-border bg-bg2 p-3 text-sm text-foreground font-mono resize-y focus:border-accent/50 outline-none"
     ></textarea>
     <details class="text-xs font-mono text-muted">
-      <summary class="cursor-pointer select-none">Advanced</summary>
+      <summary class="cursor-pointer select-none">{m.workshop_exp_advanced()}</summary>
       <div class="mt-2 space-y-2">
         <textarea
           bind:value={system}
-          placeholder="System prompt (optional)"
+          placeholder={m.workshop_exp_system_placeholder()}
           rows="2"
           class="w-full rounded border border-border bg-bg2 p-2 text-xs text-foreground font-mono resize-y outline-none"
         ></textarea>
         <div class="flex gap-4">
-          <label class="flex items-center gap-2">temp
+          <label class="flex items-center gap-2">{m.workshop_exp_temp()}
             <input type="number" min="0" max="2" step="0.1" bind:value={temperature} class="w-16 rounded border border-border bg-bg2 px-1.5 py-0.5" />
           </label>
-          <label class="flex items-center gap-2">max tokens
+          <label class="flex items-center gap-2">{m.workshop_exp_max_tokens()}
             <input type="number" min="1" step="1" bind:value={maxTokens} class="w-20 rounded border border-border bg-bg2 px-1.5 py-0.5" />
           </label>
         </div>
@@ -224,7 +225,7 @@
       class="h-8 px-4 rounded bg-accent/15 border border-accent/40 text-accent text-xs font-mono uppercase tracking-wider hover:bg-accent/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-2"
     >
       {#if running}<Loader2 size={13} class="animate-spin" />{/if}
-      Run ({selectedModels.length})
+      {m.workshop_exp_run({ count: selectedModels.length })}
     </button>
   </section>
 
@@ -241,7 +242,7 @@
           </div>
           <div class="p-3 text-xs font-mono whitespace-pre-wrap text-foreground/90 flex-1 overflow-y-auto max-h-[420px]">
             {#if o.status === 'pending'}
-              <span class="text-muted inline-flex items-center gap-1"><Loader2 size={12} class="animate-spin" /> thinking…</span>
+              <span class="text-muted inline-flex items-center gap-1"><Loader2 size={12} class="animate-spin" /> {m.workshop_exp_thinking()}</span>
             {:else if o.status === 'error'}
               <span class="text-destructive">{o.error}</span>
             {:else}
@@ -250,7 +251,7 @@
           </div>
           {#if o.status === 'done' && !blindHidden}
             <div class="px-3 py-1.5 border-t border-border text-[9px] font-mono text-muted-strong flex gap-3">
-              {#if o.outputTokens}<span>{o.outputTokens} tok</span>{/if}
+              {#if o.outputTokens}<span>{m.workshop_exp_tok({ count: o.outputTokens })}</span>{/if}
               {#if o.costUsd}<span>${o.costUsd.toFixed(4)}</span>{/if}
             </div>
           {/if}
@@ -263,10 +264,10 @@
       <section class="rounded border border-border bg-bg2 p-4 space-y-3">
         <div class="flex items-center justify-between">
           <p class="text-[11px] font-mono uppercase tracking-wider text-muted inline-flex items-center gap-1.5">
-            <Trophy size={13} /> Rank — click best → worst
+            <Trophy size={13} /> {m.workshop_exp_rank_hint()}
           </p>
           {#if ranking.length > 0}
-            <button type="button" onclick={resetRank} class="text-[10px] font-mono text-muted hover:text-foreground">reset</button>
+            <button type="button" onclick={resetRank} class="text-[10px] font-mono text-muted hover:text-foreground">{m.workshop_exp_reset()}</button>
           {/if}
         </div>
         <div class="flex flex-wrap gap-1.5">
@@ -289,7 +290,7 @@
 
         <!-- Categories -->
         <div class="space-y-1.5">
-          <p class="text-[10px] font-mono uppercase tracking-wider text-muted-strong">Category tags</p>
+          <p class="text-[10px] font-mono uppercase tracking-wider text-muted-strong">{m.workshop_exp_category_tags()}</p>
           <div class="flex flex-wrap items-center gap-1.5">
             {#each categories as c (c)}
               <span class="px-2 h-6 rounded-full border border-border text-[10px] font-mono text-muted inline-flex items-center gap-1">
@@ -300,7 +301,7 @@
             <input
               bind:value={categoryInput}
               onkeydown={(e) => e.key === 'Enter' && (e.preventDefault(), addCategory())}
-              placeholder="add tag…"
+              placeholder={m.workshop_exp_add_tag()}
               class="h-6 w-24 rounded border border-border bg-bg3 px-2 text-[10px] font-mono outline-none"
             />
           </div>
@@ -312,10 +313,14 @@
           disabled={!canSubmitRank || savingRank}
           class="h-8 px-4 rounded bg-accent/15 border border-accent/40 text-accent text-xs font-mono uppercase tracking-wider hover:bg-accent/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
-          {rankSaved ? 'Saved ✓' : 'Save ranking' + (blind ? ' & reveal' : '')}
+          {rankSaved
+            ? m.workshop_exp_saved()
+            : blind
+              ? m.workshop_exp_save_ranking_reveal()
+              : m.workshop_exp_save_ranking()}
         </button>
         {#if !runId}
-          <p class="text-[10px] font-mono text-muted-strong">Run not persisted — ranking can't be saved.</p>
+          <p class="text-[10px] font-mono text-muted-strong">{m.workshop_exp_run_not_persisted()}</p>
         {/if}
       </section>
     {/if}

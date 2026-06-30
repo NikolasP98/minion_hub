@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
   import { Loader2, Plus, Sparkles, Square, Trash2, Users } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
   import {
     advanceGroupchat,
     cancelGroupchat,
@@ -86,11 +87,11 @@
         includeOrchestrator,
         background,
         agents: validPersonas.map((p) => {
-          const m = modelById(p.modelId);
+          const mdl = modelById(p.modelId);
           return {
             name: p.name.trim(),
             systemPrompt: p.systemPrompt.trim(),
-            provider: m?.provider ?? '',
+            provider: mdl?.provider ?? '',
             modelId: p.modelId,
           };
         }),
@@ -130,8 +131,8 @@
   }
 
   function agentName(agentId: string | null): string {
-    if (!agentId) return 'Orchestrator';
-    return ctx?.agents.find((a) => a.id === agentId)?.name ?? 'Agent';
+    if (!agentId) return m.workshop_exp_orchestrator();
+    return ctx?.agents.find((a) => a.id === agentId)?.name ?? m.workshop_exp_agent();
   }
 
   function reset() {
@@ -147,20 +148,20 @@
 <div class="flex-1 overflow-y-auto p-6 max-w-3xl space-y-5">
   <header class="flex items-center justify-between">
     <h2 class="font-mono text-sm uppercase tracking-widest text-muted inline-flex items-center gap-2">
-      <Users size={15} /> Model Group Chat
+      <Users size={15} /> {m.workshop_exp_groupchat_title()}
     </h2>
     {#if step === 'run'}
-      <button type="button" onclick={reset} class="text-[10px] font-mono text-muted hover:text-foreground">new run</button>
+      <button type="button" onclick={reset} class="text-[10px] font-mono text-muted hover:text-foreground">{m.workshop_exp_new_run()}</button>
     {/if}
   </header>
 
   {#if step === 'prompt'}
     <section class="space-y-3">
-      <p class="text-[11px] font-mono uppercase tracking-wider text-muted-strong">1 · Problem</p>
+      <p class="text-[11px] font-mono uppercase tracking-wider text-muted-strong">1 · {m.workshop_exp_step_problem()}</p>
       <textarea
         bind:value={prompt}
         rows="4"
-        placeholder="The problem for the panel to solve…"
+        placeholder={m.workshop_exp_problem_placeholder()}
         class="w-full rounded border border-border bg-bg2 p-3 text-sm text-foreground font-mono resize-y outline-none focus:border-accent/50"
       ></textarea>
       <div class="flex gap-2">
@@ -171,7 +172,7 @@
           class="h-8 px-4 rounded bg-accent/15 border border-accent/40 text-accent text-xs font-mono uppercase tracking-wider hover:bg-accent/25 disabled:opacity-40 inline-flex items-center gap-2"
         >
           {#if suggesting}<Loader2 size={13} class="animate-spin" />{:else}<Sparkles size={13} />{/if}
-          Suggest subagents
+          {m.workshop_exp_suggest_subagents()}
         </button>
         <button
           type="button"
@@ -179,53 +180,53 @@
           disabled={!prompt.trim()}
           class="h-8 px-4 rounded border border-border text-muted text-xs font-mono uppercase tracking-wider hover:text-foreground disabled:opacity-40"
         >
-          Skip — add manually
+          {m.workshop_exp_skip_manual()}
         </button>
       </div>
     </section>
   {:else if step === 'agents'}
     <section class="space-y-3">
-      <p class="text-[11px] font-mono uppercase tracking-wider text-muted-strong">2 · Subagents</p>
+      <p class="text-[11px] font-mono uppercase tracking-wider text-muted-strong">2 · {m.workshop_exp_step_subagents()}</p>
       {#each personas as p, i (i)}
         <div class="rounded border border-border bg-bg2 p-3 space-y-2">
           <div class="flex items-center gap-2">
-            <input bind:value={p.name} placeholder="name" class="flex-1 h-7 rounded border border-border bg-bg3 px-2 text-xs font-mono outline-none" />
+            <input bind:value={p.name} placeholder={m.workshop_exp_name()} class="flex-1 h-7 rounded border border-border bg-bg3 px-2 text-xs font-mono outline-none" />
             <select bind:value={p.modelId} class="h-7 rounded border border-border bg-bg3 px-1.5 text-xs font-mono outline-none">
               {#each models as mo (mo.id)}<option value={mo.id}>{mo.name}</option>{/each}
             </select>
             <button type="button" onclick={() => removePersona(i)} class="text-muted hover:text-destructive"><Trash2 size={14} /></button>
           </div>
-          <textarea bind:value={p.systemPrompt} rows="2" placeholder="role / system prompt" class="w-full rounded border border-border bg-bg3 p-2 text-xs font-mono resize-y outline-none"></textarea>
+          <textarea bind:value={p.systemPrompt} rows="2" placeholder={m.workshop_exp_role_system_prompt()} class="w-full rounded border border-border bg-bg3 p-2 text-xs font-mono resize-y outline-none"></textarea>
         </div>
       {/each}
-      <button type="button" onclick={addPersona} class="h-7 px-3 rounded border border-border text-muted text-[11px] font-mono hover:text-foreground inline-flex items-center gap-1.5"><Plus size={12} /> Add subagent</button>
+      <button type="button" onclick={addPersona} class="h-7 px-3 rounded border border-border text-muted text-[11px] font-mono hover:text-foreground inline-flex items-center gap-1.5"><Plus size={12} /> {m.workshop_exp_add_subagent()}</button>
       <div class="flex gap-2 pt-1">
-        <button type="button" onclick={() => (step = 'prompt')} class="h-8 px-4 rounded border border-border text-muted text-xs font-mono uppercase tracking-wider hover:text-foreground">Back</button>
-        <button type="button" onclick={() => (step = 'configure')} disabled={validPersonas.length === 0} class="h-8 px-4 rounded bg-accent/15 border border-accent/40 text-accent text-xs font-mono uppercase tracking-wider hover:bg-accent/25 disabled:opacity-40">Configure ({validPersonas.length})</button>
+        <button type="button" onclick={() => (step = 'prompt')} class="h-8 px-4 rounded border border-border text-muted text-xs font-mono uppercase tracking-wider hover:text-foreground">{m.workshop_exp_back()}</button>
+        <button type="button" onclick={() => (step = 'configure')} disabled={validPersonas.length === 0} class="h-8 px-4 rounded bg-accent/15 border border-accent/40 text-accent text-xs font-mono uppercase tracking-wider hover:bg-accent/25 disabled:opacity-40">{m.workshop_exp_configure_count({ count: validPersonas.length })}</button>
       </div>
     </section>
   {:else if step === 'configure'}
     <section class="space-y-4">
-      <p class="text-[11px] font-mono uppercase tracking-wider text-muted-strong">3 · Configure</p>
+      <p class="text-[11px] font-mono uppercase tracking-wider text-muted-strong">3 · {m.workshop_exp_step_configure()}</p>
       <div class="space-y-3 text-xs font-mono">
         <div class="flex items-center gap-3">
-          <span class="text-muted w-28">Rounds</span>
+          <span class="text-muted w-28">{m.workshop_exp_rounds()}</span>
           <input type="number" min="1" bind:value={rounds} disabled={infinite} class="w-20 rounded border border-border bg-bg2 px-2 py-1 disabled:opacity-40" />
-          <label class="flex items-center gap-1.5 text-muted cursor-pointer"><input type="checkbox" bind:checked={infinite} class="accent-accent" /> infinite (until stopped)</label>
+          <label class="flex items-center gap-1.5 text-muted cursor-pointer"><input type="checkbox" bind:checked={infinite} class="accent-accent" /> {m.workshop_exp_infinite()}</label>
         </div>
         <div class="flex items-center gap-3">
-          <span class="text-muted w-28">Style</span>
+          <span class="text-muted w-28">{m.workshop_exp_style()}</span>
           <select bind:value={style} class="rounded border border-border bg-bg2 px-2 py-1">
             {#each STYLES as s (s)}<option value={s}>{s}</option>{/each}
           </select>
         </div>
-        <label class="flex items-center gap-2 text-muted cursor-pointer"><input type="checkbox" bind:checked={includeOrchestrator} class="accent-accent" /> Include orchestrator (final summary &amp; decision)</label>
-        <label class="flex items-center gap-2 text-muted cursor-pointer"><input type="checkbox" bind:checked={background} class="accent-accent" /> Run in background (survives navigation)</label>
+        <label class="flex items-center gap-2 text-muted cursor-pointer"><input type="checkbox" bind:checked={includeOrchestrator} class="accent-accent" /> {m.workshop_exp_include_orchestrator()}</label>
+        <label class="flex items-center gap-2 text-muted cursor-pointer"><input type="checkbox" bind:checked={background} class="accent-accent" /> {m.workshop_exp_run_background()}</label>
       </div>
       <div class="flex gap-2">
-        <button type="button" onclick={() => (step = 'agents')} class="h-8 px-4 rounded border border-border text-muted text-xs font-mono uppercase tracking-wider hover:text-foreground">Back</button>
+        <button type="button" onclick={() => (step = 'agents')} class="h-8 px-4 rounded border border-border text-muted text-xs font-mono uppercase tracking-wider hover:text-foreground">{m.workshop_exp_back()}</button>
         <button type="button" onclick={start} disabled={starting} class="h-8 px-4 rounded bg-accent/15 border border-accent/40 text-accent text-xs font-mono uppercase tracking-wider hover:bg-accent/25 disabled:opacity-40 inline-flex items-center gap-2">
-          {#if starting}<Loader2 size={13} class="animate-spin" />{/if} Start
+          {#if starting}<Loader2 size={13} class="animate-spin" />{/if} {m.workshop_exp_start()}
         </button>
       </div>
     </section>
@@ -233,15 +234,15 @@
     <section class="space-y-3">
       <div class="flex items-center justify-between">
         <p class="text-[11px] font-mono uppercase tracking-wider text-muted-strong">
-          4 · {ctx?.run.status ?? 'starting'}{#if running} · round {ctx?.run.currentRound}{/if}
+          4 · {ctx?.run.status ?? m.workshop_exp_status_starting()}{#if running} · {m.workshop_exp_round({ n: ctx?.run.currentRound ?? 0 })}{/if}
         </p>
         {#if running}
-          <button type="button" onclick={stop} class="h-7 px-3 rounded border border-destructive/40 text-destructive text-[11px] font-mono inline-flex items-center gap-1.5 hover:bg-destructive/10"><Square size={11} /> Stop</button>
+          <button type="button" onclick={stop} class="h-7 px-3 rounded border border-destructive/40 text-destructive text-[11px] font-mono inline-flex items-center gap-1.5 hover:bg-destructive/10"><Square size={11} /> {m.workshop_exp_stop()}</button>
         {/if}
       </div>
 
       {#if !ctx}
-        <p class="text-xs font-mono text-muted inline-flex items-center gap-1.5"><Loader2 size={13} class="animate-spin" /> starting…</p>
+        <p class="text-xs font-mono text-muted inline-flex items-center gap-1.5"><Loader2 size={13} class="animate-spin" /> {m.workshop_exp_starting()}</p>
       {:else}
         <div class="space-y-2">
           {#each ctx.messages as msg (msg.id)}
@@ -254,10 +255,10 @@
             </div>
           {/each}
           {#if running}
-            <p class="text-[11px] font-mono text-muted inline-flex items-center gap-1.5"><Loader2 size={12} class="animate-spin" /> thinking…</p>
+            <p class="text-[11px] font-mono text-muted inline-flex items-center gap-1.5"><Loader2 size={12} class="animate-spin" /> {m.workshop_exp_thinking()}</p>
           {/if}
           {#if ctx.messages.length === 0 && !running}
-            <p class="text-xs font-mono text-muted italic">No turns yet.</p>
+            <p class="text-xs font-mono text-muted italic">{m.workshop_exp_no_turns()}</p>
           {/if}
         </div>
       {/if}

@@ -8,8 +8,8 @@
   // top-level nav item.
   const items: SideNavItem[] = [
     { id: 'canvases', label: m.nav_workshop(), icon: LayoutGrid, href: '/agents/workshop' },
-    { id: 'compare', label: 'Compare', icon: GitCompare, href: '/agents/workshop/compare' },
-    { id: 'groupchat', label: 'Group Chat', icon: MessagesSquare, href: '/agents/workshop/groupchat' },
+    { id: 'compare', label: m.workshop_exp_compare(), icon: GitCompare, href: '/agents/workshop/compare' },
+    { id: 'groupchat', label: m.workshop_exp_group_chat(), icon: MessagesSquare, href: '/agents/workshop/groupchat' },
   ];
 
   const pathname = $derived(page.url.pathname);
