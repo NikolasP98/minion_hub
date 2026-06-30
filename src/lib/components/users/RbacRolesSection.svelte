@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { invalidate } from '$app/navigation';
-	import { ShieldCheck, Users, RotateCcw, Lock, ChevronRight, ChevronDown, UserCheck, EyeOff } from 'lucide-svelte';
+	import { ShieldCheck, Users, RotateCcw, Lock, ChevronRight, ChevronDown, UserCheck, EyeOff, Eye } from 'lucide-svelte';
 	import { toastError } from '$lib/state/ui/toast.svelte';
 	import { SENSITIVE_FIELD_LEVEL } from '$lib/permissions';
+	import { Select, Tabs } from '$lib/components/ui';
 
 	type ActionSet = Record<string, boolean>;
 	type SubResourceCaps = { key: string; label: string; caps: ActionSet; overridden: boolean };
@@ -38,15 +39,84 @@
 	// svelte-ignore state_referenced_locally
 	let selectedKey = $state<string>(roles[0]?.key ?? '');
 	let saving = $state<string | null>(null); // override key currently saving
-	let expanded = $state<Record<string, boolean>>({});
+	let expanded = $state<Record<string, boolean>>({}); // module key → granular ("Custom") panel open
+	let activeTab = $state<string>('business'); // 'business' | 'admin'
+	let onlyChanged = $state(true); // summary-first: show only customised modules by default
 
 	const selected = $derived(roles.find((r) => r.key === selectedKey) ?? roles[0] ?? null);
 	// Owner is intentionally not editable — it must always retain full access (no self-lockout).
 	const editable = $derived(!!selected && selected.key !== 'owner');
 	const EMPTY: ActionSet = { view: false, create: false, edit: false, delete: false, export: false, manage: false };
 
+	// Named access levels collapse the 6 raw actions into one control. "Custom" is a
+	// derived state (caps that don't match a named level) — selecting it just opens
+	// the granular grid. Ladder: None ⊂ View ⊂ Edit ⊂ Full.
+	const LEVEL_OPTIONS = [
+		{ value: 'none', label: 'None' },
+		{ value: 'view', label: 'View' },
+		{ value: 'edit', label: 'Edit' },
+		{ value: 'full', label: 'Full' },
+		{ value: 'custom', label: 'Custom' },
+	];
+	// ponytail: assumes the standard view/create/edit/delete/export/manage action set;
+	// tolerant of a module exposing a subset (compares only against `actions`).
+	function levelCaps(level: string): ActionSet {
+		const c = { ...EMPTY };
+		if (level === 'none') return c;
+		c.view = true;
+		if (level === 'view') return c;
+		c.create = true;
+		c.edit = true;
+		if (level === 'edit') return c;
+		c.delete = true;
+		c.export = true;
+		c.manage = true; // full
+		return c;
+	}
+
 	function capsFor(role: Role, mod: string): RoleModuleCaps | undefined {
 		return role.modules.find((m) => m.module === mod);
+	}
+
+	// Resolve a module's current access level. Divergence across the module + its
+	// sub-resources (or any non-ladder combo) reads as "custom".
+	function effLevel(rm: RoleModuleCaps): string {
+		const eff: ActionSet = {};
+		for (const a of actions) {
+			const st = parentState(rm, a);
+			if (st.indeterminate) return 'custom';
+			eff[a] = st.checked;
+		}
+		const on = (k: string) => !!eff[k];
+		const onlyOf = (allow: string[]) => actions.every((a) => (allow.includes(a) ? true : !on(a)));
+		if (actions.every((a) => !on(a))) return 'none';
+		if (on('view') && onlyOf(['view'])) return 'view';
+		if (on('view') && on('create') && on('edit') && onlyOf(['view', 'create', 'edit'])) return 'edit';
+		if (actions.every((a) => on(a))) return 'full';
+		return 'custom';
+	}
+
+	function moduleChanged(rm: RoleModuleCaps): boolean {
+		return rm.overridden || rm.subResources.some((s) => s.overridden);
+	}
+	function changedCount(mods: string[]): number {
+		if (!selected) return 0;
+		return mods.reduce((n, mod) => {
+			const rm = capsFor(selected, mod);
+			return n + (rm && moduleChanged(rm) ? 1 : 0);
+		}, 0);
+	}
+	// One-line plain-language summary of a group's access for the role header.
+	function groupSummary(mods: string[]): string {
+		if (!selected) return '';
+		const levels = mods.map((mod) => {
+			const rm = capsFor(selected, mod);
+			return rm ? effLevel(rm) : 'none';
+		});
+		if (levels.every((l) => l === 'full')) return 'Full access';
+		if (levels.every((l) => l === 'none')) return 'No access';
+		if (levels.every((l) => l === 'view')) return 'View only';
+		return 'Partial access';
 	}
 
 	/**
@@ -87,14 +157,17 @@
 		return { checked: all, indeterminate: !all && !none };
 	}
 
-	// Toggling the group header cascades to the parent module AND every child:
-	// the parent gets the new caps, child overrides are cleared so they inherit it.
-	async function toggleParent(rm: RoleModuleCaps, action: string, next: boolean) {
-		if (!selected || !editable) return;
-		const caps = applyViewDep(rm.caps, action, next);
+	// Set a whole module to a named level. Cascades to children (their overrides
+	// clear so they inherit). "custom" just opens the granular editor.
+	async function setModuleLevel(rm: RoleModuleCaps, level: string) {
+		if (!editable) return;
+		if (level === 'custom') {
+			expanded[rm.module] = true;
+			return;
+		}
+		const caps = levelCaps(level);
 		saving = rm.module;
 		const dirtySubs = rm.subResources.filter((s) => s.overridden).map((s) => s.key);
-		// optimistic: parent + all children follow
 		rm.caps = caps;
 		rm.overridden = true;
 		for (const s of rm.subResources) {
@@ -102,7 +175,31 @@
 			s.overridden = false;
 		}
 		try {
-			// preserve owner-scope + field-level on cap edits
+			await saveOverride(rm.module, caps, rm.ifOwner, rm.fieldLevel);
+			await Promise.all(dirtySubs.map((k) => clearOverride(k)));
+			void invalidate('settings:roles');
+		} catch {
+			toastError('Could not save permission change.');
+			void invalidate('settings:roles');
+		} finally {
+			saving = null;
+		}
+	}
+
+	// Toggling a single action cascades to the parent module AND every child:
+	// the parent gets the new caps, child overrides are cleared so they inherit it.
+	async function toggleParent(rm: RoleModuleCaps, action: string, next: boolean) {
+		if (!selected || !editable) return;
+		const caps = applyViewDep(rm.caps, action, next);
+		saving = rm.module;
+		const dirtySubs = rm.subResources.filter((s) => s.overridden).map((s) => s.key);
+		rm.caps = caps;
+		rm.overridden = true;
+		for (const s of rm.subResources) {
+			s.caps = caps;
+			s.overridden = false;
+		}
+		try {
 			await saveOverride(rm.module, caps, rm.ifOwner, rm.fieldLevel);
 			await Promise.all(dirtySubs.map((k) => clearOverride(k)));
 			void invalidate('settings:roles');
@@ -194,170 +291,234 @@
 		}
 	}
 
+	// Role-level "revert all to default": clear every override on the selected role.
+	async function revertAll() {
+		if (!selected || !editable) return;
+		const mods = selected.modules.filter(moduleChanged);
+		if (!mods.length) return;
+		saving = '__all__';
+		try {
+			for (const rm of mods) {
+				await clearOverride(rm.module);
+				await Promise.all(rm.subResources.filter((s) => s.overridden).map((s) => clearOverride(s.key)));
+			}
+		} catch {
+			toastError('Could not revert role to defaults.');
+		} finally {
+			saving = null;
+			void invalidate('settings:roles');
+		}
+	}
+
 	// Set the DOM `indeterminate` property (not expressible as an attribute).
 	function indeterminate(node: HTMLInputElement, value: boolean) {
 		node.indeterminate = value;
 		return { update: (v: boolean) => (node.indeterminate = v) };
 	}
+
+	const totalChanged = $derived(changedCount(businessModules) + changedCount(adminModules));
+	const tabMods = $derived(activeTab === 'business' ? businessModules : adminModules);
+	// Effective filter: "only changed" collapses to nothing when nothing changed, so
+	// fall back to showing all for roles (e.g. Owner) with no overrides in this tab.
+	const tabChanged = $derived(changedCount(tabMods));
+	const showOnlyChanged = $derived(onlyChanged && tabChanged > 0);
+	const visibleMods = $derived(
+		selected
+			? showOnlyChanged
+				? tabMods.filter((mod) => {
+						const rm = capsFor(selected, mod);
+						return rm ? moduleChanged(rm) : false;
+					})
+				: tabMods
+			: [],
+	);
 </script>
 
-{#snippet matrix(title: string, mods: string[])}
-	<section>
-		<h4 class="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted">{title}</h4>
-		<div class="overflow-x-auto rounded-md border border-border bg-bg2/40">
-			<table class="w-full text-[12px]">
-				<thead>
-					<tr class="border-b border-border/60 text-muted">
-						<th class="px-3 py-2 text-left font-medium">Module</th>
-						{#each actions as a (a)}
-							<th class="px-2 py-2 text-center font-medium capitalize">{a}</th>
-						{/each}
-						<th class="w-8"></th>
-					</tr>
-				</thead>
-				<tbody>
-					{#each mods as mod (mod)}
-						{@const rm = selected ? capsFor(selected, mod) : undefined}
-						{#if rm}
-							{@const hasSubs = rm.subResources.length > 0}
-							{@const isOpen = !!expanded[mod]}
-							<tr class="border-b border-border/30 last:border-0">
-								<td class="px-3 py-1.5 text-foreground">
-									<span class="flex items-center gap-1.5">
-										{#if hasSubs}
-											<button
-												type="button"
-												class="rounded p-0.5 text-muted hover:bg-muted/20 hover:text-foreground"
-												title={isOpen ? 'Collapse sections' : 'Expand sections'}
-												onclick={() => (expanded[mod] = !isOpen)}
-											>
-												{#if isOpen}<ChevronDown class="h-3.5 w-3.5" />{:else}<ChevronRight class="h-3.5 w-3.5" />{/if}
-											</button>
-										{:else}
-											<span class="inline-block w-[18px]"></span>
-										{/if}
-										{rm.label}
-										{#if rm.overridden}
-											<span class="h-1.5 w-1.5 rounded-full bg-accent" title="Customised for this organization"></span>
-										{/if}
-										{#if rm.ownerScopable}
-											<button
-												type="button"
-												class="ml-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] transition-colors {rm.ifOwner
-													? 'bg-accent/15 text-accent'
-													: 'text-muted hover:bg-muted/20'}"
-												title={rm.ifOwner
-													? 'Restricted to records this role owns — click for full access'
-													: 'Full access to all records — click to restrict to owned records'}
-												disabled={!editable || saving === rm.module}
-												onclick={() => toggleOwnerScope(rm, !rm.ifOwner)}
-											>
-												<UserCheck class="h-3 w-3" />
-												{rm.ifOwner ? 'Own only' : 'All records'}
-											</button>
-										{/if}
-										{#if rm.fieldScopable}
-											{@const hidden = rm.fieldLevel < SENSITIVE_FIELD_LEVEL}
-											<button
-												type="button"
-												class="ml-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] transition-colors {hidden
-													? 'bg-amber-500/15 text-amber-500'
-													: 'text-muted hover:bg-muted/20'}"
-												title={hidden
-													? 'Sensitive fields (PII / cost / margin) hidden — click to reveal'
-													: 'Sensitive fields visible — click to hide PII / cost / margin'}
-												disabled={!editable || saving === rm.module}
-												onclick={() => toggleFieldVisible(rm, hidden)}
-											>
-												<EyeOff class="h-3 w-3" />
-												{hidden ? 'Sensitive hidden' : 'Sensitive visible'}
-											</button>
-										{/if}
-									</span>
-								</td>
-								{#each actions as a (a)}
-									{@const st = parentState(rm, a)}
-									<td class="px-2 py-1.5 text-center">
-										<input
-											type="checkbox"
-											class="accent-accent disabled:opacity-40"
-											checked={st.checked}
-											use:indeterminate={st.indeterminate}
-											disabled={!editable || saving === mod}
-											onchange={(e) => toggleParent(rm, a, e.currentTarget.checked)}
-										/>
-									</td>
-								{/each}
-								<td class="px-1 py-1.5 text-center">
-									{#if editable && (rm.overridden || rm.subResources.some((s) => s.overridden))}
-										<button
-											class="rounded p-1 text-muted hover:bg-muted/20 hover:text-foreground"
-											title="Reset module to default"
-											onclick={() => resetModule(rm)}
-										>
-											<RotateCcw class="h-3 w-3" />
-										</button>
-									{/if}
-								</td>
-							</tr>
-
-							{#if hasSubs && isOpen}
-								{#each rm.subResources as sub (sub.key)}
-									<tr class="border-b border-border/20 bg-bg2/30 last:border-0">
-										<td class="py-1.5 pl-9 pr-3 text-muted">
-											<span class="flex items-center gap-1.5">
-												<span class="text-[11px]">{sub.label}</span>
-												{#if sub.overridden}
-													<span class="h-1.5 w-1.5 rounded-full bg-accent" title="Set independently of the module"></span>
-												{/if}
-											</span>
-										</td>
-										{#each actions as a (a)}
-											<td class="px-2 py-1.5 text-center">
-												<input
-													type="checkbox"
-													class="accent-accent disabled:opacity-40"
-													checked={sub.caps[a] ?? false}
-													disabled={!editable || saving === sub.key}
-													onchange={(e) => toggleChild(rm, sub, a, e.currentTarget.checked)}
-												/>
-											</td>
-										{/each}
-										<td class="px-1 py-1.5 text-center">
-											{#if editable && sub.overridden}
-												<button
-													class="rounded p-1 text-muted hover:bg-muted/20 hover:text-foreground"
-													title="Reset section to inherit the module"
-													onclick={() => resetSub(sub)}
-												>
-													<RotateCcw class="h-3 w-3" />
-												</button>
-											{/if}
-										</td>
-									</tr>
-								{/each}
-							{/if}
-						{/if}
-					{/each}
-				</tbody>
-			</table>
-		</div>
-	</section>
+{#snippet actionGrid(rm: RoleModuleCaps, sub: SubResourceCaps | null)}
+	<div class="grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-3">
+		{#each actions as a (a)}
+			{@const st = sub ? { checked: sub.caps[a] ?? false, indeterminate: false } : parentState(rm, a)}
+			<label class="flex items-center gap-2 text-[12px] capitalize text-foreground">
+				<input
+					type="checkbox"
+					class="accent-accent disabled:opacity-40"
+					checked={st.checked}
+					use:indeterminate={st.indeterminate}
+					disabled={!editable || saving === (sub ? sub.key : rm.module)}
+					onchange={(e) =>
+						sub
+							? toggleChild(rm, sub, a, e.currentTarget.checked)
+							: toggleParent(rm, a, e.currentTarget.checked)}
+				/>
+				{a}
+			</label>
+		{/each}
+	</div>
 {/snippet}
 
-<section class="mx-auto max-w-6xl min-h-0 flex-1 overflow-y-auto px-4 pt-6">
+{#snippet moduleList(mods: string[])}
+	<div class="overflow-hidden rounded-md border border-border bg-bg2/30">
+		{#if mods.length === 0}
+			<div class="px-3 py-5 text-center text-[12px] text-muted">No modules.</div>
+		{:else}
+			<div class="divide-y divide-border/40">
+				{#each mods as mod (mod)}
+					{@const rm = selected ? capsFor(selected, mod) : undefined}
+					{#if rm}
+						{@const lvl = effLevel(rm)}
+						{@const isOpen = !!expanded[mod]}
+						{@const changed = moduleChanged(rm)}
+						{@const sensitiveHidden = rm.fieldScopable && rm.fieldLevel < SENSITIVE_FIELD_LEVEL}
+						<div>
+							<div class="flex items-center gap-2 px-3 py-2.5">
+								<button
+									type="button"
+									class="rounded p-0.5 text-muted hover:bg-muted/20 hover:text-foreground"
+									title={isOpen ? 'Hide advanced' : 'Advanced (granular actions, scope, sections)'}
+									aria-expanded={isOpen}
+									onclick={() => (expanded[mod] = !isOpen)}
+								>
+									{#if isOpen}<ChevronDown class="h-3.5 w-3.5" />{:else}<ChevronRight class="h-3.5 w-3.5" />{/if}
+								</button>
+
+								<div class="min-w-0 flex-1">
+									<span class="flex items-center gap-1.5">
+										<span class="truncate text-[13px] text-foreground">{rm.label}</span>
+										{#if changed}
+											<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" title="Customised for this organization"></span>
+										{/if}
+									</span>
+									<!-- read-only summary of advanced state; full controls live in the panel below -->
+									{#if (rm.ownerScopable && rm.ifOwner) || sensitiveHidden || rm.subResources.length}
+										<span class="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-muted">
+											{#if rm.ownerScopable && rm.ifOwner}
+												<span class="inline-flex items-center gap-1"><UserCheck class="h-3 w-3" /> Own records</span>
+											{/if}
+											{#if sensitiveHidden}
+												<span class="inline-flex items-center gap-1"><EyeOff class="h-3 w-3" /> Sensitive hidden</span>
+											{/if}
+											{#if rm.subResources.length}
+												<span>{rm.subResources.length} section{rm.subResources.length === 1 ? '' : 's'}</span>
+											{/if}
+										</span>
+									{/if}
+								</div>
+
+								<Select
+									size="sm"
+									class="w-[104px] shrink-0"
+									value={lvl}
+									options={LEVEL_OPTIONS}
+									disabled={!editable || saving === mod}
+									aria-label={`${rm.label} access level`}
+									onchange={(v) => setModuleLevel(rm, String(v))}
+								/>
+
+								{#if editable && changed}
+									<button
+										type="button"
+										class="shrink-0 rounded p-1 text-muted hover:bg-muted/20 hover:text-foreground"
+										title="Reset module to default"
+										disabled={saving === mod}
+										onclick={() => resetModule(rm)}
+									>
+										<RotateCcw class="h-3 w-3" />
+									</button>
+								{/if}
+							</div>
+
+							{#if isOpen}
+								<div class="space-y-3 border-t border-border/30 bg-bg2/20 px-3 pb-3 pt-2.5 pl-9">
+									{@render actionGrid(rm, null)}
+
+									{#if rm.ownerScopable || rm.fieldScopable}
+										<div class="flex flex-wrap gap-2">
+											{#if rm.ownerScopable}
+												<button
+													type="button"
+													class="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] transition-colors {rm.ifOwner
+														? 'bg-accent/15 text-accent'
+														: 'border border-border text-muted hover:bg-muted/20'}"
+													title={rm.ifOwner
+														? 'Restricted to records this role owns — click for full access'
+														: 'Full access to all records — click to restrict to owned records'}
+													disabled={!editable || saving === rm.module}
+													onclick={() => toggleOwnerScope(rm, !rm.ifOwner)}
+												>
+													<UserCheck class="h-3 w-3" />
+													{rm.ifOwner ? 'Own records only' : 'All records'}
+												</button>
+											{/if}
+											{#if rm.fieldScopable}
+												{@const hidden = rm.fieldLevel < SENSITIVE_FIELD_LEVEL}
+												<button
+													type="button"
+													class="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] transition-colors {hidden
+														? 'bg-muted/20 text-muted'
+														: 'border border-border text-muted hover:bg-muted/20'}"
+													title={hidden
+														? 'Sensitive fields (PII / cost / margin) hidden — click to reveal'
+														: 'Sensitive fields visible — click to hide PII / cost / margin'}
+													disabled={!editable || saving === rm.module}
+													onclick={() => toggleFieldVisible(rm, hidden)}
+												>
+													{#if hidden}<EyeOff class="h-3 w-3" />{:else}<Eye class="h-3 w-3" />{/if}
+													{hidden ? 'Sensitive hidden' : 'Sensitive visible'}
+												</button>
+											{/if}
+										</div>
+									{/if}
+
+									{#if rm.subResources.length}
+										<div class="space-y-2.5 border-t border-border/30 pt-2.5">
+											<span class="text-[10px] font-semibold uppercase tracking-wider text-muted">Sections</span>
+											{#each rm.subResources as sub (sub.key)}
+												<div>
+													<span class="mb-1 flex items-center gap-1.5">
+														<span class="text-[11px] text-foreground">{sub.label}</span>
+														{#if sub.overridden}
+															<span class="h-1.5 w-1.5 rounded-full bg-accent" title="Set independently of the module"></span>
+														{/if}
+														{#if editable && sub.overridden}
+															<button
+																type="button"
+																class="rounded p-0.5 text-muted hover:bg-muted/20 hover:text-foreground"
+																title="Reset section to inherit the module"
+																onclick={() => resetSub(sub)}
+															>
+																<RotateCcw class="h-3 w-3" />
+															</button>
+														{/if}
+													</span>
+													{@render actionGrid(rm, sub)}
+												</div>
+											{/each}
+										</div>
+									{/if}
+								</div>
+							{/if}
+						</div>
+					{/if}
+				{/each}
+			</div>
+		{/if}
+	</div>
+{/snippet}
+
+<section class="mx-auto min-h-0 max-w-5xl flex-1 overflow-y-auto px-4 pt-6">
 	<header class="mb-5">
 		<h2 class="text-base font-semibold text-foreground">Roles</h2>
 		<p class="mt-0.5 text-[12px] text-muted">
-			What each role can see and do across the dashboard. Built-in roles ship with sensible
-			defaults — customise any of them for this organization. Expand a module to gate its sections
-			independently; every action requires View. The agent inherits the signed-in user's permissions.
+			What each role can see and do across the dashboard. Pick an access level per module — None,
+			View, Edit, or Full — or open <span class="text-foreground">Advanced</span> for granular actions,
+			record scope, and sections. Every action requires View. The agent inherits the signed-in user's
+			permissions.
 		</p>
 	</header>
 
-	<div class="grid grid-cols-1 items-start gap-4 md:grid-cols-[280px_1fr]">
-		<!-- Sidebar -->
-		<aside class="overflow-hidden rounded-lg border border-border bg-card">
+	<div class="grid grid-cols-1 items-start gap-4 lg:grid-cols-[260px_1fr]">
+		<!-- Role list — full list on lg+, compact picker below (keeps the detail full-width on medium screens) -->
+		<aside class="hidden overflow-hidden rounded-lg border border-border bg-card lg:block">
 			<div class="border-b border-border/60 px-3 py-2.5">
 				<span class="text-[11px] font-semibold uppercase tracking-wider text-muted">All roles</span>
 			</div>
@@ -396,22 +557,29 @@
 			</ul>
 		</aside>
 
+		<!-- Compact role picker (below lg) -->
+		<div class="lg:hidden">
+			<Select
+				size="sm"
+				value={selectedKey}
+				options={roles.map((r) => ({ value: r.key, label: r.name }))}
+				aria-label="Select role"
+				onchange={(v) => (selectedKey = String(v))}
+			/>
+		</div>
+
 		<!-- Detail -->
-		<div class="rounded-lg border border-border bg-card">
+		<div class="min-w-0 rounded-lg border border-border bg-card">
 			{#if selected}
-				<div class="space-y-5 p-5">
-					<div class="flex items-center gap-2">
+				<div class="space-y-4 p-4 sm:p-5">
+					<div class="flex flex-wrap items-center gap-2">
 						<h3 class="text-[15px] font-semibold text-foreground">{selected.name}</h3>
 						{#if selected.key === 'owner'}
-							<span
-								class="inline-flex items-center gap-1 rounded bg-muted/20 px-1.5 py-0.5 text-[10px] text-muted"
-							>
+							<span class="inline-flex items-center gap-1 rounded bg-muted/20 px-1.5 py-0.5 text-[10px] text-muted">
 								<Lock class="h-3 w-3" /> Full access (locked)
 							</span>
 						{:else if selected.isSystem}
-							<span
-								class="inline-flex items-center gap-1 rounded bg-muted/20 px-1.5 py-0.5 text-[10px] text-muted"
-							>
+							<span class="inline-flex items-center gap-1 rounded bg-muted/20 px-1.5 py-0.5 text-[10px] text-muted">
 								<ShieldCheck class="h-3 w-3" /> Built-in
 							</span>
 						{/if}
@@ -420,12 +588,56 @@
 							{selected.memberCount} member{selected.memberCount === 1 ? '' : 's'}
 						</span>
 					</div>
+
 					{#if selected.description}
-						<p class="-mt-3 text-[12px] text-muted">{selected.description}</p>
+						<p class="-mt-2 text-[12px] text-muted">{selected.description}</p>
 					{/if}
 
-					{@render matrix('Business data', businessModules)}
-					{@render matrix('Platform & admin', adminModules)}
+					<!-- Plain-language summary + role-level revert -->
+					<div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]">
+						<span class="text-muted">Business data:</span>
+						<span class="text-foreground">{groupSummary(businessModules)}</span>
+						<span class="text-muted/50">·</span>
+						<span class="text-muted">Platform &amp; admin:</span>
+						<span class="text-foreground">{groupSummary(adminModules)}</span>
+						{#if totalChanged > 0}
+							<span class="text-muted/50">·</span>
+							<span class="text-accent">{totalChanged} changed from default</span>
+							{#if editable}
+								<button
+									type="button"
+									class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-muted hover:bg-muted/20 hover:text-foreground disabled:opacity-50"
+									disabled={saving === '__all__'}
+									onclick={revertAll}
+								>
+									<RotateCcw class="h-3 w-3" /> Revert all
+								</button>
+							{/if}
+						{/if}
+					</div>
+
+					<div class="flex flex-wrap items-center justify-between gap-2">
+						<Tabs
+							size="sm"
+							bind:value={activeTab}
+							aria-label="Permission groups"
+							tabs={[
+								{ value: 'business', label: 'Business data', count: changedCount(businessModules) || undefined },
+								{ value: 'admin', label: 'Platform & admin', count: changedCount(adminModules) || undefined },
+							]}
+						/>
+						{#if tabChanged > 0}
+							<button
+								type="button"
+								class="text-[11px] text-muted hover:text-foreground"
+								onclick={() => (onlyChanged = !onlyChanged)}
+							>
+								{showOnlyChanged ? `Show all (${tabMods.length})` : 'Only changed'}
+							</button>
+						{/if}
+					</div>
+
+					{@render moduleList(visibleMods)}
 				</div>
 			{:else}
 				<div class="p-10 text-center text-[12px] text-muted">No roles found.</div>
