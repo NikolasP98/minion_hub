@@ -56,6 +56,7 @@ import type { ChatMessage } from '$lib/types/chat';
 import { loadAgentGroups } from '$lib/state/features/agent-groups.svelte';
 import {
   GatewayClient,
+  newTraceparent,
   uuid,
   parseAgentSessionKey,
   type HelloOk,
@@ -390,6 +391,13 @@ export async function wsConnect() {
       // Reconnect scheduled — conn state already updated in onClose
     },
   });
+
+  // Group every gateway RPC from this browser session under one trace id, so the
+  // gateway's per-request SERVER spans (added in request-trace.ts) all share a
+  // trace and read as one session in any OTLP backend. No browser OTel SDK
+  // needed — the shared client stamps each frame's traceparent as a child of
+  // this root. (newTraceparent() with no parent mints a fresh root.)
+  newClient.setParentTraceparent(newTraceparent());
 
   // Register the client in the leaf BEFORE connect() so onOpen (which fires the
   // moment the socket opens, and again on every auto-reconnect) sees it and can
