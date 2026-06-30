@@ -9,7 +9,7 @@
     "@inlang/paraglide-sveltekit": "^0.16.1",
     "@libsql/client": "^0.17.3",
     "@minion-stack/cache": "^0.2.1",
-    "@minion-stack/db": "file:deps/minion-stack-db-0.9.2.tgz",
+    "@minion-stack/db": "file:deps/minion-stack-db-0.9.3.tgz",
     "@minion-stack/design-tokens": "^0.1.0",
     "@minion-stack/shared": "^0.5.0",
     "@minion-stack/ui": "^0.1.0",
