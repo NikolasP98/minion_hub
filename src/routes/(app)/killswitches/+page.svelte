@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { Power, ShieldAlert, Radio, Megaphone, TriangleAlert } from 'lucide-svelte';
   import { Card, Badge, Button, Toggle, EmptyState, PageHeader, Modal } from '$lib/components/ui';
   import { sendRequest } from '$lib/services/gateway-rpc';
@@ -20,10 +19,14 @@
   };
 
   let data = $state<ListResp | null>(null);
-  let loading = $state(true);
+  let loading = $state(false);
   let err = $state<string | null>(null);
   let busy = $state<string | null>(null);
   let confirmKill = $state(false);
+  // Load once the gateway WS is actually connected, and re-load on reconnect.
+  // onMount fires before the handshake completes, so a mount-time call rejects
+  // with "not connected" and would never retry.
+  let loadedForConn = $state(false);
 
   const core = $derived(data?.switches.filter((s) => s.group === 'core') ?? []);
   const channels = $derived(data?.switches.filter((s) => s.group === 'channels') ?? []);
@@ -72,7 +75,16 @@
     future: ShieldAlert,
   };
 
-  onMount(load);
+  $effect(() => {
+    if (conn.connected) {
+      if (!loadedForConn) {
+        loadedForConn = true;
+        void load();
+      }
+    } else {
+      loadedForConn = false; // reset so we reload after a reconnect
+    }
+  });
 </script>
 
 <svelte:head><title>Kill Switches · Minion hub</title></svelte:head>
@@ -87,7 +99,12 @@
   {:else if loading}
     <p class="text-muted-foreground text-sm">Loading…</p>
   {:else if err}
-    <Card padding="lg"><p class="text-destructive text-sm">{err}</p></Card>
+    <Card padding="lg">
+      <div class="flex items-center justify-between gap-4">
+        <p class="text-destructive text-sm">{err}</p>
+        <Button variant="outline" size="sm" onclick={() => load()}>Retry</Button>
+      </div>
+    </Card>
   {:else if data}
     <!-- MASTER -->
     <Card padding="lg" elevation={3}>
