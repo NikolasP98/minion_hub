@@ -108,6 +108,10 @@
     display: grid;
     place-items: center;
     border-radius: 9999px;
+    /* Stay a perfect circle: never let flexbox squash it into a pill, and pin
+       the 1:1 ratio even if a parent constrains one axis. */
+    flex-shrink: 0;
+    aspect-ratio: 1;
     --tw-ring-inset: inset;
     transition:
       box-shadow 250ms ease,
@@ -116,8 +120,15 @@
       background-color 200ms ease;
     outline: none;
   }
+  /* Kill the global square outline; use a round, in-color focus ring that
+     follows the circle (an `outline` on a round element renders as a sharp
+     rectangle in most browsers). currentColor = emerald when live, red when killed. */
   .power:focus-visible {
-    box-shadow: 0 0 0 3px var(--color-ring, #6366f1);
+    outline: none;
+    box-shadow:
+      inset 0 0 0 1px currentColor,
+      0 0 0 3px color-mix(in oklab, currentColor 45%, transparent),
+      0 0 28px -4px currentColor;
   }
   .power:not(:disabled):active {
     transform: scale(0.94);
