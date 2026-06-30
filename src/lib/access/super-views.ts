@@ -5,6 +5,7 @@ export const SUPER_VIEWS = [
   { key: 'orgs.all', route: '/orgs', navLabel: 'All Orgs' },
   { key: 'config.editor', route: '/config', navLabel: 'Config' },
   { key: 'terminal.shell', route: '/terminal', navLabel: 'Terminal' },
+  { key: 'killswitches.view', route: '/killswitches', navLabel: 'Kill Switches' },
 ] as const;
 
 export type SuperViewKey = (typeof SUPER_VIEWS)[number]['key'];

@@ -6,6 +6,7 @@
     Activity,
     Store,
     SquareTerminal,
+    Power,
     Settings,
     PanelLeftClose,
     PanelLeft,
@@ -50,6 +51,7 @@
       { href: '/reliability', label: m.nav_reliability(), icon: Activity, show: showReliability },
       { href: '/marketplace', label: m.nav_marketplace(), icon: Store, show: canClient('marketplace.view') },
       { href: '/terminal', label: m.nav_terminal(), icon: SquareTerminal, show: showTerminal },
+      { href: '/killswitches', label: m.nav_killSwitches(), icon: Power, show: canClient('killswitches.view') },
     ].filter((t) => t.show),
   );
 
