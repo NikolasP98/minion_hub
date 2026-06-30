@@ -1,0 +1,56 @@
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import { ArrowRight, Trophy } from 'lucide-svelte';
+
+  type Row = { modelId: string; winRate: number; rankings: number };
+
+  // Reload trigger: bump `refresh` after saving a ranking to re-pull the top models.
+  let { refresh = 0 }: { refresh?: number } = $props();
+
+  let top = $state<Row[]>([]);
+  let loaded = $state(false);
+
+  async function load() {
+    try {
+      const res = await fetch('/api/workshop/leaderboard');
+      if (res.ok) {
+        const rows = ((await res.json()) as { rows: Row[] }).rows;
+        top = rows.filter((r) => r.rankings > 0).slice(0, 3);
+      }
+    } catch {
+      /* strip is best-effort */
+    } finally {
+      loaded = true;
+    }
+  }
+
+  onMount(load);
+  $effect(() => {
+    if (refresh > 0) void load();
+  });
+</script>
+
+<div class="flex items-center gap-3 rounded border border-border bg-bg2 px-3 h-10">
+  <Trophy size={14} class="text-accent/70 shrink-0" />
+  <div class="flex-1 min-w-0 flex items-center gap-3 overflow-x-auto">
+    {#if !loaded}
+      <span class="text-[10px] font-mono text-muted-strong">…</span>
+    {:else if top.length === 0}
+      <span class="text-[10px] font-mono text-muted-strong">No rankings yet — rank a comparison to build the leaderboard.</span>
+    {:else}
+      {#each top as r, i (r.modelId)}
+        <span class="text-[11px] font-mono whitespace-nowrap">
+          <span class="text-muted-strong">{i + 1}.</span>
+          <span class="text-foreground">{r.modelId}</span>
+          <span class="text-accent">{(r.winRate * 100).toFixed(0)}%</span>
+        </span>
+      {/each}
+    {/if}
+  </div>
+  <a
+    href="/agents/workshop/leaderboard"
+    class="shrink-0 inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider text-muted hover:text-foreground transition-colors"
+  >
+    Leaderboard <ArrowRight size={12} />
+  </a>
+</div>

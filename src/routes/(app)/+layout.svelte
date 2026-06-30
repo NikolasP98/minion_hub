@@ -17,9 +17,13 @@
 
 	// Workshop editor (a specific save, /agents/workshop/<id>) runs in an immersive
 	// focus mode: the global left rail collapses so the spatial canvas is the hero.
-	// The gallery (/agents/workshop) keeps the rail. WorkshopToolbar's "↩ Gallery"
-	// link is the escape hatch.
-	const immersive = $derived(/^\/agents\/workshop\/[^/]+/.test(page.url.pathname));
+	// The gallery (/agents/workshop) and the experiment subtabs (compare/groupchat/
+	// leaderboard) keep the rail — only a save-id path is immersive.
+	const WORKSHOP_NON_IMMERSIVE = /^\/agents\/workshop\/(compare|groupchat|leaderboard)(\/|$)/;
+	const immersive = $derived(
+		/^\/agents\/workshop\/[^/]+/.test(page.url.pathname) &&
+			!WORKSHOP_NON_IMMERSIVE.test(page.url.pathname),
+	);
 
 	onMount(() => {
 		void ensurePermissions();
