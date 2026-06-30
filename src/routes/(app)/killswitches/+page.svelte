@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { Power, ShieldAlert, Radio, Megaphone, TriangleAlert } from 'lucide-svelte';
-  import { Card, Badge, Button, Toggle, EmptyState, PageHeader, Modal } from '$lib/components/ui';
+  import { Power, CircleCheck, TriangleAlert, ChevronDown, Radio, Megaphone, Clock } from 'lucide-svelte';
+  import { Card, Badge, Button, EmptyState, PageHeader } from '$lib/components/ui';
   import { sendRequest } from '$lib/services/gateway-rpc';
   import { conn } from '$lib/state/gateway';
+  import PowerSwitch from './PowerSwitch.svelte';
 
   type Group = 'core' | 'channels' | 'future';
   type KillSwitch = {
@@ -22,16 +23,22 @@
   let loading = $state(false);
   let err = $state<string | null>(null);
   let busy = $state<string | null>(null);
-  let confirmKill = $state(false);
-  // Load once the gateway WS is actually connected, and re-load on reconnect.
-  // onMount fires before the handshake completes, so a mount-time call rejects
-  // with "not connected" and would never retry.
+  let showFuture = $state(false);
+  // Load once the gateway WS is connected, and re-load on reconnect. onMount
+  // fires before the handshake completes → a mount-time call rejects with
+  // "not connected" and would never retry.
   let loadedForConn = $state(false);
 
-  const core = $derived(data?.switches.filter((s) => s.group === 'core') ?? []);
+  // Channels lead Core: by blast radius, the human-facing surface matters most.
   const channels = $derived(data?.switches.filter((s) => s.group === 'channels') ?? []);
+  const core = $derived(data?.switches.filter((s) => s.group === 'core') ?? []);
   const future = $derived(data?.switches.filter((s) => s.group === 'future') ?? []);
   const masterLive = $derived(data?.master.enabled ?? false);
+
+  // Glanceable summary over the real (available) switches.
+  const real = $derived(data?.switches.filter((s) => s.available) ?? []);
+  const liveCount = $derived(real.filter((s) => s.enabled).length);
+  const killed = $derived(real.filter((s) => !s.enabled));
 
   async function load() {
     loading = true;
@@ -50,30 +57,11 @@
     try {
       data = (await sendRequest('killswitch.set', { id, enabled })) as ListResp;
     } catch (e) {
-      err = e instanceof Error ? e.message : 'Toggle failed';
+      err = e instanceof Error ? e.message : 'Action failed';
     } finally {
       busy = null;
     }
   }
-
-  function onMasterToggle(next: boolean) {
-    if (!next) {
-      confirmKill = true; // killing the whole system → confirm
-    } else {
-      void setSwitch('master', true);
-    }
-  }
-
-  function confirmMasterKill() {
-    confirmKill = false;
-    void setSwitch('master', false);
-  }
-
-  const groupIcon: Record<Group, typeof Radio> = {
-    core: Megaphone,
-    channels: Radio,
-    future: ShieldAlert,
-  };
 
   $effect(() => {
     if (conn.connected) {
@@ -89,16 +77,23 @@
 
 <svelte:head><title>Kill Switches · Minion hub</title></svelte:head>
 
-<div class="mx-auto w-full max-w-3xl px-4 py-6">
-  <PageHeader title="Kill Switches" subtitle="Owner-only runtime controls. Switches are live and reset to config defaults on gateway restart.">
+<div class="mx-auto w-full max-w-6xl px-4 py-6">
+  <PageHeader
+    title="Kill Switches"
+    subtitle="Owner-only runtime controls. Switches are live and reset to config defaults on gateway restart."
+  >
     {#snippet leading()}<Power size={20} />{/snippet}
   </PageHeader>
 
   {#if !conn.connected}
-    <EmptyState tone="neutral" title="Gateway not connected" description="Connect to a gateway to view and control kill switches." />
-  {:else if loading}
+    <EmptyState
+      tone="neutral"
+      title="Gateway not connected"
+      description="Switch states are unknown until the gateway connects."
+    />
+  {:else if loading && !data}
     <p class="text-muted-foreground text-sm">Loading…</p>
-  {:else if err}
+  {:else if err && !data}
     <Card padding="lg">
       <div class="flex items-center justify-between gap-4">
         <p class="text-destructive text-sm">{err}</p>
@@ -106,77 +101,237 @@
       </div>
     </Card>
   {:else if data}
-    <!-- MASTER -->
-    <Card padding="lg" elevation={3}>
-      <div class="flex items-center justify-between gap-4">
-        <div class="flex items-center gap-3">
-          <div class="grid size-10 place-items-center rounded-full {masterLive ? 'bg-emerald-500/15 text-emerald-500' : 'bg-destructive/15 text-destructive'}">
-            <Power size={20} />
-          </div>
-          <div>
-            <div class="flex items-center gap-2">
-              <h2 class="text-base font-semibold">Master switch</h2>
-              <Badge variant="semantic" value={masterLive ? 'success' : 'error'}>{masterLive ? 'System live' : 'System killed'}</Badge>
-            </div>
-            <p class="text-muted-foreground text-sm">Kills all channels, TTS and heartbeats at once.</p>
-          </div>
-        </div>
-        <Toggle
-          checked={masterLive}
-          disabled={busy === 'master'}
-          label="Master switch"
-          onchange={onMasterToggle}
-        />
+    <!-- GLANCEABLE STATUS — answers "is everything live?" in one line -->
+    {#if killed.length === 0}
+      <div class="status-band live">
+        <CircleCheck size={18} />
+        <span class="font-medium">All systems live</span>
+        <span class="text-muted-foreground">· {liveCount}/{real.length} active</span>
       </div>
-      {#if !masterLive}
-        <div class="text-destructive mt-3 flex items-center gap-2 text-sm">
-          <TriangleAlert size={15} /> System is killed — channels, TTS and heartbeats are stopped.
-        </div>
-      {/if}
-    </Card>
+    {:else}
+      <div class="status-band off">
+        <TriangleAlert size={18} />
+        <span class="font-medium">{killed.length} {killed.length === 1 ? 'switch' : 'switches'} off</span>
+        <span class="off-names">· {killed.map((s) => s.label).join(', ')}</span>
+      </div>
+    {/if}
 
-    {#each [['core', 'Core services', core], ['channels', 'Channels', channels], ['future', 'Future (not yet wired)', future]] as const as [g, heading, list]}
+    <!-- MASTER — the hero. Hold the button to kill everything; tap to restore. -->
+    <section
+      class="master mt-4"
+      class:master-killed={!masterLive}
+    >
+      <PowerSwitch
+        size="lg"
+        live={masterLive}
+        busy={busy === 'master'}
+        holdToKill
+        label="Master — all systems"
+        onactivate={(next) => setSwitch('master', next)}
+      />
+      <div class="min-w-0">
+        <div class="flex items-center gap-2">
+          <h2 class="text-lg font-semibold">Master</h2>
+          <Badge variant="semantic" value={masterLive ? 'success' : 'error'}>
+            {masterLive ? 'System live' : 'System killed'}
+          </Badge>
+        </div>
+        <p class="text-muted-foreground mt-0.5 text-sm">
+          {#if masterLive}
+            Cuts <strong class="text-foreground">all channels, TTS &amp; heartbeats</strong> at once.
+            Hold the button to confirm.
+          {:else}
+            System is killed — channels, TTS and heartbeats are stopped. Press to restore.
+          {/if}
+        </p>
+      </div>
+    </section>
+
+    <!-- GALLERY: Channels first (blast radius), then Core -->
+    {#each [['channels', 'Channels', Radio, channels], ['core', 'Core services', Megaphone, core]] as const as [g, heading, Icon, list] (g)}
       {#if list.length}
-        {@const Icon = groupIcon[g]}
-        <section class="mt-6">
-          <div class="text-muted-foreground mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide">
+        <section class="mt-7">
+          <div class="group-head">
             <Icon size={13} />{heading}
           </div>
-          <Card padding="none">
-            <ul class="divide-border divide-y">
-              {#each list as s (s.id)}
-                <li class="flex items-center justify-between gap-4 px-4 py-3" class:opacity-55={!s.available}>
-                  <div class="min-w-0">
-                    <div class="flex items-center gap-2">
-                      <span class="truncate text-sm font-medium">{s.label}</span>
-                      {#if !s.available}<Badge>Coming soon</Badge>{/if}
-                    </div>
-                    {#if s.description}<p class="text-muted-foreground truncate text-xs">{s.description}</p>{/if}
-                  </div>
-                  <Toggle
-                    checked={s.enabled}
-                    disabled={!s.available || busy === s.id}
-                    label={s.label}
-                    onchange={(next) => setSwitch(s.id, next)}
-                  />
-                </li>
-              {/each}
-            </ul>
-          </Card>
+          <div class="gallery">
+            {#each list as s (s.id)}
+              <div class="tile">
+                <Badge
+                  class="absolute right-3 top-3"
+                  variant="semantic"
+                  value={s.enabled ? 'success' : 'error'}
+                >
+                  {s.enabled ? 'Live' : 'Off'}
+                </Badge>
+                <PowerSwitch
+                  live={s.enabled}
+                  busy={busy === s.id}
+                  label={s.label}
+                  onactivate={(next) => setSwitch(s.id, next)}
+                />
+                <div class="tile-label">{s.label}</div>
+                {#if s.description}<div class="tile-sub">{s.description}</div>{/if}
+              </div>
+            {/each}
+          </div>
         </section>
       {/if}
     {/each}
+
+    <!-- FUTURE — collapsed by default; signposting, not daily status -->
+    {#if future.length}
+      <section class="mt-7">
+        <button
+          type="button"
+          class="group-head disclosure"
+          aria-expanded={showFuture}
+          onclick={() => (showFuture = !showFuture)}
+        >
+          <Clock size={13} />
+          Not yet wired ({future.length})
+          <ChevronDown size={14} class="chev {showFuture ? 'open' : ''}" />
+        </button>
+        {#if showFuture}
+          <div class="gallery">
+            {#each future as s (s.id)}
+              <div class="tile inert">
+                <Badge class="absolute right-3 top-3">Soon</Badge>
+                <PowerSwitch live available={false} label={s.label} onactivate={() => {}} />
+                <div class="tile-label">{s.label}</div>
+                {#if s.description}<div class="tile-sub">{s.description}</div>{/if}
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </section>
+    {/if}
+
+    {#if err}
+      <p class="text-destructive mt-4 text-sm">{err}</p>
+    {/if}
   {/if}
 </div>
 
-<Modal bind:open={confirmKill} size="sm" title="Kill the whole system?">
-  <p class="text-sm">
-    This stops <strong>all channels</strong>, text-to-speech and heartbeats immediately. Inbound and
-    outbound messaging will halt until you flip the master switch back on. No data is deleted and no
-    channel is logged out.
-  </p>
-  {#snippet footer()}
-    <Button variant="ghost" onclick={() => (confirmKill = false)}>Cancel</Button>
-    <Button variant="danger" onclick={confirmMasterKill}>Kill system</Button>
-  {/snippet}
-</Modal>
+<style>
+  /* Glanceable status band */
+  .status-band {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-radius: var(--radius, 0.75rem);
+    padding: 0.65rem 1rem;
+    font-size: 0.875rem;
+    border: 1px solid transparent;
+  }
+  .status-band.live {
+    color: var(--color-success, #34d399);
+    background: color-mix(in oklab, var(--color-success, #10b981) 10%, transparent);
+    border-color: color-mix(in oklab, var(--color-success, #10b981) 25%, transparent);
+  }
+  .status-band.off {
+    color: var(--color-warning, #f59e0b);
+    background: color-mix(in oklab, var(--color-warning, #f59e0b) 12%, transparent);
+    border-color: color-mix(in oklab, var(--color-warning, #f59e0b) 30%, transparent);
+  }
+  .off-names {
+    color: var(--color-muted-foreground, #a1a1aa);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Master hero band */
+  .master {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    border-radius: var(--radius-lg, 1rem);
+    padding: 1.25rem 1.5rem;
+    background: var(--color-card, #18181b);
+    box-shadow:
+      inset 0 0 0 1px color-mix(in oklab, var(--color-success, #10b981) 28%, transparent),
+      0 1px 2px rgb(0 0 0 / 0.3);
+  }
+  .master.master-killed {
+    box-shadow:
+      inset 0 0 0 1px color-mix(in oklab, var(--color-destructive, #ef4444) 35%, transparent),
+      0 1px 2px rgb(0 0 0 / 0.3);
+  }
+
+  /* Group headers */
+  .group-head {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 0.75rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-muted-foreground, #a1a1aa);
+  }
+  .disclosure {
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 0;
+  }
+  .disclosure :global(.chev) {
+    transition: transform 200ms ease;
+  }
+  .disclosure :global(.chev.open) {
+    transform: rotate(180deg);
+  }
+
+  /* Gallery grid */
+  .gallery {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+  @media (min-width: 640px) {
+    .gallery {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+  @media (min-width: 1024px) {
+    .gallery {
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.25rem;
+    }
+  }
+  @media (min-width: 1280px) {
+    .gallery {
+      grid-template-columns: repeat(4, 1fr);
+    }
+  }
+
+  /* Tile — kiosk front-panel: indicator button centered, label beneath */
+  .tile {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.85rem;
+    border-radius: var(--radius-lg, 1rem);
+    border: 1px solid var(--color-border, #27272a);
+    background: var(--color-card, #18181b);
+    padding: 1.5rem 1rem 1.25rem;
+    text-align: center;
+  }
+  .tile.inert {
+    opacity: 0.55;
+    border-style: dashed;
+  }
+  .tile-label {
+    font-size: 0.9rem;
+    font-weight: 500;
+    line-height: 1.2;
+  }
+  .tile-sub {
+    font-size: 0.75rem;
+    color: var(--color-muted-foreground, #a1a1aa);
+    line-height: 1.2;
+  }
+</style>
