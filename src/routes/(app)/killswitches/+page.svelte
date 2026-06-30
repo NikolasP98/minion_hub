@@ -110,8 +110,8 @@
       </div>
     {:else}
       <div class="status-band off">
-        <TriangleAlert size={18} />
-        <span class="font-medium">{killed.length} {killed.length === 1 ? 'switch' : 'switches'} off</span>
+        <TriangleAlert size={18} class="shrink-0" />
+        <span class="count">{killed.length} {killed.length === 1 ? 'switch' : 'switches'} off</span>
         <span class="off-names">· {killed.map((s) => s.label).join(', ')}</span>
       </div>
     {/if}
@@ -157,13 +157,6 @@
           <div class="gallery">
             {#each list as s (s.id)}
               <div class="tile">
-                <Badge
-                  class="absolute right-3 top-3"
-                  variant="semantic"
-                  value={s.enabled ? 'success' : 'error'}
-                >
-                  {s.enabled ? 'Live' : 'Off'}
-                </Badge>
                 <PowerSwitch
                   live={s.enabled}
                   busy={busy === s.id}
@@ -234,7 +227,16 @@
     background: color-mix(in oklab, var(--color-warning, #f59e0b) 12%, transparent);
     border-color: color-mix(in oklab, var(--color-warning, #f59e0b) 30%, transparent);
   }
+  .status-band {
+    flex-wrap: nowrap;
+  }
+  .status-band .count {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
   .off-names {
+    flex: 1;
+    min-width: 0;
     color: var(--color-muted-foreground, #a1a1aa);
     overflow: hidden;
     text-overflow: ellipsis;
