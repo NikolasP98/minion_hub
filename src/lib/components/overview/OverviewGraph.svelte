@@ -58,6 +58,13 @@
   let _renderer: Renderer | null = null;
   let _sim: Simulation | null = null;
   let _ready = false;
+  // Signature of the last-built graph. The rebuild effect fires on every prop
+  // *reference* change — org churns on any layout `invalidate()` (e.g. "set as
+  // home"), agents churn on every gateway heartbeat — but most of those don't
+  // change the actual graph. Skipping the rebuild when the signature is
+  // unchanged avoids throwing away node positions and re-running physics from
+  // scratch, which read as a flicker/re-layout snap.
+  let _graphSig = '';
   // Current layout rotation (radians); set when an area is selected, 0 otherwise.
   let _rotation = 0;
   // Eased rotation tween so the pivot (and the recovery on deselect) sweeps
@@ -115,6 +122,11 @@
   function rebuild() {
     if (!_renderer || !_sim) return;
     const { nodes, edges } = buildGraph({ org, areas, agents, members, subscriptions });
+    // Bail if the graph is identical to what's already rendered — buildGraph is
+    // deterministic, so an unchanged structure produces an unchanged signature.
+    const sig = JSON.stringify(nodes) + JSON.stringify(edges);
+    if (sig === _graphSig) return;
+    _graphSig = sig;
     nodeCount = nodes.length;
     metaById = new Map(nodes.map((nd) => [nd.id, nd]));
 
@@ -197,6 +209,7 @@
       _renderer = renderer;
 
       const { nodes, edges } = buildGraph({ org, areas, agents, members, subscriptions });
+      _graphSig = JSON.stringify(nodes) + JSON.stringify(edges);
       nodeCount = nodes.length;
       metaById = new Map(nodes.map((nd) => [nd.id, nd]));
 

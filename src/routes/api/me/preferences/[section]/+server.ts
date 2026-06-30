@@ -3,6 +3,7 @@ import { json, error } from '@sveltejs/kit';
 import { requireAuth } from '$server/auth/authorize';
 import { getCoreDb } from '$server/db/pg-client';
 import { upsertUserPreference } from '$server/services/user-preferences.service';
+import { invalidateLandingCache } from '$server/landing-cache';
 
 const VALID_SECTIONS = new Set([
   'theme',
@@ -37,5 +38,8 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
   }
 
   await upsertUserPreference(getCoreDb(), user.supabaseId, section, body.value);
+  // Drop the per-instance landing cache so the next `/` hit reflects the change
+  // immediately instead of redirecting to the old home for up to the TTL.
+  if (section === 'landingPage') invalidateLandingCache(user.supabaseId);
   return json({ ok: true });
 };

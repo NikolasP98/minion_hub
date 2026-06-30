@@ -56,9 +56,8 @@
   // The user's chosen landing page (right-click → Set as home). Falls back to
   // /home. Stored per-user in Supabase prefs (section "landingPage").
   const currentHome = $derived(
-    ((page.data as { preferences?: Record<string, unknown> })?.preferences?.landingPage as
-      | string
-      | undefined) ?? '/home',
+    ((page.data as { preferences?: { preferences?: Record<string, unknown> } })?.preferences
+      ?.preferences?.landingPage as string | undefined) ?? '/home',
   );
 
   // Two responsive tiers:

@@ -17,17 +17,8 @@ import { mintWorkforceIdentity } from '$lib/server/workforce-identity';
 import { initCache } from '$lib/server/cache';
 import { getCoreDb } from '$server/db/pg-client';
 import { getUserPreferences } from '$server/services/user-preferences.service';
+import { getCachedLanding, setCachedLanding } from '$server/landing-cache';
 import { apiWriteCapability, hasOrgCapability } from '$server/services/rbac.service';
-
-// M5: `resolveLandingPage` runs a PG SELECT on every `/` hit. The landing-page
-// preference is per-user and changes rarely (a deliberate "Set as home page"
-// action), so a short-TTL per-user cache collapses the repeated SELECT. Bounded
-// so it can't leak; per-instance only — a stale entry self-corrects within the
-// TTL, and the worst case is one extra redirect to the old home page.
-// ponytail: cap at 1000 users; FIFO-evict at capacity.
-const LANDING_CACHE_TTL_MS = 60_000;
-const LANDING_CACHE_MAX = 1000;
-const landingCache = new Map<string, { value: string; expires: number }>();
 
 /**
  * Resolve the landing page for a signed-in user hitting "/". Defaults to
@@ -38,9 +29,8 @@ const landingCache = new Map<string, { value: string; expires: number }>();
 async function resolveLandingPage(supabaseId: string | undefined): Promise<string> {
   const DEFAULT = '/home';
   if (!supabaseId) return DEFAULT;
-  const now = Date.now();
-  const hit = landingCache.get(supabaseId);
-  if (hit && hit.expires > now) return hit.value;
+  const cached = getCachedLanding(supabaseId);
+  if (cached) return cached;
   try {
     const prefs = await getUserPreferences(getCoreDb(), supabaseId);
     const choice = prefs.landingPage;
@@ -53,7 +43,7 @@ async function resolveLandingPage(supabaseId: string | undefined): Promise<strin
       !choice.startsWith('//') &&
       !choice.startsWith('/\\')
     ) {
-      cacheLanding(supabaseId, choice, now);
+      setCachedLanding(supabaseId, choice);
       return choice;
     }
   } catch {
@@ -63,16 +53,8 @@ async function resolveLandingPage(supabaseId: string | undefined): Promise<strin
   }
   // Valid lookup with no (or an unsafe) preference: cache the default so the
   // common "no custom home page" case stops re-querying PG every `/` hit.
-  cacheLanding(supabaseId, DEFAULT, now);
+  setCachedLanding(supabaseId, DEFAULT);
   return DEFAULT;
-}
-
-function cacheLanding(supabaseId: string, value: string, now: number): void {
-  if (landingCache.size >= LANDING_CACHE_MAX) {
-    const oldest = landingCache.keys().next().value;
-    if (oldest !== undefined) landingCache.delete(oldest);
-  }
-  landingCache.set(supabaseId, { value, expires: now + LANDING_CACHE_TTL_MS });
 }
 
 /**
