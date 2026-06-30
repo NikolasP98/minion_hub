@@ -33,10 +33,19 @@ export interface ChannelInput {
   credentials?: Record<string, string>;
   credentialsMeta?: Record<string, string>;
   status?: ChannelStatus;
-  /** Runtime enable/disable. DB-authoritative under the gateway-config migration;
-   * the gateway does not yet read it (observe-only until Phase 3), so setting it
-   * has no runtime effect today — it drives the tracer's mirror-compare. */
+  /** Runtime enable/disable. DB-authoritative — the gateway mirror reads it. */
   enabled?: boolean;
+  /** Reply intent: 'none' = listen-only (ingest, never emit); 'bound' = may reply
+   * where allowFrom matches. DB-authoritative; drives the gateway's listen-only
+   * kill-switch via the mirror. */
+  replies?: 'none' | 'bound';
+  /** DM access list: ['*'] = open (reply to anyone), specific entries = allowlist,
+   * [] = nobody. E.164 with '+'. */
+  allowFrom?: string[];
+  /** Group access list (same semantics as allowFrom, for group chats). */
+  groupAllowFrom?: string[];
+  /** Require an @mention to reply in groups. */
+  requireMention?: boolean;
 }
 
 function encryptCredentials(creds: Record<string, string>): { ciphertext: string; iv: string } {
@@ -81,6 +90,9 @@ export async function listChannels(ctx: ServerCtx) {
     enabled: r.enabled,
     // Derived reply mode (linked-channels restructure): 'none' = receive-only, 'bound' = auto-reply.
     replies: r.replies as 'none' | 'bound',
+    allowFrom: r.allowFrom ?? [],
+    groupAllowFrom: r.groupAllowFrom ?? [],
+    requireMention: r.requireMention ?? false,
     lastError: r.lastError,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
@@ -160,6 +172,10 @@ export async function updateChannel(
   if (input.accountId !== undefined) set.accountId = input.accountId;
   if (input.status !== undefined) set.status = input.status;
   if (input.enabled !== undefined) set.enabled = input.enabled;
+  if (input.replies !== undefined) set.replies = input.replies;
+  if (input.allowFrom !== undefined) set.allowFrom = input.allowFrom;
+  if (input.groupAllowFrom !== undefined) set.groupAllowFrom = input.groupAllowFrom;
+  if (input.requireMention !== undefined) set.requireMention = input.requireMention;
   if (input.credentialsMeta !== undefined)
     set.credentialsMeta = JSON.stringify(input.credentialsMeta);
 

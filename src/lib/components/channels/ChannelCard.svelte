@@ -160,6 +160,69 @@
         }
     }
 
+    // --- Behavior controls (replies + allowFrom → DB; the gateway mirror reads them) ---
+    let behaviorSaving = $state(false);
+    /** Current behavior mode derived from the DB-backed channel row. */
+    const behaviorMode = $derived<'receive' | 'allowlist' | 'open'>(
+        channel.replies === 'none'
+            ? 'receive'
+            : (channel.allowFrom ?? []).includes('*')
+              ? 'open'
+              : 'allowlist',
+    );
+    /** Editable allowlist text (one sender per line), seeded from the row's allowFrom. */
+    // svelte-ignore state_referenced_locally
+    let allowlistText = $state(
+        (channel.allowFrom ?? []).filter((s) => s !== '*').join('\n'),
+    );
+
+    function parseAllowlist(text: string): string[] {
+        return text
+            .split(/[\n,]/)
+            .map((s) => s.trim())
+            .filter(Boolean);
+    }
+
+    /** Persist a behavior change via the same PUT path the enable toggle uses. */
+    async function saveBehavior(body: Record<string, unknown>, label: string) {
+        if (behaviorSaving) return;
+        behaviorSaving = true;
+        try {
+            const res = await fetch(`/api/servers/${serverId}/channels/${channel.id}`, {
+                method: 'PUT',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            if (!res.ok) throw new Error(await res.text());
+            await loadConfig().catch(() => {});
+            toastSuccess(label);
+        } catch (e) {
+            toastError('Update failed', e instanceof Error ? e.message : 'Unknown error');
+        } finally {
+            behaviorSaving = false;
+        }
+    }
+
+    function handleSelectMode(mode: 'receive' | 'allowlist' | 'open') {
+        if (mode === behaviorMode && mode !== 'allowlist') return;
+        if (mode === 'receive') {
+            void saveBehavior({ replies: 'none' }, m.channel_behaviorSavedReceiveOnly());
+        } else if (mode === 'open') {
+            void saveBehavior(
+                { replies: 'bound', allowFrom: ['*'] },
+                m.channel_behaviorSavedOpen(),
+            );
+        }
+        // 'allowlist' is applied via the explicit Save button (needs the list).
+    }
+
+    function handleSaveAllowlist() {
+        void saveBehavior(
+            { replies: 'bound', allowFrom: parseAllowlist(allowlistText) },
+            m.channel_behaviorSavedAllowlist(),
+        );
+    }
+
     async function handleRemoveAccount() {
         if (!isGateway || !gwChannelType || !gwAccountId || removing) return;
         const label = `${gwChannelType}:${gwAccountId}`;
@@ -311,6 +374,53 @@
 
                 <!-- Assignments (route incoming messages from this channel to specific users/sessions) -->
                 <ChannelAssignmentPicker {serverId} channelId={channel.id} />
+
+                <!-- Behavior: how the agent interacts on this linked channel (DB-driven via the mirror) -->
+                {#if isGateway}
+                    <div>
+                        <h4 class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">{m.channel_behaviorTitle()}</h4>
+                        <div class="flex flex-wrap gap-1.5">
+                            <button
+                                type="button"
+                                disabled={behaviorSaving}
+                                onclick={(e) => { e.stopPropagation(); handleSelectMode('receive'); }}
+                                class="text-xs px-2.5 py-1 rounded-md border transition-colors disabled:opacity-50 {behaviorMode === 'receive' ? 'bg-primary text-primary-foreground border-primary' : 'bg-bg2 border-border hover:bg-bg3'}"
+                            >{m.channel_behaviorReceiveOnly()}</button>
+                            <button
+                                type="button"
+                                disabled={behaviorSaving}
+                                onclick={(e) => { e.stopPropagation(); handleSelectMode('allowlist'); }}
+                                class="text-xs px-2.5 py-1 rounded-md border transition-colors disabled:opacity-50 {behaviorMode === 'allowlist' ? 'bg-primary text-primary-foreground border-primary' : 'bg-bg2 border-border hover:bg-bg3'}"
+                            >{m.channel_behaviorAllowlist()}</button>
+                            <button
+                                type="button"
+                                disabled={behaviorSaving}
+                                onclick={(e) => { e.stopPropagation(); handleSelectMode('open'); }}
+                                class="text-xs px-2.5 py-1 rounded-md border transition-colors disabled:opacity-50 {behaviorMode === 'open' ? 'bg-primary text-primary-foreground border-primary' : 'bg-bg2 border-border hover:bg-bg3'}"
+                            >{m.channel_behaviorOpen()}</button>
+                        </div>
+                        <p class="text-[10px] text-muted-foreground mt-1.5">{m.channel_behaviorHint()}</p>
+                        {#if behaviorMode === 'allowlist'}
+                            <div class="mt-2 space-y-1.5">
+                                <label class="text-[10px] text-muted-foreground" for={`allowlist-${channel.id}`}>{m.channel_behaviorAllowlistLabel()}</label>
+                                <textarea
+                                    id={`allowlist-${channel.id}`}
+                                    bind:value={allowlistText}
+                                    rows="3"
+                                    onclick={(e) => e.stopPropagation()}
+                                    placeholder="+51999999999"
+                                    class="w-full text-xs bg-bg2 border border-border rounded-md p-2 font-mono resize-y"
+                                ></textarea>
+                                <button
+                                    type="button"
+                                    disabled={behaviorSaving}
+                                    onclick={(e) => { e.stopPropagation(); handleSaveAllowlist(); }}
+                                    class="text-xs px-3 py-1 rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                                >{m.channel_behaviorSave()}</button>
+                            </div>
+                        {/if}
+                    </div>
+                {/if}
 
                 <!-- Edit / Re-authenticate / Power toggle -->
                 <div>

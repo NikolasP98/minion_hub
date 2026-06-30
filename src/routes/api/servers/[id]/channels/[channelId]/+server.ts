@@ -9,6 +9,7 @@ import {
 import { getServerCtx } from '$server/auth/core-ctx';
 import { ensureGatewayWhatsappAccountSafe } from '$server/services/org-config-sync.service';
 import { publishChannel, signalChannelChange } from '$server/services/channel-publish.service';
+import { requireOrgCapability } from '$server/services/rbac.service';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
   const ctx = await getServerCtx(locals, params.id!);
@@ -30,6 +31,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 export const PUT: RequestHandler = async ({ locals, params, request }) => {
   const ctx = await getServerCtx(locals, params.id!);
   if (!ctx) throw error(401);
+  await requireOrgCapability(locals, 'channels', 'edit');
   try {
     const existing = await getChannel(ctx, params.channelId!);
     if (!existing) throw error(404, 'Channel not found');
@@ -46,6 +48,29 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
       input.status = body.status;
     }
     if (typeof body.enabled === 'boolean') input.enabled = body.enabled;
+    // Behavior controls (DB-authoritative; the gateway mirror reads these).
+    if (body.replies !== undefined) {
+      if (body.replies !== 'none' && body.replies !== 'bound') {
+        throw error(400, `Invalid replies: ${body.replies} (expected 'none' | 'bound')`);
+      }
+      input.replies = body.replies;
+    }
+    if (body.allowFrom !== undefined) {
+      if (!Array.isArray(body.allowFrom) || body.allowFrom.some((x: unknown) => typeof x !== 'string')) {
+        throw error(400, 'allowFrom must be a string[]');
+      }
+      input.allowFrom = body.allowFrom;
+    }
+    if (body.groupAllowFrom !== undefined) {
+      if (
+        !Array.isArray(body.groupAllowFrom) ||
+        body.groupAllowFrom.some((x: unknown) => typeof x !== 'string')
+      ) {
+        throw error(400, 'groupAllowFrom must be a string[]');
+      }
+      input.groupAllowFrom = body.groupAllowFrom;
+    }
+    if (typeof body.requireMention === 'boolean') input.requireMention = body.requireMention;
     if (body.credentials !== undefined) input.credentials = body.credentials;
     if (body.credentialsMeta !== undefined) input.credentialsMeta = body.credentialsMeta;
 
@@ -78,6 +103,7 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
 export const DELETE: RequestHandler = async ({ locals, params }) => {
   const ctx = await getServerCtx(locals, params.id!);
   if (!ctx) throw error(401);
+  await requireOrgCapability(locals, 'channels', 'delete');
   try {
     // Capture type+accountId before the row is gone, so we can fire the change signal
     // afterward (publishChannel can't — it reads the now-deleted row).

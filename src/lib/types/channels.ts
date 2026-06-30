@@ -19,6 +19,12 @@ export interface Channel {
   enabled?: boolean;
   /** Derived reply mode: 'none' = receive-only, 'bound' = auto-reply. */
   replies?: 'none' | 'bound';
+  /** DM access list: ['*'] = open, specific = allowlist, [] = nobody. */
+  allowFrom?: string[];
+  /** Group access list (same semantics as allowFrom). */
+  groupAllowFrom?: string[];
+  /** Require @mention to reply in groups. */
+  requireMention?: boolean;
   /** Last connection error recorded against the DB row. */
   lastError?: string | null;
   gwConnected?: boolean;
