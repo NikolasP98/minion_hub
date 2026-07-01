@@ -104,7 +104,7 @@
   },
   "scripts": {
     "i18n:compile": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide",
-    "dev": "./infisical-dev.sh vite dev || vite dev",
+    "dev": "NODE_OPTIONS=--disable-warning=DEP0205 vite dev",
     "build": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide && vite build",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
