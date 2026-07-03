@@ -21,6 +21,7 @@ import { randomUUID } from 'node:crypto';
 const env = process.env;
 
 import type { PluginUiManifestOccupant } from '$lib/plugins/plugin-types';
+import { hubBaseUrl } from '$server/config/urls';
 
 const DEFAULT_TIMEOUT_MS = 8000;
 
@@ -110,7 +111,7 @@ async function gatewayCallWithCreds<T = unknown>(
   const origin =
     env.MINION_HUB_ORIGIN ||
     (env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${env.VERCEL_PROJECT_PRODUCTION_URL}` : '') ||
-    'https://hub.minion-ai.org';
+    hubBaseUrl();
 
   return new Promise<T>((resolve, reject) => {
     const ws = new WebSocket(url, { headers: { Origin: origin } });

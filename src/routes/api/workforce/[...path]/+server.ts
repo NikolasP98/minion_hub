@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { env } from '$env/dynamic/private';
+import { baseUrl } from '$lib/server/workforce-fetch';
 import type { RequestHandler } from './$types';
 
 const HOP_BY_HOP = new Set(['cookie', 'host', 'connection', 'content-length', 'transfer-encoding', 'te', 'trailer', 'upgrade']);
@@ -8,8 +8,7 @@ const handler: RequestHandler = async ({ request, params, locals, url }) => {
 	const identity = locals.workforceIdentity;
 	if (!identity) throw error(401, 'unauthenticated');
 
-	const base = env.WORKFORCE_INTERNAL_URL ?? env.PAPERCLIP_INTERNAL_URL ?? 'http://workforce:3200';
-	const target = new URL(`${base}/api/${params.path ?? ''}`);
+	const target = new URL(`${baseUrl()}/api/${params.path ?? ''}`);
 	for (const [k, v] of url.searchParams) target.searchParams.set(k, v);
 
 	const forwardedHeaders: Record<string, string> = {};

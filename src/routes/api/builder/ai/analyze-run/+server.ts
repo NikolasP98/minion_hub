@@ -2,6 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
 import { env } from '$env/dynamic/private';
+import { hubBaseUrl } from '$server/config/urls';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const DEFAULT_MODEL = 'anthropic/claude-sonnet-4';
@@ -111,7 +112,7 @@ Include top 3 actionable recommendations for improvement.`;
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
-        'HTTP-Referer': 'https://hub.minion-ai.org',
+        'HTTP-Referer': hubBaseUrl(),
         'X-Title': 'Minion Hub Builder - Run Analysis',
       },
       body: JSON.stringify({

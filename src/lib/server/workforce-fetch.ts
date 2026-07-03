@@ -8,7 +8,7 @@ import { mintWorkforceIdentity } from './workforce-identity';
  * name; `PAPERCLIP_INTERNAL_URL` is read as a compat fallback during the
  * paperclip→workforce rename so the env cutover has no outage window.
  */
-function baseUrl(): string {
+export function baseUrl(): string {
 	return env.WORKFORCE_INTERNAL_URL ?? env.PAPERCLIP_INTERNAL_URL ?? 'http://workforce:3200';
 }
 

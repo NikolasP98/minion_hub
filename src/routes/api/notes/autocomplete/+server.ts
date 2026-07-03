@@ -3,6 +3,7 @@ import { json, error } from '@sveltejs/kit';
 import { generateText } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 import { env } from '$env/dynamic/private';
+import { hubBaseUrl } from '$server/config/urls';
 import { requireAuth } from '$server/auth/authorize';
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
@@ -34,7 +35,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   const openrouter = createOpenAI({
     baseURL: OPENROUTER_BASE_URL,
     apiKey,
-    headers: { 'HTTP-Referer': 'https://hub.minion-ai.org', 'X-Title': 'Minion Hub - Notes Autofill' },
+    headers: { 'HTTP-Referer': hubBaseUrl(), 'X-Title': 'Minion Hub - Notes Autofill' },
   });
   const model = openrouter(DEFAULT_MODEL);
 

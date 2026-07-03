@@ -7,3 +7,4 @@ export const PUBLIC_SUPABASE_URL = process.env.PUBLIC_SUPABASE_URL ?? 'http://lo
 export const PUBLIC_SUPABASE_ANON_KEY = process.env.PUBLIC_SUPABASE_ANON_KEY ?? 'test-anon-key';
 export const PUBLIC_POSTHOG_KEY = process.env.PUBLIC_POSTHOG_KEY ?? '';
 export const PUBLIC_POSTHOG_HOST = process.env.PUBLIC_POSTHOG_HOST ?? '';
+export const PUBLIC_DEFAULT_ORG_SLUG = process.env.PUBLIC_DEFAULT_ORG_SLUG ?? '';

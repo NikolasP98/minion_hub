@@ -11,12 +11,16 @@
  * resolved dynamically by slug from the user's organization list — never
  * hardcoded — so this keeps working if the underlying UUIDs change.
  */
+import { PUBLIC_DEFAULT_ORG_SLUG } from '$env/static/public';
 
 /** Org slugs (stable) used to map the name rule onto concrete org ids. */
-export const FACES_ORG_SLUG = 'faces-sculptors';
+export const FACES_ORG_SLUG = PUBLIC_DEFAULT_ORG_SLUG || 'faces-sculptors';
 export const MINION_ORG_SLUG = 'minion';
 
-const FACES_RE = /faces/i;
+// Derived from the slug's first hyphen-separated segment so the default slug
+// ('faces-sculptors') reproduces the original hardcoded /faces/i behavior
+// (bare "faces" substring, case-insensitive) in agent name/id.
+const FACES_RE = new RegExp(FACES_ORG_SLUG.split('-')[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
 
 /** A minimal org shape — the subset of `page.data.organizations` we need. */
 export interface OrgRef {

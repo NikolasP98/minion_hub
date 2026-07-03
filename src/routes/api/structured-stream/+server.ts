@@ -3,6 +3,7 @@ import { error } from '@sveltejs/kit';
 import { streamObject } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 import { env } from '$env/dynamic/private';
+import { hubBaseUrl } from '$server/config/urls';
 import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
 import { SCHEMA_MAP, type SchemaType } from '$lib/schemas/structured-response';
 
@@ -38,7 +39,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     baseURL: OPENROUTER_BASE_URL,
     apiKey,
     headers: {
-      'HTTP-Referer': 'https://hub.minion-ai.org',
+      'HTTP-Referer': hubBaseUrl(),
       'X-Title': 'Minion Hub - Structured Stream',
     },
   });

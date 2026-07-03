@@ -1,5 +1,6 @@
 import { env } from '$env/dynamic/private';
 import { Resend } from 'resend';
+import { hubBaseUrl } from '$server/config/urls';
 
 let _resend: Resend | null = null;
 
@@ -94,7 +95,7 @@ export async function sendJoinRequestEmail(params: JoinRequestEmailParams): Prom
     return;
   }
   const from = env.RESEND_FROM ?? 'Minion Hub <noreply@minion-ai.org>';
-  const reviewUrl = `${env.PUBLIC_APP_URL ?? 'https://hub.minion-ai.org'}/users/join-requests`;
+  const reviewUrl = `${hubBaseUrl()}/users/join-requests`;
   const html = `
 <!DOCTYPE html><html><body style="margin:0;background:#0a0a0f;font-family:-apple-system,Segoe UI,Roboto,sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#0a0a0f;padding:40px 20px"><tr><td align="center">

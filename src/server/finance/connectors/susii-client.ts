@@ -1,4 +1,6 @@
-const DEFAULT_BASE = 'https://api.susii.com';
+import { env } from '$env/dynamic/private';
+
+const DEFAULT_BASE = env.SUSII_API_BASE || 'https://api.susii.com';
 
 /** Per-request timeout — a hung SUSII response aborts instead of parking the worker forever. */
 const REQUEST_TIMEOUT_MS = 30_000;

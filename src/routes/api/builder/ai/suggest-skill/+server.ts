@@ -2,6 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
 import { env } from '$env/dynamic/private';
+import { hubBaseUrl } from '$server/config/urls';
 import { getToolInfo } from '$lib/data/tool-manifest';
 
 const MODEL_PRICE_TABLE: Record<string, { inputPerMillion: number; outputPerMillion: number }> = {
@@ -161,7 +162,7 @@ Design a complete chapter pipeline for this skill. Include condition nodes where
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
-        'HTTP-Referer': 'https://hub.minion-ai.org',
+        'HTTP-Referer': hubBaseUrl(),
         'X-Title': 'Minion Hub Builder',
       },
       body: JSON.stringify({
