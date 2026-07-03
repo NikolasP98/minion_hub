@@ -223,6 +223,74 @@
         );
     }
 
+    // --- WhatsApp markOnline (transport knob — source of truth is gateway.json,
+    // NOT the DB mirror; config.patch is the correct durable path here). ---
+    let markOnlineSaving = $state(false);
+    const markOnlineValue = $derived(
+        Boolean(
+            gwAccountId &&
+                (
+                    (configState.current?.channels as
+                        | Record<string, { accounts?: Record<string, { markOnline?: boolean }> }>
+                        | undefined)?.whatsapp?.accounts?.[gwAccountId]
+                )?.markOnline,
+        ),
+    );
+
+    async function handleToggleMarkOnline() {
+        if (!gwAccountId || markOnlineSaving) return;
+        const next = !markOnlineValue;
+        if (typeof window !== 'undefined' && !window.confirm(m.channel_markOnlineConfirm())) return;
+        markOnlineSaving = true;
+        try {
+            if (!configState.baseHash) await loadConfig();
+            if (!configState.baseHash) {
+                toastError('Update failed', 'Could not load config — try refreshing the page.');
+                return;
+            }
+            const patch = { channels: { whatsapp: { accounts: { [gwAccountId]: { markOnline: next } } } } };
+            const result = (await sendRequest('config.patch', {
+                raw: JSON.stringify(patch),
+                baseHash: configState.baseHash,
+                note: `Set markOnline=${next} for whatsapp:${gwAccountId} via Hub`,
+            })) as { reloadMode?: string } | undefined;
+            if ((result?.reloadMode ?? 'restart') === 'restart') {
+                beginRestart();
+                return;
+            }
+            try { await loadConfig(); } catch { /* refresh baseHash on next call */ }
+            toastSuccess(next ? m.channel_markOnlineEnabled() : m.channel_markOnlineDisabled());
+        } catch (e) {
+            const msg = (e as Error).message ?? '';
+            if (msg.includes('closed') || msg.includes('not connected')) {
+                beginRestart();
+            } else {
+                toastError('Update failed', msg || 'Unknown error');
+            }
+        } finally {
+            markOnlineSaving = false;
+        }
+    }
+
+    // --- Routing visibility (read-only summary of which agent(s) this account routes to) ---
+    type BindingMatch = { channel?: string; accountId?: string; peer?: { kind: string; id: string } };
+    type BindingEntry = { agentId: string | null; match: BindingMatch };
+
+    const matchingBindings = $derived.by(() => {
+        if (!isGateway || !gwChannelType) return [];
+        const all = (configState.current?.bindings ?? []) as BindingEntry[];
+        return all.filter((b) => {
+            if (b.match?.channel !== gwChannelType) return false;
+            const acct = b.match?.accountId;
+            if (!acct) return gwAccountId === 'default';
+            if (acct === '*') return true;
+            return acct === gwAccountId;
+        });
+    });
+    /** Direct (non-peer-scoped) matches — these are the primary routing targets shown. */
+    const directBindings = $derived(matchingBindings.filter((b) => !b.match.peer));
+    const peerBindingCount = $derived(matchingBindings.length - directBindings.length);
+
     async function handleRemoveAccount() {
         if (!isGateway || !gwChannelType || !gwAccountId || removing) return;
         const label = `${gwChannelType}:${gwAccountId}`;
@@ -419,6 +487,51 @@
                                 >{m.channel_behaviorSave()}</button>
                             </div>
                         {/if}
+                    </div>
+                {/if}
+
+                <!-- WhatsApp markOnline: transport-level knob, source of truth = gateway.json -->
+                {#if isGateway && channel.type === 'whatsapp' && gwAccountId}
+                    <div>
+                        <h4 class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">{m.channel_markOnlineTitle()}</h4>
+                        <label class="inline-flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
+                            <input
+                                type="checkbox"
+                                class="accent-accent"
+                                checked={markOnlineValue}
+                                disabled={markOnlineSaving}
+                                onclick={(e) => e.stopPropagation()}
+                                onchange={() => handleToggleMarkOnline()}
+                            />
+                            {m.channel_markOnlineLabel()}
+                        </label>
+                        <p class="text-[10px] text-muted-foreground mt-1.5">{m.channel_markOnlineHint()}</p>
+                    </div>
+                {/if}
+
+                <!-- Routing: which agent(s) this account dispatches to (read-only; edit at Settings → Agents) -->
+                {#if isGateway && gwChannelType && gwAccountId}
+                    <div>
+                        <h4 class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">{m.channel_routingTitle()}</h4>
+                        {#if directBindings.length === 0}
+                            <p class="text-xs text-warning">{m.channel_routingNone()}</p>
+                        {:else}
+                            <div class="flex flex-wrap items-center gap-1.5">
+                                {#each directBindings as b, i (i)}
+                                    <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-accent/10 text-accent">
+                                        {b.agentId ?? m.channel_routingNoAgent()}{b.match.accountId === '*' ? ` (${m.channel_routingCatchAll()})` : ''}
+                                    </span>
+                                {/each}
+                            </div>
+                        {/if}
+                        {#if peerBindingCount > 0}
+                            <p class="text-[10px] text-muted-foreground mt-1">{m.channel_routingPeerRules({ count: peerBindingCount })}</p>
+                        {/if}
+                        <a
+                            href="/settings?s=agents"
+                            class="text-[10px] text-accent hover:underline mt-1 inline-block"
+                            onclick={(e) => e.stopPropagation()}
+                        >{m.channel_routingEdit()}</a>
                     </div>
                 {/if}
 

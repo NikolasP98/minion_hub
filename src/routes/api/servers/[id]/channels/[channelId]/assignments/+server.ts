@@ -7,6 +7,7 @@ import {
   isValidTargetType,
 } from '$server/services/channel.service';
 import { getServerCtx } from '$server/auth/core-ctx';
+import { requireOrgCapability } from '$server/services/rbac.service';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
   const ctx = await getServerCtx(locals, params.id!);
@@ -26,6 +27,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 export const POST: RequestHandler = async ({ locals, params, request }) => {
   const ctx = await getServerCtx(locals, params.id!);
   if (!ctx) throw error(401);
+  await requireOrgCapability(locals, 'channels', 'edit');
   try {
     const body = await request.json();
     if (!body.targetType || !body.targetId) throw error(400, 'targetType and targetId required');
@@ -47,6 +49,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 export const DELETE: RequestHandler = async ({ locals, params, url }) => {
   const ctx = await getServerCtx(locals, params.id!);
   if (!ctx) throw error(401);
+  await requireOrgCapability(locals, 'channels', 'edit');
   const assignmentId = url.searchParams.get('assignmentId');
   if (!assignmentId) throw error(400, 'assignmentId query param required');
 
