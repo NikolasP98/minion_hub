@@ -16,41 +16,10 @@
  */
 
 import { page } from '$app/state';
-
-// Longest-prefix wins. Keep descriptions to one line — this is a model briefing,
-// not docs. {id} marks where a record id slots into a deep-link.
-const ROUTE_MAP: Array<[string, string]> = [
-	['/crm/customers', 'CRM customers grid (filterable/sortable list of all customers).'],
-	['/crm/', "A single customer's CRM profile — journey, identities, revenue, notes."],
-	['/crm', 'CRM dashboard — customer overview, funnel, tags.'],
-	['/finances/invoices', 'Invoices list. Filter to one customer with ?contact={id}.'],
-	['/finances', 'Finances dashboard — revenue, products, KPIs.'],
-	['/sales', 'Sales orders (derived from bookings). Filter with ?contact={id}.'],
-	['/support', 'Support tickets + SLA. Filter with ?contact={id}.'],
-	['/bookings', 'Appointments / scheduling. Filter with ?contact={id}.'],
-	['/book', 'Public booking flow.'],
-	['/agents', 'Agents — autonomous + personal agent management.'],
-	['/sessions', 'Live agent sessions + transcripts.'],
-	['/reliability', 'Reliability KPIs and health metrics.'],
-	['/channels', 'Channel integrations (WhatsApp, Telegram, etc.).'],
-	['/settings', 'Settings — comms, org, preferences.'],
-	['/workshop', 'Workshop canvas — visual agent interaction.'],
-	['/flow-editor', 'Agent Builder — visual flow editor.'],
-	['/marketplace', 'Agent + skill marketplace.'],
-	['/capabilities', 'Capabilities + MCPs.'],
-	['/home', 'Personal agent chat (this same assistant, full-screen).'],
-	[
-		'/overview',
-		'Overview dashboard — org map + key business metrics at a glance. Proactively look up live data (top customers, recent activity, revenue) before answering instead of describing the page.',
-	],
-	['/', 'Overview / home dashboard — proactively look up live data before answering.'],
-];
-
-// Search params worth surfacing as "what's focused" — anything else is noise.
-const NOTABLE_PARAMS = ['contact', 'new', 'q', 'status', 'range', 'source', 'tag'];
+import { HUB_ROUTE_MAP, HUB_NOTABLE_PARAMS } from '../../../routes/api/gateway/_shared/hub-route-map';
 
 function describeRoute(pathname: string): string {
-	for (const [prefix, desc] of ROUTE_MAP) {
+	for (const [prefix, desc] of HUB_ROUTE_MAP) {
 		if (prefix === '/' ? pathname === '/' : pathname.startsWith(prefix)) return desc;
 	}
 	return 'A page in the dashboard.';
@@ -66,7 +35,7 @@ function describeFocus(pathname: string, params: URLSearchParams): string {
 		bits.push(`focused on customer id ${seg[1]} (link as /crm/${seg[1]})`);
 	}
 
-	for (const k of NOTABLE_PARAMS) {
+	for (const k of HUB_NOTABLE_PARAMS) {
 		const v = params.get(k);
 		if (!v) continue;
 		if (k === 'contact') bits.push(`filtered to customer id ${v} (link as /crm/${v})`);
