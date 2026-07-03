@@ -26,8 +26,10 @@ const hubEventBody = z.object({ type: z.string(), orgId: z.string() }).passthrou
 export const POST: RequestHandler = async ({ request }) => {
 	const authHeader = request.headers.get('Authorization') ?? '';
 	const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+	// FAIL CLOSED: /api/internal/* bypasses user auth, so an unset HUB_API_TOKEN
+	// must refuse rather than admit the internet.
 	const expectedToken = env.HUB_API_TOKEN ?? '';
-	if (expectedToken && token !== expectedToken) throw error(401, 'Unauthorized');
+	if (!expectedToken || token !== expectedToken) throw error(401, 'Unauthorized');
 
 	const event = await parseBody(request, hubEventBody);
 	const ctx = { db: getCoreDb(), tenantId: event.orgId };
