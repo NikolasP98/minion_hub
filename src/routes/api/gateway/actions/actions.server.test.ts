@@ -6,6 +6,15 @@ vi.mock('$server/auth/assistant-principal', () => ({
 	resolveAssistantPrincipal: (...args: unknown[]) => mockResolveAssistantPrincipal(...args),
 }));
 vi.mock('$server/db/pg-client', () => ({ getCoreDb: vi.fn(() => ({})) }));
+vi.mock('$server/supabase', () => ({
+	supabaseAdmin: () => ({
+		from: () => ({
+			select: () => ({
+				eq: () => ({ maybeSingle: async () => ({ data: { display_name: 'Jane', email: 'jane@example.com' } }) }),
+			}),
+		}),
+	}),
+}));
 
 const mockCreateBooking = vi.fn();
 vi.mock('$server/services/scheduling-bookings.service', () => ({
@@ -25,8 +34,17 @@ vi.mock('$server/services/errors', () => ({
 	staleGuard: vi.fn(),
 }));
 
+const mockCreateEntry = vi.fn();
+vi.mock('$server/services/stock.service', () => ({
+	createEntry: (...args: unknown[]) => mockCreateEntry(...args),
+}));
+vi.mock('$server/services/stock.logic', () => ({
+	ENTRY_TYPES: ['receipt', 'issue', 'transfer', 'adjustment'],
+}));
+
 import { POST as bookingCreatePOST } from './booking-create/+server';
 import { POST as ticketUpdatePOST } from './ticket-update/+server';
+import { POST as stockEntryCreatePOST } from './stock-entry-create/+server';
 
 /** Minimal Capabilities stub — only `can` is exercised by requireAssistantCapability. */
 function makeCaps(allowed: Record<string, boolean> = {}): Capabilities {
@@ -120,5 +138,66 @@ describe('POST /api/gateway/actions/ticket-update', () => {
 		expect(body.preview.action).toBe('ticket-update');
 		expect(body.preview.status).toBe('resolved');
 		expect(mockUpdateIssue).not.toHaveBeenCalled();
+	});
+});
+
+describe('POST /api/gateway/actions/stock-entry-create', () => {
+	it('403s when the principal lacks stock:create (RBAC denial)', async () => {
+		mockResolveAssistantPrincipal.mockResolvedValue({
+			principalId: 'u1',
+			orgId: 'org1',
+			capabilities: makeCaps(),
+		});
+		await expect(
+			stockEntryCreatePOST(
+				makeEvent('/api/gateway/actions/stock-entry-create', {
+					confirm: false,
+					type: 'receipt',
+					lines: [{ itemId: 'item1', qty: 5, toWarehouseId: 'wh1' }],
+				}),
+			),
+		).rejects.toMatchObject({ status: 403 });
+		expect(mockCreateEntry).not.toHaveBeenCalled();
+	});
+
+	it('confirm:false returns a preview and performs no write', async () => {
+		mockResolveAssistantPrincipal.mockResolvedValue({
+			principalId: 'u1',
+			orgId: 'org1',
+			capabilities: makeCaps({ 'stock.create': true }),
+		});
+		const res = await stockEntryCreatePOST(
+			makeEvent('/api/gateway/actions/stock-entry-create', {
+				confirm: false,
+				type: 'receipt',
+				lines: [{ itemId: 'item1', qty: 5, toWarehouseId: 'wh1' }],
+			}),
+		);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { preview: { action: string; type: string; lines: unknown[] } };
+		expect(body.preview.action).toBe('stock-entry-create');
+		expect(body.preview.type).toBe('receipt');
+		expect(body.preview.lines).toHaveLength(1);
+		expect(mockCreateEntry).not.toHaveBeenCalled();
+	});
+
+	it('confirm:true creates a draft entry (never submitted) via createEntry', async () => {
+		mockResolveAssistantPrincipal.mockResolvedValue({
+			principalId: 'u1',
+			orgId: 'org1',
+			capabilities: makeCaps({ 'stock.create': true }),
+		});
+		mockCreateEntry.mockResolvedValue({ id: 'entry1', status: 'draft', type: 'receipt' });
+		const res = await stockEntryCreatePOST(
+			makeEvent('/api/gateway/actions/stock-entry-create', {
+				confirm: true,
+				type: 'receipt',
+				lines: [{ itemId: 'item1', qty: 5, toWarehouseId: 'wh1', rate: 10 }],
+			}),
+		);
+		expect(res.status).toBe(201);
+		const body = (await res.json()) as { entry: { status: string } };
+		expect(body.entry.status).toBe('draft');
+		expect(mockCreateEntry).toHaveBeenCalledTimes(1);
 	});
 });
