@@ -1,12 +1,13 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { Eye, EyeOff, Loader2, Trophy } from 'lucide-svelte';
+  import { Eye, EyeOff, Loader2, Settings2, Trophy } from 'lucide-svelte';
   import LeaderboardStrip from './LeaderboardStrip.svelte';
   import * as m from '$lib/paraglide/messages';
   import {
     loadModels,
     runComparison,
     saveComparison,
+    setEnabledModels,
     submitRanking,
     suggestCategories,
     type CompareOutput,
@@ -19,6 +20,13 @@
   let role = $state<'admin' | 'user'>('user');
   let modelsError = $state<string | null>(null);
   let selected = $state<Set<string>>(new Set());
+
+  // Admin-only model curation panel.
+  let manageOpen = $state(false);
+  let manageEnabled = $state<Set<string>>(new Set());
+  let savingModels = $state(false);
+  let manageSaveError = $state<string | null>(null);
+  let manageSaved = $state(false);
 
   let prompt = $state('');
   let system = $state('');
@@ -56,6 +64,47 @@
     if (next.has(id)) next.delete(id);
     else next.add(id);
     selected = next;
+  }
+
+  function openManage() {
+    manageEnabled = new Set(models.filter((mo) => mo.enabled !== false).map((mo) => mo.id));
+    manageSaveError = null;
+    manageSaved = false;
+    manageOpen = true;
+  }
+
+  function toggleManage(id: string) {
+    const next = new Set(manageEnabled);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    manageEnabled = next;
+    manageSaved = false;
+  }
+
+  function manageEnableAll() {
+    manageEnabled = new Set(models.map((mo) => mo.id));
+    manageSaved = false;
+  }
+
+  function manageDisableAll() {
+    manageEnabled = new Set();
+    manageSaved = false;
+  }
+
+  async function saveManagedModels() {
+    if (savingModels) return;
+    savingModels = true;
+    manageSaveError = null;
+    try {
+      await setEnabledModels([...manageEnabled]);
+      const res = await loadModels();
+      models = res.models;
+      role = res.role ?? role;
+      manageSaved = true;
+    } catch (e) {
+      manageSaveError = e instanceof Error ? e.message : String(e);
+    }
+    savingModels = false;
   }
 
   function labelFor(o: CompareOutput, i: number): string {
@@ -164,9 +213,64 @@
 
   <!-- Model picker -->
   <section class="space-y-2">
-    <p class="text-[10px] font-mono uppercase tracking-wider text-muted-strong">
-      {m.workshop_exp_models_label()} {#if role === 'admin'}<span class="text-accent/70">{m.workshop_exp_models_admin()}</span>{/if}
-    </p>
+    <div class="flex items-center justify-between">
+      <p class="text-[10px] font-mono uppercase tracking-wider text-muted-strong">
+        {m.workshop_exp_models_label()} {#if role === 'admin'}<span class="text-accent/70">{m.workshop_exp_models_admin()}</span>{/if}
+      </p>
+      {#if role === 'admin'}
+        <button
+          type="button"
+          onclick={() => (manageOpen ? (manageOpen = false) : openManage())}
+          class="text-[10px] font-mono text-muted hover:text-foreground inline-flex items-center gap-1"
+        >
+          <Settings2 size={11} /> {m.workshop_exp_manage_models()}
+        </button>
+      {/if}
+    </div>
+
+    {#if role === 'admin' && manageOpen}
+      <div class="rounded border border-border bg-bg2 p-3 space-y-2">
+        <div class="flex items-center justify-between">
+          <p class="text-[10px] font-mono uppercase tracking-wider text-muted-strong">{m.workshop_exp_manage_models_title()}</p>
+          <div class="flex items-center gap-2">
+            <button type="button" onclick={manageEnableAll} class="text-[10px] font-mono text-muted hover:text-foreground">{m.workshop_exp_manage_enable_all()}</button>
+            <button type="button" onclick={manageDisableAll} class="text-[10px] font-mono text-muted hover:text-foreground">{m.workshop_exp_manage_disable_all()}</button>
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-1.5">
+          {#each models as mo (mo.id)}
+            <label class="px-2 h-7 rounded border border-border text-[11px] font-mono text-foreground inline-flex items-center gap-1.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={manageEnabled.has(mo.id)}
+                onchange={() => toggleManage(mo.id)}
+                class="accent-accent"
+              />
+              {mo.name}
+            </label>
+          {/each}
+        </div>
+        {#if manageEnabled.size === 0}
+          <p class="text-[10px] font-mono text-destructive">{m.workshop_exp_manage_empty_warning()}</p>
+        {/if}
+        {#if manageSaveError}
+          <p class="text-[10px] font-mono text-destructive">{m.workshop_exp_manage_save_error({ error: manageSaveError })}</p>
+        {/if}
+        <div class="flex items-center gap-2">
+          <button
+            type="button"
+            onclick={saveManagedModels}
+            disabled={savingModels}
+            class="h-7 px-3 rounded bg-accent/15 border border-accent/40 text-accent text-[11px] font-mono uppercase tracking-wider hover:bg-accent/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-1.5"
+          >
+            {#if savingModels}<Loader2 size={11} class="animate-spin" />{/if}
+            {manageSaved ? m.workshop_exp_manage_saved() : m.workshop_exp_manage_save()}
+          </button>
+          <button type="button" onclick={() => (manageOpen = false)} class="text-[10px] font-mono text-muted hover:text-foreground">{m.workshop_exp_manage_close()}</button>
+        </div>
+      </div>
+    {/if}
+
     <div class="flex flex-wrap gap-1.5">
       {#each models as mo (mo.id)}
         <button
