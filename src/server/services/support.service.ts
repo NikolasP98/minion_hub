@@ -11,6 +11,7 @@ import { autoAssign } from './assignment.service';
 import { computeChanges } from './activity.service';
 import { docAuditLog } from '$server/db/pg-activity-schema';
 import type { CoreCtx } from '$server/auth/core-ctx';
+import { StaleWriteError, staleGuard } from './errors';
 
 export type Priority = 'low' | 'medium' | 'high' | 'urgent';
 export type IssueStatus = 'open' | 'replied' | 'on_hold' | 'resolved' | 'closed';
@@ -220,6 +221,7 @@ export async function updateIssue(
   id: string,
   input: UpdateIssueInput,
   actor: { id: string | null; name: string | null } = { id: null, name: null },
+  expectedUpdatedAt?: Date,
 ): Promise<SupportIssue | null> {
   return withOrgCore(ctx, async (tx) => {
     const [cur] = await tx
@@ -257,8 +259,18 @@ export async function updateIssue(
     const [row] = await tx
       .update(supportIssues)
       .set(patch)
-      .where(and(eq(supportIssues.id, id), eq(supportIssues.orgId, ctx.tenantId)))
+      .where(
+        and(
+          eq(supportIssues.id, id),
+          eq(supportIssues.orgId, ctx.tenantId),
+          staleGuard(supportIssues.updatedAt, expectedUpdatedAt),
+        ),
+      )
       .returning();
+    if (!row) {
+      if (expectedUpdatedAt) throw new StaleWriteError(cur);
+      return null;
+    }
 
     // Audit trail (ERPNext Version): log field changes on the same tx.
     const changes = computeChanges(cur, row, [

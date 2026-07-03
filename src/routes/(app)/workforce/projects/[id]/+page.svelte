@@ -4,6 +4,8 @@
 	import { PageHeader } from '$lib/components/ui';
 	import { Flag, Plus, Clock, Boxes, Link2, Unlink } from 'lucide-svelte';
 	import DocTimeline from '$lib/components/shared/DocTimeline.svelte';
+	import { toastWarning } from '$lib/state/ui/toast.svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	let { data }: { data: PageData } = $props();
 
@@ -56,13 +58,14 @@
 		return `${Math.floor(min / 60)}h ${min % 60}m`;
 	}
 
-	async function patchTask(id: string, body: Record<string, unknown>) {
+	async function patchTask(id: string, body: Record<string, unknown>, expectedUpdatedAt?: unknown) {
 		busy = true;
 		try {
 			const res = await fetch(`/api/project-tasks/${id}`, {
-				method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+				method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...body, expectedUpdatedAt }),
 			});
-			if (res.ok) await invalidate('projects:detail');
+			if (res.status === 409) toastWarning(m.shared_staleWrite());
+			if (res.ok || res.status === 409) await invalidate('projects:detail');
 		} finally { busy = false; }
 	}
 	async function addTask(isMilestone = false) {
@@ -79,9 +82,10 @@
 	async function patchProject(body: Record<string, unknown>) {
 		busy = true;
 		try {
-			await fetch(`/api/projects/${data.project.id}`, {
-				method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+			const res = await fetch(`/api/projects/${data.project.id}`, {
+				method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...body, expectedUpdatedAt: data.project.updatedAt }),
 			});
+			if (res.status === 409) toastWarning(m.shared_staleWrite());
 			await invalidate('projects:detail');
 		} finally { busy = false; }
 	}
@@ -151,7 +155,7 @@
 								<div class="tt">{t.title}</div>
 								<div class="tmeta">
 									{#if t.humanId}<span class="hid">{t.humanId}</span>{/if}
-									<select class="mini" value={t.assigneePartyId ?? ''} disabled={busy} onchange={(e) => patchTask(t.id, { assigneePartyId: (e.currentTarget as HTMLSelectElement).value || null })}>
+									<select class="mini" value={t.assigneePartyId ?? ''} disabled={busy} onchange={(e) => patchTask(t.id, { assigneePartyId: (e.currentTarget as HTMLSelectElement).value || null }, t.updatedAt)}>
 										<option value="">Unassigned</option>
 										{#if t.assigneePartyId && !assignOptions.some((o) => o.id === t.assigneePartyId)}
 											<option value={t.assigneePartyId}>{partyName(t.assigneePartyId)}</option>
@@ -159,7 +163,7 @@
 										{#each assignOptions as o (o.id)}<option value={o.id}>{o.label}</option>{/each}
 									</select>
 								</div>
-								<select class="mini status" value={t.status} disabled={busy} onchange={(e) => patchTask(t.id, { status: (e.currentTarget as HTMLSelectElement).value })}>
+								<select class="mini status" value={t.status} disabled={busy} onchange={(e) => patchTask(t.id, { status: (e.currentTarget as HTMLSelectElement).value }, t.updatedAt)}>
 									{#each COLUMNS as s (s)}<option value={s}>{colLabel[s]}</option>{/each}
 								</select>
 							</div>

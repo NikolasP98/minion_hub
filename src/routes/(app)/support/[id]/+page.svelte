@@ -7,6 +7,8 @@
 	import { relativeTime } from '$lib/components/crm/crm-format';
 	import DocTimeline from '$lib/components/shared/DocTimeline.svelte';
 	import { createBackNav } from '$lib/nav/back-nav.svelte';
+	import { toastWarning } from '$lib/state/ui/toast.svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	let { data }: { data: PageData } = $props();
 	const i = $derived(data.issue);
@@ -28,9 +30,10 @@
 			const res = await fetch(`/api/support/issues/${i.id}`, {
 				method: 'PATCH',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify(body),
+				body: JSON.stringify({ ...body, expectedUpdatedAt: i.updatedAt }),
 			});
-			if (res.ok) await invalidate('support:issue');
+			if (res.status === 409) toastWarning(m.shared_staleWrite());
+			if (res.ok || res.status === 409) await invalidate('support:issue');
 		} finally {
 			busy = false;
 		}

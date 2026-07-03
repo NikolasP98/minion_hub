@@ -18,6 +18,7 @@ import { bothEnabled } from './modules.service';
 import { autoAssign } from './assignment.service';
 import { recordAudit } from './activity.service';
 import { isFunnelStage, readFunnelMeta, funnelStageIndex } from '$lib/components/crm/crm-funnel';
+import { StaleWriteError, staleGuard } from './errors';
 
 /**
  * CRM service (spec §4–8). Contacts = inbound senders to the org's registered
@@ -531,6 +532,7 @@ export async function updateContact(
      *  join key). */
     phone?: string | null;
   },
+  expectedUpdatedAt?: Date,
 ) {
   const set: Record<string, unknown> = { updatedAt: new Date() };
   if (data.displayName !== undefined) set.displayName = data.displayName;
@@ -541,9 +543,25 @@ export async function updateContact(
     const [r] = await tx
       .update(crmContacts)
       .set(set)
-      .where(and(eq(crmContacts.id, id), eq(crmContacts.orgId, ctx.tenantId)))
+      .where(
+        and(
+          eq(crmContacts.id, id),
+          eq(crmContacts.orgId, ctx.tenantId),
+          staleGuard(crmContacts.updatedAt, expectedUpdatedAt),
+        ),
+      )
       .returning();
-    if (!r) return null;
+    if (!r) {
+      if (expectedUpdatedAt) {
+        const [existing] = await tx
+          .select()
+          .from(crmContacts)
+          .where(and(eq(crmContacts.id, id), eq(crmContacts.orgId, ctx.tenantId)))
+          .limit(1);
+        if (existing) throw new StaleWriteError(existing);
+      }
+      return null;
+    }
     // No pre-image SELECT on this path (would be an extra round-trip per write) —
     // log the new values only, not a before/after diff.
     const auditChanges = Object.entries(set)

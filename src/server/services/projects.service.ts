@@ -17,6 +17,7 @@ import { nextSerialId } from './naming-series';
 import { recordAudit } from './activity.service';
 import { computeProjectProgress, planTemplateInstantiation } from './projects.logic';
 import type { CoreCtx } from '$server/auth/core-ctx';
+import { StaleWriteError, staleGuard } from './errors';
 
 export type ProjectStatus = 'open' | 'active' | 'on_hold' | 'completed' | 'cancelled';
 export const PROJECT_STATUSES: ProjectStatus[] = ['open', 'active', 'on_hold', 'completed', 'cancelled'];
@@ -367,6 +368,7 @@ export function updateProject(
   id: string,
   patch: Partial<NewProjectInput>,
   actor: Actor,
+  expectedUpdatedAt?: Date,
 ): Promise<ProjProject | null> {
   return withOrgCore(ctx, async (tx) => {
     const [cur] = await tx
@@ -394,10 +396,20 @@ export function updateProject(
     const [row] = await tx
       .update(projProjects)
       .set(set)
-      .where(and(eq(projProjects.id, id), eq(projProjects.orgId, ctx.tenantId)))
+      .where(
+        and(
+          eq(projProjects.id, id),
+          eq(projProjects.orgId, ctx.tenantId),
+          staleGuard(projProjects.updatedAt, expectedUpdatedAt),
+        ),
+      )
       .returning();
+    if (!row) {
+      if (expectedUpdatedAt) throw new StaleWriteError(cur);
+      return null;
+    }
     if (changes.length) await recordAudit(ctx, { refType: 'proj_project', refId: id, changes, actor });
-    return row ?? null;
+    return row;
   });
 }
 
@@ -475,6 +487,7 @@ export function updateTask(
   id: string,
   patch: Partial<NewTaskInput>,
   actor: Actor,
+  expectedUpdatedAt?: Date,
 ): Promise<ProjTask | null> {
   return withOrgCore(ctx, async (tx) => {
     const [cur] = await tx
@@ -495,15 +508,25 @@ export function updateTask(
     const [row] = await tx
       .update(projTasks)
       .set(set)
-      .where(and(eq(projTasks.id, id), eq(projTasks.orgId, ctx.tenantId)))
+      .where(
+        and(
+          eq(projTasks.id, id),
+          eq(projTasks.orgId, ctx.tenantId),
+          staleGuard(projTasks.updatedAt, expectedUpdatedAt),
+        ),
+      )
       .returning();
+    if (!row) {
+      if (expectedUpdatedAt) throw new StaleWriteError(cur);
+      return null;
+    }
     if (changes.length) await recordAudit(ctx, { refType: 'proj_task', refId: id, changes, actor });
     // Dispatch when assignee changed to an agent-party.
-    if (row && patch.assigneePartyId && patch.assigneePartyId !== cur.assigneePartyId) {
+    if (patch.assigneePartyId && patch.assigneePartyId !== cur.assigneePartyId) {
       const agentId = await partyAgentId(tx, ctx.tenantId, patch.assigneePartyId);
       if (agentId) return await dispatchTaskToAgent(tx, ctx, row, agentId, actor);
     }
-    return row ?? null;
+    return row;
   });
 }
 

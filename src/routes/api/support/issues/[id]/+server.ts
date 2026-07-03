@@ -6,6 +6,7 @@ import { parseBody } from '$server/api/validate';
 import { ownerFilter } from '$server/services/rbac.service';
 import { getIssue, updateIssue, PRIORITIES } from '$server/services/support.service';
 import { statusChangeBlocked } from '$server/services/workflow.service';
+import { StaleWriteError } from '$server/services/errors';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
   const ctx = await getCoreCtx(locals);
@@ -22,6 +23,7 @@ const patchSchema = z.object({
   status: z.enum(['open', 'replied', 'on_hold', 'resolved', 'closed']).optional(),
   priority: z.enum(PRIORITIES).optional(),
   ownerId: z.string().max(200).nullable().optional(),
+  expectedUpdatedAt: z.coerce.date().optional(),
 });
 
 /** PATCH /api/support/issues/:id — status/priority/owner/subject changes.
@@ -35,7 +37,12 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
   // admin enables a support_issue workflow.
   if (body.status && (await statusChangeBlocked(ctx, 'support_issue', params.id!, body.status, { ...actor, role: locals.user?.role ?? null })))
     throw error(409, 'status change not permitted by workflow');
-  const issue = await updateIssue(ctx, params.id!, body, actor);
-  if (!issue) throw error(404);
-  return json(issue);
+  try {
+    const issue = await updateIssue(ctx, params.id!, body, actor, body.expectedUpdatedAt);
+    if (!issue) throw error(404);
+    return json(issue);
+  } catch (e) {
+    if (e instanceof StaleWriteError) return json({ error: 'stale', current: e.current }, { status: 409 });
+    throw e;
+  }
 };

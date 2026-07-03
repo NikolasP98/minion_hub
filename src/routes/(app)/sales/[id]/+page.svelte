@@ -6,6 +6,8 @@
 	import { relativeTime } from '$lib/components/crm/crm-format';
 	import DocTimeline from '$lib/components/shared/DocTimeline.svelte';
 	import { createBackNav } from '$lib/nav/back-nav.svelte';
+	import { toastWarning } from '$lib/state/ui/toast.svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	let { data }: { data: PageData } = $props();
 	const o = $derived(data.order);
@@ -32,9 +34,10 @@
 			const res = await fetch(`/api/sales/orders/${o.id}`, {
 				method: 'PATCH',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ status }),
+				body: JSON.stringify({ status, expectedUpdatedAt: o.updatedAt }),
 			});
-			if (res.ok) await invalidate('sales:order');
+			if (res.status === 409) toastWarning(m.shared_staleWrite());
+			if (res.ok || res.status === 409) await invalidate('sales:order');
 		} finally {
 			busy = false;
 		}

@@ -20,6 +20,7 @@
 	import { metaLabel, metaValue, metaDisplay, isEmailKey, metaEntries, isReservedMetaKey } from '$lib/components/crm/crm-meta';
 	import { IdCard, Cake, Phone, Mail, MapPin, Stethoscope, Megaphone, Hash, User } from 'lucide-svelte';
 	import { createBackNav } from '$lib/nav/back-nav.svelte';
+	import { toastWarning } from '$lib/state/ui/toast.svelte';
 
 	let { data }: { data: PageData } = $props();
 	const back = createBackNav('/crm/customers', m.crm_back_to_contacts);
@@ -141,9 +142,10 @@
 			const res = await fetch(`/api/crm/contacts/${c.id}`, {
 				method: 'PATCH',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify(body),
+				body: JSON.stringify({ ...body, expectedUpdatedAt: c.updatedAt }),
 			});
-			if (res.ok) await invalidate('crm:contact');
+			if (res.status === 409) toastWarning(m.shared_staleWrite());
+			if (res.ok || res.status === 409) await invalidate('crm:contact');
 		} finally {
 			busy = false;
 		}

@@ -5,6 +5,8 @@
 	import { ClipboardList, CircleDollarSign } from 'lucide-svelte';
 	import { relativeTime } from '$lib/components/crm/crm-format';
 	import ScopeBanner from '$lib/components/crm/ScopeBanner.svelte';
+	import { toastWarning } from '$lib/state/ui/toast.svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	let { data }: { data: PageData } = $props();
 	let busy = $state(false);
@@ -17,15 +19,16 @@
 		cancelled: 'Cancelled',
 	};
 
-	async function setStatus(id: string, status: string) {
+	async function setStatus(id: string, status: string, expectedUpdatedAt: string | Date) {
 		busy = true;
 		try {
 			const res = await fetch(`/api/sales/orders/${id}`, {
 				method: 'PATCH',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ status }),
+				body: JSON.stringify({ status, expectedUpdatedAt }),
 			});
-			if (res.ok) await invalidate('sales:list');
+			if (res.status === 409) toastWarning(m.shared_staleWrite());
+			if (res.ok || res.status === 409) await invalidate('sales:list');
 		} finally {
 			busy = false;
 		}
@@ -50,7 +53,7 @@
 					<a class="desc" href={`/sales/${o.id}`}>{#if o.humanId}<span class="hid">{o.humanId}</span> {/if}{o.description ?? '—'}</a>
 					<span class="cust t-caption">{o.customerName ?? '—'}</span>
 					<span class="total">{o.total ? Number(o.total).toLocaleString() : '—'}</span>
-					<select class="status-sel" value={o.status} disabled={busy} onchange={(e) => setStatus(o.id, (e.currentTarget as HTMLSelectElement).value)}>
+					<select class="status-sel" value={o.status} disabled={busy} onchange={(e) => setStatus(o.id, (e.currentTarget as HTMLSelectElement).value, o.updatedAt)}>
 						{#each STATUSES as s (s)}<option value={s}>{statusLabel[s]}</option>{/each}
 					</select>
 					<span class="when t-caption">{relativeTime(o.createdAt)}</span>

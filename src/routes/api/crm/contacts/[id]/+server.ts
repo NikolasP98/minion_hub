@@ -12,6 +12,7 @@ import {
   softDeleteContact,
   hardDeleteContact,
 } from '$server/services/crm-contacts.service';
+import { StaleWriteError } from '$server/services/errors';
 
 /** GET /api/crm/contacts/[id] — record + identities + stats + journey timeline + tags. */
 export const GET: RequestHandler = async ({ locals, params, url }) => {
@@ -35,6 +36,7 @@ const patchSchema = z.object({
   lifecycleOverride: z.string().max(200).nullable().optional(),
   customFields: z.record(z.string(), z.unknown()).optional(),
   phone: z.string().max(50).nullable().optional(),
+  expectedUpdatedAt: z.coerce.date().optional(),
 });
 
 /** PATCH /api/crm/contacts/[id] — name, owner, lifecycle override, custom fields. */
@@ -42,15 +44,25 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   const body = await parseBody(request, patchSchema);
-  const contact = await updateContact(ctx, params.id!, {
-    displayName: body.displayName,
-    ownerId: body.ownerId,
-    lifecycleOverride: body.lifecycleOverride,
-    customFields: body.customFields,
-    phone: body.phone,
-  });
-  if (!contact) throw error(404, 'Contact not found');
-  return json({ contact });
+  try {
+    const contact = await updateContact(
+      ctx,
+      params.id!,
+      {
+        displayName: body.displayName,
+        ownerId: body.ownerId,
+        lifecycleOverride: body.lifecycleOverride,
+        customFields: body.customFields,
+        phone: body.phone,
+      },
+      body.expectedUpdatedAt,
+    );
+    if (!contact) throw error(404, 'Contact not found');
+    return json({ contact });
+  } catch (e) {
+    if (e instanceof StaleWriteError) return json({ error: 'stale', current: e.current }, { status: 409 });
+    throw e;
+  }
 };
 
 /** DELETE /api/crm/contacts/[id] — soft by default; ?hard=true for right-to-erasure. */

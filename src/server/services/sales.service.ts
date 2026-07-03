@@ -6,6 +6,7 @@ import { finProducts } from '$server/db/pg-finance-schema';
 import { nextSerialId } from './naming-series';
 import { docAuditLog } from '$server/db/pg-activity-schema';
 import type { CoreCtx } from '$server/auth/core-ctx';
+import { StaleWriteError, staleGuard } from './errors';
 
 export type OrderStatus = 'draft' | 'confirmed' | 'invoiced' | 'cancelled';
 export const ORDER_STATUSES: OrderStatus[] = ['draft', 'confirmed', 'invoiced', 'cancelled'];
@@ -176,10 +177,11 @@ export async function setOrderStatus(
   id: string,
   status: OrderStatus,
   actor: { id: string | null; name: string | null } = { id: null, name: null },
+  expectedUpdatedAt?: Date,
 ): Promise<SalesOrder | null> {
   return withOrgCore(ctx, async (tx) => {
     const [cur] = await tx
-      .select({ status: salesOrders.status })
+      .select()
       .from(salesOrders)
       .where(and(eq(salesOrders.id, id), eq(salesOrders.orgId, ctx.tenantId)))
       .limit(1);
@@ -187,8 +189,18 @@ export async function setOrderStatus(
     const [row] = await tx
       .update(salesOrders)
       .set({ status, updatedAt: new Date() })
-      .where(and(eq(salesOrders.id, id), eq(salesOrders.orgId, ctx.tenantId)))
+      .where(
+        and(
+          eq(salesOrders.id, id),
+          eq(salesOrders.orgId, ctx.tenantId),
+          staleGuard(salesOrders.updatedAt, expectedUpdatedAt),
+        ),
+      )
       .returning();
+    if (!row) {
+      if (expectedUpdatedAt) throw new StaleWriteError(cur);
+      return null;
+    }
     if (cur.status !== status) {
       await tx.insert(docAuditLog).values({
         orgId: ctx.tenantId,
