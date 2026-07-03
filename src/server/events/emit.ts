@@ -12,7 +12,8 @@ import type { CoreTx } from '$server/db/with-org-core';
 export type HubEvent =
 	| { type: 'finance.invoices_upserted'; orgId: string; created: number; updated: number }
 	| { type: 'booking.created'; orgId: string; bookingId: string }
-	| { type: 'ticket.status_changed'; orgId: string; issueId: string; old: string; new: string };
+	| { type: 'ticket.status_changed'; orgId: string; issueId: string; old: string; new: string }
+	| { type: 'stock.entry_submitted'; orgId: string; entryId: string; entryType: string };
 
 /** Emit inside an open tx — PG delivers on commit. Payload must stay small (<8KB, NOTIFY's hard limit). */
 export async function emitHubEvent(tx: CoreTx, event: HubEvent): Promise<void> {

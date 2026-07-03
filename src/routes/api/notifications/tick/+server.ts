@@ -3,6 +3,8 @@ import { json, error } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { getCoreDb } from '$server/db/pg-client';
 import { listEnabledNotifOrgs, processOrgNotifications } from '$server/services/notif.service';
+// Importing the service registers its stk_reorder notif candidate source (side effect).
+import '$server/services/stock.service';
 
 /**
  * GET /api/notifications/tick — cron entrypoint for the generic notification

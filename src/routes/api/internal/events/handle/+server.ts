@@ -6,6 +6,10 @@ import { parseBody } from '$server/api/validate';
 import { getCoreDb } from '$server/db/pg-client';
 import { bustFinanceCache } from '$server/services/finance.service';
 import { processOrgNotifications } from '$server/services/notif.service';
+// Importing the service registers its stk_reorder notif candidate source
+// (side effect) — needed here too since this route may cold-start independently
+// of the notifications tick route.
+import '$server/services/stock.service';
 
 // Loosely typed on purpose — `type` drives the switch below; unknown types are
 // forward-compat (200 {ignored:true}), not a validation error. Per-type field
@@ -35,9 +39,11 @@ export const POST: RequestHandler = async ({ request }) => {
 			return json({ ok: true });
 		case 'booking.created':
 		case 'ticket.status_changed':
+		case 'stock.entry_submitted':
 			// No dedicated queue table — instant-run the same rule engine the cron
 			// tick drains; notifLog's onConflictDoNothing dedup makes a redelivered
-			// event (or an overlapping cron pass) a no-op.
+			// event (or an overlapping cron pass) a no-op. Also gets stk_reorder an
+			// instant nudge instead of waiting for the next tick.
 			await processOrgNotifications(ctx, new Date());
 			return json({ ok: true });
 		default:

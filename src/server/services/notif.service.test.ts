@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { evaluateCondition, renderTemplate, isTriggerTableAllowed, type Filter } from './notif.service';
+import { evaluateCondition, renderTemplate, isTriggerTableAllowed, registerNotifCandidateSource, type Filter } from './notif.service';
 
 describe('evaluateCondition', () => {
   const row = { status: 'open', priority: 'urgent', n: 5 };
@@ -32,5 +32,13 @@ describe('isTriggerTableAllowed', () => {
   it('allowlists known tables only', () => {
     expect(isTriggerTableAllowed('support_issues')).toBe(true);
     expect(isTriggerTableAllowed('users; drop table x')).toBe(false);
+  });
+});
+
+describe('registerNotifCandidateSource', () => {
+  it('allowlists a registered candidate-source key (e.g. stock.service registering stk_reorder)', () => {
+    expect(isTriggerTableAllowed('__test_source__')).toBe(false);
+    registerNotifCandidateSource('__test_source__', async () => []);
+    expect(isTriggerTableAllowed('__test_source__')).toBe(true);
   });
 });

@@ -10,6 +10,10 @@ vi.mock('$server/services/finance.service', () => ({
 }));
 vi.mock('$server/services/notif.service', () => ({
 	processOrgNotifications: (...a: unknown[]) => processOrgNotifications(...a),
+	// stock.service registers its stk_reorder candidate source at import time
+	// (side effect); the route side-effect-imports stock.service, so the mock
+	// needs this export even though this test never exercises it directly.
+	registerNotifCandidateSource: () => {},
 }));
 
 import { POST } from './+server';
@@ -62,6 +66,14 @@ describe('POST /api/internal/events/handle', () => {
 	it('routes ticket.status_changed to the notification-rules engine', async () => {
 		const res = await POST(
 			req({ type: 'ticket.status_changed', orgId: 'org-1', issueId: 'i1', old: 'open', new: 'resolved' }),
+		);
+		expect(await res.json()).toEqual({ ok: true });
+		expect(processOrgNotifications).toHaveBeenCalledTimes(1);
+	});
+
+	it('routes stock.entry_submitted to the notification-rules engine (instant stk_reorder nudge)', async () => {
+		const res = await POST(
+			req({ type: 'stock.entry_submitted', orgId: 'org-1', entryId: 'e1', entryType: 'issue' }),
 		);
 		expect(await res.json()).toEqual({ ok: true });
 		expect(processOrgNotifications).toHaveBeenCalledTimes(1);

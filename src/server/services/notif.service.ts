@@ -21,8 +21,24 @@ const TABLE_META: Record<string, { created: string; updated: string; dateFields:
 // Belt-and-suspenders: a column identifier can only ever be a plain snake_case name.
 const COL_RE = /^[a-z_][a-z0-9_]*$/;
 
+/**
+ * Non-table candidate sources — system-computed alert feeds that don't map to
+ * a single timestamped table (e.g. stock reorder levels, a join+threshold
+ * query), registered by their owning service. Mirrors bg-runtime's
+ * registerJobHandler: the owning service module registers itself on import,
+ * and a route that needs it side-effect-imports that module (see
+ * notifications/tick/+server.ts importing stock.service). Row shape must
+ * include `id` (used as notifLog.entityId) plus whatever fields the rule's
+ * condition/template reference.
+ */
+export type CandidateSource = (tx: CoreTx, orgId: string) => Promise<Array<Record<string, unknown>>>;
+const candidateSources = new Map<string, CandidateSource>();
+export function registerNotifCandidateSource(key: string, source: CandidateSource): void {
+  candidateSources.set(key, source);
+}
+
 export function isTriggerTableAllowed(t: string): boolean {
-  return Object.prototype.hasOwnProperty.call(TABLE_META, t);
+  return Object.prototype.hasOwnProperty.call(TABLE_META, t) || candidateSources.has(t);
 }
 
 /** Allowlisted trigger tables + their date-offset columns — drives the rules UI. */
@@ -193,7 +209,10 @@ export async function processOrgNotifications(ctx: CoreCtx, now: Date): Promise<
 
   for (const rule of rules) {
     if (!isTriggerTableAllowed(rule.triggerTable)) continue;
-    const candidates = await withOrgCore(ctx, (tx) => getCandidates(tx, rule, now));
+    const source = candidateSources.get(rule.triggerTable);
+    const candidates = source
+      ? await withOrgCore(ctx, (tx) => source(tx, ctx.tenantId))
+      : await withOrgCore(ctx, (tx) => getCandidates(tx, rule, now));
     const filters = (rule.condition as Filter[]) ?? [];
     const recipientSpec = (rule.recipients as Array<{ type: string; value: string }>) ?? [];
 
@@ -201,7 +220,10 @@ export async function processOrgNotifications(ctx: CoreCtx, now: Date): Promise<
       if (!evaluateCondition(filters, row)) continue;
       const entityId = String(row.id ?? '');
       if (!entityId) continue;
-      const triggerKey = rule.triggerEvent === 'update' ? `update:${row.updated_at ?? ''}` : rule.triggerEvent;
+      // Registered sources are LEVEL alerts, not time-window events — a fixed
+      // triggerKey dedupes once per entity via notif_log's existing unique
+      // (rule, entity, key), matching how 'insert' fires once per entity ever.
+      const triggerKey = source ? 'threshold' : rule.triggerEvent === 'update' ? `update:${row.updated_at ?? ''}` : rule.triggerEvent;
       const recipients = resolveRecipients(recipientSpec, row);
       const text = renderTemplate(rule.template, row);
 
