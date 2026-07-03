@@ -4,6 +4,7 @@
 	import { invalidate } from '$app/navigation';
 	import { PageHeader, Card, Button, EmptyState } from '$lib/components/ui';
 	import * as m from '$lib/paraglide/messages';
+	import { canAct } from '$lib/access/can.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -65,7 +66,12 @@
 			<Link2 size={16} class="text-accent shrink-0" />
 		{/snippet}
 		{#snippet actions()}
-			<Button size="sm" onclick={() => (showNew = !showNew)} disabled={data.eventTypes.length === 0}>
+			<Button
+				size="sm"
+				onclick={() => (showNew = !showNew)}
+				disabled={data.eventTypes.length === 0 || !canAct('scheduling', 'edit')}
+				title={canAct('scheduling', 'edit') ? undefined : m.no_permission()}
+			>
 				<Plus size={14} /> {m.sched_link_new()}
 			</Button>
 		{/snippet}
@@ -120,9 +126,11 @@
 						<a class="act" href={publicUrl(link.slug)} target="_blank" rel="noopener" title={m.sched_link_open()}>
 							<ExternalLink size={15} />
 						</a>
-						<button class="act del" onclick={() => remove(link.id)} title={m.sched_delete()}>
-							<Trash2 size={15} />
-						</button>
+						{#if canAct('scheduling', 'delete')}
+							<button class="act del" onclick={() => remove(link.id)} title={m.sched_delete()}>
+								<Trash2 size={15} />
+							</button>
+						{/if}
 					</div>
 				</Card>
 			{/each}

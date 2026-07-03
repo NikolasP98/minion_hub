@@ -12,6 +12,7 @@
 		cell,
 		toolbar,
 		canSetDefault = false,
+		readonly = false,
 		cols = 4,
 		rowHeight = 104,
 		gap = 12,
@@ -23,6 +24,8 @@
 		toolbar?: Snippet;
 		/** Admins: show "Save as default" (pins this layout for all org users). */
 		canSetDefault?: boolean;
+		/** Hide the Edit/reorder/resize affordances (no module write capability). */
+		readonly?: boolean;
 		cols?: number;
 		rowHeight?: number;
 		gap?: number;
@@ -146,9 +149,11 @@
 				</button>
 			{/if}
 		{/if}
-		<button class="eg-btn" class:on={editing} onclick={() => (editing = !editing)}>
-			{#if editing}<Check size={13} /> {m.dash_layout_done()}{:else}<Pencil size={13} /> {m.dash_layout_edit()}{/if}
-		</button>
+		{#if !readonly}
+			<button class="eg-btn" class:on={editing} onclick={() => (editing = !editing)}>
+				{#if editing}<Check size={13} /> {m.dash_layout_done()}{:else}<Pencil size={13} /> {m.dash_layout_edit()}{/if}
+			</button>
+		{/if}
 	</div>
 </div>
 

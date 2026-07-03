@@ -51,6 +51,7 @@ export const BUSINESS_PERMISSIONS = [
   'projects:view',
   'memberships:view',
   'comms:view',
+  'stock:view',
 ] as const;
 
 /**
@@ -114,12 +115,35 @@ export const FIELD_LEVEL_MODULES: Record<string, { label: string; hint: string }
 /** `<subkey>:view` for every sub-resource — emitted from caps + gated on routes. */
 export const SUBRESOURCE_VIEW_PERMISSIONS = ALL_SUBRESOURCES.map((s) => `${s.key}:view`);
 
+/**
+ * Business modules that get action-level legacy perms (`<module>:create|edit|
+ * delete|export|manage`), emitted from `capsToLegacyPermissions` so `canAct()`
+ * can gate individual write affordances (buttons) the same way `apiWriteCapability`
+ * (hooks.server.ts) gates the write API for that module.
+ */
+export const BUSINESS_ACTION_MODULES = [
+  'crm',
+  'finance',
+  'sales',
+  'scheduling',
+  'support',
+  'projects',
+  'memberships',
+  'comms',
+  'stock',
+] as const;
+const BUSINESS_ACTIONS = ['create', 'edit', 'delete', 'export', 'manage'] as const;
+export const BUSINESS_ACTION_PERMISSIONS = BUSINESS_ACTION_MODULES.flatMap((m) =>
+  BUSINESS_ACTIONS.map((a) => `${m}:${a}` as const),
+);
+
 export const PERMISSIONS = [
   ...RESOURCE_PERMISSIONS,
   ...BUSINESS_PERMISSIONS,
   ...PLATFORM_VIEW_PERMISSIONS,
   ...SUBRESOURCE_VIEW_PERMISSIONS,
   ...MODULE_PERMISSIONS,
+  ...BUSINESS_ACTION_PERMISSIONS,
 ] as const;
 
 /**
@@ -142,6 +166,7 @@ const ROUTE_VIEW_PERMS: ReadonlyArray<readonly [string, string]> = [
   ['/support', 'support:view'],
   ['/memberships', 'memberships:view'],
   ['/workforce', 'projects:view'],
+  ['/stock', 'stock:view'],
   // platform modules
   ['/agents', 'agents:view'],
   ['/capabilities', 'agents:view'],

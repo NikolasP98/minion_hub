@@ -18,6 +18,7 @@
 	import { stageLabel, funnelStageLabel } from '$lib/components/crm/crm-i18n';
 	import { FUNNEL_ORDER, effectiveFunnelStage, maxFunnelStage, financeFloorStage } from '$lib/components/crm/crm-funnel';
 	import { collectMetaKeys, metaLabel, metaDisplay } from '$lib/components/crm/crm-meta';
+	import { canAct } from '$lib/access/can.svelte';
 
 	let { data }: { data: PageData } = $props();
 	const contacts = $derived(data.contacts);
@@ -294,7 +295,13 @@
 		{/if}
 
 		<div class="ml-auto flex items-center gap-2">
-			<Button variant="outline" size="sm" onclick={() => (exportOpen = true)}>
+			<Button
+				variant="outline"
+				size="sm"
+				disabled={!canAct('crm', 'export')}
+				title={canAct('crm', 'export') ? undefined : m.no_permission()}
+				onclick={() => (exportOpen = true)}
+			>
 				<Download size={14} /> {m.crm_export_btn()}
 			</Button>
 			{#if metaKeys.length > 0}
@@ -316,11 +323,23 @@
 					{/if}
 				</div>
 			{/if}
-			<Button variant="outline" size="sm" onclick={syncNow} disabled={syncing}>
+			<Button
+				variant="outline"
+				size="sm"
+				onclick={syncNow}
+				disabled={syncing || !canAct('crm', 'edit')}
+				title={canAct('crm', 'edit') ? undefined : m.no_permission()}
+			>
 				<RefreshCw size={14} class={syncing ? 'animate-spin' : ''} />
 				{syncing ? m.crm_syncing() : m.crm_sync_now()}
 			</Button>
-			<Button variant="primary" size="sm" onclick={newContact} disabled={creating}>
+			<Button
+				variant="primary"
+				size="sm"
+				onclick={newContact}
+				disabled={creating || !canAct('crm', 'edit')}
+				title={canAct('crm', 'edit') ? undefined : m.no_permission()}
+			>
 				<Plus size={14} /> {m.crm_new_contact()}
 			</Button>
 		</div>

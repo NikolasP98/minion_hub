@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { PERMISSIONS, ALL_SUBRESOURCES } from '$lib/permissions';
+import { PERMISSIONS, ALL_SUBRESOURCES, BUSINESS_ACTION_MODULES } from '$lib/permissions';
 import { resolveCapabilities, type Capabilities } from './rbac.service';
 import type { LoadCtx } from './types';
 
@@ -65,8 +65,19 @@ export function capsToLegacyPermissions(caps: Capabilities): string[] {
   add('projects:view', caps.can('projects', 'view'));
   add('memberships:view', caps.can('memberships', 'view'));
   add('comms:view', caps.can('comms', 'view'));
+  add('stock:view', caps.can('stock', 'view'));
   // section sub-resource view gates (inherit parent unless overridden)
   for (const s of ALL_SUBRESOURCES) add(`${s.key}:view`, caps.can(s.key, 'view'));
+  // business action-level gates (create/edit/delete/export/manage), for
+  // `canAct()` button-level client gating — mirrors the (module, action) pairs
+  // `apiWriteCapability` (hooks.server.ts) enforces server-side.
+  for (const m of BUSINESS_ACTION_MODULES) {
+    add(`${m}:create`, caps.can(m, 'create'));
+    add(`${m}:edit`, caps.can(m, 'edit'));
+    add(`${m}:delete`, caps.can(m, 'delete'));
+    add(`${m}:export`, caps.can(m, 'export'));
+    add(`${m}:manage`, caps.can(m, 'manage'));
+  }
   // nav module groups
   add('module:operations', caps.can('agents', 'view') || caps.can('channels', 'view'));
   add('module:workspace', caps.can('agents', 'view'));

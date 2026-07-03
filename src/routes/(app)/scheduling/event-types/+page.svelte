@@ -5,6 +5,7 @@
 	import { PageHeader, Card, Button, Badge, EmptyState } from '$lib/components/ui';
 	import * as m from '$lib/paraglide/messages';
 	import EventTypeEditor from '$lib/components/scheduling/EventTypeEditor.svelte';
+	import { canAct } from '$lib/access/can.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -55,7 +56,12 @@
 			<Sparkles size={16} class="text-accent shrink-0" />
 		{/snippet}
 		{#snippet actions()}
-			<Button size="sm" onclick={() => (editing = 'new')}><Plus size={14} /> {m.sched_eventType_new()}</Button>
+			<Button
+				size="sm"
+				disabled={!canAct('scheduling', 'edit')}
+				title={canAct('scheduling', 'edit') ? undefined : m.no_permission()}
+				onclick={() => (editing = 'new')}
+			><Plus size={14} /> {m.sched_eventType_new()}</Button>
 		{/snippet}
 	</PageHeader>
 
@@ -91,12 +97,20 @@
 									/{et.slug} · {et.length}m · {et.resourceIds.length} {m.sched_nav_resources()}
 								</div>
 							</div>
-							<button class="icon-btn" onclick={() => (editing = et.id)} aria-label={m.sched_save()}>
+							<button
+								class="icon-btn"
+								disabled={!canAct('scheduling', 'edit')}
+								title={canAct('scheduling', 'edit') ? undefined : m.no_permission()}
+								onclick={() => (editing = et.id)}
+								aria-label={m.sched_save()}
+							>
 								<Pencil size={15} />
 							</button>
-							<button class="icon-btn del" onclick={() => remove(et.id)} aria-label={m.sched_delete()}>
-								<Trash2 size={15} />
-							</button>
+							{#if canAct('scheduling', 'delete')}
+								<button class="icon-btn del" onclick={() => remove(et.id)} aria-label={m.sched_delete()}>
+									<Trash2 size={15} />
+								</button>
+							{/if}
 						</div>
 					{/if}
 				</Card>
@@ -116,6 +130,13 @@
 	}
 	.icon-btn:hover {
 		background: var(--hairline);
+	}
+	.icon-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+	.icon-btn:disabled:hover {
+		background: none;
 	}
 	.icon-btn.del:hover {
 		color: var(--color-destructive);

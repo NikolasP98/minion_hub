@@ -7,6 +7,7 @@
 	import Chart from '$lib/components/charts/Chart.svelte';
 	import EditableGrid from '$lib/components/dashboard/EditableGrid.svelte';
 	import { isAdmin } from '$lib/state/features/user.svelte';
+	import { canAct } from '$lib/access/can.svelte';
 	import { chartColors } from '$lib/utils/chart-colors';
 	import { locale } from '$lib/state/ui/locale.svelte';
 	import type { EChartsOption } from 'echarts';
@@ -337,7 +338,7 @@
 				{@render periodControls()}
 				<p class="t-caption mt-4">{m.fin_empty()}</p>
 			{:else}
-				<EditableGrid id="finances-dashboard-v1" {items} cols={12} rowHeight={56} canSetDefault={isAdmin.value}>
+				<EditableGrid id="finances-dashboard-v1" {items} cols={12} rowHeight={56} canSetDefault={isAdmin.value} readonly={!canAct('finance', 'edit')}>
 					{#snippet toolbar()}{@render periodControls()}{/snippet}
 					{#snippet cell(id)}{@render cellBody(id)}{/snippet}
 				</EditableGrid>

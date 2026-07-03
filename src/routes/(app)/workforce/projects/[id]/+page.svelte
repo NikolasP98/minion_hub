@@ -6,6 +6,7 @@
 	import DocTimeline from '$lib/components/shared/DocTimeline.svelte';
 	import { toastWarning } from '$lib/state/ui/toast.svelte';
 	import * as m from '$lib/paraglide/messages';
+	import { canAct } from '$lib/access/can.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -118,7 +119,12 @@
 				<div class="line">Customer: {partyName(data.project.customerPartyId)}</div>
 				<div class="line">Lead: {partyName(data.project.leadPartyId)}</div>
 				<label class="line">Status:
-					<select value={data.project.status} disabled={busy} onchange={(e) => patchProject({ status: (e.currentTarget as HTMLSelectElement).value })}>
+					<select
+						value={data.project.status}
+						disabled={busy || !canAct('projects', 'edit')}
+						title={canAct('projects', 'edit') ? undefined : m.no_permission()}
+						onchange={(e) => patchProject({ status: (e.currentTarget as HTMLSelectElement).value })}
+					>
 						{#each projStatuses as s (s)}<option value={s}>{s}</option>{/each}
 					</select>
 				</label>
@@ -140,8 +146,18 @@
 		<!-- add task -->
 		<div class="add">
 			<input class="in" placeholder="Add a task…" bind:value={newTaskTitle} onkeydown={(e) => e.key === 'Enter' && addTask(false)} />
-			<button class="btn" disabled={busy || !newTaskTitle.trim()} onclick={() => addTask(false)}><Plus size={15} /> Task</button>
-			<button class="btn ghost" disabled={busy || !newTaskTitle.trim()} onclick={() => addTask(true)}><Flag size={14} /> Milestone</button>
+			<button
+				class="btn"
+				disabled={busy || !newTaskTitle.trim() || !canAct('projects', 'edit')}
+				title={canAct('projects', 'edit') ? undefined : m.no_permission()}
+				onclick={() => addTask(false)}
+			><Plus size={15} /> Task</button>
+			<button
+				class="btn ghost"
+				disabled={busy || !newTaskTitle.trim() || !canAct('projects', 'edit')}
+				title={canAct('projects', 'edit') ? undefined : m.no_permission()}
+				onclick={() => addTask(true)}
+			><Flag size={14} /> Milestone</button>
 		</div>
 
 		<!-- board -->
@@ -155,7 +171,13 @@
 								<div class="tt">{t.title}</div>
 								<div class="tmeta">
 									{#if t.humanId}<span class="hid">{t.humanId}</span>{/if}
-									<select class="mini" value={t.assigneePartyId ?? ''} disabled={busy} onchange={(e) => patchTask(t.id, { assigneePartyId: (e.currentTarget as HTMLSelectElement).value || null }, t.updatedAt)}>
+									<select
+										class="mini"
+										value={t.assigneePartyId ?? ''}
+										disabled={busy || !canAct('projects', 'edit')}
+										title={canAct('projects', 'edit') ? undefined : m.no_permission()}
+										onchange={(e) => patchTask(t.id, { assigneePartyId: (e.currentTarget as HTMLSelectElement).value || null }, t.updatedAt)}
+									>
 										<option value="">Unassigned</option>
 										{#if t.assigneePartyId && !assignOptions.some((o) => o.id === t.assigneePartyId)}
 											<option value={t.assigneePartyId}>{partyName(t.assigneePartyId)}</option>
@@ -163,7 +185,13 @@
 										{#each assignOptions as o (o.id)}<option value={o.id}>{o.label}</option>{/each}
 									</select>
 								</div>
-								<select class="mini status" value={t.status} disabled={busy} onchange={(e) => patchTask(t.id, { status: (e.currentTarget as HTMLSelectElement).value }, t.updatedAt)}>
+								<select
+									class="mini status"
+									value={t.status}
+									disabled={busy || !canAct('projects', 'edit')}
+									title={canAct('projects', 'edit') ? undefined : m.no_permission()}
+									onchange={(e) => patchTask(t.id, { status: (e.currentTarget as HTMLSelectElement).value }, t.updatedAt)}
+								>
 									{#each COLUMNS as s (s)}<option value={s}>{colLabel[s]}</option>{/each}
 								</select>
 							</div>
@@ -178,7 +206,12 @@
 			<header class="exec-head">
 				<span><Boxes size={14} /> Execution (workforce)</span>
 				{#if data.workforceProjectId}
-					<button class="btn ghost sm" disabled={busy} onclick={() => patchProject({ workforceProjectId: null })}><Unlink size={13} /> Unlink</button>
+					<button
+						class="btn ghost sm"
+						disabled={busy || !canAct('projects', 'edit')}
+						title={canAct('projects', 'edit') ? undefined : m.no_permission()}
+						onclick={() => patchProject({ workforceProjectId: null })}
+					><Unlink size={13} /> Unlink</button>
 				{/if}
 			</header>
 
@@ -220,7 +253,12 @@
 						<option value="">Link a workforce project…</option>
 						{#each data.linkable as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
 					</select>
-					<button class="btn ghost sm" disabled={busy || !linkChoice} onclick={() => patchProject({ workforceProjectId: linkChoice })}><Link2 size={13} /> Link</button>
+					<button
+						class="btn ghost sm"
+						disabled={busy || !linkChoice || !canAct('projects', 'edit')}
+						title={canAct('projects', 'edit') ? undefined : m.no_permission()}
+						onclick={() => patchProject({ workforceProjectId: linkChoice })}
+					><Link2 size={13} /> Link</button>
 				</div>
 				{#if data.linkable.length === 0}
 					<p class="t-caption empty">No workforce projects available to link.</p>

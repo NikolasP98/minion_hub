@@ -21,6 +21,7 @@
 	import { IdCard, Cake, Phone, Mail, MapPin, Stethoscope, Megaphone, Hash, User } from 'lucide-svelte';
 	import { createBackNav } from '$lib/nav/back-nav.svelte';
 	import { toastWarning } from '$lib/state/ui/toast.svelte';
+	import { canAct } from '$lib/access/can.svelte';
 
 	let { data }: { data: PageData } = $props();
 	const back = createBackNav('/crm/customers', m.crm_back_to_contacts);
@@ -257,9 +258,16 @@
 					{#if menuOpen}
 						<button class="backdrop" aria-label="close" onclick={() => (menuOpen = false)}></button>
 						<div class="menu">
-							<button class="mi" onclick={() => { menuOpen = false; startEditDetails(); }}><Pencil size={14} /> {m.crm_edit_properties()}</button>
-							<div class="msep"></div>
-							<button class="mi danger" onclick={() => { menuOpen = false; forget(); }}><Trash2 size={14} /> {m.crm_forget()}</button>
+							<button
+								class="mi"
+								disabled={!canAct('crm', 'edit')}
+								title={canAct('crm', 'edit') ? undefined : m.no_permission()}
+								onclick={() => { if (!canAct('crm', 'edit')) return; menuOpen = false; startEditDetails(); }}
+							><Pencil size={14} /> {m.crm_edit_properties()}</button>
+							{#if canAct('crm', 'delete')}
+								<div class="msep"></div>
+								<button class="mi danger" onclick={() => { menuOpen = false; forget(); }}><Trash2 size={14} /> {m.crm_forget()}</button>
+							{/if}
 						</div>
 					{/if}
 				</div>
@@ -444,7 +452,7 @@
 	     notes + channels (right, full height). Stacks on < lg. -->
 	<div class="flex-1 min-h-0 p-4 grid gap-4 grid-cols-1 lg:grid-cols-2 lg:overflow-hidden overflow-auto">
 		<div class="left-col min-w-0 lg:min-h-0 lg:overflow-auto">
-			<EditableGrid id="crm-contact-detail-v2" items={gridItems} cols={4} rowHeight={96} canSetDefault={isAdmin.value}>
+			<EditableGrid id="crm-contact-detail-v2" items={gridItems} cols={4} rowHeight={96} canSetDefault={isAdmin.value} readonly={!canAct('crm', 'edit')}>
 				{#snippet cell(idv)}{@render leftCell(idv)}{/snippet}
 			</EditableGrid>
 		</div>
@@ -543,6 +551,8 @@
 	}
 	.mi { display: flex; align-items: center; gap: 0.5rem; width: 100%; padding: 0.4rem 0.5rem; border-radius: var(--radius-sm, 6px); font-size: 0.84rem; text-align: left; color: var(--color-foreground); }
 	.mi:hover { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
+	.mi:disabled { opacity: 0.5; cursor: not-allowed; }
+	.mi:disabled:hover { background: none; }
 	.mi.danger { color: var(--color-destructive); }
 	.mi.danger:hover { background: color-mix(in srgb, var(--color-destructive) 12%, transparent); }
 	.msep { height: 1px; background: var(--hairline); margin: 0.2rem 0; }

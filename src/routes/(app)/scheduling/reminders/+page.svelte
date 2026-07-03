@@ -5,6 +5,7 @@
 	import { PageHeader, Card, Button, Toggle, EmptyState, Badge } from '$lib/components/ui';
 	import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
 	import * as m from '$lib/paraglide/messages';
+	import { canAct } from '$lib/access/can.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -130,7 +131,12 @@
 		{/snippet}
 		{#snippet actions()}
 			{#if dirty}
-				<Button size="sm" onclick={save} disabled={saving}>{m.sched_rem_save()}</Button>
+				<Button
+					size="sm"
+					onclick={save}
+					disabled={saving || !canAct('scheduling', 'edit')}
+					title={canAct('scheduling', 'edit') ? undefined : m.no_permission()}
+				>{m.sched_rem_save()}</Button>
 			{/if}
 		{/snippet}
 	</PageHeader>

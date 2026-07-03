@@ -6,6 +6,8 @@
 	import { priorityLabel, priorityColor, slaColor, PRIORITIES } from '$lib/components/support/support-format';
 	import { relativeTime } from '$lib/components/crm/crm-format';
 	import ScopeBanner from '$lib/components/crm/ScopeBanner.svelte';
+	import * as m from '$lib/paraglide/messages';
+	import { canAct } from '$lib/access/can.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -42,7 +44,13 @@
 <div class="flex flex-col h-full min-h-0">
 	<PageHeader title="Support" subtitle="Customer tickets with SLA tracking">
 		{#snippet actions()}
-			<Button variant="primary" size="sm" onclick={() => (creating = !creating)}>
+			<Button
+				variant="primary"
+				size="sm"
+				disabled={!canAct('support', 'edit')}
+				title={canAct('support', 'edit') ? undefined : m.no_permission()}
+				onclick={() => (creating = !creating)}
+			>
 				<Plus size={14} /> New ticket
 			</Button>
 		{/snippet}

@@ -5,6 +5,7 @@
 	import { PageHeader, Card, Button, Badge, EmptyState, Modal } from '$lib/components/ui';
 	import * as m from '$lib/paraglide/messages';
 	import ScopeBanner from '$lib/components/crm/ScopeBanner.svelte';
+	import { canAct } from '$lib/access/can.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -158,7 +159,12 @@
 			<CalendarClock size={16} class="text-accent shrink-0" />
 		{/snippet}
 		{#snippet actions()}
-			<Button size="sm" onclick={() => (showNew = true)} disabled={data.eventTypes.length === 0}>
+			<Button
+				size="sm"
+				onclick={() => (showNew = true)}
+				disabled={data.eventTypes.length === 0 || !canAct('scheduling', 'edit')}
+				title={canAct('scheduling', 'edit') ? undefined : m.no_permission()}
+			>
 				<Plus size={14} /> {m.sched_bookings_title()}
 			</Button>
 		{/snippet}
@@ -184,18 +190,38 @@
 							<Badge>{(STATUS_LABEL[b.status] ?? (() => b.status))()}</Badge>
 							<div class="flex gap-1">
 								{#if b.status === 'accepted' || b.status === 'pending'}
-									<button class="act" title={m.sched_mark_complete()} onclick={() => setStatus(b.id, 'completed')}>
+									<button
+										class="act"
+										title={canAct('scheduling', 'edit') ? m.sched_mark_complete() : m.no_permission()}
+										disabled={!canAct('scheduling', 'edit')}
+										onclick={() => setStatus(b.id, 'completed')}
+									>
 										<Check size={15} />
 									</button>
-									<button class="act" title={m.sched_mark_noShow()} onclick={() => setStatus(b.id, 'no_show')}>
+									<button
+										class="act"
+										title={canAct('scheduling', 'edit') ? m.sched_mark_noShow() : m.no_permission()}
+										disabled={!canAct('scheduling', 'edit')}
+										onclick={() => setStatus(b.id, 'no_show')}
+									>
 										<UserX size={15} />
 									</button>
-									<button class="act del" title={m.sched_cancel_booking()} onclick={() => setStatus(b.id, 'cancelled')}>
+									<button
+										class="act del"
+										title={canAct('scheduling', 'edit') ? m.sched_cancel_booking() : m.no_permission()}
+										disabled={!canAct('scheduling', 'edit')}
+										onclick={() => setStatus(b.id, 'cancelled')}
+									>
 										<X size={15} />
 									</button>
 								{/if}
 								{#if b.status !== 'cancelled' && b.status !== 'rejected'}
-									<button class="act" title="Create sales order" disabled={orderBusy === b.id} onclick={() => createOrder(b.id)}>
+									<button
+										class="act"
+										title={canAct('scheduling', 'edit') ? 'Create sales order' : m.no_permission()}
+										disabled={orderBusy === b.id || !canAct('scheduling', 'edit')}
+										onclick={() => createOrder(b.id)}
+									>
 										<ClipboardList size={15} />
 									</button>
 								{/if}
@@ -266,7 +292,11 @@
 			{/if}
 			{#if nbErr}<p class="t-caption" style="color:var(--color-destructive)">{nbErr}</p>{/if}
 		<div class="flex gap-2">
-			<Button onclick={book} disabled={nbLoading || !nbSlot || !nbName.trim()}>{m.sched_book_confirm()}</Button>
+			<Button
+				onclick={book}
+				disabled={nbLoading || !nbSlot || !nbName.trim() || !canAct('scheduling', 'edit')}
+				title={canAct('scheduling', 'edit') ? undefined : m.no_permission()}
+			>{m.sched_book_confirm()}</Button>
 			<Button variant="ghost" onclick={() => (showNew = false)}>{m.sched_cancel()}</Button>
 		</div>
 	</div>

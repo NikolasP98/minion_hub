@@ -7,6 +7,7 @@
 	import * as progress from '@zag-js/progress';
 	import { useMachine, normalizeProps } from '@zag-js/svelte';
 	import { onMount } from 'svelte';
+	import { canAct } from '$lib/access/can.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -160,7 +161,13 @@
 				{/if}
 
 				<div class="actions">
-					<Button variant="primary" size="sm" onclick={saveConnector} disabled={connectorBusy}>
+					<Button
+						variant="primary"
+						size="sm"
+						onclick={saveConnector}
+						disabled={connectorBusy || !canAct('finance', 'edit')}
+						title={canAct('finance', 'edit') ? undefined : m.no_permission()}
+					>
 						{m.fin_connector_save()}
 					</Button>
 				</div>
@@ -196,7 +203,13 @@
 				{/if}
 
 				<div class="actions sync-actions">
-					<Button variant="outline" size="sm" onclick={() => financeSync.start('susii')} disabled={financeSync.active}>
+					<Button
+						variant="outline"
+						size="sm"
+						onclick={() => financeSync.start('susii')}
+						disabled={financeSync.active || !canAct('finance', 'edit')}
+						title={canAct('finance', 'edit') ? undefined : m.no_permission()}
+					>
 						<RefreshCw size={14} class={financeSync.active ? 'animate-spin' : ''} />
 						{financeSync.active ? m.fin_sync_running() : m.fin_sync_now()}
 					</Button>

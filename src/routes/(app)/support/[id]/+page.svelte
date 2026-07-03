@@ -9,6 +9,7 @@
 	import { createBackNav } from '$lib/nav/back-nav.svelte';
 	import { toastWarning } from '$lib/state/ui/toast.svelte';
 	import * as m from '$lib/paraglide/messages';
+	import { canAct } from '$lib/access/can.svelte';
 
 	let { data }: { data: PageData } = $props();
 	const i = $derived(data.issue);
@@ -101,20 +102,37 @@
 						<span class="t-caption">Workflow</span>
 						<div class="wf-actions">
 							{#each data.transitions as t (t.action)}
-								<Button size="sm" disabled={busy} onclick={() => applyTransition(t.action)}>{t.action}</Button>
+								<Button
+									size="sm"
+									disabled={busy || !canAct('support', 'edit')}
+									title={canAct('support', 'edit') ? undefined : m.no_permission()}
+									onclick={() => applyTransition(t.action)}
+								>{t.action}</Button>
 							{/each}
 						</div>
 					</div>
 				{/if}
 				<label class="field">
 					<span class="t-caption">Status</span>
-					<select class="inp" value={i.status} disabled={busy} onchange={(e) => patch({ status: (e.currentTarget as HTMLSelectElement).value })}>
+					<select
+						class="inp"
+						value={i.status}
+						disabled={busy || !canAct('support', 'edit')}
+						title={canAct('support', 'edit') ? undefined : m.no_permission()}
+						onchange={(e) => patch({ status: (e.currentTarget as HTMLSelectElement).value })}
+					>
 						{#each STATUSES as s (s)}<option value={s}>{statusLabel[s]}</option>{/each}
 					</select>
 				</label>
 				<label class="field">
 					<span class="t-caption">Priority</span>
-					<select class="inp" value={i.priority} disabled={busy} onchange={(e) => patch({ priority: (e.currentTarget as HTMLSelectElement).value })}>
+					<select
+						class="inp"
+						value={i.priority}
+						disabled={busy || !canAct('support', 'edit')}
+						title={canAct('support', 'edit') ? undefined : m.no_permission()}
+						onchange={(e) => patch({ priority: (e.currentTarget as HTMLSelectElement).value })}
+					>
 						{#each PRIORITIES as p (p)}<option value={p}>{priorityLabel[p]}</option>{/each}
 					</select>
 				</label>

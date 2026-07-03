@@ -7,6 +7,7 @@
 	import ScopeBanner from '$lib/components/crm/ScopeBanner.svelte';
 	import { toastWarning } from '$lib/state/ui/toast.svelte';
 	import * as m from '$lib/paraglide/messages';
+	import { canAct } from '$lib/access/can.svelte';
 
 	let { data }: { data: PageData } = $props();
 	let busy = $state(false);
@@ -53,7 +54,13 @@
 					<a class="desc" href={`/sales/${o.id}`}>{#if o.humanId}<span class="hid">{o.humanId}</span> {/if}{o.description ?? '—'}</a>
 					<span class="cust t-caption">{o.customerName ?? '—'}</span>
 					<span class="total">{o.total ? Number(o.total).toLocaleString() : '—'}</span>
-					<select class="status-sel" value={o.status} disabled={busy} onchange={(e) => setStatus(o.id, (e.currentTarget as HTMLSelectElement).value, o.updatedAt)}>
+					<select
+						class="status-sel"
+						value={o.status}
+						disabled={busy || !canAct('sales', 'edit')}
+						title={canAct('sales', 'edit') ? undefined : m.no_permission()}
+						onchange={(e) => setStatus(o.id, (e.currentTarget as HTMLSelectElement).value, o.updatedAt)}
+					>
 						{#each STATUSES as s (s)}<option value={s}>{statusLabel[s]}</option>{/each}
 					</select>
 					<span class="when t-caption">{relativeTime(o.createdAt)}</span>

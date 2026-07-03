@@ -10,6 +10,7 @@
 	import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
 	import EditableGrid from '$lib/components/dashboard/EditableGrid.svelte';
 	import { isAdmin } from '$lib/state/features/user.svelte';
+	import { canAct } from '$lib/access/can.svelte';
 	import { temperatureColor, type Temperature } from '$lib/components/crm/crm-format';
 	import { funnelStageColor } from '$lib/components/crm/crm-funnel';
 	import { stageLabel } from '$lib/components/crm/crm-i18n';
@@ -276,7 +277,7 @@
 
 	<!-- Full-width scroller so the scrollbar hugs the screen edge; content padded. -->
 	<div class="flex-1 min-h-0 overflow-auto p-4">
-		<EditableGrid id="crm-dashboard-v2" {items} cols={12} rowHeight={56} canSetDefault={isAdmin.value}>
+		<EditableGrid id="crm-dashboard-v2" {items} cols={12} rowHeight={56} canSetDefault={isAdmin.value} readonly={!canAct('crm', 'edit')}>
 			<!-- Date-range cohort filter, inline with the Edit-layout button. -->
 			{#snippet toolbar()}
 				<div class="seg" role="group" title={m.crm_dash_range_hint()}>

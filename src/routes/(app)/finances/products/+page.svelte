@@ -4,6 +4,7 @@
 	import * as m from '$lib/paraglide/messages';
 	import { Package, RefreshCw } from 'lucide-svelte';
 	import { PageHeader, Button } from '$lib/components/ui';
+	import { canAct } from '$lib/access/can.svelte';
 
 	let { data }: { data: PageData } = $props();
 	const products = $derived(data.products);
@@ -88,7 +89,13 @@
 	<PageHeader title={m.fin_products_title()} subtitle={m.fin_products_subtitle()}>
 		{#snippet leading()}<Package size={16} class="text-accent shrink-0" />{/snippet}
 		{#snippet actions()}
-			<Button variant="outline" size="sm" onclick={runImport} disabled={importBusy}>
+			<Button
+				variant="outline"
+				size="sm"
+				onclick={runImport}
+				disabled={importBusy || !canAct('finance', 'edit')}
+				title={canAct('finance', 'edit') ? undefined : m.no_permission()}
+			>
 				<RefreshCw size={13} class={importBusy ? 'animate-spin' : ''} />
 				{m.fin_products_import()}
 			</Button>
@@ -98,7 +105,12 @@
 	{#if coverage.billedNotInCatalog > 0}
 		<div class="coverage-banner">
 			<span>{m.fin_products_coverage({ n: coverage.billedNotInCatalog })}</span>
-			<button class="coverage-btn" onclick={runImport} disabled={importBusy}>
+			<button
+				class="coverage-btn"
+				onclick={runImport}
+				disabled={importBusy || !canAct('finance', 'edit')}
+				title={canAct('finance', 'edit') ? undefined : m.no_permission()}
+			>
 				{m.fin_products_import()}
 			</button>
 		</div>
@@ -113,7 +125,13 @@
 			<div class="flex flex-col items-center justify-center h-full gap-2 p-8 text-center">
 				<Package size={32} class="text-muted-foreground" />
 				<p class="t-caption">{m.fin_products_empty()}</p>
-				<Button variant="outline" size="sm" onclick={runImport} disabled={importBusy}>
+				<Button
+					variant="outline"
+					size="sm"
+					onclick={runImport}
+					disabled={importBusy || !canAct('finance', 'edit')}
+					title={canAct('finance', 'edit') ? undefined : m.no_permission()}
+				>
 					{m.fin_products_import()}
 				</Button>
 			</div>
@@ -174,7 +192,12 @@
 										<p class="err-msg text-xs">{editMsg.text}</p>
 									{/if}
 								{:else}
-									<button class="act-btn act-edit" onclick={() => startEdit(p)}>✎</button>
+									<button
+										class="act-btn act-edit"
+										onclick={() => startEdit(p)}
+										disabled={!canAct('finance', 'edit')}
+										title={canAct('finance', 'edit') ? undefined : m.no_permission()}
+									>✎</button>
 								{/if}
 							</td>
 						</tr>

@@ -93,6 +93,37 @@ describe('capsToLegacyPermissions — RBAC → legacy nav vocab', () => {
 		expect(p.has('reliability:view')).toBe(true);
 	});
 
+	test('action-level business perms mirror apiWriteCapability (create/edit/delete/export/manage)', () => {
+		// owner: full RWXE+manage on business modules (DEFAULT_MATRIX ALL)
+		const owner = permsFor('owner');
+		for (const perm of [
+			'crm:edit',
+			'crm:delete',
+			'crm:export',
+			'finance:edit',
+			'sales:edit',
+			'scheduling:edit',
+			'support:edit',
+			'projects:edit',
+		]) {
+			expect(owner.has(perm)).toBe(true);
+		}
+
+		// viewer: view-only, no business action perms
+		const viewer = permsFor('viewer');
+		for (const perm of ['crm:create', 'crm:edit', 'crm:delete', 'crm:export', 'crm:manage']) {
+			expect(viewer.has(perm)).toBe(false);
+		}
+
+		// manager: RWXE on business modules (create/edit/export) but not delete/manage
+		const manager = permsFor('manager');
+		expect(manager.has('crm:create')).toBe(true);
+		expect(manager.has('crm:edit')).toBe(true);
+		expect(manager.has('crm:export')).toBe(true);
+		expect(manager.has('crm:delete')).toBe(false);
+		expect(manager.has('crm:manage')).toBe(false);
+	});
+
 	test('per-org override disabling crm view strips crm:view (the reported bug)', () => {
 		const noView = {
 			role_key: 'viewer',

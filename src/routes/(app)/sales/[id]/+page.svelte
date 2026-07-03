@@ -8,6 +8,7 @@
 	import { createBackNav } from '$lib/nav/back-nav.svelte';
 	import { toastWarning } from '$lib/state/ui/toast.svelte';
 	import * as m from '$lib/paraglide/messages';
+	import { canAct } from '$lib/access/can.svelte';
 
 	let { data }: { data: PageData } = $props();
 	const o = $derived(data.order);
@@ -95,14 +96,25 @@
 						<span class="t-caption">Workflow</span>
 						<div class="wf-actions">
 							{#each data.transitions as t (t.action)}
-								<Button size="sm" disabled={busy} onclick={() => applyTransition(t.action)}>{t.action}</Button>
+								<Button
+									size="sm"
+									disabled={busy || !canAct('sales', 'edit')}
+									title={canAct('sales', 'edit') ? undefined : m.no_permission()}
+									onclick={() => applyTransition(t.action)}
+								>{t.action}</Button>
 							{/each}
 						</div>
 					</div>
 				{/if}
 				<label class="field">
 					<span class="t-caption">Status</span>
-					<select class="inp" value={o.status} disabled={busy} onchange={(e) => setStatus((e.currentTarget as HTMLSelectElement).value)}>
+					<select
+						class="inp"
+						value={o.status}
+						disabled={busy || !canAct('sales', 'edit')}
+						title={canAct('sales', 'edit') ? undefined : m.no_permission()}
+						onchange={(e) => setStatus((e.currentTarget as HTMLSelectElement).value)}
+					>
 						{#each STATUSES as s (s)}<option value={s}>{statusLabel[s]}</option>{/each}
 					</select>
 				</label>

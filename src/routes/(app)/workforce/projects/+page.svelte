@@ -4,6 +4,8 @@
 	import { PageHeader } from '$lib/components/ui';
 	import PartyPicker from '$lib/components/crm/PartyPicker.svelte';
 	import { GanttChartSquare, FolderPlus, Sparkles, Boxes } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages';
+	import { canAct } from '$lib/access/can.svelte';
 
 	let { data }: { data: PageData } = $props();
 	let name = $state('');
@@ -116,7 +118,12 @@
 			<div class="create-row">
 				<input class="in" placeholder="New project name…" bind:value={name} onkeydown={(e) => e.key === 'Enter' && create()} />
 				<input class="in date" type="date" bind:value={targetDate} title="Target date" />
-				<button class="btn" disabled={busy || !name.trim()} onclick={create}><FolderPlus size={15} /> Create</button>
+				<button
+					class="btn"
+					disabled={busy || !name.trim() || !canAct('projects', 'edit')}
+					title={canAct('projects', 'edit') ? undefined : m.no_permission()}
+					onclick={create}
+				><FolderPlus size={15} /> Create</button>
 			</div>
 			<div class="create-row">
 				<PartyPicker bind:value={customerPartyId} label="Customer" placeholder="Search customer…" types="person,company" />
@@ -155,7 +162,12 @@
 							{#if p.color}<span class="dot" style="background:{p.color}"></span>{/if}{p.name}
 						</span>
 						<span class="status t-caption">{p.status}</span>
-						<button class="btn ghost sm" disabled={busy} onclick={() => importWorkforce(p)}>Import →</button>
+						<button
+							class="btn ghost sm"
+							disabled={busy || !canAct('projects', 'edit')}
+							title={canAct('projects', 'edit') ? undefined : m.no_permission()}
+							onclick={() => importWorkforce(p)}
+						>Import →</button>
 					</div>
 				{/each}
 			</section>

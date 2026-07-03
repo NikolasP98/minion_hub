@@ -7,6 +7,7 @@
 	import * as m from '$lib/paraglide/messages';
 	import AvailabilityEditor from '$lib/components/scheduling/AvailabilityEditor.svelte';
 	import MemberCalendarStrip from '$lib/components/scheduling/MemberCalendarStrip.svelte';
+	import { canAct } from '$lib/access/can.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -88,13 +89,19 @@
 	// (active) ↔ on vacation (inactive, still enrolled). "Disable scheduling"
 	// removes the resource (un-enrols an org member).
 	function resourceMenu(active: boolean): DropdownItem[] {
-		return [
-			active
-				? { value: 'vacation', label: m.sched_team_set_vacation(), icon: Palmtree }
-				: { value: 'available', label: m.sched_team_set_available(), icon: Check },
-			{ value: 'd', label: '', divider: true },
-			{ value: 'remove', label: m.sched_team_disable(), icon: Trash2, danger: true },
-		];
+		const items: DropdownItem[] = [];
+		if (canAct('scheduling', 'edit')) {
+			items.push(
+				active
+					? { value: 'vacation', label: m.sched_team_set_vacation(), icon: Palmtree }
+					: { value: 'available', label: m.sched_team_set_available(), icon: Check },
+			);
+		}
+		if (canAct('scheduling', 'delete')) {
+			if (items.length) items.push({ value: 'd', label: '', divider: true });
+			items.push({ value: 'remove', label: m.sched_team_disable(), icon: Trash2, danger: true });
+		}
+		return items;
 	}
 	async function onResourceAction(id: string, value: string) {
 		if (value === 'vacation') await toggleActive(id, false);
@@ -156,7 +163,11 @@
 						<span class="t-caption">{m.sched_resource_timezone()}</span>
 						<Input bind:value={timezone} />
 					</label>
-					<Button onclick={addCustom} disabled={adding || !name.trim()}>
+					<Button
+						onclick={addCustom}
+						disabled={adding || !name.trim() || !canAct('scheduling', 'edit')}
+						title={canAct('scheduling', 'edit') ? undefined : m.no_permission()}
+					>
 						<Plus size={14} /> {m.sched_resource_new()}
 					</Button>
 				</div>
@@ -167,7 +178,12 @@
 		<section class="flex flex-col gap-2">
 			<div class="flex items-center justify-between gap-2">
 				<div class="t-label">{m.sched_team_members_heading()}</div>
-				<button class="add-link" onclick={() => (showAdd = !showAdd)}>
+				<button
+					class="add-link"
+					disabled={!canAct('scheduling', 'edit')}
+					title={canAct('scheduling', 'edit') ? undefined : m.no_permission()}
+					onclick={() => (showAdd = !showAdd)}
+				>
 					<Plus size={13} /> {m.sched_team_add_custom()}
 				</button>
 			</div>
@@ -218,7 +234,12 @@
 									{/snippet}
 								</Dropdown>
 							{:else}
-								<Button size="sm" onclick={() => enroll(member)} disabled={busy === member.id}>
+								<Button
+									size="sm"
+									onclick={() => enroll(member)}
+									disabled={busy === member.id || !canAct('scheduling', 'edit')}
+									title={canAct('scheduling', 'edit') ? undefined : m.no_permission()}
+								>
 									<CalendarPlus size={14} /> {m.sched_team_enable()}
 								</Button>
 							{/if}
@@ -320,6 +341,10 @@
 		letter-spacing: 0.04em;
 		text-transform: uppercase;
 		color: var(--accent);
+	}
+	.add-link:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 	.icon-btn-spacer {
 		width: 26px;
