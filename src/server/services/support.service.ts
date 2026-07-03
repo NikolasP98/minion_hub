@@ -12,6 +12,7 @@ import { computeChanges } from './activity.service';
 import { docAuditLog } from '$server/db/pg-activity-schema';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { StaleWriteError, staleGuard } from './errors';
+import { emitHubEvent } from '$server/events/emit';
 
 export type Priority = 'low' | 'medium' | 'high' | 'urgent';
 export type IssueStatus = 'open' | 'replied' | 'on_hold' | 'resolved' | 'closed';
@@ -246,7 +247,8 @@ export async function updateIssue(
       if (!cur.resolvedAt) patch.resolutionBy = d.resolutionBy;
     }
 
-    if (input.status && input.status !== cur.status) {
+    const statusChanged = !!input.status && input.status !== cur.status;
+    if (statusChanged) {
       patch.status = input.status;
       if (input.status !== 'open' && !cur.firstRespondedAt) patch.firstRespondedAt = now;
       if (input.status === 'resolved' && !cur.resolvedAt) patch.resolvedAt = now;
@@ -287,6 +289,15 @@ export async function updateIssue(
         changes,
         actorId: actor.id,
         actorName: actor.name,
+      });
+    }
+    if (statusChanged) {
+      await emitHubEvent(tx, {
+        type: 'ticket.status_changed',
+        orgId: ctx.tenantId,
+        issueId: id,
+        old: cur.status,
+        new: row.status,
       });
     }
     return row;

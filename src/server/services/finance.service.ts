@@ -14,6 +14,7 @@ import { docAuditLog } from '$server/db/pg-activity-schema';
 import type { CanonicalInvoice } from '$server/finance/connector';
 import { cached, keys, invalidateTags, tags } from '@minion-stack/cache';
 import type { Period } from '$lib/finance/period';
+import { emitHubEvent } from '$server/events/emit';
 
 const numStr = (n: number | null) => (n == null ? null : String(n));
 
@@ -201,6 +202,14 @@ export async function upsertInvoicesBatch(
       }));
     });
     if (payRows.length) await tx.insert(finPayments).values(payRows);
+
+    const created = invRows.filter((r) => r.inserted).length;
+    await emitHubEvent(tx, {
+      type: 'finance.invoices_upserted',
+      orgId: ctx.tenantId,
+      created,
+      updated: invRows.length - created,
+    });
   });
 }
 

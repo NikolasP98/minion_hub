@@ -16,6 +16,7 @@ import type { SchedBooking } from '$server/db/pg-scheduling-schema';
 import { computeSlots } from '$server/scheduling/slots';
 import type { ResourceAvailability, BusyInterval } from '$server/scheduling/slots';
 import { serviceRulesOf } from './scheduling-slots.service';
+import { emitHubEvent } from '$server/events/emit';
 
 const MS_PER_MIN = 60_000;
 const ACTIVE_STATUSES = ['accepted', 'pending'] as const;
@@ -283,6 +284,7 @@ export async function createBooking(ctx: CoreCtx, input: CreateBookingInput): Pr
         .limit(1);
       return existing;
     }
+    await emitHubEvent(tx, { type: 'booking.created', orgId: ctx.tenantId, bookingId: row.id });
     return row;
   });
 }
