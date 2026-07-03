@@ -4,6 +4,7 @@ import { env } from '$env/dynamic/private';
 import { runTick } from '$server/services/bg-runtime';
 // Importing the service registers its bg-runtime handler (side effect).
 import '$server/services/groupchat.service';
+import '$server/services/brains.service';
 
 /**
  * GET /api/jobs/tick — cron entrypoint for the GLOBAL background-job runtime.

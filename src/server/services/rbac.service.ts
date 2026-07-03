@@ -46,6 +46,8 @@ export const MODULES = [
 	'projects',
 	'memberships',
 	'comms',
+	'brains',
+	'stock',
 	// platform / admin
 	'agents',
 	'channels',
@@ -72,6 +74,8 @@ export const MODULE_LABELS: Record<Module, string> = {
 	projects: 'Projects',
 	memberships: 'Memberships',
 	comms: 'Comms',
+	brains: 'AI Brains',
+	stock: 'Stock',
 	agents: 'Agents',
 	channels: 'Channels',
 	flows: 'Agent Builder',
@@ -91,6 +95,8 @@ export const BUSINESS_MODULES: readonly Module[] = [
 	'projects',
 	'memberships',
 	'comms',
+	'brains',
+	'stock',
 ];
 const ADMIN_MODULES: readonly Module[] = [
 	'agents',
@@ -701,6 +707,8 @@ const API_WRITE_PREFIXES: ReadonlyArray<readonly [string, Module]> = [
 	['/api/scheduling', 'scheduling'],
 	['/api/support', 'support'],
 	['/api/memberships', 'memberships'],
+	['/api/brains', 'brains'],
+	['/api/stock', 'stock'],
 	['/api/projects', 'projects'],
 	['/api/work', 'projects'],
 	['/api/workforce', 'projects'],
