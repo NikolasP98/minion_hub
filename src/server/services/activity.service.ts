@@ -17,6 +17,7 @@ const REF_TABLES: Record<string, string> = {
   proj_project: 'proj_projects',
   proj_task: 'proj_tasks',
   stk_entry: 'stk_entries',
+  brain: 'brains',
 };
 
 /** True if refType is allowlisted AND the row exists in the caller's org. */

@@ -52,6 +52,7 @@ export const BUSINESS_PERMISSIONS = [
   'memberships:view',
   'comms:view',
   'stock:view',
+  'brains:view',
 ] as const;
 
 /**
@@ -131,6 +132,7 @@ export const BUSINESS_ACTION_MODULES = [
   'memberships',
   'comms',
   'stock',
+  'brains',
 ] as const;
 const BUSINESS_ACTIONS = ['create', 'edit', 'delete', 'export', 'manage'] as const;
 export const BUSINESS_ACTION_PERMISSIONS = BUSINESS_ACTION_MODULES.flatMap((m) =>
@@ -167,6 +169,7 @@ const ROUTE_VIEW_PERMS: ReadonlyArray<readonly [string, string]> = [
   ['/memberships', 'memberships:view'],
   ['/workforce', 'projects:view'],
   ['/stock', 'stock:view'],
+  ['/brains', 'brains:view'],
   // platform modules
   ['/agents', 'agents:view'],
   ['/capabilities', 'agents:view'],

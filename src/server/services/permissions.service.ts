@@ -66,6 +66,7 @@ export function capsToLegacyPermissions(caps: Capabilities): string[] {
   add('memberships:view', caps.can('memberships', 'view'));
   add('comms:view', caps.can('comms', 'view'));
   add('stock:view', caps.can('stock', 'view'));
+  add('brains:view', caps.can('brains', 'view'));
   // section sub-resource view gates (inherit parent unless overridden)
   for (const s of ALL_SUBRESOURCES) add(`${s.key}:view`, caps.can(s.key, 'view'));
   // business action-level gates (create/edit/delete/export/manage), for

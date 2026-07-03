@@ -26,6 +26,7 @@ import {
     Bot,
     Building2,
     UsersRound,
+    Database,
 } from "lucide-svelte";
 import type { ComponentType, SvelteComponent } from "svelte";
 import * as m from "$lib/paraglide/messages";
@@ -163,6 +164,18 @@ export const ROUTES: RouteMeta[] = [
         inPalette: true,
         keywords: "prompt builder craft",
         paletteIcon: "wand",
+    },
+    {
+        path: "/brains",
+        title: () => m.nav_knowledgeBases(),
+        icon: Database,
+        matcher: startsWith("/brains"),
+        section: "agents",
+        requires: "brains.view",
+        inNav: true,
+        inPalette: true,
+        keywords: "brains knowledge base documents search embeddings rag",
+        paletteIcon: "book-open",
     },
 
     // ── Top icon row (rendered specially in the sidebar) ─────────────────────
