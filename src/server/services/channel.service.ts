@@ -150,6 +150,14 @@ export async function createChannel(ctx: ServerCtx, input: ChannelInput) {
       credentialsIv: iv,
       credentialsMeta: JSON.stringify(input.credentialsMeta ?? {}),
       status: input.status ?? 'inactive',
+      // Access rules (Phase 4: DB-authoritative, mirrored to the gateway via
+      // publishChannel — no longer written to gateway.json). Column defaults
+      // ('none' / []) apply when the caller doesn't collect these yet.
+      ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
+      ...(input.replies !== undefined ? { replies: input.replies } : {}),
+      ...(input.allowFrom !== undefined ? { allowFrom: input.allowFrom } : {}),
+      ...(input.groupAllowFrom !== undefined ? { groupAllowFrom: input.groupAllowFrom } : {}),
+      ...(input.requireMention !== undefined ? { requireMention: input.requireMention } : {}),
     }),
   );
 

@@ -8,10 +8,13 @@ import {
   isBaseHashRace,
   isDangerousEmptyWipe,
   ensureGatewayWhatsappAccount,
+  reconcileOrgConfig,
 } from './org-config-sync.service';
 import { gatewayCall } from '$lib/server/gateway-rpc';
+import { getCoreDb } from '$server/db/pg-client';
 
 vi.mock('$lib/server/gateway-rpc', () => ({ gatewayCall: vi.fn() }));
+vi.mock('$server/db/pg-client', () => ({ getCoreDb: vi.fn() }));
 const mockGatewayCall = vi.mocked(gatewayCall);
 
 describe('isDangerousEmptyWipe (org-isolation safety valve)', () => {
@@ -154,6 +157,31 @@ describe('ensureGatewayWhatsappAccount (additive registration on pair)', () => {
   it('skips an empty accountId without calling the gateway', async () => {
     await ensureGatewayWhatsappAccount('gw', '   ', 'x');
     expect(mockGatewayCall).not.toHaveBeenCalled();
+  });
+});
+
+describe('reconcileOrgConfig (Phase-4 ORG_CONFIG_PUSH flag)', () => {
+  beforeEach(() => {
+    mockGatewayCall.mockReset();
+    vi.mocked(getCoreDb).mockReturnValue({
+      select: () => ({ from: () => ({ where: () => Promise.resolve([]) }) }),
+    } as never);
+    delete process.env.ORG_CONFIG_PUSH;
+  });
+
+  it('ORG_CONFIG_PUSH=off skips config.patch (and config.get) entirely', async () => {
+    process.env.ORG_CONFIG_PUSH = 'off';
+    const result = await reconcileOrgConfig('gw');
+    expect(mockGatewayCall).not.toHaveBeenCalled();
+    expect(result).toEqual({ accountOrgs: {}, orgDisabled: {} });
+  });
+
+  it('unset (default) still pushes via config.patch — zero behavior change', async () => {
+    mockGatewayCall.mockImplementation(async (method: string) =>
+      method === 'config.get' ? { config: {}, hash: 'h1' } : undefined,
+    );
+    await reconcileOrgConfig('gw');
+    expect(mockGatewayCall.mock.calls.some((c) => c[0] === 'config.patch')).toBe(true);
   });
 });
 

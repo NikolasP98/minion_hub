@@ -95,6 +95,18 @@
         step = 'name';
     }
 
+    /** Map the wizard's dmPolicy choice to the DB's replies/allowFrom columns —
+     *  same derivation ChannelCard's behavior selector uses (replies checked FIRST,
+     *  it's the master kill-switch; allowFrom only matters when replies:'bound'). */
+    function accessFieldsFor(policy: 'open' | 'pairing' | 'disabled'): {
+        replies: 'none' | 'bound';
+        allowFrom: string[];
+    } {
+        if (policy === 'disabled') return { replies: 'none', allowFrom: [] };
+        if (policy === 'open') return { replies: 'bound', allowFrom: ['*'] };
+        return { replies: 'bound', allowFrom: [] }; // 'pairing' — closed until a sender pairs
+    }
+
     async function commit() {
         if (!verified) return;
         if (!configState.baseHash) await loadConfig();
@@ -108,12 +120,32 @@
                 : verified.kind === 'discord'
                   ? verified.id
                   : verified.phone;
-        // The gateway account schemas are strict and use `name` (not `label`)
-        // for the display name — an unknown `label` key is rejected.
-        const accountPatch: Record<string, unknown> = { name: label, dmPolicy };
-        // dmPolicy "open" is invalid unless allowFrom explicitly includes "*"
-        // (the gateway config schema enforces this for every channel).
-        if (dmPolicy === 'open') accountPatch.allowFrom = ['*'];
+
+        // 1) DB create FIRST (access fields live here now — Phase 4). If this fails,
+        // no gateway.json account is written, so nothing is left half-configured.
+        const { replies, allowFrom } = accessFieldsFor(dmPolicy);
+        let channelId: string;
+        try {
+            const res = await fetch(`/api/servers/${serverId}/channels`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ type: channelType, label, accountId, replies, allowFrom }),
+            });
+            const data = (await res.json().catch(() => ({}))) as { ok?: boolean; id?: string; error?: string };
+            if (!res.ok || data.ok === false || !data.id) {
+                throw new Error(data.error ?? `HTTP ${res.status}`);
+            }
+            channelId = data.id;
+        } catch (e) {
+            toastError('Save failed', e instanceof Error ? e.message : 'Unknown error');
+            return;
+        }
+
+        // 2) gateway.json patch — transport fields ONLY. The gateway account schemas
+        // are strict and use `name` (not `label`) for the display name — an unknown
+        // `label` key is rejected. Access rules (dmPolicy/allowFrom) no longer go
+        // here; they reach the gateway via the channel-publish mirror (above).
+        const accountPatch: Record<string, unknown> = { name: label };
         if (verified.kind === 'telegram') accountPatch.botToken = token;
         if (verified.kind === 'discord') accountPatch.token = token;
         const patch = { channels: { [channelType]: { accounts: { [accountId]: accountPatch } } } };
@@ -125,7 +157,7 @@
             })) as { reloadMode?: string } | undefined;
             void result; // reloadMode is informational — restart happens in background; user still advances to Step 3
             await loadConfig();
-            committedChannelId = `gw:${channelType}:${accountId}`;
+            committedChannelId = channelId;
             toastSuccess(`Created ${CHANNEL_TYPE_LABELS[channelType]}: ${label}`);
             step = 'assign';
         } catch (e) {

@@ -25,6 +25,24 @@ import { getCoreDb } from '$server/db/pg-client';
 import { withOrgCore } from '$server/db/with-org-core';
 import { pluginOrgDisabled } from '$server/db/pg-plugin-org-schema';
 import { gatewayCall } from '$lib/server/gateway-rpc';
+import { env } from '$env/dynamic/private';
+
+// Phase-4 cutover flag: unset or anything but 'off' → push as today (default ON).
+// 'off' → reconcileOrgConfig still computes the DB-derived maps (callers/logging
+// unchanged) but skips the config.patch push — accountOrgs/orgDisabled become
+// DB+mirror only. Instant rollback: flip back to unset/on, no redeploy of logic.
+let loggedPushDisabled = false;
+
+function orgConfigPushEnabled(): boolean {
+  const enabled = env.ORG_CONFIG_PUSH !== 'off';
+  if (!enabled && !loggedPushDisabled) {
+    loggedPushDisabled = true;
+    console.log(
+      'org-config push disabled (ORG_CONFIG_PUSH=off) — accountOrgs/orgDisabled now DB+mirror only',
+    );
+  }
+  return enabled;
+}
 
 type ChannelType = 'discord' | 'whatsapp' | 'telegram';
 
@@ -142,6 +160,10 @@ export async function reconcileOrgConfig(gatewayId: string): Promise<{
 
   const accountOrgs = buildAccountOrgs(channelRows as never);
   const orgDisabled = buildPluginOrgDisabled(disabledRows);
+
+  // Phase-4 cutover: DB reads above stay authoritative regardless; only the push
+  // to the gateway (config.get + config.patch below) is gated off.
+  if (!orgConfigPushEnabled()) return { accountOrgs, orgDisabled };
 
   // config.patch enforces optimistic concurrency: baseHash must equal the gateway's
   // CURRENT snapshot, else it rejects with "…re-run config.get and retry". A
