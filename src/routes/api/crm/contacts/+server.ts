@@ -1,6 +1,8 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
+import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
+import { parseBody } from '$server/api/validate';
 import { ownerFilter, shouldMaskSensitive } from '$server/services/rbac.service';
 import { rankContacts, createContact, type RankFilters } from '$server/services/crm-contacts.service';
 
@@ -27,11 +29,16 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   return json({ contacts });
 };
 
+const postSchema = z.object({
+  displayName: z.string().max(500).nullable().optional(),
+  customFields: z.record(z.string(), z.unknown()).optional(),
+});
+
 /** POST /api/crm/contacts — manually create a contact. */
 export const POST: RequestHandler = async ({ locals, request }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
-  const body = await request.json().catch(() => ({}));
+  const body = await parseBody(request, postSchema);
   const contact = await createContact(ctx, {
     displayName: typeof body.displayName === 'string' ? body.displayName.trim() : null,
     customFields: body.customFields ?? {},

@@ -10,6 +10,7 @@ import {
   finSources,
   finProducts,
 } from '$server/db/pg-finance-schema';
+import { docAuditLog } from '$server/db/pg-activity-schema';
 import type { CanonicalInvoice } from '$server/finance/connector';
 import { cached, keys, invalidateTags, tags } from '@minion-stack/cache';
 import type { Period } from '$lib/finance/period';
@@ -133,9 +134,34 @@ export async function upsertInvoicesBatch(
           syncedAt: sql`excluded.synced_at`,
         },
       })
-      .returning({ providerRef: finInvoices.providerRef, id: finInvoices.id });
+      .returning({
+        providerRef: finInvoices.providerRef,
+        id: finInvoices.id,
+        // ON CONFLICT DO UPDATE always RETURNING-s a row; xmax=0 is the standard
+        // Postgres trick to tell "just inserted" (create) from "hit the conflict
+        // and updated" (update) without a pre-image SELECT per row.
+        inserted: sql<boolean>`(xmax = 0)`,
+      });
     const invIdByRef = new Map(invRows.map((r) => [r.providerRef, r.id]));
     const invoiceIds = [...invIdByRef.values()];
+
+    // Audit trail: one set-based insert for the whole page, no per-row
+    // pre-image fetch (would defeat the batch optimization). `create` rows get
+    // no diff; `update` rows get a trivial diff off the upserted data itself.
+    await tx.insert(docAuditLog).values(
+      invRows.map((r) => {
+        const inv = invMap.get(r.providerRef);
+        return {
+          orgId: ctx.tenantId,
+          refType: 'fin_invoice',
+          refId: r.id,
+          op: r.inserted ? 'create' : 'update',
+          changes: r.inserted || !inv ? [] : [{ field: 'total', label: 'Total', old: null, new: inv.total }],
+          actorId: null,
+          actorName: `connector:${inv?.provider ?? 'connector'}`,
+        };
+      }),
+    );
 
     // 3. Replace children for these invoices (set-based delete + multi-row insert).
     await tx.delete(finInvoiceItems).where(inArray(finInvoiceItems.invoiceId, invoiceIds));

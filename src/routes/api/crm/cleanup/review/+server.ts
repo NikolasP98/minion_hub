@@ -2,8 +2,10 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { generateText } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
+import { z } from 'zod';
 import { env } from '$env/dynamic/private';
 import { getCoreCtx } from '$server/auth/core-ctx';
+import { parseBody } from '$server/api/validate';
 import { recentNameFixes } from '$server/services/crm-cleanup.service';
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
@@ -19,6 +21,19 @@ const MAX_ITEMS = 120;
  * name from an email, and flagging entries that aren't names at all. It only
  * ever proposes a cleaned DISPLAY NAME; it never invents identity facts.
  */
+const postSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(200),
+        current: z.string().max(500).nullable().optional(),
+        proposed: z.string().max(500).nullable().optional(),
+      }),
+    )
+    .optional()
+    .default([]),
+});
+
 export const POST: RequestHandler = async ({ locals, request }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
@@ -26,13 +41,12 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   const apiKey = env.OPENROUTER_API_KEY;
   if (!apiKey) throw error(503, 'No AI API key configured');
 
-  const body = await request.json().catch(() => ({}));
-  const items = (Array.isArray(body.items) ? body.items : [])
-    .filter(
-      (i: unknown): i is { id: string; current: string | null; proposed: string | null } =>
-        !!i && typeof (i as { id?: unknown }).id === 'string',
-    )
-    .slice(0, MAX_ITEMS);
+  const body = await parseBody(request, postSchema);
+  const items = body.items.slice(0, MAX_ITEMS).map((i) => ({
+    id: i.id,
+    current: i.current ?? null,
+    proposed: i.proposed ?? null,
+  }));
   if (items.length === 0) return json({ results: [] });
 
   const openrouter = createOpenAI({ apiKey, baseURL: OPENROUTER_BASE_URL });

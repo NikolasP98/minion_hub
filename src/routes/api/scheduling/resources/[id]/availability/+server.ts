@@ -1,9 +1,18 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
+import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { requireAdmin } from '$server/auth/authorize';
+import { parseBody } from '$server/api/validate';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { getResourceSchedule, replaceAvailability } from '$server/services/scheduling.service';
+
+// rules items are a loose JSON blob — kept as z.unknown() per plan; per-item
+// shape is validated below exactly as before.
+const putSchema = z.object({
+  timezone: z.string().max(100).optional(),
+  rules: z.array(z.unknown()).optional(),
+});
 
 export const GET: RequestHandler = async ({ locals, params }) => {
   const ctx = await getCoreCtx(locals);
@@ -17,7 +26,7 @@ export const PUT: RequestHandler = async ({ locals, request, params }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
-  const b = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+  const b = await parseBody(request, putSchema);
   const schedule = await getResourceSchedule(ctx, params.id!);
   if (!schedule) throw error(404, 'no schedule for resource');
   const rules = Array.isArray(b.rules) ? (b.rules as Array<Record<string, unknown>>) : [];

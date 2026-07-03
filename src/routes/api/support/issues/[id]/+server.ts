@@ -1,8 +1,10 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
+import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
+import { parseBody } from '$server/api/validate';
 import { ownerFilter } from '$server/services/rbac.service';
-import { getIssue, updateIssue, type UpdateIssueInput } from '$server/services/support.service';
+import { getIssue, updateIssue, PRIORITIES } from '$server/services/support.service';
 import { statusChangeBlocked } from '$server/services/workflow.service';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
@@ -13,12 +15,21 @@ export const GET: RequestHandler = async ({ locals, params }) => {
   return json(issue);
 };
 
+// Mirrors IssueStatus in support.service.ts.
+const patchSchema = z.object({
+  subject: z.string().trim().min(1).max(500).optional(),
+  description: z.string().max(20_000).nullable().optional(),
+  status: z.enum(['open', 'replied', 'on_hold', 'resolved', 'closed']).optional(),
+  priority: z.enum(PRIORITIES).optional(),
+  ownerId: z.string().max(200).nullable().optional(),
+});
+
 /** PATCH /api/support/issues/:id — status/priority/owner/subject changes.
  *  Status transitions stamp SLA timers server-side (see updateIssue). */
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
-  const body = (await request.json()) as UpdateIssueInput;
+  const body = await parseBody(request, patchSchema);
   const actor = { id: ctx.profileId ?? null, name: locals.user?.displayName ?? locals.user?.email ?? null };
   // Workflow enforcement — only gates explicit status changes; inert until an
   // admin enables a support_issue workflow.

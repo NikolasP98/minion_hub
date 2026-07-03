@@ -1,16 +1,20 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
+import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
+import { parseBody } from '$server/api/validate';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { enqueueJob } from '$server/services/finance-sync-jobs.service';
 import { advanceJob } from '$server/services/finance-sync.service';
+
+const postSchema = z.object({ provider: z.string().max(200).optional() });
 
 /** POST /api/finances/sync { provider } — enqueue a background sync and kick it. */
 export const POST: RequestHandler = async ({ locals, request }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   if (!(await isModuleEnabled(ctx, 'finances'))) throw error(403, 'finances module disabled');
-  const body = await request.json().catch(() => ({}));
+  const body = await parseBody(request, postSchema);
   const provider = typeof body.provider === 'string' ? body.provider : 'susii';
   const job = await enqueueJob(ctx, provider);
   // Detached: runs to completion on a persistent runtime (localhost / adapter-node);

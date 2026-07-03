@@ -1,7 +1,9 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
+import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { requireAdmin } from '$server/auth/authorize';
+import { parseBody } from '$server/api/validate';
 import { getSource, upsertSource, sourceHasCredentials } from '$server/services/finance.service';
 import { encryptCreds } from '$server/services/finance-secrets';
 
@@ -17,11 +19,19 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   });
 };
 
+const putSchema = z.object({
+  provider: z.string().max(200).optional(),
+  username: z.string().max(500).optional(),
+  password: z.string().max(500).optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
+  enabled: z.boolean().optional(),
+});
+
 export const PUT: RequestHandler = async ({ locals, request }) => {
   requireAdmin(locals);
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
-  const body = await request.json().catch(() => ({})) as Record<string, unknown>;
+  const body = await parseBody(request, putSchema);
   const provider = typeof body.provider === 'string' ? body.provider : 'susii';
   const username = typeof body.username === 'string' ? body.username.trim() : '';
   const password = typeof body.password === 'string' ? body.password.trim() : '';

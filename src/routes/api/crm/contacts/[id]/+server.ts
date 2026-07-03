@@ -1,6 +1,8 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
+import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
+import { parseBody } from '$server/api/validate';
 import { ownerFilter, shouldMaskSensitive } from '$server/services/rbac.service';
 import {
   getContact,
@@ -27,11 +29,19 @@ export const GET: RequestHandler = async ({ locals, params, url }) => {
   return json({ ...record, timeline, tags });
 };
 
+const patchSchema = z.object({
+  displayName: z.string().max(500).nullable().optional(),
+  ownerId: z.string().max(200).nullable().optional(),
+  lifecycleOverride: z.string().max(200).nullable().optional(),
+  customFields: z.record(z.string(), z.unknown()).optional(),
+  phone: z.string().max(50).nullable().optional(),
+});
+
 /** PATCH /api/crm/contacts/[id] — name, owner, lifecycle override, custom fields. */
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
-  const body = await request.json().catch(() => ({}));
+  const body = await parseBody(request, patchSchema);
   const contact = await updateContact(ctx, params.id!, {
     displayName: body.displayName,
     ownerId: body.ownerId,

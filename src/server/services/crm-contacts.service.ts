@@ -16,6 +16,7 @@ import { reconcileParties } from './party.service';
 import { CONTACT_PARTY } from './crm-finance.service';
 import { bothEnabled } from './modules.service';
 import { autoAssign } from './assignment.service';
+import { recordAudit } from './activity.service';
 import { isFunnelStage, readFunnelMeta, funnelStageIndex } from '$lib/components/crm/crm-funnel';
 
 /**
@@ -123,7 +124,18 @@ export async function syncContactsFromLedger(ctx: CoreCtx): Promise<SyncResult> 
 
     return { created };
   });
-  if (result.created > 0) await bustCrmList(ctx.tenantId);
+  if (result.created > 0) {
+    await bustCrmList(ctx.tenantId);
+    // One summary row per run, not per contact — the harvest is a bulk anti-join,
+    // not a user-initiated write; per-row audit would flood doc_audit_log.
+    await recordAudit(ctx, {
+      refType: 'crm_harvest',
+      refId: ctx.tenantId,
+      op: 'create',
+      changes: [{ field: 'created', label: 'Contacts created', old: null, new: result.created }],
+      actor: { id: null, name: 'system:harvest' },
+    });
+  }
   // Keep the party spine in step with harvested contacts (idempotent, set-based).
   await reconcileParties(ctx);
   return result;
@@ -486,6 +498,13 @@ export async function createContact(
         customFields: data.customFields ?? {},
       })
       .returning();
+    await recordAudit(ctx, {
+      refType: 'crm_contact',
+      refId: r.id,
+      op: 'create',
+      changes: [{ field: 'displayName', label: 'Name', old: null, new: r.displayName }],
+      actor: { id: ctx.profileId ?? null, name: null },
+    });
     return r;
   });
   // Auto-assign via assignment rules (no-op if no rule matches), mirroring
@@ -525,6 +544,20 @@ export async function updateContact(
       .where(and(eq(crmContacts.id, id), eq(crmContacts.orgId, ctx.tenantId)))
       .returning();
     if (!r) return null;
+    // No pre-image SELECT on this path (would be an extra round-trip per write) —
+    // log the new values only, not a before/after diff.
+    const auditChanges = Object.entries(set)
+      .filter(([field]) => field !== 'updatedAt')
+      .map(([field, value]) => ({ field, label: field, old: null, new: value }));
+    if (auditChanges.length) {
+      await recordAudit(ctx, {
+        refType: 'crm_contact',
+        refId: r.id,
+        op: 'update',
+        changes: auditChanges,
+        actor: { id: ctx.profileId ?? null, name: null },
+      });
+    }
     if (data.phone !== undefined) {
       const digits = (data.phone ?? '').replace(/\D/g, '');
       await tx
@@ -545,12 +578,19 @@ export async function updateContact(
 
 /** Soft-delete (right-to-erasure first step). */
 export async function softDeleteContact(ctx: CoreCtx, id: string) {
-  await withOrgCore(ctx, (tx) =>
-    tx
+  await withOrgCore(ctx, async (tx) => {
+    await tx
       .update(crmContacts)
       .set({ deletedAt: new Date() })
-      .where(and(eq(crmContacts.id, id), eq(crmContacts.orgId, ctx.tenantId))),
-  );
+      .where(and(eq(crmContacts.id, id), eq(crmContacts.orgId, ctx.tenantId)));
+    await recordAudit(ctx, {
+      refType: 'crm_contact',
+      refId: id,
+      op: 'delete',
+      changes: [{ field: 'deletedAt', label: 'Deleted', old: null, new: true }],
+      actor: { id: ctx.profileId ?? null, name: null },
+    });
+  });
   await bustCrmList(ctx.tenantId);
 }
 
