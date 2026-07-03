@@ -37,6 +37,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
     await listEntries(ctx, {
       status: url.searchParams.get('status') ?? undefined,
       type: url.searchParams.get('type') ?? undefined,
+      partyId: url.searchParams.get('party') ?? undefined,
     }),
   );
 };

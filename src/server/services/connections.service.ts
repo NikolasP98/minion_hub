@@ -91,6 +91,29 @@ export async function contactConnections(ctx: CoreCtx, contactId: string): Promi
       });
     }
 
+    // ── Stock (via the party spine — entries linked to this contact's party) ─
+    if (modules.stock !== false) {
+      const [stk] = (await tx.execute(sql`
+        select c.party_id as party_id, count(e.id)::int entries
+        from crm_contacts c
+        left join stk_entries e on e.party_id = c.party_id and c.party_id is not null
+          and e.org_id = current_setting('app.current_org_id', true)
+        where c.id = ${contactId} and c.org_id = current_setting('app.current_org_id', true)
+        group by c.party_id
+      `)) as unknown as Array<{ party_id: string | null; entries: number }>;
+      groups.push({
+        label: 'Stock',
+        items: [
+          {
+            key: 'entries',
+            label: 'Stock entries',
+            count: Number(stk?.entries ?? 0),
+            href: stk?.party_id ? linkTo('/stock/entries', { party: stk.party_id }) : undefined,
+          },
+        ],
+      });
+    }
+
     // ── Finance (via the party spine) ───────────────────────────────────────
     if (modules.finances !== false) {
       // Count this contact's invoices through the party spine (contact.party_id =

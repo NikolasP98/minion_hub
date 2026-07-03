@@ -137,11 +137,12 @@ function isEntryType(t: string): t is EntryType {
   return (ENTRY_TYPES as readonly string[]).includes(t);
 }
 
-export function listEntries(ctx: CoreCtx, filters: { status?: string; type?: string } = {}): Promise<StkEntry[]> {
+export function listEntries(ctx: CoreCtx, filters: { status?: string; type?: string; partyId?: string } = {}): Promise<StkEntry[]> {
   return withOrgCore(ctx, (tx) => {
     const conds = [eq(stkEntries.orgId, ctx.tenantId)];
     if (filters.status) conds.push(eq(stkEntries.status, filters.status));
     if (filters.type) conds.push(eq(stkEntries.type, filters.type));
+    if (filters.partyId) conds.push(eq(stkEntries.partyId, filters.partyId));
     return tx.select().from(stkEntries).where(and(...conds)).orderBy(desc(stkEntries.createdAt));
   });
 }
@@ -428,6 +429,15 @@ export function getLedger(ctx: CoreCtx, itemId: string, warehouseId?: string): P
     if (warehouseId) conds.push(eq(stkLedger.warehouseId, warehouseId));
     return tx.select().from(stkLedger).where(and(...conds)).orderBy(desc(stkLedger.postedAt), desc(stkLedger.id));
   });
+}
+
+/** Most recent org-wide movements, across all items — the /stock overview's
+ *  "recent movements" card. Not item-scoped (unlike getLedger), so it's a
+ *  separate small query rather than an optional param on getLedger. */
+export function getRecentLedger(ctx: CoreCtx, limit = 20): Promise<StkLedgerRow[]> {
+  return withOrgCore(ctx, (tx) =>
+    tx.select().from(stkLedger).where(eq(stkLedger.orgId, ctx.tenantId)).orderBy(desc(stkLedger.postedAt), desc(stkLedger.id)).limit(limit),
+  );
 }
 
 // ── rebuildBins — recovery path ──────────────────────────────────────────────
