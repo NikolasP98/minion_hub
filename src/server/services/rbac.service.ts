@@ -532,6 +532,81 @@ export async function setMemberRole(
 }
 
 /**
+ * All roles per member in an org → { profileId: roleKey[] }. Powers the Team
+ * page's multi-role chip UI (getOrgMemberRoles above stays as the primary-role
+ * lookup other callers may still want).
+ */
+export async function getOrgMemberRolesAll(orgId: string): Promise<Map<string, string[]>> {
+	const { data } = await supabaseAdmin()
+		.from('member_roles')
+		.select('profile_id, role_key')
+		.eq('org_id', orgId);
+	const out = new Map<string, string[]>();
+	for (const r of (data ?? []) as Array<{ profile_id: string; role_key: string }>) {
+		const list = out.get(r.profile_id);
+		if (list) list.push(r.role_key);
+		else out.set(r.profile_id, [r.role_key]);
+	}
+	return out;
+}
+
+/**
+ * Pure guard for `removeMemberRole`: true when stripping `roleKey` from
+ * `profileId` would leave the org with zero owners. `ownerProfileIds` is every
+ * profile currently holding the `owner` role in the org.
+ */
+export function wouldRemoveLastOwner(
+	ownerProfileIds: string[],
+	profileId: string,
+	roleKey: string,
+): boolean {
+	return roleKey === 'owner' && ownerProfileIds.includes(profileId) && ownerProfileIds.length <= 1;
+}
+
+/**
+ * Add one role to a member without disturbing their other roles (multi-role
+ * assignment). No-ops if they already hold it (PK is org_id+profile_id+role_key).
+ */
+export async function addMemberRole(
+	orgId: string,
+	profileId: string,
+	roleKey: string,
+	grantedBy: string | null = null,
+): Promise<void> {
+	await supabaseAdmin()
+		.from('member_roles')
+		.upsert(
+			{ org_id: orgId, profile_id: profileId, role_key: roleKey, granted_by: grantedBy },
+			{ onConflict: 'org_id,profile_id,role_key', ignoreDuplicates: true },
+		);
+}
+
+/**
+ * Remove one role from a member (multi-role assignment). Refuses to strip the
+ * `owner` role from an org's last remaining owner — every org must keep at
+ * least one owner.
+ */
+export async function removeMemberRole(orgId: string, profileId: string, roleKey: string): Promise<void> {
+	if (roleKey === 'owner') {
+		const { data } = await supabaseAdmin()
+			.from('member_roles')
+			.select('profile_id')
+			.eq('org_id', orgId)
+			.eq('role_key', 'owner');
+		const owners = ((data ?? []) as Array<{ profile_id: string }>).map((o) => o.profile_id);
+		if (wouldRemoveLastOwner(owners, profileId, roleKey)) {
+			throw error(400, "Cannot remove the organization's last owner.");
+		}
+	}
+	await supabaseAdmin()
+		.from('member_roles')
+		.delete()
+		.eq('org_id', orgId)
+		.eq('profile_id', profileId)
+		.eq('role_key', roleKey);
+}
+
+/**
  * Upsert a per-org capability override for (role, module-or-subresource). `module`
  * may be a top-level Module or a dotted sub-resource key (`crm.insights`). Caps are
  * normalized to the view-dependency invariant before storage.

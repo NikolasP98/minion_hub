@@ -1,7 +1,7 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { listUsers, listOrganizations } from '$server/services/user.service';
-import { listRoleCatalog, getOrgMemberRoles, requireOrgCapability } from '$server/services/rbac.service';
+import { listRoleCatalog, getOrgMemberRolesAll, requireOrgCapability } from '$server/services/rbac.service';
 import { listPendingRequests } from '$server/services/join/requests.service';
 
 /**
@@ -27,7 +27,7 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   const [rawUsers, rbacRoles, memberRoles, pending, organizations] = await Promise.all([
     safe(listUsers(ctx), [] as Awaited<ReturnType<typeof listUsers>>, 'listUsers'),
     safe(listRoleCatalog(), [] as Awaited<ReturnType<typeof listRoleCatalog>>, 'listRoleCatalog'),
-    safe(getOrgMemberRoles(ctx.tenantId), new Map<string, string>(), 'getOrgMemberRoles'),
+    safe(getOrgMemberRolesAll(ctx.tenantId), new Map<string, string[]>(), 'getOrgMemberRolesAll'),
     // Supabase join_request is the system-of-record (the /join form + the
     // approve→organization_members grant both use it).
     safe(
@@ -42,8 +42,8 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     ...u,
     email: u.email ?? '',
     role: (u.role === 'admin' ? 'admin' : 'user') as 'user' | 'admin',
-    // RBAC role for THIS org (member_roles); falls back to viewer if unassigned.
-    memberRole: memberRoles.get(u.id) ?? 'viewer',
+    // RBAC roles for THIS org (member_roles, multi-role); falls back to viewer if unassigned.
+    memberRoles: memberRoles.get(u.id) ?? ['viewer'],
     displayName: u.displayName ?? null,
     createdAt: u.createdAt ? new Date(u.createdAt).toISOString() : null,
   }));

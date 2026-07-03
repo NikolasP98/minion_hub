@@ -5,8 +5,8 @@
   import { toastSuccess, toastError } from '$lib/state/ui/toast.svelte';
   import { ensureAliases, invalidateAliases } from '$lib/state/features/aliases.svelte';
   import { can } from '$lib/state/features/permissions.svelte';
-  import { Select } from '$lib/components/ui';
-  import { MoreVertical, Check, X } from 'lucide-svelte';
+  import { Select, Popover } from '$lib/components/ui';
+  import { MoreVertical, Check, X, Plus } from 'lucide-svelte';
   import UserEditor from './UserEditor.svelte';
 
   type OrgRef = { id: string; name: string; role: string };
@@ -17,8 +17,8 @@
     displayName: string | null;
     role: 'user' | 'admin';
     alias: string | null;
-    /** RBAC role in the active org (member_roles). */
-    memberRole: string;
+    /** RBAC roles in the active org (member_roles, multi-role). */
+    memberRoles: string[];
     createdAt: string | null;
     organizations?: OrgRef[];
   };
@@ -104,6 +104,13 @@
   let inviteError = $state<string | null>(null);
   let lastLinkUrl = $state<string | null>(null);
 
+  // /api/users (the client-refresh fallback path) doesn't carry RBAC roles —
+  // those only come from the settings/team server load. Default to [] so the
+  // chip UI / ownerCount derivation never sees an undefined array.
+  function normalizeUsers(list: UserRow[]): UserRow[] {
+    return list.map((u) => ({ ...u, memberRoles: u.memberRoles ?? [] }));
+  }
+
   async function load() {
     loading = true;
     error = null;
@@ -111,7 +118,7 @@
       const res = await fetch('/api/users');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as { users: UserRow[] };
-      users = data.users;
+      users = normalizeUsers(data.users);
     } catch (e) {
       error = (e as Error).message;
     } finally {
@@ -133,20 +140,43 @@
     }
   }
 
-  async function changeMemberRole(userId: string, roleKey: string) {
-    const prev = users.find((u) => u.id === userId)?.memberRole ?? 'viewer';
-    users = users.map((u) => (u.id === userId ? { ...u, memberRole: roleKey } : u));
+  /** Members holding the `owner` role org-wide — guards the last-owner removal. */
+  const ownerCount = $derived(users.filter((u) => u.memberRoles.includes('owner')).length);
+
+  async function addRole(userId: string, roleKey: string) {
+    const prev = users.find((u) => u.id === userId)?.memberRoles ?? [];
+    if (prev.includes(roleKey)) return;
+    users = users.map((u) => (u.id === userId ? { ...u, memberRoles: [...u.memberRoles, roleKey] } : u));
     try {
       const res = await fetch(`/api/users/${userId}/member-role`, {
-        method: 'PATCH',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ roleKey }),
       });
       if (!res.ok) throw new Error(String(res.status));
       void invalidate('settings:team');
     } catch {
-      users = users.map((u) => (u.id === userId ? { ...u, memberRole: prev } : u));
-      error = m.users_errorUpdateRole({ status: 'unknown' });
+      users = users.map((u) => (u.id === userId ? { ...u, memberRoles: prev } : u));
+      error = m.users_errorAddRole({ status: 'unknown' });
+    }
+  }
+
+  async function removeRole(userId: string, roleKey: string) {
+    const prev = users.find((u) => u.id === userId)?.memberRoles ?? [];
+    users = users.map((u) =>
+      u.id === userId ? { ...u, memberRoles: u.memberRoles.filter((r) => r !== roleKey) } : u,
+    );
+    try {
+      const res = await fetch(`/api/users/${userId}/member-role`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roleKey }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      void invalidate('settings:team');
+    } catch {
+      users = users.map((u) => (u.id === userId ? { ...u, memberRoles: prev } : u));
+      error = m.users_errorRemoveRole({ status: 'unknown' });
     }
   }
 
@@ -261,7 +291,7 @@
       const refreshed = await fetch('/api/users');
       if (refreshed.ok) {
         const data = (await refreshed.json()) as { users: UserRow[] };
-        users = data.users;
+        users = normalizeUsers(data.users);
       }
       toastSuccess('Organizations updated');
     } catch {
@@ -300,7 +330,7 @@
           <thead>
             <tr class="border-b border-border bg-bg2">
               <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[10px]">{m.users_name()}</th>
-              <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[10px]">{m.users_role()}</th>
+              <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[10px]">{m.users_roles()}</th>
               <th class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[10px]">Company</th>
               <th class="px-4 py-2.5"></th>
             </tr>
@@ -321,14 +351,64 @@
                   {/if}
                 </td>
                 <td class="px-4 py-3" onclick={(e) => e.stopPropagation()}>
-                  <Select
-                    size="sm"
-                    value={u.memberRole}
-                    disabled={u.role === 'admin'}
-                    title={u.role === 'admin' ? 'Platform admin — full access' : undefined}
-                    options={rbacRoles.map((r) => ({ value: r.key, label: r.name }))}
-                    onchange={(v) => changeMemberRole(u.id, String(v))}
-                  />
+                  {#if u.role === 'admin'}
+                    <span
+                      class="inline-flex items-center h-6 px-2 rounded-md text-[10px] font-semibold border bg-bg3 border-border text-muted-foreground"
+                      title="Platform admin — full access"
+                    >
+                      {m.users_role()}: admin
+                    </span>
+                  {:else}
+                    <div class="flex items-center gap-1 flex-wrap">
+                      {#each u.memberRoles as roleKey (roleKey)}
+                        {@const roleName = rbacRoles.find((r) => r.key === roleKey)?.name ?? roleKey}
+                        {@const lastOwner = roleKey === 'owner' && ownerCount <= 1}
+                        <span
+                          class="inline-flex items-center gap-1 h-6 pl-2 pr-1 rounded-md text-[10px] font-semibold border bg-accent/10 text-foreground border-accent/30"
+                        >
+                          {roleName}
+                          <button
+                            type="button"
+                            aria-label={`Remove ${roleName}`}
+                            disabled={lastOwner}
+                            title={lastOwner ? m.users_cannotRemoveLastOwner() : undefined}
+                            class="flex items-center justify-center w-3.5 h-3.5 rounded-sm hover:bg-white/15 cursor-pointer transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                            onclick={() => removeRole(u.id, roleKey)}
+                          >
+                            <X size={10} />
+                          </button>
+                        </span>
+                      {/each}
+                      {#if rbacRoles.some((r) => !u.memberRoles.includes(r.key))}
+                        <Popover placement="bottom" bare>
+                          {#snippet trigger()}
+                            <span
+                              class="inline-flex items-center gap-0.5 h-6 px-1.5 rounded-md text-[10px] font-medium border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-white/25 transition-colors"
+                              title={m.users_addRole()}
+                            >
+                              <Plus size={11} />
+                            </span>
+                          {/snippet}
+                          <div
+                            role="listbox"
+                            class="min-w-[140px] max-h-[240px] overflow-y-auto rounded-lg border border-border bg-bg2 shadow-[0_8px_24px_rgba(0,0,0,0.5)] p-1"
+                          >
+                            {#each rbacRoles.filter((r) => !u.memberRoles.includes(r.key)) as r (r.key)}
+                              <button
+                                type="button"
+                                role="option"
+                                aria-selected="false"
+                                class="flex items-center w-full gap-2 px-2 py-1.5 rounded text-[11px] cursor-pointer transition-colors text-muted-foreground hover:text-foreground hover:bg-bg3"
+                                onclick={() => addRole(u.id, r.key)}
+                              >
+                                {r.name}
+                              </button>
+                            {/each}
+                          </div>
+                        </Popover>
+                      {/if}
+                    </div>
+                  {/if}
                 </td>
                 <td class="px-4 py-3" onclick={(e) => e.stopPropagation()}>
                   {#if organizations.length === 0}

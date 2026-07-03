@@ -5,6 +5,7 @@ import {
 	legacyRoleKey,
 	apiWriteCapability,
 	normalizeViewDependency,
+	wouldRemoveLastOwner,
 } from './rbac.service';
 
 const ROW = (over: Record<string, unknown>) => ({
@@ -174,6 +175,21 @@ describe('fieldLevel — field-level (sensitive field) tier', () => {
 			],
 		);
 		expect(caps.fieldLevel('crm')).toBe(1);
+	});
+});
+
+describe('wouldRemoveLastOwner — multi-role last-owner guard', () => {
+	test('blocks removing owner from the sole owner', () => {
+		expect(wouldRemoveLastOwner(['p1'], 'p1', 'owner')).toBe(true);
+	});
+	test('allows removing owner when another owner remains', () => {
+		expect(wouldRemoveLastOwner(['p1', 'p2'], 'p1', 'owner')).toBe(false);
+	});
+	test('ignores non-owner role removals entirely', () => {
+		expect(wouldRemoveLastOwner(['p1'], 'p1', 'manager')).toBe(false);
+	});
+	test('no-op when the profile is not an owner in the first place', () => {
+		expect(wouldRemoveLastOwner(['p2'], 'p1', 'owner')).toBe(false);
 	});
 });
 

@@ -3421,5 +3421,6 @@
   "workshop_exp_starting": "starting…",
   "workshop_exp_no_turns": "No turns yet.",
   "workshop_exp_orchestrator": "Orchestrator",
-  "workshop_exp_agent": "Agent"
+  "workshop_exp_agent": "Agent",
+  "no_permission": "You don't have permission for this."
 }
