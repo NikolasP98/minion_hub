@@ -53,6 +53,7 @@ export const BUSINESS_PERMISSIONS = [
   'comms:view',
   'stock:view',
   'brains:view',
+  'ads:view',
 ] as const;
 
 /**
@@ -94,6 +95,7 @@ export const MODULE_SUBRESOURCES: Record<string, SubResource[]> = {
     { key: 'scheduling.reminders', label: 'Reminders', route: '/scheduling/reminders' },
     { key: 'scheduling.settings', label: 'Settings', route: '/scheduling/settings' },
   ],
+  ads: [{ key: 'ads.settings', label: 'Settings', route: '/ads/settings' }],
 };
 
 /** Flat list of every sub-resource (parent-key agnostic). */
@@ -133,6 +135,7 @@ export const BUSINESS_ACTION_MODULES = [
   'comms',
   'stock',
   'brains',
+  'ads',
 ] as const;
 const BUSINESS_ACTIONS = ['create', 'edit', 'delete', 'export', 'manage'] as const;
 export const BUSINESS_ACTION_PERMISSIONS = BUSINESS_ACTION_MODULES.flatMap((m) =>
@@ -170,6 +173,7 @@ const ROUTE_VIEW_PERMS: ReadonlyArray<readonly [string, string]> = [
   ['/workforce', 'projects:view'],
   ['/stock', 'stock:view'],
   ['/brains', 'brains:view'],
+  ['/ads', 'ads:view'],
   // platform modules
   ['/agents', 'agents:view'],
   ['/capabilities', 'agents:view'],

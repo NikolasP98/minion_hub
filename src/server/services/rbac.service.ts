@@ -48,6 +48,7 @@ export const MODULES = [
 	'comms',
 	'brains',
 	'stock',
+	'ads',
 	// platform / admin
 	'agents',
 	'channels',
@@ -76,6 +77,7 @@ export const MODULE_LABELS: Record<Module, string> = {
 	comms: 'Comms',
 	brains: 'AI Brains',
 	stock: 'Stock',
+	ads: 'Ads',
 	agents: 'Agents',
 	channels: 'Channels',
 	flows: 'Agent Builder',
@@ -97,6 +99,7 @@ export const BUSINESS_MODULES: readonly Module[] = [
 	'comms',
 	'brains',
 	'stock',
+	'ads',
 ];
 const ADMIN_MODULES: readonly Module[] = [
 	'agents',
