@@ -7,8 +7,45 @@ vi.mock('./embeddings', () => ({
   toVectorLiteral: (vec: number[]) => `[${vec.join(',')}]`,
 }));
 
-import { canAccessBrain, chunkText, searchBrain, type AccessPrincipal } from './brains.service';
+vi.mock('./crm-contacts.service', () => ({
+  listContactsCached: vi.fn(async () => [
+    {
+      contact_id: 'c1',
+      display_name: 'Ada Lovelace',
+      stage: 'Active',
+      tag_ids: ['t1'],
+      first_contact_at: '2026-01-01',
+      last_contact_at: '2026-02-01',
+    },
+  ]),
+  listTags: vi.fn(async () => [{ id: 't1', name: 'VIP' }]),
+}));
+
+vi.mock('./stock.service', () => ({
+  listItems: vi.fn(async () => [{ id: 'i1', name: 'Widget', uom: 'unit' }]),
+  getBins: vi.fn(async () => [{ itemId: 'i1', qty: '5' }]),
+}));
+
+vi.mock('./finance-products.service', () => ({
+  listProducts: vi.fn(async () => []),
+}));
+
+vi.mock('./rbac.service', () => ({
+  resolveCapabilities: vi.fn(async () => ({ can: () => false })),
+}));
+
+import {
+  canAccessBrain,
+  chunkText,
+  searchBrain,
+  loadDocumentContent,
+  listModuleSources,
+  MODULE_SOURCES,
+  type AccessPrincipal,
+} from './brains.service';
 import { embeddingsEnabled } from './embeddings';
+import { resolveCapabilities } from './rbac.service';
+import type { BrainDocument } from '$server/db/pg-schema/brains';
 
 const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
 
@@ -168,5 +205,71 @@ describe('brains.service — searchBrain brain isolation', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([[brainRow({ id: 'brain-1', visibility: 'org' })]]);
     await expect(searchBrain(ctx(db), 'brain-1', 'hello', undefined, {})).rejects.toMatchObject({ status: 503 });
+  });
+});
+
+const docRow = (over: Partial<BrainDocument> = {}): BrainDocument => ({
+  id: 'doc-1',
+  brainId: 'brain-1',
+  orgId: 'org-1',
+  title: 'Notes',
+  sourceType: 'upload',
+  sourceRef: 'notes.md',
+  contentMd: null,
+  status: 'pending',
+  error: null,
+  createdBy: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  ...over,
+});
+
+describe('brains.service — loadDocumentContent upload branch', () => {
+  it('returns contentMd as-is, the same as a note document', async () => {
+    const doc = docRow({ contentMd: '# Notes\n\nhello' });
+    expect(await loadDocumentContent(ctx(undefined), doc)).toBe('# Notes\n\nhello');
+  });
+
+  it('returns an empty string when contentMd is null', async () => {
+    const doc = docRow({ contentMd: null });
+    expect(await loadDocumentContent(ctx(undefined), doc)).toBe('');
+  });
+});
+
+describe('brains.service — listModuleSources (module_ref permission filtering)', () => {
+  it('returns [] when the ctx has no resolved profileId', async () => {
+    const result = await listModuleSources({ db: undefined as never, tenantId: 'org-1' });
+    expect(result).toEqual([]);
+  });
+
+  it('filters registry entries by each entry\'s requiredPerm via resolveCapabilities', async () => {
+    vi.mocked(resolveCapabilities).mockResolvedValueOnce({
+      can: (module: string) => module === 'crm',
+    } as never);
+    const result = await listModuleSources({ db: undefined as never, tenantId: 'org-1', profileId: 'user-1' });
+    expect(result.map((r) => r.key)).toEqual(['crm_contacts']);
+  });
+
+  it('returns nothing when no module permission is granted', async () => {
+    vi.mocked(resolveCapabilities).mockResolvedValueOnce({ can: () => false } as never);
+    const result = await listModuleSources({ db: undefined as never, tenantId: 'org-1', profileId: 'user-1' });
+    expect(result).toEqual([]);
+  });
+});
+
+describe('brains.service — MODULE_SOURCES renderers', () => {
+  it('crm_contacts.render produces a non-empty markdown table from mocked rows', async () => {
+    const md = await MODULE_SOURCES.crm_contacts.render({ db: undefined as never, tenantId: 'org-1' });
+    expect(md.length).toBeGreaterThan(0);
+    expect(md).toContain('Ada Lovelace');
+    expect(md).toContain('VIP');
+    expect(md).toContain('Active');
+  });
+
+  it('stk_items.render produces a non-empty markdown table from mocked rows', async () => {
+    const md = await MODULE_SOURCES.stk_items.render({ db: undefined as never, tenantId: 'org-1' });
+    expect(md.length).toBeGreaterThan(0);
+    expect(md).toContain('Widget');
+    expect(md).toContain('5');
   });
 });

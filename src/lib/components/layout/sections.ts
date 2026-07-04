@@ -1,5 +1,5 @@
 import type { ComponentType, SvelteComponent } from "svelte";
-import { FolderKanban, Contact, UserRound, BrainCircuit, Zap, Boxes, Wallet, CalendarClock, LifeBuoy, ClipboardList, Inbox, RefreshCw, MessagesSquare, Warehouse } from "lucide-svelte";
+import { FolderKanban, Contact, UserRound, Zap, Boxes, Wallet, CalendarClock, LifeBuoy, ClipboardList, Inbox, RefreshCw, MessagesSquare, Warehouse } from "lucide-svelte";
 import {
     ROUTES,
     SECTION_META,
@@ -86,7 +86,6 @@ function archetypeItem(archetype: AgentArchetype, label: string, icon: LucideIco
 export function getSections(): Section[] {
     const agentItems: SectionItem[] = [
         archetypeItem("copilot", m.nav_copilots(), UserRound),
-        archetypeItem("brain", m.nav_brains(), BrainCircuit),
         {
             href: "/agents/autonomous",
             label: m.nav_autonomous(),

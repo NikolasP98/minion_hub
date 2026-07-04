@@ -12,6 +12,7 @@
   import BrainDocumentsTable from '$lib/components/brains/BrainDocumentsTable.svelte';
   import BrainSearchPanel from '$lib/components/brains/BrainSearchPanel.svelte';
   import BrainAccessPanel from '$lib/components/brains/BrainAccessPanel.svelte';
+  import BrainAgentPanel from '$lib/components/brains/BrainAgentPanel.svelte';
 
   let { data }: { data: PageData } = $props();
 
@@ -31,6 +32,7 @@
     { value: 'documents', label: m.brains_tab_documents(), count: data.documents.length },
     { value: 'search', label: m.brains_tab_search() },
     ...(canEdit ? [{ value: 'access', label: m.brains_tab_access() }] : []),
+    { value: 'agent', label: m.brains_agent_tab() },
     { value: 'activity', label: m.brains_tab_activity() },
   ]);
 
@@ -90,6 +92,8 @@
       <BrainSearchPanel brainId={brain.id} />
     {:else if tab === 'access' && canEdit}
       <BrainAccessPanel brainId={brain.id} visibility={brain.visibility} access={data.access} roles={data.roles} />
+    {:else if tab === 'agent'}
+      <BrainAgentPanel brainId={brain.id} agentId={brain.agentId} canManage={canAct('brains', 'manage')} />
     {:else if tab === 'activity'}
       <DocTimeline items={data.timeline} onComment={postComment} />
     {/if}

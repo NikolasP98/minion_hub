@@ -26,7 +26,7 @@ import {
     Bot,
     Building2,
     UsersRound,
-    Database,
+    BrainCircuit,
 } from "lucide-svelte";
 import type { ComponentType, SvelteComponent } from "svelte";
 import * as m from "$lib/paraglide/messages";
@@ -167,14 +167,14 @@ export const ROUTES: RouteMeta[] = [
     },
     {
         path: "/brains",
-        title: () => m.nav_knowledgeBases(),
-        icon: Database,
+        title: () => m.nav_brains(),
+        icon: BrainCircuit,
         matcher: startsWith("/brains"),
         section: "agents",
         requires: "brains.view",
         inNav: true,
         inPalette: true,
-        keywords: "brains knowledge base documents search embeddings rag",
+        keywords: "ai brains knowledge base rag agents documents search embeddings",
         paletteIcon: "book-open",
     },
 

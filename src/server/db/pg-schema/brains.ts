@@ -27,6 +27,10 @@ export const brains = pgTable(
     icon: text('icon'),
     /** 'org' (every org member can read) | 'private' (brain_access governs). */
     visibility: text('visibility').notNull().default('org'),
+    /** Gateway agentId (pattern `brain-<uuid>`) of this brain's managing agent,
+     *  or null when agent management is disabled. Set by
+     *  `brain-agents.service.ts`'s provision/deprovision (P4.1). */
+    agentId: text('agent_id'),
     createdBy: text('created_by'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

@@ -15,8 +15,10 @@ import {
 import { recordAudit, type FieldChange } from './activity.service';
 import { embeddingsEnabled, embedTexts, toVectorLiteral } from './embeddings';
 import { listProducts } from './finance-products.service';
+import { listContactsCached, listTags } from './crm-contacts.service';
+import { listItems, getBins } from './stock.service';
 import { enqueueJob, registerJobHandler, type AdvanceResult, type BgJob } from './bg-runtime';
-import { resolveCapabilities } from './rbac.service';
+import { resolveCapabilities, type Module, type PermAction } from './rbac.service';
 import { assertSafeUrl } from './ssrf-guard';
 
 /**
@@ -445,19 +447,117 @@ async function embedInBatches(texts: string[], batchSize = 64): Promise<number[]
 
 // ── module_ref rendering ─────────────────────────────────────────────────
 
-/** v1: only `fin_products`. Renders the org's product catalog to markdown rows. */
-async function renderModuleRef(ctx: CoreCtx, sourceRef: string | null): Promise<string> {
-  if (sourceRef !== 'fin_products') {
-    throw new Error(`module_ref '${sourceRef ?? ''}' is not supported (v1: fin_products only)`);
-  }
+/** Renders the org's product catalog to markdown rows. */
+async function renderFinProducts(ctx: CoreCtx): Promise<string> {
   const products = await listProducts(ctx);
   const header = '| Code | Name | Category | Unit price | Active |\n| --- | --- | --- | --- | --- |';
   const rows = products.map(
     (p) => `| ${p.code} | ${p.name} | ${p.category ?? ''} | ${p.unitPrice ?? ''} | ${p.active ? 'yes' : 'no'} |`,
   );
   return [header, ...rows].join('\n');
-  // P2 hub_events hook: re-enqueue module_ref docs on finance.invoices_upserted
-  // (products change rarely but should still refresh periodically / on event).
+}
+
+const CRM_CONTACTS_ROW_CAP = 2000;
+
+/** Renders the org's CRM contacts (name, lifecycle stage, tags, contact dates)
+ *  to markdown rows. Capped so one huge roster can't blow past chunking. */
+async function renderCrmContacts(ctx: CoreCtx): Promise<string> {
+  const [contacts, tags] = await Promise.all([listContactsCached(ctx), listTags(ctx)]);
+  const tagName = new Map(tags.map((t) => [t.id as string, t.name as string]));
+  const header = '| Name | Stage | Tags | First contact | Last contact |\n| --- | --- | --- | --- | --- |';
+  const capped = contacts.slice(0, CRM_CONTACTS_ROW_CAP);
+  const rows = capped.map((c) => {
+    const tagLabels = (c.tag_ids ?? []).map((id) => tagName.get(id) ?? id).join(', ');
+    return `| ${c.display_name ?? '(unnamed)'} | ${c.stage} | ${tagLabels} | ${c.first_contact_at ?? ''} | ${c.last_contact_at ?? ''} |`;
+  });
+  const lines = [header, ...rows];
+  if (contacts.length > CRM_CONTACTS_ROW_CAP) {
+    lines.push(`\n_...and ${contacts.length - CRM_CONTACTS_ROW_CAP} more contacts (truncated)._`);
+  }
+  return lines.join('\n');
+}
+
+const STK_ITEMS_ROW_CAP = 2000;
+
+/** Renders the org's stock items (name, uom, qty on hand summed across
+ *  warehouses from the bins cache) to markdown rows. Capped like crm_contacts. */
+async function renderStkItems(ctx: CoreCtx): Promise<string> {
+  const [items, bins] = await Promise.all([listItems(ctx), getBins(ctx)]);
+  const qtyByItem = new Map<string, number>();
+  for (const b of bins) qtyByItem.set(b.itemId, (qtyByItem.get(b.itemId) ?? 0) + Number(b.qty));
+  const header = '| Item | UoM | Qty on hand |\n| --- | --- | --- |';
+  const capped = items.slice(0, STK_ITEMS_ROW_CAP);
+  const rows = capped.map((i) => `| ${i.name} | ${i.uom} | ${qtyByItem.get(i.id) ?? 0} |`);
+  const lines = [header, ...rows];
+  if (items.length > STK_ITEMS_ROW_CAP) {
+    lines.push(`\n_...and ${items.length - STK_ITEMS_ROW_CAP} more items (truncated)._`);
+  }
+  return lines.join('\n');
+}
+
+/** Catalog of "connect app data" (`module_ref`) sources. Each entry renders one
+ *  business module's org data to markdown, which then goes through the same
+ *  chunk/embed pipeline as any other document. `labelKey`/`descriptionKey` are
+ *  paraglide message KEY NAMES (not resolved strings) — server code doesn't call
+ *  `m.*()`, the client resolves them via its own label map (see
+ *  AddSourceDialog.svelte) the same way BrainDocumentsTable maps status/source
+ *  constants to message functions. */
+export interface ModuleSourceDef {
+  key: string;
+  labelKey: string;
+  descriptionKey: string;
+  requiredPerm: { module: Module; action: PermAction };
+  render(ctx: CoreCtx): Promise<string>;
+}
+
+export const MODULE_SOURCES: Record<string, ModuleSourceDef> = {
+  fin_products: {
+    key: 'fin_products',
+    labelKey: 'brains_source_module_fin_products_label',
+    descriptionKey: 'brains_source_module_fin_products_desc',
+    requiredPerm: { module: 'finance', action: 'view' },
+    render: renderFinProducts,
+  },
+  crm_contacts: {
+    key: 'crm_contacts',
+    labelKey: 'brains_source_module_crm_contacts_label',
+    descriptionKey: 'brains_source_module_crm_contacts_desc',
+    requiredPerm: { module: 'crm', action: 'view' },
+    render: renderCrmContacts,
+  },
+  stk_items: {
+    key: 'stk_items',
+    labelKey: 'brains_source_module_stk_items_label',
+    descriptionKey: 'brains_source_module_stk_items_desc',
+    requiredPerm: { module: 'stock', action: 'view' },
+    render: renderStkItems,
+  },
+};
+
+export interface ModuleSourceInfo {
+  key: string;
+  labelKey: string;
+  descriptionKey: string;
+}
+
+/** `MODULE_SOURCES` entries the caller may add as a brain source, filtered by
+ *  each entry's `requiredPerm` — the same `resolveCapabilities` primitive
+ *  `hasOrgCapability` (API routes) is built on, called here with a `CoreCtx`
+ *  since this runs from the service layer, not a route with `locals`. */
+export async function listModuleSources(ctx: CoreCtx): Promise<ModuleSourceInfo[]> {
+  if (!ctx.profileId) return [];
+  const caps = await resolveCapabilities(ctx.tenantId, ctx.profileId);
+  return Object.values(MODULE_SOURCES)
+    .filter((s) => caps.can(s.requiredPerm.module, s.requiredPerm.action))
+    .map(({ key, labelKey, descriptionKey }) => ({ key, labelKey, descriptionKey }));
+}
+
+async function renderModuleRef(ctx: CoreCtx, sourceRef: string | null): Promise<string> {
+  const entry = sourceRef ? MODULE_SOURCES[sourceRef] : undefined;
+  if (!entry) throw new Error(`module_ref '${sourceRef ?? ''}' is not supported`);
+  return entry.render(ctx);
+  // P2 hub_events hook: re-enqueue module_ref docs on relevant data-change events
+  // (module data changes rarely but should still refresh periodically / on event).
 }
 
 const URL_FETCH_TIMEOUT_MS = 15_000;
@@ -513,7 +613,9 @@ async function fetchUrlContent(url: string): Promise<string> {
     .trim();
 }
 
-async function loadDocumentContent(ctx: CoreCtx, doc: BrainDocument): Promise<string> {
+/** Load a document's raw text for ingestion. Exported for direct unit testing
+ *  (mirrors chunkText/canAccessBrain being exported for the same reason). */
+export async function loadDocumentContent(ctx: CoreCtx, doc: BrainDocument): Promise<string> {
   switch (doc.sourceType) {
     case 'note':
       return doc.contentMd ?? '';
@@ -523,7 +625,11 @@ async function loadDocumentContent(ctx: CoreCtx, doc: BrainDocument): Promise<st
     case 'module_ref':
       return renderModuleRef(ctx, doc.sourceRef);
     case 'upload':
-      throw new Error('uploads not yet supported');
+      // v1: small text files read client-side (FileReader) and posted as-is —
+      // content_md already holds the file's text, source_ref is the filename.
+      // No server-side storage/parsing (no B2, no PDF/DOCX) — see documents
+      // POST route for the size/extension validation gate.
+      return doc.contentMd ?? '';
     default:
       throw new Error(`unknown source_type '${doc.sourceType}'`);
   }

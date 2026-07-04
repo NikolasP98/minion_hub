@@ -1,18 +1,16 @@
 <script lang="ts">
   import { invalidate } from '$app/navigation';
-  import { Plus, Link2, RotateCw, Trash2 } from 'lucide-svelte';
+  import { Plus, RotateCw, Trash2 } from 'lucide-svelte';
   import { Button, Badge, EmptyState } from '$lib/components/ui';
   import type { SemanticValue } from '@minion-stack/ui';
   import * as m from '$lib/paraglide/messages';
   import { relativeTime } from '$lib/components/crm/crm-format';
   import type { BrainDocumentDTO } from '$lib/types/brains';
-  import AddNoteDialog from './AddNoteDialog.svelte';
-  import AddUrlDialog from './AddUrlDialog.svelte';
+  import AddSourceDialog from './AddSourceDialog.svelte';
 
   let { brainId, documents, canEdit }: { brainId: string; documents: BrainDocumentDTO[]; canEdit: boolean } = $props();
 
-  let showAddNote = $state(false);
-  let showAddUrl = $state(false);
+  let showAddSource = $state(false);
   let busyId = $state<string | null>(null);
 
   // `doc.status`/`doc.sourceType` are plain `string` columns (see
@@ -65,13 +63,9 @@
 
 {#if canEdit}
   <div class="mb-3 flex items-center justify-end gap-2">
-    <Button variant="secondary" size="sm" onclick={() => (showAddNote = true)}>
+    <Button variant="secondary" size="sm" onclick={() => (showAddSource = true)}>
       {#snippet icon()}<Plus size={14} />{/snippet}
-      {m.brains_doc_add_note()}
-    </Button>
-    <Button variant="secondary" size="sm" onclick={() => (showAddUrl = true)}>
-      {#snippet icon()}<Link2 size={14} />{/snippet}
-      {m.brains_doc_add_url()}
+      {m.brains_source_add()}
     </Button>
   </div>
 {/if}
@@ -103,15 +97,17 @@
               <Badge variant="neutral" size="sm">{SOURCE_LABEL[doc.sourceType]?.() ?? doc.sourceType}</Badge>
             </td>
             <td class="px-3 py-2">
-              <Badge
-                variant="semantic"
-                value={STATUS_VALUE[doc.status] ?? 'warning'}
-                size="sm"
-                dot
-                pulse={doc.status === 'ingesting'}
-              >
-                {STATUS_LABEL[doc.status]?.() ?? doc.status}
-              </Badge>
+              <span title={doc.status}>
+                <Badge
+                  variant="semantic"
+                  value={STATUS_VALUE[doc.status] ?? 'warning'}
+                  size="sm"
+                  dot
+                  pulse={doc.status === 'ingesting'}
+                >
+                  {STATUS_LABEL[doc.status]?.() ?? doc.status}
+                </Badge>
+              </span>
             </td>
             <td class="px-3 py-2 text-white/50">{relativeTime(doc.updatedAt)}</td>
             {#if canEdit}
@@ -147,5 +143,4 @@
   </div>
 {/if}
 
-<AddNoteDialog bind:open={showAddNote} {brainId} />
-<AddUrlDialog bind:open={showAddUrl} {brainId} />
+<AddSourceDialog bind:open={showAddSource} {brainId} />

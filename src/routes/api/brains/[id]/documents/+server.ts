@@ -13,12 +13,40 @@ export const GET: RequestHandler = async ({ locals, params }) => {
   return json({ documents: await listDocuments(ctx, params.id!, principal) });
 };
 
-const postSchema = z.object({
-  title: z.string().trim().min(1).max(500),
-  sourceType: z.enum(['note', 'url', 'upload', 'module_ref']),
-  sourceRef: z.string().max(2000).nullable().optional(),
-  contentMd: z.string().max(500_000).nullable().optional(),
-});
+const UPLOAD_MAX_BYTES = 1_000_000;
+const UPLOAD_EXT = /\.(md|txt|csv)$/i;
+
+/** `upload` (v1, small text files read client-side — see AddSourceDialog.svelte)
+ *  additionally requires a recognized text extension on `sourceRef` (the
+ *  original filename) and non-empty `contentMd` within the 1 MB cap. Rejected
+ *  with a clear, user-facing message rather than the generic zod issue text. */
+const postSchema = z
+  .object({
+    title: z.string().trim().min(1).max(500),
+    sourceType: z.enum(['note', 'url', 'upload', 'module_ref']),
+    sourceRef: z.string().max(2000).nullable().optional(),
+    contentMd: z.string().max(500_000).nullable().optional(),
+  })
+  .superRefine((body, ctx) => {
+    if (body.sourceType !== 'upload') return;
+    if (!body.sourceRef || !UPLOAD_EXT.test(body.sourceRef)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['sourceRef'],
+        message: 'Uploads must be a .md, .txt, or .csv file.',
+      });
+    }
+    const bytes = body.contentMd ? Buffer.byteLength(body.contentMd, 'utf8') : 0;
+    if (bytes === 0) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['contentMd'], message: 'Upload content is empty.' });
+    } else if (bytes > UPLOAD_MAX_BYTES) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['contentMd'],
+        message: 'Uploads must be 1 MB or smaller.',
+      });
+    }
+  });
 
 /** POST /api/brains/:id/documents — add a document (any sourceType); ingestion
  *  runs async via the brain_ingest bg job (see brains.service.ts). */
