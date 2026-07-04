@@ -30,6 +30,8 @@
  * smoke-test against live assets and pass `{ metrics: [...] }` to override.
  */
 
+import { createHmac } from 'node:crypto';
+
 export const DEFAULT_GRAPH_BASE_URL = 'https://graph.facebook.com';
 export const DEFAULT_GRAPH_VERSION = 'v23.0';
 
@@ -38,6 +40,14 @@ export type GraphOpts = {
   timeoutMs?: number;
   baseUrl?: string;
   graphVersion?: string;
+  /**
+   * The Meta App Secret. When set, every request carrying an `access_token`
+   * also sends `appsecret_proof` = HMAC-SHA256(access_token, appSecret). Meta
+   * rejects server-side calls with code 100 ("API calls from the server
+   * require an appsecret_proof argument") when the app has "Require app secret
+   * proof for server API calls" enabled — which is the default for this app.
+   */
+  appSecret?: string;
 };
 
 export type GraphResult<T> = {
@@ -49,7 +59,13 @@ export type GraphResult<T> = {
   usage?: unknown;
 };
 
-type ResolvedOpts = { fetchImpl: typeof fetch; timeoutMs: number; baseUrl: string; graphVersion: string };
+type ResolvedOpts = {
+  fetchImpl: typeof fetch;
+  timeoutMs: number;
+  baseUrl: string;
+  graphVersion: string;
+  appSecret?: string;
+};
 
 function resolveOpts(opts: GraphOpts): ResolvedOpts {
   return {
@@ -57,6 +73,7 @@ function resolveOpts(opts: GraphOpts): ResolvedOpts {
     timeoutMs: opts.timeoutMs ?? 15_000,
     baseUrl: opts.baseUrl ?? DEFAULT_GRAPH_BASE_URL,
     graphVersion: opts.graphVersion ?? DEFAULT_GRAPH_VERSION,
+    appSecret: opts.appSecret,
   };
 }
 
@@ -64,6 +81,12 @@ function buildUrl(path: string, params: Record<string, string | number | undefin
   const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined) qs.set(k, String(v));
+  }
+  // appsecret_proof = HMAC-SHA256(access_token, app_secret) — required by Meta
+  // for server-side calls when the app enforces it (see GraphOpts.appSecret).
+  const token = params.access_token;
+  if (o.appSecret && typeof token === 'string' && token) {
+    qs.set('appsecret_proof', createHmac('sha256', o.appSecret).update(token).digest('hex'));
   }
   return `${o.baseUrl.replace(/\/+$/, '')}/${o.graphVersion}/${path}?${qs.toString()}`;
 }

@@ -57,6 +57,25 @@ describe('extendUserToken', () => {
   });
 });
 
+describe('appsecret_proof', () => {
+  it('appends HMAC-SHA256(access_token, appSecret) when appSecret is set', async () => {
+    const fetchImpl = mockFetch(jsonResponse({ data: [] }));
+    await listPagesWithTokens('the-user-token', { fetchImpl, appSecret: 'the-app-secret' });
+    const url = new URL((fetchImpl.mock.calls[0]?.[0] as string) ?? '');
+    // Precomputed: crypto.createHmac('sha256','the-app-secret').update('the-user-token').digest('hex')
+    const { createHmac } = await import('node:crypto');
+    const expected = createHmac('sha256', 'the-app-secret').update('the-user-token').digest('hex');
+    expect(url.searchParams.get('appsecret_proof')).toBe(expected);
+  });
+
+  it('omits appsecret_proof when appSecret is not provided', async () => {
+    const fetchImpl = mockFetch(jsonResponse({ data: [] }));
+    await listPagesWithTokens('tok', { fetchImpl });
+    const url = new URL((fetchImpl.mock.calls[0]?.[0] as string) ?? '');
+    expect(url.searchParams.get('appsecret_proof')).toBeNull();
+  });
+});
+
 describe('listPagesWithTokens', () => {
   it('returns pages and surfaces the next cursor', async () => {
     const fetchImpl = mockFetch(

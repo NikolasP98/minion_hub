@@ -5,6 +5,7 @@
  * `auth/crypto` (`encrypt`/`decrypt` = AES-256-GCM, same as finance creds).
  * Never log a token; only ids/paths/counts.
  */
+import { createHmac } from 'node:crypto';
 import { and, desc, eq } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
@@ -88,8 +89,10 @@ async function listOwnedPagesForBusiness(
   businessId: string,
   token: string,
   fetchImpl: FetchImpl = fetch,
+  appSecret?: string,
 ): Promise<OwnedPage[]> {
-  const url = `${GRAPH_BASE}/${GRAPH_VERSION}/${businessId}/owned_pages?fields=id,name,access_token,instagram_business_account{id,username}&access_token=${encodeURIComponent(token)}`;
+  const proof = appSecret ? `&appsecret_proof=${createHmac('sha256', appSecret).update(token).digest('hex')}` : '';
+  const url = `${GRAPH_BASE}/${GRAPH_VERSION}/${businessId}/owned_pages?fields=id,name,access_token,instagram_business_account{id,username}&access_token=${encodeURIComponent(token)}${proof}`;
   try {
     const res = await fetchImpl(url);
     const body = (await res.json().catch(() => undefined)) as { data?: OwnedPage[] } | undefined;
@@ -223,7 +226,7 @@ export async function enumerateAndUpsertAssets(
   let pages: PageWithToken[] = [];
   let pagePath: EnumerationResult['pagePath'] = 'none';
 
-  const primary = await listPagesWithTokens(userToken, { fetchImpl });
+  const primary = await listPagesWithTokens(userToken, { fetchImpl, appSecret });
   if (primary.ok && primary.data && primary.data.length > 0) {
     pages = primary.data;
     pagePath = 'me/accounts';
@@ -235,7 +238,7 @@ export async function enumerateAndUpsertAssets(
     const debug = await debugToken(userToken, appId, appSecret, fetchImpl);
     const businessIds = debug.ok ? businessIdsFromDebugToken(debug.data) : [];
     for (const businessId of businessIds) {
-      const owned = await listOwnedPagesForBusiness(businessId, userToken, fetchImpl);
+      const owned = await listOwnedPagesForBusiness(businessId, userToken, fetchImpl, appSecret);
       if (owned.length > 0) {
         pages = owned;
         pagePath = 'owned_pages';
@@ -244,7 +247,7 @@ export async function enumerateAndUpsertAssets(
     }
   }
 
-  const adAccountsRes = await listAdAccounts(userToken, { fetchImpl });
+  const adAccountsRes = await listAdAccounts(userToken, { fetchImpl, appSecret });
   const adAccounts = adAccountsRes.ok ? (adAccountsRes.data ?? []) : [];
 
   let igFound = 0;

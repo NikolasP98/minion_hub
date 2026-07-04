@@ -15,6 +15,7 @@
  * job row itself, and reuses WP2's graph-read.ts client as-is.
  */
 import { and, eq, sql } from 'drizzle-orm';
+import { env } from '$env/dynamic/private';
 import { withOrgCore } from '$server/db/with-org-core';
 import { getCoreDb } from '$server/db/pg-client';
 import type { CoreCtx } from '$server/auth/core-ctx';
@@ -43,6 +44,15 @@ import {
 } from './graph-read';
 import { insertMessages, type IngestRow } from '../messages.service';
 import { claimJob, finishJob, getJobById, recordProgress, requeue } from './meta-sync-jobs.service';
+
+/**
+ * Shared Graph opts carrying the App Secret so every authenticated read sends
+ * `appsecret_proof` (the app enforces "Require app secret proof for server API
+ * calls" — without it Graph rejects with code 100 and no data is returned).
+ * fetchNextPage() calls omit this: Graph's `paging.next` links already echo the
+ * appsecret_proof from the originating request.
+ */
+const graphAuthOpts = () => ({ appSecret: env.META_APP_SECRET });
 
 const MAX_POSTS_PER_SLICE = 40;
 const MAX_AD_ROWS_PER_SLICE = 90;
@@ -345,8 +355,8 @@ async function syncPosts(ctx: CoreCtx, job: MetaSyncJob, assets: MetaAsset[]): P
       i === resume.i && resume.next
         ? await fetchNextPage<PagePost | IgMedia>(resume.next)
         : platform === 'fb'
-          ? await listPagePosts(asset.externalId, token, { since })
-          : await listIgMedia(asset.externalId, token, { since });
+          ? await listPagePosts(asset.externalId, token, { since }, graphAuthOpts())
+          : await listIgMedia(asset.externalId, token, { since }, graphAuthOpts());
 
     for (;;) {
       if (!page.ok) {
@@ -356,7 +366,9 @@ async function syncPosts(ctx: CoreCtx, job: MetaSyncJob, assets: MetaAsset[]): P
       for (const post of page.data ?? []) {
         const mediaType = (post as IgMedia).media_type;
         const insights =
-          platform === 'fb' ? await postInsights(post.id, token) : await igMediaInsights(post.id, token, mediaType ?? 'IMAGE');
+          platform === 'fb'
+            ? await postInsights(post.id, token, graphAuthOpts())
+            : await igMediaInsights(post.id, token, mediaType ?? 'IMAGE', graphAuthOpts());
         if (!insights.ok) {
           if (insights.error === 'token_expired') return { cursor: null, counts, tokenExpired: true };
           counts.metricsDenied++;
@@ -401,7 +413,7 @@ async function syncAds(ctx: CoreCtx, userToken: string, assets: MetaAsset[], job
     let page =
       i === resume.i && resume.next
         ? await fetchNextPage<AdInsightRow>(resume.next)
-        : await adInsights(asset.externalId, userToken, { since, until });
+        : await adInsights(asset.externalId, userToken, { since, until }, graphAuthOpts());
 
     for (;;) {
       if (!page.ok) {
@@ -448,7 +460,7 @@ async function syncMessages(ctx: CoreCtx, assets: MetaAsset[], job: MetaSyncJob)
     let page =
       i === resume.i && resume.next
         ? await fetchNextPage<Conversation>(resume.next)
-        : await listConversations(asset.externalId, token, { platform });
+        : await listConversations(asset.externalId, token, { platform }, graphAuthOpts());
 
     for (;;) {
       if (!page.ok) {
