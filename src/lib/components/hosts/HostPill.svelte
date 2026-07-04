@@ -12,7 +12,9 @@
     // `align` controls which edge the switcher dropdown anchors to — the notch
     // lives at the top-right so it opens right-aligned; the mobile topbar is
     // left-aligned. `tooltipPlacement` follows suit.
-    let { align = "left" }: { align?: "left" | "right" } = $props();
+    // `dot` renders the leading status dot. The DynamicIsland surfaces its own
+    // always-visible dot at the far left, so it hides this one to avoid doubling up.
+    let { align = "left", dot = true }: { align?: "left" | "right"; dot?: boolean } = $props();
 
     const activeHost = $derived(getActiveHost());
     const connected = $derived(conn.connected);
@@ -83,19 +85,23 @@
             aria-haspopup={canSwitch && activeHost ? "menu" : undefined}
         >
             {#if activeHost}
-                <span
-                    class="w-1.5 h-1.5 rounded-full shrink-0 transition-colors {connected
-                        ? 'bg-success shadow-[0_0_4px_var(--color-success)]'
-                        : 'bg-warning shadow-[0_0_4px_var(--color-warning)] animate-pulse'}"
-                ></span>
+                {#if dot}
+                    <span
+                        class="w-1.5 h-1.5 rounded-full shrink-0 transition-colors {connected
+                            ? 'bg-success shadow-[0_0_4px_var(--color-success)]'
+                            : 'bg-warning shadow-[0_0_4px_var(--color-warning)] animate-pulse'}"
+                    ></span>
+                {/if}
                 <span class="flex-1 overflow-hidden text-ellipsis text-left">{activeHost.name}</span>
                 {#if canSwitch}
                     <span class="opacity-40 text-[9px] shrink-0">▾</span>
                 {/if}
             {:else}
-                <span
-                    class="w-1.5 h-1.5 rounded-full shrink-0 bg-warning shadow-[0_0_4px_var(--color-warning)] animate-pulse"
-                ></span>
+                {#if dot}
+                    <span
+                        class="w-1.5 h-1.5 rounded-full shrink-0 bg-warning shadow-[0_0_4px_var(--color-warning)] animate-pulse"
+                    ></span>
+                {/if}
                 <span>{canSwitch ? m.hosts_addHost() : "No server"}</span>
             {/if}
 
