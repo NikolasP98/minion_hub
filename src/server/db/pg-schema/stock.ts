@@ -136,9 +136,39 @@ export const stkBins = pgTable(
   (t) => [primaryKey({ columns: [t.orgId, t.itemId, t.warehouseId] })],
 );
 
+/**
+ * P5.1 interconnect: fin_product (service/product sold) → stk_items consumed
+ * per unit sold/performed. Completes the catalog triangle
+ * sched_event_types.product_id → fin_products ← stk_items.fin_product_id.
+ * Companion migration: supabase/migrations/20260703160000_stock_consumption.sql.
+ * Design: specs/hub-erp-roadmap/P5.1-stock-interconnect-seed.md §D1/D2.
+ */
+export const stkConsumption = pgTable(
+  'stk_consumption',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: text('org_id').notNull(),
+    /** Soft ref → fin_products (sold service/product); no FK — cross-schema, same
+     *  soft-ref convention as stkItems.finProductId above. */
+    finProductId: uuid('fin_product_id').notNull(),
+    itemId: uuid('item_id')
+      .notNull()
+      .references(() => stkItems.id, { onDelete: 'cascade' }),
+    qtyPerUnit: numeric('qty_per_unit').notNull(),
+    note: text('note'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('stk_consumption_org_product_item_uniq').on(t.orgId, t.finProductId, t.itemId),
+    index('stk_consumption_org_product_idx').on(t.orgId, t.finProductId),
+  ],
+);
+
 export type StkItem = typeof stkItems.$inferSelect;
 export type StkWarehouse = typeof stkWarehouses.$inferSelect;
 export type StkEntry = typeof stkEntries.$inferSelect;
 export type StkEntryLine = typeof stkEntryLines.$inferSelect;
 export type StkLedgerRow = typeof stkLedger.$inferSelect;
 export type StkBin = typeof stkBins.$inferSelect;
+export type StkConsumption = typeof stkConsumption.$inferSelect;

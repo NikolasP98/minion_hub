@@ -2,7 +2,7 @@
   import type { PageData } from './$types';
   import { invalidate } from '$app/navigation';
   import * as m from '$lib/paraglide/messages';
-  import { Package, ArrowLeft } from 'lucide-svelte';
+  import { Package, ArrowLeft, ExternalLink } from 'lucide-svelte';
   import { PageHeader, Button } from '$lib/components/ui';
   import { canAct } from '$lib/access/can.svelte';
 
@@ -145,6 +145,27 @@
         </table>
       {/if}
     </div>
+
+    <div class="card">
+      <div class="card-h">{m.stock_item_consumed_by_title()}</div>
+      {#if data.consumedBy.length === 0}
+        <p class="t-caption">{m.stock_item_consumed_by_empty()}</p>
+      {:else}
+        <table class="mini-table">
+          <thead><tr><th>{m.stock_col_product()}</th><th class="num">{m.stock_consumption_col_qty_per_unit()}</th><th>{m.stock_field_note()}</th></tr></thead>
+          <tbody>
+            {#each data.consumedBy as c (c.id)}
+              <tr>
+                <td>{c.productCode} — {c.productName}</td>
+                <td class="num">{fmt(c.qtyPerUnit)}</td>
+                <td class="t-caption">{c.note ?? '—'}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+        <a class="consumed-link" href="/stock/consumption">{m.stock_item_manage_consumption()} <ExternalLink size={12} /></a>
+      {/if}
+    </div>
   </div>
 </div>
 
@@ -162,4 +183,6 @@
   .mini-table .num { text-align: right; font-variant-numeric: tabular-nums; }
   .mini-table .in { color: var(--color-success, var(--color-emerald)); }
   .mini-table .out { color: var(--color-destructive); }
+  .consumed-link { display: inline-flex; align-items: center; gap: 0.3rem; margin-top: 0.6rem; font-size: 0.78rem; color: var(--color-accent); }
+  .consumed-link:hover { text-decoration: underline; }
 </style>

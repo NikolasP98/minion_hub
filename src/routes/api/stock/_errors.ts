@@ -11,6 +11,9 @@ const STATUS_BY_CODE: Record<string, number> = {
   negative_stock: 409,
   no_ledger: 409,
   cycle: 409,
+  invoice_not_found: 404,
+  product_not_found: 404,
+  duplicate_invoice: 409,
 };
 
 /** Maps a StockError to the right HTTP error; re-throws anything else untouched. */

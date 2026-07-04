@@ -1,9 +1,12 @@
 <script lang="ts">
 	import type { PageData } from './$types';
+	import { invalidate } from '$app/navigation';
 	import * as m from '$lib/paraglide/messages';
-	import { ArrowLeft, FileText, Check, AlertTriangle, Ban, ExternalLink } from 'lucide-svelte';
-	import { PageHeader, Button } from '$lib/components/ui';
+	import { ArrowLeft, FileText, Check, AlertTriangle, Ban, ExternalLink, Boxes, Trash2 } from 'lucide-svelte';
+	import { PageHeader, Button, Modal, Select, Badge, Combobox } from '$lib/components/ui';
 	import { createBackNav } from '$lib/nav/back-nav.svelte';
+	import { canAct } from '$lib/access/can.svelte';
+	import { entryStatusVariant } from '$lib/components/stock/stock-ui';
 
 	let { data }: { data: PageData } = $props();
 	const back = createBackNav('/finances/invoices', m.fin_back_to_invoices);
@@ -11,6 +14,8 @@
 	const items = $derived(data.items);
 	const payments = $derived(data.payments);
 	const crmContactId = $derived(data.crmContactId);
+	const stockEntry = $derived(data.stockEntry);
+	const stockStatusV = $derived(stockEntry ? entryStatusVariant(stockEntry.status) : null);
 
 	const isVoid = $derived(inv.status === 'void');
 
@@ -60,6 +65,118 @@
 			discountNonZero ||
 			hasVal(inv.note),
 	);
+
+	// ── Stock issue dialog ───────────────────────────────────────────────────
+	// available: null for manually added lines (no bin lookup client-side).
+	type PreviewLine = { itemId: string; itemName: string; itemCode: string; uom: string; qty: string; available: number | null };
+	let issueDialogOpen = $state(false);
+	let issueWarehouseId = $state('');
+	let previewLines = $state<PreviewLine[]>([]);
+	let unmatched = $state<Array<{ description: string; quantity: number }>>([]);
+	let previewBusy = $state(false);
+	let issueBusy = $state(false);
+	let issueErr = $state<string | null>(null);
+
+	// Manual add-line (items the consumption map didn't cover).
+	let addItemId = $state('');
+	let addQty = $state('');
+	const canAddLine = $derived(addItemId !== '' && Number(addQty) > 0);
+
+	function addPreviewLine() {
+		if (!canAddLine) return;
+		const existing = previewLines.find((l) => l.itemId === addItemId);
+		if (existing) {
+			// Duplicate item → merge quantities instead of a second row.
+			existing.qty = String(Number(existing.qty) + Number(addQty));
+		} else {
+			const it = data.stockItems.find((i) => i.id === addItemId);
+			previewLines = [
+				...previewLines,
+				{
+					itemId: addItemId,
+					itemName: it?.name ?? addItemId,
+					itemCode: it?.code ?? '',
+					uom: it?.uom ?? 'unit',
+					qty: addQty,
+					available: null,
+				},
+			];
+		}
+		addItemId = '';
+		addQty = '';
+	}
+
+	function openIssueDialog() {
+		issueWarehouseId = '';
+		previewLines = [];
+		unmatched = [];
+		addItemId = '';
+		addQty = '';
+		issueErr = null;
+		issueDialogOpen = true;
+	}
+
+	async function issueErrMessage(res: Response): Promise<string> {
+		try {
+			const body = await res.json();
+			if (res.status === 409) return body?.message ?? m.fin_stock_issue_duplicate();
+			return body?.message ?? m.fin_stock_issue_failed();
+		} catch {
+			return m.fin_stock_issue_failed();
+		}
+	}
+
+	async function loadPreview() {
+		if (!issueWarehouseId) return;
+		previewBusy = true;
+		issueErr = null;
+		try {
+			const res = await fetch('/api/stock/entries/from-invoice', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ invoiceId: inv.id, warehouseId: issueWarehouseId, preview: true }),
+			});
+			if (res.ok) {
+				const body = await res.json();
+				const preview = body.preview ?? { lines: [], unmatched: [] };
+				previewLines = (preview.lines ?? []).map((l: Omit<PreviewLine, 'qty'> & { qty: number }) => ({ ...l, qty: String(l.qty) }));
+				unmatched = preview.unmatched ?? [];
+			} else {
+				issueErr = await issueErrMessage(res);
+			}
+		} finally {
+			previewBusy = false;
+		}
+	}
+
+	function removePreviewLine(i: number) {
+		previewLines = previewLines.filter((_, idx) => idx !== i);
+	}
+
+	async function saveIssue(submit: boolean) {
+		issueBusy = true;
+		issueErr = null;
+		try {
+			const res = await fetch('/api/stock/entries/from-invoice', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					invoiceId: inv.id,
+					warehouseId: issueWarehouseId,
+					lines: previewLines.map((l) => ({ itemId: l.itemId, qty: Number(l.qty) })),
+					submit,
+				}),
+			});
+			if (res.ok) {
+				issueDialogOpen = false;
+				await invalidate('finances:data');
+			} else {
+				issueErr = await issueErrMessage(res);
+			}
+		} finally {
+			issueBusy = false;
+		}
+	}
 </script>
 
 <svelte:head><title>{m.fin_invoice_detail_title()} {inv.number ?? inv.documentId ?? ''}</title></svelte:head>
@@ -227,6 +344,36 @@
 					{/if}
 				</section>
 			{/if}
+
+			<!-- Stock -->
+			{#if data.stockEnabled}
+				<section class="doc-sec">
+					<header class="panel-h">{m.fin_stock_section_title()}</header>
+					{#if stockEntry && stockStatusV}
+						<a class="stock-link" href={`/stock/entries/${stockEntry.id}`}>
+							<Boxes size={14} />
+							<span>{stockEntry.humanId ?? stockEntry.id.slice(0, 8)}</span>
+							<Badge variant={stockStatusV.variant} value={stockStatusV.value}>
+								{stockEntry.status === 'draft' ? m.stock_status_draft() : stockEntry.status === 'submitted' ? m.stock_status_submitted() : m.stock_status_cancelled()}
+							</Badge>
+							<ExternalLink size={12} class="stock-link-ico" />
+						</a>
+					{:else}
+						<div class="flex items-center justify-between gap-3">
+							<p class="t-caption">{m.fin_stock_no_issue()}</p>
+							<Button
+								variant="outline"
+								size="sm"
+								onclick={openIssueDialog}
+								disabled={!canAct('stock', 'create')}
+								title={canAct('stock', 'create') ? undefined : m.no_permission()}
+							>
+								<Boxes size={14} /> {m.fin_stock_create_issue()}
+							</Button>
+						</div>
+					{/if}
+				</section>
+			{/if}
 			</div>
 
 			{#if hasVal(inv.documentId)}
@@ -235,6 +382,87 @@
 		</div>
 	</div>
 </div>
+
+<Modal bind:open={issueDialogOpen} title={m.fin_stock_create_issue()} size="lg">
+	<div class="flex flex-col gap-3">
+		<Select
+			size="sm"
+			label={m.stock_field_warehouse()}
+			bind:value={issueWarehouseId}
+			onchange={loadPreview}
+		>
+			<option value="">{m.fin_stock_select_warehouse()}</option>
+			{#each data.stockWarehouses as w (w.id)}
+				<option value={w.id}>{w.name}</option>
+			{/each}
+		</Select>
+
+		{#if previewBusy}
+			<p class="t-caption">{m.common_loading()}</p>
+		{:else if previewLines.length > 0}
+			<table class="mini-table">
+				<thead>
+					<tr>
+						<th>{m.stock_field_item()}</th>
+						<th class="num">{m.stock_field_qty()}</th>
+						<th class="num">{m.fin_stock_available()}</th>
+						<th></th>
+					</tr>
+				</thead>
+				<tbody>
+					{#each previewLines as l, i (l.itemId)}
+						<tr>
+							<td>{l.itemCode} — {l.itemName}</td>
+							<td class="num"><input class="inp w-20 text-right" type="number" min="0" step="0.01" bind:value={l.qty} /></td>
+							<td class="num t-caption">{l.available != null ? `${l.available} ${l.uom}` : '—'}</td>
+							<td><button class="rm-btn" onclick={() => removePreviewLine(i)}><Trash2 size={13} /></button></td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+		{:else if issueWarehouseId}
+			<p class="t-caption">{m.fin_stock_preview_empty()}</p>
+		{/if}
+
+		{#if issueWarehouseId && !previewBusy}
+			<div class="add-line-form">
+				<Combobox
+					id="issue-add-item"
+					items={data.stockItems}
+					itemToValue={(i) => i.id}
+					itemToString={(i) => `${i.code} — ${i.name}`}
+					placeholder={m.stock_field_item()}
+					bind:value={addItemId}
+				/>
+				<input class="inp w-20 text-right" type="number" min="0" step="0.01" placeholder={m.stock_field_qty()} bind:value={addQty} />
+				<Button variant="outline" size="sm" onclick={addPreviewLine} disabled={!canAddLine}>{m.stock_add_line()}</Button>
+			</div>
+		{/if}
+
+		{#if unmatched.length > 0}
+			<p class="t-caption unmatched-note">
+				{m.fin_stock_unmatched({ items: unmatched.map((u) => u.description).join(', ') })}
+			</p>
+		{/if}
+
+		{#if issueErr}<p class="err-msg">{issueErr}</p>{/if}
+	</div>
+	{#snippet footer()}
+		<Button variant="outline" size="sm" onclick={() => (issueDialogOpen = false)}>{m.common_cancel()}</Button>
+		<Button
+			variant="outline"
+			size="sm"
+			onclick={() => saveIssue(false)}
+			disabled={issueBusy || previewLines.length === 0}
+		>{m.stock_save_draft()}</Button>
+		<Button
+			variant="primary"
+			size="sm"
+			onclick={() => saveIssue(true)}
+			disabled={issueBusy || previewLines.length === 0}
+		>{m.stock_submit()}</Button>
+	{/snippet}
+</Modal>
 
 <style>
 	.void-banner {
@@ -319,4 +547,21 @@
 	.status-pill[data-status='paid'] { background: color-mix(in srgb, var(--color-success, #22c55e) 15%, transparent); color: var(--color-success, #22c55e); }
 	.status-pill[data-status='partial'] { background: color-mix(in srgb, var(--color-warning, #f59e0b) 15%, transparent); color: var(--color-warning, #f59e0b); }
 	.status-pill[data-status='void'] { background: color-mix(in srgb, var(--color-destructive, #ef4444) 12%, transparent); color: var(--color-destructive, #ef4444); }
+
+	/* Stock card */
+	.stock-link { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--color-foreground); }
+	.stock-link:hover { color: var(--color-accent); }
+	:global(.stock-link .stock-link-ico) { opacity: 0.6; }
+
+	/* Stock issue dialog */
+	.mini-table { width: 100%; font-size: 0.82rem; border-collapse: collapse; }
+	.mini-table th { text-align: left; font-weight: 500; color: var(--color-muted-foreground); padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--hairline); }
+	.mini-table td { padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--hairline); }
+	.mini-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+	.inp { height: 1.75rem; padding: 0 0.5rem; font-size: 0.82rem; border-radius: var(--radius-sm); background: var(--color-bg3); border: 1px solid var(--hairline); color: var(--color-foreground); }
+	.rm-btn { background: none; border: none; color: var(--color-muted-foreground); cursor: pointer; }
+	.rm-btn:hover { color: var(--color-destructive); }
+	.unmatched-note { font-style: italic; }
+	.add-line-form { display: grid; grid-template-columns: 1fr auto auto; gap: 0.5rem; align-items: end; }
+	.err-msg { font-size: 0.8rem; color: var(--color-destructive); }
 </style>

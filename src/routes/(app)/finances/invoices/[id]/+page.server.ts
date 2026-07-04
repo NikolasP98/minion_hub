@@ -3,6 +3,7 @@ import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { getInvoice } from '$server/services/finance.service';
+import { findEntryByInvoice, listWarehouses, listItems } from '$server/services/stock.service';
 
 export const load: PageServerLoad = async ({ locals, params, depends }) => {
   const ctx = await getCoreCtx(locals);
@@ -11,5 +12,11 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
   depends('finances:data');
   const data = await getInvoice(ctx, params.id);
   if (!data) throw error(404, 'Invoice not found');
-  return data;
+
+  const stockEnabled = await isModuleEnabled(ctx, 'stock');
+  const [stockEntry, stockWarehouses, stockItems] = stockEnabled
+    ? await Promise.all([findEntryByInvoice(ctx, params.id), listWarehouses(ctx), listItems(ctx)])
+    : [null, [], []];
+
+  return { ...data, stockEnabled, stockEntry, stockWarehouses, stockItems };
 };

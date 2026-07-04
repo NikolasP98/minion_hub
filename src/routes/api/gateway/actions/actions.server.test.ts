@@ -35,8 +35,12 @@ vi.mock('$server/services/errors', () => ({
 }));
 
 const mockCreateEntry = vi.fn();
+const mockBuildInvoiceIssuePreview = vi.fn();
+const mockCreateIssueFromInvoice = vi.fn();
 vi.mock('$server/services/stock.service', () => ({
 	createEntry: (...args: unknown[]) => mockCreateEntry(...args),
+	buildInvoiceIssuePreview: (...args: unknown[]) => mockBuildInvoiceIssuePreview(...args),
+	createIssueFromInvoice: (...args: unknown[]) => mockCreateIssueFromInvoice(...args),
 }));
 vi.mock('$server/services/stock.logic', () => ({
 	ENTRY_TYPES: ['receipt', 'issue', 'transfer', 'adjustment'],
@@ -45,6 +49,7 @@ vi.mock('$server/services/stock.logic', () => ({
 import { POST as bookingCreatePOST } from './booking-create/+server';
 import { POST as ticketUpdatePOST } from './ticket-update/+server';
 import { POST as stockEntryCreatePOST } from './stock-entry-create/+server';
+import { POST as stockIssueFromInvoicePOST } from './stock-issue-from-invoice/+server';
 
 /** Minimal Capabilities stub — only `can` is exercised by requireAssistantCapability. */
 function makeCaps(allowed: Record<string, boolean> = {}): Capabilities {
@@ -199,5 +204,87 @@ describe('POST /api/gateway/actions/stock-entry-create', () => {
 		const body = (await res.json()) as { entry: { status: string } };
 		expect(body.entry.status).toBe('draft');
 		expect(mockCreateEntry).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('POST /api/gateway/actions/stock-issue-from-invoice', () => {
+	it('403s when the principal lacks stock:create (RBAC denial)', async () => {
+		mockResolveAssistantPrincipal.mockResolvedValue({
+			principalId: 'u1',
+			orgId: 'org1',
+			capabilities: makeCaps(),
+		});
+		await expect(
+			stockIssueFromInvoicePOST(
+				makeEvent('/api/gateway/actions/stock-issue-from-invoice', {
+					confirm: false,
+					invoiceId: 'inv1',
+					warehouseId: 'wh1',
+				}),
+			),
+		).rejects.toMatchObject({ status: 403 });
+		expect(mockBuildInvoiceIssuePreview).not.toHaveBeenCalled();
+	});
+
+	it('confirm:false returns the computed preview and performs no write', async () => {
+		mockResolveAssistantPrincipal.mockResolvedValue({
+			principalId: 'u1',
+			orgId: 'org1',
+			capabilities: makeCaps({ 'stock.create': true }),
+		});
+		mockBuildInvoiceIssuePreview.mockResolvedValue({
+			lines: [{ itemId: 'item1', itemName: 'Toxina', itemCode: 'TOX', uom: 'unit', qty: 30, available: 100 }],
+			unmatched: [],
+		});
+		const res = await stockIssueFromInvoicePOST(
+			makeEvent('/api/gateway/actions/stock-issue-from-invoice', { confirm: false, invoiceId: 'inv1', warehouseId: 'wh1' }),
+		);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { preview: { action: string; invoiceId: string; lines: unknown[] } };
+		expect(body.preview.action).toBe('stock-issue-from-invoice');
+		expect(body.preview.invoiceId).toBe('inv1');
+		expect(body.preview.lines).toHaveLength(1);
+		expect(mockCreateIssueFromInvoice).not.toHaveBeenCalled();
+	});
+
+	it('confirm:true creates the issue entry via createIssueFromInvoice', async () => {
+		mockResolveAssistantPrincipal.mockResolvedValue({
+			principalId: 'u1',
+			orgId: 'org1',
+			capabilities: makeCaps({ 'stock.create': true }),
+		});
+		mockCreateIssueFromInvoice.mockResolvedValue({ id: 'entry1', status: 'draft', type: 'issue' });
+		const res = await stockIssueFromInvoicePOST(
+			makeEvent('/api/gateway/actions/stock-issue-from-invoice', {
+				confirm: true,
+				invoiceId: 'inv1',
+				warehouseId: 'wh1',
+				lines: [{ itemId: 'item1', qty: 30 }],
+			}),
+		);
+		expect(res.status).toBe(201);
+		const body = (await res.json()) as { entry: { status: string } };
+		expect(body.entry.status).toBe('draft');
+		expect(mockCreateIssueFromInvoice).toHaveBeenCalledTimes(1);
+		expect(mockBuildInvoiceIssuePreview).not.toHaveBeenCalled();
+	});
+
+	it('403s the duplicate-invoice guard error through (StockError bubbles unmapped)', async () => {
+		mockResolveAssistantPrincipal.mockResolvedValue({
+			principalId: 'u1',
+			orgId: 'org1',
+			capabilities: makeCaps({ 'stock.create': true }),
+		});
+		mockCreateIssueFromInvoice.mockRejectedValue(Object.assign(new Error('duplicate'), { code: 'duplicate_invoice' }));
+		await expect(
+			stockIssueFromInvoicePOST(
+				makeEvent('/api/gateway/actions/stock-issue-from-invoice', {
+					confirm: true,
+					invoiceId: 'inv1',
+					warehouseId: 'wh1',
+					lines: [{ itemId: 'item1', qty: 30 }],
+				}),
+			),
+		).rejects.toThrow('duplicate');
 	});
 });

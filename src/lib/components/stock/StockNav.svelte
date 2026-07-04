@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { LayoutDashboard, Package, Warehouse, ArrowLeftRight } from 'lucide-svelte';
+  import { LayoutDashboard, Package, Warehouse, ArrowLeftRight, Boxes } from 'lucide-svelte';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
   import { SideNav, type SideNavItem } from '$lib/components/ui';
@@ -14,6 +14,7 @@
       { id: 'items', label: m.stock_nav_items(), icon: Package, href: '/stock/items' },
       { id: 'warehouses', label: m.stock_nav_warehouses(), icon: Warehouse, href: '/stock/warehouses' },
       { id: 'entries', label: m.stock_nav_entries(), icon: ArrowLeftRight, href: '/stock/entries' },
+      { id: 'consumption', label: m.stock_nav_consumption(), icon: Boxes, href: '/stock/consumption' },
     ].filter((i) => canViewPath(i.href)),
   );
 

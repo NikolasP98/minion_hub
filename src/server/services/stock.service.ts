@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { nextSerialId } from './naming-series';
@@ -12,13 +12,16 @@ import {
   stkEntryLines,
   stkLedger,
   stkBins,
+  stkConsumption,
   type StkItem,
   type StkWarehouse,
   type StkEntry,
   type StkEntryLine,
   type StkBin,
   type StkLedgerRow,
+  type StkConsumption,
 } from '$server/db/pg-schema/stock';
+import { finInvoices, finInvoiceItems, finProducts } from '$server/db/pg-finance-schema';
 import {
   ENTRY_TYPES,
   type EntryType,
@@ -496,3 +499,306 @@ registerNotifCandidateSource('stk_reorder', async (tx, orgId) => {
   `)) as unknown as Array<Record<string, unknown>>;
   return rows;
 });
+
+// ── Consumption map (P5.1) — fin_product → stk_items consumed per unit ─────
+
+export interface ConsumptionRow {
+  id: string;
+  finProductId: string;
+  productName: string;
+  productCode: string;
+  itemId: string;
+  itemName: string;
+  itemCode: string;
+  uom: string;
+  qtyPerUnit: number;
+  note: string | null;
+}
+
+export function listConsumption(ctx: CoreCtx, filters: { finProductId?: string; itemId?: string } = {}): Promise<ConsumptionRow[]> {
+  return withOrgCore(ctx, async (tx) => {
+    const conds = [eq(stkConsumption.orgId, ctx.tenantId)];
+    if (filters.finProductId) conds.push(eq(stkConsumption.finProductId, filters.finProductId));
+    if (filters.itemId) conds.push(eq(stkConsumption.itemId, filters.itemId));
+    const rows = await tx
+      .select({
+        id: stkConsumption.id,
+        finProductId: stkConsumption.finProductId,
+        productName: finProducts.name,
+        productCode: finProducts.code,
+        itemId: stkConsumption.itemId,
+        itemName: stkItems.name,
+        itemCode: stkItems.code,
+        uom: stkItems.uom,
+        qtyPerUnit: stkConsumption.qtyPerUnit,
+        note: stkConsumption.note,
+      })
+      .from(stkConsumption)
+      .innerJoin(finProducts, eq(finProducts.id, stkConsumption.finProductId))
+      .innerJoin(stkItems, eq(stkItems.id, stkConsumption.itemId))
+      .where(and(...conds))
+      .orderBy(asc(finProducts.name), asc(stkItems.name));
+    return rows.map((r) => ({ ...r, qtyPerUnit: Number(r.qtyPerUnit) }));
+  });
+}
+
+/** Read a single mapping row by id (PATCH route needs the (finProductId, itemId)
+ *  natural key before it can call setConsumption's upsert). */
+export async function getConsumptionById(ctx: CoreCtx, id: string): Promise<StkConsumption | null> {
+  return withOrgCore(ctx, async (tx) => {
+    const [row] = await tx.select().from(stkConsumption).where(and(eq(stkConsumption.id, id), eq(stkConsumption.orgId, ctx.tenantId)));
+    return row ?? null;
+  });
+}
+
+export interface SetConsumptionInput {
+  finProductId: string;
+  itemId: string;
+  qtyPerUnit: number;
+  note?: string | null;
+}
+
+/** Upsert on the (org, fin_product, item) unique key. Validates the item is a
+ *  real stock item (not a service-only / non-stock row) and the fin_product
+ *  belongs to this org — both are soft refs (no DB FK to fin_products), so
+ *  this is the only place that catches a typo'd id. */
+export async function setConsumption(ctx: CoreCtx, input: SetConsumptionInput): Promise<StkConsumption> {
+  if (!(input.qtyPerUnit > 0)) throw new StockError('qtyPerUnit must be > 0', 'invalid_qty');
+  return withOrgCore(ctx, async (tx) => {
+    const [item] = await tx
+      .select({ id: stkItems.id, isStockItem: stkItems.isStockItem })
+      .from(stkItems)
+      .where(and(eq(stkItems.id, input.itemId), eq(stkItems.orgId, ctx.tenantId)));
+    if (!item) throw new StockError('item not found', 'item_not_found');
+    if (!item.isStockItem) throw new StockError('item is not a stock item', 'not_stock_item');
+
+    const [product] = await tx
+      .select({ id: finProducts.id })
+      .from(finProducts)
+      .where(and(eq(finProducts.id, input.finProductId), eq(finProducts.orgId, ctx.tenantId)));
+    if (!product) throw new StockError('fin product not found', 'product_not_found');
+
+    const [row] = await tx
+      .insert(stkConsumption)
+      .values({ orgId: ctx.tenantId, finProductId: input.finProductId, itemId: input.itemId, qtyPerUnit: String(input.qtyPerUnit), note: input.note ?? null })
+      .onConflictDoUpdate({
+        target: [stkConsumption.orgId, stkConsumption.finProductId, stkConsumption.itemId],
+        set: { qtyPerUnit: String(input.qtyPerUnit), note: input.note ?? null, updatedAt: new Date() },
+      })
+      .returning();
+    return row;
+  });
+}
+
+export async function deleteConsumption(ctx: CoreCtx, id: string): Promise<boolean> {
+  return withOrgCore(ctx, async (tx) => {
+    const res = await tx
+      .delete(stkConsumption)
+      .where(and(eq(stkConsumption.id, id), eq(stkConsumption.orgId, ctx.tenantId)))
+      .returning({ id: stkConsumption.id });
+    return res.length > 0;
+  });
+}
+
+// ── Invoice ↔ stock interconnect (P5.1) ──────────────────────────────────────
+// NEVER writes fin_* rows — the invoice→stock link lives entirely in
+// stk_entries.metadata ({source:'invoice', invoiceId, providerRef}); SUSII sync
+// delete-replaces fin_invoice_items on every run (finance.service.ts), so
+// anything written back there would be silently wiped on the next sync.
+
+export interface InvoicePreviewLine {
+  itemId: string;
+  itemName: string;
+  itemCode: string;
+  uom: string;
+  qty: number;
+  available: number;
+}
+
+export interface InvoicePreviewUnmatched {
+  description: string;
+  quantity: number;
+}
+
+export interface InvoicePreview {
+  lines: InvoicePreviewLine[];
+  unmatched: InvoicePreviewUnmatched[];
+}
+
+/**
+ * Aggregates one invoice's line items into stock-issue lines via two paths:
+ *  1. stk_consumption mapping (qty = invoice qty × qty_per_unit), and
+ *  2. a 1:1 retail fallback for invoice items whose product maps directly to
+ *     a stk_items.fin_product_id (is_stock_item) — but only when path 1 found
+ *     NO mapping for that product (dedupe: a mapped product never also falls
+ *     back to 1:1).
+ * Invoice items hitting neither path are reported in `unmatched` (name-only —
+ * nothing to act on without a mapping).
+ */
+export async function buildInvoiceIssuePreview(ctx: CoreCtx, invoiceId: string, warehouseId: string): Promise<InvoicePreview> {
+  return withOrgCore(ctx, async (tx) => {
+    const [invoice] = await tx.select({ id: finInvoices.id }).from(finInvoices).where(and(eq(finInvoices.id, invoiceId), eq(finInvoices.orgId, ctx.tenantId)));
+    if (!invoice) throw new StockError('invoice not found', 'invoice_not_found');
+
+    const invoiceItems = await tx
+      .select({ productId: finInvoiceItems.productId, description: finInvoiceItems.description, quantity: finInvoiceItems.quantity })
+      .from(finInvoiceItems)
+      .where(eq(finInvoiceItems.invoiceId, invoiceId));
+
+    const productIds = [...new Set(invoiceItems.map((i) => i.productId).filter((id): id is string => !!id))];
+
+    const mappingRows = await tx
+      .select({ finProductId: stkConsumption.finProductId, itemId: stkConsumption.itemId, qtyPerUnit: stkConsumption.qtyPerUnit })
+      .from(stkConsumption)
+      .where(and(eq(stkConsumption.orgId, ctx.tenantId), inArray(stkConsumption.finProductId, productIds)));
+    const mappingsByProduct = new Map<string, { itemId: string; qtyPerUnit: number }[]>();
+    for (const m of mappingRows) {
+      const list = mappingsByProduct.get(m.finProductId) ?? [];
+      list.push({ itemId: m.itemId, qtyPerUnit: Number(m.qtyPerUnit) });
+      mappingsByProduct.set(m.finProductId, list);
+    }
+
+    // 1:1 fallback candidates — retail products sold as themselves. Only used
+    // for products with NO mapping row (see dedupe above); if a product maps
+    // to several stk_items with is_stock_item, the first one wins (ponytail:
+    // no observed case needs more than one 1:1 fallback item per product —
+    // upgrade to an explicit priority column if that ever changes).
+    const fallbackItems = await tx
+      .select({ id: stkItems.id, finProductId: stkItems.finProductId })
+      .from(stkItems)
+      .where(and(eq(stkItems.orgId, ctx.tenantId), eq(stkItems.isStockItem, true), inArray(stkItems.finProductId, productIds)));
+    const fallbackByProduct = new Map<string, string>();
+    for (const row of fallbackItems) {
+      if (row.finProductId && !fallbackByProduct.has(row.finProductId)) fallbackByProduct.set(row.finProductId, row.id);
+    }
+
+    const qtyByItem = new Map<string, number>();
+    const unmatched: InvoicePreviewUnmatched[] = [];
+    for (const line of invoiceItems) {
+      const quantity = Number(line.quantity ?? 0);
+      if (!line.productId) {
+        unmatched.push({ description: line.description ?? '(no description)', quantity });
+        continue;
+      }
+      const mappings = mappingsByProduct.get(line.productId);
+      if (mappings?.length) {
+        for (const m of mappings) qtyByItem.set(m.itemId, (qtyByItem.get(m.itemId) ?? 0) + quantity * m.qtyPerUnit);
+        continue;
+      }
+      const fallbackItemId = fallbackByProduct.get(line.productId);
+      if (fallbackItemId) {
+        qtyByItem.set(fallbackItemId, (qtyByItem.get(fallbackItemId) ?? 0) + quantity);
+        continue;
+      }
+      unmatched.push({ description: line.description ?? '(no description)', quantity });
+    }
+
+    const itemIds = [...qtyByItem.keys()];
+    const itemRows = await tx.select({ id: stkItems.id, name: stkItems.name, code: stkItems.code, uom: stkItems.uom }).from(stkItems).where(inArray(stkItems.id, itemIds));
+    const itemById = new Map(itemRows.map((r) => [r.id, r]));
+
+    const binRows = await tx
+      .select({ itemId: stkBins.itemId, qty: stkBins.qty })
+      .from(stkBins)
+      .where(and(eq(stkBins.orgId, ctx.tenantId), eq(stkBins.warehouseId, warehouseId), inArray(stkBins.itemId, itemIds)));
+    const availableByItem = new Map(binRows.map((r) => [r.itemId, Number(r.qty)]));
+
+    const lines: InvoicePreviewLine[] = itemIds.map((itemId) => {
+      const item = itemById.get(itemId);
+      return {
+        itemId,
+        itemName: item?.name ?? itemId,
+        itemCode: item?.code ?? '',
+        uom: item?.uom ?? 'unit',
+        qty: qtyByItem.get(itemId)!,
+        available: availableByItem.get(itemId) ?? 0,
+      };
+    });
+
+    return { lines, unmatched };
+  });
+}
+
+export interface CreateIssueFromInvoiceLine {
+  itemId: string;
+  qty: number;
+}
+
+export interface CreateIssueFromInvoiceInput {
+  invoiceId: string;
+  warehouseId: string;
+  lines: CreateIssueFromInvoiceLine[];
+  submit?: boolean;
+  actor: Actor;
+}
+
+/** Creates (and optionally submits) an `issue` stk_entry for an invoice's
+ *  computed stock lines. Guards against double-issuing the same invoice via
+ *  a non-cancelled entry with the same metadata.invoiceId — checked and
+ *  inserted in the same withOrgCore tx, so two concurrent calls still race on
+ *  the row lock rather than both slipping through (ponytail: no partial
+ *  unique index on metadata->>'invoiceId' backs this — the migration's
+ *  already applied to prod, so add one in a follow-up if this guard is ever
+ *  found to lose the race in practice). */
+export async function createIssueFromInvoice(ctx: CoreCtx, input: CreateIssueFromInvoiceInput): Promise<StkEntry> {
+  if (!input.lines.length) throw new StockError('at least one stock line is required', 'no_lines');
+
+  const entry = await withOrgCore(ctx, async (tx) => {
+    const [invoice] = await tx
+      .select({ id: finInvoices.id, providerRef: finInvoices.providerRef })
+      .from(finInvoices)
+      .where(and(eq(finInvoices.id, input.invoiceId), eq(finInvoices.orgId, ctx.tenantId)));
+    if (!invoice) throw new StockError('invoice not found', 'invoice_not_found');
+
+    const [dup] = await tx
+      .select({ id: stkEntries.id })
+      .from(stkEntries)
+      .where(and(eq(stkEntries.orgId, ctx.tenantId), ne(stkEntries.status, 'cancelled'), sql`${stkEntries.metadata}->>'invoiceId' = ${input.invoiceId}`));
+    if (dup) throw new StockError('a stock issue already exists for this invoice', 'duplicate_invoice');
+
+    const [row] = await tx
+      .insert(stkEntries)
+      .values({
+        orgId: ctx.tenantId,
+        type: 'issue',
+        status: 'draft',
+        note: `Invoice issue: ${invoice.providerRef}`,
+        createdBy: input.actor.id,
+        metadata: { source: 'invoice', invoiceId: input.invoiceId, providerRef: invoice.providerRef },
+      })
+      .returning();
+    await tx.insert(stkEntryLines).values(
+      linesToRows(
+        ctx.tenantId,
+        row.id,
+        input.lines.map((l) => ({ itemId: l.itemId, qty: l.qty, fromWarehouseId: input.warehouseId })),
+      ),
+    );
+    return row;
+  });
+
+  return input.submit ? submitEntry(ctx, entry.id, input.actor) : entry;
+}
+
+export interface EntryByInvoiceSummary {
+  id: string;
+  humanId: string | null;
+  status: string;
+  type: string;
+  postedAt: Date | null;
+}
+
+/** Most recent stk_entry linked to this invoice via metadata.invoiceId (any
+ *  status — the invoice-detail card wants to show "cancelled" too, not just
+ *  hide it), or null when none exists yet. */
+export async function findEntryByInvoice(ctx: CoreCtx, invoiceId: string): Promise<EntryByInvoiceSummary | null> {
+  return withOrgCore(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ id: stkEntries.id, humanId: stkEntries.humanId, status: stkEntries.status, type: stkEntries.type, postedAt: stkEntries.postedAt })
+      .from(stkEntries)
+      .where(and(eq(stkEntries.orgId, ctx.tenantId), sql`${stkEntries.metadata}->>'invoiceId' = ${invoiceId}`))
+      .orderBy(desc(stkEntries.createdAt))
+      .limit(1);
+    return row ?? null;
+  });
+}
