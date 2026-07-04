@@ -112,10 +112,33 @@ function extractId(v: unknown): string | null {
   return null;
 }
 
+function extractName(v: unknown): string | null {
+  if (v && typeof v === 'object' && 'name' in v) {
+    const name = (v as { name?: unknown }).name;
+    return typeof name === 'string' ? name : null;
+  }
+  return null;
+}
+
 function extractParticipantIds(participants: unknown): string[] {
   const data = (participants as { data?: unknown[] } | undefined)?.data;
   if (!Array.isArray(data)) return [];
   return data.map(extractId).filter((id): id is string => id != null);
+}
+
+/** id → name for every participant, so an inbound message's customer id can
+ *  resolve to a display name (Graph's per-message `from` also carries a name,
+ *  used as a fallback when a participant is missing from the list). */
+function extractParticipantNames(participants: unknown): Map<string, string> {
+  const data = (participants as { data?: unknown[] } | undefined)?.data;
+  const map = new Map<string, string>();
+  if (!Array.isArray(data)) return map;
+  for (const p of data) {
+    const id = extractId(p);
+    const name = extractName(p);
+    if (id && name) map.set(id, name);
+  }
+  return map;
 }
 
 type ConvoMessage = NonNullable<Conversation['messages']>['data'] extends Array<infer M> | undefined ? M : never;
@@ -133,6 +156,9 @@ export function toMetaIngestRow(args: {
   participants: unknown;
   pageExternalId: string;
   channel: 'messenger' | 'instagram';
+  /** Page's display name (from meta_assets.name) — the sender_name for
+   *  outbound (page-authored) messages. */
+  pageName?: string | null;
 }): IngestRow | null {
   const fromId = extractId(args.message.from);
   if (!fromId) return null;
@@ -141,6 +167,13 @@ export function toMetaIngestRow(args: {
   const customerId = participantIds.find((id) => id !== args.pageExternalId) ?? (direction === 'inbound' ? fromId : null);
   if (!customerId) return null; // can't resolve the non-page side (e.g. malformed participants) — skip
   const occurredAt = args.message.created_time ? Date.parse(args.message.created_time) : NaN;
+  // Outbound = the page authored it → its catalog name. Inbound = the
+  // customer → their participant name, falling back to the per-message
+  // `from` name (Graph sometimes omits a participant from the top-level list).
+  const senderName =
+    direction === 'outbound'
+      ? (args.pageName ?? null)
+      : (extractParticipantNames(args.participants).get(fromId) ?? extractName(args.message.from));
   return {
     clientId: `meta:${args.channel}:${args.message.id}`,
     direction,
@@ -149,7 +182,7 @@ export function toMetaIngestRow(args: {
     chatId: customerId,
     isGroup: false,
     senderId: fromId,
-    senderName: null,
+    senderName,
     senderHandle: null,
     isBot: false,
     content: args.message.message ?? null,
@@ -474,7 +507,13 @@ async function syncMessages(ctx: CoreCtx, assets: MetaAsset[], job: MetaSyncJob)
       const ingestRows: IngestRow[] = [];
       for (const convo of page.data ?? []) {
         for (const msg of convo.messages?.data ?? []) {
-          const row = toMetaIngestRow({ message: msg, participants: convo.participants, pageExternalId: asset.externalId, channel });
+          const row = toMetaIngestRow({
+            message: msg,
+            participants: convo.participants,
+            pageExternalId: asset.externalId,
+            channel,
+            pageName: asset.name,
+          });
           if (row) ingestRows.push(row);
         }
         counts.conversationsProcessed++;

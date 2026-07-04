@@ -459,7 +459,10 @@ export async function listConversations(
     `${pageId}/conversations`,
     {
       platform: params.platform,
-      fields: 'participants,updated_time,messages{id,from,to,message,created_time}',
+      // {id,name} sub-fields on participants/from/to — the default id-only
+      // shape leaves every imported ledger row's sender_name null.
+      fields:
+        'participants{id,name},updated_time,messages{id,from{id,name},to{id,name},message,created_time}',
       access_token: pageToken,
     },
     o,

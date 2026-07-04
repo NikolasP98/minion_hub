@@ -976,6 +976,27 @@ export async function getCrmSettings(ctx: CoreCtx): Promise<CrmSettings> {
   }
 }
 
+/**
+ * Auto-register a freshly-connected channel account into the CRM harvest
+ * scope (called by the Meta connect flow's asset enumeration, per page/IG
+ * asset). No-op when the org hasn't materialized an explicit scope yet
+ * (`accounts === null` = legacy, every linked account already in scope) —
+ * only an explicit scope needs the new account appended. Idempotent: a
+ * reconnect that re-enumerates the same page is a no-op the second time.
+ */
+export async function ensureAccountInScope(
+  ctx: CoreCtx,
+  channel: string,
+  accountId: string,
+  name: string | null,
+): Promise<void> {
+  const { accounts } = await getCrmSettings(ctx);
+  if (accounts === null) return;
+  const k = accountKey(channel, accountId);
+  if (accounts.some((c) => accountKey(c.channel, c.accountId) === k)) return;
+  await persistConfigs(ctx, [...accounts, { channel, accountId, label: name, paused: false }]);
+}
+
 export interface LedgerAccount {
   channel: string;
   accountId: string;

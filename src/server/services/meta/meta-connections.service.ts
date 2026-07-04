@@ -18,6 +18,7 @@ import {
   type MetaAsset,
 } from '$server/db/pg-meta-schema';
 import { encrypt } from '$server/auth/crypto';
+import { ensureAccountInScope } from '../crm-contacts.service';
 import {
   exchangeCodeForToken,
   extendUserToken,
@@ -320,6 +321,23 @@ export async function enumerateAndUpsertAssets(
         });
     }
   });
+
+  // Auto-register each connected page (and its IG account, if any) into the
+  // org's CRM harvest scope, so Messenger/IG contacts get harvested without a
+  // manual "Add account" step. No-op for orgs on the legacy (unconfigured)
+  // scope — see ensureAccountInScope. Runs after the tx above commits (each
+  // call opens its own withOrgCore transaction).
+  for (const page of pages) {
+    await ensureAccountInScope(ctx, 'messenger', page.id, page.name ?? null);
+    if (page.instagram_business_account?.id) {
+      await ensureAccountInScope(
+        ctx,
+        'instagram',
+        page.instagram_business_account.id,
+        page.instagram_business_account.username ?? null,
+      );
+    }
+  }
 
   return { pagesFound: pages.length, igFound, adAccountsFound: adAccounts.length, pagePath };
 }

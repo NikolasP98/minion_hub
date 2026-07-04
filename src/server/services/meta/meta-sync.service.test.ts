@@ -36,6 +36,48 @@ describe('toMetaIngestRow', () => {
     expect(row).toMatchObject({ direction: 'outbound', chatId: CUSTOMER_ID, senderId: PAGE_ID, accountId: PAGE_ID });
   });
 
+  it('inbound senderName resolves from the participants list', () => {
+    const row = toMetaIngestRow({
+      message: { id: 'm1n', from: { id: CUSTOMER_ID }, created_time: '2026-07-01T10:00:00+0000', message: 'hi' },
+      participants,
+      pageExternalId: PAGE_ID,
+      channel: 'messenger',
+      pageName: 'FACES Page',
+    });
+    expect(row?.senderName).toBe('Customer');
+  });
+
+  it('inbound senderName falls back to the per-message from.name when absent from participants', () => {
+    const row = toMetaIngestRow({
+      message: { id: 'm1f', from: { id: CUSTOMER_ID, name: 'From Name' } },
+      participants: { data: [{ id: PAGE_ID, name: 'FACES' }, { id: CUSTOMER_ID }] },
+      pageExternalId: PAGE_ID,
+      channel: 'messenger',
+    });
+    expect(row?.senderName).toBe('From Name');
+  });
+
+  it('outbound senderName is the page name, not a participant lookup', () => {
+    const row = toMetaIngestRow({
+      message: { id: 'm2n', from: { id: PAGE_ID } },
+      participants,
+      pageExternalId: PAGE_ID,
+      channel: 'messenger',
+      pageName: 'FACES Page',
+    });
+    expect(row?.senderName).toBe('FACES Page');
+  });
+
+  it('senderName is null when neither a page name nor a participant name is available', () => {
+    const row = toMetaIngestRow({
+      message: { id: 'm2u', from: { id: PAGE_ID } },
+      participants: { data: [{ id: PAGE_ID }, { id: CUSTOMER_ID }] },
+      pageExternalId: PAGE_ID,
+      channel: 'messenger',
+    });
+    expect(row?.senderName).toBeNull();
+  });
+
   it('tags instagram channel through', () => {
     const row = toMetaIngestRow({
       message: { id: 'm3', from: { id: CUSTOMER_ID } },
