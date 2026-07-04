@@ -128,6 +128,107 @@
       /* best-effort; non-blocking */
     }
   }
+
+  // ── Drag-and-drop nav reordering ─────────────────────────────────────────
+  // Items reorder within their own group; groups (sections) reorder across the
+  // whole sidebar. Order is stored per-user in Supabase prefs (section
+  // "navOrder") and applied at render as a sort key — unknown/new sections and
+  // items sort last (Infinity), so nav additions gracefully append.
+  // ponytail: native HTML5 DnD, no lib; desktop-only (sidebar is hidden <md).
+  type NavOrder = { sections?: string[]; items?: Record<string, string[]> };
+  const savedNav = ((page.data as { preferences?: { preferences?: { navOrder?: NavOrder } } })
+    ?.preferences?.preferences?.navOrder ?? {}) as NavOrder;
+  let sectionOrder = $state<string[]>(savedNav.sections ?? []);
+  let itemOrder = $state<Record<string, string[]>>(savedNav.items ?? {});
+
+  type DragState =
+    | { type: 'item'; sectionId: string; href: string }
+    | { type: 'section'; sectionId: string }
+    | null;
+  let drag = $state<DragState>(null);
+  const reorderable = $derived(!collapsed && isMd);
+
+  function bySavedOrder<T>(list: T[], key: (t: T) => string, order: string[]): T[] {
+    if (!order.length) return list;
+    const idx = new Map(order.map((k, i) => [k, i]));
+    return [...list].sort((a, b) => (idx.get(key(a)) ?? Infinity) - (idx.get(key(b)) ?? Infinity));
+  }
+  const orderedSections = $derived(bySavedOrder(navSections, (s) => String(s.id), sectionOrder));
+  function orderedItems(section: Section): SectionItem[] {
+    return bySavedOrder(section.items, (i) => i.href, itemOrder[String(section.id)] ?? []);
+  }
+
+  // Seed the mutable order arrays from the current display order the first time
+  // a drag starts, reconciling in any items/sections not yet tracked (new nav).
+  function seedSections() {
+    const ids = navSections.map((s) => String(s.id));
+    sectionOrder = [
+      ...sectionOrder.filter((id) => ids.includes(id)),
+      ...ids.filter((id) => !sectionOrder.includes(id)),
+    ];
+  }
+  function seedItems(section: Section, visibleHrefs: string[]) {
+    const id = String(section.id);
+    const cur = itemOrder[id] ?? [];
+    itemOrder = {
+      ...itemOrder,
+      [id]: [
+        ...cur.filter((h) => visibleHrefs.includes(h)),
+        ...visibleHrefs.filter((h) => !cur.includes(h)),
+      ],
+    };
+  }
+
+  function move(arr: string[], from: string, to: string, after: boolean): string[] {
+    const next = arr.filter((x) => x !== from);
+    const ti = next.indexOf(to);
+    if (ti < 0) return arr;
+    next.splice(ti + (after ? 1 : 0), 0, from);
+    return next.join('\n') === arr.join('\n') ? arr : next;
+  }
+  // Below the target's vertical midpoint → drop after it, else before.
+  function isAfter(e: DragEvent): boolean {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    return e.clientY > r.top + r.height / 2;
+  }
+
+  function startItemDrag(e: DragEvent, section: Section, href: string, visibleHrefs: string[]) {
+    drag = { type: 'item', sectionId: String(section.id), href };
+    e.dataTransfer?.setData('text/plain', href); // Firefox requires a payload
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+    seedItems(section, visibleHrefs);
+  }
+  function onItemDragOver(e: DragEvent, sectionId: string, targetHref: string) {
+    if (drag?.type !== 'item' || drag.sectionId !== sectionId) return; // same group only
+    e.preventDefault();
+    if (targetHref === drag.href) return;
+    itemOrder = { ...itemOrder, [sectionId]: move(itemOrder[sectionId] ?? [], drag.href, targetHref, isAfter(e)) };
+  }
+  function startSectionDrag(e: DragEvent, sectionId: string) {
+    drag = { type: 'section', sectionId };
+    e.dataTransfer?.setData('text/plain', sectionId);
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+    seedSections();
+  }
+  function onSectionDragOver(e: DragEvent, targetId: string) {
+    if (drag?.type !== 'section') return;
+    e.preventDefault();
+    if (targetId === drag.sectionId) return;
+    sectionOrder = move(sectionOrder, drag.sectionId, targetId, isAfter(e));
+  }
+  async function endDrag() {
+    if (!drag) return;
+    drag = null;
+    try {
+      await fetch('/api/me/preferences/navOrder', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ value: { sections: sectionOrder, items: itemOrder } }),
+      });
+    } catch {
+      /* best-effort; local order already applied */
+    }
+  }
 </script>
 
 <aside
@@ -188,11 +289,18 @@
   {/if}
 
   <nav class="sidebar-nav flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 py-1 flex flex-col gap-0.5">
-    {#each navSections as section (section.id)}
-      {@const items = section.items.filter((it) => !it.requires || canClient(it.requires))}
+    {#each orderedSections as section (section.id)}
+      {@const items = orderedItems(section).filter((it) => !it.requires || canClient(it.requires))}
       {@const hasSubs = (section.subsections?.length ?? 0) > 0}
       {#if items.length || hasSubs}
-        <div class="nav-group-head t-label {headCls}">{section.label}</div>
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div
+          class="nav-group-head t-label {headCls} {reorderable ? 'grab' : ''} {drag?.type === 'section' && drag.sectionId === String(section.id) ? 'dragging' : ''}"
+          draggable={reorderable}
+          ondragstart={(e) => startSectionDrag(e, String(section.id))}
+          ondragover={(e) => onSectionDragOver(e, String(section.id))}
+          ondragend={endDrag}
+        >{section.label}</div>
         {#each items as item (item.href)}
           {@const active = isActive(item)}
           <Tooltip label={item.label} id={`nav-tip-${item.href}`} placement="right" disabled={!showTooltips} openDelay={150} asChild>
@@ -200,13 +308,17 @@
               <a
                 href={item.href}
                 {...trigger}
-                class="nav-row {rowJustify} {active
+                class="nav-row {rowJustify} {reorderable ? 'grab' : ''} {drag?.type === 'item' && drag.href === item.href ? 'dragging' : ''} {active
                   ? section.tone === 'brand'
                     ? 'nav-active brand'
                     : 'nav-active accent'
                   : ''}"
                 aria-label={item.label}
                 aria-current={active ? 'page' : undefined}
+                draggable={reorderable}
+                ondragstart={(e) => startItemDrag(e, section, item.href, items.map((i) => i.href))}
+                ondragover={(e) => onItemDragOver(e, String(section.id), item.href)}
+                ondragend={endDrag}
                 oncontextmenu={(e) => openCtx(e, item.href, item.label)}
               >
                 <NavIcon icon={item.icon} size={18} class="nav-icon shrink-0" />
@@ -370,6 +482,16 @@
   }
   .nav-row.sub-item {
     margin-left: 0.5rem;
+  }
+  /* Drag-to-reorder affordances */
+  .grab {
+    cursor: grab;
+  }
+  .grab:active {
+    cursor: grabbing;
+  }
+  .dragging {
+    opacity: 0.4;
   }
   .collapse-toggle {
     display: none;

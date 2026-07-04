@@ -13,6 +13,7 @@ const VALID_SECTIONS = new Set([
   'logo',
   'locale',
   'landingPage',
+  'navOrder',
 ]);
 
 export const PUT: RequestHandler = async ({ locals, params, request }) => {
