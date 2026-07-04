@@ -3,16 +3,26 @@
   import { invalidate } from '$app/navigation';
   import * as m from '$lib/paraglide/messages';
   import { Package, ArrowLeft, ExternalLink } from 'lucide-svelte';
-  import { PageHeader, Button } from '$lib/components/ui';
+  import { PageHeader, Button, Toggle } from '$lib/components/ui';
   import { canAct } from '$lib/access/can.svelte';
+  import { UOM_PRESETS, gaugeMax, type UomConvertible } from '$lib/components/stock/stock-ui';
 
   let { data }: { data: PageData } = $props();
-  const item = $derived(data.item);
+  // ponytail: backend contract fields (consumptionUom/unitsPerStockUom/subunitsPerStockUom/
+  // diagramEnabled) are landing via a parallel migration — intersect optionally so this
+  // page compiles against the contract before the columns exist server-side.
+  type ItemUom = PageData['item'] & Partial<UomConvertible> & { diagramEnabled?: boolean };
+  const item = $derived(data.item as ItemUom);
 
   let editing = $state(false);
   let editName = $state('');
   let editReorderLevel = $state('');
   let editReorderQty = $state('');
+  let editUom = $state('');
+  let editConsumptionUom = $state('');
+  let editUnitsPerStockUom = $state('');
+  let editSubunitsPerStockUom = $state('');
+  let editDiagramEnabled = $state(false);
   let busy = $state(false);
   let err = $state<string | null>(null);
 
@@ -20,9 +30,33 @@
     editName = item.name;
     editReorderLevel = item.reorderLevel ?? '';
     editReorderQty = item.reorderQty ?? '';
+    editUom = item.uom;
+    editConsumptionUom = item.consumptionUom ?? '';
+    editUnitsPerStockUom = item.unitsPerStockUom != null ? String(item.unitsPerStockUom) : '';
+    editSubunitsPerStockUom = item.subunitsPerStockUom != null ? String(item.subunitsPerStockUom) : '';
+    editDiagramEnabled = item.diagramEnabled ?? false;
     err = null;
     editing = true;
   }
+
+  // Caption preview computed live from the edit-form fields (not yet-saved item).
+  const captionUom = $derived<UomConvertible>({
+    uom: editUom,
+    consumptionUom: editConsumptionUom || null,
+    unitsPerStockUom: editUnitsPerStockUom !== '' ? Number(editUnitsPerStockUom) : null,
+    subunitsPerStockUom: editSubunitsPerStockUom !== '' ? Number(editSubunitsPerStockUom) : null,
+  });
+  const uomCaption = $derived.by(() => {
+    if (!captionUom.consumptionUom || !captionUom.unitsPerStockUom) return null;
+    const units = captionUom.unitsPerStockUom;
+    const subunits = captionUom.subunitsPerStockUom;
+    if (subunits) {
+      const perSubunit = Number(units) / Number(subunits);
+      return m.stock_uom_caption_subunits({ uom: captionUom.uom, units, consumptionUom: captionUom.consumptionUom, subunits, perSubunit });
+    }
+    return m.stock_uom_caption_simple({ uom: captionUom.uom, units, consumptionUom: captionUom.consumptionUom });
+  });
+  const displayGaugeMax = $derived(gaugeMax(item));
 
   async function save() {
     busy = true;
@@ -35,6 +69,11 @@
           name: editName,
           reorderLevel: editReorderLevel !== '' ? Number(editReorderLevel) : null,
           reorderQty: editReorderQty !== '' ? Number(editReorderQty) : null,
+          uom: editUom,
+          consumptionUom: editConsumptionUom || null,
+          unitsPerStockUom: editUnitsPerStockUom !== '' ? Number(editUnitsPerStockUom) : null,
+          subunitsPerStockUom: editSubunitsPerStockUom !== '' ? Number(editSubunitsPerStockUom) : null,
+          diagramEnabled: editDiagramEnabled,
         }),
       });
       if (res.ok) {
@@ -77,6 +116,34 @@
           <label class="fld"><span>{m.stock_field_name()}</span><input class="inp" bind:value={editName} /></label>
           <label class="fld"><span>{m.stock_col_reorder_level()}</span><input class="inp" type="number" min="0" step="0.01" bind:value={editReorderLevel} /></label>
           <label class="fld"><span>{m.stock_col_reorder_qty()}</span><input class="inp" type="number" min="0" step="0.01" bind:value={editReorderQty} /></label>
+
+          <div class="uom-section">
+            <div class="card-h">{m.stock_uom_section_title()}</div>
+            <div class="uom-grid">
+              <label class="fld">
+                <span>{m.stock_field_stock_uom()}</span>
+                <input class="inp" list="uom-presets" bind:value={editUom} />
+              </label>
+              <label class="fld">
+                <span>{m.stock_field_consumption_uom()}</span>
+                <input class="inp" list="uom-presets" bind:value={editConsumptionUom} />
+              </label>
+              <label class="fld">
+                <span>{m.stock_field_units_per_stock_uom()}</span>
+                <input class="inp" type="number" min="0" step="0.01" placeholder={m.stock_field_units_per_stock_uom_hint()} bind:value={editUnitsPerStockUom} />
+              </label>
+              <label class="fld">
+                <span>{m.stock_field_subunits_per_stock_uom()}</span>
+                <input class="inp" type="number" min="0" step="1" placeholder={m.stock_field_subunits_per_stock_uom_hint()} bind:value={editSubunitsPerStockUom} />
+              </label>
+            </div>
+            <datalist id="uom-presets">
+              {#each UOM_PRESETS as preset (preset)}<option value={preset}></option>{/each}
+            </datalist>
+            <Toggle bind:checked={editDiagramEnabled} size="sm" label={m.stock_field_diagram_enabled()} description={m.stock_field_diagram_enabled_hint()} />
+            {#if uomCaption}<p class="uom-caption">{uomCaption}</p>{/if}
+          </div>
+
           {#if err}<p class="err-msg">{err}</p>{/if}
           <div class="flex gap-2">
             <Button variant="primary" size="sm" onclick={save} disabled={busy}>{m.common_save()}</Button>
@@ -89,6 +156,12 @@
           <dt>{m.stock_col_group()}</dt><dd>{item.itemGroup ?? '—'}</dd>
           <dt>{m.stock_col_reorder_level()}</dt><dd>{item.reorderLevel ?? '—'}</dd>
           <dt>{m.stock_col_reorder_qty()}</dt><dd>{item.reorderQty ?? '—'}</dd>
+          {#if item.consumptionUom}
+            <dt>{m.stock_field_consumption_uom()}</dt><dd>{item.consumptionUom}</dd>
+          {/if}
+          {#if displayGaugeMax > 0}
+            <dt>{m.stock_field_diagram_enabled()}</dt><dd>{item.diagramEnabled ? m.common_yes() : m.common_no()}</dd>
+          {/if}
         </dl>
       {/if}
     </div>
@@ -177,6 +250,9 @@
   .fld { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.78rem; color: var(--color-muted-foreground); }
   .inp { height: 1.75rem; padding: 0 0.5rem; font-size: 0.82rem; border-radius: var(--radius-sm); background: var(--color-bg3); border: 1px solid var(--hairline); color: var(--color-foreground); }
   .err-msg { font-size: 0.8rem; color: var(--color-destructive); }
+  .uom-section { display: flex; flex-direction: column; gap: 0.6rem; padding-top: 0.6rem; border-top: 1px solid var(--hairline); }
+  .uom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+  .uom-caption { font-size: 0.78rem; color: var(--color-accent); font-style: italic; }
   .mini-table { width: 100%; font-size: 0.82rem; border-collapse: collapse; }
   .mini-table th { text-align: left; font-weight: 500; color: var(--color-muted-foreground); padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--hairline); }
   .mini-table td { padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--hairline); }

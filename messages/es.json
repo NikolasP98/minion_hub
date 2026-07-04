@@ -3641,5 +3641,18 @@
   "fin_stock_preview_empty": "Ningún artículo de stock coincidió con las líneas de esta factura.",
   "fin_stock_unmatched": "No registrado como stock: {items}",
   "fin_stock_issue_duplicate": "Ya existe una salida de stock para esta factura.",
-  "fin_stock_issue_failed": "No se pudo crear la salida de stock. Inténtalo de nuevo."
+  "fin_stock_issue_failed": "No se pudo crear la salida de stock. Inténtalo de nuevo.",
+  "fin_stock_line_conversion": "{consumptionQty} {consumptionUom} → {stockQty} {stockUom}",
+  "stock_uom_section_title": "Configuración de unidades",
+  "stock_field_stock_uom": "UOM de stock",
+  "stock_field_consumption_uom": "UOM de consumo",
+  "stock_field_units_per_stock_uom": "Unidades por UOM de stock",
+  "stock_field_units_per_stock_uom_hint": "ej. 1 caja = 500 ml",
+  "stock_field_subunits_per_stock_uom": "Subunidades (solo visual)",
+  "stock_field_subunits_per_stock_uom_hint": "ej. dividido en 10 frascos",
+  "stock_field_diagram_enabled": "Mostrar medidor de consumo",
+  "stock_field_diagram_enabled_hint": "Muestra un medidor de botella arrastrable en todos los lugares donde se registra el consumo de este artículo.",
+  "stock_uom_caption_simple": "1 {uom} = {units} {consumptionUom}",
+  "stock_uom_caption_subunits": "1 {uom} = {units} {consumptionUom} ({subunits} × {perSubunit} {consumptionUom})",
+  "stock_gauge_overflow": "×{count} + {remainder} {unit}"
 }

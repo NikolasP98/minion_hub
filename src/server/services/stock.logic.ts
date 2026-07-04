@@ -182,3 +182,26 @@ export function replayBins(rows: LedgerReplayRow[]): Map<string, BinSnapshot> {
 export function binKey(itemId: string, warehouseId: string): string {
   return `${itemId}:${warehouseId}`;
 }
+
+// ── Per-item consumption-uom conversion (P5.1b) ─────────────────────────────
+
+/** Converts a quantity expressed in an item's CONSUMPTION uom into its STOCK
+ *  uom (the ledger/entry-line unit). Identity when unitsPerStockUom is unset
+ *  (the item has no separate consumption uom). E.g. 5 ml of a 500 ml/caja
+ *  item → 5 / 500 = 0.01 caja. */
+export function consumptionToStockQty(item: { unitsPerStockUom: number | null }, qty: number): number {
+  return item.unitsPerStockUom ? qty / item.unitsPerStockUom : qty;
+}
+
+/** Round to 4 decimal places — the precision converted (fractional) stock
+ *  quantities are stored/displayed at. */
+export function round4(n: number): number {
+  return Math.round(n * 10000) / 10000;
+}
+
+/** Cross-field item validation shared by create/update: a consumption uom
+ *  only makes sense once the conversion factor to the stock uom is known. */
+export function validateItemUomConfig(input: { consumptionUom?: string | null; unitsPerStockUom?: number | null }): string | null {
+  if (input.consumptionUom && !input.unitsPerStockUom) return 'consumptionUom requires unitsPerStockUom to be set';
+  return null;
+}

@@ -14,6 +14,10 @@ const postSchema = z.object({
   note: z.string().max(2_000).nullable().optional(),
 });
 
+function actorOf(ctx: { profileId?: string }, locals: App.Locals) {
+  return { id: ctx.profileId ?? null, name: locals.user?.displayName ?? locals.user?.email ?? null };
+}
+
 /** GET /api/stock/consumption?finProductId=&itemId= — the fin_product → stk_item map. */
 export const GET: RequestHandler = async ({ locals, url }) => {
   const ctx = await getCoreCtx(locals);
@@ -34,7 +38,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   if (!(await isModuleEnabled(ctx, 'stock'))) throw error(404);
   const body = await parseBody(request, postSchema);
   try {
-    const row = await setConsumption(ctx, { ...body, note: body.note ?? null });
+    const row = await setConsumption(ctx, { ...body, note: body.note ?? null }, actorOf(ctx, locals));
     return json(row, { status: 201 });
   } catch (e) {
     handleStockError(e);

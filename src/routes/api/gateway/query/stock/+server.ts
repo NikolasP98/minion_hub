@@ -1,7 +1,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { requireAssistantCapability } from '../../_shared/action-auth';
-import { getBins, getLedger, listConsumption } from '$server/services/stock.service';
+import { getBins, getLedger, listConsumption, getItemUomInfo } from '$server/services/stock.service';
 
 /**
  * GET /api/gateway/query/stock?agentId=personal-<uuid>[&orgId=]&mode=levels|movements|valuation|consumption[&itemId=][&warehouseId=][&finProductId=]
@@ -34,5 +34,8 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 		const total = bins.reduce((sum, b) => sum + Number(b.qty) * Number(b.valuationRate), 0);
 		return json({ mode, valuation: total, bins });
 	}
-	return json({ mode: 'levels', bins });
+	const itemInfo = await getItemUomInfo(ctx, [...new Set(bins.map((b) => b.itemId))]);
+	const itemInfoById = new Map(itemInfo.map((i) => [i.itemId, i]));
+	const levels = bins.map((b) => ({ ...b, ...itemInfoById.get(b.itemId) }));
+	return json({ mode: 'levels', bins: levels });
 };

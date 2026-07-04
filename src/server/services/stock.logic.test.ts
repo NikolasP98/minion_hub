@@ -8,6 +8,9 @@ import {
   wouldCreateCycle,
   replayBins,
   binKey,
+  consumptionToStockQty,
+  round4,
+  validateItemUomConfig,
   EMPTY_BIN,
   type BinState,
 } from './stock.logic';
@@ -211,5 +214,33 @@ describe('replayBins — rebuildBins recovery path', () => {
 
     const replayed = replayBins(seq);
     expect(replayed.get(binKey('i', 'w'))).toEqual({ itemId: 'i', warehouseId: 'w', qty: bin.qty, rate: bin.rate });
+  });
+});
+
+describe('consumptionToStockQty — per-item uom conversion (P5.1b)', () => {
+  it('converts 5ml of a 500ml/caja item to 0.01 caja', () => {
+    expect(consumptionToStockQty({ unitsPerStockUom: 500 }, 5)).toBeCloseTo(0.01, 9);
+  });
+  it('is the identity when the item has no unitsPerStockUom (consumption uom == stock uom)', () => {
+    expect(consumptionToStockQty({ unitsPerStockUom: null }, 7)).toBe(7);
+  });
+});
+
+describe('round4', () => {
+  it('rounds to 4 decimal places', () => {
+    expect(round4(5 / 500)).toBe(0.01);
+    expect(round4(1 / 3)).toBe(0.3333);
+  });
+});
+
+describe('validateItemUomConfig', () => {
+  it('rejects a consumptionUom set without a unitsPerStockUom', () => {
+    expect(validateItemUomConfig({ consumptionUom: 'ml', unitsPerStockUom: null })).toMatch(/unitsPerStockUom/);
+  });
+  it('allows a consumptionUom with a unitsPerStockUom', () => {
+    expect(validateItemUomConfig({ consumptionUom: 'ml', unitsPerStockUom: 500 })).toBeNull();
+  });
+  it('allows no consumptionUom at all (stock uom == consumption uom)', () => {
+    expect(validateItemUomConfig({ consumptionUom: null, unitsPerStockUom: null })).toBeNull();
   });
 });

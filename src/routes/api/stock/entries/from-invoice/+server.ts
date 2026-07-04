@@ -11,7 +11,13 @@ function actorOf(ctx: { profileId?: string }, locals: App.Locals) {
   return { id: ctx.profileId ?? null, name: locals.user?.displayName ?? locals.user?.email ?? null };
 }
 
-const lineSchema = z.object({ itemId: z.string().min(1), qty: z.number().positive() });
+const lineSchema = z.object({
+  itemId: z.string().min(1),
+  qty: z.number().positive(),
+  /** Optional qty in the item's CONSUMPTION uom — when present, the server
+   *  converts to stock uom authoritatively and ignores `qty`. */
+  qtyConsumption: z.number().positive().nullable().optional(),
+});
 
 const postSchema = z.object({
   invoiceId: z.string().min(1),

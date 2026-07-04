@@ -6,7 +6,8 @@
 	import { PageHeader, Button, Modal, Select, Badge, Combobox } from '$lib/components/ui';
 	import { createBackNav } from '$lib/nav/back-nav.svelte';
 	import { canAct } from '$lib/access/can.svelte';
-	import { entryStatusVariant } from '$lib/components/stock/stock-ui';
+	import { entryStatusVariant, gaugeMax, type UomConvertible } from '$lib/components/stock/stock-ui';
+	import ConsumptionGauge from '$lib/components/stock/ConsumptionGauge.svelte';
 
 	let { data }: { data: PageData } = $props();
 	const back = createBackNav('/finances/invoices', m.fin_back_to_invoices);
@@ -31,6 +32,7 @@
 		if (!Number.isFinite(n)) return '—';
 		return `${sym}${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 	}
+	const fmtQty = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 });
 	// Skip empty/zero optional fields (don't reserve layout for noise).
 	const hasVal = (v: unknown) => v != null && v !== '' && v !== '—';
 	const numVal = (v: string | null) => {
@@ -68,7 +70,62 @@
 
 	// ── Stock issue dialog ───────────────────────────────────────────────────
 	// available: null for manually added lines (no bin lookup client-side).
-	type PreviewLine = { itemId: string; itemName: string; itemCode: string; uom: string; qty: string; available: number | null };
+	// qtyConsumption/consumptionUom/unitsPerStockUom/subunitsPerStockUom/diagramEnabled:
+	// P5.1b contract fields — server fills them once the parallel UOM-conversion migration
+	// lands; until then we backfill from data.stockItems so the gauge still renders.
+	type PreviewLine = {
+		itemId: string;
+		itemName: string;
+		itemCode: string;
+		uom: string;
+		qty: string;
+		available: number | null;
+		qtyConsumption?: number;
+		consumptionUom?: string | null;
+		unitsPerStockUom?: number | string | null;
+		subunitsPerStockUom?: number | string | null;
+		diagramEnabled?: boolean;
+	};
+	type ItemUom = (typeof data.stockItems)[number] & Partial<UomConvertible> & { diagramEnabled?: boolean };
+	const stockItemById = $derived(new Map((data.stockItems as ItemUom[]).map((i) => [i.id, i])));
+
+	type PartialPreviewInput = { itemId: string; qty: string | number } & Partial<Omit<PreviewLine, 'itemId' | 'qty'>>;
+
+	/** Fill server-contract UOM fields from the item catalog when the API hasn't sent them yet. */
+	function withUomFields(l: PartialPreviewInput): PreviewLine {
+		const item = stockItemById.get(l.itemId);
+		const unitsPerStockUom = l.unitsPerStockUom ?? item?.unitsPerStockUom ?? null;
+		const qtyConsumption = l.qtyConsumption ?? (unitsPerStockUom ? Number(l.qty) * Number(unitsPerStockUom) : undefined);
+		return {
+			itemId: l.itemId,
+			itemName: l.itemName ?? item?.name ?? l.itemId,
+			itemCode: l.itemCode ?? item?.code ?? '',
+			uom: l.uom ?? item?.uom ?? 'unit',
+			qty: String(l.qty),
+			available: l.available ?? null,
+			qtyConsumption,
+			consumptionUom: l.consumptionUom ?? item?.consumptionUom ?? null,
+			unitsPerStockUom,
+			subunitsPerStockUom: l.subunitsPerStockUom ?? item?.subunitsPerStockUom ?? null,
+			diagramEnabled: l.diagramEnabled ?? item?.diagramEnabled ?? false,
+		};
+	}
+
+	/** Gauge unit ceiling for a preview line (0 when the item has no diagram configured). */
+	function lineGaugeMax(l: PreviewLine): number {
+		return l.diagramEnabled ? gaugeMax({ uom: l.uom, unitsPerStockUom: l.unitsPerStockUom, subunitsPerStockUom: l.subunitsPerStockUom }) : 0;
+	}
+
+	/** Sync qty(stock uom) ↔ qtyConsumption whichever direction the user edited from. */
+	function setLineQty(l: PreviewLine, qty: string) {
+		l.qty = qty;
+		if (l.unitsPerStockUom) l.qtyConsumption = Number(qty) * Number(l.unitsPerStockUom);
+	}
+	function setLineConsumption(l: PreviewLine, qtyConsumption: number) {
+		l.qtyConsumption = qtyConsumption;
+		if (l.unitsPerStockUom) l.qty = String(qtyConsumption / Number(l.unitsPerStockUom));
+	}
+
 	let issueDialogOpen = $state(false);
 	let issueWarehouseId = $state('');
 	let previewLines = $state<PreviewLine[]>([]);
@@ -87,20 +144,9 @@
 		const existing = previewLines.find((l) => l.itemId === addItemId);
 		if (existing) {
 			// Duplicate item → merge quantities instead of a second row.
-			existing.qty = String(Number(existing.qty) + Number(addQty));
+			setLineQty(existing, String(Number(existing.qty) + Number(addQty)));
 		} else {
-			const it = data.stockItems.find((i) => i.id === addItemId);
-			previewLines = [
-				...previewLines,
-				{
-					itemId: addItemId,
-					itemName: it?.name ?? addItemId,
-					itemCode: it?.code ?? '',
-					uom: it?.uom ?? 'unit',
-					qty: addQty,
-					available: null,
-				},
-			];
+			previewLines = [...previewLines, withUomFields({ itemId: addItemId, qty: addQty, available: null })];
 		}
 		addItemId = '';
 		addQty = '';
@@ -139,7 +185,7 @@
 			if (res.ok) {
 				const body = await res.json();
 				const preview = body.preview ?? { lines: [], unmatched: [] };
-				previewLines = (preview.lines ?? []).map((l: Omit<PreviewLine, 'qty'> & { qty: number }) => ({ ...l, qty: String(l.qty) }));
+				previewLines = (preview.lines ?? []).map((l: Omit<PreviewLine, 'qty'> & { qty: number }) => withUomFields(l));
 				unmatched = preview.unmatched ?? [];
 			} else {
 				issueErr = await issueErrMessage(res);
@@ -163,7 +209,11 @@
 				body: JSON.stringify({
 					invoiceId: inv.id,
 					warehouseId: issueWarehouseId,
-					lines: previewLines.map((l) => ({ itemId: l.itemId, qty: Number(l.qty) })),
+					lines: previewLines.map((l) => ({
+						itemId: l.itemId,
+						qty: Number(l.qty),
+						...(l.qtyConsumption != null ? { qtyConsumption: l.qtyConsumption } : {}),
+					})),
 					submit,
 				}),
 			});
@@ -411,9 +461,32 @@
 				</thead>
 				<tbody>
 					{#each previewLines as l, i (l.itemId)}
+						{@const gMax = lineGaugeMax(l)}
 						<tr>
 							<td>{l.itemCode} — {l.itemName}</td>
-							<td class="num"><input class="inp w-20 text-right" type="number" min="0" step="0.01" bind:value={l.qty} /></td>
+							<td class="num">
+								<div class="qty-cell">
+									<input class="inp w-20 text-right" type="number" min="0" step="0.01" bind:value={() => l.qty, (v) => setLineQty(l, v)} />
+									{#if gMax > 0}
+										<ConsumptionGauge
+											class="compact"
+											max={gMax}
+											unit={l.consumptionUom ?? l.uom}
+											bind:value={() => l.qtyConsumption ?? 0, (v) => setLineConsumption(l, v)}
+										/>
+									{/if}
+								</div>
+								{#if gMax > 0 && l.qtyConsumption != null}
+									<div class="t-caption conversion-caption">
+										{m.fin_stock_line_conversion({
+											consumptionQty: fmtQty(l.qtyConsumption),
+											consumptionUom: l.consumptionUom ?? '',
+											stockQty: fmtQty(Number(l.qty)),
+											stockUom: l.uom,
+										})}
+									</div>
+								{/if}
+							</td>
 							<td class="num t-caption">{l.available != null ? `${l.available} ${l.uom}` : '—'}</td>
 							<td><button class="rm-btn" onclick={() => removePreviewLine(i)}><Trash2 size={13} /></button></td>
 						</tr>
@@ -559,6 +632,8 @@
 	.mini-table td { padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--hairline); }
 	.mini-table .num { text-align: right; font-variant-numeric: tabular-nums; }
 	.inp { height: 1.75rem; padding: 0 0.5rem; font-size: 0.82rem; border-radius: var(--radius-sm); background: var(--color-bg3); border: 1px solid var(--hairline); color: var(--color-foreground); }
+	.qty-cell { display: flex; align-items: center; justify-content: flex-end; gap: 0.4rem; }
+	.conversion-caption { text-align: right; margin-top: 0.15rem; }
 	.rm-btn { background: none; border: none; color: var(--color-muted-foreground); cursor: pointer; }
 	.rm-btn:hover { color: var(--color-destructive); }
 	.unmatched-note { font-style: italic; }

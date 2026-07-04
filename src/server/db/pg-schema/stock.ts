@@ -23,6 +23,15 @@ export const stkItems = pgTable(
     isStockItem: boolean('is_stock_item').notNull().default(true),
     reorderLevel: numeric('reorder_level'),
     reorderQty: numeric('reorder_qty'),
+    /** P5.1b: unit services consume this item in, e.g. 'ml', when it differs
+     *  from `uom` (the stock/ledger unit, e.g. 'caja'). Null = same as uom. */
+    consumptionUom: text('consumption_uom'),
+    /** Conversion factor: 1 stock uom = N consumption uom (e.g. 500 ml/caja). */
+    unitsPerStockUom: numeric('units_per_stock_uom'),
+    /** Display-only (e.g. 10 bottles/caja) for the ConsumptionGauge SVG. */
+    subunitsPerStockUom: numeric('subunits_per_stock_uom'),
+    /** Opts the item into the ConsumptionGauge diagram. */
+    diagramEnabled: boolean('diagram_enabled').notNull().default(false),
     /** v1: 'moving_avg' only (ponytail: FIFO deferred until someone needs it). */
     valuationMethod: text('valuation_method').notNull().default('moving_avg'),
     /** Soft ref → fin_products (bridge to the SUSII-synced catalog). */

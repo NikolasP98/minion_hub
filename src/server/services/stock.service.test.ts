@@ -1,6 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createMockDb } from '$server/test-utils/mock-db';
-import { submitEntry, cancelEntry, rebuildBins, StockError, buildInvoiceIssuePreview, createIssueFromInvoice, setConsumption } from './stock.service';
+import {
+  submitEntry,
+  cancelEntry,
+  rebuildBins,
+  StockError,
+  buildInvoiceIssuePreview,
+  createIssueFromInvoice,
+  setConsumption,
+  createItem,
+  updateItem,
+} from './stock.service';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -123,13 +133,80 @@ describe('buildInvoiceIssuePreview — aggregation, 1:1 fallback, dedupe, unmatc
 
     const preview = await buildInvoiceIssuePreview(ctx(db), 'inv1', 'wh1');
 
+    // No consumptionUom set on either item — qtyConsumption == qty (identity
+    // conversion), matching pre-P5.1b behavior.
     expect(preview.lines).toEqual([
-      { itemId: 'item_tox', itemName: 'Toxina Botulinica', itemCode: 'TOX', uom: 'unit', qty: 60, available: 50 },
-      { itemId: 'item_derma', itemName: 'Dermaquench', itemCode: 'DQ', uom: 'unit', qty: 1, available: 0 },
+      {
+        itemId: 'item_tox',
+        itemName: 'Toxina Botulinica',
+        itemCode: 'TOX',
+        uom: 'unit',
+        qty: 60,
+        available: 50,
+        qtyConsumption: 60,
+        consumptionUom: null,
+        unitsPerStockUom: null,
+        subunitsPerStockUom: null,
+        diagramEnabled: false,
+      },
+      {
+        itemId: 'item_derma',
+        itemName: 'Dermaquench',
+        itemCode: 'DQ',
+        uom: 'unit',
+        qty: 1,
+        available: 0,
+        qtyConsumption: 1,
+        consumptionUom: null,
+        unitsPerStockUom: null,
+        subunitsPerStockUom: null,
+        diagramEnabled: false,
+      },
     ]);
     expect(preview.unmatched).toEqual([
       { description: 'Unknown service', quantity: 1 },
       { description: 'Misc line', quantity: 3 },
+    ]);
+  });
+
+  it('converts consumption-uom qty to stock-uom qty: 5ml against a 500ml/caja item → 0.01 caja', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [{ id: 'inv1' }], // invoice
+      [{ productId: 'p1', description: 'Botox 5ml shot', quantity: '5' }], // invoice items — 5 units of consumption-uom-per-service
+      [{ finProductId: 'p1', itemId: 'item_caja', qtyPerUnit: '1' }], // mapping: 1 ml per unit sold
+      [], // no 1:1 fallback candidates
+      [
+        {
+          id: 'item_caja',
+          name: 'Botox 500ml caja',
+          code: 'CJX',
+          uom: 'caja',
+          consumptionUom: 'ml',
+          unitsPerStockUom: '500',
+          subunitsPerStockUom: null,
+          diagramEnabled: true,
+        },
+      ], // item detail lookup
+      [{ itemId: 'item_caja', qty: '2' }], // bins — 2 cajas available
+    ]);
+
+    const preview = await buildInvoiceIssuePreview(ctx(db), 'inv1', 'wh1');
+
+    expect(preview.lines).toEqual([
+      {
+        itemId: 'item_caja',
+        itemName: 'Botox 500ml caja',
+        itemCode: 'CJX',
+        uom: 'caja',
+        qty: 0.01,
+        available: 2,
+        qtyConsumption: 5,
+        consumptionUom: 'ml',
+        unitsPerStockUom: 500,
+        subunitsPerStockUom: null,
+        diagramEnabled: true,
+      },
     ]);
   });
 
@@ -181,14 +258,16 @@ describe('createIssueFromInvoice — duplicate guard + happy path', () => {
 describe('setConsumption — validation', () => {
   it('rejects a non-positive qtyPerUnit before touching the db', async () => {
     const { db } = createMockDb();
-    await expect(setConsumption(ctx(db), { finProductId: 'p1', itemId: 'i1', qtyPerUnit: 0 })).rejects.toMatchObject({ code: 'invalid_qty' });
+    await expect(setConsumption(ctx(db), { finProductId: 'p1', itemId: 'i1', qtyPerUnit: 0 }, actor)).rejects.toMatchObject({
+      code: 'invalid_qty',
+    });
     expect(db.select).not.toHaveBeenCalled();
   });
 
   it('rejects when the item does not exist in this org', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([[]]); // item lookup empty
-    await expect(setConsumption(ctx(db), { finProductId: 'p1', itemId: 'missing', qtyPerUnit: 1 })).rejects.toMatchObject({
+    await expect(setConsumption(ctx(db), { finProductId: 'p1', itemId: 'missing', qtyPerUnit: 1 }, actor)).rejects.toMatchObject({
       code: 'item_not_found',
     });
   });
@@ -196,7 +275,7 @@ describe('setConsumption — validation', () => {
   it('rejects when the item exists but is not a stock item', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([[{ id: 'i1', isStockItem: false }]]);
-    await expect(setConsumption(ctx(db), { finProductId: 'p1', itemId: 'i1', qtyPerUnit: 1 })).rejects.toMatchObject({
+    await expect(setConsumption(ctx(db), { finProductId: 'p1', itemId: 'i1', qtyPerUnit: 1 }, actor)).rejects.toMatchObject({
       code: 'not_stock_item',
     });
   });
@@ -204,7 +283,7 @@ describe('setConsumption — validation', () => {
   it('rejects when the fin_product does not exist in this org', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([[{ id: 'i1', isStockItem: true }], []]); // item ok, product lookup empty
-    await expect(setConsumption(ctx(db), { finProductId: 'missing', itemId: 'i1', qtyPerUnit: 1 })).rejects.toMatchObject({
+    await expect(setConsumption(ctx(db), { finProductId: 'missing', itemId: 'i1', qtyPerUnit: 1 }, actor)).rejects.toMatchObject({
       code: 'product_not_found',
     });
   });
@@ -214,9 +293,111 @@ describe('setConsumption — validation', () => {
     resolveSequence([
       [{ id: 'i1', isStockItem: true }],
       [{ id: 'p1' }],
+      [], // no existing mapping (create)
       [{ id: 'c1', orgId: 'org-1', finProductId: 'p1', itemId: 'i1', qtyPerUnit: '2', note: null }],
     ]);
-    const row = await setConsumption(ctx(db), { finProductId: 'p1', itemId: 'i1', qtyPerUnit: 2 });
+    const row = await setConsumption(ctx(db), { finProductId: 'p1', itemId: 'i1', qtyPerUnit: 2 }, actor);
     expect(row).toMatchObject({ id: 'c1', finProductId: 'p1', itemId: 'i1' });
+  });
+});
+
+describe('setConsumption — audit trail (§7 audit tracing)', () => {
+  beforeEach(() => {
+    vi.doUnmock('./activity.service');
+  });
+
+  it('records old→new qty_per_unit into doc_audit_log via recordAudit, with the actor', async () => {
+    vi.doMock('./activity.service', async () => {
+      const actual = await vi.importActual<typeof import('./activity.service')>('./activity.service');
+      return { ...actual, recordAudit: vi.fn(actual.recordAudit) };
+    });
+    // stock.service is already statically imported above (with the real,
+    // unmocked activity.service bound in) — force a fresh module graph so this
+    // dynamic re-import actually picks up the doMock'd recordAudit.
+    vi.resetModules();
+    const { setConsumption: setConsumptionSpied } = await import('./stock.service');
+    const activity = await import('./activity.service');
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [{ id: 'i1', isStockItem: true }], // item
+      [{ id: 'p1' }], // product
+      [{ qtyPerUnit: '1' }], // existing mapping: old qty = 1
+      [{ id: 'c1', orgId: 'org-1', finProductId: 'p1', itemId: 'i1', qtyPerUnit: '2', note: null }], // upsert result
+    ]);
+
+    await setConsumptionSpied(ctx(db), { finProductId: 'p1', itemId: 'i1', qtyPerUnit: 2 }, actor);
+
+    expect(activity.recordAudit).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        refType: 'stk_consumption',
+        refId: 'c1',
+        op: 'update',
+        changes: [{ field: 'qtyPerUnit', label: 'Qty per unit', old: 1, new: 2 }],
+        actor,
+      }),
+    );
+    vi.doUnmock('./activity.service');
+  });
+
+  it('emits no audit row when qtyPerUnit is unchanged (e.g. only note patched)', async () => {
+    vi.doMock('./activity.service', async () => {
+      const actual = await vi.importActual<typeof import('./activity.service')>('./activity.service');
+      return { ...actual, recordAudit: vi.fn(actual.recordAudit) };
+    });
+    // stock.service is already statically imported above (with the real,
+    // unmocked activity.service bound in) — force a fresh module graph so this
+    // dynamic re-import actually picks up the doMock'd recordAudit.
+    vi.resetModules();
+    const { setConsumption: setConsumptionSpied } = await import('./stock.service');
+    const activity = await import('./activity.service');
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [{ id: 'i1', isStockItem: true }],
+      [{ id: 'p1' }],
+      [{ qtyPerUnit: '2' }], // existing mapping: same qty
+      [{ id: 'c1', orgId: 'org-1', finProductId: 'p1', itemId: 'i1', qtyPerUnit: '2', note: 'updated note' }],
+    ]);
+
+    await setConsumptionSpied(ctx(db), { finProductId: 'p1', itemId: 'i1', qtyPerUnit: 2, note: 'updated note' }, actor);
+
+    // recordAudit was called but no-ops on an empty changes array (own db.insert never runs).
+    expect(activity.recordAudit).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ changes: [] }));
+    vi.doUnmock('./activity.service');
+  });
+});
+
+describe('createItem — uom cross-field validation', () => {
+  it('rejects a consumptionUom without a unitsPerStockUom before touching the db', async () => {
+    const { db } = createMockDb();
+    await expect(
+      createItem(ctx(db), { code: 'C1', name: 'Item', consumptionUom: 'ml', unitsPerStockUom: null }),
+    ).rejects.toMatchObject({ code: 'invalid_uom_config' });
+    expect(db.insert).not.toHaveBeenCalled();
+  });
+
+  it('allows a consumptionUom paired with a unitsPerStockUom', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[{ id: 'i1', consumptionUom: 'ml', unitsPerStockUom: '500' }]]);
+    const row = await createItem(ctx(db), { code: 'C1', name: 'Item', consumptionUom: 'ml', unitsPerStockUom: '500' });
+    expect(row).toMatchObject({ id: 'i1' });
+  });
+});
+
+describe('updateItem — uom cross-field validation (merged against the current row)', () => {
+  it('rejects setting consumptionUom via PATCH when neither the patch nor the current row has unitsPerStockUom', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[{ id: 'i1', orgId: 'org-1', consumptionUom: null, unitsPerStockUom: null }]]); // current row
+    await expect(updateItem(ctx(db), 'i1', { consumptionUom: 'ml' })).rejects.toMatchObject({ code: 'invalid_uom_config' });
+  });
+
+  it('allows setting consumptionUom via PATCH when the current row already has a unitsPerStockUom', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [{ id: 'i1', orgId: 'org-1', consumptionUom: null, unitsPerStockUom: '500' }], // current row
+      [{ id: 'i1', orgId: 'org-1', consumptionUom: 'ml', unitsPerStockUom: '500' }], // updated row
+    ]);
+    const row = await updateItem(ctx(db), 'i1', { consumptionUom: 'ml' });
+    expect(row).toMatchObject({ consumptionUom: 'ml' });
   });
 });

@@ -63,3 +63,27 @@ export function buildWarehouseTree(rows: WarehouseRow[]): WarehouseTreeRow[] {
   }
   return out;
 }
+
+// ── UOM conversion + consumption gauge (P5.1b) ──────────────────────────────
+
+/** Free-text presets offered in both the stock-uom and consumption-uom inputs. */
+export const UOM_PRESETS = ['Unidad', 'caja', 'ml', 'gr', 'units', 'unidad', 'sesión'];
+
+export interface UomConvertible {
+  uom: string;
+  consumptionUom?: string | null;
+  unitsPerStockUom?: number | string | null;
+  subunitsPerStockUom?: number | string | null;
+}
+
+/**
+ * Gauge ceiling: ml-per-subunit (e.g. per bottle) when subunits are configured,
+ * else the whole stock-uom conversion. 0 means "not configured" (caller hides
+ * the gauge / falls back to a plain qty input).
+ */
+export function gaugeMax(item: UomConvertible): number {
+  const units = Number(item.unitsPerStockUom);
+  if (!Number.isFinite(units) || units <= 0) return 0;
+  const subunits = Number(item.subunitsPerStockUom);
+  return Number.isFinite(subunits) && subunits > 0 ? units / subunits : units;
+}

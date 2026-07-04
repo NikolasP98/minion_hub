@@ -7,16 +7,25 @@ import { isModuleEnabled } from '$server/services/modules.service';
 import { listItems, createItem } from '$server/services/stock.service';
 import { handleStockError } from '../_errors';
 
-const postSchema = z.object({
-  code: z.string().min(1).max(200),
-  name: z.string().min(1).max(500),
-  uom: z.string().min(1).max(50).optional(),
-  itemGroup: z.string().max(200).nullable().optional(),
-  isStockItem: z.boolean().optional(),
-  reorderLevel: z.number().nonnegative().nullable().optional(),
-  reorderQty: z.number().nonnegative().nullable().optional(),
-  finProductId: z.string().max(200).nullable().optional(),
-});
+const postSchema = z
+  .object({
+    code: z.string().min(1).max(200),
+    name: z.string().min(1).max(500),
+    uom: z.string().min(1).max(50).optional(),
+    itemGroup: z.string().max(200).nullable().optional(),
+    isStockItem: z.boolean().optional(),
+    reorderLevel: z.number().nonnegative().nullable().optional(),
+    reorderQty: z.number().nonnegative().nullable().optional(),
+    finProductId: z.string().max(200).nullable().optional(),
+    consumptionUom: z.string().min(1).max(50).nullable().optional(),
+    unitsPerStockUom: z.number().positive().nullable().optional(),
+    subunitsPerStockUom: z.number().positive().nullable().optional(),
+    diagramEnabled: z.boolean().optional(),
+  })
+  .refine((d) => !d.consumptionUom || d.unitsPerStockUom != null, {
+    message: 'consumptionUom requires unitsPerStockUom to be set',
+    path: ['consumptionUom'],
+  });
 
 /** GET /api/stock/items */
 export const GET: RequestHandler = async ({ locals }) => {
@@ -42,6 +51,10 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       reorderLevel: body.reorderLevel == null ? null : String(body.reorderLevel),
       reorderQty: body.reorderQty == null ? null : String(body.reorderQty),
       finProductId: body.finProductId ?? null,
+      consumptionUom: body.consumptionUom ?? null,
+      unitsPerStockUom: body.unitsPerStockUom == null ? null : String(body.unitsPerStockUom),
+      subunitsPerStockUom: body.subunitsPerStockUom == null ? null : String(body.subunitsPerStockUom),
+      diagramEnabled: body.diagramEnabled ?? false,
     });
     return json(item, { status: 201 });
   } catch (e) {

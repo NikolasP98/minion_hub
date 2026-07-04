@@ -12,6 +12,10 @@ const patchSchema = z.object({
   note: z.string().max(2_000).nullable().optional(),
 });
 
+function actorOf(ctx: { profileId?: string }, locals: App.Locals) {
+  return { id: ctx.profileId ?? null, name: locals.user?.displayName ?? locals.user?.email ?? null };
+}
+
 /** PATCH /api/stock/consumption/:id — partial update (qtyPerUnit and/or note);
  *  routes through setConsumption's upsert since the unique key is
  *  (org, finProductId, itemId), not id. */
@@ -23,12 +27,16 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
   try {
     const cur = await getConsumptionById(ctx, params.id!);
     if (!cur) throw error(404);
-    const row = await setConsumption(ctx, {
-      finProductId: cur.finProductId,
-      itemId: cur.itemId,
-      qtyPerUnit: body.qtyPerUnit ?? Number(cur.qtyPerUnit),
-      note: body.note === undefined ? cur.note : body.note,
-    });
+    const row = await setConsumption(
+      ctx,
+      {
+        finProductId: cur.finProductId,
+        itemId: cur.itemId,
+        qtyPerUnit: body.qtyPerUnit ?? Number(cur.qtyPerUnit),
+        note: body.note === undefined ? cur.note : body.note,
+      },
+      actorOf(ctx, locals),
+    );
     return json(row);
   } catch (e) {
     handleStockError(e);

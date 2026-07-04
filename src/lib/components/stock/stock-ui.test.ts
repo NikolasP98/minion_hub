@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildWarehouseTree, entryStatusVariant } from './stock-ui';
+import { buildWarehouseTree, entryStatusVariant, gaugeMax } from './stock-ui';
 
 describe('buildWarehouseTree', () => {
   it('orders depth-first with children indented under their parent', () => {
@@ -33,5 +33,23 @@ describe('entryStatusVariant', () => {
     expect(entryStatusVariant('submitted').value).toBe('success');
     expect(entryStatusVariant('cancelled').value).toBe('error');
     expect(entryStatusVariant('draft').value).toBe('info');
+  });
+});
+
+describe('gaugeMax', () => {
+  it('divides units by subunits when both are set (1 caja = 500ml / 10 bottles = 50ml)', () => {
+    expect(gaugeMax({ uom: 'caja', unitsPerStockUom: 500, subunitsPerStockUom: 10 })).toBe(50);
+  });
+
+  it('falls back to unitsPerStockUom when subunits are not set', () => {
+    expect(gaugeMax({ uom: 'caja', unitsPerStockUom: 500, subunitsPerStockUom: null })).toBe(500);
+  });
+
+  it('returns 0 when the conversion is not configured', () => {
+    expect(gaugeMax({ uom: 'caja', unitsPerStockUom: null, subunitsPerStockUom: null })).toBe(0);
+  });
+
+  it('ignores non-positive subunits', () => {
+    expect(gaugeMax({ uom: 'caja', unitsPerStockUom: 500, subunitsPerStockUom: 0 })).toBe(500);
   });
 });

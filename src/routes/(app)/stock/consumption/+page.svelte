@@ -5,10 +5,16 @@
   import { Boxes, Search, Trash2, Plus } from 'lucide-svelte';
   import { PageHeader, Button, Combobox, EmptyState } from '$lib/components/ui';
   import { canAct } from '$lib/access/can.svelte';
+  import ConsumptionGauge from '$lib/components/stock/ConsumptionGauge.svelte';
+  import { gaugeMax, type UomConvertible } from '$lib/components/stock/stock-ui';
 
   let { data }: { data: PageData } = $props();
   const products = $derived(data.products);
-  const items = $derived(data.items);
+  // ponytail: consumptionUom/unitsPerStockUom/subunitsPerStockUom/diagramEnabled land via a
+  // parallel backend migration — intersect optionally so this compiles against the contract.
+  type ItemUom = (typeof data.items)[number] & Partial<UomConvertible> & { diagramEnabled?: boolean };
+  const items = $derived(data.items as ItemUom[]);
+  const itemById = $derived(new Map(items.map((i) => [i.id, i])));
   const consumption = $derived(data.consumption);
 
   let query = $state('');
@@ -23,6 +29,8 @@
   );
   const selectedProduct = $derived(products.find((p) => p.id === selectedProductId) ?? null);
   const mappings = $derived(consumption.filter((c) => c.finProductId === selectedProductId));
+
+  const unitLabel = (item: ItemUom | undefined) => item?.consumptionUom ?? item?.uom ?? '';
 
   function selectProduct(id: string) {
     selectedProductId = id;
@@ -50,6 +58,8 @@
   let addErr = $state<string | null>(null);
 
   const canAddDraft = $derived(draftItemId !== '' && Number(draftQty) > 0);
+  const draftItem = $derived(draftItemId ? itemById.get(draftItemId) : undefined);
+  const draftGaugeMax = $derived(draftItem?.diagramEnabled ? gaugeMax(draftItem) : 0);
 
   async function addMapping() {
     if (!selectedProductId || !canAddDraft) return;
@@ -96,6 +106,11 @@
     editingId = null;
     editErr = null;
   }
+  const editingItem = $derived.by(() => {
+    const c = consumption.find((c) => c.id === editingId);
+    return c ? itemById.get(c.itemId) : undefined;
+  });
+  const editGaugeMax = $derived(editingItem?.diagramEnabled ? gaugeMax(editingItem) : 0);
   async function saveEdit(id: string) {
     if (Number(editQty) <= 0) return;
     editBusy = true;
@@ -172,7 +187,7 @@
               placeholder={m.stock_field_item()}
               bind:value={draftItemId}
             />
-            <input class="inp" type="number" min="0" step="0.01" placeholder={m.stock_field_qty()} bind:value={draftQty} />
+            <input class="inp" type="number" min="0" step="0.01" placeholder={`${m.stock_field_qty()} (${unitLabel(draftItem)})`} bind:value={draftQty} />
             <input class="inp" placeholder={m.stock_field_note()} bind:value={draftNote} />
             <Button
               variant="outline"
@@ -184,6 +199,16 @@
               <Plus size={14} /> {m.stock_add_line()}
             </Button>
           </div>
+          {#if draftGaugeMax > 0}
+            <div class="gauge-row">
+              <ConsumptionGauge
+                class="compact"
+                max={draftGaugeMax}
+                unit={unitLabel(draftItem)}
+                bind:value={() => Number(draftQty) || 0, (v) => (draftQty = String(v))}
+              />
+            </div>
+          {/if}
           {#if addErr}<p class="err-msg">{addErr}</p>{/if}
         </div>
 
@@ -203,12 +228,24 @@
             <tbody>
               {#each mappings as c (c.id)}
                 {@const editing = editingId === c.id}
+                {@const rowItem = itemById.get(c.itemId)}
+                {@const rowGaugeMax = editing ? editGaugeMax : rowItem?.diagramEnabled ? gaugeMax(rowItem) : 0}
                 <tr>
                   <td>{c.itemCode} — {c.itemName}</td>
-                  <td class="t-caption">{c.uom}</td>
+                  <td class="t-caption">{unitLabel(rowItem) || c.uom}</td>
                   <td class="num">
                     {#if editing}
-                      <input class="inp w-20 text-right" type="number" min="0" step="0.01" bind:value={editQty} />
+                      <div class="edit-qty-cell">
+                        <input class="inp w-20 text-right" type="number" min="0" step="0.01" bind:value={editQty} />
+                        {#if rowGaugeMax > 0}
+                          <ConsumptionGauge
+                            class="compact"
+                            max={rowGaugeMax}
+                            unit={unitLabel(rowItem)}
+                            bind:value={() => Number(editQty) || 0, (v) => (editQty = String(v))}
+                          />
+                        {/if}
+                      </div>
                     {:else}
                       {c.qtyPerUnit}
                     {/if}
@@ -282,6 +319,8 @@
 
   .card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); padding: 0.85rem 1rem; }
   .line-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0.5rem; align-items: end; }
+  .gauge-row { display: flex; justify-content: flex-start; margin-top: 0.6rem; }
+  .edit-qty-cell { display: flex; align-items: center; gap: 0.4rem; justify-content: flex-end; }
   .inp { height: 1.75rem; padding: 0 0.5rem; font-size: 0.82rem; border-radius: var(--radius-sm); background: var(--color-bg3); border: 1px solid var(--hairline); color: var(--color-foreground); font-family: inherit; }
 
   .mini-table { width: 100%; font-size: 0.82rem; border-collapse: collapse; }

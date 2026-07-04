@@ -35,6 +35,9 @@ import {
   wouldCreateCycle,
   replayBins,
   binKey,
+  consumptionToStockQty,
+  round4,
+  validateItemUomConfig,
   type LedgerReplayRow,
 } from './stock.logic';
 
@@ -66,22 +69,73 @@ export function listItems(ctx: CoreCtx): Promise<StkItem[]> {
   return withOrgCore(ctx, (tx) => tx.select().from(stkItems).where(eq(stkItems.orgId, ctx.tenantId)).orderBy(asc(stkItems.name)));
 }
 
+export interface ItemUomInfo {
+  itemId: string;
+  uom: string;
+  consumptionUom: string | null;
+  unitsPerStockUom: number | null;
+  subunitsPerStockUom: number | null;
+  diagramEnabled: boolean;
+}
+
+/** Per-item uom/conversion fields, keyed for merging onto bin/ledger rows that
+ *  only carry an itemId (the gateway `stock` query's `levels` mode). */
+export async function getItemUomInfo(ctx: CoreCtx, itemIds: string[]): Promise<ItemUomInfo[]> {
+  if (!itemIds.length) return [];
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .select({
+        itemId: stkItems.id,
+        uom: stkItems.uom,
+        consumptionUom: stkItems.consumptionUom,
+        unitsPerStockUom: stkItems.unitsPerStockUom,
+        subunitsPerStockUom: stkItems.subunitsPerStockUom,
+        diagramEnabled: stkItems.diagramEnabled,
+      })
+      .from(stkItems)
+      .where(and(eq(stkItems.orgId, ctx.tenantId), inArray(stkItems.id, itemIds))),
+  );
+  return rows.map((r) => ({
+    ...r,
+    unitsPerStockUom: r.unitsPerStockUom == null ? null : Number(r.unitsPerStockUom),
+    subunitsPerStockUom: r.subunitsPerStockUom == null ? null : Number(r.subunitsPerStockUom),
+  }));
+}
+
 export type NewItemInput = Omit<typeof stkItems.$inferInsert, 'id' | 'orgId' | 'createdAt' | 'updatedAt'>;
 
 export async function createItem(ctx: CoreCtx, input: NewItemInput): Promise<StkItem> {
+  const err = validateItemUomConfig({
+    consumptionUom: input.consumptionUom ?? null,
+    unitsPerStockUom: input.unitsPerStockUom == null ? null : Number(input.unitsPerStockUom),
+  });
+  if (err) throw new StockError(err, 'invalid_uom_config');
   const [row] = await withOrgCore(ctx, (tx) => tx.insert(stkItems).values({ ...input, orgId: ctx.tenantId }).returning());
   return row;
 }
 
 export async function updateItem(ctx: CoreCtx, id: string, patch: Partial<NewItemInput>): Promise<StkItem | null> {
-  const [row] = await withOrgCore(ctx, (tx) =>
-    tx
+  return withOrgCore(ctx, async (tx) => {
+    const [cur] = await tx.select().from(stkItems).where(and(eq(stkItems.id, id), eq(stkItems.orgId, ctx.tenantId)));
+    if (!cur) return null;
+    // Merge over the current row — a PATCH only sends the fields it's changing,
+    // so the cross-field rule must be checked against the RESULTING config, not
+    // just the patch in isolation (e.g. setting consumptionUom alone is fine
+    // when unitsPerStockUom was already set on a prior PATCH).
+    const consumptionUom = patch.consumptionUom === undefined ? cur.consumptionUom : patch.consumptionUom;
+    const unitsPerStockUomRaw = patch.unitsPerStockUom === undefined ? cur.unitsPerStockUom : patch.unitsPerStockUom;
+    const err = validateItemUomConfig({
+      consumptionUom,
+      unitsPerStockUom: unitsPerStockUomRaw == null ? null : Number(unitsPerStockUomRaw),
+    });
+    if (err) throw new StockError(err, 'invalid_uom_config');
+    const [row] = await tx
       .update(stkItems)
       .set({ ...patch, updatedAt: new Date() })
       .where(and(eq(stkItems.id, id), eq(stkItems.orgId, ctx.tenantId)))
-      .returning(),
-  );
-  return row ?? null;
+      .returning();
+    return row ?? null;
+  });
 }
 
 // ── Warehouses ───────────────────────────────────────────────────────────────
@@ -511,6 +565,10 @@ export interface ConsumptionRow {
   itemName: string;
   itemCode: string;
   uom: string;
+  consumptionUom: string | null;
+  unitsPerStockUom: number | null;
+  subunitsPerStockUom: number | null;
+  diagramEnabled: boolean;
   qtyPerUnit: number;
   note: string | null;
 }
@@ -530,6 +588,10 @@ export function listConsumption(ctx: CoreCtx, filters: { finProductId?: string; 
         itemName: stkItems.name,
         itemCode: stkItems.code,
         uom: stkItems.uom,
+        consumptionUom: stkItems.consumptionUom,
+        unitsPerStockUom: stkItems.unitsPerStockUom,
+        subunitsPerStockUom: stkItems.subunitsPerStockUom,
+        diagramEnabled: stkItems.diagramEnabled,
         qtyPerUnit: stkConsumption.qtyPerUnit,
         note: stkConsumption.note,
       })
@@ -538,7 +600,12 @@ export function listConsumption(ctx: CoreCtx, filters: { finProductId?: string; 
       .innerJoin(stkItems, eq(stkItems.id, stkConsumption.itemId))
       .where(and(...conds))
       .orderBy(asc(finProducts.name), asc(stkItems.name));
-    return rows.map((r) => ({ ...r, qtyPerUnit: Number(r.qtyPerUnit) }));
+    return rows.map((r) => ({
+      ...r,
+      qtyPerUnit: Number(r.qtyPerUnit),
+      unitsPerStockUom: r.unitsPerStockUom == null ? null : Number(r.unitsPerStockUom),
+      subunitsPerStockUom: r.subunitsPerStockUom == null ? null : Number(r.subunitsPerStockUom),
+    }));
   });
 }
 
@@ -561,10 +628,13 @@ export interface SetConsumptionInput {
 /** Upsert on the (org, fin_product, item) unique key. Validates the item is a
  *  real stock item (not a service-only / non-stock row) and the fin_product
  *  belongs to this org — both are soft refs (no DB FK to fin_products), so
- *  this is the only place that catches a typo'd id. */
-export async function setConsumption(ctx: CoreCtx, input: SetConsumptionInput): Promise<StkConsumption> {
+ *  this is the only place that catches a typo'd id. Logs the old→new
+ *  qty_per_unit to doc_audit_log (best-effort, own tx — same convention as
+ *  submitEntry/cancelEntry above); a no-op change (e.g. only `note` patched)
+ *  emits nothing, per recordAudit's own empty-changes guard. */
+export async function setConsumption(ctx: CoreCtx, input: SetConsumptionInput, actor: Actor): Promise<StkConsumption> {
   if (!(input.qtyPerUnit > 0)) throw new StockError('qtyPerUnit must be > 0', 'invalid_qty');
-  return withOrgCore(ctx, async (tx) => {
+  const { row, oldQtyPerUnit } = await withOrgCore(ctx, async (tx) => {
     const [item] = await tx
       .select({ id: stkItems.id, isStockItem: stkItems.isStockItem })
       .from(stkItems)
@@ -578,6 +648,11 @@ export async function setConsumption(ctx: CoreCtx, input: SetConsumptionInput): 
       .where(and(eq(finProducts.id, input.finProductId), eq(finProducts.orgId, ctx.tenantId)));
     if (!product) throw new StockError('fin product not found', 'product_not_found');
 
+    const [existing] = await tx
+      .select({ qtyPerUnit: stkConsumption.qtyPerUnit })
+      .from(stkConsumption)
+      .where(and(eq(stkConsumption.orgId, ctx.tenantId), eq(stkConsumption.finProductId, input.finProductId), eq(stkConsumption.itemId, input.itemId)));
+
     const [row] = await tx
       .insert(stkConsumption)
       .values({ orgId: ctx.tenantId, finProductId: input.finProductId, itemId: input.itemId, qtyPerUnit: String(input.qtyPerUnit), note: input.note ?? null })
@@ -586,8 +661,17 @@ export async function setConsumption(ctx: CoreCtx, input: SetConsumptionInput): 
         set: { qtyPerUnit: String(input.qtyPerUnit), note: input.note ?? null, updatedAt: new Date() },
       })
       .returning();
-    return row;
+    return { row, oldQtyPerUnit: existing ? Number(existing.qtyPerUnit) : null };
   });
+
+  await recordAudit(ctx, {
+    refType: 'stk_consumption',
+    refId: row.id,
+    op: oldQtyPerUnit == null ? 'create' : 'update',
+    changes: oldQtyPerUnit === input.qtyPerUnit ? [] : [{ field: 'qtyPerUnit', label: 'Qty per unit', old: oldQtyPerUnit, new: input.qtyPerUnit }],
+    actor,
+  });
+  return row;
 }
 
 export async function deleteConsumption(ctx: CoreCtx, id: string): Promise<boolean> {
@@ -611,8 +695,18 @@ export interface InvoicePreviewLine {
   itemName: string;
   itemCode: string;
   uom: string;
+  /** Stock uom, converted from qtyConsumption and rounded to 4dp — what
+   *  actually posts to the ledger. Kept for existing UI callers. */
   qty: number;
+  /** Stock uom (existing field, unchanged shape). */
   available: number;
+  /** Raw aggregated qty in the item's CONSUMPTION uom (== stock uom when the
+   *  item has none set — `qty` above is then identical). */
+  qtyConsumption: number;
+  consumptionUom: string | null;
+  unitsPerStockUom: number | null;
+  subunitsPerStockUom: number | null;
+  diagramEnabled: boolean;
 }
 
 export interface InvoicePreviewUnmatched {
@@ -693,8 +787,22 @@ export async function buildInvoiceIssuePreview(ctx: CoreCtx, invoiceId: string, 
       unmatched.push({ description: line.description ?? '(no description)', quantity });
     }
 
+    // qtyByItem is aggregated in each item's CONSUMPTION uom (identity when the
+    // item has no consumptionUom set — the pre-P5.1b behavior is unchanged).
     const itemIds = [...qtyByItem.keys()];
-    const itemRows = await tx.select({ id: stkItems.id, name: stkItems.name, code: stkItems.code, uom: stkItems.uom }).from(stkItems).where(inArray(stkItems.id, itemIds));
+    const itemRows = await tx
+      .select({
+        id: stkItems.id,
+        name: stkItems.name,
+        code: stkItems.code,
+        uom: stkItems.uom,
+        consumptionUom: stkItems.consumptionUom,
+        unitsPerStockUom: stkItems.unitsPerStockUom,
+        subunitsPerStockUom: stkItems.subunitsPerStockUom,
+        diagramEnabled: stkItems.diagramEnabled,
+      })
+      .from(stkItems)
+      .where(inArray(stkItems.id, itemIds));
     const itemById = new Map(itemRows.map((r) => [r.id, r]));
 
     const binRows = await tx
@@ -705,13 +813,20 @@ export async function buildInvoiceIssuePreview(ctx: CoreCtx, invoiceId: string, 
 
     const lines: InvoicePreviewLine[] = itemIds.map((itemId) => {
       const item = itemById.get(itemId);
+      const qtyConsumption = qtyByItem.get(itemId)!;
+      const unitsPerStockUom = item?.unitsPerStockUom == null ? null : Number(item.unitsPerStockUom);
       return {
         itemId,
         itemName: item?.name ?? itemId,
         itemCode: item?.code ?? '',
         uom: item?.uom ?? 'unit',
-        qty: qtyByItem.get(itemId)!,
+        qty: round4(consumptionToStockQty({ unitsPerStockUom }, qtyConsumption)),
         available: availableByItem.get(itemId) ?? 0,
+        qtyConsumption,
+        consumptionUom: item?.consumptionUom ?? null,
+        unitsPerStockUom,
+        subunitsPerStockUom: item?.subunitsPerStockUom == null ? null : Number(item.subunitsPerStockUom),
+        diagramEnabled: item?.diagramEnabled ?? false,
       };
     });
 
@@ -721,7 +836,11 @@ export async function buildInvoiceIssuePreview(ctx: CoreCtx, invoiceId: string, 
 
 export interface CreateIssueFromInvoiceLine {
   itemId: string;
+  /** Stock uom — ignored when `qtyConsumption` is present (server converts
+   *  authoritatively instead of trusting the client's arithmetic). */
   qty: number;
+  /** Optional: qty in the item's CONSUMPTION uom. When set, wins over `qty`. */
+  qtyConsumption?: number | null;
 }
 
 export interface CreateIssueFromInvoiceInput {
@@ -756,6 +875,24 @@ export async function createIssueFromInvoice(ctx: CoreCtx, input: CreateIssueFro
       .where(and(eq(stkEntries.orgId, ctx.tenantId), ne(stkEntries.status, 'cancelled'), sql`${stkEntries.metadata}->>'invoiceId' = ${input.invoiceId}`));
     if (dup) throw new StockError('a stock issue already exists for this invoice', 'duplicate_invoice');
 
+    // Lines with a client-supplied qtyConsumption are converted authoritatively
+    // server-side (the client's `qty` for those lines is ignored) — the server
+    // owns the conversion factor, not the caller's arithmetic.
+    const convertItemIds = [...new Set(input.lines.filter((l) => l.qtyConsumption != null).map((l) => l.itemId))];
+    const unitsPerStockUomByItem = new Map<string, number | null>();
+    if (convertItemIds.length) {
+      const rows = await tx
+        .select({ id: stkItems.id, unitsPerStockUom: stkItems.unitsPerStockUom })
+        .from(stkItems)
+        .where(and(eq(stkItems.orgId, ctx.tenantId), inArray(stkItems.id, convertItemIds)));
+      for (const r of rows) unitsPerStockUomByItem.set(r.id, r.unitsPerStockUom == null ? null : Number(r.unitsPerStockUom));
+    }
+    const resolvedLines = input.lines.map((l) => {
+      if (l.qtyConsumption == null) return { itemId: l.itemId, qty: l.qty };
+      const unitsPerStockUom = unitsPerStockUomByItem.get(l.itemId) ?? null;
+      return { itemId: l.itemId, qty: round4(consumptionToStockQty({ unitsPerStockUom }, l.qtyConsumption)) };
+    });
+
     const [row] = await tx
       .insert(stkEntries)
       .values({
@@ -771,7 +908,7 @@ export async function createIssueFromInvoice(ctx: CoreCtx, input: CreateIssueFro
       linesToRows(
         ctx.tenantId,
         row.id,
-        input.lines.map((l) => ({ itemId: l.itemId, qty: l.qty, fromWarehouseId: input.warehouseId })),
+        resolvedLines.map((l) => ({ itemId: l.itemId, qty: l.qty, fromWarehouseId: input.warehouseId })),
       ),
     );
     return row;

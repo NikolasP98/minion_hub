@@ -3641,5 +3641,18 @@
   "fin_stock_preview_empty": "No stock items matched this invoice's line items.",
   "fin_stock_unmatched": "Not tracked as stock: {items}",
   "fin_stock_issue_duplicate": "A stock issue already exists for this invoice.",
-  "fin_stock_issue_failed": "Couldn't create the stock issue. Please try again."
+  "fin_stock_issue_failed": "Couldn't create the stock issue. Please try again.",
+  "fin_stock_line_conversion": "{consumptionQty} {consumptionUom} → {stockQty} {stockUom}",
+  "stock_uom_section_title": "Unit configuration",
+  "stock_field_stock_uom": "Stock UOM",
+  "stock_field_consumption_uom": "Consumption UOM",
+  "stock_field_units_per_stock_uom": "Units per stock UOM",
+  "stock_field_units_per_stock_uom_hint": "e.g. 1 caja = 500 ml",
+  "stock_field_subunits_per_stock_uom": "Subunits (display only)",
+  "stock_field_subunits_per_stock_uom_hint": "e.g. divided into 10 bottles",
+  "stock_field_diagram_enabled": "Show consumption gauge",
+  "stock_field_diagram_enabled_hint": "Renders a draggable bottle gauge wherever this item's consumption is recorded.",
+  "stock_uom_caption_simple": "1 {uom} = {units} {consumptionUom}",
+  "stock_uom_caption_subunits": "1 {uom} = {units} {consumptionUom} ({subunits} × {perSubunit} {consumptionUom})",
+  "stock_gauge_overflow": "×{count} + {remainder} {unit}"
 }
