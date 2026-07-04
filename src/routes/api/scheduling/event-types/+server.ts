@@ -11,7 +11,8 @@ import type { EventTypeInput } from '$server/services/scheduling.service';
 // null/''/undefined -> null (unset), else coerce to number. Mirrors the old num() helper.
 const numOrNull = z.preprocess((v) => (v === '' || v == null ? null : v), z.coerce.number().nullable());
 
-export const eventTypeSchema = z.object({
+// ponytail: NOT exported — SvelteKit +server.ts only allows HTTP-handler exports.
+const eventTypeSchema = z.object({
   slug: z.string().trim().min(1).max(200),
   title: z.string().trim().min(1).max(500),
   description: z.string().max(20_000).nullable().optional(),
