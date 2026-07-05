@@ -21,7 +21,7 @@
 		const p = new URLSearchParams();
 		if (f) p.set('from', f);
 		if (t) p.set('to', t);
-		goto(`/ads?${p}`, { keepFocus: true, noScroll: true });
+		goto(`/socials?${p}`, { keepFocus: true, noScroll: true });
 	}
 
 	function preset30d() {

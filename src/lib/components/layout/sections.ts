@@ -33,6 +33,11 @@ export type SectionItem = {
     // via canClient(); routes are also guarded server-side, so hiding here is
     // UX only.
     requires?: string;
+    // Optional override for the per-org module gate id derived from the
+    // href's first path segment (see BUILTIN_PLUGIN_ITEMS below). Only needed
+    // when the route segment no longer matches the module id — e.g. /socials
+    // routes to the 'ads' module.
+    moduleId?: string;
 };
 
 export type SubSection = {
@@ -152,11 +157,12 @@ const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: SectionIt
     {
         category: "marketing",
         item: {
-            href: "/ads",
+            href: "/socials",
             label: m.nav_ads(),
             icon: Megaphone,
-            matcher: (p: string) => p.startsWith("/ads"),
+            matcher: (p: string) => p.startsWith("/socials"),
             requires: "ads.view",
+            moduleId: "ads",
         },
     },
     {
@@ -327,7 +333,9 @@ export function getDynamicPluginsSections(
     };
 
     for (const { category, item } of BUILTIN_PLUGIN_ITEMS) {
-        const moduleId = item.href.replace(/^\//, '').split('/')[0]; // 'crm' | 'finances' | 'workforce'
+        // 'crm' | 'finances' | 'workforce' | ... — falls back to the href's
+        // first segment unless the item overrides it (e.g. /socials -> 'ads').
+        const moduleId = item.moduleId ?? item.href.replace(/^\//, '').split('/')[0];
         if (enabledByPluginId[moduleId] === false) continue;          // per-org module gate
         place(category, item);
     }

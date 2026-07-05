@@ -95,7 +95,7 @@ export const MODULE_SUBRESOURCES: Record<string, SubResource[]> = {
     { key: 'scheduling.reminders', label: 'Reminders', route: '/scheduling/reminders' },
     { key: 'scheduling.settings', label: 'Settings', route: '/scheduling/settings' },
   ],
-  ads: [{ key: 'ads.settings', label: 'Settings', route: '/ads/settings' }],
+  ads: [{ key: 'ads.settings', label: 'Settings', route: '/socials/settings' }],
 };
 
 /** Flat list of every sub-resource (parent-key agnostic). */
@@ -173,7 +173,7 @@ const ROUTE_VIEW_PERMS: ReadonlyArray<readonly [string, string]> = [
   ['/workforce', 'projects:view'],
   ['/stock', 'stock:view'],
   ['/brains', 'brains:view'],
-  ['/ads', 'ads:view'],
+  ['/socials', 'ads:view'],
   // platform modules
   ['/agents', 'agents:view'],
   ['/capabilities', 'agents:view'],

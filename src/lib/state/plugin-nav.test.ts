@@ -14,9 +14,9 @@ describe("getDynamicPluginsSections", () => {
     ]);
     const marketing = sections.find((s) => s.id === "plugins:marketing");
     expect(marketing?.label).toBe("Marketing");
-    expect(marketing?.items.map((i) => i.href)).toEqual(["/crm", "/ads"]);
+    expect(marketing?.items.map((i) => i.href)).toEqual(["/crm", "/socials"]);
     expect(marketing?.items[0]?.label).toBe("CRM");
-    expect(marketing?.items[1]?.label).toBe("Ads");
+    expect(marketing?.items[1]?.label).toBe("Socials");
     const operations = sections.find((s) => s.id === "plugins:operations");
     expect(operations?.label).toBe("Operations");
     expect(operations?.items.map((i) => i.href)).toEqual(["/work", "/workforce", "/scheduling", "/stock"]);

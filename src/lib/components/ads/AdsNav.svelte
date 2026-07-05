@@ -9,22 +9,22 @@
   // behaviour as the main sidebar hiding module links.
   const items = $derived<SideNavItem[]>(
     [
-      { id: 'dashboard', label: m.nav_ads(), icon: LayoutDashboard, href: '/ads' },
-      { id: 'campaigns', label: m.ads_nav_campaigns(), icon: Target, href: '/ads/campaigns' },
-      { id: 'posts', label: m.ads_nav_posts(), icon: Image, href: '/ads/posts' },
-      { id: 'settings', label: m.nav_settings(), icon: Settings, href: '/ads/settings' },
+      { id: 'dashboard', label: m.nav_ads(), icon: LayoutDashboard, href: '/socials' },
+      { id: 'campaigns', label: m.ads_nav_campaigns(), icon: Target, href: '/socials/campaigns' },
+      { id: 'posts', label: m.ads_nav_posts(), icon: Image, href: '/socials/posts' },
+      { id: 'settings', label: m.nav_settings(), icon: Settings, href: '/socials/settings' },
     ].filter((i) => canViewPath(i.href)),
   );
 
   const pathname = $derived(page.url.pathname);
 
   function isActive(id: string, href: string): boolean {
-    if (id === 'dashboard') return pathname === '/ads';
-    if (id === 'settings') return pathname.startsWith('/ads/settings');
+    if (id === 'dashboard') return pathname === '/socials';
+    if (id === 'settings') return pathname.startsWith('/socials/settings');
     return pathname.startsWith(href);
   }
 
   const activeId = $derived(items.find((i) => isActive(i.id, i.href ?? ''))?.id);
 </script>
 
-<SideNav {items} {activeId} ariaLabel="Ads" header={m.nav_ads()} />
+<SideNav {items} {activeId} ariaLabel={m.nav_ads()} header={m.nav_ads()} />

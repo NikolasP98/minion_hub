@@ -57,7 +57,7 @@
 		const p = new URLSearchParams(window.location.search);
 		if (f) p.set('from', f);
 		if (t) p.set('to', t);
-		goto(`/ads/campaigns?${p}`, { keepFocus: true, noScroll: true, replaceState: true });
+		goto(`/socials/campaigns?${p}`, { keepFocus: true, noScroll: true, replaceState: true });
 	}
 	function preset30d() {
 		const to = new Date();
