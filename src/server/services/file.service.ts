@@ -3,7 +3,7 @@ import { files } from '@minion-stack/db/pg';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { newId } from '$server/db/utils';
 import { withOrgCore } from '$server/db/with-org-core';
-import { uploadToB2, getSignedDownloadUrl, deleteFromB2 } from '$server/storage/b2';
+import { getStorage } from '$server/storage/blob';
 import { scopeData } from './base';
 import type { CoreCtx } from '$server/auth/core-ctx';
 
@@ -13,6 +13,8 @@ export interface FileUploadInput {
   data: Buffer | Uint8Array;
   category?: string;
   uploadedBy?: string;
+  /** e.g. 'public, max-age=31536000, immutable' for immutable-by-fileId blobs (meta thumbnails). */
+  cacheControl?: string;
 }
 
 export async function uploadFile(ctx: CoreCtx, input: FileUploadInput) {
@@ -20,7 +22,9 @@ export async function uploadFile(ctx: CoreCtx, input: FileUploadInput) {
   const category = input.category ?? 'general';
   const b2FileKey = `${ctx.tenantId}/${category}/${id}/${input.fileName}`;
 
-  await uploadToB2(b2FileKey, input.data, input.contentType);
+  await getStorage().put(b2FileKey, input.data, input.contentType, {
+    cacheControl: input.cacheControl,
+  });
 
   await withOrgCore(ctx, (tx) =>
     tx.insert(files).values({
@@ -39,7 +43,7 @@ export async function uploadFile(ctx: CoreCtx, input: FileUploadInput) {
   return id;
 }
 
-export async function getFileUrl(ctx: CoreCtx, id: string) {
+export async function getFileUrl(ctx: CoreCtx, id: string, expiresIn?: number) {
   const rows = await withOrgCore(ctx, (tx) =>
     tx
       .select()
@@ -50,7 +54,7 @@ export async function getFileUrl(ctx: CoreCtx, id: string) {
   const file = rows[0];
   if (!file) return null;
 
-  const url = await getSignedDownloadUrl(file.b2FileKey);
+  const url = await getStorage().getSignedUrl(file.b2FileKey, expiresIn);
   return { ...file, url };
 }
 
@@ -64,7 +68,7 @@ export async function deleteFile(ctx: CoreCtx, id: string) {
     const found = rows[0];
     if (!found) return null;
 
-    await deleteFromB2(found.b2FileKey);
+    await getStorage().delete(found.b2FileKey);
     await tx.delete(files).where(eq(files.id, id));
     return found;
   });

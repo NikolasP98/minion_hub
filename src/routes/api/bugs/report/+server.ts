@@ -2,15 +2,11 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { createBug } from '$server/services/bug.service';
 import { createGitHubIssue, isGitHubConfigured } from '$server/services/github-issues.service';
-import { uploadToB2, getSignedDownloadUrl } from '$server/storage/b2';
+import { getStorage, isStorageConfigured } from '$server/storage/blob';
 import { newId } from '$server/db/utils';
 import { getTenantCtx } from '$server/auth/tenant-ctx';
 import { servers } from '@minion-stack/db/schema';
 import { eq } from 'drizzle-orm';
-
-function isB2Configured(): boolean {
-  return !!(process.env.B2_KEY_ID && process.env.B2_APP_KEY && process.env.B2_ENDPOINT);
-}
 
 export const POST: RequestHandler = async ({ locals, request }) => {
   const ctx = await getTenantCtx(locals);
@@ -36,16 +32,17 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   let screenshotUrl: string | undefined;
   let githubIssueUrl: string | undefined;
 
-  // 1. Upload screenshot to B2 if configured and provided
-  if (body.screenshot && isB2Configured()) {
+  // 1. Upload screenshot to storage if configured and provided
+  if (body.screenshot && isStorageConfigured()) {
     try {
       // Strip data URL prefix: "data:image/png;base64,..."
       const base64Data = body.screenshot.replace(/^data:image\/\w+;base64,/, '');
       const binaryData = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
       const b2Key = `${ctx.tenantId}/bug-reports/${bugId}/screenshot.png`;
 
-      await uploadToB2(b2Key, binaryData, 'image/png');
-      screenshotUrl = await getSignedDownloadUrl(b2Key, 7 * 24 * 3600); // 7-day expiry
+      const storage = getStorage();
+      await storage.put(b2Key, binaryData, 'image/png');
+      screenshotUrl = await storage.getSignedUrl(b2Key, 7 * 24 * 3600); // 7-day expiry
     } catch (err) {
       console.error('[POST /api/bugs/report] B2 upload failed:', err);
       // Continue without screenshot URL

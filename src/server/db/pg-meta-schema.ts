@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, jsonb, numeric, timestamp, boolean, integer, date, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, jsonb, numeric, timestamp, boolean, integer, date, index, uniqueIndex, primaryKey } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 /**
@@ -133,8 +133,38 @@ export const metaSyncJobs = pgTable(
   }),
 );
 
+/**
+ * One row per post — mirrors the Meta CDN thumbnail into our own bucket
+ * (`file.service.uploadFile` category `meta/<platform>`). Distinct from
+ * `meta_post_insights` (long/narrow, one row per post×metric×period): a
+ * thumbnail belongs to the post, not a metric. See
+ * specs/2026-07-05-meta-post-thumbnail-mirroring.md §4.
+ */
+export const metaPostMedia = pgTable(
+  'meta_post_media',
+  {
+    orgId: text('org_id').notNull(),
+    platform: text('platform').notNull(),            // 'fb'|'ig'
+    postId: text('post_id').notNull(),
+    fileId: text('file_id'),                          // → files.id (null until mirrored)
+    sourceUrl: text('source_url'),                     // last CDN url mirrored from (audit/debug — expires, never re-served)
+    mediaType: text('media_type'),                      // IMAGE|VIDEO|CAROUSEL_ALBUM|REELS (IG) / FB type
+    status: text('status').notNull().default('pending'), // pending|mirrored|failed|skipped
+    error: text('error'),
+    attempts: integer('attempts').notNull().default(0),
+    fetchedAt: timestamp('fetched_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.orgId, t.platform, t.postId] }),
+    statusIdx: index('meta_post_media_org_status_idx').on(t.orgId, t.status),
+  }),
+);
+
 export type MetaConnection = typeof metaConnections.$inferSelect;
 export type MetaAsset = typeof metaAssets.$inferSelect;
 export type MetaPostInsight = typeof metaPostInsights.$inferSelect;
 export type MetaAdInsight = typeof metaAdInsights.$inferSelect;
 export type MetaSyncJob = typeof metaSyncJobs.$inferSelect;
+export type MetaPostMedia = typeof metaPostMedia.$inferSelect;

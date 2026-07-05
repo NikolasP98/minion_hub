@@ -1,7 +1,7 @@
 /**
  * Vitest global setup — runs before every test file.
  *
- * Sets safe env defaults so that modules like db/client.ts and storage/b2.ts
+ * Sets safe env defaults so that modules like db/client.ts and storage/blob.ts
  * don't accidentally connect to real services if imported without mocking.
  */
 process.env.TURSO_DB_URL ??= 'file::memory:';

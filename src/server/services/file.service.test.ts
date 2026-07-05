@@ -11,16 +11,27 @@ vi.mock('$server/db/utils', () => ({
   nowMs: () => 1_700_000_000_000,
 }));
 
-const mockUploadToB2 = vi.fn<(k: string, b: Buffer | Uint8Array, ct: string) => Promise<void>>();
+const mockUploadToB2 =
+  vi.fn<
+    (
+      k: string,
+      b: Buffer | Uint8Array,
+      ct: string,
+      opts?: { cacheControl?: string },
+    ) => Promise<void>
+  >();
 const mockGetSignedDownloadUrl = vi
-  .fn<(k: string) => Promise<string>>()
+  .fn<(k: string, expiresIn?: number) => Promise<string>>()
   .mockResolvedValue('https://signed-url.example.com/file');
 const mockDeleteFromB2 = vi.fn<(k: string) => Promise<void>>();
 
-vi.mock('$server/storage/b2', () => ({
-  uploadToB2: (k: string, b: Buffer | Uint8Array, ct: string) => mockUploadToB2(k, b, ct),
-  getSignedDownloadUrl: (k: string) => mockGetSignedDownloadUrl(k),
-  deleteFromB2: (k: string) => mockDeleteFromB2(k),
+vi.mock('$server/storage/blob', () => ({
+  getStorage: () => ({
+    put: (k: string, b: Buffer | Uint8Array, ct: string, opts?: { cacheControl?: string }) =>
+      mockUploadToB2(k, b, ct, opts),
+    getSignedUrl: (k: string, expiresIn?: number) => mockGetSignedDownloadUrl(k, expiresIn),
+    delete: (k: string) => mockDeleteFromB2(k),
+  }),
 }));
 
 describe('uploadFile', () => {
@@ -35,6 +46,7 @@ describe('uploadFile', () => {
       't1/general/mock-file-id-0000000001/test.pdf',
       expect.any(Buffer),
       'application/pdf',
+      { cacheControl: undefined },
     );
     expect(db.insert).toHaveBeenCalled();
   });
@@ -50,6 +62,27 @@ describe('uploadFile', () => {
       expect.stringContaining('/general/'),
       expect.anything(),
       expect.anything(),
+      expect.anything(),
+    );
+  });
+
+  it('passes cacheControl through to storage.put', async () => {
+    const { db } = createMockDb();
+    await uploadFile(
+      { db: db as never, tenantId: 't1' },
+      {
+        fileName: 'thumb.jpg',
+        contentType: 'image/jpeg',
+        data: Buffer.from('img'),
+        category: 'meta/ig',
+        cacheControl: 'public, max-age=31536000, immutable',
+      },
+    );
+    expect(mockUploadToB2).toHaveBeenCalledWith(
+      expect.stringContaining('/meta/ig/'),
+      expect.any(Buffer),
+      'image/jpeg',
+      { cacheControl: 'public, max-age=31536000, immutable' },
     );
   });
 });
@@ -68,7 +101,14 @@ describe('getFileUrl', () => {
     const result = await getFileUrl({ db: db as never, tenantId: 't1' }, 'f1');
     expect(result).not.toBe(null);
     expect(result!.url).toBe('https://signed-url.example.com/file');
-    expect(mockGetSignedDownloadUrl).toHaveBeenCalledWith('key');
+    expect(mockGetSignedDownloadUrl).toHaveBeenCalledWith('key', undefined);
+  });
+
+  it('passes expiresIn through to storage.getSignedUrl', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([{ id: 'f1', b2FileKey: 'key', fileName: 'test.pdf' }]);
+    await getFileUrl({ db: db as never, tenantId: 't1' }, 'f1', 86_400);
+    expect(mockGetSignedDownloadUrl).toHaveBeenCalledWith('key', 86_400);
   });
 });
 
