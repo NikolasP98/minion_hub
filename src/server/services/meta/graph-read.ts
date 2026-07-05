@@ -442,6 +442,8 @@ export type PagePost = {
   reactions?: { summary?: { total_count?: number } };
   /** Same gating as `reactions`. */
   comments?: { summary?: { total_count?: number } };
+  /** Post preview image (temporary CDN url — mirror it, never persist directly; see meta-post-thumbnail-mirroring spec §5). */
+  full_picture?: string;
 };
 
 // `shares` needs only `pages_read_engagement` + a page token. The
@@ -449,7 +451,13 @@ export type PagePost = {
 // (v23.0, 2026-07-04) to 400 with "(#10) requires 'pages_read_user_content'"
 // — a permission this app cannot obtain — and one denied sub-field rejects the
 // ENTIRE fields request, so they must stay out of the list.
-const PAGE_POST_FIELDS = 'id,permalink_url,message,created_time,shares';
+//
+// `full_picture` is a plain top-level field (not a `.summary()` sub-field
+// edge like reactions/comments above), so it should not carry the same
+// all-or-nothing denial risk — but its permission requirement is unverified
+// (spec §5: report the finding, don't fabricate). Kept last/isolated so a
+// future denial is easy to spot and drop without touching the rest.
+const PAGE_POST_FIELDS = 'id,permalink_url,message,created_time,shares,full_picture';
 
 export async function listPagePosts(
   pageId: string,
@@ -488,9 +496,30 @@ export type IgMedia = {
   /** Direct fields on IG media (no `read_insights` needed) — engagement fallback. */
   like_count?: number;
   comments_count?: number;
+  /** Preview image/video urls (temporary CDN urls — mirror, never persist directly). See `pickPreviewUrl`. */
+  media_url?: string;
+  thumbnail_url?: string;
 };
 
-const IG_MEDIA_FIELDS = 'id,caption,media_type,permalink,timestamp,like_count,comments_count';
+// media_url/thumbnail_url verified live 2026-07-05 under instagram_business_basic, no appsecret_proof (spec §5).
+const IG_MEDIA_FIELDS = 'id,caption,media_type,permalink,timestamp,like_count,comments_count,media_url,thumbnail_url';
+
+/**
+ * Which URL to render as a post's preview thumbnail (spec §5/§7). VIDEO/REELS
+ * carry the video itself in `media_url` — `thumbnail_url` is their actual
+ * still-image preview. IMAGE/CAROUSEL_ALBUM (and any other type) use
+ * `media_url` directly. Falls back to the FB `full_picture` field, then null.
+ */
+export function pickPreviewUrl(media: {
+  media_type?: string | null;
+  media_url?: string | null;
+  thumbnail_url?: string | null;
+  full_picture?: string | null;
+}): string | null {
+  const isVideoLike = media.media_type === 'VIDEO' || media.media_type === 'REELS';
+  if (isVideoLike && media.thumbnail_url) return media.thumbnail_url;
+  return media.media_url ?? media.full_picture ?? null;
+}
 
 export async function listIgMedia(
   igId: string,

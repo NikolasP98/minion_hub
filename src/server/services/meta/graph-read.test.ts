@@ -14,6 +14,7 @@ import {
   exchangeIgCodeForToken,
   exchangeIgLongLivedToken,
   refreshIgToken,
+  pickPreviewUrl,
 } from './graph-read';
 
 function jsonResponse(body: unknown, init: { ok?: boolean; status?: number; headers?: Record<string, string> } = {}) {
@@ -358,7 +359,7 @@ describe('versioned opt — graph.instagram.com is unversioned, graph.facebook.c
     const fetchImpl = mockFetch(jsonResponse({ data: [] }));
     await listIgMedia('ig-user-1', 'ig-token', {}, { fetchImpl, baseUrl: 'https://graph.instagram.com', versioned: false });
     const calledUrl = (fetchImpl.mock.calls[0]?.[0] as string) ?? '';
-    expect(calledUrl).toBe(`https://graph.instagram.com/ig-user-1/media?fields=${encodeURIComponent('id,caption,media_type,permalink,timestamp,like_count,comments_count')}&access_token=ig-token`);
+    expect(calledUrl).toBe(`https://graph.instagram.com/ig-user-1/media?fields=${encodeURIComponent('id,caption,media_type,permalink,timestamp,like_count,comments_count,media_url,thumbnail_url')}&access_token=ig-token`);
     expect(calledUrl).not.toContain('/v23.0/');
   });
 
@@ -367,6 +368,42 @@ describe('versioned opt — graph.instagram.com is unversioned, graph.facebook.c
     await listIgMedia('ig1', 'ptok', {}, { fetchImpl });
     const calledUrl = (fetchImpl.mock.calls[0]?.[0] as string) ?? '';
     expect(calledUrl).toContain('/v23.0/');
+  });
+});
+
+describe('pickPreviewUrl', () => {
+  it('prefers thumbnail_url for VIDEO', () => {
+    expect(pickPreviewUrl({ media_type: 'VIDEO', media_url: 'video.mp4', thumbnail_url: 'thumb.jpg' })).toBe(
+      'thumb.jpg',
+    );
+  });
+
+  it('prefers thumbnail_url for REELS', () => {
+    expect(pickPreviewUrl({ media_type: 'REELS', media_url: 'video.mp4', thumbnail_url: 'thumb.jpg' })).toBe(
+      'thumb.jpg',
+    );
+  });
+
+  it('falls back to media_url for VIDEO/REELS when no thumbnail_url', () => {
+    expect(pickPreviewUrl({ media_type: 'VIDEO', media_url: 'video.mp4' })).toBe('video.mp4');
+  });
+
+  it('uses media_url for IMAGE', () => {
+    expect(pickPreviewUrl({ media_type: 'IMAGE', media_url: 'img.jpg', thumbnail_url: 'ignored.jpg' })).toBe(
+      'img.jpg',
+    );
+  });
+
+  it('uses media_url for CAROUSEL_ALBUM', () => {
+    expect(pickPreviewUrl({ media_type: 'CAROUSEL_ALBUM', media_url: 'img.jpg' })).toBe('img.jpg');
+  });
+
+  it('falls back to full_picture (FB posts have no media_url/thumbnail_url)', () => {
+    expect(pickPreviewUrl({ full_picture: 'fb-preview.jpg' })).toBe('fb-preview.jpg');
+  });
+
+  it('returns null when nothing usable is present', () => {
+    expect(pickPreviewUrl({ media_type: 'IMAGE' })).toBeNull();
   });
 });
 
