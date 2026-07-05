@@ -3829,5 +3829,6 @@
   "data_table_agg_count": "Conteo",
   "data_table_bulk_actions": "Acciones masivas",
   "data_table_expand": "Expandir",
-  "data_table_collapse": "Contraer"
+  "data_table_collapse": "Contraer",
+  "data_table_fit_column": "Ajustar al contenido (doble clic)"
 }

@@ -285,6 +285,7 @@
 	// Header drag-reorder: pointer-based, horizontal-only. The header AND its
 	// column cells translate with the cursor; a drop indicator marks the gap.
 	let theadEl: HTMLTableSectionElement | null = $state(null);
+	let tableEl: HTMLTableElement | null = $state(null);
 	let hdrDrag = $state<{ key: string; startX: number; dx: number; active: boolean } | null>(null);
 	let dropTarget = $state<{ key: string; side: 'before' | 'after' } | null>(null);
 
@@ -350,6 +351,21 @@
 		};
 		window.addEventListener('pointermove', move);
 		window.addEventListener('pointerup', up);
+	}
+	// Double-click the resize handle → fit the column to its content. Every cell
+	// clips (overflow hidden), so scrollWidth is the true content width; take the
+	// widest cell in the column (header + body) and pin the column to it.
+	function autoFitColumn(c: DataColumn<T>, e: MouseEvent) {
+		e.stopPropagation();
+		e.preventDefault();
+		if (!tableEl) return;
+		let max = 0;
+		for (const el of tableEl.querySelectorAll<HTMLElement>(`[data-col="${CSS.escape(c.key)}"]`))
+			max = Math.max(max, el.scrollWidth);
+		if (max > 0) {
+			widths = { ...widths, [c.key]: Math.min(640, Math.max(64, max + 8)) };
+			persist();
+		}
 	}
 
 	// ── Menu drag-reorder (drag a column row up/down; reflects table order) ────
@@ -724,7 +740,7 @@
 				<p class="t-caption">{emptyMessage ?? m.data_table_empty()}</p>
 			</div>
 		{:else}
-			<table class="dt-table text-sm" class:dragging={hdrDrag?.active} style="width:100%; min-width:{totalWidth}px">
+			<table bind:this={tableEl} class="dt-table text-sm" class:dragging={hdrDrag?.active} style="width:100%; min-width:{totalWidth}px">
 				<colgroup>
 					{#if selectable}<col style="width:{SEL_W}px" />{/if}
 					{#if expandEnabled}<col style="width:{EXP_W}px" />{/if}
@@ -760,6 +776,16 @@
 								oncontextmenu={(e) => openCtx(c, e)}
 							>
 								{#if reorderable}<GripVertical size={11} class="grip" />{/if}
+								<!-- Aggregates stack ABOVE the title; the title stays pinned to the
+								     cell bottom (dt-th vertical-align:bottom) so every column's title
+								     lines up regardless of how many aggregates it shows. -->
+								{#if aggs.length}
+									<div class="dt-agg-row {c.align === 'right' ? 'items-end' : c.align === 'center' ? 'items-center' : ''}">
+										{#each aggs as a (a.mode)}
+											<span class="dt-agg" title={a.mode}>{@render aggIcon(a.mode)}{a.value}</span>
+										{/each}
+									</div>
+								{/if}
 								<div class="flex items-center gap-1 {c.align === 'right' ? 'justify-end' : c.align === 'center' ? 'justify-center' : ''}">
 									{#if c.filter}
 										<ColumnFilter label={c.label} options={c.filter.options()} selected={filterSet(c.key)}
@@ -776,16 +802,11 @@
 										<span class="dt-hlabel">{c.label}</span>
 									{/if}
 								</div>
-								{#if aggs.length}
-									<div class="dt-agg-row {c.align === 'right' ? 'justify-end' : c.align === 'center' ? 'justify-center' : ''}">
-										{#each aggs as a (a.mode)}
-											<span class="dt-agg" title={a.mode}>{@render aggIcon(a.mode)}{a.value}</span>
-										{/each}
-									</div>
-								{/if}
 								{#if resizable && c.resizable !== false}
 									<!-- svelte-ignore a11y_no_static_element_interactions -->
-									<span class="dt-resize" class:resizing={resizeKey === c.key} onpointerdown={(e) => onResizeDown(c, i, e)}></span>
+									<span class="dt-resize" class:resizing={resizeKey === c.key}
+										onpointerdown={(e) => onResizeDown(c, i, e)}
+										ondblclick={(e) => autoFitColumn(c, e)} title={m.data_table_fit_column()}></span>
 								{/if}
 							</th>
 						{/each}
@@ -825,7 +846,7 @@
 								</td>
 							{/if}
 							{#each visibleColumns as c (c.key)}
-								<td class="dt-cell px-3 py-2 {cellAlign(c.align)} {c.cellClass ?? ''}" class:dt-wrap={wrap.has(c.key)} style={dragStyle(c)}>
+								<td data-col={c.key} class="dt-cell px-3 py-2 {cellAlign(c.align)} {c.cellClass ?? ''}" class:dt-wrap={wrap.has(c.key)} style={dragStyle(c)}>
 									{#if editing && c.editable}
 										<input class="dt-inp {c.align === 'right' ? 'text-right w-24' : 'w-full'}" type={c.editType === 'number' ? 'number' : 'text'}
 											step={c.editType === 'number' ? 'any' : undefined} bind:value={draft[c.key]} onclick={(e) => e.stopPropagation()} />
@@ -920,21 +941,27 @@
 
 	/* ── Table + fixed layout (resize one col → others hold; scroll x) ─────── */
 	.dt-table { table-layout: fixed; border-collapse: collapse; }
-	.dt-th { position: relative; user-select: none; }
+	/* vertical-align:bottom pins every header's title to the cell bottom, so
+	   titles line up across columns no matter how many aggregates stack above. */
+	.dt-th { position: relative; user-select: none; vertical-align: bottom; }
 	.dt-table.dragging .dt-th { cursor: grabbing; }
 	.dt-th.dragging { z-index: 30; background: var(--color-card); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4); opacity: 0.97; cursor: grabbing; }
 	.dt-th.drop-before { box-shadow: inset 2px 0 0 0 var(--color-accent); }
 	.dt-th.drop-after { box-shadow: inset -2px 0 0 0 var(--color-accent); }
 	.dt-hlabel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.dt-agg-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.1rem 0.55rem; margin-top: 0.15rem; }
-	.dt-agg { display: inline-flex; align-items: center; gap: 0.15rem; font-size: 0.66rem; font-weight: 600; color: var(--color-accent); font-variant-numeric: tabular-nums; }
+	/* Aggregates always stack vertically, above the title. */
+	.dt-agg-row { display: flex; flex-direction: column; align-items: flex-start; gap: 0.05rem; margin-bottom: 0.2rem; }
+	/* Desaturated vs the pure accent a sorted header uses, so aggregate figures
+	   read as secondary and don't get confused with the active-sort colour.
+	   Override --dt-agg-color to retune. */
+	.dt-agg { display: inline-flex; align-items: center; gap: 0.15rem; font-size: 0.66rem; font-weight: 600; color: var(--dt-agg-color, color-mix(in srgb, var(--color-accent) 45%, var(--color-muted-foreground))); font-variant-numeric: tabular-nums; }
 	.sort-h { display: inline-flex; align-items: center; gap: 0.25rem; min-width: 0; font: inherit; color: inherit; cursor: pointer; }
 	.sort-h.active { color: var(--color-accent); }
 	:global(.sort-h .dim) { opacity: 0.35; flex-shrink: 0; }
 	/* Drag grip pinned to the far LEFT edge of every header, regardless of the
 	   column's text alignment. Decorative — pointer-events off so the drag
 	   (th pointerdown) and the sort/filter controls beneath it still work. */
-	:global(.dt-th .grip) { position: absolute; left: 3px; top: 0.7rem; opacity: 0; cursor: grab; color: var(--color-muted-foreground); transition: opacity 0.12s; pointer-events: none; }
+	:global(.dt-th .grip) { position: absolute; left: 3px; bottom: 0.6rem; opacity: 0; cursor: grab; color: var(--color-muted-foreground); transition: opacity 0.12s; pointer-events: none; }
 	.dt-th:hover :global(.grip) { opacity: 0.45; }
 	.dt-resize { position: absolute; top: 0; right: -2px; width: 7px; height: 100%; cursor: col-resize; z-index: 2; touch-action: none; }
 	.dt-resize::after { content: ''; position: absolute; top: 25%; right: 3px; width: 1px; height: 50%; background: var(--hairline); transition: background-color 0.12s; }

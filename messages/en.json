@@ -3829,5 +3829,6 @@
   "data_table_agg_count": "Count",
   "data_table_bulk_actions": "Bulk actions",
   "data_table_expand": "Expand",
-  "data_table_collapse": "Collapse"
+  "data_table_collapse": "Collapse",
+  "data_table_fit_column": "Fit to content (double-click)"
 }
