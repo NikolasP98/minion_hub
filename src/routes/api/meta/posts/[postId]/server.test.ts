@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mapIgMediaDetail, mapFbAttachments } from './+server';
+import { mapIgMediaDetail, mapFbAttachments } from './media-mapping';
 
 vi.mock('$server/auth/core-ctx', () => ({
   getCoreCtx: () => Promise.resolve({ db: {}, tenantId: 'org-1' }),
