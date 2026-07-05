@@ -594,10 +594,13 @@ describe('runJob — connection-by-kind selection (spec 2026-07-05-instagram-log
     await runJob(ctx, 'job-posts-both');
 
     expect(listPagePosts).toHaveBeenCalledWith('page-1', 'page-token', expect.anything(), expect.anything());
+    // IG-Login reads /me/media (the OAuth user id is not a valid media-node
+    // path on graph.instagram.com) with NO `since` (unsupported there) —
+    // live-verified 2026-07-05.
     expect(listIgMedia).toHaveBeenCalledWith(
-      'ig-user-1',
+      'me',
       'ig-token',
-      expect.anything(),
+      {},
       expect.objectContaining({ baseUrl: 'https://graph.instagram.com', versioned: false }),
     );
     // IG-Login's instagram_business_basic scope never grants /insights — the

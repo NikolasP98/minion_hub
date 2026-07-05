@@ -579,12 +579,19 @@ async function syncPosts(
     const fetchOpts = isIgLogin ? { baseUrl: 'https://graph.instagram.com', versioned: false } : graphAuthOpts();
     const pageOpts = isIgLogin ? {} : graphAuthOpts();
 
+    // IG-Login (graph.instagram.com) reads the token owner's media at
+    // `/me/media` — the OAuth-returned user id is NOT a valid media-node path
+    // (live-verified: `/{id}/media` → code 100 subcode 33) — and rejects the
+    // `since` param entirely (unsupported → code 100). Media is cursor-only,
+    // so full history comes via paging.next; the slice cap bounds volume.
+    const igMediaId = isIgLogin ? 'me' : asset.externalId;
+    const igParams = isIgLogin ? {} : { since };
     let page =
       i === resume.i && resume.next
         ? await fetchNextPage<PagePost | IgMedia>(resume.next, pageOpts)
         : platform === 'fb'
           ? await listPagePosts(asset.externalId, token, { since }, fetchOpts)
-          : await listIgMedia(asset.externalId, token, { since }, fetchOpts);
+          : await listIgMedia(igMediaId, token, igParams, fetchOpts);
 
     for (;;) {
       if (!page.ok) {
