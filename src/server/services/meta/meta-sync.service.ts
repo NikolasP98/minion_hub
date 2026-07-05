@@ -414,7 +414,9 @@ async function markPromotedPosts(ctx: CoreCtx, storyIds: Set<string>): Promise<v
   if (storyIds.size === 0) return;
   await withOrgCore(ctx, (tx) =>
     tx.execute(
-      sql`update meta_post_insights set is_promoted = true where org_id = ${ctx.tenantId} and post_id = any(${[...storyIds]}) and is_promoted = false`,
+      // drizzle renders a JS array as a parenthesized value list — valid for
+      // `in`, NOT for `any()` (which wants a real PG array).
+      sql`update meta_post_insights set is_promoted = true where org_id = ${ctx.tenantId} and post_id in ${[...storyIds]} and is_promoted = false`,
     ),
   );
 }
@@ -463,7 +465,7 @@ async function latestAdInsightDate(ctx: CoreCtx, adAccountId: string): Promise<s
 // Per-kind slice runners
 // ---------------------------------------------------------------------------
 
-type SliceResult = { cursor: string | null; counts: Record<string, number>; tokenExpired?: boolean };
+type SliceResult = { cursor: string | null; counts: Record<string, number | string[]>; tokenExpired?: boolean };
 
 /**
  * Aggregates every enabled ad account's promoted-post story ids into one set.
@@ -583,7 +585,10 @@ async function syncPosts(ctx: CoreCtx, job: MetaSyncJob, assets: MetaAsset[], us
 async function syncAds(ctx: CoreCtx, userToken: string, assets: MetaAsset[], job: MetaSyncJob): Promise<SliceResult> {
   const targets = assets.filter((a) => a.kind === 'ad_account').sort((a, b) => a.externalId.localeCompare(b.externalId));
   const resume = parseResume(job.pageCursor);
-  const counts = { adRowsUpserted: 0, accountsSkipped: 0 };
+  const counts: { adRowsUpserted: number; accountsSkipped: number; skipErrors?: string[] } = {
+    adRowsUpserted: 0,
+    accountsSkipped: 0,
+  };
   const rowsToUpsert: AdInsightInsertRow[] = [];
   const until = computeAdsUntil();
 
@@ -602,6 +607,11 @@ async function syncAds(ctx: CoreCtx, userToken: string, assets: MetaAsset[], job
       if (!page.ok) {
         if (page.error === 'token_expired') return { cursor: null, counts, tokenExpired: true };
         counts.accountsSkipped++;
+        // Swallowed per-asset errors have twice hidden real regressions — keep
+        // the first few (sanitized upstream by graph-read) in the job counts.
+        if ((counts.skipErrors ??= []).length < 3) {
+          counts.skipErrors.push(`${asset.externalId}: ${page.error ?? `status ${page.status}`}`);
+        }
         break;
       }
       for (const row of page.data ?? []) {

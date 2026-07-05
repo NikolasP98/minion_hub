@@ -130,10 +130,18 @@ export async function claimJob(ctx: CoreCtx, jobId: string): Promise<boolean> {
   });
 }
 
-/** Pure: sum numeric counters key-wise (base + delta). Exported for unit tests. */
-export function mergeCounts(base: Record<string, number>, delta: Record<string, number>): Record<string, number> {
-  const out: Record<string, number> = { ...base };
-  for (const [k, v] of Object.entries(delta)) out[k] = (out[k] ?? 0) + v;
+type Counts = Record<string, number | string[]>;
+
+/** Pure: sum numeric counters key-wise; string[] values (diagnostics like
+ *  skipErrors) concat capped at 3. Exported for unit tests. */
+export function mergeCounts(base: Counts, delta: Counts): Counts {
+  const out: Counts = { ...base };
+  for (const [k, v] of Object.entries(delta)) {
+    const prev = out[k];
+    out[k] = Array.isArray(v)
+      ? [...(Array.isArray(prev) ? prev : []), ...v].slice(0, 3)
+      : (typeof prev === 'number' ? prev : 0) + v;
+  }
   return out;
 }
 
@@ -141,17 +149,17 @@ export function mergeCounts(base: Record<string, number>, delta: Record<string, 
 export async function recordProgress(
   ctx: CoreCtx,
   jobId: string,
-  patch: { pageCursor: string | null; countsDelta?: Record<string, number> },
+  patch: { pageCursor: string | null; countsDelta?: Counts },
 ): Promise<void> {
   await withOrgCore(ctx, async (tx) => {
-    let counts: Record<string, number> | undefined;
+    let counts: Counts | undefined;
     if (patch.countsDelta) {
       const [row] = await tx
         .select({ counts: metaSyncJobs.counts })
         .from(metaSyncJobs)
         .where(and(eq(metaSyncJobs.id, jobId), eq(metaSyncJobs.orgId, ctx.tenantId)))
         .limit(1);
-      counts = mergeCounts((row?.counts as Record<string, number>) ?? {}, patch.countsDelta);
+      counts = mergeCounts((row?.counts as Counts) ?? {}, patch.countsDelta);
     }
     await tx
       .update(metaSyncJobs)
