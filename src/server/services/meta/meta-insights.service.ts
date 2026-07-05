@@ -368,7 +368,7 @@ export function getPostDetail(ctx: CoreCtx, postId: string): Promise<PostDetail 
       left join meta_post_media mm
         on mm.org_id = mi.org_id and mm.platform = mi.platform and mm.post_id = mi.post_id
       where mi.org_id = ${ctx.tenantId} and mi.post_id = ${postId} and mi.period = 'lifetime'
-      group by mi.post_id
+      group by mi.org_id, mi.post_id
     `)) as unknown as Array<Record<string, unknown>>;
     const r = rows[0];
     if (!r) return null;
