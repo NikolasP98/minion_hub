@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
 	import type { PageData } from './$types';
 	import * as m from '$lib/paraglide/messages';
 	import { Image, ExternalLink, Facebook, Instagram } from 'lucide-svelte';
@@ -11,18 +10,40 @@
 	const posts = $derived(data.posts);
 	type Row = (typeof posts)[number];
 
-	function setPlatform(platform: 'fb' | 'ig' | null) {
-		const p = new URLSearchParams(window.location.search);
-		if (platform) p.set('platform', platform);
-		else p.delete('platform');
-		goto(`/ads/posts?${p}`, { keepFocus: true, noScroll: true, replaceState: true });
-	}
+	const platformOptions = $derived([
+		{ value: 'fb', label: m.ads_platform_fb() },
+		{ value: 'ig', label: m.ads_platform_ig() },
+	]);
+	const typeOptions = $derived([
+		{ value: 'organic', label: m.ads_badge_organic() },
+		{ value: 'ad', label: m.ads_badge_ad() },
+	]);
 
-	function setPromoted(promoted: 'ad' | 'organic' | null) {
-		const p = new URLSearchParams(window.location.search);
-		if (promoted) p.set('promoted', promoted);
-		else p.delete('promoted');
-		goto(`/ads/posts?${p}`, { keepFocus: true, noScroll: true, replaceState: true });
+	// Raw metric keys come straight off the Meta Graph API (fixed vocabulary —
+	// see meta-sync/graph-read services); map the ones we know to human labels
+	// and fall back to a light humanization for anything unforeseen.
+	// ponytail: static map, not a translation lookup service — add a key here if a new metric shows up.
+	const METRIC_LABELS: Record<string, () => string> = {
+		reactions_total: m.ads_col_reactions,
+		reactions: m.ads_col_reactions,
+		post_reactions_by_type_total: m.ads_col_reactions,
+		comments_total: m.ads_col_comments,
+		comments: m.ads_col_comments,
+		shares_total: m.ads_col_shares,
+		shares: m.ads_col_shares,
+		saved: m.ads_col_saved,
+		likes: m.ads_col_likes,
+		views: m.ads_col_views,
+		plays: m.ads_col_plays,
+		reach: m.ads_col_reach,
+		post_impressions: m.ads_col_impressions,
+		post_impressions_unique: m.ads_col_impressions_unique,
+		post_clicks: m.ads_col_clicks,
+	};
+	function metricLabel(key: string): string {
+		const known = METRIC_LABELS[key];
+		if (known) return known();
+		return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 	}
 
 	const dateOf = (d: string | null) => (d ? new Date(d).getTime() : -Infinity);
@@ -47,12 +68,12 @@
 
 	const columns = $derived.by<DataColumn<Row>[]>(() => [
 		{ key: 'thumb', label: m.ads_col_thumbnail(), custom: true, sortable: false, exportable: false, align: 'center', width: 56 },
-		{ key: 'platform', label: m.ads_col_platform(), custom: true, accessor: (p) => p.platform ?? '', width: 110 },
-		{ key: 'type', label: m.ads_col_type(), custom: true, accessor: (p) => (p.isPromoted ? 'ad' : 'organic'), width: 110 },
+		{ key: 'platform', label: m.ads_col_platform(), custom: true, accessor: (p) => p.platform ?? '', width: 110, filter: { options: () => platformOptions } },
+		{ key: 'type', label: m.ads_col_type(), custom: true, accessor: (p) => (p.isPromoted ? 'ad' : 'organic'), width: 110, filter: { options: () => typeOptions } },
 		{ key: 'posted', label: m.ads_col_posted(), custom: true, accessor: (p) => p.postedAt, sortFn: (a, b) => dateOf(a.postedAt) - dateOf(b.postedAt), exportValue: (p) => (p.postedAt ? new Date(p.postedAt).toISOString().slice(0, 10) : ''), width: 130 },
 		{ key: 'caption', label: m.ads_col_caption(), custom: true, accessor: (p) => p.caption ?? '', exportValue: (p) => p.caption ?? '', width: 340 },
 		...metricKeys.map((k): DataColumn<Row> => ({
-			key: `m:${k}`, label: k, align: 'right', numeric: true, custom: true,
+			key: `m:${k}`, label: metricLabel(k), align: 'right', numeric: true, custom: true,
 			accessor: (p) => p.metrics[k] ?? 0, sortFn: (a, b) => (a.metrics[k] ?? 0) - (b.metrics[k] ?? 0), width: 120,
 		})),
 		{ key: 'link', label: m.ads_post_view_link(), custom: true, align: 'center', sortable: false, exportable: false, width: 56 },
@@ -85,19 +106,6 @@
 			storageKey="ads-posts"
 			emptyMessage={m.ads_empty_posts_desc()}
 		>
-			{#snippet toolbar()}
-				<div class="seg-group">
-					<button class="seg" class:active={data.platform === null} onclick={() => setPlatform(null)}>{m.ads_col_platform()}</button>
-					<button class="seg" class:active={data.platform === 'fb'} onclick={() => setPlatform('fb')}>{m.ads_platform_fb()}</button>
-					<button class="seg" class:active={data.platform === 'ig'} onclick={() => setPlatform('ig')}>{m.ads_platform_ig()}</button>
-				</div>
-				<div class="seg-group">
-					<button class="seg" class:active={data.promoted === null} onclick={() => setPromoted(null)}>{m.ads_promoted_all()}</button>
-					<button class="seg" class:active={data.promoted === 'organic'} onclick={() => setPromoted('organic')}>{m.ads_promoted_organic()}</button>
-					<button class="seg" class:active={data.promoted === 'ad'} onclick={() => setPromoted('ad')}>{m.ads_promoted_ads()}</button>
-				</div>
-			{/snippet}
-
 			{#snippet cell(p: Row, col: DataColumn<Row>)}
 				{#if col.key === 'thumb'}
 					{#if p.thumbFileId}
@@ -130,23 +138,6 @@
 </div>
 
 <style>
-	.seg-group {
-		display: flex;
-		border: 1px solid var(--hairline);
-		border-radius: 6px;
-		overflow: hidden;
-	}
-	.seg {
-		padding: 0.3rem 0.7rem;
-		font-size: 0.78rem;
-		background: transparent;
-		border: none;
-		cursor: pointer;
-		color: var(--color-muted-foreground);
-		transition: background 0.15s, color 0.15s;
-	}
-	.seg:not(:last-child) { border-right: 1px solid var(--hairline); }
-	.seg.active { background: var(--color-accent); color: #fff; }
 	.post-platform {
 		font-size: 0.7rem;
 		padding: 0.1rem 0.45rem;
