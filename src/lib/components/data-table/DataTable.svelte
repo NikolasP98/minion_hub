@@ -64,6 +64,9 @@
 	/** Draft map handed to `onSaveRow` — column `key` → current input string. */
 	export type EditDraft = Record<string, string>;
 
+	/** Header-aggregate modes (non-exclusive per column). */
+	export type AggMode = 'sum' | 'avg' | 'count';
+
 	/** A bulk action shown in the toolbar kebab when rows are selected. */
 	export type BulkAction<T> = {
 		label: string;
@@ -93,6 +96,8 @@
 		MoreVertical,
 		WrapText,
 		Sigma,
+		Divide,
+		Hash,
 	} from 'lucide-svelte';
 	import { Button, Tooltip } from '$lib/components/ui';
 	import ColumnFilter from '$lib/components/crm/ColumnFilter.svelte';
@@ -193,7 +198,9 @@
 	let order = $state<string[]>(columns.map((c) => c.key));
 	let widths = $state<Record<string, number>>({});
 	let wrap = $state<Set<string>>(new Set());
-	let aggregates = $state<Record<string, 'sum' | 'avg' | 'count'>>({});
+	// Per-column aggregates are NON-exclusive: a value column can show sum + avg +
+	// count at once, each as its own icon-prefixed line in the header.
+	let aggregates = $state<Record<string, AggMode[]>>({});
 	let colMenuOpen = $state(false);
 
 	$effect(() => {
@@ -212,7 +219,7 @@
 		try {
 			const s = JSON.parse(raw) as {
 				hidden?: string[]; order?: string[]; widths?: Record<string, number>;
-				wrap?: string[]; aggregates?: Record<string, 'sum' | 'avg' | 'count'>;
+				wrap?: string[]; aggregates?: Record<string, AggMode | AggMode[]>;
 			};
 			const keys = new Set(columns.map((c) => c.key));
 			if (s.hidden) hidden = new Set(s.hidden.filter((k) => keys.has(k)));
@@ -222,7 +229,12 @@
 			}
 			if (s.widths) widths = Object.fromEntries(Object.entries(s.widths).filter(([k]) => keys.has(k)));
 			if (s.wrap) wrap = new Set(s.wrap.filter((k) => keys.has(k)));
-			if (s.aggregates) aggregates = Object.fromEntries(Object.entries(s.aggregates).filter(([k]) => keys.has(k)));
+			if (s.aggregates)
+				aggregates = Object.fromEntries(
+					Object.entries(s.aggregates)
+						.filter(([k]) => keys.has(k))
+						.map(([k, v]) => [k, Array.isArray(v) ? v : [v]]), // coerce old single-mode format
+				);
 		} catch {
 			/* ignore corrupt layout */
 		}
@@ -363,9 +375,12 @@
 		wrap = next;
 		persist();
 	}
-	function setAggregate(key: string, mode: 'sum' | 'avg' | 'count' | null) {
+	function toggleAggregate(key: string, mode: AggMode) {
+		const cur = aggregates[key] ?? [];
+		const has = cur.includes(mode);
+		const nextList = has ? cur.filter((x) => x !== mode) : [...cur, mode];
 		const next = { ...aggregates };
-		if (mode) next[key] = mode;
+		if (nextList.length) next[key] = nextList;
 		else delete next[key];
 		aggregates = next;
 		persist();
@@ -384,15 +399,20 @@
 		}
 		return set;
 	});
-	function aggValue(c: DataColumn<T>): string | null {
-		const mode = aggregates[c.key];
-		if (!mode) return null;
+	function aggOne(c: DataColumn<T>, mode: AggMode): string {
 		if (mode === 'count') return view.length.toLocaleString();
 		const nums = view.map((r) => Number(acc(c)(r))).filter((n) => Number.isFinite(n));
 		if (!nums.length) return '—';
 		const sum = nums.reduce((a, b) => a + b, 0);
 		const out = mode === 'sum' ? sum : sum / nums.length;
 		return out.toLocaleString(undefined, { maximumFractionDigits: 2 });
+	}
+	// All active aggregates for a column, in a stable order, with their values.
+	const AGG_ORDER: AggMode[] = ['sum', 'avg', 'count'];
+	function aggList(c: DataColumn<T>): { mode: AggMode; value: string }[] {
+		const active = aggregates[c.key];
+		if (!active?.length) return [];
+		return AGG_ORDER.filter((mode) => active.includes(mode)).map((mode) => ({ mode, value: aggOne(c, mode) }));
 	}
 
 	// ── Search ───────────────────────────────────────────────────────────────
@@ -594,6 +614,10 @@
 	const showColMenu = $derived(columnMenu && columns.some((c) => c.hideable !== false || reorderable));
 </script>
 
+{#snippet aggIcon(mode: AggMode)}
+	{#if mode === 'sum'}<Sigma size={10} />{:else if mode === 'avg'}<Divide size={10} />{:else}<Hash size={10} />{/if}
+{/snippet}
+
 <div class="flex flex-col h-full min-h-0 {className}">
 	<!-- Toolbar (compact, SAP-style: inline search + icon actions with tooltips) -->
 	{#if searchable || exportable || onAdd || showColMenu || toolbar || actions || bulkActions}
@@ -723,7 +747,7 @@
 						{#if expandEnabled}<th class="dt-th"></th>{/if}
 						{#each visibleColumns as c, i (c.key)}
 							{@const sorted = sortKey === c.key}
-							{@const agg = aggValue(c)}
+							{@const aggs = aggList(c)}
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							<th
 								data-col={c.key}
@@ -735,8 +759,8 @@
 								onpointerdown={(e) => onHeaderPointerDown(c, e)}
 								oncontextmenu={(e) => openCtx(c, e)}
 							>
+								{#if reorderable}<GripVertical size={11} class="grip" />{/if}
 								<div class="flex items-center gap-1 {c.align === 'right' ? 'justify-end' : c.align === 'center' ? 'justify-center' : ''}">
-									{#if reorderable}<GripVertical size={11} class="grip" />{/if}
 									{#if c.filter}
 										<ColumnFilter label={c.label} options={c.filter.options()} selected={filterSet(c.key)}
 											align={c.filter.align ?? (c.align === 'right' ? 'right' : 'left')}
@@ -752,7 +776,13 @@
 										<span class="dt-hlabel">{c.label}</span>
 									{/if}
 								</div>
-								{#if agg != null}<div class="dt-agg {c.align === 'right' ? 'text-right' : ''}">{aggregates[c.key]}: {agg}</div>{/if}
+								{#if aggs.length}
+									<div class="dt-agg-row {c.align === 'right' ? 'justify-end' : c.align === 'center' ? 'justify-center' : ''}">
+										{#each aggs as a (a.mode)}
+											<span class="dt-agg" title={a.mode}>{@render aggIcon(a.mode)}{a.value}</span>
+										{/each}
+									</div>
+								{/if}
 								{#if resizable && c.resizable !== false}
 									<!-- svelte-ignore a11y_no_static_element_interactions -->
 									<span class="dt-resize" class:resizing={resizeKey === c.key} onpointerdown={(e) => onResizeDown(c, i, e)}></span>
@@ -850,10 +880,12 @@
 			{#if numericKeys.has(cc.key)}
 				<div class="ctx-sep"></div>
 				<div class="ctx-h"><Sigma size={11} /> {m.data_table_aggregate()}</div>
-				{#each [['none', m.data_table_agg_none()], ['sum', m.data_table_agg_sum()], ['avg', m.data_table_agg_avg()], ['count', m.data_table_agg_count()]] as [mode, label] (mode)}
-					<button class="ctx-item ctx-sub" onclick={() => { setAggregate(cc.key, mode === 'none' ? null : (mode as 'sum' | 'avg' | 'count')); ctxMenu = null; }}>
+				{#each [['sum', m.data_table_agg_sum()], ['avg', m.data_table_agg_avg()], ['count', m.data_table_agg_count()]] as [mode, label] (mode)}
+					<!-- non-exclusive: toggle each; menu stays open so several can be enabled -->
+					<button class="ctx-item ctx-sub" onclick={() => toggleAggregate(cc.key, mode as AggMode)}>
+						{@render aggIcon(mode as AggMode)}
 						{label}
-						{#if (aggregates[cc.key] ?? 'none') === mode}<Check size={12} class="ctx-check" />{/if}
+						{#if aggregates[cc.key]?.includes(mode as AggMode)}<Check size={12} class="ctx-check" />{/if}
 					</button>
 				{/each}
 			{/if}
@@ -894,12 +926,16 @@
 	.dt-th.drop-before { box-shadow: inset 2px 0 0 0 var(--color-accent); }
 	.dt-th.drop-after { box-shadow: inset -2px 0 0 0 var(--color-accent); }
 	.dt-hlabel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.dt-agg { font-size: 0.66rem; font-weight: 600; color: var(--color-accent); text-transform: capitalize; margin-top: 0.1rem; font-variant-numeric: tabular-nums; }
+	.dt-agg-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.1rem 0.55rem; margin-top: 0.15rem; }
+	.dt-agg { display: inline-flex; align-items: center; gap: 0.15rem; font-size: 0.66rem; font-weight: 600; color: var(--color-accent); font-variant-numeric: tabular-nums; }
 	.sort-h { display: inline-flex; align-items: center; gap: 0.25rem; min-width: 0; font: inherit; color: inherit; cursor: pointer; }
 	.sort-h.active { color: var(--color-accent); }
 	:global(.sort-h .dim) { opacity: 0.35; flex-shrink: 0; }
-	:global(.dt-th .grip) { opacity: 0; cursor: grab; color: var(--color-muted-foreground); transition: opacity 0.12s; flex-shrink: 0; }
-	.dt-th:hover :global(.grip) { opacity: 0.4; }
+	/* Drag grip pinned to the far LEFT edge of every header, regardless of the
+	   column's text alignment. Decorative — pointer-events off so the drag
+	   (th pointerdown) and the sort/filter controls beneath it still work. */
+	:global(.dt-th .grip) { position: absolute; left: 3px; top: 0.7rem; opacity: 0; cursor: grab; color: var(--color-muted-foreground); transition: opacity 0.12s; pointer-events: none; }
+	.dt-th:hover :global(.grip) { opacity: 0.45; }
 	.dt-resize { position: absolute; top: 0; right: -2px; width: 7px; height: 100%; cursor: col-resize; z-index: 2; touch-action: none; }
 	.dt-resize::after { content: ''; position: absolute; top: 25%; right: 3px; width: 1px; height: 50%; background: var(--hairline); transition: background-color 0.12s; }
 	.dt-resize:hover::after, .dt-resize.resizing::after { background: var(--color-accent); }
