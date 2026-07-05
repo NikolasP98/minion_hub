@@ -61,6 +61,7 @@ import {
   adInsightRowToInsert,
   metricInsightsToRows,
   fallbackEngagementRows,
+  adTimeWindows,
   resolveSyncSince,
   fullAdsHistorySince,
   defaultSinceDate,
@@ -442,5 +443,29 @@ describe('runJob(posts) — promoted-post labeling + insights-call skip-after-fi
       }),
     );
     expect(finishJob).toHaveBeenCalledWith(ctx, 'job-1', 'succeeded');
+  });
+});
+
+describe('adTimeWindows — chunked ad-insights ranges', () => {
+  it('splits a multi-year range into consecutive \u226490-day windows with no gaps or overlap', () => {
+    const w = adTimeWindows('2023-07-05', '2026-07-05');
+    expect(w.length).toBeGreaterThan(10);
+    expect(w[0].since).toBe('2023-07-05');
+    expect(w[w.length - 1].until).toBe('2026-07-05');
+    for (let i = 1; i < w.length; i++) {
+      const prevEnd = Date.parse(`${w[i - 1].until}T00:00:00Z`);
+      const nextStart = Date.parse(`${w[i].since}T00:00:00Z`);
+      expect(nextStart - prevEnd).toBe(86_400_000);
+      const span = (Date.parse(`${w[i].until}T00:00:00Z`) - nextStart) / 86_400_000 + 1;
+      expect(span).toBeLessThanOrEqual(90);
+    }
+  });
+
+  it('a short incremental range stays a single window', () => {
+    expect(adTimeWindows('2026-06-01', '2026-07-05')).toEqual([{ since: '2026-06-01', until: '2026-07-05' }]);
+  });
+
+  it('degrades to the raw pair on unparseable/inverted input', () => {
+    expect(adTimeWindows('bogus', '2026-07-05')).toEqual([{ since: 'bogus', until: '2026-07-05' }]);
   });
 });

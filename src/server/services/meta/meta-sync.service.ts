@@ -107,15 +107,36 @@ export function computeAdsSince(lastSyncedDate: string | null, now: Date = new D
   return new Date(Math.max(restated, floor)).toISOString().slice(0, 10);
 }
 
-type Resume = { i: number; next?: string };
+/** `cs` = the ads sync's current time-window since-date (chunked pulls only). */
+type Resume = { i: number; next?: string; cs?: string };
 function parseResume(pageCursor: string | null): Resume {
   if (!pageCursor) return { i: 0 };
   try {
     const p = JSON.parse(pageCursor) as Partial<Resume>;
-    return typeof p.i === 'number' ? { i: p.i, next: p.next } : { i: 0 };
+    return typeof p.i === 'number' ? { i: p.i, next: p.next, cs: p.cs } : { i: 0 };
   } catch {
     return { i: 0 };
   }
+}
+
+/**
+ * Split [since, until] into consecutive ≤chunkDays windows (inclusive dates).
+ * Meta rejects daily×ad-level insights over long ranges with "Please reduce
+ * the amount of data you're asking for" (code 1) — pull quarter-sized windows.
+ */
+export function adTimeWindows(since: string, until: string, chunkDays = 90): Array<{ since: string; until: string }> {
+  const DAY = 86_400_000;
+  const iso = (t: number) => new Date(t).toISOString().slice(0, 10);
+  const end = Date.parse(`${until}T00:00:00Z`);
+  let s = Date.parse(`${since}T00:00:00Z`);
+  if (!Number.isFinite(s) || !Number.isFinite(end) || s > end) return [{ since, until }];
+  const out: Array<{ since: string; until: string }> = [];
+  while (s <= end) {
+    const e = Math.min(s + (chunkDays - 1) * DAY, end);
+    out.push({ since: iso(s), until: iso(e) });
+    s = e + DAY;
+  }
+  return out;
 }
 const serializeResume = (r: Resume): string => JSON.stringify(r);
 
@@ -602,35 +623,48 @@ async function syncAds(ctx: CoreCtx, userToken: string, assets: MetaAsset[], job
     // Meta and can take well past the default 15s (a 36-month full-history
     // pull hit the client abort) — give these calls a longer leash.
     const adTimeout = { timeoutMs: 55_000 };
-    let page =
-      i === resume.i && resume.next
-        ? await fetchNextPage<AdInsightRow>(resume.next, adTimeout)
-        : await adInsights(asset.externalId, userToken, { since, until }, { ...graphAuthOpts(), ...adTimeout });
+    // Meta rejects large daily×ad-level ranges outright ("Please reduce the
+    // amount of data you're asking for", code 1) — chunk into ≤90-day windows.
+    // The normal incremental path (≤90d since) is a single window, unchanged.
+    const windows = adTimeWindows(since, until);
+    const resumedAccount = i === resume.i;
+    let w0 = resumedAccount && resume.cs ? windows.findIndex((w) => w.since === resume.cs) : 0;
+    if (w0 < 0) w0 = 0;
 
-    for (;;) {
-      if (!page.ok) {
-        if (page.error === 'token_expired') return { cursor: null, counts, tokenExpired: true };
-        counts.accountsSkipped++;
-        // Swallowed per-asset errors have twice hidden real regressions — keep
-        // the first few (sanitized upstream by graph-read) in the job counts.
-        if ((counts.skipErrors ??= []).length < 3) {
-          counts.skipErrors.push(`${asset.externalId}: ${page.error ?? `status ${page.status}`}`);
+    for (let w = w0; w < windows.length; w++) {
+      let page =
+        resumedAccount && w === w0 && resume.next
+          ? await fetchNextPage<AdInsightRow>(resume.next, adTimeout)
+          : await adInsights(asset.externalId, userToken, windows[w], { ...graphAuthOpts(), ...adTimeout });
+
+      let accountFailed = false;
+      for (;;) {
+        if (!page.ok) {
+          if (page.error === 'token_expired') return { cursor: null, counts, tokenExpired: true };
+          counts.accountsSkipped++;
+          // Swallowed per-asset errors have twice hidden real regressions — keep
+          // the first few (sanitized upstream by graph-read) in the job counts.
+          if ((counts.skipErrors ??= []).length < 3) {
+            counts.skipErrors.push(`${asset.externalId} ${windows[w].since}: ${page.error ?? `status ${page.status}`}`);
+          }
+          accountFailed = true;
+          break;
         }
-        break;
-      }
-      for (const row of page.data ?? []) {
-        const insertRow = adInsightRowToInsert(row, { orgId: ctx.tenantId, adAccountId: asset.externalId, currency: asset.currency });
-        if (insertRow) {
-          rowsToUpsert.push(insertRow);
-          counts.adRowsUpserted++;
+        for (const row of page.data ?? []) {
+          const insertRow = adInsightRowToInsert(row, { orgId: ctx.tenantId, adAccountId: asset.externalId, currency: asset.currency });
+          if (insertRow) {
+            rowsToUpsert.push(insertRow);
+            counts.adRowsUpserted++;
+          }
         }
+        if (counts.adRowsUpserted >= MAX_AD_ROWS_PER_SLICE) {
+          await upsertAdInsights(ctx, rowsToUpsert);
+          return { cursor: serializeResume({ i, next: page.nextCursor, cs: windows[w].since }), counts };
+        }
+        if (!page.nextCursor) break;
+        page = await fetchNextPage<AdInsightRow>(page.nextCursor, adTimeout);
       }
-      if (counts.adRowsUpserted >= MAX_AD_ROWS_PER_SLICE) {
-        await upsertAdInsights(ctx, rowsToUpsert);
-        return { cursor: serializeResume({ i, next: page.nextCursor }), counts };
-      }
-      if (!page.nextCursor) break;
-      page = await fetchNextPage<AdInsightRow>(page.nextCursor, adTimeout);
+      if (accountFailed) break; // skip this account's remaining windows, move to the next account
     }
   }
   await upsertAdInsights(ctx, rowsToUpsert);
