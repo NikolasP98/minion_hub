@@ -19,11 +19,12 @@ import { env } from '$env/dynamic/private';
 import { withOrgCore } from '$server/db/with-org-core';
 import { getCoreDb } from '$server/db/pg-client';
 import type { CoreCtx } from '$server/auth/core-ctx';
-import { decrypt } from '$server/auth/crypto';
+import { decrypt, encrypt } from '$server/auth/crypto';
 import {
   metaConnections,
   metaPostInsights,
   metaAdInsights,
+  type MetaConnection,
   type MetaAsset,
   type MetaSyncJob,
 } from '$server/db/pg-meta-schema';
@@ -37,6 +38,7 @@ import {
   listAdStoryIds,
   listConversations,
   fetchNextPage,
+  refreshIgToken,
   type PagePost,
   type IgMedia,
   type MetricInsight,
@@ -487,7 +489,13 @@ async function latestAdInsightDate(ctx: CoreCtx, adAccountId: string): Promise<s
 // Per-kind slice runners
 // ---------------------------------------------------------------------------
 
-type SliceResult = { cursor: string | null; counts: Record<string, number | string[]>; tokenExpired?: boolean };
+type SliceResult = {
+  cursor: string | null;
+  counts: Record<string, number | string[]>;
+  tokenExpired?: boolean;
+  /** Which connection's token actually expired — only `syncPosts` can span more than one (see runJob). */
+  expiredConnectionId?: string;
+};
 
 /**
  * Aggregates every enabled ad account's promoted-post story ids into one set.
@@ -508,7 +516,21 @@ async function collectPromotedStoryIds(
   return { storyIds, failed };
 }
 
-async function syncPosts(ctx: CoreCtx, job: MetaSyncJob, assets: MetaAsset[], userToken: string): Promise<SliceResult> {
+/**
+ * `adStoryToken` is the FLB connection's user token (for ad-story linkage
+ * only — IG-Login has no ad accounts). `tokensByConnection` resolves the
+ * per-connection token for IG-Login-owned `ig` assets, whose token lives on
+ * the connection itself, not on any parent page (spec
+ * 2026-07-05-instagram-login-integration §7 — `parentPageId: null` is the
+ * discriminator between an IG-Login asset and an FLB-discovered one).
+ */
+async function syncPosts(
+  ctx: CoreCtx,
+  job: MetaSyncJob,
+  assets: MetaAsset[],
+  adStoryToken: string,
+  tokensByConnection: Map<string, string | null>,
+): Promise<SliceResult> {
   const pageAssets = assets.filter((a) => a.kind === 'page');
   const adAccountAssets = assets.filter((a) => a.kind === 'ad_account');
   const targets = assets
@@ -527,33 +549,48 @@ async function syncPosts(ctx: CoreCtx, job: MetaSyncJob, assets: MetaAsset[], us
   // lands for every post regardless.
   let insightsDenied = false;
 
-  const { storyIds, failed: adStoryFetchFailed } = userToken
-    ? await collectPromotedStoryIds(userToken, adAccountAssets)
+  const { storyIds, failed: adStoryFetchFailed } = adStoryToken
+    ? await collectPromotedStoryIds(adStoryToken, adAccountAssets)
     : { storyIds: new Set<string>(), failed: 0 };
   counts.adStoryFetchFailed = adStoryFetchFailed;
 
   for (let i = resume.i; i < targets.length; i++) {
     const { asset, platform } = targets[i];
-    const parentPage = platform === 'ig' ? pageAssets.find((p) => p.externalId === asset.parentPageId) : undefined;
+    // IG-Login asset: no parent page at all — its token lives on the owning
+    // connection. An FLB-discovered `ig` asset (via a Page's
+    // instagram_business_account) always has parentPageId set.
+    const isIgLogin = platform === 'ig' && !asset.parentPageId;
+    const parentPage =
+      platform === 'ig' && asset.parentPageId ? pageAssets.find((p) => p.externalId === asset.parentPageId) : undefined;
     const token =
       platform === 'fb'
         ? decryptOrNull(asset.pageTokenCiphertext, asset.pageTokenIv)
-        : decryptOrNull(parentPage?.pageTokenCiphertext, parentPage?.pageTokenIv);
+        : isIgLogin
+          ? (tokensByConnection.get(asset.connectionId) ?? null)
+          : decryptOrNull(parentPage?.pageTokenCiphertext, parentPage?.pageTokenIv);
     if (!token) {
       if (platform === 'ig') counts.igSkipped++;
       continue; // no usable token for this asset (permission/setup gap) — tolerate, next target
     }
 
+    // IG-Login media reads hit graph.instagram.com directly (unversioned, no
+    // Page/appsecret_proof in the loop) — see graph-read.ts's `versioned` opt
+    // and the spec's §2.6 appsecret_proof caveat (default OFF for this host).
+    const fetchOpts = isIgLogin ? { baseUrl: 'https://graph.instagram.com', versioned: false } : graphAuthOpts();
+    const pageOpts = isIgLogin ? {} : graphAuthOpts();
+
     let page =
       i === resume.i && resume.next
-        ? await fetchNextPage<PagePost | IgMedia>(resume.next, graphAuthOpts())
+        ? await fetchNextPage<PagePost | IgMedia>(resume.next, pageOpts)
         : platform === 'fb'
-          ? await listPagePosts(asset.externalId, token, { since }, graphAuthOpts())
-          : await listIgMedia(asset.externalId, token, { since }, graphAuthOpts());
+          ? await listPagePosts(asset.externalId, token, { since }, fetchOpts)
+          : await listIgMedia(asset.externalId, token, { since }, fetchOpts);
 
     for (;;) {
       if (!page.ok) {
-        if (page.error === 'token_expired') return { cursor: null, counts, tokenExpired: true };
+        if (page.error === 'token_expired') {
+          return { cursor: null, counts, tokenExpired: true, expiredConnectionId: asset.connectionId };
+        }
         break; // permission/other error on this asset — tolerate, move to next target
       }
       for (const post of page.data ?? []) {
@@ -572,7 +609,11 @@ async function syncPosts(ctx: CoreCtx, job: MetaSyncJob, assets: MetaAsset[], us
         // /insights is allowed — so the Posts tab always has rows to show.
         rowsToUpsert.push(...fallbackEngagementRows(post, postMeta));
 
-        if (insightsDenied) {
+        // IG-Login's instagram_business_basic scope doesn't grant /insights
+        // (that needs the FB-Login Business Discovery path) — never call it
+        // for this branch; the fallback engagement row above is the only row
+        // this pipe produces (spec §7 — same posture as FB's permanently-denied read_insights).
+        if (isIgLogin || insightsDenied) {
           counts.metricsSkipped++;
         } else {
           const insights =
@@ -580,7 +621,9 @@ async function syncPosts(ctx: CoreCtx, job: MetaSyncJob, assets: MetaAsset[], us
               ? await postInsights(post.id, token, graphAuthOpts())
               : await igMediaInsights(post.id, token, mediaType ?? 'IMAGE', graphAuthOpts());
           if (!insights.ok) {
-            if (insights.error === 'token_expired') return { cursor: null, counts, tokenExpired: true };
+            if (insights.error === 'token_expired') {
+              return { cursor: null, counts, tokenExpired: true, expiredConnectionId: asset.connectionId };
+            }
             counts.metricsDenied++;
             insightsDenied = true;
           } else {
@@ -596,7 +639,7 @@ async function syncPosts(ctx: CoreCtx, job: MetaSyncJob, assets: MetaAsset[], us
         return { cursor: serializeResume({ i, next: page.nextCursor }), counts };
       }
       if (!page.nextCursor) break;
-      page = await fetchNextPage<PagePost | IgMedia>(page.nextCursor, graphAuthOpts());
+      page = await fetchNextPage<PagePost | IgMedia>(page.nextCursor, pageOpts);
     }
   }
   await upsertPostInsights(ctx, rowsToUpsert);
@@ -732,9 +775,22 @@ async function syncMessages(ctx: CoreCtx, assets: MetaAsset[], job: MetaSyncJob)
 // Connection helpers (token expiry — spec §6 "Token expiry check first")
 // ---------------------------------------------------------------------------
 
-async function getUsableConnection(ctx: CoreCtx) {
+/** Every non-revoked connection for the org — an org can have an FLB one, an IG-Login one, or both. */
+async function getUsableConnections(ctx: CoreCtx): Promise<MetaConnection[]> {
   const all = await listConnections(ctx);
-  return all.find((c) => c.status !== 'revoked') ?? null;
+  return all.filter((c) => c.status !== 'revoked');
+}
+
+/**
+ * ads/messages only ever read `page`/`ad_account` assets, which only an FLB
+ * (`flb`/`system_user`) connection can own — an IG-Login connection never has
+ * ad accounts or Page conversations. Pick the FLB-kind connection explicitly
+ * so an org running both kinds doesn't have "first non-revoked wins"
+ * silently hand these jobs the IG-Login connection and see zero ad accounts
+ * / conversations (the bug flagged in spec 2026-07-05-instagram-login-integration §7).
+ */
+function pickFlbConnection(connections: MetaConnection[]): MetaConnection | null {
+  return connections.find((c) => c.kind !== 'ig_login') ?? connections[0] ?? null;
 }
 
 function classifyExpiry(tokenExpiresAt: Date | null): 'ok' | 'expiring' | 'expired' {
@@ -752,6 +808,32 @@ async function markConnectionStatus(ctx: CoreCtx, connectionId: string, status: 
       .set({ status, updatedAt: new Date() })
       .where(and(eq(metaConnections.id, connectionId), eq(metaConnections.orgId, ctx.tenantId))),
   );
+}
+
+/**
+ * IG-Login tokens always expire (~60 days, unlike FLB's usually-never-expiring
+ * business system-user token) and must be actively refreshed before expiry —
+ * Meta rejects a refresh once the token has actually expired (re-auth from
+ * scratch is the only path then, same as FLB's `expired` status today). Wired
+ * into the existing tick cadence at the `classifyExpiry` "expiring" (<7d)
+ * threshold — no new scheduled job (spec §7 "Token refresh hook").
+ */
+async function refreshIgConnectionToken(ctx: CoreCtx, connection: MetaConnection): Promise<MetaConnection | null> {
+  const token = decryptOrNull(connection.tokenCiphertext, connection.tokenIv);
+  if (!token) return null;
+  const refreshed = await refreshIgToken({ token });
+  if (!refreshed.ok || !refreshed.data?.access_token) return null;
+  const { ciphertext, iv } = encrypt(refreshed.data.access_token);
+  const tokenExpiresAt = refreshed.data.expires_in
+    ? new Date(Date.now() + refreshed.data.expires_in * 1000)
+    : connection.tokenExpiresAt;
+  await withOrgCore(ctx, (tx) =>
+    tx
+      .update(metaConnections)
+      .set({ tokenCiphertext: ciphertext, tokenIv: iv, tokenExpiresAt, status: 'active', updatedAt: new Date() })
+      .where(and(eq(metaConnections.id, connection.id), eq(metaConnections.orgId, ctx.tenantId))),
+  );
+  return { ...connection, tokenCiphertext: ciphertext, tokenIv: iv, tokenExpiresAt, status: 'active' };
 }
 
 /** Cross-org: orgs with a non-revoked Meta connection — feeds the tick's enqueue-if-stale sweep. */
@@ -773,41 +855,60 @@ export async function runJob(ctx: CoreCtx, jobId: string): Promise<void> {
   const job = await getJobById(ctx, jobId);
   if (!job) return;
 
-  const connection = await getUsableConnection(ctx);
-  if (!connection) {
+  const candidates = await getUsableConnections(ctx);
+  if (candidates.length === 0) {
     await finishJob(ctx, jobId, 'failed', { error: 'no meta connection' });
     return;
   }
 
-  const expiry = classifyExpiry(connection.tokenExpiresAt);
-  if (expiry === 'expired') {
-    await markConnectionStatus(ctx, connection.id, 'expired');
+  // Each connection ages independently — an expired FLB connection shouldn't
+  // block an org's still-valid IG-Login connection (or vice versa). Only fail
+  // the job outright when every candidate is expired.
+  const usable: MetaConnection[] = [];
+  for (let connection of candidates) {
+    const expiry = classifyExpiry(connection.tokenExpiresAt);
+    if (expiry === 'expired') {
+      await markConnectionStatus(ctx, connection.id, 'expired');
+      continue;
+    }
+    if (expiry === 'expiring') {
+      const refreshed = connection.kind === 'ig_login' ? await refreshIgConnectionToken(ctx, connection) : null;
+      if (refreshed) connection = refreshed;
+      else if (connection.status !== 'expiring') await markConnectionStatus(ctx, connection.id, 'expiring');
+    }
+    usable.push(connection);
+  }
+  if (usable.length === 0) {
     await finishJob(ctx, jobId, 'failed', { error: 'token_expired' });
     return;
   }
-  if (expiry === 'expiring' && connection.status !== 'expiring') {
-    await markConnectionStatus(ctx, connection.id, 'expiring');
-  }
 
-  let userToken = '';
+  // Jobs are (orgId, kind)-scoped, not connection-scoped — `posts` must read
+  // assets across every usable connection (an FLB page/ig asset AND an
+  // IG-Login ig asset can coexist for one org). `listAssets(ctx)` with no
+  // connectionId returns every org asset; filter to the connections still in play.
+  const assets = (await listAssets(ctx)).filter((a) => a.enabled && usable.some((c) => c.id === a.connectionId));
+  const tokensByConnection = new Map<string, string | null>();
+  for (const c of usable) tokensByConnection.set(c.id, decryptOrNull(c.tokenCiphertext, c.tokenIv));
+
+  const primary = pickFlbConnection(usable);
+  let primaryToken = '';
   if (job.kind === 'ads' || job.kind === 'posts') {
-    const decrypted = decryptOrNull(connection.tokenCiphertext, connection.tokenIv);
+    const decrypted = primary ? (tokensByConnection.get(primary.id) ?? null) : null;
     if (decrypted) {
-      userToken = decrypted;
+      primaryToken = decrypted;
     } else if (job.kind === 'ads') {
       await finishJob(ctx, jobId, 'failed', { error: 'token decrypt failed' });
       return;
     }
-    // posts: a missing user token just skips ad-story linkage (collectPromotedStoryIds) —
-    // the posts/media themselves are read with per-asset page tokens, not this one.
+    // posts: a missing primary token just skips ad-story linkage (collectPromotedStoryIds) —
+    // the posts/media themselves are read with per-asset (page or IG-Login-connection) tokens.
   }
-
-  const assets = (await listAssets(ctx, connection.id)).filter((a) => a.enabled);
 
   let result: SliceResult;
   try {
-    if (job.kind === 'posts') result = await syncPosts(ctx, job, assets, userToken);
-    else if (job.kind === 'ads') result = await syncAds(ctx, userToken, assets, job);
+    if (job.kind === 'posts') result = await syncPosts(ctx, job, assets, primaryToken, tokensByConnection);
+    else if (job.kind === 'ads') result = await syncAds(ctx, primaryToken, assets, job);
     else if (job.kind === 'messages') result = await syncMessages(ctx, assets, job);
     else {
       await finishJob(ctx, jobId, 'failed', { error: `unknown job kind: ${job.kind}` });
@@ -819,7 +920,8 @@ export async function runJob(ctx: CoreCtx, jobId: string): Promise<void> {
   }
 
   if (result.tokenExpired) {
-    await markConnectionStatus(ctx, connection.id, 'expired');
+    const expiredId = result.expiredConnectionId ?? primary?.id;
+    if (expiredId) await markConnectionStatus(ctx, expiredId, 'expired');
     await finishJob(ctx, jobId, 'failed', { error: 'token_expired' });
     return;
   }

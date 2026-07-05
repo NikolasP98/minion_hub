@@ -446,6 +446,168 @@ describe('runJob(posts) — promoted-post labeling + insights-call skip-after-fi
   });
 });
 
+describe('runJob — connection-by-kind selection (spec 2026-07-05-instagram-login-integration §7)', () => {
+  const flbConnection = {
+    id: 'conn-1',
+    orgId: 'org-1',
+    kind: 'system_user',
+    fbUserId: 'fbu-1',
+    tokenCiphertext: 'user-token',
+    tokenIv: 'iv',
+    tokenExpiresAt: null,
+    grantedScopes: [],
+    status: 'active',
+    connectedBy: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+  const igConnection = {
+    id: 'conn-ig',
+    orgId: 'org-1',
+    kind: 'ig_login',
+    fbUserId: 'ig-user-1',
+    tokenCiphertext: 'ig-token',
+    tokenIv: 'iv',
+    tokenExpiresAt: new Date(Date.now() + 30 * 86_400_000), // well inside the 60-day life, not "expiring"
+    grantedScopes: ['instagram_business_basic'],
+    status: 'active',
+    connectedBy: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+  const pageAsset = {
+    id: 'asset-page-1',
+    orgId: 'org-1',
+    connectionId: 'conn-1',
+    kind: 'page',
+    externalId: 'page-1',
+    name: 'FACES Page',
+    pageTokenCiphertext: 'page-token',
+    pageTokenIv: 'iv',
+    parentPageId: null,
+    currency: null,
+    enabled: true,
+    meta: {},
+    createdAt: new Date(),
+  } as unknown as MetaAsset;
+  const adAccountAsset = {
+    id: 'asset-ad-1',
+    orgId: 'org-1',
+    connectionId: 'conn-1',
+    kind: 'ad_account',
+    externalId: 'act_1',
+    name: 'FACES Ads',
+    pageTokenCiphertext: null,
+    pageTokenIv: null,
+    parentPageId: null,
+    currency: 'PEN',
+    enabled: true,
+    meta: {},
+    createdAt: new Date(),
+  } as unknown as MetaAsset;
+  // IG-Login asset: no parent page — the discriminator syncPosts uses to know
+  // its token lives on the connection (conn-ig), not a parent page asset.
+  const igLoginAsset = {
+    id: 'asset-ig-login-1',
+    orgId: 'org-1',
+    connectionId: 'conn-ig',
+    kind: 'ig',
+    externalId: 'ig-user-1',
+    name: 'faces.sculptors',
+    pageTokenCiphertext: null,
+    pageTokenIv: null,
+    parentPageId: null,
+    currency: null,
+    enabled: true,
+    meta: {},
+    createdAt: new Date(),
+  } as unknown as MetaAsset;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    claimJob.mockResolvedValue(true);
+    listAdStoryIds.mockResolvedValue({ ok: true, status: 200, data: [] });
+  });
+
+  it('ads job: picks the FLB connection token even when listConnections returns the IG-Login connection first', async () => {
+    listConnections.mockResolvedValue([igConnection, flbConnection]); // IG-Login sorts first — "first wins" would pick the wrong one
+    listAssets.mockResolvedValue([adAccountAsset]);
+    getJobById.mockResolvedValue({
+      id: 'job-ads',
+      orgId: 'org-1',
+      kind: 'ads',
+      status: 'running',
+      pageCursor: null,
+      since: null,
+      until: null,
+      counts: {},
+      error: null,
+      startedAt: new Date(),
+      finishedAt: null,
+      createdAt: new Date(),
+    } as unknown as MetaSyncJob);
+    adInsightsMock.mockResolvedValue({ ok: true, status: 200, data: [] });
+
+    const { db } = createMockDb();
+    const ctx = { db: db as never, tenantId: 'org-1' };
+    await runJob(ctx, 'job-ads');
+
+    expect(adInsightsMock).toHaveBeenCalledWith('act_1', 'user-token', expect.anything(), expect.anything());
+    expect(finishJob).toHaveBeenCalledWith(ctx, 'job-ads', 'succeeded');
+  });
+
+  it('posts job: reads the FLB page with its own page token AND the IG-Login asset with its connection token', async () => {
+    listConnections.mockResolvedValue([flbConnection, igConnection]);
+    listAssets.mockResolvedValue([pageAsset, igLoginAsset]);
+    getJobById.mockResolvedValue({
+      id: 'job-posts-both',
+      orgId: 'org-1',
+      kind: 'posts',
+      status: 'running',
+      pageCursor: null,
+      since: null,
+      until: null,
+      counts: {},
+      error: null,
+      startedAt: new Date(),
+      finishedAt: null,
+      createdAt: new Date(),
+    } as unknown as MetaSyncJob);
+    listPagePosts.mockResolvedValue({ ok: true, status: 200, data: [] });
+    listIgMedia.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: [
+        {
+          id: 'ig-media-1',
+          media_type: 'IMAGE',
+          permalink: 'https://instagram.com/p/1',
+          timestamp: '2026-07-01T00:00:00+0000',
+          like_count: 9,
+          comments_count: 4,
+        },
+      ],
+    });
+
+    const { db } = createMockDb();
+    const ctx = { db: db as never, tenantId: 'org-1' };
+    await runJob(ctx, 'job-posts-both');
+
+    expect(listPagePosts).toHaveBeenCalledWith('page-1', 'page-token', expect.anything(), expect.anything());
+    expect(listIgMedia).toHaveBeenCalledWith(
+      'ig-user-1',
+      'ig-token',
+      expect.anything(),
+      expect.objectContaining({ baseUrl: 'https://graph.instagram.com', versioned: false }),
+    );
+    // IG-Login's instagram_business_basic scope never grants /insights — the
+    // fallback engagement row (like_count/comments_count) is the only row this
+    // branch produces, never a live metrics call.
+    expect(igMediaInsights).not.toHaveBeenCalled();
+    expect(finishJob).toHaveBeenCalledWith(ctx, 'job-posts-both', 'succeeded');
+  });
+});
+
 describe('adTimeWindows — chunked ad-insights ranges', () => {
   it('splits a multi-year range into consecutive \u226490-day windows with no gaps or overlap', () => {
     const w = adTimeWindows('2023-07-05', '2026-07-05');
