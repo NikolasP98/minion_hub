@@ -8,6 +8,11 @@
 	let { data }: { data: PageData } = $props();
 	const rows = $derived(data.rows);
 
+	// svelte-ignore state_referenced_locally
+	let fromDate = $state(data.range.from);
+	// svelte-ignore state_referenced_locally
+	let toDate = $state(data.range.to);
+
 	let search = $state('');
 	type SortKey = 'name' | 'spend' | 'impressions' | 'reach' | 'clicks' | 'ctr' | 'cpc';
 	let sortKey = $state<SortKey>('spend');
@@ -54,7 +59,33 @@
 	function setLevel(level: 'campaign' | 'adset' | 'ad') {
 		const p = new URLSearchParams(window.location.search);
 		p.set('level', level);
-		goto(`/ads/campaigns?${p}`, { keepFocus: true, noScroll: true });
+		goto(`/ads/campaigns?${p}`, { keepFocus: true, noScroll: true, replaceState: true });
+	}
+
+	function navigateRange(f: string, t: string) {
+		const p = new URLSearchParams(window.location.search);
+		if (f) p.set('from', f);
+		if (t) p.set('to', t);
+		goto(`/ads/campaigns?${p}`, { keepFocus: true, noScroll: true, replaceState: true });
+	}
+
+	function preset30d() {
+		const to = new Date();
+		const from = new Date();
+		from.setDate(from.getDate() - 30);
+		fromDate = from.toISOString().slice(0, 10);
+		toDate = to.toISOString().slice(0, 10);
+		navigateRange(fromDate, toDate);
+	}
+
+	function presetAll() {
+		if (!data.extent.minDate || !data.extent.maxDate) return;
+		// range.to is exclusive — bump maxDate by 1 day so the last day of data is included.
+		const to = new Date(`${data.extent.maxDate}T00:00:00Z`);
+		to.setUTCDate(to.getUTCDate() + 1);
+		fromDate = data.extent.minDate;
+		toDate = to.toISOString().slice(0, 10);
+		navigateRange(fromDate, toDate);
 	}
 
 	function fmtMoney(v: number): string {
@@ -89,6 +120,16 @@
 		</div>
 	{:else}
 		<div class="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--hairline)]">
+			<label class="date-label">
+				<span>{m.ads_date_from()}</span>
+				<input type="date" bind:value={fromDate} oninput={() => navigateRange(fromDate, toDate)} />
+			</label>
+			<label class="date-label">
+				<span>{m.ads_date_to()}</span>
+				<input type="date" bind:value={toDate} oninput={() => navigateRange(fromDate, toDate)} />
+			</label>
+			<button class="preset" onclick={preset30d}>{m.ads_preset_30d()}</button>
+			<button class="preset" onclick={presetAll}>{m.ads_preset_all()}</button>
 			<input
 				bind:value={search}
 				placeholder={m.ads_campaigns_search()}
@@ -158,6 +199,38 @@
 	}
 	.sort-h.active { color: var(--color-accent); }
 	:global(.sort-h .dim) { opacity: 0.35; }
+	.date-label {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		gap: 0.4rem;
+		font-size: 0.72rem;
+		color: var(--color-muted-foreground);
+		white-space: nowrap;
+	}
+	.date-label input {
+		padding: 0.3rem 0.5rem;
+		border: 1px solid var(--hairline);
+		border-radius: 6px;
+		background: var(--color-card);
+		color: var(--color-foreground);
+		font-size: 0.82rem;
+		color-scheme: dark;
+	}
+	.preset {
+		padding: 0.3rem 0.65rem;
+		font-size: 0.75rem;
+		background: transparent;
+		border: 1px solid var(--hairline);
+		border-radius: 6px;
+		cursor: pointer;
+		color: var(--color-muted-foreground);
+		transition: background 0.15s, color 0.15s;
+	}
+	.preset:hover {
+		background: var(--color-card);
+		color: inherit;
+	}
 	.seg-group {
 		display: flex;
 		border: 1px solid var(--hairline);

@@ -44,6 +44,41 @@ export function calcCpc(spend: number, clicks: number): number {
   return clicks > 0 ? spend / clicks : 0;
 }
 
+// ── Data extent (campaigns/dashboard "default to full history" logic) ──────
+
+export interface DataExtent {
+  minDate: string | null;
+  maxDate: string | null;
+}
+
+/** Org's ad-spend date range (min/max `date` in meta_ad_insights). Null bounds
+ *  when the org has no ad rows yet (nothing synced). */
+export function adDataExtent(ctx: CoreCtx): Promise<DataExtent> {
+  return withOrgCore(ctx, async (tx) => {
+    const [row] = (await tx.execute(sql`
+      select min(date)::text as min_date, max(date)::text as max_date
+      from meta_ad_insights
+      where org_id = ${ctx.tenantId}
+    `)) as unknown as Array<{ min_date: string | null; max_date: string | null }>;
+    return { minDate: row?.min_date ?? null, maxDate: row?.max_date ?? null };
+  });
+}
+
+/** Full-history DateRange from an extent (`to` exclusive, so maxDate+1 day).
+ *  Falls back to the last `fallbackDays` ending today when there's no data yet
+ *  (fresh/unsynced org) — same shape as the old hardcoded "last 30d" default. */
+export function extentToRange(extent: DataExtent, now: Date = new Date(), fallbackDays = 30): DateRange {
+  if (!extent.minDate || !extent.maxDate) {
+    const to = now.toISOString().slice(0, 10);
+    const from = new Date(now);
+    from.setUTCDate(from.getUTCDate() - fallbackDays);
+    return { from: from.toISOString().slice(0, 10), to };
+  }
+  const toDate = new Date(`${extent.maxDate}T00:00:00Z`);
+  toDate.setUTCDate(toDate.getUTCDate() + 1);
+  return { from: extent.minDate, to: toDate.toISOString().slice(0, 10) };
+}
+
 // ── Ad KPIs (dashboard ribbon) ──────────────────────────────────────────────
 
 export interface AdKpiTotals {
@@ -197,6 +232,11 @@ export interface PostRow {
   caption: string | null;
   postedAt: string | null;
   mediaType: string | null;
+  /** Denormalized from meta_post_insights.is_promoted — true when the post is
+   *  (also) a paid ad, not organic-only. Read via raw sql (not the drizzle
+   *  query builder) so this works whether or not the column has landed in
+   *  pg-meta-schema.ts yet — the column itself is already live in prod. */
+  isPromoted: boolean;
   /** Whatever metrics landed for this post — column set is driven by whatever
    *  the sync pulled (IG metric names drift; see spec §10 risk #1), not a
    *  hardcoded list. UI renders whichever keys are present. */
@@ -211,10 +251,11 @@ export interface PostRow {
  */
 export function postPerformance(
   ctx: CoreCtx,
-  opts: { limit?: number; orderBy?: 'recent' | 'score'; platform?: 'fb' | 'ig' } = {},
+  opts: { limit?: number; orderBy?: 'recent' | 'score'; platform?: 'fb' | 'ig'; promoted?: boolean } = {},
 ): Promise<PostRow[]> {
   const limit = Math.min(opts.limit ?? 200, 500);
   const platformCond = opts.platform ? sql` and platform = ${opts.platform}` : sql``;
+  const promotedCond = opts.promoted === undefined ? sql`` : sql` and is_promoted = ${opts.promoted}`;
   const orderClause = opts.orderBy === 'recent' ? sql`posted_at desc nulls last` : sql`score desc nulls last`;
   return withOrgCore(ctx, async (tx) => {
     const rows = (await tx.execute(sql`
@@ -224,10 +265,11 @@ export function postPerformance(
              max(caption) as caption,
              max(posted_at)::text as posted_at,
              max(media_type) as media_type,
+             bool_or(is_promoted) as is_promoted,
              jsonb_object_agg(metric, value) as metrics,
              sum(value)::float8 as score
       from meta_post_insights
-      where org_id = ${ctx.tenantId} and period = 'lifetime'${platformCond}
+      where org_id = ${ctx.tenantId} and period = 'lifetime'${platformCond}${promotedCond}
       group by post_id
       order by ${orderClause}
       limit ${limit}
@@ -239,6 +281,7 @@ export function postPerformance(
       caption: r.caption != null ? String(r.caption) : null,
       postedAt: r.posted_at != null ? String(r.posted_at) : null,
       mediaType: r.media_type != null ? String(r.media_type) : null,
+      isPromoted: Boolean(r.is_promoted),
       metrics: Object.fromEntries(
         Object.entries((r.metrics as Record<string, unknown>) ?? {}).map(([k, v]) => [k, Number(v)]),
       ),

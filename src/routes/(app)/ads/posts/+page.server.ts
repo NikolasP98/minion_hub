@@ -13,8 +13,11 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   const platformParam = url.searchParams.get('platform');
   const platform = platformParam === 'fb' || platformParam === 'ig' ? platformParam : undefined;
 
+  const promotedParam = url.searchParams.get('promoted');
+  const promoted = promotedParam === 'ad' ? true : promotedParam === 'organic' ? false : undefined;
+
   const connections = await listConnections(ctx);
   const hasConnection = connections.some((c) => c.status !== 'revoked');
-  const posts = hasConnection ? await postPerformance(ctx, { limit: 200, orderBy: 'recent', platform }) : [];
-  return { hasConnection, posts, platform: platform ?? null };
+  const posts = hasConnection ? await postPerformance(ctx, { limit: 200, orderBy: 'recent', platform, promoted }) : [];
+  return { hasConnection, posts, platform: platform ?? null, promoted: promotedParam === 'ad' || promotedParam === 'organic' ? promotedParam : null };
 };

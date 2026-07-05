@@ -33,6 +33,16 @@
 		navigate(fromDate, toDate);
 	}
 
+	function presetAll() {
+		if (!data.extent.minDate || !data.extent.maxDate) return;
+		// range.to is exclusive — bump maxDate by 1 day so the last day of data is included.
+		const to = new Date(`${data.extent.maxDate}T00:00:00Z`);
+		to.setUTCDate(to.getUTCDate() + 1);
+		fromDate = data.extent.minDate;
+		toDate = to.toISOString().slice(0, 10);
+		navigate(fromDate, toDate);
+	}
+
 	function fmtMoney(v: number): string {
 		return v.toLocaleString(undefined, { maximumFractionDigits: 2 });
 	}
@@ -129,6 +139,7 @@
 						</label>
 					</div>
 					<button class="preset" onclick={preset30d}>{m.ads_preset_30d()}</button>
+					<button class="preset" onclick={presetAll}>{m.ads_preset_all()}</button>
 				</div>
 
 				{#if data.kpis && data.kpis.spend === 0 && data.kpis.impressions === 0}

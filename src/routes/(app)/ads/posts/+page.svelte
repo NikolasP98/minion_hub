@@ -17,9 +17,17 @@
 	});
 
 	function setPlatform(platform: 'fb' | 'ig' | null) {
-		const p = new URLSearchParams();
+		const p = new URLSearchParams(window.location.search);
 		if (platform) p.set('platform', platform);
-		goto(`/ads/posts?${p}`, { keepFocus: true, noScroll: true });
+		else p.delete('platform');
+		goto(`/ads/posts?${p}`, { keepFocus: true, noScroll: true, replaceState: true });
+	}
+
+	function setPromoted(promoted: 'ad' | 'organic' | null) {
+		const p = new URLSearchParams(window.location.search);
+		if (promoted) p.set('promoted', promoted);
+		else p.delete('promoted');
+		goto(`/ads/posts?${p}`, { keepFocus: true, noScroll: true, replaceState: true });
 	}
 
 	function fmtDate(d: string | null): string {
@@ -58,6 +66,11 @@
 				<button class="seg" class:active={data.platform === 'fb'} onclick={() => setPlatform('fb')}>{m.ads_platform_fb()}</button>
 				<button class="seg" class:active={data.platform === 'ig'} onclick={() => setPlatform('ig')}>{m.ads_platform_ig()}</button>
 			</div>
+			<div class="seg-group">
+				<button class="seg" class:active={data.promoted === null} onclick={() => setPromoted(null)}>{m.ads_promoted_all()}</button>
+				<button class="seg" class:active={data.promoted === 'organic'} onclick={() => setPromoted('organic')}>{m.ads_promoted_organic()}</button>
+				<button class="seg" class:active={data.promoted === 'ad'} onclick={() => setPromoted('ad')}>{m.ads_promoted_ads()}</button>
+			</div>
 			<span class="t-caption">{m.ads_posts_count({ count: view.length })}</span>
 		</div>
 
@@ -72,6 +85,7 @@
 					<thead class="sticky top-0 bg-bg/95 backdrop-blur z-20">
 						<tr class="text-left t-caption border-b border-[var(--hairline)]">
 							<th class="px-4 py-2 font-medium">{m.ads_col_platform()}</th>
+							<th class="px-3 py-2 font-medium">{m.ads_col_type()}</th>
 							<th class="px-3 py-2 font-medium">{m.ads_col_posted()}</th>
 							<th class="px-3 py-2 font-medium">{m.ads_col_caption()}</th>
 							<th class="px-3 py-2 font-medium">{m.ads_col_metrics()}</th>
@@ -80,12 +94,15 @@
 					</thead>
 					<tbody>
 						{#if view.length === 0}
-							<tr><td colspan="5" class="px-4 py-8 text-center t-caption text-muted-foreground">{m.ads_posts_no_match()}</td></tr>
+							<tr><td colspan="6" class="px-4 py-8 text-center t-caption text-muted-foreground">{m.ads_posts_no_match()}</td></tr>
 						{/if}
 						{#each view as post (post.postId)}
 							<tr class="border-b border-[var(--hairline)]">
 								<td class="px-4 py-2">
 									<span class="post-platform" data-platform={post.platform ?? ''}>{post.platform === 'ig' ? m.ads_platform_ig() : m.ads_platform_fb()}</span>
+								</td>
+								<td class="px-3 py-2">
+									<span class="post-type" class:ad={post.isPromoted}>{post.isPromoted ? m.ads_badge_ad() : m.ads_badge_organic()}</span>
 								</td>
 								<td class="px-3 py-2 t-caption">{fmtDate(post.postedAt)}</td>
 								<td class="px-3 py-2 max-w-[24rem]"><span class="truncate block">{truncate(post.caption)}</span></td>
@@ -142,6 +159,17 @@
 	.post-platform[data-platform='fb'] {
 		background: color-mix(in srgb, var(--color-info, #3b82f6) 15%, transparent);
 		color: var(--color-info, #3b82f6);
+	}
+	.post-type {
+		font-size: 0.7rem;
+		padding: 0.1rem 0.45rem;
+		border-radius: 999px;
+		background: color-mix(in srgb, var(--color-muted-foreground) 15%, transparent);
+		color: var(--color-muted-foreground);
+	}
+	.post-type.ad {
+		background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+		color: var(--color-accent);
 	}
 	.metric-chip {
 		display: inline-block;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { previousRange, deltaPct, calcCtr, calcCpc } from './meta-insights.service';
+import { previousRange, deltaPct, calcCtr, calcCpc, extentToRange } from './meta-insights.service';
 
 describe('previousRange', () => {
   it('returns the equal-length window immediately before range', () => {
@@ -42,5 +42,23 @@ describe('calcCtr / calcCpc', () => {
   });
   it('returns 0 cpc with no clicks', () => {
     expect(calcCpc(50, 0)).toBe(0);
+  });
+});
+
+describe('extentToRange', () => {
+  const now = new Date('2026-07-04T12:00:00Z');
+
+  it('spans the full extent, to exclusive (maxDate + 1 day)', () => {
+    expect(extentToRange({ minDate: '2026-04-01', maxDate: '2026-04-06' }, now)).toEqual({
+      from: '2026-04-01',
+      to: '2026-04-07',
+    });
+  });
+
+  it('falls back to the last 30 days ending today when there is no data yet', () => {
+    expect(extentToRange({ minDate: null, maxDate: null }, now)).toEqual({
+      from: '2026-06-04',
+      to: '2026-07-04',
+    });
   });
 });
