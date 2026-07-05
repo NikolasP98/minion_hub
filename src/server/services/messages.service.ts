@@ -68,6 +68,9 @@ const ON_CONFLICT = {
     sessionKey: sql`excluded.session_key`,
     success: sql`excluded.success`,
     error: sql`excluded.error`,
+    // Fill-if-null only: lets a re-sync backfill names on rows ingested before
+    // the source started sending them, without ever clobbering an existing one.
+    senderName: sql`coalesce(${messages.senderName}, excluded.sender_name)`,
   },
 } as const;
 
