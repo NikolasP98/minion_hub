@@ -11,7 +11,7 @@
 	import FunnelStagePill from '$lib/components/crm/FunnelStagePill.svelte';
 	import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
 	import Highlight from '$lib/components/crm/Highlight.svelte';
-	import { relativeTime, contactLabel, temperatureOf } from '$lib/components/crm/crm-format';
+	import { relativeTime, contactLabel, temperatureOf, identityValue } from '$lib/components/crm/crm-format';
 	import { stageLabel, funnelStageLabel } from '$lib/components/crm/crm-i18n';
 	import { FUNNEL_ORDER, effectiveFunnelStage, maxFunnelStage, financeFloorStage } from '$lib/components/crm/crm-funnel';
 	import { collectMetaKeys, metaLabel, metaDisplay } from '$lib/components/crm/crm-meta';
@@ -151,8 +151,8 @@
 				name: contactLabel(r.display_name),
 				subtitle,
 				messages: r.total_msgs,
-				// list rows carry channel TYPES only (no per-identity value) — still unions/displays.
-				identities: (r.channels ?? []).map((ch) => ({ channel: ch, value: '' })),
+				// Per-identity channel + native id (phone / user id), formatted for display.
+				identities: (r.identities ?? []).map((i) => ({ channel: i.channel, value: identityValue(i.externalId, i.handle) })),
 			};
 		}),
 	);

@@ -200,6 +200,8 @@ export interface RankedContact {
   channels_used: number;
   /** Distinct channels the contact has an identity on (for branded icons). */
   channels: string[];
+  /** Per-identity rows (channel + native id) — feeds the merge resolver's channels view. */
+  identities: { channel: string; externalId: string | null; handle: string | null }[];
   /** Applied manual-tag ids (for client-side tag filtering). */
   tag_ids: string[];
   /** Custom-field metadata (jsonb) — drives the user-configurable list columns. */
@@ -338,6 +340,8 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
                coalesce(a.channels_used, 0) as channels_used,
                (select coalesce(array_agg(distinct ci.channel order by ci.channel), array[]::text[])
                   from crm_contact_identities ci where ci.contact_id = c.id) as channels,
+               (select coalesce(json_agg(json_build_object('channel', ci.channel, 'externalId', ci.external_id, 'handle', ci.handle)), '[]'::json)
+                  from crm_contact_identities ci where ci.contact_id = c.id) as identities,
                (select coalesce(array_agg(ct.tag_id::text), array[]::text[])
                   from crm_contact_tags ct where ct.contact_id = c.id) as tag_ids,
                -- effective first/last interaction = earliest/latest of {message, purchase}
@@ -357,7 +361,7 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
         where ${and(...conds)}
       ),
       scored as (
-        select contact_id, display_name, owner_id, source, channels, tag_ids,
+        select contact_id, display_name, owner_id, source, channels, identities, tag_ids,
                coalesce(custom_fields, '{}'::jsonb) as custom_fields,
                total_msgs, inbound_msgs, channels_used, first_contact_at, last_contact_at, awaiting_reply, is_buyer,
                round(last_days::numeric, 1) as last_days, round(reciprocity::numeric, 3) as reciprocity,
@@ -391,7 +395,11 @@ export async function rankContacts(ctx: CoreCtx, f: RankFilters = {}): Promise<R
     // Field-level (Phase 4): redact PII in custom_fields (phone/email/dni) — the
     // Customers list renders these as Phone/ID columns.
     if (!f.maskSensitive) return out;
-    return out.map((r) => ({ ...r, custom_fields: maskContactFields(r.custom_fields) }));
+    return out.map((r) => ({
+      ...r,
+      custom_fields: maskContactFields(r.custom_fields),
+      identities: r.identities.map((i) => ({ ...i, externalId: maskPii(i.externalId) })),
+    }));
   });
 }
 
