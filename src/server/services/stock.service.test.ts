@@ -7,6 +7,8 @@ import {
   StockError,
   buildInvoiceIssuePreview,
   createIssueFromInvoice,
+  buildServiceIssuePreview,
+  createServiceIssue,
   setConsumption,
   createItem,
   updateItem,
@@ -249,6 +251,96 @@ describe('createIssueFromInvoice — duplicate guard + happy path', () => {
       invoiceId: 'inv1',
       warehouseId: 'wh1',
       lines: [{ itemId: 'item1', qty: 5 }],
+      actor,
+    });
+    expect(entry).toMatchObject({ id: 'entry1', status: 'draft', type: 'issue' });
+  });
+});
+
+describe('buildServiceIssuePreview — invoice-free consumption from a service', () => {
+  it('multiplies the mapping by the quantity performed and converts to stock uom: 2× a 5ml/unit service against a 500ml caja → 10ml = 0.02 caja', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [{ id: 'p1', name: 'Menton (Opera II)', code: 'M04' }], // product lookup
+      [{ itemId: 'item_caja', qtyPerUnit: '5' }], // mapping: 5 ml per unit performed
+      [
+        {
+          id: 'item_caja',
+          name: 'HA Opera IV (Caja)',
+          code: '1255',
+          uom: 'caja',
+          consumptionUom: 'ml',
+          unitsPerStockUom: '500',
+          subunitsPerStockUom: '10',
+          diagramEnabled: true,
+        },
+      ], // item detail
+      [{ itemId: 'item_caja', qty: '3' }], // bins
+    ]);
+
+    const preview = await buildServiceIssuePreview(ctx(db), { finProductId: 'p1', quantity: 2, warehouseId: 'wh1' });
+
+    expect(preview.hasMapping).toBe(true);
+    expect(preview.productName).toBe('Menton (Opera II)');
+    expect(preview.lines).toEqual([
+      {
+        itemId: 'item_caja',
+        itemName: 'HA Opera IV (Caja)',
+        itemCode: '1255',
+        uom: 'caja',
+        qty: 0.02,
+        available: 3,
+        qtyConsumption: 10,
+        consumptionUom: 'ml',
+        unitsPerStockUom: 500,
+        subunitsPerStockUom: 10,
+        diagramEnabled: true,
+      },
+    ]);
+  });
+
+  it('reports hasMapping:false with no lines for a service that consumes nothing', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [{ id: 'p1', name: 'Consulta', code: 'C01' }], // product
+      [], // no mappings
+    ]);
+    const preview = await buildServiceIssuePreview(ctx(db), { finProductId: 'p1', quantity: 1, warehouseId: 'wh1' });
+    expect(preview.hasMapping).toBe(false);
+    expect(preview.lines).toEqual([]);
+  });
+
+  it('rejects a preview for a product not in this org', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[]]); // product lookup empty
+    await expect(buildServiceIssuePreview(ctx(db), { finProductId: 'missing', quantity: 1, warehouseId: 'wh1' })).rejects.toMatchObject({
+      code: 'product_not_found',
+    });
+  });
+});
+
+describe('createServiceIssue — customer + procedure note, no invoice', () => {
+  it('rejects with no_lines before touching the db when lines is empty', async () => {
+    const { db } = createMockDb();
+    await expect(
+      createServiceIssue(ctx(db), { finProductId: 'p1', quantity: 1, warehouseId: 'wh1', lines: [], actor }),
+    ).rejects.toMatchObject({ code: 'no_lines' });
+  });
+
+  it('creates a draft issue stamped with the party, note, and service metadata', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [{ id: 'p1', name: 'Menton (Opera II)' }], // product lookup
+      [{ id: 'entry1', orgId: 'org-1', type: 'issue', status: 'draft' }], // stk_entries insert
+      [], // stk_entry_lines insert
+    ]);
+    const entry = await createServiceIssue(ctx(db), {
+      finProductId: 'p1',
+      quantity: 1,
+      warehouseId: 'wh1',
+      partyId: 'party-9',
+      note: 'Dragged to 9ml on the left cheek',
+      lines: [{ itemId: 'item_caja', qty: 0.018 }],
       actor,
     });
     expect(entry).toMatchObject({ id: 'entry1', status: 'draft', type: 'issue' });

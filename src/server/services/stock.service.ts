@@ -787,51 +787,190 @@ export async function buildInvoiceIssuePreview(ctx: CoreCtx, invoiceId: string, 
       unmatched.push({ description: line.description ?? '(no description)', quantity });
     }
 
-    // qtyByItem is aggregated in each item's CONSUMPTION uom (identity when the
-    // item has no consumptionUom set — the pre-P5.1b behavior is unchanged).
-    const itemIds = [...qtyByItem.keys()];
-    const itemRows = await tx
-      .select({
-        id: stkItems.id,
-        name: stkItems.name,
-        code: stkItems.code,
-        uom: stkItems.uom,
-        consumptionUom: stkItems.consumptionUom,
-        unitsPerStockUom: stkItems.unitsPerStockUom,
-        subunitsPerStockUom: stkItems.subunitsPerStockUom,
-        diagramEnabled: stkItems.diagramEnabled,
-      })
-      .from(stkItems)
-      .where(inArray(stkItems.id, itemIds));
-    const itemById = new Map(itemRows.map((r) => [r.id, r]));
-
-    const binRows = await tx
-      .select({ itemId: stkBins.itemId, qty: stkBins.qty })
-      .from(stkBins)
-      .where(and(eq(stkBins.orgId, ctx.tenantId), eq(stkBins.warehouseId, warehouseId), inArray(stkBins.itemId, itemIds)));
-    const availableByItem = new Map(binRows.map((r) => [r.itemId, Number(r.qty)]));
-
-    const lines: InvoicePreviewLine[] = itemIds.map((itemId) => {
-      const item = itemById.get(itemId);
-      const qtyConsumption = qtyByItem.get(itemId)!;
-      const unitsPerStockUom = item?.unitsPerStockUom == null ? null : Number(item.unitsPerStockUom);
-      return {
-        itemId,
-        itemName: item?.name ?? itemId,
-        itemCode: item?.code ?? '',
-        uom: item?.uom ?? 'unit',
-        qty: round4(consumptionToStockQty({ unitsPerStockUom }, qtyConsumption)),
-        available: availableByItem.get(itemId) ?? 0,
-        qtyConsumption,
-        consumptionUom: item?.consumptionUom ?? null,
-        unitsPerStockUom,
-        subunitsPerStockUom: item?.subunitsPerStockUom == null ? null : Number(item.subunitsPerStockUom),
-        diagramEnabled: item?.diagramEnabled ?? false,
-      };
-    });
-
+    const lines = await previewLinesForItemQtys(tx, ctx.tenantId, qtyByItem, warehouseId);
     return { lines, unmatched };
   });
+}
+
+/**
+ * Shared preview tail for both the invoice and the service paths: given a
+ * per-item aggregate in each item's CONSUMPTION uom (identity when the item has
+ * no consumptionUom), joins item metadata + warehouse bins and builds the
+ * gauge-ready lines (stock-uom `qty` converted authoritatively, plus the raw
+ * consumption qty and UOM fields the ConsumptionGauge needs).
+ */
+async function previewLinesForItemQtys(
+  tx: CoreTx,
+  orgId: string,
+  qtyByItem: Map<string, number>,
+  warehouseId: string,
+): Promise<InvoicePreviewLine[]> {
+  const itemIds = [...qtyByItem.keys()];
+  if (!itemIds.length) return [];
+  const itemRows = await tx
+    .select({
+      id: stkItems.id,
+      name: stkItems.name,
+      code: stkItems.code,
+      uom: stkItems.uom,
+      consumptionUom: stkItems.consumptionUom,
+      unitsPerStockUom: stkItems.unitsPerStockUom,
+      subunitsPerStockUom: stkItems.subunitsPerStockUom,
+      diagramEnabled: stkItems.diagramEnabled,
+    })
+    .from(stkItems)
+    .where(inArray(stkItems.id, itemIds));
+  const itemById = new Map(itemRows.map((r) => [r.id, r]));
+
+  const binRows = await tx
+    .select({ itemId: stkBins.itemId, qty: stkBins.qty })
+    .from(stkBins)
+    .where(and(eq(stkBins.orgId, orgId), eq(stkBins.warehouseId, warehouseId), inArray(stkBins.itemId, itemIds)));
+  const availableByItem = new Map(binRows.map((r) => [r.itemId, Number(r.qty)]));
+
+  return itemIds.map((itemId) => {
+    const item = itemById.get(itemId);
+    const qtyConsumption = qtyByItem.get(itemId)!;
+    const unitsPerStockUom = item?.unitsPerStockUom == null ? null : Number(item.unitsPerStockUom);
+    return {
+      itemId,
+      itemName: item?.name ?? itemId,
+      itemCode: item?.code ?? '',
+      uom: item?.uom ?? 'unit',
+      qty: round4(consumptionToStockQty({ unitsPerStockUom }, qtyConsumption)),
+      available: availableByItem.get(itemId) ?? 0,
+      qtyConsumption,
+      consumptionUom: item?.consumptionUom ?? null,
+      unitsPerStockUom,
+      subunitsPerStockUom: item?.subunitsPerStockUom == null ? null : Number(item.subunitsPerStockUom),
+      diagramEnabled: item?.diagramEnabled ?? false,
+    };
+  });
+}
+
+/**
+ * Converts client-supplied lines to ledger (stock-uom) qty. Lines carrying a
+ * `qtyConsumption` are converted authoritatively server-side (the client's own
+ * `qty` is ignored) — the server owns the conversion factor, not the caller's
+ * arithmetic. Shared by the invoice and service issue paths.
+ */
+async function resolveConsumptionLines(
+  tx: CoreTx,
+  orgId: string,
+  lines: CreateIssueFromInvoiceLine[],
+): Promise<{ itemId: string; qty: number }[]> {
+  const convertItemIds = [...new Set(lines.filter((l) => l.qtyConsumption != null).map((l) => l.itemId))];
+  const unitsPerStockUomByItem = new Map<string, number | null>();
+  if (convertItemIds.length) {
+    const rows = await tx
+      .select({ id: stkItems.id, unitsPerStockUom: stkItems.unitsPerStockUom })
+      .from(stkItems)
+      .where(and(eq(stkItems.orgId, orgId), inArray(stkItems.id, convertItemIds)));
+    for (const r of rows) unitsPerStockUomByItem.set(r.id, r.unitsPerStockUom == null ? null : Number(r.unitsPerStockUom));
+  }
+  return lines.map((l) => {
+    if (l.qtyConsumption == null) return { itemId: l.itemId, qty: l.qty };
+    const unitsPerStockUom = unitsPerStockUomByItem.get(l.itemId) ?? null;
+    return { itemId: l.itemId, qty: round4(consumptionToStockQty({ unitsPerStockUom }, l.qtyConsumption)) };
+  });
+}
+
+export interface ServicePreview {
+  productName: string;
+  productCode: string | null;
+  lines: InvoicePreviewLine[];
+  /** Service products consume only via stk_consumption — a product with no
+   *  mapping rows yields an empty preview; `hasMapping` lets the UI say so
+   *  rather than render a blank issue. */
+  hasMapping: boolean;
+}
+
+/**
+ * Preview the stock a service/product consumes for `quantity` units performed,
+ * with no invoice — reads `stk_consumption` for the product and multiplies each
+ * mapped item by `quantity × qty_per_unit`. Mirrors the invoice path's tail so
+ * the gauge renders identically; there is no 1:1 retail fallback here (a
+ * service consumes what its mapping declares, nothing implicit).
+ */
+export async function buildServiceIssuePreview(
+  ctx: CoreCtx,
+  input: { finProductId: string; quantity: number; warehouseId: string },
+): Promise<ServicePreview> {
+  const quantity = input.quantity > 0 ? input.quantity : 1;
+  return withOrgCore(ctx, async (tx) => {
+    const [product] = await tx
+      .select({ id: finProducts.id, name: finProducts.name, code: finProducts.code })
+      .from(finProducts)
+      .where(and(eq(finProducts.id, input.finProductId), eq(finProducts.orgId, ctx.tenantId)));
+    if (!product) throw new StockError('product not found', 'product_not_found');
+
+    const mappingRows = await tx
+      .select({ itemId: stkConsumption.itemId, qtyPerUnit: stkConsumption.qtyPerUnit })
+      .from(stkConsumption)
+      .where(and(eq(stkConsumption.orgId, ctx.tenantId), eq(stkConsumption.finProductId, input.finProductId)));
+
+    const qtyByItem = new Map<string, number>();
+    for (const m of mappingRows) qtyByItem.set(m.itemId, (qtyByItem.get(m.itemId) ?? 0) + quantity * Number(m.qtyPerUnit));
+
+    const lines = await previewLinesForItemQtys(tx, ctx.tenantId, qtyByItem, input.warehouseId);
+    return { productName: product.name ?? input.finProductId, productCode: product.code ?? null, lines, hasMapping: mappingRows.length > 0 };
+  });
+}
+
+export interface CreateServiceIssueInput {
+  finProductId: string;
+  quantity: number;
+  warehouseId: string;
+  partyId?: string | null;
+  note?: string | null;
+  lines: CreateIssueFromInvoiceLine[];
+  submit?: boolean;
+  actor: Actor;
+}
+
+/**
+ * Creates (and optionally submits) an `issue` stk_entry for a service performed
+ * for a customer, no invoice required. Same append-only ledger path as the
+ * invoice issue; the customer rides `party_id` and the procedure notes ride
+ * `note`. metadata `{source:'service', finProductId, quantity}` mirrors the
+ * invoice link so the item-detail "issued for" views can find it. No duplicate
+ * guard — the same service is legitimately performed many times.
+ */
+export async function createServiceIssue(ctx: CoreCtx, input: CreateServiceIssueInput): Promise<StkEntry> {
+  if (!input.lines.length) throw new StockError('at least one stock line is required', 'no_lines');
+
+  const entry = await withOrgCore(ctx, async (tx) => {
+    const [product] = await tx
+      .select({ id: finProducts.id, name: finProducts.name })
+      .from(finProducts)
+      .where(and(eq(finProducts.id, input.finProductId), eq(finProducts.orgId, ctx.tenantId)));
+    if (!product) throw new StockError('product not found', 'product_not_found');
+
+    const resolvedLines = await resolveConsumptionLines(tx, ctx.tenantId, input.lines);
+
+    const [row] = await tx
+      .insert(stkEntries)
+      .values({
+        orgId: ctx.tenantId,
+        type: 'issue',
+        status: 'draft',
+        partyId: input.partyId ?? null,
+        note: input.note ?? `Service: ${product.name}`,
+        createdBy: input.actor.id,
+        metadata: { source: 'service', finProductId: input.finProductId, quantity: input.quantity },
+      })
+      .returning();
+    await tx.insert(stkEntryLines).values(
+      linesToRows(
+        ctx.tenantId,
+        row.id,
+        resolvedLines.map((l) => ({ itemId: l.itemId, qty: l.qty, fromWarehouseId: input.warehouseId })),
+      ),
+    );
+    return row;
+  });
+
+  return input.submit ? submitEntry(ctx, entry.id, input.actor) : entry;
 }
 
 export interface CreateIssueFromInvoiceLine {
@@ -875,23 +1014,7 @@ export async function createIssueFromInvoice(ctx: CoreCtx, input: CreateIssueFro
       .where(and(eq(stkEntries.orgId, ctx.tenantId), ne(stkEntries.status, 'cancelled'), sql`${stkEntries.metadata}->>'invoiceId' = ${input.invoiceId}`));
     if (dup) throw new StockError('a stock issue already exists for this invoice', 'duplicate_invoice');
 
-    // Lines with a client-supplied qtyConsumption are converted authoritatively
-    // server-side (the client's `qty` for those lines is ignored) — the server
-    // owns the conversion factor, not the caller's arithmetic.
-    const convertItemIds = [...new Set(input.lines.filter((l) => l.qtyConsumption != null).map((l) => l.itemId))];
-    const unitsPerStockUomByItem = new Map<string, number | null>();
-    if (convertItemIds.length) {
-      const rows = await tx
-        .select({ id: stkItems.id, unitsPerStockUom: stkItems.unitsPerStockUom })
-        .from(stkItems)
-        .where(and(eq(stkItems.orgId, ctx.tenantId), inArray(stkItems.id, convertItemIds)));
-      for (const r of rows) unitsPerStockUomByItem.set(r.id, r.unitsPerStockUom == null ? null : Number(r.unitsPerStockUom));
-    }
-    const resolvedLines = input.lines.map((l) => {
-      if (l.qtyConsumption == null) return { itemId: l.itemId, qty: l.qty };
-      const unitsPerStockUom = unitsPerStockUomByItem.get(l.itemId) ?? null;
-      return { itemId: l.itemId, qty: round4(consumptionToStockQty({ unitsPerStockUom }, l.qtyConsumption)) };
-    });
+    const resolvedLines = await resolveConsumptionLines(tx, ctx.tenantId, input.lines);
 
     const [row] = await tx
       .insert(stkEntries)
