@@ -38,7 +38,7 @@ import {
   listIgMedia,
   igMediaInsights,
   adInsights,
-  listAdStoryIds,
+  listAdsWithStoryIds,
   listConversations,
   fetchNextPage,
   refreshIgToken,
@@ -47,11 +47,13 @@ import {
   type IgMedia,
   type MetricInsight,
   type AdInsightRow,
+  type AdStoryLink,
   type Conversation,
 } from './graph-read';
 import { insertMessages, type IngestRow } from '../messages.service';
 import { claimJob, finishJob, getJobById, recordProgress, requeue } from './meta-sync-jobs.service';
 import { recordPostMedia, claimPendingMedia, markMirrored, markFailed } from './meta-post-media.service';
+import { upsertAdPosts, type AdPostInsertRow } from './meta-ad-posts.service';
 
 /**
  * Shared Graph opts carrying the App Secret so every authenticated read sends
@@ -564,20 +566,43 @@ type SliceResult = {
 };
 
 /**
- * Aggregates every enabled ad account's promoted-post story ids into one set.
- * Per-account failures are tolerated (counted, not fatal) — same posture as
- * every other per-target Graph call in this file.
+ * Pure mapping: Graph ad→story links → meta_ad_posts insert rows. Drops ads
+ * with no story id (dark post/deleted creative) — no row, same "no row =
+ * unknown" convention as meta_post_media. Pure — unit-tested directly.
+ */
+export function adStoryLinksToRows(orgId: string, links: AdStoryLink[]): AdPostInsertRow[] {
+  const rows: AdPostInsertRow[] = [];
+  for (const link of links) {
+    if (!link.storyId) continue;
+    rows.push({ orgId, adId: link.adId, postId: link.storyId, platform: 'fb' });
+  }
+  return rows;
+}
+
+/**
+ * Aggregates every enabled ad account's promoted-post story ids into one set,
+ * AND persists the ad→post link (`meta_ad_posts`) for every ad that has one —
+ * one Graph call (`listAdsWithStoryIds`) serves both (spec §3). Per-account
+ * fetch failures are tolerated (counted, not fatal) — same posture as every
+ * other per-target Graph call in this file; an ad with no story id (dark
+ * post/deleted creative) contributes no row and no story id.
  */
 async function collectPromotedStoryIds(
+  ctx: CoreCtx,
   userToken: string,
   adAccountAssets: MetaAsset[],
 ): Promise<{ storyIds: Set<string>; failed: number }> {
   const storyIds = new Set<string>();
   let failed = 0;
   for (const asset of adAccountAssets) {
-    const res = await listAdStoryIds(asset.externalId, userToken, graphAuthOpts());
-    if (res.ok) for (const id of res.data ?? []) storyIds.add(id);
-    else failed++;
+    const res = await listAdsWithStoryIds(asset.externalId, userToken, graphAuthOpts());
+    if (!res.ok) {
+      failed++;
+      continue;
+    }
+    const links = res.data ?? [];
+    for (const link of links) if (link.storyId) storyIds.add(link.storyId);
+    await upsertAdPosts(ctx, adStoryLinksToRows(ctx.tenantId, links));
   }
   return { storyIds, failed };
 }
@@ -616,7 +641,7 @@ async function syncPosts(
   let insightsDenied = false;
 
   const { storyIds, failed: adStoryFetchFailed } = adStoryToken
-    ? await collectPromotedStoryIds(adStoryToken, adAccountAssets)
+    ? await collectPromotedStoryIds(ctx, adStoryToken, adAccountAssets)
     : { storyIds: new Set<string>(), failed: 0 };
   counts.adStoryFetchFailed = adStoryFetchFailed;
 

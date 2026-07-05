@@ -9,6 +9,7 @@ import {
   listIgMedia,
   igMediaInsights,
   adInsights,
+  listAdsWithStoryIds,
   listConversations,
   fetchNextPage,
   exchangeIgCodeForToken,
@@ -252,6 +253,82 @@ describe('adInsights', () => {
     const calledUrl = (fetchImpl.mock.calls[0]?.[0] as string) ?? '';
     expect(calledUrl).toContain('/act_123/insights');
     expect(calledUrl).not.toContain('act_act_123');
+  });
+});
+
+describe('listAdsWithStoryIds', () => {
+  it('returns each ad id with its story id, tolerating a null creative', async () => {
+    const fetchImpl = mockFetch(
+      jsonResponse({
+        data: [
+          { id: 'ad-1', creative: { effective_object_story_id: 'page-1_100' } },
+          { id: 'ad-2', creative: {} }, // creative present, no effective_object_story_id — dark post
+          { id: 'ad-3' }, // no creative at all
+        ],
+      }),
+    );
+    const res = await listAdsWithStoryIds('123', 'utok', { fetchImpl });
+    expect(res.ok).toBe(true);
+    expect(res.data).toEqual([
+      { adId: 'ad-1', storyId: 'page-1_100' },
+      { adId: 'ad-2', storyId: null },
+      { adId: 'ad-3', storyId: null },
+    ]);
+    const calledUrl = decodeURIComponent((fetchImpl.mock.calls[0]?.[0] as string) ?? '');
+    expect(calledUrl).toContain('/act_123/ads');
+    expect(calledUrl).toContain('id,creative{effective_object_story_id}');
+  });
+
+  it('does not double-prefix an already act_-prefixed id', async () => {
+    const fetchImpl = mockFetch(jsonResponse({ data: [] }));
+    await listAdsWithStoryIds('act_123', 'utok', { fetchImpl });
+    const calledUrl = (fetchImpl.mock.calls[0]?.[0] as string) ?? '';
+    expect(calledUrl).toContain('/act_123/ads');
+    expect(calledUrl).not.toContain('act_act_123');
+  });
+
+  it('aggregates across pages, re-deriving appsecret_proof on the paging.next link', async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('after=xyz')) {
+        // fetchNextPage's link deliberately omits appsecret_proof (like /insights
+        // paging.next links do live) — listAdsWithStoryIds must re-derive it.
+        const u = new URL(url);
+        expect(u.searchParams.get('appsecret_proof')).toBeTruthy();
+        return jsonResponse({ data: [{ id: 'ad-2', creative: { effective_object_story_id: 'page-1_200' } }] });
+      }
+      return jsonResponse({
+        data: [{ id: 'ad-1', creative: { effective_object_story_id: 'page-1_100' } }],
+        paging: { next: 'https://graph.facebook.com/v23.0/act_123/ads?after=xyz&access_token=utok' },
+      });
+    });
+    const res = await listAdsWithStoryIds('123', 'utok', { fetchImpl: fetchImpl as unknown as typeof fetch, appSecret: 'shh' });
+    expect(res.ok).toBe(true);
+    expect(res.data).toEqual([
+      { adId: 'ad-1', storyId: 'page-1_100' },
+      { adId: 'ad-2', storyId: 'page-1_200' },
+    ]);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('tolerates a mid-pagination failure — returns what was collected so far, not an error', async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('after=xyz')) return jsonResponse({ error: { message: 'boom' } }, { ok: false, status: 500 });
+      return jsonResponse({
+        data: [{ id: 'ad-1', creative: { effective_object_story_id: 'page-1_100' } }],
+        paging: { next: 'https://graph.facebook.com/v23.0/act_123/ads?after=xyz' },
+      });
+    });
+    const res = await listAdsWithStoryIds('123', 'utok', { fetchImpl: fetchImpl as unknown as typeof fetch });
+    expect(res.ok).toBe(true);
+    expect(res.data).toEqual([{ adId: 'ad-1', storyId: 'page-1_100' }]);
+  });
+
+  it('surfaces the first-page failure as an error', async () => {
+    const fetchImpl = mockFetch(jsonResponse({ error: { message: 'nope', code: 1 } }, { ok: false, status: 400 }));
+    const res = await listAdsWithStoryIds('123', 'utok', { fetchImpl });
+    expect(res.ok).toBe(false);
   });
 });
 

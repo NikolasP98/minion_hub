@@ -608,41 +608,47 @@ export async function adInsights(
 // Ad → post linkage (which organic posts are also running as ads)
 // ---------------------------------------------------------------------------
 
-export type AdCreative = { creative?: { effective_object_story_id?: string } };
+export type AdWithStory = { id?: string; creative?: { effective_object_story_id?: string } };
+
+export type AdStoryLink = { adId: string; storyId: string | null };
 
 /**
- * Paginates `act_X/ads` and collects every ad's
- * `creative.effective_object_story_id` — a `{page_id}_{post_id}` id, the same
- * format `/{page}/posts` returns — so callers can tell which organic posts are
- * also running as ads. Aggregates all pages itself (unlike the other `list*`
- * helpers here, which return one page + a cursor) since callers just want the
- * full set to test membership against.
+ * Paginates `act_X/ads` and returns every ad's id alongside its creative's
+ * `effective_object_story_id` — a `{page_id}_{post_id}` id, the same format
+ * `/{page}/posts` returns — or `null` when the ad has no linked organic post
+ * (dark post / deleted creative). Aggregates all pages itself (unlike the
+ * other `list*` helpers here, which return one page + a cursor) since callers
+ * want the full per-ad set: persisting the ad→post link (`meta_ad_posts`) AND
+ * deriving the promoted-story-id set for `markPromotedPosts` from one call.
  */
-export async function listAdStoryIds(
+export async function listAdsWithStoryIds(
   adAccountId: string,
   userToken: string,
   opts: GraphOpts = {},
-): Promise<GraphResult<string[]>> {
+): Promise<GraphResult<AdStoryLink[]>> {
   const o = resolveOpts(opts);
   const accountPath = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
   const url = buildUrl(
     `${accountPath}/ads`,
-    { fields: 'creative{effective_object_story_id}', limit: 100, access_token: userToken },
+    { fields: 'id,creative{effective_object_story_id}', limit: 100, access_token: userToken },
     o,
   );
   const res = await graphRequest(url, o);
   if (!res.ok) return { ok: false, status: res.status, error: res.error, usage: res.usage };
 
-  const ids = new Set<string>();
-  let { data, nextCursor } = unwrapList<AdCreative>(res.body);
-  for (const ad of data) if (ad.creative?.effective_object_story_id) ids.add(ad.creative.effective_object_story_id);
+  const out: AdStoryLink[] = [];
+  let { data, nextCursor } = unwrapList<AdWithStory>(res.body);
+  for (const ad of data) if (ad.id) out.push({ adId: ad.id, storyId: ad.creative?.effective_object_story_id ?? null });
   while (nextCursor) {
-    const page = await fetchNextPage<AdCreative>(nextCursor, { fetchImpl: o.fetchImpl, timeoutMs: o.timeoutMs });
+    // Some paging.next links don't echo the original appsecret_proof (live-verified
+    // on /insights) — re-derive it from the link's own access_token, same as every
+    // other fetchNextPage call site in this file.
+    const page = await fetchNextPage<AdWithStory>(nextCursor, { fetchImpl: o.fetchImpl, timeoutMs: o.timeoutMs, appSecret: o.appSecret });
     if (!page.ok) break; // tolerate a mid-pagination failure — return what's collected so far
-    for (const ad of page.data ?? []) if (ad.creative?.effective_object_story_id) ids.add(ad.creative.effective_object_story_id);
+    for (const ad of page.data ?? []) if (ad.id) out.push({ adId: ad.id, storyId: ad.creative?.effective_object_story_id ?? null });
     nextCursor = page.nextCursor;
   }
-  return { ok: true, status: res.status, data: [...ids], usage: res.usage };
+  return { ok: true, status: res.status, data: out, usage: res.usage };
 }
 
 // ---------------------------------------------------------------------------

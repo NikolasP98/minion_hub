@@ -162,9 +162,30 @@ export const metaPostMedia = pgTable(
   }),
 );
 
+/**
+ * One row per (org, ad) — persists which organic post an ad is running as,
+ * discovered from the ad creative's `effective_object_story_id` (spec
+ * 2026-07-05-socials-rename-detail-pages.md §3). Distinct from
+ * `meta_ad_insights` (one row per ad×date) — the link is per-ad, not per-day.
+ */
+export const metaAdPosts = pgTable(
+  'meta_ad_posts',
+  {
+    orgId: text('org_id').notNull(),
+    adId: text('ad_id').notNull(),
+    postId: text('post_id').notNull(),
+    platform: text('platform').notNull().default('fb'),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.orgId, t.adId] }),
+  }),
+);
+
 export type MetaConnection = typeof metaConnections.$inferSelect;
 export type MetaAsset = typeof metaAssets.$inferSelect;
 export type MetaPostInsight = typeof metaPostInsights.$inferSelect;
 export type MetaAdInsight = typeof metaAdInsights.$inferSelect;
 export type MetaSyncJob = typeof metaSyncJobs.$inferSelect;
 export type MetaPostMedia = typeof metaPostMedia.$inferSelect;
+export type MetaAdPost = typeof metaAdPosts.$inferSelect;

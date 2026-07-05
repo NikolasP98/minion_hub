@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createMockDb } from '$server/test-utils/mock-db';
-import type { MetaAsset, MetaSyncJob } from '$server/db/pg-meta-schema';
+import { metaAdPosts, type MetaAsset, type MetaSyncJob } from '$server/db/pg-meta-schema';
 import type { GraphResult, PagePost, MetricInsight } from './graph-read';
 
 // ---------------------------------------------------------------------------
@@ -33,7 +33,7 @@ const listPagePosts = vi.fn<(...a: unknown[]) => Promise<GraphResult<PagePost[]>
 const postInsights = vi.fn<(...a: unknown[]) => Promise<GraphResult<MetricInsight[]>>>();
 const igMediaInsights = vi.fn();
 const listIgMedia = vi.fn();
-const listAdStoryIds = vi.fn<(...a: unknown[]) => Promise<GraphResult<string[]>>>();
+const listAdsWithStoryIds = vi.fn<(...a: unknown[]) => Promise<GraphResult<Array<{ adId: string; storyId: string | null }>>>>();
 const adInsightsMock = vi.fn();
 const listConversations = vi.fn();
 const fetchNextPage = vi.fn();
@@ -45,7 +45,7 @@ vi.mock('./graph-read', async (orig) => {
     postInsights: (...a: unknown[]) => postInsights(...a),
     igMediaInsights: (...a: unknown[]) => igMediaInsights(...a),
     listIgMedia: (...a: unknown[]) => listIgMedia(...a),
-    listAdStoryIds: (...a: unknown[]) => listAdStoryIds(...a),
+    listAdsWithStoryIds: (...a: unknown[]) => listAdsWithStoryIds(...a),
     adInsights: (...a: unknown[]) => adInsightsMock(...a),
     listConversations: (...a: unknown[]) => listConversations(...a),
     fetchNextPage: (...a: unknown[]) => fetchNextPage(...a),
@@ -98,6 +98,7 @@ import {
   fullAdsHistorySince,
   defaultSinceDate,
   FULL_HISTORY_SINCE,
+  adStoryLinksToRows,
   runJob,
 } from './meta-sync.service';
 
@@ -261,6 +262,31 @@ describe('adInsightRowToInsert', () => {
 
   it('returns null when the row is missing the unique-index columns (ad_id/date)', () => {
     expect(adInsightRowToInsert({ spend: '1' }, { orgId: 'org-1', adAccountId: 'act_1', currency: null })).toBeNull();
+  });
+});
+
+describe('adStoryLinksToRows — meta_ad_posts row mapping', () => {
+  it('emits one row per ad with a story id, defaulting platform to fb', () => {
+    const rows = adStoryLinksToRows('org-1', [
+      { adId: 'ad-1', storyId: 'page-1_100' },
+      { adId: 'ad-2', storyId: 'page-1_200' },
+    ]);
+    expect(rows).toEqual([
+      { orgId: 'org-1', adId: 'ad-1', postId: 'page-1_100', platform: 'fb' },
+      { orgId: 'org-1', adId: 'ad-2', postId: 'page-1_200', platform: 'fb' },
+    ]);
+  });
+
+  it('drops an ad with no story id (dark post / deleted creative) — no row, not a null postId', () => {
+    const rows = adStoryLinksToRows('org-1', [
+      { adId: 'ad-1', storyId: 'page-1_100' },
+      { adId: 'ad-dark', storyId: null },
+    ]);
+    expect(rows).toEqual([{ orgId: 'org-1', adId: 'ad-1', postId: 'page-1_100', platform: 'fb' }]);
+  });
+
+  it('returns an empty array for an empty input', () => {
+    expect(adStoryLinksToRows('org-1', [])).toEqual([]);
   });
 });
 
@@ -445,7 +471,14 @@ describe('runJob(posts) — promoted-post labeling + insights-call skip-after-fi
     getJobById.mockResolvedValue(job);
     listConnections.mockResolvedValue([connection]);
     listAssets.mockResolvedValue([pageAsset, adAccountAsset]);
-    listAdStoryIds.mockResolvedValue({ ok: true, status: 200, data: ['page-1_100'] });
+    listAdsWithStoryIds.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: [
+        { adId: 'ad-1', storyId: 'page-1_100' },
+        { adId: 'ad-2', storyId: null }, // dark post / deleted creative — no meta_ad_posts row, no story id
+      ],
+    });
     listPagePosts.mockResolvedValue({
       ok: true,
       status: 200,
@@ -464,7 +497,7 @@ describe('runJob(posts) — promoted-post labeling + insights-call skip-after-fi
 
     await runJob(ctx, 'job-1');
 
-    expect(listAdStoryIds).toHaveBeenCalledWith('act_1', 'user-token', expect.anything());
+    expect(listAdsWithStoryIds).toHaveBeenCalledWith('act_1', 'user-token', expect.anything());
     expect(postInsights).toHaveBeenCalledTimes(1);
     expect(recordProgress).toHaveBeenCalledWith(
       ctx,
@@ -473,6 +506,44 @@ describe('runJob(posts) — promoted-post labeling + insights-call skip-after-fi
         pageCursor: null,
         countsDelta: expect.objectContaining({ postsProcessed: 3, metricsDenied: 1, metricsSkipped: 2 }),
       }),
+    );
+    expect(finishJob).toHaveBeenCalledWith(ctx, 'job-1', 'succeeded');
+  });
+
+  it('persists the ad→post link (meta_ad_posts) — db.insert is invoked with the meta_ad_posts table', async () => {
+    const { db } = createMockDb();
+    const ctx = { db: db as never, tenantId: 'org-1' };
+
+    await runJob(ctx, 'job-1');
+
+    const insertCalls = (db.insert as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    expect(insertCalls.some((c) => c[0] === metaAdPosts)).toBe(true);
+  });
+
+  it('never touches meta_ad_posts when no ad has a story id', async () => {
+    listAdsWithStoryIds.mockResolvedValue({ ok: true, status: 200, data: [{ adId: 'ad-2', storyId: null }] });
+    const { db } = createMockDb();
+    const ctx = { db: db as never, tenantId: 'org-1' };
+
+    await runJob(ctx, 'job-1');
+
+    const insertCalls = (db.insert as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    expect(insertCalls.some((c) => c[0] === metaAdPosts)).toBe(false);
+  });
+
+  it('a failed listAdsWithStoryIds fetch degrades exactly as before — no throw, isPromoted stays false, job still succeeds', async () => {
+    listAdsWithStoryIds.mockResolvedValue({ ok: false, status: 500, error: 'graph request failed' });
+    const { db } = createMockDb();
+    const ctx = { db: db as never, tenantId: 'org-1' };
+
+    await runJob(ctx, 'job-1');
+
+    const insertCalls = (db.insert as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    expect(insertCalls.some((c) => c[0] === metaAdPosts)).toBe(false);
+    expect(recordProgress).toHaveBeenCalledWith(
+      ctx,
+      'job-1',
+      expect.objectContaining({ countsDelta: expect.objectContaining({ adStoryFetchFailed: 1 }) }),
     );
     expect(finishJob).toHaveBeenCalledWith(ctx, 'job-1', 'succeeded');
   });
@@ -558,7 +629,7 @@ describe('runJob — connection-by-kind selection (spec 2026-07-05-instagram-log
   beforeEach(() => {
     vi.clearAllMocks();
     claimJob.mockResolvedValue(true);
-    listAdStoryIds.mockResolvedValue({ ok: true, status: 200, data: [] });
+    listAdsWithStoryIds.mockResolvedValue({ ok: true, status: 200, data: [] });
   });
 
   it('ads job: picks the FLB connection token even when listConnections returns the IG-Login connection first', async () => {
@@ -694,7 +765,7 @@ describe('syncPosts — thumbnail mirror pass (spec 2026-07-05-meta-post-thumbna
     getJobById.mockResolvedValue(job);
     listConnections.mockResolvedValue([connection]);
     listAssets.mockResolvedValue([pageAsset]);
-    listAdStoryIds.mockResolvedValue({ ok: true, status: 200, data: [] });
+    listAdsWithStoryIds.mockResolvedValue({ ok: true, status: 200, data: [] });
     postInsights.mockResolvedValue({ ok: false, status: 400, error: 'permission denied' });
     recordPostMedia.mockResolvedValue(undefined);
     claimPendingMedia.mockResolvedValue([]);
