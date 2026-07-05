@@ -25,6 +25,8 @@ import {
   extendUserToken,
   listPagesWithTokens,
   listAdAccounts,
+  exchangeIgCodeForToken,
+  exchangeIgLongLivedToken,
   type PageWithToken,
   type GraphOpts,
 } from './graph-read';
@@ -42,6 +44,19 @@ export function requireMetaEnv(): { appId: string; appSecret: string; loginConfi
     );
   }
   return { appId, appSecret, loginConfigId };
+}
+
+/**
+ * Instagram API with Instagram Login (spec 2026-07-05-instagram-login-integration
+ * §3) — a separate Instagram App, own id/secret, no login-config concept.
+ */
+export function requireMetaIgEnv(): { igAppId: string; igAppSecret: string } {
+  const igAppId = env.META_IG_APP_ID;
+  const igAppSecret = env.META_IG_APP_SECRET;
+  if (!igAppId || !igAppSecret) {
+    throw new Error('Instagram Login OAuth is not configured — META_IG_APP_ID and META_IG_APP_SECRET must both be set');
+  }
+  return { igAppId, igAppSecret };
 }
 
 // ---------------------------------------------------------------------------
@@ -341,6 +356,124 @@ export async function enumerateAndUpsertAssets(
   }
 
   return { pagesFound: pages.length, igFound, adAccountsFound: adAccounts.length, pagePath };
+}
+
+// ---------------------------------------------------------------------------
+// Instagram API with Instagram Login — a second, independent connect flow
+// (spec 2026-07-05-instagram-login-integration). No page in the loop at all:
+// the IG professional account authenticates directly, so there is exactly
+// one asset (the IG user itself) and its token lives on the CONNECTION, not
+// on any asset (mirroring how the FLB user token lives on
+// `meta_connections.tokenCiphertext` above).
+// ---------------------------------------------------------------------------
+
+/** Best-effort `username` for a readable settings-page label — not returned by the token exchange. */
+async function fetchIgUsername(igUserId: string, token: string, fetchImpl: FetchImpl): Promise<string | null> {
+  try {
+    const url = `https://graph.instagram.com/${igUserId}?fields=username&access_token=${encodeURIComponent(token)}`;
+    const res = await fetchImpl(url);
+    const body = (await res.json().catch(() => undefined)) as { username?: string } | undefined;
+    return res.ok ? (body?.username ?? null) : null;
+  } catch {
+    return null;
+  }
+}
+
+export type IgOAuthExchangeResult = { ok: true; connectionId: string } | { ok: false; error: string };
+
+/**
+ * Exchange the IG-Login OAuth `code` (short-lived → long-lived), encrypt +
+ * upsert a `kind: 'ig_login'` connection, and upsert its single `kind: 'ig'`
+ * asset (`parentPageId: null` — the discriminator the sync dispatcher uses to
+ * tell an IG-Login asset apart from an FLB-discovered one, see
+ * meta-sync.service.ts). `fbUserId` is repurposed to hold the IG user id for
+ * this connection kind (ponytail: no schema change for one repurposed
+ * column — rename only if a third auth family needs a clearer name).
+ */
+export async function createIgConnectionFromOAuth(
+  ctx: CoreCtx,
+  input: { code: string; redirectUri: string; connectedBy: string },
+  opts: { fetchImpl?: FetchImpl } = {},
+): Promise<IgOAuthExchangeResult> {
+  const { igAppId, igAppSecret } = requireMetaIgEnv();
+  const fetchImpl = opts.fetchImpl ?? fetch;
+
+  const shortLived = await exchangeIgCodeForToken(
+    { appId: igAppId, appSecret: igAppSecret, code: input.code, redirectUri: input.redirectUri },
+    { fetchImpl },
+  );
+  if (!shortLived.ok || !shortLived.data?.access_token || !shortLived.data?.user_id) {
+    return { ok: false, error: shortLived.error ?? 'token exchange failed' };
+  }
+
+  const longLived = await exchangeIgLongLivedToken(
+    { appSecret: igAppSecret, shortToken: shortLived.data.access_token },
+    { fetchImpl },
+  );
+  if (!longLived.ok || !longLived.data?.access_token) {
+    return { ok: false, error: longLived.error ?? 'long-lived token exchange failed' };
+  }
+
+  const igUserId = shortLived.data.user_id;
+  // Unlike FLB's "0 = never expires" business system-user token, IG-Login
+  // tokens always expire (~60 days) — expiresAt is always set here.
+  const expiresAt = longLived.data.expires_in ? new Date(Date.now() + longLived.data.expires_in * 1000) : null;
+  const { ciphertext, iv } = encrypt(longLived.data.access_token);
+  const username = await fetchIgUsername(igUserId, longLived.data.access_token, fetchImpl);
+
+  const connectionId = await withOrgCore(ctx, async (tx) => {
+    const [row] = await tx
+      .insert(metaConnections)
+      .values({
+        orgId: ctx.tenantId,
+        kind: 'ig_login',
+        fbUserId: igUserId,
+        tokenCiphertext: ciphertext,
+        tokenIv: iv,
+        tokenExpiresAt: expiresAt,
+        grantedScopes: ['instagram_business_basic'],
+        status: 'active',
+        connectedBy: input.connectedBy,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [metaConnections.orgId, metaConnections.kind, metaConnections.fbUserId],
+        set: {
+          tokenCiphertext: ciphertext,
+          tokenIv: iv,
+          tokenExpiresAt: expiresAt,
+          grantedScopes: ['instagram_business_basic'],
+          status: 'active',
+          connectedBy: input.connectedBy,
+          updatedAt: new Date(),
+        },
+      })
+      .returning({ id: metaConnections.id });
+    return row.id;
+  });
+
+  await withOrgCore(ctx, (tx) =>
+    tx
+      .insert(metaAssets)
+      .values({
+        orgId: ctx.tenantId,
+        connectionId,
+        kind: 'ig',
+        externalId: igUserId,
+        name: username,
+        parentPageId: null,
+        meta: {},
+      })
+      .onConflictDoUpdate({
+        target: [metaAssets.orgId, metaAssets.kind, metaAssets.externalId],
+        set: { connectionId, name: username, parentPageId: null },
+      }),
+  );
+
+  // Same CRM harvest auto-registration the FLB path does for its IG assets.
+  await ensureAccountInScope(ctx, 'instagram', igUserId, username);
+
+  return { ok: true, connectionId };
 }
 
 // ---------------------------------------------------------------------------
