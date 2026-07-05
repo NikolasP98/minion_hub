@@ -44,6 +44,9 @@
 	const survivorValue = (f: MergeField) => f.values.find((v) => v.contactId === survivorId)?.value ?? '';
 	const distinctValues = (f: MergeField) => [...new Set(f.values.map((v) => v.value))];
 	const conflicts = $derived(fields.filter((f) => distinctValues(f).length >= 2));
+	// Show every field that has any value — matching fields render read-only,
+	// conflicting ones get pickers — so the merge details are always visible.
+	const shownFields = $derived(fields.filter((f) => f.values.length > 0));
 	const chosen = (f: MergeField) => overrides[f.key] ?? (survivorValue(f) || distinctValues(f)[0] || '');
 	function pick(f: MergeField, value: string) {
 		overrides = { ...overrides, [f.key]: value };
@@ -82,22 +85,27 @@
 			{/each}
 		</div>
 
-		{#if conflicts.length}
+		{#if shownFields.length}
 			<div class="resolve">
-				<p class="resolve-h"><GitFork size={12} /> {m.crm_merge_resolve_heading()}</p>
-				{#each conflicts as f (f.key)}
-					{@const val = chosen(f) }
+				<p class="resolve-h"><GitFork size={12} /> {conflicts.length ? m.crm_merge_resolve_heading() : m.crm_merge_fields_heading()}</p>
+				{#each shownFields as f (f.key)}
+					{@const vals = distinctValues(f)}
+					{@const val = chosen(f)}
 					<div class="field">
 						<span class="f-label">{f.label}</span>
-						<div class="f-vals">
-							{#each distinctValues(f) as v (v)}
-								<button type="button" class="f-chip" class:on={val === v} onclick={() => pick(f, v)}>
-									{#if val === v}<Check size={10} class="fc-ic" />{/if}
-									<span class="fc-v">{v}</span>
-									{#if v === survivorValue(f)}<span class="fc-base">{m.crm_merge_base()}</span>{/if}
-								</button>
-							{/each}
-						</div>
+						{#if vals.length >= 2}
+							<div class="f-vals">
+								{#each vals as v (v)}
+									<button type="button" class="f-chip" class:on={val === v} onclick={() => pick(f, v)}>
+										{#if val === v}<Check size={10} class="fc-ic" />{/if}
+										<span class="fc-v">{v}</span>
+										{#if v === survivorValue(f)}<span class="fc-base">{m.crm_merge_base()}</span>{/if}
+									</button>
+								{/each}
+							</div>
+						{:else}
+							<span class="f-single">{vals[0]}</span>
+						{/if}
 					</div>
 				{/each}
 			</div>
@@ -159,6 +167,7 @@
 	:global(.f-chip .fc-ic) { flex-shrink: 0; }
 	.fc-v { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.fc-base { font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; color: var(--color-muted-foreground); opacity: 0.7; }
+	.f-single { padding-top: 0.3rem; font-size: 0.82rem; color: var(--color-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 	.merge-summary { display: flex; align-items: flex-start; gap: 0.4rem; margin-top: 0.75rem; font-size: 0.78rem; color: var(--color-muted-foreground); line-height: 1.4; }
 	:global(.merge-summary .ms-ico) { color: var(--color-accent); flex-shrink: 0; margin-top: 0.15rem; }

@@ -3869,5 +3869,6 @@
   "crm_merge_msgs": "{n} msgs",
   "crm_merge_resolve_heading": "Resolve conflicting fields",
   "crm_merge_base": "current",
-  "crm_field_phone": "Phone"
+  "crm_field_phone": "Phone",
+  "crm_merge_fields_heading": "Merged fields"
 }
