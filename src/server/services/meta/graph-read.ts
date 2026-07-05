@@ -608,18 +608,34 @@ export async function adInsights(
 // Ad → post linkage (which organic posts are also running as ads)
 // ---------------------------------------------------------------------------
 
-export type AdWithStory = { id?: string; creative?: { effective_object_story_id?: string } };
+export type AdWithStory = {
+  id?: string;
+  creative?: { effective_object_story_id?: string; thumbnail_url?: string };
+};
 
-export type AdStoryLink = { adId: string; storyId: string | null };
+export type AdStoryLink = { adId: string; storyId: string | null; thumbnailUrl: string | null };
+
+// Most ad creatives are DARK posts (never published to the page feed), so
+// `effective_object_story_id` alone gives the campaigns-page ad preview
+// nothing to mirror. `thumbnail_url` is the creative's own preview image —
+// pull it too so dark posts can still get a real thumbnail (spec WP-E:
+// meta-sync feeds it into the existing meta_post_media mirror pipeline).
+// Not attempting the `thumbnail_width(512).thumbnail_height(512)` Graph
+// modifier syntax here — unconfirmed whether that chains onto a nested field
+// expansion like this one vs. only working as a top-level query param on a
+// direct creative-node GET. Plain field, so the default (often small/cropped)
+// thumbnail size — acceptable for 40px table cells, revisit if larger is needed.
+const AD_FIELDS = 'id,creative{effective_object_story_id,thumbnail_url}';
 
 /**
  * Paginates `act_X/ads` and returns every ad's id alongside its creative's
  * `effective_object_story_id` — a `{page_id}_{post_id}` id, the same format
  * `/{page}/posts` returns — or `null` when the ad has no linked organic post
- * (dark post / deleted creative). Aggregates all pages itself (unlike the
- * other `list*` helpers here, which return one page + a cursor) since callers
- * want the full per-ad set: persisting the ad→post link (`meta_ad_posts`) AND
- * deriving the promoted-story-id set for `markPromotedPosts` from one call.
+ * (dark post / deleted creative) — and its creative's `thumbnail_url` (also
+ * `null` when absent). Aggregates all pages itself (unlike the other `list*`
+ * helpers here, which return one page + a cursor) since callers want the
+ * full per-ad set: persisting the ad→post link (`meta_ad_posts`) AND deriving
+ * the promoted-story-id set for `markPromotedPosts` from one call.
  */
 export async function listAdsWithStoryIds(
   adAccountId: string,
@@ -628,24 +644,35 @@ export async function listAdsWithStoryIds(
 ): Promise<GraphResult<AdStoryLink[]>> {
   const o = resolveOpts(opts);
   const accountPath = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
-  const url = buildUrl(
-    `${accountPath}/ads`,
-    { fields: 'id,creative{effective_object_story_id}', limit: 100, access_token: userToken },
-    o,
-  );
+  const url = buildUrl(`${accountPath}/ads`, { fields: AD_FIELDS, limit: 100, access_token: userToken }, o);
   const res = await graphRequest(url, o);
   if (!res.ok) return { ok: false, status: res.status, error: res.error, usage: res.usage };
 
+  const toLink = (ad: AdWithStory): AdStoryLink | null =>
+    ad.id
+      ? {
+          adId: ad.id,
+          storyId: ad.creative?.effective_object_story_id ?? null,
+          thumbnailUrl: ad.creative?.thumbnail_url ?? null,
+        }
+      : null;
+
   const out: AdStoryLink[] = [];
   let { data, nextCursor } = unwrapList<AdWithStory>(res.body);
-  for (const ad of data) if (ad.id) out.push({ adId: ad.id, storyId: ad.creative?.effective_object_story_id ?? null });
+  for (const ad of data) {
+    const link = toLink(ad);
+    if (link) out.push(link);
+  }
   while (nextCursor) {
     // Some paging.next links don't echo the original appsecret_proof (live-verified
     // on /insights) — re-derive it from the link's own access_token, same as every
     // other fetchNextPage call site in this file.
     const page = await fetchNextPage<AdWithStory>(nextCursor, { fetchImpl: o.fetchImpl, timeoutMs: o.timeoutMs, appSecret: o.appSecret });
     if (!page.ok) break; // tolerate a mid-pagination failure — return what's collected so far
-    for (const ad of page.data ?? []) if (ad.id) out.push({ adId: ad.id, storyId: ad.creative?.effective_object_story_id ?? null });
+    for (const ad of page.data ?? []) {
+      const link = toLink(ad);
+      if (link) out.push(link);
+    }
     nextCursor = page.nextCursor;
   }
   return { ok: true, status: res.status, data: out, usage: res.usage };

@@ -586,6 +586,18 @@ export function adStoryLinksToRows(orgId: string, links: AdStoryLink[]): AdPostI
  * fetch failures are tolerated (counted, not fatal) — same posture as every
  * other per-target Graph call in this file; an ad with no story id (dark
  * post/deleted creative) contributes no row and no story id.
+ *
+ * Most ad creatives point at DARK posts — never published to the page feed,
+ * so `syncPosts`'s own `recordPostMedia` call never sees them and
+ * `meta_post_media` never gets a row for that post id. Feed the creative's
+ * own `thumbnail_url` into the same mirror pipeline here instead: any link
+ * carrying both a story id and a thumbnail url records a pending
+ * `meta_post_media` row (platform 'fb' — story ids only come off FB ad
+ * creatives). `recordPostMedia` already refreshes `source_url` on re-sync and
+ * never downgrades an already-`mirrored` row, so this is safe to call every
+ * sync pass. Deduped by post id first (a Map — last-write-wins on
+ * thumbnailUrl) since multiple ads commonly share one story id; otherwise
+ * the same post would be recorded once per ad instead of once per sync.
  */
 async function collectPromotedStoryIds(
   ctx: CoreCtx,
@@ -593,6 +605,7 @@ async function collectPromotedStoryIds(
   adAccountAssets: MetaAsset[],
 ): Promise<{ storyIds: Set<string>; failed: number }> {
   const storyIds = new Set<string>();
+  const darkPostThumbnails = new Map<string, string>(); // postId (storyId) -> creative thumbnail url
   let failed = 0;
   for (const asset of adAccountAssets) {
     const res = await listAdsWithStoryIds(asset.externalId, userToken, graphAuthOpts());
@@ -601,8 +614,14 @@ async function collectPromotedStoryIds(
       continue;
     }
     const links = res.data ?? [];
-    for (const link of links) if (link.storyId) storyIds.add(link.storyId);
+    for (const link of links) {
+      if (link.storyId) storyIds.add(link.storyId);
+      if (link.storyId && link.thumbnailUrl) darkPostThumbnails.set(link.storyId, link.thumbnailUrl);
+    }
     await upsertAdPosts(ctx, adStoryLinksToRows(ctx.tenantId, links));
+  }
+  for (const [postId, thumbnailUrl] of darkPostThumbnails) {
+    await recordPostMedia(ctx, { orgId: ctx.tenantId, platform: 'fb', postId, sourceUrl: thumbnailUrl, mediaType: null });
   }
   return { storyIds, failed };
 }

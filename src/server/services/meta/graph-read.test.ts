@@ -260,12 +260,12 @@ describe('adInsights', () => {
 });
 
 describe('listAdsWithStoryIds', () => {
-  it('returns each ad id with its story id, tolerating a null creative', async () => {
+  it('returns each ad id with its story id and creative thumbnail url, tolerating a null creative', async () => {
     const fetchImpl = mockFetch(
       jsonResponse({
         data: [
-          { id: 'ad-1', creative: { effective_object_story_id: 'page-1_100' } },
-          { id: 'ad-2', creative: {} }, // creative present, no effective_object_story_id — dark post
+          { id: 'ad-1', creative: { effective_object_story_id: 'page-1_100', thumbnail_url: 'https://cdn/1.jpg' } },
+          { id: 'ad-2', creative: {} }, // creative present, no effective_object_story_id/thumbnail_url — dark post, no preview
           { id: 'ad-3' }, // no creative at all
         ],
       }),
@@ -273,13 +273,13 @@ describe('listAdsWithStoryIds', () => {
     const res = await listAdsWithStoryIds('123', 'utok', { fetchImpl });
     expect(res.ok).toBe(true);
     expect(res.data).toEqual([
-      { adId: 'ad-1', storyId: 'page-1_100' },
-      { adId: 'ad-2', storyId: null },
-      { adId: 'ad-3', storyId: null },
+      { adId: 'ad-1', storyId: 'page-1_100', thumbnailUrl: 'https://cdn/1.jpg' },
+      { adId: 'ad-2', storyId: null, thumbnailUrl: null },
+      { adId: 'ad-3', storyId: null, thumbnailUrl: null },
     ]);
     const calledUrl = decodeURIComponent((fetchImpl.mock.calls[0]?.[0] as string) ?? '');
     expect(calledUrl).toContain('/act_123/ads');
-    expect(calledUrl).toContain('id,creative{effective_object_story_id}');
+    expect(calledUrl).toContain('id,creative{effective_object_story_id,thumbnail_url}');
   });
 
   it('does not double-prefix an already act_-prefixed id', async () => {
@@ -308,8 +308,8 @@ describe('listAdsWithStoryIds', () => {
     const res = await listAdsWithStoryIds('123', 'utok', { fetchImpl: fetchImpl as unknown as typeof fetch, appSecret: 'shh' });
     expect(res.ok).toBe(true);
     expect(res.data).toEqual([
-      { adId: 'ad-1', storyId: 'page-1_100' },
-      { adId: 'ad-2', storyId: 'page-1_200' },
+      { adId: 'ad-1', storyId: 'page-1_100', thumbnailUrl: null },
+      { adId: 'ad-2', storyId: 'page-1_200', thumbnailUrl: null },
     ]);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
@@ -325,7 +325,7 @@ describe('listAdsWithStoryIds', () => {
     });
     const res = await listAdsWithStoryIds('123', 'utok', { fetchImpl: fetchImpl as unknown as typeof fetch });
     expect(res.ok).toBe(true);
-    expect(res.data).toEqual([{ adId: 'ad-1', storyId: 'page-1_100' }]);
+    expect(res.data).toEqual([{ adId: 'ad-1', storyId: 'page-1_100', thumbnailUrl: null }]);
   });
 
   it('surfaces the first-page failure as an error', async () => {

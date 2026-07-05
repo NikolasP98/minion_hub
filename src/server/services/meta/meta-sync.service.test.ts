@@ -33,7 +33,10 @@ const listPagePosts = vi.fn<(...a: unknown[]) => Promise<GraphResult<PagePost[]>
 const postInsights = vi.fn<(...a: unknown[]) => Promise<GraphResult<MetricInsight[]>>>();
 const igMediaInsights = vi.fn();
 const listIgMedia = vi.fn();
-const listAdsWithStoryIds = vi.fn<(...a: unknown[]) => Promise<GraphResult<Array<{ adId: string; storyId: string | null }>>>>();
+const listAdsWithStoryIds =
+  vi.fn<
+    (...a: unknown[]) => Promise<GraphResult<Array<{ adId: string; storyId: string | null; thumbnailUrl?: string | null }>>>
+  >();
 const adInsightsMock = vi.fn();
 const listConversations = vi.fn();
 const fetchNextPage = vi.fn();
@@ -268,8 +271,8 @@ describe('adInsightRowToInsert', () => {
 describe('adStoryLinksToRows — meta_ad_posts row mapping', () => {
   it('emits one row per ad with a story id, defaulting platform to fb', () => {
     const rows = adStoryLinksToRows('org-1', [
-      { adId: 'ad-1', storyId: 'page-1_100' },
-      { adId: 'ad-2', storyId: 'page-1_200' },
+      { adId: 'ad-1', storyId: 'page-1_100', thumbnailUrl: null },
+      { adId: 'ad-2', storyId: 'page-1_200', thumbnailUrl: null },
     ]);
     expect(rows).toEqual([
       { orgId: 'org-1', adId: 'ad-1', postId: 'page-1_100', platform: 'fb' },
@@ -279,8 +282,8 @@ describe('adStoryLinksToRows — meta_ad_posts row mapping', () => {
 
   it('drops an ad with no story id (dark post / deleted creative) — no row, not a null postId', () => {
     const rows = adStoryLinksToRows('org-1', [
-      { adId: 'ad-1', storyId: 'page-1_100' },
-      { adId: 'ad-dark', storyId: null },
+      { adId: 'ad-1', storyId: 'page-1_100', thumbnailUrl: null },
+      { adId: 'ad-dark', storyId: null, thumbnailUrl: null },
     ]);
     expect(rows).toEqual([{ orgId: 'org-1', adId: 'ad-1', postId: 'page-1_100', platform: 'fb' }]);
   });
@@ -546,6 +549,72 @@ describe('runJob(posts) — promoted-post labeling + insights-call skip-after-fi
       expect.objectContaining({ countsDelta: expect.objectContaining({ adStoryFetchFailed: 1 }) }),
     );
     expect(finishJob).toHaveBeenCalledWith(ctx, 'job-1', 'succeeded');
+  });
+
+  it('records a pending meta_post_media row from the ad creative thumbnail for a dark post (storyId + thumbnailUrl both present)', async () => {
+    listAdsWithStoryIds.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: [{ adId: 'ad-dark', storyId: 'page-1_999', thumbnailUrl: 'https://cdn/dark.jpg' }],
+    });
+    const { db } = createMockDb();
+    const ctx = { db: db as never, tenantId: 'org-1' };
+
+    await runJob(ctx, 'job-1');
+
+    expect(recordPostMedia).toHaveBeenCalledWith(ctx, {
+      orgId: 'org-1',
+      platform: 'fb',
+      postId: 'page-1_999',
+      sourceUrl: 'https://cdn/dark.jpg',
+      mediaType: null,
+    });
+  });
+
+  it('skips recording when storyId is null (no post to attach a preview to)', async () => {
+    listAdsWithStoryIds.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: [{ adId: 'ad-dark', storyId: null, thumbnailUrl: 'https://cdn/dark.jpg' }],
+    });
+    const { db } = createMockDb();
+    const ctx = { db: db as never, tenantId: 'org-1' };
+
+    await runJob(ctx, 'job-1');
+
+    expect(recordPostMedia).not.toHaveBeenCalledWith(ctx, expect.objectContaining({ sourceUrl: 'https://cdn/dark.jpg' }));
+  });
+
+  it('skips recording when thumbnailUrl is null (nothing to mirror)', async () => {
+    listAdsWithStoryIds.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: [{ adId: 'ad-dark', storyId: 'page-1_999', thumbnailUrl: null }],
+    });
+    const { db } = createMockDb();
+    const ctx = { db: db as never, tenantId: 'org-1' };
+
+    await runJob(ctx, 'job-1');
+
+    expect(recordPostMedia).not.toHaveBeenCalledWith(ctx, expect.objectContaining({ postId: 'page-1_999' }));
+  });
+
+  it('dedupes: two ads sharing one story id record that post exactly once', async () => {
+    listAdsWithStoryIds.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: [
+        { adId: 'ad-dark-a', storyId: 'page-1_999', thumbnailUrl: 'https://cdn/dark-a.jpg' },
+        { adId: 'ad-dark-b', storyId: 'page-1_999', thumbnailUrl: 'https://cdn/dark-b.jpg' },
+      ],
+    });
+    const { db } = createMockDb();
+    const ctx = { db: db as never, tenantId: 'org-1' };
+
+    await runJob(ctx, 'job-1');
+
+    const darkPostCalls = recordPostMedia.mock.calls.filter((c) => (c[1] as { postId?: string })?.postId === 'page-1_999');
+    expect(darkPostCalls).toHaveLength(1);
   });
 });
 
