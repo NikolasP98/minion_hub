@@ -3830,5 +3830,14 @@
   "data_table_bulk_actions": "Bulk actions",
   "data_table_expand": "Expand",
   "data_table_collapse": "Collapse",
-  "data_table_fit_column": "Fit to content (double-click)"
+  "data_table_fit_column": "Fit to content (double-click)",
+  "crm_bulk_merge_action": "Merge contacts",
+  "crm_bulk_delete_action": "Delete {n} contacts",
+  "crm_bulk_merge_title": "Merge contacts",
+  "crm_bulk_delete_title": "Delete contacts",
+  "crm_bulk_merge_confirm": "Merge {n} contacts into {name}? Their messages, invoices and tags move to that contact and the others are removed. This can't be undone.",
+  "crm_bulk_delete_confirm": "Delete {n} selected contacts? This can't be undone.",
+  "crm_bulk_merge_btn": "Merge",
+  "crm_bulk_delete_btn": "Delete",
+  "crm_bulk_failed": "Action failed — please retry."
 }

@@ -5,7 +5,7 @@
 	import { page } from '$app/state';
 	import * as m from '$lib/paraglide/messages';
 	import { Contact, RefreshCw, ArrowUp, ArrowDown, X } from 'lucide-svelte';
-	import { PageHeader, Button } from '$lib/components/ui';
+	import { PageHeader, Button, Modal } from '$lib/components/ui';
 	import ScoreCell from '$lib/components/crm/ScoreCell.svelte';
 	import StagePill from '$lib/components/crm/StagePill.svelte';
 	import FunnelStagePill from '$lib/components/crm/FunnelStagePill.svelte';
@@ -129,6 +129,59 @@
 			creating = false;
 		}
 	}
+
+	// ── Bulk actions (kebab) — merge is CRM-only; both are destructive → confirm ──
+	let selected = $state<Set<string>>(new Set());
+	let confirm = $state<{ kind: 'merge' | 'delete'; ids: string[]; survivor: Row | null } | null>(null);
+	let confirmOpen = $state(false);
+	let bulkBusy = $state(false);
+	let bulkErr = $state<string | null>(null);
+
+	const bulkActions = $derived.by(() => {
+		if (!canAct('crm', 'edit')) return [];
+		const acts: { label: string; danger?: boolean; onSelect: (ids: Set<string>, rows: Row[]) => void }[] = [];
+		// Merge only makes sense for 2+ (CRM-special: fold duplicates into a survivor).
+		if (selected.size >= 2) acts.push({ label: m.crm_bulk_merge_action(), onSelect: (ids, rows) => openConfirm('merge', ids, rows) });
+		acts.push({ label: m.crm_bulk_delete_action({ n: selected.size }), danger: true, onSelect: (ids, rows) => openConfirm('delete', ids, rows) });
+		return acts;
+	});
+
+	function openConfirm(kind: 'merge' | 'delete', ids: Set<string>, rows: Row[]) {
+		// Survivor = the most-active selected contact (keep the richest record).
+		const survivor = kind === 'merge' ? rows.reduce((a, b) => (b.total_msgs > a.total_msgs ? b : a), rows[0]) : null;
+		confirm = { kind, ids: [...ids], survivor };
+		bulkErr = null;
+		confirmOpen = true;
+	}
+
+	async function runConfirm() {
+		if (!confirm) return;
+		bulkBusy = true;
+		bulkErr = null;
+		try {
+			if (confirm.kind === 'delete') {
+				const res = await Promise.all(confirm.ids.map((id) => fetch(`/api/crm/contacts/${id}`, { method: 'DELETE' })));
+				if (res.some((r) => !r.ok)) throw new Error('delete');
+			} else {
+				const survivorId = confirm.survivor!.contact_id;
+				const loserIds = confirm.ids.filter((id) => id !== survivorId);
+				const res = await fetch('/api/crm/cleanup/duplicates', {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ survivorId, loserIds }),
+				});
+				if (!res.ok) throw new Error('merge');
+			}
+			selected = new Set();
+			confirmOpen = false;
+			confirm = null;
+			await invalidate('crm:contacts');
+		} catch {
+			bulkErr = m.crm_bulk_failed();
+		} finally {
+			bulkBusy = false;
+		}
+	}
 </script>
 
 <svelte:head><title>{m.crm_nav_customers()} — {m.crm_title()}</title></svelte:head>
@@ -148,6 +201,9 @@
 		bind:search={searchQuery}
 		{initialFilters}
 		initialSort={{ key: 'score', dir: 'desc' }}
+		selectable
+		bind:selectedIds={selected}
+		{bulkActions}
 		exportable={canAct('crm', 'export')}
 		exportName="customers"
 		storageKey={`crm-customers:${data.orgId ?? 'default'}`}
@@ -236,7 +292,27 @@
 	</DataTable>
 </div>
 
+<Modal
+	bind:open={confirmOpen}
+	title={confirm?.kind === 'merge' ? m.crm_bulk_merge_title() : m.crm_bulk_delete_title()}
+	onclose={() => (confirm = null)}
+>
+	{#if confirm?.kind === 'merge'}
+		<p class="t-body">{m.crm_bulk_merge_confirm({ n: confirm.ids.length, name: contactLabel(confirm.survivor?.display_name) })}</p>
+	{:else if confirm}
+		<p class="t-body">{m.crm_bulk_delete_confirm({ n: confirm.ids.length })}</p>
+	{/if}
+	{#if bulkErr}<p class="err-msg">{bulkErr}</p>{/if}
+	{#snippet footer()}
+		<Button variant="outline" size="sm" onclick={() => (confirmOpen = false)}>{m.common_cancel()}</Button>
+		<Button variant={confirm?.kind === 'delete' ? 'danger' : 'primary'} size="sm" onclick={runConfirm} disabled={bulkBusy}>
+			{confirm?.kind === 'merge' ? m.crm_bulk_merge_btn() : m.crm_bulk_delete_btn()}
+		</Button>
+	{/snippet}
+</Modal>
+
 <style>
+	.err-msg { font-size: 0.8rem; color: var(--color-destructive); margin-top: 0.5rem; }
 	.res-toggle {
 		display: inline-flex; align-items: center; height: 1.5rem; padding: 0 0.55rem;
 		font-size: 0.72rem; font-weight: 600; border-radius: 999px;

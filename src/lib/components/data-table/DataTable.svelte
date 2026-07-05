@@ -780,9 +780,9 @@
 								     cell bottom (dt-th vertical-align:bottom) so every column's title
 								     lines up regardless of how many aggregates it shows. -->
 								{#if aggs.length}
-									<div class="dt-agg-row {c.align === 'right' ? 'items-end' : c.align === 'center' ? 'items-center' : ''}">
+									<div class="dt-agg-row">
 										{#each aggs as a (a.mode)}
-											<span class="dt-agg" title={a.mode}>{@render aggIcon(a.mode)}{a.value}</span>
+											<span class="dt-agg" title={a.mode}>{a.value}{@render aggIcon(a.mode)}</span>
 										{/each}
 									</div>
 								{/if}
@@ -949,8 +949,9 @@
 	.dt-th.drop-before { box-shadow: inset 2px 0 0 0 var(--color-accent); }
 	.dt-th.drop-after { box-shadow: inset -2px 0 0 0 var(--color-accent); }
 	.dt-hlabel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	/* Aggregates always stack vertically, above the title. */
-	.dt-agg-row { display: flex; flex-direction: column; align-items: flex-start; gap: 0.05rem; margin-bottom: 0.2rem; }
+	/* Aggregates always stack vertically, above the title, right-aligned so the
+	   value column lines up and the trailing icon sits under the sort/filter arrow. */
+	.dt-agg-row { display: flex; flex-direction: column; align-items: flex-end; gap: 0.05rem; margin-bottom: 0.2rem; }
 	/* Desaturated vs the pure accent a sorted header uses, so aggregate figures
 	   read as secondary and don't get confused with the active-sort colour.
 	   Override --dt-agg-color to retune. */

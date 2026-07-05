@@ -3830,5 +3830,14 @@
   "data_table_bulk_actions": "Acciones masivas",
   "data_table_expand": "Expandir",
   "data_table_collapse": "Contraer",
-  "data_table_fit_column": "Ajustar al contenido (doble clic)"
+  "data_table_fit_column": "Ajustar al contenido (doble clic)",
+  "crm_bulk_merge_action": "Combinar contactos",
+  "crm_bulk_delete_action": "Eliminar {n} contactos",
+  "crm_bulk_merge_title": "Combinar contactos",
+  "crm_bulk_delete_title": "Eliminar contactos",
+  "crm_bulk_merge_confirm": "¿Combinar {n} contactos en {name}? Sus mensajes, facturas y etiquetas pasan a ese contacto y los demás se eliminan. Esto no se puede deshacer.",
+  "crm_bulk_delete_confirm": "¿Eliminar {n} contactos seleccionados? Esto no se puede deshacer.",
+  "crm_bulk_merge_btn": "Combinar",
+  "crm_bulk_delete_btn": "Eliminar",
+  "crm_bulk_failed": "La acción falló — inténtalo de nuevo."
 }
