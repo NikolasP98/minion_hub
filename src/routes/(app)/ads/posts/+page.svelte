@@ -2,7 +2,7 @@
 	import { goto } from '$app/navigation';
 	import type { PageData } from './$types';
 	import * as m from '$lib/paraglide/messages';
-	import { Image, ExternalLink } from 'lucide-svelte';
+	import { Image, ExternalLink, Facebook, Instagram } from 'lucide-svelte';
 	import { PageHeader, EmptyState } from '$lib/components/ui';
 	import DataTable from '$lib/components/data-table/DataTable.svelte';
 	import type { DataColumn } from '$lib/components/data-table/DataTable.svelte';
@@ -46,6 +46,7 @@
 	});
 
 	const columns = $derived.by<DataColumn<Row>[]>(() => [
+		{ key: 'thumb', label: m.ads_col_thumbnail(), custom: true, sortable: false, exportable: false, align: 'center', width: 56 },
 		{ key: 'platform', label: m.ads_col_platform(), custom: true, accessor: (p) => p.platform ?? '', width: 110 },
 		{ key: 'type', label: m.ads_col_type(), custom: true, accessor: (p) => (p.isPromoted ? 'ad' : 'organic'), width: 110 },
 		{ key: 'posted', label: m.ads_col_posted(), custom: true, accessor: (p) => p.postedAt, sortFn: (a, b) => dateOf(a.postedAt) - dateOf(b.postedAt), exportValue: (p) => (p.postedAt ? new Date(p.postedAt).toISOString().slice(0, 10) : ''), width: 130 },
@@ -98,7 +99,15 @@
 			{/snippet}
 
 			{#snippet cell(p: Row, col: DataColumn<Row>)}
-				{#if col.key === 'platform'}
+				{#if col.key === 'thumb'}
+					{#if p.thumbFileId}
+						<img src="/api/files/{p.thumbFileId}/raw" loading="lazy" alt="" width="40" height="40" class="post-thumb" />
+					{:else if p.platform === 'ig'}
+						<div class="post-thumb post-thumb-placeholder" data-platform="ig" aria-hidden="true"><Instagram size={16} /></div>
+					{:else}
+						<div class="post-thumb post-thumb-placeholder" data-platform="fb" aria-hidden="true"><Facebook size={16} /></div>
+					{/if}
+				{:else if col.key === 'platform'}
 					<span class="post-platform" data-platform={p.platform ?? ''}>{p.platform === 'ig' ? m.ads_platform_ig() : m.ads_platform_fb()}</span>
 				{:else if col.key === 'type'}
 					<span class="post-type" class:ad={p.isPromoted}>{p.isPromoted ? m.ads_badge_ad() : m.ads_badge_organic()}</span>
@@ -170,5 +179,27 @@
 	}
 	.post-link:hover {
 		color: var(--color-accent);
+	}
+	.post-thumb {
+		width: 40px;
+		height: 40px;
+		border-radius: 8px;
+		object-fit: cover;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+	}
+	.post-thumb-placeholder {
+		background: color-mix(in srgb, var(--color-muted-foreground) 15%, transparent);
+		color: var(--color-muted-foreground);
+	}
+	.post-thumb-placeholder[data-platform='ig'] {
+		background: color-mix(in srgb, var(--color-pink, #ec4899) 15%, transparent);
+		color: var(--color-pink, #ec4899);
+	}
+	.post-thumb-placeholder[data-platform='fb'] {
+		background: color-mix(in srgb, var(--color-info, #3b82f6) 15%, transparent);
+		color: var(--color-info, #3b82f6);
 	}
 </style>

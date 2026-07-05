@@ -241,6 +241,10 @@ export interface PostRow {
    *  the sync pulled (IG metric names drift; see spec §10 risk #1), not a
    *  hardcoded list. UI renders whichever keys are present. */
   metrics: Record<string, number>;
+  /** `files.id` of the mirrored thumbnail blob (spec 2026-07-05 §7), or null
+   *  when not yet mirrored (pending/failed/skipped) — UI falls back to a
+   *  platform-glyph placeholder in that case. */
+  thumbFileId: string | null;
 }
 
 /**
@@ -254,23 +258,26 @@ export function postPerformance(
   opts: { limit?: number; orderBy?: 'recent' | 'score'; platform?: 'fb' | 'ig'; promoted?: boolean } = {},
 ): Promise<PostRow[]> {
   const limit = Math.min(opts.limit ?? 200, 500);
-  const platformCond = opts.platform ? sql` and platform = ${opts.platform}` : sql``;
-  const promotedCond = opts.promoted === undefined ? sql`` : sql` and is_promoted = ${opts.promoted}`;
+  const platformCond = opts.platform ? sql` and mi.platform = ${opts.platform}` : sql``;
+  const promotedCond = opts.promoted === undefined ? sql`` : sql` and mi.is_promoted = ${opts.promoted}`;
   const orderClause = opts.orderBy === 'recent' ? sql`posted_at desc nulls last` : sql`score desc nulls last`;
   return withOrgCore(ctx, async (tx) => {
     const rows = (await tx.execute(sql`
-      select post_id,
-             max(platform) as platform,
-             max(permalink) as permalink,
-             max(caption) as caption,
-             max(posted_at)::text as posted_at,
-             max(media_type) as media_type,
-             bool_or(is_promoted) as is_promoted,
-             jsonb_object_agg(metric, value) as metrics,
-             sum(value)::float8 as score
-      from meta_post_insights
-      where org_id = ${ctx.tenantId} and period = 'lifetime'${platformCond}${promotedCond}
-      group by post_id
+      select mi.post_id,
+             max(mi.platform) as platform,
+             max(mi.permalink) as permalink,
+             max(mi.caption) as caption,
+             max(mi.posted_at)::text as posted_at,
+             max(mi.media_type) as media_type,
+             bool_or(mi.is_promoted) as is_promoted,
+             jsonb_object_agg(mi.metric, mi.value) as metrics,
+             sum(mi.value)::float8 as score,
+             max(mm.file_id) filter (where mm.status = 'mirrored') as thumb_file_id
+      from meta_post_insights mi
+      left join meta_post_media mm
+        on mm.org_id = mi.org_id and mm.platform = mi.platform and mm.post_id = mi.post_id
+      where mi.org_id = ${ctx.tenantId} and mi.period = 'lifetime'${platformCond}${promotedCond}
+      group by mi.post_id
       order by ${orderClause}
       limit ${limit}
     `)) as unknown as Array<Record<string, unknown>>;
@@ -285,6 +292,7 @@ export function postPerformance(
       metrics: Object.fromEntries(
         Object.entries((r.metrics as Record<string, unknown>) ?? {}).map(([k, v]) => [k, Number(v)]),
       ),
+      thumbFileId: r.thumb_file_id != null ? String(r.thumb_file_id) : null,
     }));
   });
 }

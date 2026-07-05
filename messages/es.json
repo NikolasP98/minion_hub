@@ -3773,6 +3773,7 @@
   "ads_posts_count": "{count} publicaciones",
   "ads_posts_no_match": "Ninguna publicación coincide con los filtros actuales.",
   "ads_col_platform": "Plataforma",
+  "ads_col_thumbnail": "Vista previa",
   "ads_col_posted": "Publicado",
   "ads_col_caption": "Descripción",
   "ads_col_metrics": "Métricas",

@@ -3773,6 +3773,7 @@
   "ads_posts_count": "{count} posts",
   "ads_posts_no_match": "No posts match the current filters.",
   "ads_col_platform": "Platform",
+  "ads_col_thumbnail": "Preview",
   "ads_col_posted": "Posted",
   "ads_col_caption": "Caption",
   "ads_col_metrics": "Metrics",
