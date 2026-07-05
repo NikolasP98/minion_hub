@@ -3866,5 +3866,8 @@
   "crm_merge_keeps": "Keeps everything",
   "crm_merge_removed": "Merged in, then removed",
   "crm_merge_summary": "All messages, invoices, tags and channels from the other {others} move into {name}. The others are permanently removed.",
-  "crm_merge_msgs": "{n} msgs"
+  "crm_merge_msgs": "{n} msgs",
+  "crm_merge_resolve_heading": "Resolve conflicting fields",
+  "crm_merge_base": "current",
+  "crm_field_phone": "Phone"
 }

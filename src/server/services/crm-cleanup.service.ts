@@ -331,6 +331,10 @@ export async function mergeContacts(
   ctx: CoreCtx,
   survivorId: string,
   loserIds: string[],
+  /** Conflict-resolver overrides applied to the survivor AFTER the backfill —
+   *  these win over both survivor and loser values. `customFields` is jsonb-merged
+   *  (never a wholesale replace), so untouched keys are preserved. */
+  overrides?: { displayName?: string; customFields?: Record<string, unknown> },
 ): Promise<void> {
   const losers = loserIds.filter((id) => id && id !== survivorId);
   if (losers.length === 0) return;
@@ -381,6 +385,20 @@ export async function mergeContacts(
       )
       where s.id = ${survivorId} and s.org_id = ${org}
     `);
+    // 5b. Apply the user's conflict-resolver choices — these OVERRIDE the survivor
+    //     (jsonb `||` right-operand wins; untouched keys survive).
+    if (overrides) {
+      const sets: ReturnType<typeof sql>[] = [];
+      if (overrides.displayName != null && overrides.displayName !== '')
+        sets.push(sql`display_name = ${overrides.displayName}`);
+      if (overrides.customFields && Object.keys(overrides.customFields).length > 0)
+        sets.push(sql`custom_fields = coalesce(custom_fields, '{}'::jsonb) || ${JSON.stringify(overrides.customFields)}::jsonb`);
+      if (sets.length)
+        await tx.execute(sql`
+          update crm_contacts set ${sql.join(sets, sql`, `)}
+          where id = ${survivorId} and org_id = ${org}
+        `);
+    }
     // 6. Delete losers (their now-orphan rows already reassigned).
     await tx.execute(sql`
       delete from crm_contacts where org_id = ${org} and id in ${loserArr}

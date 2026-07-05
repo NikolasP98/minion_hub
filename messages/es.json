@@ -3866,5 +3866,8 @@
   "crm_merge_keeps": "Conserva todo",
   "crm_merge_removed": "Se combina y se elimina",
   "crm_merge_summary": "Todos los mensajes, facturas, etiquetas y canales de los otros {others} pasan a {name}. Los demás se eliminan permanentemente.",
-  "crm_merge_msgs": "{n} msjs"
+  "crm_merge_msgs": "{n} msjs",
+  "crm_merge_resolve_heading": "Resolver campos en conflicto",
+  "crm_merge_base": "actual",
+  "crm_field_phone": "Teléfono"
 }

@@ -19,6 +19,7 @@
 	import DataTable from '$lib/components/data-table/DataTable.svelte';
 	import type { DataColumn } from '$lib/components/data-table/DataTable.svelte';
 	import CrmMergeModal from '$lib/components/crm/CrmMergeModal.svelte';
+	import { applyContactMerge, type MergeField } from '$lib/components/crm/crm-merge';
 
 	let { data }: { data: PageData } = $props();
 	const contacts = $derived(data.contacts);
@@ -142,14 +143,33 @@
 	const mergeContacts = $derived(
 		mergeRows.map((r) => {
 			const fin = finOf(r);
-			const stats = [
+			const subtitle = [
 				m.crm_merge_msgs({ n: r.total_msgs }),
 				(r.channels?.length ?? 0) > 0 ? r.channels.join(', ') : null,
 				fin && fin.revenue > 0 ? fin.revenue.toLocaleString() : null,
 			].filter(Boolean).join(' · ');
-			return { id: r.contact_id, name: contactLabel(r.display_name), stats };
+			return { id: r.contact_id, name: contactLabel(r.display_name), subtitle };
 		}),
 	);
+	// Resolvable fields: the name + every custom_fields key present across the
+	// selected contacts (dni / phone / email / …). The modal only surfaces the ones
+	// that actually conflict (2+ distinct values).
+	const mergeFields = $derived.by<MergeField[]>(() => {
+		const fields: MergeField[] = [];
+		const nameVals = mergeRows
+			.map((r) => ({ contactId: r.contact_id, value: (r.display_name ?? '').trim() }))
+			.filter((v) => v.value);
+		if (nameVals.length) fields.push({ key: 'display_name', label: m.crm_col_contact(), values: nameVals });
+		const keys = new Set<string>();
+		for (const r of mergeRows) for (const k of Object.keys(r.custom_fields ?? {})) keys.add(k);
+		for (const k of keys) {
+			const vals = mergeRows
+				.map((r) => ({ contactId: r.contact_id, value: String(r.custom_fields?.[k] ?? '').trim() }))
+				.filter((v) => v.value);
+			if (vals.length) fields.push({ key: k, label: metaLabel(k), values: vals });
+		}
+		return fields;
+	});
 	// Delete → simple confirm modal.
 	let deleteOpen = $state(false);
 	let deleteIds = $state<string[]>([]);
@@ -175,18 +195,13 @@
 		return acts;
 	});
 
-	async function runMerge() {
+	async function runMerge(resolved: Record<string, string>) {
 		if (!survivorId) return;
 		bulkBusy = true;
 		bulkErr = null;
 		try {
 			const loserIds = mergeRows.map((r) => r.contact_id).filter((id) => id !== survivorId);
-			const res = await fetch('/api/crm/cleanup/duplicates', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ survivorId, loserIds }),
-			});
-			if (!res.ok) throw new Error('merge');
+			await applyContactMerge(survivorId, loserIds, resolved);
 			selected = new Set();
 			mergeOpen = false;
 			await invalidate('crm:contacts');
@@ -321,7 +336,7 @@
 	</DataTable>
 </div>
 
-<CrmMergeModal bind:open={mergeOpen} contacts={mergeContacts} bind:survivorId busy={bulkBusy} error={bulkErr} onConfirm={runMerge} />
+<CrmMergeModal bind:open={mergeOpen} contacts={mergeContacts} fields={mergeFields} bind:survivorId busy={bulkBusy} error={bulkErr} onConfirm={runMerge} />
 
 <Modal bind:open={deleteOpen} title={m.crm_bulk_delete_title()}>
 	<p class="t-body">{m.crm_bulk_delete_confirm({ n: deleteIds.length })}</p>

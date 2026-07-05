@@ -15,13 +15,20 @@ export const GET: RequestHandler = async ({ locals }) => {
 const postSchema = z.object({
   survivorId: z.string().min(1).max(200),
   loserIds: z.array(z.string().max(200)),
+  /** Conflict-resolver choices applied to the survivor (name + custom_fields keys). */
+  overrides: z
+    .object({
+      displayName: z.string().max(500).optional(),
+      customFields: z.record(z.string(), z.unknown()).optional(),
+    })
+    .optional(),
 });
 
-/** POST /api/crm/cleanup/duplicates { survivorId, loserIds[] } — merge. */
+/** POST /api/crm/cleanup/duplicates { survivorId, loserIds[], overrides? } — merge. */
 export const POST: RequestHandler = async ({ locals, request }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   const body = await parseBody(request, postSchema);
-  await mergeContacts(ctx, body.survivorId, body.loserIds);
+  await mergeContacts(ctx, body.survivorId, body.loserIds, body.overrides);
   return json({ ok: true });
 };

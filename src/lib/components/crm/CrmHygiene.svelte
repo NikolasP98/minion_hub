@@ -10,6 +10,7 @@
 	import { Button } from '$lib/components/ui';
 	import { contactLabel } from '$lib/components/crm/crm-format';
 	import CrmMergeModal from '$lib/components/crm/CrmMergeModal.svelte';
+	import { applyContactMerge, type MergeField } from '$lib/components/crm/crm-merge';
 
 	type Fix = {
 		contactId: string;
@@ -187,13 +188,25 @@
 		(pendingGroup?.contacts ?? []).map((c) => ({
 			id: c.id,
 			name: contactLabel(c.name),
-			stats: [
-				m.crm_msgs_n({ count: c.messages }),
-				c.dni ? `DNI ${c.dni}` : null,
-				c.phone ? `📞 ${c.phone}` : null,
-			].filter(Boolean).join(' · '),
+			subtitle: m.crm_msgs_n({ count: c.messages }),
 		})),
 	);
+	// Resolvable fields for this duplicate group: name + DNI + phone (the values the
+	// group surfaces). The modal shows only the ones that actually conflict.
+	const mergeFields = $derived.by<MergeField[]>(() => {
+		const cs = pendingGroup?.contacts ?? [];
+		const field = (key: string, label: string, get: (c: DupContact) => string | null | undefined): MergeField => ({
+			key,
+			label,
+			values: cs.map((c) => ({ contactId: c.id, value: (get(c) ?? '').toString().trim() })).filter((v) => v.value),
+		});
+		// name + DNI only — phone identities already union server-side on merge, and
+		// its custom_fields key is provider-specific, so we don't risk writing a wrong one.
+		return [
+			field('display_name', m.crm_col_contact(), (c) => c.name),
+			field('dni', 'DNI', (c) => c.dni),
+		].filter((f) => f.values.length > 0);
+	});
 
 	function openMerge(g: DupGroup) {
 		pendingGroup = g;
@@ -202,7 +215,7 @@
 		mergeOpen = true;
 	}
 
-	async function runMerge() {
+	async function runMerge(resolved: Record<string, string>) {
 		const g = pendingGroup;
 		if (!g || !mergeSurvivor) return;
 		const loserIds = g.contacts.map((c) => c.id).filter((id) => id !== mergeSurvivor);
@@ -210,12 +223,7 @@
 		merging = g.key;
 		mergeErr = null;
 		try {
-			const res = await fetch('/api/crm/cleanup/duplicates', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ survivorId: mergeSurvivor, loserIds }),
-			});
-			if (!res.ok) throw new Error('merge');
+			await applyContactMerge(mergeSurvivor, loserIds, resolved);
 			pickSurvivor(g, mergeSurvivor); // keep the inline picker in sync
 			mergeOpen = false;
 			pendingGroup = null;
@@ -422,6 +430,7 @@
 <CrmMergeModal
 	bind:open={mergeOpen}
 	contacts={mergeContacts}
+	fields={mergeFields}
 	bind:survivorId={mergeSurvivor}
 	busy={merging !== null}
 	error={mergeErr}
