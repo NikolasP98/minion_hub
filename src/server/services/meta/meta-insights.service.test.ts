@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { previousRange, deltaPct, calcCtr, calcCpc, extentToRange } from './meta-insights.service';
+import { createMockDb } from '$server/test-utils/mock-db';
+import { previousRange, deltaPct, calcCtr, calcCpc, extentToRange, getPostDetail } from './meta-insights.service';
+
+const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
 
 describe('previousRange', () => {
   it('returns the equal-length window immediately before range', () => {
@@ -60,5 +63,69 @@ describe('extentToRange', () => {
       from: '2026-06-04',
       to: '2026-07-04',
     });
+  });
+});
+
+describe('getPostDetail', () => {
+  it('returns null when the post has no rows (missing or foreign org)', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([]);
+    expect(await getPostDetail(ctx(db), 'missing-post')).toBeNull();
+  });
+
+  it('pivots every metric row, the mirrored thumbnail, and the promoted-by-ad reverse lookup', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([
+      {
+        post_id: 'post-1',
+        platform: 'fb',
+        permalink: 'https://facebook.com/post-1',
+        caption: 'Full caption text\nwith a newline',
+        posted_at: '2026-06-01T00:00:00.000Z',
+        media_type: 'video',
+        is_promoted: true,
+        metrics: { post_impressions: '120', post_clicks: '5', post_reactions_by_type_total: '30' },
+        thumb_file_id: 'file-1',
+        thumb_status: 'mirrored',
+        promoted_by_ad_ids: 'ad-1,ad-2',
+      },
+    ]);
+    const detail = await getPostDetail(ctx(db), 'post-1');
+    expect(detail).toEqual({
+      postId: 'post-1',
+      platform: 'fb',
+      permalink: 'https://facebook.com/post-1',
+      caption: 'Full caption text\nwith a newline',
+      mediaType: 'video',
+      postedAt: '2026-06-01T00:00:00.000Z',
+      isPromoted: true,
+      metrics: { post_impressions: 120, post_clicks: 5, post_reactions_by_type_total: 30 },
+      thumbFileId: 'file-1',
+      thumbStatus: 'mirrored',
+      promotedByAdIds: ['ad-1', 'ad-2'],
+    });
+  });
+
+  it('returns an empty promotedByAdIds array for an organic (non-promoted) post', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([
+      {
+        post_id: 'post-2',
+        platform: 'ig',
+        permalink: null,
+        caption: null,
+        posted_at: null,
+        media_type: 'IMAGE',
+        is_promoted: false,
+        metrics: { likes: '3' },
+        thumb_file_id: null,
+        thumb_status: null,
+        promoted_by_ad_ids: null,
+      },
+    ]);
+    const detail = await getPostDetail(ctx(db), 'post-2');
+    expect(detail?.isPromoted).toBe(false);
+    expect(detail?.promotedByAdIds).toEqual([]);
+    expect(detail?.thumbFileId).toBeNull();
   });
 });

@@ -16,6 +16,9 @@ import {
   exchangeIgLongLivedToken,
   refreshIgToken,
   pickPreviewUrl,
+  igMediaDetail,
+  fbPostAttachments,
+  fbPostFullPicture,
 } from './graph-read';
 
 function jsonResponse(body: unknown, init: { ok?: boolean; status?: number; headers?: Record<string, string> } = {}) {
@@ -481,6 +484,43 @@ describe('pickPreviewUrl', () => {
 
   it('returns null when nothing usable is present', () => {
     expect(pickPreviewUrl({ media_type: 'IMAGE' })).toBeNull();
+  });
+});
+
+describe('igMediaDetail', () => {
+  it('hits the unversioned IG host with the media/children fields, no appsecret_proof', async () => {
+    const fetchImpl = mockFetch(jsonResponse({ media_type: 'CAROUSEL_ALBUM', children: { data: [] } }));
+    const res = await igMediaDetail('media-1', 'ig-token', { fetchImpl });
+    expect(res.ok).toBe(true);
+    const calledUrl = (fetchImpl.mock.calls[0]?.[0] as string) ?? '';
+    expect(calledUrl).toBe(
+      `https://graph.instagram.com/media-1?fields=${encodeURIComponent('media_type,media_url,thumbnail_url,children{media_type,media_url,thumbnail_url}')}&access_token=ig-token`,
+    );
+    expect(calledUrl).not.toContain('appsecret_proof');
+  });
+
+  it('surfaces a graph error (e.g. permission denied) as ok:false', async () => {
+    const fetchImpl = mockFetch(jsonResponse({ error: { message: 'denied', code: 10 } }, { ok: false, status: 400 }));
+    const res = await igMediaDetail('media-1', 'ig-token', { fetchImpl });
+    expect(res.ok).toBe(false);
+  });
+});
+
+describe('fbPostAttachments / fbPostFullPicture', () => {
+  it('requests the attachments{media,subattachments} edge, versioned host', async () => {
+    const fetchImpl = mockFetch(jsonResponse({ attachments: { data: [] } }));
+    const res = await fbPostAttachments('123_456', 'page-token', { fetchImpl });
+    expect(res.ok).toBe(true);
+    const calledUrl = (fetchImpl.mock.calls[0]?.[0] as string) ?? '';
+    expect(calledUrl).toContain('/v23.0/123_456');
+    expect(calledUrl).toContain(encodeURIComponent('attachments{media,subattachments}'));
+  });
+
+  it('fbPostFullPicture requests the plain full_picture field', async () => {
+    const fetchImpl = mockFetch(jsonResponse({ full_picture: 'https://cdn/pic.jpg' }));
+    const res = await fbPostFullPicture('123_456', 'page-token', { fetchImpl });
+    expect(res.ok).toBe(true);
+    expect(res.data?.full_picture).toBe('https://cdn/pic.jpg');
   });
 });
 

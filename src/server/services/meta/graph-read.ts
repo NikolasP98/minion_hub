@@ -652,6 +652,70 @@ export async function listAdsWithStoryIds(
 }
 
 // ---------------------------------------------------------------------------
+// Post detail — on-demand rich media (spec 2026-07-05-socials-rename-detail-pages §5.3)
+// ---------------------------------------------------------------------------
+
+export type IgMediaDetail = {
+  id?: string;
+  media_type?: string;
+  media_url?: string;
+  thumbnail_url?: string;
+  children?: { data?: Array<{ media_type?: string; media_url?: string; thumbnail_url?: string }> };
+};
+
+const IG_MEDIA_DETAIL_FIELDS = 'media_type,media_url,thumbnail_url,children{media_type,media_url,thumbnail_url}';
+
+/** IG media node + carousel children, for the post-detail "rich media" enrichment. Unversioned host, no appsecret_proof (spec §5.3). */
+export async function igMediaDetail(
+  mediaId: string,
+  token: string,
+  opts: Pick<GraphOpts, 'fetchImpl' | 'timeoutMs'> = {},
+): Promise<GraphResult<IgMediaDetail>> {
+  const o = resolveOpts({ baseUrl: 'https://graph.instagram.com', versioned: false, ...opts });
+  const url = buildUrl(mediaId, { fields: IG_MEDIA_DETAIL_FIELDS, access_token: token }, o);
+  const res = await graphRequest(url, o);
+  if (!res.ok) return { ok: false, status: res.status, error: res.error, usage: res.usage };
+  return { ok: true, status: res.status, data: res.body as IgMediaDetail, usage: res.usage };
+}
+
+export type FbAttachmentMedia = { image?: { src?: string }; source?: string };
+export type FbAttachment = { media_type?: string; media?: FbAttachmentMedia; subattachments?: { data?: FbAttachment[] } };
+export type FbAttachmentsResponse = { attachments?: { data?: FbAttachment[] } };
+
+/**
+ * FB post's `attachments{media,subattachments}` edge — the smoke-test call
+ * (spec §5.3): expected to 100/permission-error on this app's scopes, in
+ * which case the caller falls back to `fbPostFullPicture`. Versioned host,
+ * page token, appsecret_proof (ordinary FB Graph call).
+ */
+export async function fbPostAttachments(
+  postId: string,
+  pageToken: string,
+  opts: GraphOpts = {},
+): Promise<GraphResult<FbAttachmentsResponse>> {
+  const o = resolveOpts(opts);
+  const url = buildUrl(postId, { fields: 'attachments{media,subattachments}', access_token: pageToken }, o);
+  const res = await graphRequest(url, o);
+  if (!res.ok) return { ok: false, status: res.status, error: res.error, usage: res.usage };
+  return { ok: true, status: res.status, data: res.body as FbAttachmentsResponse, usage: res.usage };
+}
+
+export type FbFullPicture = { full_picture?: string };
+
+/** Fallback when `attachments` is denied — the same preview field the posts sync already reads. */
+export async function fbPostFullPicture(
+  postId: string,
+  pageToken: string,
+  opts: GraphOpts = {},
+): Promise<GraphResult<FbFullPicture>> {
+  const o = resolveOpts(opts);
+  const url = buildUrl(postId, { fields: 'full_picture', access_token: pageToken }, o);
+  const res = await graphRequest(url, o);
+  if (!res.ok) return { ok: false, status: res.status, error: res.error, usage: res.usage };
+  return { ok: true, status: res.status, data: res.body as FbFullPicture, usage: res.usage };
+}
+
+// ---------------------------------------------------------------------------
 // Conversations (Messenger / IG DM)
 // ---------------------------------------------------------------------------
 

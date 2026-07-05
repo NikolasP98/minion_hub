@@ -175,28 +175,48 @@ export interface CampaignRow {
   clicks: number;
   ctr: number;
   cpc: number;
+  /** Linked organic post id (ad level only — via meta_ad_posts). Null at
+   *  campaign/adset level, or when the ad has no linked post (dark post). */
+  postId: string | null;
+  /** Mirrored thumbnail `files.id` for the linked post (ad level only). */
+  thumbFileId: string | null;
 }
 
 /** Grouped campaign/adset/ad spend+performance for `range`. Aggregation runs in
  *  Postgres (group by the requested level) — the client only sorts/filters the
- *  already-small grouped result, never raw daily rows. */
+ *  already-small grouped result, never raw daily rows. Ad level additionally
+ *  joins meta_ad_posts → meta_post_media so each ad row carries its linked
+ *  post id + mirrored thumbnail (spec 2026-07-05 §4). */
 export function campaignBreakdown(ctx: CoreCtx, range: DateRange, level: CampaignLevel = 'ad'): Promise<CampaignRow[]> {
   // Fixed 3-way enum, not user SQL — safe to splice as raw fragments.
-  const selectAdset = level === 'campaign' ? sql`null::text as adset_id, null::text as adset_name,` : sql`adset_id, max(adset_name) as adset_name,`;
-  const selectAd = level === 'ad' ? sql`ad_id, max(ad_name) as ad_name,` : sql`null::text as ad_id, null::text as ad_name,`;
+  const selectAdset = level === 'campaign' ? sql`null::text as adset_id, null::text as adset_name,` : sql`mai.adset_id, max(mai.adset_name) as adset_name,`;
+  const selectAd = level === 'ad' ? sql`mai.ad_id, max(mai.ad_name) as ad_name,` : sql`null::text as ad_id, null::text as ad_name,`;
   const groupBy =
-    level === 'campaign' ? sql`campaign_id` : level === 'adset' ? sql`campaign_id, adset_id` : sql`campaign_id, adset_id, ad_id`;
+    level === 'campaign' ? sql`mai.campaign_id` : level === 'adset' ? sql`mai.campaign_id, mai.adset_id` : sql`mai.campaign_id, mai.adset_id, mai.ad_id`;
+  // Ad-level only: the post/thumbnail join keys (org_id, ad_id) / (org_id,
+  // platform, post_id) are functionally dependent on the ad_id group — safe
+  // to max() like postPerformance does for its media join.
+  const postJoin =
+    level === 'ad'
+      ? sql`
+          left join meta_ad_posts map on map.org_id = mai.org_id and map.ad_id = mai.ad_id
+          left join meta_post_media mm on mm.org_id = map.org_id and mm.platform = map.platform and mm.post_id = map.post_id
+        `
+      : sql``;
+  const selectPost = level === 'ad' ? sql`, max(map.post_id) as post_id, max(mm.file_id) filter (where mm.status = 'mirrored') as thumb_file_id` : sql``;
   return withOrgCore(ctx, async (tx) => {
     const rows = (await tx.execute(sql`
-      select campaign_id, max(campaign_name) as campaign_name,
+      select mai.campaign_id, max(mai.campaign_name) as campaign_name,
              ${selectAdset}
              ${selectAd}
-             coalesce(sum(spend), 0)::float8 spend,
-             coalesce(sum(impressions), 0)::bigint impressions,
-             coalesce(sum(reach), 0)::bigint reach,
-             coalesce(sum(clicks), 0)::bigint clicks
-      from meta_ad_insights
-      where org_id = ${ctx.tenantId} and date >= ${range.from} and date < ${range.to}
+             coalesce(sum(mai.spend), 0)::float8 spend,
+             coalesce(sum(mai.impressions), 0)::bigint impressions,
+             coalesce(sum(mai.reach), 0)::bigint reach,
+             coalesce(sum(mai.clicks), 0)::bigint clicks
+             ${selectPost}
+      from meta_ad_insights mai
+      ${postJoin}
+      where mai.org_id = ${ctx.tenantId} and mai.date >= ${range.from} and mai.date < ${range.to}
       group by ${groupBy}
       order by spend desc
       limit 500
@@ -218,6 +238,8 @@ export function campaignBreakdown(ctx: CoreCtx, range: DateRange, level: Campaig
         clicks,
         ctr: calcCtr(clicks, impressions),
         cpc: calcCpc(spend, clicks),
+        postId: r.post_id != null ? String(r.post_id) : null,
+        thumbFileId: r.thumb_file_id != null ? String(r.thumb_file_id) : null,
       };
     });
   });
@@ -294,6 +316,77 @@ export function postPerformance(
       ),
       thumbFileId: r.thumb_file_id != null ? String(r.thumb_file_id) : null,
     }));
+  });
+}
+
+// ── Post detail (posts/[postId] page, spec 2026-07-05 §5.1) ─────────────────
+
+export interface PostDetail {
+  postId: string;
+  platform: string | null;
+  permalink: string | null;
+  /** Full caption — no truncation (spec finding: not clipped at ingest, only
+   *  by the table's CSS line-clamp; this is the "full text" surface). */
+  caption: string | null;
+  mediaType: string | null;
+  postedAt: string | null;
+  isPromoted: boolean;
+  /** Every metric row for the post, not just the table's 3-column subset. */
+  metrics: Record<string, number>;
+  thumbFileId: string | null;
+  thumbStatus: string | null;
+  /** Reverse lookup on meta_ad_posts (post_id → ad ids) — populated only when isPromoted. */
+  promotedByAdIds: string[];
+}
+
+/**
+ * One post's full detail: every metric pivoted (not the table's 3-column
+ * subset), full caption, mirrored-thumbnail status, and the ad ids (if any)
+ * running this post as a promoted ad (spec §5.1's "Promoted by N ads" chip).
+ * Null when the post doesn't exist (or belongs to another org) — the route
+ * turns that into a 404, never a 403 (no existence leak).
+ */
+export function getPostDetail(ctx: CoreCtx, postId: string): Promise<PostDetail | null> {
+  return withOrgCore(ctx, async (tx) => {
+    const rows = (await tx.execute(sql`
+      select mi.post_id,
+             max(mi.platform) as platform,
+             max(mi.permalink) as permalink,
+             max(mi.caption) as caption,
+             max(mi.posted_at)::text as posted_at,
+             max(mi.media_type) as media_type,
+             bool_or(mi.is_promoted) as is_promoted,
+             jsonb_object_agg(mi.metric, mi.value) as metrics,
+             max(mm.file_id) filter (where mm.status = 'mirrored') as thumb_file_id,
+             max(mm.status) as thumb_status,
+             (
+               select string_agg(ap.ad_id, ',' order by ap.ad_id)
+               from meta_ad_posts ap
+               where ap.org_id = mi.org_id and ap.post_id = mi.post_id
+             ) as promoted_by_ad_ids
+      from meta_post_insights mi
+      left join meta_post_media mm
+        on mm.org_id = mi.org_id and mm.platform = mi.platform and mm.post_id = mi.post_id
+      where mi.org_id = ${ctx.tenantId} and mi.post_id = ${postId} and mi.period = 'lifetime'
+      group by mi.post_id
+    `)) as unknown as Array<Record<string, unknown>>;
+    const r = rows[0];
+    if (!r) return null;
+    return {
+      postId: String(r.post_id),
+      platform: r.platform != null ? String(r.platform) : null,
+      permalink: r.permalink != null ? String(r.permalink) : null,
+      caption: r.caption != null ? String(r.caption) : null,
+      mediaType: r.media_type != null ? String(r.media_type) : null,
+      postedAt: r.posted_at != null ? String(r.posted_at) : null,
+      isPromoted: Boolean(r.is_promoted),
+      metrics: Object.fromEntries(
+        Object.entries((r.metrics as Record<string, unknown>) ?? {}).map(([k, v]) => [k, Number(v)]),
+      ),
+      thumbFileId: r.thumb_file_id != null ? String(r.thumb_file_id) : null,
+      thumbStatus: r.thumb_status != null ? String(r.thumb_status) : null,
+      promotedByAdIds: r.promoted_by_ad_ids ? String(r.promoted_by_ad_ids).split(',') : [],
+    };
   });
 }
 
@@ -409,5 +502,156 @@ export function syncJobHistory(ctx: CoreCtx, opts: { limit?: number } = {}): Pro
       finishedAt: r.finishedAt ? r.finishedAt.toISOString() : null,
       createdAt: r.createdAt.toISOString(),
     }));
+  });
+}
+
+// ── Campaign detail page (WP-D, spec §5.2) ──────────────────────────────────
+
+export interface CampaignDetailAdset {
+  adsetId: string;
+  adsetName: string | null;
+  spend: number;
+  impressions: number;
+  reach: number;
+  clicks: number;
+  ctr: number;
+  cpc: number;
+}
+
+export interface CampaignDetailAd {
+  adId: string;
+  adName: string | null;
+  spend: number;
+  impressions: number;
+  reach: number;
+  clicks: number;
+  ctr: number;
+  cpc: number;
+  postId: string | null;
+  thumbFileId: string | null;
+}
+
+export interface CampaignSpendPoint {
+  date: string;
+  spend: number;
+}
+
+export interface CampaignDetail {
+  campaignId: string;
+  campaignName: string | null;
+  totals: AdKpiTotals;
+  adsets: CampaignDetailAdset[];
+  ads: CampaignDetailAd[];
+  spendSeries: CampaignSpendPoint[];
+}
+
+/** Full detail for one campaign: header KPI totals over `range`, per-adset and
+ *  per-ad breakdown (ads carry the §4 post/thumbnail join), and a daily spend
+ *  series for the trend chart. Null when the campaign has no rows at all for
+ *  this org (any date) — a real 404, not merely an empty range. */
+export function getCampaignDetail(ctx: CoreCtx, campaignId: string, range: DateRange): Promise<CampaignDetail | null> {
+  return withOrgCore(ctx, async (tx) => {
+    const [existsRow] = (await tx.execute(sql`
+      select campaign_name
+      from meta_ad_insights
+      where org_id = ${ctx.tenantId} and campaign_id = ${campaignId}
+      limit 1
+    `)) as unknown as Array<{ campaign_name: string | null }>;
+    if (!existsRow) return null;
+
+    const [totalsRow] = (await tx.execute(sql`
+      select coalesce(sum(spend), 0)::float8 spend,
+             coalesce(sum(impressions), 0)::bigint impressions,
+             coalesce(sum(reach), 0)::bigint reach,
+             coalesce(sum(clicks), 0)::bigint clicks
+      from meta_ad_insights
+      where org_id = ${ctx.tenantId} and campaign_id = ${campaignId}
+        and date >= ${range.from} and date < ${range.to}
+    `)) as unknown as Array<{ spend: number; impressions: number; reach: number; clicks: number }>;
+    const spend = Number(totalsRow?.spend ?? 0);
+    const impressions = Number(totalsRow?.impressions ?? 0);
+    const reach = Number(totalsRow?.reach ?? 0);
+    const clicks = Number(totalsRow?.clicks ?? 0);
+
+    const adsetRows = (await tx.execute(sql`
+      select adset_id, max(adset_name) as adset_name,
+             coalesce(sum(spend), 0)::float8 spend,
+             coalesce(sum(impressions), 0)::bigint impressions,
+             coalesce(sum(reach), 0)::bigint reach,
+             coalesce(sum(clicks), 0)::bigint clicks
+      from meta_ad_insights
+      where org_id = ${ctx.tenantId} and campaign_id = ${campaignId}
+        and date >= ${range.from} and date < ${range.to}
+      group by adset_id
+      order by spend desc
+    `)) as unknown as Array<Record<string, unknown>>;
+
+    // Same ad-level post/thumbnail join as campaignBreakdown('ad'), scoped to
+    // this campaign — kept inline rather than shared to avoid coupling the two
+    // call sites' surrounding aggregation shape.
+    const adRows = (await tx.execute(sql`
+      select mai.ad_id, max(mai.ad_name) as ad_name,
+             coalesce(sum(mai.spend), 0)::float8 spend,
+             coalesce(sum(mai.impressions), 0)::bigint impressions,
+             coalesce(sum(mai.reach), 0)::bigint reach,
+             coalesce(sum(mai.clicks), 0)::bigint clicks,
+             max(map.post_id) as post_id,
+             max(mm.file_id) filter (where mm.status = 'mirrored') as thumb_file_id
+      from meta_ad_insights mai
+      left join meta_ad_posts map on map.org_id = mai.org_id and map.ad_id = mai.ad_id
+      left join meta_post_media mm on mm.org_id = map.org_id and mm.platform = map.platform and mm.post_id = map.post_id
+      where mai.org_id = ${ctx.tenantId} and mai.campaign_id = ${campaignId}
+        and mai.date >= ${range.from} and mai.date < ${range.to}
+      group by mai.ad_id
+      order by spend desc
+    `)) as unknown as Array<Record<string, unknown>>;
+
+    const spendSeriesRows = (await tx.execute(sql`
+      select date::text as date, coalesce(sum(spend), 0)::float8 spend
+      from meta_ad_insights
+      where org_id = ${ctx.tenantId} and campaign_id = ${campaignId}
+        and date >= ${range.from} and date < ${range.to}
+      group by date
+      order by date
+    `)) as unknown as Array<{ date: string; spend: number }>;
+
+    return {
+      campaignId,
+      campaignName: existsRow.campaign_name,
+      totals: { spend, impressions, reach, clicks, ctr: calcCtr(clicks, impressions), cpc: calcCpc(spend, clicks) },
+      adsets: adsetRows.map((r) => {
+        const s = Number(r.spend ?? 0);
+        const i = Number(r.impressions ?? 0);
+        const c = Number(r.clicks ?? 0);
+        return {
+          adsetId: String(r.adset_id),
+          adsetName: r.adset_name != null ? String(r.adset_name) : null,
+          spend: s,
+          impressions: i,
+          reach: Number(r.reach ?? 0),
+          clicks: c,
+          ctr: calcCtr(c, i),
+          cpc: calcCpc(s, c),
+        };
+      }),
+      ads: adRows.map((r) => {
+        const s = Number(r.spend ?? 0);
+        const i = Number(r.impressions ?? 0);
+        const c = Number(r.clicks ?? 0);
+        return {
+          adId: String(r.ad_id),
+          adName: r.ad_name != null ? String(r.ad_name) : null,
+          spend: s,
+          impressions: i,
+          reach: Number(r.reach ?? 0),
+          clicks: c,
+          ctr: calcCtr(c, i),
+          cpc: calcCpc(s, c),
+          postId: r.post_id != null ? String(r.post_id) : null,
+          thumbFileId: r.thumb_file_id != null ? String(r.thumb_file_id) : null,
+        };
+      }),
+      spendSeries: spendSeriesRows.map((r) => ({ date: r.date, spend: Number(r.spend) })),
+    };
   });
 }

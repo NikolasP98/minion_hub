@@ -1,10 +1,12 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import * as m from '$lib/paraglide/messages';
+	import { goto } from '$app/navigation';
 	import { Image, ExternalLink, Facebook, Instagram } from 'lucide-svelte';
 	import { PageHeader, EmptyState } from '$lib/components/ui';
 	import DataTable from '$lib/components/data-table/DataTable.svelte';
 	import type { DataColumn } from '$lib/components/data-table/DataTable.svelte';
+	import { metricLabel } from '$lib/ads/metric-labels';
 
 	let { data }: { data: PageData } = $props();
 	const posts = $derived(data.posts);
@@ -18,33 +20,6 @@
 		{ value: 'organic', label: m.ads_badge_organic() },
 		{ value: 'ad', label: m.ads_badge_ad() },
 	]);
-
-	// Raw metric keys come straight off the Meta Graph API (fixed vocabulary —
-	// see meta-sync/graph-read services); map the ones we know to human labels
-	// and fall back to a light humanization for anything unforeseen.
-	// ponytail: static map, not a translation lookup service — add a key here if a new metric shows up.
-	const METRIC_LABELS: Record<string, () => string> = {
-		reactions_total: m.ads_col_reactions,
-		reactions: m.ads_col_reactions,
-		post_reactions_by_type_total: m.ads_col_reactions,
-		comments_total: m.ads_col_comments,
-		comments: m.ads_col_comments,
-		shares_total: m.ads_col_shares,
-		shares: m.ads_col_shares,
-		saved: m.ads_col_saved,
-		likes: m.ads_col_likes,
-		views: m.ads_col_views,
-		plays: m.ads_col_plays,
-		reach: m.ads_col_reach,
-		post_impressions: m.ads_col_impressions,
-		post_impressions_unique: m.ads_col_impressions_unique,
-		post_clicks: m.ads_col_clicks,
-	};
-	function metricLabel(key: string): string {
-		const known = METRIC_LABELS[key];
-		if (known) return known();
-		return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-	}
 
 	const dateOf = (d: string | null) => (d ? new Date(d).getTime() : -Infinity);
 	function fmtDate(d: string | null): string {
@@ -105,6 +80,7 @@
 			selectable
 			storageKey="ads-posts"
 			emptyMessage={m.ads_empty_posts_desc()}
+			onRowClick={(p) => goto(`/socials/posts/${encodeURIComponent(p.postId)}`)}
 		>
 			{#snippet cell(p: Row, col: DataColumn<Row>)}
 				{#if col.key === 'thumb'}
