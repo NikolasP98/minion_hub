@@ -906,7 +906,11 @@
 
 	/* Cells: clip by default (fixed widths); wrap opt-in via context menu. */
 	.dt-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.dt-cell.dt-wrap { white-space: normal; word-break: break-word; text-overflow: clip; }
+	.dt-cell.dt-wrap { white-space: normal; word-break: break-word; text-overflow: clip; overflow: visible; }
+	/* Wrap must also defeat cell content that hard-codes truncation (e.g. a custom
+	   cell's Tailwind `truncate` = nowrap+ellipsis). Two classes beat that utility
+	   without !important. */
+	.dt-cell.dt-wrap :global(*) { white-space: normal; text-overflow: clip; overflow: visible; max-width: none; }
 	.dt-row.child { background: color-mix(in srgb, var(--color-foreground) 3%, transparent); }
 
 	/* Expand toggle + custom block row */
