@@ -44,8 +44,14 @@
     onMount(() => {
         loadBuiltAgents();
         loadPersonalAgentNames();
-        // Archetype roster filters (Copilots / AI Brains / Autonomous) read the
-        // per-agent archetype from gateway config, so make sure it's loaded.
+    });
+
+    // Archetype roster filters (Copilots / AI Brains / Autonomous) read the
+    // per-agent archetype from gateway config, so make sure it's loaded.
+    // Reactive (not mount-once): on a fresh page load the WS handshake usually
+    // finishes AFTER mount, so a mount-time `conn.connected` check never fired
+    // and every agent fell back to the "copilot" archetype.
+    $effect(() => {
         if (conn.connected && !configState.loaded && !configState.loading) loadConfig();
     });
 
