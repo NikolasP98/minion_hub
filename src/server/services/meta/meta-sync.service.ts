@@ -270,12 +270,21 @@ export function fallbackEngagementRows(
     postedAt: Date | null;
   },
 ): PostInsightRow[] {
+  // FB: only `shares` is fetchable (reactions/comments summaries need the
+  // unobtainable `pages_read_user_content` — see PAGE_POST_FIELDS). Emit it
+  // even when absent (Graph omits `shares` on never-shared posts) so every
+  // post has an anchor row and renders; the summary metrics only appear if
+  // the scope is ever granted — never fabricated as 0.
   const counts: Record<string, number | undefined> =
     meta.platform === 'fb'
       ? {
-          reactions_total: post.reactions?.summary?.total_count,
-          comments_total: post.comments?.summary?.total_count,
-          shares_total: post.shares?.count,
+          shares_total: post.shares?.count ?? 0,
+          ...(post.reactions?.summary?.total_count !== undefined && {
+            reactions_total: post.reactions.summary.total_count,
+          }),
+          ...(post.comments?.summary?.total_count !== undefined && {
+            comments_total: post.comments.summary.total_count,
+          }),
         }
       : {
           reactions_total: post.like_count,

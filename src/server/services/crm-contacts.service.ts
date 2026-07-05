@@ -123,6 +123,32 @@ export async function syncContactsFromLedger(ctx: CoreCtx): Promise<SyncResult> 
         and not exists (select 1 from crm_contact_identities i where i.contact_id = c.id)
     `);
 
+    // 4. Name-fill: harvested contacts created before their sender had a
+    //    ledger name (e.g. a source that only started sending names later)
+    //    pick up the newest one. Fill-if-null on 'harvested' shells only —
+    //    never overwrites a user-edited or existing name.
+    await tx.execute(sql`
+      update crm_contacts c
+      set display_name = ln.sender_name
+      from crm_contact_identities ci,
+           lateral (
+             select m.sender_name
+             from messages m
+             where m.org_id = ${ctx.tenantId}
+               and m.channel = ci.channel
+               and m.sender_id = ci.external_id
+               and m.sender_name is not null
+               and ${ELIGIBLE}
+             order by m.created_at desc
+             limit 1
+           ) ln
+      where ci.org_id = ${ctx.tenantId}
+        and ci.contact_id = c.id
+        and c.org_id = ${ctx.tenantId}
+        and c.source = 'harvested'
+        and c.display_name is null
+    `);
+
     return { created };
   });
   if (result.created > 0) {

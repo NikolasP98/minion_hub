@@ -323,17 +323,18 @@ export type PagePost = {
   created_time?: string;
   /** Top-level Post field (not a summary edge) — `{ count }` or absent if never shared. */
   shares?: { count?: number };
-  /** `reactions.summary(total_count).limit(0)` — total_count only, no per-reaction data page. */
+  /** Only populated if the app ever gains `pages_read_user_content` — see PAGE_POST_FIELDS. */
   reactions?: { summary?: { total_count?: number } };
-  /** `comments.summary(total_count).limit(0)` — same shape as reactions. */
+  /** Same gating as `reactions`. */
   comments?: { summary?: { total_count?: number } };
 };
 
-// engagement counts need only `pages_read_engagement` + a page token — unlike
-// `/insights`, which needs `read_insights` (unavailable to this app, spec
-// meta-business-integration §10 gap). These give the Posts tab non-zero data.
-const PAGE_POST_FIELDS =
-  'id,permalink_url,message,created_time,shares,reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0)';
+// `shares` needs only `pages_read_engagement` + a page token. The
+// `reactions.summary(...)`/`comments.summary(...)` edges were verified LIVE
+// (v23.0, 2026-07-04) to 400 with "(#10) requires 'pages_read_user_content'"
+// — a permission this app cannot obtain — and one denied sub-field rejects the
+// ENTIRE fields request, so they must stay out of the list.
+const PAGE_POST_FIELDS = 'id,permalink_url,message,created_time,shares';
 
 export async function listPagePosts(
   pageId: string,

@@ -225,10 +225,10 @@ describe('fallbackEngagementRows — engagement-count fallback (read_insights un
     );
   });
 
-  it('defaults missing FB engagement fields to 0 rather than dropping the row', () => {
+  it('a bare FB post (no fetchable summaries) still anchors with shares_total=0 — never fabricates reactions/comments', () => {
     const rows = fallbackEngagementRows({ id: 'post-2' }, fbMeta);
-    expect(rows).toHaveLength(3);
-    expect(rows.every((r) => r.value === '0')).toBe(true);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ metric: 'shares_total', value: '0', postId: 'post-2' });
   });
 
   it('emits reactions_total/comments_total for IG media from like_count/comments_count (no shares_total)', () => {
