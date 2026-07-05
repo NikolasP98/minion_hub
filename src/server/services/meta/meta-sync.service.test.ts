@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { toMetaIngestRow, computeAdsSince, adInsightRowToInsert, metricInsightsToRows } from './meta-sync.service';
+import {
+  toMetaIngestRow,
+  computeAdsSince,
+  adInsightRowToInsert,
+  metricInsightsToRows,
+  fallbackEngagementRows,
+} from './meta-sync.service';
 
 const PAGE_ID = 'page-1';
 const CUSTOMER_ID = 'customer-1';
@@ -187,5 +193,55 @@ describe('metricInsightsToRows', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ metric: 'post_impressions', value: '42' });
     expect(nonNumeric).toBe(1);
+  });
+});
+
+describe('fallbackEngagementRows — engagement-count fallback (read_insights unavailable)', () => {
+  const fbMeta = {
+    orgId: 'org-1',
+    assetId: 'asset-1',
+    platform: 'fb' as const,
+    permalink: null,
+    caption: null,
+    mediaType: null,
+    postedAt: null,
+  };
+
+  it('emits reactions/comments/shares rows for an FB post even when a denied /insights call yields nothing', () => {
+    const post = {
+      id: 'post-1',
+      reactions: { summary: { total_count: 5 } },
+      comments: { summary: { total_count: 2 } },
+      shares: { count: 1 },
+    };
+    const rows = fallbackEngagementRows(post, fbMeta);
+    expect(rows).toHaveLength(3);
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ metric: 'reactions_total', value: '5', postId: 'post-1', period: 'lifetime' }),
+        expect.objectContaining({ metric: 'comments_total', value: '2', postId: 'post-1' }),
+        expect.objectContaining({ metric: 'shares_total', value: '1', postId: 'post-1' }),
+      ]),
+    );
+  });
+
+  it('defaults missing FB engagement fields to 0 rather than dropping the row', () => {
+    const rows = fallbackEngagementRows({ id: 'post-2' }, fbMeta);
+    expect(rows).toHaveLength(3);
+    expect(rows.every((r) => r.value === '0')).toBe(true);
+  });
+
+  it('emits reactions_total/comments_total for IG media from like_count/comments_count (no shares_total)', () => {
+    const rows = fallbackEngagementRows(
+      { id: 'media-1', like_count: 9, comments_count: 4 },
+      { ...fbMeta, platform: 'ig' },
+    );
+    expect(rows).toHaveLength(2);
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ metric: 'reactions_total', value: '9', platform: 'ig' }),
+        expect.objectContaining({ metric: 'comments_total', value: '4', platform: 'ig' }),
+      ]),
+    );
   });
 });

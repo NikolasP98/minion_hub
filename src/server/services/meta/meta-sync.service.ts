@@ -249,6 +249,53 @@ export function metricInsightsToRows(
   return { rows, nonNumeric };
 }
 
+/**
+ * Engagement-count fallback (spec §10 gap: `read_insights` is unobtainable for
+ * this app, so `postInsights`/`igMediaInsights` are permanently denied). These
+ * three counts come straight off the post/media object via fields that only
+ * need `pages_read_engagement` + a page token, so they land even when
+ * `/insights` is 100% denied. Always emitted — including as `0` — so a synced
+ * post always has *something* in `meta_post_insights` (that's the fix: an
+ * empty Posts tab was the `metricsDenied` → zero-rows chain, not a UI bug).
+ */
+export function fallbackEngagementRows(
+  post: { id: string } & Partial<PagePost> & Partial<IgMedia>,
+  meta: {
+    orgId: string;
+    assetId: string;
+    platform: 'fb' | 'ig';
+    permalink: string | null;
+    caption: string | null;
+    mediaType: string | null;
+    postedAt: Date | null;
+  },
+): PostInsightRow[] {
+  const counts: Record<string, number | undefined> =
+    meta.platform === 'fb'
+      ? {
+          reactions_total: post.reactions?.summary?.total_count,
+          comments_total: post.comments?.summary?.total_count,
+          shares_total: post.shares?.count,
+        }
+      : {
+          reactions_total: post.like_count,
+          comments_total: post.comments_count,
+        };
+  return Object.entries(counts).map(([metric, value]) => ({
+    orgId: meta.orgId,
+    assetId: meta.assetId,
+    platform: meta.platform,
+    postId: post.id,
+    permalink: meta.permalink,
+    caption: meta.caption,
+    mediaType: meta.mediaType,
+    postedAt: meta.postedAt,
+    metric,
+    value: String(value ?? 0),
+    period: 'lifetime',
+  }));
+}
+
 function parseGraphDate(v: string | undefined): Date | null {
   if (!v) return null;
   const t = Date.parse(v);
@@ -398,6 +445,19 @@ async function syncPosts(ctx: CoreCtx, job: MetaSyncJob, assets: MetaAsset[]): P
       }
       for (const post of page.data ?? []) {
         const mediaType = (post as IgMedia).media_type;
+        const postMeta = {
+          orgId: ctx.tenantId,
+          assetId: asset.id,
+          platform,
+          permalink: (post as PagePost).permalink_url ?? (post as IgMedia).permalink ?? null,
+          caption: (post as PagePost).message ?? (post as IgMedia).caption ?? null,
+          mediaType: mediaType ?? null,
+          postedAt: parseGraphDate((post as PagePost).created_time ?? (post as IgMedia).timestamp),
+        };
+        // Always land the engagement-count fallback — regardless of whether
+        // /insights is allowed — so the Posts tab always has rows to show.
+        rowsToUpsert.push(...fallbackEngagementRows(post, postMeta));
+
         const insights =
           platform === 'fb'
             ? await postInsights(post.id, token, graphAuthOpts())
@@ -406,16 +466,7 @@ async function syncPosts(ctx: CoreCtx, job: MetaSyncJob, assets: MetaAsset[]): P
           if (insights.error === 'token_expired') return { cursor: null, counts, tokenExpired: true };
           counts.metricsDenied++;
         } else {
-          const { rows } = metricInsightsToRows(insights.data ?? [], {
-            orgId: ctx.tenantId,
-            assetId: asset.id,
-            platform,
-            postId: post.id,
-            permalink: (post as PagePost).permalink_url ?? (post as IgMedia).permalink ?? null,
-            caption: (post as PagePost).message ?? (post as IgMedia).caption ?? null,
-            mediaType: mediaType ?? null,
-            postedAt: parseGraphDate((post as PagePost).created_time ?? (post as IgMedia).timestamp),
-          });
+          const { rows } = metricInsightsToRows(insights.data ?? [], { ...postMeta, postId: post.id });
           rowsToUpsert.push(...rows);
         }
         counts.postsProcessed++;

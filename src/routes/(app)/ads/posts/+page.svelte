@@ -74,7 +74,7 @@
 							<th class="px-4 py-2 font-medium">{m.ads_col_platform()}</th>
 							<th class="px-3 py-2 font-medium">{m.ads_col_posted()}</th>
 							<th class="px-3 py-2 font-medium">{m.ads_col_caption()}</th>
-							<th class="px-3 py-2 font-medium">{m.ads_kpi_impressions()} / {m.ads_kpi_reach()}</th>
+							<th class="px-3 py-2 font-medium">{m.ads_col_metrics()}</th>
 							<th class="px-4 py-2 font-medium"></th>
 						</tr>
 					</thead>

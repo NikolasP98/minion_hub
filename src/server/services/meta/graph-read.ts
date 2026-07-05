@@ -316,7 +316,24 @@ async function fetchMetricsWithFallback(
   return { ok: true, status: 200, data, failedMetrics };
 }
 
-export type PagePost = { id: string; permalink_url?: string; message?: string; created_time?: string };
+export type PagePost = {
+  id: string;
+  permalink_url?: string;
+  message?: string;
+  created_time?: string;
+  /** Top-level Post field (not a summary edge) — `{ count }` or absent if never shared. */
+  shares?: { count?: number };
+  /** `reactions.summary(total_count).limit(0)` — total_count only, no per-reaction data page. */
+  reactions?: { summary?: { total_count?: number } };
+  /** `comments.summary(total_count).limit(0)` — same shape as reactions. */
+  comments?: { summary?: { total_count?: number } };
+};
+
+// engagement counts need only `pages_read_engagement` + a page token — unlike
+// `/insights`, which needs `read_insights` (unavailable to this app, spec
+// meta-business-integration §10 gap). These give the Posts tab non-zero data.
+const PAGE_POST_FIELDS =
+  'id,permalink_url,message,created_time,shares,reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0)';
 
 export async function listPagePosts(
   pageId: string,
@@ -327,7 +344,7 @@ export async function listPagePosts(
   const o = resolveOpts(opts);
   const url = buildUrl(
     `${pageId}/posts`,
-    { fields: 'id,permalink_url,message,created_time', since: params.since, access_token: pageToken },
+    { fields: PAGE_POST_FIELDS, since: params.since, access_token: pageToken },
     o,
   );
   const res = await graphRequest(url, o);
@@ -346,7 +363,18 @@ export async function postInsights(
   return fetchMetricsWithFallback(`${postId}/insights`, pageToken, opts.metrics ?? DEFAULT_POST_METRICS, opts);
 }
 
-export type IgMedia = { id: string; caption?: string; media_type?: string; permalink?: string; timestamp?: string };
+export type IgMedia = {
+  id: string;
+  caption?: string;
+  media_type?: string;
+  permalink?: string;
+  timestamp?: string;
+  /** Direct fields on IG media (no `read_insights` needed) — engagement fallback. */
+  like_count?: number;
+  comments_count?: number;
+};
+
+const IG_MEDIA_FIELDS = 'id,caption,media_type,permalink,timestamp,like_count,comments_count';
 
 export async function listIgMedia(
   igId: string,
@@ -355,11 +383,7 @@ export async function listIgMedia(
   opts: GraphOpts = {},
 ): Promise<GraphResult<IgMedia[]>> {
   const o = resolveOpts(opts);
-  const url = buildUrl(
-    `${igId}/media`,
-    { fields: 'id,caption,media_type,permalink,timestamp', since: params.since, access_token: pageToken },
-    o,
-  );
+  const url = buildUrl(`${igId}/media`, { fields: IG_MEDIA_FIELDS, since: params.since, access_token: pageToken }, o);
   const res = await graphRequest(url, o);
   if (!res.ok) return { ok: false, status: res.status, error: res.error, usage: res.usage };
   const { data, nextCursor } = unwrapList<IgMedia>(res.body);
