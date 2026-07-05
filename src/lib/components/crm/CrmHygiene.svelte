@@ -9,6 +9,7 @@
 	} from 'lucide-svelte';
 	import { Button } from '$lib/components/ui';
 	import { contactLabel } from '$lib/components/crm/crm-format';
+	import CrmMergeModal from '$lib/components/crm/CrmMergeModal.svelte';
 
 	type Fix = {
 		contactId: string;
@@ -177,20 +178,50 @@
 	}
 	const pickSurvivor = (g: DupGroup, id: string) => (chosen = { ...chosen, [g.key]: id });
 
-	async function mergeGroup(g: DupGroup) {
-		const sid = survivorId(g);
-		if (!sid) return;
-		const loserIds = g.contacts.map((c) => c.id).filter((id) => id !== sid);
+	// Merge → custom survivor-picker modal (was a native confirm()).
+	let mergeOpen = $state(false);
+	let pendingGroup = $state<DupGroup | null>(null);
+	let mergeSurvivor = $state('');
+	let mergeErr = $state<string | null>(null);
+	const mergeContacts = $derived(
+		(pendingGroup?.contacts ?? []).map((c) => ({
+			id: c.id,
+			name: contactLabel(c.name),
+			stats: [
+				m.crm_msgs_n({ count: c.messages }),
+				c.dni ? `DNI ${c.dni}` : null,
+				c.phone ? `📞 ${c.phone}` : null,
+			].filter(Boolean).join(' · '),
+		})),
+	);
+
+	function openMerge(g: DupGroup) {
+		pendingGroup = g;
+		mergeSurvivor = survivorId(g);
+		mergeErr = null;
+		mergeOpen = true;
+	}
+
+	async function runMerge() {
+		const g = pendingGroup;
+		if (!g || !mergeSurvivor) return;
+		const loserIds = g.contacts.map((c) => c.id).filter((id) => id !== mergeSurvivor);
 		if (loserIds.length === 0) return;
-		if (!confirm(m.crm_merge_confirm({ count: loserIds.length, name: contactLabel(g.contacts.find((c) => c.id === sid)?.name) }))) return;
 		merging = g.key;
+		mergeErr = null;
 		try {
 			const res = await fetch('/api/crm/cleanup/duplicates', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ survivorId: sid, loserIds }),
+				body: JSON.stringify({ survivorId: mergeSurvivor, loserIds }),
 			});
-			if (res.ok) await invalidate('crm:cleanup');
+			if (!res.ok) throw new Error('merge');
+			pickSurvivor(g, mergeSurvivor); // keep the inline picker in sync
+			mergeOpen = false;
+			pendingGroup = null;
+			await invalidate('crm:cleanup');
+		} catch {
+			mergeErr = m.crm_bulk_failed();
 		} finally {
 			merging = null;
 		}
@@ -356,7 +387,7 @@
 						<div class="group-h">
 							<span class="reason">{g.reason === 'dni' ? `DNI ${g.key}` : m.crm_dup_same_name()}</span>
 							{#if g.confidence >= 0.7}<span class="badge strong">{m.crm_dup_strong()}</span>{:else if weak}<span class="badge soft">{m.crm_dup_weak()}</span>{/if}
-							<Button variant={weak ? 'outline' : 'secondary'} size="sm" class="ml-auto" onclick={() => mergeGroup(g)} disabled={merging === g.key}>
+							<Button variant={weak ? 'outline' : 'secondary'} size="sm" class="ml-auto" onclick={() => openMerge(g)} disabled={merging === g.key}>
 								<GitMerge size={14} /> {merging === g.key ? m.crm_merging() : m.crm_merge()}
 							</Button>
 						</div>
@@ -387,6 +418,15 @@
 		{/if}
 	</section>
 </div>
+
+<CrmMergeModal
+	bind:open={mergeOpen}
+	contacts={mergeContacts}
+	bind:survivorId={mergeSurvivor}
+	busy={merging !== null}
+	error={mergeErr}
+	onConfirm={runMerge}
+/>
 
 <style>
 	.card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); padding: 0.85rem 1rem; }
