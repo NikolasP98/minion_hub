@@ -4,7 +4,7 @@
 	import { invalidate } from '$app/navigation';
 	import { page } from '$app/state';
 	import * as m from '$lib/paraglide/messages';
-	import { Contact, RefreshCw, ArrowUp, ArrowDown, X } from 'lucide-svelte';
+	import { Contact, RefreshCw, ArrowUp, ArrowDown, ArrowRight, Check, X } from 'lucide-svelte';
 	import { PageHeader, Button, Modal } from '$lib/components/ui';
 	import ScoreCell from '$lib/components/crm/ScoreCell.svelte';
 	import StagePill from '$lib/components/crm/StagePill.svelte';
@@ -132,10 +132,13 @@
 
 	// ── Bulk actions (kebab) — merge is CRM-only; both are destructive → confirm ──
 	let selected = $state<Set<string>>(new Set());
-	let confirm = $state<{ kind: 'merge' | 'delete'; ids: string[]; survivor: Row | null } | null>(null);
+	let confirm = $state<{ kind: 'merge' | 'delete'; ids: string[]; rows: Row[] } | null>(null);
+	// The user-chosen survivor for a merge (defaults to the most-active contact).
+	let survivorId = $state<string>('');
 	let confirmOpen = $state(false);
 	let bulkBusy = $state(false);
 	let bulkErr = $state<string | null>(null);
+	const survivorRow = $derived(confirm?.rows.find((r) => r.contact_id === survivorId) ?? null);
 
 	const bulkActions = $derived.by(() => {
 		if (!canAct('crm', 'edit')) return [];
@@ -147,9 +150,9 @@
 	});
 
 	function openConfirm(kind: 'merge' | 'delete', ids: Set<string>, rows: Row[]) {
-		// Survivor = the most-active selected contact (keep the richest record).
-		const survivor = kind === 'merge' ? rows.reduce((a, b) => (b.total_msgs > a.total_msgs ? b : a), rows[0]) : null;
-		confirm = { kind, ids: [...ids], survivor };
+		confirm = { kind, ids: [...ids], rows };
+		// Default survivor = the most-active selected contact (richest record).
+		if (kind === 'merge') survivorId = rows.reduce((a, b) => (b.total_msgs > a.total_msgs ? b : a), rows[0]).contact_id;
 		bulkErr = null;
 		confirmOpen = true;
 	}
@@ -163,7 +166,7 @@
 				const res = await Promise.all(confirm.ids.map((id) => fetch(`/api/crm/contacts/${id}`, { method: 'DELETE' })));
 				if (res.some((r) => !r.ok)) throw new Error('delete');
 			} else {
-				const survivorId = confirm.survivor!.contact_id;
+				if (!survivorId) throw new Error('no survivor');
 				const loserIds = confirm.ids.filter((id) => id !== survivorId);
 				const res = await fetch('/api/crm/cleanup/duplicates', {
 					method: 'POST',
@@ -298,7 +301,35 @@
 	onclose={() => (confirm = null)}
 >
 	{#if confirm?.kind === 'merge'}
-		<p class="t-body">{m.crm_bulk_merge_confirm({ n: confirm.ids.length, name: contactLabel(confirm.survivor?.display_name) })}</p>
+		<p class="merge-heading">{m.crm_merge_pick_heading()}</p>
+		<div class="merge-list">
+			{#each confirm.rows as r (r.contact_id)}
+				{@const isSurvivor = survivorId === r.contact_id}
+				{@const fin = finOf(r)}
+				<button type="button" class="merge-row" class:survivor={isSurvivor} class:loser={!isSurvivor} onclick={() => (survivorId = r.contact_id)}>
+					<span class="radio" class:on={isSurvivor}>{#if isSurvivor}<Check size={11} />{/if}</span>
+					<span class="m-info">
+						<span class="m-name">{contactLabel(r.display_name)}</span>
+						<span class="m-stats">
+							{m.crm_merge_msgs({ n: r.total_msgs })}
+							{#if (r.channels?.length ?? 0) > 0}· {r.channels.join(', ')}{/if}
+							{#if fin && fin.revenue > 0}· {fin.revenue.toLocaleString()}{/if}
+						</span>
+					</span>
+					{#if isSurvivor}
+						<span class="m-tag keeps">{m.crm_merge_keeps()}</span>
+					{:else}
+						<span class="m-tag removed">{m.crm_merge_removed()}</span>
+					{/if}
+				</button>
+			{/each}
+		</div>
+		{#if survivorRow}
+			<p class="merge-summary">
+				<ArrowRight size={13} class="ms-ico" />
+				{m.crm_merge_summary({ others: confirm.ids.length - 1, name: contactLabel(survivorRow.display_name) })}
+			</p>
+		{/if}
 	{:else if confirm}
 		<p class="t-body">{m.crm_bulk_delete_confirm({ n: confirm.ids.length })}</p>
 	{/if}
@@ -313,6 +344,32 @@
 
 <style>
 	.err-msg { font-size: 0.8rem; color: var(--color-destructive); margin-top: 0.5rem; }
+	/* ── Merge survivor picker ─────────────────────────────────────────────── */
+	.merge-heading { font-size: 0.78rem; font-weight: 600; color: var(--color-muted-foreground); margin-bottom: 0.5rem; }
+	.merge-list { display: flex; flex-direction: column; gap: 0.35rem; max-height: 18rem; overflow: auto; }
+	.merge-row {
+		display: flex; align-items: center; gap: 0.6rem; width: 100%; text-align: left;
+		padding: 0.55rem 0.65rem; border-radius: var(--radius-md); border: 1px solid var(--hairline);
+		background: var(--color-bg3); cursor: pointer;
+		transition: border-color 0.12s, background-color 0.12s, opacity 0.12s;
+	}
+	.merge-row:hover { border-color: color-mix(in srgb, var(--color-accent) 40%, var(--hairline)); }
+	/* Survivor: prominent, accent-framed — "everything lands here". */
+	.merge-row.survivor { border-color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 12%, transparent); }
+	/* Losers: dimmed + struck name — visibly the ones being crushed. */
+	.merge-row.loser { opacity: 0.62; }
+	.merge-row.loser:hover { opacity: 0.85; }
+	.merge-row.loser .m-name { text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--color-destructive) 70%, transparent); }
+	.radio { display: grid; place-items: center; width: 1.1rem; height: 1.1rem; flex-shrink: 0; border-radius: 999px; border: 1.5px solid var(--color-muted-foreground); color: var(--color-accent-foreground, #000); }
+	.radio.on { background: var(--color-accent); border-color: var(--color-accent); }
+	.m-info { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; flex: 1; }
+	.m-name { font-size: 0.86rem; font-weight: 600; color: var(--color-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.m-stats { font-size: 0.7rem; color: var(--color-muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.m-tag { flex-shrink: 0; font-size: 0.64rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; padding: 0.15rem 0.45rem; border-radius: 999px; white-space: nowrap; }
+	.m-tag.keeps { color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 18%, transparent); }
+	.m-tag.removed { color: var(--color-destructive); background: color-mix(in srgb, var(--color-destructive) 14%, transparent); }
+	.merge-summary { display: flex; align-items: flex-start; gap: 0.4rem; margin-top: 0.75rem; font-size: 0.78rem; color: var(--color-muted-foreground); line-height: 1.4; }
+	:global(.merge-summary .ms-ico) { color: var(--color-accent); flex-shrink: 0; margin-top: 0.15rem; }
 	.res-toggle {
 		display: inline-flex; align-items: center; height: 1.5rem; padding: 0 0.55rem;
 		font-size: 0.72rem; font-weight: 600; border-radius: 999px;

@@ -3839,5 +3839,10 @@
   "crm_bulk_delete_confirm": "Delete {n} selected contacts? This can't be undone.",
   "crm_bulk_merge_btn": "Merge",
   "crm_bulk_delete_btn": "Delete",
-  "crm_bulk_failed": "Action failed — please retry."
+  "crm_bulk_failed": "Action failed — please retry.",
+  "crm_merge_pick_heading": "Choose the contact to keep",
+  "crm_merge_keeps": "Keeps everything",
+  "crm_merge_removed": "Merged in, then removed",
+  "crm_merge_summary": "All messages, invoices, tags and channels from the other {others} move into {name}. The others are permanently removed.",
+  "crm_merge_msgs": "{n} msgs"
 }

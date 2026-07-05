@@ -3839,5 +3839,10 @@
   "crm_bulk_delete_confirm": "¿Eliminar {n} contactos seleccionados? Esto no se puede deshacer.",
   "crm_bulk_merge_btn": "Combinar",
   "crm_bulk_delete_btn": "Eliminar",
-  "crm_bulk_failed": "La acción falló — inténtalo de nuevo."
+  "crm_bulk_failed": "La acción falló — inténtalo de nuevo.",
+  "crm_merge_pick_heading": "Elige el contacto que se conservará",
+  "crm_merge_keeps": "Conserva todo",
+  "crm_merge_removed": "Se combina y se elimina",
+  "crm_merge_summary": "Todos los mensajes, facturas, etiquetas y canales de los otros {others} pasan a {name}. Los demás se eliminan permanentemente.",
+  "crm_merge_msgs": "{n} msjs"
 }
