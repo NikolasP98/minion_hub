@@ -598,10 +598,14 @@ async function syncAds(ctx: CoreCtx, userToken: string, assets: MetaAsset[], job
     // normal 2-day restatement window computed from the last synced date.
     const since = job.since ?? computeAdsSince(await latestAdInsightDate(ctx, asset.externalId));
 
+    // Ad insights over a multi-year time_range are computed server-side by
+    // Meta and can take well past the default 15s (a 36-month full-history
+    // pull hit the client abort) — give these calls a longer leash.
+    const adTimeout = { timeoutMs: 55_000 };
     let page =
       i === resume.i && resume.next
-        ? await fetchNextPage<AdInsightRow>(resume.next)
-        : await adInsights(asset.externalId, userToken, { since, until }, graphAuthOpts());
+        ? await fetchNextPage<AdInsightRow>(resume.next, adTimeout)
+        : await adInsights(asset.externalId, userToken, { since, until }, { ...graphAuthOpts(), ...adTimeout });
 
     for (;;) {
       if (!page.ok) {
@@ -626,7 +630,7 @@ async function syncAds(ctx: CoreCtx, userToken: string, assets: MetaAsset[], job
         return { cursor: serializeResume({ i, next: page.nextCursor }), counts };
       }
       if (!page.nextCursor) break;
-      page = await fetchNextPage<AdInsightRow>(page.nextCursor);
+      page = await fetchNextPage<AdInsightRow>(page.nextCursor, adTimeout);
     }
   }
   await upsertAdInsights(ctx, rowsToUpsert);
