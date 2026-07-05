@@ -55,6 +55,38 @@ vi.mock('./graph-read', async (orig) => {
 vi.mock('../messages.service', () => ({ insertMessages: vi.fn(async () => 0) }));
 vi.mock('$server/auth/crypto', () => ({ decrypt: (ciphertext: string) => ciphertext, encrypt: vi.fn() }));
 
+// ---------------------------------------------------------------------------
+// Mocks for the thumbnail-mirror-pass tests (spec
+// 2026-07-05-meta-post-thumbnail-mirroring.md WP3).
+// ---------------------------------------------------------------------------
+
+const recordPostMedia = vi.fn<(...a: unknown[]) => Promise<void>>(async () => {});
+const claimPendingMedia = vi.fn<(...a: unknown[]) => Promise<unknown[]>>(async () => []);
+const markMirrored = vi.fn<(...a: unknown[]) => Promise<void>>(async () => {});
+const markFailed = vi.fn<(...a: unknown[]) => Promise<void>>(async () => {});
+vi.mock('./meta-post-media.service', () => ({
+  recordPostMedia: (...a: unknown[]) => recordPostMedia(...a),
+  claimPendingMedia: (...a: unknown[]) => claimPendingMedia(...a),
+  markMirrored: (...a: unknown[]) => markMirrored(...a),
+  markFailed: (...a: unknown[]) => markFailed(...a),
+}));
+
+const isStorageConfigured = vi.fn<() => boolean>(() => false);
+vi.mock('$server/storage/blob', () => ({
+  isStorageConfigured: () => isStorageConfigured(),
+  getStorage: vi.fn(),
+}));
+
+const fetchImageSafely = vi.fn<(...a: unknown[]) => Promise<{ data: Uint8Array; contentType: string; fileName: string }>>();
+vi.mock('../ssrf-guard', () => ({
+  fetchImageSafely: (...a: unknown[]) => fetchImageSafely(...a),
+}));
+
+const uploadFile = vi.fn<(...a: unknown[]) => Promise<string>>();
+vi.mock('../file.service', () => ({
+  uploadFile: (...a: unknown[]) => uploadFile(...a),
+}));
+
 import {
   toMetaIngestRow,
   computeAdsSince,
@@ -608,6 +640,189 @@ describe('runJob — connection-by-kind selection (spec 2026-07-05-instagram-log
     // branch produces, never a live metrics call.
     expect(igMediaInsights).not.toHaveBeenCalled();
     expect(finishJob).toHaveBeenCalledWith(ctx, 'job-posts-both', 'succeeded');
+  });
+});
+
+describe('syncPosts — thumbnail mirror pass (spec 2026-07-05-meta-post-thumbnail-mirroring, WP3)', () => {
+  const connection = {
+    id: 'conn-1',
+    orgId: 'org-1',
+    kind: 'system_user',
+    fbUserId: 'fbu-1',
+    tokenCiphertext: 'user-token',
+    tokenIv: 'iv',
+    tokenExpiresAt: null,
+    grantedScopes: [],
+    status: 'active',
+    connectedBy: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+  const pageAsset = {
+    id: 'asset-page-1',
+    orgId: 'org-1',
+    connectionId: 'conn-1',
+    kind: 'page',
+    externalId: 'page-1',
+    name: 'FACES Page',
+    pageTokenCiphertext: 'page-token',
+    pageTokenIv: 'iv',
+    parentPageId: null,
+    currency: null,
+    enabled: true,
+    meta: {},
+    createdAt: new Date(),
+  } as unknown as MetaAsset;
+  const job = {
+    id: 'job-1',
+    orgId: 'org-1',
+    kind: 'posts',
+    status: 'running',
+    pageCursor: null,
+    since: null,
+    until: null,
+    counts: {},
+    error: null,
+    startedAt: new Date(),
+    finishedAt: null,
+    createdAt: new Date(),
+  } as unknown as MetaSyncJob;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    claimJob.mockResolvedValue(true);
+    getJobById.mockResolvedValue(job);
+    listConnections.mockResolvedValue([connection]);
+    listAssets.mockResolvedValue([pageAsset]);
+    listAdStoryIds.mockResolvedValue({ ok: true, status: 200, data: [] });
+    postInsights.mockResolvedValue({ ok: false, status: 400, error: 'permission denied' });
+    recordPostMedia.mockResolvedValue(undefined);
+    claimPendingMedia.mockResolvedValue([]);
+    markMirrored.mockResolvedValue(undefined);
+    markFailed.mockResolvedValue(undefined);
+    isStorageConfigured.mockReturnValue(false);
+  });
+
+  function ctxWithMockDb() {
+    const { db } = createMockDb();
+    return { db: db as never, tenantId: 'org-1' };
+  }
+
+  it('records a pending row with the post preview url, and a skipped row for a text-only post', async () => {
+    listPagePosts.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: [
+        {
+          id: 'post-with-pic',
+          permalink_url: 'https://fb/1',
+          message: 'has image',
+          created_time: '2026-07-01T00:00:00+0000',
+          full_picture: 'https://cdn.example/pic.jpg',
+        },
+        {
+          id: 'post-text-only',
+          permalink_url: 'https://fb/2',
+          message: 'no image',
+          created_time: '2026-07-01T00:00:00+0000',
+        },
+      ],
+    });
+
+    const ctx = ctxWithMockDb();
+    await runJob(ctx, 'job-1');
+
+    expect(recordPostMedia).toHaveBeenCalledWith(
+      ctx,
+      expect.objectContaining({ postId: 'post-with-pic', sourceUrl: 'https://cdn.example/pic.jpg', platform: 'fb' }),
+    );
+    expect(recordPostMedia).toHaveBeenCalledWith(ctx, expect.objectContaining({ postId: 'post-text-only', sourceUrl: null }));
+  });
+
+  it('no-op mirror pass when storage is not configured — never claims, counts mediaSkipped, never fails the job', async () => {
+    listPagePosts.mockResolvedValue({ ok: true, status: 200, data: [] });
+    isStorageConfigured.mockReturnValue(false);
+
+    const ctx = ctxWithMockDb();
+    await runJob(ctx, 'job-1');
+
+    expect(claimPendingMedia).not.toHaveBeenCalled();
+    expect(recordProgress).toHaveBeenCalledWith(
+      ctx,
+      'job-1',
+      expect.objectContaining({ countsDelta: expect.objectContaining({ mediaSkipped: 1 }) }),
+    );
+    expect(finishJob).toHaveBeenCalledWith(ctx, 'job-1', 'succeeded');
+  });
+
+  it('mirrors up to the cap (10), marks per-row success/failure, and never fails the posts job over a mirror error', async () => {
+    listPagePosts.mockResolvedValue({ ok: true, status: 200, data: [] });
+    isStorageConfigured.mockReturnValue(true);
+    claimPendingMedia.mockResolvedValue([
+      {
+        orgId: 'org-1',
+        platform: 'fb',
+        postId: 'post-ok',
+        fileId: null,
+        sourceUrl: 'https://cdn.example/ok.jpg',
+        mediaType: null,
+        status: 'pending',
+        error: null,
+        attempts: 0,
+        fetchedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        orgId: 'org-1',
+        platform: 'fb',
+        postId: 'post-bad',
+        fileId: null,
+        sourceUrl: 'https://cdn.example/bad.jpg',
+        mediaType: null,
+        status: 'pending',
+        error: null,
+        attempts: 0,
+        fetchedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ]);
+    fetchImageSafely.mockImplementation(async (...args: unknown[]) => {
+      const url = args[0] as string;
+      if (url.includes('bad')) throw new Error('upstream 403');
+      return { data: new Uint8Array([1, 2, 3]), contentType: 'image/jpeg', fileName: 'post-ok.jpg' };
+    });
+    uploadFile.mockResolvedValue('file-xyz');
+
+    const ctx = ctxWithMockDb();
+    await runJob(ctx, 'job-1');
+
+    expect(claimPendingMedia).toHaveBeenCalledWith(ctx, 'org-1', 10);
+    expect(uploadFile).toHaveBeenCalledWith(
+      ctx,
+      expect.objectContaining({
+        fileName: 'post-ok.jpg',
+        contentType: 'image/jpeg',
+        category: 'meta/fb',
+        cacheControl: expect.stringContaining('immutable'),
+      }),
+    );
+    expect(markMirrored).toHaveBeenCalledWith(ctx, 'org-1', 'fb', 'post-ok', 'file-xyz');
+    expect(markFailed).toHaveBeenCalledWith(ctx, 'org-1', 'fb', 'post-bad', expect.any(Error));
+    // The bad row's failure must not propagate — the job still succeeds.
+    expect(finishJob).toHaveBeenCalledWith(ctx, 'job-1', 'succeeded');
+  });
+
+  it('a mirror pass that throws outright (e.g. claim itself fails) never fails the posts job', async () => {
+    listPagePosts.mockResolvedValue({ ok: true, status: 200, data: [] });
+    isStorageConfigured.mockReturnValue(true);
+    claimPendingMedia.mockRejectedValue(new Error('db unavailable'));
+
+    const ctx = ctxWithMockDb();
+    await runJob(ctx, 'job-1');
+
+    expect(finishJob).toHaveBeenCalledWith(ctx, 'job-1', 'succeeded');
   });
 });
 

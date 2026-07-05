@@ -1,13 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Real class so the route's `instanceof SsrfBlockedError` matches.
-class SsrfBlockedError extends Error {}
-const assertSafeUrl = vi.fn<(u: string, c?: string) => Promise<void>>();
-vi.mock('$server/services/ssrf-guard', () => ({
-  assertSafeUrl: (u: string, c?: string) => assertSafeUrl(u, c),
-  SsrfBlockedError,
-}));
-
+// ssrf-guard is NOT mocked: `fetchImageSafely` now lives there and calls
+// `assertSafeUrl` internally (same module — a vi.mock override on
+// assertSafeUrl would not reach that internal call). The real assertSafeUrl
+// is deterministic and network-free for literal IP hosts (no DNS lookup), so
+// tests below use a literal public IP instead of a hostname like
+// example.com, keeping them offline-safe while exercising the real guard.
 const uploadFile = vi.fn<() => Promise<string>>();
 vi.mock('$server/services/file.service', () => ({
   uploadFile: () => uploadFile(),
@@ -44,7 +42,6 @@ async function statusOf(p: Promise<unknown>): Promise<number> {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  assertSafeUrl.mockResolvedValue(undefined);
   uploadFile.mockResolvedValue('file-123');
 });
 
@@ -59,13 +56,12 @@ describe('POST /api/notes/fetch-image', () => {
         }),
       ),
     );
-    const res = await call('https://example.com/cat.png');
+    const res = await call('https://93.184.216.34/cat.png');
     expect(await res.json()).toEqual({ fileId: 'file-123', w: 0, h: 0 });
     expect(uploadFile).toHaveBeenCalledTimes(1);
   });
 
   it('rejects an SSRF-blocked host with 400', async () => {
-    assertSafeUrl.mockRejectedValue(new SsrfBlockedError('blocked'));
     vi.stubGlobal('fetch', vi.fn());
     expect(await statusOf(call('http://169.254.169.254/'))).toBe(400);
     expect(uploadFile).not.toHaveBeenCalled();
@@ -78,7 +74,7 @@ describe('POST /api/notes/fetch-image', () => {
         new Response('<html>', { status: 200, headers: { 'content-type': 'text/html' } }),
       ),
     );
-    expect(await statusOf(call('https://example.com/page'))).toBe(415);
+    expect(await statusOf(call('https://93.184.216.34/page'))).toBe(415);
   });
 
   it('rejects an oversize image (declared) with 413', async () => {
@@ -91,7 +87,7 @@ describe('POST /api/notes/fetch-image', () => {
         }),
       ),
     );
-    expect(await statusOf(call('https://example.com/huge.jpg'))).toBe(413);
+    expect(await statusOf(call('https://93.184.216.34/huge.jpg'))).toBe(413);
   });
 
   it('400s when url is missing', async () => {

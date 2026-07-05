@@ -126,6 +126,15 @@ export class SsrfBlockedError extends Error {
   }
 }
 
+export class FetchImageError extends Error {
+  constructor(
+    public status: 400 | 413 | 415 | 502 | 504,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
 /**
  * Asserts that a URL does not target private, link-local, or reserved
  * network ranges. For hostname-based URLs, performs a DNS lookup so that
@@ -201,4 +210,78 @@ export async function assertSafeUrl(rawUrl: string, context = 'URL'): Promise<vo
       `Cannot resolve hostname "${host}" in ${context}: ${(err as Error).message}`,
     );
   }
+}
+
+const FETCH_IMAGE_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
+const FETCH_IMAGE_MAX_REDIRECTS = 3;
+const FETCH_IMAGE_TIMEOUT_MS = 8_000;
+
+/**
+ * Fetch an image with SSRF protection on every hop, a hard size cap, an
+ * image/* content-type check, and a timeout. Redirects are followed manually so
+ * each Location is re-validated (a 302 → internal IP must not slip through).
+ *
+ * Shared by /api/notes/fetch-image and the Meta post-thumbnail mirror
+ * (meta-post-media.service.ts) — one SSRF-safe fetcher, not two.
+ */
+export async function fetchImageSafely(
+  startUrl: string,
+): Promise<{ data: Uint8Array; contentType: string; fileName: string }> {
+  let current = startUrl;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_IMAGE_TIMEOUT_MS);
+  try {
+    for (let hop = 0; hop <= FETCH_IMAGE_MAX_REDIRECTS; hop++) {
+      await assertSafeUrl(current, 'image URL');
+      const res = await fetch(current, {
+        redirect: 'manual',
+        signal: controller.signal,
+        headers: { Accept: 'image/*' },
+      });
+
+      if (res.status >= 300 && res.status < 400) {
+        const loc = res.headers.get('location');
+        if (!loc) throw new FetchImageError(502, 'Redirect without a location.');
+        current = new URL(loc, current).toString();
+        continue;
+      }
+      if (!res.ok) throw new FetchImageError(502, `Upstream returned ${res.status}.`);
+
+      const contentType = (res.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase();
+      if (!contentType.startsWith('image/')) {
+        throw new FetchImageError(415, 'That URL is not an image.');
+      }
+
+      const declared = Number(res.headers.get('content-length') ?? '0');
+      if (declared && declared > FETCH_IMAGE_MAX_BYTES) {
+        throw new FetchImageError(413, 'That image is too large (max 10 MB).');
+      }
+
+      const buf = new Uint8Array(await res.arrayBuffer());
+      if (buf.byteLength > FETCH_IMAGE_MAX_BYTES) {
+        throw new FetchImageError(413, 'That image is too large (max 10 MB).');
+      }
+
+      return { data: buf, contentType, fileName: fileNameFor(current, contentType) };
+    }
+    throw new FetchImageError(502, 'Too many redirects.');
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      throw new FetchImageError(504, 'Fetching that image timed out.');
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function fileNameFor(url: string, contentType: string): string {
+  try {
+    const last = new URL(url).pathname.split('/').filter(Boolean).pop();
+    if (last && /\.[a-z0-9]{2,5}$/i.test(last)) return last.slice(0, 120);
+  } catch {
+    /* fall through */
+  }
+  const ext = contentType.split('/')[1]?.replace('+xml', '') ?? 'png';
+  return `image.${ext}`;
 }

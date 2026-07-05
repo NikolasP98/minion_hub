@@ -20,6 +20,9 @@ import { withOrgCore } from '$server/db/with-org-core';
 import { getCoreDb } from '$server/db/pg-client';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { decrypt, encrypt } from '$server/auth/crypto';
+import { isStorageConfigured } from '$server/storage/blob';
+import { fetchImageSafely } from '../ssrf-guard';
+import { uploadFile } from '../file.service';
 import {
   metaConnections,
   metaPostInsights,
@@ -39,6 +42,7 @@ import {
   listConversations,
   fetchNextPage,
   refreshIgToken,
+  pickPreviewUrl,
   type PagePost,
   type IgMedia,
   type MetricInsight,
@@ -47,6 +51,7 @@ import {
 } from './graph-read';
 import { insertMessages, type IngestRow } from '../messages.service';
 import { claimJob, finishJob, getJobById, recordProgress, requeue } from './meta-sync-jobs.service';
+import { recordPostMedia, claimPendingMedia, markMirrored, markFailed } from './meta-post-media.service';
 
 /**
  * Shared Graph opts carrying the App Secret so every authenticated read sends
@@ -65,6 +70,10 @@ const MAX_POSTS_PER_SLICE = 150;
 const MAX_AD_ROWS_PER_SLICE = 90;
 const MAX_CONVERSATIONS_PER_SLICE = 100;
 const BACKFILL_DAYS = 90;
+
+/** Spec §6/§11: inline-capped, no new job kind — a handful of thumbnails per
+ *  slice, decoupled from the posts/metrics budget above. */
+const MEDIA_MIRROR_CAP = 10;
 
 export function defaultSinceDate(days = BACKFILL_DAYS, now: Date = new Date()): string {
   return new Date(now.getTime() - days * 86_400_000).toISOString().slice(0, 10);
@@ -445,6 +454,63 @@ async function markPromotedPosts(ctx: CoreCtx, storyIds: Set<string>): Promise<v
   );
 }
 
+/**
+ * Capped mirror pass (spec §6, §11 — inline in the posts slice, no 4th job
+ * kind): claims up to MEDIA_MIRROR_CAP `meta_post_media` rows still needing a
+ * blob and mirrors each Meta CDN url into our own bucket via the existing
+ * file service. Self-healing: a failed row's `source_url` gets refreshed by
+ * the next posts sync (recordPostMedia), so a 403 on an expired url just
+ * means the row retries next tick with a fresh one.
+ *
+ * Never throws — a media failure must not fail the posts job. Mutates
+ * `counts` in place with mediaMirrored/mediaFailed/mediaSkipped, merged into
+ * the posts job's counters same as everything else in this slice.
+ */
+async function mirrorPendingMedia(ctx: CoreCtx, counts: Record<string, number>): Promise<void> {
+  if (!isStorageConfigured()) {
+    // No blob storage configured (e.g. local dev without STORAGE_*/B2_* env) —
+    // skip entirely, no network, no crash. Counted so it's visible in the job.
+    counts.mediaSkipped = (counts.mediaSkipped ?? 0) + 1;
+    return;
+  }
+
+  let pending: Awaited<ReturnType<typeof claimPendingMedia>>;
+  try {
+    pending = await claimPendingMedia(ctx, ctx.tenantId, MEDIA_MIRROR_CAP);
+  } catch {
+    return; // claim itself failed (DB hiccup) — never fail the posts job over this
+  }
+
+  let mirrored = 0;
+  let failed = 0;
+  for (const row of pending) {
+    if (!row.sourceUrl) {
+      // Shouldn't happen (claimed rows are pending/failed, both of which only
+      // exist because a source_url was recorded) — tolerate defensively.
+      await markFailed(ctx, row.orgId, row.platform, row.postId, 'missing source_url');
+      failed++;
+      continue;
+    }
+    try {
+      const fetched = await fetchImageSafely(row.sourceUrl);
+      const fileId = await uploadFile(ctx, {
+        fileName: `${row.postId}.jpg`,
+        contentType: 'image/jpeg', // Meta previews are jpeg; not transcoded (spec §3, §11 — no sharp v1)
+        data: fetched.data,
+        category: `meta/${row.platform}`,
+        cacheControl: 'public, max-age=31536000, immutable',
+      });
+      await markMirrored(ctx, row.orgId, row.platform, row.postId, fileId);
+      mirrored++;
+    } catch (e) {
+      await markFailed(ctx, row.orgId, row.platform, row.postId, e);
+      failed++;
+    }
+  }
+  counts.mediaMirrored = (counts.mediaMirrored ?? 0) + mirrored;
+  counts.mediaFailed = (counts.mediaFailed ?? 0) + failed;
+}
+
 async function upsertAdInsights(ctx: CoreCtx, rows: AdInsightInsertRow[]): Promise<void> {
   if (rows.length === 0) return;
   await withOrgCore(ctx, async (tx) => {
@@ -616,6 +682,23 @@ async function syncPosts(
         // /insights is allowed — so the Posts tab always has rows to show.
         rowsToUpsert.push(...fallbackEngagementRows(post, postMeta));
 
+        // Record (not mirror — that's the capped pass below) this post's
+        // preview url. Cheap, no network: just an upsert of the CDN url +
+        // media type, so a later mirror pass has something fresh to fetch.
+        // A null pickPreviewUrl (text-only post) lands as status='skipped'.
+        await recordPostMedia(ctx, {
+          orgId: ctx.tenantId,
+          platform,
+          postId: post.id,
+          sourceUrl: pickPreviewUrl({
+            media_type: mediaType,
+            media_url: (post as IgMedia).media_url,
+            thumbnail_url: (post as IgMedia).thumbnail_url,
+            full_picture: (post as PagePost).full_picture,
+          }),
+          mediaType: mediaType ?? null,
+        });
+
         // IG-Login's instagram_business_basic scope doesn't grant /insights
         // (that needs the FB-Login Business Discovery path) — never call it
         // for this branch; the fallback engagement row above is the only row
@@ -643,6 +726,7 @@ async function syncPosts(
       if (counts.postsProcessed >= MAX_POSTS_PER_SLICE) {
         await upsertPostInsights(ctx, rowsToUpsert);
         await markPromotedPosts(ctx, storyIds);
+        await safeMirrorPendingMedia(ctx, counts);
         return { cursor: serializeResume({ i, next: page.nextCursor }), counts };
       }
       if (!page.nextCursor) break;
@@ -651,7 +735,20 @@ async function syncPosts(
   }
   await upsertPostInsights(ctx, rowsToUpsert);
   await markPromotedPosts(ctx, storyIds);
+  await safeMirrorPendingMedia(ctx, counts);
   return { cursor: null, counts };
+}
+
+/** mirrorPendingMedia already tolerates its own internal failures (claim/fetch/upload
+ *  errors resolve to a `failed` row, not a throw) — this outer guard is the final
+ *  backstop so deliverable §6's "never blocks a sync slice" holds even if a mark*
+ *  call itself throws (e.g. a DB hiccup writing the failure). */
+async function safeMirrorPendingMedia(ctx: CoreCtx, counts: Record<string, number>): Promise<void> {
+  try {
+    await mirrorPendingMedia(ctx, counts);
+  } catch {
+    /* never fail the posts job over the thumbnail mirror pass */
+  }
 }
 
 async function syncAds(ctx: CoreCtx, userToken: string, assets: MetaAsset[], job: MetaSyncJob): Promise<SliceResult> {
