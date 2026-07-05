@@ -68,6 +68,9 @@ export const metaPostInsights = pgTable(
     metric: text('metric').notNull(),
     value: numeric('value'),
     period: text('period').notNull().default('lifetime'),
+    /** True when this post_id also appears as an ad creative's effective_object_story_id
+     *  (i.e. it was boosted/run as an ad) — see meta-sync.service.ts collectPromotedStoryIds. */
+    isPromoted: boolean('is_promoted').notNull().default(false),
     fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

@@ -34,6 +34,7 @@ import {
   listIgMedia,
   igMediaInsights,
   adInsights,
+  listAdStoryIds,
   listConversations,
   fetchNextPage,
   type PagePost,
@@ -54,7 +55,10 @@ import { claimJob, finishJob, getJobById, recordProgress, requeue } from './meta
  */
 const graphAuthOpts = () => ({ appSecret: env.META_APP_SECRET });
 
-const MAX_POSTS_PER_SLICE = 40;
+// Each post now costs ~0 extra Graph calls beyond pagination (see the
+// insights-denial memoization in syncPosts), so a slice can carry far more
+// than the old per-post-insight-call budget of 40.
+const MAX_POSTS_PER_SLICE = 150;
 const MAX_AD_ROWS_PER_SLICE = 90;
 const MAX_CONVERSATIONS_PER_SLICE = 100;
 const BACKFILL_DAYS = 90;
@@ -65,6 +69,30 @@ export function defaultSinceDate(days = BACKFILL_DAYS, now: Date = new Date()): 
 
 export function computeAdsUntil(now: Date = new Date()): string {
   return now.toISOString().slice(0, 10);
+}
+
+// ---------------------------------------------------------------------------
+// Full-history "Sync now" windows (POST /api/meta/sync/run?full=1)
+// ---------------------------------------------------------------------------
+
+export type SyncKind = 'posts' | 'ads' | 'messages';
+
+/** Facebook's founding year — Graph accepts an arbitrarily old `since`, so this is effectively "everything". */
+export const FULL_HISTORY_SINCE = '2004-01-01';
+
+/** Meta's ad-insights lookback cap is documented as ~37 months; clamp to 36 to stay safely inside it. */
+const AD_INSIGHTS_LOOKBACK_MONTHS = 36;
+
+export function fullAdsHistorySince(now: Date = new Date()): string {
+  const d = new Date(now);
+  d.setUTCMonth(d.getUTCMonth() - AD_INSIGHTS_LOOKBACK_MONTHS);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Since-window for a "Sync now" enqueue. Non-full: unchanged 90-day default for every kind. */
+export function resolveSyncSince(kind: SyncKind, full: boolean, now: Date = new Date()): string {
+  if (!full) return defaultSinceDate(undefined, now);
+  return kind === 'ads' ? fullAdsHistorySince(now) : FULL_HISTORY_SINCE;
 }
 
 /**
@@ -220,6 +248,7 @@ export function metricInsightsToRows(
     caption: string | null;
     mediaType: string | null;
     postedAt: Date | null;
+    isPromoted: boolean;
   },
 ): { rows: PostInsightRow[]; nonNumeric: number } {
   const rows: PostInsightRow[] = [];
@@ -241,6 +270,7 @@ export function metricInsightsToRows(
       caption: meta.caption,
       mediaType: meta.mediaType,
       postedAt: meta.postedAt,
+      isPromoted: meta.isPromoted,
       metric: m.name,
       value: String(num),
       period,
@@ -268,6 +298,7 @@ export function fallbackEngagementRows(
     caption: string | null;
     mediaType: string | null;
     postedAt: Date | null;
+    isPromoted: boolean;
   },
 ): PostInsightRow[] {
   // FB: only `shares` is fetchable (reactions/comments summaries need the
@@ -299,6 +330,7 @@ export function fallbackEngagementRows(
     caption: meta.caption,
     mediaType: meta.mediaType,
     postedAt: meta.postedAt,
+    isPromoted: meta.isPromoted,
     metric,
     value: String(value ?? 0),
     period: 'lifetime',
@@ -363,11 +395,28 @@ async function upsertPostInsights(ctx: CoreCtx, rows: PostInsightRow[]): Promise
             caption: sql`excluded.caption`,
             mediaType: sql`excluded.media_type`,
             postedAt: sql`excluded.posted_at`,
+            isPromoted: sql`excluded.is_promoted`,
             fetchedAt: sql`now()`,
           },
         });
     }
   });
+}
+
+/**
+ * Catch-up pass for rows synced before this feature existed (or a run where
+ * the ad-account read was tolerated as a failure): flips `is_promoted` on any
+ * already-stored row whose `post_id` is in the current story-id set. Never
+ * flips it back off — a post that stops being an ad is still "was promoted"
+ * for reporting purposes.
+ */
+async function markPromotedPosts(ctx: CoreCtx, storyIds: Set<string>): Promise<void> {
+  if (storyIds.size === 0) return;
+  await withOrgCore(ctx, (tx) =>
+    tx.execute(
+      sql`update meta_post_insights set is_promoted = true where org_id = ${ctx.tenantId} and post_id = any(${[...storyIds]}) and is_promoted = false`,
+    ),
+  );
 }
 
 async function upsertAdInsights(ctx: CoreCtx, rows: AdInsightInsertRow[]): Promise<void> {
@@ -416,8 +465,28 @@ async function latestAdInsightDate(ctx: CoreCtx, adAccountId: string): Promise<s
 
 type SliceResult = { cursor: string | null; counts: Record<string, number>; tokenExpired?: boolean };
 
-async function syncPosts(ctx: CoreCtx, job: MetaSyncJob, assets: MetaAsset[]): Promise<SliceResult> {
+/**
+ * Aggregates every enabled ad account's promoted-post story ids into one set.
+ * Per-account failures are tolerated (counted, not fatal) — same posture as
+ * every other per-target Graph call in this file.
+ */
+async function collectPromotedStoryIds(
+  userToken: string,
+  adAccountAssets: MetaAsset[],
+): Promise<{ storyIds: Set<string>; failed: number }> {
+  const storyIds = new Set<string>();
+  let failed = 0;
+  for (const asset of adAccountAssets) {
+    const res = await listAdStoryIds(asset.externalId, userToken, graphAuthOpts());
+    if (res.ok) for (const id of res.data ?? []) storyIds.add(id);
+    else failed++;
+  }
+  return { storyIds, failed };
+}
+
+async function syncPosts(ctx: CoreCtx, job: MetaSyncJob, assets: MetaAsset[], userToken: string): Promise<SliceResult> {
   const pageAssets = assets.filter((a) => a.kind === 'page');
+  const adAccountAssets = assets.filter((a) => a.kind === 'ad_account');
   const targets = assets
     .filter((a) => a.kind === 'page' || a.kind === 'ig')
     .sort((a, b) => a.externalId.localeCompare(b.externalId))
@@ -425,8 +494,19 @@ async function syncPosts(ctx: CoreCtx, job: MetaSyncJob, assets: MetaAsset[]): P
 
   const since = job.since ?? defaultSinceDate();
   const resume = parseResume(job.pageCursor);
-  const counts = { postsProcessed: 0, metricsDenied: 0, igSkipped: 0 };
+  const counts = { postsProcessed: 0, metricsDenied: 0, metricsSkipped: 0, igSkipped: 0, adStoryFetchFailed: 0 };
   const rowsToUpsert: PostInsightRow[] = [];
+
+  // read_insights is permanently unobtainable for this app (spec §10) — the
+  // first denial in this slice proves it for every remaining post, so stop
+  // spending a Graph call per post on it. Engagement-count fallback still
+  // lands for every post regardless.
+  let insightsDenied = false;
+
+  const { storyIds, failed: adStoryFetchFailed } = userToken
+    ? await collectPromotedStoryIds(userToken, adAccountAssets)
+    : { storyIds: new Set<string>(), failed: 0 };
+  counts.adStoryFetchFailed = adStoryFetchFailed;
 
   for (let i = resume.i; i < targets.length; i++) {
     const { asset, platform } = targets[i];
@@ -462,26 +542,33 @@ async function syncPosts(ctx: CoreCtx, job: MetaSyncJob, assets: MetaAsset[]): P
           caption: (post as PagePost).message ?? (post as IgMedia).caption ?? null,
           mediaType: mediaType ?? null,
           postedAt: parseGraphDate((post as PagePost).created_time ?? (post as IgMedia).timestamp),
+          isPromoted: storyIds.has(post.id),
         };
         // Always land the engagement-count fallback — regardless of whether
         // /insights is allowed — so the Posts tab always has rows to show.
         rowsToUpsert.push(...fallbackEngagementRows(post, postMeta));
 
-        const insights =
-          platform === 'fb'
-            ? await postInsights(post.id, token, graphAuthOpts())
-            : await igMediaInsights(post.id, token, mediaType ?? 'IMAGE', graphAuthOpts());
-        if (!insights.ok) {
-          if (insights.error === 'token_expired') return { cursor: null, counts, tokenExpired: true };
-          counts.metricsDenied++;
+        if (insightsDenied) {
+          counts.metricsSkipped++;
         } else {
-          const { rows } = metricInsightsToRows(insights.data ?? [], { ...postMeta, postId: post.id });
-          rowsToUpsert.push(...rows);
+          const insights =
+            platform === 'fb'
+              ? await postInsights(post.id, token, graphAuthOpts())
+              : await igMediaInsights(post.id, token, mediaType ?? 'IMAGE', graphAuthOpts());
+          if (!insights.ok) {
+            if (insights.error === 'token_expired') return { cursor: null, counts, tokenExpired: true };
+            counts.metricsDenied++;
+            insightsDenied = true;
+          } else {
+            const { rows } = metricInsightsToRows(insights.data ?? [], { ...postMeta, postId: post.id });
+            rowsToUpsert.push(...rows);
+          }
         }
         counts.postsProcessed++;
       }
       if (counts.postsProcessed >= MAX_POSTS_PER_SLICE) {
         await upsertPostInsights(ctx, rowsToUpsert);
+        await markPromotedPosts(ctx, storyIds);
         return { cursor: serializeResume({ i, next: page.nextCursor }), counts };
       }
       if (!page.nextCursor) break;
@@ -489,6 +576,7 @@ async function syncPosts(ctx: CoreCtx, job: MetaSyncJob, assets: MetaAsset[]): P
     }
   }
   await upsertPostInsights(ctx, rowsToUpsert);
+  await markPromotedPosts(ctx, storyIds);
   return { cursor: null, counts };
 }
 
@@ -501,7 +589,9 @@ async function syncAds(ctx: CoreCtx, userToken: string, assets: MetaAsset[], job
 
   for (let i = resume.i; i < targets.length; i++) {
     const asset = targets[i];
-    const since = computeAdsSince(await latestAdInsightDate(ctx, asset.externalId));
+    // A job.since set explicitly (full-history "Sync now") wins over the
+    // normal 2-day restatement window computed from the last synced date.
+    const since = job.since ?? computeAdsSince(await latestAdInsightDate(ctx, asset.externalId));
 
     let page =
       i === resume.i && resume.next
@@ -651,20 +741,23 @@ export async function runJob(ctx: CoreCtx, jobId: string): Promise<void> {
   }
 
   let userToken = '';
-  if (job.kind === 'ads') {
+  if (job.kind === 'ads' || job.kind === 'posts') {
     const decrypted = decryptOrNull(connection.tokenCiphertext, connection.tokenIv);
-    if (!decrypted) {
+    if (decrypted) {
+      userToken = decrypted;
+    } else if (job.kind === 'ads') {
       await finishJob(ctx, jobId, 'failed', { error: 'token decrypt failed' });
       return;
     }
-    userToken = decrypted;
+    // posts: a missing user token just skips ad-story linkage (collectPromotedStoryIds) —
+    // the posts/media themselves are read with per-asset page tokens, not this one.
   }
 
   const assets = (await listAssets(ctx, connection.id)).filter((a) => a.enabled);
 
   let result: SliceResult;
   try {
-    if (job.kind === 'posts') result = await syncPosts(ctx, job, assets);
+    if (job.kind === 'posts') result = await syncPosts(ctx, job, assets, userToken);
     else if (job.kind === 'ads') result = await syncAds(ctx, userToken, assets, job);
     else if (job.kind === 'messages') result = await syncMessages(ctx, assets, job);
     else {

@@ -1,10 +1,71 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createMockDb } from '$server/test-utils/mock-db';
+import type { MetaAsset, MetaSyncJob } from '$server/db/pg-meta-schema';
+import type { GraphResult, PagePost, MetricInsight } from './graph-read';
+
+// ---------------------------------------------------------------------------
+// Mocks for the runJob() integration tests further down. Hoisted by vitest,
+// so they apply to the whole file — the pure-function tests above/below don't
+// touch these modules and are unaffected.
+// ---------------------------------------------------------------------------
+
+const listConnections = vi.fn();
+const listAssets = vi.fn();
+vi.mock('./meta-connections.service', () => ({
+  listConnections: (...a: unknown[]) => listConnections(...a),
+  listAssets: (...a: unknown[]) => listAssets(...a),
+}));
+
+const claimJob = vi.fn<() => Promise<boolean>>();
+const getJobById = vi.fn();
+const recordProgress = vi.fn<(...a: unknown[]) => Promise<void>>(async () => {});
+const requeue = vi.fn<(...a: unknown[]) => Promise<void>>(async () => {});
+const finishJob = vi.fn<(...a: unknown[]) => Promise<void>>(async () => {});
+vi.mock('./meta-sync-jobs.service', () => ({
+  claimJob: () => claimJob(),
+  getJobById: () => getJobById(),
+  recordProgress: (...a: unknown[]) => recordProgress(...a),
+  requeue: (...a: unknown[]) => requeue(...a),
+  finishJob: (...a: unknown[]) => finishJob(...a),
+}));
+
+const listPagePosts = vi.fn<(...a: unknown[]) => Promise<GraphResult<PagePost[]>>>();
+const postInsights = vi.fn<(...a: unknown[]) => Promise<GraphResult<MetricInsight[]>>>();
+const igMediaInsights = vi.fn();
+const listIgMedia = vi.fn();
+const listAdStoryIds = vi.fn<(...a: unknown[]) => Promise<GraphResult<string[]>>>();
+const adInsightsMock = vi.fn();
+const listConversations = vi.fn();
+const fetchNextPage = vi.fn();
+vi.mock('./graph-read', async (orig) => {
+  const real = (await orig()) as Record<string, unknown>;
+  return {
+    ...real,
+    listPagePosts: (...a: unknown[]) => listPagePosts(...a),
+    postInsights: (...a: unknown[]) => postInsights(...a),
+    igMediaInsights: (...a: unknown[]) => igMediaInsights(...a),
+    listIgMedia: (...a: unknown[]) => listIgMedia(...a),
+    listAdStoryIds: (...a: unknown[]) => listAdStoryIds(...a),
+    adInsights: (...a: unknown[]) => adInsightsMock(...a),
+    listConversations: (...a: unknown[]) => listConversations(...a),
+    fetchNextPage: (...a: unknown[]) => fetchNextPage(...a),
+  };
+});
+
+vi.mock('../messages.service', () => ({ insertMessages: vi.fn(async () => 0) }));
+vi.mock('$server/auth/crypto', () => ({ decrypt: (ciphertext: string) => ciphertext, encrypt: vi.fn() }));
+
 import {
   toMetaIngestRow,
   computeAdsSince,
   adInsightRowToInsert,
   metricInsightsToRows,
   fallbackEngagementRows,
+  resolveSyncSince,
+  fullAdsHistorySince,
+  defaultSinceDate,
+  FULL_HISTORY_SINCE,
+  runJob,
 } from './meta-sync.service';
 
 const PAGE_ID = 'page-1';
@@ -180,6 +241,7 @@ describe('metricInsightsToRows', () => {
     caption: null,
     mediaType: null,
     postedAt: null,
+    isPromoted: false,
   };
 
   it('emits one row per numeric metric and degrades non-numeric ones', () => {
@@ -194,6 +256,15 @@ describe('metricInsightsToRows', () => {
     expect(rows[0]).toMatchObject({ metric: 'post_impressions', value: '42' });
     expect(nonNumeric).toBe(1);
   });
+
+  it('carries isPromoted:true through to every row when the post matched a story id', () => {
+    const { rows } = metricInsightsToRows([{ name: 'post_impressions', values: [{ value: 10 }] }], {
+      ...meta,
+      isPromoted: true,
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ isPromoted: true });
+  });
 });
 
 describe('fallbackEngagementRows — engagement-count fallback (read_insights unavailable)', () => {
@@ -205,6 +276,7 @@ describe('fallbackEngagementRows — engagement-count fallback (read_insights un
     caption: null,
     mediaType: null,
     postedAt: null,
+    isPromoted: false,
   };
 
   it('emits reactions/comments/shares rows for an FB post even when a denied /insights call yields nothing', () => {
@@ -243,5 +315,132 @@ describe('fallbackEngagementRows — engagement-count fallback (read_insights un
         expect.objectContaining({ metric: 'comments_total', value: '4', platform: 'ig' }),
       ]),
     );
+  });
+
+  it('is_promoted mapping — hit vs miss against the story-id set (isPromoted flag flows straight through)', () => {
+    const promoted = fallbackEngagementRows({ id: 'post-hit' }, { ...fbMeta, isPromoted: true });
+    const organic = fallbackEngagementRows({ id: 'post-miss' }, { ...fbMeta, isPromoted: false });
+    expect(promoted[0]).toMatchObject({ isPromoted: true });
+    expect(organic[0]).toMatchObject({ isPromoted: false });
+  });
+});
+
+describe('resolveSyncSince — full-history window per sync kind', () => {
+  const now = new Date('2026-07-04T00:00:00Z');
+
+  it('non-full: same 90-day default for every kind, unchanged from today', () => {
+    expect(resolveSyncSince('posts', false, now)).toBe(defaultSinceDate(90, now));
+    expect(resolveSyncSince('ads', false, now)).toBe(defaultSinceDate(90, now));
+    expect(resolveSyncSince('messages', false, now)).toBe(defaultSinceDate(90, now));
+  });
+
+  it('full: posts/messages go all the way back to FULL_HISTORY_SINCE', () => {
+    expect(resolveSyncSince('posts', true, now)).toBe(FULL_HISTORY_SINCE);
+    expect(resolveSyncSince('messages', true, now)).toBe(FULL_HISTORY_SINCE);
+  });
+
+  it('full: ads clamps to the 36-month lookback window, not all the way to FULL_HISTORY_SINCE', () => {
+    expect(resolveSyncSince('ads', true, now)).toBe(fullAdsHistorySince(now));
+    expect(resolveSyncSince('ads', true, now)).not.toBe(FULL_HISTORY_SINCE);
+    expect(resolveSyncSince('ads', true, now)).toBe('2023-07-04');
+  });
+});
+
+describe('runJob(posts) — promoted-post labeling + insights-call skip-after-first-denial', () => {
+  const connection = {
+    id: 'conn-1',
+    orgId: 'org-1',
+    kind: 'system_user',
+    fbUserId: 'fbu-1',
+    tokenCiphertext: 'user-token',
+    tokenIv: 'iv',
+    tokenExpiresAt: null,
+    grantedScopes: [],
+    status: 'active',
+    connectedBy: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+  const pageAsset = {
+    id: 'asset-page-1',
+    orgId: 'org-1',
+    connectionId: 'conn-1',
+    kind: 'page',
+    externalId: 'page-1',
+    name: 'FACES Page',
+    pageTokenCiphertext: 'page-token',
+    pageTokenIv: 'iv',
+    parentPageId: null,
+    currency: null,
+    enabled: true,
+    meta: {},
+    createdAt: new Date(),
+  } as unknown as MetaAsset;
+  const adAccountAsset = {
+    id: 'asset-ad-1',
+    orgId: 'org-1',
+    connectionId: 'conn-1',
+    kind: 'ad_account',
+    externalId: 'act_1',
+    name: 'FACES Ads',
+    pageTokenCiphertext: null,
+    pageTokenIv: null,
+    parentPageId: null,
+    currency: 'PEN',
+    enabled: true,
+    meta: {},
+    createdAt: new Date(),
+  } as unknown as MetaAsset;
+  const job = {
+    id: 'job-1',
+    orgId: 'org-1',
+    kind: 'posts',
+    status: 'running',
+    pageCursor: null,
+    since: null,
+    until: null,
+    counts: {},
+    error: null,
+    startedAt: new Date(),
+    finishedAt: null,
+    createdAt: new Date(),
+  } as unknown as MetaSyncJob;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    claimJob.mockResolvedValue(true);
+    getJobById.mockResolvedValue(job);
+    listConnections.mockResolvedValue([connection]);
+    listAssets.mockResolvedValue([pageAsset, adAccountAsset]);
+    listAdStoryIds.mockResolvedValue({ ok: true, status: 200, data: ['page-1_100'] });
+    listPagePosts.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: [
+        { id: 'page-1_100', permalink_url: 'https://fb/1', message: 'promoted', created_time: '2026-07-01T00:00:00+0000', shares: { count: 2 } },
+        { id: 'page-1_200', permalink_url: 'https://fb/2', message: 'organic', created_time: '2026-07-01T00:00:00+0000', shares: { count: 1 } },
+        { id: 'page-1_300', permalink_url: 'https://fb/3', message: 'organic 2', created_time: '2026-07-01T00:00:00+0000', shares: { count: 0 } },
+      ],
+    });
+    postInsights.mockResolvedValue({ ok: false, status: 400, error: 'permission denied' });
+  });
+
+  it('calls postInsights only once (first denial), skipping the remaining posts in the slice', async () => {
+    const { db } = createMockDb();
+    const ctx = { db: db as never, tenantId: 'org-1' };
+
+    await runJob(ctx, 'job-1');
+
+    expect(listAdStoryIds).toHaveBeenCalledWith('act_1', 'user-token', expect.anything());
+    expect(postInsights).toHaveBeenCalledTimes(1);
+    expect(recordProgress).toHaveBeenCalledWith(
+      ctx,
+      'job-1',
+      expect.objectContaining({
+        pageCursor: null,
+        countsDelta: expect.objectContaining({ postsProcessed: 3, metricsDenied: 1, metricsSkipped: 2 }),
+      }),
+    );
+    expect(finishJob).toHaveBeenCalledWith(ctx, 'job-1', 'succeeded');
   });
 });

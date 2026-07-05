@@ -461,6 +461,47 @@ export async function adInsights(
 }
 
 // ---------------------------------------------------------------------------
+// Ad → post linkage (which organic posts are also running as ads)
+// ---------------------------------------------------------------------------
+
+export type AdCreative = { creative?: { effective_object_story_id?: string } };
+
+/**
+ * Paginates `act_X/ads` and collects every ad's
+ * `creative.effective_object_story_id` — a `{page_id}_{post_id}` id, the same
+ * format `/{page}/posts` returns — so callers can tell which organic posts are
+ * also running as ads. Aggregates all pages itself (unlike the other `list*`
+ * helpers here, which return one page + a cursor) since callers just want the
+ * full set to test membership against.
+ */
+export async function listAdStoryIds(
+  adAccountId: string,
+  userToken: string,
+  opts: GraphOpts = {},
+): Promise<GraphResult<string[]>> {
+  const o = resolveOpts(opts);
+  const accountPath = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
+  const url = buildUrl(
+    `${accountPath}/ads`,
+    { fields: 'creative{effective_object_story_id}', limit: 100, access_token: userToken },
+    o,
+  );
+  const res = await graphRequest(url, o);
+  if (!res.ok) return { ok: false, status: res.status, error: res.error, usage: res.usage };
+
+  const ids = new Set<string>();
+  let { data, nextCursor } = unwrapList<AdCreative>(res.body);
+  for (const ad of data) if (ad.creative?.effective_object_story_id) ids.add(ad.creative.effective_object_story_id);
+  while (nextCursor) {
+    const page = await fetchNextPage<AdCreative>(nextCursor, { fetchImpl: o.fetchImpl, timeoutMs: o.timeoutMs });
+    if (!page.ok) break; // tolerate a mid-pagination failure — return what's collected so far
+    for (const ad of page.data ?? []) if (ad.creative?.effective_object_story_id) ids.add(ad.creative.effective_object_story_id);
+    nextCursor = page.nextCursor;
+  }
+  return { ok: true, status: res.status, data: [...ids], usage: res.usage };
+}
+
+// ---------------------------------------------------------------------------
 // Conversations (Messenger / IG DM)
 // ---------------------------------------------------------------------------
 
