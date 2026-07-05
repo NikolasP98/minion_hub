@@ -10,6 +10,7 @@
 		selected = $bindable(),
 		align = 'left',
 		optionIcon,
+		onSelect,
 	}: {
 		label: string;
 		options: Option[];
@@ -17,19 +18,26 @@
 		selected: Set<string>;
 		align?: 'left' | 'right';
 		optionIcon?: Snippet<[string]>;
+		/** Fires with the new set when the selection changes. Use instead of
+		 *  `bind:selected` when the set isn't a bindable variable (e.g. derived). */
+		onSelect?: (s: Set<string>) => void;
 	} = $props();
 
 	let open = $state(false);
 	const active = $derived(selected.size > 0);
 
+	function commit(next: Set<string>) {
+		selected = next;
+		onSelect?.(next);
+	}
 	function toggle(v: string) {
 		const next = new Set(selected);
 		if (next.has(v)) next.delete(v);
 		else next.add(v);
-		selected = next;
+		commit(next);
 	}
 	function clearAll() {
-		selected = new Set();
+		commit(new Set());
 	}
 </script>
 

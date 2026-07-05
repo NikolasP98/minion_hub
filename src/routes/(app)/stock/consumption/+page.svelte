@@ -7,6 +7,8 @@
   import { canAct } from '$lib/access/can.svelte';
   import ConsumptionGauge from '$lib/components/stock/ConsumptionGauge.svelte';
   import { gaugeMax, type UomConvertible } from '$lib/components/stock/stock-ui';
+  import DataTable from '$lib/components/data-table/DataTable.svelte';
+  import type { DataColumn } from '$lib/components/data-table/DataTable.svelte';
 
   let { data }: { data: PageData } = $props();
   const products = $derived(data.products);
@@ -16,6 +18,7 @@
   const items = $derived(data.items as ItemUom[]);
   const itemById = $derived(new Map(items.map((i) => [i.id, i])));
   const consumption = $derived(data.consumption);
+  type Row = (typeof consumption)[number];
 
   let query = $state('');
   let selectedProductId = $state<string | null>(null);
@@ -31,6 +34,14 @@
   const mappings = $derived(consumption.filter((c) => c.finProductId === selectedProductId));
 
   const unitLabel = (item: ItemUom | undefined) => item?.consumptionUom ?? item?.uom ?? '';
+
+  const columns: DataColumn<Row>[] = [
+    { key: 'item', label: m.stock_field_item(), accessor: (c) => `${c.itemCode} — ${c.itemName}` },
+    { key: 'uom', label: m.stock_col_uom(), accessor: (c) => unitLabel(itemById.get(c.itemId)) || c.uom, cellClass: 't-caption' },
+    { key: 'qty', label: m.stock_consumption_col_qty_per_unit(), align: 'right', custom: true, accessor: (c) => c.qtyPerUnit },
+    { key: 'note', label: m.stock_field_note(), custom: true, accessor: (c) => c.note ?? '', cellClass: 't-caption' },
+    { key: 'actions', label: '', custom: true, sortable: false, exportable: false, hideable: false, resizable: false, align: 'right' },
+  ];
 
   function selectProduct(id: string) {
     selectedProductId = id;
@@ -212,80 +223,68 @@
           {#if addErr}<p class="err-msg">{addErr}</p>{/if}
         </div>
 
-        {#if mappings.length === 0}
-          <p class="t-caption">{m.stock_consumption_empty()}</p>
-        {:else}
-          <table class="mini-table">
-            <thead>
-              <tr>
-                <th>{m.stock_field_item()}</th>
-                <th>{m.stock_col_uom()}</th>
-                <th class="num">{m.stock_consumption_col_qty_per_unit()}</th>
-                <th>{m.stock_field_note()}</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {#each mappings as c (c.id)}
-                {@const editing = editingId === c.id}
-                {@const rowItem = itemById.get(c.itemId)}
-                {@const rowGaugeMax = editing ? editGaugeMax : rowItem?.diagramEnabled ? gaugeMax(rowItem) : 0}
-                <tr>
-                  <td>{c.itemCode} — {c.itemName}</td>
-                  <td class="t-caption">{unitLabel(rowItem) || c.uom}</td>
-                  <td class="num">
-                    {#if editing}
-                      <div class="edit-qty-cell">
-                        <input class="inp w-20 text-right" type="number" min="0" step="0.01" bind:value={editQty} />
-                        {#if rowGaugeMax > 0}
-                          <ConsumptionGauge
-                            class="compact"
-                            max={rowGaugeMax}
-                            unit={unitLabel(rowItem)}
-                            bind:value={() => Number(editQty) || 0, (v) => (editQty = String(v))}
-                          />
-                        {/if}
-                      </div>
-                    {:else}
-                      {c.qtyPerUnit}
-                    {/if}
-                  </td>
-                  <td class="t-caption">
-                    {#if editing}
-                      <input class="inp w-full" bind:value={editNote} />
-                    {:else}
-                      {c.note ?? '—'}
-                    {/if}
-                  </td>
-                  <td>
-                    {#if editing}
-                      <div class="flex gap-1 justify-end">
-                        <button class="act-btn act-save" onclick={() => saveEdit(c.id)} disabled={editBusy}>✓</button>
-                        <button class="act-btn act-cancel" onclick={cancelEdit}>✗</button>
-                      </div>
-                      {#if editErr}<p class="err-msg text-xs">{editErr}</p>{/if}
-                    {:else}
-                      <div class="flex gap-1 justify-end">
-                        <button
-                          class="act-btn act-edit"
-                          onclick={() => startEdit(c)}
-                          disabled={!canAct('stock', 'edit')}
-                          title={canAct('stock', 'edit') ? undefined : m.no_permission()}
-                        >✎</button>
-                        <button
-                          class="act-btn act-cancel"
-                          onclick={() => removeMapping(c.id)}
-                          disabled={!canAct('stock', 'edit')}
-                          title={canAct('stock', 'edit') ? undefined : m.no_permission()}
-                        ><Trash2 size={12} /></button>
-                      </div>
-                    {/if}
-                  </td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        {/if}
+        <DataTable
+          class="flex-1 min-h-0"
+          {columns}
+          data={mappings}
+          getRowId={(c) => c.id}
+          searchFields={(c) => `${c.itemCode} ${c.itemName} ${c.note ?? ''}`}
+          initialSort={{ key: 'item', dir: 'asc' }}
+          exportable
+          exportName="stock-consumption"
+          selectable
+          storageKey="stock-consumption"
+          emptyMessage={m.stock_consumption_empty()}
+        >
+          {#snippet cell(c: Row, col: DataColumn<Row>)}
+            {#if col.key === 'qty'}
+              {#if editingId === c.id}
+                <div class="edit-qty-cell">
+                  <input class="inp w-20 text-right" type="number" min="0" step="0.01" bind:value={editQty} />
+                  {#if editGaugeMax > 0}
+                    <ConsumptionGauge
+                      class="compact"
+                      max={editGaugeMax}
+                      unit={unitLabel(itemById.get(c.itemId))}
+                      bind:value={() => Number(editQty) || 0, (v) => (editQty = String(v))}
+                    />
+                  {/if}
+                </div>
+              {:else}
+                {c.qtyPerUnit}
+              {/if}
+            {:else if col.key === 'note'}
+              {#if editingId === c.id}
+                <input class="inp w-full" bind:value={editNote} />
+              {:else}
+                {c.note ?? '—'}
+              {/if}
+            {:else if col.key === 'actions'}
+              {#if editingId === c.id}
+                <div class="flex gap-1 justify-end">
+                  <button class="act-btn act-save" onclick={() => saveEdit(c.id)} disabled={editBusy}>✓</button>
+                  <button class="act-btn act-cancel" onclick={cancelEdit}>✗</button>
+                </div>
+                {#if editErr}<p class="err-msg text-xs">{editErr}</p>{/if}
+              {:else}
+                <div class="flex gap-1 justify-end">
+                  <button
+                    class="act-btn act-edit"
+                    onclick={() => startEdit(c)}
+                    disabled={!canAct('stock', 'edit')}
+                    title={canAct('stock', 'edit') ? undefined : m.no_permission()}
+                  >✎</button>
+                  <button
+                    class="act-btn act-cancel"
+                    onclick={() => removeMapping(c.id)}
+                    disabled={!canAct('stock', 'edit')}
+                    title={canAct('stock', 'edit') ? undefined : m.no_permission()}
+                  ><Trash2 size={12} /></button>
+                </div>
+              {/if}
+            {/if}
+          {/snippet}
+        </DataTable>
       {/if}
     </section>
   </div>
@@ -314,7 +313,7 @@
   .product-name { font-size: 0.84rem; font-weight: 500; }
   .product-code { font-size: 0.7rem; color: var(--color-muted-foreground); font-family: var(--font-mono, monospace); }
 
-  .right-pane { flex: 1; min-width: 0; overflow: auto; padding: 1rem; display: flex; flex-direction: column; gap: 1rem; }
+  .right-pane { flex: 1; min-width: 0; overflow: hidden; padding: 1rem; display: flex; flex-direction: column; gap: 1rem; }
   .right-head { display: flex; align-items: baseline; gap: 0.6rem; }
 
   .card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); padding: 0.85rem 1rem; }
@@ -322,11 +321,6 @@
   .gauge-row { display: flex; justify-content: flex-start; margin-top: 0.6rem; }
   .edit-qty-cell { display: flex; align-items: center; gap: 0.4rem; justify-content: flex-end; }
   .inp { height: 1.75rem; padding: 0 0.5rem; font-size: 0.82rem; border-radius: var(--radius-sm); background: var(--color-bg3); border: 1px solid var(--hairline); color: var(--color-foreground); font-family: inherit; }
-
-  .mini-table { width: 100%; font-size: 0.82rem; border-collapse: collapse; }
-  .mini-table th { text-align: left; font-weight: 500; color: var(--color-muted-foreground); padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--hairline); }
-  .mini-table td { padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--hairline); }
-  .mini-table .num { text-align: right; font-variant-numeric: tabular-nums; }
 
   .act-btn { display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; border-radius: var(--radius-sm); font-size: 0.78rem; border: 1px solid var(--hairline); background: transparent; cursor: pointer; color: var(--color-muted-foreground); }
   .act-btn:hover { background: rgba(255, 255, 255, 0.06); color: var(--color-foreground); }

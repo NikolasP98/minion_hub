@@ -3818,5 +3818,16 @@
   "data_table_cancel": "Cancelar",
   "data_table_select_all": "Seleccionar todo",
   "data_table_add": "Agregar",
-  "data_table_save_failed": "Error al guardar"
+  "data_table_save_failed": "Error al guardar",
+  "data_table_sort_asc": "Orden ascendente",
+  "data_table_sort_desc": "Orden descendente",
+  "data_table_wrap_text": "Ajustar texto",
+  "data_table_aggregate": "Agregado",
+  "data_table_agg_none": "Ninguno",
+  "data_table_agg_sum": "Suma",
+  "data_table_agg_avg": "Promedio",
+  "data_table_agg_count": "Conteo",
+  "data_table_bulk_actions": "Acciones masivas",
+  "data_table_expand": "Expandir",
+  "data_table_collapse": "Contraer"
 }

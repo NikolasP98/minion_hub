@@ -8,8 +8,11 @@
 	import * as m from '$lib/paraglide/messages';
 	import { canAct } from '$lib/access/can.svelte';
 	import { toastSuccess, toastError } from '$lib/state/ui/toast.svelte';
+	import DataTable from '$lib/components/data-table/DataTable.svelte';
+	import type { DataColumn } from '$lib/components/data-table/DataTable.svelte';
 
 	let { data }: { data: PageData } = $props();
+	type Job = (typeof data.jobs)[number];
 
 	const canManage = $derived(canAct('ads', 'manage'));
 
@@ -82,6 +85,15 @@
 		if (entries.length === 0) return '—';
 		return entries.map(([k, v]) => `${k}: ${v}`).join(', ');
 	}
+
+	const dateOf = (d: string | null) => (d ? new Date(d).getTime() : -Infinity);
+	const jobColumns: DataColumn<Job>[] = [
+		{ key: 'kind', label: m.ads_sync_col_kind() },
+		{ key: 'status', label: m.ads_sync_col_status(), custom: true, accessor: (j) => j.status },
+		{ key: 'counts', label: m.ads_sync_col_counts(), custom: true, accessor: (j) => countsSummary(j.counts), sortable: false },
+		{ key: 'error', label: m.ads_sync_col_error(), custom: true, accessor: (j) => j.error ?? '' },
+		{ key: 'finished', label: m.ads_sync_col_finished(), custom: true, accessor: (j) => j.finishedAt, sortFn: (a, b) => dateOf(a.finishedAt) - dateOf(b.finishedAt), exportValue: (j) => (j.finishedAt ? new Date(j.finishedAt).toISOString().slice(0, 10) : '') },
+	];
 </script>
 
 <svelte:head><title>{m.ads_settings_title()}</title></svelte:head>
@@ -195,28 +207,32 @@
 					{#if data.jobs.length === 0}
 						<p class="t-caption mt-3">{m.ads_sync_history_empty()}</p>
 					{:else}
-						<table class="w-full text-sm border-collapse mt-3">
-							<thead>
-								<tr class="text-left t-caption border-b border-[var(--hairline)]">
-									<th class="py-1.5 pr-2 font-medium">{m.ads_sync_col_kind()}</th>
-									<th class="py-1.5 pr-2 font-medium">{m.ads_sync_col_status()}</th>
-									<th class="py-1.5 pr-2 font-medium">{m.ads_sync_col_counts()}</th>
-									<th class="py-1.5 pr-2 font-medium">{m.ads_sync_col_error()}</th>
-									<th class="py-1.5 font-medium">{m.ads_sync_col_finished()}</th>
-								</tr>
-							</thead>
-							<tbody>
-								{#each data.jobs as job (job.id)}
-									<tr class="border-b border-[var(--hairline)]">
-										<td class="py-1.5 pr-2">{job.kind}</td>
-										<td class="py-1.5 pr-2"><span class="status-pill" data-status={job.status}>{job.status}</span></td>
-										<td class="py-1.5 pr-2 t-caption">{countsSummary(job.counts)}</td>
-										<td class="py-1.5 pr-2 t-caption err-text">{job.error ?? '—'}</td>
-										<td class="py-1.5 t-caption">{fmtDate(job.finishedAt)}</td>
-									</tr>
-								{/each}
-							</tbody>
-						</table>
+						<div class="job-dt mt-3">
+							<DataTable
+								class="flex-1 min-h-0"
+								columns={jobColumns}
+								data={data.jobs}
+								getRowId={(j) => j.id}
+								searchFields={(j) => `${j.kind} ${j.status} ${j.error ?? ''}`}
+								initialSort={{ key: 'finished', dir: 'desc' }}
+								exportable
+								exportName="ads-sync-history"
+								storageKey="ads-settings"
+								emptyMessage={m.ads_sync_history_empty()}
+							>
+								{#snippet cell(job: Job, col: DataColumn<Job>)}
+									{#if col.key === 'status'}
+										<span class="status-pill" data-status={job.status}>{job.status}</span>
+									{:else if col.key === 'counts'}
+										<span class="t-caption">{countsSummary(job.counts)}</span>
+									{:else if col.key === 'error'}
+										<span class="t-caption err-text">{job.error ?? '—'}</span>
+									{:else if col.key === 'finished'}
+										<span class="t-caption">{fmtDate(job.finishedAt)}</span>
+									{/if}
+								{/snippet}
+							</DataTable>
+						</div>
 					{/if}
 				</section>
 			{/if}
@@ -354,5 +370,10 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+	/* DataTable owns h-full; give it a bounded height inside the scrolling card column. */
+	.job-dt {
+		display: flex;
+		height: 22rem;
 	}
 </style>

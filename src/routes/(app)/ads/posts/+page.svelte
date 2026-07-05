@@ -4,17 +4,12 @@
 	import * as m from '$lib/paraglide/messages';
 	import { Image, ExternalLink } from 'lucide-svelte';
 	import { PageHeader, EmptyState } from '$lib/components/ui';
+	import DataTable from '$lib/components/data-table/DataTable.svelte';
+	import type { DataColumn } from '$lib/components/data-table/DataTable.svelte';
 
 	let { data }: { data: PageData } = $props();
 	const posts = $derived(data.posts);
-
-	let search = $state('');
-
-	const view = $derived.by(() => {
-		const q = search.trim().toLowerCase();
-		if (!q) return posts;
-		return posts.filter((p) => (p.caption ?? '').toLowerCase().includes(q));
-	});
+	type Row = (typeof posts)[number];
 
 	function setPlatform(platform: 'fb' | 'ig' | null) {
 		const p = new URLSearchParams(window.location.search);
@@ -30,9 +25,9 @@
 		goto(`/ads/posts?${p}`, { keepFocus: true, noScroll: true, replaceState: true });
 	}
 
+	const dateOf = (d: string | null) => (d ? new Date(d).getTime() : -Infinity);
 	function fmtDate(d: string | null): string {
-		if (!d) return '—';
-		return new Date(d).toLocaleDateString();
+		return d ? new Date(d).toLocaleDateString() : '—';
 	}
 	function fmtInt(v: number): string {
 		return Math.round(v).toLocaleString();
@@ -41,6 +36,26 @@
 		if (!s) return '—';
 		return s.length > n ? `${s.slice(0, n)}…` : s;
 	}
+
+	// Metric column set is data-driven: IG/FB metric names drift, so we derive the
+	// union of keys present across the loaded posts rather than hardcoding a list.
+	const metricKeys = $derived.by(() => {
+		const s = new Set<string>();
+		for (const p of posts) for (const k of Object.keys(p.metrics)) s.add(k);
+		return [...s].sort();
+	});
+
+	const columns = $derived.by<DataColumn<Row>[]>(() => [
+		{ key: 'platform', label: m.ads_col_platform(), custom: true, accessor: (p) => p.platform ?? '', width: 110 },
+		{ key: 'type', label: m.ads_col_type(), custom: true, accessor: (p) => (p.isPromoted ? 'ad' : 'organic'), width: 110 },
+		{ key: 'posted', label: m.ads_col_posted(), custom: true, accessor: (p) => p.postedAt, sortFn: (a, b) => dateOf(a.postedAt) - dateOf(b.postedAt), exportValue: (p) => (p.postedAt ? new Date(p.postedAt).toISOString().slice(0, 10) : ''), width: 130 },
+		{ key: 'caption', label: m.ads_col_caption(), custom: true, accessor: (p) => p.caption ?? '', exportValue: (p) => p.caption ?? '', width: 340 },
+		...metricKeys.map((k): DataColumn<Row> => ({
+			key: `m:${k}`, label: k, align: 'right', numeric: true, custom: true,
+			accessor: (p) => p.metrics[k] ?? 0, sortFn: (a, b) => (a.metrics[k] ?? 0) - (b.metrics[k] ?? 0), width: 120,
+		})),
+		{ key: 'link', label: m.ads_post_view_link(), custom: true, align: 'center', sortable: false, exportable: false, width: 56 },
+	]);
 </script>
 
 <svelte:head><title>{m.ads_nav_posts()} · {m.nav_ads()}</title></svelte:head>
@@ -55,75 +70,53 @@
 			<EmptyState icon={Image} title={m.ads_empty_title()} description={m.ads_empty_posts_desc()} />
 		</div>
 	{:else}
-		<div class="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--hairline)]">
-			<input
-				bind:value={search}
-				placeholder={m.ads_posts_search()}
-				class="h-8 px-3 text-sm rounded-[var(--radius-md)] bg-bg3 border border-[var(--hairline)] min-w-[14rem]"
-			/>
-			<div class="seg-group">
-				<button class="seg" class:active={data.platform === null} onclick={() => setPlatform(null)}>{m.ads_col_platform()}</button>
-				<button class="seg" class:active={data.platform === 'fb'} onclick={() => setPlatform('fb')}>{m.ads_platform_fb()}</button>
-				<button class="seg" class:active={data.platform === 'ig'} onclick={() => setPlatform('ig')}>{m.ads_platform_ig()}</button>
-			</div>
-			<div class="seg-group">
-				<button class="seg" class:active={data.promoted === null} onclick={() => setPromoted(null)}>{m.ads_promoted_all()}</button>
-				<button class="seg" class:active={data.promoted === 'organic'} onclick={() => setPromoted('organic')}>{m.ads_promoted_organic()}</button>
-				<button class="seg" class:active={data.promoted === 'ad'} onclick={() => setPromoted('ad')}>{m.ads_promoted_ads()}</button>
-			</div>
-			<span class="t-caption">{m.ads_posts_count({ count: view.length })}</span>
-		</div>
-
-		<div class="flex-1 min-h-0 overflow-auto">
-			{#if posts.length === 0}
-				<div class="flex flex-col items-center justify-center h-full gap-2 p-8 text-center">
-					<Image size={32} class="text-muted-foreground" />
-					<p class="t-caption">{m.ads_empty_posts_desc()}</p>
+		<DataTable
+			class="flex-1 min-h-0"
+			{columns}
+			data={posts}
+			getRowId={(p) => p.postId}
+			searchPlaceholder={m.ads_posts_search()}
+			searchFields={(p) => p.caption ?? ''}
+			initialSort={{ key: 'posted', dir: 'desc' }}
+			exportable
+			exportName="ad-posts"
+			selectable
+			storageKey="ads-posts"
+			emptyMessage={m.ads_empty_posts_desc()}
+		>
+			{#snippet toolbar()}
+				<div class="seg-group">
+					<button class="seg" class:active={data.platform === null} onclick={() => setPlatform(null)}>{m.ads_col_platform()}</button>
+					<button class="seg" class:active={data.platform === 'fb'} onclick={() => setPlatform('fb')}>{m.ads_platform_fb()}</button>
+					<button class="seg" class:active={data.platform === 'ig'} onclick={() => setPlatform('ig')}>{m.ads_platform_ig()}</button>
 				</div>
-			{:else}
-				<table class="w-full text-sm border-collapse">
-					<thead class="sticky top-0 bg-bg/95 backdrop-blur z-20">
-						<tr class="text-left t-caption border-b border-[var(--hairline)]">
-							<th class="px-4 py-2 font-medium">{m.ads_col_platform()}</th>
-							<th class="px-3 py-2 font-medium">{m.ads_col_type()}</th>
-							<th class="px-3 py-2 font-medium">{m.ads_col_posted()}</th>
-							<th class="px-3 py-2 font-medium">{m.ads_col_caption()}</th>
-							<th class="px-3 py-2 font-medium">{m.ads_col_metrics()}</th>
-							<th class="px-4 py-2 font-medium"></th>
-						</tr>
-					</thead>
-					<tbody>
-						{#if view.length === 0}
-							<tr><td colspan="6" class="px-4 py-8 text-center t-caption text-muted-foreground">{m.ads_posts_no_match()}</td></tr>
-						{/if}
-						{#each view as post (post.postId)}
-							<tr class="border-b border-[var(--hairline)]">
-								<td class="px-4 py-2">
-									<span class="post-platform" data-platform={post.platform ?? ''}>{post.platform === 'ig' ? m.ads_platform_ig() : m.ads_platform_fb()}</span>
-								</td>
-								<td class="px-3 py-2">
-									<span class="post-type" class:ad={post.isPromoted}>{post.isPromoted ? m.ads_badge_ad() : m.ads_badge_organic()}</span>
-								</td>
-								<td class="px-3 py-2 t-caption">{fmtDate(post.postedAt)}</td>
-								<td class="px-3 py-2 max-w-[24rem]"><span class="truncate block">{truncate(post.caption)}</span></td>
-								<td class="px-3 py-2 t-caption">
-									{#each Object.entries(post.metrics) as [key, value] (key)}
-										<span class="metric-chip">{key}: {fmtInt(value)}</span>
-									{/each}
-								</td>
-								<td class="px-4 py-2 text-right">
-									{#if post.permalink}
-										<a href={post.permalink} target="_blank" rel="noreferrer" class="post-link" title={m.ads_post_view_link()}>
-											<ExternalLink size={13} />
-										</a>
-									{/if}
-								</td>
-							</tr>
-						{/each}
-					</tbody>
-				</table>
-			{/if}
-		</div>
+				<div class="seg-group">
+					<button class="seg" class:active={data.promoted === null} onclick={() => setPromoted(null)}>{m.ads_promoted_all()}</button>
+					<button class="seg" class:active={data.promoted === 'organic'} onclick={() => setPromoted('organic')}>{m.ads_promoted_organic()}</button>
+					<button class="seg" class:active={data.promoted === 'ad'} onclick={() => setPromoted('ad')}>{m.ads_promoted_ads()}</button>
+				</div>
+			{/snippet}
+
+			{#snippet cell(p: Row, col: DataColumn<Row>)}
+				{#if col.key === 'platform'}
+					<span class="post-platform" data-platform={p.platform ?? ''}>{p.platform === 'ig' ? m.ads_platform_ig() : m.ads_platform_fb()}</span>
+				{:else if col.key === 'type'}
+					<span class="post-type" class:ad={p.isPromoted}>{p.isPromoted ? m.ads_badge_ad() : m.ads_badge_organic()}</span>
+				{:else if col.key === 'posted'}
+					<span class="t-caption">{fmtDate(p.postedAt)}</span>
+				{:else if col.key === 'caption'}
+					<span class="truncate block" title={p.caption ?? ''}>{truncate(p.caption)}</span>
+				{:else if col.key === 'link'}
+					{#if p.permalink}
+						<a href={p.permalink} target="_blank" rel="noreferrer" class="post-link" title={m.ads_post_view_link()}>
+							<ExternalLink size={13} />
+						</a>
+					{/if}
+				{:else if col.key.startsWith('m:')}
+					<span class="tabular-nums">{fmtInt(p.metrics[col.key.slice(2)] ?? 0)}</span>
+				{/if}
+			{/snippet}
+		</DataTable>
 	{/if}
 </div>
 
@@ -170,11 +163,6 @@
 	.post-type.ad {
 		background: color-mix(in srgb, var(--color-accent) 18%, transparent);
 		color: var(--color-accent);
-	}
-	.metric-chip {
-		display: inline-block;
-		margin-right: 0.5rem;
-		white-space: nowrap;
 	}
 	.post-link {
 		color: var(--color-muted-foreground);
