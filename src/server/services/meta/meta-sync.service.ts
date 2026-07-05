@@ -50,8 +50,9 @@ import { claimJob, finishJob, getJobById, recordProgress, requeue } from './meta
  * Shared Graph opts carrying the App Secret so every authenticated read sends
  * `appsecret_proof` (the app enforces "Require app secret proof for server API
  * calls" — without it Graph rejects with code 100 and no data is returned).
- * fetchNextPage() calls omit this: Graph's `paging.next` links already echo the
- * appsecret_proof from the originating request.
+ * fetchNextPage() also gets it: SOME `paging.next` links echo the original
+ * appsecret_proof, but /insights links do not (live-verified code-100 on page 2
+ * of a chunked ad-insights pull) — fetchNextPage re-derives it when needed.
  */
 const graphAuthOpts = () => ({ appSecret: env.META_APP_SECRET });
 
@@ -545,7 +546,7 @@ async function syncPosts(ctx: CoreCtx, job: MetaSyncJob, assets: MetaAsset[], us
 
     let page =
       i === resume.i && resume.next
-        ? await fetchNextPage<PagePost | IgMedia>(resume.next)
+        ? await fetchNextPage<PagePost | IgMedia>(resume.next, graphAuthOpts())
         : platform === 'fb'
           ? await listPagePosts(asset.externalId, token, { since }, graphAuthOpts())
           : await listIgMedia(asset.externalId, token, { since }, graphAuthOpts());
@@ -595,7 +596,7 @@ async function syncPosts(ctx: CoreCtx, job: MetaSyncJob, assets: MetaAsset[], us
         return { cursor: serializeResume({ i, next: page.nextCursor }), counts };
       }
       if (!page.nextCursor) break;
-      page = await fetchNextPage<PagePost | IgMedia>(page.nextCursor);
+      page = await fetchNextPage<PagePost | IgMedia>(page.nextCursor, graphAuthOpts());
     }
   }
   await upsertPostInsights(ctx, rowsToUpsert);
@@ -634,7 +635,7 @@ async function syncAds(ctx: CoreCtx, userToken: string, assets: MetaAsset[], job
     for (let w = w0; w < windows.length; w++) {
       let page =
         resumedAccount && w === w0 && resume.next
-          ? await fetchNextPage<AdInsightRow>(resume.next, adTimeout)
+          ? await fetchNextPage<AdInsightRow>(resume.next, { ...graphAuthOpts(), ...adTimeout })
           : await adInsights(asset.externalId, userToken, windows[w], { ...graphAuthOpts(), ...adTimeout });
 
       let accountFailed = false;
@@ -662,7 +663,7 @@ async function syncAds(ctx: CoreCtx, userToken: string, assets: MetaAsset[], job
           return { cursor: serializeResume({ i, next: page.nextCursor, cs: windows[w].since }), counts };
         }
         if (!page.nextCursor) break;
-        page = await fetchNextPage<AdInsightRow>(page.nextCursor, adTimeout);
+        page = await fetchNextPage<AdInsightRow>(page.nextCursor, { ...graphAuthOpts(), ...adTimeout });
       }
       if (accountFailed) break; // skip this account's remaining windows, move to the next account
     }
@@ -690,7 +691,7 @@ async function syncMessages(ctx: CoreCtx, assets: MetaAsset[], job: MetaSyncJob)
 
     let page =
       i === resume.i && resume.next
-        ? await fetchNextPage<Conversation>(resume.next)
+        ? await fetchNextPage<Conversation>(resume.next, graphAuthOpts())
         : await listConversations(asset.externalId, token, { platform }, graphAuthOpts());
 
     for (;;) {
@@ -721,7 +722,7 @@ async function syncMessages(ctx: CoreCtx, assets: MetaAsset[], job: MetaSyncJob)
         return { cursor: serializeResume({ i, next: page.nextCursor }), counts };
       }
       if (!page.nextCursor) break;
-      page = await fetchNextPage<Conversation>(page.nextCursor);
+      page = await fetchNextPage<Conversation>(page.nextCursor, graphAuthOpts());
     }
   }
   return { cursor: null, counts };

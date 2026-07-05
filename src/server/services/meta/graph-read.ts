@@ -172,13 +172,32 @@ function unwrapList<T>(body: unknown): { data: T[]; nextCursor?: string } {
   return { data: Array.isArray(b?.data) ? b.data : [], nextCursor: b?.paging?.next };
 }
 
-/** Resume any list endpoint from its `nextCursor` (Graph's `paging.next`, already fully-formed). */
+/**
+ * Resume any list endpoint from its `nextCursor` (Graph's `paging.next`,
+ * already fully-formed). Some endpoints' paging links echo the original
+ * `appsecret_proof`, but /insights links do NOT (live-verified: page 2 of a
+ * chunked ad-insights pull failed with code 100) — so when `appSecret` is
+ * provided, the proof is (re)derived from the link's own access_token.
+ */
 export async function fetchNextPage<T = unknown>(
   nextUrl: string,
-  opts: Pick<GraphOpts, 'fetchImpl' | 'timeoutMs'> = {},
+  opts: Pick<GraphOpts, 'fetchImpl' | 'timeoutMs' | 'appSecret'> = {},
 ): Promise<GraphResult<T[]>> {
   const base = { fetchImpl: opts.fetchImpl ?? fetch, timeoutMs: opts.timeoutMs ?? 15_000 };
-  const res = await graphRequest(nextUrl, base);
+  let url = nextUrl;
+  if (opts.appSecret) {
+    try {
+      const u = new URL(nextUrl);
+      const token = u.searchParams.get('access_token');
+      if (token && !u.searchParams.get('appsecret_proof')) {
+        u.searchParams.set('appsecret_proof', createHmac('sha256', opts.appSecret).update(token).digest('hex'));
+        url = u.toString();
+      }
+    } catch {
+      // unparseable link — send as-is and let Graph report the real problem
+    }
+  }
+  const res = await graphRequest(url, base);
   if (!res.ok) return { ok: false, status: res.status, error: res.error, usage: res.usage };
   const { data, nextCursor } = unwrapList<T>(res.body);
   return { ok: true, status: res.status, data, nextCursor, usage: res.usage };
