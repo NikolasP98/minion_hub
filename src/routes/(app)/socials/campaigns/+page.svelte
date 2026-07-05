@@ -2,7 +2,7 @@
 	import { goto } from '$app/navigation';
 	import type { PageData } from './$types';
 	import * as m from '$lib/paraglide/messages';
-	import { Target } from 'lucide-svelte';
+	import { Target, Image } from 'lucide-svelte';
 	import { PageHeader, EmptyState } from '$lib/components/ui';
 	import DataTable from '$lib/components/data-table/DataTable.svelte';
 	import type { DataColumn } from '$lib/components/data-table/DataTable.svelte';
@@ -43,7 +43,20 @@
 		return Math.round(v).toLocaleString();
 	}
 
+	// Campaign rows drill into the campaign detail page; ad rows with a linked
+	// post cross-link to that post's detail page. Adset rows (and ads with no
+	// linked post) are left to expand — no navigation target for them.
+	function handleRowClick(r: Row) {
+		if (r.adId != null) {
+			if (r.postId) goto(`/socials/posts/${encodeURIComponent(r.postId)}`);
+			return;
+		}
+		if (r.adsetId != null) return;
+		if (r.campaignId != null) goto(`/socials/campaigns/${encodeURIComponent(r.campaignId)}`);
+	}
+
 	const columns: DataColumn<Row>[] = [
+		{ key: 'preview', label: m.ads_col_thumbnail(), custom: true, sortable: false, exportable: false, align: 'center', width: 56 },
 		{ key: 'name', label: m.ads_col_campaign(), custom: true, accessor: nameOf, exportValue: nameOf, sortFn: (a, b) => nameOf(a).localeCompare(nameOf(b)), width: 300 },
 		{ key: 'spend', label: m.ads_col_spend(), align: 'right', numeric: true, custom: true, accessor: (r) => r.spend, sortFn: (a, b) => a.spend - b.spend, width: 120 },
 		{ key: 'impressions', label: m.ads_col_impressions(), align: 'right', numeric: true, custom: true, accessor: (r) => r.impressions, sortFn: (a, b) => a.impressions - b.impressions, width: 120 },
@@ -102,6 +115,7 @@
 			exportName="ad-campaigns"
 			storageKey="ads-campaigns"
 			emptyMessage={m.ads_empty_campaigns_desc()}
+			onRowClick={handleRowClick}
 		>
 			{#snippet toolbar()}
 				<label class="date-label">
@@ -117,7 +131,15 @@
 			{/snippet}
 
 			{#snippet cell(r: Row, col: DataColumn<Row>)}
-				{#if col.key === 'name'}
+				{#if col.key === 'preview'}
+					{#if r.adId != null}
+						{#if r.thumbFileId}
+							<img src="/api/files/{r.thumbFileId}/raw" loading="lazy" alt="" width="40" height="40" class="row-thumb" />
+						{:else}
+							<div class="row-thumb row-thumb-placeholder" aria-hidden="true"><Image size={16} /></div>
+						{/if}
+					{/if}
+				{:else if col.key === 'name'}
 					<span class="truncate block" class:font-medium={r.adId == null && r.adsetId == null}>{nameOf(r)}</span>
 				{:else if col.key === 'spend'}
 					<span class="tabular-nums">{fmtMoney(r.spend)}</span>
@@ -142,4 +164,12 @@
 	.date-label input { padding: 0.2rem 0.4rem; border: 1px solid var(--hairline); border-radius: 6px; background: var(--color-card); color: var(--color-foreground); font-size: 0.78rem; color-scheme: dark; }
 	.preset { padding: 0.25rem 0.6rem; font-size: 0.72rem; background: transparent; border: 1px solid var(--hairline); border-radius: 6px; cursor: pointer; color: var(--color-muted-foreground); transition: background 0.15s, color 0.15s; }
 	.preset:hover { background: var(--color-card); color: inherit; }
+	.row-thumb {
+		width: 40px; height: 40px; border-radius: 8px; object-fit: cover;
+		display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+	}
+	.row-thumb-placeholder {
+		background: color-mix(in srgb, var(--color-muted-foreground) 15%, transparent);
+		color: var(--color-muted-foreground);
+	}
 </style>
