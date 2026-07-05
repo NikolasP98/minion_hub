@@ -57,6 +57,11 @@
 				const body = (await res.json()) as { available?: boolean; comments?: Comment[] };
 				commentsAvailable = body.available !== false;
 				if (Array.isArray(body.comments)) comments = body.comments;
+				// IG under instagram_business_basic answers 200 with an EMPTY list even when
+				// the post has comments (content needs instagram_business_manage_comments).
+				// An empty list on a post whose count metric is >0 is scope-gating, not
+				// "no comments yet" — show the unavailable state instead of lying.
+				if (comments.length === 0 && commentCount > 0) commentsAvailable = false;
 			} else {
 				commentsAvailable = false;
 			}
