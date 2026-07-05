@@ -148,7 +148,11 @@ export async function recentNameFixes(ctx: CoreCtx, limit = 40): Promise<Array<{
 
 export interface ContactIdentity {
   channel: string;
+  /** Display value (handle-preferred) — used by the inline dup/blank lists. */
   value: string;
+  /** Channel-native id (phone / external id) — the resolver shows this, formatted. */
+  externalId?: string | null;
+  handle?: string | null;
 }
 export interface DupContact {
   id: string;
@@ -213,7 +217,7 @@ export async function findDuplicates(ctx: CoreCtx): Promise<DupGroup[]> {
       from crm_contacts c
       left join msgs mm on mm.contact_id = c.id
       left join lateral (
-        select json_agg(json_build_object('channel', i.channel, 'value', coalesce(nullif(i.handle,''), i.external_id))) as list
+        select json_agg(json_build_object('channel', i.channel, 'value', coalesce(nullif(i.handle,''), i.external_id), 'externalId', i.external_id, 'handle', i.handle)) as list
         from crm_contact_identities i
         where i.org_id = c.org_id and i.contact_id = c.id
       ) ids on true
@@ -300,7 +304,7 @@ export async function findBlanks(ctx: CoreCtx): Promise<BlankContact[]> {
       from crm_contacts c
       left join msgs mm on mm.contact_id = c.id
       left join lateral (
-        select json_agg(json_build_object('channel', i.channel, 'value', coalesce(nullif(i.handle,''), i.external_id))) as list
+        select json_agg(json_build_object('channel', i.channel, 'value', coalesce(nullif(i.handle,''), i.external_id), 'externalId', i.external_id, 'handle', i.handle)) as list
         from crm_contact_identities i
         where i.org_id = c.org_id and i.contact_id = c.id
       ) ids on true

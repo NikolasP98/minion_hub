@@ -8,7 +8,7 @@
 		Smile, Brackets, Asterisk, AtSign, TextQuote, CircleSlash, Tag,
 	} from 'lucide-svelte';
 	import { Button } from '$lib/components/ui';
-	import { contactLabel } from '$lib/components/crm/crm-format';
+	import { contactLabel, identityValue } from '$lib/components/crm/crm-format';
 	import { metaLabel } from '$lib/components/crm/crm-meta';
 	import CrmMergeResolver from '$lib/components/crm/CrmMergeResolver.svelte';
 	import { applyContactMerge, type MergeField, type MergeResolution } from '$lib/components/crm/crm-merge';
@@ -20,7 +20,7 @@
 		issues: string[];
 		needsReview: boolean;
 	};
-	type ContactIdentity = { channel: string; value: string };
+	type ContactIdentity = { channel: string; value: string; externalId?: string | null; handle?: string | null };
 	type DupContact = { id: string; name: string | null; dni?: string | null; phone?: string | null; messages: number; identities?: ContactIdentity[]; customFields?: Record<string, unknown> };
 	type DupGroup = { key: string; reason: string; contacts: DupContact[]; confidence: number };
 	type Blank = { id: string; name: string | null; dni?: string | null; phone?: string | null; messages: number; identities?: ContactIdentity[] };
@@ -187,7 +187,8 @@
 			name: contactLabel(c.name),
 			subtitle: m.crm_msgs_n({ count: c.messages }),
 			messages: c.messages,
-			identities: c.identities ?? [],
+			// Resolver shows the channel-native id (phone / user id), not the handle/name.
+			identities: (c.identities ?? []).map((id) => ({ channel: id.channel, value: identityValue(id.externalId, id.handle) })),
 		})),
 	);
 	// Resolvable fields: name + every custom_fields key present in the group
