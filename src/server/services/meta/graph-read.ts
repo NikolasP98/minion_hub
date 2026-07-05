@@ -743,6 +743,64 @@ export async function fbPostFullPicture(
 }
 
 // ---------------------------------------------------------------------------
+// Comments (post-detail comments panel, spec §5.4)
+// ---------------------------------------------------------------------------
+
+export type IgComment = {
+  id: string;
+  text?: string;
+  username?: string;
+  timestamp?: string;
+  like_count?: number;
+  replies?: { data?: IgComment[] };
+};
+
+const IG_COMMENT_FIELDS = 'id,text,username,timestamp,like_count,replies{id,text,username,timestamp,like_count}';
+
+/** IG media comments (one page, ~50) — unversioned host, no appsecret_proof, spec §5.4. */
+export async function igMediaComments(
+  mediaId: string,
+  token: string,
+  opts: Pick<GraphOpts, 'fetchImpl' | 'timeoutMs'> = {},
+): Promise<GraphResult<IgComment[]>> {
+  const o = resolveOpts({ baseUrl: 'https://graph.instagram.com', versioned: false, ...opts });
+  const url = buildUrl(`${mediaId}/comments`, { fields: IG_COMMENT_FIELDS, access_token: token }, o);
+  const res = await graphRequest(url, o);
+  if (!res.ok) return { ok: false, status: res.status, error: res.error, usage: res.usage };
+  const { data } = unwrapList<IgComment>(res.body);
+  return { ok: true, status: res.status, data, usage: res.usage };
+}
+
+export type FbComment = {
+  id: string;
+  message?: string;
+  from?: { name?: string };
+  created_time?: string;
+  like_count?: number;
+};
+
+const FB_COMMENT_FIELDS = 'id,message,from{name},created_time,like_count';
+
+/**
+ * FB post comments (one page) — page token, versioned host, appsecret_proof.
+ * Expected to permission-deny on this app's scopes (`pages_read_user_content`
+ * unconfirmed, spec §5.4 "availability caveat") — caller degrades to
+ * `available:false` on any non-ok result, same posture as the media endpoint.
+ */
+export async function fbPostComments(
+  postId: string,
+  pageToken: string,
+  opts: GraphOpts = {},
+): Promise<GraphResult<FbComment[]>> {
+  const o = resolveOpts(opts);
+  const url = buildUrl(`${postId}/comments`, { fields: FB_COMMENT_FIELDS, access_token: pageToken }, o);
+  const res = await graphRequest(url, o);
+  if (!res.ok) return { ok: false, status: res.status, error: res.error, usage: res.usage };
+  const { data } = unwrapList<FbComment>(res.body);
+  return { ok: true, status: res.status, data, usage: res.usage };
+}
+
+// ---------------------------------------------------------------------------
 // Conversations (Messenger / IG DM)
 // ---------------------------------------------------------------------------
 

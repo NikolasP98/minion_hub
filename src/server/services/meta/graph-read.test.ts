@@ -19,6 +19,8 @@ import {
   igMediaDetail,
   fbPostAttachments,
   fbPostFullPicture,
+  igMediaComments,
+  fbPostComments,
 } from './graph-read';
 
 function jsonResponse(body: unknown, init: { ok?: boolean; status?: number; headers?: Record<string, string> } = {}) {
@@ -521,6 +523,44 @@ describe('fbPostAttachments / fbPostFullPicture', () => {
     const res = await fbPostFullPicture('123_456', 'page-token', { fetchImpl });
     expect(res.ok).toBe(true);
     expect(res.data?.full_picture).toBe('https://cdn/pic.jpg');
+  });
+});
+
+describe('igMediaComments', () => {
+  it('hits the unversioned IG host /comments edge with the reply fields, no appsecret_proof', async () => {
+    const fetchImpl = mockFetch(jsonResponse({ data: [{ id: 'c1', text: 'hi', username: 'a', like_count: 1 }] }));
+    const res = await igMediaComments('media-1', 'ig-token', { fetchImpl });
+    expect(res.ok).toBe(true);
+    expect(res.data).toEqual([{ id: 'c1', text: 'hi', username: 'a', like_count: 1 }]);
+    const calledUrl = (fetchImpl.mock.calls[0]?.[0] as string) ?? '';
+    expect(calledUrl).toBe(
+      `https://graph.instagram.com/media-1/comments?fields=${encodeURIComponent('id,text,username,timestamp,like_count,replies{id,text,username,timestamp,like_count}')}&access_token=ig-token`,
+    );
+    expect(calledUrl).not.toContain('appsecret_proof');
+  });
+
+  it('surfaces a graph error (e.g. permission denied) as ok:false', async () => {
+    const fetchImpl = mockFetch(jsonResponse({ error: { message: 'denied', code: 10 } }, { ok: false, status: 400 }));
+    const res = await igMediaComments('media-1', 'ig-token', { fetchImpl });
+    expect(res.ok).toBe(false);
+  });
+});
+
+describe('fbPostComments', () => {
+  it('hits the versioned FB host /comments edge with from{name} field', async () => {
+    const fetchImpl = mockFetch(jsonResponse({ data: [{ id: 'c1', message: 'hey', from: { name: 'Dan' } }] }));
+    const res = await fbPostComments('123_456', 'page-token', { fetchImpl });
+    expect(res.ok).toBe(true);
+    expect(res.data).toEqual([{ id: 'c1', message: 'hey', from: { name: 'Dan' } }]);
+    const calledUrl = (fetchImpl.mock.calls[0]?.[0] as string) ?? '';
+    expect(calledUrl).toContain('/v23.0/123_456/comments');
+    expect(calledUrl).toContain(encodeURIComponent('id,message,from{name},created_time,like_count'));
+  });
+
+  it('surfaces a permission denial as ok:false (expected — pages_read_user_content)', async () => {
+    const fetchImpl = mockFetch(jsonResponse({ error: { message: 'denied', code: 10 } }, { ok: false, status: 400 }));
+    const res = await fbPostComments('123_456', 'page-token', { fetchImpl });
+    expect(res.ok).toBe(false);
   });
 });
 

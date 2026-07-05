@@ -1,14 +1,11 @@
 import type { RequestHandler } from './$types';
 import { json, error } from '@sveltejs/kit';
-import { sql } from 'drizzle-orm';
 import { env } from '$env/dynamic/private';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { requireOrgCapability } from '$server/services/rbac.service';
-import { withOrgCore } from '$server/db/with-org-core';
-import type { CoreCtx } from '$server/auth/core-ctx';
-import { decrypt } from '$server/auth/crypto';
 import { igMediaDetail, fbPostAttachments, fbPostFullPicture } from '$server/services/meta/graph-read';
 import { mapIgMediaDetail, mapFbAttachments, type MediaItem } from './media-mapping';
+import { resolvePostToken } from './post-token';
 
 /**
  * GET /api/meta/posts/[postId] — on-demand rich media for the post detail
@@ -18,55 +15,6 @@ import { mapIgMediaDetail, mapFbAttachments, type MediaItem } from './media-mapp
  * user-facing error — any failure degrades to `{ items: [] }` (200) and the
  * page silently stays on the mirrored image.
  */
-
-function decryptOrNull(ciphertext: string | null | undefined, iv: string | null | undefined): string | null {
-  if (!ciphertext || !iv) return null;
-  try {
-    return decrypt(ciphertext, iv);
-  } catch {
-    return null;
-  }
-}
-
-type PostTokenRow = {
-  platform: string | null;
-  page_token_ciphertext: string | null;
-  page_token_iv: string | null;
-  conn_token_ciphertext: string | null;
-  conn_token_iv: string | null;
-};
-
-/**
- * Resolve the post's platform + a usable Graph token, reusing the same
- * asset/connection shape meta-sync.service.ts's syncPosts does: the FB page's
- * own page token for 'fb', the owning connection's token for 'ig' (the
- * IG-Login token family — see graph-read.ts's `versioned: false` IG host).
- */
-async function resolvePostToken(ctx: CoreCtx, postId: string): Promise<{ platform: 'fb' | 'ig'; token: string } | null> {
-  return withOrgCore(ctx, async (tx) => {
-    const rows = (await tx.execute(sql`
-      select mi.platform,
-             a.page_token_ciphertext,
-             a.page_token_iv,
-             c.token_ciphertext as conn_token_ciphertext,
-             c.token_iv as conn_token_iv
-      from meta_post_insights mi
-      join meta_assets a on a.id = mi.asset_id
-      left join meta_connections c on c.id = a.connection_id
-      where mi.org_id = ${ctx.tenantId} and mi.post_id = ${postId}
-      limit 1
-    `)) as unknown as PostTokenRow[];
-    const r = rows[0];
-    if (!r) return null;
-    const platform: 'fb' | 'ig' = r.platform === 'ig' ? 'ig' : 'fb';
-    const token =
-      platform === 'fb'
-        ? decryptOrNull(r.page_token_ciphertext, r.page_token_iv)
-        : decryptOrNull(r.conn_token_ciphertext, r.conn_token_iv);
-    if (!token) return null;
-    return { platform, token };
-  });
-}
 
 async function resolveFbMedia(postId: string, token: string): Promise<MediaItem[]> {
   const graphOpts = { appSecret: env.META_APP_SECRET };
