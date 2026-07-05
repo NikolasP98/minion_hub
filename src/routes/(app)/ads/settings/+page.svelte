@@ -41,6 +41,30 @@
 		}
 	}
 
+	// Two fixed connection kinds (spec 2026-07-05 §8): FLB (Facebook Login for
+	// Business, `kind: 'flb'`) and Instagram Login (`kind: 'ig_login'`). Only
+	// ever 2 kinds exist — duplicating the small card block per spec's own
+	// recommendation rather than building a generic N-connections list.
+	const fbConn = $derived(data.connections.find((c) => c.kind === 'flb'));
+	const igConn = $derived(data.connections.find((c) => c.kind === 'ig_login'));
+	const igAsset = $derived(igConn ? data.assets.find((a) => a.connectionId === igConn.id) : undefined);
+
+	let disconnectingId = $state<string | null>(null);
+	async function disconnectConnection(id: string) {
+		if (!confirm(m.ads_disconnect_confirm())) return;
+		disconnectingId = id;
+		try {
+			const res = await fetch(`/api/meta/connections/${id}`, { method: 'DELETE' });
+			if (!res.ok) throw new Error(`${res.status}`);
+			toastSuccess(m.ads_toast_disconnected());
+			await invalidate('ads:settings');
+		} catch {
+			toastError(m.ads_toast_disconnect_error());
+		} finally {
+			disconnectingId = null;
+		}
+	}
+
 	let togglingIds = $state<Set<string>>(new Set());
 	async function toggleAsset(id: string, enabled: boolean) {
 		togglingIds = new Set(togglingIds).add(id);
@@ -105,137 +129,186 @@
 
 	<div class="flex-1 min-h-0 overflow-auto p-4">
 		<div class="grid gap-4 max-w-2xl">
-			{#if data.connections.length === 0}
-				<EmptyState icon={Plug} title={m.ads_connect_meta()} description={m.ads_connect_meta_desc()}>
-					{#snippet action()}
-						<Button variant="primary" size="sm" href="/api/meta/oauth/start" disabled={!canManage} title={canManage ? undefined : m.no_permission()}>
-							{m.ads_connect_meta()}
-						</Button>
-					{/snippet}
-				</EmptyState>
-			{:else}
-				<!-- ── Connection card ─────────────────────────────────────────── -->
-				<section class="card">
-					<header class="card-h">
-						<Plug size={14} />
-						<span>{m.ads_connection_card()}</span>
-					</header>
+			<!-- ── Facebook connection card ────────────────────────────────── -->
+			<section class="card">
+				<header class="card-h">
+					<Plug size={14} />
+					<span>{m.ads_connection_card_facebook()}</span>
+				</header>
 
-					{#each data.connections as conn (conn.id)}
-						<div class="conn-row">
-							<div class="meta-row">
-								<span class="t-caption">{m.ads_connection_kind()}</span>
-								<span class="mono-val">{conn.kind}</span>
-							</div>
-							<div class="meta-row">
-								<span class="t-caption">{m.ads_connection_status()}</span>
-								<span class="status-pill" data-status={conn.status}>{statusLabel(conn.status)}</span>
-							</div>
-							{#if conn.grantedScopes.length > 0}
-								<div class="meta-row">
-									<span class="t-caption">{m.ads_connection_scopes()}</span>
-									<span class="scopes">
-										{#each conn.grantedScopes as scope (scope)}<span class="scope-chip">{scope}</span>{/each}
-									</span>
-								</div>
-							{/if}
-							<div class="meta-row">
-								<span class="t-caption">{m.ads_connection_connected_date()}</span>
-								<span class="mono-val">{fmtDate(conn.createdAt)}</span>
-							</div>
-
-							{#if conn.status === 'expiring' || conn.status === 'expired'}
-								<div class="reconnect-banner">
-									<AlertTriangle size={14} />
-									<span>{m.ads_reconnect_needed()}</span>
-									<Button variant="outline" size="sm" href="/api/meta/oauth/start" disabled={!canManage} title={canManage ? undefined : m.no_permission()}>
-										{m.ads_reconnect_button()}
-									</Button>
-								</div>
-							{/if}
+				{#if fbConn}
+					<div class="conn-row">
+						<div class="meta-row">
+							<span class="t-caption">{m.ads_connection_status()}</span>
+							<span class="status-pill" data-status={fbConn.status}>{statusLabel(fbConn.status)}</span>
 						</div>
-					{/each}
-				</section>
+						{#if fbConn.grantedScopes.length > 0}
+							<div class="meta-row">
+								<span class="t-caption">{m.ads_connection_scopes()}</span>
+								<span class="scopes">
+									{#each fbConn.grantedScopes as scope (scope)}<span class="scope-chip">{scope}</span>{/each}
+								</span>
+							</div>
+						{/if}
+						<div class="meta-row">
+							<span class="t-caption">{m.ads_connection_connected_date()}</span>
+							<span class="mono-val">{fmtDate(fbConn.createdAt)}</span>
+						</div>
 
-				<!-- ── Assets card ────────────────────────────────────────────────── -->
-				<section class="card">
-					<header class="card-h">
-						<Settings2 size={14} />
-						<span>{m.ads_assets_card()}</span>
-					</header>
-
-					{#if data.assets.length === 0}
-						<p class="t-caption">{m.ads_assets_empty()}</p>
-					{:else}
-						<ul class="asset-list">
-							{#each data.assets as asset (asset.id)}
-								<li class="asset-row">
-									<span class="asset-kind">{assetKindLabel(asset.kind)}</span>
-									<span class="asset-name truncate">{asset.name ?? asset.externalId}</span>
-									<Toggle
-										checked={asset.enabled}
-										disabled={!canManage || togglingIds.has(asset.id)}
-										label={asset.name ?? asset.externalId}
-										onchange={(checked) => toggleAsset(asset.id, checked)}
-									/>
-								</li>
-							{/each}
-						</ul>
-					{/if}
-				</section>
-
-				<!-- ── Sync card ──────────────────────────────────────────────────── -->
-				<section class="card">
-					<header class="card-h">
-						<RefreshCw size={14} />
-						<span>{m.ads_sync_card()}</span>
-					</header>
-
-					<div class="actions">
-						<Button
-							variant="outline"
-							size="sm"
-							onclick={syncNow}
-							disabled={syncing || !canManage}
-							title={canManage ? undefined : m.no_permission()}
-						>
-							<RefreshCw size={14} class={syncing ? 'animate-spin' : ''} />
-							{syncing ? m.ads_sync_running() : m.ads_sync_now()}
-						</Button>
+						{#if fbConn.status === 'expiring' || fbConn.status === 'expired'}
+							<div class="reconnect-banner">
+								<AlertTriangle size={14} />
+								<span>{m.ads_reconnect_needed()}</span>
+								<Button variant="outline" size="sm" href="/api/meta/oauth/start" disabled={!canManage} title={canManage ? undefined : m.no_permission()}>
+									{m.ads_reconnect_button()}
+								</Button>
+							</div>
+						{/if}
 					</div>
+				{:else}
+					<EmptyState compact icon={Plug} title={m.ads_connect_meta()} description={m.ads_connect_meta_desc()}>
+						{#snippet action()}
+							<Button variant="primary" size="sm" href="/api/meta/oauth/start" disabled={!canManage} title={canManage ? undefined : m.no_permission()}>
+								{m.ads_connect_meta()}
+							</Button>
+						{/snippet}
+					</EmptyState>
+				{/if}
+			</section>
 
-					{#if data.jobs.length === 0}
-						<p class="t-caption mt-3">{m.ads_sync_history_empty()}</p>
-					{:else}
-						<div class="job-dt mt-3">
-							<DataTable
-								class="flex-1 min-h-0"
-								columns={jobColumns}
-								data={data.jobs}
-								getRowId={(j) => j.id}
-								searchFields={(j) => `${j.kind} ${j.status} ${j.error ?? ''}`}
-								initialSort={{ key: 'finished', dir: 'desc' }}
-								exportable
-								exportName="ads-sync-history"
-								storageKey="ads-settings"
-								emptyMessage={m.ads_sync_history_empty()}
-							>
-								{#snippet cell(job: Job, col: DataColumn<Job>)}
-									{#if col.key === 'status'}
-										<span class="status-pill" data-status={job.status}>{job.status}</span>
-									{:else if col.key === 'counts'}
-										<span class="t-caption">{countsSummary(job.counts)}</span>
-									{:else if col.key === 'error'}
-										<span class="t-caption err-text">{job.error ?? '—'}</span>
-									{:else if col.key === 'finished'}
-										<span class="t-caption">{fmtDate(job.finishedAt)}</span>
-									{/if}
-								{/snippet}
-							</DataTable>
+			<!-- ── Instagram connection card ───────────────────────────────── -->
+			<section class="card">
+				<header class="card-h">
+					<Plug size={14} />
+					<span>{m.ads_connection_card_instagram()}</span>
+				</header>
+
+				{#if igConn}
+					<div class="conn-row">
+						<div class="meta-row">
+							<span class="t-caption">{m.ads_connection_status()}</span>
+							<span class="status-pill" data-status={igConn.status}>{statusLabel(igConn.status)}</span>
 						</div>
-					{/if}
-				</section>
-			{/if}
+						<div class="meta-row">
+							<span class="t-caption">{m.ads_ig_account()}</span>
+							<span class="mono-val">{igAsset?.name ?? igAsset?.externalId ?? '—'}</span>
+						</div>
+						<div class="meta-row">
+							<span class="t-caption">{m.ads_connection_connected_date()}</span>
+							<span class="mono-val">{fmtDate(igConn.createdAt)}</span>
+						</div>
+
+						{#if igConn.status === 'expiring' || igConn.status === 'expired'}
+							<div class="reconnect-banner">
+								<AlertTriangle size={14} />
+								<span>{m.ads_reconnect_needed()}</span>
+								<Button variant="outline" size="sm" href="/api/meta/ig/start" disabled={!canManage} title={canManage ? undefined : m.no_permission()}>
+									{m.ads_reconnect_button()}
+								</Button>
+							</div>
+						{/if}
+
+						<div class="actions mt-2">
+							<Button
+								variant="danger"
+								size="sm"
+								onclick={() => disconnectConnection(igConn.id)}
+								disabled={!canManage || disconnectingId === igConn.id}
+								title={canManage ? undefined : m.no_permission()}
+							>
+								{m.ads_disconnect_button()}
+							</Button>
+						</div>
+					</div>
+				{:else}
+					<EmptyState compact icon={Plug} title={m.ads_connect_instagram()} description={m.ads_connect_instagram_desc()}>
+						{#snippet action()}
+							<Button variant="primary" size="sm" href="/api/meta/ig/start" disabled={!canManage} title={canManage ? undefined : m.no_permission()}>
+								{m.ads_connect_instagram()}
+							</Button>
+						{/snippet}
+					</EmptyState>
+				{/if}
+			</section>
+
+			<!-- ── Assets card ────────────────────────────────────────────────── -->
+			<section class="card">
+				<header class="card-h">
+					<Settings2 size={14} />
+					<span>{m.ads_assets_card()}</span>
+				</header>
+
+				{#if data.assets.length === 0}
+					<p class="t-caption">{m.ads_assets_empty()}</p>
+				{:else}
+					<ul class="asset-list">
+						{#each data.assets as asset (asset.id)}
+							<li class="asset-row">
+								<span class="asset-kind">{assetKindLabel(asset.kind)}</span>
+								<span class="asset-name truncate">{asset.name ?? asset.externalId}</span>
+								<Toggle
+									checked={asset.enabled}
+									disabled={!canManage || togglingIds.has(asset.id)}
+									label={asset.name ?? asset.externalId}
+									onchange={(checked) => toggleAsset(asset.id, checked)}
+								/>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			</section>
+
+			<!-- ── Sync card ──────────────────────────────────────────────────── -->
+			<section class="card">
+				<header class="card-h">
+					<RefreshCw size={14} />
+					<span>{m.ads_sync_card()}</span>
+				</header>
+
+				<div class="actions">
+					<Button
+						variant="outline"
+						size="sm"
+						onclick={syncNow}
+						disabled={syncing || !canManage}
+						title={canManage ? undefined : m.no_permission()}
+					>
+						<RefreshCw size={14} class={syncing ? 'animate-spin' : ''} />
+						{syncing ? m.ads_sync_running() : m.ads_sync_now()}
+					</Button>
+				</div>
+
+				{#if data.jobs.length === 0}
+					<p class="t-caption mt-3">{m.ads_sync_history_empty()}</p>
+				{:else}
+					<div class="job-dt mt-3">
+						<DataTable
+							class="flex-1 min-h-0"
+							columns={jobColumns}
+							data={data.jobs}
+							getRowId={(j) => j.id}
+							searchFields={(j) => `${j.kind} ${j.status} ${j.error ?? ''}`}
+							initialSort={{ key: 'finished', dir: 'desc' }}
+							exportable
+							exportName="ads-sync-history"
+							storageKey="ads-settings"
+							emptyMessage={m.ads_sync_history_empty()}
+						>
+							{#snippet cell(job: Job, col: DataColumn<Job>)}
+								{#if col.key === 'status'}
+									<span class="status-pill" data-status={job.status}>{job.status}</span>
+								{:else if col.key === 'counts'}
+									<span class="t-caption">{countsSummary(job.counts)}</span>
+								{:else if col.key === 'error'}
+									<span class="t-caption err-text">{job.error ?? '—'}</span>
+								{:else if col.key === 'finished'}
+									<span class="t-caption">{fmtDate(job.finishedAt)}</span>
+								{/if}
+							{/snippet}
+						</DataTable>
+					</div>
+				{/if}
+			</section>
 		</div>
 	</div>
 </div>
@@ -259,11 +332,6 @@
 		text-transform: uppercase;
 		letter-spacing: 0.03em;
 		margin-bottom: 0.85rem;
-	}
-	.conn-row + .conn-row {
-		margin-top: 0.75rem;
-		padding-top: 0.75rem;
-		border-top: 1px solid var(--hairline);
 	}
 	.meta-row {
 		display: flex;
