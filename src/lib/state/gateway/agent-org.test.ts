@@ -61,4 +61,43 @@ describe('filterAgentsByOrg', () => {
     );
     expect(out).toEqual(['faces_bot_prd', 'a1']);
   });
+
+  describe('with orgAgentIds (provisioned brain agents)', () => {
+    const BRAIN_AGENTS = [
+      ...AGENTS,
+      { id: 'brain-aaa', name: 'Brain: Support KB' }, // belongs to FACES via orgAgentIds
+      { id: 'brain-bbb', name: 'Brain: Internal Docs' }, // belongs to some other org
+    ];
+
+    it('shows a brain agent in the active org when its id is in orgAgentIds', () => {
+      const out = filterAgentsByOrg(BRAIN_AGENTS, FACES, ORGS, ['brain-aaa']).map((a) => a.id);
+      expect(out).toEqual(['faces_bot_prd', 'a1', 'brain-aaa']);
+    });
+
+    it('hides a brain agent not in orgAgentIds from the FACES org (no name-rule fallback)', () => {
+      const out = filterAgentsByOrg(BRAIN_AGENTS, FACES, ORGS, ['brain-aaa']).map((a) => a.id);
+      expect(out).not.toContain('brain-bbb');
+    });
+
+    it('hides a brain agent not in orgAgentIds from the MINION org too (does not default there)', () => {
+      // orgAgentIds is scoped to the ACTIVE org by the caller (listBrainAgentIds
+      // queries by ctx.tenantId) — viewing MINION, neither brain belongs to it.
+      const out = filterAgentsByOrg(BRAIN_AGENTS, MINION, ORGS, []).map((a) => a.id);
+      expect(out).toEqual(['bj_bot', 'public', 'leiva_bot']);
+      expect(out).not.toContain('brain-bbb');
+      expect(out).not.toContain('brain-aaa');
+    });
+
+    it('accepts a Set as well as a string[] for orgAgentIds', () => {
+      const out = filterAgentsByOrg(BRAIN_AGENTS, FACES, ORGS, new Set(['brain-aaa'])).map(
+        (a) => a.id,
+      );
+      expect(out).toContain('brain-aaa');
+    });
+
+    it('preserves defensive paths when orgAgentIds is omitted', () => {
+      expect(filterAgentsByOrg(AGENTS, null, ORGS)).toHaveLength(AGENTS.length);
+      expect(filterAgentsByOrg(AGENTS, FACES, [])).toHaveLength(AGENTS.length);
+    });
+  });
 });

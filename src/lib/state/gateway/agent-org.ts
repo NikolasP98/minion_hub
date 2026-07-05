@@ -10,6 +10,12 @@
  * FACES SCULPTORS org; every other agent belongs to the MINION org. Org ids are
  * resolved dynamically by slug from the user's organization list — never
  * hardcoded — so this keeps working if the underlying UUIDs change.
+ *
+ * Provisioned brain agents (`brain-<brainUuid>`) don't have org-shaped names,
+ * so they opt out of the name rule entirely: `filterAgentsByOrg`'s
+ * `orgAgentIds` param carries their real org assignment (from `brains.org_id`
+ * via `listBrainAgentIds`), and any `brain-*` id NOT in that set is hidden
+ * rather than defaulting to MINION.
  */
 import { PUBLIC_DEFAULT_ORG_SLUG } from '$env/static/public';
 
@@ -39,17 +45,32 @@ export function isFacesAgent(agent: AgentLike): boolean {
   return FACES_RE.test(agent.name ?? '') || FACES_RE.test(agent.id);
 }
 
+/** True when the id looks like a provisioned brain agent (`brain-<brainUuid>`,
+ *  see `deriveBrainAgentId` in `brain-agents.service.ts`). These are assigned
+ *  to orgs explicitly (via `orgAgentIds`), never by the name rule — an
+ *  unassigned one must not fall through to the "faces substring → FACES,
+ *  else MINION" default, or it leaks into whichever org that default lands on. */
+const BRAIN_AGENT_RE = /^brain-/;
+
 /**
  * Filter the gateway agent list down to those visible in the active org.
  *
  * Defensive by design: if the active org is unknown, the org list is empty, or
  * the active org is neither FACES nor MINION, the list is returned unfiltered so
  * a config/slug drift can never silently blank the roster.
+ *
+ * `orgAgentIds` — agent ids explicitly known to belong to the ACTIVE org
+ * (e.g. brain agents, loaded org-scoped in `+layout.server.ts` via
+ * `listBrainAgentIds`). Membership there always wins over the name rule.
+ * A `brain-*` id NOT in the set is hidden from both mapped orgs — it belongs
+ * to some other org, so the name rule's "else → MINION" default would
+ * otherwise leak it into MINION's roster.
  */
 export function filterAgentsByOrg<T extends AgentLike>(
   list: T[],
   activeOrgId: string | null | undefined,
   orgs: OrgRef[],
+  orgAgentIds?: ReadonlySet<string> | string[],
 ): T[] {
   if (!activeOrgId || orgs.length === 0) return list;
 
@@ -59,7 +80,12 @@ export function filterAgentsByOrg<T extends AgentLike>(
   // Only scope when the active org is one of the two we map onto.
   if (activeOrgId !== facesOrgId && activeOrgId !== minionOrgId) return list;
 
+  const activeOrgAgentIds =
+    orgAgentIds instanceof Set ? orgAgentIds : new Set(orgAgentIds ?? []);
+
   return list.filter((a) => {
+    if (activeOrgAgentIds.has(a.id)) return true;
+    if (BRAIN_AGENT_RE.test(a.id)) return false;
     const agentOrgId = isFacesAgent(a) ? facesOrgId : minionOrgId;
     return agentOrgId === activeOrgId;
   });

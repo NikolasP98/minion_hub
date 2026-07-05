@@ -26,6 +26,12 @@ vi.mock('$server/services/organizations.service', () => ({
     activeOrgId: 'org-1',
   })),
 }));
+vi.mock('$server/auth/core-ctx', () => ({
+  getCoreCtx: vi.fn(async () => ({ db: {} as never, tenantId: 'tenant-x' })),
+}));
+vi.mock('$server/services/brain-agents.service', () => ({
+  listBrainAgentIds: vi.fn(async () => []),
+}));
 
 // Defensive org-activation pulls in db + schema; mock these so vitest doesn't
 // try to resolve $env/dynamic/private in the test environment.
@@ -94,6 +100,7 @@ describe('(app)/+layout.server load', () => {
       preferences: { preferences: {} },
       organizations: [{ id: 'org-1', name: 'Org', slug: null, role: 'admin' }],
       activeOrgId: 'org-1',
+      brainAgentIds: [],
     });
     // depends() should register all seven keys
     expect(ev.depends).toHaveBeenCalledWith(

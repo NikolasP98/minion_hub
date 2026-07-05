@@ -13,6 +13,7 @@ import {
   deprovisionBrainAgent,
   fanOutTemplate,
   deriveBrainAgentId,
+  listBrainAgentIds,
 } from './brain-agents.service';
 
 const mockGatewayCall = vi.mocked(gatewayCall);
@@ -102,6 +103,13 @@ describe('provisionBrainAgent', () => {
     expect(db.update).toHaveBeenCalledWith(brains);
     expect(db.insert).toHaveBeenCalledWith(brainAccess);
     expect(mockRecordAudit).toHaveBeenCalledTimes(1);
+
+    // Gateway-side org scoping (org-scope.ts) — the config.patch payload's agent
+    // entry must carry the brain's org id so agents.ts/org-scope.ts and the hub's
+    // own listBrainAgentIds-fed roster filter agree on ownership.
+    const patchCall = mockGatewayCall.mock.calls.find(([method]) => method === 'config.patch')!;
+    const raw = JSON.parse((patchCall[1] as { raw: string }).raw);
+    expect(raw.agents.list[0].orgIds).toEqual(['org-1']);
   });
 
   it('is idempotent — returns the existing agent_id without touching the gateway', async () => {
@@ -191,5 +199,19 @@ describe('fanOutTemplate (collects per-agent errors without aborting the batch)'
     const { db, resolveSequence } = createMockDb();
     resolveSequence([[templateRow()], []]);
     expect(await fanOutTemplate(ctx(db))).toEqual([]);
+  });
+});
+
+describe('listBrainAgentIds', () => {
+  it('returns the agent ids of every provisioned brain in the org', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([{ agentId: 'brain-1' }, { agentId: 'brain-2' }]);
+    expect(await listBrainAgentIds(ctx(db))).toEqual(['brain-1', 'brain-2']);
+  });
+
+  it('returns [] when no brain in the org has an agent', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([]);
+    expect(await listBrainAgentIds(ctx(db))).toEqual([]);
   });
 });

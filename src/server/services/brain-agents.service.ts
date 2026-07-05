@@ -33,6 +33,22 @@ export function deriveBrainAgentId(brainId: string): string {
   return `brain-${brainId}`;
 }
 
+/**
+ * Agent ids (`brain-<uuid>`) of every provisioned brain agent in the org —
+ * for the hub's client-side agent roster org partition (`filterAgentsByOrg`
+ * in `agent-org.ts`), which otherwise can't place these by name. Single
+ * indexed select; org-scoped via `withOrgCore` like the rest of this file.
+ */
+export async function listBrainAgentIds(ctx: CoreCtx): Promise<string[]> {
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .select({ agentId: brains.agentId })
+      .from(brains)
+      .where(and(eq(brains.orgId, ctx.tenantId), isNotNull(brains.agentId))),
+  );
+  return rows.map((r) => r.agentId as string);
+}
+
 const DEFAULT_INSTRUCTIONS =
   'You are the managing agent for the "{{brain_name}}" knowledge base. {{brain_description}}\n\n' +
   'Answer using only what is stored in this knowledge base, and say so plainly when you do not know.';
@@ -129,7 +145,7 @@ export function renderTemplate(
 async function patchBrainAgentConfig(
   agentId: string,
   template: BrainAgentTemplate,
-  brain: Pick<Brain, 'name' | 'description'>,
+  brain: Pick<Brain, 'name' | 'description' | 'orgId'>,
 ): Promise<void> {
   const displayName = `${template.namePrefix}: ${brain.name}`;
   const instructions = renderTemplate(template, brain);
@@ -142,6 +158,10 @@ async function patchBrainAgentConfig(
             id: agentId,
             name: displayName,
             archetype: 'brain',
+            // Gateway-side org scoping (org-scope.ts's orgScopeVisible / JWT
+            // orgId gate) — same field the hub's client-side agent-org
+            // partition (agent-org.ts) reads back via listBrainAgentIds.
+            orgIds: [brain.orgId],
             identity: { name: displayName, ...(template.emoji ? { emoji: template.emoji } : {}) },
             ...(template.model ? { model: { primary: template.model } } : {}),
             personality: {
@@ -203,7 +223,9 @@ export async function provisionBrainAgent(
     actor,
   });
 
-  // P4.2: resolveAssistantPrincipal support for brain-<uuid> agents
+  // P4.2 (done): the brain agent can now call hub gateway APIs as itself —
+  // resolveAssistantPrincipal (assistant-principal.ts) resolves `brain-<uuid>`
+  // via this row's `brains.agent_id` into a brains-only principal.
 
   return { agentId };
 }

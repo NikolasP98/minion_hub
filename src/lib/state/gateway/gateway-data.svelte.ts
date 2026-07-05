@@ -62,7 +62,8 @@ export const gw = $state({
 const _visibleAgents = $derived.by((): Agent[] => {
   const orgs = ((page.data as { organizations?: OrgRef[] })?.organizations ?? []) as OrgRef[];
   const activeOrgId = (page.data as { activeOrgId?: string | null })?.activeOrgId ?? null;
-  const scoped = filterAgentsByOrg(gw.agents, activeOrgId, orgs);
+  const brainAgentIds = ((page.data as { brainAgentIds?: string[] })?.brainAgentIds ?? []) as string[];
+  const scoped = filterAgentsByOrg(gw.agents, activeOrgId, orgs, brainAgentIds);
 
   const allowed = userState.allowedAgentIds;
   if (allowed === null) return scoped;

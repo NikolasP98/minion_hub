@@ -10,6 +10,8 @@ import { loadHostsForUser } from '$server/services/hosts.service';
 import { loadUserPreferences } from '$server/services/preferences.service';
 import { getDb } from '$server/db/client';
 import { resolveSupabaseTenant } from '$server/auth/supabase-bridge.runtime';
+import { getCoreCtx } from '$server/auth/core-ctx';
+import { listBrainAgentIds } from '$server/services/brain-agents.service';
 
 /**
  * Authenticated (app)/* layout server load.
@@ -71,7 +73,7 @@ export const load: LayoutServerLoad = async ({ locals, depends, url, cookies }) 
     locals.tenantCtx = { db: getDb(), tenantId: orgId };
   }
 
-  const [permissions, workspaces, organizations, personalAgent, hosts, preferences] =
+  const [permissions, workspaces, organizations, personalAgent, hosts, preferences, brainAgentIds] =
     await Promise.all([
       loadPermissionsForUser(locals, user.id),
       loadWorkspacesForUser(locals, user.supabaseId),
@@ -79,6 +81,13 @@ export const load: LayoutServerLoad = async ({ locals, depends, url, cookies }) 
       loadPersonalAgentForUser(locals, user.id, user.supabaseId),
       loadHostsForUser(locals, user.id, user.role),
       loadUserPreferences(locals, user.supabaseId),
+      // Provisioned brain agents (brain-<uuid>) don't have org-shaped names, so
+      // the client-side agent-org partition (agent-org.ts) can't place them by
+      // name alone — feed it the active org's real assignment instead. Fail-soft:
+      // never let a brains-table hiccup break the whole app shell's load.
+      getCoreCtx(locals)
+        .then((ctx) => (ctx ? listBrainAgentIds(ctx) : []))
+        .catch(() => [] as string[]),
     ]);
 
   // Central RBAC route guard: business modules (crm/finances/sales/scheduling/
@@ -108,5 +117,6 @@ export const load: LayoutServerLoad = async ({ locals, depends, url, cookies }) 
     personalAgent,
     hosts,
     preferences,
+    brainAgentIds,
   };
 };
