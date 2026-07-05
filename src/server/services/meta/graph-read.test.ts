@@ -11,6 +11,9 @@ import {
   adInsights,
   listConversations,
   fetchNextPage,
+  exchangeIgCodeForToken,
+  exchangeIgLongLivedToken,
+  refreshIgToken,
 } from './graph-read';
 
 function jsonResponse(body: unknown, init: { ok?: boolean; status?: number; headers?: Record<string, string> } = {}) {
@@ -274,6 +277,96 @@ describe('fetchNextPage', () => {
       'https://graph.facebook.com/v23.0/me/accounts?after=xyz',
       expect.anything(),
     );
+  });
+});
+
+describe('exchangeIgCodeForToken', () => {
+  it('POSTs a form-encoded body to api.instagram.com/oauth/access_token (not a GET-with-query-params)', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ access_token: 'ig-short-lived', user_id: '17800000000000000', permissions: ['instagram_business_basic'] }),
+    );
+    const res = await exchangeIgCodeForToken(
+      { appId: 'ig-app', appSecret: 'ig-secret', code: 'ig-code', redirectUri: 'https://hub/api/meta/ig/callback' },
+      { fetchImpl: fetchImpl as unknown as typeof fetch },
+    );
+    expect(res.ok).toBe(true);
+    expect(res.data?.access_token).toBe('ig-short-lived');
+    expect(res.data?.user_id).toBe('17800000000000000');
+
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('https://api.instagram.com/oauth/access_token');
+    expect(init.method).toBe('POST');
+    const body = new URLSearchParams(init.body as string);
+    expect(body.get('client_id')).toBe('ig-app');
+    expect(body.get('client_secret')).toBe('ig-secret');
+    expect(body.get('grant_type')).toBe('authorization_code');
+    expect(body.get('redirect_uri')).toBe('https://hub/api/meta/ig/callback');
+    expect(body.get('code')).toBe('ig-code');
+  });
+
+  it('surfaces a failed exchange without throwing', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ error_message: 'Invalid platform app' }, { ok: false, status: 400 }));
+    const res = await exchangeIgCodeForToken(
+      { appId: 'ig-app', appSecret: 'ig-secret', code: 'bad', redirectUri: 'https://hub/api/meta/ig/callback' },
+      { fetchImpl: fetchImpl as unknown as typeof fetch },
+    );
+    expect(res.ok).toBe(false);
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('exchangeIgLongLivedToken', () => {
+  it('GETs graph.instagram.com/access_token, unversioned (no /v23.0/ segment)', async () => {
+    const fetchImpl = mockFetch(jsonResponse({ access_token: 'ig-long-lived', token_type: 'bearer', expires_in: 5_184_000 }));
+    const res = await exchangeIgLongLivedToken({ appSecret: 'ig-secret', shortToken: 'ig-short' }, { fetchImpl });
+    expect(res.ok).toBe(true);
+    expect(res.data?.access_token).toBe('ig-long-lived');
+    expect(res.data?.expires_in).toBe(5_184_000);
+
+    const calledUrl = (fetchImpl.mock.calls[0]?.[0] as string) ?? '';
+    expect(calledUrl).toContain('https://graph.instagram.com/access_token?');
+    expect(calledUrl).not.toContain('/v23.0/');
+    expect(calledUrl).toContain('grant_type=ig_exchange_token');
+    expect(calledUrl).toContain('access_token=ig-short');
+  });
+});
+
+describe('refreshIgToken', () => {
+  it('GETs the DISTINCT /refresh_access_token path, unversioned', async () => {
+    const fetchImpl = mockFetch(jsonResponse({ access_token: 'ig-refreshed', expires_in: 5_184_000 }));
+    const res = await refreshIgToken({ token: 'ig-current' }, { fetchImpl });
+    expect(res.ok).toBe(true);
+    expect(res.data?.access_token).toBe('ig-refreshed');
+
+    const calledUrl = (fetchImpl.mock.calls[0]?.[0] as string) ?? '';
+    expect(calledUrl).toContain('https://graph.instagram.com/refresh_access_token?');
+    expect(calledUrl).not.toContain('/access_token?grant_type=ig_refresh_token'); // must NOT be the exchange path with a swapped grant_type
+    expect(calledUrl).not.toContain('/v23.0/');
+    expect(calledUrl).toContain('grant_type=ig_refresh_token');
+  });
+
+  it('omits appsecret_proof by default (graph.instagram.com is believed not to require it)', async () => {
+    const fetchImpl = mockFetch(jsonResponse({ access_token: 'ig-refreshed' }));
+    await refreshIgToken({ token: 'ig-current' }, { fetchImpl });
+    const url = new URL((fetchImpl.mock.calls[0]?.[0] as string) ?? '');
+    expect(url.searchParams.get('appsecret_proof')).toBeNull();
+  });
+});
+
+describe('versioned opt — graph.instagram.com is unversioned, graph.facebook.com stays versioned', () => {
+  it('listIgMedia against graph.instagram.com with versioned:false has no /v23.0/ segment', async () => {
+    const fetchImpl = mockFetch(jsonResponse({ data: [] }));
+    await listIgMedia('ig-user-1', 'ig-token', {}, { fetchImpl, baseUrl: 'https://graph.instagram.com', versioned: false });
+    const calledUrl = (fetchImpl.mock.calls[0]?.[0] as string) ?? '';
+    expect(calledUrl).toBe(`https://graph.instagram.com/ig-user-1/media?fields=${encodeURIComponent('id,caption,media_type,permalink,timestamp,like_count,comments_count')}&access_token=ig-token`);
+    expect(calledUrl).not.toContain('/v23.0/');
+  });
+
+  it('default (FB) calls stay versioned, unaffected by the new opt', async () => {
+    const fetchImpl = mockFetch(jsonResponse({ data: [] }));
+    await listIgMedia('ig1', 'ptok', {}, { fetchImpl });
+    const calledUrl = (fetchImpl.mock.calls[0]?.[0] as string) ?? '';
+    expect(calledUrl).toContain('/v23.0/');
   });
 });
 

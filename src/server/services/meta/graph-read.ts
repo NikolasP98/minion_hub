@@ -48,6 +48,13 @@ export type GraphOpts = {
    * proof for server API calls" enabled — which is the default for this app.
    */
   appSecret?: string;
+  /**
+   * `graph.facebook.com` is versioned (`/v23.0/...`); `graph.instagram.com`
+   * (Instagram API with Instagram Login) is NOT — its endpoints hang directly
+   * off the host root. Set `false` when `baseUrl` points at the IG host.
+   * Defaults to `true` so every existing FB-Graph call is unaffected.
+   */
+  versioned?: boolean;
 };
 
 export type GraphResult<T> = {
@@ -65,6 +72,7 @@ type ResolvedOpts = {
   baseUrl: string;
   graphVersion: string;
   appSecret?: string;
+  versioned: boolean;
 };
 
 function resolveOpts(opts: GraphOpts): ResolvedOpts {
@@ -74,6 +82,7 @@ function resolveOpts(opts: GraphOpts): ResolvedOpts {
     baseUrl: opts.baseUrl ?? DEFAULT_GRAPH_BASE_URL,
     graphVersion: opts.graphVersion ?? DEFAULT_GRAPH_VERSION,
     appSecret: opts.appSecret,
+    versioned: opts.versioned ?? true,
   };
 }
 
@@ -88,7 +97,8 @@ function buildUrl(path: string, params: Record<string, string | number | undefin
   if (o.appSecret && typeof token === 'string' && token) {
     qs.set('appsecret_proof', createHmac('sha256', o.appSecret).update(token).digest('hex'));
   }
-  return `${o.baseUrl.replace(/\/+$/, '')}/${o.graphVersion}/${path}?${qs.toString()}`;
+  const versionSegment = o.versioned ? `${o.graphVersion}/` : '';
+  return `${o.baseUrl.replace(/\/+$/, '')}/${versionSegment}${path}?${qs.toString()}`;
 }
 
 /** Drop the query string so a URL is safe to embed in an error/log line. */
@@ -242,6 +252,92 @@ export async function extendUserToken(
   const res = await graphRequest(url, o);
   if (!res.ok) return { ok: false, status: res.status, error: res.error, usage: res.usage };
   return { ok: true, status: res.status, data: res.body as TokenResponse, usage: res.usage };
+}
+
+// ---------------------------------------------------------------------------
+// Instagram API with Instagram Login — a second, independent OAuth family
+// (spec 2026-07-05-instagram-login-integration). Distinct app id/secret from
+// the FLB flow above, distinct authorize host (www.instagram.com — the
+// redirect itself lives in the route, not here), and a distinct, unversioned
+// Graph host (`graph.instagram.com`, see GraphOpts.versioned).
+// ---------------------------------------------------------------------------
+
+export type IgShortLivedToken = { access_token: string; user_id?: string; permissions?: string[] };
+
+/**
+ * `POST https://api.instagram.com/oauth/access_token` — form-encoded body,
+ * NOT the query-string GET the FB exchange above uses, so this can't reuse
+ * `buildUrl`/`graphRequest`; it's a standalone fetch call with the same
+ * result envelope and error sanitization.
+ */
+export async function exchangeIgCodeForToken(
+  params: { appId: string; appSecret: string; code: string; redirectUri: string },
+  opts: Pick<GraphOpts, 'fetchImpl' | 'timeoutMs'> = {},
+): Promise<GraphResult<IgShortLivedToken>> {
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const timeoutMs = opts.timeoutMs ?? 15_000;
+  const url = 'https://api.instagram.com/oauth/access_token';
+  const body = new URLSearchParams({
+    client_id: params.appId,
+    client_secret: params.appSecret,
+    grant_type: 'authorization_code',
+    redirect_uri: params.redirectUri,
+    code: params.code,
+  });
+  let res: Response;
+  try {
+    res = await fetchImpl(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (err) {
+    return { ok: false, status: 0, error: sanitizeErrorMessage(String(err), url) };
+  }
+  const responseBody = await safeJson(res);
+  if (!res.ok) return { ok: false, status: res.status, error: classifyGraphError(responseBody) };
+  return { ok: true, status: res.status, data: responseBody as IgShortLivedToken };
+}
+
+export type IgLongLivedToken = { access_token: string; token_type?: string; expires_in?: number };
+
+/**
+ * `GET https://graph.instagram.com/access_token?grant_type=ig_exchange_token`
+ * — reuses `buildUrl`/`graphRequest` (a GET-with-query-params shape, like the
+ * FB exchange), just against the unversioned IG host. Caller passes
+ * `{ baseUrl: 'https://graph.instagram.com', versioned: false }`.
+ */
+export async function exchangeIgLongLivedToken(
+  params: { appSecret: string; shortToken: string },
+  opts: GraphOpts = {},
+): Promise<GraphResult<IgLongLivedToken>> {
+  const o = resolveOpts({ baseUrl: 'https://graph.instagram.com', versioned: false, ...opts });
+  const url = buildUrl(
+    'access_token',
+    { grant_type: 'ig_exchange_token', client_secret: params.appSecret, access_token: params.shortToken },
+    o,
+  );
+  const res = await graphRequest(url, o);
+  if (!res.ok) return { ok: false, status: res.status, error: res.error, usage: res.usage };
+  return { ok: true, status: res.status, data: res.body as IgLongLivedToken, usage: res.usage };
+}
+
+/**
+ * `GET https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token`
+ * — a DISTINCT path from the long-lived exchange above, not the same path
+ * with a different `grant_type` (verified against Meta's dedicated refresh
+ * reference page, spec §2.4).
+ */
+export async function refreshIgToken(
+  params: { token: string },
+  opts: GraphOpts = {},
+): Promise<GraphResult<IgLongLivedToken>> {
+  const o = resolveOpts({ baseUrl: 'https://graph.instagram.com', versioned: false, ...opts });
+  const url = buildUrl('refresh_access_token', { grant_type: 'ig_refresh_token', access_token: params.token }, o);
+  const res = await graphRequest(url, o);
+  if (!res.ok) return { ok: false, status: res.status, error: res.error, usage: res.usage };
+  return { ok: true, status: res.status, data: res.body as IgLongLivedToken, usage: res.usage };
 }
 
 // ---------------------------------------------------------------------------
