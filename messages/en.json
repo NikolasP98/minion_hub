@@ -3870,6 +3870,15 @@
   "crm_merge_msgs": "{n} msgs",
   "crm_merge_resolve_heading": "Resolve conflicting fields",
   "crm_merge_base": "current",
+  "crm_merge_field_col": "Field",
+  "crm_merge_result": "Merged result",
+  "crm_merge_channels": "Channels",
+  "crm_merge_anchor": "keeps history",
+  "crm_merge_include": "Include in merge",
+  "crm_merge_anchor_note": "Messages, invoices & tags stay on {name}; every channel is merged in.",
+  "crm_merge_excluded_note": "{n} excluded — kept as separate contacts.",
+  "crm_merge_need_two": "Include at least 2 contacts to merge.",
+  "crm_dup_resolve_hint": "Open the resolver to pick surviving values field-by-field and drop wrong matches.",
   "crm_field_phone": "Phone",
   "crm_merge_fields_heading": "Merged fields"
 }

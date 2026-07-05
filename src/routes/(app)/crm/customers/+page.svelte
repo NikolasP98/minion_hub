@@ -18,8 +18,8 @@
 	import { canAct } from '$lib/access/can.svelte';
 	import DataTable from '$lib/components/data-table/DataTable.svelte';
 	import type { DataColumn } from '$lib/components/data-table/DataTable.svelte';
-	import CrmMergeModal from '$lib/components/crm/CrmMergeModal.svelte';
-	import { applyContactMerge, type MergeField } from '$lib/components/crm/crm-merge';
+	import CrmMergeResolver from '$lib/components/crm/CrmMergeResolver.svelte';
+	import { applyContactMerge, type MergeField, type MergeResolution } from '$lib/components/crm/crm-merge';
 
 	let { data }: { data: PageData } = $props();
 	const contacts = $derived(data.contacts);
@@ -136,19 +136,24 @@
 	let selected = $state<Set<string>>(new Set());
 	let bulkBusy = $state(false);
 	let bulkErr = $state<string | null>(null);
-	// Merge → shared survivor-picker modal.
+	// Merge → shared column-per-candidate conflict resolver.
 	let mergeOpen = $state(false);
 	let mergeRows = $state<Row[]>([]);
-	let survivorId = $state<string>('');
 	const mergeContacts = $derived(
 		mergeRows.map((r) => {
 			const fin = finOf(r);
 			const subtitle = [
 				m.crm_merge_msgs({ n: r.total_msgs }),
-				(r.channels?.length ?? 0) > 0 ? r.channels.join(', ') : null,
 				fin && fin.revenue > 0 ? fin.revenue.toLocaleString() : null,
 			].filter(Boolean).join(' · ');
-			return { id: r.contact_id, name: contactLabel(r.display_name), subtitle };
+			return {
+				id: r.contact_id,
+				name: contactLabel(r.display_name),
+				subtitle,
+				messages: r.total_msgs,
+				// list rows carry channel TYPES only (no per-identity value) — still unions/displays.
+				identities: (r.channels ?? []).map((ch) => ({ channel: ch, value: '' })),
+			};
 		}),
 	);
 	// Resolvable fields: the name + every custom_fields key present across the
@@ -182,7 +187,6 @@
 				label: m.crm_bulk_merge_action(),
 				onSelect: (_ids, rows) => {
 					mergeRows = rows;
-					survivorId = rows.reduce((a, b) => (b.total_msgs > a.total_msgs ? b : a), rows[0]).contact_id;
 					bulkErr = null;
 					mergeOpen = true;
 				},
@@ -195,13 +199,12 @@
 		return acts;
 	});
 
-	async function runMerge(resolved: Record<string, string>) {
-		if (!survivorId) return;
+	async function runMerge(res: MergeResolution) {
+		if (!res.survivorId || res.loserIds.length === 0) return;
 		bulkBusy = true;
 		bulkErr = null;
 		try {
-			const loserIds = mergeRows.map((r) => r.contact_id).filter((id) => id !== survivorId);
-			await applyContactMerge(survivorId, loserIds, resolved);
+			await applyContactMerge(res.survivorId, res.loserIds, res.resolved);
 			selected = new Set();
 			mergeOpen = false;
 			await invalidate('crm:contacts');
@@ -336,7 +339,7 @@
 	</DataTable>
 </div>
 
-<CrmMergeModal bind:open={mergeOpen} contacts={mergeContacts} fields={mergeFields} bind:survivorId busy={bulkBusy} error={bulkErr} onConfirm={runMerge} />
+<CrmMergeResolver bind:open={mergeOpen} contacts={mergeContacts} fields={mergeFields} busy={bulkBusy} error={bulkErr} onConfirm={runMerge} />
 
 <Modal bind:open={deleteOpen} title={m.crm_bulk_delete_title()}>
 	<p class="t-body">{m.crm_bulk_delete_confirm({ n: deleteIds.length })}</p>

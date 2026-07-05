@@ -1,7 +1,25 @@
 /** Shared types + apply logic for the CRM contact merge / conflict resolver. */
 
-/** A contact shown in the merge picker. */
-export type MergeContact = { id: string; name: string; subtitle?: string };
+/** One channel identity a contact holds (phone / handle). Multiple per channel allowed. */
+export type MergeIdentity = { channel: string; value: string };
+
+/** A candidate column in the merge resolver. */
+export type MergeContact = {
+	id: string;
+	name: string;
+	subtitle?: string;
+	/** Message count — the most-active included candidate becomes the history anchor (survivor). */
+	messages?: number;
+	/** Channel identities — all UNION onto the merged record server-side (display-only here). */
+	identities?: MergeIdentity[];
+};
+
+/** The resolver's decision: which record anchors history, which fold in, and per-field picks. */
+export type MergeResolution = {
+	survivorId: string;
+	loserIds: string[];
+	resolved: Record<string, string>;
+};
 
 /** One resolvable field: its per-contact values (empty values omitted). The
  *  `key` doubles as the write target — `display_name` → the name column,

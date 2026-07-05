@@ -9,8 +9,9 @@
 	} from 'lucide-svelte';
 	import { Button } from '$lib/components/ui';
 	import { contactLabel } from '$lib/components/crm/crm-format';
-	import CrmMergeModal from '$lib/components/crm/CrmMergeModal.svelte';
-	import { applyContactMerge, type MergeField } from '$lib/components/crm/crm-merge';
+	import { metaLabel } from '$lib/components/crm/crm-meta';
+	import CrmMergeResolver from '$lib/components/crm/CrmMergeResolver.svelte';
+	import { applyContactMerge, type MergeField, type MergeResolution } from '$lib/components/crm/crm-merge';
 
 	type Fix = {
 		contactId: string;
@@ -20,7 +21,7 @@
 		needsReview: boolean;
 	};
 	type ContactIdentity = { channel: string; value: string };
-	type DupContact = { id: string; name: string | null; dni?: string | null; phone?: string | null; messages: number; identities?: ContactIdentity[] };
+	type DupContact = { id: string; name: string | null; dni?: string | null; phone?: string | null; messages: number; identities?: ContactIdentity[]; customFields?: Record<string, unknown> };
 	type DupGroup = { key: string; reason: string; contacts: DupContact[]; confidence: number };
 	type Blank = { id: string; name: string | null; dni?: string | null; phone?: string | null; messages: number; identities?: ContactIdentity[] };
 
@@ -171,60 +172,55 @@
 	}
 
 	// ── Duplicates ──
-	// survivor chosen per group key; defaults to the member with the most history.
-	let chosen = $state<Record<string, string>>({});
+	// The column-per-candidate resolver owns survivor choice + deselection; the
+	// inline list is a read-only preview. Anchor (survivor) = most-active member.
 	let merging = $state<string | null>(null);
-	function survivorId(g: DupGroup): string {
-		return chosen[g.key] || [...g.contacts].sort((a, b) => b.messages - a.messages)[0]?.id || '';
-	}
-	const pickSurvivor = (g: DupGroup, id: string) => (chosen = { ...chosen, [g.key]: id });
+	const previewSurvivor = (g: DupGroup): string =>
+		[...g.contacts].sort((a, b) => b.messages - a.messages)[0]?.id ?? '';
 
-	// Merge → custom survivor-picker modal (was a native confirm()).
 	let mergeOpen = $state(false);
 	let pendingGroup = $state<DupGroup | null>(null);
-	let mergeSurvivor = $state('');
 	let mergeErr = $state<string | null>(null);
 	const mergeContacts = $derived(
 		(pendingGroup?.contacts ?? []).map((c) => ({
 			id: c.id,
 			name: contactLabel(c.name),
 			subtitle: m.crm_msgs_n({ count: c.messages }),
+			messages: c.messages,
+			identities: c.identities ?? [],
 		})),
 	);
-	// Resolvable fields for this duplicate group: name + DNI + phone (the values the
-	// group surfaces). The modal shows only the ones that actually conflict.
+	// Resolvable fields: name + every custom_fields key present in the group
+	// (dni / telefono / email / …). The resolver shows every field and flags clashes.
 	const mergeFields = $derived.by<MergeField[]>(() => {
 		const cs = pendingGroup?.contacts ?? [];
-		const field = (key: string, label: string, get: (c: DupContact) => string | null | undefined): MergeField => ({
-			key,
-			label,
-			values: cs.map((c) => ({ contactId: c.id, value: (get(c) ?? '').toString().trim() })).filter((v) => v.value),
-		});
-		// name + DNI only — phone identities already union server-side on merge, and
-		// its custom_fields key is provider-specific, so we don't risk writing a wrong one.
-		return [
-			field('display_name', m.crm_col_contact(), (c) => c.name),
-			field('dni', 'DNI', (c) => c.dni),
-		].filter((f) => f.values.length > 0);
+		const fields: MergeField[] = [];
+		const nameVals = cs.map((c) => ({ contactId: c.id, value: (c.name ?? '').trim() })).filter((v) => v.value);
+		if (nameVals.length) fields.push({ key: 'display_name', label: m.crm_col_contact(), values: nameVals });
+		const keys = new Set<string>();
+		for (const c of cs) for (const k of Object.keys(c.customFields ?? {})) keys.add(k);
+		for (const k of keys) {
+			const vals = cs
+				.map((c) => ({ contactId: c.id, value: String(c.customFields?.[k] ?? '').trim() }))
+				.filter((v) => v.value);
+			if (vals.length) fields.push({ key: k, label: metaLabel(k), values: vals });
+		}
+		return fields;
 	});
 
 	function openMerge(g: DupGroup) {
 		pendingGroup = g;
-		mergeSurvivor = survivorId(g);
 		mergeErr = null;
 		mergeOpen = true;
 	}
 
-	async function runMerge(resolved: Record<string, string>) {
+	async function runMerge(res: MergeResolution) {
 		const g = pendingGroup;
-		if (!g || !mergeSurvivor) return;
-		const loserIds = g.contacts.map((c) => c.id).filter((id) => id !== mergeSurvivor);
-		if (loserIds.length === 0) return;
+		if (!g || !res.survivorId || res.loserIds.length === 0) return;
 		merging = g.key;
 		mergeErr = null;
 		try {
-			await applyContactMerge(mergeSurvivor, loserIds, resolved);
-			pickSurvivor(g, mergeSurvivor); // keep the inline picker in sync
+			await applyContactMerge(res.survivorId, res.loserIds, res.resolved);
 			mergeOpen = false;
 			pendingGroup = null;
 			await invalidate('crm:cleanup');
@@ -390,7 +386,7 @@
 			<div class="flex flex-col gap-3">
 				{#each groups as g (g.key)}
 					{@const weak = g.confidence < 0.4}
-					{@const sid = survivorId(g)}
+					{@const anchor = previewSurvivor(g)}
 					<div class="group">
 						<div class="group-h">
 							<span class="reason">{g.reason === 'dni' ? `DNI ${g.key}` : m.crm_dup_same_name()}</span>
@@ -400,14 +396,13 @@
 							</Button>
 						</div>
 						{#each g.contacts as c (c.id)}
-							{@const primary = sid === c.id}
-							<label class="dup" class:primary>
-								<input type="radio" name={`surv-${g.key}`} value={c.id} checked={primary} onchange={() => pickSurvivor(g, c.id)} />
+							{@const primary = anchor === c.id}
+							<div class="dup" class:primary>
 								{#if primary}<Crown size={14} class="text-success" />{:else}<GitMerge size={13} class="text-muted-foreground" />{/if}
 								<div class="dup-body">
 									<div class="dup-line">
 										<span class="dup-name">{contactLabel(c.name)}</span>
-										{#if primary}<span class="keep">{m.crm_dup_primary()}</span>{:else}<span class="folds">{m.crm_dup_folds()}</span>{/if}
+										{#if primary}<span class="keep">{m.crm_merge_anchor()}</span>{/if}
 										<span class="ml-auto t-caption">{m.crm_msgs_n({ count: c.messages })}</span>
 									</div>
 									<div class="dup-meta">
@@ -417,9 +412,9 @@
 										{#if !c.dni && !c.phone && (c.identities ?? []).length === 0}<span class="t-caption italic">{m.crm_blank()}</span>{/if}
 									</div>
 								</div>
-							</label>
+							</div>
 						{/each}
-						<p class="summary t-caption">{m.crm_dup_merge_summary({ count: g.contacts.length - 1 })}</p>
+						<p class="summary t-caption">{m.crm_dup_resolve_hint()}</p>
 					</div>
 				{/each}
 			</div>
@@ -427,11 +422,10 @@
 	</section>
 </div>
 
-<CrmMergeModal
+<CrmMergeResolver
 	bind:open={mergeOpen}
 	contacts={mergeContacts}
 	fields={mergeFields}
-	bind:survivorId={mergeSurvivor}
 	busy={merging !== null}
 	error={mergeErr}
 	onConfirm={runMerge}
@@ -486,7 +480,7 @@
 	.badge { font-size: 0.62rem; padding: 0.05rem 0.4rem; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.03em; }
 	.badge.strong { background: color-mix(in srgb, var(--color-success) 16%, transparent); color: var(--color-success); }
 	.badge.soft { background: color-mix(in srgb, var(--color-warning) 18%, transparent); color: var(--color-warning); }
-	.dup { display: flex; align-items: flex-start; gap: 0.55rem; padding: 0.35rem 0.4rem; border-radius: var(--radius-md); font-size: 0.86rem; cursor: pointer; }
+	.dup { display: flex; align-items: flex-start; gap: 0.55rem; padding: 0.35rem 0.4rem; border-radius: var(--radius-md); font-size: 0.86rem; }
 	.dup.primary { background: color-mix(in srgb, var(--color-success) 8%, transparent); }
 	.dup:not(.primary) { opacity: 0.72; }
 	.dup-body { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; flex: 1; }
@@ -495,6 +489,5 @@
 	.ident { padding: 0.02rem 0.35rem; border-radius: var(--radius-sm); background: var(--color-bg3); }
 	.dup-name { font-weight: 500; }
 	.keep { font-size: 0.64rem; padding: 0.05rem 0.4rem; border-radius: 999px; background: color-mix(in srgb, var(--color-success) 18%, transparent); color: var(--color-success); }
-	.folds { font-size: 0.64rem; color: var(--color-muted-foreground); }
 	.summary { margin: 0.35rem 0 0; opacity: 0.75; }
 </style>

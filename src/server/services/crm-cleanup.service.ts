@@ -159,6 +159,8 @@ export interface DupContact {
   messages: number;
   /** Channel identities (phone/handle) — lets a human confirm a name match is a real dupe. */
   identities: ContactIdentity[];
+  /** Full custom_fields jsonb — feeds the field-by-field merge resolver. */
+  customFields: Record<string, unknown>;
 }
 export interface DupGroup {
   reason: 'dni' | 'name';
@@ -205,6 +207,7 @@ export async function findDuplicates(ctx: CoreCtx): Promise<DupGroup[]> {
       select c.id, c.display_name,
              nullif(c.custom_fields->>'dni','') as dni,
              nullif(c.custom_fields->>'telefono','') as phone,
+             coalesce(c.custom_fields, '{}'::jsonb) as custom_fields,
              coalesce(mm.n, 0) as messages,
              coalesce(ids.list, '[]'::json) as identities
       from crm_contacts c
@@ -221,6 +224,7 @@ export async function findDuplicates(ctx: CoreCtx): Promise<DupGroup[]> {
     display_name: string | null;
     dni: string | null;
     phone: string | null;
+    custom_fields: Record<string, unknown> | null;
     messages: number;
     identities: ContactIdentity[] | null;
   }>;
@@ -233,6 +237,7 @@ export async function findDuplicates(ctx: CoreCtx): Promise<DupGroup[]> {
     score: 0,
     messages: Number(r.messages) || 0,
     identities: (Array.isArray(r.identities) ? r.identities : []).filter((i) => i && i.value),
+    customFields: r.custom_fields && typeof r.custom_fields === 'object' ? r.custom_fields : {},
   });
 
   const byDni = new Map<string, DupContact[]>();

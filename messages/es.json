@@ -3870,6 +3870,15 @@
   "crm_merge_msgs": "{n} msjs",
   "crm_merge_resolve_heading": "Resolver campos en conflicto",
   "crm_merge_base": "actual",
+  "crm_merge_field_col": "Campo",
+  "crm_merge_result": "Resultado combinado",
+  "crm_merge_channels": "Canales",
+  "crm_merge_anchor": "conserva historial",
+  "crm_merge_include": "Incluir en la combinación",
+  "crm_merge_anchor_note": "Los mensajes, facturas y etiquetas quedan en {name}; todos los canales se combinan.",
+  "crm_merge_excluded_note": "{n} excluidos — se mantienen como contactos separados.",
+  "crm_merge_need_two": "Incluye al menos 2 contactos para combinar.",
+  "crm_dup_resolve_hint": "Abre el resolutor para elegir los valores que sobreviven campo por campo y descartar coincidencias erróneas.",
   "crm_field_phone": "Teléfono",
   "crm_merge_fields_heading": "Campos combinados"
 }

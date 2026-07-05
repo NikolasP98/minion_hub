@@ -22,6 +22,9 @@
     ontogglefullscreen,
     onmove,
     children,
+    resizable = false,
+    width = 'min(760px,92vw)',
+    height = 'min(580px,82vh)',
   }: {
     title: string;
     z: number;
@@ -33,6 +36,10 @@
     ontogglefullscreen: () => void;
     onmove: (x: number, y: number) => void;
     children: Snippet;
+    /** Show a native corner resize grip (CSS `resize`). Off for the agent windows. */
+    resizable?: boolean;
+    width?: string;
+    height?: string;
   } = $props();
 
   const dialogId = `agent-window-${nextId++}`;
@@ -89,7 +96,8 @@
   const frameStyle = $derived(
     fullscreen
       ? `position:fixed;inset:0;z-index:${Z_BASE + z};`
-      : `position:fixed;left:${x}px;top:${y}px;z-index:${Z_BASE + z};width:min(760px,92vw);height:min(580px,82vh);`,
+      : `position:fixed;left:${x}px;top:${y}px;z-index:${Z_BASE + z};width:${width};height:${height};` +
+          (resizable ? `resize:both;overflow:hidden;min-width:420px;min-height:320px;max-width:96vw;max-height:92vh;` : ''),
   );
 </script>
 
