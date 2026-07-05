@@ -66,6 +66,20 @@ export function getJobById(ctx: CoreCtx, jobId: string): Promise<MetaSyncJob | n
 }
 
 /**
+ * Postgres error code, walking the `cause` chain — drizzle wraps driver errors
+ * in DrizzleQueryError, so the code lives on `e.cause`, not `e` (live-verified:
+ * a 23505 duplicate-active-job insert 500'd the run route because the bare
+ * `e.code` check missed the wrapped code).
+ */
+export function pgErrorCode(e: unknown): string | undefined {
+  for (let cur = e; cur && typeof cur === 'object'; cur = (cur as { cause?: unknown }).cause) {
+    const code = (cur as { code?: unknown }).code;
+    if (typeof code === 'string') return code;
+  }
+  return undefined;
+}
+
+/**
  * Idempotent enqueue vs the partial active-job unique index
  * `(org_id, kind) where status in ('queued','running')`. Same insert-then-
  * catch-23505 idiom as finance-sync-jobs.service.ts (and meta-connections
@@ -87,7 +101,7 @@ export async function enqueueJob(
       return row;
     });
   } catch (e) {
-    if (e && typeof e === 'object' && 'code' in e && (e as { code?: string }).code === '23505') {
+    if (pgErrorCode(e) === '23505') {
       const existing = await getActiveJob(ctx, kind);
       if (existing) return existing;
     }

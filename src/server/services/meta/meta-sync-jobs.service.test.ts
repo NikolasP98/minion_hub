@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createMockDb } from '$server/test-utils/mock-db';
-import { enqueueJob, claimJob, mergeCounts } from './meta-sync-jobs.service';
+import { enqueueJob, claimJob, mergeCounts, pgErrorCode } from './meta-sync-jobs.service';
 
 const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
 
@@ -11,6 +11,14 @@ describe('enqueueJob', () => {
     const job = await enqueueJob(ctx(db), 'posts');
     expect(db.insert).toHaveBeenCalled();
     expect(job.status).toBe('queued');
+  });
+
+  it('recognizes a 23505 wrapped in a DrizzleQueryError-style cause chain', async () => {
+    const wrapped = Object.assign(new Error('Failed query: insert ...'), {
+      cause: Object.assign(new Error('duplicate key'), { code: '23505' }),
+    });
+    expect(pgErrorCode(wrapped)).toBe('23505');
+    expect(pgErrorCode(new Error('plain'))).toBeUndefined();
   });
 
   it('returns the racing active job when insert throws a unique-violation (23505)', async () => {

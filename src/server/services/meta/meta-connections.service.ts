@@ -1,3 +1,4 @@
+import { pgErrorCode } from './meta-sync-jobs.service';
 /**
  * Meta OAuth broker + connection/asset persistence (spec §5,
  * 2026-07-04-meta-business-integration, WP4). Every query is org-scoped
@@ -412,8 +413,7 @@ export async function enqueueInitialSyncJobs(ctx: CoreCtx): Promise<void> {
       try {
         await tx.insert(metaSyncJobs).values({ orgId: ctx.tenantId, kind, status: 'queued', since: sinceStr });
       } catch (e) {
-        const code = e && typeof e === 'object' && 'code' in e ? (e as { code?: string }).code : undefined;
-        if (code !== '23505') throw e; // anything but "already an active job of this kind" is a real failure
+        if (pgErrorCode(e) !== '23505') throw e; // anything but "already an active job of this kind" is a real failure
       }
     }
   });
