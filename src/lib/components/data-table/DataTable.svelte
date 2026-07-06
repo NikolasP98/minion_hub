@@ -104,6 +104,7 @@
 	import ExportDialog from '$lib/components/crm/ExportDialog.svelte';
 	import { downloadCsv, downloadXlsx, type Rows } from '$lib/export/table-export';
 	import { createHotkeysAttachment } from '$lib/hotkeys';
+	import { createVirtualizer } from '$lib/virtual/virtualizer.svelte';
 
 	let {
 		data,
@@ -132,7 +133,6 @@
 		editDisabled = false,
 		initialSort,
 		initialFilters,
-		pageSize = 60,
 		// expansion
 		getSubRows,
 		expandedContent,
@@ -172,7 +172,6 @@
 		editDisabled?: boolean;
 		initialSort?: { key: string; dir?: 'asc' | 'desc' };
 		initialFilters?: Record<string, string[]>;
-		pageSize?: number;
 		/** Same-shape children rendered as indented sub-rows when a row is expanded. */
 		getSubRows?: (row: T) => T[] | null | undefined;
 		/** Custom block rendered under a row when expanded (different-shape children). */
@@ -360,6 +359,8 @@
 		e.stopPropagation();
 		e.preventDefault();
 		if (!tableEl) return;
+		// Only mounted cells are queryable (virtualized rows off-screen aren't in
+		// the DOM) — pre-existing behavior, unchanged by row virtualization.
 		let max = 0;
 		for (const el of tableEl.querySelectorAll<HTMLElement>(`[data-col="${CSS.escape(c.key)}"]`))
 			max = Math.max(max, el.scrollWidth);
@@ -505,24 +506,6 @@
 		search.trim().length > 0 || columns.some((c) => c.filter && filterSet(c.key).size > 0),
 	);
 
-	// ── Windowed rendering + expansion flattening ─────────────────────────────
-	// svelte-ignore state_referenced_locally
-	let renderLimit = $state(pageSize);
-	const windowed = $derived(view.slice(0, renderLimit));
-	$effect(() => {
-		view;
-		renderLimit = untrack(() => pageSize);
-	});
-	function infiniteScroll(root: HTMLElement) {
-		const onScroll = () => {
-			if (renderLimit >= view.length) return;
-			if (root.scrollTop + root.clientHeight >= root.scrollHeight - 600)
-				renderLimit = Math.min(renderLimit + pageSize, view.length);
-		};
-		root.addEventListener('scroll', onScroll, { passive: true });
-		return { destroy: () => root.removeEventListener('scroll', onScroll) };
-	}
-
 	let expanded = $state<Set<string>>(new Set());
 	function toggleExpand(id: string, e?: Event) {
 		e?.stopPropagation();
@@ -536,18 +519,59 @@
 		if (isExpandable) return isExpandable(row);
 		return subRowsOf(row).length > 0 || !!expandedContent;
 	}
-	// Flatten top-level (windowed) rows + expanded same-shape descendants.
-	const flatRows = $derived.by(() => {
-		const out: { row: T; depth: number; id: string }[] = [];
+
+	// ── Row virtualization ────────────────────────────────────────────────────
+	// Flatten the FULL `view` (no window) into row items + expanded same-shape
+	// descendants + expanded custom blocks, in DOM order. `itemIndex` is this
+	// item's position in the flat list (what the virtualizer indexes by);
+	// `rowIndex` is this row's position among row-kind items only (what roving
+	// j/k focus indexes by — block rows aren't focusable).
+	type FlatItem =
+		| { kind: 'row'; row: T; depth: number; id: string; key: string; itemIndex: number; rowIndex: number }
+		| { kind: 'expanded'; row: T; id: string; key: string; itemIndex: number };
+	const flatItems = $derived.by(() => {
+		const out: FlatItem[] = [];
+		let rowIndex = 0;
 		const walk = (row: T, depth: number) => {
 			const id = getRowId(row);
-			out.push({ row, depth, id });
-			if (expanded.has(id)) for (const k of subRowsOf(row)) walk(k, depth + 1);
+			out.push({ kind: 'row', row, depth, id, key: id, itemIndex: out.length, rowIndex: rowIndex++ });
+			if (!expanded.has(id)) return;
+			const kids = subRowsOf(row);
+			if (kids.length) for (const k of kids) walk(k, depth + 1);
+			else if (expandedContent) out.push({ kind: 'expanded', row, id, key: `${id}::expanded`, itemIndex: out.length });
 		};
-		for (const row of windowed) walk(row, 0);
+		for (const row of view) walk(row, 0);
 		return out;
 	});
-	const rowHasBlock = (row: T) => !!expandedContent && subRowsOf(row).length === 0;
+	const flatRows = $derived(
+		flatItems.filter((fi): fi is FlatItem & { kind: 'row' } => fi.kind === 'row'),
+	);
+
+	// Scroll container for the virtualizer (also the roving-focus DOM anchor,
+	// bound on the `overflow-auto` wrapper div in the template below).
+	let wrapperEl: HTMLDivElement | null = $state(null);
+	// Named `rowVirt` (not `v`) — a per-cell `{@const v = ...}` already shadows
+	// `v` inside the cell-render scope further down.
+	const rowVirt = $derived(
+		browser && wrapperEl
+			? createVirtualizer<HTMLDivElement, HTMLTableRowElement>({
+					count: flatItems.length,
+					getScrollElement: () => wrapperEl,
+					estimateSize: () => 44,
+					getItemKey: (i) => flatItems[i].key,
+					overscan: 10,
+				})
+			: null,
+	);
+	const measureRow = (node: HTMLTableRowElement) => {
+		rowVirt?.measureElement(node);
+	};
+	// view identity changes (search/filter/sort) → snap back to the top, same
+	// intent as the old renderLimit reset.
+	$effect(() => {
+		view;
+		untrack(() => rowVirt?.scrollToOffset(0));
+	});
 
 	// ── Selection ──────────────────────────────────────────────────────────────
 	function emitSelection(next: Set<string>) {
@@ -605,13 +629,18 @@
 	}
 
 	// ── Roving row focus (WAI-ARIA grid pattern: j/k, arrows, Enter, Space) ────
-	let wrapperEl: HTMLDivElement | null = $state(null);
+	// (`wrapperEl` is declared above, next to the virtualizer that reads it.)
 	let searchInputEl: HTMLInputElement | null = $state(null);
 	let focusedIndex = $state(-1);
 	function focusRow(i: number) {
 		if (flatRows.length === 0) return;
 		focusedIndex = Math.max(0, Math.min(i, flatRows.length - 1));
-		wrapperEl?.querySelector<HTMLElement>(`[data-row-index="${focusedIndex}"]`)?.scrollIntoView({ block: 'nearest' });
+		// Bring the target into the virtualizer's rendered range first (it may not
+		// be mounted yet), then settle with a DOM scrollIntoView once it measures.
+		rowVirt?.scrollToIndex(flatRows[focusedIndex].itemIndex, { align: 'auto' });
+		requestAnimationFrame(() => {
+			wrapperEl?.querySelector<HTMLElement>(`[data-row-index="${focusedIndex}"]`)?.scrollIntoView({ block: 'nearest' });
+		});
 	}
 	function moveFocus(delta: number) {
 		if (focusedIndex < 0) focusRow(delta >= 0 ? 0 : flatRows.length - 1);
@@ -845,7 +874,7 @@
 
 	<!-- Table -->
 	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-	<div class="flex-1 min-h-0 overflow-auto dt-scroll" tabindex="0" bind:this={wrapperEl} use:infiniteScroll {@attach gridAttachment}>
+	<div class="flex-1 min-h-0 overflow-auto dt-scroll" tabindex="0" bind:this={wrapperEl} {@attach gridAttachment}>
 		{#if data.length === 0}
 			<div class="flex flex-col items-center justify-center h-full gap-2 p-8 text-center">
 				<p class="t-caption">{emptyMessage ?? m.data_table_empty()}</p>
@@ -928,68 +957,81 @@
 				<tbody>
 					{#if view.length === 0}
 						<tr><td colspan={colSpan + 1} class="px-4 py-8 text-center t-caption text-muted-foreground">{m.data_table_no_match()}</td></tr>
+					{:else if rowVirt}
+						{@const vItems = rowVirt.getVirtualItems()}
+						<!-- Spacer rows (not absolutely-positioned <tr>s — that breaks table
+						     layout/sticky-thead) absorb the space above/below the rendered
+						     window so the scrollbar reflects the FULL flattened list. -->
+						<tr style="height:{vItems[0]?.start ?? 0}px" aria-hidden="true"></tr>
+						{#each vItems as vi (vi.key)}
+							{@const fi = flatItems[vi.index]}
+							{#if fi.kind === 'expanded'}
+								<tr class="dt-block-row" data-index={vi.index} {@attach measureRow}>
+									<td colspan={colSpan + 1} class="dt-block">{@render expandedContent?.(fi.row)}</td>
+								</tr>
+							{:else}
+								{@const row = fi.row}
+								{@const id = fi.id}
+								{@const editing = editingId === id}
+								{@const canExpand = rowExpandable(row)}
+								{@const isOpen = expanded.has(id)}
+								<tr
+									data-row-index={fi.rowIndex}
+									data-index={vi.index}
+									{@attach measureRow}
+									class="dt-row border-b border-[var(--hairline)] hover:bg-white/[0.03] transition-colors {onRowClick && !editing ? 'cursor-pointer' : ''}"
+									class:child={fi.depth > 0}
+									class:focused={focusedIndex === fi.rowIndex}
+									onclick={!editing && (selectable || onRowClick) ? (e) => handleRowClick(id, row, e) : undefined}
+								>
+									{#if selectable}
+										<td class="px-3 py-2">
+											<button class="dt-check is-row" class:on={selectedIds.has(id)} role="checkbox" aria-checked={selectedIds.has(id)} aria-label="select row" onclick={(e) => toggleRow(id, e)}>
+												{#if selectedIds.has(id)}<Check size={11} />{/if}
+											</button>
+										</td>
+									{/if}
+									{#if expandEnabled}
+										<td class="px-1 py-2 text-center" style="padding-left:{6 + fi.depth * 16}px">
+											{#if canExpand}
+												<button class="dt-exp" class:open={isOpen} aria-label={isOpen ? m.data_table_collapse() : m.data_table_expand()} onclick={(e) => toggleExpand(id, e)}>
+													<ChevronRight size={13} />
+												</button>
+											{/if}
+										</td>
+									{/if}
+									{#each visibleColumns as c (c.key)}
+										<td data-col={c.key} class="dt-cell px-3 py-2 {cellAlign(c.align)} {c.cellClass ?? ''}" class:dt-wrap={wrap.has(c.key)} style={dragStyle(c)}>
+											{#if editing && c.editable}
+												<input class="dt-inp {c.align === 'right' ? 'text-right w-24' : 'w-full'}" type={c.editType === 'number' ? 'number' : 'text'}
+													step={c.editType === 'number' ? 'any' : undefined} bind:value={draft[c.key]} onclick={(e) => e.stopPropagation()} />
+											{:else if c.custom && cell}
+												{@render cell(row, c)}
+											{:else}
+												{@const v = acc(c)(row)}
+												{v == null || v === '' ? '—' : v}
+											{/if}
+										</td>
+									{/each}
+									{#if hasEdit}
+										<td class="px-3 py-2 text-right">
+											{#if editing}
+												<div class="flex gap-1 justify-end">
+													<button class="act-btn act-save" onclick={(e) => commitEdit(row, e)} disabled={editBusy} title={m.data_table_save()}><Check size={13} /></button>
+													<button class="act-btn" onclick={cancelEdit} title={m.data_table_cancel()}><X size={13} /></button>
+												</div>
+												{#if editErr}<p class="err-msg text-xs">{editErr}</p>{/if}
+											{:else}
+												<button class="act-btn act-edit" onclick={(e) => startEdit(row, e)} disabled={editDisabled || !canEdit} title={canEdit ? m.data_table_edit() : m.no_permission()}><Pencil size={13} /></button>
+											{/if}
+										</td>
+									{/if}
+									<td aria-hidden="true"></td>
+								</tr>
+							{/if}
+						{/each}
+						<tr style="height:{rowVirt.getTotalSize() - (vItems[vItems.length - 1]?.end ?? 0)}px" aria-hidden="true"></tr>
 					{/if}
-					{#each flatRows as fr, dtRowIndex (fr.id)}
-						{@const row = fr.row}
-						{@const id = fr.id}
-						{@const editing = editingId === id}
-						{@const canExpand = rowExpandable(row)}
-						{@const isOpen = expanded.has(id)}
-						<tr
-							data-row-index={dtRowIndex}
-							class="dt-row border-b border-[var(--hairline)] hover:bg-white/[0.03] transition-colors {onRowClick && !editing ? 'cursor-pointer' : ''}"
-							class:child={fr.depth > 0}
-							class:focused={focusedIndex === dtRowIndex}
-							onclick={!editing && (selectable || onRowClick) ? (e) => handleRowClick(id, row, e) : undefined}
-						>
-							{#if selectable}
-								<td class="px-3 py-2">
-									<button class="dt-check is-row" class:on={selectedIds.has(id)} role="checkbox" aria-checked={selectedIds.has(id)} aria-label="select row" onclick={(e) => toggleRow(id, e)}>
-										{#if selectedIds.has(id)}<Check size={11} />{/if}
-									</button>
-								</td>
-							{/if}
-							{#if expandEnabled}
-								<td class="px-1 py-2 text-center" style="padding-left:{6 + fr.depth * 16}px">
-									{#if canExpand}
-										<button class="dt-exp" class:open={isOpen} aria-label={isOpen ? m.data_table_collapse() : m.data_table_expand()} onclick={(e) => toggleExpand(id, e)}>
-											<ChevronRight size={13} />
-										</button>
-									{/if}
-								</td>
-							{/if}
-							{#each visibleColumns as c (c.key)}
-								<td data-col={c.key} class="dt-cell px-3 py-2 {cellAlign(c.align)} {c.cellClass ?? ''}" class:dt-wrap={wrap.has(c.key)} style={dragStyle(c)}>
-									{#if editing && c.editable}
-										<input class="dt-inp {c.align === 'right' ? 'text-right w-24' : 'w-full'}" type={c.editType === 'number' ? 'number' : 'text'}
-											step={c.editType === 'number' ? 'any' : undefined} bind:value={draft[c.key]} onclick={(e) => e.stopPropagation()} />
-									{:else if c.custom && cell}
-										{@render cell(row, c)}
-									{:else}
-										{@const v = acc(c)(row)}
-										{v == null || v === '' ? '—' : v}
-									{/if}
-								</td>
-							{/each}
-							{#if hasEdit}
-								<td class="px-3 py-2 text-right">
-									{#if editing}
-										<div class="flex gap-1 justify-end">
-											<button class="act-btn act-save" onclick={(e) => commitEdit(row, e)} disabled={editBusy} title={m.data_table_save()}><Check size={13} /></button>
-											<button class="act-btn" onclick={cancelEdit} title={m.data_table_cancel()}><X size={13} /></button>
-										</div>
-										{#if editErr}<p class="err-msg text-xs">{editErr}</p>{/if}
-									{:else}
-										<button class="act-btn act-edit" onclick={(e) => startEdit(row, e)} disabled={editDisabled || !canEdit} title={canEdit ? m.data_table_edit() : m.no_permission()}><Pencil size={13} /></button>
-									{/if}
-								</td>
-							{/if}
-							<td aria-hidden="true"></td>
-						</tr>
-						{#if isOpen && rowHasBlock(row) && expandedContent}
-							<tr class="dt-block-row"><td colspan={colSpan + 1} class="dt-block">{@render expandedContent(row)}</td></tr>
-						{/if}
-					{/each}
 				</tbody>
 			</table>
 		{/if}
