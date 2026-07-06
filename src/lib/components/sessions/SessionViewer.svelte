@@ -5,6 +5,7 @@
   import * as m from '$lib/paraglide/messages';
   import AIDisclosureBadge from '$lib/components/chat/AIDisclosureBadge.svelte';
   import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
+  import { createVirtualizer } from '$lib/virtual/virtualizer.svelte';
 
   let {
     serverId,
@@ -134,9 +135,32 @@
     }
   }
 
+  const visible = $derived(messages.filter((msg) => msg.content.trim()));
+
+  const v = $derived(
+    scrollEl
+      ? createVirtualizer({
+          count: visible.length,
+          getScrollElement: () => scrollEl,
+          getItemKey: (i) => visible[i].id,
+          estimateSize: () => 96,
+          overscan: 8,
+          gap: 8,
+          paddingStart: 12,
+          paddingEnd: 12,
+        })
+      : null,
+  );
+
   function scrollToBottom() {
     setTimeout(() => {
-      if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
+      const target = visible.length - 1;
+      if (target < 0) return;
+      v?.scrollToIndex(target, { align: 'end' });
+      // dynamic-measured items settle after first paint — repeat once post-measurement
+      requestAnimationFrame(() => {
+        v?.scrollToIndex(target, { align: 'end' });
+      });
     }, 50);
   }
 
@@ -210,40 +234,50 @@
     </div>
 
     <!-- Messages scroll area -->
-    <div class="flex-1 min-h-0 overflow-y-auto p-3 px-4 flex flex-col gap-2 scrollbar-thin scrollbar-color-border" bind:this={scrollEl}>
+    <div class="flex-1 min-h-0 overflow-y-auto px-4 scrollbar-thin scrollbar-color-border" bind:this={scrollEl}>
       {#if loading}
-        <div class="flex-1 flex flex-col items-center justify-center gap-2.5 text-muted text-xs">
+        <div class="h-full flex flex-col items-center justify-center gap-2.5 text-muted text-xs">
           <div class="w-[22px] h-[22px] border-2 border-border border-t-accent rounded-full animate-spin"></div>
           <span>{m.sessions_loadingTranscript()}</span>
         </div>
       {:else if error}
-        <div class="flex-1 flex flex-col items-center justify-center gap-2.5 text-destructive text-xs">
+        <div class="h-full flex flex-col items-center justify-center gap-2.5 text-destructive text-xs">
           <span>{m.common_error()}: {error}</span>
         </div>
-      {:else if messages.filter((m) => m.content.trim()).length === 0}
-        <div class="flex-1 flex flex-col items-center justify-center gap-2.5 text-muted text-xs">
+      {:else if visible.length === 0}
+        <div class="h-full flex flex-col items-center justify-center gap-2.5 text-muted text-xs">
           <span>{m.sessions_noMessages()}</span>
         </div>
-      {:else}
-        {#each messages.filter((m) => m.content.trim()) as msg (msg.id)}
-          <div
-            class="max-w-[82%] px-3 py-2 rounded-lg text-xs leading-[1.55] break-words
-              {msg.role === 'user'
-                ? 'self-end bg-brand-pink text-white rounded-br-[3px] font-mono whitespace-pre-wrap'
-                : 'self-start bg-bg3 text-foreground rounded-bl-[3px] border border-border'}"
-          >
-            {#if msg.role === 'user'}
-              {msg.content}
-            {:else}
-              <MarkdownMessage value={msg.content} tone="assistant" />
-            {/if}
-            {#if msg.role !== 'user'}
-              <span class="block mt-1 text-right">
-                <AIDisclosureBadge />
-              </span>
-            {/if}
-          </div>
-        {/each}
+      {:else if v}
+        <div class="relative w-full" style="height:{v.getTotalSize()}px">
+          {#each v.getVirtualItems() as item (item.key)}
+            {@const msg = visible[item.index]}
+            <div
+              data-index={item.index}
+              {@attach (node) => v.measureElement(node)}
+              class="absolute left-0 right-0 flex {msg.role === 'user' ? 'justify-end' : 'justify-start'}"
+              style="transform: translateY({item.start}px)"
+            >
+              <div
+                class="max-w-[82%] px-3 py-2 rounded-lg text-xs leading-[1.55] break-words
+                  {msg.role === 'user'
+                    ? 'bg-brand-pink text-white rounded-br-[3px] font-mono whitespace-pre-wrap'
+                    : 'bg-bg3 text-foreground rounded-bl-[3px] border border-border'}"
+              >
+                {#if msg.role === 'user'}
+                  {msg.content}
+                {:else}
+                  <MarkdownMessage value={msg.content} tone="assistant" />
+                {/if}
+                {#if msg.role !== 'user'}
+                  <span class="block mt-1 text-right">
+                    <AIDisclosureBadge />
+                  </span>
+                {/if}
+              </div>
+            </div>
+          {/each}
+        </div>
       {/if}
     </div>
   {/if}

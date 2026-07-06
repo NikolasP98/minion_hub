@@ -21,6 +21,7 @@
     "@tailwindcss/vite": "^4.3.0",
     "@tanstack/svelte-hotkeys": "^0.10.0",
     "@tanstack/svelte-table": "9.0.0-alpha.10",
+    "@tanstack/virtual-core": "^3.17.3",
     "@tiptap/core": "^3",
     "@tiptap/extension-highlight": "^3.26.1",
     "@tiptap/extension-image": "^3.26.1",
