@@ -26,11 +26,14 @@ export async function loadAgentTools(agentId: string): Promise<void> {
 
 export async function toggleTool(agentId: string, toolId: string, enabled: boolean): Promise<void> {
   agentToolsState.error = null;
+  const tool = agentToolsState.tools.find((t) => t.id === toolId);
+  if (!tool) return;
+  const prevEnabled = tool.enabled;
+  tool.enabled = enabled; // optimistic
   try {
     await sendRequest('tools.update', { agentId, toolId, enabled });
-    const tool = agentToolsState.tools.find((t) => t.id === toolId);
-    if (tool) tool.enabled = enabled;
   } catch (e) {
+    tool.enabled = prevEnabled; // revert
     agentToolsState.error = String(e);
   }
 }

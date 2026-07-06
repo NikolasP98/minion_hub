@@ -48,17 +48,18 @@
 
   async function moveTask(taskId: string, newStatus: KanbanTask['status']) {
     if (!sessionKey) return;
-    // Optimistic update
     const tasks = sessionTasksState.tasksBySession[sessionKey];
-    if (tasks) {
-      const task = (tasks as KanbanTask[]).find((t) => t.id === taskId);
-      if (task) task.status = newStatus;
-    }
+    const task = tasks ? (tasks as KanbanTask[]).find((t) => t.id === taskId) : undefined;
+    if (!task || task.status === newStatus) return;
+
+    // Optimistic update, snapshot so a failed PATCH can revert the column.
+    const prevStatus = task.status;
+    task.status = newStatus;
 
     // Persist to API
     if (serverId) {
       try {
-        await fetch(
+        const res = await fetch(
           `/api/servers/${serverId}/sessions/${encodeURIComponent(sessionKey)}/tasks/${taskId}`,
           {
             method: 'PATCH',
@@ -66,7 +67,9 @@
             body: JSON.stringify({ status: newStatus }),
           },
         );
+        if (!res.ok) throw new Error(`task update failed (${res.status})`);
       } catch {
+        task.status = prevStatus;
         toastError('Failed to move task', 'The task status could not be updated.');
       }
     }

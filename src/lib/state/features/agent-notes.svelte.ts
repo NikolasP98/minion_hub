@@ -26,6 +26,8 @@ import {
   type TodoItem,
 } from '$lib/types/notes';
 
+import { toastError } from '$lib/state/ui/toast.svelte';
+
 export type { NoteColor, TodoItem, Attachment, EaselItem, NoteBlock };
 export type NoteKindClient = NoteKind;
 
@@ -179,7 +181,10 @@ export function setNoteIcon(id: string, icon: string): void {
 // queue work that lands before the create resolves.
 
 const serverIdOf: Record<string, string> = {};
+// deferred: keyed save debounce stays hand-rolled (pacer createKeyedDebouncer candidate)
 const saveTimer: Record<string, ReturnType<typeof setTimeout>> = {};
+/** clientIds that have already had one automatic save retry — bounds the retry to 1 attempt. */
+const saveRetried = new Set<string>();
 const dirtyDuringCreate = new Set<string>();
 const deleteAfterCreate = new Set<string>();
 const creating = new Set<string>();
@@ -189,6 +194,7 @@ function scheduleSave(clientId: string): void {
     dirtyDuringCreate.add(clientId);
     return;
   }
+  saveRetried.delete(clientId); // fresh edit resets the retry budget
   clearTimeout(saveTimer[clientId]);
   saveTimer[clientId] = setTimeout(() => void flushSave(clientId), 600);
 }
@@ -199,7 +205,7 @@ async function flushSave(clientId: string): Promise<void> {
   if (!serverId || !note) return;
   notesState.saving++;
   try {
-    await fetch(`/api/notes/${serverId}`, {
+    const res = await fetch(`/api/notes/${serverId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -209,8 +215,18 @@ async function flushSave(clientId: string): Promise<void> {
         data: toServerData(note),
       }),
     });
+    if (!res.ok) throw new Error(`save failed (${res.status})`);
+    saveRetried.delete(clientId);
   } catch {
-    /* keep local state; next edit retries */
+    // One bounded auto-retry (the debounce alone silently drifted before this fix);
+    // if that also fails, surface it — local state is kept either way.
+    if (saveRetried.has(clientId)) {
+      saveRetried.delete(clientId);
+      toastError('Note failed to save', 'Your edits are kept locally — edit the note again to retry.');
+    } else {
+      saveRetried.add(clientId);
+      saveTimer[clientId] = setTimeout(() => void flushSave(clientId), 3000);
+    }
   } finally {
     notesState.saving--;
   }
@@ -241,7 +257,7 @@ async function createRemote(note: AgentNote): Promise<void> {
     notesState.saving--;
     if (deleteAfterCreate.has(note.id)) {
       deleteAfterCreate.delete(note.id);
-      void deleteRemote(note.id);
+      void deleteRemote(note.id, note);
     } else if (dirtyDuringCreate.has(note.id)) {
       dirtyDuringCreate.delete(note.id);
       scheduleSave(note.id);
@@ -249,14 +265,18 @@ async function createRemote(note: AgentNote): Promise<void> {
   }
 }
 
-async function deleteRemote(clientId: string): Promise<void> {
+async function deleteRemote(clientId: string, note: AgentNote): Promise<void> {
   const serverId = serverIdOf[clientId];
   if (!serverId) return;
   delete serverIdOf[clientId];
   try {
-    await fetch(`/api/notes/${serverId}`, { method: 'DELETE' });
+    const res = await fetch(`/api/notes/${serverId}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(`delete failed (${res.status})`);
   } catch {
-    /* best-effort */
+    // Delete didn't land server-side — restore the note instead of silently dropping it.
+    serverIdOf[clientId] = serverId;
+    notesState.notes.push(note);
+    toastError('Failed to delete note', 'The note has been restored.');
   }
 }
 
@@ -562,10 +582,10 @@ export function updateNote(id: string, patch: Partial<Pick<AgentNote, 'title' | 
 export function deleteNote(id: string): void {
   const i = notesState.notes.findIndex((n) => n.id === id);
   if (i < 0) return;
-  notesState.notes.splice(i, 1);
+  const [note] = notesState.notes.splice(i, 1);
   clearTimeout(saveTimer[id]);
   if (creating.has(id)) deleteAfterCreate.add(id);
-  else void deleteRemote(id);
+  else void deleteRemote(id, note);
 }
 
 // ─── Auto-prune empty notes/blocks (on nav-away) ───

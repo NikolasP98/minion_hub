@@ -41,12 +41,14 @@ export async function setAgentSkills(agentId: string, skills: string[] | null): 
 
 export async function toggleGlobalSkill(skillKey: string, enabled: boolean): Promise<void> {
   agentSkillsState.error = null;
+  const skill = agentSkillsState.skills.find((s) => s.skillKey === skillKey);
+  if (!skill) return;
+  const prevDisabled = skill.disabled;
+  skill.disabled = !enabled; // optimistic
   try {
     await sendRequest('skills.update', { skillKey, enabled });
-    // Optimistically update local state
-    const skill = agentSkillsState.skills.find((s) => s.skillKey === skillKey);
-    if (skill) skill.disabled = !enabled;
   } catch (e) {
+    skill.disabled = prevDisabled; // revert
     agentSkillsState.error = String(e);
   }
 }
