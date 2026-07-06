@@ -258,18 +258,27 @@ export async function realizeAccruals(ctx: CoreCtx, input: RealizeInput): Promis
     if (!finProductId) return { entry: null, realized: 0, stockWarning: null };
     const warehouseId = input.warehouseId ?? open[0]?.warehouseId ?? (await resolveDefaultWarehouse(ctx));
     if (!warehouseId) throw new StockError('no warehouse configured', 'no_warehouse');
-    entry = await createServiceIssue(ctx, {
-      finProductId,
-      quantity: 1,
-      warehouseId,
-      partyId: input.partyId ?? null,
-      note: input.note ?? null,
-      lines,
-      submit: false,
-      actor: input.actor,
-      source: input.source,
-      sourceId: input.sourceId,
-    });
+    try {
+      entry = await createServiceIssue(ctx, {
+        finProductId,
+        quantity: 1,
+        warehouseId,
+        partyId: input.partyId ?? null,
+        note: input.note ?? null,
+        lines,
+        submit: false,
+        actor: input.actor,
+        source: input.source,
+        sourceId: input.sourceId,
+      });
+    } catch (e) {
+      if (e instanceof StockError) {
+        // Race (duplicate_source) or stale product — degrade like the submit
+        // path; a retry re-enters via findEntryBySource and heals.
+        return { entry: null, realized: 0, stockWarning: { code: e.code, message: e.message } };
+      }
+      throw e;
+    }
   }
 
   if (entry.status === 'draft') {

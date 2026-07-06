@@ -171,6 +171,23 @@ describe('realizeAccruals', () => {
     expect(r.realized).toBe(0);
     expect(db.update).not.toHaveBeenCalled(); // accruals untouched — still open
   });
+
+  it('a duplicate_source race in the create branch degrades to stockWarning, not a throw', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [
+        { id: 'a1', itemId: 'i1', qty: '0.01', qtyConsumption: '5', finProductId: 'p1', warehouseId: 'w1' },
+      ], // open accruals
+      [], // findEntryBySource → none (the race window)
+      // createServiceIssue's internal sequence:
+      [{ id: 'p1', name: 'Botox' }], // product lookup
+      [{ id: 'e-race' }], // dup guard FINDS the racing entry → StockError('duplicate_source')
+    ]);
+    const r = await realizeAccruals(ctx(db), { source: 'booking', sourceId: 'b1', actor });
+    expect(r.stockWarning).toMatchObject({ code: 'duplicate_source' });
+    expect(r.realized).toBe(0);
+    expect(db.update).not.toHaveBeenCalled();
+  });
 });
 
 describe('accrualSummaryForSources', () => {
