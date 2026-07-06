@@ -955,8 +955,9 @@ export interface CreateServiceIssueInput {
  * for a customer, no invoice required. Same append-only ledger path as the
  * invoice issue; the customer rides `party_id` and the procedure notes ride
  * `note`. metadata `{source:'service', finProductId, quantity}` mirrors the
- * invoice link so the item-detail "issued for" views can find it. No duplicate
- * guard — the same service is legitimately performed many times.
+ * invoice link so the item-detail "issued for" views can find it. Duplicate
+ * guard only when `sourceId` is set (booking/order provenance); plain service
+ * issues legitimately repeat.
  */
 export async function createServiceIssue(ctx: CoreCtx, input: CreateServiceIssueInput): Promise<StkEntry> {
   if (!input.lines.length) throw new StockError('at least one stock line is required', 'no_lines');

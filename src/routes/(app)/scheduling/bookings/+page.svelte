@@ -83,7 +83,12 @@
 					lines: positiveLines?.length ? positiveLines.map((l) => ({ itemId: l.itemId, qty: l.qty, qtyConsumption: l.qtyConsumption })) : null,
 				}),
 			});
-			const j = res.ok ? await res.json() : null;
+			if (!res.ok) {
+				stockWarnings = { ...stockWarnings, [id]: `complete failed (${res.status})` };
+				completeFor = null;
+				return;
+			}
+			const j = await res.json();
 			if (j?.stockWarning) stockWarnings = { ...stockWarnings, [id]: j.stockWarning.message as string };
 			else {
 				const next = { ...stockWarnings };
@@ -157,6 +162,7 @@
 	};
 	let nbLines = $state<ConsumptionLine[]>([]);
 	let nbHasMapping = $state(false);
+	let nbGen = 0; // generation token: guards against a stale fetch overwriting a newer selection
 
 	function setLineConsumption(l: ConsumptionLine, qtyConsumption: number) {
 		l.qtyConsumption = qtyConsumption;
@@ -164,6 +170,7 @@
 	}
 
 	async function loadConsumption() {
+		const gen = ++nbGen;
 		nbLines = [];
 		nbHasMapping = false;
 		const et = data.eventTypes.find((e) => e.id === nbEventType);
@@ -176,6 +183,7 @@
 			});
 			if (!res.ok) return; // no warehouse / stock off — block simply stays hidden
 			const j = await res.json();
+			if (gen !== nbGen) return; // a newer selection superseded this fetch
 			nbHasMapping = j.preview.hasMapping;
 			nbLines = j.preview.lines;
 		} catch {
@@ -310,10 +318,10 @@
 							{#if accrualBySource.get(b.id)}
 								{@const acc = accrualBySource.get(b.id)!}
 								{#if acc.open > 0}
-									<Badge>{m.sched_stock_committed({ value: acc.estValue.toFixed(2) })}</Badge>
+									<Badge variant="semantic" value="warning">{m.sched_stock_committed({ value: acc.estValue.toFixed(2) })}</Badge>
 								{:else if acc.realized > 0}
 									<a href={acc.realizedEntryId ? `/stock/entries/${acc.realizedEntryId}` : '/stock'} class="no-underline">
-										<Badge>{m.sched_stock_realized({ value: acc.realizedValue.toFixed(2) })}</Badge>
+										<Badge variant="semantic" value="success">{m.sched_stock_realized({ value: acc.realizedValue.toFixed(2) })}</Badge>
 									</a>
 								{:else}
 									<Badge>{m.sched_stock_released()}</Badge>

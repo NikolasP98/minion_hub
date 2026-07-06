@@ -27,6 +27,7 @@
 
   async function setDefault(id: string) {
     settingDefaultId = id;
+    err = null;
     try {
       const res = await fetch(`/api/stock/warehouses/${id}`, {
         method: 'PATCH',
@@ -34,6 +35,7 @@
         body: JSON.stringify({ isDefault: true }),
       });
       if (res.ok) await invalidate('stock:warehouses');
+      else err = m.stock_warehouse_save_failed();
     } finally {
       settingDefaultId = null;
     }
