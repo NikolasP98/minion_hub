@@ -497,6 +497,13 @@
 		return list;
 	});
 
+	// A real filter (search text or an enum filter) is active — as opposed to the
+	// windowing that always caps the render count. Only then is "showing N of M"
+	// meaningful; unfiltered, the count is just the total row count.
+	const filterActive = $derived(
+		search.trim().length > 0 || columns.some((c) => c.filter && filterSet(c.key).size > 0),
+	);
+
 	// ── Windowed rendering + expansion flattening ─────────────────────────────
 	// svelte-ignore state_referenced_locally
 	let renderLimit = $state(pageSize);
@@ -647,7 +654,9 @@
 			{#if selectedIds.size > 0}
 				<span class="dt-count text-accent">{m.data_table_selected({ n: selectedIds.size })}</span>
 			{:else}
-				<span class="dt-count tabular-nums">{m.data_table_showing({ shown: windowed.length, total: view.length })}</span>
+				<span class="dt-count tabular-nums">
+					{#if filterActive}{m.data_table_showing({ shown: view.length, total: data.length })}{:else}{m.data_table_rows({ total: data.length })}{/if}
+				</span>
 			{/if}
 
 			{#if bulkActions && bulkActions.length && selectedIds.size > 0}

@@ -1,9 +1,8 @@
 <script lang="ts">
-	import { invalidate } from '$app/navigation';
 	import * as m from '$lib/paraglide/messages';
 	import { SvelteSet } from 'svelte/reactivity';
 	import {
-		Sparkles, Check, GitMerge, Users, Wand2, Crown, Minus, Loader2,
+		Sparkles, Check, GitMerge, Users, Wand2, Crown, Minus, Loader2, ChevronRight,
 		CaseSensitive, CaseLower, CaseUpper, Space, SeparatorHorizontal,
 		Smile, Brackets, Asterisk, AtSign, TextQuote, CircleSlash, Tag,
 	} from 'lucide-svelte';
@@ -26,6 +25,10 @@
 	type Blank = { id: string; name: string | null; dni?: string | null; phone?: string | null; messages: number; identities?: ContactIdentity[] };
 
 	let { fixes, groups, blanks = [] }: { fixes: Fix[]; groups: DupGroup[]; blanks?: Blank[] } = $props();
+
+	// Every hygiene section opens collapsed — the page reads as a compact overview
+	// (title + count) until the user expands the one they want to work on.
+	let open = $state({ identity: false, blanks: false, dups: false });
 
 	// ── Identity Cleanup rows (local editable state) ──
 	type Row = {
@@ -174,6 +177,11 @@
 	// ── Duplicates ──
 	// The column-per-candidate resolver owns survivor choice + deselection; the
 	// inline list is a read-only preview. Anchor (survivor) = most-active member.
+	type GroupRow = DupGroup & { done?: boolean }; // merged this session — stays visible (green, disabled) until reload
+	// Seed once from the prop, like the Identity Cleanup rows — a merge marks the
+	// group done in place instead of reloading (no scroll jump, page stays usable).
+	// svelte-ignore state_referenced_locally
+	let groupRows = $state<GroupRow[]>(groups.map((g) => ({ ...g })));
 	let merging = $state<string | null>(null);
 	const previewSurvivor = (g: DupGroup): string =>
 		[...g.contacts].sort((a, b) => b.messages - a.messages)[0]?.id ?? '';
@@ -224,7 +232,10 @@
 			await applyContactMerge(res.survivorId, res.loserIds, res.resolved);
 			mergeOpen = false;
 			pendingGroup = null;
-			await invalidate('crm:cleanup');
+			// Mark done in place (green, disabled) instead of invalidating — the
+			// list never jumps and the page stays usable after each merge. The
+			// merged group won't return on the next full reload.
+			groupRows = groupRows.map((gr) => (gr.key === g.key ? { ...gr, done: true } : gr));
 		} catch {
 			mergeErr = m.crm_bulk_failed();
 		} finally {
@@ -275,32 +286,36 @@
 	<!-- Identity Cleanup -->
 	<section class="card">
 		<header class="sec-h">
-			<div class="flex items-center gap-2">
-				<button
-					class="selall"
-					role="checkbox"
-					aria-checked={allSelected ? 'true' : someSelected ? 'mixed' : 'false'}
-					title={m.crm_select_all()}
-					onclick={toggleAll}
-					disabled={rows.length === 0}
-				>
-					{#if allSelected}<Check size={11} strokeWidth={3} />{:else if someSelected}<Minus size={11} strokeWidth={3} />{:else}<Check size={11} class="ghost" />{/if}
-				</button>
+			<button type="button" class="sec-toggle" onclick={() => (open.identity = !open.identity)} aria-expanded={open.identity}>
+				<span class="chev" class:open={open.identity}><ChevronRight size={15} /></span>
 				<Wand2 size={16} class="text-accent" /><span>{m.crm_standardize_names()} ({rows.length})</span>
-			</div>
-			<div class="flex items-center gap-2">
-				<Button variant="outline" size="sm" onclick={runReview} disabled={reviewing || rows.length === 0}>
-					<Sparkles size={14} class={reviewing ? 'animate-pulse' : ''} />
-					{reviewing ? m.crm_reviewing() : m.crm_ai_review()}
-				</Button>
-				{#if batchMode}
-					<Button variant="primary" size="sm" onclick={applyAll} disabled={applyingBatch || applyCount === 0}>
-						<Check size={14} /> {m.crm_apply()} {applyCount}
+			</button>
+			{#if open.identity}
+				<div class="flex items-center gap-2">
+					<button
+						class="selall"
+						role="checkbox"
+						aria-checked={allSelected ? 'true' : someSelected ? 'mixed' : 'false'}
+						title={m.crm_select_all()}
+						onclick={toggleAll}
+						disabled={rows.length === 0}
+					>
+						{#if allSelected}<Check size={11} strokeWidth={3} />{:else if someSelected}<Minus size={11} strokeWidth={3} />{:else}<Check size={11} class="ghost" />{/if}
+					</button>
+					<Button variant="outline" size="sm" onclick={runReview} disabled={reviewing || rows.length === 0}>
+						<Sparkles size={14} class={reviewing ? 'animate-pulse' : ''} />
+						{reviewing ? m.crm_reviewing() : m.crm_ai_review()}
 					</Button>
-				{/if}
-			</div>
+					{#if batchMode}
+						<Button variant="primary" size="sm" onclick={applyAll} disabled={applyingBatch || applyCount === 0}>
+							<Check size={14} /> {m.crm_apply()} {applyCount}
+						</Button>
+					{/if}
+				</div>
+			{/if}
 		</header>
 
+		{#if open.identity}
 		{#if rows.length === 0}
 			<p class="t-caption py-3">{m.crm_all_clean()}</p>
 		{:else}
@@ -334,14 +349,19 @@
 				{/each}
 			</div>
 		{/if}
+		{/if}
 	</section>
 
 	<!-- Needs a name (blank / 1-char, manual) -->
 	{#if blankRows.length > 0}
 		<section class="card">
 			<header class="sec-h">
-				<div class="flex items-center gap-2"><CircleSlash size={16} class="text-accent" /><span>{m.crm_blanks_title()} ({blankRows.length})</span></div>
+				<button type="button" class="sec-toggle" onclick={() => (open.blanks = !open.blanks)} aria-expanded={open.blanks}>
+					<span class="chev" class:open={open.blanks}><ChevronRight size={15} /></span>
+					<CircleSlash size={16} class="text-accent" /><span>{m.crm_blanks_title()} ({blankRows.length})</span>
+				</button>
 			</header>
+			{#if open.blanks}
 			<p class="t-caption mb-2">{m.crm_blanks_hint()}</p>
 			<div class="rows">
 				{#each blankRows as b (b.id)}
@@ -372,29 +392,38 @@
 					</div>
 				{/each}
 			</div>
+			{/if}
 		</section>
 	{/if}
 
 	<!-- Duplicates -->
 	<section class="card">
 		<header class="sec-h">
-			<div class="flex items-center gap-2"><Users size={16} class="text-accent" /><span>{m.crm_possible_duplicates()} ({groups.length})</span></div>
+			<button type="button" class="sec-toggle" onclick={() => (open.dups = !open.dups)} aria-expanded={open.dups}>
+				<span class="chev" class:open={open.dups}><ChevronRight size={15} /></span>
+				<Users size={16} class="text-accent" /><span>{m.crm_possible_duplicates()} ({groupRows.length})</span>
+			</button>
 		</header>
-		{#if groups.length === 0}
+		{#if open.dups}
+		{#if groupRows.length === 0}
 			<p class="t-caption py-3">{m.crm_no_duplicates()}</p>
 		{:else}
 			<p class="t-caption mb-2">{m.crm_duplicates_hint()}</p>
 			<div class="flex flex-col gap-3">
-				{#each groups as g (g.key)}
+				{#each groupRows as g (g.key)}
 					{@const weak = g.confidence < 0.4}
 					{@const anchor = previewSurvivor(g)}
-					<div class="group">
+					<div class="group" class:done={g.done}>
 						<div class="group-h">
 							<span class="reason">{g.reason === 'dni' ? `DNI ${g.key}` : m.crm_dup_same_name()}</span>
 							{#if g.confidence >= 0.7}<span class="badge strong">{m.crm_dup_strong()}</span>{:else if weak}<span class="badge soft">{m.crm_dup_weak()}</span>{/if}
-							<Button variant={weak ? 'outline' : 'secondary'} size="sm" class="ml-auto" onclick={() => openMerge(g)} disabled={merging === g.key}>
-								<GitMerge size={14} /> {merging === g.key ? m.crm_merging() : m.crm_merge()}
-							</Button>
+							{#if g.done}
+								<span class="badge strong ml-auto merged"><Check size={12} /> {m.crm_merged()}</span>
+							{:else}
+								<Button variant={weak ? 'outline' : 'secondary'} size="sm" class="ml-auto" onclick={() => openMerge(g)} disabled={merging === g.key}>
+									<GitMerge size={14} /> {merging === g.key ? m.crm_merging() : m.crm_merge()}
+								</Button>
+							{/if}
 						</div>
 						{#each g.contacts as c (c.id)}
 							{@const primary = anchor === c.id}
@@ -420,7 +449,7 @@
 				{/each}
 			</div>
 		{/if}
-	</section>
+		{/if}	</section>
 </div>
 
 <CrmMergeResolver
@@ -435,6 +464,13 @@
 <style>
 	.card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); padding: 0.85rem 1rem; }
 	.sec-h { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; font-weight: 600; margin-bottom: 0.5rem; }
+	/* Collapsible section header: chevron + icon + title, whole cluster toggles. */
+	.sec-toggle { display: flex; align-items: center; gap: 0.5rem; background: none; border: none; padding: 0; margin: 0; font: inherit; font-weight: 600; color: inherit; cursor: pointer; min-width: 0; }
+	.chev { display: inline-grid; place-items: center; color: var(--color-muted-foreground); transition: transform var(--duration-fast) var(--ease-standard); }
+	.chev.open { transform: rotate(90deg); }
+	.merged { display: inline-flex; align-items: center; gap: 0.2rem; }
+	/* Merged this session — dim the group, matching the done rows above. */
+	.group.done { background: color-mix(in srgb, var(--color-success) 8%, transparent); border-color: color-mix(in srgb, var(--color-success) 30%, var(--hairline)); opacity: 0.75; }
 
 	/* round tri-state select-all */
 	.selall { width: 17px; height: 17px; border-radius: 999px; border: 1.5px solid var(--color-accent); display: grid; place-items: center; background: transparent; color: var(--color-accent); cursor: pointer; padding: 0; flex-shrink: 0; }

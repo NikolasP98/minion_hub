@@ -25,6 +25,13 @@
 			!WORKSHOP_NON_IMMERSIVE.test(page.url.pathname),
 	);
 
+	// Fade wrapper keys on the top-level module segment, NOT the full pathname:
+	// keying on the full path tore the whole routed subtree down on every nav,
+	// recreating the module's side-nav (CrmNav/FinanceNav/…) and resetting its
+	// scroll. Segment-keyed, module layouts persist across sub-page navigation
+	// (scroll kept); the fade still plays when switching between modules.
+	const moduleKey = $derived(page.url.pathname.split('/')[1] ?? '');
+
 	onMount(() => {
 		void ensurePermissions();
 		void hydratePluginNav();
@@ -39,7 +46,7 @@
 		<Topbar />
 		<ConnectionBanner />
 		<div class="flex-1 min-h-0 overflow-y-auto">
-			{#key page.url.pathname}
+			{#key moduleKey}
 				<div in:fadeIn={{ duration: 200 }} class="h-full">
 					{@render children()}
 				</div>
