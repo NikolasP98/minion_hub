@@ -6,6 +6,8 @@
 	import CommandPalette from '$lib/components/layout/CommandPalette.svelte';
 	import LiveRunWidget from '$lib/components/sessions/LiveRunWidget.svelte';
 	import FloatingAssistant from '$lib/components/layout/FloatingAssistant.svelte';
+	import ShortcutsOverlay from '$lib/components/layout/ShortcutsOverlay.svelte';
+	import GNav from '$lib/components/layout/GNav.svelte';
 	import { type Snippet } from 'svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
@@ -52,3 +54,5 @@
 <CommandPalette />
 <LiveRunWidget />
 <FloatingAssistant />
+<ShortcutsOverlay />
+<GNav />

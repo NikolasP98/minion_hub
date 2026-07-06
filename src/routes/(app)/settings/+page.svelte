@@ -98,7 +98,7 @@
     // Cmd/Ctrl+S saves the gateway config when dirty.
     createHotkey('Mod+S', () => {
         if (isDirty.value) save();
-    }, { meta: { name: 'Save settings', description: 'Save gateway configuration' } });
+    }, { meta: { name: m.shortcuts_saveSettingsName(), description: m.shortcuts_saveSettingsDesc() } });
 
     // Gateway-config tabs hosted on this page (ai/agents/comms/security/system).
     // appearance + backups are now their own routes; gateway connections live at

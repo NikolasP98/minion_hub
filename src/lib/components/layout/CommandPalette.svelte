@@ -67,7 +67,7 @@
 
     // Global: open/close the palette (fires anywhere, including inside inputs).
     createHotkey('Mod+K', () => togglePalette(), {
-        meta: { name: 'Command palette', description: 'Open the command palette' },
+        meta: { name: m.shortcuts_commandPaletteName(), description: m.shortcuts_commandPaletteDesc() },
     });
 
     // View-scoped: list navigation, live only while the palette is open. The

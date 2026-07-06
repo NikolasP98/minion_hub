@@ -139,7 +139,7 @@
   // Cmd/Ctrl+S for inline save.
   createHotkey('Mod+S', () => {
     if (editorActive && promptSections.isDirty && !saving) void handleSave();
-  }, { meta: { name: 'Save section', description: 'Save the edited prompt section' } });
+  }, { meta: { name: m.shortcuts_saveSectionName(), description: m.shortcuts_saveSectionDesc() } });
 
   const isSingleCustom = $derived(editorActive !== null);
 </script>
