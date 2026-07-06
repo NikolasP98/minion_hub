@@ -14,6 +14,13 @@
 	import ChatTurn from '$lib/components/my-agent/ChatTurn.svelte';
 	import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
 	import type { ChatMessage } from '$lib/types/chat';
+	import {
+		contentBlocks,
+		isToolResultOnly,
+		assistantHasContent,
+		toolResultsById as computeToolResultsById,
+		type ToolResult,
+	} from '$lib/chat/blocks';
 	import { notesState, loadNotes } from '$lib/state/features/agent-notes.svelte';
 	import { conn } from '$lib/state/gateway';
 	import { agentChat, ensureAgentChat } from '$lib/state/chat/chat.svelte';
@@ -270,79 +277,13 @@
 	const sending = $derived(chat?.sending ?? false);
 
 	// ─── Rich content-block helpers (thinking + tools, claude-desktop style) ───
-
-	type Block = { type?: string; [k: string]: unknown };
-	function contentBlocks(m: ChatMessage | null | undefined): Block[] {
-		return m && Array.isArray(m.content) ? (m.content as Block[]) : [];
-	}
-	function stringifyToolResult(content: unknown): string {
-		if (typeof content === 'string') return content;
-		if (Array.isArray(content)) {
-			return (content as Block[])
-				.map((p) => (p?.type === 'text' && typeof p.text === 'string' ? (p.text as string) : ''))
-				.filter(Boolean)
-				.join('\n');
-		}
-		try {
-			return JSON.stringify(content, null, 2);
-		} catch {
-			return String(content ?? '');
-		}
-	}
+	// Hoisted to $lib/chat/blocks.ts — shared across all 5 chat surfaces.
 
 	// tool_use_id → result, collected across the whole thread (results live in the
 	// following user-role turn) so each tool card can show its outcome.
-	const toolResultsById = $derived.by<Record<string, { content: string; isError: boolean }>>(() => {
-		const map: Record<string, { content: string; isError: boolean }> = {};
-		const scan = (m: ChatMessage | null | undefined) => {
-			if (!m) return;
-			// Gateway-native schema: a whole message with role 'toolResult'
-			// (`{role:'toolResult', toolCallId, toolName, content:[{type:'text'}], isError}`).
-			const mm = m as unknown as {
-				role?: string;
-				content?: unknown;
-				toolCallId?: string;
-				isError?: boolean;
-			};
-			if (mm.role === 'toolResult' && typeof mm.toolCallId === 'string') {
-				map[mm.toolCallId] = {
-					content: stringifyToolResult(mm.content),
-					isError: !!mm.isError
-				};
-				return;
-			}
-			// Anthropic-style: tool_result blocks inside a (user-role) message.
-			for (const b of contentBlocks(m)) {
-				if (b?.type === 'tool_result' && typeof b.tool_use_id === 'string') {
-					map[b.tool_use_id] = {
-						content: stringifyToolResult(b.content),
-						isError: !!b.is_error
-					};
-				}
-			}
-		};
-		for (const m of messages) scan(m as ChatMessage);
-		scan(streamMessage);
-		return map;
-	});
-
-	// A message is "tool-result only" (a tool-output carrier turn) → folded into
-	// the tool cards rather than shown as its own bubble.
-	function isToolResultOnly(m: ChatMessage): boolean {
-		// Gateway-native carrier: a whole message with role 'toolResult'.
-		if ((m as { role?: string }).role === 'toolResult') return true;
-		const blocks = contentBlocks(m);
-		if (blocks.length === 0) return false;
-		return blocks.every((b) => b?.type === 'tool_result');
-	}
-	function assistantHasContent(m: ChatMessage): boolean {
-		if (typeof m.content === 'string') return m.content.trim().length > 0;
-		return contentBlocks(m).some((b) =>
-			['text', 'thinking', 'redacted_thinking', 'tool_use', 'toolCall', 'image', 'image_url'].includes(
-				b?.type ?? ''
-			)
-		);
-	}
+	const toolResultsById = $derived.by<Record<string, ToolResult>>(() =>
+		computeToolResultsById(streamMessage ? [...messages, streamMessage] : messages)
+	);
 
 	// Stable per-row key derived from content (NOT array index) — so reconciling
 	// server history into the optimistic thread reuses DOM instead of re-mounting
@@ -352,7 +293,7 @@
 			msgRole(m) === 'user'
 				? cleanInboundForDisplay(extractText(m) ?? '')
 				: stripVoiceTurnPrefix(extractText(m) ?? '');
-		const toolNames = contentBlocks(m)
+		const toolNames = contentBlocks(m.content)
 			.filter((b) => b?.type === 'tool_use' || b?.type === 'toolCall')
 			.map((b) => b.name)
 			.join(',');
@@ -390,7 +331,7 @@
 	// is streaming, shown directly). Drives the activity line under the thread.
 	const streamActivity = $derived.by<string | null>(() => {
 		if (!streamMessage) return null;
-		const blocks = contentBlocks(streamMessage);
+		const blocks = contentBlocks(streamMessage.content);
 		if (blocks.length === 0) return 'Thinking…';
 		const last = [...blocks].reverse().find((b) => b?.type);
 		if (!last) return 'Thinking…';

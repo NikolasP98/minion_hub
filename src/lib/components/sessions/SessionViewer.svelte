@@ -4,7 +4,13 @@
   import type { SessionRow } from './SessionsList.svelte';
   import * as m from '$lib/paraglide/messages';
   import AIDisclosureBadge from '$lib/components/chat/AIDisclosureBadge.svelte';
-  import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
+  import ChatBlocks from '$lib/chat/ChatBlocks.svelte';
+  import {
+    normalizeBlocks,
+    isToolResultOnly,
+    assistantHasContent,
+    toolResultsById as computeToolResultsById,
+  } from '$lib/chat/blocks';
   import { createVirtualizer } from '$lib/virtual/virtualizer.svelte';
 
   let {
@@ -23,7 +29,10 @@
     agentId: string;
     sessionKey: string;
     role: string;
-    content: string;
+    // DB-cached rows always flatten to a string; the WS-direct fallback path
+    // (cache miss + re-fetch failure) can still carry the raw block array —
+    // ChatBlocks/normalizeBlocks handle both shapes uniformly.
+    content: string | unknown[];
     runId: string | null;
     timestamp: number;
     createdAt: number;
@@ -40,15 +49,13 @@
   let error = $state<string | null>(null);
   let scrollEl = $state<HTMLDivElement | null>(null);
 
-  function extractContent(msg: WsMessage): string {
-    if (typeof msg.content === 'string') return msg.content;
-    if (Array.isArray(msg.content)) {
-      return (msg.content as Array<{ type?: string; text?: string }>)
-        .filter((b) => b.type === 'text')
-        .map((b) => b.text ?? '')
-        .join('');
-    }
-    return String(msg.content ?? '');
+  /** Plain-text rendering for user-role bubbles (no block/tool chrome needed there). */
+  function userText(content: string | unknown[]): string {
+    if (typeof content === 'string') return content;
+    return normalizeBlocks(content)
+      .filter((b) => b.kind === 'text')
+      .map((b) => b.text)
+      .join('\n');
   }
 
   function relTime(ts: number): string {
@@ -113,14 +120,17 @@
             messages = refetchData.messages ?? [];
           }
         } catch {
-          // Show WS messages directly as fallback
+          // Show WS messages directly as fallback — keep the raw content (may
+          // still be a block array) so tool/thinking blocks render if present.
           messages = wsMsgs.map((m, i) => ({
             id: String(i),
             serverId: sid,
             agentId: session?.agentId ?? '',
             sessionKey: sk,
             role: m.role,
-            content: extractContent(m),
+            content: Array.isArray(m.content) || typeof m.content === 'string'
+              ? m.content
+              : String(m.content ?? ''),
             runId: null,
             timestamp: m.timestamp ?? Date.now(),
             createdAt: m.timestamp ?? Date.now(),
@@ -135,7 +145,13 @@
     }
   }
 
-  const visible = $derived(messages.filter((msg) => msg.content.trim()));
+  const visible = $derived(
+    messages.filter((msg) => !isToolResultOnly(msg) && assistantHasContent(msg)),
+  );
+
+  // Historical transcript — no live tool run, so pull results from whatever
+  // tool_result/toolResult carriers exist in the loaded message list itself.
+  const toolResultsById = $derived(computeToolResultsById(messages));
 
   const v = $derived(
     scrollEl
@@ -258,23 +274,20 @@
               class="absolute left-0 right-0 flex {msg.role === 'user' ? 'justify-end' : 'justify-start'}"
               style="transform: translateY({item.start}px)"
             >
-              <div
-                class="max-w-[82%] px-3 py-2 rounded-lg text-xs leading-[1.55] break-words
-                  {msg.role === 'user'
-                    ? 'bg-brand-pink text-white rounded-br-[3px] font-mono whitespace-pre-wrap'
-                    : 'bg-bg3 text-foreground rounded-bl-[3px] border border-border'}"
-              >
-                {#if msg.role === 'user'}
-                  {msg.content}
-                {:else}
-                  <MarkdownMessage value={msg.content} tone="assistant" />
-                {/if}
-                {#if msg.role !== 'user'}
-                  <span class="block mt-1 text-right">
+              {#if msg.role === 'user'}
+                <div class="max-w-[82%] px-3 py-2 rounded-lg text-xs leading-[1.55] break-words bg-brand-pink text-white rounded-br-[3px] font-mono whitespace-pre-wrap">
+                  {userText(msg.content)}
+                </div>
+              {:else}
+                <!-- ChatBlocks owns the answer bubble itself (meta rows outside,
+                     reply inside) — same as ChatTurn's usage on /home. -->
+                <div class="max-w-[82%] flex flex-col gap-0.5">
+                  <ChatBlocks message={msg} toolResults={toolResultsById} compact />
+                  <span class="block text-right px-1">
                     <AIDisclosureBadge />
                   </span>
-                {/if}
-              </div>
+                </div>
+              {/if}
             </div>
           {/each}
         </div>

@@ -22,6 +22,12 @@
     import { buildAssistantContext } from '$lib/state/features/assistant-context';
     import { extractText } from '$lib/utils/text';
     import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
+    import ChatBlocks from '$lib/chat/ChatBlocks.svelte';
+    import {
+        isToolResultOnly,
+        assistantHasContent,
+        toolResultsById as computeToolResultsById,
+    } from '$lib/chat/blocks';
     import { page } from '$app/state';
     import { onMount, tick } from 'svelte';
     import { createHotkey, formatForDisplay } from '$lib/hotkeys';
@@ -172,15 +178,9 @@
         return (msg as { timestamp?: number }).timestamp;
     }
 
-    // A pure tool-result carrier (gateway role 'toolResult', or content that is
-    // only tool_result blocks). Its text is raw JSON the model consumes — never
-    // show it as a chat bubble. Mirrors /home's isToolResultOnly.
-    function isToolResultOnly(msg: unknown): boolean {
-        const m = msg as { role?: string; content?: unknown };
-        if (m.role === 'toolResult') return true;
-        const blocks = Array.isArray(m.content) ? (m.content as Array<{ type?: string }>) : [];
-        return blocks.length > 0 && blocks.every((b) => b?.type === 'tool_result');
-    }
+    // tool_use_id → result, collected across the whole thread, so assistant
+    // turns rendered via ChatBlocks can show tool card outcomes.
+    const toolResultsById = $derived(computeToolResultsById(messages));
 
     // On /my-agent the user is already in a full chat with this same personal
     // agent (same thread, same AI), so the floating assistant is redundant
@@ -560,20 +560,25 @@
             {:else}
                 {#each messages as msg, i (`${msgTs(msg) ?? ''}_${i}`)}
                     {@const role = msgRole(msg)}
-                    {@const text = isToolResultOnly(msg) ? '' : role === 'user' ? cleanInboundForDisplay(extractText(msg) ?? '') : (extractText(msg) ?? '')}
-                    {#if text}
-                        <div class="flex flex-col gap-0.5 {role === 'user' ? 'items-end' : 'items-start'}">
-                            <div
-                                class="max-w-[85%] rounded-lg px-3 py-2 text-[12px] leading-relaxed break-words {role === 'user'
-                                    ? 'bg-accent/15 text-foreground border border-accent/20 whitespace-pre-wrap'
-                                    : 'bg-bg3 text-foreground border border-border/60'}"
-                            >
-                                {#if role === 'assistant'}
-                                    <MarkdownMessage value={text} tone="assistant" />
-                                {:else}
+                    {#if isToolResultOnly(msg)}
+                        <!-- tool-output carrier turn — folded into the matching tool card, not its own bubble -->
+                    {:else if role === 'user'}
+                        {@const text = cleanInboundForDisplay(extractText(msg) ?? '')}
+                        {#if text}
+                            <div class="flex flex-col gap-0.5 items-end">
+                                <div class="max-w-[85%] rounded-lg px-3 py-2 text-[12px] leading-relaxed break-words bg-accent/15 text-foreground border border-accent/20 whitespace-pre-wrap">
                                     {text}
+                                </div>
+                                {#if msgTs(msg)}
+                                    <span class="text-[9px] text-muted-strong px-1 tabular-nums">
+                                        {fmtTime(msgTs(msg))}
+                                    </span>
                                 {/if}
                             </div>
+                        {/if}
+                    {:else if assistantHasContent(msg)}
+                        <div class="flex flex-col gap-0.5 items-start">
+                            <ChatBlocks message={msg} toolResults={toolResultsById} compact />
                             {#if msgTs(msg)}
                                 <span class="text-[9px] text-muted-strong px-1 tabular-nums">
                                     {fmtTime(msgTs(msg))}
