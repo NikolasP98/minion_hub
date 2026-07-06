@@ -2,7 +2,7 @@
   import type { PageData } from './$types';
   import { invalidate } from '$app/navigation';
   import * as m from '$lib/paraglide/messages';
-  import { Warehouse as WarehouseIcon, Plus } from 'lucide-svelte';
+  import { Warehouse as WarehouseIcon, Plus, Star } from 'lucide-svelte';
   import { PageHeader, Button, Modal } from '$lib/components/ui';
   import { canAct } from '$lib/access/can.svelte';
   import { buildWarehouseTree } from '$lib/components/stock/stock-ui';
@@ -21,6 +21,22 @@
     formName = '';
     err = null;
     formOpen = true;
+  }
+
+  let settingDefaultId = $state<string | null>(null);
+
+  async function setDefault(id: string) {
+    settingDefaultId = id;
+    try {
+      const res = await fetch(`/api/stock/warehouses/${id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ isDefault: true }),
+      });
+      if (res.ok) await invalidate('stock:warehouses');
+    } finally {
+      settingDefaultId = null;
+    }
   }
 
   async function save() {
@@ -73,6 +89,18 @@
         {#each tree as w (w.id)}
           <li class="row" style="padding-left: {w.depth * 1.5}rem">
             <span class="name">{w.name}</span>
+            {#if w.isDefault}
+              <span class="default-badge"><Star size={12} fill="currentColor" /> {m.stock_wh_default()}</span>
+            {:else}
+              <button
+                class="add-child"
+                onclick={() => setDefault(w.id)}
+                disabled={!canAct('stock', 'edit') || settingDefaultId === w.id}
+                title={canAct('stock', 'edit') ? m.stock_wh_set_default() : m.no_permission()}
+              >
+                <Star size={12} /> {m.stock_wh_set_default()}
+              </button>
+            {/if}
             <button
               class="add-child"
               onclick={() => openNew(w.id)}
@@ -109,6 +137,7 @@
   .add-child { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.72rem; color: var(--color-muted-foreground); background: transparent; border: 1px solid var(--hairline); border-radius: var(--radius-sm); padding: 0.15rem 0.5rem; cursor: pointer; }
   .add-child:hover { color: var(--color-foreground); background: rgba(255, 255, 255, 0.05); }
   .add-child:disabled { opacity: 0.5; cursor: not-allowed; }
+  .default-badge { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.72rem; color: var(--color-warning, #d4a017); }
   .fld { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.78rem; color: var(--color-muted-foreground); }
   .inp { height: 1.75rem; padding: 0 0.5rem; font-size: 0.82rem; border-radius: var(--radius-sm); background: var(--color-bg3); border: 1px solid var(--hairline); color: var(--color-foreground); }
   .err-msg { font-size: 0.8rem; color: var(--color-destructive); }

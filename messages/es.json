@@ -3647,6 +3647,8 @@
   "stock_add_child": "Agregar sub-almacén",
   "stock_warehouse_cycle_error": "Eso crearía un ciclo en el árbol de almacenes.",
   "stock_warehouse_save_failed": "No se pudo guardar el almacén.",
+  "stock_wh_default": "Predeterminado",
+  "stock_wh_set_default": "Definir como predeterminado",
   "stock_entries_title": "Movimientos de stock",
   "stock_entries_subtitle": "Entradas, salidas, transferencias y ajustes.",
   "stock_entries_empty": "Aún no hay movimientos de stock.",

@@ -13,6 +13,7 @@ import {
   setConsumption,
   createItem,
   updateItem,
+  updateWarehouse,
 } from './stock.service';
 
 beforeEach(() => {
@@ -552,5 +553,18 @@ describe('updateItem — uom cross-field validation (merged against the current 
     ]);
     const row = await updateItem(ctx(db), 'i1', { consumptionUom: 'ml' });
     expect(row).toMatchObject({ consumptionUom: 'ml' });
+  });
+});
+
+describe('updateWarehouse — default flag', () => {
+  it('setting a default clears the previous one first (partial uniq would reject otherwise)', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [], // clear-others update
+      [{ id: 'w2', orgId: 'org-1', name: 'B', isDefault: true }], // update(...).returning()
+    ]);
+    const w = await updateWarehouse(ctx(db), 'w2', { isDefault: true });
+    expect(w?.isDefault).toBe(true);
+    expect(db.update).toHaveBeenCalledTimes(2);
   });
 });

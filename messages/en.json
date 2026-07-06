@@ -3647,6 +3647,8 @@
   "stock_add_child": "Add sub-warehouse",
   "stock_warehouse_cycle_error": "That would create a cycle in the warehouse tree.",
   "stock_warehouse_save_failed": "Couldn't save the warehouse.",
+  "stock_wh_default": "Default",
+  "stock_wh_set_default": "Set as default",
   "stock_entries_title": "Stock entries",
   "stock_entries_subtitle": "Receipts, issues, transfers, and adjustments.",
   "stock_entries_empty": "No stock entries yet.",

@@ -9,6 +9,7 @@ import { handleStockError } from '../../_errors';
 const patchSchema = z.object({
   name: z.string().min(1).max(500).optional(),
   parentId: z.string().max(200).nullable().optional(),
+  isDefault: z.boolean().optional(),
 });
 
 /** PATCH /api/stock/warehouses/:id */

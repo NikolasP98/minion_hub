@@ -20,6 +20,7 @@ export interface WarehouseRow {
   id: string;
   name: string;
   parentId: string | null;
+  isDefault?: boolean;
 }
 export interface WarehouseTreeRow extends WarehouseRow {
   depth: number;

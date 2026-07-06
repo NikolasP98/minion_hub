@@ -144,7 +144,7 @@ export function listWarehouses(ctx: CoreCtx): Promise<StkWarehouse[]> {
   return withOrgCore(ctx, (tx) => tx.select().from(stkWarehouses).where(eq(stkWarehouses.orgId, ctx.tenantId)).orderBy(asc(stkWarehouses.name)));
 }
 
-export type NewWarehouseInput = { name: string; parentId?: string | null };
+export type NewWarehouseInput = { name: string; parentId?: string | null; isDefault?: boolean };
 
 export async function createWarehouse(ctx: CoreCtx, input: NewWarehouseInput): Promise<StkWarehouse> {
   return withOrgCore(ctx, async (tx) => {
@@ -162,6 +162,14 @@ export async function updateWarehouse(ctx: CoreCtx, id: string, patch: Partial<N
     if (patch.parentId !== undefined && patch.parentId !== null) {
       const all = await tx.select({ id: stkWarehouses.id, parentId: stkWarehouses.parentId }).from(stkWarehouses).where(eq(stkWarehouses.orgId, ctx.tenantId));
       if (wouldCreateCycle(all, id, patch.parentId)) throw new StockError('would create a cycle in the warehouse tree', 'cycle');
+    }
+    if (patch.isDefault === true) {
+      // Partial unique index on (org_id) WHERE is_default rejects a second
+      // default in the same org — clear the existing one first, same tx.
+      await tx
+        .update(stkWarehouses)
+        .set({ isDefault: false, updatedAt: new Date() })
+        .where(and(eq(stkWarehouses.orgId, ctx.tenantId), eq(stkWarehouses.isDefault, true)));
     }
     const [row] = await tx
       .update(stkWarehouses)
