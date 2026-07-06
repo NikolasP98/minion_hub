@@ -35,6 +35,7 @@
 <script lang="ts">
   import { Search } from 'lucide-svelte';
   import NavIcon from '$lib/components/layout/NavIcon.svelte';
+  import { persistScroll } from '$lib/actions/persist-scroll';
 
   interface Props {
     /** Accepts a flat item list or grouped sections (detected by `.items`). */
@@ -90,6 +91,9 @@
       .map((g) => ({ ...g, items: g.items.filter(matches) }))
       .filter((g) => g.items.length > 0),
   );
+
+  // Preserve this nav's scroll position across navigation (each nav keyed distinctly).
+  const scrollKey = $derived(`sidenav:${ariaLabel ?? header ?? 'default'}`);
 </script>
 
 <aside
@@ -111,7 +115,7 @@
     </div>
   {/if}
 
-  <nav class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 py-3 flex flex-col gap-0.5" class:no-search-pad={search?.enabled}>
+  <nav use:persistScroll={scrollKey} class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 py-3 flex flex-col gap-0.5" class:no-search-pad={search?.enabled}>
     {#if header}
       <div class="set-head t-label hidden xl:block">{header}</div>
     {/if}

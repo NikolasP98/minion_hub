@@ -23,6 +23,7 @@
   import { pluginNavState } from '$lib/state/plugin-nav.svelte';
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
   import { canClient } from '$lib/access/can.svelte';
+  import { persistScroll } from '$lib/actions/persist-scroll';
   import * as m from '$lib/paraglide/messages';
   import FinanceSyncBadge from '$lib/components/finance/FinanceSyncBadge.svelte';
   import { financeSync } from '$lib/state/features/finance-sync.svelte';
@@ -288,7 +289,7 @@
     <div class="h-px bg-[var(--hairline)] my-1.5 mx-2"></div>
   {/if}
 
-  <nav class="sidebar-nav flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 py-1 flex flex-col gap-0.5">
+  <nav use:persistScroll={'main-sidebar'} class="sidebar-nav flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 py-1 flex flex-col gap-0.5">
     {#each orderedSections as section (section.id)}
       {@const items = orderedItems(section).filter((it) => !it.requires || canClient(it.requires))}
       {@const hasSubs = (section.subsections?.length ?? 0) > 0}
