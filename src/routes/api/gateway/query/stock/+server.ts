@@ -2,14 +2,16 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { requireAssistantCapability } from '../../_shared/action-auth';
 import { getBins, getLedger, listConsumption, getItemUomInfo } from '$server/services/stock.service';
+import { listAccruals } from '$server/services/stock-accruals.service';
 
 /**
- * GET /api/gateway/query/stock?agentId=personal-<uuid>[&orgId=]&mode=levels|movements|valuation|consumption[&itemId=][&warehouseId=][&finProductId=]
+ * GET /api/gateway/query/stock?agentId=personal-<uuid>[&orgId=]&mode=levels|movements|valuation|consumption|accruals[&itemId=][&warehouseId=][&finProductId=][&status=][&source=]
  *
  * `levels` (default) — bin quantities, optionally filtered by item/warehouse.
  * `movements` — ledger rows for one item (itemId required), optionally filtered by warehouse.
  * `valuation` — same bins as `levels` plus a summed total (qty * valuationRate).
  * `consumption` — the fin_product → stk_item consumption map, optionally filtered by finProductId/itemId.
+ * `accruals` — open/realized/released accrual rows, optionally filtered by status/source/itemId.
  */
 export const GET: RequestHandler = async ({ locals, url }) => {
 	const { ctx } = await requireAssistantCapability(locals, url, 'stock', 'view');
@@ -27,6 +29,15 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 		const finProductId = url.searchParams.get('finProductId') ?? undefined;
 		const consumption = await listConsumption(ctx, { finProductId, itemId });
 		return json({ mode, consumption });
+	}
+
+	if (mode === 'accruals') {
+		const accruals = await listAccruals(ctx, {
+			status: url.searchParams.get('status') ?? undefined,
+			source: url.searchParams.get('source') ?? undefined,
+			itemId: itemId ?? undefined,
+		});
+		return json({ mode, accruals });
 	}
 
 	const bins = await getBins(ctx, { itemId, warehouseId });
