@@ -1,5 +1,7 @@
 <script lang="ts">
   import { goto, invalidate } from '$app/navigation';
+  import { createHotkey } from '$lib/hotkeys';
+  import * as m from '$lib/paraglide/messages';
   import type { PageData } from './$types';
   import OrbAnimation from '$lib/components/onboarding/OrbAnimation.svelte';
   import StepAwaken from '$lib/components/onboarding/StepAwaken.svelte';
@@ -34,6 +36,15 @@
 
   function next() { if (step < totalSteps) step++; }
   function prev() { if (step > 1 && !creating) step--; }
+
+  // Bare arrows are input-safe by lib default — won't fire while typing in
+  // this page's text fields (name, timezone, etc.).
+  createHotkey('ArrowRight', next, {
+    meta: { name: m.shortcuts_onboardingNext() },
+  });
+  createHotkey('ArrowLeft', prev, {
+    meta: { name: m.shortcuts_onboardingPrev() },
+  });
 
   function personalityText(): string {
     const vibe = {

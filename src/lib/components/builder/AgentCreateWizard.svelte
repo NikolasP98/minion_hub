@@ -15,6 +15,7 @@
     import type { SkillStatusEntry, SkillStatusReport } from "$lib/types/skills";
     import type { ToolStatusEntry, ToolsStatusReport } from "$lib/types/tools";
     import * as m from '$lib/paraglide/messages';
+    import { createHotkey } from '$lib/hotkeys';
     import Step0Identity from "./_agent-create-wizard/Step0Identity.svelte";
     import Step1SkillsTools from "./_agent-create-wizard/Step1SkillsTools.svelte";
 
@@ -344,6 +345,11 @@
         if (isLastStep) return creating;
         return false;
     });
+
+    // Mod+Enter advances/creates, mirroring the footer button. Ctrl/Meta
+    // combos fire inside inputs by default, so this works while typing the
+    // agent name in Step 0.
+    createHotkey('Mod+Enter', handleNextOrCreate, () => ({ enabled: !isNextDisabled }));
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->

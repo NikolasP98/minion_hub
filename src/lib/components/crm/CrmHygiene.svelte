@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { invalidate } from '$app/navigation';
 	import * as m from '$lib/paraglide/messages';
+	import { submitOnEnter } from '$lib/hotkeys';
 	import { SvelteSet } from 'svelte/reactivity';
 	import {
 		Sparkles, Check, GitMerge, Users, Wand2, Crown, Minus, Loader2,
@@ -360,7 +361,7 @@
 							class="prop"
 							placeholder={m.crm_blanks_placeholder()}
 							disabled={b.done}
-							onkeydown={(e) => e.key === 'Enter' && applyBlank(b)}
+							{@attach submitOnEnter(() => applyBlank(b))}
 						/>
 						{#if b.done}
 							<span class="row-done" title={m.crm_applied()}><Check size={15} /></span>

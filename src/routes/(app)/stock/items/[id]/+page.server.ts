@@ -23,6 +23,7 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
 
   return {
     item,
+    itemIds: items.map((i) => i.id), // ordered ids only (keep payload small) — [ / ] prev/next nav
     bins: bins.map((b) => ({ ...b, warehouseName: warehouseById.get(b.warehouseId)?.name ?? b.warehouseId })),
     ledger: ledger.map((l) => ({ ...l, warehouseName: warehouseById.get(l.warehouseId)?.name ?? l.warehouseId })),
     consumedBy,

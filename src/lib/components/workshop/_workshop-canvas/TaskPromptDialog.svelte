@@ -1,5 +1,6 @@
 <script lang="ts">
     import * as m from "$lib/paraglide/messages";
+    import { submitOnModEnter } from "$lib/hotkeys";
 
     interface Props {
         mode: "assign" | "conversation";
@@ -41,11 +42,7 @@
                 : m.workshop_whatToDiscuss()}
             value={value}
             oninput={(e) => onValueChange((e.target as HTMLTextAreaElement).value)}
-            onkeydown={(e) => {
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                    onSubmit();
-                }
-            }}
+            {@attach submitOnModEnter(onSubmit)}
         ></textarea>
         <div class="flex justify-end gap-2 mt-3">
             <button

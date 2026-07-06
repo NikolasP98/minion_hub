@@ -3921,5 +3921,9 @@
   "shortcuts_saveSettingsName": "Guardar configuración",
   "shortcuts_saveSettingsDesc": "Guardar la configuración del gateway",
   "shortcuts_saveSectionName": "Guardar sección",
-  "shortcuts_saveSectionDesc": "Guardar la sección de prompt editada"
+  "shortcuts_saveSectionDesc": "Guardar la sección de prompt editada",
+  "shortcuts_onboardingNext": "Paso siguiente",
+  "shortcuts_onboardingPrev": "Paso anterior",
+  "shortcuts_stockPrevItem": "Artículo anterior",
+  "shortcuts_stockNextItem": "Artículo siguiente"
 }
