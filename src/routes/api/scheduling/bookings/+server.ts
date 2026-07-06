@@ -2,7 +2,7 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
 import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
-import { requireAdmin } from '$server/auth/authorize';
+import { requireAuth } from '$server/auth/authorize';
 import { parseBody } from '$server/api/validate';
 import { shouldMaskSensitive } from '$server/services/rbac.service';
 import { isModuleEnabled } from '$server/services/modules.service';
@@ -35,11 +35,15 @@ const postSchema = z.object({
   notes: z.string().max(20_000).nullable().optional(),
   crmContactId: z.string().max(200).nullable().optional(),
   resourceId: z.string().max(200).nullable().optional(),
+  consumption: z
+    .array(z.object({ itemId: z.string().min(1), qtyConsumption: z.number().positive() }))
+    .nullable()
+    .optional(),
 });
 
 /** Internal staff booking (on behalf of a customer). Bypasses min-notice. */
 export const POST: RequestHandler = async ({ locals, request }) => {
-  requireAdmin(locals);
+  requireAuth(locals);
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
@@ -56,6 +60,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       preferredResourceId: b.resourceId ?? null,
       source: 'internal',
       bypassRules: true,
+      consumption: b.consumption ?? null,
     });
     return json({ booking });
   } catch (e) {
