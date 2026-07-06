@@ -55,39 +55,54 @@ stk_accruals (
 )
 indexes: (org_id, status), (org_id, item_id, warehouse_id, status), (source, source_id)
 ```
-org_guc RLS + `app_ledger` grants exactly like `20260702130000_stock.sql`. Drizzle table in `pg-schema/stock.ts` (`stkAccruals`). Orchestrator applies to prod.
+org_guc RLS + `app_ledger` grants exactly like `20260702130000_stock.sql`. Drizzle table in `pg-schema/stock.ts` (`stkAccruals`). Same migration: `alter table stk_warehouses add column is_default boolean not null default false` + partial unique index `stk_warehouses_default_one_per_org on (org_id) where is_default`. Orchestrator applies to prod (surgical SQL — never `drizzle-kit push`).
 
-## D2 — Service layer (`stock.service.ts`)
+## D2 — Service layer (new file `stock-accruals.service.ts` + small `stock.service.ts` changes)
 
 All reuse existing pure fns (`consumptionToStockQty`, `round4`) and the P5.1b preview.
 
-- **`buildAccrualPreview(ctx, {finProductId, quantity, warehouseId})`** — thin wrapper over `buildServiceIssuePreview` that also stamps `est_unit_cost`/`est_value` per line from the current bin moving-avg rate. Returns gauge-ready lines + `hasMapping`. Used by both the booking modal (creation) and the completion dialog.
-- **`accrueConsumption(ctx, {source, sourceId, finProductId, warehouseId, lines, actor})`** — upsert `open` accrual rows for `(source, sourceId, item_id)` from the (possibly adjusted) lines; delete open rows no longer present. Idempotent: re-adjusting a booking replaces its open accrual set. Never touches the real ledger. No-op when the product has no mapping.
-- **`realizeAccruals(ctx, {source, sourceId, lines?, warehouseId, actor, submit=true})`** — the completion path. `lines` defaults to the booking's current open accruals (converted to issue lines); when the completion dialog adjusted amounts, its lines win (server-authoritative conversion via the existing `resolveConsumptionLines`). Calls `createServiceIssue(...)` with `metadata {source, sourceId}` and `submit`, then flips the accrual rows to `realized`, sets `realized_entry_id`, and stamps `realized_qty`/`realized_value` from the posted entry's lines/valuation. Idempotent: refuses a second realize for a `(source, sourceId)` that already has realized rows (mirrors the invoice duplicate guard).
-- **`releaseAccruals(ctx, {source, sourceId})`** — flip open rows → `released`, stamp `released_at`. Cancel/no-show path. Idempotent.
-- **Queries:** `listAccruals(ctx, {status?, itemId?, source?})` (joined item + product names); `availableToPromise(ctx, itemId, warehouseId)` = `bin.qty − sum(open accrual qty)`; `committedSpend(ctx, {warehouseId?})` = `sum(open est_value)`; `accrualsForSource(ctx, source, sourceId)` (booking-detail card, includes realized entry link + variance).
+**Transaction shape (load-bearing).** `withOrgCore` does NOT nest — every call opens a fresh `db.transaction` (`with-org-core.ts`), and `scheduling-bookings.service.ts` explicitly avoids nesting it. Therefore:
 
-`createServiceIssue` is generalized: its metadata `source`/`sourceId` become parameters (default keeps `'service'`), so the booking realize path stamps `{source:'booking', sourceId:bookingId}` without a second code path.
+- `accrue` and `release` ship as **tx-level cores** — `accrueConsumptionTx(tx, orgId, …)`, `releaseAccrualsTx(tx, orgId, source, sourceId)` — callable from inside `createBooking`/`setBookingStatus`'s existing tx (atomic with the booking write). Thin `ctx` wrappers (`accrueConsumption(ctx, …)` = `withOrgCore` + core) serve the standalone API routes.
+- `realizeAccruals` **must NOT run inside another tx**: it calls `createServiceIssue` → `submitEntry`, each of which opens its own `withOrgCore`. Completion is a two-step sequence (status tx, then realize), not one tx — see D3 for the failure semantics that makes this safe.
+
+Functions:
+
+- **`buildAccrualPreview(ctx, {finProductId, quantity, warehouseId, excludeSource?})`** — thin wrapper over `buildServiceIssuePreview` that stamps per line: `estUnitCost`/`estValue` from the current bin moving-avg rate (extend `previewLinesForItemQtys` to also select `stk_bins.valuation_rate`), and `committedOther` = Σ open-accrual qty for (item, warehouse) excluding `excludeSource` — so the booking modal renders the ATP warning (`qty > available − committedOther`) with zero extra round-trips. Returns gauge-ready lines + `hasMapping`. Used by the booking modal (creation) and the completion dialog.
+- **`accrueConsumptionTx(tx, orgId, {source, sourceId, finProductId, warehouseId, lines?})`** — when `lines` absent, computes defaults from `stk_consumption` (quantity=1 for bookings); upserts `open` accrual rows on `(org, source, sourceId, item)`, deletes open rows no longer present. Idempotent: re-adjusting replaces the open set; rows already `realized`/`released` are never touched. Never touches the real ledger. **Fail-soft:** no mapping, no warehouse, stock module off, or any thrown error → silent no-op (log only). A booking must never fail because of accrual bookkeeping.
+- **`realizeAccruals(ctx, {source, sourceId, lines?, warehouseId?, actor, submit=true})`** — the completion path. `lines` defaults to the source's current open accruals (as `{itemId, qtyConsumption}` — server-authoritative conversion via the existing `resolveConsumptionLines`); when the completion dialog adjusted amounts, its lines win. Calls `createServiceIssue(...)` with `source`/`sourceId` and `submit`, then flips the open rows → `realized`, sets `realized_entry_id`, and stamps per item from the posted entry's **ledger rows**: `realized_qty = −Σ qtyDelta`, `realized_value = −Σ valueDelta` (issues are negative deltas). Returns `{entry, realized: n}`; no open rows and no lines → no-op `{entry: null, realized: 0}`.
+- **Duplicate-realize guard lives in `createServiceIssue`'s tx** (not only on accrual status — the accrual flip is a separate tx from the entry insert): same-tx dup check on non-cancelled `stk_entries` where `metadata->>'source' = source and metadata->>'sourceId' = sourceId`, mirroring the invoice guard. Skipped for the legacy `'service'` source (no sourceId — `/stock/consume` legitimately repeats).
+- **`releaseAccrualsTx(tx, orgId, source, sourceId)`** — flip open rows → `released`, stamp `released_at`. Cancel/reject/no-show path. Idempotent (touches only `open`).
+- **Queries:** `listAccruals(ctx, {status?, itemId?, source?})` (joined item + product names); `availableToPromise(ctx, itemId, warehouseId)` = `bin.qty − Σ open-accrual qty`; `committedSpend(ctx, {warehouseId?})` = Σ open `est_value`; `accrualSummaryForSources(ctx, source, sourceIds[])` — **batch** rollup for the bookings list (per source: status mix, Σ est_value, Σ realized_value, realized_entry_id) so the per-row chip renders without N+1.
+
+`createServiceIssue` is generalized: `source`/`sourceId` become parameters (default keeps `'service'`/absent), so the booking realize path stamps `{source:'booking', sourceId:bookingId}` without a second code path.
+
+**Default warehouse.** `stk_warehouses` has no default concept today and `createBooking` (incl. public/gateway callers) has no warehouse input. The migration adds `is_default boolean not null default false` + partial unique index `(org_id) where is_default`; `resolveDefaultWarehouse(tx, orgId)` = the default, else earliest-created, else null (→ accrue no-ops). Warehouses UI gets a "set default" action.
 
 ## D3 — Booking integration
 
-- **`createBooking`** gains optional `consumption?: {itemId, qtyConsumption}[]`. After the booking row is written, if the event type's product maps to stock, call `accrueConsumption(source:'booking', sourceId:booking.id, finProductId, warehouseId, lines)` — `lines` = the passed overrides, else the computed defaults. Warehouse: the org's default/`MAIN` (P3: per-resource warehouse).
-- **Completion.** New endpoint `POST /api/scheduling/bookings/[id]/complete` `{lines?, warehouseId?}` → sets status `completed` **and** `realizeAccruals`. (Keeps the multi-step post atomic and lets the completion dialog send actual amounts.) The plain `PATCH …/status` to `completed` still works and realizes from the open accruals with no adjustment.
-- **Release.** In `setBookingStatus`, a transition to `cancelled | rejected | no_show` calls `releaseAccruals(source:'booking', sourceId:id)`.
+- **`createBooking`** gains optional `consumption?: {itemId, qtyConsumption}[]`. Inside the same tx, after the booking row is written, call `accrueConsumptionTx(tx, orgId, {source:'booking', sourceId:row.id, finProductId: et.productId, warehouseId: resolveDefaultWarehouse(...), lines: input.consumption})` — lines absent → defaults computed from `stk_consumption` (fail-soft no-op when unmapped). **Every caller accrues automatically**: the internal modal, both gateway actions, and the public `/book/[slug]` flow all route through `createBooking` (verified — `publicBook` delegates to it). **The idempotent uid-conflict retry path must NOT re-accrue** (accrue only when a fresh row was inserted).
+- **Completion.** New endpoint `POST /api/scheduling/bookings/[id]/complete` `{lines?, warehouseId?}`. Sequence (two steps, deliberately not one tx — see D2): (1) `setBookingStatus(completed)` — the business fact commits first; (2) `realizeAccruals(...)`. If realize throws (`negative_stock` is the expected case — POS must never be blocked by a short bin), the endpoint still returns `{ok:true, stockWarning:{code, message, draftEntryId?}}`; accruals stay open. **Retry:** re-POST `/complete` on an already-completed booking skips step 1 and just realizes — that's the "post stock now" affordance. The plain `PATCH …/status` to `completed` also triggers a best-effort realize (defaults, no adjustment) after its status write, surfacing the same `stockWarning` shape.
+- **Release.** In `setBookingStatus`, a transition to `cancelled | rejected | no_show` calls `releaseAccrualsTx` in the same tx as the status update.
+- **Route auth fix (in scope — it blocks the exact persona this feature serves).** `POST /api/scheduling/bookings` and `PATCH …/[id]` currently `requireAdmin(locals)` — platform-admin only, so a staff user with `scheduling:edit` 403s today. Relax to `requireAuth` + `getCoreCtx`; the central `apiWriteCapability` gate (`/api/scheduling` → `scheduling:edit`) is the real guard. The new `/complete` and `/accrual` routes follow the same pattern from day one.
 
 ## D4 — API surface
 
 - `GET /api/stock/accruals?status=&itemId=&source=` — list/report.
-- `POST /api/scheduling/bookings/[id]/accrual` `{finProductId, warehouseId, lines}` — (re)accrue for a booking (used when adjusting from the booking detail before completion). Preview via `?preview=1` returns `buildAccrualPreview` only.
+- `POST /api/stock/accruals/preview` `{finProductId, quantity, warehouseId?, excludeSource?}` — `buildAccrualPreview` (warehouse defaults server-side). Used by the modal pre-booking (no booking id exists yet) and the complete dialog.
+- `POST /api/scheduling/bookings/[id]/accrual` `{lines}` — re-accrue (replace the open set) for an existing booking before completion.
 - `POST /api/scheduling/bookings/[id]/complete` `{lines?, warehouseId?}` — complete + realize.
 - Gateway (agent-native day-one): `query/stock` gains mode `accruals`; action `stock-accrue` (preview/confirm, capability `stock:create`) and completion is reachable via the existing booking actions plus a new `booking-complete` action that carries consumption lines. RBAC: reads `stock:view`, writes `stock:edit` (central prefix already covers `/api/stock`; booking writes are `scheduling:edit`), agent `stock:create`.
 
 ## D5 — UI
 
-- **New-appointment modal** (`/scheduling/bookings`): on service select, fetch `buildAccrualPreview`; render a "Stock consumption" block with per-line `ConsumptionGauge` (adjustable) + an ATP warning line when `qty > availableToPromise`. Book sends the adjusted `consumption` lines. Gated `canAct('scheduling','edit')`; the block is hidden when stock module off or the service has no mapping.
-- **Booking detail / row action:** "Complete" opens a dialog pre-filled from the open accruals — adjust actual amounts on the gauges → confirm → `/complete`. A "Stock" card shows accrual status (`committed S/X` / `realized → entry link` / `released`) and per-line expected-vs-actual once realized.
-- **Stock → Commitments** (new `StockNav` tab, after `consume`): committed spend vs real spend headline, open-accruals table, available-to-promise per item (against reorder level), and an expected-vs-actual variance report. P2.
-- i18n en+es for every string; Svelte 5 runes only; reuse `ConsumptionGauge`, `stock-ui.ts`, `PartyPicker`.
+There is **no booking-detail page** — `/scheduling/bookings` is a card list with row actions. Everything lands there:
+
+- **New-appointment modal** (`/scheduling/bookings/+page.svelte`): on service (event type) select, if it carries a `productId`, fetch preview via `POST …/accrual?preview=1`-style endpoint (see D4); render a "Stock consumption" block with per-line `ConsumptionGauge` (adjustable) + an ATP warning line when `qty > available − committedOther` (data already stamped on the preview lines). Book sends the adjusted `consumption` lines in the existing POST. The loader must add `productId` to its `eventTypes` mapping (today it strips to `{id, title}`). Block hidden when stock module off / no mapping / no `canAct('stock','view')`.
+- **Complete dialog (row action):** the ✓ button, when the booking has open accruals, opens a dialog pre-filled from them — adjust actual amounts on the gauges → confirm → `POST /complete`. `stockWarning` in the response renders as a non-blocking toast/banner with a "post stock now" retry. No accruals → ✓ keeps its current one-click behavior.
+- **Per-row accrual chip:** the list loader batch-fetches `accrualSummaryForSources` for the visible bookings and each row shows `committed S/X` / `realized` (links the entry) / `released`. This replaces the spec'd "Stock card" until a detail page exists.
+- **Stock → Commitments** (new `StockNav` tab, after `consume` — mind the `startsWith` prefix-sibling ordering trap): committed spend vs real spend headline, open-accruals table, ATP per item (against reorder level), expected-vs-actual variance report. P2.
+- i18n en+es for every string (`bun run i18n:compile`); Svelte 5 runes only; reuse `ConsumptionGauge`, `stock-ui.ts`.
 
 ## Valuation & reporting semantics
 
@@ -103,7 +118,9 @@ All reuse existing pure fns (`consumptionToStockQty`, `round4`) and the P5.1b pr
 
 ## Edge cases
 
-- Service with no `stk_consumption` mapping → no accrual (booking proceeds normally).
+- Service with no `stk_consumption` mapping → no accrual (booking proceeds normally). Same for: stock module disabled, no warehouse exists, event type has no product — accrue is fail-soft everywhere.
+- Insufficient stock at completion (`negative_stock`) → booking completes, accruals stay open, endpoint returns `stockWarning`; staff fixes stock and re-POSTs `/complete` to realize.
+- `createBooking` idempotent retry (uid conflict) → returns the existing row without re-accruing.
 - Re-adjust before completion → `accrueConsumption` upserts (replaces open set). After completion → accrual is `realized`; further correction is a normal stock adjustment on the posted entry (existing mechanism), not an accrual concern.
 - Reschedule (`rescheduledFromId`) → accrual stays attached to the same booking id; no re-accrual.
 - Cancel after completion → the realized issue stands (stock was used); releasing only applies to `open` rows.
@@ -112,8 +129,8 @@ All reuse existing pure fns (`consumptionToStockQty`, `round4`) and the P5.1b pr
 
 ## Phasing
 
-- **P1 (core):** migration + Drizzle; `accrue/realize/release` + `buildAccrualPreview` + generalized `createServiceIssue`; `createBooking`/`setBookingStatus`/`/complete` wiring; New-appointment inline gauges; booking-detail Stock card; `stock-accrue` gateway action + `query/stock?mode=accruals`. Tests: accrual upsert idempotency, realize→variance, release, ATP math, duplicate-realize guard.
-- **P2 (visibility):** Stock → Commitments view (committed vs real, ATP per item, variance report); ATP warning in the booking modal.
+- **P1 (core):** migration (accruals + warehouse `is_default`) + Drizzle; `stock-accruals.service.ts` (tx cores + wrappers + queries) + generalized `createServiceIssue` + `buildAccrualPreview`; `createBooking`/`setBookingStatus`/`/complete`/`/accrual`/`accruals/preview` wiring + booking-route auth fix; New-appointment inline gauges + ATP warn; complete dialog + per-row accrual chip; `stock-accrue`/`booking-complete` gateway actions + `query/stock?mode=accruals`. Tests: accrual upsert idempotency, defaults-from-mapping, fail-soft no-op, realize→variance stamps, negative-stock completion path, release, ATP math, duplicate-realize guard, uid-retry no re-accrue.
+- **P2 (visibility):** Stock → Commitments view (committed vs real, ATP per item, variance report); warehouses "set default" UI.
 - **P3 (optional):** per-resource warehouse on accrual; extend `source` to sales orders; ATP-aware slot blocking (hard mode).
 
 ## Out of scope
