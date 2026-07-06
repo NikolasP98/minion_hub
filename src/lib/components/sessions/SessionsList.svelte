@@ -1,6 +1,7 @@
 <script lang="ts">
   import { SvelteMap } from 'svelte/reactivity';
   import * as m from '$lib/paraglide/messages';
+  import { createHotkey } from '$lib/hotkeys';
 
   export type SessionRow = {
     id: string;
@@ -25,6 +26,12 @@
 
   let search = $state('');
   let agentFilter = $state('');
+  let searchEl: HTMLInputElement | undefined = $state();
+
+  // Bare `/` is input-safe by lib default (won't fire while typing elsewhere).
+  createHotkey('/', () => searchEl?.focus(), {
+    meta: { name: m.shortcuts_gridSearch() },
+  });
 
   function parseMeta(raw: string | null): Record<string, unknown> {
     if (!raw) return {};
@@ -88,6 +95,7 @@
 <div class="flex flex-col h-full overflow-hidden bg-bg">
   <div class="shrink-0 flex flex-col gap-1.5 p-2.5 px-3 border-b border-border">
     <input
+      bind:this={searchEl}
       class="w-full box-border bg-bg2 border border-border rounded-md text-foreground px-2.5 py-1.5 font-inherit text-xs outline-none focus:border-accent placeholder:text-muted"
       type="search"
       placeholder={m.sessions_searchPlaceholder()}

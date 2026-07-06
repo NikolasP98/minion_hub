@@ -1,5 +1,6 @@
 <script lang="ts">
   import * as m from '$lib/paraglide/messages';
+  import { submitOnModEnter } from '$lib/hotkeys';
   import {
     fmtSize,
     orderBand,
@@ -101,11 +102,8 @@
     return layerMeta[layer]?.color ?? '#6b7280';
   }
 
-  function handleComposerKeydown(e: KeyboardEvent) {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-      e.preventDefault();
-      if (!testing && !loading && testPrompt.trim()) onRunTest();
-    }
+  function runTestIfReady() {
+    if (!testing && !loading && testPrompt.trim()) onRunTest();
   }
 </script>
 
@@ -218,7 +216,7 @@
         <textarea
           bind:value={testPrompt}
           rows="2"
-          onkeydown={handleComposerKeydown}
+          {@attach submitOnModEnter(runTestIfReady)}
           class="w-full text-[11px] px-2 py-1.5 rounded border border-border bg-bg1 text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-accent/60 focus:min-h-[80px] transition-[min-height] resize-none font-mono"
           placeholder="Enter a sample message… (⌘↵ to run)"
           disabled={testing}

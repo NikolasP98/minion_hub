@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { PageData } from './$types';
-  import { invalidate } from '$app/navigation';
+  import { goto, invalidate } from '$app/navigation';
   import * as m from '$lib/paraglide/messages';
+  import { createHotkey } from '$lib/hotkeys';
   import { Package, ArrowLeft, ExternalLink } from 'lucide-svelte';
   import { PageHeader, Button, Toggle } from '$lib/components/ui';
   import { canAct } from '$lib/access/can.svelte';
@@ -88,6 +89,23 @@
   }
 
   const fmt = (n: string | number) => Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
+
+  // [ / ] prev/next through the ordered item list (clamped at the ends —
+  // simpler than wraparound). Off while editing so a stray bracket keystroke
+  // can't navigate away from unsaved changes.
+  const itemIndex = $derived(data.itemIds.indexOf(item.id));
+  createHotkey('[', () => {
+    if (itemIndex > 0) goto(`/stock/items/${data.itemIds[itemIndex - 1]}`);
+  }, () => ({
+    enabled: !editing,
+    meta: { name: m.shortcuts_stockPrevItem() },
+  }));
+  createHotkey(']', () => {
+    if (itemIndex >= 0 && itemIndex < data.itemIds.length - 1) goto(`/stock/items/${data.itemIds[itemIndex + 1]}`);
+  }, () => ({
+    enabled: !editing,
+    meta: { name: m.shortcuts_stockNextItem() },
+  }));
 </script>
 
 <svelte:head><title>{item.name} — {m.nav_stock()}</title></svelte:head>
