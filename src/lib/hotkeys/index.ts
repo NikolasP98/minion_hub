@@ -51,3 +51,17 @@ export type {
 export function submitOnEnter(submit: HotkeyCallback) {
 	return createHotkeyAttachment('Enter', submit, { ignoreInputs: false });
 }
+
+/**
+ * `{@attach}` helper for compose boxes where bare Enter must stay a newline
+ * (multi-line editors): Mod+Enter submits instead. Fires inside the focused
+ * input (`ignoreInputs: false`).
+ *
+ * @example
+ * ```svelte
+ * <textarea {@attach submitOnModEnter(() => send())}></textarea>
+ * ```
+ */
+export function submitOnModEnter(submit: HotkeyCallback) {
+	return createHotkeyAttachment('Mod+Enter', submit, { ignoreInputs: false });
+}

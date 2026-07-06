@@ -103,6 +103,7 @@
 	import ColumnFilter from '$lib/components/crm/ColumnFilter.svelte';
 	import ExportDialog from '$lib/components/crm/ExportDialog.svelte';
 	import { downloadCsv, downloadXlsx, type Rows } from '$lib/export/table-export';
+	import { createHotkeysAttachment } from '$lib/hotkeys';
 
 	let {
 		data,
@@ -546,8 +547,12 @@
 		selectedIds = next;
 		onSelectionChange?.(next, data.filter((r) => next.has(getRowId(r))));
 	}
+	// Range-select anchor: the last row touched by a plain click, ctrl-click, or
+	// checkbox toggle (NOT by a shift-click, which extends from the existing anchor).
+	let lastAnchor = $state<string | null>(null);
 	function toggleRow(id: string, e?: Event) {
 		e?.stopPropagation();
+		lastAnchor = id;
 		const next = new Set(selectedIds);
 		next.has(id) ? next.delete(id) : next.add(id);
 		emitSelection(next);
@@ -563,6 +568,102 @@
 		bulkOpen = false;
 		a.onSelect(selectedIds, data.filter((r) => selectedIds.has(getRowId(r))));
 	}
+
+	// ── Row click: modifier-aware selection (OS file-manager idioms) ──────────
+	// Ctrl/Cmd+click toggles the row (no nav). Shift+click extends a contiguous
+	// range from lastAnchor over the CURRENT view order, unioned into the
+	// existing selection. Plain click sets the anchor and falls through to
+	// onRowClick. Applies even when onRowClick is undefined (checkbox-only
+	// tables still get modifier-click selection).
+	function handleRowClick(id: string, row: T, e: MouseEvent) {
+		if (selectable && (e.ctrlKey || e.metaKey)) {
+			toggleRow(id);
+			return;
+		}
+		if (selectable && e.shiftKey) {
+			e.preventDefault(); // avoid text-selection artifacts while shift-clicking
+			const ids = viewIds;
+			const from = ids.indexOf(lastAnchor ?? id);
+			const to = ids.indexOf(id);
+			if (from > -1 && to > -1) {
+				const [lo, hi] = from < to ? [from, to] : [to, from];
+				const next = new Set(selectedIds);
+				for (const rid of ids.slice(lo, hi + 1)) next.add(rid);
+				emitSelection(next);
+			}
+			return;
+		}
+		lastAnchor = id;
+		onRowClick?.(row);
+	}
+
+	// ── Roving row focus (WAI-ARIA grid pattern: j/k, arrows, Enter, Space) ────
+	let wrapperEl: HTMLDivElement | null = $state(null);
+	let searchInputEl: HTMLInputElement | null = $state(null);
+	let focusedIndex = $state(-1);
+	function focusRow(i: number) {
+		if (flatRows.length === 0) return;
+		focusedIndex = Math.max(0, Math.min(i, flatRows.length - 1));
+		wrapperEl?.querySelector<HTMLElement>(`[data-row-index="${focusedIndex}"]`)?.scrollIntoView({ block: 'nearest' });
+	}
+	function moveFocus(delta: number) {
+		if (focusedIndex < 0) focusRow(delta >= 0 ? 0 : flatRows.length - 1);
+		else focusRow(focusedIndex + delta);
+	}
+
+	// Table-wrapper hotkeys — element-scoped (never global), so a page-level
+	// Mod+A/Escape/etc. outside the table keeps native behavior. Bare keys
+	// (j/k, /, Delete, Backspace, arrows, Enter, Space) stay input-safe by the
+	// library's default (protects inline-edit inputs); Mod+A gets an explicit
+	// `ignoreInputs` override so it doesn't hijack native text select-all while
+	// inline-editing a cell.
+	const gridAttachment = createHotkeysAttachment(() => {
+		const danger = bulkActions?.find((a) => a.danger);
+		return [
+			{
+				hotkey: 'Mod+A',
+				callback: () => emitSelection(new Set(viewIds)),
+				options: { enabled: selectable, ignoreInputs: true },
+			},
+			{
+				hotkey: 'Escape',
+				callback: () => emitSelection(new Set()),
+				options: { enabled: selectable && selectedIds.size > 0, stopPropagation: false },
+			},
+			{
+				hotkey: 'Delete',
+				callback: () => { if (danger && selectedIds.size > 0) runBulk(danger); },
+			},
+			{
+				hotkey: 'Backspace',
+				callback: () => { if (danger && selectedIds.size > 0) runBulk(danger); },
+			},
+			{
+				hotkey: '/',
+				callback: () => searchInputEl?.focus(),
+				options: { enabled: searchable },
+			},
+			{ hotkey: 'ArrowDown', callback: () => moveFocus(1) },
+			{ hotkey: 'J', callback: () => moveFocus(1) },
+			{ hotkey: 'ArrowUp', callback: () => moveFocus(-1) },
+			{ hotkey: 'K', callback: () => moveFocus(-1) },
+			{
+				hotkey: 'Enter',
+				callback: () => {
+					const fr = flatRows[focusedIndex];
+					if (fr) onRowClick?.(fr.row);
+				},
+			},
+			{
+				hotkey: 'Space',
+				callback: () => {
+					if (!selectable) return;
+					const fr = flatRows[focusedIndex];
+					if (fr) toggleRow(fr.id);
+				},
+			},
+		];
+	});
 
 	// ── Inline edit ────────────────────────────────────────────────────────────
 	let editingId = $state<string | null>(null);
@@ -641,7 +742,7 @@
 			{#if searchable}
 				<div class="dt-search">
 					<Search size={13} class="dt-search-ico" />
-					<input bind:value={search} placeholder={searchPlaceholder ?? m.data_table_search()} />
+					<input bind:this={searchInputEl} bind:value={search} placeholder={searchPlaceholder ?? m.data_table_search()} />
 				</div>
 			{/if}
 			{#if selectedIds.size > 0}
@@ -734,7 +835,8 @@
 	{/if}
 
 	<!-- Table -->
-	<div class="flex-1 min-h-0 overflow-auto" use:infiniteScroll>
+	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+	<div class="flex-1 min-h-0 overflow-auto dt-scroll" tabindex="0" bind:this={wrapperEl} use:infiniteScroll {@attach gridAttachment}>
 		{#if data.length === 0}
 			<div class="flex flex-col items-center justify-center h-full gap-2 p-8 text-center">
 				<p class="t-caption">{emptyMessage ?? m.data_table_empty()}</p>
@@ -818,16 +920,18 @@
 					{#if view.length === 0}
 						<tr><td colspan={colSpan + 1} class="px-4 py-8 text-center t-caption text-muted-foreground">{m.data_table_no_match()}</td></tr>
 					{/if}
-					{#each flatRows as fr (fr.id)}
+					{#each flatRows as fr, dtRowIndex (fr.id)}
 						{@const row = fr.row}
 						{@const id = fr.id}
 						{@const editing = editingId === id}
 						{@const canExpand = rowExpandable(row)}
 						{@const isOpen = expanded.has(id)}
 						<tr
+							data-row-index={dtRowIndex}
 							class="dt-row border-b border-[var(--hairline)] hover:bg-white/[0.03] transition-colors {onRowClick && !editing ? 'cursor-pointer' : ''}"
 							class:child={fr.depth > 0}
-							onclick={onRowClick && !editing ? () => onRowClick(row) : undefined}
+							class:focused={focusedIndex === dtRowIndex}
+							onclick={!editing && (selectable || onRowClick) ? (e) => handleRowClick(id, row, e) : undefined}
 						>
 							{#if selectable}
 								<td class="px-3 py-2">
@@ -976,6 +1080,12 @@
 	   without !important. */
 	.dt-cell.dt-wrap :global(*) { white-space: normal; text-overflow: clip; overflow: visible; max-width: none; }
 	.dt-row.child { background: color-mix(in srgb, var(--color-foreground) 3%, transparent); }
+	/* Roving keyboard focus (j/k, arrows) — subtle, distinct from hover. */
+	.dt-row.focused { background: color-mix(in srgb, var(--color-accent) 8%, transparent); box-shadow: inset 2px 0 0 0 var(--color-accent); }
+	/* Table wrapper is the grid-key scope (tabindex=0); suppress the mouse-click
+	   focus ring but keep it for keyboard focus. */
+	.dt-scroll { outline: none; }
+	.dt-scroll:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
 
 	/* Expand toggle + custom block row */
 	.dt-exp { display: inline-flex; align-items: center; justify-content: center; width: 1.25rem; height: 1.25rem; border-radius: var(--radius-sm); color: var(--color-muted-foreground); cursor: pointer; transition: transform 0.15s, color 0.12s; }
