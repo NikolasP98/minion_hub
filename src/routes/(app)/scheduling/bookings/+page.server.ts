@@ -6,6 +6,7 @@ import { isModuleEnabled } from '$server/services/modules.service';
 import { listBookings } from '$server/services/scheduling-bookings.service';
 import { listResources, listEventTypes } from '$server/services/scheduling.service';
 import { getContact } from '$server/services/crm-contacts.service';
+import { accrualSummaryForSources } from '$server/services/stock-accruals.service';
 
 const DAY = 86_400_000;
 
@@ -31,6 +32,18 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
     listEventTypes(ctx),
     contact ? getContact(ctx, contact) : Promise.resolve(null),
   ]);
+
+  let accrualSummaries: Awaited<ReturnType<typeof accrualSummaryForSources>> = [];
+  try {
+    accrualSummaries = await accrualSummaryForSources(
+      ctx,
+      'booking',
+      bookings.map((b) => b.id),
+    );
+  } catch {
+    // stock module absent/off — bookings render without chips
+  }
+
   return {
     bookings,
     resources: resources.map((r) => ({ id: r.id, name: r.name })),
@@ -39,5 +52,6 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
     contactId: contact ?? null,
     contactName: contactRec?.contact?.displayName ?? null,
     openNew,
+    accrualSummaries,
   };
 };
