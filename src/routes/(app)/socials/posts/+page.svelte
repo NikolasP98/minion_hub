@@ -18,7 +18,7 @@
 	]);
 	const typeOptions = $derived([
 		{ value: 'organic', label: m.ads_badge_organic() },
-		{ value: 'ad', label: m.ads_badge_ad() },
+		{ value: 'boosted', label: m.ads_badge_boosted() },
 	]);
 
 	const dateOf = (d: string | null) => (d ? new Date(d).getTime() : -Infinity);
@@ -44,7 +44,7 @@
 	const columns = $derived.by<DataColumn<Row>[]>(() => [
 		{ key: 'thumb', label: m.ads_col_thumbnail(), custom: true, sortable: false, exportable: false, align: 'center', width: 56 },
 		{ key: 'platform', label: m.ads_col_platform(), custom: true, accessor: (p) => p.platform ?? '', width: 110, filter: { options: () => platformOptions } },
-		{ key: 'type', label: m.ads_col_type(), custom: true, accessor: (p) => (p.isPromoted ? 'ad' : 'organic'), width: 110, filter: { options: () => typeOptions } },
+		{ key: 'type', label: m.ads_col_type(), custom: true, accessor: (p) => (p.isPromoted ? 'boosted' : 'organic'), width: 110, filter: { options: () => typeOptions } },
 		{ key: 'posted', label: m.ads_col_posted(), custom: true, accessor: (p) => p.postedAt, sortFn: (a, b) => dateOf(a.postedAt) - dateOf(b.postedAt), exportValue: (p) => (p.postedAt ? new Date(p.postedAt).toISOString().slice(0, 10) : ''), width: 130 },
 		{ key: 'caption', label: m.ads_col_caption(), custom: true, accessor: (p) => p.caption ?? '', exportValue: (p) => p.caption ?? '', width: 340 },
 		...metricKeys.map((k): DataColumn<Row> => ({
@@ -94,7 +94,7 @@
 				{:else if col.key === 'platform'}
 					<span class="post-platform" data-platform={p.platform ?? ''}>{p.platform === 'ig' ? m.ads_platform_ig() : m.ads_platform_fb()}</span>
 				{:else if col.key === 'type'}
-					<span class="post-type" class:ad={p.isPromoted}>{p.isPromoted ? m.ads_badge_ad() : m.ads_badge_organic()}</span>
+					<span class="post-type" class:ad={p.isPromoted}>{p.isPromoted ? m.ads_badge_boosted() : m.ads_badge_organic()}</span>
 				{:else if col.key === 'posted'}
 					<span class="t-caption">{fmtDate(p.postedAt)}</span>
 				{:else if col.key === 'caption'}

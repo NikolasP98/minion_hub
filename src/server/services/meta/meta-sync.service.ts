@@ -616,6 +616,10 @@ async function collectPromotedStoryIds(
     const links = res.data ?? [];
     for (const link of links) {
       if (link.storyId) storyIds.add(link.storyId);
+      // An ad's IG media id matches an organic IG post's id when the ad boosted
+      // that post → flags it 'boosted' via the same is_promoted path as FB story
+      // ids. Dark IG creatives (most ads) match no organic post — harmless no-op.
+      if (link.igMediaId) storyIds.add(link.igMediaId);
       if (link.storyId && link.thumbnailUrl) darkPostThumbnails.set(link.storyId, link.thumbnailUrl);
     }
     await upsertAdPosts(ctx, adStoryLinksToRows(ctx.tenantId, links));

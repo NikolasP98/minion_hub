@@ -610,10 +610,18 @@ export async function adInsights(
 
 export type AdWithStory = {
   id?: string;
-  creative?: { effective_object_story_id?: string; thumbnail_url?: string };
+  creative?: { effective_object_story_id?: string; effective_instagram_media_id?: string; thumbnail_url?: string };
 };
 
-export type AdStoryLink = { adId: string; storyId: string | null; thumbnailUrl: string | null };
+export type AdStoryLink = {
+  adId: string;
+  storyId: string | null;
+  /** IG media id the ad ran as (`effective_instagram_media_id`) — matches an
+   * organic IG post's id when the ad boosted an existing post, else a dark IG
+   * creative. Lets a boosted IG post be flagged the same way FB story ids do. */
+  igMediaId: string | null;
+  thumbnailUrl: string | null;
+};
 
 // Most ad creatives are DARK posts (never published to the page feed), so
 // `effective_object_story_id` alone gives the campaigns-page ad preview
@@ -625,7 +633,7 @@ export type AdStoryLink = { adId: string; storyId: string | null; thumbnailUrl: 
 // expansion like this one vs. only working as a top-level query param on a
 // direct creative-node GET. Plain field, so the default (often small/cropped)
 // thumbnail size — acceptable for 40px table cells, revisit if larger is needed.
-const AD_FIELDS = 'id,creative{effective_object_story_id,thumbnail_url}';
+const AD_FIELDS = 'id,creative{effective_object_story_id,effective_instagram_media_id,thumbnail_url}';
 
 /**
  * Paginates `act_X/ads` and returns every ad's id alongside its creative's
@@ -653,6 +661,7 @@ export async function listAdsWithStoryIds(
       ? {
           adId: ad.id,
           storyId: ad.creative?.effective_object_story_id ?? null,
+          igMediaId: ad.creative?.effective_instagram_media_id ?? null,
           thumbnailUrl: ad.creative?.thumbnail_url ?? null,
         }
       : null;

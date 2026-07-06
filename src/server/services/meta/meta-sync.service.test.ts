@@ -271,8 +271,8 @@ describe('adInsightRowToInsert', () => {
 describe('adStoryLinksToRows — meta_ad_posts row mapping', () => {
   it('emits one row per ad with a story id, defaulting platform to fb', () => {
     const rows = adStoryLinksToRows('org-1', [
-      { adId: 'ad-1', storyId: 'page-1_100', thumbnailUrl: null },
-      { adId: 'ad-2', storyId: 'page-1_200', thumbnailUrl: null },
+      { adId: 'ad-1', storyId: 'page-1_100', igMediaId: null, thumbnailUrl: null },
+      { adId: 'ad-2', storyId: 'page-1_200', igMediaId: null, thumbnailUrl: null },
     ]);
     expect(rows).toEqual([
       { orgId: 'org-1', adId: 'ad-1', postId: 'page-1_100', platform: 'fb' },
@@ -282,8 +282,8 @@ describe('adStoryLinksToRows — meta_ad_posts row mapping', () => {
 
   it('drops an ad with no story id (dark post / deleted creative) — no row, not a null postId', () => {
     const rows = adStoryLinksToRows('org-1', [
-      { adId: 'ad-1', storyId: 'page-1_100', thumbnailUrl: null },
-      { adId: 'ad-dark', storyId: null, thumbnailUrl: null },
+      { adId: 'ad-1', storyId: 'page-1_100', igMediaId: null, thumbnailUrl: null },
+      { adId: 'ad-dark', storyId: null, igMediaId: null, thumbnailUrl: null },
     ]);
     expect(rows).toEqual([{ orgId: 'org-1', adId: 'ad-1', postId: 'page-1_100', platform: 'fb' }]);
   });

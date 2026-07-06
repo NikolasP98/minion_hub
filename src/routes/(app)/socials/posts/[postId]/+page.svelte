@@ -139,7 +139,7 @@
 				<!-- Badges + meta -->
 				<section class="doc-sec meta-row">
 					<span class="post-platform" data-platform={post.platform ?? ''}>{post.platform === 'ig' ? m.ads_platform_ig() : m.ads_platform_fb()}</span>
-					<span class="post-type" class:ad={post.isPromoted}>{post.isPromoted ? m.ads_badge_ad() : m.ads_badge_organic()}</span>
+					<span class="post-type" class:ad={post.isPromoted}>{post.isPromoted ? m.ads_badge_boosted() : m.ads_badge_organic()}</span>
 					{#if post.promotedByAdIds.length > 0}
 						<a class="promoted-chip" href="/socials/campaigns">
 							<Megaphone size={13} />

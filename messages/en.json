@@ -3832,6 +3832,7 @@
   "ads_status_revoked": "Revoked",
   "ads_col_type": "Type",
   "ads_badge_ad": "Ad",
+  "ads_badge_boosted": "Boosted",
   "ads_badge_organic": "Organic",
   "ads_promoted_all": "All",
   "ads_promoted_organic": "Organic",
