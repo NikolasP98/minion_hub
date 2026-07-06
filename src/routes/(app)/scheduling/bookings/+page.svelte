@@ -169,6 +169,9 @@
 		nbLoading = true;
 		nbErr = null;
 		try {
+			// server requires qtyConsumption > 0 per line; a gauge dragged to 0 (or a typed
+			// negative) must not fail the whole booking — drop non-positive lines instead.
+			const positiveLines = nbHasMapping ? nbLines.filter((l) => l.qtyConsumption > 0) : [];
 			const res = await fetch('/api/scheduling/bookings', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
@@ -178,7 +181,9 @@
 					attendeeName: nbName,
 					attendeePhone: nbPhone || null,
 					crmContactId: nbContactId,
-					consumption: nbHasMapping && nbLines.length ? nbLines.map((l) => ({ itemId: l.itemId, qtyConsumption: l.qtyConsumption })) : null,
+					consumption: positiveLines.length
+						? positiveLines.map((l) => ({ itemId: l.itemId, qtyConsumption: l.qtyConsumption }))
+						: null,
 				}),
 			});
 			if (res.status === 409) {
