@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { LayoutDashboard, Package, Warehouse, ArrowLeftRight, Boxes, Stethoscope } from 'lucide-svelte';
+  import { LayoutDashboard, Package, Warehouse, ArrowLeftRight, Boxes, Stethoscope, CalendarClock } from 'lucide-svelte';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
   import { SideNav, type SideNavItem } from '$lib/components/ui';
@@ -18,6 +18,7 @@
       // NOTE: keep 'consume' after 'consumption' — isActive uses startsWith and
       // '/stock/consumption' is a prefix-sibling of '/stock/consume'; first match wins.
       { id: 'consume', label: m.stock_nav_consume(), icon: Stethoscope, href: '/stock/consume' },
+      { id: 'commitments', label: m.stock_nav_commitments(), icon: CalendarClock, href: '/stock/commitments' },
     ].filter((i) => canViewPath(i.href)),
   );
 
