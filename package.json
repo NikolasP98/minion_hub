@@ -19,6 +19,7 @@
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.2",
     "@tailwindcss/vite": "^4.3.0",
+    "@tanstack/pacer": "^0.21.1",
     "@tanstack/svelte-hotkeys": "^0.10.0",
     "@tanstack/svelte-table": "9.0.0-alpha.10",
     "@tanstack/virtual-core": "^3.17.3",

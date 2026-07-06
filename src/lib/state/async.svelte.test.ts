@@ -1,8 +1,8 @@
 /**
  * Unit tests for the async state helpers.
  *
- * `createAutoSave` and `createConnectedFetch` are pure (no runes) and tested
- * directly. `createAsyncResource` holds `$state`, so its reads happen inside an
+ * `createConnectedFetch` is pure (no runes) and tested directly.
+ * `createAsyncResource` holds `$state`, so its reads happen inside an
  * `$effect.root` with `flushSync` to materialise reactive updates.
  *
  * This file is `.svelte.test.ts` so the Svelte compiler transforms the rune
@@ -12,7 +12,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { flushSync } from 'svelte';
 import {
   createAsyncResource,
-  createAutoSave,
   createConnectedFetch,
   messageError,
 } from './async.svelte';
@@ -32,63 +31,6 @@ async function withRoot(fn: () => Promise<void> | void): Promise<void> {
     cleanup();
   }
 }
-
-// ── createAutoSave ──────────────────────────────────────────────────────────
-
-describe('createAutoSave', () => {
-  beforeEach(() => vi.useFakeTimers());
-  afterEach(() => vi.useRealTimers());
-
-  it('fires save once after the delay', () => {
-    const save = vi.fn();
-    const a = createAutoSave(save, 2000);
-    a.schedule();
-    expect(save).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(1999);
-    expect(save).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(1);
-    expect(save).toHaveBeenCalledTimes(1);
-  });
-
-  it('debounces: the latest schedule wins, save fires once', () => {
-    const save = vi.fn();
-    const a = createAutoSave(save, 2000);
-    a.schedule();
-    vi.advanceTimersByTime(1000);
-    a.schedule(); // resets timer
-    vi.advanceTimersByTime(1000);
-    expect(save).not.toHaveBeenCalled(); // only 1000ms since last schedule
-    vi.advanceTimersByTime(1000);
-    expect(save).toHaveBeenCalledTimes(1);
-  });
-
-  it('flush() cancels the timer and saves immediately', () => {
-    const save = vi.fn();
-    const a = createAutoSave(save, 2000);
-    a.schedule();
-    a.flush();
-    expect(save).toHaveBeenCalledTimes(1);
-    vi.advanceTimersByTime(5000);
-    expect(save).toHaveBeenCalledTimes(1); // timer was cancelled
-  });
-
-  it('cancel() prevents a pending save', () => {
-    const save = vi.fn();
-    const a = createAutoSave(save, 2000);
-    a.schedule();
-    a.cancel();
-    vi.advanceTimersByTime(5000);
-    expect(save).not.toHaveBeenCalled();
-  });
-
-  it('respects a custom delay per instance', () => {
-    const save = vi.fn();
-    const a = createAutoSave(save, 800);
-    a.schedule();
-    vi.advanceTimersByTime(800);
-    expect(save).toHaveBeenCalledTimes(1);
-  });
-});
 
 // ── createConnectedFetch ────────────────────────────────────────────────────
 

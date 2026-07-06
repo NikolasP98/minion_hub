@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import { X } from 'lucide-svelte';
+	import { createAsyncDebouncer } from '$lib/pacer/index.svelte';
 
 	type Party = { id: string; name: string | null; type: string; email: string | null; docNumber: string | null };
 
@@ -22,26 +24,35 @@
 	let q = $state(initialName);
 	let results = $state<Party[]>([]);
 	let open = $state(false);
-	let timer: ReturnType<typeof setTimeout> | null = null;
 
-	function run(term: string) {
-		if (timer) clearTimeout(timer);
-		timer = setTimeout(async () => {
+	// A slow response for an earlier keystroke can otherwise land after a
+	// faster response for a later one and overwrite it with stale results.
+	// AsyncDebouncer only collapses calls still *pending* — it does not
+	// guarantee a superseding call wins once two fetches are in flight — so
+	// guard the commit with a seq token (same pattern as
+	// `runRecordSearch` in $lib/state/ui/command-palette.svelte.ts).
+	let searchSeq = 0;
+	const search = createAsyncDebouncer(
+		async (term: string) => {
+			const seq = ++searchSeq;
 			const u = new URL('/api/crm/parties', location.origin);
 			u.searchParams.set('q', term);
 			if (types) u.searchParams.set('type', types);
 			const r = await fetch(u);
+			if (seq !== searchSeq) return; // a newer search superseded this one
 			if (r.ok) {
 				results = await r.json();
 				open = true;
 			}
-		}, 200);
-	}
+		},
+		{ wait: 200 },
+	);
+	onDestroy(() => search.cancel());
 
 	function onInput(e: Event) {
 		q = (e.currentTarget as HTMLInputElement).value;
 		value = null; // typing invalidates the prior selection until re-picked
-		run(q);
+		search.run(q);
 	}
 
 	function pick(p: Party) {
@@ -66,7 +77,7 @@
 			{placeholder}
 			value={q}
 			oninput={onInput}
-			onfocus={() => q && run(q)}
+			onfocus={() => q && search.run(q)}
 			onblur={() => setTimeout(() => (open = false), 150)}
 		/>
 		{#if value || q}

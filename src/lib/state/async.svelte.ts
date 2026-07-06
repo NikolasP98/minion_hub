@@ -5,7 +5,6 @@
  *
  *  - `createAsyncResource` — the loading/error/data triad with the canonical
  *    `try { loading=true; error=null; … } catch { error=… } finally { loading=false }`.
- *  - `createAutoSave` — a single debounced auto-save timer with flush/cancel.
  *  - `createConnectedFetch` — the "fetch once per connection, reset on disconnect"
  *    fire-once guard used by gateway-backed pages.
  *
@@ -98,50 +97,6 @@ export function createAsyncResource<T, A extends unknown[] = []>(
     load,
     reset,
   };
-}
-
-// ── createAutoSave ──────────────────────────────────────────────────────────
-
-export interface AutoSave {
-  /** (Re)start the debounce timer; the latest call wins. */
-  schedule(): void;
-  /** Cancel any pending timer and invoke `save()` immediately. */
-  flush(): void;
-  /** Cancel any pending timer without saving. */
-  cancel(): void;
-}
-
-/**
- * Debounced single-timer auto-save. Replicates the hand-rolled
- * `clearTimeout(saveTimer); saveTimer = setTimeout(save, delayMs)` idiom.
- *
- * Does NOT manage a `dirty`/`saving` flag — call sites keep owning that UI
- * state so behavior stays identical (e.g. set `dirty = true` before `schedule()`).
- */
-export function createAutoSave(save: () => void | Promise<void>, delayMs: number): AutoSave {
-  let timer: ReturnType<typeof setTimeout> | null = null;
-
-  function cancel(): void {
-    if (timer) {
-      clearTimeout(timer);
-      timer = null;
-    }
-  }
-
-  function schedule(): void {
-    cancel();
-    timer = setTimeout(() => {
-      timer = null;
-      void save();
-    }, delayMs);
-  }
-
-  function flush(): void {
-    cancel();
-    void save();
-  }
-
-  return { schedule, flush, cancel };
 }
 
 // ── createConnectedFetch ────────────────────────────────────────────────────

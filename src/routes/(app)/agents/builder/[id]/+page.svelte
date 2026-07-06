@@ -1,8 +1,8 @@
 <script lang="ts">
     import { page } from "$app/state";
     import { Loader2 } from "lucide-svelte";
-    import { onMount } from "svelte";
-    import { createAutoSave } from "$lib/state/async.svelte";
+    import { onMount, onDestroy } from "svelte";
+    import { createDebouncer } from "$lib/pacer/index.svelte";
     import * as m from '$lib/paraglide/messages';
     import BuilderToolbar from "./_components/BuilderToolbar.svelte";
     import IdentitySection from "./_components/IdentitySection.svelte";
@@ -27,7 +27,7 @@
     let saving = $state(false);
     let dirty = $state(false);
     let publishing = $state(false);
-    const autoSave = createAutoSave(() => saveAgent(), 2000);
+    const autoSave = createDebouncer(() => saveAgent(), { wait: 2000 });
 
     // ── Skill slots ─────────────────────────────────────────────────────
     interface SkillSlot { skillId: string; position: number; }
@@ -104,7 +104,7 @@
     // ── Auto-save (debounced 2s) ────────────────────────────────────────
     function scheduleSave() {
         dirty = true;
-        autoSave.schedule();
+        autoSave.run();
     }
 
     async function saveAgent() {
@@ -237,6 +237,7 @@
         loadAgent();
         loadAvailableSkills();
     });
+    onDestroy(() => autoSave.flush());
 
     // Trigger auto-save on field changes
     $effect(() => {

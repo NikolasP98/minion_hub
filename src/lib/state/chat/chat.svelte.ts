@@ -152,6 +152,21 @@ async function flushToSqlite(): Promise<void> {
   }
 }
 
+// Tab close/switch drops up to 30s (SQLite) / 3s (localStorage) of activity
+// data if we only rely on the interval timers above — flush both paths
+// immediately when the page is hidden or being torn down.
+function flushSparkBinsNow(): void {
+  flushSparkSave();
+  void flushToSqlite();
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) flushSparkBinsNow();
+  });
+  window.addEventListener('pagehide', flushSparkBinsNow);
+}
+
 /** Merge activity bins fetched from DB into ring buffer slots that are still 0. */
 export function mergeActivityBinsFromDb(
   bins: { agentId: string; binTs: number; count: number }[],

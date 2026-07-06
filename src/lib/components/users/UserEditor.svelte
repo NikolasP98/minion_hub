@@ -1,8 +1,10 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte';
   import * as m from '$lib/paraglide/messages';
   import { validateAlias, normalizeAlias } from '$lib/utils/alias';
   import { Select } from '$lib/components/ui';
   import IdentityList from './IdentityList.svelte';
+  import { createAsyncDebouncer } from '$lib/pacer/index.svelte';
 
   type UserRow = {
     id: string;
@@ -34,7 +36,6 @@
   let role = $state<'user' | 'admin'>(user.role);
   let saving = $state(false);
   let availability = $state<AvailabilityState>('idle');
-  let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
   const dirty = $derived(
     displayName !== (user.displayName ?? '') ||
@@ -48,23 +49,39 @@
       (validateAlias(normalizeAlias(alias) ?? '').ok && availability !== 'taken'),
   );
 
+  // A slow availability check for an earlier alias can otherwise land after a
+  // faster one for a later alias and overwrite it with a stale verdict — which
+  // gates the Save button. Guard the commit with a seq token (same pattern as
+  // `runRecordSearch` in $lib/state/ui/command-palette.svelte.ts) AND require
+  // the checked alias still match the current input (belt and suspenders).
+  let aliasCheckSeq = 0;
+  const aliasCheck = createAsyncDebouncer(
+    async (normalized: string) => {
+      const seq = ++aliasCheckSeq;
+      const res = await fetch(`/api/users/aliases?check=${encodeURIComponent(normalized)}`);
+      const data = (await res.json()) as { available: boolean; reason?: string };
+      if (seq !== aliasCheckSeq) return; // a newer check superseded this one
+      if (normalizeAlias(alias) !== normalized) return; // input moved on since this check started
+      availability = data.available ? 'available' : ((data.reason as AvailabilityState) ?? 'taken');
+    },
+    { wait: 300 },
+  );
+  onDestroy(() => aliasCheck.cancel());
+
   $effect(() => {
-    if (debounceTimer) clearTimeout(debounceTimer);
     const normalized = normalizeAlias(alias);
     if (!normalized || normalized === user.alias) {
+      aliasCheck.cancel();
       availability = 'idle';
       return;
     }
     if (!validateAlias(normalized).ok) {
+      aliasCheck.cancel();
       availability = 'invalid';
       return;
     }
     availability = 'checking';
-    debounceTimer = setTimeout(async () => {
-      const res = await fetch(`/api/users/aliases?check=${encodeURIComponent(normalized)}`);
-      const data = (await res.json()) as { available: boolean; reason?: string };
-      availability = data.available ? 'available' : ((data.reason as AvailabilityState) ?? 'taken');
-    }, 300);
+    aliasCheck.run(normalized);
   });
 
   async function handleSave() {
