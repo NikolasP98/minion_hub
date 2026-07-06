@@ -11,8 +11,10 @@
     import { Bot, Radio, LayoutList, LayoutGrid, FolderPlus, ChevronDown, ChevronRight } from "lucide-svelte";
     import * as m from "$lib/paraglide/messages";
     import type { CollapseLevel } from '$lib/components/layout/Splitter.svelte';
+    import { createQuery } from "@tanstack/svelte-query";
     import {
         agentGroupsState,
+        fetchAgentGroups,
         createAgentGroup,
         updateAgentGroup,
         deleteAgentGroup,
@@ -20,7 +22,6 @@
         toggleAgentViewMode,
         toggleGroupCollapsed,
         toggleUngroupedCollapsed,
-        destroyGroupsStore,
     } from "$lib/state/features/agent-groups.svelte";
     import { builderState, loadBuiltAgents } from "$lib/state/builder/builder.svelte";
     import type { Agent } from "@minion-stack/shared";
@@ -29,7 +30,7 @@
     import { goto } from "$app/navigation";
     import { page } from "$app/state";
     import { configState, loadConfig, getField } from "$lib/state/config/config.svelte";
-    import { onMount, onDestroy } from "svelte";
+    import { onMount } from "svelte";
 
     interface Props {
         /** Collapse level from the parent Splitter */
@@ -71,10 +72,6 @@
             }
         }
         return map;
-    });
-
-    onDestroy(() => {
-        destroyGroupsStore();
     });
 
     type SidebarAgent = Agent & {
@@ -130,7 +127,12 @@
     );
 
     // Agent grouping
-    const groups = $derived(agentGroupsState.groups);
+    const groupsQuery = createQuery(() => ({
+        queryKey: ["agent-groups", ui.selectedServerId ?? ""],
+        queryFn: () => fetchAgentGroups(ui.selectedServerId as string),
+        enabled: !!ui.selectedServerId,
+    }));
+    const groups = $derived(groupsQuery.data ?? []);
     const groupedAgentIds = $derived(
         new Set(groups.flatMap((g) => g.memberAgentIds)),
     );

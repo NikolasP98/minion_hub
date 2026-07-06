@@ -14,6 +14,8 @@
 	import { ensurePermissions } from '$lib/state/features/permissions.svelte';
 	import { hydratePluginNav } from '$lib/state/plugin-nav.svelte';
 	import { fadeIn } from '$lib/animations';
+	import { QueryClientProvider } from '@tanstack/svelte-query';
+	import { queryClient } from '$lib/query/client';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -40,26 +42,34 @@
 	});
 </script>
 
-<div class="relative z-10 flex h-screen overflow-hidden text-foreground">
-	{#if !immersive}
-		<Sidebar />
-	{/if}
-	<div class="shell-main flex flex-col flex-1 min-w-0 overflow-hidden">
-		<Topbar />
-		<ConnectionBanner />
-		<div class="flex-1 min-h-0 overflow-y-auto">
-			{#key moduleKey}
-				<div in:fadeIn={{ duration: 200 }} class="h-full">
-					{@render children()}
-				</div>
-			{/key}
+<QueryClientProvider client={queryClient}>
+	<div class="relative z-10 flex h-screen overflow-hidden text-foreground">
+		{#if !immersive}
+			<Sidebar />
+		{/if}
+		<div class="shell-main flex flex-col flex-1 min-w-0 overflow-hidden">
+			<Topbar />
+			<ConnectionBanner />
+			<div class="flex-1 min-h-0 overflow-y-auto">
+				{#key moduleKey}
+					<div in:fadeIn={{ duration: 200 }} class="h-full">
+						{@render children()}
+					</div>
+				{/key}
+			</div>
 		</div>
+		<DynamicIsland />
 	</div>
-	<DynamicIsland />
-</div>
 
-<CommandPalette />
-<LiveRunWidget />
-<FloatingAssistant />
-<ShortcutsOverlay />
-<GNav />
+	<CommandPalette />
+	<LiveRunWidget />
+	<FloatingAssistant />
+	<ShortcutsOverlay />
+	<GNav />
+
+	{#if import.meta.env.DEV}
+		{#await import('@tanstack/svelte-query-devtools') then { SvelteQueryDevtools }}
+			<SvelteQueryDevtools />
+		{/await}
+	{/if}
+</QueryClientProvider>

@@ -1,4 +1,5 @@
 import { sendRequest } from '$lib/services/gateway-rpc';
+import { queryClient } from '$lib/query/client';
 
 interface PersonalAgentState {
   agent: PersonalAgentData | null;
@@ -50,9 +51,14 @@ export const personalAgent = {
     state.loading = true;
     state.error = null;
     try {
-      const res = await fetch('/api/personal-agent');
-      if (!res.ok) throw new Error('Failed to load agent');
-      const data = await res.json();
+      const data = await queryClient.fetchQuery({
+        queryKey: ['personal-agent'],
+        queryFn: async () => {
+          const res = await fetch('/api/personal-agent');
+          if (!res.ok) throw new Error('Failed to load agent');
+          return (await res.json()) as { agent: PersonalAgentData | null };
+        },
+      });
       state.agent = data.agent;
     } catch (err) {
       state.error = err instanceof Error ? err.message : 'Unknown error';
@@ -69,9 +75,15 @@ export const personalAgent = {
    */
   async checkAndProvision() {
     try {
-      const res = await fetch('/api/personal-agent/provision');
-      if (!res.ok) return;
-      const data = await res.json();
+      const data = await queryClient.fetchQuery({
+        queryKey: ['personal-agent', 'provision'],
+        queryFn: async () => {
+          const res = await fetch('/api/personal-agent/provision');
+          if (!res.ok) throw new Error('provision check failed');
+          return res.json();
+        },
+        staleTime: 0,
+      });
       if (!data.needsProvisioning) return;
 
       // Call gateway to create the agent workspace
@@ -86,6 +98,7 @@ export const personalAgent = {
         // displayName lives in the gateway config (`agents.list[].identity.name`)
         // as the single source of truth — /my-agent writes it via config.patch.
         // We no longer push it from the DB via hub.personal-agent.updated.
+        await queryClient.invalidateQueries({ queryKey: ['personal-agent'] });
         await this.load();
       } catch (err) {
         // Mark as error
@@ -98,7 +111,10 @@ export const personalAgent = {
           }),
         });
       }
-      // Always reload so client state reflects the DB outcome
+      // Always reload so client state reflects the DB outcome — invalidate
+      // first so a fresh `load()` within the same staleTime window refetches
+      // instead of serving the pre-provisioning cached snapshot.
+      await queryClient.invalidateQueries({ queryKey: ['personal-agent'] });
       await this.load();
     } catch {
       // Silently fail -- will retry next page load

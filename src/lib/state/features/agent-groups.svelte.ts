@@ -1,6 +1,5 @@
 import { ui } from '$lib/state/ui/ui.svelte';
-import { createCachedStore, type CachedStore } from '$lib/state/cached-store.svelte';
-import { userState } from '$lib/state/features/user.svelte';
+import { queryClient } from '$lib/query/client';
 
 export interface AgentGroup {
   id: string;
@@ -9,10 +8,7 @@ export interface AgentGroup {
   memberAgentIds: string[];
 }
 
-interface AgentGroupsState {
-  /** Read-only — sourced from the cached store (single source of truth). */
-  readonly groups: AgentGroup[];
-  loading: boolean;
+interface AgentGroupsUiState {
   viewMode: 'list' | 'gallery';
   collapsedGroupIds: Set<string>;
   ungroupedCollapsed: boolean;
@@ -69,27 +65,14 @@ function persistUngroupedCollapsed(collapsed: boolean) {
   }
 }
 
-// Mutable UI fields stay in $state. `groups` is intentionally NOT here — it is
-// a read-through getter over the cached store below (single source of truth).
-const _ui = $state({
-  loading: false,
+// UI-only state (not Query's concern — collapse/view-mode prefs, localStorage-backed).
+const _ui = $state<AgentGroupsUiState>({
   viewMode: loadPersistedViewMode(),
   collapsedGroupIds: loadPersistedCollapsed(),
   ungroupedCollapsed: loadPersistedUngroupedCollapsed(),
 });
 
-export const agentGroupsState: AgentGroupsState = {
-  // Read-through: the cached store's `data` is the only copy of the groups.
-  // Reading it also drives the store's lazy SWR refetch when stale.
-  get groups() {
-    return _groupsStore?.data ?? [];
-  },
-  get loading() {
-    return _ui.loading;
-  },
-  set loading(v: boolean) {
-    _ui.loading = v;
-  },
+export const agentGroupsState = {
   get viewMode() {
     return _ui.viewMode;
   },
@@ -114,85 +97,32 @@ function getServerId(): string | null {
   return ui.selectedServerId ?? null;
 }
 
-// Module-scope cached store — one instance per session, replaced if server/user changes.
-let _groupsStore: CachedStore<AgentGroup[]> | null = null;
-let _groupsStoreKey = '';
-
-function buildCacheKey(sid: string, userId: string, tenantId: string): string {
-  return `hub:v1:agent-groups:t=${tenantId}:u=${userId}:s=${sid}`;
+function groupsQueryKey(sid: string) {
+  return ['agent-groups', sid] as const;
 }
 
-function buildCacheTags(sid: string, userId: string, tenantId: string): string[] {
-  return [
-    `t:${tenantId}:agent-groups`,
-    `t:${tenantId}`,
-    `d:agent-groups`,
-    `u:${userId}`,
-    `s:${sid}`,
-  ];
+/** queryFn for `['agent-groups', serverId]` — owned by AgentSidebar's `createQuery`. */
+export async function fetchAgentGroups(sid: string): Promise<AgentGroup[]> {
+  const res = await fetch(`/api/servers/${sid}/agent-groups`);
+  if (!res.ok) throw new Error(`agent-groups fetch failed: ${res.status}`);
+  return ((await res.json()) as { groups: AgentGroup[] }).groups ?? [];
 }
 
-function getOrCreateGroupsStore(sid: string): CachedStore<AgentGroup[]> {
-  const userId = userState.user?.id ?? 'anon';
-  const tenantId = userState.orgId ?? 'anon';
-  const key = buildCacheKey(sid, userId, tenantId);
-
-  if (_groupsStore && _groupsStoreKey === key) return _groupsStore;
-
-  // Destroy old store (unregisters from invalidation listener).
-  _groupsStore?.destroy();
-
-  _groupsStore = createCachedStore<AgentGroup[]>({
-    key,
-    tags: buildCacheTags(sid, userId, tenantId),
-    fetcher: async () => {
-      const res = await fetch(`/api/servers/${sid}/agent-groups`);
-      if (!res.ok) throw new Error(`agent-groups fetch failed: ${res.status}`);
-      const { groups } = await res.json();
-      const data: AgentGroup[] = groups ?? [];
-      // No hand-mirror: `agentGroupsState.groups` reads straight from this
-      // store's `data`. Just clear the loading flag.
-      agentGroupsState.loading = false;
-      return data;
-    },
-    storage: 'session',
-  });
-  _groupsStoreKey = key;
-  return _groupsStore;
-}
-
+/**
+ * Ask the mounted `createQuery(['agent-groups', serverId])` (in AgentSidebar)
+ * to refetch. No-op if nothing is currently observing that key.
+ */
 export async function loadAgentGroups(serverId?: string) {
   const sid = serverId ?? getServerId();
   if (!sid) return;
-
-  agentGroupsState.loading = true;
-  const store = getOrCreateGroupsStore(sid);
-  // If sessionStorage already has fresh data, `store.data` is non-null and
-  // `agentGroupsState.groups` reflects it immediately (read-through getter).
-  if (store.data !== null) {
-    agentGroupsState.loading = store.loading;
-  }
-  // Always kick a background refresh so data stays current.
-  await store.refresh();
+  await queryClient.invalidateQueries({ queryKey: groupsQueryKey(sid) });
 }
 
-/**
- * Destroy the current cached store (call from a component's onDestroy when the
- * component is the primary owner of the groups lifecycle).
- */
-export function destroyGroupsStore(): void {
-  _groupsStore?.destroy();
-  _groupsStore = null;
-  _groupsStoreKey = '';
-}
-
-/**
- * Optimistically patch the cached store's groups in place. Single write path now
- * that `agentGroupsState.groups` reads through to the store — no hand-mirror.
- * No-op if the store doesn't exist yet (nothing is displaying groups anyway).
- */
+/** Optimistically patch the cached groups for the active server. */
 function mutateGroups(updater: (groups: AgentGroup[]) => AgentGroup[]): void {
-  _groupsStore?.mutate((cur) => updater(cur ?? []));
+  const sid = getServerId();
+  if (!sid) return;
+  queryClient.setQueryData<AgentGroup[]>(groupsQueryKey(sid), (cur) => updater(cur ?? []));
 }
 
 export async function createAgentGroup(name: string) {
@@ -259,10 +189,12 @@ export async function moveAgentToGroup(
 ) {
   const sid = getServerId();
   if (!sid) return;
+  const key = groupsQueryKey(sid);
 
-  // Optimistic update
-  mutateGroups((groups) =>
-    groups.map((g) => {
+  // Snapshot for revert — cheaper and less jarring than a full refetch on failure.
+  const previous = queryClient.getQueryData<AgentGroup[]>(key);
+  queryClient.setQueryData<AgentGroup[]>(key, (groups) =>
+    (groups ?? []).map((g) => {
       if (g.id === fromGroupId) {
         return { ...g, memberAgentIds: g.memberAgentIds.filter((id) => id !== agentId) };
       }
@@ -275,22 +207,24 @@ export async function moveAgentToGroup(
 
   try {
     if (fromGroupId) {
-      await fetch(`/api/servers/${sid}/agent-groups/${fromGroupId}/members`, {
+      const res = await fetch(`/api/servers/${sid}/agent-groups/${fromGroupId}/members`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ agentId }),
       });
+      if (!res.ok) throw new Error(`remove member failed: ${res.status}`);
     }
     if (toGroupId) {
-      await fetch(`/api/servers/${sid}/agent-groups/${toGroupId}/members`, {
+      const res = await fetch(`/api/servers/${sid}/agent-groups/${toGroupId}/members`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ agentId }),
       });
+      if (!res.ok) throw new Error(`add member failed: ${res.status}`);
     }
   } catch {
-    // Rollback on error
-    await loadAgentGroups(sid);
+    // Rollback to the pre-optimistic snapshot.
+    queryClient.setQueryData<AgentGroup[]>(key, previous);
   }
 }
 

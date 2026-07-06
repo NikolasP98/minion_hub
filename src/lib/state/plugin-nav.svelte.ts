@@ -1,4 +1,14 @@
 import type { PluginUiManifestOccupant } from "$lib/plugins/plugin-types";
+import { queryClient } from "$lib/query/client";
+
+async function fetchModules(): Promise<Record<string, boolean>> {
+  const res = await fetch("/api/modules", { credentials: "same-origin" });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return ((await res.json()) as { modules: Record<string, boolean> }).modules;
+}
+
+/** Shared queryKey with the settings/modules page — its toggle mutation invalidates this. */
+export const MODULES_QUERY_KEY = ["modules"] as const;
 
 export const pluginNavState = $state<{
   controlCenters: PluginUiManifestOccupant[];
@@ -48,15 +58,15 @@ export async function hydratePluginNav(): Promise<void> {
     // sees them alongside plugin-enabled flags. A failure here must not prevent
     // nav hydration from completing — modules just stay at their default (enabled).
     try {
-      const modRes = await fetch('/api/modules', { credentials: 'same-origin' });
-      if (modRes.ok) {
-        const { modules } = (await modRes.json()) as { modules: Record<string, boolean> };
-        for (const [id, on] of Object.entries(modules)) {
-          enabled[id] = on;
-        }
-        // Re-assign so Svelte 5 $derived consumers re-run after the merge.
-        pluginNavState.enabledByPluginId = { ...enabled };
+      const modules = await queryClient.fetchQuery({
+        queryKey: MODULES_QUERY_KEY,
+        queryFn: fetchModules,
+      });
+      for (const [id, on] of Object.entries(modules)) {
+        enabled[id] = on;
       }
+      // Re-assign so Svelte 5 $derived consumers re-run after the merge.
+      pluginNavState.enabledByPluginId = { ...enabled };
     } catch {
       // Non-fatal: modules stay at default (enabled).
     }

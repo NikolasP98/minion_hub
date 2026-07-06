@@ -1,4 +1,5 @@
 import { sendInstall } from '$lib/services/gateway-rpc';
+import { queryClient } from '$lib/query/client';
 
 export interface MarketplaceAgent {
   id: string;
@@ -26,13 +27,9 @@ export interface MarketplaceAgent {
 }
 
 export const marketplaceState = $state({
-  agents: [] as MarketplaceAgent[],
   selectedAgent: null as MarketplaceAgent | null,
-  selectedCategory: null as string | null,
-  searchQuery: '',
   syncing: false,
   syncError: null as string | null,
-  loading: false,
   installing: false,
   installError: null as string | null,
   lastInstalledAgentId: null as string | null,
@@ -46,22 +43,14 @@ export function parseTags(tagsJson: string): string[] {
   }
 }
 
-export async function loadAgents(category?: string, search?: string) {
-  marketplaceState.loading = true;
-  try {
-    const params = new URLSearchParams();
-    if (category) params.set('category', category);
-    if (search) params.set('search', search);
-
-    const res = await fetch(`/api/marketplace/agents?${params.toString()}`);
-    if (!res.ok) return;
-    const { agents } = await res.json();
-    marketplaceState.agents = agents;
-  } catch {
-    // non-critical
-  } finally {
-    marketplaceState.loading = false;
-  }
+/** queryFn for the `['marketplace','agents', category, term]` query (owned by the agents list page). */
+export async function fetchAgents(category?: string, search?: string): Promise<MarketplaceAgent[]> {
+  const params = new URLSearchParams();
+  if (category) params.set('category', category);
+  if (search) params.set('search', search);
+  const res = await fetch(`/api/marketplace/agents?${params.toString()}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return ((await res.json()) as { agents: MarketplaceAgent[] }).agents;
 }
 
 export async function loadAgent(id: string): Promise<MarketplaceAgent | null> {
@@ -86,11 +75,8 @@ export async function syncFromGitHub(): Promise<{ synced: number; errors: string
       return { synced: 0, errors: [marketplaceState.syncError] };
     }
     const data = await res.json();
-    // Reload agents after sync
-    await loadAgents(
-      marketplaceState.selectedCategory ?? undefined,
-      marketplaceState.searchQuery || undefined,
-    );
+    // Refresh any mounted agents-list query (list page, if open).
+    await queryClient.invalidateQueries({ queryKey: ['marketplace', 'agents'] });
     return data;
   } catch (err) {
     marketplaceState.syncError = (err as Error).message;
@@ -135,9 +121,17 @@ export async function installAgent(
     }
 
     marketplaceState.lastInstalledAgentId = agentId;
-    // Optimistically bump install count
-    const agent = marketplaceState.agents.find((a) => a.id === agentId);
-    if (agent) agent.installCount = (agent.installCount ?? 0) + 1;
+    // Optimistically bump install count in every cached list/detail entry.
+    const bump = (a: MarketplaceAgent) =>
+      a.id === agentId ? { ...a, installCount: (a.installCount ?? 0) + 1 } : a;
+    queryClient.setQueriesData<MarketplaceAgent[]>(
+      { queryKey: ['marketplace', 'agents'] },
+      (agents) => agents?.map(bump),
+    );
+    queryClient.setQueryData<MarketplaceAgent | null>(
+      ['marketplace', 'agent', agentId],
+      (agent) => (agent ? bump(agent) : agent),
+    );
     return true;
   } catch (err) {
     marketplaceState.installError = (err as Error).message;

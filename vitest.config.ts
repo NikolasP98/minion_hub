@@ -16,6 +16,8 @@ export default defineConfig({
       '$env/dynamic/private': path.resolve('src/server/test-utils/env-stubs/dynamic-private.ts'),
       '$env/dynamic/public': path.resolve('src/server/test-utils/env-stubs/dynamic-public.ts'),
       '$env/static/public': path.resolve('src/server/test-utils/env-stubs/static-public.ts'),
+      // Same story for `$app/environment` (tanstack query client reads `browser`).
+      '$app/environment': path.resolve('src/server/test-utils/env-stubs/app-environment.ts'),
     },
   },
 });

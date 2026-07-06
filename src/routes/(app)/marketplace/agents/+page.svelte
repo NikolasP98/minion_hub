@@ -1,9 +1,10 @@
 <script lang="ts">
-    import { onMount } from "svelte";
+    import { onDestroy } from "svelte";
+    import { createQuery } from "@tanstack/svelte-query";
+    import { createDebouncer } from "$lib/pacer/index.svelte";
     import AgentCard from "$lib/components/marketplace/AgentCard.svelte";
     import {
-        marketplaceState,
-        loadAgents,
+        fetchAgents,
         type MarketplaceAgent,
     } from "$lib/state/features/marketplace.svelte";
     import * as m from "$lib/paraglide/messages";
@@ -14,7 +15,13 @@
 
     // Search and filters
     let searchInput = $state("");
-    let searchTimer: ReturnType<typeof setTimeout> | null = null;
+    // Debounced term feeds the queryKey — race-safe (stale in-flight responses
+    // for a superseded term are just a different cache entry, never rendered).
+    let debouncedTerm = $state("");
+    const searchDebouncer = createDebouncer((v: string) => (debouncedTerm = v), { wait: 300 });
+    onDestroy(() => searchDebouncer.cancel());
+
+    let selectedCategory = $state<string | null>(null);
     let sortBy = $state<"popular" | "newest" | "name">("popular");
     let featuredOnly = $state(false);
     let modelFilter = $state('');
@@ -36,37 +43,30 @@
         { id: "security", label: () => m.marketplace_agentsListCategorySecurity() },
     ] as const;
 
-    onMount(() => {
-        loadAgents(marketplaceState.selectedCategory ?? undefined);
-    });
+    const agentsQuery = createQuery(() => ({
+        queryKey: ["marketplace", "agents", selectedCategory, debouncedTerm],
+        queryFn: () => fetchAgents(selectedCategory ?? undefined, debouncedTerm || undefined),
+    }));
 
     function onSearchInput(e: Event) {
         const val = (e.target as HTMLInputElement).value;
         searchInput = val;
-        if (searchTimer) clearTimeout(searchTimer);
-        searchTimer = setTimeout(() => {
-            marketplaceState.searchQuery = val;
-            loadAgents(
-                marketplaceState.selectedCategory ?? undefined,
-                val || undefined,
-            );
-        }, 300);
+        searchDebouncer.run(val);
     }
 
     function selectCategory(id: string | null) {
-        marketplaceState.selectedCategory = id;
-        loadAgents(id ?? undefined, searchInput || undefined);
+        selectedCategory = id;
     }
 
     function clearSearch() {
         searchInput = "";
-        marketplaceState.searchQuery = "";
-        loadAgents(marketplaceState.selectedCategory ?? undefined);
+        searchDebouncer.cancel();
+        debouncedTerm = "";
     }
 
     // Sorted agents
     const sortedAgents = $derived.by(() => {
-        let agents = [...marketplaceState.agents];
+        let agents = [...(agentsQuery.data ?? [])];
         if (featuredOnly) agents = agents.filter(a => (a.installCount ?? 0) >= 100);
         if (modelFilter) agents = agents.filter(a => a.model?.toLowerCase().includes(modelFilter));
         switch (sortBy) {
@@ -88,7 +88,7 @@
     });
 
     const currentCategory = $derived(
-        categories.find((c) => c.id === marketplaceState.selectedCategory) ??
+        categories.find((c) => c.id === selectedCategory) ??
             categories[0],
     );
 
@@ -202,7 +202,7 @@
                         type="button"
                         onclick={() => selectCategory(cat.id)}
                         class="text-[11px] py-0.5 px-2.5 rounded-full border whitespace-nowrap cursor-pointer transition-colors
-                            {marketplaceState.selectedCategory === cat.id
+                            {selectedCategory === cat.id
                                 ? 'bg-[color-mix(in_srgb,var(--color-brand-pink)_15%,transparent)] border-[color-mix(in_srgb,var(--color-brand-pink)_30%,transparent)] text-[var(--color-brand-pink)]'
                                 : 'bg-bg3 border-border text-muted-foreground hover:text-foreground hover:border-border/80'}"
                     >
@@ -215,32 +215,31 @@
 
     <!-- Content area — owns the scroll -->
     <div class="flex-1 min-h-0 overflow-y-auto p-4">
-        {#if marketplaceState.loading}
+        {#if agentsQuery.isPending}
             <!-- Loading State -->
             <div class="flex flex-col items-center justify-center py-24 gap-3">
                 <div class="w-6 h-6 border-2 border-[var(--color-brand-pink)] border-t-transparent rounded-full animate-spin"></div>
                 <p class="text-muted-foreground text-xs">{m.marketplace_agentsListLoading()}</p>
             </div>
-        {:else if marketplaceState.agents.length === 0}
+        {:else if (agentsQuery.data ?? []).length === 0}
             <!-- Empty State -->
             <div class="flex flex-col items-center justify-center py-24 gap-3 text-center">
                 <Bot size={32} class="text-muted-strong" />
                 <div>
                     <h3 class="text-sm font-semibold text-foreground mb-1">{m.marketplace_agentsListEmpty()}</h3>
                     <p class="text-xs text-muted-foreground">
-                        {#if searchInput || marketplaceState.selectedCategory}
+                        {#if searchInput || selectedCategory}
                             {m.marketplace_agentsListEmptyHint()}
                         {:else}
                             {m.marketplace_agentsListEmptySync()}
                         {/if}
                     </p>
                 </div>
-                {#if searchInput || marketplaceState.selectedCategory}
+                {#if searchInput || selectedCategory}
                     <button
                         type="button"
                         onclick={() => {
-                            searchInput = "";
-                            marketplaceState.searchQuery = "";
+                            clearSearch();
                             selectCategory(null);
                         }}
                         class="text-xs px-3 py-1.5 bg-bg3 border border-border rounded-md text-muted-foreground hover:text-foreground hover:bg-border cursor-pointer transition-colors"
@@ -252,7 +251,7 @@
         {:else}
             <!-- Results count -->
             <p class="text-[11px] text-muted-foreground mb-3">
-                {m.marketplace_agentsListShowing({ count: marketplaceState.agents.length })}
+                {m.marketplace_agentsListShowing({ count: (agentsQuery.data ?? []).length })}
                 {#if currentCategory.id}
                     {m.marketplace_agentsListShowingIn({ category: currentCategory.label() })}
                 {/if}

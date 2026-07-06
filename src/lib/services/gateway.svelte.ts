@@ -1,6 +1,6 @@
 import { conn, setConnectError, clearConnectError } from '$lib/state/gateway/connection.svelte';
 import { describeGatewayError } from '$lib/services/gateway-errors';
-import { dispatchCacheInvalidate } from '$lib/state/cache-invalidate-listener.svelte';
+import { queryClient } from '$lib/query/client';
 import {
   type DebugStepEvent,
   type DebugStepName,
@@ -579,9 +579,13 @@ function handleEvent(evt: Record<string, unknown>) {
       toastError('Gateway shutdown', reason, { id: 'gateway-shutdown', duration: Infinity });
       break;
     }
-    case 'cache.invalidate':
-      dispatchCacheInvalidate(evt.payload as Parameters<typeof dispatchCacheInvalidate>[0]);
+    case 'cache.invalidate': {
+      const { tags } = evt.payload as { tags: string[] };
+      for (const tag of tags) {
+        void queryClient.invalidateQueries({ queryKey: [tag] });
+      }
       break;
+    }
     case 'reliability':
       if (evt.payload && typeof evt.payload === 'object') {
         pushReliabilityEvent(evt.payload as ReliabilityEvent);

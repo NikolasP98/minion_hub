@@ -1,12 +1,10 @@
 <script lang="ts">
     import { onMount } from "svelte";
     import { page } from "$app/stores";
+    import { createQuery } from "@tanstack/svelte-query";
     import { createBackNav } from "$lib/nav/back-nav.svelte";
     import { hostsState } from "$lib/state/features/hosts.svelte";
-    import {
-        loadAgent,
-        type MarketplaceAgent,
-    } from "$lib/state/features/marketplace.svelte";
+    import { loadAgent } from "$lib/state/features/marketplace.svelte";
     import * as m from "$lib/paraglide/messages";
     import { Search, FileText, Info, ArrowLeft } from "lucide-svelte";
     import { PageHeader } from "$lib/components/ui";
@@ -16,7 +14,7 @@
     import OverviewTab from "./_components/OverviewTab.svelte";
     import DocumentsTab from "./_components/DocumentsTab.svelte";
 
-    const slug = $derived($page.params.slug);
+    const slug = $derived($page.params.slug as string);
     const initialTab = $derived(
         ($page.url.searchParams.get("tab") === "documents"
             ? "documents"
@@ -25,26 +23,33 @@
 
     type Tab = "overview" | "documents";
 
-    let agent = $state<MarketplaceAgent | null>(null);
-    let loading = $state(true);
     let activeTab = $state<Tab>("overview");
+    let trackedAgentId: string | null = null;
 
-    onMount(async () => {
+    const agentQuery = createQuery(() => ({
+        queryKey: ["marketplace", "agent", slug],
+        queryFn: () => loadAgent(slug),
+    }));
+
+    const agent = $derived(agentQuery.data ?? null);
+    const loading = $derived(agentQuery.isPending);
+
+    $effect(() => {
+        if (agent && trackedAgentId !== agent.id) {
+            trackedAgentId = agent.id;
+            posthog.capture('marketplace_agent_viewed', {
+                agent_id: agent.id,
+                agent_name: agent.name,
+                agent_category: agent.category,
+            });
+        }
+    });
+
+    onMount(() => {
         activeTab = initialTab;
         // Touch hostsState early so HiringPanel can pick a default once it's
         // mounted with an agent.
         void hostsState.hosts.length;
-
-        const data = await loadAgent(slug as string);
-        agent = data;
-        loading = false;
-        if (data) {
-            posthog.capture('marketplace_agent_viewed', {
-                agent_id: data.id,
-                agent_name: data.name,
-                agent_category: data.category,
-            });
-        }
     });
 
     const back = createBackNav("/marketplace/agents", m.marketplace_agentDetailBack);

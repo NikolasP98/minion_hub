@@ -1,34 +1,14 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { createQuery } from '@tanstack/svelte-query';
   import { ArrowLeft, Loader2 } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
+  import { leaderboardQueryOptions } from './leaderboard-query';
 
-  type Row = {
-    modelId: string;
-    rankings: number;
-    wins: number;
-    winRate: number;
-    avgRank: number | null;
-    runs: number;
-    avgLatencyMs: number | null;
-    totalCostUsd: number;
-  };
+  const query = createQuery(() => leaderboardQueryOptions());
 
-  let rows = $state<Row[]>([]);
-  let loading = $state(true);
-  let err = $state<string | null>(null);
-
-  onMount(async () => {
-    try {
-      const res = await fetch('/api/workshop/leaderboard');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      rows = ((await res.json()) as { rows: Row[] }).rows;
-    } catch (e) {
-      err = e instanceof Error ? e.message : String(e);
-    } finally {
-      loading = false;
-    }
-  });
+  const rows = $derived(query.data ?? []);
+  const loading = $derived(query.isPending);
+  const err = $derived(query.error ? String(query.error) : null);
 </script>
 
 <div class="flex-1 overflow-y-auto p-6 space-y-4">

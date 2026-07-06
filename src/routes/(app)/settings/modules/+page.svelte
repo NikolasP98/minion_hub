@@ -3,7 +3,8 @@
 	import { Blocks } from 'lucide-svelte';
 	import { PageHeader, Toggle } from '$lib/components/ui';
 	import * as m from '$lib/paraglide/messages';
-	import { setPluginEnabled } from '$lib/state/plugin-nav.svelte';
+	import { setPluginEnabled, MODULES_QUERY_KEY } from '$lib/state/plugin-nav.svelte';
+	import { queryClient } from '$lib/query/client';
 
 	let { data }: { data: PageData } = $props();
 
@@ -42,6 +43,7 @@
 			});
 			if (res.ok) {
 				setPluginEnabled(moduleId, enabled);
+				void queryClient.invalidateQueries({ queryKey: MODULES_QUERY_KEY });
 			} else {
 				moduleMsg = { id: moduleId, ok: false, text: m.fin_module_error() };
 				if (moduleId === 'finances') finEnabled = !enabled;

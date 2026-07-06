@@ -1,40 +1,27 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { createQuery } from '@tanstack/svelte-query';
   import { ArrowRight, Trophy } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
-
-  type Row = { modelId: string; winRate: number; rankings: number };
+  import { leaderboardQueryOptions, type LeaderboardRow } from './leaderboard-query';
 
   // Reload trigger: bump `refresh` after saving a ranking to re-pull the top models.
   let { refresh = 0 }: { refresh?: number } = $props();
 
-  let top = $state<Row[]>([]);
-  let loaded = $state(false);
+  const query = createQuery(() => leaderboardQueryOptions());
 
-  async function load() {
-    try {
-      const res = await fetch('/api/workshop/leaderboard');
-      if (res.ok) {
-        const rows = ((await res.json()) as { rows: Row[] }).rows;
-        top = rows.filter((r) => r.rankings > 0).slice(0, 3);
-      }
-    } catch {
-      /* strip is best-effort */
-    } finally {
-      loaded = true;
-    }
-  }
-
-  onMount(load);
   $effect(() => {
-    if (refresh > 0) void load();
+    if (refresh > 0) void query.refetch();
   });
+
+  const top = $derived(
+    (query.data ?? []).filter((r: LeaderboardRow) => r.rankings > 0).slice(0, 3),
+  );
 </script>
 
 <div class="flex items-center gap-3 rounded border border-border bg-bg2 px-3 h-10">
   <Trophy size={14} class="text-accent/70 shrink-0" />
   <div class="flex-1 min-w-0 flex items-center gap-3 overflow-x-auto">
-    {#if !loaded}
+    {#if query.isPending}
       <span class="text-[10px] font-mono text-muted-strong">…</span>
     {:else if top.length === 0}
       <span class="text-[10px] font-mono text-muted-strong">{m.workshop_exp_strip_empty()}</span>

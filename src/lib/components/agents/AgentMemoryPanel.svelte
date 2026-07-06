@@ -2,6 +2,7 @@
   import * as m from '$lib/paraglide/messages';
   import { SvelteSet } from 'svelte/reactivity';
   import type { EChartsOption } from 'echarts';
+  import { createQuery } from '@tanstack/svelte-query';
   import Chart from '$lib/components/charts/Chart.svelte';
   import { fetchKGSnapshot } from '$lib/services/gateway.svelte';
 
@@ -59,13 +60,8 @@
   const colorFor = (c: string) => CATEGORY_COLORS[c] ?? CATEGORY_COLORS.other;
 
   // ── State ───────────────────────────────────────────────────────────────────
-  let memories = $state<MemoryRow[]>([]);
-  let stats = $state<{ category: string; count: number }[]>([]);
-  let points = $state<ScatterPoint[]>([]);
   let kgNodes = $state<KGNode[]>([]);
-  let loading = $state(false);
   let kgLoading = $state(false);
-  let error = $state<string | null>(null);
 
   let activeCategories = new SvelteSet<string>([...MEMORY_CATEGORIES, ...KG_EXTRA_TYPES]);
   let query = $state('');
@@ -73,28 +69,45 @@
   let searching = $state(false);
   let searchError = $state<string | null>(null);
 
-  // ── Load pgvector memories ──────────────────────────────────────────────────
-  async function load(id: string) {
-    loading = true;
-    error = null;
-    try {
-      const [listRes, scatterRes] = await Promise.all([
-        fetch(`/api/agent-memories?agentId=${encodeURIComponent(id)}&stats=1&limit=500`),
-        fetch(`/api/agent-memories/scatter?agentId=${encodeURIComponent(id)}`),
-      ]);
-      if (!listRes.ok) throw new Error(`Failed to load memories (${listRes.status})`);
-      const listJson = (await listRes.json()) as { memories: MemoryRow[]; stats?: { category: string; count: number }[] };
-      memories = listJson.memories ?? [];
-      stats = listJson.stats ?? [];
-      points = scatterRes.ok ? ((await scatterRes.json()) as { points: ScatterPoint[] }).points : [];
-    } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to load memories';
-    } finally {
-      loading = false;
-    }
+  // ── pgvector memories + scatter (two parallel GETs on open; cached 60s so
+  // re-opening the panel for an already-viewed agent is instant) ─────────────
+  async function fetchMemoryList(id: string) {
+    const res = await fetch(`/api/agent-memories?agentId=${encodeURIComponent(id)}&stats=1&limit=500`);
+    if (!res.ok) throw new Error(`Failed to load memories (${res.status})`);
+    return (await res.json()) as { memories: MemoryRow[]; stats?: { category: string; count: number }[] };
+  }
+  async function fetchScatterPoints(id: string) {
+    const res = await fetch(`/api/agent-memories/scatter?agentId=${encodeURIComponent(id)}`);
+    if (!res.ok) return [];
+    return ((await res.json()) as { points: ScatterPoint[] }).points;
   }
 
-  // ── Load KG nodes ───────────────────────────────────────────────────────────
+  const memoriesQuery = createQuery(() => ({
+    queryKey: ['agent-memories', agentId],
+    queryFn: () => fetchMemoryList(agentId),
+    staleTime: 60_000,
+    enabled: !!agentId,
+  }));
+  const scatterQuery = createQuery(() => ({
+    queryKey: ['agent-memories', 'scatter', agentId],
+    queryFn: () => fetchScatterPoints(agentId),
+    staleTime: 60_000,
+    enabled: !!agentId,
+  }));
+
+  const memories = $derived(memoriesQuery.data?.memories ?? []);
+  const stats = $derived(memoriesQuery.data?.stats ?? []);
+  const points = $derived(scatterQuery.data ?? []);
+  const loading = $derived(memoriesQuery.isPending);
+  const error = $derived(
+    memoriesQuery.isError
+      ? memoriesQuery.error instanceof Error
+        ? memoriesQuery.error.message
+        : 'Failed to load memories'
+      : null,
+  );
+
+  // ── Load KG nodes (WS/gateway RPC — not a Query candidate) ──────────────────
   async function loadKG(id: string) {
     kgLoading = true;
     try {
@@ -109,10 +122,7 @@
 
   $effect(() => {
     const id = agentId;
-    if (id) {
-      void load(id);
-      void loadKG(id);
-    }
+    if (id) void loadKG(id);
   });
 
   // ── Semantic search ─────────────────────────────────────────────────────────
