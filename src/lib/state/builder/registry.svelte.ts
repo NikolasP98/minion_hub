@@ -23,7 +23,6 @@ export const registryState = $state({
   error: null as string | null,
   search: '',
   categoryFilter: null as string | null,
-  visibleCount: 48,
   hash: null as string | null,
 });
 
@@ -178,8 +177,6 @@ const _filteredAgents = $derived.by(() => {
   return agents;
 });
 
-const _visibleAgents = $derived(_filteredAgents.slice(0, registryState.visibleCount));
-
 const _registryCategories = $derived.by(() => {
   const counts = new Map<string, number>();
   for (const a of registryState.agents) {
@@ -196,21 +193,10 @@ export const registryDerived = {
   get filteredAgents() {
     return _filteredAgents;
   },
-  get visibleAgents() {
-    return _visibleAgents;
-  },
   get categories() {
     return _registryCategories;
   },
 };
-
-export function loadMore() {
-  registryState.visibleCount += 48;
-}
-
-export function resetVisibleCount() {
-  registryState.visibleCount = 48;
-}
 
 // ─── Icons ──────────────────────────────────────────────────
 

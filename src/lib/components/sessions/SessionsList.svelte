@@ -2,6 +2,8 @@
   import { SvelteMap } from 'svelte/reactivity';
   import * as m from '$lib/paraglide/messages';
   import { createHotkey } from '$lib/hotkeys';
+  import { browser } from '$app/environment';
+  import { createVirtualizer } from '$lib/virtual/virtualizer.svelte';
 
   export type SessionRow = {
     id: string;
@@ -27,6 +29,7 @@
   let search = $state('');
   let agentFilter = $state('');
   let searchEl: HTMLInputElement | undefined = $state();
+  let scrollEl: HTMLDivElement | undefined = $state();
 
   // Bare `/` is input-safe by lib default (won't fire while typing elsewhere).
   createHotkey('/', () => searchEl?.focus(), {
@@ -90,6 +93,43 @@
     }
     return map;
   });
+
+  // Flatten grouped/ungrouped branches into one virtualizable list.
+  // ponytail: dropping sticky group headers here — they scroll with content now;
+  // rangeExtractor pinning wasn't trivial enough to justify for a session list.
+  type ListItem = { kind: 'header'; agentId: string } | { kind: 'session'; s: SessionRow };
+  const items = $derived.by((): ListItem[] => {
+    if (!multiAgent) return filtered.map((s) => ({ kind: 'session', s }));
+    const out: ListItem[] = [];
+    for (const [agentId, rows] of grouped) {
+      out.push({ kind: 'header', agentId });
+      for (const s of rows) out.push({ kind: 'session', s });
+    }
+    return out;
+  });
+
+  function itemKey(item: ListItem): string {
+    return item.kind === 'header' ? `header:${item.agentId}` : `session:${item.s.sessionKey}`;
+  }
+
+  const v = $derived(
+    browser && scrollEl
+      ? createVirtualizer({
+          count: items.length,
+          getScrollElement: () => scrollEl ?? null,
+          getItemKey: (i) => itemKey(items[i]),
+          estimateSize: (i) => (items[i]?.kind === 'header' ? 28 : 44),
+          overscan: 8,
+        })
+      : null,
+  );
+
+  // Reset scroll to top when the view identity changes (search/agent filter).
+  $effect(() => {
+    void search;
+    void agentFilter;
+    v?.scrollToOffset(0);
+  });
 </script>
 
 <div class="flex flex-col h-full overflow-hidden bg-bg">
@@ -111,58 +151,53 @@
     {/if}
   </div>
 
-  <div class="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-color-border">
+  <div class="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-color-border" bind:this={scrollEl}>
     {#if filtered.length === 0}
       <div class="text-muted text-xs text-center py-6 px-4">{m.sessions_noSessions()}</div>
-    {:else if multiAgent}
-      {#each [...grouped.entries()] as [agentId, rows] (agentId)}
-        <div class="flex flex-col">
-          <div class="text-[10px] font-bold tracking-[0.08em] uppercase text-muted py-2 px-3 pb-1 border-b border-border bg-bg2 sticky top-0 z-[1]">{agentId}</div>
-          {#each rows as s (s.sessionKey)}
-            {@const color = statusColor(s.status)}
-            <button
-              class="flex flex-col gap-[3px] w-full py-[9px] px-3 bg-transparent border-0 border-b border-b-white/[0.04] border-l-3 border-l-transparent text-foreground cursor-pointer text-left transition-colors duration-100 hover:bg-white/[0.03] {selectedKey === s.sessionKey ? '!bg-bg3 !border-l-accent' : ''}"
-              onclick={() => onSelect(s.sessionKey)}
-            >
-              <div class="flex items-center justify-between gap-1.5">
-                <span class="text-xs font-semibold text-foreground overflow-hidden text-ellipsis whitespace-nowrap flex-1 min-w-0">{getDisplayName(s)}</span>
-                <span
-                  class="shrink-0 w-2 h-2 rounded-full
-                    {color === 'green' ? 'bg-success shadow-[0_0_5px_var(--color-success)]' : ''}
-                    {color === 'amber' ? 'bg-warning' : ''}
-                    {color === 'grey'  ? 'bg-[#475569]' : ''}"
-                ></span>
-              </div>
-              <div class="flex items-center justify-between gap-1.5">
-                <span class="font-mono text-[10px] text-muted overflow-hidden text-ellipsis whitespace-nowrap flex-1 min-w-0">{s.sessionKey}</span>
-                <span class="text-[10px] text-muted whitespace-nowrap shrink-0">{relTime(s.updatedAt)}</span>
-              </div>
-            </button>
-          {/each}
-        </div>
-      {/each}
-    {:else}
-      {#each filtered as s (s.sessionKey)}
-        {@const color = statusColor(s.status)}
-        <button
-          class="flex flex-col gap-[3px] w-full py-[9px] px-3 bg-transparent border-0 border-b border-b-white/[0.04] border-l-3 border-l-transparent text-foreground cursor-pointer text-left transition-colors duration-100 hover:bg-white/[0.03] {selectedKey === s.sessionKey ? '!bg-bg3 !border-l-accent' : ''}"
-          onclick={() => onSelect(s.sessionKey)}
-        >
-          <div class="flex items-center justify-between gap-1.5">
-            <span class="text-xs font-semibold text-foreground overflow-hidden text-ellipsis whitespace-nowrap flex-1 min-w-0">{getDisplayName(s)}</span>
-            <span
-              class="shrink-0 w-2 h-2 rounded-full
-                {color === 'green' ? 'bg-success shadow-[0_0_5px_var(--color-success)]' : ''}
-                {color === 'amber' ? 'bg-warning' : ''}
-                {color === 'grey'  ? 'bg-[#475569]' : ''}"
-            ></span>
+    {:else if v}
+      <div class="relative w-full" style="height:{v.getTotalSize()}px">
+        {#each v.getVirtualItems() as item (item.key)}
+          {@const row = items[item.index]}
+          <div
+            data-index={item.index}
+            {@attach (node) => v.measureElement(node)}
+            class="absolute left-0 right-0"
+            style="transform: translateY({item.start}px)"
+          >
+            {#if row.kind === 'header'}
+              <div class="text-[10px] font-bold tracking-[0.08em] uppercase text-muted py-2 px-3 pb-1 border-b border-border bg-bg2">{row.agentId}</div>
+            {:else}
+              {@const s = row.s}
+              {@const color = statusColor(s.status)}
+              <button
+                class="flex flex-col gap-[3px] w-full py-[9px] px-3 bg-transparent border-0 border-b border-b-white/[0.04] border-l-3 border-l-transparent text-foreground cursor-pointer text-left transition-colors duration-100 hover:bg-white/[0.03] {selectedKey === s.sessionKey ? '!bg-bg3 !border-l-accent' : ''}"
+                onclick={() => onSelect(s.sessionKey)}
+              >
+                <div class="flex items-center justify-between gap-1.5">
+                  <span class="text-xs font-semibold text-foreground overflow-hidden text-ellipsis whitespace-nowrap flex-1 min-w-0">{getDisplayName(s)}</span>
+                  <span
+                    class="shrink-0 w-2 h-2 rounded-full
+                      {color === 'green' ? 'bg-success shadow-[0_0_5px_var(--color-success)]' : ''}
+                      {color === 'amber' ? 'bg-warning' : ''}
+                      {color === 'grey'  ? 'bg-[#475569]' : ''}"
+                  ></span>
+                </div>
+                {#if multiAgent}
+                  <div class="flex items-center justify-between gap-1.5">
+                    <span class="font-mono text-[10px] text-muted overflow-hidden text-ellipsis whitespace-nowrap flex-1 min-w-0">{s.sessionKey}</span>
+                    <span class="text-[10px] text-muted whitespace-nowrap shrink-0">{relTime(s.updatedAt)}</span>
+                  </div>
+                {:else}
+                  <div class="flex items-center justify-between gap-1.5">
+                    <span class="text-[10px] font-semibold text-accent bg-accent/12 rounded-[10px] px-[7px] py-[1px] whitespace-nowrap shrink-0">{s.agentId}</span>
+                    <span class="text-[10px] text-muted whitespace-nowrap shrink-0">{relTime(s.updatedAt)}</span>
+                  </div>
+                {/if}
+              </button>
+            {/if}
           </div>
-          <div class="flex items-center justify-between gap-1.5">
-            <span class="text-[10px] font-semibold text-accent bg-accent/12 rounded-[10px] px-[7px] py-[1px] whitespace-nowrap shrink-0">{s.agentId}</span>
-            <span class="text-[10px] text-muted whitespace-nowrap shrink-0">{relTime(s.updatedAt)}</span>
-          </div>
-        </button>
-      {/each}
+        {/each}
+      </div>
     {/if}
   </div>
 </div>

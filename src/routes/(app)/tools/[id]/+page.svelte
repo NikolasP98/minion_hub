@@ -124,23 +124,24 @@
         }
     }
 
+    // ponytail: ring buffer, virtualize if anyone needs full-run logs
+    function appendConsole(...lines: Array<{ text: string; type: "stdout" | "stderr" | "system" }>) {
+        consoleLines = [...consoleLines, ...lines].slice(-500);
+    }
+
     function runTool() {
         if (running) return;
         running = true;
         const now = new Date().toLocaleTimeString();
-        consoleLines = [
-            ...consoleLines,
-            { text: `[${now}] Running ${scriptLang} script...`, type: "system" },
-        ];
+        appendConsole({ text: `[${now}] Running ${scriptLang} script...`, type: "system" });
         scrollConsole();
 
         // Simulate: not connected yet
         setTimeout(() => {
-            consoleLines = [
-                ...consoleLines,
+            appendConsole(
                 { text: "Execution not yet connected to gateway.", type: "stderr" },
                 { text: `[exit 1] duration: 0ms`, type: "system" },
-            ];
+            );
             running = false;
             scrollConsole();
         }, 500);

@@ -126,7 +126,8 @@ export async function listSessions(ctx: CoreCtx, serverId: string) {
           .select(sessionCols)
           .from(sessions)
           .where(and(eq(sessions.gatewayId, gatewayId), eq(sessions.tenantId, ctx.tenantId)))
-          .orderBy(desc(sessions.updatedAt));
+          .orderBy(desc(sessions.updatedAt))
+          .limit(1000);
         return rows.map((r) => reshape(r, serverId));
       }),
   );

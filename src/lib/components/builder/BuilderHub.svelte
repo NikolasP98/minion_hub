@@ -34,6 +34,9 @@
     // ── Registry detail sheet ───────────────────────────────────────
     let selectedRegistryAgent = $state<RegistryAgent | null>(null);
 
+    // Bounded scrolling ancestor for AgentRegistry's virtualizer (this div, not window).
+    let scrollEl: HTMLDivElement | undefined = $state();
+
     const isAdmin = $derived(hubIsAdmin.value);
 
     // ── Creation wizards ────────────────────────────────────────────
@@ -211,7 +214,7 @@
     }
 </script>
 
-<div class="flex-1 min-h-0 overflow-y-auto">
+<div class="flex-1 min-h-0 overflow-y-auto" bind:this={scrollEl}>
     <div class="max-w-4xl mx-auto px-6 py-8">
         {#if !only}
             <!-- Page Header -->
@@ -273,7 +276,10 @@
 
             <!-- Agent Registry (catalog of 1,300+ agents) -->
             {#if activeTab === 'agents'}
-                <AgentRegistry onSelectAgent={(agent) => { selectedRegistryAgent = agent; }} />
+                <AgentRegistry
+                    onSelectAgent={(agent) => { selectedRegistryAgent = agent; }}
+                    scrollContainer={scrollEl}
+                />
             {/if}
         </div>
     </div>

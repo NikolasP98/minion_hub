@@ -42,8 +42,6 @@ export {
   registryState,
   loadRegistry,
   registryDerived,
-  loadMore,
-  resetVisibleCount,
   categoryIcon,
   agentIcon,
 } from './registry.svelte';

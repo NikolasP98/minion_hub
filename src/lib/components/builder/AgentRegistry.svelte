@@ -2,18 +2,25 @@
     import { Search, X, Loader2, ChevronDown, Bot } from 'lucide-svelte';
     import {
         registryState, loadRegistry, registryDerived,
-        loadMore, resetVisibleCount,
         categoryIcon, agentIcon,
         type RegistryAgent,
     } from '$lib/state/builder';
     import { onMount } from 'svelte';
+    import { browser } from '$app/environment';
+    import { createVirtualizer } from '$lib/virtual/virtualizer.svelte';
     import * as m from '$lib/paraglide/messages';
 
-    let { onSelectAgent }: { onSelectAgent: (agent: RegistryAgent) => void } = $props();
+    let {
+        onSelectAgent,
+        scrollContainer,
+    }: {
+        onSelectAgent: (agent: RegistryAgent) => void;
+        /** Bounded scrolling ancestor (host owns it — the grid has no scroller of its own). */
+        scrollContainer?: HTMLElement | null;
+    } = $props();
 
     let searchInput = $state('');
     let searchTimer: ReturnType<typeof setTimeout> | null = null;
-    let sentinel: HTMLDivElement | undefined = $state();
     let showMoreCategories = $state(false);
 
     const MAX_VISIBLE_PILLS = 12;
@@ -25,19 +32,48 @@
         loadRegistry();
     });
 
-    // Intersection observer for infinite scroll
+    // Column count from the scroll container's own width (it has no max-width cap,
+    // unlike the narrower centered content column the grid itself sits in — so it
+    // tracks available screen real-estate the same way the old viewport-width
+    // Tailwind breakpoints (sm/lg) did).
+    let containerWidth = $state(0);
     $effect(() => {
-        if (!sentinel) return;
-        const observer = new IntersectionObserver(
-            (entries) => {
-                if (entries[0]?.isIntersecting && registryDerived.visibleAgents.length < registryDerived.filteredAgents.length) {
-                    loadMore();
-                }
-            },
-            { rootMargin: '200px' },
-        );
-        observer.observe(sentinel);
-        return () => observer.disconnect();
+        if (!browser || !scrollContainer) return;
+        const ro = new ResizeObserver((entries) => {
+            containerWidth = entries[0]?.contentRect.width ?? scrollContainer!.clientWidth;
+        });
+        ro.observe(scrollContainer);
+        return () => ro.disconnect();
+    });
+    const columns = $derived(containerWidth >= 1024 ? 3 : containerWidth >= 640 ? 2 : 1);
+
+    // Row-chunk the filtered agents into virtualizer rows of `columns` cards each.
+    const rows = $derived.by(() => {
+        const list = registryDerived.filteredAgents;
+        const cols = columns;
+        const out: RegistryAgent[][] = [];
+        for (let i = 0; i < list.length; i += cols) out.push(list.slice(i, i + cols));
+        return out;
+    });
+
+    const v = $derived(
+        browser && scrollContainer && rows.length > 0
+            ? createVirtualizer({
+                    count: rows.length,
+                    getScrollElement: () => scrollContainer ?? null,
+                    getItemKey: (i) => rows[i]?.[0]?.id ?? i,
+                    estimateSize: () => 170,
+                    gap: 12,
+                    overscan: 4,
+                })
+            : null,
+    );
+
+    // Reset scroll to top when the view identity changes (search/category filter).
+    $effect(() => {
+        void registryState.search;
+        void registryState.categoryFilter;
+        v?.scrollToOffset(0);
     });
 
     function onSearchInput(e: Event) {
@@ -46,20 +82,17 @@
         if (searchTimer) clearTimeout(searchTimer);
         searchTimer = setTimeout(() => {
             registryState.search = val;
-            resetVisibleCount();
         }, 200);
     }
 
     function clearSearch() {
         searchInput = '';
         registryState.search = '';
-        resetVisibleCount();
     }
 
     function setCategory(cat: string | null) {
         registryState.categoryFilter = cat;
         showMoreCategories = false;
-        resetVisibleCount();
     }
 </script>
 
@@ -153,47 +186,49 @@
         </div>
     {:else if registryState.error}
         <div class="error-banner">{registryState.error}</div>
-    {:else if registryDerived.visibleAgents.length === 0 && registryState.loaded}
+    {:else if registryDerived.filteredAgents.length === 0 && registryState.loaded}
         <div class="empty-state">
             <Bot size={24} class="empty-icon" />
             <p class="empty-text">{m.builder_registryNoMatch()}</p>
         </div>
-    {:else}
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {#each registryDerived.visibleAgents as agent (agent.id)}
-                <button
-                    type="button"
-                    class="reg-card"
-                    onclick={() => onSelectAgent(agent)}
+    {:else if v}
+        <div class="relative w-full" style="height:{v.getTotalSize()}px">
+            {#each v.getVirtualItems() as item (item.key)}
+                {@const rowAgents = rows[item.index] ?? []}
+                <div
+                    data-index={item.index}
+                    {@attach (node) => v.measureElement(node)}
+                    class="absolute left-0 right-0 grid gap-3"
+                    style="transform: translateY({item.start}px); grid-template-columns: repeat({columns}, minmax(0, 1fr));"
                 >
-                    <div class="reg-card-inner">
-                        <div class="reg-card-header">
-                            <span class="reg-cat-icon">{agentIcon(agent)}</span>
-                            <span class="reg-name">{agent.name}</span>
-                        </div>
-                        {#if agent.description}
-                            <span class="reg-desc">{agent.description}</span>
-                        {/if}
-                        <div class="reg-footer">
-                            {#each agent.categories as cat}
-                                <span class="reg-category">{cat}</span>
-                            {/each}
-                            {#if agent.model}
-                                <span class="reg-model">{agent.model}</span>
-                            {/if}
-                        </div>
-                    </div>
-                </button>
+                    {#each rowAgents as agent (agent.id)}
+                        <button
+                            type="button"
+                            class="reg-card"
+                            onclick={() => onSelectAgent(agent)}
+                        >
+                            <div class="reg-card-inner">
+                                <div class="reg-card-header">
+                                    <span class="reg-cat-icon">{agentIcon(agent)}</span>
+                                    <span class="reg-name">{agent.name}</span>
+                                </div>
+                                {#if agent.description}
+                                    <span class="reg-desc">{agent.description}</span>
+                                {/if}
+                                <div class="reg-footer">
+                                    {#each agent.categories as cat}
+                                        <span class="reg-category">{cat}</span>
+                                    {/each}
+                                    {#if agent.model}
+                                        <span class="reg-model">{agent.model}</span>
+                                    {/if}
+                                </div>
+                            </div>
+                        </button>
+                    {/each}
+                </div>
             {/each}
         </div>
-
-        <!-- Load more sentinel -->
-        {#if registryDerived.visibleAgents.length < registryDerived.filteredAgents.length}
-            <div bind:this={sentinel} class="sentinel">
-                <Loader2 size={16} class="loading-spinner" />
-                <span class="loading-text">{m.builder_registryLoadingMore()}</span>
-            </div>
-        {/if}
     {/if}
 </div>
 
@@ -524,11 +559,4 @@
         border: 1px solid var(--color-border);
     }
 
-    .sentinel {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 0.5rem;
-        padding: 1.5rem 0;
-    }
 </style>
