@@ -67,7 +67,12 @@
   );
 </script>
 
-<div class="flex-1 min-h-0 flex overflow-hidden">
+<!-- ponytail: h-full not flex-1 — this div's parent ((app)/+layout.svelte's
+     content wrapper) is display:block, so flex-1/min-h-0 are inert and the
+     box grows to content height, defeating both children's virtualizers
+     (SessionsList + SessionViewer scroll containers inherit the unbounded
+     height). h-full resolves via percentage regardless of parent display. -->
+<div class="h-full flex overflow-hidden">
     <!-- Left panel: session list -->
     <div class="w-[300px] shrink-0 border-r border-border flex flex-col overflow-hidden relative">
       {#if loadingSessions}
