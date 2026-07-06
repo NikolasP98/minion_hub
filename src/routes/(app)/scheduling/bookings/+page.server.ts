@@ -34,7 +34,8 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
   return {
     bookings,
     resources: resources.map((r) => ({ id: r.id, name: r.name })),
-    eventTypes: eventTypes.map((e) => ({ id: e.id, title: e.title })),
+    eventTypes: eventTypes.map((e) => ({ id: e.id, title: e.title, productId: e.productId ?? null })),
+    stockEnabled: await isModuleEnabled(ctx, 'stock'),
     contactId: contact ?? null,
     contactName: contactRec?.contact?.displayName ?? null,
     openNew,

@@ -3228,6 +3228,8 @@
   "sched_book_success_pending": "Solicitud recibida — confirmaremos pronto.",
   "sched_book_no_slots": "No hay horarios disponibles — prueba otro día.",
   "sched_book_unavailable": "Ese horario ya no está disponible. Elige otro.",
+  "sched_stock_consumption": "Consumo de stock",
+  "sched_stock_atp_warn": "supera lo disponible ({atp} {uom} tras compromisos)",
   "sched_book_continue": "Continuar",
   "sched_book_back": "Atrás",
   "sched_book_other_date": "Otra fecha",

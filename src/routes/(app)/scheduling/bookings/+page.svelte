@@ -5,6 +5,8 @@
 	import { PageHeader, Card, Button, Badge, EmptyState, Modal } from '$lib/components/ui';
 	import * as m from '$lib/paraglide/messages';
 	import ScopeBanner from '$lib/components/crm/ScopeBanner.svelte';
+	import ConsumptionGauge from '$lib/components/stock/ConsumptionGauge.svelte';
+	import { gaugeMax } from '$lib/components/stock/stock-ui';
 	import { canAct } from '$lib/access/can.svelte';
 
 	let { data }: { data: PageData } = $props();
@@ -78,6 +80,49 @@
 		const j = res.ok ? await res.json() : { contacts: [] };
 		nbResults = (j.contacts ?? []).map((c: { contact_id: string; display_name: string | null }) => ({ id: c.contact_id, name: c.display_name || '—' }));
 	}
+	// ── Stock consumption preview (Task 9) ──
+	type ConsumptionLine = {
+		itemId: string;
+		itemName: string;
+		uom: string;
+		qty: number;
+		qtyConsumption: number;
+		consumptionUom: string | null;
+		unitsPerStockUom: number | null;
+		subunitsPerStockUom: number | null;
+		diagramEnabled: boolean;
+		available: number;
+		committedOther: number;
+		atp: number;
+	};
+	let nbLines = $state<ConsumptionLine[]>([]);
+	let nbHasMapping = $state(false);
+
+	function setLineConsumption(l: ConsumptionLine, qtyConsumption: number) {
+		l.qtyConsumption = qtyConsumption;
+		l.qty = l.unitsPerStockUom ? qtyConsumption / l.unitsPerStockUom : qtyConsumption;
+	}
+
+	async function loadConsumption() {
+		nbLines = [];
+		nbHasMapping = false;
+		const et = data.eventTypes.find((e) => e.id === nbEventType);
+		if (!et?.productId || !data.stockEnabled || !canAct('stock', 'view')) return;
+		try {
+			const res = await fetch('/api/stock/accruals/preview', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ finProductId: et.productId, quantity: 1 }),
+			});
+			if (!res.ok) return; // no warehouse / stock off — block simply stays hidden
+			const j = await res.json();
+			nbHasMapping = j.preview.hasMapping;
+			nbLines = j.preview.lines;
+		} catch {
+			/* preview is best-effort */
+		}
+	}
+
 	async function pickContact(c: { id: string; name: string }) {
 		nbContactId = c.id;
 		nbName = c.name;
@@ -127,7 +172,14 @@
 			const res = await fetch('/api/scheduling/bookings', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ eventTypeId: nbEventType, start: nbSlot, attendeeName: nbName, attendeePhone: nbPhone || null, crmContactId: nbContactId }),
+				body: JSON.stringify({
+					eventTypeId: nbEventType,
+					start: nbSlot,
+					attendeeName: nbName,
+					attendeePhone: nbPhone || null,
+					crmContactId: nbContactId,
+					consumption: nbHasMapping && nbLines.length ? nbLines.map((l) => ({ itemId: l.itemId, qtyConsumption: l.qtyConsumption })) : null,
+				}),
 			});
 			if (res.status === 409) {
 				nbErr = m.sched_book_unavailable();
@@ -142,6 +194,8 @@
 			nbContactId = null;
 			nbSearch = '';
 			nbResults = [];
+			nbLines = [];
+			nbHasMapping = false;
 			await invalidate('scheduling:data');
 		} catch (e) {
 			nbErr = e instanceof Error ? e.message : 'error';
@@ -238,7 +292,7 @@
 	<div class="flex flex-col gap-3">
 			<label class="field">
 				<span class="t-caption">{m.sched_book_choose_service()}</span>
-				<select class="txt" bind:value={nbEventType} onchange={loadSlots}>
+				<select class="txt" bind:value={nbEventType} onchange={() => { loadSlots(); loadConsumption(); }}>
 					<option value="">—</option>
 					{#each data.eventTypes as e (e.id)}
 						<option value={e.id}>{e.title}</option>
@@ -264,6 +318,40 @@
 							{new Date(s.start).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
 						</button>
 					{/each}
+				</div>
+			{/if}
+			{#if nbHasMapping && nbLines.length}
+				<div class="field">
+					<span class="t-caption">{m.sched_stock_consumption()}</span>
+					<div class="flex flex-col gap-2">
+						{#each nbLines as l (l.itemId)}
+							{@const gMax = l.diagramEnabled ? gaugeMax({ uom: l.uom, unitsPerStockUom: l.unitsPerStockUom, subunitsPerStockUom: l.subunitsPerStockUom }) : 0}
+							<div class="flex items-center gap-3 flex-wrap">
+								<span class="text-sm min-w-[120px]">{l.itemName}</span>
+								{#if gMax > 0}
+									<ConsumptionGauge
+										max={gMax}
+										unit={l.consumptionUom ?? l.uom}
+										bind:value={() => l.qtyConsumption ?? 0, (v) => setLineConsumption(l, v)}
+									/>
+								{:else}
+									<input
+										class="txt"
+										style="max-width: 90px"
+										type="number"
+										min="0"
+										step="any"
+										value={l.qtyConsumption}
+										oninput={(e) => setLineConsumption(l, Number(e.currentTarget.value) || 0)}
+									/>
+									<span class="t-caption">{l.consumptionUom ?? l.uom}</span>
+								{/if}
+								{#if l.qty > l.atp}
+									<span class="t-caption" style="color:var(--color-destructive)">{m.sched_stock_atp_warn({ atp: String(l.atp), uom: l.uom })}</span>
+								{/if}
+							</div>
+						{/each}
+					</div>
 				</div>
 			{/if}
 			<div class="field">
