@@ -92,6 +92,25 @@ describe('accrueConsumption', () => {
     const n = await accrueConsumption(ctx(db), { source: 'booking', sourceId: 'b1', finProductId: 'p1' });
     expect(n).toBe(0);
   });
+
+  it('all-unknown item lines → no-op, does NOT wipe the existing open set', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [], // existing accruals
+      [{ id: 'w1', isDefault: true }], // warehouses
+      [], // items lookup — none of the line items exist
+      [], // bins
+    ]);
+    const n = await accrueConsumption(ctx(db), {
+      source: 'booking',
+      sourceId: 'b1',
+      finProductId: 'p1',
+      lines: [{ itemId: 'ghost', qtyConsumption: 5 }],
+    });
+    expect(n).toBe(0);
+    expect(db.delete).not.toHaveBeenCalled();
+    expect(db.insert).not.toHaveBeenCalled();
+  });
 });
 
 describe('releaseAccruals', () => {

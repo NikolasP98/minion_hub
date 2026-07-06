@@ -91,9 +91,6 @@ export async function accrueConsumption(ctx: CoreCtx, input: AccrueInput): Promi
       .where(and(eq(stkBins.orgId, orgId), eq(stkBins.warehouseId, warehouseId), inArray(stkBins.itemId, itemIds)));
     const rateByItem = new Map(bins.map((b) => [b.itemId, Number(b.valuationRate)]));
 
-    await tx
-      .delete(stkAccruals)
-      .where(and(eq(stkAccruals.orgId, orgId), eq(stkAccruals.source, input.source), eq(stkAccruals.sourceId, input.sourceId), eq(stkAccruals.status, 'open')));
     const rows = lines
       .filter((l) => upsByItem.has(l.itemId)) // unknown item id → skip, not fail
       .map((l) => {
@@ -112,7 +109,12 @@ export async function accrueConsumption(ctx: CoreCtx, input: AccrueInput): Promi
           estValue: String(round4(qty * rate)),
         };
       });
-    if (rows.length) await tx.insert(stkAccruals).values(rows);
+    if (!rows.length) return 0; // all lines unknown → treat as malformed input, do NOT wipe the open set
+
+    await tx
+      .delete(stkAccruals)
+      .where(and(eq(stkAccruals.orgId, orgId), eq(stkAccruals.source, input.source), eq(stkAccruals.sourceId, input.sourceId), eq(stkAccruals.status, 'open')));
+    await tx.insert(stkAccruals).values(rows);
     return rows.length;
   });
 }
