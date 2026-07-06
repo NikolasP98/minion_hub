@@ -16,6 +16,7 @@
   });
 </script>
 
+<div class="h-full flex flex-col min-h-0">
 <!-- Tab bar -->
   <div class="shrink-0 border-b border-border bg-bg/95 backdrop-blur-sm px-4.5 flex items-center gap-1">
     {#each (['team', 'bindings'] as Tab[]) as tab (tab)}
@@ -39,3 +40,4 @@
       <BindingsTab />
     {/if}
   </div>
+</div>

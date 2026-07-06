@@ -11,7 +11,7 @@
   <title>Team · Minion</title>
 </svelte:head>
 
-<div class="flex-1 min-h-0 flex flex-col overflow-y-auto">
+<div class="h-full flex flex-col overflow-y-auto">
   <TeamTab />
   <SharedAccountsPanel />
 </div>

@@ -47,6 +47,7 @@
   }
 </script>
 
+<div class="h-full flex flex-col min-h-0">
 <PageHeader
   title={m.shellsPage_title()}
   subtitle={m.shellsPage_subtitle()}
@@ -95,6 +96,7 @@
     </div>
   {/if}
 </main>
+</div>
 
 <style>
   .primary {
