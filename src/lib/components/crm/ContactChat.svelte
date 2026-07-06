@@ -3,6 +3,7 @@
 	import { invalidate } from '$app/navigation';
 	import { ArrowDown, SendHorizontal, Clock, CheckCheck } from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages';
+	import { submitOnEnter } from '$lib/hotkeys';
 	import JourneyTimeline from './JourneyTimeline.svelte';
 
 	type TRow = {
@@ -123,12 +124,6 @@
 		setStatus(p.clientId, 'pending');
 		void dispatch(p);
 	}
-	function onKey(e: KeyboardEvent) {
-		if (e.key === 'Enter' && !e.shiftKey) {
-			e.preventDefault();
-			send();
-		}
-	}
 </script>
 
 <div class="chat">
@@ -166,7 +161,7 @@
 			<textarea
 				class="c-input"
 				bind:value={draft}
-				onkeydown={onKey}
+				{@attach submitOnEnter(() => send())}
 				placeholder={m.crm_message_placeholder()}
 				rows="1"
 			></textarea>

@@ -24,29 +24,36 @@
     import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
     import { page } from '$app/state';
     import { onMount, tick } from 'svelte';
+    import { createHotkey, formatForDisplay } from '$lib/hotkeys';
 
     let inputEl: HTMLTextAreaElement | undefined = $state();
     let messagesEl: HTMLDivElement | null = $state(null);
     let atBottom = $state(true);
 
-    // Load personal agent + key bindings
+    // Launcher kbd hint — ⌘J on macOS, Ctrl+J elsewhere. Seeded to the mac glyph
+    // (matches SSR) and corrected to the real platform after mount.
+    let kbdToggle = $state('⌘J');
+
     onMount(() => {
         loadPersonalAgent();
-
-        function onKey(e: KeyboardEvent) {
-            // ⌘J / Ctrl+J — ⌘K is owned by the command palette (CommandPalette.svelte).
-            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j') {
-                e.preventDefault();
-                toggleAssistant();
-                if (assistant.open) requestAnimationFrame(() => inputEl?.focus());
-            }
-            if (e.key === 'Escape' && assistant.open) {
-                closeAssistant();
-            }
-        }
-        window.addEventListener('keydown', onKey);
-        return () => window.removeEventListener('keydown', onKey);
+        kbdToggle = formatForDisplay('Mod+J');
     });
+
+    // ⌘J / Ctrl+J — ⌘K is owned by the command palette (CommandPalette.svelte).
+    createHotkey(
+        'Mod+J',
+        () => {
+            toggleAssistant();
+            if (assistant.open) requestAnimationFrame(() => inputEl?.focus());
+        },
+        { meta: { name: 'Assistant', description: 'Toggle the floating assistant' } },
+    );
+
+    // Escape closes only while open; keep it propagating to other overlays.
+    createHotkey('Escape', () => closeAssistant(), () => ({
+        enabled: assistant.open,
+        stopPropagation: false,
+    }));
 
     // Update scope reactively from current route + selected agent
     $effect(() => {
@@ -445,7 +452,7 @@
         </span>
         <kbd
             class="shrink-0 flex items-center h-5 px-1.5 rounded-md bg-bg3 text-[10px] font-medium font-mono leading-none text-muted-foreground border border-border"
-            >⌘J</kbd
+            >{kbdToggle}</kbd
         >
     </button>
 {:else}

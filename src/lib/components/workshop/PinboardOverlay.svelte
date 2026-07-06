@@ -6,6 +6,7 @@
     votePinboardItem,
     addPinboardComment,
   } from '$lib/state/workshop/workshop.svelte';
+  import { submitOnEnter } from '$lib/hotkeys';
   import * as m from '$lib/paraglide/messages';
 
   let {
@@ -36,20 +37,6 @@
     if (!trimmed) return;
     addPinboardItem(elementId, trimmed, 'user');
     newPinContent = '';
-  }
-
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleAdd();
-    }
-  }
-
-  function handleCommentKeydown(e: KeyboardEvent, pinId: string) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      submitComment(pinId);
-    }
   }
 
   function submitComment(pinId: string) {
@@ -188,7 +175,7 @@
                       class="flex-1 rounded border border-border bg-bg px-1.5 py-0.5 text-[9px] font-mono text-foreground placeholder:text-muted outline-none focus:border-accent"
                       placeholder={m.pinboard_commentPlaceholder()}
                       bind:value={newCommentText[pin.id]}
-                      onkeydown={(e) => handleCommentKeydown(e, pin.id)}
+                      {@attach submitOnEnter(() => submitComment(pin.id))}
                     />
                     <button
                       class="shrink-0 rounded bg-accent/10 px-1.5 py-0.5 text-[9px] font-mono text-accent hover:bg-accent/20 disabled:opacity-40"
@@ -215,7 +202,7 @@
         class="flex-1 rounded border border-border bg-bg3 px-2 py-1 text-[10px] font-mono text-foreground placeholder:text-muted outline-none focus:border-accent"
         placeholder={m.pinboard_addPlaceholder()}
         bind:value={newPinContent}
-        onkeydown={handleKeydown}
+        {@attach submitOnEnter(() => handleAdd())}
       />
       <button
         class="shrink-0 rounded bg-accent/10 px-2 py-1 text-[10px] font-mono text-accent hover:bg-accent/20 disabled:opacity-40"

@@ -9,6 +9,7 @@
     PromptSectionsError,
   } from "$lib/services/prompt-sections-rpc";
   import { toastError, toastSuccess } from "$lib/state/ui/toast.svelte";
+  import { createHotkey } from "$lib/hotkeys";
   import MarkdownView from "./MarkdownView.svelte";
   import ValidationErrors from "./ValidationErrors.svelte";
   import AgentAvatarStack from "./AgentAvatarStack.svelte";
@@ -136,18 +137,9 @@
   }
 
   // Cmd/Ctrl+S for inline save.
-  $effect(() => {
-    function onKeydown(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
-        if (editorActive && promptSections.isDirty && !saving) {
-          e.preventDefault();
-          void handleSave();
-        }
-      }
-    }
-    window.addEventListener("keydown", onKeydown);
-    return () => window.removeEventListener("keydown", onKeydown);
-  });
+  createHotkey('Mod+S', () => {
+    if (editorActive && promptSections.isDirty && !saving) void handleSave();
+  }, { meta: { name: 'Save section', description: 'Save the edited prompt section' } });
 
   const isSingleCustom = $derived(editorActive !== null);
 </script>

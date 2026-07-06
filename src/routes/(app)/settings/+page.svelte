@@ -13,6 +13,7 @@
         discard,
         restartState,
     } from "$lib/state/config/config.svelte";
+    import { createHotkey } from "$lib/hotkeys";
     import { countConfiguredKeys, getGroupsForTab, TABS } from "$lib/utils/config-schema";
     import { isAdmin } from "$lib/state/features/user.svelte";
     import SettingsSkeleton from "$lib/components/settings/SettingsSkeleton.svelte";
@@ -88,19 +89,16 @@
                 e.preventDefault();
             }
         }
-        function handleKeydown(e: KeyboardEvent) {
-            if ((e.metaKey || e.ctrlKey) && e.key === 's') {
-                e.preventDefault();
-                if (isDirty.value) save();
-            }
-        }
         window.addEventListener('beforeunload', handleBeforeUnload);
-        window.addEventListener('keydown', handleKeydown);
         return () => {
             window.removeEventListener('beforeunload', handleBeforeUnload);
-            window.removeEventListener('keydown', handleKeydown);
         };
     });
+
+    // Cmd/Ctrl+S saves the gateway config when dirty.
+    createHotkey('Mod+S', () => {
+        if (isDirty.value) save();
+    }, { meta: { name: 'Save settings', description: 'Save gateway configuration' } });
 
     // Gateway-config tabs hosted on this page (ai/agents/comms/security/system).
     // appearance + backups are now their own routes; gateway connections live at

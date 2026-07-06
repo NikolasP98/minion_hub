@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { onMount, onDestroy, tick } from 'svelte';
+    import { tick } from 'svelte';
+    import { createHotkey } from '$lib/hotkeys';
     import {
         palette,
         togglePalette,
@@ -64,46 +65,45 @@
         bell: Bell,
     };
 
-    function handleKeydown(e: KeyboardEvent) {
-        // Global shortcut: Cmd+K / Ctrl+K
-        if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-            e.preventDefault();
-            togglePalette();
-            return;
-        }
+    // Global: open/close the palette (fires anywhere, including inside inputs).
+    createHotkey('Mod+K', () => togglePalette(), {
+        meta: { name: 'Command palette', description: 'Open the command palette' },
+    });
 
-        if (!palette.open) return;
-
-        if (e.key === 'Escape') {
-            e.preventDefault();
-            closePalette();
-            return;
-        }
-
-        if (e.key === 'ArrowDown') {
-            e.preventDefault();
+    // View-scoped: list navigation, live only while the palette is open. The
+    // search input is focused, so arrows/Enter set ignoreInputs:false to fire
+    // there; stopPropagation:false preserves Escape reaching other overlays.
+    createHotkey('Escape', () => closePalette(), () => ({
+        enabled: palette.open,
+        stopPropagation: false,
+    }));
+    createHotkey(
+        'ArrowDown',
+        () => {
             palette.selectedIndex = Math.min(palette.selectedIndex + 1, flatCommands.length - 1);
             scrollToSelected();
-            return;
-        }
-
-        if (e.key === 'ArrowUp') {
-            e.preventDefault();
+        },
+        () => ({ enabled: palette.open, ignoreInputs: false }),
+    );
+    createHotkey(
+        'ArrowUp',
+        () => {
             palette.selectedIndex = Math.max(palette.selectedIndex - 1, 0);
             scrollToSelected();
-            return;
-        }
-
-        if (e.key === 'Enter') {
-            e.preventDefault();
+        },
+        () => ({ enabled: palette.open, ignoreInputs: false }),
+    );
+    createHotkey(
+        'Enter',
+        () => {
             const cmd = flatCommands[palette.selectedIndex];
             if (cmd) {
                 cmd.action();
                 closePalette();
             }
-            return;
-        }
-    }
+        },
+        () => ({ enabled: palette.open, ignoreInputs: false }),
+    );
 
     function scrollToSelected() {
         tick().then(() => {
@@ -140,14 +140,6 @@
         if (palette.open) {
             tick().then(() => inputEl?.focus());
         }
-    });
-
-    onMount(() => {
-        document.addEventListener('keydown', handleKeydown);
-    });
-
-    onDestroy(() => {
-        document.removeEventListener('keydown', handleKeydown);
     });
 </script>
 

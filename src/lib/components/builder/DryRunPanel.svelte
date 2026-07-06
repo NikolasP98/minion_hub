@@ -1,5 +1,6 @@
 <script lang="ts">
     import * as m from '$lib/paraglide/messages';
+    import { submitOnEnter } from '$lib/hotkeys';
     import { autosize } from '$lib/actions/autosize';
     import { X, Play, Loader2, CheckCircle2, XCircle, Clock, Zap, AlertTriangle, BarChart3, Sparkles } from 'lucide-svelte';
     import { onMount } from 'svelte';
@@ -31,12 +32,6 @@
         startDryRun(promptInput.trim());
     }
 
-    function handleKeydown(e: KeyboardEvent) {
-        if (e.key === 'Enter' && !e.shiftKey && promptInput.trim()) {
-            e.preventDefault();
-            handleRun();
-        }
-    }
 
     function statusIcon(status: DryRunChapterResult['status']) {
         switch (status) {
@@ -78,7 +73,7 @@
             class="prompt-input"
             use:autosize={{ value: promptInput, max: 200 }}
             bind:value={promptInput}
-            onkeydown={handleKeydown}
+            {@attach submitOnEnter(() => handleRun())}
             placeholder={m.builder_testPromptPlaceholder()}
             disabled={dryRun?.running}
         ></textarea>

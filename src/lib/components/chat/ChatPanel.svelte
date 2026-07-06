@@ -4,6 +4,7 @@
     import { agentChat } from "$lib/state/chat/chat.svelte";
     import { sendChatMsg } from "$lib/services/gateway.svelte";
     import { conn } from "$lib/state/gateway/connection.svelte";
+    import { submitOnEnter } from "$lib/hotkeys";
     import { tick, untrack } from "svelte";
     import * as m from "$lib/paraglide/messages";
 
@@ -32,12 +33,6 @@
         }
     });
 
-    function handleKeydown(e: KeyboardEvent) {
-        if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            sendChatMsg(agentId);
-        }
-    }
 </script>
 
 <div
@@ -134,7 +129,7 @@
                 if (chat)
                     chat.inputText = (e.target as HTMLTextAreaElement).value;
             }}
-            onkeydown={handleKeydown}
+            {@attach submitOnEnter(() => sendChatMsg(agentId))}
             rows="1"
         ></textarea>
         <button

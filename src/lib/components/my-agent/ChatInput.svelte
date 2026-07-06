@@ -7,6 +7,7 @@
 		dragContextIcon,
 		type DragContext,
 	} from '$lib/utils/drag-context';
+	import { createHotkeysAttachment } from '$lib/hotkeys';
 
 	interface Props {
 		onsubmit?: (text: string, mode: 'ask' | 'capture') => void;
@@ -47,14 +48,15 @@
 		chips = [];
 	}
 
-	function handleKeyDown(e: KeyboardEvent) {
-		if (e.key === 'Enter' && !e.shiftKey) {
-			const captureModifier = e.metaKey || e.ctrlKey;
-			const effectiveMode: 'ask' | 'capture' = captureModifier ? 'capture' : mode;
-			e.preventDefault();
-			send(effectiveMode);
-		}
-	}
+	// Enter sends in the current mode (# prefix → capture); Mod+Enter forces
+	// capture. Shift+Enter falls through to a native newline.
+	const composeKeys = createHotkeysAttachment(
+		[
+			{ hotkey: 'Enter', callback: () => send(mode) },
+			{ hotkey: 'Mod+Enter', callback: () => send('capture') },
+		],
+		{ ignoreInputs: false },
+	);
 
 	function onDragOver(e: DragEvent) {
 		if (!hasDragContext(e)) return;
@@ -124,7 +126,7 @@
 				bind:value
 				onfocus={() => (focused = true)}
 				onblur={() => (focused = false)}
-				onkeydown={handleKeyDown}
+				{@attach composeKeys}
 				oninput={autoGrow}
 				placeholder={chips.length > 0 ? m.chat_addNoteOrSend() : placeholder}
 				rows="1"

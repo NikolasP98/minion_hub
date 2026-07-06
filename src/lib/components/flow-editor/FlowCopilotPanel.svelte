@@ -1,5 +1,6 @@
 <script lang="ts">
   import * as m from '$lib/paraglide/messages';
+  import { submitOnEnter } from '$lib/hotkeys';
   import { Sparkles, Send, Check, X } from 'lucide-svelte';
   import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
   import Spinner from '$lib/components/ui/Spinner.svelte';
@@ -122,12 +123,7 @@
         bind:value={input}
         rows={2}
         placeholder={m.flow_copilot_placeholder()}
-        onkeydown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            send();
-          }
-        }}
+        {@attach submitOnEnter(() => send())}
         class="flex-1 resize-none rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder-white/30 outline-none focus:border-white/30"
       ></textarea>
       <button

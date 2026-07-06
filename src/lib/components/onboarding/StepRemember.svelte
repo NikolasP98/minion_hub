@@ -1,5 +1,6 @@
 <script lang="ts">
   import * as m from '$lib/paraglide/messages';
+  import { submitOnEnter } from '$lib/hotkeys';
   interface Props {
     userName: string; timezone: string; language: string;
     userContext: string; next: () => void; prev: () => void;
@@ -19,9 +20,6 @@
     { id: 'pt', label: 'Português' },{ id: 'fr', label: 'Français' },{ id: 'de', label: 'Deutsch' },
   ];
 
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); next(); }
-  }
 </script>
 
 <div class="step">
@@ -48,7 +46,7 @@
   </div>
   <div class="field">
     <label for="ctx">{m.step_context()}</label>
-    <textarea id="ctx" bind:value={userContext} placeholder={m.step_contextPlaceholder()} rows={4} maxlength={500} class="input textarea" onkeydown={handleKeydown}></textarea>
+    <textarea id="ctx" bind:value={userContext} placeholder={m.step_contextPlaceholder()} rows={4} maxlength={500} class="input textarea" {@attach submitOnEnter(() => next())}></textarea>
     <span class="charcount">{userContext.length}/500</span>
   </div>
   <div class="buttons">
