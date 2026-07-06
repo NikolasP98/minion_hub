@@ -1,4 +1,3 @@
-import { pgErrorCode } from './meta-sync-jobs.service';
 /**
  * Meta OAuth broker + connection/asset persistence (spec §5,
  * 2026-07-04-meta-business-integration, WP4). Every query is org-scoped
@@ -415,6 +414,12 @@ export async function createIgConnectionFromOAuth(
   }
 
   const igUserId = shortLived.data.user_id;
+  // Store the scopes IG ACTUALLY granted (from the short-lived token exchange's
+  // `permissions`), not a hardcoded assumption — otherwise the settings UI and
+  // any scope-gated feature (e.g. comments needs instagram_business_manage_comments)
+  // can't tell what's really available, and a partial re-consent looks identical
+  // to a full one. Falls back to basic if IG omits the field.
+  const grantedScopes = shortLived.data.permissions?.length ? shortLived.data.permissions : ['instagram_business_basic'];
   // Unlike FLB's "0 = never expires" business system-user token, IG-Login
   // tokens always expire (~60 days) — expiresAt is always set here.
   const expiresAt = longLived.data.expires_in ? new Date(Date.now() + longLived.data.expires_in * 1000) : null;
@@ -431,7 +436,7 @@ export async function createIgConnectionFromOAuth(
         tokenCiphertext: ciphertext,
         tokenIv: iv,
         tokenExpiresAt: expiresAt,
-        grantedScopes: ['instagram_business_basic'],
+        grantedScopes,
         status: 'active',
         connectedBy: input.connectedBy,
         updatedAt: new Date(),
@@ -442,7 +447,7 @@ export async function createIgConnectionFromOAuth(
           tokenCiphertext: ciphertext,
           tokenIv: iv,
           tokenExpiresAt: expiresAt,
-          grantedScopes: ['instagram_business_basic'],
+          grantedScopes,
           status: 'active',
           connectedBy: input.connectedBy,
           updatedAt: new Date(),
@@ -541,13 +546,17 @@ export async function enqueueInitialSyncJobs(ctx: CoreCtx): Promise<void> {
   since.setDate(since.getDate() - INITIAL_BACKFILL_DAYS);
   const sinceStr = since.toISOString().slice(0, 10);
 
+  // ON CONFLICT DO NOTHING (not a per-iteration try/catch): a failed insert
+  // aborts the whole tx in Postgres, so catching 23505 in JS still leaves the
+  // next insert throwing "current transaction is aborted" — the exact bug that
+  // 500'd the OAuth callback when a sync job was already queued. The partial
+  // unique index (status in queued|running) is caught by the untargeted
+  // ON CONFLICT, so an already-active kind is silently skipped. Same class as
+  // the message-ledger poison-batch fix.
   await withOrgCore(ctx, async (tx) => {
-    for (const kind of INITIAL_SYNC_KINDS) {
-      try {
-        await tx.insert(metaSyncJobs).values({ orgId: ctx.tenantId, kind, status: 'queued', since: sinceStr });
-      } catch (e) {
-        if (pgErrorCode(e) !== '23505') throw e; // anything but "already an active job of this kind" is a real failure
-      }
-    }
+    await tx
+      .insert(metaSyncJobs)
+      .values(INITIAL_SYNC_KINDS.map((kind) => ({ orgId: ctx.tenantId, kind, status: 'queued' as const, since: sinceStr })))
+      .onConflictDoNothing();
   });
 }
