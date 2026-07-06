@@ -3,6 +3,7 @@ import { readSseStream } from './flow-run';
 import { env } from '$env/dynamic/public';
 import { sendRequest } from '$lib/services/gateway.svelte';
 import { conn } from '$lib/state/gateway';
+import { Debouncer } from '$lib/pacer/index.svelte';
 
 export type HandleDef = { id: string; label: string };
 
@@ -512,13 +513,10 @@ export function updateNodeConfig(nodeId: string, key: string, value: unknown) {
 
 // ─── Auto-save ────────────────────────────────────────────────────────────────
 
-let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
+const autoSaveDebouncer = new Debouncer(() => saveFlow(), { wait: 2000 });
 
 function scheduleAutoSave() {
-  if (autoSaveTimer) clearTimeout(autoSaveTimer);
-  autoSaveTimer = setTimeout(() => {
-    saveFlow();
-  }, 2000);
+  autoSaveDebouncer.maybeExecute();
 }
 
 // ─── Draft persistence ────────────────────────────────────────────────────────
@@ -637,6 +635,10 @@ export function appendLog(entry: Omit<LogEntry, 'id' | 'timestamp'>) {
     id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
     timestamp: Date.now(),
   });
+  // ponytail: ring buffer, virtualize if anyone needs full-run logs
+  if (flowEditorState.consoleLogs.length > 500) {
+    flowEditorState.consoleLogs.splice(0, flowEditorState.consoleLogs.length - 500);
+  }
 }
 
 export function clearLogs() {

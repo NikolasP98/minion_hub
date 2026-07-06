@@ -1,5 +1,6 @@
 import { sendRequest } from '$lib/services/gateway.svelte';
 import { conn } from '$lib/state/gateway';
+import { Debouncer } from '$lib/pacer/index.svelte';
 import { toastSuccess, toastError, toastAsync } from '$lib/state/ui/toast.svelte';
 import type { ToolStatusEntry, ToolsStatusReport } from '$lib/types/tools';
 import { validateSkill } from '$lib/utils/skill-validation';
@@ -66,10 +67,9 @@ export const skillEditorState = $state({
 // creating an import cycle (the dry-run module imports `skillEditorState` from here).
 type DryRunStateRef = import('./skill-editor.types').DryRunState | null;
 
-// ── Private timer (NOT $state — timers do not need reactivity) ───────
+// ── Private debouncers (module scope — raw Debouncer, no reactive state needed) ──
 
-let _saveTimer: ReturnType<typeof setTimeout> | null = null;
-let _ghostTimer: ReturnType<typeof setTimeout> | null = null;
+const _saveDebouncer = new Debouncer(() => saveSkill(), { wait: 2000 });
 
 // ── Derived values (module-private, exposed via exported getters) ─────
 
@@ -214,8 +214,7 @@ export async function loadSkill(skillId: string) {
 
 export function scheduleSave() {
   skillEditorState.dirty = true;
-  if (_saveTimer) clearTimeout(_saveTimer);
-  _saveTimer = setTimeout(() => saveSkill(), 2000);
+  _saveDebouncer.maybeExecute();
 }
 
 export async function saveSkill() {
@@ -383,21 +382,8 @@ export async function buildSkillWithAI() {
 
 // ── Ghost suggestions (AI-02) ─────────────────────────────────────────
 
-export function fetchGhostSuggestions() {
-  if (_ghostTimer) clearTimeout(_ghostTimer);
-
-  const desc = skillEditorState.description.trim();
-  if (
-    desc.length < 10 ||
-    skillEditorState.ghostDismissed ||
-    skillEditorState.chapters.length > 0 ||
-    skillEditorState.aiBuilding
-  ) {
-    skillEditorState.ghostSuggestions = [];
-    return;
-  }
-
-  _ghostTimer = setTimeout(async () => {
+const _ghostDebouncer = new Debouncer(
+  async (desc: string) => {
     skillEditorState.ghostLoading = true;
     try {
       const res = await fetch('/api/builder/ai/suggest-skill', {
@@ -423,16 +409,31 @@ export function fetchGhostSuggestions() {
     } finally {
       skillEditorState.ghostLoading = false;
     }
-  }, 500);
+  },
+  { wait: 500 },
+);
+
+export function fetchGhostSuggestions() {
+  _ghostDebouncer.cancel();
+
+  const desc = skillEditorState.description.trim();
+  if (
+    desc.length < 10 ||
+    skillEditorState.ghostDismissed ||
+    skillEditorState.chapters.length > 0 ||
+    skillEditorState.aiBuilding
+  ) {
+    skillEditorState.ghostSuggestions = [];
+    return;
+  }
+
+  _ghostDebouncer.maybeExecute(desc);
 }
 
 export function dismissGhostSuggestions() {
   skillEditorState.ghostDismissed = true;
   skillEditorState.ghostSuggestions = [];
-  if (_ghostTimer) {
-    clearTimeout(_ghostTimer);
-    _ghostTimer = null;
-  }
+  _ghostDebouncer.cancel();
 }
 
 export async function generateGhostChapter(chapterName: string) {
@@ -828,10 +829,7 @@ export function initSkillEditor(skillId: string) {
 }
 
 export function cleanupSkillEditor() {
-  if (_saveTimer) {
-    clearTimeout(_saveTimer);
-    _saveTimer = null;
-  }
+  _saveDebouncer.cancel();
   // Reset state so stale data doesn't flash on next visit
   skillEditorState.loading = true;
   skillEditorState.dirty = false;
@@ -847,8 +845,5 @@ export function cleanupSkillEditor() {
   skillEditorState.ghostLoading = false;
   skillEditorState.ghostDismissed = false;
   skillEditorState.dryRun = null;
-  if (_ghostTimer) {
-    clearTimeout(_ghostTimer);
-    _ghostTimer = null;
-  }
+  _ghostDebouncer.cancel();
 }

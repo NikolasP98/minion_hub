@@ -1,4 +1,5 @@
 import { hostsState } from '$lib/state/features/hosts.svelte';
+import { Debouncer } from '$lib/pacer/index.svelte';
 import type {
   AgentInstance,
   Relationship,
@@ -115,8 +116,24 @@ export function toggleIdleBanter(): void {
 
 // --- Auto-save / auto-load (localStorage, incremental per-slice) ---
 
-let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
 const dirtySlices = new Set<WorkshopSlice>();
+
+const autoSaveDebouncer = new Debouncer(
+  (hid: string) => {
+    const snapshot = $state.snapshot(workshopState);
+    for (const slice of dirtySlices) {
+      try {
+        localStorage.setItem(autosaveKey(hid, slice), JSON.stringify(snapshot[slice]));
+      } catch {
+        // non-critical (quota errors, etc.)
+      }
+    }
+    dirtySlices.clear();
+    saveSync.lastSavedAt = Date.now();
+    scheduleDbSave();
+  },
+  { wait: 300 },
+);
 
 /**
  * Schedule an incremental autosave. Pass the slices that changed; if none are
@@ -129,22 +146,7 @@ export function autoSave(
   if (!hostId) return;
   const toMark = slices.length > 0 ? slices : ALL_SLICES;
   for (const s of toMark) dirtySlices.add(s);
-  if (autoSaveTimer) clearTimeout(autoSaveTimer);
-  const hid = hostId;
-  autoSaveTimer = setTimeout(() => {
-    autoSaveTimer = null;
-    const snapshot = $state.snapshot(workshopState);
-    for (const slice of dirtySlices) {
-      try {
-        localStorage.setItem(autosaveKey(hid, slice), JSON.stringify(snapshot[slice]));
-      } catch {
-        // non-critical (quota errors, etc.)
-      }
-    }
-    dirtySlices.clear();
-    saveSync.lastSavedAt = Date.now();
-    scheduleDbSave();
-  }, 300);
+  autoSaveDebouncer.maybeExecute(hostId);
 }
 
 function restoreConversations(saved: Partial<WorkshopState>) {
@@ -403,14 +405,8 @@ export function unregisterThumbnailProvider() {
   thumbnailProvider = null;
 }
 
-let dbSaveTimer: ReturnType<typeof setTimeout> | null = null;
-
-export function scheduleDbSave() {
-  if (!saveSync.activeSaveId) return;
-  if (dbSaveTimer) clearTimeout(dbSaveTimer);
-  const id = saveSync.activeSaveId;
-  dbSaveTimer = setTimeout(async () => {
-    dbSaveTimer = null;
+const dbSaveDebouncer = new Debouncer(
+  async (id: string) => {
     if (!saveSync.activeSaveId || saveSync.activeSaveId !== id) return;
     saveSync.isSyncing = true;
     try {
@@ -429,14 +425,17 @@ export function scheduleDbSave() {
     } finally {
       saveSync.isSyncing = false;
     }
-  }, 2000);
+  },
+  { wait: 2000 },
+);
+
+export function scheduleDbSave() {
+  if (!saveSync.activeSaveId) return;
+  dbSaveDebouncer.maybeExecute(saveSync.activeSaveId);
 }
 
 export function cancelDbSave() {
-  if (dbSaveTimer) {
-    clearTimeout(dbSaveTimer);
-    dbSaveTimer = null;
-  }
+  dbSaveDebouncer.cancel();
 }
 
 export async function openSave(id: string) {

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { untrack } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
+  import { createDebouncer } from '$lib/pacer/index.svelte';
   import {
     workshopState,
     setMessageBoardContent,
@@ -16,22 +17,23 @@
 
   let content = $state(untrack(() => workshopState.elements[elementId]?.messageBoardContent ?? ''));
 
-  let saveTimer: ReturnType<typeof setTimeout> | null = null;
+  const saver = createDebouncer((value: string) => setMessageBoardContent(elementId, value), {
+    wait: 500,
+  });
 
   function handleInput() {
-    if (saveTimer) clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => {
-      setMessageBoardContent(elementId, content);
-    }, 500);
+    saver.run(content);
   }
+
+  function flush() {
+    saver.flush();
+  }
+
+  onDestroy(flush);
 
   function handleBackdropClick(e: MouseEvent) {
     if (e.target === e.currentTarget) {
-      // Flush pending save before closing
-      if (saveTimer) {
-        clearTimeout(saveTimer);
-        setMessageBoardContent(elementId, content);
-      }
+      flush();
       onClose();
     }
   }
@@ -45,7 +47,7 @@
   onclick={handleBackdropClick}
   onkeydown={(e) => {
     if (e.key === 'Escape') {
-      if (saveTimer) { clearTimeout(saveTimer); setMessageBoardContent(elementId, content); }
+      flush();
       onClose();
     }
   }}
@@ -57,10 +59,7 @@
       <button
         class="text-[10px] font-mono text-muted hover:text-foreground"
         onclick={() => {
-          if (saveTimer) {
-            clearTimeout(saveTimer);
-            setMessageBoardContent(elementId, content);
-          }
+          flush();
           onClose();
         }}
       >

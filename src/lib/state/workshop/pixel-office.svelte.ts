@@ -5,6 +5,7 @@
  * Office layout, seat assignments, editor state, and pixel-specific settings.
  */
 
+import { Debouncer } from '$lib/pacer/index.svelte';
 import type { OfficeLayout } from '$lib/workshop/pixel/types';
 
 // ---------------------------------------------------------------------------
@@ -41,12 +42,8 @@ function pixelOfficeKey(hostId: string): string {
   return `workshop:autosave:${hostId}:pixelOffice`;
 }
 
-let saveTimer: ReturnType<typeof setTimeout> | null = null;
-
-export function autoSavePixelOffice(hostId: string | undefined): void {
-  if (!hostId || typeof localStorage === 'undefined') return;
-  if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
+const saveDebouncer = new Debouncer(
+  (hostId: string) => {
     try {
       const data = {
         layout: pixelOfficeState.layout,
@@ -57,7 +54,13 @@ export function autoSavePixelOffice(hostId: string | undefined): void {
     } catch {
       /* ignore quota errors */
     }
-  }, 300);
+  },
+  { wait: 300 },
+);
+
+export function autoSavePixelOffice(hostId: string | undefined): void {
+  if (!hostId || typeof localStorage === 'undefined') return;
+  saveDebouncer.maybeExecute(hostId);
 }
 
 export function loadPixelOffice(hostId: string): boolean {

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { untrack } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
+  import { createDebouncer } from '$lib/pacer/index.svelte';
   import { workshopState, setRulebookContent } from '$lib/state/workshop/workshop.svelte';
   import * as m from '$lib/paraglide/messages';
 
@@ -12,16 +13,20 @@
   } = $props();
 
   let content = $state(untrack(() => workshopState.elements[elementId]?.rulebookContent ?? ''));
-  let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const saver = createDebouncer((value: string) => setRulebookContent(elementId, value), {
+    wait: 500,
+  });
 
   function handleInput() {
-    if (saveTimer) clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => setRulebookContent(elementId, content), 500);
+    saver.run(content);
   }
 
   function flush() {
-    if (saveTimer) { clearTimeout(saveTimer); setRulebookContent(elementId, content); }
+    saver.flush();
   }
+
+  onDestroy(flush);
 
   function handleBackdropClick(e: MouseEvent) {
     if (e.target === e.currentTarget) { flush(); onClose(); }

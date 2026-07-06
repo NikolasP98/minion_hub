@@ -5,9 +5,26 @@
  */
 import { userState } from '$lib/state/features/user.svelte';
 import { page } from '$app/state';
+import { createKeyedDebouncer } from '$lib/pacer/index.svelte';
 
 const DEBOUNCE_MS = 1_000;
-const pendingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+async function putPreference(section: string, value: unknown) {
+  try {
+    await fetch(`/api/me/preferences/${section}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value }),
+    });
+  } catch {
+    // Silent fail — localStorage is the fallback
+  }
+}
+
+const prefDebouncer = createKeyedDebouncer<(value: unknown) => void>(
+  (section) => (value: unknown) => putPreference(section, value),
+  { wait: DEBOUNCE_MS },
+);
 
 /** True while applying server values — suppresses re-syncing back to server */
 let applying = false;
@@ -22,25 +39,7 @@ export function setApplying(value: boolean) {
  */
 export function syncPreferenceToServer(section: string, value: unknown) {
   if (applying || !userState.user) return;
-
-  const existing = pendingTimers.get(section);
-  if (existing) clearTimeout(existing);
-
-  pendingTimers.set(
-    section,
-    setTimeout(async () => {
-      pendingTimers.delete(section);
-      try {
-        await fetch(`/api/me/preferences/${section}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ value }),
-        });
-      } catch {
-        // Silent fail — localStorage is the fallback
-      }
-    }, DEBOUNCE_MS),
-  );
+  prefDebouncer.run(section, value);
 }
 
 /**

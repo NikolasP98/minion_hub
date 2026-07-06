@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { untrack } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
+  import { createDebouncer } from '$lib/pacer/index.svelte';
   import { workshopState, autoSave } from '$lib/state/workshop/workshop.svelte';
   import * as m from '$lib/paraglide/messages';
 
@@ -12,7 +13,6 @@
   } = $props();
 
   let label = $state(untrack(() => workshopState.elements[elementId]?.portalLabel ?? ''));
-  let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
   function saveLabel() {
     const el = workshopState.elements[elementId];
@@ -22,14 +22,17 @@
     }
   }
 
+  const saver = createDebouncer(saveLabel, { wait: 500 });
+
   function handleInput() {
-    if (saveTimer) clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => saveLabel(), 500);
+    saver.run();
   }
 
   function flush() {
-    if (saveTimer) { clearTimeout(saveTimer); saveLabel(); }
+    saver.flush();
   }
+
+  onDestroy(flush);
 
   function handleBackdropClick(e: MouseEvent) {
     if (e.target === e.currentTarget) { flush(); onClose(); }
