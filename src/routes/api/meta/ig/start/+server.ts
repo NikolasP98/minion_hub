@@ -42,8 +42,11 @@ export const GET: RequestHandler = async ({ locals, cookies }) => {
     client_id: igAppId,
     redirect_uri: redirectUri,
     response_type: 'code',
-    // Read-only media sync only — no config_id (that's FLB-only).
-    scope: 'instagram_business_basic',
+    // Read-only media sync + comment reading — no config_id (that's FLB-only).
+    // manage_comments added 2026-07-05: basic alone returns EMPTY comment lists
+    // (200 OK, silently filtered) — content needs this scope. Works in dev mode
+    // for tester accounts, no business verification required.
+    scope: 'instagram_business_basic,instagram_business_manage_comments',
     state,
   });
   throw redirect(302, `https://www.instagram.com/oauth/authorize?${params.toString()}`);
