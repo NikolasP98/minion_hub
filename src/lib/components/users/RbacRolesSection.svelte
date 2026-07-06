@@ -1,9 +1,22 @@
 <script lang="ts">
 	import { invalidate } from '$app/navigation';
-	import { ShieldCheck, Users, RotateCcw, Lock, ChevronRight, ChevronDown, UserCheck, EyeOff, Eye } from 'lucide-svelte';
-	import { toastError } from '$lib/state/ui/toast.svelte';
+	import {
+		ShieldCheck,
+		Users,
+		RotateCcw,
+		Lock,
+		ChevronRight,
+		ChevronDown,
+		UserCheck,
+		EyeOff,
+		Eye,
+		Copy,
+		Trash2,
+	} from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages';
+	import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
 	import { SENSITIVE_FIELD_LEVEL } from '$lib/permissions';
-	import { Select, Tabs } from '$lib/components/ui';
+	import { Select, Tabs, Modal } from '$lib/components/ui';
 
 	type ActionSet = Record<string, boolean>;
 	type SubResourceCaps = { key: string; label: string; caps: ActionSet; overridden: boolean };
@@ -42,6 +55,60 @@
 	let expanded = $state<Record<string, boolean>>({}); // module key → granular ("Custom") panel open
 	let activeTab = $state<string>('business'); // 'business' | 'admin'
 	let onlyChanged = $state(true); // summary-first: show only customised modules by default
+
+	// "Duplicate as custom role" dialog + delete state.
+	let duplicateOpen = $state(false);
+	let duplicateSource = $state<Role | null>(null);
+	let duplicateName = $state('');
+	let duplicating = $state(false);
+	let deleting = $state<string | null>(null); // role key currently deleting
+
+	function openDuplicate(role: Role) {
+		duplicateSource = role;
+		duplicateName = '';
+		duplicateOpen = true;
+	}
+
+	async function submitDuplicate() {
+		if (!duplicateSource || !duplicateName.trim()) return;
+		duplicating = true;
+		try {
+			const res = await fetch('/api/roles', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ sourceRoleKey: duplicateSource.key, name: duplicateName.trim() }),
+			});
+			if (!res.ok) {
+				const d = await res.json().catch(() => ({}));
+				toastError((d as { message?: string }).message ?? m.roles_errorDuplicate({ status: String(res.status) }));
+				return;
+			}
+			const created = (await res.json()) as { key: string };
+			duplicateOpen = false;
+			selectedKey = created.key;
+			toastSuccess(m.roles_duplicateSubmit());
+			void invalidate('settings:roles');
+		} finally {
+			duplicating = false;
+		}
+	}
+
+	async function deleteCustomRole(role: Role) {
+		if (!confirm(m.roles_confirmDelete())) return;
+		deleting = role.key;
+		try {
+			const res = await fetch(`/api/roles/${encodeURIComponent(role.key)}`, { method: 'DELETE' });
+			if (!res.ok) {
+				const d = await res.json().catch(() => ({}));
+				toastError((d as { message?: string }).message ?? m.roles_errorDelete({ status: String(res.status) }));
+				return;
+			}
+			if (selectedKey === role.key) selectedKey = roles.find((r) => r.key !== role.key)?.key ?? '';
+			void invalidate('settings:roles');
+		} finally {
+			deleting = null;
+		}
+	}
 
 	const selected = $derived(roles.find((r) => r.key === selectedKey) ?? roles[0] ?? null);
 	// Owner is intentionally not editable — it must always retain full access (no self-lockout).
@@ -525,7 +592,7 @@
 			<ul class="divide-y divide-border/40">
 				{#each roles as r (r.key)}
 					{@const active = r.key === selectedKey}
-					<li>
+					<li class="group relative">
 						<button
 							type="button"
 							class="flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors {active
@@ -541,6 +608,10 @@
 										<Lock class="h-3 w-3 text-muted" />
 									{:else if r.isSystem}
 										<ShieldCheck class="h-3 w-3 text-muted" />
+									{:else}
+										<span class="rounded bg-accent/15 px-1 py-0.5 text-[9px] font-medium text-accent">
+											{m.roles_customBadge()}
+										</span>
 									{/if}
 								</span>
 								{#if r.description}
@@ -552,6 +623,29 @@
 								{r.memberCount}
 							</span>
 						</button>
+						<span
+							class="pointer-events-none absolute right-1.5 top-1.5 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100"
+						>
+							<button
+								type="button"
+								class="rounded p-1 text-muted hover:bg-muted/20 hover:text-foreground"
+								title={m.roles_duplicate()}
+								onclick={() => openDuplicate(r)}
+							>
+								<Copy class="h-3 w-3" />
+							</button>
+							{#if !r.isSystem}
+								<button
+									type="button"
+									class="rounded p-1 text-muted hover:bg-red-500/15 hover:text-red-500 disabled:pointer-events-none disabled:opacity-40"
+									title={r.memberCount > 0 ? m.roles_deleteInUse({ count: String(r.memberCount) }) : m.roles_deleteCustom()}
+									disabled={r.memberCount > 0 || deleting === r.key}
+									onclick={() => deleteCustomRole(r)}
+								>
+									<Trash2 class="h-3 w-3" />
+								</button>
+							{/if}
+						</span>
 					</li>
 				{/each}
 			</ul>
@@ -645,3 +739,38 @@
 		</div>
 	</div>
 </section>
+
+<Modal bind:open={duplicateOpen} title={m.roles_duplicateTitle()} size="sm">
+	{#if duplicateSource}
+		<div class="space-y-3">
+			<p class="text-[12px] text-muted">{m.roles_duplicateDescription({ source: duplicateSource.name })}</p>
+			<label class="block space-y-1">
+				<span class="text-[11px] font-medium text-foreground">{m.roles_duplicateNameLabel()}</span>
+				<input
+					type="text"
+					class="w-full rounded border border-border bg-bg2 px-2.5 py-1.5 text-[13px] text-foreground"
+					placeholder={m.roles_duplicateNamePlaceholder()}
+					bind:value={duplicateName}
+					onkeydown={(e) => e.key === 'Enter' && submitDuplicate()}
+				/>
+			</label>
+		</div>
+	{/if}
+	{#snippet footer()}
+		<button
+			type="button"
+			class="rounded px-3 py-1.5 text-[12px] text-muted hover:bg-muted/20 hover:text-foreground"
+			onclick={() => (duplicateOpen = false)}
+		>
+			{m.common_cancel()}
+		</button>
+		<button
+			type="button"
+			class="rounded bg-accent px-3 py-1.5 text-[12px] font-medium text-white disabled:opacity-50"
+			disabled={!duplicateName.trim() || duplicating}
+			onclick={submitDuplicate}
+		>
+			{duplicating ? m.roles_creating() : m.roles_duplicateSubmit()}
+		</button>
+	{/snippet}
+</Modal>

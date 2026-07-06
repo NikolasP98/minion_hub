@@ -26,7 +26,7 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
 
   const [rawUsers, rbacRoles, memberRoles, pending, organizations] = await Promise.all([
     safe(listUsers(ctx), [] as Awaited<ReturnType<typeof listUsers>>, 'listUsers'),
-    safe(listRoleCatalog(), [] as Awaited<ReturnType<typeof listRoleCatalog>>, 'listRoleCatalog'),
+    safe(listRoleCatalog(ctx.tenantId), [] as Awaited<ReturnType<typeof listRoleCatalog>>, 'listRoleCatalog'),
     safe(getOrgMemberRolesAll(ctx.tenantId), new Map<string, string[]>(), 'getOrgMemberRolesAll'),
     // Supabase join_request is the system-of-record (the /join form + the
     // approve→organization_members grant both use it).

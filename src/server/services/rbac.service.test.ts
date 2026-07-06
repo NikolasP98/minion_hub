@@ -1,4 +1,110 @@
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect, vi, beforeEach } from 'vitest';
+
+/**
+ * Minimal fake Supabase postgrest client — only the query shapes rbac.service
+ * actually issues (select/eq/in/order/maybeSingle, insert, upsert w/
+ * onConflict, delete, count-head select). Backs the `db` in-memory tables
+ * below; reset per test in beforeEach.
+ */
+function makeFakeSupabase(db: Record<string, Record<string, unknown>[]>) {
+	function builder(table: string) {
+		const filters: Array<(r: Record<string, unknown>) => boolean> = [];
+		let mode: 'select' | 'insert' | 'upsert' | 'delete' | null = null;
+		let payload: Record<string, unknown> | Record<string, unknown>[] | null = null;
+		let onConflict: string[] = [];
+		let countRequested = false;
+
+		async function run(): Promise<{ data: unknown; error: null; count?: number }> {
+			const rows = (db[table] ??= []);
+			if (mode === 'insert') {
+				const arr = Array.isArray(payload) ? payload : [payload!];
+				rows.push(...arr);
+				return { data: arr, error: null };
+			}
+			if (mode === 'upsert') {
+				const arr = Array.isArray(payload) ? payload : [payload!];
+				for (const row of arr) {
+					const idx = rows.findIndex((r) => onConflict.every((k) => r[k] === row[k]));
+					if (idx >= 0) rows[idx] = { ...rows[idx], ...row };
+					else rows.push(row);
+				}
+				return { data: arr, error: null };
+			}
+			if (mode === 'delete') {
+				db[table] = rows.filter((r) => !filters.every((f) => f(r)));
+				return { data: [], error: null };
+			}
+			const filtered = rows.filter((r) => filters.every((f) => f(r)));
+			return { data: filtered, error: null, count: countRequested ? filtered.length : undefined };
+		}
+
+		const api = {
+			select(_cols?: string, o?: { count?: string; head?: boolean }) {
+				mode ??= 'select';
+				if (o?.count) countRequested = true;
+				return api;
+			},
+			eq(col: string, val: unknown) {
+				filters.push((r) => r[col] === val);
+				return api;
+			},
+			in(col: string, vals: unknown[]) {
+				filters.push((r) => vals.includes(r[col]));
+				return api;
+			},
+			order() {
+				return api;
+			},
+			insert(row: Record<string, unknown> | Record<string, unknown>[]) {
+				mode = 'insert';
+				payload = row;
+				return api;
+			},
+			upsert(row: Record<string, unknown> | Record<string, unknown>[], o?: { onConflict?: string }) {
+				mode = 'upsert';
+				payload = row;
+				onConflict = (o?.onConflict ?? '').split(',').filter(Boolean);
+				return api;
+			},
+			delete() {
+				mode = 'delete';
+				return api;
+			},
+			async maybeSingle() {
+				const res = await run();
+				const arr = res.data as Record<string, unknown>[];
+				return { data: arr[0] ?? null, error: null };
+			},
+			then(resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) {
+				return run().then(resolve, reject);
+			},
+		};
+		return api;
+	}
+	return { from: (t: string) => builder(t) };
+}
+
+const db: Record<string, Record<string, unknown>[]> = {};
+vi.mock('$server/supabase', () => ({ supabaseAdmin: () => makeFakeSupabase(db) }));
+
+function seedSystemCatalog() {
+	db.permission_roles = [
+		{ key: 'owner', name: 'Owner', rank: 100, description: null, is_system: true },
+		{ key: 'admin', name: 'Admin', rank: 80, description: null, is_system: true },
+		{ key: 'manager', name: 'Manager', rank: 60, description: null, is_system: true },
+		{ key: 'staff', name: 'Staff', rank: 40, description: null, is_system: true },
+		{ key: 'viewer', name: 'Viewer', rank: 20, description: null, is_system: true },
+	];
+}
+
+beforeEach(() => {
+	for (const k of Object.keys(db)) delete db[k];
+	seedSystemCatalog();
+	db.org_roles = [];
+	db.permission_rules = [];
+	db.member_roles = [];
+});
+
 import {
 	buildCapabilities,
 	defaultCaps,
@@ -6,6 +112,10 @@ import {
 	apiWriteCapability,
 	normalizeViewDependency,
 	wouldRemoveLastOwner,
+	listRoleCatalog,
+	createCustomRole,
+	deleteCustomRole,
+	isAssignableRoleKey,
 } from './rbac.service';
 
 const ROW = (over: Record<string, unknown>) => ({
@@ -220,5 +330,119 @@ describe('apiWriteCapability — central hooks write guard mapping', () => {
 		expect(apiWriteCapability('/api/agents/x', 'POST')).toBeNull();
 		expect(apiWriteCapability('/api/gateway/query', 'POST')).toBeNull();
 		expect(apiWriteCapability('/api/messages/ingest', 'POST')).toBeNull();
+	});
+});
+
+describe('custom roles — capability resolution (buildCapabilities takes any role key)', () => {
+	test('a custom-* key with its own override resolves like any role', () => {
+		const caps = buildCapabilities(
+			['custom-senior-support'],
+			[ROW({ role_key: 'custom-senior-support', module: 'support', can_view: true, can_edit: true })],
+		);
+		expect(caps.can('support', 'edit')).toBe(true);
+		expect(caps.can('finance', 'view')).toBe(false); // no override + unknown-role default is NONE
+	});
+});
+
+describe('org-roles — catalog union', () => {
+	test('listRoleCatalog unions system roles with this org\'s custom roles, ranked', () => {
+		db.org_roles = [{ org_id: 'org1', key: 'custom-senior-support', name: 'Senior Support', rank: 40, source_role_key: 'staff' }];
+		return listRoleCatalog('org1').then((cat) => {
+			// Same rank (40) as staff — stable sort keeps system-catalog order for ties.
+			expect(cat.map((c) => c.key)).toEqual(['owner', 'admin', 'manager', 'staff', 'custom-senior-support', 'viewer']);
+			expect(cat.find((c) => c.key === 'custom-senior-support')?.isCustom).toBe(true);
+		});
+	});
+	test('a different org does not see this org\'s custom role', async () => {
+		db.org_roles = [{ org_id: 'org1', key: 'custom-senior-support', name: 'Senior Support', rank: 40, source_role_key: 'staff' }];
+		const cat = await listRoleCatalog('org2');
+		expect(cat.some((c) => c.key === 'custom-senior-support')).toBe(false);
+	});
+});
+
+describe('isAssignableRoleKey', () => {
+	test('system keys are always assignable', async () => {
+		expect(await isAssignableRoleKey('org1', 'staff')).toBe(true);
+	});
+	test('a custom key is assignable only in the org that owns it', async () => {
+		db.org_roles = [{ org_id: 'org1', key: 'custom-x', name: 'X', rank: 40, source_role_key: 'staff' }];
+		expect(await isAssignableRoleKey('org1', 'custom-x')).toBe(true);
+		expect(await isAssignableRoleKey('org2', 'custom-x')).toBe(false);
+	});
+	test('unknown / non-string keys are rejected', async () => {
+		expect(await isAssignableRoleKey('org1', 'nonsense')).toBe(false);
+		expect(await isAssignableRoleKey('org1', undefined)).toBe(false);
+	});
+});
+
+describe('createCustomRole — clone-copies-rules', () => {
+	test('clones the source role\'s effective per-module matrix into permission_rules for the new key', async () => {
+		// Caller is a platform admin (uncapped) — the rank cap is exercised separately below.
+		db.profiles = [{ id: 'user1', role: 'admin' }];
+		// staff has an org override on finance (normally view-only by default).
+		db.permission_rules = [
+			{ org_id: 'org1', role_key: 'staff', module: 'finance', can_view: true, can_create: false, can_edit: true, can_delete: false, can_export: false, can_manage: false, if_owner: false, field_level: 1 },
+		];
+		const role = await createCustomRole('org1', { sourceRoleKey: 'staff', name: 'Senior Support' }, 'user1');
+		expect(role.key).toBe('custom-senior-support');
+		expect(role.rank).toBe(40); // same rank as staff
+
+		const orgRole = db.org_roles.find((r) => r.key === 'custom-senior-support');
+		expect(orgRole?.source_role_key).toBe('staff');
+		expect(orgRole?.created_by).toBe('user1');
+
+		const rules = db.permission_rules.filter((r) => r.role_key === 'custom-senior-support');
+		// One row per MODULE — the clone is total, not just the overridden ones.
+		expect(rules.length).toBeGreaterThan(10);
+		const finance = rules.find((r) => r.module === 'finance');
+		expect(finance?.can_edit).toBe(true); // copied the override, not the staff default
+		const crm = rules.find((r) => r.module === 'crm');
+		expect(crm?.can_edit).toBe(true); // staff default for crm (no override) was cloned too
+	});
+
+	test('rejects an unknown sourceRoleKey', async () => {
+		await expect(createCustomRole('org1', { sourceRoleKey: 'nonsense', name: 'X' }, null)).rejects.toThrow();
+	});
+
+	test('rejects a duplicate name/key', async () => {
+		await createCustomRole('org1', { sourceRoleKey: 'staff', name: 'Senior Support' }, null, true);
+		await expect(createCustomRole('org1', { sourceRoleKey: 'staff', name: 'Senior Support' }, null, true)).rejects.toThrow();
+	});
+
+	test('no self-escalation: an org admin cannot clone a higher-ranked owner role', async () => {
+		// admin-user is an org admin (rank 80); owner is rank 100.
+		db.profiles = [{ id: 'admin-user', role: 'user' }];
+		db.member_roles = [{ org_id: 'org1', profile_id: 'admin-user', role_key: 'admin' }];
+		await expect(
+			createCustomRole('org1', { sourceRoleKey: 'owner', name: 'Sneaky Owner' }, 'admin-user'),
+		).rejects.toMatchObject({ status: 403 });
+		// and cloning at/below their own rank still works
+		const ok = await createCustomRole('org1', { sourceRoleKey: 'manager', name: 'Team Lead' }, 'admin-user');
+		expect(ok.key).toBe('custom-team-lead');
+	});
+
+	test('fails closed: a null caller without system=true is rejected (no fail-open escalation)', async () => {
+		// A missing HTTP caller id must NOT be treated as a trusted system caller.
+		await expect(
+			createCustomRole('org1', { sourceRoleKey: 'staff', name: 'Nulled' }, null),
+		).rejects.toMatchObject({ status: 403 });
+	});
+});
+
+describe('deleteCustomRole — in-use guard', () => {
+	test('refuses to delete while a member still holds the role', async () => {
+		await createCustomRole('org1', { sourceRoleKey: 'staff', name: 'Senior Support' }, null, true);
+		db.member_roles = [{ org_id: 'org1', profile_id: 'p1', role_key: 'custom-senior-support' }];
+		await expect(deleteCustomRole('org1', 'custom-senior-support')).rejects.toThrow();
+		expect(db.org_roles.some((r) => r.key === 'custom-senior-support')).toBe(true);
+	});
+	test('deletes the role + its permission_rules once unassigned', async () => {
+		await createCustomRole('org1', { sourceRoleKey: 'staff', name: 'Senior Support' }, null, true);
+		await deleteCustomRole('org1', 'custom-senior-support');
+		expect(db.org_roles.some((r) => r.key === 'custom-senior-support')).toBe(false);
+		expect(db.permission_rules.some((r) => r.role_key === 'custom-senior-support')).toBe(false);
+	});
+	test('404s for a key this org never created', async () => {
+		await expect(deleteCustomRole('org1', 'custom-ghost')).rejects.toThrow();
 	});
 });

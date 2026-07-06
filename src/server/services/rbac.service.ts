@@ -428,8 +428,9 @@ export interface RbacRoleView {
  */
 export async function listRbacRoles(orgId: string): Promise<RbacRoleView[]> {
 	const admin = supabaseAdmin();
-	const [cat, mrows, orows] = await Promise.all([
-		admin.from('permission_roles').select('key, name, rank, description, is_system').order('rank', { ascending: false }),
+	const [cat, orgCat, mrows, orows] = await Promise.all([
+		admin.from('permission_roles').select('key, name, rank, description, is_system'),
+		listOrgRoles(orgId),
 		admin.from('member_roles').select('role_key').eq('org_id', orgId),
 		admin
 			.from('permission_rules')
@@ -453,7 +454,11 @@ export async function listRbacRoles(orgId: string): Promise<RbacRoleView[]> {
 	}
 
 	type CatRow = { key: string; name: string; rank: number; description: string | null; is_system: boolean };
-	return ((cat.data ?? []) as CatRow[]).map((c) => ({
+	const allCat: CatRow[] = [
+		...((cat.data ?? []) as CatRow[]),
+		...orgCat.map((c) => ({ key: c.key, name: c.name, rank: c.rank, description: null, is_system: false })),
+	].sort((a, b) => b.rank - a.rank);
+	return allCat.map((c) => ({
 		key: c.key,
 		name: c.name,
 		rank: c.rank,
@@ -494,15 +499,215 @@ export interface RoleCatalogEntry {
 	name: string;
 	rank: number;
 	description: string | null;
+	isCustom?: boolean;
 }
 
-/** The role catalog (for assignment dropdowns), highest rank first. */
-export async function listRoleCatalog(): Promise<RoleCatalogEntry[]> {
+interface OrgRoleRow {
+	key: string;
+	name: string;
+	rank: number;
+	source_role_key: string | null;
+}
+
+/** This org's custom roles (org_roles), highest rank first. */
+async function listOrgRoles(orgId: string): Promise<OrgRoleRow[]> {
 	const { data } = await supabaseAdmin()
-		.from('permission_roles')
-		.select('key, name, rank, description')
+		.from('org_roles')
+		.select('key, name, rank, source_role_key')
+		.eq('org_id', orgId)
 		.order('rank', { ascending: false });
-	return (data ?? []) as RoleCatalogEntry[];
+	return (data ?? []) as OrgRoleRow[];
+}
+
+/**
+ * The role catalog for one org (for assignment dropdowns): the 5 system roles
+ * unioned with the org's custom roles, highest rank first.
+ */
+export async function listRoleCatalog(orgId: string): Promise<RoleCatalogEntry[]> {
+	const [{ data: sys }, custom] = await Promise.all([
+		supabaseAdmin().from('permission_roles').select('key, name, rank, description'),
+		listOrgRoles(orgId),
+	]);
+	const entries: RoleCatalogEntry[] = [
+		...((sys ?? []) as RoleCatalogEntry[]),
+		...custom.map((c) => ({ key: c.key, name: c.name, rank: c.rank, description: null, isCustom: true })),
+	];
+	return entries.sort((a, b) => b.rank - a.rank);
+}
+
+/** A role key assignable in this org: a system role, or a custom role that org created. */
+export async function isAssignableRoleKey(orgId: string, key: unknown): Promise<boolean> {
+	if (isRoleKey(key)) return true;
+	if (typeof key !== 'string') return false;
+	const { data } = await supabaseAdmin()
+		.from('org_roles')
+		.select('key')
+		.eq('org_id', orgId)
+		.eq('key', key)
+		.maybeSingle();
+	return !!data;
+}
+
+/** Slugify a role name into the `custom-<slug>` key suffix. */
+function slugifyRoleName(name: string): string {
+	return name
+		.toLowerCase()
+		.trim()
+		.replace(/[^a-z0-9]+/g, '-')
+		.replace(/^-+|-+$/g, '');
+}
+
+/** A role's rank, whether it's a system role or this org's custom role. Null if unknown. */
+async function resolveRoleRank(orgId: string, roleKey: string): Promise<number | null> {
+	if (isRoleKey(roleKey)) {
+		const { data } = await supabaseAdmin().from('permission_roles').select('rank').eq('key', roleKey).maybeSingle();
+		return (data as { rank: number } | null)?.rank ?? null;
+	}
+	const { data } = await supabaseAdmin()
+		.from('org_roles')
+		.select('rank')
+		.eq('org_id', orgId)
+		.eq('key', roleKey)
+		.maybeSingle();
+	return (data as { rank: number } | null)?.rank ?? null;
+}
+
+/**
+ * The highest role rank the caller may create or grant in this org. Platform
+ * admins (profiles.role='admin') and EXPLICIT system callers (system=true) are
+ * uncapped; an org member is capped at their own highest role rank. Without this,
+ * an org `admin` (whose default matrix already includes `users:manage`) could
+ * clone or assign the higher-ranked `owner` role and escalate past owner-only
+ * surfaces. Fails closed: a missing callerProfileId is treated as a hard error,
+ * NOT as a trusted system caller (an HTTP request that reaches here without an
+ * identity is a bug/auth gap, not a seed script).
+ */
+async function callerRankCap(orgId: string, callerProfileId: string | null, system = false): Promise<number> {
+	if (system) return Number.MAX_SAFE_INTEGER; // explicit trusted internal/seed path — never inferred from a missing id
+	if (!callerProfileId) throw error(403, 'Caller identity required to grant or clone roles.'); // fail closed
+	const admin = supabaseAdmin();
+	const { data: prof } = await admin.from('profiles').select('role').eq('id', callerProfileId).maybeSingle();
+	if ((prof as { role: string | null } | null)?.role === 'admin') return Number.MAX_SAFE_INTEGER; // platform superuser
+	const { data: mr } = await admin.from('member_roles').select('role_key').eq('org_id', orgId).eq('profile_id', callerProfileId);
+	let roles = ((mr ?? []) as Array<{ role_key: string }>).map((r) => r.role_key);
+	if (roles.length === 0) {
+		const { data: om } = await admin
+			.from('organization_members')
+			.select('role')
+			.eq('organization_id', orgId)
+			.eq('profile_id', callerProfileId)
+			.maybeSingle();
+		roles = [legacyRoleKey((om as { role: string | null } | null)?.role)];
+	}
+	let cap = 0;
+	for (const rk of roles) {
+		const r = await resolveRoleRank(orgId, rk);
+		if (r != null && r > cap) cap = r;
+	}
+	return cap;
+}
+
+/** Throws 403 when the caller may not create/grant a role of `targetRank`. */
+async function assertMayGrantRank(
+	orgId: string,
+	callerProfileId: string | null,
+	targetRank: number | null,
+	verb: string,
+	system = false,
+): Promise<void> {
+	const cap = await callerRankCap(orgId, callerProfileId, system);
+	if ((targetRank ?? 0) > cap) throw error(403, `You cannot ${verb} a role that outranks your own.`);
+}
+
+/**
+ * Create a custom role by duplicating `sourceRoleKey`: inserts the `org_roles`
+ * catalog row (key `custom-<slug>`, same rank as the source) AND clones the
+ * source role's EFFECTIVE per-module matrix into `permission_rules` overrides
+ * for the new key, so it starts as an editable copy (the existing per-module
+ * ladder UI then edits those rows same as any role).
+ */
+export async function createCustomRole(
+	orgId: string,
+	params: { sourceRoleKey: string; name: string },
+	createdBy: string | null = null,
+	system = false,
+): Promise<RoleCatalogEntry> {
+	const admin = supabaseAdmin();
+	const name = params.name.trim();
+	if (!name) throw error(400, 'name required');
+	if (!(await isAssignableRoleKey(orgId, params.sourceRoleKey))) throw error(400, 'unknown sourceRoleKey');
+
+	const slug = slugifyRoleName(name);
+	if (!slug) throw error(400, 'name must contain at least one letter or digit');
+	const key = `custom-${slug}`;
+
+	const rank = await resolveRoleRank(orgId, params.sourceRoleKey);
+	if (rank === null) throw error(400, 'unknown sourceRoleKey');
+	// No self-escalation: can't clone a role that outranks the caller (e.g. an
+	// org admin duplicating `owner`). Platform admins/system callers are uncapped.
+	await assertMayGrantRank(orgId, createdBy, rank, 'duplicate', system);
+
+	const { data: existing } = await admin.from('org_roles').select('key').eq('org_id', orgId).eq('key', key).maybeSingle();
+	if (existing) throw error(409, 'A custom role with that name already exists.');
+
+	const { data: rules } = await admin
+		.from('permission_rules')
+		.select('module, can_view, can_create, can_edit, can_delete, can_export, can_manage, if_owner, field_level')
+		.eq('org_id', orgId)
+		.eq('role_key', params.sourceRoleKey);
+	const ovr = new Map<string, OverrideRow>();
+	for (const r of (rules ?? []) as OverrideRow[]) ovr.set(r.module, r);
+
+	for (const mod of MODULES) {
+		const o = ovr.get(mod);
+		const caps = o ? rowToActionSet(o) : defaultCaps(params.sourceRoleKey, mod);
+		const ifOwner = o?.if_owner ?? false;
+		const fieldLevel = o?.field_level ?? defaultFieldLevel(mod);
+		await admin.from('permission_rules').upsert(
+			{
+				org_id: orgId,
+				role_key: key,
+				module: mod,
+				can_view: caps.view,
+				can_create: caps.create,
+				can_edit: caps.edit,
+				can_delete: caps.delete,
+				can_export: caps.export,
+				can_manage: caps.manage,
+				if_owner: ifOwner,
+				field_level: fieldLevel,
+				updated_at: new Date().toISOString(),
+			},
+			{ onConflict: 'org_id,role_key,module' },
+		);
+	}
+
+	await admin
+		.from('org_roles')
+		.insert({ org_id: orgId, key, name, rank, source_role_key: params.sourceRoleKey, created_by: createdBy });
+
+	return { key, name, rank, description: null, isCustom: true };
+}
+
+/**
+ * Delete a custom role. Refuses (409) while any `member_roles` row in this org
+ * still references it — unassign members first. 404s for a key this org never
+ * created (including system role keys, which are never deletable).
+ */
+export async function deleteCustomRole(orgId: string, key: string): Promise<void> {
+	const admin = supabaseAdmin();
+	const { data: role } = await admin.from('org_roles').select('key').eq('org_id', orgId).eq('key', key).maybeSingle();
+	if (!role) throw error(404, 'Custom role not found.');
+
+	const { count } = await admin
+		.from('member_roles')
+		.select('profile_id', { count: 'exact', head: true })
+		.eq('org_id', orgId)
+		.eq('role_key', key);
+	if (count && count > 0) throw error(409, 'This role is still assigned to a member — remove it from them first.');
+
+	await admin.from('permission_rules').delete().eq('org_id', orgId).eq('role_key', key);
+	await admin.from('org_roles').delete().eq('org_id', orgId).eq('key', key);
 }
 
 /**
@@ -532,7 +737,10 @@ export async function setMemberRole(
 	profileId: string,
 	roleKey: string,
 	grantedBy: string | null = null,
+	system = false,
 ): Promise<void> {
+	// No self-escalation: can't grant a role that outranks the caller.
+	await assertMayGrantRank(orgId, grantedBy, await resolveRoleRank(orgId, roleKey), 'assign', system);
 	const admin = supabaseAdmin();
 	await admin.from('member_roles').delete().eq('org_id', orgId).eq('profile_id', profileId);
 	await admin
@@ -581,7 +789,10 @@ export async function addMemberRole(
 	profileId: string,
 	roleKey: string,
 	grantedBy: string | null = null,
+	system = false,
 ): Promise<void> {
+	// No self-escalation: can't grant a role that outranks the caller.
+	await assertMayGrantRank(orgId, grantedBy, await resolveRoleRank(orgId, roleKey), 'assign', system);
 	await supabaseAdmin()
 		.from('member_roles')
 		.upsert(
@@ -712,6 +923,7 @@ const API_WRITE_PREFIXES: ReadonlyArray<readonly [string, Module]> = [
 	['/api/memberships', 'memberships'],
 	['/api/brains', 'brains'],
 	['/api/stock', 'stock'],
+	['/api/meta', 'ads'],
 	['/api/projects', 'projects'],
 	['/api/project-tasks', 'projects'],
 	['/api/project-templates', 'projects'],
