@@ -5,6 +5,9 @@
 	import { Megaphone, ExternalLink } from 'lucide-svelte';
 	import { PageHeader, Button, EmptyState } from '$lib/components/ui';
 	import Chart from '$lib/components/charts/Chart.svelte';
+	import EditableGrid from '$lib/components/dashboard/EditableGrid.svelte';
+	import { canAct } from '$lib/access/can.svelte';
+	import { isAdmin } from '$lib/state/features/user.svelte';
 	import { chartColors } from '$lib/utils/chart-colors';
 	import type { EChartsOption } from 'echarts';
 
@@ -71,6 +74,16 @@
 				]
 			: [],
 	);
+	const kpiById = $derived(new Map(kpis.map((k) => [k.id, k])));
+
+	// Widget layout (12-col grid, like stock/crm/finances): 6 KPI tiles across one
+	// row, the two charts side-by-side, the posts list full-width.
+	const items = $derived([
+		...kpis.map((k) => ({ id: k.id, w: 2, h: 2 })),
+		{ id: 'chart-spend', w: 6, h: 6 },
+		{ id: 'chart-campaign', w: 6, h: 6 },
+		{ id: 'posts', w: 12, h: 6 },
+	]);
 
 	const spendOpts = $derived({
 		grid: { left: 8, right: 18, top: 16, bottom: 30, containLabel: true },
@@ -113,6 +126,57 @@
 
 <svelte:head><title>{m.nav_ads()}</title></svelte:head>
 
+{#snippet cellBody(id: string)}
+	{#if kpiById.has(id)}
+		{@const k = kpiById.get(id)}
+		{#if k}
+			<div class="kpi">
+				<div class="kpi-val">{k.value}</div>
+				<div class="kpi-label">{k.label}</div>
+				<div class="kpi-delta" class:pos={k.delta !== null && k.delta >= 0} class:neg={k.delta !== null && k.delta < 0}>
+					{fmtDelta(k.delta)}
+				</div>
+			</div>
+		{/if}
+	{:else if id === 'chart-spend'}
+		<div class="card">
+			<div class="card-h">{m.ads_chart_spend_title()}</div>
+			<Chart options={spendOpts} height="280px" />
+		</div>
+	{:else if id === 'chart-campaign'}
+		<div class="card">
+			<div class="card-h">{m.ads_chart_campaign_title()}</div>
+			<Chart options={campaignOpts} height="280px" />
+		</div>
+	{:else if id === 'posts'}
+		<div class="card">
+			<div class="card-h">{m.ads_top_posts_title()}</div>
+			{#if data.posts.length === 0}
+				<p class="t-caption">{m.ads_no_posts()}</p>
+			{:else}
+				<ul class="post-list">
+					{#each data.posts as post (post.postId)}
+						<li class="post-row">
+							<span class="post-platform" data-platform={post.platform ?? ''}>{post.platform === 'ig' ? m.ads_platform_ig() : m.ads_platform_fb()}</span>
+							<span class="post-caption truncate">{post.caption ?? '—'}</span>
+							<span class="post-metrics t-caption">
+								{#each topMetrics(post.metrics) as [key, value] (key)}
+									<span class="metric">{key}: {fmtInt(value)}</span>
+								{/each}
+							</span>
+							{#if post.permalink}
+								<a class="post-link" href={post.permalink} target="_blank" rel="noreferrer">
+									<ExternalLink size={12} />
+								</a>
+							{/if}
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</div>
+	{/if}
+{/snippet}
+
 <div class="flex flex-col h-full min-h-0">
 	<PageHeader title={m.nav_ads()} subtitle={m.ads_dashboard_subtitle()}>
 		{#snippet leading()}<Megaphone size={16} class="text-accent shrink-0" />{/snippet}
@@ -127,73 +191,28 @@
 					{/snippet}
 				</EmptyState>
 			{:else}
-				<div class="period-controls">
-					<div class="date-range">
-						<label class="date-label">
-							<span>{m.ads_date_from()}</span>
-							<input type="date" bind:value={fromDate} oninput={() => navigate(fromDate, toDate)} />
-						</label>
-						<label class="date-label">
-							<span>{m.ads_date_to()}</span>
-							<input type="date" bind:value={toDate} oninput={() => navigate(fromDate, toDate)} />
-						</label>
-					</div>
-					<button class="preset" onclick={preset30d}>{m.ads_preset_30d()}</button>
-					<button class="preset" onclick={presetAll}>{m.ads_preset_all()}</button>
-				</div>
-
 				{#if data.kpis && data.kpis.spend === 0 && data.kpis.impressions === 0}
-					<p class="t-caption mt-2 mb-2">{m.ads_dashboard_unsynced()}</p>
+					<p class="t-caption mb-2">{m.ads_dashboard_unsynced()}</p>
 				{/if}
-
-				<div class="kpi-grid mt-3">
-					{#each kpis as k (k.id)}
-						<div class="kpi">
-							<div class="kpi-val">{k.value}</div>
-							<div class="kpi-label">{k.label}</div>
-							<div class="kpi-delta" class:pos={k.delta !== null && k.delta >= 0} class:neg={k.delta !== null && k.delta < 0}>
-								{fmtDelta(k.delta)}
+				<EditableGrid id="ads-dashboard-v1" {items} cols={12} rowHeight={56} canSetDefault={isAdmin.value} readonly={!canAct('ads', 'edit')}>
+					{#snippet toolbar()}
+						<div class="period-controls">
+							<div class="date-range">
+								<label class="date-label">
+									<span>{m.ads_date_from()}</span>
+									<input type="date" bind:value={fromDate} oninput={() => navigate(fromDate, toDate)} />
+								</label>
+								<label class="date-label">
+									<span>{m.ads_date_to()}</span>
+									<input type="date" bind:value={toDate} oninput={() => navigate(fromDate, toDate)} />
+								</label>
 							</div>
+							<button class="preset" onclick={preset30d}>{m.ads_preset_30d()}</button>
+							<button class="preset" onclick={presetAll}>{m.ads_preset_all()}</button>
 						</div>
-					{/each}
-				</div>
-
-				<div class="charts-grid mt-3">
-					<div class="card">
-						<div class="card-h">{m.ads_chart_spend_title()}</div>
-						<Chart options={spendOpts} height="280px" />
-					</div>
-					<div class="card">
-						<div class="card-h">{m.ads_chart_campaign_title()}</div>
-						<Chart options={campaignOpts} height="280px" />
-					</div>
-				</div>
-
-				<div class="card mt-3">
-					<div class="card-h">{m.ads_top_posts_title()}</div>
-					{#if data.posts.length === 0}
-						<p class="t-caption">{m.ads_no_posts()}</p>
-					{:else}
-						<ul class="post-list">
-							{#each data.posts as post (post.postId)}
-								<li class="post-row">
-									<span class="post-platform" data-platform={post.platform ?? ''}>{post.platform === 'ig' ? m.ads_platform_ig() : m.ads_platform_fb()}</span>
-									<span class="post-caption truncate">{post.caption ?? '—'}</span>
-									<span class="post-metrics t-caption">
-										{#each topMetrics(post.metrics) as [key, value] (key)}
-											<span class="metric">{key}: {fmtInt(value)}</span>
-										{/each}
-									</span>
-									{#if post.permalink}
-										<a class="post-link" href={post.permalink} target="_blank" rel="noreferrer">
-											<ExternalLink size={12} />
-										</a>
-									{/if}
-								</li>
-							{/each}
-						</ul>
-					{/if}
-				</div>
+					{/snippet}
+					{#snippet cell(id)}{@render cellBody(id)}{/snippet}
+				</EditableGrid>
 			{/if}
 		</div>
 	</div>
@@ -243,11 +262,6 @@
 		background: var(--color-card);
 		color: inherit;
 	}
-	.kpi-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-		gap: 0.6rem;
-	}
 	.kpi {
 		display: flex;
 		flex-direction: column;
@@ -256,6 +270,7 @@
 		border: 1px solid var(--hairline);
 		border-radius: var(--radius-lg);
 		background: var(--color-card);
+		height: 100%;
 	}
 	.kpi-val {
 		font-size: 1.4rem;
@@ -278,16 +293,13 @@
 	.kpi-delta.neg {
 		color: var(--color-destructive, #ef4444);
 	}
-	.charts-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
-		gap: 0.75rem;
-	}
 	.card {
 		border: 1px solid var(--hairline);
 		border-radius: var(--radius-lg);
 		background: var(--color-card);
 		padding: 0.85rem 1rem;
+		height: 100%;
+		overflow: auto;
 	}
 	.card-h {
 		font-size: 0.78rem;
