@@ -143,7 +143,7 @@ type PluginNavCategory =
  * subtree); CRM is the hub-native contacts surface. Each builtin carries the
  * business category that decides which nav group it lands in.
  */
-const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: SectionItem }> = [
+export const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: SectionItem }> = [
     {
         category: "marketing",
         item: {

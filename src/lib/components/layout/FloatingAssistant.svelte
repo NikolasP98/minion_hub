@@ -46,7 +46,7 @@
             toggleAssistant();
             if (assistant.open) requestAnimationFrame(() => inputEl?.focus());
         },
-        { meta: { name: 'Assistant', description: 'Toggle the floating assistant' } },
+        { meta: { name: m.shortcuts_assistantName(), description: m.shortcuts_assistantDesc() } },
     );
 
     // Escape closes only while open; keep it propagating to other overlays.
