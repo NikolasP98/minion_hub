@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createMockDb } from '$server/test-utils/mock-db';
-import { accrueConsumption, releaseAccruals, resolveDefaultWarehouse } from './stock-accruals.service';
+import { accrueConsumption, releaseAccruals, resolveDefaultWarehouse, realizeAccruals, accrualSummaryForSources, availableToPromise } from './stock-accruals.service';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -120,5 +120,87 @@ describe('releaseAccruals', () => {
     const n = await releaseAccruals(ctx(db), 'booking', 'b1');
     expect(n).toBe(2);
     expect(db.update).toHaveBeenCalled();
+  });
+});
+
+const actor = { id: 'u1', name: 'Test User' };
+
+describe('realizeAccruals', () => {
+  it('no open accruals + no lines → clean no-op', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [], // open accruals
+      [], // findEntryBySource
+    ]);
+    const r = await realizeAccruals(ctx(db), { source: 'booking', sourceId: 'b1', actor });
+    expect(r).toEqual({ entry: null, realized: 0, stockWarning: null });
+  });
+
+  it('a pre-existing SUBMITTED entry heals accruals without a second issue (idempotent retry)', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [
+        { id: 'a1', itemId: 'i1', qty: '0.01', qtyConsumption: '5', finProductId: 'p1', warehouseId: 'w1' },
+      ], // open accruals
+      [{ id: 'e1', orgId: 'org-1', status: 'submitted', type: 'issue' }], // findEntryBySource
+      [{ itemId: 'i1', qtyDelta: '-0.01', valueDelta: '-1' }], // ledger rows for e1
+      [], // update accrual a1 → realized
+    ]);
+    const r = await realizeAccruals(ctx(db), { source: 'booking', sourceId: 'b1', actor });
+    expect(r.entry?.id).toBe('e1');
+    expect(r.realized).toBe(1);
+    expect(r.stockWarning).toBeNull();
+  });
+
+  it('a draft that fails to submit returns stockWarning, leaves accruals open (negative-stock completion path)', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [
+        { id: 'a1', itemId: 'i1', qty: '10', qtyConsumption: '10', finProductId: 'p1', warehouseId: 'w1' },
+      ], // open accruals
+      [{ id: 'e1', orgId: 'org-1', status: 'draft', type: 'issue' }], // findEntryBySource → draft
+      // submitEntry's internal sequence:
+      [{ id: 'e1', orgId: 'org-1', status: 'draft', type: 'issue', humanId: null }], // entry for update
+      [{ id: 'l1', entryId: 'e1', itemId: 'i1', qty: '10', uom: null, rate: null, fromWarehouseId: 'w1', toWarehouseId: null, lineNo: 0 }], // lines
+      [{ id: 'i1' }], // item existence
+      [{ id: 'w1' }], // warehouse existence
+      [{ qty: '2', valuationRate: '1' }], // bin: only 2 in stock → negative_stock
+    ]);
+    const r = await realizeAccruals(ctx(db), { source: 'booking', sourceId: 'b1', actor });
+    expect(r.stockWarning).toMatchObject({ code: 'negative_stock', draftEntryId: 'e1' });
+    expect(r.realized).toBe(0);
+    expect(db.update).not.toHaveBeenCalled(); // accruals untouched — still open
+  });
+});
+
+describe('accrualSummaryForSources', () => {
+  it('folds per-source status counts and values', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[
+      { sourceId: 'b1', status: 'open', estValue: '10', realizedValue: null, realizedEntryId: null },
+      { sourceId: 'b1', status: 'open', estValue: '5', realizedValue: null, realizedEntryId: null },
+      { sourceId: 'b2', status: 'realized', estValue: '7', realizedValue: '8', realizedEntryId: 'e1' },
+    ]]);
+    const out = await accrualSummaryForSources(ctx(db), 'booking', ['b1', 'b2']);
+    const b1 = out.find((s) => s.sourceId === 'b1')!;
+    const b2 = out.find((s) => s.sourceId === 'b2')!;
+    expect(b1).toMatchObject({ open: 2, realized: 0, estValue: 15 });
+    expect(b2).toMatchObject({ open: 0, realized: 1, realizedValue: 8, realizedEntryId: 'e1' });
+  });
+  it('returns [] for an empty id list without querying', async () => {
+    const { db } = createMockDb();
+    expect(await accrualSummaryForSources(ctx(db), 'booking', [])).toEqual([]);
+    expect(db.select).not.toHaveBeenCalled();
+  });
+});
+
+describe('availableToPromise', () => {
+  it('bin qty minus open committed qty', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [{ qty: '10' }], // bin
+      [{ total: '3' }], // open accruals sum
+    ]);
+    expect(await availableToPromise(ctx(db), 'i1', 'w1')).toBe(7);
   });
 });

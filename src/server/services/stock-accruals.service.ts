@@ -12,11 +12,30 @@
  *
  * Design: docs/superpowers/specs/2026-07-05-consumption-accrual-scheduling-stock-design.md
  */
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
-import { stkAccruals, stkBins, stkConsumption, stkItems, stkWarehouses } from '$server/db/pg-schema/stock';
+import {
+  stkAccruals,
+  stkBins,
+  stkConsumption,
+  stkItems,
+  stkLedger,
+  stkWarehouses,
+  type StkAccrual,
+  type StkEntry,
+} from '$server/db/pg-schema/stock';
 import { consumptionToStockQty, round4 } from './stock.logic';
+import {
+  buildServiceIssuePreview,
+  createServiceIssue,
+  findEntryBySource,
+  submitEntry,
+  StockError,
+  type Actor,
+  type CreateIssueFromInvoiceLine,
+  type InvoicePreviewLine,
+} from './stock.service';
 
 export interface AccrualLineInput {
   itemId: string;
@@ -129,4 +148,296 @@ export async function releaseAccruals(ctx: CoreCtx, source: string, sourceId: st
       .returning({ id: stkAccruals.id });
     return rows.length;
   });
+}
+
+export interface AccrualPreviewLine extends InvoicePreviewLine {
+  /** Σ open-accrual stock-uom qty for (item, warehouse), excluding excludeSource. */
+  committedOther: number;
+  /** available − committedOther. Warn (not block) when a line's qty exceeds it. */
+  atp: number;
+}
+
+export interface AccrualPreview {
+  productName: string;
+  productCode: string | null;
+  warehouseId: string;
+  hasMapping: boolean;
+  lines: AccrualPreviewLine[];
+}
+
+/**
+ * Gauge-ready preview of what booking `quantity` units of a service will
+ * commit: the service-issue preview plus committed-elsewhere and ATP per line.
+ * Warehouse defaults server-side. Throws StockError('no_warehouse') only here
+ * (a preview with nowhere to look is a real error; accrue itself no-ops).
+ */
+export async function buildAccrualPreview(
+  ctx: CoreCtx,
+  input: { finProductId: string; quantity: number; warehouseId?: string | null; excludeSource?: { source: string; sourceId: string } | null },
+): Promise<AccrualPreview> {
+  const warehouseId = input.warehouseId ?? (await resolveDefaultWarehouse(ctx));
+  if (!warehouseId) throw new StockError('no warehouse configured', 'no_warehouse');
+  const preview = await buildServiceIssuePreview(ctx, { finProductId: input.finProductId, quantity: input.quantity, warehouseId });
+  const itemIds = preview.lines.map((l) => l.itemId);
+  const committed = itemIds.length
+    ? await withOrgCore(ctx, (tx) =>
+        tx
+          .select({ itemId: stkAccruals.itemId, total: sql<string>`coalesce(sum(${stkAccruals.qty}), 0)` })
+          .from(stkAccruals)
+          .where(
+            and(
+              eq(stkAccruals.orgId, ctx.tenantId),
+              eq(stkAccruals.warehouseId, warehouseId),
+              inArray(stkAccruals.itemId, itemIds),
+              eq(stkAccruals.status, 'open'),
+              ...(input.excludeSource
+                ? [sql`not (${stkAccruals.source} = ${input.excludeSource.source} and ${stkAccruals.sourceId} = ${input.excludeSource.sourceId})`]
+                : []),
+            ),
+          )
+          .groupBy(stkAccruals.itemId),
+      )
+    : [];
+  const committedByItem = new Map(committed.map((c) => [c.itemId, Number(c.total)]));
+  return {
+    productName: preview.productName,
+    productCode: preview.productCode,
+    warehouseId,
+    hasMapping: preview.hasMapping,
+    lines: preview.lines.map((l) => {
+      const committedOther = committedByItem.get(l.itemId) ?? 0;
+      return { ...l, committedOther, atp: round4(l.available - committedOther) };
+    }),
+  };
+}
+
+export interface RealizeResult {
+  entry: StkEntry | null;
+  realized: number;
+  /** Set when the issue could not POST (negative_stock etc). The draft entry
+   *  stands; accruals stay open; re-calling realizeAccruals retries it. */
+  stockWarning: { code: string; message: string; draftEntryId?: string } | null;
+}
+
+export interface RealizeInput {
+  source: string;
+  sourceId: string;
+  /** Completion-dialog adjustments; absent → the open accruals as-is. */
+  lines?: CreateIssueFromInvoiceLine[] | null;
+  warehouseId?: string | null;
+  /** Fallback when no accruals exist (e.g. accrue was lost) — booking.productId. */
+  finProductId?: string | null;
+  partyId?: string | null;
+  note?: string | null;
+  actor: Actor;
+}
+
+/**
+ * Completion path — a small idempotent state machine:
+ *   no entry yet   → create draft issue (source-stamped) from lines/accruals
+ *   entry is draft → (re)try submitEntry; negative_stock → return stockWarning
+ *   entry submitted→ stamp actuals from its ledger rows onto the open accruals
+ * Accrued items missing from the final issue are released (superseded); items
+ * issued but never accrued simply have no accrual row (ledger is the truth).
+ */
+export async function realizeAccruals(ctx: CoreCtx, input: RealizeInput): Promise<RealizeResult> {
+  const open = await withOrgCore(ctx, (tx) =>
+    tx
+      .select()
+      .from(stkAccruals)
+      .where(and(eq(stkAccruals.orgId, ctx.tenantId), eq(stkAccruals.source, input.source), eq(stkAccruals.sourceId, input.sourceId), eq(stkAccruals.status, 'open'))),
+  );
+
+  let entry = await findEntryBySource(ctx, input.source, input.sourceId);
+  if (!entry) {
+    const lines: CreateIssueFromInvoiceLine[] = input.lines?.length
+      ? input.lines
+      : open.map((a) => ({ itemId: a.itemId, qty: Number(a.qty), qtyConsumption: Number(a.qtyConsumption) }));
+    if (!lines.length) return { entry: null, realized: 0, stockWarning: null };
+    const finProductId = input.finProductId ?? open[0]?.finProductId ?? null;
+    if (!finProductId) return { entry: null, realized: 0, stockWarning: null };
+    const warehouseId = input.warehouseId ?? open[0]?.warehouseId ?? (await resolveDefaultWarehouse(ctx));
+    if (!warehouseId) throw new StockError('no warehouse configured', 'no_warehouse');
+    entry = await createServiceIssue(ctx, {
+      finProductId,
+      quantity: 1,
+      warehouseId,
+      partyId: input.partyId ?? null,
+      note: input.note ?? null,
+      lines,
+      submit: false,
+      actor: input.actor,
+      source: input.source,
+      sourceId: input.sourceId,
+    });
+  }
+
+  if (entry.status === 'draft') {
+    // ponytail: a draft left by an earlier failed attempt posts as-is; retry
+    // lines don't rewrite it (adjust the draft in Stock → Entries if needed).
+    try {
+      entry = await submitEntry(ctx, entry.id, input.actor);
+    } catch (e) {
+      if (e instanceof StockError) {
+        return { entry, realized: 0, stockWarning: { code: e.code, message: e.message, draftEntryId: entry.id } };
+      }
+      throw e;
+    }
+  }
+
+  const entryId = entry.id;
+  const realized = await withOrgCore(ctx, async (tx) => {
+    const ledger = await tx
+      .select({ itemId: stkLedger.itemId, qtyDelta: stkLedger.qtyDelta, valueDelta: stkLedger.valueDelta })
+      .from(stkLedger)
+      .where(and(eq(stkLedger.orgId, ctx.tenantId), eq(stkLedger.entryId, entryId)));
+    const qtyByItem = new Map<string, number>();
+    const valByItem = new Map<string, number>();
+    for (const r of ledger) {
+      qtyByItem.set(r.itemId, (qtyByItem.get(r.itemId) ?? 0) - Number(r.qtyDelta));
+      valByItem.set(r.itemId, (valByItem.get(r.itemId) ?? 0) - Number(r.valueDelta));
+    }
+    let n = 0;
+    for (const a of open) {
+      if (qtyByItem.has(a.itemId)) {
+        await tx
+          .update(stkAccruals)
+          .set({
+            status: 'realized',
+            realizedEntryId: entryId,
+            realizedQty: String(round4(qtyByItem.get(a.itemId)!)),
+            realizedValue: String(round4(valByItem.get(a.itemId)!)),
+            realizedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(and(eq(stkAccruals.id, a.id), eq(stkAccruals.status, 'open')));
+        n++;
+      } else {
+        // Accrued but not consumed in the final issue → superseded.
+        await tx
+          .update(stkAccruals)
+          .set({ status: 'released', releasedAt: new Date(), updatedAt: new Date() })
+          .where(and(eq(stkAccruals.id, a.id), eq(stkAccruals.status, 'open')));
+      }
+    }
+    return n;
+  });
+  return { entry, realized, stockWarning: null };
+}
+
+export interface AccrualListRow extends StkAccrual {
+  itemName: string;
+  itemCode: string;
+  itemUom: string;
+  consumptionUom: string | null;
+  unitsPerStockUom: string | null;
+  subunitsPerStockUom: string | null;
+  diagramEnabled: boolean;
+}
+
+/** Accruals joined with item/UOM fields — enough for the ConsumptionGauge. */
+export function listAccruals(
+  ctx: CoreCtx,
+  filters: { status?: string; itemId?: string; source?: string; sourceId?: string } = {},
+): Promise<AccrualListRow[]> {
+  return withOrgCore(ctx, async (tx) => {
+    const conds = [eq(stkAccruals.orgId, ctx.tenantId)];
+    if (filters.status) conds.push(eq(stkAccruals.status, filters.status));
+    if (filters.itemId) conds.push(eq(stkAccruals.itemId, filters.itemId));
+    if (filters.source) conds.push(eq(stkAccruals.source, filters.source));
+    if (filters.sourceId) conds.push(eq(stkAccruals.sourceId, filters.sourceId));
+    const rows = await tx
+      .select({
+        accrual: stkAccruals,
+        itemName: stkItems.name,
+        itemCode: stkItems.code,
+        itemUom: stkItems.uom,
+        consumptionUom: stkItems.consumptionUom,
+        unitsPerStockUom: stkItems.unitsPerStockUom,
+        subunitsPerStockUom: stkItems.subunitsPerStockUom,
+        diagramEnabled: stkItems.diagramEnabled,
+      })
+      .from(stkAccruals)
+      .innerJoin(stkItems, eq(stkAccruals.itemId, stkItems.id))
+      .where(and(...conds))
+      .orderBy(desc(stkAccruals.createdAt))
+      .limit(1000);
+    return rows.map((r) => ({
+      ...r.accrual,
+      itemName: r.itemName,
+      itemCode: r.itemCode,
+      itemUom: r.itemUom,
+      consumptionUom: r.consumptionUom,
+      unitsPerStockUom: r.unitsPerStockUom,
+      subunitsPerStockUom: r.subunitsPerStockUom,
+      diagramEnabled: r.diagramEnabled,
+    }));
+  });
+}
+
+/** bin.qty − Σ open-accrual qty for (item, warehouse). */
+export async function availableToPromise(ctx: CoreCtx, itemId: string, warehouseId: string): Promise<number> {
+  return withOrgCore(ctx, async (tx) => {
+    const [bin] = await tx
+      .select({ qty: stkBins.qty })
+      .from(stkBins)
+      .where(and(eq(stkBins.orgId, ctx.tenantId), eq(stkBins.itemId, itemId), eq(stkBins.warehouseId, warehouseId)));
+    const [committed] = await tx
+      .select({ total: sql<string>`coalesce(sum(${stkAccruals.qty}), 0)` })
+      .from(stkAccruals)
+      .where(and(eq(stkAccruals.orgId, ctx.tenantId), eq(stkAccruals.itemId, itemId), eq(stkAccruals.warehouseId, warehouseId), eq(stkAccruals.status, 'open')));
+    return round4(Number(bin?.qty ?? 0) - Number(committed?.total ?? 0));
+  });
+}
+
+/** Σ est_value of open accruals — the "potential spend" headline. */
+export async function committedSpend(ctx: CoreCtx, filters: { warehouseId?: string } = {}): Promise<number> {
+  return withOrgCore(ctx, async (tx) => {
+    const conds = [eq(stkAccruals.orgId, ctx.tenantId), eq(stkAccruals.status, 'open')];
+    if (filters.warehouseId) conds.push(eq(stkAccruals.warehouseId, filters.warehouseId));
+    const [row] = await tx
+      .select({ total: sql<string>`coalesce(sum(${stkAccruals.estValue}), 0)` })
+      .from(stkAccruals)
+      .where(and(...conds));
+    return Number(row?.total ?? 0);
+  });
+}
+
+export interface AccrualSourceSummary {
+  sourceId: string;
+  open: number;
+  realized: number;
+  released: number;
+  estValue: number;
+  realizedValue: number;
+  realizedEntryId: string | null;
+}
+
+/** Batch rollup for list pages (one query, no N+1). */
+export async function accrualSummaryForSources(ctx: CoreCtx, source: string, sourceIds: string[]): Promise<AccrualSourceSummary[]> {
+  if (!sourceIds.length) return [];
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .select({
+        sourceId: stkAccruals.sourceId,
+        status: stkAccruals.status,
+        estValue: stkAccruals.estValue,
+        realizedValue: stkAccruals.realizedValue,
+        realizedEntryId: stkAccruals.realizedEntryId,
+      })
+      .from(stkAccruals)
+      .where(and(eq(stkAccruals.orgId, ctx.tenantId), eq(stkAccruals.source, source), inArray(stkAccruals.sourceId, sourceIds))),
+  );
+  const bySource = new Map<string, AccrualSourceSummary>();
+  for (const r of rows) {
+    const s = bySource.get(r.sourceId) ?? { sourceId: r.sourceId, open: 0, realized: 0, released: 0, estValue: 0, realizedValue: 0, realizedEntryId: null };
+    if (r.status === 'open') s.open++;
+    else if (r.status === 'realized') s.realized++;
+    else s.released++;
+    s.estValue = round4(s.estValue + Number(r.estValue));
+    s.realizedValue = round4(s.realizedValue + Number(r.realizedValue ?? 0));
+    if (r.realizedEntryId) s.realizedEntryId = r.realizedEntryId;
+    bySource.set(r.sourceId, s);
+  }
+  return [...bySource.values()];
 }
