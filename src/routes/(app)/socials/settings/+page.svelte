@@ -155,7 +155,7 @@
 							<span class="mono-val">{fmtDate(fbConn.createdAt)}</span>
 						</div>
 
-						{#if fbConn.status === 'expiring' || fbConn.status === 'expired'}
+						{#if fbConn.status !== 'active'}
 							<div class="reconnect-banner">
 								<AlertTriangle size={14} />
 								<span>{m.ads_reconnect_needed()}</span>
@@ -198,7 +198,7 @@
 							<span class="mono-val">{fmtDate(igConn.createdAt)}</span>
 						</div>
 
-						{#if igConn.status === 'expiring' || igConn.status === 'expired'}
+						{#if igConn.status !== 'active'}
 							<div class="reconnect-banner">
 								<AlertTriangle size={14} />
 								<span>{m.ads_reconnect_needed()}</span>
