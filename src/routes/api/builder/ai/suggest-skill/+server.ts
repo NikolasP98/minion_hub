@@ -1,25 +1,12 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
+import { generateObject } from 'ai';
+import { z } from 'zod';
 import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
 import { env } from '$env/dynamic/private';
 import { hubBaseUrl } from '$server/config/urls';
 import { getToolInfo } from '$lib/data/tool-manifest';
-
-const MODEL_PRICE_TABLE: Record<string, { inputPerMillion: number; outputPerMillion: number }> = {
-  'anthropic/claude-sonnet-4': { inputPerMillion: 3.0, outputPerMillion: 15.0 },
-  'anthropic/claude-haiku-3': { inputPerMillion: 0.25, outputPerMillion: 1.25 },
-  'openai/gpt-4o': { inputPerMillion: 2.5, outputPerMillion: 10.0 },
-  'openai/gpt-4o-mini': { inputPerMillion: 0.15, outputPerMillion: 0.6 },
-};
-
-function estimateCost(model: string, promptTokens: number, completionTokens: number): number {
-  const prices = MODEL_PRICE_TABLE[model];
-  if (!prices) return 0;
-  return (
-    (promptTokens / 1_000_000) * prices.inputPerMillion +
-    (completionTokens / 1_000_000) * prices.outputPerMillion
-  );
-}
+import { getOpenRouterModel, estimateCost } from '$server/llm';
 
 const SYSTEM_PROMPT = `You are a skill architect for an AI agent platform called OpenClaw. Given a skill description and the list of available tools, design a complete execution pipeline as a directed graph of chapters (cycles are supported and bounded by maxCycles) and optional condition nodes.
 
@@ -57,55 +44,34 @@ edges:
    { fromName: "Sufficient Data?", toName: "Deep Dive", label: "No" },
    { fromName: "Deep Dive", toName: "Data Collection", label: null }]`;
 
-const SKILL_PIPELINE_SCHEMA = {
-  type: 'object',
-  required: ['chapters', 'edges'],
-  properties: {
-    chapters: {
-      type: 'array',
-      items: {
-        type: 'object',
-        required: ['type', 'name'],
-        properties: {
-          type: { type: 'string', enum: ['chapter', 'condition'] },
-          name: { type: 'string', description: 'Unique chapter name' },
-          description: { type: 'string' },
-          guide: {
-            type: 'string',
-            description: 'Imperative instructions (verb-first bullet points)',
-          },
-          toolIds: { type: 'array', items: { type: 'string' } },
-          context: { type: 'string', description: 'What data this chapter receives from upstream' },
-          outputDef: { type: 'string', description: 'What data this chapter produces' },
-          conditionText: {
-            type: 'string',
-            description: 'Binary yes/no question (condition nodes only)',
-          },
-          positionX: { type: 'number' },
-          positionY: { type: 'number' },
-        },
-      },
-    },
-    edges: {
-      type: 'array',
-      items: {
-        type: 'object',
-        required: ['fromName', 'toName'],
-        properties: {
-          fromName: { type: 'string', description: 'Name of the source chapter' },
-          toName: { type: 'string', description: 'Name of the target chapter' },
-          label: {
-            anyOf: [{ type: 'string', enum: ['Yes', 'No'] }, { type: 'null' }],
-            description:
-              'Branch label for condition edges (Yes/No for condition nodes, null for regular edges)',
-          },
-        },
-      },
-    },
-  },
-} as const;
+const chapterSchema = z.object({
+  type: z.enum(['chapter', 'condition']),
+  name: z.string().describe('Unique chapter name'),
+  description: z.string().optional(),
+  guide: z.string().optional().describe('Imperative instructions (verb-first bullet points)'),
+  toolIds: z.array(z.string()).optional(),
+  context: z.string().optional().describe('What data this chapter receives from upstream'),
+  outputDef: z.string().optional().describe('What data this chapter produces'),
+  conditionText: z.string().optional().describe('Binary yes/no question (condition nodes only)'),
+  positionX: z.number().optional(),
+  positionY: z.number().optional(),
+});
 
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const edgeSchema = z.object({
+  fromName: z.string().describe('Name of the source chapter'),
+  toName: z.string().describe('Name of the target chapter'),
+  label: z
+    .enum(['Yes', 'No'])
+    .nullable()
+    .optional()
+    .describe('Branch label for condition edges (Yes/No for condition nodes, null for regular edges)'),
+});
+
+const skillPipelineSchema = z.object({
+  chapters: z.array(chapterSchema),
+  edges: z.array(edgeSchema),
+});
+
 const DEFAULT_MODEL = 'anthropic/claude-sonnet-4';
 
 export const POST: RequestHandler = async ({ locals, request }) => {
@@ -157,79 +123,20 @@ ${toolDescriptions || '(none)'}
 Design a complete chapter pipeline for this skill. Include condition nodes where branching logic is needed. Each chapter must use only tools from the available list.`;
 
   try {
-    const res = await fetch(OPENROUTER_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-        'HTTP-Referer': hubBaseUrl(),
-        'X-Title': 'Minion Hub Builder',
-      },
-      body: JSON.stringify({
-        model: model || DEFAULT_MODEL,
-        max_tokens: previewOnly ? 512 : 2048,
-        messages: [
-          {
-            role: 'system',
-            content:
-              SYSTEM_PROMPT +
-              (previewOnly
-                ? '\n\nIMPORTANT: Return ONLY chapter names and brief one-line descriptions. Do not generate guide, context, outputDef, or toolIds content — leave them empty.'
-                : ''),
-          },
-          { role: 'user', content: userPrompt },
-        ],
-        tools: [
-          {
-            type: 'function',
-            function: {
-              name: 'create_skill_pipeline',
-              description: 'Create a skill execution pipeline with chapters and directed edges',
-              parameters: SKILL_PIPELINE_SCHEMA,
-            },
-          },
-        ],
-        tool_choice: { type: 'function', function: { name: 'create_skill_pipeline' } },
-      }),
+    const { object, usage } = await generateObject({
+      model: getOpenRouterModel(model || DEFAULT_MODEL),
+      schema: skillPipelineSchema,
+      maxOutputTokens: previewOnly ? 512 : 2048,
+      system:
+        SYSTEM_PROMPT +
+        (previewOnly
+          ? '\n\nIMPORTANT: Return ONLY chapter names and brief one-line descriptions. Do not generate guide, context, outputDef, or toolIds content — leave them empty.'
+          : ''),
+      prompt: userPrompt,
+      headers: { 'HTTP-Referer': hubBaseUrl(), 'X-Title': 'Minion Hub Builder' },
     });
 
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error('[ai/suggest-skill] OpenRouter error:', res.status, errText);
-      return json({ error: `OpenRouter returned ${res.status}` }, { status: 502 });
-    }
-
-    const completion = await res.json();
-
-    // CFIX-05: Check for completion.error before attempting to parse choices
-    if (completion.error) {
-      console.error('[ai/suggest-skill] completion.error:', completion.error);
-      return json(
-        {
-          error:
-            completion.error?.message ?? JSON.stringify(completion.error) ?? 'AI returned an error',
-        },
-        { status: 502 },
-      );
-    }
-
-    // Try tool_calls first (structured output), fall back to content parsing
-    let parsed: { chapters?: unknown[]; edges?: unknown[] };
-    const toolCall = completion.choices?.[0]?.message?.tool_calls?.[0];
-    if (toolCall?.function?.arguments) {
-      parsed = JSON.parse(toolCall.function.arguments);
-    } else {
-      // Fallback: parse from content (for models that don't support tool_choice)
-      console.warn('[ai/suggest-skill] No tool_calls in response — falling back to content parse');
-      const content = completion.choices?.[0]?.message?.content ?? '';
-      const jsonStr = content
-        .replace(/```json\n?/g, '')
-        .replace(/```\n?/g, '')
-        .trim();
-      parsed = JSON.parse(jsonStr);
-    }
-
-    const chapters = (parsed.chapters ?? []) as Array<{ name: string; [k: string]: unknown }>;
+    const chapters = object.chapters as Array<{ name: string; [k: string]: unknown }>;
 
     // CFIX-03: Filter tool IDs against available pool
     const availableSet = new Set<string>(availableToolIds ?? []);
@@ -251,33 +158,21 @@ Design a complete chapter pipeline for this skill. Include condition nodes where
         ? `${filteredToolIds.length} tool(s) not available in current pool were removed: ${filteredToolIds.join(', ')}`
         : undefined;
 
-    // Resolve name-based edges to index-based for frontend compatibility
-    const edges = (
-      (parsed.edges ?? []) as Array<{
-        fromName?: string;
-        toName?: string;
-        from?: number;
-        to?: number;
-        label?: string | null;
-      }>
-    )
-      .map((e) => {
-        // Handle both name-based and legacy index-based edges
-        if (typeof e.fromName === 'string' && typeof e.toName === 'string') {
-          return {
-            from: chapters.findIndex((ch) => ch.name === e.fromName),
-            to: chapters.findIndex((ch) => ch.name === e.toName),
-            label: e.label ?? null,
-          };
-        }
-        return { from: e.from ?? -1, to: e.to ?? -1, label: e.label ?? null };
-      })
+    // Resolve name-based edges to index-based for frontend compatibility. The
+    // schema enforces fromName/toName as strings, so the legacy index-based
+    // edge fallback (for models that skipped structured output) is dead code
+    // now that generateObject guarantees the shape — dropped.
+    const edges = object.edges
+      .map((e) => ({
+        from: chapters.findIndex((ch) => ch.name === e.fromName),
+        to: chapters.findIndex((ch) => ch.name === e.toName),
+        label: e.label ?? null,
+      }))
       .filter((e) => e.from >= 0 && e.to >= 0);
 
     // CFIX-10: Extract usage and estimate cost
-    const rawUsage = completion.usage ?? {};
-    const promptTokens = rawUsage.prompt_tokens ?? 0;
-    const completionTokens = rawUsage.completion_tokens ?? 0;
+    const promptTokens = usage.inputTokens ?? 0;
+    const completionTokens = usage.outputTokens ?? 0;
     const usedModel = model || DEFAULT_MODEL;
 
     // previewOnly: return only chapter titles for ghost suggestions (AI-02)

@@ -1,13 +1,12 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { generateObject } from 'ai';
-import { createOpenAI } from '@ai-sdk/openai';
 import { z } from 'zod';
 import { env } from '$env/dynamic/private';
 import { hubBaseUrl } from '$server/config/urls';
 import { requireAuth } from '$server/auth/authorize';
+import { getOpenRouterModel } from '$server/llm';
 
-const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 const DEFAULT_MODEL = env.NOTES_REFINE_MODEL || env.NOTES_AUTOCOMPLETE_MODEL || 'google/gemini-2.5-flash';
 const MAX_INPUT = 8000;
 
@@ -78,18 +77,13 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   }
   const doc = lines.join('\n').slice(0, MAX_INPUT);
 
-  const openrouter = createOpenAI({
-    baseURL: OPENROUTER_BASE_URL,
-    apiKey,
-    headers: { 'HTTP-Referer': hubBaseUrl(), 'X-Title': 'Minion Hub - Notes Refine' },
-  });
-
   try {
     const { object } = await generateObject({
-      model: openrouter(DEFAULT_MODEL),
+      model: getOpenRouterModel(DEFAULT_MODEL),
       schema: resultSchema,
       temperature: 0.4,
       maxOutputTokens: 1500,
+      headers: { 'HTTP-Referer': hubBaseUrl(), 'X-Title': 'Minion Hub - Notes Refine' },
       system:
         'You polish notes. Given a note and its embedded blocks, produce: (1) a concise, specific ' +
         'title for the note and for each to-do/easel block, derived strictly from the content; and ' +

@@ -1,7 +1,35 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
+import { generateObject } from 'ai';
+import { z } from 'zod';
+import { env } from '$env/dynamic/private';
+import { getOpenRouterModel } from '$server/llm';
 
-const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
+// Was a direct api.anthropic.com call keyed on ANTHROPIC_API_KEY; routed through
+// the shared OpenRouter factory (no ANTHROPIC_API_KEY-specific requirement, and
+// no @ai-sdk/anthropic dependency needed) — same model family as the original
+// hardcoded 'claude-sonnet-4-6'.
+const DEFAULT_MODEL = env.MARKETPLACE_GENERATE_AGENT_MODEL || 'anthropic/claude-sonnet-4';
+
+const agentPersonaSchema = z.object({
+  soulMd: z.string(),
+  identityMd: z.string(),
+  userMd: z.string(),
+  contextMd: z.string(),
+  skillsMd: z.string(),
+  agentJson: z.object({
+    id: z.string(),
+    name: z.string(),
+    role: z.string(),
+    category: z.string(),
+    tags: z.array(z.string()),
+    description: z.string(),
+    catchphrase: z.string(),
+    version: z.string(),
+    model: z.string(),
+    avatarSeed: z.string(),
+  }),
+});
 
 export const POST: RequestHandler = async ({ locals, request }) => {
   if (!locals.tenantCtx) throw error(401);
@@ -21,8 +49,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 
   if (!name || !role || !category) throw error(400, 'name, role, and category are required');
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw error(500, 'ANTHROPIC_API_KEY not configured');
+  const apiKey = env.OPENROUTER_API_KEY;
+  if (!apiKey) throw error(500, 'OPENROUTER_API_KEY not configured');
 
   const formalCasual = personality?.formalCasual ?? 50;
   const cautiousBold = personality?.cautiousBold ?? 50;
@@ -65,51 +93,13 @@ Return your response as a JSON object with exactly these fields:
 Return only valid JSON, no markdown code fences.`;
 
   try {
-    const res = await fetch(ANTHROPIC_API, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 8000,
-        messages: [{ role: 'user', content: prompt }],
-      }),
+    const { object } = await generateObject({
+      model: getOpenRouterModel(DEFAULT_MODEL),
+      schema: agentPersonaSchema,
+      maxOutputTokens: 8000,
+      prompt,
     });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      throw error(502, `Anthropic API error: ${errText}`);
-    }
-
-    const data = (await res.json()) as {
-      content: Array<{ type: string; text: string }>;
-    };
-
-    const rawText = data.content.find((c) => c.type === 'text')?.text ?? '';
-    const parsed = JSON.parse(rawText) as {
-      soulMd: string;
-      identityMd: string;
-      userMd: string;
-      contextMd: string;
-      skillsMd: string;
-      agentJson: {
-        id: string;
-        name: string;
-        role: string;
-        category: string;
-        tags: string[];
-        description: string;
-        catchphrase: string;
-        version: string;
-        model: string;
-        avatarSeed: string;
-      };
-    };
-
-    return json(parsed);
+    return json(object);
   } catch (err) {
     if (err instanceof Response) throw err;
     throw error(500, `Generation failed: ${(err as Error).message}`);

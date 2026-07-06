@@ -1,6 +1,6 @@
 import { eq, sql } from 'drizzle-orm';
-import { generateText } from 'ai';
-import { createOpenAI } from '@ai-sdk/openai';
+import { generateObject } from 'ai';
+import { z } from 'zod';
 import { env } from '$env/dynamic/private';
 import { withOrgCore } from '$server/db/with-org-core';
 import { crmSettings } from '$server/db/pg-crm-schema';
@@ -8,8 +8,13 @@ import type { CoreCtx } from '$server/auth/core-ctx';
 import { bothEnabled } from './modules.service';
 import { embedText, embedTexts, embeddingsEnabled, toVectorLiteral } from './embeddings';
 import { buildConversationText, isThin } from '$lib/components/crm/crm-similarity';
+import { getOpenRouterModel } from '$server/llm';
 
-const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
+const winAnalysisResultSchema = z.object({
+  wins: z.array(z.object({ point: z.string(), repeat: z.string() })).optional(),
+  improvements: z.array(z.object({ area: z.string(), suggestions: z.array(z.string()).optional() })).optional(),
+});
+
 const WIN_MODEL =
   env.CRM_FUNNEL_MODEL || env.CRM_SENTIMENT_MODEL || env.NOTES_POLISH_MODEL || 'google/gemini-2.5-flash';
 
@@ -178,23 +183,21 @@ Winning conversations:
 ${sample}`;
 
   try {
-    const openrouter = createOpenAI({ apiKey, baseURL: OPENROUTER_BASE_URL });
-    const res = await generateText({ model: openrouter(WIN_MODEL), prompt, temperature: 0.3 });
-    const match = res.text.match(/\{[\s\S]*\}/);
-    if (!match) return null;
-    const parsed = JSON.parse(match[0]) as {
-      wins?: { point?: unknown; repeat?: unknown }[];
-      improvements?: { area?: unknown; suggestions?: unknown }[];
-    };
+    const { object } = await generateObject({
+      model: getOpenRouterModel(WIN_MODEL),
+      schema: winAnalysisResultSchema,
+      prompt,
+      temperature: 0.3,
+    });
     const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
-    const wins = (Array.isArray(parsed.wins) ? parsed.wins : [])
+    const wins = (object.wins ?? [])
       .map((w) => ({ point: str(w.point), repeat: str(w.repeat) }))
       .filter((w) => w.point)
       .slice(0, 6);
-    const improvements = (Array.isArray(parsed.improvements) ? parsed.improvements : [])
+    const improvements = (object.improvements ?? [])
       .map((im) => ({
         area: str(im.area),
-        suggestions: (Array.isArray(im.suggestions) ? im.suggestions : []).map(str).filter(Boolean).slice(0, 4),
+        suggestions: (im.suggestions ?? []).map(str).filter(Boolean).slice(0, 4),
       }))
       .filter((im) => im.area)
       .slice(0, 5);

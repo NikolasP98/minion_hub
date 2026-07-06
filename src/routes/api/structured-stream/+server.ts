@@ -1,13 +1,12 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { error } from '@sveltejs/kit';
 import { streamObject } from 'ai';
-import { createOpenAI } from '@ai-sdk/openai';
 import { env } from '$env/dynamic/private';
 import { hubBaseUrl } from '$server/config/urls';
 import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
 import { SCHEMA_MAP, type SchemaType } from '$lib/schemas/structured-response';
+import { getOpenRouterModel } from '$server/llm';
 
-const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 const DEFAULT_MODEL = 'anthropic/claude-sonnet-4';
 
 /**
@@ -35,22 +34,17 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     throw error(400, 'prompt is required');
   }
 
-  const openrouter = createOpenAI({
-    baseURL: OPENROUTER_BASE_URL,
-    apiKey,
-    headers: {
-      'HTTP-Referer': hubBaseUrl(),
-      'X-Title': 'Minion Hub - Structured Stream',
-    },
-  });
-
   const schema = SCHEMA_MAP[type];
   const selectedModel = model || DEFAULT_MODEL;
 
   const result = streamObject({
-    model: openrouter(selectedModel),
+    model: getOpenRouterModel(selectedModel),
     schema,
     prompt,
+    headers: {
+      'HTTP-Referer': hubBaseUrl(),
+      'X-Title': 'Minion Hub - Structured Stream',
+    },
   });
 
   const stream = new ReadableStream({

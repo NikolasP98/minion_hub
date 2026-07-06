@@ -1,12 +1,15 @@
 import { sql } from 'drizzle-orm';
-import { generateText } from 'ai';
-import { createOpenAI } from '@ai-sdk/openai';
+import { generateObject } from 'ai';
+import { z } from 'zod';
 import { env } from '$env/dynamic/private';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { cached, keys, tags } from '@minion-stack/cache';
 import { scopeData } from './base';
 import { isStopword, isWordlike, scoreToLabel } from '$lib/components/crm/crm-insights';
+import { getOpenRouterModel } from '$server/llm';
+
+const sentimentItemSchema = z.object({ i: z.number(), score: z.number() });
 
 const insightsTags = (orgId: string) => tags.tenantDomain(orgId, 'crm');
 
@@ -64,7 +67,6 @@ export function wordFrequency(
   );
 }
 
-const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 const SENTIMENT_MODEL =
   env.CRM_SENTIMENT_MODEL || env.CRM_FUNNEL_MODEL || env.NOTES_POLISH_MODEL || 'google/gemini-2.5-flash';
 
@@ -96,7 +98,6 @@ export async function scoreSentimentBatch(ctx: CoreCtx, opts?: { cap?: number })
   });
   if (pending.length === 0) return { scored: 0 };
 
-  const openrouter = createOpenAI({ apiKey, baseURL: OPENROUTER_BASE_URL });
   const transcript = pending.map((m, i) => `${i + 1}. ${m.content.slice(0, 400).replace(/\n/g, ' ')}`).join('\n');
   const prompt = `You score the SENTIMENT of customer messages to a Peruvian aesthetics clinic (mostly Spanish). For each numbered message return a score in [-1, 1]: -1 very negative/upset, 0 neutral/informational, 1 very positive/enthusiastic.
 
@@ -107,17 +108,16 @@ ${transcript}`;
 
   let scores: Array<{ i: number; score: number }> = [];
   try {
-    const res = await generateText({ model: openrouter(SENTIMENT_MODEL), prompt, temperature: 0 });
-    const match = res.text.match(/\[[\s\S]*\]/);
-    if (match) {
-      const parsed = JSON.parse(match[0]) as unknown;
-      if (Array.isArray(parsed)) {
-        scores = parsed
-          .map((p) => p as { i?: unknown; score?: unknown })
-          .filter((p) => typeof p.i === 'number' && typeof p.score === 'number')
-          .map((p) => ({ i: p.i as number, score: Math.max(-1, Math.min(1, p.score as number)) }));
-      }
-    }
+    const { object } = await generateObject({
+      model: getOpenRouterModel(SENTIMENT_MODEL),
+      output: 'array',
+      schema: sentimentItemSchema,
+      prompt,
+      temperature: 0,
+    });
+    scores = object
+      .filter((p) => typeof p.i === 'number' && typeof p.score === 'number')
+      .map((p) => ({ i: p.i, score: Math.max(-1, Math.min(1, p.score)) }));
   } catch {
     return { scored: 0 }; // leave unscored; retried next run
   }

@@ -1,7 +1,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { generateText } from 'ai';
-import { createOpenAI } from '@ai-sdk/openai';
+import { generateObject, NoObjectGeneratedError } from 'ai';
+import { z } from 'zod';
 import { env } from '$env/dynamic/private';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import {
@@ -10,8 +10,14 @@ import {
   distinctVisitDates,
 } from '$server/services/crm-contacts.service';
 import { coerceFunnelStage, type FunnelStage } from '$lib/components/crm/crm-funnel';
+import { getOpenRouterModel } from '$server/llm';
 
-const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
+const funnelResultSchema = z.object({
+  stage: z.string().optional(),
+  confidence: z.number().optional(),
+  reason: z.string().optional(),
+});
+
 const MODEL =
   env.CRM_FUNNEL_MODEL || env.CRM_CLEANUP_MODEL || env.NOTES_POLISH_MODEL || 'google/gemini-2.5-flash';
 const MAX_MSGS = 20;
@@ -55,7 +61,6 @@ export const POST: RequestHandler = async ({ locals, params }) => {
     return json({ stage: null, confidence: 0, reason: 'no inbound messages', applied: false });
   }
 
-  const openrouter = createOpenAI({ apiKey, baseURL: OPENROUTER_BASE_URL });
   const transcript = inbound.map((t, i) => `${i + 1}. ${t.slice(0, 500)}`).join('\n');
 
   const prompt = `You classify where a customer sits in the marketing funnel of a Peruvian aesthetics clinic, based on the contents of THEIR inbound messages (mostly Spanish). Pick exactly ONE stage:
@@ -71,20 +76,22 @@ Return ONLY a JSON object: {"stage":"lead|opportunity|customer","confidence":0.0
 Customer's inbound messages (chronological):
 ${transcript}`;
 
-  let text: string;
-  try {
-    const res = await generateText({ model: openrouter(MODEL), prompt, temperature: 0 });
-    text = res.text;
-  } catch (e) {
-    throw error(502, e instanceof Error ? e.message : 'AI analysis failed');
-  }
-
+  // Same loud/quiet split as before: a genuine transport/auth failure still
+  // throws 502; a NoObjectGeneratedError (model output didn't fit the schema —
+  // the old "regex/JSON.parse failed" case) stays quiet with an empty object.
   let parsed: { stage?: unknown; confidence?: unknown; reason?: unknown } = {};
   try {
-    const m = text.match(/\{[\s\S]*\}/);
-    parsed = m ? JSON.parse(m[0]) : {};
-  } catch {
-    parsed = {};
+    const { object } = await generateObject({
+      model: getOpenRouterModel(MODEL),
+      schema: funnelResultSchema,
+      prompt,
+      temperature: 0,
+    });
+    parsed = object;
+  } catch (e) {
+    if (!NoObjectGeneratedError.isInstance(e)) {
+      throw error(502, e instanceof Error ? e.message : 'AI analysis failed');
+    }
   }
 
   const coerced = coerceFunnelStage(parsed.stage); // accepts legacy ids too

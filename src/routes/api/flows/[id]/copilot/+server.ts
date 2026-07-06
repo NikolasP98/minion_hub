@@ -1,7 +1,6 @@
 import type { RequestHandler } from './$types';
 import { json, error } from '@sveltejs/kit';
 import { generateText, tool, stepCountIs } from 'ai';
-import { createOpenAI } from '@ai-sdk/openai';
 import { z } from 'zod';
 import { env } from '$env/dynamic/private';
 import { and, eq } from 'drizzle-orm';
@@ -11,8 +10,7 @@ import { withOrgCore } from '$server/db/with-org-core';
 import { flows } from '$server/db/pg-schema/flows';
 import * as ops from '$lib/flows/flow-ops';
 import type { WorkingFlow } from '$lib/flows/flow-ops';
-
-const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
+import { getOpenRouterModel } from '$server/llm';
 
 const SYSTEM = `You edit an automation flow (nodes + edges). Node types: trigger, schedule, agent, llm, router, toolAgent, channel, handoff, reaction, transform, structured, pluginTrigger, pluginAction. Make the SMALLEST change that satisfies the user. Use the provided tools to mutate the flow; reference nodes by id. After editing, call validate. Explain what you changed in one short paragraph.`;
 
@@ -38,7 +36,6 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
   if (!apiKey) throw error(503, 'copilot unavailable: OPENROUTER_API_KEY not set');
 
   let work: WorkingFlow = { nodes: JSON.parse(row.nodes), edges: JSON.parse(row.edges) };
-  const openrouter = createOpenAI({ apiKey, baseURL: OPENROUTER_BASE_URL });
 
   const tools = {
     addNode: tool({
@@ -98,7 +95,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
   let text: string;
   try {
     const res = await generateText({
-      model: openrouter(model),
+      model: getOpenRouterModel(model),
       system: `${SYSTEM}\n\nCurrent flow:\n${JSON.stringify(work)}`,
       messages,
       tools,

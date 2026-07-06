@@ -1,10 +1,11 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
+import { generateText } from 'ai';
 import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
 import { env } from '$env/dynamic/private';
 import { hubBaseUrl } from '$server/config/urls';
+import { getOpenRouterModel } from '$server/llm';
 
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const DEFAULT_MODEL = 'anthropic/claude-sonnet-4';
 
 /**
@@ -67,45 +68,21 @@ Simulate executing this chapter. Produce realistic output matching the expected 
 
   try {
     const startMs = Date.now();
-    const res = await fetch(OPENROUTER_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-        'HTTP-Referer': hubBaseUrl(),
-        'X-Title': 'Minion Hub Builder - Dry Run',
-      },
-      body: JSON.stringify({
-        model: model || DEFAULT_MODEL,
-        max_tokens: 1024,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userMessage },
-        ],
-      }),
+    const res = await generateText({
+      model: getOpenRouterModel(model || DEFAULT_MODEL),
+      maxOutputTokens: 1024,
+      system: systemPrompt,
+      prompt: userMessage,
+      headers: { 'HTTP-Referer': hubBaseUrl(), 'X-Title': 'Minion Hub Builder - Dry Run' },
     });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error('[ai/dry-run] OpenRouter error:', res.status, errText);
-      return json({ error: `AI returned ${res.status}` }, { status: 502 });
-    }
-
-    const completion = await res.json();
-    if (completion.error) {
-      return json({ error: completion.error?.message ?? 'AI error' }, { status: 502 });
-    }
-
-    const output = completion.choices?.[0]?.message?.content ?? '';
     const durationMs = Date.now() - startMs;
-    const usage = completion.usage ?? {};
 
     return json({
-      output,
+      output: res.text,
       durationMs,
       usage: {
-        promptTokens: usage.prompt_tokens ?? 0,
-        completionTokens: usage.completion_tokens ?? 0,
+        promptTokens: res.usage.inputTokens ?? 0,
+        completionTokens: res.usage.outputTokens ?? 0,
       },
     });
   } catch (e) {

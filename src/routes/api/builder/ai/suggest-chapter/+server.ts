@@ -1,25 +1,12 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
+import { generateObject } from 'ai';
+import { z } from 'zod';
 import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
 import { env } from '$env/dynamic/private';
 import { hubBaseUrl } from '$server/config/urls';
 import { getToolInfo } from '$lib/data/tool-manifest';
-
-const MODEL_PRICE_TABLE: Record<string, { inputPerMillion: number; outputPerMillion: number }> = {
-  'anthropic/claude-sonnet-4': { inputPerMillion: 3.0, outputPerMillion: 15.0 },
-  'anthropic/claude-haiku-3': { inputPerMillion: 0.25, outputPerMillion: 1.25 },
-  'openai/gpt-4o': { inputPerMillion: 2.5, outputPerMillion: 10.0 },
-  'openai/gpt-4o-mini': { inputPerMillion: 0.15, outputPerMillion: 0.6 },
-};
-
-function estimateCost(model: string, promptTokens: number, completionTokens: number): number {
-  const prices = MODEL_PRICE_TABLE[model];
-  if (!prices) return 0;
-  return (
-    (promptTokens / 1_000_000) * prices.inputPerMillion +
-    (completionTokens / 1_000_000) * prices.outputPerMillion
-  );
-}
+import { getOpenRouterModel, estimateCost } from '$server/llm';
 
 const SYSTEM_PROMPT = `You are a skill-building assistant for an AI agent platform called OpenClaw. Given a subprocess chapter's name and description within a larger skill, generate suggestions for ALL fields following best practices for skill development.
 
@@ -36,26 +23,17 @@ RULES:
 - Trigger conditions should specify when this subprocess activates
 - Success criteria should define what must be true when complete`;
 
-const CHAPTER_SUGGESTION_SCHEMA = {
-  type: 'object',
-  required: ['name', 'guide', 'suggestedToolIds'],
-  properties: {
-    name: { type: 'string', description: 'Improved chapter name' },
-    description: { type: 'string', description: 'Role of this chapter in the pipeline' },
-    triggerConditions: { type: 'string', description: 'When this chapter activates' },
-    guide: { type: 'string', description: 'Imperative bullet-point instructions (3-8 items)' },
-    suggestedToolIds: {
-      type: 'array',
-      items: { type: 'string' },
-      description: 'Tool IDs from available pool',
-    },
-    context: { type: 'string', description: 'Input data expectations from upstream' },
-    outputDef: { type: 'string', description: 'Concrete output data structure description' },
-    successCriteria: { type: 'string', description: 'Completion criteria' },
-  },
-} as const;
+const chapterSuggestionSchema = z.object({
+  name: z.string().describe('Improved chapter name'),
+  description: z.string().optional().describe('Role of this chapter in the pipeline'),
+  triggerConditions: z.string().optional().describe('When this chapter activates'),
+  guide: z.string().describe('Imperative bullet-point instructions (3-8 items)'),
+  suggestedToolIds: z.array(z.string()).describe('Tool IDs from available pool'),
+  context: z.string().optional().describe('Input data expectations from upstream'),
+  outputDef: z.string().optional().describe('Concrete output data structure description'),
+  successCriteria: z.string().optional().describe('Completion criteria'),
+});
 
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const DEFAULT_MODEL = 'anthropic/claude-sonnet-4';
 
 export const POST: RequestHandler = async ({ locals, request }) => {
@@ -96,83 +74,15 @@ ${toolDescriptions || '(none)'}
 Generate the guide (imperative instructions), suggested tool IDs from the available list, input context expectations, and output definition for this chapter.${targetField ? `\n\nIMPORTANT: Focus primarily on generating the "${targetField}" field. Return a thorough, focused suggestion for this field.` : ''}`;
 
   try {
-    const res = await fetch(OPENROUTER_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-        'HTTP-Referer': hubBaseUrl(),
-        'X-Title': 'Minion Hub Builder',
-      },
-      body: JSON.stringify({
-        model: model || DEFAULT_MODEL,
-        max_tokens: 1024,
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: userPrompt },
-        ],
-        tools: [
-          {
-            type: 'function',
-            function: {
-              name: 'suggest_chapter_fields',
-              description: 'Generate suggested fields for a skill chapter',
-              parameters: CHAPTER_SUGGESTION_SCHEMA,
-            },
-          },
-        ],
-        tool_choice: { type: 'function', function: { name: 'suggest_chapter_fields' } },
-      }),
+    const { object, usage } = await generateObject({
+      model: getOpenRouterModel(model || DEFAULT_MODEL),
+      schema: chapterSuggestionSchema,
+      maxOutputTokens: 1024,
+      system: SYSTEM_PROMPT,
+      prompt: userPrompt,
+      headers: { 'HTTP-Referer': hubBaseUrl(), 'X-Title': 'Minion Hub Builder' },
     });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error('[ai/suggest-chapter] OpenRouter error:', res.status, errText);
-      return json({
-        guide: '',
-        suggestedToolIds: [],
-        context: '',
-        outputDef: '',
-        error: `OpenRouter returned ${res.status}`,
-      });
-    }
-
-    const completion = await res.json();
-
-    // CFIX-05: Check for completion.error before attempting to parse choices
-    if (completion.error) {
-      console.error('[ai/suggest-chapter] completion.error:', completion.error);
-      return json({
-        name: '',
-        description: '',
-        triggerConditions: '',
-        guide: '',
-        suggestedToolIds: [],
-        context: '',
-        outputDef: '',
-        successCriteria: '',
-        error:
-          completion.error?.message ?? JSON.stringify(completion.error) ?? 'AI returned an error',
-      });
-    }
-
-    // Try tool_calls first (structured output), fall back to content parsing
-    let parsed: Record<string, unknown>;
-    const toolCall = completion.choices?.[0]?.message?.tool_calls?.[0];
-    if (toolCall?.function?.arguments) {
-      parsed = JSON.parse(toolCall.function.arguments);
-    } else {
-      // Fallback: parse from content (for models that don't support tool_choice)
-      console.warn(
-        '[ai/suggest-chapter] No tool_calls in response — falling back to content parse',
-      );
-      const content = completion.choices?.[0]?.message?.content ?? '';
-      const jsonStr = content
-        .replace(/```json\n?/g, '')
-        .replace(/```\n?/g, '')
-        .trim();
-      parsed = JSON.parse(jsonStr);
-    }
+    const parsed: Record<string, unknown> = object;
 
     // CFIX-03: Filter suggestedToolIds against available pool
     const availableSet = new Set<string>(availableToolIds ?? []);
@@ -185,9 +95,8 @@ Generate the guide (imperative instructions), suggested tool IDs from the availa
         : undefined;
 
     // CFIX-10: Extract usage and estimate cost
-    const rawUsage = completion.usage ?? {};
-    const promptTokens = rawUsage.prompt_tokens ?? 0;
-    const completionTokens = rawUsage.completion_tokens ?? 0;
+    const promptTokens = usage.inputTokens ?? 0;
+    const completionTokens = usage.outputTokens ?? 0;
     const usedModel = model || DEFAULT_MODEL;
 
     // targetField: return only the requested field (AI-01: per-field wand)

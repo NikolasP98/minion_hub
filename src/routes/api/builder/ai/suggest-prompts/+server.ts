@@ -1,32 +1,22 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
+import { generateObject } from 'ai';
+import { z } from 'zod';
 import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
 import { env } from '$env/dynamic/private';
 import { hubBaseUrl } from '$server/config/urls';
+import { getOpenRouterModel } from '$server/llm';
 
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const DEFAULT_MODEL = 'anthropic/claude-sonnet-4';
 
-const PROMPTS_SCHEMA = {
-  type: 'object',
-  required: ['prompts'],
-  properties: {
-    prompts: {
-      type: 'array',
-      items: {
-        type: 'object',
-        required: ['text', 'label'],
-        properties: {
-          text: {
-            type: 'string',
-            description: 'The full test prompt a user would send to trigger this skill',
-          },
-          label: { type: 'string', description: 'Short 2-4 word label for the pill button' },
-        },
-      },
-    },
-  },
-} as const;
+const promptsSchema = z.object({
+  prompts: z.array(
+    z.object({
+      text: z.string().describe('The full test prompt a user would send to trigger this skill'),
+      label: z.string().describe('Short 2-4 word label for the pill button'),
+    }),
+  ),
+});
 
 /**
  * Generates 3 suggested test prompts based on the skill's current chapters,
@@ -73,49 +63,16 @@ Generate exactly 3 realistic test prompts that a user would send to trigger this
 Each prompt needs a short 2-4 word label for a pill button.`;
 
   try {
-    const res = await fetch(OPENROUTER_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-        'HTTP-Referer': hubBaseUrl(),
-        'X-Title': 'Minion Hub Builder - Prompt Suggestions',
-      },
-      body: JSON.stringify({
-        model: model || DEFAULT_MODEL,
-        max_tokens: 512,
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You generate realistic test prompts for AI skill pipelines. Return exactly 3 prompts via the tool call.',
-          },
-          { role: 'user', content: userMessage },
-        ],
-        tools: [
-          {
-            type: 'function',
-            function: {
-              name: 'suggest_test_prompts',
-              description: 'Return suggested test prompts for the skill pipeline',
-              parameters: PROMPTS_SCHEMA,
-            },
-          },
-        ],
-        tool_choice: { type: 'function', function: { name: 'suggest_test_prompts' } },
-      }),
+    const { object } = await generateObject({
+      model: getOpenRouterModel(model || DEFAULT_MODEL),
+      schema: promptsSchema,
+      maxOutputTokens: 512,
+      system:
+        'You generate realistic test prompts for AI skill pipelines. Return exactly 3 prompts via the tool call.',
+      prompt: userMessage,
+      headers: { 'HTTP-Referer': hubBaseUrl(), 'X-Title': 'Minion Hub Builder - Prompt Suggestions' },
     });
-
-    if (!res.ok) return json({ prompts: [] });
-
-    const completion = await res.json();
-    if (completion.error) return json({ prompts: [] });
-
-    const toolCall = completion.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall?.function?.arguments) return json({ prompts: [] });
-
-    const parsed = JSON.parse(toolCall.function.arguments);
-    return json({ prompts: (parsed.prompts ?? []).slice(0, 3) });
+    return json({ prompts: object.prompts.slice(0, 3) });
   } catch {
     return json({ prompts: [] });
   }

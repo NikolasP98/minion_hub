@@ -1,41 +1,26 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
+import { generateObject } from 'ai';
+import { z } from 'zod';
 import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
 import { env } from '$env/dynamic/private';
 import { hubBaseUrl } from '$server/config/urls';
+import { getOpenRouterModel } from '$server/llm';
 
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const DEFAULT_MODEL = 'anthropic/claude-sonnet-4';
 
-const ANALYSIS_SCHEMA = {
-  type: 'object',
-  required: ['overallScore', 'dimensions'],
-  properties: {
-    overallScore: { type: 'number', description: 'Overall quality score 0-100' },
-    dimensions: {
-      type: 'array',
-      items: {
-        type: 'object',
-        required: ['name', 'score', 'verdict', 'details'],
-        properties: {
-          name: { type: 'string', description: 'Dimension name' },
-          score: { type: 'number', description: 'Score 0-100 for this dimension' },
-          verdict: {
-            type: 'string',
-            enum: ['pass', 'warn', 'fail'],
-            description: 'pass/warn/fail',
-          },
-          details: { type: 'string', description: 'Brief explanation (1-2 sentences)' },
-        },
-      },
-    },
-    recommendations: {
-      type: 'array',
-      items: { type: 'string' },
-      description: 'Top 3 actionable improvements',
-    },
-  },
-} as const;
+const analysisSchema = z.object({
+  overallScore: z.number().describe('Overall quality score 0-100'),
+  dimensions: z.array(
+    z.object({
+      name: z.string().describe('Dimension name'),
+      score: z.number().describe('Score 0-100 for this dimension'),
+      verdict: z.enum(['pass', 'warn', 'fail']),
+      details: z.string().describe('Brief explanation (1-2 sentences)'),
+    }),
+  ),
+  recommendations: z.array(z.string()).optional().describe('Top 3 actionable improvements'),
+});
 
 /**
  * Analyzes a completed dry run — evaluates output consistency, pipeline flow,
@@ -107,53 +92,15 @@ Return an overall score (0-100) and per-dimension scores with pass/warn/fail ver
 Include top 3 actionable recommendations for improvement.`;
 
   try {
-    const res = await fetch(OPENROUTER_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-        'HTTP-Referer': hubBaseUrl(),
-        'X-Title': 'Minion Hub Builder - Run Analysis',
-      },
-      body: JSON.stringify({
-        model: model || DEFAULT_MODEL,
-        max_tokens: 1024,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userMessage },
-        ],
-        tools: [
-          {
-            type: 'function',
-            function: {
-              name: 'submit_analysis',
-              description: 'Submit pipeline quality analysis with scores and recommendations',
-              parameters: ANALYSIS_SCHEMA,
-            },
-          },
-        ],
-        tool_choice: { type: 'function', function: { name: 'submit_analysis' } },
-      }),
+    const { object } = await generateObject({
+      model: getOpenRouterModel(model || DEFAULT_MODEL),
+      schema: analysisSchema,
+      maxOutputTokens: 1024,
+      system: systemPrompt,
+      prompt: userMessage,
+      headers: { 'HTTP-Referer': hubBaseUrl(), 'X-Title': 'Minion Hub Builder - Run Analysis' },
     });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error('[ai/analyze-run] OpenRouter error:', res.status, errText);
-      return json({ error: `AI returned ${res.status}` }, { status: 502 });
-    }
-
-    const completion = await res.json();
-    if (completion.error) {
-      return json({ error: completion.error?.message ?? 'AI error' }, { status: 502 });
-    }
-
-    const toolCall = completion.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall?.function?.arguments) {
-      return json({ error: 'AI did not return structured analysis' }, { status: 502 });
-    }
-
-    const analysis = JSON.parse(toolCall.function.arguments);
-    return json(analysis);
+    return json(object);
   } catch (e) {
     console.error('[ai/analyze-run]', e);
     return json({ error: e instanceof Error ? e.message : 'Analysis failed' }, { status: 500 });

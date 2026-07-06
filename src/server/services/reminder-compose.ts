@@ -1,6 +1,6 @@
 import { generateText } from 'ai';
-import { createOpenAI } from '@ai-sdk/openai';
 import { env } from '$env/dynamic/private';
+import { getOpenRouterModel } from '$server/llm';
 
 /**
  * Compose a reminder's WhatsApp text. A deterministic Spanish template is the
@@ -9,7 +9,6 @@ import { env } from '$env/dynamic/private';
  * out. The template is also what unit tests assert against.
  */
 
-const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 const REMINDER_MODEL = env.REMINDER_MODEL || env.CRM_SENTIMENT_MODEL || 'google/gemini-2.5-flash';
 
 export interface ReminderContext {
@@ -36,7 +35,6 @@ export async function inferConfirmationReply(
   const apiKey = env.OPENROUTER_API_KEY;
   if (!apiKey || !messages.length) return 'unclear';
   try {
-    const openrouter = createOpenAI({ apiKey, baseURL: OPENROUTER_BASE_URL });
     const prompt = [
       'A customer was asked to confirm an appointment. Read their recent messages and decide whether they are CONFIRMING attendance, DECLINING/cancelling, or it is UNCLEAR.',
       'They may not address it directly — infer from intent. If they want to reschedule or are unsure, answer UNCLEAR (do not guess).',
@@ -46,7 +44,7 @@ export async function inferConfirmationReply(
       '',
       'Answer with ONLY one word: YES, NO, or UNCLEAR.',
     ].join('\n');
-    const res = await generateText({ model: openrouter(REMINDER_MODEL), prompt, temperature: 0 });
+    const res = await generateText({ model: getOpenRouterModel(REMINDER_MODEL), prompt, temperature: 0 });
     const a = res.text.trim().toUpperCase();
     if (a.startsWith('YES')) return 'yes';
     if (a.startsWith('NO')) return 'no';
@@ -95,7 +93,6 @@ export async function composeReminder(c: ReminderContext, personalize: boolean):
   const apiKey = env.OPENROUTER_API_KEY;
   if (!apiKey) return base;
   try {
-    const openrouter = createOpenAI({ apiKey, baseURL: OPENROUTER_BASE_URL });
     const prompt = [
       'Rewrite this appointment WhatsApp message so it sounds warm, natural and human, in the same language (Spanish).',
       'Keep it ONE short paragraph, keep all facts (service, person, date/time, business) exactly, keep at most one emoji,',
@@ -103,7 +100,7 @@ export async function composeReminder(c: ReminderContext, personalize: boolean):
       '',
       `Message: ${base}`,
     ].join('\n');
-    const res = await generateText({ model: openrouter(REMINDER_MODEL), prompt, temperature: 0.6 });
+    const res = await generateText({ model: getOpenRouterModel(REMINDER_MODEL), prompt, temperature: 0.6 });
     const text = res.text.trim();
     // Guard against empty / runaway output — fall back to the template.
     if (text.length < 10 || text.length > 600) return base;

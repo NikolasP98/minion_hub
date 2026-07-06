@@ -1,12 +1,11 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { generateText } from 'ai';
-import { createOpenAI } from '@ai-sdk/openai';
 import { env } from '$env/dynamic/private';
 import { hubBaseUrl } from '$server/config/urls';
 import { requireAuth } from '$server/auth/authorize';
+import { getOpenRouterModel } from '$server/llm';
 
-const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 // Fast/cheap model for inline ghost text; override via env if a different model
 // is provisioned on the OpenRouter key. Gemini Flash has very low time-to-first-
 // token, which matters most for snappy Tab-to-accept autocomplete.
@@ -32,12 +31,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   const kind = body.kind === 'todo' ? 'todo' : 'note';
   const context = (body.context ?? '').slice(0, MAX_CONTEXT);
 
-  const openrouter = createOpenAI({
-    baseURL: OPENROUTER_BASE_URL,
-    apiKey,
-    headers: { 'HTTP-Referer': hubBaseUrl(), 'X-Title': 'Minion Hub - Notes Autofill' },
-  });
-  const model = openrouter(DEFAULT_MODEL);
+  const model = getOpenRouterModel(DEFAULT_MODEL);
+  const headers = { 'HTTP-Referer': hubBaseUrl(), 'X-Title': 'Minion Hub - Notes Autofill' };
 
   try {
     if (kind === 'todo') {
@@ -45,6 +40,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
         model,
         maxOutputTokens: 160,
         temperature: 0.7,
+        headers,
         system:
           'You extend a user\'s todo checklist. Given the existing items, suggest 3 to 5 additional, ' +
           'concrete, relevant items. Reply with ONLY the new items, one per line, no numbering, ' +
@@ -63,6 +59,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       model,
       maxOutputTokens: 90,
       temperature: 0.6,
+      headers,
       system:
         'You are an inline autocomplete for a notes app. Continue the user\'s note naturally from ' +
         'exactly where it ends. Reply with ONLY the continuation text — no preamble, no quotes, no ' +

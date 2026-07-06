@@ -1,14 +1,20 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { generateText } from 'ai';
-import { createOpenAI } from '@ai-sdk/openai';
+import { generateObject, NoObjectGeneratedError } from 'ai';
 import { z } from 'zod';
 import { env } from '$env/dynamic/private';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
 import { recentNameFixes } from '$server/services/crm-cleanup.service';
+import { getOpenRouterModel } from '$server/llm';
 
-const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
+const reviewItemSchema = z.object({
+  i: z.number(),
+  name: z.string().optional(),
+  action: z.enum(['keep', 'adjust', 'flag']).optional(),
+  note: z.string().optional(),
+});
+
 const MODEL = env.CRM_CLEANUP_MODEL || env.NOTES_POLISH_MODEL || 'google/gemini-2.5-flash';
 const MAX_ITEMS = 120;
 
@@ -49,8 +55,6 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   }));
   if (items.length === 0) return json({ results: [] });
 
-  const openrouter = createOpenAI({ apiKey, baseURL: OPENROUTER_BASE_URL });
-
   const list = items
     .map(
       (i: { id: string; current: string | null; proposed: string | null }, n: number) =>
@@ -83,21 +87,23 @@ ${examplesBlock}Return ONLY a JSON array, one object per input index, shape:
 Rows (index\\tcurrent\\trule_proposed):
 ${list}`;
 
-  let text: string;
-  try {
-    const res = await generateText({ model: openrouter(MODEL), prompt, temperature: 0 });
-    text = res.text;
-  } catch (e) {
-    throw error(502, e instanceof Error ? e.message : 'AI review failed');
-  }
-
-  // Defensive parse: extract the first JSON array from the response.
+  // NoObjectGeneratedError = the model produced something that didn't fit the
+  // schema — same as the old "regex/JSON.parse failed" case, so stay quiet
+  // (empty results). Any other error (transport/auth) stays loud, as before.
   let parsed: Array<{ i: number; name?: string; action?: string; note?: string }> = [];
   try {
-    const m = text.match(/\[[\s\S]*\]/);
-    parsed = m ? JSON.parse(m[0]) : [];
-  } catch {
-    parsed = [];
+    const { object } = await generateObject({
+      model: getOpenRouterModel(MODEL),
+      output: 'array',
+      schema: reviewItemSchema,
+      prompt,
+      temperature: 0,
+    });
+    parsed = object;
+  } catch (e) {
+    if (!NoObjectGeneratedError.isInstance(e)) {
+      throw error(502, e instanceof Error ? e.message : 'AI review failed');
+    }
   }
 
   const results = parsed

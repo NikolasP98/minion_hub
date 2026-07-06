@@ -1,12 +1,14 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { generateText } from 'ai';
-import { createOpenAI } from '@ai-sdk/openai';
+import { generateObject } from 'ai';
+import { z } from 'zod';
 import { env } from '$env/dynamic/private';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { getTag, getAiTagCandidates, applyTagBulk } from '$server/services/crm-contacts.service';
+import { getOpenRouterModel } from '$server/llm';
 
-const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
+const evalItemSchema = z.object({ i: z.number(), qualifies: z.boolean() });
+
 const MODEL =
   env.CRM_TAG_MODEL || env.CRM_FUNNEL_MODEL || env.CRM_CLEANUP_MODEL || env.NOTES_POLISH_MODEL || 'google/gemini-2.5-flash';
 const BATCH = 15; // candidates per LLM call
@@ -37,7 +39,6 @@ export const POST: RequestHandler = async ({ locals, params }) => {
   const candidates = (await getAiTagCandidates(ctx, { cap: 120 })).filter((c) => c.snippets.length > 0);
   if (candidates.length === 0) return json({ evaluated: 0, matched: 0, applied: 0 });
 
-  const openrouter = createOpenAI({ apiKey, baseURL: OPENROUTER_BASE_URL });
   const matchedIds: string[] = [];
 
   for (let start = 0; start < candidates.length; start += BATCH) {
@@ -62,20 +63,18 @@ Return ONLY a JSON array with one object per input index:
 Contacts (index, name, recent inbound messages):
 ${list}`;
 
-    let text: string;
-    try {
-      const res = await generateText({ model: openrouter(MODEL), prompt, temperature: 0 });
-      text = res.text;
-    } catch {
-      continue; // a failed batch shouldn't abort the whole run
-    }
-
     let parsed: Array<{ i: number; qualifies?: unknown }> = [];
     try {
-      const m = text.match(/\[[\s\S]*\]/);
-      parsed = m ? JSON.parse(m[0]) : [];
+      const { object } = await generateObject({
+        model: getOpenRouterModel(MODEL),
+        output: 'array',
+        schema: evalItemSchema,
+        prompt,
+        temperature: 0,
+      });
+      parsed = object;
     } catch {
-      parsed = [];
+      continue; // a failed batch shouldn't abort the whole run
     }
     for (const p of parsed) {
       if (typeof p.i === 'number' && p.qualifies === true && batch[p.i]) {

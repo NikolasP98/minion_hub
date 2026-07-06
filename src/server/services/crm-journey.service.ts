@@ -1,12 +1,19 @@
 import { sql } from 'drizzle-orm';
-import { generateText } from 'ai';
-import { createOpenAI } from '@ai-sdk/openai';
+import { generateObject } from 'ai';
+import { z } from 'zod';
 import { env } from '$env/dynamic/private';
 import { withOrgCore } from '$server/db/with-org-core';
 import { crmContacts } from '$server/db/pg-crm-schema';
 import { eq, and } from 'drizzle-orm';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { bothEnabled } from './modules.service';
+import { getOpenRouterModel } from '$server/llm';
+
+const milestoneItemSchema = z.object({
+  label: z.string(),
+  at: z.string().optional(),
+  detail: z.string().optional(),
+});
 
 /**
  * Customer journey map — a chronological strip of milestones (newest first) for
@@ -26,7 +33,6 @@ export interface Milestone {
   detail?: string | null;
 }
 
-const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 const JOURNEY_MODEL =
   env.CRM_JOURNEY_MODEL || env.CRM_FUNNEL_MODEL || env.NOTES_POLISH_MODEL || 'google/gemini-2.5-flash';
 
@@ -159,23 +165,23 @@ Return ONLY a JSON array: [{"label":"Asked about Botox","at":"2026-05-01","detai
 
   let aiMilestones: Milestone[] = [];
   try {
-    const openrouter = createOpenAI({ apiKey, baseURL: OPENROUTER_BASE_URL });
-    const res = await generateText({ model: openrouter(JOURNEY_MODEL), prompt, temperature: 0.2 });
-    const match = res.text.match(/\[[\s\S]*\]/);
-    if (match) {
-      const parsed = JSON.parse(match[0]) as unknown;
-      if (Array.isArray(parsed))
-        aiMilestones = (parsed as Array<{ label?: unknown; at?: unknown; detail?: unknown }>)
-          .filter((p) => typeof p.label === 'string' && (p.label as string).trim().length > 0)
-          .slice(0, 6)
-          .map((p, i) => ({
-            id: `ai:${(p.at as string) ?? 'x'}:${i}:${String(p.label).slice(0, 20)}`,
-            type: 'ai' as const,
-            label: String(p.label).slice(0, 60),
-            at: typeof p.at === 'string' && /^\d{4}-\d{2}-\d{2}/.test(p.at) ? `${p.at.slice(0, 10)}T00:00:00Z` : null,
-            detail: typeof p.detail === 'string' ? p.detail.slice(0, 80) : null,
-          }));
-    }
+    const { object } = await generateObject({
+      model: getOpenRouterModel(JOURNEY_MODEL),
+      output: 'array',
+      schema: milestoneItemSchema,
+      prompt,
+      temperature: 0.2,
+    });
+    aiMilestones = object
+      .filter((p) => p.label.trim().length > 0)
+      .slice(0, 6)
+      .map((p, i) => ({
+        id: `ai:${p.at ?? 'x'}:${i}:${p.label.slice(0, 20)}`,
+        type: 'ai' as const,
+        label: p.label.slice(0, 60),
+        at: typeof p.at === 'string' && /^\d{4}-\d{2}-\d{2}/.test(p.at) ? `${p.at.slice(0, 10)}T00:00:00Z` : null,
+        detail: typeof p.detail === 'string' ? p.detail.slice(0, 80) : null,
+      }));
   } catch {
     return base;
   }

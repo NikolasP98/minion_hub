@@ -1,12 +1,11 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { generateText } from 'ai';
-import { createOpenAI } from '@ai-sdk/openai';
 import { env } from '$env/dynamic/private';
 import { hubBaseUrl } from '$server/config/urls';
 import { requireAuth } from '$server/auth/authorize';
+import { getOpenRouterModel } from '$server/llm';
 
-const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 // Cheap, fast model — polishing is a light-touch rewrite, not creative writing.
 const DEFAULT_MODEL = env.NOTES_POLISH_MODEL || env.NOTES_AUTOCOMPLETE_MODEL || 'google/gemini-2.5-flash';
 const MAX_INPUT = 6000;
@@ -39,17 +38,13 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   if (!input) return json({ text: '' });
   const intentHint = body.intent ? (INTENT_HINTS[body.intent] ?? '') : '';
 
-  const openrouter = createOpenAI({
-    baseURL: OPENROUTER_BASE_URL,
-    apiKey,
-    headers: { 'HTTP-Referer': hubBaseUrl(), 'X-Title': 'Minion Hub - Notes Polish' },
-  });
-  const model = openrouter(DEFAULT_MODEL);
+  const model = getOpenRouterModel(DEFAULT_MODEL);
 
   const { text } = await generateText({
     model,
     maxOutputTokens: 800,
     temperature: 0.2,
+    headers: { 'HTTP-Referer': hubBaseUrl(), 'X-Title': 'Minion Hub - Notes Polish' },
     system:
       'You polish raw dictated speech-to-text into clean written text. Fix punctuation, ' +
       'capitalization, sentence breaks and obvious transcription errors (homophones, run-ons). ' +
