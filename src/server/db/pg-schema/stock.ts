@@ -50,6 +50,9 @@ export const stkWarehouses = pgTable(
     name: text('name').notNull(),
     /** Tree; cycle-guarded in stock.logic.ts (wouldCreateCycle), not the DB. */
     parentId: uuid('parent_id'),
+    /** Accrual paths (booking create) have no warehouse input — this org's
+     *  default is used, else the earliest-created. One per org (partial uniq). */
+    isDefault: boolean('is_default').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -174,6 +177,55 @@ export const stkConsumption = pgTable(
   ],
 );
 
+/**
+ * Consumption accruals — potential (committed) spend vs realized spend.
+ * A booking accrues expected consumption at creation ('open'), realizes into a
+ * posted stk_entry at completion, or releases on cancel/no-show. Parallel to
+ * the real ledger; NEVER a ledger writer.
+ * Companion migration: supabase/migrations/20260705230000_stock_accruals.sql.
+ * Design: docs/superpowers/specs/2026-07-05-consumption-accrual-scheduling-stock-design.md.
+ */
+export const stkAccruals = pgTable(
+  'stk_accruals',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: text('org_id').notNull(),
+    /** 'booking' today; 'order' later. Legacy /stock/consume issues never accrue. */
+    source: text('source').notNull(),
+    sourceId: uuid('source_id').notNull(),
+    /** Soft ref → fin_products (the sold service that drove the accrual). */
+    finProductId: uuid('fin_product_id'),
+    itemId: uuid('item_id')
+      .notNull()
+      .references(() => stkItems.id, { onDelete: 'cascade' }),
+    warehouseId: uuid('warehouse_id')
+      .notNull()
+      .references(() => stkWarehouses.id),
+    /** Expected, consumption uom (what the gauge edits). */
+    qtyConsumption: numeric('qty_consumption').notNull(),
+    /** Expected, stock uom (server-converted via unitsPerStockUom). */
+    qty: numeric('qty').notNull(),
+    /** Moving-avg cost snapshot at accrual time. */
+    estUnitCost: numeric('est_unit_cost').notNull().default('0'),
+    estValue: numeric('est_value').notNull().default('0'),
+    /** 'open' | 'realized' | 'released' */
+    status: text('status').notNull().default('open'),
+    realizedEntryId: uuid('realized_entry_id'),
+    realizedQty: numeric('realized_qty'),
+    realizedValue: numeric('realized_value'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    realizedAt: timestamp('realized_at', { withTimezone: true }),
+    releasedAt: timestamp('released_at', { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex('stk_accruals_org_source_item_uniq').on(t.orgId, t.source, t.sourceId, t.itemId),
+    index('stk_accruals_org_status_idx').on(t.orgId, t.status),
+    index('stk_accruals_org_item_wh_status_idx').on(t.orgId, t.itemId, t.warehouseId, t.status),
+    index('stk_accruals_source_idx').on(t.source, t.sourceId),
+  ],
+);
+
 export type StkItem = typeof stkItems.$inferSelect;
 export type StkWarehouse = typeof stkWarehouses.$inferSelect;
 export type StkEntry = typeof stkEntries.$inferSelect;
@@ -181,3 +233,4 @@ export type StkEntryLine = typeof stkEntryLines.$inferSelect;
 export type StkLedgerRow = typeof stkLedger.$inferSelect;
 export type StkBin = typeof stkBins.$inferSelect;
 export type StkConsumption = typeof stkConsumption.$inferSelect;
+export type StkAccrual = typeof stkAccruals.$inferSelect;
