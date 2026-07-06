@@ -8,7 +8,7 @@ import { listAccruals, realizeAccruals } from '$server/services/stock-accruals.s
 
 const bodySchema = z.object({
 	confirm: z.boolean(),
-	bookingId: z.string().min(1),
+	bookingId: z.string().min(1).max(200),
 	lines: z
 		.array(
 			z.object({
@@ -55,15 +55,24 @@ export const POST: RequestHandler = async ({ locals, url, request }) => {
 	if (['cancelled', 'rejected'].includes(booking.status)) throw error(400, `booking is ${booking.status}`);
 	if (booking.status !== 'completed') await setBookingStatus(ctx, b.bookingId, 'completed');
 	const actor = await agentActor(principalId);
-	const r = await realizeAccruals(ctx, {
-		source: 'booking',
-		sourceId: b.bookingId,
-		lines: b.lines ?? null,
-		warehouseId: b.warehouseId ?? null,
-		finProductId: booking.productId ?? null,
-		partyId: booking.partyId ?? null,
-		note: `Booking: ${booking.title}`,
-		actor,
-	});
-	return json({ ok: true, entryId: r.entry?.id ?? null, realized: r.realized, stockWarning: r.stockWarning });
+	try {
+		const r = await realizeAccruals(ctx, {
+			source: 'booking',
+			sourceId: b.bookingId,
+			lines: b.lines ?? null,
+			warehouseId: b.warehouseId ?? null,
+			finProductId: booking.productId ?? null,
+			partyId: booking.partyId ?? null,
+			note: `Booking: ${booking.title}`,
+			actor,
+		});
+		return json({ ok: true, entryId: r.entry?.id ?? null, realized: r.realized, stockWarning: r.stockWarning });
+	} catch (e) {
+		return json({
+			ok: true,
+			entryId: null,
+			realized: 0,
+			stockWarning: { code: 'realize_failed', message: e instanceof Error ? e.message : 'stock realize failed' },
+		});
+	}
 };
