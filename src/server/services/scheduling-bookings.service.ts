@@ -17,6 +17,8 @@ import { computeSlots } from '$server/scheduling/slots';
 import type { ResourceAvailability, BusyInterval } from '$server/scheduling/slots';
 import { serviceRulesOf } from './scheduling-slots.service';
 import { emitHubEvent } from '$server/events/emit';
+import { accrueConsumption, releaseAccruals, type AccrualLineInput } from './stock-accruals.service';
+import { isModuleEnabled } from './modules.service';
 
 const MS_PER_MIN = 60_000;
 const ACTIVE_STATUSES = ['accepted', 'pending'] as const;
@@ -103,6 +105,9 @@ export interface CreateBookingInput {
   /** Internal staff bookings bypass min-notice + rolling-period (still respect conflicts). */
   bypassRules?: boolean;
   now?: Date;
+  /** Adjusted stock-consumption lines from the booking modal (consumption uom).
+   *  Absent → defaults accrue from the product's stk_consumption mapping. */
+  consumption?: AccrualLineInput[] | null;
 }
 
 /** Last-9-digit (Peru) phone normalizer, matching crm-finance.service. */
@@ -177,7 +182,7 @@ async function ensureCrmContact(
 }
 
 export async function createBooking(ctx: CoreCtx, input: CreateBookingInput): Promise<SchedBooking> {
-  return withOrgCore(ctx, async (tx) => {
+  const { row, created } = await withOrgCore(ctx, async (tx) => {
     const [et] = await tx
       .select()
       .from(schedEventTypes)
@@ -282,11 +287,30 @@ export async function createBooking(ctx: CoreCtx, input: CreateBookingInput): Pr
         .from(schedBookings)
         .where(and(eq(schedBookings.orgId, ctx.tenantId), eq(schedBookings.uid, uid)))
         .limit(1);
-      return existing;
+      return { row: existing, created: false };
     }
     await emitHubEvent(tx, { type: 'booking.created', orgId: ctx.tenantId, bookingId: row.id });
-    return row;
+    return { row, created: true };
   });
+  // Post-commit accrual: expected stock consumption for the booked service.
+  // Deliberately OUTSIDE the booking tx (a failed statement would poison it)
+  // and fail-soft — a booking must never fail because of accrual bookkeeping.
+  // Idempotent uid retries have created=false and never re-accrue.
+  if (created && row.productId) {
+    try {
+      if (await isModuleEnabled(ctx, 'stock')) {
+        await accrueConsumption(ctx, {
+          source: 'booking',
+          sourceId: row.id,
+          finProductId: row.productId,
+          lines: input.consumption ?? null,
+        });
+      }
+    } catch (e) {
+      console.error('[scheduling] accrueConsumption failed (booking stands)', e);
+    }
+  }
+  return row;
 }
 
 export interface ListBookingsOpts {
@@ -324,6 +348,7 @@ export async function listBookings(ctx: CoreCtx, opts: ListBookingsOpts = {}): P
 }
 
 const SETTABLE = new Set(['accepted', 'pending', 'cancelled', 'rejected', 'completed', 'no_show']);
+const RELEASING = new Set(['cancelled', 'rejected', 'no_show']);
 
 export async function setBookingStatus(ctx: CoreCtx, id: string, status: string): Promise<void> {
   if (!SETTABLE.has(status)) throw new Error(`invalid status: ${status}`);
@@ -333,4 +358,23 @@ export async function setBookingStatus(ctx: CoreCtx, id: string, status: string)
       .set({ status, updatedAt: new Date() })
       .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId))),
   );
+  if (RELEASING.has(status)) {
+    // Post-commit + fail-soft; idempotent, so a lost release is re-triggerable.
+    try {
+      await releaseAccruals(ctx, 'booking', id);
+    } catch (e) {
+      console.error('[scheduling] releaseAccruals failed (status change stands)', e);
+    }
+  }
+}
+
+export async function getBooking(ctx: CoreCtx, id: string): Promise<SchedBooking | null> {
+  const [row] = await withOrgCore(ctx, (tx) =>
+    tx
+      .select()
+      .from(schedBookings)
+      .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
+      .limit(1),
+  );
+  return row ?? null;
 }
