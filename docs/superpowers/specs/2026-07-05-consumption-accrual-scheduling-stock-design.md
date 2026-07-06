@@ -61,10 +61,7 @@ org_guc RLS + `app_ledger` grants exactly like `20260702130000_stock.sql`. Drizz
 
 All reuse existing pure fns (`consumptionToStockQty`, `round4`) and the P5.1b preview.
 
-**Transaction shape (load-bearing).** `withOrgCore` does NOT nest — every call opens a fresh `db.transaction` (`with-org-core.ts`), and `scheduling-bookings.service.ts` explicitly avoids nesting it. Therefore:
-
-- `accrue` and `release` ship as **tx-level cores** — `accrueConsumptionTx(tx, orgId, …)`, `releaseAccrualsTx(tx, orgId, source, sourceId)` — callable from inside `createBooking`/`setBookingStatus`'s existing tx (atomic with the booking write). Thin `ctx` wrappers (`accrueConsumption(ctx, …)` = `withOrgCore` + core) serve the standalone API routes.
-- `realizeAccruals` **must NOT run inside another tx**: it calls `createServiceIssue` → `submitEntry`, each of which opens its own `withOrgCore`. Completion is a two-step sequence (status tx, then realize), not one tx — see D3 for the failure semantics that makes this safe.
+**Transaction shape (load-bearing).** `withOrgCore` does NOT nest — every call opens a fresh `db.transaction` (`with-org-core.ts`), and `scheduling-bookings.service.ts` explicitly avoids nesting it. Moreover, a statement error inside a PG transaction poisons the whole tx — so "fail-soft accrue inside the booking tx" is impossible (a bug-level accrual error would doom the booking insert too). Therefore **all accrual functions are plain ctx-level `withOrgCore` functions, called AFTER the booking tx commits**, wrapped in try/catch + log at the booking call sites. The tiny non-atomicity window (booking exists, accrual missing) self-heals: `/complete` realizes from explicit lines or no-ops, and `/accrual` can re-accrue. `realizeAccruals` additionally must never run inside another tx (it calls `createServiceIssue` → `submitEntry`, each own-tx).
 
 Functions:
 
@@ -81,9 +78,9 @@ Functions:
 
 ## D3 — Booking integration
 
-- **`createBooking`** gains optional `consumption?: {itemId, qtyConsumption}[]`. Inside the same tx, after the booking row is written, call `accrueConsumptionTx(tx, orgId, {source:'booking', sourceId:row.id, finProductId: et.productId, warehouseId: resolveDefaultWarehouse(...), lines: input.consumption})` — lines absent → defaults computed from `stk_consumption` (fail-soft no-op when unmapped). **Every caller accrues automatically**: the internal modal, both gateway actions, and the public `/book/[slug]` flow all route through `createBooking` (verified — `publicBook` delegates to it). **The idempotent uid-conflict retry path must NOT re-accrue** (accrue only when a fresh row was inserted).
+- **`createBooking`** gains optional `consumption?: {itemId, qtyConsumption}[]`. After the booking tx COMMITS, call `accrueConsumption(ctx, {source:'booking', sourceId:row.id, finProductId: et.productId, lines: input.consumption})` in a try/catch (log-only) — lines absent → defaults computed from `stk_consumption`; warehouse resolved server-side (default flag → earliest); fail-soft no-op when unmapped. **Every caller accrues automatically**: the internal modal, both gateway actions, and the public `/book/[slug]` flow all route through `createBooking` (verified — `publicBook` delegates to it). **The idempotent uid-conflict retry path must NOT re-accrue** (accrue only when a fresh row was inserted).
 - **Completion.** New endpoint `POST /api/scheduling/bookings/[id]/complete` `{lines?, warehouseId?}`. Sequence (two steps, deliberately not one tx — see D2): (1) `setBookingStatus(completed)` — the business fact commits first; (2) `realizeAccruals(...)`. If realize throws (`negative_stock` is the expected case — POS must never be blocked by a short bin), the endpoint still returns `{ok:true, stockWarning:{code, message, draftEntryId?}}`; accruals stay open. **Retry:** re-POST `/complete` on an already-completed booking skips step 1 and just realizes — that's the "post stock now" affordance. The plain `PATCH …/status` to `completed` also triggers a best-effort realize (defaults, no adjustment) after its status write, surfacing the same `stockWarning` shape.
-- **Release.** In `setBookingStatus`, a transition to `cancelled | rejected | no_show` calls `releaseAccrualsTx` in the same tx as the status update.
+- **Release.** In `setBookingStatus`, a transition to `cancelled | rejected | no_show` calls `releaseAccruals(ctx, 'booking', id)` after the status tx commits (try/catch, log-only; release is idempotent so a lost release is re-triggerable by re-PATCHing).
 - **Route auth fix (in scope — it blocks the exact persona this feature serves).** `POST /api/scheduling/bookings` and `PATCH …/[id]` currently `requireAdmin(locals)` — platform-admin only, so a staff user with `scheduling:edit` 403s today. Relax to `requireAuth` + `getCoreCtx`; the central `apiWriteCapability` gate (`/api/scheduling` → `scheduling:edit`) is the real guard. The new `/complete` and `/accrual` routes follow the same pattern from day one.
 
 ## D4 — API surface
@@ -92,7 +89,7 @@ Functions:
 - `POST /api/stock/accruals/preview` `{finProductId, quantity, warehouseId?, excludeSource?}` — `buildAccrualPreview` (warehouse defaults server-side). Used by the modal pre-booking (no booking id exists yet) and the complete dialog.
 - `POST /api/scheduling/bookings/[id]/accrual` `{lines}` — re-accrue (replace the open set) for an existing booking before completion.
 - `POST /api/scheduling/bookings/[id]/complete` `{lines?, warehouseId?}` — complete + realize.
-- Gateway (agent-native day-one): `query/stock` gains mode `accruals`; action `stock-accrue` (preview/confirm, capability `stock:create`) and completion is reachable via the existing booking actions plus a new `booking-complete` action that carries consumption lines. RBAC: reads `stock:view`, writes `stock:edit` (central prefix already covers `/api/stock`; booking writes are `scheduling:edit`), agent `stock:create`.
+- Gateway (agent-native day-one): `query/stock` gains mode `accruals`; new `booking-complete` action (preview/confirm) that carries consumption lines. A separate `stock-accrue` action is deliberately dropped — auto-accrue on `booking-create` plus the lines override on `booking-complete` cover the agent flows (add it only if an agent ever needs to adjust planned consumption mid-flight). RBAC: reads `stock:view`, writes `stock:edit` (central prefix already covers `/api/stock`; booking writes are `scheduling:edit`), agent capability `scheduling:edit` for booking-complete.
 
 ## D5 — UI
 
