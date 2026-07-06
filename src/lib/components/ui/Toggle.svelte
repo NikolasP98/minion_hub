@@ -12,6 +12,8 @@
     disabled?: boolean;
     /** Accessible label when no visible label snippet is provided. */
     label?: string;
+    /** Accessible name without rendering visible text (when a sibling already labels it). */
+    ariaLabel?: string;
     /** Optional secondary line under the label. */
     description?: string;
     class?: string;
@@ -25,6 +27,7 @@
     size = 'md',
     disabled = false,
     label,
+    ariaLabel,
     description,
     class: cls = '',
     onchange,
@@ -47,7 +50,7 @@
     type="button"
     role="switch"
     aria-checked={checked}
-    aria-label={label}
+    aria-label={label ?? ariaLabel}
     {disabled}
     onclick={toggle}
     class={`relative shrink-0 inline-flex items-center rounded-full p-0.5

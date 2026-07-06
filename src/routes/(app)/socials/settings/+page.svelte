@@ -249,7 +249,7 @@
 								<Toggle
 									checked={asset.enabled}
 									disabled={!canManage || togglingIds.has(asset.id)}
-									label={asset.name ?? asset.externalId}
+									ariaLabel={asset.name ?? asset.externalId}
 									onchange={(checked) => toggleAsset(asset.id, checked)}
 								/>
 							</li>
@@ -418,6 +418,9 @@
 	}
 	.asset-kind {
 		flex-shrink: 0;
+		width: 5.5rem;
+		text-align: center;
+		box-sizing: border-box;
 		font-size: 0.7rem;
 		padding: 0.1rem 0.45rem;
 		border-radius: 999px;
