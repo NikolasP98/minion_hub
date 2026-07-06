@@ -707,6 +707,10 @@ export interface InvoicePreviewLine {
   unitsPerStockUom: number | null;
   subunitsPerStockUom: number | null;
   diagramEnabled: boolean;
+  /** Moving-avg cost of one stock uom at this warehouse, at preview time. */
+  estUnitCost: number;
+  /** qty × estUnitCost — the line's potential spend. */
+  estValue: number;
 }
 
 export interface InvoicePreviewUnmatched {
@@ -823,27 +827,31 @@ async function previewLinesForItemQtys(
   const itemById = new Map(itemRows.map((r) => [r.id, r]));
 
   const binRows = await tx
-    .select({ itemId: stkBins.itemId, qty: stkBins.qty })
+    .select({ itemId: stkBins.itemId, qty: stkBins.qty, valuationRate: stkBins.valuationRate })
     .from(stkBins)
     .where(and(eq(stkBins.orgId, orgId), eq(stkBins.warehouseId, warehouseId), inArray(stkBins.itemId, itemIds)));
   const availableByItem = new Map(binRows.map((r) => [r.itemId, Number(r.qty)]));
+  const rateByItem = new Map(binRows.map((r) => [r.itemId, Number(r.valuationRate)]));
 
   return itemIds.map((itemId) => {
     const item = itemById.get(itemId);
     const qtyConsumption = qtyByItem.get(itemId)!;
     const unitsPerStockUom = item?.unitsPerStockUom == null ? null : Number(item.unitsPerStockUom);
+    const qty = round4(consumptionToStockQty({ unitsPerStockUom }, qtyConsumption));
     return {
       itemId,
       itemName: item?.name ?? itemId,
       itemCode: item?.code ?? '',
       uom: item?.uom ?? 'unit',
-      qty: round4(consumptionToStockQty({ unitsPerStockUom }, qtyConsumption)),
+      qty,
       available: availableByItem.get(itemId) ?? 0,
       qtyConsumption,
       consumptionUom: item?.consumptionUom ?? null,
       unitsPerStockUom,
       subunitsPerStockUom: item?.subunitsPerStockUom == null ? null : Number(item.subunitsPerStockUom),
       diagramEnabled: item?.diagramEnabled ?? false,
+      estUnitCost: rateByItem.get(itemId) ?? 0,
+      estValue: round4((rateByItem.get(itemId) ?? 0) * qty),
     };
   });
 }
@@ -926,6 +934,12 @@ export interface CreateServiceIssueInput {
   lines: CreateIssueFromInvoiceLine[];
   submit?: boolean;
   actor: Actor;
+  /** Generic provenance: 'service' (default, /stock/consume) | 'booking' | future 'order'. */
+  source?: string;
+  /** When set, a same-tx dup guard refuses a second non-cancelled entry for
+   *  (source, sourceId) — mirrors the invoice guard. Absent for legacy
+   *  'service' issues, which legitimately repeat. */
+  sourceId?: string | null;
 }
 
 /**
@@ -946,6 +960,22 @@ export async function createServiceIssue(ctx: CoreCtx, input: CreateServiceIssue
       .where(and(eq(finProducts.id, input.finProductId), eq(finProducts.orgId, ctx.tenantId)));
     if (!product) throw new StockError('product not found', 'product_not_found');
 
+    if (input.sourceId) {
+      const src = input.source ?? 'service';
+      const [dup] = await tx
+        .select({ id: stkEntries.id })
+        .from(stkEntries)
+        .where(
+          and(
+            eq(stkEntries.orgId, ctx.tenantId),
+            ne(stkEntries.status, 'cancelled'),
+            sql`${stkEntries.metadata}->>'source' = ${src}`,
+            sql`${stkEntries.metadata}->>'sourceId' = ${input.sourceId}`,
+          ),
+        );
+      if (dup) throw new StockError('a stock issue already exists for this source', 'duplicate_source');
+    }
+
     const resolvedLines = await resolveConsumptionLines(tx, ctx.tenantId, input.lines);
 
     const [row] = await tx
@@ -957,7 +987,12 @@ export async function createServiceIssue(ctx: CoreCtx, input: CreateServiceIssue
         partyId: input.partyId ?? null,
         note: input.note ?? `Service: ${product.name}`,
         createdBy: input.actor.id,
-        metadata: { source: 'service', finProductId: input.finProductId, quantity: input.quantity },
+        metadata: {
+          source: input.source ?? 'service',
+          finProductId: input.finProductId,
+          quantity: input.quantity,
+          ...(input.sourceId ? { sourceId: input.sourceId } : {}),
+        },
       })
       .returning();
     await tx.insert(stkEntryLines).values(
@@ -1057,6 +1092,28 @@ export async function findEntryByInvoice(ctx: CoreCtx, invoiceId: string): Promi
       .select({ id: stkEntries.id, humanId: stkEntries.humanId, status: stkEntries.status, type: stkEntries.type, postedAt: stkEntries.postedAt })
       .from(stkEntries)
       .where(and(eq(stkEntries.orgId, ctx.tenantId), sql`${stkEntries.metadata}->>'invoiceId' = ${invoiceId}`))
+      .orderBy(desc(stkEntries.createdAt))
+      .limit(1);
+    return row ?? null;
+  });
+}
+
+/** Latest NON-cancelled entry stamped with metadata {source, sourceId} — the
+ *  booking realize path's retry/idempotency anchor (a draft left behind by a
+ *  negative-stock failure is found and re-submitted instead of duplicated). */
+export async function findEntryBySource(ctx: CoreCtx, source: string, sourceId: string): Promise<StkEntry | null> {
+  return withOrgCore(ctx, async (tx) => {
+    const [row] = await tx
+      .select()
+      .from(stkEntries)
+      .where(
+        and(
+          eq(stkEntries.orgId, ctx.tenantId),
+          ne(stkEntries.status, 'cancelled'),
+          sql`${stkEntries.metadata}->>'source' = ${source}`,
+          sql`${stkEntries.metadata}->>'sourceId' = ${sourceId}`,
+        ),
+      )
       .orderBy(desc(stkEntries.createdAt))
       .limit(1);
     return row ?? null;

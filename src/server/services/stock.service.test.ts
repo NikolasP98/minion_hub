@@ -9,6 +9,7 @@ import {
   createIssueFromInvoice,
   buildServiceIssuePreview,
   createServiceIssue,
+  findEntryBySource,
   setConsumption,
   createItem,
   updateItem,
@@ -130,7 +131,7 @@ describe('buildInvoiceIssuePreview — aggregation, 1:1 fallback, dedupe, unmatc
         { id: 'item_tox', name: 'Toxina Botulinica', code: 'TOX', uom: 'unit' },
         { id: 'item_derma', name: 'Dermaquench', code: 'DQ', uom: 'unit' },
       ], // item detail lookup
-      [{ itemId: 'item_tox', qty: '50' }], // bins (item_derma has no bin row -> available 0)
+      [{ itemId: 'item_tox', qty: '50', valuationRate: '25.5' }], // bins (item_derma has no bin row -> available 0)
     ]);
 
     const preview = await buildInvoiceIssuePreview(ctx(db), 'inv1', 'wh1');
@@ -150,6 +151,8 @@ describe('buildInvoiceIssuePreview — aggregation, 1:1 fallback, dedupe, unmatc
         unitsPerStockUom: null,
         subunitsPerStockUom: null,
         diagramEnabled: false,
+        estUnitCost: 25.5,
+        estValue: 1530,
       },
       {
         itemId: 'item_derma',
@@ -163,6 +166,8 @@ describe('buildInvoiceIssuePreview — aggregation, 1:1 fallback, dedupe, unmatc
         unitsPerStockUom: null,
         subunitsPerStockUom: null,
         diagramEnabled: false,
+        estUnitCost: 0,
+        estValue: 0,
       },
     ]);
     expect(preview.unmatched).toEqual([
@@ -190,7 +195,7 @@ describe('buildInvoiceIssuePreview — aggregation, 1:1 fallback, dedupe, unmatc
           diagramEnabled: true,
         },
       ], // item detail lookup
-      [{ itemId: 'item_caja', qty: '2' }], // bins — 2 cajas available
+      [{ itemId: 'item_caja', qty: '2', valuationRate: '120' }], // bins — 2 cajas available
     ]);
 
     const preview = await buildInvoiceIssuePreview(ctx(db), 'inv1', 'wh1');
@@ -208,6 +213,8 @@ describe('buildInvoiceIssuePreview — aggregation, 1:1 fallback, dedupe, unmatc
         unitsPerStockUom: 500,
         subunitsPerStockUom: null,
         diagramEnabled: true,
+        estUnitCost: 120,
+        estValue: 1.2,
       },
     ]);
   });
@@ -275,7 +282,7 @@ describe('buildServiceIssuePreview — invoice-free consumption from a service',
           diagramEnabled: true,
         },
       ], // item detail
-      [{ itemId: 'item_caja', qty: '3' }], // bins
+      [{ itemId: 'item_caja', qty: '3', valuationRate: '80' }], // bins
     ]);
 
     const preview = await buildServiceIssuePreview(ctx(db), { finProductId: 'p1', quantity: 2, warehouseId: 'wh1' });
@@ -295,6 +302,8 @@ describe('buildServiceIssuePreview — invoice-free consumption from a service',
         unitsPerStockUom: 500,
         subunitsPerStockUom: 10,
         diagramEnabled: true,
+        estUnitCost: 80,
+        estValue: 1.6,
       },
     ]);
   });
@@ -344,6 +353,58 @@ describe('createServiceIssue — customer + procedure note, no invoice', () => {
       actor,
     });
     expect(entry).toMatchObject({ id: 'entry1', status: 'draft', type: 'issue' });
+  });
+});
+
+describe('createServiceIssue — source generalization', () => {
+  it('stamps metadata source/sourceId and blocks a duplicate for the same source', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [{ id: 'p1', name: 'Botox' }], // product
+      [{ id: 'e-existing' }], // dup check finds an existing non-cancelled entry
+    ]);
+    await expect(
+      createServiceIssue(ctx(db), {
+        finProductId: 'p1',
+        quantity: 1,
+        warehouseId: 'w1',
+        lines: [{ itemId: 'i1', qty: 1 }],
+        actor,
+        source: 'booking',
+        sourceId: 'b1',
+      }),
+    ).rejects.toMatchObject({ code: 'duplicate_source' });
+  });
+
+  it('legacy service issues (no sourceId) skip the dup guard entirely', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [{ id: 'p1', name: 'Botox' }], // product
+      [{ id: 'e1', orgId: 'org-1', type: 'issue', status: 'draft', metadata: { source: 'service' } }], // insert entries returning
+      [], // insert lines
+    ]);
+    const entry = await createServiceIssue(ctx(db), {
+      finProductId: 'p1',
+      quantity: 1,
+      warehouseId: 'w1',
+      lines: [{ itemId: 'i1', qty: 1 }],
+      actor,
+    });
+    expect(entry.id).toBe('e1');
+  });
+});
+
+describe('findEntryBySource', () => {
+  it('returns the latest non-cancelled entry for the source', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[{ id: 'e9', orgId: 'org-1', status: 'submitted', type: 'issue' }]]);
+    const e = await findEntryBySource(ctx(db), 'booking', 'b1');
+    expect(e?.id).toBe('e9');
+  });
+  it('returns null when none exists', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[]]);
+    expect(await findEntryBySource(ctx(db), 'booking', 'b1')).toBeNull();
   });
 });
 
