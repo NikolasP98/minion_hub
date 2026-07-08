@@ -121,11 +121,14 @@
       code: code.trim(),
       category: category.trim() || null,
       unitPrice: unitPrice.trim() === '' ? null : Number(unitPrice),
-      kind,
     };
-    if (kind === 'product' && stockEnabled) {
-      payload.trackStock = trackStock;
-      if (trackStock) payload.uom = uom.trim() || 'unit';
+    // kind/trackStock/uom are creation-only — updateSellable ignores them on PATCH.
+    if (!editing) {
+      payload.kind = kind;
+      if (kind === 'product' && stockEnabled) {
+        payload.trackStock = trackStock;
+        if (trackStock) payload.uom = uom.trim() || 'unit';
+      }
     }
     if (kind === 'service' && stockEnabled) {
       payload.consumption = rows.filter((r) => r.itemId && Number(r.qtyPerUnit) > 0).map((r) => ({ itemId: r.itemId, qtyPerUnit: Number(r.qtyPerUnit) }));
@@ -181,21 +184,27 @@
       <input class="inp" type="number" min="0" step="0.01" bind:value={unitPrice} />
     </label>
 
-    <div class="fld">
-      <span>{m.pos_catalog_kind_product()} / {m.pos_catalog_kind_service()}</span>
-      <div class="kind-toggle">
-        <button type="button" class="kind-btn" class:active={kind === 'service'} onclick={() => (kind = 'service')}>{m.pos_catalog_kind_service()}</button>
-        <button type="button" class="kind-btn" class:active={kind === 'product'} onclick={() => (kind = 'product')}>{m.pos_catalog_kind_product()}</button>
+    {#if editing}
+      <!-- updateSellable ignores kind/trackStock/uom on PATCH — showing live
+           controls here would silently no-op, so they're creation-only. -->
+      <p class="t-caption">{m.pos_catalog_kind_locked()}</p>
+    {:else}
+      <div class="fld">
+        <span>{m.pos_catalog_kind_product()} / {m.pos_catalog_kind_service()}</span>
+        <div class="kind-toggle">
+          <button type="button" class="kind-btn" class:active={kind === 'service'} onclick={() => (kind = 'service')}>{m.pos_catalog_kind_service()}</button>
+          <button type="button" class="kind-btn" class:active={kind === 'product'} onclick={() => (kind = 'product')}>{m.pos_catalog_kind_product()}</button>
+        </div>
       </div>
-    </div>
 
-    {#if kind === 'product' && stockEnabled}
-      <Toggle bind:checked={trackStock} label={m.pos_catalog_track_stock()} />
-      {#if trackStock}
-        <label class="fld">
-          <span>{m.stock_field_uom()}</span>
-          <input class="inp" bind:value={uom} />
-        </label>
+      {#if kind === 'product' && stockEnabled}
+        <Toggle bind:checked={trackStock} label={m.pos_catalog_track_stock()} />
+        {#if trackStock}
+          <label class="fld">
+            <span>{m.stock_field_uom()}</span>
+            <input class="inp" bind:value={uom} />
+          </label>
+        {/if}
       {/if}
     {/if}
 

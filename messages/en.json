@@ -3620,6 +3620,7 @@
   "pos_catalog_consumption": "Supply consumption",
   "pos_catalog_qty_per_unit": "Qty per unit",
   "pos_catalog_code_taken": "That code is already taken",
+  "pos_catalog_kind_locked": "Type and stock tracking are set at creation",
   "pos_shift_open_cta": "Open shift",
   "pos_shift_close_cta": "Close shift",
   "pos_shift_float": "Opening float",

@@ -7,6 +7,7 @@
   import DataTable from '$lib/components/data-table/DataTable.svelte';
   import type { DataColumn, EditDraft } from '$lib/components/data-table/DataTable.svelte';
   import { canAct } from '$lib/access/can.svelte';
+  import { toastError } from '$lib/state/ui/toast.svelte';
   import SellableWizard, { type SellableLike } from '$lib/components/pos/SellableWizard.svelte';
 
   let { data }: { data: PageData } = $props();
@@ -44,6 +45,7 @@
     });
     toggleNonce++;
     if (res.ok) await invalidate('pos:catalog');
+    else toastError(m.data_table_save_failed());
   }
 
   const columns = $derived<DataColumn<Row>[]>([
@@ -111,7 +113,11 @@
   >
     {#snippet cell(s: Row, col: DataColumn<Row>)}
       {#if col.key === 'name'}
-        <button type="button" class="name-link" onclick={() => openEdit(s)}>{s.name}</button>
+        {#if canWrite}
+          <button type="button" class="name-link" onclick={() => openEdit(s)}>{s.name}</button>
+        {:else}
+          <span class="truncate block max-w-[16rem]">{s.name}</span>
+        {/if}
       {:else if col.key === 'unitPrice'}
         <span class="tabular-nums">{s.unitPrice != null ? Number(s.unitPrice).toLocaleString() : '—'}</span>
       {:else if col.key === 'kind'}

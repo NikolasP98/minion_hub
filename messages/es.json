@@ -3620,6 +3620,7 @@
   "pos_catalog_consumption": "Consumo de insumos",
   "pos_catalog_qty_per_unit": "Cant. por unidad",
   "pos_catalog_code_taken": "Ese código ya existe",
+  "pos_catalog_kind_locked": "El tipo y control de stock se definen al crear",
   "pos_shift_open_cta": "Abrir caja",
   "pos_shift_close_cta": "Cerrar caja",
   "pos_shift_float": "Fondo inicial",
