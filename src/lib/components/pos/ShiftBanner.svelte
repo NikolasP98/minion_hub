@@ -149,30 +149,55 @@
 </script>
 
 {#if !openShift}
-  <div class="strip strip-open">
-    <AlertTriangle size={15} class="ic" />
-    <span class="msg">{m.pos_shift_open_cta()}</span>
+  <!-- Sidebar footer widget: full card ≥xl, icon-only button on the collapsed rail. -->
+  <div class="box box-open hidden xl:flex">
+    <div class="status">
+      <AlertTriangle size={13} class="shrink-0" />
+      <span class="msg">{m.pos_no_open_shift()}</span>
+    </div>
     <!-- central apiWriteCapability maps POS writes to pos:edit — gate must match -->
     {#if canAct('pos', 'edit')}
       <button type="button" class="act" onclick={startOpen}>{m.pos_shift_open_cta()}</button>
     {/if}
   </div>
+  <button
+    type="button"
+    class="mini mini-open xl:hidden"
+    title={m.pos_shift_open_cta()}
+    disabled={!canAct('pos', 'edit')}
+    onclick={startOpen}
+  >
+    <AlertTriangle size={16} />
+  </button>
 {:else}
-  <div class="strip strip-live">
+  <div class="box box-live hidden xl:flex">
+    <div class="status">
+      <span class="dot" class:stale-dot={isStale}></span>
+      <span class="msg">{m.pos_sell_shift_status_open()}</span>
+      <span class="tickets">{openShift.summary.ticketCount}</span>
+    </div>
     <span class="since">{m.pos_shift_open_since({ time: openedAtLabel, name: openerName ?? '—' })}</span>
     <div class="totals">
       {#each Object.entries(openShift.summary.byMethod) as [mth, amt] (mth)}
         <span class="pill">{mth}: {amt.toFixed(2)}</span>
       {/each}
-      <span class="pill tickets">{openShift.summary.ticketCount}</span>
     </div>
     {#if isStale}
-      <span class="stale"><Clock size={13} class="ic" />{m.pos_shift_stale()}</span>
+      <span class="stale"><Clock size={12} class="shrink-0" />{m.pos_shift_stale()}</span>
     {/if}
     {#if canAct('pos', 'manage')}
       <button type="button" class="act" onclick={startClose}>{m.pos_shift_close_cta()}</button>
     {/if}
   </div>
+  <button
+    type="button"
+    class="mini xl:hidden"
+    title={isStale ? m.pos_shift_stale() : m.pos_shift_open_since({ time: openedAtLabel, name: openerName ?? '—' })}
+    disabled={!canAct('pos', 'manage')}
+    onclick={startClose}
+  >
+    <span class="dot" class:stale-dot={isStale}></span>
+  </button>
 {/if}
 
 <Modal bind:open={openModal} title={m.pos_shift_open_cta()} size="sm">
@@ -215,42 +240,63 @@
 </Modal>
 
 <style>
-  .strip {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 16px;
-    font-size: 13px;
-    border-bottom: 1px solid var(--color-border);
+  /* ── Sidebar footer widget ── */
+  .box {
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px;
+    font-size: 12px;
   }
-  .strip-open {
-    background: color-mix(in srgb, #f59e0b 14%, transparent);
+  .box-open {
+    background: color-mix(in srgb, #f59e0b 10%, transparent);
     color: #f59e0b;
   }
-  .strip-open .msg {
-    flex: 1;
-  }
-  .strip-live {
-    background: color-mix(in srgb, var(--color-foreground) 4%, transparent);
+  .box-live {
     color: var(--color-muted-foreground);
   }
-  .strip-live .since {
+  .status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+  }
+  .box-live .status {
+    color: var(--color-foreground);
+  }
+  .msg {
+    flex: 1;
+    min-width: 0;
+  }
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--color-success, #4ade80);
     flex-shrink: 0;
   }
+  .dot.stale-dot {
+    background: #f87171;
+  }
+  .tickets {
+    color: var(--color-accent);
+    font-variant-numeric: tabular-nums;
+  }
+  .since {
+    font-size: 11px;
+    line-height: 1.35;
+    color: var(--color-muted-foreground);
+  }
   .totals {
-    flex: 1;
     display: flex;
-    gap: 6px;
+    gap: 4px;
     flex-wrap: wrap;
   }
   .pill {
-    padding: 2px 8px;
+    padding: 1px 7px;
     border-radius: 999px;
     background: color-mix(in srgb, var(--color-foreground) 6%, transparent);
     font-variant-numeric: tabular-nums;
-  }
-  .pill.tickets {
-    color: var(--color-accent);
+    font-size: 11px;
   }
   .stale {
     display: inline-flex;
@@ -260,9 +306,9 @@
     border-radius: 999px;
     background: color-mix(in srgb, #f87171 15%, transparent);
     color: #f87171;
+    font-size: 11px;
   }
   .act {
-    flex-shrink: 0;
     padding: 5px 12px;
     border-radius: var(--radius-md, 6px);
     border: 1px solid currentColor;
@@ -270,6 +316,31 @@
     color: inherit;
     font-size: 12px;
     cursor: pointer;
+  }
+  .box-live .act {
+    color: var(--color-muted-foreground);
+  }
+  /* Collapsed rail (< xl): a single icon button carrying the status color. */
+  .mini {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: 10px 0;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--color-muted-foreground);
+  }
+  .mini-open {
+    color: #f59e0b;
+  }
+  .mini:disabled {
+    cursor: default;
+    opacity: 0.7;
+  }
+  .mini:not(:disabled):hover {
+    background: color-mix(in srgb, currentColor 10%, transparent);
   }
   .act.primary {
     border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);

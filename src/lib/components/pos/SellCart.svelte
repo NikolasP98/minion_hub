@@ -38,10 +38,9 @@
   interface Props {
     lines: CartLine[];
     settings: { allowPriceOverride: boolean };
-    totalCents: number;
   }
 
-  let { lines = $bindable(), settings, totalCents }: Props = $props();
+  let { lines = $bindable(), settings }: Props = $props();
 
   function priceEditable(l: CartLine): boolean {
     return l.sellable.unitPrice == null || (settings.allowPriceOverride && canAct('pos', 'manage'));
@@ -118,11 +117,6 @@
       {/each}
     </div>
   {/if}
-
-  <div class="total-row">
-    <span>{m.pos_sell_total()}</span>
-    <span class="total">{(totalCents / 100).toFixed(2)}</span>
-  </div>
 </div>
 
 <style>
@@ -136,7 +130,6 @@
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
-    overflow-y: auto;
   }
   .line {
     border: 1px solid var(--hairline);
@@ -214,17 +207,5 @@
   .req {
     font-size: 0.7rem;
     color: var(--color-destructive);
-  }
-  .total-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding-top: 0.5rem;
-    border-top: 1px solid var(--hairline);
-    font-size: 0.95rem;
-    font-weight: 600;
-  }
-  .total {
-    font-variant-numeric: tabular-nums;
   }
 </style>

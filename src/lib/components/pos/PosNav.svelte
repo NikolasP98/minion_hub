@@ -4,6 +4,7 @@
   import * as m from '$lib/paraglide/messages';
   import { SideNav, type SideNavItem } from '$lib/components/ui';
   import { canViewPath } from '$lib/access/can.svelte';
+  import ShiftBanner from '$lib/components/pos/ShiftBanner.svelte';
 
   const pathname = $derived(page.url.pathname);
 
@@ -27,4 +28,8 @@
   const activeId = $derived(items.find((i) => isActive(i.id))?.id);
 </script>
 
-<SideNav {items} {activeId} ariaLabel="POS" header={m.nav_pos()} />
+<SideNav {items} {activeId} ariaLabel="POS" header={m.nav_pos()}>
+  {#snippet footer()}
+    <ShiftBanner />
+  {/snippet}
+</SideNav>

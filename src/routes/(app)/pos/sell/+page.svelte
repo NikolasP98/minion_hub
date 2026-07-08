@@ -3,7 +3,7 @@
   import { browser } from '$app/environment';
   import { page } from '$app/state';
   import { invalidate } from '$app/navigation';
-  import { ShoppingCart, ChevronDown } from 'lucide-svelte';
+  import { ShoppingCart, ChevronDown, LayoutGrid, List } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import { PageHeader, Badge, Button, EmptyState } from '$lib/components/ui';
   import { canAct } from '$lib/access/can.svelte';
@@ -53,6 +53,12 @@
   let activeCategory = $state<string | null>(null);
   let searchEl: HTMLInputElement | undefined = $state();
 
+  const VIEW_KEY = 'pos-sell-view';
+  let view = $state<'gallery' | 'table'>(browser && localStorage.getItem(VIEW_KEY) === 'table' ? 'table' : 'gallery');
+  $effect(() => {
+    if (browser) localStorage.setItem(VIEW_KEY, view);
+  });
+
   createHotkey('/', () => searchEl?.focus(), { meta: { name: m.pos_sell_search_placeholder() } });
 
   const categories = $derived(Array.from(new Set(data.sellables.map((s) => s.category ?? 'uncategorized'))).sort());
@@ -86,6 +92,7 @@
   const total = $derived(totalCents / 100);
   const anyPriceless = $derived(lines.some((l) => l.unitPrice == null || l.unitPrice <= 0));
   const paidCents = $derived(payments.reduce((s, p) => s + Math.round(p.amount * 100), 0));
+  const remainingCents = $derived(totalCents - paidCents);
   const tenderOk = $derived(payments.every((p) => p.method !== 'cash' || p.tendered == null || Math.round(p.tendered * 100) >= Math.round(p.amount * 100)));
   const customerMissing = $derived(data.posSettings.requireCustomer && !crmContactId && !customerName);
   let submitting = $state(false);
@@ -207,31 +214,82 @@
   <div class="flex-1 min-h-0 overflow-auto p-4">
     <div class="layout">
       <div class="catalog">
-        <input class="search-inp" placeholder={m.pos_sell_search_placeholder()} bind:value={search} bind:this={searchEl} />
-        <div class="chips">
-          <button type="button" class="chip-btn" class:on={activeCategory === null} onclick={() => (activeCategory = null)}>
-            {m.pos_sell_all_categories()}
-          </button>
-          {#each categories as c (c)}
-            <button type="button" class="chip-btn" class:on={activeCategory === c} onclick={() => (activeCategory = c)}>{c}</button>
-          {/each}
+        <div class="catalog-head">
+          <input class="search-inp" placeholder={m.pos_sell_search_placeholder()} bind:value={search} bind:this={searchEl} />
+          <div class="chips-row">
+            <div class="chips">
+              <button type="button" class="chip-btn" class:on={activeCategory === null} onclick={() => (activeCategory = null)}>
+                {m.pos_sell_all_categories()}
+              </button>
+              {#each categories as c (c)}
+                <button type="button" class="chip-btn" class:on={activeCategory === c} onclick={() => (activeCategory = c)}>{c}</button>
+              {/each}
+            </div>
+            <div class="view-toggle" role="group" aria-label={m.pos_sell_view_gallery()}>
+              <button
+                type="button"
+                class="vt-btn"
+                class:on={view === 'gallery'}
+                title={m.pos_sell_view_gallery()}
+                aria-label={m.pos_sell_view_gallery()}
+                onclick={() => (view = 'gallery')}
+              >
+                <LayoutGrid size={14} />
+              </button>
+              <button
+                type="button"
+                class="vt-btn"
+                class:on={view === 'table'}
+                title={m.pos_sell_view_table()}
+                aria-label={m.pos_sell_view_table()}
+                onclick={() => (view = 'table')}
+              >
+                <List size={14} />
+              </button>
+            </div>
+          </div>
         </div>
 
-        {#if filtered.length === 0}
-          <EmptyState title={m.pos_sell_no_results()} compact />
-        {:else}
-          <div class="grid">
-            {#each filtered as s (s.productId)}
-              <button type="button" class="card" onclick={() => addLine(s)}>
-                <span class="cname">{s.name}</span>
-                <span class="cprice">{s.unitPrice != null ? s.unitPrice.toFixed(2) : '—'}</span>
-                {#if s.kind === 'product' && s.stockQty != null}
-                  <Badge variant="semantic" value={stockBadgeValue(s.stockQty)} size="sm">{s.stockQty}</Badge>
-                {/if}
-              </button>
-            {/each}
-          </div>
-        {/if}
+        <div class="catalog-scroll">
+          {#if filtered.length === 0}
+            <EmptyState title={m.pos_sell_no_results()} compact />
+          {:else if view === 'gallery'}
+            <div class="grid">
+              {#each filtered as s (s.productId)}
+                <button type="button" class="card" onclick={() => addLine(s)}>
+                  <span class="cname">{s.name}</span>
+                  <span class="cprice">{s.unitPrice != null ? s.unitPrice.toFixed(2) : '—'}</span>
+                  {#if s.kind === 'product' && s.stockQty != null}
+                    <Badge variant="semantic" value={stockBadgeValue(s.stockQty)} size="sm">{s.stockQty}</Badge>
+                  {/if}
+                </button>
+              {/each}
+            </div>
+          {:else}
+            <div class="ptable">
+              <div class="trow thead">
+                <span>{m.pos_sell_col_name()}</span>
+                <span class="tcat">{m.pos_sell_col_category()}</span>
+                <span class="num">{m.pos_sell_price()}</span>
+                <span class="num">{m.pos_catalog_col_stock()}</span>
+              </div>
+              {#each filtered as s (s.productId)}
+                <button type="button" class="trow" onclick={() => addLine(s)}>
+                  <span class="tname">{s.name}<span class="tcode">{s.code}</span></span>
+                  <span class="tcat">{s.category ?? '—'}</span>
+                  <span class="num">{s.unitPrice != null ? s.unitPrice.toFixed(2) : '—'}</span>
+                  <span class="num">
+                    {#if s.kind === 'product' && s.stockQty != null}
+                      <Badge variant="semantic" value={stockBadgeValue(s.stockQty)} size="sm">{s.stockQty}</Badge>
+                    {:else}
+                      —
+                    {/if}
+                  </span>
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
       </div>
 
       <div class="cart-panel">
@@ -242,9 +300,20 @@
           </div>
         {/if}
         <CustomerPicker bind:crmContactId bind:customerName required={data.posSettings.requireCustomer} />
-        <SellCart bind:lines settings={{ allowPriceOverride: data.posSettings.allowPriceOverride }} {totalCents} />
-        <PaymentPanel {total} methods={data.posSettings.methods} bind:payments />
-        <Button variant="primary" size="lg" disabled={chargeDisabled} loading={submitting} onclick={charge}>{m.pos_sell_charge()}</Button>
+        <div class="cart-scroll">
+          <SellCart bind:lines settings={{ allowPriceOverride: data.posSettings.allowPriceOverride }} />
+          <PaymentPanel {total} methods={data.posSettings.methods} bind:payments />
+        </div>
+        <div class="charge-bar">
+          <div class="total-row">
+            <span>{m.pos_sell_total()}</span>
+            <span class="total">{total.toFixed(2)}</span>
+          </div>
+          <div class="remaining" class:done={remainingCents === 0}>
+            {m.pos_sell_remaining()}: {(remainingCents / 100).toFixed(2)}
+          </div>
+          <Button variant="primary" size="lg" disabled={chargeDisabled} loading={submitting} onclick={charge}>{m.pos_sell_charge()}</Button>
+        </div>
       </div>
     </div>
 
@@ -313,10 +382,14 @@
     grid-template-columns: 1fr;
     gap: 1rem;
   }
+  /* Desktop/tablet-landscape: the layout fills the visible scrollport so each
+     column scrolls internally — search/filters and the charge bar stay put.
+     Recent sales remain reachable below via the page scroll. */
   @media (min-width: 1024px) {
     .layout {
       grid-template-columns: 1fr 380px;
-      align-items: start;
+      grid-template-rows: minmax(0, 1fr);
+      height: 100%;
     }
   }
   .catalog {
@@ -324,6 +397,34 @@
     flex-direction: column;
     gap: 0.6rem;
     min-width: 0;
+    min-height: 0;
+  }
+  .catalog-head {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    flex-shrink: 0;
+  }
+  /* Mobile: the page itself scrolls — keep search/filters pinned on top. */
+  @media (max-width: 1023.98px) {
+    .catalog-head {
+      position: sticky;
+      top: -1rem; /* cancels the scroll container's p-4 */
+      z-index: 5;
+      background: var(--color-background);
+      padding: 1rem 0 0.5rem;
+      margin-top: -1rem;
+    }
+  }
+  .catalog-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .chips-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
   }
   .search-inp {
     min-height: 2.2rem;
@@ -338,6 +439,33 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.35rem;
+    flex: 1;
+    min-width: 0;
+  }
+  .view-toggle {
+    display: flex;
+    gap: 0.15rem;
+    flex-shrink: 0;
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-md);
+    padding: 0.1rem;
+    background: var(--color-bg3);
+  }
+  .vt-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.7rem;
+    height: 1.5rem;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-muted-foreground);
+    cursor: pointer;
+  }
+  .vt-btn.on {
+    color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
   }
   .chip-btn {
     padding: 0.25rem 0.7rem;
@@ -382,6 +510,75 @@
     color: var(--color-muted-foreground);
     font-variant-numeric: tabular-nums;
   }
+  /* ── Catalog table view ── */
+  .ptable {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-lg);
+    background: var(--color-card);
+    overflow: hidden;
+  }
+  .trow {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 9rem 5rem 4rem;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.45rem 0.7rem;
+    border: none;
+    border-bottom: 1px solid var(--hairline);
+    background: transparent;
+    color: var(--color-foreground);
+    font-size: 0.82rem;
+    text-align: left;
+    cursor: pointer;
+  }
+  .trow:last-child {
+    border-bottom: none;
+  }
+  .trow:not(.thead):hover {
+    background: color-mix(in srgb, var(--color-accent) 7%, transparent);
+  }
+  .trow.thead {
+    cursor: default;
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--color-muted-foreground);
+  }
+  .tname {
+    display: flex;
+    align-items: baseline;
+    gap: 0.45rem;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    font-weight: 500;
+  }
+  .tcode {
+    font-size: 0.7rem;
+    color: var(--color-muted-foreground);
+    font-variant-numeric: tabular-nums;
+  }
+  .tcat {
+    color: var(--color-muted-foreground);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  @media (max-width: 640px) {
+    .trow {
+      grid-template-columns: minmax(0, 1fr) 5rem 4rem;
+    }
+    .tcat {
+      display: none;
+    }
+  }
   .cart-panel {
     display: flex;
     flex-direction: column;
@@ -390,8 +587,55 @@
     border-radius: var(--radius-lg);
     background: var(--color-card);
     padding: 0.85rem;
+    min-height: 0;
+  }
+  @media (min-width: 1024px) {
+    .cart-panel {
+      align-self: start;
+      max-height: 100%;
+    }
+  }
+  .cart-scroll {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  /* Total + Charge always visible: pinned inside the panel on desktop, stuck to
+     the viewport bottom while the page scrolls on mobile. */
+  .charge-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    flex-shrink: 0;
     position: sticky;
-    top: 0;
+    bottom: 0;
+    background: var(--color-card);
+    border-top: 1px solid var(--hairline);
+    padding: 0.6rem 0.85rem 0.85rem;
+    margin: 0 -0.85rem -0.85rem;
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  }
+  .total-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+  .total {
+    font-variant-numeric: tabular-nums;
+  }
+  .remaining {
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-align: right;
+    color: var(--color-destructive);
+  }
+  .remaining.done {
+    color: var(--color-success, #4ade80);
   }
   .banner {
     display: flex;

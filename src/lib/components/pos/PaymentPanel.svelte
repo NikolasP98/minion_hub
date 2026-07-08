@@ -63,6 +63,7 @@
     {/each}
   </div>
 
+  <!-- Remaining is shown in the page's pinned charge bar, next to the Charge button. -->
   {#if payments.length}
     <div class="rows">
       {#each payments as p, i (i)}
@@ -98,10 +99,6 @@
       {/each}
     </div>
   {/if}
-
-  <div class="remaining" class:done={remainingCents === 0}>
-    {m.pos_sell_remaining()}: {(remainingCents / 100).toFixed(2)}
-  </div>
 </div>
 
 <style>
@@ -188,14 +185,5 @@
   }
   .rm:hover {
     color: var(--color-destructive);
-  }
-  .remaining {
-    font-size: 0.82rem;
-    font-weight: 600;
-    text-align: right;
-    color: var(--color-destructive);
-  }
-  .remaining.done {
-    color: var(--color-success, #4ade80);
   }
 </style>

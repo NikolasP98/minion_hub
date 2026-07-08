@@ -33,6 +33,7 @@
 </script>
 
 <script lang="ts">
+  import type { Snippet } from 'svelte';
   import { Search } from 'lucide-svelte';
   import NavIcon from '$lib/components/layout/NavIcon.svelte';
   import { persistScroll } from '$lib/actions/persist-scroll';
@@ -52,6 +53,8 @@
     dividers?: boolean;
     /** Use the left-border active indicator variant (AgentSettingsNav style). */
     leftBorder?: boolean;
+    /** Pinned at the bottom of the nav, below the scrollable item list. */
+    footer?: Snippet;
     class?: string;
   }
 
@@ -65,6 +68,7 @@
     onSelect,
     dividers = true,
     leftBorder = false,
+    footer,
     class: cls = '',
   }: Props = $props();
 
@@ -175,6 +179,12 @@
       {/each}
     {/each}
   </nav>
+
+  {#if footer}
+    <div class="shrink-0 border-t border-[var(--hairline)]">
+      {@render footer()}
+    </div>
+  {/if}
 </aside>
 
 <style>
