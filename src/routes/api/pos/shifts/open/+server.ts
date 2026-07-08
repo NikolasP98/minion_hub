@@ -22,6 +22,6 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     const shift = await openShift(ctx, { openingFloat: body.openingFloat, actor });
     return json({ ok: true, shift });
   } catch (e) {
-    handlePosError(e);
+    return handlePosError(e);
   }
 };

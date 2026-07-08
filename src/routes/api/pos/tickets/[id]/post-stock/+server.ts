@@ -15,6 +15,6 @@ export const POST: RequestHandler = async ({ locals, params }) => {
     const { entryId, stockWarning } = await postTicketStock(ctx, params.id!, actor);
     return json({ ok: true, entryId, stockWarning });
   } catch (e) {
-    handlePosError(e);
+    return handlePosError(e);
   }
 };

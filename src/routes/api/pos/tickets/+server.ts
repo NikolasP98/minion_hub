@@ -72,6 +72,6 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     });
     return json({ ok: true, ticket, stockWarning }, { status: 201 });
   } catch (e) {
-    handlePosError(e);
+    return handlePosError(e);
   }
 };

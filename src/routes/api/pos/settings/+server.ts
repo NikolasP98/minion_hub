@@ -32,8 +32,8 @@ export const PUT: RequestHandler = async ({ locals, request }) => {
   const body = await parseBody(request, putSchema);
   try {
     const settings = await updatePosSettings(ctx, body);
-    return json(settings);
+    return json({ ok: true, settings });
   } catch (e) {
-    handlePosError(e);
+    return handlePosError(e);
   }
 };

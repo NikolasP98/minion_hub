@@ -43,6 +43,6 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     const sellable = await createSellable(ctx, body, actor);
     return json({ ok: true, sellable }, { status: 201 });
   } catch (e) {
-    handlePosError(e);
+    return handlePosError(e);
   }
 };

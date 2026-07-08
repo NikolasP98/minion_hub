@@ -35,6 +35,6 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
     const sellable = await updateSellable(ctx, params.id!, body, actor);
     return json({ ok: true, sellable });
   } catch (e) {
-    handlePosError(e);
+    return handlePosError(e);
   }
 };

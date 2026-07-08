@@ -25,6 +25,6 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     const shift = await closeShift(ctx, { counted: body.counted, note: body.note ?? null, actor });
     return json({ ok: true, shift });
   } catch (e) {
-    handlePosError(e);
+    return handlePosError(e);
   }
 };
