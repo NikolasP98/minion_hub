@@ -19,13 +19,13 @@ const lineSchema = z.object({
 
 const paymentSchema = z.object({
   method: z.string().min(1).max(40),
-  amount: z.number().finite(),
+  amount: z.number().finite().nonnegative(),
   tendered: z.number().finite().nullable().optional(),
 });
 
 const postSchema = z.object({
   lines: z.array(lineSchema).min(1),
-  payments: z.array(paymentSchema),
+  payments: z.array(paymentSchema).min(1),
   partyId: z.string().max(200).nullable().optional(),
   crmContactId: z.string().max(200).nullable().optional(),
   customerName: z.string().max(500).nullable().optional(),
@@ -42,12 +42,14 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   const limit = limitParam ? Number(limitParam) : undefined;
   const fromParam = url.searchParams.get('from');
   const toParam = url.searchParams.get('to');
+  const fromDate = fromParam ? new Date(fromParam) : undefined;
+  const toDate = toParam ? new Date(toParam) : undefined;
   return json(
     await listTickets(ctx, {
       shiftId: url.searchParams.get('shiftId') ?? undefined,
-      from: fromParam ? new Date(fromParam) : undefined,
-      to: toParam ? new Date(toParam) : undefined,
-      limit: limit && Number.isFinite(limit) ? limit : undefined,
+      from: fromDate && !Number.isNaN(fromDate.getTime()) ? fromDate : undefined,
+      to: toDate && !Number.isNaN(toDate.getTime()) ? toDate : undefined,
+      limit: limit && Number.isFinite(limit) ? Math.min(limit, 500) : undefined,
     }),
   );
 };

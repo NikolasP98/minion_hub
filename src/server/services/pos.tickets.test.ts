@@ -137,6 +137,20 @@ describe('submitTicket — validation guards', () => {
     await expect(submitTicket(ctx(db), input)).rejects.toMatchObject({ code: 'payment_mismatch' });
   });
 
+  it('invalid_amount: a negative payment amount is rejected even when the split sums to the total', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[]]); // settings only — throws before touching the tx
+    const input: SubmitTicketInput = {
+      lines: [{ kind: 'product', description: 'X', qty: 1, unitPrice: 100 }],
+      payments: [
+        { method: 'cash', amount: 200 },
+        { method: 'card', amount: -100 },
+      ],
+      actor,
+    };
+    await expect(submitTicket(ctx(db), input)).rejects.toMatchObject({ code: 'invalid_amount' });
+  });
+
   it('invalid_method for a method not in settings', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([[]]); // settings only

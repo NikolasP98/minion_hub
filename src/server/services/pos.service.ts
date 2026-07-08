@@ -438,6 +438,7 @@ export async function submitTicket(ctx: CoreCtx, input: SubmitTicketInput): Prom
     if (!(l.unitPrice > 0)) throw new PosError('line needs a price', 'zero_price');
   }
   for (const p of input.payments) {
+    if (p.amount < 0) throw new PosError('payment amount must be >= 0', 'invalid_amount');
     if (!settings.methods.includes(p.method)) throw new PosError(`unknown method ${p.method}`, 'invalid_method');
     if (p.method !== 'cash' && p.tendered != null) throw new PosError('tendered is cash-only', 'invalid_tender');
     if (p.method === 'cash' && p.tendered != null && p.tendered < p.amount) throw new PosError('tendered below amount', 'invalid_tender');

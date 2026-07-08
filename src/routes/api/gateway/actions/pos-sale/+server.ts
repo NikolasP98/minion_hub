@@ -16,7 +16,7 @@ const lineSchema = z.object({
 
 const paymentSchema = z.object({
 	method: z.string().min(1).max(40),
-	amount: z.number().finite(),
+	amount: z.number().finite().nonnegative(),
 	tendered: z.number().finite().nullable().optional(),
 });
 
