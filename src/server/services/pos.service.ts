@@ -247,6 +247,23 @@ export interface StockWarning {
   draftEntryId?: string;
 }
 
+/**
+ * Ticket money math, extracted pure so the arithmetic is unit-testable
+ * without a db (same remedy as closeShift's computeExpected): per-line
+ * total = round2(qty × unitPrice − line discount), subtotal = round2 Σ,
+ * total = round2(subtotal − ticket discount). submitTicket persists
+ * exactly these values — this IS the persisted path, not a parallel copy.
+ */
+export function computeTicketTotals(
+  lines: TicketLineInput[],
+  discount?: number,
+): { lineTotals: number[]; subtotal: number; discount: number; total: number } {
+  const lineTotals = lines.map((l) => round2(l.qty * l.unitPrice - (l.discount ?? 0)));
+  const subtotal = round2(lineTotals.reduce((a, b) => a + b, 0));
+  const ticketDiscount = round2(discount ?? 0);
+  return { lineTotals, subtotal, discount: ticketDiscount, total: round2(subtotal - ticketDiscount) };
+}
+
 async function loadTicketRow(ctx: CoreCtx, id: string): Promise<PosTicket | null> {
   const [row] = await withOrgCore(ctx, (tx) => tx.select().from(posTickets).where(and(eq(posTickets.id, id), eq(posTickets.orgId, ctx.tenantId))).limit(1));
   return row ?? null;
@@ -412,10 +429,7 @@ export async function submitTicket(ctx: CoreCtx, input: SubmitTicketInput): Prom
     if (p.method !== 'cash' && p.tendered != null) throw new PosError('tendered is cash-only', 'invalid_tender');
     if (p.method === 'cash' && p.tendered != null && p.tendered < p.amount) throw new PosError('tendered below amount', 'invalid_tender');
   }
-  const lineTotals = input.lines.map((l) => round2(l.qty * l.unitPrice - (l.discount ?? 0)));
-  const subtotal = round2(lineTotals.reduce((a, b) => a + b, 0));
-  const discount = round2(input.discount ?? 0);
-  const total = round2(subtotal - discount);
+  const { lineTotals, subtotal, discount, total } = computeTicketTotals(input.lines, input.discount);
   const paid = round2(input.payments.reduce((a, p) => a + p.amount, 0));
   if (Math.abs(paid - total) >= 0.01) throw new PosError(`paid ${paid} != total ${total}`, 'payment_mismatch');
   if (settings.requireCustomer && !input.partyId && !input.customerName) throw new PosError('customer required', 'customer_required');

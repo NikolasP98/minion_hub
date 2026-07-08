@@ -35,7 +35,7 @@ vi.mock('./stock-accruals.service', () => ({
 // ── modules.service mock (isModuleEnabled) ──
 vi.mock('./modules.service', () => ({ isModuleEnabled: async () => true }));
 
-import { submitTicket, postTicketStock, voidTicket, type SubmitTicketInput } from './pos.service';
+import { submitTicket, postTicketStock, voidTicket, computeTicketTotals, type SubmitTicketInput } from './pos.service';
 
 /** The mock `Db` is typed as the sqlite/libsql client and doesn't expose
  *  `execute` — narrow-cast to reach the vi.fn the mock harness caches there. */
@@ -71,6 +71,48 @@ function ticketRow(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
+
+describe('computeTicketTotals — pure money math (the persisted path)', () => {
+  it('multi-line happy path: subtotal = Σ line totals, total = subtotal with no discounts', () => {
+    expect(computeTicketTotals([
+      { kind: 'product', description: 'A', qty: 2, unitPrice: 10 },
+      { kind: 'service', description: 'B', qty: 1, unitPrice: 50 },
+    ])).toEqual({ lineTotals: [20, 50], subtotal: 70, discount: 0, total: 70 });
+  });
+
+  it('line discount is applied per line, inside the line total', () => {
+    expect(computeTicketTotals([
+      { kind: 'product', description: 'A', qty: 3, unitPrice: 10, discount: 5 },
+    ])).toEqual({ lineTotals: [25], subtotal: 25, discount: 0, total: 25 });
+  });
+
+  it('ticket-level discount is subtracted once from the subtotal, not per line', () => {
+    expect(computeTicketTotals([
+      { kind: 'product', description: 'A', qty: 1, unitPrice: 40 },
+      { kind: 'product', description: 'B', qty: 1, unitPrice: 60 },
+    ], 10)).toEqual({ lineTotals: [40, 60], subtotal: 100, discount: 10, total: 90 });
+  });
+
+  it('rounds float drift to exact 2dp at every stage (3 × 0.10 = 0.30, not 0.30000000000000004)', () => {
+    const r = computeTicketTotals([{ kind: 'product', description: 'A', qty: 3, unitPrice: 0.1 }]);
+    expect(r.lineTotals).toEqual([0.3]);
+    expect(r.subtotal).toBe(0.3);
+    expect(r.total).toBe(0.3);
+    // classic drift pair: 0.1 + 0.2 across two lines
+    const r2 = computeTicketTotals([
+      { kind: 'product', description: 'A', qty: 1, unitPrice: 0.1 },
+      { kind: 'product', description: 'B', qty: 1, unitPrice: 0.2 },
+    ]);
+    expect(r2.subtotal).toBe(0.3);
+    expect(r2.total).toBe(0.3);
+  });
+
+  it('omitted ticket discount defaults to 0', () => {
+    const r = computeTicketTotals([{ kind: 'product', description: 'A', qty: 1, unitPrice: 9.99 }]);
+    expect(r.discount).toBe(0);
+    expect(r.total).toBe(9.99);
+  });
+});
 
 describe('submitTicket — validation guards', () => {
   it('no_open_shift when no shift is open', async () => {
