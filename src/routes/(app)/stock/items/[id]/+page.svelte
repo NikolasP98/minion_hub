@@ -77,6 +77,8 @@
   const unitsPerUom = $derived(Number(item.unitsPerStockUom) || 0);
   const wholeUnits = $derived(Math.floor(totalQty + 1e-9));
   const fracSubunits = $derived(subunitsCount > 0 ? (totalQty - wholeUnits) * subunitsCount : 0);
+  // No open (fractional) unit → draw a sealed full unit rather than an empty one.
+  const diagramFill = $derived(fracSubunits > 0 ? fracSubunits : wholeUnits > 0 ? subunitsCount : 0);
   const showUnitDiagram = $derived(subunitsCount >= 1 && subunitsCount <= MAX_MARKERS);
 
   async function save() {
@@ -226,7 +228,7 @@
         <div class="pack-row">
           {#if showUnitDiagram}
             <div class="pack-block">
-              <UnitDiagram shape={item.unitSvg} count={subunitsCount} filled={fracSubunits} />
+              <UnitDiagram shape={item.unitSvg} count={subunitsCount} filled={diagramFill} />
               <span class="pack-caption">
                 {m.stock_packaging_full_units({ count: wholeUnits })}
                 {#if fracSubunits > 0}&nbsp;+ {fmt(fracSubunits)}/{fmt(subunitsCount)}{/if}
