@@ -419,8 +419,6 @@
         </div>
       </div>
     </div>
-
-    </div>
   </div>
 </div>
 
@@ -473,6 +471,48 @@
     display: flex;
     align-items: flex-start;
     gap: 0.5rem;
+  }
+  .search-row {
+    display: flex;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+  .search-row .search-inp {
+    flex: 1;
+    min-width: 0;
+  }
+  /* History buttons (recent sales / shift history) — popover triggers. */
+  .hbtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    height: 100%;
+    min-height: 2.2rem;
+    padding: 0 0.8rem;
+    border-radius: var(--radius-md);
+    background: var(--color-bg3);
+    border: 1px solid var(--hairline);
+    color: var(--color-muted-foreground);
+    font-size: 0.8rem;
+    white-space: nowrap;
+  }
+  .hbtn:hover {
+    border-color: var(--color-accent);
+    color: var(--color-foreground);
+  }
+  @media (max-width: 640px) {
+    .hbtn-label {
+      display: none;
+    }
+  }
+  .hpanel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    width: min(34rem, 92vw);
+    max-height: min(60vh, 30rem);
+    overflow-y: auto;
+    padding: 0.6rem;
   }
   .search-inp {
     min-height: 2.2rem;
@@ -667,12 +707,6 @@
     color: #f59e0b;
     font-size: 0.78rem;
   }
-  .footer {
-    margin-top: 1.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
   .section-h {
     font-size: 0.78rem;
     font-weight: 600;
@@ -729,21 +763,6 @@
     font-size: 0.72rem;
     color: var(--color-destructive);
     cursor: pointer;
-  }
-  .shifts-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    align-self: flex-start;
-    margin-top: 0.5rem;
-    background: none;
-    border: none;
-    color: var(--color-muted-foreground);
-    font-size: 0.78rem;
-    cursor: pointer;
-  }
-  .shifts-toggle :global(.rot) {
-    transform: rotate(180deg);
   }
   .shift-list {
     display: flex;

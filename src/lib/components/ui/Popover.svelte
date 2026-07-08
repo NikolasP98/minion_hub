@@ -1,3 +1,10 @@
+<script lang="ts" module>
+  // Module-level so each instance gets a distinct id — a per-instance counter
+  // gave every popover "ui-popover-0", and Zag resolves trigger/content by DOM
+  // id, so two popovers on one page anchored to each other's elements.
+  let nextId = 0;
+</script>
+
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import * as popover from '@zag-js/popover';
@@ -28,7 +35,6 @@
     bare = false,
   }: Props = $props();
 
-  let nextId = 0;
   const popoverId = `ui-popover-${nextId++}`;
 
   // When `open` is bound the machine runs controlled; otherwise it self-manages.
