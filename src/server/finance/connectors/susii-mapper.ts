@@ -9,6 +9,14 @@ const num = (v: unknown): number | null => {
 };
 const obj = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' ? (v as Record<string, unknown>) : {});
 const arr = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? (v as Record<string, unknown>[]) : []);
+// SUSII sends an all-same-digit sentinel (e.g. "00000000") when a client has no
+// real document. That is NOT a DNI — normalise it to null so it never collapses
+// distinct docless clients nor displays as a fake ID. ponytail: all-same-DIGIT
+// only; leave short/alphanumeric docs (foreign IDs, passports) untouched.
+const docNumber = (v: unknown): string | null => {
+  const s = str(v);
+  return s != null && /^(\d)\1*$/.test(s) ? null : s;
+};
 
 function mapClient(raw: unknown): CanonicalClient | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -18,7 +26,7 @@ function mapClient(raw: unknown): CanonicalClient | null {
     providerRef: String(c.id ?? ''),
     name: str(c.name),
     docType: str(c.document_type),
-    docNumber: str(c.document_number),
+    docNumber: docNumber(c.document_number),
     email: str(c.email),
     phone: str(c.phone),
     metadata: c,

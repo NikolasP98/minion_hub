@@ -74,7 +74,10 @@ export async function upsertInvoicesBatch(
           set: {
             name: sql`excluded.name`,
             docType: sql`excluded.doc_type`,
-            docNumber: sql`excluded.doc_number`,
+            // Never clobber a curated DNI with a source blank: the mapper nulls
+            // SUSII's placeholder, so coalesce keeps the existing value when the
+            // incoming doc is empty, and takes the source value when it's real.
+            docNumber: sql`coalesce(excluded.doc_number, ${finClients.docNumber})`,
             email: sql`excluded.email`,
             phone: sql`excluded.phone`,
             metadata: sql`excluded.metadata`,

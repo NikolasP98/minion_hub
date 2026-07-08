@@ -25,6 +25,13 @@ describe('mapSusiiSale', () => {
     expect(inv.client?.docNumber).toBe('40853705');
     expect(inv.metadata.exchange_rate).toBe('3.73');     // non-core extra preserved
   });
+  it('normalises the all-same-digit placeholder DNI to null but keeps real docs', () => {
+    const ph = mapSusiiSale({ id: 1, client: { id: 5, name: 'WALK IN', document_number: '00000000' } });
+    expect(ph.client?.docNumber).toBeNull();
+    expect(ph.clientDocNumber).toBeNull();
+    const real = mapSusiiSale({ id: 2, client: { id: 6, name: 'REAL', document_number: '40853705' } });
+    expect(real.client?.docNumber).toBe('40853705');
+  });
   it('maps an unpaid sale to status pending and tolerates missing nested arrays', () => {
     const inv = mapSusiiSale({ id: 7, is_paid: false, client: null });
     expect(inv.status).toBe('pending');
