@@ -39,10 +39,9 @@
     lines: CartLine[];
     settings: { allowPriceOverride: boolean };
     totalCents: number;
-    onchange?: () => void;
   }
 
-  let { lines = $bindable(), settings, totalCents, onchange }: Props = $props();
+  let { lines = $bindable(), settings, totalCents }: Props = $props();
 
   function priceEditable(l: CartLine): boolean {
     return l.sellable.unitPrice == null || (settings.allowPriceOverride && canAct('pos', 'manage'));
@@ -52,20 +51,16 @@
   }
   function setQty(l: CartLine, raw: number) {
     l.qty = Math.max(1, Math.round(raw) || 1);
-    onchange?.();
   }
   function setPrice(l: CartLine, raw: string) {
     const n = Number(raw);
     l.unitPrice = raw.trim() === '' || !Number.isFinite(n) ? null : n;
-    onchange?.();
   }
   function setDiscount(l: CartLine, raw: number) {
     l.discount = Number.isFinite(raw) && raw >= 0 ? raw : 0;
-    onchange?.();
   }
   function remove(i: number) {
     lines = lines.filter((_, idx) => idx !== i);
-    onchange?.();
   }
 </script>
 

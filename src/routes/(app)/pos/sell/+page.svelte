@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { PageData } from './$types';
   import { browser } from '$app/environment';
+  import { page } from '$app/state';
   import { invalidate } from '$app/navigation';
   import { ShoppingCart, ChevronDown } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
@@ -14,12 +15,9 @@
 
   let { data }: { data: PageData } = $props();
 
-  // ── Cart persistence ──
-  // ponytail: page.data doesn't currently expose the active orgId to the
-  // client bundle, so this can't be namespaced per-org — plain key, single
-  // register (one browser profile) is today's real usage. Namespace by orgId
-  // once it's exposed to page.data.
-  const CART_KEY = 'pos-cart';
+  // ── Cart persistence ── keyed per-org: (app)/+layout.server.ts exposes
+  // `activeOrgId` top-level in page.data, so carts never bleed across orgs.
+  const CART_KEY = `pos-cart-${page.data.activeOrgId ?? 'default'}`;
 
   function loadCart(sellables: PageData['sellables']): CartLine[] {
     if (!browser) return [];
