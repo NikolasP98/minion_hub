@@ -73,10 +73,15 @@
       {
         loading: `${m.pos_shift_open_cta()}…`,
         getOutcome: () => ({ type: 'success', title: m.pos_shift_open_cta() }),
-        onError: (err: unknown) => ({
-          title: m.pos_shift_open_cta(),
-          description: err instanceof Error ? err.message : String(err),
-        }),
+        // A 409 (shift_already_open) means another tab beat us — resync so the
+        // banner doesn't stay stuck on the stale "no shift" state.
+        onError: (err: unknown) => {
+          invalidate('pos:shift');
+          return {
+            title: m.pos_shift_open_cta(),
+            description: err instanceof Error ? err.message : String(err),
+          };
+        },
       },
     );
   }
@@ -147,7 +152,8 @@
   <div class="strip strip-open">
     <AlertTriangle size={15} class="ic" />
     <span class="msg">{m.pos_shift_open_cta()}</span>
-    {#if canAct('pos', 'create')}
+    <!-- central apiWriteCapability maps POS writes to pos:edit — gate must match -->
+    {#if canAct('pos', 'edit')}
       <button type="button" class="act" onclick={startOpen}>{m.pos_shift_open_cta()}</button>
     {/if}
   </div>
