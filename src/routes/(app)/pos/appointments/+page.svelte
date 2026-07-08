@@ -7,6 +7,7 @@
 	import ConsumptionGauge from '$lib/components/stock/ConsumptionGauge.svelte';
 	import { gaugeMax } from '$lib/components/stock/stock-ui';
 	import { canAct } from '$lib/access/can.svelte';
+	import { formatMoney } from '$lib/utils/format';
 
 	let { data }: { data: PageData } = $props();
 
@@ -352,10 +353,10 @@
 										{#if accrualBySource.get(b.id)}
 											{@const acc = accrualBySource.get(b.id)!}
 											{#if acc.open > 0}
-												<Badge variant="semantic" value="warning">{m.sched_stock_committed({ value: acc.estValue.toFixed(2) })}</Badge>
+												<Badge variant="semantic" value="warning">{m.sched_stock_committed({ value: formatMoney(acc.estValue) })}</Badge>
 											{:else if acc.realized > 0}
 												<a href={acc.realizedEntryId ? `/stock/entries/${acc.realizedEntryId}` : '/stock'} class="no-underline">
-													<Badge variant="semantic" value="success">{m.sched_stock_realized({ value: acc.realizedValue.toFixed(2) })}</Badge>
+													<Badge variant="semantic" value="success">{m.sched_stock_realized({ value: formatMoney(acc.realizedValue) })}</Badge>
 												</a>
 											{:else}
 												<Badge>{m.sched_stock_released()}</Badge>

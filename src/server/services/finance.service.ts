@@ -9,6 +9,7 @@ import {
   finClients,
   finSources,
   finProducts,
+  finSettings,
 } from '$server/db/pg-finance-schema';
 import { docAuditLog } from '$server/db/pg-activity-schema';
 import type { CanonicalInvoice } from '$server/finance/connector';
@@ -324,6 +325,133 @@ export async function getInvoice(ctx: CoreCtx, id: string) {
       : [];
     return { invoice, items, payments, crmContactId: link?.id ?? null };
   });
+}
+
+// ---- org finance settings (currency / tax rate / exchange rate) ----
+
+export interface FinSettings {
+  currency: string;
+  taxRate: number; // IGV as a fraction (0.18 = 18%)
+  fxBase: string;
+  fxQuote: string;
+  fxMode: 'auto' | 'manual';
+  fxManualRate: number | null;
+  fxAutoRate: number | null;
+  fxSource: string | null;
+  fxUpdatedAt: string | null;
+  /** effective rate = manual override when in manual mode, else the auto value */
+  fxRate: number | null;
+}
+
+export const DEFAULT_FIN_SETTINGS: Readonly<FinSettings> = Object.freeze({
+  currency: 'PEN',
+  taxRate: 0.18,
+  fxBase: 'USD',
+  fxQuote: 'PEN',
+  fxMode: 'auto',
+  fxManualRate: null,
+  fxAutoRate: null,
+  fxSource: null,
+  fxUpdatedAt: null,
+  fxRate: null,
+});
+
+function mapFinSettings(row: typeof finSettings.$inferSelect): FinSettings {
+  const mode = row.fxMode === 'manual' ? 'manual' : 'auto';
+  const manual = row.fxManualRate != null ? Number(row.fxManualRate) : null;
+  const auto = row.fxAutoRate != null ? Number(row.fxAutoRate) : null;
+  return {
+    currency: row.currency,
+    taxRate: Number(row.taxRate),
+    fxBase: row.fxBase,
+    fxQuote: row.fxQuote,
+    fxMode: mode,
+    fxManualRate: manual,
+    fxAutoRate: auto,
+    fxSource: row.fxSource,
+    fxUpdatedAt: row.fxUpdatedAt ? row.fxUpdatedAt.toISOString() : null,
+    fxRate: mode === 'manual' ? manual : auto,
+  };
+}
+
+export async function getFinSettings(ctx: CoreCtx): Promise<FinSettings> {
+  const [row] = await withOrgCore(ctx, (tx) =>
+    tx.select().from(finSettings).where(eq(finSettings.orgId, ctx.tenantId)).limit(1),
+  );
+  return row ? mapFinSettings(row) : { ...DEFAULT_FIN_SETTINGS };
+}
+
+export async function updateFinSettings(ctx: CoreCtx, patch: Partial<FinSettings>): Promise<FinSettings> {
+  // Validate the fields a user can set. taxRate is a fraction in [0, 1);
+  // exchange rates must be positive when provided.
+  const set: Record<string, unknown> = { updatedAt: new Date() };
+  if (patch.currency != null) set.currency = String(patch.currency).toUpperCase().slice(0, 8);
+  if (patch.taxRate != null) {
+    const t = Number(patch.taxRate);
+    if (!Number.isFinite(t) || t < 0 || t >= 1) throw new Error('taxRate must be a fraction in [0, 1)');
+    set.taxRate = String(t);
+  }
+  if (patch.fxMode != null) {
+    if (patch.fxMode !== 'auto' && patch.fxMode !== 'manual') throw new Error('fxMode must be auto|manual');
+    set.fxMode = patch.fxMode;
+  }
+  if (patch.fxManualRate !== undefined) {
+    if (patch.fxManualRate === null) set.fxManualRate = null;
+    else {
+      const r = Number(patch.fxManualRate);
+      if (!Number.isFinite(r) || r <= 0) throw new Error('fxManualRate must be a positive number');
+      set.fxManualRate = String(r);
+    }
+  }
+  const [row] = await withOrgCore(ctx, (tx) =>
+    tx
+      .insert(finSettings)
+      .values({ orgId: ctx.tenantId, ...(set as Record<string, never>) })
+      .onConflictDoUpdate({ target: finSettings.orgId, set })
+      .returning(),
+  );
+  return mapFinSettings(row);
+}
+
+/**
+ * Fetch the live USD→PEN rate from a free, keyless source and store it as the
+ * auto rate. Fixed URL (no user input → no SSRF surface); short timeout so a
+ * slow upstream can't hang the request. Returns the refreshed settings.
+ */
+export async function refreshExchangeRate(ctx: CoreCtx): Promise<FinSettings> {
+  const current = await getFinSettings(ctx);
+  const base = current.fxBase || 'USD';
+  const quote = current.fxQuote || 'PEN';
+  const source = 'open.er-api.com';
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000);
+  let rate: number;
+  try {
+    const res = await fetch(`https://open.er-api.com/v6/latest/${encodeURIComponent(base)}`, {
+      signal: ctrl.signal,
+      headers: { accept: 'application/json' },
+    });
+    if (!res.ok) throw new Error(`exchange source returned ${res.status}`);
+    const data = (await res.json()) as { result?: string; rates?: Record<string, number> };
+    const r = data?.rates?.[quote];
+    if (data?.result !== 'success' || typeof r !== 'number' || !Number.isFinite(r) || r <= 0) {
+      throw new Error(`no ${quote} rate in exchange response`);
+    }
+    rate = r;
+  } finally {
+    clearTimeout(timer);
+  }
+  const [row] = await withOrgCore(ctx, (tx) =>
+    tx
+      .insert(finSettings)
+      .values({ orgId: ctx.tenantId, fxAutoRate: String(rate), fxSource: source, fxUpdatedAt: new Date(), updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: finSettings.orgId,
+        set: { fxAutoRate: String(rate), fxSource: source, fxUpdatedAt: new Date(), updatedAt: new Date() },
+      })
+      .returning(),
+  );
+  return mapFinSettings(row);
 }
 
 export async function getSource(ctx: CoreCtx, provider: string) {

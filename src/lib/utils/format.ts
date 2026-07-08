@@ -54,6 +54,45 @@ export function fmtUptime(ms: number | null | undefined): string {
   return parts.join(' ');
 }
 
+const MONEY_SYMBOL: Record<string, string> = { PEN: 'S/', USD: '$', EUR: '€' };
+
+/**
+ * Canonical money formatter. FACES is PEN → "S/ 1,234.00". Currency-aware so a
+ * row carrying its own currency (fin_invoices.currency, etc.) renders correctly;
+ * defaults to PEN (the org currency) when none is given. This is the ONE money
+ * formatter for the app — every price/total/amount surface routes through it
+ * instead of hand-rolling toLocaleString/toFixed with no symbol.
+ */
+export function formatMoney(
+  value: number | string | null | undefined,
+  currency: string = 'PEN',
+  opts: { compact?: boolean; decimals?: number } = {},
+): string {
+  const n = typeof value === 'string' ? Number(value) : (value ?? NaN);
+  if (!Number.isFinite(n)) return '—';
+  const cur = (currency || 'PEN').toUpperCase();
+  const maximumFractionDigits = opts.decimals ?? (opts.compact ? 0 : 2);
+  const minimumFractionDigits = Math.min(opts.compact ? 0 : maximumFractionDigits, maximumFractionDigits);
+  try {
+    return new Intl.NumberFormat('es-PE', {
+      style: 'currency',
+      currency: cur,
+      notation: opts.compact ? 'compact' : 'standard',
+      minimumFractionDigits,
+      maximumFractionDigits,
+    }).format(n as number);
+  } catch {
+    // Unknown/invalid ISO code → symbol map + plain number.
+    const sym = MONEY_SYMBOL[cur] ?? `${cur} `;
+    return `${sym} ${(n as number).toLocaleString('es-PE', { minimumFractionDigits, maximumFractionDigits })}`;
+  }
+}
+
+/** Compact money for dense chart axes / KPIs: "S/ 1.2M". */
+export function formatMoneyShort(value: number | string | null | undefined, currency: string = 'PEN'): string {
+  return formatMoney(value, currency, { compact: true });
+}
+
 export function truncKey(key: string | null | undefined, max = 28): string {
   if (!key) return '';
   return key.length > max ? key.slice(0, max) + '\u2026' : key;

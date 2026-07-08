@@ -7,6 +7,7 @@
 	import DataTable from '$lib/components/data-table/DataTable.svelte';
 	import type { DataColumn, EditDraft } from '$lib/components/data-table/DataTable.svelte';
 	import { canAct } from '$lib/access/can.svelte';
+	import { formatMoney } from '$lib/utils/format';
 
 	let { data }: { data: PageData } = $props();
 	const products = $derived(data.products);
@@ -121,11 +122,11 @@
 			{#if col.key === 'name'}
 				<span class="truncate block max-w-[16rem]">{p.name}</span>
 			{:else if col.key === 'unitPrice'}
-				<span class="tabular-nums">{p.unitPrice != null ? Number(p.unitPrice).toLocaleString() : '—'}</span>
+				<span class="tabular-nums">{p.unitPrice != null ? formatMoney(p.unitPrice) : '—'}</span>
 			{:else if col.key === 'active'}
 				<span class={p.active ? 'badge-active' : 'badge-inactive'}>{p.active ? '✓' : '✗'}</span>
 			{:else if col.key === 'revenue'}
-				<span class="tabular-nums font-medium">{Number(p.revenue).toLocaleString()}</span>
+				<span class="tabular-nums font-medium">{formatMoney(p.revenue)}</span>
 			{/if}
 		{/snippet}
 	</DataTable>

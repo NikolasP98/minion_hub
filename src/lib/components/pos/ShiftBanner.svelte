@@ -6,6 +6,7 @@
   import { Modal } from '$lib/components/ui';
   import { canAct } from '$lib/access/can.svelte';
   import { toastAsync } from '$lib/state/ui/toast.svelte';
+  import { formatMoney } from '$lib/utils/format';
 
   const STALE_MS = 16 * 60 * 60 * 1000;
 
@@ -179,7 +180,7 @@
     <span class="since">{m.pos_shift_open_since({ time: openedAtLabel, name: openerName ?? '—' })}</span>
     <div class="totals">
       {#each Object.entries(openShift.summary.byMethod) as [mth, amt] (mth)}
-        <span class="pill">{mth}: {amt.toFixed(2)}</span>
+        <span class="pill">{mth}: {formatMoney(amt)}</span>
       {/each}
     </div>
     {#if isStale}
@@ -219,13 +220,13 @@
     {#each settings.methods as mth (mth)}
       <div class="close-row">
         <span class="lbl">{mth}</span>
-        <span class="expected">{m.pos_shift_expected()}: {(expected[mth] ?? 0).toFixed(2)}</span>
+        <span class="expected">{m.pos_shift_expected()}: {formatMoney(expected[mth] ?? 0)}</span>
         <label class="field">
           <span class="lbl">{m.pos_shift_counted()}</span>
           <input type="number" step="0.01" bind:value={counted[mth]} />
         </label>
         <span class="diff" class:neg={difference(mth) < 0} class:pos={difference(mth) > 0}>
-          {m.pos_shift_difference()}: {difference(mth).toFixed(2)}
+          {m.pos_shift_difference()}: {formatMoney(difference(mth))}
         </span>
       </div>
     {/each}

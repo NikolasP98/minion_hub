@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { PageData } from './$types';
-	import { Settings2, RefreshCw, Plug } from 'lucide-svelte';
+	import { Settings2, RefreshCw, Plug, Coins } from 'lucide-svelte';
 	import { PageHeader, Button, Toggle } from '$lib/components/ui';
 	import * as m from '$lib/paraglide/messages';
 	import { financeSync } from '$lib/state/features/finance-sync.svelte';
@@ -53,6 +53,73 @@
 			connectorMsg = { ok: false, text: m.fin_connector_error() };
 		} finally {
 			connectorBusy = false;
+		}
+	}
+
+	// ── Currency / Tax / Exchange-rate card ───────────────────────────────────
+	// svelte-ignore state_referenced_locally
+	const s0 = data.settings;
+	// svelte-ignore state_referenced_locally
+	let currency = $state(s0.currency);
+	// Tax rate is a fraction in the DB (0.18); edited as a percent here.
+	// svelte-ignore state_referenced_locally
+	let taxPct = $state(String(Math.round(s0.taxRate * 10000) / 100));
+	// svelte-ignore state_referenced_locally
+	let fxManual = $state(s0.fxMode === 'manual');
+	// svelte-ignore state_referenced_locally
+	let fxManualRate = $state(s0.fxManualRate != null ? String(s0.fxManualRate) : '');
+	let fxAutoRate = $state(s0.fxAutoRate);
+	let fxUpdatedAt = $state(s0.fxUpdatedAt);
+	let fxBase = $state(s0.fxBase);
+	let fxQuote = $state(s0.fxQuote);
+	let settingsBusy = $state(false);
+	let fxBusy = $state(false);
+	let settingsMsg = $state<{ ok: boolean; text: string } | null>(null);
+
+	const effectiveFx = $derived(fxManual ? Number(fxManualRate) || null : fxAutoRate);
+
+	async function saveFinSettings() {
+		settingsBusy = true;
+		settingsMsg = null;
+		try {
+			const taxRate = Number(taxPct) / 100;
+			const res = await fetch('/api/finances/settings', {
+				method: 'PUT',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					currency,
+					taxRate,
+					fxMode: fxManual ? 'manual' : 'auto',
+					fxManualRate: fxManual && fxManualRate ? Number(fxManualRate) : null,
+				}),
+			});
+			settingsMsg = res.ok
+				? { ok: true, text: m.fin_settings_saved() }
+				: { ok: false, text: m.fin_settings_error() };
+		} catch {
+			settingsMsg = { ok: false, text: m.fin_settings_error() };
+		} finally {
+			settingsBusy = false;
+		}
+	}
+
+	async function refreshFx() {
+		fxBusy = true;
+		settingsMsg = null;
+		try {
+			const res = await fetch('/api/finances/settings', { method: 'POST' });
+			if (res.ok) {
+				const { settings } = await res.json();
+				fxAutoRate = settings.fxAutoRate;
+				fxUpdatedAt = settings.fxUpdatedAt;
+				settingsMsg = { ok: true, text: m.fin_fx_refreshed() };
+			} else {
+				settingsMsg = { ok: false, text: m.fin_fx_error() };
+			}
+		} catch {
+			settingsMsg = { ok: false, text: m.fin_fx_error() };
+		} finally {
+			fxBusy = false;
 		}
 	}
 
@@ -166,6 +233,78 @@
 						size="sm"
 						onclick={saveConnector}
 						disabled={connectorBusy || !canAct('finance', 'edit')}
+						title={canAct('finance', 'edit') ? undefined : m.no_permission()}
+					>
+						{m.fin_connector_save()}
+					</Button>
+				</div>
+			</section>
+
+			<!-- ── Currency / Tax / Exchange-rate card ────────────────────────── -->
+			<section class="card">
+				<header class="card-h">
+					<Coins size={14} />
+					<span>{m.fin_money_card()}</span>
+				</header>
+
+				<label class="field">
+					<span class="t-caption">{m.fin_money_currency()}</span>
+					<select class="inp" bind:value={currency}>
+						<option value="PEN">PEN — S/ (Sol)</option>
+						<option value="USD">USD — $ (Dollar)</option>
+						<option value="EUR">EUR — € (Euro)</option>
+					</select>
+				</label>
+
+				<label class="field">
+					<span class="t-caption">{m.fin_money_tax_rate()}</span>
+					<div class="pct-wrap">
+						<input class="inp" type="number" min="0" max="99.99" step="0.01" bind:value={taxPct} />
+						<span class="pct-suffix">%</span>
+					</div>
+					<span class="t-caption hint">{m.fin_money_tax_hint()}</span>
+				</label>
+
+				<div class="field">
+					<span class="t-caption">{m.fin_fx_rate({ base: fxBase, quote: fxQuote })}</span>
+					<div class="fx-row">
+						<Toggle bind:checked={fxManual} label={m.fin_fx_manual()} />
+					</div>
+					{#if fxManual}
+						<div class="pct-wrap mt-2">
+							<span class="pct-prefix">1 {fxBase} =</span>
+							<input class="inp" type="number" min="0" step="0.0001" bind:value={fxManualRate} placeholder="3.7500" />
+							<span class="pct-suffix">{fxQuote}</span>
+						</div>
+					{:else}
+						<div class="fx-auto mt-2">
+							<span class="mono-val">
+								{#if fxAutoRate != null}1 {fxBase} = {fxAutoRate} {fxQuote}{:else}{m.fin_fx_none()}{/if}
+							</span>
+							<Button variant="outline" size="sm" onclick={refreshFx} disabled={fxBusy || !canAct('finance', 'edit')}>
+								<RefreshCw size={13} class={fxBusy ? 'animate-spin' : ''} />
+								{m.fin_fx_refresh()}
+							</Button>
+						</div>
+						{#if fxUpdatedAt}
+							<span class="t-caption hint">{m.fin_fx_updated({ when: new Date(fxUpdatedAt).toLocaleString() })}</span>
+						{/if}
+					{/if}
+					{#if effectiveFx != null}
+						<span class="t-caption hint">{m.fin_fx_effective({ rate: String(effectiveFx) })}</span>
+					{/if}
+				</div>
+
+				{#if settingsMsg}
+					<p class={settingsMsg.ok ? 'ok-msg' : 'err-msg'}>{settingsMsg.text}</p>
+				{/if}
+
+				<div class="actions">
+					<Button
+						variant="primary"
+						size="sm"
+						onclick={saveFinSettings}
+						disabled={settingsBusy || !canAct('finance', 'edit')}
 						title={canAct('finance', 'edit') ? undefined : m.no_permission()}
 					>
 						{m.fin_connector_save()}
@@ -297,4 +436,11 @@
 	.prog-track { height: 6px; border-radius: 999px; background: var(--color-bg3); overflow: hidden; }
 	.prog-range { height: 100%; background: var(--color-accent); border-radius: 999px; transition: width 0.4s ease; }
 	.sync-actions { display: flex; gap: 0.5rem; align-items: center; }
+	.hint { font-style: italic; margin-top: 0.25rem; }
+	.pct-wrap { display: flex; align-items: center; gap: 0.4rem; }
+	.pct-wrap .inp { flex: 1; min-width: 0; }
+	.pct-prefix, .pct-suffix { font-size: 0.82rem; color: var(--color-muted-foreground); white-space: nowrap; }
+	.fx-row { display: flex; align-items: center; }
+	.fx-auto { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+	.mt-2 { margin-top: 0.5rem; }
 </style>

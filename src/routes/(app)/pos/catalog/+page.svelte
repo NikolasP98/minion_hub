@@ -8,6 +8,7 @@
   import type { DataColumn, EditDraft } from '$lib/components/data-table/DataTable.svelte';
   import { canAct } from '$lib/access/can.svelte';
   import { toastError } from '$lib/state/ui/toast.svelte';
+  import { formatMoney } from '$lib/utils/format';
   import SellableWizard, { type SellableLike } from '$lib/components/pos/SellableWizard.svelte';
 
   let { data }: { data: PageData } = $props();
@@ -119,7 +120,7 @@
           <span class="truncate block max-w-[16rem]">{s.name}</span>
         {/if}
       {:else if col.key === 'unitPrice'}
-        <span class="tabular-nums">{s.unitPrice != null ? Number(s.unitPrice).toLocaleString() : '—'}</span>
+        <span class="tabular-nums">{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span>
       {:else if col.key === 'kind'}
         <Badge variant="semantic" value={s.kind === 'product' ? 'accent' : 'info'}>
           {s.kind === 'product' ? m.pos_catalog_kind_product() : m.pos_catalog_kind_service()}

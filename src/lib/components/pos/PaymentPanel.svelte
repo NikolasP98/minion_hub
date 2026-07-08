@@ -9,6 +9,7 @@
 <script lang="ts">
   import { X } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
+  import { formatMoney } from '$lib/utils/format';
 
   interface Props {
     total: number;
@@ -92,7 +93,7 @@
                 oninput={(e) => setTendered(i, Number((e.currentTarget as HTMLInputElement).value))}
               />
             </label>
-            <span class="change">{m.pos_sell_change()}: {change(p).toFixed(2)}</span>
+            <span class="change">{m.pos_sell_change()}: {formatMoney(change(p))}</span>
           {/if}
           <button class="rm" title={m.common_remove()} onclick={() => removeRow(i)}><X size={13} /></button>
         </div>

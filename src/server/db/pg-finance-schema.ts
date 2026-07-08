@@ -170,6 +170,22 @@ export const finSyncJobs = pgTable(
   }),
 );
 
+/** Per-org finance settings: display currency, IGV tax rate, USD↔PEN exchange
+ *  rate (auto-fetched default + manual override). One row per org (orgId pk). */
+export const finSettings = pgTable('fin_settings', {
+  orgId: text('org_id').primaryKey(),
+  currency: text('currency').notNull().default('PEN'),
+  taxRate: numeric('tax_rate').notNull().default('0.18'), // IGV as a fraction (0.18 = 18%)
+  fxBase: text('fx_base').notNull().default('USD'),
+  fxQuote: text('fx_quote').notNull().default('PEN'),
+  fxMode: text('fx_mode').notNull().default('auto'),      // 'auto' | 'manual'
+  fxManualRate: numeric('fx_manual_rate'),                // override value (quote per 1 base)
+  fxAutoRate: numeric('fx_auto_rate'),                    // last online-fetched value
+  fxSource: text('fx_source'),                            // e.g. 'open.er-api.com'
+  fxUpdatedAt: timestamp('fx_updated_at', { withTimezone: true }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type FinInvoice = typeof finInvoices.$inferSelect;
 export type FinInvoiceItem = typeof finInvoiceItems.$inferSelect;
 export type FinPayment = typeof finPayments.$inferSelect;
@@ -177,3 +193,4 @@ export type FinClient = typeof finClients.$inferSelect;
 export type FinProduct = typeof finProducts.$inferSelect;
 export type FinSource = typeof finSources.$inferSelect;
 export type FinSyncJob = typeof finSyncJobs.$inferSelect;
+export type FinSettingsRow = typeof finSettings.$inferSelect;

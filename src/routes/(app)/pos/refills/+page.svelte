@@ -7,6 +7,7 @@
   import PartyPicker from '$lib/components/crm/PartyPicker.svelte';
   import { canAct } from '$lib/access/can.svelte';
   import { toastAsync } from '$lib/state/ui/toast.svelte';
+  import { formatMoney } from '$lib/utils/format';
 
   let { data }: { data: PageData } = $props();
 
@@ -163,7 +164,7 @@
                 <span class="rid">{r.humanId ?? r.id.slice(0, 8)}</span>
                 <span class="ritem">{r.firstItemName ?? '—'}{r.lineCount > 1 ? ` +${r.lineCount - 1}` : ''}</span>
                 <span class="rqty">{r.totalQty}</span>
-                <span class="rval">{r.value.toFixed(2)}</span>
+                <span class="rval">{formatMoney(r.value)}</span>
                 <span class="rdate">{fmtDate(r.createdAt)}</span>
               </a>
             {/each}

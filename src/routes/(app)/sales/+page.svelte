@@ -8,6 +8,7 @@
 	import { toastWarning } from '$lib/state/ui/toast.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import { canAct } from '$lib/access/can.svelte';
+	import { formatMoney } from '$lib/utils/format';
 
 	let { data }: { data: PageData } = $props();
 	let busy = $state(false);
@@ -45,7 +46,7 @@
 		{#if data.contactName}<div><ScopeBanner name={data.contactName} contactId={data.contactId} noun="orders" /></div>{/if}
 		<div class="kpis">
 			<div class="kpi"><ClipboardList size={16} /><span class="n">{data.stats.open}</span><span class="l">Open orders</span></div>
-			<div class="kpi"><CircleDollarSign size={16} /><span class="n">{data.stats.committed.toLocaleString()}</span><span class="l">Committed value</span></div>
+			<div class="kpi"><CircleDollarSign size={16} /><span class="n">{formatMoney(data.stats.committed)}</span><span class="l">Committed value</span></div>
 		</div>
 
 		<section class="card list">
@@ -53,7 +54,7 @@
 				<div class="row">
 					<a class="desc" href={`/sales/${o.id}`}>{#if o.humanId}<span class="hid">{o.humanId}</span> {/if}{o.description ?? '—'}</a>
 					<span class="cust t-caption">{o.customerName ?? '—'}</span>
-					<span class="total">{o.total ? Number(o.total).toLocaleString() : '—'}</span>
+					<span class="total">{o.total ? formatMoney(o.total, o.currency ?? undefined) : '—'}</span>
 					<select
 						class="status-sel"
 						value={o.status}

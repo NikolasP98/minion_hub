@@ -9,6 +9,7 @@
 	import { toastWarning } from '$lib/state/ui/toast.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import { canAct } from '$lib/access/can.svelte';
+	import { formatMoney } from '$lib/utils/format';
 
 	let { data }: { data: PageData } = $props();
 	const o = $derived(data.order);
@@ -77,7 +78,7 @@
 				<header class="card-h"><span>Order</span></header>
 				<dl class="kv">
 					<div><dt>Customer</dt><dd>{o.customerName ?? '—'}</dd></div>
-					<div><dt>Total</dt><dd>{o.total ? Number(o.total).toLocaleString() : '—'}</dd></div>
+					<div><dt>Total</dt><dd>{o.total ? formatMoney(o.total, o.currency ?? undefined) : '—'}</dd></div>
 					<div><dt>Status</dt><dd>{statusLabel[o.status] ?? o.status}</dd></div>
 				</dl>
 			</section>

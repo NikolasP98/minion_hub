@@ -8,6 +8,7 @@
 	import ScopeBanner from '$lib/components/crm/ScopeBanner.svelte';
 	import DataTable from '$lib/components/data-table/DataTable.svelte';
 	import type { DataColumn } from '$lib/components/data-table/DataTable.svelte';
+	import { formatMoney } from '$lib/utils/format';
 
 	let { data }: { data: PageData } = $props();
 	const invoices = $derived(data.invoices);
@@ -30,7 +31,7 @@
 		return d ? new Date(d).toLocaleDateString() : '—';
 	}
 	function fmtMoney(v: string | null) {
-		return v == null ? '—' : Number(v).toLocaleString();
+		return formatMoney(v);
 	}
 	// Cross-report nav: jump to the CRM contact this invoice's client maps to.
 	function toContact(e: Event, id: string) {

@@ -3,12 +3,13 @@
   import { browser } from '$app/environment';
   import { page } from '$app/state';
   import { invalidate } from '$app/navigation';
-  import { ShoppingCart, ChevronDown, LayoutGrid, List } from 'lucide-svelte';
+  import { ShoppingCart, LayoutGrid, List, Receipt, History } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
-  import { PageHeader, Badge, Button, EmptyState } from '$lib/components/ui';
+  import { PageHeader, Badge, Button, EmptyState, Popover } from '$lib/components/ui';
   import { canAct } from '$lib/access/can.svelte';
   import { createHotkey } from '$lib/hotkeys';
   import { toastAsync } from '$lib/state/ui/toast.svelte';
+  import { formatMoney } from '$lib/utils/format';
   import SellCart, { type CartLine, lineCents } from '$lib/components/pos/SellCart.svelte';
   import PaymentPanel, { type PaymentRow } from '$lib/components/pos/PaymentPanel.svelte';
   import CustomerPicker from '$lib/components/pos/CustomerPicker.svelte';
@@ -207,9 +208,7 @@
     }
   }
 
-  // ── Recent sales + shift history ──
-  let shiftsOpen = $state(false);
-
+  // ── Recent sales + shift history (popovers next to the search bar) ──
   async function voidTicketRow(id: string) {
     if (!confirm(m.pos_void_confirm())) return;
     const res = await fetch(`/api/pos/tickets/${id}/void`, { method: 'POST' });
@@ -235,7 +234,79 @@
     <div class="layout">
       <div class="catalog">
         <div class="catalog-head">
-          <input class="search-inp" placeholder={m.pos_sell_search_placeholder()} bind:value={search} bind:this={searchEl} />
+          <div class="search-row">
+            <input class="search-inp" placeholder={m.pos_sell_search_placeholder()} bind:value={search} bind:this={searchEl} />
+
+            <Popover placement="bottom">
+              {#snippet trigger()}
+                <span class="hbtn" title={m.pos_recent_sales()}>
+                  <Receipt size={14} />
+                  <span class="hbtn-label">{m.pos_recent_sales()}</span>
+                </span>
+              {/snippet}
+              <div class="hpanel">
+                <h2 class="section-h">{m.pos_recent_sales()}</h2>
+                {#if data.recentTickets.length === 0}
+                  <EmptyState title={m.common_noMatches()} compact />
+                {:else}
+                  <div class="ticket-list">
+                    {#each data.recentTickets as t (t.id)}
+                      <div class="ticket-row">
+                        <span class="tid">{t.humanId ?? '—'}</span>
+                        <span class="ttime">{fmtTime(t.submittedAt)}</span>
+                        <span class="ttotal">{formatMoney(t.total)}</span>
+                        <span class="tcust">{t.customerName ?? '—'}</span>
+                        {#if t.status === 'void'}
+                          <Badge variant="semantic" value="error" size="sm">{m.pos_void()}</Badge>
+                        {:else if t.stockEntryId}
+                          <a href={`/stock/entries/${t.stockEntryId}`} title={m.pos_sell_view_entry()} class="stock-chip ok">✓</a>
+                        {:else if t.stockWarning}
+                          <span class="stock-chip warn" title={(t.stockWarning as { message: string }).message}>⚠</span>
+                        {/if}
+                        {#if t.status !== 'void' && canAct('pos', 'manage')}
+                          <button type="button" class="void-btn" onclick={() => voidTicketRow(t.id)}>{m.pos_void()}</button>
+                        {/if}
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+            </Popover>
+
+            <Popover placement="bottom">
+              {#snippet trigger()}
+                <span class="hbtn" title={m.pos_sell_shifts_history()}>
+                  <History size={14} />
+                  <span class="hbtn-label">{m.pos_sell_shifts_history()}</span>
+                </span>
+              {/snippet}
+              <div class="hpanel">
+                <h2 class="section-h">{m.pos_sell_shifts_history()}</h2>
+                {#if data.shifts.length === 0}
+                  <EmptyState title={m.common_noMatches()} compact />
+                {:else}
+                  <div class="shift-list">
+                    {#each data.shifts as s (s.id)}
+                      <div class="shift-row">
+                        <span class="stime">{fmtTime(s.openedAt)}</span>
+                        <span class="stime">{s.closedAt ? fmtTime(s.closedAt) : m.pos_sell_shift_status_open()}</span>
+                        {#if s.expected}
+                          <div class="diffs">
+                            {#each Object.keys(s.expected as Record<string, number>) as mth (mth)}
+                              {@const exp = (s.expected as Record<string, number>)[mth] ?? 0}
+                              {@const cnt = ((s.counted as Record<string, number> | null)?.[mth]) ?? 0}
+                              {@const diff = Math.round((cnt - exp) * 100) / 100}
+                              <Badge variant="semantic" value={Math.abs(diff) < 0.01 ? 'success' : 'warning'} size="sm">{mth}: {formatMoney(diff)}</Badge>
+                            {/each}
+                          </div>
+                        {/if}
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+            </Popover>
+          </div>
           <div class="chips-row">
             <div class="chips">
               <button type="button" class="chip-btn" class:on={activeCategory === null} onclick={() => (activeCategory = null)}>
@@ -279,7 +350,7 @@
                 {#each filtered as s (s.productId)}
                   <button type="button" class="card" onclick={() => addLine(s)}>
                     <span class="cname">{s.name}</span>
-                    <span class="cprice">{s.unitPrice != null ? s.unitPrice.toFixed(2) : '—'}</span>
+                    <span class="cprice">{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span>
                     {#if s.kind === 'product' && s.stockQty != null}
                       <Badge variant="semantic" value={stockBadgeValue(s.stockQty)} size="sm">{s.stockQty}</Badge>
                     {/if}
@@ -307,7 +378,7 @@
                 {#if col.key === 'name'}
                   <span class="tname">{s.name}<span class="tcode">{s.code}</span></span>
                 {:else if col.key === 'unitPrice'}
-                  <span class="tabular-nums">{s.unitPrice != null ? s.unitPrice.toFixed(2) : '—'}</span>
+                  <span class="tabular-nums">{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span>
                 {:else if col.key === 'stockQty'}
                   {#if s.kind === 'product' && s.stockQty != null}
                     <Badge variant="semantic" value={stockBadgeValue(s.stockQty)} size="sm">{s.stockQty}</Badge>
@@ -336,10 +407,10 @@
           <PaymentPanel {total} methods={data.posSettings.methods} bind:payments />
           <div class="total-row">
             <span>{m.pos_sell_total()}</span>
-            <span class="total">{total.toFixed(2)}</span>
+            <span class="total">{formatMoney(total)}</span>
           </div>
           <div class="remaining" class:done={remainingCents === 0}>
-            {m.pos_sell_remaining()}: {(remainingCents / 100).toFixed(2)}
+            {m.pos_sell_remaining()}: {formatMoney(remainingCents / 100)}
           </div>
           {#if !shiftOpen}
             <div class="no-shift">{m.pos_no_open_shift()}</div>
@@ -349,61 +420,6 @@
       </div>
     </div>
 
-    <div class="footer">
-      <h2 class="section-h">{m.pos_recent_sales()}</h2>
-      {#if data.recentTickets.length === 0}
-        <EmptyState title={m.common_noMatches()} compact />
-      {:else}
-        <div class="ticket-list">
-          {#each data.recentTickets as t (t.id)}
-            <div class="ticket-row">
-              <span class="tid">{t.humanId ?? '—'}</span>
-              <span class="ttime">{fmtTime(t.submittedAt)}</span>
-              <span class="ttotal">{Number(t.total).toFixed(2)}</span>
-              <span class="tcust">{t.customerName ?? '—'}</span>
-              {#if t.status === 'void'}
-                <Badge variant="semantic" value="error" size="sm">{m.pos_void()}</Badge>
-              {:else if t.stockEntryId}
-                <a href={`/stock/entries/${t.stockEntryId}`} title={m.pos_sell_view_entry()} class="stock-chip ok">✓</a>
-              {:else if t.stockWarning}
-                <span class="stock-chip warn" title={(t.stockWarning as { message: string }).message}>⚠</span>
-              {/if}
-              {#if t.status !== 'void' && canAct('pos', 'manage')}
-                <button type="button" class="void-btn" onclick={() => voidTicketRow(t.id)}>{m.pos_void()}</button>
-              {/if}
-            </div>
-          {/each}
-        </div>
-      {/if}
-
-      <button type="button" class="shifts-toggle" onclick={() => (shiftsOpen = !shiftsOpen)}>
-        <ChevronDown size={14} class={shiftsOpen ? 'rot' : ''} />
-        {m.pos_sell_shifts_history()}
-      </button>
-      {#if shiftsOpen}
-        {#if data.shifts.length === 0}
-          <EmptyState title={m.common_noMatches()} compact />
-        {:else}
-          <div class="shift-list">
-            {#each data.shifts as s (s.id)}
-              <div class="shift-row">
-                <span class="stime">{fmtTime(s.openedAt)}</span>
-                <span class="stime">{s.closedAt ? fmtTime(s.closedAt) : m.pos_sell_shift_status_open()}</span>
-                {#if s.expected}
-                  <div class="diffs">
-                    {#each Object.keys(s.expected as Record<string, number>) as mth (mth)}
-                      {@const exp = (s.expected as Record<string, number>)[mth] ?? 0}
-                      {@const cnt = ((s.counted as Record<string, number> | null)?.[mth]) ?? 0}
-                      {@const diff = Math.round((cnt - exp) * 100) / 100}
-                      <Badge variant="semantic" value={Math.abs(diff) < 0.01 ? 'success' : 'warning'} size="sm">{mth}: {diff.toFixed(2)}</Badge>
-                    {/each}
-                  </div>
-                {/if}
-              </div>
-            {/each}
-          </div>
-        {/if}
-      {/if}
     </div>
   </div>
 </div>
