@@ -603,6 +603,11 @@
     min-height: 0;
     overflow-y: auto;
   }
+  /* Children must keep their natural height and overflow the scroller — the
+     default flex-shrink:1 compresses them so their contents overlap instead. */
+  .cart-scroll > :global(*) {
+    flex-shrink: 0;
+  }
   /* Total + Charge always visible: pinned inside the panel on desktop, stuck to
      the viewport bottom while the page scrolls on mobile. */
   .charge-bar {
