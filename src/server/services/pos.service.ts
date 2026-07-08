@@ -15,8 +15,21 @@ import {
 import { nextSerialId } from './naming-series';
 import { isModuleEnabled } from './modules.service';
 import { resolveDefaultWarehouse } from './stock-accruals.service';
-import { createSourcedIssue, findEntryBySource, submitEntry, cancelEntry, StockError, type CreateIssueFromInvoiceLine } from './stock.service';
+import {
+  createSourcedIssue,
+  findEntryBySource,
+  submitEntry,
+  cancelEntry,
+  StockError,
+  createItem,
+  setConsumption,
+  deleteConsumption,
+  listConsumption,
+  type CreateIssueFromInvoiceLine,
+} from './stock.service';
 import { stkItems, stkConsumption } from '$server/db/pg-schema/stock';
+import { finProducts } from '$server/db/pg-finance-schema';
+import { upsertProduct } from './finance-products.service';
 import { emitHubEvent } from '$server/events/emit';
 
 export class PosError extends Error {
@@ -584,4 +597,206 @@ export async function getTicket(ctx: CoreCtx, id: string): Promise<{ ticket: Pos
     const payments = await tx.select().from(posPayments).where(eq(posPayments.ticketId, id)).orderBy(asc(posPayments.paidAt));
     return { ticket, lines, payments };
   });
+}
+
+// ---- sellables ----
+
+/** Auto-code from a product name when the wizard leaves code blank: uppercase,
+ *  non-alphanumeric runs collapsed to a single '-', no leading/trailing dash
+ *  (`BOTOX 50U` → `BOTOX-50U`). Pure so the slugification is unit-testable
+ *  without a db — same remedy as computeExpected/computeTicketTotals above. */
+export function slugifyCode(name: string): string {
+  return name
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+export interface SellableRow {
+  productId: string;
+  code: string;
+  name: string;
+  category: string | null;
+  unitPrice: number | null;
+  active: boolean;
+  kind: 'product' | 'service';
+  itemId: string | null;
+  stockQty: number | null;
+  hasMapping: boolean;
+}
+
+type SellableSqlRow = {
+  id: string;
+  code: string;
+  name: string;
+  category: string | null;
+  unit_price: string | null;
+  active: boolean;
+  item_id: string | null;
+  stock_qty: string | number | null;
+  has_mapping: boolean;
+};
+
+/** `kind` is DERIVED, never stored: a product row is 'product' iff a stk_items
+ *  row links to it via finProductId, else 'service'. An item that exists but
+ *  has no bins yet still yields stockQty 0 (the query's coalesce + this `?? 0`
+ *  belt-and-suspenders) — null means "not stock-tracked", never a crash. */
+function mapSellableRow(r: SellableSqlRow): SellableRow {
+  return {
+    productId: String(r.id),
+    code: String(r.code),
+    name: String(r.name),
+    category: r.category != null ? String(r.category) : null,
+    unitPrice: r.unit_price != null ? Number(r.unit_price) : null,
+    active: r.active === true,
+    kind: r.item_id != null ? 'product' : 'service',
+    itemId: r.item_id != null ? String(r.item_id) : null,
+    stockQty: r.item_id != null ? Number(r.stock_qty ?? 0) : null,
+    hasMapping: r.has_mapping === true,
+  };
+}
+
+const SELLABLE_MERGE_SQL = sql`
+      select p.id, p.code, p.name, p.category, p.unit_price, p.active,
+             i.id as item_id,
+             coalesce(sum(b.qty), 0)::float8 as stock_qty,
+             exists(select 1 from stk_consumption c where c.fin_product_id = p.id) as has_mapping
+      from fin_products p
+      left join stk_items i on i.fin_product_id = p.id and i.org_id = p.org_id
+      left join stk_bins b on b.item_id = i.id and b.org_id = p.org_id`;
+
+/**
+ * Merged catalog, point of entry for POS item pickers: active fin_products
+ * left-joined to their linked stk_items (1:1 via stk_items.fin_product_id),
+ * Σ stk_bins.qty for the item, and an exists-flag on stk_consumption — ONE
+ * query, no N+1 per row.
+ */
+export async function listSellables(ctx: CoreCtx): Promise<SellableRow[]> {
+  return withOrgCore(ctx, async (tx) => {
+    const rows = (await tx.execute(sql`${SELLABLE_MERGE_SQL}
+      where p.org_id = ${ctx.tenantId} and p.active = true
+      group by p.id, i.id
+      order by p.name`)) as unknown as SellableSqlRow[];
+    return rows.map(mapSellableRow);
+  });
+}
+
+/** Same merge as listSellables for a single product, active-or-not — create
+ *  and update both need the fresh row back regardless of active state. */
+async function getSellableRow(ctx: CoreCtx, productId: string): Promise<SellableRow> {
+  const rows = (await withOrgCore(ctx, (tx) =>
+    tx.execute(sql`${SELLABLE_MERGE_SQL}
+      where p.org_id = ${ctx.tenantId} and p.id = ${productId}
+      group by p.id, i.id`),
+  )) as unknown as SellableSqlRow[];
+  if (!rows[0]) throw new PosError('sellable not found', 'not_found');
+  return mapSellableRow(rows[0]);
+}
+
+/** Translate a raw pg unique-violation into the domain error — same
+ *  convention as enqueueJob in finance-sync-jobs.service.ts. */
+function isUniqueViolation(e: unknown): boolean {
+  return !!e && typeof e === 'object' && 'code' in e && (e as { code?: string }).code === '23505';
+}
+
+export interface SellableInput {
+  name: string;
+  code?: string;
+  category?: string | null;
+  unitPrice: number | null;
+  kind: 'product' | 'service';
+  trackStock?: boolean;
+  uom?: string;
+  consumption?: Array<{ itemId: string; qtyPerUnit: number }>;
+  active?: boolean;
+}
+
+/**
+ * Cross-module create wizard: product (upsertProduct — idempotent on code, so
+ * a retried call after a partial failure is safe), then — for a product-kind
+ * sellable with trackStock — a linked stk_items row (finProductId passed
+ * straight through NewItemInput, no separate updateItem link-up needed), then
+ * consumption mapping rows. SEQUENTIAL ctx-level calls, NOT one giant tx:
+ * withOrgCore doesn't nest (same reason as the accrual hook in
+ * stock-accruals.service.ts) — a failed item/consumption write after the
+ * product commits is acceptable, re-running with the same input heals it.
+ */
+export async function createSellable(ctx: CoreCtx, input: SellableInput, actor: Actor): Promise<SellableRow> {
+  const code = input.code?.trim() || slugifyCode(input.name);
+  if (!code) throw new PosError('name or code required', 'invalid_code');
+  const active = input.active ?? true;
+
+  try {
+    await upsertProduct(ctx, { code, name: input.name, category: input.category ?? null, unitPrice: input.unitPrice, active });
+  } catch (e) {
+    if (isUniqueViolation(e)) throw new PosError(`code ${code} is already taken`, 'code_taken');
+    throw e;
+  }
+
+  const [product] = await withOrgCore(ctx, (tx) =>
+    tx
+      .select({ id: finProducts.id })
+      .from(finProducts)
+      .where(and(eq(finProducts.orgId, ctx.tenantId), eq(finProducts.code, code)))
+      .limit(1),
+  );
+  if (!product) throw new PosError('product write did not persist', 'write_failed');
+
+  if (input.kind === 'product' && input.trackStock) {
+    await createItem(ctx, { code, name: input.name, uom: input.uom ?? 'unit', finProductId: product.id });
+  }
+
+  if (input.consumption?.length) {
+    for (const c of input.consumption) {
+      await setConsumption(ctx, { finProductId: product.id, itemId: c.itemId, qtyPerUnit: c.qtyPerUnit }, actor);
+    }
+  }
+
+  return getSellableRow(ctx, product.id);
+}
+
+/**
+ * Patch product fields via upsertProduct (unset patch fields fall back to the
+ * current row). `consumption` PRESENT (even `[]`) is a replace-set FOR THIS
+ * PRODUCT ONLY: listConsumption is filtered by finProductId, so a mapping
+ * belonging to another product is never read or deleted — rows missing from
+ * the new array are removed via deleteConsumption, the rest upserted via
+ * setConsumption. `consumption` omitted leaves existing mappings untouched.
+ */
+export async function updateSellable(ctx: CoreCtx, productId: string, patch: Partial<SellableInput>, actor: Actor): Promise<SellableRow> {
+  const [current] = await withOrgCore(ctx, (tx) =>
+    tx
+      .select()
+      .from(finProducts)
+      .where(and(eq(finProducts.id, productId), eq(finProducts.orgId, ctx.tenantId)))
+      .limit(1),
+  );
+  if (!current) throw new PosError('sellable not found', 'not_found');
+
+  const code = patch.code?.trim() || current.code;
+  const name = patch.name ?? current.name;
+  const category = patch.category !== undefined ? patch.category : current.category;
+  const unitPrice = patch.unitPrice !== undefined ? patch.unitPrice : current.unitPrice == null ? null : Number(current.unitPrice);
+  const active = patch.active !== undefined ? patch.active : current.active;
+
+  try {
+    await upsertProduct(ctx, { code, name, category, unitPrice, active });
+  } catch (e) {
+    if (isUniqueViolation(e)) throw new PosError(`code ${code} is already taken`, 'code_taken');
+    throw e;
+  }
+
+  if (patch.consumption !== undefined) {
+    const existing = await listConsumption(ctx, { finProductId: productId });
+    const keep = new Set(patch.consumption.map((c) => c.itemId));
+    for (const row of existing) {
+      if (!keep.has(row.itemId)) await deleteConsumption(ctx, row.id);
+    }
+    for (const c of patch.consumption) {
+      await setConsumption(ctx, { finProductId: productId, itemId: c.itemId, qtyPerUnit: c.qtyPerUnit }, actor);
+    }
+  }
+
+  return getSellableRow(ctx, productId);
 }
