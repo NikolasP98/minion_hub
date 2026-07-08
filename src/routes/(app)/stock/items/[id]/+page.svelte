@@ -276,6 +276,26 @@
     </div>
 
     <div class="card">
+      <div class="card-h">{m.stock_item_consumed_by_title()}</div>
+      {#if data.consumedBy.length === 0}
+        <p class="t-caption">{m.stock_item_consumed_by_empty()}</p>
+      {:else}
+        <table class="mini-table">
+          <thead><tr><th>{m.stock_col_product()}</th><th class="num">{m.stock_consumption_col_qty_per_unit()}</th><th>{m.stock_field_note()}</th></tr></thead>
+          <tbody>
+            {#each data.consumedBy as c (c.id)}
+              <tr>
+                <td>{c.productCode} — {c.productName}</td>
+                <td class="num">{fmt(c.qtyPerUnit)}</td>
+                <td class="t-caption">{c.note ?? '—'}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+        <a class="consumed-link" href="/stock/consumption">{m.stock_item_manage_consumption()} <ExternalLink size={12} /></a>
+      {/if}
+    </div>
+    <div class="card">
       <div class="card-h">{m.stock_item_ledger_title()}</div>
       {#if data.ledger.length === 0}
         <p class="t-caption">{m.stock_ledger_empty()}</p>
@@ -307,26 +327,6 @@
       {/if}
     </div>
 
-    <div class="card">
-      <div class="card-h">{m.stock_item_consumed_by_title()}</div>
-      {#if data.consumedBy.length === 0}
-        <p class="t-caption">{m.stock_item_consumed_by_empty()}</p>
-      {:else}
-        <table class="mini-table">
-          <thead><tr><th>{m.stock_col_product()}</th><th class="num">{m.stock_consumption_col_qty_per_unit()}</th><th>{m.stock_field_note()}</th></tr></thead>
-          <tbody>
-            {#each data.consumedBy as c (c.id)}
-              <tr>
-                <td>{c.productCode} — {c.productName}</td>
-                <td class="num">{fmt(c.qtyPerUnit)}</td>
-                <td class="t-caption">{c.note ?? '—'}</td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-        <a class="consumed-link" href="/stock/consumption">{m.stock_item_manage_consumption()} <ExternalLink size={12} /></a>
-      {/if}
-    </div>
   </div>
 </div>
 
