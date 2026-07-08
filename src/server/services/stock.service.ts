@@ -951,6 +951,66 @@ export interface CreateServiceIssueInput {
 }
 
 /**
+ * Shared insert path for "sourced" issue entries: dup-guards by (source,
+ * sourceId) when a sourceId is given, resolves consumption-uom lines to
+ * stock qty, and inserts the draft stk_entry + its lines. Extracted from
+ * createServiceIssue so createSourcedIssue (POS etc.) doesn't paste a second
+ * copy of the same insert logic — both call this.
+ */
+async function insertSourcedIssueEntry(
+  ctx: CoreCtx,
+  tx: CoreTx,
+  body: {
+    source: string;
+    sourceId?: string | null;
+    warehouseId: string;
+    lines: CreateIssueFromInvoiceLine[];
+    partyId?: string | null;
+    note?: string | null;
+    metadata: Record<string, unknown>;
+    actor: Actor;
+  },
+): Promise<StkEntry> {
+  if (body.sourceId) {
+    const [dup] = await tx
+      .select({ id: stkEntries.id })
+      .from(stkEntries)
+      .where(
+        and(
+          eq(stkEntries.orgId, ctx.tenantId),
+          ne(stkEntries.status, 'cancelled'),
+          sql`${stkEntries.metadata}->>'source' = ${body.source}`,
+          sql`${stkEntries.metadata}->>'sourceId' = ${body.sourceId}`,
+        ),
+      );
+    if (dup) throw new StockError('a stock issue already exists for this source', 'duplicate_source');
+  }
+
+  const resolvedLines = await resolveConsumptionLines(tx, ctx.tenantId, body.lines);
+
+  const [row] = await tx
+    .insert(stkEntries)
+    .values({
+      orgId: ctx.tenantId,
+      type: 'issue',
+      status: 'draft',
+      partyId: body.partyId ?? null,
+      note: body.note ?? null,
+      createdBy: body.actor.id,
+      metadata: body.metadata,
+    })
+    .returning();
+  await tx.insert(stkEntryLines).values(
+    linesToRows(
+      ctx.tenantId,
+      row.id,
+      resolvedLines.map((l) => ({ itemId: l.itemId, qty: l.qty, fromWarehouseId: body.warehouseId })),
+    ),
+  );
+  return row;
+}
+
+/**
  * Creates (and optionally submits) an `issue` stk_entry for a service performed
  * for a customer, no invoice required. Same append-only ledger path as the
  * invoice issue; the customer rides `party_id` and the procedure notes ride
@@ -969,50 +1029,64 @@ export async function createServiceIssue(ctx: CoreCtx, input: CreateServiceIssue
       .where(and(eq(finProducts.id, input.finProductId), eq(finProducts.orgId, ctx.tenantId)));
     if (!product) throw new StockError('product not found', 'product_not_found');
 
-    if (input.sourceId) {
-      const src = input.source ?? 'service';
-      const [dup] = await tx
-        .select({ id: stkEntries.id })
-        .from(stkEntries)
-        .where(
-          and(
-            eq(stkEntries.orgId, ctx.tenantId),
-            ne(stkEntries.status, 'cancelled'),
-            sql`${stkEntries.metadata}->>'source' = ${src}`,
-            sql`${stkEntries.metadata}->>'sourceId' = ${input.sourceId}`,
-          ),
-        );
-      if (dup) throw new StockError('a stock issue already exists for this source', 'duplicate_source');
-    }
-
-    const resolvedLines = await resolveConsumptionLines(tx, ctx.tenantId, input.lines);
-
-    const [row] = await tx
-      .insert(stkEntries)
-      .values({
-        orgId: ctx.tenantId,
-        type: 'issue',
-        status: 'draft',
-        partyId: input.partyId ?? null,
-        note: input.note ?? `Service: ${product.name}`,
-        createdBy: input.actor.id,
-        metadata: {
-          source: input.source ?? 'service',
-          finProductId: input.finProductId,
-          quantity: input.quantity,
-          ...(input.sourceId ? { sourceId: input.sourceId } : {}),
-        },
-      })
-      .returning();
-    await tx.insert(stkEntryLines).values(
-      linesToRows(
-        ctx.tenantId,
-        row.id,
-        resolvedLines.map((l) => ({ itemId: l.itemId, qty: l.qty, fromWarehouseId: input.warehouseId })),
-      ),
-    );
-    return row;
+    const source = input.source ?? 'service';
+    return insertSourcedIssueEntry(ctx, tx, {
+      source,
+      sourceId: input.sourceId,
+      warehouseId: input.warehouseId,
+      lines: input.lines,
+      partyId: input.partyId,
+      note: input.note ?? `Service: ${product.name}`,
+      metadata: {
+        source,
+        finProductId: input.finProductId,
+        quantity: input.quantity,
+        ...(input.sourceId ? { sourceId: input.sourceId } : {}),
+      },
+      actor: input.actor,
+    });
   });
+
+  return input.submit ? submitEntry(ctx, entry.id, input.actor) : entry;
+}
+
+export interface CreateSourcedIssueInput {
+  /** Provenance, e.g. 'pos' | 'pos_refill' consumers. Dup-guarded with sourceId. */
+  source: string;
+  sourceId: string;
+  warehouseId: string;
+  lines: CreateIssueFromInvoiceLine[];
+  partyId?: string | null;
+  note?: string | null;
+  submit?: boolean;
+  actor: Actor;
+  /** Extra metadata merged into the entry's provenance blob. */
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Generic multi-line sourced issue — the POS ticket service (and future
+ * sourced consumers) post one `issue` entry with `{source, sourceId, ...}`
+ * provenance via this. Same insert path as createServiceIssue
+ * (insertSourcedIssueEntry) minus the single-finProductId coupling; the
+ * dup guard always applies (sourceId is required here, unlike the optional
+ * one on createServiceIssue).
+ */
+export async function createSourcedIssue(ctx: CoreCtx, input: CreateSourcedIssueInput): Promise<StkEntry> {
+  if (!input.lines.length) throw new StockError('at least one stock line is required', 'no_lines');
+
+  const entry = await withOrgCore(ctx, (tx) =>
+    insertSourcedIssueEntry(ctx, tx, {
+      source: input.source,
+      sourceId: input.sourceId,
+      warehouseId: input.warehouseId,
+      lines: input.lines,
+      partyId: input.partyId,
+      note: input.note,
+      metadata: { source: input.source, sourceId: input.sourceId, ...input.metadata },
+      actor: input.actor,
+    }),
+  );
 
   return input.submit ? submitEntry(ctx, entry.id, input.actor) : entry;
 }
