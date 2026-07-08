@@ -24,6 +24,7 @@
         { key: 'C', path: '/crm' },
         { key: 'F', path: '/finances' },
         { key: 'K', path: '/stock' },
+        { key: 'P', path: '/pos' },
         { key: 'W', path: '/workforce' },
         { key: 'R', path: '/reliability' },
         { key: 'S', path: '/settings' },

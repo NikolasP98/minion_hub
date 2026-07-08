@@ -3590,6 +3590,7 @@
   "brains_agent_error_generic": "Algo salió mal. Inténtalo de nuevo.",
   "brains_agents_col_status": "Estado",
   "nav_stock": "Inventario",
+  "nav_pos": "Punto de venta",
   "stock_nav_overview": "Resumen",
   "stock_nav_items": "Artículos",
   "stock_nav_warehouses": "Almacenes",

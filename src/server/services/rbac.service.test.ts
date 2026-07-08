@@ -158,6 +158,25 @@ describe('defaultCaps — role tiers', () => {
 		expect(defaultCaps('viewer', 'overview').view).toBe(true);
 		expect(defaultCaps('nonsense', 'crm').view).toBe(false);
 	});
+	test('pos: staff has create+edit but not manage; viewer is view-only', () => {
+		const staff = defaultCaps('staff', 'pos');
+		expect(staff.view).toBe(true);
+		expect(staff.create).toBe(true);
+		expect(staff.edit).toBe(true);
+		expect(staff.manage).toBe(false);
+		expect(staff.delete).toBe(false);
+		const viewer = defaultCaps('viewer', 'pos');
+		expect(viewer.view).toBe(true);
+		expect(viewer.create).toBe(false);
+		expect(viewer.edit).toBe(false);
+		expect(viewer.manage).toBe(false);
+	});
+	test('pos: manager gets manage (unlike other business modules), still no delete', () => {
+		const manager = defaultCaps('manager', 'pos');
+		expect(manager.manage).toBe(true);
+		expect(manager.delete).toBe(false);
+		expect(manager.export).toBe(true);
+	});
 });
 
 describe('buildCapabilities — multi-role OR + overrides', () => {
@@ -330,6 +349,10 @@ describe('apiWriteCapability — central hooks write guard mapping', () => {
 		expect(apiWriteCapability('/api/agents/x', 'POST')).toBeNull();
 		expect(apiWriteCapability('/api/gateway/query', 'POST')).toBeNull();
 		expect(apiWriteCapability('/api/messages/ingest', 'POST')).toBeNull();
+	});
+	test('pos writes map to (pos, edit); DELETE→delete', () => {
+		expect(apiWriteCapability('/api/pos/tickets', 'POST')).toEqual({ module: 'pos', action: 'edit' });
+		expect(apiWriteCapability('/api/pos/tickets/x/void', 'DELETE')).toEqual({ module: 'pos', action: 'delete' });
 	});
 });
 

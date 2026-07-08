@@ -49,6 +49,7 @@ export const MODULES = [
 	'brains',
 	'stock',
 	'ads',
+	'pos',
 	// platform / admin
 	'agents',
 	'channels',
@@ -78,6 +79,7 @@ export const MODULE_LABELS: Record<Module, string> = {
 	brains: 'AI Brains',
 	stock: 'Stock',
 	ads: 'Ads',
+	pos: 'Point of Sale',
 	agents: 'Agents',
 	channels: 'Channels',
 	flows: 'Agent Builder',
@@ -100,6 +102,7 @@ export const BUSINESS_MODULES: readonly Module[] = [
 	'brains',
 	'stock',
 	'ads',
+	'pos',
 ];
 const ADMIN_MODULES: readonly Module[] = [
 	'agents',
@@ -122,6 +125,8 @@ const NONE: ActionSet = {
 const set = (a: Partial<ActionSet>): ActionSet => ({ ...NONE, ...a });
 const ALL: ActionSet = { view: true, create: true, edit: true, delete: true, export: true, manage: true };
 const RWXE = set({ view: true, create: true, edit: true, export: true });
+// pos: manager gets `manage` too (register/session close), unlike other business modules.
+const RWXEM = set({ view: true, create: true, edit: true, export: true, manage: true });
 const RWX = set({ view: true, create: true, edit: true });
 const VIEW = set({ view: true });
 
@@ -146,11 +151,12 @@ export function defaultCaps(roleKey: string, module: Module): ActionSet {
 		case 'admin':
 			return ALL;
 		case 'manager':
+			if (module === 'pos') return RWXEM; // full business data + manage (register/session close)
 			if (BUSINESS_MODULES.includes(module)) return RWXE; // full business data, no delete/manage
 			if (ADMIN_MODULES.includes(module)) return VIEW;
 			return NONE;
 		case 'staff':
-			if (['crm', 'scheduling', 'support', 'comms'].includes(module)) return RWX;
+			if (['crm', 'scheduling', 'support', 'comms', 'pos'].includes(module)) return RWX;
 			if (['finance', 'sales', 'projects', 'memberships'].includes(module)) return VIEW;
 			return NONE;
 		case 'viewer':
@@ -924,6 +930,7 @@ const API_WRITE_PREFIXES: ReadonlyArray<readonly [string, Module]> = [
 	['/api/brains', 'brains'],
 	['/api/stock', 'stock'],
 	['/api/meta', 'ads'],
+	['/api/pos', 'pos'],
 	['/api/projects', 'projects'],
 	['/api/project-tasks', 'projects'],
 	['/api/project-templates', 'projects'],

@@ -25,6 +25,7 @@ const BASE_ACCESS: Record<string, Capability> = {
   'stock.view': { permission: 'stock:view' },
   'brains.view': { permission: 'brains:view' },
   'ads.view': { permission: 'ads:view' },
+  'pos.view': { permission: 'pos:view' },
   // Platform-module view gates (RBAC-driven).
   'agents.view': { permission: 'agents:view' },
   'channels.view': { permission: 'channels:view' },
