@@ -56,13 +56,15 @@
   {@render trigger()}
 </button>
 
-<!-- Zag's positioner ships inline `z-index: var(--z-index)` — an unset var
-     computes to auto and beats any z-* utility class, so sticky headers/bars
-     painted over the panel. Define the var it actually reads. -->
-<div {...api.getPositionerProps()} class="z-50 [--z-index:50]">
+<!-- The positioner's stacking level comes from the CONTENT's z-index: Zag
+     imperatively sets the positioner's `--z-index` to
+     getComputedStyle(contentEl).zIndex while positioning (get-placement.mjs),
+     overwriting anything set on the positioner itself — so z-50 lives on the
+     content div below, NOT here. -->
+<div {...api.getPositionerProps()}>
   <div
     {...api.getContentProps()}
-    class="outline-none {bare ? '' : 'surface-3 rounded-[var(--radius-md)] p-1'} {cls}"
+    class="outline-none z-50 {bare ? '' : 'surface-3 rounded-[var(--radius-md)] p-1'} {cls}"
   >
     {@render children()}
   </div>
