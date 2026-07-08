@@ -19,13 +19,13 @@ describe("getDynamicPluginsSections", () => {
     expect(marketing?.items[1]?.label).toBe("Socials");
     const operations = sections.find((s) => s.id === "plugins:operations");
     expect(operations?.label).toBe("Operations");
-    expect(operations?.items.map((i) => i.href)).toEqual(["/work", "/workforce", "/scheduling", "/stock"]);
+    expect(operations?.items.map((i) => i.href)).toEqual(["/work", "/workforce", "/scheduling", "/stock", "/pos"]);
     expect(operations?.items[0]?.label).toBe("My Work");
     expect(operations?.items[1]?.label).toBe("Workforce");
     expect(operations?.items[2]?.label).toBe("Scheduling");
     expect(operations?.items[3]?.label).toBe("Stock");
     const finance = sections.find((s) => s.id === "plugins:finance");
-    expect(finance?.items.map((i) => i.href)).toEqual(["/finances", "/sales", "/pos", "/memberships"]);
+    expect(finance?.items.map((i) => i.href)).toEqual(["/finances", "/sales", "/memberships"]);
     const support = sections.find((s) => s.id === "plugins:customer-support");
     expect(support?.items.map((i) => i.href)).toEqual(["/support"]);
   });

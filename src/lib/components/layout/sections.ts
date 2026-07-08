@@ -205,6 +205,16 @@ export const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: Se
         },
     },
     {
+        category: "operations",
+        item: {
+            href: "/pos",
+            label: m.nav_pos(),
+            icon: Store,
+            matcher: (p: string) => p.startsWith("/pos"),
+            requires: "pos.view",
+        },
+    },
+    {
         category: "finance",
         item: {
             href: "/finances",
@@ -222,16 +232,6 @@ export const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: Se
             icon: ClipboardList,
             matcher: (p: string) => p.startsWith("/sales"),
             requires: "sales.view",
-        },
-    },
-    {
-        category: "finance",
-        item: {
-            href: "/pos",
-            label: m.nav_pos(),
-            icon: Store,
-            matcher: (p: string) => p.startsWith("/pos"),
-            requires: "pos.view",
         },
     },
     {
