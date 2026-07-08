@@ -56,7 +56,10 @@
   {@render trigger()}
 </button>
 
-<div {...api.getPositionerProps()} class="z-50">
+<!-- Zag's positioner ships inline `z-index: var(--z-index)` — an unset var
+     computes to auto and beats any z-* utility class, so sticky headers/bars
+     painted over the panel. Define the var it actually reads. -->
+<div {...api.getPositionerProps()} class="z-50 [--z-index:50]">
   <div
     {...api.getContentProps()}
     class="outline-none {bare ? '' : 'surface-3 rounded-[var(--radius-md)] p-1'} {cls}"

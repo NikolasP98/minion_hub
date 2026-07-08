@@ -456,7 +456,10 @@
     .catalog-head {
       position: sticky;
       top: -1rem; /* cancels the scroll container's p-4 */
-      z-index: 5;
+      /* Sticky = stacking context, so the history popovers inside are capped
+         at this z — must beat the DataTable sticky header and the sticky
+         charge bar, or they paint over the open panel. */
+      z-index: 30;
       background: var(--color-background);
       padding: 1rem 0 0.5rem;
       margin-top: -1rem;
