@@ -9,8 +9,8 @@ const lineSchema = z.object({
 	kind: z.enum(['service', 'product']),
 	finProductId: z.string().min(1).nullable().optional(),
 	description: z.string().min(1).max(500),
-	qty: z.number().finite(),
-	unitPrice: z.number().finite(),
+	qty: z.number().finite().positive(),
+	unitPrice: z.number().finite().positive(),
 	discount: z.number().finite().optional(),
 });
 
