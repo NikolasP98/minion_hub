@@ -25,7 +25,7 @@ describe("getDynamicPluginsSections", () => {
     expect(operations?.items[2]?.label).toBe("Scheduling");
     expect(operations?.items[3]?.label).toBe("Stock");
     const finance = sections.find((s) => s.id === "plugins:finance");
-    expect(finance?.items.map((i) => i.href)).toEqual(["/finances", "/sales", "/memberships"]);
+    expect(finance?.items.map((i) => i.href)).toEqual(["/finances", "/sales", "/pos", "/memberships"]);
     const support = sections.find((s) => s.id === "plugins:customer-support");
     expect(support?.items.map((i) => i.href)).toEqual(["/support"]);
   });
