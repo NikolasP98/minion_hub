@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createMockDb } from '$server/test-utils/mock-db';
-import { PosError, getPosSettings, updatePosSettings, DEFAULT_POS_SETTINGS, openShift, closeShift, shiftSummary } from './pos.service';
+import { PosError, getPosSettings, updatePosSettings, DEFAULT_POS_SETTINGS, openShift, closeShift, shiftSummary, computeExpected } from './pos.service';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -21,6 +21,34 @@ describe('getPosSettings / updatePosSettings', () => {
     const { db } = createMockDb();
     await expect(updatePosSettings(ctx(db), { methods: [] })).rejects.toMatchObject({ code: 'invalid_methods' });
     await expect(updatePosSettings(ctx(db), { methods: ['Cash'] })).rejects.toMatchObject({ code: 'invalid_methods' });
+  });
+
+  it('hands out a defensive copy — mutating the result never corrupts the defaults', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[], []]); // two no-row reads
+    const first = await getPosSettings(ctx(db));
+    first.methods.push('hacked');
+    first.methods[0] = 'stolen';
+    const second = await getPosSettings(ctx(db));
+    expect(second.methods).toEqual(['cash', 'card', 'yape', 'plin', 'transfer']);
+    expect(DEFAULT_POS_SETTINGS.methods).toEqual(['cash', 'card', 'yape', 'plin', 'transfer']);
+    // the singleton itself is frozen — direct mutation throws
+    expect(() => DEFAULT_POS_SETTINGS.methods.push('nope')).toThrow();
+  });
+});
+
+describe('computeExpected', () => {
+  it('folds the cash float into cash only', () => {
+    expect(computeExpected({ cash: 35.5, card: 30 }, { cash: 50 })).toEqual({ cash: 85.5, card: 30 });
+  });
+  it('cash float with zero cash payments still yields expected.cash = float', () => {
+    expect(computeExpected({ card: 30 }, { cash: 50 })).toEqual({ cash: 50, card: 30 });
+  });
+  it('missing float key → expected.cash is just the payment sum', () => {
+    expect(computeExpected({ cash: 12.34 }, {})).toEqual({ cash: 12.34 });
+  });
+  it('non-cash float keys are NOT folded into their methods', () => {
+    expect(computeExpected({ card: 30 }, { card: 100 })).toEqual({ cash: 0, card: 30 });
   });
 });
 

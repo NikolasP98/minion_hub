@@ -29,16 +29,19 @@ export interface PosSettings {
   allowPriceOverride: boolean;
 }
 
-export const DEFAULT_POS_SETTINGS: PosSettings = {
-  methods: ['cash', 'card', 'yape', 'plin', 'transfer'],
+// Frozen (incl. the methods array) so a stray in-place mutation throws instead
+// of silently corrupting defaults for every org in the process.
+export const DEFAULT_POS_SETTINGS: PosSettings = Object.freeze({
+  methods: Object.freeze(['cash', 'card', 'yape', 'plin', 'transfer']) as string[],
   currency: 'PEN',
   requireCustomer: false,
   allowPriceOverride: true,
-};
+});
 
 export async function getPosSettings(ctx: CoreCtx): Promise<PosSettings> {
   const [row] = await withOrgCore(ctx, (tx) => tx.select().from(posSettings).where(eq(posSettings.orgId, ctx.tenantId)).limit(1));
-  if (!row) return DEFAULT_POS_SETTINGS;
+  // Defensive copy — callers get a mutable object, never the shared singleton.
+  if (!row) return { ...DEFAULT_POS_SETTINGS, methods: [...DEFAULT_POS_SETTINGS.methods] };
   return {
     methods: row.methods as string[],
     currency: row.currency,
@@ -78,6 +81,18 @@ export interface ShiftSummary {
 }
 
 const NON_VOID = ne(posTickets.status, 'void');
+
+/**
+ * Expected drawer amounts at close: per-method payment sums, plus the opening
+ * float folded into cash ONLY (per the brief — the physical drawer starts with
+ * a float; electronic methods have no starting balance to reconcile).
+ * Pure, so the math is unit-testable without a db.
+ */
+export function computeExpected(byMethod: Record<string, number>, openingFloat: Record<string, number>): Record<string, number> {
+  const expected = { ...byMethod };
+  expected.cash = round2((expected.cash ?? 0) + Number(openingFloat.cash ?? 0));
+  return expected;
+}
 
 /** Per-method payment sums, joined to non-void tickets, for one shift. */
 async function paymentsByMethod(tx: CoreTx, orgId: string, shiftId: string): Promise<Record<string, number>> {
@@ -132,9 +147,8 @@ export async function closeShift(ctx: CoreCtx, input: { counted: Record<string, 
       .limit(1);
     if (!open) throw new PosError('no open shift for this org', 'no_open_shift');
 
-    const expected = await paymentsByMethod(tx, ctx.tenantId, open.id);
-    const openingFloat = (open.openingFloat as Record<string, number>) ?? {};
-    expected.cash = round2((expected.cash ?? 0) + Number(openingFloat.cash ?? 0));
+    const byMethod = await paymentsByMethod(tx, ctx.tenantId, open.id);
+    const expected = computeExpected(byMethod, (open.openingFloat as Record<string, number>) ?? {});
 
     const [closed] = await tx
       .update(posShifts)
