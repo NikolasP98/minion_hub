@@ -104,6 +104,13 @@ export interface CreateBookingInput {
   uid?: string;
   /** Internal staff bookings bypass min-notice + rolling-period (still respect conflicts). */
   bypassRules?: boolean;
+  /** Front-desk walk-in: narrow candidates to exactly this resource before slot
+   *  computation. If it has no matching free slot at `start` → SlotUnavailableError
+   *  (never silently reassigned to another assignee). */
+  forceResourceId?: string;
+  /** Requires `forceResourceId`. Skips slot computation entirely and books at
+   *  `input.start` verbatim once the event type + forced resource are validated. */
+  overrideConflicts?: boolean;
   now?: Date;
   /** Adjusted stock-consumption lines from the booking modal (consumption uom).
    *  Absent → defaults accrue from the product's stk_consumption mapping. */
@@ -182,6 +189,7 @@ async function ensureCrmContact(
 }
 
 export async function createBooking(ctx: CoreCtx, input: CreateBookingInput): Promise<SchedBooking> {
+  if (input.overrideConflicts && !input.forceResourceId) throw new Error('overrideConflicts requires forceResourceId');
   const { row, created } = await withOrgCore(ctx, async (tx) => {
     const [et] = await tx
       .select()
@@ -201,6 +209,9 @@ export async function createBooking(ctx: CoreCtx, input: CreateBookingInput): Pr
         .where(eq(schedEventTypeResources.eventTypeId, et.id))
     ).map((r) => r.resourceId);
     if (input.preferredResourceId) candidateIds = candidateIds.filter((r) => r === input.preferredResourceId);
+    // Front-desk walk-in override: narrow to exactly this resource. A non-assignee
+    // force id filters candidates to empty → SlotUnavailableError below (no silent reassign).
+    if (input.forceResourceId) candidateIds = candidateIds.filter((r) => r === input.forceResourceId);
     const active = await tx
       .select({ id: schedResources.id })
       .from(schedResources)
@@ -208,39 +219,48 @@ export async function createBooking(ctx: CoreCtx, input: CreateBookingInput): Pr
     candidateIds = active.map((r) => r.id);
     if (!candidateIds.length) throw new SlotUnavailableError();
 
-    const availability = await loadAvailability(tx, ctx.tenantId, candidateIds);
-    const pad = (Math.max(et.beforeBuffer, et.afterBuffer) + et.length) * MS_PER_MIN;
-    const busy = await loadBusyInTx(tx, ctx.tenantId, candidateIds, new Date(start.getTime() - pad), new Date(end.getTime() + pad));
+    let chosen: string;
+    if (input.overrideConflicts) {
+      // Walk-in override: event type + forced resource existence/active are already
+      // validated above. Skip slot computation entirely and book at `start` verbatim
+      // — the row still lands in sched_bookings, so it's picked up as a normal busy
+      // interval by every future computeSlots call (no special-casing needed there).
+      chosen = candidateIds[0];
+    } else {
+      const availability = await loadAvailability(tx, ctx.tenantId, candidateIds);
+      const pad = (Math.max(et.beforeBuffer, et.afterBuffer) + et.length) * MS_PER_MIN;
+      const busy = await loadBusyInTx(tx, ctx.tenantId, candidateIds, new Date(start.getTime() - pad), new Date(end.getTime() + pad));
 
-    const slots = computeSlots({
-      eventType: {
-        length: et.length,
-        slotInterval: et.slotInterval,
-        beforeBuffer: et.beforeBuffer,
-        afterBuffer: et.afterBuffer,
-        minimumBookingNotice: input.bypassRules ? 0 : et.minimumBookingNotice,
-        periodType: input.bypassRules ? 'unlimited' : et.periodType === 'unlimited' ? 'unlimited' : 'rolling',
-        periodDays: input.bypassRules ? null : et.periodDays,
-        schedulingType: et.schedulingType === 'round_robin' || et.schedulingType === 'collective' ? et.schedulingType : null,
-      },
-      resources: availability,
-      bookings: busy,
-      rangeStart: start,
-      rangeEnd: end,
-      now: input.now ?? new Date(),
-      serviceRules: serviceRulesOf(et),
-    });
-    const match = slots.find((s) => s.start.getTime() === start.getTime());
-    if (!match || !match.resourceIds.length) throw new SlotUnavailableError();
+      const slots = computeSlots({
+        eventType: {
+          length: et.length,
+          slotInterval: et.slotInterval,
+          beforeBuffer: et.beforeBuffer,
+          afterBuffer: et.afterBuffer,
+          minimumBookingNotice: input.bypassRules ? 0 : et.minimumBookingNotice,
+          periodType: input.bypassRules ? 'unlimited' : et.periodType === 'unlimited' ? 'unlimited' : 'rolling',
+          periodDays: input.bypassRules ? null : et.periodDays,
+          schedulingType: et.schedulingType === 'round_robin' || et.schedulingType === 'collective' ? et.schedulingType : null,
+        },
+        resources: availability,
+        bookings: busy,
+        rangeStart: start,
+        rangeEnd: end,
+        now: input.now ?? new Date(),
+        serviceRules: serviceRulesOf(et),
+      });
+      const match = slots.find((s) => s.start.getTime() === start.getTime());
+      if (!match || !match.resourceIds.length) throw new SlotUnavailableError();
 
-    // Pick the resource: preferred if free, else least-loaded that day (round-robin), else first.
-    let chosen = match.resourceIds[0];
-    if (input.preferredResourceId && match.resourceIds.includes(input.preferredResourceId)) {
-      chosen = input.preferredResourceId;
-    } else if (match.resourceIds.length > 1) {
-      const loads = new Map<string, number>();
-      for (const b of busy) loads.set(b.resourceId, (loads.get(b.resourceId) ?? 0) + 1);
-      chosen = [...match.resourceIds].sort((a, b) => (loads.get(a) ?? 0) - (loads.get(b) ?? 0))[0];
+      // Pick the resource: preferred if free, else least-loaded that day (round-robin), else first.
+      chosen = match.resourceIds[0];
+      if (input.preferredResourceId && match.resourceIds.includes(input.preferredResourceId)) {
+        chosen = input.preferredResourceId;
+      } else if (match.resourceIds.length > 1) {
+        const loads = new Map<string, number>();
+        for (const b of busy) loads.set(b.resourceId, (loads.get(b.resourceId) ?? 0) + 1);
+        chosen = [...match.resourceIds].sort((a, b) => (loads.get(a) ?? 0) - (loads.get(b) ?? 0))[0];
+      }
     }
 
     // A client-supplied crmContactId must belong to THIS org — validate under the

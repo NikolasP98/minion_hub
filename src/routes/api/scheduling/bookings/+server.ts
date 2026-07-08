@@ -35,6 +35,8 @@ const postSchema = z.object({
   notes: z.string().max(20_000).nullable().optional(),
   crmContactId: z.string().max(200).nullable().optional(),
   resourceId: z.string().max(200).nullable().optional(),
+  forceResourceId: z.string().max(200).optional(),
+  overrideConflicts: z.boolean().optional(),
   consumption: z
     .array(z.object({ itemId: z.string().min(1), qtyConsumption: z.number().positive() }))
     .nullable()
@@ -61,10 +63,13 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       source: 'internal',
       bypassRules: true,
       consumption: b.consumption ?? null,
+      forceResourceId: b.forceResourceId ?? undefined,
+      overrideConflicts: b.overrideConflicts ?? undefined,
     });
     return json({ booking });
   } catch (e) {
     if (e instanceof SlotUnavailableError) throw error(409, 'slot unavailable');
+    if (e instanceof Error && e.message === 'overrideConflicts requires forceResourceId') throw error(400, e.message);
     throw e;
   }
 };
