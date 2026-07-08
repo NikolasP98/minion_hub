@@ -22,6 +22,8 @@ const patchSchema = z.object({
   unitsPerStockUom: z.number().positive().nullable().optional(),
   subunitsPerStockUom: z.number().positive().nullable().optional(),
   diagramEnabled: z.boolean().optional(),
+  unitSvg: z.string().max(50).nullable().optional(),
+  subunitSvg: z.string().max(50).nullable().optional(),
 });
 
 /** PATCH /api/stock/items/:id */

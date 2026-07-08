@@ -7,12 +7,16 @@
   import { PageHeader, Button, Toggle } from '$lib/components/ui';
   import { canAct } from '$lib/access/can.svelte';
   import { UOM_PRESETS, gaugeMax, type UomConvertible } from '$lib/components/stock/stock-ui';
+  import { MAX_MARKERS } from '$lib/components/stock/stock-svg';
+  import ConsumptionGauge from '$lib/components/stock/ConsumptionGauge.svelte';
+  import UnitDiagram from '$lib/components/stock/UnitDiagram.svelte';
+  import ShapePicker from '$lib/components/stock/ShapePicker.svelte';
 
   let { data }: { data: PageData } = $props();
   // ponytail: backend contract fields (consumptionUom/unitsPerStockUom/subunitsPerStockUom/
   // diagramEnabled) are landing via a parallel migration — intersect optionally so this
   // page compiles against the contract before the columns exist server-side.
-  type ItemUom = PageData['item'] & Partial<UomConvertible> & { diagramEnabled?: boolean };
+  type ItemUom = PageData['item'] & Partial<UomConvertible> & { diagramEnabled?: boolean; unitSvg?: string | null; subunitSvg?: string | null };
   const item = $derived(data.item as ItemUom);
 
   let editing = $state(false);
@@ -24,6 +28,8 @@
   let editUnitsPerStockUom = $state('');
   let editSubunitsPerStockUom = $state('');
   let editDiagramEnabled = $state(false);
+  let editUnitSvg = $state<string | null>(null);
+  let editSubunitSvg = $state<string | null>(null);
   let busy = $state(false);
   let err = $state<string | null>(null);
 
@@ -36,6 +42,8 @@
     editUnitsPerStockUom = item.unitsPerStockUom != null ? String(item.unitsPerStockUom) : '';
     editSubunitsPerStockUom = item.subunitsPerStockUom != null ? String(item.subunitsPerStockUom) : '';
     editDiagramEnabled = item.diagramEnabled ?? false;
+    editUnitSvg = item.unitSvg ?? null;
+    editSubunitSvg = item.subunitSvg ?? null;
     err = null;
     editing = true;
   }
@@ -58,6 +66,18 @@
     return m.stock_uom_caption_simple({ uom: captionUom.uom, units, consumptionUom: captionUom.consumptionUom });
   });
   const displayGaugeMax = $derived(gaugeMax(item));
+  const editGaugeMax = $derived(gaugeMax(captionUom));
+  const editSubunits = $derived(Number(editSubunitsPerStockUom) || 0);
+
+  // ── Packaging visuals (view mode) ─────────────────────────────────────────
+  // On-hand across all bins, in stock uom. The unit diagram shows the OPEN
+  // (fractional) unit's remaining subunits; whole units are the ×N caption.
+  const totalQty = $derived(data.bins.reduce((s, b) => s + Number(b.qty), 0));
+  const subunitsCount = $derived(Number(item.subunitsPerStockUom) || 0);
+  const unitsPerUom = $derived(Number(item.unitsPerStockUom) || 0);
+  const wholeUnits = $derived(Math.floor(totalQty + 1e-9));
+  const fracSubunits = $derived(subunitsCount > 0 ? (totalQty - wholeUnits) * subunitsCount : 0);
+  const showUnitDiagram = $derived(subunitsCount >= 1 && subunitsCount <= MAX_MARKERS);
 
   async function save() {
     busy = true;
@@ -75,6 +95,8 @@
           unitsPerStockUom: editUnitsPerStockUom !== '' ? Number(editUnitsPerStockUom) : null,
           subunitsPerStockUom: editSubunitsPerStockUom !== '' ? Number(editSubunitsPerStockUom) : null,
           diagramEnabled: editDiagramEnabled,
+          unitSvg: editUnitSvg,
+          subunitSvg: editSubunitSvg,
         }),
       });
       if (res.ok) {
@@ -160,6 +182,20 @@
             </datalist>
             <Toggle bind:checked={editDiagramEnabled} size="sm" label={m.stock_field_diagram_enabled()} description={m.stock_field_diagram_enabled_hint()} />
             {#if uomCaption}<p class="uom-caption">{uomCaption}</p>{/if}
+            {#if editGaugeMax > 0}
+              <ShapePicker kind="vessel" bind:value={editSubunitSvg} label={m.stock_field_subunit_svg()} />
+            {/if}
+            {#if editSubunits >= 1}
+              <ShapePicker kind="container" bind:value={editUnitSvg} label={m.stock_field_unit_svg()} />
+            {/if}
+            {#if editGaugeMax > 0}
+              <div class="pack-row">
+                {#if editSubunits >= 1 && editSubunits <= MAX_MARKERS}
+                  <UnitDiagram shape={editUnitSvg} count={editSubunits} filled={editSubunits} />
+                {/if}
+                <ConsumptionGauge readonly max={editGaugeMax} value={editGaugeMax} unit={editConsumptionUom} shape={editSubunitSvg} />
+              </div>
+            {/if}
           </div>
 
           {#if err}<p class="err-msg">{err}</p>{/if}
@@ -183,6 +219,38 @@
         </dl>
       {/if}
     </div>
+
+    {#if !editing && displayGaugeMax > 0}
+      <div class="card">
+        <div class="card-h">{m.stock_packaging_title()}</div>
+        <div class="pack-row">
+          {#if showUnitDiagram}
+            <div class="pack-block">
+              <UnitDiagram shape={item.unitSvg} count={subunitsCount} filled={fracSubunits} />
+              <span class="pack-caption">
+                {m.stock_packaging_full_units({ count: wholeUnits })}
+                {#if fracSubunits > 0}&nbsp;+ {fmt(fracSubunits)}/{fmt(subunitsCount)}{/if}
+              </span>
+            </div>
+          {/if}
+          <div class="pack-block">
+            <ConsumptionGauge readonly max={displayGaugeMax} value={displayGaugeMax} unit={item.consumptionUom ?? item.uom} shape={item.subunitSvg} />
+            {#if subunitsCount >= 1}
+              <span class="pack-caption">{m.stock_packaging_per_subunit({ qty: fmt(displayGaugeMax), unit: item.consumptionUom ?? item.uom })}</span>
+            {/if}
+          </div>
+          <div class="pack-sums">
+            <span class="pack-chip">{m.stock_packaging_on_hand({ qty: fmt(totalQty), uom: item.uom })}</span>
+            {#if subunitsCount >= 1}
+              <span class="pack-chip">{m.stock_packaging_subunits({ count: fmt(totalQty * subunitsCount) })}</span>
+            {/if}
+            {#if unitsPerUom > 0 && item.consumptionUom}
+              <span class="pack-chip">{m.stock_packaging_consumption({ qty: fmt(totalQty * unitsPerUom), unit: item.consumptionUom })}</span>
+            {/if}
+          </div>
+        </div>
+      </div>
+    {/if}
 
     <div class="card">
       <div class="card-h">{m.stock_item_bins_title()}</div>
@@ -271,6 +339,11 @@
   .uom-section { display: flex; flex-direction: column; gap: 0.6rem; padding-top: 0.6rem; border-top: 1px solid var(--hairline); }
   .uom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
   .uom-caption { font-size: 0.78rem; color: var(--color-accent); font-style: italic; }
+  .pack-row { display: flex; align-items: flex-end; gap: 1.5rem; flex-wrap: wrap; }
+  .pack-block { display: flex; flex-direction: column; align-items: center; gap: 0.35rem; }
+  .pack-caption { font-size: 0.7rem; color: var(--color-muted-foreground); text-align: center; }
+  .pack-sums { display: flex; flex-direction: column; gap: 0.35rem; align-self: center; }
+  .pack-chip { font-size: 0.8rem; padding: 0.2rem 0.55rem; border: 1px solid var(--hairline); border-radius: var(--radius-sm); background: var(--color-bg3); width: fit-content; font-variant-numeric: tabular-nums; }
   .mini-table { width: 100%; font-size: 0.82rem; border-collapse: collapse; }
   .mini-table th { text-align: left; font-weight: 500; color: var(--color-muted-foreground); padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--hairline); }
   .mini-table td { padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--hairline); }

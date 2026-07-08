@@ -1,30 +1,32 @@
 <script lang="ts">
   /**
-   * Pure-SVG vertical container (bottle/vial) gauge for per-item consumption.
+   * Pure-SVG vertical vessel gauge for per-item consumption.
    * `max` is the gauge's ceiling (see stock-ui.ts gaugeMax — ml per subunit
    * when subunits are configured, else the whole stock-uom conversion).
-   * Draggable vertically; fills from the top down to the consumption level.
-   * value > max (consumed more than one container) shows a "×N + remainder"
-   * caption and the gauge itself displays the remainder fill only.
+   * `shape` picks the vessel from stock-svg.ts (item.subunitSvg); unknown/null
+   * falls back to the classic bottle. Draggable vertically; fills from the top
+   * down to the consumption level. value > max (consumed more than one
+   * container) shows a "×N + remainder" caption and the gauge itself displays
+   * the remainder fill only.
    */
   import * as m from '$lib/paraglide/messages';
+  import { vesselShape, VESSEL_VIEWBOX } from './stock-svg';
 
   interface Props {
     max: number;
     value?: number;
     unit?: string;
+    shape?: string | null;
     readonly?: boolean;
     step?: number;
     class?: string;
   }
-  let { max, value = $bindable(0), unit = '', readonly = false, step = 0.5, class: cls = '' }: Props = $props();
+  let { max, value = $bindable(0), unit = '', shape = null, readonly = false, step = 0.5, class: cls = '' }: Props = $props();
 
   const uid = $props.id();
-  const W = 64, H = 140, NECK_H = 14, PAD = 6;
-  const bodyTop = NECK_H;
-  const bodyH = H - NECK_H - PAD;
-  const bodyLeft = PAD;
-  const bodyW = W - PAD * 2;
+  const { w: W, h: H } = VESSEL_VIEWBOX;
+  const vessel = $derived(vesselShape(shape));
+  const fillSpan = $derived(vessel.fillBottom - vessel.fillTop);
 
   const active = $derived(max > 0 && !readonly);
   const overflowing = $derived(max > 0 && value > max + 1e-6);
@@ -38,11 +40,13 @@
   });
   const remainder = $derived(max > 0 ? value - bottles * max : 0);
   const gaugeVal = $derived(overflowing ? remainder : Math.max(0, Math.min(value, max)));
-  const fillH = $derived(max > 0 ? Math.max(0, Math.min(1, gaugeVal / max)) * bodyH : 0);
-  const lineY = $derived(bodyTop + fillH);
+  const fillH = $derived(max > 0 ? Math.max(0, Math.min(1, gaugeVal / max)) * fillSpan : 0);
+  const lineY = $derived(vessel.fillTop + fillH);
 
   function setFromClientY(clientY: number, rect: DOMRect) {
-    const frac = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
+    // Map the pointer into the vessel's fillable y-range (viewBox units).
+    const vy = ((clientY - rect.top) / rect.height) * H;
+    const frac = Math.max(0, Math.min(1, (vy - vessel.fillTop) / fillSpan));
     const raw = frac * max;
     value = Math.max(0, Math.min(max, Math.round(raw / step) * step));
   }
@@ -95,17 +99,19 @@
     onkeydown={onKeydown}
   >
     <clipPath id={`gauge-clip-${uid}`}>
-      <rect x={bodyLeft} y={bodyTop} width={bodyW} height={bodyH} rx="10" />
+      <path d={vessel.body} />
     </clipPath>
-    <rect x={W / 2 - 8} y="0" width="16" height={NECK_H} class="vessel" />
-    <rect x={bodyLeft} y={bodyTop} width={bodyW} height={bodyH} rx="10" class="vessel" />
+    <path d={vessel.body} class="vessel" />
+    {#each vessel.extras ?? [] as extra (extra)}
+      <path d={extra} class="extra" />
+    {/each}
     <g clip-path={`url(#gauge-clip-${uid})`}>
-      <rect x={bodyLeft} y={bodyTop} width={bodyW} height={fillH} class="fill" />
+      <rect x="0" y={vessel.fillTop} width={W} height={fillH} class="fill" />
     </g>
     {#each [0.25, 0.5, 0.75] as t (t)}
-      <line x1={bodyLeft} x2={bodyLeft + 6} y1={bodyTop + t * bodyH} y2={bodyTop + t * bodyH} class="tick" />
+      <line x1="6" x2="12" y1={vessel.fillTop + t * fillSpan} y2={vessel.fillTop + t * fillSpan} class="tick" />
     {/each}
-    <line x1={bodyLeft - 2} x2={bodyLeft + bodyW + 2} y1={lineY} y2={lineY} class="drag-line" />
+    <line x1="4" x2={W - 4} y1={lineY} y2={lineY} class="drag-line" />
   </svg>
   <div class="caption">
     {#if overflowing}
@@ -124,6 +130,7 @@
   .gauge:focus-visible .vessel { stroke: var(--color-accent); stroke-width: 2; }
   .gauge.inert { cursor: default; }
   .vessel { fill: var(--color-bg3); stroke: var(--hairline); stroke-width: 1.5; }
+  .extra { fill: none; stroke: var(--hairline); stroke-width: 1.5; }
   .fill { fill: color-mix(in srgb, var(--color-accent) 55%, transparent); }
   .tick { stroke: var(--color-muted-foreground); stroke-width: 1; opacity: 0.6; }
   .drag-line { stroke: var(--color-accent); stroke-width: 2.5; }

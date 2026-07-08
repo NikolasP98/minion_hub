@@ -21,6 +21,8 @@ const postSchema = z
     unitsPerStockUom: z.number().positive().nullable().optional(),
     subunitsPerStockUom: z.number().positive().nullable().optional(),
     diagramEnabled: z.boolean().optional(),
+    unitSvg: z.string().max(50).nullable().optional(),
+    subunitSvg: z.string().max(50).nullable().optional(),
   })
   .refine((d) => !d.consumptionUom || d.unitsPerStockUom != null, {
     message: 'consumptionUom requires unitsPerStockUom to be set',
@@ -55,6 +57,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       unitsPerStockUom: body.unitsPerStockUom == null ? null : String(body.unitsPerStockUom),
       subunitsPerStockUom: body.subunitsPerStockUom == null ? null : String(body.subunitsPerStockUom),
       diagramEnabled: body.diagramEnabled ?? false,
+      unitSvg: body.unitSvg ?? null,
+      subunitSvg: body.subunitSvg ?? null,
     });
     return json(item, { status: 201 });
   } catch (e) {

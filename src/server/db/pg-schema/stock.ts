@@ -32,6 +32,10 @@ export const stkItems = pgTable(
     subunitsPerStockUom: numeric('subunits_per_stock_uom'),
     /** Opts the item into the ConsumptionGauge diagram. */
     diagramEnabled: boolean('diagram_enabled').notNull().default(false),
+    /** Shape ids from stock-svg.ts; null = registry default. unit = stock-uom
+     *  container (box/tray…), subunit = vessel (bottle/vial…). */
+    unitSvg: text('unit_svg'),
+    subunitSvg: text('subunit_svg'),
     /** v1: 'moving_avg' only (ponytail: FIFO deferred until someone needs it). */
     valuationMethod: text('valuation_method').notNull().default('moving_avg'),
     /** Soft ref → fin_products (bridge to the SUSII-synced catalog). */

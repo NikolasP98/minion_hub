@@ -14,7 +14,7 @@
   const products = $derived(data.products);
   // ponytail: consumptionUom/unitsPerStockUom/subunitsPerStockUom/diagramEnabled land via a
   // parallel backend migration — intersect optionally so this compiles against the contract.
-  type ItemUom = (typeof data.items)[number] & Partial<UomConvertible> & { diagramEnabled?: boolean };
+  type ItemUom = (typeof data.items)[number] & Partial<UomConvertible> & { diagramEnabled?: boolean; subunitSvg?: string | null };
   const items = $derived(data.items as ItemUom[]);
   const itemById = $derived(new Map(items.map((i) => [i.id, i])));
   const consumption = $derived(data.consumption);
@@ -216,6 +216,7 @@
                 class="compact"
                 max={draftGaugeMax}
                 unit={unitLabel(draftItem)}
+                shape={draftItem?.subunitSvg}
                 bind:value={() => Number(draftQty) || 0, (v) => (draftQty = String(v))}
               />
             </div>
@@ -246,6 +247,7 @@
                       class="compact"
                       max={editGaugeMax}
                       unit={unitLabel(itemById.get(c.itemId))}
+                      shape={itemById.get(c.itemId)?.subunitSvg}
                       bind:value={() => Number(editQty) || 0, (v) => (editQty = String(v))}
                     />
                   {/if}
