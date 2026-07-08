@@ -55,6 +55,17 @@ describe('applyLedgerDelta — moving-average valuation', () => {
     const next = applyLedgerDelta(bin, -5, -40);
     expect(next).toEqual({ qty: 0, rate: 0 });
   });
+
+  it('never persists a negative rate — an over-issued bin carries its prior rate', () => {
+    // Bin over-issued into negative value (issue posted before its receipt): qty
+    // goes positive again but running value is negative → naive rate would be < 0.
+    // qty 2 @ rate 10 (value 20); a receipt of 1 whose value contribution is
+    // -100 (corrupted upstream) → newQty 3, newValue -80 → naive rate -26.7.
+    const bin: BinState = { qty: 2, rate: 10 };
+    const next = applyLedgerDelta(bin, 1, -100);
+    expect(next.qty).toBe(3);
+    expect(next.rate).toBe(10); // carried, not -26.7
+  });
 });
 
 describe('computeLegValue', () => {

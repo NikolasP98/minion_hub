@@ -33,7 +33,14 @@ const EPS = 1e-9;
 export function applyLedgerDelta(bin: BinState, qtyDelta: number, valueDelta: number): BinState {
   const newQty = bin.qty + qtyDelta;
   const newValue = bin.qty * bin.rate + valueDelta;
-  const newRate = Math.abs(newQty) > EPS ? newValue / newQty : 0;
+  const rate = Math.abs(newQty) > EPS ? newValue / newQty : 0;
+  // A valuation rate is a unit cost — it can never be negative. That only arises
+  // from an over-issued / out-of-order bin (an issue posted before its receipt,
+  // driving running value negative while qty is positive). Carry the last known
+  // good rate rather than persisting a nonsensical negative one. No effect on
+  // healthy chronological postings (rate stays ≥ 0); guards the future hub-UI
+  // path against backdated entries.
+  const newRate = rate < 0 ? bin.rate : rate;
   return { qty: newQty, rate: newRate };
 }
 

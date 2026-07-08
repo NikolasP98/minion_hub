@@ -272,7 +272,9 @@ export function listInvoices(
         issuedAt: finInvoices.issuedAt,
         clientName: finInvoices.clientName,
         clientDocNumber: finInvoices.clientDocNumber,
-        total: finInvoices.total,
+        // Reconstruct Σitems + tax − discount when the stored total is null/0
+        // (imported invoices leave it unpopulated). See effTotal() for the rationale.
+        total: sql<string | null>`${effTotal()}`,
         discount: finInvoices.discount,
         status: finInvoices.status,
         // Correlated subquery (not a join) so an invoice stays one row even if a
@@ -372,15 +374,45 @@ export async function setSourceSync(
   );
 }
 
+/**
+ * Effective invoice total: the stored `total` when real, else reconstructed as
+ * Σ(line items) + tax − discount. Imported (SUSII) invoices leave `total` null/0
+ * though items/tax/discount are present — verified to match recorded payments for
+ * 100% of the null-total rows. Keep in sync with listInvoices + the detail view.
+ * ponytail: correlated subquery; swap for a grouped item-sum CTE if a dashboard
+ * query gets slow (all these are Valkey-cached, so unlikely to matter).
+ */
+// Outer refs are qualified (default `fin_invoices.`) so the correlated `invoice_id`
+// resolves to the outer invoice, not the subquery's own `fin_invoice_items.id`.
+function effTotal(alias = 'fin_invoices') {
+  const a = `${alias}.`;
+  // round(…, 2): line items are stored as repeating decimals (e.g. 1525.4237…), so
+  // the reconstructed sum carries float noise — snap it to money precision.
+  return sql`round(coalesce(nullif(${sql.raw(a)}total::numeric, 0),
+    (select sum(it.total::numeric) from fin_invoice_items it where it.invoice_id = ${sql.raw(a)}id)
+      + coalesce(${sql.raw(a)}tax::numeric, 0) - coalesce(${sql.raw(a)}discount::numeric, 0)), 2)`;
+}
+
+/**
+ * Customer grouping key: the real DNI, else fall back to client_id. Treats the
+ * placeholder DNI '00000000' (walk-ins / no-DNI boletas) as "no doc" so those
+ * invoices group per-client instead of collapsing 200+ distinct people into one
+ * mega-client. Keep in sync across every client aggregate below.
+ */
+function clientKey(alias = 'fin_invoices') {
+  const a = `${alias}.`;
+  return sql`coalesce(nullif(${sql.raw(a)}client_doc_number, '00000000'), ${sql.raw(a)}client_id::text)`;
+}
+
 /** Per-client revenue aggregate (for the Clients list page). */
 export async function clientRevenueRows(ctx: CoreCtx) {
   return withOrgCore(ctx, async (tx) => {
     const rows = (await tx.execute(sql`
-      select client_doc_number, max(client_name) as name, count(*)::int as invoices,
-             coalesce(sum(total), 0)::float8 as revenue, max(issued_at) as last
+      select ${clientKey()} as client_doc_number, max(client_name) as name, count(*)::int as invoices,
+             coalesce(sum(${effTotal()}), 0)::float8 as revenue, max(issued_at) as last
       from fin_invoices
-      where org_id = ${ctx.tenantId} and client_doc_number is not null
-      group by client_doc_number order by revenue desc limit 500
+      where org_id = ${ctx.tenantId} and (client_doc_number is not null or client_id is not null)
+      group by ${clientKey()} order by revenue desc limit 500
     `)) as unknown as Array<{
       client_doc_number: unknown;
       name: unknown;
@@ -420,25 +452,41 @@ export function financeSummary(ctx: CoreCtx, p: Period) {
     () =>
       withOrgCore(ctx, async (tx) => {
         const [r] = (await tx.execute(sql`
-        select coalesce(sum(total),0)::float8 net, coalesce(sum(subtotal),0)::float8 gross,
+        select coalesce(sum(${effTotal()}),0)::float8 net, coalesce(sum(subtotal),0)::float8 gross,
                coalesce(sum(discount),0)::float8 discount, count(*)::int invoices,
+               coalesce(sum(tax::numeric) filter (where status is distinct from 'void'),0)::float8 tax,
                count(distinct coalesce(client_id::text, client_doc_number))::int clients,
                count(*) filter (where status='void')::int voids,
                mode() within group (order by currency) currency
         from fin_invoices where ${periodWhere(p)}
       `)) as unknown as Array<Record<string, unknown>>;
+        // COGS = value of inventory consumed (issue-type ledger), same source as the
+        // revenue chart's op-cost band, scoped to the period by posted_at.
+        const [cg] = (await tx.execute(sql`
+        select coalesce(-sum(l.value_delta::numeric),0)::float8 cogs
+        from stk_ledger l join stk_entries e on e.id = l.entry_id
+        where e.type = 'issue' and l.org_id = current_setting('app.current_org_id', true)
+          ${p.from ? sql`and l.posted_at >= ${p.from}` : sql``}
+          ${p.to ? sql`and l.posted_at < ${p.to}` : sql``}
+      `)) as unknown as Array<{ cogs: number }>;
         const net = Number(r.net),
           gross = Number(r.gross),
           discount = Number(r.discount),
           invoices = Number(r.invoices),
-          voids = Number(r.voids);
+          voids = Number(r.voids),
+          tax = Number(r.tax),
+          cogs = Number(cg.cogs);
         // Some sources don't populate subtotal (gross); fall back to net + discount
         // so the discount rate has a real denominator instead of dividing by zero.
         const grossEff = gross > 0 ? gross : net + discount;
+        // Net revenue after realized deductions (taxes remitted + COGS) = the money
+        // the business actually keeps. Margin rate = that as a share of billed revenue.
+        const netAfter = Math.max(0, net - tax - cogs);
         const [nc] = (await tx.execute(sql`
         select count(*)::int n from (
-          select client_doc_number, min(issued_at) first from fin_invoices
-          where org_id = current_setting('app.current_org_id', true) and client_doc_number is not null group by client_doc_number
+          select ${clientKey()} as k, min(issued_at) first from fin_invoices
+          where org_id = current_setting('app.current_org_id', true)
+            and (client_doc_number is not null or client_id is not null) group by ${clientKey()}
         ) f where ${p.from ? sql`f.first >= ${p.from}` : sql`true`} and ${p.to ? sql`f.first < ${p.to}` : sql`true`}
       `)) as unknown as Array<{ n: number }>;
         return {
@@ -446,6 +494,11 @@ export function financeSummary(ctx: CoreCtx, p: Period) {
           totalGross: grossEff,
           totalDiscount: discount,
           discountRate: grossEff > 0 ? discount / grossEff : 0,
+          totalTax: tax,
+          taxRate: net > 0 ? tax / net : 0,
+          totalCogs: cogs,
+          netRevenue: netAfter,
+          marginRate: net > 0 ? netAfter / net : 0,
           invoiceCount: invoices,
           avgTicket: invoices > 0 ? net / invoices : 0,
           uniqueClients: Number(r.clients),
@@ -469,7 +522,17 @@ export type FinanceSummary = Awaited<ReturnType<typeof financeSummary>>;
  * post-cache so the cache key stays role-agnostic.
  */
 export function maskFinanceSummary(s: FinanceSummary): FinanceSummary {
-  return { ...s, totalGross: 0, totalDiscount: 0, discountRate: 0, sensitiveMasked: true };
+  return {
+    ...s,
+    totalGross: 0,
+    totalDiscount: 0,
+    discountRate: 0,
+    // COGS + margin are cost data; tax stays visible (remittance, not margin).
+    totalCogs: 0,
+    netRevenue: 0,
+    marginRate: 0,
+    sensitiveMasked: true,
+  };
 }
 
 export function revenueSeries(ctx: CoreCtx, p: Period) {
@@ -478,15 +541,43 @@ export function revenueSeries(ctx: CoreCtx, p: Period) {
     { ttl: '2m', swr: '30s', tags: ctags(ctx.tenantId) },
     () =>
       withOrgCore(ctx, async (tx) => {
+        // Two independent aggregates joined by bucket: invoices (by issued_at) and
+        // inventory consumption cost (issue-type ledger value, by posted_at). FULL
+        // JOIN so a bucket with only one of the two still appears. op_cost: issue
+        // value_delta is stored negative (stock leaving) → negate to a positive cost.
         const rows = (await tx.execute(sql`
-        select to_char(date_trunc(${p.bucket}, issued_at), 'YYYY-MM-DD') bucket,
-               count(*)::int invoices,
-               coalesce(sum(total) filter (where status is distinct from 'void'),0)::float8 revenue,
-               coalesce(sum(discount) filter (where status is distinct from 'void'),0)::float8 discount,
-               coalesce(sum(subtotal),0)::float8 gross,
-               coalesce(sum(total) filter (where status = 'void'),0)::float8 voided
-        from fin_invoices where ${periodWhere(p)} and issued_at is not null
-        group by 1 order by 1
+        with inv as (
+          select date_trunc(${p.bucket}, issued_at) b,
+                 count(*)::int invoices,
+                 coalesce(sum(${effTotal()}) filter (where status is distinct from 'void'),0)::float8 revenue,
+                 coalesce(sum(discount) filter (where status is distinct from 'void'),0)::float8 discount,
+                 coalesce(sum(subtotal),0)::float8 gross,
+                 coalesce(sum(${effTotal()}) filter (where status = 'void'),0)::float8 voided,
+                 coalesce(sum(tax::numeric) filter (where status is distinct from 'void'),0)::float8 tax
+          from fin_invoices where ${periodWhere(p)} and issued_at is not null
+          group by 1
+        ),
+        cost as (
+          select date_trunc(${p.bucket}, l.posted_at) b,
+                 coalesce(-sum(l.value_delta::numeric),0)::float8 op_cost
+          from stk_ledger l join stk_entries e on e.id = l.entry_id
+          where e.type = 'issue'
+            and l.org_id = current_setting('app.current_org_id', true)
+            ${p.from ? sql`and l.posted_at >= ${p.from}` : sql``}
+            ${p.to ? sql`and l.posted_at < ${p.to}` : sql``}
+          group by 1
+        )
+        select to_char(coalesce(inv.b, cost.b), 'YYYY-MM-DD') bucket,
+               coalesce(inv.invoices,0)::int invoices,
+               coalesce(inv.revenue,0)::float8 revenue,
+               coalesce(inv.discount,0)::float8 discount,
+               coalesce(inv.gross,0)::float8 gross,
+               coalesce(inv.voided,0)::float8 voided,
+               coalesce(inv.tax,0)::float8 tax,
+               coalesce(cost.op_cost,0)::float8 op_cost
+        from inv full join cost on inv.b = cost.b
+        where coalesce(inv.b, cost.b) is not null
+        order by 1
       `)) as unknown as Array<Record<string, unknown>>;
         return rows.map((r) => ({
           bucket: String(r.bucket),
@@ -495,6 +586,8 @@ export function revenueSeries(ctx: CoreCtx, p: Period) {
           discount: Number(r.discount),
           gross: Number(r.gross),
           voided: Number(r.voided),
+          tax: Number(r.tax),
+          opCost: Number(r.op_cost),
         }));
       }),
   );
@@ -542,15 +635,15 @@ export function topClients(ctx: CoreCtx, p: Period, opts: { limit?: number } = {
     () =>
       withOrgCore(ctx, async (tx) => {
         const rows = (await tx.execute(sql`
-        select coalesce(client_doc_number, client_id::text) doc_number,
+        select ${clientKey()} doc_number,
                max(client_name) name,
                count(*)::int invoices,
-               coalesce(sum(total::numeric), 0)::float8 revenue,
+               coalesce(sum(${effTotal()}), 0)::float8 revenue,
                max(issued_at) last
         from fin_invoices
         where ${periodWhere(p)}
           and (client_doc_number is not null or client_id is not null)
-        group by coalesce(client_doc_number, client_id::text)
+        group by ${clientKey()}
         order by revenue desc
         limit ${limit}
       `)) as unknown as Array<Record<string, unknown>>;

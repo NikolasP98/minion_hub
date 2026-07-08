@@ -7,7 +7,9 @@
 		class: className = '',
 		style = '',
 		height = '300px',
-		onItemClick
+		onItemClick,
+		onLegendToggle,
+		notMergeUpdate = true
 	}: {
 		options: EChartsOption;
 		class?: string;
@@ -15,6 +17,13 @@
 		height?: string;
 		/** Optional ECharts click handler (receives the click params). */
 		onItemClick?: (params: unknown) => void;
+		/** Optional legend show/hide handler (ECharts `legendselectchanged`). */
+		onLegendToggle?: (params: { name: string; selected: Record<string, boolean> }) => void;
+		/** Default replaces the whole option on update (full re-render/intro anim).
+		 *  Set false to MERGE updates so ECharts tweens changed values in place —
+		 *  needed for stacked areas that toggle series (vertical morph, no L→R wipe).
+		 *  Requires stable series names across renders or the changed series re-intros. */
+		notMergeUpdate?: boolean;
 	} = $props();
 
 	let container: HTMLDivElement;
@@ -106,6 +115,7 @@
 			chart = echarts.init(container, 'minion-dark');
 			chart.setOption(applyDefaults(options));
 			if (onItemClick) chart.on('click', onItemClick);
+			if (onLegendToggle) chart.on('legendselectchanged', onLegendToggle as (p: unknown) => void);
 
 			// ECharts measures the container at init; inside a flex/grid that hasn't
 			// laid out yet that can be ~0, leaving the chart rendered tiny. Re-measure
@@ -127,6 +137,7 @@
 				chart = echartsLib.init(container, 'minion-dark');
 				chart.setOption(applyDefaults(currentOpts));
 				if (onItemClick) chart.on('click', onItemClick);
+				if (onLegendToggle) chart.on('legendselectchanged', onLegendToggle as (p: unknown) => void);
 			});
 			themeObserver.observe(document.documentElement, {
 				attributes: true,
@@ -144,7 +155,7 @@
 
 	$effect(() => {
 		if (chart) {
-			chart.setOption(applyDefaults(options), { notMerge: true });
+			chart.setOption(applyDefaults(options), { notMerge: notMergeUpdate });
 		}
 	});
 </script>

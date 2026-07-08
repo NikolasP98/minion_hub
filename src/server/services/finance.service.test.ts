@@ -95,8 +95,10 @@ function useExecMock(execute: ReturnType<typeof vi.fn>) {
 describe('financeSummary', () => {
   it('coerces DB strings to numbers and computes derived fields', async () => {
     const { financeSummary } = await import('./finance.service');
+    // execute order: main aggregate → COGS → new-clients
     const execute = vi.fn()
-      .mockResolvedValueOnce([{ net: '1000.5', gross: '1200.0', discount: '199.5', invoices: '10', clients: '8', voids: '1', currency: 'PEN' }])
+      .mockResolvedValueOnce([{ net: '1000.5', gross: '1200.0', discount: '199.5', invoices: '10', tax: '180.0', clients: '8', voids: '1', currency: 'PEN' }])
+      .mockResolvedValueOnce([{ cogs: '300.0' }])
       .mockResolvedValueOnce([{ n: '3' }]);
     useExecMock(execute);
 
@@ -116,12 +118,19 @@ describe('financeSummary', () => {
     expect(result.discountRate).toBeCloseTo(199.5 / 1200.0);
     // voidRate = voids / invoices
     expect(result.voidRate).toBeCloseTo(1 / 10);
+    // composition: taxes, COGS, net-after-deductions, margin
+    expect(result.totalTax).toBe(180.0);
+    expect(result.totalCogs).toBe(300.0);
+    expect(result.netRevenue).toBeCloseTo(520.5); // 1000.5 − 180 − 300
+    expect(result.taxRate).toBeCloseTo(180.0 / 1000.5);
+    expect(result.marginRate).toBeCloseTo(520.5 / 1000.5);
   });
 
   it('handles zero invoices without dividing by zero', async () => {
     const { financeSummary } = await import('./finance.service');
     const execute = vi.fn()
-      .mockResolvedValueOnce([{ net: '0', gross: '0', discount: '0', invoices: '0', clients: '0', voids: '0', currency: null }])
+      .mockResolvedValueOnce([{ net: '0', gross: '0', discount: '0', invoices: '0', tax: '0', clients: '0', voids: '0', currency: null }])
+      .mockResolvedValueOnce([{ cogs: '0' }])
       .mockResolvedValueOnce([{ n: '0' }]);
     useExecMock(execute);
 
@@ -129,6 +138,9 @@ describe('financeSummary', () => {
     expect(result.avgTicket).toBe(0);
     expect(result.discountRate).toBe(0);
     expect(result.voidRate).toBe(0);
+    expect(result.taxRate).toBe(0);
+    expect(result.marginRate).toBe(0);
+    expect(result.netRevenue).toBe(0);
     expect(result.currency).toBe('PEN');
   });
 });
@@ -137,14 +149,14 @@ describe('revenueSeries', () => {
   it('returns an array of coerced series rows', async () => {
     const { revenueSeries } = await import('./finance.service');
     const execute = vi.fn().mockResolvedValueOnce([
-      { bucket: '2026-01-01', invoices: '5', revenue: '590.0', discount: '10.0', gross: '600.0', voided: '20.0' },
-      { bucket: '2026-02-01', invoices: '3', revenue: '354.0', discount: '6.0', gross: '360.0', voided: '0' },
+      { bucket: '2026-01-01', invoices: '5', revenue: '590.0', discount: '10.0', gross: '600.0', voided: '20.0', tax: '90.0', op_cost: '50.0' },
+      { bucket: '2026-02-01', invoices: '3', revenue: '354.0', discount: '6.0', gross: '360.0', voided: '0', tax: '54.0', op_cost: '0' },
     ]);
     useExecMock(execute);
 
     const result = await revenueSeries(ctx(), { from: null, to: null, bucket: 'month' });
     expect(result).toHaveLength(2);
-    expect(result[0]).toEqual({ bucket: '2026-01-01', invoices: 5, revenue: 590.0, discount: 10.0, gross: 600.0, voided: 20.0 });
+    expect(result[0]).toEqual({ bucket: '2026-01-01', invoices: 5, revenue: 590.0, discount: 10.0, gross: 600.0, voided: 20.0, tax: 90.0, opCost: 50.0 });
     expect(result[1].revenue).toBe(354.0);
   });
 

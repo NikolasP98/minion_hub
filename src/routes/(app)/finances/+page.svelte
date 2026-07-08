@@ -41,6 +41,19 @@
 	let mode = $state<'period' | 'cumulative'>('period');
 	let prodMode = $state<'revenue' | 'qty'>('revenue');
 
+	// Which revenue-chart bands are hidden (keyed by localized series name). Taxes
+	// and operational cost are REALIZED deductions: while visible they carve out of
+	// the net-revenue band (revenue shrinks); hiding one lets net absorb it back.
+	// Discount/void are UNREALIZED ("could've been"), stacked on top — no effect on net.
+	let hiddenBands = $state<Record<string, boolean>>({});
+	// Net band has a dynamic name (netName), so track its visibility with a stable
+	// flag rather than a name key that shifts as deductions toggle.
+	let netHidden = $state(false);
+	function onLegendToggle(p: { name: string; selected: Record<string, boolean> }) {
+		netHidden = p.selected['net-band'] === false; // net keyed by its stable id
+		hiddenBands = Object.fromEntries(Object.entries(p.selected).map(([k, v]) => [k, !v]));
+	}
+
 	function navigate(f: string, t: string, b: string) {
 		const p = new URLSearchParams();
 		if (f) p.set('from', f);
@@ -116,16 +129,47 @@
 		return prev > 0 ? ((curr - prev) / prev) * 100 : null;
 	})());
 
+	// Localized band names double as ECharts series ids + legend/hidden-map keys.
+	const bandNames = $derived({
+		tax: m.fin_chart_tax(),
+		op: m.fin_chart_op_cost(),
+		discount: m.fin_chart_discount(),
+		void: m.fin_chart_void()
+	});
+	// A deduction is "active" only when its band is visible.
+	const taxActive = $derived(!hiddenBands[bandNames.tax]);
+	const opActive = $derived(!hiddenBands[bandNames.op]);
+	// Stable series identity for the net band (so ECharts morphs it vertically on
+	// toggle instead of re-introing). The dynamic label is applied via legend.formatter.
+	const netId = 'net-band';
+	// Net-band label names only the deductions actually folded into it.
+	const netName = $derived(
+		taxActive && opActive
+			? m.fin_chart_net_after()
+			: taxActive
+				? m.fin_chart_net_after_tax()
+				: opActive
+					? m.fin_chart_net_after_cost()
+					: m.fin_chart_net()
+	);
+
 	const revenueOpts = $derived((() => {
+		const L = bandNames;
 		const xData = data.series.map((r) => fmtBucket(r.bucket));
-		// Stacked: net revenue (bottom) → discount → void. Cumulative running-totals
-		// each band independently so the stack still reads as a composition.
 		const pick = (sel: (r: (typeof data.series)[number]) => number) => {
 			if (mode !== 'cumulative') return data.series.map(sel);
 			let sum = 0;
 			return data.series.map((r) => (sum += sel(r)));
 		};
-		const netData = pick((r) => r.revenue);
+		// Realized deductions (taxes, op-cost) carve OUT of net; each absorbs back
+		// into net when its band is hidden. Floor at 0 so a cost-heavy month can't
+		// push the net band below the axis. Unrealized bands (discount/void) stack
+		// on top and never touch net.
+		const netSel = (r: (typeof data.series)[number]) =>
+			Math.max(0, r.revenue - (taxActive ? r.tax : 0) - (opActive ? r.opCost : 0));
+		const netData = pick(netSel);
+		const taxData = pick((r) => r.tax);
+		const opCostData = pick((r) => r.opCost);
 		const discountData = pick((r) => r.discount);
 		const voidData = pick((r) => r.voided);
 		const area = (color: string) => ({
@@ -141,14 +185,38 @@
 		});
 		return {
 			grid: { left: 8, right: 18, top: 16, bottom: 30, containLabel: true },
-			tooltip: { trigger: 'axis', valueFormatter: (v) => formatMoney(Number(v)) },
-			legend: { data: [m.fin_chart_net_revenue(), m.fin_chart_discount(), m.fin_chart_void()], bottom: 0 },
+			tooltip: {
+				trigger: 'axis',
+				formatter: (params) => {
+					const arr = (Array.isArray(params) ? params : [params]) as Array<{
+						marker?: string;
+						seriesName?: string;
+						value?: unknown;
+						axisValueLabel?: string;
+					}>;
+					const head = arr[0]?.axisValueLabel ?? '';
+					const body = arr
+						.map((p) => `${p.marker ?? ''}${p.seriesName === netId ? netName : (p.seriesName ?? '')}: ${formatMoney(Number(p.value ?? 0))}`)
+						.join('<br/>');
+					return `${head}<br/>${body}`;
+				}
+			},
+			legend: {
+				// Order = bottom→top of the stack. All bands (net included) are toggleable.
+				// Net uses a stable id; formatter renders its dynamic label.
+				data: [L.tax, L.op, netId, L.discount, L.void],
+				bottom: 0,
+				formatter: (name: string) => (name === netId ? netName : name),
+				selected: { [L.tax]: taxActive, [L.op]: opActive, [netId]: !netHidden, [L.discount]: !hiddenBands[L.discount], [L.void]: !hiddenBands[L.void] }
+			},
 			xAxis: { type: 'category', data: xData, axisLabel: { hideOverlap: true } },
 			yAxis: { type: 'value', axisLabel: { formatter: (v: number) => formatMoney(v) } },
 			series: [
-				{ ...area(c.info), name: m.fin_chart_net_revenue(), data: netData },
-				{ ...area(c.success), name: m.fin_chart_discount(), data: discountData },
-				{ ...area(c.destructive), name: m.fin_chart_void(), data: voidData }
+				{ ...area(c.warning), name: L.tax, data: taxData },
+				{ ...area(c.purple), name: L.op, data: opCostData },
+				{ ...area(c.info), name: netId, data: netData },
+				{ ...area(c.success), name: L.discount, data: discountData },
+				{ ...area(c.destructive), name: L.void, data: voidData }
 			]
 		} satisfies EChartsOption;
 	})());
@@ -207,8 +275,19 @@
 	];
 
 	// KPI cards rendered by the editable grid (id-keyed).
+	const s = $derived(data.summary);
+	const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
 	const kpis = $derived([
-		{ id: 'k-net', label: m.fin_kpi_net_revenue(), value: formatMoney(data.summary.totalNet) },
+		// Revenue composition: billed → −taxes → −COGS → = net revenue (margin).
+		{ id: 'k-net', label: m.fin_kpi_revenue(), value: formatMoney(s.totalNet) },
+		...(s.sensitiveMasked
+			? []
+			: [
+					{ id: 'k-net-after', label: m.fin_kpi_net_revenue(), value: formatMoney(s.netRevenue) },
+					{ id: 'k-margin', label: m.fin_kpi_margin_rate(), value: pct(s.marginRate) },
+					{ id: 'k-cogs', label: m.fin_kpi_cogs(), value: formatMoney(s.totalCogs) },
+				]),
+		{ id: 'k-tax-rate', label: m.fin_kpi_tax_rate(), value: pct(s.taxRate) },
 		{ id: 'k-avg', label: m.fin_kpi_avg_ticket(), value: formatMoney(data.summary.avgTicket) },
 		{ id: 'k-invoices', label: m.fin_kpi_invoices(), value: data.summary.invoiceCount.toLocaleString() },
 		{ id: 'k-clients', label: m.fin_kpi_unique_clients(), value: data.summary.uniqueClients.toLocaleString() },
@@ -300,7 +379,8 @@
 					<button class:active={mode === 'cumulative'} onclick={() => (mode = 'cumulative')}>{m.fin_toggle_cumulative()}</button>
 				</div>
 			</div>
-			<Chart options={revenueOpts} height="330px" />
+			<Chart options={revenueOpts} height="330px" {onLegendToggle} notMergeUpdate={false} />
+			<p class="chart-note">{m.fin_chart_deduct_note()}</p>
 		</div>
 	{:else if id === 'avgticket'}
 		<div class="card">
@@ -338,7 +418,7 @@
 				{@render periodControls()}
 				<p class="t-caption mt-4">{m.fin_empty()}</p>
 			{:else}
-				<EditableGrid id="finances-dashboard-v1" {items} cols={12} rowHeight={56} canSetDefault={isAdmin.value} readonly={!canAct('finance', 'edit')}>
+				<EditableGrid id="finances-dashboard-v2" {items} cols={12} rowHeight={56} canSetDefault={isAdmin.value} readonly={!canAct('finance', 'edit')}>
 					{#snippet toolbar()}{@render periodControls()}{/snippet}
 					{#snippet cell(id)}{@render cellBody(id)}{/snippet}
 				</EditableGrid>
@@ -472,6 +552,12 @@
 	}
 	.card-h-row .card-h {
 		margin-bottom: 0;
+	}
+	.chart-note {
+		margin: 0.4rem 0 0;
+		font-size: 0.72rem;
+		color: var(--color-muted-foreground);
+		text-align: center;
 	}
 	.chart-toggle {
 		display: flex;

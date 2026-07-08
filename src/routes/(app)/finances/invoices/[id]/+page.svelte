@@ -42,7 +42,12 @@
 
 	// ── Paid vs owed (the emotional core) ───────────────────────────────────────
 	// Money received = sum of non-void payments. Outstanding = total − received.
-	const total = $derived(numVal(inv.total));
+	// Imported invoices often carry a null/0 stored total though line items exist —
+	// reconstruct Σitems + tax − discount (matches recorded payments for all such rows).
+	const itemsSubtotal = $derived(items.reduce((s, it) => s + numVal(it.total), 0));
+	const total = $derived(
+		numVal(inv.total) !== 0 ? numVal(inv.total) : itemsSubtotal + numVal(inv.tax) - numVal(inv.discount),
+	);
 	const paid = $derived(payments.reduce((s, p) => s + (p.status === 'void' ? 0 : numVal(p.amount)), 0));
 	const outstanding = $derived(total - paid);
 	type PayState = 'full' | 'partial' | 'unpaid';
