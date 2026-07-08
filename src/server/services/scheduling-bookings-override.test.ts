@@ -7,6 +7,23 @@ const computeSlotsMock = vi.fn<(input: unknown) => Array<{ start: Date; resource
 vi.mock('$server/scheduling/slots', () => ({
   computeSlots: (input: unknown) => computeSlotsMock(input),
 }));
+// The mock db is filter-blind (where-clauses are ignored; resolveSequence slots are
+// returned verbatim), so candidate narrowing is invisible through query RESULTS —
+// and `candidateIds = active.map(...)` overwrites the narrowed list with whatever
+// the mock returns. Narrowing IS visible through query ARGUMENTS: capture every
+// value list handed to drizzle's inArray so test (a) can prove the candidate set
+// was narrowed to the forced resource BEFORE the slot engine ran.
+const captured = vi.hoisted(() => ({ inArrayValues: [] as unknown[] }));
+vi.mock('drizzle-orm', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('drizzle-orm')>();
+  return {
+    ...actual,
+    inArray: ((col: unknown, values: unknown) => {
+      captured.inArrayValues.push(values);
+      return (actual.inArray as (c: unknown, v: unknown) => unknown)(col, values);
+    }) as typeof actual.inArray,
+  };
+});
 vi.mock('./scheduling-slots.service', () => ({ serviceRulesOf: () => undefined }));
 vi.mock('$server/events/emit', () => ({ emitHubEvent: async () => {} }));
 vi.mock('./stock-accruals.service', () => ({
@@ -20,6 +37,7 @@ import { createBooking, SlotUnavailableError } from './scheduling-bookings.servi
 beforeEach(() => {
   vi.clearAllMocks();
   computeSlotsMock.mockReturnValue([]);
+  captured.inArrayValues.length = 0;
 });
 
 const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
@@ -45,12 +63,16 @@ describe('createBooking — forceResourceId / overrideConflicts', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [et], // schedEventTypes lookup
-      [{ resourceId: 'free-1' }, { resourceId: 'busy-1' }], // event-type assignees
-      [{ id: 'busy-1' }], // active resources (narrowed to forced id)
+      [{ resourceId: 'free-1' }, { resourceId: 'busy-1' }], // event-type assignees: free-1 IS genuinely free
+      [{ id: 'busy-1' }], // active resources (real DB would return only the narrowed id)
       [], // loadAvailability: schedSchedules
       [], // loadBusyInTx: schedBookings
     ]);
-    computeSlotsMock.mockReturnValue([]); // forced resource has no free slot at this start
+    // Behavior-faithful engine stub: the engine only ever offers resources it was
+    // given (resourceIds ⊆ input resources). Narrowing hands it busy-1 alone, and
+    // busy-1 is busy at `start`, so it returns no slot — free-1's availability
+    // never reaches the engine, so it cannot be silently picked.
+    computeSlotsMock.mockReturnValue([]);
 
     await expect(
       createBooking(ctx(db), {
@@ -59,6 +81,20 @@ describe('createBooking — forceResourceId / overrideConflicts', () => {
         forceResourceId: 'busy-1',
       }),
     ).rejects.toBeInstanceOf(SlotUnavailableError);
+
+    // Failure point: the engine DID run (throw came from the exact-start no-match
+    // check, not from empty candidates).
+    expect(computeSlotsMock).toHaveBeenCalledTimes(1);
+
+    // THE discriminator. Every resource-id list the service sent to the DB after
+    // the force filter must be exactly ['busy-1'] — the active-resource query is
+    // the first of them and directly reflects the narrowed candidate set. With
+    // the narrowing line deleted, it receives ['free-1','busy-1'] and this fails.
+    const resourceIdLists = captured.inArrayValues.filter(
+      (v): v is string[] => Array.isArray(v) && (v.includes('busy-1') || v.includes('free-1')),
+    );
+    expect(resourceIdLists.length).toBeGreaterThan(0);
+    for (const list of resourceIdLists) expect(list).toEqual(['busy-1']);
   });
 
   it('overrideConflicts books an off-hours time (no slots) with the forced resource, skipping slot computation', async () => {
