@@ -162,7 +162,7 @@
   </div>
   <button
     type="button"
-    class="mini mini-open xl:hidden"
+    class="mini mini-open"
     title={m.pos_shift_open_cta()}
     disabled={!canAct('pos', 'edit')}
     onclick={startOpen}
@@ -191,7 +191,7 @@
   </div>
   <button
     type="button"
-    class="mini xl:hidden"
+    class="mini"
     title={isStale ? m.pos_shift_stale() : m.pos_shift_open_since({ time: openedAtLabel, name: openerName ?? '—' })}
     disabled={!canAct('pos', 'manage')}
     onclick={startClose}
@@ -320,9 +320,11 @@
   .box-live .act {
     color: var(--color-muted-foreground);
   }
-  /* Collapsed rail (< xl): a single icon button carrying the status color. */
+  /* Collapsed rail (< xl) only: a single icon button carrying the status color.
+     Display is controlled here, NOT via Tailwind xl:hidden — the scoped hash
+     class outranks the utility and re-shows it on desktop. */
   .mini {
-    display: flex;
+    display: none;
     align-items: center;
     justify-content: center;
     width: 100%;
@@ -331,6 +333,11 @@
     border: none;
     cursor: pointer;
     color: var(--color-muted-foreground);
+  }
+  @media (max-width: 1279.98px) {
+    .mini {
+      display: flex;
+    }
   }
   .mini-open {
     color: #f59e0b;

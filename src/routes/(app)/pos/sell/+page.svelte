@@ -12,6 +12,7 @@
   import SellCart, { type CartLine, lineCents } from '$lib/components/pos/SellCart.svelte';
   import PaymentPanel, { type PaymentRow } from '$lib/components/pos/PaymentPanel.svelte';
   import CustomerPicker from '$lib/components/pos/CustomerPicker.svelte';
+  import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
 
   let { data }: { data: PageData } = $props();
 
@@ -77,11 +78,25 @@
     return 'error';
   }
 
+  // Newest (or just-bumped) line always surfaces at the top of the cart.
   function addLine(sellable: PageData['sellables'][number]) {
-    const existing = lines.find((l) => l.sellable.productId === sellable.productId);
-    if (existing) existing.qty += 1;
-    else lines = [...lines, { sellable, qty: 1, unitPrice: sellable.unitPrice, discount: 0 }];
+    const i = lines.findIndex((l) => l.sellable.productId === sellable.productId);
+    if (i >= 0) {
+      const existing = lines[i];
+      existing.qty += 1;
+      lines = [existing, ...lines.filter((_, idx) => idx !== i)];
+    } else {
+      lines = [{ sellable, qty: 1, unitPrice: sellable.unitPrice, discount: 0 }, ...lines];
+    }
   }
+
+  type Sellable = PageData['sellables'][number];
+  const tableColumns = $derived<DataColumn<Sellable>[]>([
+    { key: 'name', label: m.pos_sell_col_name(), custom: true, accessor: (s) => s.name },
+    { key: 'category', label: m.pos_sell_col_category(), accessor: (s) => s.category ?? '—' },
+    { key: 'unitPrice', label: m.pos_sell_price(), align: 'right', custom: true, accessor: (s) => s.unitPrice ?? '' },
+    { key: 'stockQty', label: m.pos_catalog_col_stock(), align: 'right', custom: true, accessor: (s) => s.stockQty ?? '' },
+  ]);
 
   // ── Customer + payments ──
   let crmContactId = $state<string | null>(null);
@@ -95,8 +110,13 @@
   const remainingCents = $derived(totalCents - paidCents);
   const tenderOk = $derived(payments.every((p) => p.method !== 'cash' || p.tendered == null || Math.round(p.tendered * 100) >= Math.round(p.amount * 100)));
   const customerMissing = $derived(data.posSettings.requireCustomer && !crmContactId && !customerName);
+  // Server rejects tickets without an open shift (no_open_shift) — mirror that
+  // in the UI so the cashier can't even try.
+  const shiftOpen = $derived(!!page.data.openShift);
   let submitting = $state(false);
-  const chargeDisabled = $derived(lines.length === 0 || anyPriceless || customerMissing || paidCents !== totalCents || !tenderOk || submitting);
+  const chargeDisabled = $derived(
+    !shiftOpen || lines.length === 0 || anyPriceless || customerMissing || paidCents !== totalCents || !tenderOk || submitting,
+  );
 
   // ── Submit ──
   let stockBanner = $state<{ ticketId: string; message: string } | null>(null);
@@ -250,46 +270,55 @@
           </div>
         </div>
 
-        <div class="catalog-scroll">
-          {#if filtered.length === 0}
-            <EmptyState title={m.pos_sell_no_results()} compact />
-          {:else if view === 'gallery'}
-            <div class="grid">
-              {#each filtered as s (s.productId)}
-                <button type="button" class="card" onclick={() => addLine(s)}>
-                  <span class="cname">{s.name}</span>
-                  <span class="cprice">{s.unitPrice != null ? s.unitPrice.toFixed(2) : '—'}</span>
-                  {#if s.kind === 'product' && s.stockQty != null}
-                    <Badge variant="semantic" value={stockBadgeValue(s.stockQty)} size="sm">{s.stockQty}</Badge>
-                  {/if}
-                </button>
-              {/each}
-            </div>
-          {:else}
-            <div class="ptable">
-              <div class="trow thead">
-                <span>{m.pos_sell_col_name()}</span>
-                <span class="tcat">{m.pos_sell_col_category()}</span>
-                <span class="num">{m.pos_sell_price()}</span>
-                <span class="num">{m.pos_catalog_col_stock()}</span>
-              </div>
-              {#each filtered as s (s.productId)}
-                <button type="button" class="trow" onclick={() => addLine(s)}>
-                  <span class="tname">{s.name}<span class="tcode">{s.code}</span></span>
-                  <span class="tcat">{s.category ?? '—'}</span>
-                  <span class="num">{s.unitPrice != null ? s.unitPrice.toFixed(2) : '—'}</span>
-                  <span class="num">
+        {#if view === 'gallery'}
+          <div class="catalog-scroll">
+            {#if filtered.length === 0}
+              <EmptyState title={m.pos_sell_no_results()} compact />
+            {:else}
+              <div class="grid">
+                {#each filtered as s (s.productId)}
+                  <button type="button" class="card" onclick={() => addLine(s)}>
+                    <span class="cname">{s.name}</span>
+                    <span class="cprice">{s.unitPrice != null ? s.unitPrice.toFixed(2) : '—'}</span>
                     {#if s.kind === 'product' && s.stockQty != null}
                       <Badge variant="semantic" value={stockBadgeValue(s.stockQty)} size="sm">{s.stockQty}</Badge>
-                    {:else}
-                      —
                     {/if}
-                  </span>
-                </button>
-              {/each}
-            </div>
-          {/if}
-        </div>
+                  </button>
+                {/each}
+              </div>
+            {/if}
+          </div>
+        {:else}
+          <!-- Shared DataTable, stripped for POS: no toolbar chrome, row click adds. -->
+          <div class="table-wrap">
+            <DataTable
+              class="flex-1 min-h-0"
+              columns={tableColumns}
+              data={filtered}
+              getRowId={(s) => s.productId}
+              searchable={false}
+              columnMenu={false}
+              reorderable={false}
+              resizable={false}
+              onRowClick={(s) => addLine(s)}
+              emptyMessage={m.pos_sell_no_results()}
+            >
+              {#snippet cell(s: Sellable, col: DataColumn<Sellable>)}
+                {#if col.key === 'name'}
+                  <span class="tname">{s.name}<span class="tcode">{s.code}</span></span>
+                {:else if col.key === 'unitPrice'}
+                  <span class="tabular-nums">{s.unitPrice != null ? s.unitPrice.toFixed(2) : '—'}</span>
+                {:else if col.key === 'stockQty'}
+                  {#if s.kind === 'product' && s.stockQty != null}
+                    <Badge variant="semantic" value={stockBadgeValue(s.stockQty)} size="sm">{s.stockQty}</Badge>
+                  {:else}
+                    —
+                  {/if}
+                {/if}
+              {/snippet}
+            </DataTable>
+          </div>
+        {/if}
       </div>
 
       <div class="cart-panel">
@@ -302,9 +331,9 @@
         <CustomerPicker bind:crmContactId bind:customerName required={data.posSettings.requireCustomer} />
         <div class="cart-scroll">
           <SellCart bind:lines settings={{ allowPriceOverride: data.posSettings.allowPriceOverride }} />
-          <PaymentPanel {total} methods={data.posSettings.methods} bind:payments />
         </div>
         <div class="charge-bar">
+          <PaymentPanel {total} methods={data.posSettings.methods} bind:payments />
           <div class="total-row">
             <span>{m.pos_sell_total()}</span>
             <span class="total">{total.toFixed(2)}</span>
@@ -312,6 +341,9 @@
           <div class="remaining" class:done={remainingCents === 0}>
             {m.pos_sell_remaining()}: {(remainingCents / 100).toFixed(2)}
           </div>
+          {#if !shiftOpen}
+            <div class="no-shift">{m.pos_no_open_shift()}</div>
+          {/if}
           <Button variant="primary" size="lg" disabled={chargeDisabled} loading={submitting} onclick={charge}>{m.pos_sell_charge()}</Button>
         </div>
       </div>
@@ -510,42 +542,17 @@
     color: var(--color-muted-foreground);
     font-variant-numeric: tabular-nums;
   }
-  /* ── Catalog table view ── */
-  .ptable {
+  /* ── Catalog table view (shared DataTable needs a height-bounded parent) ── */
+  .table-wrap {
     display: flex;
     flex-direction: column;
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-lg);
-    background: var(--color-card);
-    overflow: hidden;
+    flex: 1;
+    min-height: 0;
   }
-  .trow {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 9rem 5rem 4rem;
-    align-items: center;
-    gap: 0.7rem;
-    padding: 0.45rem 0.7rem;
-    border: none;
-    border-bottom: 1px solid var(--hairline);
-    background: transparent;
-    color: var(--color-foreground);
-    font-size: 0.82rem;
-    text-align: left;
-    cursor: pointer;
-  }
-  .trow:last-child {
-    border-bottom: none;
-  }
-  .trow:not(.thead):hover {
-    background: color-mix(in srgb, var(--color-accent) 7%, transparent);
-  }
-  .trow.thead {
-    cursor: default;
-    font-size: 0.68rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    color: var(--color-muted-foreground);
+  @media (max-width: 1023.98px) {
+    .table-wrap {
+      height: 60vh;
+    }
   }
   .tname {
     display: flex;
@@ -560,24 +567,6 @@
     font-size: 0.7rem;
     color: var(--color-muted-foreground);
     font-variant-numeric: tabular-nums;
-  }
-  .tcat {
-    color: var(--color-muted-foreground);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .num {
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-  }
-  @media (max-width: 640px) {
-    .trow {
-      grid-template-columns: minmax(0, 1fr) 5rem 4rem;
-    }
-    .tcat {
-      display: none;
-    }
   }
   .cart-panel {
     display: flex;
@@ -602,6 +591,7 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    overflow-x: hidden;
   }
   /* Children must keep their natural height and overflow the scroller — the
      default flex-shrink:1 compresses them so their contents overlap instead. */
@@ -641,6 +631,14 @@
   }
   .remaining.done {
     color: var(--color-success, #4ade80);
+  }
+  .no-shift {
+    font-size: 0.78rem;
+    text-align: center;
+    padding: 0.3rem 0.5rem;
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, #f59e0b 12%, transparent);
+    color: #f59e0b;
   }
   .banner {
     display: flex;

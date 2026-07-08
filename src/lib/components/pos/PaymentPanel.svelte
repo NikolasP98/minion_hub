@@ -129,10 +129,15 @@
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
+    /* Lives in the pinned charge section — cap so many rows scroll instead of
+       squeezing the cart above out of view. */
+    max-height: 11rem;
+    overflow-y: auto;
   }
   .row {
     display: flex;
     align-items: flex-end;
+    flex-wrap: wrap; /* cash rows (price + tendered + change) exceed the panel width */
     gap: 0.5rem;
     padding: 0.35rem;
     border: 1px solid var(--hairline);
