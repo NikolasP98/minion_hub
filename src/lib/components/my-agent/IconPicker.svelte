@@ -73,7 +73,7 @@
 		flex-direction: column;
 		border-radius: 12px;
 		background: var(--color-bg2, #1b1b1f);
-		border: 1px solid rgba(255, 255, 255, 0.12);
+		border: 1px solid var(--color-border);
 		box-shadow: 0 14px 40px rgba(0, 0, 0, 0.6);
 		overflow: hidden;
 	}
@@ -96,16 +96,16 @@
 		font-family: inherit;
 		border-radius: 7px;
 		cursor: pointer;
-		color: rgba(255, 255, 255, 0.55);
+		color: color-mix(in srgb, var(--color-foreground) 55%, transparent);
 		background: transparent;
 		border: none;
 		transition: color 120ms ease, background 120ms ease;
 	}
 	.ip-tab:hover {
-		color: #fff;
+		color: var(--color-foreground);
 	}
 	.ip-tab.on {
-		color: #fff;
+		color: var(--color-foreground);
 		background: color-mix(in srgb, var(--color-accent) 18%, transparent);
 	}
 	.ip-close {
@@ -115,11 +115,11 @@
 		cursor: pointer;
 		background: transparent;
 		border: none;
-		color: rgba(255, 255, 255, 0.4);
+		color: color-mix(in srgb, var(--color-foreground) 40%, transparent);
 	}
 	.ip-close:hover {
-		color: #fff;
-		background: rgba(255, 255, 255, 0.08);
+		color: var(--color-foreground);
+		background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
 	}
 	.ip-search {
 		display: flex;
@@ -128,9 +128,9 @@
 		margin: 4px 10px 8px;
 		padding: 7px 10px;
 		border-radius: 8px;
-		background: rgba(255, 255, 255, 0.05);
-		border: 1px solid rgba(255, 255, 255, 0.08);
-		color: rgba(255, 255, 255, 0.4);
+		background: color-mix(in srgb, var(--color-foreground) 5%, transparent);
+		border: 1px solid color-mix(in srgb, var(--color-foreground) 8%, transparent);
+		color: color-mix(in srgb, var(--color-foreground) 40%, transparent);
 	}
 	.ip-search input {
 		flex: 1;
@@ -140,7 +140,7 @@
 		outline: none;
 		font-family: inherit;
 		font-size: 12.5px;
-		color: rgba(255, 255, 255, 0.9);
+		color: color-mix(in srgb, var(--color-foreground) 90%, transparent);
 	}
 	.ip-clear {
 		font-size: 11px;
@@ -148,12 +148,12 @@
 		padding: 2px 6px;
 		border-radius: 5px;
 		cursor: pointer;
-		color: rgba(255, 255, 255, 0.55);
+		color: color-mix(in srgb, var(--color-foreground) 55%, transparent);
 		background: transparent;
-		border: 1px solid rgba(255, 255, 255, 0.12);
+		border: 1px solid var(--color-border);
 	}
 	.ip-clear:hover {
-		color: #fff;
+		color: var(--color-foreground);
 	}
 	.ip-grid {
 		display: grid;
@@ -173,7 +173,7 @@
 		cursor: pointer;
 		background: transparent;
 		border: none;
-		color: rgba(255, 255, 255, 0.8);
+		color: color-mix(in srgb, var(--color-foreground) 80%, transparent);
 		transition: background 100ms ease;
 	}
 	.ip-cell.emoji {
@@ -181,7 +181,7 @@
 		line-height: 1;
 	}
 	.ip-cell:hover {
-		background: rgba(255, 255, 255, 0.1);
+		background: color-mix(in srgb, var(--color-foreground) 10%, transparent);
 	}
 	.ip-cell.sel {
 		background: color-mix(in srgb, var(--color-accent) 28%, transparent);
@@ -190,7 +190,7 @@
 		grid-column: 1 / -1;
 		text-align: center;
 		font-size: 12px;
-		color: rgba(255, 255, 255, 0.4);
+		color: color-mix(in srgb, var(--color-foreground) 40%, transparent);
 		padding: 16px 0;
 		margin: 0;
 	}
