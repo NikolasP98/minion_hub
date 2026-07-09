@@ -795,7 +795,8 @@
 
 	.inner {
 		width: 100%;
-		max-width: 720px;
+		/* No max-width cap — the greeting, feed, thread and composer all fill the
+		   full column width (between the sidebar and the notes panel). */
 		padding: 0 24px;
 		display: flex;
 		flex-direction: column;
@@ -837,22 +838,30 @@
 		min-width: 0;
 	}
 
-	/* Composer row: chat input grows, "Call agent" sits to its right, centered on
-	   the input box (the +22px offset clears the input's top padding). */
+	/* Composer bar: a full-width dock at the bottom of the column. Breaks out of
+	   the inner's 24px side padding (margin: 0 -24px) so its top border and the
+	   call box run edge-to-edge; the input grows, a vertical rule separates it
+	   from the boxed call button on the right. No outer margins/gap. */
 	.composer {
+		margin: 0 -24px;
+		border-top: 1px solid var(--color-border);
 		display: flex;
-		align-items: flex-start;
-		gap: 10px;
+		align-items: stretch;
+		gap: 0;
 	}
 	.composer-input {
 		flex: 1;
 		min-width: 0;
+		padding: 0 16px;
 	}
 	.composer-call {
 		flex-shrink: 0;
-		/* Clear ChatInput's 12px top padding so the call button's top edge lines up
-		   with the input box (both are now 52px tall, 12px radius). */
-		margin-top: 12px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0 16px;
+		/* Separator between the input and the call button. */
+		border-left: 1px solid var(--color-border);
 	}
 
 	.mini-avatar {
@@ -982,6 +991,10 @@
 		align-items: start;
 		/* Breathing room above the section titles so they don't crowd the greeting. */
 		padding-top: 14px;
+		/* Push the right edge out to the content-area edge (past the inner's 24px
+		   padding) so the emails column's scrollbar lines up flush with the chat
+		   thread's scrollbar below it. */
+		margin-right: -24px;
 	}
 
 	/* A single present section (only events OR only emails) spans full width
@@ -1026,7 +1039,11 @@
 		flex-direction: column;
 		overflow-y: auto;
 		scrollbar-width: thin;
-		padding: 18px 2px 4px;
+		/* Break out of the inner's 24px side padding so the scrollbar sits flush at
+		   the content-area edge; the 24px right padding keeps the messages inset
+		   from the scrollbar. */
+		margin: 0 -24px;
+		padding: 18px 24px 4px;
 	}
 
 	/* Pin messages to the bottom when short, but stay fully scrollable when the
