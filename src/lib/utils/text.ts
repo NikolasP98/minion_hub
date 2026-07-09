@@ -44,8 +44,10 @@ export function parseGatewayMetadata(text: string): { clean: string; isoTs?: str
   // Strip: "Conversation info (untrusted metadata):\n```json\n{...}\n```\n\n"
   const metaRe = /^Conversation info \(untrusted metadata\):\s*```(?:json)?\s[\s\S]*?```\s*\n*/;
   let clean = text.replace(metaRe, '');
-  // Extract: "[Day YYYY-MM-DD HH:MM GMT±N] "
-  const tsRe = /^\[([^\[\]]+)\]\s*/;
+  // Extract: "[Day YYYY-MM-DD HH:MM GMT±N] ". Anchored on the day name — a
+  // bare `[...]` match also swallowed other leading markers (e.g. the
+  // `[Context kind: label]` chip blocks ChatInput composes).
+  const tsRe = /^\[((?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[^\[\]]*)\]\s*/;
   let isoTs: string | undefined;
   const m = clean.match(tsRe);
   if (m) {
