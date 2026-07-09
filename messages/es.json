@@ -1712,6 +1712,8 @@
   "note_emptyState": "Captura un pensamiento o una lista de verificación. Toca + para empezar.",
   "note_placeholderChecklistTitle": "Título de la lista de verificación",
   "note_focusMode": "Modo enfocado",
+  "note_expand": "Expandir nota",
+  "note_collapse": "Contraer nota",
   "note_openFullscreen": "Abrir a pantalla completa",
   "note_unpin": "Desfijar",
   "note_pinToTop": "Fijar arriba",

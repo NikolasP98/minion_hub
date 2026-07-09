@@ -1712,6 +1712,8 @@
   "note_emptyState": "Capture a thought or a checklist. Tap + to start.",
   "note_placeholderChecklistTitle": "Checklist title",
   "note_focusMode": "Focus mode",
+  "note_expand": "Expand note",
+  "note_collapse": "Collapse note",
   "note_openFullscreen": "Open fullscreen",
   "note_unpin": "Unpin",
   "note_pinToTop": "Pin to top",

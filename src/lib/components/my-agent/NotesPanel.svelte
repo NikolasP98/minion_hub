@@ -29,6 +29,7 @@
 		Search,
 		Palette,
 		Maximize2,
+		ChevronDown,
 		LayoutDashboard,
 		Image as ImageIcon,
 		PanelRightClose,
@@ -188,6 +189,7 @@
 				id="note-{note.id}"
 				class="card"
 				class:pinned={note.pinned}
+				class:expanded={notesState.expandedId === note.id}
 				role="listitem"
 				style:border-color={style.border}
 				style:background={style.fill}
@@ -223,6 +225,20 @@
 						oninput={(e) => updateNote(note.id, { title: e.currentTarget.value })}
 						aria-label={m.common_title?.()}
 					/>
+					{#if note.kind !== 'easel'}
+						{@const isExpanded = notesState.expandedId === note.id}
+						<button
+							type="button"
+							class="pin-btn expand-btn"
+							class:on={isExpanded}
+							title={isExpanded ? m.note_collapse() : m.note_expand()}
+							aria-label={isExpanded ? m.note_collapse() : m.note_expand()}
+							aria-expanded={isExpanded}
+							onclick={() => (notesState.expandedId = isExpanded ? null : note.id)}
+						>
+							<ChevronDown size={15} />
+						</button>
+					{/if}
 					<button
 						type="button"
 						class="pin-btn focus-btn"
@@ -700,6 +716,31 @@
 	}
 	.card-body::placeholder {
 		color: color-mix(in srgb, var(--color-foreground) 28%, transparent);
+	}
+
+	/* Inline compact/expand: a collapsed card clamps its content to a short
+	   preview so the whole list stays scannable; expanding one (only one at a
+	   time — see notesState.expandedId) gives it the real-estate. Applies to the
+	   note body and the todo checklist; easel cards are already a fixed preview. */
+	.card:not(.expanded) .card-body,
+	.card:not(.expanded) :global(.todo-list) {
+		max-height: 5.4em;
+		overflow: hidden;
+		-webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent);
+		mask-image: linear-gradient(to bottom, #000 62%, transparent);
+	}
+
+	/* Chevron toggle: points right (collapsed) → down (expanded), matching the
+	   feed section toggle idiom. */
+	.expand-btn :global(svg) {
+		transition: transform 160ms ease;
+		transform: rotate(-90deg);
+	}
+	.expand-btn.on :global(svg) {
+		transform: rotate(0deg);
+	}
+	.expand-btn.on {
+		color: color-mix(in srgb, var(--color-foreground) 70%, transparent);
 	}
 
 	.card-foot {

@@ -990,16 +990,19 @@
 		grid-column: 1 / -1;
 	}
 
-	/* Vertical agenda (during a call): stack events over emails. */
+	/* Vertical agenda (during a call): stack events over emails. minmax(0,1fr)
+	   — NOT 1fr — so the single track can't grow to the min-content width of a
+	   nowrap email subject and overflow the column into the notes panel. */
 	.stage.in-call .feed-grid {
-		grid-template-columns: 1fr;
+		grid-template-columns: minmax(0, 1fr);
 	}
 
 	/* Narrow column (notes panel open / small viewport): stack as well — two
-	   columns get too cramped under ~520px of column width. */
+	   columns get too cramped under ~520px of column width. Same minmax(0,1fr)
+	   clamp so the stacked column truncates instead of bleeding right. */
 	@container agentcol (max-width: 520px) {
 		.feed-grid {
-			grid-template-columns: 1fr;
+			grid-template-columns: minmax(0, 1fr);
 		}
 	}
 

@@ -104,6 +104,8 @@ export const notesState = $state({
   /** Whether the side panel is open. Persisted separately. */
   open: false,
   query: '',
+  /** Id of the single inline-expanded card; all others render clamped. Ephemeral. */
+  expandedId: null as string | null,
   loaded: false,
   loading: false,
   /** Number of in-flight saves — surfaced as a subtle "saving…" hint. */
