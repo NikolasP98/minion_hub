@@ -59,7 +59,7 @@
     "drizzle-orm": "^0.45.2",
     "echarts": "^6.1.0",
     "fuse.js": "^7.4.2",
-    "jose": "^5.10.0",
+    "jose": "^6",
     "katex": "^0.17.0",
     "lucide-svelte": "^0.575.0",
     "msedge-tts": "^2.0.6",
