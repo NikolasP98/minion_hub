@@ -15,14 +15,24 @@
 		 * subtle "new" accent. Computed by the parent against a localStorage marker.
 		 */
 		isNew?: boolean;
+		/**
+		 * True once the user has opened this email IN THE HUB. This is a hub-only
+		 * open state (persisted in localStorage by the parent), deliberately
+		 * separate from Gmail's read/unread — opening here never touches Gmail.
+		 */
+		opened?: boolean;
 	}
 
-	const { item, onopen, nowMs, isNew = false }: Props = $props();
+	const { item, onopen, nowMs, isNew = false, opened = false }: Props = $props();
 
-	const unread = $derived(item.unread !== false);
-	// Status tier drives the card's whole treatment: a brand-new arrival reads
-	// loud (green), an unread-but-seen message reads normal, an opened one recedes.
-	const opened = $derived(!unread);
+	// Three hub-only states drive the whole treatment:
+	//   opened   → gray, open envelope (the user has read it here)
+	//   new      → green + dot, closed envelope (arrived since last visit, unopened)
+	//   unopened → red, closed envelope (seen before, still not opened)
+	// "new" only applies while still unopened.
+	const status = $derived<'opened' | 'new' | 'unopened'>(
+		opened ? 'opened' : isNew ? 'new' : 'unopened',
+	);
 
 	const received = $derived(item.receivedAt ? new Date(item.receivedAt) : null);
 	const relative = $derived.by(() => {
@@ -78,10 +88,7 @@
 </script>
 
 <div
-	class="email-card"
-	class:unread
-	class:opened
-	class:is-new={isNew}
+	class="email-card status-{status}"
 	role="button"
 	tabindex="0"
 	draggable="true"
@@ -91,12 +98,12 @@
 	title={subject}
 >
 	<div class="icon" aria-hidden="true">
-		{#if unread}
-			<Mail size={17} />
-		{:else}
+		{#if opened}
 			<MailOpen size={17} />
+		{:else}
+			<Mail size={17} />
 		{/if}
-		{#if isNew}<span class="dot" aria-label={m.email_newIndicator()}></span>{/if}
+		{#if status === 'new'}<span class="dot" aria-label={m.email_newIndicator()}></span>{/if}
 	</div>
 
 	<div class="text">
@@ -136,11 +143,12 @@
 		border-color: color-mix(in srgb, var(--color-foreground) 6%, transparent);
 		outline: none;
 	}
-	.email-card.opened {
-		opacity: 0.78;
+	/* Opened emails recede. */
+	.email-card.status-opened {
+		opacity: 0.72;
 	}
-	.email-card.opened:hover,
-	.email-card.opened:focus-visible {
+	.email-card.status-opened:hover,
+	.email-card.status-opened:focus-visible {
 		opacity: 1;
 	}
 
@@ -154,16 +162,17 @@
 		padding-top: 2px;
 		color: color-mix(in srgb, var(--color-foreground) 40%, transparent);
 	}
-	.email-card.unread .icon {
-		color: color-mix(in srgb, var(--color-accent) 85%, transparent);
-	}
-	/* New arrival — green, loud. Overrides the unread accent. */
-	.email-card.is-new .icon {
+	/* New + unopened — green, loud, with the dot. */
+	.email-card.status-new .icon {
 		color: #4ade80;
 	}
-	/* Opened — recede the envelope further. */
-	.email-card.opened .icon {
-		color: color-mix(in srgb, var(--color-foreground) 28%, transparent);
+	/* Unopened (seen before) — red, closed envelope. */
+	.email-card.status-unopened .icon {
+		color: var(--color-destructive, #f87171);
+	}
+	/* Opened — gray, open envelope. */
+	.email-card.status-opened .icon {
+		color: color-mix(in srgb, var(--color-foreground) 30%, transparent);
 	}
 	.icon .dot {
 		position: absolute;
@@ -199,14 +208,15 @@
 		white-space: nowrap;
 		min-width: 0;
 	}
-	.email-card.unread .sender {
+	/* Unopened (new or seen) reads at full strength; new is a touch bolder. */
+	.email-card.status-unopened .sender {
 		color: color-mix(in srgb, var(--color-foreground) 92%, transparent);
 	}
-	.email-card.is-new .sender {
-		color: color-mix(in srgb, #4ade80 85%, var(--color-foreground));
+	.email-card.status-new .sender {
+		color: color-mix(in srgb, var(--color-foreground) 96%, transparent);
 		font-weight: 700;
 	}
-	.email-card.opened .sender {
+	.email-card.status-opened .sender {
 		font-weight: 500;
 		color: color-mix(in srgb, var(--color-foreground) 58%, transparent);
 	}
@@ -250,7 +260,7 @@
 		color: color-mix(in srgb, var(--color-foreground) 40%, transparent);
 		font-variant-numeric: tabular-nums;
 	}
-	.email-card.is-new .time {
+	.email-card.status-new .time {
 		color: color-mix(in srgb, #4ade80 80%, var(--color-foreground));
 		font-weight: 600;
 	}
@@ -269,11 +279,12 @@
 		white-space: nowrap;
 		min-width: 0;
 	}
-	.email-card.unread .subject {
+	.email-card.status-unopened .subject,
+	.email-card.status-new .subject {
 		color: color-mix(in srgb, var(--color-foreground) 82%, transparent);
 		font-weight: 500;
 	}
-	.email-card.opened .subject {
+	.email-card.status-opened .subject {
 		color: color-mix(in srgb, var(--color-foreground) 48%, transparent);
 		font-weight: 400;
 	}

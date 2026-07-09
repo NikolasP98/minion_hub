@@ -103,6 +103,31 @@
 		return () => clearTimeout(id);
 	});
 
+	// Hub-only "opened" state, separate from Gmail's read/unread: the set of
+	// message ids the user has opened HERE. Persisted per-browser in localStorage
+	// (bounded to the most recent 500). Drives the gray/open-envelope treatment.
+	const OPENED_KEY = 'minion:my-agent:emails-opened';
+	let openedEmails = $state<Set<string>>(new Set());
+	$effect(() => {
+		if (typeof localStorage === 'undefined') return;
+		try {
+			const raw = localStorage.getItem(OPENED_KEY);
+			openedEmails = new Set(raw ? (JSON.parse(raw) as string[]) : []);
+		} catch {
+			openedEmails = new Set();
+		}
+	});
+	const isEmailOpened = (item: EmailItem) => openedEmails.has(item.id);
+	function markEmailOpened(id: string) {
+		if (openedEmails.has(id)) return;
+		const next = new Set(openedEmails);
+		next.add(id);
+		openedEmails = next; // reassign so derived reads re-run
+		if (typeof localStorage !== 'undefined') {
+			localStorage.setItem(OPENED_KEY, JSON.stringify([...next].slice(-500)));
+		}
+	}
+
 	// ─── Feed item modals (open in-place instead of navigating to Google) ───
 	let selectedEvent = $state<CalendarItem | null>(null);
 	let eventModalOpen = $state(false);
@@ -114,6 +139,7 @@
 		eventModalOpen = true;
 	}
 	function openEmail(mail: EmailItem) {
+		markEmailOpened(mail.id);
 		selectedEmail = mail;
 		emailModalOpen = true;
 	}
@@ -638,6 +664,7 @@
 												item={mail}
 												{nowMs}
 												isNew={isEmailNew(mail)}
+												opened={isEmailOpened(mail)}
 												onopen={() => openEmail(mail)}
 											/>
 										{/each}
@@ -650,6 +677,7 @@
 												item={mail}
 												{nowMs}
 												isNew={isEmailNew(mail)}
+												opened={isEmailOpened(mail)}
 												onopen={() => openEmail(mail)}
 											/>
 											{#if emailItems.length > 1}
