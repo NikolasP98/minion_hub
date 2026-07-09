@@ -246,6 +246,35 @@
 	// A single bottom-center handle (below both columns) drives the shared state.
 	const hasFeed = $derived(calendarItems.length > 0 || emailItems.length > 0);
 
+	// Last-known feed snapshot, persisted so a revisit paints instantly instead
+	// of "Loading…" while the WS connects and the gateway (cold) shells out to
+	// gws. Stale-while-refresh: cached cards render at once, then the fresh RPC
+	// result silently replaces them.
+	const FEED_CACHE_KEY = 'minion:my-agent:feed-snapshot';
+	const FEED_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+	$effect(() => {
+		if (typeof localStorage === 'undefined' || lastFetchedAt !== null) return;
+		try {
+			const raw = localStorage.getItem(FEED_CACHE_KEY);
+			if (!raw) return;
+			const snap = JSON.parse(raw) as {
+				observations?: ObservationRow[];
+				calendarItems?: CalendarItem[];
+				emailItems?: EmailItem[];
+				at?: number;
+			};
+			if (!snap.at || Date.now() - snap.at > FEED_CACHE_MAX_AGE_MS) return;
+			// Only seed while we still have nothing — never clobber fresh data.
+			if (lastFetchedAt === null) {
+				observations = snap.observations ?? [];
+				calendarItems = snap.calendarItems ?? [];
+				emailItems = snap.emailItems ?? [];
+			}
+		} catch {
+			/* corrupt cache — ignore, the live fetch repopulates it */
+		}
+	});
+
 	async function loadFeed() {
 		loading = true;
 		errorMsg = null;
@@ -255,6 +284,19 @@
 			calendarItems = res.calendarItems;
 			emailItems = res.emailItems;
 			lastFetchedAt = Date.now();
+			try {
+				localStorage.setItem(
+					FEED_CACHE_KEY,
+					JSON.stringify({
+						observations: res.observations,
+						calendarItems: res.calendarItems,
+						emailItems: res.emailItems,
+						at: lastFetchedAt,
+					}),
+				);
+			} catch {
+				/* quota/unavailable — instant-paint cache is best-effort */
+			}
 		} catch (err) {
 			errorMsg = err instanceof Error ? err.message : String(err);
 		} finally {
@@ -518,11 +560,13 @@
 				{/if}
 
 				<section class="agenda" aria-label={m.common_today()}>
-					{#if !conn.connected}
+					<!-- Cached snapshot (if any) always paints; the notes below only cover
+					     the truly-empty states so a revisit never blanks back to "Loading…". -->
+					{#if feedEmpty && !conn.connected}
 						<p class="state-note">{m.feed_connectGateway()}</p>
-					{:else if loading && feedEmpty}
+					{:else if feedEmpty && loading}
 						<p class="state-note">{m.common_loading()}</p>
-					{:else if errorMsg}
+					{:else if feedEmpty && errorMsg}
 						<p class="state-note error">{m.feed_failed({ error: errorMsg })}</p>
 						<button type="button" class="retry" onclick={loadFeed}>{m.common_retry()}</button>
 					{:else if feedEmpty}
