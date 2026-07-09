@@ -5,6 +5,7 @@
 	import StarterKit from '@tiptap/starter-kit';
 	import Highlight from '@tiptap/extension-highlight';
 	import Image from '@tiptap/extension-image';
+	import DragHandle from '@tiptap/extension-drag-handle';
 	import { Markdown } from 'tiptap-markdown';
 	import * as m from '$lib/paraglide/messages';
 	import {
@@ -38,6 +39,7 @@
 		block,
 		placeholder = 'Take a note…',
 		autofocus = false,
+		blockHandles = false,
 		onfocus,
 		oninsertblock
 	}: {
@@ -46,11 +48,23 @@
 		block?: TextBlock;
 		placeholder?: string;
 		autofocus?: boolean;
+		/** Notion-style hover drag handles for reordering top-level blocks (zen). */
+		blockHandles?: boolean;
 		/** Fired when this editor gains focus (so the footer mic can target it). */
 		onfocus?: () => void;
 		/** Slash-menu: insert a new block of `type` right after this text block. */
 		oninsertblock?: (type: 'todo' | 'easel' | 'text') => void;
 	} = $props();
+
+	// Notion-style grip shown in the left gutter of the hovered block.
+	function makeDragHandle(): HTMLElement {
+		const el = document.createElement('div');
+		el.className = 'block-handle';
+		el.setAttribute('aria-hidden', 'true');
+		el.innerHTML =
+			'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="18" r="1"/></svg>';
+		return el;
+	}
 
 	// Current markdown source for this editor (block content or legacy note body).
 	const sourceMd = () => (block ? block.md : note.body);
@@ -549,7 +563,8 @@
 					Image.configure({ inline: false, allowBase64: false }),
 					// html:true lets marks without a markdown spec (highlight → <mark>) round-trip.
 					Markdown.configure({ html: true, transformPastedText: true, transformCopiedText: true }),
-					createAutofill({ kind: 'note', getContext: () => sourceMd() })
+					createAutofill({ kind: 'note', getContext: () => sourceMd() }),
+					...(blockHandles ? [DragHandle.configure({ render: makeDragHandle })] : [])
 				],
 				content: sourceMd() || '',
 				autofocus: autofocus ? 'end' : false,
@@ -932,5 +947,33 @@
 	:global(.note-editor .autofill-ghost) {
 		color: color-mix(in srgb, var(--color-foreground) 32%, transparent);
 		pointer-events: none;
+	}
+	/* Notion-style block drag handle (rendered by the DragHandle extension in
+	   the hovered block's left gutter). */
+	:global(.block-handle) {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 20px;
+		height: 22px;
+		border-radius: 5px;
+		cursor: grab;
+		color: color-mix(in srgb, var(--color-foreground) 28%, transparent);
+		transition: color 120ms ease, background 120ms ease;
+	}
+	:global(.block-handle:hover) {
+		color: color-mix(in srgb, var(--color-foreground) 65%, transparent);
+		background: color-mix(in srgb, var(--color-foreground) 7%, transparent);
+	}
+	:global(.block-handle:active) {
+		cursor: grabbing;
+	}
+	/* Drop indicator while dragging a block. */
+	:global(.note-editor .ProseMirror-hideselection *::selection) {
+		background: transparent;
+	}
+	:global(.note-editor .ProseMirror .ProseMirror-selectednode) {
+		border-radius: 6px;
+		outline: 2px solid color-mix(in srgb, var(--color-accent) 45%, transparent);
 	}
 </style>

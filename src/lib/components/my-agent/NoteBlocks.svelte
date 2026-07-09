@@ -114,6 +114,7 @@
 		bind:this={editors[block.id]}
 		{note}
 		{block}
+		blockHandles={!compact}
 		placeholder={i === 0 ? m.note_placeholderFirstBlock() : m.note_placeholderSubsequentBlock()}
 		onfocus={() => (focusedTextId = block.id)}
 		oninsertblock={(type) => addBlock(note.id, type, block.id)}
