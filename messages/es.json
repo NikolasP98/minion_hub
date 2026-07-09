@@ -4087,5 +4087,13 @@
   "gmailch_addToFeed": "Añadir al feed",
   "gmailch_addedToFeed": "Añadido a tu feed",
   "gmailch_removedFromFeed": "Eliminado de tu feed",
-  "gmailch_footnote": "Las bandejas compartidas son cuentas del negocio marcadas como compartibles por un admin. Añadir una a tu feed trae su correo no leído y calendario a tu página de inicio; el estado de la cuenta se verifica en vivo contra Google."
+  "gmailch_footnote": "Las bandejas compartidas son cuentas del negocio marcadas como compartibles por un admin. Añadir una a tu feed trae su correo no leído y calendario a tu página de inicio; el estado de la cuenta se verifica en vivo contra Google.",
+  "gmailch_ledgerTitle": "Registro de correos procesados",
+  "gmailch_ledgerSubtitle": "Un registro de cada correo etiquetado automáticamente — solo resumen, etiquetas y metadatos. El contenido del mensaje nunca se guarda.",
+  "gmailch_retentionLabel": "Conservar (días)",
+  "gmailch_retentionHint": "Las filas más antiguas que este plazo se eliminan automáticamente. Pon 0 para conservar indefinidamente.",
+  "gmailch_retentionSaved": "Retención actualizada",
+  "gmailch_save": "Guardar",
+  "gmailch_ledgerEmpty": "Aún no hay correos procesados. A medida que se ejecute el etiquetado automático, aparecerán aquí el resumen y las etiquetas de cada correo.",
+  "gmailch_ledgerNoSubject": "(sin asunto)"
 }

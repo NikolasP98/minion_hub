@@ -4087,5 +4087,13 @@
   "gmailch_addToFeed": "Add to feed",
   "gmailch_addedToFeed": "Added to your feed",
   "gmailch_removedFromFeed": "Removed from your feed",
-  "gmailch_footnote": "Shared inboxes are business accounts marked shareable by an admin. Adding one to your feed pulls its unread email and calendar into your home page; account health is checked live against Google."
+  "gmailch_footnote": "Shared inboxes are business accounts marked shareable by an admin. Adding one to your feed pulls its unread email and calendar into your home page; account health is checked live against Google.",
+  "gmailch_ledgerTitle": "Processed email ledger",
+  "gmailch_ledgerSubtitle": "A record of each auto-labeled email — summary, tags, and metadata only. Message contents are never stored.",
+  "gmailch_retentionLabel": "Keep for (days)",
+  "gmailch_retentionHint": "Rows past this age are deleted automatically. Set 0 to keep indefinitely.",
+  "gmailch_retentionSaved": "Retention updated",
+  "gmailch_save": "Save",
+  "gmailch_ledgerEmpty": "No processed emails yet. As auto-labeling runs, each email's summary and tags appear here.",
+  "gmailch_ledgerNoSubject": "(no subject)"
 }

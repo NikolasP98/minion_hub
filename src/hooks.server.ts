@@ -180,7 +180,8 @@ const finishApp: Handle = async ({ event, resolve }) => {
       path === '/api/memberships/tick' ||
       path === '/api/org-config/tick' ||
       path === '/api/jobs/tick' ||
-      path === '/api/meta/sync/tick'
+      path === '/api/meta/sync/tick' ||
+      path === '/api/email-ledger/tick'
     ) {
       return resolve(event);
     }

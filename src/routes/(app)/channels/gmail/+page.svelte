@@ -9,12 +9,38 @@
   import { supabaseBrowser } from '$lib/supabase/client';
   import * as m from '$lib/paraglide/messages';
   import type { PageData } from './$types';
-  import type { GmailAccountRow } from './+page.server';
+  import type { GmailAccountRow, LedgerRow } from './+page.server';
 
   let { data }: { data: PageData } = $props();
   const accounts = $derived(data.accounts as GmailAccountRow[]);
+  const ledger = $derived(data.ledger as LedgerRow[]);
 
   let busy = $state<string | null>(null);
+
+  // Retention (days) is seeded once from the server; edits are user-driven.
+  // svelte-ignore state_referenced_locally
+  let retention = $state<number>(data.retentionDays);
+  let savingRetention = $state(false);
+  async function saveRetention() {
+    savingRetention = true;
+    try {
+      const res = await fetch('/api/email-ledger/settings', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ retentionDays: retention }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      retention = (await res.json()).retentionDays;
+      toastSuccess(m.gmailch_retentionSaved());
+    } catch (e) {
+      toastError((e as Error).message);
+    } finally {
+      savingRetention = false;
+    }
+  }
+
+  const dateFmt = (iso: string) =>
+    new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
   // Health pill per row. `health.ok && hasGmail` is the only green state —
   // a valid token WITHOUT the Gmail scope is precisely the silent failure this
@@ -155,6 +181,57 @@
       </div>
       <p class="text-xs text-muted-foreground mt-4 max-w-xl">{m.gmailch_footnote()}</p>
     {/if}
+
+    <!-- Processed-email ledger: summaries + tags + metadata, never contents. -->
+    <section class="ledger">
+      <div class="ledger-head">
+        <div class="min-w-0">
+          <h2 class="ledger-title">{m.gmailch_ledgerTitle()}</h2>
+          <p class="ledger-sub">{m.gmailch_ledgerSubtitle()}</p>
+        </div>
+        <div class="retention">
+          <label for="retention-days">{m.gmailch_retentionLabel()}</label>
+          <input
+            id="retention-days"
+            type="number"
+            min="0"
+            max="3650"
+            bind:value={retention}
+            class="retention-input"
+          />
+          <button
+            type="button"
+            class="action-btn"
+            onclick={saveRetention}
+            disabled={savingRetention}
+          >
+            {m.gmailch_save()}
+          </button>
+        </div>
+      </div>
+      <p class="retention-hint">{m.gmailch_retentionHint()}</p>
+
+      {#if ledger.length === 0}
+        <p class="ledger-empty">{m.gmailch_ledgerEmpty()}</p>
+      {:else}
+        <ul class="ledger-list">
+          {#each ledger as row (row.id)}
+            <li class="ledger-row">
+              <div class="ledger-row-top">
+                <span class="ledger-subject">{row.subject || m.gmailch_ledgerNoSubject()}</span>
+                {#each row.labels as label (label)}<span class="tag">{label}</span>{/each}
+              </div>
+              {#if row.summary}<p class="ledger-summary">{row.summary}</p>{/if}
+              <p class="ledger-meta">
+                {#if row.fromDomain}{row.fromDomain} · {/if}{row.mailbox} · {dateFmt(
+                  row.processedAt,
+                )}
+              </p>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </section>
   </div>
 </div>
 
@@ -257,5 +334,113 @@
   .action-btn:disabled {
     opacity: 0.5;
     cursor: default;
+  }
+
+  /* ── Processed-email ledger ─────────────────────────────────────────── */
+  .ledger {
+    max-width: 46rem;
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--hairline);
+  }
+  .ledger-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+  .ledger-title {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--color-foreground);
+  }
+  .ledger-sub {
+    font-size: 0.75rem;
+    color: var(--color-muted-foreground, var(--color-muted));
+    margin-top: 0.125rem;
+  }
+  .retention {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    color: var(--color-muted-foreground, var(--color-muted));
+    flex-shrink: 0;
+  }
+  .retention-input {
+    width: 4.5rem;
+    padding: 0.3125rem 0.5rem;
+    border-radius: var(--radius-md, 0.5rem);
+    border: 1px solid var(--hairline);
+    background: var(--color-bg2, rgba(255, 255, 255, 0.02));
+    color: var(--color-foreground);
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .retention-hint {
+    font-size: 0.6875rem;
+    color: var(--color-muted-foreground, var(--color-muted));
+    margin-top: 0.5rem;
+    max-width: 34rem;
+  }
+  .ledger-empty {
+    font-size: 0.8125rem;
+    color: var(--color-muted-foreground, var(--color-muted));
+    margin-top: 1.25rem;
+    padding: 1.25rem;
+    text-align: center;
+    border: 1px dashed var(--hairline);
+    border-radius: var(--radius-lg, 0.75rem);
+  }
+  .ledger-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    margin-top: 1rem;
+  }
+  .ledger-row {
+    padding: 0.625rem 0.75rem;
+    border-radius: var(--radius-md, 0.5rem);
+    border: 1px solid var(--hairline);
+    background: var(--color-bg2, rgba(255, 255, 255, 0.02));
+  }
+  .ledger-row-top {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .ledger-subject {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--color-foreground);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .ledger-summary {
+    font-size: 0.75rem;
+    color: color-mix(in srgb, var(--color-foreground) 62%, transparent);
+    margin-top: 0.1875rem;
+  }
+  .ledger-meta {
+    font-size: 0.6875rem;
+    color: var(--color-muted-foreground, var(--color-muted));
+    margin-top: 0.25rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .tag {
+    flex-shrink: 0;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 1px 6px;
+    border-radius: 5px;
+    color: color-mix(in srgb, var(--color-foreground) 62%, transparent);
+    background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-foreground) 8%, transparent);
+    white-space: nowrap;
   }
 </style>

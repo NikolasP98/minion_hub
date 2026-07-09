@@ -3,6 +3,23 @@ import { error } from '@sveltejs/kit';
 import { listAvailableSharedIdentities } from '$server/services/shared-identity.service';
 import { getGoogleCredential } from '$server/services/identity.service';
 import { probeGoogleToken, type GoogleTokenHealth } from '$server/services/google-token-health';
+import { getCoreCtx } from '$server/auth/core-ctx';
+import {
+  getRetentionDays,
+  listEntries,
+  DEFAULT_RETENTION_DAYS,
+} from '$server/services/email-ledger.service';
+
+/** A processed-email ledger row, serialised for the client. */
+export interface LedgerRow {
+  id: string;
+  mailbox: string;
+  fromDomain: string | null;
+  subject: string | null;
+  summary: string | null;
+  labels: string[];
+  processedAt: string;
+}
 
 /**
  * Gmail channel — manage the Google inboxes behind the feed: the signed-in
@@ -75,5 +92,26 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     });
   });
 
-  return { userId: locals.user.id, accounts };
+  // Ledger (Supabase-PG, org-scoped): retention setting + recent processed rows.
+  const coreCtx = await getCoreCtx(locals);
+  const [retentionDays, entries] = coreCtx
+    ? await Promise.all([
+        getRetentionDays(coreCtx).catch(() => DEFAULT_RETENTION_DAYS),
+        listEntries(coreCtx, { limit: 25 }).catch(() => []),
+      ])
+    : [DEFAULT_RETENTION_DAYS, []];
+  const ledger: LedgerRow[] = entries.map((r) => ({
+    id: r.id,
+    mailbox: r.mailbox,
+    fromDomain: r.fromDomain,
+    subject: r.subject,
+    summary: r.summary,
+    labels: r.labels ?? [],
+    processedAt: (r.processedAt instanceof Date
+      ? r.processedAt
+      : new Date(r.processedAt as unknown as string)
+    ).toISOString(),
+  }));
+
+  return { userId: locals.user.id, accounts, retentionDays, ledger };
 };
