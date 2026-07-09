@@ -887,7 +887,9 @@
 	   the composer adds no top border or separator, just a small gap + bottom inset. */
 	.composer {
 		display: flex;
-		align-items: center;
+		/* Bottom-align: when the input box grows (attached chips), it extends upward
+		   while its bottom row stays level with the square call button. */
+		align-items: flex-end;
 		gap: 8px;
 		padding-bottom: 10px;
 	}

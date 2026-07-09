@@ -162,9 +162,11 @@
 		position: relative;
 		display: flex;
 		flex-direction: column;
-		justify-content: center;
+		/* Anchor the input row at the BOTTOM: attached chips stack above it and the
+		   box grows upward, so the prompt + text never shift from their resting spot. */
+		justify-content: flex-end;
 		gap: 8px;
-		padding: 0 12px;
+		padding: 8px 12px;
 		min-height: 40px;
 		background: transparent;
 		border: 1px solid color-mix(in srgb, var(--color-foreground) 10%, transparent);
