@@ -30,6 +30,7 @@
 		onpolish,
 		ondiscard,
 		hasPending,
+		detectedLang,
 		compact = false,
 		allowTab = true
 	}: {
@@ -41,6 +42,8 @@
 		ondiscard?: () => void;
 		/** Whether the parent currently holds an uncommitted transcript. */
 		hasPending?: () => boolean;
+		/** Detected note language — used when the language pref is 'auto'. */
+		detectedLang?: () => 'es' | 'en' | null;
 		compact?: boolean;
 		/** Whether to offer the audio-sources picker (advanced). */
 		allowTab?: boolean;
@@ -91,7 +94,10 @@
 			return;
 		}
 		recog = new Ctor();
-		recog.lang = speechLang() || navigator.language || 'en-US';
+		// Explicit pref wins; on 'auto' follow the note's detected language.
+		const auto = detectedLang?.();
+		recog.lang =
+			speechLang() || (auto === 'es' ? 'es-ES' : auto === 'en' ? 'en-US' : '') || navigator.language || 'en-US';
 		recog.continuous = true;
 		recog.interimResults = true;
 		recog.onresult = (e) => {

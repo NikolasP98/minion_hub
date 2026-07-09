@@ -46,6 +46,7 @@
 	import { runPolish, clearAllProposals } from '$lib/state/features/note-polish.svelte';
 	import TodoChecklist from './TodoChecklist.svelte';
 	import TranscribeButton from './TranscribeButton.svelte';
+	import { detectLang } from '$lib/utils/detect-lang';
 	import ZenMode from './ZenMode.svelte';
 	import EaselBoard from './EaselBoard.svelte';
 	import type { EaselBlock } from '$lib/types/notes';
@@ -361,6 +362,7 @@
 							<TranscribeButton
 								compact
 								allowTab={false}
+								detectedLang={() => detectLang(note.body ?? '')}
 								onfinal={(t) => editorRefs[note.id]?.handleFinal(t)}
 								oninterim={(t) => editorRefs[note.id]?.handleInterim(t)}
 							/>

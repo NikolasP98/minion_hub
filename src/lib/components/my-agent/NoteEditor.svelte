@@ -241,13 +241,31 @@
 		};
 	}
 
+	// Center the toolbar over the WHOLE selection and keep it above the first
+	// selected line (the fmt-toolbar transform lifts it above `top`). The DOM
+	// range rect covers word/line/multi-line selections uniformly; caret-coords
+	// are the fallback when the DOM selection is unavailable.
+	const TOOLBAR_HALF_W = 170;
 	function placeToolbarAtSelection() {
 		if (!editor) return;
-		const { from, to } = editor.state.selection;
-		const start = editor.view.coordsAtPos(from);
-		const end = editor.view.coordsAtPos(to);
-		const left = (start.left + end.left) / 2;
-		const top = Math.min(start.top, end.top);
+		let left: number;
+		let top: number;
+		const domSel = window.getSelection();
+		const range = domSel && domSel.rangeCount > 0 && !domSel.isCollapsed ? domSel.getRangeAt(0) : null;
+		const rect = range?.getBoundingClientRect();
+		if (rect && (rect.width > 0 || rect.height > 0)) {
+			left = rect.left + rect.width / 2;
+			top = rect.top;
+		} else {
+			const { from, to } = editor.state.selection;
+			const start = editor.view.coordsAtPos(from);
+			const end = editor.view.coordsAtPos(to);
+			left = (start.left + end.left) / 2;
+			top = Math.min(start.top, end.top);
+		}
+		// Keep the panel on-screen horizontally; never let the lift push it off-top.
+		left = Math.min(Math.max(left, TOOLBAR_HALF_W + 8), window.innerWidth - TOOLBAR_HALF_W - 8);
+		top = Math.max(top, 56);
 		toolbar = { left, top };
 	}
 
@@ -286,7 +304,13 @@
 		refreshActive();
 		const sel = editor.state.selection;
 		if (sel.empty) {
-			toolbar = { left: e.clientX, top: e.clientY };
+			// Anchor above the clicked LINE (not the pointer) so the panel never
+			// covers the text being acted on.
+			const lineTop = editor.view.coordsAtPos(sel.from).top;
+			toolbar = {
+				left: Math.min(Math.max(e.clientX, TOOLBAR_HALF_W + 8), window.innerWidth - TOOLBAR_HALF_W - 8),
+				top: Math.max(lineTop, 56)
+			};
 		} else {
 			placeToolbarAtSelection();
 		}

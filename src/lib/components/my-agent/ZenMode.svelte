@@ -128,6 +128,7 @@
 				</div>
 				<TranscribeButton
 					allowTab={true}
+					detectedLang={() => detected}
 					onfinal={(t) => blocksRef?.handleFinal(t)}
 					oninterim={(t) => blocksRef?.handleInterim(t)}
 					onpolish={() => blocksRef?.polishFocused()}
