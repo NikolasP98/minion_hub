@@ -664,13 +664,18 @@
 				{#if renderedMessages.length > 0 || streamMessage || stream || sending}
 					<div class="thread" bind:this={threadEl} onscroll={onThreadScroll}>
 						<div class="thread-inner">
-							{#each renderedMessages as row (row.key)}
+							{#each renderedMessages as row, ri (row.key)}
+								<!-- One timestamp per MESSAGE BLOCK: a run of same-role rows (an
+								     agent turn spans several tool/reasoning messages) stamps only
+								     its last row, not every intermediate action. -->
+								{@const blockEnd =
+									ri === renderedMessages.length - 1 || renderedMessages[ri + 1].role !== row.role}
 								{#if row.role === 'assistant'}
 									<!-- Assistant turn: ChatTurn owns its layout — quiet reasoning/tool
 									     rows OUTSIDE the bubble, the reply inside its own bubble. -->
 									<div class="bubble-row assistant">
 										<ChatTurn message={row.msg} toolResults={toolResultsById} />
-										{#if row.ts}<span class="bubble-time">{fmtTime(row.ts)}</span>{/if}
+										{#if row.ts && blockEnd}<span class="bubble-time">{fmtTime(row.ts)}</span>{/if}
 									</div>
 								{:else}
 									<div class="bubble-row user">
@@ -687,7 +692,7 @@
 										{#if row.text.trim().length > 0}
 											<div class="bubble user">{row.text}</div>
 										{/if}
-										{#if row.ts}<span class="bubble-time">{fmtTime(row.ts)}</span>{/if}
+										{#if row.ts && blockEnd}<span class="bubble-time">{fmtTime(row.ts)}</span>{/if}
 									</div>
 								{/if}
 							{/each}
