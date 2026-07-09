@@ -104,18 +104,24 @@
 	});
 
 	// Hub-only "opened" state, separate from Gmail's read/unread: the set of
-	// message ids the user has opened HERE. Persisted per-browser in localStorage
-	// (bounded to the most recent 500). Drives the gray/open-envelope treatment.
+	// message ids the user has opened HERE. Synced across devices via the server
+	// (data.openedIds from the load + POST /api/email-opens); localStorage is a
+	// local cache that covers this session and offline opens. Drives the
+	// gray/open-envelope treatment.
 	const OPENED_KEY = 'minion:my-agent:emails-opened';
 	let openedEmails = $state<Set<string>>(new Set());
 	$effect(() => {
-		if (typeof localStorage === 'undefined') return;
-		try {
-			const raw = localStorage.getItem(OPENED_KEY);
-			openedEmails = new Set(raw ? (JSON.parse(raw) as string[]) : []);
-		} catch {
-			openedEmails = new Set();
+		// Union the server set (cross-device truth) with the local cache.
+		const server = (data.openedIds ?? []) as string[];
+		let local: string[] = [];
+		if (typeof localStorage !== 'undefined') {
+			try {
+				local = JSON.parse(localStorage.getItem(OPENED_KEY) ?? '[]') as string[];
+			} catch {
+				local = [];
+			}
 		}
+		openedEmails = new Set([...server, ...local]);
 	});
 	const isEmailOpened = (item: EmailItem) => openedEmails.has(item.id);
 	function markEmailOpened(id: string) {
@@ -126,6 +132,12 @@
 		if (typeof localStorage !== 'undefined') {
 			localStorage.setItem(OPENED_KEY, JSON.stringify([...next].slice(-500)));
 		}
+		// Persist server-side so the open follows the user to other devices.
+		fetch('/api/email-opens', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ gmailMessageId: id }),
+		}).catch(() => {});
 	}
 
 	// ─── Feed item modals (open in-place instead of navigating to Google) ───

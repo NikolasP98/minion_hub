@@ -1,5 +1,6 @@
 import type { PageServerLoad } from './$types';
 import { redirect } from '@sveltejs/kit';
+import { listOpenedIds } from '$server/services/email-opens.service';
 
 // Phase 2B PR-2: server load returns identity only. The feed is fetched
 // client-side via `getFeedToday()` once the WS connection is up. Server
@@ -10,6 +11,8 @@ import { redirect } from '@sveltejs/kit';
 export interface MyAgentIdentity {
 	userName: string;
 	greeting: string;
+	/** Gmail message ids the user has opened in the hub (cross-device open state). */
+	openedIds: string[];
 }
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -19,8 +22,12 @@ export const load: PageServerLoad = async ({ locals }) => {
 	// Greeting uses the first name only (e.g. "Nikolas", not "Nikolas Sarria").
 	const firstName = userName.trim().split(/\s+/)[0] || userName;
 
+	// Cross-device "opened" set; best-effort (a DB hiccup must not blank the page).
+	const openedIds = await listOpenedIds(locals.user.id).catch(() => []);
+
 	return {
 		userName,
 		greeting: `Good to see you, ${firstName}.`,
+		openedIds,
 	} satisfies MyAgentIdentity;
 };
