@@ -61,11 +61,11 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		/* Icon-only, square — matches the chat input box height + corner radius. */
-		width: 52px;
-		height: 52px;
+		/* Icon-only, compact square — matches the chat input box height + radius. */
+		width: 40px;
+		height: 40px;
 		padding: 0;
-		border-radius: 12px;
+		border-radius: 8px;
 		font-size: 12px;
 		font-weight: 600;
 		cursor: pointer;

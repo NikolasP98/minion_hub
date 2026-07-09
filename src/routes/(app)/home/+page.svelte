@@ -838,30 +838,22 @@
 		min-width: 0;
 	}
 
-	/* Composer bar: a full-width dock at the bottom of the column. Breaks out of
-	   the inner's 24px side padding (margin: 0 -24px) so its top border and the
-	   call box run edge-to-edge; the input grows, a vertical rule separates it
-	   from the boxed call button on the right. No outer margins/gap. */
+	/* Composer: a compact row of two self-framing terminal boxes — the input grows,
+	   the call button is a square to its right. Their own borders are the framing;
+	   the composer adds no top border or separator, just a small gap + bottom inset. */
 	.composer {
-		margin: 0 -24px;
-		border-top: 1px solid var(--color-border);
 		display: flex;
-		align-items: stretch;
-		gap: 0;
+		align-items: center;
+		gap: 8px;
+		padding-bottom: 10px;
 	}
 	.composer-input {
 		flex: 1;
 		min-width: 0;
-		padding: 0 16px;
 	}
 	.composer-call {
 		flex-shrink: 0;
 		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: 0 16px;
-		/* Separator between the input and the call button. */
-		border-left: 1px solid var(--color-border);
 	}
 
 	.mini-avatar {

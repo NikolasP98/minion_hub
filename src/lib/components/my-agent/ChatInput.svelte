@@ -152,24 +152,23 @@
 <style>
 	.chat-input-wrap {
 		flex-shrink: 0;
-		padding: 12px 0 16px;
+		padding: 0;
 		background: var(--color-bg);
 	}
 
-	/* TUI feel: the box blends into the page background (no raised fill); a thin
-	   subtle outline + a terminal-style accent prompt do the framing. */
+	/* Compact terminal input: tight box, uniform 1px outline (no accent left rail),
+	   a mono prompt glyph does the framing. */
 	.chat-input {
 		position: relative;
 		display: flex;
 		flex-direction: column;
 		justify-content: center;
 		gap: 8px;
-		padding: 12px 16px;
-		min-height: 52px;
+		padding: 0 12px;
+		min-height: 40px;
 		background: transparent;
 		border: 1px solid color-mix(in srgb, var(--color-foreground) 10%, transparent);
-		border-left-width: 2px;
-		border-radius: 12px;
+		border-radius: 8px;
 		transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
 	}
 
@@ -260,14 +259,6 @@
 		color: var(--color-accent);
 		background: color-mix(in srgb, var(--color-accent) 8%, transparent);
 		pointer-events: none;
-	}
-
-	.chat-input[data-mode='ask'] {
-		border-left-color: rgba(96, 165, 250, 0.5);
-	}
-
-	.chat-input[data-mode='capture'] {
-		border-left-color: rgba(245, 158, 11, 0.6);
 	}
 
 	textarea {
