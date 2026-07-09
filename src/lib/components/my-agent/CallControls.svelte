@@ -41,7 +41,6 @@
 		NOTE_LANGS.map((l) => ({
 			value: l,
 			label: LANG_LABEL[l](),
-			icon: txPrefs.lang === l ? Check : undefined,
 		})),
 	);
 	const langBadge = $derived(txPrefs.lang === 'auto' ? 'A' : txPrefs.lang.toUpperCase());
@@ -54,6 +53,12 @@
 				<Globe size={14} />
 				<span class="lang-code">{langBadge}</span>
 			</span>
+		{/snippet}
+		{#snippet item({ item })}
+			<span class="flex-1">{item.label}</span>
+			{#if txPrefs.lang === item.value}
+				<Check size={14} class="text-muted-foreground" />
+			{/if}
 		{/snippet}
 	</Dropdown>
 

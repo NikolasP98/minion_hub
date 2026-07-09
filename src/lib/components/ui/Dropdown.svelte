@@ -28,7 +28,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import * as menu from '@zag-js/menu';
-  import { useMachine, normalizeProps } from '@zag-js/svelte';
+  import { useMachine, normalizeProps, portal } from '@zag-js/svelte';
 
   type Placement = 'top' | 'bottom' | 'left' | 'right';
 
@@ -76,7 +76,7 @@
   {@render trigger()}
 </button>
 
-<div {...api.getPositionerProps()} class="z-50">
+<div use:portal {...api.getPositionerProps()} class="z-50">
   <div
     {...api.getContentProps()}
     class="min-w-40 surface-3 rounded-[var(--radius-md)] p-1 outline-none {cls}"
