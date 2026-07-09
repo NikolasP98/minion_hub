@@ -16,6 +16,7 @@
 		X,
 	} from 'lucide-svelte';
 	import type { EmailItem } from '$lib/services/my-agent-rpc';
+	import { renderEmailBody } from '$lib/utils/email-body';
 	import {
 		getEmailBody,
 		getEmailSummary,
@@ -244,7 +245,9 @@
 						{m.email_couldntLoadBody()}
 					</p>
 				{:else}
-					<pre class="msg">{body}</pre>
+					<!-- eslint-disable-next-line svelte/no-at-html-tags — renderEmailBody
+					     HTML-escapes all content and emits only sanitized <a> tags. -->
+					<div class="msg">{@html renderEmailBody(body)}</div>
 				{/if}
 			</div>
 
@@ -494,6 +497,16 @@
 		word-break: break-word;
 		max-height: 42vh;
 		overflow-y: auto;
+	}
+	.msg :global(a) {
+		color: var(--color-accent);
+		text-decoration: underline;
+		text-underline-offset: 2px;
+		/* Long tracking URLs must wrap instead of forcing a horizontal scrollbar. */
+		word-break: break-all;
+	}
+	.msg :global(a:hover) {
+		text-decoration-thickness: 2px;
 	}
 	.empty {
 		margin: 0;
