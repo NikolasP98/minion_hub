@@ -17,6 +17,7 @@
 		TX_INTENTS,
 		setAutoPolish,
 		setIntent,
+		speechLang,
 		type TxIntent
 	} from '$lib/state/features/transcription-prefs.svelte';
 
@@ -90,7 +91,7 @@
 			return;
 		}
 		recog = new Ctor();
-		recog.lang = navigator.language || 'en-US';
+		recog.lang = speechLang() || navigator.language || 'en-US';
 		recog.continuous = true;
 		recog.interimResults = true;
 		recog.onresult = (e) => {

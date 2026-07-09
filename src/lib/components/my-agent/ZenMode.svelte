@@ -11,7 +11,14 @@
 	import NoteIconButton from './NoteIconButton.svelte';
 	import PolishMenu from './PolishMenu.svelte';
 	import { runPolish } from '$lib/state/features/note-polish.svelte';
-	import { Minimize2, Wand2 } from 'lucide-svelte';
+	import { formatForDisplay } from '$lib/hotkeys';
+	import {
+		txPrefs,
+		setNoteLang,
+		NOTE_LANGS,
+		type NoteLang
+	} from '$lib/state/features/transcription-prefs.svelte';
+	import { Minimize2, Settings, Wand2 } from 'lucide-svelte';
 
 	let { note, onclose }: { note: AgentNote | null; onclose: () => void } = $props();
 
@@ -29,19 +36,51 @@
 	};
 	let blocksRef = $state<BlocksRef | undefined>();
 	let polishMenuOpen = $state(false);
+	let settingsOpen = $state(false);
+
+	// Held-modifier tracking for the corner hotkey helpers (highlight on hold).
+	let heldAlt = $state(false);
+	let heldMod = $state(false);
+	function trackMods(e: KeyboardEvent) {
+		heldAlt = e.altKey;
+		heldMod = e.ctrlKey || e.metaKey;
+	}
+
+	const LANG_LABELS: Record<NoteLang, () => string> = {
+		auto: () => m.note_langAuto(),
+		es: () => m.note_langEs(),
+		en: () => m.note_langEn()
+	};
+
+	// Bottom-left hotkey helpers; `group` is the modifier that lights the chip up.
+	const HOTKEY_HINTS: { combo: string; label: () => string; group: 'alt' | 'mod' | null }[] = [
+		{ combo: formatForDisplay('Alt+Space'), label: () => m.note_hkAiComplete(), group: 'alt' },
+		{ combo: formatForDisplay('Mod+B'), label: () => m.note_formatBold(), group: 'mod' },
+		{ combo: formatForDisplay('Mod+I'), label: () => m.note_formatItalic(), group: 'mod' },
+		{ combo: '/', label: () => m.a11y1_insertBlock(), group: null },
+		{ combo: formatForDisplay('Escape'), label: () => m.note_minimize(), group: null }
+	];
 
 	function onKey(e: KeyboardEvent) {
+		trackMods(e);
 		if (e.key !== 'Escape' || e.defaultPrevented) return;
-		// Esc closes the polish menu first, then minimizes.
-		if (polishMenuOpen) polishMenuOpen = false;
+		// Esc closes open menus first, then minimizes.
+		if (settingsOpen) settingsOpen = false;
+		else if (polishMenuOpen) polishMenuOpen = false;
 		else onclose();
 	}
 </script>
 
 <svelte:window
 	onkeydown={onKey}
+	onkeyup={trackMods}
+	onblur={() => {
+		heldAlt = false;
+		heldMod = false;
+	}}
 	onpointerdown={(e) => {
 		if (polishMenuOpen && e.target instanceof Element && !e.target.closest('.zen-polish-wrap')) polishMenuOpen = false;
+		if (settingsOpen && e.target instanceof Element && !e.target.closest('.zen-set-wrap')) settingsOpen = false;
 	}}
 />
 
@@ -79,6 +118,38 @@
 					ondiscard={() => blocksRef?.discardFocused()}
 					hasPending={() => blocksRef?.hasPendingFocused() ?? false}
 				/>
+				<div class="zen-set-wrap">
+					<button
+						type="button"
+						class="zen-min"
+						class:on={settingsOpen}
+						title={m.note_editorSettings()}
+						aria-label={m.note_editorSettings()}
+						aria-haspopup="menu"
+						aria-expanded={settingsOpen}
+						onclick={() => (settingsOpen = !settingsOpen)}
+					>
+						<Settings size={16} />
+					</button>
+					{#if settingsOpen}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<div class="zen-set-menu" role="menu" tabindex="-1" onmousedown={(e) => e.preventDefault()}>
+							<div class="zen-set-label">{m.note_language()}</div>
+							{#each NOTE_LANGS as lang (lang)}
+								<button
+									type="button"
+									role="menuitemradio"
+									aria-checked={txPrefs.lang === lang}
+									class="zen-set-item"
+									onclick={() => setNoteLang(lang)}
+								>
+									<span class="zen-set-radio" class:on={txPrefs.lang === lang}></span>
+									{LANG_LABELS[lang]()}
+								</button>
+							{/each}
+						</div>
+					{/if}
+				</div>
 			{/if}
 			<button type="button" class="zen-min" title={m.note_minimizeTitle()} aria-label={m.note_minimize()} onclick={onclose}>
 				<Minimize2 size={18} />
@@ -115,6 +186,21 @@
 				<NoteImageStrip note={current} onopen={(src) => (lightboxSrc = src)} />
 			</div>
 		</div>
+
+		{#if current.kind === 'note'}
+			<!-- Subtle hotkey helpers; chips light up while their modifier is held. -->
+			<div class="zen-hints" aria-hidden="true">
+				{#each HOTKEY_HINTS as hint (hint.combo)}
+					<span
+						class="zen-hint"
+						class:hot={(hint.group === 'alt' && heldAlt) || (hint.group === 'mod' && heldMod)}
+					>
+						<kbd>{hint.combo}</kbd>
+						{hint.label()}
+					</span>
+				{/each}
+			</div>
+		{/if}
 	</div>
 {/if}
 
@@ -241,8 +327,111 @@
 		border: none;
 		transition: color 120ms ease, background 120ms ease;
 	}
-	.zen-min:hover {
+	.zen-min:hover,
+	.zen-min.on {
 		color: var(--color-foreground);
 		background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
+	}
+	/* Editor-settings popover (language). */
+	.zen-set-wrap {
+		position: relative;
+		display: inline-flex;
+	}
+	.zen-set-menu {
+		position: absolute;
+		top: calc(100% + 6px);
+		right: 0;
+		z-index: 3;
+		min-width: 180px;
+		display: flex;
+		flex-direction: column;
+		padding: 5px;
+		border-radius: 10px;
+		background: var(--color-bg2, #1b1b1f);
+		border: 1px solid var(--color-border);
+		box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+	}
+	.zen-set-label {
+		padding: 6px 9px 3px;
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: color-mix(in srgb, var(--color-foreground) 35%, transparent);
+	}
+	.zen-set-item {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 7px 9px;
+		font-size: 12.5px;
+		font-family: inherit;
+		text-align: left;
+		border-radius: 6px;
+		cursor: pointer;
+		background: transparent;
+		border: none;
+		color: color-mix(in srgb, var(--color-foreground) 82%, transparent);
+		transition: background 120ms ease, color 120ms ease;
+	}
+	.zen-set-item:hover {
+		color: var(--color-foreground);
+		background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+	}
+	.zen-set-radio {
+		width: 13px;
+		height: 13px;
+		border-radius: 50%;
+		border: 1.5px solid color-mix(in srgb, var(--color-foreground) 30%, transparent);
+		flex-shrink: 0;
+		position: relative;
+	}
+	.zen-set-radio.on {
+		border-color: var(--color-accent);
+	}
+	.zen-set-radio.on::after {
+		content: '';
+		position: absolute;
+		inset: 2.5px;
+		border-radius: 50%;
+		background: var(--color-accent);
+	}
+	/* Bottom-left hotkey helpers. */
+	.zen-hints {
+		position: fixed;
+		left: 18px;
+		bottom: 16px;
+		z-index: 2;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 5px;
+		pointer-events: none;
+	}
+	.zen-hint {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 10.5px;
+		color: color-mix(in srgb, var(--color-foreground) 30%, transparent);
+		transition: color 120ms ease;
+	}
+	.zen-hint kbd {
+		font-family: ui-monospace, monospace;
+		font-size: 9.5px;
+		padding: 1.5px 5px;
+		border-radius: 4px;
+		border: 1px solid color-mix(in srgb, var(--color-foreground) 14%, transparent);
+		background: color-mix(in srgb, var(--color-foreground) 4%, transparent);
+		color: color-mix(in srgb, var(--color-foreground) 45%, transparent);
+		transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+	}
+	.zen-hint.hot {
+		color: color-mix(in srgb, var(--color-foreground) 75%, transparent);
+	}
+	.zen-hint.hot kbd {
+		color: var(--color-accent);
+		border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
+		background: color-mix(in srgb, var(--color-accent) 12%, transparent);
 	}
 </style>

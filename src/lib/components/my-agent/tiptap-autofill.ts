@@ -1,9 +1,10 @@
-// Tab-to-accept AI ghost-text autocomplete for the Tiptap note editor.
+// AI ghost-text autocomplete for the Tiptap note editor.
 //
-// UX (note kind):
-//   - Tab with no pending suggestion → request a paragraph continuation from
+// UX (note kind) — triggered via the hub hotkey layer (Alt+Space, see
+// NoteEditor.svelte) which calls editor.commands.triggerAutofill():
+//   - No pending suggestion → request a paragraph continuation from
 //     /api/notes/autocomplete and show it as dimmed ghost text at the caret.
-//   - Tab again → accept: insert the suggestion as real text.
+//   - Trigger again → accept: insert the suggestion as real text.
 //   - Esc / typing / selection change → dismiss the ghost (nothing inserted).
 //
 // The suggestion lives in a ProseMirror plugin state as a single decoration
@@ -28,6 +29,15 @@ interface AutofillState {
 }
 
 const key = new PluginKey<AutofillState>('autofill');
+
+declare module '@tiptap/core' {
+	interface Commands<ReturnType> {
+		autofill: {
+			/** Request an AI continuation, or accept the pending ghost suggestion. */
+			triggerAutofill: () => ReturnType;
+		};
+	}
+}
 
 export function createAutofill(options: AutofillOptions): Extension {
   let inflight: AbortController | null = null;
@@ -73,37 +83,43 @@ export function createAutofill(options: AutofillOptions): Extension {
       ];
     },
 
-    addKeyboardShortcuts() {
+    addCommands() {
       const opts = this.options;
       return {
-        Tab: () => {
-          const view = this.editor.view;
-          const current = key.getState(view.state)?.text ?? null;
+        triggerAutofill:
+          () =>
+          ({ editor, view }) => {
+            const current = key.getState(view.state)?.text ?? null;
 
-          // Second Tab → accept the pending suggestion.
-          if (current) {
+            // Second trigger → accept the pending suggestion.
+            if (current) {
+              inflight?.abort();
+              inflight = null;
+              editor.chain().focus().insertContent(current).run();
+              view.dispatch(view.state.tr.setMeta(key, { text: null }));
+              return true;
+            }
+
+            // First trigger → request a continuation (async; show when it lands).
             inflight?.abort();
-            inflight = null;
-            this.editor.chain().focus().insertContent(current).run();
-            view.dispatch(view.state.tr.setMeta(key, { text: null }));
+            inflight = new AbortController();
+            const signal = inflight.signal;
+            void fetchAutocomplete({ kind: opts.kind, context: opts.getContext() }, signal)
+              .then((res) => {
+                if (signal.aborted) return;
+                const text = 'suggestion' in res ? res.suggestion.trim() : '';
+                if (text) view.dispatch(view.state.tr.setMeta(key, { text }));
+              })
+              .catch(() => {
+                /* network/abort — silently no-op */
+              });
             return true;
-          }
+          },
+      };
+    },
 
-          // First Tab → request a continuation (async; show when it lands).
-          inflight?.abort();
-          inflight = new AbortController();
-          const signal = inflight.signal;
-          void fetchAutocomplete({ kind: opts.kind, context: opts.getContext() }, signal)
-            .then((res) => {
-              if (signal.aborted) return;
-              const text = 'suggestion' in res ? res.suggestion.trim() : '';
-              if (text) view.dispatch(view.state.tr.setMeta(key, { text }));
-            })
-            .catch(() => {
-              /* network/abort — silently no-op */
-            });
-          return true; // swallow Tab (no indentation) — Tab is the autofill trigger
-        },
+    addKeyboardShortcuts() {
+      return {
         Escape: () => {
           const view = this.editor.view;
           if (!key.getState(view.state)?.text) return false;

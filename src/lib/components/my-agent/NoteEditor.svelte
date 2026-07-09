@@ -21,6 +21,7 @@
 		RemoveFormatting
 	} from 'lucide-svelte';
 	import { createAutofill } from '$lib/components/my-agent/tiptap-autofill';
+	import { createHotkey } from '$lib/hotkeys';
 	import { polishTranscript } from '$lib/state/features/notes-autocomplete';
 	import { txPrefs } from '$lib/state/features/transcription-prefs.svelte';
 	import {
@@ -59,6 +60,15 @@
 
 	let element = $state<HTMLDivElement | null>(null);
 	let editor: Editor | null = null;
+	let editorFocused = $state(false);
+
+	// AI autocomplete — registered through the hub hotkey layer, gated to the
+	// focused editor instance (each NoteEditor registers its own binding).
+	createHotkey('Alt+Space', () => editor?.commands.triggerAutofill(), () => ({
+		enabled: editorFocused,
+		ignoreInputs: false,
+		meta: { name: m.note_hkAiComplete(), description: m.note_hkAiCompleteDesc() }
+	}));
 
 	// ── Transcription buffer ───────────────────────────────────────────────────
 	// Transcription is NON-EAGER: finalized speech accumulates in `pending` and is
@@ -454,6 +464,7 @@
 					syncToolbar();
 				},
 				onFocus() {
+					editorFocused = true;
 					onfocus?.();
 				},
 				onSelectionUpdate() {
@@ -461,6 +472,7 @@
 					syncToolbar();
 				},
 				onBlur() {
+					editorFocused = false;
 					// A blur from clicking the toolbar is prevented (mousedown
 					// preventDefault); any real blur that isn't pinned dismisses.
 					if (!pinned) toolbar = null;
@@ -475,7 +487,8 @@
 	});
 </script>
 
-<div class="note-editor-wrap">
+<!-- `lang` steers the browser's spellcheck dictionary ('auto' → inherit). -->
+<div class="note-editor-wrap" lang={txPrefs.lang === 'auto' ? undefined : txPrefs.lang}>
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		class="note-editor"
@@ -551,7 +564,9 @@
 	}}
 	onscroll={() => { if (toolbar && !pinned) syncToolbar(); else if (toolbar) closeToolbar(); }}
 	onpointerdown={(e) => {
-		if (toolbar && e.target instanceof Node && !(e.target as Element).closest?.('.fmt-toolbar') && !(e.target as Element).closest?.('.note-editor')) closeToolbar();
+		// Any press outside the toolbar dismisses it — including inside the note
+		// text (a fresh selection/context-menu re-opens it as needed).
+		if (toolbar && e.target instanceof Node && !(e.target as Element).closest?.('.fmt-toolbar')) closeToolbar();
 	}}
 />
 
