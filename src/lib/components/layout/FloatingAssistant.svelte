@@ -20,7 +20,7 @@
         resetChat,
     } from '$lib/services/gateway.svelte';
     import { buildAssistantContext } from '$lib/state/features/assistant-context';
-    import { extractText } from '$lib/utils/text';
+    import { extractText, stripTtsTags } from '$lib/utils/text';
     import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
     import ChatBlocks from '$lib/chat/ChatBlocks.svelte';
     import {
@@ -591,7 +591,7 @@
                 {#if stream !== null && stream !== ''}
                     <div class="flex flex-col gap-0.5 items-start">
                         <div class="max-w-[85%] rounded-lg px-3 py-2 text-[12px] leading-relaxed break-words bg-bg3 text-foreground border border-dashed border-border opacity-90">
-                            <MarkdownMessage value={stream} tone="assistant" />
+                            <MarkdownMessage value={stripTtsTags(stream)} tone="assistant" />
                         </div>
                     </div>
                 {:else if sending}

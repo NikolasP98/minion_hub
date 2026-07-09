@@ -41,7 +41,7 @@
 		endCall,
 		toggleMute,
 	} from '$lib/state/features/voice-call.svelte';
-	import { extractText } from '$lib/utils/text';
+	import { extractText, stripTtsTags } from '$lib/utils/text';
 	import {
 		getFeedToday,
 		type ObservationRow,
@@ -803,7 +803,7 @@
 								<!-- Fallback: smoothed text with no structured message. -->
 								<div class="bubble-row assistant">
 									<div class="bubble assistant streaming">
-										<MarkdownMessage value={streamDisplay} tone="assistant" />
+										<MarkdownMessage value={stripTtsTags(streamDisplay)} tone="assistant" />
 									</div>
 								</div>
 							{:else if sending || streamMessage}
@@ -977,7 +977,10 @@
 	}
 
 	.stage.in-call .avatar-stage {
-		flex: 1.8;
+		/* Square tile — the agenda gets all the leftover width. */
+		flex: 0 0 auto;
+		width: clamp(220px, 34cqw, 320px);
+		aspect-ratio: 1 / 1;
 		min-width: 0;
 		display: flex;
 		flex-direction: column;
@@ -1024,8 +1027,15 @@
 		flex: 1;
 		min-width: 0;
 		overflow-y: auto;
+		/* The feed-grid's -24px bleed margin (scrollbar alignment for the band
+		   layout) overflows this narrower column — reset it and clip any
+		   remainder so the agenda never grows a horizontal scrollbar. */
+		overflow-x: hidden;
 		max-height: 100%;
 		padding-right: 4px;
+	}
+	.stage.in-call .feed-grid {
+		margin-right: 0;
 	}
 
 	/* Feed grid: events + emails as two columns while the agenda is a band at
@@ -1356,6 +1366,10 @@
 	@media (max-width: 640px) {
 		.stage.in-call {
 			flex-direction: column;
+		}
+		.stage.in-call .avatar-stage {
+			width: 100%;
+			aspect-ratio: auto;
 		}
 	}
 </style>

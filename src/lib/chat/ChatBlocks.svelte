@@ -2,6 +2,7 @@
 	import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
 	import { Brain, Wrench, Loader, Check, TriangleAlert } from 'lucide-svelte';
 	import { normalizeBlocks, type ChatBlock, type ToolResult } from './blocks';
+	import { stripTtsTags } from '$lib/utils/text';
 
 	interface Props {
 		/** Message-shaped object whose `content` carries the block array. */
@@ -156,14 +157,14 @@
 	{#if textOverride !== undefined}
 		{#if textOverride.length > 0}
 			<div class="answer" class:streaming class:compact>
-				<MarkdownMessage value={textOverride} tone="assistant" />
+				<MarkdownMessage value={stripTtsTags(textOverride)} tone="assistant" />
 			</div>
 		{/if}
 	{:else if bodyBlocks.length > 0}
 		<div class="answer" class:streaming class:compact>
 			{#each bodyBlocks as block, i (i)}
 				{#if block.kind === 'text'}
-					<MarkdownMessage value={block.text} tone="assistant" />
+					<MarkdownMessage value={stripTtsTags(block.text)} tone="assistant" />
 				{:else if block.kind === 'image'}
 					<div class="img-chip">🖼 Image</div>
 				{/if}

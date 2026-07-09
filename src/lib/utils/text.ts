@@ -98,6 +98,23 @@ function _formatTs(isoTs: string): string {
   return isoTs;
 }
 
+/**
+ * Strip gateway TTS directives ([[tts]], [[tts:…]], [[/tts]], [[/tts:text]])
+ * while KEEPING the spoken text between them — on a text surface the spoken
+ * summary is still part of the reply. The gateway only strips these on its own
+ * channel-delivery path, so hub chat receives them raw.
+ */
+export function stripTtsTags(text: string): string {
+  return text.replace(/\[\[\/?tts(?::[^\]]*)?\]\]/gi, '');
+}
+
+/** Inner text of the first [[tts]]…[[/tts]] block — what the agent marked to be spoken. */
+export function extractTtsSpoken(text: string): string | null {
+  const m = text.match(/\[\[tts(?::text)?\]\]([\s\S]*?)\[\[\/tts(?::text)?\]\]/i);
+  const spoken = m?.[1].trim();
+  return spoken ? spoken : null;
+}
+
 export function cleanText(text: string, role: string): string {
   // Strip gateway metadata wrapper first
   text = parseGatewayMetadata(text).clean;
@@ -109,6 +126,7 @@ export function cleanText(text: string, role: string): string {
     /\[\[\s*(?:reply_to_current|reply_to\s*:\s*[^\]\n]+|audio_as_voice)\s*\]\]/gi,
     '',
   );
+  text = stripTtsTags(text);
   text = text.replace(/^<env>[\s\S]*?<\/env>\s*/i, '');
   return text
     .replace(/[ \t]+/g, ' ')

@@ -1,7 +1,15 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages';
-	import { Phone, PhoneOff, Mic, MicOff } from 'lucide-svelte';
+	import { Phone, PhoneOff, Mic, MicOff, Globe, Check } from 'lucide-svelte';
 	import type { AgentVoiceState } from '$lib/voice/visemeMap';
+	import { Dropdown } from '$lib/components/ui';
+	import type { DropdownItem } from '$lib/components/ui';
+	import {
+		txPrefs,
+		setNoteLang,
+		NOTE_LANGS,
+		type NoteLang,
+	} from '$lib/state/features/transcription-prefs.svelte';
 
 	interface Props {
 		active: boolean;
@@ -21,42 +29,101 @@
 		thinking: m.call_thinking(),
 		speaking: m.call_speaking(),
 	};
+
+	// Speech-recognition + synthesis language — the shared transcription pref
+	// (same one the note editor uses), surfaced as the standard ui Dropdown.
+	const LANG_LABEL: Record<NoteLang, () => string> = {
+		auto: m.note_langAuto,
+		es: m.note_langEs,
+		en: m.note_langEn,
+	};
+	const langItems = $derived<DropdownItem[]>(
+		NOTE_LANGS.map((l) => ({
+			value: l,
+			label: LANG_LABEL[l](),
+			icon: txPrefs.lang === l ? Check : undefined,
+		})),
+	);
+	const langBadge = $derived(txPrefs.lang === 'auto' ? 'A' : txPrefs.lang.toUpperCase());
 </script>
 
-{#if !active}
-	<button
-		type="button"
-		class="call-btn start"
-		{disabled}
-		onclick={onstart}
-		aria-label={m.call_callYourAgent()}
-		title={disabled ? m.call_connectGatewayFirst() : m.call_callYourAgent()}
-	>
-		<Phone size={16} />
-	</button>
-{:else}
-	<div class="call-live" role="group" aria-label={m.call_callControls()}>
-		<span class="status" data-status={status}>
-			<span class="pulse" class:on={status === 'listening' || status === 'speaking'}></span>
-			{STATUS_LABEL[status]}
-		</span>
+<div class="call-cluster">
+	<Dropdown items={langItems} onSelect={(v) => setNoteLang(v as NoteLang)} placement="top">
+		{#snippet trigger()}
+			<span class="lang-pill" title={m.settings_language()} aria-label={m.settings_language()}>
+				<Globe size={14} />
+				<span class="lang-code">{langBadge}</span>
+			</span>
+		{/snippet}
+	</Dropdown>
+
+	{#if !active}
 		<button
 			type="button"
-			class="icon-btn"
-			class:muted
-			onclick={ontoggleMute}
-			title={muted ? m.call_unmute() : m.call_mute()}
-			aria-pressed={muted}
+			class="call-btn start"
+			{disabled}
+			onclick={onstart}
+			aria-label={m.call_callYourAgent()}
+			title={disabled ? m.call_connectGatewayFirst() : m.call_callYourAgent()}
 		>
-			{#if muted}<MicOff size={14} />{:else}<Mic size={14} />{/if}
+			<Phone size={16} />
 		</button>
-		<button type="button" class="icon-btn end" onclick={onend} title={m.call_endCall()}>
-			<PhoneOff size={14} />
-		</button>
-	</div>
-{/if}
+	{:else}
+		<div class="call-live" role="group" aria-label={m.call_callControls()}>
+			<span class="status" data-status={status}>
+				<span class="pulse" class:on={status === 'listening' || status === 'speaking'}></span>
+				{STATUS_LABEL[status]}
+			</span>
+			<button
+				type="button"
+				class="icon-btn"
+				class:muted
+				onclick={ontoggleMute}
+				title={muted ? m.call_unmute() : m.call_mute()}
+				aria-pressed={muted}
+			>
+				{#if muted}<MicOff size={14} />{:else}<Mic size={14} />{/if}
+			</button>
+			<button type="button" class="icon-btn end" onclick={onend} title={m.call_endCall()}>
+				<PhoneOff size={14} />
+			</button>
+		</div>
+	{/if}
+</div>
 
 <style>
+	.call-cluster {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	/* Transcription-language trigger — quiet pill matching the call button height. */
+	.lang-pill {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 4px;
+		height: 40px;
+		padding: 0 9px;
+		border-radius: 8px;
+		border: 1px solid var(--color-border);
+		background: color-mix(in srgb, var(--color-foreground) 3%, transparent);
+		color: color-mix(in srgb, var(--color-foreground) 55%, transparent);
+		cursor: pointer;
+		transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+	}
+	.lang-pill:hover {
+		color: var(--color-foreground);
+		background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
+	}
+	.lang-code {
+		font-size: 10px;
+		font-weight: 600;
+		font-family: var(--font-mono, monospace);
+		letter-spacing: 0.04em;
+	}
+
 	.call-btn {
 		display: inline-flex;
 		align-items: center;

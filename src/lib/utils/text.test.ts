@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cleanText, extractText } from './text';
+import { cleanText, extractText, stripTtsTags, extractTtsSpoken } from './text';
 
 describe('cleanText', () => {
   it('strips <think> blocks for assistant role', () => {
@@ -120,5 +120,27 @@ describe('extractText', () => {
       ],
     };
     expect(extractText(msg)).toBe('Let me check\n[Tool: search]');
+  });
+});
+
+describe('tts directives', () => {
+  it('stripTtsTags removes markers but keeps the spoken text', () => {
+    expect(stripTtsTags('[[tts]]Hey Niko![[/tts]] Here is the data.')).toBe(
+      'Hey Niko! Here is the data.',
+    );
+    expect(stripTtsTags('Hello [[tts:provider=elevenlabs voiceId=abc]] world')).toBe(
+      'Hello  world',
+    );
+    expect(stripTtsTags('[[tts:text]]Spoken.[[/tts:text]] rest')).toBe('Spoken. rest');
+  });
+
+  it('extractTtsSpoken returns the first block inner text, else null', () => {
+    expect(extractTtsSpoken('[[tts]]Hey there![[/tts]] Full reply.')).toBe('Hey there!');
+    expect(extractTtsSpoken('no tags here')).toBeNull();
+    expect(extractTtsSpoken('[[tts]][[/tts]] empty block')).toBeNull();
+  });
+
+  it('cleanText strips tts markers from assistant text', () => {
+    expect(cleanText('[[tts]]Hola[[/tts]] resto', 'assistant')).toBe('Hola resto');
   });
 });

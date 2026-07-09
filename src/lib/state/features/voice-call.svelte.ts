@@ -19,7 +19,8 @@ import { Lipsync } from 'wawa-lipsync';
 import { REST_MOUTH, visemeToMouth, type AgentVoiceState, type MouthShape } from '$lib/voice/visemeMap';
 import { agentChat, onAgentReplyFinal } from '$lib/state/chat/chat.svelte';
 import { sendVoiceTurn } from '$lib/services/gateway.svelte';
-import { extractText } from '$lib/utils/text';
+import { extractText, extractTtsSpoken } from '$lib/utils/text';
+import { txPrefs, speechLang } from '$lib/state/features/transcription-prefs.svelte';
 
 // --- Minimal Web Speech API typings (not in TS DOM lib) ---------------------
 interface SpeechRecognitionResult {
@@ -100,16 +101,37 @@ export const voiceCall = {
   },
 };
 
-/** Most recent assistant message in an agent's thread, with a stable key. */
+/** Raw (uncleaned) text blocks of a message — extractText strips TTS directives,
+ *  but the call engine needs them to know what the agent marked to be spoken. */
+function rawText(m: unknown): string {
+  const c = (m as { content?: unknown }).content;
+  if (typeof c === 'string') return c;
+  if (Array.isArray(c)) {
+    return (c as Array<{ type?: string; text?: string }>)
+      .filter((b) => b?.type === 'text' && typeof b.text === 'string')
+      .map((b) => b.text)
+      .join('\n');
+  }
+  return '';
+}
+
+/** Most recent assistant message in an agent's thread, with a stable key.
+ *  `text` is the speakable text: the [[tts]] block when present, else the reply. */
 function lastAssistant(agentId: string): { text: string; key: string | number } | null {
   const msgs = agentChat[agentId]?.messages ?? [];
   for (let i = msgs.length - 1; i >= 0; i--) {
     const m = msgs[i] as { role?: string; timestamp?: number };
     if (m.role !== 'user') {
-      return { text: extractText(msgs[i]) ?? '', key: m.timestamp ?? `idx-${msgs.length}-${i}` };
+      const spoken = extractTtsSpoken(rawText(msgs[i])) ?? extractText(msgs[i]) ?? '';
+      return { text: spoken, key: m.timestamp ?? `idx-${msgs.length}-${i}` };
     }
   }
   return null;
+}
+
+/** BCP-47 tag for speech recognition — follows the shared language pref. */
+function callSpeechLang(): string {
+  return speechLang() || (typeof navigator !== 'undefined' ? navigator.language : '') || 'en-US';
 }
 
 function setStatus(s: AgentVoiceState) {
@@ -118,6 +140,9 @@ function setStatus(s: AgentVoiceState) {
 
 function startRecognition() {
   if (!activeFlag || mutedFlag || busyFlag || !recog) return;
+  // Re-read the language pref on every (re)start so a mid-call switch takes
+  // effect on the next listening turn.
+  recog.lang = callSpeechLang();
   try {
     recog.start();
   } catch {
@@ -178,7 +203,7 @@ export function startCall(agentId: string): void {
   if (!lipsync) lipsync = new Lipsync({ fftSize: 1024, historySize: 60 });
 
   const r = new Ctor();
-  r.lang = 'en-US';
+  r.lang = callSpeechLang();
   r.continuous = true;
   r.interimResults = true;
   r.onresult = (e: SpeechRecognitionEvent) => {
@@ -268,7 +293,8 @@ export async function speakReply(text: string, key: string | number): Promise<vo
     const res = await fetch('/api/voice/tts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: clean }),
+      // lang steers the synthesis language/voice; 'auto' lets the model decide.
+      body: JSON.stringify({ text: clean, lang: txPrefs.lang === 'auto' ? undefined : txPrefs.lang }),
     });
     if (!res.ok) throw new Error(`tts ${res.status}`);
     const blob = await res.blob();
