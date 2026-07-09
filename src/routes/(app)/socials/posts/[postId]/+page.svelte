@@ -2,7 +2,8 @@
 	import type { PageData } from './$types';
 	import { onMount } from 'svelte';
 	import * as m from '$lib/paraglide/messages';
-	import { ArrowLeft, ExternalLink, Facebook, Instagram, Megaphone, MessageCircle, X } from 'lucide-svelte';
+	import { ArrowLeft, ExternalLink, Megaphone, MessageCircle, X } from 'lucide-svelte';
+	import PlatformIcon from '$lib/components/socials/PlatformIcon.svelte';
 	import { PageHeader, Button } from '$lib/components/ui';
 	import { createBackNav } from '$lib/nav/back-nav.svelte';
 	import { metricLabel } from '$lib/ads/metric-labels';
@@ -96,7 +97,7 @@
 <div class="flex flex-col h-full min-h-0">
 	<PageHeader title={m.ads_post_detail_title()} subtitle={fmtDate(post.postedAt)}>
 		{#snippet leading()}
-			{#if post.platform === 'ig'}<Instagram size={16} class="text-accent shrink-0" />{:else}<Facebook size={16} class="text-accent shrink-0" />{/if}
+			<PlatformIcon platform={post.platform} size={16} class="text-accent shrink-0" />
 		{/snippet}
 	</PageHeader>
 
@@ -131,7 +132,7 @@
 						<img src={mirroredUrl} alt="" class="media-single" />
 					{:else}
 						<div class="media-glyph" data-platform={post.platform ?? ''} aria-hidden="true">
-							{#if post.platform === 'ig'}<Instagram size={40} />{:else}<Facebook size={40} />{/if}
+							<PlatformIcon platform={post.platform} size={40} />
 						</div>
 					{/if}
 				</section>

@@ -2,7 +2,8 @@
 	import type { PageData } from './$types';
 	import * as m from '$lib/paraglide/messages';
 	import { goto } from '$app/navigation';
-	import { Image, ExternalLink, Facebook, Instagram } from 'lucide-svelte';
+	import { Image, ExternalLink } from 'lucide-svelte';
+	import PlatformIcon from '$lib/components/socials/PlatformIcon.svelte';
 	import { PageHeader, EmptyState } from '$lib/components/ui';
 	import DataTable from '$lib/components/data-table/DataTable.svelte';
 	import type { DataColumn } from '$lib/components/data-table/DataTable.svelte';
@@ -87,9 +88,9 @@
 					{#if p.thumbFileId}
 						<img src="/api/files/{p.thumbFileId}/raw" loading="lazy" alt="" width="40" height="40" class="post-thumb" />
 					{:else if p.platform === 'ig'}
-						<div class="post-thumb post-thumb-placeholder" data-platform="ig" aria-hidden="true"><Instagram size={16} /></div>
+						<div class="post-thumb post-thumb-placeholder" data-platform="ig" aria-hidden="true"><PlatformIcon platform="ig" size={16} /></div>
 					{:else}
-						<div class="post-thumb post-thumb-placeholder" data-platform="fb" aria-hidden="true"><Facebook size={16} /></div>
+						<div class="post-thumb post-thumb-placeholder" data-platform="fb" aria-hidden="true"><PlatformIcon platform="fb" size={16} /></div>
 					{/if}
 				{:else if col.key === 'platform'}
 					<span class="post-platform" data-platform={p.platform ?? ''}>{p.platform === 'ig' ? m.ads_platform_ig() : m.ads_platform_fb()}</span>
