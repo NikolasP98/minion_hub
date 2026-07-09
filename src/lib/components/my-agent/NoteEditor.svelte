@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { Editor } from '@tiptap/core';
+	import { TextSelection } from '@tiptap/pm/state';
 	import type { EditorView } from '@tiptap/pm/view';
 	import StarterKit from '@tiptap/starter-kit';
 	import Highlight from '@tiptap/extension-highlight';
@@ -10,7 +11,9 @@
 	import * as m from '$lib/paraglide/messages';
 	import {
 		Bold,
+		Check,
 		Italic,
+		Loader2,
 		Strikethrough,
 		Code,
 		Highlighter,
@@ -61,6 +64,10 @@
 		const el = document.createElement('div');
 		el.className = 'block-handle';
 		el.setAttribute('aria-hidden', 'true');
+		// The plugin toggles style.visibility on hover; start hidden so the
+		// handle doesn't park in the viewport's top-left corner before the
+		// first hover positions it.
+		el.style.visibility = 'hidden';
 		el.innerHTML =
 			'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="18" r="1"/></svg>';
 		return el;
@@ -287,6 +294,12 @@
 	function syncToolbar() {
 		if (!editor) return;
 		const sel = editor.state.selection;
+		// Only TEXT selections drive the toolbar — a NodeSelection (block drag
+		// via the handle, image click) must not pop the formatting menu.
+		if (!(sel instanceof TextSelection)) {
+			if (!pinned) toolbar = null;
+			return;
+		}
 		if (sel.empty && !pinned) {
 			toolbar = null;
 			return;
@@ -309,7 +322,13 @@
 	// Browser squiggles expose no suggestions API, so we ask /api/notes/spelling
 	// (cheap LLM call) for the clicked word and offer replacements in the
 	// toolbar. Results cache per word+language; empty list = spelled correctly.
-	let spell = $state<{ from: number; to: number; word: string; suggestions: string[] } | null>(null);
+	let spell = $state<{
+		from: number;
+		to: number;
+		word: string;
+		status: 'checking' | 'ok' | 'bad';
+		suggestions: string[];
+	} | null>(null);
 	const spellCache = new Map<string, string[]>();
 	let spellCtl: AbortController | null = null;
 
@@ -337,15 +356,25 @@
 	}
 
 	async function checkSpelling(pos: number) {
-		spell = null;
 		const w = wordAt(pos);
-		if (!w) return;
+		if (!w) {
+			spell = null;
+			return;
+		}
 		const key = `${effLang ?? 'auto'}:${w.word.toLowerCase()}`;
 		if (spellCache.has(key)) {
 			const cached = spellCache.get(key)!;
-			if (cached.length) spell = { from: w.from, to: w.to, word: w.word, suggestions: cached };
+			spell = {
+				from: w.from,
+				to: w.to,
+				word: w.word,
+				status: cached.length ? 'bad' : 'ok',
+				suggestions: cached
+			};
 			return;
 		}
+		// Immediate feedback while the lookup is in flight (~1-2s).
+		spell = { from: w.from, to: w.to, word: w.word, status: 'checking', suggestions: [] };
 		spellCtl?.abort();
 		spellCtl = new AbortController();
 		const signal = spellCtl.signal;
@@ -356,12 +385,22 @@
 				body: JSON.stringify({ word: w.word, sentence: w.sentence, lang: effLang ?? 'auto' }),
 				signal
 			});
-			if (!res.ok) return;
+			if (!res.ok) {
+				if (spell?.word === w.word && spell.status === 'checking') spell = null;
+				return;
+			}
 			const data = (await res.json()) as { correct: boolean; suggestions: string[] };
 			spellCache.set(key, data.correct ? [] : data.suggestions);
 			if (signal.aborted || !toolbar) return;
-			if (!data.correct && data.suggestions.length > 0)
-				spell = { from: w.from, to: w.to, word: w.word, suggestions: data.suggestions };
+			// Only resolve the row we opened — a newer lookup supersedes this one.
+			if (spell?.word !== w.word || spell.status !== 'checking') return;
+			spell = {
+				from: w.from,
+				to: w.to,
+				word: w.word,
+				status: data.correct ? 'ok' : 'bad',
+				suggestions: data.suggestions
+			};
 		} catch {
 			/* aborted / offline — no suggestions row */
 		}
@@ -384,20 +423,30 @@
 		if (!editor) return;
 		e.preventDefault();
 		pinned = true;
-		refreshActive();
+		const at = editor.view.posAtCoords({ left: e.clientX, top: e.clientY });
 		const sel = editor.state.selection;
-		if (sel.empty) {
-			// Anchor above the clicked LINE (not the pointer) so the panel never
-			// covers the text being acted on.
-			const lineTop = editor.view.coordsAtPos(sel.from).top;
+		const clickInSelection = at != null && !sel.empty && at.pos >= sel.from && at.pos <= sel.to;
+		const w = at ? wordAt(at.pos) : null;
+		if (clickInSelection) {
+			// Right-click inside an existing selection acts on it (native feel).
+			refreshActive();
+			placeToolbarAtSelection();
+		} else if (w) {
+			// Native context-menu behavior: select the right-clicked word. The
+			// toolbar then anchors to that selection (never a stale caret) and
+			// formatting/spelling act on the word.
+			editor.chain().focus().setTextSelection({ from: w.from, to: w.to }).run();
+			refreshActive();
+			placeToolbarAtSelection();
+		} else {
+			// No word under the pointer — anchor above the clicked line.
+			refreshActive();
+			const lineTop = at ? editor.view.coordsAtPos(at.pos).top : e.clientY;
 			toolbar = {
 				left: Math.min(Math.max(e.clientX, TOOLBAR_HALF_W + 8), window.innerWidth - TOOLBAR_HALF_W - 8),
 				top: Math.max(lineTop, 56)
 			};
-		} else {
-			placeToolbarAtSelection();
 		}
-		const at = editor.view.posAtCoords({ left: e.clientX, top: e.clientY });
 		if (at) void checkSpelling(at.pos);
 	}
 
@@ -651,12 +700,20 @@
 		<span class="fmt-sep"></span>
 		<button type="button" class="fmt-btn" title={m.note_formatClear()} aria-label={m.note_formatClear()} onclick={() => run((c) => c.unsetAllMarks().clearNodes())}><RemoveFormatting size={14} /></button>
 	</div>
-	{#if spell && spell.suggestions.length > 0}
+	{#if spell}
 		<div class="fmt-spell" role="group" aria-label={m.note_spelling()}>
-			<span class="fmt-spell-word">{spell.word}</span>
-			{#each spell.suggestions as s (s)}
-				<button type="button" class="fmt-spell-sug" onclick={() => applySpelling(s)}>{s}</button>
-			{/each}
+			{#if spell.status === 'checking'}
+				<Loader2 size={12} class="fmt-spell-spin" />
+				<span class="fmt-spell-word">{spell.word}</span>
+			{:else if spell.status === 'ok'}
+				<Check size={12} class="fmt-spell-okic" />
+				<span class="fmt-spell-word">{spell.word}</span>
+			{:else}
+				<span class="fmt-spell-word bad">{spell.word}</span>
+				{#each spell.suggestions as s (s)}
+					<button type="button" class="fmt-spell-sug" onclick={() => applySpelling(s)}>{s}</button>
+				{/each}
+			{/if}
 		</div>
 	{/if}
 	</div>
@@ -739,10 +796,26 @@
 	}
 	.fmt-spell-word {
 		font-size: 11px;
-		text-decoration: underline wavy color-mix(in srgb, var(--color-accent) 70%, transparent);
-		text-underline-offset: 3px;
 		color: color-mix(in srgb, var(--color-foreground) 55%, transparent);
 		padding: 0 2px;
+	}
+	.fmt-spell-word.bad {
+		text-decoration: underline wavy color-mix(in srgb, var(--color-accent) 70%, transparent);
+		text-underline-offset: 3px;
+	}
+	.fmt-spell :global(.fmt-spell-spin) {
+		color: color-mix(in srgb, var(--color-foreground) 45%, transparent);
+		animation: fmt-rot 0.8s linear infinite;
+		flex-shrink: 0;
+	}
+	@keyframes fmt-rot {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+	.fmt-spell :global(.fmt-spell-okic) {
+		color: rgba(52, 211, 153, 0.95);
+		flex-shrink: 0;
 	}
 	.fmt-spell-sug {
 		font-family: inherit;
