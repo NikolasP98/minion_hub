@@ -41,6 +41,8 @@
 	const sender = $derived(item.fromName?.trim() || item.from?.trim() || m.email_unknownSender());
 	const subject = $derived(item.subject?.trim() || m.email_noSubject());
 	const snippet = $derived(item.snippet?.trim() || '');
+	// User-applied Gmail labels (system labels already stripped server-side).
+	const labels = $derived(item.labels ?? []);
 
 	// Surfaced from a subscribed shared inbox rather than the user's own account.
 	const sharedTitle = $derived(
@@ -100,8 +102,10 @@
 	<div class="text">
 		<div class="top">
 			<span class="sender">{sender}</span>
-			<!-- tags slot in here (right, with the time) once the puller surfaces Gmail labels -->
-			{#if relative}<span class="time">{relative}</span>{/if}
+			<div class="meta">
+				{#each labels as label (label)}<span class="tag" title={label}>{label}</span>{/each}
+				{#if relative}<span class="time">{relative}</span>{/if}
+			</div>
 		</div>
 		<div class="subject-row">
 			{#if item.shared}<span class="shared-badge" title={sharedTitle}>{m.shared_feedBadge()}</span
@@ -217,6 +221,28 @@
 		color: color-mix(in srgb, var(--color-accent) 90%, var(--color-foreground));
 		background: color-mix(in srgb, var(--color-accent) 14%, transparent);
 		white-space: nowrap;
+	}
+	.meta {
+		flex-shrink: 0;
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
+	}
+	.tag {
+		flex-shrink: 0;
+		max-width: 8.5rem;
+		font-size: 9px;
+		font-weight: 600;
+		letter-spacing: 0.02em;
+		padding: 1px 6px;
+		border-radius: 5px;
+		color: color-mix(in srgb, var(--color-foreground) 62%, transparent);
+		background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
+		border: 1px solid color-mix(in srgb, var(--color-foreground) 8%, transparent);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	.time {
 		flex-shrink: 0;

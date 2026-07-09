@@ -89,6 +89,12 @@ export interface EmailItem {
   unread?: boolean;
   /** Short preview snippet, when the puller can supply one. */
   snippet?: string | null;
+  /**
+   * User-applied Gmail label names on this message (e.g. "Finanzas"), with
+   * system labels dropped — the same tags shown in Gmail. Empty/absent when
+   * the message carries no user labels.
+   */
+  labels?: string[];
 }
 
 export interface FeedTodayResponse {
