@@ -220,6 +220,8 @@
   "reliability_noPlugins": "No plugin data",
   "settings_title": "Settings",
   "settings_theme": "Theme",
+  "settings_themeDark": "Dark",
+  "settings_themeLight": "Light",
   "settings_accentColor": "Accent Color",
   "settings_accent": "Accent",
   "settings_language": "Language",

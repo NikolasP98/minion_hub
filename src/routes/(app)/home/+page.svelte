@@ -908,7 +908,9 @@
 		flex-shrink: 0;
 		border-radius: 50%;
 		overflow: hidden;
-		background: radial-gradient(circle at 50% 40%, #1b1408, #0c0a05 80%);
+		/* Theme-managed surface (was a hardcoded warm-dark radial that stayed a dark
+		   blob on light themes). */
+		background: radial-gradient(circle at 50% 40%, var(--color-bg2), var(--color-bg3) 80%);
 		box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 55%, transparent);
 	}
 

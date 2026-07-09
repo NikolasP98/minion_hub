@@ -178,6 +178,8 @@
   "reliability_noPlugins": "Sin datos de plugins",
   "settings_title": "Ajustes",
   "settings_theme": "Tema",
+  "settings_themeDark": "Oscuro",
+  "settings_themeLight": "Claro",
   "settings_accentColor": "Color de Acento",
   "settings_accent": "Acento",
   "settings_language": "Idioma",

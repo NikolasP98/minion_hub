@@ -125,7 +125,7 @@
       <div class="px-5 pt-6 pb-4 text-center">
         <div class="inline-flex items-center select-none leading-none mb-2">
           <span class="bg-brand-pink text-black font-black text-[13px] tracking-wide px-2 py-0.5 rounded-l-md uppercase">MINION</span>
-          <span class="text-white font-bold text-[13px] px-1.5 py-0.5">hub</span>
+          <span class="text-foreground font-bold text-[13px] px-1.5 py-0.5">hub</span>
         </div>
         <p class="text-[11px] text-muted font-mono">
           {mode === 'signup' ? 'Create your account' : m.login_subtitle()}

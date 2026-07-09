@@ -38,7 +38,7 @@
       <div class="px-6 py-8 text-center">
         <div class="inline-flex items-center select-none leading-none mb-5">
           <span class="bg-brand-pink text-black font-black text-[13px] tracking-wide px-2 py-0.5 rounded-l-md uppercase">MINION</span>
-          <span class="text-white font-bold text-[13px] px-1.5 py-0.5">hub</span>
+          <span class="text-foreground font-bold text-[13px] px-1.5 py-0.5">hub</span>
         </div>
 
         <h1 class="text-lg font-semibold text-foreground mb-2">{title}</h1>

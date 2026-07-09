@@ -24,6 +24,8 @@ export { DEFAULT_STYLE };
 export interface ThemePreset {
   id: string;
   name: string;
+  /** Light vs dark surface family — drives the grouped sections in the picker. Defaults to 'dark'. */
+  mode?: 'light' | 'dark';
   colors: {
     bg: string;
     bg2: string;
@@ -238,6 +240,7 @@ export const PRESETS: ThemePreset[] = [
   {
     id: 'github-light',
     name: 'GitHub Light',
+    mode: 'light',
     colors: {
       bg: '#ffffff',
       bg2: '#f6f8fa',
@@ -260,6 +263,7 @@ export const PRESETS: ThemePreset[] = [
   {
     id: 'solarized-light',
     name: 'Solarized Light',
+    mode: 'light',
     colors: {
       bg: '#fdf6e3',
       bg2: '#f5efdc',
@@ -282,6 +286,7 @@ export const PRESETS: ThemePreset[] = [
   {
     id: 'catppuccin-latte',
     name: 'Catppuccin Latte',
+    mode: 'light',
     colors: {
       bg: '#eff1f5',
       bg2: '#e6e9ef',
@@ -304,6 +309,7 @@ export const PRESETS: ThemePreset[] = [
   {
     id: 'one-light',
     name: 'One Light',
+    mode: 'light',
     colors: {
       bg: '#fafafa',
       bg2: '#f0f0f1',
@@ -326,6 +332,7 @@ export const PRESETS: ThemePreset[] = [
   {
     id: 'nord-light',
     name: 'Nord Light',
+    mode: 'light',
     colors: {
       bg: '#eceff4',
       bg2: '#e5e9f0',
