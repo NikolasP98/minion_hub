@@ -23,11 +23,17 @@ export const txPrefs = $state<{
 	intent: TxIntent;
 	lang: NoteLang;
 	spellcheck: boolean;
+	/** Zen: show the top-left word-count/language meta. */
+	showMeta: boolean;
+	/** Zen: show the bottom-left hotkey hints. */
+	showHints: boolean;
 }>({
 	autoPolish: false,
 	intent: 'auto',
 	lang: 'auto',
-	spellcheck: true
+	spellcheck: true,
+	showMeta: true,
+	showHints: true
 });
 
 // One-time load (client only — guarded for SSR).
@@ -40,6 +46,8 @@ if (typeof localStorage !== 'undefined') {
 			if (v.intent && TX_INTENTS.some((i) => i.id === v.intent)) txPrefs.intent = v.intent;
 			if (v.lang && NOTE_LANGS.includes(v.lang)) txPrefs.lang = v.lang;
 			if (typeof v.spellcheck === 'boolean') txPrefs.spellcheck = v.spellcheck;
+			if (typeof v.showMeta === 'boolean') txPrefs.showMeta = v.showMeta;
+			if (typeof v.showHints === 'boolean') txPrefs.showHints = v.showHints;
 		}
 	} catch {
 		/* ignore corrupt prefs */
@@ -54,7 +62,9 @@ export function saveTxPrefs(): void {
 				autoPolish: txPrefs.autoPolish,
 				intent: txPrefs.intent,
 				lang: txPrefs.lang,
-				spellcheck: txPrefs.spellcheck
+				spellcheck: txPrefs.spellcheck,
+				showMeta: txPrefs.showMeta,
+				showHints: txPrefs.showHints
 			})
 		);
 	} catch {
@@ -79,6 +89,16 @@ export function setNoteLang(lang: NoteLang): void {
 
 export function setSpellcheck(on: boolean): void {
 	txPrefs.spellcheck = on;
+	saveTxPrefs();
+}
+
+export function setShowMeta(on: boolean): void {
+	txPrefs.showMeta = on;
+	saveTxPrefs();
+}
+
+export function setShowHints(on: boolean): void {
+	txPrefs.showHints = on;
 	saveTxPrefs();
 }
 

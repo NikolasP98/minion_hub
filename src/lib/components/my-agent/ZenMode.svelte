@@ -13,14 +13,9 @@
 	import { runPolish } from '$lib/state/features/note-polish.svelte';
 	import { formatForDisplay } from '$lib/hotkeys';
 	import { detectLang, countWords } from '$lib/utils/detect-lang';
-	import {
-		txPrefs,
-		setNoteLang,
-		setSpellcheck,
-		NOTE_LANGS,
-		type NoteLang
-	} from '$lib/state/features/transcription-prefs.svelte';
-	import { Check, Minimize2, Settings, Wand2 } from 'lucide-svelte';
+	import { txPrefs, type NoteLang } from '$lib/state/features/transcription-prefs.svelte';
+	import ZenSettingsMenu from './ZenSettingsMenu.svelte';
+	import { Minimize2, Wand2 } from 'lucide-svelte';
 
 	let { note, onclose }: { note: AgentNote | null; onclose: () => void } = $props();
 
@@ -38,7 +33,6 @@
 	};
 	let blocksRef = $state<BlocksRef | undefined>();
 	let polishMenuOpen = $state(false);
-	let settingsOpen = $state(false);
 
 	// Held-modifier tracking for the corner hotkey helpers (highlight on hold).
 	let heldAlt = $state(false);
@@ -80,9 +74,10 @@
 	function onKey(e: KeyboardEvent) {
 		trackMods(e);
 		if (e.key !== 'Escape' || e.defaultPrevented) return;
-		// Esc closes open menus first, then minimizes.
-		if (settingsOpen) settingsOpen = false;
-		else if (polishMenuOpen) polishMenuOpen = false;
+		// An open Zag menu (settings cog) handles its own Escape — don't minimize.
+		if (document.querySelector('[data-scope="menu"][data-part="content"][data-state="open"]')) return;
+		// Esc closes the polish menu first, then minimizes.
+		if (polishMenuOpen) polishMenuOpen = false;
 		else onclose();
 	}
 </script>
@@ -96,7 +91,6 @@
 	}}
 	onpointerdown={(e) => {
 		if (polishMenuOpen && e.target instanceof Element && !e.target.closest('.zen-polish-wrap')) polishMenuOpen = false;
-		if (settingsOpen && e.target instanceof Element && !e.target.closest('.zen-set-wrap')) settingsOpen = false;
 	}}
 />
 
@@ -135,51 +129,7 @@
 					ondiscard={() => blocksRef?.discardFocused()}
 					hasPending={() => blocksRef?.hasPendingFocused() ?? false}
 				/>
-				<div class="zen-set-wrap">
-					<button
-						type="button"
-						class="zen-min"
-						class:on={settingsOpen}
-						title={m.note_editorSettings()}
-						aria-label={m.note_editorSettings()}
-						aria-haspopup="menu"
-						aria-expanded={settingsOpen}
-						onclick={() => (settingsOpen = !settingsOpen)}
-					>
-						<Settings size={16} />
-					</button>
-					{#if settingsOpen}
-						<!-- svelte-ignore a11y_no_static_element_interactions -->
-						<div class="zen-set-menu" role="menu" tabindex="-1" onmousedown={(e) => e.preventDefault()}>
-							<button
-								type="button"
-								role="menuitemcheckbox"
-								aria-checked={txPrefs.spellcheck}
-								class="zen-set-item"
-								onclick={() => setSpellcheck(!txPrefs.spellcheck)}
-							>
-								<span class="zen-set-check" class:on={txPrefs.spellcheck}>
-									{#if txPrefs.spellcheck}<Check size={11} />{/if}
-								</span>
-								{m.note_spellcheck()}
-							</button>
-							<div class="zen-set-sep"></div>
-							<div class="zen-set-label">{m.note_language()}</div>
-							{#each NOTE_LANGS as lang (lang)}
-								<button
-									type="button"
-									role="menuitemradio"
-									aria-checked={txPrefs.lang === lang}
-									class="zen-set-item"
-									onclick={() => setNoteLang(lang)}
-								>
-									<span class="zen-set-radio" class:on={txPrefs.lang === lang}></span>
-									{LANG_LABELS[lang]()}
-								</button>
-							{/each}
-						</div>
-					{/if}
-				</div>
+				<ZenSettingsMenu />
 			{/if}
 			<button type="button" class="zen-min" title={m.note_minimizeTitle()} aria-label={m.note_minimize()} onclick={onclose}>
 				<Minimize2 size={18} />
@@ -217,7 +167,7 @@
 			</div>
 		</div>
 
-		{#if current.kind === 'note'}
+		{#if current.kind === 'note' && txPrefs.showMeta}
 			<!-- Top-left meta: word count + detected language. -->
 			<div class="zen-meta">
 				<span>{m.note_words({ count: wordCount })}</span>
@@ -226,6 +176,8 @@
 					<span>{LANG_LABELS[detected]()}</span>
 				{/if}
 			</div>
+		{/if}
+		{#if current.kind === 'note' && txPrefs.showHints}
 			<!-- Subtle hotkey helpers; chips light up while their modifier is held. -->
 			<div class="zen-hints" aria-hidden="true">
 				{#each HOTKEY_HINTS as hint (hint.combo)}
@@ -365,96 +317,9 @@
 		border: none;
 		transition: color 120ms ease, background 120ms ease;
 	}
-	.zen-min:hover,
-	.zen-min.on {
+	.zen-min:hover {
 		color: var(--color-foreground);
 		background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
-	}
-	/* Editor-settings popover (language). */
-	.zen-set-wrap {
-		position: relative;
-		display: inline-flex;
-	}
-	.zen-set-menu {
-		position: absolute;
-		top: calc(100% + 6px);
-		right: 0;
-		z-index: 3;
-		min-width: 180px;
-		display: flex;
-		flex-direction: column;
-		padding: 5px;
-		border-radius: 10px;
-		background: var(--color-bg2, #1b1b1f);
-		border: 1px solid var(--color-border);
-		box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-	}
-	.zen-set-label {
-		padding: 6px 9px 3px;
-		font-size: 10px;
-		font-weight: 600;
-		letter-spacing: 0.06em;
-		text-transform: uppercase;
-		color: color-mix(in srgb, var(--color-foreground) 35%, transparent);
-	}
-	.zen-set-item {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: 7px 9px;
-		font-size: 12.5px;
-		font-family: inherit;
-		text-align: left;
-		border-radius: 6px;
-		cursor: pointer;
-		background: transparent;
-		border: none;
-		color: color-mix(in srgb, var(--color-foreground) 82%, transparent);
-		transition: background 120ms ease, color 120ms ease;
-	}
-	.zen-set-item:hover {
-		color: var(--color-foreground);
-		background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-	}
-	.zen-set-radio {
-		width: 13px;
-		height: 13px;
-		border-radius: 50%;
-		border: 1.5px solid color-mix(in srgb, var(--color-foreground) 30%, transparent);
-		flex-shrink: 0;
-		position: relative;
-	}
-	.zen-set-radio.on {
-		border-color: var(--color-accent);
-	}
-	.zen-set-radio.on::after {
-		content: '';
-		position: absolute;
-		inset: 2.5px;
-		border-radius: 50%;
-		background: var(--color-accent);
-	}
-	.zen-set-sep {
-		height: 1px;
-		margin: 5px 4px;
-		background: var(--color-border);
-	}
-	.zen-set-check {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 15px;
-		height: 15px;
-		border-radius: 4px;
-		border: 1.5px solid color-mix(in srgb, var(--color-foreground) 30%, transparent);
-		flex-shrink: 0;
-	}
-	.zen-set-check.on {
-		background: var(--color-accent);
-		border-color: var(--color-accent);
-	}
-	.zen-set-check :global(svg) {
-		color: var(--color-accent-foreground, #fff);
 	}
 	/* Top-left meta (word count + detected language). */
 	.zen-meta {
