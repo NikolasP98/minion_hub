@@ -126,6 +126,40 @@ export function isToolResultOnly(m: unknown): boolean {
 	return blocks.length > 0 && blocks.every((b) => b?.type === 'tool_result');
 }
 
+// Tool name → context-aware activity verb for the live status line. Matched by
+// substring so gateway tool aliases (e.g. `memory_search_facts`) still hit.
+const ACTIVITY_VERBS: Array<[string, string]> = [
+	['search_facts', 'Remembering…'],
+	['memory', 'Remembering…'],
+	['web_search', 'Looking up…'],
+	['web_fetch', 'Looking up…'],
+	['browser', 'Browsing…'],
+	['gmail', 'Checking email…'],
+	['email', 'Checking email…'],
+	['calendar', 'Checking the calendar…'],
+	['exec', 'Running a command…'],
+	['bash', 'Running a command…'],
+	['read', 'Reading…'],
+	['write', 'Writing…'],
+	['edit', 'Editing…'],
+	['grep', 'Investigating…'],
+	['find', 'Investigating…'],
+	['ls', 'Investigating…'],
+	['sessions_', 'Coordinating…'],
+	['cron', 'Scheduling…'],
+	['image', 'Looking at an image…'],
+	['canvas', 'Sketching…'],
+];
+
+/** Context-aware verb for a running tool ("Reading…"), or a generic fallback. */
+export function activityVerb(toolName: string): string {
+	const n = toolName.toLowerCase();
+	for (const [needle, verb] of ACTIVITY_VERBS) {
+		if (n.includes(needle)) return verb;
+	}
+	return `Using ${toolName}…`;
+}
+
 /** Whether a message has anything worth rendering (text/thinking/tool/image). */
 export function assistantHasContent(m: unknown): boolean {
 	if (!m || typeof m !== 'object') return false;

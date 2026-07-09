@@ -27,9 +27,12 @@
 	import { assistant } from '$lib/state/features/assistant.svelte';
 	import {
 		sendChatMsg,
+		resetChat,
 		loadChatHistory,
 		stripVoiceTurnPrefix,
 		cleanInboundForDisplay,
+		parseUserContext,
+		type UserContextChip,
 	} from '$lib/services/gateway.svelte';
 	import {
 		voiceCall,
@@ -47,7 +50,8 @@
 	} from '$lib/services/my-agent-rpc';
 	import { createConnectedFetch } from '$lib/state/async.svelte';
 	import { distinctProviders } from '$lib/components/my-agent/provider';
-	import { ChevronDown } from 'lucide-svelte';
+	import { dragContextIcon, type DragContextKind } from '$lib/utils/drag-context';
+	import { ChevronDown, MessageSquarePlus } from 'lucide-svelte';
 	import { tick } from 'svelte';
 	import type { PageData } from './$types';
 
@@ -279,11 +283,41 @@
 	// ─── Rich content-block helpers (thinking + tools, claude-desktop style) ───
 	// Hoisted to $lib/chat/blocks.ts — shared across all 5 chat surfaces.
 
+	// Live per-run tool calls + context-aware activity verb (gateway tool events).
+	const liveTools = $derived(chat?.liveTools ?? []);
+	const liveActivity = $derived(chat?.liveActivity ?? null);
+
 	// tool_use_id → result, collected across the whole thread (results live in the
-	// following user-role turn) so each tool card can show its outcome.
-	const toolResultsById = $derived.by<Record<string, ToolResult>>(() =>
-		computeToolResultsById(streamMessage ? [...messages, streamMessage] : messages)
-	);
+	// following user-role turn) so each tool card can show its outcome. Live tool
+	// results (streaming run) are merged on top so in-flight cards resolve ✓/⚠.
+	const toolResultsById = $derived.by<Record<string, ToolResult>>(() => {
+		const map = computeToolResultsById(streamMessage ? [...messages, streamMessage] : messages);
+		for (const t of liveTools) {
+			if (t.done && !map[t.id]) map[t.id] = { content: t.result ?? '', isError: !!t.isError };
+		}
+		return map;
+	});
+
+	// The streaming turn's message: live tool blocks (which chat deltas don't
+	// carry — they're text-only) merged ahead of the delta message's own blocks.
+	const streamTurnMessage = $derived.by<ChatMessage | null>(() => {
+		if (liveTools.length === 0) return streamMessage;
+		const baseBlocks = streamMessage ? contentBlocks(streamMessage.content) : [];
+		const have = new Set(
+			baseBlocks
+				.filter((b) => b?.type === 'tool_use' || b?.type === 'toolCall')
+				.map((b) => b.id as string),
+		);
+		return {
+			role: 'assistant',
+			content: [
+				...liveTools
+					.filter((t) => !have.has(t.id))
+					.map((t) => ({ type: 'tool_use', id: t.id, name: t.name, input: t.input })),
+				...baseBlocks,
+			],
+		} as ChatMessage;
+	});
 
 	// Stable per-row key derived from content (NOT array index) — so reconciling
 	// server history into the optimistic thread reuses DOM instead of re-mounting
@@ -306,6 +340,8 @@
 		role: 'user' | 'assistant';
 		ts?: number;
 		text: string;
+		/** Dragged-context blocks parsed out of a user message — render as chips. */
+		chips: UserContextChip[];
 	}
 	const renderedMessages = $derived.by<RenderedRow[]>(() => {
 		const seen = new Map<string, number>();
@@ -314,22 +350,29 @@
 			const m = raw as ChatMessage;
 			if (isToolResultOnly(m)) continue;
 			const role = msgRole(m);
-			const text =
+			let text =
 				role === 'user'
 					? cleanInboundForDisplay(extractText(m) ?? '')
 					: stripVoiceTurnPrefix(extractText(m) ?? '');
-			if (role === 'user' ? text.trim().length === 0 : !assistantHasContent(m)) continue;
+			let chips: UserContextChip[] = [];
+			if (role === 'user') {
+				({ chips, text } = parseUserContext(text));
+			}
+			if (role === 'user' ? text.trim().length === 0 && chips.length === 0 : !assistantHasContent(m))
+				continue;
 			const base = rowKey(m);
 			const n = seen.get(base) ?? 0;
 			seen.set(base, n + 1);
-			rows.push({ key: `${base}#${n}`, msg: m, role, ts: msgTs(m), text });
+			rows.push({ key: `${base}#${n}`, msg: m, role, ts: msgTs(m), text, chips });
 		}
 		return rows;
 	});
 
-	// Live status while a run streams: "Using <tool>…" / "Thinking…" / null (text
-	// is streaming, shown directly). Drives the activity line under the thread.
+	// Live status while a run streams: the context-aware verb from live tool
+	// events ("Reading…", "Remembering…") wins; falls back to block inspection,
+	// then "Thinking…". Null while answer text is streaming (it shows itself).
 	const streamActivity = $derived.by<string | null>(() => {
+		if (liveActivity) return liveActivity;
 		if (!streamMessage) return null;
 		const blocks = contentBlocks(streamMessage.content);
 		if (blocks.length === 0) return 'Thinking…';
@@ -341,9 +384,11 @@
 	});
 
 	// Whether the live streaming turn has any visible content yet (reasoning/tool
-	// meta, or smoothed answer text being revealed).
+	// meta, live tool rows, or smoothed answer text being revealed).
 	const streamHasContent = $derived(
-		(!!streamMessage && assistantHasContent(streamMessage)) || streamDisplay.length > 0
+		(!!streamMessage && assistantHasContent(streamMessage)) ||
+			liveTools.length > 0 ||
+			streamDisplay.length > 0
 	);
 
 	// Lazy-load the conversation history once connected + agent known.
@@ -403,6 +448,7 @@
 		void streamMessage;
 		void streamDisplay;
 		void streamActivity;
+		void liveTools.length;
 		if (atBottom) {
 			tick().then(() => {
 				if (threadEl) threadEl.scrollTop = threadEl.scrollHeight;
@@ -440,6 +486,16 @@
 						<AgentGreeting greeting={data.greeting} userName={data.userName} />
 					</div>
 				</div>
+				<button
+					type="button"
+					class="new-chat"
+					disabled={!agentId || !conn.connected || sending}
+					title={m.chat_newChat()}
+					onclick={() => agentId && resetChat(agentId)}
+				>
+					<MessageSquarePlus size={14} />
+					<span>{m.chat_newChat()}</span>
+				</button>
 			</header>
 
 			{#if voiceCall.error}
@@ -618,7 +674,19 @@
 									</div>
 								{:else}
 									<div class="bubble-row user">
-										<div class="bubble user">{row.text}</div>
+										{#if row.chips.length > 0}
+											<div class="sent-chips">
+												{#each row.chips as chip, ci (ci)}
+													<span class="sent-chip" title={chip.text}>
+														<span aria-hidden="true">{dragContextIcon(chip.kind as DragContextKind)}</span>
+														<span class="sent-chip-label">{chip.label}</span>
+													</span>
+												{/each}
+											</div>
+										{/if}
+										{#if row.text.trim().length > 0}
+											<div class="bubble user">{row.text}</div>
+										{/if}
 										{#if row.ts}<span class="bubble-time">{fmtTime(row.ts)}</span>{/if}
 									</div>
 								{/if}
@@ -626,14 +694,21 @@
 
 							<!-- Live streaming turn: reasoning/tool rows surface above the reply;
 							     the answer text is the smoothed (typewriter) reveal via textOverride. -->
-							{#if streamHasContent && streamMessage}
+							{#if streamHasContent && streamTurnMessage}
 								<div class="bubble-row assistant">
 									<ChatTurn
-										message={streamMessage}
+										message={streamTurnMessage}
 										toolResults={toolResultsById}
 										streaming
 										textOverride={streamDisplay}
 									/>
+									{#if streamDisplay.length === 0}
+										<!-- Tools running, no answer text yet — live activity verb. -->
+										<div class="thinking-row">
+											<span class="dot"></span><span class="dot"></span><span class="dot"></span>
+											{streamActivity ?? 'Thinking…'}
+										</div>
+									{/if}
 								</div>
 							{:else if streamDisplay.length > 0}
 								<!-- Fallback: smoothed text with no structured message. -->
@@ -990,6 +1065,65 @@
 	.bubble.assistant.streaming {
 		border-style: dashed;
 		opacity: 0.9;
+	}
+
+	/* Dragged-context chips echoed above a sent user bubble — visually separate
+	   from the typed text (the raw context block itself is never shown). */
+	.sent-chips {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: flex-end;
+		gap: 5px;
+		max-width: 85%;
+		margin-bottom: 2px;
+	}
+	.sent-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		max-width: 240px;
+		padding: 2px 9px;
+		border-radius: 999px;
+		font-size: 11px;
+		background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+		border: 1px solid color-mix(in srgb, var(--color-accent) 26%, transparent);
+		color: color-mix(in srgb, var(--color-foreground) 75%, transparent);
+	}
+	.sent-chip-label {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		min-width: 0;
+	}
+
+	/* "New chat" reset — quiet pill in the greeting row's top-right. */
+	.new-chat {
+		flex-shrink: 0;
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 5px 10px;
+		border-radius: 8px;
+		border: 1px solid color-mix(in srgb, var(--color-foreground) 12%, transparent);
+		background: transparent;
+		color: color-mix(in srgb, var(--color-foreground) 55%, transparent);
+		font-size: 12px;
+		cursor: pointer;
+		transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+	}
+	.new-chat:hover:not(:disabled) {
+		color: var(--color-foreground);
+		border-color: color-mix(in srgb, var(--color-foreground) 24%, transparent);
+		background: color-mix(in srgb, var(--color-foreground) 4%, transparent);
+	}
+	.new-chat:disabled {
+		opacity: 0.45;
+		cursor: default;
+	}
+	@container agentcol (max-width: 460px) {
+		.new-chat span {
+			display: none;
+		}
 	}
 
 	.bubble-time {

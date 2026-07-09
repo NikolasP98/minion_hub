@@ -40,6 +40,8 @@ export async function resetChat(agentId: string): Promise<void> {
   chat.streamMessage = null;
   chat.streamDisplay = '';
   chat.lastError = null;
+  chat.liveTools = [];
+  chat.liveActivity = null;
 }
 
 export function sendChatMsg(agentId: string) {
@@ -61,6 +63,8 @@ export function sendChatMsg(agentId: string) {
   chat.runId = runId;
   chat.stream = '';
   chat.lastError = null;
+  chat.liveTools = [];
+  chat.liveActivity = null;
 
   // Keep `sending` (the "thinking" indicator) up until the run actually starts
   // streaming — the chat.send RPC resolving only means the gateway ACCEPTED the
@@ -121,6 +125,34 @@ export function stripVoiceTurnPrefix(text: string): string {
  */
 export function stripAssistantContext(text: string): string {
   return text.replace(/^\s*\[In-app assistant context[\s\S]*?Don't restate this context\.\]\s*/, '');
+}
+
+/** A dragged-context block parsed back out of a sent user message. */
+export interface UserContextChip {
+  kind: string;
+  label: string;
+  text: string;
+}
+
+// `[Context <kind>: <label>]<body>[/Context]` blocks composed by ChatInput.
+// Whitespace-tolerant: the gateway flattens newlines to spaces when it records
+// the turn, so the newlines ChatInput composes may come back as single spaces.
+// Labels are bracket-sanitized at compose time, so `]` terminates the label.
+const CONTEXT_CHIP_RE = /\[Context (\w+): ([^\]]*)\]\s?([\s\S]*?)\s?\[\/Context\]\s*/;
+
+/**
+ * Split a user message into its leading dragged-context chips and the typed
+ * text. Chips render OUTSIDE the bubble; the bubble shows only the typed text.
+ * Legacy `Context:\n…` messages (pre-marker format) pass through untouched.
+ */
+export function parseUserContext(text: string): { chips: UserContextChip[]; text: string } {
+  const chips: UserContextChip[] = [];
+  let t = text;
+  for (let m = t.match(CONTEXT_CHIP_RE); m && m.index === 0; m = t.match(CONTEXT_CHIP_RE)) {
+    chips.push({ kind: m[1], label: m[2], text: m[3] });
+    t = t.slice(m[0].length).trimStart();
+  }
+  return { chips, text: t };
 }
 
 // Leading context blocks the gateway composes into the RECORDED user turn (for
@@ -184,6 +216,8 @@ export function sendAssistantTurn(agentId: string, text: string, context: string
   chat.runId = runId;
   chat.stream = '';
   chat.lastError = null;
+  chat.liveTools = [];
+  chat.liveActivity = null;
 
   const guard = setTimeout(() => {
     if (chat.runId === runId) chat.sending = false;
@@ -222,6 +256,8 @@ export function sendVoiceTurn(agentId: string, transcript: string) {
   chat.runId = runId;
   chat.stream = '';
   chat.lastError = null;
+  chat.liveTools = [];
+  chat.liveActivity = null;
 
   sendRequest('chat.send', {
     sessionKey,

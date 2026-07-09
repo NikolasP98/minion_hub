@@ -1777,6 +1777,7 @@
   "call_endCall": "Finalizar llamada",
   "chat_askYourAgent": "Pregunta a tu agente…",
   "chat_addNoteOrSend": "Añade una nota o solo envía el contexto…",
+  "chat_newChat": "Nuevo chat",
   "chat_removeContext": "Eliminar contexto",
   "chat_dropToAddContext": "Arrastra para añadir como contexto",
   "chat_chatWithYourAgent": "Conversa con tu agente",

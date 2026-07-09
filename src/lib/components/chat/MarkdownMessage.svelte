@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { Carta, Markdown } from 'carta-md';
+    import { Carta } from 'carta-md';
     import DOMPurify from 'dompurify';
     import { goto } from '$app/navigation';
     import { resolveInternalNav } from '$lib/utils/internal-nav';
@@ -18,6 +18,28 @@
         sanitizer: (html) => DOMPurify.sanitize(html),
     });
 
+    // carta-md's <Markdown> component renders ONCE by design ("this component is
+    // not reactive") — streaming text froze at the first delta and only appeared
+    // in full when the committed message remounted it. Render reactively instead:
+    // the sync (sanitized) parse tracks every value change instantly; the async
+    // render (adds syntax highlighting) upgrades it once the text settles,
+    // debounced + stale-guarded so streaming doesn't spawn a render per frame.
+    const ssrHtml = $derived(carta.renderSSR(value));
+    let asyncHtml = $state<string | null>(null);
+    let renderSeq = 0;
+    $effect(() => {
+        const v = value;
+        asyncHtml = null;
+        const seq = ++renderSeq;
+        const t = setTimeout(() => {
+            void carta.render(v).then((html) => {
+                if (seq === renderSeq) asyncHtml = html;
+            });
+        }, 150);
+        return () => clearTimeout(t);
+    });
+    const rendered = $derived(asyncHtml ?? ssrHtml);
+
     // Internal links (the assistant cites pages as [label](/path)) navigate within
     // the SPA instead of full-reloading. Event delegation on the wrapper — one
     // listener covers every rendered <a>. External/hash/new-tab links fall through
@@ -35,7 +57,10 @@
     class={`chat-md ${tone === 'user' ? 'chat-md--user' : 'chat-md--assistant'} ${className}`}
     onclick={onLinkClick}
 >
-    <Markdown {carta} {value} />
+    <div class="carta-viewer carta-theme__default markdown-body">
+        <!-- eslint-disable-next-line svelte/no-at-html-tags — sanitized by carta's DOMPurify sanitizer -->
+        {@html rendered}
+    </div>
 </div>
 
 <style>

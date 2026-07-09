@@ -27,9 +27,11 @@ import {
   feedStreamMessage,
   finishStreamMessage,
   cancelStreamText,
+  clearLiveActivity,
   SPARK_BIN_MS,
   SPARK_BIN_COUNT,
 } from '$lib/state/chat/chat.svelte';
+import { activityVerb } from '$lib/chat/blocks';
 import {
   hostsState,
   getActiveHost,
@@ -318,7 +320,10 @@ export async function wsConnect() {
         },
         role,
         scopes,
-        caps: [],
+        // `tool-events` opts this connection into live per-run tool events
+        // (stream:'tool' agent frames) — drives the real-time activity verbs
+        // and live tool rows in chat surfaces.
+        caps: ['tool-events'],
         auth: token ? { token } : undefined,
         jwt: jwt ?? undefined,
         userId,
@@ -763,6 +768,42 @@ function onAgentEvent(payload: Record<string, unknown>) {
     act.working = false;
   }, 5000);
 
+  // Live tool events (requires the `tool-events` connect cap): track per-run
+  // tool calls + a context-aware activity verb for the main-session chat UIs.
+  if (payload.stream === 'tool' && typeof payload.sessionKey === 'string') {
+    const sk = payload.sessionKey;
+    if (sk === `agent:${agentId}:main`) {
+      const data = (payload.data ?? {}) as {
+        phase?: string;
+        name?: string;
+        toolCallId?: string;
+        args?: unknown;
+        result?: unknown;
+        isError?: boolean;
+      };
+      const name = typeof data.name === 'string' ? data.name : 'tool';
+      const id = typeof data.toolCallId === 'string' ? data.toolCallId : '';
+      const chat = ensureAgentChat(agentId);
+      if (id && data.phase === 'start') {
+        if (!chat.liveTools.some((t) => t.id === id)) {
+          chat.liveTools.push({ id, name, input: data.args, done: false });
+        }
+        chat.liveActivity = activityVerb(name);
+      } else if (id && data.phase === 'end') {
+        const t = chat.liveTools.find((x) => x.id === id);
+        if (t) {
+          t.done = true;
+          t.isError = !!data.isError;
+          if (data.result !== undefined) {
+            t.result =
+              typeof data.result === 'string' ? data.result : JSON.stringify(data.result, null, 2);
+          }
+        }
+        if (!chat.liveTools.some((x) => !x.done)) chat.liveActivity = null;
+      }
+    }
+  }
+
   if (payload.sessionKey) {
     const sk = payload.sessionKey as string;
     upsertSession({ sessionKey: sk, agentId: agentId, lastActiveAt: Date.now() });
@@ -838,6 +879,7 @@ function onChatEvent(payload: ChatEvent) {
           };
     chat.runId = null;
     finishStreamMessage(agentId, finalMsg, () => {
+      clearLiveActivity(agentId);
       if (sk === `agent:${agentId}:main`) {
         void loadChatHistory(agentId).then(() => notifyAgentReplyFinal(agentId));
       } else {
@@ -851,6 +893,7 @@ function onChatEvent(payload: ChatEvent) {
     }
   } else if (payload.state === 'aborted') {
     cancelStreamText(agentId);
+    clearLiveActivity(agentId);
     const msg = payload.message as { role?: string; content?: unknown } | null;
     if (msg?.role === 'assistant' && Array.isArray(msg.content)) {
       pushChatMessage(chat, msg as never);
@@ -871,6 +914,7 @@ function onChatEvent(payload: ChatEvent) {
     }
   } else if (payload.state === 'error') {
     cancelStreamText(agentId);
+    clearLiveActivity(agentId);
     chat.stream = null;
     chat.streamMessage = null;
     chat.runId = null;

@@ -32,11 +32,20 @@
 		chips = chips.filter((_, idx) => idx !== i);
 	}
 
-	// Build the outgoing message: dragged context blocks first, then the typed text.
+	// Build the outgoing message: dragged context blocks first, then the typed
+	// text. Each block is wrapped in a labelled marker so the transcript can be
+	// parsed back into chips for display (see parseUserContext in chat-rpc).
+	// Labels must stay bracket-free — the gateway flattens newlines when it
+	// records the turn, so `]` is the only reliable label terminator.
 	function composed(text: string): string {
 		if (chips.length === 0) return text;
-		const ctx = chips.map((c) => c.text).join('\n\n');
-		return text ? `Context:\n${ctx}\n\n${text}` : `Context:\n${ctx}`;
+		const ctx = chips
+			.map((c) => {
+				const label = c.label.replace(/\[/g, '(').replace(/\]/g, ')');
+				return `[Context ${c.kind}: ${label}]\n${c.text}\n[/Context]`;
+			})
+			.join('\n\n');
+		return text ? `${ctx}\n\n${text}` : ctx;
 	}
 
 	function send(effectiveMode: 'ask' | 'capture') {

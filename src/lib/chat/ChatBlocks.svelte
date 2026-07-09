@@ -1,7 +1,7 @@
 <script lang="ts">
 	import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
 	import { Brain, Wrench, Loader, Check, TriangleAlert } from 'lucide-svelte';
-	import { normalizeBlocks, type ToolResult } from './blocks';
+	import { normalizeBlocks, type ChatBlock, type ToolResult } from './blocks';
 
 	interface Props {
 		/** Message-shaped object whose `content` carries the block array. */
@@ -34,8 +34,38 @@
 
 	// Reasoning + tool activity render OUTSIDE the answer bubble (so a sequence of
 	// tool calls reads as a quiet list above the reply); text/images are the reply.
-	const metaBlocks = $derived(blocks.filter((b) => b.kind === 'thinking' || b.kind === 'tool'));
 	const bodyBlocks = $derived(blocks.filter((b) => b.kind === 'text' || b.kind === 'image'));
+
+	// Consecutive tool calls collapse into ONE "N tool uses" row (level 1) that
+	// expands to the per-tool rows (level 2), each expanding to input/output
+	// (level 3). Reasoning is not a tool — it breaks the grouping.
+	type ToolBlock = Extract<ChatBlock, { kind: 'tool' }>;
+	type MetaGroup =
+		| { kind: 'thinking'; text: string }
+		| { kind: 'tools'; tools: ToolBlock[] };
+	const metaGroups = $derived.by<MetaGroup[]>(() => {
+		const groups: MetaGroup[] = [];
+		for (const b of blocks) {
+			if (b.kind === 'thinking') {
+				groups.push({ kind: 'thinking', text: b.text });
+			} else if (b.kind === 'tool') {
+				const last = groups.at(-1);
+				if (last?.kind === 'tools') last.tools.push(b);
+				else groups.push({ kind: 'tools', tools: [b] });
+			}
+		}
+		return groups;
+	});
+
+	function groupStatus(tools: ToolBlock[]): 'pending' | 'err' | 'ok' {
+		let ok = true;
+		for (const t of tools) {
+			const r = t.id ? toolResults[t.id] : undefined;
+			if (streaming && !r) return 'pending';
+			if (r?.isError) ok = false;
+		}
+		return ok ? 'ok' : 'err';
+	}
 
 	function fmtInput(input: unknown): string {
 		if (input === undefined || input === null) return '';
@@ -52,45 +82,72 @@
 	}
 </script>
 
+{#snippet toolRow(block: ToolBlock)}
+	{@const result = block.id ? toolResults[block.id] : undefined}
+	{@const pending = streaming && !result}
+	<details class="meta">
+		<summary>
+			<Wrench size={12} class="mi" />
+			<span class="label tool-name">{block.name}</span>
+			{#if preview(block.input)}<span class="tool-arg">{preview(block.input)}</span>{/if}
+			<span class="tool-status" class:err={result?.isError}>
+				{#if pending}
+					<Loader size={11} class="spin" />
+				{:else if result?.isError}
+					<TriangleAlert size={11} />
+				{:else if result}
+					<Check size={11} />
+				{/if}
+			</span>
+		</summary>
+		<div class="meta-body">
+			{#if fmtInput(block.input)}
+				<div class="sect">Input</div>
+				<pre class="pre">{fmtInput(block.input)}</pre>
+			{/if}
+			{#if result}
+				<div class="sect">{result.isError ? 'Error' : 'Result'}</div>
+				<pre class="pre" class:err={result.isError}>{result.content}</pre>
+			{:else if pending}
+				<div class="pending">Running…</div>
+			{/if}
+		</div>
+	</details>
+{/snippet}
+
 <div class="turn" class:compact>
-	{#each metaBlocks as block, i (i)}
-		{#if block.kind === 'thinking'}
+	{#each metaGroups as group, i (i)}
+		{#if group.kind === 'thinking'}
 			<details class="meta">
 				<summary>
 					<Brain size={12} class="mi" />
 					<span class="label">{streaming ? 'Thinking…' : 'Reasoning'}</span>
 				</summary>
-				<div class="meta-body reason">{block.text}</div>
+				<div class="meta-body reason">{group.text}</div>
 			</details>
-		{:else if block.kind === 'tool'}
-			{@const result = block.id ? toolResults[block.id] : undefined}
-			{@const pending = streaming && !result}
+		{:else if group.tools.length === 1}
+			{@render toolRow(group.tools[0])}
+		{:else}
+			{@const status = groupStatus(group.tools)}
 			<details class="meta">
 				<summary>
 					<Wrench size={12} class="mi" />
-					<span class="label tool-name">{block.name}</span>
-					{#if preview(block.input)}<span class="tool-arg">{preview(block.input)}</span>{/if}
-					<span class="tool-status" class:err={result?.isError}>
-						{#if pending}
+					<span class="label">{group.tools.length} tool uses</span>
+					<span class="tool-arg">{[...new Set(group.tools.map((t) => t.name))].join(' · ')}</span>
+					<span class="tool-status" class:err={status === 'err'}>
+						{#if status === 'pending'}
 							<Loader size={11} class="spin" />
-						{:else if result?.isError}
+						{:else if status === 'err'}
 							<TriangleAlert size={11} />
-						{:else if result}
+						{:else}
 							<Check size={11} />
 						{/if}
 					</span>
 				</summary>
-				<div class="meta-body">
-					{#if fmtInput(block.input)}
-						<div class="sect">Input</div>
-						<pre class="pre">{fmtInput(block.input)}</pre>
-					{/if}
-					{#if result}
-						<div class="sect">{result.isError ? 'Error' : 'Result'}</div>
-						<pre class="pre" class:err={result.isError}>{result.content}</pre>
-					{:else if pending}
-						<div class="pending">Running…</div>
-					{/if}
+				<div class="group-body">
+					{#each group.tools as block, j (j)}
+						{@render toolRow(block)}
+					{/each}
 				</div>
 			</details>
 		{/if}
@@ -219,6 +276,14 @@
 		to {
 			transform: rotate(360deg);
 		}
+	}
+
+	/* Level-2 list inside a collapsed "N tool uses" group. */
+	.group-body {
+		padding: 1px 0 4px 16px;
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
 	}
 
 	.meta-body {

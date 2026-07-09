@@ -25,6 +25,23 @@ export interface AgentChatState {
   loading: boolean;
   inputText: string;
   lastError: string | null;
+  /**
+   * Live tool calls for the in-flight run, fed by gateway `agent` events
+   * (stream:'tool', requires the `tool-events` client cap). Cleared on
+   * final/abort/error — the reconciled history then carries the real blocks.
+   */
+  liveTools: LiveToolCall[];
+  /** Context-aware status verb ("Reading files…") while the run works. */
+  liveActivity: string | null;
+}
+
+export interface LiveToolCall {
+  id: string;
+  name: string;
+  input?: unknown;
+  result?: string;
+  isError?: boolean;
+  done: boolean;
 }
 
 export interface AgentActivityState {

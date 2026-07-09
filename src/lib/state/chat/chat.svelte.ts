@@ -193,9 +193,23 @@ export function ensureAgentChat(agentId: string): AgentChatState {
       loading: false,
       inputText: '',
       lastError: null,
+      liveTools: [],
+      liveActivity: null,
     };
   }
-  return agentChat[agentId];
+  const chat = agentChat[agentId];
+  // Older persisted/HMR states may predate these fields.
+  chat.liveTools ??= [];
+  chat.liveActivity ??= null;
+  return chat;
+}
+
+/** Clear live tool/activity tracking when a run reaches a terminal state. */
+export function clearLiveActivity(agentId: string): void {
+  const chat = agentChat[agentId];
+  if (!chat) return;
+  chat.liveTools = [];
+  chat.liveActivity = null;
 }
 
 // ─── Streaming text smoother (typewriter reveal) ───────────────────────────
