@@ -129,7 +129,7 @@
 		value: financeSync.total == null ? null : financeSync.processed,
 		max: financeSync.total ?? 100,
 	}));
-	const prog = $derived(progress.connect(progressSvc as progress.Service, normalizeProps));
+	const prog = $derived(progress.connect(progressSvc as unknown as progress.Service, normalizeProps));
 
 	onMount(() => {
 		financeSync.refresh('susii');

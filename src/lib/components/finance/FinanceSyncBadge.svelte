@@ -8,7 +8,7 @@
 		value: financeSync.total == null ? null : financeSync.processed,
 		max: financeSync.total ?? 100,
 	}));
-	const api = $derived(progress.connect(service as progress.Service, normalizeProps));
+	const api = $derived(progress.connect(service as unknown as progress.Service, normalizeProps));
 </script>
 
 {#if financeSync.active}
