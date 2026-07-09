@@ -24,5 +24,31 @@ export const load: LayoutServerLoad = async ({ locals }) => {
       icon: e.icon,
       status: e.status,
     }));
+
+  // Gmail is hub-native (Google identities + shared inboxes live in the hub
+  // DB), not a gateway channel plugin — append its card manually. Status
+  // reflects whether the signed-in user can reach any Gmail account at all.
+  const supabaseId = locals?.user?.supabaseId ?? locals?.user?.id;
+  let gmailConnected = false;
+  if (supabaseId) {
+    const [{ getGoogleCredentialFromSupabase }, { listAvailableSharedIdentities }] =
+      await Promise.all([
+        import('$server/services/supabase-credential'),
+        import('$server/services/shared-identity.service'),
+      ]);
+    const [own, shared] = await Promise.all([
+      getGoogleCredentialFromSupabase(supabaseId).catch(() => null),
+      listAvailableSharedIdentities(supabaseId).catch(() => []),
+    ]);
+    gmailConnected = own !== null || shared.some((s) => s.provider === 'google');
+  }
+  channels.push({
+    pluginId: 'gmail',
+    title: 'Gmail',
+    description: 'Shared inboxes, feed access, account health.',
+    icon: 'gmail',
+    status: gmailConnected ? 'loaded' : undefined,
+  });
+
   return { channels };
 };

@@ -28,6 +28,7 @@ export type LucideIcon = ComponentType<
  * render the branded SVG where appropriate.
  */
 export const BRAND_ICON_SET = new Set([
+  "gmail",
   "discord",
   "telegram",
   "whatsapp",
