@@ -479,8 +479,8 @@
 		align-items: stretch;
 		border-radius: 8px;
 		overflow: hidden;
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		background: rgba(255, 255, 255, 0.04);
+		border: 1px solid var(--color-border);
+		background: color-mix(in srgb, var(--color-foreground) 4%, transparent);
 		transition: border-color 120ms ease, background 120ms ease;
 	}
 	.tx-split.on {
@@ -497,17 +497,17 @@
 		cursor: pointer;
 		background: transparent;
 		border: none;
-		color: rgba(255, 255, 255, 0.7);
+		color: color-mix(in srgb, var(--color-foreground) 70%, transparent);
 		transition: color 120ms ease;
 	}
 	.compact .tx-main {
 		padding: 4px 6px;
 	}
 	.tx-main:hover {
-		color: #fff;
+		color: var(--color-foreground);
 	}
 	.tx-split.on .tx-main {
-		color: #fff;
+		color: var(--color-foreground);
 	}
 	.tx-split.on .tx-main :global(svg) {
 		animation: pulse 1.4s ease-in-out infinite;
@@ -520,14 +520,14 @@
 		cursor: pointer;
 		background: transparent;
 		border: none;
-		border-left: 1px solid rgba(255, 255, 255, 0.1);
-		color: rgba(255, 255, 255, 0.5);
+		border-left: 1px solid var(--color-border);
+		color: color-mix(in srgb, var(--color-foreground) 50%, transparent);
 		transition: color 120ms ease, background 120ms ease;
 	}
 	.tx-caret:hover,
 	.tx-caret.open {
-		color: #fff;
-		background: rgba(255, 255, 255, 0.06);
+		color: var(--color-foreground);
+		background: color-mix(in srgb, var(--color-foreground) 6%, transparent);
 	}
 
 	/* Dropdown menu */
@@ -542,7 +542,7 @@
 		padding: 5px;
 		border-radius: 10px;
 		background: var(--color-bg2, #1b1b1f);
-		border: 1px solid rgba(255, 255, 255, 0.12);
+		border: 1px solid var(--color-border);
 		box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
 	}
 	.tx-scrim {
@@ -562,16 +562,16 @@
 		cursor: pointer;
 		background: transparent;
 		border: none;
-		color: rgba(255, 255, 255, 0.82);
+		color: color-mix(in srgb, var(--color-foreground) 82%, transparent);
 		transition: background 120ms ease, color 120ms ease;
 	}
 	.tx-mi:hover {
-		color: #fff;
+		color: var(--color-foreground);
 		background: color-mix(in srgb, var(--color-accent) 12%, transparent);
 	}
 	.tx-mi.sub {
 		font-size: 11.5px;
-		color: rgba(255, 255, 255, 0.5);
+		color: color-mix(in srgb, var(--color-foreground) 50%, transparent);
 		padding-left: 14px;
 	}
 	.tx-mi.intent {
@@ -584,7 +584,7 @@
 	.tx-sep {
 		height: 1px;
 		margin: 5px 4px;
-		background: rgba(255, 255, 255, 0.1);
+		background: var(--color-border);
 	}
 	.tx-group-label {
 		padding: 6px 9px 3px;
@@ -592,7 +592,7 @@
 		font-weight: 600;
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
-		color: rgba(255, 255, 255, 0.35);
+		color: color-mix(in srgb, var(--color-foreground) 35%, transparent);
 	}
 	.tx-check {
 		display: inline-flex;
@@ -601,7 +601,7 @@
 		width: 15px;
 		height: 15px;
 		border-radius: 4px;
-		border: 1.5px solid rgba(255, 255, 255, 0.3);
+		border: 1.5px solid color-mix(in srgb, var(--color-foreground) 30%, transparent);
 		color: #1a1a1a;
 		flex-shrink: 0;
 	}
@@ -616,7 +616,7 @@
 		width: 13px;
 		height: 13px;
 		border-radius: 50%;
-		border: 1.5px solid rgba(255, 255, 255, 0.3);
+		border: 1.5px solid color-mix(in srgb, var(--color-foreground) 30%, transparent);
 		flex-shrink: 0;
 		position: relative;
 	}

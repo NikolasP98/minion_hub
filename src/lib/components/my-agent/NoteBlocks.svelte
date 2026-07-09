@@ -528,14 +528,14 @@
 		padding: 4px;
 		border-radius: 8px;
 		cursor: pointer;
-		color: rgba(255, 255, 255, 0.7);
+		color: color-mix(in srgb, var(--color-foreground) 70%, transparent);
 		background: transparent;
 		border: none;
 		font-family: inherit;
 		transition: color 120ms ease;
 	}
 	.easel-card:hover {
-		color: #fff;
+		color: var(--color-foreground);
 	}
 	.easel-thumbs {
 		display: flex;
@@ -548,8 +548,8 @@
 		flex-shrink: 0;
 		object-fit: cover;
 		border-radius: 6px;
-		border: 1px solid rgba(255, 255, 255, 0.12);
-		background: rgba(0, 0, 0, 0.25);
+		border: 1px solid var(--color-border);
+		background: color-mix(in srgb, var(--color-foreground) 6%, transparent);
 	}
 	.easel-thumb-text {
 		display: -webkit-box;
@@ -559,14 +559,14 @@
 		padding: 4px 6px;
 		font-size: 10px;
 		line-height: 1.25;
-		color: rgba(255, 255, 255, 0.6);
+		color: color-mix(in srgb, var(--color-foreground) 60%, transparent);
 		overflow: hidden;
 		white-space: normal;
 		word-break: break-word;
 	}
 	.easel-more {
 		font-size: 11px;
-		color: rgba(255, 255, 255, 0.6);
+		color: color-mix(in srgb, var(--color-foreground) 60%, transparent);
 	}
 	.easel-meta {
 		display: flex;

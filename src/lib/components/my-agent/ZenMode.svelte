@@ -130,11 +130,7 @@
 		inset: 0;
 		z-index: 90;
 		overflow-y: auto;
-		background: radial-gradient(
-			120% 100% at 50% 0%,
-			rgba(20, 20, 22, 0.98),
-			rgba(8, 8, 9, 0.99)
-		);
+		background: radial-gradient(120% 100% at 50% 0%, var(--color-bg2), var(--color-bg));
 		backdrop-filter: blur(10px);
 		display: flex;
 		justify-content: center;
@@ -159,7 +155,7 @@
 		background: transparent;
 		border: none;
 		outline: none;
-		color: rgba(255, 255, 255, 0.96);
+		color: var(--color-foreground);
 		font-size: 28px;
 		font-weight: 650;
 		letter-spacing: -0.01em;
@@ -167,7 +163,7 @@
 		padding: 0;
 	}
 	.zen-title::placeholder {
-		color: rgba(255, 255, 255, 0.22);
+		color: color-mix(in srgb, var(--color-foreground) 22%, transparent);
 	}
 	.zen-body {
 		font-size: 16px;
@@ -177,7 +173,7 @@
 	.zen-body :global(.note-editor) {
 		font-size: 16px;
 		line-height: 1.7;
-		color: rgba(255, 255, 255, 0.9);
+		color: color-mix(in srgb, var(--color-foreground) 90%, transparent);
 	}
 	.zen-body :global(.note-editor .ProseMirror) {
 		min-height: 40vh;
@@ -189,7 +185,7 @@
 	}
 	.zen-images {
 		margin-top: 6px;
-		border-top: 1px solid rgba(255, 255, 255, 0.07);
+		border-top: 1px solid var(--color-border);
 		padding-top: 12px;
 	}
 	.zen-header {
@@ -240,13 +236,13 @@
 		padding: 8px;
 		border-radius: 9px;
 		cursor: pointer;
-		color: rgba(255, 255, 255, 0.4);
+		color: color-mix(in srgb, var(--color-foreground) 40%, transparent);
 		background: transparent;
 		border: none;
 		transition: color 120ms ease, background 120ms ease;
 	}
 	.zen-min:hover {
-		color: #fff;
-		background: rgba(255, 255, 255, 0.08);
+		color: var(--color-foreground);
+		background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
 	}
 </style>

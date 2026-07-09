@@ -572,7 +572,7 @@
 		padding: 4px;
 		border-radius: 9px;
 		background: var(--color-bg2, #1b1b1f);
-		border: 1px solid rgba(255, 255, 255, 0.12);
+		border: 1px solid var(--color-border);
 		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 	}
 	.fmt-btn {
@@ -585,12 +585,12 @@
 		cursor: pointer;
 		background: transparent;
 		border: none;
-		color: rgba(255, 255, 255, 0.7);
+		color: color-mix(in srgb, var(--color-foreground) 70%, transparent);
 		transition: color 120ms ease, background 120ms ease;
 	}
 	.fmt-btn:hover {
-		color: #fff;
-		background: rgba(255, 255, 255, 0.08);
+		color: var(--color-foreground);
+		background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
 	}
 	.fmt-btn.on {
 		color: var(--color-accent);
@@ -600,7 +600,7 @@
 		width: 1px;
 		height: 18px;
 		margin: 0 2px;
-		background: rgba(255, 255, 255, 0.12);
+		background: var(--color-border);
 	}
 	/* Slash menu (type "/" to embed a to-do or easel). */
 	.slash-menu {
@@ -612,7 +612,7 @@
 		padding: 4px;
 		border-radius: 9px;
 		background: var(--color-bg2, #1b1b1f);
-		border: 1px solid rgba(255, 255, 255, 0.12);
+		border: 1px solid var(--color-border);
 		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 	}
 	.slash-item {
@@ -627,12 +627,12 @@
 		cursor: pointer;
 		background: transparent;
 		border: none;
-		color: rgba(255, 255, 255, 0.82);
+		color: color-mix(in srgb, var(--color-foreground) 82%, transparent);
 		transition: background 120ms ease, color 120ms ease;
 	}
 	.slash-item:hover,
 	.slash-item.active {
-		color: #fff;
+		color: var(--color-foreground);
 		background: color-mix(in srgb, var(--color-accent) 18%, transparent);
 	}
 	.slash-item :global(svg) {
@@ -666,7 +666,7 @@
 		line-height: 1.55;
 		font-family: inherit;
 		font-style: italic;
-		color: rgba(255, 255, 255, 0.4);
+		color: color-mix(in srgb, var(--color-foreground) 40%, transparent);
 		white-space: pre-wrap;
 		word-break: break-word;
 	}
@@ -674,7 +674,7 @@
 		width: 100%;
 		font-size: 12.5px;
 		line-height: 1.55;
-		color: rgba(255, 255, 255, 0.82);
+		color: color-mix(in srgb, var(--color-foreground) 82%, transparent);
 	}
 	:global(.note-editor .ProseMirror) {
 		outline: none;
@@ -686,7 +686,7 @@
 	:global(.note-editor .ProseMirror.is-editor-empty:first-child::before),
 	:global(.note-editor .ProseMirror p.is-empty:first-child::before) {
 		content: attr(data-placeholder);
-		color: rgba(255, 255, 255, 0.28);
+		color: color-mix(in srgb, var(--color-foreground) 28%, transparent);
 		float: left;
 		height: 0;
 		pointer-events: none;
@@ -735,11 +735,11 @@
 		font-size: 0.92em;
 		padding: 1px 4px;
 		border-radius: 4px;
-		background: rgba(255, 255, 255, 0.08);
+		background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
 	}
 	:global(.note-editor .ProseMirror pre) {
-		background: rgba(255, 255, 255, 0.05);
-		border: 1px solid rgba(255, 255, 255, 0.08);
+		background: color-mix(in srgb, var(--color-foreground) 5%, transparent);
+		border: 1px solid color-mix(in srgb, var(--color-foreground) 8%, transparent);
 		border-radius: 8px;
 		padding: 8px 10px;
 		overflow-x: auto;
@@ -752,7 +752,7 @@
 		border-left: 2px solid color-mix(in srgb, var(--color-accent) 50%, transparent);
 		margin: 0.3em 0;
 		padding-left: 0.8em;
-		color: rgba(255, 255, 255, 0.65);
+		color: color-mix(in srgb, var(--color-foreground) 65%, transparent);
 	}
 	:global(.note-editor .ProseMirror a) {
 		color: var(--color-accent);
@@ -760,7 +760,7 @@
 	}
 	/* Ghost-text autocomplete suggestion (set by the autofill extension). */
 	:global(.note-editor .autofill-ghost) {
-		color: rgba(255, 255, 255, 0.32);
+		color: color-mix(in srgb, var(--color-foreground) 32%, transparent);
 		pointer-events: none;
 	}
 </style>
