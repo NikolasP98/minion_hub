@@ -83,6 +83,27 @@
   --animate-dot-pulse: dot-pulse 0.8s ease infinite;
 }
 
+/* ── Theme-adaptive elevation + hairline ──
+   @minion-stack/design-tokens ships FIXED dark values for the elevation ramp
+   and hairline (e.g. --elevation-1-bg: #131316, white-alpha borders). That
+   pinned every theme's surfaces (sidebar, cards, popovers, modals) to the New
+   York greys — so non-New-York dark themes had a grey sidebar and the new light
+   themes rendered a dark sidebar on a light page. Re-derive them from the active
+   preset's --color-* vars (applyTheme sets those on :root per theme) so every
+   surface follows the palette — dark OR light. Placed after the token import so
+   it wins on source order. */
+:root {
+  --elevation-1-bg: color-mix(in srgb, var(--color-bg), var(--color-bg2) 55%);
+  --elevation-2-bg: var(--color-bg2);
+  --elevation-3-bg: color-mix(in srgb, var(--color-bg2), var(--color-bg3) 60%);
+  --elevation-4-bg: var(--color-bg3);
+  --elevation-1-border: var(--color-border);
+  --elevation-2-border: var(--color-border);
+  --elevation-3-border: color-mix(in srgb, var(--color-border), var(--color-foreground) 6%);
+  --elevation-4-border: color-mix(in srgb, var(--color-border), var(--color-foreground) 10%);
+  --hairline: var(--color-border);
+}
+
 /* ── Base layer ── */
 @layer base {
   *,
