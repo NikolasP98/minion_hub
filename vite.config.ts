@@ -41,6 +41,29 @@ export default defineConfig({
     tailwindcss(),
     sveltekit(),
   ],
+  resolve: {
+    // bun installs nested duplicate copies of the prosemirror packages (same
+    // version, separate instances), which breaks ProseMirror's instanceof
+    // identity checks — splitBlock/Enter throw "Can not convert <> to a
+    // Fragment (multiple versions of prosemirror-model)" in the note editor.
+    // Force a single module instance for every prosemirror package.
+    dedupe: [
+      'prosemirror-model',
+      'prosemirror-state',
+      'prosemirror-transform',
+      'prosemirror-view',
+      'prosemirror-commands',
+      'prosemirror-keymap',
+      'prosemirror-schema-list',
+      'prosemirror-inputrules',
+      'prosemirror-gapcursor',
+      'prosemirror-dropcursor',
+      'prosemirror-history',
+      'prosemirror-markdown',
+      'prosemirror-tables',
+      'prosemirror-changeset',
+    ],
+  },
   optimizeDeps: {
     include: ['@zag-js/popover', '@zag-js/combobox', '@zag-js/slider', '@inlang/paraglide-sveltekit/internal'],
     exclude: ['@dimforge/rapier2d-compat'],
