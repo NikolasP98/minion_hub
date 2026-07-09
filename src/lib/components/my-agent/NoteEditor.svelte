@@ -288,6 +288,75 @@
 	function closeToolbar() {
 		toolbar = null;
 		pinned = false;
+		spell = null;
+	}
+
+	// ── Spelling suggestions (right-click / double-click on a word) ────────────
+	// Browser squiggles expose no suggestions API, so we ask /api/notes/spelling
+	// (cheap LLM call) for the clicked word and offer replacements in the
+	// toolbar. Results cache per word+language; empty list = spelled correctly.
+	let spell = $state<{ from: number; to: number; word: string; suggestions: string[] } | null>(null);
+	const spellCache = new Map<string, string[]>();
+	let spellCtl: AbortController | null = null;
+
+	function wordAt(pos: number): { from: number; to: number; word: string; sentence: string } | null {
+		if (!editor) return null;
+		const rp = editor.state.doc.resolve(pos);
+		if (!rp.parent.isTextblock) return null;
+		const text = rp.parent.textBetween(0, rp.parent.content.size, undefined, '￼');
+		const off = rp.parentOffset;
+		const wordChar = /[\p{L}\p{M}'’-]/u;
+		if (!wordChar.test(text[off] ?? '') && !wordChar.test(text[off - 1] ?? '')) return null;
+		let s = off;
+		let e = off;
+		while (s > 0 && wordChar.test(text[s - 1])) s--;
+		while (e < text.length && wordChar.test(text[e])) e++;
+		const word = text.slice(s, e);
+		if (!word || word.length > 45) return null;
+		const start = rp.start();
+		return {
+			from: start + s,
+			to: start + e,
+			word,
+			sentence: text.slice(Math.max(0, s - 80), Math.min(text.length, e + 80))
+		};
+	}
+
+	async function checkSpelling(pos: number) {
+		spell = null;
+		const w = wordAt(pos);
+		if (!w) return;
+		const key = `${effLang ?? 'auto'}:${w.word.toLowerCase()}`;
+		if (spellCache.has(key)) {
+			const cached = spellCache.get(key)!;
+			if (cached.length) spell = { from: w.from, to: w.to, word: w.word, suggestions: cached };
+			return;
+		}
+		spellCtl?.abort();
+		spellCtl = new AbortController();
+		const signal = spellCtl.signal;
+		try {
+			const res = await fetch('/api/notes/spelling', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ word: w.word, sentence: w.sentence, lang: effLang ?? 'auto' }),
+				signal
+			});
+			if (!res.ok) return;
+			const data = (await res.json()) as { correct: boolean; suggestions: string[] };
+			spellCache.set(key, data.correct ? [] : data.suggestions);
+			if (signal.aborted || !toolbar) return;
+			if (!data.correct && data.suggestions.length > 0)
+				spell = { from: w.from, to: w.to, word: w.word, suggestions: data.suggestions };
+		} catch {
+			/* aborted / offline — no suggestions row */
+		}
+	}
+
+	function applySpelling(replacement: string) {
+		if (!editor || !spell) return;
+		editor.chain().focus().insertContentAt({ from: spell.from, to: spell.to }, replacement).run();
+		spell = null;
 	}
 
 	// Run an editor command then refresh active states + position (selection kept).
@@ -314,6 +383,8 @@
 		} else {
 			placeToolbarAtSelection();
 		}
+		const at = editor.view.posAtCoords({ left: e.clientX, top: e.clientY });
+		if (at) void checkSpelling(at.pos);
 	}
 
 	// ── Slash menu: type "/" in a block to embed a to-do or easel ──────────────
@@ -485,6 +556,10 @@
 				editorProps: {
 					attributes: { class: 'note-prose', 'aria-label': m.a11y1_noteBody() },
 					handleKeyDown: (_view, event) => slashKeydown(event),
+					handleDoubleClick: (_view, pos) => {
+						void checkSpelling(pos);
+						return false;
+					},
 					handlePaste: onEditorPaste,
 					handleDrop: onEditorDrop
 				},
@@ -493,6 +568,7 @@
 						(ed.storage as unknown as Record<string, { getMarkdown?: () => string }>).markdown?.getMarkdown?.() ??
 						'';
 					persistMd(md);
+					spell = null; // doc changed — cached positions are stale
 					maybeSlash();
 					syncToolbar();
 				},
@@ -547,6 +623,7 @@
 		tabindex="-1"
 		aria-label={m.a11y1_textFormatting()}
 	>
+	<div class="fmt-row">
 		<button type="button" class="fmt-btn" class:on={active.bold} title={m.note_formatBold()} aria-label={m.note_formatBold()} onclick={() => run((c) => c.toggleBold())}><Bold size={14} /></button>
 		<button type="button" class="fmt-btn" class:on={active.italic} title={m.note_formatItalic()} aria-label={m.note_formatItalic()} onclick={() => run((c) => c.toggleItalic())}><Italic size={14} /></button>
 		<button type="button" class="fmt-btn" class:on={active.strike} title={m.note_formatStrikethrough()} aria-label={m.note_formatStrikethrough()} onclick={() => run((c) => c.toggleStrike())}><Strikethrough size={14} /></button>
@@ -558,6 +635,15 @@
 		<button type="button" class="fmt-btn" class:on={active.bullet} title={m.note_formatBulletList()} aria-label={m.note_formatBulletList()} onclick={() => run((c) => c.toggleBulletList())}><List size={14} /></button>
 		<span class="fmt-sep"></span>
 		<button type="button" class="fmt-btn" title={m.note_formatClear()} aria-label={m.note_formatClear()} onclick={() => run((c) => c.unsetAllMarks().clearNodes())}><RemoveFormatting size={14} /></button>
+	</div>
+	{#if spell && spell.suggestions.length > 0}
+		<div class="fmt-spell" role="group" aria-label={m.note_spelling()}>
+			<span class="fmt-spell-word">{spell.word}</span>
+			{#each spell.suggestions as s (s)}
+				<button type="button" class="fmt-spell-sug" onclick={() => applySpelling(s)}>{s}</button>
+			{/each}
+		</div>
+	{/if}
 	</div>
 {/if}
 
@@ -615,13 +701,49 @@
 		z-index: 95;
 		transform: translate(-50%, calc(-100% - 8px));
 		display: flex;
-		align-items: center;
-		gap: 2px;
+		flex-direction: column;
 		padding: 4px;
 		border-radius: 9px;
 		background: var(--color-bg2, #1b1b1f);
 		border: 1px solid var(--color-border);
 		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+	}
+	.fmt-row {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+	}
+	/* Spelling suggestions row (right-click / double-click a word). */
+	.fmt-spell {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin-top: 4px;
+		padding: 5px 4px 2px;
+		border-top: 1px solid var(--color-border);
+	}
+	.fmt-spell-word {
+		font-size: 11px;
+		text-decoration: underline wavy color-mix(in srgb, var(--color-accent) 70%, transparent);
+		text-underline-offset: 3px;
+		color: color-mix(in srgb, var(--color-foreground) 55%, transparent);
+		padding: 0 2px;
+	}
+	.fmt-spell-sug {
+		font-family: inherit;
+		font-size: 12px;
+		font-weight: 550;
+		padding: 3px 8px;
+		border-radius: 6px;
+		cursor: pointer;
+		border: none;
+		color: var(--color-accent);
+		background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+		transition: background 120ms ease, color 120ms ease;
+	}
+	.fmt-spell-sug:hover {
+		color: var(--color-accent-foreground, #fff);
+		background: var(--color-accent);
 	}
 	.fmt-btn {
 		display: inline-flex;
