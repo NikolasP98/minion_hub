@@ -1,7 +1,7 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { paraglide } from '@inlang/paraglide-sveltekit/vite';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import { readFileSync } from 'node:fs';
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
@@ -31,7 +31,13 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
   plugins: [
-    paraglide({ project: './project.inlang', outdir: './src/lib/paraglide' }),
+    // vite-plugin-svelte 7 removed the `plugin.api.sveltePreprocess` auto-collection
+    // hook, so paraglide's `register-preprocessor` plugin is now dead weight in the
+    // vite pipeline and only emits a (now-stale) "preprocessor not added" warning.
+    // Drop it here; the preprocessor is registered manually in svelte.config.js.
+    (paraglide({ project: './project.inlang', outdir: './src/lib/paraglide' }) as Plugin[]).filter(
+      (p) => p.name !== '@inlang/paraglide-sveltekit/vite/register-preprocessor',
+    ),
     tailwindcss(),
     sveltekit(),
   ],

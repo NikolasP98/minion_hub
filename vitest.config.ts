@@ -3,7 +3,7 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 import path from 'node:path';
 
 export default defineConfig({
-  plugins: [svelte({ hot: false })],
+  plugins: [svelte({ compilerOptions: { hmr: false } })],
   test: {
     include: ['src/**/*.test.ts'],
     setupFiles: ['src/server/test-utils/setup.ts'],
