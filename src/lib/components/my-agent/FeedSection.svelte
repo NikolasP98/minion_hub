@@ -188,6 +188,9 @@
 		align-items: center;
 		gap: 5px;
 		margin-left: auto;
+		/* Keep the provider badge off the column/cell right edge — the feed-grid now
+		   extends flush to the content-area edge, so without this the "G" hugs it. */
+		padding-right: 8px;
 		opacity: 0.85;
 	}
 
