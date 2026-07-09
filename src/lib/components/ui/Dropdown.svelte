@@ -76,7 +76,10 @@
   {@render trigger()}
 </button>
 
-<div use:portal {...api.getPositionerProps()} class="z-50">
+<!-- z-index via style: directive, NOT a `z-50` utility: Tailwind emits no
+     `.z-50` rule here, so the class computed to z-index:auto and the app root
+     (`.relative.z-10`) painted its chat turns over the portaled menu. -->
+<div use:portal {...api.getPositionerProps()} style:z-index="50">
   <div
     {...api.getContentProps()}
     class="min-w-40 surface-3 rounded-[var(--radius-md)] p-1 outline-none {cls}"
