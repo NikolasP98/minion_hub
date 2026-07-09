@@ -1687,6 +1687,8 @@
   "note_langEn": "Inglés",
   "note_hkAiComplete": "Autocompletar con IA",
   "note_hkAiCompleteDesc": "Pedir o aceptar una continuación de IA en la nota enfocada",
+  "note_spellcheck": "Ortografía",
+  "note_words": "{count} palabras",
   "note_formatStrikethrough": "Tachado",
   "note_formatCode": "Código en línea",
   "note_formatHighlight": "Resaltar",

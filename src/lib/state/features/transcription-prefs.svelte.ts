@@ -18,10 +18,16 @@ export const NOTE_LANGS: NoteLang[] = ['auto', 'es', 'en'];
 
 const KEY = 'minion-transcription-prefs';
 
-export const txPrefs = $state<{ autoPolish: boolean; intent: TxIntent; lang: NoteLang }>({
+export const txPrefs = $state<{
+	autoPolish: boolean;
+	intent: TxIntent;
+	lang: NoteLang;
+	spellcheck: boolean;
+}>({
 	autoPolish: false,
 	intent: 'auto',
-	lang: 'auto'
+	lang: 'auto',
+	spellcheck: true
 });
 
 // One-time load (client only — guarded for SSR).
@@ -33,6 +39,7 @@ if (typeof localStorage !== 'undefined') {
 			if (typeof v.autoPolish === 'boolean') txPrefs.autoPolish = v.autoPolish;
 			if (v.intent && TX_INTENTS.some((i) => i.id === v.intent)) txPrefs.intent = v.intent;
 			if (v.lang && NOTE_LANGS.includes(v.lang)) txPrefs.lang = v.lang;
+			if (typeof v.spellcheck === 'boolean') txPrefs.spellcheck = v.spellcheck;
 		}
 	} catch {
 		/* ignore corrupt prefs */
@@ -43,7 +50,12 @@ export function saveTxPrefs(): void {
 	try {
 		localStorage.setItem(
 			KEY,
-			JSON.stringify({ autoPolish: txPrefs.autoPolish, intent: txPrefs.intent, lang: txPrefs.lang })
+			JSON.stringify({
+				autoPolish: txPrefs.autoPolish,
+				intent: txPrefs.intent,
+				lang: txPrefs.lang,
+				spellcheck: txPrefs.spellcheck
+			})
 		);
 	} catch {
 		/* storage unavailable */
@@ -62,6 +74,11 @@ export function setIntent(intent: TxIntent): void {
 
 export function setNoteLang(lang: NoteLang): void {
 	txPrefs.lang = lang;
+	saveTxPrefs();
+}
+
+export function setSpellcheck(on: boolean): void {
+	txPrefs.spellcheck = on;
 	saveTxPrefs();
 }
 

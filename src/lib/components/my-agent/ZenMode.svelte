@@ -1,7 +1,7 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages';
 	import { updateNote, setNoteIcon, type AgentNote } from '$lib/state/features/agent-notes.svelte';
-	import type { EaselBlock } from '$lib/types/notes';
+	import type { EaselBlock, TextBlock } from '$lib/types/notes';
 	import NoteBlocks from './NoteBlocks.svelte';
 	import TodoChecklist from './TodoChecklist.svelte';
 	import NoteImageStrip from './NoteImageStrip.svelte';
@@ -12,13 +12,15 @@
 	import PolishMenu from './PolishMenu.svelte';
 	import { runPolish } from '$lib/state/features/note-polish.svelte';
 	import { formatForDisplay } from '$lib/hotkeys';
+	import { detectLang, countWords } from '$lib/utils/detect-lang';
 	import {
 		txPrefs,
 		setNoteLang,
+		setSpellcheck,
 		NOTE_LANGS,
 		type NoteLang
 	} from '$lib/state/features/transcription-prefs.svelte';
-	import { Minimize2, Settings, Wand2 } from 'lucide-svelte';
+	import { Check, Minimize2, Settings, Wand2 } from 'lucide-svelte';
 
 	let { note, onclose }: { note: AgentNote | null; onclose: () => void } = $props();
 
@@ -51,6 +53,20 @@
 		es: () => m.note_langEs(),
 		en: () => m.note_langEn()
 	};
+
+	// Top-left meta: word count + detected language of the note body.
+	const noteText = $derived(
+		note && note.kind === 'note'
+			? note.blocks?.length
+				? note.blocks
+						.filter((b): b is TextBlock => b.type === 'text')
+						.map((b) => b.md)
+						.join(' ')
+				: (note.body ?? '')
+			: ''
+	);
+	const wordCount = $derived(countWords(noteText));
+	const detected = $derived(detectLang(noteText));
 
 	// Bottom-left hotkey helpers; `group` is the modifier that lights the chip up.
 	const HOTKEY_HINTS: { combo: string; label: () => string; group: 'alt' | 'mod' | null }[] = [
@@ -134,6 +150,19 @@
 					{#if settingsOpen}
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div class="zen-set-menu" role="menu" tabindex="-1" onmousedown={(e) => e.preventDefault()}>
+							<button
+								type="button"
+								role="menuitemcheckbox"
+								aria-checked={txPrefs.spellcheck}
+								class="zen-set-item"
+								onclick={() => setSpellcheck(!txPrefs.spellcheck)}
+							>
+								<span class="zen-set-check" class:on={txPrefs.spellcheck}>
+									{#if txPrefs.spellcheck}<Check size={11} />{/if}
+								</span>
+								{m.note_spellcheck()}
+							</button>
+							<div class="zen-set-sep"></div>
 							<div class="zen-set-label">{m.note_language()}</div>
 							{#each NOTE_LANGS as lang (lang)}
 								<button
@@ -188,6 +217,14 @@
 		</div>
 
 		{#if current.kind === 'note'}
+			<!-- Top-left meta: word count + detected language. -->
+			<div class="zen-meta">
+				<span>{m.note_words({ count: wordCount })}</span>
+				{#if detected}
+					<span class="zen-meta-sep">·</span>
+					<span>{LANG_LABELS[detected]()}</span>
+				{/if}
+			</div>
 			<!-- Subtle hotkey helpers; chips light up while their modifier is held. -->
 			<div class="zen-hints" aria-hidden="true">
 				{#each HOTKEY_HINTS as hint (hint.combo)}
@@ -395,6 +432,44 @@
 		inset: 2.5px;
 		border-radius: 50%;
 		background: var(--color-accent);
+	}
+	.zen-set-sep {
+		height: 1px;
+		margin: 5px 4px;
+		background: var(--color-border);
+	}
+	.zen-set-check {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 15px;
+		height: 15px;
+		border-radius: 4px;
+		border: 1.5px solid color-mix(in srgb, var(--color-foreground) 30%, transparent);
+		flex-shrink: 0;
+	}
+	.zen-set-check.on {
+		background: var(--color-accent);
+		border-color: var(--color-accent);
+	}
+	.zen-set-check :global(svg) {
+		color: var(--color-accent-foreground, #fff);
+	}
+	/* Top-left meta (word count + detected language). */
+	.zen-meta {
+		position: fixed;
+		top: 24px;
+		left: 18px;
+		z-index: 2;
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 10.5px;
+		color: color-mix(in srgb, var(--color-foreground) 32%, transparent);
+		pointer-events: none;
+	}
+	.zen-meta-sep {
+		color: color-mix(in srgb, var(--color-foreground) 20%, transparent);
 	}
 	/* Bottom-left hotkey helpers. */
 	.zen-hints {

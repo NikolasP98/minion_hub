@@ -1687,6 +1687,8 @@
   "note_langEn": "English",
   "note_hkAiComplete": "AI complete",
   "note_hkAiCompleteDesc": "Request or accept an AI continuation in the focused note",
+  "note_spellcheck": "Spellcheck",
+  "note_words": "{count} words",
   "note_formatStrikethrough": "Strikethrough",
   "note_formatCode": "Inline code",
   "note_formatHighlight": "Highlight",

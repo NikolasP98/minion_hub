@@ -22,6 +22,7 @@
 	} from 'lucide-svelte';
 	import { createAutofill } from '$lib/components/my-agent/tiptap-autofill';
 	import { createHotkey } from '$lib/hotkeys';
+	import { detectLang } from '$lib/utils/detect-lang';
 	import { polishTranscript } from '$lib/state/features/notes-autocomplete';
 	import { txPrefs } from '$lib/state/features/transcription-prefs.svelte';
 	import {
@@ -53,6 +54,14 @@
 
 	// Current markdown source for this editor (block content or legacy note body).
 	const sourceMd = () => (block ? block.md : note.body);
+
+	// Effective content language: explicit pref, or detected when 'auto'. Feeds
+	// the `lang` attribute (spellcheck dictionary hint — browsers that support
+	// per-element dictionaries honour it; Chrome only uses its Settings >
+	// Languages spellcheck list, hence the separate on/off toggle).
+	const effLang = $derived(
+		txPrefs.lang === 'auto' ? (detectLang(sourceMd() ?? '') ?? undefined) : txPrefs.lang
+	);
 	function persistMd(md: string) {
 		if (block) setTextBlock(note.id, block.id, md);
 		else updateNote(note.id, { body: md });
@@ -487,8 +496,8 @@
 	});
 </script>
 
-<!-- `lang` steers the browser's spellcheck dictionary ('auto' → inherit). -->
-<div class="note-editor-wrap" lang={txPrefs.lang === 'auto' ? undefined : txPrefs.lang}>
+<!-- `lang` + `spellcheck` are inherited by the contenteditable inside. -->
+<div class="note-editor-wrap" lang={effLang} spellcheck={txPrefs.spellcheck}>
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		class="note-editor"
