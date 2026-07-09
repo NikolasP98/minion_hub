@@ -100,11 +100,14 @@
 	<div class="text">
 		<div class="top">
 			<span class="sender">{sender}</span>
-			{#if item.shared}<span class="shared-badge" title={sharedTitle}>{m.shared_feedBadge()}</span
-				>{/if}
+			<!-- tags slot in here (right, with the time) once the puller surfaces Gmail labels -->
 			{#if relative}<span class="time">{relative}</span>{/if}
 		</div>
-		<div class="subject">{subject}</div>
+		<div class="subject-row">
+			{#if item.shared}<span class="shared-badge" title={sharedTitle}>{m.shared_feedBadge()}</span
+				>{/if}
+			<span class="subject">{subject}</span>
+		</div>
 		{#if snippet}<div class="snippet">{snippet}</div>{/if}
 	</div>
 </div>
@@ -226,6 +229,12 @@
 		font-weight: 600;
 	}
 
+	.subject-row {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
+	}
 	.subject {
 		font-size: 13px;
 		color: color-mix(in srgb, var(--color-foreground) 60%, transparent);
