@@ -8,7 +8,7 @@ import { getOpenRouterModel } from '$server/llm';
 
 // Same fast/cheap model tier as notes autocomplete — a spelling lookup is a
 // tiny one-shot call and needs low time-to-first-token.
-const DEFAULT_MODEL = env.NOTES_AUTOCOMPLETE_MODEL || 'google/gemini-2.5-flash';
+const DEFAULT_MODEL = env.NOTES_AUTOCOMPLETE_MODEL || 'google/gemini-2.5-flash-lite';
 
 /**
  * POST /api/notes/spelling

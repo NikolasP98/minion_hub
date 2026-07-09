@@ -7,7 +7,7 @@ import { hubBaseUrl } from '$server/config/urls';
 import { requireAuth } from '$server/auth/authorize';
 import { getOpenRouterModel } from '$server/llm';
 
-const DEFAULT_MODEL = env.NOTES_REFINE_MODEL || env.NOTES_AUTOCOMPLETE_MODEL || 'google/gemini-2.5-flash';
+const DEFAULT_MODEL = env.NOTES_REFINE_MODEL || env.NOTES_AUTOCOMPLETE_MODEL || 'google/gemini-2.5-flash-lite';
 const MAX_INPUT = 8000;
 
 // Note-polish intents bias the title style (distinct from transcription intents).

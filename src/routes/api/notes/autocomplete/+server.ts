@@ -9,7 +9,7 @@ import { getOpenRouterModel } from '$server/llm';
 // Fast/cheap model for inline ghost text; override via env if a different model
 // is provisioned on the OpenRouter key. Gemini Flash has very low time-to-first-
 // token, which matters most for snappy Tab-to-accept autocomplete.
-const DEFAULT_MODEL = env.NOTES_AUTOCOMPLETE_MODEL || 'google/gemini-2.5-flash';
+const DEFAULT_MODEL = env.NOTES_AUTOCOMPLETE_MODEL || 'google/gemini-2.5-flash-lite';
 const MAX_CONTEXT = 4000;
 
 /**

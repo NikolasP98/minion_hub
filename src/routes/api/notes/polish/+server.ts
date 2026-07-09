@@ -7,7 +7,7 @@ import { requireAuth } from '$server/auth/authorize';
 import { getOpenRouterModel } from '$server/llm';
 
 // Cheap, fast model — polishing is a light-touch rewrite, not creative writing.
-const DEFAULT_MODEL = env.NOTES_POLISH_MODEL || env.NOTES_AUTOCOMPLETE_MODEL || 'google/gemini-2.5-flash';
+const DEFAULT_MODEL = env.NOTES_POLISH_MODEL || env.NOTES_AUTOCOMPLETE_MODEL || 'google/gemini-2.5-flash-lite';
 const MAX_INPUT = 6000;
 
 // Per-intent flavour appended to the base polish instruction.
