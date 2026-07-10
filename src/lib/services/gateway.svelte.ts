@@ -42,7 +42,7 @@ import {
 import { userState } from '$lib/state/features/user.svelte';
 import { autoSave, resetWorkshop } from '$lib/state/workshop/workshop.svelte';
 import { ui } from '$lib/state/ui/ui.svelte';
-import { toastError, toastInfo, toastSuccess } from '$lib/state/ui/toast.svelte';
+import { toastError, toastInfo, toastSuccess, toastWarning } from '$lib/state/ui/toast.svelte';
 import {
   pushReliabilityEvent,
   type ReliabilityEvent,
@@ -53,9 +53,15 @@ import {
   restartState,
   onRestartReconnected,
 } from '$lib/state/config/config.svelte';
+import {
+  updateState,
+  type PendingUpdate,
+  type UpdateApplyResult,
+} from '$lib/state/gateway/update-state.svelte';
 import { extractText } from '$lib/utils/text';
 import type { ChatMessage } from '$lib/types/chat';
 import { loadAgentGroups } from '$lib/state/features/agent-groups.svelte';
+import * as m from '$lib/paraglide/messages';
 import {
   GatewayClient,
   newTraceparent,
@@ -596,6 +602,22 @@ function handleEvent(evt: Record<string, unknown>) {
         pushReliabilityEvent(evt.payload as ReliabilityEvent);
       }
       break;
+    case 'update.available': {
+      updateState.pending = evt.payload as PendingUpdate;
+      toastInfo(
+        m.gateway_update_available_title(),
+        m.gateway_update_available_body({ version: updateState.pending.version }),
+        { id: 'gateway-update' },
+      );
+      break;
+    }
+    case 'update.applied': {
+      const r = evt.payload as UpdateApplyResult;
+      updateState.lastResult = r;
+      updateState.installing = false;
+      if (r.ok) updateState.pending = null;
+      break;
+    }
     case 'channels.status':
       if (evt.payload && typeof evt.payload === 'object') {
         gw.channels = evt.payload as typeof gw.channels;
@@ -1052,6 +1074,20 @@ function applyAgentsList(agents: unknown[] | undefined, defaultId: string | unde
 function onHelloOk(hello: HelloOk) {
   // If gateway was restarting after a config save, signal reconnection
   if (restartState.phase === 'restarting') {
+    // If this restart was triggered by an update install, the 'update.applied'
+    // WS event (above) is the authoritative outcome, but it can race the
+    // reconnect — compare the version we see right now as a minimal fallback
+    // signal so the user always gets a toast.
+    if (updateState.installing) {
+      updateState.installing = false;
+      const targetVersion = updateState.pending?.version;
+      if (targetVersion && hello.server?.version === targetVersion) {
+        toastSuccess(m.gateway_update_restartSuccess({ version: hello.server.version }));
+        updateState.pending = null;
+      } else if (targetVersion) {
+        toastWarning(m.gateway_update_restartMismatch());
+      }
+    }
     onRestartReconnected();
   }
 
