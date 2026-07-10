@@ -72,14 +72,32 @@
 	}
 
 	// ── chat_artifact (C6): interactive card rendered from a tool_use block ──
+	function isArtifactButton(v: unknown): v is ArtifactButton {
+		return (
+			!!v &&
+			typeof v === 'object' &&
+			typeof (v as ArtifactButton).text === 'string' &&
+			typeof (v as ArtifactButton).callback_data === 'string'
+		);
+	}
+
 	function artifactInput(input: unknown): ArtifactInput | null {
 		if (!input || typeof input !== 'object') return null;
 		const obj = input as Record<string, unknown>;
 		if (typeof obj.html !== 'string') return null;
+		// Models emit both row form ([[btn,btn]]) and flat form ([btn,btn]) —
+		// normalize to rows and drop malformed entries.
+		let buttons: ArtifactButton[][] | undefined;
+		if (Array.isArray(obj.buttons)) {
+			const raw = obj.buttons as unknown[];
+			const rows = raw.every(Array.isArray) ? (raw as unknown[][]) : [raw];
+			const clean = rows.map((row) => row.filter(isArtifactButton)).filter((row) => row.length > 0);
+			buttons = clean.length > 0 ? clean : undefined;
+		}
 		return {
 			title: typeof obj.title === 'string' ? obj.title : undefined,
 			html: obj.html,
-			buttons: Array.isArray(obj.buttons) ? (obj.buttons as ArtifactButton[][]) : undefined
+			buttons
 		};
 	}
 
