@@ -1,5 +1,5 @@
 import type { RequestHandler } from '@sveltejs/kit';
-import { json } from '@sveltejs/kit';
+import { json, error } from '@sveltejs/kit';
 import { getCoreDb } from '$server/db/pg-client';
 import { resolveAssistantPrincipal } from '$server/auth/assistant-principal';
 import { listBuiltTools } from '$server/services/builder.service';
@@ -17,13 +17,19 @@ function safeJsonObject(raw: unknown): Record<string, unknown> {
 }
 
 /**
- * GET /api/gateway/query/custom-tools?agentId=personal-<uuid>[&orgId=]
+ * GET /api/gateway/query/custom-tools?agentId=personal-<uuid>[&orgId=][&status=all|draft|published]
  *
  * Published, org-scoped custom tools (spec C3) — feeds the gateway's custom-tool
- * loader (WP-3). No RBAC module gate: which custom tools a principal may
- * actually USE is enforced per-tool via each tool's own `permission` (checked
- * against the C2 snapshot on the gateway side), mirroring how the gateway's L1
- * gate already treats native tool permissions.
+ * loader (WP-3). No RBAC module gate on the DEFAULT (published-only) path:
+ * which custom tools a principal may actually USE is enforced per-tool via
+ * each tool's own `permission` (checked against the C2 snapshot on the gateway
+ * side), mirroring how the gateway's L1 gate already treats native tool
+ * permissions — the unauthenticated-beyond-principal loader path MUST keep
+ * working exactly as before.
+ *
+ * `?status=all|draft` (spec C14 — the builder-agent listing its own drafts)
+ * additionally requires `tools:view`, since drafts are pre-publish authoring
+ * state the RBAC-gated builder UI itself requires `tools.view` to see.
  *
  * `permission` is read from `executionConfig.permission` — builtTools has no
  * dedicated permission column; `executionConfig` (an existing JSON text column,
@@ -31,10 +37,17 @@ function safeJsonObject(raw: unknown): Record<string, unknown> {
  * concern, and it avoids a schema migration (see WP-2 report).
  */
 export const GET: RequestHandler = async ({ locals, url }) => {
-	const { orgId, principalId } = await resolveAssistantPrincipal(locals, url);
+	const statusParam = url.searchParams.get('status');
+	const wantsDrafts = statusParam === 'all' || statusParam === 'draft';
+
+	const { orgId, principalId, capabilities } = await resolveAssistantPrincipal(locals, url);
+	if (wantsDrafts && !capabilities.can('tools', 'view')) {
+		throw error(403, "Your role does not permit 'view' on tools.");
+	}
 	const ctx: CoreCtx = { db: getCoreDb(), tenantId: orgId, profileId: principalId };
 
-	const rows = await listBuiltTools(ctx, { status: 'published' });
+	const listOpts = statusParam === 'all' ? undefined : { status: statusParam === 'draft' ? ('draft' as const) : ('published' as const) };
+	const rows = await listBuiltTools(ctx, listOpts);
 	const tools = rows.map((row) => {
 		const executionConfig = safeJsonObject(row.executionConfig);
 		const rawPermission = executionConfig.permission as
@@ -52,6 +65,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 			scriptCode: row.scriptCode ?? '',
 			envVars: safeJsonObject(row.envVars),
 			permission,
+			status: row.status,
 		};
 	});
 

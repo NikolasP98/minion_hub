@@ -341,6 +341,38 @@ export async function createBuiltAgent(
 
 // ── Built Tools ──────────────────────────────────────────────────────
 
+/** Create a builtTool row (always starts 'draft' — publish separately via
+ *  `publishBuiltTool`). Used by both the session builder POST and the
+ *  agent-facing tool-save action (spec C14). */
+export async function createBuiltTool(
+  ctx: CoreCtx,
+  input: {
+    name: string;
+    description?: string;
+    scriptCode?: string;
+    scriptLang?: 'javascript' | 'python' | 'bash';
+    envVars?: string;
+    executionConfig?: string;
+  },
+) {
+  const id = newId();
+  await withOrgCore(ctx, (tx) =>
+    tx.insert(builtTools).values({
+      id,
+      name: input.name,
+      description: input.description ?? '',
+      scriptCode: input.scriptCode ?? '',
+      scriptLang: input.scriptLang ?? 'javascript',
+      envVars: input.envVars ?? '{}',
+      executionConfig: input.executionConfig ?? '{}',
+      status: 'draft',
+      tenantId: ctx.tenantId,
+    }),
+  );
+  await invalidateTags(tags.tenantDomain(ctx.tenantId, 'builder'));
+  return { id };
+}
+
 export async function listBuiltTools(ctx: CoreCtx, opts?: { status?: 'draft' | 'published' }) {
   const conditions = [eq(builtTools.tenantId, ctx.tenantId)];
   if (opts?.status) conditions.push(eq(builtTools.status, opts.status));

@@ -51,11 +51,23 @@ vi.mock('$server/services/notes.service', () => ({
 	createNote: (...args: unknown[]) => mockCreateNote(...args),
 }));
 
+const mockCreateBuiltTool = vi.fn();
+const mockGetBuiltTool = vi.fn();
+const mockUpdateBuiltTool = vi.fn();
+const mockPublishBuiltTool = vi.fn();
+vi.mock('$server/services/builder.service', () => ({
+	createBuiltTool: (...args: unknown[]) => mockCreateBuiltTool(...args),
+	getBuiltTool: (...args: unknown[]) => mockGetBuiltTool(...args),
+	updateBuiltTool: (...args: unknown[]) => mockUpdateBuiltTool(...args),
+	publishBuiltTool: (...args: unknown[]) => mockPublishBuiltTool(...args),
+}));
+
 import { POST as bookingCreatePOST } from './booking-create/+server';
 import { POST as ticketUpdatePOST } from './ticket-update/+server';
 import { POST as stockEntryCreatePOST } from './stock-entry-create/+server';
 import { POST as stockIssueFromInvoicePOST } from './stock-issue-from-invoice/+server';
 import { POST as noteCreatePOST } from './note-create/+server';
+import { POST as toolSavePOST } from './tool-save/+server';
 
 /** Minimal Capabilities stub — only `can` is exercised by requireAssistantCapability. */
 function makeCaps(allowed: Record<string, boolean> = {}): Capabilities {
@@ -357,5 +369,105 @@ describe('POST /api/gateway/actions/note-create', () => {
 		);
 		const [, input] = mockCreateNote.mock.calls[0] as [unknown, { data: { items: unknown[] } }];
 		expect(input.data).toEqual({ items: [] });
+	});
+});
+
+describe('POST /api/gateway/actions/tool-save', () => {
+	it('403s when the principal lacks tools:manage (RBAC denial)', async () => {
+		mockResolveAssistantPrincipal.mockResolvedValue({
+			principalId: 'u1',
+			orgId: 'org1',
+			capabilities: makeCaps(),
+		});
+		await expect(
+			toolSavePOST(
+				makeEvent('/api/gateway/actions/tool-save', {
+					confirm: true,
+					name: 'My Tool',
+					scriptLang: 'javascript',
+					scriptCode: 'console.log(1)',
+				}),
+			),
+		).rejects.toMatchObject({ status: 403 });
+		expect(mockCreateBuiltTool).not.toHaveBeenCalled();
+	});
+
+	it('missing confirm:true 400s and performs no write', async () => {
+		mockResolveAssistantPrincipal.mockResolvedValue({
+			principalId: 'u1',
+			orgId: 'org1',
+			capabilities: makeCaps({ 'tools.manage': true }),
+		});
+		await expect(
+			toolSavePOST(
+				makeEvent('/api/gateway/actions/tool-save', {
+					confirm: false,
+					name: 'My Tool',
+					scriptLang: 'javascript',
+					scriptCode: 'console.log(1)',
+				}),
+			),
+		).rejects.toMatchObject({ status: 400 });
+		expect(mockCreateBuiltTool).not.toHaveBeenCalled();
+	});
+
+	it('id absent creates a new draft tool', async () => {
+		mockResolveAssistantPrincipal.mockResolvedValue({
+			principalId: 'u1',
+			orgId: 'org1',
+			capabilities: makeCaps({ 'tools.manage': true }),
+		});
+		mockCreateBuiltTool.mockResolvedValue({ id: 'tool1' });
+		const res = await toolSavePOST(
+			makeEvent('/api/gateway/actions/tool-save', {
+				confirm: true,
+				name: 'My Tool',
+				scriptLang: 'javascript',
+				scriptCode: 'console.log(1)',
+				permission: { module: 'projects', action: 'view' },
+			}),
+		);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { ok: boolean; toolId: string; status: string };
+		expect(body).toEqual({ ok: true, toolId: 'tool1', status: 'draft' });
+		expect(mockCreateBuiltTool).toHaveBeenCalledTimes(1);
+		const [, input] = mockCreateBuiltTool.mock.calls[0] as [unknown, { executionConfig?: string }];
+		expect(JSON.parse(input.executionConfig!)).toEqual({ permission: { module: 'projects', action: 'view' } });
+		expect(mockUpdateBuiltTool).not.toHaveBeenCalled();
+		expect(mockPublishBuiltTool).not.toHaveBeenCalled();
+	});
+
+	it('id present updates the existing tool, merges permission into executionConfig, and publishes', async () => {
+		mockResolveAssistantPrincipal.mockResolvedValue({
+			principalId: 'u1',
+			orgId: 'org1',
+			capabilities: makeCaps({ 'tools.manage': true }),
+		});
+		mockGetBuiltTool.mockResolvedValue({ id: 'tool1', executionConfig: JSON.stringify({ other: 'keep-me' }) });
+		mockUpdateBuiltTool.mockResolvedValue(undefined);
+		mockPublishBuiltTool.mockResolvedValue(undefined);
+		const res = await toolSavePOST(
+			makeEvent('/api/gateway/actions/tool-save', {
+				confirm: true,
+				id: 'tool1',
+				name: 'My Tool v2',
+				scriptLang: 'javascript',
+				scriptCode: 'console.log(2)',
+				permission: { module: 'projects', action: 'view' },
+				publish: true,
+			}),
+		);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { ok: boolean; toolId: string; status: string };
+		expect(body).toEqual({ ok: true, toolId: 'tool1', status: 'published' });
+		expect(mockCreateBuiltTool).not.toHaveBeenCalled();
+		expect(mockUpdateBuiltTool).toHaveBeenCalledTimes(1);
+		const [, toolId, input] = mockUpdateBuiltTool.mock.calls[0] as [unknown, string, { executionConfig?: string }];
+		expect(toolId).toBe('tool1');
+		expect(JSON.parse(input.executionConfig!)).toEqual({
+			other: 'keep-me',
+			permission: { module: 'projects', action: 'view' },
+		});
+		expect(mockPublishBuiltTool).toHaveBeenCalledTimes(1);
 	});
 });
