@@ -1,6 +1,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { requireCoreCtx } from '$server/auth/core-ctx';
+import { requireOrgCapability } from '$server/services/rbac.service';
 import {
   getBuiltTool,
   updateBuiltTool,
@@ -10,6 +11,7 @@ import {
 
 /** GET /api/builder/tools/:id — full tool record */
 export const GET: RequestHandler = async ({ locals, params }) => {
+  await requireOrgCapability(locals, 'tools', 'view');
   const ctx = await requireCoreCtx(locals);
   if (!ctx) throw error(401);
 
@@ -21,6 +23,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 
 /** PUT /api/builder/tools/:id — update tool or publish */
 export const PUT: RequestHandler = async ({ locals, params, request }) => {
+  await requireOrgCapability(locals, 'tools', 'manage');
   const ctx = await requireCoreCtx(locals);
   if (!ctx) throw error(401);
 
@@ -50,6 +53,7 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
 
 /** DELETE /api/builder/tools/:id */
 export const DELETE: RequestHandler = async ({ locals, params }) => {
+  await requireOrgCapability(locals, 'tools', 'manage');
   const ctx = await requireCoreCtx(locals);
   if (!ctx) throw error(401);
   await deleteBuiltTool(ctx, params.id!);

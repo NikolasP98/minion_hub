@@ -5,8 +5,10 @@ import { builtTools } from '@minion-stack/db/pg';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { newId } from '$server/db/utils';
 import { requireCoreCtx } from '$server/auth/core-ctx';
+import { requireOrgCapability } from '$server/services/rbac.service';
 
 export const GET: RequestHandler = async ({ locals }) => {
+  await requireOrgCapability(locals, 'tools', 'view');
   const ctx = await requireCoreCtx(locals);
   // Built tools rarely change; cache the org's list for 30m. The 'builder' tag
   // is invalidated by every builtTools mutation (POST here + the service-layer
@@ -25,6 +27,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 };
 
 export const POST: RequestHandler = async ({ locals, request }) => {
+  await requireOrgCapability(locals, 'tools', 'manage');
   const ctx = await requireCoreCtx(locals);
   const body = await request.json();
   const id = newId();

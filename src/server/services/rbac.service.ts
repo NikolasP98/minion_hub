@@ -58,6 +58,7 @@ export const MODULES = [
 	'reliability',
 	'settings',
 	'users',
+	'tools',
 ] as const;
 export type Module = (typeof MODULES)[number];
 
@@ -87,6 +88,7 @@ export const MODULE_LABELS: Record<Module, string> = {
 	reliability: 'Reliability',
 	settings: 'Settings',
 	users: 'Users & Team',
+	tools: 'Tool Studio',
 };
 
 /** Modules that hold business data (vs platform/admin config). */
@@ -112,6 +114,7 @@ const ADMIN_MODULES: readonly Module[] = [
 	'reliability',
 	'settings',
 	'users',
+	'tools',
 ];
 
 const NONE: ActionSet = {

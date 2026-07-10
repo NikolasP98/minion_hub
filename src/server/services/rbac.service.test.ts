@@ -177,6 +177,16 @@ describe('defaultCaps — role tiers', () => {
 		expect(manager.delete).toBe(false);
 		expect(manager.export).toBe(true);
 	});
+	test('tools (Tool Studio): owner/admin manage, manager view-only, staff/viewer none — same tier as flows/marketplace', () => {
+		expect(defaultCaps('owner', 'tools').manage).toBe(true);
+		expect(defaultCaps('admin', 'tools').manage).toBe(true);
+		expect(defaultCaps('manager', 'tools').view).toBe(true);
+		expect(defaultCaps('manager', 'tools').manage).toBe(false);
+		expect(defaultCaps('staff', 'tools').view).toBe(false);
+		expect(defaultCaps('viewer', 'tools').view).toBe(false);
+		// Matches flows/marketplace exactly (both ADMIN_MODULES entries).
+		expect(defaultCaps('manager', 'tools')).toEqual(defaultCaps('manager', 'flows'));
+	});
 });
 
 describe('buildCapabilities — multi-role OR + overrides', () => {

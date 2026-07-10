@@ -46,10 +46,16 @@ vi.mock('$server/services/stock.logic', () => ({
 	ENTRY_TYPES: ['receipt', 'issue', 'transfer', 'adjustment'],
 }));
 
+const mockCreateNote = vi.fn();
+vi.mock('$server/services/notes.service', () => ({
+	createNote: (...args: unknown[]) => mockCreateNote(...args),
+}));
+
 import { POST as bookingCreatePOST } from './booking-create/+server';
 import { POST as ticketUpdatePOST } from './ticket-update/+server';
 import { POST as stockEntryCreatePOST } from './stock-entry-create/+server';
 import { POST as stockIssueFromInvoicePOST } from './stock-issue-from-invoice/+server';
+import { POST as noteCreatePOST } from './note-create/+server';
 
 /** Minimal Capabilities stub — only `can` is exercised by requireAssistantCapability. */
 function makeCaps(allowed: Record<string, boolean> = {}): Capabilities {
@@ -286,5 +292,70 @@ describe('POST /api/gateway/actions/stock-issue-from-invoice', () => {
 				}),
 			),
 		).rejects.toThrow('duplicate');
+	});
+});
+
+describe('POST /api/gateway/actions/note-create', () => {
+	// No RBAC module gates notes (principal-scoped personal data) — only
+	// resolveAssistantPrincipal identity resolution applies, so there's no 403
+	// case here (unlike the RBAC-gated actions above).
+
+	it('creates a plain note with the exact NoteData shape (body/attachments)', async () => {
+		mockResolveAssistantPrincipal.mockResolvedValue({ principalId: 'u1', orgId: 'org1' });
+		mockCreateNote.mockResolvedValue({ id: 'note1' });
+		const res = await noteCreatePOST(
+			makeEvent('/api/gateway/actions/note-create', {
+				confirm: true,
+				kind: 'note',
+				title: 'Grocery list',
+				content: 'Buy milk',
+			}),
+		);
+		expect(res.status).toBe(201);
+		const body = (await res.json()) as { ok: boolean; noteId: string };
+		expect(body.ok).toBe(true);
+		expect(body.noteId).toBe('note1');
+		expect(mockCreateNote).toHaveBeenCalledTimes(1);
+		const [ctx, input] = mockCreateNote.mock.calls[0] as [
+			{ tenantId: string; userId: string },
+			{ kind: string; data: { body: string; attachments: unknown[] } },
+		];
+		expect(ctx).toMatchObject({ tenantId: 'org1', userId: 'u1' });
+		expect(input.kind).toBe('note');
+		expect(input.data).toEqual({ body: 'Buy milk', attachments: [] });
+	});
+
+	it('creates a todo note with per-item ids so the checklist survives parseNoteData', async () => {
+		mockResolveAssistantPrincipal.mockResolvedValue({ principalId: 'u1', orgId: 'org1' });
+		mockCreateNote.mockResolvedValue({ id: 'todo1' });
+		await noteCreatePOST(
+			makeEvent('/api/gateway/actions/note-create', {
+				confirm: true,
+				kind: 'todo',
+				title: 'Errands',
+				todos: [{ text: 'Buy milk' }, { text: 'Walk dog', done: true }],
+			}),
+		);
+		const [, input] = mockCreateNote.mock.calls[0] as [
+			unknown,
+			{ data: { items: Array<{ id: string; text: string; done: boolean }> } },
+		];
+		expect(input.data.items).toHaveLength(2);
+		for (const item of input.data.items) {
+			expect(typeof item.id).toBe('string');
+			expect(item.id.length).toBeGreaterThan(0);
+		}
+		expect(input.data.items[0]).toMatchObject({ text: 'Buy milk', done: false });
+		expect(input.data.items[1]).toMatchObject({ text: 'Walk dog', done: true });
+	});
+
+	it('creates an easel note with an empty canvas', async () => {
+		mockResolveAssistantPrincipal.mockResolvedValue({ principalId: 'u1', orgId: 'org1' });
+		mockCreateNote.mockResolvedValue({ id: 'easel1' });
+		await noteCreatePOST(
+			makeEvent('/api/gateway/actions/note-create', { confirm: true, kind: 'easel', title: 'Board' }),
+		);
+		const [, input] = mockCreateNote.mock.calls[0] as [unknown, { data: { items: unknown[] } }];
+		expect(input.data).toEqual({ items: [] });
 	});
 });

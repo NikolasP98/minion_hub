@@ -341,12 +341,14 @@ export async function createBuiltAgent(
 
 // ── Built Tools ──────────────────────────────────────────────────────
 
-export async function listBuiltTools(ctx: CoreCtx) {
+export async function listBuiltTools(ctx: CoreCtx, opts?: { status?: 'draft' | 'published' }) {
+  const conditions = [eq(builtTools.tenantId, ctx.tenantId)];
+  if (opts?.status) conditions.push(eq(builtTools.status, opts.status));
   return withOrgCore(ctx, (tx) =>
     tx
       .select()
       .from(builtTools)
-      .where(eq(builtTools.tenantId, ctx.tenantId))
+      .where(and(...conditions))
       .orderBy(desc(builtTools.updatedAt)),
   );
 }
