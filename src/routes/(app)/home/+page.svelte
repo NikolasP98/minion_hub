@@ -500,16 +500,11 @@
 		if (d < 604800) return `${Math.round(d / 86400)}d ago`;
 		return new Date(ts).toLocaleDateString([], { month: 'short', day: 'numeric' });
 	}
-	// Exact time for the hover tooltip: time-only today, "Yesterday HH:MM",
-	// else "MMM D HH:MM".
+	// Exact time for the hover tooltip: standard "D MMM HH:MM" (e.g. "9 Jul 20:43").
 	function exactTime(ts: number): string {
 		const dt = new Date(ts);
-		const time = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-		const now = new Date();
-		const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-		if (ts >= startToday) return time;
-		if (ts >= startToday - 86400000) return `Yesterday ${time}`;
-		return `${dt.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`;
+		const time = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+		return `${dt.getDate()} ${dt.toLocaleDateString([], { month: 'short' })} ${time}`;
 	}
 
 	function handleSubmit(text: string, mode: 'ask' | 'capture') {
