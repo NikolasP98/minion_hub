@@ -12,6 +12,9 @@
 	import CallControls from '$lib/components/my-agent/CallControls.svelte';
 	import NotesPanel from '$lib/components/my-agent/NotesPanel.svelte';
 	import ChatTurn from '$lib/components/my-agent/ChatTurn.svelte';
+	import MessageActions, {
+		type MessageAction,
+	} from '$lib/components/my-agent/MessageActions.svelte';
 	import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
 	import type { ChatMessage } from '$lib/types/chat';
 	import {
@@ -51,7 +54,7 @@
 	import { createConnectedFetch } from '$lib/state/async.svelte';
 	import { distinctProviders } from '$lib/components/my-agent/provider';
 	import { dragContextIcon, type DragContextKind } from '$lib/utils/drag-context';
-	import { ChevronDown, MessageSquarePlus } from 'lucide-svelte';
+	import { ChevronDown, MessageSquarePlus, Copy, CornerUpLeft, RotateCcw } from 'lucide-svelte';
 	import { tick } from 'svelte';
 	import type { PageData } from './$types';
 
@@ -505,6 +508,51 @@
 		sendChatMsg(agentId);
 	}
 
+	// ─── Per-message actions (copy / reply / retry) ──────────────────────────────
+	// The composer draft is lifted here so Reply can inject a quote into ChatInput.
+	let draft = $state('');
+
+	function rowText(row: RenderedRow): string {
+		// Recompose the visible text plus any context chips (their full bodies).
+		const chipText = row.chips.map((c) => c.text).join('\n\n');
+		return [chipText, row.text].filter((s) => s.trim().length > 0).join('\n\n');
+	}
+
+	function copyRow(row: RenderedRow) {
+		const text = row.role === 'assistant' ? (extractText(row.msg) ?? '') : rowText(row);
+		void navigator.clipboard?.writeText(stripTtsTags(text));
+	}
+
+	function replyToRow(row: RenderedRow) {
+		const text = (row.role === 'assistant' ? (extractText(row.msg) ?? '') : rowText(row)).trim();
+		const quote = text
+			.split('\n')
+			.map((l) => `> ${l}`)
+			.join('\n');
+		draft = `${quote}\n\n`;
+	}
+
+	// Retry re-asks the user turn that produced this row: for an assistant reply,
+	// re-send the nearest preceding user message; for a user message, re-send it.
+	function retryRow(ri: number) {
+		let ui = ri;
+		if (renderedMessages[ri]?.role === 'assistant') {
+			while (ui >= 0 && renderedMessages[ui].role !== 'user') ui--;
+		}
+		const src = renderedMessages[ui];
+		if (!src || src.role !== 'user') return;
+		const text = rowText(src).trim();
+		if (text) handleSubmit(text, 'ask');
+	}
+
+	function actionsFor(row: RenderedRow, ri: number): MessageAction[] {
+		return [
+			{ icon: Copy, label: m.chat_copy(), done: m.chat_copied(), onclick: () => copyRow(row) },
+			{ icon: CornerUpLeft, label: m.chat_reply(), onclick: () => replyToRow(row) },
+			{ icon: RotateCcw, label: m.chat_retry(), onclick: () => retryRow(ri) },
+		];
+	}
+
 	// ─── Call wiring ───────────────────────────────────────────────────────────
 	// The call engine is a module-level singleton — it dispatches utterances and
 	// speaks replies on its own, so it survives navigating away from this page.
@@ -756,27 +804,34 @@
 									ri === renderedMessages.length - 1 || renderedMessages[ri + 1].role !== row.role}
 								{#if row.role === 'assistant'}
 									<!-- Assistant turn: ChatTurn owns its layout — quiet reasoning/tool
-									     rows OUTSIDE the bubble, the reply inside its own bubble. -->
+									     rows OUTSIDE the bubble, the reply inside its own bubble.
+									     Action rail sits to the right, sticky to the visible bottom. -->
 									<div class="bubble-row assistant">
-										<ChatTurn message={row.msg} toolResults={toolResultsById} />
-										{#if row.ts && blockEnd}<span class="bubble-time">{fmtTime(row.ts)}</span>{/if}
+										<div class="msg-col">
+											<ChatTurn message={row.msg} toolResults={toolResultsById} />
+											{#if row.ts && blockEnd}<span class="bubble-time">{fmtTime(row.ts)}</span>{/if}
+										</div>
+										<MessageActions actions={actionsFor(row, ri)} side="right" />
 									</div>
 								{:else}
 									<div class="bubble-row user">
-										{#if row.chips.length > 0}
-											<div class="sent-chips">
-												{#each row.chips as chip, ci (ci)}
-													<span class="sent-chip" title={chip.text}>
-														<span aria-hidden="true">{dragContextIcon(chip.kind as DragContextKind)}</span>
-														<span class="sent-chip-label">{chip.label}</span>
-													</span>
-												{/each}
-											</div>
-										{/if}
-										{#if row.text.trim().length > 0}
-											<div class="bubble user">{row.text}</div>
-										{/if}
-										{#if row.ts && blockEnd}<span class="bubble-time">{fmtTime(row.ts)}</span>{/if}
+										<MessageActions actions={actionsFor(row, ri)} side="left" />
+										<div class="msg-col user">
+											{#if row.chips.length > 0}
+												<div class="sent-chips">
+													{#each row.chips as chip, ci (ci)}
+														<span class="sent-chip" title={chip.text}>
+															<span aria-hidden="true">{dragContextIcon(chip.kind as DragContextKind)}</span>
+															<span class="sent-chip-label">{chip.label}</span>
+														</span>
+													{/each}
+												</div>
+											{/if}
+											{#if row.text.trim().length > 0}
+												<div class="bubble user">{row.text}</div>
+											{/if}
+											{#if row.ts && blockEnd}<span class="bubble-time">{fmtTime(row.ts)}</span>{/if}
+										</div>
 									</div>
 								{/if}
 							{/each}
@@ -823,7 +878,7 @@
 
 			<div class="composer">
 				<div class="composer-input">
-					<ChatInput onsubmit={handleSubmit} />
+					<ChatInput bind:value={draft} {agentId} onsubmit={handleSubmit} />
 				</div>
 				<div class="composer-call">
 					<CallControls
@@ -1146,16 +1201,32 @@
 		gap: 10px;
 	}
 
+	/* Row = message column + a sticky action rail on the outer edge. */
 	.bubble-row {
+		display: flex;
+		flex-direction: row;
+		align-items: stretch;
+		gap: 6px;
+	}
+	.bubble-row.assistant {
+		justify-content: flex-start;
+	}
+	.bubble-row.user {
+		justify-content: flex-end;
+	}
+	.msg-col {
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
+		min-width: 0;
 	}
-	.bubble-row.user {
-		align-items: flex-end;
-	}
-	.bubble-row.assistant {
+	.bubble-row.assistant > .msg-col {
+		flex: 1;
 		align-items: flex-start;
+	}
+	.bubble-row.user > .msg-col {
+		flex: 0 1 auto;
+		align-items: flex-end;
 	}
 
 	.bubble {
