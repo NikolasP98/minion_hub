@@ -4,6 +4,12 @@ import type { LoadCtx } from './types';
 export interface HostsLoadResult {
   servers: UserHostRow[];
   authoritative: true;
+  /** Host id (legacy server id) of the gateway currently ASSIGNED to the
+   * caller's active org — per-org volume tenancy spec §3.4: `gateway.org_id`
+   * is a mutable assignment (lease read-model), not ownership. Null when the
+   * org has no assignment (shared-pool default = today's behavior). The client
+   * uses it as the default `activeHostId` absent a manual selection. */
+  orgAssignedHostId: string | null;
 }
 
 /**
@@ -24,7 +30,13 @@ export async function loadHostsForUser(
   userRole: string | undefined,
 ): Promise<HostsLoadResult> {
   const isAdmin = userRole === 'admin';
-  const profileId = (ctx as App.Locals).user?.supabaseId ?? null;
+  const locals = ctx as App.Locals;
+  const profileId = locals.user?.supabaseId ?? null;
   const servers = await listGatewayHostsForUser(profileId, isAdmin);
-  return { servers, authoritative: true };
+  // Active org → assigned gateway (if it's among the user's visible hosts).
+  const orgId = locals.orgId ?? locals.tenantCtx?.tenantId ?? null;
+  const orgAssignedHostId = orgId
+    ? (servers.find((s) => s.orgId === orgId)?.id ?? null)
+    : null;
+  return { servers, authoritative: true, orgAssignedHostId };
 }

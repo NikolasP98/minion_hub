@@ -45,19 +45,42 @@ export async function getGatewayHttpUrl(): Promise<string> {
   return toHttpUrl(url).replace(/\/+$/, '');
 }
 
-/** Resolve the gateway HTTP base URL for a specific user (per-user PG creds). */
-export async function getGatewayHttpUrlForUser(profileId: string | undefined): Promise<string> {
-  const { url } = await resolveCredentialsForUser(profileId);
+/** Resolve the gateway HTTP base URL for a specific user (per-user PG creds).
+ * Pass the caller's active `orgId` (when known) to honor per-org assignment. */
+export async function getGatewayHttpUrlForUser(
+  profileId: string | undefined,
+  orgId?: string | null,
+): Promise<string> {
+  const { url } = await resolveCredentialsForUser(profileId, orgId);
   return toHttpUrl(url).replace(/\/+$/, '');
 }
 
 /**
  * Resolve gateway credentials for a specific user.
- * Priority: PG per-user → PG system-wide → env bootstrap fallback.
+ * Priority: org-assigned gateway → PG per-user → PG system-wide → env bootstrap.
+ *
+ * `orgId` is the caller's ACTIVE org (optional — thread it from locals/
+ * resolveAssistantPrincipal where available). Per-org volume tenancy spec §3.4:
+ * `gateway.org_id` is a mutable assignment ("instance currently serving this
+ * org's volume", a lease read-model, not ownership). With no org-assigned rows
+ * the whole function behaves byte-identically to the old chain.
  */
 export async function resolveCredentialsForUser(
   profileId: string | undefined,
+  orgId?: string | null,
 ): Promise<{ url: string; token: string }> {
+  // 0. Org-assigned gateway (per-org volume tenancy). Miss/error → fall through.
+  if (orgId) {
+    try {
+      const { getOrgAssignedGatewayCredentials } = await import(
+        '$server/services/gateway.pg.service'
+      );
+      const creds = await getOrgAssignedGatewayCredentials(orgId);
+      if (creds) return { url: toWsUrl(creds.url), token: creds.token };
+    } catch (err) {
+      console.warn('[gateway-rpc] org-assigned gateway lookup failed, falling back', err);
+    }
+  }
   // 1. Per-user PG lookup (new primary path).
   if (profileId) {
     try {
@@ -226,14 +249,16 @@ export async function gatewayCall<T = unknown>(
 /**
  * Call a gateway RPC using per-user credentials resolved from PG.
  * Falls back to system-wide Turso creds and env if no per-user row exists.
+ * `opts.orgId` (the caller's active org) routes to the org-assigned gateway
+ * when one exists (per-org volume tenancy §3.4); omitted → old chain.
  */
 export async function gatewayCallAsUser<T = unknown>(
   method: string,
   params: Record<string, unknown> = {},
   profileId: string | undefined,
-  opts: { timeoutMs?: number } = {},
+  opts: { timeoutMs?: number; orgId?: string | null } = {},
 ): Promise<T> {
-  const { url, token } = await resolveCredentialsForUser(profileId);
+  const { url, token } = await resolveCredentialsForUser(profileId, opts.orgId);
   return gatewayCallWithCreds<T>(method, params, url, token, opts);
 }
 

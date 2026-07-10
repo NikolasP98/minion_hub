@@ -44,7 +44,9 @@ export const load: PageServerLoad = async ({ locals }) => {
   // `hosts` returned below.
   if (user.supabaseId) {
     try {
-      await ensureDefaultGatewayForUser(user.supabaseId);
+      // Active org's assigned gateway wins over the netcup pin when one exists
+      // (per-org volume tenancy §3.4); no assignment → netcup as before.
+      await ensureDefaultGatewayForUser(user.supabaseId, ctx.tenantId);
     } catch (err) {
       console.error('[onboarding] ensureDefaultGatewayForUser failed:', err);
     }

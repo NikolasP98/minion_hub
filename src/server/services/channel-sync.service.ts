@@ -238,7 +238,8 @@ export async function importGatewayChannels(ctx: ServerCtx): Promise<{ imported:
     'config.get',
     {},
     ctx.profileId,
-    { timeoutMs: 5000 },
+    // orgId routes to the org's assigned gateway when one exists (tenancy §3.4).
+    { timeoutMs: 5000, orgId: ctx.tenantId },
   );
   const config = unwrapConfigSnapshot<GatewayConfig>(snap);
   const rows = gatewayConfigToChannelRows(config, ctx.tenantId);

@@ -41,7 +41,8 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 
   let base: string;
   try {
-    base = await getGatewayHttpUrlForUser(profileId);
+    // Active org threads through so an org-assigned gateway wins (tenancy §3.4).
+    base = await getGatewayHttpUrlForUser(profileId, locals.orgId ?? locals.tenantCtx?.tenantId);
   } catch {
     return json({ ok: false, error: 'no gateway configured' }, { status: 502 });
   }

@@ -115,6 +115,10 @@ export interface UserHostRow {
   name: string;
   url: string;
   lastConnectedAt: number | null;
+  /** Org currently ASSIGNED to this gateway instance (per-org volume tenancy
+   * spec §3.4) — a mutable lease read-model, not ownership. Null = shared/
+   * default pool (today's single netcup gateway). */
+  orgId: string | null;
 }
 
 /**
@@ -136,6 +140,7 @@ export async function listGatewayHostsForUser(
     name: gateway.name,
     url: gateway.url,
     lastConnectedAt: gateway.lastConnectedAt,
+    orgId: gateway.orgId,
   };
   const rows = isAdmin
     ? await db.select(cols).from(gateway).orderBy(gateway.createdAt)
@@ -152,6 +157,7 @@ export async function listGatewayHostsForUser(
     name: r.name,
     url: r.url,
     lastConnectedAt: r.lastConnectedAt ? r.lastConnectedAt.getTime() : null,
+    orgId: r.orgId ?? null,
   }));
 }
 
@@ -234,6 +240,39 @@ export async function getSystemGatewayCredentials(
 }
 
 /**
+ * Per-org gateway assignment lookup (per-org volume tenancy spec §3.4).
+ *
+ * `gateway.org_id` here is a mutable ASSIGNMENT key — "this instance currently
+ * serves org X's volume" — a lease read-model, not ownership. (Its other,
+ * pre-existing use is metrics-ingest tenant resolution.) Null = shared/default
+ * pool. Phase 2 moves assignment into paperclip environment leases and this
+ * column becomes a projection of the lease.
+ *
+ * Returns url + decrypted token of the token-bearing gateway currently
+ * assigned to the org, or null when the org has no assignment — callers MUST
+ * fall through to the existing user/system/env chain (byte-identical old
+ * behavior when no rows are assigned). `token_iv=''` means the ciphertext IS
+ * the plaintext token (legacy unencrypted row).
+ */
+export async function getOrgAssignedGatewayCredentials(
+  orgId: string,
+): Promise<{ url: string; token: string } | null> {
+  const rows = await getCoreDb()
+    .select({
+      url: gateway.url,
+      tokenCiphertext: gateway.tokenCiphertext,
+      tokenIv: gateway.tokenIv,
+    })
+    .from(gateway)
+    .where(eq(gateway.orgId, orgId))
+    .orderBy(gateway.createdAt);
+  const row = rows.find((r) => r.tokenCiphertext);
+  if (!row) return null;
+  const token = row.tokenIv ? decrypt(row.tokenCiphertext, row.tokenIv) : row.tokenCiphertext;
+  return { url: row.url, token };
+}
+
+/**
  * True if the profile is linked (via `user_gateway`) to the gateway behind the
  * given server id (legacy Turso id or gateway uuid). The Supabase-native
  * replacement for the Turso `user_servers` access check on `/api/servers/[id]/*`.
@@ -264,8 +303,16 @@ export async function userHasGatewayAccess(
  * Idempotent: no-op when the user already has any gateway link (don't override
  * an explicit selection) or when no `netcup` gateway is configured. Replace the
  * name match with real load-balancing once multiple gateways exist.
+ *
+ * Per-org volume tenancy (spec §3.4): when the caller's active `orgId` is
+ * given and a gateway is currently assigned to it (`gateway.org_id` = mutable
+ * assignment, not ownership), link that instead of the netcup pin. No
+ * assignment → netcup fallback unchanged.
  */
-export async function ensureDefaultGatewayForUser(profileId: string): Promise<void> {
+export async function ensureDefaultGatewayForUser(
+  profileId: string,
+  orgId?: string | null,
+): Promise<void> {
   if (!profileId) return;
   const db = getCoreDb();
 
@@ -275,6 +322,22 @@ export async function ensureDefaultGatewayForUser(profileId: string): Promise<vo
     .where(eq(userGateway.profileId, profileId))
     .limit(1);
   if (existing) return;
+
+  if (orgId) {
+    const [assigned] = await db
+      .select({ id: gateway.id })
+      .from(gateway)
+      .where(eq(gateway.orgId, orgId))
+      .orderBy(gateway.createdAt)
+      .limit(1);
+    if (assigned) {
+      await db
+        .insert(userGateway)
+        .values({ profileId, gatewayId: assigned.id, isDefault: true })
+        .onConflictDoNothing();
+      return;
+    }
+  }
 
   const [netcup] = await db
     .select({ id: gateway.id })

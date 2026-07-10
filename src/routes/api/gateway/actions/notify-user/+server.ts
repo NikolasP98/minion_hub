@@ -67,6 +67,8 @@ export const POST: RequestHandler = async ({ locals, url, request }) => {
 				idempotencyKey: `notify-${b.recipientProfileId}-${Date.now()}`,
 			},
 			principalId,
+			// Route to the org's assigned gateway when one exists (tenancy §3.4).
+			{ orgId },
 		);
 		return json({ ok: true, messageId: res?.messageId ?? res?.id ?? null });
 	} catch (e) {

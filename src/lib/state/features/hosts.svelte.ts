@@ -92,6 +92,14 @@ function pageHosts(): Host[] | null {
   return Array.isArray(servers) ? servers : null;
 }
 
+/** Host currently assigned to the active org (per-org volume tenancy §3.4 —
+ * `gateway.org_id` is a mutable assignment/lease read-model, not ownership).
+ * Server-computed in hosts.service.ts; null = no assignment (shared pool). */
+function pageOrgAssignedHostId(): string | null {
+  const data = page.data as { hosts?: { orgAssignedHostId?: string | null } } | undefined;
+  return data?.hosts?.orgAssignedHostId ?? null;
+}
+
 export const hostsState = {
   /** Authoritative on (app)/* via page.data; falls back to overlay /
    *  localStorage cache outside that scope or during transitions. */
@@ -136,10 +144,15 @@ export function loadHosts(): void {
   const lastId =
     typeof localStorage !== 'undefined' ? localStorage.getItem('minion-dash-last-host') : null;
   if (lastId && hosts.some((h) => h.id === lastId)) {
+    // Saved selection wins — never fight an explicit user choice.
     local.activeHostId = lastId;
   } else if (hosts.length > 0) {
-    local.activeHostId = hosts[0].id;
-    saveLastActiveHost(hosts[0].id);
+    // No saved selection: default to the active org's assigned gateway when
+    // present among the user's hosts (§3.4), else first host (old behavior).
+    const orgHostId = pageOrgAssignedHostId();
+    const pick = orgHostId && hosts.some((h) => h.id === orgHostId) ? orgHostId : hosts[0].id;
+    local.activeHostId = pick;
+    saveLastActiveHost(pick);
   }
 }
 

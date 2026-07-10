@@ -63,6 +63,7 @@ describe('loadHostsForUser', () => {
     expect(result).toEqual({
       servers: [{ id: 's1', name: 'host-1' }],
       authoritative: true,
+      orgAssignedHostId: null,
     });
     expect(mockListGatewayHostsForUser).toHaveBeenCalledWith('p1', true);
   });
@@ -72,7 +73,29 @@ describe('loadHostsForUser', () => {
     const { loadHostsForUser } = await import('../hosts.service');
 
     const result = await loadHostsForUser({ user: { supabaseId: 'p1' } } as never, 'u1', 'user');
-    expect(result).toEqual({ servers: [], authoritative: true });
+    expect(result).toEqual({ servers: [], authoritative: true, orgAssignedHostId: null });
     expect(mockListGatewayHostsForUser).toHaveBeenCalledWith('p1', false);
+  });
+
+  it('surfaces the active org-assigned host id (tenancy §3.4), null otherwise', async () => {
+    mockListGatewayHostsForUser.mockResolvedValue([
+      { id: 's1', name: 'shared', orgId: null },
+      { id: 's2', name: 'org-box', orgId: 'org-A' },
+    ]);
+    const { loadHostsForUser } = await import('../hosts.service');
+
+    const assigned = await loadHostsForUser(
+      { user: { supabaseId: 'p1' }, orgId: 'org-A' } as never,
+      'u1',
+      'user',
+    );
+    expect(assigned.orgAssignedHostId).toBe('s2');
+
+    const unassigned = await loadHostsForUser(
+      { user: { supabaseId: 'p1' }, orgId: 'org-B' } as never,
+      'u1',
+      'user',
+    );
+    expect(unassigned.orgAssignedHostId).toBe(null);
   });
 });
