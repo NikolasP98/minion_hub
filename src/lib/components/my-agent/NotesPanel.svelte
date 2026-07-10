@@ -484,7 +484,7 @@
 		flex-direction: column;
 		align-items: center;
 		gap: 12px;
-		padding: 16px 0;
+		padding: 64px 0 16px;
 		cursor: pointer;
 		background: transparent;
 		border: none;
