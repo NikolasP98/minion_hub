@@ -242,8 +242,10 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        height: 2.75rem;
-        padding: 0 0.75rem;
+        flex-wrap: wrap;
+        min-height: 2.75rem;
+        padding: 0.25rem 0.75rem;
+        row-gap: 0.25rem;
         background: var(--color-bg2);
         border-bottom: 1px solid var(--color-border);
         flex-shrink: 0;
