@@ -3,14 +3,29 @@
     import { goto } from "$app/navigation";
     import * as m from '$lib/paraglide/messages';
     import { formatRelativeTime, toolEmoji, type UnifiedTool } from "./utils";
+    import { isToolPermissionAllowed, toolPermissionLabel } from "$lib/utils/tool-permission-chip";
+    import type { ToolPermission } from "$lib/types/tools";
 
     interface Props {
         tools: UnifiedTool[];
         isAdmin: boolean;
+        /** group id → one-line description (C7), used as the group chip's tooltip. */
+        groupDescriptions?: Record<string, string>;
         onDeleteCustom: (id: string, name: string) => void;
     }
 
-    let { tools, isAdmin, onDeleteCustom }: Props = $props();
+    let { tools, isAdmin, groupDescriptions = {}, onDeleteCustom }: Props = $props();
+
+    function groupLabel(g: string): string {
+        return g.replace('group:', '');
+    }
+
+    function permissionTitle(perm: ToolPermission): string {
+        const label = toolPermissionLabel(perm);
+        return isToolPermissionAllowed(perm)
+            ? m.capabilities_permissionAllowed({ perm: label })
+            : m.capabilities_permissionDenied({ perm: label });
+    }
 </script>
 
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -34,6 +49,13 @@
                 {#if tool.description}
                     <span class="item-desc">{tool.description}</span>
                 {/if}
+                {#if tool.groups?.length}
+                    <div class="group-chips">
+                        {#each tool.groups as g (g)}
+                            <span class="tool-flag" title={groupDescriptions[g]}>{groupLabel(g)}</span>
+                        {/each}
+                    </div>
+                {/if}
                 <div class="item-footer">
                     {#if tool.source === 'gateway'}
                         <span class="status-badge {tool.enabled ? 'published' : 'draft'}">
@@ -56,6 +78,12 @@
                         {#if tool.updatedAt}
                             <span class="item-time">{formatRelativeTime(tool.updatedAt)}</span>
                         {/if}
+                    {/if}
+                    {#if tool.permission}
+                        {@const allowed = isToolPermissionAllowed(tool.permission)}
+                        <span class="perm-chip" class:allowed class:denied={!allowed} title={permissionTitle(tool.permission)}>
+                            {toolPermissionLabel(tool.permission)}
+                        </span>
                     {/if}
                     <span class="source-chip {tool.source}">{tool.source === "gateway" ? m.builder_gatewaySource() : m.builder_customSource()}</span>
                 </div>
@@ -227,5 +255,33 @@
     .item-delete:hover {
         color: var(--color-error, #ef4444);
         background: color-mix(in srgb, var(--color-error, #ef4444) 12%, transparent);
+    }
+
+    .group-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.25rem;
+    }
+
+    .perm-chip {
+        font-size: 0.5625rem;
+        font-family: var(--font-mono, monospace);
+        padding: 0.0625rem 0.375rem;
+        border-radius: 0.25rem;
+        border: 1px solid var(--color-border);
+        color: var(--color-muted);
+        background: var(--color-bg3);
+    }
+
+    .perm-chip.allowed {
+        color: var(--color-success, #22c55e);
+        border-color: color-mix(in srgb, var(--color-success, #22c55e) 30%, transparent);
+        background: color-mix(in srgb, var(--color-success, #22c55e) 10%, transparent);
+    }
+
+    .perm-chip.denied {
+        color: var(--color-error, #ef4444);
+        border-color: color-mix(in srgb, var(--color-error, #ef4444) 30%, transparent);
+        background: color-mix(in srgb, var(--color-error, #ef4444) 10%, transparent);
     }
 </style>

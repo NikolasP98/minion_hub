@@ -819,7 +819,11 @@
 									     Actions sit under the answer only (never on reasoning/tool-only
 									     rows, which carry no answer text). -->
 									<div class="bubble-row assistant">
-										<ChatTurn message={row.msg} toolResults={toolResultsById} />
+										<ChatTurn
+											message={row.msg}
+											toolResults={toolResultsById}
+											onArtifactCallback={(cb) => handleSubmit(cb, 'ask')}
+										/>
 										{#if row.text.trim().length > 0}
 											<MessageActions actions={actionsFor(row, ri)} />
 										{/if}
@@ -858,6 +862,7 @@
 										toolResults={toolResultsById}
 										streaming
 										textOverride={streamDisplay}
+										onArtifactCallback={(cb) => handleSubmit(cb, 'ask')}
 									/>
 									{#if streamDisplay.length === 0}
 										<!-- Tools running, no answer text yet — live activity verb. -->

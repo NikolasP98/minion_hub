@@ -15,6 +15,8 @@
 		 * reveal while reasoning/tool meta still come from `message`.
 		 */
 		textOverride?: string;
+		/** Threaded to ChatBlocks — sends a chat_artifact button's callback_data as the next chat message. */
+		onArtifactCallback?: (callbackData: string) => void;
 	}
 
 	const props: Props = $props();

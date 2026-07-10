@@ -4124,5 +4124,11 @@
   "gmailch_retentionSaved": "Retención actualizada",
   "gmailch_save": "Guardar",
   "gmailch_ledgerEmpty": "Aún no hay correos procesados. A medida que se ejecute el etiquetado automático, aparecerán aquí el resumen y las etiquetas de cada correo.",
-  "gmailch_ledgerNoSubject": "(sin asunto)"
+  "gmailch_ledgerNoSubject": "(sin asunto)",
+  "capabilities_permissionAllowed": "Requiere {perm} — tienes este permiso",
+  "capabilities_permissionDenied": "Requiere {perm} — no tienes este permiso",
+  "chat_tool_permissionAllowed": "Requiere {perm} — tienes este permiso",
+  "chat_tool_permissionDenied": "Requiere {perm} — no tienes este permiso",
+  "chat_artifact_title": "Contenido interactivo",
+  "chat_artifact_invalid": "No se pudo mostrar esta tarjeta interactiva."
 }

@@ -3,6 +3,21 @@
 	import { Brain, Wrench, Loader, Check, TriangleAlert } from 'lucide-svelte';
 	import { normalizeBlocks, type ChatBlock, type ToolResult } from './blocks';
 	import { stripTtsTags } from '$lib/utils/text';
+	import { toolCatalog, ensureToolCatalogLoaded } from '$lib/state/agents/tool-catalog.svelte';
+	import { isToolPermissionAllowed, toolPermissionLabel } from '$lib/utils/tool-permission-chip';
+	import type { ToolPermission } from '$lib/types/tools';
+	import * as m from '$lib/paraglide/messages';
+
+	interface ArtifactButton {
+		text: string;
+		callback_data: string;
+		style?: 'danger' | 'success' | 'primary';
+	}
+	interface ArtifactInput {
+		title?: string;
+		html: string;
+		buttons?: ArtifactButton[][];
+	}
 
 	interface Props {
 		/** Message-shaped object whose `content` carries the block array. */
@@ -21,6 +36,13 @@
 		textOverride?: string;
 		/** Tones down chrome for small surfaces (floating assistant, drawers). */
 		compact?: boolean;
+		/**
+		 * Sends a `chat_artifact` button's `callback_data` as the user's next chat
+		 * message (same path as ChatInput/handleSubmit). Absent on surfaces that
+		 * don't own a send path (SessionMonitor, floating assistant history) —
+		 * artifact buttons render disabled there instead of silently no-op'ing.
+		 */
+		onArtifactCallback?: (callbackData: string) => void;
 	}
 
 	const {
@@ -28,8 +50,74 @@
 		toolResults = {},
 		streaming = false,
 		textOverride,
-		compact = false
+		compact = false,
+		onArtifactCallback
 	}: Props = $props();
+
+	// Permission badges (chat provenance) reuse the same tools.status data
+	// /capabilities loads — fetched once per session, fail-silent on older
+	// gateways that don't send `permission` yet.
+	$effect(() => {
+		ensureToolCatalogLoaded();
+	});
+
+	function toolPermission(name: string): ToolPermission | undefined {
+		return toolCatalog.byId[name]?.permission;
+	}
+	function permissionTitle(perm: ToolPermission): string {
+		const label = toolPermissionLabel(perm);
+		return isToolPermissionAllowed(perm)
+			? m.chat_tool_permissionAllowed({ perm: label })
+			: m.chat_tool_permissionDenied({ perm: label });
+	}
+
+	// ── chat_artifact (C6): interactive card rendered from a tool_use block ──
+	function artifactInput(input: unknown): ArtifactInput | null {
+		if (!input || typeof input !== 'object') return null;
+		const obj = input as Record<string, unknown>;
+		if (typeof obj.html !== 'string') return null;
+		return {
+			title: typeof obj.title === 'string' ? obj.title : undefined,
+			html: obj.html,
+			buttons: Array.isArray(obj.buttons) ? (obj.buttons as ArtifactButton[][]) : undefined
+		};
+	}
+
+	/** Inline the hub's current --color-* custom props so the sandboxed iframe themes to match. */
+	function themedSrcdoc(html: string): string {
+		if (typeof document === 'undefined') return html;
+		const vars: string[] = [];
+		const seen = new Set<string>();
+		const collect = (style: CSSStyleDeclaration) => {
+			for (let i = 0; i < style.length; i++) {
+				const k = style[i];
+				if (k.startsWith('--') && !seen.has(k)) {
+					seen.add(k);
+					vars.push(`${k}:${style.getPropertyValue(k)}`);
+				}
+			}
+		};
+		collect(document.documentElement.style);
+		for (const sheet of Array.from(document.styleSheets)) {
+			let rules: CSSRuleList;
+			try {
+				rules = sheet.cssRules;
+			} catch {
+				continue;
+			}
+			for (const rule of Array.from(rules)) {
+				if (rule instanceof CSSStyleRule && rule.selectorText === ':root') collect(rule.style);
+			}
+		}
+		return `<style>:root{${vars.join(';')}}</style>${html}`;
+	}
+
+	let clickedArtifacts = $state(new Set<string>());
+	function handleArtifactClick(blockId: string, callbackData: string) {
+		if (!onArtifactCallback || clickedArtifacts.has(blockId)) return;
+		clickedArtifacts = new Set(clickedArtifacts).add(blockId);
+		onArtifactCallback(callbackData);
+	}
 
 	const blocks = $derived(normalizeBlocks(message.content));
 
@@ -43,13 +131,20 @@
 	type ToolBlock = Extract<ChatBlock, { kind: 'tool' }>;
 	type MetaGroup =
 		| { kind: 'thinking'; text: string }
-		| { kind: 'tools'; tools: ToolBlock[] };
+		| { kind: 'tools'; tools: ToolBlock[] }
+		| { kind: 'artifact'; block: ToolBlock };
 	const metaGroups = $derived.by<MetaGroup[]>(() => {
 		const groups: MetaGroup[] = [];
 		for (const b of blocks) {
 			if (b.kind === 'thinking') {
 				groups.push({ kind: 'thinking', text: b.text });
 			} else if (b.kind === 'tool') {
+				// chat_artifact (C6) is never collapsed into the "N tool uses" group —
+				// it's an interactive card, not a quiet tool row.
+				if (b.name === 'chat_artifact') {
+					groups.push({ kind: 'artifact', block: b });
+					continue;
+				}
 				const last = groups.at(-1);
 				if (last?.kind === 'tools') last.tools.push(b);
 				else groups.push({ kind: 'tools', tools: [b] });
@@ -86,10 +181,14 @@
 {#snippet toolRow(block: ToolBlock)}
 	{@const result = block.id ? toolResults[block.id] : undefined}
 	{@const pending = streaming && !result}
+	{@const perm = toolPermission(block.name)}
 	<details class="meta">
 		<summary>
 			<Wrench size={12} class="mi" />
 			<span class="label tool-name">{block.name}</span>
+			{#if perm}
+				<span class="perm-chip" title={permissionTitle(perm)}>{toolPermissionLabel(perm)}</span>
+			{/if}
 			{#if preview(block.input)}<span class="tool-arg">{preview(block.input)}</span>{/if}
 			<span class="tool-status" class:err={result?.isError}>
 				{#if pending}
@@ -116,6 +215,42 @@
 	</details>
 {/snippet}
 
+{#snippet artifactBlock(block: ToolBlock)}
+	{@const data = artifactInput(block.input)}
+	{#if data}
+		{@const clicked = clickedArtifacts.has(block.id)}
+		<div class="artifact-block">
+			{#if data.title}<div class="artifact-title">{data.title}</div>{/if}
+			<iframe
+				class="artifact-frame"
+				sandbox="allow-scripts"
+				srcdoc={themedSrcdoc(data.html)}
+				title={data.title ?? m.chat_artifact_title()}
+			></iframe>
+			{#if data.buttons?.length}
+				<div class="artifact-buttons">
+					{#each data.buttons as row, ri (ri)}
+						<div class="artifact-button-row">
+							{#each row as btn, bi (bi)}
+								<button
+									type="button"
+									class="artifact-btn {btn.style ?? 'primary'}"
+									disabled={clicked || !onArtifactCallback}
+									onclick={() => handleArtifactClick(block.id, btn.callback_data)}
+								>
+									{btn.text}
+								</button>
+							{/each}
+						</div>
+					{/each}
+				</div>
+			{/if}
+		</div>
+	{:else}
+		<div class="artifact-error">{m.chat_artifact_invalid()}</div>
+	{/if}
+{/snippet}
+
 <div class="turn" class:compact>
 	{#each metaGroups as group, i (i)}
 		{#if group.kind === 'thinking'}
@@ -126,6 +261,8 @@
 				</summary>
 				<div class="meta-body reason">{group.text}</div>
 			</details>
+		{:else if group.kind === 'artifact'}
+			{@render artifactBlock(group.block)}
 		{:else if group.tools.length === 1}
 			{@render toolRow(group.tools[0])}
 		{:else}
@@ -277,6 +414,88 @@
 		to {
 			transform: rotate(360deg);
 		}
+	}
+
+	/* Permission provenance chip on a tool row (chat_tool). */
+	.perm-chip {
+		flex-shrink: 0;
+		font-family: ui-monospace, monospace;
+		font-size: 9.5px;
+		padding: 0.5px 5px;
+		border-radius: 5px;
+		border: 1px solid color-mix(in srgb, var(--color-foreground) 12%, transparent);
+		color: color-mix(in srgb, var(--color-foreground) 45%, transparent);
+	}
+
+	/* ── chat_artifact (C6): sandboxed interactive card ── */
+	.artifact-block {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		width: 100%;
+		max-width: 85%;
+	}
+	.turn.compact .artifact-block {
+		max-width: 100%;
+	}
+	.artifact-title {
+		font-size: 12px;
+		font-weight: 600;
+		color: color-mix(in srgb, var(--color-foreground) 80%, transparent);
+	}
+	.artifact-frame {
+		width: 100%;
+		height: 260px;
+		min-height: 120px;
+		max-height: 420px;
+		border: 1px solid color-mix(in srgb, var(--color-foreground) 8%, transparent);
+		border-radius: 12px;
+		background: color-mix(in srgb, var(--color-foreground) 2%, transparent);
+	}
+	.artifact-buttons {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+	.artifact-button-row {
+		display: flex;
+		gap: 6px;
+		flex-wrap: wrap;
+	}
+	.artifact-btn {
+		font: inherit;
+		font-size: 12px;
+		padding: 6px 12px;
+		border-radius: 8px;
+		border: 1px solid color-mix(in srgb, var(--color-foreground) 12%, transparent);
+		background: color-mix(in srgb, var(--color-foreground) 5%, transparent);
+		color: var(--color-foreground);
+		cursor: pointer;
+		transition: filter 120ms ease;
+	}
+	.artifact-btn:hover:not(:disabled) {
+		filter: brightness(1.1);
+	}
+	.artifact-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+	.artifact-btn.primary {
+		border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
+		color: var(--color-accent);
+	}
+	.artifact-btn.success {
+		border-color: color-mix(in srgb, var(--color-success, #22c55e) 40%, transparent);
+		color: var(--color-success, #22c55e);
+	}
+	.artifact-btn.danger {
+		border-color: color-mix(in srgb, var(--color-error, #ef4444) 40%, transparent);
+		color: var(--color-error, #ef4444);
+	}
+	.artifact-error {
+		font-size: 11px;
+		font-style: italic;
+		color: color-mix(in srgb, var(--color-foreground) 40%, transparent);
 	}
 
 	/* Level-2 list inside a collapsed "N tool uses" group. */

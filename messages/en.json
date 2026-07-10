@@ -4124,5 +4124,11 @@
   "gmailch_retentionSaved": "Retention updated",
   "gmailch_save": "Save",
   "gmailch_ledgerEmpty": "No processed emails yet. As auto-labeling runs, each email's summary and tags appear here.",
-  "gmailch_ledgerNoSubject": "(no subject)"
+  "gmailch_ledgerNoSubject": "(no subject)",
+  "capabilities_permissionAllowed": "Requires {perm} — you have this permission",
+  "capabilities_permissionDenied": "Requires {perm} — you don't have this permission",
+  "chat_tool_permissionAllowed": "Requires {perm} — you have this permission",
+  "chat_tool_permissionDenied": "Requires {perm} — you don't have this permission",
+  "chat_artifact_title": "Interactive content",
+  "chat_artifact_invalid": "This interactive card couldn't be displayed."
 }

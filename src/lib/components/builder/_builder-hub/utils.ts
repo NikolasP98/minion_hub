@@ -1,3 +1,5 @@
+import type { ToolPermission } from '$lib/types/tools';
+
 export function formatRelativeTime(timestamp: number): string {
     const now = Date.now();
     const diff = now - timestamp;
@@ -30,10 +32,9 @@ export function toolEmoji(tool: { id: string; mcpExport?: boolean }): string {
 }
 
 export function toolDescription(tool: { groups: string[]; requires?: { env?: string[] } }): string {
+    // Groups render as their own chips (see ToolsGrid) — this text only covers
+    // what chips don't (env requirements) so the two don't repeat each other.
     const parts: string[] = [];
-    if (tool.groups.length > 0) {
-        parts.push(tool.groups.map(g => g.replace('group:', '')).join(', '));
-    }
     if (tool.requires?.env?.length) {
         parts.push(`needs: ${tool.requires.env.join(', ')}`);
     }
@@ -53,4 +54,5 @@ export interface UnifiedTool {
     multi?: boolean;
     optional?: boolean;
     groups?: string[];
+    permission?: ToolPermission;
 }

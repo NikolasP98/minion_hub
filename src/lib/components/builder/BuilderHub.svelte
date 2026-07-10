@@ -8,6 +8,7 @@
     import { conn } from "$lib/state/gateway/connection.svelte";
     import { sendRequest } from "$lib/services/gateway.svelte";
     import type { ToolStatusEntry, ToolsStatusReport } from "$lib/types/tools";
+    import { toolCatalog } from "$lib/state/agents/tool-catalog.svelte";
     import SkillCreateWizard from "$lib/components/builder/SkillCreateWizard.svelte";
     import AgentCreateWizard from "$lib/components/builder/AgentCreateWizard.svelte";
     import AgentRegistry from "$lib/components/builder/AgentRegistry.svelte";
@@ -47,6 +48,7 @@
     let gatewayTools = $state<ToolStatusEntry[]>([]);
     let gatewayToolsLoading = $state(false);
     let gatewayToolsError = $state<string | null>(null);
+    let groupDescriptions = $state<Record<string, string>>({});
 
     async function loadGatewayTools() {
         if (!conn.connected) return;
@@ -55,6 +57,14 @@
         try {
             const report = (await sendRequest('tools.status', {})) as ToolsStatusReport;
             gatewayTools = report.tools;
+            groupDescriptions = report.groupDescriptions ?? {};
+            // Prime the chat-facing tool catalog cache so ChatBlocks' permission
+            // badges don't need a second tools.status round-trip.
+            const byId: Record<string, ToolStatusEntry> = {};
+            for (const t of report.tools) byId[t.id] = t;
+            toolCatalog.byId = byId;
+            toolCatalog.groupDescriptions = groupDescriptions;
+            toolCatalog.loaded = true;
         } catch (e) {
             gatewayToolsError = e instanceof Error ? e.message : 'Failed to load tools';
         } finally {
@@ -172,6 +182,7 @@
             multi: t.multi,
             optional: t.optional,
             groups: t.groups,
+            permission: t.permission,
         })),
         ...builderState.tools.map(t => ({
             id: t.id,
@@ -254,6 +265,7 @@
                 <ToolsGrid
                     tools={unifiedTools}
                     {isAdmin}
+                    {groupDescriptions}
                     onDeleteCustom={(id, name) => { deleteTarget = { type: 'tool', id, name }; }}
                 />
             {:else if activeTab === 'tools' && gatewayToolsError}
