@@ -491,9 +491,25 @@
 	function msgTs(msg: unknown): number | undefined {
 		return (msg as { timestamp?: number }).timestamp;
 	}
-	function fmtTime(ts: number | undefined): string {
-		if (!ts) return '';
-		return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+	// Compact relative label for a sent message (hover shows the exact time).
+	function relTime(ts: number): string {
+		const d = Math.round((Date.now() - ts) / 1000);
+		if (d < 60) return 'just now';
+		if (d < 3600) return `${Math.round(d / 60)}m ago`;
+		if (d < 86400) return `${Math.round(d / 3600)}h ago`;
+		if (d < 604800) return `${Math.round(d / 86400)}d ago`;
+		return new Date(ts).toLocaleDateString([], { month: 'short', day: 'numeric' });
+	}
+	// Exact time for the hover tooltip: time-only today, "Yesterday HH:MM",
+	// else "MMM D HH:MM".
+	function exactTime(ts: number): string {
+		const dt = new Date(ts);
+		const time = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+		const now = new Date();
+		const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+		if (ts >= startToday) return time;
+		if (ts >= startToday - 86400000) return `Yesterday ${time}`;
+		return `${dt.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`;
 	}
 
 	function handleSubmit(text: string, mode: 'ask' | 'capture') {
@@ -812,7 +828,6 @@
 										{#if row.text.trim().length > 0}
 											<MessageActions actions={actionsFor(row, ri)} />
 										{/if}
-										{#if row.ts && blockEnd}<span class="bubble-time">{fmtTime(row.ts)}</span>{/if}
 									</div>
 								{:else}
 									<div class="bubble-row user">
@@ -828,9 +843,13 @@
 										{/if}
 										{#if row.text.trim().length > 0}
 											<div class="bubble user">{row.text}</div>
-											<MessageActions actions={actionsFor(row, ri)} />
+											<div class="msg-foot">
+												{#if row.ts}
+													<time class="bubble-time" title={exactTime(row.ts)}>{relTime(row.ts)}</time>
+												{/if}
+												<MessageActions actions={actionsFor(row, ri)} />
+											</div>
 										{/if}
-										{#if row.ts && blockEnd}<span class="bubble-time">{fmtTime(row.ts)}</span>{/if}
 									</div>
 								{/if}
 							{/each}
@@ -1295,11 +1314,18 @@
 		}
 	}
 
+	/* Sent-message footer: relative time to the LEFT of the action row. */
+	.msg-foot {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+	}
 	.bubble-time {
-		font-size: 9px;
+		font-size: 10px;
 		color: var(--color-muted-foreground);
-		padding: 0 4px;
+		padding: 0 2px;
 		font-variant-numeric: tabular-nums;
+		cursor: default;
 	}
 
 	.thinking-row {
