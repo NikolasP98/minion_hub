@@ -547,7 +547,7 @@
 
 	function actionsFor(row: RenderedRow, ri: number): MessageAction[] {
 		return [
-			{ icon: Copy, label: m.chat_copy(), done: m.chat_copied(), onclick: () => copyRow(row) },
+			{ icon: Copy, label: m.chat_copy(), confirm: true, onclick: () => copyRow(row) },
 			{ icon: CornerUpLeft, label: m.chat_reply(), onclick: () => replyToRow(row) },
 			{ icon: RotateCcw, label: m.chat_retry(), onclick: () => retryRow(ri) },
 		];
@@ -805,33 +805,32 @@
 								{#if row.role === 'assistant'}
 									<!-- Assistant turn: ChatTurn owns its layout — quiet reasoning/tool
 									     rows OUTSIDE the bubble, the reply inside its own bubble.
-									     Action rail sits to the right, sticky to the visible bottom. -->
+									     Actions sit under the answer only (never on reasoning/tool-only
+									     rows, which carry no answer text). -->
 									<div class="bubble-row assistant">
-										<div class="msg-col">
-											<ChatTurn message={row.msg} toolResults={toolResultsById} />
-											{#if row.ts && blockEnd}<span class="bubble-time">{fmtTime(row.ts)}</span>{/if}
-										</div>
-										<MessageActions actions={actionsFor(row, ri)} side="right" />
+										<ChatTurn message={row.msg} toolResults={toolResultsById} />
+										{#if row.text.trim().length > 0}
+											<MessageActions actions={actionsFor(row, ri)} />
+										{/if}
+										{#if row.ts && blockEnd}<span class="bubble-time">{fmtTime(row.ts)}</span>{/if}
 									</div>
 								{:else}
 									<div class="bubble-row user">
-										<MessageActions actions={actionsFor(row, ri)} side="left" />
-										<div class="msg-col user">
-											{#if row.chips.length > 0}
-												<div class="sent-chips">
-													{#each row.chips as chip, ci (ci)}
-														<span class="sent-chip" title={chip.text}>
-															<span aria-hidden="true">{dragContextIcon(chip.kind as DragContextKind)}</span>
-															<span class="sent-chip-label">{chip.label}</span>
-														</span>
-													{/each}
-												</div>
-											{/if}
-											{#if row.text.trim().length > 0}
-												<div class="bubble user">{row.text}</div>
-											{/if}
-											{#if row.ts && blockEnd}<span class="bubble-time">{fmtTime(row.ts)}</span>{/if}
-										</div>
+										{#if row.chips.length > 0}
+											<div class="sent-chips">
+												{#each row.chips as chip, ci (ci)}
+													<span class="sent-chip" title={chip.text}>
+														<span aria-hidden="true">{dragContextIcon(chip.kind as DragContextKind)}</span>
+														<span class="sent-chip-label">{chip.label}</span>
+													</span>
+												{/each}
+											</div>
+										{/if}
+										{#if row.text.trim().length > 0}
+											<div class="bubble user">{row.text}</div>
+											<MessageActions actions={actionsFor(row, ri)} />
+										{/if}
+										{#if row.ts && blockEnd}<span class="bubble-time">{fmtTime(row.ts)}</span>{/if}
 									</div>
 								{/if}
 							{/each}
@@ -1201,32 +1200,16 @@
 		gap: 10px;
 	}
 
-	/* Row = message column + a sticky action rail on the outer edge. */
 	.bubble-row {
-		display: flex;
-		flex-direction: row;
-		align-items: stretch;
-		gap: 6px;
-	}
-	.bubble-row.assistant {
-		justify-content: flex-start;
-	}
-	.bubble-row.user {
-		justify-content: flex-end;
-	}
-	.msg-col {
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
-		min-width: 0;
 	}
-	.bubble-row.assistant > .msg-col {
-		flex: 1;
-		align-items: flex-start;
-	}
-	.bubble-row.user > .msg-col {
-		flex: 0 1 auto;
+	.bubble-row.user {
 		align-items: flex-end;
+	}
+	.bubble-row.assistant {
+		align-items: flex-start;
 	}
 
 	.bubble {

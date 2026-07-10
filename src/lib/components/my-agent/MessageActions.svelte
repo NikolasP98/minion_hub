@@ -1,26 +1,25 @@
 <script lang="ts">
 	import type { LucideIcon } from '$lib/nav/routes';
+	import { Check } from 'lucide-svelte';
 
 	export interface MessageAction {
 		icon: LucideIcon;
 		label: string;
 		onclick: () => void;
-		/** Transient confirmation label swapped in after click (e.g. "Copied"). */
-		done?: string;
+		/** Show a transient check after click (e.g. copy confirmation). */
+		confirm?: boolean;
 	}
 
-	// Vertical icon rail beside a message block. Icons are always visible; the
-	// group expands to show labels on hover. For blocks taller than the viewport
-	// the rail sticks to the bottom of the visible area (position: sticky).
-	const { actions, side = 'right' }: { actions: MessageAction[]; side?: 'left' | 'right' } =
-		$props();
+	// Horizontal, icon-only action row placed directly under a message bubble
+	// (Claude-style): no resting background, native tooltip on hover.
+	const { actions }: { actions: MessageAction[] } = $props();
 
 	let doneIdx = $state<number | null>(null);
 	let doneTimer: ReturnType<typeof setTimeout> | null = null;
 
 	function run(a: MessageAction, i: number) {
 		a.onclick();
-		if (a.done) {
+		if (a.confirm) {
 			doneIdx = i;
 			if (doneTimer) clearTimeout(doneTimer);
 			doneTimer = setTimeout(() => (doneIdx = null), 1400);
@@ -28,74 +27,40 @@
 	}
 </script>
 
-<div class="rail" class:left={side === 'left'} aria-label="Message actions">
+<div class="acts">
 	{#each actions as a, i (i)}
-		<button type="button" class="act" title={a.label} onclick={() => run(a, i)}>
-			<a.icon size={13} />
-			<span class="label">{doneIdx === i && a.done ? a.done : a.label}</span>
+		<button type="button" class="act" title={a.label} aria-label={a.label} onclick={() => run(a, i)}>
+			{#if doneIdx === i && a.confirm}
+				<Check size={14} />
+			{:else}
+				<a.icon size={14} />
+			{/if}
 		</button>
 	{/each}
 </div>
 
 <style>
-	.rail {
-		position: sticky;
-		bottom: 8px;
-		align-self: flex-end;
+	.acts {
 		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		flex-shrink: 0;
-		/* Fade in with the row but never intercept scroll on the empty gutter. */
-		opacity: 0.55;
-		transition: opacity 140ms ease;
+		gap: 1px;
+		margin-top: 1px;
 	}
-	.rail.left {
-		align-items: flex-end;
-	}
-	.rail:hover {
-		opacity: 1;
-	}
-
 	.act {
 		display: inline-flex;
 		align-items: center;
-		gap: 5px;
-		max-width: 26px;
+		justify-content: center;
+		width: 26px;
 		height: 24px;
-		padding: 0 6px;
-		border: 1px solid color-mix(in srgb, var(--color-foreground) 8%, transparent);
+		padding: 0;
+		border: none;
 		border-radius: 6px;
-		background: color-mix(in srgb, var(--color-bg2) 70%, transparent);
-		color: color-mix(in srgb, var(--color-foreground) 55%, transparent);
+		background: none;
+		color: color-mix(in srgb, var(--color-foreground) 42%, transparent);
 		cursor: pointer;
-		overflow: hidden;
-		white-space: nowrap;
-		transition: max-width 160ms ease, color 120ms ease, background 120ms ease,
-			border-color 120ms ease;
-	}
-	.rail.left .act {
-		flex-direction: row-reverse;
-	}
-	.act > :global(svg) {
-		flex-shrink: 0;
+		transition: color 120ms ease, background 120ms ease;
 	}
 	.act:hover {
 		color: var(--color-foreground);
 		background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
-		border-color: color-mix(in srgb, var(--color-foreground) 16%, transparent);
-	}
-	/* Expand every button to reveal its label when the group is hovered. */
-	.rail:hover .act {
-		max-width: 120px;
-	}
-	.label {
-		font-size: 11px;
-		line-height: 1;
-		opacity: 0;
-		transition: opacity 120ms ease;
-	}
-	.rail:hover .label {
-		opacity: 1;
 	}
 </style>
